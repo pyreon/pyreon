@@ -23,8 +23,14 @@ import { isStore } from './store'
 
 type AnyObject = Record<PropertyKey, unknown>
 
-// Keys that, written through the bracket-assignment paths below, would mutate Object.prototype (or
-// a constructor's prototype) instead of the store.
+// Keys that, written through the bracket-assignment paths below, would
+// mutate Object.prototype (or a constructor's prototype) instead of the
+// store. `reconcile` is explicitly documented for applying API responses
+// directly (`reconcile(JSON.parse(body), store)`), and
+// `JSON.parse('{"__proto__":{…}}')` yields an OWN enumerable `__proto__`
+// key that `Object.keys` returns — the canonical prototype-pollution
+// merge vector. Skip these unconditionally on both the write and the
+// stale-key-removal pass.
 const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
 
 export function reconcile<T extends object>(source: T, target: T): void {
@@ -32,8 +38,14 @@ export function reconcile<T extends object>(source: T, target: T): void {
 }
 
 function _reconcileInner(source: object, target: object, seen: WeakSet<object>): void {
-  // The `seen` set is keyed on `source`, not `target` — protects against CIRCULAR references in the
-  // source tree (avoids infinite recursion).
+  // The `seen` set is keyed on `source`, not `target` — protects against
+  // CIRCULAR references in the source tree (avoids infinite recursion). A
+  // consequence: DIAMOND-shaped sources (the SAME nested object referenced
+  // from two different parent paths in `source`) only get reconciled into
+  // their FIRST encountered position in `target`. The second occurrence is
+  // skipped. This is intentional — reconcile assumes source is a tree, not
+  // a DAG. Pass distinct object references (or deep-clone before reconcile)
+  // if your source is a DAG.
   if (seen.has(source)) return
   seen.add(source)
   if (Array.isArray(source) && Array.isArray(target)) {
@@ -47,6 +59,7 @@ function _reconcileArray(source: unknown[], target: unknown[], seen: WeakSet<obj
   const targetLen = target.length
   const sourceLen = source.length
 
+  // Update / add entries
   for (let i = 0; i < sourceLen; i++) {
     const sv = source[i]
     const tv = (target as unknown[])[i]
@@ -97,6 +110,7 @@ function _reconcileObject(source: AnyObject, target: AnyObject, seen: WeakSet<ob
     targetKeys.delete(key)
   }
 
+  // Remove keys that no longer exist in source
   for (const key of targetKeys) {
     if (DANGEROUS_KEYS.has(key)) continue
     delete target[key]

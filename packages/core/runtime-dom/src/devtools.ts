@@ -274,6 +274,17 @@ function disableOverlay(): void {
 
 // ─── Reactive dev overlay (zero-install in-app dev panel) ────────────────────
 // Three views:
+//   • Health   — orphan signals / high-fanout hubs / deep chains from
+//                `describeReactiveGraph`.
+//   • Activity — recent fires plus a "why did X update?" causal chain
+//                (`getUpdateCause`), the inverse of React DevTools'
+//                "why did this render?".
+//   • Inspect  — DOM->signal correlation: pick an element, see the signals whose
+//                values its text displays, via `nodesForElement` (the exact
+//                `_bindText` text-node->source tag, not a heuristic).
+// Distinct from the component-inspect overlay above and from the Chrome
+// extension: this is zero-install, mounted by the always-on dev devtools and
+// toggled with Ctrl+Shift+R. Reading the graph auto-activates tracking.
 
 type ReactiveView = 'health' | 'activity' | 'inspect'
 let _reactivePanelActive = false
@@ -330,6 +341,7 @@ function reactiveActivityBody(): string {
     .reverse()
     .map((f) => `• ${label(f.id)}`)
   // "Why did X update?" — the causal chain for the most-recent fire.
+  // Non-null: the `fires.length === 0` early return above guarantees a last item.
   const latestId = fires[fires.length - 1]!.id
   const cause = getUpdateCause(latestId)
   const causeText = cause
@@ -393,8 +405,10 @@ function selectReactiveView(view: ReactiveView): void {
   renderReactivePanel()
 }
 
-// ── Element picker (DOM → reactive-node) ───────────────────────────────────── A lightweight
-// hover-highlight + capture-phase click that resolves the clicked element to the signals driving.
+// ── Element picker (DOM → reactive-node) ─────────────────────────────────────
+// A lightweight hover-highlight + capture-phase click that resolves the clicked
+// element to the signals driving its text. Ignores clicks inside the overlay so
+// its own buttons keep working; Escape cancels.
 
 function showPickHighlight(el: Element): void {
   if (!_pickHighlightEl) {
@@ -617,6 +631,7 @@ export function installDevTools(): void {
     },
   }
 
+  // Attach to window — compatible with browser devtools extensions
   ;(window as unknown as Record<string, unknown>).__PYREON_DEVTOOLS__ = devtools
 
   // Ctrl+Shift+P toggles the component inspector overlay;

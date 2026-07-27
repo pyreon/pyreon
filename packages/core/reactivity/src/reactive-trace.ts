@@ -44,8 +44,10 @@ export interface ReactiveTraceEntry {
  */
 const CAP = 50
 
-// Lazily allocated — apps that never write a signal in dev (rare) pay nothing until the
-// first write.
+// Lazily allocated — apps that never write a signal in dev (rare) pay
+// nothing until the first write. `_count` is the monotonic total write
+// count; `_count % CAP` is the next slot. Reading reconstructs
+// chronological order from the wrapped buffer.
 let _buf: (ReactiveTraceEntry | undefined)[] | null = null
 let _count = 0
 
@@ -69,7 +71,9 @@ function preview(v: unknown): string {
     else if (t === 'symbol') s = (v as symbol).toString()
     else if (Array.isArray(v)) s = `Array(${(v as unknown[]).length})`
     else {
-      // Plain-ish object: show the constructor name + a shallow key hint.
+      // Plain-ish object: show the constructor name + a shallow key
+      // hint. Avoid full JSON.stringify — it can be huge or throw on
+      // cycles / BigInt / getters.
       const ctor = (v as { constructor?: { name?: string } }).constructor?.name
       const keys = (() => {
         try {

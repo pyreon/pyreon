@@ -48,6 +48,8 @@ export function getDefaultLpihCachePath(): string | null {
   /* v8 ignore next */
   if (typeof process === 'undefined') return null
   // Pyreon's reactivity package narrows `process` to `{ env: ... }`.
+  // Cast through the runtime check so the call site typechecks under
+  // browser-target tsconfig while still working in Node where cwd exists.
   const proc = process as unknown as { cwd?: () => string }
   if (typeof proc.cwd !== 'function') return null
   try {
@@ -108,12 +110,22 @@ async function _writeToPath(path: string): Promise<number> {
       : 0
   const tmp = `${path}.tmp.${pid}.${++_seq}`
   const fs = await import('node:fs/promises')
-  // Single try/catch covering BOTH writeFile AND rename.
+  // Single try/catch covering BOTH writeFile AND rename. The previous
+  // shape only guarded the rename — if `fs.writeFile` itself threw (disk
+  // full, EIO, EACCES, transient FS error), the partial tmp file leaked
+  // on disk with a unique PID+seq name. The same bug class lived in the
+  // vite-plugin's `writeLpihCacheFile` (R1); both fixed in lockstep.
   try {
     await fs.writeFile(tmp, JSON.stringify(payload), 'utf8')
     await fs.rename(tmp, path)
   } catch (err) {
-    // Rename / writeFile failed — clean up the tmp file so we don't leak it on disk.
+    // Rename / writeFile failed — clean up the tmp file so we don't leak
+    // it on disk. Covers BOTH paths: writeFile-failed (tmp may not exist
+    // → unlink ENOENT, swallowed) AND rename-failed (tmp exists). Common
+    // rename causes: cross-device link (rare; same dir → same FS), target
+    // is a directory, EACCES. The caller sees the original error; the
+    // cleanup is best-effort and silent (unlink may also fail if the FS
+    // is broken — re-throwing that would mask the real problem).
     try {
       await fs.unlink(tmp)
     } catch {
@@ -169,14 +181,18 @@ function _startPollingAt(path: string, intervalMs: number): () => void {
   const tick = async (): Promise<void> => {
     if (!active) return
     try {
-      // Skip the default-resolution check on every tick — path is already resolved at startup.
+      // Skip the default-resolution check on every tick — path is already
+      // resolved at startup.
       await _writeToPath(path)
     } catch {
-      // Swallow — polling continues.
+      // Swallow — polling continues. The LSP degrades gracefully if the
+      // file is missing or stale.
     }
     if (active) {
       timer = setTimeout(tick, intervalMs)
-      // .unref() so a forgotten startLpihPolling() doesn't block process exit.
+      // .unref() so a forgotten startLpihPolling() doesn't block process
+      // exit. Node-only; the setTimeout return type in browsers is a
+      // number with no .unref. Type-narrow defensively.
       if (typeof timer === 'object' && timer !== null && 'unref' in timer) {
         ;(timer as { unref(): void }).unref()
       }

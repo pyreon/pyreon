@@ -38,7 +38,9 @@ export interface TextProps extends ChildrenProp, HtmlPassthroughProps {
 export interface HeadingProps extends ChildrenProp, HtmlPassthroughProps {
   level?: 1 | 2 | 3 | 4 | 5 | 6
   color?: ColorToken
-  // NOTE: custom `font` is Text-only in v1.
+  // NOTE: custom `font` is Text-only in v1 (Heading carries the
+  // typography scale's own font weight/size). Use <Text font="…"> with
+  // a size token for a branded heading until Heading-font lands.
 }
 
 /**

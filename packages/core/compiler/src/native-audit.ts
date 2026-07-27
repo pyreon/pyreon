@@ -55,6 +55,7 @@ export interface NativeAuditResult {
 }
 
 // Packages that cannot be native-rendered (hard DOM/canvas/vendor deps).
+// Importing one in a multiplatform component file is a native-build hazard.
 const WEB_ONLY_PACKAGES = new Set<string>([
   '@pyreon/charts',
   '@pyreon/flow',
@@ -83,7 +84,7 @@ function findRoot(startDir: string): string | null {
     try {
       if (statSync(join(dir, 'package.json')).isFile()) return dir
     } catch {
-      // Best effort — unreadable or unparseable input is skipped.
+      // fall through
     }
     const parent = dirname(dir)
     if (parent === dir) return null
@@ -168,6 +169,7 @@ export function auditNative(cwd: string): NativeAuditResult {
     if (!source) continue
 
     // First pass: is this a multiplatform file (imports @pyreon/primitives)?
+    // Collect web-only imports in the same sweep.
     let importsPrimitives = false
     const webOnlyImports: { spec: string; node: ts.Node }[] = []
     for (const stmt of source.statements) {
@@ -238,7 +240,8 @@ export function auditNative(cwd: string): NativeAuditResult {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Snippet-level detector (MCP `validate` feedback loop).
+// Snippet-level detector (MCP `validate` feedback loop)
+// ═══════════════════════════════════════════════════════════════════════════════
 
 export interface NativePatternDiagnostic {
   code: 'native-web-only-import' | 'native-unsupported-decl'
@@ -280,7 +283,8 @@ export function detectNativePatterns(
     const pkgRoot = spec.startsWith('@') ? spec.split('/').slice(0, 2).join('/') : spec.split('/')[0]!
     if (WEB_ONLY_PACKAGES.has(pkgRoot)) webOnly.push({ spec, node: stmt })
   }
-  // Only audit multiplatform snippets.
+  // Only audit multiplatform snippets — a pure-web snippet legitimately
+  // imports charts/elements/etc. and must not be flagged.
   if (!importsPrimitives) return diags
 
   const lineCol = (node: ts.Node) => {

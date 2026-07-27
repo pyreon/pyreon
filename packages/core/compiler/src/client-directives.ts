@@ -117,7 +117,8 @@ function fnv1a(s: string): string {
 function strategyIdent(strategy: string): string {
   const base = strategy.split('(')[0] ?? strategy
   const frag = base.replace(/[^a-zA-Z0-9]+/g, '') || 'load'
-  // If the sanitized WHOLE strategy equals the fragment, it's a bare strategy.
+  // If the sanitized WHOLE strategy equals the fragment, it's a bare strategy
+  // (`visible`/`idle`/`load`/…) — no hash needed. Otherwise it's parameterized.
   const full = strategy.replace(/[^a-zA-Z0-9]+/g, '')
   return full === frag ? frag : `${frag}_${fnv1a(strategy)}`
 }
@@ -254,7 +255,12 @@ export function transformClientDirectives(
 
   // ── 3. One island wrapper per (component, strategy) ──
   const slug = fileSlug(filePath)
-  // A hash of the FULL file path makes the registry `name` unique BY CONSTRUCTION across files.
+  // A hash of the FULL file path makes the registry `name` unique BY
+  // CONSTRUCTION across files — the readable `slug` alone collides when two
+  // paths differ only in characters the slug collapses (e.g. `foo-bar/Page` vs
+  // `foo_bar/Page` both → `foo_bar_Page`), which would produce a duplicate
+  // island `name` the moment those two files' registries merge. `varName` does
+  // NOT need it (it's module-scoped — no cross-file collision).
   const fileHash = fnv1a(filePath)
   const islands: DirectiveIsland[] = []
   const wrapperByKey = new Map<string, DirectiveIsland>()
@@ -292,7 +298,8 @@ export function transformClientDirectives(
     }
   }
 
-  // The injected wrapper declarations + the island import.
+  // The injected wrapper declarations + the island import, placed right after
+  // the last import statement.
   const loaderExpr = (i: DirectiveIsland) =>
     i.exportName === 'default'
       ? `() => import(${JSON.stringify(i.importSource)})`

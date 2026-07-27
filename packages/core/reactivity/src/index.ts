@@ -1,8 +1,12 @@
 import { name as __pkgName, version as __pkgVersion } from '../package.json' with { type: 'json' }
 import { registerSingleton } from './singleton-sentinel'
 
-// Singleton sentinel — fail-loud detection of duplicate @pyreon/reactivity instances in
-// the same heap. See singleton-sentinel.ts for full rationale.
+// Singleton sentinel — fail-loud detection of duplicate @pyreon/reactivity
+// instances in the same heap. See singleton-sentinel.ts for full rationale.
+// Name + version are derived from this package's OWN package.json (single
+// source of truth) so the diagnostic can never report a stale version: the
+// build inlines the literals, dev (bun → src) reads the live package.json.
+// No hardcoded version to drift on release.
 registerSingleton(__pkgName, __pkgVersion, import.meta.url)
 
 export { batch, nextTick } from './batch'
@@ -48,7 +52,11 @@ export type {
   NodeDescription,
 } from './reactive-describe'
 export { describeReactiveGraph, formatGraphDescription } from './reactive-describe'
-// `writeLpihCache` + `startLpihPolling` ship at the `@pyreon/reactivity/lpih` subpath.
+// `writeLpihCache` + `startLpihPolling` ship at the `@pyreon/reactivity/lpih`
+// subpath. They depend on `node:fs/promises` (Node-only) and are dev-mode
+// integration utilities — separating them keeps the core main-entry bundle
+// smaller AND clarifies that LPIH writes are an opt-in side-channel, not a
+// core reactivity primitive. See `./lpih.ts` and `docs/src/content/docs/lpih.md`.
 export type { ReactiveTraceEntry } from './reactive-trace'
 export type {
   AccessorReturn,

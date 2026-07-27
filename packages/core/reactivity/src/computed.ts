@@ -47,8 +47,13 @@ export interface ComputedOptions<T> {
   __sourceLocation?: { file: string; line: number; col: number }
 }
 
-// Internal shape of a computed read function — state stored as PLAIN FIELDS on the function object
-// (fast in-object properties, exactly like `signal`), with shareable methods on `ComputedProto`.
+// Internal shape of a computed read function — state stored as PLAIN FIELDS on
+// the function object (fast in-object properties, exactly like `signal`), with
+// shareable methods on `ComputedProto`. The previous shape carried THREE
+// `Object.defineProperty` accessors, which force the function into V8 dictionary
+// mode; an A/B measured that at ~55% MORE retained heap per computed. `read` and
+// `recompute` MUST stay per-instance closures — their identity is stored in
+// dependency subscriber Sets and passed to `_markRecompute`.
 interface ComputedFn<T> {
   (): T
   /** @internal cached value */
@@ -152,7 +157,9 @@ function propagateEagerChange(read: ComputedFn<unknown>): void {
 }
 
 export function computed<T>(fn: () => T, options?: ComputedOptions<T>): Computed<T> {
-  // `computed(async () => …)` returns `Computed<Promise<T>>`.
+  // `computed(async () => …)` returns `Computed<Promise<T>>`, silently breaking
+  // every consumer expecting `Computed<T>`: the recompute fires synchronously and
+  // only tracks signals in the synchronous prefix.
   if (process.env.NODE_ENV !== 'production') {
     if (fn.constructor && fn.constructor.name === 'AsyncFunction') {
       // oxlint-disable-next-line no-console
@@ -186,8 +193,9 @@ function computedLazy<T>(
 ): Computed<T> {
   let tracked = false
   const deps: Set<() => void>[] = []
-  // `tracked`/`deps` are touched only by the per-instance `read`/`dispose` closures, so they stay
-  // closure-captured.
+  // `tracked`/`deps` are touched only by the per-instance `read`/`dispose`
+  // closures, so they stay closure-captured. `recompute` is forward-declared for
+  // the `read` body; `read` is never invoked before it is wired.
   let recompute: () => void
 
   const read = (() => {
@@ -199,7 +207,9 @@ function computedLazy<T>(
       }
       try {
         if (tracked) {
-          // Deps already established — VERIFY them positionally (zero Set ops in the steady state).
+          // Deps already established — VERIFY them positionally (zero Set ops in
+          // the steady state). A divergence unsubscribes the stale tail and
+          // records the new shape, keeping the dep list exact on every re-eval.
           read._value = runVerify(recompute, deps, fn)
         } else {
           read._value = runCollect(recompute, deps, fn)
@@ -224,12 +234,23 @@ function computedLazy<T>(
   read._d = null
 
   recompute = () => {
-    // Delegates to the CANONICAL lazy notify body in batch.ts, which marks dirty (idempotent),
-    // DEFERS direct subscribers to the batch DRAIN, and cascades into subscribers.
+    // Delegates to the CANONICAL lazy notify body in batch.ts, which marks dirty
+    // (idempotent), DEFERS direct subscribers to the batch DRAIN, and cascades
+    // into subscribers. The deferral is glitch-freedom: a lazy recompute runs
+    // INLINE during the write's notify phase, so `read._v` is TORN mid-multi-
+    // write-batch; the deferred updater fires once, at the drain, on the settled
+    // value.
+    //
+    // This closure exists ONLY for its per-instance subscriber-set IDENTITY —
+    // dispatch sites holding the `_c` back-ref call the helper directly.
     _markLazyAndPropagate(read)
   }
-  // Recompute marker → the batch router and `propagateLazyDirty` run this inline (dirty-mark-only,
-  // idempotent) instead of routing it through the queues.
+  // Recompute marker → the batch router and `propagateLazyDirty` run this inline
+  // (dirty-mark-only, idempotent) instead of routing it through the queues, so
+  // pure-computed cascades resolve during the notify phase. The second arg stamps
+  // `recompute._c = read` so the cascade's fused single-subscriber walk can
+  // dirty-mark these fields DIRECTLY — that walk inlines `_markLazyAndPropagate`,
+  // so keep the two in lock-step.
   _markRecompute(recompute, read)
 
   read.dispose = () => {
@@ -311,8 +332,9 @@ function computedWithEquals<T>(
       // and notify nobody when structurally equal.
       if (!(wasInitialized && equals(read._value, next))) {
         read._value = next
-        // Propagate the change (never on the FIRST eval — the actively- tracking reader
-        // that triggered it is already subscribed and would spuriously re-run).
+        // Propagate the change (never on the FIRST eval — the actively-
+        // tracking reader that triggered it is already subscribed and would
+        // spuriously re-run).
         if (wasInitialized) propagateEagerChange(read)
       }
     }
@@ -328,8 +350,9 @@ function computedWithEquals<T>(
   read._d = null
 
   recompute = () => {
-    // Inline dirty-marking NOTIFY, idempotent via the `_dirty` guard exactly like the
-    // lazy variant. `enqueueEagerRefresh` books the guaranteed tier-1 evaluation.
+    // Inline dirty-marking NOTIFY, idempotent via the `_dirty` guard exactly
+    // like the lazy variant. `enqueueEagerRefresh` books the guaranteed tier-1
+    // evaluation.
     if (read._disposed || read._dirty) return
     read._dirty = true
     if (isBatching()) {

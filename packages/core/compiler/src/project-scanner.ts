@@ -205,7 +205,8 @@ function enumerateRouteFiles(routesDir: string): string[] {
         if (entry.name === 'node_modules') continue
         walk(full, rel)
       } else if (entry.isFile() && exts.has(path.extname(entry.name))) {
-        // Skip test/spec/story fixtures + serverLoader (`*.server.ts`) siblings.
+        // Skip test/spec/story fixtures + serverLoader (`*.server.ts`) siblings —
+        // none are navigable routes.
         if (/\.(test|spec|stories)\.(tsx?|jsx?)$/.test(entry.name)) continue
         if (/\.server\.(tsx?|jsx?)$/.test(entry.name)) continue
         out.push(rel)
@@ -234,7 +235,10 @@ function extractFileRoutes(cwd: string): RouteInfo[] {
       // unreadable — still emit the path (empty source ⇒ no loader/guard flags)
     }
 
-    // The SHARED zero convention decides API-vs-page.
+    // The SHARED zero convention decides API-vs-page — a `.ts`/`.js` file
+    // under the TOP-LEVEL `api/` dir only. Everything else (nested
+    // `posts/api/x.ts`, method-handler `.ts` outside `api/`) is a page
+    // route, exactly as zero registers it.
     const api = isApiRoute(rel)
     const urlPath = api ? apiFilePathToPattern(rel) : filePathToUrlPath(noExt)
 
@@ -329,7 +333,8 @@ function extractIslands(files: string[], cwd: string): IslandInfo[] {
     } catch {
       continue
     }
-    // Cheap pre-filter so we only pay for AST parsing on files that could contain an island() call.
+    // Cheap pre-filter so we only pay for AST parsing on files that could
+    // contain an island() call.
     if (!code.includes('island')) continue
 
     let sf: ts.SourceFile
@@ -366,7 +371,11 @@ function extractIslands(files: string[], cwd: string): IslandInfo[] {
           }
         }
 
-        // No explicit `name:` → derive the REGISTRY name from the enclosing const-binding.
+        // No explicit `name:` → derive the REGISTRY name from the enclosing
+        // const-binding identifier, exactly as the vite-plugin's auto-naming
+        // does (`X$<fnv1a6(relPath)>` — shared `deriveIslandName`). Last
+        // resort (bindingless nameless call): file-basename placeholder —
+        // documented on IslandInfo.name as NOT a registry name.
         if (!nameVal) {
           const binding = bindingNameOf(node)
           if (binding) nameVal = deriveIslandName(binding, islandRelPath(cwd, file))

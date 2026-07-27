@@ -51,7 +51,11 @@ function ErrorBoundary(props: {
 
   const handler = (err: unknown): boolean => {
     if (error.peek() !== null) return false // already in error state — let outer boundary catch it
-    // Synchronous signal write.
+    // Synchronous signal write. The handler fires from inside mountComponent's
+    // catch, itself inside the boundary's own mountReactive effect run (the run
+    // that mounted the throwing child). The two-tier flush handles this: the write
+    // enqueues the boundary's run into the effect queue's NEXT pass (the run is
+    // currently being visited), and that pass swaps to the fallback subtree.
     error.set(err)
     reportError({ component: 'ErrorBoundary', phase: 'render', error: err, timestamp: Date.now() })
     return true
@@ -59,12 +63,20 @@ function ErrorBoundary(props: {
 
   // Push synchronously — before children are mounted — so child errors see this boundary
   pushErrorBoundary(handler)
-  // Identity-based pop: pass our own handler reference.
+  // Identity-based pop: pass our own handler reference. Sibling boundaries
+  // can unmount in any order driven by the renderer (keyed `<For>` removal
+  // of a non-last item, `<Show>` flipping on the FIRST of N siblings, route
+  // nav, etc.) — without passing the handler reference, the position-based
+  // `pop()` would remove the WRONG boundary's handler. Same bug class as
+  // #725 (`popContext()` orphaning provider frames under reactive remount).
   onUnmount(() => popErrorBoundary(handler))
 
   return (): VNodeChildAtom => {
     const err = error()
-    // The error signal is set only by `handler`.
+    // The error signal is set only by `handler`, fired from mountComponent's
+    // catch during a child mount — so the fallback branch is reachable only
+    // under a renderer (exercised by @pyreon/runtime-dom's ErrorBoundary mount
+    // tests), never from a bare node-side `ErrorBoundary()` call.
     /* v8 ignore next */
     if (err != null) return props.fallback(err, reset) as VNodeChildAtom
     const ch = props.children
@@ -72,6 +84,14 @@ function ErrorBoundary(props: {
   }
 }
 
-// Mark as native so compat-mode jsx() runtimes (react/preact/vue/solid-compat) skip.
+// Mark as native so compat-mode jsx() runtimes (react/preact/vue/solid-compat)
+// skip wrapCompatComponent — ErrorBoundary uses pushErrorBoundary/onUnmount,
+// which need Pyreon's setup frame (compat wrapping breaks dispatchToErrorBoundary).
+// ASSIGNMENT + /* @__PURE__ */ form (not a bare statement): inside a built
+// lib's shared chunk a bare `nativeCompat(X)` call is an unremovable side
+// effect that RETAINS the component body in every consumer bundle that
+// never imports it (see runtime-dom's native-compat-treeshake lock). The
+// PURE call is droppable exactly when the export is unused; when used it
+// returns the SAME fn with the marker applied.
 const _ErrorBoundary = /* @__PURE__ */ nativeCompat(ErrorBoundary)
 export { _ErrorBoundary as ErrorBoundary }

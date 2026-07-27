@@ -91,6 +91,7 @@ export interface ComponentInstance {
 
 // ─── Lifecycle hooks storage (attached per-instance by the renderer) ──────────
 
+// Cleanup function optionally returned by onMount hooks
 export type CleanupFn = () => void
 
 // ─── NativeItem ───────────────────────────────────────────────────────────────

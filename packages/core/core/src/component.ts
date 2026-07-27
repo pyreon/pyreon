@@ -42,9 +42,23 @@ export function propagateError(err: unknown, hooks: LifecycleHooks): boolean {
   return false
 }
 
-// ─── Error boundary stack ──────────────────────────────────────────────────── Module-level stack.
+// ─── Error boundary stack ────────────────────────────────────────────────────
+// Module-level stack of active ErrorBoundary handlers (innermost last).
+// ErrorBoundary pushes during its own setup, before children mount, so any child
+// mountComponent error dispatches up to the nearest boundary.
+//
+// Mutation contract: removal is IDENTITY-based (`lastIndexOf + splice`), never
+// position-based (`pop`). Sibling boundaries unmount in renderer-driven order
+// (keyed `<For>` reconciliation, `<Show>` flips, route nav), NOT strict LIFO, so
+// a `pop()` would remove the WRONG frame — orphaning one boundary's handler on
+// the stack while dropping the surviving boundary's. Errors would then route to
+// the orphan, whose signal is already disposed, and vanish silently. Same shape
+// as the `popContext()` bug — see anti-patterns "Position-based pop for stack
+// frames that may be pushed by reactive boundaries".
 
-// Plain module-scope stack.
+// Plain module-scope stack. The duplicate-instance bug class is prevented at the
+// bundler layer (`@pyreon/vite-plugin` injects `resolve.dedupe`) and detected at
+// the runtime layer (every package calls `registerSingleton` at module load).
 const _ebStack: ((err: unknown) => boolean)[] = []
 
 export function pushErrorBoundary(handler: (err: unknown) => boolean): void {
@@ -59,7 +73,10 @@ export function pushErrorBoundary(handler: (err: unknown) => boolean): void {
  */
 export function popErrorBoundary(handler?: (err: unknown) => boolean): void {
   if (handler === undefined) {
-    // Back-compat: legacy callers that don't pass a handler get the old pop-last behaviour.
+    // Back-compat: legacy callers that don't pass a handler get the old
+    // pop-last behaviour. Internal `ErrorBoundary` setup always passes
+    // its handler now; any external direct callers (tests, advanced
+    // consumers) keep working with no-arg form.
     _ebStack.pop()
     return
   }

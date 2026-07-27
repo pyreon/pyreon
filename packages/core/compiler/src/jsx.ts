@@ -50,7 +50,13 @@ export interface GeneratedSourceMap {
   toUrl(): string
 }
 
-// ─── Native binary auto-detection ──────────────────────────────────────────── Two-path.
+// ─── Native binary auto-detection ────────────────────────────────────────────
+// Two-path resolution: in-tree binary first (dev mode), then per-platform
+// npm package (production install via optionalDependencies). Falls through
+// to the JS implementation below when both paths fail (wrong platform, CI
+// environment, WASM runtime like StackBlitz, missing per-platform package).
+//
+// See `load-native.ts` for the resolution logic.
 /** The napi `CollapseConfig` shape — the JS `collapseRocketstyle` config
  * lowered from `Set`/`Map` to the array/Record form napi reads (camelCase
  * site fields auto-map to the Rust struct's snake_case). Built by
@@ -305,7 +311,8 @@ type N = any // ESTree node — untyped for speed, matches the lint package appr
 
 function getLang(filename: string): 'tsx' | 'jsx' {
   if (filename.endsWith('.jsx')) return 'jsx'
-  // Default to tsx so JSX is always parsed.
+  // Default to tsx so JSX is always parsed — matches the original TypeScript
+  // parser behavior which forced ScriptKind.TSX for all files.
   return 'tsx'
 }
 
@@ -333,6 +340,7 @@ function forEachChild(node: N, cb: (child: N) => void): void {
   const keys = Object.keys(node)
   for (let i = 0; i < keys.length; i++) {
     const key = keys[i]!
+    // Skip metadata fields for speed
     if (key === 'type' || key === 'start' || key === 'end' || key === 'loc' || key === 'range')
       continue
     const val = node[key]
@@ -461,7 +469,14 @@ export function scanCollapsibleSites(
             key: rocketstyleCollapseKey(tag, site.props, site.childrenText),
           })
         } else {
-          // Dynamic-prop fallthrough: if the full detector bailed but the site matches.
+          // Dynamic-prop fallthrough: if the full detector bailed but the site
+          // matches the ternary-of-two-literals shape, expand into TWO
+          // CollapsibleSite entries, one per literal value. Each is
+          // byte-identical to a static-collapse site for that value, so the
+          // resolver pre-renders both and the emit looks both up to build the
+          // dispatcher. Handler-bearing sites route to `__rsCollapseDynH` rather
+          // than `__rsCollapseDyn`; the scan doesn't distinguish, because the
+          // resolver only cares about (componentName, props, text).
           const dyn = detectDynamicCollapsibleShape(node, tag)
           if (dyn) {
             for (const value of [dyn.dynamicProp.valueTruthy, dyn.dynamicProp.valueFalsy]) {
@@ -476,7 +491,12 @@ export function scanCollapsibleSites(
               })
             }
           } else {
-            // Element-child fallthrough (PR 2): literal root props + recursively-static element.
+            // Element-child fallthrough (PR 2): literal root props +
+            // recursively-static element children. The resolver renders
+            // the real `childTree` via `h()` and bakes the full subtree
+            // HTML; the emit is the unchanged `__rsCollapse`. Key uses
+            // the serialized child subtree so distinct subtrees resolve
+            // to distinct templates.
             const elem = detectElementChildCollapsibleShape(node, tag)
             if (elem) {
               out.push({
@@ -533,7 +553,14 @@ function detectCollapsibleShape(
   return { props, childrenText: childrenText.trim() }
 }
 
-// ─── Element-child collapse.
+// ─── Element-child collapse — recursively-static child detection ─────────────
+//
+// `detectCollapsibleShape` bails on ANY element child. This detector recognises
+// the SAFE subset: element children whose ENTIRE subtree is provably static, so
+// the SSR resolver can bake the full subtree into the `_rsCollapse` template
+// with nothing reactive lost. Conservative by construction — a child carrying
+// ANY reactivity (component tag, `{expr}` prop, `on*` handler, `{expr}` child)
+// is a hard bail.
 
 /** A statically-bakeable child element subtree. */
 export interface StaticChildNode {
@@ -673,7 +700,8 @@ export function detectElementChildCollapsibleShape(
   }
   const childTree = collectStaticChildren(node)
   if (childTree === null) return null // any non-static child → bail
-  // Must contain ≥1 element child.
+  // Must contain ≥1 element child — a text-only list is the FULL-collapse
+  // shape; defer to `detectCollapsibleShape` so that path stays unchanged.
   if (!childTree.some((c) => typeof c !== 'string')) return null
   return { props, childTree, childrenKey: serializeStaticChildren(childTree) }
 }
@@ -731,7 +759,10 @@ export function detectPartialCollapsibleShape(
       props[nm] = String(v.value)
       continue
     }
-    // Non-literal: ONLY an `on[A-Z]…` handler in a `{expr}` container is peelable.
+    // Non-literal: ONLY an `on[A-Z]…` handler in a `{expr}` container is
+    // peelable. Everything else (non-handler dynamic prop, shorthand
+    // `onClick` without a container, etc.) is a hard bail — same
+    // conservatism as the full detector.
     if (
       /^on[A-Z]/.test(nm) &&
       v.type === 'JSXExpressionContainer' &&
@@ -749,7 +780,8 @@ export function detectPartialCollapsibleShape(
     if (c.type === 'JSXText') childrenText += (c.value ?? '') as string
     else return null // element / expression child → bail
   }
-  // Zero handlers ⇒ this is the FULL-collapse shape.
+  // Zero handlers ⇒ this is the FULL-collapse shape; defer to
+  // `detectCollapsibleShape` so the existing path stays byte-unchanged.
   if (handlers.length === 0) return null
   return { props, childrenText: childrenText.trim(), handlers }
 }
@@ -842,6 +874,10 @@ export function detectDynamicCollapsibleShape(
       continue
     }
     // Non-literal in a `{expr}` container — three possible relaxations:
+    //   (a) `on[A-Z]…` handler with any expression → peeled
+    //   (b) any other prop whose expression is a ternary of two string
+    //       literals → peeled as a DynamicCollapsibleProp
+    //   (c) anything else → bail
     if (
       v.type === 'JSXExpressionContainer' &&
       v.expression &&
@@ -861,7 +897,9 @@ export function detectDynamicCollapsibleShape(
         expr.consequent &&
         expr.alternate
       ) {
-        // Both branches must be StringLiteral.
+        // Both branches must be StringLiteral. We deliberately do NOT
+        // accept TemplateLiteral / `as`-casted literals / any other
+        // shape — keep the static-resolvable set narrow + provable.
         const isLitStr = (n: unknown): n is { type: 'StringLiteral'; value: string } => {
           const x = n as { type?: string; value?: unknown }
           return (
@@ -887,7 +925,9 @@ export function detectDynamicCollapsibleShape(
     if (c.type === 'JSXText') childrenText += (c.value ?? '') as string
     else return null // element / expression child → bail
   }
-  // Exactly ONE dynamic prop is the scope of this PR.
+  // Exactly ONE dynamic prop is the scope of this PR. Zero ⇒ defer to
+  // the existing detectors (full / on*-handler partial); 2+ ⇒ bail
+  // (multi-axis combinatorics is a separable scope).
   if (dynamicProps.length !== 1) return null
   return {
     props,
@@ -904,7 +944,15 @@ export function transformJSX(
   filename = 'input.tsx',
   options: TransformOptions = {},
 ): TransformResult {
-  // Try Rust native binary first (3.7-8.2x faster).
+  // Try Rust native binary first (3.7-8.2x faster). The native backend now
+  // implements ALL FOUR rocketstyle-collapse variants byte-identically (locked
+  // by the cross-backend equivalence suite), so `collapseRocketstyle` is lowered
+  // to the napi shape and threaded as the 6th arg instead of forcing the JS path.
+  // The compile-to-string SSR fast path (`ssrTemplate`) is ALSO implemented
+  // byte-identically in the native backend (threaded as the 7th arg + locked by
+  // native-equivalence / fuzz-equivalence), so it no longer forces the JS path.
+  // Per-call try/catch: if the native binary panics on an edge case (bad UTF-8,
+  // unexpected AST shape), fall back gracefully instead of crashing the dev server.
   if (nativeTransformJsx) {
     try {
       return nativeTransformJsx(
@@ -1089,9 +1137,14 @@ export function transformJSX_JS(
     const tag = jsxTagName(node)
     if (!tag || tag.charAt(0) === tag.charAt(0).toLowerCase()) return false
     if (!cfg.candidates.has(tag)) return false
-    // Shared bail catalogue — IDENTICAL to scanCollapsibleSites.
+    // Shared bail catalogue — IDENTICAL to scanCollapsibleSites (the
+    // plugin scans with the same predicate, so its resolved `sites`
+    // keys match these lookups exactly; no drift possible).
     const shape = detectCollapsibleShape(node, tag)
     // Fallthrough chain — same conservative discipline at each layer:
+    //   1. on*-handler-only partial (literal dim props + handlers)
+    //   2. dynamic-prop partial (ternary-of-two-literals on ≤1 dim prop,
+    //      no handlers — handler-combined dynamic is a future PR's scope)
     if (!shape)
       return (
         tryPartialCollapse(node, tag) ||
@@ -1144,7 +1197,9 @@ export function transformJSX_JS(
     const key = rocketstyleCollapseKey(tag, props, childrenText)
     const site = cfg.sites.get(key)
     if (!site) return false // not resolved → keep normal rocketstyle mount
-    // `{ "onClick": (<sliced expr>), … }`.
+    // `{ "onClick": (<sliced expr>), … }` — each handler expression is
+    // re-emitted verbatim from its source span (paren-wrapped so an
+    // arrow / sequence expr stays a single argument).
     const handlerObj = `{ ${handlers
       .map((h) => `${JSON.stringify(h.name)}: (${code.slice(h.exprStart, h.exprEnd)})`)
       .join(', ')} }`
@@ -1215,7 +1270,10 @@ export function transformJSX_JS(
     const dyn = detectDynamicCollapsibleShape(node, tag)
     if (!dyn) return false
     const { props, childrenText, dynamicProp, handlers } = dyn
-    // Look up BOTH expanded sites (one per literal value).
+    // Look up BOTH expanded sites (one per literal value). The scan's
+    // dynamic-prop fallthrough (above in this file) emits a CollapsibleSite
+    // for each value with identical key construction, so these lookups
+    // must succeed iff both resolved.
     const truthyProps = { ...props, [dynamicProp.name]: dynamicProp.valueTruthy }
     const falsyProps = { ...props, [dynamicProp.name]: dynamicProp.valueFalsy }
     const truthyKey = rocketstyleCollapseKey(tag, truthyProps, childrenText)
@@ -1223,10 +1281,14 @@ export function transformJSX_JS(
     const truthySite = cfg.sites.get(truthyKey)
     const falsySite = cfg.sites.get(falsyKey)
     if (!truthySite || !falsySite) return false // half-resolved ⇒ keep normal mount
-    // Cross-value template parity.
+    // Cross-value template parity — the dispatcher reuses ONE `_tpl`
+    // across both values; divergent markup means we'd silently pick
+    // the truthy variant's HTML for falsy too. Bail conservatively.
     if (truthySite.templateHtml !== falsySite.templateHtml) return false
 
-    // Build the stride-2 value-major class array (consumed by `_rsCollapseDyn`): `[v0_light.
+    // Build the stride-2 value-major class array (consumed by
+    // `_rsCollapseDyn`): `[v0_light, v0_dark, v1_light, v1_dark]` where
+    // v0 = truthy (cond → 0), v1 = falsy (cond → 1).
     const classes = [
       truthySite.lightClass,
       truthySite.darkClass,
@@ -1235,7 +1297,12 @@ export function transformJSX_JS(
     ]
     const condSrc = code.slice(dynamicProp.condStart, dynamicProp.condEnd)
 
-    // Handler-combined sites route to `__rsCollapseDynH(...)` (PR A runtime helper).
+    // Handler-combined sites route to `__rsCollapseDynH(...)` (PR A
+    // runtime helper) — handlers re-attached after the class dispatcher
+    // via the canonical `_bindEvent` path, byte-identical to how
+    // `tryPartialCollapse` re-emits handlers via `__rsCollapseH`.
+    // No-handler sites stay on `__rsCollapseDyn(...)` (lighter — no
+    // handlers parameter, no loop allocation).
     let call: string
     if (handlers.length > 0) {
       const handlerObj = `{ ${handlers
@@ -1262,6 +1329,8 @@ export function transformJSX_JS(
     const needsBraces = parent && (parent.type === 'JSXElement' || parent.type === 'JSXFragment')
     replacements.push({ start, end, text: needsBraces ? `{${call}}` : call })
     // Union BOTH value's rule bundles into the per-module injection.
+    // De-dupe by ruleKey (the FNV-1a hash from the resolver) so two
+    // dynamic sites sharing a value pay one injection.
     for (const site of [truthySite, falsySite]) {
       if (!collapseRuleKeys.has(site.ruleKey)) {
         collapseRuleKeys.add(site.ruleKey)
@@ -1359,9 +1428,27 @@ export function transformJSX_JS(
     return true
   }
 
-  // ── Compile-to-string SSR fast path (`options.ssrTemplate`) ──────────────── Lowers an eligible.
+  // ── Compile-to-string SSR fast path (`options.ssrTemplate`) ────────────────
+  //
+  // Lowers an eligible static-skeleton element tree to a single
+  // `_ssr(["<li>…","</li>"], hole0, …)` string template — the SSR analog of the
+  // DOM `_tpl()` cloneNode path. Correctness rests entirely on the runtime
+  // resolving each hole through the SAME `renderNode` the h() path uses.
+  //
+  // Eligibility is CONSERVATIVE: `buildSsrCall` returns null (bail to h()) on ANY
+  // shape it can't prove renders byte-identically. A false negative is fine; a
+  // false positive is a hydration bug.
+  //
+  // TWO serialization modes: elements the compiler WOULD recurse into wrap
+  // dynamic children in `() =>` accessors, producing `<!--$-->…<!--/$-->`
+  // markers. A `.map` CALLBACK BODY is never compiler-recursed, so inside it
+  // every expression child is a PLAIN VALUE child — 'mapitem' mode emits bare
+  // holes throughout.
 
-  // 'foritem': recursed CHILD semantics (wrap markers on shouldWrap exprs) but a PLAIN-STRING.
+  // 'foritem': recursed CHILD semantics (wrap markers on shouldWrap exprs)
+  // but a PLAIN-STRING return (`_ssrItem`) — used for the `_ssrForKeyed`
+  // item callback, where the per-row `RawHtml` wrap of `_ssr` is a pure
+  // alloc (the fused loop appends the string directly; bytes identical).
   type SsrMode = 'recursed' | 'mapitem' | 'foritem'
 
   interface SsrBuf {
@@ -1400,7 +1487,13 @@ export function transformJSX_JS(
     return true
   }
 
-  // ── Proven-non-null-non-boolean dynamic-attr baking ──────────────────────── When a dynamic.
+  // ── Proven-non-null-non-boolean dynamic-attr baking ────────────────────────
+  // When a dynamic attr's value EXPRESSION is syntactically provably a
+  // string/number (never null/undefined/false/true), `renderProp`'s null-omit +
+  // boolean branches are DEAD, so ` name="` + `_esc(value)` + `"` is byte-
+  // identical to `renderProp` — and matches Solid's template baking (name +
+  // quotes static, only the value escaped at runtime). Anything not provable
+  // keeps the runtime `_ssrAttr*` (null-omit safety preserved).
 
   /** The expression provably evaluates to a STRING (never null/bool). */
   function ssrProvablyString(node: N): boolean {
@@ -1416,7 +1509,8 @@ export function transformJSX_JS(
       const callee = node.callee
       // `String(x)` global coercion → always a string.
       if (callee?.type === 'Identifier' && callee.name === 'String') return true
-      // `x.method(...)` for a method that ALWAYS returns a string.
+      // `x.method(...)` for a method that ALWAYS returns a string (unambiguous
+      // receiver — Array#join / Number#toFixed / String#* all return string).
       if (
         callee?.type === 'MemberExpression' &&
         !callee.computed &&
@@ -1427,7 +1521,8 @@ export function transformJSX_JS(
       }
       return false
     }
-    // `a + b` where EITHER operand is provably a string → string concat coerces the other side.
+    // `a + b` where EITHER operand is provably a string → string concat coerces
+    // the other side, so the whole expression is a string regardless of it.
     if (node.type === 'BinaryExpression' && node.operator === '+') {
       return ssrProvablyString(node.left) || ssrProvablyString(node.right)
     }
@@ -1549,7 +1644,9 @@ export function transformJSX_JS(
     // innerHTML / dangerouslySetInnerHTML are INNER CONTENT, not attrs → bail.
     if (name === 'innerHTML' || name === 'dangerouslySetInnerHTML') return false
     const isAria = name.charCodeAt(0) === 97 /* a */ && name.startsWith('aria-')
-    // `toAttrName` maps camelCase/SVG/renamed names via a runtime table we don't replicate at BAKE.
+    // `toAttrName` maps camelCase/SVG/renamed names via a runtime table we don't
+    // replicate at BAKE time — so an uppercase-named attr can only go through
+    // `_ssrAttr` (renderProp does the mapping), never a compile-time bake.
     const hasUpper = /[A-Z]/.test(name)
 
     // No value: `<x disabled>` → props.x = true.
@@ -1561,14 +1658,18 @@ export function transformJSX_JS(
       ssrEmitStatic(buf, isAria ? ` ${name}="true"` : ` ${name}`)
       return true
     }
-    // Raw JSX string-literal value (`title="…"`).
+    // Raw JSX string-literal value (`title="…"`). Entity-safety bail: oxc keeps
+    // `&amp;` LITERAL here but the h() path (esbuild) may decode it — a raw JSX
+    // string carrying `&` can't be reproduced from the compiler → bail. (A JS
+    // string, `title={'a & b'}`, is unaffected — JS literals never HTML-decode.)
     if (
       attr.value.type === 'StringLiteral' ||
       (attr.value.type === 'Literal' && typeof attr.value.value === 'string')
     ) {
       const v = attr.value.value as string
       if (v.includes('&')) return false
-      // Bake the lowercase-safe case; URL-unsafe / uppercase → _ssrAttr.
+      // Bake the lowercase-safe case; URL-unsafe / uppercase → _ssrAttr (which
+      // runs the SAME url-guard / name-map renderProp does).
       if (!hasUpper && ssrBakeStringAttr(buf, name, v)) return true
       emitSsrAttr(buf, tag, name, escapeJsString(v))
       return true
@@ -1607,7 +1708,11 @@ export function transformJSX_JS(
           return true
         }
       }
-      // DYNAMIC value.
+      // DYNAMIC value. A syntactically-proven non-null-non-boolean (and, for a
+      // url attr, proven-safe) value BAKES ` name="` + `_esc(v)` + `"` — Solid-
+      // style template baking, byte-identical because renderProp's null-omit /
+      // boolean / url-guard branches are provably dead. Otherwise the runtime
+      // `_ssrAttr*` (renderProp verbatim → null-omit safety) is kept.
       const valueText = sliceExpr(expr)
       if (ssrTryBakeDynamicAttr(buf, name, valueText, expr)) return true
       emitSsrAttr(buf, tag, name, valueText)
@@ -1631,7 +1736,8 @@ export function transformJSX_JS(
       return true
     }
     if (SSR_URL_ATTRS.has(name)) {
-      // Unsafe (`javascript:`/`data:`) → renderProp drops it.
+      // Unsafe (`javascript:`/`data:`) → renderProp drops it (or keeps it only
+      // for safe image data URIs) — too subtle to bake; bail to h().
       if (SSR_UNSAFE_URL_RE.test(value)) return false
       ssrEmitStatic(buf, ` ${name}="${escapeHtmlSsr(value)}"`)
       return true
@@ -1668,7 +1774,10 @@ export function transformJSX_JS(
       params.length === 0
         ? ''
         : code.slice(params[0]!.start as number, params[params.length - 1]!.end as number)
-    // The compiler re-emits this whole `.map` call, so it owns the item arrow's body.
+    // The compiler re-emits this whole `.map` call, so it owns the item arrow's
+    // body — fuse it exactly like a `<For>` row (see `buildSsrForItemBody`).
+    // `.map` lists are the other per-item hot path (a plain `{items.map(…)}`
+    // list is at least as common in SSR as `<For>`).
     const fusedItem = buildSsrForItemBody(itemBuf, paramText)
     const itemBody = fusedItem ?? ssrCallText(itemBuf, 'mapitem')
     ssrEmitStatic(buf, '<!--$-->')
@@ -1690,7 +1799,8 @@ export function transformJSX_JS(
     const raw = child.expression
     if (!raw || raw.type === 'JSXEmptyExpression') return true // {} / {/* */} → nothing
     const expr = unwrapTypeLayers(raw)
-    // mapitem mode: every expression child is a PLAIN VALUE child.
+    // mapitem mode: every expression child is a PLAIN VALUE child (the compiler
+    // never recursed into the map callback) → `_esc(expr)`, no markers.
     if (mode === 'mapitem') {
       emitEscHole(buf, sliceExpr(expr))
       return true
@@ -1698,7 +1808,10 @@ export function transformJSX_JS(
     // recursed mode: matches handleJsxExpression's wrap decision.
     if (ssrTryMap(buf, expr)) return true
     if (shouldWrap(expr)) {
-      // The h() path wraps a dynamic child in `() => expr` → renderNode adds `<!--$-->…<!--/$-->`.
+      // The h() path wraps a dynamic child in `() => expr` → renderNode adds
+      // `<!--$-->…<!--/$-->` markers. Bake the markers into the statics + emit
+      // `_esc(expr)`: byte-identical, since renderNode(() => v) === `<!--$-->` +
+      // renderNode(v) + `<!--/$-->` and `_esc(v)` === renderNode(v).
       ssrEmitStatic(buf, '<!--$-->')
       emitEscHole(buf, sliceExpr(expr))
       ssrEmitStatic(buf, '<!--/$-->')
@@ -1760,7 +1873,8 @@ export function transformJSX_JS(
       params.length === 0
         ? ''
         : code.slice(params[0]!.start as number, params[params.length - 1]!.end as number)
-    // Prefer the fused concat body (see `buildSsrForItemBody`).
+    // Prefer the fused concat body (see `buildSsrForItemBody`); fall back to
+    // the plain `_ssrItem` call when it declines.
     const fused = buildSsrForItemBody(itemBuf, paramText)
     const itemBody = fused ?? ssrCallText(itemBuf, 'foritem')
     ssrEmitHole(
@@ -1775,7 +1889,11 @@ export function transformJSX_JS(
   function ssrSerializeChild(buf: SsrBuf, child: N, mode: SsrMode): boolean {
     if (child.type === 'JSXText') {
       const cleaned = cleanJsxText(child.value ?? child.raw ?? '')
-      // Entity-safety bail: oxc keeps HTML entities (`&amp.
+      // Entity-safety bail: oxc keeps HTML entities (`&amp;`) LITERAL in
+      // JSXText, but the h() path's JSX runtime (esbuild) may DECODE them — so
+      // any `&` in baked text risks diverging from the current SSR bytes. Bail
+      // to h() (which owns the decode). `<`/`>` can't occur in JSXText (parse
+      // error); a JS-string child (`{'a & b'}`) is a hole, unaffected.
       if (cleaned.includes('&')) return false
       if (cleaned) ssrEmitStatic(buf, escapeHtmlSsr(cleaned))
       return true
@@ -1797,6 +1915,7 @@ export function transformJSX_JS(
     if (SSR_VOID_TAGS.has(tag)) return false // void tag w/ content → bail
     if (tag === 'select' || tag === 'option') return false // PZ-09 complexity → bail
     // Duplicate plain attrs (JSX last-wins) — baking both is parser-first-wins.
+    // Rare; bail to let the h() path dedupe.
     const seen = new Set<string>()
     for (const a of jsxAttrs(el)) {
       if (a.type === 'JSXAttribute' && a.name?.type === 'JSXIdentifier') {
@@ -1866,7 +1985,8 @@ export function transformJSX_JS(
    */
   function buildSsrForItemBody(buf: SsrBuf, paramText: string): string | null {
     if (buf.holes.length === 0) return null
-    // The temps are injected into the USER's arrow scope; a `_h`-named param would be shadowed.
+    // The temps are injected into the USER's arrow scope; a `_h`-named param
+    // would be shadowed. Vanishingly rare — decline rather than rename.
     if (/\b_h\d/.test(paramText)) return null
     const temps = buf.holes.map((h, i) => `_h${i} = ${h}`).join(', ')
     const parts: string[] = []
@@ -2003,14 +2123,36 @@ export function transformJSX_JS(
       return
     }
     if (shouldWrap(expr)) {
-      // Skip the accessor wrap for stable references passed as JSX children of a COMPONENT parent.
+      // Skip the accessor wrap for stable references passed as JSX children of a
+      // COMPONENT parent (uppercase tag). The prop-inlining pass replaces
+      // `{children}` with `() => h.children` for component parents too; most
+      // consumer libraries route children through `mountChild` (which handles
+      // function children), but libraries that iterate children at the VNode level
+      // or `cloneVNode` them directly are silently broken — the function spread
+      // produces `{type: undefined}` and the DOM renders `<undefined>` tags.
+      //
+      // Narrow contract — only stable references are emitted bare: a bare
+      // Identifier, or a simple MemberExpression chain. These evaluate the same
+      // way whether called once at JSX-emit time or repeatedly in a
+      // `mountReactive` effect, because the underlying value is just a property
+      // read. Other dynamic shapes keep the wrap so `<Comp>{count()}</Comp>` stays
+      // reactive end-to-end.
       if (
         parentJsx &&
         isComponentTag(jsxTagName(parentJsx)) &&
         isStableReference(expr) &&
         !referencesSignalVar(expr)
       ) {
-        // A stable reference whose root is the component's PROPS param (`{props.title}`).
+        // A stable reference whose root is the component's PROPS param
+        // (`{props.title}`) — or a prop-derived const the inlining pass rewrites
+        // into one — is GETTER-BACKED: reading it once at jsx() time fires the
+        // `_rp` getter eagerly and FREEZES the value, while the IDENTICAL
+        // expression as a component attr gets `_rp(() => …)` and under a DOM
+        // element gets `bindPolymorphicText` — both live. The "reading once
+        // captures the same value" justification below only holds for
+        // non-reactive sources, so props-backed refs get the `() => expr`
+        // accessor. Plain stable refs keep the bare carve-out. Both branches
+        // operate on the type-UNWRAPPED expression.
         const propBacked =
           readsFromProps(unwrapTypeLayers(expr)) || referencesPropDerived(unwrapTypeLayers(expr))
         if (propBacked) {
@@ -2022,7 +2164,15 @@ export function transformJSX_JS(
           lens(start, end, 'reactive', 'live — re-evaluates whenever its signals change')
           return
         }
-        // Skip the carve-out for signal references.
+        // Skip the carve-out for signal references — `<Comp>{count}</Comp>` (bare
+        // signal identifier) is the user's deliberate "make this reactive at the
+        // call site" pattern, so auto-call + wrap converts it to `() => count()`
+        // and the receiving component re-evaluates inside its mountChild scope.
+        //
+        // Slice the UNWRAPPED expression: TS type-only layers are stripped
+        // because the receiving component doesn't care about the static type and
+        // esbuild strips casts at the next stage. Also keeps cross-backend
+        // equivalence with the Rust path.
         const start = expr.start as number
         const end = expr.end as number
         const unwrapped = unwrapTypeLayers(expr)
@@ -2092,10 +2242,26 @@ export function transformJSX_JS(
   // ── Prop-derived variable tracking (collected during the single walk) ─────
   const propsNames = new Set<string>()
   const propDerivedVars = new Map<string, { start: number; end: number }>()
-  // Round 9 fix: names of const/let bindings whose initializer is a JSX element.
+  // Round 9 fix: names of const/let bindings whose initializer is a JSX
+  // element (`const x = <El/>`). A bare `{x}` child of such a binding must be
+  // MOUNTED, not text-coerced — pre-fix it emitted `createTextNode(x)` which
+  // stringifies the NativeItem to "[object Object]". Routing through
+  // `_mountSlot` (the general child-insert `props.children` already uses) is
+  // safe even if a same-named binding is later shadowed by a string/number:
+  // `_mountSlot` renders those correctly too — the only cost of imprecision
+  // is skipping the createTextNode fast path, never a correctness regression.
   const elementVars = new Set<string>()
 
-  // Names of in-file function bindings that RETURN JSX (`const cell = (v) => <b>{v}</b>`).
+  // Names of in-file function bindings that RETURN JSX (`const cell = (v) =>
+  // <b>{v}</b>`). A call child of such a binding under a DOM-element parent
+  // (`<td>{cell(x)}</td>`, incl. the accessor form) must be MOUNTED via
+  // `_mountSlot`, not bound as reactive TEXT — that emitted
+  // `_bind(() => { __t0.data = cell(x) })`, stringifying the returned VNode to
+  // "[object Object]" (and since SSR mounted it correctly, a guaranteed
+  // SSR<->client mismatch). Scope-aware via `shadowedJsxFns`. CROSS-FILE callees
+  // are out of scope (no type info here) and keep the reactive-text path.
+  // `_mountSlot` renders string/number returns correctly too, so a helper that
+  // conditionally returns non-VNodes stays correct.
   const jsxFnVars = new Set<string>()
   const shadowedJsxFns = new Set<string>()
 
@@ -2261,14 +2427,29 @@ export function transformJSX_JS(
     return callee?.type === 'Identifier' && isActiveJsxFn(callee.name)
   }
 
-  // ── Signal variable tracking (for auto-call in JSX) ────────────────────── Tracks.
+  // ── Signal variable tracking (for auto-call in JSX) ──────────────────────
+  // Tracks `const x = signal(...)` declarations. In JSX expressions, bare
+  // references to these identifiers are auto-called: `{x}` → `{x()}`.
+  // This makes signals look like plain JS variables in templates while
+  // maintaining fine-grained reactivity.
   const signalVars = new Set<string>(options.knownSignals)
 
-  // ── createSelector tracking (parallel to signalVars) ────────────────────── Identifiers.
+  // ── createSelector tracking (parallel to signalVars) ──────────────────────
+  // Identifiers initialized from `createSelector(...)` are tracked so the
+  // compiler can auto-promote the `<For>` + selector className pattern from a
+  // per-row `renderEffect` into the effect-free `selector.subscribe` fast path:
+  //   _bind(() => __el.className = isSelected(row.id) ? 'a' : 'b')
+  //   → isSelected.subscribe(row.id, (m) => { __el.className = m ? 'a' : 'b' })
+  // Per-row allocations drop from ~5 to ~2 (-0.8ms on create-1k, -5ms on
+  // create-10k). See `tryDirectSelectorTernary` for the detection shape.
   const selectorVars = new Set<string>()
   const shadowedSelectors = new Set<string>()
 
-  // ── Scope-aware signal shadowing ────────────────────────────────────────── When.
+  // ── Scope-aware signal shadowing ──────────────────────────────────────────
+  // When a function/block declares a variable with the same name as a signal
+  // (e.g. `const show = 'text'` shadowing module-scope `const show = signal(false)`),
+  // that name is NOT a signal within that scope. The shadowedSignals set tracks
+  // names that are currently shadowed by a closer non-signal declaration.
   const shadowedSignals = new Set<string>()
 
   /** Check if an identifier name is an active (non-shadowed) signal variable. */
@@ -2284,6 +2465,7 @@ export function transformJSX_JS(
   /** Find variable declarations and parameters in a function that shadow signal names. */
   function findShadowingNames(node: N): string[] {
     const shadows: string[] = []
+    // Check function parameters
     for (const param of node.params ?? []) {
       if (param.type === 'Identifier' && signalVars.has(param.name)) {
         shadows.push(param.name)
@@ -2306,6 +2488,7 @@ export function transformJSX_JS(
         }
       }
     }
+    // Check top-level variable declarations in the function body
     const body = node.body
     const stmts = body?.body ?? body?.statements
     if (!Array.isArray(stmts)) return shadows
@@ -2365,7 +2548,11 @@ export function transformJSX_JS(
           }
         }
       }
-      // Round 9: track element-valued bindings (`const`/`let`.
+      // Round 9: track element-valued bindings (`const`/`let`, any depth) so
+      // a bare `{x}` child routes to _mountSlot instead of createTextNode.
+      // Tight: only a DIRECT JSX element/fragment initializer (optionally
+      // parenthesized) — conditionals/calls go the existing reactive/text
+      // paths and must not be reclassified here.
       if (
         (node.kind === 'const' || node.kind === 'let') &&
         decl.id?.type === 'Identifier' &&
@@ -2376,11 +2563,13 @@ export function transformJSX_JS(
         if (initNode?.type === 'JSXElement' || initNode?.type === 'JSXFragment') {
           elementVars.add(decl.id.name)
         } else if (isJsxCollectionInit(initNode)) {
-          // Array-of-JSX or map-of-JSX const.
+          // Array-of-JSX or map-of-JSX const — mount it (renders arrays)
+          // instead of text-coercing the VNode[] to "[object Object]".
           elementVars.add(decl.id.name)
         }
       }
-      // PZ-02: track JSX-returning function bindings.
+      // PZ-02: track JSX-returning function bindings (const-only — a `let`
+      // can be reassigned to a non-JSX fn). See `jsxFnVars`.
       if (node.kind === 'const' && decl.id?.type === 'Identifier' && isJsxFnInit(decl.init)) {
         jsxFnVars.add(decl.id.name)
       }
@@ -2388,8 +2577,10 @@ export function transformJSX_JS(
       if (callbackDepth > 0) continue
       if (decl.id?.type === 'Identifier' && decl.init) {
         if (isStatefulCall(decl.init)) {
+          // Track signal() declarations for auto-call in JSX
           if (isSignalCall(decl.init)) signalVars.add(decl.id.name)
-          // Track createSelector() declarations for .subscribe auto-promotion in className/attr.
+          // Track createSelector() declarations for .subscribe auto-promotion
+          // in className/attr bindings (see tryDirectSelectorTernary).
           if (isSelectorCall(decl.init)) selectorVars.add(decl.id.name)
           continue
         }
@@ -2417,7 +2608,15 @@ export function transformJSX_JS(
       // Skip callback functions (arguments to calls like .map, .filter)
       if (parent && parent.type === 'CallExpression' && (parent.arguments ?? []).includes(node))
         return
-      // Skip JSX-child render callbacks (`<For>{(row) => <tr>…}</For>`, `<Show>{() => …}</Show>`.
+      // Skip JSX-child render callbacks (`<For>{(row) => <tr>…}</For>`,
+      // `<Show>{() => …}</Show>`, `<Index>`, `<Switch>`). The parameter is a
+      // runtime ITEM the framework passes in — NOT reactive component props.
+      // Registering it as props makes bare property reads (`row.id`) look
+      // reactive, so `{String(row.id)}` gets a wasteful per-row `_bind()`
+      // renderEffect instead of a static `textContent` assignment. Signal
+      // reads (`row.label()`, `() => row.x`) stay reactive via their own
+      // paths. Attribute-value render functions (`component={(p) => …}`) are
+      // NOT skipped — those can be real inline components receiving props.
       if (parent && parent.type === 'JSXExpressionContainer') {
         const grandparent = findParent(parent)
         if (grandparent && (grandparent.type === 'JSXElement' || grandparent.type === 'JSXFragment'))
@@ -2481,8 +2680,12 @@ export function transformJSX_JS(
       shorthand?: boolean
     }[] = []
 
-    // ── Scope-aware shadow tracking ────────────────────────────────────────── Prop-derived
-    // consts.
+    // ── Scope-aware shadow tracking ──────────────────────────────────────────
+    // Prop-derived consts are only COLLECTED at component top level, so ANY
+    // same-named binding in a deeper lexical scope necessarily shadows one.
+    // Substituting a shadowed reference (or a binding occurrence) miscompiles
+    // idiomatic code: `const a = props.x; items.map(a => <li>{a}</li>)` would
+    // rewrite the arrow PARAMETER `a` into `(props.x)`, an invalid arrow head.
     const shadowed = new Set<string>()
 
     /** Collect identifier names bound by a pattern (params / declarators). */
@@ -2556,7 +2759,9 @@ export function transformJSX_JS(
       return out.filter((n) => propDerivedVars.has(n))
     }
 
-    // Walk the AST to find identifiers in the span.
+    // Walk the AST to find identifiers in the span, passing parent context
+    // to skip non-reference positions (property names, declarations, etc.)
+    // and a lexical shadow set so a same-named inner binding is never inlined.
     function findIdents(node: N, parent: N | null): void {
       const nodeStart = node.start as number
       const nodeEnd = node.end as number
@@ -2574,7 +2779,13 @@ export function transformJSX_JS(
           } else if (parent.type === 'Property' && parent.key === node && !parent.computed) {
             /* skip */
           } else if (parent.type === 'Property' && parent.shorthand) {
-            // Shorthand object property `{ color }` whose value is a prop-derived const.
+            // Shorthand object property `{ color }` whose value is a
+            // prop-derived const. The identifier is BOTH key and value, so a
+            // bare substitution would emit a keyless `{ (pick(props.v)) }`
+            // (a syntax error). Collect it with a shorthand marker so the
+            // substitution below expands it to `{ color: (pick(props.v)) }` —
+            // byte-identical to the explicit `{ color: color }` form, and
+            // reactive (the inlined value reads props inside the accessor).
             if (nodeStart >= baseOffset && nodeEnd <= endOffset) {
               idents.push({
                 start: nodeStart,
@@ -2590,7 +2801,8 @@ export function transformJSX_JS(
           idents.push({ start: nodeStart, end: nodeEnd, name: node.name })
         }
       }
-      // Names this node binds for its subtree shadow the top-level prop-derived const within.
+      // Names this node binds for its subtree shadow the top-level prop-derived
+      // const within that subtree (and the binding occurrence itself).
       const introduced = scopeBoundPropDerived(node).filter((n) => !shadowed.has(n))
       for (const n of introduced) shadowed.add(n)
       forEachChildFast(node, (child) => findIdents(child, node))
@@ -2606,7 +2818,8 @@ export function transformJSX_JS(
     for (const id of idents) {
       parts.push(code.slice(lastPos, id.start))
       const resolved = resolveVarToString(id.name, sourceNode)
-      // A shorthand-property ident expands to `name: (value)`.
+      // A shorthand-property ident expands to `name: (value)`; a normal
+      // reference just substitutes `(value)` in place.
       parts.push(id.shorthand ? `${id.name}: (${resolved})` : `(${resolved})`)
       lastPos = id.end
     }
@@ -2616,6 +2829,7 @@ export function transformJSX_JS(
 
   // ── Analysis helpers with memoization (Phase 3) ────────────────────────────
   // Cache results keyed by node.start (unique per node in a file).
+  // Eliminates redundant subtree traversals for containsCall + accessesProps.
   const _isDynamicCache = new Map<number, boolean>()
 
   /** Fused isDynamic: checks both containsCall and accessesProps in one traversal. */
@@ -2634,7 +2848,13 @@ export function transformJSX_JS(
       if (isPureStaticCall(node)) {
         // Pure static (all args are literals) — entire call is static, no recurse needed.
       } else if (isPureCoercionCall(node)) {
-        // Pure coercion (String/Number/Boolean as global).
+        // Pure coercion (String/Number/Boolean as global) — the FUNCTION is
+        // referentially transparent. Whether the CALL is dynamic depends on
+        // its arguments. Fall through to the recurse-into-children logic:
+        //   String(row.id)        → arg is a captured ref → not dynamic
+        //   String(count())       → arg contains a signal call → dynamic
+        //   String(props.x)       → arg accesses props → dynamic
+        // No early `return true` here.
       } else {
         return true
       }
@@ -2676,6 +2896,7 @@ export function transformJSX_JS(
     }
     // Don't recurse into nested functions
     if (node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression') return false
+    // Recurse into children
     let found = false
     forEachChildFast(node, (child) => {
       if (found) return
@@ -2716,7 +2937,10 @@ export function transformJSX_JS(
     return isDynamic(node)
   }
 
-  // ── Single unified walk (Phase 2) ───────────────────────────────────────── Merges the old.
+  // ── Single unified walk (Phase 2) ─────────────────────────────────────────
+  // Merges the old 3-pass architecture (scanForPropDerivedVars + transitive
+  // resolution + JSX walk) into one top-down traversal. Works because `const`
+  // declarations have a temporal dead zone — they're always before their use.
   let _callbackDepth = 0
 
   function walkNode(node: N): void {
@@ -2728,15 +2952,21 @@ export function transformJSX_JS(
     let scopeShadows: string[] | null = null
     let scopeJsxFnShadows: string[] | null = null
     if (isFunction) {
+      // Track callback nesting for prop-derived var exclusion
       const parent = findParent(node)
       const isCallbackArg =
         parent && parent.type === 'CallExpression' && (parent.arguments ?? []).includes(node)
       if (isCallbackArg) _callbackDepth++
+      // Register component props (only for non-callback functions with JSX)
       maybeRegisterComponentProps(node)
-      // PZ-02: a named function DECLARATION returning JSX is a JSX-returning helper binding.
+      // PZ-02: a named function DECLARATION returning JSX is a JSX-returning
+      // helper binding (registered at its statement position — a helper
+      // hoisted-above-use, i.e. declared AFTER the JSX that calls it, is NOT
+      // tracked; both backends agree on this source-order boundary).
       if (node.type === 'FunctionDeclaration' && node.id?.type === 'Identifier' && fnReturnsJsx(node)) {
         jsxFnVars.add(node.id.name)
       }
+      // Track signal name shadowing for scope awareness
       if (signalVars.size > 0) {
         scopeShadows = findShadowingNames(node)
         for (const name of scopeShadows) shadowedSignals.add(name)
@@ -2756,10 +2986,13 @@ export function transformJSX_JS(
     // ── JSX processing (was pass 3) ──
     if (node.type === 'JSXElement') {
       if (tryRocketstyleCollapse(node)) {
-        // Collapsed to _rsCollapse.
+        // Collapsed to _rsCollapse — children are baked into the SSR-
+        // resolved template; do not recurse into the subtree.
         return
       }
       // Compile-to-string SSR fast path (opt-in via `options.ssrTemplate`).
+      // Emits `_ssr(...)` for eligible static-skeleton subtrees; falls through
+      // to the h() path on any non-eligible shape. JS backend only for now.
       if (ssrTemplate && !isSelfClosing(node) && trySsrTemplateEmit(node)) {
         return
       }
@@ -2807,14 +3040,26 @@ export function transformJSX_JS(
   }
 
   replacements.sort((a, b) => a.start - b.start)
-  // R12 fix: apply the disjoint, sorted {start,end,text} edits through MagicString instead.
+  // R12 fix: apply the disjoint, sorted {start,end,text} edits through
+  // MagicString instead of manual slice/join. `toString()` is byte-identical
+  // to the old concatenation (the full 1200-test suite + native-equivalence
+  // assert exact emitted strings), but `generateMap()` now yields a correct
+  // V3 source map — the previous transform emitted none AND shifted line
+  // counts (template emission expands one-line JSX into a multi-line _tpl
+  // factory), so every stack frame / breakpoint in a Pyreon component
+  // mislocated app-wide.
   const s = new MagicString(code)
   for (const r of replacements) {
     if (r.start === r.end) s.appendLeft(r.start, r.text)
     else s.update(r.start, r.end, r.text)
   }
 
-  // Build the generated preamble (hoists + auto-imports + collapse prologue) in the SAME final.
+  // Build the generated preamble (hoists + auto-imports + collapse prologue)
+  // in the SAME final top-to-bottom order the previous chained `X + output`
+  // produced, then `prepend` it ONCE. magic-string's prepend shifts every
+  // source mapping down by the preamble's line count, so original positions
+  // resolve to the correct OUTPUT lines despite the inserted preamble — the
+  // exact line-shift R12 measured. Innermost (closest to code) first.
   let preamble = ''
 
   if (hoists.length > 0) {
@@ -2842,7 +3087,8 @@ export function transformJSX_JS(
       preamble
   }
 
-  // Compile-to-string SSR fast path helpers (`options.ssrTemplate`).
+  // Compile-to-string SSR fast path helpers (`options.ssrTemplate`). Mutually
+  // exclusive with the `_tpl` DOM path (that only fires for `ssr: false`).
   if (needsSsrImport) {
     const ssrImports = ['_ssr']
     if (needsSsrChildrenImport) ssrImports.push('_ssrChildren')
@@ -2857,7 +3103,9 @@ export function transformJSX_JS(
 
   if (needsRpImport || needsWrapSpreadImport || needsCxImportGlobal) {
     const coreImports: string[] = []
-    // Alias to an internal name.
+    // Alias to an internal name — `cx` is a PUBLIC export users import
+    // directly (e.g. a hand-written component that also uses `class={…}`),
+    // so injecting a bare `cx` import would collide ("already declared").
     if (needsCxImportGlobal) coreImports.push('cx as _cx')
     if (needsRpImport) coreImports.push('_rp')
     if (needsWrapSpreadImport) coreImports.push('_wrapSpread')
@@ -2868,11 +3116,18 @@ export function transformJSX_JS(
     const cfg = options.collapseRocketstyle!
     const rd = cfg.runtimeDomSource ?? '@pyreon/runtime-dom'
     const st = cfg.stylerSource ?? '@pyreon/styler'
-    // One idempotent injectRules per distinct rule bundle.
+    // One idempotent injectRules per distinct rule bundle — keyed by the
+    // resolver's FNV so a re-eval (HMR) or another module's identical
+    // bundle is a no-op (styler dedupes by key). Runs at module-eval,
+    // before any collapsed site mounts, so the sheet is populated
+    // without a prior runtime mount of the real component.
     const inj = collapseRules
       .map((r) => `__rsSheet.injectRules(${JSON.stringify(r.rules)},${JSON.stringify(r.ruleKey)});`)
       .join('')
-    // Only import the helpers actually emitted into this module.
+    // Only import the helpers actually emitted into this module — keeps
+    // the bundle bytes per-feature and tree-shakable. needsCollapse
+    // (full) gates `_rsCollapse`; the partial / dynamic flags gate
+    // their respective helpers independently.
     const rdImports: string[] = []
     if (needsCollapse) rdImports.push('_rsCollapse as __rsCollapse')
     if (needsCollapseH) rdImports.push('_rsCollapseH as __rsCollapseH')
@@ -2923,9 +3178,17 @@ export function transformJSX_JS(
     if (child.type === 'JSXExpressionContainer') {
       const expr = child.expression
       if (!expr || expr.type === 'JSXEmptyExpression') return 0
-      // A DIRECT static JSX element/fragment child (`{<span/>}`) keeps its existing static-hoist.
+      // A DIRECT static JSX element/fragment child (`{<span/>}`) keeps its
+      // existing static-hoist path — bail so the parent isn't wrapped in a
+      // `_mountSlot` around it (static hoisting is cheaper than a runtime
+      // slot mount for a static child).
       if (expr.type === 'JSXElement' || expr.type === 'JSXFragment') return -1
-      // An expression that CONTAINS JSX but isn't directly one.
+      // An expression that CONTAINS JSX but isn't directly one (element-
+      // conditional `{cond() ? <A/> : <B/>}`, `{n() && <List/>}`, or a
+      // `.map(x => <li/>)` child) is templatable: it routes through
+      // `_mountSlot` — the same path `.map`-returning children already take —
+      // so the wrapper keeps the `_tpl` fast path instead of bailing to the
+      // jsx runtime. (Previously this whole branch returned -1 → bail.)
       return 0
     }
     if (child.type === 'JSXFragment') return templateFragmentCount(child)
@@ -2957,7 +3220,21 @@ export function transformJSX_JS(
   }
 
   function buildTemplateCall(node: N): string | null {
-    // Two-phase emission (PZ-08 fix).
+    // Two-phase emission (PZ-08 fix). `refLines` (phase 1) holds every
+    // PRISTINE-CLONE node capture: element ref walks (`const __eN = …`),
+    // sole-text captures (`const __tN = X.firstChild`), and hoisted
+    // placeholder consts (`const __pN = <walk>`) for `_mountSlot`
+    // placeholder args + `replaceChild` targets. `bindLines` (phase 2)
+    // holds every MUTATION/binding (`_mountSlot`, `replaceChild`, attr
+    // setters, `_bind*`, listeners, refs) in source order. The body emits
+    // refLines THEN bindLines, so every DOM position is captured before
+    // any mutation runs — `_mountSlot` removes its `<!>` placeholder and
+    // inserts content + a `<!--pyreon-->` marker (net sibling-count delta
+    // ≠ 0), so a `firstChild.nextSibling…` walk evaluated AFTER it landed
+    // on the wrong node (marker comment / null / a sibling slot's marker,
+    // which the next `_mountSlot` then removed — losing that slot's
+    // subtree on its next re-flip). Phase-2 ops are identity-based, hence
+    // order-independent w.r.t. sibling structure.
     const refLines: string[] = []
     const bindLines: string[] = []
     const disposerNames: string[] = []
@@ -3025,7 +3302,24 @@ export function transformJSX_JS(
     }
 
     function emitEventListener(attr: N, attrName: string, varName: string): void {
-      // Translate the JSX-style React attribute name (e.g. `onKeyDown`.
+      // Translate the JSX-style React attribute name (e.g. `onKeyDown`,
+      // `onDoubleClick`) to the canonical DOM event name (`keydown`,
+      // `dblclick`).
+      //
+      // The default rule is "drop the `on` prefix and lowercase" —
+      // covers `onKeyDown` → `keydown`, `onMouseEnter` → `mouseenter`,
+      // `onPointerLeave` → `pointerleave`, `onAnimationStart` →
+      // `animationstart`, etc. Most React event names follow this rule
+      // because the underlying DOM event name is also the lowercased
+      // multi-word form.
+      //
+      // The exception list lives in `REACT_EVENT_REMAP` (event-names.ts).
+      // Every React event-prop in the official component-prop list was
+      // audited against canonical DOM event names — see the JSDoc on
+      // REACT_EVENT_REMAP for the audit. Today exactly one entry:
+      //   `onDoubleClick` → `dblclick`
+      // The Rust native backend (`native/src/lib.rs:emit_event_listener`)
+      // mirrors the same table — keep them in sync if a new entry is added.
       const lowered = attrName.slice(2).toLowerCase()
       const eventName = REACT_EVENT_REMAP[lowered] ?? lowered
       if (!attr.value || attr.value.type !== 'JSXExpressionContainer') return
@@ -3040,11 +3334,33 @@ export function transformJSX_JS(
     }
 
     function staticAttrToHtml(exprNode: N, htmlAttrName: string, tag?: string): string | null {
-      // Parens + TS type layers are value-transparent: `id={("a")}` / `id={"a" as const}` IS.
+      // Parens + TS type layers are value-transparent: `id={("a")}` /
+      // `id={"a" as const}` IS the static literal — unwrap before
+      // classifying so it bakes into the template instead of paying a
+      // runtime setAttribute (JS) or being dropped entirely (the historical
+      // Rust behavior — silent attribute loss, fuzz-found).
       exprNode = unwrapTypeLayers(exprNode)
-      // `<select value>` (PZ-09): <select> has NO `value` CONTENT attribute.
+      // `<select value>` (PZ-09): <select> has NO `value` CONTENT attribute —
+      // the HTML parser ignores `value="…"` on <select> entirely, so baking
+      // it into the template HTML is a DEAD attribute (the select silently
+      // shows its first option). Every value-PRODUCING static shape returns
+      // null so the dynamic path emits a one-time `el.value = …` PROPERTY
+      // set instead, which `processAttrs` defers until AFTER the element's
+      // children lines (the matching <option> must exist before the
+      // assignment can select it). The omit-semantic arms below
+      // (false/null/undefined → '') are unchanged — they emit nothing on
+      // the client either, so an option's own `selected` attribute isn't
+      // clobbered. NOT a silent catch-all: null falls through to the
+      // dynamic path; nothing is dropped.
       const isSelectValue = tag === 'select' && htmlAttrName === 'value'
-      // No `isStatic` pre-gate: the arms below are self-evidently-static shapes.
+      // No `isStatic` pre-gate: the arms below are self-evidently-static
+      // shapes, and the two backends' static classifiers disagreed on the
+      // margins (JS said `-5` was dynamic → runtime setAttribute; Rust said
+      // static → hit a silent-omit catch-all and DROPPED the attribute).
+      // Shape-matching directly keeps the backends byte-identical by
+      // construction: recognized static shape → bake; anything else →
+      // `null` → the dynamic path emits a one-time setAttribute.
+      // String literal
       if (
         (exprNode.type === 'Literal' || exprNode.type === 'StringLiteral') &&
         typeof exprNode.value === 'string'
@@ -3062,7 +3378,9 @@ export function transformJSX_JS(
         exprNode.value === true
       )
         return isSelectValue ? null : ` ${htmlAttrName}`
-      // No-substitution template literal: `id={\`x\`}` — bake the raw text.
+      // No-substitution template literal: `id={\`x\`}` — bake the raw text
+      // (parity with the Rust backend, which always baked this; the JS
+      // fallthrough used to DROP the attribute entirely).
       if (exprNode.type === 'TemplateLiteral' && (exprNode.expressions?.length ?? 0) === 0) {
         if (isSelectValue) return null
         const quasi = exprNode.quasis?.[0]
@@ -3070,6 +3388,7 @@ export function transformJSX_JS(
         return ''
       }
       // Signed numeric literal: `tabIndex={-1}` — trivially foldable, bake it.
+      // (The Rust backend used to DROP these; JS paid a runtime setAttribute.)
       if (
         exprNode.type === 'UnaryExpression' &&
         (exprNode.operator === '-' || exprNode.operator === '+') &&
@@ -3087,7 +3406,8 @@ export function transformJSX_JS(
         return '' // false/null → omit (semantic)
       if (exprNode.type === 'Identifier' && exprNode.name === 'undefined')
         return '' // undefined → omit (semantic)
-      // Static-but-computed (`{1+2}`, `{!0}`).
+      // Static-but-computed (`{1+2}`, `{!0}`) — NOT silently omitted: fall
+      // through to the dynamic path, which emits a one-time setAttribute.
       return null
     }
 
@@ -3116,7 +3436,23 @@ export function transformJSX_JS(
       if (inner.type === 'ArrowFunctionExpression' && inner.body?.type !== 'BlockStatement') {
         inner = inner.body
       }
-      // Bare signal/computed identifier — the un-called form.
+      // Bare signal/computed identifier — the un-called form (e.g.
+      // `class={active}`, `style={styleSig}`). Semantically identical to the
+      // accessor form `class={() => active()}` (the compiler auto-calls bare
+      // signals), so bind directly to its value for byte-for-byte parity
+      // instead of falling through to a re-tracking `_bind`. Guarded by
+      // `isActiveSignal` so ONLY signals/computeds (which expose `.direct`)
+      // take this path; selectors (tracked in `selectorVars`) and arbitrary
+      // identifiers stay on the general path. `_bindDirect` also falls back to
+      // a `renderEffect` for any source lacking `.direct`, so this is safe at
+      // the edges. Caller emits the 2-arg form (no `this` to preserve).
+      // Use the raw identifier NAME, not `sliceExpr` — the signal-auto-call
+      // records a source replacement (`active` → `active()`), so slicing this
+      // node's range would yield `active()`; we want the bare `active`.
+      // SCOPED to the ATTRIBUTE path (`allowBareSignal`) — the text-child path
+      // keeps its existing emission for bare signals (the dominant
+      // `<div>{name}</div>` shape); promoting THAT to `_bindText` is a
+      // larger, separately-measured change, not this fix.
       if (allowBareSignal && inner.type === 'Identifier' && isActiveSignal(inner.name)) {
         return { ref: inner.name, isMember: false }
       }
@@ -3126,7 +3462,9 @@ export function transformJSX_JS(
       if (!callee) return null
       // Bare identifier — the existing fast path. Caller emits 2-arg form.
       if (callee.type === 'Identifier') return { ref: sliceExpr(callee), isMember: false }
-      // MemberExpression chain — widening. Walk the chain, bail on any computed access.
+      // MemberExpression chain — widening. Walk the chain, bail on any
+      // computed access. Root identifier must NOT be a tracked active
+      // signal (would imply a method call on a signal, e.g. `count.peek()`).
       if (callee.type === 'MemberExpression') {
         let cur: N = callee
         while (cur.type === 'MemberExpression') {
@@ -3201,6 +3539,7 @@ export function transformJSX_JS(
       // Unwrap a leading parenthesized expression (e.g. `() => (sel(k) ? a : b)`)
       while (inner?.type === 'ParenthesizedExpression') inner = inner.expression
       if (inner?.type !== 'ConditionalExpression') return null
+      // Test must be a single-arg call to a known selector
       const test = inner.test
       if (test?.type !== 'CallExpression') return null
       if ((test.arguments?.length ?? 0) !== 1) return null
@@ -3209,9 +3548,19 @@ export function transformJSX_JS(
       if (!isActiveSelector(callee.name)) return null
       const keyArg = test.arguments?.[0]
       if (!keyArg) return null
-      // Key must not contain a signal/computed read.
+      // Key must not contain a signal/computed read — promoting would
+      // freeze the key reference at first mount, and the rebuilt key would
+      // not re-subscribe to the selector. Member access (`row.id`, `obj.x`)
+      // is fine — `row` is a stable callback parameter inside `<For>`,
+      // and even if the underlying object changes, the For reconciler
+      // re-runs the row template + this binding fresh.
+      //
+      // Use containsSignalCall instead of isDynamic — the latter also flags
+      // simple prop access (which is the canonical safe case here).
       if (containsSignalCall(keyArg)) return null
-      // Consequent + alternate must be non-reactive.
+      // Consequent + alternate must be non-reactive (the promoted updater
+      // only re-fires on selection change, not on other signal changes).
+      // Apply the same conservative check: bail on signal calls only.
       if (containsSignalCall(inner.consequent)) return null
       if (containsSignalCall(inner.alternate)) return null
       return {
@@ -3271,7 +3620,9 @@ export function transformJSX_JS(
         if (arg.type === 'SpreadElement') return null
         if (containsSignalCall(arg)) return null
       }
-      // Slice the `.method(...args)` suffix verbatim from source.
+      // Slice the `.method(...args)` suffix verbatim from source — prepend
+      // the dot since `methodCallee.property.start` lands at the method
+      // identifier itself.
       const methodCallStart = methodCallee.property.start as number
       const methodCallEnd = inner.end as number
       const methodCall = `.${code.slice(methodCallStart, methodCallEnd)}`
@@ -3292,23 +3643,52 @@ export function transformJSX_JS(
     }
 
     function attrSetter(htmlAttrName: string, varName: string, expr: string): string {
-      // class/style mirror the runtime `applyProp` value-normalization.
+      // class/style mirror the runtime `applyProp` value-normalization
+      // (packages/core/runtime-dom/src/props.ts): a string passes through,
+      // but an array/object class goes through `cx()` and an object style is
+      // applied per-property. The template fast path used to assign the raw
+      // value (`className = [..]` → "a,b"; `style.cssText = {..}` →
+      // "[object Object]"), so `class={[...]}` / `class={{...}}` and
+      // `style={() => ({...})}` / `style={{...}}` were silently broken.
+      // Block-scoped temp = single eval (safe for signal-call exprs) + no
+      // collision when several bindings are combined into one `_bind` body.
       if (htmlAttrName === 'class') {
-        // Delegate to the runtime `_setClass` (= applyClassProp) so a compiled class binding.
+        // Delegate to the runtime `_setClass` (= applyClassProp) so a compiled
+        // class binding normalizes identically to applyProp (string passes
+        // through, array/object → cx) AND uses `setAttribute('class', …)`,
+        // which is SVG-safe. The previous inline `.className = …` THREW on a
+        // real SVGElement (read-only SVGAnimatedString) — silently breaking
+        // every `<g>`/`<path>` class binding once `_tpl` gave SVG templates the
+        // correct namespace (the `@pyreon/flow` edge bug). Mirrors `_setStyle`.
         needsSetClass = true
         return `_setClass(${varName}, ${expr})`
       }
       if (htmlAttrName === 'style') {
-        // Delegate to the runtime `_setStyle` (= applyStyleProp) so a compiled style binding.
+        // Delegate to the runtime `_setStyle` (= applyStyleProp) so a compiled
+        // style binding normalizes identically to applyProp: object →
+        // per-property setProperty (kebab + number→px) with stale-key removal,
+        // string → cssText. The previous inline `cssText = expr` set an object
+        // to cssText ("[object Object]" → no styles).
         needsSetStyle = true
         return `_setStyle(${varName}, ${expr})`
       }
       if (htmlAttrName === 'dangerouslySetInnerHTML') {
-        // Mirror runtime applyStaticProp: set innerHTML from the `{ __html }` payload.
+        // Mirror runtime applyStaticProp: set innerHTML from the `{ __html }`
+        // payload (raw — developer owns sanitization, same as React). A generic
+        // setAttribute here stringifies the object to "[object Object]" and
+        // leaves the element EMPTY — so an SSR'd `<pre>` (e.g. a Shiki code
+        // block) vanishes the moment the client re-renders the template.
         return `{ const _h = (${expr}); ${varName}.innerHTML = _h != null && _h.__html != null ? _h.__html : "" }`
       }
       if (DOM_PROPS.has(htmlAttrName)) return `${varName}.${htmlAttrName} = ${expr}`
-      // Generic attribute — delegate to the runtime `_setAttr` (= applyAttrProp) so a compiled.
+      // Generic attribute — delegate to the runtime `_setAttr` (= applyAttrProp)
+      // so a compiled DYNAMIC attribute normalizes identically to the h() path
+      // (packages/core/runtime-dom/src/props.ts:setStaticProp): null/undefined →
+      // removeAttribute (NOT the literal "undefined" a raw setAttribute would
+      // ToString-coerce — the invalid `aria-*="undefined"` a11y bug), boolean
+      // aria → "true"/"false", boolean → presence/absence. Mirrors `_setClass`/
+      // `_setStyle`. Static string/number/bool LITERALS still bake into the
+      // template HTML (staticAttrToHtml) — this fires only for dynamic values.
       needsSetAttr = true
       return `_setAttr(${varName}, "${htmlAttrName}", ${expr})`
     }
@@ -3330,7 +3710,10 @@ export function transformJSX_JS(
         'reactive-attr',
         `live attribute — \`${htmlAttrName}\` re-applies whenever its signals change`,
       )
-      // `allowBareSignal` — an attribute value that is a bare signal (`class={active}`) binds.
+      // `allowBareSignal` — an attribute value that is a bare signal
+      // (`class={active}`) binds directly, matching the accessor form
+      // `class={() => active()}` (byte-identical). The text-child call site
+      // below intentionally does NOT opt in (see tryDirectSignalRef).
       const directRef = tryDirectSignalRef(exprNode, true)
       if (directRef) {
         needsBindDirectImport = true
@@ -3349,7 +3732,12 @@ export function transformJSX_JS(
         bindLines.push(`const ${d} = _bindDirect(${directRef.ref}, ${updater}${callerArg})`)
         return
       }
-      // Selector-ternary auto-promotion: `selector(k) ? a : b` becomes `selector.subscribe(k.
+      // Selector-ternary auto-promotion: `selector(k) ? a : b` becomes
+      // `selector.subscribe(k, m => setter(m ? a : b))` — the effect-free
+      // per-key fast path. See `tryDirectSelectorTernary` for the bail
+      // catalog. Real-world impact: per-row className-on-selection in
+      // <For> drops from ~5 allocs (full renderEffect) to ~2 (Set.add +
+      // dispose closure).
       const selTernary = tryDirectSelectorTernary(exprNode)
       if (selTernary) {
         const d = nextDisp()
@@ -3372,7 +3760,15 @@ export function transformJSX_JS(
       varName: string,
       tag: string,
     ): string {
-      // PZ-05 fix: TS type-only layers/parens are value-transparent.
+      // PZ-05 fix: TS type-only layers/parens are value-transparent — unwrap
+      // BEFORE classification (mirrors processOneChild) so
+      // `title={(() => x()) as never}` classifies (and emits) identically to
+      // `title={() => x()}`. Pre-fix the wrapped accessor fell through to the
+      // static arm and setAttribute'd the function SOURCE string. Also lets
+      // the static object-style check + the downstream `_bindDirect` /
+      // selector promotions see through casts (`style={{…} as CSSProperties}`,
+      // `title={(() => x()) satisfies unknown}`). `staticAttrToHtml` already
+      // unwraps internally — the double unwrap is a no-op.
       exprNode = unwrapTypeLayers(exprNode)
       const staticHtml = staticAttrToHtml(exprNode, htmlAttrName, tag)
       if (staticHtml !== null) return staticHtml
@@ -3381,12 +3777,14 @@ export function transformJSX_JS(
         exprNode.type === 'ObjectExpression' &&
         !isDynamic(exprNode)
       ) {
-        // Static object style (no signal reads).
+        // Static object style (no signal reads) — apply once at mount via the
+        // runtime normalizer (number→px, kebab) for parity with applyProp.
         needsSetStyle = true
         bindLines.push(`_setStyle(${varName}, ${sliceExpr(exprNode)})`)
         return ''
       }
-      // A dynamic object style (`style={{ color: theme() }}`) falls through to emitDynamicAttr →.
+      // A dynamic object style (`style={{ color: theme() }}`) falls through to
+      // emitDynamicAttr → the object-aware attrSetter → reactive `_bind`.
       emitDynamicAttr(sliceExpr(exprNode), exprNode, htmlAttrName, varName)
       return ''
     }
@@ -3415,7 +3813,13 @@ export function transformJSX_JS(
         attr.value.type === 'StringLiteral' ||
         (attr.value.type === 'Literal' && typeof attr.value.value === 'string')
       ) {
-        // `<select value="b">` (plain string form, PZ-09): never baked.
+        // `<select value="b">` (plain string form, PZ-09): never baked — the
+        // value CONTENT attribute is dead on <select> (see staticAttrToHtml).
+        // Emit a one-time property set instead; processAttrs defers it past
+        // the element's children lines. `escapeJsString` serializes the
+        // parsed `.value` as a double-quoted JS literal (quote/backslash/
+        // control-safe, independent of the JSX quote style) — the same
+        // `.value` the bake path reads.
         if (tag === 'select' && htmlAttrName === 'value') {
           bindLines.push(attrSetter(htmlAttrName, varName, escapeJsString(attr.value.value)))
           return ''
@@ -3433,10 +3837,17 @@ export function transformJSX_JS(
     function processOneAttr(attr: N, varName: string, tag: string): string {
       if (attr.type === 'JSXSpreadAttribute') {
         const expr = sliceExpr(attr.argument)
-        // `_applyProps` / `_bindSpread` RETURN a cleanup that disposes the spread's reactive.
+        // `_applyProps` / `_bindSpread` RETURN a cleanup that disposes the
+        // spread's reactive bindings + nulls a spread `ref` — the compiled
+        // path must thread it into the mount lifecycle or those leak on
+        // unmount (the h()/hydrate paths already do; see anti-patterns "ref
+        // inside a spread on a bare DOM element" + "spread reactive-prop
+        // cleanups"). Capture the disposer directly in both cases.
         const d = nextDisp()
         if (isDynamic(attr.argument)) {
-          // Dynamic spread source (`{...make()}`) can change shape → re-apply via `_bindSpread`.
+          // Dynamic spread source (`{...make()}`) can change shape → re-apply
+          // via `_bindSpread`, which disposes each pass's cleanup before the
+          // next AND on unmount.
           needsBindSpreadImport = true
           bindLines.push(`const ${d} = _bindSpread(${varName}, () => (${expr}))`)
         } else {
@@ -3454,7 +3865,13 @@ export function transformJSX_JS(
     }
 
     function processAttrs(el: N, varName: string, tag: string, deferredLines: string[]): string {
-      // Duplicate plain attributes: JSX object semantics — the LAST value wins.
+      // Duplicate plain attributes: JSX object semantics — the LAST value
+      // wins (`<p id="a" id="b">` ≡ props `{id:"a", id:"b"}` → "b"). The
+      // template path must dedupe explicitly: baking both into the HTML
+      // string hands the decision to the HTML parser, which is FIRST-wins —
+      // the opposite semantic. Earlier duplicates are dropped with a
+      // warning. Spread attributes are untouched (a later plain attr wins
+      // over an earlier spread's key by the same object semantics).
       const attrs = jsxAttrs(el)
       const lastPlainIdx = new Map<string, number>()
       for (let i = 0; i < attrs.length; i++) {
@@ -3475,7 +3892,18 @@ export function transformJSX_JS(
             )
             continue
           }
-          // `<select value>` (PZ-09): capture the bind lines this attr emits.
+          // `<select value>` (PZ-09): capture the bind lines this attr emits
+          // (static one-time `el.value = …` set, `_bindDirect`, or
+          // selector-subscribe) and DEFER them until after the element's
+          // children lines. `select.value` is a PROPERTY whose assignment
+          // selects a matching <option> — assigned before the options exist
+          // (`_bindDirect`'s eager initial update ran before the children
+          // `_mountSlot`), the value was silently dropped and the first
+          // option won. With static options (baked into the template HTML)
+          // the move is a no-op — the clone already contains them at bind
+          // time. The general-reactive form (`reactiveBindExprs` → the
+          // end-of-template combined `_bind`) is structurally last already
+          // and needs no deferral.
           if (tag === 'select' && name === 'value') {
             const before = bindLines.length
             htmlAttrs += processOneAttr(a, varName, tag)
@@ -3497,7 +3925,20 @@ export function transformJSX_JS(
       needsPlaceholder: boolean,
     ): string {
       const tVar = nextTextVar()
-      // Sole-dynamic-text-child fast path: bake a single-space text node INTO the template HTML.
+      // Sole-dynamic-text-child fast path: bake a single-space text node
+      // INTO the template HTML and grab it via `.firstChild` — saves a
+      // `document.createTextNode("") + appendChild` pair per template
+      // instantiation (per ROW under <For>; measured in the create-path
+      // perf audit, .claude/audits/create-path-perf-2026-06-11.md).
+      // Correct by construction: (a) a whitespace-only text node survives
+      // innerHTML parsing in EVERY element context — including table
+      // foster-parenting, which exempts whitespace-only runs — so the
+      // space is reliably `firstChild` of the clone; (b) every binding
+      // path below writes the initial value synchronously at bind time
+      // (before the clone is inserted), so the space never renders.
+      // Mixed-content (needsPlaceholder) keeps the comment+replaceChild
+      // shape — adjacent baked text runs would MERGE into one node during
+      // parsing and break childNodes indexing.
       if (needsPlaceholder) {
         const pVar = hoistPlaceholderRef(parentRef, childNodeIdx)
         bindLines.push(`const ${tVar} = document.createTextNode("")`)
@@ -3514,7 +3955,11 @@ export function transformJSX_JS(
         bindLines.push(`const ${d} = _bindText(${directRef.ref}, ${tVar}${callerArg})`)
         return needsPlaceholder ? '<!>' : ' '
       }
-      // Selector-ternary auto-promotion (companion to the className path).
+      // Selector-ternary auto-promotion (companion to the className
+      // path). `<td>{() => sel(k) ? 'X' : 'Y'}</td>` becomes
+      // `sel.subscribe(k, (m) => { tVar.data = m ? 'X' : 'Y' })` — the
+      // effect-free per-key fast path. See `tryDirectSelectorTernary` for
+      // the bail catalog. Reuses the same detector as the attr path.
       const selTernary = tryDirectSelectorTernary(exprNode)
       if (selTernary) {
         const d = nextDisp()
@@ -3523,7 +3968,12 @@ export function transformJSX_JS(
         )
         return needsPlaceholder ? '<!>' : ' '
       }
-      // Signal-method-call auto-promotion: `<span>{count().toFixed(2)}</span>` becomes.
+      // Signal-method-call auto-promotion: `<span>{count().toFixed(2)}</span>`
+      // becomes `_bindDirect(count, (v) => { tVar.data = v.toFixed(2) })`.
+      // Saves the `withTracking` setup + signal lookup per fire — same
+      // structural win as `_bindText` for bare signal reads, extended to
+      // common formatting patterns. See `tryDirectSignalMethodCall` for the
+      // pure-method safelist + bail catalog.
       const sigMethod = tryDirectSignalMethodCall(exprNode)
       if (sigMethod) {
         needsBindDirectImport = true
@@ -3533,7 +3983,21 @@ export function transformJSX_JS(
         )
         return needsPlaceholder ? '<!>' : ' '
       }
-      // General reactive text child.
+      // General reactive text child — polymorphic: primitives take the text
+      // fast path (data in-place), a VNode/VNode[] value MOUNTS a subtree
+      // (so `{props.items}` / `{() => arr()}` render an array instead of
+      // "[object Object]"). `bindPolymorphicText`'s textish check is a cheap
+      // typeof, so the dominant string/number case pays the historical cost.
+      // The single-signal `_bindText` fast path above is text-FIRST, not
+      // text-only: the RUNTIME upgrades the binding to the same subtree
+      // mount on the first VNode-shaped value. Note both `{sig()}` AND
+      // `{() => sig()}` land on that fast path (`tryDirectSignalRef` unwraps
+      // the accessor form) — a prior comment here claimed the accessor form
+      // was an escape hatch to this general path; it never was, which is why
+      // the fix lives in `_bindText` itself (no compiler reroute, both
+      // backends stay byte-identical). `_bindDirect`'s text shape stays
+      // text-only by construction (the pure-method safelist implies
+      // primitive values).
       needsBindPolyImportGlobal = true
       const d = nextDisp()
       bindLines.push(`const ${d} = bindPolymorphicText(() => (${expr}), ${tVar}, ${parentRef})`)
@@ -3549,12 +4013,17 @@ export function transformJSX_JS(
     ): string {
       if (needsPlaceholder) {
         const pVar = hoistPlaceholderRef(parentRef, childNodeIdx)
-        // Mixed-content static child.
+        // Mixed-content static child — `_setChildAt` mounts a VNode/VNode[]
+        // value at the placeholder position, else replaces it with a text
+        // node (the historical shape). Covers `<div>a{items}b</div>` where
+        // `items` is a VNode array.
         needsSetChildAtImportGlobal = true
         bindLines.push(`_setChildAt(${parentRef}, ${pVar}, ${expr})`)
         return '<!>'
       }
-      // Sole static child — `_setChild` mounts a VNode/VNode[] value into the element.
+      // Sole static child — `_setChild` mounts a VNode/VNode[] value into the
+      // element (so `<div>{items}</div>` with a VNode[] prop/param/return
+      // renders the elements), else sets `textContent` exactly as before.
       needsSetChildImportGlobal = true
       bindLines.push(`_setChild(${varName}, ${expr})`)
       return ''
@@ -3607,7 +4076,14 @@ export function transformJSX_JS(
       const hasElem = flatChildren.some((c) => c.kind === 'element')
       const hasText = flatChildren.some((c) => c.kind === 'text')
       const exprCount = flatChildren.filter((c) => c.kind === 'expression').length
-      // `useMixed` triggers placeholder-based positional mounting.
+      // `useMixed` triggers placeholder-based positional mounting (each
+      // dynamic child gets a `<!>` comment slot in the template that
+      // `replaceChild`-replaces at mount). It must fire whenever ≥2 of
+      // {element, text, expression} are interleaved — otherwise dynamic
+      // text nodes added via `appendChild` land after all static
+      // template content, breaking source-order rendering for shapes
+      // like `<p>foo {x()} bar</p>` (rendered "foo  barX" instead of
+      // "foo X bar"). Discovered by Phase B2's whitespace tests.
       const present = (hasElem ? 1 : 0) + (hasText ? 1 : 0) + (exprCount > 0 ? 1 : 0)
       return { useMixed: present > 1, useMultiExpr: exprCount > 1 }
     }
@@ -3617,7 +4093,10 @@ export function transformJSX_JS(
       const name = attr.name?.type === 'JSXIdentifier' ? attr.name.name : ''
       if (name === 'ref') return true
       if (EVENT_RE.test(name)) return true
-      // `<select value="…">` (plain string form.
+      // `<select value="…">` (plain string form, PZ-09): always emitted as a
+      // deferred property bind line (never baked) — the element needs a
+      // phase-1 ref so the deferred line doesn't re-walk a mutated sibling
+      // chain.
       if (
         tag === 'select' &&
         name === 'value' &&
@@ -3629,9 +4108,14 @@ export function transformJSX_JS(
       if (!attr.value || attr.value.type !== 'JSXExpressionContainer') return false
       const expr = attr.value.expression
       if (!expr || expr.type === 'JSXEmptyExpression') return false
-      // Aligned with the emit path: any shape staticAttrToHtml bakes into the template HTML.
+      // Aligned with the emit path: any shape staticAttrToHtml bakes into the
+      // template HTML (or semantically omits) needs NO element ref. A
+      // misaligned prescan allocated vestigial `__eN` refs for shapes the
+      // emitter then baked (`id={(231)}`), shifting sibling ref-chains.
       if (staticAttrToHtml(expr, name, tag) !== null) return false
-      // `<select value={…}>` (PZ-09): every non-omitted shape.
+      // `<select value={…}>` (PZ-09): every non-omitted shape — including
+      // static ones staticAttrToHtml routed to null above — emits a deferred
+      // property bind line, so the element needs a ref.
       if (tag === 'select' && name === 'value') return true
       return !isStatic(expr)
     }
@@ -3650,7 +4134,13 @@ export function transformJSX_JS(
       return false
     }
 
-    // Strength-reduce `children[N]` / `childNodes[N]` to a firstChild/nextSibling walk.
+    // Strength-reduce `children[N]` / `childNodes[N]` to a firstChild/nextSibling
+    // walk. The live HTMLCollection/NodeList indexed getter is measurably slower
+    // than direct pointer reads (~3.8% on create-heavy mounts; SolidJS emits the
+    // walk form for the same reason). `children[]` (element collection, skips
+    // text) maps to `firstElementChild`/`nextElementSibling`; `childNodes[]`
+    // (node list) maps to `firstChild`/`nextSibling`. Falls back to the indexed
+    // form past 8 hops, where the chained reads outweigh the getter overhead.
     function childNodeAccessor(parentRef: string, idx: number, mixed: boolean): string {
       if (idx > 8) {
         return mixed ? `${parentRef}.childNodes[${idx}]` : `${parentRef}.children[${idx}]`
@@ -3678,11 +4168,19 @@ export function transformJSX_JS(
         return processElement(child.node, childAccessor)
       }
       const needsPlaceholder = useMixed || useMultiExpr
-      // PZ-05 fix: TS type-only layers (`as T` / `satisfies T` / `!`) and parens.
+      // PZ-05 fix: TS type-only layers (`as T` / `satisfies T` / `!`) and
+      // parens are value-transparent — unwrap BEFORE classification so
+      // `{(() => x()) as never}` classifies (and emits) identically to
+      // `{() => x()}`. Pre-fix the wrapped accessor fell through to the
+      // STATIC bake arm and stringified the function SOURCE into the DOM
+      // (`textContent = (() => x()) as never`). Same helper the signal
+      // auto-call pass uses for its "parens/TS-layer transparent" contract.
       const childExpr = unwrapTypeLayers(child.expression)
       const { expr, isReactive } = unwrapAccessor(childExpr)
-      // Round 9 fix: a bare `{el}` where `el` is an element-valued binding (`const el = <X/>`)
-      // must.
+      // Round 9 fix: a bare `{el}` where `el` is an element-valued binding
+      // (`const el = <X/>`) must be MOUNTED via _mountSlot, not text-coerced
+      // via createTextNode (which stringifies the NativeItem). Same emission
+      // as the children-slot path; _mountSlot handles every child type.
       const isElementValuedIdent =
         (childExpr.type === 'Identifier' && elementVars.has(childExpr.name)) ||
         (!isReactive && /^[A-Za-z_$][\w$]*$/.test(expr) && elementVars.has(expr))
@@ -3693,7 +4191,16 @@ export function transformJSX_JS(
         bindLines.push(`const ${d} = _mountSlot(${expr}, ${parentRef}, ${placeholder})`)
         return '<!>'
       }
-      // PZ-02 fix: a call to an in-file JSX-returning helper (`{cell(x)}`.
+      // PZ-02 fix: a call to an in-file JSX-returning helper (`{cell(x)}`,
+      // incl. the accessor form `{() => cell(x)}`) must be MOUNTED via
+      // `_mountSlot`, not bound as reactive TEXT — pre-fix it emitted
+      // `_bind(() => { __t0.data = cell(x) })`, stringifying the returned
+      // VNode to "[object Object]" (SSR mounts the shape correctly, so this
+      // also removes a guaranteed SSR↔client mismatch). Always wrapped in an
+      // accessor: args reading signals re-render the slot
+      // (`_mountSlot(() => cell(sig()), …)` re-runs like any reactive slot),
+      // and a call is always dynamic. Cross-file callees are NOT routed —
+      // see `jsxFnVars`.
       if (isJsxHelperCall(childExpr)) {
         needsMountSlotImport = true
         const placeholder = hoistPlaceholderRef(parentRef, childNodeIdx)
@@ -3701,7 +4208,18 @@ export function transformJSX_JS(
         bindLines.push(`const ${d} = _mountSlot(() => (${expr}), ${parentRef}, ${placeholder})`)
         return '<!>'
       }
-      // Element-conditional / inline-JSX child (`{cond() ? <A/> : <B/>}`.
+      // Element-conditional / inline-JSX child (`{cond() ? <A/> : <B/>}`,
+      // `{n() && <List/>}`): route through `_mountSlot` so the wrapper keeps
+      // the `_tpl` fast path. `_mountSlot` → `mountChild` → `mountReactive`
+      // handles a reactive element-returning accessor (disposal + swap on
+      // signal change), same machinery the element-valued-const path uses.
+      // Reactive bodies are wrapped back into an accessor so the boundary is
+      // reactive; a static element-conditional is passed bare (mounts once).
+      // Direct JSX in a container (`{<span/>}`) bails the template upstream
+      // (countChildForTemplate) and keeps the static-hoist path — but the
+      // TYPE-WRAPPED form (`{(<span/>) as never}`) reaches here (the count
+      // sees the wrapper node) and routes through `_mountSlot` on the
+      // unwrapped slice.
       const exprIsDirectJSX = childExpr.type === 'JSXElement' || childExpr.type === 'JSXFragment'
       const wasTypeWrapped = childExpr !== child.expression
       if (containsJSXInExpr(childExpr) && (!exprIsDirectJSX || wasTypeWrapped)) {
@@ -3764,7 +4282,9 @@ export function transformJSX_JS(
       const tag = jsxTagName(el)
       if (!tag) return null
       const varName = resolveElementVar(accessor, elementHasDynamic(el))
-      // Bind lines deferred past this element's children lines.
+      // Bind lines deferred past this element's children lines (today only
+      // `<select value>` — see processAttrs). Appended AFTER processChildren
+      // so a `_mountSlot`-mounted option list exists before `el.value` runs.
       const deferredLines: string[] = []
       const htmlAttrs = processAttrs(el, varName, tag, deferredLines)
       let html = `<${tag}${htmlAttrs}>`
@@ -3804,10 +4324,29 @@ export function transformJSX_JS(
       return `_tpl("${escaped}", () => null)`
     }
 
-    // Phase 1 (pristine-clone ref captures) BEFORE phase 2 (mutations/ bindings).
+    // Phase 1 (pristine-clone ref captures) BEFORE phase 2 (mutations/
+    // bindings) — see the buildTemplateCall header comment.
+    //
+    // Append `;` to every line so ASI can't merge consecutive statements
+    // when the next line starts with `(`, `[`, etc.
+    // Concrete bug shape (pre-fix): a child element with `hasDynamic=true`
+    // emits `const __e0 = __root.children[N]` followed by a ref-callback
+    // line `((el) => { x = el })(__e0)`. JS does NOT insert ASI here
+    // because `__root.children[N]((el) => ...)` is a valid expression,
+    // so the parser merges them into a single function call:
+    //   `const __e0 = __root.children[N]((el) => ...)(__e0)`
+    // — calling `children[N]` as a function with the arrow as argument,
+    // and self-referencing `__e0` before assignment. Adding the `;`
+    // terminates each statement deterministically. Trailing `;` after
+    // a `{...}` block is a harmless empty statement.
     let body = [...refLines, ...bindLines].map((l) => `  ${l};`).join('\n')
     if (disposerNames.length === 1) {
-      // Single-binding fast path: return the disposer DIRECTLY instead of allocating a wrapper.
+      // Single-binding fast path: return the disposer DIRECTLY instead of
+      // allocating a wrapper closure `() => { d() }` per template instance.
+      // `_bind` / `_bindText` / `_bindDirect` always return a disposer function
+      // (never null — see template.ts), so this is equivalent minus one closure
+      // allocation per instance. For the dominant `<For>`-row shape (a sole
+      // reactive text child) that's one fewer closure + retained scope per row.
       body += `\n  return ${disposerNames[0]}`
     } else if (disposerNames.length > 0) {
       body += `\n  return () => { ${disposerNames.map((d) => `${d}()`).join('; ')} }`
@@ -3829,6 +4368,15 @@ export function transformJSX_JS(
     }
 
     // Auto-call signal variables: replace bare `x` with `x()` in the expression.
+    // Only applies to identifiers that are NOT already being called (not `x()`).
+    //
+    // No `referencesSignalVar` pre-gate here: that gate skipped nested
+    // Arrow/FunctionExpression children, so an expression whose ONLY signal
+    // reads sat inside a callback (`{[1,2].map(i => s1 ? "a" : "b")}`) was
+    // never rewritten — the bare signal function is always truthy / string-
+    // concats its own source. `autoCallSignals` walks the exact reachability
+    // itself (shadow-aware, JSX-aware) and returns the text unchanged when
+    // nothing needs calling, so the gate bought only a redundant walk.
     if (signalVars.size > 0 && signalVars.size > shadowedSignals.size) {
       result = autoCallSignals(result, expr)
     }
@@ -3848,6 +4396,7 @@ export function transformJSX_JS(
       )
         return false
       // signal.X(...) — operating on the signal object (calling a method).
+      // Mirrors the same narrow skip in findSignalIdents below.
       if (parent && parent.type === 'MemberExpression' && parent.object === node) {
         const grand = findParent(parent)
         if (grand && grand.type === 'CallExpression' && grand.callee === parent) return false
@@ -3866,7 +4415,10 @@ export function transformJSX_JS(
 
   /** Auto-insert () after signal variable references in the expression source.
    *  Uses the AST to find exact Identifier positions — never scans raw text. */
-  // Recursively collect identifier names bound by a pattern (params / declarators).
+  // Recursively collect identifier names bound by a pattern (params /
+  // declarators). Self-contained twin of resolveIdentifiersInText's
+  // `patternBindingNames` (different closure scope; kept local to avoid a
+  // risky shared-helper hoist).
   function sigPatternNames(p: N, out: string[]): void {
     if (!p) return
     switch (p.type) {
@@ -3891,13 +4443,18 @@ export function transformJSX_JS(
     }
   }
 
-  // Signal names a scope-introducing node binds FOR ITS OWN SUBTREE.
+  // Signal names a scope-introducing node binds FOR ITS OWN SUBTREE
+  // (block-accurate lexical scoping). Mirrors scopeBoundPropDerived but
+  // against `signalVars` — a same-named inner binding (callback param,
+  // nested const, catch/loop var) shadows the signal and must NOT be
+  // auto-called (doing so emits `paramValue()` → runtime TypeError).
   function scopeBoundSignals(node: N): string[] {
     const out: string[] = []
     const t = node.type
     const declNames = (declNode: N): void => {
       for (const d of declNode.declarations ?? []) {
-        // A `const x = signal(...)` re-declaration is itself a signal, not a shadow.
+        // A `const x = signal(...)` re-declaration is itself a signal, not a
+        // shadow — leave it for the normal signalVars path.
         if (d.id?.type === 'Identifier' && d.init && isSignalCall(d.init)) continue
         sigPatternNames(d.id, out)
       }
@@ -3966,7 +4523,8 @@ export function transformJSX_JS(
       parent = findParent(cur)
     }
     if (!parent || parent.type !== 'JSXExpressionContainer') return false
-    // Template-path binding: the container is the slice's own wrapper (outside the sliced range).
+    // Template-path binding: the container is the slice's own wrapper
+    // (outside the sliced range) — the emit needs the VALUE, don't skip.
     if ((parent.start as number) < sliceStart || (parent.end as number) > sliceEnd) return false
     const owner = findParent(parent)
     if (!owner) return false
@@ -3986,8 +4544,12 @@ export function transformJSX_JS(
 
   function autoCallSignals(text: string, expr: N): string {
     const start = expr.start as number
+    // Collect signal identifier positions that need auto-calling
     const idents: { start: number; end: number }[] = []
-    // Local lexical shadow set.
+    // Local lexical shadow set — a signal-named binding introduced INSIDE
+    // the rewritten expression (callback param, nested const, …) is NOT the
+    // signal and must not get `()` (R11: scope-blind rewrite emitted
+    // `({x}) => <li>{x()}</li>` → `1()` runtime crash).
     const shadowed = new Set<string>()
 
     function findSignalIdents(node: N): void {
@@ -4009,19 +4571,35 @@ export function transformJSX_JS(
           !parent.computed
         )
           return
-        // Skip when the identifier is the OBJECT of a member access AND the result is being CALLED.
+        // Skip when the identifier is the OBJECT of a member access AND
+        // the result is being CALLED (signal.set(...), signal.peek(),
+        // signal.update(...)). The user is invoking a method on the
+        // signal OBJECT — auto-calling would produce `signal().set(...)`
+        // which calls the signal, gets its value (string/number/etc),
+        // then `.set` on the value is undefined → TypeError. Every event
+        // handler that did `signal.set(x)` was silently broken.
+        //
+        // Note: bare `signal.value` (member access NOT followed by call)
+        // STILL auto-calls — keeps the existing convention where
+        // `signal({a:1})` followed by `signal.a` reads the signal's
+        // value's property (see "signal as member expression object IS
+        // auto-called" test).
         if (parent && parent.type === 'MemberExpression' && parent.object === node) {
           const grand = findParent(parent)
           if (grand && grand.type === 'CallExpression' && grand.callee === parent) return
         }
+        // Skip if already being called: signal()
         if (parent && parent.type === 'CallExpression' && parent.callee === node) return
+        // Skip declaration positions
         if (parent && parent.type === 'VariableDeclarator' && parent.id === node) return
-        // Skip object property keys and shorthand properties ({ name } or { name: val }) Inserting.
+        // Skip object property keys and shorthand properties ({ name } or { name: val })
+        // Inserting () after a shorthand key produces name() which is a method shorthand — invalid
         if (parent && (parent.type === 'Property' || parent.type === 'ObjectProperty')) {
           if (parent.shorthand) return // { name } — can't auto-call without breaking syntax
           if (parent.key === node && !parent.computed) return // { name: val } — key position
         }
-        // Exactly-bare DOM attr/child.
+        // Exactly-bare DOM attr/child — leave bare for the runtimes'
+        // fine-grained accessor treatment (see isBareDomBinding).
         if (isBareDomBinding(node, start, start + text.length)) return
         idents.push({ start: node.start as number, end: node.end as number })
       }
@@ -4032,6 +4610,7 @@ export function transformJSX_JS(
 
     if (idents.length === 0) return text
 
+    // Sort by position and insert () after each identifier
     idents.sort((a, b) => a.start - b.start)
     const parts: string[] = []
     let lastPos = start
@@ -4070,6 +4649,13 @@ const JSX_TO_HTML_ATTR: Record<string, string> = {
 }
 
 // DOM properties whose live value diverges from the content attribute.
+// For these, emit property assignment (`el.value = v`) instead of
+// `setAttribute("value", v)`. Otherwise the property and attribute drift
+// apart in user-driven flows: typing in a controlled <input> updates the
+// .value property, but `input.set('')` clearing the signal only resets
+// the attribute — the stale typed text stays visible. Same for `checked`
+// on checkboxes (presence of the attribute means checked regardless of
+// value: `setAttribute("checked", "false")` still checks the box).
 const DOM_PROPS = new Set([
   'value',
   'checked',
@@ -4166,7 +4752,10 @@ function escapeHtmlText(s: string): string {
   return s.replace(/&(?!(?:#\d+|#x[\da-fA-F]+|[a-zA-Z]\w*);)/g, '&amp;').replace(/</g, '&lt;')
 }
 
-// ─── Compile-to-string SSR fast path (`options.ssrTemplate`) helpers ────────── These mirror.
+// ─── Compile-to-string SSR fast path (`options.ssrTemplate`) helpers ──────────
+//
+// These mirror `@pyreon/runtime-server` BYTE-FOR-BYTE so baked static bytes are
+// identical to what `renderElement`/`renderProp` produce for the same subtree.
 
 /**
  * SSR text/attr escaping — replicates `@pyreon/runtime-server`'s `escapeHtml`
@@ -4190,7 +4779,8 @@ function escapeHtmlSsr(s: string): string {
   return out
 }
 
-// Void elements — `renderElement` emits `<tag />` for these regardless of children.
+// Void elements — `renderElement` emits `<tag />` for these regardless of
+// children, so an `_ssr` bake of a void tag with content would diverge. Bail.
 const SSR_VOID_TAGS = new Set([
   'area',
   'base',
@@ -4209,8 +4799,13 @@ const SSR_VOID_TAGS = new Set([
 ])
 
 // URL-bearing attributes guarded by `@pyreon/core/url-guard` on the SSR path.
+// Single-sourced values mirrored here so the compiler can DECIDE (at bake time)
+// whether a static URL literal is safe. Kept in sync with url-guard.ts.
 const SSR_URL_ATTRS = new Set(['href', 'src', 'action', 'formaction', 'poster', 'cite', 'data'])
-// Methods that ALWAYS return a string on an unambiguous receiver.
+// Methods that ALWAYS return a string on an unambiguous receiver — used to prove
+// a dynamic attr value is non-null-non-boolean (so its attr name+quotes can bake).
+// `Number#toFixed`/`Array#join`/`String#*` all return string; `slice`/`concat`/
+// `replace` are excluded (ambiguous receiver / can return an array).
 const SSR_STRING_METHODS = new Set([
   'toFixed',
   'toString',
@@ -4229,6 +4824,12 @@ const SSR_STRING_METHODS = new Set([
 const SSR_UNSAFE_URL_RE = /^\s*(?:javascript|data):/i
 
 // React/Babel JSX whitespace algorithm (cleanJSXElementLiteralChild).
+// Same-line text is preserved verbatim so adjacent expressions keep their
+// spacing (`<p>doubled: {x}</p>` keeps the trailing space). Multi-line text
+// strips leading whitespace from non-first lines and trailing whitespace
+// from non-last lines, drops fully-empty lines, and joins the survivors
+// with a single space — collapsing JSX indentation without losing
+// intentional inline spacing.
 function cleanJsxText(raw: string): string {
   if (!raw.includes('\n') && !raw.includes('\r')) return raw
   const lines = raw.split(/\r\n|\n|\r/)
@@ -4306,6 +4907,7 @@ function isStatic(node: N): boolean {
     return true
   if (node.type === 'TemplateLiteral' && (node.expressions?.length ?? 0) === 0) return true
   // Note: `undefined` is an Identifier in ESTree, not a keyword literal.
+  // It is NOT treated as static — it goes through the dynamic attr path.
   return false
 }
 

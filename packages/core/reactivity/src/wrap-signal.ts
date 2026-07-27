@@ -42,8 +42,9 @@ export function wrapSignal<T>(base: Signal<T>, options: WrapSignalOptions<T>): S
   facade.subscribe = (listener: () => void) => base.subscribe(listener)
   facade.direct = (updater: () => void) => base.direct(updater)
   facade.debug = () => base.debug()
-  // Forward `.trigger()` to the base — subscribers/direct-updaters live on the base
-  // (`.subscribe`/`.direct` delegate there), so the base's force-notify is what re-runs them.
+  // Forward `.trigger()` to the base — subscribers/direct-updaters live on the
+  // base (`.subscribe`/`.direct` delegate there), so the base's force-notify is
+  // what re-runs them. Without this a wrapped signal would be missing the method.
   facade.trigger = () => base.trigger()
 
   Object.defineProperty(facade, 'label', {
@@ -54,7 +55,9 @@ export function wrapSignal<T>(base: Signal<T>, options: WrapSignalOptions<T>): S
     configurable: true,
   })
 
-  // Forward the internal `_v` field.
+  // Forward the internal `_v` field — load-bearing for the compiler-emitted
+  // `_bindText(facade, textNode)` / `_bindDirect` fast paths, which read
+  // `source._v` directly to skip the function call.
   Object.defineProperty(facade, '_v', {
     get: () => (base as unknown as { _v: T })._v,
     configurable: true,

@@ -2,8 +2,11 @@ import type { Props, VNode, VNodeChild } from '@pyreon/core'
 import { createRef, Fragment, h, nativeCompat, onUnmount } from '@pyreon/core'
 import { effect, runUntracked, signal } from '@pyreon/reactivity'
 
-// Dev-mode gates in this file use the bare bundler-agnostic `process.env.NODE_ENV !== 'production'`
-// form — every modern bundler replaces it at consumer build time.
+// Dev-mode gates in this file use the bare bundler-agnostic
+// `process.env.NODE_ENV !== 'production'` form — every modern bundler replaces it
+// at consumer build time. Do NOT switch to `import.meta.env.DEV` (Vite/Rolldown
+// only) or `typeof process` (dead in Vite browser bundles). Enforced by the
+// `pyreon/no-process-dev-gate` lint rule.
 export interface TransitionProps {
   /**
    * CSS class name prefix.
@@ -74,8 +77,11 @@ function Transition(props: TransitionProps): VNodeChild {
   const ref = createRef<HTMLElement>()
   const isMounted = signal(runUntracked<boolean>(props.show))
 
-  // Cancel in-progress enter / leave when the component unmounts or when a new
-  // transition supersedes the current one.
+  // Cancel in-progress enter / leave when the component unmounts or when a
+  // new transition supersedes the current one. Both are set inside their
+  // respective applyX(). Calling the cancel removes event listeners, clears
+  // the safety timer, and strips active-state classes — WITHOUT firing the
+  // onAfterX callback (which would run on a detached element after unmount).
   let pendingEnterCancel: (() => void) | null = null
   let pendingLeaveCancel: (() => void) | null = null
   let initialized = false
@@ -93,9 +99,12 @@ function Transition(props: TransitionProps): VNodeChild {
       el.classList.add(cls.et)
       let safetyTimer: ReturnType<typeof setTimeout> | null = null
       const done = () => {
+        // Remove both listeners — only one fires, so clean up the other
         el.removeEventListener('transitionend', done)
         el.removeEventListener('animationend', done)
-        // Clear the safety timeout.
+        // Clear the safety timeout — without this, when transitionend fires
+        // normally the 5s timer would still fire later and re-invoke done(),
+        // leaking timer refs and re-firing onAfterEnter.
         if (safetyTimer !== null) {
           clearTimeout(safetyTimer)
           safetyTimer = null
@@ -133,6 +142,7 @@ function Transition(props: TransitionProps): VNodeChild {
       el.classList.add(cls.lt)
       let safetyTimer: ReturnType<typeof setTimeout> | null = null
       const done = () => {
+        // Remove both listeners — only one fires, so clean up the other
         el.removeEventListener('transitionend', done)
         el.removeEventListener('animationend', done)
         // Clear the safety timeout (see applyEnter for rationale).
@@ -161,7 +171,11 @@ function Transition(props: TransitionProps): VNodeChild {
     })
   }
 
-  // Defer applyEnter until the ref is actually populated.
+  // Defer applyEnter until the ref is actually populated. The mount pipeline
+  // assigns it when the child element commits; with plain DOM children that is
+  // one microtask, but nested inside `<Portal>` / `<Show>` the commit can be
+  // several behind. Retrying for a few microtasks covers both without timing
+  // assumptions — passing null to applyEnter would crash on `.classList`.
   const MAX_REF_RETRIES = 16
   const safeApplyEnter = (retries = MAX_REF_RETRIES) => {
     const el = ref.current
@@ -212,10 +226,12 @@ function Transition(props: TransitionProps): VNodeChild {
     pendingLeaveCancel = null
   })
 
-  // Return a reactive getter.
+  // Return a reactive getter. Each call clones the child VNode with our injected ref
+  // so we can read / write classes on the underlying DOM element.
   const rawChild = props.children
-  // Return an empty Fragment (not null) when unmounted so mountChild uses mountReactive instead of
-  // the null/primitive text-node fast-path.
+  // Return an empty Fragment (not null) when unmounted so mountChild uses
+  // mountReactive instead of the null/primitive text-node fast-path, which
+  // cannot later be swapped for a VNode when the element enters.
   const emptyFragment = h(Fragment, null)
   return (() => {
     if (!isMounted()) return emptyFragment
@@ -236,7 +252,11 @@ function Transition(props: TransitionProps): VNodeChild {
   }) as unknown as VNode
 }
 
-// Marked native so compat-mode jsx() runtimes skip wrapCompatComponent — this component needs
-// Pyreon's setup frame.
+// Marked native so compat-mode jsx() runtimes skip wrapCompatComponent — this
+// component needs Pyreon's setup frame. ASSIGNMENT + /* @__PURE__ */ rather than
+// a bare `nativeCompat(X)` statement: inside the built lib's shared chunk a bare
+// call is an unremovable side effect that RETAINS the whole component body in
+// every consumer bundle that never imports it (~1.5KB gz measured). The PURE
+// annotation lets the bundler drop it when the export is unused.
 const _Transition = /* @__PURE__ */ nativeCompat(Transition)
 export { _Transition as Transition }

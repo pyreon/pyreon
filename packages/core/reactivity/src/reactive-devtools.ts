@@ -160,11 +160,16 @@ interface NodeRec {
 
 let _active = false
 let _nextId = 1
-// id → record.
+// id → record. Records are pruned by the FinalizationRegistry the moment
+// the underlying node is GC'd, so this Map never retains a dead node.
 const _byId = new Map<number, NodeRec>()
 
-// ── Coverage retention ─────────────────────────────────────────────────── The registry holds
-// nodes via WeakRef.
+// ── Coverage retention ───────────────────────────────────────────────────
+// The registry holds nodes via WeakRef, so a node whose component unmounts is
+// GC-pruned and DISAPPEARS from `getReactiveGraph()`. Correct for a live panel,
+// WRONG for reactive COVERAGE, whose denominator must be every node created
+// during the measured window. When retention is on, `_rdRegister` pins each node
+// with a STRONG ref. `@pyreon/reactivity/coverage` toggles it.
 let _retain = false
 const _retained = new Set<object>()
 
@@ -173,7 +178,10 @@ export function _setCoverageRetention(on: boolean): void {
   _retain = on
   if (!on) _retained.clear()
 }
-// Subscriber-callback identity → node id.
+// Subscriber-callback identity → node id. Lets `getReactiveGraph()`
+// resolve `_s` Set membership (anonymous `recompute`/`run` closures)
+// back to graph nodes for edge extraction. A WeakMap so a disposed
+// effect's closure doesn't keep its id mapping alive.
 const _subId = new WeakMap<object, number>()
 
 /** @internal — finalizer callback; prunes the record when a node is GC'd. */
@@ -181,11 +189,16 @@ export function _rdPrune(id: number): void {
   _byId.delete(id)
 }
 
-// FinalizationRegistry is baseline since Node 14.6 / all modern browsers / Bun — the
-// same universal-availability assumption the codebase already makes for WeakRef.
+// FinalizationRegistry is baseline since Node 14.6 / all modern browsers
+// / Bun — the same universal-availability assumption the codebase already
+// makes for WeakRef. No env guard (avoids an uncoverable dead branch).
+// PURE annotation: constructing the registry has no external side effects,
+// so a production bundle where every `_finalizer.register` call site folded
+// away (they're all `NODE_ENV`-gated) can DCE the registry + `_rdPrune`.
 const _finalizer = /* @__PURE__ */ new FinalizationRegistry<number>(_rdPrune)
 
-// Bounded fire ring buffer (Effects timeline).
+// Bounded fire ring buffer (Effects timeline). Same shape/rationale as
+// reactive-trace.ts — fixed cap, primitives only, never grows.
 const FIRE_CAP = 512
 let _fireBuf: ReactiveFire[] | null = null
 let _fireCount = 0
@@ -299,7 +312,11 @@ function resolveDeferred(d: DeferredLocation): SourceLocation | undefined {
   const lines = raw.split('\n')
   // V8 prepends "Error\n"; JSC doesn't. Detect and offset.
   const startIdx = lines[0] && lines[0].trim().startsWith('Error') ? 1 : 0
-  // Skip past _captureCallerLocation's own frame (always +1) + caller's depth.
+  // Skip past _captureCallerLocation's own frame (always +1) + caller's
+  // depth. Plus an additional +1 because the Error was allocated INSIDE
+  // _captureCallerLocation in the deferred path, so the frame depth from
+  // the user's call site is one deeper than the original synchronous
+  // form's contract.
   const target = lines[startIdx + 1 + d.skipFrames]
   if (!target) return undefined
   return parseStackLine(target)
@@ -387,8 +404,9 @@ export function _rdRegister(
   loc?: SourceLocation | DeferredLocation,
 ): number | undefined {
   const id = _nextId++
-  // Distinguish resolved-loc (build-time injected, `{file, line, col}`) from
-  // deferred-loc (runtime fallback, `{__deferred, err, skipFrames}`).
+  // Distinguish resolved-loc (build-time injected, `{file, line, col}`)
+  // from deferred-loc (runtime fallback, `{__deferred, err, skipFrames}`).
+  // The deferred form stashes the Error for lazy parse on first read.
   const isDeferred = !!loc && (loc as DeferredLocation).__deferred === true
   _byId.set(id, {
     id,
@@ -403,10 +421,16 @@ export function _rdRegister(
     pendingSkip: isDeferred ? (loc as DeferredLocation).skipFrames : undefined,
   })
   if (sub) _subId.set(sub, id)
-  // During a coverage session, pin the node so it can't be GC-pruned before the snapshot.
+  // During a coverage session, pin the node so it can't be GC-pruned before
+  // the snapshot — a complete denominator needs every node created in the
+  // window, including ones whose component has since unmounted.
   if (_retain) _retained.add(node)
   _finalizer.register(node, id)
-  // Stash the id on the node so fire events correlate in O(1).
+  // Stash the id on the node so fire events correlate in O(1). Every node
+  // we register is a framework-created function/closure (signal/computed
+  // `read`, effect `run`) — always extensible, so defineProperty cannot
+  // throw here; no defensive try/catch (it would be an uncoverable dead
+  // branch).
   Object.defineProperty(node, '__pxRdId', {
     value: id,
     enumerable: false,
@@ -483,8 +507,13 @@ function resolveSubId(sub: () => void): number | undefined {
  * even though the registry is always-on in __DEV__).
  */
 export function getReactiveGraph(): ReactiveGraph {
-  // Dev-block guard (NOT an early prod-return): the registry only fills under dev gates
-  // (`_rdRegister` call sites are `NODE_ENV`-gated), so this is provably `{[].
+  // Dev-block guard (NOT an early prod-return): the registry only fills under
+  // dev gates (`_rdRegister` call sites are `NODE_ENV`-gated), so this is
+  // provably `{[], []}` in a production build. Wrapping the body in the dev
+  // branch lets the bundler drop it AT PARSE TIME — including the symbol
+  // references that would otherwise pin the registry/stack-parse machinery.
+  // (An early `if (prod) return` leaves the tail dead only at MINIFY time,
+  // after symbol-usage analysis — the machinery survives tree-shaking.)
   if (process.env.NODE_ENV !== 'production') {
     if (!_active) return { nodes: [], edges: [] }
     const nodes: ReactiveNode[] = []
@@ -494,9 +523,16 @@ export function getReactiveGraph(): ReactiveGraph {
       if (!node) continue
       const host = rec.hostRef?.deref() ?? null
       const subs = host?._s ?? null
-      // `preview()` is total (its own try/catch returns '[unstringifiable]').
+      // `preview()` is total (its own try/catch returns '[unstringifiable]'),
+      // and `_v` on our registered nodes is a plain property (signal) or a
+      // getter that never throws (computed's getter routes errors through
+      // `_errorHandler` and returns the stale value). No defensive wrapper
+      // here — it would be an uncoverable dead branch.
       const valueStr = rec.kind === 'effect' ? '' : preview((node as { _v?: unknown })._v)
-      // Resolve the deferred loc on first read.
+      // Resolve the deferred loc on first read — most apps never reach
+      // this branch for the bulk of their signals, so the expensive
+      // `.stack` formatting cost is paid only for nodes the consumer
+      // actually inspects.
       const resolvedLoc = _resolveLoc(rec)
       nodes.push({
         id: rec.id,
@@ -533,15 +569,30 @@ export function getReactiveGraph(): ReactiveGraph {
  */
 export function getFireSummaries(): FireSummary[] {
   // Prod early-return — see getReactiveGraph (fires are only recorded in dev).
+  // Dev-block guard — see getReactiveGraph for why this wraps the body
+  // instead of early-returning (parse-time DCE of the pinned machinery).
   if (process.env.NODE_ENV !== 'production') {
     if (!_active) return []
     const byKey = new Map<string, FireSummary>()
-    // Snapshot "now" once per call.
+    // Snapshot "now" once per call — decay-at-read uses a consistent timestamp
+    // for all nodes, so two locations firing at the same rate show the same
+    // rate1s value even if iteration walks them in different orders.
     const nowTs =
       typeof performance !== 'undefined' && typeof performance.now === 'function'
         ? performance.now()
         : Date.now()
-    // Build a one-pass per-id EWMA accumulator from the ring buffer.
+    // Build a one-pass per-id EWMA accumulator from the ring buffer. The
+    // pre-deferred algorithm maintained `rec.rate1s` incrementally on every
+    // fire via the recurrence `r_n = r_{n-1} * exp(-dt/TAU) + 1`; unfolded,
+    // that's `sum over i of exp(-(t_n - t_i) / TAU)`. Decaying-at-read to
+    // `now` then yields `sum over i of exp(-(now - t_i) / TAU)` — which is
+    // exactly what this loop computes by summing `exp(-(now - ts) / TAU)`
+    // over every fire timestamp for the id. Mathematically identical to the
+    // pre-fix value (within FP rounding), modulo fires older than the
+    // 512-entry ring buffer's window — fires older than ~5×TAU contribute
+    // <0.7% of their original weight, and 512 fires in <5s implies >100Hz
+    // (the only regime where buffer eviction can matter); structurally
+    // bounded undercount in the extreme case, identical at typical rates.
     const ratesById = new Map<number, number>()
     if (_fireBuf !== null && _fireCount > 0) {
       const visible = _fireCount <= FIRE_CAP ? _fireCount : FIRE_CAP
@@ -556,7 +607,9 @@ export function getFireSummaries(): FireSummary[] {
     }
     for (const rec of _byId.values()) {
       if (!rec.ref.deref()) continue
-      // Resolve deferred loc on demand.
+      // Resolve deferred loc on demand. `_resolveLoc` returns undefined
+      // for nodes whose stack parse failed (or who never had a captured
+      // location) — those are skipped from the summary, same as pre-fix.
       const loc = _resolveLoc(rec)
       if (!loc) continue
       const k = `${loc.file}:${loc.line}:${loc.col}`
@@ -606,7 +659,22 @@ export function getReactiveFires(): ReactiveFire[] {
 }
 
 // ── "Why did this update?" — causal chain reconstruction ─────────────────────
-// No other framework can answer "why did this node just update?" at the source line.
+//
+// No other framework can answer "why did this node just update?" at the source
+// line. Pyreon can, because it holds BOTH a precise dependency graph
+// (`getReactiveGraph().edges`) AND a timestamped fire timeline
+// (`getReactiveFires()`). `getUpdateCause` reconstructs the causal chain purely
+// at READ time — no hot-path instrumentation: for the target's most recent
+// fire, it walks the dependency graph backward, at each step picking the
+// dependency that fired MOST RECENTLY before the current node, until it reaches
+// a node with no earlier-firing dependency (the root — usually a signal write).
+//
+// Accuracy: EXACT for a synchronous update cascade (the common "I just
+// interacted — why did this change?" case), since a whole cascade completes in
+// one JS tick with the direct-dependency fire immediately preceding each
+// downstream fire. Best-effort if unrelated updates interleave in time, and
+// truncated (`rootReached: false`) when older fires have aged out of the bounded
+// ring buffer.
 
 /** One link in a causal chain — a node that fired, with when + where. */
 export interface CauseLink {
@@ -649,8 +717,17 @@ export function getUpdateCause(nodeId: number): UpdateCause | null {
   const nodeById = new Map(graph.nodes.map((n) => [n.id, n]))
   if (!nodeById.has(nodeId)) return null
 
-  // The causal STRUCTURE is the dependency graph; the fire timeline only tells us WHICH
-  // nodes participated in this cascade.
+  // The causal STRUCTURE is the dependency graph; the fire timeline only tells us
+  // WHICH nodes participated in this cascade. We can't use timeline order alone,
+  // because a LAZY computed recomputes DURING its subscriber's read — so an
+  // effect's fire precedes the fire of the dependency that caused it. Instead we
+  // walk the graph from the target through its dependencies, following only the
+  // deps that fired in the SAME synchronous cascade (clustered by timestamp — a
+  // whole cascade runs within one JS tick, ~sub-ms; separate interactions are
+  // frames apart).
+  //
+  // Dependencies of `id`: the nodes it READS — edges point dep → subscriber, so
+  // `id`'s deps are the `from` of edges whose `to` is `id`.
   const depsOf = (id: number): number[] => {
     const out: number[] = []
     for (const e of graph.edges) if (e.to === id) out.push(e.from)
@@ -669,8 +746,9 @@ export function getUpdateCause(nodeId: number): UpdateCause | null {
   const targetTs = lastFireTs(nodeId)
   if (targetTs === null) return null // never fired
 
-  // A whole synchronous cascade completes within ~one animation frame; use that as the cluster
-  // window so a node's stale fire from an earlier interaction is not mistaken for a cause.
+  // A whole synchronous cascade completes within ~one animation frame; use that
+  // as the cluster window so a node's stale fire from an earlier interaction is
+  // not mistaken for a cause.
   const CLUSTER_MS = 16
   const firedInCluster = new Map<number, number>() // id → latest fire ts in cluster
   for (const f of fires) {

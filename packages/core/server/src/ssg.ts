@@ -72,6 +72,7 @@ export async function prerender(options: PrerenderOptions): Promise<PrerenderRes
 
   const start = Date.now()
 
+  // Resolve paths (may be async)
   const paths = typeof options.paths === 'function' ? await options.paths() : options.paths
 
   let pages = 0
@@ -80,7 +81,10 @@ export async function prerender(options: PrerenderOptions): Promise<PrerenderRes
   async function renderPage(path: string): Promise<void> {
     const url = new URL(path, origin)
     const req = new Request(url.href)
-    // Class I — capture timer id outside Promise.race; clearTimeout on the success path in finally.
+    // Class I — capture timer id outside Promise.race; clearTimeout
+    // on the success path in finally. Without this, every successful
+    // prerender leaks a 30s pending timer + reject callback until it
+    // fires. Same shape as #734's isr.ts revalidate() fix.
     let timeoutId: ReturnType<typeof setTimeout> | undefined
     let res: Response
     try {
@@ -112,7 +116,14 @@ export async function prerender(options: PrerenderOptions): Promise<PrerenderRes
 
     const filePath = resolveOutputPath(outDir, path)
 
-    // Containment check must be separator-terminated.
+    // Containment check must be separator-terminated. A bare
+    // `startsWith(resolve(outDir))` is a string-prefix test, not a
+    // path-containment test: with outDir `/app/dist`, a traversed
+    // `filePath` resolving to `/app/dist-secret/x` passes
+    // `'/app/dist-secret/x'.startsWith('/app/dist')` → true, and the
+    // build writes (possibly secret-bearing) HTML to a SIBLING dir
+    // outside the intended output root. `path` derives from caller-
+    // supplied route params (e.g. CMS slugs via getStaticPaths).
     const resolvedOut = resolve(outDir)
     const resolvedFile = resolve(filePath)
     if (resolvedFile !== resolvedOut && !resolvedFile.startsWith(resolvedOut + sep)) {

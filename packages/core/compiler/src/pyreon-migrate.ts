@@ -109,7 +109,8 @@ export function migratePyreonCode(source: string, filename = 'component.tsx'): P
         code: 'signal-write-as-call',
         description: `\`${callee}(…)\` → \`${callee}.set(…)\``,
       })
-      // Skip the subtree — the whole call span is being replaced.
+      // Skip the subtree — the whole call span is being replaced. A nested
+      // signal-write inside the args (rare) is fixed on the next pass.
       return
     }
 
@@ -128,6 +129,7 @@ export function migratePyreonCode(source: string, filename = 'component.tsx'): P
           description: '`<For key={…}>` → `<For by={…}>`',
         })
       }
+      // fall through — attributes/children may hold other fixable shapes
     }
 
     // as-unknown-as-vnodechild: `x as unknown as VNodeChild` → `x`

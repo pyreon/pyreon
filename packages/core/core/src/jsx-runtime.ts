@@ -25,7 +25,20 @@ export function jsx(
   props: Props & { children?: VNodeChild | VNodeChild[] },
   key?: string | number | null,
 ): VNode {
-  // Build the destructured props object by copying own property DESCRIPTORS, not values.
+  // Build the destructured props object by copying own property
+  // DESCRIPTORS, not values. Compiler-emitted reactive props (`_rp(() =>
+  // signal())` wrappers converted to getter properties by
+  // `makeReactiveProps` in mount.ts) MUST survive the destructure with
+  // their getters intact. A plain `{ children, ...rest } = props`
+  // destructure fires every getter on `props` and stores the resolved
+  // value, breaking signal-driven reactivity for any downstream
+  // consumer that reads `props.x` in a tracking scope.
+  //
+  // Fast path: if `props` has no own property descriptors with `get`
+  // accessors, we can use the original value-copy shape (cheap object
+  // literal allocation). This is the 99% case — only framework wrappers
+  // (rocketstyle attrs HOC, Wrapper, styled) and direct signal props
+  // produce getter-shaped descriptors.
   const descriptors = Object.getOwnPropertyDescriptors(props)
   let hasGetter = false
   for (const k in descriptors) {
@@ -47,7 +60,8 @@ export function jsx(
     return h(type, propsWithKey, ...(childArray as VNodeChild[]))
   }
 
-  // Slow path: at least one getter descriptor present.
+  // Slow path: at least one getter descriptor present — preserve
+  // descriptors during the destructure.
   const propsWithKey: Record<string, unknown> = {}
   for (const k in descriptors) {
     if (k === 'children') continue
@@ -159,7 +173,12 @@ export type TargetedEvent<T extends Element, E extends Event = Event> = E & {
   readonly currentTarget: T
 }
 
-// ─── React-style event type aliases ────────────────────────────────────────── These exist purely.
+// ─── React-style event type aliases ──────────────────────────────────────────
+// These exist purely to ease migration from React/Preact. Each is a
+// `TargetedEvent<T>` constrained to a specific DOM Event subtype.
+// Prefer the DOM-native names (`Event`, `SubmitEvent`, `KeyboardEvent`, etc.)
+// in new code — these aliases are a compat affordance, not the canonical
+// Pyreon convention.
 
 /** Generic input change — fires on every value change on inputs/textareas/selects. */
 export type ChangeEvent<T extends Element = HTMLElement> = TargetedEvent<T, Event>
@@ -305,7 +324,9 @@ export interface PyreonHTMLAttributes<E extends Element = HTMLElement> {
   onKeyPress?: ((e: TargetedEvent<E, KeyboardEvent>) => void) | undefined
   onFocus?: ((e: TargetedEvent<E, FocusEvent>) => void) | undefined
   onBlur?: ((e: TargetedEvent<E, FocusEvent>) => void) | undefined
-  // `focusin`/`focusout` are the BUBBLING focus events (unlike `focus`/`blur`).
+  // `focusin`/`focusout` are the BUBBLING focus events (unlike `focus`/`blur`),
+  // so a handler on a container fires when focus moves to/from any descendant —
+  // e.g. pausing a toast region's auto-dismiss when a keyboard user tabs into it.
   onFocusIn?: ((e: TargetedEvent<E, FocusEvent>) => void) | undefined
   onFocusOut?: ((e: TargetedEvent<E, FocusEvent>) => void) | undefined
   onChange?: ((e: TargetedEvent<E>) => void) | undefined
@@ -360,7 +381,10 @@ export interface InputAttributes extends PyreonHTMLAttributes<HTMLInputElement> 
   defaultChecked?: boolean | undefined
   placeholder?: string | (() => string) | undefined
   disabled?: boolean | (() => boolean) | undefined
-  // `readOnly` is paired with `disabled` semantically.
+  // `readOnly` is paired with `disabled` semantically — both accept a
+  // reactive callable so consumers can spread `useForm.register()`'s
+  // return value (which produces `readOnly: Accessor<boolean>`) directly
+  // onto `<input>` / `<textarea>` without losing reactivity.
   readOnly?: boolean | (() => boolean) | undefined
   required?: boolean | (() => boolean) | undefined
   min?: string | number | undefined
@@ -413,7 +437,10 @@ export interface TextareaAttributes extends PyreonHTMLAttributes<HTMLTextAreaEle
   defaultValue?: string | undefined
   placeholder?: string | (() => string) | undefined
   disabled?: boolean | (() => boolean) | undefined
-  // `readOnly` is paired with `disabled` semantically.
+  // `readOnly` is paired with `disabled` semantically — both accept a
+  // reactive callable so consumers can spread `useForm.register()`'s
+  // return value (which produces `readOnly: Accessor<boolean>`) directly
+  // onto `<input>` / `<textarea>` without losing reactivity.
   readOnly?: boolean | (() => boolean) | undefined
   required?: boolean | (() => boolean) | undefined
   rows?: number | undefined

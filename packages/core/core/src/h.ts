@@ -31,7 +31,8 @@ export const EMPTY_PROPS: Props = {} as Props
 type PropsWithOptionalChildren<P extends Props> = Omit<P, 'children'> &
   ('children' extends keyof P ? { children?: P['children'] } : unknown)
 
-// Overload: component with typed props.
+// Overload: component with typed props — children is optional in the props object
+// because it can be passed as rest args. Extra keys are allowed via `& Props`.
 export function h<P extends Props>(
   type: ComponentFn<P>,
   props: (PropsWithOptionalChildren<P> & Props) | null,

@@ -92,7 +92,10 @@ function walk(
   const t = typeof value
   if (t === 'string' || t === 'number' || t === 'boolean') return value
   if (t === 'bigint') return { [TAG]: 'B', [VALUE]: String(value as bigint) }
-  // function / symbol / undefined → null (matches JSON.stringify on arrays).
+  // function / symbol / undefined → null (matches JSON.stringify on
+  // arrays). Containing objects skip these as own keys BEFORE recursing,
+  // so this branch is only reached for Map/Set values + as a defensive
+  // fallback if a caller hands in a non-portable root.
   if (t === 'function' || t === 'symbol' || t === 'undefined') return null
 
   // Objects from here on.
@@ -151,7 +154,9 @@ function walk(
     return arr
   }
 
-  // Plain object check — anything with a prototype other than `Object.prototype`.
+  // Plain object check — anything with a prototype other than
+  // `Object.prototype` (and not one of the tagged classes above) is a
+  // custom class instance. Fail loud naming the constructor.
   const proto = Object.getPrototypeOf(obj)
   if (proto !== null && proto !== Object.prototype) {
     const ctor = (obj as { constructor?: { name?: string } }).constructor
@@ -163,7 +168,8 @@ function walk(
     )
   }
 
-  // Plain object.
+  // Plain object. Walk own enumerable string-keyed props, skipping the
+  // same not-portable types `JSON.stringify` skips.
   const result: Record<string, Encoded> = {}
   let hasOwnTag = false
   for (const [key, val] of Object.entries(obj)) {
@@ -175,7 +181,10 @@ function walk(
     result[key] = walk(val, seen, `${path}.${key}`, islandName, depth + 1)
   }
 
-  // If the user's plain object literally has `__pyreon_t` as an own key.
+  // If the user's plain object literally has `__pyreon_t` as an own key,
+  // wrap it in the `'e'` (escape) marker so the decoder doesn't mistake
+  // it for a tagged value. The escape wrapping is the only way to
+  // round-trip such an object.
   if (hasOwnTag) {
     return { [TAG]: 'e', [VALUE]: result }
   }
@@ -232,7 +241,9 @@ export function decodeIslandProps(value: unknown): unknown {
         }
         return value
       case 'e':
-        // Escape — the wrapped value is itself a plain object that happens to have `__pyreon_t`.
+        // Escape — the wrapped value is itself a plain object that
+        // happens to have `__pyreon_t` as one of its keys. Decode
+        // recursively (in case nested values are themselves tagged).
         if (v && typeof v === 'object' && !Array.isArray(v)) {
           const out: Record<string, unknown> = {}
           for (const [k, val] of Object.entries(v as Record<string, unknown>)) {

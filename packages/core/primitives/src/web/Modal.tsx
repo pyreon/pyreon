@@ -55,7 +55,9 @@ export const Modal = (props: ModalProps): VNode => {
 
   const ref = (el: HTMLDialogElement | null): void => {
     dialogEl = el
-    // Initial sync at mount.
+    // Initial sync at mount — the effect's first run happened during
+    // component setup when `dialogEl` was still null, so it could only
+    // track `open`, not apply it. Apply the current value now.
     if (el !== null) applyOpen(getOpen())
   }
 
@@ -64,15 +66,21 @@ export const Modal = (props: ModalProps): VNode => {
     applyOpen(getOpen())
   })
 
-  // Escape: the native dialog fires `cancel` then self-closes.
+  // Escape: the native dialog fires `cancel` then self-closes. Prevent
+  // the self-close and route through onClose so the `open` signal stays
+  // the single source of truth.
   const onCancel = (e: Event): void => {
     e.preventDefault()
     props.onClose()
   }
 
-  // Backdrop click: a click whose coordinates fall OUTSIDE the dialog's own box is a backdrop.
+  // Backdrop click: a click whose coordinates fall OUTSIDE the dialog's
+  // own box is a backdrop click (the ::backdrop pseudo-element reports
+  // its clicks as targeting the dialog). Geometry test is robust to any
+  // content padding the consumer applies — no inner wrapper needed.
   const onClick = (e: MouseEvent): void => {
-    // `currentTarget` is the <dialog> the handler is bound to.
+    // `currentTarget` is the <dialog> the handler is bound to — never
+    // null mid-dispatch, so no guard needed (and nothing dead to cover).
     const el = e.currentTarget as HTMLDialogElement
     const r = el.getBoundingClientRect()
     const inside =

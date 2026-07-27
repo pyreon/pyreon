@@ -35,7 +35,8 @@ const LEVEL_FONT_SIZE: Record<1 | 2 | 3 | 4 | 5 | 6, string> = {
 export const Heading = (props: HeadingProps): VNode => {
   const level = props.level ?? 1
   const style: Record<string, string> = {
-    // `level` is typed 1–6 and `LEVEL_FONT_SIZE` is keyed by exactly that union.
+    // `level` is typed 1–6 and `LEVEL_FONT_SIZE` is keyed by exactly
+    // that union, so the lookup is `string` (no undefined / no branch).
     'font-size': LEVEL_FONT_SIZE[level],
     'font-weight': '700',
     margin: '0',

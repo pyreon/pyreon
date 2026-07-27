@@ -33,11 +33,31 @@ import { hydrateRoot, mount } from '@pyreon/runtime-dom'
 import { isServer, runWithContextOwner, type EffectScope } from '@pyreon/reactivity'
 import type { HydrationStrategy, PrefetchStrategy } from './island'
 
-// `island()` is client-safe.
+// `island()` is client-safe — it only renders the `<pyreon-island>` marker via
+// `h()` and encodes props (island.ts imports nothing beyond `@pyreon/core` +
+// `./island-codec`). Re-exported from this CLIENT-safe subentry so island
+// declarations can be imported WITHOUT dragging the `@pyreon/server` main
+// barrel (`createHandler` / `prerender` + their `node:` deps + the package's
+// `registerSingleton`) into a client/route bundle — the leak that breaks
+// islands inside `@pyreon/zero` routes (every route ships to the client).
 export type { IslandMeta, IslandOptions } from './island'
 export { island } from './island'
 
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
+// Same pattern as @pyreon/runtime-dom: bare process.env.NODE_ENV gate (the
+// bundler-agnostic library standard) so counter strings tree-shake out under
+// every modern bundler (Vite, Webpack/Next.js, Rolldown, esbuild, Rollup,
+// Parcel, Bun) when consumers ship a production bundle. The optional-chain
+// short-circuits in dev when no consumer has called perfHarness.install().
+// Perf-counter sink — read `globalThis` lazily via a HOISTED helper, NOT a
+// module-level `const`. A `const` snapshot participates in the temporal dead
+// zone: `hydrateIsland` (a hoisted async fn) can be invoked by a deferred /
+// concurrently-raced module evaluation BEFORE the const line runs, throwing
+// `ReferenceError: Cannot access '_countSink' before initialization` (an
+// intermittent `test (core)` failure). A function declaration hoists with its
+// body and reads the always-present `globalThis` at call time, so it is
+// TDZ-immune. Still tree-shaken in production — every call site stays behind
+// the `process.env.NODE_ENV !== 'production'` gate, which folds to `if (false)`.
 function _count(name: string): void {
   const sink = globalThis as { __pyreon_count__?: (n: string, c?: number) => void }
   sink.__pyreon_count__?.(name)
@@ -65,7 +85,8 @@ export interface StartClientOptions {
  * Returns a cleanup function that unmounts the app.
  */
 export function startClient(options: StartClientOptions): () => void {
-  // SSR-only guard: hard-fails if startClient is called server-side.
+  // SSR-only guard: hard-fails if startClient is called server-side. Cannot be
+  // exercised under happy-dom (document is always defined in the test env).
   /* v8 ignore next 3 */
   if (isServer) {
     throw new Error('[Pyreon] startClient() can only be called in the browser.')
@@ -78,6 +99,7 @@ export function startClient(options: StartClientOptions): () => void {
     throw new Error(`[Pyreon] Container "${container}" not found`)
   }
 
+  // Create client-side router (history mode to match SSR)
   const router = createRouter({ routes, mode: 'history' })
 
   // Hydrate loader data from SSR (avoids re-fetching on initial render)
@@ -86,7 +108,9 @@ export function startClient(options: StartClientOptions): () => void {
     hydrateLoaderData(router as never, loaderData as Record<string, unknown>)
   }
 
-  // Seed @pyreon/store stores from the SSR snapshot before mount.
+  // Seed @pyreon/store stores from the SSR snapshot before mount (decoupled
+  // bridge set by @pyreon/store on import; one null check when unused). Makes
+  // cross-island shared state hydrate once with server values.
   const hydrateStores = (
     globalThis as { __PYREON_HYDRATE_STORES__?: (d: Record<string, Record<string, unknown>>) => void }
   ).__PYREON_HYDRATE_STORES__
@@ -97,6 +121,7 @@ export function startClient(options: StartClientOptions): () => void {
     }
   }
 
+  // Build app tree
   const app = h(RouterProvider, { router }, h(App, null))
 
   // Hydrate if container has SSR content, mount fresh otherwise
@@ -134,7 +159,15 @@ export function hydrateIslands(registry: Record<string, IslandLoader>): () => vo
   /* v8 ignore next */
   if (isServer) return () => {}
 
-  // Dev-mode footgun guard: calling `hydrateIslands()` twice without invoking the previous call's.
+  // Dev-mode footgun guard: calling `hydrateIslands()` twice without
+  // invoking the previous call's cleanup function leaks the old
+  // IntersectionObservers / requestIdleCallback IDs / matchMedia + event
+  // listeners. This bites HMR users who don't wire up
+  // `import.meta.hot.dispose(cleanup)` (or its sub-route equivalent).
+  // We warn loudly in dev — production stays silent (tree-shaken). The
+  // current call still proceeds (HMR / route-change DOES require
+  // re-registration; we just want the user to know they should clean up
+  // the previous one first).
   if (process.env.NODE_ENV !== 'production') {
     const w = window as Window & { __pyreon_island_hydrate_active__?: boolean }
     if (w.__pyreon_island_hydrate_active__) {
@@ -157,7 +190,10 @@ export function hydrateIslands(registry: Record<string, IslandLoader>): () => vo
     const componentId = el.getAttribute('data-component')
     if (!componentId) continue
 
-    // Detect nested islands.
+    // Detect nested islands. An island whose ancestor (up the DOM tree) is
+    // also a `<pyreon-island>` would, on hydration, be torn out and replaced
+    // when the outer island hydrates — losing its hydrate strategy entirely.
+    // Mark it as errored, log, and skip rather than silently break.
     if (el.parentElement?.closest('pyreon-island')) {
       console.error(
         `[Pyreon] island "${componentId}" is nested inside another <pyreon-island>. ` +
@@ -172,7 +208,10 @@ export function hydrateIslands(registry: Record<string, IslandLoader>): () => vo
 
     const strategy = (el.getAttribute('data-hydrate') ?? 'load') as HydrationStrategy
 
-    // `hydrate: 'never'` deliberately ships zero client JS for the island.
+    // `hydrate: 'never'` deliberately ships zero client JS for the island —
+    // no loader is registered because the loader's whole purpose is to be
+    // imported. Skip the missing-loader warning for never-strategy islands;
+    // any other strategy without a loader IS a real misconfiguration.
     if (strategy === 'never') {
       if (process.env.NODE_ENV !== 'production') _count('island.skipped.never')
       continue
@@ -188,7 +227,10 @@ export function hydrateIslands(registry: Record<string, IslandLoader>): () => vo
 
     const propsJson = el.getAttribute('data-props') ?? '{}'
 
-    // Prefetch (if requested) primes the module cache before the hydration trigger fires.
+    // Prefetch (if requested) primes the module cache before the hydration
+    // trigger fires. Independent of hydration scheduling — the same loader
+    // promise is reused, so a `visible` island with `prefetch: 'idle'` will
+    // hit a warm cache when the IntersectionObserver finally fires.
     const prefetch = (el.getAttribute('data-prefetch') ?? 'none') as PrefetchStrategy
     const prefetchCleanup = schedulePrefetch(el as HTMLElement, loader, prefetch)
     if (prefetchCleanup) cleanups.push(prefetchCleanup)
@@ -207,7 +249,12 @@ export function hydrateIslands(registry: Record<string, IslandLoader>): () => vo
   }
 }
 
-// Exported so `island()` (in `./island`) can SELF-HYDRATE in hosts that re-mount route content.
+// Exported so `island()` (in `./island`) can SELF-HYDRATE in hosts that
+// re-mount route content client-side (e.g. `@pyreon/zero`, where the route is
+// a reactive child of RouterView — the SSR DOM is discarded + re-mounted, so a
+// one-shot `hydrateIslandsAuto` scan races the async route mount). island()
+// dynamically imports these from its `onMount`, so the scheduler stays
+// client-only + out of the SSR graph, and there's no static client↔island cycle.
 export function schedulePrefetch(
   el: HTMLElement,
   loader: IslandLoader,
@@ -217,12 +264,15 @@ export function schedulePrefetch(
   /* v8 ignore next */
   if (isServer) return null
   let cancelled = false
-  // Fire and forget — we don't await.
+  // Fire and forget — we don't await; the dynamic import warms the module
+  // cache and the hydration path will await its OWN loader() call (which
+  // resolves to the same module via JS's import-promise dedup).
   const prime = () => {
     if (cancelled) return
     if (process.env.NODE_ENV !== 'production') _count('island.prefetch')
     loader().catch(() => {
       // Silent — hydration will surface the failure with its own error path.
+      // Prefetch is a hint, not a contract.
     })
   }
 
@@ -303,7 +353,15 @@ export interface AutoIslandRegistry {
 export function hydrateIslandsAuto(registry?: AutoIslandRegistry): () => void {
   /* v8 ignore next */
   if (isServer) return () => {}
-  // When there is nothing to auto-hydrate.
+  // When there is nothing to auto-hydrate — a missing / malformed registry
+  // (the usual culprit: `hydrateIslandsAuto()` called with no argument, or a
+  // DEFAULT import of the virtual module which has no default export → its
+  // value is `undefined`), OR a registry from `pyreon({ islands: false })` —
+  // warn in DEV and no-op. We deliberately do NOT throw: an uncaught exception
+  // at page boot pollutes the console + error-tracking (Sentry, etc.) on every
+  // view, even though hydration is not actually blocked. Reading
+  // `.__pyreonIslandsEnabled` off `undefined`/`null` is also what produced the
+  // cryptic "Cannot read properties of undefined" crash this guards against.
   const missing = registry == null || typeof registry !== 'object'
   if (missing || !registry.__pyreonIslandsEnabled) {
     if (process.env.NODE_ENV !== 'production') {
@@ -330,7 +388,15 @@ export function scheduleHydration(
   loader: IslandLoader,
   propsJson: string,
   strategy: HydrationStrategy,
-  // Context owner captured at the island marker's render time.
+  // Context owner captured at the island marker's render time (while its
+  // owner — and thus the ancestor PyreonUI/theme provider chain — was active).
+  // Hydration is deferred (idle / visible / interaction), so by the time the
+  // island mounts the active owner is gone; re-establishing this captured
+  // owner lets the hydrated component's `useContext()` walk up to ancestor
+  // providers. Without it (#1338 owner-based context, no global stack), a
+  // rocketstyle component inside the island reads an undefined theme and
+  // crashes. `null`/omitted (static islands apps via `hydrateIslands`) keeps
+  // the prior detached-root behavior.
   owner?: EffectScope | null,
 ): (() => void) | null {
   /* v8 ignore next */
@@ -364,7 +430,12 @@ export function scheduleHydration(
     case 'visible':
       return observeVisibility(el, hydrate)
 
-    // `case 'never'` is dead here.
+    // `case 'never'` is dead here — `hydrateIslands` short-circuits before
+    // calling `scheduleHydration` when strategy === 'never' (the whole point
+    // of the strategy is shipping zero client JS). Removing the case keeps
+    // the branch surface tight; if a future caller invokes scheduleHydration
+    // directly with 'never', the default fallback (immediate hydrate) is the
+    // wrong shape — gate it at the call site, not here.
 
     case 'interaction':
       return scheduleInteractionHydration(el, hydrate, DEFAULT_INTERACTION_EVENTS)
@@ -415,7 +486,9 @@ const DEFAULT_INTERACTION_EVENTS: readonly string[] = [
   'click',
   'pointerenter',
   'touchstart',
-  // `submit` bubbles to the island root from any descendant form.
+  // `submit` bubbles to the island root from any descendant form. Without
+  // capturing + preventing it pre-hydrate, the browser performs the form's
+  // default action (full-page POST/GET) BEFORE the live handler exists.
   'submit',
 ]
 
@@ -435,7 +508,17 @@ function scheduleInteractionHydration(
 ): () => void {
   let hydrationStarted = false
   let hydrated = false
-  // Holds replay info if a user interaction came in during in-flight hydration.
+  // Holds replay info if a user interaction came in during in-flight
+  // hydration — we replay it on the equivalent post-hydration element so
+  // the user's first click / form submit both wakes the island AND fires
+  // the live handler.
+  //
+  // Hydration may REPLACE DOM nodes (mismatch fallback, or even successful
+  // hydrate-as-mount on some shapes). The original `event.target` reference
+  // can therefore be detached after hydration completes. To survive this,
+  // we capture an identifying "replay path" — preferring `data-testid` (a
+  // stable, semantic identifier) and falling back to a tag-based child
+  // index walk relative to `el`. After hydration we re-query the live tree.
   let captured: CapturedInteraction | null = null
   // Stamp a "scheduled" marker for tests / devtools introspection.
   el.setAttribute('data-island-state', 'awaiting-interaction')
@@ -454,7 +537,9 @@ function scheduleInteractionHydration(
       const liveTarget = resolveReplayPath(el, captured.path)
       if (!liveTarget || !liveTarget.isConnected) return
       if (captured.type === 'submit' && liveTarget instanceof HTMLFormElement) {
-        // The browser exposes `SubmitEvent` in real browsers and modern happy-dom.
+        // The browser exposes `SubmitEvent` in real browsers and modern
+        // happy-dom — fall back to a plain `Event('submit')` if the
+        // global is missing (older happy-dom builds, exotic runtimes).
         const SubmitEventCtor =
           typeof SubmitEvent === 'function'
             ? SubmitEvent
@@ -471,11 +556,16 @@ function scheduleInteractionHydration(
   }
 
   const dispatch = (event: Event) => {
-    // After hydration, listeners are removed in the `then` above — this branch is defensive only.
+    // After hydration, listeners are removed in the `then` above —
+    // this branch is defensive only.
     if (hydrated) return
 
     if (event.type === 'click') {
-      // Stop the click — the SSR DOM has no live click handler bound yet.
+      // Stop the click — the SSR DOM has no live click handler bound yet,
+      // so propagating it does nothing useful. Capture the click target
+      // for replay after hydration. Works whether or not hydration was
+      // already started by a previous non-click event — the click always
+      // replays as the user-intended action.
       event.stopImmediatePropagation()
       event.preventDefault()
       const target = event.target as HTMLElement | null
@@ -484,7 +574,11 @@ function scheduleInteractionHydration(
         if (path) captured = { type: 'click', path }
       }
     } else if (event.type === 'submit') {
-      // Same logic as click but for forms: without preventDefault the browser would do a full-page.
+      // Same logic as click but for forms: without preventDefault the
+      // browser would do a full-page navigation BEFORE the live handler
+      // mounts. Capture the form element so we can re-dispatch `submit`
+      // post-hydrate against the live form (which now has the user's
+      // listeners bound).
       event.stopImmediatePropagation()
       event.preventDefault()
       const target = event.target as HTMLElement | null
@@ -497,7 +591,11 @@ function scheduleInteractionHydration(
     startHydration()
   }
 
-  // `passive: false` because the click handler may need preventDefault on the original event in.
+  // `passive: false` because the click handler may need preventDefault on
+  // the original event in the replay path. `capture: true` so we run
+  // BEFORE the live event-delegation handler that hydrateRoot installs
+  // on the container (otherwise the click would already have propagated
+  // past us by the time we react to non-click events firing first).
   for (const ev of events) {
     el.addEventListener(ev, dispatch, INTERACTION_LISTENER_OPTS)
   }
@@ -532,6 +630,10 @@ function captureReplayPath(el: Element, target: Element): ReplayPath | null {
   const testid = target.getAttribute?.('data-testid')
   if (testid) return { kind: 'testid', value: testid }
   // Walk up from target to el, collecting (tag, child-index) at each step.
+  // `node` is non-null on every iteration because we early-return when
+  // `parent` is null (the only path that could leave node nullable). The
+  // `Element | null` type is preserved for the post-loop `node === el` check
+  // so the path-not-found case still returns null cleanly.
   const steps: { tag: string; index: number }[] = []
   let node: Element | null = target
   while (node !== el) {
@@ -573,7 +675,9 @@ async function hydrateIsland(
       if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
         throw new TypeError('Expected object')
       }
-      // Inverse of `encodeIslandProps`.
+      // Inverse of `encodeIslandProps` — restores Date / Map / Set /
+      // RegExp / BigInt the SSR codec tagged with `__pyreon_t`. Plain
+      // objects without markers round-trip unchanged.
       const decoded = decodeIslandProps(raw) as Record<string, unknown>
       props = decoded
     } catch (parseErr) {
@@ -585,7 +689,10 @@ async function hydrateIsland(
 
     const mod = await loader()
     const Comp = typeof mod === 'function' ? mod : mod.default
-    // Re-establish the marker's captured owner so the island's hydration root parents to it.
+    // Re-establish the marker's captured owner so the island's hydration root
+    // parents to it (hydrate.ts sets `scope._parent = getContextOwner()`),
+    // letting the component's `useContext()` reach ancestor providers
+    // (PyreonUI theme, etc.). `null` owner → detached root (static islands).
     runWithContextOwner(owner ?? null, () => hydrateRoot(el, h(Comp, props)))
     if (process.env.NODE_ENV !== 'production') _count('island.hydrated')
   } catch (err) {
@@ -648,7 +755,8 @@ export function activateServerIslands(base = ''): () => void {
     'pyreon-server-island[data-name]:not([data-pyreon-si])',
   )
   for (const el of markers) activateServerIslandElement(el, base)
-  // No teardown needed — activation is one-shot per marker.
+  // No teardown needed — activation is one-shot per marker; in-flight
+  // fetches are dropped via the `isConnected` guard, not aborted.
   return () => {}
 }
 

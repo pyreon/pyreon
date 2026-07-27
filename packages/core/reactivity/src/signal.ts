@@ -108,6 +108,7 @@ interface SignalFn<T> {
 }
 
 // Shared method implementations — defined once, assigned to every signal.
+// Uses `this` binding (signal methods are always called as `signal.method()`).
 function _peek(this: SignalFn<unknown>) {
   return this._v
 }
@@ -118,15 +119,18 @@ function _set(this: SignalFn<unknown>, newValue: unknown) {
     _countSink.__pyreon_count__?.('reactivity.signalWrite')
   const prev = this._v
   this._v = newValue
-  // Dev-only bounded ring buffer of recent writes, attached to error reports so a crash carries the
-  // causal sequence of signal changes.
+  // Dev-only bounded ring buffer of recent writes, attached to error reports so
+  // a crash carries the causal sequence of signal changes. Separate from the
+  // `isTracing()` path below: that one is opt-in and captures a stack
+  // (expensive); this is always-on in dev and deliberately cheap.
   if (process.env.NODE_ENV !== 'production') {
     _recordSignalWrite(this.label, prev, newValue)
     _rdRecordFire(this)
   }
   if (isTracing()) {
-    // A throwing trace listener would leave `_v` updated but subscribers never notified
-    // (readers see the new value, no effects run).
+    // A throwing trace listener would leave `_v` updated but subscribers never
+    // notified (readers see the new value, no effects run). Debug code must not
+    // corrupt program state — catch and keep the reactive flow intact.
     try {
       _notifyTraceListeners(this as unknown as Signal<unknown>, prev, newValue)
     } catch (err) {
@@ -139,8 +143,14 @@ function _set(this: SignalFn<unknown>, newValue: unknown) {
       }
     }
   }
-  // Auto-batch the notification chain: without it a diamond (a -> b,c -> d -> effect) fires the
-  // apex effect TWICE per write.
+  // Auto-batch the notification chain: without it a diamond (a -> b,c -> d ->
+  // effect) fires the apex effect TWICE per write, because the first path
+  // clears `d`'s dirty flag and the second re-dirties + re-notifies it.
+  // The batch is synchronous — only the dedup semantics change.
+  //
+  // No-subscriber fast path: with nothing to notify there is no cascade to
+  // drain, and while batchDepth is 0 the pending queues are provably empty, so
+  // the whole batch window is skipped. Dominant shape for write-only signals.
   const _d1 = this._d1
   const _d = this._d
   const _s = this._s
@@ -151,8 +161,17 @@ function _set(this: SignalFn<unknown>, newValue: unknown) {
     else if (_d) notifyDirect(_d)
     if (_s) notifySubscribers(_s)
   } else {
-    // INLINE batch window — no `batch(closure)` allocation, and the notifications THIS
-    // write owns dispatch DIRECTLY instead of round-tripping the pending queues.
+    // INLINE batch window — no `batch(closure)` allocation, and the
+    // notifications THIS write owns dispatch DIRECTLY instead of round-tripping
+    // the pending queues. Measured: that round-trip dominated the unbatched
+    // write path at ~119ns per single-subscriber notify vs ~12ns for the write.
+    //
+    // Correctness holds BY CONSTRUCTION: dedup only matters for diamonds, which
+    // need >=2 subscribers at the fan-out point, and the direct dispatches below
+    // each deliver a SINGLE callback once. Multi-subscriber channels still route
+    // through notifySubscribers/notifyDirect and enqueue under the open window.
+    // Cascade writes from a dispatched callback see `isBatching() === true` and
+    // are drained by `closeInlineBatch` with the same two-tier flush.
     openInlineBatch()
     try {
       if (_d1) {
@@ -178,7 +197,10 @@ function _update(this: SignalFn<unknown>, fn: (current: unknown) => unknown) {
 
 function _trigger(this: SignalFn<unknown>) {
   if (process.env.NODE_ENV !== 'production') _rdRecordFire(this)
-  // The SAME batch-aware notify as `_set`, minus the value write and the `Object.is` gate.
+  // The SAME batch-aware notify as `_set`, minus the value write and the
+  // `Object.is` gate. Deliberately DUPLICATED rather than extracted: `_set`'s
+  // inline dispatch is perf-tuned and must stay byte-identical — wrapping it in
+  // a call would tax the hottest write path for a rare escape hatch's benefit.
   const _d1 = this._d1
   const _d = this._d
   const _s = this._s
@@ -302,13 +324,17 @@ function _directFn(this: SignalFn<unknown>, updater: () => void): () => void {
     this._d1 = updater
     const self = this
     return () => {
-      // Disposer must defend against PROMOTION: if a 2nd subscriber arrived BEFORE this dispose
-      // runs, `_d1` was migrated into `_d` Set and `_d1` is null.
+      // Disposer must defend against PROMOTION: if a 2nd subscriber
+      // arrived BEFORE this dispose runs, `_d1` was migrated into
+      // `_d` Set and `_d1` is null. Check both tiers so the original
+      // first-subscriber is removed regardless of which tier it now
+      // lives in.
       if (self._d1 === updater) self._d1 = null
       else if (self._d) self._d.delete(updater)
     }
   }
-  // Tier 2: ≥1 subscriber already present.
+  // Tier 2: ≥1 subscriber already present. If only `_d1` is set,
+  // promote it into a fresh Set before adding the new entry.
   if (this._d === null) {
     const first = this._d1!
     this._d = new Set()
@@ -327,8 +353,10 @@ function _directFn(this: SignalFn<unknown>, updater: () => void): () => void {
  * are already absent from the set (O(1) delete on disposal).
  */
 function notifyDirect(updaters: Set<() => void>): void {
-  // The `else` (non-batch) arm is structurally unreachable: every write opens an inline batch
-  // window before dispatch (see `openInlineBatch`).
+  // The `else` (non-batch) arm is structurally unreachable: every write opens
+  // an inline batch window before dispatch (see `openInlineBatch`), so by the
+  // time a multi-subscriber `_d` Set is notified, `isBatching()` is always
+  // true. Kept as a correctness guard for any future direct caller.
   /* v8 ignore next 3 */
   if (isBatching()) {
     for (const fn of updaters) enqueuePendingNotification(fn)
@@ -392,6 +420,7 @@ export function signal<T>(initialValue: T, options?: SignalOptions): Signal<T> {
   if (process.env.NODE_ENV !== 'production')
     _countSink.__pyreon_count__?.('reactivity.signalCreate')
   // The read function is the only per-signal closure.
+  // It doubles as the SubscriberHost (_s property) for trackSubscriber.
   const read = ((...args: unknown[]) => {
     if (process.env.NODE_ENV !== 'production' && args.length > 0) {
       // oxlint-disable-next-line no-console
@@ -406,6 +435,7 @@ export function signal<T>(initialValue: T, options?: SignalOptions): Signal<T> {
   }) as unknown as SignalFn<T>
 
   // Single setPrototypeOf instead of 6 per-instance method assignments.
+  // All signals share SignalProto → monomorphic call sites for method dispatch.
   Object.setPrototypeOf(read, SignalProto)
   read._v = initialValue
   read._s = null
@@ -414,8 +444,11 @@ export function signal<T>(initialValue: T, options?: SignalOptions): Signal<T> {
   read.label = options?.name
 
   if (process.env.NODE_ENV !== 'production') {
-    // Prefer build-time-injected location (zero runtime cost) over the ~2.2µs stack-capture
-    // fallback.
+    // Prefer build-time-injected location (zero runtime cost) over the
+    // ~2.2µs stack-capture fallback. @pyreon/vite-plugin's
+    // `injectSignalLocations` rewrites `signal(0)` to
+    // `signal(0, { __sourceLocation: {...} })` at transform time so most
+    // dev-mode signals never pay the stack-capture cost.
     const loc = options?.__sourceLocation
       ? options.__sourceLocation
       : _captureCallerLocation(1)

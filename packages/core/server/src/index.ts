@@ -55,7 +55,10 @@
 import { name as __pkgName, version as __pkgVersion } from '../package.json' with { type: 'json' }
 import { registerSingleton } from '@pyreon/reactivity'
 
-// Singleton sentinel — fail-loud detection of duplicate @pyreon/server instances in the same heap.
+// Singleton sentinel — fail-loud detection of duplicate @pyreon/server
+// instances in the same heap. See @pyreon/reactivity/singleton-sentinel for
+// full rationale. Hardcoded version is acceptable here — it's a diagnostic
+// aid, not a load-bearing identity check.
 registerSingleton(__pkgName, __pkgVersion, import.meta.url)
 
 export type { HandlerOptions } from './handler'
@@ -84,7 +87,8 @@ export type {
   RenderPageResult,
 } from './render-page'
 export { renderPage } from './render-page'
-// Server islands (Phase 4).
+// Server islands (Phase 4) — marker component + client activation are on
+// the client-safe `/client` subentry; the fragment RENDERER is server-only.
 export type { FragmentResult } from './server-island-render'
 export { renderServerIslandFragment } from './server-island-render'
 export type { RegisteredServerIsland, ServerIslandOptions } from './server-island'

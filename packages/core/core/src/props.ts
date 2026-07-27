@@ -16,13 +16,21 @@ export function splitProps<T extends object, K extends (keyof T)[]>(
   const rest = {} as Omit<T, K[number]>
   const keySet = new Set<string | symbol>(keys as (string | symbol)[])
 
-  // Reflect.ownKeys includes symbol-keyed properties; Object.keys drops them silently.
+  // Reflect.ownKeys includes symbol-keyed properties; Object.keys drops them
+  // silently. Without this, symbol-keyed props (e.g. branded reactive props
+  // under Symbol.for('pyreon.reactiveProp')) would vanish from both picked
+  // and rest.
   for (const key of Reflect.ownKeys(props)) {
     const desc = Object.getOwnPropertyDescriptor(props, key)
-    // `desc` is only undefined if the key was deleted between ownKeys and the descriptor read.
+    // `desc` is only undefined if the key was deleted between ownKeys and
+    // the descriptor read — unreachable for a stable props object.
     /* v8 ignore next */
     if (!desc) continue
-    // Force configurable: true when copying to a fresh object.
+    // Force configurable: true when copying to a fresh object. Source descriptors
+    // may be non-configurable (default when created with `Object.defineProperty`
+    // and the caller omitted `configurable`). If we preserved that, any later
+    // `Object.defineProperty` on the same key — including subsequent splitProps
+    // post-processing or test mocks — would throw "Cannot redefine property".
     const safe = { ...desc, configurable: true }
     if (keySet.has(key)) {
       Object.defineProperty(picked, key, safe)
@@ -81,7 +89,11 @@ function mergeProperty(
   if (desc.get && existing) {
     mergeGetterWithExisting(result, key, desc, existing)
   } else if (desc.get) {
-    // Force configurable: true.
+    // Force configurable: true — source getters may have been defined via
+    // `Object.defineProperty` without an explicit configurable flag (which
+    // defaults to false). Without this, a later source in the same mergeProps
+    // call that overrides the same key would crash with TypeError:
+    // "Cannot redefine property".
     Object.defineProperty(result, key, { ...desc, configurable: true })
   } else if (existing?.get) {
     mergeStaticWithGetter(result, key, desc, existing.get)
@@ -151,7 +163,8 @@ export const removeUndefinedProps = (<T extends Record<string, any>>(props: T) =
   const descriptors = Object.getOwnPropertyDescriptors(props)
   for (const key of Object.keys(descriptors)) {
     const d = descriptors[key] as PropertyDescriptor
-    // Keep getter-shaped descriptors verbatim (reactive props).
+    // Keep getter-shaped descriptors verbatim (reactive props). For data
+    // descriptors, drop `value === undefined` so they don't shadow defaults.
     if (d.get || d.value !== undefined) {
       Object.defineProperty(result, key, d)
     }
@@ -220,10 +233,12 @@ export function _wrapSpread(
   if (!hasGetter) return source
 
   const result: Record<string, unknown> = {}
-  // Reflect.ownKeys covers symbol keys too.
+  // Reflect.ownKeys covers symbol keys too — REACTIVE_PROP brands and
+  // other framework symbols must round-trip through the wrap.
   for (const key of Reflect.ownKeys(source)) {
     const desc = descriptors[key as string]
-    // `getOwnPropertyDescriptors` already enumerated every own key.
+    // `getOwnPropertyDescriptors` already enumerated every own key, so a
+    // missing descriptor here is unreachable — defensive guard only.
     /* v8 ignore next */
     if (!desc) continue
     if (desc.get) {
@@ -250,6 +265,9 @@ export function makeReactiveProps(
   raw: Record<string, unknown>,
 ): Record<string, unknown> {
   // Fast path: scan for any REACTIVE_PROP-branded function first.
+  // If none found, return raw immediately — no object allocation, no property copying.
+  // This saves ~90 object allocations + ~450 property copies per page load
+  // for components with all-static props (buttons, icons, layout, etc.).
   const keys = Object.keys(raw)
   let hasAny = false
   for (let i = 0; i < keys.length; i++) {
@@ -282,7 +300,9 @@ export function makeReactiveProps(
 
 // ─── Unique ID ───────────────────────────────────────────────────────────────
 
-// Plain module-scope counter.
+// Plain module-scope counter. The duplicate-instance bug class is now
+// prevented at the bundler layer + detected at the runtime layer — see
+// `.claude/plans/jaunty-herding-kazoo.md`.
 let _idCounter = 0
 
 /**

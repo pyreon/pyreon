@@ -52,9 +52,12 @@ export function delegatedPropName(eventName: string): string {
   return `__ev_${eventName}`
 }
 
+// Track which containers already have delegation installed
 const _delegated = new WeakSet<Element>()
 
-// Per-dispatch tag for cross-root dedup (see the listener below).
+// Per-dispatch tag for cross-root dedup (see the listener below). Keyed on the
+// (single, shared) event object so every delegation root on the propagation
+// path reads the same set.
 const DELEGATED_ELEMENTS = Symbol('pyreonDelegatedElements')
 
 /**
@@ -68,7 +71,14 @@ export function setupDelegation(container: Element): void {
   for (const eventName of DELEGATED_EVENTS) {
     const prop = delegatedPropName(eventName)
     container.addEventListener(eventName, (e: Event) => {
-      // Dedup across NESTED delegation roots.
+      // Dedup across NESTED delegation roots. A single mount has ONE root, but an
+      // island hydrates via `hydrateRoot(islandMarker)`, installing a SECOND root
+      // INSIDE the app's. A click then bubbles through BOTH listeners, each
+      // walking `target -> its container`, firing every handler twice. Since
+      // `dispatchEvent` reuses one Event object for the whole propagation path, we
+      // tag it with the elements already invoked for THIS dispatch so an outer
+      // root skips what an inner root handled. Allocated lazily, so the common
+      // no-handler walk stays zero-alloc.
       const ev = e as Event & { [DELEGATED_ELEMENTS]?: Set<Element> }
       let el = e.target as (HTMLElement & Record<string, unknown>) | null
       while (el && el !== container) {
@@ -84,8 +94,13 @@ export function setupDelegation(container: Element): void {
           }
           if (!invoked.has(el)) {
             invoked.add(el)
-            // Per-handler `currentTarget` patch: native delegation leaves `e.currentTarget` as the
-            // container, so `ev.currentTarget.value` in user code would read from the container.
+            // Per-handler `currentTarget` patch: native delegation leaves
+            // `e.currentTarget` as the container, so `ev.currentTarget.value` in
+            // user code would read from the container — silently undefined for
+            // inputs. Pyreon's `TargetedEvent<E>` type PROMISES the matched
+            // element, and React/Vue/Solid all do the same override.
+            // `currentTarget` is a read-only accessor, so `defineProperty` with
+            // `configurable: true` is the only portable way to set it.
             Object.defineProperty(e, 'currentTarget', {
               value: el,
               configurable: true,

@@ -135,7 +135,8 @@ export function mergeFireDataIntoFindings(
   const format = options.formatDetail ?? DEFAULT_FORMAT
   const targetFile = norm(sourceFile)
 
-  // Build line-keyed index.
+  // Build line-keyed index. Sum counts at the same line; latest wins for
+  // lastFire + kind.
   const byLine = new Map<number, LPIHFireDatum>()
   for (const f of fires) {
     if (norm(f.file) !== targetFile) continue
@@ -159,7 +160,9 @@ export function mergeFireDataIntoFindings(
   if (byLine.size === 0) return findings
 
   return findings.map((finding) => {
-    // Footguns + static spans are NOT enriched.
+    // Footguns + static spans are NOT enriched — fire data at those lines
+    // belongs to a SEPARATE reactive expression on the same line, and
+    // attributing it to the footgun would be misleading.
     if (
       finding.kind === 'footgun' ||
       finding.kind === 'hoisted-static' ||
@@ -216,7 +219,8 @@ export function firesToCreationSiteFindings(
   const norm = options.normalizeFile ?? ((p) => p)
   const targetFile = norm(sourceFile)
 
-  // Per-line aggregation (multiple nodes on the same line.
+  // Per-line aggregation (multiple nodes on the same line — rare but
+  // possible: `const [a, b] = [signal(0), signal(0)]`).
   const byLine = new Map<number, LPIHFireDatum>()
   for (const f of fires) {
     if (norm(f.file) !== targetFile) continue
@@ -244,7 +248,9 @@ export function firesToCreationSiteFindings(
     return `${kindLabel} fired ${fire.count}×${rate}`
   })
 
-  // 'live-fire' is a new finding kind — synthetic, not produced by `analyzeReactivity()`.
+  // 'live-fire' is a new finding kind — synthetic, not produced by
+  // `analyzeReactivity()`. The LSP renders it as an inlay hint the same
+  // way as the structural kinds (reactive/static-text/etc).
   const LIVE_KIND = 'live-fire' as ReactivityFindingKind
 
   const out: ReactivityFinding[] = []

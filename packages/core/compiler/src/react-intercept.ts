@@ -16,7 +16,8 @@ import ts from 'typescript'
 import { assertClassicTs } from './ts'
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Types ═══════════════════════════════════════════════════════════════════════════════.
+// Types
+// ═══════════════════════════════════════════════════════════════════════════════
 
 export type ReactDiagnosticCode =
   | 'react-import'
@@ -77,7 +78,8 @@ export interface MigrationResult {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// React Hook → Pyreon mapping.
+// React Hook → Pyreon mapping
+// ═══════════════════════════════════════════════════════════════════════════════
 
 interface HookMapping {
   pyreonFn: string
@@ -172,7 +174,8 @@ const JSX_ATTR_REWRITES: Record<string, string> = {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Detection (diagnostic-only.
+// Detection (diagnostic-only, no modifications)
+// ═══════════════════════════════════════════════════════════════════════════════
 
 interface DetectContext {
   sf: ts.SourceFile
@@ -544,7 +547,14 @@ function detectJsxAttributes(ctx: DetectContext, node: ts.JsxAttribute): void {
 
 function detectDotValueSignal(ctx: DetectContext, node: ts.PropertyAccessExpression): void {
   const varName = (node.expression as ts.Identifier).text
-  // Precision gate: only flag `X.value = …` when X is actually a tracked signal binding.
+  // Precision gate: only flag `X.value = …` when X is actually a tracked
+  // signal binding. Without this, the detector false-positived on every
+  // DOM-element / data-object `.value` write — `input.value = ''`,
+  // `cell.value = x`, `o.value = y`, `ref.current.value = z` (the receiver
+  // there is the `.current` PropertyAccess, already excluded by
+  // `isDotValueAccess` requiring an Identifier receiver). Require positive
+  // evidence the receiver is a `const X = signal(...)` / `computed(...)` /
+  // `useSignal(...)` / `createSignal(...)` binding before emitting.
   if (!ctx.signalBindings.has(varName)) return
   const parent = node.parent
   if (ts.isBinaryExpression(parent) && parent.left === node) {
@@ -656,7 +666,8 @@ export function detectReactPatterns(code: string, filename = 'input.tsx'): React
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Migration (detection + auto-fix).
+// Migration (detection + auto-fix)
+// ═══════════════════════════════════════════════════════════════════════════════
 
 type Replacement = { start: number; end: number; text: string }
 
@@ -917,6 +928,7 @@ function migrateDangerouslySetInnerHTML(ctx: MigrateContext, node: ts.JsxAttribu
 }
 
 function applyReplacements(code: string, ctx: MigrateContext): string {
+  // Remove React import declarations
   for (const imp of ctx.importsToRemove) {
     ctx.replacements.push({ start: imp.getStart(ctx.sf), end: imp.getEnd(), text: '' })
     ctx.changes.push({
@@ -1024,7 +1036,8 @@ export function migrateReactCode(code: string, filename = 'input.tsx'): Migratio
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Helpers ═══════════════════════════════════════════════════════════════════════════════.
+// Helpers
+// ═══════════════════════════════════════════════════════════════════════════════
 
 function findParentJsxElement(
   node: ts.Node,
@@ -1067,7 +1080,8 @@ function findLastImportEnd(code: string): number {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Quick scan (regex-based.
+// Quick scan (regex-based, for fast pre-filtering)
+// ═══════════════════════════════════════════════════════════════════════════════
 
 /** Fast regex check — returns true if code likely contains React patterns worth analyzing */
 export function hasReactPatterns(code: string): boolean {
@@ -1089,6 +1103,7 @@ export function hasReactPatterns(code: string): boolean {
   )
 }
 
-// Error-diagnosis catalog moved to the browser-safe `./diagnose` module (no
-// `typescript` import) so it can load in the browser.
+// Error-diagnosis catalog moved to the browser-safe `./diagnose` module
+// (no `typescript` import) so it can load in the browser. Re-exported here so
+// existing `from './react-intercept'` consumers + the package index keep working.
 export { diagnoseError, type ErrorDiagnosis } from './diagnose'

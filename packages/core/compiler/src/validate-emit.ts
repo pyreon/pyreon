@@ -98,7 +98,10 @@ export interface ValidateSchemaInfo {
   topLevel: boolean
 }
 
-// Regexes copied VERBATIM from `@pyreon/validate`'s `string.ts` so the emitted verdict.
+// Regexes copied VERBATIM from `@pyreon/validate`'s `string.ts` so the emitted
+// verdict is byte-identical to the runtime (`email` is the strict standard
+// default — 2+ char TLD, no leading/consecutive dots). Emitted via `reExpr`
+// (`new RegExp(re.source, re.flags)`) so a literal can't drift in transcription.
 const EMAIL_RE =
   /^(?!\.)(?!.*\.\.)([A-Za-z0-9_'+\-.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9-]*\.)+[A-Za-z]{2,}$/
 const URL_RE = /^https?:\/\/[^\s/$.?#].[^\s]*$/i
@@ -348,7 +351,9 @@ export function analyzeValidate(code: string, filename = 'input.ts'): ValidateSc
     if (ts.isVariableDeclaration(n) && n.initializer && unwindChain(n.initializer)) {
       const node = parseExpr(n.initializer)
       const pos = sf.getLineAndCharacterOfPosition(n.initializer.getStart(sf))
-      // MODULE-LEVEL iff: VariableDeclaration → VariableDeclarationList → VariableStatement →.
+      // MODULE-LEVEL iff: VariableDeclaration → VariableDeclarationList →
+      // VariableStatement → SourceFile. Anything nested (function body, block,
+      // arrow) is NOT safe to attach a module-end verdict to.
       const list = n.parent
       const stmt = list?.parent
       const topLevel =
@@ -439,7 +444,16 @@ function emitNumberChecks(checks: NumberCheck[], v: string, path: string): strin
 }
 
 /** Emit the issue-collecting statements for `node` over `v` (an expr) at `path` (an array expr). */
-// `depth` = the number of ENCLOSING array loops.
+// `depth` = the number of ENCLOSING array loops. Each `array` node names its
+// loop vars `__i<depth>` / `__e<depth>` so a NESTED array never shadows its
+// ancestor's loop var. Without this, two arrays on one root-to-leaf path both
+// emitted `__i`/`__e`, and the inner `const __e = __e[__i]` self-referenced the
+// outer `__e` in the inner block scope → `Cannot access '__e' before
+// initialization` (TDZ) thrown for EVERY input. Under `compileValidators`
+// (vite-plugin) that throw is swallowed by the verdict try/catch → `.is()`
+// silently returned `false` for valid data. Sibling arrays at the same depth
+// (`s.object({ a: s.array(…), b: s.array(…) })`) live in separate `for` block
+// scopes, so reusing the same name there is correct — only nesting collides.
 function emitNode(node: ValidateNode, v: string, path: string, depth = 0): string {
   switch (node.kind) {
     case 'string': {
@@ -494,7 +508,16 @@ export function emitValidator(node: ValidateNode): string {
   return `(input) => {\nconst issues = []\n${body}\nreturn issues\n}`
 }
 
-// ─── Schema-source emit (tree-shakeable rewrite target) ────────────────────── The COUNTERPART.
+// ─── Schema-source emit (tree-shakeable rewrite target) ──────────────────────
+//
+// The COUNTERPART to `emitValidator`: instead of lowering the IR to a verdict
+// function, lower it to a tree-shakeable `@pyreon/validate/mini` schema
+// CONSTRUCTION expression. The user keeps writing the beautiful chainable
+// `s.string().email().min(2)`; `@pyreon/vite-plugin` swaps the source for the
+// emitted lean form (`string().check(email(), minLength(2))`) so the bundle
+// pulls only the constructors + actions used — no second API to learn. Verdict
+// + issues stay byte-identical (the mini actions are parity-locked to the
+// chainable methods: `validate/tests/mini-parity.test.ts`).
 
 /** Result of {@link emitSchemaSource}. */
 export interface SchemaSourceResult {
@@ -561,7 +584,8 @@ function emitSchemaExpr(node: ValidateNode, imports: Set<string>, prefix: string
       const actions = node.checks.map((c) => {
         const a = stringActionExpr(c)
         imports.add(a.name)
-        // `prefix + call` prefixes only the leading action identifier.
+        // `prefix + call` prefixes only the leading action identifier; any
+        // `new RegExp(...)` inside the call is a global, left untouched.
         return prefix + a.call
       })
       return `${ctor}.check(${actions.join(', ')})`

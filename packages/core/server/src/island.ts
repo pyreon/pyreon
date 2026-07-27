@@ -140,7 +140,9 @@ export function island<P extends Props = Props>(
 ): ComponentFn<P> & IslandMeta {
   const { name, hydrate = 'load', prefetch = 'none' } = options
   if (!name) {
-    // `name` is auto-derived from the const binding by @pyreon/vite-plugin.
+    // `name` is auto-derived from the const binding by @pyreon/vite-plugin
+    // (`islands: true`, the default) — reaching here means the build ran
+    // WITHOUT the plugin (or the call has no const binding to derive from).
     throw new Error(
       '[Pyreon] island() has no name. Either build with @pyreon/vite-plugin '
         + '(islands auto-naming derives it from the `const X = island(…)` binding), '
@@ -151,7 +153,8 @@ export function island<P extends Props = Props>(
   const IslandWrapper = function IslandWrapper(props: P): VNode | Promise<VNode | null> {
     const serializedProps = serializeIslandProps(props, name)
 
-    // Only emit data-prefetch when it actually changes behavior.
+    // Only emit data-prefetch when it actually changes behavior. `none` is the
+    // default and pointless on `load` / `never` — keep the rendered HTML clean.
     const attrs: Record<string, string> = {
       'data-component': name,
       'data-props': serializedProps,
@@ -161,15 +164,35 @@ export function island<P extends Props = Props>(
       attrs['data-prefetch'] = prefetch
     }
 
-    // ── CLIENT: the island OWNS its hydration lifecycle ────────────────────── Render.
+    // ── CLIENT: the island OWNS its hydration lifecycle ──────────────────────
+    // Render the `<pyreon-island>` marker, then on mount load the chunk + mount
+    // the component INTO the marker per the `hydrate` strategy. This is robust
+    // whether the host hydrated the page (a static islands app — where island()
+    // only ever runs on the server, so this branch never fires there) or
+    // RE-MOUNTED the route client-side. `@pyreon/zero` does the latter: its
+    // route is a reactive child of RouterView, so the SSR DOM is discarded and
+    // re-mounted, which (a) makes an async inline render here throw with no
+    // Suspense boundary, and (b) races/defeats a one-shot external
+    // `hydrateIslandsAuto` scan. Owning hydration here sidesteps both: no inline
+    // async render, no dependency on external scan timing.
     if (isClient) {
       if (hydrate === 'never') return h('pyreon-island', attrs)
       let islandEl: HTMLElement | null = null
-      // Capture the context owner NOW, synchronously during this component's render.
+      // Capture the context owner NOW, synchronously during this component's
+      // render — while its owner (and the ancestor provider chain: PyreonUI
+      // theme, etc.) is active. Hydration is deferred (idle / visible /
+      // interaction) and runs after an async `import()`, so the active owner
+      // is long gone by then. Threading this captured owner into
+      // `scheduleHydration` lets the island's hydration root re-parent to it,
+      // so a rocketstyle (or any context-reading) component inside the island
+      // resolves the theme instead of crashing on `undefined`. #1338's
+      // owner-based context removed the global stack that previously let a
+      // late mount find ancestor providers.
       const capturedOwner = getContextOwner()
       onMount(() => {
         if (!islandEl) return
-        // Scheduler is client-only.
+        // Scheduler is client-only — the dynamic import keeps it out of the SSR
+        // module graph and avoids a static `client` ↔ `island` import cycle.
         void import('./client').then(({ scheduleHydration, schedulePrefetch }) => {
           if (!islandEl) return
           const isleLoader = loader as () => Promise<{ default: ComponentFn } | ComponentFn>
@@ -185,14 +208,16 @@ export function island<P extends Props = Props>(
       })
     }
 
-    // ── SERVER (SSR/SSG): render the component INSIDE the marker ───────────── so the static HTML.
+    // ── SERVER (SSR/SSG): render the component INSIDE the marker ─────────────
+    // so the static HTML carries the island content (SEO / no-JS / first paint).
     return loader().then((mod) => {
       const Comp = typeof mod === 'function' ? mod : mod.default
       return h('pyreon-island', attrs, h(Comp, props))
     })
   }
 
-  // Attach metadata so tooling (CLI project scanner, MCP.
+  // Attach metadata so tooling (CLI project scanner, MCP, future codegen) can
+  // detect islands without runtime introspection.
   const wrapper = IslandWrapper as unknown as ComponentFn<P> & IslandMeta
   Object.defineProperties(wrapper, {
     __island: { value: true, enumerable: true },
@@ -241,7 +266,9 @@ function serializeIslandProps(
   props: Record<string, unknown>,
   islandName: string,
 ): string {
-  // The `children` key is dropped explicitly (with a dev warning) BEFORE the codec sees them.
+  // The `children` key is dropped explicitly (with a dev warning) BEFORE
+  // the codec sees them — children carry VNode trees / closures and are
+  // never portable, so the dev message about them stays focused.
   const clean: Record<string, unknown> = {}
   let droppedChildren = false
   for (const [key, value] of Object.entries(props)) {
@@ -260,12 +287,16 @@ function serializeIslandProps(
     )
   }
 
-  // The SSR renderer's renderProp() already applies escapeHtml() to attribute values.
+  // The SSR renderer's renderProp() already applies escapeHtml() to attribute
+  // values, so the JSON is safe to embed in HTML attributes without double-escaping.
   try {
     const encoded = encodeIslandProps(clean, islandName)
     return JSON.stringify(encoded)
   } catch (err) {
-    // Encoder threw on a class instance, depth overflow, or circular reference.
+    // Encoder threw on a class instance, depth overflow, or circular
+    // reference (the codec catches each with a named-path message). Don't
+    // 500 the SSR — emit empty props and surface the full error in dev so
+    // the offending site is visible before users hit it on the client.
     if (process.env.NODE_ENV !== 'production') {
       // eslint-disable-next-line no-console
       console.error(

@@ -92,7 +92,8 @@ export interface IslandAuditResult {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Discovery ═══════════════════════════════════════════════════════════════════════════════.
+// Discovery
+// ═══════════════════════════════════════════════════════════════════════════════
 
 function findMonorepoRoot(startDir: string): string | null {
   let dir = resolve(startDir)
@@ -100,7 +101,7 @@ function findMonorepoRoot(startDir: string): string | null {
     try {
       if (statSync(join(dir, 'packages')).isDirectory()) return dir
     } catch {
-      // Best effort — unreadable or unparseable input is skipped.
+      // fall through
     }
     const parent = dirname(dir)
     if (parent === dir) return null
@@ -139,7 +140,8 @@ function walkSourceFiles(dir: string, out: string[], depth = 0): void {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Per-file extraction.
+// Per-file extraction
+// ═══════════════════════════════════════════════════════════════════════════════
 
 interface IslandDecl {
   name: string
@@ -224,6 +226,7 @@ function extractIslandDecls(sf: ts.SourceFile, absPath: string, root: string): I
             nameVal = stringLiteralValue(prop.initializer)
           } else if (keyText === 'hydrate') {
             const v = stringLiteralValue(prop.initializer)
+            // Normalize `'interaction(focus)'` → `'interaction'` for grouping
             hydrateVal = v?.startsWith('interaction') ? 'interaction' : v
           }
         }
@@ -350,7 +353,8 @@ function extractFromFile(absPath: string, root: string): FileExtraction {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Import-path resolution helper.
+// Import-path resolution helper
+// ═══════════════════════════════════════════════════════════════════════════════
 
 const TS_EXTS = ['.ts', '.tsx', '.js', '.jsx']
 
@@ -362,7 +366,7 @@ function resolveAbsToFile(absBase: string): string | null {
   try {
     if (statSync(absBase).isFile()) return absBase
   } catch {
-    // Best effort — unreadable or unparseable input is skipped.
+    // fall through
   }
   for (const ext of TS_EXTS) {
     try {
@@ -393,7 +397,8 @@ function resolveImport(fromDir: string, spec: string): string | null {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Detectors ═══════════════════════════════════════════════════════════════════════════════.
+// Detectors
+// ═══════════════════════════════════════════════════════════════════════════════
 
 function detectDuplicateName(
   declsByFile: Map<string, IslandDecl[]>,
@@ -409,7 +414,9 @@ function detectDuplicateName(
   }
   for (const [name, list] of byName) {
     if (list.length < 2) continue
-    // Each duplicate gets its own finding pointing at one occurrence.
+    // Each duplicate gets its own finding pointing at one occurrence,
+    // with `related` listing the others. The user sees N findings for
+    // N duplicates so every IDE jumps highlight the conflict cleanly.
     for (let i = 0; i < list.length; i++) {
       const self = list[i]
       if (!self) continue
@@ -492,7 +499,13 @@ function detectDeadIslands(
 ): void {
   for (const d of decls) {
     if (importedFiles.has(d.loc.path)) continue
-    // fs-router routes (`src/routes/**`.
+    // fs-router routes (`src/routes/**` — the @pyreon/zero / fs-router
+    // convention) are AUTO-LOADED entry points: the framework's generated
+    // virtual route module `lazy(() => import('<abs route path>'))`s them, so
+    // no hand-written source statically OR dynamically imports the file. The
+    // dead-island heuristic can't see that generated import, so an island
+    // declared in a route would false-positive as "dead" even though the route
+    // renders it. Skip route files. (Non-route islands stay covered.)
     if (/(?:^|\/)src\/routes\//.test(d.loc.relPath)) continue
     findings.push({
       code: 'dead-island',
@@ -503,7 +516,8 @@ function detectDeadIslands(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Public API ═══════════════════════════════════════════════════════════════════════════════.
+// Public API
+// ═══════════════════════════════════════════════════════════════════════════════
 
 export function auditIslands(rootDir: string): IslandAuditResult {
   const root = findMonorepoRoot(rootDir)
@@ -531,7 +545,12 @@ export function auditIslands(rootDir: string): IslandAuditResult {
   const declsByFile = new Map<string, IslandDecl[]>()
   const allDecls: IslandDecl[] = []
   const allRegistry: RegistryEntry[] = []
-  // Set of canonical absolute file paths that some other file imports (statically OR dynamically).
+  // Set of canonical absolute file paths that some other file imports
+  // (statically OR dynamically). Used by the dead-island detector to
+  // distinguish declared-but-orphaned islands from declared-and-wired-up
+  // ones. extractImports records resolve()'d relative specs WITHOUT
+  // extension-completion, so we re-canonicalize each entry through the
+  // file-resolution helper to land on the actual file path.
   const resolvedImports = new Set<string>()
 
   for (const file of files) {
@@ -542,7 +561,11 @@ export function auditIslands(rootDir: string): IslandAuditResult {
     }
     allRegistry.push(...ex.registryEntries)
     for (const spec of ex.imports) {
-      // extractImports stores absolute paths for relative specs (already resolve()'d) and bare.
+      // extractImports stores absolute paths for relative specs (already
+      // resolve()'d) and bare package names as-is. Bare specs never
+      // match an island file path, so skip them. For absolute paths,
+      // try ext / index completion to land on the canonical file the
+      // dead-island detector compares against.
       if (!spec.startsWith('/')) continue
       const resolved = resolveAbsToFile(spec)
       if (resolved) resolvedImports.add(resolved)
@@ -552,7 +575,8 @@ export function auditIslands(rootDir: string): IslandAuditResult {
   summary.islandsDeclared = allDecls.length
   summary.registryEntries = allRegistry.length
 
-  // Run detectors.
+  // Run detectors. Order is informational only — findings are sorted
+  // by (file, line) at the end for stable display.
   detectDuplicateName(declsByFile, findings)
   detectNeverWithRegistry(allDecls, allRegistry, findings)
   detectRegistryMismatch(allDecls, allRegistry, findings)
@@ -573,7 +597,8 @@ export function auditIslands(rootDir: string): IslandAuditResult {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Formatter ═══════════════════════════════════════════════════════════════════════════════.
+// Formatter
+// ═══════════════════════════════════════════════════════════════════════════════
 
 export interface IslandAuditFormatOptions {
   /** When true, emit JSON instead of markdown-ish text. */

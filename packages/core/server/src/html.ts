@@ -53,7 +53,14 @@ function splitOnce(str: string, delimiter: string): [string, string] {
 }
 
 export function processTemplate(template: string, data: TemplateData): string {
-  // Use FUNCTION replacements, not string replacements.
+  // Use FUNCTION replacements, not string replacements. With a string
+  // replacement, `String.prototype.replace` still interprets `$$`, `$&`,
+  // `` $` ``, `$'`, `$n` in the *replacement* even though the search is a
+  // literal string. `data.app` is rendered SSR HTML and routinely
+  // contains literal `$&` / `$$` (prices, code samples, math) — string
+  // replacement would corrupt them. A replacer function returns its
+  // value verbatim with zero `$`-pattern interpretation. Same
+  // first-occurrence semantics as before.
   return template
     .replace('<!--pyreon-head-->', () => data.head)
     .replace('<!--pyreon-app-->', () => data.app)
@@ -80,7 +87,9 @@ export function buildScripts(
   const parts: string[] = []
 
   if (loaderData && Object.keys(loaderData).length > 0) {
-    // M2.2 — safe serializer: strips function/symbol values silently.
+    // M2.2 — safe serializer: strips function/symbol values silently,
+    // throws a Pyreon-prefixed error on circular refs naming the offending
+    // key, and escapes </script> for safe inline embedding.
     const json = stringifyLoaderData(loaderData)
     parts.push(`<script>window.__PYREON_LOADER_DATA__=${json}</script>`)
   }

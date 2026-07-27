@@ -38,14 +38,21 @@ export interface NativeBinding {
     ssr: boolean,
     knownSignals: string[] | null,
     reactivityLens: boolean,
-    // Optional rocketstyle-collapse config (napi array/Record shape).
+    // Optional rocketstyle-collapse config (napi array/Record shape). `unknown`
+    // here keeps load-native config-free; jsx.ts casts transformJsx to the
+    // precisely-typed NativeTransformFn at the call site.
     collapse?: unknown,
     // Optional compile-to-string SSR fast path flag (`options.ssrTemplate`).
     ssrTemplate?: boolean,
   ) => unknown
 }
 
-// Local Node-process surface.
+// Local Node-process surface. `@pyreon/runtime-dom` ships an ambient
+// `declare var process: { env: { NODE_ENV?: string } }` to enforce the
+// bundler-agnostic dev-gate pattern, which narrows `process` for ANY
+// file pulled in by runtime-dom's typecheck — including this one when
+// imported via the `bun` condition. Casting through a local interface
+// restores access to the platform/arch/report fields we genuinely need.
 interface NodeProcess {
   platform: string
   arch: string
@@ -74,9 +81,12 @@ export function getPlatformPackageName(
   arch: string = nodeProcess.arch,
   libc: string | null = detectLibc(platform),
 ): string | null {
-  // Build the suffix for libc-bearing platforms (Linux glibc/musl, Windows MSVC).
+  // Build the suffix for libc-bearing platforms (Linux glibc/musl,
+  // Windows MSVC). Single source of truth — no per-platform branching.
   const suffix = libc ? `-${libc}` : ''
-  // Allowlist of (platform, arch) combos that the cross-platform CI workflow actually builds.
+  // Allowlist of (platform, arch) combos that the cross-platform CI
+  // workflow actually builds. Keep in sync with
+  // `.github/workflows/release-native.yml` matrix.
   const supported: Record<string, string[]> = {
     darwin: ['arm64', 'x64'],
     linux: ['x64', 'arm64'],
@@ -136,12 +146,15 @@ export function loadNativeBinding(metaUrl: string): NativeBinding | null {
   }
 
   // Path 2: per-platform npm package (production install path).
+  // Will start working once Phase 5b publishes the per-platform
+  // packages and `optionalDependencies` resolves them at install time.
   const pkgName = getPlatformPackageName()
   if (pkgName !== null) {
     try {
       return nativeRequire(pkgName) as NativeBinding
     } catch {
-      // Per-platform package not installed.
+      // Per-platform package not installed (typical pre-Phase-5b
+      // state, or a platform we don't yet ship binaries for).
     }
   }
 

@@ -33,7 +33,11 @@ export const Image = (props: ImageProps): VNode => {
   }
   if (props.width !== undefined) style.width = resolveDimension(props.width)
   if (props.height !== undefined) style.height = resolveDimension(props.height)
-  // The canonical src dispatch (asset-pipeline arc): a BARE name (no scheme.
+  // The canonical src dispatch (asset-pipeline arc): a BARE name
+  // (no scheme, no slash) is a bundled asset on native (Assets.xcassets
+  // / res/drawable via PMTC) — on web the assets step materializes the
+  // shared assets/ dir under /assets/, so the same source resolves here.
+  // Scheme'd URLs and path-style srcs pass through untouched.
   const src =
     /^https?:\/\//.test(props.src) || props.src.includes('/')
       ? props.src

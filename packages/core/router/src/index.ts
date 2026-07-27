@@ -44,7 +44,10 @@
 import { name as __pkgName, version as __pkgVersion } from '../package.json' with { type: 'json' }
 import { registerSingleton } from '@pyreon/reactivity'
 
-// Singleton sentinel — fail-loud detection of duplicate @pyreon/router instances in the same heap.
+// Singleton sentinel — fail-loud detection of duplicate @pyreon/router
+// instances in the same heap. See @pyreon/reactivity/singleton-sentinel for
+// full rationale. Hardcoded version is acceptable here — it's a diagnostic
+// aid, not a load-bearing identity check.
 registerSingleton(__pkgName, __pkgVersion, import.meta.url)
 
 export type { RouterLinkProps, RouterProviderProps, RouterViewProps } from './components'
@@ -72,6 +75,7 @@ export {
   stringifyLoaderData,
   useLoaderData,
 } from './loader'
+// Match utilities (useful for SSR route pre-fetching)
 export {
   buildPath,
   findRouteByName,
@@ -100,7 +104,8 @@ export {
   useTypedSearchParams,
   useValidatedSearch,
 } from './router'
-// Types Data loaders
+// Types
+// Data loaders
 export type {
   AfterEachHook,
   Blocker,

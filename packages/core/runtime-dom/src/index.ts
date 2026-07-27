@@ -1,8 +1,10 @@
 import { name as __pkgName, version as __pkgVersion } from '../package.json' with { type: 'json' }
 import { registerSingleton } from '@pyreon/reactivity'
 
-// Singleton sentinel — fail-loud detection of duplicate @pyreon/runtime-dom instances
-// in the same heap. See @pyreon/reactivity/singleton-sentinel for full rationale.
+// Singleton sentinel — fail-loud detection of duplicate @pyreon/runtime-dom
+// instances in the same heap. See @pyreon/reactivity/singleton-sentinel for
+// full rationale. Hardcoded version is acceptable here — it's a diagnostic
+// aid, not a load-bearing identity check.
 registerSingleton(__pkgName, __pkgVersion, import.meta.url)
 
 export type { BoundReactiveNode } from './binding-registry'
@@ -29,8 +31,9 @@ export {
   applyClassProp as _setClass,
   applyProp,
   applyProps,
-  // The compiled `<div {...props}>` template path lowers to `_applyProps`; it must wire a spread
-  // `ref` (the h()/hydrate paths do it separately).
+  // The compiled `<div {...props}>` template path lowers to `_applyProps`; it
+  // must wire a spread `ref` (the h()/hydrate paths do it separately). See
+  // `applyPropsWithRef`. Dynamic spreads (`{...make()}`) use `_bindSpread`.
   applyPropsWithRef as _applyProps,
   bindSpread as _bindSpread,
   applyStyleProp as _setStyle,
@@ -60,8 +63,9 @@ import { setupDelegation } from './delegate'
 import { installDevTools } from './devtools'
 import { mountChild } from './mount'
 
-// Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this uses
-// `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
+// Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
+// uses `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
+// Dev-time counter sink — see packages/internals/perf-harness for contract.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
 /**

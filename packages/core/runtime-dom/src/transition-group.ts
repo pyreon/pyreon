@@ -95,8 +95,10 @@ type ItemEntry = {
 function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VNodeChild {
   const tag = props.tag ?? 'div'
 
-  // Children mode: no `items` render-prop, so TransitionGroup is a plain animated container around
-  // whatever keyed list it wraps (e.g. a `<For>`), which owns reconciliation.
+  // Children mode: no `items` render-prop, so TransitionGroup is a plain animated
+  // container around whatever keyed list it wraps (e.g. a `<For>`), which owns
+  // reconciliation. This is the shape PMTC lowers on native, so the SAME .tsx
+  // renders on web + iOS + Android. Per-item enter/leave CSS is a no-op here.
   if (typeof props.items !== 'function') {
     return h(tag, {}, props.children)
   }
@@ -160,8 +162,9 @@ function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VNodeChil
       }
       el.addEventListener('transitionend', done, { once: true })
       el.addEventListener('animationend', done, { once: true })
-      // Safety timeout: if CSS animation never fires (off-screen, zero duration, `display: none`),
-      // force cleanup so the entry's onAfterEnter runs and the listener + closure don't leak.
+      // Safety timeout: if CSS animation never fires (off-screen, zero
+      // duration, `display: none`), force cleanup so the entry's
+      // onAfterEnter runs and the listener + closure don't leak.
       safetyTimer = setTimeout(done, 5000)
     })
   }
@@ -197,8 +200,10 @@ function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VNodeChil
       }
       el.addEventListener('transitionend', done, { once: true })
       el.addEventListener('animationend', done, { once: true })
-      // Safety timeout — CRITICAL here: a list item whose leave transition never fires (off-screen,
-      // zero duration.
+      // Safety timeout — CRITICAL here: a list item whose leave transition never
+      // fires (off-screen, zero duration, `display: none`) would stay in the
+      // `entries` Map forever because `onDone` never runs, a real leak that grows
+      // with every list mutation.
       safetyTimer = setTimeout(done, 5000)
     })
   }
@@ -229,8 +234,11 @@ function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VNodeChil
       const key = keyFn(item, i)
       if (entries.has(key)) continue
       const itemRef = createRef<HTMLElement>()
-      // Both render AND mountChild must run untracked — child component setup must NOT
-      // subscribe this effect.
+      // Both render AND mountChild must run untracked — child component setup
+      // must NOT subscribe this effect. Otherwise an unrelated signal flip re-runs
+      // TransitionGroup, runCleanup() disposes the children's inner effects, and
+      // the next mount skips re-rendering kept entries, losing inner reactivity.
+      // Same shape as the mountFor / mountKeyedList fix in nodes.ts.
       const cleanup = runUntracked(() => {
         const rawVNode = render(item, i)
         const vnode: VNode =
@@ -355,8 +363,9 @@ function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VNodeChil
   onUnmount(() => {
     e.dispose()
     for (const entry of entries.values()) {
-      // Cancel any in-progress enter/leave/move transition so the 5s safety timer doesn't keep
-      // running past container unmount and onAfterEnter / onAfterLeave don't fire on a detached.
+      // Cancel any in-progress enter/leave/move transition so the 5s
+      // safety timer doesn't keep running past container unmount and
+      // onAfterEnter / onAfterLeave don't fire on a detached element.
       entry.cancelTransition?.()
       entry.cancelTransition = null
       entry.cleanup()
@@ -367,7 +376,11 @@ function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VNodeChil
   return h(tag, { ref: containerRef })
 }
 
-// Marked native so compat-mode jsx() runtimes skip wrapCompatComponent — this component needs
-// Pyreon's setup frame.
+// Marked native so compat-mode jsx() runtimes skip wrapCompatComponent — this
+// component needs Pyreon's setup frame. ASSIGNMENT + /* @__PURE__ */ rather than
+// a bare `nativeCompat(X)` statement: inside the built lib's shared chunk a bare
+// call is an unremovable side effect that RETAINS the whole component body in
+// every consumer bundle that never imports it (~1.5KB gz measured). The PURE
+// annotation lets the bundler drop it when the export is unused.
 const _TransitionGroup = /* @__PURE__ */ nativeCompat(TransitionGroup)
 export { _TransitionGroup as TransitionGroup }

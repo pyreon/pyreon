@@ -153,7 +153,9 @@ export interface AccessibilityProps {
  * surface.
  */
 export interface HtmlPassthroughProps extends AccessibilityProps {
-  // Mapped key types make TS accept ANY `data-`/`aria-`-prefixed key without needing each one.
+  // Mapped key types make TS accept ANY `data-`/`aria-`-prefixed key
+  // without needing each one enumerated. Values match the HTML
+  // attribute model (string | number | boolean | undefined).
   [key: `data-${string}`]: string | number | boolean | undefined
   [key: `aria-${string}`]: string | number | boolean | undefined
   id?: string

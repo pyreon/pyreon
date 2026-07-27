@@ -22,7 +22,8 @@ import type { WebViewProps } from '../types/webview'
 export function WebView(props: WebViewProps): VNode {
   const attrs: Record<string, unknown> = {
     ...collectPassthroughAttrs(props as Record<string, unknown>),
-    // Fill the container, no chrome — matches the native host's full-bleed embed.
+    // Fill the container, no chrome — matches the native host's full-bleed
+    // embed.
     style: 'border: 0; width: 100%; height: 100%',
   }
   if (props.html !== undefined) attrs.srcdoc = props.html
@@ -31,12 +32,17 @@ export function WebView(props: WebViewProps): VNode {
   const hasData = 'data' in props
   const hasOnMessage = 'onMessage' in props
 
-  // Both bridges share ONE frame ref + onLoad.
+  // Both bridges share ONE frame ref + onLoad. Same-origin / `srcdoc`
+  // only — a cross-origin remote `src` can't be reached from the parent
+  // (the native targets cover remote content via evaluateJavaScript / the
+  // script-message handler; on web you host same-origin / srcdoc content).
   if (hasData || hasOnMessage) {
     let frame: HTMLIFrameElement | null = null
     let loaded = false
 
-    // Live-data bridge — push `data` into the hosted page's `window.__pyreonData` + fire.
+    // Live-data bridge — push `data` into the hosted page's
+    // `window.__pyreonData` + fire a `pyreondata` event, on load AND
+    // reactively on change, WITHOUT reloading the iframe.
     const push = (): void => {
       const win = frame?.contentWindow as (Window & { __pyreonData?: unknown }) | null | undefined
       if (!loaded || !win) return
@@ -48,7 +54,10 @@ export function WebView(props: WebViewProps): VNode {
       }
     }
 
-    // Reverse bridge — define the unified `window.pyreonPostMessage(m)` API on the hosted page so.
+    // Reverse bridge — define the unified `window.pyreonPostMessage(m)`
+    // API on the hosted page so it can send strings back to the host's
+    // `onMessage` callback (mirror of the iOS WKScriptMessageHandler /
+    // Android @JavascriptInterface).
     const injectReverseBridge = (): void => {
       const win = frame?.contentWindow as
         | (Window & { pyreonPostMessage?: (m: unknown) => void })
@@ -67,13 +76,16 @@ export function WebView(props: WebViewProps): VNode {
     attrs.ref = (el: HTMLIFrameElement | null): void => {
       frame = el
     }
-    // `onLoad` is wired by the runtime (no raw addEventListener).
+    // `onLoad` is wired by the runtime (no raw addEventListener) — run the
+    // bridges once the iframe's document exists.
     attrs.onLoad = (): void => {
       loaded = true
       if (hasData) push()
       if (hasOnMessage) injectReverseBridge()
     }
-    // Re-push whenever `data` changes (the read tracks it).
+    // Re-push whenever `data` changes (the read tracks it). On the first
+    // run the iframe usually isn't loaded yet → push no-ops, and `onLoad`
+    // pushes once it is.
     if (hasData) {
       effect(() => {
         void (props as { data?: unknown }).data

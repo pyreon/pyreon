@@ -93,7 +93,8 @@ import ts from 'typescript'
 import { assertClassicTs } from './ts'
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Types ═══════════════════════════════════════════════════════════════════════════════.
+// Types
+// ═══════════════════════════════════════════════════════════════════════════════
 
 export type PyreonDiagnosticCode =
   | 'for-missing-by'
@@ -131,7 +132,8 @@ export interface PyreonDiagnostic {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Detection context.
+// Detection context
+// ═══════════════════════════════════════════════════════════════════════════════
 
 interface DetectContext {
   sf: ts.SourceFile
@@ -187,7 +189,8 @@ function pushDiag(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// JSX helpers ═══════════════════════════════════════════════════════════════════════════════.
+// JSX helpers
+// ═══════════════════════════════════════════════════════════════════════════════
 
 export function getJsxTagName(node: ts.JsxOpeningLikeElement): string {
   const t = node.tagName
@@ -208,7 +211,8 @@ export function findJsxAttribute(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Pattern: <For> without `by` / with `key`.
+// Pattern: <For> without `by` / with `key`
+// ═══════════════════════════════════════════════════════════════════════════════
 
 function detectForKeying(ctx: DetectContext, node: ts.JsxOpeningLikeElement): void {
   if (getJsxTagName(node) !== 'For') return
@@ -243,7 +247,8 @@ function detectForKeying(ctx: DetectContext, node: ts.JsxOpeningLikeElement): vo
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Pattern: destructured props in component signature.
+// Pattern: destructured props in component signature
+// ═══════════════════════════════════════════════════════════════════════════════
 
 function containsJsx(node: ts.Node): boolean {
   let found = false
@@ -285,7 +290,9 @@ function detectPropsDestructured(
   if (!first || !ts.isObjectBindingPattern(first.name)) return
   if (first.name.elements.length === 0) return
 
-  // Heuristic: only flag functions that actually render JSX (component functions).
+  // Heuristic: only flag functions that actually render JSX (component
+  // functions), not arbitrary callbacks that happen to destructure an
+  // options bag.
   if (!containsJsx(node)) return
 
   pushDiag(
@@ -300,7 +307,8 @@ function detectPropsDestructured(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Pattern: body-scope `const { x } = props` destructure.
+// Pattern: body-scope `const { x } = props` destructure
+// ═══════════════════════════════════════════════════════════════════════════════
 
 /**
  * Strip the wrappers that can sit between `=` and the props identifier
@@ -357,19 +365,23 @@ function detectPropsDestructuredBody(
   ctx: DetectContext,
   node: ts.ArrowFunction | ts.FunctionDeclaration | ts.FunctionExpression,
 ): void {
-  // Component-by-NAME (PascalCase) or component-by-POSITION.
+  // Component-by-NAME (PascalCase) or component-by-POSITION (the anonymous
+  // arrow a HOC returns, `props`-param-gated) — see isReturnedPropsComponent.
   if (!isComponentShapedFunction(node) && !isReturnedPropsComponent(node)) return
   if (!containsJsx(node)) return
   if (!node.parameters.length) return
   const first = node.parameters[0]
-  // First param must be a plain identifier.
+  // First param must be a plain identifier — the destructured-param
+  // shape is detectPropsDestructured's domain.
   if (!first || !ts.isIdentifier(first.name)) return
   const paramName = first.name.text
   const body = node.body
   if (!body || !ts.isBlock(body)) return
 
   function walk(n: ts.Node): void {
-    // Do NOT descend into nested functions: a `const { x } = props` inside a handler / effect /.
+    // Do NOT descend into nested functions: a `const { x } = props`
+    // inside a handler / effect / returned accessor re-reads on every
+    // invocation and is reactivity-correct.
     if (
       ts.isArrowFunction(n) ||
       ts.isFunctionExpression(n) ||
@@ -405,7 +417,8 @@ function detectPropsDestructuredBody(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Pattern: typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'.
+// Pattern: typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
+// ═══════════════════════════════════════════════════════════════════════════════
 
 function isTypeofProcess(node: ts.Expression): boolean {
   if (!ts.isBinaryExpression(node)) return false
@@ -436,7 +449,8 @@ function isProcessNodeEnvProdGuard(node: ts.Expression): boolean {
 
 function detectProcessDevGate(ctx: DetectContext, node: ts.BinaryExpression): void {
   if (node.operatorToken.kind !== ts.SyntaxKind.AmpersandAmpersandToken) return
-  // left: typeof process !== 'undefined', right: process.env.NODE_ENV !== 'production'.
+  // left: typeof process !== 'undefined', right: process.env.NODE_ENV !== 'production'
+  // (or either side in either order)
   const match =
     (isTypeofProcess(node.left) && isProcessNodeEnvProdGuard(node.right)) ||
     (isTypeofProcess(node.right) && isProcessNodeEnvProdGuard(node.left))
@@ -455,7 +469,8 @@ function detectProcessDevGate(ctx: DetectContext, node: ts.BinaryExpression): vo
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Pattern: .theme({}) empty chain.
+// Pattern: .theme({}) empty chain
+// ═══════════════════════════════════════════════════════════════════════════════
 
 function detectEmptyTheme(ctx: DetectContext, node: ts.CallExpression): void {
   const callee = node.expression
@@ -479,10 +494,15 @@ function detectEmptyTheme(ctx: DetectContext, node: ts.CallExpression): void {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Pattern: @pyreon/query hook options passed as an object literal.
+// Pattern: @pyreon/query hook options passed as an object literal
+// ═══════════════════════════════════════════════════════════════════════════════
 
-// `useQuery` / `useInfiniteQuery` / `useQueries` / `useSuspenseQuery` take options as a FUNCTION
-// so.
+// `useQuery` / `useInfiniteQuery` / `useQueries` / `useSuspenseQuery` take
+// options as a FUNCTION so `queryKey` (etc.) can read Pyreon signals —
+// changing a tracked signal re-runs the options and refetches. An object
+// LITERAL is evaluated once at call time, so the query never reacts to
+// signal changes. `useMutation` is deliberately NOT flagged: its options
+// are a plain object (mutations are imperative, no tracking).
 const QUERY_OPTS_HOOKS = new Set([
   'useQuery',
   'useInfiniteQuery',
@@ -498,7 +518,8 @@ function detectQueryOptionsAsFunction(
   const hook = node.expression.text
   if (!QUERY_OPTS_HOOKS.has(hook)) return
   const arg0 = node.arguments[0]
-  // Only the unambiguous object-literal-first-arg shape.
+  // Only the unambiguous object-literal-first-arg shape. An identifier /
+  // call / function arg can't be statically proven wrong — stay silent.
   if (!arg0 || !ts.isObjectLiteralExpression(arg0)) return
 
   const objText = getNodeText(ctx, arg0)
@@ -515,7 +536,8 @@ function detectQueryOptionsAsFunction(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Pattern: raw addEventListener / removeEventListener.
+// Pattern: raw addEventListener / removeEventListener
+// ═══════════════════════════════════════════════════════════════════════════════
 
 function detectRawEventListener(ctx: DetectContext, node: ts.CallExpression): void {
   const callee = node.expression
@@ -524,7 +546,10 @@ function detectRawEventListener(ctx: DetectContext, node: ts.CallExpression): vo
   const method = callee.name.text
   if (method !== 'addEventListener' && method !== 'removeEventListener') return
 
-  // Only flag when the target is `window` / `document` / an identifier that looks like a DOM.
+  // Only flag when the target is `window` / `document` / an identifier
+  // that looks like a DOM element. Property-access chains (e.g.
+  // `editor.dom.addEventListener`) are generally CodeMirror / framework
+  // hosts — leave those alone.
   const target = callee.expression
   const targetName = ts.isIdentifier(target)
     ? target.text
@@ -559,7 +584,8 @@ function detectRawEventListener(ctx: DetectContext, node: ts.CallExpression): vo
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Pattern: Date.now() + Math.random() for IDs.
+// Pattern: Date.now() + Math.random() for IDs
+// ═══════════════════════════════════════════════════════════════════════════════
 
 function isCallTo(node: ts.Node, object: string, method: string): boolean {
   return (
@@ -604,7 +630,8 @@ function detectDateMathRandomId(ctx: DetectContext, node: ts.Expression): void {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Pattern: onClick={undefined}.
+// Pattern: onClick={undefined}
+// ═══════════════════════════════════════════════════════════════════════════════
 
 function detectOnClickUndefined(ctx: DetectContext, node: ts.JsxAttribute): void {
   if (!ts.isIdentifier(node.name)) return
@@ -632,7 +659,8 @@ function detectOnClickUndefined(ctx: DetectContext, node: ts.JsxAttribute): void
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Pattern: signal-write-as-call (sig(value) instead of sig.set(value)).
+// Pattern: signal-write-as-call (sig(value) instead of sig.set(value))
+// ═══════════════════════════════════════════════════════════════════════════════
 
 /**
  * Walks the file and collects every identifier bound to a `signal(...)` or
@@ -680,7 +708,10 @@ function detectSignalWriteAsCall(ctx: DetectContext, node: ts.CallExpression): v
   if (!ctx.signalBindings.has(callee.text)) return
   // `sig()` (zero args) is a READ — that's the intended Pyreon API.
   if (node.arguments.length === 0) return
-  // `sig.set(x)` / `sig.update(fn)` / `sig.peek()` — the proper write/read surface.
+  // `sig.set(x)` / `sig.update(fn)` / `sig.peek()` — the proper write/read
+  // surface — go through PropertyAccess, not direct CallExpression on the
+  // identifier. So if we got here, the call is `sig(value)` or
+  // `sig(value, ..)` which is the buggy shape.
   pushDiag(
     ctx,
     node,
@@ -694,7 +725,8 @@ function detectSignalWriteAsCall(ctx: DetectContext, node: ts.CallExpression): v
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Pattern: static-return-null-conditional in component bodies.
+// Pattern: static-return-null-conditional in component bodies
+// ═══════════════════════════════════════════════════════════════════════════════
 
 /**
  * `if (cond) return null` at the top of a component body runs ONCE — Pyreon
@@ -781,7 +813,8 @@ function isReturnedPropsComponent(
   if (!first || !ts.isIdentifier(first.name) || first.name.text !== 'props') {
     return false
   }
-  // Unwrap parens between the function and its structural parent.
+  // Unwrap parens between the function and its structural parent, so
+  // `return ((props) => …)` and `(W) => ((props) => …)` both qualify.
   let child: ts.Node = node
   let parent = node.parent
   while (parent && ts.isParenthesizedExpression(parent)) {
@@ -799,7 +832,9 @@ function detectStaticReturnNullConditional(
   ctx: DetectContext,
   node: ts.ArrowFunction | ts.FunctionDeclaration | ts.FunctionExpression,
 ): void {
-  // Only component-shaped functions (must render JSX AND be named with PascalCase).
+  // Only component-shaped functions (must render JSX AND be named with
+  // PascalCase) — see isComponentShapedFunction for why the name check
+  // matters: it filters out the reactive-accessor-as-fix pattern.
   if (!isComponentShapedFunction(node)) return
   if (!containsJsx(node)) return
   const body = node.body
@@ -818,13 +853,15 @@ function detectStaticReturnNullConditional(
       'return (() => { if (!cond()) return null; return <JSX /> })',
       false,
     )
-    // Only flag the FIRST occurrence per component to avoid noise on chained early-returns.
+    // Only flag the FIRST occurrence per component to avoid noise on
+    // chained early-returns (often a single mistake, not three).
     return
   }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Pattern: static-early-return-conditional in component bodies.
+// Pattern: static-early-return-conditional in component bodies
+// ═══════════════════════════════════════════════════════════════════════════════
 
 /**
  * `if (loading()) return <Skeleton/>` at the top of a component body is the
@@ -860,7 +897,8 @@ function detectStaticReturnNullConditional(
  */
 function nonNullEarlyReturn(stmt: ts.Statement): ts.ReturnStatement | null {
   if (ts.isReturnStatement(stmt)) {
-    // `return null` belongs to static-return-null-conditional.
+    // `return null` belongs to static-return-null-conditional — skip it
+    // here so the two codes never double-fire on the same statement.
     if (stmt.expression && stmt.expression.kind === ts.SyntaxKind.NullKeyword) return null
     return stmt
   }
@@ -905,7 +943,10 @@ function detectStaticEarlyReturnConditional(
   ctx: DetectContext,
   node: ts.ArrowFunction | ts.FunctionDeclaration | ts.FunctionExpression,
 ): void {
-  // Fast exit: without a tracked signal binding in the file, no condition can qualify.
+  // Fast exit: without a tracked signal binding in the file, no condition
+  // can qualify. (This also means the `hasPyreonPatterns` pre-filter's
+  // existing `signal(`/`computed(` line already admits every file this
+  // detector could fire on — no new pre-filter line needed.)
   if (ctx.signalBindings.size === 0) return
   if (!isComponentShapedFunction(node)) return
   if (!containsJsx(node)) return
@@ -926,13 +967,15 @@ function detectStaticEarlyReturnConditional(
       `return (() => ${sigName}() ? <Fallback /> : <Content />)`,
       false,
     )
-    // Only flag the FIRST occurrence per component.
+    // Only flag the FIRST occurrence per component — chained early
+    // returns are usually one mistake, not three (mirrors the sibling).
     return
   }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Pattern: `expr as unknown as VNodeChild`.
+// Pattern: `expr as unknown as VNodeChild`
+// ═══════════════════════════════════════════════════════════════════════════════
 
 /**
  * `JSX.Element` (which is what JSX evaluates to) is already assignable to
@@ -965,7 +1008,8 @@ function detectAsUnknownAsVNodeChild(ctx: DetectContext, node: ts.AsExpression):
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Island never-with-registry detection.
+// Island never-with-registry detection
+// ═══════════════════════════════════════════════════════════════════════════════
 
 /**
  * Pre-pass: walk the source for `island(loader, { name: 'X', hydrate: 'never' })`
@@ -1059,7 +1103,8 @@ function detectIslandNeverWithRegistry(ctx: DetectContext, node: ts.CallExpressi
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Visitor ═══════════════════════════════════════════════════════════════════════════════.
+// Visitor
+// ═══════════════════════════════════════════════════════════════════════════════
 
 function visitNode(ctx: DetectContext, node: ts.Node): void {
   if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
@@ -1105,7 +1150,8 @@ function visit(ctx: DetectContext, node: ts.Node): void {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Public API ═══════════════════════════════════════════════════════════════════════════════.
+// Public API
+// ═══════════════════════════════════════════════════════════════════════════════
 
 export function detectPyreonPatterns(code: string, filename = 'input.tsx'): PyreonDiagnostic[] {
   assertClassicTs()
@@ -1131,15 +1177,26 @@ export function hasPyreonPatterns(code: string): boolean {
     /\.theme\s*\(\s*\{\s*\}\s*\)/.test(code) ||
     /\b(?:add|remove)EventListener\s*\(/.test(code) ||
     (/\bDate\.now\s*\(/.test(code) && /\bMath\.random\s*\(/.test(code)) ||
-    // Bounded `\w{0,60}` cap on the handler identifier.
+    // Bounded `\w{0,60}` cap on the handler identifier — real `on*`
+    // names are at most ~25 chars (`onPointerLeaveCapture`); 60 leaves
+    // headroom. The unbounded `\w*` form was flagged by CodeQL
+    // `js/polynomial-redos` (alert #65) as polynomial-time on inputs
+    // like `onAAAA…` (long runs of `[A-Z]`): per starting position
+    // the greedy `\w*` consumes O(N) chars before the trailing `=`
+    // fails to match, giving O(N²) overall on N starting positions.
+    // The cap keeps the regex linear regardless of input shape.
     /on[A-Z]\w{0,60}\s*=\s*\{\s*undefined\s*\}/.test(code) ||
-    // Bounded `{0,500}` / `{1,500}` quantifiers.
+    // Bounded `{0,500}` / `{1,500}` quantifiers — this is a pre-filter
+    // scan before the precise AST walker, so losing detector recall on
+    // a pathologically long single-line input is acceptable.
     /=\s*\(\s*\{[^}]{1,500}\}\s*[:)]/.test(code) ||
     // props-destructured-body: `const { … } = <ident>` anywhere.
     /\b(?:const|let|var)\s+\{[^}]{0,500}\}\s*=\s*[A-Za-z_$]/.test(code) ||
     // signal-write-as-call: `const X = signal(` declaration anywhere
     /\b(?:signal|computed)\s*[<(]/.test(code) ||
     // static-return-null-conditional: `if (...) return null` anywhere.
+    // `[\s{]*` (single class) instead of `\s*\{?\s*` (overlapping
+    // quantifiers) — the latter is polynomial on long whitespace runs.
     /\bif\s*\([^)]{1,500}\)[\s{]{0,20}return\s+null\b/.test(code) ||
     // as-unknown-as-vnodechild
     /\bas\s+unknown\s+as\s+VNodeChild\b/.test(code) ||
@@ -1147,8 +1204,10 @@ export function hasPyreonPatterns(code: string): boolean {
     /\b(?:useQuery|useInfiniteQuery|useQueries|useSuspenseQuery)\s*\(\s*\{/.test(
       code,
     ) ||
-    // island-never-with-registry-entry: a never-strategy declaration AND a hydrateIslands call must
-    // both appear in the same source for the bug shape to trigger.
+    // island-never-with-registry-entry: a never-strategy declaration AND a
+    // hydrateIslands call must both appear in the same source for the bug
+    // shape to trigger. Pre-filter on EITHER half — the AST walker fast-
+    // exits when the never-island set is empty.
     (/\bisland\s*\(/.test(code) && /\bhydrate\s*:\s*['"]never['"]/.test(code))
   )
 }

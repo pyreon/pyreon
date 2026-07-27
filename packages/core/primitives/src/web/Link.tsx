@@ -52,7 +52,8 @@ export const Link = (props: LinkProps): VNode => {
     const navigate = getNavigate()
     // No app-configured navigation → let the browser do a normal nav.
     if (navigate === undefined) return
-    // Respect the browser's open-in-new-tab/window affordances and any upstream handler.
+    // Respect the browser's open-in-new-tab/window affordances and any
+    // upstream handler that already handled the event.
     if (
       e.defaultPrevented ||
       e.button !== 0 ||
