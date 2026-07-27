@@ -465,7 +465,13 @@ function evalPyreonFast(src: string, file: string): Record<string, (arg: never) 
   }
   const body = out.code.replace(/^import\s+.*$/gm, '').replace(/^export /gm, '').trim()
   const names = ['_ssr', '_ssrChildren', '_ssrItem', '_esc', '_ssrAttr', '_ssrAttrGen', '_ssrAttrUrl']
-  const bindings = body.match(/(?:const|function)\s+(\w+)/g)?.map((m) => m.split(/\s+/)[1]) ?? []
+  // TOP-LEVEL declarations only (anchored with ^ + the m flag). An unanchored
+  // scan also picks up bindings inside nested scopes — the compiler's fused
+  // per-item SSR emit declares `const _h0 = …` inside `.map()` callbacks, and
+  // hoisting those into the returned object threw
+  // `ReferenceError: _h0 is not defined`, which silently broke this entire
+  // cross-framework benchmark once that emit landed.
+  const bindings = body.match(/^(?:const|function)\s+(\w+)/gm)?.map((m) => m.split(/\s+/)[1]) ?? []
   // eslint-disable-next-line no-new-func
   const fn = new Function(...names, `${body}\nreturn { ${bindings.join(', ')} }`)
   return fn(...names.map((n) => (pyreonRuntime as Record<string, unknown>)[n]))
