@@ -33,12 +33,31 @@ const WSImpl = WsClient as unknown as new (url: string) => WebSocket
 // transport's new `synced` barrier (not just `connected`), the correct point at
 // which app-level writes are safe.
 //
-// The budget is now a SANE localhost-round-trip ceiling (no lost-update to wait
-// out). It still feeds BOTH the `waitFor` default AND the derived wall-clock
-// backstop from ONE constant, and the tick-counted deadline below is KEPT
-// (independent rationale: it self-extends under event-loop starvation from the
-// `Coverage (Full)` v8 instrumentation).
-const WAIT_BUDGET_MS = process.env.CI ? 10_000 : 5000
+// The budget is a localhost-round-trip ceiling (no lost-update to wait out —
+// #2385 deferred the create-if-missing seed and killed that root cause). It
+// feeds BOTH the `waitFor` default AND the derived wall-clock backstop from ONE
+// constant, and the tick-counted deadline below is KEPT (independent rationale:
+// it self-extends under event-loop starvation from `Coverage (Full)` v8
+// instrumentation).
+//
+// Why 30s on CI and not 10s. #2385 lowered this to 10s as a consequence of
+// fixing the lost update, but the pre-existing 30s figure was sized for a
+// DIFFERENT failure mode that the seed fix does not address: FRAME ARRIVAL. The
+// tick counter only self-extends when the event loop is STARVED; in the
+// dominant CI shape — "frames late, timers on time" — ticks run on schedule and
+// the budget degrades to a straight wall-clock ceiling on how long a loopback
+// WS frame may take to arrive under parallel-load contention (this file runs
+// alongside 60+ packages). At 10s that ceiling was outrun again: `ALLOWS an
+// authorized connection and syncs` failed 3/3 CI attempts with the DESCRIPTIVE
+// `waitFor: timed out` — i.e. the backstop worked and the internal budget was
+// simply too tight — while the suite passes locally 157/157.
+//
+// This is NOT another incremental bump of the kind this file has seen before
+// (8 → 15 → 20): those raised a number without a model of what was being
+// waited on, and each was outrun in turn. Restoring 30s puts back a ceiling
+// with a stated rationale that survived the root-cause fix, and the derived
+// backstop below scales with it automatically, so the two can no longer drift.
+const WAIT_BUDGET_MS = process.env.CI ? 30_000 : 5000
 
 // TICK-COUNTED deadline, deliberately NOT wall-clock. CI runs this file under
 // parallel-load contention (+ v8 instrumentation in `Coverage (Full)`), and the
