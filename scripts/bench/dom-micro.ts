@@ -111,6 +111,51 @@ const CASES: Case[] = [
     },
   },
   {
+    // ADDRESSABLE-CEILING probe. Decomposes `create 10,000` into the JS the
+    // framework controls vs the browser work no framework can avoid. Every
+    // variant produces the SAME 10,000 rows; they differ only in how far the
+    // pipeline runs. The deltas bound what any optimisation could ever win.
+    name: 'create-10k decomposition: what is even addressable',
+    n: 10_000,
+    setup: `
+      const tpl = document.createElement('template')
+      tpl.innerHTML = ${JSON.stringify(ROW_HTML)}
+      globalThis.__proto = tpl.content.firstElementChild
+      globalThis.__tbody = document.getElementById('t')
+    `,
+    variants: {
+      'a_cloneOnly': `
+        const frag = document.createDocumentFragment()
+        for (let i = 0; i < N; i++) frag.appendChild(__proto.cloneNode(true))
+        return frag.childNodes.length
+      `,
+      'b_clone+text': `
+        const frag = document.createDocumentFragment()
+        for (let i = 0; i < N; i++) {
+          const el = __proto.cloneNode(true)
+          el.firstElementChild.textContent = i
+          el.firstElementChild.nextElementSibling.firstElementChild.textContent = 'row ' + i
+          frag.appendChild(el)
+        }
+        return frag.childNodes.length
+      `,
+      'c_clone+text+liveInsert': `
+        __tbody.textContent = ''
+        const frag = document.createDocumentFragment()
+        for (let i = 0; i < N; i++) {
+          const el = __proto.cloneNode(true)
+          el.firstElementChild.textContent = i
+          el.firstElementChild.nextElementSibling.firstElementChild.textContent = 'row ' + i
+          frag.appendChild(el)
+        }
+        __tbody.appendChild(frag)
+        const h = __tbody.offsetHeight   // force layout, as a real paint would
+        __tbody.textContent = ''
+        return h
+      `,
+    },
+  },
+  {
     // The keyed cache write per row: Map.set + the ForEntry object literal.
     name: 'keyed cache write: Map<string,obj> vs Map + parallel arrays',
     n: 10_000,
