@@ -89,6 +89,25 @@ const COUNT_CALL_RE = /\.__pyreon_count__\??\.?\(\s*['"]([^'"]+)['"](?:\s*,[^)]*
 const FORWARDER_DECL_RE =
   /function\s+(\w+)\s*\(\s*(\w+)[^)]*\)[^{]{0,80}\{[\s\S]{0,300}?\.__pyreon_count__\??\.?\(\s*\2\b/g
 
+// Same forwarder, written as a CONST ARROW selected once at module init:
+//   const _count: (name: string) => void =
+//     process.env.NODE_ENV === 'production'
+//       ? () => {}
+//       : (name) => { _countSink.__pyreon_count__?.(name) }
+// This is the shape a package uses when it wants the dev gate resolved ONCE
+// instead of per call (`process.env.NODE_ENV` is a live environ getter in
+// Node — hundreds of ns per read — and the ternary lets the prod branch fold
+// to a no-op that tree-shakes). Structurally it is the same forwarder: the
+// name literal still sits at the `_count('x')` CALL sites, so attribution and
+// drift detection are unchanged; only the declaration syntax differs.
+//
+// Same discriminator as above — the body must forward the arrow's FIRST
+// PARAMETER (the `\2` backref), never a string literal, so an ordinary
+// emitter is not mistaken for a forwarder. Bounded lookaheads keep the match
+// inside one declaration (the `[\s\S]{0,200}?` span covers the ternary head).
+const FORWARDER_CONST_RE =
+  /(?:const|let)\s+(\w+)\s*(?::[^=]{0,120})?=[\s\S]{0,200}?\(\s*(\w+)[^)]{0,60}\)[^=]{0,40}=>[\s\S]{0,300}?\.__pyreon_count__\??\.?\(\s*\2\b/g
+
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
     const full = join(dir, name)
@@ -124,6 +143,7 @@ function extractEmittedNames(): Map<string, string[]> {
       // string-literal call, so this only ever ADDS real emit sites.
       const forwarders = new Set<string>()
       for (const m of src.matchAll(FORWARDER_DECL_RE)) if (m[1]) forwarders.add(m[1])
+      for (const m of src.matchAll(FORWARDER_CONST_RE)) if (m[1]) forwarders.add(m[1])
       for (const fwd of forwarders) {
         const callRe = new RegExp(String.raw`\b${fwd}\(\s*['"]([^'"]+)['"]`, 'g')
         for (const m of src.matchAll(callRe)) record(m[1], file)
