@@ -78,3 +78,16 @@ export type { EscapeHatchProps } from './types/escape-hatch'
 // (charts / flow / tables) inside a native shell.
 export { WebView } from './web/WebView'
 export type { WebViewProps } from './types/webview'
+// User-defined native modules (Layer 4) — the FFI escape hatch. The
+// canonical primitives + built-in service hooks are a fixed set; this is
+// how an APP adds a platform capability the framework does not ship
+// (Bluetooth, AR, a vendor SDK) without a framework change. PMTC lowers
+// `useNativeModule('X')` to an instance of the app's own Swift/Kotlin
+// class; on web it resolves the `defineNativeModule` registration.
+export {
+  defineNativeModule,
+  useNativeModule,
+  hasNativeModule,
+  _resetNativeModules,
+} from './native-module'
+export type { NativeModuleShape } from './native-module'

@@ -2009,6 +2009,16 @@ function emitSwiftDecl(
   if (d.kind === 'haptics') {
     return `@State private var ${swiftIdent(d.name)} = PyreonHaptics()`
   }
+  // FFI: `const bt = useNativeModule<T>('Bluetooth')` → an @State
+  // instance of the APP's own class. Identical shape to the built-in
+  // fire-and-forget services above — the only difference is that the
+  // type comes from the user's Swift sources, not PyreonRuntime, so the
+  // app's own `swiftc` run is what validates it (methods and property
+  // reads pass through unchanged). Requires a no-argument initialiser;
+  // mark the class `@Observable` if its state should drive the view.
+  if (d.kind === 'native-module') {
+    return `@State private var ${swiftIdent(d.name)} = ${d.moduleName}()`
+  }
   // M3.2: `const share = useShare()` → an @State PyreonShare. Methods
   // (`share.text("hi")`) flow through unchanged — the runtime container
   // presents a UIActivityViewController from the key window; no reactive

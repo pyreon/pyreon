@@ -17,7 +17,7 @@
 // `PYREON_REQUIRE_NATIVE_VALIDATE=1` (set by the `Validate emitted Swift + Kotlin` CI
 // job) promotes the swiftc-absent SKIP to a hard fail.
 
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
@@ -38,6 +38,37 @@ function emitSwift(source: string): string {
 
 function emitExample(relPath: string): string {
   return emitSwift(readFileSync(resolve(REPO_ROOT, relPath), 'utf8'))
+}
+
+/**
+ * App-provided Swift sources an example's emit references but the framework
+ * cannot stub — today, `useNativeModule` classes (the FFI escape hatch).
+ *
+ * The framework OWNS the SwiftUI + PyreonRuntime surface, so `swift-stubs.ts`
+ * can mirror it faithfully. A native module is the deliberate inverse: the
+ * class belongs to the APP, so there is nothing framework-side to stub. The
+ * faithful move is to compile the app's real sources alongside the emit —
+ * exactly what the Xcode target does — rather than inventing a stub for them
+ * (a synthesized stand-in would MASK a mismatched method name or arity, which
+ * is the one thing this gate exists to catch).
+ *
+ * Net effect: the gate gets STRONGER. An FFI contract break in an example now
+ * fails per-PR on Linux instead of waiting for the ~35-minute device build.
+ */
+function appSwiftSources(exampleDir: string): string {
+  const dir = resolve(REPO_ROOT, exampleDir, 'ios')
+  return readdirSync(dir)
+    .filter((f) => f.endsWith('.swift'))
+    // App.swift / ContentView.swift are the SwiftUI host shell (@main, scene
+    // wiring) — they need the real SDK, not the stub surface, and the emit
+    // never references them. Only files declaring types the EMIT names belong
+    // here; `DeviceInfo.swift` is the FFI module class.
+    .filter((f) => f === 'DeviceInfo.swift')
+    .map((f) => readFileSync(resolve(dir, f), 'utf8'))
+    // `import UIKit` would drag in the real SDK the Linux stub build lacks;
+    // the stub file already provides what the class body needs.
+    .map((s) => s.replace(/^import\s+UIKit\s*$/gm, ''))
+    .join('\n')
 }
 
 const skipCondition =
@@ -61,8 +92,12 @@ describe('Swift emit — swiftc -typecheck against stubs (Linux-viable type gate
     // class the device gate caught in M2.8. Locking them here means that class is
     // now caught PER-PR on Linux, not days later on the device gate.
     it('native-counter-ios Counter.tsx emit typechecks clean', () => {
+      // Compiled WITH the app's own `useNativeModule` class — the emit
+      // references `DeviceInfo`, which is app-owned and therefore unstubable
+      // (see `appSwiftSources`). This makes the gate catch an FFI contract
+      // break (renamed method, wrong arity) per-PR on Linux.
       const res = validateSwiftWithStubs(
-        emitExample('examples/native-counter-ios/src/Counter.tsx'),
+        `${emitExample('examples/native-counter-ios/src/Counter.tsx')}\n${appSwiftSources('examples/native-counter-ios')}`,
       )
       expect(res.ok, res.error ?? '').toBe(true)
     })

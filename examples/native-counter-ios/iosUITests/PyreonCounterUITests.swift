@@ -440,6 +440,49 @@ final class PyreonCounterUITests: XCTestCase {
         )
     }
 
+    // FFI escape hatch (useNativeModule) asserted in the REAL render tree —
+    // the first DEVICE proof that an APP-DEFINED native module runs. Every
+    // other service assertion in this file exercises a hook the FRAMEWORK
+    // ships; this one exercises a class the framework has never heard of.
+    //
+    // The shared Counter.tsx has
+    // `const device = useNativeModule<{ platformName(): string }>('DeviceInfo')`
+    // and renders `<Text>Device: {device.platformName()}</Text>`. PMTC lowers
+    // that to `@State private var device = DeviceInfo()` +
+    // `Text("Device: \(device.platformName())")`, where `DeviceInfo` is
+    // `ios/DeviceInfo.swift` — ordinary app code returning
+    // `UIDevice.current.systemName`.
+    //
+    // DIFFERENTIATING on two axes:
+    //   (1) the value is "iOS", which only the real UIKit class can produce —
+    //       the Android sibling answers "Android" from its own Kotlin class,
+    //       so neither string is something the compiler could have baked in;
+    //   (2) it is load-bearing at BUILD time — if the FFI lowering regressed,
+    //       `DeviceInfo` would never be constructed and the target would fail
+    //       to compile rather than merely render the wrong text.
+    //
+    // This is the capability that makes PMTC extensible: before it, platform
+    // services were recognised by HARD-CODED hook name, so an app needing a
+    // capability the framework did not ship had no path at all.
+    func test_userDefinedNativeModuleRunsOnDevice() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.staticTexts["Device: iOS"].waitForExistence(timeout: 30),
+            "Expected \"Device: iOS\" from the APP-provided DeviceInfo class — "
+                + "useNativeModule did not lower to `DeviceInfo()`, or the "
+                + "instance method call did not pass through to the app's Swift"
+        )
+        // The Android sibling's answer must never appear on iOS — proves the
+        // string came from the platform class rather than the shared source.
+        XCTAssertFalse(
+            app.staticTexts["Device: Android"].exists,
+            "\"Device: Android\" rendered on iOS — the native module value is "
+                + "not coming from the platform class"
+        )
+    }
+
     // Tier-2 state machine (createMachine) asserted in the REAL render tree —
     // the first DEVICE assertion of a @pyreon/machine transition (the emit has
     // only ever been R2/compile-proven, tier2-machine-emit-broken.test.ts). The

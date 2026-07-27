@@ -17,6 +17,7 @@ The multiplatform UI vocabulary for Pyreon. ONE canonical name per concept (`<St
 - PMTC compiles your component SOURCE in a narrow declarative TS subset — NOT npm libraries
 - `<WebView>` hosts a web-only component (charts/flow/editor) natively with a bidirectional data bridge
 - `<Web>` / `<NativeIOS>` / `<NativeAndroid>` escape hatches for genuinely per-platform UI
+- `useNativeModule` FFI — add a platform capability the framework does not ship (Bluetooth, ARKit, a vendor SDK) as an app-level Swift/Kotlin class, no framework PR
 - No responsive props or animations in v1 — responsive web uses `@pyreon/elements` directly
 
 ## Complete example
@@ -77,6 +78,7 @@ export function App() {
 | [`Modal`](#modal) | component | Modal/sheet. |
 | [`WebView`](#webview) | component | Host a web page/component natively (WKWebView on iOS, Android WebView; `<iframe srcdoc>` on web). |
 | [`Web / NativeIOS / NativeAndroid`](#web-nativeios-nativeandroid) | component | The Layer-4 per-platform escape hatch — one source carries a platform-specific subtree and exactly ONE branch renders pe |
+| [`defineNativeModule / useNativeModule`](#definenativemodule-usenativemodule) | function | The Layer-4 FFI escape hatch — how an APP adds a platform capability the framework does not ship (Bluetooth, ARKit, a pa |
 | [`init / resetPrimitivesConfig`](#init-resetprimitivesconfig) | function | One-time app-boot configuration for `@pyreon/primitives`. |
 
 ## API
@@ -460,7 +462,42 @@ The Layer-4 per-platform escape hatch — one source carries a platform-specific
 - Overusing them — defeats the one-source model; reach for them only when a target genuinely needs different UI.
 - Putting web-visible content in `<NativeIOS>` / `<NativeAndroid>` — both render NOTHING on web (they are no-ops there); only `<Web>` content reaches the browser.
 
-**See also:** `WebView` · `init / resetPrimitivesConfig`
+**See also:** `WebView` · `init / resetPrimitivesConfig` · `defineNativeModule / useNativeModule`
+
+---
+
+### defineNativeModule / useNativeModule `function`
+
+```ts
+defineNativeModule<T>(name: string, webImpl: T) => T · useNativeModule<T>(name: string) => T · hasNativeModule(name: string) => boolean
+```
+
+The Layer-4 FFI escape hatch — how an APP adds a platform capability the framework does not ship (Bluetooth, ARKit, a payments/analytics SDK). PMTC lowers `useNativeModule('X')` to an instance of a class YOU provide (`X()` on iOS, `X(context)` on Android) and passes member calls through verbatim, so the platform compiler type-checks the surface; on web the same call resolves the `defineNativeModule` registration, keeping one source running on all three targets. `await mod.method()` composes with the async lowering with no extra machinery. This is distinct from `<NativeIOS>`/`<NativeAndroid>`, which only BRANCH between canonical-primitive subtrees — they cannot host raw platform code.
+
+**Example**
+
+```tsx
+type Bluetooth = { connect(id: string): Promise<boolean> }
+
+// web implementation (native targets never run this)
+defineNativeModule<Bluetooth>('Bluetooth', { connect: async () => false })
+
+function Pairing() {
+  const bt = useNativeModule<Bluetooth>('Bluetooth')
+  return <Button onPress={() => { void bt.connect('cuff') }}>Connect</Button>
+}
+```
+
+**Common mistakes**
+
+- Passing a non-literal module name (`useNativeModule(NAME)`) — it is emitted verbatim as the native class name and PMTC resolves one file at a time, so only a STRING LITERAL at the call site works; anything else warns and the declaration is skipped on native.
+- Forgetting `defineNativeModule` — native targets compile the call away, so a missing registration only surfaces on WEB, where `useNativeModule` throws.
+- Giving the Android class a no-arg constructor — the Compose emit injects `LocalContext.current`, so it must take a SINGLE `Context` parameter (ignore it if unused); iOS is the opposite (no-argument initialiser).
+- Declaring the Kotlin class in a different package from the generated sources — the emit references it UNQUALIFIED, so it must live in the `--kotlin-package` package.
+- Expecting reactive re-render for free — mark the Swift class `@Observable` / back Kotlin state with `mutableStateOf` if its state should drive the view.
+- Writing a method-bearing `type`/`interface` and expecting a struct — a method-only contract type is intentionally not lowered to a native struct (its methods live on the platform class); a MIXED data+method type emits the data fields and warns about the dropped methods.
+
+**See also:** `Web / NativeIOS / NativeAndroid` · `WebView`
 
 ---
 

@@ -44,6 +44,19 @@
 export const SWIFT_UI_STUBS = `// AUTO-CONCATENATED Swift validation stubs (see swift-stubs.ts). Not shipped.
 import Foundation // real on the Linux toolchain — provides URL / Codable / etc. for the stub's own references
 
+// ---- UIKit (the sliver app-provided sources touch) ----
+// NOT available on Linux OR on macOS swiftc — UIKit is an iOS-SDK framework, so
+// neither host that runs this gate can resolve it. An example app's
+// \`useNativeModule\` class (the FFI escape hatch) is compiled alongside the emit
+// here, and such classes reach for real platform APIs, so the minimal surface
+// they touch is mirrored. Faithful, not convenient: \`current\` is a static on the
+// class and \`systemName\` a String property, exactly as UIKit declares them — a
+// looser \`Any\`-typed stand-in would mask a wrong member name.
+final class UIDevice {
+  static let current = UIDevice()
+  var systemName: String { "iOS" }
+}
+
 // ---- View protocol + result builder ----
 // @ViewBuilder on the requirement lets a component body be a bare \`if\` /
 // \`if/else\` (transformed via buildOptional/buildEither), not just a single root

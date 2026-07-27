@@ -2623,6 +2623,59 @@ function tryEnumFromTypeAlias(node: AnyNode, ctx: ParseCtx): EnumIR | null {
  *   - empty object types (no fields — defensive bail; emit would be
  *     `struct X { }` which is valid but useless)
  */
+/**
+ * How many members of an object-type body are METHOD signatures
+ * (`go(): boolean`) rather than property signatures (`id: string`).
+ *
+ * `parseTypeAnnotation`'s `TSTypeLiteral` case keeps only
+ * `TSPropertySignature`, so method members contribute no struct fields.
+ * Counting them lets the two struct-synthesis sites tell three cases
+ * apart that were previously conflated into one misleading message:
+ *
+ *   - **method-only** (`type Bluetooth = { connect(id: string): boolean }`)
+ *     — a behavioral CONTRACT, not a data shape. There is no native
+ *     struct to make and nothing is lost: the methods live on the class
+ *     the app provides (the `useNativeModule<T>('Bluetooth')` shape), or
+ *     on a callback bag that never crosses the native boundary. Skipped
+ *     SILENTLY — warning the author to "use an object type" when they
+ *     already did was a dead end.
+ *   - **truly empty** (`type X = {}`) — the original defensive bail; the
+ *     "empty object type" warning is correct and stays.
+ *   - **mixed** (`{ id: string; act(): void }`) — the struct emits from
+ *     the properties and the methods were dropped with NO diagnostic.
+ *     That is a silent drop, so it now warns by name.
+ */
+function countMethodSignatures(members: AnyNode[] | undefined): number {
+  if (!members) return 0
+  return members.filter((m) => m?.type === 'TSMethodSignature').length
+}
+
+/**
+ * Shared tail of both struct-synthesis paths: decide what to do when
+ * `parseTypeAnnotation` produced fewer fields than the source had
+ * members. Returns true when the caller should bail (no struct).
+ */
+function reportDroppedMethodMembers(
+  name: string,
+  fieldCount: number,
+  members: AnyNode[] | undefined,
+  emptyMessage: string,
+  ctx: ParseCtx,
+): boolean {
+  const methods = countMethodSignatures(members)
+  if (fieldCount === 0) {
+    // Method-only = a behavioral contract; silent. Genuinely empty = warn.
+    if (methods === 0) ctx.warnings.push(emptyMessage)
+    return true
+  }
+  if (methods > 0) {
+    ctx.warnings.push(
+      `Struct ${name}: ${methods} method member(s) dropped — a native struct / data class holds DATA only. Methods on a type that crosses into native must live on the platform class (see \`useNativeModule\`), or be plain function-typed properties (\`go: () => boolean\`), which do lower.`,
+    )
+  }
+  return false
+}
+
 function tryStructFromTypeAlias(node: AnyNode, ctx: ParseCtx): StructIR | null {
   // Walk through `ExportNamedDeclaration` to the type alias.
   let alias: AnyNode | null = null
@@ -2646,10 +2699,14 @@ function tryStructFromTypeAlias(node: AnyNode, ctx: ParseCtx): StructIR | null {
   // bails / index-signature skips already in parseTypeAnnotation.
   const parsed = parseTypeAnnotation(body, ctx)
   if (parsed.kind !== 'object') return null
-  if (parsed.fields.length === 0) {
-    ctx.warnings.push(`Struct ${name}: skipped — empty object type.`)
-    return null
-  }
+  const bail = reportDroppedMethodMembers(
+    name,
+    parsed.fields.length,
+    body.members as AnyNode[] | undefined,
+    `Struct ${name}: skipped — empty object type.`,
+    ctx,
+  )
+  if (bail) return null
   return { name, fields: parsed.fields }
 }
 
@@ -2692,10 +2749,14 @@ function tryStructFromInterface(node: AnyNode, ctx: ParseCtx): StructIR | null {
   if (!members) return null
   const parsed = parseTypeAnnotation({ type: 'TSTypeLiteral', members } as AnyNode, ctx)
   if (parsed.kind !== 'object') return null
-  if (parsed.fields.length === 0) {
-    ctx.warnings.push(`Struct ${name}: skipped — empty interface.`)
-    return null
-  }
+  const bail = reportDroppedMethodMembers(
+    name,
+    parsed.fields.length,
+    members,
+    `Struct ${name}: skipped — empty interface.`,
+    ctx,
+  )
+  if (bail) return null
   return { name, fields: parsed.fields }
 }
 
@@ -4051,6 +4112,42 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // transformation (the string style arg passes straight through).
   if (calleeName === 'useHaptics') {
     return { kind: 'haptics', name }
+  }
+  // FFI escape hatch — `const bt = useNativeModule<T>('Bluetooth')` from
+  // `@pyreon/primitives`. The ONE service declaration whose emitted type
+  // the framework does NOT own: it lowers to an instance of a class the
+  // APP ships (`Bluetooth()` / `Bluetooth(ctx)`), so an app can add a
+  // platform capability without a framework change. Methods and property
+  // reads pass through unchanged, exactly like every built-in imperative
+  // service, and `await bt.method()` rides the existing async lowering.
+  //
+  // The module name must be a STRING LITERAL at the call site (not an
+  // imported const): it is emitted verbatim as a native type name, and
+  // PMTC parses one file at a time, so a cross-module reference has no
+  // value source here. A non-literal is a NAMED warning + bail — the
+  // declaration is dropped rather than mis-emitted.
+  if (calleeName === 'useNativeModule') {
+    const arg = init.arguments?.[0] as AnyNode | undefined
+    const moduleName = arg?.type === 'Literal' || arg?.type === 'StringLiteral'
+      ? (arg.value as unknown)
+      : undefined
+    if (typeof moduleName !== 'string' || moduleName.length === 0) {
+      ctx.warnings.push(
+        `useNativeModule \`${name}\`: the module name must be a non-empty STRING LITERAL at the call site (e.g. useNativeModule<T>('Bluetooth')) — it is emitted verbatim as the Swift/Kotlin class name and PMTC resolves one file at a time, so an imported or computed name has no value here. Declaration skipped on native.`,
+      )
+      return null
+    }
+    // Emitted verbatim as a native TYPE name, so it must be a plain
+    // identifier. Rejecting anything else keeps arbitrary text out of the
+    // generated Swift/Kotlin (a name like `Foo(); evil()` would otherwise
+    // be spliced straight into the output).
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(moduleName)) {
+      ctx.warnings.push(
+        `useNativeModule \`${name}\`: module name "${moduleName}" is not a valid identifier — it is emitted directly as a Swift/Kotlin class name, so it must match /^[A-Za-z_][A-Za-z0-9_]*$/. Declaration skipped on native.`,
+      )
+      return null
+    }
+    return { kind: 'native-module', name, moduleName }
   }
   // M3.2 — `const share = useShare()` from `@pyreon/hooks` → the
   // PyreonShare wrapper. No arguments. Calls are member methods with
@@ -6197,6 +6294,7 @@ function warnIfHookInsideRenderCallback(
     'useForm',
     'useClipboard',
     'useHaptics',
+    'useNativeModule',
     'useShare',
     'useLinking',
     'useNotifications',

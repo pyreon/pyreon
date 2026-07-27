@@ -57,6 +57,8 @@ Same source. Three idiomatic outputs (web rendered live; iOS/Android emitted as 
 
 **PMTC compiles your component *source* — the 15 canonical primitives, `signal`/`computed`/`effect`, and a fixed set of hooks — to SwiftUI/Compose. It does NOT transpile npm packages to native.** So a package runs on iOS/Android only if it is pure reactive logic **with a Swift/Kotlin runtime port** the compiler recognizes. Anything bound to the DOM, a `<canvas>`, the CSSOM, or a JS-only rendering vendor is **web-only by architecture** — no compiler setting changes that.
 
+**The fixed hook set is not a ceiling on platform capability.** For anything the framework does not ship — Bluetooth, ARKit, a vendor SDK — [`useNativeModule`](#layer-4--platform-escape-hatches) lowers to a Swift/Kotlin class *you* provide, so adding a platform API is an app-level change rather than a framework PR.
+
 **✅ Runs on web + iOS + Android today** (real runtime ports + compiler emit):
 
 - `@pyreon/reactivity` (signal/computed/effect), `@pyreon/primitives` (the 15 canonical primitives)
@@ -168,13 +170,69 @@ Cross-platform apps use `@pyreon/primitives`. Web-only apps that need rocketstyl
 
 ### Layer 4 — Platform escape hatches
 
-When the canonical vocabulary doesn't reach (Apple Pencil gestures, AR scenes, Android intents, browser-specific APIs), drop into platform-specific code via explicit wrappers:
+Two different escape hatches, for two different problems. Reach for the right one:
+
+**1. Per-platform BRANCHING — `<NativeIOS>` / `<NativeAndroid>` / `<Web>`.** When one target needs a different *arrangement of canonical primitives* than another:
 
 ```tsx
 <NativeIOS>
-  {/* iOS-only SwiftUI JSX — Compose + web targets ignore this */}
+  {/* Rendered on iOS; Compose + web targets render nothing here */}
+  <Stack gap="md"><Text>iOS-specific layout</Text></Stack>
 </NativeIOS>
 ```
+
+Note what this is **not**: the children are ordinary PMTC JSX compiled through the normal canonical-primitive path, so this is a platform **conditional** — it does not let you write raw SwiftUI or Kotlin inline. For that, use the second hatch.
+
+**2. User-defined NATIVE MODULES — `useNativeModule`.** When you need a platform capability the framework does not ship (Bluetooth, ARKit, a payments or analytics SDK, any vendor library). PMTC lowers the call to an instance of a class **you** provide, and passes member calls through verbatim:
+
+```tsx
+import { defineNativeModule, useNativeModule } from '@pyreon/primitives'
+
+type Bluetooth = {
+  isSupported(): boolean
+  connect(id: string): Promise<boolean>
+}
+
+// The WEB implementation — native targets never run this.
+defineNativeModule<Bluetooth>('Bluetooth', {
+  isSupported: () => 'bluetooth' in navigator,
+  connect: async (id) => { /* Web Bluetooth */ return true },
+})
+
+function Pairing() {
+  const bt = useNativeModule<Bluetooth>('Bluetooth')
+  //  iOS     → @State private var bt = Bluetooth()
+  //  Android → val btCtx = LocalContext.current
+  //            val bt = remember { Bluetooth(btCtx) }
+  return <Button onPress={() => { void bt.connect('cuff') }}>Connect</Button>
+}
+```
+
+You supply the platform halves as ordinary app code:
+
+```swift
+// ios/Bluetooth.swift — a no-argument initialiser; @Observable if its state drives the view
+final class Bluetooth {
+  func isSupported() -> Bool { true }
+  func connect(_ id: String) async -> Bool { /* CoreBluetooth */ true }
+}
+```
+
+```kotlin
+// Android — a SINGLE Context parameter (the emit injects LocalContext.current).
+// Declare it in the package the generated sources use (your `--kotlin-package`),
+// so the emit's unqualified reference resolves.
+class Bluetooth(private val context: Context) {
+  fun isSupported(): Boolean = true
+  suspend fun connect(id: String): Boolean = true
+}
+```
+
+The contract is small and checked by the platform compiler, not by PMTC: the **class name** matches the string, the **initialiser** matches the shape above, and **method names/arities** match what the shared source calls. A mismatch is a normal `swiftc` / `kotlinc` error in your own build. `await bt.connect(id)` works with no extra machinery — an awaited module method rides the same async lowering the built-in services use.
+
+Because the module name is emitted verbatim as a native type name and PMTC resolves one file at a time, it must be a **string literal at the call site** (not an imported constant) and a valid identifier; anything else is a named compiler warning and the declaration is skipped rather than mis-emitted.
+
+> **Why this matters.** Before this hatch existed, platform services were recognised by hard-coded hook name inside the compiler, so *every* new capability required a framework PR — an app that needed Bluetooth simply had no path. `useNativeModule` is what makes the platform layer extensible by applications. Device-proven: the counter reference app renders a value produced by an app-provided `DeviceInfo` class on both iOS and Android.
 
 ## Canonical primitive vocabulary (Layer 3a)
 
