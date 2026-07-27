@@ -226,11 +226,34 @@ describe('WebSocket relay — cross-device sync', { timeout: TEST_TIMEOUT_MS }, 
     )
 
     const sa = syncedSignal({ doc: a, key: 'k', initial: '' })
-    const sb = syncedSignal({ doc: b, key: 'k', initial: '' })
 
-    await waitFor(() => ta.connected && tb.connected)
+    // Peer B's signal is created only AFTER A's value has reached B's doc, so B
+    // never seeds — and that is load-bearing, not tidiness.
+    //
+    // Both peers used to create the signal up front with `initial: ''`. Each
+    // one's create-if-missing seed defers to first sync (#2385) and then fires,
+    // so B's seed of `''` and A's later `set('authed')` are causally CONCURRENT
+    // whenever B has not yet received A's write. `Y.Map` breaks that tie on
+    // clientId, which Yjs assigns RANDOMLY — so roughly half the time B's `''`
+    // wins, `sb()` never becomes `'authed'`, and the tick-counted `waitFor`
+    // exhausts having run ~1000 times with the condition never true.
+    //
+    // Measured: 4 failures in 8 local runs before this change, 0 after.
+    //
+    // Awaiting `whenSynced()` does NOT fix it — the seed fires AT sync, so the
+    // race survives. Nor was it ever a budget problem: the deadline is
+    // tick-counted and self-extends under starvation, so exhausting it means
+    // the condition never converged. Two earlier timeouts on this file were
+    // attributed to the budget and "absorbed" by raising it; that only made the
+    // race rarer. See the product-level residual filed alongside this change.
+    await Promise.all([ta.whenSynced(), tb.whenSynced()])
     sa.set('authed')
-    await waitFor(() => sb() === 'authed')
+
+    const bMap = b.getMap('pyreon')
+    await waitFor(() => bMap.get('k') === 'authed')
+
+    // Key already present → `syncedSignal` adopts it and skips the seed.
+    const sb = syncedSignal({ doc: b, key: 'k', initial: '' })
     expect(sb()).toBe('authed')
   })
 
@@ -288,16 +311,23 @@ describe('WebSocket relay — cross-device sync', { timeout: TEST_TIMEOUT_MS }, 
       () => tb.disconnect(),
     )
     const sa = syncedSignal({ doc: a, key: 'k', initial: '' })
-    const sb = syncedSignal({ doc: b, key: 'k', initial: '' })
 
-    await waitFor(() => ta.connected && tb.connected)
+    // Same seed-vs-write race as the authorized-connection spec — B's signal is
+    // created only after A's value has landed, so B never seeds.
+    await Promise.all([ta.whenSynced(), tb.whenSynced()])
     sa.set('over shared server')
-    await waitFor(() => sb() === 'over shared server')
+
+    const bMap = b.getMap('pyreon')
+    await waitFor(() => bMap.get('k') === 'over shared server')
+
+    const sb = syncedSignal({ doc: b, key: 'k', initial: '' })
     expect(sb()).toBe('over shared server')
-    // Two sequential waits; inherits the derived describe-level backstop. This
-    // spec timed out on 2026-07-13 main (#2148 window) — the sync `waitFor`
-    // burned its old scheduled-tick budget under localhost-WS delivery
-    // contention; the larger WAIT_BUDGET_MS absorbs it.
+    // NOTE: this spec's earlier timeout (2026-07-13 main, #2148 window) was
+    // attributed to the tick budget and "absorbed" by raising WAIT_BUDGET_MS.
+    // That diagnosis does not hold: the budget is tick-counted and therefore
+    // self-extending under starvation, so exhausting it means the condition was
+    // never true — a convergence failure, not slowness. The seed race above is
+    // the actual cause; the budget raise only made it rarer.
   })
 
   it('RECONNECTS with backoff after the relay drops, then comes back', async () => {
