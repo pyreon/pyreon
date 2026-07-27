@@ -328,3 +328,47 @@ test.describe('Atlas workshop — canvas addons', () => {
     await expect.poll(opacity).toBe(1)
   })
 })
+
+test('A11y panel reports the REAL rendered element, not fabricated passes', async ({ browser }) => {
+  const page = await open(browser)
+  await page.getByTestId('addon-tab-a11y').click()
+
+  // The demo Button renders a native <button> with text, so every check should
+  // genuinely pass — and crucially the notes must reference what was inspected.
+  const body = page.locator('body')
+  await expect(body).toContainText('passing')
+
+  // "Keyboard operable" must cite the real element, not a canned sentence.
+  await expect(body).toContainText(/native <button>|focusable/i)
+
+  // Emptying the label removes the accessible name → a REAL violation appears.
+  await page.getByTestId('addon-tab-controls').click()
+  const label = page.getByTestId('canvas-preview').locator('button').first()
+  const before = (await label.textContent())?.trim()
+  expect(before).toBeTruthy()
+
+  await page.locator('input[placeholder]').first().fill('')
+  await page.getByTestId('addon-tab-a11y').click()
+  // an unnamed <button> is a genuine danger — the old metadata check could not
+  // see this because it only looked at control values, never the DOM
+  await expect(body).toContainText(/violation/i)
+})
+
+test('Locale addon flips writing direction on the preview (RTL layout test)', async ({ browser }) => {
+  const page = await open(browser)
+  await page.getByTestId('addon-tab-canvas').click()
+
+  const preview = page.getByTestId('canvas-preview')
+  const dir = () => preview.evaluate((el) => el.getAttribute('dir'))
+  expect(await dir()).toBe('ltr')
+
+  // Arabic is RTL — the flip is what exposes hardcoded margin-left / one-sided
+  // borders / unmirrored icons, so it must reach the DOM, not just the label.
+  await page.getByTestId('locale-ar').click()
+  await expect.poll(dir).toBe('rtl')
+  // and the browser must actually resolve the direction, not just carry the attr
+  await expect.poll(() => preview.evaluate((el) => getComputedStyle(el).direction)).toBe('rtl')
+
+  await page.getByTestId('locale-en').click()
+  await expect.poll(dir).toBe('ltr')
+})

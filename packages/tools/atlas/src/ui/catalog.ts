@@ -38,6 +38,18 @@ export interface WorkbenchRenderCtx {
    * re-renders when the forced state changes.
    */
   readonly pseudo: Record<string, boolean>
+  /**
+   * The locale selected in the Locale addon (a BCP-47 tag, `'en'` by default).
+   *
+   * Use it to render translated content — e.g. feed it to `@pyreon/i18n`'s
+   * `createI18n({ locale })`, or index your own message map. The workbench
+   * already sets `dir="rtl"` on the preview for RTL locales, so direction-
+   * sensitive layout is exercised whether or not you translate anything.
+   *
+   * A getter, so reading it inside `render` tracks the signal and the preview
+   * re-renders when the locale changes.
+   */
+  readonly locale: string
 }
 
 /** One catalog entry — a component the workbench can showcase. */

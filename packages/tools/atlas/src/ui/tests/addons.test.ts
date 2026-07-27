@@ -14,6 +14,9 @@ import {
   BACKGROUND_VARIANT,
   BACKGROUNDS,
   backgroundCss,
+  localeById,
+  localeDir,
+  LOCALES,
   OUTLINE_CSS,
   PSEUDO_STATES,
   pseudoProps,
@@ -130,5 +133,30 @@ describe('addon tabs', () => {
 
   it('has unique ids (a duplicate would make two tabs active at once)', () => {
     expect(new Set(ADDON_TABS.map((a) => a.id)).size).toBe(ADDON_TABS.length)
+  })
+})
+
+describe('locale presets', () => {
+  it('ships an LTR default plus an RTL locale (direction is the real test)', () => {
+    expect(LOCALES[0]!.id).toBe('en')
+    expect(LOCALES.some((l) => l.dir === 'rtl')).toBe(true)
+  })
+
+  it('resolves direction per locale', () => {
+    expect(localeDir('en')).toBe('ltr')
+    expect(localeDir('ar')).toBe('rtl')
+  })
+
+  it('falls back to the default (never an undefined dir) for an unknown locale', () => {
+    // a host may supply its own ids — `dir` must still be renderable
+    expect(localeById('zz-ZZ').id).toBe('en')
+    expect(localeDir('zz-ZZ')).toBe('ltr')
+  })
+
+  it('gives every locale a label and a valid direction', () => {
+    for (const l of LOCALES) {
+      expect(l.label, l.id).toBeTruthy()
+      expect(['ltr', 'rtl']).toContain(l.dir)
+    }
   })
 })

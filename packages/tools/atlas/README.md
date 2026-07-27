@@ -103,6 +103,7 @@ data.
 | **Backgrounds** | `addon-backgrounds` | Theme surface (default), forced light/dark to check contrast against the other mode, plus a transparency checker |
 | **Pseudo state** | `addon-pseudo-states` | Forces `hover` / `focus` / `active` / `disabled` |
 | **Outline** | `addon-outline` | Outlines every box in the preview subtree (chrome untouched) |
+| **Locale** | `addon-toolbars` / RTL addons | Switches locale (`ctx.locale`) and flips the preview to `dir="rtl"` |
 
 **The pseudo-state one is genuinely cheaper on this stack.**
 `@storybook/addon-pseudo-states` has to rewrite the emitted stylesheet — rename
@@ -128,6 +129,11 @@ This only works for components that declare hover/focus/active in rocketstyle's
 **theme keys** (`hover: { … }`) rather than as raw `&:hover { … }` CSS — which
 is the idiomatic form anyway, since the bases render those blocks under the real
 selector too.
+
+The Locale addon's real value is the **direction** flip, not the tag: `dir="rtl"`
+is what exposes hardcoded `margin-left`, one-sided borders and unmirrored icons.
+That half needs no catalog cooperation. To translate as well, read `ctx.locale`
+(a BCP-47 tag) — e.g. feed it to `@pyreon/i18n`'s `createI18n({ locale })`.
 
 Everything else is a rocketstyle dimension (`size` for viewport, `variant` for
 background, `state` for outline), so the addons add **zero inline styles** and

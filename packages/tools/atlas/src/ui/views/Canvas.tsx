@@ -32,11 +32,12 @@ export function Canvas(props: { model: WorkbenchModel }) {
             {() =>
               `${m.brand().name} · ${m.dark() ? 'dark' : 'light'}${
                 m.viewport() === 'full' ? '' : ` · ${viewportById(m.viewport()).hint}`
-              }${m.pseudo() ? ` · :${m.pseudo()}` : ''}`
+              }${m.pseudo() ? ` · :${m.pseudo()}` : ''}${m.locale() === 'en' ? '' : ` · ${m.locale()}`}`
             }
           </C.FrameChrome>
           <C.PreviewSurface
             data-testid="canvas-preview"
+            ref={m.previewRef}
             size={() => ('z' + ZOOM_PCT[m.zoomIdx()]) as never}
             variant={() => BACKGROUND_VARIANT[m.background()] as never}
             state={() => (m.outline() ? 'outlined' : 'plain') as never}
