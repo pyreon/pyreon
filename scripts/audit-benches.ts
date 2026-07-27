@@ -158,8 +158,8 @@ if (gcOffenders.length) {
 if (showAll) {
   console.log('\nPYREON-ONLY BENCHES (no competitor — lower bar, but noise still misleads)')
   console.log('='.repeat(100))
-  for (const r of rows.filter((r) => !r.competitor).sort((a, b) => a.file.localeCompare(b.file))) {
-    console.log(`${r.file.padEnd(60)} PROD:${r.prod.padEnd(9)} STATS:${r.stats ? 'yes' : 'NO'}`)
+  for (const row of rows.filter((x) => !x.competitor).sort((a, b) => a.file.localeCompare(b.file))) {
+    console.log(`${row.file.padEnd(60)} PROD:${row.prod.padEnd(9)} STATS:${row.stats ? 'yes' : 'NO'}`)
   }
 }
 
