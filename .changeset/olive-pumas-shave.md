@@ -21,3 +21,9 @@ error. The reconciler skips a duplicate key, so the visible symptom is a list
 rendering fewer rows than the data has — the new entry explains that causal
 chain and steers the fix away from the array index, which is unique but not
 stable across reorders.
+
+Benchmark fixes (no runtime impact): `form-bench` discarded its timed results,
+letting the JIT eliminate the work — that inflated our reported wins (191x ->
+171x) and fabricated a loss on setup-12-fields that is actually a tie. It now
+consumes results into a sink and gained the correctness gate it lacked. Adds a
+repo-wide benchmark objectivity audit and a Chromium-isolated DOM micro-harness.
