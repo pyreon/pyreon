@@ -1911,8 +1911,15 @@ export function transformJSX_JS(
   function ssrSerializeElement(buf: SsrBuf, el: N, mode: SsrMode): boolean {
     const tag = jsxTagName(el)
     if (!tag || !isLowerCase(tag)) return false // component / empty → bail
-    if (isSelfClosing(el)) return false // self-closing → bail (rare; go to h())
-    if (SSR_VOID_TAGS.has(tag)) return false // void tag w/ content → bail
+    // Self-closing is NOT a bail. It used to be ("rare"), but `<img/>`,
+    // `<input/>`, `<br/>` and `<hr/>` are in most real markup and the bail
+    // PROPAGATES — one `<img/>` dropped its whole enclosing component onto the
+    // slow h() path. Both forms serialize trivially, so handle them here.
+    const selfClosing = isSelfClosing(el)
+    const isVoid = SSR_VOID_TAGS.has(tag)
+    // A void tag written with an explicit children list (`<img>x</img>`) is
+    // ambiguous — the runtime drops the children. Still bail rather than guess.
+    if (isVoid && !selfClosing) return false
     if (tag === 'select' || tag === 'option') return false // PZ-09 complexity → bail
     // Duplicate plain attrs (JSX last-wins) — baking both is parser-first-wins.
     // Rare; bail to let the h() path dedupe.
@@ -1927,9 +1934,20 @@ export function transformJSX_JS(
     for (const attr of jsxAttrs(el)) {
       if (!ssrSerializeAttr(buf, attr, tag)) return false
     }
+    // Void elements close as ` />` — byte-identical to the runtime's
+    // `enqueue(\`${open} />\`)` (runtime-server renderElement). The space is
+    // load-bearing: any other spelling is a hydration-visible divergence.
+    if (isVoid) {
+      ssrEmitStatic(buf, ' />')
+      return true
+    }
     ssrEmitStatic(buf, '>')
-    for (const child of jsxChildren(el)) {
-      if (!ssrSerializeChild(buf, child, mode)) return false
+    // A self-closing non-void tag (`<div />`) has no children to walk; it
+    // still gets its closing tag, matching the h() path's `<div></div>`.
+    if (!selfClosing) {
+      for (const child of jsxChildren(el)) {
+        if (!ssrSerializeChild(buf, child, mode)) return false
+      }
     }
     ssrEmitStatic(buf, `</${tag}>`)
     return true

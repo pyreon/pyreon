@@ -958,6 +958,27 @@ const html = (await renderToString(<App />)).replace('<!--x-->', head)`,
         'Same for `renderToStream`. If you need a hard guarantee that a tree stays on the fast synchronous path, keep `async function` components out of it and use `lazy(() => import(...))` + `<Suspense>` instead — that streams through the Suspense boundary rather than promoting the whole subtree. The framework-owned page pipeline (`renderPage` in `@pyreon/server`) already awaits correctly; this bites hand-rolled SSR handlers and test/bench harnesses.',
     }),
   },
+  {
+    // Void element given children. The CLIENT warns (mount.ts); SSR does NOT —
+    // `renderElement` closes a void tag as `{open} />` and returns without ever
+    // walking children. So the same source silently drops content on the
+    // server and warns only in the browser, which is exactly the kind of
+    // asymmetry that reads as "my markup vanished in production".
+    pattern: /<(\w+)> is a void element and cannot have children/i,
+    diagnose: (m) => ({
+      cause: `\`<${m[1] ?? 'img'}>\` is a VOID element — the HTML spec gives it no closing tag and no content model, so the browser discards anything you nest inside it. Pyreon warns about this on the client, but SSR does NOT: \`renderElement\` emits the open tag, closes it as \` />\`, and returns without walking children at all. The result is an asymmetry that is easy to misread — the content is missing in the server-rendered HTML with no diagnostic, and the warning only appears once the page hydrates.`,
+      fix: `Move the content out of the void element. If you were trying to label it, use an attribute (\`alt\` on an image, \`aria-label\` elsewhere); if you wanted a wrapper, nest the void element INSIDE a normal element instead of the other way round.`,
+      fixCode: `// WRONG — children are dropped (silently on the server)
+<img src={src}>{caption}</img>
+
+// RIGHT — attribute for the accessible name, sibling for visible text
+<figure>
+  <img src={src} alt={caption} />
+  <figcaption>{caption}</figcaption>
+</figure>`,
+      related: `The void set is the HTML standard one: area, base, br, col, embed, hr, img, input, link, meta, param, source, track, wbr. The SSR compile-to-string fast path deliberately BAILS on a void tag written with an explicit children list (rather than guessing which side to match), so this shape also silently costs you the fast path for that subtree.`,
+    }),
+  },
 ]
 
 /** Diagnose an error message and return structured fix information */

@@ -49,6 +49,21 @@ function compiledUsesSsr(src: string): boolean {
   return transformJSX_JS(src, 'case.tsx', { ssr: true, ssrTemplate: true }).code.includes('_ssr(')
 }
 
+/**
+ * Assert the ROOT binding itself compiled to `_ssr(...)`.
+ *
+ * A substring check for `_ssr(` is NOT sufficient to prove the root took the
+ * fast path: when a child bails, the bail propagates up and the root stays raw
+ * JSX (h() path) while a void-free SIBLING subtree is still salvaged into its
+ * own `_ssr(...)`. `includes('_ssr(')` therefore returns true for a tree that
+ * mostly did NOT take the fast path — a false positive that makes an
+ * eligibility test pass against the broken state.
+ */
+function compiledRootUsesSsr(src: string): boolean {
+  const { code } = transformJSX_JS(src, 'case.tsx', { ssr: true, ssrTemplate: true })
+  return /const N\s*=\s*_ssr\(/.test(code)
+}
+
 interface DiffCase {
   name: string
   src: string
@@ -359,6 +374,43 @@ const cases: DiffCase[] = [
       return h('div', { 'data-x': it.maybe, 'data-y': it.set }, 't')
     },
   },
+  {
+    // The exact shape that used to sink a whole component: a realistic card
+    // whose media slot holds an `<img/>`. Pre-fix the root <article> and the
+    // img branch stayed raw JSX (h() path) and only the void-free sibling
+    // <div class="body"> was salvaged into its own _ssr(...).
+    name: 'nested void element — realistic card with <img/> (was a propagating bail)',
+    src: `const Node = <article class="card"><div class="media"><img src={src} alt={title} /></div><div class="body"><h3 class="t">{title}</h3></div></article>`,
+    deps: { src: '/img/a.png', title: 'Tom & Jerry' },
+    oracle: (deps) =>
+      h(
+        'article',
+        { class: 'card' },
+        h('div', { class: 'media' }, h('img', { src: deps.src, alt: deps.title })),
+        h('div', { class: 'body' }, h('h3', { class: 't' }, deps.title)),
+      ),
+  },
+  {
+    // Void close is ` />` in the runtime — the SPACE must survive into the
+    // baked statics, and an entity-bearing attr must escape identically.
+    name: 'several void siblings — <img/> <br/> <input/> close as " />"',
+    src: `const Node = <div class="w"><img src={src} /><br /><input name="q" value={title} /></div>`,
+    deps: { src: '/a&b.png', title: 'a<b' },
+    oracle: (deps) =>
+      h(
+        'div',
+        { class: 'w' },
+        h('img', { src: deps.src }),
+        h('br', null),
+        h('input', { name: 'q', value: deps.title }),
+      ),
+  },
+  {
+    name: 'self-closing non-void <div/> renders as <div></div>',
+    src: `const Node = <div class="w"><div /><span>{title}</span></div>`,
+    deps: { title: 'x' },
+    oracle: (deps) => h('div', { class: 'w' }, h('div', null), h('span', null, deps.title)),
+  },
 ]
 
 describe('SSR fast path — byte-identical to h() (compiled → eval → render)', () => {
@@ -373,11 +425,52 @@ describe('SSR fast path — byte-identical to h() (compiled → eval → render)
   }
 })
 
+/**
+ * NESTED self-closing / void elements are ELIGIBLE (they used to bail).
+ *
+ * The bail was commented "rare", but `<img/>`, `<input/>`, `<br/>` and `<hr/>`
+ * are in most real markup — and `ssrSerializeElement` returning false
+ * PROPAGATES, so a single `<img/>` dropped its whole enclosing component onto
+ * the h() path. Only void-free SIBLING subtrees got salvaged into their own
+ * `_ssr(...)`, which is why a substring check for `_ssr(` false-positives on
+ * this shape: these tests assert the ROOT element compiled to `_ssr`.
+ *
+ * The byte-identity half is the load-bearing part: the runtime closes a void
+ * element as ` />` (`enqueue(`{open} />`)`), so the emitted statics must carry
+ * the SPACE. Any other spelling is a hydration-visible divergence.
+ */
+describe('SSR fast path — nested void / self-closing elements are eligible', () => {
+  const eligible: [string, string][] = [
+    ['nested <img/>', `const N = <div class="c"><img src="/a.png" alt="a" /></div>`],
+    ['<br/> between text', `const N = <p>one<br />two</p>`],
+    ['<input/> in a form', `const N = <form action="/x"><input name="q" type="text" /></form>`],
+    ['<hr/> between blocks', `const N = <section><p>{a}</p><hr /><p>b</p></section>`],
+    ['self-closing non-void <div/>', `const N = <div class="w"><div /><span>{s}</span></div>`],
+    ['several void siblings', `const N = <div><img src="/a" /><br /><input value="v" /></div>`],
+  ]
+  for (const [name, src] of eligible) {
+    test(`eligible: ${name}`, () => {
+      // ROOT-level assertion — see compiledRootUsesSsr: a plain substring
+      // check passes against the broken state via the salvaged sibling.
+      expect(compiledRootUsesSsr(src)).toBe(true)
+    })
+  }
+
+  // A void tag written WITH an explicit children list is ambiguous (the
+  // runtime drops the children) — that one still bails, deliberately.
+  test('still bails: void element given children', () => {
+    expect(compiledRootUsesSsr(`const N = <div><img src="/a.png">x</img></div>`)).toBe(false)
+  })
+})
+
 describe('SSR fast path — conservative bail catalogue (stays on h())', () => {
   const bails: [string, string][] = [
     ['spread attribute', `const N = <div {...props}>y</div>`],
     ['component child', `const N = <div><Widget /></div>`],
-    ['void element (self-closing)', `const N = <img src="/a.png" />`],
+    // ROOT-level self-closing still bails — the root gate (`ssrTemplate &&
+    // !isSelfClosing(node)`) is intentionally untouched. Only the NESTED case
+    // was widened, because that is the one whose bail propagated upward.
+    ['void element (self-closing) at ROOT', `const N = <img src="/a.png" />`],
     ['select element', `const N = <select value="b"><option>a</option></select>`],
     ['innerHTML content prop', `const N = <div innerHTML={'<x>'}></div>`],
     ['dangerouslySetInnerHTML content prop', `const N = <div dangerouslySetInnerHTML={{ __html: '<x>' }}></div>`],

@@ -5421,11 +5421,16 @@ fn ssr_serialize_element(buf: &mut SsrBuf, el: &JSXElement, mode: SsrMode, ctx: 
     if tag.is_empty() || !is_lower_case(tag) {
         return false; // component / empty → bail
     }
-    if is_self_closing(el) {
-        return false; // self-closing → bail
-    }
-    if ssr_is_void_tag(tag) {
-        return false; // void tag w/ content → bail
+    // Self-closing is NOT a bail — mirrors JS `ssrSerializeElement`. `<img/>`,
+    // `<input/>`, `<br/>` and `<hr/>` are in most real markup and the bail
+    // PROPAGATES, so one of them dropped the whole enclosing component onto
+    // the slow h() path. Both forms serialize trivially.
+    let self_closing = is_self_closing(el);
+    let is_void = ssr_is_void_tag(tag);
+    // A void tag written with an explicit children list (`<img>x</img>`) is
+    // ambiguous — the runtime drops the children. Still bail rather than guess.
+    if is_void && !self_closing {
+        return false;
     }
     if tag == "select" || tag == "option" {
         return false; // PZ-09 complexity → bail
@@ -5447,10 +5452,21 @@ fn ssr_serialize_element(buf: &mut SsrBuf, el: &JSXElement, mode: SsrMode, ctx: 
             return false;
         }
     }
+    // Void elements close as ` />` — byte-identical to the runtime's
+    // `enqueue(`{open} />`)` in runtime-server renderElement. The space is
+    // load-bearing: any other spelling is a hydration-visible divergence.
+    if is_void {
+        buf.emit_static(" />");
+        return true;
+    }
     buf.emit_static(">");
-    for child in &el.children {
-        if !ssr_serialize_child(buf, child, mode, ctx) {
-            return false;
+    // A self-closing non-void tag (`<div />`) has no children to walk; it still
+    // gets its closing tag, matching the h() path's `<div></div>`.
+    if !self_closing {
+        for child in &el.children {
+            if !ssr_serialize_child(buf, child, mode, ctx) {
+                return false;
+            }
         }
     }
     buf.emit_static(&format!("</{}>", tag));
