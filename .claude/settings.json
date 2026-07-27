@@ -8,9 +8,13 @@
       "Bash(bun run test*)",
       "Bash(bun run --filter=*)",
       "Bash(bun install:*)",
+      "Bash(bun scripts/*)",
+      "Bash(bun changeset*)",
       "Bash(bunx oxlint*)",
       "Bash(bunx oxfmt*)",
       "Bash(bunx tsc*)",
+      "Bash(bunx vitest*)",
+      "Bash(bunx playwright*)",
       "Bash(git status*)",
       "Bash(git diff*)",
       "Bash(git log*)",
@@ -18,18 +22,17 @@
       "Bash(git fetch*)",
       "Bash(git checkout*)",
       "Bash(git stash*)",
+      "Bash(git worktree*)",
+      "Bash(git merge-base*)",
+      "Bash(git rev-parse*)",
       "Bash(ls *)",
       "Bash(wc *)",
       "Bash(gh pr checks*)",
       "Bash(gh pr view*)",
-
       "Bash(gh api*)",
       "Bash(bun run*)",
       "Bash(bun install*)",
-      "Bash(bunx oxlint*)",
-      "Bash(bunx oxfmt*)",
       "Bash(git *)",
-      "Bash(ls *)",
       "Bash(cat *)",
       "Bash(grep *)",
       "Bash(find *)",
@@ -38,7 +41,6 @@
       "Bash(sed *)",
       "Bash(cp *)",
       "Bash(mkdir *)",
-      "Bash(wc *)",
       "Bash(head *)",
       "Bash(tail *)",
       "Bash(sort *)",
@@ -48,23 +50,61 @@
       "Bash(rm -rf:*)",
       "Bash(git push --force:*)",
       "Bash(git reset --hard:*)",
-      "Bash(git clean:*)"
+      "Bash(git clean:*)",
+      "Bash(gh pr merge:*)"
     ]
   },
   "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/scripts/session-context.sh",
+            "timeout": 10,
+            "statusMessage": "Loading worktree context..."
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Bash",
         "hooks": [
           {
             "type": "command",
-            "command": "bash .claude/scripts/guard-main-push.sh",
+            "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/scripts/guard-main-push.sh",
             "timeout": 5
           },
           {
             "type": "command",
-            "command": "bash .claude/scripts/guard-branch-name.sh",
+            "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/scripts/guard-branch-name.sh",
             "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/scripts/post-edit-lint.sh",
+            "timeout": 30,
+            "statusMessage": "Linting changed file..."
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/scripts/stop-changeset-guard.sh",
+            "timeout": 30
           }
         ]
       }
