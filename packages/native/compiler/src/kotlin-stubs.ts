@@ -1148,6 +1148,18 @@ interface PyreonModelProtocol
 // Phase 5 — native data/services hook containers. Mirror the surface the
 // emit touches (no-arg / generic constructor + MutableState reactive fields
 // + Bool getters + methods). Real impls in @pyreon/native-runtime-kotlin.
+// GeolocationHandlers + BOTH start overloads mirror the real surface exactly.
+// The stub previously omitted start() entirely, because Kotlin's only took a
+// host closure the emit never called - so geo.start() failed to build on
+// Android while compiling on iOS and web. Mirroring only the 0-arg overload
+// would be a SUBSET stub, which manufactures failures for the closure form the
+// same way an over-strict PyreonPermissions stub rejected correct code.
+// NOTE: no backticks in this file's comments - it is a TS template literal.
+class GeolocationHandlers(
+  val onFix: (Double, Double, Double?) -> Unit,
+  val onAuthorization: (Boolean) -> Unit,
+  val onError: (Throwable) -> Unit,
+)
 class PyreonGeolocation {
   val latitude = mutableStateOf<Double?>(null)
   val longitude = mutableStateOf<Double?>(null)
@@ -1158,6 +1170,8 @@ class PyreonGeolocation {
   fun update(latitude: Double, longitude: Double, accuracy: Double? = null) {}
   fun authorize(granted: Boolean) {}
   fun fail(failure: Throwable) {}
+  fun start() {}
+  fun start(register: (GeolocationHandlers) -> (() -> Unit)) {}
   fun stop() {}
 }
 
