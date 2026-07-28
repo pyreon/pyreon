@@ -24,7 +24,7 @@ import {
 import type { WorkbenchControl } from '../catalog'
 import * as C from '../chrome'
 import type { WorkbenchModel } from '../model'
-import { registerAddonPanel, sealAddonPanels } from '../panels'
+import { registerAddonPanel } from '../panels'
 
 /** One control row (text / enum / bool). */
 function controlRow(m: WorkbenchModel, ctrl: WorkbenchControl) {
@@ -261,7 +261,4 @@ export function registerBuiltinPanels(): void {
       )
     },
   })
-
-  // Everything above is the baseline `resetAddonPanels()` restores to.
-  sealAddonPanels()
 }
