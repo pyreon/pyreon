@@ -54,6 +54,9 @@
       "Bash(gh pr merge:*)"
     ]
   },
+  "enabledMcpjsonServers": [
+    "pyreon"
+  ],
   "hooks": {
     "SessionStart": [
       {

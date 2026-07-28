@@ -34,6 +34,19 @@ detectors), `diagnose`, `explain_error`, `explain_reactivity`, `get_api`,
 `get_pattern`, `audit_test_environment`, `audit_islands`, and more. Prefer these over
 hand-grepping `.claude/rules/anti-patterns.md`.
 
+**Activation needs two things**, and missing either means the tools silently are not
+there: (1) a session started AFTER `.mcp.json` existed, and (2) approval — Claude Code
+prompts before using any project-scoped `.mcp.json` server. `enabledMcpjsonServers:
+["pyreon"]` in `.claude/settings.json` pre-approves it for everyone, but that is
+honored only in a folder you have trusted; a fresh clone still shows
+`⏸ Pending approval` until you run `claude` in it once and accept the trust dialog.
+Reset a wrong choice with `claude mcp reset-project-choices`.
+
+The server is launched via `bash -c` with `$CLAUDE_PROJECT_DIR` rather than a
+cwd-relative path, because Claude Code does not guarantee the server's working
+directory and provides no `cwd` field — a bare relative path resolves only when the
+process happens to start at the repo root.
+
 ## Package Overview
 
 | Package | Description |
