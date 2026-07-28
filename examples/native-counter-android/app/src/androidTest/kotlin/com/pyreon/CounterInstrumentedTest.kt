@@ -32,8 +32,8 @@ package com.pyreon
 
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -41,6 +41,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.pyreon.runtime.PyreonDatabase
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -141,6 +142,62 @@ class CounterInstrumentedTest {
         composeRule.waitForIdle()
 
         composeRule.onNodeWithText("Notes: ${before + 1}").assertIsDisplayed()
+    }
+
+    // useDatabase — the record is on the DEVICE'S DISK, not in a cache.
+    //
+    // The sibling test above proves the write path RUNS. This one proves it
+    // DURABLE, which is the claim `useDatabase` exists to make and the one that
+    // was false until 2026-07 (the default backend was an in-memory map, so
+    // every record died with the process — silently).
+    //
+    // Method: after the UI writes through the app's own store, the test builds
+    // a SECOND `PyreonDatabase(context)` over the same `filesDir`. A fresh
+    // instance carries no in-memory state, so anything it reads came off the
+    // filesystem. That eliminates the cache explanation entirely — the exact
+    // thing the previous Android "persistence" assertion could not do.
+    //
+    // WHY NOT A REAL PROCESS KILL. `am force-stop` is the honest equivalent of
+    // the iOS `terminate()` + relaunch, but AndroidJUnitRunner executes
+    // instrumented tests INSIDE the app's process, so force-stopping the app
+    // kills the test runner with it. The remaining delta versus iOS is
+    // therefore narrow and worth naming: this does not exercise the app's
+    // `onMount` re-read on a cold launch. The disk round trip — the part that
+    // was actually broken — is covered.
+    @Test
+    fun databaseRecordIsWrittenToDisk() {
+        val notesNode = composeRule.onNode(hasText("Notes: ", substring = true))
+        notesNode.assertIsDisplayed()
+        val before = notesNode
+            .fetchSemanticsNode()
+            .config[SemanticsProperties.Text]
+            .first()
+            .text
+            .removePrefix("Notes: ")
+            .trim()
+            .toInt()
+
+        composeRule.onNodeWithText("Save Note").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Notes: ${before + 1}").assertIsDisplayed()
+
+        // A cold reader over the same app-private directory. The context comes
+        // from the rule's own activity rather than InstrumentationRegistry:
+        // it is the APP's context by construction (so the identical `filesDir`
+        // the emitted `PyreonDatabase(LocalContext.current)` used), and it adds
+        // no androidTest dependency — `androidx.test:monitor` arrives only
+        // transitively here, and a device gate is an expensive place to
+        // discover a missing artifact.
+        val coldReader = PyreonDatabase(composeRule.activity.applicationContext)
+        val onDisk = coldReader.count("notes")
+
+        if (onDisk != before + 1) {
+            throw AssertionError(
+                "A freshly-constructed PyreonDatabase over the app's filesDir saw " +
+                    "$onDisk records, expected ${before + 1}. The UI reported the write, " +
+                    "so the record exists in memory but was never persisted.",
+            )
+        }
     }
 
     @Test

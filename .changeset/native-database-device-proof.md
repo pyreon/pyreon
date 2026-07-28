@@ -22,9 +22,17 @@ The Android counter compiles from the SAME shared source, so its instrumented
 test asserts the WRITE path on an emulator: tap → the rendered count advances,
 proving the emit compiles, `PyreonDatabase(LocalContext.current)` resolved a
 real file-backed store, the record landed, and `db.count` read it back. That is
-the half that never compiled. It is NOT the iOS assertion's equal — a Compose
-test runs in-process and cannot terminate the app, so process-death survival on
-Android needs UiAutomator and stays a tracked follow-up.
+the half that never compiled. A second Android test then proves DURABILITY: a
+freshly-constructed `PyreonDatabase` over the app's own `filesDir` reads what
+the UI just wrote, and a fresh instance carries no in-memory state, so the
+record demonstrably came off the device's disk — eliminating the cache
+explanation the previous Android "persistence" assertion could not.
+
+The remaining delta versus iOS is narrow and named rather than glossed:
+AndroidJUnitRunner executes instrumented tests INSIDE the app process, so an
+`am force-stop` would kill the test runner along with the app. The cold-LAUNCH
+`onMount` re-read is therefore iOS-only; the disk round trip — the part that
+was actually broken — is covered on both.
 
 Matrix: Storage 0.3 → 0.45, headline ≈52% → ≈53%, with the Android scope
 written into the row rather than rounded away.
