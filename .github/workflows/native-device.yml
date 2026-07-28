@@ -265,6 +265,29 @@ jobs:
       # booted across the 3 example apps so device boot-time cost is
       # paid ONCE (~30s); only the per-app install + test cost adds up.
 
+      # The geolocation assertion needs a GRANTED permission and an INJECTED
+      # coordinate. Without them the app shows a permission dialog (or simply
+      # never receives a fix) and the test times out — which is exactly what
+      # happened when this was first written: it passed locally because the
+      # simulator had been configured BY HAND, and failed here where nothing
+      # had. The setup belongs in the workflow, not in a developer's shell.
+      #
+      # Pinned to the same 37.3349 the XCUITest asserts; changing one without
+      # the other makes the test fail with a confusing timeout rather than a
+      # clear mismatch.
+      - name: Grant location + inject a fix — native-counter-ios
+        run: |
+          set -euo pipefail
+          UDID=$(xcrun simctl list devices booted -j \
+            | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for v in d.values() for x in v if x['state']=='Booted'))")
+          echo "booted simulator: $UDID"
+          # Pre-grant so no dialog appears. Tolerated if the simctl build does
+          # not support the service name — the location set below is what the
+          # assertion actually depends on.
+          xcrun simctl privacy "$UDID" grant location com.pyreon.PyreonCounter || \
+            echo "note: privacy grant unavailable; relying on the injected location"
+          xcrun simctl location "$UDID" set 37.3349,-122.0090
+
       - name: Emit + xcodegen + UITest — native-counter-ios
         working-directory: examples/native-counter-ios
         run: |

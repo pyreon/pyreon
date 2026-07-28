@@ -58,6 +58,12 @@ final class PyreonCounterUITests: XCTestCase {
 
     /// Maps/geolocation — a BEHAVIORAL proof, not a does-not-crash one.
     ///
+    /// The injected coordinate is set by the workflow step
+    /// "Grant location + inject a fix — native-counter-ios" (and, locally, by
+    /// the same two simctl commands). It was originally done by hand, which
+    /// made this pass locally and time out in CI — the determinism has to live
+    /// in the pipeline, not in a developer's shell.
+    ///
     /// The Simulator is pre-granted location permission and fed a fixed
     /// coordinate by the runner before launch (`simctl privacy … grant
     /// location` + `simctl location … set`), so this is deterministic: no
