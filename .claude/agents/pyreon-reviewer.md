@@ -1,7 +1,7 @@
 ---
 name: pyreon-reviewer
 description: Reviews Pyreon changes against the anti-pattern catalog, the seven memory-leak classes, and the reactivity contracts. Use PROACTIVELY after editing anything under packages/**, and always before opening a PR — even if the user does not say "review". Catches descriptor-copy reactivity loss, compiled-template vs h() divergence, module-level cache growth, SSR/hydration parity breaks, and symptom-patches that leave the bug CLASS open. Do NOT use for: writing or fixing code, running the gate wall (use gate-runner), proving a test is load-bearing (use bisect-verifier), or general codebase search (use Explore).
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, mcp__pyreon
 disallowedTools: Agent
 model: opus
 effort: high

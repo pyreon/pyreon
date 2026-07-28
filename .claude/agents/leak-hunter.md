@@ -1,7 +1,7 @@
 ---
 name: leak-hunter
 description: Hunts the seven Pyreon memory-leak classes (A/C/D/F/H/I) before they ship. Use PROACTIVELY whenever a change introduces a module-level cache, stack, registry, WeakMap/WeakSet, event listener, timer, promise queue, scratch buffer, or long-lived closure — and whenever retained heap moves — even if the user does not say "leak". Do NOT use for: general code review (use pyreon-reviewer), throughput regressions (use bench-runner), or fixing the leaks it finds.
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, mcp__pyreon
 disallowedTools: Agent
 model: opus
 effort: high

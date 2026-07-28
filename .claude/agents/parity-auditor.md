@@ -1,7 +1,7 @@
 ---
 name: parity-auditor
 description: Audits the divergence-prone PAIRS in Pyreon — JS vs Rust compiler backends, compiled-template vs runtime h() path, SSR vs client hydration, happy-dom vs real Chromium. Use PROACTIVELY whenever a change touches packages/core/compiler, runtime-dom props/template, runtime-server, or adds a browser-behavior claim — even if the user does not mention parity. Do NOT use for: general code review (use pyreon-reviewer), retention bugs (use leak-hunter), or performance claims (use bench-runner).
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, mcp__pyreon
 disallowedTools: Agent
 model: opus
 effort: high

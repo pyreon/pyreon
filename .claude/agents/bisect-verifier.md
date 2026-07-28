@@ -2,7 +2,7 @@
 name: bisect-verifier
 description: Proves a regression test is load-bearing by reverting the fix, confirming the test FAILS with the right error, restoring, and confirming it passes. Use PROACTIVELY on every fix PR before calling the work done — this is the repo's MANDATORY bisect-verify discipline. Also use when asked "is this test actually catching anything?". Do NOT use for: writing the test in the first place, reviewing code quality (use pyreon-reviewer), or running the full gate wall (use gate-runner).
 disallowedTools: Agent
-tools: Read, Edit, Write, Grep, Glob, Bash
+tools: Read, Edit, Write, Grep, Glob, Bash, mcp__pyreon
 model: opus
 effort: high
 memory: project

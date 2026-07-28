@@ -4,6 +4,7 @@ description: Runs and interprets Pyreon benchmarks with the repo's measurement d
 tools: Read, Grep, Glob, Bash
 disallowedTools: Agent
 model: opus
+skills: [pyreon-benchmarks]
 effort: high
 memory: project
 color: green
