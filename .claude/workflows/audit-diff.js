@@ -62,7 +62,13 @@ const VERDICT = {
 phase('Scope')
 
 const scope = await agent(
-  `Run \`git diff origin/main...HEAD --stat\` and \`git diff origin/main...HEAD --name-only\`.
+  `First establish the REAL review surface — this is load-bearing on a stale branch.
+   Run BOTH \`git diff origin/main...HEAD --stat\` (three-dot: everything since the
+   merge-base) and \`git diff origin/main HEAD --stat\` (two-dot: actual divergence).
+   If they differ materially the branch is behind and three-dot is re-presenting work
+   that ALREADY LANDED on main. Report the gap, and scope the audit to the two-dot
+   surface — auditing code already reviewed on main wastes the whole run.
+   Then run \`git diff origin/main HEAD --name-only\`.
    Decide which audit lenses this diff actually warrants:
    - "review": always applicable to any source change.
    - "parity": only if it touches packages/core/compiler, runtime-dom props/template,
@@ -88,7 +94,9 @@ const perLens = await pipeline(
   lenses,
   (lens) =>
     agent(
-      `Audit the working diff (\`git diff origin/main...HEAD\`) using your specialty.
+      `Audit the branch's REAL divergence — \`git diff origin/main HEAD\` (two-dot, NOT
+       three-dot) — using your specialty. Three-dot re-presents everything since the
+       merge-base, which on a stale branch includes code already merged and reviewed.
        Report only defects you can substantiate against the actual code.
        For each, set class_closed=false if the fix only handles the reproduced SHAPE
        rather than the whole bug CLASS. Return an empty array if nothing is wrong —
