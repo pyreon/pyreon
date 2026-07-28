@@ -199,6 +199,25 @@ const countPublishedPackages = (repoRoot: string): number => {
   return count
 }
 
+/**
+ * NOTE — CLAUDE.md is not a claim site for the hook count or the document
+ * output-format count any more.
+ *
+ * Both claims lived in the package table, and #2538 slimmed CLAUDE.md by ~190
+ * lines to halve per-subagent context, deleting those rows. The gate then
+ * failed for EVERY contributor with "pattern not found ... claim was likely
+ * deleted or rephrased" — correct in substance and impossible to act on, since
+ * the text is gone on purpose.
+ *
+ * Forcing the sentences back in would fight that change for no benefit: both
+ * numbers are still claimed in the places a reader actually meets them (the
+ * package READMEs, the hooks manifest, the docs index, the root README), and
+ * those entries still fail on drift. What was lost is a duplicate, not the
+ * protection.
+ *
+ * If a future edit re-adds a count to CLAUDE.md, add the claim back here — an
+ * unguarded number is exactly what this gate exists to prevent.
+ */
 const checks: ClaimCheck[] = [
   {
     name: 'hook export count',
@@ -216,11 +235,6 @@ const checks: ClaimCheck[] = [
       {
         file: 'packages/fundamentals/hooks/src/manifest.ts',
         pattern: /Signal-based hooks for Pyreon — (\d+) reactive primitives/,
-      },
-      {
-        file: 'CLAUDE.md',
-        pattern: /\| `@pyreon\/hooks` *\| (\d+) signal-based hooks/,
-        rejectHedged: /\| `@pyreon\/hooks` *\| (\d+)\+ signal-based hooks/,
       },
       {
         file: 'docs/src/content/docs/index.md',
@@ -322,10 +336,6 @@ const checks: ClaimCheck[] = [
     claims: [
       {
         file: 'README.md',
-        pattern: /18 primitives, (\d+) output formats/,
-      },
-      {
-        file: 'CLAUDE.md',
         pattern: /18 primitives, (\d+) output formats/,
       },
       {
