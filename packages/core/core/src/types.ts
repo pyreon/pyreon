@@ -5,8 +5,18 @@
 // Reactive getter returning a child — wraps dynamic expressions in `() =>`
 export type VNodeChildAtom = VNode | string | number | boolean | null | undefined
 /** Reactive accessor — TS checks this arm FIRST so `{() => cond && <X />}` resolves correctly */
-export type VNodeChildAccessor = () => VNodeChildAtom | VNodeChildAtom[]
-export type VNodeChild = VNodeChildAccessor | VNodeChildAtom | VNodeChildAtom[]
+export type VNodeChildAccessor = () => VNodeChildAtom | VNodeChild[]
+/**
+ * The array arm is `VNodeChild[]`, not `VNodeChildAtom[]`.
+ *
+ * With atoms only, a reactive ACCESSOR was legal as a SOLE child and rejected
+ * among MULTIPLE children — so `<Text>Count: {count}</Text>` failed to
+ * typecheck on the canonical primitives while the identical shape on a DOM
+ * element compiled (the JSX runtime already types children as
+ * `VNodeChild | VNodeChild[]`). The runtime has always mounted accessors
+ * anywhere in a children array; only the type disagreed.
+ */
+export type VNodeChild = VNodeChildAccessor | VNodeChildAtom | VNodeChild[]
 
 export interface VNode {
   /** Tag name, component function, or special symbol (Fragment) */
