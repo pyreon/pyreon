@@ -68,63 +68,22 @@ package com.pyreon.runtime
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.serializer
 
-/**
- * Pluggable storage backend. Concrete implementations:
- *
- * - [InMemoryBackend] — process-scope `MutableMap<String, String>` (this
- *   file). Useful for unit tests, Composable previews, and the kotlinc
- *   validation harness. Loses data on process exit.
- *
- * - DataStoreBackend (separate module, requires Android SDK) — wraps
- *   `androidx.datastore.preferences.preferencesDataStore` for actual
- *   cross-launch persistence. Not shipped here because the package
- *   intentionally has no Android-SDK dependency yet.
- *
- * Backends store values as JSON strings (kotlinx-serialization).
- * The serializer is supplied by the caller, so non-string T types
- * round-trip cleanly.
- */
-public interface PyreonStorageBackend {
-    public fun read(key: String): String?
-    public fun write(key: String, value: String)
-    public fun remove(key: String)
-}
-
-/**
- * Process-scope in-memory backend. Loses data on process exit, but
- * survives the application's lifetime — useful for unit tests, Composable
- * previews, and the kotlinc validation harness. Real apps wire
- * DataStoreBackend (separate module) for persistent storage.
- */
-public class InMemoryBackend : PyreonStorageBackend {
-    private val map: MutableMap<String, String> = mutableMapOf()
-
-    override fun read(key: String): String? = map[key]
-    override fun write(key: String, value: String) {
-        map[key] = value
-    }
-    override fun remove(key: String) {
-        map.remove(key)
-    }
-}
-
-/**
- * Active backend. Apps configure this once at startup (typically in
- * `Application.onCreate` or a Hilt singleton). Default is
- * [InMemoryBackend] so unit tests + previews work without wiring.
- *
- * Real apps replace this with `DataStoreBackend(context)` for actual
- * cross-launch persistence.
- */
-public object PyreonStorageRegistry {
-    public var backend: PyreonStorageBackend = InMemoryBackend()
-}
+// The BACKEND LAYER — `PyreonStorageBackend`, `InMemoryBackend`,
+// `FileStorageBackend`, `PyreonStorageRegistry` and the install policy — now
+// lives in PyreonStorageBackends.kt (same package, no import needed).
+//
+// It moved because none of it needs Compose, and everything in THIS file does:
+// `scripts/run-kotlin-tests.ts` only executes modules that import no
+// `androidx.*`, so anything sharing a file with `rememberPyreonStorage` can be
+// typechecked but never RUN. Persistence and the "don't clobber the app's
+// backend" policy are exactly the things that must be run to be believed.
 
 /**
  * Static utilities — non-Composable callers (unit tests, migrations,
@@ -224,6 +183,19 @@ public inline fun <reified T> rememberPyreonStorage(
     // rendering worked from in-memory state, the post-recreate read
     // returned null.
     val ser = serializer<T>()
+    // Give the process a PERSISTENT default before the first read. Until
+    // 2026-07 there was none: the registry held an in-memory map, the docs
+    // pointed at a `DataStoreBackend` that did not exist in the repo, and no
+    // app ever assigned the registry — so every stored value died with the
+    // process, on the platform where process death is routine. A default that
+    // requires a step nobody takes is not a default.
+    //
+    // `installDefaultPyreonStorage` only replaces the UNCONFIGURED in-memory
+    // backend, so an app that wired its own store in Application.onCreate is
+    // untouched. Keyed on the context so it runs once per composition tree,
+    // not once per stored key.
+    val appContext = LocalContext.current
+    remember(appContext) { installDefaultPyreonStorage(appContext); appContext }
     val state = remember(key) {
         val current = PyreonStorageRegistry.backend.read(key)
         val initialValue: T = PyreonStorage.decodeOrDefault(current, initial)
