@@ -32,10 +32,13 @@ package com.pyreon
 
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -198,6 +201,80 @@ class CounterInstrumentedTest {
                     "so the record exists in memory but was never persisted.",
             )
         }
+    }
+
+    // The static half of the style pipeline, asserted through GEOMETRY — the
+    // Compose mirror of the iOS `test_rocketstyleSizeDimensionProducesRealGeometry`.
+    //
+    // The badge test proves a reactive dimension re-renders and deliberately
+    // claims nothing about colour (the Compose test tree cannot read one). This
+    // covers the STATIC cascade: `size="narrow"` / `size="wide"` lower to
+    // `Modifier.width(120.dp)` / `width(240.dp)`, and bounds ARE readable, so a
+    // dropped or ignored modifier is visible here.
+    //
+    // Asserted in dp against the emitted values, since Compose reports bounds in
+    // dp directly and no scale conversion is involved — with a tolerance for
+    // layout rounding.
+    @Test
+    fun rocketstyleSizeDimensionProducesRealGeometry() {
+        composeRule.onNodeWithTag("sized-narrow").assertIsDisplayed()
+        composeRule.onNodeWithTag("sized-wide").assertIsDisplayed()
+
+        val narrow = composeRule.onNodeWithTag("sized-narrow").getBoundsInRoot()
+        val wide = composeRule.onNodeWithTag("sized-wide").getBoundsInRoot()
+
+        // `getBoundsInRoot()` returns a DpRect — left/top/right/bottom, no
+        // `width` accessor. Derive it.
+        val narrowDp = (narrow.right - narrow.left).value
+        val wideDp = (wide.right - wide.left).value
+
+        if (narrowDp < 110f || narrowDp > 130f) {
+            throw AssertionError(
+                "narrow width was ${narrowDp}dp, expected ~120dp from the size cascade. " +
+                    "A value near the intrinsic text width means the modifier was dropped.",
+            )
+        }
+        if (wideDp < 230f || wideDp > 250f) {
+            throw AssertionError("wide width was ${wideDp}dp, expected ~240dp from the size cascade.")
+        }
+    }
+
+    // accessibilityLabel — the ANDROID half, which had none.
+    //
+    // The cross-platform `accessibilityLabel` prop lowers per target: iOS
+    // `.accessibilityLabel(...)`, Android
+    // `Modifier.semantics { contentDescription = … }`. iOS has asserted its half
+    // on-device since the a11y pass; Android asserted NOTHING — no
+    // content-description query existed in this file at all — so the Compose
+    // lowering was emit-locked only, and the capability matrix credits a11y
+    // accordingly (0.15, "the Android side not device-asserted here").
+    //
+    // The assertion is differentiating in the same way the iOS one is: the
+    // element is queried by its LABEL, never by its visible glyph "●". A
+    // dropped or ignored `semantics` block leaves the node findable by text and
+    // NOT by content description, so this fails rather than passing on a
+    // coincidence.
+    @Test
+    fun accessibilityLabelReachesTheSemanticsTree() {
+        composeRule.onNodeWithContentDescription("A11y status ready").assertIsDisplayed()
+    }
+
+    // The label is attached to the RIGHT node — the one rendering the glyph.
+    //
+    // This is the differentiating half. Asserting only that some node carries
+    // the description would pass if the `semantics` block landed on a wrapper,
+    // a sibling, or an empty spacer. Asserting that the node found BY THE LABEL
+    // is also the node whose text is "●" pins the lowering to the element the
+    // author annotated.
+    //
+    // (An earlier draft asserted `onNodeWithContentDescription("●")
+    // .assertDoesNotExist()` instead. That is trivially true — the glyph was
+    // never set as a description — so it proved nothing about the lowering.)
+    @Test
+    fun accessibilityLabelIsAttachedToTheAnnotatedElement() {
+        composeRule
+            .onNodeWithContentDescription("A11y status ready")
+            .assertTextEquals("●")
     }
 
     @Test
