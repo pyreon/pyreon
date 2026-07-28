@@ -161,7 +161,7 @@
     "@tanstack/virtual-core": "3.17.4",
     "zod": "4.4.3",
     "@codemirror/state": "6.7.1",
-    "vite": "8.0.16"
+    "vite": "8.1.5"
   },
   "dependencies": {
     "@tanstack/query-core": "^5.101.2",
