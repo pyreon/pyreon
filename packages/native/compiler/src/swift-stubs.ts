@@ -227,6 +227,77 @@ public struct PyreonHaptics { public init() {}; public func impact(_ style: Stri
 // private(set) there, and the URL-taking connect uses the 'to:' label.
 // Only the members the EMIT can produce are declared — a stub is a mirror of
 // what is used, never a convenience superset.
+public struct PyreonMapCamera: Sendable, Equatable {
+  public let latitude: Double
+  public let longitude: Double
+  public let zoom: Double
+  public init(latitude: Double, longitude: Double, zoom: Double) {
+    self.latitude = latitude; self.longitude = longitude; self.zoom = zoom
+  }
+}
+public struct PyreonMapMarker: Sendable, Equatable {
+  public let id: String
+  public let latitude: Double
+  public let longitude: Double
+  public let title: String?
+  public init(id: String, latitude: Double, longitude: Double, title: String? = nil) {
+    self.id = id; self.latitude = latitude; self.longitude = longitude; self.title = title
+  }
+}
+public final class PyreonMapState {
+  public private(set) var camera: PyreonMapCamera
+  public private(set) var markers: [PyreonMapMarker]
+  public private(set) var selectedMarkerId: String?
+  public init(
+    camera: PyreonMapCamera = PyreonMapCamera(latitude: 0, longitude: 0, zoom: 1),
+    markers: [PyreonMapMarker] = []
+  ) {
+    self.camera = camera; self.markers = markers
+  }
+  public var selectedMarker: PyreonMapMarker? { nil }
+  public func setCamera(_ camera: PyreonMapCamera) {}
+  public func moveTo(latitude: Double, longitude: Double, zoom: Double? = nil) {}
+  public func setMarkers(_ markers: [PyreonMapMarker]) {}
+  public func addMarker(_ marker: PyreonMapMarker) {}
+  public func removeMarker(id: String) {}
+  public func selectMarker(_ id: String?) {}
+}
+public struct PyreonProduct: Sendable, Equatable {
+  public let id: String
+  public let displayName: String
+  public let price: String
+  public init(id: String, displayName: String, price: String) {
+    self.id = id; self.displayName = displayName; self.price = price
+  }
+}
+public final class PyreonPayments {
+  public private(set) var products: [PyreonProduct] = []
+  public private(set) var ownedProductIds: Set<String> = []
+  public private(set) var purchasing: String?
+  public private(set) var error: Error?
+  public init() {}
+  public func owns(_ productId: String) -> Bool { false }
+  public func purchase(_ productId: String) {}
+  public func restore() {}
+}
+public struct PyreonPushNotification: Sendable, Equatable {
+  public let title: String?
+  public let body: String?
+  public let data: [String: String]
+  public init(title: String? = nil, body: String? = nil, data: [String: String] = [:]) {
+    self.title = title; self.body = body; self.data = data
+  }
+}
+public final class PyreonPushNotifications {
+  public private(set) var token: String?
+  public private(set) var lastNotification: PyreonPushNotification?
+  public private(set) var notifications: [PyreonPushNotification] = []
+  public private(set) var isAuthorized: Bool = false
+  public private(set) var error: Error?
+  public init() {}
+  public var isRegistered: Bool { false }
+  public func stop() {}
+}
 public final class PyreonWebSocket {
   public private(set) var lastMessage: String?
   public private(set) var messages: [String] = []

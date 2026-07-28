@@ -45,9 +45,12 @@ runtime. The first `PyreonGeolocation` stub copied `public override init()`
 verbatim, which is correct in the runtime (it subclasses NSObject for
 CLLocationManagerDelegate) and invalid in a stub with no superclass.
 
-Six of the nine are now filled — `PyreonWebSocket` and `PyreonGeolocation` on
-Swift, and `PyreonHaptics`, `PyreonLinking`, `PyreonNotifications`,
-`PyreonShare` on Kotlin — leaving three.
+All nine are now filled — WebSocket, Geolocation, MapState, Payments and
+PushNotifications on Swift; Haptics, Linking, Notifications and Share on
+Kotlin — so every emitted framework type is type-checked on both platforms and
+`KNOWN_UNCOVERED` is EMPTY. The list stays as the mechanism rather than as
+debt: it is what makes "a new capability arrives without a stub" fail loudly
+instead of silently widening the blind spot again.
 
 Filling the Kotlin four unlocked something larger: running the COUNTER app's
 whole emit through `validateKotlin` (rather than one hook at a time) exposed
@@ -58,11 +61,6 @@ whole-app validation catches that class. With those added, the counter app's
 entire Kotlin emit type-checks for the first time, and a new test keeps it that
 way — including a spec that FAILS without the app-owned `DeviceInfo`, so the
 gate cannot pass on a trivially-satisfied input.
-
-The remaining three are not filled in bulk on purpose: a stub must mirror the real surface EXACTLY,
-because a superset stub is itself a masking source. Nine surfaces is nine
-careful readings of a runtime file, and doing them badly would be worse than
-the gap. What must not happen meanwhile is the list growing silently.
 
 Bisect-verified twice: removing both clipboard stubs fails the two type-gate
 specs; removing the Swift one alone makes the ratchet name

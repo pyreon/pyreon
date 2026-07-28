@@ -49,10 +49,14 @@ const KOTLIN_RUNTIME = join(REPO, 'packages/native/runtime-kotlin/src/main/kotli
 /**
  * Types the emitters construct that have NO stub on the named platform.
  *
- * Started at NINE; down to three. Stubbed and removed since:
- * `PyreonWebSocket`, `PyreonGeolocation` (Swift) and `PyreonHaptics`,
- * `PyreonLinking`, `PyreonNotifications`, `PyreonShare` (Kotlin) — the
- * intended direction of travel.
+ * Started at NINE. Now ZERO — all nine were stubbed rather than tolerated:
+ * `PyreonWebSocket`, `PyreonGeolocation`, `PyreonMapState`, `PyreonPayments`,
+ * `PyreonPushNotifications` (Swift) and `PyreonHaptics`, `PyreonLinking`,
+ * `PyreonNotifications`, `PyreonShare` (Kotlin).
+ *
+ * The list stays as the mechanism, not as debt: it is what makes "a new
+ * capability arrives without a stub" fail loudly instead of silently widening
+ * the blind spot again.
  *
  * SCOPE LIMIT worth knowing: this scans `Pyreon*` names, so a missing
  * COMPOSE or SwiftUI API is invisible to it. Two such gaps
@@ -66,10 +70,11 @@ const KOTLIN_RUNTIME = join(REPO, 'packages/native/runtime-kotlin/src/main/kotli
  * exemption. This list may only shrink.
  */
 const KNOWN_UNCOVERED: Readonly<Record<string, 'swift' | 'kotlin'>> = {
-  // Swift stubs missing — these ride the Kotlin gate only today.
-  PyreonMapState: 'swift',
-  PyreonPayments: 'swift',
-  PyreonPushNotifications: 'swift',
+  // EMPTY. Every emitted framework type is stubbed on both platforms.
+  //
+  // Keep it that way: an entry added here is a capability whose emitted code
+  // nothing type-checks, which is how `useDatabase` shipped Swift without
+  // argument labels for months. Prefer writing the stub.
 }
 
 /** `Pyreon*` names the emitters construct (constructor-call position). */

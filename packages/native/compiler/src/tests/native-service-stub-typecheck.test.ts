@@ -90,3 +90,51 @@ describe('newly-stubbed service hooks type-check on Swift', () => {
     expect(validateSwiftWithStubs(badGeo).ok).toBe(false)
   })
 })
+
+const MAP = `import { useMap } from '@pyreon/hooks'
+import { Stack, Text } from '@pyreon/primitives'
+export function Places() {
+  const m = useMap()
+  return (<Stack><Text>Zoom: {m.camera.zoom}</Text></Stack>)
+}`
+
+const PAYMENTS = `import { usePayments } from '@pyreon/hooks'
+import { Stack, Text, Button } from '@pyreon/primitives'
+export function Shop() {
+  const p = usePayments()
+  return (<Stack><Text>Buying: {p.purchasing}</Text><Button onPress={() => p.purchase('sku')}>Buy</Button></Stack>)
+}`
+
+const PUSH = `import { usePush } from '@pyreon/hooks'
+import { Stack, Text } from '@pyreon/primitives'
+export function Inbox() {
+  const n = usePush()
+  return (<Stack><Text>Token: {n.token}</Text></Stack>)
+}`
+
+describe('the last three ratchet entries type-check on Swift', () => {
+  // These emptied KNOWN_UNCOVERED. `useMap` is the interesting one: the emit
+  // reaches THROUGH the container (`m.camera.zoom`), so the stub needs the
+  // value types too — a container-only stub would fail on the member access
+  // rather than the construction.
+  it.skipIf(!isSwiftcAvailable())('useMap, including the nested camera read', () => {
+    expect(swift(MAP)).toContain('@State private var m = PyreonMapState()')
+    const res = validateSwiftWithStubs(swift(MAP))
+    expect(res.ok, res.error ?? '').toBe(true)
+  })
+
+  it.skipIf(!isSwiftcAvailable())('usePayments', () => {
+    const res = validateSwiftWithStubs(swift(PAYMENTS))
+    expect(res.ok, res.error ?? '').toBe(true)
+  })
+
+  it.skipIf(!isSwiftcAvailable())('usePush', () => {
+    const res = validateSwiftWithStubs(swift(PUSH))
+    expect(res.ok, res.error ?? '').toBe(true)
+  })
+
+  it.skipIf(!isSwiftcAvailable())('their stubs REJECT writes to read-only fields', () => {
+    const bad = swift(PAYMENTS).replace(`p.purchase("sku")`, 'p.purchasing = "x"')
+    expect(validateSwiftWithStubs(bad).ok).toBe(false)
+  })
+})
