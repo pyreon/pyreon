@@ -6,9 +6,14 @@ name: Bundle size diff
 # Helps reviewers eyeball "this PR adds 4KB to @pyreon/zero" before merge.
 
 on:
+  # NO `branches:` filter — deliberately. A PR whose base is another FEATURE
+  # branch (a stack) is still a PR that will reach main, and gating this
+  # workflow on `branches: [main]` meant none of it ran on one: the PR then
+  # showed a small all-green set from the handful of workflows that DO run on
+  # any base, which reads as "validated" and is not.
+  # Re-adding the filter re-opens that hole.
   pull_request:
     types: [opened, synchronize, reopened]
-    branches: [main]
 
 permissions:
   contents: read
