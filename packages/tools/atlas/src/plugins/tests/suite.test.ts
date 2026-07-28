@@ -165,6 +165,8 @@ describe('usageDocsPlugin (graph stage)', () => {
             ...makeScenario({ component: 'Button', name: 'bad' }),
             verify: {
               ok: false,
+              // one check ran and failed — a real FAIL, not an unverified scenario
+              checked: 1,
               a11y: { status: 'fail' },
               interaction: { status: 'skip' },
               reactivityCoverage: { status: 'skip' },

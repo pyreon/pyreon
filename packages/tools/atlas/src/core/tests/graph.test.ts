@@ -12,8 +12,15 @@ const ci = (over: Partial<ComponentIntelligence> = {}): ComponentIntelligence =>
   ...over,
 })
 
+/**
+ * `checked` is DERIVED here exactly as `mergeVerdict` derives it in the
+ * registry — a hand-set count would let a fixture describe a verdict the
+ * pipeline can never produce (e.g. "ok, but nothing ran"), which is the state
+ * this file exists to prove the renderers no longer present as a pass.
+ */
 const verdict = (a11y: CheckStatus, ok: boolean): VerifyVerdict => ({
   ok,
+  checked: a11y === 'skip' ? 0 : 1,
   a11y: { status: a11y },
   interaction: { status: 'skip' },
   reactivityCoverage: { status: 'skip' },
@@ -23,7 +30,19 @@ const verdict = (a11y: CheckStatus, ok: boolean): VerifyVerdict => ({
 
 const failVerdict = (findings: string[]): VerifyVerdict => ({
   ok: false,
+  checked: 1,
   a11y: { status: 'fail', findings },
+  interaction: { status: 'skip' },
+  reactivityCoverage: { status: 'skip' },
+  leak: { status: 'skip' },
+  snapshot: { status: 'skip' },
+})
+
+/** A verdict from a pipeline where every check was a stub — the common case. */
+const unverifiedVerdict = (): VerifyVerdict => ({
+  ok: false,
+  checked: 0,
+  a11y: { status: 'skip' },
   interaction: { status: 'skip' },
   reactivityCoverage: { status: 'skip' },
   leak: { status: 'skip' },
@@ -172,11 +191,51 @@ describe('toAgentGuide', () => {
     expect(guide).toContain('avoid: "Empty" — missing accessible name: "label" is empty')
   })
 
-  it('skips an empty-args scenario when picking the correct example', () => {
-    const empty = makeScenario({ component: 'Y', name: 'Default' }) // ok !== false, but no args
+  it('skips an empty-args scenario when picking the example', () => {
+    const empty = makeScenario({ component: 'Y', name: 'Default' }) // no args to show
     const filled = makeScenario({ component: 'Y', name: 'filled', args: { a: 1 } })
     const guide = createCatalogGraph([ci({ name: 'Y', scenarios: [empty, filled] })]).toAgentGuide()
-    expect(guide).toContain('correct: {"a":1}')
+    // Neither scenario ran a check, so the guide offers the args WITHOUT
+    // claiming they are correct — but it still picks the one with args.
+    expect(guide).toContain('example (unverified): {"a":1}')
+  })
+
+  it('only says "correct" for a scenario a check actually passed', () => {
+    // The distinction the guide exists to make: an agent reading `correct:`
+    // should be able to trust that something verified it. Before, `correct:`
+    // was printed for any scenario that had not explicitly FAILED — which
+    // included every scenario the stubbed pipeline never examined.
+    const unchecked = {
+      ...makeScenario({ component: 'Z', name: 'unchecked', args: { a: 1 } }),
+      verify: unverifiedVerdict(),
+    }
+    const checked = {
+      ...makeScenario({ component: 'Z', name: 'checked', args: { b: 2 } }),
+      verify: verdict('pass', true),
+    }
+
+    const unverifiedOnly = createCatalogGraph([
+      ci({ name: 'Z', scenarios: [unchecked] }),
+    ]).toAgentGuide()
+    expect(unverifiedOnly).not.toContain('correct:')
+    expect(unverifiedOnly).toContain('example (unverified): {"a":1}')
+
+    // With a verified scenario present, the guide prefers it and upgrades the wording.
+    const withVerified = createCatalogGraph([
+      ci({ name: 'Z', scenarios: [unchecked, checked] }),
+    ]).toAgentGuide()
+    expect(withVerified).toContain('correct: {"b":2}')
+    expect(withVerified).not.toContain('example (unverified)')
+  })
+
+  it('never labels an unverified scenario as passing in the llms catalog', () => {
+    const unchecked = {
+      ...makeScenario({ component: 'W', name: 'unchecked' }),
+      verify: unverifiedVerdict(),
+    }
+    const text = createCatalogGraph([ci({ name: 'W', scenarios: [unchecked] })]).toLlmsText()
+    expect(text).toContain('[unverified]')
+    expect(text).not.toContain('[pass]')
   })
 
   it('renders a minimal component and omits an avoid line when a failure has no findings', () => {

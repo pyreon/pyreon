@@ -108,12 +108,28 @@ export interface VerifyCheck {
 }
 
 /**
- * The outcome of the verify pipeline for one scenario. `ok` is the AND of every
- * non-skipped check — a scenario is only trustworthy (for humans and agents)
- * when it passes.
+ * The outcome of the verify pipeline for one scenario.
+ *
+ * `ok` means VERIFIED: at least one check actually ran, and none failed.
+ *
+ * The distinction is load-bearing and used to be missing. `ok` was "no check
+ * failed", and `emptyVerdict()` starts every check at `skip` — so a scenario
+ * nothing had examined was `ok: true`, indistinguishable from one that passed
+ * every gate. Four of the five checks (`interaction`, `reactivityCoverage`,
+ * `leak`, `snapshot`) are still unimplemented stubs, so that was the common
+ * case, not an edge case: the catalog printed `[pass]` and the agent guide
+ * offered "correct:" examples on the strength of checks that never ran.
+ *
+ * Telling an agent something is verified when it was not is worse than saying
+ * nothing — it is the same false-green class as a doctor gate that reports 100
+ * after scanning zero files. `checked` keeps the two states separable for every
+ * consumer, so a renderer never has to infer "did anything happen?" from `ok`.
  */
 export interface VerifyVerdict {
+  /** verified: `checked > 0` AND no check failed. */
   ok: boolean
+  /** how many checks actually ran (non-skip). `0` means UNVERIFIED, not clean. */
+  checked: number
   a11y: VerifyCheck
   interaction: VerifyCheck
   reactivityCoverage: VerifyCheck

@@ -13,9 +13,13 @@ const ci = (name: string): ComponentIntelligence => ({
 })
 
 describe('emptyVerdict', () => {
-  it('is all-skip and ok', () => {
+  it('is all-skip and NOT ok — nothing ran, so there is nothing to vouch for', () => {
+    // This asserted `ok: true` before, which is how an unverified scenario
+    // reached the agent guide labelled `[pass]`. "No check failed" is not
+    // evidence of correctness when no check ran.
     const v = emptyVerdict()
-    expect(v.ok).toBe(true)
+    expect(v.ok).toBe(false)
+    expect(v.checked).toBe(0)
     expect(v.a11y.status).toBe('skip')
     expect(v.snapshot.status).toBe('skip')
   })
