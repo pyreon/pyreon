@@ -3,6 +3,12 @@ import type { SchemaValidateFn } from '@pyreon/form'
 import { useForm as _useForm } from '@pyreon/form'
 import type { QueryKey } from '@pyreon/query'
 import { useMutation as _useMutation, useQuery as _useQuery, useQueryClient } from '@pyreon/query'
+import {
+  createFetchTransport,
+  createHttp,
+  type HttpMethod,
+  type RequestOptions,
+} from '@pyreon/http'
 import { batch, signal } from '@pyreon/reactivity'
 import { defineStore } from '@pyreon/store'
 import type { ColumnDef, SortingState } from '@pyreon/table'
@@ -26,14 +32,52 @@ import type {
 
 // ─── Fetch wrapper ────────────────────────────────────────────────────────────
 
-function createFetcher(baseFetcher: typeof fetch = fetch) {
-  async function request<T>(url: string, init?: RequestInit): Promise<T> {
-    const res = await baseFetcher(url, init)
+/**
+ * The REST layer, on `@pyreon/http`.
+ *
+ * ## Why this migrated
+ *
+ * The hand-rolled version took no `AbortSignal`, and every read hook called
+ * it as `queryFn: () => http.getById(api, id)`. TanStack always passes
+ * `{ signal }` and aborts it on unmount or supersede, so dropping it meant
+ * cancellation was silently dead for EVERY feature-driven query since the
+ * package shipped: an unmounted component kept fetching, and a retyped
+ * search raced its own stale responses into the cache.
+ *
+ * Routing through the client also fixes un-encoded path interpolation
+ * (`${url}/${id}` let an id containing "/" escape its segment) and gives
+ * the requests a deadline, which raw `fetch` has none of.
+ *
+ * ## What is deliberately UNCHANGED
+ *
+ * The thrown error shape is feature's public contract — `message` from the
+ * body when present else `<METHOD> <url> failed: <status>`, plus `status`,
+ * plus `errors` ONLY when the body carries them. `@pyreon/http`'s own
+ * `HttpError` has a different message and no `errors`, so the client runs
+ * with `throwHttpErrors: false` and the existing extraction is preserved
+ * verbatim. Migrating the transport must not silently re-shape what
+ * consumers catch.
+ */
+function createFetcher(baseFetcher?: typeof fetch) {
+  const client = createHttp({
+    // Feature owns its error contract — see above.
+    throwHttpErrors: false,
+    // `config.fetcher` stays a plain `typeof fetch` for back-compat.
+    ...(baseFetcher ? { transport: createFetchTransport(baseFetcher) } : {}),
+  })
+
+  async function request<T>(
+    method: HttpMethod,
+    path: string,
+    options: RequestOptions & { displayUrl: string },
+  ): Promise<T> {
+    const { displayUrl, ...requestOptions } = options
+    const res = await client.request(method, path, requestOptions)
 
     if (!res.ok) {
-      let message = `${init?.method ?? 'GET'} ${url} failed: ${res.status}`
+      let message = `${method} ${displayUrl} failed: ${res.status}`
       try {
-        const body = await res.json()
+        const body = await res.raw.json()
         if (body?.message) message = body.message
         if (body?.errors) {
           throw Object.assign(new Error(message), {
@@ -48,35 +92,46 @@ function createFetcher(baseFetcher: typeof fetch = fetch) {
     }
 
     if (res.status === 204) return undefined as T
-    return res.json()
+    return res.raw.json() as Promise<T>
   }
 
   return {
-    list<T>(url: string, params?: Record<string, string | number | boolean>): Promise<T[]> {
+    list<T>(
+      url: string,
+      params?: Record<string, string | number | boolean>,
+      abortSignal?: AbortSignal,
+    ): Promise<T[]> {
       const query = params
         ? `?${new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)])).toString()}`
         : ''
-      return request<T[]>(`${url}${query}`)
-    },
-    getById<T>(url: string, id: string | number): Promise<T> {
-      return request<T>(`${url}/${id}`)
-    },
-    create<T>(url: string, data: unknown): Promise<T> {
-      return request<T>(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
+      return request<T[]>('GET', url, {
+        ...(params ? { query: params } : {}),
+        ...(abortSignal ? { signal: abortSignal } : {}),
+        displayUrl: `${url}${query}`,
       })
     },
+    getById<T>(url: string, id: string | number, abortSignal?: AbortSignal): Promise<T> {
+      return request<T>('GET', `${url}/:id`, {
+        params: { id },
+        ...(abortSignal ? { signal: abortSignal } : {}),
+        displayUrl: `${url}/${id}`,
+      })
+    },
+    create<T>(url: string, data: unknown): Promise<T> {
+      return request<T>('POST', url, { json: data, displayUrl: url })
+    },
     update<T>(url: string, id: string | number, data: unknown): Promise<T> {
-      return request<T>(`${url}/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
+      return request<T>('PUT', `${url}/:id`, {
+        params: { id },
+        json: data,
+        displayUrl: `${url}/${id}`,
       })
     },
     delete(url: string, id: string | number): Promise<void> {
-      return request<void>(`${url}/${id}`, { method: 'DELETE' })
+      return request<void>('DELETE', `${url}/:id`, {
+        params: { id },
+        displayUrl: `${url}/${id}`,
+      })
     },
   }
 }
@@ -252,8 +307,15 @@ export function defineFeature<TValues extends Record<string, unknown>>(
 
         return {
           queryKey: queryKeyParts as QueryKey,
-          queryFn: () =>
-            http.list<TValues>(api, Object.keys(params).length > 0 ? params : undefined),
+          // `{ signal }` is TanStack's per-fetch AbortSignal. Forwarding it
+          // is what makes cancellation work at all; dropping it (as this
+          // did until now) leaves an unmounted component fetching.
+          queryFn: ({ signal: abortSignal }) =>
+            http.list<TValues>(
+              api,
+              Object.keys(params).length > 0 ? params : undefined,
+              abortSignal,
+            ),
           ...(options?.staleTime != null ? { staleTime: options.staleTime } : {}),
           ...(options?.enabled != null ? { enabled: options.enabled } : {}),
         }
@@ -263,7 +325,7 @@ export function defineFeature<TValues extends Record<string, unknown>>(
     useById(id: string | number) {
       return _useQuery(() => ({
         queryKey: [name, id],
-        queryFn: () => http.getById<TValues>(api, id),
+        queryFn: ({ signal: abortSignal }) => http.getById<TValues>(api, id, abortSignal),
         enabled: id !== undefined && id !== null,
       }))
     },
@@ -271,7 +333,8 @@ export function defineFeature<TValues extends Record<string, unknown>>(
     useSearch(searchTerm, options?: ListOptions) {
       return _useQuery(() => ({
         queryKey: [...queryKeyBase, 'search', searchTerm()],
-        queryFn: () => http.list<TValues>(api, { ...options?.params, q: searchTerm() }),
+        queryFn: ({ signal: abortSignal }) =>
+          http.list<TValues>(api, { ...options?.params, q: searchTerm() }, abortSignal),
         enabled: searchTerm().length > 0,
         ...(options?.staleTime != null ? { staleTime: options.staleTime } : {}),
       }))

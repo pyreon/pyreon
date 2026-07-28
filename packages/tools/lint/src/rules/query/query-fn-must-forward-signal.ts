@@ -172,7 +172,17 @@ export const queryFnMustForwardSignal: Rule = {
       const queryFn = findQueryFn(optionsObject)
       if (!queryFn || !isFunctionNode(queryFn)) return
 
-      const { mentionsSignal, requestCall } = scanBody(queryFn.body)
+      // Scan the PARAMS as well as the body. `({ signal: abortSignal }) =>
+      // api.get(url, { signal: abortSignal })` is correct code in which the
+      // word `signal` appears ONLY in the parameter pattern — body-only
+      // scanning reports it as a violation. (Found by migrating
+      // `@pyreon/feature`, which renames the binding to avoid shadowing
+      // `signal` from `@pyreon/reactivity`.)
+      const fromParams = (queryFn.params ?? []).map((p: unknown) => scanBody(p))
+      const fromBody = scanBody(queryFn.body)
+      const mentionsSignal =
+        fromBody.mentionsSignal || fromParams.some((r) => r.mentionsSignal)
+      const { requestCall } = fromBody
       if (mentionsSignal || !requestCall) return
 
       context.report({
