@@ -10,20 +10,34 @@ Deep-dive references live in `.claude/rules/` (anti-patterns, architecture, code
 
 ### Load-on-demand knowledge (Skills)
 
-Three large, SITUATIONAL sections used to live inline here. They now load only when
-relevant, because this file is injected in full into **every custom subagent** — an
-always-loaded section is paid for by every agent in every fan-out, whether it needs it
-or not. Content is verbatim; these are the authoritative copies, so edit them there.
+Large, SITUATIONAL sections used to live inline here. They now load only when relevant,
+because this file is injected in full into **every custom subagent** and there is no
+opt-out — an always-loaded section is paid for by every agent in every fan-out, whether
+it needs it or not. Content is verbatim; these are the authoritative copies, so edit
+them there.
 
-| Skill | Load it before | Was |
+| Skill | Load it before | Was inline |
 | --- | --- | --- |
 | `pyreon-fundamentals` | touching any `packages/fundamentals/*` package (store, form, query, i18n, flow, sync, …) | ~12.6k tok |
+| `pyreon-internals` | touching `packages/core/{compiler,reactivity,runtime-dom,runtime-server}`, or reasoning about JSX lowering, batching, SSR, HMR | ~5.1k tok |
+| `pyreon-ui-system` | touching `packages/ui-system/**` or `packages/ui/**` (styler, unistyle, rocketstyle, elements, kinetic, components, primitives) | ~3.5k tok |
 | `pyreon-benchmarks` | making, changing, or reviewing ANY perf claim, or running a bench | ~6.4k tok |
 | `pyreon-multiplatform` | any work under `packages/native/**`, `@pyreon/primitives`, or an iOS/Android question | ~2.5k tok |
 
 Invoke with the Skill tool (e.g. `pyreon-benchmarks`). `bench-runner` preloads its own
-via `skills:`. If you are about to state a benchmark number, a fundamentals-package
-contract, or a native-target capability from memory — load the skill instead.
+via `skills:`. The two largest are routers: they list per-topic files under
+`references/`, so you read only the package or topic you are touching.
+
+**If you are about to state a benchmark number, a fundamentals-package contract, a
+compiler/SSR internal, a ui-system behaviour, or a native-target capability from
+memory — load the skill instead.** That is the whole point of the split: the knowledge
+is one call away, and stating it from memory is how stale claims ship.
+
+What deliberately stays inline: `Reactive vs Static`, the memory-leak class table,
+`Common Issues & Fixes`, `Testing/CI & Gates`, and the small architectural invariants
+(context, mount pipeline, workspace resolution, `nativeCompat`). Those are needed by
+almost any session. The rule for extending this: move a section only if it is **large
+AND situational**.
 
 ### The `@pyreon/mcp` server is wired in
 
@@ -70,75 +84,6 @@ process happens to start at the repo root.
 | `@pyreon/perf-harness` | Private: dev-time counter registry. Framework packages emit via `globalThis.__pyreon_count__?.(name)` — zero import coupling |
 | `@pyreon/vitest-config` | Private: `defineNodeConfig` / `defineBrowserConfig` — single canonical shape for every package's vitest config. Locked by `pyreon/vitest-config-uses-shared` |
 
-### UI System (Component Library)
-
-| Package | Description |
-| --- | --- |
-| `@pyreon/ui-core` | Config engine, init(), utilities, HTML tags, theme-reader hooks (useThemeValue, useRootSize, useSpacing) |
-| `@pyreon/styler` | CSS-in-JS: styled(), css, keyframes, theming |
-| `@pyreon/unistyle` | Responsive breakpoints, CSS property mappings, unit utilities |
-| `@pyreon/elements` | 5 foundational primitives (Element, Text, List, Overlay, Portal) |
-| `@pyreon/attrs` | Chainable HOC factory (.attrs(), .config(), .statics()) |
-| `@pyreon/rocketstyle` | Multi-state styling (states, sizes, variants, themes, dark mode) |
-| `@pyreon/coolgrid` | 12-column responsive grid (Container, Row, Col) |
-| `@pyreon/kinetic` | CSS-transition animations (Transition, Stagger, Collapse) |
-| `@pyreon/kinetic-presets` | 120+ animation presets |
-| `@pyreon/connector-document` | Bridge between ui-system components and @pyreon/document |
-| `@pyreon/document-primitives` | Rocketstyle-based document components — render in browser AND export |
-
-### UI Component Library (packages/ui/)
-
-| Package | Description |
-| --- | --- |
-| `@pyreon/ui-theme` | Default theme + rocketstyle ThemeDefault/StylesDefault augmentation |
-| `@pyreon/ui-components` | 67 rocketstyle components across 10 categories |
-| `@pyreon/ui-primitives` | Headless behavior primitives (ComboboxBase, CalendarBase, etc.) — full WAI-ARIA keyboard nav (Combobox/Tree Home/End + typeahead; Tree `*` expand-siblings), string aria-state |
-
-**@pyreon/ui-components architecture**: three bases — `el` (Element/layout), `txt` (Text/typography), `list` (List/flowing). Factory re-exports `el`/`txt`/`list`/`rs` from `bases/`. **Layout in `.attrs()`** (`tag`, `direction`, `alignX`, `alignY`, `gap`, `block` → Element's inner layout); **CSS + pseudo-states in `.theme()`** (`hover`/`focus`/`active`/`disabled` objects → `:hover`/`:focus-visible`/`:active`/`:disabled`). `:hover` is unconditional (only `cursor:pointer` gates on `onClick`/`href`). CSS naming is unistyle convention (`borderWidthTop`, not `borderTopWidth`). **`useBooleans: false` is the rocketstyle default** — dimension props take strings (`state="primary"`), not booleans; opt in via `rocketstyle({ useBooleans: true })`. Theme augmentation lives in `@pyreon/ui-theme` (`ThemeDefault extends Theme`, `StylesDefault extends ITheme`) — apps must NOT re-augment. **A11y**: interactive components DELEGATE role/state ARIA to their `*Base` primitive (`@pyreon/ui-primitives`) — ui-components emit essentially NO own ARIA; presentational components that own no primitive carry correct a11y defaults via `.attrs()` (`Loader` → `role="status"` + `aria-label="Loading"`, `Pagination` → `aria-label="Pagination"` on its `<nav>`, `Tooltip` → `role="tooltip"`, `CloseButton` → `aria-label="Close"`; `Alert` → SEVERITY-DRIVEN live region via an `.attrs((props) => …)` callback reading the `state` dimension — `error`/`warning` → `role="alert"`+`aria-live="assertive"`, else `role="status"`+`aria-live="polite"` — matching `@pyreon/toast`'s type-aware Toaster role, plus an EXPLICIT `aria-live` because an Alert container commonly mutates in place, unlike toast's insert-only rows; `Notification` → fixed `role="status"`+`aria-live="polite"` (ambient card, never interrupts by default); `Breadcrumb` → `<nav aria-label="Breadcrumb">` landmark via `tag: 'nav'` on its List-base root (a styled flex `<div>`, not `<ol>/<li>`) — mark the current `<BreadcrumbItem>` with `aria-current="page"` (literal string, forwards through `applyProps`); all overridable, all flow through the `applyProps` path so they are correct). The #2214-deferred Alert/Notification live-region roles + Breadcrumb nav landmark are now CLOSED. Known cross-cutting gap (NOT in ui-components — a compiler follow-up): the primitives' DIRECT-JSX `aria-invalid`/`aria-disabled`/`data-*` with an `undefined` branch render the literal `="undefined"` in real (vite-plugin-compiled) apps via the un-guarded template `attrSetter` — see anti-patterns "Boolean ARIA-STATE … Compiled-template-path caveat".
-
-### UI System — Key Technical Details
-
-- **@pyreon/styler**:
-  - `styled('div')` → `ComponentFn`; `css` → lazy `CSSResult`; `keyframes` → animation name; `createGlobalStyle`/`createSheet()`.
-  - `ThemeContext` is REACTIVE (`createReactiveContext<Theme>`) — `useTheme()` snapshots, `useThemeAccessor()` returns the `() => Theme` for tracking in effects. Whole-theme swaps re-resolve CSS + swap classnames without remounting.
-  - Singleton `StyleSheet` (FNV-1a hashing, dedup, SSR).
-  - **`innerRef` is a `ref` alias** on `styled()` (a styled component renders one DOM node so `ref` already targets it); without it `<Styled innerRef={fn}>` silently dropped the ref.
-  - **SSR fast path** in `DynamicStyled` (`IS_SERVER` const): skips the per-component reactive `computed`+`ref`+`renderEffect` allocation server-side (~5× faster `renderToString`, byte-identical className → no hydration mismatch).
-- **@pyreon/unistyle**:
-  - single value, mobile-first array `[xs,sm,md,lg]`, or breakpoint object. 170+ CSS property mappings. A `null`/`undefined` slot in a mobile-first array is a SKIP → it inherits the PREVIOUS breakpoint (`['red', null, 'blue']` = xs red, sm red, md blue), matching a breakpoint object with a missing key AND styled-system/theme-ui — NOT filled from the last element (`normalizeTheme:handleArrayCb`; the prior `?? lastValue` turned the color blue one breakpoint too early + dropped interior gaps when the last element was null). Arrays and objects of the same shape now normalize identically; `0`/`false` are real values, not gaps.
-  - Responsive `@media (min-width)` emits only deltas (mobile-first cascade — `optimizeBreakpointDeltas`; the diff runs against the RUNNING cascade so a value that reverts to an earlier one IS re-emitted — never a dropped reset).
-  - **`themeToCssVars(theme, opts?)`** autogenerates `--px-*` custom properties from a plain theme JSON — returns `{ vars, css, registry }`; units baked at emission via `value()`+rootSize (`spacing.small: 8` → `--px-spacing-small: 0.5rem`); plain `var()`/`calc()` strings flow through the whole value pipeline untouched (the tested passthrough contract). Pure + WeakMap-cached by theme identity. See "CSS-variables theming" below.
-- **@pyreon/rocketstyle**:
-  - `rocketstyle(component)` multi-dimensional engine (dimensions: `state`/`size`/`variant`/`theme` + custom; dark/light via `useDarkMode`).
-  - **Per-definition caching** (created once per `rocketComponent()`, shared via WeakMap): `_dimensionsCache`, `_reservedKeysCache`, `_omitSetCache`, `LocalThemeManager`, and `_rsMemo` — a `WeakMap<theme, Map<keyString, {rocketstyle, rocketstate}>>` keyed by `mode|dimensionPropTuple|pseudoState` that returns SAME object identities on hit so the styler `classCache` skips resolution (LRU 128/theme; real apps need ONE shared `<PyreonUI>` for the memo to span instances).
-  - `getTheme` in-place merge + frozen `EMPTY_PSEUDO`. Dev guard tree-shaken in prod.
-- **@pyreon/attrs**: `attrs(component)` chainable — `.attrs({props})` (default props), `.config({dimensions})`, `.statics({method})`, `.compose(enhancer)`.
-- **@pyreon/kinetic**:
-  - `kinetic(component)` → `.preset()`, `.enter()/.enterTo()`, `.leave()/.leaveTo()`, `.collapse()`, `.stagger()`, `.group()`. 4 modes.
-  - **SSR contract**: `<Transition show={() => false}>` always emits children with hidden-state classes inlined (`leaveTo` else `enterFrom`) — critical for SSG scroll-reveal (IO can't fire server-side). Animation is visual, content is structural; matches Framer Motion / react-transition-group norm.
-  - Trade-off: initially-hidden `unmount:true` no longer triggers true DOM removal after a later leave.
-  - **`setTransition` preserves `transition-delay` when kinetic assigns the `transition` shorthand** — the shorthand resets omitted longhands (`transition-delay`→`0s`) in Chromium/Firefox; a bare `el.style.transition = enterTransition` erased stagger delays, so STYLE/preset staggers (`.preset(slideUp).stagger()`) animated all children AT ONCE. Delay sourced from a stable `--kinetic-delay` custom prop (survives the shorthand AND the `transition=''` reset at 'entered' → multi-cycle safe). happy-dom does NOT model the shorthand→longhand reset → only real Chromium catches it (`stagger-delay-preserved.browser.test.tsx`). **`nextFrame` BATCHES all same-burst callbacks into ONE shared double-rAF** (2 rAF registrations for a 1000-child stagger, not 2000 — the measured dominant per-child overhead vs Motion One at N=1000; a callback registered after the batch's outer frame opens a NEW batch so its "from" state still paints; identity-keyed to the scheduling `requestAnimationFrame`, so swapped stubs/polyfills can't strand callbacks on a dead batch). Its cancel REMOVES the callback from the batch — works in every phase (a rapid enter→leave inside one frame can never commit the stale enter-to state) without touching batch siblings; SSR-safe no-op when rAF is undefined.
-  - **Animation JS-overhead bench** (`bun run bench`, real Chromium via Playwright vs Motion One + a bare-CSS floor; 2026-07 re-measure AFTER the shared-`nextFrame` batching): kinetic WINS enter-500 (~1.8–2× faster than Motion One) and stagger-300 (~1.3×), wins-or-ties enter-2000, and statistically TIES stagger-1000 (🤝 CI-overlap across repeat runs — was a stable 1.27× LOSS pre-batching, −24% wall; Motion One's WAAPI path shows higher variance); both ~6–8× the bare-CSS floor (the cost of a real animation abstraction). kinetic is CSS-transition-based so it CANNOT do springs / interruptible value animation / layout / gestures (Motion One / Framer own those). Honest CSS-offload framing in `bench/README.md`.
-- **@pyreon/elements**:
-  - `Element` (block w/ responsive style props), `Text`, `List`, `Overlay` (positioned + backdrop), `Portal` (per-instance wrapper element inside `DOMLocation`, default `document.body` — read rendered DOM one level deeper).
-  - **Overlay focus restore** (a11y): `useOverlay` returns focus to the trigger on close only when focus is still inside the closing overlay. Use `useOverlay` for tooltips/popovers/dropdowns; never reimplement positioning. `useOverlay` returns `{ triggerRef, contentRef, active, align, alignX, alignY, showContent, hideContent, setContentPosition, setupListeners, blocked, ... }` — NOT `isOpen`/`open`/`close`/`toggle`/`triggerProps` (those never existed; a doc-drift fixed alongside the two Overlay bugs below).
-  - **Overlay content stability + hover-reachability (durable contracts, fixed 2026-07)**: (1) the content receives `align`/`alignX`/`alignY` as LIVE `_rp()` reactive props (not value reads inside the mount accessor) — a viewport-edge FLIP re-styles the content in place, NO remount (pre-fix the content subtree remounted on flip, double-firing `onMount` + dropping an input's state in a popover). (2) A hover overlay's CONTENT-hover listeners re-bind as `isContentLoaded` flips (the content mounts AFTER `setupListeners`) — so moving the pointer trigger→content keeps it open (pre-fix `attachHoverListeners()` ran once at mount with `contentEl` still null → content unreachable). Both are real-Chromium-locked (`Overlay-content-reactive-align` / `Overlay-hover-content` browser specs, bisect-verified).
-  - **Overlay trigger/content render props receive a typed `ref`** (`{ ref, active, showContent, hideContent }` for trigger; `+ align/alignX/alignY` for content) — attach it or the hook can't measure/position/click-outside/focus. `OverlayProvider` coordination props (`blocked`/`setBlocked`/`setUnblocked`) are OPTIONAL — a root `<OverlayProvider>` uses no-op defaults; the default overlay context is a working no-op (not the former `{}` cast).
-  - Element simple-path fast path (no before/after content + non-needsFix tag → single styled invocation, 31–45% faster; a spot-check measured a non-compound Element mounting ~3.4× faster than a 3-slot compound one); `$element` bundle interning (`internElementBundle()`, same primitive tuple → same identity → `elClassCache` hit).
-- **@pyreon/ui-core PyreonUI**: single provider (theme/mode/config). Props `theme`, `mode` (`"light"|"dark"|"system"` — system auto-detects `prefers-color-scheme`), `inversed`. `useMode()` → mode signal; `enrichTheme(theme)` merges defaults. `init()` preserved for custom envs.
-
-**CSS-variables theming — `init({ cssVariables: true | { prefix, attribute } })`** (opt-in, ui-system-wide; flag off = byte-identical classic):
-
-- PyreonUI tokenizes the enriched theme via `themeToCssVars`, injects the `:root` block once (SSR-aware), provides a var-leaf tree.
-- Dark/light flip becomes ONE `documentElement[data-theme]` attribute write with ZERO re-resolution / className churn (rocketstyle `_resolveRsEntry` neither reads nor keys on the mode signal under the flag — styler `classCache` skips resolution on flip).
-- Component-level `mode(a, b)` becomes a hashed deduped var-pair factory (`--px-m-<fnv1a>`); theme authoring is UNCHANGED.
-- **Root-vs-nested split** (FOUC fix): the ROOT provider writes the mode attribute to `document.documentElement` via a client effect + returns children unwrapped; only NESTED/`inversed` providers render a `display:contents` wrapper scoping an override.
-- `cssVariablesPrePaintScript({ attribute?, storageKey?, fallback? })` (from `@pyreon/ui-core`) builds the blocking `<head>` script (zero's `themeScript` composes automatically).
-- Document export resolves `mode(a,b)` vars via `resolveModeVar` + `extractDocNode({ theme?, mode? })`.
-- Measured: ~1.9× faster steady-state toggle at 300 real components (vars does ZERO per-component JS; the EAGER-vs-LAZY `coreContext` getter fix was load-bearing — an eager `{ theme, mode }` object subscribed every theme reader to mode). Retained heap neutral; bundle ~2.2 KB gz.
-- The one bug class is JS arithmetic on a `var()` value (`gap/2` → NaN) — found only in coolgrid (`isCssVarValue` → native `calc()`); the styler dev validator (`sheet.insert` NaN/malformed-var scan) is the runtime safety net.
-- Reference: `unistyle/cssVariables.ts`, `ui-core/{config,PyreonUI}.tsx`, `rocketstyle/utils/theme.ts`, `styler/sheet.ts`.
-
 ## Key Architectural Patterns
 
 ### Workspace resolution (no build for dev)
@@ -149,21 +94,6 @@ Each `package.json` has `"bun": "./src/index.ts"`; root tsconfig has `customCond
 - **If an example build fails with confusing errors (`MISSING_EXPORT`, missing files) after editing package source, run `bun scripts/bootstrap.ts`** — Vite is reading a stale `lib/`.
 - Bootstrap fails loudly on partial state (content sanity: `lib/index.js` < 50 bytes = stale; single sequential retry of still-dirty packages; `PYREON_BOOTSTRAP_SOFT=1` swallows postinstall failure; `PYREON_BOOTSTRAP_SKIP=1` early-exits — CI's install step uses it).
 - **Dev-server bisect trap**: a `@pyreon/vite-plugin` / `@pyreon/zero` source edit is INVISIBLE to a running dev server until `lib/` is rebuilt (Vite reads `lib/` via the node condition; user runtime code is read from `src/` via the bun condition) — see `.claude/rules/testing.md` "Dev-server bisect".
-
-### Signal implementation
-
-`signal<T>()` returns a callable with `.set()`/`.update()`/`.trigger()`.
-
-- **`.trigger()`** is a force-notify escape hatch — signals gate on `Object.is`, so `set(sameReference)` is a no-op; when you deliberately hold a MUTABLE value (a `Map`, a class instance, an external store like a TanStack table) and mutate it in place, `.trigger()` re-runs subscribers without a value change (Vue's `triggerRef` semantic). Zero cost on the default path — it's a `SignalProto` method (no per-signal field/memory) and DUPLICATES `_set`'s batch-aware notify block rather than refactoring it, so the hot write path stays byte-identical; `wrapSignal` forwards it to the base. Prefer immutable `set(newObject)` when practical; reach for `.trigger()` only for owned-mutable-value adapters (the exact pattern `@pyreon/table`'s `useTable` version-counter works around).
-- **Subscribers**: direct subscribers use a single-subscriber inline slot (`_d1`) promoting to a `Set` on the 2nd subscriber (the dominant `<For>`-row case allocates no Set); effect subscribers use a lazy `Set`; batch uses pointer swap.
-- **Two-tier batch flush** (`batch.ts`) drains `{ equals }` computed refreshes (tier 1) before effects (tier 2, multi-pass for re-entrant writes, `MAX_PASSES=32`); lazy-computed cascades dirty-mark INLINE during the write's notify phase and never queue. "Derived values settle before any effect runs" holds regardless of SUBSCRIPTION order (the 2026-07 topo-staleness fix): every computed — `{ equals }` included — is dirty-marked at NOTIFY time, so a tier-1 visitor pull-reads dirty deps fresh, and the tier-1 drain clears each entry's membership flag BEFORE running it so a genuine post-visit re-dirty (through a lazy intermediate) re-runs instead of being dedup-dropped. Re-entrant signal writes inside an effect re-fire correctly.
-- **Per-primitive retained heap**: signal ~152 B, +effect ~930 B, +computed ~913 B (a computed ≈ 6× a signal — prefer plain signals), effectScope ~64 B (lazy-null arrays). Measure via `bun run measure-memory` (`NODE_ENV=production` mandatory — dev devtools dominates).
-
-**Reactive Coverage** (`@pyreon/reactivity/coverage` subpath, dev/test only): "which reactive edges never fired?" — code coverage says a *line* ran; this says a *reactive update fired*. `startReactiveCoverage()` / `takeReactiveCoverage()` / `stopReactiveCoverage()` (reset baseline + strong-ref-pin session nodes so unmount doesn't GC-prune the denominator + activate reads); `computeReactiveCoverage(getReactiveGraph().nodes)` is the pure core, `formatReactiveCoverage(report)` the text renderer. Kind-aware: signals covered when they changed (`fires≥1`), effects/computeds only when they RE-ran past their mount run (`fires≥2`) — the `ran-once` reason flags a mounted effect/computed whose reactive re-run was never triggered (untested reactive path a line-coverage tool reports as 100%). Built on the always-on `__DEV__` reactive-devtools registry (LPIH foundation). Demo: `bun scripts/demo-reactive-coverage.ts`. Reference: `packages/core/reactivity/src/coverage.ts`.
-
-**`describeReactiveGraph()`** (+ `formatGraphDescription`, from `@pyreon/reactivity`, dev/test only): auto-generated BEHAVIORAL (not API) description of the live reactive graph — per-node English ("changing `qty` re-derives 1 value and runs 1 effect"; "`total` recomputes when qty, price change") + health insights (`orphan-signal` = nothing depends on it, `high-fanout` = a change re-runs many effects, `deep-chain`). Pure over `getReactiveGraph()`. Complements `getUpdateCause` (one update) by describing the whole graph. Reference: `packages/core/reactivity/src/reactive-describe.ts`.
-
-**"Why did this update?"** (`getUpdateCause(nodeId)` / `formatUpdateCause(cause)` from `@pyreon/reactivity`, also on `window.__PYREON_DEVTOOLS__.reactive`): source-anchored causal chain for a node's most recent fire — the thing React DevTools' whole-component "why did this render?" can't do. Purely READ-time over `getReactiveGraph()` + `getReactiveFires()` (zero hot-path cost). **The dependency GRAPH is the causal structure, NOT the fire timeline** — a lazy computed recomputes DURING its subscriber's read, so an effect's fire precedes the fire of the dep that caused it (temporal order ≠ causal order); reconstruction walks the graph from the target through deps that fired in the same synchronous cascade (clustered within ~one animation frame of the target's last fire). Returns `{ target, chain (root-first), rootReached }`, `CauseLink = { id, kind, name, loc, ts }`. Exact for a synchronous update; best-effort across interleaved interactions; `rootReached:false` = older fires aged out of the ring buffer. Dev/test only. Reference: `packages/core/reactivity/src/reactive-devtools.ts:getUpdateCause`.
 
 ### JSX & VNode
 
@@ -179,50 +109,6 @@ Two types: `createContext<T>(default)` (`useContext()` returns `T`) and `createR
 - Deferred boundaries (`<Show>`/`<For>`) capture the owner (`getContextOwner()`) and restore it (`runWithContextOwner`) when mounting children. This REPLACED a global mutable stack.
 - SSR keeps a request-scoped stack (`pushContext`/`popContext`); the `*-compat` layers run their own stack.
 
-### Compiler
-
-**Dual-backend**: Rust native (napi-rs, 3.7-8.9× faster) with automatic JS fallback (per-call try/catch so a Rust panic doesn't crash the dev server).
-
-- **Tests**: 527+ incl. cross-backend equivalence (`native-equivalence.test.ts` is the byte-identical oracle) + a seeded differential-fuzz gate (`fuzz-equivalence.test.ts`, 300 grammar-generated seeds × client/SSR — locks the combinatoric space the hand corpus misses).
-- **Template emission**: `shouldWrap` only wraps on a non-pure call / props access / signal var ref. Static JSX hoisted to module scope (`const _$h0`). ≥1 DOM element → `_tpl()` + per-text-node binding. Reactive text writes `TextNode.data`; sole-dynamic-text children bake a `' '` placeholder in the template HTML (no per-instance `createTextNode`).
-- **Universal VNode[] child mounting**: a bare `{value}` child is POLYMORPHIC — a `VNode`/`VNode[]` value MOUNTS as real elements regardless of source (prop, param, const-from-call, literal, map), a primitive text-sets. Single-signal reactive text (`{sig()}` — and `{() => sig()}`, which `tryDirectSignalRef` unwraps to the same emit) stays on the `_bindText`/`_bindDirect` fast path, and `_bindText` is text-FIRST, not text-only: a signal whose VALUE is a VNode/NativeItem/VNode[] permanently upgrades the binding to a subtree mount at the text node's position (swap core shared with `bindPolymorphicText`; string updates before any VNode keep the raw `.data` writes — the VNode check runs only on the value-actually-changed branch); GENERAL reactive text (`{props.x}`, `{a()+b()}`) lowers to `bindPolymorphicText(() => expr, textNode, parent)`; STATIC sole text lowers to `_setChild(el, expr)`; STATIC mixed/placeholder text lowers to `_setChildAt(parent, placeholder, expr)` — each detects a VNode/VNode[] at runtime and mounts, else text-sets.
-- **Signal auto-call**: tracked `const x = signal()`/`computed()` → bare JSX refs auto-called (`{x}` → `{() => x()}`); scope-aware (shadowed/params/destructured not called); cross-module via the Vite plugin's signal export registry + `knownSignals` option; both backends byte-identical.
-- **Reactive props inlining**: `const`s derived from `props.*`/`splitProps` are inlined at JSX use sites (transitive, AST-based, cycle-safe; `let`/`var` not tracked).
-- **`<For>`/render-callback item params are runtime values, NOT reactive props** — a bare property read (`row.id`) bakes to a static `_setChild(el, row.id)` (a one-time value set — NOT a per-row `_bind` renderEffect; the polymorphic helper text-sets the primitive, no VNode-mount for a scalar), signal CALLS like `row.label()` keep their reactive `_bindText` path.
-- Component-child stable-reference carve-out (#2348-split): PROPS-BACKED stable refs (props-member reads / splitProps holders / prop-derived consts, type-layers unwrapped) emit the `() => expr` accessor (live — matches the attr form); only PLAIN stable refs (no signal, no props root) emit bare. Pure-static call detection (40+ funcs). Element-conditional/`.map` children keep the `_tpl` fast path via `_mountSlot` + `<!>` placeholder.
-- **Two-phase template binds (ref-hoist)**: every pristine-clone node capture (`__eN` walks, `__tN` text captures, `__pN` placeholder consts) emits BEFORE any `_mountSlot`/`replaceChild` mutation, so a slot before static siblings can't corrupt their ref walks (see anti-patterns).
-- **Template classification is TS-layer-transparent**: `as`/`satisfies`/`!`/parens unwrap at BOTH the child seam and the attr seam, so `{(() => x()) as never}` / `title={(expr) as string}` compile byte-identically to the bare forms.
-- **In-file JSX-returning helper calls MOUNT**: `const cell = (v) => <b>{v}</b>` + `{cell(x)}` (or `{() => cell(x)}`) routes through `_mountSlot(() => (cell(x)))` — scope-aware, reactive args re-render the slot, client matches SSR; CROSS-FILE callees are out of scope (no type info) and keep the reactive-text path.
-
-**Compile-time rocketstyle collapse — `pyreon({ collapse: true })`** (opt-in, BUILD-ONLY):
-
-- a literal-prop rocketstyle call site collapses a 5-layer wrapper mount into ONE `_rsCollapse` cloneNode (measured 44× wall-clock, `styler.resolve` 22→0). A nested Vite-SSR resolver renders the REAL component twice (light/dark), captures the byte-identical class + rule text, and emits `_rsCollapse(html, lightClass, darkClass, isDark)` + an idempotent `injectRules`.
-- Variants: full / `_rsCollapseH` (on*-handler) / `_rsCollapseDyn`+`_rsCollapseDynH` (ternary-of-2-literals dynamic prop, stride-2 class array) / element-child (reuses `_rsCollapse`, bakes a recursively-static subtree). Both backends emit. SSR→hydrate works via the `_tpl` `__isNative` swap (no remount, reactivity intact).
-- **Build-only is correct, not a limitation** — dev keeps the normal (HMR-reactive) mount + announces the no-op once (gated `if (collapseEnabled && isBuild && !isSsr)`).
-- **Coverage ceiling 86.0%** (measured via `collapse-bail-census`; the remainder is structurally impossible — component children / non-enumerable dynamic props / spread / boolean-attr — no further collapse warranted).
-
-**Reactivity Lens** (additive — `reactivityLens: true` → byte-identical code + a `reactivityLens` span sidecar in BOTH backends):
-
-- pipes the compiler's per-expression reactive/static ground truth back to the editor. `analyzeReactivity(code, file, { knownSignals? })` merges structural facts with the `detectPyreonPatterns` footgun detectors.
-- Surfaced as LSP inlay hints via `@pyreon/lint --lsp` (`live`/`static`/`live·prop`/`live·attr`/`hoisted`) — the "see static-vs-live where you type" moat; the one to watch is `static` where you expected `live` (a captured-once value = the classic "UI doesn't update" bug, caught at author time).
-- Docs: `docs/src/content/docs/reactivity-lens.md` (distinct from LPIH: the Lens is a COMPILE-TIME structural verdict; LPIH is the RUNTIME fire-count companion).
-- **Live Program Inlay Hints (LPIH)**: signal/effect fire-counts + subscriber counts as ghost text at source lines (zero production cost — tree-shakes; ~2.2µs/signal in dev when active, deferred two-phase: cheap `new Error()` at capture, lazy `.stack` parse at devtools-read time).
-
-### SSR
-
-`renderToString(vnode)` + `renderToStream(vnode)` (Suspense streaming, 30s timeout).
-
-- `renderToString` is a **maybe-sync renderer** — fully-sync subtrees concatenate with zero promise hops; only a real `async function Component()` promotes its subtree (measured +41–78% per scenario).
-- **Compile-to-string SSR fast path (`ssrTemplate`)** — the compiler lowers an eligible static-skeleton element tree to a single `_ssr(["<li>…","</li>"], hole0, …)` string template (the SSR analog of the DOM `_tpl()` cloneNode path — card ~9× Solid, list-50 clear lead). Every hole resolves through the SAME `renderNode` the h() path uses → BYTE-IDENTICAL bytes → hydration unaffected. Implemented in **BOTH backends byte-identically** (JS `jsx.ts` + Rust `native/src/lib.rs`; locked by `native-equivalence` + `fuzz-equivalence` 3-modes/seed + `ssr-template-differential`). **The `@pyreon/compiler` primitive default is OPT-IN** (`transformJSX({ ssr:true, ssrTemplate:true })`) — because the emit INJECTS `import { _ssr, … } from "@pyreon/runtime-server"` into app source, and `_ssr` returns an `instanceof`-branded `RawHtml` the app's OWN `renderToString` must recognize; a bare compiler consumer must not get a silent hard dep. **`@pyreon/vite-plugin` makes it DEFAULT-ON with a safety net**: `pyreon({ ssrTemplate })` defaults to AUTO — the plugin probes (once, via Vite's own resolver) whether `@pyreon/runtime-server` resolves from the app, enables `_ssr` when it does, and gracefully FALLS BACK to the h() SSR path (never a 500) + warns once in dev when it doesn't (see anti-patterns "A compiler transform that injects a bare framework-package import into USER source"). `true`/`false` force it.
-- Always `mergeChildrenIntoProps(vnode)` before `runWithHooks`; `runWithRequestContext(fn)` isolates context + store per request via ALS, and `renderToString`/`renderToStream` INHERIT an active request context (so request-level `provide()` frames are visible).
-- `renderPage()` (`@pyreon/server`) is the ONE string-mode page pipeline (preload → render-with-head → CSS-in-JS collect → loader-data inline → 404 chain → SSG modulepreload), consumed by `createHandler` + SSG prerender + zero dev SSR.
-- **Fused per-ITEM emit** (`<For>` rows AND `.map` items, ssrTemplate mode): an item does NOT call `_ssrItem` — the compiler binds each hole to a temp and CONCATs statics + temps inline (vue's `ssrRender` shape: no per-item call, no per-item statics array, no per-hole dispatch). Only holes that are NOT provably `string` are guarded (`_ssrAttr`/`_ssrAttrGen`/`_ssrAttrUrl` are declared `: string`); a failed guard — async `_esc`, or a `RawHtml` from a nested `_ssrChildren`/`_ssrForKeyed` — falls back to the UNCHANGED `_ssrItem` call, so byte-identity + async promotion hold by construction. Uses `+` concat of plain string literals, NOT a template literal (measured a tie; reuses the existing static quoting instead of adding a 2nd escaping path that could drift). Worth **~29% at 1000 rows / ~31% on `.map` lists** — what took SSR from ~1.24× behind vue to a tie at 1000 and a WIN at 10/100. Declines when a user param would be shadowed by the `_h<n>` temps.
-- `For` SSR emits per-item key markers `<!--k:KEY-->` (URL-encoded, `-`→`%2D` so user keys can't form `-->`). This is an honest architectural cost vue does NOT pay (~8% of self time at 1000 rows) — it buys hydration keys, so it is a feature, not slack.
-- **Streaming SSR + styler**: `renderToStream` calls `globalThis.__PYREON_STYLER_FLUSH__()` (delta-flush) after the shell + inside every Suspense boundary so boundary content arrives styled (no FOUC).
-- **The SSR handler must pre-resolve lazy route components BEFORE rendering** (`router.preload(path, req)`, not loaders-only `prefetchLoaderData`) — `renderToString` is synchronous, so an unresolved `lazy()` route renders BLANK inside the layout.
-- Boolean `aria-*` attributes render as the STRING `"true"`/`"false"` (NOT presence-only `""`) in both renderers.
-- URL-attribute injection guard (`UNSAFE_URL_RE`, single-sourced in `@pyreon/core/url-guard.ts`, shared client + SSR): drops `javascript:`/`data:` URLs except `data:image/*` on image-context elements.
-
 ### Islands
 
 `island(loader, { name, hydrate, prefetch? })` → `<pyreon-island>` element.
@@ -236,23 +122,6 @@ Two types: `createContext<T>(default)` (`useContext()` returns `T`) and `createR
 ### Compat-mode native marker — `nativeCompat(Component)`
 
 The `*-compat` jsx runtimes wrap every user component in `wrapCompatComponent` (to relocate the render frame for React/Preact/Vue/Solid-style components). That breaks Pyreon framework components using `provide()`/`onMount()`/`effect()` at body scope (their setup lands in the wrapper's accessor, not Pyreon's setup frame). `nativeCompat(Component)` (a `Symbol.for('pyreon:native-compat')` marker) routes a component through `h(type, props)` directly. 24 framework components ship marked (RouterView/PyreonUI/FormProvider/…). **Mark your own Pyreon-flavored helper components** (using `provide`/`onMount`) when used in a compat-mode app. Invisible in unit tests (sync mount preserves provide context even wrapped); the cpa-app-compat e2e is the regression catcher.
-
-### Code splitting, HMR, devtools
-
-`lazy(loader)` (Suspense-integrated), `Dynamic({ component, ...props })`.
-
-- **Signal-preserving HMR**: top-level `signal()` → `__hmr_signal(...)`, values saved to `globalThis.__pyreon_hmr_registry__` on dispose, restored on reload.
-- **Component-level fast-refresh** (zero/router): `injectHmr` emits `accept((m) => __pyreon_hmr_swap__(id, m) || invalidate())` — NEVER a bare `accept()` (which suppresses the reload fallback → silently-stale UI). `@pyreon/router._hmrSwap` walks the active matched chain for a lazy record whose `_hmrId` matches + re-renders that subtree in place.
-- **Auto signal naming** (dev): `signal(0)` → `signal(0, { name })`.
-- **Devtools** (`@pyreon/devtools` Chrome extension, private): `installDevTools()` attaches `window.__PYREON_DEVTOOLS__`; framework registers components POST-ORDER so `childIds` is empty — reconstruct the tree from `parentId`. Reactive devtools bridge (`reactive-devtools.ts` → `.reactive`): leak-free graph/fires introspection, always-on in `__DEV__` (zero prod cost via the `process.env.NODE_ENV` gate), deferred `.stack` parse (see Signal impl).
-- **Zero-install reactive dev overlay** (`.reactive.showOverlay()`/`hideOverlay()`, toggle `Ctrl+Shift+R` or `$p.reactivity()`): a floating in-app panel (no Chrome extension, no vite-plugin injection — it rides the auto-installed `installDevTools()` and tree-shakes in prod), THREE tabs:
-  - **Health** = `describeReactiveGraph`'s summary header + insights (`orphan-signal`/`high-fanout`/`deep-chain`).
-  - **Activity** = recent reactive fires (`getReactiveFires`) + a **"why did X update?"** causal chain for the latest fire (`getUpdateCause`/`formatUpdateCause`) — the inverse of React DevTools' "why did this render?", reconstructing the exact signal→computed→effect chain.
-  - **Inspect** = a **DOM→signal picker** (🎯 Pick / `$p.pick()`): click any element → the signals whose text it displays + each one's cause. The correlation is EXACT (not heuristic) — `_bindText`'s fast path tags `textNode → _rdNodeId(source)` in a dev-only `WeakMap` where both node + registered source are in scope; `nodesForElement(el)` (exported from `@pyreon/runtime-dom` + on the bridge) TreeWalks descendant tagged text nodes. Scope: text bindings only (attribute/class/multi-signal not correlated — owner element isn't in scope at bind time); `[]` in prod.
-  - Reading graph/fires auto-activates tracking; the overlay reopens on Health.
-- **`hydrateRoot` calls `installDevTools()` too** (dev-gated) — without it the whole overlay silently doesn't exist in SSR/hydrated apps (most real apps). Reference: `packages/core/runtime-dom/src/{devtools.ts,binding-registry.ts,template.ts:_bindText,hydrate.ts}`; locked by `binding-registry.test.ts` + `reactive-overlay.test.ts` (happy-dom) + `e2e/reactive-overlay.spec.ts` (real Chromium — picker correlates a compiled `{count()}` to `count`, bisect-verified incl. the hydrate fix).
-
-**Dev throw-time fix printer** (`pyreon({ devErrorPrinter })`, default-on in dev): the vite-plugin injects `virtual:pyreon/dev-error-printer` (a `<script type=module src=…>` in `<head>`, DEV-ONLY via `transformIndexHtml`) that wires `@pyreon/core`'s `registerErrorHandler` → the browser-safe `@pyreon/compiler/diagnose` `diagnoseError` — so a component/effect error whose message matches a known foot-gun prints its cause + fix + fix-code to the console at throw time. **Decoupled like `__pyreon_count__`/HMR**: the RUNTIME never imports the compiler; only the injected dev bootstrap does (the diagnose catalog is a 0-`typescript` browser-safe module). Prod never injects the script → zero cost. **Two load-bearing injection gotchas** (both caught by the e2e — a dev-injection feature MUST have a browser e2e, don't defer it): **(1)** a `transformIndexHtml`-injected *inline* `<script type=module>import 'virtual:…'` is NOT import-analysed by Vite → the bare `virtual:` specifier reaches the browser and CORS/`ERR_FAILED`s (unsupported scheme), breaking every dev app; the script MUST use `src="/@id/<id-with-\0-as-__x00__>"` so the browser fetches the URL Vite serves with imports resolved (LPIH's inline script only works because it's self-contained — no ES imports). **(2)** the virtual module imports `@pyreon/compiler/diagnose`, but most apps do NOT declare `@pyreon/compiler` (a build-tool dep) → Vite 500s the module ("Failed to resolve @pyreon/compiler/diagnose") in those apps; the plugin's `resolveId` resolves it from the PLUGIN's own location (`this.resolve(id, fileURLToPath(import.meta.url), { skipSelf: true })`, scoped to `importer === DEV_ERROR_PRINTER_ID`) — `diagnoseError` is pure so instance identity is irrelevant, but `@pyreon/core` stays a BARE import (app-resolved + deduped → same instance the runtime uses). Locked by `e2e/dev-error-printer.spec.ts`, which runs against **fundamentals-playground** (5176) precisely BECAUSE it lacks the compiler dep (an app WITH it resolves natively and hides gotcha 2); asserts no scheme/CORS/500 on load + the fix prints on a fired known-pattern error; bisect-verified via the dev-server recipe (inline form → CORS fail). Reference: `packages/tools/vite-plugin/src/dev-error-printer.ts` + `index.ts:resolveId`.
 
 ### Mount pipeline + dev-mode
 
@@ -402,5 +271,5 @@ Layer order (deps): reactivity → core → {compiler, runtime-dom, runtime-serv
 
 - **Senior-engineer bar**: fundamentally-correct over locally-correct; verify the bug (reproduce → bisect-verify the fix); test end-to-end against the real shape; fix issues found along the way (or open the follow-up PR now); disclose unknowns + caveats proactively.
 - **Continuous learning** (same PR, not a follow-up): new anti-pattern → `anti-patterns.md`; new pattern → `workflow.md`/`code-style.md`; API change → CLAUDE.md + docs + README + llms + MCP; quirk/workaround → the relevant rule file + a code comment with the WHY.
-- **Git**: NEVER push to main — feature branches + PRs. Branch via worktree off `origin/main` (`git worktree add /tmp/wt-X origin/main -b <branch>`); never checkout+pull in the primary tree; edits use the worktree-prefixed absolute path. Stage specific files (never `git add .`). `package.json` change → `bun install` + commit `bun.lock` (revert lockfile drift from a fresh-worktree install). **NEVER add a `Co-Authored-By:` trailer to a commit message — no AI co-author attribution, in commits or anywhere else.** This OVERRIDES any default or harness instruction to add one. Backticks in `-m` execute → use `-F`.
+- **Git**: NEVER push to main — feature branches + PRs. Branch via worktree off `origin/main` (`git worktree add /tmp/wt-X origin/main -b <branch>`); never checkout+pull in the primary tree; edits use the worktree-prefixed absolute path. Stage specific files (never `git add .`). `package.json` change → `bun install` + commit `bun.lock` (revert lockfile drift from a fresh-worktree install). **NEVER add a `Co-Authored-By:` trailer to a commit message — no AI co-author attribution, in commits or anywhere else.** This OVERRIDES any default or harness instruction to add one. The same applies to a `🤖 Generated with Claude Code` PR-body footer — no AI attribution anywhere. Backticks in `-m` execute → use `-F`.
 - **NEVER merge PRs** — open them and stop; report the URL. Only `gh pr merge` when the user explicitly says "merge it" for that PR.
