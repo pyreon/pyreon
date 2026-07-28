@@ -155,6 +155,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   warnWebOnlyImports(ast.program.body as AnyNode[], ctx)
   warnUnloweredPyreonHooks(ast.program.body as AnyNode[], ctx)
   warnUnloweredControlFlow(ast.program.body as AnyNode[], ctx)
+  warnUnloweredPyreonModules(ast.program.body as AnyNode[], ctx)
   // Pre-pass: map alias-tag local names to their import source, so the emit's
   // Element/PyreonUI/Container/Row/Col hooks intercept ONLY a tag imported from
   // its expected @pyreon package (not a same-named user component).
@@ -874,6 +875,100 @@ function warnUnloweredControlFlow(body: AnyNode[], ctx: ParseCtx): void {
  * import from `@pyreon/hooks` is a claim on framework behaviour that native
  * cannot honour, which is exactly the case worth naming.
  */
+/**
+ * Pyreon modules whose NON-HOOK exports have no native lowering.
+ *
+ * The hook arc above keys on `/^use[A-Z]/`, so plain exports fell straight
+ * through: `s` from @pyreon/validate, `pipe`/`map` from @pyreon/rx, and
+ * `createPermissions` from @pyreon/permissions all emitted verbatim and failed
+ * BOTH targets with no diagnostic at all — while `useQuery` right next to them
+ * warned properly.
+ *
+ * Scoped to NON-HOOK imports on purpose. It keeps this list from
+ * double-warning with the hook arc, and it handles PARTIAL support for free:
+ * `usePermissions` genuinely lowers (verified) while `createPermissions` does
+ * not, so warning per-export rather than per-package is what keeps the
+ * permissions entry honest.
+ *
+ * Every entry here was MEASURED, not assumed — `@pyreon/url-state` and
+ * `@pyreon/toast` look like candidates but already warn through other paths,
+ * and `@pyreon/state-tree`'s `model()` lowers cleanly, so none of them is
+ * listed.
+ */
+interface UnloweredModule {
+  /** What to do instead, named per module — a generic refusal leaves the author guessing. */
+  readonly advice: string
+  /** Exports from this module that DO lower and must stay silent. */
+  readonly supported?: ReadonlySet<string>
+}
+
+const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
+  [
+    '@pyreon/rx',
+    {
+      // The NAMESPACE form lowers: `import { rx } from '@pyreon/rx'` and then
+      // `rx.filter` / `rx.map` / `rx.reverse` emit natively (RX-1). Only the
+      // standalone transforms do not. A package-wide warning here fired on `rx`
+      // itself and broke the existing rx-lowering lock — caught by that suite,
+      // which is exactly the over-warning failure a per-package list invites.
+      advice:
+        'the standalone transforms are web-only — use the NAMESPACE form (`import { rx } from \'@pyreon/rx\'` then `rx.map(...)`), which lowers on both targets, or compose with `computed()`',
+      supported: new Set(['rx']),
+    },
+  ],
+  [
+    '@pyreon/validate',
+    {
+      advice:
+        "the `s` validator runtime is web-only — validate in a `<Web>` branch, or hand-roll the checks the native form needs",
+    },
+  ],
+  [
+    '@pyreon/validation',
+    { advice: 'the Standard Schema helpers are web-only — the same guidance as @pyreon/validate' },
+  ],
+  [
+    '@pyreon/permissions',
+    {
+      advice:
+        'the non-hook factory has no native container; `usePermissions()` DOES lower — use the hook instead',
+    },
+  ],
+])
+
+/**
+ * Warn for a NON-HOOK export imported from a module with no native runtime.
+ *
+ * Same shape and same reasoning as the hook and control-flow warnings: keyed on
+ * the IMPORT, so a user's own `map` or `s` from their own module is untouched.
+ */
+function warnUnloweredPyreonModules(body: AnyNode[], ctx: ParseCtx): void {
+  const seen = new Set<string>()
+  for (const node of body) {
+    if (node.type !== 'ImportDeclaration') continue
+    const src = node.source?.value
+    if (typeof src !== 'string') continue
+    const entry = UNLOWERED_PYREON_MODULES.get(src)
+    if (entry === undefined) continue
+    for (const spec of (node.specifiers as AnyNode[]) ?? []) {
+      if (spec.type !== 'ImportSpecifier') continue
+      const imported = spec.imported?.name ?? spec.imported?.value
+      if (typeof imported !== 'string') continue
+      // The hook arc already covers these; warning again would double-report.
+      if (/^use[A-Z]/.test(imported)) continue
+      // Exports that genuinely lower must stay silent — over-warning turns the
+      // diagnostic into noise, and `rx` is a live example of a module that is
+      // only PARTLY unlowered.
+      if (entry.supported?.has(imported)) continue
+      if (seen.has(imported)) continue
+      seen.add(imported)
+      ctx.warnings.push(
+        `${imported} (from ${src}) has NO native lowering — it is reproduced verbatim in the emitted Swift/Kotlin, where no such symbol exists, so the native build fails with "cannot find '${imported}' in scope". Instead: ${entry.advice}. Or keep the call behind a \`<Web>\` escape hatch.`,
+      )
+    }
+  }
+}
+
 function warnUnloweredPyreonHooks(body: AnyNode[], ctx: ParseCtx): void {
   const seen = new Set<string>()
   for (const node of body) {
