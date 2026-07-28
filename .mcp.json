@@ -4,7 +4,7 @@
       "command": "bash",
       "args": [
         "-c",
-        "exec node \"${CLAUDE_PROJECT_DIR:-.}/packages/tools/mcp/lib/index.js\""
+        "test -n \"$CLAUDE_PROJECT_DIR\" || CLAUDE_PROJECT_DIR=$PWD; exec node \"$CLAUDE_PROJECT_DIR/packages/tools/mcp/lib/index.js\""
       ]
     }
   }
