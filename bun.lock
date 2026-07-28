@@ -2153,9 +2153,17 @@
       },
       "devDependencies": {
         "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/vite-plugin": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
+        "vite": "^8.0.16",
         "zod": "^4.4.3",
       },
+      "peerDependencies": {
+        "vite": ">=6",
+      },
+      "optionalPeers": [
+        "vite",
+      ],
     },
     "packages/tools/cli": {
       "name": "@pyreon/cli",
