@@ -1172,7 +1172,20 @@ class PyreonWebSocket {
 fun PyreonWebSocket.connect(url: String) {}
 
 class PyreonRecord(val id: String, val fields: Map<String, String> = emptyMap())
-class PyreonDatabase {
+// Mirrors the REAL surface EXACTLY: the primary constructor REQUIRES a
+// backend, and the Context factory is what the emit calls. There is
+// deliberately no no-arg form — that was the shape whose in-memory backend
+// silently lost every record on relaunch, and a stub carrying it would let the
+// emit regress to it and still typecheck. (An 'internal' constructor does NOT
+// achieve this: the stub and the emit compile as ONE unit, where 'internal' is
+// freely accessible. Mirroring the real REQUIRED parameter is what actually
+// rejects the regression — the general rule this file states four times over:
+// a stub that is a superset of the real surface is itself a masking source.)
+interface PyreonDatabaseBackend
+@Suppress("FunctionName")
+fun PyreonDatabase(context: Context): PyreonDatabase =
+  PyreonDatabase(object : PyreonDatabaseBackend {})
+class PyreonDatabase(backend: PyreonDatabaseBackend) {
   fun insert(collection: String, record: PyreonRecord) {}
   fun get(collection: String, id: String): PyreonRecord? = null
   fun all(collection: String): List<PyreonRecord> = emptyList()

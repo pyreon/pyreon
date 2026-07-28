@@ -604,7 +604,7 @@ hook at all.
 | `useStorage` | todomvc | ✅ persistence: `test_todosPersistAcrossRelaunch` (iOS, genuine terminate+relaunch) + `todosPersistAcrossActivityRecreation` (Android, activity recreation — honest scope: not full process death) | **R4→R5** |
 | `useLoaderData` (loader auto-emit) | — | ❌ | R2 |
 | `useAuth` | **finance** | ✅ the container's initial `status` renders (`signedOut`), and `beginSignIn()` drives the sign-in flow that reaches the guarded dashboard — asserted on BOTH platforms from the same source. Writing the Android half surfaced a parity break: Kotlin enum constants are SCREAMING_SNAKE and Swift's are camelCase, so the status rendered `SIGNED_OUT` on Android and `signedOut` on iOS; `PyreonAuthStatus.toString()` now returns the cross-platform spelling | **R4** (iOS + Android) |
-| `useDatabase` | — | ❌ | R2 |
+| `useDatabase` | — | ❌ on-device. Persistence IS unit-proven on both runtimes (file-backed by default since 2026-07; a fresh backend over the same directory reads what the previous one wrote), and the Kotlin emit threads a `Context` so a scaffolded app persists — but no gated app renders from it | R3 |
 | `useSecureStorage` | — | ❌ | R2 |
 | `useWebSocket` | — | ❌ | R2 |
 | `useGeolocation` | — | ❌ (manual `.start()` on Kotlin) | R2 |
@@ -624,12 +624,41 @@ re-scores the matrix). `useStorage` (todomvc terminate+relaunch) and
 three manual-`.start()` hooks (geolocation/push/payments) are gated on
 M3.9 auto-start parity first.
 
-`useDatabase` deserves a note: its emitted Swift now *compiles* (the
-`get`/`delete`/`find` calls were missing the argument labels the runtime
-declares, so they never did — see the type gate), and the finance app
-exercises `db.delete` on-device. But its default backend is in-memory and
-no gated app renders FROM the database, so a behavioural assertion still
-needs a persistent backend first.
+`useDatabase` deserves a note. Two things blocked it, and the second was
+worse than "unproven":
+
+1. Its emitted Swift did not *compile* — the `get`/`delete`/`find` calls
+   were missing the argument labels the runtime declares (see the type
+   gate).
+2. **It did not persist.** Both runtimes' `PyreonDatabase` defaulted to an
+   in-memory backend, and the emit constructed exactly that default — so
+   an app that inserted records and relaunched found them gone, with no
+   warning, no error, and nothing failing. The entire reason
+   `useDatabase` exists over `useStorage` is *structured data that
+   outlives the process*, so an ephemeral default was not a conservative
+   starting point; it was silent data loss wearing the word "default".
+
+Both are now fixed. `FileDatabaseBackend` (one JSON file per collection,
+atomic writes, `Application Support` on iOS / `filesDir` on Android) is
+the default on both platforms, and the Kotlin emit threads
+`LocalContext.current` into the constructor because Android cannot resolve
+app-private storage without a `Context`. The spelling is deliberately
+asymmetric — Swift's no-arg initialiser *is* the persistent one, Kotlin has
+no no-arg form at all — and the on-disk bytes are identical, locked by a
+cross-language format test that asserts the same string from Swift's
+`JSONSerialization` and Kotlin's hand-written codec.
+
+Deliberately Foundation/JVM-only, no SQLite: a record is an id plus string
+fields, and a SQLite module map differs between Apple platforms and Linux —
+the exact toolchain split that has broken this runtime's CI before. Apps
+that outgrow the file store inject Room / SQLDelight / Core Data through
+the same constructor.
+
+What that leaves for the assertion queue is now genuinely just the device
+assertion: the capability works, the persistence is unit-proven on both
+platforms (a SECOND backend over the same directory is what a relaunch
+is), but **no gated app renders FROM the database yet**, so the row stays
+R2/R3 until one does. That is a device-gate task, not a runtime one.
 
 **M2.3 — gestures (long-press) SHIPPED.** `<Press onLongPress={fn}>` now
 lowers on native (the type + web 500ms-polyfill already existed; only the
