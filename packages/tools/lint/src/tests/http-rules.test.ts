@@ -143,7 +143,22 @@ describe('pyreon/query-fn-must-forward-signal', () => {
     ).not.toContain('pyreon/query-fn-must-forward-signal')
   })
 
-  it('does NOT fire when the signal is reached through the context param', () => {
+  it('does NOT fire when the destructured signal is RENAMED', () => {
+    // `signal` appears only in the PARAMETER pattern here. Body-only
+    // scanning reports this correct code as a violation — found when
+    // `@pyreon/feature` renamed the binding to avoid shadowing `signal`
+    // from `@pyreon/reactivity`.
+    expect(
+      lint(`
+        const q = useQuery(() => ({
+          queryKey: ['users'],
+          queryFn: ({ signal: abortSignal }) => api.get('/users', { signal: abortSignal }),
+        }))
+      `),
+    ).not.toContain('pyreon/query-fn-must-forward-signal')
+  })
+
+  it('does NOT fire when the signal is reached through the context param', async () => {
     expect(
       lint(`
         const q = useQuery(() => ({
