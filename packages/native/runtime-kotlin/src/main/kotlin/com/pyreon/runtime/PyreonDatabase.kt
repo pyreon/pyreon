@@ -40,7 +40,7 @@
 // passing the Context). The on-disk JSON bytes are identical either way,
 // locked by a cross-language format test.
 //
-// The JSON codec is hand-written ([PyreonJson]) rather than `org.json` or
+// The JSON codec is hand-written ([PyreonRecordJson]) rather than `org.json` or
 // kotlinx-serialization on purpose: this runtime is compiled against MINIMAL
 // stubs in CI, so a stubbed parser would make a persistence test assert
 // nothing. A dependency-free codec for a fixed `{id, fields}` shape is real in
@@ -117,6 +117,13 @@ public class InMemoryDatabaseBackend : PyreonDatabaseBackend {
 }
 
 /** Minimal JSON codec for the `[{ "id": ..., "fields": { ... } }]` shape —
+ * named for the shape it encodes, NOT `PyreonJson`: that name is already taken
+ * by the kotlinx-serialization wrapper the WebView bridge uses, and every app
+ * compiles the entire runtime source set as ONE module, so the two would
+ * collide. (They did. The isolated per-file stub compile cannot see a
+ * cross-file redeclaration, which is what `check-duplicate-declarations.ts`
+ * now exists to catch.)
+ *
  * the ONLY shape this store writes. Dependency-free so it behaves identically
  * under Android, a plain JVM test, and the stub-only `kotlinc` verification
  * (where `org.json` / kotlinx-serialization are stubs that would silently make
@@ -124,7 +131,7 @@ public class InMemoryDatabaseBackend : PyreonDatabaseBackend {
  *
  * Emits SORTED keys with no whitespace, byte-for-byte matching Swift's
  * `JSONSerialization` with `.sortedKeys`. */
-internal object PyreonJson {
+internal object PyreonRecordJson {
     fun encode(records: List<PyreonRecord>): String {
         val sb = StringBuilder("[")
         records.forEachIndexed { i, r ->
@@ -307,7 +314,7 @@ public class FileDatabaseBackend(
         val f = fileFor(collection)
         if (!f.exists()) return
         try {
-            val records = PyreonJson.decode(f.readText())
+            val records = PyreonRecordJson.decode(f.readText())
             if (records == null) {
                 onError?.invoke("load:$collection", IllegalStateException("corrupt JSON"))
                 return
@@ -334,7 +341,7 @@ public class FileDatabaseBackend(
             // `Data.write(options: .atomic)`.
             val target = fileFor(collection)
             val tmp = File(directory, target.name + ".tmp")
-            tmp.writeText(PyreonJson.encode(ids.mapNotNull { recs[it] }))
+            tmp.writeText(PyreonRecordJson.encode(ids.mapNotNull { recs[it] }))
             if (!tmp.renameTo(target)) {
                 target.delete()
                 if (!tmp.renameTo(target)) throw IllegalStateException("rename failed")
