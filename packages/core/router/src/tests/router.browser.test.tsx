@@ -1,5 +1,28 @@
 import { h, onMount } from '@pyreon/core'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
+
+/**
+ * Poll until `cond` holds, or fail after `timeoutMs`.
+ *
+ * For assertions that follow an ASYNCHRONOUS pipeline whose completion the
+ * test cannot await directly — a fire-and-forget `void navigate(...)` behind a
+ * browser event listener, say. A fixed number of `flush()` calls is a guess at
+ * how many microtasks that pipeline needs; under CI contention the guess is
+ * wrong and the failure looks like a product bug rather than a racing test.
+ *
+ * Polling is load-INDEPENDENT in the way that matters: it waits as long as the
+ * work actually takes, and still fails in finite time if the work never
+ * happens.
+ */
+const waitForDom = async (cond: () => boolean, timeoutMs = 5000): Promise<void> => {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    await flush()
+    if (cond()) return
+    if (Date.now() > deadline) throw new Error(`waitForDom: condition not met within ${timeoutMs}ms`)
+    await new Promise((r) => setTimeout(r, 10))
+  }
+}
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   createRouter,
@@ -176,7 +199,20 @@ describe('router in real browser', () => {
     window.location.hash = '#/'
     window.dispatchEvent(new HashChangeEvent('hashchange'))
 
-    await flush()
+    // A single `flush()` is NOT enough here, and the reason is a real
+    // behaviour change rather than test flake: browser Back/Forward used to be
+    // a synchronous `currentPath.set(getCurrentLocation())`, and now runs the
+    // FULL navigation pipeline — loaders, guards, blockers, afterEach, scroll,
+    // title. `handleBrowserNav` fires it as `void navigate(...).then(...)`,
+    // fire-and-forget, so the commit lands some indeterminate number of
+    // microtasks later.
+    //
+    // Waiting one flush and asserting therefore RACES the pipeline: it wins on
+    // an idle machine and loses on a loaded CI runner, which is exactly how it
+    // failed — 3/3 retries, `expected undefined to be 'Home Page'`. Poll for
+    // the outcome instead, bounded, so the test waits as long as the pipeline
+    // needs and still fails in finite time if the navigation never commits.
+    await waitForDom(() => container.querySelector('#home') !== null)
 
     expect(container.querySelector('#home')?.textContent).toBe('Home Page')
     expect(container.querySelector('#about')).toBeNull()
