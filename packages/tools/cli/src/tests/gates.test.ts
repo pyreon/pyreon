@@ -149,7 +149,7 @@ describe('runDocClaimsGate', () => {
     // stable). CLAUDE.md was consolidated to ONE claim site per count
     // (the package-overview table rows + summary line); the redundant
     // per-category bullets / API-description claim sites were removed.
-    expect(result.meta.scanned).toBe(25)
+    expect(result.meta.scanned).toBe(23)
     // The real repo must be drift-free — this gate runs in CI; if a
     // count claim drifts, EVERY PR's doctor run fails until it's fixed.
     const errs = result.findings.filter((f) => f.severity === 'error')
@@ -182,6 +182,7 @@ describe('runDocClaimsGate', () => {
       claudeMdRow?: string | null
       claudeMdArch?: string | null
       docsIndex?: string | null
+      rootReadme?: string | null
     },
   ): void {
     markMonorepo(tmp)
@@ -227,6 +228,14 @@ describe('runDocClaimsGate', () => {
       }\n3 doc pages covering all packages\n`,
     )
 
+    // The root README carries the hooks claim too, and it is one of the sites
+    // that still REJECTS the hedged "N+" form now that CLAUDE.md's package
+    // table is gone (#2538 slimmed it).
+    fs.writeFileSync(
+      path.join(tmp, 'README.md'),
+      opts.rootReadme ?? `| ${opts.hookCount} hooks — useHover and friends\n`,
+    )
+
     // docs/src/content/docs/index.md carries one
     fs.mkdirSync(path.join(tmp, 'docs', 'docs'), { recursive: true })
     fs.writeFileSync(
@@ -257,13 +266,17 @@ describe('runDocClaimsGate', () => {
     fs.rmSync(tmp, { recursive: true, force: true })
   })
 
-  it('emits hedged finding when CLAUDE.md uses "N+" form', async () => {
+  it('emits hedged finding when a claim site uses the "N+" form', async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-claims-hedged-'))
-    // 3 actual exports; CLAUDE.md row uses the rejected hedged form.
+    // 3 actual exports; the root README uses the rejected hedged form.
+    //
+    // This used to target CLAUDE.md's package-table row. That row was deleted
+    // when #2538 slimmed the file, so the claim site went with it — but the
+    // INVARIANT under test is "a hedged number is an error, not a pass", and
+    // that is unchanged. It is asserted here against a site that still exists.
     buildHooksRepo(tmp, {
       hookCount: 3,
-      claudeMdRow:
-        '| `@pyreon/hooks` | 3+ signal-based hooks for stuff |',
+      rootReadme: '| 3+ hooks — useHover and friends\n',
     })
 
     const result = await runDocClaimsGate({ cwd: tmp })
