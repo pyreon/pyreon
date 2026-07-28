@@ -18,6 +18,12 @@ export type {
   UseHapticsResult,
 } from './useHaptics'
 export { useHaptics } from './useHaptics'
+// Web half of the shared geolocation hook. The native half already existed
+// (PMTC lowers `useGeolocation()` to PyreonGeolocation on both targets); with
+// no web export the import did not resolve, so an app using it could not build
+// for web at all.
+export { useGeolocation } from './useGeolocation'
+export type { UseGeolocationOptions, UseGeolocationResult } from './useGeolocation'
 export type { UseShareResult } from './useShare'
 export { useShare } from './useShare'
 export type { UseLinkingResult } from './useLinking'
