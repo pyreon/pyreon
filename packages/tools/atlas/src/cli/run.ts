@@ -25,6 +25,13 @@ export interface ScanOptions extends DiscoverOptions {
 export interface ScanResult {
   components: number
   scenarios: number
+  /** scenarios a check actually PASSED — not merely produced */
+  verified: number
+  /** scenarios where a check ran and FAILED */
+  failed: number
+  /** scenarios nothing examined. Not a pass; most scenarios are here today. */
+  unverified: number
+  /** @deprecated use `failed` — kept so callers do not break mid-refactor */
   flagged: number
   guide: string
   llms: string
@@ -50,10 +57,18 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
   }).build()
 
   const scenarios = graph.scenarios()
+  // Three states, not two. `verify.ok` means a check RAN and passed; a verdict
+  // with `checked: 0` is unverified, which is neither a pass nor a failure —
+  // and is the common case while four of the five checks are stubs.
+  const verified = scenarios.filter((s) => s.verify?.ok === true).length
+  const failed = scenarios.filter((s) => s.verify && !s.verify.ok && s.verify.checked > 0).length
   const result: ScanResult = {
     components: graph.size(),
     scenarios: scenarios.length,
-    flagged: scenarios.filter((s) => s.verify && !s.verify.ok).length,
+    verified,
+    failed,
+    unverified: scenarios.length - verified - failed,
+    flagged: failed,
     guide: asset ? asset.guide : graph.toAgentGuide(),
     llms: asset ? asset.llms : graph.toLlmsText(),
   }
@@ -99,9 +114,13 @@ export async function runCli(argv: readonly string[]): Promise<number> {
       err(`atlas: no components found under ${join(dir ?? '.', 'src')}\n`)
       return 1
     }
+    // Reports what was actually established. The previous line called every
+    // scenario "verified" regardless of whether anything checked it, which is
+    // the same claim the catalog and agent guide were fixed for.
     out(
-      `atlas: discovered ${result.components} component(s), ${result.scenarios} verified ` +
-        `scenario(s) (${result.flagged} flagged).\n`,
+      `atlas: discovered ${result.components} component(s), ${result.scenarios} scenario(s) ` +
+        `— ${result.verified} verified, ${result.failed} failing, ` +
+        `${result.unverified} unverified.\n`,
     )
     if (result.catalogPath) out(`  → ${result.catalogPath}\n  → ${result.guidePath}\n`)
     return 0

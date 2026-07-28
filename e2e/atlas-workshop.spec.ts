@@ -431,3 +431,83 @@ test.describe('Reactivity panel — reactive coverage', () => {
     expect(Number(match![2]), 'the graph must have nodes to measure').toBeGreaterThan(0)
   })
 })
+
+/**
+ * "Why did this update?" — the inverse of React DevTools' whole-component
+ * answer. Asserts the chain NAMES a node, not merely that a panel renders.
+ */
+test.describe('Why panel — causal chains', () => {
+  test('names the chain behind a real interaction', async ({ browser }) => {
+    const page = await open(browser)
+    await page.getByTestId('addon-tab-why').click()
+
+    // A dev build, so chains ARE reconstructable — the unavailable notice here
+    // would mean the panel misreads its own environment.
+    await expect(page.getByTestId('why-unavailable')).toHaveCount(0)
+
+    // Cause real reactivity, then refresh the candidate list.
+    await page.getByTestId('addon-tab-canvas').click()
+    await page.getByTestId('viewport-tablet').click()
+    await page.getByTestId('background-dark').click().catch(() => {})
+    await page.getByTestId('addon-tab-why').click()
+    await page.getByTestId('why-refresh').click()
+
+    // At least one node fired and is offered for explanation.
+    const nodes = page.locator('[data-testid^="why-node-"]')
+    await expect(nodes.first()).toBeVisible()
+
+    await nodes.first().click()
+    await expect(page.getByTestId('why-summary')).toHaveCount(1)
+    // The summary must make a real claim — origin or a hop count — not a blank.
+    await expect(page.getByTestId('why-summary')).toContainText(/updated because|IS the origin/)
+    await expect(page.locator('[data-testid="why-step"]').first()).toBeVisible()
+  })
+})
+
+/**
+ * Pseudo-localization — find truncation without translating anything.
+ */
+test('pseudo-locale expands and accents every rendered string', async ({ browser }) => {
+  const page = await open(browser)
+  const preview = page.locator('[data-testid="canvas-preview"]').first()
+  const before = ((await preview.textContent()) ?? '').trim()
+  expect(before.length, 'preview should render text to stress').toBeGreaterThan(0)
+
+  await page.getByTestId('addon-tab-canvas').click()
+  await page.getByTestId('pseudo-locale-toggle').click()
+
+  const after = ((await preview.textContent()) ?? '').trim()
+  // Longer — the whole point is exposing a layout that only clips at +40%.
+  expect(after.length).toBeGreaterThan(before.length)
+  // Accented, so an untransformed (never-i18n'd) string stands out beside it.
+  expect(after).toMatch(/[áéíóúćđŕśţẃ]/)
+  // Toggling back restores the original, so it is a check and not a one-way door.
+  await page.getByTestId('pseudo-locale-toggle').click()
+  expect(((await preview.textContent()) ?? '').trim()).toBe(before)
+})
+
+/**
+ * Perf panel — counters, not timings. Asserts real framework work is recorded
+ * for a real interaction; a panel that always shows zero would be
+ * indistinguishable from a broken sink.
+ */
+test('perf panel records framework work for a real interaction', async ({ browser }) => {
+  const page = await open(browser)
+  await page.getByTestId('addon-tab-perf').click()
+  await expect(page.getByTestId('perf-unavailable')).toHaveCount(0)
+
+  await page.getByTestId('perf-toggle').click()
+  await expect(page.getByTestId('perf-toggle')).toHaveText(/Stop/i)
+
+  // Drive a real re-render: change a control so the styler + runtime do work.
+  await page.getByTestId('addon-tab-controls').click()
+  await page.locator('input[placeholder]').first().fill('perf probe')
+  await page.getByTestId('addon-tab-perf').click()
+  await page.getByTestId('perf-toggle').click()
+
+  await expect(page.getByTestId('perf-summary')).toHaveCount(1)
+  const rows = page.locator('[data-testid="perf-row"]')
+  await expect(rows.first()).toBeVisible()
+  // A named counter with a real count — not an empty verdict dressed as one.
+  await expect(page.getByTestId('perf-summary')).toContainText(/[1-9]\d* counter\(s\) fired/)
+})

@@ -249,6 +249,41 @@ diagnose({
       seeAlso: ['get_routes'],
     },
     {
+      name: 'get_atlas_catalog',
+      kind: 'constant',
+      signature: 'tool: get_atlas_catalog({ tag?: string }) → string',
+      summary:
+        "Serve the VERIFIED component catalog `atlas scan` writes (`atlas-catalog.json`) — every component with its real props, allowed values and scenario counts, read from your source rather than guessed. Filter with `tag`. Each line states how many scenarios are verified, failing and UNVERIFIED, because most Atlas checks are still stubs and a catalogued component is not automatically a checked one. With no catalog present the tool returns instructions to run `atlas scan` instead of an invented answer.",
+      example: `get_atlas_catalog({})
+// → # Atlas catalog — 12 component(s) … scenarios: 2 (1 verified, 0 failing, 1 unverified)
+get_atlas_catalog({ tag: 'form' })
+// → only components tagged \`form\``,
+      mistakes: [
+        'Treating a catalogued component as a verified one — the counts on each line are the point. `unverified` means nothing examined that scenario; it is not a pass.',
+        'Calling it before `atlas scan` has run — the catalog is a build artifact, so the tool returns setup instructions rather than a stale or invented list.',
+        'Expecting per-prop detail here — the index is deliberately token-frugal. Use `get_atlas_component` for one component\'s exact prop values.',
+      ],
+      seeAlso: ['get_atlas_component', 'get_api'],
+    },
+    {
+      name: 'get_atlas_component',
+      kind: 'constant',
+      signature: 'tool: get_atlas_component({ name: string }) → string',
+      summary:
+        "Prescriptive usage for ONE catalogued component: required and optional props with their exact allowed values, which props are reactive (pass a signal accessor, not a value), a known-good example when a scenario has actually been VERIFIED, and `avoid:` lines for scenarios that genuinely failed a check. An unverified example is offered but labelled UNVERIFIED rather than presented as correct — the consumer of this answer cannot check it, so the claim has to be earned. Unknown names get near-match suggestions.",
+      example: `get_atlas_component({ name: 'Button' })
+// → required: label(text)
+//   optional: state(primary|secondary)
+//   reactive (pass a signal accessor, not a value): onClick
+//   correct (verified): {"label":"Save"}`,
+      mistakes: [
+        'Reading `example (UNVERIFIED …)` as a known-good example — it is args from a scenario nothing has checked. Only `correct (verified)` carries evidence.',
+        'Passing a resolved value to a prop listed as reactive — those take an accessor (`() => count()`), and passing the value captures it once.',
+        'Inventing a value for a prop whose allowed set is printed — `state(primary|secondary)` is the complete list for that component.',
+      ],
+      seeAlso: ['get_atlas_catalog', 'validate'],
+    },
+    {
       name: 'get_pattern',
       kind: 'constant',
       signature: 'tool: get_pattern({ name?: string }) → PatternBody | string[]',

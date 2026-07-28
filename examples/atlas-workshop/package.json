@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "oxlint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "scan": "atlas scan ."
   },
   "dependencies": {
     "@pyreon/atlas": "workspace:*",
