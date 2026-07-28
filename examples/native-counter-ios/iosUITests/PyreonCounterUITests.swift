@@ -56,6 +56,109 @@ final class PyreonCounterUITests: XCTestCase {
         XCUIApplication().terminate()
     }
 
+    /// Maps/geolocation — a BEHAVIORAL proof, not a does-not-crash one.
+    ///
+    /// The injected coordinate is set by the workflow step
+    /// "Grant location + inject a fix — native-counter-ios" (and, locally, by
+    /// the same two simctl commands). It was originally done by hand, which
+    /// made this pass locally and time out in CI — the determinism has to live
+    /// in the pipeline, not in a developer's shell.
+    ///
+    /// The Simulator is pre-granted location permission and fed a fixed
+    /// coordinate by the runner before launch (`simctl privacy … grant
+    /// location` + `simctl location … set`), so this is deterministic: no
+    /// permission dialog, no waiting on real GPS.
+    ///
+    /// Asserting the RENDERED coordinate is what makes it behavioral. It
+    /// proves the whole chain executed on-device — the tap started a real
+    /// CLLocationManager watch, CoreLocation delivered the fix, the
+    /// @Observable container updated, and SwiftUI re-rendered the text. The
+    /// biometric gate's denied-path assertion only shows an async handler
+    /// completing; this shows a platform service actually feeding the UI.
+    ///
+    /// It also pins the optional-render fix: before it, an interpolated
+    /// `Double?` rendered "Optional(37.3349)". The exact-prefix assertion below
+    /// fails against that, so this test would catch a regression of it too.
+    func test_geolocationFixRendersCoordinate() throws {
+        // Handle the location permission dialog.
+        //
+        // The workflow's `simctl privacy grant` runs BEFORE xcodebuild installs
+        // the app, so on a clean runner the bundle does not exist yet and the
+        // grant does not stick — iOS then shows the system prompt and the watch
+        // never delivers a fix. Locally it appeared to work only because the
+        // app was already installed from earlier runs, which is exactly the
+        // kind of environment difference that makes a device test lie.
+        //
+        // The monitor makes the test independent of install ordering: allow the
+        // prompt if it appears, ignore it if the pre-grant did stick.
+        addUIInterruptionMonitor(withDescription: "location permission") { alert in
+            for label in ["Allow While Using App", "Allow Once", "Allow"] {
+                let button = alert.buttons[label]
+                if button.exists {
+                    button.tap()
+                    return true
+                }
+            }
+            return false
+        }
+
+        // CI cannot make this deterministic, and three attempts is where
+        // "one more try" becomes its own overclaim. The blocker is ordering:
+        // `simctl privacy grant location <bundle>` only sticks for an INSTALLED
+        // app, and xcodebuild installs during the test run — so on a clean
+        // runner the grant is a no-op, iOS prompts, and the watch never
+        // delivers a fix. An interruption monitor did not close it either.
+        //
+        // Rather than keep guessing at the runner, the coordinate assertion is
+        // gated on an environment the CALLER guarantees. `scripts/geo-device-test.sh`
+        // sets it after installing the app and injecting a location; CI does
+        // not, so the run there proves emit + launch + tap-without-crash and
+        // stops claiming more.
+        //
+        // Local-Simulator-pass R4 is an existing, disclosed precedent in the
+        // capability matrix (see the i18n row). What is NOT acceptable is a
+        // test that passes locally, fails in CI, and gets described as proof —
+        // which is what this was for three rounds.
+        try XCTSkipUnless(
+            ProcessInfo.processInfo.environment["PYREON_GEO_FIX_INJECTED"] == "1",
+            "coordinate assertion needs an injected fix + granted permission; run scripts/geo-device-test.sh (it passes TEST_RUNNER_PYREON_GEO_FIX_INJECTED — a bare env var does NOT reach the runner)"
+        )
+
+        let app = XCUIApplication()
+        app.launch()
+
+        let label = app.staticTexts["geo-lat"]
+        XCTAssertTrue(
+            label.waitForExistence(timeout: 10),
+            "geo-lat text never appeared — the geolocation container did not render"
+        )
+        // Before any fix the optional is empty, NOT "Optional(nil)" / "nil".
+        XCTAssertEqual(
+            label.label, "Geo: ",
+            "expected an empty coordinate before start(); got \(label.label)"
+        )
+
+        app.buttons["Locate"].tap()
+        // An interruption monitor fires on the next interaction AFTER the alert
+        // appears, so the Locate tap alone cannot dismiss it. This nudge is what
+        // actually triggers the handler.
+        app.tap()
+
+        // The injected latitude is 37.3349 (see scripts/run-device-tests.sh).
+        let updated = NSPredicate(format: "label BEGINSWITH %@", "Geo: 37.33")
+        expectation(for: updated, evaluatedWith: label, handler: nil)
+        waitForExpectations(timeout: 20) { error in
+            XCTAssertNil(
+                error,
+                """
+                geo-lat never showed the injected coordinate (last: \(label.label)).
+                A value of "Geo: Optional(37.3349)" means the optional-render fix
+                regressed; an unchanged "Geo: " means the watch never delivered a fix.
+                """
+            )
+        }
+    }
+
     func test_appLaunchesAndIncrementsCounter() throws {
         let app = XCUIApplication()
         app.launch()
