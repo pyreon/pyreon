@@ -128,6 +128,7 @@ Pick the tool that matches what you're trying to do — or call [`mcp_overview`]
 - **Audit tests for mock-vnode drift** — [`audit_test_environment`](#audit_test_environment)
 - **Audit islands cross-file foot-guns** — [`audit_islands`](#audit_islands)
 - **Check browser smoke coverage** — [`get_browser_smoke_status`](#get_browser_smoke_status)
+- **Write against components that provably exist** — [`get_atlas_catalog`](#get_atlas_catalog), [`get_atlas_component`](#get_atlas_component)
 
 ---
 
@@ -400,6 +401,65 @@ Every **other** detected footgun (`props-destructured`, `on-click-undefined`, `r
 ```
 
 ```text
+### get_atlas_catalog
+
+Serves the **verified component catalog** `atlas scan` writes to `atlas-catalog.json` — every component with the props it actually takes, the values those props actually allow, and how many of its scenarios have been checked. All of it is read from your source, so an assistant writing UI code stops guessing prop names.
+
+Each component line carries three scenario counts — **verified**, **failing**, **unverified**. That split is deliberate: four of Atlas' five verify checks are still stubs, so a catalogued component is not automatically a checked one, and collapsing the counts would let "we have a catalog entry" read as "this is known good".
+
+If no catalog is present the tool returns instructions to run `atlas scan` rather than an invented list — the whole value of the catalog is that it is derived from real components.
+
+**Parameters:**
+
+| Param | Type      | Description                                              |
+| ----- | --------- | -------------------------------------------------------- |
+| `tag` | `string?` | Only components carrying this tag. Omit for the full set. |
+
+**Example call:**
+
+```json
+{ "tag": "form" }
+```
+
+```text
+# Atlas catalog — 3 component(s)
+
+## Button [form]
+props: label(text), state(primary|secondary), onClick(()=>…)
+scenarios: 2 (1 verified, 0 failing, 1 unverified)
+```
+
+### get_atlas_component
+
+Prescriptive usage for one catalogued component: required and optional props with their exact allowed values, which props are **reactive** (pass a signal accessor, not a value), a known-good example when a scenario has genuinely been verified, and `avoid:` lines for scenarios that actually failed a check.
+
+An unverified example is still offered — it is a useful starting point — but it is labelled `example (UNVERIFIED …)` rather than `correct (verified)`. The consumer of this answer has no other view of the component and cannot check it, so the stronger word has to be earned.
+
+Unknown names come back with near-match suggestions instead of a bare miss.
+
+**Parameters:**
+
+| Param  | Type     | Description                                        |
+| ------ | -------- | -------------------------------------------------- |
+| `name` | `string` | Component name exactly as it appears in the catalog |
+
+**Example call:**
+
+```json
+{ "name": "Button" }
+```
+
+```text
+# Button
+tags: form
+
+required: label(text)
+optional: state(primary|secondary)
+reactive (pass a signal accessor, not a value): onClick
+
+correct (verified): {"label":"Save"}
+```
+
 ## Migrated Code
 
 const count = signal(0)

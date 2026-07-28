@@ -48,6 +48,12 @@ import { realpathSync } from 'node:fs'
 import { relative } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { z } from 'zod'
+import {
+  loadCatalog,
+  MISSING_CATALOG_MESSAGE,
+  renderCatalogIndex,
+  renderComponent,
+} from './atlas'
 import packageJson from '../package.json' with { type: 'json' }
 import {
   type AntiPatternCategory,
@@ -734,6 +740,58 @@ server.tool(
     return textResult(parts.join('\n'))
   },
 )
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // Tool: get_atlas_catalog — serves the verified component catalog
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  server.tool(
+    'get_atlas_catalog',
+    {
+      tag: z
+        .string()
+        .optional()
+        .describe('Only components carrying this tag. Omit for the whole catalog.'),
+    },
+    async ({ tag }) => {
+      // `atlas scan` generated this catalog and, until now, nothing served it —
+      // an agent had no way to ask what components exist or what props they
+      // take, and guessed instead.
+      const loaded = loadCatalog(process.cwd())
+      if (!loaded.ok) {
+        return textResult(
+          loaded.reason === 'missing'
+            ? MISSING_CATALOG_MESSAGE
+            : `Found a catalog but could not read it${loaded.detail ? `: ${loaded.detail}` : ''}. ` +
+                'Re-run `atlas scan`.',
+        )
+      }
+      return textResult(renderCatalogIndex(loaded.catalog, tag))
+    },
+  )
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // Tool: get_atlas_component — prescriptive usage for ONE component
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  server.tool(
+    'get_atlas_component',
+    {
+      name: z.string().describe('Component name exactly as it appears in the catalog.'),
+    },
+    async ({ name }) => {
+      const loaded = loadCatalog(process.cwd())
+      if (!loaded.ok) {
+        return textResult(
+          loaded.reason === 'missing'
+            ? MISSING_CATALOG_MESSAGE
+            : `Found a catalog but could not read it${loaded.detail ? `: ${loaded.detail}` : ''}. ` +
+                'Re-run `atlas scan`.',
+        )
+      }
+      return textResult(renderComponent(loaded.catalog, name))
+    },
+  )
 
   // ═══════════════════════════════════════════════════════════════════════════════
   // Tool: get_pattern — serves docs/patterns/<name>.md
