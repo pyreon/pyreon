@@ -66,6 +66,8 @@ Same source. Three idiomatic outputs (web rendered live; iOS/Android emitted as 
 - `@pyreon/form` (validated forms — **device-proven**), `@pyreon/storage` (platform-storage backend)
 - the native `@pyreon/router` port (`useNavigate`/`useParams`/`useLoaderData`, nested routes, `beforeEnter`)
 - the **subset** of `@pyreon/hooks` with ports: `useFetch`, `useOnline`/`useNetworkStatus`, `useAppState`, `useClipboard`, `useColorScheme`
+  - **`useFetch` needs its response type on iOS**: `useFetch<Resp>(url)`. Without the generic the Swift emit decodes into `Any`, which cannot conform to `Decodable`, so the iOS build fails — Android compiles either way. The compiler now warns rather than letting you find out at build time.
+  - **`useParams()` must be destructured**: `const { id } = useParams()` lowers per key. Binding the whole object (`const p = useParams(); p.id`) reads a property off a native dictionary/map and compiles on neither target.
 
 **❌ Web-only by design** (a hard DOM/canvas/vendor dependency the compiler has no path for — these will NOT be *native-rendered* as SwiftUI/Compose; PMTC can't compile echarts/CodeMirror/elkjs/etc. But several CAN be **hosted in a `<WebView>`** — see the bridge escape hatch right after this table):
 

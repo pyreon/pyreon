@@ -1096,12 +1096,18 @@ class PyreonMachine(initial: String, val transitions: Map<String, Map<String, St
 // (operator invoke), not / cannot / all / any. Added with the
 // permissions contract fixture — before it, NO usePermissions shape
 // was kotlinc-validated at all.
-class PyreonPermissions(initial: Set<String>) {
-  var granted: Set<String> = initial
-    private set
+// MIRRORS the real signature exactly:
+// \`PyreonPermissions(granted: Set<String> = emptySet())\`, with \`granted\`
+// exposed as Compose MutableState (read \`.value\`). The stub previously took a
+// REQUIRED \`initial\` and a plain Set - stricter than reality on the ctor, and
+// a different TYPE on the property. It therefore rejected the emit's correct
+// \`PyreonPermissions()\`. A stub stricter than reality fails correct code,
+// the inverse of the usual superset-masks problem.
+class PyreonPermissions(granted: Set<String> = emptySet()) {
+  val granted: MutableState<Set<String>> = mutableStateOf(granted)
   fun can(key: String): Boolean {
-    if (granted.contains(key)) return true
-    return granted.any { it.endsWith(".*") && key.startsWith(it.dropLast(1)) }
+    if (granted.value.contains(key)) return true
+    return granted.value.any { it.endsWith(".*") && key.startsWith(it.dropLast(1)) }
   }
   fun cannot(key: String): Boolean = !can(key)
   fun not(key: String): Boolean = !can(key)
