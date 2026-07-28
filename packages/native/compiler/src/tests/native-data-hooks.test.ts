@@ -99,8 +99,20 @@ describe('Phase 5 — native data/services hook emit', () => {
   return (<Stack><Text>{loc.latitude}</Text></Stack>)`),
       { target: 'swift' },
     ).code
-    expect(out).toContain('\\(loc.latitude)')
+    // The invariant is the BARE read: Swift's @Observable needs no `.value`
+    // suffix, unlike Kotlin's MutableState. That still holds.
+    //
+    // The assertion used to be `toContain('\\(loc.latitude)')` — the RAW
+    // interpolation — which quietly encoded a rendering bug: `latitude` is
+    // `Double?`, and Swift renders an interpolated Optional as
+    // `Optional(37.3349)` where web renders `37.3349`. The emit now wraps it
+    // (`\\((loc.latitude).map { "\\($0)" } ?? "")`), so the field is still read
+    // bare — only the interpolation around it changed.
+    expect(out).toContain('loc.latitude')
+    expect(out).not.toContain('loc.latitude.value')
     expect(out).not.toContain('.value')
+    // Guard the correction itself: the raw form must NOT come back.
+    expect(out).not.toContain('"\\(loc.latitude)"')
   })
 
   it('useWebSocket requires a string-literal URL (non-literal bails with a warning)', () => {
