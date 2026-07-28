@@ -7,7 +7,7 @@
 // via `count.set(...)` (the compiler emits as `count = ...` since
 // SwiftUI's @State is a var, not a method).
 
-import { signal } from '@pyreon/reactivity'
+import { onMount, signal } from '@pyreon/reactivity'
 import {
   useHaptics,
   useShare,
@@ -21,7 +21,7 @@ import {
 } from '@pyreon/hooks'
 import { createI18n } from '@pyreon/i18n/core'
 import { createMachine } from '@pyreon/machine'
-import { Text, useNativeModule } from '@pyreon/primitives'
+import { Text, useDatabase, useNativeModule } from '@pyreon/primitives'
 import rocketstyle from '@pyreon/rocketstyle'
 
 // ui-system → native proof. `rocketstyle()({ component: Text })` is THE
@@ -189,6 +189,23 @@ export function Counter() {
   // button drives a real state transition — the device gate asserts the text
   // flips `Power: off` → `Power: on` on tap (a dropped/broken machine would
   // never transition).
+  // useDatabase device proof — structured local storage that OUTLIVES the
+  // process. Three defects had to be fixed before this line could exist at
+  // all: `get`/`delete`/`find` emitted Swift without argument labels (#2514),
+  // `db.insert({ id, fields })` lowered the record to an anonymous tuple, and
+  // the default backend was in-memory so nothing survived a relaunch.
+  //
+  // `PyreonDatabase` is not observable, so a signal drives the render: the
+  // Save button inserts a record and republishes the count, and `onMount`
+  // reads what is already on disk. That read is the load-bearing half — on a
+  // relaunch it is the ONLY source of the number, so a non-persistent backend
+  // renders "Notes: 0" and the assertion fails.
+  const db = useDatabase()
+  const noteCount = signal(0)
+  onMount(() => {
+    noteCount.set(db.count('notes'))
+  })
+
   const power = createMachine({
     initial: 'off',
     states: { off: { on: { TOGGLE: 'on' } }, on: { on: { TOGGLE: 'off' } } },
@@ -212,6 +229,7 @@ export function Counter() {
       <Text>Device: {device.platformName()}</Text>
       <Text>Greeting: {i18n.t('hello')}</Text>
       <Text>Power: {power()}</Text>
+      <Text>Notes: {noteCount()}</Text>
       <Text>Lock: {lockStatus()}</Text>
       <Text>Photo: {photoStatus()}</Text>
       <Text>File: {fileStatus()}</Text>
@@ -246,6 +264,18 @@ export function Counter() {
       <Button onClick={() => share.url('https://pyreon.dev')}>Share</Button>
       <Button onClick={() => linking.openUrl('https://pyreon.dev')}>Open</Button>
       <Button onClick={() => notifs.notify('Pyreon', 'A local notification')}>Notify</Button>
+      {/* Ids are derived from the current count rather than a clock, so the
+          sequence is deterministic across a relaunch and an upsert can never
+          silently collapse two taps into one record. */}
+      <Button
+        onClick={() => {
+          db.insert('notes', { id: String(db.count('notes') + 1), fields: { at: 'tap' } })
+          noteCount.set(db.count('notes'))
+        }}
+      >
+        Save Note
+      </Button>
+
       {/* M4.5 async-lowering device proof — an ASYNC handler that awaits the
           biometric gate. PMTC wraps this `async () => { … await … }` in a Swift
           `Task { … }` / Kotlin `pyreonAsyncScope.launch { … }`; a sync action

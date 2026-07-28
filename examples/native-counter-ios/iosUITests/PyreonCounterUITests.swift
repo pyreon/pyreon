@@ -306,6 +306,81 @@ final class PyreonCounterUITests: XCTestCase {
     // still exposes SwiftUI Text by content even when VoiceOver skips it), so
     // a device assertion on it would be flaky — a tooling limitation, not an
     // emit gap.
+    // useDatabase — STRUCTURED local storage asserted across a real relaunch.
+    //
+    // This is the capability's first device assertion, and it needed three
+    // separate fixes before it could exist at all:
+    //
+    //   1. `get`/`delete`/`find` emitted Swift without the argument labels the
+    //      runtime declares, so those calls never compiled (#2514).
+    //   2. `db.insert(collection, { id, fields })` lowered the record to an
+    //      anonymous TUPLE, not a `PyreonRecord` — so the only way to WRITE to
+    //      the store did not compile either.
+    //   3. `PyreonDatabase()` defaulted to an in-memory backend, so even a
+    //      compiling app lost every record on relaunch. Silently.
+    //
+    // Structure of the assertion, and why each half matters:
+    //
+    //   Phase 1 reads the count, taps Save Note, and asserts it went UP by
+    //   exactly one. That proves `insert` ran on-device and the record landed
+    //   — not just that the app compiled.
+    //
+    //   Phase 2 TERMINATES the app and relaunches it. The relaunched process
+    //   has no in-memory state; `onMount`'s `db.count('notes')` is the only
+    //   source of the rendered number. An in-memory backend renders "Notes: 0"
+    //   here, so this phase is what distinguishes real persistence from a
+    //   process-lifetime cache.
+    //
+    // Deliberately relative, never absolute: the Simulator keeps the app
+    // container between test runs, so the store legitimately accumulates
+    // records across invocations. Asserting "Notes: 1" would pass once and
+    // fail forever after — the classic way a persistence test gets deleted
+    // instead of fixed.
+    func test_databaseRecordSurvivesRelaunch() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        // The label is `Notes: <n>`; read n by prefix rather than assuming a
+        // value, since prior runs may have left records behind.
+        func currentNoteCount(timeout: TimeInterval = 30) -> Int? {
+            let predicate = NSPredicate(format: "label BEGINSWITH %@", "Notes: ")
+            let element = app.staticTexts.containing(predicate).firstMatch
+            guard element.waitForExistence(timeout: timeout) else { return nil }
+            return Int(element.label.replacingOccurrences(of: "Notes: ", with: ""))
+        }
+
+        guard let before = currentNoteCount() else {
+            XCTFail("No \"Notes: <n>\" text appeared within 30s — the useDatabase read never rendered")
+            return
+        }
+
+        // Phase 1 — the WRITE actually runs on-device.
+        let save = app.buttons["Save Note"]
+        XCTAssertTrue(save.exists, "Save Note button missing")
+        save.tap()
+
+        let expected = app.staticTexts["Notes: \(before + 1)"]
+        XCTAssertTrue(
+            expected.waitForExistence(timeout: 15),
+            "Count did not advance to \(before + 1) after tapping Save Note — db.insert did not land"
+        )
+
+        // Phase 2 — the record OUTLIVES the process.
+        app.terminate()
+        app.launch()
+
+        guard let afterRelaunch = currentNoteCount() else {
+            XCTFail("No \"Notes: <n>\" text after relaunch")
+            return
+        }
+        XCTAssertEqual(
+            afterRelaunch,
+            before + 1,
+            "Record did not survive terminate+relaunch (got \(afterRelaunch), expected \(before + 1)) — "
+                + "the database is not persisting"
+        )
+    }
+
     func test_accessibilityLabelReachesTree() throws {
         let app = XCUIApplication()
         app.launch()
