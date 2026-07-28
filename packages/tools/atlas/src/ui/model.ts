@@ -9,6 +9,7 @@ import type { A11yReport } from './a11y'
 import { analyzeA11y } from './a11y'
 import type { AddonTabId, BackgroundId, LocaleId, PseudoId, ViewportId } from './addons'
 import { localeDir, pseudoProps } from './addons'
+import { pseudoLocalizeValues } from './pseudo-locale'
 import type { CatalogGroup, WorkbenchCatalog, WorkbenchComponent } from './catalog'
 import { buildSearch, defaultValues, groupComponents } from './catalog'
 import type { BrandTheme, ThemeTokens } from './theme'
@@ -57,6 +58,8 @@ export interface WorkbenchModel {
   outline: Signal<boolean>
   /** Active locale — threaded to `render` as `ctx.locale`, and drives `dir=`. */
   locale: Signal<LocaleId>
+  /** i18n stress: render every string accented + 40% longer to expose truncation. */
+  pseudoLocale: Signal<boolean>
   // computeds
   brand: Computed<BrandTheme>
   theme: Computed<ThemeTokens>
@@ -103,6 +106,10 @@ export function createModel(
   const pseudo = signal<PseudoId | null>(null)
   const outline = signal(false)
   const locale = signal<LocaleId>('en')
+  // i18n STRESS, distinct from the locale switcher next to it: the switcher
+  // changes writing direction, this changes every string's LENGTH. Off by
+  // default — it is a deliberate check, not a viewing mode.
+  const pseudoLocale = signal(false)
 
   const brand = computed(() => THEMES.find((b) => b.id === brandId()) ?? THEMES[0]!)
   const theme = computed(() => tokens(brand(), dark()))
@@ -111,7 +118,12 @@ export function createModel(
     const c = sel()
     if (!c) return {}
     const ov = values()[selId()]
-    return ov ? { ...defaultValues(c), ...ov } : defaultValues(c)
+    const merged = ov ? { ...defaultValues(c), ...ov } : defaultValues(c)
+    // Applied at the LAST step, to the values the component actually renders —
+    // not to the stored control values. Transforming those would make the
+    // Controls panel show accented text as if the user had typed it, and the
+    // expansion would compound on every re-read.
+    return pseudoLocale() ? pseudoLocalizeValues(merged) : merged
   })
   const visibleGroups = computed(() => {
     const ids = new Set(search(query()))
@@ -211,7 +223,7 @@ export function createModel(
   return {
     catalog, groups, total, title: opts.title ?? 'atlas', subtitle: opts.subtitle ?? '',
     brandId, dark, selId, query, zoomIdx, view, addon, actions,
-    viewport, background, pseudo, outline, locale,
+    viewport, background, pseudo, outline, locale, pseudoLocale,
     brand, theme, sel, vals, visibleGroups, noResults, a11y,
     setValue, reset, logAction, clearActions, search, preview, searchRef, focusSearch, previewRef,
   }
