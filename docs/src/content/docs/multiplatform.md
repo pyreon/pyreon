@@ -158,7 +158,7 @@ The cross-platform vocabulary. 15 semantic primitives designed for **fundamental
 | Content | `<Text>`, `<Heading>`, `<Image>`, `<Icon>` |
 | Interaction | `<Button>`, `<Press>`, `<Link>` |
 | Input | `<Field>`, `<Toggle>`, `<Modal>` |
-| Control flow | `<For>`, `<Show>`, `<Match>`, `<Switch>`, `<Suspense>`, `<ErrorBoundary>`, `<Dynamic>`, `<Portal>` (existing, unchanged) |
+| Control flow | **Lowers to native:** `<For>`, `<Show>`, `<Suspense>`, `<ErrorBoundary>` (verified against the Swift stub type-check). **Does NOT:** `<Switch>`/`<Match>`, `<Dynamic>`, `<Portal>` — and `<Index>` — which fall through to the generic component emit and reproduce the tag verbatim (`Switch { Match(when:) { … } }`), so the native build fails with "cannot find 'Switch' in scope". Each now WARNS at compile time with a concrete alternative (nested `<Show>`; `<Modal>`; `<For each by>`). This row previously listed all eight as supported, which is how four of them stayed silently broken |
 
 Designed for cross-platform from scratch. Semantic names (`<Stack>` not `<View>` / `<VStack>` / `<div>`). One canonical event name per concept (`onPress` everywhere). Tokens-first styling (`padding={4}` resolves via theme).
 

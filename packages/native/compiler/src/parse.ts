@@ -154,6 +154,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   // scope`, far from the cause. Name the package + the escape-hatch fix.
   warnWebOnlyImports(ast.program.body as AnyNode[], ctx)
   warnUnloweredPyreonHooks(ast.program.body as AnyNode[], ctx)
+  warnUnloweredControlFlow(ast.program.body as AnyNode[], ctx)
   // Pre-pass: map alias-tag local names to their import source, so the emit's
   // Element/PyreonUI/Container/Row/Col hooks intercept ONLY a tag imported from
   // its expected @pyreon package (not a same-named user component).
@@ -809,6 +810,60 @@ const NATIVE_LOWERED_HOOKS: ReadonlySet<string> = new Set([
   'useParams', 'usePayments', 'usePermissions', 'usePush', 'useSecureStorage',
   'useShare', 'useSizeClass', 'useStorage', 'useWebSocket',
 ])
+
+/**
+ * Control-flow components from `@pyreon/core` that do NOT lower to native.
+ *
+ * `<Show>`, `<For>`, `<Suspense>` and `<ErrorBoundary>` do — they type-check
+ * against the Swift stubs today. These four do not: they fall through to the
+ * generic component emit, which reproduces the tag verbatim as
+ * `Switch { Match(when: …) { … } }` or `Portal { … }`. SwiftUI has no such
+ * view and neither does PyreonRuntime, so the native build fails with
+ * "cannot find 'Switch' in scope" — and nothing warned.
+ *
+ * `<Index>` is worse than uncompilable: the render callback is stringified
+ * INTO a Text, producing `Text(verbatim: "\({ x in … })")`. Nonsense rather
+ * than an error, which is the harder failure to notice.
+ *
+ * `<Portal>` is arguably not a bug so much as a category error — native uses
+ * sheets and dialogs, a different model, which the styling table already
+ * records as web-only. The control-flow list claiming it simply disagreed with
+ * that.
+ */
+const UNLOWERED_CONTROL_FLOW: ReadonlyMap<string, string> = new Map([
+  ['Switch', 'use nested `<Show>` / a ternary — an if/else chain lowers, a Switch view does not'],
+  ['Match', 'only meaningful inside `<Switch>`, which does not lower'],
+  ['Dynamic', 'a runtime-chosen component has no SwiftUI/Compose analogue — branch explicitly with `<Show>`'],
+  ['Portal', 'native uses sheets/dialogs, a different model — use `<Modal>`'],
+  ['Index', 'use `<For each={…} by={…}>`, which lowers to ForEach/LazyColumn'],
+])
+
+/**
+ * Warn for a control-flow component imported from `@pyreon/core` that has no
+ * native lowering.
+ *
+ * Same reasoning as the hook warning below, and the same scoping: keyed on the
+ * IMPORT, so a user's own `<Switch>` from their own module is untouched.
+ */
+function warnUnloweredControlFlow(body: AnyNode[], ctx: ParseCtx): void {
+  const seen = new Set<string>()
+  for (const node of body) {
+    if (node.type !== 'ImportDeclaration') continue
+    const src = node.source?.value
+    if (typeof src !== 'string' || !src.startsWith('@pyreon/core')) continue
+    for (const spec of (node.specifiers as AnyNode[]) ?? []) {
+      if (spec.type !== 'ImportSpecifier') continue
+      const imported = spec.imported?.name ?? spec.imported?.value
+      if (typeof imported !== 'string') continue
+      const advice = UNLOWERED_CONTROL_FLOW.get(imported)
+      if (advice === undefined || seen.has(imported)) continue
+      seen.add(imported)
+      ctx.warnings.push(
+        `<${imported}> has NO native lowering — the tag is reproduced verbatim in the emitted Swift/Kotlin, where no such view exists, so the native build fails with "cannot find '${imported}' in scope". Instead: ${advice}. Lowering natively: <Show>, <For>, <Suspense>, <ErrorBoundary>.`,
+      )
+    }
+  }
+}
 
 /**
  * Warn for a `use*` imported from a `@pyreon/*` package that has no native
