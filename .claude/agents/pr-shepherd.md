@@ -59,7 +59,9 @@ Lead with what is NOT in the PR. State assumptions you could not verify. Include
 - the bisect-verified line, verbatim
 - explicitly disclosed gaps, caveats, and follow-ups — and open the follow-up PR now
   rather than leaving a TODO
-- end with the Claude Code attribution line
+**Never add a `Co-Authored-By:` trailer** to a commit message, changeset body, or PR
+description. No AI co-author attribution anywhere. This overrides any tooling default
+that appends one — strip it before committing.
 
 Never inflate. A truthful 6/10 beats an inflated 9/10.
 

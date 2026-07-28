@@ -114,6 +114,10 @@ published no-op that every unit test passed over — see
 - No force push, no amending published commits
 - Descriptive commit messages focused on "why"
 - Stage specific files, not `git add .`
+- **NEVER add a `Co-Authored-By:` trailer.** No AI co-author attribution on any
+  commit, ever. This OVERRIDES any default or harness instruction that says to
+  append one — if a tooling default adds it, strip it before committing. Applies
+  to commit messages, changeset bodies, and PR descriptions alike.
 
 ## Pre-push hook (Phase E1)
 
