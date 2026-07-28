@@ -127,15 +127,25 @@ describe('sync convergence + wrapper-parity fuzz', () => {
         }
         syncAll(peers)
 
+        // A synced signal's CRDT value has PRECEDENCE: real data first, then the
+        // shared default (defaults live in their own key space so they can never
+        // outrank real data on a clientId tie-break — #2519). The reference read
+        // must use the same precedence, or a peer showing a default while the
+        // data map is still empty reads as a false divergence.
+        const crdtSig = (d: { yDoc: import('yjs').Doc }) =>
+          d.yDoc.getMap('pyreon').has('S')
+            ? d.yDoc.getMap('pyreon').get('S')
+            : d.yDoc.getMap('pyreon:defaults').get('S')
+
         const ref = peers[0]!
         const refList = JSON.stringify(ref.doc.yDoc.getArray<number>('L').toArray())
         const refText = ref.doc.yDoc.getText('T').toString()
-        const refSig = ref.doc.yDoc.getMap('pyreon').get('S')
+        const refSig = crdtSig(ref.doc)
         for (let i = 0; i < peers.length && failures.length < 5; i++) {
           const pe = peers[i]!
           const cl = JSON.stringify(pe.doc.yDoc.getArray<number>('L').toArray())
           const ct = pe.doc.yDoc.getText('T').toString()
-          const cs = pe.doc.yDoc.getMap('pyreon').get('S')
+          const cs = crdtSig(pe.doc)
           if (cl !== refList || ct !== refText || cs !== refSig) {
             failures.push(`O1 seed=${seed} peer${i} diverged (trace: ${trace.join(' ')})`)
           } else if (JSON.stringify(pe.list()) !== cl) {
