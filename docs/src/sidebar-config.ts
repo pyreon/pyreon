@@ -185,6 +185,7 @@ export const SIDEBAR: SidebarGroup[] = [
       { text: 'Validation', slug: 'validation' },
       { text: 'Validate (Standard Schema DX)', slug: 'validate' },
       { text: 'I18n', slug: 'i18n' },
+      { text: 'HTTP', slug: 'http' },
       { text: 'Query', slug: 'query' },
       { text: 'Table', slug: 'table' },
       { text: 'Virtual', slug: 'virtual' },
