@@ -38,5 +38,16 @@ previously did not), and Kotlin's `PyreonDatabase()` no longer exists — pass a
 `Context`, an `InMemoryDatabaseBackend()`, or your own backend. Tests that
 want no filesystem should pass `InMemoryDatabaseBackend()` explicitly.
 
+Also closes a gate hole the fix itself walked into: the codec was first named
+`PyreonJson`, which already existed for the WebView bridge. Every native app
+compiles the whole runtime source set as ONE Gradle module, so that is a hard
+`Redeclaration:` error — but the per-file kotlinc gates compile one module at a
+time (deliberately, so a module can be checked without the Android SDK), so
+nothing local could see it and the first thing that noticed was an 8-minute
+`gradle assembleDebug` on the device workflow. `check-duplicate-declarations.ts`
+now scans every top-level name across runtime-kotlin + router-kotlin in
+milliseconds, needs no toolchain, and runs unconditionally in build/test/
+typecheck.
+
 Bisect-verified. Still open, and stated plainly: no device-gated app renders
 FROM the database yet, so the capability's matrix row moves R2 → R3, not R4.

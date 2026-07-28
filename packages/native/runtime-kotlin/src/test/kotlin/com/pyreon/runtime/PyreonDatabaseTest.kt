@@ -232,11 +232,11 @@ fun testJsonCodecRoundTripsAdversarialStrings() {
         "jsonish" to """{"nested":[1,2]}""",
     )
     val records = listOf(PyreonRecord("id\"with\\quotes", nasty), PyreonRecord("plain"))
-    val decoded = PyreonJson.decode(PyreonJson.encode(records))
+    val decoded = PyreonRecordJson.decode(PyreonRecordJson.encode(records))
     check(decoded == records) { "round trip lost data:\n  got $decoded\n  want $records" }
-    check(PyreonJson.decode("") == null) { "empty input is malformed" }
-    check(PyreonJson.decode("[{\"id\":") == null) { "truncated input is malformed" }
-    check(PyreonJson.decode("[]") == emptyList<PyreonRecord>()) { "empty array is valid and empty" }
+    check(PyreonRecordJson.decode("") == null) { "empty input is malformed" }
+    check(PyreonRecordJson.decode("[{\"id\":") == null) { "truncated input is malformed" }
+    check(PyreonRecordJson.decode("[]") == emptyList<PyreonRecord>()) { "empty array is valid and empty" }
 }
 
 fun main() {
