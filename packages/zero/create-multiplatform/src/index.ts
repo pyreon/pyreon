@@ -122,6 +122,15 @@ export function validateTargetDir(targetDir: string): void {
 }
 
 /** Parse argv (after `node script`) into a name + target dir. */
+/** Single source for the usage line — the help path and the missing-name
+ *  error path must not drift apart. */
+export const USAGE = 'Usage: create-multiplatform <project-name> [--dir <path>]'
+
+/** True when the user explicitly asked for help. */
+export function wantsHelp(argv: string[]): boolean {
+  return argv.includes('--help') || argv.includes('-h')
+}
+
 export function parseArgs(argv: string[]): CliArgs {
   let name: string | undefined
   let dir: string | undefined
@@ -134,7 +143,7 @@ export function parseArgs(argv: string[]): CliArgs {
     }
   }
   if (name === undefined || name.length === 0) {
-    throw new Error('Usage: create-multiplatform <project-name> [--dir <path>]')
+    throw new Error(USAGE)
   }
   return { name, dir: dir ?? name }
 }
@@ -152,6 +161,18 @@ export async function writeScaffold(name: string, targetDir: string): Promise<st
 }
 
 export async function main(argv: string[]): Promise<void> {
+  // `--help` is a SUCCESSFUL request for help: stdout, exit 0. Previously it
+  // fell through to parseArgs, which saw no project name and THREW — so
+  // `npx create-multiplatform --help` printed the usage line to STDERR and
+  // exited 1. That breaks any script or CI step checking the exit code, and
+  // hides usage from a plain `| grep`. Every other published Pyreon bin
+  // (pyreon-lint, zero, create-zero) already exits 0 on stdout; this one was
+  // the outlier.
+  if (wantsHelp(argv)) {
+    // eslint-disable-next-line no-console
+    console.log(USAGE)
+    return
+  }
   const { name, dir } = parseArgs(argv)
   // Phase D4: validate BEFORE writing — fail fast with actionable
   // error rather than producing a broken scaffold.

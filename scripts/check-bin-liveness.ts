@@ -106,13 +106,14 @@ const results: Result[] = [
     'packages/zero/create-zero/bin/create-pyreon-app.js',
     ['--help'],
   ),
-  // Prints usage to stderr and exits 1 on --help (it requires a project
-  // name) — that IS the liveness signal for this bin.
+  // Was special-cased here as "exits 1 to stderr on --help — that IS the
+  // liveness signal", which ENCODED the bug: asking for help is a successful
+  // request, and every other published Pyreon bin already exits 0 on stdout.
+  // Now held to the same bar, so a regression to the old behaviour fails.
   checkFlagBin(
     '@pyreon/create-multiplatform (create-multiplatform)',
     'packages/zero/create-multiplatform/bin/create-multiplatform.js',
     ['--help'],
-    { okExits: [1], stderrOk: true },
   ),
   // The scaffolded native builds invoke this via `npx pyreon-native build …`
   // (scripts/build-ios.sh / build-android.sh), so NODE is the runtime that has
