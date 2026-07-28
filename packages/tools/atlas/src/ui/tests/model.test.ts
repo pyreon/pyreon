@@ -11,11 +11,22 @@
  * happy-dom because the a11y verdict is probed from the RENDERED preview — the
  * checks read a real element rather than trusting control metadata.
  *
+ * The model reads AND writes `location.search` (a shared link restores the
+ * view it names). `location` is a per-file global in happy-dom, so each case
+ * must reset it: without that, one test's control edit is restored as the next
+ * test's starting state — observed as `expected 'badge:Alsoedited' to be
+ * 'button:Click me'`.
+ *
  * @vitest-environment happy-dom
  */
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import type { WorkbenchCatalog, WorkbenchComponent } from '../catalog'
 import { createModel } from '../model'
+
+beforeEach(() => {
+  // Reset the shared URL so a previous case's state is not restored into this one.
+  if (typeof history !== 'undefined') history.replaceState(null, '', '/')
+})
 
 const comp = (
   id: string,

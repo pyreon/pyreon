@@ -17,6 +17,7 @@ import {
   type RecordingPermissions,
 } from './permission-sets'
 import { makeQueryResult, type FakeQueryResult, type QueryStateId } from './query-states'
+import { parseUrlState, serializeUrlState, urlStateChanged, type UrlState } from './url-state'
 import type { CatalogGroup, WorkbenchCatalog, WorkbenchComponent } from './catalog'
 import { buildSearch, defaultValues, groupComponents } from './catalog'
 import type { BrandTheme, ThemeTokens } from './theme'
@@ -107,20 +108,36 @@ export function createModel(
   const search = buildSearch(catalog)
   const total = catalog.components.length
 
-  const brandId = signal('ember')
-  const dark = signal(true)
-  const selId = signal(catalog.components[0]?.id ?? '')
+  // Restore from the URL first, so a shared link lands on the view it names.
+  // `isClient` rather than a `typeof window` check: SSR has no location, and a
+  // workbench rendered server-side must not throw reading one.
+  const initial: UrlState =
+    typeof location === 'undefined' ? {} : parseUrlState(location.search)
+
+  const brandId = signal(initial.brand ?? 'ember')
+  const dark = signal(initial.dark ?? true)
+  const selId = signal(
+    // A link naming a component that no longer exists falls back to the first
+    // one rather than rendering an empty canvas — a renamed component should
+    // not make an old link look like a broken workbench.
+    (initial.c && catalog.components.some((c) => c.id === initial.c) ? initial.c : undefined) ??
+      catalog.components[0]?.id ??
+      '',
+  )
   const query = signal('')
   const zoomIdx = signal(2) // 100%
   const view = signal<View>('canvas')
-  const addon = signal<Addon>('controls')
-  const values = signal<Record<string, Record<string, unknown>>>({})
+  const addon = signal<Addon>(initial.p ?? 'controls')
+  // Args from the link belong to the component the link named.
+  const values = signal<Record<string, Record<string, unknown>>>(
+    initial.c && initial.args ? { [initial.c]: initial.args } : {},
+  )
   const actions = signal<ActionEntry[]>([])
-  const viewport = signal<ViewportId>('full')
-  const background = signal<BackgroundId>('theme')
+  const viewport = signal<ViewportId>((initial.viewport as ViewportId) ?? 'full')
+  const background = signal<BackgroundId>((initial.background as BackgroundId) ?? 'theme')
   const pseudo = signal<PseudoId | null>(null)
   const outline = signal(false)
-  const locale = signal<LocaleId>('en')
+  const locale = signal<LocaleId>((initial.locale as LocaleId) ?? 'en')
   // i18n STRESS, distinct from the locale switcher next to it: the switcher
   // changes writing direction, this changes every string's LENGTH. Off by
   // default — it is a deliberate check, not a viewing mode.
@@ -259,6 +276,39 @@ export function createModel(
       if (previewEl) a11y.set(analyzeA11y(previewEl))
     })
     observer.observe(el, { childList: true, subtree: true, attributes: true, characterData: true })
+  }
+
+  // Keep the URL in step with the view, so a reload restores it and a link
+  // shares it.
+  //
+  // `replaceState`, never `pushState`: every keystroke in a text control moves
+  // this state, and pushing would make the back button walk backwards through
+  // typing rather than leaving the workbench. The serialised comparison means
+  // an unchanged view writes nothing at all.
+  //
+  // Guarded on `location`/`history` because the workbench also renders under
+  // SSR and in happy-dom, neither of which necessarily has both.
+  if (typeof location !== 'undefined' && typeof history !== 'undefined') {
+    let lastWritten: UrlState = initial
+    effect(() => {
+      const next: UrlState = {
+        c: selId(),
+        p: String(addon()),
+        args: values()[selId()] ?? {},
+        viewport: viewport(),
+        background: background(),
+        locale: locale(),
+        brand: brandId(),
+        dark: dark(),
+      }
+      if (!urlStateChanged(lastWritten, next)) return
+      lastWritten = next
+      // `nextQuery`, because both obvious names are taken in this scope:
+      // `query` is the search-box signal and `search` is the search function.
+      // Shadowing either would read as the URL state being related to search.
+      const nextQuery = serializeUrlState(next)
+      history.replaceState(history.state, '', nextQuery ? `?${nextQuery}` : location.pathname)
+    })
   }
 
   return {
