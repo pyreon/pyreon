@@ -7,7 +7,8 @@
 // via `count.set(...)` (the compiler emits as `count = ...` since
 // SwiftUI's @State is a var, not a method).
 
-import { onMount, signal } from '@pyreon/reactivity'
+import { onMount } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
 import {
   useHaptics,
   useShare,
@@ -23,7 +24,7 @@ import {
 } from '@pyreon/hooks'
 import { createI18n } from '@pyreon/i18n/core'
 import { createMachine } from '@pyreon/machine'
-import { Text, useNativeModule } from '@pyreon/primitives'
+import { Button, Inline, Press, Stack, Text, useNativeModule } from '@pyreon/primitives'
 import rocketstyle from '@pyreon/rocketstyle'
 
 // ui-system → native proof. `rocketstyle()({ component: Text })` is THE
@@ -243,7 +244,7 @@ export function Counter() {
     states: { off: { on: { TOGGLE: 'on' } }, on: { on: { TOGGLE: 'off' } } },
   })
   return (
-    <VStack>
+    <Stack>
       <Text>Count: {count}</Text>
       {/* ui-system device proof — a rocketstyle component with a REACTIVE
           dimension. The text flips with the same signal that drives the colour,
@@ -289,16 +290,16 @@ export function Counter() {
           an emit gap.) */}
       <Text accessibilityLabel="A11y status ready">●</Text>
       <Button
-        onClick={() => {
+        onPress={() => {
           count.set(count() + 1)
           haptics.impact('light')
         }}
       >
         Increment
       </Button>
-      <Button onClick={() => share.url('https://pyreon.dev')}>Share</Button>
-      <Button onClick={() => linking.openUrl('https://pyreon.dev')}>Open</Button>
-      <Button onClick={() => notifs.notify('Pyreon', 'A local notification')}>Notify</Button>
+      <Button onPress={() => share.url('https://pyreon.dev')}>Share</Button>
+      <Button onPress={() => linking.openUrl('https://pyreon.dev')}>Open</Button>
+      <Button onPress={() => notifs.notify('Pyreon', 'A local notification')}>Notify</Button>
       {/* Maps/geolocation device proof. Tapping this starts a real
           CLLocationManager watch; the Simulator is pre-granted permission and
           fed a fixed coordinate via `simctl location`, so the assertion is
@@ -307,12 +308,12 @@ export function Counter() {
           @Observable container updated, and SwiftUI re-rendered. That is a
           stronger claim than the biometric gate's denied-path proof, which only
           shows an async handler completing. */}
-      <Button onClick={() => geo.start()}>Locate</Button>
+      <Button onPress={() => geo.start()}>Locate</Button>
       {/* Ids are derived from the current count rather than a clock, so the
           sequence is deterministic across a relaunch and an upsert can never
           silently collapse two taps into one record. */}
       <Button
-        onClick={() => {
+        onPress={() => {
           db.insert('notes', { id: String(db.count('notes') + 1), fields: { at: 'tap' } })
           noteCount.set(db.count('notes'))
         }}
@@ -327,7 +328,7 @@ export function Counter() {
           resolves false (no prompt), so `lockStatus` flips "idle" → "denied",
           proving the async scope executed AND the post-await re-render fired. */}
       <Button
-        onClick={async () => {
+        onPress={async () => {
           const ok = await bio.authenticate('Unlock')
           lockStatus.set(ok ? 'unlocked' : 'denied')
         }}
@@ -341,7 +342,7 @@ export function Counter() {
           `uri == null` (Kotlin). The device gate taps this, dismisses the
           presented sheet, and asserts "Photo: cancelled". */}
       <Button
-        onClick={async () => {
+        onPress={async () => {
           const uri = await picker.pick()
           photoStatus.set(uri === null ? 'cancelled' : 'picked')
         }}
@@ -354,15 +355,15 @@ export function Counter() {
           assertion as the photo picker, through UIDocumentPickerViewController
           (iOS) / SAF OpenDocument (Android). */}
       <Button
-        onClick={async () => {
+        onPress={async () => {
           const uri = await files.pick()
           fileStatus.set(uri === null ? 'cancelled' : 'picked')
         }}
       >
         Pick File
       </Button>
-      <Button onClick={() => power.send('TOGGLE')}>Toggle Power</Button>
-      <Button onClick={() => boxVisible.set(!boxVisible())}>Toggle Box</Button>
+      <Button onPress={() => power.send('TOGGLE')}>Toggle Power</Button>
+      <Button onPress={() => boxVisible.set(!boxVisible())}>Toggle Box</Button>
       <Transition show={() => boxVisible()}>
         <Text>Animated Box</Text>
       </Transition>
@@ -373,6 +374,6 @@ export function Counter() {
       <Press onLongPress={() => count.set(0)} data-testid="reset-zone">
         <Text>Hold to reset</Text>
       </Press>
-    </VStack>
+    </Stack>
   )
 }
