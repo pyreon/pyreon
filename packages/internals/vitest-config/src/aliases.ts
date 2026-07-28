@@ -1,163 +1,133 @@
-import { resolve } from 'node:path'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 
 /**
- * Pyreon workspace alias map. Resolves every `@pyreon/*` (and subpath
- * exports) to the package's `src/index.ts` under the `bun` condition.
+ * Pyreon workspace alias map — every `@pyreon/*` package AND every subpath it
+ * exports, resolved to the TypeScript source under the `bun` condition.
  *
- * Subpath exports come BEFORE their parent package — Vite resolves
- * aliases in array order, first match wins. Reordering would silently
- * break subpath consumers (e.g. `@pyreon/core/jsx-runtime` would resolve
- * to the package root, not the JSX runtime).
+ * ── Why this is derived, not listed ──────────────────────────────────────
+ *
+ * This used to be two hand-maintained arrays: one of package names, one of
+ * subpaths. Both drifted, silently and in the direction that hurts — an
+ * unlisted subpath does not fail to resolve, it resolves to the PARENT package
+ * and then appends the rest of the specifier, so `@pyreon/reactivity/coverage`
+ * became `…/reactivity/src/index.ts/coverage` and surfaced as a baffling
+ * `ENOTDIR: not a directory`.
+ *
+ * An audit at the time of writing found **93** exported subpaths absent from
+ * the list, including `@pyreon/reactivity/coverage`, `@pyreon/sync/yjs`,
+ * `@pyreon/validate/mini`, every `@pyreon/testing/*` helper, and most of
+ * `@pyreon/zero`. Any test importing one of those could not run at all — which
+ * is a quiet ceiling on what the repo is able to test, not a cosmetic gap.
+ *
+ * Deriving from each package's own `exports` map removes the drift surface
+ * entirely: a new package or subpath is aliased the moment it is exported,
+ * with no second place to remember. `packages/internals/vitest-config` is the
+ * only consumer of this ordering contract, and `aliases.test.ts` locks it.
  */
-
-const corePackages = [
-  'compiler',
-  'core',
-  'head',
-  'reactivity',
-  'router',
-  'runtime-dom',
-  'runtime-server',
-  'server',
-] as const
-
-const toolsPackages = [
-  'cli',
-  'lint',
-  'mcp',
-  'preact-compat',
-  'react-compat',
-  'solid-compat',
-  'vite-plugin',
-  'storybook',
-  'vue-compat',
-] as const
-
-const fundamentalsPackages = [
-  'charts',
-  'code',
-  'dnd',
-  'document',
-  'feature',
-  'flow',
-  'form',
-  'hooks',
-    'http',
-  'hotkeys',
-  'i18n',
-  'machine',
-  'permissions',
-  'query',
-  'rx',
-  'state-tree',
-  'storage',
-  'store',
-  'table',
-  'toast',
-  'validation',
-  'url-state',
-  'virtual',
-] as const
-
-const uiPackages = [
-  'attrs',
-  'connector-document',
-  'coolgrid',
-  'document-primitives',
-  'elements',
-  'kinetic',
-  'kinetic-presets',
-  'rocketstyle',
-  'styler',
-  'ui-core',
-  'unistyle',
-] as const
-
-const uiLibPackages = ['ui-theme', 'ui-primitives', 'ui-components'] as const
-
-const zeroPackages = ['zero', 'meta'] as const
 
 export type AliasEntry = { find: string | RegExp; replacement: string }
 
+/** The `exports` value shapes we understand: a string, or a conditions object. */
+type ExportsValue = string | { [condition: string]: ExportsValue } | undefined
+
 /**
- * Build the alias array. `repoRoot` is the absolute path to the monorepo
- * root — every alias replacement is resolved against it. The root is a
- * parameter (not a module-load-time constant) so the package works under
- * both the workspace `bun` condition (loaded from src) and future build
- * artifacts (loaded from lib) without needing a build-time path bake.
+ * Resolve one exports entry to a source path.
+ *
+ * `bun` first — that is the condition the workspace resolves under, and the
+ * one that points at `src`. `import`/`default` are the fallbacks, and they
+ * usually point at `lib`, which is filtered out below.
+ */
+function resolveTarget(value: ExportsValue): string | undefined {
+  if (typeof value === 'string') return value
+  if (!value || typeof value !== 'object') return undefined
+  for (const condition of ['bun', 'import', 'default'] as const) {
+    const resolved = resolveTarget(value[condition])
+    if (resolved) return resolved
+  }
+  return undefined
+}
+
+/** Only TS sources are aliasable — `.json` presets and built `lib/` are not. */
+function isSource(target: string): boolean {
+  return target.endsWith('.ts') || target.endsWith('.tsx')
+}
+
+interface Discovered {
+  /** `@pyreon/core` */
+  name: string
+  /** `@pyreon/core/jsx-runtime` — absent for the root entry */
+  subpath?: string
+  /** absolute path to the source file */
+  file: string
+}
+
+function readPackage(dir: string): Discovered[] {
+  const manifest = join(dir, 'package.json')
+  if (!existsSync(manifest)) return []
+  let parsed: { name?: string; exports?: Record<string, ExportsValue>; main?: string }
+  try {
+    parsed = JSON.parse(readFileSync(manifest, 'utf8'))
+  } catch {
+    return [] // a malformed manifest is not this module's problem to report
+  }
+  const name = parsed.name
+  if (!name?.startsWith('@pyreon/')) return []
+
+  const out: Discovered[] = []
+  const entries = Object.entries(parsed.exports ?? {})
+  for (const [key, value] of entries) {
+    // Wildcards cannot become a static alias, and `./package.json` is not code.
+    if (key === './package.json' || key.includes('*')) continue
+    const target = resolveTarget(value)
+    if (!target || !isSource(target)) continue
+    const file = resolve(dir, target)
+    if (!existsSync(file)) continue
+    out.push(key === '.' ? { name, file } : { name, subpath: `${name}${key.slice(1)}`, file })
+  }
+
+  // A package with no `exports` map still resolves via the bun condition in
+  // its `bun` field or a conventional `src/index.ts`.
+  if (!out.some((e) => e.subpath === undefined)) {
+    const fallback = resolve(dir, 'src/index.ts')
+    if (existsSync(fallback)) out.push({ name, file: fallback })
+  }
+  return out
+}
+
+/**
+ * Build the alias array. `repoRoot` is the absolute path to the monorepo root.
+ * The root is a parameter (not a module-load-time constant) so the package
+ * works under both the workspace `bun` condition (loaded from src) and future
+ * build artifacts (loaded from lib) without a build-time path bake.
  */
 export function buildAliases(repoRoot: string): AliasEntry[] {
-  const alias: AliasEntry[] = []
+  const packagesDir = resolve(repoRoot, 'packages')
+  const found: Discovered[] = []
 
-  // Subpath exports must come BEFORE their parent package to avoid prefix
-  // matching. Vite resolves aliases in array order — first match wins.
-  const subpaths: [string, string][] = [
-    ['@pyreon/compiler/diagnose', 'packages/core/compiler/src/diagnose.ts'],
-    ['@pyreon/compiler/fs-route-convention', 'packages/core/compiler/src/fs-route-convention.ts'],
-    ['@pyreon/core/jsx-runtime', 'packages/core/core/src/jsx-runtime.ts'],
-    ['@pyreon/core/jsx-dev-runtime', 'packages/core/core/src/jsx-dev-runtime.ts'],
-    ['@pyreon/head/ssr', 'packages/core/head/src/ssr.ts'],
-    ['@pyreon/server/client', 'packages/core/server/src/client.ts'],
-    ['@pyreon/zero/server', 'packages/zero/zero/src/server.ts'],
-    ['@pyreon/zero/client', 'packages/zero/zero/src/client.ts'],
-    ['@pyreon/zero/api-routes', 'packages/zero/zero/src/api-routes.ts'],
-    ['@pyreon/http/middleware', 'packages/fundamentals/http/src/middleware.ts'],
-    ['@pyreon/http/schema', 'packages/fundamentals/http/src/schema.ts'],
-    ['@pyreon/http/query', 'packages/fundamentals/http/src/query.ts'],
-    ['@pyreon/http/mock', 'packages/fundamentals/http/src/mock.ts'],
-    ['@pyreon/http/server', 'packages/fundamentals/http/src/server.ts'],
-    ['@pyreon/preact-compat/hooks', 'packages/tools/preact-compat/src/hooks.ts'],
-    ['@pyreon/preact-compat/signals', 'packages/tools/preact-compat/src/signals.ts'],
-    ['@pyreon/react-compat/dom', 'packages/tools/react-compat/src/dom.ts'],
-    ['@pyreon/storybook/preset', 'packages/tools/storybook/src/preset.ts'],
-    ['@pyreon/storybook/preview', 'packages/tools/storybook/src/preview.ts'],
-    ['@pyreon/validation/zod', 'packages/fundamentals/validation/src/zod.ts'],
-    ['@pyreon/validation/valibot', 'packages/fundamentals/validation/src/valibot.ts'],
-    ['@pyreon/validation/arktype', 'packages/fundamentals/validation/src/arktype.ts'],
-    ['@pyreon/charts/manual', 'packages/fundamentals/charts/src/manual.ts'],
-    ['@pyreon/i18n/core', 'packages/fundamentals/i18n/src/core.ts'],
+  if (existsSync(packagesDir)) {
+    for (const category of readdirSync(packagesDir)) {
+      const categoryDir = join(packagesDir, category)
+      if (!statSync(categoryDir).isDirectory()) continue
+      for (const pkg of readdirSync(categoryDir)) {
+        const pkgDir = join(categoryDir, pkg)
+        if (!statSync(pkgDir).isDirectory()) continue
+        found.push(...readPackage(pkgDir))
+      }
+    }
+  }
+
+  // ORDERING IS LOAD-BEARING. Vite resolves aliases in array order, first match
+  // wins, and `@pyreon/core` is a prefix of `@pyreon/core/jsx-runtime`. Sorting
+  // by descending specifier length puts every subpath ahead of its parent
+  // without needing two separate lists to stay in the right order by hand.
+  const subpaths = found
+    .filter((e) => e.subpath !== undefined)
+    .sort((a, b) => b.subpath!.length - a.subpath!.length)
+  const roots = found.filter((e) => e.subpath === undefined).sort((a, b) => b.name.length - a.name.length)
+
+  return [
+    ...subpaths.map((e) => ({ find: e.subpath!, replacement: e.file })),
+    ...roots.map((e) => ({ find: e.name, replacement: e.file })),
   ]
-  for (const [find, replacement] of subpaths) {
-    alias.push({ find, replacement: resolve(repoRoot, replacement) })
-  }
-
-  for (const pkg of corePackages) {
-    alias.push({
-      find: `@pyreon/${pkg}`,
-      replacement: resolve(repoRoot, `packages/core/${pkg}/src/index.ts`),
-    })
-  }
-  for (const pkg of toolsPackages) {
-    alias.push({
-      find: `@pyreon/${pkg}`,
-      replacement: resolve(repoRoot, `packages/tools/${pkg}/src/index.ts`),
-    })
-  }
-  for (const pkg of fundamentalsPackages) {
-    alias.push({
-      find: `@pyreon/${pkg}`,
-      replacement: resolve(repoRoot, `packages/fundamentals/${pkg}/src/index.ts`),
-    })
-  }
-  for (const pkg of uiPackages) {
-    alias.push({
-      find: `@pyreon/${pkg}`,
-      replacement: resolve(repoRoot, `packages/ui-system/${pkg}/src/index.ts`),
-    })
-  }
-  for (const pkg of uiLibPackages) {
-    const shortName = pkg.replace('ui-', '')
-    alias.push({
-      find: `@pyreon/${pkg}`,
-      replacement: resolve(repoRoot, `packages/ui/${shortName}/src/index.ts`),
-    })
-  }
-  for (const pkg of zeroPackages) {
-    alias.push({
-      find: `@pyreon/${pkg}`,
-      replacement: resolve(repoRoot, `packages/zero/${pkg}/src/index.ts`),
-    })
-  }
-
-  return alias
 }
