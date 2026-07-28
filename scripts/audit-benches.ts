@@ -49,11 +49,58 @@ const COMPETITORS = [
   'motion', 'framer-motion', 'react-hot-toast', 'sonner',
 ]
 
+/**
+ * Does this package actually vary its behavior by NODE_ENV?
+ *
+ * Only such a package can be HURT by a hoisted `process.env.NODE_ENV`
+ * assignment. react-dom is the canonical case (separate development/production
+ * builds chosen at module-init). A package with neither development/production
+ * export conditions nor any `process.env.NODE_ENV` reference in its shipped
+ * code cannot be affected, so a static import of it is harmless.
+ *
+ * Resolution is best-effort: an UNRESOLVABLE package returns `true` (assume
+ * risk) so a missing install can never silently downgrade a real finding.
+ */
+function packageVariesByNodeEnv(pkg: string): boolean {
+  try {
+    // `require.resolve` alone is not enough: under bun's ISOLATED layout the
+    // package lives in `node_modules/.bun/<name>@<ver>/node_modules/<name>` and
+    // is not resolvable from the repo root, so resolution failed for
+    // `@preact/signals-core` and `yjs` and the assume-risk fallback fired —
+    // reinstating exactly the false positives this check removes. Fall back to
+    // locating the package on disk before giving up.
+    let pkgJsonPath = execSync(
+      `node -e "try{process.stdout.write(require.resolve('${pkg}/package.json',{paths:['${process.cwd()}']}))}catch(e){}"`,
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
+    ).trim()
+    if (!pkgJsonPath) {
+      pkgJsonPath = execSync(
+        `find node_modules/.bun -maxdepth 4 -type d -path '*/${pkg}' 2>/dev/null | head -1`,
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
+      ).trim()
+      if (pkgJsonPath) pkgJsonPath = `${pkgJsonPath}/package.json`
+    }
+    if (!pkgJsonPath) return true
+    const dir = pkgJsonPath.replace(/\/package\.json$/, '')
+    const manifest = readFileSync(pkgJsonPath, 'utf8')
+    if (/"(development|production)"\s*:/.test(manifest)) return true
+    const grep = execSync(
+      `grep -rlF "process.env.NODE_ENV" "${dir}" '--include=*.js' '--include=*.mjs' '--include=*.cjs' 2>/dev/null | head -1`,
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
+    ).trim()
+    return grep.length > 0
+  } catch {
+    return true
+  }
+}
+
 interface Row {
   file: string
   deterministic: boolean
   competitor: string | null
   competitorStatic: boolean
+  competitorSpecifier: string | null
+  competitorHasDevGate: boolean
   prod: 'reexec' | 'toplevel' | 'external' | 'none'
   gate: boolean
   stats: boolean
@@ -91,6 +138,30 @@ for (const f of files) {
   // — a 6.9x penalty from silently loading its DEV build.
   const competitorStatic = competitor ? hit(staticImports, competitor) : false
 
+  // ...but hoisting can only BITE a library that actually varies by NODE_ENV.
+  // react-dom does (separate development/production builds selected at
+  // module-init). Most do not: `@tanstack/form-core`, `@preact/signals-core`
+  // and `zod` contain ZERO `process.env.NODE_ENV` references in their dist and
+  // ship no development/production export conditions, so a hoisted assignment
+  // changes nothing for them.
+  //
+  // Flagging on the SYNTAX alone produced 8 findings that were all false
+  // positives — an audit nobody could act on, which is worse than no audit
+  // (see .claude/rules/workflow.md "a red gate is a dead gate"). Resolve the
+  // competitor and check whether a dev/prod split exists at all; flag only
+  // then, so every remaining finding is real.
+  // COMPETITORS holds PREFIXES ('@tanstack/'), so resolve the ACTUAL specifier
+  // the file imports — resolving the prefix would always fail and fall back to
+  // "assume risk", reinstating the false positives this check exists to remove.
+  const competitorSpecifier = competitor
+    ? (staticImports.match(
+        new RegExp(`['"](${competitor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^'"]*)['"]`),
+      )?.[1] ?? competitor)
+    : null
+  const competitorHasDevGate = competitorSpecifier
+    ? packageVariesByNodeEnv(competitorSpecifier)
+    : false
+
   const prod: Row['prod'] = /spawnSync\(\[['"]bun['"],\s*import\.meta\.path/.test(src)
     ? 'reexec'
     : /^\s*process\.env\.NODE_ENV\s*=/m.test(src)
@@ -104,6 +175,8 @@ for (const f of files) {
     deterministic: isDeterministicCount(raw),
     competitor,
     competitorStatic,
+    competitorSpecifier,
+    competitorHasDevGate,
     prod,
     // A gate is any pre-timing assertion that ABORTS. In-tree that is spelled
     // three ways: an explicit "CORRECTNESS GATE" throw, a bare
@@ -132,7 +205,8 @@ const bad = (r: Row) => {
     // DYNAMIC import (it runs after the assignment). Only a STATIC competitor
     // import needs the self-re-exec guard.
     if (r.prod === 'none') issues.push('PROD:none')
-    else if (r.competitorStatic && r.prod === 'toplevel') issues.push('PROD:hoisted (static competitor import)')
+    else if (r.competitorStatic && r.competitorHasDevGate && r.prod === 'toplevel')
+      issues.push(`PROD:hoisted (static import of ${r.competitorSpecifier}, which VARIES by NODE_ENV)`)
     if (!r.gate) issues.push('no GATE')
     if (!r.stats && !r.deterministic) issues.push('no STATS')
   }
