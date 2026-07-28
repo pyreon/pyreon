@@ -179,6 +179,22 @@ jobs:
           PYREON_REQUIRE_NATIVE_VALIDATE: '1'
         run: bun run --filter='@pyreon/native-compiler' test
 
+      - name: Scaffolded multiplatform app compiles for both targets
+        # `create-multiplatform` is what `pyreon new --native` runs — the entry
+        # point for every new native app — and it had NO end-to-end coverage.
+        # Its unit tests assert the emitted FILE LIST and name parameterization;
+        # none compile the `src/App.tsx` the scaffold ships, and the repo's
+        # `Scaffold Smoke` matrix covers only the create-zero web cells.
+        # Demonstrated concretely while writing this: replacing `<Button>` with
+        # `<Buttonn>` in the template leaves all 43 unit tests GREEN while
+        # producing an app that compiles on neither target.
+        #
+        # Lives here rather than in the Scaffold Smoke matrix because it needs
+        # exactly what this runner already has — swiftc + kotlinc — and nothing
+        # the other cells provide (no npm install, no adapter, no deploy).
+        # Seconds, not minutes; the real device build stays in native-device.
+        run: bun scripts/scaffold-native-smoke.ts
+
       - name: iOS counter end-to-end smoke
         # End-to-end gate for the CLI build pipeline: walk src/, emit
         # generated/, swiftc-parse the result. Catches regressions the
