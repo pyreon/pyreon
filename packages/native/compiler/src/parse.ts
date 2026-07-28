@@ -3734,6 +3734,29 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     ctx.storeAliases.set(node.id.name as string, init.callee.name as string)
     return null
   }
+  // DESTRUCTURING the api (`const { store } = useApp()`) is valid web code —
+  // `defineStore` returns `() => StoreApi<T>` and `store` is a real property —
+  // but it lowered to nothing, so `store.x` emitted an unbound `store` and
+  // failed BOTH targets with no diagnostic. The identifier-alias lowering above
+  // only fires for `const app = useApp()`; an ObjectPattern falls through.
+  //
+  // Warned rather than lowered: the alias map is identifier -> hook name, and a
+  // destructured `store` aliases `useApp().store` — a member path, not a call —
+  // so supporting it means a second alias kind threaded through parseExpr. The
+  // three other shapes all work, so pointing at them costs the author one line.
+  if (
+    node.id?.type === 'ObjectPattern' &&
+    init?.type === 'CallExpression' &&
+    init.callee?.type === 'Identifier' &&
+    typeof init.callee.name === 'string' &&
+    ctx.storeHookNames.has(init.callee.name as string)
+  ) {
+    const hook = init.callee.name as string
+    ctx.warnings.push(
+      `Destructuring a store api (\`const { … } = ${hook}()\`) is NOT lowered on native — the destructured names emit unbound and the build fails on both targets with "cannot find 'store' in scope". Bind the api instead: \`const api = ${hook}(); api.store.x\` (or read it inline, \`${hook}().store.x\`). Both lower to the same native singleton.`,
+    )
+    return null
+  }
   // Gap 4 PR-3 (2026-06-05 audit) — Strategy-B port for
   // `@pyreon/i18n/core`. `const i18n = createI18n({ locale, messages,
   // fallbackLocale? })` becomes a PyreonI18n reactive container; the
