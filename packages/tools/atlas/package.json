@@ -57,7 +57,12 @@
       "import": "./lib/ui.js",
       "types": "./lib/types/ui.d.ts"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./dev": {
+      "bun": "./src/dev.ts",
+      "import": "./lib/dev.js",
+      "types": "./lib/types/dev.d.ts"
+    }
   },
   "files": [
     "bin",
@@ -90,7 +95,17 @@
   },
   "devDependencies": {
     "@pyreon/tsconfig": "workspace:*",
+    "@pyreon/vite-plugin": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
+    "vite": "^8.0.16",
     "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "vite": ">=6"
+  },
+  "peerDependenciesMeta": {
+    "vite": {
+      "optional": true
+    }
   }
 }
