@@ -1542,6 +1542,7 @@
       "version": "0.50.0",
       "dependencies": {
         "@pyreon/form": "workspace:^",
+        "@pyreon/http": "workspace:^",
         "@pyreon/query": "workspace:^",
         "@pyreon/store": "workspace:^",
         "@pyreon/table": "workspace:^",
