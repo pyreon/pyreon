@@ -42,10 +42,23 @@ honored only in a folder you have trusted; a fresh clone still shows
 `⏸ Pending approval` until you run `claude` in it once and accept the trust dialog.
 Reset a wrong choice with `claude mcp reset-project-choices`.
 
-The server is launched via `bash -c` with `$CLAUDE_PROJECT_DIR` rather than a
-cwd-relative path, because Claude Code does not guarantee the server's working
-directory and provides no `cwd` field — a bare relative path resolves only when the
-process happens to start at the repo root.
+The server is launched via `bash -c` with an **unbraced** `$CLAUDE_PROJECT_DIR`, because
+Claude Code does not guarantee the server's working directory and provides no `cwd`
+field — a bare relative path resolves only when the process happens to start at the repo
+root.
+
+**The unbraced form is load-bearing, and the trap is a two-stage expansion.** Claude Code
+substitutes `${VAR}` / `${VAR:-default}` in `.mcp.json` `args` using **its own**
+environment, before the command ever runs. `CLAUDE_PROJECT_DIR` is set in the *spawned
+server's* environment, not Claude Code's — so `${CLAUDE_PROJECT_DIR:-.}` is substituted
+to `.` and bash never sees a variable, silently restoring the cwd-relative bug it was
+meant to fix. Writing `$CLAUDE_PROJECT_DIR` without braces leaves nothing for Claude
+Code's expander to match, so bash resolves it from the server env. A `test -n … ||
+CLAUDE_PROJECT_DIR=$PWD` guard covers the case where it is genuinely unset.
+
+When testing a `.mcp.json` change, simulate **both** stages: exporting the variable in
+your own shell and running the bash string only tests stage two, and will report a
+broken launcher as working.
 
 ## Package Overview
 
