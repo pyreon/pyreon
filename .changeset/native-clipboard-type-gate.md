@@ -37,7 +37,15 @@ nine gaps sit in `KNOWN_UNCOVERED` and may only SHRINK; a new capability
 without a stub fails immediately, and an entry that has since gained a stub
 must be deleted or the test fails as stale.
 
-Not filled in bulk on purpose: a stub must mirror the real surface EXACTLY,
+Two of the nine are now filled — `PyreonWebSocket` and `PyreonGeolocation` —
+so `useWebSocket` and `useGeolocation` type-check on Swift for the first time,
+and the ratchet is down to seven. Writing them produced the lesson worth
+keeping: a stub mirrors the surface the EMIT USES, not the source text of the
+runtime. The first `PyreonGeolocation` stub copied `public override init()`
+verbatim, which is correct in the runtime (it subclasses NSObject for
+CLLocationManagerDelegate) and invalid in a stub with no superclass.
+
+The rest are not filled in bulk on purpose: a stub must mirror the real surface EXACTLY,
 because a superset stub is itself a masking source. Nine surfaces is nine
 careful readings of a runtime file, and doing them badly would be worse than
 the gap. What must not happen meanwhile is the list growing silently.

@@ -221,6 +221,34 @@ public enum ImageScale { case small, medium, large }
 
 // ---- PyreonRuntime ----
 public struct PyreonHaptics { public init() {}; public func impact(_ style: String) {} }
+// PyreonWebSocket + PyreonGeolocation — both were emit-referenced with NO
+// Swift stub, so a useWebSocket / useGeolocation app could not be type-checked
+// at all. Mirrored from the real runtime surfaces: every reactive field is
+// private(set) there, and the URL-taking connect uses the 'to:' label.
+// Only the members the EMIT can produce are declared — a stub is a mirror of
+// what is used, never a convenience superset.
+public final class PyreonWebSocket {
+  public private(set) var lastMessage: String?
+  public private(set) var messages: [String] = []
+  public private(set) var isConnected: Bool = false
+  public private(set) var error: Error?
+  public var isOpen: Bool { false }
+  public init() {}
+  public func connect(to url: URL) {}
+  public func send(_ text: String) {}
+  public func close() {}
+}
+public final class PyreonGeolocation {
+  public private(set) var latitude: Double?
+  public private(set) var longitude: Double?
+  public private(set) var accuracy: Double?
+  public private(set) var isAuthorized: Bool = false
+  public private(set) var error: Error?
+  public var isTracking: Bool { false }
+  public init() {}
+  public func start() {}
+  public func stop() {}
+}
 public final class PyreonClipboard {
   public private(set) var copied: Bool = false
   public init() {}

@@ -49,17 +49,18 @@ const KOTLIN_RUNTIME = join(REPO, 'packages/native/runtime-kotlin/src/main/kotli
 /**
  * Types the emitters construct that have NO stub on the named platform.
  *
+ * Started at nine. `PyreonWebSocket` and `PyreonGeolocation` have since been
+ * stubbed and removed — the intended direction of travel.
+ *
  * Every entry is a shipped capability whose emitted code is currently
  * UNVERIFIED by the type gate on that platform — a real gap, not an
  * exemption. This list may only shrink.
  */
 const KNOWN_UNCOVERED: Readonly<Record<string, 'swift' | 'kotlin'>> = {
   // Swift stubs missing — these ride the Kotlin gate only today.
-  PyreonGeolocation: 'swift',
   PyreonMapState: 'swift',
   PyreonPayments: 'swift',
   PyreonPushNotifications: 'swift',
-  PyreonWebSocket: 'swift',
   // Kotlin stubs missing — these ride the Swift gate only today.
   PyreonHaptics: 'kotlin',
   PyreonLinking: 'kotlin',
