@@ -90,8 +90,15 @@ function parseArgs(argv: string[]): ParsedArgs {
   return out
 }
 
-function printUsage(): void {
-  console.error(`pyreon-native — PMTC build CLI (PRIVATE / EXPERIMENTAL)
+// `--help` is a SUCCESSFUL request for help: it belongs on stdout with exit 0.
+// Every other caller here is an error path (unknown command, missing flag), so
+// stderr + a non-zero exit stays the default. This matters now that the CLI is
+// published: `npx pyreon-native --help` exiting 1 breaks any script or CI step
+// that checks the exit code, and piping usage to stderr makes it invisible to
+// a plain `| grep`.
+function printUsage(stream: 'out' | 'err' = 'err'): void {
+  const write = stream === 'out' ? console.log : console.error
+  write(`pyreon-native — PMTC build CLI
 
 Usage:
   pyreon-native build  --target=<ios|android|all> --source=<dir> --out=<dir>
@@ -144,6 +151,10 @@ Compiler (PMTC). See packages/native/cli/README.md for status.`)
 }
 
 export function main(argv: string[]): number {
+  if (argv.includes('--help') || argv.includes('-h')) {
+    printUsage('out')
+    return 0
+  }
   const parsed = parseArgs(argv)
   if (parsed.command === 'assets') {
     return runAssets(parsed)

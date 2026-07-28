@@ -44,13 +44,21 @@ const REPO = join(HERE, '../../../../..')
  * Every entry makes a scaffolded app non-installable. This list may only
  * shrink — by publishing the package, or by removing the dependency.
  */
-const KNOWN_UNPUBLISHED: readonly string[] = [
-  '@pyreon/native-cli',
-  '@pyreon/native-runtime-swift',
-  '@pyreon/native-router-swift',
-  '@pyreon/native-runtime-kotlin',
-  '@pyreon/native-router-kotlin',
-]
+// EMPTY, and that is the point.
+//
+// This list held the five scaffold dependencies that were `private: true`, so
+// `npm install` failed for anyone outside this repo — the first step a new user
+// takes. The ratchet's job was to make that debt visible and only ever shrink.
+//
+// Making the native stack publishable emptied it. Both of this file's guards
+// fired the moment those packages went public ("no longer unpublishable —
+// remove them" and "is not a private workspace package"), which is the ratchet
+// working exactly as designed: it tracked a real blocker and told us when the
+// blocker was gone rather than quietly passing.
+//
+// Anything added back here is a REGRESSION — a scaffolded app that cannot be
+// installed. Publish the package instead.
+const KNOWN_UNPUBLISHED: readonly string[] = []
 
 /** Every `@pyreon/*` dependency the scaffolded package.json declares. */
 export function scaffoldedPyreonDeps(packageJson: string): string[] {

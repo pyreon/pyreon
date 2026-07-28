@@ -81,7 +81,13 @@
       "@pyreon/svelte-compat",
       "@pyreon/primitives",
       "@pyreon/create-multiplatform",
-      "@pyreon/sized-map"
+      "@pyreon/sized-map",
+      "@pyreon/native-compiler",
+      "@pyreon/native-cli",
+      "@pyreon/native-runtime-swift",
+      "@pyreon/native-router-swift",
+      "@pyreon/native-runtime-kotlin",
+      "@pyreon/native-router-kotlin"
     ]
   ],
   "linked": [],
