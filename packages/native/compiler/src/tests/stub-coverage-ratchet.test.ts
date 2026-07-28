@@ -49,8 +49,17 @@ const KOTLIN_RUNTIME = join(REPO, 'packages/native/runtime-kotlin/src/main/kotli
 /**
  * Types the emitters construct that have NO stub on the named platform.
  *
- * Started at nine. `PyreonWebSocket` and `PyreonGeolocation` have since been
- * stubbed and removed — the intended direction of travel.
+ * Started at NINE; down to three. Stubbed and removed since:
+ * `PyreonWebSocket`, `PyreonGeolocation` (Swift) and `PyreonHaptics`,
+ * `PyreonLinking`, `PyreonNotifications`, `PyreonShare` (Kotlin) — the
+ * intended direction of travel.
+ *
+ * SCOPE LIMIT worth knowing: this scans `Pyreon*` names, so a missing
+ * COMPOSE or SwiftUI API is invisible to it. Two such gaps
+ * (`AnimatedVisibility`, `combinedClickable` — both backing DEVICE-PROVEN
+ * features) were found only by running a whole app's emit through
+ * `validateKotlin` rather than a single-hook fixture. Whole-app validation
+ * catches what a name scan cannot.
  *
  * Every entry is a shipped capability whose emitted code is currently
  * UNVERIFIED by the type gate on that platform — a real gap, not an
@@ -61,11 +70,6 @@ const KNOWN_UNCOVERED: Readonly<Record<string, 'swift' | 'kotlin'>> = {
   PyreonMapState: 'swift',
   PyreonPayments: 'swift',
   PyreonPushNotifications: 'swift',
-  // Kotlin stubs missing — these ride the Swift gate only today.
-  PyreonHaptics: 'kotlin',
-  PyreonLinking: 'kotlin',
-  PyreonNotifications: 'kotlin',
-  PyreonShare: 'kotlin',
 }
 
 /** `Pyreon*` names the emitters construct (constructor-call position). */
