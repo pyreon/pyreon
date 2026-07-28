@@ -24,7 +24,7 @@ const btnBase = (t: T) => ({
   focus: { outline: `2px solid ${hexToRgba(t.accent, 0.55)}`, outlineOffset: '2px' },
   disabled: { opacity: 0.5, cursor: 'not-allowed' },
 })
-const DemoButton = el
+export const DemoButton = el
   .attrs({ tag: 'button', css: 'display:inline-flex;align-items:center;justify-content:center;' })
   .theme(btnBase)
   .variants(dim((t) => ({
@@ -39,7 +39,7 @@ const DemoButton = el
     lg: { fontSize: '16px', padding: '14px 26px' },
   }))
 
-const DemoBadge = el
+export const DemoBadge = el
   .attrs({ tag: 'span', css: 'display:inline-flex;align-items:center;justify-content:center;' })
   .theme((t: T) => cx(`font-family:'Public Sans',sans-serif;font-size:12.5px;font-weight:600;padding:4px 11px;border-radius:20px;display:inline-flex;align-items:center;gap:7px;border:1px solid transparent;background:${hexToRgba(t.accent, 0.14)};color:${t.accent};`))
   .variants(dim((t) => ({
@@ -48,7 +48,7 @@ const DemoBadge = el
     outline: { backgroundColor: 'transparent', color: t.accent, borderColor: hexToRgba(t.accent, 0.5) },
   })))
 
-const IconDot = el.attrs({ tag: 'span' }).theme(() => cx('width:7px;height:7px;border-radius:9px;background:currentColor;display:inline-block;'))
+export const IconDot = el.attrs({ tag: 'span' }).theme(() => cx('width:7px;height:7px;border-radius:9px;background:currentColor;display:inline-block;'))
 
 const ToggleRoot = el.attrs({ tag: 'label', css: 'display:inline-flex;align-items:center;justify-content:center;' }).theme((t: T) => cx(`display:inline-flex;align-items:center;gap:11px;cursor:pointer;font-family:'Public Sans',sans-serif;color:${t.text};`))
 const ToggleTrack = el
