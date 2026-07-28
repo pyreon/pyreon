@@ -485,3 +485,29 @@ test('pseudo-locale expands and accents every rendered string', async ({ browser
   await page.getByTestId('pseudo-locale-toggle').click()
   expect(((await preview.textContent()) ?? '').trim()).toBe(before)
 })
+
+/**
+ * Perf panel — counters, not timings. Asserts real framework work is recorded
+ * for a real interaction; a panel that always shows zero would be
+ * indistinguishable from a broken sink.
+ */
+test('perf panel records framework work for a real interaction', async ({ browser }) => {
+  const page = await open(browser)
+  await page.getByTestId('addon-tab-perf').click()
+  await expect(page.getByTestId('perf-unavailable')).toHaveCount(0)
+
+  await page.getByTestId('perf-toggle').click()
+  await expect(page.getByTestId('perf-toggle')).toHaveText(/Stop/i)
+
+  // Drive a real re-render: change a control so the styler + runtime do work.
+  await page.getByTestId('addon-tab-controls').click()
+  await page.locator('input[placeholder]').first().fill('perf probe')
+  await page.getByTestId('addon-tab-perf').click()
+  await page.getByTestId('perf-toggle').click()
+
+  await expect(page.getByTestId('perf-summary')).toHaveCount(1)
+  const rows = page.locator('[data-testid="perf-row"]')
+  await expect(rows.first()).toBeVisible()
+  // A named counter with a real count — not an empty verdict dressed as one.
+  await expect(page.getByTestId('perf-summary')).toContainText(/[1-9]\d* counter\(s\) fired/)
+})

@@ -47,6 +47,7 @@ describe('built-ins', () => {
     const ids = getAddonPanels().map((p) => p.id)
     expect(ids).toContain('reactivity')
     expect(ids).toContain('why')
+    expect(ids).toContain('perf')
     // It is NOT an ADDON_TABS entry — if it were, this would prove nothing
     // about third-party panels.
     expect(ADDON_TABS.map((t) => t.id)).not.toContain('reactivity')
