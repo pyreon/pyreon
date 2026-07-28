@@ -37,12 +37,17 @@ was actually broken — is covered on both.
 Matrix: Storage 0.3 → 0.45, with the Android scope written into the row rather
 than rounded away.
 
-The headline moves ≈52% → ≈50%, DOWN, because the same pass added a
-`Styling & design system` row (weight 6, R4 fraction 0.0) that had been missing
+The headline moves ≈52% → ≈51%, DOWN, because the same pass added a
+`Styling & design system` row (weight 6, R4 fraction 0.2) that had been missing
 entirely. The whole `styled` / `elements` / `coolgrid` / `attrs` / rocketstyle /
 theme-token surface lowers to both targets and is documented as supported — yet
-no native example instantiates any of it and no device test asserts a rendered
-style. Omitting a track a real app leans on heavily made every percentage on
+had no row at all. Its fraction is 0.2, not 0: the rocketstyle-over-`Text`
+pattern with a reactive dimension flip IS device-asserted on both platforms
+(the counter's `StatusBadge`), while `styled()` / `Element` / `coolgrid` /
+`attrs` / `defineTheme` tokens / typography have no native example. Drafted as
+0.0 and corrected on review — that reading was true of this branch and false of
+main, where the badge had already landed; overstating a gap is as wrong as
+hiding one. Omitting a track a real app leans on heavily made every percentage on
 that page flattering rather than true, and the table is supposed to BE the
 denominator. The drop is a correction to the measurement, not a regression in
 the product.
