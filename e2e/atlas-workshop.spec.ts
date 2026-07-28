@@ -372,3 +372,62 @@ test('Locale addon flips writing direction on the preview (RTL layout test)', as
   await page.getByTestId('locale-en').click()
   await expect.poll(dir).toBe('ltr')
 })
+
+/**
+ * Reactive coverage — the capability no React-based workbench can have.
+ *
+ * These assert the VERDICT changes with real interaction, not merely that a
+ * panel renders. A coverage panel that always shows the same number would be
+ * indistinguishable from a broken one, which is precisely the failure mode the
+ * verify verdict had before #2539.
+ */
+test.describe('Reactivity panel — reactive coverage', () => {
+  test('records a session and reports uncovered reactive edges', async ({ browser }) => {
+    const page = await open(browser)
+    await page.getByTestId('addon-tab-reactivity').click()
+
+    // Before recording there is no verdict — not a fabricated 100%.
+    await expect(page.getByTestId('coverage-summary')).toHaveCount(0)
+    await expect(page.locator('body')).toContainText(/No recording yet/i)
+
+    // The workbench runs in a dev build, so coverage IS available. If this
+    // renders, the panel is misreporting a healthy build as unmeasurable.
+    await expect(page.getByTestId('coverage-unavailable')).toHaveCount(0)
+
+    await page.getByTestId('coverage-toggle').click()
+    await expect(page.getByTestId('coverage-toggle')).toHaveText(/Stop/i)
+
+    // Drive real reactivity: flip a control so signals actually write.
+    await page.getByTestId('addon-tab-controls').click()
+    const textInput = page.locator('input[placeholder]').first()
+    await textInput.fill('coverage probe')
+    await page.getByTestId('addon-tab-reactivity').click()
+
+    await page.getByTestId('coverage-toggle').click()
+    await expect(page.getByTestId('coverage-toggle')).toHaveText(/Record/i)
+
+    const summary = page.getByTestId('coverage-summary')
+    await expect(summary).toHaveCount(1)
+    // A percentage and a node count, both real.
+    await expect(summary).toContainText(/% covered/)
+    await expect(summary).toContainText(/\d+\/\d+ nodes/)
+  })
+
+  test('a recorded session measures something — the denominator is not zero', async ({ browser }) => {
+    const page = await open(browser)
+    await page.getByTestId('addon-tab-reactivity').click()
+    await page.getByTestId('coverage-toggle').click()
+
+    await page.getByTestId('addon-tab-canvas').click()
+    await page.getByTestId('viewport-tablet').click()
+    await page.getByTestId('addon-tab-reactivity').click()
+    await page.getByTestId('coverage-toggle').click()
+
+    // `0/0 nodes` would mean the session recorded nothing while still showing a
+    // percentage — the empty-scan false green, in a new place.
+    const text = (await page.getByTestId('coverage-summary').textContent()) ?? ''
+    const match = /(\d+)\/(\d+) nodes/.exec(text)
+    expect(match, `no node count in: ${text}`).not.toBeNull()
+    expect(Number(match![2]), 'the graph must have nodes to measure').toBeGreaterThan(0)
+  })
+})

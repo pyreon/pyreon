@@ -34,11 +34,28 @@ afterEach(() => {
 })
 
 describe('built-ins', () => {
-  it('registers exactly the ADDON_TABS entries, in order', () => {
-    // The strip and the bodies come from ONE list now, so this also proves the
-    // two cannot drift — which is what a separate `ADDON_TABS` array plus a
-    // separate `<Show>` chain could always do.
-    expect(getAddonPanels().map((p) => p.id)).toEqual(ADDON_TABS.map((t) => t.id))
+  it('registers the ADDON_TABS entries FIRST, in order', () => {
+    // Not exact equality: `reactivity` ships with Atlas but registers THROUGH
+    // the seam rather than being a built-in, which is the point — it is the
+    // proof that a non-built-in panel can join the strip. The built-ins must
+    // still lead, and in their declared order.
+    const ids = getAddonPanels().map((p) => p.id)
+    expect(ids.slice(0, ADDON_TABS.length)).toEqual(ADDON_TABS.map((t) => t.id))
+  })
+
+  it('includes the Reactivity panel, registered through the seam', () => {
+    const ids = getAddonPanels().map((p) => p.id)
+    expect(ids).toContain('reactivity')
+    // It is NOT an ADDON_TABS entry — if it were, this would prove nothing
+    // about third-party panels.
+    expect(ADDON_TABS.map((t) => t.id)).not.toContain('reactivity')
+  })
+
+  it('keeps the Reactivity panel across a reset', () => {
+    // The seal used to run inside `registerBuiltinPanels`, i.e. BEFORE the
+    // reactivity panel registered — so a reset silently dropped the tab.
+    resetAddonPanels()
+    expect(getAddonPanels().map((p) => p.id)).toContain('reactivity')
   })
 
   it('takes each panel title and hint from ADDON_TABS, not a second copy', () => {
