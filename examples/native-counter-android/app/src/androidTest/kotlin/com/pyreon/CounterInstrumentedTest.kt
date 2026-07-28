@@ -41,7 +41,6 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.pyreon.runtime.PyreonDatabase
 import org.junit.Rule
@@ -222,8 +221,10 @@ class CounterInstrumentedTest {
         val narrow = composeRule.onNodeWithTag("sized-narrow").getBoundsInRoot()
         val wide = composeRule.onNodeWithTag("sized-wide").getBoundsInRoot()
 
-        val narrowDp = narrow.width.value
-        val wideDp = wide.width.value
+        // `getBoundsInRoot()` returns a DpRect — left/top/right/bottom, no
+        // `width` accessor. Derive it.
+        val narrowDp = (narrow.right - narrow.left).value
+        val wideDp = (wide.right - wide.left).value
 
         if (narrowDp < 110f || narrowDp > 130f) {
             throw AssertionError(
