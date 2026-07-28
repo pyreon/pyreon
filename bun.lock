@@ -2141,6 +2141,7 @@
         "@pyreon/core": "workspace:*",
         "@pyreon/elements": "workspace:*",
         "@pyreon/hooks": "workspace:*",
+        "@pyreon/permissions": "workspace:*",
         "@pyreon/reactivity": "workspace:*",
         "@pyreon/rocketstyle": "workspace:*",
         "@pyreon/runtime-dom": "workspace:*",

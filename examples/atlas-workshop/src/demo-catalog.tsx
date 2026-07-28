@@ -96,6 +96,60 @@ export const demoCatalog: WorkbenchCatalog = {
       ),
     },
     {
+      id: 'project-list', name: 'Project list', group: 'Foundations', status: 'stable',
+      desc: 'A data component — switch the Data panel between loading, success, error and refetching.',
+      controls: [
+        { key: 'queryData', label: 'Rows (JSON)', type: 'text', default: 'Alpha,Beta,Gamma' },
+      ],
+      // Branches on `ctx.query` exactly as it would on a real `useQuery`.
+      // Note it checks `isLoading`, NOT `isFetching`: a refetch must keep the
+      // previous rows on screen rather than flashing a skeleton, which is the
+      // distinction the Data panel exists to make visible.
+      render: (v, ctx) => {
+        const q = ctx.query
+        const rows = String(v.queryData ?? '').split(',').filter(Boolean)
+        if (q.isLoading()) return <DemoBadge variant={'outline' as never}>Loading…</DemoBadge>
+        if (q.isError()) return <DemoBadge variant={'solid' as never}>Could not load projects</DemoBadge>
+        return (
+          <>
+            {q.isFetching() ? <DemoBadge variant={'soft' as never}>Refreshing</DemoBadge> : null}
+            {rows.map((r) => (
+              <DemoBadge variant={'soft' as never}>{r}</DemoBadge>
+            ))}
+          </>
+        )
+      },
+    },
+    {
+      id: 'danger-zone', name: 'Danger zone', group: 'Foundations', status: 'stable',
+      desc: 'A destructive action, guarded by a permission — switch roles to see it appear and disappear.',
+      controls: [
+        { key: 'label', label: 'Label', type: 'text', default: 'Delete project' },
+      ],
+      // Guarded exactly as an app would guard it. `ctx.can` is a getter, so
+      // reading it here re-renders the preview when the role changes, and the
+      // workbench records that `posts.delete` was consulted — which is what
+      // separates "asked and denied" from "never asked".
+      render: (v, ctx) => (
+        <>
+          {ctx.can('posts.read') ? (
+            <DemoBadge variant={'soft' as never}>Project visible</DemoBadge>
+          ) : (
+            <DemoBadge variant={'outline' as never}>Hidden</DemoBadge>
+          )}
+          {ctx.can('posts.delete') ? (
+            <DemoButton
+              {...ctx.pseudo}
+              variant={'solid' as never}
+              onClick={() => ctx.logAction('onClick', 'destructive action')}
+            >
+              {String(v.label)}
+            </DemoButton>
+          ) : null}
+        </>
+      ),
+    },
+    {
       id: 'badge', name: 'Badge', group: 'Foundations', status: 'stable',
       desc: 'Compact status and metadata labels.',
       controls: [

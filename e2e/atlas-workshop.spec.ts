@@ -511,3 +511,86 @@ test('perf panel records framework work for a real interaction', async ({ browse
   // A named counter with a real count — not an empty verdict dressed as one.
   await expect(page.getByTestId('perf-summary')).toContainText(/[1-9]\d* counter\(s\) fired/)
 })
+
+/**
+ * Roles — render the scenario as each role sees it.
+ *
+ * Asserts the DOM actually changes with the role and that the consulted-key
+ * list is real, because a panel that merely renders four buttons proves nothing.
+ */
+test.describe('Roles panel — permission sets', () => {
+  test('a destructive action appears only for a role that may perform it', async ({ browser }) => {
+    const page = await open(browser)
+    await page.getByRole('button', { name: 'Danger zone' }).click()
+    await page.getByTestId('addon-tab-permissions').click()
+
+    // Anonymous is the default: the guarded action must NOT render.
+    await page.getByTestId('role-anonymous').click()
+    const preview = page.locator('[data-testid="canvas-preview"]')
+    await expect(preview).not.toContainText('Delete project')
+
+    // Admin may delete — the same scenario now renders the action.
+    await page.getByTestId('role-admin').click()
+    await expect(preview).toContainText('Delete project')
+
+    // Viewer may read but not delete: the real bug shape this panel is for.
+    await page.getByTestId('role-viewer').click()
+    await expect(preview).toContainText('Project visible')
+    await expect(preview).not.toContainText('Delete project')
+  })
+
+  test('reports the keys the component actually consulted', async ({ browser }) => {
+    const page = await open(browser)
+    await page.getByRole('button', { name: 'Danger zone' }).click()
+    await page.getByTestId('addon-tab-permissions').click()
+    await page.getByTestId('role-viewer').click()
+
+    const rows = page.locator('[data-testid="perm-row"]')
+    await expect(rows.first()).toBeVisible()
+    const text = (await page.getByTestId('perm-summary').textContent()) ?? ''
+    // Both keys consulted, one granted and one denied — not a fabricated tally.
+    expect(text).toMatch(/2 key\(s\) consulted/)
+    expect(text).toMatch(/1 granted/)
+    expect(text).toMatch(/1 denied/)
+  })
+
+  test('flags a component that never consulted a permission', async ({ browser }) => {
+    const page = await open(browser)
+    await page.getByTestId('addon-tab-permissions').click()
+    // The default Button guards nothing, so switching roles proves nothing
+    // about it — the panel has to SAY that rather than show an empty list.
+    await expect(page.getByTestId('perm-unguarded')).toBeVisible()
+  })
+})
+
+/**
+ * Data panel — the four query states, without a network.
+ *
+ * Asserts the PREVIEW changes per state, not just the panel. In particular the
+ * refetching case, which hand-written stories routinely model as
+ * loading-with-no-data and therefore never exercise.
+ */
+test('data panel drives all four query states in the preview', async ({ browser }) => {
+  const page = await open(browser)
+  await page.getByRole('button', { name: 'Project list' }).click()
+  await page.getByTestId('addon-tab-data').click()
+  const preview = page.locator('[data-testid="canvas-preview"]')
+
+  await page.getByTestId('query-loading').click()
+  await expect(preview).toContainText('Loading')
+  await expect(preview).not.toContainText('Alpha')
+
+  await page.getByTestId('query-error').click()
+  await expect(preview).toContainText('Could not load projects')
+
+  await page.getByTestId('query-success').click()
+  await expect(preview).toContainText('Alpha')
+  await expect(preview).not.toContainText('Refreshing')
+
+  // The case that matters: stale data STAYS while a request is in flight.
+  await page.getByTestId('query-refetching').click()
+  await expect(preview).toContainText('Alpha')
+  await expect(preview).toContainText('Refreshing')
+  // and the panel states why isLoading is false here
+  await expect(page.getByTestId('query-note')).toBeVisible()
+})
