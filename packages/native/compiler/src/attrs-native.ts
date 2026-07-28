@@ -50,6 +50,17 @@ function unwrap(node: AnyNode | undefined): AnyNode | undefined {
 /** Extract the `component:` field (a primitive identifier / string) from the
  *  head `attrs({ name, component })` config object. */
 function readComponentField(cfg: AnyNode): string | null {
+  // `attrs(Text)` — a BARE component. This is the form `@pyreon/attrs` actually
+  // exposes (`attrs(component)` chainable, per its own docs and the
+  // multiplatform styling table), and it silently produced uncompilable native
+  // code: the chain fell through to the generic emit as
+  // `attrs(Text).attrs(__Obj0(…))`, and there is no `attrs` function in Swift
+  // or Kotlin.
+  //
+  // Only the config-object form `attrs({ component: Text })` was recognised —
+  // a shape the runtime does not require and the docs never showed. Accepting
+  // both makes the DOCUMENTED API work rather than warning that it does not.
+  if (cfg?.type === 'Identifier') return cfg.name as string
   if (!cfg || cfg.type !== 'ObjectExpression') return null
   for (const p of (cfg.properties as AnyNode[]) ?? []) {
     if (p.type !== 'Property' && p.type !== 'ObjectProperty') continue
@@ -95,7 +106,7 @@ export function parseAttrsDefn(
   if (base === null) return null
   if (!isCanonicalPrimitive(base) && !isElementsPrimitive(base)) {
     warnings.push(
-      `attrs({ component: ${base} }) on '${name}': only a CANONICAL @pyreon/primitives base ` +
+      `attrs(${base}) on '${name}': only a CANONICAL @pyreon/primitives base ` +
         `(Stack/Text/Button/…) or @pyreon/elements Element lowers to native — '${base}' has no native ` +
         `primitive, so <${name}> was left unresolved.`,
     )
