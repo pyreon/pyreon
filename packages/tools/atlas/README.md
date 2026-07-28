@@ -139,6 +139,35 @@ Everything else is a rocketstyle dimension (`size` for viewport, `variant` for
 background, `state` for outline), so the addons add **zero inline styles** and
 resolve through the same class cache as the rest of the workbench.
 
+## Styling convention
+
+Chrome components declare styles as **structured unistyle keys**, not raw CSS
+strings:
+
+```ts
+export const AddonBody = el
+  .attrs({ tag: 'div', css: 'display:flex;flex-direction:column;align-items:stretch;' })
+  .theme(() => ({ flex: '1', overflowY: 'auto', padding: '16px' }))
+```
+
+Pseudo-states are `hover` / `focus` / `active` / `disabled` **theme keys** (the
+bases render them under the real selector *and* when the Pseudo-state addon
+forces the flag) — never `&:hover { … }` inside a string.
+
+Two things to know before touching this:
+
+- **unistyle silently DROPS an unmapped key** (`styles/index.ts` does
+  `if (!indices) continue`, and the full-scan fallback only runs when *nothing*
+  matched). Check a new key against `propertyMap.ts` before using it.
+- **Key-existence is not enough — some keys diverge semantically.**
+  `backgroundImage` wraps its value in `url()` (it is for image URLs, so a
+  gradient silently becomes invalid) and `animation` is a `keyframe`+`animation`
+  combo, not the CSS shorthand. Both stay raw in an `extendCss` residual.
+
+`.attrs({ css })` and `.theme()` are **not** duplicates — they style different
+nodes of Element's structure. Removing the `css` blobs changes 405 computed
+properties (measured); keep both.
+
 ## AI assets — so agents make no mistakes
 
 Atlas generates the assets an AI agent needs to use the whole library correctly
