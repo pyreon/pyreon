@@ -483,6 +483,44 @@ final class PyreonCounterUITests: XCTestCase {
         )
     }
 
+    // ui-system (rocketstyle) lowering asserted on a DEVICE — the first device
+    // proof for the styling track. `rocketstyle()({ component: Text })` is the
+    // authoring pattern the 67 @pyreon/ui-components use; PMTC resolves the
+    // dimension cascade at compile time and lowers a reactive `state` flip to a
+    // native conditional value.
+    //
+    // WHAT THIS ASSERTS, precisely: that the styled component COMPILES into the
+    // app and RE-RENDERS on a state flip. XCUITest cannot read a colour, so the
+    // colour is NOT asserted here, and the build does not prove it either — a
+    // MISSING colour still compiles. Colour PRESENCE is locked by the emit test
+    // (`native-text-reactive-color-parity`); this device test covers the half a
+    // unit test cannot: that the lowering survives into a real app and reacts.
+    // Claiming a colour assertion here would inflate what the tooling can see.
+    func test_rocketstyleComponentRendersAndFlipsOnDevice() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.staticTexts["Badge:ok"].waitForExistence(timeout: 30),
+            "The rocketstyle-styled badge did not render — the ui-system lowering "
+                + "did not reach the view tree"
+        )
+
+        // count 0 -> 3 crosses the dimension threshold (count > 2).
+        let increment = app.buttons["Increment"]
+        for _ in 0..<3 { increment.tap() }
+
+        XCTAssertTrue(
+            app.staticTexts["Badge:warn"].waitForExistence(timeout: 10),
+            "The badge did not flip to the `warn` dimension — a reactive rocketstyle "
+                + "dimension did not re-render on-device"
+        )
+        XCTAssertFalse(
+            app.staticTexts["Badge:ok"].exists,
+            "Both dimension states are showing — the flip replaced nothing"
+        )
+    }
+
     // Tier-2 state machine (createMachine) asserted in the REAL render tree —
     // the first DEVICE assertion of a @pyreon/machine transition (the emit has
     // only ever been R2/compile-proven, tier2-machine-emit-broken.test.ts). The

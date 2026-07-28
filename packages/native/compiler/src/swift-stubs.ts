@@ -416,6 +416,18 @@ public struct Font {
 // Double-channel init is the load-bearing one (a token emitted with the wrong
 // argument labels must fail here). \`opacity\` defaults, as in SwiftUI.
 public struct Color {
+  // RGBColorSpace + the colour-space-first initialiser: the style/token lowering
+  // emits \`Color(.sRGB, red:green:blue:opacity:)\`, which is a DIFFERENT
+  // initialiser from the bare \`Color(red:…)\` below. Both are real SwiftUI, and
+  // the stub needs both or the emit fails with "extra argument in call".
+  public enum RGBColorSpace { case sRGB, sRGBLinear, displayP3 }
+  public init(
+    _ colorSpace: RGBColorSpace = .sRGB,
+    red: Double,
+    green: Double,
+    blue: Double,
+    opacity: Double = 1
+  ) {}
   public init(red: Double, green: Double, blue: Double, opacity: Double = 1) {}
   public static let black = Color(red: 0, green: 0, blue: 0)
   public static let white = Color(red: 1, green: 1, blue: 1)

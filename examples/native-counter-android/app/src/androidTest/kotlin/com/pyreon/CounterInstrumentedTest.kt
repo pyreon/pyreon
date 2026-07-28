@@ -142,6 +142,25 @@ class CounterInstrumentedTest {
         composeRule.onNodeWithText("Device: Android").assertIsDisplayed()
     }
 
+    // ui-system (rocketstyle) lowering asserted in the REAL Compose semantics
+    // tree — the Android half of `test_rocketstyleComponentRendersAndFlipsOnDevice`,
+    // and the LOAD-BEARING half of this pair.
+    //
+    // Compose has no text-colour modifier, so a reactive dimension colour has to
+    // be threaded as a `Text(color = if (cond) A else B)` CONSTRUCTOR ARG. It
+    // used to fall through to the container path and be dropped with a warning,
+    // while iOS rendered it. This build proves the Compose arg is real and
+    // TYPE-CORRECT — a wrong arg name or type fails `assembleDebug` before the
+    // test runs. It does NOT prove the colour is present (a missing colour also
+    // compiles); presence is locked by the emit test.
+    @Test
+    fun rocketstyleComponentRendersAndFlipsOnDevice() {
+        composeRule.onNodeWithText("Badge:ok").assertIsDisplayed()
+        repeat(3) { composeRule.onNodeWithText("Increment").performClick() }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Badge:warn").assertIsDisplayed()
+    }
+
     // Tier-2 state machine (createMachine) asserted in the REAL Compose
     // semantics tree — the Android half of the iOS
     // `test_stateMachineTransitionsOnTap`. The shared Counter.tsx has
