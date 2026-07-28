@@ -1592,7 +1592,18 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     return `val ${kotlinIdent(d.name)} = remember { PyreonWebSocket() }`
   }
   if (d.kind === 'database') {
-    return `val ${kotlinIdent(d.name)} = remember { PyreonDatabase() }`
+    // `PyreonDatabase(context)` — NOT the bare `PyreonDatabase()` this emitted
+    // until 2026-07. The bare form resolved to the in-memory backend, so a
+    // `useDatabase()` app lost every record on relaunch, silently. Android
+    // needs a Context to find app-private storage, so the Context is threaded
+    // here exactly as `useNativeModule` does. (Swift needs no equivalent:
+    // Foundation resolves Application Support unaided, so `PyreonDatabase()`
+    // persists there on its own.)
+    const id = kotlinIdent(d.name)
+    return [
+      `val ${id}Ctx = LocalContext.current`,
+      `val ${id} = remember { PyreonDatabase(${id}Ctx) }`,
+    ].join('\n  ')
   }
   if (d.kind === 'push') {
     return `val ${kotlinIdent(d.name)} = remember { PyreonPushNotifications() }`
