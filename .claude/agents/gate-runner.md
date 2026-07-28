@@ -1,7 +1,7 @@
 ---
 name: gate-runner
 description: Runs the pre-push gate wall (validate-fast + affected typecheck/test + lint:pyreon) and triages every failure against the known failure-mode table with the exact fix command. Use PROACTIVELY before any push or PR, and whenever CI goes red, to determine whether the failure was locally preventable — even if the user only says "can I push?". Do NOT use for: code review (use pyreon-reviewer), benchmarks (use bench-runner), or opening/monitoring the PR itself (use pr-shepherd).
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, mcp__pyreon
 disallowedTools: Agent
 model: sonnet
 effort: high

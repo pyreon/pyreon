@@ -1,0 +1,8 @@
+# @pyreon/rich-text
+
+- **@pyreon/rich-text**:
+  - `createRichTextEditor({ content, ariaLabel, starterKit?, extensions?, onChange?, onError? })` — `json` is a writable `Signal<JSONContent>` (`.set()` loop-safe); `html`/`text`/`isEmpty`/`characterCount`/`wordCount`/`canUndo`/`canRedo` computed; `editable` writable read-only toggle; `isActive(name)` reactive toolbar primitive; `chain()` escape hatch + `undo`/`redo`/`focus`/`blur`.
+  - `<RichText instance={editor}>` lazy-loads TipTap (a11y-labeled `role="textbox"`; ~1.5KB gz wrapper — engine is a lazy chunk). `bindRichTextToSignal({ editor, signal, format })` two-way (json/html).
+  - `onError` surfaces mount failures; dispose-during-async-mount is leak-safe (`mountToken` guard); re-mount preserves the current document.
+  - **`characterCount`/`wordCount`/`isEmpty` derive from the document JSON (pure schema-less walkers over `baseJson`), NOT the mounted engine** — they report before mount / after dispose (stored-JSON draft lists), count VISIBLE characters (not `getText()`'s `\n\n` block separators), and are content-reactive only. **Two transaction counters, split** (`docVersion` on `onUpdate`, `selectionVersion` on `onSelectionUpdate`): content computeds (`html`/`text`/`canUndo`/`canRedo`) subscribe to `docVersion` only, so a pure cursor move doesn't re-run a live word-counter effect; `isActive` reads BOTH (mark/node state depends on content AND selection). Bench: `bun scripts/bench/rich-text.ts` (wrapper glue 1.5KB vs @tiptap/react 8.5KB gz).
+  - Collaboration composes with `@pyreon/sync` (opt-in `@tiptap/extension-collaboration` + `y-prosemirror` peers — not in the base bundle). MIT throughout (avoid TipTap Pro). User-owned lifecycle.

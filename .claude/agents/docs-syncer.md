@@ -2,7 +2,7 @@
 name: docs-syncer
 description: Keeps Pyreon's nine documentation surfaces in sync after any API or behavior change, and drives the generated-docs pipeline. Use PROACTIVELY whenever a public API changes, a package manifest is edited, an anti-pattern is discovered, or a LOCKED numeric claim could drift — even if the user does not mention docs. Do NOT use for: writing product/marketing copy, reviewing code (use pyreon-reviewer), or authoring a changeset (that is pr-shepherd's job).
 disallowedTools: Agent
-tools: Read, Edit, Write, Grep, Glob, Bash
+tools: Read, Edit, Write, Grep, Glob, Bash, mcp__pyreon
 model: sonnet
 effort: high
 memory: project

@@ -1,0 +1,3 @@
+# @pyreon/rx
+
+- **@pyreon/rx**: 42 signal-aware transforms (collections incl. set ops `intersection`/`difference`/`union` — signal-aware on BOTH inputs — /aggregation/operators/timing/search; `sortBy` takes an `'asc'|'desc'` direction), each overloaded (`Signal<T[]>` → `Computed`, `T[]` → plain). `pipe(source, op1, op2, ...)` collapses a chain into ONE computed (exact win, measured by `bun run --filter=@pyreon/rx bench`: an N-step chain of separate calls = N nodes / N recomputes-per-change vs pipe's 1/1). `debounce`/`throttle`/`distinct`/`scan` own an eager `effect()` — auto-torn-down (incl. the debounce/throttle pending timer) inside a component/`effectScope`, else call the returned idempotent `.dispose()`.
