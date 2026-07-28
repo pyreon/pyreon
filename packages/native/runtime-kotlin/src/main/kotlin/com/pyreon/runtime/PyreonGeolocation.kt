@@ -57,6 +57,46 @@ import androidx.compose.runtime.mutableStateOf
  * Supplied to the app's `register` by [PyreonGeolocation.start]; each
  * forwards to the matching pure state-machine transition.
  */
+/**
+ * A platform location source: wire it to [GeolocationHandlers] and return an
+ * unregister thunk.
+ *
+ * Exists so the 0-arg [PyreonGeolocation.start] can work without dragging the
+ * Android SDK into this file — the constraint that made `start` take a host
+ * closure in the first place, and therefore the reason `geo.start()` compiled
+ * on iOS and web but NOT on Android. Same shape as `PyreonStorageBackend`.
+ */
+public fun interface PyreonGeolocationSource {
+    /** Wire [handlers] to the platform source; return the unregister thunk. */
+    public fun register(handlers: GeolocationHandlers): () -> Unit
+}
+
+/**
+ * Process-wide default location source, or `null` when none is installed.
+ *
+ * Starts null so this file stays Android-SDK-free and kotlinc-stub verifiable.
+ * `PyreonGeolocationAndroid.installDefaultGeolocationSource(context)` installs
+ * a real one; an app wanting something else (a mock in tests, a fused provider,
+ * a simulator feed) assigns this directly.
+ */
+public object PyreonGeolocationRegistry {
+    public var source: PyreonGeolocationSource? = null
+}
+
+/**
+ * Install [make]'s source as the process default — but ONLY if the app has not
+ * chosen one.
+ *
+ * The guard is the contract, exactly as with `installDefaultStorageBackend`: an
+ * app that assigned [PyreonGeolocationRegistry.source] deliberately must not be
+ * silently overwritten by a framework default.
+ */
+public fun installDefaultGeolocationSource(make: () -> PyreonGeolocationSource) {
+    if (PyreonGeolocationRegistry.source == null) {
+        PyreonGeolocationRegistry.source = make()
+    }
+}
+
 public class GeolocationHandlers(
     /** Call with each fix → drives [PyreonGeolocation.update]. */
     public val onFix: (latitude: Double, longitude: Double, accuracy: Double?) -> Unit,
@@ -123,6 +163,36 @@ public class PyreonGeolocation {
      * Idempotent — a second call while already tracking is a no-op; the
      * supplied [register] is NOT invoked a second time.
      */
+    /**
+     * Begin location updates using the installed default source.
+     *
+     * This is the overload PMTC emits: `geo.start()` on all three targets.
+     * Before it existed, Swift's `start()` was 0-arg while Kotlin's required a
+     * host closure, so the SAME source compiled on iOS and web and failed to
+     * build on Android — a silent break in the shared-code contract, and the
+     * documented "OkHttp-for-WebSocket asymmetry".
+     *
+     * With no source installed this FAILS LOUDLY via [fail] rather than
+     * no-oping. A silent no-op would leave `latitude` null forever with no
+     * explanation — indistinguishable from "no fix yet", which is the harder
+     * bug to diagnose. The error names the wiring call so it is actionable.
+     */
+    public fun start() {
+        val source = PyreonGeolocationRegistry.source
+        if (source == null) {
+            fail(
+                IllegalStateException(
+                    "[Pyreon] useGeolocation: no location source installed on Android. " +
+                        "Call installDefaultGeolocationSource(context) from your Application " +
+                        "or Activity, or assign PyreonGeolocationRegistry.source directly. " +
+                        "iOS and web need no wiring.",
+                ),
+            )
+            return
+        }
+        start(source::register)
+    }
+
     public fun start(register: (GeolocationHandlers) -> (() -> Unit)) {
         if (started) return // idempotent — already tracking
         started = true
