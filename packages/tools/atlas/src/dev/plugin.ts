@@ -27,6 +27,7 @@ import { readFileSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
 import type { ComponentIntelligence } from '../core'
 import { generateCatalogModule, type CatalogEntrySource } from './catalog-module'
+import { lensMethod } from './lens'
 
 export const CATALOG_ID = 'virtual:atlas/catalog'
 export const ENTRY_ID = 'virtual:atlas/entry'
@@ -35,8 +36,18 @@ export const RPC_PATH = '/__atlas/rpc'
 /** Vite requires resolved virtual ids to be prefixed with a NUL byte. */
 const resolved = (id: string) => `\0${id}`
 
-/** A method the browser may call over the channel. */
-export type RpcMethod = (params: Record<string, unknown>) => unknown
+/**
+ * A method the browser may call over the channel.
+ *
+ * May be async — and the handler MUST await it. The first version of this
+ * channel did not: `JSON.stringify({ result: fn(params) })` on a Promise
+ * serialises as `{}`, so an async method answered `{"ok":true,"result":{}}`
+ * — a successful-looking response carrying nothing. Caught by the Lens, the
+ * first async method to use the channel.
+ */
+export type RpcMethod = (
+  params: Record<string, unknown>,
+) => unknown | Promise<unknown>
 
 export interface RpcContext {
   /** Absolute project root — every path is resolved against it. */
@@ -71,6 +82,13 @@ export function builtinMethods(ctx: RpcContext): Record<string, RpcMethod> {
 
     /** `{}` → the discovered component names. Cheap probe that the channel works. */
     components: () => ctx.components.map((c) => c.name),
+
+    /**
+     * `{ component }` → the compiler's per-expression live/static verdict for
+     * that component's source. Node-only by necessity (TS compiler API + oxc),
+     * which is the reason this channel exists.
+     */
+    lens: lensMethod(ctx),
   }
 }
 
@@ -153,31 +171,40 @@ export function atlasDevPlugin(options: AtlasDevPluginOptions): VitePluginLike {
           body += String(chunk)
         })
         request.on('end', () => {
-          response.setHeader('Content-Type', 'application/json')
-          try {
-            const parsed = JSON.parse(body || '{}') as {
-              method?: string
-              params?: Record<string, unknown>
-            }
-            const fn = parsed.method ? methods[parsed.method] : undefined
-            if (!fn) {
-              response.statusCode = 404
-              // Naming the known methods turns a typo into a one-step fix.
+          // The body handler is deliberately an async IIFE rather than an async
+          // listener: an async listener's rejection is unhandled, and would take
+          // the dev server down instead of answering with an error.
+          void (async () => {
+            response.setHeader('Content-Type', 'application/json')
+            try {
+              const parsed = JSON.parse(body || '{}') as {
+                method?: string
+                params?: Record<string, unknown>
+              }
+              const fn = parsed.method ? methods[parsed.method] : undefined
+              if (!fn) {
+                response.statusCode = 404
+                // Naming the known methods turns a typo into a one-step fix.
+                response.end(
+                  JSON.stringify({
+                    ok: false,
+                    error: `Unknown method "${parsed.method ?? ''}". Known: ${Object.keys(methods).sort().join(', ')}`,
+                  }),
+                )
+                return
+              }
+              response.statusCode = 200
+              // AWAITED — see the note on `RpcMethod`.
+              const result = await fn(parsed.params ?? {})
+              response.end(JSON.stringify({ ok: true, result }))
+            } catch (err) {
+              // A failing method must not take the dev server down.
+              response.statusCode = 500
               response.end(
-                JSON.stringify({
-                  ok: false,
-                  error: `Unknown method "${parsed.method ?? ''}". Known: ${Object.keys(methods).sort().join(', ')}`,
-                }),
+                JSON.stringify({ ok: false, error: String((err as Error)?.message ?? err) }),
               )
-              return
             }
-            response.statusCode = 200
-            response.end(JSON.stringify({ ok: true, result: fn(parsed.params ?? {}) }))
-          } catch (err) {
-            // A failing method must not take the dev server down.
-            response.statusCode = 500
-            response.end(JSON.stringify({ ok: false, error: String((err as Error)?.message ?? err) }))
-          }
+          })()
         })
       })
     },

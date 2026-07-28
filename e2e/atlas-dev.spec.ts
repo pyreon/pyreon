@@ -88,3 +88,47 @@ test.describe('atlas dev', () => {
     expect(String(res.result.source)).toContain('Badge')
   })
 })
+
+/**
+ * The Reactivity Lens — the compiler's own per-expression verdict, fetched over
+ * the dev channel. Node-only by necessity (TS compiler API + oxc), which is why
+ * M1 defined the channel first.
+ */
+test.describe('Reactivity Lens', () => {
+  test('reports the compiler verdict for a real component', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Badge' }).click()
+    await page.getByTestId('addon-tab-lens').click()
+
+    // Idle until asked — analysing every component on selection would pay the
+    // TS-compiler cost for a panel nobody opened.
+    await expect(page.getByTestId('lens-unavailable')).toHaveCount(0)
+    await page.getByTestId('lens-analyse').click()
+
+    // Real findings, on real lines, with the compiler's own vocabulary.
+    const rows = page.locator('[data-testid="lens-line"]')
+    await expect(rows.first()).toBeVisible({ timeout: 15_000 })
+    const text = (await page.locator('body').innerText()).toLowerCase()
+    expect(text).toMatch(/reactive|baked once|footgun/)
+  })
+
+  test('the lens method is reachable directly and returns line-anchored findings', async ({ page }) => {
+    await page.goto('/')
+    const res = await page.evaluate(async () => {
+      const r = await fetch('/__atlas/rpc', {
+        method: 'POST',
+        body: JSON.stringify({ method: 'lens', params: { component: 'Badge' } }),
+      })
+      return r.json()
+    })
+    expect(res.ok, JSON.stringify(res).slice(0, 200)).toBe(true)
+    expect(Array.isArray(res.result.lines)).toBe(true)
+    // Every finding must anchor to a line that exists in the returned source.
+    const maxLine = res.result.lines.length
+    for (const line of res.result.lines) {
+      expect(line.line).toBeGreaterThan(0)
+      expect(line.line).toBeLessThanOrEqual(maxLine)
+    }
+    expect(typeof res.result.suspects).toBe('number')
+  })
+})
