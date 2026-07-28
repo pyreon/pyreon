@@ -96,6 +96,35 @@ export const demoCatalog: WorkbenchCatalog = {
       ),
     },
     {
+      id: 'danger-zone', name: 'Danger zone', group: 'Foundations', status: 'stable',
+      desc: 'A destructive action, guarded by a permission — switch roles to see it appear and disappear.',
+      controls: [
+        { key: 'label', label: 'Label', type: 'text', default: 'Delete project' },
+      ],
+      // Guarded exactly as an app would guard it. `ctx.can` is a getter, so
+      // reading it here re-renders the preview when the role changes, and the
+      // workbench records that `posts.delete` was consulted — which is what
+      // separates "asked and denied" from "never asked".
+      render: (v, ctx) => (
+        <>
+          {ctx.can('posts.read') ? (
+            <DemoBadge variant={'soft' as never}>Project visible</DemoBadge>
+          ) : (
+            <DemoBadge variant={'outline' as never}>Hidden</DemoBadge>
+          )}
+          {ctx.can('posts.delete') ? (
+            <DemoButton
+              {...ctx.pseudo}
+              variant={'solid' as never}
+              onClick={() => ctx.logAction('onClick', 'destructive action')}
+            >
+              {String(v.label)}
+            </DemoButton>
+          ) : null}
+        </>
+      ),
+    },
+    {
       id: 'badge', name: 'Badge', group: 'Foundations', status: 'stable',
       desc: 'Compact status and metadata labels.',
       controls: [

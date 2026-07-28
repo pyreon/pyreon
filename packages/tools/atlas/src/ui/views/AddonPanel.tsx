@@ -12,6 +12,7 @@ import { getAddonPanels, sealAddonPanels } from '../panels'
 import { registerBuiltinPanels } from './builtin-panels'
 import { registerReactiveCoveragePanel } from './reactive-coverage-panel'
 import { registerPerfPanel } from './perf-panel'
+import { registerPermissionsPanel } from './permissions-panel'
 import { registerUpdateCausePanel } from './update-cause-panel'
 
 // Registering at module scope keeps the built-ins available to anything that
@@ -23,6 +24,7 @@ registerBuiltinPanels()
 registerReactiveCoveragePanel()
 registerUpdateCausePanel()
 registerPerfPanel()
+registerPermissionsPanel()
 // Seal AFTER every ship-with-Atlas panel is registered — sealing inside
 // `registerBuiltinPanels` would have baselined only the four built-ins, so
 // `resetAddonPanels()` would silently drop the Reactivity tab.

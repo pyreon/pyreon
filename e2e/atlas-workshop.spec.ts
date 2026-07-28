@@ -511,3 +511,54 @@ test('perf panel records framework work for a real interaction', async ({ browse
   // A named counter with a real count — not an empty verdict dressed as one.
   await expect(page.getByTestId('perf-summary')).toContainText(/[1-9]\d* counter\(s\) fired/)
 })
+
+/**
+ * Roles — render the scenario as each role sees it.
+ *
+ * Asserts the DOM actually changes with the role and that the consulted-key
+ * list is real, because a panel that merely renders four buttons proves nothing.
+ */
+test.describe('Roles panel — permission sets', () => {
+  test('a destructive action appears only for a role that may perform it', async ({ browser }) => {
+    const page = await open(browser)
+    await page.getByRole('button', { name: 'Danger zone' }).click()
+    await page.getByTestId('addon-tab-permissions').click()
+
+    // Anonymous is the default: the guarded action must NOT render.
+    await page.getByTestId('role-anonymous').click()
+    const preview = page.locator('[data-testid="canvas-preview"]')
+    await expect(preview).not.toContainText('Delete project')
+
+    // Admin may delete — the same scenario now renders the action.
+    await page.getByTestId('role-admin').click()
+    await expect(preview).toContainText('Delete project')
+
+    // Viewer may read but not delete: the real bug shape this panel is for.
+    await page.getByTestId('role-viewer').click()
+    await expect(preview).toContainText('Project visible')
+    await expect(preview).not.toContainText('Delete project')
+  })
+
+  test('reports the keys the component actually consulted', async ({ browser }) => {
+    const page = await open(browser)
+    await page.getByRole('button', { name: 'Danger zone' }).click()
+    await page.getByTestId('addon-tab-permissions').click()
+    await page.getByTestId('role-viewer').click()
+
+    const rows = page.locator('[data-testid="perm-row"]')
+    await expect(rows.first()).toBeVisible()
+    const text = (await page.getByTestId('perm-summary').textContent()) ?? ''
+    // Both keys consulted, one granted and one denied — not a fabricated tally.
+    expect(text).toMatch(/2 key\(s\) consulted/)
+    expect(text).toMatch(/1 granted/)
+    expect(text).toMatch(/1 denied/)
+  })
+
+  test('flags a component that never consulted a permission', async ({ browser }) => {
+    const page = await open(browser)
+    await page.getByTestId('addon-tab-permissions').click()
+    // The default Button guards nothing, so switching roles proves nothing
+    // about it — the panel has to SAY that rather than show an empty list.
+    await expect(page.getByTestId('perm-unguarded')).toBeVisible()
+  })
+})

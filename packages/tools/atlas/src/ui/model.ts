@@ -10,6 +10,12 @@ import { analyzeA11y } from './a11y'
 import type { AddonTabId, BackgroundId, LocaleId, PseudoId, ViewportId } from './addons'
 import { localeDir, pseudoProps } from './addons'
 import { pseudoLocalizeValues } from './pseudo-locale'
+import {
+  DEFAULT_PERMISSION_SETS,
+  permissionSetById,
+  recordingPermissions,
+  type RecordingPermissions,
+} from './permission-sets'
 import type { CatalogGroup, WorkbenchCatalog, WorkbenchComponent } from './catalog'
 import { buildSearch, defaultValues, groupComponents } from './catalog'
 import type { BrandTheme, ThemeTokens } from './theme'
@@ -60,6 +66,10 @@ export interface WorkbenchModel {
   locale: Signal<LocaleId>
   /** i18n stress: render every string accented + 40% longer to expose truncation. */
   pseudoLocale: Signal<boolean>
+  /** Role the preview renders under — threaded to `render` as `ctx.can`. */
+  permissionSet: Signal<string>
+  /** The recording `can` for the active role, re-created whenever it changes. */
+  permissions: Computed<RecordingPermissions>
   // computeds
   brand: Computed<BrandTheme>
   theme: Computed<ThemeTokens>
@@ -110,6 +120,15 @@ export function createModel(
   // changes writing direction, this changes every string's LENGTH. Off by
   // default — it is a deliberate check, not a viewing mode.
   const pseudoLocale = signal(false)
+  const permissionSet = signal(DEFAULT_PERMISSION_SETS[0]?.id ?? 'anonymous')
+
+  // Re-created per role AND per selected component: the consulted-key list is
+  // an observation of ONE component under ONE role, so carrying it across
+  // either would report keys the current pairing never asked about.
+  const permissions = computed(() => {
+    void selId()
+    return recordingPermissions(permissionSetById(permissionSet()))
+  })
 
   const brand = computed(() => THEMES.find((b) => b.id === brandId()) ?? THEMES[0]!)
   const theme = computed(() => tokens(brand(), dark()))
@@ -162,6 +181,11 @@ export function createModel(
     },
     get locale() {
       return locale()
+    },
+    // A getter, so each render reads the CURRENT role rather than the one that
+    // happened to be active when the context object was built.
+    get can() {
+      return permissions().can
     },
   }
   const preview = (): VNodeChildAtom | VNodeChildAtom[] => sel()?.render(vals(), renderCtx) ?? null
@@ -223,7 +247,7 @@ export function createModel(
   return {
     catalog, groups, total, title: opts.title ?? 'atlas', subtitle: opts.subtitle ?? '',
     brandId, dark, selId, query, zoomIdx, view, addon, actions,
-    viewport, background, pseudo, outline, locale, pseudoLocale,
+    viewport, background, pseudo, outline, locale, pseudoLocale, permissionSet, permissions,
     brand, theme, sel, vals, visibleGroups, noResults, a11y,
     setValue, reset, logAction, clearActions, search, preview, searchRef, focusSearch, previewRef,
   }

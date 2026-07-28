@@ -8,6 +8,7 @@
 import type { VNodeChildAtom } from '@pyreon/core'
 import { createCatalogGraph, inferControls } from '../core'
 import type { PropShape } from '../core'
+import type { Permissions } from '@pyreon/permissions'
 
 /** A single editable prop in the Controls panel. */
 export interface WorkbenchControl {
@@ -50,6 +51,19 @@ export interface WorkbenchRenderCtx {
    * re-renders when the locale changes.
    */
   readonly locale: string
+  /**
+   * The permission checker for the role selected in the Roles panel.
+   *
+   * Guard privileged UI with it exactly as the app would
+   * (`{() => ctx.can('posts.delete') && <DeleteButton/>}`). The workbench
+   * RECORDS every key consulted, which is what lets the panel distinguish "this
+   * component asked and was denied" from "this component never asked" — the
+   * second being an unguarded action, and invisible to a plain role swap.
+   *
+   * A getter, so reading it inside `render` tracks the signal and the preview
+   * re-renders when the role changes.
+   */
+  readonly can: Permissions
 }
 
 /** One catalog entry — a component the workbench can showcase. */
