@@ -32,6 +32,7 @@ package com.pyreon
 
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
@@ -40,6 +41,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.pyreon.runtime.PyreonDatabase
 import org.junit.Rule
@@ -197,6 +199,40 @@ class CounterInstrumentedTest {
                     "$onDisk records, expected ${before + 1}. The UI reported the write, " +
                     "so the record exists in memory but was never persisted.",
             )
+        }
+    }
+
+    // The static half of the style pipeline, asserted through GEOMETRY — the
+    // Compose mirror of the iOS `test_rocketstyleSizeDimensionProducesRealGeometry`.
+    //
+    // The badge test proves a reactive dimension re-renders and deliberately
+    // claims nothing about colour (the Compose test tree cannot read one). This
+    // covers the STATIC cascade: `size="narrow"` / `size="wide"` lower to
+    // `Modifier.width(120.dp)` / `width(240.dp)`, and bounds ARE readable, so a
+    // dropped or ignored modifier is visible here.
+    //
+    // Asserted in dp against the emitted values, since Compose reports bounds in
+    // dp directly and no scale conversion is involved — with a tolerance for
+    // layout rounding.
+    @Test
+    fun rocketstyleSizeDimensionProducesRealGeometry() {
+        composeRule.onNodeWithTag("sized-narrow").assertIsDisplayed()
+        composeRule.onNodeWithTag("sized-wide").assertIsDisplayed()
+
+        val narrow = composeRule.onNodeWithTag("sized-narrow").getBoundsInRoot()
+        val wide = composeRule.onNodeWithTag("sized-wide").getBoundsInRoot()
+
+        val narrowDp = narrow.width.value
+        val wideDp = wide.width.value
+
+        if (narrowDp < 110f || narrowDp > 130f) {
+            throw AssertionError(
+                "narrow width was ${narrowDp}dp, expected ~120dp from the size cascade. " +
+                    "A value near the intrinsic text width means the modifier was dropped.",
+            )
+        }
+        if (wideDp < 230f || wideDp > 250f) {
+            throw AssertionError("wide width was ${wideDp}dp, expected ~240dp from the size cascade.")
         }
     }
 

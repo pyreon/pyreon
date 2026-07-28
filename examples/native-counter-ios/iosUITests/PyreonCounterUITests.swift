@@ -571,6 +571,33 @@ final class PyreonCounterUITests: XCTestCase {
     // (`native-text-reactive-color-parity`); this device test covers the half a
     // unit test cannot: that the lowering survives into a real app and reacts.
     // Claiming a colour assertion here would inflate what the tooling can see.
+    // NO iOS geometry assertion — and the reason is worth recording, because it
+    // is the natural next thing to reach for.
+    //
+    // `size="narrow"` / `size="wide"` lower to `.frame(width: 120)` /
+    // `.frame(width: 240)`, so rendered WIDTH looks like the readable proof that
+    // the static rocketstyle cascade produced real layout. It is not: XCUITest
+    // exposes an element's ACCESSIBILITY frame, which for SwiftUI hugs the
+    // content, not the layout frame the modifier sets. Measured on iPhone 17 Pro:
+    //
+    //   Text base,  ids on the Texts   → 52.7pt / 36.0pt  (the glyph widths of
+    //                                     "narrow" and "wide" — a ratio of 0.68)
+    //   Stack base, ids on the Stacks  →  9.7pt / 13.0pt  (the glyphs "n" / "w";
+    //                                     the id merges into the inner Text)
+    //
+    // In both shapes the numbers are text metrics, not the 120/240 the modifier
+    // requested. An assertion built on them would measure the font, and a
+    // tolerance band wide enough to pass would admit a dropped modifier.
+    //
+    // The Compose harness CAN read layout bounds (`getBoundsInRoot`), so the
+    // Android instrumented test asserts this properly and the capability matrix
+    // credits it as Android-only. Same discipline as the badge test below
+    // declining to claim a colour assertion: state what the tooling can see.
+    //
+    // A real iOS proof needs a different instrument — a screenshot diff, or an
+    // XCUITest-visible side effect of the layout — and is a tracked follow-up
+    // rather than a band widened until it passes.
+
     func test_rocketstyleComponentRendersAndFlipsOnDevice() throws {
         let app = XCUIApplication()
         app.launch()

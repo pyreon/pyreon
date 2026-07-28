@@ -40,6 +40,29 @@ const StatusBadge = rocketstyle()({ component: Text }).states(() => ({
   warn: { color: '#b45309' },
 }))
 
+// Styling proof that a device harness can actually SEE.
+//
+// The badge above proves a reactive dimension re-renders, but deliberately
+// asserts only its label — neither XCUITest nor the Compose test tree can read
+// a rendered colour, and its comment says so rather than implying otherwise.
+// So the static side of the style pipeline (theme cascade → emitted modifier →
+// rendered appearance) had no device coverage at all.
+//
+// GEOMETRY is the part both harnesses can read: XCUITest exposes
+// `element.frame`, and Compose exposes bounds assertions. A `size` dimension
+// driving `width` therefore lowers to something observable —
+// `.frame(width: 120)` on SwiftUI, `.width(120.dp)` on Compose — so a device
+// test can prove the cascade produced a real, measurable layout rather than a
+// modifier the platform silently ignored.
+//
+// Two instances rather than one, asserted RELATIVELY (wide ≈ 2 × narrow): point
+// vs dp vs device scale makes an absolute pixel assertion fragile across
+// simulators, while the RATIO is a property of the emitted style.
+const SizedRule = rocketstyle()({ component: Stack }).sizes(() => ({
+  narrow: { width: 120 },
+  wide: { width: 240 },
+}))
+
 export function Counter() {
   const count = signal<number>(0)
   // M2.7 animations proof — a `<Transition show>` animates a child's
@@ -218,6 +241,8 @@ export function Counter() {
           so the device test can assert the flip actually re-rendered (XCUITest
           and Compose cannot read a colour, so the colour itself is proven by
           COMPILING: a wrong Compose constructor arg fails `assembleDebug`). */}
+      <SizedRule size="narrow" data-testid="sized-narrow"><Text>n</Text></SizedRule>
+      <SizedRule size="wide" data-testid="sized-wide"><Text>w</Text></SizedRule>
       <StatusBadge state={count() > 2 ? 'warn' : 'ok'}>
         Badge: {count() > 2 ? 'warn' : 'ok'}
       </StatusBadge>
