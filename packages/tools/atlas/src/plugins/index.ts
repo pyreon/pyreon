@@ -6,13 +6,15 @@
  * Built-in suite:
  *   - scenario generation: variantMatrix, states, edgeCases, theme, defaultScenario
  *   - enrichment:          tags, fillDefaults
- *   - verification:        a11y (static)
+ *   - verification:        a11y (static), mount (runtime)
  *   - docs:                usageDocs
  *   - bundle:              recommendedPlugins (the great defaults, ordered)
  *
  * The canvas addons (viewport / backgrounds / pseudo-states / outline) are NOT
  * plugins — they are a UI concern and live in `../ui/addons`. This module runs
- * under `atlas scan` in Node and stays DOM-free.
+ * under `atlas scan` in Node; nothing here touches a DOM at import time. The
+ * mount plugin acquires one lazily, only when a scenario is actually verified,
+ * and skips with a reason when it cannot.
  */
 export type {
   AtlasPlugin,
@@ -39,6 +41,7 @@ export { tagsPlugin } from './tags'
 
 // verification
 export { a11yPlugin } from './a11y'
+export { mountPlugin, releaseVerifyDom } from './mount'
 
 // docs
 export { usageDocsPlugin } from './usage-docs'

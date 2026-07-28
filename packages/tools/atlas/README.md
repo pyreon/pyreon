@@ -86,8 +86,41 @@ metadata-driven (no rendering required):
 - **Bundle** — `recommendedPlugins()` — the curated "great defaults", correctly
   ordered.
 
-DOM-backed plugins (axe a11y, visual-regression, reactivity-coverage) join the
-suite with the runtime/verify layer.
+- **Runtime verification** — `mountPlugin` (mounts every scenario and drives it).
+
+The remaining DOM-backed checks (axe a11y, visual regression, reactive-prop
+liveness) sit on the same mount harness as they land.
+
+### Verifying at runtime
+
+`atlas scan` mounts each scenario, clicks every interactive element, and
+unmounts, so the catalog reports the class no amount of type inference reaches:
+*these args crash it*. The claim is deliberately narrow — mounts, survives
+interaction, unmounts, without throwing — and covers a throw inside an effect
+or an event handler, neither of which propagates to the caller.
+
+Components are loaded through the project's own Vite pipeline, so what gets
+mounted is what the project ships. Two consequences worth knowing:
+
+- A component that needs providers (theme, router, i18n) cannot render alone.
+  Supply them from `atlas.config.ts`:
+
+  ```ts
+  // atlas.config.ts — `wrapper` receives the scenario as `children`
+  export function wrapper(props) {
+    return h(ThemeProvider, { theme }, props.children)
+  }
+  ```
+
+- Modules are transformed in SSR mode, so a component arrives via the
+  compiler's `h()` lowering rather than the `_tpl()` template path a browser
+  build produces. Both mount; they are known to diverge on reactivity lowering.
+  So a runtime check here may report what threw, and never claims a reactivity
+  verdict — that belongs to `atlas dev`, where a real browser runs the real
+  client build.
+
+Pass `mount: false` to keep a scan purely static; importing a project's modules
+runs its top-level code.
 
 ## Canvas addons — the Storybook set, built in
 
@@ -237,8 +270,9 @@ export const myPlugin = defineAtlasPlugin({
 
 Shipped: `core` (domain model + engine) and `plugins` (API + built-ins). Next
 layers build on top: `auto` (real component discovery + type→control extraction
-via the compiler), `verify` (the real `@pyreon/testing` + a11y + reactivity-
-coverage + snapshot pipeline), `graph`/`ai` (MCP server + grounded generation),
+via the compiler), `verify` (the mount harness + interaction check ship; axe
+a11y, reactive-prop liveness and snapshot are next), `graph`/`ai` (MCP server +
+grounded generation),
 `server` (dev server on `@pyreon/zero`), `ui` (the workbench), and `compat`
 (Storybook interop).
 
