@@ -113,13 +113,13 @@ function LoginPage() {
       <Text font="Brand" data-testid="brand-title">Sign In</Text>
       <Text>At least 3 characters — this is a demo.</Text>
       <Field
-        value={form.values.username}
+        value={form.values().username}
         onChangeText={(v) => form.setFieldValue('username', v)}
         placeholder="Username"
         data-testid="login-username"
       />
-      <Show when={() => form.errors.username !== ''}>
-        <Text data-testid="login-error">{form.errors.username}</Text>
+      <Show when={() => form.errors().username !== ''}>
+        <Text data-testid="login-error">{form.errors().username}</Text>
       </Show>
       <Button onPress={() => form.submit()} data-testid="login-submit">
         Continue

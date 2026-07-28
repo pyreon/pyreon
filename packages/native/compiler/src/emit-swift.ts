@@ -3895,16 +3895,27 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // Swift dictionary; rewrite to the subscript with the
       // type-appropriate default (`values`/`errors` are String dicts,
       // `touched` is Bool).
+      // The WEB API is a CALL: `@pyreon/form` types `values: () => TValues`,
+      // so idiomatic shared source reads `form.values().email`. Only the
+      // PROPERTY form was lowered, which made a form non-shared in BOTH
+      // directions — the web shape emitted uncompilable native code with NO
+      // warning, and the shape that did work natively (`form.values.email`)
+      // is a type error on web. Unwrap a zero-arg call on the accessor so
+      // both lower identically. Additive: the property form is untouched.
+      const _formAccessorObj =
+        e.object.kind === 'call' && e.object.args.length === 0 && e.object.callee.kind === 'member'
+          ? e.object.callee
+          : e.object
       if (
-        e.object.kind === 'member' &&
-        e.object.object.kind === 'identifier' &&
-        _formNamesSwift.has(e.object.object.name) &&
-        (e.object.property === 'values' ||
-          e.object.property === 'errors' ||
-          e.object.property === 'touched')
+        _formAccessorObj.kind === 'member' &&
+        _formAccessorObj.object.kind === 'identifier' &&
+        _formNamesSwift.has(_formAccessorObj.object.name) &&
+        (_formAccessorObj.property === 'values' ||
+          _formAccessorObj.property === 'errors' ||
+          _formAccessorObj.property === 'touched')
       ) {
-        const dflt = e.object.property === 'touched' ? 'false' : '""'
-        return `(${swiftIdent(e.object.object.name)}.${e.object.property}[${JSON.stringify(e.property)}] ?? ${dflt})`
+        const dflt = _formAccessorObj.property === 'touched' ? 'false' : '""'
+        return `(${swiftIdent(_formAccessorObj.object.name)}.${_formAccessorObj.property}[${JSON.stringify(e.property)}] ?? ${dflt})`
       }
       // Gap 4 v1: rewrite the store-hook chain `<useFoo>().store.X`
       // → `PyreonStore_foo.shared.X`.
@@ -6409,17 +6420,30 @@ function emitSwiftField(
   // `onChangeText` is SUBSUMED by the binding (same as the signal
   // shape's `$sig` projection below) — the canonical handler is
   // exactly `(v) => form.setFieldValue('email', v)`.
-  let bindingExpr: string | undefined
-  if (
+    // Accept the WEB CALL form too (`form.values().email`) — `@pyreon/form`
+  // types `values: () => TValues`, so that is what shared source looks like.
+  // Normalising here keeps the specialized binding emit (which routes the
+  // setter through setValue → re-validation); without it the call form fell
+  // through to the generic path and emitted an unbuildable field.
+  const _fieldValue =
     valueAttr !== undefined &&
     valueAttr.value.kind === 'member' &&
-    valueAttr.value.object.kind === 'member' &&
-    valueAttr.value.object.property === 'values' &&
-    valueAttr.value.object.object.kind === 'identifier' &&
-    _formNamesSwift.has(valueAttr.value.object.object.name)
+    valueAttr.value.object.kind === 'call' &&
+    valueAttr.value.object.args.length === 0 &&
+    valueAttr.value.object.callee.kind === 'member'
+      ? { ...valueAttr.value, object: valueAttr.value.object.callee }
+      : valueAttr?.value
+let bindingExpr: string | undefined
+  if (
+    _fieldValue !== undefined &&
+    _fieldValue.kind === 'member' &&
+    _fieldValue.object.kind === 'member' &&
+    _fieldValue.object.property === 'values' &&
+    _fieldValue.object.object.kind === 'identifier' &&
+    _formNamesSwift.has(_fieldValue.object.object.name)
   ) {
-    const formName = swiftIdent(valueAttr.value.object.object.name)
-    bindingExpr = `${formName}.binding(${JSON.stringify(valueAttr.value.property)})`
+    const formName = swiftIdent(_fieldValue.object.object.name)
+    bindingExpr = `${formName}.binding(${JSON.stringify(_fieldValue.property)})`
   }
 
   // `value` MUST name a signal in scope (canonical contract) OR a form

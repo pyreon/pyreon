@@ -3213,16 +3213,27 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // container: `form.values.email` → `form.values.value["email"]
       // ?: ""` (the MutableState map needs `.value` + the subscript;
       // `touched` defaults false). Mirror of the Swift rewrite.
+      // The WEB API is a CALL: `@pyreon/form` types `values: () => TValues`,
+      // so idiomatic shared source reads `form.values().email`. Only the
+      // PROPERTY form was lowered, which made a form non-shared in BOTH
+      // directions — the web shape emitted uncompilable native code with NO
+      // warning, and the shape that did work natively (`form.values.email`)
+      // is a type error on web. Unwrap a zero-arg call on the accessor so
+      // both lower identically. Additive: the property form is untouched.
+      const _formAccessorObj =
+        e.object.kind === 'call' && e.object.args.length === 0 && e.object.callee.kind === 'member'
+          ? e.object.callee
+          : e.object
       if (
-        e.object.kind === 'member' &&
-        e.object.object.kind === 'identifier' &&
-        _formNames.has(e.object.object.name) &&
-        (e.object.property === 'values' ||
-          e.object.property === 'errors' ||
-          e.object.property === 'touched')
+        _formAccessorObj.kind === 'member' &&
+        _formAccessorObj.object.kind === 'identifier' &&
+        _formNames.has(_formAccessorObj.object.name) &&
+        (_formAccessorObj.property === 'values' ||
+          _formAccessorObj.property === 'errors' ||
+          _formAccessorObj.property === 'touched')
       ) {
-        const dflt = e.object.property === 'touched' ? 'false' : '""'
-        return `(${kotlinIdent(e.object.object.name)}.${e.object.property}.value[${JSON.stringify(e.property)}] ?: ${dflt})`
+        const dflt = _formAccessorObj.property === 'touched' ? 'false' : '""'
+        return `(${kotlinIdent(_formAccessorObj.object.name)}.${_formAccessorObj.property}.value[${JSON.stringify(e.property)}] ?: ${dflt})`
       }
       // Gap 4 v1: rewrite `<useFoo>().store.X` → `PyreonStore_foo.X`.
       // Same chain-shape recognition as emit-swift's; Kotlin's `object`
@@ -5419,17 +5430,30 @@ function emitKotlinField(
   // the container: value reads the map, onValueChange routes through
   // setValue (→ re-validation). The user's `onChangeText` is SUBSUMED
   // (mirror of the Swift binding(_:) emit).
-  let formBinding: { value: string; onChange: string } | undefined
-  if (
+    // Accept the WEB CALL form too (`form.values().email`) — `@pyreon/form`
+  // types `values: () => TValues`, so that is what shared source looks like.
+  // Normalising here keeps the specialized binding emit (which routes the
+  // setter through setValue → re-validation); without it the call form fell
+  // through to the generic path and emitted an unbuildable field.
+  const _fieldValue =
     valueAttr !== undefined &&
     valueAttr.value.kind === 'member' &&
-    valueAttr.value.object.kind === 'member' &&
-    valueAttr.value.object.property === 'values' &&
-    valueAttr.value.object.object.kind === 'identifier' &&
-    _formNames.has(valueAttr.value.object.object.name)
+    valueAttr.value.object.kind === 'call' &&
+    valueAttr.value.object.args.length === 0 &&
+    valueAttr.value.object.callee.kind === 'member'
+      ? { ...valueAttr.value, object: valueAttr.value.object.callee }
+      : valueAttr?.value
+let formBinding: { value: string; onChange: string } | undefined
+  if (
+    _fieldValue !== undefined &&
+    _fieldValue.kind === 'member' &&
+    _fieldValue.object.kind === 'member' &&
+    _fieldValue.object.property === 'values' &&
+    _fieldValue.object.object.kind === 'identifier' &&
+    _formNames.has(_fieldValue.object.object.name)
   ) {
-    const formName = kotlinIdent(valueAttr.value.object.object.name)
-    const field = JSON.stringify(valueAttr.value.property)
+    const formName = kotlinIdent(_fieldValue.object.object.name)
+    const field = JSON.stringify(_fieldValue.property)
     formBinding = {
       value: `${formName}.values.value[${field}] ?: ""`,
       onChange: `{ ${formName}.setValue(${field}, it) }`,
