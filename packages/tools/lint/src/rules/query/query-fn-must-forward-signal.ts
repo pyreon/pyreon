@@ -178,10 +178,12 @@ export const queryFnMustForwardSignal: Rule = {
       // scanning reports it as a violation. (Found by migrating
       // `@pyreon/feature`, which renames the binding to avoid shadowing
       // `signal` from `@pyreon/reactivity`.)
-      const fromParams = (queryFn.params ?? []).map((p: unknown) => scanBody(p))
+      // `queryFn` is `any`, so annotate explicitly — otherwise `.map` on an
+      // `any` yields `any` and the `.some` callback is an implicit-any error.
+      const params = (queryFn.params ?? []) as unknown[]
+      const paramsMentionSignal = params.some((param) => scanBody(param).mentionsSignal)
       const fromBody = scanBody(queryFn.body)
-      const mentionsSignal =
-        fromBody.mentionsSignal || fromParams.some((r) => r.mentionsSignal)
+      const mentionsSignal = fromBody.mentionsSignal || paramsMentionSignal
       const { requestCall } = fromBody
       if (mentionsSignal || !requestCall) return
 
