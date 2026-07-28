@@ -181,3 +181,52 @@ describe('web-only packages that were missing from the set', () => {
     })
   }
 })
+
+// @pyreon/elements is the INVERSE of @pyreon/rx: there, one export lowers and
+// the rest do not; here, only `Element` lowers while Text / List / Overlay /
+// Portal all failed both targets SILENTLY. Both are expressed with the same
+// `supported` set rather than two mechanisms.
+//
+// Found by a SYSTEMATIC sweep of every published package rather than more
+// ad-hoc probes — the previous four findings came from one-offs and two were
+// nearly missed. The sweep also produced false positives worth naming: `mount`,
+// `renderToString` and `island` "fail" too, but no author calls a web/server
+// entry point inside a shared component body, so reporting them would be noise.
+// And `defineStore` looked broken until the probe was written properly — the
+// first one stringified it instead of calling it.
+describe('partial-support packages: only some exports lower', () => {
+  const el = (imp: string, jsx: string) =>
+    `import { ${imp} } from '@pyreon/elements'\nimport { Stack, Text } from '${P}'\nexport function C(){ return (<Stack>${jsx}</Stack>) }`
+
+  for (const [name, imp, jsx] of [
+    ['Portal', 'Portal', '<Portal><Text>x</Text></Portal>'],
+    ['Overlay', 'Overlay', '<Overlay trigger={() => null} content={() => null} />'],
+    ['List', 'List', '<List data={[1,2]} />'],
+  ] as const) {
+    it(`elements ${name}: warns`, () => {
+      const hit = warns(el(imp, jsx)).find((w) => w.startsWith(`${imp} (from `))
+      expect(hit, `no warning; got ${JSON.stringify(warns(el(imp, jsx)))}`).toBeTruthy()
+    })
+  }
+
+  it('elements Element stays SILENT — it lowers', () => {
+    const src = el('Element', '<Element><Text>x</Text></Element>')
+    expect(warns(src).filter((w) => w.includes('NO native lowering'))).toEqual([])
+  })
+
+  it.skipIf(!isSwiftcAvailable())('elements Element really does type-check', () => {
+    const src = el('Element', '<Element><Text>x</Text></Element>')
+    const res = validateSwiftWithStubs(transform(src, { target: 'swift' }).code)
+    expect(res.ok, res.error ?? '').toBe(true)
+  })
+
+  it('storage: the factory warns and points at the hook', () => {
+    const src = `import { createStorage } from '@pyreon/storage'\nimport { Stack, Text } from '${P}'\nexport function C(){ const s = createStorage({} as never); return (<Stack><Text>x</Text></Stack>) }`
+    expect(warns(src).some((w) => w.includes('useStorage(key, initial)'))).toBe(true)
+  })
+
+  it('store defineStore stays SILENT — it lowers', () => {
+    const src = `import { defineStore } from '@pyreon/store'\nimport { signal } from '@pyreon/reactivity'\nimport { Stack, Text } from '${P}'\nconst useC = defineStore('c', () => { const n = signal(0); return { n } })\nexport function C(){ const s = useC(); return (<Stack><Text>{s.store.n}</Text></Stack>) }`
+    expect(warns(src).filter((w) => w.includes('NO native lowering'))).toEqual([])
+  })
+})
