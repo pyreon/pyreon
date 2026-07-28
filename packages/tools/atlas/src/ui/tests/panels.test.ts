@@ -46,16 +46,21 @@ describe('built-ins', () => {
   it('includes the Reactivity panel, registered through the seam', () => {
     const ids = getAddonPanels().map((p) => p.id)
     expect(ids).toContain('reactivity')
+    expect(ids).toContain('why')
+    expect(ids).toContain('perf')
     // It is NOT an ADDON_TABS entry — if it were, this would prove nothing
     // about third-party panels.
     expect(ADDON_TABS.map((t) => t.id)).not.toContain('reactivity')
+    expect(ADDON_TABS.map((t) => t.id)).not.toContain('why')
   })
 
   it('keeps the Reactivity panel across a reset', () => {
     // The seal used to run inside `registerBuiltinPanels`, i.e. BEFORE the
     // reactivity panel registered — so a reset silently dropped the tab.
     resetAddonPanels()
-    expect(getAddonPanels().map((p) => p.id)).toContain('reactivity')
+    const ids = getAddonPanels().map((p) => p.id)
+    expect(ids).toContain('reactivity')
+    expect(ids).toContain('why')
   })
 
   it('takes each panel title and hint from ADDON_TABS, not a second copy', () => {
