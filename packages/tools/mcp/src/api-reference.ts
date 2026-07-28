@@ -3784,6 +3784,105 @@ function render(rows: QueryData<typeof posts>) { /* … */ }`,
   },
   // <gen-docs:api-reference:end @pyreon/query>
 
+  // <gen-docs:api-reference:start @pyreon/http>
+
+  'http/createHttp': {
+    signature: '(config?: HttpClientConfig) => HttpClient',
+    example: `import { createHttp } from '@pyreon/http'
+
+const api = createHttp({ baseUrl: '/api', timeout: 10_000 })
+const user = await api.get('/users/:id', { params: { id: '1' } }).json()`,
+    notes: 'Create an HTTP client. Every option has a working default: a 30s timeout (because fetch has none and a hung request otherwise never settles), `same-origin` credentials, and throw-on-non-2xx (because @pyreon/query needs a rejected promise to enter its error state). Clients are IMMUTABLE — there is no `defaults` object to mutate, since a shared mutable default leaks across concurrent SSR requests. Derive variants with `extend()`, which accumulates headers and middleware while overriding scalars.',
+    mistakes: `- Reaching for \`api.defaults.headers.common.X = …\` (axios muscle memory). It does not exist — mutable shared defaults are the classic SSR cross-request leak. Use \`api.extend({ headers })\`, which returns a NEW client.
+- Passing \`baseURL\` (axios spelling). The option is \`baseUrl\`.
+- Expecting \`baseUrl\` to behave like \`new URL(path, base)\`. It is a plain PREFIX, so a leading slash does NOT discard the base path.
+- Passing both \`json\` and \`body\`. They are mutually exclusive — \`json\` serializes and sets Content-Type for you, and passing both throws rather than silently picking one.
+- Interpolating into the path (\`api.get(\`/users/\${id}\`)\`). That skips URL encoding, so an id containing "/" escapes its segment. Use \`{ params: { id } }\`.
+- Expecting retry by default. It is OFF, because it compounds with @pyreon/query’s own retry.`,
+  },
+
+  'http/HttpClient': {
+    signature: 'interface HttpClient { get/post/put/patch/delete/head/options(path, options?): HttpResponsePromise; request(method, path, options?); extend(config): HttpClient; endpoint(spec, options?): Endpoint }',
+    example: `const res = await api.get('/users/1')       // HttpResponse (status, headers, raw)
+const user = await api.get('/users/1').json() // decoded body`,
+    notes: 'A configured client. Each verb returns an HttpResponsePromise — awaitable for the response, or asked directly for a decoded body via `.json()` / `.text()` / `.blob()` / `.arrayBuffer()` / `.formData()` / `.void()`. The request fires eagerly, so `.json()` never re-issues it and two consumers of the same promise share one network call.',
+    mistakes: `- Calling \`.json()\` after already awaiting and reading the body — a Response body is single-use.
+- Assuming \`.json()\` throws on an empty body. A 204/205/304 or an empty 200 resolves to \`undefined\`.`,
+  },
+
+  'http/endpoint': {
+    signature: '(spec: `${HttpMethod} ${string}`, options?: { response?: Validator }) => Endpoint',
+    example: `const getUser = api.endpoint('GET /users/:id', { response: UserSchema })
+
+await getUser({ params: { id: '1' } })
+const options = getUser.query({ params: { id: '1' } })
+console.log(options.queryKey)`,
+    notes: 'Declare a reusable endpoint. One declaration yields the callable, a stable structural cache key, and the response type — which is what stops queryKey and URL from drifting apart, the single biggest pain with axios plus TanStack Query. `params` is REQUIRED by the type system exactly when the path declares `:placeholders`, and its keys are extracted from the path literal, so a typo is a compile error. `.query(args)` emits `{ queryKey, queryFn }` with the AbortSignal already forwarded; `.mutation()` emits `{ mutationFn, invalidates }`.',
+    mistakes: `- Hand-writing a \`queryKey\` next to an endpoint call. Use \`endpoint.query(...)\` so the key is derived from the same declaration as the URL.
+- Expecting \`mutationFn\` to receive an AbortSignal. TanStack gives mutations no context at all — pass one in the variables if the mutation must be cancellable.
+- Writing the spec without a method (\`"/users"\`). It must be \`"<METHOD> <path>"\`.
+- Assuming \`invalidates\` takes strings. It takes ENDPOINTS, and resolves each to its key prefix.`,
+  },
+
+  'http/HttpMiddleware': {
+    signature: '(request: HttpRequest, next: Next) => Promise<HttpResponse>',
+    example: `const logger: HttpMiddleware = async (request, next) => {
+  const started = Date.now()
+  const response = await next(request)
+  console.warn(request.method, request.url, Date.now() - started)
+  return response
+}`,
+    notes: 'Onion middleware, chosen over axios-style interceptor arrays because it is the only shape that expresses what people actually need: retry calls `next()` in a LOOP (an interceptor pair cannot re-enter the chain, which is why axios users end up hanging `config.__isRetry` flags off the request), refresh inspects the response and re-issues, and a mock or cache returns WITHOUT calling `next`. Order is lexical — the `use: [...]` array — so there is no registration registry and no eject handle to leak.',
+    mistakes: `- Forgetting to return the response from \`next()\`. The chain resolves to whatever each middleware returns.
+- Assuming \`next()\` may only be called once. Calling it repeatedly is exactly what makes retry possible.
+- Mutating \`request.headers\` expecting it to affect an already-issued attempt — mutate before calling \`next()\`.`,
+  },
+
+  'http/retry': {
+    signature: '(options?: RetryOptions) => HttpMiddleware',
+    example: 'const api = createHttp({ use: [retry({ limit: 3 })] })',
+    notes: 'Replay a failed request. OFF unless you add it, because @pyreon/query already retries and the two compound silently. Retries idempotent methods only (POST is excluded), on 408/413/429/5xx plus transport failures, with exponential backoff, full jitter and `Retry-After` support. Never replays a cancellation, and stops replaying the moment the caller aborts — including mid-backoff.',
+    mistakes: `- Enabling it alongside @pyreon/query’s own retry without lowering one of them — 3 × 3 is nine requests.
+- Adding \`POST\` to \`methods\` without making the endpoint idempotent. A replayed POST can double-charge.
+- Expecting an aborted request to be retried. Cancellation is the expected outcome of navigating away, not a failure.`,
+  },
+
+  'http/standardSchema': {
+    signature: 'SchemaResolver',
+    example: `import { standardSchema } from '@pyreon/http/schema'
+
+const api = createHttp({ schema: standardSchema })`,
+    notes: 'The resolver that enables schema objects in `.json(schema)` and `endpoint({ response })`. Imported from `@pyreon/http/schema` and passed as `createHttp({ schema: standardSchema })`. Handles both @pyreon/validation typed adapters (`zodSchema(...)`, which carry `_infer` and no `~standard`) and raw Standard Schema instances (zod, valibot, arktype, @pyreon/validate’s `s`). It lives behind its own entry so the core never imports a validation library — a runtime check inside the core would keep it in every bundle, because tree-shaking works on reachability, not runtime branches.',
+    mistakes: `- Passing a schema object without configuring the resolver. The error explains the fix, but the plain parse-function form (\`.json(MySchema.parse)\`) needs no resolver at all.
+- Passing an async schema. Response validation is synchronous, and an async one is rejected loudly rather than resolving a Promise as data.
+- Assuming \`validate: "off"\` is a free performance win. It is only safe for non-transforming schemas.`,
+  },
+
+  'http/runWithRequest': {
+    signature: '<T>(request: AmbientRequest, fn: () => T) => T',
+    example: `import { runWithRequest } from '@pyreon/http/server'
+
+export const middleware = (ctx: { req: Request }) =>
+  runWithRequest(ctx.req, () => api.get('/users').json())`,
+    notes: 'Establish the per-request SSR context, from `@pyreon/http/server`. Inside it a relative URL resolves against the inbound origin (on the server it otherwise has no origin and fetch rejects) and `forwardHeaders` can copy cookies through. Backed by AsyncLocalStorage rather than a module-level variable, so concurrent renders never see each other’s request — the naive shared slot forwards one user’s session cookie into another user’s render. This is the only entry that imports node:async_hooks, keeping it out of every browser bundle.',
+    mistakes: `- Importing it from \`@pyreon/http\` instead of \`@pyreon/http/server\` — the split is what keeps node:async_hooks out of the client bundle.
+- Expecting relative URLs to resolve on the server WITHOUT it. There is no ambient origin until you wire it.
+- Assuming headers forward automatically. \`forwardHeaders\` requires an explicit allowlist and stops at the origin boundary by default.`,
+  },
+
+  'http/createMock': {
+    signature: '(routes: readonly MockRoute[]) => MockHandle',
+    example: `import { createMock } from '@pyreon/http/mock'
+
+const handle = createMock([{ path: '/users/1', json: { id: '1' } }])
+const api = createHttp({ use: [handle.middleware] })
+await api.get('/users/1').json()`,
+    notes: 'Stub responses as middleware, from `@pyreon/http/mock`. Because middleware can short-circuit, mocking needs no MSW, no service worker and no global fetch patch — so it cannot leak between test files the way a patched global does. Returns the middleware plus the recorded calls for assertions. A request matching no route falls through to the next layer, so you can stub a couple of endpoints and let the rest hit a real transport.',
+    mistakes: `- Expecting a string \`path\` to match the full URL. It matches by suffix, so \`baseUrl\` need not be repeated.
+- Forgetting \`handle.reset()\` between tests when asserting on call counts.`,
+  },
+  // <gen-docs:api-reference:end @pyreon/http>
+
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/hooks
   // ═══════════════════════════════════════════════════════════════════════════
