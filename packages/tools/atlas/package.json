@@ -77,6 +77,7 @@
   "dependencies": {
     "@pyreon/core": "workspace:*",
     "@pyreon/elements": "workspace:*",
+    "@pyreon/feature": "workspace:*",
     "@pyreon/hooks": "workspace:*",
     "@pyreon/permissions": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
@@ -89,6 +90,7 @@
   },
   "devDependencies": {
     "@pyreon/tsconfig": "workspace:*",
-    "@pyreon/vitest-config": "workspace:*"
+    "@pyreon/vitest-config": "workspace:*",
+    "zod": "^4.4.3"
   }
 }

@@ -50,6 +50,7 @@ describe('built-ins', () => {
     expect(ids).toContain('perf')
     expect(ids).toContain('permissions')
     expect(ids).toContain('data')
+    expect(ids).toContain('schema')
     // It is NOT an ADDON_TABS entry — if it were, this would prove nothing
     // about third-party panels.
     expect(ADDON_TABS.map((t) => t.id)).not.toContain('reactivity')
