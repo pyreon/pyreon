@@ -47,6 +47,44 @@ A per-test timeout sized against ONE internal deadline is wrong the moment a tes
 - `describe(name, { timeout }, fn)` IS honored in vitest 4 — prove the option is applied (not silently ignored) by temporarily forcing `timeout: 1` and confirming `Test timed out in 1ms`. (Verified for this fix: forcing `TEST_TIMEOUT_MS = 1` → `Error: Test timed out in 1ms.` on "two clients converge".)
 - A load-dependent flake is usually **not locally reproducible**. Per the "Cross-tab Playwright specs" precedent below, the structural argument is the bisect proof — state that honestly instead of claiming a repro you don't have. Here: the backstop was `60_000` for the 3-wait spec (== its composed sum, violating "must EXCEED"), and the 20s internal budget was demonstrably outrun (the descriptive error fired); the fix makes the backstop `105_000` (> the `90_000` worst-case sum, +15s headroom) with a `30_000` budget, all tracking one constant.
 
+## A CI-only failure's message IS the artifact — make it carry the evidence
+
+A load-dependent flake that reproduces in 1.85s locally and fails only under a
+saturated runner gives you exactly ONE artifact: the failure message. If that
+message is a bare string, every subsequent occurrence is another round of
+guessing, and the guesses turn into timeout bumps.
+
+`sync/ws-relay.test.ts` is the worked example. Its budget was escalated FOUR
+times (8 → 15 → 20 → 30s), every escalation argued from `waitFor: timed out` —
+a string emitted by **twenty** call sites in that one file, naming neither which
+barrier stalled nor what the transports looked like when it did. The fifth
+occurrence was no more diagnosable than the first.
+
+The fix is not a fifth bump. Give every wait a NAME and a state snapshot:
+
+```ts
+await waitFor('both transports synced', () => ta.synced() && tb.synced(), {
+  describe: () => `ta.synced=${ta.synced()} tb.synced=${tb.synced()} …`,
+})
+// → waitFor: timed out waiting for both transports synced — observed: …
+```
+
+Three details that matter:
+
+- **`describe` is a thunk, evaluated ONLY on failure.** The passing path runs
+  the poll tick every 10ms; a state snapshot must cost nothing there.
+- **Wrap the `describe()` call in try/catch.** A snapshot that throws while
+  building the failure message replaces a diagnosable timeout with an opaque
+  one — the exact failure mode being fixed.
+- **Verify the message by FORCING a timeout** (invert the condition, shrink the
+  budget) and reading it. A diagnostic you have never seen fire is a diagnostic
+  you are guessing about.
+
+Generalises past `waitFor`: any assertion whose only failure mode is remote
+(CI-only, device-only, load-only) should print the observed state, not just the
+expectation. See also "Timeouts: the wall-clock backstop must exceed the
+composed internal budgets" above, which is the same file's other lesson.
+
 ## A test that encodes the bug is worse than no test
 
 Three specs in the audited releases asserted the broken behavior, so they could never catch it:
