@@ -114,6 +114,17 @@ const results: Result[] = [
     ['--help'],
     { okExits: [1], stderrOk: true },
   ),
+  // The scaffolded native builds invoke this via `npx pyreon-native build …`
+  // (scripts/build-ios.sh / build-android.sh), so NODE is the runtime that has
+  // to work — and the bin previously pointed at `src/cli.ts`, which node
+  // cannot execute (extensionless relative imports fail ESM resolution even on
+  // Node 26's type-stripping path). Spawning it here is what proves the
+  // published entry actually runs.
+  checkFlagBin(
+    '@pyreon/native-cli (pyreon-native)',
+    'packages/native/cli/bin/pyreon-native.js',
+    ['--help'],
+  ),
 ]
 
 // Drift guard: fail if any published (non-private) package declares a bin
@@ -126,6 +137,7 @@ const covered = new Set([
   'packages/zero/cli',
   'packages/zero/create-zero',
   'packages/zero/create-multiplatform',
+  'packages/native/cli',
 ])
 for (const cat of readdirSync(join(repoRoot, 'packages'))) {
   const catDir = join(repoRoot, 'packages', cat)
