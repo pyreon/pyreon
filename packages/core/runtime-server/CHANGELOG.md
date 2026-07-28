@@ -787,8 +787,6 @@
   15/15, adapters 37/37, typecheck + lint + build clean across both
   packages, gen-docs + check-doc-claims green.
 
-  Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
-
 - [#757](https://github.com/pyreon/pyreon/pull/757) [`7632934`](https://github.com/pyreon/pyreon/commit/763293492a26d48e4a7b1b28e42a519677702b35) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `renderToStream` and `createHandler` (stream mode) now accept a configurable per-boundary Suspense timeout: `suspenseTimeoutMs?: number`. Defaults to `30_000` ms (unchanged from prior hard-coded behavior), so unset is byte-identical. Pass a smaller number (e.g. `5_000`–`10_000`) for tight-SLA user-facing deploys where the fallback is preferable to a delayed render, or pass `Infinity` to disable the timeout entirely for renders that legitimately need long async work (exports, reports, scheduled jobs). Values ≤0 or `NaN` fall back to the default — invalid input from a config layer can't accidentally drop every boundary.
 
   This completes the streaming control surface alongside the AbortSignal wire (`signal?: AbortSignal`, shipped in [#745](https://github.com/pyreon/pyreon/issues/745) + [#749](https://github.com/pyreon/pyreon/issues/749)).

@@ -2668,8 +2668,6 @@ query` has zero `app.store.` or `useAppStore` references
   15/15, adapters 37/37, typecheck + lint + build clean across both
   packages, gen-docs + check-doc-claims green.
 
-  Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
-
 - [#742](https://github.com/pyreon/pyreon/pull/742) [`36767f6`](https://github.com/pyreon/pyreon/commit/36767f69887f8da39c2a14c57da2ca59f3780b3d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(zero): ISR external-store interface — `ISRStore` + `createMemoryStore`; multi-instance production unlock
 
   `createISRHandler` was previously hard-wired to `new Map<string, CacheEntry>`
