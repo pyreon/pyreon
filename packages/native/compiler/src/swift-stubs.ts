@@ -358,12 +358,40 @@ public struct PyreonI18n {
   // dictionary literals ([String: String] and [String: Int] both coerce).
   public func t(_ key: String, _ values: [String: Any] = [:]) -> String { "" }
 }
+// AppStorage - SwiftUI's own wrapper, which \`useStorage\` emits for SCALAR
+// values (a struct value routes to PyreonAppStorage below instead). Stripped
+// along with \`import SwiftUI\`, so without this the whole scalar path was
+// UNGATED. Mirrors SwiftUI's REAL constrained overloads rather than a loose
+// generic: a permissive \`<Value>\` would MASK an emit that ever sent an
+// unsupported type to @AppStorage, which is exactly what the gate is for.
+@propertyWrapper public struct AppStorage<Value> {
+  private let _key: String
+  public var wrappedValue: Value { get { fatalError() } nonmutating set {} }
+}
+extension AppStorage where Value == String {
+  public init(wrappedValue: Value, _ key: String) { self._key = key }
+}
+extension AppStorage where Value == Int {
+  public init(wrappedValue: Value, _ key: String) { self._key = key }
+}
+extension AppStorage where Value == Double {
+  public init(wrappedValue: Value, _ key: String) { self._key = key }
+}
+extension AppStorage where Value == Bool {
+  public init(wrappedValue: Value, _ key: String) { self._key = key }
+}
 @propertyWrapper public struct PyreonAppStorage<Value> {
   public init(wrappedValue: Value, _ key: String) {}
   public var wrappedValue: Value { get { fatalError() } nonmutating set {} }
 }
+// PyreonPermissions - MIRRORS the real init exactly:
+// \`public init(_ granted: Set<String> = [])\`. The stub previously declared
+// \`init(_ grants: [String])\` - no default, and an Array where the real type
+// takes a Set - so it REJECTED the emit's correct \`PyreonPermissions()\`.
+// That is the inverse of the usual masking failure: a stub STRICTER than
+// reality fails correct code. Latent only because no fixture used the hook.
 public struct PyreonPermissions {
-  public init(_ grants: [String]) {}
+  public init(_ granted: Set<String> = []) {}
   public func callAsFunction(_ perm: String) -> Bool { false } // used as \`can("x")\`
   public func all(_ perms: String...) -> Bool { false }
   public func any(_ perms: String...) -> Bool { false }

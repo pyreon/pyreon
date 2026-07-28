@@ -802,7 +802,7 @@ function warnWebOnlyImports(body: AnyNode[], ctx: ParseCtx): void {
  * if-chains below) is what makes the complement nameable. A drift test asserts
  * every entry is genuinely handled, so this cannot rot into a lie.
  */
-const NATIVE_LOWERED_HOOKS: ReadonlySet<string> = new Set([
+export const NATIVE_LOWERED_HOOKS: ReadonlySet<string> = new Set([
   'useAppState', 'useAuth', 'useBiometrics', 'useClipboard', 'useColorScheme',
   'useDatabase', 'useFetch', 'useFilePicker', 'useForm', 'useGeolocation',
   'useHaptics', 'useImagePicker', 'useLinking', 'useLoaderData', 'useMap',
@@ -4138,6 +4138,15 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
         `Declaration ${name}: useFetch url argument must be a string literal; got ${urlArg?.type ?? 'nothing'}.`,
       )
       return null
+    }
+    // No generic -> TypeIR `unknown` -> Swift emits `decode(Any.self, ...)`,
+    // which does NOT compile: `Any` cannot conform to Decodable. Kotlin is
+    // unaffected, so this is a Swift-only silent break, and the device-proven
+    // examples all use the typed form -- which is why nothing caught it.
+    if (type.kind === 'unknown') {
+      ctx.warnings.push(
+        `Declaration ${name}: useFetch without a response type lowers to decode(Any.self, ...) on Swift, which does NOT compile - Any cannot conform to Decodable. Give it the shape you expect: useFetch<Response>('${urlArg.value}') with a type/interface declared alongside the component. Kotlin compiles either way, so this breaks iOS only.`,
+      )
     }
     return { kind: 'fetch', name, type, url: urlArg.value }
   }

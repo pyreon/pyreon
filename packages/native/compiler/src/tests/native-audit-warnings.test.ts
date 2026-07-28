@@ -448,7 +448,16 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
         `,
         { target: 'kotlin' },
       )
-      expect(result.warnings.some((w) => w.includes('useFetch'))).toBe(false)
+      // Narrowed to the DESTRUCTURE warning — the invariant this baseline
+      // actually protects, and what its sibling above already asserts. The
+      // broad `includes('useFetch')` form also matched an unrelated later
+      // diagnostic (the untyped-response warning: this fixture has no generic,
+      // so the Swift emit would decode into `Any`). That is a real, separate
+      // finding about this fixture, not a regression in the destructure arc —
+      // asserting "no useFetch warning of any kind" here over-claimed.
+      expect(
+        result.warnings.some((w) => w.includes('useFetch') && w.includes('destructure')),
+      ).toBe(false)
     })
 
     it('useParams destructure is EXCLUDED (its destructure form IS supported)', () => {
