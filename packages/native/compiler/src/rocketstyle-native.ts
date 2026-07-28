@@ -160,7 +160,27 @@ function dimensionMap(
     if ((p.type !== 'Property' && p.type !== 'ObjectProperty') || p.computed) continue
     const valueName = p.key?.name ?? p.key?.value
     if (typeof valueName !== 'string') continue
-    out[valueName] = objectExprToStyleObject(unwrap(p.value), compName, `${dim}.${valueName}`, warnings, theme)
+    const value = unwrap(p.value)
+    // `.sizes({ small: () => ({ width: 120 }) })` — the object-of-FUNCTIONS
+    // form. rocketstyle wants a callback returning the whole map
+    // (`.sizes((t) => ({ small: { … } }))`); the per-value function shape reads
+    // just as naturally and produces an EMPTY dimension theme, on web as well
+    // as native.
+    //
+    // Until now that was silent on both counts: `objectExprToStyleObject`
+    // returns `{}` for anything that is not an object literal, so the emit
+    // dropped every style under the dimension and reported nothing. A
+    // `size="large"` app compiled, ran, and rendered unstyled — the exact
+    // failure mode the PMTC arc has been converting into named warnings.
+    if (value && (value.type === 'ArrowFunctionExpression' || value.type === 'FunctionExpression')) {
+      warnings.push(
+        `Component ${compName}: .${dim}s() value '${valueName}' is a FUNCTION, so its styles were DROPPED ` +
+          `(empty dimension theme). rocketstyle takes ONE callback returning the whole map — ` +
+          `.${dim}s((t) => ({ ${valueName}: { … } })) — not an object of per-value functions.`,
+      )
+      continue
+    }
+    out[valueName] = objectExprToStyleObject(value, compName, `${dim}.${valueName}`, warnings, theme)
   }
   return out
 }
