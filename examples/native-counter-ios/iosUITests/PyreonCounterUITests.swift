@@ -56,6 +56,55 @@ final class PyreonCounterUITests: XCTestCase {
         XCUIApplication().terminate()
     }
 
+    /// Maps/geolocation — a BEHAVIORAL proof, not a does-not-crash one.
+    ///
+    /// The Simulator is pre-granted location permission and fed a fixed
+    /// coordinate by the runner before launch (`simctl privacy … grant
+    /// location` + `simctl location … set`), so this is deterministic: no
+    /// permission dialog, no waiting on real GPS.
+    ///
+    /// Asserting the RENDERED coordinate is what makes it behavioral. It
+    /// proves the whole chain executed on-device — the tap started a real
+    /// CLLocationManager watch, CoreLocation delivered the fix, the
+    /// @Observable container updated, and SwiftUI re-rendered the text. The
+    /// biometric gate's denied-path assertion only shows an async handler
+    /// completing; this shows a platform service actually feeding the UI.
+    ///
+    /// It also pins the optional-render fix: before it, an interpolated
+    /// `Double?` rendered "Optional(37.3349)". The exact-prefix assertion below
+    /// fails against that, so this test would catch a regression of it too.
+    func test_geolocationFixRendersCoordinate() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        let label = app.staticTexts["geo-lat"]
+        XCTAssertTrue(
+            label.waitForExistence(timeout: 10),
+            "geo-lat text never appeared — the geolocation container did not render"
+        )
+        // Before any fix the optional is empty, NOT "Optional(nil)" / "nil".
+        XCTAssertEqual(
+            label.label, "Geo: ",
+            "expected an empty coordinate before start(); got \(label.label)"
+        )
+
+        app.buttons["Locate"].tap()
+
+        // The injected latitude is 37.3349 (see scripts/run-device-tests.sh).
+        let updated = NSPredicate(format: "label BEGINSWITH %@", "Geo: 37.33")
+        expectation(for: updated, evaluatedWith: label, handler: nil)
+        waitForExpectations(timeout: 20) { error in
+            XCTAssertNil(
+                error,
+                """
+                geo-lat never showed the injected coordinate (last: \(label.label)).
+                A value of "Geo: Optional(37.3349)" means the optional-render fix
+                regressed; an unchanged "Geo: " means the watch never delivered a fix.
+                """
+            )
+        }
+    }
+
     func test_appLaunchesAndIncrementsCounter() throws {
         let app = XCUIApplication()
         app.launch()

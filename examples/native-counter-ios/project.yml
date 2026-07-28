@@ -101,6 +101,15 @@ targets:
         CFBundleShortVersionString: 0.0.1
         CFBundleVersion: '1'
         LSRequiresIPhoneOS: true
+        # Required for useGeolocation. Without it iOS refuses the authorization
+        # request SILENTLY — no prompt, no error, the watch simply never
+        # produces a fix. NOTE this list recreates Info.plist 1:1 because
+        # xcodegen's default merge STRIPS fields it does not know about, so a
+        # usage description added to the plist directly would be erased on the
+        # next `xcodegen generate`.
+        NSLocationWhenInUseUsageDescription: >-
+          Pyreon's counter sample reads your location to demonstrate the
+          shared useGeolocation hook across web, iOS and Android.
         # iOS 13+ SceneDelegate manifest. SwiftUI-only apps still need
         # this (the @main App protocol uses the Scene API internally).
         UIApplicationSceneManifest:

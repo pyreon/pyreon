@@ -14,6 +14,7 @@ import {
   useLinking,
   useNotifications,
   useBiometrics,
+  useGeolocation,
   useImagePicker,
   useFilePicker,
   useSizeClass,
@@ -134,6 +135,13 @@ export function Counter() {
   // FragmentActivity is a tracked follow-up). Web: feature-detects
   // `PublicKeyCredential`, resolves false (WebAuthn ceremony needs a server).
   const bio = useBiometrics()
+  // Maps/geolocation device proof. The shared-code chain this depends on took
+  // three fixes: the web half did not exist at all (the import did not
+  // resolve), Kotlin's `start` took a host closure so `geo.start()` did not
+  // build on Android, and an optional field interpolated raw rendered
+  // `Optional(37.3349)` instead of the value. All three had to land before a
+  // single line of this could be written.
+  const geo = useGeolocation()
   // M3.4 platform-API proof — the system photo picker. `pick()` returns a
   // Promise<string | null> (a URI, or null when cancelled), so the Pick Photo
   // handler is `async` and rides the same M4.5 `await` lowering as the
@@ -256,6 +264,7 @@ export function Counter() {
       <Text>Power: {power()}</Text>
       <Text>Notes: {noteCount()}</Text>
       <Text>Lock: {lockStatus()}</Text>
+      <Text data-testid="geo-lat">Geo: {geo.latitude}</Text>
       <Text>Photo: {photoStatus()}</Text>
       <Text>File: {fileStatus()}</Text>
       {/* M2.2b adaptive-layout proof — a size-class-driven ternary between
@@ -289,6 +298,15 @@ export function Counter() {
       <Button onClick={() => share.url('https://pyreon.dev')}>Share</Button>
       <Button onClick={() => linking.openUrl('https://pyreon.dev')}>Open</Button>
       <Button onClick={() => notifs.notify('Pyreon', 'A local notification')}>Notify</Button>
+      {/* Maps/geolocation device proof. Tapping this starts a real
+          CLLocationManager watch; the Simulator is pre-granted permission and
+          fed a fixed coordinate via `simctl location`, so the assertion is
+          deterministic — the rendered text flips from "Geo: " to the injected
+          latitude, proving the watch started, CoreLocation delivered a fix, the
+          @Observable container updated, and SwiftUI re-rendered. That is a
+          stronger claim than the biometric gate's denied-path proof, which only
+          shows an async handler completing. */}
+      <Button onClick={() => geo.start()}>Locate</Button>
       {/* Ids are derived from the current count rather than a clock, so the
           sequence is deterministic across a relaunch and an upsert can never
           silently collapse two taps into one record. */}
