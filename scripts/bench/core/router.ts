@@ -51,34 +51,43 @@
  *   bun scripts/bench/core/router.ts --cell K   # internal worker mode
  */
 
-// Force production before the framework dev gates are EVALUATED.
+// SELF-RE-EXEC so NODE_ENV=production is in the ENVIRONMENT before any module
+// evaluates.
 //
-// CAVEAT: ESM HOISTS static imports above every top-level statement, so this
-// assignment runs AFTER the imports below evaluate — it does NOT beat them.
-// It works here only because every library benched in this file reads
-// NODE_ENV at CALL time (Pyreon's `process.env.NODE_ENV !== 'production'`
-// gates live inside functions), not at module-init. Verified empirically:
-// numbers are identical with NODE_ENV pre-set in the environment.
+// A top-level `process.env.NODE_ENV = 'production'` does NOT work here: ESM
+// hoists static imports above every statement, so the assignment runs after
+// the libraries have already loaded. That was previously documented as safe on
+// the grounds that every library here reads NODE_ENV at CALL time — but
+// `vue-router` does not: its shipped code references `process.env.NODE_ENV` in
+// 11 files and it ships development/production export conditions, so it was
+// being benchmarked in its DEV build. That biases the comparison in our
+// favour, which is the one direction that must never be left standing.
 //
-// A library that selects its build at MODULE-INIT (react-dom is the known
-// case) would silently load its DEV build here. If you add one, switch this
-// file to the self-re-exec guard + dynamic imports used by
-// `ssr-crossframework.ts` and `runtime-server.ts`.
-process.env.NODE_ENV = 'production'
-import {
+// The re-exec is the only form that beats hoisting; value imports below are
+// DYNAMIC so they evaluate only in the prod-env child.
+if (process.env.NODE_ENV !== 'production') {
+  const child = Bun.spawnSync(['bun', import.meta.path, ...process.argv.slice(2)], {
+    env: { ...process.env, NODE_ENV: 'production' },
+    stdio: ['inherit', 'inherit', 'inherit'],
+  })
+  process.exit(child.exitCode ?? 0)
+}
+
+import type { RouteRecord } from '../../../packages/core/router/src/types'
+
+const {
   createRootRoute,
   createRoute,
-  createMemoryHistory as createTanStackHistory,
-  createRouter as createTanStackRouter,
-} from '@tanstack/react-router'
-import FindMyWay from 'find-my-way'
-import { Hono } from 'hono'
-import { match as ptrMatch } from 'next/dist/compiled/path-to-regexp'
-import { createRouter as createRadix3 } from 'radix3'
-import { matchRoutes } from 'react-router'
-import { createMemoryHistory, createRouter as createVueRouter } from 'vue-router'
-import { resolveRoute } from '../../../packages/core/router/src/match'
-import type { RouteRecord } from '../../../packages/core/router/src/types'
+  createMemoryHistory: createTanStackHistory,
+  createRouter: createTanStackRouter,
+} = await import('@tanstack/react-router')
+const FindMyWay = (await import('find-my-way')).default
+const { Hono } = await import('hono')
+const { match: ptrMatch } = await import('next/dist/compiled/path-to-regexp')
+const { createRouter: createRadix3 } = await import('radix3')
+const { matchRoutes } = await import('react-router')
+const { createMemoryHistory, createRouter: createVueRouter } = await import('vue-router')
+const { resolveRoute } = await import('../../../packages/core/router/src/match')
 
 // ─── Route tables (shared across all routers) ─────────────────────────────────
 
