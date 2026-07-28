@@ -246,6 +246,25 @@ export function registerBuiltinPanels(): void {
 
           <C.CtrlRow>
             <C.CtrlHead>
+              <C.CtrlLabel>Pseudo-locale</C.CtrlLabel>
+              <C.CtrlType>i18n stress</C.CtrlType>
+            </C.CtrlHead>
+            {/* Sits beside the locale switcher because they answer adjacent
+                questions: that one changes writing DIRECTION, this one changes
+                every string's LENGTH. German and Finnish routinely run 30-40%
+                longer than English, and the layout that clips there clips here
+                — without translating anything. */}
+            <C.Switch
+              data-testid="pseudo-locale-toggle"
+              state={() => (m.pseudoLocale() ? 'on' : 'off')}
+              onClick={() => m.pseudoLocale.set(!m.pseudoLocale())}
+            >
+              <C.Knob state={() => (m.pseudoLocale() ? 'on' : 'off')} />
+            </C.Switch>
+          </C.CtrlRow>
+
+          <C.CtrlRow>
+            <C.CtrlHead>
               <C.CtrlLabel>Outline</C.CtrlLabel>
               <C.CtrlType>layout debug</C.CtrlType>
             </C.CtrlHead>
