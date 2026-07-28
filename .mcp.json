@@ -1,8 +1,11 @@
 {
   "mcpServers": {
     "pyreon": {
-      "command": "node",
-      "args": ["packages/tools/mcp/lib/index.js"]
+      "command": "bash",
+      "args": [
+        "-c",
+        "exec node \"${CLAUDE_PROJECT_DIR:-.}/packages/tools/mcp/lib/index.js\""
+      ]
     }
   }
 }
