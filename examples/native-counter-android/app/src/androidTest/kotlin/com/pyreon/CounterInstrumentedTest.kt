@@ -30,8 +30,10 @@
 
 package com.pyreon
 
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -101,6 +103,46 @@ class CounterInstrumentedTest {
     // DIFFERENTIATING: the rendered node must read the configured-locale ('de')
     // value "Greeting: Hallo!" — proving PyreonI18n.t resolved messages["de"]
     // ["hello"] (NOT the raw key "hello", NOT the English "Hello!").
+    // useDatabase — the WRITE path, proven to RUN on an emulator.
+    //
+    // `db.insert(collection, { id, fields })` did not compile on EITHER target
+    // until 2026-07: the object literal lowered to an anonymous shape rather
+    // than a `PyreonRecord` (`(id = "1", fields = __Obj0(...))`, which is not
+    // even a valid Kotlin expression). `insert` is the only way to get data
+    // into the store, so nothing downstream of it was reachable.
+    //
+    // Tapping Save Note therefore exercises the whole Android chain at once:
+    // the emit compiles, `PyreonDatabase(LocalContext.current)` resolved a real
+    // file-backed store, the record landed, and `db.count` read it back.
+    //
+    // RELATIVE to the count at launch, never absolute: the app's `filesDir`
+    // survives between tests in a run, so the store legitimately accumulates.
+    // An absolute `Notes: 1` would pass once and fail forever after.
+    //
+    // HONEST SCOPE — this is NOT the iOS assertion's equal. The iOS XCUITest
+    // terminates the app and relaunches it, so it proves the record outlives
+    // the PROCESS. A Compose instrumented test runs in-process and cannot;
+    // proving process death on Android needs UiAutomator (`am force-stop` +
+    // relaunch) and is a tracked follow-up. What this proves is the write path,
+    // which is exactly the part that never compiled.
+    @Test
+    fun databaseInsertLandsOnDevice() {
+        val notesNode = composeRule.onNode(hasText("Notes: ", substring = true))
+        notesNode.assertIsDisplayed()
+
+        val label = notesNode
+            .fetchSemanticsNode()
+            .config[SemanticsProperties.Text]
+            .first()
+            .text
+        val before = label.removePrefix("Notes: ").trim().toInt()
+
+        composeRule.onNodeWithText("Save Note").performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("Notes: ${before + 1}").assertIsDisplayed()
+    }
+
     @Test
     fun i18nTranslatedStringRendersConfiguredLocale() {
         composeRule.onNodeWithText("Greeting: Hallo!").assertIsDisplayed()

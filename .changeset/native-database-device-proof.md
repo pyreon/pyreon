@@ -18,6 +18,13 @@ keeps the app container between test runs, so the store legitimately
 accumulates records. An absolute `Notes: 1` would pass once and fail forever
 after — the classic way a persistence test gets deleted instead of fixed.
 
-Matrix: Storage 0.3 → 0.45, headline ≈52% → ≈53%. Android is NOT
-device-asserted — its emit and persistence are unit-proven only — and that is
-stated in the row rather than rounded away.
+The Android counter compiles from the SAME shared source, so its instrumented
+test asserts the WRITE path on an emulator: tap → the rendered count advances,
+proving the emit compiles, `PyreonDatabase(LocalContext.current)` resolved a
+real file-backed store, the record landed, and `db.count` read it back. That is
+the half that never compiled. It is NOT the iOS assertion's equal — a Compose
+test runs in-process and cannot terminate the app, so process-death survival on
+Android needs UiAutomator and stays a tracked follow-up.
+
+Matrix: Storage 0.3 → 0.45, headline ≈52% → ≈53%, with the Android scope
+written into the row rather than rounded away.
