@@ -110,7 +110,7 @@
     "@changesets/changelog-github": "^0.7.0",
     "@changesets/cli": "^2.31.1",
     "@emotion/css": "^11.13.5",
-    "@playwright/test": "^1.62.0",
+    "@playwright/test": "1.61.1",
     "@preact/signals-core": "^1.14.4",
     "@pyreon/playwright-config": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
@@ -138,7 +138,7 @@
     "oxc-transform": "^0.140.0",
     "oxfmt": "^0.61.0",
     "oxlint": "^1.76.0",
-    "playwright": "^1.62.0",
+    "playwright": "1.61.1",
     "preact": "^10.29.7",
     "preact-render-to-string": "^6.7.0",
     "radix3": "^1.1.2",
@@ -161,7 +161,9 @@
     "@tanstack/virtual-core": "3.17.4",
     "zod": "4.4.3",
     "@codemirror/state": "6.7.1",
-    "vite": "8.0.16"
+    "vite": "8.0.16",
+    "playwright": "1.61.1",
+    "@playwright/test": "1.61.1"
   },
   "dependencies": {
     "@tanstack/query-core": "^5.101.2",
