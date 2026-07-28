@@ -759,6 +759,16 @@ const WEB_ONLY_PACKAGES = new Set([
   '@pyreon/toast',
   '@pyreon/table',
   '@pyreon/virtual',
+  // Both were MISSING and failed both targets with no diagnostic at all —
+  // `syncedSignal(...)` and `createRichTextEditor(...)` emitted verbatim and
+  // died with "cannot find ... in scope", while @pyreon/table right above them
+  // warned properly.
+  //
+  // @pyreon/sync is web-only by architecture: the Yjs engine plus the
+  // IndexedDB / WebSocket transports have no native runtime. @pyreon/rich-text
+  // wraps TipTap/ProseMirror, which is DOM-based.
+  '@pyreon/sync',
+  '@pyreon/rich-text',
 ])
 
 /**
