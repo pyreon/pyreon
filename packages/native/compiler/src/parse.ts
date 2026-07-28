@@ -4105,6 +4105,21 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     return { kind: 'router-hook', name, hook: 'navigate' }
   }
   if (calleeName === 'useParams') {
+    // The WHOLE-OBJECT form. It lowers to a `[String: String]` / `Map`, so the
+    // natural JS follow-up — `p.id` — emits `p.id`, which is not how a Swift
+    // dictionary or a Kotlin map is read. That failed on BOTH targets with no
+    // diagnostic, while the destructured form
+    // (`const { id } = useParams()` → `useParams(router:)["id"] ?? ""`)
+    // works on both and handles the Optional.
+    //
+    // Warn rather than rewrite `.id` → `["id"]`: member access is emitted from
+    // everywhere, and narrowing a codegen rewrite to exactly this binding is a
+    // change that wants the full suite green to land safely. The destructure is
+    // already the supported, idiomatic shape — pointing at it costs the author
+    // one line and nothing in correctness.
+    ctx.warnings.push(
+      `const ${name} = useParams() lowers to a native dictionary/map, so a property read like \`${name}.id\` emits \`${name}.id\` and does NOT compile on either target. Destructure instead — \`const { id } = useParams()\` — which lowers per key (\`useParams(router:)["id"] ?? ""\`) and works on both.`,
+    )
     return { kind: 'router-hook', name, hook: 'params' }
   }
   // Phase 4 — `useFetch<T>('/url')`. The decoded result type comes from
