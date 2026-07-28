@@ -481,6 +481,10 @@ object Modifier {
   // import; this stub mirrors the real surface so the kotlinc validate gate
   // resolves it without the import, like verticalScroll above).
   fun animateContentSize(): Modifier = this
+  // combinedClickable — what <Press onLongPress> lowers to. Device-proven
+  // (M2.3) yet un-type-checked: same class as AnimatedVisibility, found the
+  // same way, by validating a whole app rather than a single-hook fixture.
+  fun combinedClickable(onClick: () -> Unit, onLongClick: (() -> Unit)? = null): Modifier = this
   @Suppress("UNUSED_PARAMETER")
   fun weight(weight: Float): Modifier = this
   // coolgrid Col fractional span maps to fillMaxWidth(size/12f). Real Compose
@@ -829,6 +833,56 @@ class CoroutineScope {
 }
 @Composable
 fun rememberCoroutineScope(): CoroutineScope = CoroutineScope()
+
+// PyreonClipboard — useClipboard() lowers to
+// PyreonClipboard(LocalContext.current, rememberCoroutineScope()).
+// Mirrors the real two-arg constructor and read-only 'copied'; a
+// settable stub would let an emit that assigns to it typecheck here
+// and fail against the real runtime.
+// AnimatedVisibility — what <Transition show> lowers to
+// (emit-kotlin.ts:4385). Device-proven on both platforms, yet a <Transition>
+// app could not be Kotlin-type-checked because the type was absent: found by
+// running the counter app's FULL emit through validateKotlin rather than a
+// single-hook fixture.
+//
+// Note for the stub-coverage ratchet: it scans Pyreon* names, so a missing
+// COMPOSE/SwiftUI API like this one is outside what it can see. Whole-app
+// validation is what catches that class.
+@Composable
+fun AnimatedVisibility(visible: Boolean, content: @Composable () -> Unit) {}
+
+// PyreonHaptics — useHaptics() lowers to
+// PyreonHaptics(LocalHapticFeedback.current). The CompositionLocal and its
+// type both have to exist or the hoisted line cannot resolve.
+class HapticFeedback
+object LocalHapticFeedback {
+  val current: HapticFeedback @Composable get() = HapticFeedback()
+}
+class PyreonHaptics(haptic: HapticFeedback) {
+  fun impact(style: String = "medium") {}
+  fun notification(type: String) {}
+  fun selection() {}
+}
+// PyreonLinking / PyreonNotifications / PyreonShare — all Context-constructed,
+// mirroring the real single-argument constructors.
+class PyreonLinking(context: Context) {
+  fun openUrl(url: String) {}
+}
+class PyreonNotifications(context: Context) {
+  fun requestPermission() {}
+  fun notify(title: String, body: String) {}
+}
+class PyreonShare(context: Context) {
+  fun text(text: String) {}
+  fun url(url: String) {}
+  fun textUrl(text: String, url: String) {}
+  fun canShare(): Boolean = true
+}
+class PyreonClipboard(context: Context, scope: CoroutineScope) {
+  val copied: Boolean get() = false
+  fun copy(text: String) {}
+  fun reset() {}
+}
 
 // M3.5: authenticate is a suspend fun — awaited inside pyreonAsyncScope.launch { }.
 class PyreonBiometrics {
