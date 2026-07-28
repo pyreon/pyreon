@@ -830,6 +830,17 @@ class CoroutineScope {
 @Composable
 fun rememberCoroutineScope(): CoroutineScope = CoroutineScope()
 
+// PyreonClipboard — useClipboard() lowers to
+// PyreonClipboard(LocalContext.current, rememberCoroutineScope()).
+// Mirrors the real two-arg constructor and read-only 'copied'; a
+// settable stub would let an emit that assigns to it typecheck here
+// and fail against the real runtime.
+class PyreonClipboard(context: Context, scope: CoroutineScope) {
+  val copied: Boolean get() = false
+  fun copy(text: String) {}
+  fun reset() {}
+}
+
 // M3.5: authenticate is a suspend fun — awaited inside pyreonAsyncScope.launch { }.
 class PyreonBiometrics {
   suspend fun authenticate(reason: String): Boolean = false

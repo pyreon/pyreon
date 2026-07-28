@@ -221,6 +221,12 @@ public enum ImageScale { case small, medium, large }
 
 // ---- PyreonRuntime ----
 public struct PyreonHaptics { public init() {}; public func impact(_ style: String) {} }
+public final class PyreonClipboard {
+  public private(set) var copied: Bool = false
+  public init() {}
+  public func copy(_ text: String) {}
+  public func reset() {}
+}
 public struct PyreonShare { public init() {}; public func url(_ u: String) {} }
 public struct PyreonLinking { public init() {}; public func openUrl(_ u: String) {} }
 public struct PyreonNotifications { public init() {}; public func notify(_ title: String, _ body: String) {} }
