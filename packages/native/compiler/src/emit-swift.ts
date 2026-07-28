@@ -3072,6 +3072,47 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           .join(', ')
         return `${swiftIdent(e.callee.object.name)}.t(${keyArg}, [${entries}])`
       }
+      // PyreonDatabase RECORD literals. `db.insert('todos', { id, fields })`
+      // is the primary write, and the object literal was lowered by the
+      // generic path into an anonymous TUPLE — `(id: "1", fields: __Obj0(...))`
+      // — which is not a `PyreonRecord`, so the call never compiled. `insert`
+      // is the only way to get data in, which is why no gated app has ever
+      // rendered FROM the database.
+      //
+      // `swiftc -parse` waves it through (a tuple is syntactically fine), so
+      // this needed the type gate to see, exactly like the argument labels
+      // below. Field values are emitted AS WRITTEN: `fields` is
+      // `[String: String]`, and silently wrapping a number in `String(...)`
+      // would hide a real mistake behind a coercion.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _databaseNames.has(e.callee.object.name) &&
+        e.callee.property === 'insert' &&
+        e.args.length === 2 &&
+        e.args[1]?.kind === 'object'
+      ) {
+        const lit = e.args[1] as Extract<ExprIR, { kind: 'object' }>
+        const idField = lit.fields.find((f) => f.name === 'id')
+        const fieldsField = lit.fields.find((f) => f.name === 'fields')
+        const unknown = lit.fields.filter((f) => f.name !== 'id' && f.name !== 'fields')
+        if (idField && unknown.length === 0) {
+          const parts = [`id: ${emitSwiftExpr(idField.value, indent)}`]
+          if (fieldsField) {
+            if (fieldsField.value.kind === 'object') {
+              const entries = fieldsField.value.fields
+                .map((f) => `${JSON.stringify(f.name)}: ${emitSwiftExpr(f.value, indent)}`)
+                .join(', ')
+              parts.push(`fields: [${entries === '' ? ':' : entries}]`)
+            } else {
+              // A variable holding the dictionary — pass it through.
+              parts.push(`fields: ${emitSwiftExpr(fieldsField.value, indent)}`)
+            }
+          }
+          const collection = emitSwiftExpr(e.args[0]!, indent)
+          return `${swiftIdent(e.callee.object.name)}.insert(${collection}, PyreonRecord(${parts.join(', ')}))`
+        }
+      }
       // PyreonDatabase argument labels. The shared TS surface is positional
       // (`db.delete('tx', id)`), but Swift API-design convention gives the
       // runtime labelled arguments (`delete(_ collection: String, id: String)`).

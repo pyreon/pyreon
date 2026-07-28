@@ -38,6 +38,15 @@ previously did not), and Kotlin's `PyreonDatabase()` no longer exists — pass a
 `Context`, an `InMemoryDatabaseBackend()`, or your own backend. Tests that
 want no filesystem should pass `InMemoryDatabaseBackend()` explicitly.
 
+And `db.insert(collection, { id, fields })` — the primary write, and the only
+way to get data into the store — never compiled on EITHER target. The generic
+object-literal path lowered the record to an anonymous tuple
+(`(id: "1", fields: __Obj0(...))` in Swift, a not-even-valid `(id = ...)` in
+Kotlin), with zero warnings. It now lowers to a real `PyreonRecord`. That
+explains the ordering of this capability's three defects: `insert` being
+uncompilable made everything downstream unreachable, so "no gated app renders
+FROM the database" had a cause rather than being an absence of effort.
+
 Also closes a gate hole the fix itself walked into: the codec was first named
 `PyreonJson`, which already existed for the WebView bridge. Every native app
 compiles the whole runtime source set as ONE Gradle module, so that is a hard
