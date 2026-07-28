@@ -562,3 +562,35 @@ test.describe('Roles panel — permission sets', () => {
     await expect(page.getByTestId('perm-unguarded')).toBeVisible()
   })
 })
+
+/**
+ * Data panel — the four query states, without a network.
+ *
+ * Asserts the PREVIEW changes per state, not just the panel. In particular the
+ * refetching case, which hand-written stories routinely model as
+ * loading-with-no-data and therefore never exercise.
+ */
+test('data panel drives all four query states in the preview', async ({ browser }) => {
+  const page = await open(browser)
+  await page.getByRole('button', { name: 'Project list' }).click()
+  await page.getByTestId('addon-tab-data').click()
+  const preview = page.locator('[data-testid="canvas-preview"]')
+
+  await page.getByTestId('query-loading').click()
+  await expect(preview).toContainText('Loading')
+  await expect(preview).not.toContainText('Alpha')
+
+  await page.getByTestId('query-error').click()
+  await expect(preview).toContainText('Could not load projects')
+
+  await page.getByTestId('query-success').click()
+  await expect(preview).toContainText('Alpha')
+  await expect(preview).not.toContainText('Refreshing')
+
+  // The case that matters: stale data STAYS while a request is in flight.
+  await page.getByTestId('query-refetching').click()
+  await expect(preview).toContainText('Alpha')
+  await expect(preview).toContainText('Refreshing')
+  // and the panel states why isLoading is false here
+  await expect(page.getByTestId('query-note')).toBeVisible()
+})
