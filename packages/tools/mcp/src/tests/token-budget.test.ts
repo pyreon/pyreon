@@ -46,15 +46,36 @@ async function callText(client: Client, name: string, args: Record<string, unkno
 }
 
 describe('MCP token budgets', () => {
-  it('tools/list payload stays under 1,400 tokens (per-session tax)', async () => {
+  it('tools/list stays DENSE — a per-tool budget, not an absolute ceiling', async () => {
     await withServer(async (client) => {
       const list = await client.listTools()
-      const t = tok(JSON.stringify(list))
-      // 16 tools now: `explain_reactivity` (~90) + `migrate_pyreon` (~2 small
-      // string params, lean) both added over the prior 14-tool ≈1,228 baseline.
-      // Ceiling still catches a verbose-`.describe()` regression (each long
-      // prose description is ~150-280 tokens — would blow this immediately).
-      expect(t).toBeLessThan(1500)
+      const tools = list.tools
+      const total = tok(JSON.stringify(list))
+
+      // HISTORY / WHY THIS SHAPE. This was an absolute ceiling (1,400 → 1,500),
+      // which couples the gate to TOOL COUNT: every legitimate new tool trips
+      // CI and forces a manual bump, and the bump is indistinguishable from
+      // waving through real verbosity. That is the exact failure the
+      // `get_anti_patterns` budget below was redesigned away from — an
+      // absolute number gating something a PR does not control.
+      //
+      // Adding `get_atlas_catalog` + `get_atlas_component` (two LEAN tools,
+      // ~30 tokens each) pushed the total to 1,532 and tripped it. So the
+      // budget now gates what a PR actually controls — DENSITY — and scales
+      // with legitimate growth:
+      //   • average tokens/tool — catches systematic verbosity creep
+      //   • max single tool — catches ONE bloated `.describe()`, which is the
+      //     regression the original ceiling was really aiming at (a long prose
+      //     description is ~150-280 tokens on its own)
+      const perTool = tools.map((t) => tok(JSON.stringify(t)))
+      const avg = total / tools.length
+      const max = Math.max(...perTool)
+
+      expect(tools.length, 'sanity: tools are actually registered').toBeGreaterThan(10)
+      // measured ~85 avg across 18 tools; cap ≈ 25% headroom
+      expect(avg, `avg tokens/tool too high (${Math.round(avg)})`).toBeLessThan(110)
+      // measured max ~190; a 280-token prose description fails this
+      expect(max, `one tool's schema is bloated (${max} tokens)`).toBeLessThan(250)
     })
   })
 

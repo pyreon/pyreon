@@ -27,6 +27,8 @@ describe('gen-docs — mcp snapshot', () => {
       'mcp/explain_reactivity',
       'mcp/get_anti_patterns',
       'mcp/get_api',
+      'mcp/get_atlas_catalog',
+      'mcp/get_atlas_component',
       'mcp/get_browser_smoke_status',
       'mcp/get_changelog',
       'mcp/get_components',
