@@ -431,3 +431,35 @@ test.describe('Reactivity panel — reactive coverage', () => {
     expect(Number(match![2]), 'the graph must have nodes to measure').toBeGreaterThan(0)
   })
 })
+
+/**
+ * "Why did this update?" — the inverse of React DevTools' whole-component
+ * answer. Asserts the chain NAMES a node, not merely that a panel renders.
+ */
+test.describe('Why panel — causal chains', () => {
+  test('names the chain behind a real interaction', async ({ browser }) => {
+    const page = await open(browser)
+    await page.getByTestId('addon-tab-why').click()
+
+    // A dev build, so chains ARE reconstructable — the unavailable notice here
+    // would mean the panel misreads its own environment.
+    await expect(page.getByTestId('why-unavailable')).toHaveCount(0)
+
+    // Cause real reactivity, then refresh the candidate list.
+    await page.getByTestId('addon-tab-canvas').click()
+    await page.getByTestId('viewport-tablet').click()
+    await page.getByTestId('background-dark').click().catch(() => {})
+    await page.getByTestId('addon-tab-why').click()
+    await page.getByTestId('why-refresh').click()
+
+    // At least one node fired and is offered for explanation.
+    const nodes = page.locator('[data-testid^="why-node-"]')
+    await expect(nodes.first()).toBeVisible()
+
+    await nodes.first().click()
+    await expect(page.getByTestId('why-summary')).toHaveCount(1)
+    // The summary must make a real claim — origin or a hop count — not a blank.
+    await expect(page.getByTestId('why-summary')).toContainText(/updated because|IS the origin/)
+    await expect(page.locator('[data-testid="why-step"]').first()).toBeVisible()
+  })
+})

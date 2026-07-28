@@ -11,6 +11,7 @@ import type { WorkbenchModel } from '../model'
 import { getAddonPanels, sealAddonPanels } from '../panels'
 import { registerBuiltinPanels } from './builtin-panels'
 import { registerReactiveCoveragePanel } from './reactive-coverage-panel'
+import { registerUpdateCausePanel } from './update-cause-panel'
 
 // Registering at module scope keeps the built-ins available to anything that
 // imports the view, including tests that render it directly. `sealAddonPanels`
@@ -19,6 +20,7 @@ registerBuiltinPanels()
 // Registered THROUGH the seam rather than moved into it — the first panel that
 // proves a non-built-in can contribute UI.
 registerReactiveCoveragePanel()
+registerUpdateCausePanel()
 // Seal AFTER every ship-with-Atlas panel is registered — sealing inside
 // `registerBuiltinPanels` would have baselined only the four built-ins, so
 // `resetAddonPanels()` would silently drop the Reactivity tab.
