@@ -12,6 +12,12 @@
 # Usage: ./scripts/geo-device-test.sh [simulator-name]
 set -euo pipefail
 
+# NOTE: the env var MUST carry the TEST_RUNNER_ prefix. xcodebuild does not pass
+# the shell environment into the XCUITest runner process; it forwards only
+# TEST_RUNNER_-prefixed variables, stripping the prefix on the way in. A bare
+# `PYREON_GEO_FIX_INJECTED=1` silently SKIPS the test — verified, and it is how
+# this script shipped broken the first time.
+
 SIM_NAME="${1:-iPhone 17 Pro}"
 BUNDLE_ID="com.pyreon.PyreonCounter"
 LAT="37.3349"
@@ -47,7 +53,7 @@ xcrun simctl privacy "$UDID" grant location "$BUNDLE_ID" || \
 xcrun simctl location "$UDID" set "${LAT},${LON}"
 echo "injected ${LAT},${LON}"
 
-PYREON_GEO_FIX_INJECTED=1 xcodebuild test-without-building \
+TEST_RUNNER_PYREON_GEO_FIX_INJECTED=1 xcodebuild test-without-building \
   -project PyreonCounter.xcodeproj -scheme PyreonCounter \
   -destination "platform=iOS Simulator,id=$UDID" \
   -configuration Debug CODE_SIGNING_ALLOWED=NO

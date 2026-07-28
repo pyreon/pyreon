@@ -121,7 +121,7 @@ final class PyreonCounterUITests: XCTestCase {
         // which is what this was for three rounds.
         try XCTSkipUnless(
             ProcessInfo.processInfo.environment["PYREON_GEO_FIX_INJECTED"] == "1",
-            "coordinate assertion needs an injected fix + granted permission; run scripts/geo-device-test.sh"
+            "coordinate assertion needs an injected fix + granted permission; run scripts/geo-device-test.sh (it passes TEST_RUNNER_PYREON_GEO_FIX_INJECTED — a bare env var does NOT reach the runner)"
         )
 
         let app = XCUIApplication()
