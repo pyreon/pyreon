@@ -149,4 +149,16 @@ describe('a scaffolded app can be installed', () => {
       expect(isPrivateInWorkspace(d), `${d} must stay publishable`).toBe(false)
     }
   })
+
+  it('the scaffolded README states the native targets are not installable', () => {
+    // The check above records the defect; this asserts the USER is told. A
+    // scaffolder that emits instructions it knows cannot succeed is worse than
+    // one that says nothing, and the terminal notice scrolls away — the README
+    // is where someone looks ten minutes later.
+    const readme = files.find((f) => f.path === 'README.md')?.content ?? ''
+    expect(readme).toContain('not\n> published to npm yet')
+    expect(readme).toMatch(/npm install.+will fail/s)
+    // And it must name the WORKING path, not just the broken one.
+    expect(readme).toContain('Pyreon workspace')
+  })
 })

@@ -19,7 +19,15 @@ Nothing caught it. The scaffold-compile gate drives the WORKSPACE compiler
 directly, and the unit tests assert the emitted file list; neither asks whether
 the emitted package.json describes an installable app.
 
-This adds the check. It does not fix the cause: publishing those packages is a
+The scaffolder and the scaffolded README now SAY so — the terminal prints a
+notice after every scaffold, and the README leads with a status block naming
+what works (web), what does not (native), why (`npm install` 404s on the
+unpublished toolchain, and the compiler is private too so nothing can be
+vendored), and the path that does work (a workspace checkout). A scaffolder
+that prints instructions it knows cannot succeed is worse than one that says
+nothing.
+
+This also adds the check. It does not fix the cause: publishing those packages is a
 release decision, and they are private deliberately. So the five are listed
 explicitly, the list may only SHRINK, and what is enforced today is that no
 SIXTH unpublished dependency joins them silently — plus the converse, that the
