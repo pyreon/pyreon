@@ -42,8 +42,10 @@ The headline moves ≈52% → ≈51%, DOWN, because the same pass added a
 entirely. The whole `styled` / `elements` / `coolgrid` / `attrs` / rocketstyle /
 theme-token surface lowers to both targets and is documented as supported — yet
 had no row at all. Its fraction is 0.2, not 0: the rocketstyle-over-`Text`
-pattern with a reactive dimension flip IS device-asserted on both platforms
-(the counter's `StatusBadge`), while `styled()` / `Element` / `coolgrid` /
+pattern with a reactive dimension flip IS device-asserted on both platforms at
+the RE-RENDER level (the counter's `StatusBadge` flips `Badge:ok` →
+`Badge:warn`; the rendered COLOUR is NOT asserted — neither harness can read it,
+and those device tests say so explicitly rather than implying otherwise), while `styled()` / `Element` / `coolgrid` /
 `attrs` / `defineTheme` tokens / typography have no native example. Drafted as
 0.0 and corrected on review — that reading was true of this branch and false of
 main, where the badge had already landed; overstating a gap is as wrong as
