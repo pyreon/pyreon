@@ -67,6 +67,8 @@ A full, end-to-end usage of the package:
 | [`explain_error`](#explain-error) | constant | The rich-context sibling of `diagnose`. |
 | [`get_routes`](#get-routes) | constant | List every route in the current project — path, loader presence, guards, params, and named-route name. |
 | [`get_components`](#get-components) | constant | List every component in the current project with its props and signal usage. |
+| [`get_atlas_catalog`](#get-atlas-catalog) | constant | Serve the VERIFIED component catalog `atlas scan` writes (`atlas-catalog.json`) — every component with its real props, a |
+| [`get_atlas_component`](#get-atlas-component) | constant | Prescriptive usage for ONE catalogued component: required and optional props with their exact allowed values, which prop |
 | [`get_pattern`](#get-pattern) | constant | Fetch a canonical "how do I do X" pattern body from `docs/patterns/`. |
 | [`get_anti_patterns`](#get-anti-patterns) | constant | Browse the anti-patterns catalog from `.claude/rules/anti-patterns.md`, token-frugal by default. |
 | [`get_changelog`](#get-changelog) | constant | Recent release notes for any `@pyreon/*` package without scraping `git log`. |
@@ -383,6 +385,61 @@ get_components()
 - Calling outside a Pyreon project — same caveat as `get_routes`: returns empty if the scanner can't find a project root.
 
 **See also:** `get_routes`
+
+---
+
+### get_atlas_catalog `constant`
+
+```ts
+tool: get_atlas_catalog({ tag?: string }) → string
+```
+
+Serve the VERIFIED component catalog `atlas scan` writes (`atlas-catalog.json`) — every component with its real props, allowed values and scenario counts, read from your source rather than guessed. Filter with `tag`. Each line states how many scenarios are verified, failing and UNVERIFIED, because most Atlas checks are still stubs and a catalogued component is not automatically a checked one. With no catalog present the tool returns instructions to run `atlas scan` instead of an invented answer.
+
+**Example**
+
+```tsx
+get_atlas_catalog({})
+// → # Atlas catalog — 12 component(s) … scenarios: 2 (1 verified, 0 failing, 1 unverified)
+get_atlas_catalog({ tag: 'form' })
+// → only components tagged `form`
+```
+
+**Common mistakes**
+
+- Treating a catalogued component as a verified one — the counts on each line are the point. `unverified` means nothing examined that scenario; it is not a pass.
+- Calling it before `atlas scan` has run — the catalog is a build artifact, so the tool returns setup instructions rather than a stale or invented list.
+- Expecting per-prop detail here — the index is deliberately token-frugal. Use `get_atlas_component` for one component's exact prop values.
+
+**See also:** `get_atlas_component` · `get_api`
+
+---
+
+### get_atlas_component `constant`
+
+```ts
+tool: get_atlas_component({ name: string }) → string
+```
+
+Prescriptive usage for ONE catalogued component: required and optional props with their exact allowed values, which props are reactive (pass a signal accessor, not a value), a known-good example when a scenario has actually been VERIFIED, and `avoid:` lines for scenarios that genuinely failed a check. An unverified example is offered but labelled UNVERIFIED rather than presented as correct — the consumer of this answer cannot check it, so the claim has to be earned. Unknown names get near-match suggestions.
+
+**Example**
+
+```tsx
+get_atlas_component({ name: 'Button' })
+// → required: label(text)
+//   optional: state(primary|secondary)
+//   reactive (pass a signal accessor, not a value): onClick
+//   correct (verified): {"label":"Save"}
+```
+
+**Common mistakes**
+
+- Reading `example (UNVERIFIED …)` as a known-good example — it is args from a scenario nothing has checked. Only `correct (verified)` carries evidence.
+- Passing a resolved value to a prop listed as reactive — those take an accessor (`() => count()`), and passing the value captures it once.
+- Inventing a value for a prop whose allowed set is printed — `state(primary|secondary)` is the complete list for that component.
+
+**See also:** `get_atlas_catalog` · `validate`
 
 ---
 
