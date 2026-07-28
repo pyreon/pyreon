@@ -268,35 +268,21 @@ describe('WebSocket relay — cross-device sync', { timeout: TEST_TIMEOUT_MS }, 
       () => tb.disconnect(),
     )
 
+    // The NATURAL shape: both peers create their signal up front, each with its
+    // own `initial`. This used to fail ~50% of the time — peer B's default was
+    // causally concurrent with A's write and could win the random-clientId
+    // tie-break (#2519). Defaults now live in their own key space, so a default
+    // can never outrank real data and this converges deterministically.
     const sa = syncedSignal({ doc: a, key: 'k', initial: '' })
-
-    // Peer B's signal is created only AFTER A's value has reached B's doc, so B
-    // never seeds — and that is load-bearing, not tidiness.
-    //
-    // Both peers used to create the signal up front with `initial: ''`. Each
-    // one's create-if-missing seed defers to first sync (#2385) and then fires,
-    // so B's seed of `''` and A's later `set('authed')` are causally CONCURRENT
-    // whenever B has not yet received A's write. `Y.Map` breaks that tie on
-    // clientId, which Yjs assigns RANDOMLY — so roughly half the time B's `''`
-    // wins, `sb()` never becomes `'authed'`, and the tick-counted `waitFor`
-    // exhausts having run ~1000 times with the condition never true.
-    //
-    // Measured: 4 failures in 8 local runs before this change, 0 after.
-    //
-    // Awaiting `whenSynced()` does NOT fix it — the seed fires AT sync, so the
-    // race survives. Nor was it ever a budget problem: the deadline is
-    // tick-counted and self-extends under starvation, so exhausting it means
-    // the condition never converged. Two earlier timeouts on this file were
-    // attributed to the budget and "absorbed" by raising it; that only made the
-    // race rarer. See the product-level residual filed alongside this change.
-    await Promise.all([ta.whenSynced(), tb.whenSynced()])
-    sa.set('authed')
-
-    const bMap = b.getMap('pyreon')
-    await waitFor('the authorized peer to receive the update', () => bMap.get('k') === 'authed', { describe: () => `bMap.k=${JSON.stringify(bMap.get('k'))}` })
-
-    // Key already present → `syncedSignal` adopts it and skips the seed.
     const sb = syncedSignal({ doc: b, key: 'k', initial: '' })
+
+    await waitFor('both transports to connect', () => ta.connected && tb.connected, {
+      describe: () => `ta.connected=${ta.connected} tb.connected=${tb.connected}`,
+    })
+    sa.set('authed')
+    await waitFor('the peer to receive the authorized write', () => sb() === 'authed', {
+      describe: () => `sb=${JSON.stringify(sb())} (a default must never outrank it — #2519)`,
+    })
     expect(sb()).toBe('authed')
   })
 
@@ -354,16 +340,15 @@ describe('WebSocket relay — cross-device sync', { timeout: TEST_TIMEOUT_MS }, 
       () => tb.disconnect(),
     )
     const sa = syncedSignal({ doc: a, key: 'k', initial: '' })
-
-    // Same seed-vs-write race as the authorized-connection spec — B's signal is
-    // created only after A's value has landed, so B never seeds.
-    await Promise.all([ta.whenSynced(), tb.whenSynced()])
-    sa.set('over shared server')
-
-    const bMap = b.getMap('pyreon')
-    await waitFor('the update to cross the shared relay', () => bMap.get('k') === 'over shared server', { describe: () => `bMap.k=${JSON.stringify(bMap.get('k'))}` })
-
     const sb = syncedSignal({ doc: b, key: 'k', initial: '' })
+
+    await waitFor('both transports to connect', () => ta.connected && tb.connected, {
+      describe: () => `ta.connected=${ta.connected} tb.connected=${tb.connected}`,
+    })
+    sa.set('over shared server')
+    await waitFor('the peer to receive the write over the shared server', () => sb() === 'over shared server', {
+      describe: () => `sb=${JSON.stringify(sb())}`,
+    })
     expect(sb()).toBe('over shared server')
     // NOTE: this spec's earlier timeout (2026-07-13 main, #2148 window) was
     // attributed to the tick budget and "absorbed" by raising WAIT_BUDGET_MS.

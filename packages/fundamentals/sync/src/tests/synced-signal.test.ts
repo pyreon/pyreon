@@ -8,7 +8,10 @@ describe('syncedSignal — binding to a CRDT map entry', () => {
     const doc = new FakeCrdtDoc()
     const s = syncedSignal({ doc, key: 'title', initial: 'Untitled' })
     expect(s()).toBe('Untitled')
-    expect(doc.getMap('pyreon').get('title')).toBe('Untitled')
+    // The seed lands in the DEFAULTS key space so it can never outrank real
+    // data on a clientId tie-break (#2519); the signal reads it transparently.
+    expect(doc.getMap('pyreon:defaults').get('title')).toBe('Untitled')
+    expect(doc.getMap('pyreon').has('title'), 'a default is NOT real data').toBe(false)
   })
 
   it('uses the EXISTING CRDT value when the key is present — initial is ignored', () => {

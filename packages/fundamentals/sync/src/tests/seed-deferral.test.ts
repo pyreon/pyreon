@@ -125,14 +125,16 @@ describe('#2380 — syncedSignal defers its seed until first sync', () => {
     const s = syncedSignal({ doc, key: 'title', initial: 'draft' })
     disposers.push(s.dispose, t.detach)
 
-    // Optimistic read shows `initial`, but the CRDT has NOT been written yet.
+    // Optimistic read shows `initial`, but NOTHING has been written yet.
     expect(s()).toBe('draft')
-    expect(doc.getMap(DEFAULT_MAP).has('title')).toBe(false)
+    expect(doc.getMap(`${DEFAULT_MAP}:defaults`).has('title')).toBe(false)
 
-    // On sync (empty room), the seed lands.
+    // On sync (empty room), the seed lands — in the DEFAULTS key space, so it
+    // can never outrank real data on a clientId tie-break (#2519).
     t.markSynced()
-    expect(doc.getMap(DEFAULT_MAP).has('title')).toBe(true)
-    expect(doc.getMap(DEFAULT_MAP).get('title')).toBe('draft')
+    expect(doc.getMap(`${DEFAULT_MAP}:defaults`).has('title')).toBe(true)
+    expect(doc.getMap(`${DEFAULT_MAP}:defaults`).get('title')).toBe('draft')
+    expect(doc.getMap(DEFAULT_MAP).has('title'), 'a default is never real data').toBe(false)
     expect(s()).toBe('draft')
   })
 
@@ -170,7 +172,7 @@ describe('#2380 — syncedSignal defers its seed until first sync', () => {
     const s = syncedSignal({ doc, key: 'title', initial: 'solo' })
     disposers.push(s.dispose)
     // No transport → the immediate branch: written synchronously at construction.
-    expect(doc.getMap(DEFAULT_MAP).get('title')).toBe('solo')
+    expect(doc.getMap(`${DEFAULT_MAP}:defaults`).get('title')).toBe('solo')
   })
 
   it('seeds IMMEDIATELY when the attached transport is ALREADY synced', () => {
@@ -179,7 +181,7 @@ describe('#2380 — syncedSignal defers its seed until first sync', () => {
     t.markSynced() // synced BEFORE the signal is constructed
     const s = syncedSignal({ doc, key: 'title', initial: 'ready' })
     disposers.push(s.dispose, t.detach)
-    expect(doc.getMap(DEFAULT_MAP).get('title')).toBe('ready') // immediate seed
+    expect(doc.getMap(`${DEFAULT_MAP}:defaults`).get('title')).toBe('ready') // immediate seed
   })
 })
 

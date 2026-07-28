@@ -57,7 +57,9 @@ describe('bridge over real Yjs — syncedSignal', () => {
     const doc = createYjsDoc()
     const s = syncedSignal({ doc, key: 'title', initial: 'Untitled' })
     expect(s()).toBe('Untitled')
-    expect(doc.getMap('pyreon').get('title')).toBe('Untitled')
+    // Seeds land in the DEFAULTS key space so a default can never outrank real
+    // data on a clientId tie-break (#2519).
+    expect(doc.getMap('pyreon:defaults').get('title')).toBe('Untitled')
   })
 
   it('uses the existing Yjs value when the key is present — initial ignored', () => {

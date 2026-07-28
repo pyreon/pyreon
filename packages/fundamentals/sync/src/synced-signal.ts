@@ -5,6 +5,15 @@ import { type CrdtDoc, LOCAL_ORIGIN } from './crdt/types'
 /** Default map name when none is given — one logical store per map. */
 export const DEFAULT_MAP = 'pyreon'
 
+/**
+ * Suffix for the companion map that holds create-if-missing DEFAULTS.
+ *
+ * Kept OUT of the data map on purpose: a default written alongside real data can
+ * win a `Y.Map` clientId tie-break and destroy it (#2519). Reads prefer the data
+ * map, so a default can never outrank a real value.
+ */
+export const DEFAULTS_SUFFIX = ':defaults'
+
 /** A signal whose value is backed by a CRDT map entry. */
 export interface SyncedSignal<T> extends Signal<T> {
   /**
@@ -74,29 +83,65 @@ export interface SyncedSignalOptions<T> {
  */
 export function syncedSignal<T>(options: SyncedSignalOptions<T>): SyncedSignal<T> {
   const { doc, key, initial } = options
-  const map = doc.getMap(options.map ?? DEFAULT_MAP)
+  const mapName = options.map ?? DEFAULT_MAP
+  const map = doc.getMap(mapName)
 
-  // OPTIMISTIC local value: show `initial` immediately when the key is locally
-  // absent, WITHOUT writing it to the CRDT yet — the CRDT write is the SEED,
-  // deferred below. If the key is already present (persisted / already-synced
-  // peer value), THAT value is authoritative and `initial` is ignored.
-  const base = signal<T>(map.has(key) ? (map.get(key) as T) : initial)
+  // The SEED lives in a separate key space, and that is a correctness property,
+  // not tidiness.
+  //
+  // Seeding `initial` into the SAME map as real data makes a default able to
+  // BEAT that data: two fresh peers in an empty room both seed on sync, so one
+  // peer's seed is causally CONCURRENT with the other's real write, and `Y.Map`
+  // resolves concurrency by clientId — which Yjs assigns RANDOMLY. Roughly half
+  // the time the default wins and the real value is permanently lost (the "two
+  // devices open, one types, the other's default wipes it" report, #2519;
+  // reproduced at 4 failures in 8 runs).
+  //
+  // Deferring the seed until first sync (#2385) fixed only the case where a
+  // value ALREADY existed; it cannot fix a genuinely empty room, and gating the
+  // write on `whenSynced()` does not help either because the seed fires AT sync.
+  //
+  // Writing defaults to their own map removes the collision entirely: reads
+  // PREFER the real map, so a default can never outrank real data no matter how
+  // the clientId tie falls. Concurrent defaults still tie among themselves,
+  // which is harmless — peers converge on one default instead of diverging.
+  const defaults = doc.getMap(`${mapName}${DEFAULTS_SUFFIX}`)
+
+  /** Real value if present, else a shared default, else the local `initial`. */
+  const resolve = (): T => {
+    if (map.has(key)) return map.get(key) as T
+    if (defaults.has(key)) return defaults.get(key) as T
+    return initial
+  }
+
+  // OPTIMISTIC local value: show `initial` immediately when the key is absent
+  // everywhere, WITHOUT writing it — the CRDT write is the SEED, below.
+  const base = signal<T>(resolve())
 
   // The ONE update path. Applies every change to `base` regardless of origin;
   // the signal's Object.is guard makes the local echo a no-op for scalars.
   const off = map.observe((changedKeys) => {
     if (!changedKeys.has(key)) return
-    base.set(map.get(key) as T)
+    base.set(resolve())
+  })
+
+  // Defaults are watched too, so a peer's default reaches a peer that has none.
+  // `resolve()` keeps the precedence: a real value already present WINS, so a
+  // late-arriving default can never overwrite it.
+  const offDefaults = defaults.observe((changedKeys) => {
+    if (!changedKeys.has(key) || map.has(key)) return
+    base.set(resolve())
   })
 
   let disposed = false
   let cancelSeed: (() => void) | undefined
 
-  // Create-if-missing SEED — the CRDT write. Only when the key is STILL absent
-  // (a value already present — persisted / from a peer — is never clobbered).
+  // Create-if-missing SEED — the CRDT write, into the DEFAULTS map (see above).
+  // Skipped when a real value exists (persisted / from a peer) or another peer
+  // already published the same default.
   const seedIfAbsent = () => {
-    if (disposed || map.has(key)) return
-    doc.transact(() => map.set(key, initial), LOCAL_ORIGIN)
+    if (disposed || map.has(key) || defaults.has(key)) return
+    doc.transact(() => defaults.set(key, initial), LOCAL_ORIGIN)
   }
   if (docHasUnsyncedTransport(doc)) {
     // A transport is attached but has NOT finished its first sync — DEFER the
@@ -127,6 +172,7 @@ export function syncedSignal<T>(options: SyncedSignalOptions<T>): SyncedSignal<T
     disposed = true
     cancelSeed?.()
     off()
+    offDefaults()
   }
   // Auto-dispose when created inside a reactive scope. A no-op outside one
   // (onCleanup only registers against an active cleanup collector), so
