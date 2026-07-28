@@ -8,3 +8,13 @@
 export { scanSource } from './scan'
 export type { DiscoverOptions } from './discover'
 export { discoverComponents, fileDiscoveryPlugin } from './discover'
+export type { AtlasConfig, LoadedConfig } from './config'
+export { loadAtlasConfig } from './config'
+export type { LoadResult, ModuleLoader } from './load'
+export {
+  componentLoaderPlugin,
+  createModuleLoader,
+  loadComponent,
+  loadRuntime,
+  runtimeLoader,
+} from './load'

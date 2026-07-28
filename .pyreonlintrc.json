@@ -63,7 +63,8 @@
           "packages/tools/devtools/",
           "packages/internals/perf-harness/",
           "packages/ui-system/elements/src/Overlay/",
-          "packages/fundamentals/http/"
+          "packages/fundamentals/http/",
+          "packages/tools/atlas/src/verify/"
         ]
       }
     ],

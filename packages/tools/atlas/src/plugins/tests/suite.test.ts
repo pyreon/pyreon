@@ -200,10 +200,13 @@ describe('recommendedPlugins', () => {
       'atlas:default-scenario',
       'atlas:fill-defaults',
       'atlas:a11y-static',
+      // The first check that actually RUNS the component. Ordered after the
+      // static checks so a scenario is fully populated before it is mounted.
+      'atlas:mount',
       'atlas:usage-docs',
     ])
   })
   it('threads baseArgs into the variant-matrix plugin', () => {
-    expect(recommendedPlugins({ baseArgs: { x: 1 } })).toHaveLength(8)
+    expect(recommendedPlugins({ baseArgs: { x: 1 } })).toHaveLength(9)
   })
 })
