@@ -38,6 +38,8 @@ describe('Phase 5 — native data/services hook emit', () => {
     ).code
     expect(out).toContain('@State private var loc = PyreonGeolocation()')
     expect(out).toContain('@State private var ws = PyreonWebSocket()')
+    // Swift needs no Context — Foundation resolves Application Support
+    // unaided, so the no-arg initialiser is the PERSISTENT one there.
     expect(out).toContain('@State private var db = PyreonDatabase()')
     expect(out).toContain('@State private var push = PyreonPushNotifications()')
     expect(out).toContain('@State private var pay = PyreonPayments()')
@@ -59,7 +61,11 @@ describe('Phase 5 — native data/services hook emit', () => {
     ).code
     expect(out).toContain('val loc = remember { PyreonGeolocation() }')
     expect(out).toContain('val ws = remember { PyreonWebSocket() }')
-    expect(out).toContain('val db = remember { PyreonDatabase() }')
+    // Context-threaded, NOT bare: `PyreonDatabase()` resolved to the
+    // in-memory backend, so a `useDatabase()` app silently lost every record
+    // on relaunch. Android needs a Context to find app-private storage.
+    expect(out).toContain('val dbCtx = LocalContext.current')
+    expect(out).toContain('val db = remember { PyreonDatabase(dbCtx) }')
     expect(out).toContain('val push = remember { PyreonPushNotifications() }')
     expect(out).toContain('val pay = remember { PyreonPayments() }')
     expect(out).toContain('val map = remember { PyreonMapState() }')

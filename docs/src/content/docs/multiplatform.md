@@ -563,7 +563,7 @@ whenever a row changes; do not edit the totals without recomputing.
 | State (signals/computed/stores) | 9 | 1.0 | R5 — counter increment + store mutation asserted both platforms; **`createMachine` state transition device-asserted (M2.6)** — the counter's Toggle button drives an `off`→`on` transition that re-renders on both platforms (iOS `PyreonMachine` is `@Observable`, Compose `mutableStateOf`), proving a Tier-2 state machine actually transitions + reacts on-device, not just compiles. Row already at 1.0 (state machines are a state construct), so this deepens the evidence without moving the fraction |
 | Forms & validation | 6 | 0.5 | R5 partial — useForm v2 device-proven (validators, bindings, submit gating); arrays/dynamic fields absent |
 | Networking (fetch/ws/http) | 8 | 0.5 | fetch R5 (success + error path asserted); websocket/http-verbs R2 |
-| Storage (kv/secure/db) | 7 | 0.3 | kv persistence ASSERTED (M1.2a): iOS terminate+relaunch (R4, local Simulator pass) + Android activity-recreation (proven by the PR device run / nightly); secure-storage + database still R2 |
+| Storage (kv/secure/db) | 7 | 0.3 | kv persistence ASSERTED (M1.2a): iOS terminate+relaunch (R4, local Simulator pass) + Android activity-recreation (proven by the PR device run / nightly). **The Android half was passing over a hole**: `PyreonStorageRegistry` defaulted to an in-memory map, the `DataStoreBackend` the docs pointed at for "actual cross-launch persistence" did not exist in the repo, and no app assigned the registry — so nothing persisted past process death, and the gated test (activity recreation, which keeps the PROCESS) could not see it. Fixed 2026-07: `FileStorageBackend` installs itself on first `rememberPyreonStorage`, unless the app chose its own backend. `useDatabase` likewise persists now (file-backed on both platforms). Both are R3 — the fraction stays 0.3 until a device test asserts survival of real process death on Android and a gated app renders from the database |
 | Auth | 5 | 0.4 | gate/login flow R5. **`useAuth` itself is now device-proven** — the finance real-app gate renders the `PyreonAuth` container's live `status` and drives `beginSignIn()` through a sign-in that reaches the guarded dashboard, so the container transitions on-device rather than merely compiling (it was R1–R2 before: the tasks app's login is `useForm` + a router guard, not this hook). Real IdP / token flows, `signInSucceeded`/`signInFailed` with a real provider, and session rehydration remain R1–R2 |
 | Platform APIs (haptics/share/link/notifs/camera/biometrics/files/deep links/lifecycle) | 10 | 0.7 | clipboard/geolocation/push/payments/permissions/**haptics**/**share**/**link**/**notifs** exist at R2+. **share** (`useShare()`, M3.2) + **link** (`useLinking()`, M3.2b) each reach a **BEHAVIORAL R4** (XCUITest asserts the share sheet appears / the app leaves the foreground on `UIApplication.shared.open`). **haptics** (`useHaptics()`, M3.1) + **notifs** (`useNotifications()`, M3.3 — LOCAL notifications, iOS UNUserNotificationCenter / Android NotificationManager+channel+POST_NOTIFICATIONS) each reach a **NON-BEHAVIORAL R4** (the tap fires the call without crashing; haptics have no observable UI on the Simulator, and a notification's permission-prompt + auto-dismissing banner make a reliable springboard assert infeasible — so the honest ceiling is build+run+tap-no-crash). Android: `Intent.createChooser(ACTION_SEND)` / `Intent.ACTION_VIEW` / `NotificationManagerCompat`. **biometrics** (`useBiometrics()`, M3.5) reaches a **BEHAVIORAL R4 on the deterministic path** — the counter's Unlock button awaits `bio.authenticate(...)` inside an `async` handler that PMTC wraps in a native `Task`/coroutine scope (the M4.5 async-lowering, the FIRST async-result service); on an unenrolled Simulator/emulator the gate resolves false with NO prompt (`canEvaluatePolicy` guard), so the observable outcome flips `Lock: idle` → `Lock: denied` (iOS XCUITest + Android Compose test assert it), proving the async scope RUNS on-device + the post-`await` re-render fires — but the biometric SUCCESS path (enrolled → unlocked) and the Android real `BiometricPrompt`/`FragmentActivity` runtime are follow-ups (the Kotlin v1 scaffold resolves false). **camera/photo-picker** (`useImagePicker()`, M3.4) reaches a **BEHAVIORAL R4 on iOS** — the counter's Pick Photo button awaits `picker.pick()` in an `async` handler (the second async-result service, riding the same M4.5 lowering); the XCUITest taps it, asserts the system `PHPickerViewController` PRESENTS, dismisses it, and asserts `Photo: idle` → `Photo: cancelled`, proving the picker presented AND its async result flowed back across the dismissal into a re-render. Needs NO photo-library permission on either platform (both system pickers run out of process). The Android emit is REAL, not a scaffold (`rememberLauncherForActivityResult` + `PickVisualMedia` + a `CompletableDeferred` callback→suspend bridge), but its device test asserts **registration + render only** — `PickVisualMedia` launches a separate system activity the Compose test framework cannot drive or dismiss, so the pick ROUND TRIP is iOS-proven only. Picking a real asset (vs cancelling) is not device-asserted on either platform. **files/documents** (`useFilePicker()`, M3.8) reaches a **BEHAVIORAL R4 on iOS**, the document sibling of the photo picker (any file — PDF/csv/zip — not just photos): the counter's Pick File button awaits `files.pick()` in an `async` handler (the THIRD async-result service), the XCUITest taps it, asserts the system `UIDocumentPickerViewController` PRESENTS, dismisses it, and asserts `File: idle` → `File: cancelled`, proving the picker presented AND its async result flowed back across the dismissal. Needs NO storage permission (both system pickers run out of process). The Android emit is REAL (`rememberLauncherForActivityResult` + SAF `OpenDocument` + a `CompletableDeferred` bridge) but — like the image picker — its device test asserts **registration + render only** (OpenDocument launches a separate system activity the Compose test framework cannot drive), so the round trip is iOS-proven only; picking a real file (vs cancelling) is device-asserted on neither platform, and SAVING/exporting a file is a separate native flow that is a tracked follow-up (M3.8b). deep-links/lifecycle ABSENT |
 | Animations & transitions | 6 | 0.3 | **`<Transition show>` device-proven (M2.7)** — the counter's Toggle Box flips a signal and the animated child ("Animated Box") shows/hides through the platform animation path (iOS `.transition(.opacity)` on an `if show` gate + `.animation(.default, value:)` on a stable ZStack; Android `AnimatedVisibility(visible = show)`); the device gate asserts it disappears then reappears (`waitForNonExistence` / `assertDoesNotExist`), bisect-verified. BEHAVIORAL on the show/hide — the fade TIMING itself is not asserted (an opacity curve isn't queryable). **Plus `<TransitionGroup>` (animated keyed list) device-proven (M2.8)** — todomvc wraps its todo `<For>` in `<TransitionGroup>`, lowered to an animated list (iOS `VStack { ForEach }.animation(.default, value: list.count)`; Android `Column(Modifier.animateContentSize())`); the device gate adds a todo (a row ENTERs the animated list) then removes it (LEAVEs). This ALSO fixed a real emit bug the device gate caught: the Swift emit drove `.animation` off the whole list, which is uncompilable (a PMTC struct isn't `Equatable`) — fixed to drive off `.count` (Equatable, changes on enter/leave). Like the show/hide: behavioral on the enter/leave + compile-load-bearing, NOT on the animation timing. Still absent: configurable duration/easing, enter≠leave, spring/keyframe, gesture-driven, shared-element + reorder/layout animations |
@@ -601,10 +601,10 @@ hook at all.
 | `useFetch` | tasks | ✅ success (`lc-quote`) + error (`lc-error`) render | **R5** |
 | `useForm` | tasks | ✅ validators, field bindings, submit gating (login error path) | **R5** |
 | `useParams` / router nav + guards | router-demo | ✅ nav, typed params, auth gate | **R5** |
-| `useStorage` | todomvc | ✅ persistence: `test_todosPersistAcrossRelaunch` (iOS, genuine terminate+relaunch) + `todosPersistAcrossActivityRecreation` (Android, activity recreation — honest scope: not full process death) | **R4→R5** |
+| `useStorage` | todomvc | ✅ persistence: `test_todosPersistAcrossRelaunch` (iOS, genuine terminate+relaunch) + `todosPersistAcrossActivityRecreation` (Android, activity recreation — honest scope: not full process death, and until 2026-07 there was nothing BEHIND that scope: the Android backend was an in-memory map, so the test was measuring the one form of persistence that needs no persistence layer. `FileStorageBackend` now backs it by default; the process-death assertion is still owed) | **R4→R5** |
 | `useLoaderData` (loader auto-emit) | — | ❌ | R2 |
 | `useAuth` | **finance** | ✅ the container's initial `status` renders (`signedOut`), and `beginSignIn()` drives the sign-in flow that reaches the guarded dashboard — asserted on BOTH platforms from the same source. Writing the Android half surfaced a parity break: Kotlin enum constants are SCREAMING_SNAKE and Swift's are camelCase, so the status rendered `SIGNED_OUT` on Android and `signedOut` on iOS; `PyreonAuthStatus.toString()` now returns the cross-platform spelling | **R4** (iOS + Android) |
-| `useDatabase` | — | ❌ | R2 |
+| `useDatabase` | — | ❌ on-device. Persistence IS unit-proven on both runtimes (file-backed by default since 2026-07; a fresh backend over the same directory reads what the previous one wrote), and the Kotlin emit threads a `Context` so a scaffolded app persists — but no gated app renders from it | R3 |
 | `useSecureStorage` | — | ❌ | R2 |
 | `useWebSocket` | — | ❌ | R2 |
 | `useGeolocation` | — | ❌ (manual `.start()` on Kotlin) | R2 |
@@ -624,12 +624,41 @@ re-scores the matrix). `useStorage` (todomvc terminate+relaunch) and
 three manual-`.start()` hooks (geolocation/push/payments) are gated on
 M3.9 auto-start parity first.
 
-`useDatabase` deserves a note: its emitted Swift now *compiles* (the
-`get`/`delete`/`find` calls were missing the argument labels the runtime
-declares, so they never did — see the type gate), and the finance app
-exercises `db.delete` on-device. But its default backend is in-memory and
-no gated app renders FROM the database, so a behavioural assertion still
-needs a persistent backend first.
+`useDatabase` deserves a note. Two things blocked it, and the second was
+worse than "unproven":
+
+1. Its emitted Swift did not *compile* — the `get`/`delete`/`find` calls
+   were missing the argument labels the runtime declares (see the type
+   gate).
+2. **It did not persist.** Both runtimes' `PyreonDatabase` defaulted to an
+   in-memory backend, and the emit constructed exactly that default — so
+   an app that inserted records and relaunched found them gone, with no
+   warning, no error, and nothing failing. The entire reason
+   `useDatabase` exists over `useStorage` is *structured data that
+   outlives the process*, so an ephemeral default was not a conservative
+   starting point; it was silent data loss wearing the word "default".
+
+Both are now fixed. `FileDatabaseBackend` (one JSON file per collection,
+atomic writes, `Application Support` on iOS / `filesDir` on Android) is
+the default on both platforms, and the Kotlin emit threads
+`LocalContext.current` into the constructor because Android cannot resolve
+app-private storage without a `Context`. The spelling is deliberately
+asymmetric — Swift's no-arg initialiser *is* the persistent one, Kotlin has
+no no-arg form at all — and the on-disk bytes are identical, locked by a
+cross-language format test that asserts the same string from Swift's
+`JSONSerialization` and Kotlin's hand-written codec.
+
+Deliberately Foundation/JVM-only, no SQLite: a record is an id plus string
+fields, and a SQLite module map differs between Apple platforms and Linux —
+the exact toolchain split that has broken this runtime's CI before. Apps
+that outgrow the file store inject Room / SQLDelight / Core Data through
+the same constructor.
+
+What that leaves for the assertion queue is now genuinely just the device
+assertion: the capability works, the persistence is unit-proven on both
+platforms (a SECOND backend over the same directory is what a relaunch
+is), but **no gated app renders FROM the database yet**, so the row stays
+R2/R3 until one does. That is a device-gate task, not a runtime one.
 
 **M2.3 — gestures (long-press) SHIPPED.** `<Press onLongPress={fn}>` now
 lowers on native (the type + web 500ms-polyfill already existed; only the

@@ -200,6 +200,21 @@ interface ClipboardManager {
 }
 `
 
+// PyreonDatabase-specific stub — Android Context exposing ONLY `filesDir`,
+// the single member PyreonDatabase.kt touches (its Context convenience
+// constructor resolves the app-private storage dir). Mirrored exactly rather
+// than reusing the clipboard Context stub: that one lacks `filesDir`, and a
+// stub that is a SUPERSET of the real surface is itself a masking source
+// (the rule kotlin-stubs.ts documents).
+const ANDROID_CONTENT_DATABASE_STUBS = `package android.content
+
+import java.io.File
+
+open class Context {
+  open val filesDir: File get() = File(System.getProperty("java.io.tmpdir"), "pyreon-stub-files")
+}
+`
+
 const ANDROIDX_CORE_CONTENT_STUBS = `package androidx.core.content
 
 import android.content.Context
@@ -216,6 +231,19 @@ object ContextCompat {
 // `HapticFeedback` as an interface + `HapticFeedbackType` with companion
 // `LongPress` / `TextHandleMove` vals (the only two the runtime maps to).
 // Gated behind --service=PyreonHaptics.
+// PyreonStorage-only stub — `LocalContext`, the CompositionLocal
+// `rememberPyreonStorage` reads to install persistent storage by default.
+// Mirrored exactly (a `current` that is @Composable), not a superset.
+const ANDROIDX_COMPOSE_PLATFORM_STUBS = `package androidx.compose.ui.platform
+
+import android.content.Context
+import androidx.compose.runtime.Composable
+
+object LocalContext {
+  val current: Context @Composable get() = Context()
+}
+`
+
 const ANDROIDX_COMPOSE_HAPTIC_STUBS = `package androidx.compose.ui.hapticfeedback
 
 class HapticFeedbackType {
@@ -563,8 +591,21 @@ try {
   const kotlinxCoroutinesPath = join(tempDir, 'KotlinxCoroutines.kt')
 
   writeFileSync(composeRuntimePath, COMPOSE_RUNTIME_STUBS, 'utf8')
+  const androidContentDatabasePath = join(tempDir, 'AndroidContentDatabase.kt')
+  const composePlatformPath = join(tempDir, 'ComposeUiPlatform.kt')
   writeFileSync(kotlinxSerializationPath, KOTLINX_SERIALIZATION_STUBS, 'utf8')
   writeFileSync(kotlinxSerializationJsonPath, KOTLINX_SERIALIZATION_JSON_STUBS, 'utf8')
+  if (
+    SERVICE === 'PyreonDatabase' ||
+    SERVICE === 'PyreonDatabaseAndroid' ||
+    SERVICE === 'PyreonStorageAndroid' ||
+    SERVICE === 'PyreonStorage'
+  ) {
+    writeFileSync(androidContentDatabasePath, ANDROID_CONTENT_DATABASE_STUBS, 'utf8')
+  }
+  if (SERVICE === 'PyreonStorage' || SERVICE === 'PyreonStorageAndroid') {
+    writeFileSync(composePlatformPath, ANDROIDX_COMPOSE_PLATFORM_STUBS, 'utf8')
+  }
   if (SERVICE === 'PyreonClipboard') {
     writeFileSync(androidContentPath, ANDROID_CONTENT_STUBS, 'utf8')
     writeFileSync(androidxCoreContentPath, ANDROIDX_CORE_CONTENT_STUBS, 'utf8')
@@ -653,6 +694,35 @@ try {
       : SERVICE === 'PyreonFilePicker'
         ? [pickerResultPath, pickerContractPath, kotlinxCoroutinesPath]
         : []
+  // PyreonDatabase (Context stub for nothing yet) + PyreonDatabaseAndroid
+  // (the Context factory), which additionally needs its sibling CORE source —
+  // it references PyreonDatabase/FileDatabaseBackend, which live there. Same
+  // shape as okhttpExtras.
+  const databaseStubs =
+    SERVICE === 'PyreonDatabase' ||
+    SERVICE === 'PyreonDatabaseAndroid' ||
+    SERVICE === 'PyreonStorageAndroid' ||
+    SERVICE === 'PyreonStorage'
+      ? [androidContentDatabasePath]
+      : []
+  const databaseCoreExtras =
+    SERVICE === 'PyreonDatabaseAndroid'
+      ? [resolve(PACKAGE_ROOT, 'src/main/kotlin/com/pyreon/runtime/PyreonDatabase.kt')]
+      : []
+  // PyreonStorageBackend + FileStorageBackend live in PyreonStorageBackends.kt so
+  // they compile (and their persistence test RUNS) without Compose. Both the
+  // Compose half and the Android factory reference them, so that sibling comes
+  // along; the Android factory additionally needs the registry in
+  // PyreonStorage.kt, its Compose stubs, and a Context.
+  const storageFilePath = resolve(PACKAGE_ROOT, 'src/main/kotlin/com/pyreon/runtime/PyreonStorageBackends.kt')
+  const storageAndroidPath = resolve(PACKAGE_ROOT, 'src/main/kotlin/com/pyreon/runtime/PyreonStorageAndroid.kt')
+  const storageComposePath = resolve(PACKAGE_ROOT, 'src/main/kotlin/com/pyreon/runtime/PyreonStorage.kt')
+  const storageExtras =
+    SERVICE === 'PyreonStorage'
+      ? [composePlatformPath, storageFilePath, storageAndroidPath]
+      : SERVICE === 'PyreonStorageAndroid'
+        ? [composePlatformPath, storageFilePath, storageComposePath]
+        : []
   const linkingStubs = SERVICE === 'PyreonLinking' ? [linkingContentPath, linkingNetPath] : []
   const notifStubs = SERVICE === 'PyreonNotifications' ? [notifAppPath, notifContentPath, notifOsPath, notifRPath, notifCorePath] : []
   // The OkHttp transport is an EXTENSION over the core container — its
@@ -672,6 +742,9 @@ try {
         ...hapticStubs,
         ...shareStubs,
         ...pickerStubs,
+        ...databaseStubs,
+        ...databaseCoreExtras,
+        ...storageExtras,
         ...linkingStubs,
         ...notifStubs,
         ...okhttpExtras,
@@ -687,6 +760,9 @@ try {
         ...hapticStubs,
         ...shareStubs,
         ...pickerStubs,
+        ...databaseStubs,
+        ...databaseCoreExtras,
+        ...storageExtras,
         ...linkingStubs,
         ...notifStubs,
         ...okhttpExtras,

@@ -1282,6 +1282,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   // `declTexts` so it can be emitted later inside the function body
   // (after the signature line).
   // on-mount decls emit at the harness level (LaunchedEffect(Unit), below).
+  _databaseNames = new Set()
   const declTexts = c.decls.filter((d) => d.kind !== 'on-mount').map((d) => emitKotlinDecl(d, ctx))
   // Pass 2: walk props — formats prop annotations AND ALSO discovers
   // synthesized types from PROP annotations. This pass must run BEFORE
@@ -1420,6 +1421,15 @@ function emitKotlinDataClass(synth: {
     : '@Serializable\n'
   return `${ser}data class ${synth.name}(${params})`
 }
+
+/**
+ * Per-component: `useDatabase()` binding names.
+ *
+ * Needed so `db.insert(collection, { id, fields })` can lower its object
+ * literal to a `PyreonRecord` rather than the generic anonymous-object path.
+ * Mirrors `_databaseNames` in emit-swift.ts.
+ */
+let _databaseNames: Set<string> = new Set()
 
 function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // on-mount emits at the harness level (LaunchedEffect) — defensive narrow.
@@ -1592,7 +1602,19 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     return `val ${kotlinIdent(d.name)} = remember { PyreonWebSocket() }`
   }
   if (d.kind === 'database') {
-    return `val ${kotlinIdent(d.name)} = remember { PyreonDatabase() }`
+    _databaseNames.add(d.name)
+    // `PyreonDatabase(context)` — NOT the bare `PyreonDatabase()` this emitted
+    // until 2026-07. The bare form resolved to the in-memory backend, so a
+    // `useDatabase()` app lost every record on relaunch, silently. Android
+    // needs a Context to find app-private storage, so the Context is threaded
+    // here exactly as `useNativeModule` does. (Swift needs no equivalent:
+    // Foundation resolves Application Support unaided, so `PyreonDatabase()`
+    // persists there on its own.)
+    const id = kotlinIdent(d.name)
+    return [
+      `val ${id}Ctx = LocalContext.current`,
+      `val ${id} = remember { PyreonDatabase(${id}Ctx) }`,
+    ].join('\n  ')
   }
   if (d.kind === 'push') {
     return `val ${kotlinIdent(d.name)} = remember { PyreonPushNotifications() }`
@@ -2345,6 +2367,44 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           `Object.${e.callee.property}(...) has no native equivalent — only Object.keys() / Object.values() on a statically-known HOMOGENEOUS object shape are supported (it lowers to a literal key list). Emitting an empty list; restructure to avoid runtime object reflection on native.`,
         )
         return e.callee.property === 'keys' ? 'emptyList<String>()' : 'emptyList<Any>()'
+      }
+      // PyreonDatabase RECORD literals. `db.insert('todos', { id, fields })`
+      // is the primary write, and the object literal was lowered by the
+      // generic path into `(id = "1", fields = __Obj0(...))` — not even a
+      // valid Kotlin expression, let alone a `PyreonRecord`. So the call never
+      // compiled, on either target. `insert` is the only way to get data in,
+      // which is why no gated app has ever rendered FROM the database.
+      //
+      // Field values are emitted AS WRITTEN: `fields` is `Map<String, String>`,
+      // and silently wrapping a number in `.toString()` would hide a real
+      // mistake behind a coercion.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _databaseNames.has(e.callee.object.name) &&
+        e.callee.property === 'insert' &&
+        e.args.length === 2 &&
+        e.args[1]?.kind === 'object'
+      ) {
+        const lit = e.args[1] as Extract<ExprIR, { kind: 'object' }>
+        const idField = lit.fields.find((f) => f.name === 'id')
+        const fieldsField = lit.fields.find((f) => f.name === 'fields')
+        const unknown = lit.fields.filter((f) => f.name !== 'id' && f.name !== 'fields')
+        if (idField && unknown.length === 0) {
+          const parts = [emitKotlinExpr(idField.value, indent)]
+          if (fieldsField) {
+            if (fieldsField.value.kind === 'object') {
+              const entries = fieldsField.value.fields
+                .map((f) => `${JSON.stringify(f.name)} to ${emitKotlinExpr(f.value, indent)}`)
+                .join(', ')
+              parts.push(entries === '' ? 'emptyMap()' : `mapOf(${entries})`)
+            } else {
+              parts.push(emitKotlinExpr(fieldsField.value, indent))
+            }
+          }
+          const collection = emitKotlinExpr(e.args[0]!, indent)
+          return `${kotlinIdent(e.callee.object.name)}.insert(${collection}, PyreonRecord(${parts.join(', ')}))`
+        }
       }
       // `console.log(…)` → `println(…)` — the universal TS debug call
       // maps to Kotlin's stdlib print (Swift mirror: `print`).

@@ -1342,11 +1342,13 @@ final class PyreonRuntimeTests: XCTestCase {
 
     // MARK: - PyreonDatabase (useDatabase structured local store)
     //
-    // Facade + in-memory backend contract. The real SQLite/Core Data backend
-    // is the app's job — not exercised here.
+    // Facade contract over the EXPLICIT in-memory backend. These used to say
+    // `PyreonDatabase()` — which was fine while the default was in-memory, and
+    // became a filesystem dependency (and cross-run state leak) the moment the
+    // default started persisting. Contract tests state their backend.
 
     func testPyreonDatabaseInsertGet() throws {
-        let db = PyreonDatabase()
+        let db = PyreonDatabase(backend: InMemoryDatabaseBackend())
         XCTAssertNil(db.get("todos", id: "1"))
         let r = PyreonRecord(id: "1", fields: ["text": "buy milk", "done": "false"])
         db.insert("todos", r)
@@ -1355,7 +1357,7 @@ final class PyreonRuntimeTests: XCTestCase {
     }
 
     func testPyreonDatabaseUpsert() throws {
-        let db = PyreonDatabase()
+        let db = PyreonDatabase(backend: InMemoryDatabaseBackend())
         db.insert("todos", PyreonRecord(id: "1", fields: ["done": "false"]))
         db.insert("todos", PyreonRecord(id: "1", fields: ["done": "true"]))
         XCTAssertEqual(db.get("todos", id: "1")?.fields["done"], "true")
@@ -1363,7 +1365,7 @@ final class PyreonRuntimeTests: XCTestCase {
     }
 
     func testPyreonDatabaseAllPreservesInsertionOrder() throws {
-        let db = PyreonDatabase()
+        let db = PyreonDatabase(backend: InMemoryDatabaseBackend())
         db.insert("todos", PyreonRecord(id: "a"))
         db.insert("todos", PyreonRecord(id: "b"))
         db.insert("todos", PyreonRecord(id: "c"))
@@ -1373,7 +1375,7 @@ final class PyreonRuntimeTests: XCTestCase {
     }
 
     func testPyreonDatabaseDelete() throws {
-        let db = PyreonDatabase()
+        let db = PyreonDatabase(backend: InMemoryDatabaseBackend())
         db.insert("todos", PyreonRecord(id: "1"))
         XCTAssertEqual(db.count("todos"), 1)
         XCTAssertTrue(db.delete("todos", id: "1"))
@@ -1383,7 +1385,7 @@ final class PyreonRuntimeTests: XCTestCase {
     }
 
     func testPyreonDatabaseFind() throws {
-        let db = PyreonDatabase()
+        let db = PyreonDatabase(backend: InMemoryDatabaseBackend())
         db.insert("todos", PyreonRecord(id: "1", fields: ["done": "false"]))
         db.insert("todos", PyreonRecord(id: "2", fields: ["done": "true"]))
         db.insert("todos", PyreonRecord(id: "3", fields: ["done": "false"]))
@@ -1393,7 +1395,7 @@ final class PyreonRuntimeTests: XCTestCase {
     }
 
     func testPyreonDatabaseCollectionsAreIsolated() throws {
-        let db = PyreonDatabase()
+        let db = PyreonDatabase(backend: InMemoryDatabaseBackend())
         db.insert("todos", PyreonRecord(id: "1"))
         db.insert("notes", PyreonRecord(id: "1"))
         XCTAssertEqual(db.count("todos"), 1)
@@ -1402,6 +1404,139 @@ final class PyreonRuntimeTests: XCTestCase {
         XCTAssertNil(db.get("todos", id: "1"))
         XCTAssertNotNil(db.get("notes", id: "1")) // isolated
     }
+    // MARK: - FileDatabaseBackend (the DEFAULT — what makes useDatabase persist)
+    //
+    // The bug these lock: `PyreonDatabase()` used to default to the in-memory
+    // backend, so an app that inserted records and relaunched found them gone
+    // — silently. The whole reason `useDatabase` exists over `PyreonStorage`
+    // is structured data that OUTLIVES the process.
+    //
+    // A SECOND backend over the SAME directory is exactly what a relaunch is:
+    // no in-process cache carries over, so anything the second instance reads
+    // came off the disk.
+
+    private func tempDBDir(_ name: String = #function) -> URL {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pyreon-db-test-\(name)-\(UUID().uuidString)", isDirectory: true)
+        return dir
+    }
+
+    func testFileDatabaseBackendIsTheDefault() throws {
+        // The regression itself. An earlier version of this test constructed
+        // `PyreonDatabase(backend: FileDatabaseBackend(directory: tmp))` and
+        // called that "the default" — it proved the file backend works, which
+        // was never in doubt, and would have passed with the in-memory default
+        // fully restored. So: construct `PyreonDatabase()` with NOTHING, then
+        // read the record back through a separate default-constructed backend.
+        // That second instance is a relaunch; it can only see the record if
+        // the default actually wrote to disk.
+        let collection = "pyreon-default-probe-\(UUID().uuidString)"
+        let file = FileDatabaseBackend.defaultDirectory()
+            .appendingPathComponent(collection + ".json")
+        defer { try? FileManager.default.removeItem(at: file) }
+
+        PyreonDatabase().insert(collection, PyreonRecord(id: "t1", fields: ["amount": "4200"]))
+
+        let relaunched = PyreonDatabase(backend: FileDatabaseBackend())
+        XCTAssertEqual(relaunched.get(collection, id: "t1")?.fields["amount"], "4200")
+    }
+
+    func testFileDatabaseBackendPersistsOrderAndUpserts() throws {
+        let dir = tempDBDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let a = FileDatabaseBackend(directory: dir)
+        a.insert("todos", PyreonRecord(id: "1", fields: ["done": "false"]))
+        a.insert("todos", PyreonRecord(id: "2", fields: ["done": "true"]))
+        a.insert("todos", PyreonRecord(id: "3", fields: ["done": "false"]))
+        a.insert("todos", PyreonRecord(id: "1", fields: ["done": "true"])) // upsert
+
+        let b = FileDatabaseBackend(directory: dir)
+        // Insertion order survives the round trip, and the upsert kept slot 0.
+        XCTAssertEqual(b.all("todos").map(\.id), ["1", "2", "3"])
+        XCTAssertEqual(b.get("todos", id: "1")?.fields["done"], "true")
+        XCTAssertEqual(b.find("todos", field: "done", equals: "true").map(\.id), ["1", "2"])
+    }
+
+    func testFileDatabaseBackendPersistsDeletes() throws {
+        // A delete that only clears the cache would "work" in-process and
+        // resurrect the record on relaunch — the nastier half of the bug.
+        let dir = tempDBDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let a = FileDatabaseBackend(directory: dir)
+        a.insert("todos", PyreonRecord(id: "1"))
+        a.insert("todos", PyreonRecord(id: "2"))
+        _ = a.delete("todos", id: "1")
+
+        let b = FileDatabaseBackend(directory: dir)
+        XCTAssertNil(b.get("todos", id: "1"))
+        XCTAssertEqual(b.all("todos").map(\.id), ["2"])
+    }
+
+    func testFileDatabaseBackendKeepsCollectionsInSeparateFiles() throws {
+        let dir = tempDBDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let a = FileDatabaseBackend(directory: dir)
+        a.insert("todos", PyreonRecord(id: "1"))
+        a.insert("notes", PyreonRecord(id: "1"))
+
+        let b = FileDatabaseBackend(directory: dir)
+        XCTAssertEqual(b.all("todos").count, 1)
+        XCTAssertEqual(b.all("notes").count, 1)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: dir.appendingPathComponent("todos.json").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: dir.appendingPathComponent("notes.json").path))
+    }
+
+    func testFileDatabaseBackendRejectsPathTraversalInCollectionNames() throws {
+        // A collection name is app data. "../../etc/passwd" must land inside
+        // the backend's own directory, not walk out of it.
+        let dir = tempDBDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let a = FileDatabaseBackend(directory: dir)
+        a.insert("../escape", PyreonRecord(id: "1"))
+
+        let parent = dir.deletingLastPathComponent()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: parent.appendingPathComponent("escape.json").path))
+        let written = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+        XCTAssertEqual(written.count, 1)
+        XCTAssertFalse(written[0].contains("/"))
+        // Still readable under its own (escaped) name.
+        XCTAssertEqual(FileDatabaseBackend(directory: dir).all("../escape").map(\.id), ["1"])
+    }
+
+    func testFileDatabaseBackendSurvivesACorruptFile() throws {
+        // Degrade to an empty collection; never crash the app.
+        let dir = tempDBDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try Data("{ not json".utf8).write(to: dir.appendingPathComponent("todos.json"))
+
+        var reported: [String] = []
+        let a = FileDatabaseBackend(directory: dir, onError: { op, _ in reported.append(op) })
+        XCTAssertEqual(a.all("todos").count, 0)
+        XCTAssertEqual(reported, ["load:todos"])
+        // And it recovers — a write over the corrupt file restores service.
+        a.insert("todos", PyreonRecord(id: "1"))
+        XCTAssertEqual(FileDatabaseBackend(directory: dir).all("todos").map(\.id), ["1"])
+    }
+
+    func testFileDatabaseBackendOnDiskFormatIsStableJSON() throws {
+        // The Kotlin backend writes the SAME bytes for the same input — this
+        // is the Swift half of that cross-language format lock. Deterministic
+        // key order is what makes the assertion possible at all.
+        let dir = tempDBDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let a = FileDatabaseBackend(directory: dir)
+        a.insert("todos", PyreonRecord(id: "1", fields: ["done": "false", "text": "buy \"milk\""]))
+
+        let raw = try String(contentsOf: dir.appendingPathComponent("todos.json"), encoding: .utf8)
+        XCTAssertEqual(raw, "[{\"fields\":{\"done\":\"false\",\"text\":\"buy \\\"milk\\\"\"},\"id\":\"1\"}]")
+    }
+
 
     // MARK: - PyreonPayments (usePayments purchase-state container)
     //
