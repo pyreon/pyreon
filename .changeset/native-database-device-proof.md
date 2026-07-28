@@ -34,5 +34,15 @@ AndroidJUnitRunner executes instrumented tests INSIDE the app process, so an
 `onMount` re-read is therefore iOS-only; the disk round trip — the part that
 was actually broken — is covered on both.
 
-Matrix: Storage 0.3 → 0.45, headline ≈52% → ≈53%, with the Android scope
-written into the row rather than rounded away.
+Matrix: Storage 0.3 → 0.45, with the Android scope written into the row rather
+than rounded away.
+
+The headline moves ≈52% → ≈50%, DOWN, because the same pass added a
+`Styling & design system` row (weight 6, R4 fraction 0.0) that had been missing
+entirely. The whole `styled` / `elements` / `coolgrid` / `attrs` / rocketstyle /
+theme-token surface lowers to both targets and is documented as supported — yet
+no native example instantiates any of it and no device test asserts a rendered
+style. Omitting a track a real app leans on heavily made every percentage on
+that page flattering rather than true, and the table is supposed to BE the
+denominator. The drop is a correction to the measurement, not a regression in
+the product.
