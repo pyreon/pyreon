@@ -36,6 +36,12 @@ function controlRow(m: WorkbenchModel, ctrl: WorkbenchControl) {
       </C.CtrlHead>
       {ctrl.type === 'text' ? (
         <C.TextInput
+          // VALUE-bound, not placeholder-only. The input used to show the
+          // default as a placeholder and never reflect the live value, which
+          // made it write-only: type, switch component, come back, and the box
+          // is empty while `vals()` still holds what you typed. It also meant
+          // the box did not agree with what the preview was rendering.
+          value={() => String(m.vals()[ctrl.key] ?? '')}
           placeholder={String(ctrl.default ?? '')}
           onInput={(e: Event) =>
             m.setValue(m.selId(), ctrl.key, (e.target as HTMLInputElement).value)
