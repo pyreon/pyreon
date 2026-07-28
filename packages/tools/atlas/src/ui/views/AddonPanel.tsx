@@ -14,6 +14,7 @@ import { registerReactiveCoveragePanel } from './reactive-coverage-panel'
 import { registerPerfPanel } from './perf-panel'
 import { registerPermissionsPanel } from './permissions-panel'
 import { registerQueryPanel } from './query-panel'
+import { registerLensPanel } from './lens-panel'
 import { registerSchemaPanel } from './schema-panel'
 import { registerUpdateCausePanel } from './update-cause-panel'
 
@@ -29,6 +30,7 @@ registerPerfPanel()
 registerPermissionsPanel()
 registerQueryPanel()
 registerSchemaPanel()
+registerLensPanel()
 // Seal AFTER every ship-with-Atlas panel is registered — sealing inside
 // `registerBuiltinPanels` would have baselined only the four built-ins, so
 // `resetAddonPanels()` would silently drop the Reactivity tab.
