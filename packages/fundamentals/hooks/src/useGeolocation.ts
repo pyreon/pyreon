@@ -112,8 +112,17 @@ export function useGeolocation(options: UseGeolocationOptions = {}): UseGeolocat
     // Idempotent: `stop()` before `start()`, or twice, must be a no-op —
     // onCleanup calls it unconditionally on unmount.
     if (watchId === undefined) return
-    // SSR-safe: watchId can only be set inside start(), which bails without
-    // a navigator, so reaching here implies the API exists.
+    // The guard is redundant by construction — watchId is only ever set inside
+    // start(), which bails without a navigator — but that reasoning lives
+    // across two functions and is not AST-traceable, so `no-window-in-ssr`
+    // (rightly) cannot see it. An explicit typeof check states the SSR
+    // contract at the access site instead of relying on an invariant a reader
+    // has to reconstruct.
+    if (typeof navigator === 'undefined' || navigator.geolocation === undefined) {
+      watchId = undefined
+      tracking.set(false)
+      return
+    }
     navigator.geolocation.clearWatch(watchId)
     watchId = undefined
     tracking.set(false)
@@ -125,7 +134,7 @@ export function useGeolocation(options: UseGeolocationOptions = {}): UseGeolocat
       // No navigator (SSR) or no Geolocation API (rare, non-secure origin).
       // Surface it rather than silently never producing a fix — the native
       // targets report a permission failure the same way.
-      error.set('Geolocation is unavailable in this environment')
+      error.set('[Pyreon] useGeolocation: Geolocation is unavailable in this environment')
       return
     }
     batch(() => {
@@ -149,7 +158,7 @@ export function useGeolocation(options: UseGeolocationOptions = {}): UseGeolocat
         // A denial ends the watch on every browser, so reflect that in
         // `isTracking` rather than leaving it stuck true.
         batch(() => {
-          error.set(err.message)
+          error.set(`[Pyreon] useGeolocation: ${err.message}`)
           tracking.set(false)
         })
         watchId = undefined

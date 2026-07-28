@@ -122,7 +122,11 @@ describe('useGeolocation (web)', () => {
       const geo = useGeolocation()
       geo.start()
       g.fail('User denied Geolocation')
-      expect(geo.error).toBe('User denied Geolocation')
+      // Prefixed for identification (the `no-error-without-prefix` gate), but
+      // the browser's own message must still survive — an app reporting these
+      // needs the actual cause, not just a framework tag.
+      expect(geo.error).toContain('[Pyreon]')
+      expect(geo.error).toContain('User denied Geolocation')
       // A denial ends the watch on every browser; leaving isTracking stuck
       // true would misreport the state forever.
       expect(geo.isTracking).toBe(false)
@@ -156,6 +160,7 @@ describe('useGeolocation (web)', () => {
     try {
       const geo = useGeolocation()
       expect(() => geo.start()).not.toThrow()
+      expect(geo.error).toContain('[Pyreon]')
       expect(geo.error).toContain('unavailable')
       expect(geo.isTracking).toBe(false)
     } finally {
