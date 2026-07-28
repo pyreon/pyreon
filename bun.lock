@@ -179,6 +179,7 @@
         "@pyreon/ui-core": "workspace:*",
         "@pyreon/unistyle": "workspace:*",
         "@pyreon/zero": "workspace:*",
+        "zod": "^4.4.3",
       },
       "devDependencies": {
         "@pyreon/tsconfig": "workspace:*",
@@ -2140,6 +2141,7 @@
       "dependencies": {
         "@pyreon/core": "workspace:*",
         "@pyreon/elements": "workspace:*",
+        "@pyreon/feature": "workspace:*",
         "@pyreon/hooks": "workspace:*",
         "@pyreon/permissions": "workspace:*",
         "@pyreon/reactivity": "workspace:*",
@@ -2153,6 +2155,7 @@
       "devDependencies": {
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
+        "zod": "^4.4.3",
       },
     },
     "packages/tools/cli": {

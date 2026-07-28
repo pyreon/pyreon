@@ -216,19 +216,43 @@ function detectFieldType(zodField: unknown): {
 
   const type = typeMap[innerTypeName] ?? 'string'
 
-  // Extract enum values
+  // Extract enum values.
+  //
+  // `enumValues` is documented on `FieldInfo` as "the list of allowed values",
+  // and for zod v4 it was never populated: the two paths below looked for
+  // `def.values`, which v4 does not have. It stores the members as an ENTRIES
+  // map (`{ draft: 'draft', … }`) and exposes them as `.options`. So an enum
+  // field came back correctly typed with no values — a documented field that
+  // was silently always `undefined`, which reads downstream as "this enum has
+  // no members" rather than "we could not read them".
   let enumValues: (string | number)[] | undefined
   if (type === 'enum') {
     const def = inner._def as Record<string, unknown> | undefined
-    if (def?.values && Array.isArray(def.values)) {
-      enumValues = def.values as (string | number)[]
-    }
-    // v4 path
     const zodDef = (inner._zod as Record<string, unknown>)?.def as
       | Record<string, unknown>
       | undefined
-    if (zodDef?.values && Array.isArray(zodDef.values)) {
+
+    // v3: `_def.values` is the member array.
+    if (Array.isArray(def?.values)) {
+      enumValues = def.values as (string | number)[]
+    } else if (Array.isArray(zodDef?.values)) {
       enumValues = zodDef.values as (string | number)[]
+    }
+
+    // v4: `.options` is the public accessor; `entries` is the underlying map,
+    // and its VALUES are the members (a native enum maps name → value, so
+    // reading values rather than keys is what gives the real members).
+    if (!enumValues && Array.isArray((inner as { options?: unknown }).options)) {
+      enumValues = (inner as { options: (string | number)[] }).options
+    }
+    if (!enumValues) {
+      const entries = (zodDef?.entries ?? def?.entries) as Record<string, unknown> | undefined
+      if (entries && typeof entries === 'object') {
+        const values = Object.values(entries).filter(
+          (val): val is string | number => typeof val === 'string' || typeof val === 'number',
+        )
+        if (values.length > 0) enumValues = values
+      }
     }
   }
 
