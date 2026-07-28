@@ -29,6 +29,30 @@ interface ErrorPattern {
 
 const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // Before the VNodeChild array arm was widened, a reactive accessor was
+    // legal as a SOLE child and rejected among MULTIPLE children — so
+    // `<Text>Count: {count}</Text>` failed to typecheck on the canonical
+    // primitives while the identical shape on a DOM element compiled. The
+    // residual footgun the fix leaves behind is the NARROWER accessor return:
+    // an accessor may return an atom or an array, but NOT another accessor,
+    // because the runtime renders a returned function rather than unwrapping
+    // it.
+    pattern: /not assignable to type 'VNodeChild(Atom)?'/i,
+    diagnose: () => ({
+      cause:
+        "A value in child position is not a valid VNodeChild. The usual cause is an ACCESSOR returning another accessor: `() => () => value`. VNodeChild allows an accessor that yields an atom or an array, but a returned FUNCTION is rendered as-is rather than called again, so the type rejects it — and if it slipped through you would see a function stringified into the DOM instead of your value.",
+      fix: "Return the VALUE from the accessor, not another function. `{() => count()}` — call the signal inside the accessor. If you are forwarding a signal, pass it directly (`{count}`) and let the compiler auto-call it; do not wrap it in an extra arrow.",
+      fixCode: `// BAD — the accessor returns another function
+<Text>{() => () => count()}</Text>
+
+// GOOD — the accessor returns the value
+<Text>{() => count()}</Text>
+
+// ALSO GOOD — a tracked signal is auto-called by the compiler
+<Text>Count: {count}</Text>`,
+    }),
+  },
+  {
     // `<For>`'s keyed reconciler SKIPS a duplicate key (first occurrence wins)
     // to avoid cache-collision DOM corruption — so the visible symptom is a
     // list rendering FEWER rows than the data has, which users rarely connect

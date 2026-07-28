@@ -180,11 +180,16 @@ function ToastItem(props: { id: string }): VNodeChild {
   // place — no component re-render, no row remount. See the `_toastMap` docstring.
   const live = (): Toast | undefined => _toastMap().get(id)
 
-  // `message`/`description` are `string | VNodeChild` — VNodeChild includes an
-  // accessor arm, which a reactive child callback may not RETURN (it must yield
-  // an atom). Resolve a function value so a `() => …` message/description still
-  // renders and the type stays honest.
-  const resolve = (v: string | VNodeChild | undefined): VNodeChildAtom | VNodeChildAtom[] =>
+  // `message`/`description` are `string | VNodeChild`, whose accessor arm a
+  // reactive child callback may not RETURN as-is — so resolve a function value
+  // here and a `() => …` message still renders.
+  //
+  // The return is `VNodeChildAtom | VNodeChild[]`, matching what an accessor
+  // now yields: an atom, or an ARRAY that may itself contain accessors.
+  // `mountChild` has always mounted accessors anywhere in a children array; the
+  // previous atoms-only return was narrower than both the runtime and the
+  // accessor it resolves.
+  const resolve = (v: string | VNodeChild | undefined): VNodeChildAtom | VNodeChild[] =>
     typeof v === 'function' ? v() : (v ?? '')
 
   return (
