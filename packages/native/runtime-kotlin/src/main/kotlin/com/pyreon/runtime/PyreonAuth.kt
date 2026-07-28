@@ -53,7 +53,28 @@ public enum class PyreonAuthStatus {
     SIGNED_IN,
 
     /** The last sign-in failed ([PyreonAuth.signInFailed]). */
-    ERROR,
+    ERROR;
+
+    /**
+     * The CROSS-PLATFORM spelling of this state.
+     *
+     * Kotlin enum constants are SCREAMING_SNAKE by convention and Swift's are
+     * camelCase, so shared source that renders the status directly —
+     * `<Text>{auth.status}</Text>`, which is the natural thing to write — showed
+     * "signedOut" on iOS and "SIGNED_OUT" on Android. Same source, different UI
+     * text: exactly the divergence the one-source model exists to prevent.
+     *
+     * Overriding `toString` fixes the RENDERED value while leaving the constant
+     * names idiomatic for Kotlin callers (`PyreonAuthStatus.SIGNED_OUT` still
+     * reads correctly in hand-written Android code). Renaming the constants
+     * would have matched the strings at the cost of every Kotlin call site.
+     */
+    override fun toString(): String = when (this) {
+        SIGNED_OUT -> "signedOut"
+        SIGNING_IN -> "signingIn"
+        SIGNED_IN -> "signedIn"
+        ERROR -> "error"
+    }
 }
 
 /**

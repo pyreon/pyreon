@@ -1,0 +1,16 @@
+# Gradle + Android Studio generated dirs
+.gradle/
+build/
+.idea/
+local.properties
+.cxx/
+
+# Pyreon-emitted Kotlin lands inside the source tree but is gitignored —
+# `scripts/build.sh` regenerates it on every Gradle build. Scoped to the
+# emitted FILE (named after the shared `FinanceApp.tsx`) rather than the whole
+# directory, matching native-counter-android: hand-written app code may need to
+# share this package, since the emit references app classes unqualified.
+app/src/main/kotlin/com/pyreon/generated/FinanceApp.kt
+
+# node_modules
+node_modules/

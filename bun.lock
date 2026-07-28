@@ -797,6 +797,13 @@
         "@pyreon/store": "workspace:*",
       },
     },
+    "examples/native-finance-android": {
+      "name": "@pyreon/example-native-finance-android",
+      "version": "0.50.0",
+      "devDependencies": {
+        "@pyreon/native-cli": "workspace:*",
+      },
+    },
     "examples/native-finance-ios": {
       "name": "@pyreon/example-native-finance-ios",
       "version": "0.50.0",
@@ -3594,6 +3601,8 @@
     "@pyreon/example-native-counter-ios": ["@pyreon/example-native-counter-ios@workspace:examples/native-counter-ios"],
 
     "@pyreon/example-native-finance": ["@pyreon/example-native-finance@workspace:examples/native-finance"],
+
+    "@pyreon/example-native-finance-android": ["@pyreon/example-native-finance-android@workspace:examples/native-finance-android"],
 
     "@pyreon/example-native-finance-ios": ["@pyreon/example-native-finance-ios@workspace:examples/native-finance-ios"],
 

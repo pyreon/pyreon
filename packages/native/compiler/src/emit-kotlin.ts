@@ -5088,6 +5088,18 @@ function emitKotlinLayer(
  * `emitKotlinLayoutModifier` append after it (its `Modifier` prefix is
  * stripped so the chain stays single-rooted).
  */
+/**
+ * Does this child lower to a Compose LAZY list (i.e. its own vertical
+ * scroller)? Today that is `<For>` → `LazyColumn`.
+ *
+ * Used by `emitKotlinScroll` to avoid nesting a lazy list inside a
+ * `Column(Modifier.verticalScroll())`, which Compose rejects at MEASURE time
+ * rather than at compile time — see the note at the call site.
+ */
+function isKotlinLazyListChild(e: ExprIR): boolean {
+  return e.kind === 'jsx-element' && e.tag === 'For'
+}
+
 function emitKotlinScroll(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   indent: number,
@@ -5102,6 +5114,38 @@ function emitKotlinScroll(
   const pad = ' '.repeat(indent + 2)
   if (e.children.length === 0) {
     return `${composable}(modifier = ${modifier}) {}`
+  }
+  // `<Scroll><For/></Scroll>` — the canonical list idiom — must NOT emit a
+  // scroll modifier: `<For>` lowers to a LazyColumn, which is ITSELF the
+  // scrolling container, and Compose forbids nesting one inside a
+  // `Column(Modifier.verticalScroll())`. It does not merely look wrong; it
+  // throws at MEASURE time:
+  //
+  //   IllegalStateException: Vertically scrollable component was measured with
+  //   an infinity maximum height constraints … nesting layouts like LazyColumn
+  //   and Column(Modifier.verticalScroll())
+  //
+  // SwiftUI has no such rule — `ScrollView { LazyVStack { … } }` is the
+  // idiomatic pair — so the SAME shared source rendered fine on iOS and
+  // crashed the Android app. Found by running the finance example on an
+  // emulator; compile-only validation cannot see a measure-time constraint.
+  //
+  // The lazy child already scrolls on its own axis, so dropping the redundant
+  // wrapper preserves the behaviour the author asked for. A MIXED child list
+  // (a header plus a `<For>`) keeps the scroll modifier: there the outer
+  // scroller is doing real work, and the nested-lazy hazard is the author's to
+  // resolve — the compiler warns rather than silently restructuring their tree.
+  const lazyOnly =
+    !horizontal &&
+    e.children.length === 1 &&
+    e.children[0]!.kind === 'expr' &&
+    isKotlinLazyListChild(e.children[0]!.expr)
+  if (lazyOnly) {
+    // No wrapper at all — the LazyColumn IS the scroll container. Emitted at
+    // the PARENT's indent, since it takes the wrapper's place. Any
+    // padding/testTag on the <Scroll> would be lost by unwrapping, so keep the
+    // wrapper (and accept the author's own nesting) when it carries layout.
+    if (layoutMod === '') return emitKotlinChild(e.children[0]!, indent)
   }
   const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
   return `${composable}(modifier = ${modifier}) {\n${contentLines}\n${' '.repeat(indent)}}`

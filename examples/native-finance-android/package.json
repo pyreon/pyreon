@@ -1,0 +1,16 @@
+{
+  "name": "@pyreon/example-native-finance-android",
+  "version": "0.50.0",
+  "private": true,
+  "description": "PRIVATE — Android host for the SHARED examples/native-finance app source. The Android half of the REAL-APP device gate: the SAME FinanceApp.tsx the iOS host compiles, proving a multi-screen app (routing + useAuth + useForm + a cross-screen store + a computed balance) composes on both platforms.",
+  "license": "MIT",
+  "scripts": {
+    "build": "./scripts/build.sh",
+    "lint": "echo '[native-finance-android] no TS lint surface; skipping'",
+    "test": "echo '[native-finance-android] no test surface; PMTC emit covered by @pyreon/native-compiler tests'",
+    "typecheck": "echo '[native-finance-android] no TS typecheck surface'"
+  },
+  "devDependencies": {
+    "@pyreon/native-cli": "workspace:*"
+  }
+}

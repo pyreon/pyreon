@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AndroidManifest for the Pyreon Finance Android reference.
+
+  Minimal single-activity Compose app. `MainActivity` calls
+  `setContent { FinanceApp() }` where `FinanceApp` is the compiler-emitted
+  Composable from `../kotlin/com/pyreon/generated/FinanceApp.kt`.
+
+  Mirror of `native-todomvc-android/app/src/main/AndroidManifest.xml`
+  (different label / activity launches a different generated composable).
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- M3.3 useNotifications: Android 13+ (API 33) requires the
+         POST_NOTIFICATIONS runtime permission to deliver local notifications
+         (PyreonNotifications). NotificationManagerCompat no-ops gracefully if
+         it isn't granted, so the app never crashes. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <application
+        android:label="PyreonFinance"
+        android:allowBackup="true">
+        <activity
+            android:name="com.pyreon.MainActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

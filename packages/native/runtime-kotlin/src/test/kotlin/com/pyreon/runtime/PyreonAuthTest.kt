@@ -99,7 +99,34 @@ fun testAuthReactiveFieldShapes() {
     }
 }
 
+/**
+ * The rendered status string must match the Swift runtime's spelling.
+ *
+ * Shared source that renders the status directly — `<Text>{auth.status}</Text>`,
+ * the natural thing to write — showed "signedOut" on iOS and "SIGNED_OUT" on
+ * Android, because Kotlin enum constants are SCREAMING_SNAKE and Swift's are
+ * camelCase. Same source, different UI text. `toString` is overridden to close
+ * that; this locks it so a future constant rename cannot silently reopen it.
+ */
+fun testAuthStatusRendersCrossPlatformSpelling() {
+    val cases = listOf(
+        PyreonAuthStatus.SIGNED_OUT to "signedOut",
+        PyreonAuthStatus.SIGNING_IN to "signingIn",
+        PyreonAuthStatus.SIGNED_IN to "signedIn",
+        PyreonAuthStatus.ERROR to "error",
+    )
+    for ((status, expected) in cases) {
+        check(status.toString() == expected) {
+            "PyreonAuthStatus.${status.name} renders \"$status\" — Swift renders \"$expected\"; " +
+                "the same shared source would show different text per platform"
+        }
+        // String interpolation is what the emit actually produces.
+        check("$status" == expected) { "interpolated \"$status\" != \"$expected\"" }
+    }
+}
+
 fun main() {
+    testAuthStatusRendersCrossPlatformSpelling()
     testAuthInitialSignedOut()
     testAuthRehydratedSession()
     testAuthSignInFlow()

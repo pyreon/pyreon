@@ -603,7 +603,7 @@ hook at all.
 | `useParams` / router nav + guards | router-demo | ✅ nav, typed params, auth gate | **R5** |
 | `useStorage` | todomvc | ✅ persistence: `test_todosPersistAcrossRelaunch` (iOS, genuine terminate+relaunch) + `todosPersistAcrossActivityRecreation` (Android, activity recreation — honest scope: not full process death) | **R4→R5** |
 | `useLoaderData` (loader auto-emit) | — | ❌ | R2 |
-| `useAuth` | **finance** | ✅ the container's initial `status` renders (`signedOut`), and `beginSignIn()` drives the sign-in flow that reaches the guarded dashboard | **R4** (iOS) |
+| `useAuth` | **finance** | ✅ the container's initial `status` renders (`signedOut`), and `beginSignIn()` drives the sign-in flow that reaches the guarded dashboard — asserted on BOTH platforms from the same source. Writing the Android half surfaced a parity break: Kotlin enum constants are SCREAMING_SNAKE and Swift's are camelCase, so the status rendered `SIGNED_OUT` on Android and `signedOut` on iOS; `PyreonAuthStatus.toString()` now returns the cross-platform spelling | **R4** (iOS + Android) |
 | `useDatabase` | — | ❌ | R2 |
 | `useSecureStorage` | — | ❌ | R2 |
 | `useWebSocket` | — | ❌ | R2 |

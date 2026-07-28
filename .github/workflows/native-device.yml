@@ -511,6 +511,36 @@ jobs:
           working-directory: examples/native-todomvc-android
           script: gradle connectedCheck --no-daemon --stacktrace
 
+      # ── The REAL-APP gate, Android half ──
+      # The iOS job builds + tests native-finance-ios; this is its counterpart,
+      # compiling the SAME examples/native-finance/src/FinanceApp.tsx. It is the
+      # load-bearing half for the ui-system lowering: Compose takes a reactive
+      # text colour as a `Text(color = …)` CONSTRUCTOR ARG (SwiftUI uses a
+      # modifier), so only a real `assembleDebug` proves that arg is type-correct.
+      - name: Emit Kotlin (PMTC .tsx → generated/*.kt) — native-finance-android
+        working-directory: examples/native-finance-android
+        run: bash scripts/build.sh
+
+      - name: Build debug APK — native-finance-android (real-app gate)
+        working-directory: examples/native-finance-android
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Run Compose instrumented test on Android Emulator — native-finance-android
+        # SHA-pinned like the steps above. Asserts the COMPOSED flow (useForm
+        # validation → the useAuth transition → a store-backed route guard → a
+        # computed balance) on a real emulator — the Android counterpart of the
+        # iOS XCUITest, so the "one source → both platforms" claim covers a real
+        # app rather than a demo.
+        uses: reactivecircus/android-emulator-runner@e89f39f1abbbd05b1113a29cf4db69e7540cae5a # v2.37.0
+        with:
+          api-level: 33
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          working-directory: examples/native-finance-android
+          script: gradle connectedCheck --no-daemon --stacktrace
+
       # ── Gap 5 Android Espresso parity beyond TodoMVC ──
       # Adds the Counter Android example to the Espresso CI gate.
       # Same shape as native-todomvc-android above — Emit Kotlin →
