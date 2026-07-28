@@ -9,6 +9,7 @@ import type { VNodeChildAtom } from '@pyreon/core'
 import { createCatalogGraph, inferControls } from '../core'
 import type { PropShape } from '../core'
 import type { Permissions } from '@pyreon/permissions'
+import type { FakeQueryResult } from './query-states'
 
 /** A single editable prop in the Controls panel. */
 export interface WorkbenchControl {
@@ -64,6 +65,19 @@ export interface WorkbenchRenderCtx {
    * re-renders when the role changes.
    */
   readonly can: Permissions
+  /**
+   * A fabricated query result for the state selected in the Data panel.
+   *
+   * Branch on it exactly as on a real `useQuery` result. The four states are
+   * one selector rather than four hand-written stories plus a request mock,
+   * and `refetching` is modelled faithfully — `status` stays `'success'` with
+   * the previous data while `isFetching` is true — so a component that shows a
+   * skeleton on refetch is visibly wrong here.
+   *
+   * A getter, so reading it inside `render` tracks the signal and the preview
+   * re-renders when the state changes.
+   */
+  readonly query: FakeQueryResult
 }
 
 /** One catalog entry — a component the workbench can showcase. */

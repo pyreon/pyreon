@@ -16,6 +16,7 @@ import {
   recordingPermissions,
   type RecordingPermissions,
 } from './permission-sets'
+import { makeQueryResult, type FakeQueryResult, type QueryStateId } from './query-states'
 import type { CatalogGroup, WorkbenchCatalog, WorkbenchComponent } from './catalog'
 import { buildSearch, defaultValues, groupComponents } from './catalog'
 import type { BrandTheme, ThemeTokens } from './theme'
@@ -70,6 +71,10 @@ export interface WorkbenchModel {
   permissionSet: Signal<string>
   /** The recording `can` for the active role, re-created whenever it changes. */
   permissions: Computed<RecordingPermissions>
+  /** Which of the four query states the preview renders under. */
+  queryState: Signal<QueryStateId>
+  /** The fabricated query result for that state — threaded as `ctx.query`. */
+  queryResult: Computed<FakeQueryResult>
   // computeds
   brand: Computed<BrandTheme>
   theme: Computed<ThemeTokens>
@@ -121,6 +126,7 @@ export function createModel(
   // default — it is a deliberate check, not a viewing mode.
   const pseudoLocale = signal(false)
   const permissionSet = signal(DEFAULT_PERMISSION_SETS[0]?.id ?? 'anonymous')
+  const queryState = signal<QueryStateId>('success')
 
   // Re-created per role AND per selected component: the consulted-key list is
   // an observation of ONE component under ONE role, so carrying it across
@@ -129,6 +135,13 @@ export function createModel(
     void selId()
     return recordingPermissions(permissionSetById(permissionSet()))
   })
+
+  // A scenario supplies its own sample payload through the `queryData` control
+  // when it has one; otherwise the component still gets a well-formed result to
+  // branch on, which is the part being exercised.
+  const queryResult = computed<FakeQueryResult>(() =>
+    makeQueryResult(queryState(), (vals() as { queryData?: unknown }).queryData ?? null),
+  )
 
   const brand = computed(() => THEMES.find((b) => b.id === brandId()) ?? THEMES[0]!)
   const theme = computed(() => tokens(brand(), dark()))
@@ -186,6 +199,10 @@ export function createModel(
     // happened to be active when the context object was built.
     get can() {
       return permissions().can
+    },
+    // A getter, so a component reading it re-renders when the state changes.
+    get query() {
+      return queryResult()
     },
   }
   const preview = (): VNodeChildAtom | VNodeChildAtom[] => sel()?.render(vals(), renderCtx) ?? null
@@ -247,7 +264,7 @@ export function createModel(
   return {
     catalog, groups, total, title: opts.title ?? 'atlas', subtitle: opts.subtitle ?? '',
     brandId, dark, selId, query, zoomIdx, view, addon, actions,
-    viewport, background, pseudo, outline, locale, pseudoLocale, permissionSet, permissions,
+    viewport, background, pseudo, outline, locale, pseudoLocale, permissionSet, permissions, queryState, queryResult,
     brand, theme, sel, vals, visibleGroups, noResults, a11y,
     setValue, reset, logAction, clearActions, search, preview, searchRef, focusSearch, previewRef,
   }
