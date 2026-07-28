@@ -18,10 +18,17 @@ import type {
 
 const SKIP: VerifyCheck = { status: 'skip' }
 
-/** A verdict with every check skipped — the neutral element for merging. */
+/**
+ * A verdict with every check skipped — the neutral element for merging.
+ *
+ * It is NOT `ok`. Nothing has run, so there is nothing to vouch for; claiming
+ * `ok` here is what made an unverified scenario read as a passing one all the
+ * way out to the agent guide.
+ */
 export function emptyVerdict(): VerifyVerdict {
   return {
-    ok: true,
+    ok: false,
+    checked: 0,
     a11y: SKIP,
     interaction: SKIP,
     reactivityCoverage: SKIP,
@@ -39,8 +46,11 @@ function mergeVerdict(base: VerifyVerdict, partial: Partial<VerifyVerdict>): Ver
     const check = partial[key]
     if (check !== undefined) next[key] = check
   }
-  // `ok` is DERIVED, never taken from a plugin — a scenario is ok iff no check failed.
-  next.ok = CHECK_KEYS.every((key) => next[key].status !== 'fail')
+  // Both fields are DERIVED, never taken from a plugin: a plugin owns its own
+  // check, not the verdict. `ok` requires evidence — at least one check ran and
+  // none failed — so "nothing examined this" can never present as "clean".
+  next.checked = CHECK_KEYS.filter((key) => next[key].status !== 'skip').length
+  next.ok = next.checked > 0 && CHECK_KEYS.every((key) => next[key].status !== 'fail')
   return next
 }
 

@@ -127,7 +127,16 @@ function renderLlmsText(components: readonly ComponentIntelligence[]): string {
     if (ci.scenarios.length > 0) {
       lines.push(`scenarios (${ci.scenarios.length}):`)
       for (const s of ci.scenarios) {
-        const verdict = s.verify ? (s.verify.ok ? ' [pass]' : ' [FAIL]') : ''
+        // Three states, not two. A scenario nothing checked is `[unverified]`,
+        // never `[pass]` — most scenarios are in that state today, because four
+        // of the five verify checks are still stubs.
+        const verdict = s.verify
+          ? s.verify.ok
+            ? ' [pass]'
+            : s.verify.checked === 0
+              ? ' [unverified]'
+              : ' [FAIL]'
+          : ''
         lines.push(`  - ${s.name} [${s.source}]${verdict}`)
       }
     }
@@ -180,13 +189,24 @@ function renderAgentGuide(components: readonly ComponentIntelligence[]): string 
     const reactive = ci.controls.filter((c) => c.reactive).map((c) => c.name)
     if (reactive.length > 0) lines.push(`reactive (pass a signal accessor): ${reactive.join(', ')}`)
 
-    const good = ci.scenarios.find(
-      (s) => s.verify?.ok !== false && Object.keys(s.args).length > 0,
-    )
-    if (good) lines.push(`correct: ${JSON.stringify(good.args)}`)
+    // "correct:" is a claim, so it needs a VERIFIED scenario behind it. The
+    // previous filter was `verify?.ok !== false`, which also accepted scenarios
+    // nothing had checked — the guide asserted correctness on no evidence.
+    // An unverified scenario is still useful as a starting point, so it is
+    // offered under a weaker word rather than dropped.
+    const withArgs = ci.scenarios.filter((s) => Object.keys(s.args).length > 0)
+    const verified = withArgs.find((s) => s.verify?.ok === true)
+    if (verified) {
+      lines.push(`correct: ${JSON.stringify(verified.args)}`)
+    } else {
+      const unverified = withArgs.find((s) => s.verify === undefined || s.verify.checked === 0)
+      if (unverified) lines.push(`example (unverified): ${JSON.stringify(unverified.args)}`)
+    }
 
     for (const s of ci.scenarios) {
-      if (s.verify && !s.verify.ok) {
+      // Only a real FAILURE earns an "avoid" — an unverified scenario has no
+      // findings to report and must not be smeared as bad.
+      if (s.verify && !s.verify.ok && s.verify.checked > 0) {
         const why = collectFindings(s.verify)
         if (why) lines.push(`avoid: "${s.name}" — ${why}`)
       }
