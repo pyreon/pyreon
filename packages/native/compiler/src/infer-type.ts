@@ -74,6 +74,8 @@ export interface InferenceCtx {
    * ForEach over it failed to typecheck.
    */
   fetches: Map<string, TypeIR>
+  /** Service-container binding name → decl kind (`geo` → `geolocation`). */
+  services: Map<string, string>
   /**
    * Store hook name → field name → declared field type. Lets the
    * store-read chain `useApp().store.tasks()` infer the field's type
@@ -127,6 +129,7 @@ export function emptyInferenceCtx(): InferenceCtx {
     locals: new Map(),
     objectLocals: new Map(),
     fetches: new Map(),
+    services: new Map(),
     stores: new Map(),
     structs: new Map(),
   }
@@ -301,6 +304,67 @@ export function widenFloatSignals(
   }
 }
 
+/**
+ * Public OPTIONAL fields on the native service containers, by decl kind.
+ *
+ * Both emitters already render an optional interpolation web-equivalently —
+ * Swift `\((x).map { "\($0)" } ?? "")`, Kotlin `${x ?: ""}` — but the guard is
+ * `typeIsOptional(inferType(...))`, and inference had no field model for these
+ * containers. So every one of them fell through as non-optional and emitted a
+ * RAW interpolation, which on Swift renders `Optional(37.3349)` instead of
+ * `37.3349` (and `nil` instead of nothing). swiftc warns about exactly this;
+ * the stub gate does not surface warnings, so nothing caught it.
+ *
+ * Same class as the `LocalizedStringKey` bug this file's sibling emit already
+ * documents — renders differently on iOS than on web, and invisible in the
+ * counter example because `Count: 0` has no optionals in it.
+ *
+ * Only PUBLIC, user-readable fields belong here; the containers' private
+ * transport handles (`manager`, `task`, `session`, `monitor`) are not API.
+ * `fetch.data` is deliberately absent — the member case below already types it
+ * from the call's generic.
+ */
+const SERVICE_OPTIONAL_FIELDS: ReadonlyMap<string, ReadonlyMap<string, TypeIR>> = new Map([
+  [
+    'geolocation',
+    new Map<string, TypeIR>([
+      ['latitude', { kind: 'number' }],
+      ['longitude', { kind: 'number' }],
+      ['accuracy', { kind: 'number' }],
+      ['error', { kind: 'string' }],
+    ]),
+  ],
+  [
+    'websocket',
+    new Map<string, TypeIR>([
+      ['lastMessage', { kind: 'string' }],
+      ['error', { kind: 'string' }],
+    ]),
+  ],
+  [
+    'payments',
+    new Map<string, TypeIR>([
+      ['purchasing', { kind: 'string' }],
+      ['error', { kind: 'string' }],
+    ]),
+  ],
+  [
+    'map',
+    new Map<string, TypeIR>([
+      ['selectedMarkerId', { kind: 'string' }],
+      ['error', { kind: 'string' }],
+    ]),
+  ],
+  [
+    'push',
+    new Map<string, TypeIR>([['error', { kind: 'string' }]]),
+  ],
+  [
+    'fetch',
+    new Map<string, TypeIR>([['error', { kind: 'string' }]]),
+  ],
+])
+
 export function buildInferenceCtx(
   decls: DeclIR[],
   storeDefs: StoreDefnIR[] = [],
@@ -328,6 +392,15 @@ export function buildInferenceCtx(
     fetches: new Map(
       decls.flatMap((d) => (d.kind === 'fetch' ? [[d.name, d.type] as const] : [])),
     ),
+    // Service-container binding -> decl kind, so a member read on one can be
+    // typed against SERVICE_OPTIONAL_FIELDS above.
+    services: new Map(
+      decls.flatMap((d) =>
+        'name' in d && typeof d.name === 'string' && SERVICE_OPTIONAL_FIELDS.has(d.kind)
+          ? [[d.name, d.kind] as const]
+          : [],
+      ),
+    ),
     stores: new Map(
       storeDefs.map((s) => {
         const perHook = new Map(s.fields.map((f) => [f.name, f.type]))
@@ -342,6 +415,7 @@ export function buildInferenceCtx(
             locals: new Map(),
             objectLocals: new Map(),
             fetches: new Map(),
+            services: new Map(),
             stores: new Map(),
             structs: new Map(
               structDefs.map((sd) => [
@@ -494,6 +568,7 @@ export function inferReturnType(
     locals: new Map(ctx.locals),
     objectLocals: new Map(ctx.objectLocals),
     fetches: ctx.fetches,
+    services: ctx.services,
     stores: ctx.stores,
     structs: ctx.structs,
   }
@@ -1364,6 +1439,16 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       if (expr.object.kind === 'identifier' && ctx.fetches.has(expr.object.name)) {
         if (expr.property === 'data') return ctx.fetches.get(expr.object.name)!
         if (expr.property === 'isPending') return { kind: 'boolean' }
+      }
+      // Optional field on a service container (`geo.latitude`, `ws.lastMessage`,
+      // `f.error`). Returned as a nullable union so `typeIsOptional` fires and
+      // BOTH emitters wrap the interpolation — without this they render
+      // `Optional(37.3349)` on Swift and `null` on Kotlin where web renders
+      // `37.3349` and nothing.
+      if (expr.object.kind === 'identifier') {
+        const svcKind = ctx.services.get(expr.object.name)
+        const field = svcKind ? SERVICE_OPTIONAL_FIELDS.get(svcKind)?.get(expr.property) : undefined
+        if (field) return { kind: 'union', branches: [field, { kind: 'null' }] }
       }
       // Component props read through the param (`props.qty`) — the
       // declared prop type. Checked BEFORE the generic object walk: the
