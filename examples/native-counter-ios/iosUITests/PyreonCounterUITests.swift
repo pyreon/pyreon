@@ -80,6 +80,28 @@ final class PyreonCounterUITests: XCTestCase {
     /// `Double?` rendered "Optional(37.3349)". The exact-prefix assertion below
     /// fails against that, so this test would catch a regression of it too.
     func test_geolocationFixRendersCoordinate() throws {
+        // Handle the location permission dialog.
+        //
+        // The workflow's `simctl privacy grant` runs BEFORE xcodebuild installs
+        // the app, so on a clean runner the bundle does not exist yet and the
+        // grant does not stick — iOS then shows the system prompt and the watch
+        // never delivers a fix. Locally it appeared to work only because the
+        // app was already installed from earlier runs, which is exactly the
+        // kind of environment difference that makes a device test lie.
+        //
+        // The monitor makes the test independent of install ordering: allow the
+        // prompt if it appears, ignore it if the pre-grant did stick.
+        addUIInterruptionMonitor(withDescription: "location permission") { alert in
+            for label in ["Allow While Using App", "Allow Once", "Allow"] {
+                let button = alert.buttons[label]
+                if button.exists {
+                    button.tap()
+                    return true
+                }
+            }
+            return false
+        }
+
         let app = XCUIApplication()
         app.launch()
 
@@ -95,6 +117,10 @@ final class PyreonCounterUITests: XCTestCase {
         )
 
         app.buttons["Locate"].tap()
+        // An interruption monitor fires on the next interaction AFTER the alert
+        // appears, so the Locate tap alone cannot dismiss it. This nudge is what
+        // actually triggers the handler.
+        app.tap()
 
         // The injected latitude is 37.3349 (see scripts/run-device-tests.sh).
         let updated = NSPredicate(format: "label BEGINSWITH %@", "Geo: 37.33")
