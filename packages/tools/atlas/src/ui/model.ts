@@ -16,10 +16,14 @@ import { THEMES, tokens } from './theme'
 
 export type View = 'canvas' | 'docs' | 'lab'
 /**
- * The addon-panel tab. Sourced from `ADDON_TABS` so the state and the rendered
- * tab strip cannot drift — adding a tab there is enough.
+ * The addon-panel tab.
+ *
+ * `AddonTabId` names the built-ins so they still autocomplete, and the open
+ * `(string & {})` arm admits a panel registered by a plugin — the id is not
+ * knowable at compile time, and a closed union would have made the registry
+ * unusable from outside this package. Same shape as the router's `RouteHref`.
  */
-export type Addon = AddonTabId
+export type Addon = AddonTabId | (string & {})
 export interface ActionEntry {
   id: number
   name: string
