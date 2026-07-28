@@ -934,6 +934,25 @@ const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
         'the non-hook factory has no native container; `usePermissions()` DOES lower — use the hook instead',
     },
   ],
+  [
+    '@pyreon/a11y',
+    {
+      // Measured every export — announce / VisuallyHidden / createA11yId all
+      // fail both targets, so a package-level entry is correct here. That is
+      // NOT an assumption carried over from @pyreon/rx, where exactly this
+      // shortcut was wrong: `rx` lowers and the standalone transforms do not.
+      advice:
+        'the live-region helpers are DOM-based — native a11y goes through the `accessibilityLabel` / `accessibilityHidden` props on the canonical primitives, which lower on all three targets',
+    },
+  ],
+  [
+    '@pyreon/http',
+    {
+      // Same: endpoint and createClient both fail both targets.
+      advice:
+        'the transport is web-only — `useFetch<T>(url)` lowers to PyreonFetch on both native targets and auto-starts on mount',
+    },
+  ],
 ])
 
 /**
