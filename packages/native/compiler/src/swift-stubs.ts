@@ -203,6 +203,14 @@ extension View {
   // ARGUMENT types so a wrong-typed arg is still caught, but always return some View).
   public func bold() -> some View { self }
   public func frame(width: Double? = nil, height: Double? = nil) -> some View { self }
+  public func frame(
+    minWidth: Double? = nil,
+    idealWidth: Double? = nil,
+    maxWidth: Double? = nil,
+    minHeight: Double? = nil,
+    idealHeight: Double? = nil,
+    maxHeight: Double? = nil
+  ) -> some View { self }
   // iOS 17 grid-column primitive: the coolgrid Col fractional span.
   public func containerRelativeFrame(_ axes: Axis.Set, count: Int, span: Int, spacing: Double, alignment: Alignment = .center) -> some View { self }
   public func resizable() -> some View { self }
