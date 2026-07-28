@@ -70,14 +70,36 @@ const WAIT_BUDGET_MS = process.env.CI ? 30_000 : 5000
 // ticks don't run when the loop is starved — while behaving identically to the
 // old wall-clock deadline on a healthy machine. `TEST_TIMEOUT_MS` below is the
 // hard wall-clock backstop, derived to always exceed the composed budget.
-const waitFor = (cond: () => boolean, timeoutMs = WAIT_BUDGET_MS): Promise<void> =>
+//
+// Every call site names WHAT it is waiting for, and the timeout message repeats
+// that name plus a snapshot of the observed state. Four escalations of this
+// file's budget (8 → 15 → 20 → 30s) were argued from the bare string
+// `waitFor: timed out`, which is emitted by twenty call sites and says nothing
+// about which barrier stalled or what the transports actually looked like when
+// it did. A CI-only, load-dependent failure that reproduces in 1.85s locally
+// gives you exactly one artifact — the failure message — so that message has to
+// carry the evidence, or the next occurrence is another round of guessing.
+const waitFor = (
+  what: string,
+  cond: () => boolean,
+  opts: { timeoutMs?: number; describe?: () => string } = {},
+): Promise<void> =>
   new Promise((resolve, reject) => {
-    const maxTicks = Math.ceil(timeoutMs / 10)
+    const maxTicks = Math.ceil((opts.timeoutMs ?? WAIT_BUDGET_MS) / 10)
     let ticks = 0
     const tick = () => {
       if (cond()) resolve()
-      else if (++ticks > maxTicks) reject(new Error('waitFor: timed out'))
-      else setTimeout(tick, 10)
+      else if (++ticks > maxTicks) {
+        // `describe` is evaluated ONLY on failure — a state snapshot must never
+        // cost anything on the passing path, which runs this tick every 10ms.
+        let observed = ''
+        try {
+          observed = opts.describe ? ` — observed: ${opts.describe()}` : ''
+        } catch (err) {
+          observed = ` — observed: <describe() threw: ${String(err)}>`
+        }
+        reject(new Error(`waitFor: timed out waiting for ${what}${observed}`))
+      } else setTimeout(tick, 10)
     }
     tick()
   })
@@ -128,9 +150,9 @@ describe('WebSocket relay — cross-device sync', { timeout: TEST_TIMEOUT_MS }, 
     // sync round-trip completed, so the deferred create-if-missing seeds have
     // settled and a real write is safe (#2380). Before the fix, both peers seeded
     // '' before syncing and A's write raced them on a clientId tie-break.
-    await waitFor(() => ta.synced() && tb.synced())
+    await waitFor('both transports synced', () => ta.synced() && tb.synced(), { describe: () => `ta.synced=${ta.synced()} tb.synced=${tb.synced()} ta.connected=${ta.connected} tb.connected=${tb.connected}` })
     sa.set('hello over WS') // a writes after both are synced — propagates to b
-    await waitFor(() => sb() === 'hello over WS')
+    await waitFor("b to receive a's write", () => sb() === 'hello over WS', { describe: () => `sb=${JSON.stringify(sb())} tb.connected=${tb.connected} tb.synced=${tb.synced()}` })
     expect(sb()).toBe('hello over WS')
     // Two sequential waits (sync + propagate); inherits the derived describe-level
     // backstop, which exceeds the 2×WAIT_BUDGET_MS composed sum.
@@ -171,9 +193,11 @@ describe('WebSocket relay — cross-device sync', { timeout: TEST_TIMEOUT_MS }, 
     disposers.push(() => tb.disconnect())
     const sb = syncedSignal({ doc: b, key: 'title', initial: '' })
 
-    await waitFor(() => sb() === 'typed by A')
+    await waitFor("b to converge on a's value (no seed clobber)", () => sb() === 'typed by A', { describe: () => `sb=${JSON.stringify(sb())} tb.synced=${tb.synced()}` })
     expect(sb()).toBe('typed by A')
-    await waitFor(() => sa() === 'typed by A') // A still holds its value
+    await waitFor("a to still hold its own value", () => sa() === 'typed by A', {
+      describe: () => `sa=${JSON.stringify(sa())}`,
+    })
     expect(sa()).toBe('typed by A')
   })
 
@@ -191,7 +215,7 @@ describe('WebSocket relay — cross-device sync', { timeout: TEST_TIMEOUT_MS }, 
     })
     disposers.push(() => ta.disconnect())
 
-    await waitFor(() => disconnected)
+    await waitFor('the disconnect callback to fire', () => disconnected, { describe: () => `disconnected=${disconnected}` })
     expect(disconnected).toBe(true)
     expect(ta.connected).toBe(false)
   })
@@ -217,7 +241,7 @@ describe('WebSocket relay — cross-device sync', { timeout: TEST_TIMEOUT_MS }, 
     })
     disposers.push(() => ta.disconnect())
 
-    await waitFor(() => disconnected)
+    await waitFor('the disconnect callback to fire', () => disconnected, { describe: () => `disconnected=${disconnected}` })
     expect(ta.connected).toBe(false)
 
     // The relay is still alive: a fresh client can connect to a DIFFERENT
@@ -269,7 +293,7 @@ describe('WebSocket relay — cross-device sync', { timeout: TEST_TIMEOUT_MS }, 
     sa.set('authed')
 
     const bMap = b.getMap('pyreon')
-    await waitFor(() => bMap.get('k') === 'authed')
+    await waitFor('the authorized peer to receive the update', () => bMap.get('k') === 'authed', { describe: () => `bMap.k=${JSON.stringify(bMap.get('k'))}` })
 
     // Key already present → `syncedSignal` adopts it and skips the seed.
     const sb = syncedSignal({ doc: b, key: 'k', initial: '' })
@@ -284,7 +308,7 @@ describe('WebSocket relay — cross-device sync', { timeout: TEST_TIMEOUT_MS }, 
     disposers.push(() => ta.disconnect())
     const sa = syncedSignal({ doc: a, key: 'k', initial: '' })
 
-    await waitFor(() => ta.connected)
+    await waitFor('the transport to connect', () => ta.connected, { describe: () => `ta.connected=${ta.connected}` })
     sa.set('early') // recorded into the relay's room doc
     await new Promise((r) => setTimeout(r, 100)) // let the relay apply it
 
@@ -294,7 +318,7 @@ describe('WebSocket relay — cross-device sync', { timeout: TEST_TIMEOUT_MS }, 
     const tb = connectViaWebSocket(b, url, { reconnect: false, WebSocketImpl: WSImpl })
     disposers.push(() => tb.disconnect())
 
-    await waitFor(() => b.getMap('pyreon').get('k') === 'early')
+    await waitFor('the late joiner to catch up on existing state', () => b.getMap('pyreon').get('k') === 'early', { describe: () => `b.k=${JSON.stringify(b.getMap('pyreon').get('k'))}` })
     expect(b.getMap('pyreon').get('k')).toBe('early')
   })
 
@@ -337,7 +361,7 @@ describe('WebSocket relay — cross-device sync', { timeout: TEST_TIMEOUT_MS }, 
     sa.set('over shared server')
 
     const bMap = b.getMap('pyreon')
-    await waitFor(() => bMap.get('k') === 'over shared server')
+    await waitFor('the update to cross the shared relay', () => bMap.get('k') === 'over shared server', { describe: () => `bMap.k=${JSON.stringify(bMap.get('k'))}` })
 
     const sb = syncedSignal({ doc: b, key: 'k', initial: '' })
     expect(sb()).toBe('over shared server')
@@ -364,12 +388,12 @@ describe('WebSocket relay — cross-device sync', { timeout: TEST_TIMEOUT_MS }, 
       WebSocketImpl: WSImpl,
     })
     disposers.push(() => ta.disconnect())
-    await waitFor(() => ta.connected)
+    await waitFor('the transport to connect', () => ta.connected, { describe: () => `ta.connected=${ta.connected}` })
 
     // Drop the relay → client notices + schedules a backoff reconnect.
     await relay1.close()
     await new Promise<void>((res) => http1.close(() => res()))
-    await waitFor(() => !ta.connected)
+    await waitFor('the transport to drop', () => !ta.connected, { describe: () => `ta.connected=${ta.connected}` })
 
     // Bring a NEW relay up on the same port → the backoff timer reconnects.
     const http2 = createHttpServer()
@@ -377,7 +401,7 @@ describe('WebSocket relay — cross-device sync', { timeout: TEST_TIMEOUT_MS }, 
     server = await createSyncServer({ server: http2 })
     disposers.push(() => http2.close())
 
-    await waitFor(() => ta.connected) // reconnected
+    await waitFor('the transport to connect', () => ta.connected, { describe: () => `ta.connected=${ta.connected}` }) // reconnected
     expect(ta.connected).toBe(true)
   })
 
@@ -393,12 +417,12 @@ describe('WebSocket relay — cross-device sync', { timeout: TEST_TIMEOUT_MS }, 
       reconnect: true,
       WebSocketImpl: WSImpl,
     })
-    await waitFor(() => ta.connected)
+    await waitFor('the transport to connect', () => ta.connected, { describe: () => `ta.connected=${ta.connected}` })
 
     // Drop the relay → onclose schedules a reconnect timer.
     await relay.close()
     await new Promise<void>((res) => http.close(() => res()))
-    await waitFor(() => !ta.connected)
+    await waitFor('the transport to drop', () => !ta.connected, { describe: () => `ta.connected=${ta.connected}` })
 
     // Disconnect WHILE the reconnect timer is pending → it must be cleared, and
     // no reconnect must fire afterwards.
@@ -420,7 +444,7 @@ describe('WebSocket relay — cross-device sync', { timeout: TEST_TIMEOUT_MS }, 
     )
     const sa = syncedSignal({ doc: a, key: 'k', initial: '' })
     const sb = syncedSignal({ doc: b, key: 'k', initial: '' })
-    await waitFor(() => ta.connected && tb.connected)
+    await waitFor('both transports connected', () => ta.connected && tb.connected, { describe: () => `ta.connected=${ta.connected} tb.connected=${tb.connected}` })
 
     // A buggy / hostile client sends raw garbage on BOTH message types. Each of
     // these makes Yjs throw (applyUpdate on garbage / empty; encodeStateAsUpdate
@@ -442,7 +466,7 @@ describe('WebSocket relay — cross-device sync', { timeout: TEST_TIMEOUT_MS }, 
     // is the same localhost-WS propagation wait as every other spec, so it must
     // get the same contention headroom.
     sa.set('survived')
-    await waitFor(() => sb() === 'survived')
+    await waitFor('the post-reconnect write to arrive', () => sb() === 'survived', { describe: () => `sb=${JSON.stringify(sb())} tb.connected=${tb.connected}` })
     expect(sb()).toBe('survived')
     evil.close()
   })
@@ -462,7 +486,7 @@ describe('WebSocket relay — cross-device sync', { timeout: TEST_TIMEOUT_MS }, 
     await new Promise<void>((res) => {
       racer.onopen = () => res()
     })
-    await waitFor(() => authorizeStarted)
+    await waitFor('authorize() to be invoked', () => authorizeStarted)
     racer.close() // disconnect WHILE authorize is still awaiting → post-authorize send hits a closing socket
     await new Promise((r) => setTimeout(r, 200)) // let authorize resolve + the send attempt happen
 
@@ -471,7 +495,7 @@ describe('WebSocket relay — cross-device sync', { timeout: TEST_TIMEOUT_MS }, 
     const a = createYjsDoc()
     const ta = connectViaWebSocket(a, url, { reconnect: false, WebSocketImpl: WSImpl })
     disposers.push(() => ta.disconnect())
-    await waitFor(() => ta.connected)
+    await waitFor('the transport to connect', () => ta.connected, { describe: () => `ta.connected=${ta.connected}` })
     expect(ta.connected).toBe(true)
   })
 
@@ -496,7 +520,7 @@ describe('WebSocket relay — cross-device sync', { timeout: TEST_TIMEOUT_MS }, 
         reconnect: false,
         WebSocketImpl: WSImpl,
       })
-      await waitFor(() => ta!.connected)
+      await waitFor('the transport to connect', () => ta!.connected, { describe: () => `ta.connected=${ta!.connected}` })
       await new Promise((r) => setTimeout(r, 200)) // let the garbage frames be processed
       // Still alive + usable: a local write goes through without error.
       const sa = syncedSignal({ doc: a, key: 'k', initial: '' })
