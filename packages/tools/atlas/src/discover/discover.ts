@@ -8,6 +8,7 @@ import { extname, join } from 'node:path'
 import type { ComponentIntelligence } from '../core'
 import type { AtlasPlugin } from '../plugins'
 import { defineAtlasPlugin } from '../plugins'
+import { discoverRocketstyle, type RocketstyleDiscoveryOptions } from './rocketstyle'
 import { scanSource } from './scan'
 
 export interface DiscoverOptions {
@@ -39,16 +40,17 @@ function walk(dir: string, exts: readonly string[], ignore: readonly string[], a
   }
 }
 
+/** Every source file discovery would scan, in deterministic order. */
+export function listComponentFiles(options: DiscoverOptions = {}): string[] {
+  const root = join(options.cwd ?? '.', options.dir ?? 'src')
+  const files: string[] = []
+  walk(root, options.extensions ?? ['.tsx'], options.ignore ?? DEFAULT_IGNORE, files)
+  return files.sort() // deterministic order
+}
+
 /** Discover every exported component under a project directory. */
 export function discoverComponents(options: DiscoverOptions = {}): ComponentIntelligence[] {
-  const cwd = options.cwd ?? '.'
-  const root = join(cwd, options.dir ?? 'src')
-  const exts = options.extensions ?? ['.tsx']
-  const ignore = options.ignore ?? DEFAULT_IGNORE
-
-  const files: string[] = []
-  walk(root, exts, ignore, files)
-  files.sort() // deterministic order
+  const files = listComponentFiles(options)
 
   const out: ComponentIntelligence[] = []
   const seen = new Set<string>()
@@ -68,11 +70,31 @@ export function discoverComponents(options: DiscoverOptions = {}): ComponentInte
   return out
 }
 
-/** A discovery plugin that scans the project's source for components. */
-export function fileDiscoveryPlugin(options: DiscoverOptions = {}): AtlasPlugin {
+/**
+ * A discovery plugin that scans the project's source for components.
+ *
+ * With a `rocketstyle` loader it ALSO loads each file and emits the rocketstyle
+ * components the static scan structurally cannot see. Both halves live in ONE
+ * plugin so the "first occurrence of a name wins" rule has a single owner —
+ * across two plugins the pipeline would happily emit the same component twice.
+ */
+export function fileDiscoveryPlugin(
+  options: DiscoverOptions & { rocketstyle?: RocketstyleDiscoveryOptions } = {},
+): AtlasPlugin {
+  const { rocketstyle, ...discoverOptions } = options
   return defineAtlasPlugin({
     name: 'atlas:file-discovery',
-    discover: (ctx) => discoverComponents({ cwd: options.cwd ?? ctx.cwd, ...stripCwd(options) }),
+    async discover(ctx) {
+      const resolved = { cwd: discoverOptions.cwd ?? ctx.cwd, ...stripCwd(discoverOptions) }
+      const scanned = discoverComponents(resolved)
+      if (!rocketstyle) return scanned
+      const extra = await discoverRocketstyle(
+        listComponentFiles(resolved),
+        rocketstyle,
+        new Set(scanned.map((c) => c.name)),
+      )
+      return [...scanned, ...extra]
+    },
   })
 }
 

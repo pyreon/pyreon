@@ -30,6 +30,13 @@ describe('atlas scan mounts the example', () => {
 
     // The exact counts, not just "nothing unverified".
     //
+    // Six components, not three: the rocketstyle chains in `demo-catalog.tsx`
+    // are call expressions, invisible to the static scanner, and are found by
+    // loading the module and reading `IS_ROCKETSTYLE`. Their variant/size axes
+    // come from `getStaticDimensions`, which is why the scenario count nearly
+    // doubles — without the theme in `atlas.config.ts` the same six components
+    // produce 23 scenarios instead of 36.
+    //
     // `0 unverified` alone is too weak to be a regression test: a loader that
     // mounts everything and CRASHES on everything also reports zero unverified,
     // because a failure is a verdict too. Before the mount harness the scan
@@ -40,6 +47,8 @@ describe('atlas scan mounts the example', () => {
     // The 2 failures are the example's deliberate empty-label scenarios, which
     // the static a11y check catches — they are load-bearing here, since a
     // verify pipeline that cannot fail is not verifying anything.
-    expect(run.stdout).toMatch(/20 scenario\(s\) — 18 verified, 2 failing, 0 unverified/)
+    expect(run.stdout).toMatch(
+      /6 component\(s\), 36 scenario\(s\) — 34 verified, 2 failing, 0 unverified/,
+    )
   })
 })
