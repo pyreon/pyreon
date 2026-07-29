@@ -155,6 +155,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   warnWebOnlyImports(ast.program.body as AnyNode[], ctx)
   warnUnloweredPyreonHooks(ast.program.body as AnyNode[], ctx)
   warnUnloweredControlFlow(ast.program.body as AnyNode[], ctx)
+  warnUnloweredPyreonModules(ast.program.body as AnyNode[], ctx)
   // Pre-pass: map alias-tag local names to their import source, so the emit's
   // Element/PyreonUI/Container/Row/Col hooks intercept ONLY a tag imported from
   // its expected @pyreon package (not a same-named user component).
@@ -758,6 +759,16 @@ const WEB_ONLY_PACKAGES = new Set([
   '@pyreon/toast',
   '@pyreon/table',
   '@pyreon/virtual',
+  // Both were MISSING and failed both targets with no diagnostic at all —
+  // `syncedSignal(...)` and `createRichTextEditor(...)` emitted verbatim and
+  // died with "cannot find ... in scope", while @pyreon/table right above them
+  // warned properly.
+  //
+  // @pyreon/sync is web-only by architecture: the Yjs engine plus the
+  // IndexedDB / WebSocket transports have no native runtime. @pyreon/rich-text
+  // wraps TipTap/ProseMirror, which is DOM-based.
+  '@pyreon/sync',
+  '@pyreon/rich-text',
 ])
 
 /**
@@ -874,6 +885,186 @@ function warnUnloweredControlFlow(body: AnyNode[], ctx: ParseCtx): void {
  * import from `@pyreon/hooks` is a claim on framework behaviour that native
  * cannot honour, which is exactly the case worth naming.
  */
+/**
+ * Pyreon modules whose NON-HOOK exports have no native lowering.
+ *
+ * The hook arc above keys on `/^use[A-Z]/`, so plain exports fell straight
+ * through: `s` from @pyreon/validate, `pipe`/`map` from @pyreon/rx, and
+ * `createPermissions` from @pyreon/permissions all emitted verbatim and failed
+ * BOTH targets with no diagnostic at all — while `useQuery` right next to them
+ * warned properly.
+ *
+ * Scoped to NON-HOOK imports on purpose. It keeps this list from
+ * double-warning with the hook arc, and it handles PARTIAL support for free:
+ * `usePermissions` genuinely lowers (verified) while `createPermissions` does
+ * not, so warning per-export rather than per-package is what keeps the
+ * permissions entry honest.
+ *
+ * Every entry here was MEASURED, not assumed — `@pyreon/url-state` and
+ * `@pyreon/toast` look like candidates but already warn through other paths,
+ * and `@pyreon/state-tree`'s `model()` lowers cleanly, so none of them is
+ * listed.
+ */
+interface UnloweredModule {
+  /** What to do instead, named per module — a generic refusal leaves the author guessing. */
+  readonly advice: string
+  /** Exports from this module that DO lower and must stay silent. */
+  readonly supported?: ReadonlySet<string>
+  /**
+   * Warn ONLY these exports, leaving everything else silent.
+   *
+   * Required for @pyreon/core and @pyreon/reactivity, where the overwhelming
+   * majority of exports lower (`signal`, `computed`, `effect`, `h`, `Fragment`,
+   * `Show`, `For`, …) and only a handful do not. Listing what is SUPPORTED
+   * there would mean enumerating almost the whole public surface and
+   * false-warning on anything missed — the @pyreon/rx over-generalisation at
+   * much larger scale, in the two most-used packages in the framework.
+   */
+  readonly unsupported?: ReadonlySet<string>
+}
+
+const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
+  [
+    '@pyreon/rx',
+    {
+      // The NAMESPACE form lowers: `import { rx } from '@pyreon/rx'` and then
+      // `rx.filter` / `rx.map` / `rx.reverse` emit natively (RX-1). Only the
+      // standalone transforms do not. A package-wide warning here fired on `rx`
+      // itself and broke the existing rx-lowering lock — caught by that suite,
+      // which is exactly the over-warning failure a per-package list invites.
+      advice:
+        'the standalone transforms are web-only — use the NAMESPACE form (`import { rx } from \'@pyreon/rx\'` then `rx.map(...)`), which lowers on both targets, or compose with `computed()`',
+      supported: new Set(['rx']),
+    },
+  ],
+  [
+    '@pyreon/validate',
+    {
+      advice:
+        "the `s` validator runtime is web-only — validate in a `<Web>` branch, or hand-roll the checks the native form needs",
+    },
+  ],
+  [
+    '@pyreon/validation',
+    { advice: 'the Standard Schema helpers are web-only — the same guidance as @pyreon/validate' },
+  ],
+  [
+    '@pyreon/permissions',
+    {
+      advice:
+        'the non-hook factory has no native container; `usePermissions()` DOES lower — use the hook instead',
+    },
+  ],
+  [
+    '@pyreon/a11y',
+    {
+      // Measured every export — announce / VisuallyHidden / createA11yId all
+      // fail both targets, so a package-level entry is correct here. That is
+      // NOT an assumption carried over from @pyreon/rx, where exactly this
+      // shortcut was wrong: `rx` lowers and the standalone transforms do not.
+      advice:
+        'the live-region helpers are DOM-based — native a11y goes through the `accessibilityLabel` / `accessibilityHidden` props on the canonical primitives, which lower on all three targets',
+    },
+  ],
+  [
+    '@pyreon/reactivity',
+    {
+      // MEASURED: signal / computed / effect / onCleanup lower; these three do
+      // not, and failed both targets with no diagnostic.
+      //
+      // `batch` is arguably strippable rather than unsupported — SwiftUI @State
+      // and Compose mutableStateOf already coalesce writes within one action,
+      // so the wrapper is semantically a no-op on native. Emitting the body
+      // inline would be a real capability win. Warning first because that is an
+      // emit change with a return-value question (`batch(() => x)` yields x on
+      // web), and a warning is honest today.
+      advice:
+        'these have no native emit — writes inside one action already coalesce on both native targets, so drop the `batch(...)` wrapper and set signals directly; for `untrack` / `effectScope`, restructure with plain `computed()`',
+      unsupported: new Set(['batch', 'untrack', 'effectScope']),
+    },
+  ],
+  [
+    '@pyreon/core',
+    {
+      // MEASURED: onMount lowers (and h / Fragment / Show / For / Suspense are
+      // handled by their own emit paths). These four do not.
+      advice:
+        'these have no native emit — build class strings inline instead of `cx()`, destructure props directly instead of `splitProps()`, and use a plain counter or a stable literal instead of `createUniqueId()`; `lazy()` has no native code-splitting equivalent',
+      unsupported: new Set(['lazy', 'cx', 'createUniqueId', 'splitProps']),
+    },
+  ],
+  [
+    '@pyreon/elements',
+    {
+      // Measured every export: only `Element` lowers (to Stack). Text, List,
+      // Overlay and Portal all failed both targets SILENTLY — Overlay and
+      // Portal are inherently DOM (positioning, document-level mounting), and
+      // the Text/List variants are the rich web-only siblings of the canonical
+      // primitives.
+      //
+      // Inverse shape to @pyreon/rx: there, one export lowered and the rest did
+      // not, so `supported` carries the exception in both cases rather than
+      // splitting the map into two mechanisms.
+      advice:
+        'only `Element` lowers (to Stack) — Text / List / Overlay / Portal are DOM-based; use the canonical `Text` / `Stack` from @pyreon/primitives, or keep them in a `<Web>` branch',
+      supported: new Set(['Element']),
+    },
+  ],
+  [
+    '@pyreon/storage',
+    {
+      // `useStorage(key, initial)` DOES lower (@AppStorage / rememberPyreonStorage)
+      // and is skipped automatically by the non-hook filter; the factory does not.
+      advice:
+        '`useStorage(key, initial)` DOES lower on both targets — use the hook rather than the factory',
+    },
+  ],
+  [
+    '@pyreon/http',
+    {
+      // Same: endpoint and createClient both fail both targets.
+      advice:
+        'the transport is web-only — `useFetch<T>(url)` lowers to PyreonFetch on both native targets and auto-starts on mount',
+    },
+  ],
+])
+
+/**
+ * Warn for a NON-HOOK export imported from a module with no native runtime.
+ *
+ * Same shape and same reasoning as the hook and control-flow warnings: keyed on
+ * the IMPORT, so a user's own `map` or `s` from their own module is untouched.
+ */
+function warnUnloweredPyreonModules(body: AnyNode[], ctx: ParseCtx): void {
+  const seen = new Set<string>()
+  for (const node of body) {
+    if (node.type !== 'ImportDeclaration') continue
+    const src = node.source?.value
+    if (typeof src !== 'string') continue
+    const entry = UNLOWERED_PYREON_MODULES.get(src)
+    if (entry === undefined) continue
+    for (const spec of (node.specifiers as AnyNode[]) ?? []) {
+      if (spec.type !== 'ImportSpecifier') continue
+      const imported = spec.imported?.name ?? spec.imported?.value
+      if (typeof imported !== 'string') continue
+      // The hook arc already covers these; warning again would double-report.
+      if (/^use[A-Z]/.test(imported)) continue
+      // Exports that genuinely lower must stay silent — over-warning turns the
+      // diagnostic into noise, and `rx` is a live example of a module that is
+      // only PARTLY unlowered.
+      if (entry.supported?.has(imported)) continue
+      // When a module lists `unsupported`, ONLY those warn — everything else in
+      // it lowers and must stay silent.
+      if (entry.unsupported !== undefined && !entry.unsupported.has(imported)) continue
+      if (seen.has(imported)) continue
+      seen.add(imported)
+      ctx.warnings.push(
+        `${imported} (from ${src}) has NO native lowering — it is reproduced verbatim in the emitted Swift/Kotlin, where no such symbol exists, so the native build fails with "cannot find '${imported}' in scope". Instead: ${entry.advice}. Or keep the call behind a \`<Web>\` escape hatch.`,
+      )
+    }
+  }
+}
+
 function warnUnloweredPyreonHooks(body: AnyNode[], ctx: ParseCtx): void {
   const seen = new Set<string>()
   for (const node of body) {
