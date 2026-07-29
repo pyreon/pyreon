@@ -23,6 +23,16 @@ export { useHaptics } from './useHaptics'
 // no web export the import did not resolve, so an app using it could not build
 // for web at all.
 export { useGeolocation } from './useGeolocation'
+// useMap — the web half of another natively-lowered hook (`PyreonMapState`).
+// State only: camera + markers + selection, exactly as the native container
+// holds them. Rendering stays the app's choice on every target.
+export { useMap } from './useMap'
+export type {
+  PyreonMapCamera,
+  PyreonMapMarker,
+  UseMapOptions,
+  UseMapResult,
+} from './useMap'
 export type { UseGeolocationOptions, UseGeolocationResult } from './useGeolocation'
 // Web half of the shared document store. Same gap as useGeolocation: the
 // native half is device-proven, the web half did not exist — and the
