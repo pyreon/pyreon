@@ -350,10 +350,18 @@ const SERVICE_OPTIONAL_FIELDS: ReadonlyMap<string, ReadonlyMap<string, TypeIR>> 
   ],
   [
     'map',
-    new Map<string, TypeIR>([
-      ['selectedMarkerId', { kind: 'string' }],
-      ['error', { kind: 'string' }],
-    ]),
+    // NO `error` entry, unlike every sibling above. `PyreonMapState` has no
+    // such field on EITHER target — it holds camera/markers/selection, performs
+    // no I/O and cannot fail. It was listed here when this table was added
+    // (#2566) by generalising "every service container has an optional
+    // `error`" across the services without checking each runtime, so the table
+    // advertised a member that does not exist and `{map.error}` fails swiftc
+    // with "value of type 'PyreonMapState' has no member 'error'".
+    //
+    // Removing the entry rather than adding the field: an always-nil `error` on
+    // a container that cannot fail is dead surface, and if map ever gains I/O
+    // the field should arrive with the failure it reports.
+    new Map<string, TypeIR>([['selectedMarkerId', { kind: 'string' }]]),
   ],
   [
     'push',

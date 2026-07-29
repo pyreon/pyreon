@@ -51,7 +51,7 @@ function Modal(props: { open?: boolean; defaultOpen?: boolean; onOpenChange?: (v
 
 ## The full surface
 
-48 hooks across 7 categories.
+49 hooks across 7 categories.
 
 ### State
 

@@ -262,6 +262,44 @@ const SWIFT_DATABASE_ARG_LABELS: Record<string, readonly (string | null)[]> = {
   delete: ['id'],
   find: ['field', 'equals'],
 }
+
+/**
+ * The SAME defect, generalised past the one service it was first found on.
+ *
+ * `SWIFT_DATABASE_ARG_LABELS` above fixed `PyreonDatabase` when the type gate
+ * surfaced it, but the CLASS is "any native service method whose Swift
+ * signature labels its arguments, called positionally from the shared TS
+ * surface". `PyreonMapState` is another member and was still broken:
+ * `map.moveTo(37.3, -122.0)` and `map.removeMarker('a')` — the primary map API
+ * — emitted positionally and failed with "missing argument labels
+ * 'latitude:longitude:'". Kotlin accepted the identical source, since named
+ * arguments are optional there.
+ *
+ * Enumerated rather than guessed: every `public func` in runtime-swift with a
+ * labelled parameter was listed, then each was probed for reachability from TS.
+ * `PyreonGeolocation.update` and the `PyreonWebSocket` internals are NOT on the
+ * hook surface, `selectMarker(_ id:)` is unlabelled natively, and
+ * `PyreonSecureStorage` is not lowered at all (deferred in v1) — so map is the
+ * only reachable gap left.
+ *
+ * Labels here cover EVERY argument position, `null` meaning unlabelled — the
+ * database table's "labels after a leading unlabelled argument" shape cannot
+ * express `moveTo`, where the FIRST argument is labelled too.
+ */
+const SWIFT_SERVICE_ARG_LABELS: Record<
+  string,
+  Record<string, readonly (string | null)[]>
+> = {
+  map: {
+    // moveTo(latitude:longitude:zoom:) — zoom is defaulted, so BOTH the
+    // 2-argument and 3-argument calls are legal and both must be labelled.
+    moveTo: ['latitude', 'longitude', 'zoom'],
+    removeMarker: ['id'],
+  },
+}
+
+/** Service decl name -> service kind, for the label table above. */
+let _serviceKindByNameSwift: Map<string, string> = new Map()
 /** Per-component: form decl names — drives the dict-member subscript
  *  rewrite (`form.values.email` → `form.values["email"] ?? ""`) and the
  *  Field binding emit. */
@@ -1398,6 +1436,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   _netStatusNames = new Set()
   _appStateNames = new Set()
   _databaseNames = new Set()
+  _serviceKindByNameSwift = new Map()
   _i18nNames = new Set()
   _formNamesSwift = new Set()
   _fetchNamesSwift = new Set()
@@ -1440,6 +1479,9 @@ function emitSwiftComponent(c: ComponentIR): string {
     if (d.kind === 'network-status') _netStatusNames.add(d.name)
     if (d.kind === 'app-state') _appStateNames.add(d.name)
     if (d.kind === 'database') _databaseNames.add(d.name)
+    if (SWIFT_SERVICE_ARG_LABELS[d.kind] !== undefined && 'name' in d) {
+      _serviceKindByNameSwift.set(d.name as string, d.kind)
+    }
     if (d.kind === 'i18n') _i18nNames.add(d.name)
     if (d.kind === 'form') _formNamesSwift.add(d.name)
     if (d.kind === 'fetch') _fetchNamesSwift.add(d.name)
@@ -3111,6 +3153,36 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           }
           const collection = emitSwiftExpr(e.args[0]!, indent)
           return `${swiftIdent(e.callee.object.name)}.insert(${collection}, PyreonRecord(${parts.join(', ')}))`
+        }
+      }
+      // Native-service argument labels, for services whose Swift signature
+      // labels its arguments while the shared TS surface is positional. Same
+      // defect the PyreonDatabase block below fixes, generalised past the one
+      // service it was first found on — `map.moveTo(37.3, -122.0)` emitted
+      // positionally and failed swiftc with "missing argument labels
+      // 'latitude:longitude:'". Kotlin needs no equivalent: named arguments
+      // are optional there.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        typeof e.callee.property === 'string'
+      ) {
+        const kind = _serviceKindByNameSwift.get(e.callee.object.name)
+        const labels =
+          kind === undefined
+            ? undefined
+            : SWIFT_SERVICE_ARG_LABELS[kind]?.[e.callee.property]
+        // `<=`, not `===`: a defaulted trailing parameter (moveTo's `zoom`)
+        // makes several arities legal. MORE arguments than labels falls
+        // through to the generic emit, so a genuinely wrong call still
+        // surfaces as a compiler error rather than being papered over.
+        if (labels !== undefined && e.args.length <= labels.length) {
+          const labelled = e.args.map((a, i) => {
+            const src = emitSwiftExpr(a, indent)
+            const label = labels[i]
+            return label === null || label === undefined ? src : `${label}: ${src}`
+          })
+          return `${swiftIdent(e.callee.object.name)}.${e.callee.property}(${labelled.join(', ')})`
         }
       }
       // PyreonDatabase argument labels. The shared TS surface is positional
