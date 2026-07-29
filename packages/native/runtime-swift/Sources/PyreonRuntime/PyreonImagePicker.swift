@@ -31,6 +31,17 @@ import UniformTypeIdentifiers
 public struct PyreonImagePicker {
     public init() {}
 
+    /// Whether a picker is available. Always `true` natively — `pick()`
+    /// collapses an unavailable picker to `nil` rather than failing, so there is
+    /// no state in which this would be false.
+    ///
+    /// Present because the SHARED `useImagePicker()` / `useFilePicker()` surface
+    /// declares it and its own docs already specify "Native: always true". It
+    /// was documented and never implemented, so `if (picker.isAvailable())` —
+    /// an ordinary defensive guard, valid TypeScript on web — failed BOTH
+    /// native targets with no warning.
+    public func isAvailable() -> Bool { true }
+
     /// Present the system photo picker and return the picked image's URI, or
     /// `nil` if the user cancelled (or no picker could be presented).
     ///
