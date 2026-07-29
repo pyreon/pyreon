@@ -156,6 +156,27 @@ describe('stub ↔ real runtime fidelity (both drift directions)', () => {
     expect(stub).toContain('public func scaledToFit()')
   })
 
+  // CLASS-LEVEL GUARD, not a third hand-written assertion.
+  //
+  // Three separate subset-stub bugs were found by hand in this arc — PyreonI18n's
+  // fallbackLocale, View.scaledToFill, and useLoaderData — each discovered only
+  // when someone happened to write the affected shape. The router hooks are a
+  // CLOSED SET declared in one file, so parity can be enforced outright rather
+  // than waiting for a fourth omission to surface as a mystifying gate failure
+  // on valid source.
+  it('the Swift stub declares EVERY public router hook the runtime does', () => {
+    const real = read('router-swift/Sources/PyreonRouter/Hooks.swift')
+    const stub = readFileSync(resolve(HERE, '..', 'swift-stubs.ts'), 'utf8')
+
+    const declared = [...real.matchAll(/public func (use[A-Za-z]+)/g)].map((m) => m[1]!)
+    // Guard the guard: a regex that silently matches nothing would make this
+    // test vacuously green, which is the failure mode it exists to prevent.
+    expect(declared.length, 'found no router hooks — the regex or path is wrong').toBeGreaterThan(2)
+
+    const missing = declared.filter((h) => !stub.includes(`func ${h}`))
+    expect(missing, `stub is missing router hook(s): ${missing.join(', ')}`).toEqual([])
+  })
+
   it('the Kotlin stub and runtime agree too (this target was already correct)', () => {
     const real = read('runtime-kotlin/src/main/kotlin/com/pyreon/runtime/PyreonI18n.kt')
     const stub = readFileSync(resolve(HERE, '..', 'kotlin-stubs.ts'), 'utf8')

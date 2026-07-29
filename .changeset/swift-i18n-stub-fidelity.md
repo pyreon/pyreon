@@ -63,3 +63,25 @@ guessed the prop name instead of reading the type. The residual — an UNKNOWN
 prop emits uncompilable output with no warning — is real but low severity: the
 build fails loudly and names the prop, and TypeScript rejects it on web.
 
+THIRD INSTANCE, and the one that turned a hand-found bug into a class-level
+guard: `useLoaderData`.
+
+`router-swift/Hooks.swift` declares THREE public hooks; the stub had two. So
+`const d = useLoaderData<U>()` — a shipped Phase-B6 feature — failed the
+required gate with "cannot find 'useLoaderData' in scope" on a valid emit, while
+Kotlin accepted it.
+
+Three subset-stub bugs found by hand in one arc, each surfacing only when
+someone happened to write the affected shape, is a pattern rather than three
+coincidences. The router hooks are a CLOSED SET declared in one file, so the
+drift test now enforces PARITY over the whole set instead of asserting hooks
+one at a time. A fourth omission fails with `stub is missing router hook(s):
+<name>` rather than a swiftc error buried in a CI log. The parity test also
+guards itself — a regex that matched nothing would make it vacuously green,
+which is exactly the failure mode it exists to prevent.
+
+The `useParams` and `useLoaderData` WARNINGS were checked rather than assumed:
+`useParams` advises destructuring (`const { id } = useParams()`), and that
+advised form compiles on both targets. A warning that recommends a broken fix
+would be worse than no warning.
+

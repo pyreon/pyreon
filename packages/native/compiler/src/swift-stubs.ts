@@ -485,6 +485,13 @@ extension EnvironmentValues {
 }
 public func useNavigate(router: PyreonRouter?) -> (String) -> Void { { _ in } }
 public func useParams(router: PyreonRouter?) -> [String: String] { [:] }
+// THIRD subset-stub instance. router-swift's Hooks.swift declares three public
+// hooks; the stub had two, so \`const d = useLoaderData<U>()\` — a shipped
+// Phase-B6 feature — failed the required gate with "cannot find 'useLoaderData'
+// in scope" on a perfectly valid emit. Kotlin passed, the same diagnostic that
+// found the other two. The parity test below now enforces the whole SET rather
+// than waiting for a fourth to be discovered by hand.
+public func useLoaderData<T>(router: PyreonRouter?) -> T? { nil }
 // RouterProvider — the multi-screen root the showcase apps emit. Mirrors
 // router-swift: generic over its content, @ViewBuilder, escaping closure.
 public struct RouterProvider<Content: View>: View {
