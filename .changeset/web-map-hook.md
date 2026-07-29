@@ -42,7 +42,10 @@ surface. `PyreonGeolocation.update` and the `PyreonWebSocket` internals are not
 on it, `selectMarker(_ id:)` is unlabelled natively, and `PyreonSecureStorage`
 is not lowered at all — so map was the only remaining reachable gap.
 
-**3. The compiler typed a `map.error` that exists on neither runtime.**
+**3. The service-optional table was wrong in BOTH directions.**
+
+A PHANTOM entry and a MISSING one, from the same mistake seen from opposite
+sides: the table was written from a pattern rather than from the runtimes.
 `{map.error}` failed swiftc with `value of type 'PyreonMapState' has no member
 'error'`. That entry was added in #2566 by generalising "every service container
 has an optional `error`" across the services without checking each runtime —
@@ -61,3 +64,23 @@ clean on both targets with zero warnings.
 
 The hooks manifest enumeration was also stale — bumped to 48 for
 `useGeolocation` without naming it — so both data hooks are now named.
+
+The MISSING half, found while auditing `useAuth`: `PyreonAuth` declares
+`error: Error?` (Swift) / `Throwable?` (Kotlin), and `auth` had no entry — so
+`{auth.error}` COMPILED and rendered `Optional("boom")` at runtime. Silent, and
+invisible to a typecheck gate by construction, which is why #2566 missed it
+while claiming to have covered "every optional field of every service
+container". That claim is corrected in the test file rather than quietly
+dropped.
+
+Sharp edge worth recording: before this fix the bare read rendered wrongly AND
+the workaround an author reaches for first, `{auth.error ?? ''}`, does not
+compile — Swift's `Error?` cannot be coalesced with a String. So both the
+natural form and its obvious repair were broken.
+
+Two residuals, stated rather than left to be discovered: `{auth.error ?? ''}`
+still fails (loudly — the coalesce path does not consult the field table), and
+`{auth.user?.name}` still renders `Optional(…)` because a nested optional CHAIN
+is not a direct service-field read. `{auth.user?.name ?? ''}` works. Neither is
+silent-and-wrong in the way `{auth.error}` was.
+

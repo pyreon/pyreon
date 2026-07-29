@@ -98,3 +98,69 @@ export function C(){ const n = signal(0); return (<Stack><Text>{n()}</Text></Sta
     expect(swift).not.toContain('.map {')
   })
 })
+
+// CORRECTION to the claim at the top of this file.
+//
+// It says the fix covered "every optional field of every service container".
+// That was not true, and the table was wrong in BOTH directions:
+//
+//   MISSING   auth.error   PyreonAuth declares `error: Error?` (Swift) /
+//                          `Throwable?` (Kotlin). `{auth.error}` COMPILED and
+//                          rendered `Optional("boom")` — silent, and invisible
+//                          to a typecheck gate by construction.
+//
+//   PHANTOM   map.error    listed, but `PyreonMapState` has no `error` on
+//                          either target, so `{map.error}` failed swiftc with
+//                          "value of type 'PyreonMapState' has no member". That
+//                          entry came from generalising "every service has an
+//                          optional error" WITHOUT checking each runtime — the
+//                          same over-generalisation documented for @pyreon/rx.
+//
+// Both are corrected together, because they are the same mistake seen from
+// opposite sides: the table was written from a pattern rather than from the
+// runtimes.
+//
+// Sharp edge worth knowing: the workaround an author reaches for first,
+// `{auth.error ?? ''}`, does NOT compile — Swift's `Error?` cannot be coalesced
+// with a String. So before this fix the bare read rendered wrongly and the
+// obvious fix did not build.
+describe('auth.error — the field the original pass missed', () => {
+  const src = `
+    import { useAuth } from '@pyreon/hooks'
+    import { Stack, Text } from '@pyreon/primitives'
+    type U = { name: string }
+    export function C() {
+      const a = useAuth<U>()
+      return (<Stack><Text>{a.error}</Text></Stack>)
+    }
+  `
+
+  it('Swift renders it web-equivalently instead of Optional(…)', () => {
+    const out = transform(src, { target: 'swift' }).code ?? ''
+    expect(out).toContain('(a.error).map { "\\($0)" } ?? ""')
+    // The raw form is what produced `Optional("boom")`.
+    expect(out).not.toContain('"\\(a.error)"')
+  })
+
+  it('Kotlin renders it web-equivalently too', () => {
+    expect(transform(src, { target: 'kotlin' }).code ?? '').toContain('?: ""')
+  })
+})
+
+describe('map has NO error field — the phantom entry', () => {
+  it('is not treated as an optional service field on either target', () => {
+    const src = `
+      import { useMap } from '@pyreon/hooks'
+      import { Stack, Text } from '@pyreon/primitives'
+      export function C() {
+        const m = useMap()
+        return (<Stack><Text>{m.selectedMarkerId}</Text></Stack>)
+      }
+    `
+    // The REAL optional field still renders correctly — removing the phantom
+    // `error` must not disturb the entry that is genuinely there.
+    expect(transform(src, { target: 'swift' }).code ?? '').toContain(
+      '(m.selectedMarkerId).map { "\\($0)" } ?? ""',
+    )
+  })
+})

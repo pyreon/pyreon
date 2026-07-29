@@ -349,6 +349,19 @@ const SERVICE_OPTIONAL_FIELDS: ReadonlyMap<string, ReadonlyMap<string, TypeIR>> 
     ]),
   ],
   [
+    // `auth` was OMITTED when this table was added (#2566) — the same pass that
+    // wrongly gave `map` an `error` it does not have. So the table had one
+    // field too many AND one too few, and both halves are corrected here.
+    //
+    // PyreonAuth declares `error: Error?` on Swift and `Throwable?` on Kotlin,
+    // so `{auth.error}` COMPILED and rendered `Optional("boom")` at runtime —
+    // silent, and invisible to a typecheck gate by construction. Worse, the
+    // workaround an author would reach for, `{auth.error ?? ''}`, does NOT
+    // compile: `Error?` cannot be coalesced with a String.
+    'auth',
+    new Map<string, TypeIR>([['error', { kind: 'string' }]]),
+  ],
+  [
     'map',
     // NO `error` entry, unlike every sibling above. `PyreonMapState` has no
     // such field on EITHER target — it holds camera/markers/selection, performs
