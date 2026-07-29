@@ -907,12 +907,14 @@ class PyreonImagePicker {
   var launcher: ActivityResultLauncher<PickVisualMediaRequest>? = null
   fun onResult(uri: String?) {}
   suspend fun pick(): String? = null
+  fun isAvailable(): Boolean = true
 }
 
 class PyreonFilePicker {
   var launcher: ActivityResultLauncher<Array<String>>? = null
   fun onResult(uri: String?) {}
   suspend fun pick(): String? = null
+  fun isAvailable(): Boolean = true
 }
 
 class ActivityResultLauncher<I> {

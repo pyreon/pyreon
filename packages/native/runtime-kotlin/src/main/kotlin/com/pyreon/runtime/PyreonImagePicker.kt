@@ -41,6 +41,26 @@ import androidx.activity.result.contract.ActivityResultContracts
 import kotlinx.coroutines.CompletableDeferred
 
 class PyreonImagePicker {
+
+    /**
+     * Whether a picker is available. Always `true`, matching iOS and the
+     * documented shared contract ("Native: always true" — `pick()` collapses an
+     * unavailable picker to null rather than failing).
+     *
+     * Returning `launcher != null` was considered and REJECTED: it is arguably
+     * truer on Android, where the launcher is null until composition wires it,
+     * but it would make the same call return different answers on iOS and
+     * Android for the same source — a new cross-target divergence, which is the
+     * class of bug this method exists to close. The launcher case is already
+     * handled: `pick()` resolves null when it is unwired.
+     *
+     * Present because the shared `useImagePicker()` / `useFilePicker()` surface
+     * declares `isAvailable: () => boolean` and always has. It was documented
+     * and never implemented, so `if (picker.isAvailable())` — an ordinary
+     * defensive guard, valid TypeScript on web — failed BOTH native targets
+     * with no warning.
+     */
+    fun isAvailable(): Boolean = true
     /**
      * The composable-scope ActivityResult launcher, assigned by the PMTC emit
      * (`picker.launcher = rememberLauncherForActivityResult(…) { … }`). Null
