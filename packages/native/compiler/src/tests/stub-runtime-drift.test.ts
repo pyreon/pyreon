@@ -95,3 +95,57 @@ describe('stub mirrors stay aligned with the emit surface', () => {
     expect(stubs).toContain('fun RouterProvider(router: PyreonRouter, content: @Composable () -> Unit)')
   })
 })
+
+// STUB ↔ REAL fidelity — the direction this file did not previously cover.
+//
+// Everything above locks REAL-RUNTIME ↔ EMIT: "the signature the emit depends
+// on still exists upstream." That is one of two ways the gate can lie, and the
+// tests above only see one of them.
+//
+// The other: the STUB drifts from the real runtime. Both directions break, in
+// opposite and equally bad ways —
+//
+//   stub is a SUPERSET  → gate accepts an emit the real runtime rejects
+//                         (green PR, broken app; the masking direction)
+//   stub is a SUBSET    → gate rejects an emit the real runtime accepts
+//                         (valid source, failing build; manufactured failure)
+//
+// PyreonI18n was the SUBSET case and shipped that way. The real init has
+// `fallbackLocale: String? = nil`; the stub made it required. So
+// `createI18n({ locale, messages })` — the two-argument form the docs show,
+// and the common case — failed the required Swift gate with "missing argument
+// for parameter 'fallbackLocale'". Kotlin's stub had the default and accepted
+// the identical source, and that TARGET ASYMMETRY is the diagnostic: when one
+// target rejects what the other accepts, suspect the gate before the emit.
+//
+// Asserting DEFAULTED-ness specifically, because that is the property that
+// decides whether a call site is legal, and it is invisible to a "does the
+// symbol exist" check.
+describe('stub ↔ real runtime fidelity (both drift directions)', () => {
+  it('PyreonI18n.fallbackLocale is OPTIONAL and DEFAULTED in the real Swift runtime', () => {
+    const real = read('runtime-swift/Sources/PyreonRuntime/PyreonI18n.swift')
+    expect(real).toContain('fallbackLocale: String? = nil')
+  })
+
+  it('the Swift STUB mirrors that default — a required param rejects valid source', () => {
+    const stub = readFileSync(
+      resolve(HERE, '..', 'swift-stubs.ts'),
+      'utf8',
+    )
+    // Bounded by the NEXT member rather than the next `}` — the surrounding
+    // comment contains braces, and slicing on those cut the init in half.
+    const from = stub.indexOf('public struct PyreonI18n')
+    const init = stub.slice(from, stub.indexOf('public func t(', from))
+    expect(init).toContain('fallbackLocale: String? = nil')
+    // The exact broken form, named so a revert fails here rather than in a
+    // confusing downstream typecheck.
+    expect(init).not.toContain('fallbackLocale: String)')
+  })
+
+  it('the Kotlin stub and runtime agree too (this target was already correct)', () => {
+    const real = read('runtime-kotlin/src/main/kotlin/com/pyreon/runtime/PyreonI18n.kt')
+    const stub = readFileSync(resolve(HERE, '..', 'kotlin-stubs.ts'), 'utf8')
+    expect(real).toContain('val fallbackLocale: String? = null')
+    expect(stub).toContain('val fallbackLocale: String? = null')
+  })
+})

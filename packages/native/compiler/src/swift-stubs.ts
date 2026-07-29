@@ -353,7 +353,18 @@ public struct PyreonMachine {
   public func matches(_ state: String) -> Bool { false }
 }
 public struct PyreonI18n {
-  public init(locale: String, messages: [String: [String: String]], fallbackLocale: String) {}
+  // fallbackLocale is OPTIONAL and DEFAULTED in the real PyreonI18n. The stub
+  // made it required, so \`createI18n({ locale, messages })\` — the two-argument
+  // form the docs show and the common case — was REJECTED by the gate with
+  // "missing argument for parameter 'fallbackLocale'". Valid source, failing
+  // build. Same class as the coolgrid frame stub: a SUBSET stub manufactures
+  // failures exactly as a SUPERSET stub masks them, and the fix is the same —
+  // mirror the real signature, do not guess at it.
+  public init(
+    locale: String,
+    messages: [String: [String: String]],
+    fallbackLocale: String? = nil
+  ) {}
   // t(key) OR t(key, interpolation values) — the emit passes [String: Any]-shaped
   // dictionary literals ([String: String] and [String: Int] both coerce).
   public func t(_ key: String, _ values: [String: Any] = [:]) -> String { "" }
