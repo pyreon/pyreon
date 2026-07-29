@@ -91,11 +91,30 @@ export async function ensureDom(): Promise<DomResult> {
   // than leaving an `undefined` binding behind — a subsequent `typeof document
   // !== 'undefined'` check must see the same answer it saw before.
   const saved = new Map<string, PropertyDescriptor | undefined>()
-  for (const key of GLOBAL_KEYS) {
-    const value = key === 'window' ? win : win[key]
-    if (value === undefined) continue
-    saved.set(key, Object.getOwnPropertyDescriptor(target, key))
-    Object.defineProperty(target, key, { value, configurable: true, writable: true })
+
+  const restore = (): void => {
+    for (const [key, descriptor] of saved) {
+      if (descriptor) Object.defineProperty(target, key, descriptor)
+      else delete target[key]
+    }
+    saved.clear()
+  }
+
+  try {
+    for (const key of GLOBAL_KEYS) {
+      const value = key === 'window' ? win : win[key]
+      if (value === undefined) continue
+      saved.set(key, Object.getOwnPropertyDescriptor(target, key))
+      Object.defineProperty(target, key, { value, configurable: true, writable: true })
+    }
+  } catch (err) {
+    // Failing PART WAY through leaves the process with some globals swapped and
+    // no handle to put them back — every later `typeof document` in the same
+    // process then reads a DOM that nothing owns. Undo what was done and report
+    // no DOM, which the caller already knows how to skip on.
+    restore()
+    const detail = err instanceof Error ? err.message : String(err)
+    return { ok: false, reason: `could not install a DOM on this runtime: ${detail}` }
   }
 
   let torn = false
@@ -107,10 +126,7 @@ export async function ensureDom(): Promise<DomResult> {
       teardown() {
         if (torn) return
         torn = true
-        for (const [key, descriptor] of saved) {
-          if (descriptor) Object.defineProperty(target, key, descriptor)
-          else delete target[key]
-        }
+        restore()
         const close = (win as { happyDOM?: { close?: () => unknown } }).happyDOM?.close
         if (typeof close === 'function') void close.call((win as { happyDOM: unknown }).happyDOM)
       },

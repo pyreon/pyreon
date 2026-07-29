@@ -10,12 +10,13 @@
  * Those are exactly what a check built on `try { mount() }` alone would miss.
  */
 import { effect, signal } from '@pyreon/reactivity'
-import { afterAll, describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it, vi } from 'vitest'
 import { h } from '@pyreon/core'
 import { defineComponent } from '../../auto'
 import { makeScenario } from '../../core'
 import type { ComponentIntelligence, Scenario } from '../../core'
 import { mountPlugin, releaseVerifyDom } from '../mount'
+import * as dom from '../../verify/dom'
 import { ensureDom } from '../../verify/dom'
 import { defaultRuntime, driveInteractions, mountScenario } from '../../verify/harness'
 
@@ -45,6 +46,33 @@ describe('what the check refuses to judge', () => {
     // without ever importing the module. Skip, never pass: `checked` exists so
     // "nothing ran" cannot present as "nothing was wrong".
     expect((await runVerify(undefined)).status).toBe('skip')
+  })
+})
+
+describe('when a DOM cannot be had', () => {
+  it('SKIPS with the reason instead of taking the scan down', async () => {
+    // The whole contract of this check is that it skips when it cannot mount.
+    // `ensureDom` reports "no DOM" as a value, but it can still THROW on a
+    // runtime where the window constructor or a `defineProperty` is refused —
+    // and letting that escape kills the scan on its first scenario rather than
+    // skipping it. Simulated by making the plugin's DOM acquisition fail, which
+    // is the only way to reach the path without an exotic runtime.
+    const failing = mountPlugin()
+    const spy = vi.spyOn(dom, 'ensureDom').mockRejectedValueOnce(new Error('no window here'))
+    releaseVerifyDom() // drop the cached DOM so the mock is the one consulted
+    try {
+      const check = (
+        await failing.verify!({
+          scenario: scenarioFor({}),
+          component: intelligence(() => null),
+        })
+      ).interaction!
+      expect(check.status).toBe('skip')
+      expect(check.findings?.join(' ')).toContain('no window here')
+    } finally {
+      spy.mockRestore()
+      releaseVerifyDom() // and drop the failed attempt, so later cases get a real one
+    }
   })
 })
 
