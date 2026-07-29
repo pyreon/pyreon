@@ -42,14 +42,30 @@ import { defaultRuntime, driveInteractions, type MountRuntime, mountScenario } f
  * up pointing at a DOM that no longer exists. `releaseVerifyDom` exists for
  * tests and for a long-lived host that wants the globals back.
  */
-let domPromise: Promise<Awaited<ReturnType<typeof ensureDom>>> | null = null
+type DomOutcome = Awaited<ReturnType<typeof ensureDom>>
+
+let domPromise: Promise<DomOutcome> | null = null
 let domEnv: DomEnv | null = null
 
-function getDom(): Promise<Awaited<ReturnType<typeof ensureDom>>> {
-  domPromise ??= ensureDom().then((result) => {
-    if (result.ok) domEnv = result.env
-    return result
-  })
+function getDom(): Promise<DomOutcome> {
+  // A REJECTION is converted, not propagated, and never cached.
+  //
+  // `ensureDom` reports "no DOM" as a value, but it can still throw — a
+  // happy-dom constructor that dies on this runtime, a `defineProperty` that
+  // is refused. Letting that escape breaks the check's entire contract: the
+  // plugin promises to SKIP when it cannot mount, and instead the whole scan
+  // would die with a stack trace on its first scenario. Caching the rejected
+  // promise would then make every later call rethrow the same one.
+  domPromise ??= ensureDom()
+    .then((result) => {
+      if (result.ok) domEnv = result.env
+      return result
+    })
+    .catch((err: unknown) => {
+      domPromise = null
+      const detail = err instanceof Error ? err.message : String(err)
+      return { ok: false as const, reason: `could not create a DOM to mount into: ${detail}` }
+    })
   return domPromise
 }
 
@@ -82,6 +98,10 @@ export interface MountPluginOptions {
 }
 
 export function mountPlugin(options: MountPluginOptions = {}): AtlasPlugin {
+  // Memoised HERE rather than written back onto `options`: the caller owns that
+  // object and may well pass it to something else, and a plugin quietly adding
+  // a field to it is a side effect nobody asked for.
+  let runtime: MountRuntime | undefined = options.runtime
   return defineAtlasPlugin({
     name: 'atlas:mount',
     async verify(ctx: VerifyContext): Promise<{ interaction: VerifyCheck }> {
@@ -95,7 +115,7 @@ export function mountPlugin(options: MountPluginOptions = {}): AtlasPlugin {
       const dom = await getDom()
       if (!dom.ok) return { interaction: { status: 'skip', findings: [dom.reason] } }
 
-      const runtime = (options.runtime ??= await defaultRuntime())
+      runtime ??= await defaultRuntime()
       const scenario = mountScenario(dom.env, runtime, component, ctx.scenario.args, options.wrapper)
       try {
         driveInteractions(scenario)
