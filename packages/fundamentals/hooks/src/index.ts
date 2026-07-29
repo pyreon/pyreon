@@ -24,6 +24,13 @@ export { useHaptics } from './useHaptics'
 // for web at all.
 export { useGeolocation } from './useGeolocation'
 export type { UseGeolocationOptions, UseGeolocationResult } from './useGeolocation'
+// Web half of the shared document store. Same gap as useGeolocation: the
+// native half is device-proven, the web half did not exist — and the
+// kitchen-sink counter example imports `useDatabase` from `@pyreon/primitives`,
+// which does not export it. PMTC matches hook NAMES and never resolves
+// imports, so nothing caught it.
+export { useDatabase } from './useDatabase'
+export type { PyreonRecord, UseDatabaseResult } from './useDatabase'
 export type { UseShareResult } from './useShare'
 export { useShare } from './useShare'
 export type { UseLinkingResult } from './useLinking'

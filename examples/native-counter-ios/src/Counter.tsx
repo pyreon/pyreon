@@ -19,10 +19,11 @@ import {
   useFilePicker,
   useSizeClass,
   useColorScheme,
+  useDatabase,
 } from '@pyreon/hooks'
 import { createI18n } from '@pyreon/i18n/core'
 import { createMachine } from '@pyreon/machine'
-import { Text, useDatabase, useNativeModule } from '@pyreon/primitives'
+import { Text, useNativeModule } from '@pyreon/primitives'
 import rocketstyle from '@pyreon/rocketstyle'
 
 // ui-system → native proof. `rocketstyle()({ component: Text })` is THE
