@@ -4,7 +4,7 @@
  * threaded props. Everything here is signals + computeds + callbacks — no DOM.
  */
 import type { VNodeChildAtom } from '@pyreon/core'
-import { computed, type Computed, effect, type Effect, type Signal, signal } from '@pyreon/reactivity'
+import { computed, effect, isClient, signal, type Computed, type Effect, type Signal } from '@pyreon/reactivity'
 import type { A11yReport } from './a11y'
 import { analyzeA11y } from './a11y'
 import type { AddonTabId, BackgroundId, LocaleId, PseudoId, ViewportId } from './addons'
@@ -109,10 +109,14 @@ export function createModel(
   const total = catalog.components.length
 
   // Restore from the URL first, so a shared link lands on the view it names.
-  // `isClient` rather than a `typeof window` check: SSR has no location, and a
-  // workbench rendered server-side must not throw reading one.
-  const initial: UrlState =
-    typeof location === 'undefined' ? {} : parseUrlState(location.search)
+  //
+  // `isClient` from `@pyreon/reactivity` rather than a hand-rolled
+  // `typeof location` check: the framework owns one answer to "is there a DOM"
+  // (`typeof document === 'undefined'`, which is the reliable test — `window`
+  // is polyfilled in some Node setups), and re-deriving it per package is how
+  // packages ended up disagreeing about it. It is also the form
+  // `pyreon/no-window-in-ssr` recognises.
+  const initial: UrlState = isClient ? parseUrlState(location.search) : {}
 
   const brandId = signal(initial.brand ?? 'ember')
   const dark = signal(initial.dark ?? true)
@@ -296,6 +300,12 @@ export function createModel(
   // Guarded on `location`/`history` because the workbench also renders under
   // SSR and in happy-dom, neither of which necessarily has both.
   if (typeof location !== 'undefined' && typeof history !== 'undefined') {
+    // Both globals are aliased HERE, inside the guard, rather than read from
+    // inside the effect. The effect callback is a nested scope, so a reader —
+    // human or `pyreon/no-window-in-ssr` — cannot see the guard from in there;
+    // hoisting the read makes the guarded-ness local to where it is used.
+    const loc = location
+    const hist = history
     let lastWritten: UrlState = initial
     effect(() => {
       const next: UrlState = {
@@ -314,7 +324,7 @@ export function createModel(
       // `query` is the search-box signal and `search` is the search function.
       // Shadowing either would read as the URL state being related to search.
       const nextQuery = serializeUrlState(next)
-      history.replaceState(history.state, '', nextQuery ? `?${nextQuery}` : location.pathname)
+      hist.replaceState(hist.state, '', nextQuery ? `?${nextQuery}` : loc.pathname)
     })
   }
 
