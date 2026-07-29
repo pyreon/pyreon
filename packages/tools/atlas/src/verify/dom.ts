@@ -18,6 +18,8 @@
  * `checked` field exists to prevent.
  */
 
+import { isClient } from '@pyreon/reactivity'
+
 /** A DOM the harness can mount into. */
 export interface DomEnv {
   document: Document
@@ -61,9 +63,16 @@ export type DomResult = { ok: true; env: DomEnv } | { ok: false; reason: DomFail
  * module-level state (delegation roots, the styler sheet) points at the other.
  */
 export async function ensureDom(): Promise<DomResult> {
-  const ambient = (globalThis as { document?: Document }).document
-  if (ambient && typeof ambient.createElement === 'function') {
-    return { ok: true, env: { document: ambient, teardown: () => {}, kind: 'ambient' } }
+  // `isClient` from `@pyreon/reactivity` rather than a local `typeof document`
+  // or a `globalThis` cast: the framework owns one answer to "is there a DOM",
+  // and re-deriving it per package is how packages ended up disagreeing about
+  // it. `createElement` is still checked, because this module then USES the
+  // document — `isClient` says a document exists, not that it is usable.
+  if (isClient) {
+    const ambient = document
+    if (typeof ambient.createElement === 'function') {
+      return { ok: true, env: { document: ambient, teardown: () => {}, kind: 'ambient' } }
+    }
   }
 
   // Typed structurally rather than via happy-dom's own types: this import is
