@@ -230,3 +230,66 @@ describe('partial-support packages: only some exports lower', () => {
     expect(warns(src).filter((w) => w.includes('NO native lowering'))).toEqual([])
   })
 })
+
+// @pyreon/core and @pyreon/reactivity — the two most-used packages — each had
+// silent failures among exports that mostly DO lower:
+//
+//   reactivity   batch / untrack / effectScope   ✗   (signal, computed, effect,
+//                                                     onCleanup all lower)
+//   core         lazy / cx / createUniqueId /    ✗   (onMount, h, Fragment,
+//                splitProps                           Show, For, Suspense lower)
+//
+// These use an explicit `unsupported` DENY list rather than the `supported`
+// allow list every other entry uses. That direction is forced: listing what is
+// supported here would mean enumerating almost the entire public surface of
+// both packages, and anything missed would false-warn on code in essentially
+// every multiplatform component. That is the @pyreon/rx over-generalisation at
+// the worst possible scale, so the guard tests below matter more than the
+// warning tests.
+//
+// `batch` is arguably strippable rather than unsupported — SwiftUI @State and
+// Compose mutableStateOf already coalesce writes within one action, so the
+// wrapper is a no-op on native. Warned rather than stripped because that is an
+// emit change with a return-value question (`batch(() => x)` yields x on web).
+describe('core and reactivity: deny-listed exports', () => {
+  const rx = (imp: string, body: string) =>
+    `import { ${imp} } from '@pyreon/reactivity'\nimport { Stack, Text, Button } from '${P}'\nexport function C(){ ${body} }`
+  const core = (imp: string, body: string) =>
+    `import { ${imp} } from '@pyreon/core'\nimport { Stack, Text } from '${P}'\nexport function C(){ ${body} }`
+
+  for (const [label, src, symbol] of [
+    ['batch', rx('signal, batch', `const n = signal(0); return (<Stack><Button onPress={() => batch(() => { n.set(1) })}>b</Button></Stack>)`), 'batch'],
+    ['untrack', rx('signal, untrack', `const n = signal(0); const v = untrack(() => n()); return (<Stack><Text>{v}</Text></Stack>)`), 'untrack'],
+    ['effectScope', rx('effectScope', `const s = effectScope(); return (<Stack><Text>x</Text></Stack>)`), 'effectScope'],
+    ['cx', core('cx', `const c = cx(['a']); return (<Stack><Text>{c}</Text></Stack>)`), 'cx'],
+    ['createUniqueId', core('createUniqueId', `const id = createUniqueId(); return (<Stack><Text>{id}</Text></Stack>)`), 'createUniqueId'],
+  ] as const) {
+    it(`${label}: warns, naming the symbol`, () => {
+      const hit = warns(src).find((w) => w.startsWith(`${symbol} (from `))
+      expect(hit, `no warning; got ${JSON.stringify(warns(src))}`).toBeTruthy()
+    })
+  }
+
+  // THE GUARD THAT MATTERS. A false warning on any of these would fire in
+  // essentially every multiplatform component ever written.
+  for (const [label, src] of [
+    ['signal + computed', rx('signal, computed', `const n = signal(1); const d = computed(() => n() * 2); return (<Stack><Text>{d()}</Text></Stack>)`)],
+    ['onMount', core('onMount', `onMount(() => {}); return (<Stack><Text>x</Text></Stack>)`)],
+    [
+      'Show',
+      `import { Show } from '@pyreon/core'\nimport { signal } from '@pyreon/reactivity'\nimport { Stack, Text } from '${P}'\nexport function C(){ const f = signal(true); return (<Stack><Show when={f()}><Text>x</Text></Show></Stack>) }`,
+    ],
+    [
+      'For',
+      `import { For } from '@pyreon/core'\nimport { signal } from '@pyreon/reactivity'\nimport { Stack, Text } from '${P}'\nexport function C(){ const xs = signal([1]); return (<Stack><For each={xs()} by={(i: number) => i}>{(i: number) => <Text>{i}</Text>}</For></Stack>) }`,
+    ],
+    [
+      'Suspense',
+      `import { Suspense } from '@pyreon/core'\nimport { Stack, Text } from '${P}'\nexport function C(){ return (<Stack><Suspense fallback={<Text>l</Text>}><Text>x</Text></Suspense></Stack>) }`,
+    ],
+  ] as const) {
+    it(`${label}: stays SILENT — it lowers`, () => {
+      expect(warns(src).filter((w) => w.includes('NO native lowering'))).toEqual([])
+    })
+  }
+})

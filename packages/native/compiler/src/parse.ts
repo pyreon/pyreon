@@ -910,6 +910,17 @@ interface UnloweredModule {
   readonly advice: string
   /** Exports from this module that DO lower and must stay silent. */
   readonly supported?: ReadonlySet<string>
+  /**
+   * Warn ONLY these exports, leaving everything else silent.
+   *
+   * Required for @pyreon/core and @pyreon/reactivity, where the overwhelming
+   * majority of exports lower (`signal`, `computed`, `effect`, `h`, `Fragment`,
+   * `Show`, `For`, …) and only a handful do not. Listing what is SUPPORTED
+   * there would mean enumerating almost the whole public surface and
+   * false-warning on anything missed — the @pyreon/rx over-generalisation at
+   * much larger scale, in the two most-used packages in the framework.
+   */
+  readonly unsupported?: ReadonlySet<string>
 }
 
 const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
@@ -953,6 +964,33 @@ const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
       // shortcut was wrong: `rx` lowers and the standalone transforms do not.
       advice:
         'the live-region helpers are DOM-based — native a11y goes through the `accessibilityLabel` / `accessibilityHidden` props on the canonical primitives, which lower on all three targets',
+    },
+  ],
+  [
+    '@pyreon/reactivity',
+    {
+      // MEASURED: signal / computed / effect / onCleanup lower; these three do
+      // not, and failed both targets with no diagnostic.
+      //
+      // `batch` is arguably strippable rather than unsupported — SwiftUI @State
+      // and Compose mutableStateOf already coalesce writes within one action,
+      // so the wrapper is semantically a no-op on native. Emitting the body
+      // inline would be a real capability win. Warning first because that is an
+      // emit change with a return-value question (`batch(() => x)` yields x on
+      // web), and a warning is honest today.
+      advice:
+        'these have no native emit — writes inside one action already coalesce on both native targets, so drop the `batch(...)` wrapper and set signals directly; for `untrack` / `effectScope`, restructure with plain `computed()`',
+      unsupported: new Set(['batch', 'untrack', 'effectScope']),
+    },
+  ],
+  [
+    '@pyreon/core',
+    {
+      // MEASURED: onMount lowers (and h / Fragment / Show / For / Suspense are
+      // handled by their own emit paths). These four do not.
+      advice:
+        'these have no native emit — build class strings inline instead of `cx()`, destructure props directly instead of `splitProps()`, and use a plain counter or a stable literal instead of `createUniqueId()`; `lazy()` has no native code-splitting equivalent',
+      unsupported: new Set(['lazy', 'cx', 'createUniqueId', 'splitProps']),
     },
   ],
   [
@@ -1015,6 +1053,9 @@ function warnUnloweredPyreonModules(body: AnyNode[], ctx: ParseCtx): void {
       // diagnostic into noise, and `rx` is a live example of a module that is
       // only PARTLY unlowered.
       if (entry.supported?.has(imported)) continue
+      // When a module lists `unsupported`, ONLY those warn — everything else in
+      // it lowers and must stay silent.
+      if (entry.unsupported !== undefined && !entry.unsupported.has(imported)) continue
       if (seen.has(imported)) continue
       seen.add(imported)
       ctx.warnings.push(
