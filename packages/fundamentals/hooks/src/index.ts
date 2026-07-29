@@ -33,6 +33,12 @@ export type {
   UseMapOptions,
   UseMapResult,
 } from './useMap'
+// useWebSocket — the web half of a hook PMTC has always lowered natively
+// (`PyreonWebSocket` on both targets, with a synthesized auto-connect on
+// mount). Without this export the shared import resolved on iOS and Android
+// and nowhere else — the same gap useGeolocation and useDatabase had.
+export { useWebSocket } from './useWebSocket'
+export type { UseWebSocketOptions, UseWebSocketResult } from './useWebSocket'
 export type { UseGeolocationOptions, UseGeolocationResult } from './useGeolocation'
 // Web half of the shared document store. Same gap as useGeolocation: the
 // native half is device-proven, the web half did not exist — and the
