@@ -116,21 +116,28 @@ export function createModel(
 
   const brandId = signal(initial.brand ?? 'ember')
   const dark = signal(initial.dark ?? true)
-  const selId = signal(
-    // A link naming a component that no longer exists falls back to the first
-    // one rather than rendering an empty canvas — a renamed component should
-    // not make an old link look like a broken workbench.
-    (initial.c && catalog.components.some((c) => c.id === initial.c) ? initial.c : undefined) ??
-      catalog.components[0]?.id ??
-      '',
-  )
+  // The link's component id, RESOLVED against the catalog — never used raw.
+  //
+  // A link naming a component that no longer exists falls back to the first one
+  // rather than rendering an empty canvas: a renamed component should not make
+  // an old link look like a broken workbench. Resolving ONCE (rather than
+  // per-use) also keeps the id and the args it carries from disagreeing —
+  // previously the args were stored under the link's raw id while the canvas
+  // fell back to a different component, so a stale link silently parked its
+  // edits on a key nothing would ever read.
+  //
+  // It matters for a second reason: this value comes from the URL, and it is
+  // used as an object KEY below. Narrowing it to an id the catalog already
+  // contains means no attacker-chosen string ever names a property.
+  const linkedComponent = catalog.components.find((c) => c.id === initial.c)
+  const selId = signal(linkedComponent?.id ?? catalog.components[0]?.id ?? '')
   const query = signal('')
   const zoomIdx = signal(2) // 100%
   const view = signal<View>('canvas')
   const addon = signal<Addon>(initial.p ?? 'controls')
   // Args from the link belong to the component the link named.
   const values = signal<Record<string, Record<string, unknown>>>(
-    initial.c && initial.args ? { [initial.c]: initial.args } : {},
+    linkedComponent && initial.args ? { [linkedComponent.id]: initial.args } : {},
   )
   const actions = signal<ActionEntry[]>([])
   const viewport = signal<ViewportId>((initial.viewport as ViewportId) ?? 'full')

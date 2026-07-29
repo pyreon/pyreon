@@ -296,3 +296,49 @@ describe('createModel — canvas addons', () => {
     expect(ctxRef!.pseudo).toEqual({ focus: true })
   })
 })
+
+describe('restoring from a link', () => {
+  const cat = (): WorkbenchCatalog => ({
+    components: [
+      comp('button', 'Forms', [{ key: 'label', label: 'Label', type: 'text', default: 'Click me' }]),
+      comp('badge', 'Feedback', [{ key: 'label', label: 'Label', type: 'text', default: 'New' }]),
+    ],
+  })
+
+  const withQuery = (query: string): ReturnType<typeof createModel> => {
+    history.replaceState(null, '', `/?${query}`)
+    return createModel(cat(), {})
+  }
+
+  it('selects the component the link names and applies its args', () => {
+    const m = withQuery(`c=badge&args=${encodeURIComponent('{"label":"Shipped"}')}`)
+    expect(m.selId()).toBe('badge')
+    expect(m.vals().label).toBe('Shipped')
+  })
+
+  it('falls back to the first component when the link names one that is gone', () => {
+    // A renamed component should not make an old link look like a broken
+    // workbench.
+    const m = withQuery('c=deleted-component')
+    expect(m.selId()).toBe('button')
+  })
+
+  it('shows the fallback component\'s defaults, not the args the stale link carried', () => {
+    const m = withQuery(`c=deleted-component&args=${encodeURIComponent('{"label":"Ghost"}')}`)
+    expect(m.selId()).toBe('button')
+    expect(m.vals().label).toBe('Click me')
+  })
+
+  it('ignores a component id that is not in the catalog, whatever it says', () => {
+    // Honest about what this pins. The id comes from the URL and is used as an
+    // object KEY, which CodeQL flags as `js/remote-property-injection`; the
+    // TAINT is real but the exploit is not — a computed key in an object
+    // literal (`{ [k]: v }`) defines an own property and does NOT set the
+    // prototype, unlike `obj.__proto__ = v`. So this asserts the narrowing
+    // holds, and does not claim to reproduce a pollution that never happened.
+    const m = withQuery(`c=__proto__&args=${encodeURIComponent('{"polluted":true}')}`)
+    expect(m.selId()).toBe('button')
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined()
+    expect(m.vals().polluted).toBeUndefined()
+  })
+})
