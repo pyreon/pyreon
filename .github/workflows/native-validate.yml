@@ -109,12 +109,25 @@ jobs:
     needs: decide
     if: needs.decide.outputs.run == 'true'
     runs-on: ubuntu-latest
-    # Derived, not guessed (the ws-relay backstop rule): measured runtime is
-    # 22m26s–24m20s across recent PRs, so the previous `25` left <1 min of
-    # headroom — any slow runner tripped it (job timeout reports as
-    # "cancelled", which cost a release-PR diagnosis on #2230). Budget =
-    # worst measured (~24.5m) + ~40% runner-variance headroom.
-    timeout-minutes: 35
+    # Derived, not guessed (the ws-relay backstop rule). RE-DERIVED 2026-07-29
+    # with the SAME formula, because the suite outgrew the previous budget —
+    # which is exactly the failure this comment already describes happening to
+    # the `25` before it.
+    #
+    # The `35` was correct when written: runtime was 22m26s–24m20s, so it
+    # carried ~40% headroom. Measured now, across recent runs of this job:
+    #
+    #   cancelled 35.1   <- the timeout itself
+    #   success   34.6, 34.6, 34.5, 34.3, 32.6, 27.1
+    #
+    # Four successes land within 42 SECONDS of the limit. That is a coin flip,
+    # and it showed: #2574, #2575, #2578 and #2580 each recorded a cancel then
+    # a success on an unchanged tree. A gate that fails half the time on
+    # identical input cannot distinguish a real regression from a slow runner —
+    # it trains everyone to re-run past it, which is how a gate dies.
+    #
+    # Budget = worst measured success (34.6m) + ~40% runner-variance headroom.
+    timeout-minutes: 50
     permissions:
       contents: read
     steps:
@@ -332,7 +345,12 @@ jobs:
     # doesn't block merge, but a chronically-cancelled gate is a dead gate — give
     # it real headroom. Follow-up: shard the swiftc corpus across parallel macOS
     # runners (or memoize the SDK cold-start) rather than raising the cap again.
-    timeout-minutes: 45
+    # Same re-derivation as the ubuntu job above. This one has NOT failed yet,
+    # so it is raised on measurement rather than on an incident: its slowest
+    # observed success is 41.2m against a 45m budget — 92% utilisation, i.e.
+    # one slow runner from the same coin-flip the ubuntu job is already stuck
+    # in. Budget = worst measured (41.2m) + ~40% headroom.
+    timeout-minutes: 60
     permissions:
       contents: read
     steps:
