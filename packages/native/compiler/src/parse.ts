@@ -6231,6 +6231,28 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
           spreads.push(parseExpr(p.argument, ctx))
         }
       }
+      // An EMPTY object literal has no native lowering and produced no
+      // warning. Both emitters render a fieldless object as `()` — Swift's
+      // empty TUPLE, i.e. Void — so:
+      //
+      //   signal({})                    Swift: `@State private var u: Any = ()`
+      //                                 compiles, but the value is Void, not an
+      //                                 object. SILENT semantic break.
+      //                                 Kotlin: fails to infer T.
+      //   signal<{ name?: string }>({}) `@State private var u: CU = ()`
+      //                                 fails on BOTH targets.
+      //
+      // Warned rather than lowered. Emitting an empty struct would fix the
+      // first shape but NOT the second: there the literal is empty while the
+      // TYPE ANNOTATION carries the fields, so a struct synthesized from the
+      // literal would drop `name` and the later `u().name` would fail anyway.
+      // Synthesizing from the annotation is a real feature; a warning that
+      // names the shape and the fix is the honest thing to ship today.
+      if (fields.length === 0 && spreads.length === 0) {
+        ctx.warnings.push(
+          'An EMPTY object literal `{}` has no native lowering — it emits `()` (Void on Swift), so the value is not an object on either target. Give the literal its fields (`{ name: "" }`), or model the state as separate signals.',
+        )
+      }
       return spreads.length > 0
         ? { kind: 'object', fields, spreads }
         : { kind: 'object', fields }
