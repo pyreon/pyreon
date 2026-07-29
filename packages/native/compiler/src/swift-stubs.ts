@@ -215,6 +215,14 @@ extension View {
   public func task(priority: TaskPriority = .userInitiated, _ action: @escaping () async -> Void) -> some View { self }
   public func allowsHitTesting(_ enabled: Bool) -> some View { self }
   public func scaledToFit() -> some View { self }
+  // scaledToFill was MISSING while its sibling scaledToFit was present, so the
+  // gate rejected the DEFAULT <Image> emit. ImageProps.fit defaults to "cover",
+  // which lowers to .scaledToFill(), meaning every plain <Image src alt /> --
+  // the most common usage of a canonical primitive -- failed the required Swift
+  // gate on valid SwiftUI. Only fit="contain" (scaledToFit) and fit="none" (no
+  // modifier) got through. Same SUBSET-stub defect as PyreonI18n above, found
+  // the same way: Kotlin accepted the identical source.
+  public func scaledToFill() -> some View { self }
   public func onAppear(_ action: (() -> Void)? = nil) -> some View { self }
 }
 public enum ImageScale { case small, medium, large }
@@ -353,7 +361,18 @@ public struct PyreonMachine {
   public func matches(_ state: String) -> Bool { false }
 }
 public struct PyreonI18n {
-  public init(locale: String, messages: [String: [String: String]], fallbackLocale: String) {}
+  // fallbackLocale is OPTIONAL and DEFAULTED in the real PyreonI18n. The stub
+  // made it required, so \`createI18n({ locale, messages })\` — the two-argument
+  // form the docs show and the common case — was REJECTED by the gate with
+  // "missing argument for parameter 'fallbackLocale'". Valid source, failing
+  // build. Same class as the coolgrid frame stub: a SUBSET stub manufactures
+  // failures exactly as a SUPERSET stub masks them, and the fix is the same —
+  // mirror the real signature, do not guess at it.
+  public init(
+    locale: String,
+    messages: [String: [String: String]],
+    fallbackLocale: String? = nil
+  ) {}
   // t(key) OR t(key, interpolation values) — the emit passes [String: Any]-shaped
   // dictionary literals ([String: String] and [String: Int] both coerce).
   public func t(_ key: String, _ values: [String: Any] = [:]) -> String { "" }
@@ -466,6 +485,13 @@ extension EnvironmentValues {
 }
 public func useNavigate(router: PyreonRouter?) -> (String) -> Void { { _ in } }
 public func useParams(router: PyreonRouter?) -> [String: String] { [:] }
+// THIRD subset-stub instance. router-swift's Hooks.swift declares three public
+// hooks; the stub had two, so \`const d = useLoaderData<U>()\` — a shipped
+// Phase-B6 feature — failed the required gate with "cannot find 'useLoaderData'
+// in scope" on a perfectly valid emit. Kotlin passed, the same diagnostic that
+// found the other two. The parity test below now enforces the whole SET rather
+// than waiting for a fourth to be discovered by hand.
+public func useLoaderData<T>(router: PyreonRouter?) -> T? { nil }
 // RouterProvider — the multi-screen root the showcase apps emit. Mirrors
 // router-swift: generic over its content, @ViewBuilder, escaping closure.
 public struct RouterProvider<Content: View>: View {
