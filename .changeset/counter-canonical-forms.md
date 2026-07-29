@@ -29,8 +29,15 @@ before and after, verified per target. Identical bytes cannot behave differently
 on a device, so the 19 XCUITests cannot regress — and the full device suite was
 run to confirm rather than assumed.
 
-This takes the file from 40 errors to 8. The remainder are NOT example bugs and
-are deliberately left:
+This takes the file from 40 errors to 8, as measured when the change was
+written. NOTE the before-count has since shifted: main added a geolocation
+`Locate` button (#2570) that also used `onClick`, which this change converts
+too, so the exact starting number is now higher by at least one. The RESIDUAL is
+what matters and it is enumerated below; it was not re-measured after the
+rebase, and the number above is left as originally measured rather than silently
+updated to a guess.
+
+The remainder are NOT example bugs and are deliberately left:
 
   - `rocketstyle({ component })` is missing the required `name` (2).
   - `<Press onLongPress>` without `onPress`, which `PressProps` requires (1) —
