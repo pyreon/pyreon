@@ -215,6 +215,14 @@ extension View {
   public func task(priority: TaskPriority = .userInitiated, _ action: @escaping () async -> Void) -> some View { self }
   public func allowsHitTesting(_ enabled: Bool) -> some View { self }
   public func scaledToFit() -> some View { self }
+  // scaledToFill was MISSING while its sibling scaledToFit was present, so the
+  // gate rejected the DEFAULT <Image> emit. ImageProps.fit defaults to "cover",
+  // which lowers to .scaledToFill(), meaning every plain <Image src alt /> --
+  // the most common usage of a canonical primitive -- failed the required Swift
+  // gate on valid SwiftUI. Only fit="contain" (scaledToFit) and fit="none" (no
+  // modifier) got through. Same SUBSET-stub defect as PyreonI18n above, found
+  // the same way: Kotlin accepted the identical source.
+  public func scaledToFill() -> some View { self }
   public func onAppear(_ action: (() -> Void)? = nil) -> some View { self }
 }
 public enum ImageScale { case small, medium, large }

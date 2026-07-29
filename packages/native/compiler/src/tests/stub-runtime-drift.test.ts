@@ -142,6 +142,20 @@ describe('stub ↔ real runtime fidelity (both drift directions)', () => {
     expect(init).not.toContain('fallbackLocale: String)')
   })
 
+  it('the Swift stub has scaledToFill — the DEFAULT <Image> emit needs it', () => {
+    // Second instance of the SAME subset-stub defect, found the same way.
+    // ImageProps.fit defaults to "cover", which lowers to `.scaledToFill()`.
+    // The stub had its sibling `scaledToFit()` but not `scaledToFill()`, so
+    // every plain `<Image src alt />` — the most common usage of a canonical
+    // primitive — failed the required gate on valid SwiftUI. Only fit="contain"
+    // and fit="none" got through. Kotlin accepted the identical source.
+    const stub = readFileSync(resolve(HERE, '..', 'swift-stubs.ts'), 'utf8')
+    expect(stub).toContain('public func scaledToFill()')
+    // Its sibling must stay too — a "fix" that swapped one for the other would
+    // simply move the failure to fit="contain".
+    expect(stub).toContain('public func scaledToFit()')
+  })
+
   it('the Kotlin stub and runtime agree too (this target was already correct)', () => {
     const real = read('runtime-kotlin/src/main/kotlin/com/pyreon/runtime/PyreonI18n.kt')
     const stub = readFileSync(resolve(HERE, '..', 'kotlin-stubs.ts'), 'utf8')

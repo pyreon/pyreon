@@ -38,3 +38,28 @@ Bisect-verified: reverting the stub fails the lock with
 `expected … to contain 'fallbackLocale: String? = nil'`, and reproduces the real
 symptom — 2 of 3 valid call shapes rejected by swiftc. Restored, 12/12 pass and
 all three shapes typecheck on both targets.
+
+SECOND INSTANCE, found the same way and fixed here too: `<Image>`.
+
+`ImageProps.fit` defaults to `"cover"`, which lowers to `.scaledToFill()`. The
+stub had the sibling `.scaledToFit()` but NOT `.scaledToFill()`, so every plain
+`<Image src alt />` — the most common usage of a canonical primitive — failed
+the required Swift gate on valid SwiftUI. Only `fit="contain"` (scaledToFit) and
+`fit="none"` (no modifier) got through; `cover`, `fill` and the default all
+failed. Kotlin accepted the identical source, the same diagnostic as above.
+
+Found while sweeping all fifteen canonical primitives' props against both
+targets — the highest-blast-radius surface there is, since a broken primitive
+affects every app. Worth recording that the sweep otherwise came back clean:
+Stack gap/padding/align/justify, Inline, Text weight/size/color, Heading, Button
+disabled/variant, Icon, Spacer, Scroll, Layer, Field, Toggle, Press onLongPress,
+Link and `accessibilityLabel` all compile on both targets.
+
+One correction to my own probe, recorded because it nearly became a false bug
+report: `<Toggle checked>` fails on both targets, but `ToggleProps` is
+`{ value, onChange, disabled? }` — there is no `checked` prop. With the real
+props it compiles fine on both (`Toggle(_:isOn:)` / `Switch(checked=…)`). I had
+guessed the prop name instead of reading the type. The residual — an UNKNOWN
+prop emits uncompilable output with no warning — is real but low severity: the
+build fails loudly and names the prop, and TypeScript rejects it on web.
+
