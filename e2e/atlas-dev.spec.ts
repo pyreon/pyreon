@@ -132,3 +132,56 @@ test.describe('Reactivity Lens', () => {
     expect(typeof res.result.suspects).toBe('number')
   })
 })
+
+/**
+ * URL state — a workbench view that survives a reload and can be shared.
+ *
+ * Before this, every reload dropped you on the first component with default
+ * controls, and "open Atlas, pick X, set Y" was the only way to hand someone a
+ * view. Asserted through a REAL reload, because that is the claim.
+ */
+test.describe('URL state', () => {
+  test('a selected component and edited args survive a reload', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Badge' }).click()
+    await page.getByTestId('addon-tab-controls').click()
+    await page.locator('input[placeholder]').last().fill('Shipped')
+
+    // The URL follows the view.
+    await expect(page).toHaveURL(/c=badge/)
+    await expect(page).toHaveURL(/args=/)
+
+    await page.reload()
+
+    // Same component, same edit — not the first component with defaults.
+    await expect(page.getByTestId('canvas-name')).toContainText('Badge')
+    await page.getByTestId('addon-tab-controls').click()
+    await expect(page.locator('input[placeholder]').last()).toHaveValue('Shipped')
+  })
+
+  test('canvas state is shareable, and a stale component id degrades', async ({ page }) => {
+    await page.goto('/?c=badge&viewport=tablet&p=canvas')
+    await expect(page.getByTestId('canvas-name')).toContainText('Badge')
+    // The link named a viewport; it must be applied, not merely stored.
+    await expect(page.getByTestId('viewport-tablet')).toHaveAttribute('data-rocketstyle', /.+/)
+
+    // A component that no longer exists must not blank the workbench.
+    await page.goto('/?c=deleted-component')
+    await expect(page.getByTestId('canvas-preview')).toBeVisible()
+    await expect(page.getByTestId('canvas-name')).not.toBeEmpty()
+  })
+
+  test('typing does not fill the history stack', async ({ page }) => {
+    // `replaceState`, not `pushState`: otherwise Back walks backwards through
+    // every keystroke instead of leaving the workbench.
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Badge' }).click()
+    await page.getByTestId('addon-tab-controls').click()
+    const before = await page.evaluate(() => history.length)
+    const box = page.locator('input[placeholder]').last()
+    await box.fill('a')
+    await box.fill('ab')
+    await box.fill('abc')
+    expect(await page.evaluate(() => history.length)).toBe(before)
+  })
+})
