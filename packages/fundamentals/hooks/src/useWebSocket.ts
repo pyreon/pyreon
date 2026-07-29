@@ -146,7 +146,10 @@ export function useWebSocket(
     // `readyState` rather than the reactive flag: a frame sent between
     // construction and `onopen` would throw InvalidStateError, and the native
     // `send` is a documented no-op when not connected.
-    if (sock === null || sock.readyState !== WebSocket.OPEN) return
+    // `sock.OPEN`, not the global `WebSocket.OPEN`: the constant lives on the
+    // prototype of every instance, so this touches no browser global and is
+    // SSR-safe by construction rather than by short-circuit ordering.
+    if (sock === null || sock.readyState !== sock.OPEN) return
     sock.send(text)
   }
 

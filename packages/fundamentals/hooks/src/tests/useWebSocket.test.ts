@@ -20,6 +20,11 @@ class FakeSocket {
   static instances: FakeSocket[] = []
   static readonly OPEN = 1
   static readonly CLOSED = 3
+  // Real WebSocket instances expose these via the prototype, not only as
+  // statics — and the hook reads `sock.OPEN` precisely so it never touches a
+  // browser global. A static-only fake would make `send` silently never fire.
+  readonly OPEN = 1
+  readonly CLOSED = 3
   readyState = 0
   sent: string[] = []
   closed = false
