@@ -1004,7 +1004,22 @@ function tryStoreDefnFromTopLevel(
     )
     return null
   }
-  const body = setup.body as AnyNode
+  // The concise-object arrow body `() => ({ ... })` parses as a
+  // ParenthesizedExpression, NOT an ObjectExpression — and those parens are
+  // MANDATORY syntax (`() => { ... }` would be a block). So the
+  // `body?.type === 'ObjectExpression'` branch below could never be reached,
+  // and the warning written for exactly that case was dead from the moment it
+  // was written. The shape fell through to the silent `else { return null }`
+  // and emitted UNCOMPILABLE passthrough: `private let useApp =
+  // defineStore("app", { ((n: signal(1))) })`, referencing `defineStore` and
+  // `signal` — neither of which exists in Swift. Zero warnings, both targets.
+  //
+  // Unwrap first so the branch is reachable. `while`, not `if`: `(( ... ))` is
+  // legal and nests.
+  let body = setup.body as AnyNode
+  while (body?.type === 'ParenthesizedExpression') {
+    body = body.expression as AnyNode
+  }
   // Two shapes: BlockStatement with return, or expression body (`() => ({...})`)
   let returnObj: AnyNode | undefined
   const signalDecls: { name: string; type: TypeIR; initial: ExprIR }[] = []
