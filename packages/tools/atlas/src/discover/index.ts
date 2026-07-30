@@ -13,6 +13,7 @@ export { discoverRocketstyle, readDimensions } from './rocketstyle'
 export type { AtlasConfig, LoadedConfig } from './config'
 export { loadAtlasConfig } from './config'
 export type { LoadResult, ModuleLoader } from './load'
+export type { MountRuntime } from '../verify/harness'
 export {
   componentLoaderPlugin,
   createModuleLoader,

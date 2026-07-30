@@ -7,6 +7,7 @@
  * theme engine into a test about `Object.keys`. The real chains are covered by
  * the end-to-end scan of the workshop example, which discovers three of them.
  */
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { ModuleLoader } from '../load'
 import { discoverRocketstyle, readDimensions } from '../rocketstyle'
@@ -17,9 +18,19 @@ const rocket = (dimensions: Record<string, Record<string, unknown>>) =>
     getStaticDimensions: () => ({ dimensions }),
   })
 
+// Served by ABSOLUTE path — the `ModuleLoader.load` contract. Discovery walks
+// record cwd-relative paths, and discovery must absolutize before loading (a
+// relative id reaches Vite as a bare url whose own relative imports cannot
+// resolve — the bug that silently dropped rocketstyle components from any file
+// with a `./sibling` import). The fake REJECTS a relative id outright, so every
+// spec below doubles as a contract test: revert the `resolve()` in discovery
+// and each one fails with "loader received a relative path".
 const loaderOf = (modules: Record<string, Record<string, unknown>>): ModuleLoader => ({
   kind: 'runtime',
-  load: async (file) => modules[file] ?? {},
+  load: async (file) => {
+    if (!file.startsWith('/')) throw new Error(`loader received a relative path: ${file}`)
+    return modules[Object.keys(modules).find((k) => resolve(k) === file) ?? ''] ?? {}
+  },
   close: async () => {},
 })
 
@@ -110,7 +121,7 @@ describe('discovery', () => {
     const loader: ModuleLoader = {
       kind: 'runtime',
       load: async (file) => {
-        if (file === 'bad.tsx') throw new Error('boom')
+        if (file === resolve('bad.tsx')) throw new Error('boom')
         return { Button: rocket({ variant: { solid: 1 } }) }
       },
       close: async () => {},

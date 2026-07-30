@@ -117,8 +117,9 @@ export function mountPlugin(options: MountPluginOptions = {}): AtlasPlugin {
 
       runtime ??= await defaultRuntime()
       const scenario = mountScenario(dom.env, runtime, component, ctx.scenario.args, options.wrapper)
+      let clicks = 0
       try {
-        driveInteractions(scenario)
+        clicks = driveInteractions(scenario)
       } finally {
         // Unmount inside the same window so a teardown error counts as a
         // finding for THIS scenario rather than leaking into the next one.
@@ -126,7 +127,22 @@ export function mountPlugin(options: MountPluginOptions = {}): AtlasPlugin {
       }
 
       const errors = [...scenario.errors]
-      if (errors.length === 0) return { interaction: { status: 'pass' } }
+      if (errors.length === 0) {
+        // A zero-click run is still a real verdict — mount + unmount without
+        // throwing IS the check's core claim — but the verdict must say what it
+        // covered. Silently reporting `pass` for a scenario with nothing to
+        // click would let "interaction: pass" imply exercise that never
+        // happened (the fabricated-pass class, one finding short).
+        if (clicks === 0) {
+          return {
+            interaction: {
+              status: 'pass',
+              findings: ['mounted and unmounted cleanly; no interactive elements to drive'],
+            },
+          }
+        }
+        return { interaction: { status: 'pass' } }
+      }
 
       const findings = errors.map((e) => `threw while mounted: ${e}`)
       if (!options.wrapper) {

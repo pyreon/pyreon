@@ -26,7 +26,12 @@ describe('atlas scan mounts the example', () => {
       [BIN, 'scan', 'examples/atlas-workshop'],
       { cwd: ROOT, encoding: 'utf8', timeout: 300_000 },
     )
-    expect(run.status, run.stderr).toBe(0)
+    // Exit 1, deliberately: the example carries two REAL a11y failures (the
+    // empty-label edge cases below), and a red scan is a red exit — that is
+    // the whole CI-gating contract. The stderr line names them so the failure
+    // is actionable without opening the JSON.
+    expect(run.status, run.stderr).toBe(1)
+    expect(run.stderr).toContain('failing scenario(s): button--empty, badge--empty')
 
     // The exact counts, not just "nothing unverified".
     //

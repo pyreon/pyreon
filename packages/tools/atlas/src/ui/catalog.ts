@@ -165,7 +165,6 @@ export function buildSearch(catalog: WorkbenchCatalog): (query: string) => strin
       name: c.name,
       controls: inferControls(toShapes(c)),
       axes: [],
-      reactivity: [],
       scenarios: [],
       tags: [c.group.toLowerCase()],
     })),

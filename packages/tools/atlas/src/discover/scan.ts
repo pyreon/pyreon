@@ -157,7 +157,7 @@ function toComponent(
   const axes: VariantAxis[] = shapes
     .filter((s) => typeof s.type === 'object')
     .map((s) => ({ name: s.name, values: (s.type as { union: readonly string[] }).union }))
-  return { name, controls, axes, reactivity: [], scenarios: [], tags: [], source }
+  return { name, controls, axes, scenarios: [], tags: [], source }
 }
 
 /** Extract a component from a top-level statement, if it is one. */

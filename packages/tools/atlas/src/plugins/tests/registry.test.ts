@@ -7,7 +7,6 @@ const ci = (name: string): ComponentIntelligence => ({
   name,
   controls: [],
   axes: [],
-  reactivity: [],
   scenarios: [],
   tags: [],
 })

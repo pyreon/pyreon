@@ -165,7 +165,9 @@ export function generateCatalogModule(
     lines.push(`      id: ${lit(ids[i]!)},`)
     lines.push(`      name: ${lit(component.name)},`)
     lines.push(`      group: ${lit(groupFor(entry.file, options.root))},`)
-    lines.push(`      status: 'stable',`)
+    // No `status`: nothing in a derived catalog measures maturity, and a
+    // hardcoded 'stable' pill on every component is decorative fiction — the
+    // docs view simply omits the pill when the field is absent.
     if (component.summary) lines.push(`      desc: ${lit(component.summary)},`)
     lines.push(`      controls: ${JSON.stringify(controls)},`)
     // The guard is the point: one broken export must not blank the workbench.

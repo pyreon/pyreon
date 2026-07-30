@@ -2154,6 +2154,7 @@
       },
       "devDependencies": {
         "@pyreon/compiler": "workspace:*",
+        "@pyreon/query": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vite-plugin": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",

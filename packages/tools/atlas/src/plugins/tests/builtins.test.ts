@@ -8,7 +8,6 @@ const ci = (over: Partial<ComponentIntelligence> = {}): ComponentIntelligence =>
   name: 'Button',
   controls: [],
   axes: [],
-  reactivity: [],
   scenarios: [],
   tags: [],
   ...over,

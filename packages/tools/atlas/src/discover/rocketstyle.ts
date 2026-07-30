@@ -23,6 +23,7 @@
  * `.variants((t) => ({ solid: …, soft: … }))` callbacks, which is data, not a
  * type. This is the only way to know them without running the chain.
  */
+import { resolve } from 'node:path'
 import type { ComponentIntelligence, ComponentRef, PropControl, VariantAxis } from '../core'
 import type { ModuleLoader } from './load'
 
@@ -97,7 +98,12 @@ export async function discoverRocketstyle(
   for (const file of files) {
     let mod: Record<string, unknown>
     try {
-      mod = await options.loader.load(file)
+      // Absolutized here because the walk records cwd-RELATIVE paths and the
+      // loader contract is absolute. A relative id reaches Vite as a bare url
+      // whose own relative imports cannot resolve — so any rocketstyle
+      // component in a file with a `./sibling` import was silently dropped
+      // (plus a Vite "Failed to load url" logged on every scan).
+      mod = await options.loader.load(resolve(file))
     } catch {
       continue // a module that will not load has nothing to introspect
     }
@@ -111,7 +117,6 @@ export async function discoverRocketstyle(
         component: value as ComponentRef,
         controls: axes.map((axis) => toControl(axis.name, axis.values)),
         axes,
-        reactivity: [],
         scenarios: [],
         tags: [],
         source: file,

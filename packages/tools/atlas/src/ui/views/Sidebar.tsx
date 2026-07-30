@@ -33,10 +33,9 @@ export function Sidebar(props: { model: WorkbenchModel }) {
           <C.Empty>no matches</C.Empty>
         </Show>
       </C.SideList>
-      <C.SideFoot>
-        <C.OkDot />
-        Tokens synced · ↑↓ to browse
-      </C.SideFoot>
+      {/* Real hints only — an earlier footer said "Tokens synced" next to a
+          green dot, a health claim nothing measured. */}
+      <C.SideFoot>↑↓ to browse · ⌘K to search</C.SideFoot>
     </C.Sidebar>
   )
 }

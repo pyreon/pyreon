@@ -6,7 +6,6 @@ import { aiAssetsPlugin } from '../ai-assets'
 const ci = (over: Partial<ComponentIntelligence> & { name: string }): ComponentIntelligence => ({
   controls: [],
   axes: [],
-  reactivity: [],
   scenarios: [],
   tags: [],
   ...over,

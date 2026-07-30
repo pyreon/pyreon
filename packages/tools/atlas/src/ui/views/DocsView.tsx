@@ -28,7 +28,9 @@ export function DocsView(props: { model: WorkbenchModel }) {
         <C.DocsArticle>
           <C.DocsTitleRow>
             <C.DocsTitle>{c.name}</C.DocsTitle>
-            <C.DocsStatus>{c.status ?? 'stable'}</C.DocsStatus>
+            {/* Only when the catalog SAYS so — defaulting the pill to 'stable'
+                asserted a maturity nothing measured. */}
+            {c.status ? <C.DocsStatus>{c.status}</C.DocsStatus> : null}
           </C.DocsTitleRow>
           <C.DocsDesc>{c.desc ?? ''}</C.DocsDesc>
           <C.DocsPreview>{() => m.preview()}</C.DocsPreview>

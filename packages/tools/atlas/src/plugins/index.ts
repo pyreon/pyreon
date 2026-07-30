@@ -41,7 +41,7 @@ export { tagsPlugin } from './tags'
 
 // verification
 export { a11yPlugin } from './a11y'
-export { mountPlugin, releaseVerifyDom } from './mount'
+export { mountPlugin, type MountPluginOptions, releaseVerifyDom } from './mount'
 
 // docs
 export { usageDocsPlugin } from './usage-docs'

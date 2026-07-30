@@ -10,8 +10,6 @@ export type {
   VariantAxis,
   ScenarioSource,
   Scenario,
-  ReactivityKind,
-  ReactivityBinding,
   CheckStatus,
   VerifyCheck,
   VerifyVerdict,

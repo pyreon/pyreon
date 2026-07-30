@@ -24,7 +24,7 @@
  * rather than being a promise.
  */
 import { readFileSync } from 'node:fs'
-import { isAbsolute, resolve } from 'node:path'
+import { isAbsolute, resolve, sep } from 'node:path'
 import type { ComponentIntelligence } from '../core'
 import { generateCatalogModule, type CatalogEntrySource } from './catalog-module'
 import { lensMethod } from './lens'
@@ -74,8 +74,11 @@ export function builtinMethods(ctx: RpcContext): Record<string, RpcMethod> {
 
       const abs = isAbsolute(found.source) ? found.source : resolve(ctx.root, found.source)
       // Path guard: the recorded path came from OUR scan, but treating it as
-      // trusted would make any future caller-supplied path a traversal.
-      if (!abs.startsWith(ctx.root)) throw new Error('[Pyreon] atlas dev: refusing to read outside the project root')
+      // trusted would make any future caller-supplied path a traversal. The
+      // separator is part of the check — a bare prefix admits a SIBLING dir
+      // (`/proj-evil` passes for root `/proj`).
+      if (abs !== ctx.root && !abs.startsWith(ctx.root + sep))
+        throw new Error('[Pyreon] atlas dev: refusing to read outside the project root')
 
       return { path: abs, source: readFileSync(abs, 'utf8') }
     },
@@ -212,6 +215,16 @@ export function atlasDevPlugin(options: AtlasDevPluginOptions): VitePluginLike {
 }
 
 /** The HTML shell. Kept here so a consuming project needs no `index.html`. */
+/** The five characters that matter in an HTML text/attribute context. */
+function escapeHtml(text: string): string {
+  return text
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+}
+
 export function devHtml(title = 'atlas'): string {
   return [
     '<!doctype html>',
@@ -219,7 +232,10 @@ export function devHtml(title = 'atlas'): string {
     '  <head>',
     '    <meta charset="utf-8" />',
     '    <meta name="viewport" content="width=device-width, initial-scale=1" />',
-    `    <title>${title}</title>`,
+    // Escaped even though the only caller today passes a programmatic option:
+    // an interpolation into HTML is an injection seam the moment a `--title`
+    // flag (or any other user-controlled source) reaches it.
+    `    <title>${escapeHtml(title)}</title>`,
     '  </head>',
     '  <body>',
     '    <div id="atlas-root"></div>',
