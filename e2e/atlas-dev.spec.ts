@@ -133,6 +133,51 @@ test.describe('atlas dev', () => {
     await expect(page.getByTestId('canvas-preview').locator('button').first()).toHaveText('')
   })
 
+  test('the sidebar is a nested, collapsible tree derived from directories', async ({ page }) => {
+    // SearchField lives in `components/forms/` — the derived catalog files it
+    // under `Components/Forms`, and the sidebar renders that as a nested,
+    // collapsible group. The flat single-level list was unusable past ~30
+    // components.
+    await page.goto('/')
+    const parent = page.getByTestId('group-Components')
+    const child = page.getByTestId('group-Components/Forms')
+    await expect(parent).toBeVisible()
+    await expect(child).toBeVisible()
+    await expect(child).toHaveAttribute('data-depth', '1')
+    await expect(page.getByRole('button', { name: 'SearchField' })).toBeVisible()
+
+    // Collapsing the PARENT hides the whole branch — child group included.
+    await parent.click()
+    await expect(child).toBeHidden()
+    await expect(page.getByRole('button', { name: 'SearchField' })).toBeHidden()
+    await parent.click()
+    await expect(child).toBeVisible()
+  })
+
+  test('number and color props get REAL editors, not text boxes', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'SearchField' }).click()
+    await page.getByTestId('addon-tab-controls').click()
+
+    // The number control is a real numeric input, and its value reaches the
+    // component as a NUMBER-typed prop (asserted via the rendered attribute).
+    const num = page.locator('input[type="number"]').first()
+    await expect(num).toBeVisible()
+    await num.fill('12')
+    const preview = page.getByTestId('canvas-preview')
+    await expect(preview.locator('input[type="search"]')).toHaveAttribute('data-max-items', '12')
+
+    // The color control is a native picker; Playwright can only set pickers
+    // programmatically, so drive the input event the editor listens to.
+    const color = page.getByTestId('color-color')
+    await expect(color).toBeVisible()
+    await color.evaluate((el) => {
+      ;(el as HTMLInputElement).value = '#ff0000'
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await expect(preview.locator('input[type="search"]')).toHaveAttribute('data-accent', '#ff0000')
+  })
+
   test('discovers a rocketstyle CHAIN (with a relative import) in the live workbench', async ({
     page,
   }) => {

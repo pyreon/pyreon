@@ -15,7 +15,7 @@ import type { FakeQueryResult } from './query-states'
 export interface WorkbenchControl {
   key: string
   label: string
-  type: 'text' | 'enum' | 'bool'
+  type: 'text' | 'enum' | 'bool' | 'number' | 'color'
   options?: readonly string[]
   default: unknown
 }

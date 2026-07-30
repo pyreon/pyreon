@@ -21,6 +21,7 @@ import { makeQueryResult, type FakeQueryResult, type QueryStateId } from './quer
 import { parseUrlState, serializeUrlState, urlStateChanged, type UrlState } from './url-state'
 import type { CatalogGroup, WorkbenchCatalog, WorkbenchComponent } from './catalog'
 import { buildSearch, defaultValues, groupComponents } from './catalog'
+import { buildHierarchy, filterHierarchy, type HierarchyNode } from './hierarchy'
 import type { BrandTheme, ThemeTokens } from './theme'
 import { THEMES, tokens } from './theme'
 
@@ -96,6 +97,15 @@ export interface WorkbenchModel {
   sel: Computed<WorkbenchComponent | undefined>
   vals: Computed<Record<string, unknown>>
   visibleGroups: Computed<CatalogGroup[]>
+  /**
+   * The nested sidebar tree — group paths are `/`-separated
+   * (`Components/Forms`), filtered by the live search with empty branches
+   * dropped. `visibleGroups` remains for flat consumers.
+   */
+  tree: Computed<HierarchyNode[]>
+  /** Collapsed group PATHS (default: everything expanded). */
+  collapsed: Signal<ReadonlySet<string>>
+  toggleGroup: (path: string) => void
   noResults: Computed<boolean>
   /** Live a11y verdict for the RENDERED preview (re-probed after each render). */
   a11y: Signal<A11yReport>
@@ -237,6 +247,17 @@ export function createModel(
     const ids = new Set(search(query()))
     return groups.map((g) => ({ ...g, items: g.items.filter((i) => ids.has(i.id)) })).filter((g) => g.items.length > 0)
   })
+  const fullTree = buildHierarchy(catalog.components)
+  const tree = computed(() => filterHierarchy(fullTree, new Set(search(query()))))
+  // Collapsed rather than expanded state, so the default needs no
+  // initialisation pass: an unknown path is expanded.
+  const collapsed = signal<ReadonlySet<string>>(new Set())
+  const toggleGroup = (path: string) => {
+    const next = new Set(collapsed())
+    if (next.has(path)) next.delete(path)
+    else next.add(path)
+    collapsed.set(next)
+  }
   const noResults = computed(() => visibleGroups().length === 0)
 
   const setValue = (id: string, key: string, v: unknown) => {
@@ -414,7 +435,7 @@ export function createModel(
     brandId, dark, selId, query, zoomIdx, view, addon, actions,
     viewport, background, pseudo, outline, locale, pseudoLocale, permissionSet, permissions, queryState, queryResult,
     viewports, backgrounds, locales, roles, viewportPreset, backgroundPreset, dir,
-    brand, theme, sel, vals, visibleGroups, noResults, a11y,
+    brand, theme, sel, vals, visibleGroups, tree, collapsed, toggleGroup, noResults, a11y,
     setValue, selectScenario, reset, logAction, clearActions, search, preview, searchRef, focusSearch, previewRef,
   }
 }
