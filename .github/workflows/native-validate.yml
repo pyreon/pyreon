@@ -183,13 +183,45 @@ jobs:
       - name: Install workspace deps
         run: bun install --frozen-lockfile
 
+      # Restore the content-addressed compile-verdict cache (validate-cache.ts).
+      # A verdict is a pure function of (validator kind, compiler version, the
+      # exact stub text, the exact compiled bytes), so a hit can only ever
+      # replay a verdict that is already determined for that input — and any
+      # change to the emit, the stubs, or the toolchain moves the key and misses.
+      #
+      # Accumulating-key pattern: `key` is unique per run so every run SAVES,
+      # and `restore-keys` falls back to the newest entry sharing the prefix.
+      # A PR branch can read caches from its base, so PRs inherit main's.
+      #
+      # The toolchain versions are in the cache key as well as in the verdict
+      # keys. That is belt-and-braces, not redundancy: it keeps a toolchain bump
+      # from dragging a large dead cache along behind it.
+      - name: Restore native compile-verdict cache
+        # Skipped on the nightly drift run — see the uncached env below.
+        if: github.event_name != 'schedule'
+        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8 # v6.0.0
+        with:
+          path: .cache/pyreon-native-validate
+          key: native-validate-${{ runner.os }}-swift${{ env.SWIFT_VERSION }}-kotlin${{ env.KOTLIN_VERSION }}-${{ github.run_id }}
+          restore-keys: |
+            native-validate-${{ runner.os }}-swift${{ env.SWIFT_VERSION }}-kotlin${{ env.KOTLIN_VERSION }}-
+
       - name: Run native-compiler tests with validation REQUIRED
         # PYREON_REQUIRE_NATIVE_VALIDATE=1 promotes the "skip when tool
         # absent" path to a HARD FAIL. With swiftc + kotlinc both
         # installed in this runner, that's the right contract — if a
         # tool is missing the runner is broken and we should know.
+        #
+        # The NIGHTLY drift run deliberately runs UNCACHED. A gate that can only
+        # ever read a cache is one you have to trust blindly; this keeps a
+        # periodic from-scratch ground truth that re-derives every verdict by
+        # actually invoking swiftc/kotlinc. It is also what would catch a fresh
+        # compiler release changing strictness, which is this schedule's whole
+        # purpose — a cache hit would mask exactly that.
         env:
           PYREON_REQUIRE_NATIVE_VALIDATE: '1'
+          PYREON_VALIDATE_CACHE_DIR: ${{ github.workspace }}/.cache/pyreon-native-validate
+          PYREON_VALIDATE_NO_CACHE: ${{ github.event_name == 'schedule' && '1' || '0' }}
         run: bun run --filter='@pyreon/native-compiler' test
 
       - name: Scaffolded multiplatform app compiles for both targets

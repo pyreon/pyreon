@@ -101,6 +101,51 @@ When an existing test blocks your fix, do not assume the fix is wrong — but do
 - Name test files after the module they test (e.g., `signal.test.ts` for `signal.ts`)
 - Use `describe` blocks to group by feature, `it` blocks for individual cases
 
+## The native compile-validation suite is verdict-cached
+
+`@pyreon/native-compiler`'s `validate.ts` spawns real `swiftc` / `kotlinc`
+processes — ~600 of them across 123 test files. Those verdicts are
+content-addressed on disk (`validate-cache.ts`), because a validate call is a
+pure function of (validator kind, compiler version, the exact stub text, the
+exact bytes compiled). Measured on an M3 Max, identical pass counts throughout:
+the full 223-file suite runs 397s uncached, 306s with an empty cache, and 6s
+warm; a 14-file subset runs 117s / 113s / 1s.
+
+The empty-cache column beats uncached purely because tool-availability probes are
+cached intra-run. Note the size of that: 91s on the full suite, NOT the several
+minutes a serial `123 probes x 1.36s` estimate implies — vitest runs files in
+parallel, so probe cost is amortized across workers. Estimating a per-file cost
+serially when the runner is parallel is an easy way to overstate a win by 10x.
+
+Consequences you need to know when working in this package:
+
+- **A timing measurement in this package is meaningless without stating the
+  cache state.** Compare like with like: either both runs warm, or both with
+  `PYREON_VALIDATE_NO_CACHE=1`. The A/B that established the numbers above held
+  vite's transform cache warm in *both* arms so the only variable was the
+  verdict cache — an unqualified "it got faster" here usually just means the
+  second run was warm.
+- **The key is the bytes handed to the compiler, not the caller's `source`.**
+  Two validators transform before compiling (`validateSwiftTypecheck` prepends a
+  preamble; `validateSwiftWithStubs` strips imports, adds a networking shim and
+  an `Observation` import, and shadow-strips the stub). Keying on `source` would
+  leave the key unmoved when that transform logic is edited, serving a pre-edit
+  verdict — the masking failure this gate exists to prevent. If you add a
+  transform, key on its OUTPUT or the cache goes stale silently.
+- **Editing a stub file correctly invalidates**, because the stub text is in the
+  key. This is load-bearing rather than tidy: a superset stub masks real
+  breakage, so a stale `ok` after a stub edit is the worst possible outcome.
+- **Precision cuts both ways when reading a re-run.** After changing only the
+  Swift key material, the subset re-ran in 7s, not the full 117s — the `kotlinc`
+  verdicts legitimately still hit. "Faster than a cold run" does not mean the
+  cache failed to invalidate; check WHICH keys should have moved.
+- `PYREON_VALIDATE_NO_CACHE=1` bypasses both tiers; `PYREON_VALIDATE_CACHE_DIR`
+  relocates the store (CI points it at a restored directory).
+- **The nightly `schedule` run is deliberately UNCACHED.** A gate that can only
+  read a cache is one you have to trust blindly. The nightly exists to catch a
+  fresh compiler release changing strictness, and a cache hit would mask exactly
+  that — so it re-derives every verdict from scratch.
+
 ## Dev-server bisect
 
 When bisect-verifying an e2e spec that runs against a Vite dev server (anything under the `examples/{ssr-showcase,fundamentals-playground,…} dev` webServer in `playwright.config.ts`), reverting source alone is NOT enough.
