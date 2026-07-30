@@ -582,7 +582,15 @@ public struct Font {
 // Color — theme-token colors lower to the component initialiser, so the
 // Double-channel init is the load-bearing one (a token emitted with the wrong
 // argument labels must fail here). \`opacity\` defaults, as in SwiftUI.
-public struct Color {
+// \`Color: View\` in real SwiftUI, and the conformance is load-bearing here, not
+// cosmetic: it is what gives \`Color\` the whole \`View\` modifier surface. The
+// stub declared a bare struct, so \`Color.clear.frame(width: 0, height: 0)\` — the
+// Modal sheet ANCHOR — failed with "value of type 'Color' has no member 'frame'"
+// even though the real toolchain compiles it (the device build proved it). That
+// is the subset-stub failure mode: a stub NARROWER than the real API
+// manufactures failures on valid source, the mirror image of a superset stub
+// masking real breakage.
+public struct Color: View {
   // RGBColorSpace + the colour-space-first initialiser: the style/token lowering
   // emits \`Color(.sRGB, red:green:blue:opacity:)\`, which is a DIFFERENT
   // initialiser from the bare \`Color(red:…)\` below. Both are real SwiftUI, and

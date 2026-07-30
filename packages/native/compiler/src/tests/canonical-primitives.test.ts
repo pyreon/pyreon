@@ -388,9 +388,18 @@ describe('Phase P2.1 — <Image> emit (AsyncImage)', () => {
 })
 
 describe('Phase P2.1 — <Modal> emit (.sheet(isPresented:))', () => {
-  it('Swift: <Modal open={signal}> → EmptyView().sheet(isPresented: $signal) { ... }', () => {
+  // The HOST changed from `EmptyView()` to a zero-sized `Color.clear`: an
+  // EmptyView contributes nothing to the render tree, so SwiftUI had no anchor
+  // and the sheet NEVER PRESENTED on iOS (device-found; the emit typechecked
+  // clean throughout). The invariant this spec protects is the signal shape's
+  // `$projection` binding, which is unchanged.
+  it('Swift: <Modal open={signal}> → Color.clear host + .sheet(isPresented: $signal)', () => {
     const out = tx(`<Modal open={done}><Text>body</Text></Modal>`, 'swift')
-    expect(out).toMatch(/EmptyView\(\)\.sheet\(isPresented: \$done\) \{[\s\S]+Text\("body"\)/)
+    expect(out).toMatch(
+      /Color\.clear\.frame\(width: 0, height: 0\)\.sheet\(isPresented: \$done\) \{[\s\S]+Text\("body"\)/,
+    )
+    // The anchor must be a REAL view, never EmptyView — that is the whole fix.
+    expect(out).not.toContain('EmptyView().sheet')
   })
 
   it('Swift: signal shape drops the redundant onClose (binding writes back)', () => {
@@ -405,7 +414,10 @@ describe('Phase P2.1 — <Modal> emit (.sheet(isPresented:))', () => {
       `<Modal open={props.todo.done} onClose={props.onToggle}><Text>x</Text></Modal>`,
       'swift',
     )
-    expect(out).toContain('EmptyView().sheet(isPresented: Binding(')
+    expect(out).toContain(
+      'Color.clear.frame(width: 0, height: 0).sheet(isPresented: Binding(',
+    )
+    expect(out).not.toContain('EmptyView().sheet')
     expect(out).toMatch(/get: \{ todo\.done \}/)
     expect(out).toMatch(/set: \{ if !\$0 \{ onToggle\(\) \} \}/)
   })
@@ -673,6 +685,44 @@ describe('Phase C3 — router primitive emit (<Link> + <RouterProvider> + <Route
     expect(out).toContain('navigate ->')
     expect(out).toContain('Box(modifier = Modifier.clickable { navigate() })')
     expect(out).toContain('Text(text = "View")')
+  })
+
+  // `<Link>` is a SPECIAL-CASE emitter: it builds `PyreonLink(...) { ... }` and
+  // returns BEFORE the generic modifier tail that turns `data-testid` into
+  // `.accessibilityIdentifier` / `Modifier.testTag`. So the identifier was
+  // dropped and the link was structurally UNQUERYABLE from XCUITest /
+  // onNodeWithTag — which is why `Link` sat in the capability matrix's
+  // "not individually asserted" list. You cannot assert on an element you
+  // cannot select, so this is the emit half of that gap.
+  it('Swift: <Link data-testid> carries the identifier (was silently dropped)', () => {
+    const out = tx(`<Link to="/about" data-testid="nav-about">About</Link>`, 'swift')
+    expect(out).toContain('PyreonLink("/about")')
+    expect(out).toContain('.accessibilityIdentifier("nav-about")')
+    // PyreonLink WRAPS its label, and SwiftUI flattens a plain wrapper out of
+    // the accessibility tree — so without the container semantic the identifier
+    // is invisible even though the link renders. `.contain` (not `.combine`)
+    // keeps the child label individually queryable.
+    expect(out).toContain('.accessibilityElement(children: .contain)')
+  })
+
+  it('Kotlin: <Link data-testid> carries the testTag (was silently dropped)', () => {
+    const out = tx(`<Link to="/about" data-testid="nav-about">About</Link>`, 'kotlin')
+    expect(out).toContain('PyreonLink("/about")')
+    expect(out).toContain('.testTag("nav-about")')
+    // The tag must chain onto the existing clickable modifier, not replace it —
+    // dropping `clickable` would make the link untappable.
+    expect(out).toContain('Modifier.clickable { navigate() }.testTag("nav-about")')
+  })
+
+  it('both targets: a Link WITHOUT data-testid emits no identifier (no churn)', () => {
+    // Guards against the fix over-reaching: the untagged emit must stay
+    // byte-identical to what it was, or every existing snapshot shifts.
+    const sw = tx(`<Link to="/users">View</Link>`, 'swift')
+    expect(sw).not.toContain('accessibilityIdentifier')
+    expect(sw).not.toContain('accessibilityElement')
+    const kt = tx(`<Link to="/users">View</Link>`, 'kotlin')
+    expect(kt).not.toContain('testTag')
+    expect(kt).toContain('Box(modifier = Modifier.clickable { navigate() })')
   })
 
   it('Swift: <RouterView /> → RouterView()', () => {

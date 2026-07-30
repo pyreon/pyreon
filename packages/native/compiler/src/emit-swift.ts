@@ -6325,8 +6325,20 @@ function emitSwiftImage(
 
 /**
  * Emit `<Modal open={...} onClose={...}>content</Modal>` as a SwiftUI
- * `.sheet(isPresented:)` modifier attached to an `EmptyView()` host
- * (the standalone-element analog of the declarative web `<Modal>`).
+ * `.sheet(isPresented:)` modifier attached to a ZERO-SIZED `Color.clear`
+ * host (the standalone-element analog of the declarative web `<Modal>`).
+ *
+ * DEVICE-FOUND (the Core-UI row closure): the host used to be `EmptyView()`,
+ * and the sheet then NEVER PRESENTED on iOS. `EmptyView` contributes nothing
+ * to the render tree, so there is no view in the hierarchy for SwiftUI to
+ * anchor the presentation to — the modifier is silently inert. The emit
+ * compiled and `swiftc -typecheck`ed clean the whole time, which is why only a
+ * real simulator run caught it: an XCUITest accessibility dump after tapping
+ * the open button showed no sheet, no dialog, and no modal body anywhere.
+ *
+ * `Color.clear` IS a real view, so it anchors the presentation; the
+ * `.frame(width: 0, height: 0)` keeps it layout-neutral so adding it cannot
+ * shift the surrounding stack.
  *
  * Two shapes, mirroring `<Toggle>`:
  *
@@ -6369,7 +6381,7 @@ function emitSwiftModal(
     _signalNames.has(openAttr.value.name)
   ) {
     const sig = swiftIdent(openAttr.value.name)
-    return `EmptyView().sheet(isPresented: $${sig}) {${content}}${emitSwiftLayoutModifiers(e)}`
+    return `Color.clear.frame(width: 0, height: 0).sheet(isPresented: $${sig}) {${content}}${emitSwiftLayoutModifiers(e)}`
   }
 
   // Shape 2 — custom Binding; needs onClose for the dismiss write.
@@ -6390,7 +6402,7 @@ function emitSwiftModal(
     `${inner}get: { ${openExpr} },\n` +
     `${inner}set: { if !$0 { ${closeBody} } }\n` +
     `${bindPad})`
-  return `EmptyView().sheet(isPresented: ${binding}) {${content}}${emitSwiftLayoutModifiers(e)}`
+  return `Color.clear.frame(width: 0, height: 0).sheet(isPresented: ${binding}) {${content}}${emitSwiftLayoutModifiers(e)}`
 }
 
 /**
@@ -6719,11 +6731,28 @@ function emitSwiftLink(
   // (a `() -> String` where a String is expected — a compile error).
   const toExpr = emitSwiftExpr(unwrapAccessorArrow(toAttr.value), indent)
   const pad = ' '.repeat(indent + 2)
+  // `<Link>` is a SPECIAL-CASE emitter, so it never reaches the generic
+  // modifier tail that turns `data-testid` into `.accessibilityIdentifier`.
+  // Without this the identifier is silently dropped and the link is
+  // UNQUERYABLE from XCUITest — which is why `Link` sat in the capability
+  // matrix's "not individually asserted" list: you cannot assert on an element
+  // you cannot select. Every other primitive carries its testid through.
+  //
+  // `.accessibilityElement(children: .contain)` is added because PyreonLink
+  // WRAPS its content: SwiftUI flattens a plain wrapper out of the
+  // accessibility tree, so an identifier on it is invisible even though the
+  // link renders (the same trap already documented for VStack/ScrollView).
+  // `.contain` keeps the child Text individually queryable.
+  const testid = readStringAttrExpr(e, 'data-testid', 0)
+  const tail =
+    testid === undefined
+      ? ''
+      : `.accessibilityElement(children: .contain).accessibilityIdentifier(${testid})`
   if (e.children.length === 0) {
-    return `PyreonLink(${toExpr}) { }`
+    return `PyreonLink(${toExpr}) { }${tail}`
   }
   const contentLines = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
-  return `PyreonLink(${toExpr}) {\n${contentLines}\n${' '.repeat(indent)}}`
+  return `PyreonLink(${toExpr}) {\n${contentLines}\n${' '.repeat(indent)}}${tail}`
 }
 
 /**

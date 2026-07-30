@@ -498,6 +498,30 @@ describe('@pyreon/native-cli build', () => {
     })
   })
 
+  it('Kotlin <Link> pulls the clickable import via its TRAILING-LAMBDA form', () => {
+    // Device-found on the first `<Link>` in an Android example: the predicate
+    // was keyed on `.clickable(` (the `<Press>` shape), but `<Link>` emits a
+    // TRAILING LAMBDA — `Modifier.clickable { navigate() }` — so the import was
+    // never added and `gradle assembleDebug` failed with
+    // "Unresolved reference 'clickable'". Every pre-merge gate stayed green:
+    // the validate-kotlin loop CONCATENATES stubs, so it resolves the symbol
+    // with or without the import and structurally cannot catch a missing one.
+    const link = conditionalKotlinImports(
+      'PyreonLink("/about") { navigate ->\n  Box(modifier = Modifier.clickable { navigate() }.testTag("x")) { }\n}',
+    )
+    expect(link).toContain('import androidx.compose.foundation.clickable')
+  })
+
+  it('Kotlin .combinedClickable( still does NOT pull the plain clickable import', () => {
+    // Guards the widened predicate against over-matching: `combinedClickable`
+    // capitalises the C, so `.clickable` is not a substring of it. If this ever
+    // fails, the predicate has become too loose and is adding a dead import.
+    const combinedOnly = conditionalKotlinImports(
+      'Box(Modifier.combinedClickable(onClick = {}, onLongClick = {}))',
+    )
+    expect(combinedOnly).not.toContain('import androidx.compose.foundation.clickable\n')
+  })
+
   it('Kotlin <Press onLongPress> pulls clickable+combinedClickable imports + a @file:OptIn', () => {
     // M2.3 device-found: `combinedClickable` is an EXPERIMENTAL foundation
     // API on the examples' Compose BOM — `gradle assembleDebug` fails with
