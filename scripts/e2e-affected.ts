@@ -282,6 +282,37 @@ const SUITES: Suite[] = [
       'e2e/native-router-demo-web',
     ],
   },
+  {
+    // The Atlas workbench UI (6.4k LOC) is coverage-EXCLUDED in the package's
+    // vitest config with the rationale "what actually proves them is the
+    // real-Chromium e2e suite" — so these two suites running in CI is what
+    // makes that exclusion honest. Before they were wired in, the whole UI
+    // shipped ungated: 38 specs existed, passed locally, and gated nothing.
+    name: 'atlas-workshop',
+    script: 'test:e2e:atlas',
+    triggers: [
+      ...RENDER_CORE,
+      'packages/tools/atlas/',
+      'packages/ui-system/',
+      'examples/atlas-workshop/',
+      'e2e/atlas-workshop.spec.ts',
+    ],
+  },
+  {
+    // `atlas dev` — the real CLI booting the workbench against the workshop:
+    // discovery (static + rocketstyle), the generated catalog, the RPC
+    // channel, the Reactivity Lens, URL state.
+    name: 'atlas-dev',
+    script: 'test:e2e:atlas-dev',
+    triggers: [
+      ...RENDER_CORE,
+      'packages/tools/atlas/',
+      'packages/tools/vite-plugin/',
+      'packages/core/compiler/',
+      'examples/atlas-workshop/',
+      'e2e/atlas-dev.spec.ts',
+    ],
+  },
 ]
 
 export { SUITES }
