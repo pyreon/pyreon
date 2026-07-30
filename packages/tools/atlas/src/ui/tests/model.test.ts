@@ -108,10 +108,14 @@ describe('createModel — control values', () => {
   })
 
   it('preview re-renders from the CURRENT values', () => {
+    // The preview mounts inside a PermissionsProvider (so the Roles panel's
+    // recording `can` reaches `usePermissions()` consumers) — the render
+    // output is the provider vnode's child.
+    const rendered = (p: unknown) => (p as { children: unknown[] }).children[0]
     const m = model()
-    expect(m.preview()).toBe('button:Click me')
+    expect(rendered(m.preview())).toBe('button:Click me')
     m.setValue('button', 'label', 'Saved')
-    expect(m.preview()).toBe('button:Saved')
+    expect(rendered(m.preview())).toBe('button:Saved')
   })
 })
 

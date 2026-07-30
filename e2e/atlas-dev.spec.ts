@@ -30,6 +30,66 @@ test.describe('atlas dev', () => {
     expect(errors, `page errors: ${errors.join(' | ')}`).toEqual([])
   })
 
+  test('a click on a DERIVED component lands in the Actions panel — zero authoring', async ({
+    page,
+  }) => {
+    // Button is discovered from source; its `onClick` is a discovered reactive
+    // prop, and the generated render injects a logging handler for it. Before
+    // the ctx threading, every derived catalog ignored its second render
+    // argument and the Actions panel was permanently empty for scanned
+    // projects.
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Button', exact: true }).click()
+    await page.getByRole('button', { name: 'Actions', exact: true }).click()
+    await expect(page.getByText('No events yet — click the component.')).toBeVisible()
+
+    await page.getByTestId('canvas-preview').locator('button').first().click()
+    await expect(page.getByText('onClick', { exact: true })).toBeVisible()
+  })
+
+  test('pseudo-state forcing reaches a DERIVED rocketstyle chain', async ({ page }) => {
+    // Chip's theme declares `hover: { opacity: 0.55 }`. The generated render
+    // spreads `ctx.pseudo` gated on IS_ROCKETSTYLE, so forcing Hover must
+    // change the PAINTED style — the same CSS a real pointer hover applies.
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Chip', exact: true }).click()
+    await page.getByTestId('addon-tab-canvas').click()
+
+    const chip = page.getByTestId('canvas-preview').locator('span').first()
+    const opacity = () => chip.evaluate((el) => getComputedStyle(el).opacity)
+    await expect.poll(opacity).toBe('1')
+
+    await page.getByTestId('pseudo-hover').click()
+    await expect.poll(opacity).toBe('0.55')
+
+    await page.getByTestId('pseudo-none').click()
+    await expect.poll(opacity).toBe('1')
+  })
+
+  test('a DERIVED component consuming usePermissions() is recorded by the Roles panel', async ({
+    page,
+  }) => {
+    // GuardedDelete reads permissions the idiomatic way — `usePermissions()`
+    // from context, no prop threading. The preview always renders inside a
+    // PermissionsProvider carrying the active role's RECORDING instance, so
+    // the consulted-keys audit works for scanned projects too.
+    await page.goto('/')
+    await page.getByRole('button', { name: 'GuardedDelete' }).click()
+    await page.getByTestId('addon-tab-permissions').click()
+
+    const btn = page.getByTestId('canvas-preview').locator('button').first()
+
+    await page.getByTestId('role-admin').click()
+    await expect(btn).toBeEnabled()
+
+    await page.getByTestId('role-viewer').click()
+    await expect(btn).toBeDisabled()
+
+    const summary = (await page.getByTestId('perm-summary').textContent()) ?? ''
+    expect(summary).toMatch(/1 key\(s\) consulted/)
+    expect(summary).toMatch(/1 denied/)
+  })
+
   test('discovers a rocketstyle CHAIN (with a relative import) in the live workbench', async ({
     page,
   }) => {

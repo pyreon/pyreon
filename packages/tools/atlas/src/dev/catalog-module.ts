@@ -183,6 +183,10 @@ export function generateCatalogModule(
   entries.forEach((entry, i) => {
     const { component } = entry
     const controls = component.controls.filter(isEditableControl).map(toWorkbenchControl)
+    // The discovered event surface. These are the props the Actions panel can
+    // observe — the controls list deliberately excludes them (a function is not
+    // an editable value), so they are threaded separately.
+    const reactiveProps = component.controls.filter((c) => c.reactive).map((c) => c.name)
     lines.push('    {')
     lines.push(`      id: ${lit(ids[i]!)},`)
     lines.push(`      name: ${lit(component.name)},`)
@@ -193,7 +197,22 @@ export function generateCatalogModule(
     if (component.summary) lines.push(`      desc: ${lit(component.summary)},`)
     lines.push(`      controls: ${JSON.stringify(controls)},`)
     // The guard is the point: one broken export must not blank the workbench.
-    lines.push(`      render: (props) => {`)
+    //
+    // `ctx` is THREADED, not dropped — the panels that read the render context
+    // (Actions, Pseudo-state) were inert for every scanned project while the
+    // generated render ignored its second argument:
+    //
+    //   - every discovered REACTIVE prop gets a logging handler, so a click in
+    //     the canvas lands in the Actions ring with zero authoring. A control
+    //     value that IS a function (an authored override) still runs after the
+    //     log — observation must never swallow behaviour.
+    //   - `ctx.pseudo` is spread ONLY onto rocketstyle components
+    //     (`IS_ROCKETSTYLE` — runtime truth), where `hover`/`focus`/`active`
+    //     are reserved props feeding the component's REAL pseudo CSS. On a
+    //     plain function they would just be mystery props, so they are not.
+    //     Read inside render, so the forced-state signal re-renders the
+    //     preview.
+    lines.push(`      render: (props, ctx) => {`)
     lines.push(`        const Comp = __mod${i}[${lit(component.name)}] ?? __mod${i}.default`)
     lines.push(`        if (typeof Comp !== 'function') {`)
     lines.push(
@@ -201,11 +220,24 @@ export function generateCatalogModule(
         `${lit(`Could not load ${component.name} from `)} + ${lit(entry.file)})`,
     )
     lines.push(`        }`)
+    lines.push(`        const merged = { ...props }`)
+    if (reactiveProps.length > 0) {
+      lines.push(`        for (const name of ${JSON.stringify(reactiveProps)}) {`)
+      lines.push(`          const user = merged[name]`)
+      lines.push(`          merged[name] = (...args) => {`)
+      lines.push(
+        `            ctx.logAction(name, args.length ? String(args[0]?.type ?? args[0]) : '')`,
+      )
+      lines.push(`            if (typeof user === 'function') user(...args)`)
+      lines.push(`          }`)
+      lines.push(`        }`)
+    }
+    lines.push(`        if (Comp.IS_ROCKETSTYLE) Object.assign(merged, ctx.pseudo)`)
     if (options.configPath) {
-      lines.push(`        const __el = h(Comp, props)`)
+      lines.push(`        const __el = h(Comp, merged)`)
       lines.push(`        return __wrapper ? h(__wrapper, {}, __el) : __el`)
     } else {
-      lines.push(`        return h(Comp, props)`)
+      lines.push(`        return h(Comp, merged)`)
     }
     lines.push(`      },`)
     lines.push('    },')

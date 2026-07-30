@@ -3,7 +3,8 @@
  * shell so each `views/*` file reads a single typed `model` instead of a dozen
  * threaded props. Everything here is signals + computeds + callbacks — no DOM.
  */
-import type { VNodeChildAtom } from '@pyreon/core'
+import { h, type VNodeChildAtom } from '@pyreon/core'
+import { PermissionsProvider } from '@pyreon/permissions'
 import { computed, effect, isClient, signal, type Computed, type Effect, type Signal } from '@pyreon/reactivity'
 import type { A11yReport } from './a11y'
 import { analyzeA11y } from './a11y'
@@ -233,7 +234,22 @@ export function createModel(
       return queryResult()
     },
   }
-  const preview = (): VNodeChildAtom | VNodeChildAtom[] => sel()?.render(vals(), renderCtx) ?? null
+  // The preview always renders inside a `PermissionsProvider` carrying the
+  // ACTIVE role's recording instance. `ctx.can` covers a render that takes the
+  // helper explicitly; the provider covers the idiomatic path — a component
+  // (hand-written OR derived) calling `usePermissions()` — so the Roles panel
+  // records consulted keys for scanned projects too, not just hand catalogs.
+  // Read inside the accessor: a role flip re-renders the preview under the new
+  // recording instance.
+  const preview = (): VNodeChildAtom | VNodeChildAtom[] => {
+    const entry = sel()
+    if (!entry) return null
+    return h(
+      PermissionsProvider,
+      { value: permissions().can },
+      entry.render(vals(), renderCtx) as VNodeChildAtom,
+    )
+  }
 
   // The a11y verdict is probed from the RENDERED preview, not asserted.
   //

@@ -195,6 +195,68 @@ describe('the project wrapper (atlas.config.ts)', () => {
     const code = generateCatalogModule([entry()], { root: '/p/src' })
     expect(code).not.toContain('__config')
     expect(code).not.toContain('__wrapper')
-    expect(code).toContain('return h(Comp, props)')
+    expect(code).toContain('return h(Comp, merged)')
+  })
+})
+
+describe('the render ctx (derived catalogs are NOT ctx-blind)', () => {
+  it('injects a logging handler for every discovered reactive prop', () => {
+    const code = generateCatalogModule(
+      [
+        {
+          component: ci({
+            controls: [
+              { name: 'label', kind: 'text', reactive: false, required: true },
+              { name: 'onClick', kind: 'reactive', reactive: true, required: false },
+              { name: 'onHover', kind: 'reactive', reactive: true, required: false },
+            ],
+          }),
+          file: '/p/src/Button.tsx',
+        },
+      ],
+      { root: '/p/src' },
+    )
+    expect(code).toContain('render: (props, ctx) =>')
+    expect(code).toContain('["onClick","onHover"]')
+    expect(code).toContain('ctx.logAction(name,')
+    // An authored function value still runs AFTER the log — observation must
+    // never swallow behaviour.
+    expect(code).toContain("if (typeof user === 'function') user(...args)")
+  })
+
+  it('spreads ctx.pseudo gated on IS_ROCKETSTYLE (runtime truth, never guessed)', () => {
+    const code = generateCatalogModule([{ component: ci({}), file: '/p/src/X.tsx' }], {
+      root: '/p/src',
+    })
+    expect(code).toContain('if (Comp.IS_ROCKETSTYLE) Object.assign(merged, ctx.pseudo)')
+  })
+
+  it('emits no injection loop when nothing is reactive', () => {
+    const code = generateCatalogModule([{ component: ci({}), file: '/p/src/X.tsx' }], {
+      root: '/p/src',
+    })
+    expect(code).not.toContain('logAction')
+  })
+})
+
+describe('importsAtlas (the workbench-host filter)', () => {
+  it('matches real import forms, including subpaths', async () => {
+    const { importsAtlas } = await import('../server')
+    expect(importsAtlas(`import { el } from '@pyreon/atlas/ui'`)).toBe(true)
+    expect(importsAtlas(`import '@pyreon/atlas'`)).toBe(true)
+    expect(importsAtlas(`export { x } from "@pyreon/atlas/core"`)).toBe(true)
+    expect(importsAtlas(`const m = await import('@pyreon/atlas/ui')`)).toBe(true)
+    expect(importsAtlas(`const m = require('@pyreon/atlas')`)).toBe(true)
+  })
+
+  it('does NOT match prose — a comment mentioning the package is not a dependency', () => {
+    // The first cut was `.includes('@pyreon/atlas')`: a fixture whose comment
+    // said "this file must not import @pyreon/atlas" silently vanished from
+    // the sidebar. Bisect this by reverting importsAtlas to the substring.
+    return import('../server').then(({ importsAtlas }) => {
+      expect(importsAtlas(`// no @pyreon/atlas import on purpose`)).toBe(false)
+      expect(importsAtlas(`/* mentions @pyreon/atlas/ui in prose */ export const X = 1`)).toBe(false)
+      expect(importsAtlas(`import { rocketstyle } from '@pyreon/rocketstyle'`)).toBe(false)
+    })
   })
 })
