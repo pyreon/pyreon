@@ -24,8 +24,24 @@ export const Chip = chipBase
     fontSize: '12px',
     fontWeight: 600,
     color: t.text,
+    // A real pseudo style, so the workbench's Pseudo-state addon has something
+    // observable to force: `hover: true` (a reserved rocketstyle prop) applies
+    // THIS block — the e2e asserts the computed style flips.
+    hover: { opacity: 0.55 },
   }))
-  .variants((t: { accent: string }) => ({
-    solid: { backgroundColor: t.accent, color: '#fff' },
-    outline: { backgroundColor: 'transparent', borderWidth: '1px', borderStyle: 'solid', borderColor: t.accent },
-  }))
+  // The callback param is typed by rocketstyle from the (empty) local theme
+  // augmentation, so the token read narrows the RUNTIME theme the config
+  // supplies — same shape the demo catalog handles with its `dim()` helper,
+  // inlined here because this file must not import @pyreon/atlas.
+  .variants((t) => {
+    const tok = t as unknown as { accent: string }
+    return {
+      solid: { backgroundColor: tok.accent, color: '#fff' },
+      outline: {
+        backgroundColor: 'transparent',
+        borderWidth: '1px',
+        borderStyle: 'solid',
+        borderColor: tok.accent,
+      },
+    }
+  })

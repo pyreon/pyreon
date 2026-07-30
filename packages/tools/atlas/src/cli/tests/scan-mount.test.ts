@@ -35,7 +35,7 @@ describe('atlas scan mounts the example', () => {
 
     // The exact counts, not just "nothing unverified".
     //
-    // Seven components, not three: the rocketstyle chains in `demo-catalog.tsx`
+    // Eight components, not four: the rocketstyle chains in `demo-catalog.tsx`
     // and `components/Chip.tsx` are call expressions, invisible to the static
     // scanner, and are found by loading the module and reading
     // `IS_ROCKETSTYLE`. Their variant/size axes come from
@@ -43,7 +43,7 @@ describe('atlas scan mounts the example', () => {
     // without the theme in `atlas.config.ts` the axes read as empty. Chip is
     // doubly load-bearing: its `./chip-kit` RELATIVE import is the shape that
     // silently dropped rocketstyle components when discovery handed the loader
-    // a relative path — if that regresses, this count drops to 6.
+    // a relative path — if that regresses, this count drops by one.
     //
     // `0 unverified` alone is too weak to be a regression test: a loader that
     // mounts everything and CRASHES on everything also reports zero unverified,
@@ -56,7 +56,7 @@ describe('atlas scan mounts the example', () => {
     // the static a11y check catches — they are load-bearing here, since a
     // verify pipeline that cannot fail is not verifying anything.
     expect(run.stdout).toMatch(
-      /7 component\(s\), 38 scenario\(s\) — 36 verified, 2 failing, 0 unverified/,
+      /8 component\(s\), 40 scenario\(s\) — 38 verified, 2 failing, 0 unverified/,
     )
   })
 })

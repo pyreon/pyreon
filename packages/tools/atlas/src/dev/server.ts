@@ -53,6 +53,17 @@ export interface DevServerHandle {
  * find package 'vite'" does not tell a library author why a workbench needed
  * one, and the fix (install it) is not obvious from the error.
  */
+/**
+ * Does this source IMPORT the workbench package? Static `import … from`,
+ * `export … from`, dynamic `import()` and `require()` specifiers only —
+ * never a bare substring, which would count comments and strings as
+ * dependencies.
+ */
+export function importsAtlas(source: string): boolean {
+  // `import(`, side-effect `import '…'`, `from '…'`, `require('…')`.
+  return /(?:from\s*|import\s*\(?\s*|require\s*\(\s*)['"]@pyreon\/atlas(?:['"/])/.test(source)
+}
+
 const NO_VITE =
   '[Pyreon] atlas dev needs Vite, which is not installed in this project.\n' +
   '  Install it as a dev dependency:\n\n' +
@@ -121,9 +132,14 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
     // read is cheap (once per component at boot) and only over files discovery
     // already parsed. Applies to BOTH discovery passes — a rocketstyle chain in
     // a workbench-infrastructure file is still infrastructure.
+    //
+    // Matched as an IMPORT SPECIFIER, not a substring of the file: the first
+    // cut used `.includes('@pyreon/atlas')`, and a component whose COMMENT
+    // merely mentioned the package name silently vanished from the sidebar —
+    // prose is not a dependency.
     .filter((c) => {
       try {
-        return !readFileSync(resolve(root, c.source!), 'utf8').includes('@pyreon/atlas')
+        return !importsAtlas(readFileSync(resolve(root, c.source!), 'utf8'))
       } catch {
         return true // unreadable — let it through and fail visibly, not silently
       }
