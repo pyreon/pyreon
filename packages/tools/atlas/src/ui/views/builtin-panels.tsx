@@ -42,6 +42,30 @@ function controlRow(m: WorkbenchModel, ctrl: WorkbenchControl) {
             m.setValue(m.selId(), ctrl.key, (e.target as HTMLInputElement).value)
           }
         />
+      ) : ctrl.type === 'number' ? (
+        <C.NumberInput
+          value={() => String(m.vals()[ctrl.key] ?? '')}
+          placeholder={String(ctrl.default ?? '')}
+          onInput={(e: Event) => {
+            // Stored as a NUMBER, because the component's prop is one — a
+            // string here silently breaks any arithmetic the component does.
+            // An empty/unparsable box falls back to the declared default.
+            const raw = (e.target as HTMLInputElement).value
+            const n = Number(raw)
+            m.setValue(m.selId(), ctrl.key, raw === '' || Number.isNaN(n) ? ctrl.default : n)
+          }}
+        />
+      ) : ctrl.type === 'color' ? (
+        <C.ColorRow>
+          <C.ColorInput
+            data-testid={`color-${ctrl.key}`}
+            value={() => String(m.vals()[ctrl.key] ?? ctrl.default ?? '#000000')}
+            onInput={(e: Event) =>
+              m.setValue(m.selId(), ctrl.key, (e.target as HTMLInputElement).value)
+            }
+          />
+          <C.ColorHex>{() => String(m.vals()[ctrl.key] ?? ctrl.default ?? '')}</C.ColorHex>
+        </C.ColorRow>
       ) : ctrl.type === 'enum' ? (
         <C.EnumWrap>
           {(ctrl.options ?? []).map((opt) => (

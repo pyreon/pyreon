@@ -36,3 +36,11 @@ export const ScenDot = el
   .theme((t: T) => ({ width: '6px', height: '6px', borderRadius: '50%', flex: 'none', background: `${t.border}` }))
   .variants(dim((t) => ({ ok: { backgroundColor: t.ok }, fail: { backgroundColor: t.danger }, unverified: {} })))
 export const ScenName = txt.attrs({ tag: 'span' }).theme(() => ({ flex: '1' }))
+
+/** A collapsible hierarchy group header — indented by `data-depth` via padding steps. */
+export const GroupBtn = el
+  .attrs({ tag: 'button', css: 'display:flex;flex-direction:row;align-items:center;' })
+  .theme((t: T) => ({ font: 'inherit', cursor: 'pointer', width: '100%', textAlign: 'left', border: 'none', display: 'flex', alignItems: 'center', gap: '7px', margin: '10px 0 3px', padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '700', letterSpacing: '.02em', color: `${t.muted}`, background: 'transparent', hover: { background: `${t.surface2}` }, extendCss: `&[data-depth="1"]{margin-left:12px;} &[data-depth="2"]{margin-left:24px;} &[data-depth="3"]{margin-left:36px;}` }))
+export const GroupCaret = txt.attrs({ tag: 'span' }).theme((t: T) => ({ fontSize: '9px', width: '10px', flex: 'none', color: `${t.faint}` }))
+export const GroupText = txt.attrs({ tag: 'span' }).theme(() => ({ flex: '1' }))
+export const GroupCount = txt.attrs({ tag: 'span' }).theme((t: T) => ({ fontFamily: '\'JetBrains Mono\',monospace', fontSize: '9px', color: `${t.faint}` }))

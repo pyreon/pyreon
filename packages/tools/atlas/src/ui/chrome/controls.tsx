@@ -32,3 +32,14 @@ export const Swatch = el
   .theme((t: T) => ({ cursor: 'pointer', width: '26px', height: '26px', borderRadius: '7px', padding: '0', border: `2px solid ${t.border}` }))
   .states(dim((t) => ({ active: { borderColor: t.accent }, idle: {} })))
 export const ResetBtn = el.attrs({ tag: 'button' }).theme((t: T) => ({ font: 'inherit', fontSize: '12px', cursor: 'pointer', width: '100%', marginTop: '4px', padding: '9px', borderRadius: '8px', border: `1px dashed ${t.border}`, background: 'transparent', color: `${t.muted}`, hover: { borderColor: `${t.accent}`, color: `${t.text}` } }))
+
+/** Number editor — the TextInput look with the native spinner. */
+export const NumberInput = el
+  .attrs({ tag: 'input', type: 'number' })
+  .theme((t: T) => ({ font: 'inherit', fontSize: '13px', width: '100%', padding: '8px 11px', borderRadius: '8px', outline: 'none', border: `1px solid ${t.border}`, background: `${t.bg}`, color: `${t.text}`, focus: { borderColor: `${t.accent}` } })) as unknown as InputEl
+/** Native color picker beside its hex readout. */
+export const ColorInput = el
+  .attrs({ tag: 'input', type: 'color' })
+  .theme((t: T) => ({ width: '34px', height: '30px', padding: '0', border: `1px solid ${t.border}`, borderRadius: '7px', background: `${t.bg}`, cursor: 'pointer' })) as unknown as InputEl
+export const ColorRow = el.attrs({ tag: 'div', css: 'display:flex;flex-direction:row;align-items:center;' }).theme(() => ({ display: 'flex', alignItems: 'center', gap: '9px' }))
+export const ColorHex = txt.attrs({ tag: 'span' }).theme((t: T) => ({ fontFamily: '\'JetBrains Mono\',monospace', fontSize: '11.5px', color: `${t.muted}` }))

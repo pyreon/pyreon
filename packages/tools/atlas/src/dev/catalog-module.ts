@@ -65,15 +65,18 @@ export function groupFor(file: string, root: string): string {
   const parts = rel.split('/').filter(Boolean)
   parts.pop() // drop the filename
   if (parts.length === 0) return 'Components'
-  const dir = parts[parts.length - 1]!
-  return dir.charAt(0).toUpperCase() + dir.slice(1)
+  // The FULL directory chain, `/`-joined and title-cased per segment — the
+  // sidebar renders it as a nested tree (`Components/Forms`), which is the
+  // grouping the author already chose by making the directory. A single flat
+  // level was unusable past ~30 components.
+  return parts.map((dir) => dir.charAt(0).toUpperCase() + dir.slice(1)).join('/')
 }
 
 /** Map a discovered control to the workbench's control shape. */
 export function toWorkbenchControl(control: PropControl): {
   key: string
   label: string
-  type: 'text' | 'enum' | 'bool'
+  type: 'text' | 'enum' | 'bool' | 'number' | 'color'
   options?: readonly string[]
   default: unknown
 } {
@@ -92,6 +95,12 @@ export function toWorkbenchControl(control: PropControl): {
       options: control.options,
       default: control.defaultValue ?? control.options[0],
     }
+  }
+  if (control.kind === 'number') {
+    return { key: control.name, label, type: 'number', default: control.defaultValue ?? 0 }
+  }
+  if (control.kind === 'color') {
+    return { key: control.name, label, type: 'color', default: control.defaultValue ?? '#3b82f6' }
   }
   // Everything else edits as text.
   return { key: control.name, label, type: 'text', default: control.defaultValue ?? '' }
