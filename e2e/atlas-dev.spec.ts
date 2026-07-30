@@ -133,6 +133,28 @@ test.describe('atlas dev', () => {
     await expect(page.getByTestId('canvas-preview').locator('button').first()).toHaveText('')
   })
 
+  test('the docs page carries Scenarios (as links into the canvas) and Source', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Chip', exact: true }).click()
+    await page.getByRole('button', { name: 'Docs', exact: true }).click()
+
+    // Scenarios block: each derived state with its verdict, doubling as a LINK.
+    const solid = page.getByTestId('docs-scenario-chip--variant-solid')
+    await expect(solid).toBeVisible()
+    await expect(solid.locator('[data-verdict]')).toHaveAttribute('data-verdict', 'ok')
+
+    // Source block: fetched over the dev channel, lazily.
+    await page.getByTestId('docs-source-load').click()
+    const src = page.getByTestId('docs-source')
+    await expect(src).toBeVisible()
+    await expect(src).toContainText('chipBase')
+
+    // Clicking a scenario jumps to the canvas IN that state (the links story).
+    await solid.click()
+    await expect(page.getByTestId('canvas-preview')).toBeVisible()
+    await expect(page.getByTestId('canvas-name')).toHaveText('Chip')
+  })
+
   test('measure addon reports the hovered box dimensions from the real layout', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: 'Button', exact: true }).click()
