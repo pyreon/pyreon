@@ -6,7 +6,7 @@
 // stubs are edited regularly, and a key that omitted them would serve a stale
 // `ok` after an edit — silently defeating the gate the harness exists to be.
 
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -181,6 +181,60 @@ describe('withVerdictCache', () => {
     withVerdictCache('kotlin', 'v', 's', 'src', run)
     withVerdictCache('kotlin', 'v', 's', 'src', run)
     expect(calls).toBe(2)
+  })
+})
+
+describe('on-disk entries are written safely', () => {
+  // CodeQL flagged the first cut here (insecure-temporary-file): the temp name
+  // was `<key>.<pid>.tmp`, and the FALLBACK cache dir lives in the
+  // world-writable OS temp dir. A guessable temp path can be pre-planted as a
+  // symlink so the write lands elsewhere — and for a GATE cache the payoff is a
+  // forged `ok` verdict, so this is worth pinning rather than suppressing.
+
+  it('writes entries owner-only (0600)', () => {
+    withVerdictCache('kotlin', 'v', 's', 'src', () => ({ ok: true }))
+    const entry = readdirSync(dir).find((f) => f.endsWith('.json'))
+    expect(entry, 'expected an entry to have been written').toBeDefined()
+    const mode = statSync(join(dir, entry as string)).mode & 0o777
+    expect(mode).toBe(0o600)
+  })
+
+  it('leaves no .tmp file behind after a successful write', () => {
+    withVerdictCache('kotlin', 'v', 's', 'src', () => ({ ok: true }))
+    expect(readdirSync(dir).filter((f) => f.endsWith('.tmp'))).toEqual([])
+  })
+
+  it('does not embed the pid in the temp name', () => {
+    // Guards the specific regression CodeQL caught: a pid is predictable.
+    // Asserted against the SOURCE because a successful write removes the temp
+    // file, so there is no runtime artifact left to inspect.
+    const src = readFileSync(
+      join(import.meta.dirname, '..', 'validate-cache.ts'),
+      'utf8',
+    )
+    const tmpLine = src.split('\n').find((l) => l.includes('.tmp`'))
+    expect(tmpLine, 'temp-path construction not found').toBeDefined()
+    expect(tmpLine).toContain('randomBytes')
+    expect(tmpLine).not.toContain('process.pid')
+  })
+
+  it('uses an exclusive-create flag so a planted path is not followed', () => {
+    const src = readFileSync(
+      join(import.meta.dirname, '..', 'validate-cache.ts'),
+      'utf8',
+    )
+    // 'wx' fails when the path exists (symlink included) rather than writing
+    // through it. This is the actual defense; the random name only makes a
+    // collision unlikely.
+    //
+    // Assert on the writeFileSync CALL, not on the file as a whole: the first
+    // version of this test matched `flag: 'wx'` anywhere in the source, and the
+    // JSDoc above writeEntryAtomic names the flag in prose — so it stayed green
+    // when the flag was removed from the actual call. Bisecting is what exposed
+    // that; a test that a comment can satisfy asserts nothing.
+    const call = src.split('\n').find((l) => l.includes('writeFileSync(tmp,'))
+    expect(call, 'temp writeFileSync call not found').toBeDefined()
+    expect(call).toContain("flag: 'wx'")
   })
 })
 

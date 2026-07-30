@@ -67,6 +67,12 @@ Correctness properties, each pinned by a test:
   truncated file that happens to parse.
 - "Tool absent" is never cached against a stable key, so installing a toolchain
   takes effect immediately.
+- Entries are written with an unpredictable temp name and an **exclusive-create**
+  flag, at mode 0600, and the last-resort temp-dir location is per-uid and
+  created 0700. A cache another user can write is a cache that can feed this gate
+  a forged `ok`, so the temp-file path is a real attack surface rather than a
+  lint detail (CodeQL flagged the first cut; the fix is structural, not a
+  suppression).
 - `PYREON_VALIDATE_NO_CACHE=1` bypasses both tiers;
   `PYREON_VALIDATE_CACHE_DIR` relocates the store.
 

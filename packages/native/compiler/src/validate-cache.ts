@@ -27,7 +27,7 @@
 // shared across workers AND across runs; the memo below only saves repeat
 // work inside one file.
 
-import { createHash } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import {
   existsSync,
   mkdirSync,
@@ -98,11 +98,21 @@ export function cacheDir(): string | null {
     }
   }
 
-  candidates.push(join(tmpdir(), 'pyreon-native-validate-cache'))
+  // Last resort: the OS temp dir, which is WORLD-WRITABLE. Two hardening
+  // measures, because a cache another user can write is a cache that can feed
+  // this gate a forged `ok` verdict:
+  //   1. The directory name carries the uid, so users cannot collide on it.
+  //   2. It is created 0700, so only the owner can create entries inside it —
+  //      which is what stops an attacker pre-planting a symlink at a
+  //      predictable `<key>.json` path for us to read or write through.
+  // The preferred `node_modules/.cache` candidate above is inside the repo and
+  // not world-writable, so this only matters for the fallback.
+  const uid = typeof process.getuid === 'function' ? process.getuid() : 'nouid'
+  candidates.push(join(tmpdir(), `pyreon-native-validate-cache-${uid}`))
 
   for (const c of candidates) {
     try {
-      mkdirSync(c, { recursive: true })
+      mkdirSync(c, { recursive: true, mode: 0o700 })
       _dir = c
       return _dir
     } catch {
@@ -110,6 +120,36 @@ export function cacheDir(): string | null {
     }
   }
   return _dir
+}
+
+/**
+ * Write a cache entry atomically and safely.
+ *
+ * Two properties, both load-bearing:
+ *
+ * - **Unpredictable temp name** (`randomBytes`, not `process.pid`): a pid is
+ *   guessable, so an attacker could pre-create the temp path as a symlink and
+ *   have our write land somewhere else.
+ * - **`flag: 'wx'`** — exclusive create. If the path already exists (including
+ *   as a symlink) the write FAILS instead of following it. This is the actual
+ *   defense; the random name just makes a collision vanishingly unlikely.
+ *
+ * The rename is what makes it atomic: a reader, or a killed writer, can only
+ * observe the absent file or the whole file — never a truncated one that
+ * happens to parse as a verdict.
+ */
+function writeEntryAtomic(dir: string, file: string, body: string): void {
+  const tmp = join(dir, `.${randomBytes(12).toString('hex')}.tmp`)
+  try {
+    writeFileSync(tmp, body, { encoding: 'utf8', flag: 'wx', mode: 0o600 })
+    renameSync(tmp, file)
+  } catch {
+    try {
+      unlinkSync(tmp)
+    } catch {
+      // Best-effort: a failed write only costs the next process a recompute.
+    }
+  }
 }
 
 /** For testing: forget the resolved directory so an env change takes effect. */
@@ -181,21 +221,7 @@ function readDisk(key: string): CachedVerdict | undefined {
 function writeDisk(key: string, verdict: CachedVerdict): void {
   const dir = cacheDir()
   if (dir === null) return
-  const file = join(dir, `${key}.json`)
-  // Write-then-rename: rename is atomic within a filesystem, so a reader
-  // (or a killed writer) can only ever observe the absent file or the whole
-  // file — never a truncated one that might parse as a verdict.
-  const tmp = join(dir, `${key}.${process.pid}.tmp`)
-  try {
-    writeFileSync(tmp, JSON.stringify(verdict), 'utf8')
-    renameSync(tmp, file)
-  } catch {
-    try {
-      unlinkSync(tmp)
-    } catch {
-      // Best-effort.
-    }
-  }
+  writeEntryAtomic(dir, join(dir, `${key}.json`), JSON.stringify(verdict))
 }
 
 /**
@@ -249,18 +275,7 @@ export function writeToolProbe(
   if (dir === null) return
   const key = toolProbeKey(bin, variant)
   if (key === null) return
-  const file = join(dir, `probe-${key}.json`)
-  const tmp = join(dir, `probe-${key}.${process.pid}.tmp`)
-  try {
-    writeFileSync(tmp, JSON.stringify(value), 'utf8')
-    renameSync(tmp, file)
-  } catch {
-    try {
-      unlinkSync(tmp)
-    } catch {
-      // Best-effort.
-    }
-  }
+  writeEntryAtomic(dir, join(dir, `probe-${key}.json`), JSON.stringify(value))
 }
 
 /**
