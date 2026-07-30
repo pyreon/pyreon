@@ -119,6 +119,14 @@ export function isEditableControl(control: PropControl): boolean {
 export interface GenerateOptions {
   /** Absolute path of the scanned root, used to derive groups. */
   root: string
+  /**
+   * Absolute path of the project's `atlas.config.*`, when it exports a
+   * `wrapper`. The generated module imports the config IN THE BROWSER (so the
+   * wrapper compiles through the project's own plugin chain) and wraps every
+   * render with it — the same providers contract `atlas scan`'s mount check
+   * honors, honored on the canvas.
+   */
+  configPath?: string
 }
 
 /**
@@ -153,7 +161,21 @@ export function generateCatalogModule(
   entries.forEach((entry, i) => {
     lines.push(`import * as __mod${i} from ${lit(entry.file)}`)
   })
+  if (options.configPath) {
+    lines.push(`import * as __config from ${lit(options.configPath)}`)
+  }
   lines.push('')
+
+  if (options.configPath) {
+    // Mirrors `loadAtlasConfig`'s resolution exactly: a named `wrapper` export
+    // wins over `default.wrapper`, and a non-function is ignored rather than
+    // mounted (the Node side already surfaced that as a config error).
+    lines.push('const __wrapper =')
+    lines.push('  typeof __config.wrapper === "function" ? __config.wrapper')
+    lines.push('  : typeof __config.default?.wrapper === "function" ? __config.default.wrapper')
+    lines.push('  : undefined')
+    lines.push('')
+  }
 
   lines.push('export const catalog = {')
   lines.push('  components: [')
@@ -179,7 +201,12 @@ export function generateCatalogModule(
         `${lit(`Could not load ${component.name} from `)} + ${lit(entry.file)})`,
     )
     lines.push(`        }`)
-    lines.push(`        return h(Comp, props)`)
+    if (options.configPath) {
+      lines.push(`        const __el = h(Comp, props)`)
+      lines.push(`        return __wrapper ? h(__wrapper, {}, __el) : __el`)
+    } else {
+      lines.push(`        return h(Comp, props)`)
+    }
     lines.push(`      },`)
     lines.push('    },')
   })
