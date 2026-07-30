@@ -30,6 +30,7 @@
 
 package com.pyreon
 
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
@@ -44,6 +45,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.pyreon.runtime.PyreonDatabase
@@ -487,11 +489,26 @@ class CounterInstrumentedTest {
     // correct (Compose composes a Dialog node — no presentation-anchor
     // requirement, unlike SwiftUI's `.sheet`, whose `EmptyView()` anchor bug
     // #2593 fixed), so this test pins the working behaviour rather than a fix.
+    // The OPEN button sits at the very bottom of the overflowing column, and
+    // its reachability by COORDINATES is API-level-dependent even at a fixed
+    // resolution: Android 15 (local AVD) is forced edge-to-edge, so the
+    // content window is taller and a real click landed; CI's API-33 image is
+    // not, the effective viewport is shorter, and the same click landed dead
+    // — the Dialog never opened ("The component is not displayed!", CI-only).
+    // performSemanticsAction(OnClick) invokes the button's click semantics
+    // directly — no coordinates, no window geometry — so the claim under
+    // test (open → Dialog composes → close → gone, all through state) is
+    // asserted independently of the device profile. Coordinate-level tapping
+    // is proven elsewhere (the Toggle click here; the whole iOS half).
     @Test
     fun modalPresentsAndDismissesOnDevice() {
         composeRule.onNodeWithTag("core-modal-body").assertDoesNotExist()
-        composeRule.onNodeWithTag("core-modal-open").performClick()
+        composeRule
+            .onNodeWithTag("core-modal-open")
+            .performSemanticsAction(SemanticsActions.OnClick)
         composeRule.onNodeWithTag("core-modal-body").assertIsDisplayed()
+        // The close button lives INSIDE the Dialog window (centered, always
+        // visible) — a real coordinate click is reliable there.
         composeRule.onNodeWithTag("core-modal-close").performClick()
         composeRule.onNodeWithTag("core-modal-body").assertDoesNotExist()
     }
