@@ -17,11 +17,15 @@
  * real client means mocking the transport anyway, and then the thing under test
  * is the mock's timing rather than the component's branching.
  *
- * The shape is mirrored from `UseQueryResult` (imported type-only, so this
- * costs nothing at runtime and cannot drift silently — a field added there is a
- * typecheck failure here).
+ * The shape is mirrored from `UseQueryResult` — and the mirror is LOCKED by a
+ * type-level assertion below (`QUERY_RESULT_MIRROR_LOCKED`), so a field
+ * renamed or retyped in the adapter is a typecheck failure here, not a silent
+ * drift. (An earlier version of this comment claimed the lock existed while
+ * nothing imported the adapter at all — the exact silent-drift the claim
+ * denied.)
  */
 import { signal, type Signal } from '@pyreon/reactivity'
+import type { UseQueryResult } from '@pyreon/query'
 
 /** The four states, in the order a request moves through them. */
 export type QueryStateId = 'loading' | 'success' | 'error' | 'refetching'
@@ -67,6 +71,20 @@ export interface FakeQueryResult<TData = unknown> {
   isSuccess: Signal<boolean>
   refetch: () => Promise<void>
 }
+
+type MutualExtends<A, B> = A extends B ? (B extends A ? true : never) : never
+
+/**
+ * The drift lock. `FakeQueryResult` must stay field-for-field identical to the
+ * adapter's `UseQueryResult` minus the two deliberate departures (`result` —
+ * the raw observer, unfabricatable; `refetch` — narrowed return). If the
+ * adapter renames or retypes a field, this constant's type collapses to
+ * `never` and the assignment below is the typecheck failure.
+ */
+export const QUERY_RESULT_MIRROR_LOCKED: MutualExtends<
+  Omit<FakeQueryResult<number>, 'refetch'>,
+  Omit<UseQueryResult<number, Error>, 'result' | 'refetch'>
+> = true
 
 /**
  * Build a result for one state.

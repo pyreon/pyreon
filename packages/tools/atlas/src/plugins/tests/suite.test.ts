@@ -23,7 +23,6 @@ const ci = (over: Partial<ComponentIntelligence> = {}): ComponentIntelligence =>
   name: 'Button',
   controls: [],
   axes: [],
-  reactivity: [],
   scenarios: [],
   tags: [],
   ...over,
@@ -160,7 +159,22 @@ describe('usageDocsPlugin (graph stage)', () => {
         name: 'Button',
         controls: [control({ name: 'label' })],
         scenarios: [
-          makeScenario({ component: 'Button', name: 'ok' }),
+          // verdict-less — must NOT count as verified (the old `ok !== false`
+          // predicate counted it, the exact false-green the three-state model
+          // exists to prevent)
+          makeScenario({ component: 'Button', name: 'unchecked' }),
+          {
+            ...makeScenario({ component: 'Button', name: 'ok' }),
+            verify: {
+              ok: true,
+              checked: 1,
+              a11y: { status: 'pass' },
+              interaction: { status: 'skip' },
+              reactivityCoverage: { status: 'skip' },
+              leak: { status: 'skip' },
+              snapshot: { status: 'skip' },
+            },
+          },
           {
             ...makeScenario({ component: 'Button', name: 'bad' }),
             verify: {
@@ -179,8 +193,10 @@ describe('usageDocsPlugin (graph stage)', () => {
       ci({ name: 'Spacer' }), // no controls -> no "Props:" clause
     ])
     await usageDocsPlugin().graph!({ graph })
-    expect(graph.get('Button')!.summary).toBe('Button — 2 scenario(s), 1 passing. Props: label.')
-    expect(graph.get('Spacer')!.summary).toBe('Spacer — 0 scenario(s), 0 passing.')
+    // 3 scenarios, exactly ONE verified: the ok:true one. The verdict-less and
+    // failing ones both stay out of the count.
+    expect(graph.get('Button')!.summary).toBe('Button — 3 scenario(s), 1 verified. Props: label.')
+    expect(graph.get('Spacer')!.summary).toBe('Spacer — 0 scenario(s), 0 verified.')
   })
   it('leaves an existing summary untouched', async () => {
     const graph = createCatalogGraph([ci({ name: 'Button', summary: 'kept' })])

@@ -72,12 +72,30 @@ describe('runCli', () => {
   })
   afterEach(() => vi.restoreAllMocks())
 
-  it('scan prints a summary and returns 0', async () => {
-    const dir = fixture('cli', { 'Card.tsx': `export function Card(props: { title: string }) { return null }` })
+  it('scan prints a summary and returns 0 when nothing fails', async () => {
+    // `title` OPTIONAL on purpose: a REQUIRED name prop makes the generated
+    // Empty edge-case scenario fail the static a11y check — the red-exit spec
+    // below covers that path.
+    const dir = fixture('cli', { 'Card.tsx': `export function Card(props: { title?: string }) { return null }` })
     try {
       expect(await runCli(['scan', dir])).toBe(0)
       expect(stdout).toContain('discovered 1 component')
       expect(stdout).toContain('atlas-catalog.json')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('scan returns 1 and names the failing scenarios when a check fails', async () => {
+    // A REQUIRED name prop: the edge-case plugin generates an Empty scenario
+    // (an empty string is a legal value for `string`, so a caller CAN pass it)
+    // and the static a11y check fails it. A red scan must be a red exit —
+    // otherwise wiring `atlas scan` into CI gates nothing.
+    const dir = fixture('cli', { 'Card.tsx': `export function Card(props: { title: string }) { return null }` })
+    try {
+      expect(await runCli(['scan', dir])).toBe(1)
+      expect(stdout).toContain('1 failing')
+      expect(stderr).toContain('failing scenario(s): card--empty')
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

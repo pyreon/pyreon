@@ -105,34 +105,37 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
   // optional for the same reason Vite is — but without it the workbench cannot
   // compile the project's `.tsx`, so its absence is fatal HERE while Vite's is
   // merely diagnosable.
-  let pyreonPlugin: unknown
+  // The try covers ONLY the import: its catch translates "the import failed"
+  // into "not installed", and anything else it swallows is masked behind that
+  // wrong message. The first cut wrapped the whole block — the explicit
+  // did-not-export throw below was eaten by its own catch and reported as a
+  // missing install, and a factory that threw when CALLED was reported the same
+  // way.
+  let mod: { default?: (o?: unknown) => unknown; pyreon?: (o?: unknown) => unknown }
   try {
-    // The plugin factory is the DEFAULT export; `pyreon` is accepted as a
-    // named alias so this keeps working if the package adds one later.
-    const mod = (await import('@pyreon/vite-plugin')) as unknown as {
-      default?: (o?: unknown) => unknown
-      pyreon?: (o?: unknown) => unknown
-    }
-    const factory = mod.default ?? mod.pyreon
-    if (typeof factory !== 'function') {
-      throw new Error('[Pyreon] atlas dev: @pyreon/vite-plugin did not export a plugin factory')
-    }
-    // `devErrorPrinter: false` — that feature injects a virtual module importing
-    // `@pyreon/compiler/diagnose` into the served app. It is aimed at a user's
-    // OWN app, where a thrown component error should print its documented fix;
-    // the workbench surfaces component errors in its own canvas instead.
-    //
-    // It also failed to resolve under this loader (the plugin is imported
-    // dynamically, so it resolves through the `bun` condition to source rather
-    // than the built `lib/`), and the resulting Vite error OVERLAY covers the
-    // page — every click in the workbench is then intercepted by an overlay
-    // about a feature the workbench does not use.
-    pyreonPlugin = factory({ devErrorPrinter: false })
+    mod = (await import('@pyreon/vite-plugin')) as unknown as typeof mod
   } catch {
     throw new Error(
       NO_VITE.replace('atlas dev needs Vite, which is not installed', '@pyreon/vite-plugin is not installed'),
     )
   }
+  // The plugin factory is the DEFAULT export; `pyreon` is accepted as a
+  // named alias so this keeps working if the package adds one later.
+  const factory = mod.default ?? mod.pyreon
+  if (typeof factory !== 'function') {
+    throw new Error('[Pyreon] atlas dev: @pyreon/vite-plugin did not export a plugin factory')
+  }
+  // `devErrorPrinter: false` — that feature injects a virtual module importing
+  // `@pyreon/compiler/diagnose` into the served app. It is aimed at a user's
+  // OWN app, where a thrown component error should print its documented fix;
+  // the workbench surfaces component errors in its own canvas instead.
+  //
+  // It also failed to resolve under this loader (the plugin is imported
+  // dynamically, so it resolves through the `bun` condition to source rather
+  // than the built `lib/`), and the resulting Vite error OVERLAY covers the
+  // page — every click in the workbench is then intercepted by an overlay
+  // about a feature the workbench does not use.
+  const pyreonPlugin: unknown = factory({ devErrorPrinter: false })
 
   const html = devHtml(options.title ?? 'atlas')
 

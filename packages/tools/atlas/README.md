@@ -15,9 +15,11 @@ The three obsessions are **DX**, **AI**, and **Automation**:
   from rocketstyle dimensions, and one derived **scenario** per matrix cell.
 - **AI** — the whole catalog is one queryable **Catalog Graph** (typed JSON +
   an `llms.txt`-style surface), so agents can enumerate, render, generate, and
-  validate the library. Generation is grounded in real type/reactivity facts
-  and **self-validating** — a scenario that doesn't pass verification never
-  enters the catalog.
+  validate the library. Generation is grounded in real type facts and
+  **honestly labeled**: every scenario carries its verify verdict on every
+  surface — `[pass]`, `[FAIL]`, or `[unverified]` — so a consumer can never
+  mistake an unchecked or failing state for a verified one, and `atlas scan`
+  exits non-zero when anything fails.
 - **DX** — signal-preserving HMR, a unified surface, and progressive authoring:
   everything is automatic; you enrich only where you want to.
 

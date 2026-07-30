@@ -13,9 +13,13 @@ export function usageDocsPlugin(): AtlasPlugin {
       for (const ci of graph.list()) {
         if (ci.summary) continue
         const propNames = ci.controls.map((c) => c.name)
-        const passing = ci.scenarios.filter((s) => s.verify?.ok !== false).length
+        // `ok === true` (a check ran and none failed) — NOT `ok !== false`,
+        // which counts verdict-less scenarios as passing: the exact false-green
+        // the three-state verify model exists to prevent. "verified", not
+        // "passing", so an unmounted catalog reads as unmeasured, not failing.
+        const verified = ci.scenarios.filter((s) => s.verify?.ok === true).length
         const props = propNames.length > 0 ? ` Props: ${propNames.join(', ')}.` : ''
-        const summary = `${ci.name} — ${ci.scenarios.length} scenario(s), ${passing} passing.${props}`
+        const summary = `${ci.name} — ${ci.scenarios.length} scenario(s), ${verified} verified.${props}`
         graph.add({ ...ci, summary })
       }
     },

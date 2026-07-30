@@ -17,7 +17,7 @@
  * the channel before the first panel needed it.
  */
 import { readFileSync } from 'node:fs'
-import { isAbsolute, resolve } from 'node:path'
+import { isAbsolute, resolve, sep } from 'node:path'
 import type { ComponentIntelligence } from '../core'
 import type { RpcMethod } from './plugin'
 
@@ -135,7 +135,9 @@ export function lensMethod(ctx: LensContext): RpcMethod {
     }
 
     const abs = isAbsolute(found.source) ? found.source : resolve(ctx.root, found.source)
-    if (!abs.startsWith(ctx.root)) {
+    // Separator included — a bare prefix admits a sibling dir (`/proj-evil`
+    // passes for root `/proj`).
+    if (abs !== ctx.root && !abs.startsWith(ctx.root + sep)) {
       throw new Error('[Pyreon] atlas dev: refusing to read outside the project root')
     }
 

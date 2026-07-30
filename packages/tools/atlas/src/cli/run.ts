@@ -7,7 +7,7 @@
  * outside the CLI-package allowlist. `runScan` is pure (returns data + writes
  * files); `runCli` is the thin arg-parsing + printing layer a bin invokes.
  */
-import { writeFileSync } from 'node:fs'
+import { renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { createAtlas } from '../index'
 import type { AgentAsset } from '../plugins'
@@ -42,10 +42,10 @@ export interface ScanResult {
   verified: number
   /** scenarios where a check ran and FAILED */
   failed: number
+  /** ids of the failing scenarios, so a red scan names what to look at */
+  failing: readonly string[]
   /** scenarios nothing examined. Not a pass; most scenarios are here today. */
   unverified: number
-  /** @deprecated use `failed` — kept so callers do not break mid-refactor */
-  flagged: number
   guide: string
   llms: string
   catalogPath?: string
@@ -110,16 +110,18 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
     const scenarios = graph.scenarios()
     // Three states, not two. `verify.ok` means a check RAN and passed; a verdict
     // with `checked: 0` is unverified, which is neither a pass nor a failure —
-    // and is the common case while four of the five checks are stubs.
+    // still a common state while three of the five checks are stubs.
     const verified = scenarios.filter((s) => s.verify?.ok === true).length
-    const failed = scenarios.filter((s) => s.verify && !s.verify.ok && s.verify.checked > 0).length
+    const failing = scenarios
+      .filter((s) => s.verify && !s.verify.ok && s.verify.checked > 0)
+      .map((s) => s.id)
     const result: ScanResult = {
       components: graph.size(),
       scenarios: scenarios.length,
       verified,
-      failed,
-      unverified: scenarios.length - verified - failed,
-      flagged: failed,
+      failed: failing.length,
+      failing,
+      unverified: scenarios.length - verified - failing.length,
       guide: asset ? asset.guide : graph.toAgentGuide(),
       llms: asset ? asset.llms : graph.toLlmsText(),
     }
@@ -128,10 +130,28 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
       const outDir = join(cwd, options.out ?? '.')
       result.catalogPath = join(outDir, 'atlas-catalog.json')
       result.guidePath = join(outDir, 'atlas-agent-guide.md')
-      writeFileSync(result.catalogPath, JSON.stringify(graph.toJSON(), null, 2))
-      writeFileSync(result.guidePath, result.guide)
+      // Atomic per file: the two files are consumed as a coherent set (the MCP
+      // tools read both), and a plain write exposes a half-written window.
+      writeAtomic(result.catalogPath, JSON.stringify(graph.toJSON(), null, 2))
+      writeAtomic(result.guidePath, result.guide)
     }
     return result
+  }
+}
+
+/** Write via tmp-then-rename — a reader sees the old file or the whole new one. */
+function writeAtomic(path: string, content: string): void {
+  const tmp = `${path}.tmp.${process.pid}`
+  writeFileSync(tmp, content)
+  try {
+    renameSync(tmp, path)
+  } catch (error) {
+    try {
+      unlinkSync(tmp)
+    } catch {
+      // best-effort cleanup; the rename error is the one worth reporting
+    }
+    throw error
   }
 }
 
@@ -141,7 +161,10 @@ Usage:
   atlas dev [dir]     start the workbench against <dir>'s real components —
                       catalog derived from source, no stories to write
   atlas scan [dir]    discover components under <dir>/src, build a verified
-                      catalog, and write atlas-catalog.json + atlas-agent-guide.md
+                      catalog, and write atlas-catalog.json + atlas-agent-guide.md;
+                      exits non-zero when any scenario FAILS a check
+    --no-mount        purely static scan — never imports (= executes) the
+                      project's modules; runtime checks report skip
   atlas --help        show this help
 `
 
@@ -163,7 +186,11 @@ export async function runCli(argv: readonly string[]): Promise<number> {
 
   if (cmd === 'scan') {
     const dir = rest.find((a) => !a.startsWith('-'))
-    const result = await runScan({ cwd: dir ?? '.' })
+    // Importing a project's modules runs its top-level code — a decision the
+    // loader's own docs assign to the user, so the CLI has to actually offer
+    // it. `--no-mount` keeps the scan purely static.
+    const mount = !rest.includes('--no-mount')
+    const result = await runScan({ cwd: dir ?? '.', mount })
     if (result.components === 0) {
       err(`atlas: no components found under ${join(dir ?? '.', 'src')}\n`)
       return 1
@@ -177,6 +204,12 @@ export async function runCli(argv: readonly string[]): Promise<number> {
         `${result.unverified} unverified.\n`,
     )
     if (result.catalogPath) out(`  → ${result.catalogPath}\n  → ${result.guidePath}\n`)
+    if (result.failed > 0) {
+      // A red scan is a red exit — otherwise wiring `atlas scan` into CI gates
+      // nothing. The ids make the failure actionable without opening the JSON.
+      err(`atlas: ${result.failed} failing scenario(s): ${result.failing.join(', ')}\n`)
+      return 1
+    }
     return 0
   }
 

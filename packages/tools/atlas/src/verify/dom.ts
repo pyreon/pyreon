@@ -1,10 +1,11 @@
 /**
  * A DOM for the verify pipeline.
  *
- * Four of the five verify checks are stubs for one reason: they need the
- * component MOUNTED, and `createAtlas` runs in Node. Everything Atlas can
- * conclude from types alone is already concluded — what is left needs the thing
- * to actually run.
+ * The runtime verify checks (`interaction` today; `reactivityCoverage`, `leak`
+ * and `snapshot` are still stubs) exist for one reason: they need the component
+ * MOUNTED, and `createAtlas` runs in Node. Everything Atlas can conclude from
+ * types alone is already concluded — what is left needs the thing to actually
+ * run.
  *
  * The order below is deliberate. A real browser, when there is one, always
  * wins; happy-dom is the fallback, never the preference. It is not a browser

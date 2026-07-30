@@ -64,7 +64,6 @@ export function defineComponent(name: string, spec: ComponentSpec = {}): Compone
     name,
     controls,
     axes,
-    reactivity: [],
     scenarios: [],
     tags: spec.tags ?? [],
   }

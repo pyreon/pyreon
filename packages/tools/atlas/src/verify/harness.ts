@@ -172,8 +172,10 @@ export function mountScenario(
  *
  * Re-reads the list each round because a click can change the tree, and stops
  * after `limit` so a component that mounts a new button per click cannot spin
- * forever. Returns how many clicks were delivered — a check needs to know it
- * exercised nothing, which is a SKIP, not a pass.
+ * forever. Returns how many clicks were delivered — the mount check reports a
+ * zero-click run as a pass WITH a finding saying so (mount + unmount without
+ * throwing is its core claim; the count keeps the verdict from implying
+ * exercise that never happened).
  */
 export function driveInteractions(scenario: MountedScenario, limit = 12): number {
   const seen = new Set<Element>()
