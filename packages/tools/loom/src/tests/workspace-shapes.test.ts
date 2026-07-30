@@ -87,12 +87,37 @@ describe('internal-range shapes', () => {
 })
 
 describe('version-drift severity shapes', () => {
-  it('unparsable ranges (tags, stars) never fabricate a cross-major error', () => {
+  it('a STRICT-superset compatibility range downgrades to info (policy, not drift)', () => {
     const issues = detectVersionDrift(
-      [{ name: 'x', ranges: { latest: [{ user: 'a', field: 'dependencies' }], '*': [{ user: 'b', field: 'dependencies' }] } }],
+      [{ name: 'ts', ranges: { '>=5.0.0 <7.0.0': [{ user: 'a', field: 'dependencies' }], '^6.0.3': [{ user: 'b', field: 'devDependencies' }] } }],
+      {},
+    )
+    expect(issues[0]!.severity).toBe('info')
+    expect(issues[0]!.message).toContain('compatibility range')
+  })
+
+  it('peer declarations are contracts — a wide peer next to a pinned dep is NOT drift', () => {
+    const issues = detectVersionDrift(
+      [{ name: 'echarts', ranges: { '>=5.6.0': [{ user: 'a', field: 'peerDependencies' }], '^6.1.0': [{ user: 'a', field: 'devDependencies' }] } }],
+      {},
+    )
+    expect(issues).toHaveLength(0)
+  })
+
+  it('equal spans stay genuine drift (never mis-read as containment)', () => {
+    const issues = detectVersionDrift(
+      [{ name: 'x', ranges: { '^5.0.0': [{ user: 'a', field: 'dependencies' }], '^5.2.0': [{ user: 'b', field: 'dependencies' }] } }],
       {},
     )
     expect(issues[0]!.severity).toBe('warning')
+  })
+
+  it('the `*` star contains everything — info, never a fabricated error', () => {
+    const issues = detectVersionDrift(
+      [{ name: 'x', ranges: { '*': [{ user: 'a', field: 'dependencies' }], '^4.1.0': [{ user: 'b', field: 'dependencies' }] } }],
+      {},
+    )
+    expect(issues[0]!.severity).toBe('info')
   })
 })
 

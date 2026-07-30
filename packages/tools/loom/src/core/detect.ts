@@ -22,16 +22,61 @@ export function majorOf(range: string): number | null {
   return null
 }
 
-/** External version-sync drift: one dep, more than one declared range. */
+/**
+ * A range's MAJOR-granularity span `[lo, hi)`; null when unparsable. Caret /
+ * tilde / exact pin one major; `>=a <b` spans; bare `>=a` and `*` are open.
+ */
+export function rangeSpan(range: string): [number, number] | null {
+  const r = range.trim()
+  if (r === '*' || r === 'latest' || r === '') return [0, Number.POSITIVE_INFINITY]
+  const pin = /^[~^]?v?(\d+)(?:\.|$)/.exec(r)
+  if (pin?.[1] !== undefined && !r.startsWith('>')) return [Number(pin[1]), Number(pin[1]) + 1]
+  const ge = /^>=\s*v?(\d+)(?:[^<]*)(?:<\s*v?(\d+))?/.exec(r)
+  if (ge?.[1] !== undefined) {
+    const lo = Number(ge[1])
+    const hi = ge[2] !== undefined ? Number(ge[2]) : Number.POSITIVE_INFINITY
+    return [lo, hi]
+  }
+  return null
+}
+
+/**
+ * External version-sync drift: one dep, more than one declared range.
+ *
+ * Two shapes the first cut mis-called on the dogfood repo, now recognized:
+ *  - PEER declarations are CONTRACTS, not pins — a wide `>=5.6.0` peer next
+ *    to a pinned `^6.1.0` devDep is the STANDARD pattern, not drift. Peers
+ *    are excluded from the drift grouping.
+ *  - a deliberately-wide compatibility range that CONTAINS every other
+ *    declared range (`>=5 <7` ⊇ `^6.0.3`) is a policy, not a disagreement —
+ *    severity drops to info naming the containing range.
+ */
 export function detectVersionDrift(external: ExternalUsage[], overrides: Record<string, string>): LoomIssue[] {
   const issues: LoomIssue[] = []
   for (const ext of external) {
-    const ranges = Object.keys(ext.ranges)
+    // Peer ranges are contracts — only CONCRETE declarations can drift.
+    const concrete = Object.entries(ext.ranges).filter(([, users]) =>
+      users.some((u) => u.field !== 'peerDependencies'),
+    )
+    const ranges = concrete.map(([r]) => r)
     if (ranges.length < 2) continue
+
+    const spans = ranges.map(rangeSpan)
+    // "Contained" means one range is a STRICT superset of every other — a
+    // compatibility policy spanning the pins. Equal spans (^5.0.0 vs ^5.2.0)
+    // are genuine drift, not containment.
+    const wideIdx = spans.findIndex(
+      (s, i) =>
+        s !== null &&
+        spans.every((o, j) => i === j || (o !== null && s[0] <= o[0] && s[1] >= o[1])) &&
+        spans.some((o, j) => i !== j && o !== null && (s[0] < o[0] || s[1] > o[1])),
+    )
+    const contained = wideIdx >= 0
+
     const majors = new Set(ranges.map(majorOf).filter((x): x is number => x !== null))
     const crossMajor = majors.size > 1
     const overridden = overrides[ext.name] !== undefined
-    const severity = overridden ? 'info' : crossMajor ? 'error' : 'warning'
+    const severity = overridden || contained ? 'info' : crossMajor ? 'error' : 'warning'
     const usersByRange = Object.fromEntries(
       Object.entries(ext.ranges).map(([r, users]) => [r, users.map((u) => u.user)]),
     )
@@ -44,9 +89,11 @@ export function detectVersionDrift(external: ExternalUsage[], overrides: Record<
         `\`${ext.name}\` is declared with ${ranges.length} different ranges (${ranges.join(' · ')})` +
         (overridden
           ? ` — a root override pins it to ${overrides[ext.name]}, so installs agree, but the declarations still lie`
-          : crossMajor
-            ? ' — the majors differ, so packages are building against different APIs'
-            : ''),
+          : contained
+            ? ` — \`${ranges[wideIdx]}\` is a compatibility range containing the rest (policy, not disagreement)`
+            : crossMajor
+              ? ' — the majors differ, so packages are building against different APIs'
+              : ''),
       details: { ranges: usersByRange, ...(overridden ? { override: overrides[ext.name] } : {}) },
     })
   }
