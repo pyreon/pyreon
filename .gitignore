@@ -59,6 +59,8 @@ QUICK_REFERENCE.md
 
 # Claude worktrees (local development only)
 .claude/worktrees/
+.claude/agent-memory/
+.claude/plans/
 .claude/scheduled_tasks.lock
 
 # Doc-example typecheck cache (scripts/check-doc-examples.ts) — extracts
