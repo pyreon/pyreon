@@ -172,3 +172,29 @@ describe('the emitted module', () => {
     expect(code).toContain('"key":"label"')
   })
 })
+
+describe('the project wrapper (atlas.config.ts)', () => {
+  const entry = () => ({ component: ci({}), file: '/p/src/Button.tsx' })
+
+  it('imports the config in the BROWSER and wraps every render', () => {
+    const code = generateCatalogModule([entry()], {
+      root: '/p/src',
+      configPath: '/p/atlas.config.tsx',
+    })
+    expect(code).toContain('import * as __config from "/p/atlas.config.tsx"')
+    // Named export wins over default.wrapper — the same resolution
+    // `loadAtlasConfig` applies on the Node side.
+    expect(code).toContain('typeof __config.wrapper === "function"')
+    expect(code).toContain('__config.default?.wrapper')
+    expect(code).toContain('__wrapper ? h(__wrapper, {}, __el) : __el')
+  })
+
+  it('emits NO config import when no wrapper exists', () => {
+    // A wrapper-less config must not be dragged into the browser bundle — it
+    // buys nothing and can carry node-only code.
+    const code = generateCatalogModule([entry()], { root: '/p/src' })
+    expect(code).not.toContain('__config')
+    expect(code).not.toContain('__wrapper')
+    expect(code).toContain('return h(Comp, props)')
+  })
+})

@@ -30,6 +30,27 @@ test.describe('atlas dev', () => {
     expect(errors, `page errors: ${errors.join(' | ')}`).toEqual([])
   })
 
+  test('discovers a rocketstyle CHAIN (with a relative import) in the live workbench', async ({
+    page,
+  }) => {
+    // Chip is a rocketstyle call chain in `components/Chip.tsx`, importing
+    // `./chip-kit` — invisible to the static scanner AND unloadable when
+    // discovery hands the loader a relative path. It reaching the sidebar
+    // proves the dev path runs rocketstyle discovery through the module
+    // loader, with the theme from atlas.config.ts driving its variant axis.
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Chip', exact: true }).click()
+
+    const preview = page.locator('[data-testid="canvas-preview"]')
+    await expect(preview).toBeVisible()
+    await expect(preview.locator('[data-atlas-error]')).toHaveCount(0)
+
+    // The variant axis came from `getStaticDimensions(theme)` — its real
+    // values, not a text box.
+    await expect(page.getByText('Variant', { exact: true })).toBeVisible()
+    await expect(page.getByText('solid', { exact: true }).first()).toBeVisible()
+  })
+
   test('renders a discovered component in the canvas', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: 'Badge' }).click()

@@ -102,6 +102,12 @@ export interface AtlasDevPluginOptions {
   scanRoot: string
   /** Discovered components, paired with the file to import them from. */
   entries: readonly CatalogEntrySource[]
+  /**
+   * Absolute path of the project's `atlas.config.*` — set only when it exports
+   * a `wrapper`. The generated catalog imports it in the browser and wraps
+   * every render with it (the project's providers around the preview).
+   */
+  configPath?: string
   /** Title shown in the workbench chrome. */
   title?: string
   /** Extra RPC methods (a plugin's node-only half registers here). */
@@ -140,7 +146,10 @@ export function atlasDevPlugin(options: AtlasDevPluginOptions): VitePluginLike {
 
     load(id) {
       if (id === resolved(CATALOG_ID)) {
-        return generateCatalogModule(options.entries, { root: options.scanRoot })
+        return generateCatalogModule(options.entries, {
+          root: options.scanRoot,
+          ...(options.configPath ? { configPath: options.configPath } : {}),
+        })
       }
       if (id === resolved(ENTRY_ID)) {
         return [
