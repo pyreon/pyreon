@@ -17,9 +17,32 @@
  * variant matrix has nothing to cross — 36 scenarios become 23. (Measured, not
  * estimated.)
  */
+import { h, type VNodeChild } from '@pyreon/core'
+import { createPermissions, PermissionsProvider } from '@pyreon/permissions'
+import { PyreonUI } from '@pyreon/ui-core'
 import { THEMES, tokens } from '@pyreon/atlas/ui'
 
 export const theme = tokens(THEMES[0]!, false)
+
+/**
+ * The providers this project's components genuinely need to render:
+ * `<PyreonUI>` (the rocketstyle chains dereference theme tokens — without it
+ * the first `t.accent` read throws) and a `<PermissionsProvider>` (for
+ * `usePermissions()` consumers like GuardedDelete).
+ *
+ * This is not decoration — without a wrapper, `atlas scan` honestly FAILS 36
+ * of this project's 40 scenarios with `threw while mounted`. (An earlier
+ * pipeline bug ran every scenario through a second, wrongly-wired mount whose
+ * verdict overwrote the real one, which made the same scenarios look verified.
+ * They never were.)
+ */
+export function wrapper(props: { children?: unknown }): VNodeChild {
+  return h(
+    PyreonUI,
+    { theme },
+    h(PermissionsProvider, { value: createPermissions({ '*': true }) }, props.children as VNodeChild),
+  )
+}
 
 /**
  * Per-project addon presets — plain JSON data. Each family REPLACES the

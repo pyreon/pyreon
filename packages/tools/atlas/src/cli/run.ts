@@ -89,6 +89,14 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
   async function buildScan(): Promise<ScanResult> {
     const graph = await createAtlas({
       cwd,
+      // The scan assembles the WHOLE pipeline itself — without this,
+      // `createAtlas` appends the recommended bundle a SECOND time, including a
+      // bare `mountPlugin()` whose default runtime reads Atlas's OWN (empty)
+      // reactive graph. Every scenario then mounted twice, and the second
+      // instance's all-zero leak reading overwrote the real one — a real leak
+      // verified as `pass`. Exposed by the leak check; the double mount itself
+      // was invisible while both instances produced identical verdicts.
+      preset: 'none',
       plugins: [
         fileDiscoveryPlugin({
         ...options,
@@ -118,7 +126,7 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
     const scenarios = graph.scenarios()
     // Three states, not two. `verify.ok` means a check RAN and passed; a verdict
     // with `checked: 0` is unverified, which is neither a pass nor a failure —
-    // still a common state while three of the five checks are stubs.
+    // still a real state while two of the five checks are stubs.
     const verified = scenarios.filter((s) => s.verify?.ok === true).length
     const failing = scenarios
       .filter((s) => s.verify && !s.verify.ok && s.verify.checked > 0)

@@ -128,7 +128,7 @@ function renderLlmsText(components: readonly ComponentIntelligence[]): string {
       lines.push(`scenarios (${ci.scenarios.length}):`)
       for (const s of ci.scenarios) {
         // Three states, not two. A scenario nothing checked is `[unverified]`,
-        // never `[pass]` — still a common state, because three of the five
+        // never `[pass]` — still a real state, because two of the five
         // verify checks are stubs.
         const verdict = s.verify
           ? s.verify.ok
