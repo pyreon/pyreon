@@ -171,6 +171,17 @@ It's a thin, dependency-free delegator: it `npx`-runs `@pyreon/mcp`. Unlike `pyr
 
 Point your assistant's MCP config at `pyreon mcp` (e.g. as the `command`) to get Pyreon-aware `validate` / `get_api` / `get_pattern` / `diagnose` tools.
 
+## `pyreon atlas`
+
+```bash
+pyreon atlas scan .              # derive + verify the component catalog (exits non-zero on failing scenarios)
+pyreon atlas dev .               # serve the Atlas workbench for this project
+pyreon atlas verify-browser .    # browser-half verification: reactive coverage + visual snapshots
+pyreon atlas --dry-run <args>    # print the npx command without launching
+```
+
+The [Atlas component workbench](/docs/atlas) from the CLI front door. A thin, dependency-free delegator to `@pyreon/atlas` — every arg after `atlas` passes straight through. Like `pyreon mcp` it is deliberately **not** pinned to `@latest`: the project-local `@pyreon/atlas` wins when installed, so the derived catalog matches *your* installed Pyreon version.
+
 ## `pyreon doctor`
 
 ### How it works
