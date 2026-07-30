@@ -4,7 +4,7 @@
  * threaded props. Everything here is signals + computeds + callbacks — no DOM.
  */
 import type { VNodeChildAtom } from '@pyreon/core'
-import { computed, type Computed, effect, type Effect, type Signal, signal } from '@pyreon/reactivity'
+import { computed, effect, isClient, signal, type Computed, type Effect, type Signal } from '@pyreon/reactivity'
 import type { A11yReport } from './a11y'
 import { analyzeA11y } from './a11y'
 import type { AddonTabId, BackgroundId, LocaleId, PseudoId, ViewportId } from './addons'
@@ -17,6 +17,7 @@ import {
   type RecordingPermissions,
 } from './permission-sets'
 import { makeQueryResult, type FakeQueryResult, type QueryStateId } from './query-states'
+import { parseUrlState, serializeUrlState, urlStateChanged, type UrlState } from './url-state'
 import type { CatalogGroup, WorkbenchCatalog, WorkbenchComponent } from './catalog'
 import { buildSearch, defaultValues, groupComponents } from './catalog'
 import type { BrandTheme, ThemeTokens } from './theme'
@@ -107,20 +108,47 @@ export function createModel(
   const search = buildSearch(catalog)
   const total = catalog.components.length
 
-  const brandId = signal('ember')
-  const dark = signal(true)
-  const selId = signal(catalog.components[0]?.id ?? '')
+  // Restore from the URL first, so a shared link lands on the view it names.
+  //
+  // `isClient` from `@pyreon/reactivity` rather than a hand-rolled
+  // `typeof location` check: the framework owns one answer to "is there a DOM"
+  // (`typeof document === 'undefined'`, which is the reliable test — `window`
+  // is polyfilled in some Node setups), and re-deriving it per package is how
+  // packages ended up disagreeing about it. It is also the form
+  // `pyreon/no-window-in-ssr` recognises.
+  const initial: UrlState = isClient ? parseUrlState(location.search) : {}
+
+  const brandId = signal(initial.brand ?? 'ember')
+  const dark = signal(initial.dark ?? true)
+  // The link's component id, RESOLVED against the catalog — never used raw.
+  //
+  // A link naming a component that no longer exists falls back to the first one
+  // rather than rendering an empty canvas: a renamed component should not make
+  // an old link look like a broken workbench. Resolving ONCE (rather than
+  // per-use) also keeps the id and the args it carries from disagreeing —
+  // previously the args were stored under the link's raw id while the canvas
+  // fell back to a different component, so a stale link silently parked its
+  // edits on a key nothing would ever read.
+  //
+  // It matters for a second reason: this value comes from the URL, and it is
+  // used as an object KEY below. Narrowing it to an id the catalog already
+  // contains means no attacker-chosen string ever names a property.
+  const linkedComponent = catalog.components.find((c) => c.id === initial.c)
+  const selId = signal(linkedComponent?.id ?? catalog.components[0]?.id ?? '')
   const query = signal('')
   const zoomIdx = signal(2) // 100%
   const view = signal<View>('canvas')
-  const addon = signal<Addon>('controls')
-  const values = signal<Record<string, Record<string, unknown>>>({})
+  const addon = signal<Addon>(initial.p ?? 'controls')
+  // Args from the link belong to the component the link named.
+  const values = signal<Record<string, Record<string, unknown>>>(
+    linkedComponent && initial.args ? { [linkedComponent.id]: initial.args } : {},
+  )
   const actions = signal<ActionEntry[]>([])
-  const viewport = signal<ViewportId>('full')
-  const background = signal<BackgroundId>('theme')
+  const viewport = signal<ViewportId>((initial.viewport as ViewportId) ?? 'full')
+  const background = signal<BackgroundId>((initial.background as BackgroundId) ?? 'theme')
   const pseudo = signal<PseudoId | null>(null)
   const outline = signal(false)
-  const locale = signal<LocaleId>('en')
+  const locale = signal<LocaleId>((initial.locale as LocaleId) ?? 'en')
   // i18n STRESS, distinct from the locale switcher next to it: the switcher
   // changes writing direction, this changes every string's LENGTH. Off by
   // default — it is a deliberate check, not a viewing mode.
@@ -259,6 +287,45 @@ export function createModel(
       if (previewEl) a11y.set(analyzeA11y(previewEl))
     })
     observer.observe(el, { childList: true, subtree: true, attributes: true, characterData: true })
+  }
+
+  // Keep the URL in step with the view, so a reload restores it and a link
+  // shares it.
+  //
+  // `replaceState`, never `pushState`: every keystroke in a text control moves
+  // this state, and pushing would make the back button walk backwards through
+  // typing rather than leaving the workbench. The serialised comparison means
+  // an unchanged view writes nothing at all.
+  //
+  // Guarded on `location`/`history` because the workbench also renders under
+  // SSR and in happy-dom, neither of which necessarily has both.
+  if (typeof location !== 'undefined' && typeof history !== 'undefined') {
+    // Both globals are aliased HERE, inside the guard, rather than read from
+    // inside the effect. The effect callback is a nested scope, so a reader —
+    // human or `pyreon/no-window-in-ssr` — cannot see the guard from in there;
+    // hoisting the read makes the guarded-ness local to where it is used.
+    const loc = location
+    const hist = history
+    let lastWritten: UrlState = initial
+    effect(() => {
+      const next: UrlState = {
+        c: selId(),
+        p: String(addon()),
+        args: values()[selId()] ?? {},
+        viewport: viewport(),
+        background: background(),
+        locale: locale(),
+        brand: brandId(),
+        dark: dark(),
+      }
+      if (!urlStateChanged(lastWritten, next)) return
+      lastWritten = next
+      // `nextQuery`, because both obvious names are taken in this scope:
+      // `query` is the search-box signal and `search` is the search function.
+      // Shadowing either would read as the URL state being related to search.
+      const nextQuery = serializeUrlState(next)
+      hist.replaceState(hist.state, '', nextQuery ? `?${nextQuery}` : loc.pathname)
+    })
   }
 
   return {

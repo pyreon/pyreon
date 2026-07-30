@@ -88,3 +88,100 @@ test.describe('atlas dev', () => {
     expect(String(res.result.source)).toContain('Badge')
   })
 })
+
+/**
+ * The Reactivity Lens — the compiler's own per-expression verdict, fetched over
+ * the dev channel. Node-only by necessity (TS compiler API + oxc), which is why
+ * M1 defined the channel first.
+ */
+test.describe('Reactivity Lens', () => {
+  test('reports the compiler verdict for a real component', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Badge' }).click()
+    await page.getByTestId('addon-tab-lens').click()
+
+    // Idle until asked — analysing every component on selection would pay the
+    // TS-compiler cost for a panel nobody opened.
+    await expect(page.getByTestId('lens-unavailable')).toHaveCount(0)
+    await page.getByTestId('lens-analyse').click()
+
+    // Real findings, on real lines, with the compiler's own vocabulary.
+    const rows = page.locator('[data-testid="lens-line"]')
+    await expect(rows.first()).toBeVisible({ timeout: 15_000 })
+    const text = (await page.locator('body').innerText()).toLowerCase()
+    expect(text).toMatch(/reactive|baked once|footgun/)
+  })
+
+  test('the lens method is reachable directly and returns line-anchored findings', async ({ page }) => {
+    await page.goto('/')
+    const res = await page.evaluate(async () => {
+      const r = await fetch('/__atlas/rpc', {
+        method: 'POST',
+        body: JSON.stringify({ method: 'lens', params: { component: 'Badge' } }),
+      })
+      return r.json()
+    })
+    expect(res.ok, JSON.stringify(res).slice(0, 200)).toBe(true)
+    expect(Array.isArray(res.result.lines)).toBe(true)
+    // Every finding must anchor to a line that exists in the returned source.
+    const maxLine = res.result.lines.length
+    for (const line of res.result.lines) {
+      expect(line.line).toBeGreaterThan(0)
+      expect(line.line).toBeLessThanOrEqual(maxLine)
+    }
+    expect(typeof res.result.suspects).toBe('number')
+  })
+})
+
+/**
+ * URL state — a workbench view that survives a reload and can be shared.
+ *
+ * Before this, every reload dropped you on the first component with default
+ * controls, and "open Atlas, pick X, set Y" was the only way to hand someone a
+ * view. Asserted through a REAL reload, because that is the claim.
+ */
+test.describe('URL state', () => {
+  test('a selected component and edited args survive a reload', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Badge' }).click()
+    await page.getByTestId('addon-tab-controls').click()
+    await page.locator('input[placeholder]').last().fill('Shipped')
+
+    // The URL follows the view.
+    await expect(page).toHaveURL(/c=badge/)
+    await expect(page).toHaveURL(/args=/)
+
+    await page.reload()
+
+    // Same component, same edit — not the first component with defaults.
+    await expect(page.getByTestId('canvas-name')).toContainText('Badge')
+    await page.getByTestId('addon-tab-controls').click()
+    await expect(page.locator('input[placeholder]').last()).toHaveValue('Shipped')
+  })
+
+  test('canvas state is shareable, and a stale component id degrades', async ({ page }) => {
+    await page.goto('/?c=badge&viewport=tablet&p=canvas')
+    await expect(page.getByTestId('canvas-name')).toContainText('Badge')
+    // The link named a viewport; it must be applied, not merely stored.
+    await expect(page.getByTestId('viewport-tablet')).toHaveAttribute('data-rocketstyle', /.+/)
+
+    // A component that no longer exists must not blank the workbench.
+    await page.goto('/?c=deleted-component')
+    await expect(page.getByTestId('canvas-preview')).toBeVisible()
+    await expect(page.getByTestId('canvas-name')).not.toBeEmpty()
+  })
+
+  test('typing does not fill the history stack', async ({ page }) => {
+    // `replaceState`, not `pushState`: otherwise Back walks backwards through
+    // every keystroke instead of leaving the workbench.
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Badge' }).click()
+    await page.getByTestId('addon-tab-controls').click()
+    const before = await page.evaluate(() => history.length)
+    const box = page.locator('input[placeholder]').last()
+    await box.fill('a')
+    await box.fill('ab')
+    await box.fill('abc')
+    expect(await page.evaluate(() => history.length)).toBe(before)
+  })
+})

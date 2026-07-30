@@ -2153,6 +2153,7 @@
         "typescript": ">=5.0.0 <7.0.0",
       },
       "devDependencies": {
+        "@pyreon/compiler": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vite-plugin": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
@@ -2160,9 +2161,11 @@
         "zod": "^4.4.3",
       },
       "peerDependencies": {
+        "@pyreon/compiler": "workspace:*",
         "vite": ">=6",
       },
       "optionalPeers": [
+        "@pyreon/compiler",
         "vite",
       ],
     },

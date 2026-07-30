@@ -94,6 +94,7 @@
     "typescript": ">=5.0.0 <7.0.0"
   },
   "devDependencies": {
+    "@pyreon/compiler": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vite-plugin": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
@@ -101,10 +102,14 @@
     "zod": "^4.4.3"
   },
   "peerDependencies": {
-    "vite": ">=6"
+    "vite": ">=6",
+    "@pyreon/compiler": "workspace:*"
   },
   "peerDependenciesMeta": {
     "vite": {
+      "optional": true
+    },
+    "@pyreon/compiler": {
       "optional": true
     }
   }
