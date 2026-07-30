@@ -292,8 +292,11 @@ fun Switch(
   checked: Boolean,
   onCheckedChange: ((Boolean) -> Unit)? = null,
   enabled: Boolean = true,
+  modifier: Modifier = Modifier,
 ) {
-  // Type-check-only stub.
+  // Type-check-only stub. The modifier param mirrors the real Material
+  // Switch — its absence made the stub a SUBSET that manufactured a
+  // failure on the (valid) data-testid -> Modifier.testTag emit.
 }
 
 // --- Phase 2.5: @pyreon/native-runtime-kotlin's rememberPyreonStorage ---
