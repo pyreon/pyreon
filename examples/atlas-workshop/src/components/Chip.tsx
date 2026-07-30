@@ -25,7 +25,19 @@ export const Chip = chipBase
     fontWeight: 600,
     color: t.text,
   }))
-  .variants((t: { accent: string }) => ({
-    solid: { backgroundColor: t.accent, color: '#fff' },
-    outline: { backgroundColor: 'transparent', borderWidth: '1px', borderStyle: 'solid', borderColor: t.accent },
-  }))
+  // The callback param is typed by rocketstyle from the (empty) local theme
+  // augmentation, so the token read narrows the RUNTIME theme the config
+  // supplies — same shape the demo catalog handles with its `dim()` helper,
+  // inlined here because this file must not import the workbench package.
+  .variants((t) => {
+    const tok = t as unknown as { accent: string }
+    return {
+      solid: { backgroundColor: tok.accent, color: '#fff' },
+      outline: {
+        backgroundColor: 'transparent',
+        borderWidth: '1px',
+        borderStyle: 'solid',
+        borderColor: tok.accent,
+      },
+    }
+  })
