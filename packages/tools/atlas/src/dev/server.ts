@@ -81,10 +81,12 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
   // stderr, never silent.
   let components: readonly ComponentIntelligence[]
   let configPath: string | undefined
+  let presets: import('../ui/catalog').WorkbenchPresets | undefined
   try {
     const scan = await runScan({ cwd: root, dir: scanDir, write: false })
     components = scan.graph.list()
     configPath = scan.configPath
+    presets = scan.presets
   } catch (err) {
     process.stderr.write(
       `[Pyreon] atlas dev: the scan pipeline failed — falling back to the static walk (no rocketstyle discovery, no scenarios, no atlas.config.ts): ${err instanceof Error ? err.message : String(err)}\n`,
@@ -201,6 +203,7 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
         // exists — importing a wrapper-less config into the browser bundle
         // buys nothing and risks dragging node-only code into it.
         ...(configPath ? { configPath } : {}),
+        ...(presets ? { presets } : {}),
         ...(options.title !== undefined ? { title: options.title } : {}),
         ...(options.methods !== undefined ? { methods: options.methods } : {}),
       }),

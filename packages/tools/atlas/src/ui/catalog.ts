@@ -82,6 +82,41 @@ export interface WorkbenchRenderCtx {
 
 /** One catalog entry — a component the workbench can showcase. */
 /**
+ * Per-project presets for the built-in addons — the lists the workbench
+ * renders its Viewport / Background / Locale / Roles pickers from.
+ *
+ * Every field is optional and every omission falls back to the shipped
+ * defaults, so a project configures only what differs. All values are PLAIN
+ * DATA (JSON-serializable): under `atlas dev` they travel from
+ * `atlas.config.ts` through the scan into the generated catalog module — no
+ * function crosses the Node→browser boundary except the wrapper, which has
+ * its own import path.
+ */
+export interface WorkbenchPresets {
+  /** `width: null` = fluid (the frame tracks the stage). */
+  viewports?: readonly { id: string; label: string; width: number | null }[]
+  /**
+   * `color` is any CSS color for the preview surface. The shipped `checker`
+   * transparency grid stays available by including `{ id: 'checker' }`.
+   */
+  backgrounds?: readonly { id: string; label: string; color?: string }[]
+  locales?: readonly { id: string; label: string; dir?: 'ltr' | 'rtl' }[]
+  /**
+   * Roles for the permissions panel. `grants` lists EXACT keys the role is
+   * granted; `verbs` grants any key whose last segment matches (the shipped
+   * viewer/editor semantics); `defaultGrant` answers everything else.
+   */
+  roles?: readonly {
+    id: string
+    label: string
+    hint?: string
+    verbs?: readonly string[]
+    grants?: readonly string[]
+    defaultGrant?: boolean
+  }[]
+}
+
+/**
  * A derived scenario, as the sidebar shows it — a named, concrete state of the
  * component plus its verify verdict. Selecting one applies `args` to the
  * controls, so the canvas renders exactly the state the pipeline verified.
@@ -130,6 +165,8 @@ export interface WorkbenchComponent {
 
 export interface WorkbenchCatalog {
   components: readonly WorkbenchComponent[]
+  /** Per-project addon presets; omitted fields use the shipped defaults. */
+  presets?: WorkbenchPresets
 }
 
 /** A sidebar group derived from the catalog (preserves first-seen order). */

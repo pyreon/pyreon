@@ -12,15 +12,10 @@
  * addon-viewport, addon-backgrounds, addon-pseudo-states and addon-outline.
  */
 import { Show } from '@pyreon/core'
-import {
-  ADDON_TABS,
-  BACKGROUNDS,
-  localeDir,
-  LOCALES,
-  PSEUDO_STATES,
-  VIEWPORTS,
-  viewportById,
-} from '../addons'
+// Viewport/background/locale lists come from the MODEL (per-project presets
+// with shipped defaults), not the addons consts — the pickers must render what
+// the project configured.
+import { ADDON_TABS, PSEUDO_STATES } from '../addons'
 import type { WorkbenchControl } from '../catalog'
 import * as C from '../chrome'
 import type { WorkbenchModel } from '../model'
@@ -174,10 +169,10 @@ export function registerBuiltinPanels(): void {
           <C.CtrlRow>
             <C.CtrlHead>
               <C.CtrlLabel>Viewport</C.CtrlLabel>
-              <C.CtrlType>{() => viewportById(m.viewport()).hint}</C.CtrlType>
+              <C.CtrlType>{() => m.viewportPreset().hint}</C.CtrlType>
             </C.CtrlHead>
             <C.EnumWrap>
-              {VIEWPORTS.map((v) => (
+              {m.viewports.map((v) => (
                 <C.EnumBtn
                   data-testid={`viewport-${v.id}`}
                   state={() => (m.viewport() === v.id ? 'active' : 'idle')}
@@ -195,7 +190,7 @@ export function registerBuiltinPanels(): void {
               <C.CtrlType>surface</C.CtrlType>
             </C.CtrlHead>
             <C.EnumWrap>
-              {BACKGROUNDS.map((b) => (
+              {m.backgrounds.map((b) => (
                 <C.EnumBtn
                   data-testid={`background-${b.id}`}
                   state={() => (m.background() === b.id ? 'active' : 'idle')}
@@ -235,10 +230,10 @@ export function registerBuiltinPanels(): void {
           <C.CtrlRow>
             <C.CtrlHead>
               <C.CtrlLabel>Locale</C.CtrlLabel>
-              <C.CtrlType>{() => localeDir(m.locale())}</C.CtrlType>
+              <C.CtrlType>{() => m.dir()}</C.CtrlType>
             </C.CtrlHead>
             <C.EnumWrap>
-              {LOCALES.map((l) => (
+              {m.locales.map((l) => (
                 <C.EnumBtn
                   data-testid={`locale-${l.id}`}
                   state={() => (m.locale() === l.id ? 'active' : 'idle')}

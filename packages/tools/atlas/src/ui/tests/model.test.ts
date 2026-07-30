@@ -394,3 +394,66 @@ describe('createModel — selectScenario', () => {
     expect(m.vals().label).toBe('Click me')
   })
 })
+
+describe('createModel — per-project presets', () => {
+  const withPresets = (): WorkbenchCatalog => ({
+    components: [comp('button', 'g')],
+    presets: {
+      viewports: [
+        { id: 'fluid', label: 'Fluid', width: null },
+        { id: 'kiosk', label: 'Kiosk', width: 900 },
+      ],
+      backgrounds: [{ id: 'brand', label: 'Brand', color: '#123456' }],
+      locales: [
+        { id: 'en', label: 'English' },
+        { id: 'he', label: 'עברית', dir: 'rtl' },
+      ],
+      roles: [
+        { id: 'ops', label: 'Ops', grants: ['posts.delete'] },
+        { id: 'nobody', label: 'Nobody' },
+      ],
+    },
+  })
+
+  it('replaces the shipped lists and selects each family FIRST entry', () => {
+    const m = createModel(withPresets(), {})
+    expect(m.viewports.map((v) => v.id)).toEqual(['fluid', 'kiosk'])
+    expect(m.backgrounds.map((b) => b.id)).toEqual(['brand'])
+    expect(m.roles.map((r) => r.id)).toEqual(['ops', 'nobody'])
+    expect(m.viewport()).toBe('fluid')
+    expect(m.background()).toBe('brand')
+    expect(m.locale()).toBe('en')
+    expect(m.permissionSet()).toBe('ops')
+  })
+
+  it('derives hint/width for a custom viewport, and dir for a custom locale', () => {
+    const m = createModel(withPresets(), {})
+    m.viewport.set('kiosk')
+    expect(m.viewportPreset()).toMatchObject({ width: 900, hint: '900px' })
+    m.locale.set('he')
+    expect(m.dir()).toBe('rtl')
+  })
+
+  it('a custom role with explicit grants drives the recording can()', () => {
+    const m = createModel(withPresets(), {})
+    // ops: `posts.delete` granted by the exact-key list; everything else denied
+    expect(m.permissions().can('posts.delete')).toBe(true)
+    expect(m.permissions().can('posts.update')).toBe(false)
+    m.permissionSet.set('nobody')
+    expect(m.permissions().can('posts.delete')).toBe(false)
+  })
+
+  it('falls back to the shipped defaults when no presets are configured', () => {
+    const m = model()
+    expect(m.viewports.map((v) => v.id)).toEqual(['full', 'mobile', 'tablet', 'desktop'])
+    expect(m.roles.map((r) => r.id)).toEqual(['anonymous', 'viewer', 'editor', 'admin'])
+  })
+
+  it('a URL id naming no preset falls back to the first entry', () => {
+    history.replaceState(null, '', '/?viewport=desktop')
+    // `desktop` exists only in the DEFAULT list — with custom presets the
+    // stale link must land on a state the pickers can actually show.
+    const m = createModel(withPresets(), {})
+    expect(m.viewport()).toBe('fluid')
+  })
+})

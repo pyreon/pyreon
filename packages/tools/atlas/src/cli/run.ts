@@ -11,6 +11,7 @@ import { renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { createAtlas } from '../index'
 import type { CatalogGraph } from '../core'
+import type { WorkbenchPresets } from '../ui/catalog'
 import type { AgentAsset } from '../plugins'
 import { aiAssetsPlugin, mountPlugin, recommendedPlugins } from '../plugins'
 import {
@@ -55,6 +56,8 @@ export interface ScanResult {
   graph: CatalogGraph
   /** The project's atlas.config path, set only when it exports a `wrapper`. */
   configPath?: string
+  /** Validated addon presets from atlas.config.ts, when it exports any. */
+  presets?: WorkbenchPresets
 }
 
 /** Discover a project's components, build the verified catalog, emit assets. */
@@ -131,6 +134,7 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
       llms: asset ? asset.llms : graph.toLlmsText(),
       graph,
       ...(loaded.config.wrapper && loaded.path ? { configPath: loaded.path } : {}),
+      ...(loaded.config.presets ? { presets: loaded.config.presets } : {}),
     }
 
     if (options.write !== false && graph.size() > 0) {
