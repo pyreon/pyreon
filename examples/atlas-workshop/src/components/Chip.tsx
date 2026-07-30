@@ -32,7 +32,7 @@ export const Chip = chipBase
   // The callback param is typed by rocketstyle from the (empty) local theme
   // augmentation, so the token read narrows the RUNTIME theme the config
   // supplies — same shape the demo catalog handles with its `dim()` helper,
-  // inlined here because this file must not import @pyreon/atlas.
+  // inlined here because this file must not import the workbench package.
   .variants((t) => {
     const tok = t as unknown as { accent: string }
     return {
