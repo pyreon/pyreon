@@ -90,6 +90,30 @@ test.describe('atlas dev', () => {
     expect(summary).toMatch(/1 denied/)
   })
 
+  test('derived scenarios appear in the sidebar WITH their verify verdicts', async ({ page }) => {
+    // The pipeline's core output — the variant matrix, the edge cases, and
+    // their pass/fail labels — was previously invisible in the workbench: the
+    // sidebar listed components only. Selecting a component expands its
+    // scenarios; each carries the SAME three-state verdict `atlas scan`
+    // publishes.
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Chip', exact: true }).click()
+    const solid = page.getByTestId('scenario-chip--variant-solid')
+    await expect(solid).toBeVisible()
+    await expect(solid.locator('[data-verdict]')).toHaveAttribute('data-verdict', 'ok')
+
+    // A FAILING scenario is labeled as such — the a11y fail the scan reports,
+    // live in the UI, never smoothed into a pass.
+    await page.getByRole('button', { name: 'Button', exact: true }).click()
+    const empty = page.getByTestId('scenario-button--empty')
+    await expect(empty.locator('[data-verdict]')).toHaveAttribute('data-verdict', 'fail')
+
+    // Clicking a scenario applies its pinned args — the canvas renders exactly
+    // the state the verdict covered (here: the empty label).
+    await empty.click()
+    await expect(page.getByTestId('canvas-preview').locator('button').first()).toHaveText('')
+  })
+
   test('discovers a rocketstyle CHAIN (with a relative import) in the live workbench', async ({
     page,
   }) => {

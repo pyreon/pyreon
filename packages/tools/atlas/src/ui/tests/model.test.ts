@@ -346,3 +346,51 @@ describe('restoring from a link', () => {
     expect(m.vals().polluted).toBeUndefined()
   })
 })
+
+describe('createModel — selectScenario', () => {
+  const cat = (): WorkbenchCatalog => ({
+    components: [
+      {
+        ...comp('button', 'g'),
+        controls: [
+          { key: 'label', label: 'Label', type: 'text', default: 'Click me' },
+          { key: 'variant', label: 'Variant', type: 'enum', options: ['solid', 'soft'], default: 'solid' },
+        ],
+        scenarios: [
+          { id: 'button--soft', name: 'Soft', args: { variant: 'soft', onClick: 'not-editable' }, verdict: 'ok' },
+          { id: 'button--empty', name: 'Empty', args: { label: '' }, verdict: 'fail' },
+        ],
+        render: (p) => `button:${String(p.label)}:${String(p.variant)}`,
+      },
+      comp('badge', 'g'),
+    ],
+  })
+
+  it('selects the component AND applies the scenario args to the controls', () => {
+    const m = createModel(cat(), {})
+    m.selId.set('badge')
+    m.selectScenario('button', 'button--soft')
+    expect(m.selId()).toBe('button')
+    expect(m.vals().variant).toBe('soft')
+    // args without a matching editable control never land in the value store
+    expect('onClick' in m.vals()).toBe(false)
+  })
+
+  it('REPLACES stale edits — a scenario is a complete pinned state', () => {
+    const m = createModel(cat(), {})
+    m.setValue('button', 'variant', 'soft')
+    m.selectScenario('button', 'button--empty')
+    // The empty scenario pins label:'' and says nothing about variant — the
+    // earlier edit must not bleed into the state the verdict covered.
+    expect(m.vals().label).toBe('')
+    expect(m.vals().variant).toBe('solid')
+  })
+
+  it('no-ops on an unknown component or scenario id', () => {
+    const m = createModel(cat(), {})
+    m.selectScenario('nope', 'x')
+    m.selectScenario('button', 'nope')
+    expect(m.selId()).toBe('button')
+    expect(m.vals().label).toBe('Click me')
+  })
+})

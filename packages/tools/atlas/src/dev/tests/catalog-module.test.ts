@@ -260,3 +260,44 @@ describe('importsAtlas (the workbench-host filter)', () => {
     })
   })
 })
+
+describe('derived scenarios reach the workbench catalog', () => {
+  it('emits each scenario with its three-state verdict', () => {
+    const verdict = (ok: boolean, checked: number) => ({
+      ok,
+      checked,
+      a11y: { status: 'skip' as const },
+      interaction: { status: 'skip' as const },
+      reactivityCoverage: { status: 'skip' as const },
+      leak: { status: 'skip' as const },
+      snapshot: { status: 'skip' as const },
+    })
+    const code = generateCatalogModule(
+      [
+        {
+          component: ci({
+            scenarios: [
+              { id: 'b--ok', component: 'Button', name: 'Solid', args: { variant: 'solid' }, source: 'auto-variant', verify: verdict(true, 1) },
+              { id: 'b--bad', component: 'Button', name: 'Empty', args: { label: '' }, source: 'auto-variant', verify: verdict(false, 1) },
+              { id: 'b--unchecked', component: 'Button', name: 'Long', args: {}, source: 'auto-variant' },
+            ],
+          }),
+          file: '/p/src/Button.tsx',
+        },
+      ],
+      { root: '/p/src' },
+    )
+    expect(code).toContain('"id":"b--ok","name":"Solid","args":{"variant":"solid"},"verdict":"ok"')
+    expect(code).toContain('"id":"b--bad","name":"Empty","args":{"label":""},"verdict":"fail"')
+    // A verdict-less scenario is UNVERIFIED — not a pass. Rendering it as one
+    // would be the false-green the three-state verify model exists to prevent.
+    expect(code).toContain('"id":"b--unchecked","name":"Long","args":{},"verdict":"unverified"')
+  })
+
+  it('emits no scenarios key when the pipeline produced none', () => {
+    const code = generateCatalogModule([{ component: ci({}), file: '/p/src/X.tsx' }], {
+      root: '/p/src',
+    })
+    expect(code).not.toContain('scenarios:')
+  })
+})

@@ -81,6 +81,23 @@ export interface WorkbenchRenderCtx {
 }
 
 /** One catalog entry — a component the workbench can showcase. */
+/**
+ * A derived scenario, as the sidebar shows it — a named, concrete state of the
+ * component plus its verify verdict. Selecting one applies `args` to the
+ * controls, so the canvas renders exactly the state the pipeline verified.
+ */
+export interface WorkbenchScenario {
+  id: string
+  name: string
+  /** the control values this scenario pins */
+  args: Record<string, unknown>
+  /**
+   * The three-state verdict: `ok` (a check ran, none failed) · `fail`
+   * (a check ran and failed) · `unverified` (nothing examined — NOT a pass).
+   */
+  verdict: 'ok' | 'fail' | 'unverified'
+}
+
 export interface WorkbenchComponent {
   id: string
   name: string
@@ -93,6 +110,8 @@ export interface WorkbenchComponent {
   /** Marks the sidebar entry with a NEW tag. */
   isNew?: boolean
   controls: readonly WorkbenchControl[]
+  /** Derived scenarios (with verdicts) — listed under the component in the sidebar. */
+  scenarios?: readonly WorkbenchScenario[]
   /**
    * Render the component for the given control values. Returns a node (or
    * nodes) — the workbench calls this inside its own reactive accessor, so a

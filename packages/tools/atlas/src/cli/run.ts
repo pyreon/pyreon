@@ -10,6 +10,7 @@
 import { renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { createAtlas } from '../index'
+import type { CatalogGraph } from '../core'
 import type { AgentAsset } from '../plugins'
 import { aiAssetsPlugin, mountPlugin, recommendedPlugins } from '../plugins'
 import {
@@ -50,6 +51,10 @@ export interface ScanResult {
   llms: string
   catalogPath?: string
   guidePath?: string
+  /** The built graph itself — `atlas dev` derives the workbench catalog from it. */
+  graph: CatalogGraph
+  /** The project's atlas.config path, set only when it exports a `wrapper`. */
+  configPath?: string
 }
 
 /** Discover a project's components, build the verified catalog, emit assets. */
@@ -124,6 +129,8 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
       unverified: scenarios.length - verified - failing.length,
       guide: asset ? asset.guide : graph.toAgentGuide(),
       llms: asset ? asset.llms : graph.toLlmsText(),
+      graph,
+      ...(loaded.config.wrapper && loaded.path ? { configPath: loaded.path } : {}),
     }
 
     if (options.write !== false && graph.size() > 0) {

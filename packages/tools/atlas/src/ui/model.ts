@@ -90,6 +90,11 @@ export interface WorkbenchModel {
   previewRef: (el: HTMLElement | null) => void
   // actions
   setValue: (id: string, key: string, v: unknown) => void
+  /**
+   * Select a component AND apply one of its derived scenarios — the canvas
+   * then renders exactly the state the pipeline verified. Unknown ids no-op.
+   */
+  selectScenario: (compId: string, scenarioId: string) => void
   reset: () => void
   logAction: (name: string, detail: string) => void
   clearActions: () => void
@@ -197,6 +202,24 @@ export function createModel(
     values.set({ ...values(), [id]: cur ? { ...cur, [key]: v } : { [key]: v } })
   }
   const reset = () => values.set({ ...values(), [selId()]: {} })
+
+  const selectScenario = (compId: string, scenarioId: string) => {
+    const comp = catalog.components.find((c) => c.id === compId)
+    const scenario = comp?.scenarios?.find((s) => s.id === scenarioId)
+    if (!comp || !scenario) return
+    selId.set(compId)
+    // REPLACE the component's stored values with the scenario's args (not a
+    // merge — a scenario is a complete pinned state, and stale edits bleeding
+    // through would render something the verdict never covered). Only args
+    // with a matching editable control land; the rest (e.g. a generated
+    // handler) are the render's business.
+    const editable = new Set(comp.controls.map((c) => c.key))
+    const next: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(scenario.args)) {
+      if (editable.has(key)) next[key] = value
+    }
+    values.set({ ...values(), [compId]: next })
+  }
 
   let actionSeq = 0
   const logAction = (name: string, detail: string) => {
@@ -349,6 +372,6 @@ export function createModel(
     brandId, dark, selId, query, zoomIdx, view, addon, actions,
     viewport, background, pseudo, outline, locale, pseudoLocale, permissionSet, permissions, queryState, queryResult,
     brand, theme, sel, vals, visibleGroups, noResults, a11y,
-    setValue, reset, logAction, clearActions, search, preview, searchRef, focusSearch, previewRef,
+    setValue, selectScenario, reset, logAction, clearActions, search, preview, searchRef, focusSearch, previewRef,
   }
 }

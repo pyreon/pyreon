@@ -14,13 +14,8 @@
  */
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import {
-  createModuleLoader,
-  discoverComponents,
-  discoverRocketstyle,
-  listComponentFiles,
-  loadAtlasConfig,
-} from '../discover'
+import { discoverComponents } from '../discover'
+import { runScan } from '../cli/run'
 import type { ComponentIntelligence } from '../core'
 import { atlasDevPlugin, devHtml, type RpcMethod } from './plugin'
 import type { CatalogEntrySource } from './catalog-module'
@@ -47,13 +42,6 @@ export interface DevServerHandle {
 }
 
 /**
- * Missing-Vite message.
- *
- * Written out rather than letting the raw resolution error surface: "Cannot
- * find package 'vite'" does not tell a library author why a workbench needed
- * one, and the fix (install it) is not obvious from the error.
- */
-/**
  * Does this source IMPORT the workbench package? Static `import … from`,
  * `export … from`, dynamic `import()` and `require()` specifiers only —
  * never a bare substring, which would count comments and strings as
@@ -64,6 +52,13 @@ export function importsAtlas(source: string): boolean {
   return /(?:from\s*|import\s*\(?\s*|require\s*\(\s*)['"]@pyreon\/atlas(?:['"/])/.test(source)
 }
 
+/**
+ * Missing-Vite message.
+ *
+ * Written out rather than letting the raw resolution error surface: "Cannot
+ * find package 'vite'" does not tell a library author why a workbench needed
+ * one, and the fix (install it) is not obvious from the error.
+ */
 const NO_VITE =
   '[Pyreon] atlas dev needs Vite, which is not installed in this project.\n' +
   '  Install it as a dev dependency:\n\n' +
@@ -75,46 +70,29 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
   const scanDir = options.dir ?? 'src'
   const scanRoot = resolve(root, scanDir)
 
-  const statics = discoverComponents({ cwd: root, dir: scanDir })
-
-  // The same project contracts `atlas scan` honors, honored HERE — the two
-  // commands looking at one project must not disagree about what it contains:
+  // The dev catalog IS the scan's catalog — ONE discovery owner. Running the
+  // full pipeline at boot buys the workbench everything the old static walk
+  // could not see: rocketstyle chains, the config's theme + wrapper, and the
+  // DERIVED SCENARIOS with their verify verdicts — so the sidebar shows the
+  // same states, with the same pass/fail labels, that `atlas scan` publishes.
+  // The scan's short-lived module loader closes before the dev server boots.
   //
-  //   - `atlas.config.ts` — its `theme` drives rocketstyle dimension
-  //     introspection below, and its `wrapper` (when exported) wraps every
-  //     canvas render (threaded to the generated module as the config PATH, so
-  //     the BROWSER bundle imports it through the project's own plugin chain).
-  //   - rocketstyle discovery — a rocketstyle chain is a call expression the
-  //     static scanner structurally cannot see, and it is the primary shape of
-  //     a Pyreon design system. Without this pass, `atlas dev` against exactly
-  //     the library Atlas is for showed "no components found".
-  //
-  // Both need the project's modules LOADED in Node (the same door `atlas scan`
-  // opens by default); the loader is a short-lived module pipeline closed as
-  // soon as discovery is done. A loader that fails to construct degrades to
-  // the static scan — stated on stderr, never silent.
-  let config: Awaited<ReturnType<typeof loadAtlasConfig>> = { config: {} }
-  let rocketstyle: ComponentIntelligence[] = []
+  // A pipeline that fails to run degrades to the static scan — stated on
+  // stderr, never silent.
+  let components: readonly ComponentIntelligence[]
+  let configPath: string | undefined
   try {
-    const loader = await createModuleLoader(root)
-    try {
-      config = await loadAtlasConfig(root, loader)
-      rocketstyle = await discoverRocketstyle(
-        listComponentFiles({ cwd: root, dir: scanDir }),
-        { loader, theme: config.config.theme },
-        new Set(statics.map((c) => c.name)),
-      )
-    } finally {
-      await loader.close()
-    }
+    const scan = await runScan({ cwd: root, dir: scanDir, write: false })
+    components = scan.graph.list()
+    configPath = scan.configPath
   } catch (err) {
     process.stderr.write(
-      `[Pyreon] atlas dev: discovery loader failed — rocketstyle components and atlas.config.ts are not applied: ${err instanceof Error ? err.message : String(err)}\n`,
+      `[Pyreon] atlas dev: the scan pipeline failed — falling back to the static walk (no rocketstyle discovery, no scenarios, no atlas.config.ts): ${err instanceof Error ? err.message : String(err)}\n`,
     )
+    components = discoverComponents({ cwd: root, dir: scanDir })
   }
-  if (config.error) process.stderr.write(`[Pyreon] atlas dev: ${config.error}\n`)
 
-  const entries: CatalogEntrySource[] = [...statics, ...rocketstyle]
+  const entries: CatalogEntrySource[] = [...components]
     // A component with no recorded source cannot be imported, so it cannot be
     // rendered. Including it would put an entry in the sidebar that blanks the
     // canvas when selected — worse than not listing it.
@@ -219,10 +197,10 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
         // The config file PATH, not the loaded value: the wrapper must wrap
         // the preview in the BROWSER, so the generated module imports it there
         // (through the project's own plugin chain) rather than serializing a
-        // Node-loaded function. Passed only when a wrapper actually exists —
-        // importing a wrapper-less config into the browser bundle buys nothing
-        // and risks dragging node-only code into it.
-        ...(config.config.wrapper && config.path ? { configPath: config.path } : {}),
+        // Node-loaded function. The scan sets it only when a wrapper actually
+        // exists — importing a wrapper-less config into the browser bundle
+        // buys nothing and risks dragging node-only code into it.
+        ...(configPath ? { configPath } : {}),
         ...(options.title !== undefined ? { title: options.title } : {}),
         ...(options.methods !== undefined ? { methods: options.methods } : {}),
       }),
