@@ -16,6 +16,7 @@ import { Show } from '@pyreon/core'
 // with shipped defaults), not the addons consts — the pickers must render what
 // the project configured.
 import { ADDON_TABS, PSEUDO_STATES } from '../addons'
+import { previewSubject } from '../a11y'
 import type { WorkbenchControl } from '../catalog'
 import * as C from '../chrome'
 import type { WorkbenchModel } from '../model'
@@ -96,6 +97,19 @@ function controlRow(m: WorkbenchModel, ctrl: WorkbenchControl) {
  * entry is a programming error worth failing loudly on rather than rendering a
  * blank tab.
  */
+/**
+ * Highlight addon, wired to the panel that has findings: hovering an a11y row
+ * outlines THE ELEMENT THE CHECKS RAN AGAINST, so a verdict points at a box on
+ * screen rather than at prose. Imperative outline write, cleared on leave —
+ * the same measurement-not-styling rationale as the Measure overlay.
+ */
+function highlightSubject(m: WorkbenchModel, on: boolean): void {
+  const subject = previewSubject(m.previewElement()) as HTMLElement | null
+  if (!subject) return
+  subject.style.outline = on ? '2px solid #ff2d55' : ''
+  subject.style.outlineOffset = on ? '2px' : ''
+}
+
 function tab(id: string): { id: string; title: string; hint: string } {
   const found = ADDON_TABS.find((t) => t.id === id)
   if (!found) throw new Error(`[Pyreon] atlas: no ADDON_TABS entry for built-in panel "${id}"`)
@@ -170,7 +184,11 @@ export function registerBuiltinPanels(): void {
           </C.A11ySummary>
           {() =>
             m.a11y().checks.map((ch) => (
-              <C.A11yRow>
+              <C.A11yRow
+                data-testid={`a11y-row-${ch.status}`}
+                onMouseEnter={() => highlightSubject(m, true)}
+                onMouseLeave={() => highlightSubject(m, false)}
+              >
                 <C.A11yIcon state={ch.status}>{ch.icon}</C.A11yIcon>
                 <C.A11yBody>
                   <C.A11yTitle>{ch.title}</C.A11yTitle>
@@ -299,6 +317,20 @@ export function registerBuiltinPanels(): void {
               onClick={() => m.outline.set(!m.outline())}
             >
               <C.Knob state={() => (m.outline() ? 'on' : 'off')} />
+            </C.Switch>
+          </C.CtrlRow>
+
+          <C.CtrlRow>
+            <C.CtrlHead>
+              <C.CtrlLabel>Measure</C.CtrlLabel>
+              <C.CtrlType>hover to inspect</C.CtrlType>
+            </C.CtrlHead>
+            <C.Switch
+              data-testid="measure-toggle"
+              state={() => (m.measure() ? 'on' : 'off')}
+              onClick={() => m.measure.set(!m.measure())}
+            >
+              <C.Knob state={() => (m.measure() ? 'on' : 'off')} />
             </C.Switch>
           </C.CtrlRow>
         </>

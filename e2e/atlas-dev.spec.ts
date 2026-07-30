@@ -133,6 +133,62 @@ test.describe('atlas dev', () => {
     await expect(page.getByTestId('canvas-preview').locator('button').first()).toHaveText('')
   })
 
+  test('the docs page carries Scenarios (as links into the canvas) and Source', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Chip', exact: true }).click()
+    await page.getByRole('button', { name: 'Docs', exact: true }).click()
+
+    // Scenarios block: each derived state with its verdict, doubling as a LINK.
+    const solid = page.getByTestId('docs-scenario-chip--variant-solid')
+    await expect(solid).toBeVisible()
+    await expect(solid.locator('[data-verdict]')).toHaveAttribute('data-verdict', 'ok')
+
+    // Source block: fetched over the dev channel, lazily.
+    await page.getByTestId('docs-source-load').click()
+    const src = page.getByTestId('docs-source')
+    await expect(src).toBeVisible()
+    await expect(src).toContainText('chipBase')
+
+    // Clicking a scenario jumps to the canvas IN that state (the links story).
+    await solid.click()
+    await expect(page.getByTestId('canvas-preview')).toBeVisible()
+    await expect(page.getByTestId('canvas-name')).toHaveText('Chip')
+  })
+
+  test('measure addon reports the hovered box dimensions from the real layout', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Button', exact: true }).click()
+    await page.getByTestId('addon-tab-canvas').click()
+    await page.getByTestId('measure-toggle').click()
+
+    await page.getByTestId('canvas-preview').locator('button').first().hover()
+    const label = page.getByTestId('measure-label')
+    await expect(label).toBeVisible()
+    // Real gBCR numbers, not a placeholder.
+    await expect(label).toHaveText(/^\d+ × \d+$/)
+
+    // Toggling off hides the overlay even without another pointer event.
+    await page.getByTestId('measure-toggle').click()
+    await expect(label).toBeHidden()
+  })
+
+  test('hovering an a11y finding highlights the element the checks ran against', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Button', exact: true }).click()
+    await page.getByRole('button', { name: 'A11y', exact: true }).click()
+
+    const subject = page.getByTestId('canvas-preview').locator(':scope > *').first()
+    const outline = () => subject.evaluate((el) => (el as HTMLElement).style.outline)
+    expect(await outline()).toBe('')
+
+    await page.getByTestId('a11y-row-ok').first().hover()
+    await expect.poll(outline).toContain('solid')
+
+    // Leaving the row clears it — a highlight that sticks is a defect.
+    await page.getByTestId('addon-tab-controls').hover()
+    await expect.poll(outline).toBe('')
+  })
+
   test('the sidebar is a nested, collapsible tree derived from directories', async ({ page }) => {
     // SearchField lives in `components/forms/` — the derived catalog files it
     // under `Components/Forms`, and the sidebar renders that as a nested,

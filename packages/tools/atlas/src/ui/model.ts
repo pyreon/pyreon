@@ -68,6 +68,10 @@ export interface WorkbenchModel {
   background: Signal<string>
   pseudo: Signal<PseudoId | null>
   outline: Signal<boolean>
+  /** Measure addon — hovering the preview shows the hovered box's dimensions. */
+  measure: Signal<boolean>
+  /** The live preview surface element (null before mount) — the a11y probe target's parent. */
+  previewElement: () => HTMLElement | null
   /** Active locale — threaded to `render` as `ctx.locale`, and drives `dir=`. */
   locale: Signal<string>
   // the resolved preset lists the pickers render from
@@ -195,6 +199,7 @@ export function createModel(
   )
   const pseudo = signal<PseudoId | null>(null)
   const outline = signal(false)
+  const measure = signal(false)
   const locale = signal<string>(
     locales.find((l) => l.id === initial.locale)?.id ?? locales[0]?.id ?? 'en',
   )
@@ -433,7 +438,8 @@ export function createModel(
   return {
     catalog, groups, total, title: opts.title ?? 'atlas', subtitle: opts.subtitle ?? '',
     brandId, dark, selId, query, zoomIdx, view, addon, actions,
-    viewport, background, pseudo, outline, locale, pseudoLocale, permissionSet, permissions, queryState, queryResult,
+    viewport, background, pseudo, outline, measure, locale, pseudoLocale, permissionSet, permissions, queryState, queryResult,
+    previewElement: () => previewEl,
     viewports, backgrounds, locales, roles, viewportPreset, backgroundPreset, dir,
     brand, theme, sel, vals, visibleGroups, tree, collapsed, toggleGroup, noResults, a11y,
     setValue, selectScenario, reset, logAction, clearActions, search, preview, searchRef, focusSearch, previewRef,
