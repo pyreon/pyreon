@@ -72,6 +72,30 @@ class RouterDemoInstrumentedTest {
             .assertIsDisplayed()
     }
 
+    // Core-UI row closure, ANDROID half of the iOS `test_linkNavigatesToAbout`
+    // (#2593). `<Link to="/about" data-testid="home-link-about">` emits
+    // `PyreonLink("/about") { navigate -> Box(Modifier.clickable { navigate() }
+    // .testTag("home-link-about")) { … } }`. The testTag on that Box is the
+    // #2593 Kotlin-half fix — <Link> is a special-case emitter that returned
+    // BEFORE the generic modifier tail, so the tag was dropped and the element
+    // was unselectable by onNodeWithTag at all (structurally unassertable).
+    // A reverted emit fix makes the tag query fail; the click then proves the
+    // clickable → navigate() → route-swap chain runs on-device.
+    @Test
+    fun linkNavigatesToAboutViaPyreonLink() {
+        composeRule
+            .onNodeWithTag("home-page")
+            .assertIsDisplayed()
+
+        composeRule
+            .onNodeWithTag("home-link-about")
+            .performClick()
+
+        composeRule
+            .onNodeWithTag("about-page")
+            .assertIsDisplayed()
+    }
+
     @Test
     fun navigatesToUserDetailWithParam() {
         // Tap "View user 42" → assert user-page renders + the

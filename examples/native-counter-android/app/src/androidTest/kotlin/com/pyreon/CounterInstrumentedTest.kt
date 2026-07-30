@@ -31,9 +31,11 @@
 package com.pyreon
 
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
@@ -447,6 +449,68 @@ class CounterInstrumentedTest {
         composeRule.onNodeWithText("File: idle").assertIsDisplayed()
         // The trigger exists and is reachable — the button the launcher backs.
         composeRule.onNodeWithText("Pick File").assertIsDisplayed()
+    }
+
+    // Core-UI row closure, ANDROID halves — the iOS device assertions for
+    // Toggle/Modal/Scroll landed in the Core-UI-row PR (#2593) with the
+    // Android halves disclosed as follow-ups; these are those follow-ups
+    // (Link's lives in RouterDemoInstrumentedTest — it needs the router app).
+    //
+    // Toggle → Compose `Switch`. TWO load-bearing claims:
+    //   (1) `onNodeWithTag("core-toggle")` finds the Switch AT ALL — the
+    //       `data-testid` used to be silently DROPPED by emitKotlinToggle
+    //       (a special-case emitter returning before the generic modifier
+    //       tail, the exact <Link> bug class from #2593 in its Toggle
+    //       sibling; the Swift half already chained its modifiers). A
+    //       reverted emit fix makes this line fail with "could not find
+    //       node with tag".
+    //   (2) a real coordinate click on the Switch flips the signal and the
+    //       derived state Text re-renders "switch off" → "switch on" —
+    //       Switch → onCheckedChange → signal write → recomposition.
+    // The state Text is asserted via its semantics text (assertTextEquals),
+    // which does not require on-screen visibility — the Counter column
+    // overflows shorter profiles and the ROOT is not scrollable, so
+    // visibility-dependent assertions on tail elements would be
+    // device-profile-dependent (the flake class this gate documents).
+    @Test
+    fun toggleFlipsObservableStateOnDevice() {
+        composeRule.onNodeWithTag("core-toggle-state").assertTextEquals("switch off")
+        composeRule.onNodeWithTag("core-toggle").performClick()
+        composeRule.onNodeWithTag("core-toggle-state").assertTextEquals("switch on")
+    }
+
+    // Modal → Compose `Dialog`, composed inside `if (sheetOpen) { … }` — so
+    // the body's EXISTENCE is the assertion: absent at launch (the branch is
+    // not composed), present after open (Dialog window mounts), absent again
+    // after close. This is the Android half of the iOS
+    // `test_modalPresentsAndDismisses`; note the Kotlin emit was ALREADY
+    // correct (Compose composes a Dialog node — no presentation-anchor
+    // requirement, unlike SwiftUI's `.sheet`, whose `EmptyView()` anchor bug
+    // #2593 fixed), so this test pins the working behaviour rather than a fix.
+    @Test
+    fun modalPresentsAndDismissesOnDevice() {
+        composeRule.onNodeWithTag("core-modal-body").assertDoesNotExist()
+        composeRule.onNodeWithTag("core-modal-open").performClick()
+        composeRule.onNodeWithTag("core-modal-body").assertIsDisplayed()
+        composeRule.onNodeWithTag("core-modal-close").performClick()
+        composeRule.onNodeWithTag("core-modal-body").assertDoesNotExist()
+    }
+
+    // Scroll → `Column(Modifier.verticalScroll(rememberScrollState()))`.
+    // `hasScrollAction()` asserts the verticalScroll modifier is LIVE in the
+    // semantics tree (a plain Column has no scroll action — a dropped
+    // modifier is visible), and the child stays individually queryable
+    // inside it. Existence-based on purpose: the Scroll section sits below
+    // the fold on the pixel_6 profile and the root column is not
+    // scrollable, so `assertIsDisplayed` here would encode the device
+    // profile, not the product.
+    @Test
+    fun scrollContainerExposesLiveScrollSemantics() {
+        composeRule.onNodeWithTag("core-scroll").assertExists().assert(hasScrollAction())
+        composeRule
+            .onNodeWithTag("core-scroll-child")
+            .assertExists()
+            .assertTextEquals("Scrolled child")
     }
 
     @Test
