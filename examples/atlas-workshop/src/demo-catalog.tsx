@@ -10,6 +10,7 @@
  * control back (a controlled toggle updating its own `on`).
  */
 import { cx, dim, el, hexToRgba, type InputEl, type T, txt, type WorkbenchCatalog } from '@pyreon/atlas/ui'
+import { z } from 'zod'
 
 // ── showcased components (variants / sizes / states dimensions) ─────────────
 // Hover/active live in rocketstyle's `hover` / `active` THEME KEYS, not as raw
@@ -152,6 +153,14 @@ export const demoCatalog: WorkbenchCatalog = {
     {
       id: 'badge', name: 'Badge', group: 'Foundations', status: 'stable',
       desc: 'Compact status and metadata labels.',
+      // The schema is the single declaration of this component's prop shape.
+      // The Schema panel derives controls from it and validates the live
+      // values against it, so the control list cannot drift from the contract.
+      schema: z.object({
+        label: z.string().min(1),
+        variant: z.enum(['soft', 'solid', 'outline']),
+        dot: z.boolean(),
+      }),
       controls: [
         { key: 'label', label: 'Label', type: 'text', default: 'New' },
         { key: 'variant', label: 'Variant', type: 'enum', options: ['soft', 'solid', 'outline'], default: 'soft' },

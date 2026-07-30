@@ -86,6 +86,8 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
 const HELP = `atlas — component workshop + catalog for the Pyreon ecosystem
 
 Usage:
+  atlas dev [dir]     start the workbench against <dir>'s real components —
+                      catalog derived from source, no stories to write
   atlas scan [dir]    discover components under <dir>/src, build a verified
                       catalog, and write atlas-catalog.json + atlas-agent-guide.md
   atlas --help        show this help
@@ -124,6 +126,33 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     )
     if (result.catalogPath) out(`  → ${result.catalogPath}\n  → ${result.guidePath}\n`)
     return 0
+  }
+
+  if (cmd === 'dev') {
+    const dir = rest.find((a) => !a.startsWith('-'))
+    const portArg = rest.find((a) => a.startsWith('--port='))
+    const port = portArg ? Number(portArg.slice('--port='.length)) : undefined
+    // Imported lazily: the dev server pulls in Vite, and `atlas scan` must keep
+    // working (and starting fast) in a project that has none.
+    const { startDevServer } = await import('../dev/server')
+    try {
+      const handle = await startDevServer({
+        cwd: dir ?? '.',
+        ...(port !== undefined ? { port } : {}),
+      })
+      if (handle.components === 0) {
+        // Not a hard failure — the server is up and says so — but silence here
+        // would look like a broken workbench rather than an empty scan.
+        err(`atlas: no components found under ${join(dir ?? '.', 'src')}. The workbench is running but empty.\n`)
+      }
+      out(`atlas dev: ${handle.components} component(s) → ${handle.url}\n`)
+      // Resolve never: the server owns the process until interrupted.
+      await new Promise<void>(() => {})
+      return 0
+    } catch (error) {
+      err(`${String((error as Error)?.message ?? error)}\n`)
+      return 1
+    }
   }
 
   err(`atlas: unknown command "${cmd}". Try \`atlas --help\`.\n`)

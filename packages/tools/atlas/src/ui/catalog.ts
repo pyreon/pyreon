@@ -99,6 +99,14 @@ export interface WorkbenchComponent {
    * plain VNode/atom is expected, not another accessor.
    */
   render: (props: Record<string, unknown>, ctx: WorkbenchRenderCtx) => VNodeChildAtom | VNodeChildAtom[]
+  /**
+   * Optional schema for this component's props.
+   *
+   * Any Standard Schema validates; control GENERATION additionally needs Zod,
+   * because reading a schema's fields is not part of that contract. The Schema
+   * panel states which of the two it could do rather than failing quietly.
+   */
+  schema?: unknown
 }
 
 export interface WorkbenchCatalog {

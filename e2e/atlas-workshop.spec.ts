@@ -594,3 +594,71 @@ test('data panel drives all four query states in the preview', async ({ browser 
   // and the panel states why isLoading is false here
   await expect(page.getByTestId('query-note')).toBeVisible()
 })
+
+/**
+ * Schema panel — controls derived from the schema, and a live verdict.
+ *
+ * Asserts the derived fields carry the REAL enum members, and that the verdict
+ * responds to the actual control values — a panel showing a constant "valid"
+ * would be indistinguishable from a broken one.
+ */
+test('schema panel derives fields and validates the live values', async ({ browser }) => {
+  const page = await open(browser)
+  await page.getByRole('button', { name: 'Badge' }).click()
+  await page.getByTestId('addon-tab-schema').click()
+
+  // Three fields, derived — not hand-listed.
+  const fields = page.locator('[data-testid="schema-field"]')
+  await expect(fields).toHaveCount(3)
+  // The enum carries its real members, which is the drift this removes.
+  // Scoped to the variant row: asserting across all three fields is a strict-
+  // mode violation, and `.first()` would silently pass on the wrong row.
+  await expect(
+    page.locator('[data-testid="schema-field"]').filter({ hasText: 'Variant' }),
+  ).toContainText('soft | solid | outline')
+
+  // Valid to start.
+  await expect(page.getByTestId('schema-verdict')).toContainText('valid')
+
+  // Emptying the label violates `min(1)` — the verdict must follow the values.
+  await page.getByTestId('addon-tab-controls').click()
+  // Selected by its PLACEHOLDER (the control's default), not `input[placeholder]`
+  // — the first such input on the page is the top-bar search box, so the
+  // generic selector edits the wrong field and the assertion below would then
+  // pass or fail for reasons unrelated to the control.
+  // The box now shows the live value, so clearing it is a real edit.
+  await page.locator('input[placeholder="New"]').fill('')
+  await page.getByTestId('addon-tab-schema').click()
+  await expect(page.getByTestId('schema-verdict')).toContainText(/issue\(s\)/)
+  await expect(page.locator('[data-testid="schema-issue"]').first()).toContainText('label')
+})
+
+test('schema panel says so when a scenario has no schema', async ({ browser }) => {
+  const page = await open(browser)
+  await page.getByRole('button', { name: 'Project list' }).click()
+  await page.getByTestId('addon-tab-schema').click()
+  await expect(page.getByTestId('schema-none')).toBeVisible()
+})
+
+/**
+ * The Controls text input must reflect the LIVE value, not just show the
+ * default as a placeholder. It was write-only: type, switch component, come
+ * back, and the box was empty while the preview still rendered what you typed.
+ */
+test('a text control shows the live value and survives a component switch', async ({ browser }) => {
+  const page = await open(browser)
+  await page.getByRole('button', { name: 'Badge' }).click()
+  await page.getByTestId('addon-tab-controls').click()
+
+  const box = page.locator('input[placeholder="New"]')
+  // Starts populated with the default the preview is actually rendering.
+  await expect(box).toHaveValue('New')
+
+  await box.fill('Shipped')
+  await expect(page.locator('[data-testid="canvas-preview"]')).toContainText('Shipped')
+
+  // Switch away and back — the box must still agree with the preview.
+  await page.getByRole('button', { name: 'Project list' }).click()
+  await page.getByRole('button', { name: 'Badge' }).click()
+  await expect(page.locator('input[placeholder="New"]')).toHaveValue('Shipped')
+})
