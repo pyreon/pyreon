@@ -108,9 +108,9 @@ export const demoCatalog: WorkbenchCatalog = {
               if (!root.querySelector('button')) throw new Error('no button rendered')
             })
             await step('click it three times', () => {
-              const el = root.querySelector('button')!
+              const target = root.querySelector('button')!
               for (let i = 0; i < 3; i += 1) {
-                el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+                target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
               }
             })
           },
