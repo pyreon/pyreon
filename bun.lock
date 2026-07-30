@@ -2135,7 +2135,7 @@
     },
     "packages/tools/atlas": {
       "name": "@pyreon/atlas",
-      "version": "0.0.0",
+      "version": "0.50.0",
       "bin": {
         "atlas": "./bin/atlas.js",
       },
@@ -2158,6 +2158,7 @@
       },
       "devDependencies": {
         "@pyreon/compiler": "workspace:*",
+        "@pyreon/manifest": "workspace:*",
         "@pyreon/query": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vite-plugin": "workspace:*",

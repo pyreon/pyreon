@@ -27,6 +27,12 @@ export default defineNodeConfig({
   // move that logic into `model.ts`/`catalog.ts` (where it gets unit-tested)
   // instead of widening this list.
   coverageExclude: [
+    // gen-docs data, no logic (scaffold-recipe convention).
+    'src/manifest.ts',
+    // Chromium-driving runner — proven by the atlas-verify-browser e2e suite
+    // (subprocess against the workshop); its pure logic (verdict merge, pixel
+    // ratio) IS unit-tested in src/verify-browser/tests/.
+    'src/verify-browser/runner.ts',
     'src/ui/Workbench.tsx',
     'src/ui/bases.tsx',
     'src/ui/kit.ts',

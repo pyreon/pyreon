@@ -2866,6 +2866,56 @@ import { Provider } from "@pyreon/elements"
 >
 > **Portal nests a per-instance wrapper**: `Portal` renders into its OWN wrapper element inside the DOMLocation (default `document.body`), not directly as a body child. DOM assertions must traverse one extra level; multiple Portals do not share a container.
 
+## @pyreon/atlas — Component Workbench
+
+Atlas inverts Storybook’s authoring-first model: your components and their TypeScript types are the source of truth, and Atlas DERIVES the catalog — controls inferred from props, scenarios generated from variant axes (rocketstyle dimensions included), and a five-check verify verdict per scenario (a11y, interaction, leak, reactivity coverage, snapshot). `atlas scan` writes `atlas-catalog.json` + `atlas-agent-guide.md` (the machine-readable surface an AI assistant consumes), `atlas dev` serves a zero-config workbench over the real Vite compiler, and `atlas verify-browser` runs the browser half of verification in real Chromium. Authoring is opt-in, not required: an `atlas.config.ts` can add a theme, a wrapper, presets (viewports / locales / roles), and authored scenarios with `play` interaction scripts.
+
+```typescript
+// atlas.config.ts — ALL of this is optional; scan/dev work with none of it.
+// Named exports, plain values, no JSX (the scan imports this file under
+// whatever runtime it runs — see the workshop's atlas.config.ts).
+export const presets = {
+  viewports: [
+    { id: 'full', label: 'Full', width: null },
+    { id: 'kiosk', label: 'Kiosk', width: 900 },
+  ],
+  locales: [
+    { id: 'en', label: 'English' },
+    { id: 'ar', label: 'Arabic', dir: 'rtl' as const },
+  ],
+  roles: [
+    { id: 'anonymous', label: 'Anonymous', hint: 'nothing granted' },
+    { id: 'ops', label: 'Ops', grants: ['posts.delete'] },
+  ],
+}
+
+export const scenarios = {
+  Button: [
+    {
+      name: 'Triple click',
+      args: { label: 'Storm target' },
+      play: async ({ root, step }: { root: Element; step: (n: string, r: () => void | Promise<void>) => Promise<void> }) => {
+        await step('find the button', () => {
+          if (!root.querySelector('button')) throw new Error('no button')
+        })
+        await step('click it three times', () => {
+          const target = root.querySelector<HTMLButtonElement>('button')!
+          for (let i = 0; i < 3; i += 1) target.click()
+        })
+      },
+    },
+  ],
+}
+
+// A project can also export `theme` (resolves rocketstyle dimension axes)
+// and `wrapper` (the providers your components genuinely need to mount).
+
+// Then:
+//   bunx atlas scan .            → atlas-catalog.json + atlas-agent-guide.md
+//   bunx atlas dev .             → the workbench at localhost:5210
+//   bunx atlas verify-browser .  → coverage + snapshot verdicts in Chromium
+```
+
 ## @pyreon/lint — Pyreon-specific Linter
 
 Pyreon-specific lint rules powered by `oxc-parser`. Covers reactivity (14), JSX (11), lifecycle (6), performance (6), SSR (5), architecture (10), store (3), form (4), styling (4), hooks (3), accessibility (3), router (5), SSG (3), frontend (12), query (1), rx (1), i18n (1), storage (1) — 97 rules total. Programmatic API (`lint`, `lintFile`), CLI (`pyreon-lint`), watch mode (fs.watch + 100ms debounce + AstCache), LSP server, and `.pyreonlintrc.json` config with per-rule options via ESLint-style tuple form. The `frontend`/`query`/`rx`/`i18n`/`storage` categories + the `form`/`router` opt-in rules are **opt-in best-practice rules** (`meta.optIn`): off in the `recommended`/`strict`/`app`/`lib` presets, enabled wholesale by the `best-practices` preset or per-rule config. Library-scoped opt-in rules auto-gate on the project’s `package.json` dependencies (a project that doesn’t use `@pyreon/query` never sees query rules). Notable rules: `pyreon/no-process-dev-gate` (auto-fixable), `pyreon/query-options-as-function` (auto-fixable — wraps the options object literal in `() => (...)`; also a proactive MCP `validate` detector), `pyreon/require-img-alt` / `pyreon/img-requires-dimensions` / `pyreon/no-discarded-optimize-fields` (a11y + CLS — the last flags a raw `<img src={x.src}>` that discards a `?optimize` descriptor), `pyreon/heading-order` (a11y — flags a skipped heading level), `pyreon/color-contrast` (a11y — literal-hex contrast pairs), `pyreon/i18n-prefer-trans-for-rich-jsx`, `pyreon/prefer-typed-search-params`.

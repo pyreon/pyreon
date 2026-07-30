@@ -9,6 +9,10 @@ export const REFERENCE_GROUPS: SidebarGroup[] = [
     "collapsed": true,
     "items": [
       {
+        "text": "atlas",
+        "slug": "reference/atlas"
+      },
+      {
         "text": "attrs",
         "slug": "reference/attrs"
       },
