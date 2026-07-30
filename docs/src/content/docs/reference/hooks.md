@@ -1,17 +1,17 @@
 ---
 title: "Signal-Based Hooks — API Reference"
-description: "51 signal-based hooks: state (useToggle/useCounter/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocus"
+description: "52 signal-based hooks: state (useToggle/useCounter/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocus"
 ---
 
 # @pyreon/hooks — API Reference
 
 > **Generated** from `hooks`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [hooks](/docs/hooks).
 
-Signal-based hooks for Pyreon — 51 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.
+Signal-based hooks for Pyreon — 52 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.
 
 ## Features
 
-- 51 signal-based hooks across 7 categories
+- 52 signal-based hooks across 7 categories
 - State: useToggle, useCounter, usePrevious, useLatest, useControllableState
 - DOM: useEventListener, useClickOutside, useFocus, useHover, useFocusTrap, useFocusReturn, useInertOthers, useElementSize, useWindowResize, useWindowScroll, useScrollLock, useIntersection, useInfiniteScroll
 - Responsive: useBreakpoint, useMediaQuery, useColorScheme, useSizeClass, useReducedMotion
@@ -109,6 +109,7 @@ const idle = useIdle(30_000)               // Signal<boolean> — true after 30s
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
+| [`useSecureStorage`](#usesecurestorage) | hook | The imperative secret store for auth tokens / API keys / PII — the cross-platform boundary secrets must go through inste |
 | [`useControllableState`](#usecontrollablestate) | hook | Canonical controlled/uncontrolled state pattern. |
 | [`useEventListener`](#useeventlistener) | hook | Register a DOM event listener with automatic cleanup on unmount. |
 | [`useClickOutside`](#useclickoutside) | hook | Fire a callback when the user clicks outside the referenced element. |
@@ -157,6 +158,38 @@ const idle = useIdle(30_000)               // Signal<boolean> — true after 30s
 | [`useBiometrics`](#usebiometrics) | hook | A biometric authentication gate — Face ID / Touch ID (iOS `LAContext`), BiometricPrompt (Android), feature-detected on t |
 
 ## API
+
+### useSecureStorage `hook`
+
+```ts
+() => SecureStorage — { write(key, value): boolean; read(key): string | null; remove(key): boolean; contains(key): boolean }
+```
+
+The imperative secret store for auth tokens / API keys / PII — the cross-platform boundary secrets must go through instead of `useStorage` (localStorage is plaintext + same-origin-script-readable). KEY-FIRST: `write(key, value)`. Per-platform backing: iOS Keychain, Android AndroidKeyStore AES-GCM over app-private storage (both encrypted at rest, survive relaunch), web a MODULE-SCOPED in-memory store (the web has no OS secret store; persisting secrets to localStorage would be the exact bug this hook prevents — web secrets are process-lifetime only, fail closed). Imperative by design, NOT a reactive signal: a secret is fetched at an auth boundary, not rendered as live UI. The store is app-wide — every `useSecureStorage()` call sees the same secrets.
+
+**Example**
+
+```tsx
+const secrets = useSecureStorage()
+const signIn = async () => {
+  const token = await api.login()
+  secrets.write('auth-token', token) // KEY first
+}
+const authed = () => fetch('/api/me', { headers: { Authorization: 'Bearer ' + (secrets.read('auth-token') ?? '') } })
+const signOut = () => secrets.remove('auth-token')
+```
+
+**Common mistakes**
+
+- Calling `write(value, key)` — the API is KEY-FIRST (`write('auth-token', token)`); the old value-first order was removed because a positional native lowering would compile with the arguments crossed
+- Storing a bearer/refresh token in `useStorage` or localStorage instead — plaintext on disk, readable by any same-origin script; that is the bug this hook exists to prevent
+- Expecting web secrets to survive a reload — the web store is deliberately in-memory (no OS secret store exists); persist web sessions via httpOnly cookies / your auth provider
+- Wrapping `read()` in a signal and rendering it as live UI — the store is imperative; fetch at the auth boundary, keep UI state in ordinary signals
+- Expecting `remove()` to report a missing key — delete is idempotent (true even when absent), matching Keychain semantics
+
+**See also:** `useStorage (in @pyreon/storage — for NON-secret app state)` · `useDatabase` · `useFetch`
+
+---
 
 ### useControllableState `hook`
 

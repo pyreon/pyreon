@@ -260,4 +260,52 @@ final class PyreonRouterDemoUITests: XCTestCase {
         )
     }
 
+    // Storage row — useSecureStorage device-proven: the secret SURVIVES a
+    // genuine terminate + relaunch, which only the Keychain can explain.
+    //
+    // The home page's `onMount` seeds the rendered value from
+    // `secrets.read("demo-secret")` — on the relaunched process that read is
+    // the ONLY source of "s3cret" (the signal's initial is "none"), so the
+    // post-relaunch assertion proves the write landed in the real Keychain
+    // (`KeychainSecureBackend`, SecItemAdd/SecItemCopyMatching), not an
+    // in-memory map. Bisect: swapping the emitted default for
+    // `InMemorySecureBackend` makes exactly the post-relaunch half fail
+    // ("Secret: none") while the same-process round trip still passes —
+    // the discriminator between "works" and "persists".
+    //
+    // First-run tolerant BY CONSTRUCTION: the Keychain outlives even app
+    // reinstalls, so the pre-tap value may be "none" (fresh Simulator) or
+    // "s3cret" (any prior run) — the test never asserts the initial state,
+    // only post-tap and post-relaunch.
+    func test_secureStorageWriteSurvivesRelaunch() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.staticTexts["secure-value"].waitForExistence(timeout: 30),
+            "secure-value missing — the secure-storage section did not render"
+        )
+        app.buttons["secure-save"].tap()
+        // The save handler reads BACK through the store, so this label proves
+        // the same-process write→read round trip.
+        XCTAssertTrue(
+            app.staticTexts["Secret: s3cret"].waitForExistence(timeout: 10),
+            "post-save read-back did not render s3cret — the write→read "
+                + "round trip through PyreonSecureStorage failed"
+        )
+
+        app.terminate()
+        app.launch()
+
+        XCTAssertTrue(
+            app.staticTexts["secure-value"].waitForExistence(timeout: 30),
+            "secure-value missing after relaunch"
+        )
+        XCTAssertTrue(
+            app.staticTexts["Secret: s3cret"].waitForExistence(timeout: 10),
+            "secret did not survive terminate+relaunch — the emitted default "
+                + "is not actually Keychain-backed"
+        )
+    }
+
 }

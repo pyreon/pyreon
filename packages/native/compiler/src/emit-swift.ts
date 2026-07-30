@@ -290,6 +290,15 @@ const SWIFT_SERVICE_ARG_LABELS: Record<
   string,
   Record<string, readonly (string | null)[]>
 > = {
+  secureStorage: {
+    // write(key:value:) — key FIRST everywhere (web/Swift/Kotlin); the
+    // labels make a crossed positional call uncompilable rather than a
+    // silent wrong-key write (both parameters are String).
+    write: ['key', 'value'],
+    read: ['key'],
+    remove: ['key'],
+    contains: ['key'],
+  },
   map: {
     // moveTo(latitude:longitude:zoom:) — zoom is defaulted, so BOTH the
     // 2-argument and 3-argument calls are legal and both must be labelled.
@@ -2013,6 +2022,11 @@ function emitSwiftDecl(
   }
   if (d.kind === 'database') {
     return `@State private var ${swiftIdent(d.name)} = PyreonDatabase()`
+  }
+  if (d.kind === 'secureStorage') {
+    // Keychain-backed default (`KeychainSecureBackend`) — persists across
+    // relaunches on its own; no Context equivalent needed on iOS.
+    return `@State private var ${swiftIdent(d.name)} = PyreonSecureStorage()`
   }
   if (d.kind === 'push') {
     return `@State private var ${swiftIdent(d.name)} = PyreonPushNotifications()`

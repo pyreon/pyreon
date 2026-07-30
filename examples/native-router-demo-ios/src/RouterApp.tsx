@@ -15,15 +15,40 @@
 // the Android example would share via build script. ONE file, THREE
 // targets — provable by `ls` + `diff`.
 
+import { onMount } from '@pyreon/core'
+import { useSecureStorage } from '@pyreon/hooks'
 import { Button, Heading, Inline, Layer, Link, Spacer, Stack, Text } from '@pyreon/primitives'
+import { signal } from '@pyreon/reactivity'
 import { createRouter, useNavigate, RouterProvider, RouterView } from '@pyreon/router'
 
 function HomePage() {
   const navigate = useNavigate()
+  // Storage-row proof — useSecureStorage, the encrypted secret store
+  // (iOS Keychain / Android Keystore AES-GCM / web in-memory). The mounted
+  // read seeds the status from the STORE, so after a relaunch the rendered
+  // value can only come from the platform secret store — that read is what
+  // the iOS terminate+relaunch device test asserts. The save handler reads
+  // BACK through the store (not the value it just wrote), so the rendered
+  // "s3cret" proves the write→read round trip, not a signal echo.
+  const secrets = useSecureStorage()
+  const secretStatus = signal<string>('none')
+  onMount(() => {
+    secretStatus.set(secrets.read('demo-secret') ?? 'none')
+  })
   return (
     <Stack gap={3} padding={4} data-testid="home-page">
       <Text>Home</Text>
       <Text>Welcome to the Pyreon multiplatform router demo.</Text>
+      <Text data-testid="secure-value">Secret: {secretStatus()}</Text>
+      <Button
+        onPress={() => {
+          secrets.write('demo-secret', 's3cret')
+          secretStatus.set(secrets.read('demo-secret') ?? 'none')
+        }}
+        data-testid="secure-save"
+      >
+        Save Secret
+      </Button>
       <Inline gap={2}>
         <Button onPress={() => navigate('/about')}>Go to About</Button>
         <Button onPress={() => navigate('/users/42')}>View user 42</Button>

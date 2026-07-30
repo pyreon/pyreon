@@ -56,6 +56,7 @@ const USAGES: ReadonlyArray<readonly [string, string, string]> = [
   ['useLinking', '@pyreon/hooks', 'const l = useLinking()'],
   ['useMap', '@pyreon/hooks', 'const m = useMap()'],
   ['useNavigate', '@pyreon/router', 'const nav = useNavigate()'],
+  ['useSecureStorage', '@pyreon/hooks', "const vault = useSecureStorage(); const save = () => { vault.write('auth', 'tok') }"],
   ['useNotifications', '@pyreon/hooks', 'const n = useNotifications()'],
   ['useOnline', '@pyreon/hooks', 'const o = useOnline()'],
   ['useParams', '@pyreon/router', 'const { id } = useParams()'],
@@ -82,13 +83,6 @@ const EXCLUDED: ReadonlyMap<string, string> = new Map([
   [
     'useLoaderData',
     'already warns — a documented, disclosed gap rather than a silent one.',
-  ],
-  [
-    'useSecureStorage',
-    'in the allowlist deliberately, to suppress the GENERIC "no native lowering" ' +
-      'warning so its own SPECIFIC one shows instead: the Kotlin secret store needs ' +
-      'an app-injected EncryptedSharedPreferences backend, so PMTC cannot construct ' +
-      'it. That is a disclosed deferral with a named alternative, not a silent gap.',
   ],
 ])
 

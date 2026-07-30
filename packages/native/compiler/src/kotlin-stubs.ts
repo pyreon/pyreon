@@ -1219,6 +1219,19 @@ class PyreonDatabase(backend: PyreonDatabaseBackend) {
   fun count(collection: String): Int = 0
 }
 
+// PyreonSecureStorage — the secret store, mirrored key-first (the runtime's
+// write(key, value); value-first was removed as a crossed-positional hazard).
+interface PyreonSecureBackend
+@Suppress("FunctionName")
+fun PyreonSecureStorage(context: Context): PyreonSecureStorage =
+  PyreonSecureStorage(object : PyreonSecureBackend {})
+class PyreonSecureStorage(backend: PyreonSecureBackend) {
+  fun write(key: String, value: String): Boolean = true
+  fun read(key: String): String? = null
+  fun remove(key: String): Boolean = true
+  fun contains(key: String): Boolean = false
+}
+
 class PyreonPushNotification(
   val title: String? = null,
   val body: String? = null,

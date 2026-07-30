@@ -1616,6 +1616,17 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       `val ${id} = remember { PyreonDatabase(${id}Ctx) }`,
     ].join('\n  ')
   }
+  if (d.kind === 'secureStorage') {
+    // `PyreonSecureStorage(context)` — the KeystoreSecureBackend factory
+    // (AndroidKeyStore AES-GCM over app-private storage). Context threaded
+    // exactly as `useDatabase` does; a bare constructor deliberately does
+    // not exist (a secret store must never silently fall back to memory).
+    const id = kotlinIdent(d.name)
+    return [
+      `val ${id}Ctx = LocalContext.current`,
+      `val ${id} = remember { PyreonSecureStorage(${id}Ctx) }`,
+    ].join('\n  ')
+  }
   if (d.kind === 'push') {
     return `val ${kotlinIdent(d.name)} = remember { PyreonPushNotifications() }`
   }

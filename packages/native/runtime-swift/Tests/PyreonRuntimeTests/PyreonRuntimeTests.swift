@@ -1108,7 +1108,7 @@ final class PyreonRuntimeTests: XCTestCase {
         let store = PyreonSecureStorage(backend: InMemorySecureBackend())
         XCTAssertNil(store.read(key: "auth"))
         XCTAssertFalse(store.contains(key: "auth"))
-        XCTAssertTrue(store.write("ey.token", key: "auth"))
+        XCTAssertTrue(store.write(key: "auth", value: "ey.token"))
         XCTAssertEqual(store.read(key: "auth"), "ey.token")
         XCTAssertTrue(store.contains(key: "auth"))
     }
@@ -1116,15 +1116,15 @@ final class PyreonRuntimeTests: XCTestCase {
     /// `write` overwrites an existing secret.
     func testPyreonSecureStorageOverwrite() throws {
         let store = PyreonSecureStorage(backend: InMemorySecureBackend())
-        store.write("first", key: "k")
-        store.write("second", key: "k")
+        store.write(key: "k", value: "first")
+        store.write(key: "k", value: "second")
         XCTAssertEqual(store.read(key: "k"), "second")
     }
 
     /// `remove` deletes; a removed key reads nil + contains false.
     func testPyreonSecureStorageRemove() throws {
         let store = PyreonSecureStorage(backend: InMemorySecureBackend())
-        store.write("secret", key: "k")
+        store.write(key: "k", value: "secret")
         XCTAssertTrue(store.contains(key: "k"))
         XCTAssertTrue(store.remove(key: "k"))
         XCTAssertNil(store.read(key: "k"))
@@ -1141,8 +1141,8 @@ final class PyreonRuntimeTests: XCTestCase {
     /// Multiple keys are isolated — removing one leaves the others.
     func testPyreonSecureStorageMultipleKeysIsolated() throws {
         let store = PyreonSecureStorage(backend: InMemorySecureBackend())
-        store.write("a-val", key: "a")
-        store.write("b-val", key: "b")
+        store.write(key: "a", value: "a-val")
+        store.write(key: "b", value: "b-val")
         XCTAssertEqual(store.read(key: "a"), "a-val")
         XCTAssertEqual(store.read(key: "b"), "b-val")
         store.remove(key: "a")

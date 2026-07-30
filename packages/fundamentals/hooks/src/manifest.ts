@@ -14,9 +14,9 @@ export default defineManifest({
   name: '@pyreon/hooks',
   title: 'Signal-Based Hooks',
   tagline:
-    '51 signal-based hooks: state (useToggle/useCounter/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocusTrap/useFocusReturn/useInertOthers/useElementSize/useWindowResize/useWindowScroll/useScrollLock/useIntersection/useInfiniteScroll), responsive (useBreakpoint/useMediaQuery/useColorScheme/useSizeClass/useReducedMotion), timing (useDebouncedValue/useDebouncedCallback/useThrottledCallback/useInterval/useTimeout/useTimeAgo), interaction (useClipboard/useHaptics/useShare/useLinking/useNotifications/useBiometrics/useImagePicker/useFilePicker/useDialog/useKeyboard/useOnline/useAppState/useDocumentVisibility/useIdle), data (useFetch/useDatabase/useGeolocation/useMap/useWebSocket), composition (useMergedRef/useUpdateEffect/useIsomorphicLayoutEffect)',
+    '52 signal-based hooks: state (useToggle/useCounter/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocusTrap/useFocusReturn/useInertOthers/useElementSize/useWindowResize/useWindowScroll/useScrollLock/useIntersection/useInfiniteScroll), responsive (useBreakpoint/useMediaQuery/useColorScheme/useSizeClass/useReducedMotion), timing (useDebouncedValue/useDebouncedCallback/useThrottledCallback/useInterval/useTimeout/useTimeAgo), interaction (useClipboard/useHaptics/useShare/useLinking/useNotifications/useBiometrics/useImagePicker/useFilePicker/useDialog/useKeyboard/useOnline/useAppState/useDocumentVisibility/useIdle), data (useFetch/useDatabase/useGeolocation/useMap/useWebSocket/useSecureStorage), composition (useMergedRef/useUpdateEffect/useIsomorphicLayoutEffect)',
   description:
-    'Signal-based hooks for Pyreon — 51 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.',
+    'Signal-based hooks for Pyreon — 52 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.',
   category: 'universal',
   longExample: `import {
   // State
@@ -95,7 +95,7 @@ const { position } = useWindowScroll()     // Signal<{ x, y }> scroll offset + s
 const visibility = useDocumentVisibility()  // Signal<'visible' | 'hidden'> — pause work when hidden
 const idle = useIdle(30_000)               // Signal<boolean> — true after 30s of no activity`,
   features: [
-    '51 signal-based hooks across 7 categories',
+    '52 signal-based hooks across 7 categories',
     'State: useToggle, useCounter, usePrevious, useLatest, useControllableState',
     'DOM: useEventListener, useClickOutside, useFocus, useHover, useFocusTrap, useFocusReturn, useInertOthers, useElementSize, useWindowResize, useWindowScroll, useScrollLock, useIntersection, useInfiniteScroll',
     'Responsive: useBreakpoint, useMediaQuery, useColorScheme, useSizeClass, useReducedMotion',
@@ -107,6 +107,28 @@ const idle = useIdle(30_000)               // Signal<boolean> — true after 30s
     'Signal-native return shapes — compose with `effect` / `computed` without re-bridging',
   ],
   api: [
+    {
+      name: 'useSecureStorage',
+      kind: 'hook',
+      signature: '() => SecureStorage — { write(key, value): boolean; read(key): string | null; remove(key): boolean; contains(key): boolean }',
+      summary:
+        'The imperative secret store for auth tokens / API keys / PII — the cross-platform boundary secrets must go through instead of `useStorage` (localStorage is plaintext + same-origin-script-readable). KEY-FIRST: `write(key, value)`. Per-platform backing: iOS Keychain, Android AndroidKeyStore AES-GCM over app-private storage (both encrypted at rest, survive relaunch), web a MODULE-SCOPED in-memory store (the web has no OS secret store; persisting secrets to localStorage would be the exact bug this hook prevents — web secrets are process-lifetime only, fail closed). Imperative by design, NOT a reactive signal: a secret is fetched at an auth boundary, not rendered as live UI. The store is app-wide — every `useSecureStorage()` call sees the same secrets.',
+      example: `const secrets = useSecureStorage()
+const signIn = async () => {
+  const token = await api.login()
+  secrets.write('auth-token', token) // KEY first
+}
+const authed = () => fetch('/api/me', { headers: { Authorization: 'Bearer ' + (secrets.read('auth-token') ?? '') } })
+const signOut = () => secrets.remove('auth-token')`,
+      mistakes: [
+        "Calling `write(value, key)` — the API is KEY-FIRST (`write('auth-token', token)`); the old value-first order was removed because a positional native lowering would compile with the arguments crossed",
+        'Storing a bearer/refresh token in `useStorage` or localStorage instead — plaintext on disk, readable by any same-origin script; that is the bug this hook exists to prevent',
+        'Expecting web secrets to survive a reload — the web store is deliberately in-memory (no OS secret store exists); persist web sessions via httpOnly cookies / your auth provider',
+        'Wrapping `read()` in a signal and rendering it as live UI — the store is imperative; fetch at the auth boundary, keep UI state in ordinary signals',
+        'Expecting `remove()` to report a missing key — delete is idempotent (true even when absent), matching Keychain semantics',
+      ],
+      seeAlso: ['useStorage (in @pyreon/storage — for NON-secret app state)', 'useDatabase', 'useFetch'],
+    },
     {
       name: 'useControllableState',
       kind: 'hook',

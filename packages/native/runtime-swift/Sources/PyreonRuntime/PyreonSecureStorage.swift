@@ -14,10 +14,16 @@
 //
 // `PyreonSecureStorage` is the imperative secret API:
 //
-//     let store = PyreonSecureStorage()      // Keychain-backed by default
-//     store.write("ey…token", key: "auth")   // → Keychain
-//     let token = store.read(key: "auth")     // String?
+//     let store = PyreonSecureStorage()          // Keychain-backed by default
+//     store.write(key: "auth", value: "ey…token") // → Keychain (KEY first)
+//     let token = store.read(key: "auth")          // String?
 //     store.remove(key: "auth")
+//
+// KEY-FIRST (breaking, pre-1.0): the original `write(_ value:key:)` order
+// was a live hazard for the PMTC emit — both parameters are String, so a
+// positional lowering of the natural TS call `sec.write('auth', token)`
+// would have compiled with the arguments crossed. Key-first everywhere
+// (web, Swift, Kotlin) makes the crossed call unrepresentable.
 //
 // It is imperative (read/write/remove), NOT a reactive view-state
 // primitive — a secret is fetched at an auth boundary, not rendered as
@@ -38,10 +44,10 @@
 //
 // ## Relationship to the PMTC compiler emit
 //
-// A later emit pass detects `useSecureStorage('key')` and emits a
-// `PyreonSecureStorage` instance; reads/writes in the component body
-// become calls on this facade. Until that lands (the per-service-port
-// follow-up), this is usable by hand-written SwiftUI code.
+// The PMTC emit lowers `const sec = useSecureStorage()` to a
+// `PyreonSecureStorage()` stored property; `sec.write/read/remove/contains`
+// in the component body become labelled calls on this facade
+// (SWIFT_SERVICE_ARG_LABELS in emit-swift.ts supplies key:/value:).
 
 import Foundation
 import Security
@@ -51,9 +57,10 @@ import Security
 /// deliberately tiny + synchronous (mirrors the web `StorageBackend`):
 /// secrets are small strings, so a sync API is honest + simplest.
 public protocol PyreonSecureBackend {
-    /// Persist `value` at `key`, overwriting any existing entry. Returns
-    /// true on success.
-    @discardableResult func write(_ value: String, key: String) -> Bool
+    /// Persist `value` at `key` (KEY FIRST — the cross-platform contract;
+    /// see the header). Overwrites any existing entry. Returns true on
+    /// success.
+    @discardableResult func write(key: String, value: String) -> Bool
     /// Read the secret at `key`, or `nil` if absent / unreadable.
     func read(key: String) -> String?
     /// Delete the secret at `key`. Returns true on success OR if the key
@@ -70,7 +77,7 @@ public final class InMemorySecureBackend: PyreonSecureBackend {
     public init() {}
 
     @discardableResult
-    public func write(_ value: String, key: String) -> Bool {
+    public func write(key: String, value: String) -> Bool {
         store[key] = value
         return true
     }
@@ -109,7 +116,7 @@ public final class KeychainSecureBackend: PyreonSecureBackend {
     }
 
     @discardableResult
-    public func write(_ value: String, key: String) -> Bool {
+    public func write(key: String, value: String) -> Bool {
         guard let data = value.data(using: .utf8) else { return false }
         // Delete-then-add for an idempotent overwrite (SecItemUpdate needs
         // a separate attributes dict; delete+add is simpler + atomic enough
@@ -153,10 +160,11 @@ public final class PyreonSecureStorage {
         self.backend = backend
     }
 
-    /// Persist `value` at `key` (overwrites). Returns true on success.
+    /// Persist `value` at `key` (KEY FIRST). Overwrites. Returns true on
+    /// success.
     @discardableResult
-    public func write(_ value: String, key: String) -> Bool {
-        backend.write(value, key: key)
+    public func write(key: String, value: String) -> Bool {
+        backend.write(key: key, value: value)
     }
 
     /// Read the secret at `key`, or `nil` if absent / unreadable.

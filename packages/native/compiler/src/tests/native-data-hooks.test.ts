@@ -13,7 +13,7 @@
 // Mirrors the useOnline / usePermissions reactive-container template. The
 // lifecycle auto-start (geolocation.start / websocket.connect / push.start on
 // mount) is a documented follow-up — the binding + reactive reads ship now.
-// `useSecureStorage` is deferred (Kotlin needs an app-injected backend) —
+// `useSecureStorage` lowers on both targets (Keychain / Keystore defaults) —
 // it warns + drops.
 
 import { describe, expect, it } from 'vitest'
@@ -126,14 +126,36 @@ describe('Phase 5 — native data/services hook emit', () => {
     expect(r.code).not.toContain('PyreonWebSocket()')
   })
 
-  it('useSecureStorage is deferred — warns + drops (no emit)', () => {
+  it('useSecureStorage lowers on Kotlin — Context-threaded Keystore default (the deferral is closed)', () => {
+    // The v1 warn-drop's stated blocker ("Kotlin has no auto-constructible
+    // backend") was resolved by KeystoreSecureBackend(context); the emit is
+    // the PyreonDatabase(context) shape.
     const r = transform(
       wrap(`  const vault = useSecureStorage()
   return (<Stack><Text>hi</Text></Stack>)`),
       { target: 'kotlin' },
     )
-    expect(r.warnings.some((w) => w.includes('useSecureStorage') && w.includes('deferred'))).toBe(true)
-    expect(r.code).not.toContain('PyreonSecureStorage')
+    expect(r.warnings.some((w) => w.includes('useSecureStorage'))).toBe(false)
+    expect(r.code).toContain('val vaultCtx = LocalContext.current')
+    expect(r.code).toContain('val vault = remember { PyreonSecureStorage(vaultCtx) }')
+  })
+
+  it('useSecureStorage lowers on Swift — Keychain default + KEY-FIRST labelled calls', () => {
+    const r = transform(
+      wrap(`  const vault = useSecureStorage()
+  const save = () => { vault.write('auth', 'tok') }
+  const clear = () => { vault.remove('auth') }
+  return (<Stack><Text>{vault.read('auth') ?? ''}</Text></Stack>)`),
+      { target: 'swift' },
+    )
+    expect(r.warnings.some((w) => w.includes('useSecureStorage'))).toBe(false)
+    expect(r.code).toContain('@State private var vault = PyreonSecureStorage()')
+    // The labels are the load-bearing half: write's two parameters are both
+    // String, so a positional emit would COMPILE with the arguments crossed
+    // and store the secret under the wrong key.
+    expect(r.code).toContain('vault.write(key: "auth", value: "tok")')
+    expect(r.code).toContain('vault.read(key: "auth")')
+    expect(r.code).toContain('vault.remove(key: "auth")')
   })
 
   // ── Archetype proof: a realistic finance + realtime/maps component emits

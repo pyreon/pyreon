@@ -3889,6 +3889,23 @@ await api.get('/users/1').json()`,
 
   // <gen-docs:api-reference:start @pyreon/hooks>
 
+  'hooks/useSecureStorage': {
+    signature: '() => SecureStorage — { write(key, value): boolean; read(key): string | null; remove(key): boolean; contains(key): boolean }',
+    example: `const secrets = useSecureStorage()
+const signIn = async () => {
+  const token = await api.login()
+  secrets.write('auth-token', token) // KEY first
+}
+const authed = () => fetch('/api/me', { headers: { Authorization: 'Bearer ' + (secrets.read('auth-token') ?? '') } })
+const signOut = () => secrets.remove('auth-token')`,
+    notes: 'The imperative secret store for auth tokens / API keys / PII — the cross-platform boundary secrets must go through instead of `useStorage` (localStorage is plaintext + same-origin-script-readable). KEY-FIRST: `write(key, value)`. Per-platform backing: iOS Keychain, Android AndroidKeyStore AES-GCM over app-private storage (both encrypted at rest, survive relaunch), web a MODULE-SCOPED in-memory store (the web has no OS secret store; persisting secrets to localStorage would be the exact bug this hook prevents — web secrets are process-lifetime only, fail closed). Imperative by design, NOT a reactive signal: a secret is fetched at an auth boundary, not rendered as live UI. The store is app-wide — every `useSecureStorage()` call sees the same secrets. See also: useStorage (in @pyreon/storage — for NON-secret app state), useDatabase, useFetch.',
+    mistakes: `- Calling \`write(value, key)\` — the API is KEY-FIRST (\`write('auth-token', token)\`); the old value-first order was removed because a positional native lowering would compile with the arguments crossed
+- Storing a bearer/refresh token in \`useStorage\` or localStorage instead — plaintext on disk, readable by any same-origin script; that is the bug this hook exists to prevent
+- Expecting web secrets to survive a reload — the web store is deliberately in-memory (no OS secret store exists); persist web sessions via httpOnly cookies / your auth provider
+- Wrapping \`read()\` in a signal and rendering it as live UI — the store is imperative; fetch at the auth boundary, keep UI state in ordinary signals
+- Expecting \`remove()\` to report a missing key — delete is idempotent (true even when absent), matching Keychain semantics`,
+  },
+
   'hooks/useControllableState': {
     signature: '<T>(opts: { value: () => T | undefined; defaultValue: T; onChange?: (v: T) => void }) => [() => T, (next: T | ((prev: T) => T)) => void]',
     example: `function MyToggle(props: { checked?: boolean; defaultChecked?: boolean; onChange?: (v: boolean) => void }) {

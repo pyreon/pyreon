@@ -466,6 +466,7 @@ export type DeclIR =
   | { kind: 'geolocation'; name: string }
   | { kind: 'websocket'; name: string; url: string }
   | { kind: 'database'; name: string }
+  | { kind: 'secureStorage'; name: string }
   | { kind: 'push'; name: string }
   | { kind: 'payments'; name: string }
   | { kind: 'map'; name: string }

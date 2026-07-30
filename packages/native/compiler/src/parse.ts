@@ -4590,17 +4590,14 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     return { kind: 'geolocation', name }
   }
   if (calleeName === 'useSecureStorage') {
-    // Deferred (v1): the Kotlin PyreonSecureStorage REQUIRES an app-injected
-    // backend (EncryptedSharedPreferences) — no no-arg constructor — so the
-    // compiler can't auto-instantiate it cleanly on Android (a silent
-    // in-memory fallback for a SECRET store would be a security footgun).
-    // Warns + drops until the backend-injection emit lands. Swift has a real
-    // Keychain default; the deferral is for cross-target symmetry. Use the
-    // runtime container directly from native host code today.
-    ctx.warnings.push(
-      `useSecureStorage() declared (\`${name}\`) — emit deferred (v1): the Kotlin secret store needs an app-injected EncryptedSharedPreferences backend, so PMTC can't auto-construct it. Wire PyreonSecureStorage from native host code, or keep in a <Web>-only branch. Tracked as a native data-hook follow-up.`,
-    )
-    return null
+    // Lowered for real (the v1 warn-drop is gone): the deferral's stated
+    // blocker — "Kotlin has no auto-constructible backend" — was resolved by
+    // `KeystoreSecureBackend(context)` (PyreonSecureStorageAndroid.kt), so
+    // both targets now construct a REAL encrypted default: Swift
+    // `PyreonSecureStorage()` (Keychain), Kotlin
+    // `PyreonSecureStorage(ctx)` (AndroidKeyStore AES-GCM) via the same
+    // Context-threading shape as `useDatabase`.
+    return { kind: 'secureStorage', name }
   }
   if (calleeName === 'useDatabase') {
     return { kind: 'database', name }

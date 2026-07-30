@@ -566,6 +566,17 @@ public final class PyreonDatabase {
   public func find(_ collection: String, field: String, equals value: String) -> [PyreonRecord] { [] }
   public func count(_ collection: String) -> Int { 0 }
 }
+// PyreonSecureStorage — the secret store. Mirrors runtime-swift EXACTLY:
+// key-first labelled write (write(key:value:)); a value-first or positional
+// emit must FAIL here, because with two String parameters a crossed call
+// would otherwise compile and silently store the secret under the wrong key.
+public final class PyreonSecureStorage {
+  public init() {}
+  @discardableResult public func write(key: String, value: String) -> Bool { false }
+  public func read(key: String) -> String? { nil }
+  @discardableResult public func remove(key: String) -> Bool { false }
+  public func contains(key: String) -> Bool { false }
+}
 
 // ---- Additional SwiftUI surface (fonts / images / scroll / spacing) ----
 public struct Font {
