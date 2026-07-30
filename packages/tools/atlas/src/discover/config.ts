@@ -23,6 +23,15 @@ export interface AtlasConfig {
    * Receives the scenario as `children`.
    */
   wrapper?: ComponentRef
+  /**
+   * The theme rocketstyle dimensions are read against.
+   *
+   * Dimension values live in `.variants((t) => ({ solid: { color: t.accent } }))`
+   * callbacks, so introspecting them RUNS those callbacks — with no theme the
+   * first token read throws and the component reports no axes. Only the keys
+   * are used; the values never reach the catalog.
+   */
+  theme?: unknown
 }
 
 /** Filenames tried, in order. */
@@ -75,8 +84,12 @@ export async function loadAtlasConfig(
   if (wrapper !== undefined && typeof wrapper !== 'function') {
     return { config: {}, path: found, error: `${found}: \`wrapper\` must be a component function` }
   }
+  const theme = mod.theme ?? fromDefault.theme
   return {
-    config: wrapper ? { wrapper: wrapper as ComponentRef } : {},
+    config: {
+      ...(wrapper ? { wrapper: wrapper as ComponentRef } : {}),
+      ...(theme !== undefined ? { theme } : {}),
+    },
     path: found,
   }
 }

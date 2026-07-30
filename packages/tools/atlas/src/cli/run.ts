@@ -82,7 +82,14 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
     const graph = await createAtlas({
       cwd,
       plugins: [
-        fileDiscoveryPlugin({ ...options, cwd }),
+        fileDiscoveryPlugin({
+        ...options,
+        cwd,
+        // Rocketstyle components are a call chain, not a typed function, so the
+        // static scan cannot see them at all. Detecting them needs the module
+        // loaded — the same loader the mount checks use.
+        ...(loader ? { rocketstyle: { loader, theme: loaded.config.theme } } : {}),
+      }),
         // Between discovery and the recommended bundle: discovery is static, and
         // this is what turns a scanned name into a function the verify stage can
         // MOUNT. Without it every runtime check skips, which is honest but
