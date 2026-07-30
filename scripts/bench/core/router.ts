@@ -65,6 +65,22 @@
 //
 // The re-exec is the only form that beats hoisting; value imports below are
 // DYNAMIC so they evaluate only in the prod-env child.
+// Declared HERE, above its first use in the re-exec guard below — the guard
+// must run before any value import, so the ambient has to precede it. `stdio`
+// is part of the type because the guard inherits the child's streams; the
+// previous declaration only covered `{ env }`, which the orchestrator's later
+// call happened not to need.
+declare const Bun: {
+  spawnSync: (
+    cmd: string[],
+    opts: {
+      env: Record<string, string | undefined>
+      stdio?: ('inherit' | 'pipe' | 'ignore')[]
+    },
+  ) => { stdout: Uint8Array; stderr: Uint8Array; exitCode: number }
+  version: string
+}
+
 if (process.env.NODE_ENV !== 'production') {
   const child = Bun.spawnSync(['bun', import.meta.path, ...process.argv.slice(2)], {
     env: { ...process.env, NODE_ENV: 'production' },
@@ -600,14 +616,6 @@ if (cellArg !== -1) {
 }
 
 // ─── Orchestrator ─────────────────────────────────────────────────────────────
-
-declare const Bun: {
-  spawnSync: (
-    cmd: string[],
-    opts: { env: Record<string, string | undefined> },
-  ) => { stdout: Uint8Array; stderr: Uint8Array; exitCode: number }
-  version: string
-}
 
 const QUICK = process.argv.includes('--quick')
 const PROCS = QUICK ? 1 : 3
