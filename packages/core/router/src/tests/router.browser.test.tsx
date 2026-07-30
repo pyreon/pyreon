@@ -616,6 +616,35 @@ describe('router in real browser', () => {
 describe('browser traversal runs the navigation pipeline (real history)', () => {
   const flushMs = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
+  /**
+   * Poll until `pred` holds, or fail with `label` after `budgetMs`.
+   *
+   * A real browser Back is not a state write — Chromium fires popstate on its
+   * own schedule and the router then runs the FULL navigation pipeline
+   * (loaders, guards, blockers, afterEach, scroll, title). A fixed
+   * `flushMs(150)` therefore encodes a guess about how long that takes on the
+   * current machine, and it flaked in CI: `expected '/about' to be '/posts'` —
+   * the assertion simply ran before the pipeline finished. The same suite
+   * passes 46/46 locally, which is what a load-dependent timing flake looks
+   * like.
+   *
+   * The budget is deliberately generous. It is a BACKSTOP, not a delay: a
+   * passing case costs one poll interval, so a large budget makes the test
+   * slower only when it is about to fail anyway.
+   */
+  const waitUntil = async (
+    pred: () => boolean,
+    label: string,
+    budgetMs = 4000,
+  ): Promise<void> => {
+    const deadline = Date.now() + budgetMs
+    while (Date.now() < deadline) {
+      if (pred()) return
+      await flushMs(20)
+    }
+    throw new Error(`waitUntil timed out after ${budgetMs}ms: ${label}`)
+  }
+
   it('history.back() re-runs the loader so useLoaderData is populated after Back', async () => {
     let loaderRuns = 0
     const Posts = () => {
@@ -650,7 +679,10 @@ describe('browser traversal runs the navigation pipeline (real history)', () => 
 
     // REAL browser Back — Chromium fires hashchange (and popstate) itself.
     window.history.back()
-    await flushMs(150)
+    await waitUntil(
+      () => router.currentRoute().path === '/posts' && loaderRuns === 2,
+      'Back to settle on /posts with the loader re-run',
+    )
     await flush()
 
     expect(router.currentRoute().path).toBe('/posts')
@@ -682,7 +714,14 @@ describe('browser traversal runs the navigation pipeline (real history)', () => 
     ;(router as unknown as { _blockers: Set<() => boolean> })._blockers.add(block)
 
     window.history.back()
-    await flushMs(250) // traversal event + pipeline + restore go() round-trip
+    // NOT converted to waitUntil, deliberately. This asserts that a blocked
+    // traversal changes NOTHING, so the expected end state is identical to the
+    // start state — any predicate would pass instantly, before Chromium had
+    // even moved the URL, and the test would assert nothing at all. A fixed
+    // wait is the only honest option for "prove the absence of a change"; the
+    // budget is raised from 250ms because it must cover the traversal event,
+    // the pipeline, AND the restoring go() round-trip.
+    await flushMs(1200)
 
     // Route unchanged, URL restored to the blocked-from path.
     expect(router.currentRoute().path).toBe('/about')
@@ -693,7 +732,7 @@ describe('browser traversal runs the navigation pipeline (real history)', () => 
     // lands on '/', proving the blocked traversal didn't rewrite entries).
     ;(router as unknown as { _blockers: Set<() => boolean> })._blockers.delete(block)
     window.history.back()
-    await flushMs(250)
+    await waitUntil(() => router.currentRoute().path === '/', 'Back to settle on /')
     await flush()
     expect(router.currentRoute().path).toBe('/')
     expect(container.querySelector('#home')).not.toBeNull()
@@ -715,7 +754,7 @@ describe('browser traversal runs the navigation pipeline (real history)', () => 
     router.afterEach((to) => seen.push(to.path))
 
     window.history.back()
-    await flushMs(150)
+    await waitUntil(() => seen.length > 0, 'afterEach to fire for the traversal')
     expect(seen).toEqual(['/'])
     unmount()
   })
