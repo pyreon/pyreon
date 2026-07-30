@@ -319,7 +319,17 @@ export function conditionalKotlinImports(emitted: string): string {
   // `.combinedClickable` (onPress + onLongPress). combinedClickable is
   // stable since Compose 1.6 (no @OptIn); if a device build proves an older
   // BOM needs the opt-in, that's the follow-up the Android CI catches.
-  if (emitted.includes('.clickable(')) {
+  // Match BOTH call shapes. `<Press>` emits the paren form `.clickable(...)`,
+  // but `<Link>` emits a TRAILING LAMBDA — `Modifier.clickable { navigate() }` —
+  // and a predicate keyed on `.clickable(` misses it entirely. That is how the
+  // first `<Link>` in an Android example broke `gradle assembleDebug` with
+  // "Unresolved reference 'clickable'" while every pre-merge gate stayed green:
+  // the validate-kotlin loop CONCATENATES stubs, so it resolves the symbol with
+  // or without the import and structurally cannot catch a missing one.
+  //
+  // General shape: these predicates test emitted SYNTAX, so any Kotlin call
+  // that can appear as both `foo(...)` and `foo { ... }` needs both forms.
+  if (/\.clickable\s*[({]/.test(emitted)) {
     imports.push('import androidx.compose.foundation.clickable')
   }
   if (emitted.includes('.combinedClickable(')) {

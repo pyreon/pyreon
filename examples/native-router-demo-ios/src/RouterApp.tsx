@@ -15,7 +15,7 @@
 // the Android example would share via build script. ONE file, THREE
 // targets — provable by `ls` + `diff`.
 
-import { Stack, Inline, Text, Button } from '@pyreon/primitives'
+import { Button, Inline, Link, Stack, Text } from '@pyreon/primitives'
 import { createRouter, useNavigate, RouterProvider, RouterView } from '@pyreon/router'
 
 function HomePage() {
@@ -28,6 +28,15 @@ function HomePage() {
         <Button onPress={() => navigate('/about')}>Go to About</Button>
         <Button onPress={() => navigate('/users/42')}>View user 42</Button>
       </Inline>
+      {/* Core-UI row closure — `Link` was listed "not individually asserted",
+          and it had NO usage in any gated app despite this file's header
+          claiming "<Link> navigation" (every nav here is useNavigate+Button).
+          It lives here rather than in the counter because PyreonLink resolves
+          `router?.push` from the SwiftUI environment: without a RouterProvider
+          a tap is a silent no-op, which would assert nothing. */}
+      <Link to="/about" data-testid="home-link-about">
+        <Text>About via Link</Text>
+      </Link>
     </Stack>
   )
 }
