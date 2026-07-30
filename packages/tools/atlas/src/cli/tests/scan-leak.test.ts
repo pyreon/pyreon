@@ -32,5 +32,9 @@ describe('atlas scan catches a real subscription-retention leak', () => {
     expect(run.status, run.stderr).toBe(1)
     expect(run.stdout).toMatch(/2 component\(s\), 4 scenario\(s\) — 2 verified, 2 failing/)
     expect(run.stderr).toContain('failing scenario(s): leaky--empty, leaky--long-content')
-  })
+    // 320s: the spawn's own descriptive killer is timeout: 300_000 above;
+    // the vitest backstop must EXCEED the composed inner budget (the ws-relay
+    // rule) — the default 20s killed this opaquely whenever a lockfile change
+    // made the scan's Vite dep-optimize run cold (~21s wall).
+  }, 320_000)
 })
