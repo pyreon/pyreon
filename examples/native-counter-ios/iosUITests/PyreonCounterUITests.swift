@@ -1013,4 +1013,117 @@ final class PyreonCounterUITests: XCTestCase {
                 + "flip did not re-render inside the Task scope"
         )
     }
+
+    // MARK: - Core-UI row closure: Toggle / Modal / Scroll
+    //
+    // The capability matrix's heaviest row (Core UI & layout, weight 10) listed
+    // Modal/Toggle/Scroll/Link as "not individually asserted". All of them
+    // already emitted and typechecked; what was absent was proof they BEHAVE on
+    // a device. Each test below drives an interaction and asserts an observable
+    // change, because the matrix counts exercised-but-unasserted as 0.
+    //
+    // Link is asserted in native-router-demo-ios instead: PyreonLink needs a
+    // RouterProvider in the environment to navigate, and this app has none, so
+    // a tap here would be a no-op and prove nothing.
+
+    func test_toggleFlipsObservableState() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.staticTexts["core-toggle-state"].waitForExistence(timeout: 30),
+            "core-toggle-state text missing — the <Toggle> subtree did not render"
+        )
+        XCTAssertEqual(
+            app.staticTexts["core-toggle-state"].label,
+            "switch off",
+            "Toggle did not start in its initial (false) state"
+        )
+
+        // SwiftUI lowers <Toggle> to `Toggle(isOn:)`, which surfaces as a
+        // SWITCH, not a button — querying `app.buttons` would miss it.
+        let toggle = app.switches["core-toggle"]
+        XCTAssertTrue(
+            toggle.waitForExistence(timeout: 5),
+            "core-toggle switch missing — data-testid did not reach "
+                + "accessibilityIdentifier on the emitted Toggle"
+        )
+        // Tap the INNER switch, not the outer element. `<Toggle>` lowers to
+        // `Toggle("", isOn:)`, and with an EMPTY label the outer accessibility
+        // element spans the full row (measured 402pt) while the real control
+        // occupies only the trailing ~63pt. `toggle.tap()` hits the row centre —
+        // dead label space — and silently does not flip. Read off the device
+        // accessibility tree rather than assumed.
+        let control = toggle.switches.firstMatch
+        if control.exists {
+            control.tap()
+        } else {
+            toggle.tap()
+        }
+
+        XCTAssertTrue(
+            app.staticTexts["switch on"].waitForExistence(timeout: 5),
+            "Toggle tap did not flip the observable text — the onChange "
+                + "Binding setter never wrote the signal, or the re-render "
+                + "did not fire"
+        )
+        XCTAssertFalse(
+            app.staticTexts["switch off"].exists,
+            "\"switch off\" still present — additive draw rather than a re-render"
+        )
+    }
+
+    func test_modalPresentsAndDismisses() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        let open = app.buttons["core-modal-open"]
+        XCTAssertTrue(open.waitForExistence(timeout: 30), "core-modal-open button missing")
+
+        // Body must NOT exist before presenting — otherwise a passing
+        // assertion after the tap would prove nothing about presentation.
+        XCTAssertFalse(
+            app.staticTexts["core-modal-body"].exists,
+            "Sheet body present before the sheet was opened — `open` did not "
+                + "gate presentation"
+        )
+
+        open.tap()
+        XCTAssertTrue(
+            app.staticTexts["core-modal-body"].waitForExistence(timeout: 5),
+            "Sheet body never appeared — `.sheet(isPresented:)` did not present "
+                + "from the signal write"
+        )
+
+        app.buttons["core-modal-close"].tap()
+        XCTAssertTrue(
+            app.staticTexts["core-modal-body"].waitForNonExistence(timeout: 5),
+            "Sheet body still present after Close — the onClose path did not "
+                + "clear `open`"
+        )
+    }
+
+    func test_scrollContainerIsQueryableAndHoldsItsChild() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        // The load-bearing half: SwiftUI FLATTENS a plain ScrollView out of the
+        // accessibility tree, so the container is only reachable because the
+        // emitter adds `.accessibilityElement(children: .contain)` for
+        // container tags. Without it this query times out against a perfectly
+        // rendering app.
+        XCTAssertTrue(
+            app.scrollViews["core-scroll"].waitForExistence(timeout: 30),
+            "core-scroll ScrollView not queryable — the container a11y "
+                + "semantic was not emitted, so the identifier is invisible "
+                + "to XCUITest"
+        )
+        // `.contain` (not `.combine`) must keep the child individually queryable.
+        XCTAssertTrue(
+            app.staticTexts["core-scroll-child"].exists,
+            "Scroll child not individually queryable — `.combine` would "
+                + "collapse it into the container"
+        )
+    }
+
 }

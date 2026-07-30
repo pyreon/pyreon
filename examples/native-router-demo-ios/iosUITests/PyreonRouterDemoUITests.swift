@@ -131,4 +131,54 @@ final class PyreonRouterDemoUITests: XCTestCase {
             "Expected \"Profile for user 42\" text not found — useParams() did not populate id=\"42\" from the route segment"
         )
     }
+
+    // MARK: - Core-UI row closure: Link
+    //
+    // `Link` was the last of the four canonical primitives the capability
+    // matrix listed as "not individually asserted" — and it had no usage in ANY
+    // gated app, so there was nothing to assert against.
+    //
+    // It was also structurally unassertable until now: `<Link>` is a
+    // SPECIAL-CASE emitter that returned before the generic modifier tail, so
+    // `data-testid` never became `.accessibilityIdentifier` and the element
+    // could not be selected by XCUITest at all. This test therefore covers both
+    // the identifier reaching the emit AND the navigation behaving.
+    func test_linkNavigatesToAbout() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            "Home page did not render"
+        )
+
+        // Selecting BY IDENTIFIER is the load-bearing half: before the emit fix
+        // this query timed out against a link that rendered perfectly.
+        // PyreonLink wraps its label in a Button, so it surfaces as a button.
+        // The identifier lands on the CONTAINER, not the Button: the emit adds
+        // `.accessibilityElement(children: .contain)` so PyreonLink's wrapper is
+        // not flattened out of the a11y tree. Device-read shape:
+        //   Other  identifier: 'home-link-about'
+        //     Button  label: 'About via Link'
+        let link = app.otherElements["home-link-about"]
+        XCTAssertTrue(
+            link.waitForExistence(timeout: 10),
+            "home-link-about not queryable — data-testid did not reach "
+                + "accessibilityIdentifier on the emitted PyreonLink"
+        )
+        link.tap()
+
+        XCTAssertTrue(
+            app.otherElements["about-page"].firstMatch.waitForExistence(timeout: 15),
+            "About page did not render after tapping the Link — PyreonLink "
+                + "resolved no router from the environment, so router?.push "
+                + "silently no-oped"
+        )
+        XCTAssertFalse(
+            app.otherElements["home-page"].firstMatch.exists,
+            "Home page still present after Link navigation — the route did not "
+                + "actually swap"
+        )
+    }
+
 }
