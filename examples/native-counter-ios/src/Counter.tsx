@@ -24,7 +24,17 @@ import {
 } from '@pyreon/hooks'
 import { createI18n } from '@pyreon/i18n/core'
 import { createMachine } from '@pyreon/machine'
-import { Button, Inline, Press, Stack, Text, useNativeModule } from '@pyreon/primitives'
+import {
+  Button,
+  Inline,
+  Modal,
+  Press,
+  Scroll,
+  Stack,
+  Text,
+  Toggle,
+  useNativeModule,
+} from '@pyreon/primitives'
 import rocketstyle from '@pyreon/rocketstyle'
 
 // ui-system → native proof. `rocketstyle()({ component: Text })` is THE
@@ -101,6 +111,10 @@ export function Counter() {
   // picker, but through the system document browser
   // (UIDocumentPickerViewController / SAF OpenDocument).
   const fileStatus = signal<string>('idle')
+
+  // Core-UI row closure (Toggle / Modal / Scroll device assertions).
+  const switchOn = signal<boolean>(false)
+  const sheetOpen = signal<boolean>(false)
   // M3.1 platform-API proof — a haptic fires on each increment tap.
   // Native: iOS `PyreonHaptics().impact("light")` (UIImpactFeedbackGenerator),
   // Android `PyreonHaptics(LocalHapticFeedback.current).impact("light")`.
@@ -374,6 +388,41 @@ export function Counter() {
       <Press onLongPress={() => count.set(0)} data-testid="reset-zone">
         <Text>Hold to reset</Text>
       </Press>
+      {/* Core-UI row closure — `Toggle` / `Modal` / `Scroll` were the canonical
+          primitives the capability matrix listed as "not individually
+          asserted". They all EMIT and typecheck on both targets; what was
+          missing was a device assertion that they BEHAVE. Each one below flips
+          an observable text so XCUITest can assert the behaviour rather than
+          mere presence (the matrix counts exercised-but-unasserted as 0).
+
+          Toggle → SwiftUI `Toggle(isOn:)` / Compose `Switch`. */}
+      <Toggle
+        value={switchOn()}
+        onChange={(next) => switchOn.set(next)}
+        data-testid="core-toggle"
+      />
+      <Text data-testid="core-toggle-state">{switchOn() ? 'switch on' : 'switch off'}</Text>
+
+      {/* Modal → iOS `.sheet(isPresented:)` / Android `Dialog`. The body text
+          only exists while presented, so existence IS the assertion. */}
+      <Button onPress={() => sheetOpen.set(true)} data-testid="core-modal-open">
+        Open Sheet
+      </Button>
+      <Modal open={sheetOpen()} onClose={() => sheetOpen.set(false)}>
+        <Text data-testid="core-modal-body">Sheet body</Text>
+        <Button onPress={() => sheetOpen.set(false)} data-testid="core-modal-close">
+          Close Sheet
+        </Button>
+      </Modal>
+
+      {/* Scroll → iOS `ScrollView` / Android `verticalScroll`. A container is
+          flattened out of the iOS a11y tree unless it carries
+          `.accessibilityElement(children: .contain)`, which the emitter adds
+          for container tags — so querying the container itself is the
+          load-bearing part of this assertion. */}
+      <Scroll axis="vertical" data-testid="core-scroll">
+        <Text data-testid="core-scroll-child">Scrolled child</Text>
+      </Scroll>
     </Stack>
   )
 }
