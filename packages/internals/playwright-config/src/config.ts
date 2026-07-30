@@ -11,7 +11,9 @@ type ProjectUse = NonNullable<PlaywrightTestConfig['use']>
 export interface E2eProject {
   name: string
   testMatch: RegExp | string
-  port: number
+  /** Omit for suites that never navigate (subprocess-driving specs) —
+   * no `baseURL` is derived. */
+  port?: number
   /** Extra per-project `use` overrides, merged OVER the derived
    * `{ baseURL }` (e.g. `{ viewport: { width, height } }`). */
   use?: ProjectUse
@@ -19,7 +21,10 @@ export interface E2eProject {
 
 export interface DefinePlaywrightConfigOptions {
   projects: E2eProject[]
-  webServer: E2eWebServer[]
+  /** Omit for suites whose command under test owns its own server — a
+   * subprocess e2e (e.g. `atlas verify-browser`) boots and closes
+   * everything itself. */
+  webServer?: E2eWebServer[]
   /** Per-test timeout in ms. Default `30_000`; SSG gates use `60_000`. */
   timeout?: number
   /** Worker count. Omit for Playwright's default; set `1` for gates whose
@@ -65,9 +70,9 @@ export function definePlaywrightConfig(opts: DefinePlaywrightConfigOptions): Pla
     projects: opts.projects.map((p) => ({
       name: p.name,
       testMatch: p.testMatch,
-      use: { baseURL: `http://localhost:${p.port}`, ...p.use },
+      use: { ...(p.port !== undefined ? { baseURL: `http://localhost:${p.port}` } : {}), ...p.use },
     })),
-    webServer: opts.webServer.map((w) => ({
+    webServer: (opts.webServer ?? []).map((w) => ({
       command: w.command,
       port: w.port,
       ...(w.cwd !== undefined ? { cwd: w.cwd } : {}),

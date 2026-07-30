@@ -37,6 +37,10 @@ export function Workbench(props: WorkbenchProps) {
   // .claude/rules/anti-patterns.md "reactive-props inlining of a stateful factory".
   // oxlint-disable-next-line prefer-const
   let m = createModel(props.catalog, { title: props.title, subtitle: props.subtitle })
+  // The workbench IS a dev tool — its model is its public runtime surface. The
+  // browser-verify runner (and any embedding host) drives scenarios through
+  // it instead of scripting the DOM.
+  ;(globalThis as Record<string, unknown>).__ATLAS_MODEL__ = m
 
   // Global shortcuts: ⌘K focuses search, Escape clears it, ↑↓ browse components.
   // useEventListener is SSR-safe (isClient-guarded) + auto-cleans up on unmount.
