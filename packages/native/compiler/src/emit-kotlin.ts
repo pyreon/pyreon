@@ -5624,11 +5624,20 @@ function emitKotlinLink(
   const toExpr = emitKotlinExpr(unwrapAccessorArrow(toAttr.value), indent)
   const pad = ' '.repeat(indent + 2)
   const inner = ' '.repeat(indent + 4)
+  // Mirrors the Swift fix: `<Link>` is a special-case emitter that never
+  // reaches the generic modifier tail, so `data-testid` was dropped and the
+  // link could not be selected by `onNodeWithTag` — the Compose half of the
+  // same "Link not individually asserted" gap.
+  const testid = readStringAttrExprKotlin(e, 'data-testid', 0)
+  const mod =
+    testid === undefined
+      ? 'Modifier.clickable { navigate() }'
+      : `Modifier.clickable { navigate() }.testTag(${testid})`
   if (e.children.length === 0) {
-    return `PyreonLink(${toExpr}) { navigate ->\n${pad}Box(modifier = Modifier.clickable { navigate() }) { }\n${' '.repeat(indent)}}`
+    return `PyreonLink(${toExpr}) { navigate ->\n${pad}Box(modifier = ${mod}) { }\n${' '.repeat(indent)}}`
   }
   const contentLines = e.children.map((c) => inner + emitKotlinChild(c, indent + 4)).join('\n')
-  return `PyreonLink(${toExpr}) { navigate ->\n${pad}Box(modifier = Modifier.clickable { navigate() }) {\n${contentLines}\n${pad}}\n${' '.repeat(indent)}}`
+  return `PyreonLink(${toExpr}) { navigate ->\n${pad}Box(modifier = ${mod}) {\n${contentLines}\n${pad}}\n${' '.repeat(indent)}}`
 }
 
 /**
