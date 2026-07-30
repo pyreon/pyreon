@@ -27,6 +27,43 @@ export interface MountRuntime {
   h: (type: unknown, props?: unknown, ...children: unknown[]) => unknown
   mount: (root: unknown, container: Element) => () => void
   registerErrorHandler: (handler: (ctx: unknown) => void) => () => void
+  /**
+   * Live node count of the reactive-devtools graph — FROM THE SAME
+   * `@pyreon/reactivity` instance the components run on (a count read off a
+   * different instance would measure the wrong graph and always report 0).
+   * May be ASYNC: a Vite loader must re-resolve the module PER READ, because a
+   * dep re-optimisation mid-scan invalidates the SSR module graph and quietly
+   * replaces the instance — a captured reference then reads a dead registry
+   * forever (observed: a direct signal registered as 1, the next component
+   * load re-optimised, and every later read reported 0).
+   * Absent when the registry is unavailable (a production build), in which
+   * case the leak check SKIPS with that reason.
+   */
+  reactiveGraphSize?: () => number | Promise<number>
+  /**
+   * Force a garbage collection and let deferred reclamation finish. The leak
+   * verdict is "nodes created by the scenario stayed in the graph PAST GC" —
+   * without a GC hook that claim cannot be made, so the check skips.
+   */
+  collectGarbage?: () => Promise<void>
+}
+
+/**
+ * A best-effort GC hook for the host runtime: Bun's `Bun.gc(true)`, or node's
+ * `--expose-gc` global. Two passes around a macrotask yield, because the
+ * framework legitimately DEFERS some reclamation by one event-loop turn —
+ * a single synchronous pass would count garbage-in-flight as retained (the
+ * exact mistake the repo's own benchmark methodology documents).
+ */
+export function hostCollectGarbage(): (() => Promise<void>) | undefined {
+  const g = globalThis as { Bun?: { gc?: (full: boolean) => unknown }; gc?: () => void }
+  const sweep = g.Bun?.gc ? () => g.Bun!.gc!(true) : typeof g.gc === 'function' ? g.gc : undefined
+  if (!sweep) return undefined
+  return async () => {
+    sweep()
+    await new Promise((r) => setTimeout(r, 0))
+    sweep()
+  }
 }
 
 /**
@@ -36,12 +73,46 @@ export interface MountRuntime {
  * second copy just by importing this module — which is the whole problem above.
  */
 export async function defaultRuntime(): Promise<MountRuntime> {
-  const [core, dom] = await Promise.all([import('@pyreon/core'), import('@pyreon/runtime-dom')])
+  const [core, dom, reactivity] = await Promise.all([
+    import('@pyreon/core'),
+    import('@pyreon/runtime-dom'),
+    import('@pyreon/reactivity'),
+  ])
+  const gc = hostCollectGarbage()
   return {
     h: core.h as MountRuntime['h'],
     mount: dom.mount as unknown as MountRuntime['mount'],
     registerErrorHandler: core.registerErrorHandler as unknown as MountRuntime['registerErrorHandler'],
+    ...wireReactiveGraph(reactivity as Record<string, unknown>),
+    ...(gc ? { collectGarbage: gc } : {}),
   }
+}
+
+/**
+ * Wire the reactive-graph reader off a LOADED `@pyreon/reactivity` module —
+ * activating the devtools bridge first, because nodes created before
+ * attachment are never recorded (reading the graph alone does NOT attach it).
+ * Returns `{}` when the module doesn't expose the registry (production build),
+ * so spreading the result into a `MountRuntime` is always safe.
+ */
+export function wireReactiveGraph(
+  reactivity: Record<string, unknown>,
+): Pick<MountRuntime, 'reactiveGraphSize'> {
+  if (typeof reactivity.getReactiveGraph !== 'function') return {}
+  return { reactiveGraphSize: () => sizeOfGraph(reactivity) }
+}
+
+/**
+ * Read the live node count off a `@pyreon/reactivity` module object, activating
+ * the devtools bridge first (idempotent — and load-bearing per read: after a
+ * module-graph invalidation the FRESH instance arrives unactivated, and nodes
+ * created before attachment are never recorded).
+ */
+export function sizeOfGraph(reactivity: Record<string, unknown>): number {
+  const activate = reactivity.activateReactiveDevtools
+  if (typeof activate === 'function') activate()
+  const getGraph = reactivity.getReactiveGraph as () => { nodes: readonly unknown[] }
+  return getGraph().nodes.length
 }
 
 /** Elements a user could plausibly click, in document order. */

@@ -187,6 +187,12 @@ describe('the project wrapper (atlas.config.ts)', () => {
     expect(code).toContain('typeof __config.wrapper === "function"')
     expect(code).toContain('__config.default?.wrapper')
     expect(code).toContain('__wrapper ? h(__wrapper, {}, __el) : __el')
+    // The recording permissions provider goes INNERMOST: a project wrapper
+    // commonly carries its own static PermissionsProvider, and nearest-wins
+    // context would let it shadow the workbench's RECORDING instance — the
+    // Roles panel would silently audit nothing.
+    expect(code).toContain("import { PermissionsProvider as __Perms } from '@pyreon/permissions'")
+    expect(code).toContain('h(__Perms, { value: ctx.can }, h(Comp, merged))')
   })
 
   it('emits NO config import when no wrapper exists', () => {

@@ -1,9 +1,9 @@
 /**
  * A DOM for the verify pipeline.
  *
- * The runtime verify checks (`interaction` today; `reactivityCoverage`, `leak`
- * and `snapshot` are still stubs) exist for one reason: they need the component
- * MOUNTED, and `createAtlas` runs in Node. Everything Atlas can conclude from
+ * The runtime verify checks (`interaction` and `leak` today;
+ * `reactivityCoverage` and `snapshot` are still stubs) exist for one reason:
+ * they need the component MOUNTED, and `createAtlas` runs in Node. Everything Atlas can conclude from
  * types alone is already concluded — what is left needs the thing to actually
  * run.
  *

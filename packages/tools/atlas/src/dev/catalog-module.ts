@@ -165,6 +165,12 @@ export function generateCatalogModule(
   })
   if (options.configPath) {
     lines.push(`import * as __config from ${lit(options.configPath)}`)
+    // The recording permissions provider goes INNERMOST when a wrapper exists:
+    // a project wrapper commonly carries its own `PermissionsProvider` (the
+    // scan needs one), and context resolution is nearest-wins — without this,
+    // the wrapper's static provider would shadow the workbench's RECORDING
+    // instance and the Roles panel would silently audit nothing.
+    lines.push(`import { PermissionsProvider as __Perms } from '@pyreon/permissions'`)
   }
   lines.push('')
 
@@ -257,7 +263,7 @@ export function generateCatalogModule(
     }
     lines.push(`        if (Comp.IS_ROCKETSTYLE) Object.assign(merged, ctx.pseudo)`)
     if (options.configPath) {
-      lines.push(`        const __el = h(Comp, merged)`)
+      lines.push(`        const __el = h(__Perms, { value: ctx.can }, h(Comp, merged))`)
       lines.push(`        return __wrapper ? h(__wrapper, {}, __el) : __el`)
     } else {
       lines.push(`        return h(Comp, merged)`)

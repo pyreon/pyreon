@@ -102,10 +102,10 @@ export interface VerifyCheck {
  * The distinction is load-bearing and used to be missing. `ok` was "no check
  * failed", and `emptyVerdict()` starts every check at `skip` — so a scenario
  * nothing had examined was `ok: true`, indistinguishable from one that passed
- * every gate. Three of the five checks (`reactivityCoverage`, `leak`,
- * `snapshot`) are still unimplemented stubs — `a11y` (static name check) and
- * `interaction` (real mount, PR #2568) run today — so unverified is still a
- * common state, not an edge case: without `checked` the catalog printed
+ * every gate. Two of the five checks (`reactivityCoverage`, `snapshot`) are
+ * still unimplemented stubs — `a11y` (static name check), `interaction`
+ * (real mount) and `leak` (reactive-graph accumulation past GC) run today —
+ * so unverified remains a real state: without `checked` the catalog printed
  * `[pass]` and the agent guide offered "correct:" examples on the strength of
  * checks that never ran.
  *

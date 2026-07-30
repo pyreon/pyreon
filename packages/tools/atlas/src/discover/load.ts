@@ -38,7 +38,7 @@ import { pathToFileURL } from 'node:url'
 import type { ComponentIntelligence, ComponentRef } from '../core'
 import { defineAtlasPlugin } from '../plugins'
 import type { AtlasPlugin, DecorateContext } from '../plugins'
-import type { MountRuntime } from '../verify/harness'
+import { hostCollectGarbage, type MountRuntime, sizeOfGraph } from '../verify/harness'
 
 /** Loads a module by absolute path. */
 export interface ModuleLoader {
@@ -164,18 +164,36 @@ const isBun = typeof (globalThis as { Bun?: unknown }).Bun !== 'undefined'
 export async function loadRuntime(loader: ModuleLoader): Promise<MountRuntime | undefined> {
   if (loader.kind !== 'vite') return undefined
   try {
-    const [core, dom] = await Promise.all([
+    const [core, dom, reactivity] = await Promise.all([
       loader.load('@pyreon/core'),
       loader.load('@pyreon/runtime-dom'),
+      loader.load('@pyreon/reactivity'),
     ])
     const h = core.h
     const mount = dom.mount
     const registerErrorHandler = core.registerErrorHandler
     if (typeof h !== 'function' || typeof mount !== 'function') return undefined
+    const gc = hostCollectGarbage()
+    const hasRegistry = typeof reactivity.getReactiveGraph === 'function'
     return {
       h: h as MountRuntime['h'],
       mount: mount as MountRuntime['mount'],
       registerErrorHandler: registerErrorHandler as MountRuntime['registerErrorHandler'],
+      // The graph reader MUST come from this same loader graph — the
+      // components' own `@pyreon/reactivity` instance — AND it must be
+      // re-resolved PER READ: a Vite dep re-optimisation mid-scan invalidates
+      // the SSR module graph and quietly swaps the instance, so a reference
+      // captured here reads a dead registry forever. `ssrLoadModule` is cached
+      // between invalidations, so the per-read load is cheap.
+      ...(hasRegistry
+        ? {
+            reactiveGraphSize: async () => {
+              const live = await loader.load('@pyreon/reactivity')
+              return sizeOfGraph(live)
+            },
+          }
+        : {}),
+      ...(gc ? { collectGarbage: gc } : {}),
     }
   } catch {
     // The project may not depend on the DOM runtime at all (a headless catalog).
