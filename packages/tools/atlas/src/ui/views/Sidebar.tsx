@@ -35,10 +35,17 @@ export function Sidebar(props: { model: WorkbenchModel }) {
       {() =>
         m.selId() === c.id && c.scenarios && c.scenarios.length > 0
           ? c.scenarios.map((s) => (
-              <C.ScenBtn data-testid={`scenario-${s.id}`} onClick={() => m.selectScenario(c.id, s.id)}>
-                <C.ScenDot variant={s.verdict} data-verdict={s.verdict} />
-                <C.ScenName>{s.name}</C.ScenName>
-              </C.ScenBtn>
+              <C.ScenRow>
+                <C.ScenBtn data-testid={`scenario-${s.id}`} onClick={() => m.selectScenario(c.id, s.id)}>
+                  <C.ScenDot variant={s.verdict} data-verdict={s.verdict} />
+                  <C.ScenName>{s.name}</C.ScenName>
+                </C.ScenBtn>
+                {s.play ? (
+                  <C.ScenPlay data-testid={`play-${s.id}`} onClick={() => void m.runPlay(c.id, s.id)}>
+                    ▶
+                  </C.ScenPlay>
+                ) : null}
+              </C.ScenRow>
             ))
           : null}
     </>

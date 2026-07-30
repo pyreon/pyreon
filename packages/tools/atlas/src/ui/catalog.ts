@@ -127,6 +127,13 @@ export interface WorkbenchScenario {
   /** the control values this scenario pins */
   args: Record<string, unknown>
   /**
+   * Authored interaction script — hand-written catalogs only (a derived
+   * catalog is serialized JSON, and a function cannot cross that boundary).
+   * The sidebar shows a ▶ that runs it against the LIVE preview, logging each
+   * step into the Actions panel.
+   */
+  play?: (ctx: { root: Element; step: (name: string, run: () => void | Promise<void>) => Promise<void> }) => void | Promise<void>
+  /**
    * The three-state verdict: `ok` (a check ran, none failed) · `fail`
    * (a check ran and failed) · `unverified` (nothing examined — NOT a pass).
    */

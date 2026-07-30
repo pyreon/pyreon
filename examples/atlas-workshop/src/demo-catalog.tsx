@@ -95,6 +95,27 @@ export const demoCatalog: WorkbenchCatalog = {
           {String(v.label)}
         </DemoButton>
       ),
+      // A hand-catalog scenario WITH a play script: the sidebar shows a ▶ that
+      // runs it against the live preview, logging each step into Actions.
+      scenarios: [
+        {
+          id: 'button--play-demo',
+          name: 'Click storm',
+          args: { label: 'Storm target', variant: 'solid' },
+          verdict: 'unverified' as const,
+          play: async ({ root, step }) => {
+            await step('find the button', () => {
+              if (!root.querySelector('button')) throw new Error('no button rendered')
+            })
+            await step('click it three times', () => {
+              const el = root.querySelector('button')!
+              for (let i = 0; i < 3; i += 1) {
+                el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+              }
+            })
+          },
+        },
+      ],
     },
     {
       id: 'project-list', name: 'Project list', group: 'Foundations', status: 'stable',

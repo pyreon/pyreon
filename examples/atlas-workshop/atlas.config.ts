@@ -53,6 +53,33 @@ export function wrapper(props: { children?: unknown }): VNodeChild {
  * the e2e can prove a CUSTOM entry drives the real canvas and the real
  * recording `can()`, not just a button label.
  */
+/**
+ * An AUTHORED scenario with a `play` script — the progressive-enrichment
+ * channel. Derivation cannot know that clicking this button three times is
+ * the state worth verifying; the author can. The scan RUNS this instead of
+ * the automatic click-walk, and a throw fails the interaction check naming
+ * the step.
+ */
+export const scenarios = {
+  Button: [
+    {
+      name: 'Triple click',
+      args: { label: 'Play me' },
+      play: async ({ root, step }: { root: Element; step: (n: string, r: () => void | Promise<void>) => Promise<void> }) => {
+        await step('find the button', () => {
+          if (!root.querySelector('button')) throw new Error('no button rendered')
+        })
+        await step('click it three times', () => {
+          const el = root.querySelector('button')!
+          for (let i = 0; i < 3; i += 1) {
+            el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+          }
+        })
+      },
+    },
+  ],
+}
+
 export const presets = {
   viewports: [
     { id: 'full', label: 'Full', width: null },

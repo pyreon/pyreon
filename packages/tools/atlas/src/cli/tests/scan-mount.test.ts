@@ -58,7 +58,7 @@ describe('atlas scan mounts the example', () => {
     // the static a11y check catches — they are load-bearing here, since a
     // verify pipeline that cannot fail is not verifying anything.
     expect(run.stdout).toMatch(
-      /9 component\(s\), 42 scenario\(s\) — 40 verified, 2 failing, 0 unverified/,
+      /9 component\(s\), 43 scenario\(s\) — 41 verified, 2 failing, 0 unverified/,
     )
   })
 })
