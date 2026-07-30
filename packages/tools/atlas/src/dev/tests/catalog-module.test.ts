@@ -301,3 +301,18 @@ describe('derived scenarios reach the workbench catalog', () => {
     expect(code).not.toContain('scenarios:')
   })
 })
+
+describe('presets reach the generated catalog', () => {
+  it('serializes atlas.config.ts presets verbatim onto the catalog object', () => {
+    const code = generateCatalogModule([{ component: ci({}), file: '/p/src/X.tsx' }], {
+      root: '/p/src',
+      presets: { viewports: [{ id: 'kiosk', label: 'Kiosk', width: 900 }] },
+    })
+    expect(code).toContain('presets: {"viewports":[{"id":"kiosk","label":"Kiosk","width":900}]}')
+  })
+
+  it('emits no presets key when the config has none', () => {
+    const code = generateCatalogModule([{ component: ci({}), file: '/p/src/X.tsx' }], { root: '/p/src' })
+    expect(code).not.toContain('presets:')
+  })
+})

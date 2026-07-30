@@ -79,15 +79,34 @@ test.describe('atlas dev', () => {
 
     const btn = page.getByTestId('canvas-preview').locator('button').first()
 
-    await page.getByTestId('role-admin').click()
+    // `ops` is a PROJECT-DEFINED role (atlas.config.ts presets) whose exact-key
+    // `grants` list includes `posts.delete` — a custom role driving the real
+    // recording `can()`, not just a relabeled button.
+    await page.getByTestId('role-ops').click()
     await expect(btn).toBeEnabled()
 
-    await page.getByTestId('role-viewer').click()
+    await page.getByTestId('role-anonymous').click()
     await expect(btn).toBeDisabled()
 
     const summary = (await page.getByTestId('perm-summary').textContent()) ?? ''
     expect(summary).toMatch(/1 key\(s\) consulted/)
     expect(summary).toMatch(/1 denied/)
+  })
+
+  test('a project-defined viewport preset pins the real canvas width', async ({ page }) => {
+    // `kiosk` (900px) exists only in atlas.config.ts — no shipped dimension
+    // class covers it, so this proves the preset value styles the frame (via a
+    // hashed unistyle class, not an inline style). A wide window, because the
+    // frame deliberately carries `max-width:100%` — in a narrow one the stage
+    // caps it below 900 and the assertion would measure the cap, not the
+    // preset.
+    await page.setViewportSize({ width: 1800, height: 950 })
+    await page.goto('/')
+    await page.getByTestId('addon-tab-canvas').click()
+    await page.getByTestId('viewport-kiosk').click()
+    const frame = page.getByTestId('canvas-frame')
+    await expect.poll(() => frame.evaluate((el) => getComputedStyle(el).width)).toBe('900px')
+    expect(await frame.evaluate((el) => el.getAttribute('style'))).toBeNull()
   })
 
   test('derived scenarios appear in the sidebar WITH their verify verdicts', async ({ page }) => {
@@ -265,10 +284,13 @@ test.describe('URL state', () => {
   })
 
   test('canvas state is shareable, and a stale component id degrades', async ({ page }) => {
-    await page.goto('/?c=badge&viewport=tablet&p=canvas')
+    // `kiosk` is a preset from the project's atlas.config.ts — the shipped
+    // `tablet` id no longer exists here, which is itself the point: the link
+    // vocabulary follows the project's presets.
+    await page.goto('/?c=badge&viewport=kiosk&p=canvas')
     await expect(page.getByTestId('canvas-name')).toContainText('Badge')
     // The link named a viewport; it must be applied, not merely stored.
-    await expect(page.getByTestId('viewport-tablet')).toHaveAttribute('data-rocketstyle', /.+/)
+    await expect(page.getByTestId('viewport-kiosk')).toHaveAttribute('data-rocketstyle', /.+/)
 
     // A component that no longer exists must not blank the workbench.
     await page.goto('/?c=deleted-component')

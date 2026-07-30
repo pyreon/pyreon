@@ -16,9 +16,14 @@ import type { ThemeTokens } from './theme'
 
 // ── viewport ────────────────────────────────────────────────────────────────
 
-export type ViewportId = 'full' | 'mobile' | 'tablet' | 'desktop'
+/**
+ * Open string: the shipped ids autocomplete nowhere special — a project's
+ * `atlas.config.ts` presets name their own.
+ */
+export type ViewportId = string
 
 export interface ViewportPreset {
+  /** A custom CSS width is carried on the preset itself — see `width`. */
   id: ViewportId
   label: string
   /** Canvas width in px — `null` means "fill the stage" (no constraint). */
@@ -70,11 +75,14 @@ export const VIEWPORT_SIZE: Record<ViewportId, string> = {
 
 // ── backgrounds ─────────────────────────────────────────────────────────────
 
-export type BackgroundId = 'theme' | 'light' | 'dark' | 'checker'
+/** Open string — see `ViewportId`. */
+export type BackgroundId = string
 
 export interface BackgroundPreset {
   id: BackgroundId
   label: string
+  /** CSS color for a per-project preset; the shipped ids style via variants. */
+  color?: string
 }
 
 export const BACKGROUNDS: readonly BackgroundPreset[] = [

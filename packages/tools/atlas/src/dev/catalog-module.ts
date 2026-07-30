@@ -127,6 +127,8 @@ export interface GenerateOptions {
    * honors, honored on the canvas.
    */
   configPath?: string
+  /** Addon presets — serialized VERBATIM onto the catalog (plain JSON data). */
+  presets?: import('../ui/catalog').WorkbenchPresets
 }
 
 /**
@@ -178,6 +180,7 @@ export function generateCatalogModule(
   }
 
   lines.push('export const catalog = {')
+  if (options.presets) lines.push(`  presets: ${JSON.stringify(options.presets)},`)
   lines.push('  components: [')
 
   entries.forEach((entry, i) => {

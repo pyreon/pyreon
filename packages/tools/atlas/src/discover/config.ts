@@ -14,6 +14,9 @@
 import { existsSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
 import type { ComponentRef } from '../core'
+// Type-only: the presets CONTRACT lives with the UI that renders it, and a
+// type import is erased — `atlas scan` never loads the workbench.
+import type { WorkbenchPresets } from '../ui/catalog'
 import { type ModuleLoader, runtimeLoader } from './load'
 
 /** What a project may export from `atlas.config.{ts,tsx,js,mjs}`. */
@@ -32,6 +35,13 @@ export interface AtlasConfig {
    * are used; the values never reach the catalog.
    */
   theme?: unknown
+  /**
+   * Per-project addon presets — the lists the workbench renders its Viewport /
+   * Background / Locale / Roles pickers from. Plain JSON data; each omitted
+   * family keeps the shipped defaults. See `WorkbenchPresets` in
+   * `@pyreon/atlas/ui` for the field-by-field contract.
+   */
+  presets?: WorkbenchPresets
 }
 
 /** Filenames tried, in order. */
@@ -85,13 +95,58 @@ export async function loadAtlasConfig(
     return { config: {}, path: found, error: `${found}: \`wrapper\` must be a component function` }
   }
   const theme = mod.theme ?? fromDefault.theme
+  const rawPresets = (mod.presets ?? fromDefault.presets) as unknown
+  const presetsError = rawPresets === undefined ? undefined : validatePresets(rawPresets)
+  if (presetsError) {
+    // The other exports still apply — a typo in one preset list must not
+    // silently unwrap the whole catalog — but the problem is NAMED.
+    return {
+      config: {
+        ...(wrapper ? { wrapper: wrapper as ComponentRef } : {}),
+        ...(theme !== undefined ? { theme } : {}),
+      },
+      path: found,
+      error: `${found}: \`presets\` ignored — ${presetsError}`,
+    }
+  }
   return {
     config: {
       ...(wrapper ? { wrapper: wrapper as ComponentRef } : {}),
       ...(theme !== undefined ? { theme } : {}),
+      ...(rawPresets !== undefined ? { presets: rawPresets as WorkbenchPresets } : {}),
     },
     path: found,
   }
+}
+
+/**
+ * Shape-check the presets export. Returns a MESSAGE (not a boolean) so the
+ * config error names exactly what is wrong — "presets are ignored" with no
+ * reason is a puzzle, not a diagnostic.
+ */
+export function validatePresets(value: unknown): string | undefined {
+  if (typeof value !== 'object' || value === null) return '`presets` must be an object'
+  const presets = value as Record<string, unknown>
+  const families = ['viewports', 'backgrounds', 'locales', 'roles'] as const
+  for (const family of families) {
+    const list = presets[family]
+    if (list === undefined) continue
+    if (!Array.isArray(list)) return `\`presets.${family}\` must be an array`
+    if (list.length === 0) return `\`presets.${family}\` must not be empty (omit it to keep the defaults)`
+    for (const entry of list as unknown[]) {
+      const e = entry as Record<string, unknown>
+      if (typeof e !== 'object' || e === null || typeof e.id !== 'string' || typeof e.label !== 'string') {
+        return `every \`presets.${family}\` entry needs string \`id\` and \`label\``
+      }
+      if (family === 'viewports' && typeof e.width !== 'number' && e.width !== null) {
+        return `\`presets.viewports\` entry "${String(e.id)}" needs \`width: number | null\``
+      }
+      if (family === 'locales' && e.dir !== undefined && e.dir !== 'ltr' && e.dir !== 'rtl') {
+        return `\`presets.locales\` entry "${String(e.id)}" has an invalid \`dir\``
+      }
+    }
+  }
+  return undefined
 }
 
 /** Resolve a user-supplied path against cwd, leaving absolute paths alone. */

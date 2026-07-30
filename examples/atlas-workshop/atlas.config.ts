@@ -20,3 +20,29 @@
 import { THEMES, tokens } from '@pyreon/atlas/ui'
 
 export const theme = tokens(THEMES[0]!, false)
+
+/**
+ * Per-project addon presets — plain JSON data. Each family REPLACES the
+ * shipped list; omitted families keep the defaults (pseudo-states and the
+ * backgrounds here are omitted deliberately, so the workbench shows how the
+ * two sources mix). The `kiosk` viewport is a width the shipped set does not
+ * have, and the `ops` role grants exactly one destructive key — both exist so
+ * the e2e can prove a CUSTOM entry drives the real canvas and the real
+ * recording `can()`, not just a button label.
+ */
+export const presets = {
+  viewports: [
+    { id: 'full', label: 'Full', width: null },
+    { id: 'mobile', label: 'Mobile', width: 375 },
+    { id: 'kiosk', label: 'Kiosk', width: 900 },
+  ],
+  locales: [
+    { id: 'en', label: 'English' },
+    { id: 'ar', label: 'العربية', dir: 'rtl' as const },
+  ],
+  roles: [
+    { id: 'anonymous', label: 'Anonymous', hint: 'nothing granted' },
+    { id: 'ops', label: 'Ops', hint: 'may delete posts', grants: ['posts.delete'] },
+    { id: 'admin', label: 'Admin', hint: 'everything granted', defaultGrant: true },
+  ],
+}

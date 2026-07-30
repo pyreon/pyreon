@@ -34,6 +34,12 @@ export interface PermissionSet {
   hint: string
   /** Verbs (final key segment) this role may perform. */
   verbs: readonly string[]
+  /**
+   * EXACT keys this role is granted, checked before the verb heuristic. The
+   * seam a project's own roles (from `atlas.config.ts`) use when their model
+   * is key-based rather than verb-based.
+   */
+  grants?: readonly string[]
   /** Verdict for a key whose verb is not listed. */
   defaultGrant: boolean
 }
@@ -67,6 +73,7 @@ export function permissionSetById(id: string): PermissionSet {
 
 /** The role's verdict for one key, before the engine sees it. */
 export function grants(set: PermissionSet, key: string): boolean {
+  if (set.grants?.includes(key)) return true
   const verb = key.includes('.') ? key.slice(key.lastIndexOf('.') + 1) : key
   return set.verbs.includes(verb) ? true : set.defaultGrant
 }

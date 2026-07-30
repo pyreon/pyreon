@@ -13,7 +13,7 @@ import { Show } from '@pyreon/core'
 import * as C from '../chrome'
 import type { WorkbenchModel } from '../model'
 import { registerAddonPanel } from '../panels'
-import { DEFAULT_PERMISSION_SETS, isUnguarded, permissionSetById } from '../permission-sets'
+import { isUnguarded } from '../permission-sets'
 
 export function registerPermissionsPanel(): void {
   registerAddonPanel({
@@ -34,10 +34,10 @@ export function registerPermissionsPanel(): void {
           <C.CtrlRow>
             <C.CtrlHead>
               <C.CtrlLabel>Role</C.CtrlLabel>
-              <C.CtrlType>{() => permissionSetById(m.permissionSet()).hint}</C.CtrlType>
+              <C.CtrlType>{() => (m.roles.find((r) => r.id === m.permissionSet()) ?? m.roles[0]!).hint}</C.CtrlType>
             </C.CtrlHead>
             <C.EnumWrap>
-              {DEFAULT_PERMISSION_SETS.map((set) => (
+              {m.roles.map((set) => (
                 <C.EnumBtn
                   data-testid={`role-${set.id}`}
                   state={() => (m.permissionSet() === set.id ? 'active' : 'idle')}

@@ -8,12 +8,12 @@ import { PermissionsProvider } from '@pyreon/permissions'
 import { computed, effect, isClient, signal, type Computed, type Effect, type Signal } from '@pyreon/reactivity'
 import type { A11yReport } from './a11y'
 import { analyzeA11y } from './a11y'
-import type { AddonTabId, BackgroundId, LocaleId, PseudoId, ViewportId } from './addons'
-import { localeDir, pseudoProps } from './addons'
+import type { AddonTabId, BackgroundPreset, LocalePreset, PseudoId, ViewportPreset } from './addons'
+import { BACKGROUNDS, LOCALES, VIEWPORTS, pseudoProps } from './addons'
 import { pseudoLocalizeValues } from './pseudo-locale'
 import {
   DEFAULT_PERMISSION_SETS,
-  permissionSetById,
+  type PermissionSet,
   recordingPermissions,
   type RecordingPermissions,
 } from './permission-sets'
@@ -60,13 +60,26 @@ export interface WorkbenchModel {
   view: Signal<View>
   addon: Signal<Addon>
   actions: Signal<ActionEntry[]>
-  // canvas addons (viewport / backgrounds / pseudo-state / outline)
-  viewport: Signal<ViewportId>
-  background: Signal<BackgroundId>
+  // canvas addons (viewport / backgrounds / pseudo-state / outline).
+  // Ids are plain strings: the lists they index are per-project presets
+  // (`catalog.presets`), falling back to the shipped defaults.
+  viewport: Signal<string>
+  background: Signal<string>
   pseudo: Signal<PseudoId | null>
   outline: Signal<boolean>
   /** Active locale — threaded to `render` as `ctx.locale`, and drives `dir=`. */
-  locale: Signal<LocaleId>
+  locale: Signal<string>
+  // the resolved preset lists the pickers render from
+  viewports: readonly ViewportPreset[]
+  backgrounds: readonly BackgroundPreset[]
+  locales: readonly LocalePreset[]
+  roles: readonly PermissionSet[]
+  /** The active viewport preset (falls back to the first). */
+  viewportPreset: Computed<ViewportPreset>
+  /** The active background preset (falls back to the first). */
+  backgroundPreset: Computed<BackgroundPreset>
+  /** Writing direction of the active locale. */
+  dir: Computed<'ltr' | 'rtl'>
   /** i18n stress: render every string accented + 40% longer to expose truncation. */
   pseudoLocale: Signal<boolean>
   /** Role the preview renders under — threaded to `render` as `ctx.can`. */
@@ -114,6 +127,18 @@ export function createModel(
   const search = buildSearch(catalog)
   const total = catalog.components.length
 
+  // Per-project presets — every omitted family keeps the shipped defaults.
+  // Resolved ONCE (the lists are static data; only the SELECTION is a signal).
+  const presets = catalog.presets ?? {}
+  const viewports: readonly ViewportPreset[] =
+    presets.viewports?.map((v) => ({ hint: v.width === null ? 'fluid' : `${v.width}px`, ...v })) ??
+    VIEWPORTS
+  const backgrounds: readonly BackgroundPreset[] = presets.backgrounds ?? BACKGROUNDS
+  const locales: readonly LocalePreset[] = presets.locales?.map((l) => ({ dir: 'ltr', ...l })) ?? LOCALES
+  const roles: readonly PermissionSet[] =
+    presets.roles?.map((r) => ({ hint: '', verbs: [], defaultGrant: false, ...r })) ??
+    DEFAULT_PERMISSION_SETS
+
   // Restore from the URL first, so a shared link lands on the view it names.
   //
   // `isClient` from `@pyreon/reactivity` rather than a hand-rolled
@@ -150,16 +175,24 @@ export function createModel(
     linkedComponent && initial.args ? { [linkedComponent.id]: initial.args } : {},
   )
   const actions = signal<ActionEntry[]>([])
-  const viewport = signal<ViewportId>((initial.viewport as ViewportId) ?? 'full')
-  const background = signal<BackgroundId>((initial.background as BackgroundId) ?? 'theme')
+  // A URL id that names no preset falls back to the first — a stale link must
+  // not select a state the pickers cannot show.
+  const viewport = signal<string>(
+    viewports.find((v) => v.id === initial.viewport)?.id ?? viewports[0]?.id ?? 'full',
+  )
+  const background = signal<string>(
+    backgrounds.find((b) => b.id === initial.background)?.id ?? backgrounds[0]?.id ?? 'theme',
+  )
   const pseudo = signal<PseudoId | null>(null)
   const outline = signal(false)
-  const locale = signal<LocaleId>((initial.locale as LocaleId) ?? 'en')
+  const locale = signal<string>(
+    locales.find((l) => l.id === initial.locale)?.id ?? locales[0]?.id ?? 'en',
+  )
   // i18n STRESS, distinct from the locale switcher next to it: the switcher
   // changes writing direction, this changes every string's LENGTH. Off by
   // default — it is a deliberate check, not a viewing mode.
   const pseudoLocale = signal(false)
-  const permissionSet = signal(DEFAULT_PERMISSION_SETS[0]?.id ?? 'anonymous')
+  const permissionSet = signal(roles[0]?.id ?? 'anonymous')
   const queryState = signal<QueryStateId>('success')
 
   // Re-created per role AND per selected component: the consulted-key list is
@@ -167,7 +200,8 @@ export function createModel(
   // either would report keys the current pairing never asked about.
   const permissions = computed(() => {
     void selId()
-    return recordingPermissions(permissionSetById(permissionSet()))
+    const role = roles.find((r) => r.id === permissionSet()) ?? roles[0]!
+    return recordingPermissions(role)
   })
 
   // A scenario supplies its own sample payload through the `queryData` control
@@ -175,6 +209,14 @@ export function createModel(
   // branch on, which is the part being exercised.
   const queryResult = computed<FakeQueryResult>(() =>
     makeQueryResult(queryState(), (vals() as { queryData?: unknown }).queryData ?? null),
+  )
+
+  const viewportPreset = computed(() => viewports.find((v) => v.id === viewport()) ?? viewports[0]!)
+  const backgroundPreset = computed(
+    () => backgrounds.find((b) => b.id === background()) ?? backgrounds[0]!,
+  )
+  const dir = computed<'ltr' | 'rtl'>(
+    () => locales.find((l) => l.id === locale())?.dir ?? 'ltr',
   )
 
   const brand = computed(() => THEMES.find((b) => b.id === brandId()) ?? THEMES[0]!)
@@ -318,7 +360,7 @@ export function createModel(
     // which a `direction:` dimension alone would not give.
     stopDir ??= effect(() => {
       const el2 = previewEl
-      if (el2) el2.setAttribute('dir', localeDir(locale()))
+      if (el2) el2.setAttribute('dir', dir())
     })
     if (typeof MutationObserver === 'undefined') return
     observer?.disconnect()
@@ -371,6 +413,7 @@ export function createModel(
     catalog, groups, total, title: opts.title ?? 'atlas', subtitle: opts.subtitle ?? '',
     brandId, dark, selId, query, zoomIdx, view, addon, actions,
     viewport, background, pseudo, outline, locale, pseudoLocale, permissionSet, permissions, queryState, queryResult,
+    viewports, backgrounds, locales, roles, viewportPreset, backgroundPreset, dir,
     brand, theme, sel, vals, visibleGroups, noResults, a11y,
     setValue, selectScenario, reset, logAction, clearActions, search, preview, searchRef, focusSearch, previewRef,
   }

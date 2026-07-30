@@ -13,8 +13,12 @@ export const Stage = el.attrs({ tag: 'div', css: 'display:flex;align-items:cente
 // fluid default; the rest pin the canvas to a real unistyle breakpoint, capped
 // at the stage width so a desktop preset never overflows on a small screen.
 export const Frame = el
-  .attrs({ tag: 'div', css: 'display:flex;flex-direction:column;align-items:stretch;' })
-  .theme((t: T) => ({ borderRadius: '16px', overflow: 'hidden', boxShadow: '0 20px 50px -24px rgba(15,18,30,.35)', border: `1px solid ${t.border}`, background: `${t.surface}`, transition: 'width .16s ease' }))
+  // The structural css lives in the THEME (not `.attrs({ css })`) so the
+  // per-instance `css` PROP stays free: it is the channel a project-defined
+  // viewport preset pins its width through (a hashed class, not an inline
+  // style — the workbench ships none).
+  .attrs({ tag: 'div' })
+  .theme((t: T) => ({ display: 'flex', flexDirection: 'column', alignItems: 'stretch', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 20px 50px -24px rgba(15,18,30,.35)', border: `1px solid ${t.border}`, background: `${t.surface}`, transition: 'width .16s ease' }))
   .sizes(() => ({
     vFull: {},
     vMobile: { width: '375px', maxWidth: '100%' },
