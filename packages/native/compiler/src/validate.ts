@@ -20,6 +20,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { KOTLIN_COMPOSE_STUBS } from './kotlin-stubs'
 import { SWIFT_UI_STUBS } from './swift-stubs'
+import {
+  readToolProbe,
+  withVerdictCache,
+  writeToolProbe,
+  type ValidateKind,
+} from './validate-cache'
 
 export interface ValidationResult {
   /** True iff the source was accepted as syntactically valid. */
@@ -38,20 +44,45 @@ export interface ValidationResult {
  * change mid-run.
  */
 let _swiftcAvailable: boolean | undefined
+let _swiftcVersion = ''
 export function isSwiftcAvailable(): boolean {
   if (_swiftcAvailable !== undefined) return _swiftcAvailable
+  const cached = readToolProbe('swiftc')
+  if (cached !== null) {
+    _swiftcAvailable = cached.available
+    _swiftcVersion = cached.version
+    return _swiftcAvailable
+  }
   try {
-    execFileSync('swiftc', ['--version'], { stdio: 'ignore' })
+    // Capture stdout rather than discarding it: the version string is needed
+    // as a verdict-cache key component anyway, so taking it here costs
+    // nothing and saves a second spawn.
+    _swiftcVersion = execFileSync('swiftc', ['--version'], {
+      stdio: ['ignore', 'pipe', 'ignore'],
+      encoding: 'utf8',
+    }).trim()
     _swiftcAvailable = true
   } catch {
     _swiftcAvailable = false
+    _swiftcVersion = ''
   }
+  writeToolProbe('swiftc', { available: _swiftcAvailable, version: _swiftcVersion })
   return _swiftcAvailable
+}
+
+/**
+ * The `swiftc` version string, for use as a cache-key component. Empty when
+ * the tool is absent. Probing is what populates it, so probe first.
+ */
+function swiftcVersion(): string {
+  if (_swiftcAvailable === undefined) isSwiftcAvailable()
+  return _swiftcVersion
 }
 
 /** For testing: reset the cached detection result. */
 export function _resetSwiftcCache(): void {
   _swiftcAvailable = undefined
+  _swiftcVersion = ''
 }
 
 /**
@@ -60,6 +91,16 @@ export function _resetSwiftcCache(): void {
  * (force skip) and PYREON_REQUIRE_NATIVE_VALIDATE (fail-on-absent).
  */
 export function validateSwift(source: string): ValidationResult {
+  return withVerdictCache(
+    'swift-parse' satisfies ValidateKind,
+    swiftcVersion(),
+    '',
+    source,
+    () => validateSwiftUncached(source),
+  )
+}
+
+function validateSwiftUncached(source: string): ValidationResult {
   if (process.env.PYREON_SKIP_NATIVE_VALIDATE === '1') {
     return { ok: true, skipped: true, skipReason: 'PYREON_SKIP_NATIVE_VALIDATE=1' }
   }
@@ -127,6 +168,15 @@ export function isSwiftUIAvailable(): boolean {
     _swiftUIAvailable = false
     return false
   }
+  // Disk-cached under a `variant` so it cannot collide with the plain
+  // availability probe for the same binary. This probe compiles a real
+  // `import SwiftUI` file, so it is far from free, and vitest's per-file
+  // isolation runs it once per test file.
+  const cachedUI = readToolProbe('swiftc', 'swiftui')
+  if (cachedUI !== null) {
+    _swiftUIAvailable = cachedUI.available
+    return _swiftUIAvailable
+  }
   const tempDir = mkdtempSync(join(tmpdir(), 'pyreon-swiftui-probe-'))
   const filename = join(tempDir, 'probe.swift')
   writeFileSync(filename, 'import SwiftUI\nlet _pyreonSwiftUIProbe = 0\n', 'utf8')
@@ -142,6 +192,7 @@ export function isSwiftUIAvailable(): boolean {
       // best-effort
     }
   }
+  writeToolProbe('swiftc', { available: _swiftUIAvailable, version: '' }, 'swiftui')
   return _swiftUIAvailable
 }
 
@@ -171,6 +222,14 @@ export function isObservationAvailable(): boolean {
     _observationAvailable = false
     return false
   }
+  // Disk-cached like the SwiftUI probe: this type-checks a real @Observable
+  // class, once per isolated test file, to answer a question whose answer only
+  // changes when the toolchain does.
+  const cachedObs = readToolProbe('swiftc', 'observation')
+  if (cachedObs !== null) {
+    _observationAvailable = cachedObs.available
+    return _observationAvailable
+  }
   const tempDir = mkdtempSync(join(tmpdir(), 'pyreon-observation-probe-'))
   const filename = join(tempDir, 'probe.swift')
   writeFileSync(
@@ -190,6 +249,7 @@ export function isObservationAvailable(): boolean {
       // best-effort
     }
   }
+  writeToolProbe('swiftc', { available: _observationAvailable, version: '' }, 'observation')
   return _observationAvailable
 }
 
@@ -221,7 +281,28 @@ export function _resetObservationCache(): void {
  * SDK), honoring PYREON_REQUIRE_NATIVE_VALIDATE for the swiftc-absent
  * case only — a Linux CI box legitimately can't run this gate.
  */
+/**
+ * The preamble `validateSwiftTypecheck` prepends. Exported so the verdict cache
+ * can key on the bytes ACTUALLY compiled rather than on the caller's source:
+ * changing this text must invalidate cached verdicts, and it can only do that
+ * if the same function produces both the key and the file.
+ */
+export function _swiftTypecheckPreamble(source: string): string {
+  return source.includes('import SwiftUI') ? '' : 'import SwiftUI\nimport Foundation\n\n'
+}
+
 export function validateSwiftTypecheck(source: string): ValidationResult {
+  return withVerdictCache(
+    'swift-typecheck' satisfies ValidateKind,
+    swiftcVersion(),
+    '',
+    // The compiled bytes, not the caller's source — see _swiftTypecheckPreamble.
+    _swiftTypecheckPreamble(source) + source,
+    () => validateSwiftTypecheckUncached(source),
+  )
+}
+
+function validateSwiftTypecheckUncached(source: string): ValidationResult {
   if (process.env.PYREON_SKIP_NATIVE_VALIDATE === '1') {
     return { ok: true, skipped: true, skipReason: 'PYREON_SKIP_NATIVE_VALIDATE=1' }
   }
@@ -241,7 +322,7 @@ export function validateSwiftTypecheck(source: string): ValidationResult {
     return { ok: true, skipped: true, skipReason: 'SwiftUI SDK not available (non-macOS)' }
   }
 
-  const preamble = source.includes('import SwiftUI') ? '' : 'import SwiftUI\nimport Foundation\n\n'
+  const preamble = _swiftTypecheckPreamble(source)
   const tempDir = mkdtempSync(join(tmpdir(), 'pyreon-native-typecheck-'))
   const filename = join(tempDir, 'input.swift')
   writeFileSync(filename, preamble + source, 'utf8')
@@ -420,11 +501,27 @@ export function validateSwiftWithStubs(source: string): ValidationResult {
   // copy of any type the emit declares so the concat behaves like real shadowing.
   const stub = shadowStubDeclarations(SWIFT_UI_STUBS, stripped)
 
+  // Everything above transformed the source; `stub` and `inputText` ARE the
+  // bytes swiftc will see. Keying on them means every transform — import
+  // stripping, the networking shim, the Observation import, stub shadowing — is
+  // folded into the key for free, so editing any of that logic invalidates
+  // cached verdicts without anyone remembering to bump a version.
+  const inputText = _swiftInputPrelude(stripped, observation) + stripped
+  return withVerdictCache(
+    'swift-stubs' satisfies ValidateKind,
+    swiftcVersion(),
+    stub,
+    inputText,
+    () => compileSwiftStubs(stub, inputText),
+  )
+}
+
+function compileSwiftStubs(stub: string, inputText: string): ValidationResult {
   const tempDir = mkdtempSync(join(tmpdir(), 'pyreon-native-swift-stubs-'))
   const stubsPath = join(tempDir, 'PyreonSwiftStubs.swift')
   const inputPath = join(tempDir, 'Input.swift')
   writeFileSync(stubsPath, stub, 'utf8')
-  writeFileSync(inputPath, _swiftInputPrelude(stripped, observation) + stripped, 'utf8')
+  writeFileSync(inputPath, inputText, 'utf8')
 
   try {
     // Both files compiled as one module; the stubs satisfy SwiftUI/PyreonRuntime
@@ -457,20 +554,54 @@ export function validateSwiftWithStubs(source: string): ValidationResult {
  * Cached for the lifetime of the process.
  */
 let _kotlincAvailable: boolean | undefined
+let _kotlincVersion = ''
 export function isKotlincAvailable(): boolean {
   if (_kotlincAvailable !== undefined) return _kotlincAvailable
-  try {
-    execFileSync('kotlinc', ['-version'], { stdio: 'ignore' })
-    _kotlincAvailable = true
-  } catch {
-    _kotlincAvailable = false
+  const cached = readToolProbe('kotlinc')
+  if (cached !== null) {
+    _kotlincAvailable = cached.available
+    _kotlincVersion = cached.version
+    return _kotlincAvailable
   }
+  try {
+    // `kotlinc -version` writes to STDERR and starts a JVM (~1.4s warm, 10-20s
+    // cold under CI load). That is why the result is disk-cached above: with
+    // vitest isolating modules per file, this ran 123 times per suite.
+    _kotlincVersion = execFileSync('kotlinc', ['-version'], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      encoding: 'utf8',
+    }).trim()
+    _kotlincAvailable = true
+  } catch (err) {
+    // A non-zero exit means absent; but kotlinc reports its version on stderr
+    // and still exits 0, so only a genuine spawn failure lands here.
+    const e = err as { stderr?: string | Buffer; status?: number }
+    if (e.status === 0) {
+      const stderr = typeof e.stderr === 'string' ? e.stderr : (e.stderr?.toString('utf8') ?? '')
+      _kotlincVersion = stderr.trim()
+      _kotlincAvailable = true
+    } else {
+      _kotlincAvailable = false
+      _kotlincVersion = ''
+    }
+  }
+  writeToolProbe('kotlinc', { available: _kotlincAvailable, version: _kotlincVersion })
   return _kotlincAvailable
+}
+
+/**
+ * The `kotlinc` version string, for use as a cache-key component. Empty when
+ * the tool is absent. Probing is what populates it, so probe first.
+ */
+function kotlincVersion(): string {
+  if (_kotlincAvailable === undefined) isKotlincAvailable()
+  return _kotlincVersion
 }
 
 /** For testing: reset the cached detection result. */
 export function _resetKotlincCache(): void {
   _kotlincAvailable = undefined
+  _kotlincVersion = ''
 }
 
 /**
@@ -487,6 +618,16 @@ export function _resetKotlincCache(): void {
  * these stubs.
  */
 export function validateKotlin(source: string): ValidationResult {
+  return withVerdictCache(
+    'kotlin' satisfies ValidateKind,
+    kotlincVersion(),
+    KOTLIN_COMPOSE_STUBS,
+    source,
+    () => validateKotlinUncached(source),
+  )
+}
+
+function validateKotlinUncached(source: string): ValidationResult {
   if (process.env.PYREON_SKIP_NATIVE_VALIDATE === '1') {
     return { ok: true, skipped: true, skipReason: 'PYREON_SKIP_NATIVE_VALIDATE=1' }
   }
