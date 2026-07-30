@@ -12,7 +12,7 @@
 // the member names and their semantics have to match `PyreonWebSocket`, or one
 // component body cannot read the same fields on three targets.
 
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { useWebSocket } from '../useWebSocket'
 
 /** Minimal WebSocket double. Only what the hook actually drives. */
