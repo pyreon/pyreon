@@ -17,19 +17,29 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { runScan } from '../cli/run'
 
+/**
+ * `mount: false` throughout.
+ *
+ * These specs are about DISCOVERY — what the scanner reads out of real source.
+ * Mounting would boot a Vite module pipeline that loads its own copy of the
+ * framework, and this runner already holds one, so the singleton sentinel
+ * throws before a single assertion runs. `runScan` with mounting enabled wants
+ * a process to itself; that is what the CLI gives it.
+ */
+
 const EXAMPLE = resolve(import.meta.dirname, '../../../../../examples/atlas-workshop')
 
 describe('scanning the atlas-workshop example', () => {
   it('discovers the component library, not just the shell', async () => {
     // `write: false` — a test must not drop build artifacts into the example.
-    const result = await runScan({ cwd: EXAMPLE, write: false })
+    const result = await runScan({ cwd: EXAMPLE, write: false, mount: false })
 
     expect(result.components, 'the example must catalog a real library').toBeGreaterThanOrEqual(3)
     expect(result.scenarios, 'components without scenarios teach an agent nothing').toBeGreaterThan(5)
   })
 
   it('reads real prop types into controls, including unions and accessors', async () => {
-    const result = await runScan({ cwd: EXAMPLE, write: false })
+    const result = await runScan({ cwd: EXAMPLE, write: false, mount: false })
     // The guide is the agent-facing rendering; asserting on it covers both the
     // extraction and the presentation in one pass.
     const guide = result.guide
@@ -47,7 +57,7 @@ describe('scanning the atlas-workshop example', () => {
   })
 
   it('reports verified, failing and unverified separately', async () => {
-    const result = await runScan({ cwd: EXAMPLE, write: false })
+    const result = await runScan({ cwd: EXAMPLE, write: false, mount: false })
 
     // The three counts must add up — a scenario cannot be two of them, and a
     // missing bucket is how "unverified" used to hide inside "verified".
@@ -60,7 +70,7 @@ describe('scanning the atlas-workshop example', () => {
   })
 
   it('names what is wrong in the guide, not just that something is', async () => {
-    const result = await runScan({ cwd: EXAMPLE, write: false })
+    const result = await runScan({ cwd: EXAMPLE, write: false, mount: false })
     expect(result.guide).toMatch(/avoid:[^\n]*accessible name/)
   })
 })

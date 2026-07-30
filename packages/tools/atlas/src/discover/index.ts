@@ -7,4 +7,16 @@
  */
 export { scanSource } from './scan'
 export type { DiscoverOptions } from './discover'
-export { discoverComponents, fileDiscoveryPlugin } from './discover'
+export { discoverComponents, fileDiscoveryPlugin, listComponentFiles } from './discover'
+export type { RocketstyleDiscoveryOptions } from './rocketstyle'
+export { discoverRocketstyle, readDimensions } from './rocketstyle'
+export type { AtlasConfig, LoadedConfig } from './config'
+export { loadAtlasConfig } from './config'
+export type { LoadResult, ModuleLoader } from './load'
+export {
+  componentLoaderPlugin,
+  createModuleLoader,
+  loadComponent,
+  loadRuntime,
+  runtimeLoader,
+} from './load'

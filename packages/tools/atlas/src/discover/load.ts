@@ -1,0 +1,244 @@
+/**
+ * Import the modules discovery found, and attach the real component functions.
+ *
+ * Discovery is deliberately static — it reads source and infers prop shapes
+ * without executing anything, which is why it is fast and safe to run over a
+ * whole project. The consequence is that `ComponentIntelligence.component` is
+ * undefined, so every check that needs to MOUNT skips. The mount harness
+ * without this is a road with no on-ramp.
+ *
+ * It is opt-in and separate from discovery for a reason: importing a project's
+ * modules runs its top-level code, and that is the user's decision.
+ *
+ * ## Why a Vite loader rather than a bare `import()`
+ *
+ * A bare dynamic import was the obvious first cut and it is WRONG, in a way
+ * that is invisible until something mounts. The importing runtime compiles the
+ * `.tsx`, and the project's JSX configuration is not necessarily in effect:
+ * under bun, the repo's `"jsx": "preserve"` (correct — Vite does the transform)
+ * means bun falls back to its OWN default, the React automatic runtime. Every
+ * component then compiles against React, and mounting fails with
+ *
+ *     Invalid VNode type: … received symbol (Symbol(react.fragment))
+ *
+ * which reads like a broken component and is really a broken loader. Loading
+ * through Vite runs the project's real plugin chain, `@pyreon/vite-plugin`
+ * included, so what gets mounted is what the project actually ships.
+ *
+ * Honest limit, stated where it matters: `ssrLoadModule` transforms in SSR
+ * mode, so a component arrives via the compiler's `h()` lowering rather than
+ * the `_tpl()` template path a browser build produces. The two are both
+ * supported Pyreon paths and both mount, but they are KNOWN to diverge on
+ * reactivity lowering — so a check on this loader may claim what threw, and
+ * must never claim a reactivity verdict. That belongs to `atlas dev`, where a
+ * real browser runs the real client build.
+ */
+import { resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import type { ComponentIntelligence, ComponentRef } from '../core'
+import { defineAtlasPlugin } from '../plugins'
+import type { AtlasPlugin, DecorateContext } from '../plugins'
+import type { MountRuntime } from '../verify/harness'
+
+/** Loads a module by absolute path. */
+export interface ModuleLoader {
+  load(file: string): Promise<Record<string, unknown>>
+  close(): Promise<void>
+  /** How modules are being compiled — reported in diagnostics. */
+  kind: 'vite' | 'runtime'
+}
+
+/** The always-available fallback: whatever transform the host runtime applies. */
+export function runtimeLoader(): ModuleLoader {
+  return {
+    kind: 'runtime',
+    load: (file) => import(pathToFileURL(file).href) as Promise<Record<string, unknown>>,
+    close: async () => {},
+  }
+}
+
+/**
+ * A loader backed by the project's own Vite pipeline.
+ *
+ * Falls back to the runtime loader when Vite or the Pyreon plugin is missing —
+ * a library validating its catalog in CI without Vite still gets *something*,
+ * and `kind` says which it got rather than leaving the caller to guess.
+ */
+export async function createModuleLoader(root: string): Promise<ModuleLoader> {
+  // Structural types, not `typeof import('vite')`: naming Vite's types here
+  // would put it in the type graph unconditionally, defeating the dynamic
+  // import — `atlas scan` must typecheck in a project that has no Vite.
+  type ViteServer = {
+    ssrLoadModule: (url: string) => Promise<Record<string, unknown>>
+    close: () => Promise<void>
+  }
+  type CreateServer = (config: Record<string, unknown>) => Promise<ViteServer>
+
+  let createServer: CreateServer
+  let plugin: unknown
+  try {
+    createServer = ((await import('vite')) as unknown as { createServer: CreateServer }).createServer
+    const mod = (await import('@pyreon/vite-plugin')) as unknown as {
+      default?: (o?: unknown) => unknown
+      pyreon?: (o?: unknown) => unknown
+    }
+    const factory = mod.default ?? mod.pyreon
+    // Not a throw: this is a resolution outcome, not an error to report. The
+    // caller's fallback is a perfectly good loader.
+    if (typeof factory !== 'function') return runtimeLoader()
+    // `devErrorPrinter` injects a virtual module for a browser console this
+    // loader does not have; `ssrTemplate` would lower JSX to string templates,
+    // and a string cannot be mounted.
+    plugin = factory({ devErrorPrinter: false, ssrTemplate: false })
+  } catch {
+    return runtimeLoader()
+  }
+
+  const server = await createServer({
+    root,
+    configFile: false,
+    // Middleware mode with no app: nothing is served, the server exists purely
+    // as a module pipeline. `optimizeDeps.entries: []` stops it crawling the
+    // project's `index.html`, which belongs to the app and pre-bundles a graph
+    // this has no use for.
+    appType: 'custom',
+    server: { middlewareMode: true },
+    optimizeDeps: { entries: [] },
+    // Resolve EXTERNALISED ssr imports with the host's conditions.
+    //
+    // `@pyreon/vite-plugin` sets `ssr.noExternal: [/@pyreon\//]`, but Vite
+    // still externalises some of the graph, and it resolves those ids with
+    // `externalConditions` — which defaults to `['node']` and lands on `lib/`,
+    // while the host (bun) lands on `src/`. Same package, two files, two
+    // instances, and the singleton sentinel throws before anything mounts.
+    // Prepended rather than replaced, so a package without a `bun` export
+    // resolves exactly as it did.
+    ...(isBun
+      ? {
+          environments: {
+            ssr: { resolve: { externalConditions: ['bun', 'node', 'module'], conditions: ['bun'] } },
+          },
+        }
+      : {}),
+    // Two settings that only make sense together, and without BOTH the
+    // framework ends up loaded twice and the singleton sentinel throws
+    // `Multiple instances of @pyreon/reactivity detected` before a single
+    // component mounts.
+    //
+    //   1. Externalise every `@pyreon/*` package BY NAME. Vite does not
+    //      externalise workspace-LINKED packages under a blanket
+    //      `external: true`, and processing them puts a second copy in Vite's
+    //      own module registry. Externalised, they are imported by the host
+    //      runtime — the same instances the harness already holds, which is
+    //      also what lets a component share the harness's reactivity graph.
+    //
+    //   2. Resolve with the HOST's conditions. Vite still resolves an external
+    //      id to a path, and its server defaults pick `lib/` while bun (which
+    //      honours the `bun` condition) picks `src/` — the same package, two
+    //      files, two instances. Prepended, not replaced, so a package without
+    //      a `bun` export resolves exactly as before.
+    plugins: [plugin],
+  })
+
+  return {
+    kind: 'vite',
+    // A bare specifier is passed through unchanged so the framework itself can
+    // be pulled from this same graph (see `loadRuntime`); only real paths are
+    // turned into URLs.
+    load: (file) => server.ssrLoadModule(file.startsWith('/') ? pathToFileURL(file).pathname : file),
+    close: () => server.close(),
+  }
+}
+
+/** The host runtime honours the `bun` export condition. */
+const isBun = typeof (globalThis as { Bun?: unknown }).Bun !== 'undefined'
+
+/**
+ * The framework instances a loader's modules were compiled against.
+ *
+ * `@pyreon/vite-plugin` sets `ssr.noExternal: [/@pyreon\//]`, so a Vite loader
+ * ALWAYS owns its own copy of the framework — externalising it is not an option
+ * a consumer can take away. The answer is not to fight that but to mount with
+ * the copy the components already hold, which is what this returns.
+ */
+export async function loadRuntime(loader: ModuleLoader): Promise<MountRuntime | undefined> {
+  if (loader.kind !== 'vite') return undefined
+  try {
+    const [core, dom] = await Promise.all([
+      loader.load('@pyreon/core'),
+      loader.load('@pyreon/runtime-dom'),
+    ])
+    const h = core.h
+    const mount = dom.mount
+    const registerErrorHandler = core.registerErrorHandler
+    if (typeof h !== 'function' || typeof mount !== 'function') return undefined
+    return {
+      h: h as MountRuntime['h'],
+      mount: mount as MountRuntime['mount'],
+      registerErrorHandler: registerErrorHandler as MountRuntime['registerErrorHandler'],
+    }
+  } catch {
+    // The project may not depend on the DOM runtime at all (a headless catalog).
+    // Falling back to Atlas's own copy is wrong here — it would be a second
+    // instance — so the caller mounts nothing and the check skips.
+    return undefined
+  }
+}
+
+export interface LoadResult {
+  component?: ComponentRef
+  /** why nothing was attached — for a diagnostic, never for a verdict */
+  reason?: string
+}
+
+/**
+ * Import `source` and pull out the export named `name`.
+ *
+ * Falls back to the default export, because a single-component file commonly
+ * has one. It does NOT fall back to "the only function export": a file whose
+ * exports do not include the name discovery recorded is a file whose shape was
+ * misread, and guessing there attaches the WRONG component to a name — mounting
+ * one thing and reporting the verdict under another label is worse than
+ * reporting nothing.
+ */
+export async function loadComponent(
+  source: string,
+  name: string,
+  loader: ModuleLoader = runtimeLoader(),
+): Promise<LoadResult> {
+  let mod: Record<string, unknown>
+  try {
+    mod = await loader.load(source)
+  } catch (err) {
+    return { reason: `could not import ${source}: ${err instanceof Error ? err.message : String(err)}` }
+  }
+  const candidate = mod[name] ?? mod.default
+  if (typeof candidate !== 'function') {
+    return { reason: `${source} has no callable export named "${name}"` }
+  }
+  return { component: candidate as ComponentRef }
+}
+
+/**
+ * Attach real component functions to already-discovered intelligence.
+ *
+ * A decorate plugin rather than a discover one: discovery stays static and this
+ * layers on top, so a catalog can be built with or without executing the
+ * project's code by including or omitting this single plugin.
+ */
+export function componentLoaderPlugin(loader?: ModuleLoader): AtlasPlugin {
+  const active = loader ?? runtimeLoader()
+  return defineAtlasPlugin({
+    name: 'atlas:component-loader',
+    async decorate(ci: ComponentIntelligence, _ctx: DecorateContext): Promise<ComponentIntelligence> {
+      // Already carried a component (an authored catalog) — never overwrite it
+      // with a re-imported one, which would be a second module instance.
+      if (typeof ci.component === 'function' || !ci.source) return ci
+      // `source` is already relative to the PROCESS cwd (discovery joins the
+      // scan root itself), so it resolves against that — joining `ctx.cwd`
+      // again produces `examples/x/examples/x/...` and every load fails.
+      const { component } = await loadComponent(resolve(ci.source), ci.name, active)
+      return component ? { ...ci, component } : ci
+    },
+  })
+}

@@ -2157,6 +2157,7 @@
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vite-plugin": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
+        "happy-dom": "^20.11.1",
         "vite": "^8.0.16",
         "zod": "^4.4.3",
       },

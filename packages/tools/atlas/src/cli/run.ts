@@ -8,18 +8,31 @@
  * files); `runCli` is the thin arg-parsing + printing layer a bin invokes.
  */
 import { writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { createAtlas } from '../index'
 import type { AgentAsset } from '../plugins'
-import { aiAssetsPlugin, recommendedPlugins } from '../plugins'
-import type { DiscoverOptions } from '../discover'
-import { fileDiscoveryPlugin } from '../discover'
+import { aiAssetsPlugin, mountPlugin, recommendedPlugins } from '../plugins'
+import {
+  componentLoaderPlugin,
+  createModuleLoader,
+  type DiscoverOptions,
+  fileDiscoveryPlugin,
+  loadAtlasConfig,
+  loadRuntime,
+  type ModuleLoader,
+} from '../discover'
 
 export interface ScanOptions extends DiscoverOptions {
   /** output directory for the catalog + guide, relative to cwd (default '.') */
   out?: string
   /** write atlas-catalog.json + atlas-agent-guide.md (default true) */
   write?: boolean
+  /**
+   * Import each discovered module so runtime checks can mount it (default
+   * true). Set false to keep the scan purely static — importing a project's
+   * source runs its top-level code.
+   */
+  mount?: boolean
 }
 
 export interface ScanResult {
@@ -42,45 +55,84 @@ export interface ScanResult {
 /** Discover a project's components, build the verified catalog, emit assets. */
 export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
   const cwd = options.cwd ?? '.'
+  const mount = options.mount !== false
+  // One module pipeline for both the components and the config, so a config
+  // written in JSX compiles exactly the way the components it wraps do.
+  const loader: ModuleLoader | undefined = mount
+    ? await createModuleLoader(resolve(cwd))
+    : undefined
+  // The project's own providers. Only meaningful when scenarios are actually
+  // mounted, so it is not loaded — and its absence is not reported — otherwise.
+  const loaded = loader ? await loadAtlasConfig(cwd, loader) : { config: {} }
+  // Mount with the framework the COMPONENTS were compiled against — see
+  // `loadRuntime`. Undefined means Atlas resolves its own, which is right only
+  // when nothing else has loaded a copy.
+  const runtime = loader ? await loadRuntime(loader) : undefined
   let asset: AgentAsset | undefined
-  const graph = await createAtlas({
-    cwd,
-    plugins: [
-      fileDiscoveryPlugin({ ...options, cwd }),
-      ...recommendedPlugins(),
-      aiAssetsPlugin({
-        onAsset: (a) => {
-          asset = a
-        },
+  try {
+    return await buildScan()
+  } finally {
+    // A middleware-mode Vite server holds a watcher and an optimizer; leaving
+    // it open keeps the process alive after `atlas scan` has printed its
+    // summary, which reads as a hang.
+    await loader?.close()
+  }
+
+  async function buildScan(): Promise<ScanResult> {
+    const graph = await createAtlas({
+      cwd,
+      plugins: [
+        fileDiscoveryPlugin({
+        ...options,
+        cwd,
+        // Rocketstyle components are a call chain, not a typed function, so the
+        // static scan cannot see them at all. Detecting them needs the module
+        // loaded — the same loader the mount checks use.
+        ...(loader ? { rocketstyle: { loader, theme: loaded.config.theme } } : {}),
       }),
-    ],
-  }).build()
+        // Between discovery and the recommended bundle: discovery is static, and
+        // this is what turns a scanned name into a function the verify stage can
+        // MOUNT. Without it every runtime check skips, which is honest but
+        // useless — the harness would have no on-ramp.
+        ...(loader ? [componentLoaderPlugin(loader)] : []),
+        ...recommendedPlugins({ mount: false }),
+        // Appended AFTER the bundle so it can carry the project's wrapper. The
+        // bundle's own entry is disabled above rather than duplicated.
+        ...(mount ? [mountPlugin({ ...loaded.config, ...(runtime ? { runtime } : {}) })] : []),
+        aiAssetsPlugin({
+          onAsset: (a) => {
+            asset = a
+          },
+        }),
+      ],
+    }).build()
 
-  const scenarios = graph.scenarios()
-  // Three states, not two. `verify.ok` means a check RAN and passed; a verdict
-  // with `checked: 0` is unverified, which is neither a pass nor a failure —
-  // and is the common case while four of the five checks are stubs.
-  const verified = scenarios.filter((s) => s.verify?.ok === true).length
-  const failed = scenarios.filter((s) => s.verify && !s.verify.ok && s.verify.checked > 0).length
-  const result: ScanResult = {
-    components: graph.size(),
-    scenarios: scenarios.length,
-    verified,
-    failed,
-    unverified: scenarios.length - verified - failed,
-    flagged: failed,
-    guide: asset ? asset.guide : graph.toAgentGuide(),
-    llms: asset ? asset.llms : graph.toLlmsText(),
-  }
+    const scenarios = graph.scenarios()
+    // Three states, not two. `verify.ok` means a check RAN and passed; a verdict
+    // with `checked: 0` is unverified, which is neither a pass nor a failure —
+    // and is the common case while four of the five checks are stubs.
+    const verified = scenarios.filter((s) => s.verify?.ok === true).length
+    const failed = scenarios.filter((s) => s.verify && !s.verify.ok && s.verify.checked > 0).length
+    const result: ScanResult = {
+      components: graph.size(),
+      scenarios: scenarios.length,
+      verified,
+      failed,
+      unverified: scenarios.length - verified - failed,
+      flagged: failed,
+      guide: asset ? asset.guide : graph.toAgentGuide(),
+      llms: asset ? asset.llms : graph.toLlmsText(),
+    }
 
-  if (options.write !== false && graph.size() > 0) {
-    const outDir = join(cwd, options.out ?? '.')
-    result.catalogPath = join(outDir, 'atlas-catalog.json')
-    result.guidePath = join(outDir, 'atlas-agent-guide.md')
-    writeFileSync(result.catalogPath, JSON.stringify(graph.toJSON(), null, 2))
-    writeFileSync(result.guidePath, result.guide)
+    if (options.write !== false && graph.size() > 0) {
+      const outDir = join(cwd, options.out ?? '.')
+      result.catalogPath = join(outDir, 'atlas-catalog.json')
+      result.guidePath = join(outDir, 'atlas-agent-guide.md')
+      writeFileSync(result.catalogPath, JSON.stringify(graph.toJSON(), null, 2))
+      writeFileSync(result.guidePath, result.guide)
+    }
+    return result
   }
-  return result
 }
 
 const HELP = `atlas — component workshop + catalog for the Pyreon ecosystem
@@ -143,7 +195,9 @@ export async function runCli(argv: readonly string[]): Promise<number> {
       if (handle.components === 0) {
         // Not a hard failure — the server is up and says so — but silence here
         // would look like a broken workbench rather than an empty scan.
-        err(`atlas: no components found under ${join(dir ?? '.', 'src')}. The workbench is running but empty.\n`)
+        err(
+          `atlas: no components found under ${join(dir ?? '.', 'src')}. The workbench is running but empty.\n`,
+        )
       }
       out(`atlas dev: ${handle.components} component(s) → ${handle.url}\n`)
       // Resolve never: the server owns the process until interrupted.
