@@ -1,5 +1,6 @@
 /** Canvas view — the live preview on a zoomable, dotted stage. */
-import { _rp } from '@pyreon/core'
+import { _rp, onMount, Show } from '@pyreon/core'
+import { effect } from '@pyreon/reactivity'
 import * as C from '../chrome'
 import type { WorkbenchModel } from '../model'
 import { BACKGROUND_VARIANT, VIEWPORT_SIZE } from '../addons'
@@ -8,6 +9,70 @@ import { ZOOM_PCT } from '../model'
 
 export function Canvas(props: { model: WorkbenchModel }) {
   const m = props.model
+
+  // ── Measure addon ─────────────────────────────────────────────────────────
+  // Geometry is written IMPERATIVELY onto the overlay elements (left/top/…):
+  // continuous per-pixel positioning is measurement, not styling — hashing a
+  // class per mousemove would grow the style cache without bound. Same
+  // precedent as `@pyreon/elements`' overlay positioning.
+  let stageEl: HTMLElement | null = null
+  let boxEl: HTMLElement | null = null
+  let labelEl: HTMLElement | null = null
+  const stageRef = (el: HTMLElement | null) => {
+    stageEl = el
+  }
+  const boxRef = (el: HTMLElement | null) => {
+    boxEl = el
+  }
+  const labelRef = (el: HTMLElement | null) => {
+    labelEl = el
+  }
+
+  const hideOverlay = () => {
+    if (boxEl) boxEl.style.display = 'none'
+    if (labelEl) labelEl.style.display = 'none'
+  }
+  const showFor = (target: Element) => {
+    const stage = stageEl
+    if (!stage || !boxEl || !labelEl) return
+    const surface = m.previewElement()
+    // Only elements INSIDE the preview are the user's — measuring the
+    // workbench chrome would be noise.
+    if (!surface || !surface.contains(target) || target === surface) return hideOverlay()
+    const s = stage.getBoundingClientRect()
+    const r = target.getBoundingClientRect()
+    boxEl.style.display = 'block'
+    boxEl.style.left = `${r.left - s.left + stage.scrollLeft}px`
+    boxEl.style.top = `${r.top - s.top + stage.scrollTop}px`
+    boxEl.style.width = `${r.width}px`
+    boxEl.style.height = `${r.height}px`
+    labelEl.style.display = 'block'
+    labelEl.style.left = `${r.left - s.left + stage.scrollLeft}px`
+    labelEl.style.top = `${r.bottom - s.top + stage.scrollTop + 6}px`
+    labelEl.textContent = `${Math.round(r.width)} × ${Math.round(r.height)}`
+  }
+
+  onMount(() => {
+    const onMove = (e: Event) => {
+      if (!m.measure()) return
+      showFor(e.target as Element)
+    }
+    const onLeave = () => hideOverlay()
+    // Listeners live on the STAGE for the component's lifetime; the measure
+    // signal gates the work. Cleanup on unmount.
+    const stage = stageEl
+    stage?.addEventListener('pointermove', onMove)
+    stage?.addEventListener('pointerleave', onLeave)
+    const stop = effect(() => {
+      if (!m.measure()) hideOverlay()
+    })
+    return () => {
+      stage?.removeEventListener('pointermove', onMove)
+      stage?.removeEventListener('pointerleave', onLeave)
+      stop.dispose()
+    }
+  })
+
   return (
     <C.Main>
       <C.CanvasBar>
@@ -28,7 +93,11 @@ export function Canvas(props: { model: WorkbenchModel }) {
         signal-driven dimension here, so they re-resolve without the compiler —
         see ../Workbench for why that matters for the prebuilt lib.
       */}
-      <C.Stage>
+      <C.Stage {...({ innerRef: stageRef } as Record<string, unknown>)}>
+        <Show when={() => m.measure()}>
+          <C.MeasureBox data-testid="measure-box" ref={boxRef} />
+          <C.MeasureLabel data-testid="measure-label" ref={labelRef} />
+        </Show>
         {/*
           The four SHIPPED viewport ids resolve to cached `size` classes; a
           per-project preset (any other id) pins the frame via the Element

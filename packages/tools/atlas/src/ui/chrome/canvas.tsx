@@ -6,7 +6,7 @@ export const CanvasName = txt.attrs({ tag: 'span' }).theme(() => cx("font-family
 export const CanvasPath = txt.attrs({ tag: 'span' }).theme((t: T) => ({ fontFamily: '\'JetBrains Mono\',monospace', fontSize: '10px', color: `${t.faint}` }))
 export const ZoomLabel = txt.attrs({ tag: 'span' }).theme((t: T) => ({ fontFamily: '\'JetBrains Mono\',monospace', fontSize: '11px', width: '42px', textAlign: 'center', color: `${t.muted}` }))
 export const ZoomBtn = el.attrs({ tag: 'button' }).theme((t: T) => ({ font: 'inherit', cursor: 'pointer', border: 'none', background: 'transparent', width: '26px', height: '26px', borderRadius: '6px', fontSize: '15px', color: `${t.text}`, hover: { background: `${t.surface2}` } }))
-export const Stage = el.attrs({ tag: 'div', css: 'display:flex;align-items:center;justify-content:center;' }).theme((t: T) => ({ flex: '1', minHeight: '0', overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px', backgroundColor: `${t.bg}`, backgroundSize: '22px 22px', extendCss: `background-image:radial-gradient(${t.dotColor} 1px,transparent 1px);` }))
+export const Stage = el.attrs({ tag: 'div', css: 'display:flex;align-items:center;justify-content:center;' }).theme((t: T) => ({ position: 'relative', flex: '1', minHeight: '0', overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px', backgroundColor: `${t.bg}`, backgroundSize: '22px 22px', extendCss: `background-image:radial-gradient(${t.dotColor} 1px,transparent 1px);` }))
 // The Viewport addon is a rocketstyle `size` dimension, not an inline width:
 // the presets are a closed set, so they resolve to cached classes like every
 // other style here (the workbench ships zero inline styles). `vFull` keeps the
@@ -65,3 +65,17 @@ export const PreviewSurface = el
     },
     plain: {},
   }))
+
+/**
+ * Measure addon overlay — a box outline + a dimensions label that track the
+ * hovered element. POSITIONED IMPERATIVELY (the view writes left/top/width/
+ * height directly): continuous per-pixel geometry is measurement, not styling
+ * — hashing a class per mousemove would grow the style cache without bound.
+ * Same precedent as `@pyreon/elements`' overlay positioning.
+ */
+export const MeasureBox = el
+  .attrs({ tag: 'div' })
+  .theme((t: T) => ({ position: 'absolute', display: 'none', pointerEvents: 'none', border: `1px dashed ${t.accent}`, background: 'transparent', zIndex: '30' }))
+export const MeasureLabel = txt
+  .attrs({ tag: 'span' })
+  .theme((t: T) => ({ position: 'absolute', display: 'none', pointerEvents: 'none', zIndex: '31', fontFamily: '\'JetBrains Mono\',monospace', fontSize: '10px', padding: '2px 7px', borderRadius: '5px', color: '#fff', background: `${t.accent}`, whiteSpace: 'nowrap' }))
