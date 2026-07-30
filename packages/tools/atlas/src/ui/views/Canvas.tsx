@@ -1,5 +1,5 @@
 /** Canvas view — the live preview on a zoomable, dotted stage. */
-import { _rp, onMount, Show } from '@pyreon/core'
+import { _rp, Show } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
 import * as C from '../chrome'
 import type { WorkbenchModel } from '../model'
@@ -52,25 +52,17 @@ export function Canvas(props: { model: WorkbenchModel }) {
     labelEl.textContent = `${Math.round(r.width)} × ${Math.round(r.height)}`
   }
 
-  onMount(() => {
-    const onMove = (e: Event) => {
-      if (!m.measure()) return
-      showFor(e.target as Element)
-    }
-    const onLeave = () => hideOverlay()
-    // Listeners live on the STAGE for the component's lifetime; the measure
-    // signal gates the work. Cleanup on unmount.
-    const stage = stageEl
-    stage?.addEventListener('pointermove', onMove)
-    stage?.addEventListener('pointerleave', onLeave)
-    const stop = effect(() => {
-      if (!m.measure()) hideOverlay()
-    })
-    return () => {
-      stage?.removeEventListener('pointermove', onMove)
-      stage?.removeEventListener('pointerleave', onLeave)
-      stop.dispose()
-    }
+  // Pointer tracking rides JSX event props on the Stage element (below) —
+  // framework-managed, disposed with the element, no raw listener wiring.
+  const onStageMove = (e: Event) => {
+    if (!m.measure()) return
+    showFor(e.target as Element)
+  }
+  const onStageLeave = () => hideOverlay()
+  // Body-scope effect: owned by the component's scope, auto-disposed on
+  // unmount. Toggling Measure off hides any overlay left behind.
+  effect(() => {
+    if (!m.measure()) hideOverlay()
   })
 
   return (
@@ -93,7 +85,11 @@ export function Canvas(props: { model: WorkbenchModel }) {
         signal-driven dimension here, so they re-resolve without the compiler —
         see ../Workbench for why that matters for the prebuilt lib.
       */}
-      <C.Stage {...({ innerRef: stageRef } as Record<string, unknown>)}>
+      <C.Stage
+        onPointerMove={onStageMove}
+        onPointerLeave={onStageLeave}
+        {...({ innerRef: stageRef } as Record<string, unknown>)}
+      >
         <Show when={() => m.measure()}>
           <C.MeasureBox data-testid="measure-box" ref={boxRef} />
           <C.MeasureLabel data-testid="measure-label" ref={labelRef} />
