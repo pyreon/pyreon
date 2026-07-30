@@ -1,0 +1,120 @@
+/**
+ * Workspace-declaration + lexical-scan SHAPES — the branches the main fixture
+ * doesn't hit: object-form `workspaces`, pnpm YAML globs, negation globs,
+ * `**` depth globs, workspace:^ pinning forms, and the stripper's string modes.
+ */
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterAll, describe, expect, it } from 'vitest'
+import { detectInternalRange, detectVersionDrift, readWorkspaceGlobs, scanWorkspace } from '../core'
+import { scanPackageImports, stripNonCode } from '../core/imports'
+
+const roots: string[] = []
+afterAll(() => roots.forEach((r) => rmSync(r, { recursive: true, force: true })))
+
+function tempRoot(): string {
+  const root = mkdtempSync(join(tmpdir(), 'loom-shape-'))
+  roots.push(root)
+  return root
+}
+
+function writeJson(path: string, value: unknown): void {
+  writeFileSync(path, JSON.stringify(value))
+}
+
+describe('workspace declaration shapes', () => {
+  it('object-form workspaces + pnpm-workspace.yaml merge', () => {
+    const root = tempRoot()
+    writeJson(join(root, 'package.json'), { name: 'r', workspaces: { packages: ['libs/*'] } })
+    writeFileSync(join(root, 'pnpm-workspace.yaml'), "packages:\n  - 'apps/*'\n  # comment\n")
+    mkdirSync(join(root, 'libs/a'), { recursive: true })
+    writeJson(join(root, 'libs/a/package.json'), { name: 'a', version: '1.0.0' })
+    mkdirSync(join(root, 'apps/b'), { recursive: true })
+    writeJson(join(root, 'apps/b/package.json'), { name: 'b', version: '1.0.0' })
+    expect(readWorkspaceGlobs(root).sort()).toEqual(['apps/*', 'libs/*'])
+    expect(
+      scanWorkspace(root)
+        .packages.map((p) => p.name)
+        .sort(),
+    ).toEqual(['a', 'b'])
+  })
+
+  it('`**` globs match at any depth; negation globs exclude', () => {
+    const root = tempRoot()
+    writeJson(join(root, 'package.json'), { name: 'r', workspaces: ['pkgs/**', '!pkgs/skip'] })
+    mkdirSync(join(root, 'pkgs/deep/nested'), { recursive: true })
+    writeJson(join(root, 'pkgs/deep/nested/package.json'), { name: 'deep-nested', version: '1.0.0' })
+    mkdirSync(join(root, 'pkgs/skip'), { recursive: true })
+    writeJson(join(root, 'pkgs/skip/package.json'), { name: 'skipped', version: '1.0.0' })
+    const names = scanWorkspace(root).packages.map((p) => p.name)
+    expect(names).toContain('deep-nested')
+    expect(names).not.toContain('skipped')
+  })
+
+  it('a nameless member manifest is skipped, not crashed on', () => {
+    const root = tempRoot()
+    writeJson(join(root, 'package.json'), { name: 'r', workspaces: ['p/*'] })
+    mkdirSync(join(root, 'p/anon'), { recursive: true })
+    writeJson(join(root, 'p/anon/package.json'), { version: '1.0.0' })
+    expect(scanWorkspace(root).packages).toHaveLength(0)
+  })
+})
+
+describe('internal-range shapes', () => {
+  const model = (range: string, actual = '2.0.0') => ({
+    root: { dir: '.', overrides: {}, workspaceGlobs: [] },
+    packages: [
+      { name: 'a', version: '1.0.0', dir: 'a', private: false, deps: [{ name: 'b', range, field: 'dependencies' as const }] },
+      { name: 'b', version: actual, dir: 'b', private: false, deps: [] },
+    ],
+  })
+
+  it('workspace:* and bare workspace:^ forms are always fine', () => {
+    expect(detectInternalRange(model('workspace:*'))).toHaveLength(0)
+    expect(detectInternalRange(model('workspace:^'))).toHaveLength(0)
+  })
+
+  it('workspace:^1.0.0 against a 2.0.0 copy is the pinned-major lie', () => {
+    const issues = detectInternalRange(model('workspace:^1.0.0'))
+    expect(issues).toHaveLength(1)
+    expect(issues[0]!.message).toContain('no longer exists here')
+  })
+
+  it('workspace:^2.0.0 matching the actual major is fine', () => {
+    expect(detectInternalRange(model('workspace:^2.0.0'))).toHaveLength(0)
+  })
+})
+
+describe('version-drift severity shapes', () => {
+  it('unparsable ranges (tags, stars) never fabricate a cross-major error', () => {
+    const issues = detectVersionDrift(
+      [{ name: 'x', ranges: { latest: [{ user: 'a', field: 'dependencies' }], '*': [{ user: 'b', field: 'dependencies' }] } }],
+      {},
+    )
+    expect(issues[0]!.severity).toBe('warning')
+  })
+})
+
+describe('lexical stripper modes', () => {
+  it('double-quoted specifiers survive; escapes inside strings are honored', () => {
+    const out = stripNonCode(`import a from "kept"\nconst s = 'it\\'s fine'\n/* import b from 'block-gone' */`)
+    expect(out).toContain('"kept"')
+    expect(out).not.toContain('block-gone')
+  })
+
+  it('an unterminated template drops the tail instead of leaking it', () => {
+    const out = stripNonCode('const t = `import x from "gone"')
+    expect(out).not.toContain('gone')
+  })
+
+  it('scanPackageImports splits prod vs dev surfaces and caps file evidence', () => {
+    const root = tempRoot()
+    mkdirSync(join(root, 'src/tests'), { recursive: true })
+    writeFileSync(join(root, 'src/a.ts'), `import 'prod-pkg'`)
+    writeFileSync(join(root, 'src/tests/a.test.ts'), `import 'test-pkg'`)
+    const scan = scanPackageImports(root)
+    expect([...scan.prod.keys()]).toEqual(['prod-pkg'])
+    expect([...scan.dev.keys()]).toEqual(['test-pkg'])
+  })
+})

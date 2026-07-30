@@ -103,7 +103,8 @@
     "changeset": "changeset",
     "version-packages": "changeset version && bun scripts/cap-version-bumps.ts && bun scripts/sync-krausest-pin.ts",
     "release": "bun scripts/build-batched.ts && bun run scripts/publish.ts",
-    "test:e2e:atlas-dev": "bunx playwright test --config=e2e-configs/atlas-dev.config.ts"
+    "test:e2e:atlas-dev": "bunx playwright test --config=e2e-configs/atlas-dev.config.ts",
+    "test:e2e:loom": "bunx playwright test --config=e2e-configs/loom-dev.config.ts"
   },
   "devDependencies": {
     "@babel/core": "^8.0.1",
