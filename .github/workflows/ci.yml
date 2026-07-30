@@ -455,6 +455,42 @@ jobs:
   # a skipped/empty matrix as a pass, with fail-closed fallbacks (a failed
   # `changes` spawns the FULL cell matrices and reds the e2e/scaffold
   # aggregators).
+  # Every PR must be gated by CI, and GitHub can only gate a PR whose base
+  # is a PROTECTED branch. Protecting feature branches is structurally
+  # impossible: a ruleset's `required_status_checks` gates REF UPDATES, so
+  # applying it to branches people push to makes them read-only (verified
+  # empirically 2026-07-30 — `GH013 … 37 of 37 required status checks are
+  # expected` on an ordinary push — and reverted). It works on `main` only
+  # because nobody pushes there directly; the sole ref update is the merge
+  # button, evaluated against the PR's completed checks.
+  #
+  # So the invariant "every PR merges gated" reduces to "every PR targets
+  # main", and this job is that policy made visible: a PR based on another
+  # feature branch gets an immediate, named RED check explaining why, instead
+  # of a quietly ungated merge button. On main-targeting PRs it passes in
+  # seconds. Skipped (= neutral) for push/merge_group events.
+  #
+  # Required-context note: this is in main's required set, which is safe
+  # BECAUSE the job is trivially green on every main-targeting PR — the only
+  # kind branch protection evaluates. Its red form only ever appears where
+  # nothing is required, which is exactly the situation it exists to name.
+  pr-base-guard:
+    name: PR targets main
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Enforce the single-base PR policy
+        env:
+          BASE: ${{ github.base_ref }}
+        run: |
+          if [ "$BASE" = "main" ]; then
+            echo "base=main — this PR is gated by branch protection."
+            exit 0
+          fi
+          echo "::error::This PR targets '$BASE', not 'main'. A PR into an unprotected feature branch can be merged before ANY check finishes — GitHub cannot require status checks on a branch people push to (the rule gates ref updates, freezing the branch). Re-target with: gh pr edit ${{ github.event.pull_request.number }} --base main. For dependent work, branch FROM the parent but still open the PR against main — the diff shrinks automatically when the parent merges."
+          exit 1
+
   changes:
     name: Changes (decide)
     # NO `needs:` — deliberately. This job uses ONLY git + bun (the affected
