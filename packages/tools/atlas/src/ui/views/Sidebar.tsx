@@ -13,11 +13,30 @@ export function Sidebar(props: { model: WorkbenchModel }) {
         {g.group}
       </C.GroupLabel>
       {g.items.map((c) => (
-        <C.CompBtn state={() => (m.selId() === c.id ? 'active' : 'idle')} onClick={() => m.selId.set(c.id)}>
-          <C.CompBar state={() => (m.selId() === c.id ? 'active' : 'idle')} />
-          <C.CompName>{c.name}</C.CompName>
-          {c.isNew ? <C.NewTag>NEW</C.NewTag> : null}
-        </C.CompBtn>
+        <>
+          <C.CompBtn state={() => (m.selId() === c.id ? 'active' : 'idle')} onClick={() => m.selId.set(c.id)}>
+            <C.CompBar state={() => (m.selId() === c.id ? 'active' : 'idle')} />
+            <C.CompName>{c.name}</C.CompName>
+            {c.isNew ? <C.NewTag>NEW</C.NewTag> : null}
+          </C.CompBtn>
+          {/* The pipeline's derived scenarios, expanded under the SELECTED
+              component (expansion = selection, so 40 scenarios never flood the
+              list). Each carries its three-state verdict dot; clicking applies
+              the scenario's args, so the canvas renders exactly the state the
+              verdict covered. */}
+          {() =>
+            m.selId() === c.id && c.scenarios && c.scenarios.length > 0
+              ? c.scenarios.map((s) => (
+                  <C.ScenBtn
+                    data-testid={`scenario-${s.id}`}
+                    onClick={() => m.selectScenario(c.id, s.id)}
+                  >
+                    <C.ScenDot variant={s.verdict} data-verdict={s.verdict} />
+                    <C.ScenName>{s.name}</C.ScenName>
+                  </C.ScenBtn>
+                ))
+              : null}
+        </>
       ))}
     </>
   )

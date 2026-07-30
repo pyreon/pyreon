@@ -24,3 +24,15 @@ export const NewTag = txt.attrs({ tag: 'span' }).theme((t: T) => ({ fontSize: '9
 export const SideFoot = el.attrs({ tag: 'div', css: 'display:flex;flex-direction:row;align-items:center;' }).theme((t: T) => ({ borderTop: `1px solid ${t.border}`, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '9px', fontSize: '11.5px', color: `${t.muted}` }))
 export const OkDot = el.attrs({ tag: 'span' }).theme((t: T) => ({ width: '8px', height: '8px', borderRadius: '50%', background: `${t.ok}`, boxShadow: `0 0 0 3px ${t.okSoft}` }))
 export const Empty = el.attrs({ tag: 'div' }).theme((t: T) => ({ textAlign: 'center', padding: '44px 16px', color: `${t.faint}`, fontFamily: '\'JetBrains Mono\',monospace', fontSize: '12px', lineHeight: '1.6' }))
+
+/** One derived scenario under the SELECTED component — name + verdict dot. */
+export const ScenBtn = el
+  .attrs({ tag: 'button', css: 'display:flex;flex-direction:row;align-items:center;' })
+  .theme((t: T) => ({ font: 'inherit', cursor: 'pointer', width: '100%', textAlign: 'left', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', padding: '5px 10px 5px 32px', borderRadius: '7px', fontSize: '12.5px', color: `${t.muted}`, background: 'transparent', hover: { background: `${t.surface2}` } }))
+  .states(dim((t) => ({ active: { color: t.text, backgroundColor: t.accentSoft }, idle: {} })))
+/** The three-state verdict dot: ok · fail · unverified (muted — NOT a pass). */
+export const ScenDot = el
+  .attrs({ tag: 'span' })
+  .theme((t: T) => ({ width: '6px', height: '6px', borderRadius: '50%', flex: 'none', background: `${t.border}` }))
+  .variants(dim((t) => ({ ok: { backgroundColor: t.ok }, fail: { backgroundColor: t.danger }, unverified: {} })))
+export const ScenName = txt.attrs({ tag: 'span' }).theme(() => ({ flex: '1' }))

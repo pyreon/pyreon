@@ -196,6 +196,26 @@ export function generateCatalogModule(
     // docs view simply omits the pill when the field is absent.
     if (component.summary) lines.push(`      desc: ${lit(component.summary)},`)
     lines.push(`      controls: ${JSON.stringify(controls)},`)
+    if (component.scenarios.length > 0) {
+      // The pipeline's derived scenarios, WITH their verdicts — the sidebar
+      // shows the same states, with the same pass/fail labels, that
+      // `atlas scan` publishes. Three states on purpose: `unverified` is not a
+      // pass, and rendering it as one would be the false-green the verify
+      // model exists to prevent.
+      const scenarios = component.scenarios.map((s) => ({
+        id: s.id,
+        name: s.name,
+        args: s.args,
+        verdict: s.verify
+          ? s.verify.ok
+            ? ('ok' as const)
+            : s.verify.checked > 0
+              ? ('fail' as const)
+              : ('unverified' as const)
+          : ('unverified' as const),
+      }))
+      lines.push(`      scenarios: ${JSON.stringify(scenarios)},`)
+    }
     // The guard is the point: one broken export must not blank the workbench.
     //
     // `ctx` is THREADED, not dropped — the panels that read the render context
