@@ -38,7 +38,7 @@
  * so — a created baseline is not a verified one), and fails on a real visual
  * diff, writing the actual next to the baseline for eyeballing.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { CheckStatus, VerifyCheck, VerifyVerdict } from '../core'
 
@@ -185,7 +185,7 @@ export async function runBrowserVerify(
       `(() => { const m = globalThis.__ATLAS_MODEL__; return { components: m.catalog.components.map((c) => ({ id: c.id, name: c.name, scenarios: (c.scenarios ?? []).map((s) => ({ id: s.id })) })) } })()`,
     )) as PageCatalog
 
-    if (!existsSync(snapshotDir)) mkdirSync(snapshotDir, { recursive: true })
+    mkdirSync(snapshotDir, { recursive: true })
 
     for (const component of catalog.components) {
       for (const scenario of component.scenarios ?? []) {
@@ -249,11 +249,22 @@ export async function runBrowserVerify(
             animations: 'disabled',
           })
           const baselinePath = join(snapshotDir, `${scenario.id}.png`)
+          // Read the baseline directly — a missing file is just a read miss
+          // (ENOENT), not a state to pre-check. An exists-then-use pair is the
+          // TOCTOU shape CodeQL rightly flags (js/file-system-race).
+          let baseline: Buffer | null = null
+          if (!options.updateSnapshots) {
+            try {
+              baseline = readFileSync(baselinePath)
+            } catch {
+              baseline = null
+            }
+          }
           if (options.updateSnapshots) {
             writeFileSync(baselinePath, shot)
             snapshotsCreated += 1
             snapshot = { status: 'pass', findings: ['baseline UPDATED this run (re-baselined on request)'] }
-          } else if (!existsSync(baselinePath)) {
+          } else if (baseline === null) {
             writeFileSync(baselinePath, shot)
             snapshotsCreated += 1
             snapshot = {
@@ -261,7 +272,7 @@ export async function runBrowserVerify(
               findings: ['baseline created this run — a created baseline is recorded, not yet compared'],
             }
           } else {
-            const ratio = diffPngs(readFileSync(baselinePath), shot, { PNG, pixelmatch })
+            const ratio = diffPngs(baseline, shot, { PNG, pixelmatch })
             if (ratio <= maxRatio) {
               snapshot = { status: 'pass' }
             } else {
@@ -292,13 +303,20 @@ export async function runBrowserVerify(
   }
 
   // Merge into the on-disk catalog, when one exists — the runner UPGRADES the
-  // scan's verdicts rather than owning a second artifact.
+  // scan's verdicts rather than owning a second artifact. Read directly and
+  // treat a missing/unreadable file as "no catalog" (same TOCTOU rule as the
+  // baseline read above).
   const catalogPath = join(cwd, 'atlas-catalog.json')
   let wrote: string | undefined
-  if (existsSync(catalogPath)) {
-    const data = JSON.parse(readFileSync(catalogPath, 'utf8')) as {
+  let data: { components: { scenarios: { id: string; verify?: VerifyVerdict }[] }[] } | null = null
+  try {
+    data = JSON.parse(readFileSync(catalogPath, 'utf8')) as {
       components: { scenarios: { id: string; verify?: VerifyVerdict }[] }[]
     }
+  } catch {
+    data = null
+  }
+  if (data) {
     const byId = new Map(results.map((r) => [r.id, r]))
     for (const component of data.components) {
       for (const scenario of component.scenarios) {
