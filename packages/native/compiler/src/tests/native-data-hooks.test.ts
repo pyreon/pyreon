@@ -201,3 +201,80 @@ function FinanceRealtimeApp() {
     expect(r.ok).toBe(true)
   })
 })
+
+// ── useFieldArray — the dynamic form-list container (PyreonFieldArray on
+//    both targets). The load-bearing specs are the ACCESSOR UNWRAPS: on web
+//    `items`/`length`/`value` are signal CALLS, natively they are
+//    PROPERTIES — an emit that keeps the parens fails both toolchains
+//    ("cannot call value of non-function type").
+describe('useFieldArray lowering', () => {
+  const APP = `import { useFieldArray } from '@pyreon/form'
+import { Button, Stack, Text, For } from '@pyreon/primitives'
+export function TagsDemo() {
+  const tags = useFieldArray(['alpha'])
+  return (
+    <Stack data-testid="tags">
+      <Text data-testid="tag-count">Tags: {tags.length()}</Text>
+      <For each={tags.items()} by={(i) => i.key}>
+        {(item) => <Text>{item.value()}</Text>}
+      </For>
+      <Button onPress={() => tags.append('new')} data-testid="tag-add">Add</Button>
+      <Button onPress={() => tags.move(0, 1)} data-testid="tag-move">Move</Button>
+    </Stack>
+  )
+}`
+
+  it('Swift: decl + PROPERTY unwraps + keyed ForEach + labelled move', () => {
+    const r = transform(APP, { target: 'swift' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('@State private var tags = PyreonFieldArray(["alpha"])')
+    // Accessor unwraps — the web call parens must be GONE:
+    expect(r.code).toContain('Tags: \\(tags.length)')
+    expect(r.code).toContain('ForEach(tags.items, id: \\.key) { item in')
+    expect(r.code).toContain('\\(item.value)')
+    expect(r.code).not.toContain('tags.items()')
+    expect(r.code).not.toContain('item.value()')
+    // Methods stay CALLS — append positional, move labelled:
+    expect(r.code).toContain('tags.append("new")')
+    expect(r.code).toContain('tags.move(from: 0, to: 1)')
+  })
+
+  it('Kotlin: decl + PROPERTY unwraps + keyed items() + positional move', () => {
+    const r = transform(APP, { target: 'kotlin' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('val tags = remember { PyreonFieldArray(listOf("alpha")) }')
+    expect(r.code).toContain('Tags: ${tags.length}')
+    expect(r.code).toContain('items(tags.items, key = { it.key }) { item ->')
+    expect(r.code).toContain('${item.value}')
+    expect(r.code).not.toContain('tags.items()')
+    expect(r.code).not.toContain('item.value()')
+    expect(r.code).toContain('tags.append("new")')
+    expect(r.code).toContain('tags.move(0, 1)')
+  })
+
+  it('a non-literal initial warns + drops (the useWebSocket literal rule)', () => {
+    const r = transform(
+      wrap(`  const xs = ['a']
+  const tags = useFieldArray(xs)
+  return (<Stack><Text>hi</Text></Stack>)`),
+      { target: 'swift' },
+    )
+    expect(r.warnings.some((w) => w.includes('useFieldArray initial must be an array literal'))).toBe(true)
+    expect(r.code).not.toContain('PyreonFieldArray')
+  })
+
+  it('an empty call lowers to the empty container on both targets', () => {
+    for (const [target, expected] of [
+      ['swift', '@State private var tags = PyreonFieldArray()'],
+      ['kotlin', 'val tags = remember { PyreonFieldArray() }'],
+    ] as const) {
+      const r = transform(
+        wrap(`  const tags = useFieldArray()
+  return (<Stack><Text>hi</Text></Stack>)`),
+        { target },
+      )
+      expect(r.warnings).toEqual([])
+      expect(r.code).toContain(expected)
+    }
+  })
+})

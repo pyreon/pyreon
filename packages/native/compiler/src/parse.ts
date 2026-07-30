@@ -800,12 +800,12 @@ function warnWebOnlyImports(body: AnyNode[], ctx: ParseCtx): void {
  * Hooks the native parser LOWERS. Anything else imported from a `@pyreon/*`
  * package and called as `useX()` falls through to the generic
  * `const x = <call>` emit, which reproduces the call VERBATIM — and there is no
- * `useFieldArray` (or `useToggle`, or `useElementSize`) in the Swift or Kotlin
+ * `useToggle` (or `useElementSize`) in the Swift or Kotlin
  * runtime, so the result is native code that cannot compile.
  *
- * That was silent. `useFieldArray('tags')` emitted
- * `let items = useFieldArray("tags")` with ZERO warnings, and the first sign of
- * trouble was `cannot find 'useFieldArray' in scope` from a device build — or
+ * That was silent. An un-lowered hook call emitted verbatim with ZERO
+ * warnings, and the first sign of trouble was `cannot find … in scope` from
+ * a device build — or
  * nothing at all, for an app nobody type-checked. 38 of the 52 hooks
  * `@pyreon/hooks` and `@pyreon/form` export behave this way.
  *
@@ -815,7 +815,7 @@ function warnWebOnlyImports(body: AnyNode[], ctx: ParseCtx): void {
  */
 export const NATIVE_LOWERED_HOOKS: ReadonlySet<string> = new Set([
   'useAppState', 'useAuth', 'useBiometrics', 'useClipboard', 'useColorScheme',
-  'useDatabase', 'useFetch', 'useFilePicker', 'useForm', 'useGeolocation',
+  'useDatabase', 'useFetch', 'useFieldArray', 'useFilePicker', 'useForm', 'useGeolocation',
   'useHaptics', 'useImagePicker', 'useLinking', 'useLoaderData', 'useMap',
   'useNativeModule', 'useNavigate', 'useNotifications', 'useOnline',
   'useParams', 'usePayments', 'usePermissions', 'usePush', 'useSecureStorage',
@@ -4601,6 +4601,34 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   }
   if (calleeName === 'useDatabase') {
     return { kind: 'database', name }
+  }
+  // `useFieldArray(['a', 'b'])` — the dynamic form-list container
+  // (PyreonFieldArray on both targets, mirroring the web @pyreon/form
+  // surface). The initial must be an array of string literals (or absent)
+  // so it can be baked into the constructor — same literal rule as
+  // useWebSocket's URL.
+  if (calleeName === 'useFieldArray') {
+    const arg = init.arguments?.[0]
+    const initial: string[] = []
+    if (arg !== undefined) {
+      if (arg.type !== 'ArrayExpression') {
+        ctx.warnings.push(
+          `Declaration ${name}: useFieldArray initial must be an array literal of strings (or omitted); got ${arg.type}.`,
+        )
+        return null
+      }
+      for (const el of (arg.elements as AnyNode[] | undefined) ?? []) {
+        if ((el?.type === 'Literal' || el?.type === 'StringLiteral') && typeof el.value === 'string') {
+          initial.push(el.value as string)
+        } else {
+          ctx.warnings.push(
+            `Declaration ${name}: useFieldArray initial elements must be string literals; got ${el?.type ?? 'nothing'}.`,
+          )
+          return null
+        }
+      }
+    }
+    return { kind: 'fieldArray', name, initial }
   }
   if (calleeName === 'usePush') {
     return { kind: 'push', name }

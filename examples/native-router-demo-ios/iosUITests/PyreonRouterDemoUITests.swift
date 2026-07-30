@@ -260,6 +260,53 @@ final class PyreonRouterDemoUITests: XCTestCase {
         )
     }
 
+    // Forms row — useFieldArray device-proven on iOS: add + REMOVE-FIRST
+    // drive re-rendering of the emitted `ForEach(tags.items, id: \.key)` —
+    // append renders the new row, remove-first drops exactly row 0 with the
+    // SURVIVOR still rendered, and the count text pins length reactivity
+    // (`tags.length` over the @Observable items array). HONEST SCOPE:
+    // text-level assertions prove the mutation→re-render chain, not key
+    // IDENTITY (a positional list renders the same texts) — key STABILITY
+    // across removals is pinned by the runtime contract suites on both
+    // platforms (survivor keys asserted directly).
+    func test_fieldArrayAddAndRemoveFirstKeepSurvivorRow() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            "Home page did not render"
+        )
+        app.buttons["Go to About"].tap()
+        XCTAssertTrue(
+            app.otherElements["about-page"].firstMatch.waitForExistence(timeout: 15),
+            "About page did not render"
+        )
+
+        let count = app.staticTexts["tag-count"]
+        XCTAssertTrue(count.waitForExistence(timeout: 10), "tag-count missing")
+        XCTAssertEqual(count.label, "Tags: 1")
+        XCTAssertTrue(app.staticTexts["tag: alpha"].exists, "initial row missing")
+
+        app.buttons["tag-add"].tap()
+        XCTAssertTrue(
+            app.staticTexts["tag: beta"].waitForExistence(timeout: 10),
+            "appended row did not render"
+        )
+        XCTAssertEqual(count.label, "Tags: 2")
+
+        app.buttons["tag-remove"].tap()
+        XCTAssertTrue(
+            app.staticTexts["Tags: 1"].waitForExistence(timeout: 10),
+            "count did not drop after remove-first"
+        )
+        XCTAssertFalse(app.staticTexts["tag: alpha"].exists, "removed row still rendered")
+        XCTAssertTrue(
+            app.staticTexts["tag: beta"].exists,
+            "SURVIVOR row vanished — stable keys did not hold across remove-first"
+        )
+    }
+
     // Storage row — useSecureStorage device-proven: the secret SURVIVES a
     // genuine terminate + relaunch, which only the Keychain can explain.
     //

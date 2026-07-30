@@ -1283,6 +1283,8 @@ function emitKotlinComponent(c: ComponentIR): string {
   // (after the signature line).
   // on-mount decls emit at the harness level (LaunchedEffect(Unit), below).
   _databaseNames = new Set()
+  _fieldArrayNamesKotlin = new Set()
+  _fieldArrayItemParamsKotlin = []
   const declTexts = c.decls.filter((d) => d.kind !== 'on-mount').map((d) => emitKotlinDecl(d, ctx))
   // Pass 2: walk props — formats prop annotations AND ALSO discovers
   // synthesized types from PROP annotations. This pass must run BEFORE
@@ -1430,6 +1432,12 @@ function emitKotlinDataClass(synth: {
  * Mirrors `_databaseNames` in emit-swift.ts.
  */
 let _databaseNames: Set<string> = new Set()
+// Field-array accessor unwrap — mirror of _fieldArrayNamesSwift: web signal
+// CALLS (`tags.items()`, `item.value()`) are PROPERTIES on the Kotlin
+// PyreonFieldArray, so the call emit strips the parens. Item params are a
+// stack (nested Fors restore correctly).
+let _fieldArrayNamesKotlin: Set<string> = new Set()
+let _fieldArrayItemParamsKotlin: string[] = []
 
 function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // on-mount emits at the harness level (LaunchedEffect) — defensive narrow.
@@ -1626,6 +1634,11 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       `val ${id}Ctx = LocalContext.current`,
       `val ${id} = remember { PyreonSecureStorage(${id}Ctx) }`,
     ].join('\n  ')
+  }
+  if (d.kind === 'fieldArray') {
+    _fieldArrayNamesKotlin.add(d.name)
+    const init = d.initial.length === 0 ? '' : `listOf(${d.initial.map((v) => JSON.stringify(v)).join(', ')})`
+    return `val ${kotlinIdent(d.name)} = remember { PyreonFieldArray(${init}) }`
   }
   if (d.kind === 'push') {
     return `val ${kotlinIdent(d.name)} = remember { PyreonPushNotifications() }`
@@ -2350,6 +2363,28 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // just the inner call.
       return emitKotlinExpr(e.expr, indent)
     case 'call': {
+      // Field-array accessor unwrap: zero-arg `items()`/`length()` on a
+      // PyreonFieldArray decl (and `value()` on a For-item param over its
+      // items) are web signal READS — on Kotlin they are properties, so the
+      // call parens must go or kotlinc fails with "expression 'items' of
+      // type 'SnapshotStateList' cannot be invoked as a function".
+      if (
+        e.args.length === 0 &&
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        typeof e.callee.property === 'string'
+      ) {
+        const recv = e.callee.object.name
+        if (
+          _fieldArrayNamesKotlin.has(recv) &&
+          (e.callee.property === 'items' || e.callee.property === 'length')
+        ) {
+          return `${kotlinIdent(recv)}.${e.callee.property}`
+        }
+        if (_fieldArrayItemParamsKotlin.includes(recv) && e.callee.property === 'value') {
+          return `${kotlinIdent(recv)}.value`
+        }
+      }
       // `Object.keys(<object-typed expr>)` → `listOf("a","b")` of the
       // struct field names (statically known). Recurse into the rewritten
       // array literal so the array emit produces the `List<String>`.
@@ -4202,10 +4237,26 @@ function emitKotlinFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   const pad = ' '.repeat(indent + 4)
   const close = ' '.repeat(indent + 2)
   const outerClose = ' '.repeat(indent)
+  // Field-array items source → the render param's `value()` reads unwrap
+  // to `.value` inside this body (stack — nested Fors restore correctly).
+  const isFieldArrayItems =
+    each !== undefined &&
+    ((each.value.kind === 'call' &&
+      each.value.callee.kind === 'member' &&
+      each.value.callee.object.kind === 'identifier' &&
+      _fieldArrayNamesKotlin.has(each.value.callee.object.name) &&
+      each.value.callee.property === 'items') ||
+      (each.value.kind === 'member' &&
+        each.value.object.kind === 'identifier' &&
+        _fieldArrayNamesKotlin.has(each.value.object.name) &&
+        each.value.property === 'items'))
+  if (isFieldArrayItems) _fieldArrayItemParamsKotlin.push(param)
+  const bodyText = emitKotlinExpr(body, indent + 4)
+  if (isFieldArrayItems) _fieldArrayItemParamsKotlin.pop()
   return (
     `LazyColumn {\n` +
     `${' '.repeat(indent + 2)}items(${items}, key = { ${idPath} }) { ${param} ->\n` +
-    `${pad}${emitKotlinExpr(body, indent + 4)}\n` +
+    `${pad}${bodyText}\n` +
     `${close}}\n` +
     `${outerClose}}`
   )

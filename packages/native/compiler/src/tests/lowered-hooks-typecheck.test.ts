@@ -50,6 +50,7 @@ const USAGES: ReadonlyArray<readonly [string, string, string]> = [
   ['useFetch', '@pyreon/hooks', 'const f = useFetch<Resp>("https://x.dev/a")'],
   ['useFilePicker', '@pyreon/hooks', 'const p = useFilePicker()'],
   ['useForm', '@pyreon/form', 'const fm = useForm({ fields: {} })'],
+  ['useFieldArray', '@pyreon/form', "const tags = useFieldArray(['a']); const add = () => { tags.append('b') }"],
   ['useGeolocation', '@pyreon/hooks', 'const g = useGeolocation()'],
   ['useHaptics', '@pyreon/hooks', 'const h = useHaptics()'],
   ['useImagePicker', '@pyreon/hooks', 'const i = useImagePicker()'],

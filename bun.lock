@@ -836,6 +836,7 @@
       "version": "0.50.0",
       "dependencies": {
         "@pyreon/core": "workspace:*",
+        "@pyreon/form": "workspace:*",
         "@pyreon/hooks": "workspace:*",
         "@pyreon/primitives": "workspace:*",
         "@pyreon/reactivity": "workspace:*",

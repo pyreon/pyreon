@@ -467,6 +467,7 @@ export type DeclIR =
   | { kind: 'websocket'; name: string; url: string }
   | { kind: 'database'; name: string }
   | { kind: 'secureStorage'; name: string }
+  | { kind: 'fieldArray'; name: string; initial: string[] }
   | { kind: 'push'; name: string }
   | { kind: 'payments'; name: string }
   | { kind: 'map'; name: string }

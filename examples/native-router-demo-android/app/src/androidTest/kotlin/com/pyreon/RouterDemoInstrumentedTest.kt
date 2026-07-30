@@ -199,6 +199,38 @@ class RouterDemoInstrumentedTest {
         }
     }
 
+    // Forms row — useFieldArray device-proven on Android: add + REMOVE-FIRST
+    // drive recomposition of the emitted
+    // `items(tags.items, key = { it.key })` LazyColumn — append renders the
+    // new row, remove-first drops exactly row 0 and the SURVIVOR row is
+    // still rendered, and the count text pins length reactivity
+    // (`tags.length` over a SnapshotStateList). HONEST SCOPE: text-level
+    // assertions prove the mutation→re-render chain, not key IDENTITY (a
+    // positional list would render the same texts) — key STABILITY across
+    // removals is pinned by the runtime contract suites on both platforms
+    // (PyreonFieldArrayTest / PyreonRuntimeTests, survivor keys asserted
+    // directly).
+    @Test
+    fun fieldArrayAddAndRemoveFirstKeepSurvivorRow() {
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        composeRule.onNodeWithText("Go to About").performClick()
+        composeRule.onNodeWithTag("about-page").assertIsDisplayed()
+
+        composeRule.onNodeWithTag("tag-count").assertTextEquals("Tags: 1")
+        composeRule.onNodeWithText("tag: alpha").assertExists()
+
+        composeRule.onNodeWithTag("tag-add").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("tag-count").assertTextEquals("Tags: 2")
+        composeRule.onNodeWithText("tag: beta").assertExists()
+
+        composeRule.onNodeWithTag("tag-remove").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("tag-count").assertTextEquals("Tags: 1")
+        composeRule.onNodeWithText("tag: alpha").assertDoesNotExist()
+        composeRule.onNodeWithText("tag: beta").assertExists()
+    }
+
     @Test
     fun navigatesToUserDetailWithParam() {
         // Tap "View user 42" → assert user-page renders + the

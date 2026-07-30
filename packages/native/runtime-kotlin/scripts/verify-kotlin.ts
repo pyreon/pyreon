@@ -123,6 +123,17 @@ inline operator fun <T> MutableState<T>.setValue(
 
 fun <T> mutableStateOf(initial: T): MutableState<T> = MutableStateImpl(initial)
 
+// SnapshotStateList — the reactive list PyreonFieldArray builds on. The stub
+// is FUNCTIONAL (a MutableList delegate), not type-only, because the
+// PyreonFieldArray smoke test RUNS: append/remove/values must actually
+// mutate. Mirrors the real surface the runtime touches (MutableList ops).
+class SnapshotStateList<T> internal constructor(
+  private val backing: MutableList<T>,
+) : MutableList<T> by backing
+
+fun <T> mutableStateListOf(vararg elements: T): SnapshotStateList<T> =
+  SnapshotStateList(elements.toMutableList())
+
 @Composable
 fun <T> remember(key: Any?, calculation: () -> T): T = calculation()
 `

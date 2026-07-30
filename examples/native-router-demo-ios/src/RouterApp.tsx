@@ -15,8 +15,9 @@
 // the Android example would share via build script. ONE file, THREE
 // targets — provable by `ls` + `diff`.
 
-import { onMount } from '@pyreon/core'
+import { For, onMount } from '@pyreon/core'
 import { useSecureStorage } from '@pyreon/hooks'
+import { useFieldArray } from '@pyreon/form'
 import { Button, Heading, Inline, Layer, Link, Spacer, Stack, Text } from '@pyreon/primitives'
 import { signal } from '@pyreon/reactivity'
 import { createRouter, useNavigate, RouterProvider, RouterView } from '@pyreon/router'
@@ -103,11 +104,31 @@ function HomePage() {
 
 function AboutPage() {
   const navigate = useNavigate()
+  // Forms-row proof — useFieldArray, the dynamic form-list container
+  // (PyreonFieldArray on both native targets; the web @pyreon/form hook).
+  // The device tests drive add + REMOVE-FIRST and assert the SURVIVOR row
+  // is still rendered — the stable-keys claim: removing row 0 must not
+  // re-key (and thereby remount) the rows below it.
+  const tags = useFieldArray(['alpha'])
   return (
     <Stack gap={3} padding={4} data-testid="about-page">
       <Text>About</Text>
       <Text>Same source code compiled to native SwiftUI / Compose / DOM.</Text>
+      <Text data-testid="tag-count">Tags: {tags.length()}</Text>
+      <Button onPress={() => tags.append('beta')} data-testid="tag-add">
+        Add Tag
+      </Button>
+      <Button onPress={() => tags.remove(0)} data-testid="tag-remove">
+        Remove First
+      </Button>
       <Button onPress={() => navigate('/')}>Back to Home</Button>
+      {/* The keyed list goes LAST: its Compose lowering is a LazyColumn,
+          which fills the parent Column's remaining height — siblings after
+          it would be measured at ZERO height (the counter's collapse
+          class). Last position is also the idiomatic list-screen shape. */}
+      <For each={tags.items()} by={(i) => i.key}>
+        {(item) => <Text>tag: {item.value()}</Text>}
+      </For>
     </Stack>
   )
 }

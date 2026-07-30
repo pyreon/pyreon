@@ -577,6 +577,27 @@ public final class PyreonSecureStorage {
   @discardableResult public func remove(key: String) -> Bool { false }
   public func contains(key: String) -> Bool { false }
 }
+// PyreonFieldArray — dynamic form lists. Mirrors runtime-swift exactly:
+// items/length are PROPERTIES (an emit that keeps the web's call parens
+// must fail here), move is the one labelled method.
+public struct PyreonFieldArrayItem {
+  public let key: Int
+  public var value: String
+}
+public final class PyreonFieldArray {
+  public init(_ initial: [String] = []) {}
+  public var items: [PyreonFieldArrayItem] { [] }
+  public var length: Int { 0 }
+  public func append(_ value: String) {}
+  public func prepend(_ value: String) {}
+  public func insert(_ index: Int, _ value: String) {}
+  public func remove(_ index: Int) {}
+  public func update(_ index: Int, _ value: String) {}
+  public func move(from: Int, to: Int) {}
+  public func swap(_ indexA: Int, _ indexB: Int) {}
+  public func replace(_ values: [String]) {}
+  public func values() -> [String] { [] }
+}
 
 // ---- Additional SwiftUI surface (fonts / images / scroll / spacing) ----
 public struct Font {

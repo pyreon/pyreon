@@ -1232,6 +1232,23 @@ class PyreonSecureStorage(backend: PyreonSecureBackend) {
   fun contains(key: String): Boolean = false
 }
 
+// PyreonFieldArray — dynamic form lists, mirrored exactly (items/length are
+// properties; a paren-keeping emit must fail).
+data class PyreonFieldArrayItem(val key: Int, val value: String)
+class PyreonFieldArray(initial: List<String> = emptyList()) {
+  val items: List<PyreonFieldArrayItem> = emptyList()
+  val length: Int get() = 0
+  fun append(value: String) {}
+  fun prepend(value: String) {}
+  fun insert(index: Int, value: String) {}
+  fun remove(index: Int) {}
+  fun update(index: Int, value: String) {}
+  fun move(from: Int, to: Int) {}
+  fun swap(indexA: Int, indexB: Int) {}
+  fun replace(values: List<String>) {}
+  fun values(): List<String> = emptyList()
+}
+
 class PyreonPushNotification(
   val title: String? = null,
   val body: String? = null,
