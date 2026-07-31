@@ -286,6 +286,27 @@ class CounterInstrumentedTest {
         composeRule.onNodeWithText("Greeting: Hallo!").assertIsDisplayed()
     }
 
+    // i18n-row residuals — INTERPOLATION + PLURAL-RULE selection, driven by
+    // the EXISTING count signal so no new controls were added:
+    //   - "Hallo Vit!" proves {{name}} substitution from the values map IN
+    //     the configured locale (a dropped interpolation renders the raw
+    //     "Hallo {{name}}!"; a wrong-locale lookup renders "Hi Vit!").
+    //   - The plural text follows count across the _other→_one→_other
+    //     boundary as Increment fires: "0 Stücke" → "1 Stück" → "2 Stücke"
+    //     (a broken plural selection sticks on one suffix — the exact
+    //     failure the runtime bisect drives).
+    @Test
+    fun i18nInterpolationAndPluralsFollowCount() {
+        composeRule.onNodeWithText("Hallo Vit!").assertExists()
+        composeRule.onNodeWithText("0 Stücke").assertExists()
+        composeRule.onNodeWithText("Increment").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("1 Stück").assertExists()
+        composeRule.onNodeWithText("Increment").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("2 Stücke").assertExists()
+    }
+
     // Dark mode (useColorScheme) asserted in the REAL Compose semantics tree —
     // the Android half of the iOS `test_colorSchemeReadsLightAppearance`. The
     // shared Counter.tsx has `const colorScheme = useColorScheme()` and renders

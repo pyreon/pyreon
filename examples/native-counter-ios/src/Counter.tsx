@@ -222,8 +222,8 @@ export function Counter() {
     locale: 'de',
     fallbackLocale: 'en',
     messages: {
-      en: { hello: 'Hello!' },
-      de: { hello: 'Hallo!' },
+      en: { hello: 'Hello!', welcome: 'Hi {{name}}!', items_one: '{{count}} item', items_other: '{{count}} items' },
+      de: { hello: 'Hallo!', welcome: 'Hallo {{name}}!', items_one: '{{count}} Stück', items_other: '{{count}} Stücke' },
     },
   })
   // Tier-2 state-machine proof — `createMachine({ initial, states })` (from
@@ -277,6 +277,13 @@ export function Counter() {
           proves a user-defined native module was constructed and called. */}
       <Text>Device: {device.platformName()}</Text>
       <Text>Greeting: {i18n.t('hello')}</Text>
+      {/* i18n-row residuals: INTERPOLATION ({{name}} substituted from the
+          values map) + PLURAL-RULE selection (_one vs _other keyed on
+          values.count) — driven by the EXISTING count signal, so the
+          Increment button flips the plural form live: 0 → "0 Stücke"
+          (_other), 1 → "1 Stück" (_one), 2 → "2 Stücke" (_other). */}
+      <Text data-testid="i18n-interp">{i18n.t('welcome', { name: 'Vit' })}</Text>
+      <Text data-testid="i18n-plural">{i18n.t('items', { count: count() })}</Text>
       <Text>Power: {power()}</Text>
       <Text>Notes: {noteCount()}</Text>
       <Text>Lock: {lockStatus()}</Text>

@@ -1026,6 +1026,31 @@ final class PyreonCounterUITests: XCTestCase {
     // RouterProvider in the environment to navigate, and this app has none, so
     // a tap here would be a no-op and prove nothing.
 
+    // i18n-row residuals — INTERPOLATION + PLURAL-RULE selection (the iOS
+    // half of the Android test; same rationale, driven by the existing
+    // count signal via Increment).
+    func test_i18nInterpolationAndPluralsFollowCount() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.staticTexts["Hallo Vit!"].waitForExistence(timeout: 30),
+            "interpolated greeting missing — {{name}} substitution or locale "
+                + "selection failed (raw template or english would render instead)"
+        )
+        XCTAssertTrue(app.staticTexts["0 Stücke"].exists, "initial plural (_other for 0) missing")
+        app.buttons["Increment"].tap()
+        XCTAssertTrue(
+            app.staticTexts["1 Stück"].waitForExistence(timeout: 5),
+            "_one form did not select at count == 1"
+        )
+        app.buttons["Increment"].tap()
+        XCTAssertTrue(
+            app.staticTexts["2 Stücke"].waitForExistence(timeout: 5),
+            "_other form did not re-select at count == 2"
+        )
+    }
+
     func test_toggleFlipsObservableState() throws {
         let app = XCUIApplication()
         app.launch()
