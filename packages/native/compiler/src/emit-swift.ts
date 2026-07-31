@@ -3213,6 +3213,21 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           ) {
             return `${swiftIdent(recv)}.${e.callee.property}`
           }
+          // WebSocket read-field unwrap — `ws.isConnected()` etc. are web
+          // signal READS; the Swift runtime declares them as PROPERTIES
+          // (`public private(set) var isConnected: Bool`), so the call
+          // parens must go. Kotlin has had this unwrap since the hook
+          // landed (_wsNames in emit-kotlin); Swift never did — the
+          // lowered-hooks matrix missed it because its usage never READ a
+          // field, only sent.
+          if (
+            _websocketUrlsSwift.has(recv) &&
+            ['lastMessage', 'messages', 'isConnected', 'error'].includes(
+              e.callee.property,
+            )
+          ) {
+            return `${swiftIdent(recv)}.${e.callee.property}`
+          }
           if (
             _fieldArrayItemParamsSwift.includes(recv) &&
             e.callee.property === 'value'

@@ -278,3 +278,42 @@ export function TagsDemo() {
     }
   })
 })
+
+// ── useWebSocket READ-field unwrap (Swift) — `ws.isConnected()` /
+//    `ws.lastMessage()` are web signal READS; the Swift runtime declares
+//    them as PROPERTIES, so a paren-keeping emit is uncompilable ("cannot
+//    call value of non-function type"). Kotlin has had this unwrap since
+//    the hook landed; Swift never did — invisible to the lowered-hooks
+//    matrix because its usage only ever SENT.
+describe('useWebSocket read-field unwrap', () => {
+  const APP = `import { useWebSocket } from '@pyreon/hooks'
+import { Button, Stack, Text } from '@pyreon/primitives'
+export function WsDemo() {
+  const ws = useWebSocket('ws://localhost:8787')
+  return (
+    <Stack data-testid="ws">
+      <Text data-testid="ws-status">WS: {ws.isConnected() ? 'open' : 'closed'}</Text>
+      <Text data-testid="ws-last">Echo: {ws.lastMessage() ?? 'none'}</Text>
+      <Button onPress={() => ws.send('ping-42')} data-testid="ws-send">Send</Button>
+    </Stack>
+  )
+}`
+
+  it('Swift: read fields unwrap to properties; send stays a call', () => {
+    const r = transform(APP, { target: 'swift' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('ws.isConnected ?')
+    expect(r.code).toContain('ws.lastMessage ??')
+    expect(r.code).not.toContain('ws.isConnected()')
+    expect(r.code).not.toContain('ws.lastMessage()')
+    expect(r.code).toContain('ws.send("ping-42")')
+  })
+
+  it('Kotlin: read fields keep their .value unwrap; send stays a call', () => {
+    const r = transform(APP, { target: 'kotlin' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('ws.isConnected.value')
+    expect(r.code).toContain('ws.lastMessage.value')
+    expect(r.code).toContain('ws.send("ping-42")')
+  })
+})
