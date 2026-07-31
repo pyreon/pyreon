@@ -62,6 +62,7 @@ export function GraphView(props: { model: ObservatoryModel; theme: () => LoomTok
         const nodes = shown.map((n) => {
           const P = layout.pos.get(n.id)
           if (!P) return null
+          const name = shortName(n.id)
           const isSel = n.id === sel
           const isCyc = m.showCycles() && m.cycleNodes.has(n.id)
           const dimmed = focus && !related.has(n.id)
@@ -83,7 +84,7 @@ export function GraphView(props: { model: ObservatoryModel; theme: () => LoomTok
                 fill={isSel ? t.text : t.muted}
                 style={`font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:${isSel ? 600 : 500};pointer-events:none`}
               >
-                {shortName(n.id)}
+                {name}
               </text>
               <text x="15" y="16" fill={t.faint} style="font-family:'JetBrains Mono',monospace;font-size:9.5px;pointer-events:none">
                 {n.kind === 'internal' ? `v${n.version}` : n.version}

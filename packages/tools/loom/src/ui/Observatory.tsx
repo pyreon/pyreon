@@ -10,7 +10,7 @@
  */
 import { h, Show, type VNodeChild } from '@pyreon/core'
 import { useEventListener } from '@pyreon/hooks'
-import { computed } from '@pyreon/reactivity'
+import { computed, isServer } from '@pyreon/reactivity'
 import { PyreonUI } from '@pyreon/ui-core'
 import type { LoomReport } from '../core/types'
 import * as C from './chrome'
@@ -59,6 +59,7 @@ export function Observatory(props: { report: LoomReport; brand?: string }) {
   // through `useEventListener` (lifecycle-owned cleanup, SSR-safe no-op) —
   // never a raw document.addEventListener in a component body.
   useEventListener('keydown', (e: KeyboardEvent) => {
+    if (isServer) return
     const target = e.target as HTMLElement | null
     const typing = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA'
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
@@ -124,6 +125,8 @@ export function Observatory(props: { report: LoomReport; brand?: string }) {
       }}
     </>
   )
+  const internalGroup = sidebarGroup('internal', '01', '~>', 'internal')
+  const externalGroup = sidebarGroup('external', '02', '//', 'external')
 
   return (
     <PyreonUI theme={((() => theme()) as never)} mode={(() => (m.dark() ? 'dark' : 'light')) as never}>
@@ -186,8 +189,8 @@ export function Observatory(props: { report: LoomReport; brand?: string }) {
                 ))}
               </C.KindRow>
               <C.SideList>
-                {sidebarGroup('internal', '01', '~>', 'internal')}
-                {sidebarGroup('external', '02', '//', 'external')}
+                {internalGroup}
+                {externalGroup}
                 <Show when={() => m.shown().length === 0}>
                   <C.SideEmpty>no packages match</C.SideEmpty>
                 </Show>

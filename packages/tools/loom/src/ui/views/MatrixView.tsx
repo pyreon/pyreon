@@ -29,17 +29,21 @@ export function MatrixView(props: { model: ObservatoryModel; theme: () => LoomTo
         const depthOf = (id: string) => m.byId.get(id)?.depth ?? 0
         const depsOf = (id: string) => new Set(m.byId.get(id)?.deps ?? [])
 
-        const head = ids.map((id) => (
-          <div style={`width:${cell}px;height:${label}px;display:flex;align-items:flex-end;justify-content:center`}>
-            <span
-              style={`font-family:'JetBrains Mono',monospace;font-size:9px;color:${id === sel ? t.accent : t.faint};writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap`}
-            >
-              {shortName(id)}
-            </span>
-          </div>
-        ))
+        const head = ids.map((id) => {
+          const name = shortName(id)
+          return (
+            <div style={`width:${cell}px;height:${label}px;display:flex;align-items:flex-end;justify-content:center`}>
+              <span
+                style={`font-family:'JetBrains Mono',monospace;font-size:9px;color:${id === sel ? t.accent : t.faint};writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap`}
+              >
+                {name}
+              </span>
+            </div>
+          )
+        })
 
         const rows = ids.map((r) => {
+          const rowName = shortName(r)
           const deps = depsOf(r)
           const cells = ids.map((c) => {
             const has = deps.has(c)
@@ -80,7 +84,7 @@ export function MatrixView(props: { model: ObservatoryModel; theme: () => LoomTo
                 onClick={() => m.select(r)}
                 style={`width:${rowLabel}px;text-align:right;padding:0 10px 0 0;font-family:'JetBrains Mono',monospace;font-size:10px;color:${r === sel ? t.accent : t.muted};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;border:none;background:transparent`}
               >
-                {shortName(r)}
+                {rowName}
               </button>
               {cells}
             </div>
