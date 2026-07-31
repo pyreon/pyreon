@@ -112,6 +112,14 @@ public final class KeychainSecureBackend: PyreonSecureBackend {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: key,
+            // Data-protection keychain, explicitly. The legacy (file-based)
+            // keychain path is what breaks on headless CI simulators —
+            // SecItemAdd failed 3/3 retries on GitHub Actions (Xcode 16.4 /
+            // iOS 18.5 sim) while every local simulator passed. Apple's
+            // guidance is to opt all queries into the data-protection
+            // keychain; every iOS app has the application identifier it
+            // keys on.
+            kSecUseDataProtectionKeychain as String: true,
         ]
     }
 

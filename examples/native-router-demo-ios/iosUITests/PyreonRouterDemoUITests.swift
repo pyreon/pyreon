@@ -288,11 +288,14 @@ final class PyreonRouterDemoUITests: XCTestCase {
         app.buttons["secure-save"].tap()
         // The save handler reads BACK through the store, so this label proves
         // the same-process write→read round trip.
-        XCTAssertTrue(
-            app.staticTexts["Secret: s3cret"].waitForExistence(timeout: 10),
-            "post-save read-back did not render s3cret — the write→read "
-                + "round trip through PyreonSecureStorage failed"
-        )
+        if !app.staticTexts["Secret: s3cret"].waitForExistence(timeout: 10) {
+            // Name the failing HALF in the message: the app renders
+            // "Secret: write-failed" / "Secret: read-failed" / the value.
+            XCTFail(
+                "post-save read-back did not render s3cret — live state: "
+                    + "\"\(app.staticTexts["secure-value"].label)\""
+            )
+        }
 
         app.terminate()
         app.launch()
@@ -301,11 +304,12 @@ final class PyreonRouterDemoUITests: XCTestCase {
             app.staticTexts["secure-value"].waitForExistence(timeout: 30),
             "secure-value missing after relaunch"
         )
-        XCTAssertTrue(
-            app.staticTexts["Secret: s3cret"].waitForExistence(timeout: 10),
-            "secret did not survive terminate+relaunch — the emitted default "
-                + "is not actually Keychain-backed"
-        )
+        if !app.staticTexts["Secret: s3cret"].waitForExistence(timeout: 10) {
+            XCTFail(
+                "secret did not survive terminate+relaunch — live state: "
+                    + "\"\(app.staticTexts["secure-value"].label)\""
+            )
+        }
     }
 
 }
