@@ -1,6 +1,135 @@
-/** The Prism theme system — 4 brand themes × light/dark, as flat token objects. */
+/** The Atlas theme system — 4 brand themes × light/dark, as flat token objects. */
 
-export interface ThemeTokens {
+/**
+ * Typography, shape, and motion scales — the STRUCTURAL half of the theme.
+ *
+ * Every value that must stay CONSISTENT across the workbench (or would move
+ * in a re-brand) lives here; per-component box geometry (paddings, gaps)
+ * stays local to the component where it is honest one-off layout. The scale
+ * values are the exact set the chrome already used — extraction, not
+ * redesign, so nothing shifts a pixel.
+ */
+export interface ThemeScale {
+  font: {
+    /** UI text — inherits the shell's sans stack. */
+    sans: string
+    /** Data, code, badges, metrics. */
+    mono: string
+  }
+  /** Font sizes, smallest → largest, named by ROLE. */
+  size: {
+    /** 9px — verdict dots' labels, tiny glyph buttons. */
+    nano: string
+    /** 9.5px — tags on cards. */
+    tag: string
+    /** 10px — mono labels, eyebrows. */
+    label: string
+    /** 10.5px — mono metadata. */
+    meta: string
+    /** 11px — captions, group headers. */
+    caption: string
+    /** 11.5px — dense body, chips. */
+    small: string
+    /** 12px — panel body. */
+    body: string
+    /** 12.5px — emphasized body, scenario rows. */
+    text: string
+    /** 13px — inputs, primary rows. */
+    input: string
+    /** 13.5px — sidebar items. */
+    item: string
+    /** 14px — section headings. */
+    heading: string
+    /** 15px — view titles. */
+    title: string
+    /** 16px — the brand mark. */
+    hero: string
+  }
+  /** Letter-spacing steps (uppercase labels want air). */
+  tracking: {
+    xs: string
+    sm: string
+    md: string
+    lg: string
+    xl: string
+    xxl: string
+  }
+  /** Corner radii, named by the surface they round. */
+  radius: {
+    bar: string
+    chip: string
+    control: string
+    item: string
+    button: string
+    field: string
+    panel: string
+    card: string
+    modal: string
+    stage: string
+    pill: string
+    round: string
+  }
+  /** Motion durations. */
+  motion: {
+    fast: string
+    base: string
+    slow: string
+  }
+}
+
+/** The structural scale is mode-independent — one frozen instance. */
+export const SCALE: ThemeScale = {
+  font: {
+    sans: 'inherit',
+    mono: "'JetBrains Mono',monospace",
+  },
+  size: {
+    nano: '9px',
+    tag: '9.5px',
+    label: '10px',
+    meta: '10.5px',
+    caption: '11px',
+    small: '11.5px',
+    body: '12px',
+    text: '12.5px',
+    input: '13px',
+    item: '13.5px',
+    heading: '14px',
+    title: '15px',
+    hero: '16px',
+  },
+  tracking: {
+    xs: '.02em',
+    sm: '.04em',
+    md: '.05em',
+    lg: '.06em',
+    xl: '.08em',
+    xxl: '.1em',
+  },
+  radius: {
+    bar: '3px',
+    chip: '5px',
+    control: '6px',
+    item: '7px',
+    button: '8px',
+    field: '9px',
+    panel: '10px',
+    card: '12px',
+    modal: '14px',
+    stage: '16px',
+    pill: '20px',
+    round: '50%',
+  },
+  motion: {
+    fast: '.1s',
+    base: '.12s',
+    slow: '.15s',
+  },
+}
+
+export interface ThemeTokens extends ThemeScale {
+  /** `1px solid <border>` — the workbench's one hairline, derived per mode. */
+  hairline: string
   bg: string
   surface: string
   surface2: string
@@ -73,6 +202,8 @@ export function tokens(brand: BrandTheme, dark: boolean): ThemeTokens {
 
   if (dark) {
     return {
+      ...SCALE,
+      hairline: '1px solid #26262f',
       bg: '#0f0f14',
       surface: '#16161d',
       surface2: '#1c1c25',
@@ -95,6 +226,8 @@ export function tokens(brand: BrandTheme, dark: boolean): ThemeTokens {
     }
   }
   return {
+    ...SCALE,
+    hairline: '1px solid #e6e8ee',
     bg: '#ffffff',
     surface: '#ffffff',
     surface2: '#f6f7fa',
