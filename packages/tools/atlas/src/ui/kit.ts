@@ -1,7 +1,7 @@
 /**
- * Shared building blocks for the workbench chrome — the `el`/`txt` rocketstyle
+ * Shared building blocks for the workbench components — the `el`/`txt` rocketstyle
  * bases plus the tiny `cx` helper that wraps raw CSS into unistyle's `extendCss`
- * key. Every `chrome/*` module imports from here so the styled-component
+ * key. Every `components/<region>/*` module imports from here so the styled-component
  * definitions stay uniform.
  */
 import type { ComponentFn } from '@pyreon/core'

@@ -1,0 +1,12 @@
+/** Canvas view — the toolbar, the dotted stage, and the zoomable preview frame. */
+export { CanvasBar } from './CanvasBar'
+export { CanvasName } from './CanvasName'
+export { CanvasPath } from './CanvasPath'
+export { ZoomLabel } from './ZoomLabel'
+export { ZoomBtn } from './ZoomBtn'
+export { Stage } from './Stage'
+export { Frame } from './Frame'
+export { FrameChrome } from './FrameChrome'
+export { PreviewSurface } from './PreviewSurface'
+export { MeasureBox } from './MeasureBox'
+export { MeasureLabel } from './MeasureLabel'
