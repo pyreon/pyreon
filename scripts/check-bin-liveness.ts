@@ -98,6 +98,7 @@ function checkMcpBin(name: string, binRel: string): Promise<Result> {
 const results: Result[] = [
   checkFlagBin('@pyreon/cli (pyreon)', 'packages/tools/cli/lib/index.js', ['--version']),
   checkFlagBin('@pyreon/lint (pyreon-lint)', 'packages/tools/lint/bin/pyreon-lint.js', ['--help']),
+  checkFlagBin('@pyreon/atlas (atlas)', 'packages/tools/atlas/bin/atlas.js', ['--help']),
   await checkMcpBin('@pyreon/mcp (pyreon-mcp)', 'packages/tools/mcp/lib/index.js'),
   checkFlagBin('@pyreon/zero-cli (zero)', 'packages/zero/cli/bin/zero.js', ['--help']),
   checkFlagBin('@pyreon/create-zero (create-zero)', 'packages/zero/create-zero/bin/create-zero.js', ['--help']),
@@ -134,6 +135,7 @@ const { readdirSync, readFileSync } = await import('node:fs')
 const covered = new Set([
   'packages/tools/cli',
   'packages/tools/lint',
+  'packages/tools/atlas',
   'packages/tools/mcp',
   'packages/zero/cli',
   'packages/zero/create-zero',

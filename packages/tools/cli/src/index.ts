@@ -8,6 +8,7 @@
  *   pyreon add      — install @pyreon/* packages + print how to wire each one in
  *   pyreon new      — scaffold a new Pyreon project (delegates to create-zero / -multiplatform)
  *   pyreon mcp      — launch the Pyreon MCP server (delegates to @pyreon/mcp)
+ *   pyreon atlas    — the Atlas component workbench (delegates to @pyreon/atlas)
  *   pyreon doctor   — project-wide health audit (score + per-category bars + findings)
  *   pyreon context  — generate .pyreon/context.json for AI tools
  *   pyreon info      — environment + installed @pyreon versions + version-skew check
@@ -42,6 +43,8 @@ function printUsage(): void {
     add <pkg...> [--dry-run] [--json] Install @pyreon/* packages (PM auto-detected) + print how to wire each in
     new [name] [--native]            Scaffold a new Pyreon project (create-zero, or -multiplatform with --native)
     mcp [args]                       Launch the Pyreon MCP server (delegates to @pyreon/mcp; prefers project-local)
+    atlas [args]                     Component workbench (delegates to @pyreon/atlas): scan derives a verified
+                                     catalog, dev serves the workbench, verify-browser runs Chromium verification
     doctor [options]                 Project-wide health audit with 0-100 score.
                                      Runs ${FAST_GATES.length} fast gates by default; --full enables ${SLOW_GATES.length} slow gates.
     context [--out <path>]           Generate .pyreon/context.json for AI tools
@@ -187,6 +190,18 @@ async function main(): Promise<void> {
     // `--dry-run` (which prints the npx command instead of launching).
     const passthrough = args.slice(1).filter((a) => a !== '--dry-run')
     const exitCode = runMcp({
+      args: passthrough,
+      dryRun: args.includes('--dry-run'),
+    })
+    process.exit(exitCode)
+  }
+
+  if (command === 'atlas') {
+    const { runAtlas } = await import('./atlas')
+    // Everything after `atlas` passes through to the workbench CLI, except
+    // our own `--dry-run` (which prints the npx command instead of running).
+    const passthrough = args.slice(1).filter((a) => a !== '--dry-run')
+    const exitCode = runAtlas({
       args: passthrough,
       dryRun: args.includes('--dry-run'),
     })

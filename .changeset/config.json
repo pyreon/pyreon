@@ -61,6 +61,7 @@
       "@pyreon/typescript",
       "@pyreon/vite-plugin",
       "@pyreon/vue-compat",
+      "@pyreon/atlas",
       "@pyreon/attrs",
       "@pyreon/connector-document",
       "@pyreon/coolgrid",

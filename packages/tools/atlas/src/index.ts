@@ -15,6 +15,15 @@ import type { AtlasPlugin } from './plugins'
 import { createCatalogGraph } from './core'
 import { createPluginRegistry, recommendedPlugins } from './plugins'
 
+// NO singleton sentinel here, DELIBERATELY (the lint/mcp/cli tool-package
+// precedent, with a structural reason on top): `atlas scan` mounts the
+// scanned project's own modules through a Vite loader, and a scanned file
+// that imports `@pyreon/atlas` (a hand catalog, a play script's types) loads
+// a SECOND in-heap copy of this entry by design — the runner holds `lib/`,
+// the loader resolves `src/`. A fail-loud `registerSingleton` would kill
+// every scan of every project that imports atlas — proven by the scan-mount
+// subprocess test hanging the moment the sentinel was added.
+
 export * from './core'
 export * from './plugins'
 

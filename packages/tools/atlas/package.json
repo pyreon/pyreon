@@ -1,8 +1,11 @@
 {
   "name": "@pyreon/atlas",
-  "version": "0.0.0",
-  "description": "AI-native component workbench for the Pyreon ecosystem \u2014 derives, verifies, and serves a machine-readable component catalog. Working name; rebrand pending.",
+  "version": "0.50.0",
+  "description": "AI-native component workbench for the Pyreon ecosystem — derives, verifies, and serves a machine-readable component catalog.",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/tools/atlas#readme",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
@@ -13,7 +16,6 @@
     "directory": "packages/tools/atlas"
   },
   "type": "module",
-  "private": true,
   "sideEffects": false,
   "main": "./lib/index.js",
   "module": "./lib/index.js",
@@ -98,6 +100,7 @@
   },
   "devDependencies": {
     "@pyreon/compiler": "workspace:*",
+    "@pyreon/manifest": "workspace:*",
     "@pyreon/query": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vite-plugin": "workspace:*",
