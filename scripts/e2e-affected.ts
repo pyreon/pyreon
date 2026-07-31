@@ -313,6 +313,21 @@ const SUITES: Suite[] = [
       'e2e/atlas-dev.spec.ts',
     ],
   },
+  {
+    // `atlas verify-browser` — the browser half of the verify pipeline as a
+    // subprocess: real coverage on the page's own reactivity instance +
+    // baseline-create/compare snapshots, merged back into the catalog.
+    name: 'atlas-verify-browser',
+    script: 'test:e2e:atlas-verify',
+    triggers: [
+      ...RENDER_CORE,
+      'packages/tools/atlas/',
+      'packages/tools/vite-plugin/',
+      'packages/core/compiler/',
+      'examples/atlas-workshop/',
+      'e2e/atlas-verify-browser.spec.ts',
+    ],
+  },
 ]
 
 export { SUITES }
