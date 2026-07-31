@@ -9718,4 +9718,66 @@ report.issues.filter((i) => i.severity === 'error')`,
     mistakes: '- Re-deriving your own truth from the model instead of reading `report.graph` / `report.issues` — the analysis is the contract; nothing downstream should recompute cycles or reach differently',
   },
   // <gen-docs:api-reference:end @pyreon/loom>
+  // <gen-docs:api-reference:start @pyreon/atlas>
+
+  'atlas/atlas scan': {
+    signature: 'atlas scan [dir] [--no-mount]',
+    example: `$ atlas scan .
+atlas: discovered 9 component(s), 43 scenario(s) — 41 verified, 2 failing, 0 unverified.
+  → atlas-catalog.json
+  → atlas-agent-guide.md
+atlas: 2 failing scenario(s): button--empty, badge--empty`,
+    notes: 'Discover components (static TS scan + rocketstyle runtime detection), derive controls and variant scenarios, MOUNT each scenario (real module load through a Vite-powered loader) and run the node half of the verify pipeline — a11y (static), interaction (mount + play/click-walk), and a REAL leak check (reactive-graph accumulation across repeated mounts, past GC). Writes `atlas-catalog.json` (every component, control, scenario, and verdict) and `atlas-agent-guide.md` (the AI-consumable summary). Exits non-zero when any scenario FAILS — wiring the scan into CI gates the catalog. `--no-mount` keeps the scan purely static (no project code executes). See also: atlas verify-browser, createAtlas.',
+    mistakes: `- Treating "verified" as a default — a scenario is verified only when a check actually RAN and passed; \`checked: 0\` renders as unverified, never smoothed into a pass
+- Running the scan without the project theme in \`atlas.config.ts\` for rocketstyle components — dimension axes resolve empty and the variant scenarios collapse to defaults
+- Expecting the leak check under plain \`node\` — it needs a GC hook (\`bun\`, or \`node --expose-gc\`); without one it reports skip, not pass
+- Expecting reactivityCoverage/snapshot verdicts from the scan — those are browser-only claims; run \`atlas verify-browser\` to earn them`,
+  },
+
+  'atlas/atlas dev': {
+    signature: 'atlas dev [dir] [--port=5210]',
+    example: `$ atlas dev . --port=5210
+atlas dev: 9 component(s) → http://localhost:5210/`,
+    notes: 'Boot the workbench: real Vite + the real Pyreon compiler over your source, a derived catalog in the sidebar (nested by directory), live controls (bool/string/number/color editors), canvas addons (viewport / background / zoom / measure overlay / pseudo-state force), an A11y panel with on-demand axe-core, autodocs pages, an Actions log, and the Reactivity Lens. Components in files that import `@pyreon/atlas` are treated as workbench HOSTS and excluded from the nav (import-specifier match, never substrings). See also: atlas scan.',
+    mistakes: `- Expecting authored \`play\` functions to run on DERIVED catalogs in the workbench — play crosses no JSON boundary; the ▶ button appears for hand catalogs, and derived play scripts run in \`atlas scan\` / the verify pipeline
+- Styling per-instance frames with inline styles — the workbench styles through the Element \`css\` prop channel (hashed classes); custom viewport widths ship zero inline styles`,
+  },
+
+  'atlas/atlas verify-browser': {
+    signature: 'atlas verify-browser [dir] [--update-snapshots]',
+    example: `$ atlas verify-browser .
+atlas verify-browser: 26 scenario(s) — coverage measured on 26, 0 baseline(s) created, 0 visual diff(s).
+  → atlas-catalog.json`,
+    notes: 'The browser half of verification, in real Chromium (playwright-core is an OPTIONAL peer — scan/dev work without it). Boots the workbench, drives every derived scenario through the workbench model, measures reactive coverage on the page’s own devtools bridge (the components’ actual reactivity instance — a NEW-NODE diff so workbench chrome never pollutes the numbers), screenshots the preview against per-scenario pixelmatch baselines under `atlas-snapshots/`, and merges both verdicts back into `atlas-catalog.json`. Coverage is a MEASUREMENT, not a threshold gate: pass means measured, and the findings carry the numbers. First run creates baselines (flagged as recorded-not-yet-compared); later runs compare within tolerance and write `<id>.actual.png` on a diff. Exits non-zero on visual diffs. See also: atlas scan.',
+    mistakes: `- Committing \`atlas-snapshots/\` across machines — baselines are machine-specific (font antialiasing); gitignore them and let each environment create its own on first run
+- Reading "100% of 0 reactive nodes" as broken — a genuinely static scenario creates no reactive nodes and the finding says so explicitly
+- Treating not-drivable scenarios as failures — components living in workbench-host files can’t be driven through the dev nav; the summary names them and their browser verdicts stay skip`,
+  },
+
+  'atlas/createAtlas': {
+    signature: '(options?: { plugins?: AtlasPlugin[]; preset?: "recommended" | "none" }) => Atlas',
+    example: `import { createAtlas } from '@pyreon/atlas'
+
+const atlas = createAtlas()            // recommended preset
+const graph = await atlas.build()      // discover → decorate → verify → graph
+graph.search('button')                 // Catalog Graph queries`,
+    notes: 'The programmatic pipeline factory behind the CLI: `discover → decorate → verify → graph`, plugin-driven. The recommended preset bundles the built-in plugins (controls inference, variant matrix, mount/interaction/leak verification). Pass `preset: "none"` when you assemble the plugin list yourself — appending the recommended bundle on top of an explicit list runs duplicate plugins whose default verdicts can overwrite real ones. See also: atlas scan.',
+    mistakes: '- Passing an explicit plugin list WITHOUT `preset: "none"` — the recommended bundle is appended a second time and a duplicate mount plugin’s empty-graph default verdict can overwrite the real one',
+  },
+
+  'atlas/AtlasConfig.scenarios (authored scenarios + play)': {
+    signature: 'Record<string, { name: string; args?: Record<string, unknown>; play?: PlayFn }[]>',
+    example: `scenarios: {
+  Button: [{
+    name: 'Submit flow',
+    args: { label: 'Save' },
+    play: async ({ root, step }) => {
+      await step('click', () => root.querySelector('button')!.click())
+    },
+  }],
+}`,
+    notes: 'Authored scenarios in `atlas.config.ts`, keyed by component name. Authored entries are prepended and WIN over generated scenarios with the same id. A `play` function receives `{ root, step }` — `root` is the mounted scenario’s container, `step(name, run)` labels each phase; a throw fails the interaction check naming the exact step. Validated at load: unknown fields error with the correct field name. See also: atlas scan, atlas dev.',
+    mistakes: '- Expecting `play` to serialize into `atlas-catalog.json` — functions never cross the JSON boundary; the catalog records the verdict the play run produced, not the script',
+  },
+  // <gen-docs:api-reference:end @pyreon/atlas>
 }
