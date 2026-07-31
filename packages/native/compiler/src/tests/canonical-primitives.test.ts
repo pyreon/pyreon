@@ -616,6 +616,26 @@ describe('Phase B — <Toggle> emit (canonical binary toggle; Compose Switch vs 
     expect(out).toContain('Switch(checked = done, onCheckedChange = { done = it })')
   })
 
+  it('Kotlin: <Toggle data-testid> → Switch carries Modifier.testTag (Link-bug sibling)', () => {
+    // emitKotlinToggle is a special-case emitter; without the generic
+    // modifier tail a `data-testid` was silently DROPPED, so the Switch
+    // was unselectable by onNodeWithTag — the Android sibling of the
+    // <Link> data-testid drop fixed in the Core-UI-row PR. The Swift half
+    // already chained its modifiers.
+    const out = tx(
+      `<Toggle value={done} onChange={(b) => done.set(b)} data-testid="core-toggle" />`,
+      'kotlin',
+    )
+    expect(out).toContain('Switch(checked = done')
+    expect(out).toContain('modifier = Modifier.testTag("core-toggle")')
+  })
+
+  it('Kotlin: <Toggle> with no data-testid — Switch emits byte-identically (no modifier arg)', () => {
+    const out = tx(`<Toggle value={done} onChange={(b) => done.set(b)} />`, 'kotlin')
+    expect(out).toContain('Switch(checked = done, onCheckedChange = { b -> done = b })')
+    expect(out).not.toMatch(/Switch\([^)]*modifier =/)
+  })
+
   // Phase E2 — non-signal value support for parent-owns-state pattern
   // (unblocks <Checkbox> → <Toggle> migration in TodoMVC TodoRow).
   //

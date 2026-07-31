@@ -181,4 +181,83 @@ final class PyreonRouterDemoUITests: XCTestCase {
         )
     }
 
+    // Core-UI residual closure — Layer / Spacer / Heading, the last three
+    // canonical primitives without a dedicated behavioural assertion. Each is
+    // asserted by GEOMETRY read off the live accessibility tree (frames), not
+    // by mere existence, so a mis-emit is visible. They live in THIS app
+    // because the router home screen holds everything in the first screenful;
+    // the counter's overflowing column makes tail geometry unmeasurable.
+    // The #2593 lesson — an element's a11y frame HUGS its content — is
+    // exactly what makes the Heading height and the Spacer gap measurable.
+
+    // <Heading level={2}> lowers to `.font(.title).bold()`. A semantic font
+    // role is not directly readable via XCUITest — but the glyph-box HEIGHT
+    // is: a .title heading is measurably taller than a body-size Text. A
+    // Heading that mis-emitted as plain body text collapses the difference.
+    func test_headingRendersLargerThanBodyText() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        let heading = app.staticTexts["core-heading"]
+        XCTAssertTrue(
+            heading.waitForExistence(timeout: 30),
+            "core-heading missing — <Heading> did not render or its "
+                + "data-testid did not reach accessibilityIdentifier"
+        )
+        XCTAssertEqual(heading.label, "Core heading")
+        let body = app.staticTexts["spacer-left"]
+        XCTAssertTrue(body.exists, "body-size reference Text missing")
+        XCTAssertGreaterThan(
+            heading.frame.height,
+            body.frame.height + 2,
+            "Heading glyph box is not taller than body text — the level→font "
+                + "lowering (.title) did not apply"
+        )
+    }
+
+    // <Spacer /> inside an <Inline> (HStack) is the flexible gap: it PUSHES
+    // the siblings to the row's edges. If the Spacer were dropped the two
+    // texts would sit adjacent (single-digit-pt gap), so the measured
+    // left-to-right gap IS the assertion.
+    func test_spacerPushesInlineSiblingsApart() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        let left = app.staticTexts["spacer-left"]
+        let right = app.staticTexts["spacer-right"]
+        XCTAssertTrue(
+            left.waitForExistence(timeout: 30),
+            "spacer-left missing — the <Inline> row did not render"
+        )
+        XCTAssertTrue(right.exists, "spacer-right missing")
+        let gap = right.frame.minX - left.frame.maxX
+        XCTAssertGreaterThan(
+            gap,
+            100,
+            "Spacer did not push the Inline siblings apart (gap \(gap)pt) — "
+                + "adjacent texts mean the Spacer was dropped from the emit"
+        )
+    }
+
+    // <Layer> lowers to ZStack: children stack on the Z axis, so their
+    // frames INTERSECT. A mis-emit to a linear container (VStack) lays them
+    // out disjoint — frame intersection is the discriminator.
+    func test_layerChildrenOverlapOnZAxis() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        let under = app.staticTexts["layer-under"]
+        let over = app.staticTexts["layer-over"]
+        XCTAssertTrue(
+            under.waitForExistence(timeout: 30),
+            "layer-under missing — the <Layer> subtree did not render"
+        )
+        XCTAssertTrue(over.exists, "layer-over missing")
+        XCTAssertTrue(
+            under.frame.intersects(over.frame),
+            "Layer children do not overlap (under \(under.frame), over "
+                + "\(over.frame)) — ZStack lowering did not apply"
+        )
+    }
+
 }
