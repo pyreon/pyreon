@@ -187,6 +187,13 @@ Usage:
                       exits non-zero when any scenario FAILS a check
     --no-mount        purely static scan — never imports (= executes) the
                       project's modules; runtime checks report skip
+  atlas verify-browser [dir]
+                      run the browser half of verification in real Chromium —
+                      reactive coverage measured on the client build, and a
+                      per-scenario visual snapshot vs ./atlas-snapshots.
+                      Needs playwright-core (optional peer). Merges verdicts
+                      into atlas-catalog.json; exits non-zero on visual diffs
+    --update-snapshots  re-baseline: overwrite stored snapshots with current
   atlas --help        show this help
 `
 
@@ -233,6 +240,34 @@ export async function runCli(argv: readonly string[]): Promise<number> {
       return 1
     }
     return 0
+  }
+
+  if (cmd === 'verify-browser') {
+    const dir = rest.find((a) => !a.startsWith('-'))
+    const { runBrowserVerify } = await import('../verify-browser/runner')
+    try {
+      const summary = await runBrowserVerify({
+        cwd: dir ?? '.',
+        ...(rest.includes('--update-snapshots') ? { updateSnapshots: true } : {}),
+      })
+      out(
+        `atlas verify-browser: ${summary.scenarios} scenario(s) — ` +
+          `coverage measured on ${summary.coverageMeasured}, ` +
+          `${summary.snapshotsCreated} baseline(s) created, ` +
+          `${summary.snapshotsFailed} visual diff(s).\n`,
+      )
+      if (summary.notDriven.length > 0) {
+        out(
+          `  ${summary.notDriven.length} scenario(s) not drivable (workbench-host components; ` +
+            `browser verdicts stay skip): ${summary.notDriven.join(', ')}\n`,
+        )
+      }
+      if (summary.catalogPath) out(`  → ${summary.catalogPath}\n`)
+      return summary.snapshotsFailed > 0 ? 1 : 0
+    } catch (error) {
+      err(`${String((error as Error)?.message ?? error)}\n`)
+      return 1
+    }
   }
 
   if (cmd === 'dev') {

@@ -2152,6 +2152,8 @@
         "@pyreon/ui-core": "workspace:*",
         "@pyreon/unistyle": "workspace:*",
         "axe-core": "^4.11.0",
+        "pixelmatch": "^7.1.0",
+        "pngjs": "^7.0.0",
         "typescript": ">=5.0.0 <7.0.0",
       },
       "devDependencies": {
@@ -2161,15 +2163,18 @@
         "@pyreon/vite-plugin": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "happy-dom": "^20.11.1",
+        "playwright-core": ">=1.40",
         "vite": "^8.0.16",
         "zod": "^4.4.3",
       },
       "peerDependencies": {
         "@pyreon/compiler": "workspace:*",
+        "playwright-core": ">=1.40",
         "vite": ">=6",
       },
       "optionalPeers": [
         "@pyreon/compiler",
+        "playwright-core",
         "vite",
       ],
     },
@@ -5279,6 +5284,8 @@
     "picomatch": ["picomatch@4.0.5", "", {}, "sha512-RvwwcruNjI1ncT5xRakeyS9Lf8lcItv34KD+aif+VH9kduAyfYBipGh12274xtenIPZ119/R9BdTBa8gAwSh0A=="],
 
     "pify": ["pify@4.0.1", "", {}, "sha512-uB80kBFb/tfd68bVleG9T5GGsGPjJrLAUpR5PZIrhBnIaRTQRjqdJSsIKkOP6OAIFbj7GOrcudc5pNjZ+geV2g=="],
+
+    "pixelmatch": ["pixelmatch@7.2.0", "", { "dependencies": { "pngjs": "^7.0.0" }, "bin": { "pixelmatch": "bin/pixelmatch" } }, "sha512-xhcb4yHu9sM/G7foGzoLtXYcC0zHEaOXXjRKhGup0fw78Nf2Tkiapv4EQyMzrbcmQPsllAI7DbFY2UT7PlI9Pg=="],
 
     "pkce-challenge": ["pkce-challenge@5.0.1", "", {}, "sha512-wQ0b/W4Fr01qtpHlqSqspcj3EhBvimsdh0KlHhH8HRZnMsEa0ea2fTULOXOS9ccQr3om+GcGRk4e+isrZWV8qQ=="],
 
