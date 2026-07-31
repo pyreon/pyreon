@@ -5592,6 +5592,15 @@ function emitKotlinToggle(
   if (enabledArg) {
     args.push(enabledArg)
   }
+  // Generic modifier tail (same as TextField/Text) — without it a
+  // `data-testid` on <Toggle> was silently DROPPED, so the Switch was
+  // unselectable by `onNodeWithTag` (the Android sibling of the <Link>
+  // special-case-emitter bug: a dedicated emitter returning before the
+  // generic tail). The Swift half already chains its modifiers.
+  const toggleModifier = emitKotlinLayoutModifier(e)
+  if (toggleModifier !== '') {
+    args.push(`modifier = ${toggleModifier}`)
+  }
   return `Switch(${args.join(', ')})`
 }
 
