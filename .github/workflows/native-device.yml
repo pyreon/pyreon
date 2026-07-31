@@ -351,6 +351,16 @@ jobs:
 
       - name: Emit + xcodegen + UITest — native-router-demo-ios
         working-directory: examples/native-router-demo-ios
+        # NO `CODE_SIGNING_ALLOWED=NO` here, deliberately: an UNSIGNED app
+        # carries no signature entitlements, and the iOS 18.5 simulator's
+        # securityd DENIES SecItemAdd for it — the router-demo suite's
+        # secure-storage test failed 3/3 retries with "Secret: write-failed"
+        # on CI while passing locally, and the unsigned invocation was the
+        # ONLY divergence (locally REPRODUCED byte-identically by adding
+        # this flag; removed → passes). Simulator ad-hoc signing
+        # (`codesign -s -`) needs no identity/team, so this costs nothing
+        # on a bare runner. The other iOS app steps keep the flag — none of
+        # them touch the keychain.
         run: |
           set -o pipefail
           bash scripts/build.sh
@@ -362,8 +372,7 @@ jobs:
             -scheme PyreonRouterDemo \
             -sdk iphonesimulator \
             -destination "platform=iOS Simulator,name=${PYREON_SIM_NAME},OS=latest" \
-            -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO
+            -configuration Debug
 
       # Tasks showcase — Gap 5 PR-5.3(b) closure. Runs the
       # PyreonTasksUITests.swift suite (auth-gate + navigation +

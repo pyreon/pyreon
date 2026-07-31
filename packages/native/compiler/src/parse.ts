@@ -800,12 +800,12 @@ function warnWebOnlyImports(body: AnyNode[], ctx: ParseCtx): void {
  * Hooks the native parser LOWERS. Anything else imported from a `@pyreon/*`
  * package and called as `useX()` falls through to the generic
  * `const x = <call>` emit, which reproduces the call VERBATIM — and there is no
- * `useFieldArray` (or `useToggle`, or `useElementSize`) in the Swift or Kotlin
+ * `useToggle` (or `useElementSize`) in the Swift or Kotlin
  * runtime, so the result is native code that cannot compile.
  *
- * That was silent. `useFieldArray('tags')` emitted
- * `let items = useFieldArray("tags")` with ZERO warnings, and the first sign of
- * trouble was `cannot find 'useFieldArray' in scope` from a device build — or
+ * That was silent. An un-lowered hook call emitted verbatim with ZERO
+ * warnings, and the first sign of trouble was `cannot find … in scope` from
+ * a device build — or
  * nothing at all, for an app nobody type-checked. 38 of the 52 hooks
  * `@pyreon/hooks` and `@pyreon/form` export behave this way.
  *
@@ -815,7 +815,7 @@ function warnWebOnlyImports(body: AnyNode[], ctx: ParseCtx): void {
  */
 export const NATIVE_LOWERED_HOOKS: ReadonlySet<string> = new Set([
   'useAppState', 'useAuth', 'useBiometrics', 'useClipboard', 'useColorScheme',
-  'useDatabase', 'useFetch', 'useFilePicker', 'useForm', 'useGeolocation',
+  'useDatabase', 'useFetch', 'useFieldArray', 'useFilePicker', 'useForm', 'useGeolocation',
   'useHaptics', 'useImagePicker', 'useLinking', 'useLoaderData', 'useMap',
   'useNativeModule', 'useNavigate', 'useNotifications', 'useOnline',
   'useParams', 'usePayments', 'usePermissions', 'usePush', 'useSecureStorage',
@@ -4590,20 +4590,45 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     return { kind: 'geolocation', name }
   }
   if (calleeName === 'useSecureStorage') {
-    // Deferred (v1): the Kotlin PyreonSecureStorage REQUIRES an app-injected
-    // backend (EncryptedSharedPreferences) — no no-arg constructor — so the
-    // compiler can't auto-instantiate it cleanly on Android (a silent
-    // in-memory fallback for a SECRET store would be a security footgun).
-    // Warns + drops until the backend-injection emit lands. Swift has a real
-    // Keychain default; the deferral is for cross-target symmetry. Use the
-    // runtime container directly from native host code today.
-    ctx.warnings.push(
-      `useSecureStorage() declared (\`${name}\`) — emit deferred (v1): the Kotlin secret store needs an app-injected EncryptedSharedPreferences backend, so PMTC can't auto-construct it. Wire PyreonSecureStorage from native host code, or keep in a <Web>-only branch. Tracked as a native data-hook follow-up.`,
-    )
-    return null
+    // Lowered for real (the v1 warn-drop is gone): the deferral's stated
+    // blocker — "Kotlin has no auto-constructible backend" — was resolved by
+    // `KeystoreSecureBackend(context)` (PyreonSecureStorageAndroid.kt), so
+    // both targets now construct a REAL encrypted default: Swift
+    // `PyreonSecureStorage()` (Keychain), Kotlin
+    // `PyreonSecureStorage(ctx)` (AndroidKeyStore AES-GCM) via the same
+    // Context-threading shape as `useDatabase`.
+    return { kind: 'secureStorage', name }
   }
   if (calleeName === 'useDatabase') {
     return { kind: 'database', name }
+  }
+  // `useFieldArray(['a', 'b'])` — the dynamic form-list container
+  // (PyreonFieldArray on both targets, mirroring the web @pyreon/form
+  // surface). The initial must be an array of string literals (or absent)
+  // so it can be baked into the constructor — same literal rule as
+  // useWebSocket's URL.
+  if (calleeName === 'useFieldArray') {
+    const arg = init.arguments?.[0]
+    const initial: string[] = []
+    if (arg !== undefined) {
+      if (arg.type !== 'ArrayExpression') {
+        ctx.warnings.push(
+          `Declaration ${name}: useFieldArray initial must be an array literal of strings (or omitted); got ${arg.type}.`,
+        )
+        return null
+      }
+      for (const el of (arg.elements as AnyNode[] | undefined) ?? []) {
+        if ((el?.type === 'Literal' || el?.type === 'StringLiteral') && typeof el.value === 'string') {
+          initial.push(el.value as string)
+        } else {
+          ctx.warnings.push(
+            `Declaration ${name}: useFieldArray initial elements must be string literals; got ${el?.type ?? 'nothing'}.`,
+          )
+          return null
+        }
+      }
+    }
+    return { kind: 'fieldArray', name, initial }
   }
   if (calleeName === 'usePush') {
     return { kind: 'push', name }

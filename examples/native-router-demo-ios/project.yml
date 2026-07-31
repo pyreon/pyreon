@@ -79,9 +79,17 @@ targets:
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
 
+    entitlements:
+      path: ios/PyreonRouterDemo.entitlements
+
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.pyreon.PyreonRouterDemo
+        # Explicit CODE_SIGN_ENTITLEMENTS: xcodegen's `entitlements:` block
+        # alone did NOT embed under ad-hoc simulator signing — verified via
+        # `codesign -d --entitlements :-` reading an EMPTY dict on the built
+        # app, i.e. the keychain entitlement "fix" had never applied.
+        CODE_SIGN_ENTITLEMENTS: ios/PyreonRouterDemo.entitlements
         ENABLE_BITCODE: NO
         SWIFT_VERSION: '5.0'
         CODE_SIGN_STYLE: Automatic

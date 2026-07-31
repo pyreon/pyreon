@@ -80,3 +80,7 @@ QUICK_REFERENCE.md
 atlas-catalog.json
 atlas-agent-guide.md
 atlas-snapshots/
+
+# Kotlin 2.x per-project session dirs (error logs etc.) — emitted next to
+# gradle builds in the native example apps
+.kotlin/

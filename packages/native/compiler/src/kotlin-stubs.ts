@@ -1219,6 +1219,36 @@ class PyreonDatabase(backend: PyreonDatabaseBackend) {
   fun count(collection: String): Int = 0
 }
 
+// PyreonSecureStorage — the secret store, mirrored key-first (the runtime's
+// write(key, value); value-first was removed as a crossed-positional hazard).
+interface PyreonSecureBackend
+@Suppress("FunctionName")
+fun PyreonSecureStorage(context: Context): PyreonSecureStorage =
+  PyreonSecureStorage(object : PyreonSecureBackend {})
+class PyreonSecureStorage(backend: PyreonSecureBackend) {
+  fun write(key: String, value: String): Boolean = true
+  fun read(key: String): String? = null
+  fun remove(key: String): Boolean = true
+  fun contains(key: String): Boolean = false
+}
+
+// PyreonFieldArray — dynamic form lists, mirrored exactly (items/length are
+// properties; a paren-keeping emit must fail).
+data class PyreonFieldArrayItem(val key: Int, val value: String)
+class PyreonFieldArray(initial: List<String> = emptyList()) {
+  val items: List<PyreonFieldArrayItem> = emptyList()
+  val length: Int get() = 0
+  fun append(value: String) {}
+  fun prepend(value: String) {}
+  fun insert(index: Int, value: String) {}
+  fun remove(index: Int) {}
+  fun update(index: Int, value: String) {}
+  fun move(from: Int, to: Int) {}
+  fun swap(indexA: Int, indexB: Int) {}
+  fun replace(values: List<String>) {}
+  fun values(): List<String> = emptyList()
+}
+
 class PyreonPushNotification(
   val title: String? = null,
   val body: String? = null,

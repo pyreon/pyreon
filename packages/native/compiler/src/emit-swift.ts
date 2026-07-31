@@ -290,6 +290,20 @@ const SWIFT_SERVICE_ARG_LABELS: Record<
   string,
   Record<string, readonly (string | null)[]>
 > = {
+  fieldArray: {
+    // move(from:to:) is the one labelled method; the rest are unlabelled
+    // positionals mirroring the web surface.
+    move: ['from', 'to'],
+  },
+  secureStorage: {
+    // write(key:value:) — key FIRST everywhere (web/Swift/Kotlin); the
+    // labels make a crossed positional call uncompilable rather than a
+    // silent wrong-key write (both parameters are String).
+    write: ['key', 'value'],
+    read: ['key'],
+    remove: ['key'],
+    contains: ['key'],
+  },
   map: {
     // moveTo(latitude:longitude:zoom:) — zoom is defaulted, so BOTH the
     // 2-argument and 3-argument calls are legal and both must be labelled.
@@ -300,6 +314,13 @@ const SWIFT_SERVICE_ARG_LABELS: Record<
 
 /** Service decl name -> service kind, for the label table above. */
 let _serviceKindByNameSwift: Map<string, string> = new Map()
+// Field-array accessor unwrap: `tags.items()` / `tags.length()` are signal
+// CALLS on web but plain PROPERTIES on PyreonFieldArray — track the decl
+// names so the member-call emit strips the parens. `_fieldArrayItemParams`
+// tracks the CURRENT `<For each={fa.items()}>` render params (a stack —
+// nested Fors) so `item.value()` unwraps to `item.value` inside the body.
+let _fieldArrayNamesSwift: Set<string> = new Set()
+let _fieldArrayItemParamsSwift: string[] = []
 /** Per-component: form decl names — drives the dict-member subscript
  *  rewrite (`form.values.email` → `form.values["email"] ?? ""`) and the
  *  Field binding emit. */
@@ -1425,6 +1446,8 @@ function emitSwiftComponent(c: ComponentIR): string {
   // G1: track every signal name so TextField's pattern-detection can
   // recognise binding-eligible identifiers.
   _signalNames = new Set()
+  _fieldArrayNamesSwift = new Set()
+  _fieldArrayItemParamsSwift = []
   // G2 (related correctness): track every function decl name so the
   // call-emit keeps parens for `addTodo()` (function call) and drops
   // them only for `count()` (signal read). Seed with the file-scope helper
@@ -1479,6 +1502,7 @@ function emitSwiftComponent(c: ComponentIR): string {
     if (d.kind === 'network-status') _netStatusNames.add(d.name)
     if (d.kind === 'app-state') _appStateNames.add(d.name)
     if (d.kind === 'database') _databaseNames.add(d.name)
+    if (d.kind === 'fieldArray') _fieldArrayNamesSwift.add(d.name)
     if (SWIFT_SERVICE_ARG_LABELS[d.kind] !== undefined && 'name' in d) {
       _serviceKindByNameSwift.set(d.name as string, d.kind)
     }
@@ -2013,6 +2037,15 @@ function emitSwiftDecl(
   }
   if (d.kind === 'database') {
     return `@State private var ${swiftIdent(d.name)} = PyreonDatabase()`
+  }
+  if (d.kind === 'secureStorage') {
+    // Keychain-backed default (`KeychainSecureBackend`) — persists across
+    // relaunches on its own; no Context equivalent needed on iOS.
+    return `@State private var ${swiftIdent(d.name)} = PyreonSecureStorage()`
+  }
+  if (d.kind === 'fieldArray') {
+    const init = d.initial.length === 0 ? '' : `[${d.initial.map((v) => JSON.stringify(v)).join(', ')}]`
+    return `@State private var ${swiftIdent(d.name)} = PyreonFieldArray(${init})`
   }
   if (d.kind === 'push') {
     return `@State private var ${swiftIdent(d.name)} = PyreonPushNotifications()`
@@ -3167,6 +3200,26 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         e.callee.object.kind === 'identifier' &&
         typeof e.callee.property === 'string'
       ) {
+        // Field-array accessor unwrap: zero-arg `items()`/`length()` on a
+        // PyreonFieldArray decl (and `value()` on a For-item param over its
+        // items) are web signal READS — native they are stored/computed
+        // PROPERTIES, so the call parens must go or swiftc fails with
+        // "cannot call value of non-function type".
+        if (e.args.length === 0) {
+          const recv = e.callee.object.name
+          if (
+            _fieldArrayNamesSwift.has(recv) &&
+            (e.callee.property === 'items' || e.callee.property === 'length')
+          ) {
+            return `${swiftIdent(recv)}.${e.callee.property}`
+          }
+          if (
+            _fieldArrayItemParamsSwift.includes(recv) &&
+            e.callee.property === 'value'
+          ) {
+            return `${swiftIdent(recv)}.value`
+          }
+        }
         const kind = _serviceKindByNameSwift.get(e.callee.object.name)
         const labels =
           kind === undefined
@@ -5140,7 +5193,23 @@ function emitSwiftFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   const param = (renderArrow.expr as Extract<ExprIR, { kind: 'arrow' }>).params[0] ?? 'item'
   const body = (renderArrow.expr as Extract<ExprIR, { kind: 'arrow' }>).body
   const pad = ' '.repeat(indent + 2)
-  return `ForEach(${items}, id: \\.${idPath}) { ${param} in\n${pad}${emitSwiftExpr(body, indent + 2)}\n${' '.repeat(indent)}}`
+  // Field-array items source → the render param's `value()` reads unwrap to
+  // `.value` inside this body (a stack, so nested Fors restore correctly).
+  const isFieldArrayItems =
+    each !== undefined &&
+    ((each.value.kind === 'call' &&
+      each.value.callee.kind === 'member' &&
+      each.value.callee.object.kind === 'identifier' &&
+      _fieldArrayNamesSwift.has(each.value.callee.object.name) &&
+      each.value.callee.property === 'items') ||
+      (each.value.kind === 'member' &&
+        each.value.object.kind === 'identifier' &&
+        _fieldArrayNamesSwift.has(each.value.object.name) &&
+        each.value.property === 'items'))
+  if (isFieldArrayItems) _fieldArrayItemParamsSwift.push(param)
+  const bodyText = emitSwiftExpr(body, indent + 2)
+  if (isFieldArrayItems) _fieldArrayItemParamsSwift.pop()
+  return `ForEach(${items}, id: \\.${idPath}) { ${param} in\n${pad}${bodyText}\n${' '.repeat(indent)}}`
 }
 
 function emitSwiftShow(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {

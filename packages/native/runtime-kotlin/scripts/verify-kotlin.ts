@@ -123,6 +123,17 @@ inline operator fun <T> MutableState<T>.setValue(
 
 fun <T> mutableStateOf(initial: T): MutableState<T> = MutableStateImpl(initial)
 
+// SnapshotStateList — the reactive list PyreonFieldArray builds on. The stub
+// is FUNCTIONAL (a MutableList delegate), not type-only, because the
+// PyreonFieldArray smoke test RUNS: append/remove/values must actually
+// mutate. Mirrors the real surface the runtime touches (MutableList ops).
+class SnapshotStateList<T> internal constructor(
+  private val backing: MutableList<T>,
+) : MutableList<T> by backing
+
+fun <T> mutableStateListOf(vararg elements: T): SnapshotStateList<T> =
+  SnapshotStateList(elements.toMutableList())
+
 @Composable
 fun <T> remember(key: Any?, calculation: () -> T): T = calculation()
 `
@@ -210,8 +221,50 @@ const ANDROID_CONTENT_DATABASE_STUBS = `package android.content
 
 import java.io.File
 
+interface SharedPreferences {
+  fun getString(key: String, defValue: String?): String?
+  fun edit(): Editor
+  interface Editor {
+    fun putString(key: String, value: String?): Editor
+    fun remove(key: String): Editor
+    fun apply()
+  }
+}
+
 open class Context {
   open val filesDir: File get() = File(System.getProperty("java.io.tmpdir"), "pyreon-stub-files")
+  open val applicationContext: Context get() = this
+  open fun getSharedPreferences(name: String, mode: Int): SharedPreferences =
+    throw UnsupportedOperationException("stub")
+  companion object {
+    const val MODE_PRIVATE: Int = 0
+  }
+}
+`
+
+// PyreonSecureStorageAndroid-only stub — the android.security.keystore
+// surface KeystoreSecureBackend touches, mirrored EXACTLY (no superset).
+// javax.crypto / java.security / java.util.Base64 are real JDK classes
+// kotlinc resolves natively — only the android.* names need stubs.
+const ANDROID_KEYSTORE_STUBS = `package android.security.keystore
+
+import java.security.spec.AlgorithmParameterSpec
+
+object KeyProperties {
+  const val KEY_ALGORITHM_AES: String = "AES"
+  const val PURPOSE_ENCRYPT: Int = 1
+  const val PURPOSE_DECRYPT: Int = 2
+  const val BLOCK_MODE_GCM: String = "GCM"
+  const val ENCRYPTION_PADDING_NONE: String = "NoPadding"
+}
+
+class KeyGenParameterSpec private constructor() : AlgorithmParameterSpec {
+  class Builder(keystoreAlias: String, purposes: Int) {
+    fun setBlockModes(vararg blockModes: String): Builder = this
+    fun setEncryptionPaddings(vararg paddings: String): Builder = this
+    fun setKeySize(keySize: Int): Builder = this
+    fun build(): KeyGenParameterSpec = throw UnsupportedOperationException("stub")
+  }
 }
 `
 
@@ -599,9 +652,14 @@ try {
     SERVICE === 'PyreonDatabase' ||
     SERVICE === 'PyreonDatabaseAndroid' ||
     SERVICE === 'PyreonStorageAndroid' ||
-    SERVICE === 'PyreonStorage'
+    SERVICE === 'PyreonStorage' ||
+    SERVICE === 'PyreonSecureStorageAndroid'
   ) {
     writeFileSync(androidContentDatabasePath, ANDROID_CONTENT_DATABASE_STUBS, 'utf8')
+  }
+  const androidKeystorePath = join(tempDir, 'AndroidKeystore.kt')
+  if (SERVICE === 'PyreonSecureStorageAndroid') {
+    writeFileSync(androidKeystorePath, ANDROID_KEYSTORE_STUBS, 'utf8')
   }
   if (SERVICE === 'PyreonStorage' || SERVICE === 'PyreonStorageAndroid') {
     writeFileSync(composePlatformPath, ANDROIDX_COMPOSE_PLATFORM_STUBS, 'utf8')
@@ -705,6 +763,18 @@ try {
     SERVICE === 'PyreonStorage'
       ? [androidContentDatabasePath]
       : []
+  // PyreonSecureStorageAndroid: the Context/SharedPreferences stub + the
+  // android.security.keystore stub + the sibling CORE source (it references
+  // PyreonSecureStorage/PyreonSecureBackend). javax.crypto / java.security /
+  // java.util.Base64 are real JDK surface — no stubs needed.
+  const secureAndroidExtras =
+    SERVICE === 'PyreonSecureStorageAndroid'
+      ? [
+          androidContentDatabasePath,
+          androidKeystorePath,
+          resolve(PACKAGE_ROOT, 'src/main/kotlin/com/pyreon/runtime/PyreonSecureStorage.kt'),
+        ]
+      : []
   const databaseCoreExtras =
     SERVICE === 'PyreonDatabaseAndroid'
       ? [resolve(PACKAGE_ROOT, 'src/main/kotlin/com/pyreon/runtime/PyreonDatabase.kt')]
@@ -745,6 +815,7 @@ try {
         ...databaseStubs,
         ...databaseCoreExtras,
         ...storageExtras,
+        ...secureAndroidExtras,
         ...linkingStubs,
         ...notifStubs,
         ...okhttpExtras,
@@ -763,6 +834,7 @@ try {
         ...databaseStubs,
         ...databaseCoreExtras,
         ...storageExtras,
+        ...secureAndroidExtras,
         ...linkingStubs,
         ...notifStubs,
         ...okhttpExtras,

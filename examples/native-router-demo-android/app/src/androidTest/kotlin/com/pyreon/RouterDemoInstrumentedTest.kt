@@ -25,6 +25,7 @@
 
 package com.pyreon
 
+import android.content.Context
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
@@ -34,6 +35,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import com.pyreon.runtime.PyreonSecureStorage
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -154,6 +157,78 @@ class RouterDemoInstrumentedTest {
             "Layer children do not overlap (under $under, over $over) — " +
                 "Box (ZStack) lowering did not apply"
         }
+    }
+
+    // Storage row — useSecureStorage device-proven on Android, THREE claims
+    // in one flow:
+    //   (1) round trip: the Save Secret click writes through the emitted
+    //       `PyreonSecureStorage(ctx)` and the handler reads BACK through the
+    //       store (not a signal echo) before rendering "Secret: s3cret".
+    //   (2) durability: a COLD PyreonSecureStorage over the app's own
+    //       context decrypts what the UI wrote — a fresh instance carries no
+    //       in-memory state, so the value demonstrably came off the
+    //       device's Keystore-encrypted store (the useDatabase disk-proof
+    //       pattern; full process death stays impossible in-process — the
+    //       documented AndroidJUnitRunner limitation).
+    //   (3) ENCRYPTION AT REST: the raw SharedPreferences value is NOT the
+    //       plaintext — it is iv:ciphertext from the AndroidKeyStore AES-GCM
+    //       cipher. A backend that "persisted" by writing the secret
+    //       straight into prefs would pass (1) and (2) and fail exactly
+    //       here.
+    // No initial-state assertion: prefs/Keystore legitimately survive
+    // between runs on the same emulator.
+    @Test
+    fun secureStorageWriteRoundTripsAndIsEncryptedAtRest() {
+        composeRule.onNodeWithTag("secure-value").assertExists()
+        composeRule.onNodeWithTag("secure-save").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("secure-value").assertTextEquals("Secret: s3cret")
+
+        val ctx = InstrumentationRegistry.getInstrumentation().targetContext
+        val cold = PyreonSecureStorage(ctx)
+        check(cold.read("demo-secret") == "s3cret") {
+            "cold PyreonSecureStorage(context) did not read the UI's write — " +
+                "the emitted default is not actually Keystore/prefs-backed"
+        }
+        val raw = ctx
+            .getSharedPreferences("pyreon_secure", Context.MODE_PRIVATE)
+            .getString("demo-secret", null)
+        check(raw != null && !raw.contains("s3cret")) {
+            "raw prefs value is the PLAINTEXT ($raw) — the secret was stored " +
+                "unencrypted; KeystoreSecureBackend's AES-GCM did not apply"
+        }
+    }
+
+    // Forms row — useFieldArray device-proven on Android: add + REMOVE-FIRST
+    // drive recomposition of the emitted
+    // `items(tags.items, key = { it.key })` LazyColumn — append renders the
+    // new row, remove-first drops exactly row 0 and the SURVIVOR row is
+    // still rendered, and the count text pins length reactivity
+    // (`tags.length` over a SnapshotStateList). HONEST SCOPE: text-level
+    // assertions prove the mutation→re-render chain, not key IDENTITY (a
+    // positional list would render the same texts) — key STABILITY across
+    // removals is pinned by the runtime contract suites on both platforms
+    // (PyreonFieldArrayTest / PyreonRuntimeTests, survivor keys asserted
+    // directly).
+    @Test
+    fun fieldArrayAddAndRemoveFirstKeepSurvivorRow() {
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        composeRule.onNodeWithText("Go to About").performClick()
+        composeRule.onNodeWithTag("about-page").assertIsDisplayed()
+
+        composeRule.onNodeWithTag("tag-count").assertTextEquals("Tags: 1")
+        composeRule.onNodeWithText("tag: alpha").assertExists()
+
+        composeRule.onNodeWithTag("tag-add").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("tag-count").assertTextEquals("Tags: 2")
+        composeRule.onNodeWithText("tag: beta").assertExists()
+
+        composeRule.onNodeWithTag("tag-remove").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("tag-count").assertTextEquals("Tags: 1")
+        composeRule.onNodeWithText("tag: alpha").assertDoesNotExist()
+        composeRule.onNodeWithText("tag: beta").assertExists()
     }
 
     @Test

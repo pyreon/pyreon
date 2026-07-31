@@ -13,7 +13,7 @@
 // Mirrors the useOnline / usePermissions reactive-container template. The
 // lifecycle auto-start (geolocation.start / websocket.connect / push.start on
 // mount) is a documented follow-up — the binding + reactive reads ship now.
-// `useSecureStorage` is deferred (Kotlin needs an app-injected backend) —
+// `useSecureStorage` lowers on both targets (Keychain / Keystore defaults) —
 // it warns + drops.
 
 import { describe, expect, it } from 'vitest'
@@ -126,14 +126,36 @@ describe('Phase 5 — native data/services hook emit', () => {
     expect(r.code).not.toContain('PyreonWebSocket()')
   })
 
-  it('useSecureStorage is deferred — warns + drops (no emit)', () => {
+  it('useSecureStorage lowers on Kotlin — Context-threaded Keystore default (the deferral is closed)', () => {
+    // The v1 warn-drop's stated blocker ("Kotlin has no auto-constructible
+    // backend") was resolved by KeystoreSecureBackend(context); the emit is
+    // the PyreonDatabase(context) shape.
     const r = transform(
       wrap(`  const vault = useSecureStorage()
   return (<Stack><Text>hi</Text></Stack>)`),
       { target: 'kotlin' },
     )
-    expect(r.warnings.some((w) => w.includes('useSecureStorage') && w.includes('deferred'))).toBe(true)
-    expect(r.code).not.toContain('PyreonSecureStorage')
+    expect(r.warnings.some((w) => w.includes('useSecureStorage'))).toBe(false)
+    expect(r.code).toContain('val vaultCtx = LocalContext.current')
+    expect(r.code).toContain('val vault = remember { PyreonSecureStorage(vaultCtx) }')
+  })
+
+  it('useSecureStorage lowers on Swift — Keychain default + KEY-FIRST labelled calls', () => {
+    const r = transform(
+      wrap(`  const vault = useSecureStorage()
+  const save = () => { vault.write('auth', 'tok') }
+  const clear = () => { vault.remove('auth') }
+  return (<Stack><Text>{vault.read('auth') ?? ''}</Text></Stack>)`),
+      { target: 'swift' },
+    )
+    expect(r.warnings.some((w) => w.includes('useSecureStorage'))).toBe(false)
+    expect(r.code).toContain('@State private var vault = PyreonSecureStorage()')
+    // The labels are the load-bearing half: write's two parameters are both
+    // String, so a positional emit would COMPILE with the arguments crossed
+    // and store the secret under the wrong key.
+    expect(r.code).toContain('vault.write(key: "auth", value: "tok")')
+    expect(r.code).toContain('vault.read(key: "auth")')
+    expect(r.code).toContain('vault.remove(key: "auth")')
   })
 
   // ── Archetype proof: a realistic finance + realtime/maps component emits
@@ -177,5 +199,82 @@ function FinanceRealtimeApp() {
     const r = validateKotlin(out)
     if (!r.ok) throw new Error(`kotlinc rejected:\n${r.error}\n---\n${out}`)
     expect(r.ok).toBe(true)
+  })
+})
+
+// ── useFieldArray — the dynamic form-list container (PyreonFieldArray on
+//    both targets). The load-bearing specs are the ACCESSOR UNWRAPS: on web
+//    `items`/`length`/`value` are signal CALLS, natively they are
+//    PROPERTIES — an emit that keeps the parens fails both toolchains
+//    ("cannot call value of non-function type").
+describe('useFieldArray lowering', () => {
+  const APP = `import { useFieldArray } from '@pyreon/form'
+import { Button, Stack, Text, For } from '@pyreon/primitives'
+export function TagsDemo() {
+  const tags = useFieldArray(['alpha'])
+  return (
+    <Stack data-testid="tags">
+      <Text data-testid="tag-count">Tags: {tags.length()}</Text>
+      <For each={tags.items()} by={(i) => i.key}>
+        {(item) => <Text>{item.value()}</Text>}
+      </For>
+      <Button onPress={() => tags.append('new')} data-testid="tag-add">Add</Button>
+      <Button onPress={() => tags.move(0, 1)} data-testid="tag-move">Move</Button>
+    </Stack>
+  )
+}`
+
+  it('Swift: decl + PROPERTY unwraps + keyed ForEach + labelled move', () => {
+    const r = transform(APP, { target: 'swift' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('@State private var tags = PyreonFieldArray(["alpha"])')
+    // Accessor unwraps — the web call parens must be GONE:
+    expect(r.code).toContain('Tags: \\(tags.length)')
+    expect(r.code).toContain('ForEach(tags.items, id: \\.key) { item in')
+    expect(r.code).toContain('\\(item.value)')
+    expect(r.code).not.toContain('tags.items()')
+    expect(r.code).not.toContain('item.value()')
+    // Methods stay CALLS — append positional, move labelled:
+    expect(r.code).toContain('tags.append("new")')
+    expect(r.code).toContain('tags.move(from: 0, to: 1)')
+  })
+
+  it('Kotlin: decl + PROPERTY unwraps + keyed items() + positional move', () => {
+    const r = transform(APP, { target: 'kotlin' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('val tags = remember { PyreonFieldArray(listOf("alpha")) }')
+    expect(r.code).toContain('Tags: ${tags.length}')
+    expect(r.code).toContain('items(tags.items, key = { it.key }) { item ->')
+    expect(r.code).toContain('${item.value}')
+    expect(r.code).not.toContain('tags.items()')
+    expect(r.code).not.toContain('item.value()')
+    expect(r.code).toContain('tags.append("new")')
+    expect(r.code).toContain('tags.move(0, 1)')
+  })
+
+  it('a non-literal initial warns + drops (the useWebSocket literal rule)', () => {
+    const r = transform(
+      wrap(`  const xs = ['a']
+  const tags = useFieldArray(xs)
+  return (<Stack><Text>hi</Text></Stack>)`),
+      { target: 'swift' },
+    )
+    expect(r.warnings.some((w) => w.includes('useFieldArray initial must be an array literal'))).toBe(true)
+    expect(r.code).not.toContain('PyreonFieldArray')
+  })
+
+  it('an empty call lowers to the empty container on both targets', () => {
+    for (const [target, expected] of [
+      ['swift', '@State private var tags = PyreonFieldArray()'],
+      ['kotlin', 'val tags = remember { PyreonFieldArray() }'],
+    ] as const) {
+      const r = transform(
+        wrap(`  const tags = useFieldArray()
+  return (<Stack><Text>hi</Text></Stack>)`),
+        { target },
+      )
+      expect(r.warnings).toEqual([])
+      expect(r.code).toContain(expected)
+    }
   })
 })

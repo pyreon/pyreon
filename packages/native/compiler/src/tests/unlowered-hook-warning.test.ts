@@ -2,11 +2,11 @@
 //
 // The parser lowers 28 hooks. Anything else imported from a `@pyreon/*` package
 // and called as `useX()` fell through to the generic `const x = <call>` emit,
-// which reproduces the call VERBATIM — and there is no `useFieldArray` (or
+// which reproduces the call VERBATIM — and there is no `useWatch` (or
 // `useToggle`, or `useElementSize`) in the Swift or Kotlin runtime.
 //
-//   const items = useFieldArray('tags')
-//   →  let items = useFieldArray("tags")      // cannot find … in scope
+//   const value = useWatch('email')
+//   →  let value = useWatch("email")      // cannot find … in scope
 //
 // with zero warnings. 38 of the 52 hooks `@pyreon/hooks` and `@pyreon/form`
 // export behave this way, so the first sign of trouble was a device build
@@ -40,10 +40,10 @@ const warningsFor = (src: string, target: 'swift' | 'kotlin' = 'swift') =>
 describe('a Pyreon hook with no native lowering', () => {
   it('warns, naming the hook and its package', () => {
     const w = warningsFor(
-      app(`import { useFieldArray } from '@pyreon/form'`, `const items = useFieldArray('tags')`),
+      app(`import { useWatch } from '@pyreon/form'`, `const value = useWatch('email')`),
     )
-    const hit = w.find((x) => x.includes('useFieldArray'))
-    expect(hit, `no warning for useFieldArray; got ${JSON.stringify(w)}`).toBeTruthy()
+    const hit = w.find((x) => x.includes('useWatch'))
+    expect(hit, `no warning for useWatch; got ${JSON.stringify(w)}`).toBeTruthy()
     expect(hit).toContain('@pyreon/form')
   })
 
@@ -66,10 +66,10 @@ describe('a Pyreon hook with no native lowering', () => {
   it('warns on BOTH targets', () => {
     for (const target of ['swift', 'kotlin'] as const) {
       const w = warningsFor(
-        app(`import { useFieldArray } from '@pyreon/form'`, `const items = useFieldArray('tags')`),
+        app(`import { useWatch } from '@pyreon/form'`, `const value = useWatch('email')`),
         target,
       )
-      expect(w.some((x) => x.includes('useFieldArray')), target).toBe(true)
+      expect(w.some((x) => x.includes('useWatch')), target).toBe(true)
     }
   })
 
@@ -91,10 +91,10 @@ describe('a Pyreon hook with no native lowering', () => {
 
   it('warns once per hook, not once per usage', () => {
     const src = app(
-      `import { useFieldArray } from '@pyreon/form'`,
-      `const a = useFieldArray('one')\n  const b = useFieldArray('two')`,
+      `import { useWatch } from '@pyreon/form'`,
+      `const a = useWatch('one')\n  const b = useWatch('two')`,
     )
-    expect(warningsFor(src).filter((x) => x.includes('useFieldArray'))).toHaveLength(1)
+    expect(warningsFor(src).filter((x) => x.includes('useWatch'))).toHaveLength(1)
   })
 
   // DRIFT GUARD. The lowered set is declared in one place so its complement is

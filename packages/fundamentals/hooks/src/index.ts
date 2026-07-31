@@ -39,6 +39,14 @@ export type {
 // and nowhere else — the same gap useGeolocation and useDatabase had.
 export { useWebSocket } from './useWebSocket'
 export type { UseWebSocketOptions, UseWebSocketResult } from './useWebSocket'
+// useSecureStorage — the web half of the imperative secret store
+// (Keychain on iOS, AndroidKeyStore AES-GCM on Android; module-scoped
+// in-memory on web, which has no OS secret store — persisting secrets to
+// localStorage would be the exact bug the hook exists to prevent). Same
+// resolvability gap as useGeolocation/useWebSocket: without the web export
+// the shared import only built on native.
+export { useSecureStorage } from './useSecureStorage'
+export type { SecureStorage } from './useSecureStorage'
 export type { UseGeolocationOptions, UseGeolocationResult } from './useGeolocation'
 // Web half of the shared document store. Same gap as useGeolocation: the
 // native half is device-proven, the web half did not exist — and the

@@ -566,6 +566,38 @@ public final class PyreonDatabase {
   public func find(_ collection: String, field: String, equals value: String) -> [PyreonRecord] { [] }
   public func count(_ collection: String) -> Int { 0 }
 }
+// PyreonSecureStorage — the secret store. Mirrors runtime-swift EXACTLY:
+// key-first labelled write (write(key:value:)); a value-first or positional
+// emit must FAIL here, because with two String parameters a crossed call
+// would otherwise compile and silently store the secret under the wrong key.
+public final class PyreonSecureStorage {
+  public init() {}
+  @discardableResult public func write(key: String, value: String) -> Bool { false }
+  public func read(key: String) -> String? { nil }
+  @discardableResult public func remove(key: String) -> Bool { false }
+  public func contains(key: String) -> Bool { false }
+}
+// PyreonFieldArray — dynamic form lists. Mirrors runtime-swift exactly:
+// items/length are PROPERTIES (an emit that keeps the web's call parens
+// must fail here), move is the one labelled method.
+public struct PyreonFieldArrayItem {
+  public let key: Int
+  public var value: String
+}
+public final class PyreonFieldArray {
+  public init(_ initial: [String] = []) {}
+  public var items: [PyreonFieldArrayItem] { [] }
+  public var length: Int { 0 }
+  public func append(_ value: String) {}
+  public func prepend(_ value: String) {}
+  public func insert(_ index: Int, _ value: String) {}
+  public func remove(_ index: Int) {}
+  public func update(_ index: Int, _ value: String) {}
+  public func move(from: Int, to: Int) {}
+  public func swap(_ indexA: Int, _ indexB: Int) {}
+  public func replace(_ values: [String]) {}
+  public func values() -> [String] { [] }
+}
 
 // ---- Additional SwiftUI surface (fonts / images / scroll / spacing) ----
 public struct Font {

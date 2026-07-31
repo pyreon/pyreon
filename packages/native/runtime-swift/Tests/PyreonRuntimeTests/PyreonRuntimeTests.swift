@@ -1094,6 +1094,75 @@ final class PyreonRuntimeTests: XCTestCase {
         XCTAssertFalse(auth.isAuthenticated)
     }
 
+    // MARK: - PyreonFieldArray (dynamic form lists)
+    //
+    // BYTE-ALIGNED with the Kotlin PyreonFieldArrayTest + the web
+    // use-field-array tests — the cross-platform contract, with STABLE KEYS
+    // as the load-bearing clause (a removal must not re-key surviving rows,
+    // or every input below it loses identity/focus).
+
+    func testFieldArrayInitialAndAppendKeys() throws {
+        let arr = PyreonFieldArray(["a", "b"])
+        XCTAssertEqual(arr.length, 2)
+        XCTAssertEqual(arr.values(), ["a", "b"])
+        XCTAssertEqual(arr.items.map(\.key), [0, 1])
+        arr.append("c")
+        XCTAssertEqual(arr.items[2].key, 2, "append continues the key sequence")
+    }
+
+    func testFieldArrayRemoveKeepsSurvivorKeys() throws {
+        let arr = PyreonFieldArray(["a", "b", "c"])
+        arr.remove(1)
+        XCTAssertEqual(arr.values(), ["a", "c"])
+        XCTAssertEqual(
+            arr.items.map(\.key), [0, 2],
+            "survivor keys UNCHANGED — re-keying would destroy row identity"
+        )
+        arr.append("d")
+        XCTAssertEqual(arr.items[2].key, 3, "keys are never reused after a removal")
+    }
+
+    func testFieldArrayUpdateKeepsKey() throws {
+        let arr = PyreonFieldArray(["a"])
+        arr.update(0, "edited")
+        XCTAssertEqual(arr.values(), ["edited"])
+        XCTAssertEqual(arr.items[0].key, 0, "update keeps the row's key")
+    }
+
+    func testFieldArrayPrependInsertClamped() throws {
+        let arr = PyreonFieldArray(["b"])
+        arr.prepend("a")
+        XCTAssertEqual(arr.values(), ["a", "b"])
+        arr.insert(99, "z")
+        XCTAssertEqual(arr.values(), ["a", "b", "z"], "insert clamps to end (splice semantics)")
+        arr.insert(-5, "0")
+        XCTAssertEqual(arr.values(), ["0", "a", "b", "z"], "insert clamps to start")
+    }
+
+    func testFieldArrayMoveSwapReplace() throws {
+        let arr = PyreonFieldArray(["a", "b", "c"])
+        arr.move(from: 0, to: 2)
+        XCTAssertEqual(arr.values(), ["b", "c", "a"])
+        arr.swap(0, 1)
+        XCTAssertEqual(arr.values(), ["c", "b", "a"])
+        let keysBefore = Set(arr.items.map(\.key))
+        arr.replace(["x", "y"])
+        XCTAssertEqual(arr.values(), ["x", "y"])
+        XCTAssertTrue(
+            Set(arr.items.map(\.key)).isDisjoint(with: keysBefore),
+            "replace assigns FRESH keys (a new list, not an in-place edit)"
+        )
+    }
+
+    func testFieldArrayOutOfBoundsAreNoOps() throws {
+        let arr = PyreonFieldArray(["a"])
+        arr.remove(5)
+        arr.update(5, "x")
+        arr.move(from: 0, to: 9)
+        arr.swap(0, 9)
+        XCTAssertEqual(arr.values(), ["a"], "OOB ops are no-ops, never crashes")
+    }
+
     // MARK: - PyreonSecureStorage (secret store)
     //
     // These cover the facade contract over the in-memory backend (the unit-
@@ -1108,7 +1177,7 @@ final class PyreonRuntimeTests: XCTestCase {
         let store = PyreonSecureStorage(backend: InMemorySecureBackend())
         XCTAssertNil(store.read(key: "auth"))
         XCTAssertFalse(store.contains(key: "auth"))
-        XCTAssertTrue(store.write("ey.token", key: "auth"))
+        XCTAssertTrue(store.write(key: "auth", value: "ey.token"))
         XCTAssertEqual(store.read(key: "auth"), "ey.token")
         XCTAssertTrue(store.contains(key: "auth"))
     }
@@ -1116,15 +1185,15 @@ final class PyreonRuntimeTests: XCTestCase {
     /// `write` overwrites an existing secret.
     func testPyreonSecureStorageOverwrite() throws {
         let store = PyreonSecureStorage(backend: InMemorySecureBackend())
-        store.write("first", key: "k")
-        store.write("second", key: "k")
+        store.write(key: "k", value: "first")
+        store.write(key: "k", value: "second")
         XCTAssertEqual(store.read(key: "k"), "second")
     }
 
     /// `remove` deletes; a removed key reads nil + contains false.
     func testPyreonSecureStorageRemove() throws {
         let store = PyreonSecureStorage(backend: InMemorySecureBackend())
-        store.write("secret", key: "k")
+        store.write(key: "k", value: "secret")
         XCTAssertTrue(store.contains(key: "k"))
         XCTAssertTrue(store.remove(key: "k"))
         XCTAssertNil(store.read(key: "k"))
@@ -1141,8 +1210,8 @@ final class PyreonRuntimeTests: XCTestCase {
     /// Multiple keys are isolated — removing one leaves the others.
     func testPyreonSecureStorageMultipleKeysIsolated() throws {
         let store = PyreonSecureStorage(backend: InMemorySecureBackend())
-        store.write("a-val", key: "a")
-        store.write("b-val", key: "b")
+        store.write(key: "a", value: "a-val")
+        store.write(key: "b", value: "b-val")
         XCTAssertEqual(store.read(key: "a"), "a-val")
         XCTAssertEqual(store.read(key: "b"), "b-val")
         store.remove(key: "a")
