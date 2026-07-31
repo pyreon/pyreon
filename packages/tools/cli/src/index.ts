@@ -9,6 +9,7 @@
  *   pyreon new      — scaffold a new Pyreon project (delegates to create-zero / -multiplatform)
  *   pyreon mcp      — launch the Pyreon MCP server (delegates to @pyreon/mcp)
  *   pyreon atlas    — the Atlas component workbench (delegates to @pyreon/atlas)
+ *   pyreon loom     — the Loom dependency observatory (delegates to @pyreon/loom)
  *   pyreon doctor   — project-wide health audit (score + per-category bars + findings)
  *   pyreon context  — generate .pyreon/context.json for AI tools
  *   pyreon info      — environment + installed @pyreon versions + version-skew check
@@ -45,6 +46,8 @@ function printUsage(): void {
     mcp [args]                       Launch the Pyreon MCP server (delegates to @pyreon/mcp; prefers project-local)
     atlas [args]                     Component workbench (delegates to @pyreon/atlas): scan derives a verified
                                      catalog, dev serves the workbench, verify-browser runs Chromium verification
+    loom [args]                      Dependency observatory (delegates to @pyreon/loom): scan analyzes the
+                                     workspace fabric with a red-exit CI contract, dev serves the graph UI
     doctor [options]                 Project-wide health audit with 0-100 score.
                                      Runs ${FAST_GATES.length} fast gates by default; --full enables ${SLOW_GATES.length} slow gates.
     context [--out <path>]           Generate .pyreon/context.json for AI tools
@@ -202,6 +205,16 @@ async function main(): Promise<void> {
     // our own `--dry-run` (which prints the npx command instead of running).
     const passthrough = args.slice(1).filter((a) => a !== '--dry-run')
     const exitCode = runAtlas({
+      args: passthrough,
+      dryRun: args.includes('--dry-run'),
+    })
+    process.exit(exitCode)
+  }
+
+  if (command === 'loom') {
+    const { runLoom } = await import('./loom')
+    const passthrough = args.slice(1).filter((a) => a !== '--dry-run')
+    const exitCode = runLoom({
       args: passthrough,
       dryRun: args.includes('--dry-run'),
     })

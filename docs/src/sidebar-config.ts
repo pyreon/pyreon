@@ -158,6 +158,7 @@ export const SIDEBAR: SidebarGroup[] = [
       { text: 'Lint', slug: 'lint' },
       { text: 'MCP Server', slug: 'mcp' },
       { text: 'Atlas (component workbench)', slug: 'atlas' },
+      { text: 'Loom (dependency observatory)', slug: 'loom' },
     ],
   },
   {

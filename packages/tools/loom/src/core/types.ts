@@ -31,6 +31,22 @@ export interface WorkspacePackage {
   deps: DeclaredDep[]
 }
 
+/**
+ * One suppression from the root manifest's `loom.ignore` array. A matching
+ * finding is DOWNGRADED to info with the reason attached — never silently
+ * dropped. `reason` is REQUIRED: an unexplained suppression is a lie waiting
+ * to age.
+ */
+export interface LoomIgnore {
+  /** Match the finding's package ('ROOT' included). Omit = any. */
+  pkg?: string
+  /** Match the finding's dependency name. Omit = any. */
+  dep?: string
+  /** Match the finding's issue code. Omit = any. */
+  code?: string
+  reason: string
+}
+
 /** The workspace root manifest's facts Loom cares about. */
 export interface WorkspaceRoot {
   name?: string
@@ -39,6 +55,8 @@ export interface WorkspaceRoot {
   overrides: Record<string, string>
   /** The raw workspace globs the members were resolved from. */
   workspaceGlobs: string[]
+  /** Suppressions from the root manifest's `loom.ignore` (validated). */
+  ignores: LoomIgnore[]
 }
 
 export interface WorkspaceModel {

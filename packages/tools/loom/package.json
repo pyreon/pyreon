@@ -1,8 +1,11 @@
 {
   "name": "@pyreon/loom",
-  "version": "0.0.0",
+  "version": "0.50.0",
   "description": "Monorepo dependency observatory — workspace graph, version-sync drift, cycles, phantom deps, and blast radius, as data.",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/tools/loom#readme",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
@@ -13,7 +16,6 @@
     "directory": "packages/tools/loom"
   },
   "type": "module",
-  "private": true,
   "sideEffects": false,
   "main": "./lib/index.js",
   "module": "./lib/index.js",
@@ -63,6 +65,7 @@
     "lint": "oxlint ."
   },
   "devDependencies": {
+    "@pyreon/manifest": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vite-plugin": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",

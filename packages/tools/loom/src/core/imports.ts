@@ -34,10 +34,28 @@ const SOURCE_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|mts|cts)$/
  * parser, and documented as such.
  */
 export function stripNonCode(text: string): string {
+  return stripWithMask(text).stripped
+}
+
+/**
+ * The stripped view PLUS a per-output-char "was this char in CODE mode"
+ * mask. String CONTENTS survive in the stripped view (an import's specifier
+ * IS a string), but a `from '…'` sequence living INSIDE another string —
+ * a lint rule's fix message, a diagnose catalog's fix-code, a generated
+ * api-reference example — must not scan as an import: the STATEMENT KEYWORD
+ * has to sit in code. The scanner checks the keyword position against this
+ * mask.
+ */
+export function stripWithMask(text: string): { stripped: string; codeAt: boolean[] } {
   let out = ''
+  const codeAt: boolean[] = []
   let i = 0
   const n = text.length
   let mode: 'code' | 'line' | 'block' | 'single' | 'double' | 'template' = 'code'
+  const push = (chunk: string, inCode: boolean) => {
+    out += chunk
+    for (let k = 0; k < chunk.length; k += 1) codeAt.push(inCode)
+  }
   while (i < n) {
     const c = text[i]!
     const next = text[i + 1]
@@ -45,21 +63,21 @@ export function stripNonCode(text: string): string {
       if (c === '/' && next === '/') { mode = 'line'; i += 2; continue }
       if (c === '/' && next === '*') { mode = 'block'; i += 2; continue }
       if (c === '`') { mode = 'template'; i += 1; continue }
-      if (c === "'") { mode = 'single'; out += c; i += 1; continue }
-      if (c === '"') { mode = 'double'; out += c; i += 1; continue }
-      out += c; i += 1; continue
+      if (c === "'") { mode = 'single'; push(c, true); i += 1; continue }
+      if (c === '"') { mode = 'double'; push(c, true); i += 1; continue }
+      push(c, true); i += 1; continue
     }
-    if (mode === 'line') { if (c === '\n') { mode = 'code'; out += c } i += 1; continue }
+    if (mode === 'line') { if (c === '\n') { mode = 'code'; push(c, true) } i += 1; continue }
     if (mode === 'block') { if (c === '*' && next === '/') { mode = 'code'; i += 2 } else i += 1; continue }
     if (mode === 'single') {
-      if (c === '\\') { out += text.slice(i, i + 2); i += 2; continue }
-      out += c; i += 1
+      if (c === '\\') { push(text.slice(i, i + 2), false); i += 2; continue }
+      push(c, false); i += 1
       if (c === "'" || c === '\n') mode = 'code'
       continue
     }
     if (mode === 'double') {
-      if (c === '\\') { out += text.slice(i, i + 2); i += 2; continue }
-      out += c; i += 1
+      if (c === '\\') { push(text.slice(i, i + 2), false); i += 2; continue }
+      push(c, false); i += 1
       if (c === '"' || c === '\n') mode = 'code'
       continue
     }
@@ -70,7 +88,7 @@ export function stripNonCode(text: string): string {
     if (c === '`') { mode = 'code'; i += 1; continue }
     i += 1
   }
-  return out
+  return { stripped: out, codeAt }
 }
 const SPEC_RE =
   /(?:from\s+|import\s*\(\s*|require\s*\(\s*|import\s+)['"]([^'"\n]+)['"]/g
@@ -119,6 +137,10 @@ function walkFiles(dir: string, rel: string, out: string[], depthLeft: number): 
   } catch {
     return
   }
+  // A SUBTREE with its own package.json is a separate unit (a nested vscode
+  // extension, a template project) — its imports are declared in ITS
+  // manifest, not this package's. Matches how npm scopes file ownership.
+  if (rel !== '' && entries.includes('package.json')) return
   for (const entry of entries) {
     if (entry === 'node_modules' || entry === 'lib' || entry === 'dist' || entry.startsWith('.')) continue
     const abs = join(dir, entry)
@@ -148,7 +170,11 @@ export function scanPackageImports(pkgAbsDir: string): {
       continue
     }
     const bucket = isDevSurfacePath(file) ? dev : prod
-    for (const m of stripNonCode(text).matchAll(SPEC_RE)) {
+    const { stripped, codeAt } = stripWithMask(text)
+    for (const m of stripped.matchAll(SPEC_RE)) {
+      // The match STARTS at the statement keyword (`from`/`import`/`require`)
+      // — that position must be CODE, not the inside of a string.
+      if (codeAt[m.index] === false) continue
       const name = specifierToPackage(m[1]!)
       if (!name) continue
       const list = bucket.get(name) ?? []

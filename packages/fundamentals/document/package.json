@@ -54,9 +54,9 @@
     "pptxgenjs": "^4.0.1"
   },
   "optionalDependencies": {
-    "docx": "^9.6.0",
+    "docx": "^9.7.1",
     "exceljs": "^4.4.0",
-    "pdfmake": "^0.3.7",
+    "pdfmake": "^0.3.9",
     "pptxgenjs": "^4.0.1"
   },
   "publishConfig": {

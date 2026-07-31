@@ -65,7 +65,7 @@
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@vitest/browser-playwright": "^4.1.10",
-    "esbuild": "^0.28.0",
+    "esbuild": "^0.28.1",
     "happy-dom": "^20.9.0",
     "rolldown": "^1.2.0",
     "vite": "^8.0.16"
