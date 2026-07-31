@@ -182,8 +182,30 @@ export function mountPlugin(options: MountPluginOptions = {}): AtlasPlugin {
         options.wrapper,
       )
       let clicks = 0
+      let playFailure: string | undefined
       try {
-        clicks = driveInteractions(scenario)
+        const play = ctx.scenario.play
+        if (play) {
+          // The author has said what "exercised" means for this scenario —
+          // run THAT, not the automatic click-walk. A throw (an assertion, a
+          // missing element) is reported by the step it died in.
+          let current = ''
+          try {
+            await play({
+              root: scenario.container,
+              step: async (name, run) => {
+                current = name
+                await run()
+              },
+            })
+          } catch (err) {
+            const detail = err instanceof Error ? err.message : String(err)
+            playFailure = current ? `play failed at step "${current}": ${detail}` : `play failed: ${detail}`
+          }
+          clicks = 1 // exercised by definition — the zero-click finding is for the auto walk
+        } else {
+          clicks = driveInteractions(scenario)
+        }
       } finally {
         // Unmount inside the same window so a teardown error counts as a
         // finding for THIS scenario rather than leaking into the next one.
@@ -240,7 +262,7 @@ export function mountPlugin(options: MountPluginOptions = {}): AtlasPlugin {
           : { status: 'pass' }
       }
 
-      if (errors.length === 0) {
+      if (errors.length === 0 && !playFailure) {
         // A zero-click run is still a real verdict — mount + unmount without
         // throwing IS the check's core claim — but the verdict must say what it
         // covered. Silently reporting `pass` for a scenario with nothing to
@@ -258,7 +280,10 @@ export function mountPlugin(options: MountPluginOptions = {}): AtlasPlugin {
         return { interaction: { status: 'pass' }, leak }
       }
 
-      const findings = errors.map((e) => `threw while mounted: ${e}`)
+      const findings = [
+        ...errors.map((e) => `threw while mounted: ${e}`),
+        ...(playFailure ? [playFailure] : []),
+      ]
       if (!options.wrapper) {
         // The most common first failure by a wide margin, and the one whose
         // cause is least obvious from the message alone: a design-system

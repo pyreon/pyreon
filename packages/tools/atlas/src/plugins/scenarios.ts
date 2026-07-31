@@ -9,6 +9,38 @@ import { makeScenario } from '../core'
 import { defineAtlasPlugin } from './define'
 
 /** Append scenarios to a component, skipping any whose id already exists. */
+/**
+ * The progressive-enrichment channel: scenarios a human AUTHORED (typically in
+ * `atlas.config.ts`), keyed by component name. Everything else stays derived;
+ * this adds only what derivation cannot know — a named state worth pinning,
+ * and a `play` script that says what "exercised" means for it.
+ *
+ * Runs BEFORE the generators, and an authored scenario WINS over a generated
+ * one with the same id (the generators' dedup skips ids that already exist).
+ */
+export function authoredScenariosPlugin(
+  byComponent: Record<string, readonly { name: string; args?: Record<string, unknown>; play?: import('../core').PlayFn }[]>,
+): AtlasPlugin {
+  return defineAtlasPlugin({
+    name: 'atlas:authored-scenarios',
+    decorate(ci) {
+      const list = byComponent[ci.name]
+      if (!list || list.length === 0) return ci
+      const authored = list.map((a) =>
+        makeScenario({
+          component: ci.name,
+          name: a.name,
+          ...(a.args ? { args: a.args } : {}),
+          ...(a.play ? { play: a.play } : {}),
+          source: 'authored',
+        }),
+      )
+      const ids = new Set(authored.map((s2) => s2.id))
+      return { ...ci, scenarios: [...authored, ...ci.scenarios.filter((s2) => !ids.has(s2.id))] }
+    },
+  })
+}
+
 function appendScenarios(
   ci: Parameters<NonNullable<AtlasPlugin['decorate']>>[0],
   make: () => ReturnType<typeof makeScenario>[],

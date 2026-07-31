@@ -15,7 +15,7 @@
 // the Android example would share via build script. ONE file, THREE
 // targets — provable by `ls` + `diff`.
 
-import { Button, Inline, Link, Stack, Text } from '@pyreon/primitives'
+import { Button, Heading, Inline, Layer, Link, Spacer, Stack, Text } from '@pyreon/primitives'
 import { createRouter, useNavigate, RouterProvider, RouterView } from '@pyreon/router'
 
 function HomePage() {
@@ -37,6 +37,41 @@ function HomePage() {
       <Link to="/about" data-testid="home-link-about">
         <Text>About via Link</Text>
       </Link>
+
+      {/* Core-UI residual closure — Layer / Spacer / Heading, the last three
+          canonical primitives without a dedicated behavioural assertion. They
+          live HERE rather than in the counter deliberately: the counter's
+          root column already overflows a phone screen, and a non-scrollable
+          Compose Column measures past-the-fold children with the REMAINING
+          height — i.e. ZERO — so geometry assertions there read 0-height
+          rects (empirically confirmed on the pixel_6 profile). The router
+          home screen holds everything in the first screenful on both
+          platforms, so frames/bounds are real layout facts.
+
+          Each primitive is asserted by GEOMETRY, not existence:
+
+          Heading → iOS `.font(.title)` / Compose `typography.h5`. The
+          discriminator is glyph-box HEIGHT vs a body-size Text — a Heading
+          mis-emitted as body text collapses the difference. */}
+      <Heading level={2} data-testid="core-heading">Core heading</Heading>
+
+      {/* Spacer → iOS `Spacer()` / Compose `Spacer(Modifier.weight(1f))`
+          inside an Inline (HStack/Row): the flexible gap PUSHES the siblings
+          to the row's edges. A dropped Spacer leaves the texts adjacent, so
+          the measured left-to-right gap IS the assertion. */}
+      <Inline data-testid="spacer-row">
+        <Text data-testid="spacer-left">L</Text>
+        <Spacer />
+        <Text data-testid="spacer-right">R</Text>
+      </Inline>
+
+      {/* Layer → iOS `ZStack` / Compose `Box`: children stack on the Z axis,
+          so their frames INTERSECT — a mis-emit to a linear container
+          (VStack/Column) lays them out disjoint. */}
+      <Layer data-testid="core-layer">
+        <Text data-testid="layer-under">under</Text>
+        <Text data-testid="layer-over">over</Text>
+      </Layer>
     </Stack>
   )
 }
