@@ -9678,4 +9678,44 @@ await findByText('write tests')`,
 - Seeding AFTER the component mounted with \`staleTime: 0\` and asserting no refetch — \`setQueryData\` marks data fresh at write time, but an already-mounted observer may have a fetch in flight; seed BEFORE render (create the client via \`createTestQueryClient\`, seed, pass as \`client\`) for deterministic first paint.`,
   },
   // <gen-docs:api-reference:end @pyreon/testing>
+  // <gen-docs:api-reference:start @pyreon/loom>
+
+  'loom/loom scan': {
+    signature: 'loom scan [dir] [--strict] [--json] [--no-imports] [--no-write]',
+    example: `$ loom scan .
+loom: 5 workspace package(s), 6 external dep(s), 4 internal edge(s), depth 2, 1 cycle(s).
+
+ERROR · 3
+  ✗ cycle [@fix/auth] — Runtime dependency cycle: @fix/auth → @fix/data → @fix/auth
+  ✗ version-drift [left-pad] — declared with 2 different ranges (^1.0.0 · ^2.0.0) — the majors differ
+  ✗ phantom-dep [undeclared-pkg] — \\\`@fix/app\\\` imports \\\`undeclared-pkg\\\` in shipping source but never declares it`,
+    notes: 'Read the workspace, analyze the dependency fabric, and report. Discovery reads the same declarations an install tool reads; analysis splits edges by semantics (runtime vs dev); seven detectors emit findings with stable codes, honest severities (error gates, warning advises, info knows its own limits), and structured evidence (which files import the phantom, which packages declare which range). Writes `loom-report.json` next to the root manifest and EXITS NON-ZERO on error-severity findings — the CI contract. `--strict` reds on warnings too; `--no-imports` skips the lexical detectors (phantom/dev-dep/unused); `--json` prints the full report. See also: loom dev.',
+    mistakes: `- Treating a dev-edge "cycle" as a bug — loom deliberately excludes devDependencies from cycle detection; monorepos legitimately share test utilities both ways, and a detector that cries wolf is a dead gate
+- Reading \`unused-dep\` as a removal order — it is INFO with lexical evidence only; bins, plugin autoloads, and CSS imports load without an import statement
+- Expecting outdated-vs-latest or duplicate-install findings — loom reads DECLARED truth; lockfile + registry layers are documented future work, not silently half-done
+- Running against a subdirectory that is not the workspace ROOT — the scan throws loudly rather than reporting a clean empty workspace (an empty scan is never a pass)
+- Wiring \`--strict\` into CI before triaging warnings — same-major drift findings are real but common; gate on errors first, ratchet warnings down, then tighten`,
+  },
+
+  'loom/loom dev': {
+    signature: 'loom dev [dir] [--port=5230]',
+    example: `$ loom dev . --port=5230
+loom dev: 142 package(s) → http://localhost:5230/`,
+    notes: 'The observatory: five views over the scan report — the layered dependency graph (columns by resolution depth, cycle edges dashed + animated, hover dims unrelated nodes), the internal adjacency matrix (keyboard-reachable cells), cycle cards with break-the-loop advice, blast-radius ranking (transitive dependents, counted not guessed), and the manifest table — plus a detail panel per package (metrics, depends-on / required-by, findings, resolution path), ⌘K search, kind filters, and dark/light theming. The report endpoint re-scans per request, so a manifest edit + reload shows fresh truth. Vite + @pyreon/vite-plugin are OPTIONAL peers: `loom scan` works without them; `loom dev` names the install when missing. See also: loom scan.',
+    mistakes: `- Expecting the UI in a project without Vite — \`loom dev\` needs vite + @pyreon/vite-plugin (optional peers) and its error names the exact install; \`loom scan\` never needs them
+- Reading graph depth as import distance — depth is LONGEST-path from the entry points (how far below the surface a package sits), hard-bounded at V−1; packages inside a cycle keep the depth their first visit found`,
+  },
+
+  'loom/buildReport': {
+    signature: '(rootDir: string, options?: { noImports?: boolean }) => LoomReport',
+    example: `import { buildReport } from '@pyreon/loom'
+
+const report = buildReport('.')
+report.stats            // { internal, external, edges, depth, cycles, errors, warnings, infos }
+report.graph.cycles     // string[][] — each runtime loop in order
+report.issues.filter((i) => i.severity === 'error')`,
+    notes: 'The programmatic engine behind the CLI — scan the workspace, analyze the graph, run every detector, fold the stats. One entry point; the CLI, the dev server, and your own tooling all consume the same `LoomReport` (model + external usage + graph analysis + issues + stats). Pure Node with zero runtime dependencies — safe to call from build scripts and CI tooling. See also: loom scan.',
+    mistakes: '- Re-deriving your own truth from the model instead of reading `report.graph` / `report.issues` — the analysis is the contract; nothing downstream should recompute cycles or reach differently',
+  },
+  // <gen-docs:api-reference:end @pyreon/loom>
 }

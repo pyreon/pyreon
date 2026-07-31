@@ -14,6 +14,8 @@ export default defineNodeConfig({
   // proves them), and the vite-booting dev server (proven by the same e2e,
   // which boots the REAL `loom dev`).
   coverageExclude: [
+    // gen-docs data, no logic (scaffold-recipe convention).
+    'src/manifest.ts',
     'src/ui/bases.tsx',
     'src/ui/chrome.ts',
     'src/ui/kit.ts',

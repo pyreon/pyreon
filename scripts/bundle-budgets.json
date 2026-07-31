@@ -28,6 +28,7 @@
   "@pyreon/kinetic": 4864,
   "@pyreon/kinetic-presets": 4864,
   "@pyreon/lint": 512,
+  "@pyreon/loom": 6144,
   "@pyreon/machine": 1150,
   "@pyreon/mcp": 313344,
   "@pyreon/meta": 1536,

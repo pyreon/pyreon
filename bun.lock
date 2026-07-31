@@ -2232,7 +2232,7 @@
     },
     "packages/tools/loom": {
       "name": "@pyreon/loom",
-      "version": "0.0.0",
+      "version": "0.50.0",
       "bin": {
         "loom": "./bin/loom.js",
       },
@@ -2248,6 +2248,7 @@
         "@pyreon/unistyle": "workspace:*",
       },
       "devDependencies": {
+        "@pyreon/manifest": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vite-plugin": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",

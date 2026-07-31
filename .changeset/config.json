@@ -36,6 +36,7 @@
       "@pyreon/http",
       "@pyreon/hotkeys",
       "@pyreon/i18n",
+      "@pyreon/loom",
       "@pyreon/machine",
       "@pyreon/permissions",
       "@pyreon/query",
