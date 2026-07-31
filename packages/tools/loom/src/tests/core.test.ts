@@ -174,6 +174,66 @@ describe('lexical primitives', () => {
   })
 })
 
+describe('@types satisfaction + ignores', () => {
+  it('a declared @types twin satisfies a type-only import (the mdast pattern)', () => {
+    const { mkdirSync, mkdtempSync, writeFileSync, rmSync: rm } = require('node:fs') as typeof import('node:fs')
+    const { tmpdir } = require('node:os') as typeof import('node:os')
+    const { join } = require('node:path') as typeof import('node:path')
+    const root = mkdtempSync(join(tmpdir(), 'loom-types-'))
+    try {
+      writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'r', workspaces: ['p/*'] }))
+      mkdirSync(join(root, 'p/a/src'), { recursive: true })
+      writeFileSync(
+        join(root, 'p/a/package.json'),
+        JSON.stringify({
+          name: 'a', version: '1.0.0',
+          devDependencies: { '@types/mdast': '^4.0.0', '@types/scope__thing': '^1.0.0' },
+        }),
+      )
+      writeFileSync(join(root, 'p/a/src/i.ts'), `import type { Root } from 'mdast'
+import type { T } from '@scope/thing'`)
+      const r = buildReport(root)
+      expect(r.issues.filter((i) => i.code === 'phantom-dep')).toHaveLength(0)
+    } finally {
+      rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('loom.ignore downgrades matches to info WITH the reason; missing reason throws', () => {
+    const { mkdirSync, mkdtempSync, writeFileSync, rmSync: rm } = require('node:fs') as typeof import('node:fs')
+    const { tmpdir } = require('node:os') as typeof import('node:os')
+    const { join } = require('node:path') as typeof import('node:path')
+    const root = mkdtempSync(join(tmpdir(), 'loom-ignore-'))
+    try {
+      writeFileSync(
+        join(root, 'package.json'),
+        JSON.stringify({
+          name: 'r', workspaces: ['p/*'],
+          loom: { ignore: [{ pkg: 'a', dep: 'ghost', code: 'phantom-dep', reason: 'vendored at runtime' }] },
+        }),
+      )
+      mkdirSync(join(root, 'p/a/src'), { recursive: true })
+      writeFileSync(join(root, 'p/a/package.json'), JSON.stringify({ name: 'a', version: '1.0.0' }))
+      writeFileSync(join(root, 'p/a/src/i.ts'), `import 'ghost'`)
+      const r = buildReport(root)
+      const hit = r.issues.find((i) => i.dep === 'ghost')!
+      expect(hit.severity).toBe('info')
+      expect(hit.message).toContain('vendored at runtime')
+      // No silent drop: the finding is still THERE.
+      expect(r.stats.errors).toBe(0)
+
+      // Reason is mandatory.
+      writeFileSync(
+        join(root, 'package.json'),
+        JSON.stringify({ name: 'r', workspaces: ['p/*'], loom: { ignore: [{ dep: 'ghost' }] } }),
+      )
+      expect(() => buildReport(root)).toThrow(/reason/)
+    } finally {
+      rm(root, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('dogfood — the Pyreon monorepo itself', () => {
   it('scans the real workspace with real structure', () => {
     // Four levels up from this file's package: the repo root.

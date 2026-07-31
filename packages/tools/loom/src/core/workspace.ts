@@ -19,6 +19,7 @@ const DEP_FIELDS: DepField[] = ['dependencies', 'devDependencies', 'peerDependen
 
 interface RawManifest {
   name?: string
+  loom?: { ignore?: unknown }
   version?: string
   private?: boolean
   license?: string
@@ -176,11 +177,34 @@ export function scanWorkspace(rootDir: string): WorkspaceModel {
     }
   }
 
+  const ignores: import('./types').LoomIgnore[] = []
+  const rawIgnore = rootManifest.loom?.ignore
+  if (rawIgnore !== undefined) {
+    if (!Array.isArray(rawIgnore)) {
+      throw new Error('[Pyreon] loom: root `loom.ignore` must be an array of { pkg?, dep?, code?, reason } objects.')
+    }
+    for (const entry of rawIgnore) {
+      const e = entry as Record<string, unknown>
+      if (typeof e?.reason !== 'string' || e.reason.trim() === '') {
+        throw new Error(
+          `[Pyreon] loom: every \`loom.ignore\` entry needs a non-empty \`reason\` — an unexplained suppression is a lie waiting to age (offending entry: ${JSON.stringify(entry)}).`,
+        )
+      }
+      ignores.push({
+        ...(typeof e.pkg === 'string' ? { pkg: e.pkg } : {}),
+        ...(typeof e.dep === 'string' ? { dep: e.dep } : {}),
+        ...(typeof e.code === 'string' ? { code: e.code } : {}),
+        reason: e.reason,
+      })
+    }
+  }
+
   const root: WorkspaceRoot = {
     ...(rootManifest.name ? { name: rootManifest.name } : {}),
     dir: relative(process.cwd(), rootDir) || '.',
     overrides,
     workspaceGlobs: globs,
+    ignores,
   }
 
   return { root, packages }

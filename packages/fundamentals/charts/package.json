@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/charts",
   "version": "0.50.0",
-  "description": "Reactive ECharts bridge for Pyreon \u2014 lazy loading, signal-driven, Canvas by default",
+  "description": "Reactive ECharts bridge for Pyreon — lazy loading, signal-driven, Canvas by default",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/charts#readme",
   "bugs": {
@@ -68,9 +68,9 @@
     "@vitest/browser-playwright": "^4.1.10",
     "echarts": "^6.1.0",
     "echarts-for-react": "^3.0.2",
-    "happy-dom": "^20.0.0",
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "happy-dom": "^20.11.1",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
   },
   "publishConfig": {
     "access": "public"

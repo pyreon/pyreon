@@ -37,6 +37,22 @@ export function buildReport(rootDir: string, options: BuildReportOptions = {}): 
     const imports = scanImports(rootDir, model.packages)
     issues.push(...detectPhantoms(model, imports), ...detectUnused(model, imports))
   }
+  // Suppressions downgrade to info WITH the reason attached — a finding is
+  // never silently dropped, and the report shows what was waved through.
+  for (const issue of issues) {
+    if (issue.severity === 'info') continue
+    const match = model.root.ignores.find(
+      (ig) =>
+        (ig.pkg === undefined || ig.pkg === issue.pkg) &&
+        (ig.dep === undefined || ig.dep === issue.dep) &&
+        (ig.code === undefined || ig.code === issue.code),
+    )
+    if (match) {
+      issue.severity = 'info'
+      issue.message += ` (ignored: ${match.reason})`
+    }
+  }
+
   issues.sort(
     (a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] || a.code.localeCompare(b.code) || a.pkg.localeCompare(b.pkg),
   )

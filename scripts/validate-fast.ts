@@ -16,6 +16,7 @@
  *   - check-manifest-examples (a manifest api[].example no longer typechecks vs the shipped export)
  *   - check-client-bundle-node-imports (node: import leaked into client entry)
  *   - check-mcp-docs        (MCP tool added without docs/src/content/docs/mcp.md section)
+ *   - loom-scan             (dependency-fabric errors: phantom deps, runtime cycles, drift)
  *   - check-advisory-comment-steps (advisory PR-comment step that can turn a check red)
  *   - check-lint-ratchet    (oxlint warn-finding count grew above baseline)
  *   - check-pyreon-lint-ratchet (@pyreon/lint advisory-finding count over framework src grew above baseline)
@@ -69,6 +70,10 @@ const GATES: Gate[] = [
     cmd: 'bun scripts/check-client-bundle-node-imports.ts',
   },
   { name: 'check-mcp-docs', cmd: 'bun scripts/check-mcp-docs.ts' },
+  // Dogfood: the workspace's own dependency fabric, gated by @pyreon/loom.
+  // Errors only (phantom deps, runtime cycles, cross-major drift, internal-
+  // range lies); warnings stay advisory. ~1s over the whole repo.
+  { name: 'loom-scan', cmd: 'bun packages/tools/loom/src/cli/run-scan-gate.ts' },
   {
     name: 'check-advisory-comment-steps',
     cmd: 'bun scripts/check-advisory-comment-steps.ts',
