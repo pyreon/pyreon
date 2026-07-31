@@ -19,7 +19,7 @@ import {
   unregisterAddonPanel,
 } from '../panels'
 // Importing the view registers + seals the built-ins (module side effect).
-import '../views/AddonPanel'
+import '../views/panels/AddonPanel'
 
 const panel = (id: string) => ({
   id,

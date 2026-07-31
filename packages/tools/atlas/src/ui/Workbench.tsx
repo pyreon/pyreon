@@ -9,14 +9,9 @@ import { Show } from '@pyreon/core'
 import { useEventListener } from '@pyreon/hooks'
 import { PyreonUI } from '@pyreon/ui-core'
 import type { WorkbenchCatalog } from './catalog'
-import * as C from './chrome'
+import * as C from './components'
 import { createModel } from './model'
-import { AddonPanel } from './views/AddonPanel'
-import { Canvas } from './views/Canvas'
-import { DocsView } from './views/DocsView'
-import { LabView } from './views/LabView'
-import { Sidebar } from './views/Sidebar'
-import { TopBar } from './views/TopBar'
+import { AddonPanel, Canvas, DocsView, LabView, Sidebar, TopBar } from './views'
 
 export interface WorkbenchProps {
   /** The components to showcase + how to render them. */
