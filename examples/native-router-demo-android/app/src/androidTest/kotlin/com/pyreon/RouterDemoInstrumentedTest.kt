@@ -278,7 +278,7 @@ class RouterDemoInstrumentedTest {
 
     // Networking row — useWebSocket device-proven on Android: the same echo
     // round trip as the iOS half, through the REAL OkHttp transport. Needs
-    // `adb reverse tcp:8787 tcp:8787` so the DEVICE's localhost reaches the
+    // `adb reverse tcp:8790 tcp:8790` so the DEVICE's localhost reaches the
     // host's echo server (the emulator's own loopback is not the host's) —
     // the shared-source URL stays one literal for all three targets. The
     // echo is the load-bearing assertion (a dead server renders no echo);

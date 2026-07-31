@@ -214,7 +214,7 @@ function UserPage(props: { params: { id: string } }) {
   // only tests that navigate here ever touch the socket — no cross-test
   // flake when the server is down. localhost reaches the host on the iOS
   // Simulator natively and on the Android emulator via `adb reverse`.
-  const ws = useWebSocket('ws://localhost:8787')
+  const ws = useWebSocket('ws://localhost:8790')
   return (
     <Stack gap={3} padding={4} data-testid="user-page">
       <Text>User</Text>

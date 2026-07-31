@@ -5,15 +5,18 @@
 // through the REAL network stack.
 //
 // Reachability per platform:
-//   - iOS Simulator shares the host loopback — ws://localhost:8787 just works.
-//   - Android emulator needs `adb reverse tcp:8787 tcp:8787` (maps the
-//     DEVICE's localhost:8787 back to the host), so the SAME shared-source
+//   - iOS Simulator shares the host loopback — ws://localhost:8790 just works.
+//   - Android emulator needs `adb reverse tcp:8790 tcp:8790` (maps the
+//     DEVICE's localhost:8790 back to the host), so the SAME shared-source
 //     literal URL works on both platforms.
 //
 // Zero dependencies (Bun.serve websocket). Started by the device-test
 // harness (locally by hand or scripts; in CI by the native-device workflow
 // step) — NOT a long-lived service.
-const port = Number(process.env.PYREON_WS_PORT ?? 8787)
+// 8790, NOT 8787: the native-device workflow's tasks fixture server already
+// owns 8787 on the same runner — a collision found by reading the adjacent
+// workflow step before shipping.
+const port = Number(process.env.PYREON_WS_PORT ?? 8790)
 
 Bun.serve({
   port,

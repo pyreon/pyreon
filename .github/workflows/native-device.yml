@@ -668,13 +668,13 @@ jobs:
           # it use step-level working-directory and were fine).
           working-directory: examples/native-router-demo-android
           # The useWebSocket device proof: start the loopback echo server on
-          # the HOST, then `adb reverse` so the DEVICE's localhost:8787
+          # the HOST, then `adb reverse` so the DEVICE's localhost:8790
           # reaches it — the shared-source URL stays one literal for all
           # three targets. Both lines run inside the runner's script phase
           # because adb reverse needs the emulator booted.
           script: |
             nohup bun ../native-router-demo-ios/scripts/ws-echo-server.ts > /tmp/ws-echo.log 2>&1 &
-            adb reverse tcp:8787 tcp:8787
+            adb reverse tcp:8790 tcp:8790
             gradle connectedCheck --no-daemon --stacktrace
 
       # Tasks showcase — Gap 5 PR-5.3(c) closure on the Android side.
@@ -738,7 +738,7 @@ jobs:
             # runs each script line under /usr/bin/sh, so a multi-line loop
             # breaks ("expecting done"). Poll up to 30s, fail loudly on timeout.
             i=0; while ! curl -fsS http://127.0.0.1:8787/quotes.json >/dev/null 2>&1; do i=$((i+1)); [ "$i" -ge 30 ] && { echo "fixture server FAILED to start within 30s"; cat /tmp/fixture-server.log 2>/dev/null || true; exit 1; }; sleep 1; done; echo "fixture server OK (ready after ${i}s)"
-            adb reverse tcp:8787 tcp:8787
+            adb reverse tcp:8790 tcp:8790
             gradle connectedCheck --no-daemon --stacktrace
 
       # The connected-test HTML/XML reports are the ONLY place the
