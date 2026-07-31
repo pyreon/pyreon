@@ -232,6 +232,26 @@ class RouterDemoInstrumentedTest {
         composeRule.onNodeWithText("tag: beta").assertExists()
     }
 
+    // Styling row — defineTheme tokens + styled(Prim) device-proven by
+    // GEOMETRY (the iOS half's mirror): children of the two token-padded
+    // cards differ in left offset by exactly xl−sm = 40−8 = 32dp. Child-vs-
+    // child keeps it independent of container-bound semantics; unclipped
+    // bounds are pure layout coordinates.
+    @Test
+    fun themeTokenPaddingDrivesLayout() {
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        composeRule.onNodeWithText("View styles").performClick()
+        composeRule.onNodeWithTag("styles-page").assertIsDisplayed()
+
+        val sm = composeRule.onNodeWithTag("card-sm-child").getUnclippedBoundsInRoot()
+        val xl = composeRule.onNodeWithTag("card-xl-child").getUnclippedBoundsInRoot()
+        val delta = xl.left - sm.left
+        check(delta > 28.dp && delta < 36.dp) {
+            "token padding delta is $delta, expected xl−sm = 40−8 = 32dp — " +
+                "the defineTheme literals did not drive the styled() layout"
+        }
+    }
+
     // Networking row — useWebSocket device-proven on Android: the same echo
     // round trip as the iOS half, through the REAL OkHttp transport. Needs
     // `adb reverse tcp:8787 tcp:8787` so the DEVICE's localhost reaches the

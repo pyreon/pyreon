@@ -307,6 +307,53 @@ final class PyreonRouterDemoUITests: XCTestCase {
         )
     }
 
+    // Styling row — defineTheme tokens + styled(Prim) device-proven by
+    // GEOMETRY. iOS measurement reality (read off a live frame dump, per
+    // the #2593 discipline): a11y frames HUG the glyphs — a container's
+    // frame equals its child's, so padding is HORIZONTALLY invisible to
+    // XCUITest. But padded boxes consume VERTICAL space exactly, so the
+    // token values are pinned through the stack's y-gaps:
+    //   title → sm-child gap = stack spacing (12) + sm top pad (8)  = 20
+    //   sm-child → xl-child gap = sm bottom (8) + 12 + xl top (40)  = 60
+    // The FIRST gap pins spacing.sm individually, so the pair is not
+    // swap-symmetric; the second pins the sum. Wrong, defaulted, or
+    // dropped tokens shift both. (The Android half asserts the horizontal
+    // start-aligned offsets — Compose Columns start-align where SwiftUI
+    // VStacks center, which is why the iOS shape is vertical.)
+    func test_themeTokenPaddingDrivesLayout() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            "Home page did not render"
+        )
+        app.buttons["View styles"].tap()
+        XCTAssertTrue(
+            app.otherElements["styles-page"].firstMatch.waitForExistence(timeout: 15),
+            "Styles page did not render"
+        )
+
+        let title = app.staticTexts["Styles"]
+        let sm = app.staticTexts["card-sm-child"]
+        let xl = app.staticTexts["card-xl-child"]
+        XCTAssertTrue(sm.waitForExistence(timeout: 10), "card-sm-child missing")
+        XCTAssertTrue(xl.exists, "card-xl-child missing")
+
+        let titleToSm = sm.frame.minY - title.frame.maxY
+        XCTAssertEqual(
+            titleToSm, 20, accuracy: 4,
+            "title→sm gap is \(titleToSm)pt, expected spacing(12) + sm pad(8) "
+                + "= 20 — spacing.sm did not drive the styled() layout"
+        )
+        let smToXl = xl.frame.minY - sm.frame.maxY
+        XCTAssertEqual(
+            smToXl, 60, accuracy: 4,
+            "sm→xl gap is \(smToXl)pt, expected sm(8) + spacing(12) + xl(40) "
+                + "= 60 — the defineTheme literals did not drive the layout"
+        )
+    }
+
     // Networking row — useWebSocket device-proven: a full frame ROUND TRIP
     // through the REAL network stack against the loopback echo server
     // (scripts/ws-echo-server.ts; the iOS Simulator shares the host

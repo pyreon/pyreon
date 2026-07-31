@@ -21,6 +21,46 @@ import { useFieldArray } from '@pyreon/form'
 import { Button, Heading, Inline, Layer, Link, Spacer, Stack, Text } from '@pyreon/primitives'
 import { signal } from '@pyreon/reactivity'
 import { createRouter, useNavigate, RouterProvider, RouterView } from '@pyreon/router'
+import { defineTheme, styled } from '@pyreon/styler'
+
+// Styling-row proof — defineTheme tokens driving styled(Prim) layout,
+// GEOMETRY-assertable: the two cards' paddings come from DIFFERENT token
+// leaves (sm=8, xl=40), so the device tests measure the child offsets and
+// pin the token VALUES, not just "some padding applied" (a resolution that
+// guessed, swapped, or defaulted the tokens produces the wrong offsets).
+// PMTC bakes the literals at compile time; on web defineTheme is the typed
+// identity helper (the web demo renders without a theme provider, so the
+// interpolations are a native-lowering proof — disclosed, not implied).
+// The binding is deliberately unused on web (the PMTC compiler consumes the
+// declaration by CALLEE at compile time; the web demo runs without a theme
+// provider) — underscore-named for lint.
+const _theme = defineTheme({
+  spacing: { sm: 8, xl: 40 },
+})
+
+const TightCard = styled(Stack)`
+  padding: ${(t) => t.spacing.sm};
+`
+
+const RoomyCard = styled(Stack)`
+  padding: ${(t) => t.spacing.xl};
+`
+
+function StylesPage() {
+  const navigate = useNavigate()
+  return (
+    <Stack gap={3} padding={4} data-testid="styles-page">
+      <Text>Styles</Text>
+      <TightCard data-testid="card-sm">
+        <Text data-testid="card-sm-child">sm</Text>
+      </TightCard>
+      <RoomyCard data-testid="card-xl">
+        <Text data-testid="card-xl-child">xl</Text>
+      </RoomyCard>
+      <Button onPress={() => navigate('/')}>Back to Home</Button>
+    </Stack>
+  )
+}
 
 function HomePage() {
   const navigate = useNavigate()
@@ -53,6 +93,7 @@ function HomePage() {
       <Inline gap={2}>
         <Button onPress={() => navigate('/about')}>Go to About</Button>
         <Button onPress={() => navigate('/users/42')}>View user 42</Button>
+        <Button onPress={() => navigate('/styles')}>View styles</Button>
       </Inline>
       {/* Core-UI row closure — `Link` was listed "not individually asserted",
           and it had NO usage in any gated app despite this file's header
@@ -170,6 +211,7 @@ export function RouterApp() {
       { path: '/', component: HomePage },
       { path: '/about', component: AboutPage },
       { path: '/users/:id', component: UserPage },
+      { path: '/styles', component: StylesPage },
     ],
   })
 

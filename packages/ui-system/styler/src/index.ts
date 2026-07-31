@@ -8,6 +8,7 @@ import { registerSingleton } from '@pyreon/reactivity'
 registerSingleton(__pkgName, __pkgVersion, import.meta.url)
 
 export { css } from './css'
+export { defineTheme } from './define-theme'
 export { buildProps, filterProps } from './forward'
 export { createGlobalStyle } from './globalStyle'
 export { HASH_INIT, hash, hashFinalize, hashUpdate } from './hash'

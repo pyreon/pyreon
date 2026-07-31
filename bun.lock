@@ -842,6 +842,7 @@
         "@pyreon/reactivity": "workspace:*",
         "@pyreon/router": "workspace:*",
         "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/styler": "workspace:*",
       },
       "devDependencies": {
         "@pyreon/tsconfig": "workspace:*",
