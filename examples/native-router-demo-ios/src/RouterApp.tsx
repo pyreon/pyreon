@@ -42,8 +42,8 @@ function HomePage() {
       <Text data-testid="secure-value">Secret: {secretStatus()}</Text>
       <Button
         onPress={() => {
-          secrets.write('demo-secret', 's3cret')
-          secretStatus.set(secrets.read('demo-secret') ?? 'none')
+          const ok = secrets.write('demo-secret', 's3cret')
+          secretStatus.set(ok ? (secrets.read('demo-secret') ?? 'read-failed') : 'write-failed')
         }}
         data-testid="secure-save"
       >

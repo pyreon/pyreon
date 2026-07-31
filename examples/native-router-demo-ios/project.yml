@@ -79,6 +79,9 @@ targets:
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
 
+    entitlements:
+      path: ios/PyreonRouterDemo.entitlements
+
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.pyreon.PyreonRouterDemo
