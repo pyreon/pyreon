@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { detectInternalRange, detectVersionDrift, readWorkspaceGlobs, scanWorkspace } from '../core'
-import { scanPackageImports, stripNonCode } from '../core/imports'
+import { scanPackageImports, stripNonCode, stripWithMask } from '../core/imports'
 
 const roots: string[] = []
 afterAll(() => roots.forEach((r) => rmSync(r, { recursive: true, force: true })))
@@ -63,7 +63,7 @@ describe('workspace declaration shapes', () => {
 
 describe('internal-range shapes', () => {
   const model = (range: string, actual = '2.0.0') => ({
-    root: { dir: '.', overrides: {}, workspaceGlobs: [] },
+    root: { dir: '.', overrides: {}, workspaceGlobs: [], ignores: [] },
     packages: [
       { name: 'a', version: '1.0.0', dir: 'a', private: false, deps: [{ name: 'b', range, field: 'dependencies' as const }] },
       { name: 'b', version: actual, dir: 'b', private: false, deps: [] },
@@ -131,6 +131,41 @@ describe('lexical stripper modes', () => {
   it('an unterminated template drops the tail instead of leaking it', () => {
     const out = stripNonCode('const t = `import x from "gone"')
     expect(out).not.toContain('gone')
+  })
+
+  it('a quoted `from` sequence INSIDE another string never scans as an import', () => {
+    // The lint-rule-message / diagnose-catalog / generated-example class:
+    // code-shaped prose in ordinary quotes. The statement keyword must sit
+    // in CODE for the scanner to count it.
+    const root = tempRoot()
+    mkdirSync(join(root, 'src'), { recursive: true })
+    writeFileSync(
+      join(root, 'src/rule.ts'),
+      `const msg = "Import island from '@fake/server-client' — never from '@fake/barrel'"
+import 'real-pkg'`,
+    )
+    const scan = scanPackageImports(root)
+    expect([...scan.prod.keys()]).toEqual(['real-pkg'])
+  })
+
+  it('stripWithMask marks string contents as non-code', () => {
+    const { stripped, codeAt } = stripWithMask(`import 'a'
+const s = "from 'b'"`)
+    const fromInString = stripped.lastIndexOf('from')
+    expect(codeAt[fromInString]).toBe(false)
+    expect(codeAt[0]).toBe(true) // the real import keyword
+  })
+
+  it('a subtree with its own package.json is a separate unit (not scanned)', () => {
+    const root = tempRoot()
+    mkdirSync(join(root, 'src'), { recursive: true })
+    mkdirSync(join(root, 'vscode'), { recursive: true })
+    writeFileSync(join(root, 'src/a.ts'), `import 'declared-here'`)
+    writeJson(join(root, 'vscode/package.json'), { name: 'nested-ext' })
+    writeFileSync(join(root, 'vscode/extension.js'), `const v = require('vscode')`)
+    const scan = scanPackageImports(root)
+    expect(scan.prod.has('vscode')).toBe(false)
+    expect(scan.prod.has('declared-here')).toBe(true)
   })
 
   it('scanPackageImports splits prod vs dev surfaces and caps file evidence', () => {

@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/code",
   "version": "0.50.0",
-  "description": "Reactive code editor for Pyreon \u2014 CodeMirror 6 with signals, minimap, diff editor, lazy-loaded languages",
+  "description": "Reactive code editor for Pyreon — CodeMirror 6 with signals, minimap, diff editor, lazy-loaded languages",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/code#readme",
   "bugs": {
@@ -51,7 +51,7 @@
     "@pyreon/runtime-dom": "workspace:^"
   },
   "dependencies": {
-    "@codemirror/autocomplete": "^6.20.2",
+    "@codemirror/autocomplete": "^6.20.3",
     "@codemirror/commands": "^6.10.3",
     "@codemirror/language": "^6.12.3",
     "@codemirror/lint": "^6.9.6",
@@ -74,8 +74,8 @@
     "@vitest/browser-playwright": "^4.1.10",
     "@vitus-labs/tools-lint": "^2.6.3",
     "monaco-editor": "^0.55.0",
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
   },
   "optionalDependencies": {
     "@codemirror/lang-cpp": "^6.0.2",

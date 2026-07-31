@@ -167,6 +167,15 @@ export function detectPhantoms(model: WorkspaceModel, imports: ImportScan): Loom
     if (!prod) continue
     for (const [dep, files] of prod) {
       if (declared.has(dep)) continue
+      // The DefinitelyTyped pattern: `import type { X } from 'mdast'` with
+      // `@types/mdast` declared is CORRECT code — TS resolves the specifier
+      // through the types package and the import erases at runtime. A
+      // lexical scan can't see `type`, but a declared @types twin is the
+      // high-confidence signal (scoped: @scope/x → @types/scope__x).
+      const typesTwin = dep.startsWith('@')
+        ? `@types/${dep.slice(1).replace('/', '__')}`
+        : `@types/${dep}`
+      if (declared.has(typesTwin)) continue
       // A PRIVATE package is never installed by a consumer — an undeclared
       // import there still breaks isolated-store installs of the WORKSPACE,
       // but it cannot ship broken. warning, not error; published = error.
