@@ -307,6 +307,47 @@ final class PyreonRouterDemoUITests: XCTestCase {
         )
     }
 
+    // Networking row — useWebSocket device-proven: a full frame ROUND TRIP
+    // through the REAL network stack against the loopback echo server
+    // (scripts/ws-echo-server.ts; the iOS Simulator shares the host
+    // loopback). The LOAD-BEARING assertion is the echo: send "ping-42" →
+    // server replies "echo:ping-42" → received() re-renders the text. The
+    // ws-status gate is deliberately NOT the proof — the Swift runtime
+    // marks isConnected optimistically on task.resume(), before any
+    // handshake completes, so "WS: open" alone would pass against a dead
+    // server; only the echo proves a live socket.
+    //
+    // Requires the echo server: `bun examples/native-router-demo-ios/scripts/ws-echo-server.ts`
+    // (CI starts it in the workflow step; locally the device-test recipe does).
+    func test_webSocketEchoRoundTripsOnDevice() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            "Home page did not render"
+        )
+        app.buttons["View user 42"].tap()
+        XCTAssertTrue(
+            app.otherElements["user-page"].firstMatch.waitForExistence(timeout: 15),
+            "User page did not render"
+        )
+        XCTAssertTrue(
+            app.staticTexts["ws-status"].waitForExistence(timeout: 10),
+            "ws-status missing — the WebSocket section did not render"
+        )
+
+        app.buttons["ws-send"].tap()
+        if !app.staticTexts["Echo: echo:ping-42"].waitForExistence(timeout: 10) {
+            XCTFail(
+                "echo never rendered — live state: "
+                    + "\"\(app.staticTexts["ws-status"].label) / "
+                    + "\(app.staticTexts["ws-last"].label)\" (is the echo "
+                    + "server running? bun scripts/ws-echo-server.ts)"
+            )
+        }
+    }
+
     // Storage row — useSecureStorage device-proven: the secret SURVIVES a
     // genuine terminate + relaunch, which only the Keychain can explain.
     //

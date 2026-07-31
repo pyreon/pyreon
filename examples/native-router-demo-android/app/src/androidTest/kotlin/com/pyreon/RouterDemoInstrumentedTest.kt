@@ -30,6 +30,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -229,6 +230,33 @@ class RouterDemoInstrumentedTest {
         composeRule.onNodeWithTag("tag-count").assertTextEquals("Tags: 1")
         composeRule.onNodeWithText("tag: alpha").assertDoesNotExist()
         composeRule.onNodeWithText("tag: beta").assertExists()
+    }
+
+    // Networking row — useWebSocket device-proven on Android: the same echo
+    // round trip as the iOS half, through the REAL OkHttp transport. Needs
+    // `adb reverse tcp:8787 tcp:8787` so the DEVICE's localhost reaches the
+    // host's echo server (the emulator's own loopback is not the host's) —
+    // the shared-source URL stays one literal for all three targets. The
+    // echo is the load-bearing assertion (a dead server renders no echo);
+    // the connect gate additionally proves OkHttp's onOpen fired
+    // (Kotlin's isConnected flips in the real handshake callback).
+    @Test
+    fun webSocketEchoRoundTripsOnDevice() {
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        composeRule.onNodeWithText("View user 42").performClick()
+        composeRule.onNodeWithTag("user-page").assertIsDisplayed()
+
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithText("WS: open").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("ws-send").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule
+                .onAllNodesWithText("Echo: echo:ping-42")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+        composeRule.onNodeWithTag("ws-last").assertTextEquals("Echo: echo:ping-42")
     }
 
     @Test

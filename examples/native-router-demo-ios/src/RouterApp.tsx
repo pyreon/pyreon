@@ -16,7 +16,7 @@
 // targets — provable by `ls` + `diff`.
 
 import { For, onMount } from '@pyreon/core'
-import { useSecureStorage } from '@pyreon/hooks'
+import { useSecureStorage, useWebSocket } from '@pyreon/hooks'
 import { useFieldArray } from '@pyreon/form'
 import { Button, Heading, Inline, Layer, Link, Spacer, Stack, Text } from '@pyreon/primitives'
 import { signal } from '@pyreon/reactivity'
@@ -135,10 +135,24 @@ function AboutPage() {
 
 function UserPage(props: { params: { id: string } }) {
   const navigate = useNavigate()
+  // Networking-row proof — useWebSocket against a real loopback echo server
+  // (scripts/ws-echo-server.ts). Auto-connect fires on mount (both targets
+  // synthesize it), so "WS: open" proves the handshake completed through
+  // the REAL network stack; the send button's echo ("Echo: echo:ping-42")
+  // proves the full frame round trip re-rendered. Lives on the USER page so
+  // only tests that navigate here ever touch the socket — no cross-test
+  // flake when the server is down. localhost reaches the host on the iOS
+  // Simulator natively and on the Android emulator via `adb reverse`.
+  const ws = useWebSocket('ws://localhost:8787')
   return (
     <Stack gap={3} padding={4} data-testid="user-page">
       <Text>User</Text>
       <Text>Profile for user {props.params.id}</Text>
+      <Text data-testid="ws-status">WS: {ws.isConnected() ? 'open' : 'closed'}</Text>
+      <Text data-testid="ws-last">Echo: {ws.lastMessage() ?? 'none'}</Text>
+      <Button onPress={() => ws.send('ping-42')} data-testid="ws-send">
+        Send Ping
+      </Button>
       <Button onPress={() => navigate('/')}>Back to Home</Button>
     </Stack>
   )
