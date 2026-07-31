@@ -2230,6 +2230,38 @@
         "@pyreon/vitest-config": "workspace:*",
       },
     },
+    "packages/tools/loom": {
+      "name": "@pyreon/loom",
+      "version": "0.0.0",
+      "bin": {
+        "loom": "./bin/loom.js",
+      },
+      "dependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/elements": "workspace:*",
+        "@pyreon/hooks": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/rocketstyle": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/styler": "workspace:*",
+        "@pyreon/ui-core": "workspace:*",
+        "@pyreon/unistyle": "workspace:*",
+      },
+      "devDependencies": {
+        "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/vite-plugin": "workspace:*",
+        "@pyreon/vitest-config": "workspace:*",
+        "vite": "^8.0.16",
+      },
+      "peerDependencies": {
+        "@pyreon/vite-plugin": "workspace:*",
+        "vite": ">=6",
+      },
+      "optionalPeers": [
+        "@pyreon/vite-plugin",
+        "vite",
+      ],
+    },
     "packages/tools/mcp": {
       "name": "@pyreon/mcp",
       "version": "0.50.0",
@@ -3703,6 +3735,8 @@
     "@pyreon/kinetic-presets": ["@pyreon/kinetic-presets@workspace:packages/ui-system/kinetic-presets"],
 
     "@pyreon/lint": ["@pyreon/lint@workspace:packages/tools/lint"],
+
+    "@pyreon/loom": ["@pyreon/loom@workspace:packages/tools/loom"],
 
     "@pyreon/machine": ["@pyreon/machine@workspace:packages/fundamentals/machine"],
 

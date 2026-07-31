@@ -328,6 +328,20 @@ const SUITES: Suite[] = [
       'e2e/atlas-verify-browser.spec.ts',
     ],
   },
+  {
+    // `loom dev` — the dependency observatory served by the real CLI over
+    // the real monorepo: scan, graph/matrix/cycles/impact/table views,
+    // selection, search, theming.
+    name: 'loom-dev',
+    script: 'test:e2e:loom',
+    triggers: [
+      ...RENDER_CORE,
+      'packages/tools/loom/',
+      'packages/tools/vite-plugin/',
+      'packages/core/compiler/',
+      'e2e/loom-dev.spec.ts',
+    ],
+  },
 ]
 
 export { SUITES }

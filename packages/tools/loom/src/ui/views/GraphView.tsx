@@ -1,0 +1,122 @@
+/**
+ * The layered node-link graph — columns by resolution depth (ENTRY → DEPTH n),
+ * curved edges, cycle edges dashed + animated, hover dims unrelated nodes.
+ *
+ * SVG paints read theme TOKENS as attribute/style values — the flow-package
+ * precedent (`var()` is invalid in SVG presentation attributes, and per-frame
+ * geometry is measurement, not styling). Everything outside the SVG is
+ * rocketstyle chrome.
+ */
+import type { LoomTokens } from '../theme'
+import { layoutGraph, shortName, type ObservatoryModel } from '../model'
+
+export function GraphView(props: { model: ObservatoryModel; theme: () => LoomTokens }) {
+  const m = props.model
+
+  return (
+    <div data-testid="graph-view" style="padding:18px">
+      {() => {
+        const t = props.theme()
+        const shown = m.shown()
+        const layout = layoutGraph(shown)
+        const shownIds = new Set(shown.map((n) => n.id))
+        const sel = m.selId()
+        const hov = m.hoverId()
+        const focus = hov
+        const lit = hov ?? sel
+        const related = new Set<string>()
+        if (focus) {
+          related.add(focus)
+          const node = m.byId.get(focus)
+          for (const d of node?.deps ?? []) related.add(d)
+          for (const d of node?.dependents ?? []) related.add(d)
+        }
+
+        const edges: import('@pyreon/core').VNodeChild[] = []
+        for (const n of shown) {
+          for (const dep of n.deps) {
+            if (!shownIds.has(dep)) continue
+            const p1 = layout.pos.get(n.id)
+            const p2 = layout.pos.get(dep)
+            if (!p1 || !p2) continue
+            const isCyc = m.showCycles() && m.cycleNodes.has(n.id) && m.cycleNodes.has(dep)
+            const on = lit && (n.id === lit || dep === lit)
+            const dx = Math.max(48, Math.abs(p2.x - p1.x) * 0.45)
+            const d = `M ${p1.x + 11} ${p1.y} C ${p1.x + 11 + dx} ${p1.y}, ${p2.x - 11 - dx} ${p2.y}, ${p2.x - 11} ${p2.y}`
+            const stroke = isCyc ? t.danger : on ? t.accent : t.edge
+            const opacity = focus ? (on || isCyc ? 0.95 : 0.08) : on ? 0.9 : isCyc ? 0.85 : 0.3
+            edges.push(
+              <path
+                d={d}
+                fill="none"
+                stroke={stroke}
+                stroke-width={on || isCyc ? '1.8' : '1'}
+                stroke-dasharray={isCyc ? '5 4' : undefined}
+                opacity={String(opacity)}
+                style={isCyc ? 'animation:lm-dash 1.1s linear infinite' : undefined}
+              />,
+            )
+          }
+        }
+
+        const nodes = shown.map((n) => {
+          const P = layout.pos.get(n.id)
+          if (!P) return null
+          const name = shortName(n.id)
+          const isSel = n.id === sel
+          const isCyc = m.showCycles() && m.cycleNodes.has(n.id)
+          const dimmed = focus && !related.has(n.id)
+          const fill = isCyc ? t.danger : n.kind === 'internal' ? t.accent : t.ext
+          return (
+            <g
+              transform={`translate(${P.x},${P.y})`}
+              data-testid={`gnode-${n.id}`}
+              style={`cursor:pointer;opacity:${dimmed ? 0.45 : 1};transition:opacity .16s`}
+              onClick={() => m.select(n.id)}
+              onMouseEnter={() => m.hoverId.set(n.id)}
+              onMouseLeave={() => m.hoverId.set(null)}
+            >
+              {isSel ? <circle r="16" fill="none" stroke={fill} stroke-width="1.2" opacity="0.5" /> : null}
+              <circle r={isSel ? '9' : '7'} fill={n.kind === 'internal' ? fill : t.surface} stroke={fill} stroke-width="2" />
+              <text
+                x="15"
+                y="3"
+                fill={isSel ? t.text : t.muted}
+                style={`font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:${isSel ? 600 : 500};pointer-events:none`}
+              >
+                {name}
+              </text>
+              <text x="15" y="16" fill={t.faint} style="font-family:'JetBrains Mono',monospace;font-size:9.5px;pointer-events:none">
+                {n.kind === 'internal' ? `v${n.version}` : n.version}
+              </text>
+            </g>
+          )
+        })
+
+        const axis = layout.depthKeys.map((d, di) => (
+          <text
+            x={String(56 + di * 168 - 4)}
+            y="22"
+            fill={t.faint}
+            style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.1em"
+          >
+            {d === 0 ? 'ENTRY' : `DEPTH ${d}`}
+          </text>
+        ))
+
+        return (
+          <svg
+            viewBox={`0 0 ${layout.width} ${layout.height}`}
+            width="100%"
+            preserveAspectRatio="xMidYMid meet"
+            style={`display:block;min-width:${Math.round(layout.width * 0.86)}px`}
+          >
+            <g>{axis}</g>
+            <g>{edges}</g>
+            <g>{nodes}</g>
+          </svg>
+        )
+      }}
+    </div>
+  )
+}

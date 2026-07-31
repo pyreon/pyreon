@@ -1,0 +1,120 @@
+/**
+ * Loom observatory bases — replicating the ui-components architecture on the
+ * PUBLIC ui-system (rocketstyle + elements + unistyle), with zero private deps.
+ *
+ *   el  — rocketstyle(Element) for layout + boxes
+ *   txt — rocketstyle(Text) for typography
+ *
+ * Components are built as `el.attrs({ …layout }).theme((t) => ({ …css }))`; the
+ * base `.styles()` renders the resolved `$rocketstyle` (incl. pseudo-state
+ * blocks) via unistyle's `makeItResponsive`. Raw CSS goes through the `extendCss`
+ * unistyle key so we can style freely against the reactive Loom theme.
+ */
+import { Element, Text } from '@pyreon/elements'
+import rocketstyle from '@pyreon/rocketstyle'
+import { makeItResponsive, styles } from '@pyreon/unistyle'
+
+/** Shared rocketstyle factory (string dimension props, e.g. state="active"). */
+export const rs = rocketstyle({ useBooleans: false })
+
+/**
+ * Base element — layout box with :hover / :focus-visible / :active / :disabled.
+ *
+ * `contentAlignY: 'top'` overrides Element's default `alignY: 'center'`, which
+ * otherwise resolves to `justify-content: center` and vertically-centres a
+ * container's content — so a panel with only a few children (e.g. the Controls
+ * addon on a component with 2 controls) floated its content to the middle. The
+ * center-content boxes (Stage/PreviewSurface/BrandMark/Avatar) set an explicit
+ * `justify-content:center` in their `css` prop, which still wins over this.
+ */
+export const el = rs({ name: 'LoomEl', component: Element }).attrs({ contentAlignY: 'top' }).styles(
+  (css) => css`
+    ${({ href, onClick, $rocketstyle, $rocketstate }) => {
+      const isDynamic = onClick || href
+      const { disabled, active, pseudo = {} } = $rocketstate ?? {}
+      const { hover, focus } = pseudo
+
+      const {
+        hover: hoverStyles,
+        focus: focusStyles,
+        active: activeStyles,
+        disabled: disabledStyles,
+        ...restStyles
+      } = $rocketstyle
+
+      const baseTheme = makeItResponsive({ theme: restStyles, styles, css })
+      const hoverTheme = makeItResponsive({ theme: hoverStyles, styles, css })
+      const focusTheme = makeItResponsive({ theme: focusStyles, styles, css })
+      const activeTheme = makeItResponsive({ theme: activeStyles, styles, css })
+      const disabledTheme = makeItResponsive({ theme: disabledStyles, styles, css })
+
+      return css`
+        ${baseTheme};
+        ${!disabled && isDynamic &&
+        css`
+          cursor: pointer;
+        `};
+        ${!disabled &&
+        css`
+          &:hover {
+            ${hoverTheme};
+          }
+        `};
+        ${hover &&
+        css`
+          ${hoverTheme};
+        `};
+        ${!disabled &&
+        css`
+          &:focus-visible {
+            ${focusTheme};
+          }
+        `};
+        ${focus &&
+        css`
+          ${focusTheme};
+        `};
+        ${!disabled &&
+        css`
+          &:active {
+            ${activeTheme};
+          }
+        `};
+        ${!disabled && active &&
+        css`
+          ${activeTheme};
+        `};
+        ${disabled &&
+        css`
+          ${disabledTheme};
+        `};
+        &:disabled,
+        &[aria-disabled='true'] {
+          ${disabledTheme};
+        }
+      `
+    }}
+  `,
+)
+
+/** Base text — inline typography. */
+export const txt = rs({ name: 'LoomTxt', component: Text }).styles(
+  (css) => css`
+    ${({ $rocketstyle }) => {
+      const { hover: hoverStyles, disabled: disabledStyles, ...restStyles } = $rocketstyle
+      const baseTheme = makeItResponsive({ theme: restStyles, styles, css })
+      const hoverTheme = makeItResponsive({ theme: hoverStyles, styles, css })
+      const disabledTheme = makeItResponsive({ theme: disabledStyles, styles, css })
+      return css`
+        ${baseTheme};
+        &:hover {
+          ${hoverTheme};
+        }
+        &:disabled,
+        &[aria-disabled='true'] {
+          ${disabledTheme};
+        }
+      `
+    }}
+  `,
+)
