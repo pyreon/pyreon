@@ -232,6 +232,30 @@ class RouterDemoInstrumentedTest {
         composeRule.onNodeWithText("tag: beta").assertExists()
     }
 
+    // Animations row — CONFIGURED duration/easing device-proven on the
+    // compose rule's VIRTUAL clock (deterministic, no wall-time flake):
+    // with autoAdvance off, the slow box (duration=2500ms, linear) still
+    // EXISTS 1000ms into its exit — the default ~300ms animation would have
+    // removed it (the exact discriminator the duration-flip bisect drives)
+    // — and is GONE once the configured duration elapses.
+    @Test
+    fun transitionDurationConfigDrivesExitTiming() {
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        composeRule.onNodeWithText("View motion").performClick()
+        composeRule.onNodeWithTag("motion-page").assertIsDisplayed()
+        composeRule.onNodeWithTag("slow-box").assertExists()
+
+        composeRule.mainClock.autoAdvance = false
+        composeRule.onNodeWithTag("motion-toggle").performClick()
+        composeRule.mainClock.advanceTimeBy(1000)
+        composeRule.onNodeWithTag("slow-box").assertExists()
+
+        composeRule.mainClock.advanceTimeBy(2500)
+        composeRule.mainClock.autoAdvance = true
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("slow-box").assertDoesNotExist()
+    }
+
     // Styling row — defineTheme tokens + styled(Prim) device-proven by
     // GEOMETRY (the iOS half's mirror): children of the two token-padded
     // cards differ in left offset by exactly xl−sm = 40−8 = 32dp. Child-vs-

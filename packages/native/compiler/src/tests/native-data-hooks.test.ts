@@ -317,3 +317,68 @@ export function WsDemo() {
     expect(r.code).toContain('ws.send("ping-42")')
   })
 })
+
+// ── <Transition duration/easing> — animation CONFIG lowering (the
+//    Animations row's "configurable duration/easing absent" gap). Absent
+//    props must emit BYTE-IDENTICALLY to the pre-config shape (M2.7).
+describe('<Transition> animation config', () => {
+  const APP = (attrs: string) => `import { signal } from '@pyreon/reactivity'
+import { Button, Stack, Text } from '@pyreon/primitives'
+export function MotionDemo() {
+  const on = signal<boolean>(true)
+  return (
+    <Stack>
+      <Transition show={() => on()}${attrs}>
+        <Text>Box</Text>
+      </Transition>
+    </Stack>
+  )
+}`
+
+  it('Swift: duration+easing → the timing-function factory (ms → seconds)', () => {
+    const r = transform(APP(' duration={2500} easing="linear"'), { target: 'swift' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('.animation(.linear(duration: 2.5), value: on)')
+  })
+
+  it('Swift: duration alone → easeInOut (the CSS `ease` analog)', () => {
+    const r = transform(APP(' duration={800}'), { target: 'swift' })
+    expect(r.code).toContain('.animation(.easeInOut(duration: 0.8), value: on)')
+  })
+
+  it('Kotlin: duration+easing → explicit fade specs with tween', () => {
+    const r = transform(APP(' duration={2500} easing="linear"'), { target: 'kotlin' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain(
+      'AnimatedVisibility(visible = on, enter = fadeIn(animationSpec = tween(durationMillis = 2500, easing = LinearEasing)), exit = fadeOut(animationSpec = tween(durationMillis = 2500, easing = LinearEasing)))',
+    )
+  })
+
+  it('Kotlin: the four CSS easings map to the canonical Compose curves', () => {
+    for (const [css, compose] of [
+      ['linear', 'LinearEasing'],
+      ['ease-in', 'FastOutLinearInEasing'],
+      ['ease-out', 'LinearOutSlowInEasing'],
+      ['ease-in-out', 'FastOutSlowInEasing'],
+    ] as const) {
+      const r = transform(APP(` duration={500} easing="${css}"`), { target: 'kotlin' })
+      expect(r.code).toContain(compose)
+    }
+  })
+
+  it('no config → BYTE-IDENTICAL default emits on both targets', () => {
+    const rs = transform(APP(''), { target: 'swift' })
+    expect(rs.code).toContain('.animation(.default, value: on)')
+    expect(rs.code).not.toContain('duration:')
+    const rk = transform(APP(''), { target: 'kotlin' })
+    expect(rk.code).toContain('AnimatedVisibility(visible = on) {')
+    expect(rk.code).not.toContain('tween')
+  })
+
+  it('a non-literal duration warns + falls back to the default (both targets)', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(APP(' duration={2 * 1000}'), { target })
+      expect(r.warnings.some((w) => w.includes('<Transition duration>'))).toBe(true)
+    }
+  })
+})

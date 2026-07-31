@@ -163,7 +163,15 @@ public struct ForEach<Data, ID, Content: View>: View {
 }
 
 // ---- Animation / transition / gestures ----
-public struct Animation { public static let \`default\` = Animation() }
+public struct Animation {
+  public static let \`default\` = Animation()
+  // The four timing-function factories <Transition duration/easing> lowers
+  // to — mirrored from real SwiftUI (each takes a labelled duration:).
+  public static func linear(duration: Double) -> Animation { Animation() }
+  public static func easeIn(duration: Double) -> Animation { Animation() }
+  public static func easeOut(duration: Double) -> Animation { Animation() }
+  public static func easeInOut(duration: Double) -> Animation { Animation() }
+}
 public struct AnyTransition { public static let opacity = AnyTransition() }
 public protocol Gesture {}
 public struct LongPressGesture: Gesture {

@@ -307,6 +307,45 @@ final class PyreonRouterDemoUITests: XCTestCase {
         )
     }
 
+    // Animations row — the CONFIGURED animation path runs on-device
+    // (show → hide → show through the emitted
+    // `.animation(.linear(duration: 2.5), value:)`), with the honest
+    // MEASUREMENT LIMIT named: SwiftUI removes the view from the
+    // ACCESSIBILITY tree the moment the `if` gate flips — the 2500ms fade
+    // is visual-only, so exit TIMING is not observable through XCUITest
+    // existence (measured: the box reads gone 0.8s into a 2.5s exit). The
+    // same instrument class as rendered colours; screenshot-diff is the
+    // tracked follow-up. The DEVICE-LEVEL timing proof for duration config
+    // lives in the Android half (virtual-clock, deterministic); the iOS
+    // config emit is locked by emit specs + the real-SDK typecheck gate.
+    func test_transitionConfigAnimatesShowHide() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            "Home page did not render"
+        )
+        app.buttons["View motion"].tap()
+        XCTAssertTrue(
+            app.otherElements["motion-page"].firstMatch.waitForExistence(timeout: 15),
+            "Motion page did not render"
+        )
+        let box = app.staticTexts["slow-box"]
+        XCTAssertTrue(box.waitForExistence(timeout: 10), "slow box missing pre-toggle")
+
+        app.buttons["motion-toggle"].tap()
+        XCTAssertTrue(
+            box.waitForNonExistence(timeout: 6),
+            "slow box never left after hide — the configured animation gate did not flip"
+        )
+        app.buttons["motion-toggle"].tap()
+        XCTAssertTrue(
+            box.waitForExistence(timeout: 6),
+            "slow box did not return after show — the configured animation gate is stuck"
+        )
+    }
+
     // Styling row — defineTheme tokens + styled(Prim) device-proven by
     // GEOMETRY. iOS measurement reality (read off a live frame dump, per
     // the #2593 discipline): a11y frames HUG the glyphs — a container's

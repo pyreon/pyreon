@@ -46,6 +46,30 @@ const RoomyCard = styled(Stack)`
   padding: ${(t) => t.spacing.xl};
 `
 
+function MotionPage() {
+  const navigate = useNavigate()
+  // Animations-row proof — CONFIGURED duration/easing. The slow box exits
+  // over 2500ms (linear), so a timing WINDOW discriminates the config
+  // end-to-end: shortly after hide it still EXISTS (mid-exit — the default
+  // ~300ms animation would already have removed it), and it is GONE once
+  // the configured duration elapses. Android asserts this on the compose
+  // test rule's VIRTUAL clock (deterministic); iOS uses wall-time with
+  // generous margins.
+  const boxOn = signal<boolean>(true)
+  return (
+    <Stack gap={3} padding={4} data-testid="motion-page">
+      <Text>Motion</Text>
+      <Button onPress={() => boxOn.set(!boxOn())} data-testid="motion-toggle">
+        Toggle Slow Box
+      </Button>
+      <Transition show={() => boxOn()} duration={2500} easing="linear">
+        <Text data-testid="slow-box">Slow Box</Text>
+      </Transition>
+      <Button onPress={() => navigate('/')}>Back to Home</Button>
+    </Stack>
+  )
+}
+
 function StylesPage() {
   const navigate = useNavigate()
   return (
@@ -90,10 +114,16 @@ function HomePage() {
       >
         Save Secret
       </Button>
+      {/* TWO nav rows deliberately: <Inline> is a NON-wrapping Row on
+          Android (the documented overflow gotcha) — four buttons clipped
+          "View motion" off-screen and its click silently no-oped. */}
       <Inline gap={2}>
         <Button onPress={() => navigate('/about')}>Go to About</Button>
         <Button onPress={() => navigate('/users/42')}>View user 42</Button>
+      </Inline>
+      <Inline gap={2}>
         <Button onPress={() => navigate('/styles')}>View styles</Button>
+        <Button onPress={() => navigate('/motion')}>View motion</Button>
       </Inline>
       {/* Core-UI row closure — `Link` was listed "not individually asserted",
           and it had NO usage in any gated app despite this file's header
@@ -212,6 +242,7 @@ export function RouterApp() {
       { path: '/about', component: AboutPage },
       { path: '/users/:id', component: UserPage },
       { path: '/styles', component: StylesPage },
+      { path: '/motion', component: MotionPage },
     ],
   })
 

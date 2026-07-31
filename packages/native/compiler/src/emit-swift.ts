@@ -5569,11 +5569,44 @@ function emitSwiftWalledTagAsChildren(
   )
 }
 
+/** CSS-easing → SwiftUI Animation factory. `duration` is SECONDS here
+ * (converted from the ms prop). A duration with no easing takes
+ * `.easeInOut` — the closest analog of CSS's default `ease`. */
+function swiftAnimationFor(durationMs: number | undefined, easing: string | undefined): string {
+  if (durationMs === undefined && easing === undefined) return '.default'
+  const secs = ((durationMs ?? 300) / 1000).toString()
+  const fn =
+    easing === 'linear'
+      ? 'linear'
+      : easing === 'ease-in'
+        ? 'easeIn'
+        : easing === 'ease-out'
+          ? 'easeOut'
+          : 'easeInOut'
+  return `.${fn}(duration: ${secs})`
+}
+
 function emitSwiftTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const show = e.attrs.find((a) => a.kind === 'attr' && a.name === 'show') as
     | Extract<AttrIR, { kind: 'attr' }>
     | undefined
   const cond = show ? emitSwiftSignalRead(unwrapAccessorArrow(show.value)) : 'true'
+  // Animation CONFIG (v1): `duration` (ms, static literal) + `easing`
+  // (linear | ease-in | ease-out | ease-in-out). Absent props emit the
+  // byte-identical `.default` shape shipped since M2.7. A non-literal
+  // duration warns + falls back to default (the useWebSocket literal rule —
+  // a native animation spec must be static).
+  const durRaw = readStaticAttr(e, 'duration')
+  const easeRaw = readStaticAttr(e, 'easing')
+  const durAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'duration')
+  if (durAttr !== undefined && typeof durRaw !== 'number') {
+    _emitWarnings.push(
+      `<Transition duration>: must be a static number of milliseconds; got a non-literal — falling back to the default animation.`,
+    )
+  }
+  const duration = typeof durRaw === 'number' ? durRaw : undefined
+  const easing = typeof easeRaw === 'string' ? easeRaw : undefined
+  const anim = swiftAnimationFor(duration, easing)
   const inner = ' '.repeat(indent + 6)
   const body = e.children.map((c) => inner + emitSwiftChild(c, indent + 6)).join('\n')
   const p = ' '.repeat(indent)
@@ -5584,7 +5617,7 @@ function emitSwiftTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
     `${p}      .transition(.opacity)\n` +
     `${p}  }\n` +
     `${p}}\n` +
-    `${p}.animation(.default, value: ${cond})`
+    `${p}.animation(${anim}, value: ${cond})`
   )
 }
 

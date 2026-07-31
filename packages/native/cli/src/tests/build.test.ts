@@ -570,3 +570,16 @@ export function Reset() {
     }
   })
 })
+
+it('Kotlin conditional imports: <Transition duration/easing> fade specs pull the animation sub-package symbols', () => {
+  const emitted = `AnimatedVisibility(visible = on, enter = fadeIn(animationSpec = tween(durationMillis = 2500, easing = LinearEasing)), exit = fadeOut(animationSpec = tween(durationMillis = 2500, easing = LinearEasing))) {}`
+  const out = conditionalKotlinImports(emitted)
+  expect(out).toContain('import androidx.compose.animation.fadeIn')
+  expect(out).toContain('import androidx.compose.animation.fadeOut')
+  expect(out).toContain('import androidx.compose.animation.core.tween')
+  expect(out).toContain('import androidx.compose.animation.core.LinearEasing')
+  // A default (unconfigured) AnimatedVisibility must NOT pull them.
+  const plain = conditionalKotlinImports('AnimatedVisibility(visible = on) {}')
+  expect(plain).not.toContain('fadeIn')
+  expect(plain).not.toContain('tween')
+})

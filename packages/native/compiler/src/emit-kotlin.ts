@@ -4514,14 +4514,51 @@ function emitKotlinWalledTagAsChildren(
   )
 }
 
+/** CSS-easing → Compose Easing constant. The CSS names map onto Compose's
+ * canonical curves: ease-in (accelerate) → FastOutLinearInEasing, ease-out
+ * (decelerate) → LinearOutSlowInEasing, ease-in-out → FastOutSlowInEasing
+ * (also the no-easing default when a duration is set — CSS's `ease`
+ * analog), linear → LinearEasing. */
+function kotlinEasingFor(easing: string | undefined): string {
+  return easing === 'linear'
+    ? 'LinearEasing'
+    : easing === 'ease-in'
+      ? 'FastOutLinearInEasing'
+      : easing === 'ease-out'
+        ? 'LinearOutSlowInEasing'
+        : 'FastOutSlowInEasing'
+}
+
 function emitKotlinTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const show = e.attrs.find((a) => a.kind === 'attr' && a.name === 'show') as
     | Extract<AttrIR, { kind: 'attr' }>
     | undefined
   const cond = show ? emitKotlinSignalRead(unwrapAccessorArrow(show.value)) : 'true'
+  // Animation CONFIG (v1) — mirror of the Swift emitter: `duration` (ms,
+  // static literal) + `easing`. Absent props emit the byte-identical bare
+  // AnimatedVisibility shipped since M2.7; a configured one gets explicit
+  // fade specs (`fadeIn/fadeOut(tween(ms, easing = …))` — tween is the
+  // Compose analog of a CSS timing function).
+  const durRaw = readStaticAttrKotlin(e, 'duration')
+  const easeRaw = readStaticAttrKotlin(e, 'easing')
+  const durAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'duration')
+  if (durAttr !== undefined && typeof durRaw !== 'number') {
+    _emitWarnings.push(
+      `<Transition duration>: must be a static number of milliseconds; got a non-literal — falling back to the default animation.`,
+    )
+  }
+  const duration = typeof durRaw === 'number' ? durRaw : undefined
+  const easing = typeof easeRaw === 'string' ? easeRaw : undefined
   const pad = ' '.repeat(indent + 2)
   const body = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
-  return `AnimatedVisibility(visible = ${cond}) {\n${body}\n${' '.repeat(indent)}}`
+  if (duration === undefined && easing === undefined) {
+    return `AnimatedVisibility(visible = ${cond}) {\n${body}\n${' '.repeat(indent)}}`
+  }
+  const spec = `tween(durationMillis = ${duration ?? 300}, easing = ${kotlinEasingFor(easing)})`
+  return (
+    `AnimatedVisibility(visible = ${cond}, enter = fadeIn(animationSpec = ${spec}), exit = fadeOut(animationSpec = ${spec})) {\n` +
+    `${body}\n${' '.repeat(indent)}}`
+  )
 }
 
 /**

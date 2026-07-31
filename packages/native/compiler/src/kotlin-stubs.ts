@@ -851,8 +851,27 @@ fun rememberCoroutineScope(): CoroutineScope = CoroutineScope()
 // Note for the stub-coverage ratchet: it scans Pyreon* names, so a missing
 // COMPOSE/SwiftUI API like this one is outside what it can see. Whole-app
 // validation is what catches that class.
+// enter/exit default to the real library's defaults; the configured
+// <Transition duration/easing> emit passes explicit fade specs. The spec
+// types mirror androidx.compose.animation.core's shapes minimally.
+class Easing
+val LinearEasing: Easing = Easing()
+val FastOutSlowInEasing: Easing = Easing()
+val FastOutLinearInEasing: Easing = Easing()
+val LinearOutSlowInEasing: Easing = Easing()
+class TweenSpec
+fun tween(durationMillis: Int, easing: Easing): TweenSpec = TweenSpec()
+class EnterTransition
+class ExitTransition
+fun fadeIn(animationSpec: TweenSpec): EnterTransition = EnterTransition()
+fun fadeOut(animationSpec: TweenSpec): ExitTransition = ExitTransition()
 @Composable
-fun AnimatedVisibility(visible: Boolean, content: @Composable () -> Unit) {}
+fun AnimatedVisibility(
+  visible: Boolean,
+  enter: EnterTransition? = null,
+  exit: ExitTransition? = null,
+  content: @Composable () -> Unit,
+) {}
 
 // PyreonHaptics — useHaptics() lowers to
 // PyreonHaptics(LocalHapticFeedback.current). The CompositionLocal and its
