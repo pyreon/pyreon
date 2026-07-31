@@ -15,8 +15,10 @@ import { Show } from '@pyreon/core'
 // Viewport/background/locale lists come from the MODEL (per-project presets
 // with shipped defaults), not the addons consts — the pickers must render what
 // the project configured.
+import { signal } from '@pyreon/reactivity'
 import { ADDON_TABS, PSEUDO_STATES } from '../addons'
 import { previewSubject } from '../a11y'
+import { AXE_IDLE, runAxe, type AxeReport } from '../axe'
 import type { WorkbenchControl } from '../catalog'
 import * as C from '../chrome'
 import type { WorkbenchModel } from '../model'
@@ -162,6 +164,21 @@ export function registerBuiltinPanels(): void {
     ...tab('a11y'),
     render: (model) => {
       const m = model as WorkbenchModel
+      const axe = signal<AxeReport>(AXE_IDLE)
+      const audit = async () => {
+        const surface = m.previewElement()
+        if (!surface) return
+        axe.set({ ...AXE_IDLE, status: 'running' })
+        axe.set(await runAxe(surface))
+      }
+      const highlightTarget = (selector: string, on: boolean) => {
+        const surface = m.previewElement()
+        const el = selector ? (surface?.querySelector(selector) as HTMLElement | null) : null
+        const subject = el ?? (previewSubject(surface) as HTMLElement | null)
+        if (!subject) return
+        subject.style.outline = on ? '2px solid #ff2d55' : ''
+        subject.style.outlineOffset = on ? '2px' : ''
+      }
       return (
         <>
           <C.A11ySummary>
@@ -197,6 +214,39 @@ export function registerBuiltinPanels(): void {
               </C.A11yRow>
             ))
           }
+          <C.ActionsHead>
+            <C.ActionsHint>
+              {() => {
+                const r = axe()
+                if (r.status === 'ready') return 'Full audit — axe-core, on demand.'
+                if (r.status === 'running') return 'Auditing…'
+                if (r.status === 'failed') return `axe failed: ${r.error ?? ''}`
+                const inc = r.incomplete > 0 ? ` · ${r.incomplete} need review` : ''
+                return `${r.violations.length} violation(s)${inc}`
+              }}
+            </C.ActionsHint>
+            <C.ClearBtn data-testid="axe-run" onClick={() => void audit()}>
+              Run axe
+            </C.ClearBtn>
+          </C.ActionsHead>
+          {() =>
+            axe().violations.map((v) => (
+              <C.A11yRow
+                data-testid={`axe-${v.id}`}
+                onMouseEnter={() => highlightTarget(v.target, true)}
+                onMouseLeave={() => highlightTarget(v.target, false)}
+              >
+                <C.A11yIcon state="danger">✕</C.A11yIcon>
+                <C.A11yBody>
+                  <C.A11yTitle>{`${v.id} · ${v.impact}`}</C.A11yTitle>
+                  <C.A11yNote>{`${v.help}${v.nodes > 1 ? ` (${v.nodes} nodes)` : ''}`}</C.A11yNote>
+                </C.A11yBody>
+              </C.A11yRow>
+            ))
+          }
+          <Show when={() => axe().status === 'done' && axe().violations.length === 0}>
+            <C.ActionsEmpty data-testid="axe-clean">No violations found by axe.</C.ActionsEmpty>
+          </Show>
         </>
       )
     },

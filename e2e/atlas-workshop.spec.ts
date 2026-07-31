@@ -518,6 +518,18 @@ test('perf panel records framework work for a real interaction', async ({ browse
  * Asserts the DOM actually changes with the role and that the consulted-key
  * list is real, because a panel that merely renders four buttons proves nothing.
  */
+test('a hand-catalog play script runs against the live preview, steps logged to Actions', async ({ browser }) => {
+  const page = await open(browser, [])
+  // Button carries the authored 'Click storm' scenario with a ▶.
+  await page.getByTestId('play-button--play-demo').click()
+  await page.getByRole('button', { name: 'Actions', exact: true }).click()
+  // Each play STEP lands in the Actions ring, then the three clicks the script
+  // dispatched land as real onClick events — observation plus behaviour.
+  await expect(page.getByText('find the button')).toBeVisible()
+  await expect(page.getByText('click it three times')).toBeVisible()
+  await expect(page.getByText('Button "Storm target"').first()).toBeVisible()
+})
+
 test.describe('Roles panel — permission sets', () => {
   test('a destructive action appears only for a role that may perform it', async ({ browser }) => {
     const page = await open(browser)

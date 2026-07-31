@@ -13,7 +13,7 @@ import { createAtlas } from '../index'
 import type { CatalogGraph } from '../core'
 import type { WorkbenchPresets } from '../ui/catalog'
 import type { AgentAsset } from '../plugins'
-import { aiAssetsPlugin, mountPlugin, recommendedPlugins } from '../plugins'
+import { aiAssetsPlugin, authoredScenariosPlugin, mountPlugin, recommendedPlugins } from '../plugins'
 import {
   componentLoaderPlugin,
   createModuleLoader,
@@ -111,6 +111,9 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
         // MOUNT. Without it every runtime check skips, which is honest but
         // useless — the harness would have no on-ramp.
         ...(loader ? [componentLoaderPlugin(loader)] : []),
+        // BEFORE the generators: an authored scenario wins over a generated one
+        // with the same id (the generators' dedup skips existing ids).
+        ...(loaded.config.scenarios ? [authoredScenariosPlugin(loaded.config.scenarios)] : []),
         ...recommendedPlugins({ mount: false }),
         // Appended AFTER the bundle so it can carry the project's wrapper. The
         // bundle's own entry is disabled above rather than duplicated.

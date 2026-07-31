@@ -44,3 +44,9 @@ export const GroupBtn = el
 export const GroupCaret = txt.attrs({ tag: 'span' }).theme((t: T) => ({ fontSize: '9px', width: '10px', flex: 'none', color: `${t.faint}` }))
 export const GroupText = txt.attrs({ tag: 'span' }).theme(() => ({ flex: '1' }))
 export const GroupCount = txt.attrs({ tag: 'span' }).theme((t: T) => ({ fontFamily: '\'JetBrains Mono\',monospace', fontSize: '9px', color: `${t.faint}` }))
+
+/** A scenario row that ALSO carries a play button — siblings, never nested buttons. */
+export const ScenRow = el.attrs({ tag: 'div', css: 'display:flex;flex-direction:row;align-items:center;' }).theme(() => ({ display: 'flex', alignItems: 'center', gap: '2px' }))
+export const ScenPlay = el
+  .attrs({ tag: 'button' })
+  .theme((t: T) => ({ font: 'inherit', cursor: 'pointer', border: 'none', background: 'transparent', flex: 'none', width: '22px', height: '22px', borderRadius: '6px', fontSize: '9px', color: `${t.accent}`, hover: { background: `${t.accentSoft}` } }))

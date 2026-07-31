@@ -122,6 +122,12 @@ export interface WorkbenchModel {
    * then renders exactly the state the pipeline verified. Unknown ids no-op.
    */
   selectScenario: (compId: string, scenarioId: string) => void
+  /**
+   * Run a hand-catalog scenario's `play` against the LIVE preview: select the
+   * scenario, wait a frame for the canvas to settle, then execute — each step
+   * (and any failure) lands in the Actions panel, so the run is visible.
+   */
+  runPlay: (compId: string, scenarioId: string) => Promise<void>
   reset: () => void
   logAction: (name: string, detail: string) => void
   clearActions: () => void
@@ -270,6 +276,31 @@ export function createModel(
     values.set({ ...values(), [id]: cur ? { ...cur, [key]: v } : { [key]: v } })
   }
   const reset = () => values.set({ ...values(), [selId()]: {} })
+
+  const runPlay = async (compId: string, scenarioId: string) => {
+    const comp = catalog.components.find((c) => c.id === compId)
+    const scenario = comp?.scenarios?.find((s) => s.id === scenarioId)
+    if (!comp || !scenario?.play) return
+    selectScenario(compId, scenarioId)
+    // One frame so the canvas has re-rendered with the scenario's args before
+    // the script starts querying it.
+    await new Promise((r) =>
+      typeof requestAnimationFrame === 'function' ? requestAnimationFrame(r) : setTimeout(r, 0),
+    )
+    const root = previewEl
+    if (!root) return
+    try {
+      await scenario.play({
+        root,
+        step: async (name, run) => {
+          logAction(`▶ ${scenario.name}`, name)
+          await run()
+        },
+      })
+    } catch (err) {
+      logAction(`▶ ${scenario.name}`, `FAILED: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
 
   const selectScenario = (compId: string, scenarioId: string) => {
     const comp = catalog.components.find((c) => c.id === compId)
@@ -442,6 +473,6 @@ export function createModel(
     previewElement: () => previewEl,
     viewports, backgrounds, locales, roles, viewportPreset, backgroundPreset, dir,
     brand, theme, sel, vals, visibleGroups, tree, collapsed, toggleGroup, noResults, a11y,
-    setValue, selectScenario, reset, logAction, clearActions, search, preview, searchRef, focusSearch, previewRef,
+    setValue, selectScenario, runPlay, reset, logAction, clearActions, search, preview, searchRef, focusSearch, previewRef,
   }
 }

@@ -42,6 +42,21 @@ export interface AtlasConfig {
    * `@pyreon/atlas/ui` for the field-by-field contract.
    */
   presets?: WorkbenchPresets
+  /**
+   * Authored scenarios, keyed by COMPONENT NAME — the progressive-enrichment
+   * channel. Everything stays derived; this adds only what derivation cannot
+   * know: a named state worth pinning, and a `play` script that says what
+   * "exercised" means for it. An authored scenario wins over a generated one
+   * with the same id.
+   */
+  scenarios?: Record<string, readonly AuthoredScenario[]>
+}
+
+/** One authored scenario — see `AtlasConfig.scenarios`. */
+export interface AuthoredScenario {
+  name: string
+  args?: Record<string, unknown>
+  play?: import('../core').PlayFn
 }
 
 /** Filenames tried, in order. */
@@ -95,6 +110,8 @@ export async function loadAtlasConfig(
     return { config: {}, path: found, error: `${found}: \`wrapper\` must be a component function` }
   }
   const theme = mod.theme ?? fromDefault.theme
+  const rawScenarios = (mod.scenarios ?? fromDefault.scenarios) as unknown
+  const scenariosError = rawScenarios === undefined ? undefined : validateAuthoredScenarios(rawScenarios)
   const rawPresets = (mod.presets ?? fromDefault.presets) as unknown
   const presetsError = rawPresets === undefined ? undefined : validatePresets(rawPresets)
   if (presetsError) {
@@ -109,14 +126,51 @@ export async function loadAtlasConfig(
       error: `${found}: \`presets\` ignored — ${presetsError}`,
     }
   }
+  if (scenariosError) {
+    return {
+      config: {
+        ...(wrapper ? { wrapper: wrapper as ComponentRef } : {}),
+        ...(theme !== undefined ? { theme } : {}),
+        ...(rawPresets !== undefined ? { presets: rawPresets as WorkbenchPresets } : {}),
+      },
+      path: found,
+      error: `${found}: \`scenarios\` ignored — ${scenariosError}`,
+    }
+  }
   return {
     config: {
       ...(wrapper ? { wrapper: wrapper as ComponentRef } : {}),
       ...(theme !== undefined ? { theme } : {}),
       ...(rawPresets !== undefined ? { presets: rawPresets as WorkbenchPresets } : {}),
+      ...(rawScenarios !== undefined
+        ? { scenarios: rawScenarios as Record<string, readonly AuthoredScenario[]> }
+        : {}),
     },
     path: found,
   }
+}
+
+/** Shape-check the authored-scenarios export — the message names what is wrong. */
+export function validateAuthoredScenarios(value: unknown): string | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return '`scenarios` must be an object keyed by component name'
+  }
+  for (const [component, list] of Object.entries(value as Record<string, unknown>)) {
+    if (!Array.isArray(list)) return `\`scenarios.${component}\` must be an array`
+    for (const entry of list as unknown[]) {
+      const e = entry as Record<string, unknown>
+      if (typeof e !== 'object' || e === null || typeof e.name !== 'string') {
+        return `every \`scenarios.${component}\` entry needs a string \`name\``
+      }
+      if (e.args !== undefined && (typeof e.args !== 'object' || e.args === null)) {
+        return `\`scenarios.${component}\` entry "${String(e.name)}" has a non-object \`args\``
+      }
+      if (e.play !== undefined && typeof e.play !== 'function') {
+        return `\`scenarios.${component}\` entry "${String(e.name)}" has a non-function \`play\``
+      }
+    }
+  }
+  return undefined
 }
 
 /**

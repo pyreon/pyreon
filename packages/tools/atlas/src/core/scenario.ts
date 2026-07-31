@@ -30,6 +30,7 @@ export interface ScenarioInit {
   args?: Record<string, unknown>
   variant?: Record<string, string>
   source?: ScenarioSource
+  play?: import('./types').PlayFn
 }
 
 /** Build a scenario, filling the id + defaults. */
@@ -42,5 +43,6 @@ export function makeScenario(init: ScenarioInit): Scenario {
     source: init.source ?? 'authored',
   }
   if (init.variant !== undefined) scenario.variant = init.variant
+  if (init.play !== undefined) scenario.play = init.play
   return scenario
 }
