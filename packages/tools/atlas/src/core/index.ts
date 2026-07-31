@@ -10,6 +10,8 @@ export type {
   VariantAxis,
   ScenarioSource,
   Scenario,
+  PlayContext,
+  PlayFn,
   CheckStatus,
   VerifyCheck,
   VerifyVerdict,

@@ -133,6 +133,35 @@ test.describe('atlas dev', () => {
     await expect(page.getByTestId('canvas-preview').locator('button').first()).toHaveText('')
   })
 
+  test('an authored (played) scenario reaches the derived catalog with its verdict', async ({ page }) => {
+    // 'Triple click' is authored in atlas.config.ts with a play script; the
+    // scan RAN the script (instead of the auto click-walk) and verified it —
+    // the sidebar shows it with an ok dot like any derived scenario.
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Button', exact: true }).click()
+    const authored = page.getByTestId('scenario-button--triple-click')
+    await expect(authored).toBeVisible()
+    await expect(authored.locator('[data-verdict]')).toHaveAttribute('data-verdict', 'ok')
+  })
+
+  test('axe audit: a clean component reports zero, an empty-label button is flagged', async ({ page }) => {
+    // Clean first: Badge with its default (labelled) state.
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Badge', exact: true }).click()
+    await page.getByRole('button', { name: 'A11y', exact: true }).click()
+    await page.getByTestId('axe-run').click()
+    await expect(page.getByTestId('axe-clean')).toBeVisible({ timeout: 15_000 })
+
+    // Now the violation the static check also knows: an empty accessible name.
+    await page.getByRole('button', { name: 'Button', exact: true }).click()
+    await page.getByTestId('addon-tab-controls').click()
+    await page.locator('input[placeholder]').first().fill('')
+    await page.getByRole('button', { name: 'A11y', exact: true }).click()
+    await page.getByTestId('axe-run').click()
+    // axe's own rule id, not a homemade one — the point of vendoring.
+    await expect(page.getByTestId('axe-button-name')).toBeVisible({ timeout: 15_000 })
+  })
+
   test('the docs page carries Scenarios (as links into the canvas) and Source', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: 'Chip', exact: true }).click()

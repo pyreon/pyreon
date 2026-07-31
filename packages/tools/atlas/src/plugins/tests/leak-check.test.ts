@@ -123,3 +123,48 @@ describe('leak check — verdict plumbing', () => {
     expect(result.leak.findings?.[0]).toMatch(/climbed 0 → 2 → 4/)
   })
 })
+
+describe('play — the authored script replaces the click-walk', () => {
+  const playedScenario = (play: import('../../core').PlayFn): Scenario => ({
+    id: 'p',
+    component: 'X',
+    name: 'P',
+    args: {},
+    source: 'authored',
+    play,
+  })
+
+  async function verifyWith(play: import('../../core').PlayFn) {
+    const plugin = mountPlugin({ runtime: runtimeWith(() => 0, async () => {}) })
+    const ctx = {
+      component: { name: 'X', component: Component, controls: [], axes: [], scenarios: [], tags: [] },
+      scenario: playedScenario(play),
+      cwd: '.',
+    } as unknown as VerifyContext
+    return (await plugin.verify!(ctx)) as { interaction: { status: string; findings?: string[] } }
+  }
+
+  it('a passing play verifies the scenario', async () => {
+    let clicked = false
+    const r = await verifyWith(async ({ root, step }) => {
+      await step('click', () => {
+        const el = root.querySelector('button')
+        if (!el) throw new Error('no button')
+        clicked = true
+      })
+    })
+    expect(clicked).toBe(true)
+    expect(r.interaction.status).toBe('pass')
+  })
+
+  it('a throwing play FAILS the interaction check, naming the step', async () => {
+    const r = await verifyWith(async ({ step }) => {
+      await step('assert the impossible', () => {
+        throw new Error('expected 2 rows, found 0')
+      })
+    })
+    expect(r.interaction.status).toBe('fail')
+    expect(r.interaction.findings?.join(' ')).toContain('play failed at step "assert the impossible"')
+    expect(r.interaction.findings?.join(' ')).toContain('expected 2 rows, found 0')
+  })
+})

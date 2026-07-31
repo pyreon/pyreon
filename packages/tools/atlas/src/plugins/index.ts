@@ -33,7 +33,8 @@ export { createPluginRegistry, emptyVerdict } from './registry'
 export type { VariantMatrixOptions } from './variant-matrix'
 export { variantMatrixPlugin } from './variant-matrix'
 export type { StatesOptions, EdgeCaseOptions, ThemeOptions } from './scenarios'
-export { defaultScenarioPlugin, statesPlugin, edgeCasesPlugin, themePlugin } from './scenarios'
+export { authoredScenariosPlugin,
+  defaultScenarioPlugin, statesPlugin, edgeCasesPlugin, themePlugin } from './scenarios'
 
 // enrichment
 export { fillDefaultsPlugin } from './fill-defaults'

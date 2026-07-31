@@ -91,6 +91,7 @@
     "@pyreon/styler": "workspace:*",
     "@pyreon/ui-core": "workspace:*",
     "@pyreon/unistyle": "workspace:*",
+    "axe-core": "^4.11.0",
     "typescript": ">=5.0.0 <7.0.0"
   },
   "devDependencies": {

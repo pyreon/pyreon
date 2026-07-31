@@ -81,9 +81,30 @@ export interface Scenario {
   variant?: Record<string, string>
   /** provenance */
   source: ScenarioSource
+  /** authored interaction script — replaces the automatic click-walk when set */
+  play?: PlayFn
   /** the verify verdict, once the pipeline has run */
   verify?: VerifyVerdict
 }
+
+/**
+ * What an authored `play` receives: the MOUNTED scenario's root plus a `step`
+ * that names each phase — a failure is reported by the step it died in, which
+ * is the difference between "play failed" and a fixable finding.
+ */
+export interface PlayContext {
+  /** The container the scenario mounted into — query it like a user's test would. */
+  root: Element
+  step(name: string, run: () => void | Promise<void>): Promise<void>
+}
+
+/**
+ * An authored interaction script. When present, verification RUNS it instead
+ * of the automatic click-walk — the author has said what "exercised" means for
+ * this scenario. A throw (an assertion, a missing element) fails the
+ * `interaction` check, naming the step.
+ */
+export type PlayFn = (ctx: PlayContext) => void | Promise<void>
 
 /** The status of one verify check. */
 export type CheckStatus = 'pass' | 'fail' | 'skip'
