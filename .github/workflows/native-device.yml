@@ -738,7 +738,7 @@ jobs:
             # runs each script line under /usr/bin/sh, so a multi-line loop
             # breaks ("expecting done"). Poll up to 30s, fail loudly on timeout.
             i=0; while ! curl -fsS http://127.0.0.1:8787/quotes.json >/dev/null 2>&1; do i=$((i+1)); [ "$i" -ge 30 ] && { echo "fixture server FAILED to start within 30s"; cat /tmp/fixture-server.log 2>/dev/null || true; exit 1; }; sleep 1; done; echo "fixture server OK (ready after ${i}s)"
-            adb reverse tcp:8790 tcp:8790
+            adb reverse tcp:8787 tcp:8787
             gradle connectedCheck --no-daemon --stacktrace
 
       # The connected-test HTML/XML reports are the ONLY place the
