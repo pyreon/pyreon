@@ -2978,7 +2978,22 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           // `Array.from({ length: n }, (_, i) => body)` → `(0..<n).map { i in body }`.
           const range = objectLengthRangeForm(e)
           if (range !== null) {
-            return `(0..<${emitSwiftExpr(range.lenExpr, indent)}).map({ ${swiftIdent(range.indexParam)} in ${emitSwiftExpr(range.body, indent)} })`
+            // Seed the INDEX param as Int for the body emit — without it,
+            // every type-dependent lowering inside the body sees the param
+            // as unknown; the load-bearing case is the object-literal
+            // struct synthesis (`{ id: i, label: … }` bailed to a labelled
+            // TUPLE, whose key paths break `ForEach(id: \\.id)` — the 10k
+            // list-row shape). Save/restore mirrors the element-callback
+            // seeding idiom.
+            const had = _exprInferCtx.locals.has(range.indexParam)
+            const prev = _exprInferCtx.locals.get(range.indexParam)
+            _exprInferCtx.locals.set(range.indexParam, { kind: 'number' })
+            try {
+              return `(0..<${emitSwiftExpr(range.lenExpr, indent)}).map({ ${swiftIdent(range.indexParam)} in ${emitSwiftExpr(range.body, indent)} })`
+            } finally {
+              if (had) _exprInferCtx.locals.set(range.indexParam, prev!)
+              else _exprInferCtx.locals.delete(range.indexParam)
+            }
           }
           const mapForm = arrayFromMapRewrite(e)
           if (mapForm !== null) return emitSwiftExpr(mapForm, indent)

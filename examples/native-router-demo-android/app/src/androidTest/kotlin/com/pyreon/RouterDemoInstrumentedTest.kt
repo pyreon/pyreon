@@ -29,11 +29,14 @@ import android.content.Context
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
@@ -397,5 +400,25 @@ class RouterDemoInstrumentedTest {
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodesWithText("Swiped: tap").fetchSemanticsNodes().isNotEmpty()
         }
+    }
+
+    // Lists-at-scale row — the Android half. Same creation + laziness
+    // claims as the iOS twin, PLUS the deep jump: performScrollToNode
+    // drives the LazyColumn's scroll semantics all the way to Row 9999 —
+    // reachable only if virtualization composes rows on demand the whole
+    // way down (an eager Column would have crashed at creation; a broken
+    // key/order would surface as a missing node).
+    @Test
+    fun tenThousandRowListIsLazyAndDeepRowReachable() {
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        composeRule.onNodeWithText("View big list").performClick()
+        composeRule.onNodeWithTag("biglist-page").assertIsDisplayed()
+        composeRule.onNodeWithText("Row 0").assertExists()
+        check(
+            composeRule.onAllNodesWithText("Row 9999").fetchSemanticsNodes().isEmpty()
+        ) { "Row 9999 is composed at launch — the list is EAGER, not lazy" }
+
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasText("Row 9999"))
+        composeRule.onNodeWithText("Row 9999").assertExists()
     }
 }

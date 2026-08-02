@@ -2569,7 +2569,19 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           // `Array.from({ length: n }, (_, i) => body)` → `(0 until n).map { i -> body }`.
           const range = objectLengthRangeForm(e)
           if (range !== null) {
-            return `(0 until ${emitKotlinExpr(range.lenExpr, indent)}).map({ ${kotlinIdent(range.indexParam)} -> ${emitKotlinExpr(range.body, indent)} })`
+            // Seed the INDEX param as Int for the body emit — the Swift
+            // twin's comment has the rationale; here the bailed synthesis
+            // emitted `(id = i, …)` NAMED-TUPLE syntax, which is not Kotlin
+            // at all (a syntax error at the site).
+            const had = _kotlinExprInferCtx.locals.has(range.indexParam)
+            const prev = _kotlinExprInferCtx.locals.get(range.indexParam)
+            _kotlinExprInferCtx.locals.set(range.indexParam, { kind: 'number' })
+            try {
+              return `(0 until ${emitKotlinExpr(range.lenExpr, indent)}).map({ ${kotlinIdent(range.indexParam)} -> ${emitKotlinExpr(range.body, indent)} })`
+            } finally {
+              if (had) _kotlinExprInferCtx.locals.set(range.indexParam, prev!)
+              else _kotlinExprInferCtx.locals.delete(range.indexParam)
+            }
           }
           const mapForm = arrayFromMapRewrite(e)
           if (mapForm !== null) return emitKotlinExpr(mapForm, indent)
@@ -5317,10 +5329,27 @@ function emitKotlinScroll(
     isKotlinLazyListChild(e.children[0]!.expr)
   if (lazyOnly) {
     // No wrapper at all — the LazyColumn IS the scroll container. Emitted at
-    // the PARENT's indent, since it takes the wrapper's place. Any
-    // padding/testTag on the <Scroll> would be lost by unwrapping, so keep the
-    // wrapper (and accept the author's own nesting) when it carries layout.
+    // the PARENT's indent, since it takes the wrapper's place.
     if (layoutMod === '') return emitKotlinChild(e.children[0]!, indent)
+    // The <Scroll> carries layout (padding/testTag): keep the wrapper for
+    // that layout but WITHOUT the scroll modifier. The prior "keep the
+    // wrapper and accept the author's own nesting" emitted the exact
+    // measure-time crash this branch documents — device-found on the
+    // 10k-row BigListPage, whose `data-testid` was all it took to route a
+    // single-For <Scroll> onto the crashing path with zero diagnostics.
+    // A plain (non-scrolling) Column around a LazyColumn is legal; the
+    // lazy child scrolls itself.
+    return `${composable}(modifier = ${layoutMod}) {\n${pad}${emitKotlinChild(e.children[0]!, indent + 2)}\n${' '.repeat(indent)}}`
+  }
+  // MIXED children including a lazy list (a header + a <For>): the outer
+  // scroller is doing real work for the non-lazy siblings, so the tree is
+  // kept — but the nested-lazy shape throws at MEASURE time on Android, so
+  // the long-promised warning is now actually emitted (the comment above
+  // claimed it; the code never did — comment/code drift).
+  if (!horizontal && e.children.some((c) => c.kind === 'expr' && isKotlinLazyListChild(c.expr))) {
+    _emitWarnings.push(
+      '<Scroll> with a <For> among OTHER children nests a LazyColumn inside Column(Modifier.verticalScroll()) on Android — an IllegalStateException at MEASURE time ("measured with an infinity maximum height"). Move the <For> into its own <Scroll>, or render the header as a plain sibling above a <Scroll><For/></Scroll>.',
+    )
   }
   const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
   return `${composable}(modifier = ${modifier}) {\n${contentLines}\n${' '.repeat(indent)}}`

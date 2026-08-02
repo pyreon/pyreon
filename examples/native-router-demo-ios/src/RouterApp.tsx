@@ -46,6 +46,41 @@ const RoomyCard = styled(Stack)`
   padding: ${(t) => t.spacing.xl};
 `
 
+function BigListPage() {
+  const navigate = useNavigate()
+  // Lists-at-scale proof — 10,000 keyed rows through the canonical
+  // <Scroll><For> idiom. The lowering claims under test: iOS wraps the
+  // ForEach in a LazyVStack (a bare ForEach in a ScrollView is EAGER —
+  // 10k rows materialized up front); Android drops the redundant scroll
+  // wrapper and lets the LazyColumn scroll itself (nesting it in a
+  // verticalScroll Column is a Compose MEASURE-time crash). The device
+  // tests assert LAZINESS (an off-screen deep row is NOT in the
+  // semantics/a11y tree at launch — an eager build would carry all 10k)
+  // and reachability (Android scrolls to Row 9999; iOS asserts scroll
+  // advances — XCUITest has no deep-jump primitive, disclosed).
+  // Array.from({length},(_,i)=>…) lowers to the idiomatic range-map on
+  // both targets — and building THIS page found + fixed a real emitter
+  // bug: the range-map's index param was never seeded into the emit-time
+  // inference ctx, so the object literal bailed struct synthesis and
+  // emitted a labelled TUPLE (Swift: key paths break ForEach(id:\.id);
+  // Kotlin: named-tuple syntax is a syntax error). Now both emit a
+  // synthesized __Obj record. (The helper-with-loop shape is still out:
+  // helper BODIES don't yet type empty-array locals or translate .push —
+  // the tracked helper-arc frontier.)
+  const rows = Array.from({ length: 10000 }, (_, i) => ({ id: i, label: `Row ${i}` }))
+  return (
+    <Stack gap={2} padding={4} data-testid="biglist-page">
+      <Text>Big List</Text>
+      <Button onPress={() => navigate('/')}>Back to Home</Button>
+      <Scroll data-testid="biglist-scroll">
+        <For each={rows} by={(r) => r.id}>
+          {(r) => <Text>{r.label}</Text>}
+        </For>
+      </Scroll>
+    </Stack>
+  )
+}
+
 function MotionPage() {
   const navigate = useNavigate()
   // Animations-row proof — CONFIGURED duration/easing. The slow box exits
@@ -146,6 +181,9 @@ function HomePage() {
       <Inline gap={2}>
         <Button onPress={() => navigate('/styles')}>View styles</Button>
         <Button onPress={() => navigate('/motion')}>View motion</Button>
+      </Inline>
+      <Inline gap={2}>
+        <Button onPress={() => navigate('/biglist')}>View big list</Button>
       </Inline>
       {/* Core-UI row closure — `Link` was listed "not individually asserted",
           and it had NO usage in any gated app despite this file's header
@@ -283,6 +321,7 @@ export function RouterApp() {
       { path: '/users/:id', component: UserPage },
       { path: '/styles', component: StylesPage },
       { path: '/motion', component: MotionPage },
+      { path: '/biglist', component: BigListPage },
     ],
   })
 

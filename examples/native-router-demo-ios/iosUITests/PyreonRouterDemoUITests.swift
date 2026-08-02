@@ -559,4 +559,44 @@ final class PyreonRouterDemoUITests: XCTestCase {
         )
     }
 
+    // Lists-at-scale row — 10,000 keyed rows through <Scroll><For>. Three
+    // claims, each separable: (1) CREATION at scale — Row 0 renders inside
+    // the timeout (an EAGER 10k build hangs far past it); (2) LAZINESS —
+    // the LazyVStack wrap means a deep row is NOT in the a11y tree at
+    // launch (a bare ForEach in a ScrollView materializes all 10k);
+    // (3) SCROLLING works — after swiping, Row 0 leaves the tree (lazy
+    // lists drop off-screen rows). Deep-jump to Row 9999 is Android's half
+    // (XCUITest has no scroll-to-element primitive for untagged rows —
+    // disclosed, not implied).
+    func test_tenThousandRowListIsLazyAndScrolls() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            "Home page did not render"
+        )
+        app.buttons["View big list"].tap()
+        XCTAssertTrue(
+            app.otherElements["biglist-page"].firstMatch.waitForExistence(timeout: 15),
+            "Big list page did not render"
+        )
+        XCTAssertTrue(
+            app.staticTexts["Row 0"].firstMatch.waitForExistence(timeout: 10),
+            "Row 0 missing — 10k-row creation failed or hung"
+        )
+        XCTAssertFalse(
+            app.staticTexts["Row 9999"].firstMatch.exists,
+            "Row 9999 is materialized at launch — the list is EAGER (LazyVStack wrap lost)"
+        )
+        let scroll = app.scrollViews.firstMatch
+        scroll.swipeUp()
+        scroll.swipeUp()
+        scroll.swipeUp()
+        XCTAssertFalse(
+            app.staticTexts["Row 0"].firstMatch.exists,
+            "Row 0 still on screen after three swipes — the list did not scroll"
+        )
+    }
+
 }
