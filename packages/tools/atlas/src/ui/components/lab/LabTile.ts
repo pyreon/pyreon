@@ -3,11 +3,10 @@ import { el, type T } from '../../kit'
 export const LabTile = el
   .attrs({
     tag: 'div',
+    contentDirection: 'rows',
+    contentAlignX: 'block',
   })
   .theme((t: T) => ({
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'stretch',
     borderRadius: t.radius.modal,
     overflow: 'hidden',
     border: t.hairline,

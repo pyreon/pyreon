@@ -3,12 +3,11 @@ import { el, type T } from '../../kit'
 export const ActionRow = el
   .attrs({
     tag: 'div',
+    contentDirection: 'inline',
+    contentAlignY: 'center',
+    gap: 8,
   })
   .theme((t: T) => ({
-    flexDirection: 'row',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
     padding: '8px 12px',
     borderRadius: t.radius.field,
     marginBottom: '8px',

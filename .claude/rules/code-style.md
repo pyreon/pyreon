@@ -44,7 +44,13 @@
 
 ## UI Components (@pyreon/ui-components)
 
-- **Layout in `.attrs()`, CSS in `.theme()`**: Element layout props (`direction`, `alignX`, `alignY`, `gap`, `block`, `tag`) go in `.attrs()`. Visual styles (colors, spacing, borders, shadows) go in `.theme()`.
+- **Layout in `.attrs()`, CSS in `.theme()`**: Element layout props go in `.attrs()`; visual styles (colors, spacing, borders, shadows, type) go in `.theme()`. Element IS a flex box natively — never re-declare `display`/`flexDirection`/`alignItems`/`justifyContent` in a theme (it fights the wrapper CSS Element already emits and never reaches the button/fieldset/legend flex-fix inner layer). The verified prop contract (2026-08, atlas/loom conversion + bokisch.com precedent):
+  - **Simple elements** (no before/after slots — the dominant case) read the `content*` trio: `contentDirection` (`'inline'` row / `'rows'` column — default `rows`), `contentAlignX`, `contentAlignY`. The bare `direction`/`alignX`/`alignY` trio governs the SLOT axis of compound elements.
+  - **Alignment is AXIS-FIXED**, not main/cross: X is always horizontal (`left|center|right|spaceBetween|spaceAround|block`), Y always vertical (`top|center|bottom|block`); `block` = stretch. On an `inline` row, `contentAlignX` is justify-content and `contentAlignY` is align-items; on `rows` they swap roles automatically.
+  - **`gap` is a prop** (number → rem): wired on the simple path AND the needsFix (button/fieldset/legend) flex-fix layer as of 0.51 (before that, slots only — the reason old code reached for theme-level gap).
+  - **`block: true`** for full-width elements and APP ROOTS — Element defaults to `inline-flex` and shrink-wraps (a root Shell without `block` renders the whole app at content width).
+  - **Documented special cases where theme layout is correct**: `flexWrap` (no Element prop; rides on the wrapper's own flex display), CSS **grid** components (grid is outside Element's flex model — whole layout in theme), and text **truncation** (`display: 'block'` — a flex container never ellipsizes its text).
+  - **Never put layout in an attrs `css` STRING** — a per-instance `css` prop overrides the attrs default wholesale (this silently discarded whole layouts), and its declarations sit outside the theme cascade.
 - **Pseudo-state styles**: Use `hover: { ... }`, `focus: { ... }`, `active: { ... }`, `disabled: { ... }` objects inside `.theme()` callbacks. The `el`/`txt` bases handle CSS pseudo-selector generation via `makeItResponsive`.
 - **Hover CSS is unconditional**: `:hover` styles apply to ALL components that define hover theme — not just interactive ones (onClick/href). The `cursor: pointer` is the only thing gated on interactivity.
 - **CSS property naming**: Use unistyle convention (`borderWidthTop`, `borderColorLeft`) NOT CSS-spec order (`borderTopWidth`, `borderLeftColor`). Property-first naming.

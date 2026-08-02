@@ -45,6 +45,7 @@ const OWN_KEYS: Array<keyof Props | 'ref'> = [
   'alignX',
   'alignY',
   'equalCols',
+  'gap',
   'isInline',
   'ref',
   'dangerouslySetInnerHTML',
@@ -58,7 +59,7 @@ const OWN_KEYS: Array<keyof Props | 'ref'> = [
 // computed and swaps classList on change, on the SAME DOM element (no
 // remount). Static layout (the dominant case) keeps the interned plain
 // object — byte-identical resolution + elClassCache hits.
-const LAYOUT_KEYS = ['block', 'direction', 'alignX', 'alignY', 'equalCols', 'extendCss'] as const
+const LAYOUT_KEYS = ['block', 'direction', 'alignX', 'alignY', 'equalCols', 'gap', 'extendCss'] as const
 
 const Component = (props: Partial<Props> & { ref?: unknown }) => {
   const [own, rest] = splitProps(props, OWN_KEYS)
@@ -104,6 +105,7 @@ const Component = (props: Partial<Props> & { ref?: unknown }) => {
           alignX: own.alignX,
           alignY: own.alignY,
           equalCols: own.equalCols,
+          gap: own.gap,
           extraStyles: own.extendCss,
         })
       : internElementBundle({
@@ -112,6 +114,7 @@ const Component = (props: Partial<Props> & { ref?: unknown }) => {
           alignX: own.alignX,
           alignY: own.alignY,
           equalCols: own.equalCols,
+          gap: own.gap,
           extraStyles: own.extendCss,
         })
     if (isVoidTag) {
@@ -165,6 +168,7 @@ const Component = (props: Partial<Props> & { ref?: unknown }) => {
         alignX: own.alignX,
         alignY: own.alignY,
         equalCols: own.equalCols,
+        gap: own.gap,
       })
     : internElementBundle({
         childFix: true as const,
@@ -172,6 +176,7 @@ const Component = (props: Partial<Props> & { ref?: unknown }) => {
         alignX: own.alignX,
         alignY: own.alignY,
         equalCols: own.equalCols,
+        gap: own.gap,
       })
 
   // needsFix path: innerHTML belongs on the INNER styled node (where the

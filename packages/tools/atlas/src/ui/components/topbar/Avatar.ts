@@ -3,14 +3,13 @@ import { el, type T } from '../../kit'
 export const Avatar = el
   .attrs({
     tag: 'div',
+    contentAlignX: 'center',
+    contentAlignY: 'center',
   })
   .theme((t: T) => ({
     width: '32px',
     height: '32px',
     borderRadius: t.radius.round,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
     color: '#fff',
     fontWeight: '700',
     fontSize: t.size.body,

@@ -3,6 +3,8 @@ import { el, type T } from '../../kit'
 export const IconButton = el
   .attrs({
     tag: 'button',
+    contentAlignX: 'center',
+    contentAlignY: 'center',
   })
   .theme((t: T) => ({
     font: 'inherit',
@@ -11,9 +13,6 @@ export const IconButton = el
     height: '32px',
     borderRadius: t.radius.field,
     fontSize: t.size.title,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
     border: t.hairline,
     background: t.bg,
     color: t.text,

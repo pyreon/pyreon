@@ -3,10 +3,9 @@ import { el } from '../../kit'
 export const A11yBody = el
   .attrs({
     tag: 'div',
+    contentDirection: 'rows',
+    contentAlignX: 'block',
   })
   .theme(() => ({
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'stretch',
     flex: '1',
   }))

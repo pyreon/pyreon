@@ -3,17 +3,16 @@ import { el, type T } from '../../kit'
 export const StatusBar = el
   .attrs({
     tag: 'footer',
+    contentDirection: 'inline',
+    contentAlignY: 'center',
+    gap: 16,
   })
   .theme((t: T) => ({
     height: '32px',
     flex: 'none',
-    display: 'flex',
     // Explicit: without it the Element wrapper's default column stacking
     // wins and the three status texts pile up centered (the "floating
     // path" artifact at the bottom of the shell).
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: '16px',
     padding: '0 16px',
     fontFamily: t.font.mono,
     fontSize: t.size.meta,

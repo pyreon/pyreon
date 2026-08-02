@@ -2,58 +2,57 @@
  * Observatory chrome — every styled component of the Loom UI, rocketstyle on
  * the `el`/`txt` bases, tokens from `./theme` via the local `T` alias.
  *
- * Two house rules, learned the hard way:
- *  - ALL layout lives in `.theme()` structured keys — never in an attrs `css`
- *    string (a per-instance `css` prop OVERRIDES the attrs default and threw
- *    whole layouts away), and never as an inline `style=` in a view (the
- *    only exceptions are SVG paints, where `var()` is invalid in presentation
- *    attributes, and data-driven geometry — both documented at their sites).
- *  - Spacing sits on the 4/8px grid (2px allowed for micro details only);
- *    radii on a fixed scale: chip 4 · control 8 · card 12 · pill 20 · round.
+ * House rules (learned the hard way — see anti-patterns "Element-based
+ * components styled with flex overrides"):
+ *  - LAYOUT is Element's own props in `.attrs()` — `contentDirection`
+ *    ('inline' row / 'rows' column), `contentAlignX/Y` (AXIS-fixed: X is
+ *    always horizontal), `gap` (number), `block` (full-width). Element is a
+ *    flex box natively; never re-declare display/flex-direction/align in a
+ *    theme. `.theme()` is VISUAL CSS only (color, padding, radius, type).
+ *  - The documented special cases: `flexWrap` (no Element prop) rides in the
+ *    theme on the wrapper's own flex display; CSS grid components declare
+ *    their whole layout in the theme (grid is outside Element's flex model);
+ *    text truncation needs `display: 'block'` (flex never ellipsizes).
+ *  - Spacing sits on the 4/8px grid (2px micro allowed); radii on the fixed
+ *    scale: chip 4 · control 8 · card 12 · pill 20 · round.
  */
 import { dim, el, txt, DISPLAY, MONO, type InputEl, type T } from './kit'
 
 // ── frame ──────────────────────────────────────────────────────────────────
 export const Shell = el
-  .attrs({ tag: 'div' })
+  // block — the root must FILL the viewport; Element defaults to inline-flex.
+  .attrs({ tag: 'div', block: true, contentDirection: 'rows', contentAlignX: 'block' })
   .theme((t: T) => ({
-    display: 'flex', flexDirection: 'column', alignItems: 'stretch',
     height: '100vh', overflow: 'hidden', fontSize: '14px',
     fontFamily: "'Public Sans',system-ui,sans-serif",
     background: t.bg, color: t.text,
   }))
 export const Body = el
-  .attrs({ tag: 'div' })
-  .theme(() => ({ display: 'flex', flexDirection: 'row', alignItems: 'stretch', flex: '1', minHeight: '0' }))
+  .attrs({ tag: 'div', contentDirection: 'inline', contentAlignY: 'block' })
+  .theme(() => ({ flex: '1', minHeight: '0' }))
 export const Main = el
-  .attrs({ tag: 'main' })
-  .theme(() => ({ display: 'flex', flexDirection: 'column', alignItems: 'stretch', flex: '1', minWidth: '0', minHeight: '0' }))
+  .attrs({ tag: 'main', contentDirection: 'rows', contentAlignX: 'block' })
+  .theme(() => ({ flex: '1', minWidth: '0', minHeight: '0' }))
 export const Row = el
-  // Layout lives in the THEME, not an attrs `css` string: a per-instance
-  // `css` prop OVERRIDES the attrs default (props win over .attrs), and the
-  // brand block's `<Row css="gap:11px">` was silently throwing the row
-  // layout away — the logo/name/subtitle stacked and clipped.
-  .attrs({ tag: 'div' })
-  .theme(() => ({ display: 'flex', flexDirection: 'row', alignItems: 'center' }))
-export const Col = el.attrs({ tag: 'div' }).theme(() => ({ display: 'flex', flexDirection: 'column', lineHeight: '1.2' }))
+  .attrs({ tag: 'div', contentDirection: 'inline', contentAlignY: 'center' })
+  .theme(() => ({}))
+export const Col = el.attrs({ tag: 'div', contentDirection: 'rows' }).theme(() => ({ lineHeight: '1.2' }))
 export const Spacer = el.attrs({ tag: 'div' }).theme(() => ({ flex: '1', minWidth: '8px' }))
 
 // ── header ─────────────────────────────────────────────────────────────────
 export const Header = el
-  .attrs({ tag: 'header' })
+  .attrs({ tag: 'header', contentDirection: 'inline', contentAlignY: 'center', gap: 16 })
   .theme((t: T) => ({
-    display: 'flex', flexDirection: 'row', alignItems: 'center',
-    height: '56px', flex: 'none', gap: '16px', padding: '0 16px',
+    height: '56px', flex: 'none', padding: '0 16px',
     borderWidthBottom: '1px', borderStyleBottom: 'solid', borderColorBottom: t.border,
     background: t.surface,
   }))
 export const BrandBlock = el
-  .attrs({ tag: 'div' })
-  .theme(() => ({ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '12px', flex: 'none' }))
+  .attrs({ tag: 'div', contentDirection: 'inline', contentAlignY: 'center', gap: 12 })
+  .theme(() => ({ flex: 'none' }))
 export const BrandMark = el
-  .attrs({ tag: 'div' })
+  .attrs({ tag: 'div', contentDirection: 'inline', contentAlignX: 'center', contentAlignY: 'center' })
   .theme((t: T) => ({
-    display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     width: '32px', height: '32px', borderRadius: '8px', background: t.accent,
     extendCss: `box-shadow:0 4px 14px ${t.accentSoft};`,
   }))
@@ -68,11 +67,8 @@ export const BrandSub = txt
   .theme((t: T) => ({ fontFamily: MONO, fontSize: '9.5px', color: t.faint, extendCss: 'letter-spacing:.08em;' }))
 
 export const NavTabs = el
-  .attrs({ tag: 'nav' })
-  .theme((t: T) => ({
-    display: 'flex', flexDirection: 'row',
-    gap: '4px', background: t.surface2, padding: '4px', borderRadius: '12px', flex: 'none',
-  }))
+  .attrs({ tag: 'nav', contentDirection: 'inline', gap: 4 })
+  .theme((t: T) => ({ background: t.surface2, padding: '4px', borderRadius: '12px', flex: 'none' }))
 export const NavTab = el
   .attrs({ tag: 'button' })
   .states(dim((t) => ({
@@ -110,14 +106,13 @@ export const SearchKbd = txt
   }))
 
 export const HealthPill = el
-  .attrs({ tag: 'div' })
+  .attrs({ tag: 'div', contentDirection: 'inline', contentAlignY: 'center', gap: 8 })
   .states(dim((t) => ({
     ok: { borderColor: t.okRing, background: t.okSoft },
     bad: { borderColor: t.dangerRing, background: t.dangerSoft },
   })))
   .theme(() => ({
-    display: 'flex', flexDirection: 'row', alignItems: 'center',
-    gap: '8px', padding: '4px 12px', borderRadius: '20px', borderWidth: '1px', borderStyle: 'solid', flex: 'none',
+    padding: '4px 12px', borderRadius: '20px', borderWidth: '1px', borderStyle: 'solid', flex: 'none',
   }))
 export const HealthDot = el
   .attrs({ tag: 'span' })
@@ -129,9 +124,8 @@ export const HealthText = txt
   .theme(() => ({ fontFamily: MONO, fontSize: '10.5px' }))
 
 export const IconBtn = el
-  .attrs({ tag: 'button' })
+  .attrs({ tag: 'button', contentDirection: 'inline', contentAlignX: 'center', contentAlignY: 'center' })
   .theme((t: T) => ({
-    display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     width: '32px', height: '32px', borderRadius: '8px',
     borderWidth: '1px', borderStyle: 'solid', borderColor: t.border,
     background: t.bg, color: t.text, fontSize: '15px',
@@ -140,16 +134,15 @@ export const IconBtn = el
 
 // ── sidebar ────────────────────────────────────────────────────────────────
 export const Sidebar = el
-  .attrs({ tag: 'aside' })
+  .attrs({ tag: 'aside', contentDirection: 'rows' })
   .theme((t: T) => ({
-    width: 'clamp(200px,20vw,268px)', flex: 'none', display: 'flex', flexDirection: 'column', minHeight: '0',
+    width: 'clamp(200px,20vw,268px)', flex: 'none', minHeight: '0',
     borderWidthRight: '1px', borderStyleRight: 'solid', borderColorRight: t.border, background: t.surface,
   }))
 export const KindRow = el
-  .attrs({ tag: 'div' })
+  .attrs({ tag: 'div', contentDirection: 'inline', gap: 4 })
   .theme((t: T) => ({
-    display: 'flex', flexDirection: 'row',
-    padding: '12px 16px', gap: '4px',
+    padding: '12px 16px',
     borderWidthBottom: '1px', borderStyleBottom: 'solid', borderColorBottom: t.border,
   }))
 export const KindBtn = el
@@ -167,10 +160,9 @@ export const SideList = el
   .attrs({ tag: 'div' })
   .theme(() => ({ flex: '1', overflowY: 'auto', padding: '0 8px 16px' }))
 export const GroupHead = el
-  .attrs({ tag: 'div' })
+  .attrs({ tag: 'div', contentDirection: 'inline', contentAlignY: 'center', gap: 8 })
   .theme((t: T) => ({
-    display: 'flex', flexDirection: 'row', alignItems: 'center',
-    margin: '16px 0 4px', padding: '0 8px', fontSize: '11px', fontWeight: '700', color: t.muted, gap: '8px',
+    margin: '16px 0 4px', padding: '0 8px', fontSize: '11px', fontWeight: '700', color: t.muted,
   }))
 export const GroupNum = txt.attrs({ tag: 'span' }).theme((t: T) => ({ fontFamily: MONO, fontSize: '10px', color: t.accent }))
 export const GroupGlyph = txt.attrs({ tag: 'span' }).theme((t: T) => ({ fontFamily: MONO, fontSize: '10px', color: t.faint }))
@@ -178,14 +170,13 @@ export const GroupLabel = txt.attrs({ tag: 'span' }).theme(() => ({ flex: '1' })
 export const GroupCount = txt.attrs({ tag: 'span' }).theme((t: T) => ({ fontFamily: MONO, fontSize: '10px', color: t.faint }))
 
 export const PkgBtn = el
-  .attrs({ tag: 'button' })
+  .attrs({ tag: 'button', contentDirection: 'inline', contentAlignY: 'center', gap: 8, block: true })
   .states(dim((t) => ({
     idle: { color: t.text, background: 'transparent', hover: { background: t.surface2 } },
     active: { color: t.accent, background: t.accentSoft, hover: { background: t.accentSoft } },
   })))
   .theme(() => ({
-    display: 'flex', flexDirection: 'row', alignItems: 'center', width: '100%', textAlign: 'left',
-    border: 'none', gap: '8px', padding: '8px', borderRadius: '8px', marginBottom: '2px',
+    textAlign: 'left', border: 'none', padding: '8px', borderRadius: '8px', marginBottom: '2px',
     extendCss: 'cursor:pointer;transition:background .1s;font-family:inherit;',
   }))
 export const PkgBar = el
@@ -217,10 +208,12 @@ export const SideFoot = el
 
 // ── main toolbar + canvas ──────────────────────────────────────────────────
 export const ViewBar = el
-  .attrs({ tag: 'div' })
+  .attrs({ tag: 'div', contentDirection: 'inline', contentAlignY: 'center' })
   .theme((t: T) => ({
-    display: 'flex', flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap',
-    flex: 'none', gap: '8px 16px', padding: '8px 16px',
+    // flexWrap + a two-axis gap have no Element prop — the documented
+    // theme-level special case, riding on the wrapper's own flex display.
+    flexWrap: 'wrap', gap: '8px 16px',
+    flex: 'none', padding: '8px 16px',
     borderWidthBottom: '1px', borderStyleBottom: 'solid', borderColorBottom: t.border, background: t.surface,
   }))
 export const ViewTitle = txt
@@ -233,14 +226,13 @@ export const ViewEyebrow = txt
     extendCss: 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',
   }))
 export const CyclesBtn = el
-  .attrs({ tag: 'button' })
+  .attrs({ tag: 'button', contentDirection: 'inline', contentAlignY: 'center', gap: 8 })
   .states(dim((t) => ({
     on: { borderColor: t.dangerRing, background: t.dangerSoft, color: t.danger },
     off: { borderColor: t.border, background: 'transparent', color: t.muted },
   })))
   .theme(() => ({
-    display: 'flex', flexDirection: 'row', alignItems: 'center',
-    fontSize: '12px', padding: '8px 12px', borderRadius: '8px', gap: '8px',
+    fontSize: '12px', padding: '8px 12px', borderRadius: '8px',
     borderWidth: '1px', borderStyle: 'solid',
     extendCss: 'cursor:pointer;white-space:nowrap;transition:all .12s;font-family:inherit;',
   }))
@@ -248,9 +240,8 @@ export const CyclesDot = el
   .attrs({ tag: 'span' })
   .theme((t: T) => ({ width: '8px', height: '8px', borderRadius: '50%', flex: 'none', background: t.danger }))
 export const SmallBtn = el
-  .attrs({ tag: 'button' })
+  .attrs({ tag: 'button', contentDirection: 'inline', contentAlignX: 'center', contentAlignY: 'center' })
   .theme((t: T) => ({
-    display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     fontSize: '13px', width: '28px', height: '28px', flex: 'none', borderRadius: '8px',
     borderWidth: '1px', borderStyle: 'solid', borderColor: t.border,
     background: 'transparent', color: t.muted,
@@ -294,8 +285,8 @@ export const EmptyGlyph = txt
 
 /** The toolbar row above a cycle card list — chips left, meta right. */
 export const CycleHead = el
-  .attrs({ tag: 'div' })
-  .theme(() => ({ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '8px', marginBottom: '16px' }))
+  .attrs({ tag: 'div', contentDirection: 'inline', contentAlignY: 'center', gap: 8 })
+  .theme(() => ({ marginBottom: '16px' }))
 export const CycleCard = el
   .attrs({ tag: 'div' })
   .theme((t: T) => ({
@@ -331,8 +322,11 @@ export const CycleAdvice = el
   }))
 
 export const StatGrid = el
-  .attrs({ tag: 'div' })
-  .theme(() => ({ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' }))
+  .attrs({ tag: 'div', contentDirection: 'inline', gap: 16 })
+  .theme(() => ({
+    // flexWrap has no Element prop — documented theme-level special case.
+    flexWrap: 'wrap', marginBottom: '24px',
+  }))
 export const StatCard = el
   .attrs({ tag: 'div' })
   .theme((t: T) => ({
@@ -350,14 +344,13 @@ export const StatValue = txt
   .theme(() => ({ fontFamily: DISPLAY, fontSize: '26px', fontWeight: '700', extendCss: 'letter-spacing:-.02em;' }))
 
 export const ImpactRow = el
-  .attrs({ tag: 'button' })
+  .attrs({ tag: 'button', contentDirection: 'inline', contentAlignY: 'center', gap: 16, block: true })
   .states(dim((t) => ({
     idle: { background: 'transparent', hover: { background: t.surface2 } },
     active: { background: t.surface2, hover: { background: t.surface2 } },
   })))
   .theme((t: T) => ({
-    display: 'flex', flexDirection: 'row', alignItems: 'center', width: '100%', textAlign: 'left',
-    border: 'none', gap: '16px', padding: '12px',
+    textAlign: 'left', border: 'none', padding: '12px',
     borderWidthBottom: '1px', borderStyleBottom: 'solid', borderColorBottom: t.border,
     extendCss: 'cursor:pointer;transition:background .1s;font-family:inherit;',
   }))
@@ -385,6 +378,8 @@ export const ImpactCount = txt
   .theme((t: T) => ({ fontFamily: MONO, fontSize: '11.5px', width: '112px', flex: 'none', textAlign: 'right', color: t.muted }))
 
 // ── manifest table ─────────────────────────────────────────────────────────
+// CSS grid components: grid is outside Element's flex model, so the whole
+// layout stays in the theme — the documented special case.
 export const TableWrap = el
   .attrs({ tag: 'div' })
   .theme((t: T) => ({
@@ -410,8 +405,8 @@ export const TableRow = el
     extendCss: 'grid-template-columns:1.9fr .9fr .9fr .7fr 1fr;cursor:pointer;transition:background .1s;font-family:inherit;',
   }))
 export const CellName = el
-  .attrs({ tag: 'span' })
-  .theme(() => ({ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '8px', minWidth: '0' }))
+  .attrs({ tag: 'span', contentDirection: 'inline', contentAlignY: 'center', gap: 8 })
+  .theme(() => ({ minWidth: '0' }))
 export const KindDot = el
   .attrs({ tag: 'span' })
   .variants(dim((t) => ({ internal: { background: t.accent }, external: { background: t.ext } })))
@@ -437,9 +432,9 @@ export const StatusBadge = txt
 
 // ── detail panel ───────────────────────────────────────────────────────────
 export const Panel = el
-  .attrs({ tag: 'section' })
+  .attrs({ tag: 'section', contentDirection: 'rows' })
   .theme((t: T) => ({
-    width: 'clamp(280px,27vw,356px)', flex: 'none', display: 'flex', flexDirection: 'column', minHeight: '0',
+    width: 'clamp(280px,27vw,356px)', flex: 'none', minHeight: '0',
     borderWidthLeft: '1px', borderStyleLeft: 'solid', borderColorLeft: t.border, background: t.surface,
   }))
 export const PanelHead = el
@@ -455,8 +450,11 @@ export const PanelName = txt
   .attrs({ tag: 'div' })
   .theme(() => ({ fontFamily: MONO, fontSize: '15px', fontWeight: '600', marginBottom: '8px', extendCss: 'word-break:break-all;' }))
 export const ChipRow = el
-  .attrs({ tag: 'div' })
-  .theme(() => ({ display: 'flex', flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }))
+  .attrs({ tag: 'div', contentDirection: 'inline', contentAlignY: 'center', gap: 8 })
+  .theme(() => ({
+    // flexWrap has no Element prop — documented theme-level special case.
+    flexWrap: 'wrap',
+  }))
 export const MetaChip = txt
   .attrs({ tag: 'span' })
   .theme((t: T) => ({
@@ -480,12 +478,10 @@ export const CycleWarnText = txt
   .attrs({ tag: 'div' })
   .theme((t: T) => ({ fontSize: '12.5px', color: t.muted, extendCss: 'line-height:1.5;' }))
 export const MetricRow = el
-  .attrs({ tag: 'div' })
+  // block = full row width; without it the shrink-wrapped row leaves
+  // spaceBetween nothing to distribute ("Resolution depth0").
+  .attrs({ tag: 'div', contentDirection: 'inline', contentAlignY: 'center', contentAlignX: 'spaceBetween', block: true })
   .theme((t: T) => ({
-    display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    // Full width, or the shrink-wrapped row leaves space-between nothing to
-    // distribute and label+value render jammed ("Resolution depth0").
-    width: '100%',
     padding: '8px 0',
     borderWidthBottom: '1px', borderStyleBottom: 'solid', borderColorBottom: t.border,
   }))
@@ -512,10 +508,9 @@ export const PathBlock = el
 
 // ── footer ─────────────────────────────────────────────────────────────────
 export const Footer = el
-  .attrs({ tag: 'footer' })
+  .attrs({ tag: 'footer', contentDirection: 'inline', contentAlignY: 'center', gap: 16 })
   .theme((t: T) => ({
-    display: 'flex', flexDirection: 'row', alignItems: 'center',
-    height: '32px', flex: 'none', gap: '16px', padding: '0 16px',
+    height: '32px', flex: 'none', padding: '0 16px',
     borderWidthTop: '1px', borderStyleTop: 'solid', borderColorTop: t.border,
     background: t.surface, fontFamily: MONO, fontSize: '10.5px', color: t.faint,
   }))
@@ -537,19 +532,16 @@ export const MatrixNote = txt
   .theme((t: T) => ({ fontFamily: MONO, fontSize: '10.5px', color: t.faint, marginBottom: '8px' }))
 export const MatrixPad = el.attrs({ tag: 'div' }).theme(() => ({ padding: '16px', display: 'inline-block' }))
 export const MatrixHeadRow = el
-  .attrs({ tag: 'div' })
-  .theme(() => ({ display: 'flex', flexDirection: 'row' }))
+  .attrs({ tag: 'div', contentDirection: 'inline' })
+  .theme(() => ({}))
 export const MatrixRow = el
-  .attrs({ tag: 'div' })
-  .theme(() => ({ display: 'flex', flexDirection: 'row', alignItems: 'center' }))
+  .attrs({ tag: 'div', contentDirection: 'inline', contentAlignY: 'center' })
+  .theme(() => ({}))
 /** Top-left spacer aligning the column-label band with the row labels. */
 export const MatrixCorner = el.attrs({ tag: 'div' }).theme(() => ({ width: '112px', flex: 'none' }))
 export const MatrixColHead = el
-  .attrs({ tag: 'div' })
-  .theme(() => ({
-    width: '16px', height: '96px', flex: 'none', overflow: 'hidden',
-    display: 'flex', flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center',
-  }))
+  .attrs({ tag: 'div', contentDirection: 'inline', contentAlignX: 'center', contentAlignY: 'bottom' })
+  .theme(() => ({ width: '16px', height: '96px', flex: 'none', overflow: 'hidden' }))
 export const MatrixColLabel = txt
   .attrs({ tag: 'span' })
   .states(dim((t) => ({ idle: { color: t.faint }, active: { color: t.accent } })))
@@ -561,8 +553,8 @@ export const MatrixRowLabel = el
   .attrs({ tag: 'button' })
   .states(dim((t) => ({ idle: { color: t.muted }, active: { color: t.accent } })))
   .theme(() => ({
-    // display:block overrides the Element wrapper's flex — a flex container
-    // never ellipsizes its text, which killed the right-align + '…' here.
+    // display:block — text truncation territory: a flex container never
+    // ellipsizes its text (documented special case).
     display: 'block',
     width: '112px', flex: 'none', textAlign: 'right', padding: '0 8px 0 0',
     fontFamily: MONO, fontSize: '10px', border: 'none', background: 'transparent',
@@ -570,20 +562,16 @@ export const MatrixRowLabel = el
   }))
 /** An inert non-edge cell; carries the diagonal marker when row === column. */
 export const MatrixBlank = el
-  .attrs({ tag: 'div' })
-  .theme(() => ({
-    width: '16px', height: '16px', flex: 'none',
-    display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-  }))
+  .attrs({ tag: 'div', contentDirection: 'inline', contentAlignX: 'center', contentAlignY: 'center' })
+  .theme(() => ({ width: '16px', height: '16px', flex: 'none' }))
 export const MatrixDiag = el
   .attrs({ tag: 'span' })
   .theme((t: T) => ({ width: '4px', height: '4px', borderRadius: '50%', background: t.border, extendCss: 'opacity:.6;' }))
 /** A real <button> per edge cell: keyboard-reachable, not just clickable. */
 export const MatrixCellBtn = el
-  .attrs({ tag: 'button' })
+  .attrs({ tag: 'button', contentDirection: 'inline', contentAlignX: 'center', contentAlignY: 'center' })
   .theme(() => ({
     width: '16px', height: '16px', flex: 'none', padding: '0', border: 'none', background: 'transparent',
-    display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     extendCss: 'cursor:pointer;',
   }))
 export const MatrixCellDot = el

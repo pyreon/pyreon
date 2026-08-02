@@ -4,17 +4,16 @@ import { dim, el, type T } from '../../kit'
 export const ScenBtn = el
   .attrs({
     tag: 'button',
+    contentDirection: 'inline',
+    contentAlignY: 'center',
+    block: true,
+    gap: 8,
   })
   .theme((t: T) => ({
-    flexDirection: 'row',
     font: 'inherit',
     cursor: 'pointer',
-    width: '100%',
     textAlign: 'left',
     border: 'none',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
     padding: '4px 8px 4px 32px',
     borderRadius: t.radius.item,
     fontSize: t.size.text,

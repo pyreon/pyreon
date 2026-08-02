@@ -4,10 +4,9 @@ import { el } from '../../kit'
 export const ScenRow = el
   .attrs({
     tag: 'div',
+    contentDirection: 'inline',
+    contentAlignY: 'center',
+    gap: 2,
   })
   .theme(() => ({
-    flexDirection: 'row',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '2px',
   }))

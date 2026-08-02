@@ -3,11 +3,10 @@ import { el } from '../../kit'
 export const SideHead = el
   .attrs({
     tag: 'div',
+    contentDirection: 'inline',
+    contentAlignY: 'center',
+    contentAlignX: 'spaceBetween',
   })
   .theme(() => ({
-    flexDirection: 'row',
     padding: '16px 16px 8px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
   }))

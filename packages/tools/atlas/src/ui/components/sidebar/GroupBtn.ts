@@ -4,17 +4,16 @@ import { el, type T } from '../../kit'
 export const GroupBtn = el
   .attrs({
     tag: 'button',
+    contentDirection: 'inline',
+    contentAlignY: 'center',
+    block: true,
+    gap: 8,
   })
   .theme((t: T) => ({
-    flexDirection: 'row',
     font: 'inherit',
     cursor: 'pointer',
-    width: '100%',
     textAlign: 'left',
     border: 'none',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
     margin: '8px 0 4px',
     padding: '2px 8px',
     borderRadius: t.radius.control,

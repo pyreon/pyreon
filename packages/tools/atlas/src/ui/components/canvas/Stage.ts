@@ -3,15 +3,14 @@ import { el, type T } from '../../kit'
 export const Stage = el
   .attrs({
     tag: 'div',
+    contentAlignX: 'center',
+    contentAlignY: 'center',
   })
   .theme((t: T) => ({
     position: 'relative',
     flex: '1',
     minHeight: '0',
     overflow: 'auto',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
     padding: '40px',
     backgroundColor: t.bg,
     backgroundSize: '22px 22px',
