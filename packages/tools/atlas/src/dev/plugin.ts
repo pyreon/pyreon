@@ -262,6 +262,12 @@ export function devHtml(title = 'atlas'): string {
     // an interpolation into HTML is an injection seam the moment a `--title`
     // flag (or any other user-controlled source) reaches it.
     `    <title>${escapeHtml(title)}</title>`,
+    // The workbench's typography depends on these three families; without
+    // them every `font: inherit` fell back to the BROWSER default (Times) —
+    // the single biggest "unstyled" impression the workbench could give.
+    '    <link rel="preconnect" href="https://fonts.googleapis.com" />',
+    '    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />',
+    '    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />',
     '  </head>',
     '  <body>',
     '    <div id="atlas-root"></div>',

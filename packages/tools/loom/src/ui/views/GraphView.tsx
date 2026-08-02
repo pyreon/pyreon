@@ -44,13 +44,17 @@ export function GraphView(props: { model: ObservatoryModel; theme: () => LoomTok
             const dx = Math.max(48, Math.abs(p2.x - p1.x) * 0.45)
             const d = `M ${p1.x + 11} ${p1.y} C ${p1.x + 11 + dx} ${p1.y}, ${p2.x - 11 - dx} ${p2.y}, ${p2.x - 11} ${p2.y}`
             const stroke = isCyc ? t.danger : on ? t.accent : t.edge
-            const opacity = focus ? (on || isCyc ? 0.95 : 0.08) : on ? 0.9 : isCyc ? 0.85 : 0.3
+            // At ~700 edges the ambient layer must stay a whisper (0.1) or the
+            // whole canvas reads as spaghetti; a lit fan of 20+ deps at 0.95
+            // was a flare that washed out its own labels — 0.65 keeps it the
+            // loudest thing on screen without drowning the nodes.
+            const opacity = focus ? (isCyc ? 0.9 : on ? 0.65 : 0.05) : on ? 0.6 : isCyc ? 0.85 : 0.1
             edges.push(
               <path
                 d={d}
                 fill="none"
                 stroke={stroke}
-                stroke-width={on || isCyc ? '1.8' : '1'}
+                stroke-width={isCyc ? '1.8' : on ? '1.4' : '1'}
                 stroke-dasharray={isCyc ? '5 4' : undefined}
                 opacity={String(opacity)}
                 style={isCyc ? 'animation:lm-dash 1.1s linear infinite' : undefined}
@@ -62,33 +66,54 @@ export function GraphView(props: { model: ObservatoryModel; theme: () => LoomTok
         const nodes = shown.map((n) => {
           const P = layout.pos.get(n.id)
           if (!P) return null
-          const name = shortName(n.id)
+          const full = shortName(n.id)
+          // Long ids (`example-fundamentals-playground`) bled across the next
+          // depth column — truncate for the canvas, keep the full name as a
+          // native <title> tooltip. Selection shows it whole in the detail rail.
+          const name = full.length > 19 ? `${full.slice(0, 18)}…` : full
           const isSel = n.id === sel
           const isCyc = m.showCycles() && m.cycleNodes.has(n.id)
           const dimmed = focus && !related.has(n.id)
           const fill = isCyc ? t.danger : n.kind === 'internal' ? t.accent : t.ext
+          // Version sublabels only where the eye is — on the selected node and
+          // the focused neighborhood. 293 always-on sublabels were pure noise.
+          const showVersion = isSel || (focus != null && related.has(n.id))
           return (
             <g
               transform={`translate(${P.x},${P.y})`}
               data-testid={`gnode-${n.id}`}
-              style={`cursor:pointer;opacity:${dimmed ? 0.45 : 1};transition:opacity .16s`}
+              style={`cursor:pointer;opacity:${dimmed ? 0.4 : 1};transition:opacity .16s`}
               onClick={() => m.select(n.id)}
               onMouseEnter={() => m.hoverId.set(n.id)}
               onMouseLeave={() => m.hoverId.set(null)}
             >
+              <title>{n.id}</title>
               {isSel ? <circle r="16" fill="none" stroke={fill} stroke-width="1.2" opacity="0.5" /> : null}
               <circle r={isSel ? '9' : '7'} fill={n.kind === 'internal' ? fill : t.surface} stroke={fill} stroke-width="2" />
               <text
                 x="15"
-                y="3"
+                y="4"
                 fill={isSel ? t.text : t.muted}
+                stroke={t.bg}
+                stroke-width="3.5"
+                paint-order="stroke"
                 style={`font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:${isSel ? 600 : 500};pointer-events:none`}
               >
                 {name}
               </text>
-              <text x="15" y="16" fill={t.faint} style="font-family:'JetBrains Mono',monospace;font-size:9.5px;pointer-events:none">
-                {n.kind === 'internal' ? `v${n.version}` : n.version}
-              </text>
+              {showVersion ? (
+                <text
+                  x="15"
+                  y="17"
+                  fill={t.faint}
+                  stroke={t.bg}
+                  stroke-width="3"
+                  paint-order="stroke"
+                  style="font-family:'JetBrains Mono',monospace;font-size:9.5px;pointer-events:none"
+                >
+                  {n.kind === 'internal' ? `v${n.version}` : n.version}
+                </text>
+              ) : null}
             </g>
           )
         })
