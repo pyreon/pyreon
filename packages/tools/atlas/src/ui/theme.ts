@@ -11,8 +11,10 @@
  */
 export interface ThemeScale {
   font: {
-    /** UI text — inherits the shell's sans stack. */
+    /** UI text — the shell-wide sans stack. */
     sans: string
+    /** Headings + the brand mark. */
+    display: string
     /** Data, code, badges, metrics. */
     mono: string
   }
@@ -80,8 +82,9 @@ export interface ThemeScale {
 /** The structural scale is mode-independent — one frozen instance. */
 export const SCALE: ThemeScale = {
   font: {
-    sans: 'inherit',
-    mono: "'JetBrains Mono',monospace",
+    sans: "'Public Sans','Inter',system-ui,-apple-system,sans-serif",
+    display: "'Space Grotesk','Public Sans',system-ui,sans-serif",
+    mono: "'JetBrains Mono','SF Mono',ui-monospace,monospace",
   },
   size: {
     nano: '9px',

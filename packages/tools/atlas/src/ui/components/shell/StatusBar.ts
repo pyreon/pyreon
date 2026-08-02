@@ -8,6 +8,10 @@ export const StatusBar = el
     height: '30px',
     flex: 'none',
     display: 'flex',
+    // Explicit: without it the Element wrapper's default column stacking
+    // wins and the three status texts pile up centered (the "floating
+    // path" artifact at the bottom of the shell).
+    flexDirection: 'row',
     alignItems: 'center',
     gap: '14px',
     padding: '0 16px',

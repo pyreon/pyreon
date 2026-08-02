@@ -7,8 +7,12 @@ export const AddonTabs = el
   })
   .theme((t: T) => ({
     display: 'flex',
+    flexDirection: 'row',
+    // Eleven addon tabs never fit a 352px panel — wrap instead of the old
+    // overflowX:auto, whose hidden scroll clipped half the strip with no
+    // affordance that more tabs existed.
+    flexWrap: 'wrap',
     padding: '6px 8px',
     gap: '2px',
-    overflowX: 'auto',
     borderBottom: t.hairline,
   }))

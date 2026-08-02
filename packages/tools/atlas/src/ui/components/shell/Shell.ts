@@ -10,7 +10,9 @@ export const Shell = el
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
+    fontFamily: t.font.sans,
     fontSize: t.size.heading,
     background: t.bg,
     color: t.text,
+    extendCss: '-webkit-font-smoothing:antialiased;',
   }))
