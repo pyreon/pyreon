@@ -256,6 +256,43 @@ class RouterDemoInstrumentedTest {
         composeRule.onNodeWithTag("slow-box").assertDoesNotExist()
     }
 
+    // Adaptive row — RESPONSIVE PROP VALUES follow the size class, proven
+    // as a live FLIP on ONE device: the A→B gap is measured at the phone
+    // width (compact → gap token 2 → 8dp), then `wm size` resizes the
+    // display to tablet width (screenWidthDp ≥ 600 → regular → gap token
+    // 6 → 24dp) and the SAME nodes re-measure — LocalConfiguration drives
+    // recomposition, so the flip is the responsive-prop chain end-to-end.
+    // Restored in a finally so a failed assertion can never strand the
+    // emulator resized.
+    @Test
+    fun adaptivePropsFollowSizeClassFlip() {
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        val aC = composeRule.onNodeWithTag("adaptive-a").getUnclippedBoundsInRoot()
+        val bC = composeRule.onNodeWithTag("adaptive-b").getUnclippedBoundsInRoot()
+        val gapCompact = bC.top - aC.bottom
+        check(gapCompact > 5.dp && gapCompact < 12.dp) {
+            "compact gap is $gapCompact, expected the compact token (2 → 8dp)"
+        }
+
+        val uiAutomation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        try {
+            uiAutomation.executeShellCommand("wm size 1600x2560").close()
+            composeRule.waitUntil(timeoutMillis = 10_000) {
+                val a = composeRule.onNodeWithTag("adaptive-a").getUnclippedBoundsInRoot()
+                val b = composeRule.onNodeWithTag("adaptive-b").getUnclippedBoundsInRoot()
+                (b.top - a.bottom) > 20.dp
+            }
+            val aR = composeRule.onNodeWithTag("adaptive-a").getUnclippedBoundsInRoot()
+            val bR = composeRule.onNodeWithTag("adaptive-b").getUnclippedBoundsInRoot()
+            val gapRegular = bR.top - aR.bottom
+            check(gapRegular > 20.dp && gapRegular < 28.dp) {
+                "regular gap is $gapRegular, expected the regular token (6 → 24dp)"
+            }
+        } finally {
+            uiAutomation.executeShellCommand("wm size reset").close()
+        }
+    }
+
     // Styling row — defineTheme tokens + styled(Prim) device-proven by
     // GEOMETRY (the iOS half's mirror): children of the two token-padded
     // cards differ in left offset by exactly xl−sm = 40−8 = 32dp. Child-vs-

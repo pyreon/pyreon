@@ -16,7 +16,7 @@
 // targets — provable by `ls` + `diff`.
 
 import { For, onMount } from '@pyreon/core'
-import { useSecureStorage, useWebSocket } from '@pyreon/hooks'
+import { useSecureStorage, useSizeClass, useWebSocket } from '@pyreon/hooks'
 import { useFieldArray } from '@pyreon/form'
 import { Button, Heading, Inline, Layer, Link, Spacer, Stack, Text } from '@pyreon/primitives'
 import { signal } from '@pyreon/reactivity'
@@ -96,6 +96,7 @@ function HomePage() {
   // BACK through the store (not the value it just wrote), so the rendered
   // "s3cret" proves the write→read round trip, not a signal echo.
   const secrets = useSecureStorage()
+  const sizeClass = useSizeClass()
   const secretStatus = signal<string>('none')
   onMount(() => {
     secretStatus.set(secrets.read('demo-secret') ?? 'none')
@@ -169,6 +170,24 @@ function HomePage() {
         <Text data-testid="layer-under">under</Text>
         <Text data-testid="layer-over">over</Text>
       </Layer>
+
+      {/* Adaptive-row proof — RESPONSIVE PROP VALUES keyed on the size
+          class (the row's "full responsive props absent" gap): the stack's
+          gap + padding take DIFFERENT literals per class (compact 2→8dp/pt,
+          regular 6→24dp/pt on the 4x scale), so GEOMETRY discriminates the
+          resolved class end-to-end. Android proves the FLIP deterministically
+          on one device (`wm size` resize re-derives screenWidthDp →
+          recomposition); iOS asserts the compact values on the iPhone sim
+          (the regular half is the size-class READ already device-proven on
+          iPad — M2.2). */}
+      <Stack
+        gap={sizeClass() === 'regular' ? 6 : 2}
+        padding={sizeClass() === 'regular' ? 8 : 2}
+        data-testid="adaptive-box"
+      >
+        <Text data-testid="adaptive-a">A</Text>
+        <Text data-testid="adaptive-b">B</Text>
+      </Stack>
     </Stack>
   )
 }

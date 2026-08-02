@@ -346,6 +346,33 @@ final class PyreonRouterDemoUITests: XCTestCase {
         )
     }
 
+    // Adaptive row — the COMPACT half of the responsive-prop proof on the
+    // iPhone simulator: the A→B vertical gap carries the compact token
+    // (2 → 8pt; a regular resolution would read 24pt, a dropped adaptive
+    // prop the Stack default 12pt — all three separable). The REGULAR half
+    // is Android's live wm-resize flip (deterministic on one device); the
+    // size-class READ on iPad is already device-proven (M2.2).
+    func test_adaptivePropsResolveCompactOnPhone() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            "Home page did not render"
+        )
+        let a = app.staticTexts["adaptive-a"]
+        let b = app.staticTexts["adaptive-b"]
+        XCTAssertTrue(a.waitForExistence(timeout: 10), "adaptive-a missing")
+        XCTAssertTrue(b.exists, "adaptive-b missing")
+        let gap = b.frame.minY - a.frame.maxY
+        XCTAssertEqual(
+            gap, 8, accuracy: 3,
+            "compact gap is \(gap)pt, expected the compact token (2 → 8pt); "
+                + "24 would mean regular resolved on an iPhone, ~12 the "
+                + "adaptive prop was dropped for the Stack default"
+        )
+    }
+
     // Styling row — defineTheme tokens + styled(Prim) device-proven by
     // GEOMETRY. iOS measurement reality (read off a live frame dump, per
     // the #2593 discipline): a11y frames HUG the glyphs — a container's
