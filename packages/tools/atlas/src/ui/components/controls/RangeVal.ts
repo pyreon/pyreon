@@ -7,7 +7,7 @@ export const RangeVal = txt
   .theme((t: T) => ({
     fontFamily: t.font.mono,
     fontSize: t.size.body,
-    width: '34px',
+    width: '32px',
     textAlign: 'right',
     color: t.muted,
   }))

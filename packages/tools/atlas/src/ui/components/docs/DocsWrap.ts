@@ -3,7 +3,8 @@ import { el, type T } from '../../kit'
 export const DocsWrap = el
   .attrs({
     tag: 'div',
-    css: 'display:flex;flex-direction:column;align-items:stretch;',
+    contentDirection: 'rows',
+    contentAlignX: 'block',
   })
   .theme((t: T) => ({
     flex: '1',

@@ -3,18 +3,17 @@ import { dim, el, type T } from '../../kit'
 export const CompBtn = el
   .attrs({
     tag: 'button',
-    css: 'display:flex;flex-direction:row;align-items:center;',
+    contentDirection: 'inline',
+    contentAlignY: 'center',
+    block: true,
+    gap: 12,
   })
   .theme((t: T) => ({
     font: 'inherit',
     cursor: 'pointer',
-    width: '100%',
     textAlign: 'left',
     border: 'none',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '11px',
-    padding: '8px 10px',
+    padding: '8px 8px',
     borderRadius: t.radius.button,
     marginBottom: '1px',
     fontSize: t.size.item,

@@ -3,12 +3,11 @@ import { el } from '../../kit'
 export const RightRow = el
   .attrs({
     tag: 'div',
-    css: 'display:flex;flex-direction:row;align-items:center;justify-content:flex-end;',
+    contentDirection: 'inline',
+    contentAlignY: 'center',
+    contentAlignX: 'right',
+    gap: 8,
   })
   .theme(() => ({
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-    minWidth: '190px',
-    justifyContent: 'flex-end',
+    minWidth: '192px',
   }))

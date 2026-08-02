@@ -132,7 +132,7 @@ export function Observatory(props: { report: LoomReport; brand?: string }) {
     <PyreonUI theme={((() => theme()) as never)} mode={(() => (m.dark() ? 'dark' : 'light')) as never}>
       <C.Shell data-testid="loom-shell">
         <C.Header>
-          <C.Row css="gap:11px;flex:none;">
+          <C.BrandBlock>
             <C.BrandMark>
               <C.BrandGlyph>{'{}'}</C.BrandGlyph>
             </C.BrandMark>
@@ -140,7 +140,7 @@ export function Observatory(props: { report: LoomReport; brand?: string }) {
               <C.BrandName>{props.brand ?? 'loom'}</C.BrandName>
               <C.BrandSub>dependency observatory</C.BrandSub>
             </C.Col>
-          </C.Row>
+          </C.BrandBlock>
           <C.NavTabs>
             {VIEWS.map((v) => (
               <C.NavTab
@@ -227,7 +227,7 @@ export function Observatory(props: { report: LoomReport; brand?: string }) {
                   case 'graph':
                     return h(GraphView, { model: m, theme: () => theme() })
                   case 'matrix':
-                    return h(MatrixView, { model: m, theme: () => theme() })
+                    return h(MatrixView, { model: m })
                   case 'cycles':
                     return h(CyclesView, { model: m })
                   case 'impact':

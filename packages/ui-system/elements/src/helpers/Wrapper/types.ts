@@ -10,6 +10,7 @@ import type {
   Css,
   Direction,
   ExtendCss,
+  Responsive,
   ResponsiveBoolType,
 } from '../../types'
 
@@ -24,6 +25,7 @@ export interface Props {
   alignX: AlignX | undefined
   alignY: AlignY | undefined
   equalCols: ResponsiveBoolType | undefined
+  gap: Responsive | undefined
   extendCss: ExtendCss | undefined
   dangerouslySetInnerHTML: { __html: string } | undefined
 }
@@ -35,6 +37,7 @@ export interface StyledProps {
     alignY: AlignY
     equalCols: ResponsiveBoolType
   } & Partial<{
+    gap: Responsive
     block: ResponsiveBoolType
     extraStyles: ExtendCss
     childFix: true
@@ -53,6 +56,7 @@ export type ThemeProps = Partial<{
   alignX: ContentAlignX
   alignY: ContentAlignY
   equalCols: ContentBoolean
+  gap: string | number
   block: ContentBoolean
   extraStyles: Css
   childFix: true

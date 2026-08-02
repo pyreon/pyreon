@@ -50,15 +50,6 @@ export const el = rs({ name: 'AtlasEl', component: Element }).attrs({ contentAli
 
       return css`
         ${baseTheme};
-        /* needsFix tags (button/fieldset/legend) render children inside an
-           extra flex-fix <span> layer that the theme's root-level flex/gap
-           cannot reach — Element's own layout props don't carry gap on the
-           simple path either. Making that layer transparent lets the theme's
-           declared row/gap/align govern the real children, exactly as it
-           already does for single-layer div/span elements. */
-        &:where(button, fieldset, legend) > span:only-child {
-          display: contents;
-        }
         ${!disabled && isDynamic &&
         css`
           cursor: pointer;

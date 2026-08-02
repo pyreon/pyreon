@@ -10,7 +10,7 @@ export const SegBtn = el
     fontWeight: '600',
     cursor: 'pointer',
     border: 'none',
-    padding: '7px 15px',
+    padding: '8px 16px',
     borderRadius: t.radius.button,
     transition: `all ${t.motion.base}`,
     color: t.muted,

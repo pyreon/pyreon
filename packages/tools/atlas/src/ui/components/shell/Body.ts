@@ -3,7 +3,8 @@ import { el } from '../../kit'
 export const Body = el
   .attrs({
     tag: 'div',
-    css: 'display:flex;flex-direction:row;align-items:stretch;',
+    contentDirection: 'inline',
+    contentAlignY: 'block',
   })
   .theme(() => ({
     flex: '1',

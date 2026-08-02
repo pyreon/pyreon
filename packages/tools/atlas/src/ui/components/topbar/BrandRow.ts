@@ -3,11 +3,10 @@ import { el } from '../../kit'
 export const BrandRow = el
   .attrs({
     tag: 'div',
-    css: 'display:flex;flex-direction:row;align-items:center;',
+    contentDirection: 'inline',
+    contentAlignY: 'center',
+    gap: 12,
   })
   .theme(() => ({
-    display: 'flex',
-    alignItems: 'center',
-    gap: '11px',
-    minWidth: '190px',
+    minWidth: '192px',
   }))

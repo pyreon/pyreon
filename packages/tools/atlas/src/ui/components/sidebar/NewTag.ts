@@ -8,7 +8,7 @@ export const NewTag = txt
     fontSize: t.size.nano,
     fontWeight: '700',
     letterSpacing: t.tracking.md,
-    padding: '2px 6px',
+    padding: '2px 8px',
     borderRadius: t.radius.chip,
     color: t.accent,
     background: t.accentSoft,

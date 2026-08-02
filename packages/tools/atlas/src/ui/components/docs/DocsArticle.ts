@@ -3,7 +3,8 @@ import { el } from '../../kit'
 export const DocsArticle = el
   .attrs({
     tag: 'article',
-    css: 'display:flex;flex-direction:column;align-items:stretch;',
+    contentDirection: 'rows',
+    contentAlignX: 'block',
   })
   .theme(() => ({
     maxWidth: '720px',

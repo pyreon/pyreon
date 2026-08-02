@@ -3,16 +3,14 @@ import { dim, el, type T } from '../../kit'
 export const A11yIcon = el
   .attrs({
     tag: 'span',
-    css: 'display:flex;align-items:center;justify-content:center;',
+    contentAlignX: 'center',
+    contentAlignY: 'center',
   })
   .theme((t: T) => ({
     width: '20px',
     height: '20px',
     flex: 'none',
     borderRadius: t.radius.control,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
     fontSize: t.size.body,
     color: '#fff',
     background: t.ok,

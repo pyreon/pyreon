@@ -233,6 +233,10 @@ const Component: PyreonElement = (props) => {
             direction: () => computeWrapperLayout(isSimpleElement).direction,
             alignX: () => computeWrapperLayout(isSimpleElement).alignX,
             alignY: () => computeWrapperLayout(isSimpleElement).alignY,
+            // Simple path only — the compound path spaces its slots via
+            // Content's margin machinery; feeding the wrapper CSS gap too
+            // would double the spacing.
+            gap: () => (isSimpleElement ? own.gap : undefined),
           },
           {
             ref: mergedRef,
@@ -248,6 +252,7 @@ const Component: PyreonElement = (props) => {
           direction: wrapperLayout.direction,
           alignX: wrapperLayout.alignX,
           alignY: wrapperLayout.alignY,
+          gap: isSimpleElement ? own.gap : undefined,
           as: undefined, // reset styled-components `as` prop
         }
 
@@ -302,6 +307,7 @@ const Component: PyreonElement = (props) => {
           alignX: wl.alignX,
           alignY: wl.alignY,
           equalCols: own.equalCols,
+          gap: own.gap,
           extraStyles: own.css,
         }
       }

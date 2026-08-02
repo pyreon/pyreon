@@ -27,13 +27,13 @@ export function CyclesView(props: { model: ObservatoryModel }) {
       </Show>
       {cycles.map((loop, i) => (
         <C.CycleCard data-testid={`cycle-${i}`}>
-          <C.Row css="gap:10px;margin-bottom:14px;">
+          <C.CycleHead>
             <C.CycleTag>{`LOOP ${String(i + 1).padStart(2, '0')}`}</C.CycleTag>
             <C.CycleMeta>{`${loop.length} packages · ${loop.length} edges`}</C.CycleMeta>
             <C.Spacer />
             <C.CycleSev variant={loop.length > 2 ? 'high' : 'medium'}>{loop.length > 2 ? 'high' : 'medium'}</C.CycleSev>
-          </C.Row>
-          <C.ChipRow css="align-items:center;gap:8px;">
+          </C.CycleHead>
+          <C.ChipRow>
             {loop.map((id, j) => (
               <>
                 <C.CycleChip onClick={() => m.select(id)}>{id}</C.CycleChip>

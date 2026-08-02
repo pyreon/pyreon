@@ -50,15 +50,6 @@ export const el = rs({ name: 'LoomEl', component: Element }).attrs({ contentAlig
 
       return css`
         ${baseTheme};
-        /* needsFix tags (button/fieldset/legend) render children inside an
-           extra flex-fix <span> layer that the theme's root-level flex/gap
-           cannot reach — the status dots in "fabric clean" / "highlight
-           cycles" stacked ABOVE their labels because of it. Same fix as the
-           atlas base: make the layer transparent so the root's declared
-           row/gap/align governs the real children. */
-        &:where(button, fieldset, legend) > span:only-child {
-          display: contents;
-        }
         ${!disabled && isDynamic &&
         css`
           cursor: pointer;

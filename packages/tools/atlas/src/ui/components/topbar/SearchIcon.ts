@@ -6,7 +6,7 @@ export const SearchIcon = txt
   })
   .theme((t: T) => ({
     position: 'absolute',
-    left: '13px',
+    left: '12px',
     top: '50%',
     transform: 'translateY(-50%)',
     fontSize: t.size.input,

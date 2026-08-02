@@ -6,7 +6,7 @@
  * elements where a single flex container is insufficient.
  */
 import { config } from '@pyreon/ui-core'
-import { alignContent, extendCss, makeItResponsive } from '@pyreon/unistyle'
+import { alignContent, extendCss, makeItResponsive, value } from '@pyreon/unistyle'
 import type { ResponsiveStylesCallback } from '../../types'
 import type { StyledProps, ThemeProps } from './types'
 
@@ -23,7 +23,7 @@ const parentFixCSS = `
   flex-direction: column;
 `
 
-export const styles: ResponsiveStylesCallback<ThemeProps> = ({ theme: t, css: cssFn }) => cssFn`
+export const styles: ResponsiveStylesCallback<ThemeProps> = ({ theme: t, css: cssFn, rootSize }) => cssFn`
   ${alignContent({
     direction: t.direction,
     alignX: t.alignX,
@@ -43,6 +43,15 @@ export const styles: ResponsiveStylesCallback<ThemeProps> = ({ theme: t, css: cs
 
   ${!t.childFix && `display: ${t.block ? 'flex' : 'inline-flex'};`};
   ${t.parentFix && parentFixCSS};
+
+  /*
+   * Element's typed \`gap\` completes here for SIMPLE elements (and the
+   * needsFix childFix layer): modern CSS gap on the flex container. The
+   * compound path keeps its slot-margin machinery (Content/styled.ts) and
+   * never feeds gap into this bundle — see Element's WRAPPER_PROPS gate —
+   * so the two mechanisms cannot double up.
+   */
+  ${t.gap != null && `gap: ${value(t.gap, rootSize)};`};
 
   ${t.extraStyles && extendCss(t.extraStyles as Parameters<typeof extendCss>[0])};
 `

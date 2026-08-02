@@ -3,10 +3,9 @@ import { el } from '../../kit'
 export const EnumWrap = el
   .attrs({
     tag: 'div',
-    css: 'display:flex;flex-direction:row;flex-wrap:wrap;',
+    contentDirection: 'inline',
+    gap: 4,
   })
   .theme(() => ({
-    display: 'flex',
     flexWrap: 'wrap',
-    gap: '5px',
   }))

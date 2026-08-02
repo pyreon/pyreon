@@ -6,12 +6,12 @@ export const Kbd = txt
   })
   .theme((t: T) => ({
     position: 'absolute',
-    right: '11px',
+    right: '12px',
     top: '50%',
     transform: 'translateY(-50%)',
     fontFamily: t.font.mono,
     fontSize: t.size.label,
-    padding: '1px 6px',
+    padding: '1px 8px',
     borderRadius: t.radius.chip,
     color: t.faint,
     border: t.hairline,

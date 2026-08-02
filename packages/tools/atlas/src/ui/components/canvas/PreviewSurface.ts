@@ -3,13 +3,11 @@ import { dim, el, type T } from '../../kit'
 export const PreviewSurface = el
   .attrs({
     tag: 'div',
-    css: 'display:flex;align-items:center;justify-content:center;',
+    contentAlignX: 'center',
+    contentAlignY: 'center',
   })
   .theme((t: T) => ({
     padding: '56px 40px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
     minHeight: '220px',
     transition: `transform ${t.motion.base} ease`,
     transformOrigin: 'center',

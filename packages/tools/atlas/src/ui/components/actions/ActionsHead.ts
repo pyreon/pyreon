@@ -3,11 +3,10 @@ import { el } from '../../kit'
 export const ActionsHead = el
   .attrs({
     tag: 'div',
-    css: 'display:flex;flex-direction:row;align-items:center;justify-content:space-between;',
+    contentDirection: 'inline',
+    contentAlignY: 'center',
+    contentAlignX: 'spaceBetween',
   })
   .theme(() => ({
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     marginBottom: '12px',
   }))

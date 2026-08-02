@@ -3,12 +3,12 @@ import { el, type T } from '../../kit'
 export const Segment = el
   .attrs({
     tag: 'div',
-    css: 'display:flex;flex-direction:row;align-items:center;',
+    contentDirection: 'inline',
+    contentAlignY: 'center',
+    gap: 2,
   })
   .theme((t: T) => ({
-    display: 'flex',
-    gap: '2px',
-    padding: '3px',
+    padding: '4px',
     borderRadius: t.radius.panel,
     background: t.surface2,
   }))

@@ -3,7 +3,8 @@ import { el } from '../../kit'
 export const AddonBody = el
   .attrs({
     tag: 'div',
-    css: 'display:flex;flex-direction:column;align-items:stretch;',
+    contentDirection: 'rows',
+    contentAlignX: 'block',
   })
   .theme(() => ({
     flex: '1',

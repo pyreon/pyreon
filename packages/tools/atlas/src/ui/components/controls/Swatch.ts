@@ -6,8 +6,8 @@ export const Swatch = el
   })
   .theme((t: T) => ({
     cursor: 'pointer',
-    width: '26px',
-    height: '26px',
+    width: '24px',
+    height: '24px',
     borderRadius: t.radius.item,
     padding: '0',
     border: `2px solid ${t.border}`,

@@ -7,7 +7,7 @@ export const DocsDesc = txt
   .theme((t: T) => ({
     fontSize: t.size.hero,
     lineHeight: '1.6',
-    margin: '0 0 26px',
+    margin: '0 0 24px',
     maxWidth: '600px',
     color: t.muted,
   }))

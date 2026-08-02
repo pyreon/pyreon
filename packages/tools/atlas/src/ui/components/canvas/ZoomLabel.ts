@@ -7,7 +7,7 @@ export const ZoomLabel = txt
   .theme((t: T) => ({
     fontFamily: t.font.mono,
     fontSize: t.size.caption,
-    width: '42px',
+    width: '40px',
     textAlign: 'center',
     color: t.muted,
   }))

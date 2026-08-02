@@ -16,7 +16,7 @@ export function TableView(props: { model: ObservatoryModel }) {
   const m = props.model
 
   return (
-    <C.Article data-testid="table-view" css="max-width:none;">
+    <C.ArticleWide data-testid="table-view">
       <C.Eyebrow>{() => `05 · manifest · ${m.shown().length} of ${m.nodes.length} shown`}</C.Eyebrow>
       <C.H1>The full manifest. Read it as data.</C.H1>
       <C.TableWrap>
@@ -51,6 +51,6 @@ export function TableView(props: { model: ObservatoryModel }) {
           })
         }
       </C.TableWrap>
-    </C.Article>
+    </C.ArticleWide>
   )
 }

@@ -8,7 +8,7 @@ export const DocsStatus = txt
     fontSize: t.size.caption,
     fontWeight: '700',
     letterSpacing: t.tracking.md,
-    padding: '3px 9px',
+    padding: '4px 8px',
     borderRadius: t.radius.control,
     textTransform: 'capitalize',
     color: t.accent,

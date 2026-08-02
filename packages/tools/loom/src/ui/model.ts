@@ -212,7 +212,7 @@ export interface GraphLayout {
 }
 
 export const GRAPH_COL_W = 168
-export const GRAPH_ROW_H = 46
+export const GRAPH_ROW_H = 48
 export const GRAPH_PAD_T = 44
 export const GRAPH_PAD_L = 56
 

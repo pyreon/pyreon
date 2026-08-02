@@ -8,7 +8,7 @@ export const TextInput = el
     font: 'inherit',
     fontSize: t.size.input,
     width: '100%',
-    padding: '8px 11px',
+    padding: '8px 12px',
     borderRadius: t.radius.button,
     outline: 'none',
     border: t.hairline,

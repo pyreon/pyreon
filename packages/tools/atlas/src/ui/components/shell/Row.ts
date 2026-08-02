@@ -3,9 +3,8 @@ import { el } from '../../kit'
 export const Row = el
   .attrs({
     tag: 'div',
-    css: 'display:flex;flex-direction:row;align-items:center;',
+    contentDirection: 'inline',
+    contentAlignY: 'center',
   })
   .theme(() => ({
-    display: 'flex',
-    alignItems: 'center',
   }))

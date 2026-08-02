@@ -8,7 +8,7 @@ export const ClearBtn = el
     font: 'inherit',
     fontSize: t.size.small,
     cursor: 'pointer',
-    padding: '4px 10px',
+    padding: '4px 8px',
     borderRadius: t.radius.item,
     border: t.hairline,
     background: t.bg,

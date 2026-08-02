@@ -3,7 +3,6 @@ import { el, type T } from '../../kit'
 export const PropsRow = el
   .attrs({
     tag: 'div',
-    css: 'display:grid;grid-template-columns:1.4fr 1fr 1fr;column-gap:16px;align-items:center;',
   })
   .theme((t: T) => ({
     display: 'grid',
