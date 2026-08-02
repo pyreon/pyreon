@@ -93,7 +93,16 @@ class CounterInstrumentedTest {
         composeRule.onNodeWithText("Increment").performClick()
         composeRule.onNodeWithText("Count: 2").assertIsDisplayed()
 
-        composeRule.onNodeWithTag("reset-zone").performTouchInput { longClick() }
+        // Semantics action, not a coordinate long-press: the counter column
+        // overflows shorter profiles (API 33's effective viewport is smaller
+        // than Android 15's — the documented divergence), and content
+        // additions above keep shifting this zone across the fold. The
+        // long-press SEMANTICS (combinedClickable's OnLongClick) is the
+        // claim under test; coordinate gestures remain proven by the
+        // upper-region tests.
+        composeRule
+            .onNodeWithTag("reset-zone")
+            .performSemanticsAction(SemanticsActions.OnLongClick)
 
         composeRule.onNodeWithText("Count: 0").assertIsDisplayed()
     }
@@ -498,7 +507,12 @@ class CounterInstrumentedTest {
     @Test
     fun toggleFlipsObservableStateOnDevice() {
         composeRule.onNodeWithTag("core-toggle-state").assertTextEquals("switch off")
-        composeRule.onNodeWithTag("core-toggle").performClick()
+        // Semantics action for the same fold reason as the modal-open and
+        // reset-zone (the Switch sits low in the overflowing column; a real
+        // click passed on Android 15 and missed on API 33).
+        composeRule
+            .onNodeWithTag("core-toggle")
+            .performSemanticsAction(SemanticsActions.OnClick)
         composeRule.onNodeWithTag("core-toggle-state").assertTextEquals("switch on")
     }
 
