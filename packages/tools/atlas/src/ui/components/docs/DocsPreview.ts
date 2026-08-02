@@ -3,7 +3,6 @@ import { el, type T } from '../../kit'
 export const DocsPreview = el
   .attrs({
     tag: 'div',
-    css: 'display:flex;align-items:center;justify-content:center;',
   })
   .theme((t: T) => ({
     borderRadius: t.radius.stage,
@@ -13,5 +12,5 @@ export const DocsPreview = el
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: '26px',
+    marginBottom: '24px',
   }))

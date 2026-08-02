@@ -3,9 +3,9 @@ import { el, type T } from '../../kit'
 export const AddonPanel = el
   .attrs({
     tag: 'section',
-    css: 'display:flex;flex-direction:column;align-items:stretch;',
   })
   .theme((t: T) => ({
+    alignItems: 'stretch',
     width: '352px',
     flex: 'none',
     display: 'flex',

@@ -3,9 +3,10 @@ import { el, type T } from '../../kit'
 export const LabTileHead = el
   .attrs({
     tag: 'div',
-    css: 'display:flex;flex-direction:row;align-items:center;justify-content:space-between;width:100%;',
   })
   .theme((t: T) => ({
+    flexDirection: 'row',
+    width: '100%',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',

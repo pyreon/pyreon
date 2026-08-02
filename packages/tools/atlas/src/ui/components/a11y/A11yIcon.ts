@@ -3,7 +3,6 @@ import { dim, el, type T } from '../../kit'
 export const A11yIcon = el
   .attrs({
     tag: 'span',
-    css: 'display:flex;align-items:center;justify-content:center;',
   })
   .theme((t: T) => ({
     width: '20px',

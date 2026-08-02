@@ -4,9 +4,9 @@ import { el, type T } from '../../kit'
 export const GroupBtn = el
   .attrs({
     tag: 'button',
-    css: 'display:flex;flex-direction:row;align-items:center;',
   })
   .theme((t: T) => ({
+    flexDirection: 'row',
     font: 'inherit',
     cursor: 'pointer',
     width: '100%',
@@ -14,8 +14,8 @@ export const GroupBtn = el
     border: 'none',
     display: 'flex',
     alignItems: 'center',
-    gap: '7px',
-    margin: '10px 0 3px',
+    gap: '8px',
+    margin: '8px 0 4px',
     padding: '2px 8px',
     borderRadius: t.radius.control,
     fontSize: t.size.caption,

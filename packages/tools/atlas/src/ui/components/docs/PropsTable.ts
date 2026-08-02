@@ -8,5 +8,5 @@ export const PropsTable = el
     border: t.hairline,
     borderRadius: t.radius.card,
     overflow: 'hidden',
-    marginBottom: '26px',
+    marginBottom: '24px',
   }))

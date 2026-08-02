@@ -7,8 +7,8 @@ export const ColorInput = el
     type: 'color',
   })
   .theme((t: T) => ({
-    width: '34px',
-    height: '30px',
+    width: '32px',
+    height: '32px',
     padding: '0',
     border: t.hairline,
     borderRadius: t.radius.item,

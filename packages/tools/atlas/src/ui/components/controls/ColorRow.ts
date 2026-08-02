@@ -3,10 +3,10 @@ import { el } from '../../kit'
 export const ColorRow = el
   .attrs({
     tag: 'div',
-    css: 'display:flex;flex-direction:row;align-items:center;',
   })
   .theme(() => ({
+    flexDirection: 'row',
     display: 'flex',
     alignItems: 'center',
-    gap: '9px',
+    gap: '8px',
   }))

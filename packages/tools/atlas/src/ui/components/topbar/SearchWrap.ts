@@ -3,9 +3,9 @@ import { el } from '../../kit'
 export const SearchWrap = el
   .attrs({
     tag: 'div',
-    css: 'display:flex;flex-direction:row;justify-content:center;',
   })
   .theme(() => ({
+    flexDirection: 'row',
     flex: '1',
     display: 'flex',
     justifyContent: 'center',

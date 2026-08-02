@@ -11,7 +11,7 @@ export const MeasureLabel = txt
     zIndex: '31',
     fontFamily: t.font.mono,
     fontSize: t.size.label,
-    padding: '2px 7px',
+    padding: '2px 8px',
     borderRadius: t.radius.chip,
     color: '#fff',
     background: t.accent,

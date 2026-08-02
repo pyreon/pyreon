@@ -4,9 +4,9 @@ import { dim, el, type T } from '../../kit'
 export const ScenBtn = el
   .attrs({
     tag: 'button',
-    css: 'display:flex;flex-direction:row;align-items:center;',
   })
   .theme((t: T) => ({
+    flexDirection: 'row',
     font: 'inherit',
     cursor: 'pointer',
     width: '100%',
@@ -15,7 +15,7 @@ export const ScenBtn = el
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
-    padding: '5px 10px 5px 32px',
+    padding: '4px 8px 4px 32px',
     borderRadius: t.radius.item,
     fontSize: t.size.text,
     color: t.muted,

@@ -6,7 +6,7 @@ export const CompBar = el
   })
   .theme((t: T) => ({
     width: '3px',
-    height: '15px',
+    height: '16px',
     borderRadius: t.radius.bar,
     flex: 'none',
     background: t.border,

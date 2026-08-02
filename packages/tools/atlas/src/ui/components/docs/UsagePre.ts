@@ -6,7 +6,7 @@ export const UsagePre = el
   })
   .theme((t: T) => ({
     margin: '0',
-    padding: '18px',
+    padding: '16px',
     borderRadius: t.radius.card,
     fontFamily: t.font.mono,
     fontSize: t.size.input,

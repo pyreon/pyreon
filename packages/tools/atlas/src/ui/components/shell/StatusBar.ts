@@ -5,7 +5,7 @@ export const StatusBar = el
     tag: 'footer',
   })
   .theme((t: T) => ({
-    height: '30px',
+    height: '32px',
     flex: 'none',
     display: 'flex',
     // Explicit: without it the Element wrapper's default column stacking
@@ -13,7 +13,7 @@ export const StatusBar = el
     // path" artifact at the bottom of the shell).
     flexDirection: 'row',
     alignItems: 'center',
-    gap: '14px',
+    gap: '16px',
     padding: '0 16px',
     fontFamily: t.font.mono,
     fontSize: t.size.meta,

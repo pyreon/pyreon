@@ -7,14 +7,15 @@
  * geometry is measurement, not styling). Everything outside the SVG is
  * rocketstyle chrome.
  */
+import * as C from '../chrome'
 import type { LoomTokens } from '../theme'
-import { layoutGraph, shortName, type ObservatoryModel } from '../model'
+import { GRAPH_COL_W, GRAPH_PAD_L, layoutGraph, shortName, type ObservatoryModel } from '../model'
 
 export function GraphView(props: { model: ObservatoryModel; theme: () => LoomTokens }) {
   const m = props.model
 
   return (
-    <div data-testid="graph-view" style="padding:18px">
+    <C.GraphPad data-testid="graph-view">
       {() => {
         const t = props.theme()
         const shown = m.shown()
@@ -120,7 +121,7 @@ export function GraphView(props: { model: ObservatoryModel; theme: () => LoomTok
 
         const axis = layout.depthKeys.map((d, di) => (
           <text
-            x={String(56 + di * 168 - 4)}
+            x={String(GRAPH_PAD_L + di * GRAPH_COL_W - 4)}
             y="22"
             fill={t.faint}
             style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.1em"
@@ -142,6 +143,6 @@ export function GraphView(props: { model: ObservatoryModel; theme: () => LoomTok
           </svg>
         )
       }}
-    </div>
+    </C.GraphPad>
   )
 }

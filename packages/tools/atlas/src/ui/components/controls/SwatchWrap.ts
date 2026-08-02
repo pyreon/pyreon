@@ -3,10 +3,10 @@ import { el } from '../../kit'
 export const SwatchWrap = el
   .attrs({
     tag: 'div',
-    css: 'display:flex;flex-direction:row;flex-wrap:wrap;',
   })
   .theme(() => ({
+    flexDirection: 'row',
     display: 'flex',
     flexWrap: 'wrap',
-    gap: '7px',
+    gap: '8px',
   }))

@@ -3,12 +3,12 @@ import { el, type T } from '../../kit'
 export const A11yStat = el
   .attrs({
     tag: 'div',
-    css: 'display:flex;flex-direction:row;align-items:center;',
   })
   .theme((t: T) => ({
+    flexDirection: 'row',
     display: 'flex',
     alignItems: 'center',
-    gap: '7px',
+    gap: '8px',
     fontSize: t.size.text,
     color: t.text,
   }))

@@ -3,7 +3,6 @@ import { el, type T } from '../../kit'
 export const Stage = el
   .attrs({
     tag: 'div',
-    css: 'display:flex;align-items:center;justify-content:center;',
   })
   .theme((t: T) => ({
     position: 'relative',

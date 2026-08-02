@@ -10,7 +10,7 @@ export const ResetBtn = el
     cursor: 'pointer',
     width: '100%',
     marginTop: '4px',
-    padding: '9px',
+    padding: '8px',
     borderRadius: t.radius.button,
     border: `1px dashed ${t.border}`,
     background: 'transparent',

@@ -8,7 +8,7 @@ export const SearchInput = el
     font: 'inherit',
     fontSize: t.size.input,
     width: '100%',
-    padding: '9px 14px 9px 32px',
+    padding: '8px 16px 8px 32px',
     borderRadius: t.radius.field,
     outline: 'none',
     transition: `border-color ${t.motion.base},box-shadow ${t.motion.base}`,

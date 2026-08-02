@@ -3,9 +3,9 @@ import { dim, el, type T } from '../../kit'
 export const CompBtn = el
   .attrs({
     tag: 'button',
-    css: 'display:flex;flex-direction:row;align-items:center;',
   })
   .theme((t: T) => ({
+    flexDirection: 'row',
     font: 'inherit',
     cursor: 'pointer',
     width: '100%',
@@ -13,8 +13,8 @@ export const CompBtn = el
     border: 'none',
     display: 'flex',
     alignItems: 'center',
-    gap: '11px',
-    padding: '8px 10px',
+    gap: '12px',
+    padding: '8px 8px',
     borderRadius: t.radius.button,
     marginBottom: '1px',
     fontSize: t.size.item,

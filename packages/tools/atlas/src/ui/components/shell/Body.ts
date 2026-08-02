@@ -3,9 +3,11 @@ import { el } from '../../kit'
 export const Body = el
   .attrs({
     tag: 'div',
-    css: 'display:flex;flex-direction:row;align-items:stretch;',
   })
   .theme(() => ({
+    display: 'flex',
+    flexDirection: 'row',
+    alignItems: 'stretch',
     flex: '1',
     minHeight: '0',
   }))

@@ -3,13 +3,13 @@ import { el, type T } from '../../kit'
 export const LabTileBody = el
   .attrs({
     tag: 'div',
-    css: 'display:flex;align-items:center;justify-content:center;width:100%;',
   })
   .theme((t: T) => ({
-    padding: '34px 20px',
+    width: '100%',
+    padding: '32px 20px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: '130px',
+    minHeight: '128px',
     background: t.bg,
   }))

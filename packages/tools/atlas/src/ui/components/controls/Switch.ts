@@ -8,7 +8,7 @@ export const Switch = el
     cursor: 'pointer',
     border: 'none',
     padding: '0',
-    width: '42px',
+    width: '40px',
     height: '24px',
     borderRadius: t.radius.pill,
     position: 'relative',

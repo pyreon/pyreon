@@ -8,7 +8,7 @@ export const EnumBtn = el
     font: 'inherit',
     fontSize: t.size.body,
     cursor: 'pointer',
-    padding: '6px 12px',
+    padding: '8px 12px',
     borderRadius: t.radius.item,
     textTransform: 'capitalize',
     transition: `border-color ${t.motion.fast},color ${t.motion.fast}`,
