@@ -513,4 +513,50 @@ final class PyreonRouterDemoUITests: XCTestCase {
         }
     }
 
+    // Gestures row — the swipe vocabulary, injected as REAL XCUITest
+    // swipes (coordinate drags through the compositor, not synthetic
+    // events). The status text is three-way separable: 'left'/'right'
+    // proves the simultaneous DragGesture fired with the right threshold
+    // SIGN; 'tap' after a swipe would mean the drag degraded to the
+    // Button's press (the coexistence failure mode); a final REAL tap
+    // must still read 'tap' — the drag recognizer must not swallow taps.
+    func test_swipeGesturesFireDirectionalHandlers() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            "Home page did not render"
+        )
+        app.buttons["View motion"].tap()
+        XCTAssertTrue(
+            app.otherElements["motion-page"].firstMatch.waitForExistence(timeout: 15),
+            "Motion page did not render"
+        )
+        let zone = app.buttons["swipe-zone"].firstMatch
+        XCTAssertTrue(zone.waitForExistence(timeout: 10), "swipe zone missing")
+        XCTAssertTrue(
+            app.staticTexts["Swiped: none"].firstMatch.exists,
+            "status should start at none"
+        )
+
+        zone.swipeLeft()
+        XCTAssertTrue(
+            app.staticTexts["Swiped: left"].firstMatch.waitForExistence(timeout: 5),
+            "left swipe did not fire onSwipeLeft (status: \(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Swiped:'")).firstMatch.label))"
+        )
+
+        zone.swipeRight()
+        XCTAssertTrue(
+            app.staticTexts["Swiped: right"].firstMatch.waitForExistence(timeout: 5),
+            "right swipe did not fire onSwipeRight"
+        )
+
+        zone.tap()
+        XCTAssertTrue(
+            app.staticTexts["Swiped: tap"].firstMatch.waitForExistence(timeout: 5),
+            "tap no longer fires onPress — the drag gesture swallowed it"
+        )
+    }
+
 }

@@ -31,6 +31,16 @@ export interface ButtonProps extends ChildrenProp, HtmlPassthroughProps {
 export interface PressProps extends ChildrenProp, HtmlPassthroughProps {
   onPress: () => void
   onLongPress?: () => void
+  /**
+   * Fires when a horizontally-dominant swipe ends ≥40px/pt/dp to the LEFT.
+   * Web: pointer-delta polyfill (a swipe suppresses the same gesture's
+   * click). iOS: simultaneous `DragGesture` (tap still fires `onPress`).
+   * Android: `pointerInput { detectHorizontalDragGestures }` (direction-
+   * locked — taps and vertical scrolls pass through).
+   */
+  onSwipeLeft?: () => void
+  /** Right-swipe counterpart of `onSwipeLeft` — same thresholds/lowering. */
+  onSwipeRight?: () => void
   disabled?: boolean
 }
 

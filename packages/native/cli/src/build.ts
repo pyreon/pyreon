@@ -353,6 +353,17 @@ export function conditionalKotlinImports(emitted: string): string {
   if (emitted.includes('.combinedClickable(')) {
     imports.push('import androidx.compose.foundation.combinedClickable')
   }
+  // <Press onSwipeLeft/onSwipeRight> → `.pointerInput { detectHorizontalDragGestures }`.
+  // Both live in sub-packages the star imports don't cover
+  // (androidx.compose.ui.input.pointer / androidx.compose.foundation.gestures)
+  // — the exact stub-masked-symbol class: the validate loop resolves them
+  // from the concatenated stubs with or without the import.
+  if (emitted.includes('.pointerInput(')) {
+    imports.push('import androidx.compose.ui.input.pointer.pointerInput')
+  }
+  if (emitted.includes('detectHorizontalDragGestures(')) {
+    imports.push('import androidx.compose.foundation.gestures.detectHorizontalDragGestures')
+  }
   // M3.1 haptics (`const h = useHaptics()`): the Compose haptic surface
   // `LocalHapticFeedback` lives in androidx.compose.ui.platform — NOT
   // covered by the star-imported androidx.compose.ui.* (single-package).

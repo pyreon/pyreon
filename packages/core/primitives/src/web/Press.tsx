@@ -26,7 +26,27 @@ import { collectPassthroughAttrs, mergePassthroughStyle } from './passthrough'
  * - Android (via PMTC): `Box(modifier=Modifier.clickable(onClick=...))`
  */
 export const Press = (props: PressProps): VNode => {
-  const onClick = props.disabled ? undefined : props.onPress
+  // Swipe polyfill — pointer-delta tracking. A swipe that fires a
+  // handler SUPPRESSES the click the browser dispatches after the same
+  // pointerup (one gesture must not be both a swipe and a press) —
+  // matching the native lowering, where the drag recognizer claims the
+  // gesture. Thresholds mirror the native emits: ≥40px end-delta,
+  // horizontally dominant.
+  const hasSwipe = props.onSwipeLeft !== undefined || props.onSwipeRight !== undefined
+  let swipeStartX = 0
+  let swipeStartY = 0
+  let suppressClick = false
+
+  const onClick = props.disabled
+    ? undefined
+    : (e: MouseEvent) => {
+        if (suppressClick) {
+          suppressClick = false
+          e.preventDefault()
+          return
+        }
+        props.onPress()
+      }
   const onKeyDown = props.disabled
     ? undefined
     : (e: KeyboardEvent) => {
@@ -40,19 +60,35 @@ export const Press = (props: PressProps): VNode => {
   // Browsers don't have a native long-press event, so we synthesize
   // via pointerdown + setTimeout, cancel on pointerup/pointerleave.
   let longPressTimer: ReturnType<typeof setTimeout> | undefined
-  const onPointerDown = props.onLongPress
-    ? () => {
-        longPressTimer = setTimeout(() => {
-          if (!props.disabled) props.onLongPress?.()
-          longPressTimer = undefined
-        }, 500)
+  const needPointerTracking = props.onLongPress !== undefined || hasSwipe
+  const onPointerDown = needPointerTracking
+    ? (e: PointerEvent) => {
+        if (hasSwipe) {
+          swipeStartX = e.clientX
+          swipeStartY = e.clientY
+        }
+        if (props.onLongPress) {
+          longPressTimer = setTimeout(() => {
+            if (!props.disabled) props.onLongPress?.()
+            longPressTimer = undefined
+          }, 500)
+        }
       }
     : undefined
-  const onPointerUp = props.onLongPress
-    ? () => {
+  const onPointerUp = needPointerTracking
+    ? (e: PointerEvent) => {
         if (longPressTimer !== undefined) {
           clearTimeout(longPressTimer)
           longPressTimer = undefined
+        }
+        if (hasSwipe && !props.disabled && e.type === 'pointerup') {
+          const dx = e.clientX - swipeStartX
+          const dy = e.clientY - swipeStartY
+          if (Math.abs(dx) >= 40 && Math.abs(dx) > Math.abs(dy)) {
+            suppressClick = true
+            if (dx < 0) props.onSwipeLeft?.()
+            else props.onSwipeRight?.()
+          }
         }
       }
     : undefined

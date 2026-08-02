@@ -5415,8 +5415,40 @@ function emitKotlinPress(
   const clickable = onLongPress
     ? `.combinedClickable(onClick = ${action}, onLongClick = ${emitKotlinAction(onLongPress.handler, indent)})`
     : `.clickable(onClick = ${action})`
+
+  // `onSwipeLeft` / `onSwipeRight` → `pointerInput { detectHorizontalDragGestures }`.
+  // The detector is direction-locked (only claims horizontally-dominant
+  // drags), so taps still reach `.clickable` and vertical scrolls pass
+  // through. Deltas ACCUMULATE across the gesture (`onHorizontalDrag`
+  // fires per-move); the ±40f end-total threshold matches the SwiftUI
+  // emit and the web polyfill. The detector loop lives for the
+  // composable's lifetime, so `onDragStart` must reset the accumulator
+  // per gesture. Handlers are `() -> Unit` lambdas from
+  // `emitKotlinAction` — invoked via the stdlib non-extension `run(block)`.
+  const onSwipeLeft = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> =>
+      a.kind === 'event' && a.name === 'swipeleft',
+  )
+  const onSwipeRight = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> =>
+      a.kind === 'event' && a.name === 'swiperight',
+  )
+  let swipeInput = ''
+  if (onSwipeLeft || onSwipeRight) {
+    const branches: string[] = []
+    if (onSwipeLeft) {
+      branches.push(`if (dragTotal < -40f) run(${emitKotlinAction(onSwipeLeft.handler, indent)})`)
+    }
+    if (onSwipeRight) {
+      branches.push(
+        `${onSwipeLeft ? 'else ' : ''}if (dragTotal > 40f) run(${emitKotlinAction(onSwipeRight.handler, indent)})`,
+      )
+    }
+    swipeInput = `.pointerInput(Unit) { var dragTotal = 0f; detectHorizontalDragGestures(onDragStart = { dragTotal = 0f }, onDragEnd = { ${branches.join(' ')} }, onHorizontalDrag = { _, amount -> dragTotal += amount }) }`
+  }
+  const gestures = `${clickable}${swipeInput}`
   const modifier =
-    layoutModifier !== '' ? `${layoutModifier}${clickable}` : `Modifier${clickable}`
+    layoutModifier !== '' ? `${layoutModifier}${gestures}` : `Modifier${gestures}`
 
   const pad = ' '.repeat(indent + 2)
   if (e.children.length === 0) {

@@ -18,7 +18,7 @@
 import { For, onMount } from '@pyreon/core'
 import { useSecureStorage, useSizeClass, useWebSocket } from '@pyreon/hooks'
 import { useFieldArray } from '@pyreon/form'
-import { Button, Heading, Inline, Layer, Link, Spacer, Stack, Text } from '@pyreon/primitives'
+import { Button, Heading, Inline, Layer, Link, Press, Spacer, Stack, Text } from '@pyreon/primitives'
 import { signal } from '@pyreon/reactivity'
 import { createRouter, useNavigate, RouterProvider, RouterView } from '@pyreon/router'
 import { defineTheme, styled } from '@pyreon/styler'
@@ -56,9 +56,30 @@ function MotionPage() {
   // test rule's VIRTUAL clock (deterministic); iOS uses wall-time with
   // generous margins.
   const boxOn = signal<boolean>(true)
+  // Gestures-row proof — the swipe vocabulary (<Press onSwipeLeft/onSwipeRight>).
+  // iOS lowers to a simultaneous DragGesture, Android to
+  // pointerInput { detectHorizontalDragGestures }, web to a pointer-delta
+  // polyfill. The status text discriminates THREE outcomes: 'left'/'right'
+  // (the swipe fired), 'tap' (the gesture degraded to a press — the
+  // coexistence failure mode), 'none' (nothing fired) — so a dropped
+  // emit, a flipped threshold sign, and a tap-swallowing drag each read
+  // differently in the device tests, which inject REAL swipes (XCUITest
+  // swipeLeft() / Compose performTouchInput). Lives on this sparse page
+  // so the zone sits in the first screenful on both platforms
+  // (coordinate gestures need on-screen bounds — the counter-fold lesson).
+  const swipeDir = signal<string>('none')
   return (
     <Stack gap={3} padding={4} data-testid="motion-page">
       <Text>Motion</Text>
+      <Text data-testid="swipe-status">Swiped: {swipeDir()}</Text>
+      <Press
+        onPress={() => swipeDir.set('tap')}
+        onSwipeLeft={() => swipeDir.set('left')}
+        onSwipeRight={() => swipeDir.set('right')}
+        data-testid="swipe-zone"
+      >
+        <Text>← Swipe this zone →</Text>
+      </Press>
       <Button onPress={() => boxOn.set(!boxOn())} data-testid="motion-toggle">
         Toggle Slow Box
       </Button>

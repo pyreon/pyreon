@@ -6571,6 +6571,44 @@ function emitSwiftPress(
       ).replace(/^\{/, '{ _ in')})`
     : ''
 
+  // `onSwipeLeft` / `onSwipeRight` → a HIGH-PRIORITY DragGesture — NOT
+  // `.simultaneousGesture` like long-press. Device-found: a SwiftUI
+  // Button fires on touch-up-INSIDE regardless of drag distance, so a
+  // simultaneous drag and the tap BOTH fired on a real swipe and the tap
+  // won the state write (XCUITest read `Swiped: tap` after a swipe).
+  // `.highPriorityGesture` CLAIMS the gesture once it exceeds
+  // `minimumDistance: 20`, so the Button never fires for drags; a real
+  // tap moves <20pt, the drag fails, and the tap passes through to the
+  // Button — exactly the swipe/tap split. (Long-press must stay
+  // SIMULTANEOUS: a high-priority hold would delay every tap.)
+  // Horizontal-dominance guard so a sloppy vertical scroll never fires a
+  // swipe; ±40pt end-translation threshold matches the Compose emit and
+  // the web polyfill. Handlers are `() -> Void` closures from
+  // `emitSwiftAction` — invoked in place via `(<closure>)()`.
+  const onSwipeLeft = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> =>
+      a.kind === 'event' && a.name === 'swipeleft',
+  )
+  const onSwipeRight = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> =>
+      a.kind === 'event' && a.name === 'swiperight',
+  )
+  let swipeGesture = ''
+  if (onSwipeLeft || onSwipeRight) {
+    const branches: string[] = []
+    if (onSwipeLeft) {
+      branches.push(
+        `if value.translation.width < -40 { (${emitSwiftAction(onSwipeLeft.handler, indent)})() }`,
+      )
+    }
+    if (onSwipeRight) {
+      branches.push(
+        `${onSwipeLeft ? 'else ' : ''}if value.translation.width > 40 { (${emitSwiftAction(onSwipeRight.handler, indent)})() }`,
+      )
+    }
+    swipeGesture = `.highPriorityGesture(DragGesture(minimumDistance: 20).onEnded { value in if abs(value.translation.width) > abs(value.translation.height) { ${branches.join(' ')} } })`
+  }
+
   const pad = ' '.repeat(indent + 2)
   const contentLines = e.children
     .map((c) => pad + emitSwiftChild(c, indent + 2))
@@ -6587,7 +6625,7 @@ function emitSwiftPress(
   // explicit `action:` argument form is the unambiguous canonical
   // SwiftUI Button initializer and type-checks clean. (`action` already
   // carries its `{ … }` braces from `emitSwiftAction`.)
-  return `Button(action: ${action}) {\n${contentLines}\n${' '.repeat(indent)}}.buttonStyle(.plain)${modifiers}${longGesture}`
+  return `Button(action: ${action}) {\n${contentLines}\n${' '.repeat(indent)}}.buttonStyle(.plain)${modifiers}${longGesture}${swipeGesture}`
 }
 
 /**

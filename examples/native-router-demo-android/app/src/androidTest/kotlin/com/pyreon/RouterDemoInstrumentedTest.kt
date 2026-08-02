@@ -34,6 +34,9 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.swipeRight
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -364,5 +367,35 @@ class RouterDemoInstrumentedTest {
         composeRule
             .onNodeWithText("Profile for user 42")
             .assertIsDisplayed()
+    }
+
+    // Gestures row — the swipe vocabulary, injected as REAL Compose touch
+    // gestures (performTouchInput drives the pointer-input pipeline the
+    // emitted detectHorizontalDragGestures listens on). Three-way
+    // separable like the iOS twin: 'left'/'right' proves the detector +
+    // threshold sign; 'tap' after a swipe would mean the drag fell
+    // through to .clickable (coexistence failure); the final click must
+    // still read 'tap' — the direction-locked detector must not claim taps.
+    @Test
+    fun swipeGesturesFireDirectionalHandlers() {
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        composeRule.onNodeWithText("View motion").performClick()
+        composeRule.onNodeWithTag("motion-page").assertIsDisplayed()
+        composeRule.onNodeWithTag("swipe-status").assertTextEquals("Swiped: none")
+
+        composeRule.onNodeWithTag("swipe-zone").performTouchInput { swipeLeft() }
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithText("Swiped: left").fetchSemanticsNodes().isNotEmpty()
+        }
+
+        composeRule.onNodeWithTag("swipe-zone").performTouchInput { swipeRight() }
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithText("Swiped: right").fetchSemanticsNodes().isNotEmpty()
+        }
+
+        composeRule.onNodeWithTag("swipe-zone").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithText("Swiped: tap").fetchSemanticsNodes().isNotEmpty()
+        }
     }
 }

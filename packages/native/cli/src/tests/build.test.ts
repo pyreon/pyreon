@@ -512,6 +512,24 @@ describe('@pyreon/native-cli build', () => {
     expect(link).toContain('import androidx.compose.foundation.clickable')
   })
 
+  it('Kotlin <Press onSwipeLeft/Right> pulls the pointerInput + drag-detector imports', () => {
+    // Gestures-row swipe arc: `.pointerInput` lives in
+    // androidx.compose.ui.input.pointer and `detectHorizontalDragGestures`
+    // in androidx.compose.foundation.gestures — BOTH sub-packages the star
+    // imports do not cover, so both are the stub-masked-symbol class (the
+    // validate loop resolves them from concatenated stubs with or without
+    // the import; only the real gradle build fails).
+    const swipe = conditionalKotlinImports(
+      'Box(Modifier.clickable(onClick = {}).pointerInput(Unit) { var dragTotal = 0f; detectHorizontalDragGestures(onDragStart = { dragTotal = 0f }, onDragEnd = { if (dragTotal < -40f) run({ d = "l" }) }, onHorizontalDrag = { _, amount -> dragTotal += amount }) })',
+    )
+    expect(swipe).toContain('import androidx.compose.ui.input.pointer.pointerInput')
+    expect(swipe).toContain('import androidx.compose.foundation.gestures.detectHorizontalDragGestures')
+    // A swipe-free emit pulls NEITHER (no dead imports).
+    const plain = conditionalKotlinImports('Box(Modifier.clickable(onClick = {}))')
+    expect(plain).not.toContain('pointerInput')
+    expect(plain).not.toContain('detectHorizontalDragGestures')
+  })
+
   it('Kotlin .combinedClickable( still does NOT pull the plain clickable import', () => {
     // Guards the widened predicate against over-matching: `combinedClickable`
     // capitalises the C, so `.clickable` is not a substring of it. If this ever

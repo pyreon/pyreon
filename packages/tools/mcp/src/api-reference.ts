@@ -1115,9 +1115,9 @@ type Props = ExtractProps<typeof Iterator>
   },
 
   'primitives/Press': {
-    signature: '(props: { onPress: () => void; onLongPress?: () => void; disabled?: boolean; children }) => VNode',
+    signature: '(props: { onPress: () => void; onLongPress?: () => void; onSwipeLeft?: () => void; onSwipeRight?: () => void; disabled?: boolean; children }) => VNode',
     example: '<Press onPress={() => select(item)}><Card item={item} /></Press>',
-    notes: 'Unstyled tap target (no chrome). Web `<div role="button">`; iOS `Button {}` (plain); Android `Box(clickable)`. Use to make arbitrary content tappable; supports `onLongPress`. See also: Button.',
+    notes: 'Unstyled tap target (no chrome). Web `<div role="button">`; iOS `Button {}` (plain); Android `Box(clickable)`. Use to make arbitrary content tappable; supports `onLongPress` and `onSwipeLeft`/`onSwipeRight` (horizontally-dominant ≥40px swipe — iOS high-priority DragGesture, Android direction-locked drag detector, web pointer-delta polyfill; taps still fire `onPress`). See also: Button.',
     mistakes: '- Using `<Press>` for a primary action — use `<Button>` for styled CTAs',
   },
 
