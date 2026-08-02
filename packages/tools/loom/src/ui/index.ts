@@ -15,11 +15,24 @@ export type { ObservatoryModel, NodeVM, ViewId, KindFilter, NodeStatus } from '.
 export { tokens, hexToRgba, ACCENT } from './theme'
 export type { LoomTokens } from './theme'
 
-/** The observatory's global keyframes — injected once at mount. */
+/**
+ * The observatory's global keyframes + the graph's SVG classes — injected
+ * once at mount. SVG elements can't be rocketstyle components (Element is
+ * HTML-only), but their STATIC styling still belongs in classes; only
+ * theme-token paints and per-node data (opacity, weights, geometry) ride as
+ * attributes on the elements themselves.
+ */
 const GLOBAL_CSS = `
 @keyframes lm-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 @keyframes lm-dash{to{stroke-dashoffset:-16}}
 @keyframes lm-pulse{0%,100%{opacity:.35}50%{opacity:.9}}
+.lm-svg{display:block}
+.lm-gnode{cursor:pointer;transition:opacity .16s}
+.lm-glabel{font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:500;pointer-events:none;paint-order:stroke;stroke-width:3.5px}
+.lm-glabel--sel{font-weight:600}
+.lm-gsub{font-family:'JetBrains Mono',monospace;font-size:9.5px;pointer-events:none;paint-order:stroke;stroke-width:3px}
+.lm-gaxis{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.1em}
+.lm-gedge--cyc{animation:lm-dash 1.1s linear infinite}
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;height:100%}
 body{-webkit-font-smoothing:antialiased}

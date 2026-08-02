@@ -2,10 +2,12 @@
  * The layered node-link graph — columns by resolution depth (ENTRY → DEPTH n),
  * curved edges, cycle edges dashed + animated, hover dims unrelated nodes.
  *
- * SVG paints read theme TOKENS as attribute/style values — the flow-package
- * precedent (`var()` is invalid in SVG presentation attributes, and per-frame
- * geometry is measurement, not styling). Everything outside the SVG is
- * rocketstyle chrome.
+ * SVG elements can't be rocketstyle components (Element is HTML-only), so
+ * their STATIC styling lives in the global `.lm-g*` classes (ui/index.ts);
+ * theme-token paints ride as ATTRIBUTES (`var()` is invalid in SVG
+ * presentation attributes — the flow-package precedent) and the only inline
+ * `style` left is data-driven geometry (the measured min-width). Everything
+ * outside the SVG is rocketstyle chrome.
  */
 import * as C from '../chrome'
 import type { LoomTokens } from '../theme'
@@ -58,7 +60,7 @@ export function GraphView(props: { model: ObservatoryModel; theme: () => LoomTok
                 stroke-width={isCyc ? '1.8' : on ? '1.4' : '1'}
                 stroke-dasharray={isCyc ? '5 4' : undefined}
                 opacity={String(opacity)}
-                style={isCyc ? 'animation:lm-dash 1.1s linear infinite' : undefined}
+                class={isCyc ? 'lm-gedge--cyc' : undefined}
               />,
             )
           }
@@ -83,7 +85,8 @@ export function GraphView(props: { model: ObservatoryModel; theme: () => LoomTok
             <g
               transform={`translate(${P.x},${P.y})`}
               data-testid={`gnode-${n.id}`}
-              style={`cursor:pointer;opacity:${dimmed ? 0.4 : 1};transition:opacity .16s`}
+              class="lm-gnode"
+              opacity={dimmed ? '0.4' : '1'}
               onClick={() => m.select(n.id)}
               onMouseEnter={() => m.hoverId.set(n.id)}
               onMouseLeave={() => m.hoverId.set(null)}
@@ -94,11 +97,9 @@ export function GraphView(props: { model: ObservatoryModel; theme: () => LoomTok
               <text
                 x="15"
                 y="4"
+                class={isSel ? 'lm-glabel lm-glabel--sel' : 'lm-glabel'}
                 fill={isSel ? t.text : t.muted}
                 stroke={t.bg}
-                stroke-width="3.5"
-                paint-order="stroke"
-                style={`font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:${isSel ? 600 : 500};pointer-events:none`}
               >
                 {name}
               </text>
@@ -106,11 +107,9 @@ export function GraphView(props: { model: ObservatoryModel; theme: () => LoomTok
                 <text
                   x="15"
                   y="17"
+                  class="lm-gsub"
                   fill={t.faint}
                   stroke={t.bg}
-                  stroke-width="3"
-                  paint-order="stroke"
-                  style="font-family:'JetBrains Mono',monospace;font-size:9.5px;pointer-events:none"
                 >
                   {n.kind === 'internal' ? `v${n.version}` : n.version}
                 </text>
@@ -123,8 +122,8 @@ export function GraphView(props: { model: ObservatoryModel; theme: () => LoomTok
           <text
             x={String(GRAPH_PAD_L + di * GRAPH_COL_W - 4)}
             y="22"
+            class="lm-gaxis"
             fill={t.faint}
-            style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.1em"
           >
             {d === 0 ? 'ENTRY' : `DEPTH ${d}`}
           </text>
@@ -135,7 +134,12 @@ export function GraphView(props: { model: ObservatoryModel; theme: () => LoomTok
             viewBox={`0 0 ${layout.width} ${layout.height}`}
             width="100%"
             preserveAspectRatio="xMidYMid meet"
-            style={`display:block;min-width:${Math.round(layout.width * 0.86)}px`}
+            class="lm-svg"
+            style={
+              // Data-driven: the floor tracks the MEASURED layout width so a
+              // dense workspace keeps a horizontal scroll instead of crushing.
+              `min-width:${Math.round(layout.width * 0.86)}px`
+            }
           >
             <g>{axis}</g>
             <g>{edges}</g>
