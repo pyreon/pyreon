@@ -20,8 +20,12 @@ export const Main = el
   .attrs({ tag: 'main', css: 'display:flex;flex-direction:column;align-items:stretch;' })
   .theme(() => ({ flex: '1', minWidth: '0', minHeight: '0' }))
 export const Row = el
-  .attrs({ tag: 'div', css: 'display:flex;flex-direction:row;align-items:center;' })
-  .theme(() => ({}))
+  // Layout lives in the THEME, not the attrs `css` string: a per-instance
+  // `css` prop OVERRIDES the attrs default (props win over .attrs), and the
+  // brand block's `<Row css="gap:11px">` was silently throwing the row
+  // layout away — the logo/name/subtitle stacked and clipped.
+  .attrs({ tag: 'div' })
+  .theme(() => ({ display: 'flex', flexDirection: 'row', alignItems: 'center' }))
 export const Col = el.attrs({ tag: 'div' }).theme(() => ({ display: 'flex', flexDirection: 'column', lineHeight: '1.2' }))
 export const Spacer = el.attrs({ tag: 'div' }).theme(() => ({ flex: '1', minWidth: '8px' }))
 
@@ -94,7 +98,7 @@ export const HealthPill = el
     ok: { borderColor: t.okRing, background: t.okSoft },
     bad: { borderColor: t.dangerRing, background: t.dangerSoft },
   })))
-  .theme(() => ({ gap: '7px', padding: '5px 11px', borderRadius: '20px', borderWidth: '1px', borderStyle: 'solid', flex: 'none' }))
+  .theme(() => ({ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '7px', padding: '5px 11px', borderRadius: '20px', borderWidth: '1px', borderStyle: 'solid', flex: 'none' }))
 export const HealthDot = el
   .attrs({ tag: 'span' })
   .states(dim((t) => ({ ok: { background: t.ok }, bad: { background: t.danger } })))
@@ -107,6 +111,7 @@ export const HealthText = txt
 export const IconBtn = el
   .attrs({ tag: 'button', css: 'display:flex;align-items:center;justify-content:center;' })
   .theme((t: T) => ({
+    display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     width: '34px', height: '34px', borderRadius: '9px',
     borderWidth: '1px', borderStyle: 'solid', borderColor: t.border,
     background: t.bg, color: t.text, fontSize: '15px',
@@ -143,6 +148,7 @@ export const SideList = el
 export const GroupHead = el
   .attrs({ tag: 'div', css: 'display:flex;align-items:center;' })
   .theme((t: T) => ({
+    display: 'flex', flexDirection: 'row', alignItems: 'center',
     margin: '14px 0 5px', padding: '0 8px', fontSize: '11px', fontWeight: '700', color: t.muted, gap: '7px',
   }))
 export const GroupNum = txt.attrs({ tag: 'span' }).theme((t: T) => ({ fontFamily: MONO, fontSize: '10px', color: t.accent }))
@@ -210,6 +216,7 @@ export const CyclesBtn = el
     off: { borderColor: t.border, background: 'transparent', color: t.muted },
   })))
   .theme(() => ({
+    display: 'flex', flexDirection: 'row', alignItems: 'center',
     fontSize: '12px', padding: '6px 12px', borderRadius: '8px', gap: '7px',
     borderWidth: '1px', borderStyle: 'solid',
     extendCss: 'cursor:pointer;white-space:nowrap;transition:all .12s;font-family:inherit;',
@@ -220,6 +227,7 @@ export const CyclesDot = el
 export const SmallBtn = el
   .attrs({ tag: 'button', css: 'display:flex;align-items:center;justify-content:center;' })
   .theme((t: T) => ({
+    display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     fontSize: '13px', width: '28px', height: '28px', flex: 'none', borderRadius: '8px',
     borderWidth: '1px', borderStyle: 'solid', borderColor: t.border,
     background: 'transparent', color: t.muted,
@@ -329,7 +337,7 @@ export const ImpactRank = txt
 export const ImpactName = txt
   .attrs({ tag: 'span' })
   .theme((t: T) => ({
-    fontFamily: MONO, fontSize: '12.5px', width: '190px', flex: 'none', color: t.accent,
+    fontFamily: MONO, fontSize: '12.5px', width: '230px', flex: 'none', color: t.accent,
     extendCss: 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
   }))
 export const ImpactTrack = el
@@ -373,7 +381,7 @@ export const TableRow = el
   }))
 export const CellName = el
   .attrs({ tag: 'span', css: 'display:flex;align-items:center;' })
-  .theme(() => ({ gap: '9px', minWidth: '0' }))
+  .theme(() => ({ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '9px', minWidth: '0' }))
 export const KindDot = el
   .attrs({ tag: 'span' })
   .variants(dim((t) => ({ internal: { background: t.accent }, external: { background: t.ext } })))
@@ -444,6 +452,10 @@ export const CycleWarnText = txt
 export const MetricRow = el
   .attrs({ tag: 'div', css: 'display:flex;align-items:center;justify-content:space-between;' })
   .theme((t: T) => ({
+    display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    // Full width, or the shrink-wrapped row leaves space-between nothing to
+    // distribute and label+value render jammed ("Resolution depth0").
+    width: '100%',
     padding: '8px 0',
     borderWidthBottom: '1px', borderStyleBottom: 'solid', borderColorBottom: t.border,
   }))

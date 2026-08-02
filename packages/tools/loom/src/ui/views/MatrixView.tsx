@@ -30,9 +30,16 @@ export function MatrixView(props: { model: ObservatoryModel; theme: () => LoomTo
         const depsOf = (id: string) => new Set(m.byId.get(id)?.deps ?? [])
 
         const head = ids.map((id) => {
-          const name = shortName(id)
+          const full = shortName(id)
+          // The rotated labels are nowrap in a fixed-height band — untruncated
+          // long ids overflowed upward straight through the view's eyebrow
+          // line. Clip to the band and truncate; the full id stays hoverable.
+          const name = full.length > 14 ? `${full.slice(0, 13)}…` : full
           return (
-            <div style={`width:${cell}px;height:${label}px;display:flex;align-items:flex-end;justify-content:center`}>
+            <div
+              title={id}
+              style={`width:${cell}px;height:${label}px;display:flex;align-items:flex-end;justify-content:center;overflow:hidden`}
+            >
               <span
                 style={`font-family:'JetBrains Mono',monospace;font-size:9px;color:${id === sel ? t.accent : t.faint};writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap`}
               >
