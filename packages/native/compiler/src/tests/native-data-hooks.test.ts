@@ -59,7 +59,11 @@ describe('Phase 5 — native data/services hook emit', () => {
   return (<Stack><Text>{loc.latitude}</Text></Stack>)`),
       { target: 'kotlin' },
     ).code
-    expect(out).toContain('val loc = remember { PyreonGeolocation() }')
+    // Geolocation lowers to the SELF-INSTALLING composable (mirrors
+    // rememberPyreonStorage): the prior bare `remember { PyreonGeolocation() }`
+    // compiled green while `geo.start()` errored on every real device —
+    // nothing ever installed AndroidLocationSource.
+    expect(out).toContain('val loc = rememberPyreonGeolocation()')
     expect(out).toContain('val ws = remember { PyreonWebSocket() }')
     // Context-threaded, NOT bare: `PyreonDatabase()` resolved to the
     // in-memory backend, so a `useDatabase()` app silently lost every record

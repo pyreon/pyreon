@@ -47,7 +47,13 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
+import android.content.Context
+import android.location.Location
+import android.location.LocationManager
+import android.location.provider.ProviderProperties
+import android.os.SystemClock
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.pyreon.runtime.PyreonDatabase
 import org.junit.Rule
 import org.junit.Test
@@ -574,5 +580,75 @@ class CounterInstrumentedTest {
         }
         composeRule.onNodeWithText("Lock: denied").assertIsDisplayed()
         composeRule.onNodeWithText("Lock: idle").assertDoesNotExist()
+    }
+
+    // Maps/geolocation row — the ANDROID device proof (the row's Android half
+    // was compile-only: `geo.start()` read an EMPTY registry on every real
+    // device until rememberPyreonGeolocation self-installed the
+    // LocationManager source). Fully self-contained: the test grants
+    // ACCESS_FINE_LOCATION + the mock-location appop through UiAutomation
+    // (the wm-resize pattern), registers a TEST GPS provider, taps Locate
+    // (semantics action — the geo section sits below the API-33 fold), and
+    // injects fixes INSIDE the wait loop (a single fix can race the
+    // listener registration). "Geo: 37.422" can only render if the watch
+    // started, the platform LocationManager delivered the fix through
+    // AndroidLocationSource, and the Compose state re-rendered — the exact
+    // chain the iOS simctl-location twin proves.
+    @Test
+    fun geolocationDeliversMockGpsFixEndToEnd() {
+        val instr = InstrumentationRegistry.getInstrumentation()
+        val pkg = instr.targetContext.packageName
+        instr.uiAutomation
+            .executeShellCommand("pm grant $pkg android.permission.ACCESS_FINE_LOCATION")
+            .close()
+        instr.uiAutomation.executeShellCommand("appops set $pkg android:mock_location allow").close()
+        // The appop grant is asynchronous-ish through the shell — poll until
+        // addTestProvider stops throwing SecurityException rather than sleeping.
+        val lm =
+            instr.targetContext.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            try {
+                try {
+                    lm.removeTestProvider(LocationManager.GPS_PROVIDER)
+                } catch (_: Exception) {}
+                lm.addTestProvider(
+                    LocationManager.GPS_PROVIDER,
+                    false, false, false, false, true, true, true,
+                    ProviderProperties.POWER_USAGE_LOW,
+                    ProviderProperties.ACCURACY_FINE,
+                )
+                lm.setTestProviderEnabled(LocationManager.GPS_PROVIDER, true)
+                true
+            } catch (_: SecurityException) {
+                false
+            }
+        }
+
+        composeRule.onNodeWithText("Locate").performSemanticsAction(SemanticsActions.OnClick)
+
+        try {
+            composeRule.waitUntil(timeoutMillis = 20_000) {
+                val fix =
+                    Location(LocationManager.GPS_PROVIDER).apply {
+                        latitude = 37.4220
+                        longitude = -122.0840
+                        accuracy = 5f
+                        time = System.currentTimeMillis()
+                        elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
+                    }
+                try {
+                    lm.setTestProviderLocation(LocationManager.GPS_PROVIDER, fix)
+                } catch (_: Exception) {}
+                composeRule
+                    .onAllNodesWithText("Geo: 37.422", substring = true)
+                    .fetchSemanticsNodes()
+                    .isNotEmpty()
+            }
+        } finally {
+            try {
+                lm.setTestProviderEnabled(LocationManager.GPS_PROVIDER, false)
+                lm.removeTestProvider(LocationManager.GPS_PROVIDER)
+            } catch (_: Exception) {}
+        }
     }
 }

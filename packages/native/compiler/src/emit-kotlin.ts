@@ -1604,7 +1604,12 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // FIELD reads append `.value` (see emitKotlinExpr); methods + Bool getters
   // read bare. Lifecycle auto-start is a documented follow-up.
   if (d.kind === 'geolocation') {
-    return `val ${kotlinIdent(d.name)} = remember { PyreonGeolocation() }`
+    // rememberPyreonGeolocation SELF-INSTALLS the platform LocationManager
+    // source (guarded — an app-chosen registry source wins), mirroring
+    // rememberPyreonStorage. The prior bare `remember { PyreonGeolocation() }`
+    // compiled green while `geo.start()` errored on every real device
+    // (nothing ever installed AndroidLocationSource).
+    return `val ${kotlinIdent(d.name)} = rememberPyreonGeolocation()`
   }
   if (d.kind === 'websocket') {
     return `val ${kotlinIdent(d.name)} = remember { PyreonWebSocket() }`

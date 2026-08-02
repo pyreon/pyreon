@@ -1222,6 +1222,11 @@ class PyreonGeolocation {
   fun stop() {}
 }
 
+// The Compose entry the emit lowers useGeolocation() to — self-installs the
+// platform source on the real runtime; the stub just returns the container.
+@Composable
+fun rememberPyreonGeolocation(): PyreonGeolocation = PyreonGeolocation()
+
 class PyreonWebSocket {
   val lastMessage = mutableStateOf<String?>(null)
   val messages = mutableStateOf<List<String>>(emptyList())

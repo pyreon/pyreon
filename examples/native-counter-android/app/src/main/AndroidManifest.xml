@@ -15,6 +15,10 @@
          (PyreonNotifications). NotificationManagerCompat no-ops gracefully if
          it isn't granted, so the app never crashes. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Maps/geolocation row: AndroidLocationSource checks FINE/COARSE at
+         register time and reports a denial through the error channel; the
+         instrumented geolocation test grants FINE via UiAutomation. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <application
         android:label="PyreonCounter"
         android:allowBackup="true">
