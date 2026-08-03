@@ -163,13 +163,30 @@ public struct ForEach<Data, ID, Content: View>: View {
 }
 
 // ---- Animation / transition / gestures ----
-public struct Animation { public static let \`default\` = Animation() }
+public struct Animation {
+  public static let \`default\` = Animation()
+  // The four timing-function factories <Transition duration/easing> lowers
+  // to — mirrored from real SwiftUI (each takes a labelled duration:).
+  public static func linear(duration: Double) -> Animation { Animation() }
+  public static func easeIn(duration: Double) -> Animation { Animation() }
+  public static func easeOut(duration: Double) -> Animation { Animation() }
+  public static func easeInOut(duration: Double) -> Animation { Animation() }
+}
 public struct AnyTransition { public static let opacity = AnyTransition() }
 public protocol Gesture {}
 public struct LongPressGesture: Gesture {
   public init(minimumDuration: Double = 0.5) {}
   public func onEnded(_ action: @escaping (Bool) -> Void) -> LongPressGesture { self }
 }
+// DragGesture — what <Press onSwipeLeft/onSwipeRight> lowers to. The Value
+// mirrors the real gesture's \`translation: CGSize\` (width/height Doubles) so
+// an emit reading a member DragGesture.Value doesn't have fails typecheck.
+public struct DragGesture: Gesture {
+  public struct Value { public var translation: CGSize = CGSize() }
+  public init(minimumDistance: Double = 10) {}
+  public func onEnded(_ action: @escaping (Value) -> Void) -> DragGesture { self }
+}
+public struct CGSize { public var width: Double = 0; public var height: Double = 0 }
 public struct PrimitiveButtonStyleStub { public static let plain = PrimitiveButtonStyleStub() }
 public enum AccessibilityChildBehavior { case contain, combine, ignore }
 
@@ -184,6 +201,7 @@ extension View {
   public func accessibilityLabel(_ label: String) -> some View { self }
   public func accessibilityElement(children: AccessibilityChildBehavior) -> some View { self }
   public func simultaneousGesture<G: Gesture>(_ gesture: G) -> some View { self }
+  public func highPriorityGesture<G: Gesture>(_ gesture: G) -> some View { self }
   public func onSubmit(_ action: @escaping () -> Void) -> some View { self }
   public func font(_ font: Font?) -> some View { self }
   public func opacity(_ opacity: Double) -> some View { self }

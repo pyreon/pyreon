@@ -5,9 +5,16 @@
   (different label / different generated composable).
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- INTERNET + cleartext: the useWebSocket device proof connects to the
+         loopback echo server over ws:// (cleartext), which Android 9+ blocks
+         by default — without the opt-in the OkHttp handshake fails silently
+         and "WS: open" never renders. Demo-app-only. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <application
         android:label="PyreonRouterDemo"
-        android:allowBackup="true">
+        android:allowBackup="true"
+        android:usesCleartextTraffic="true">
         <activity
             android:name="com.pyreon.MainActivity"
             android:exported="true"

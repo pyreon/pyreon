@@ -32,6 +32,7 @@ package com.pyreon
 
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
@@ -47,7 +48,13 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
+import android.content.Context
+import android.location.Location
+import android.location.LocationManager
+import android.location.provider.ProviderProperties
+import android.os.SystemClock
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.pyreon.runtime.PyreonDatabase
 import org.junit.Rule
 import org.junit.Test
@@ -93,7 +100,16 @@ class CounterInstrumentedTest {
         composeRule.onNodeWithText("Increment").performClick()
         composeRule.onNodeWithText("Count: 2").assertIsDisplayed()
 
-        composeRule.onNodeWithTag("reset-zone").performTouchInput { longClick() }
+        // Semantics action, not a coordinate long-press: the counter column
+        // overflows shorter profiles (API 33's effective viewport is smaller
+        // than Android 15's — the documented divergence), and content
+        // additions above keep shifting this zone across the fold. The
+        // long-press SEMANTICS (combinedClickable's OnLongClick) is the
+        // claim under test; coordinate gestures remain proven by the
+        // upper-region tests.
+        composeRule
+            .onNodeWithTag("reset-zone")
+            .performSemanticsAction(SemanticsActions.OnLongClick)
 
         composeRule.onNodeWithText("Count: 0").assertIsDisplayed()
     }
@@ -284,6 +300,27 @@ class CounterInstrumentedTest {
     @Test
     fun i18nTranslatedStringRendersConfiguredLocale() {
         composeRule.onNodeWithText("Greeting: Hallo!").assertIsDisplayed()
+    }
+
+    // i18n-row residuals — INTERPOLATION + PLURAL-RULE selection, driven by
+    // the EXISTING count signal so no new controls were added:
+    //   - "Hallo Vit!" proves {{name}} substitution from the values map IN
+    //     the configured locale (a dropped interpolation renders the raw
+    //     "Hallo {{name}}!"; a wrong-locale lookup renders "Hi Vit!").
+    //   - The plural text follows count across the _other→_one→_other
+    //     boundary as Increment fires: "0 Stücke" → "1 Stück" → "2 Stücke"
+    //     (a broken plural selection sticks on one suffix — the exact
+    //     failure the runtime bisect drives).
+    @Test
+    fun i18nInterpolationAndPluralsFollowCount() {
+        composeRule.onNodeWithText("Hallo Vit!").assertExists()
+        composeRule.onNodeWithText("0 Stücke").assertExists()
+        composeRule.onNodeWithText("Increment").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("1 Stück").assertExists()
+        composeRule.onNodeWithText("Increment").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("2 Stücke").assertExists()
     }
 
     // Dark mode (useColorScheme) asserted in the REAL Compose semantics tree —
@@ -477,7 +514,12 @@ class CounterInstrumentedTest {
     @Test
     fun toggleFlipsObservableStateOnDevice() {
         composeRule.onNodeWithTag("core-toggle-state").assertTextEquals("switch off")
-        composeRule.onNodeWithTag("core-toggle").performClick()
+        // Semantics action for the same fold reason as the modal-open and
+        // reset-zone (the Switch sits low in the overflowing column; a real
+        // click passed on Android 15 and missed on API 33).
+        composeRule
+            .onNodeWithTag("core-toggle")
+            .performSemanticsAction(SemanticsActions.OnClick)
         composeRule.onNodeWithTag("core-toggle-state").assertTextEquals("switch on")
     }
 
@@ -539,5 +581,115 @@ class CounterInstrumentedTest {
         }
         composeRule.onNodeWithText("Lock: denied").assertIsDisplayed()
         composeRule.onNodeWithText("Lock: idle").assertDoesNotExist()
+    }
+
+    // Maps/geolocation row — the ANDROID device proof (the row's Android half
+    // was compile-only: `geo.start()` read an EMPTY registry on every real
+    // device until rememberPyreonGeolocation self-installed the
+    // LocationManager source). Fully self-contained: the test grants
+    // ACCESS_FINE_LOCATION + the mock-location appop through UiAutomation
+    // (the wm-resize pattern), registers a TEST GPS provider, taps Locate
+    // (semantics action — the geo section sits below the API-33 fold), and
+    // injects fixes INSIDE the wait loop (a single fix can race the
+    // listener registration). "Geo: 37.422" can only render if the watch
+    // started, the platform LocationManager delivered the fix through
+    // AndroidLocationSource, and the Compose state re-rendered — the exact
+    // chain the iOS simctl-location twin proves.
+    @Test
+    fun geolocationDeliversMockGpsFixEndToEnd() {
+        val instr = InstrumentationRegistry.getInstrumentation()
+        val pkg = instr.targetContext.packageName
+        instr.uiAutomation
+            .executeShellCommand("pm grant $pkg android.permission.ACCESS_FINE_LOCATION")
+            .close()
+        instr.uiAutomation.executeShellCommand("appops set $pkg android:mock_location allow").close()
+        // The device's MASTER location switch must be ON, or the runtime's
+        // provider pick dead-ends: with location globally off,
+        // isProviderEnabled(GPS) reports false even for an added+enabled
+        // TEST provider, AndroidLocationSource errors "no location provider
+        // enabled", and no fix can ever arrive. CI emulator images ship with
+        // location OFF (a local emulator that happens to have it on is what
+        // let this test pass locally while failing every CI run — reproduced
+        // exactly by flipping the local switch off). The test owns this
+        // precondition like it owns the permission + mock-location appop.
+        instr.uiAutomation.executeShellCommand("cmd location set-location-enabled true").close()
+        // The appop grant is asynchronous-ish through the shell — poll until
+        // addTestProvider stops throwing SecurityException rather than sleeping.
+        val lm =
+            instr.targetContext.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            try {
+                try {
+                    lm.removeTestProvider(LocationManager.GPS_PROVIDER)
+                } catch (_: Exception) {}
+                lm.addTestProvider(
+                    LocationManager.GPS_PROVIDER,
+                    false, false, false, false, true, true, true,
+                    ProviderProperties.POWER_USAGE_LOW,
+                    ProviderProperties.ACCURACY_FINE,
+                )
+                lm.setTestProviderEnabled(LocationManager.GPS_PROVIDER, true)
+                true
+            } catch (_: SecurityException) {
+                false
+            }
+        }
+        // State-verify the EXACT precondition the runtime checks before it
+        // registers: the GPS provider must read enabled (test provider on +
+        // master switch on). Tapping Locate before this holds races the
+        // shell-command settle and reproduces the dead-end.
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            lm.isProviderEnabled(LocationManager.GPS_PROVIDER)
+        }
+
+        composeRule.onNodeWithText("Locate").performSemanticsAction(SemanticsActions.OnClick)
+
+        try {
+            composeRule.waitUntil(timeoutMillis = 20_000) {
+                val fix =
+                    Location(LocationManager.GPS_PROVIDER).apply {
+                        latitude = 37.4220
+                        longitude = -122.0840
+                        accuracy = 5f
+                        time = System.currentTimeMillis()
+                        elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
+                    }
+                try {
+                    lm.setTestProviderLocation(LocationManager.GPS_PROVIDER, fix)
+                } catch (_: Exception) {}
+                composeRule
+                    .onAllNodesWithText("Geo: 37.422", substring = true)
+                    .fetchSemanticsNodes()
+                    .isNotEmpty()
+            }
+        } catch (e: androidx.compose.ui.test.ComposeTimeoutException) {
+            // A CI-only failure's message IS the artifact — carry the observed
+            // state instead of a bare "condition not satisfied": the rendered
+            // Geo text plus the two provider preconditions, so the next remote
+            // failure names its cause in one round.
+            val geoTexts =
+                try {
+                    composeRule
+                        .onAllNodesWithText("Geo", substring = true)
+                        .fetchSemanticsNodes()
+                        .joinToString(" | ") { n ->
+                            n.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text)
+                                ?.joinToString() ?: "<no text>"
+                        }
+                } catch (_: Throwable) {
+                    "<semantics read failed>"
+                }
+            throw AssertionError(
+                "geo fix never rendered — observed: [$geoTexts], " +
+                    "gpsProviderEnabled=${lm.isProviderEnabled(LocationManager.GPS_PROVIDER)}, " +
+                    "locationEnabled=${lm.isLocationEnabled}",
+                e,
+            )
+        } finally {
+            try {
+                lm.setTestProviderEnabled(LocationManager.GPS_PROVIDER, false)
+                lm.removeTestProvider(LocationManager.GPS_PROVIDER)
+            } catch (_: Exception) {}
+        }
     }
 }

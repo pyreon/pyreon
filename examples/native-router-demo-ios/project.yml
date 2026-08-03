@@ -70,6 +70,14 @@ targets:
         CFBundlePackageType: APPL
         CFBundleShortVersionString: 0.0.1
         CFBundleVersion: '1'
+        # Media-row remote image: AsyncImage fetches over URLSession, which
+        # App Transport Security gates — cleartext http://localhost is
+        # BLOCKED by default (the ws test never hit this because the ws
+        # runtime uses Network.framework, which ATS does not cover).
+        # NSAllowsLocalNetworking permits loopback/local cleartext ONLY —
+        # not arbitrary http.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
         LSRequiresIPhoneOS: true
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false

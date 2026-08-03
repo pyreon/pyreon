@@ -1604,7 +1604,12 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // FIELD reads append `.value` (see emitKotlinExpr); methods + Bool getters
   // read bare. Lifecycle auto-start is a documented follow-up.
   if (d.kind === 'geolocation') {
-    return `val ${kotlinIdent(d.name)} = remember { PyreonGeolocation() }`
+    // rememberPyreonGeolocation SELF-INSTALLS the platform LocationManager
+    // source (guarded — an app-chosen registry source wins), mirroring
+    // rememberPyreonStorage. The prior bare `remember { PyreonGeolocation() }`
+    // compiled green while `geo.start()` errored on every real device
+    // (nothing ever installed AndroidLocationSource).
+    return `val ${kotlinIdent(d.name)} = rememberPyreonGeolocation()`
   }
   if (d.kind === 'websocket') {
     return `val ${kotlinIdent(d.name)} = remember { PyreonWebSocket() }`
@@ -2564,7 +2569,19 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           // `Array.from({ length: n }, (_, i) => body)` → `(0 until n).map { i -> body }`.
           const range = objectLengthRangeForm(e)
           if (range !== null) {
-            return `(0 until ${emitKotlinExpr(range.lenExpr, indent)}).map({ ${kotlinIdent(range.indexParam)} -> ${emitKotlinExpr(range.body, indent)} })`
+            // Seed the INDEX param as Int for the body emit — the Swift
+            // twin's comment has the rationale; here the bailed synthesis
+            // emitted `(id = i, …)` NAMED-TUPLE syntax, which is not Kotlin
+            // at all (a syntax error at the site).
+            const had = _kotlinExprInferCtx.locals.has(range.indexParam)
+            const prev = _kotlinExprInferCtx.locals.get(range.indexParam)
+            _kotlinExprInferCtx.locals.set(range.indexParam, { kind: 'number' })
+            try {
+              return `(0 until ${emitKotlinExpr(range.lenExpr, indent)}).map({ ${kotlinIdent(range.indexParam)} -> ${emitKotlinExpr(range.body, indent)} })`
+            } finally {
+              if (had) _kotlinExprInferCtx.locals.set(range.indexParam, prev!)
+              else _kotlinExprInferCtx.locals.delete(range.indexParam)
+            }
           }
           const mapForm = arrayFromMapRewrite(e)
           if (mapForm !== null) return emitKotlinExpr(mapForm, indent)
@@ -4514,14 +4531,51 @@ function emitKotlinWalledTagAsChildren(
   )
 }
 
+/** CSS-easing → Compose Easing constant. The CSS names map onto Compose's
+ * canonical curves: ease-in (accelerate) → FastOutLinearInEasing, ease-out
+ * (decelerate) → LinearOutSlowInEasing, ease-in-out → FastOutSlowInEasing
+ * (also the no-easing default when a duration is set — CSS's `ease`
+ * analog), linear → LinearEasing. */
+function kotlinEasingFor(easing: string | undefined): string {
+  return easing === 'linear'
+    ? 'LinearEasing'
+    : easing === 'ease-in'
+      ? 'FastOutLinearInEasing'
+      : easing === 'ease-out'
+        ? 'LinearOutSlowInEasing'
+        : 'FastOutSlowInEasing'
+}
+
 function emitKotlinTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const show = e.attrs.find((a) => a.kind === 'attr' && a.name === 'show') as
     | Extract<AttrIR, { kind: 'attr' }>
     | undefined
   const cond = show ? emitKotlinSignalRead(unwrapAccessorArrow(show.value)) : 'true'
+  // Animation CONFIG (v1) — mirror of the Swift emitter: `duration` (ms,
+  // static literal) + `easing`. Absent props emit the byte-identical bare
+  // AnimatedVisibility shipped since M2.7; a configured one gets explicit
+  // fade specs (`fadeIn/fadeOut(tween(ms, easing = …))` — tween is the
+  // Compose analog of a CSS timing function).
+  const durRaw = readStaticAttrKotlin(e, 'duration')
+  const easeRaw = readStaticAttrKotlin(e, 'easing')
+  const durAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'duration')
+  if (durAttr !== undefined && typeof durRaw !== 'number') {
+    _emitWarnings.push(
+      `<Transition duration>: must be a static number of milliseconds; got a non-literal — falling back to the default animation.`,
+    )
+  }
+  const duration = typeof durRaw === 'number' ? durRaw : undefined
+  const easing = typeof easeRaw === 'string' ? easeRaw : undefined
   const pad = ' '.repeat(indent + 2)
   const body = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
-  return `AnimatedVisibility(visible = ${cond}) {\n${body}\n${' '.repeat(indent)}}`
+  if (duration === undefined && easing === undefined) {
+    return `AnimatedVisibility(visible = ${cond}) {\n${body}\n${' '.repeat(indent)}}`
+  }
+  const spec = `tween(durationMillis = ${duration ?? 300}, easing = ${kotlinEasingFor(easing)})`
+  return (
+    `AnimatedVisibility(visible = ${cond}, enter = fadeIn(animationSpec = ${spec}), exit = fadeOut(animationSpec = ${spec})) {\n` +
+    `${body}\n${' '.repeat(indent)}}`
+  )
 }
 
 /**
@@ -5275,10 +5329,27 @@ function emitKotlinScroll(
     isKotlinLazyListChild(e.children[0]!.expr)
   if (lazyOnly) {
     // No wrapper at all — the LazyColumn IS the scroll container. Emitted at
-    // the PARENT's indent, since it takes the wrapper's place. Any
-    // padding/testTag on the <Scroll> would be lost by unwrapping, so keep the
-    // wrapper (and accept the author's own nesting) when it carries layout.
+    // the PARENT's indent, since it takes the wrapper's place.
     if (layoutMod === '') return emitKotlinChild(e.children[0]!, indent)
+    // The <Scroll> carries layout (padding/testTag): keep the wrapper for
+    // that layout but WITHOUT the scroll modifier. The prior "keep the
+    // wrapper and accept the author's own nesting" emitted the exact
+    // measure-time crash this branch documents — device-found on the
+    // 10k-row BigListPage, whose `data-testid` was all it took to route a
+    // single-For <Scroll> onto the crashing path with zero diagnostics.
+    // A plain (non-scrolling) Column around a LazyColumn is legal; the
+    // lazy child scrolls itself.
+    return `${composable}(modifier = ${layoutMod}) {\n${pad}${emitKotlinChild(e.children[0]!, indent + 2)}\n${' '.repeat(indent)}}`
+  }
+  // MIXED children including a lazy list (a header + a <For>): the outer
+  // scroller is doing real work for the non-lazy siblings, so the tree is
+  // kept — but the nested-lazy shape throws at MEASURE time on Android, so
+  // the long-promised warning is now actually emitted (the comment above
+  // claimed it; the code never did — comment/code drift).
+  if (!horizontal && e.children.some((c) => c.kind === 'expr' && isKotlinLazyListChild(c.expr))) {
+    _emitWarnings.push(
+      '<Scroll> with a <For> among OTHER children nests a LazyColumn inside Column(Modifier.verticalScroll()) on Android — an IllegalStateException at MEASURE time ("measured with an infinity maximum height"). Move the <For> into its own <Scroll>, or render the header as a plain sibling above a <Scroll><For/></Scroll>.',
+    )
   }
   const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
   return `${composable}(modifier = ${modifier}) {\n${contentLines}\n${' '.repeat(indent)}}`
@@ -5378,8 +5449,40 @@ function emitKotlinPress(
   const clickable = onLongPress
     ? `.combinedClickable(onClick = ${action}, onLongClick = ${emitKotlinAction(onLongPress.handler, indent)})`
     : `.clickable(onClick = ${action})`
+
+  // `onSwipeLeft` / `onSwipeRight` → `pointerInput { detectHorizontalDragGestures }`.
+  // The detector is direction-locked (only claims horizontally-dominant
+  // drags), so taps still reach `.clickable` and vertical scrolls pass
+  // through. Deltas ACCUMULATE across the gesture (`onHorizontalDrag`
+  // fires per-move); the ±40f end-total threshold matches the SwiftUI
+  // emit and the web polyfill. The detector loop lives for the
+  // composable's lifetime, so `onDragStart` must reset the accumulator
+  // per gesture. Handlers are `() -> Unit` lambdas from
+  // `emitKotlinAction` — invoked via the stdlib non-extension `run(block)`.
+  const onSwipeLeft = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> =>
+      a.kind === 'event' && a.name === 'swipeleft',
+  )
+  const onSwipeRight = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> =>
+      a.kind === 'event' && a.name === 'swiperight',
+  )
+  let swipeInput = ''
+  if (onSwipeLeft || onSwipeRight) {
+    const branches: string[] = []
+    if (onSwipeLeft) {
+      branches.push(`if (dragTotal < -40f) run(${emitKotlinAction(onSwipeLeft.handler, indent)})`)
+    }
+    if (onSwipeRight) {
+      branches.push(
+        `${onSwipeLeft ? 'else ' : ''}if (dragTotal > 40f) run(${emitKotlinAction(onSwipeRight.handler, indent)})`,
+      )
+    }
+    swipeInput = `.pointerInput(Unit) { var dragTotal = 0f; detectHorizontalDragGestures(onDragStart = { dragTotal = 0f }, onDragEnd = { ${branches.join(' ')} }, onHorizontalDrag = { _, amount -> dragTotal += amount }) }`
+  }
+  const gestures = `${clickable}${swipeInput}`
   const modifier =
-    layoutModifier !== '' ? `${layoutModifier}${clickable}` : `Modifier${clickable}`
+    layoutModifier !== '' ? `${layoutModifier}${gestures}` : `Modifier${gestures}`
 
   const pad = ' '.repeat(indent + 2)
   if (e.children.length === 0) {

@@ -28,6 +28,7 @@ describe('gen-docs — styler snapshot', () => {
       'styler/createGlobalStyle',
       'styler/createSheet',
       'styler/css',
+      'styler/defineTheme',
       'styler/filterProps',
       'styler/hash / hashUpdate / hashFinalize / HASH_INIT',
       'styler/isDynamic',

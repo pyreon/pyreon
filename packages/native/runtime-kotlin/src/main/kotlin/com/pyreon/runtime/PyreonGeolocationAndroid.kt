@@ -2,6 +2,9 @@ package com.pyreon.runtime
 
 import android.Manifest
 import android.content.Context
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationListener
@@ -139,4 +142,25 @@ public class AndroidLocationSource(
  */
 public fun installDefaultGeolocationSource(context: Context) {
     installDefaultGeolocationSource { AndroidLocationSource(context) }
+}
+
+/**
+ * The Compose entry `useGeolocation()` lowers to — [PyreonGeolocation] with
+ * the platform source SELF-INSTALLED, mirroring `rememberPyreonStorage`'s
+ * "a default that requires a step nobody takes is not a default" fix: until
+ * 2026-08 the emit was a bare `remember { PyreonGeolocation() }` and NOTHING
+ * installed [AndroidLocationSource], so `geo.start()` errored
+ * "assign PyreonGeolocationRegistry.source" on every real device while the
+ * emit compiled green (the device-found class, again).
+ *
+ * The install is guarded ([installDefaultGeolocationSource] only fills an
+ * UNSET registry), so an app that wired its own source in
+ * `Application.onCreate` is untouched. Keyed on the context so it runs once
+ * per composition tree.
+ */
+@Composable
+public fun rememberPyreonGeolocation(): PyreonGeolocation {
+    val appContext = LocalContext.current
+    remember(appContext) { installDefaultGeolocationSource(appContext); appContext }
+    return remember { PyreonGeolocation() }
 }

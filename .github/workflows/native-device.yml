@@ -349,6 +349,16 @@ jobs:
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO
 
+      # The useWebSocket device proof needs a live loopback peer — the iOS
+      # Simulator shares the host loopback, so a background bun process is
+      # all it takes. Started here (not globally) because ONLY the
+      # router-demo suite touches the socket.
+      - name: Start ws echo server — native-router-demo-ios
+        run: |
+          nohup bun examples/native-router-demo-ios/scripts/ws-echo-server.ts > /tmp/ws-echo.log 2>&1 &
+          sleep 1
+          grep -q "listening" /tmp/ws-echo.log && echo "ws-echo up" || (cat /tmp/ws-echo.log; exit 1)
+
       - name: Emit + xcodegen + UITest — native-router-demo-ios
         working-directory: examples/native-router-demo-ios
         # NO `CODE_SIGNING_ALLOWED=NO` here, deliberately: an UNSIGNED app
@@ -657,7 +667,15 @@ jobs:
           # run that ever REACHED this step (the build steps before
           # it use step-level working-directory and were fine).
           working-directory: examples/native-router-demo-android
-          script: gradle connectedCheck --no-daemon --stacktrace
+          # The useWebSocket device proof: start the loopback echo server on
+          # the HOST, then `adb reverse` so the DEVICE's localhost:8790
+          # reaches it — the shared-source URL stays one literal for all
+          # three targets. Both lines run inside the runner's script phase
+          # because adb reverse needs the emulator booted.
+          script: |
+            nohup bun ../native-router-demo-ios/scripts/ws-echo-server.ts > /tmp/ws-echo.log 2>&1 &
+            adb reverse tcp:8790 tcp:8790
+            gradle connectedCheck --no-daemon --stacktrace
 
       # Tasks showcase — Gap 5 PR-5.3(c) closure on the Android side.
       # Runs TasksAppInstrumentedTest.kt (login → store-gated tasks →

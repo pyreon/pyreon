@@ -136,6 +136,11 @@ fun <T> mutableStateListOf(vararg elements: T): SnapshotStateList<T> =
 
 @Composable
 fun <T> remember(key: Any?, calculation: () -> T): T = calculation()
+
+// The keyless overload — real androidx.compose.runtime ships both; the
+// geolocation composable uses \`remember { PyreonGeolocation() }\`.
+@Composable
+fun <T> remember(calculation: () -> T): T = calculation()
 `
 
 const KOTLINX_SERIALIZATION_STUBS = `package kotlinx.serialization
@@ -632,6 +637,88 @@ fun <T> CompletableDeferred(parent: Job? = null): CompletableDeferred<T> =
   CompletableDeferredImpl()
 `
 
+// PyreonGeolocationAndroid-only stubs — the android.location +
+// android.os.Looper + Manifest/PackageManager/Context surface
+// AndroidLocationSource touches, mirrored EXACTLY (per-service, minimal —
+// a superset stub masks). The Context carries getSystemService +
+// checkSelfPermission (the members the source calls); LOCATION_SERVICE is
+// the companion constant the lookup keys on.
+const ANDROID_LOCATION_STUBS = `package android.location
+
+import android.os.Bundle
+import android.os.Looper
+
+open class Location(provider: String) {
+  var latitude: Double = 0.0
+  var longitude: Double = 0.0
+  var accuracy: Float = 0f
+  fun hasAccuracy(): Boolean = false
+}
+
+interface LocationListener {
+  fun onLocationChanged(location: Location)
+  fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+  fun onProviderDisabled(provider: String)
+  fun onProviderEnabled(provider: String)
+}
+
+class LocationManager {
+  fun isProviderEnabled(provider: String): Boolean = false
+  fun requestLocationUpdates(
+    provider: String,
+    minTimeMs: Long,
+    minDistanceM: Float,
+    listener: LocationListener,
+    looper: Looper?,
+  ) {}
+  fun removeUpdates(listener: LocationListener) {}
+  companion object {
+    const val GPS_PROVIDER: String = "gps"
+    const val NETWORK_PROVIDER: String = "network"
+  }
+}
+`
+
+const ANDROID_LOCATION_SUPPORT_STUBS = `package android.os
+
+class Bundle
+class Looper private constructor() {
+  companion object {
+    private val main = Looper()
+    fun getMainLooper(): Looper = main
+  }
+}
+`
+
+const ANDROID_LOCATION_CONTEXT_STUBS = `package android.content
+
+open class Context {
+  open val applicationContext: Context get() = this
+  open fun getSystemService(name: String): Any? = null
+  open fun checkSelfPermission(permission: String): Int = -1
+  companion object {
+    const val LOCATION_SERVICE: String = "location"
+  }
+}
+`
+
+const ANDROID_LOCATION_MANIFEST_STUBS = `package android
+
+object Manifest {
+  object permission {
+    const val ACCESS_FINE_LOCATION: String = "android.permission.ACCESS_FINE_LOCATION"
+    const val ACCESS_COARSE_LOCATION: String = "android.permission.ACCESS_COARSE_LOCATION"
+  }
+}
+`
+
+const ANDROID_LOCATION_PM_STUBS = `package android.content.pm
+
+object PackageManager {
+  const val PERMISSION_GRANTED: Int = 0
+}
+`
+
 const tempDir = mkdtempSync(join(tmpdir(), 'pyreon-kotlin-runtime-verify-'))
 
 try {
@@ -793,6 +880,35 @@ try {
       : SERVICE === 'PyreonStorageAndroid'
         ? [composePlatformPath, storageFilePath, storageComposePath]
         : []
+  // PyreonGeolocationAndroid: android.location + Looper/Bundle + a
+  // location-shaped Context + Manifest/PackageManager stubs, the Compose
+  // platform LocalContext, and the CORE sibling (the composable returns
+  // PyreonGeolocation and calls installDefaultGeolocationSource).
+  const locationPath = join(tempDir, 'AndroidLocation.kt')
+  const locationSupportPath = join(tempDir, 'AndroidLocationSupport.kt')
+  const locationContextPath = join(tempDir, 'AndroidLocationContext.kt')
+  const locationManifestPath = join(tempDir, 'AndroidLocationManifest.kt')
+  const locationPmPath = join(tempDir, 'AndroidLocationPm.kt')
+  if (SERVICE === 'PyreonGeolocationAndroid') {
+    writeFileSync(locationPath, ANDROID_LOCATION_STUBS, 'utf8')
+    writeFileSync(locationSupportPath, ANDROID_LOCATION_SUPPORT_STUBS, 'utf8')
+    writeFileSync(locationContextPath, ANDROID_LOCATION_CONTEXT_STUBS, 'utf8')
+    writeFileSync(locationManifestPath, ANDROID_LOCATION_MANIFEST_STUBS, 'utf8')
+    writeFileSync(locationPmPath, ANDROID_LOCATION_PM_STUBS, 'utf8')
+    writeFileSync(composePlatformPath, ANDROIDX_COMPOSE_PLATFORM_STUBS, 'utf8')
+  }
+  const geolocationAndroidExtras =
+    SERVICE === 'PyreonGeolocationAndroid'
+      ? [
+          locationPath,
+          locationSupportPath,
+          locationContextPath,
+          locationManifestPath,
+          locationPmPath,
+          composePlatformPath,
+          resolve(PACKAGE_ROOT, 'src/main/kotlin/com/pyreon/runtime/PyreonGeolocation.kt'),
+        ]
+      : []
   const linkingStubs = SERVICE === 'PyreonLinking' ? [linkingContentPath, linkingNetPath] : []
   const notifStubs = SERVICE === 'PyreonNotifications' ? [notifAppPath, notifContentPath, notifOsPath, notifRPath, notifCorePath] : []
   // The OkHttp transport is an EXTENSION over the core container — its
@@ -819,6 +935,7 @@ try {
         ...linkingStubs,
         ...notifStubs,
         ...okhttpExtras,
+        ...geolocationAndroidExtras,
         SOURCE_FILE,
       ]
     : [
@@ -838,6 +955,7 @@ try {
         ...linkingStubs,
         ...notifStubs,
         ...okhttpExtras,
+        ...geolocationAndroidExtras,
         SOURCE_FILE,
         TEST_FILE,
       ]

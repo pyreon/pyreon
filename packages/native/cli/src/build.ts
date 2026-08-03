@@ -193,6 +193,24 @@ export function conditionalKotlinImports(emitted: string): string {
   if (emitted.includes('.background(')) {
     imports.push('import androidx.compose.foundation.background')
   }
+  // <Transition duration/easing> — the configured emit's explicit fade
+  // specs. fadeIn/fadeOut live in androidx.compose.animation; tween + the
+  // easing constants in androidx.compose.animation.core. Sub-package
+  // symbols the star imports don't cover — the exact stub-masked-symbol
+  // class (the validate loop's stubs resolve them regardless of import;
+  // only the real gradle build catches the miss, and it did).
+  if (/\bfadeIn\(/.test(emitted)) {
+    imports.push('import androidx.compose.animation.fadeIn')
+    imports.push('import androidx.compose.animation.fadeOut')
+  }
+  if (/\btween\(/.test(emitted)) {
+    imports.push('import androidx.compose.animation.core.tween')
+  }
+  for (const easing of ['LinearEasing', 'FastOutSlowInEasing', 'FastOutLinearInEasing', 'LinearOutSlowInEasing']) {
+    if (emitted.includes(easing)) {
+      imports.push(`import androidx.compose.animation.core.${easing}`)
+    }
+  }
   // `.clip(RoundedCornerShape(...))` — canonical `radius=` AND inline
   // `borderRadius`. The `clip` Modifier extension is androidx.compose.ui.draw,
   // NOT the single-package star `androidx.compose.ui.*`. RoundedCornerShape
@@ -334,6 +352,17 @@ export function conditionalKotlinImports(emitted: string): string {
   }
   if (emitted.includes('.combinedClickable(')) {
     imports.push('import androidx.compose.foundation.combinedClickable')
+  }
+  // <Press onSwipeLeft/onSwipeRight> → `.pointerInput { detectHorizontalDragGestures }`.
+  // Both live in sub-packages the star imports don't cover
+  // (androidx.compose.ui.input.pointer / androidx.compose.foundation.gestures)
+  // — the exact stub-masked-symbol class: the validate loop resolves them
+  // from the concatenated stubs with or without the import.
+  if (emitted.includes('.pointerInput(')) {
+    imports.push('import androidx.compose.ui.input.pointer.pointerInput')
+  }
+  if (emitted.includes('detectHorizontalDragGestures(')) {
+    imports.push('import androidx.compose.foundation.gestures.detectHorizontalDragGestures')
   }
   // M3.1 haptics (`const h = useHaptics()`): the Compose haptic surface
   // `LocalHapticFeedback` lives in androidx.compose.ui.platform — NOT

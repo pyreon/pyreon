@@ -521,6 +521,78 @@ describe('<Press> happy-dom unit', () => {
     unmount()
   })
 
+  it('onSwipeLeft/onSwipeRight fire on a ≥40px horizontally-dominant pointer delta', () => {
+    let left = 0
+    let right = 0
+    let press = 0
+    const { container, unmount } = mountTest(
+      h(
+        Press,
+        { onPress: () => press++, onSwipeLeft: () => left++, onSwipeRight: () => right++ },
+        'x',
+      ),
+    )
+    const root = container.firstElementChild as HTMLDivElement
+    // Left swipe: 200 → 140 (dx −60, dy 5). The click the browser fires
+    // after the same pointerup must be SUPPRESSED (one gesture ≠ swipe+press).
+    root.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 200, clientY: 100 }))
+    root.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: 140, clientY: 105 }))
+    root.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    expect(left).toBe(1)
+    expect(press).toBe(0)
+    // Right swipe.
+    root.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 100 }))
+    root.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: 180, clientY: 100 }))
+    root.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    expect(right).toBe(1)
+    expect(press).toBe(0)
+    unmount()
+  })
+
+  it('a sub-threshold or vertically-dominant drag is a PRESS, not a swipe', () => {
+    let left = 0
+    let press = 0
+    const { container, unmount } = mountTest(
+      h(Press, { onPress: () => press++, onSwipeLeft: () => left++ }, 'x'),
+    )
+    const root = container.firstElementChild as HTMLDivElement
+    // 20px — under the 40px threshold → the click goes through as a press.
+    root.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 100 }))
+    root.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: 80, clientY: 100 }))
+    root.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    expect(left).toBe(0)
+    expect(press).toBe(1)
+    // 50px left but 80px down — vertically dominant (a scroll) → no swipe.
+    root.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 100 }))
+    root.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: 50, clientY: 180 }))
+    expect(left).toBe(0)
+    unmount()
+  })
+
+  it('pointerleave never fires a swipe (drag cancel semantics)', () => {
+    let left = 0
+    const { container, unmount } = mountTest(
+      h(Press, { onPress: () => {}, onSwipeLeft: () => left++ }, 'x'),
+    )
+    const root = container.firstElementChild as HTMLDivElement
+    root.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 200, clientY: 100 }))
+    root.dispatchEvent(new PointerEvent('pointerleave', { bubbles: true, clientX: 100, clientY: 100 }))
+    expect(left).toBe(0)
+    unmount()
+  })
+
+  it('disabled blocks swipes', () => {
+    let left = 0
+    const { container, unmount } = mountTest(
+      h(Press, { onPress: () => {}, onSwipeLeft: () => left++, disabled: true }, 'x'),
+    )
+    const root = container.firstElementChild as HTMLDivElement
+    root.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 200, clientY: 100 }))
+    root.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: 100, clientY: 100 }))
+    expect(left).toBe(0)
+    unmount()
+  })
+
   it('pointerleave also cancels the long-press timer', async () => {
     let long = 0
     const { container, unmount } = mountTest(

@@ -59,7 +59,11 @@ describe('Phase 5 — native data/services hook emit', () => {
   return (<Stack><Text>{loc.latitude}</Text></Stack>)`),
       { target: 'kotlin' },
     ).code
-    expect(out).toContain('val loc = remember { PyreonGeolocation() }')
+    // Geolocation lowers to the SELF-INSTALLING composable (mirrors
+    // rememberPyreonStorage): the prior bare `remember { PyreonGeolocation() }`
+    // compiled green while `geo.start()` errored on every real device —
+    // nothing ever installed AndroidLocationSource.
+    expect(out).toContain('val loc = rememberPyreonGeolocation()')
     expect(out).toContain('val ws = remember { PyreonWebSocket() }')
     // Context-threaded, NOT bare: `PyreonDatabase()` resolved to the
     // in-memory backend, so a `useDatabase()` app silently lost every record
@@ -275,6 +279,110 @@ export function TagsDemo() {
       )
       expect(r.warnings).toEqual([])
       expect(r.code).toContain(expected)
+    }
+  })
+})
+
+// ── useWebSocket READ-field unwrap (Swift) — `ws.isConnected()` /
+//    `ws.lastMessage()` are web signal READS; the Swift runtime declares
+//    them as PROPERTIES, so a paren-keeping emit is uncompilable ("cannot
+//    call value of non-function type"). Kotlin has had this unwrap since
+//    the hook landed; Swift never did — invisible to the lowered-hooks
+//    matrix because its usage only ever SENT.
+describe('useWebSocket read-field unwrap', () => {
+  const APP = `import { useWebSocket } from '@pyreon/hooks'
+import { Button, Stack, Text } from '@pyreon/primitives'
+export function WsDemo() {
+  const ws = useWebSocket('ws://localhost:8787')
+  return (
+    <Stack data-testid="ws">
+      <Text data-testid="ws-status">WS: {ws.isConnected() ? 'open' : 'closed'}</Text>
+      <Text data-testid="ws-last">Echo: {ws.lastMessage() ?? 'none'}</Text>
+      <Button onPress={() => ws.send('ping-42')} data-testid="ws-send">Send</Button>
+    </Stack>
+  )
+}`
+
+  it('Swift: read fields unwrap to properties; send stays a call', () => {
+    const r = transform(APP, { target: 'swift' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('ws.isConnected ?')
+    expect(r.code).toContain('ws.lastMessage ??')
+    expect(r.code).not.toContain('ws.isConnected()')
+    expect(r.code).not.toContain('ws.lastMessage()')
+    expect(r.code).toContain('ws.send("ping-42")')
+  })
+
+  it('Kotlin: read fields keep their .value unwrap; send stays a call', () => {
+    const r = transform(APP, { target: 'kotlin' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('ws.isConnected.value')
+    expect(r.code).toContain('ws.lastMessage.value')
+    expect(r.code).toContain('ws.send("ping-42")')
+  })
+})
+
+// ── <Transition duration/easing> — animation CONFIG lowering (the
+//    Animations row's "configurable duration/easing absent" gap). Absent
+//    props must emit BYTE-IDENTICALLY to the pre-config shape (M2.7).
+describe('<Transition> animation config', () => {
+  const APP = (attrs: string) => `import { signal } from '@pyreon/reactivity'
+import { Button, Stack, Text } from '@pyreon/primitives'
+export function MotionDemo() {
+  const on = signal<boolean>(true)
+  return (
+    <Stack>
+      <Transition show={() => on()}${attrs}>
+        <Text>Box</Text>
+      </Transition>
+    </Stack>
+  )
+}`
+
+  it('Swift: duration+easing → the timing-function factory (ms → seconds)', () => {
+    const r = transform(APP(' duration={2500} easing="linear"'), { target: 'swift' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('.animation(.linear(duration: 2.5), value: on)')
+  })
+
+  it('Swift: duration alone → easeInOut (the CSS `ease` analog)', () => {
+    const r = transform(APP(' duration={800}'), { target: 'swift' })
+    expect(r.code).toContain('.animation(.easeInOut(duration: 0.8), value: on)')
+  })
+
+  it('Kotlin: duration+easing → explicit fade specs with tween', () => {
+    const r = transform(APP(' duration={2500} easing="linear"'), { target: 'kotlin' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain(
+      'AnimatedVisibility(visible = on, enter = fadeIn(animationSpec = tween(durationMillis = 2500, easing = LinearEasing)), exit = fadeOut(animationSpec = tween(durationMillis = 2500, easing = LinearEasing)))',
+    )
+  })
+
+  it('Kotlin: the four CSS easings map to the canonical Compose curves', () => {
+    for (const [css, compose] of [
+      ['linear', 'LinearEasing'],
+      ['ease-in', 'FastOutLinearInEasing'],
+      ['ease-out', 'LinearOutSlowInEasing'],
+      ['ease-in-out', 'FastOutSlowInEasing'],
+    ] as const) {
+      const r = transform(APP(` duration={500} easing="${css}"`), { target: 'kotlin' })
+      expect(r.code).toContain(compose)
+    }
+  })
+
+  it('no config → BYTE-IDENTICAL default emits on both targets', () => {
+    const rs = transform(APP(''), { target: 'swift' })
+    expect(rs.code).toContain('.animation(.default, value: on)')
+    expect(rs.code).not.toContain('duration:')
+    const rk = transform(APP(''), { target: 'kotlin' })
+    expect(rk.code).toContain('AnimatedVisibility(visible = on) {')
+    expect(rk.code).not.toContain('tween')
+  })
+
+  it('a non-literal duration warns + falls back to the default (both targets)', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(APP(' duration={2 * 1000}'), { target })
+      expect(r.warnings.some((w) => w.includes('<Transition duration>'))).toBe(true)
     }
   })
 })

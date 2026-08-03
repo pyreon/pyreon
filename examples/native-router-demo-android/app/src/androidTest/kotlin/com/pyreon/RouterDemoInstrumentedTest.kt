@@ -26,13 +26,26 @@
 package com.pyreon
 
 import android.content.Context
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.swipeRight
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -231,6 +244,114 @@ class RouterDemoInstrumentedTest {
         composeRule.onNodeWithText("tag: beta").assertExists()
     }
 
+    // Animations row — CONFIGURED duration/easing device-proven on the
+    // compose rule's VIRTUAL clock (deterministic, no wall-time flake):
+    // with autoAdvance off, the slow box (duration=2500ms, linear) still
+    // EXISTS 1000ms into its exit — the default ~300ms animation would have
+    // removed it (the exact discriminator the duration-flip bisect drives)
+    // — and is GONE once the configured duration elapses.
+    @Test
+    fun transitionDurationConfigDrivesExitTiming() {
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        composeRule.onNodeWithText("View motion").performClick()
+        composeRule.onNodeWithTag("motion-page").assertIsDisplayed()
+        composeRule.onNodeWithTag("slow-box").assertExists()
+
+        composeRule.mainClock.autoAdvance = false
+        composeRule.onNodeWithTag("motion-toggle").performClick()
+        composeRule.mainClock.advanceTimeBy(1000)
+        composeRule.onNodeWithTag("slow-box").assertExists()
+
+        composeRule.mainClock.advanceTimeBy(2500)
+        composeRule.mainClock.autoAdvance = true
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("slow-box").assertDoesNotExist()
+    }
+
+    // Adaptive row — RESPONSIVE PROP VALUES follow the size class, proven
+    // as a live FLIP on ONE device: the A→B gap is measured at the phone
+    // width (compact → gap token 2 → 8dp), then `wm size` resizes the
+    // display to tablet width (screenWidthDp ≥ 600 → regular → gap token
+    // 6 → 24dp) and the SAME nodes re-measure — LocalConfiguration drives
+    // recomposition, so the flip is the responsive-prop chain end-to-end.
+    // Restored in a finally so a failed assertion can never strand the
+    // emulator resized.
+    @Test
+    fun adaptivePropsFollowSizeClassFlip() {
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        val aC = composeRule.onNodeWithTag("adaptive-a").getUnclippedBoundsInRoot()
+        val bC = composeRule.onNodeWithTag("adaptive-b").getUnclippedBoundsInRoot()
+        val gapCompact = bC.top - aC.bottom
+        check(gapCompact > 5.dp && gapCompact < 12.dp) {
+            "compact gap is $gapCompact, expected the compact token (2 → 8dp)"
+        }
+
+        val uiAutomation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        try {
+            uiAutomation.executeShellCommand("wm size 1600x2560").close()
+            composeRule.waitUntil(timeoutMillis = 10_000) {
+                val a = composeRule.onNodeWithTag("adaptive-a").getUnclippedBoundsInRoot()
+                val b = composeRule.onNodeWithTag("adaptive-b").getUnclippedBoundsInRoot()
+                (b.top - a.bottom) > 20.dp
+            }
+            val aR = composeRule.onNodeWithTag("adaptive-a").getUnclippedBoundsInRoot()
+            val bR = composeRule.onNodeWithTag("adaptive-b").getUnclippedBoundsInRoot()
+            val gapRegular = bR.top - aR.bottom
+            check(gapRegular > 20.dp && gapRegular < 28.dp) {
+                "regular gap is $gapRegular, expected the regular token (6 → 24dp)"
+            }
+        } finally {
+            uiAutomation.executeShellCommand("wm size reset").close()
+        }
+    }
+
+    // Styling row — defineTheme tokens + styled(Prim) device-proven by
+    // GEOMETRY (the iOS half's mirror): children of the two token-padded
+    // cards differ in left offset by exactly xl−sm = 40−8 = 32dp. Child-vs-
+    // child keeps it independent of container-bound semantics; unclipped
+    // bounds are pure layout coordinates.
+    @Test
+    fun themeTokenPaddingDrivesLayout() {
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        composeRule.onNodeWithText("View styles").performClick()
+        composeRule.onNodeWithTag("styles-page").assertIsDisplayed()
+
+        val sm = composeRule.onNodeWithTag("card-sm-child").getUnclippedBoundsInRoot()
+        val xl = composeRule.onNodeWithTag("card-xl-child").getUnclippedBoundsInRoot()
+        val delta = xl.left - sm.left
+        check(delta > 28.dp && delta < 36.dp) {
+            "token padding delta is $delta, expected xl−sm = 40−8 = 32dp — " +
+                "the defineTheme literals did not drive the styled() layout"
+        }
+    }
+
+    // Networking row — useWebSocket device-proven on Android: the same echo
+    // round trip as the iOS half, through the REAL OkHttp transport. Needs
+    // `adb reverse tcp:8790 tcp:8790` so the DEVICE's localhost reaches the
+    // host's echo server (the emulator's own loopback is not the host's) —
+    // the shared-source URL stays one literal for all three targets. The
+    // echo is the load-bearing assertion (a dead server renders no echo);
+    // the connect gate additionally proves OkHttp's onOpen fired
+    // (Kotlin's isConnected flips in the real handshake callback).
+    @Test
+    fun webSocketEchoRoundTripsOnDevice() {
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        composeRule.onNodeWithText("View user 42").performClick()
+        composeRule.onNodeWithTag("user-page").assertIsDisplayed()
+
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithText("WS: open").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("ws-send").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule
+                .onAllNodesWithText("Echo: echo:ping-42")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+        composeRule.onNodeWithTag("ws-last").assertTextEquals("Echo: echo:ping-42")
+    }
+
     @Test
     fun navigatesToUserDetailWithParam() {
         // Tap "View user 42" → assert user-page renders + the
@@ -255,5 +376,116 @@ class RouterDemoInstrumentedTest {
         composeRule
             .onNodeWithText("Profile for user 42")
             .assertIsDisplayed()
+    }
+
+    // Gestures row — the swipe vocabulary, injected as REAL Compose touch
+    // gestures (performTouchInput drives the pointer-input pipeline the
+    // emitted detectHorizontalDragGestures listens on). Three-way
+    // separable like the iOS twin: 'left'/'right' proves the detector +
+    // threshold sign; 'tap' after a swipe would mean the drag fell
+    // through to .clickable (coexistence failure); the final click must
+    // still read 'tap' — the direction-locked detector must not claim taps.
+    @Test
+    fun swipeGesturesFireDirectionalHandlers() {
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        composeRule.onNodeWithText("View motion").performClick()
+        composeRule.onNodeWithTag("motion-page").assertIsDisplayed()
+        composeRule.onNodeWithTag("swipe-status").assertTextEquals("Swiped: none")
+
+        composeRule.onNodeWithTag("swipe-zone").performTouchInput { swipeLeft() }
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithText("Swiped: left").fetchSemanticsNodes().isNotEmpty()
+        }
+
+        composeRule.onNodeWithTag("swipe-zone").performTouchInput { swipeRight() }
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithText("Swiped: right").fetchSemanticsNodes().isNotEmpty()
+        }
+
+        composeRule.onNodeWithTag("swipe-zone").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithText("Swiped: tap").fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    // Lists-at-scale row — the Android half. Same creation + laziness
+    // claims as the iOS twin, PLUS the deep jump: performScrollToNode
+    // drives the LazyColumn's scroll semantics all the way to Row 9999 —
+    // reachable only if virtualization composes rows on demand the whole
+    // way down (an eager Column would have crashed at creation; a broken
+    // key/order would surface as a missing node).
+    @Test
+    fun tenThousandRowListIsLazyAndDeepRowReachable() {
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        composeRule.onNodeWithText("View big list").performClick()
+        composeRule.onNodeWithTag("biglist-page").assertIsDisplayed()
+        composeRule.onNodeWithText("Row 0").assertExists()
+        check(
+            composeRule.onAllNodesWithText("Row 9999").fetchSemanticsNodes().isEmpty()
+        ) { "Row 9999 is composed at launch — the list is EAGER, not lazy" }
+
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasText("Row 9999"))
+        composeRule.onNodeWithText("Row 9999").assertExists()
+    }
+
+    // Accessibility row — roles + hidden landing in the REAL semantics
+    // (TalkBack) tree, not just the emit:
+    //  - heading(): the Heading semantics key is DEFINED on the header text
+    //    (the TalkBack rotor grouping signal).
+    //  - Role.Button on a PLAIN Text — the discriminating shape: a Button
+    //    composable carries the role natively, so only a non-button element
+    //    proves the accessibilityRole prop did the work. The same node also
+    //    carries the contentDescription from accessibilityLabel.
+    //  - accessibilityHidden -> clearAndSetSemantics { }: the decorative
+    //    text is ABSENT from the semantics tree by TEXT, with the visible
+    //    sibling as the positive control proving the text query works
+    //    (an assertion that something is absent proves nothing unless the
+    //    same query finds a present sibling).
+    @Test
+    fun a11yRolesAndHiddenLandInSemanticsTree() {
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        composeRule.onNodeWithText("View a11y").performClick()
+        composeRule.onNodeWithTag("a11y-page").assertIsDisplayed()
+
+        composeRule.onNodeWithTag("a11y-header")
+            .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
+
+        composeRule.onNodeWithTag("a11y-fake-button")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+        composeRule.onNodeWithTag("a11y-fake-button")
+            .assert(
+                SemanticsMatcher.expectValue(
+                    SemanticsProperties.ContentDescription, listOf("Add item"),
+                ),
+            )
+
+        composeRule.onNodeWithText("plain sibling").assertExists()
+        composeRule.onNodeWithText("decorative-glyphs").assertDoesNotExist()
+    }
+    // Media row — a REMOTE image through the real network stack (Coil
+    // AsyncImage <- adb-reversed localhost fixture serving a solid-RED
+    // PNG). captureToImage reads the node's RENDERED pixels, so the
+    // assertion can only pass if the bytes were fetched over HTTP,
+    // decoded by Coil, and drawn — a placeholder, a missing coil-compose
+    // artifact, or a dead fixture server all read as not-red.
+    @Test
+    fun remoteImageRendersFetchedPixels() {
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        composeRule.onNodeWithText("View media").performClick()
+        composeRule.onNodeWithTag("media-page").assertIsDisplayed()
+        composeRule.onNodeWithTag("remote-dot").assertExists()
+
+        composeRule.waitUntil(timeoutMillis = 20_000) {
+            try {
+                val bmp = composeRule.onNodeWithTag("remote-dot")
+                    .captureToImage().asAndroidBitmap()
+                val p = bmp.getPixel(bmp.width / 2, bmp.height / 2)
+                android.graphics.Color.red(p) > 200 &&
+                    android.graphics.Color.green(p) < 80 &&
+                    android.graphics.Color.blue(p) < 80
+            } catch (_: Throwable) {
+                false
+            }
+        }
     }
 }

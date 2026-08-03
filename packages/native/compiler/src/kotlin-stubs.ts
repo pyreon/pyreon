@@ -420,6 +420,23 @@ class SemanticsPropertyReceiver {
   fun heading() {}
 }
 
+// PointerInputScope — receiver of Modifier.pointerInput's block. The
+// detector's lambda arity/types mirror the REAL
+// detectHorizontalDragGestures (onDragStart takes an Offset; the drag
+// callback takes (PointerInputChange, Float)) so an emit passing the
+// wrong shape fails the kotlinc gate instead of being masked.
+class PointerInputChange
+class Offset
+class PointerInputScope {
+  @Suppress("UNUSED_PARAMETER", "RedundantSuspendModifier")
+  suspend fun detectHorizontalDragGestures(
+    onDragStart: (Offset) -> Unit = {},
+    onDragEnd: () -> Unit = {},
+    onDragCancel: () -> Unit = {},
+    onHorizontalDrag: (PointerInputChange, Float) -> Unit,
+  ) {}
+}
+
 // Modifier — Compose's chainable layout/decorator API. Real Modifier
 // is a marker interface with extension functions; the stub uses a
 // concrete object so chains compose cleanly (e.g.
@@ -488,6 +505,12 @@ object Modifier {
   // (M2.3) yet un-type-checked: same class as AnimatedVisibility, found the
   // same way, by validating a whole app rather than a single-hook fixture.
   fun combinedClickable(onClick: () -> Unit, onLongClick: (() -> Unit)? = null): Modifier = this
+  // pointerInput — what <Press onSwipeLeft/onSwipeRight> lowers to. The
+  // block is a suspend lambda with a PointerInputScope receiver so the
+  // emitted detectHorizontalDragGestures call resolves inside it, exactly
+  // like the real androidx.compose.ui.input.pointer surface.
+  @Suppress("UNUSED_PARAMETER")
+  fun pointerInput(key: Any?, block: suspend PointerInputScope.() -> Unit): Modifier = this
   @Suppress("UNUSED_PARAMETER")
   fun weight(weight: Float): Modifier = this
   // coolgrid Col fractional span maps to fillMaxWidth(size/12f). Real Compose
@@ -851,8 +874,27 @@ fun rememberCoroutineScope(): CoroutineScope = CoroutineScope()
 // Note for the stub-coverage ratchet: it scans Pyreon* names, so a missing
 // COMPOSE/SwiftUI API like this one is outside what it can see. Whole-app
 // validation is what catches that class.
+// enter/exit default to the real library's defaults; the configured
+// <Transition duration/easing> emit passes explicit fade specs. The spec
+// types mirror androidx.compose.animation.core's shapes minimally.
+class Easing
+val LinearEasing: Easing = Easing()
+val FastOutSlowInEasing: Easing = Easing()
+val FastOutLinearInEasing: Easing = Easing()
+val LinearOutSlowInEasing: Easing = Easing()
+class TweenSpec
+fun tween(durationMillis: Int, easing: Easing): TweenSpec = TweenSpec()
+class EnterTransition
+class ExitTransition
+fun fadeIn(animationSpec: TweenSpec): EnterTransition = EnterTransition()
+fun fadeOut(animationSpec: TweenSpec): ExitTransition = ExitTransition()
 @Composable
-fun AnimatedVisibility(visible: Boolean, content: @Composable () -> Unit) {}
+fun AnimatedVisibility(
+  visible: Boolean,
+  enter: EnterTransition? = null,
+  exit: ExitTransition? = null,
+  content: @Composable () -> Unit,
+) {}
 
 // PyreonHaptics — useHaptics() lowers to
 // PyreonHaptics(LocalHapticFeedback.current). The CompositionLocal and its
@@ -1179,6 +1221,11 @@ class PyreonGeolocation {
   fun start(register: (GeolocationHandlers) -> (() -> Unit)) {}
   fun stop() {}
 }
+
+// The Compose entry the emit lowers useGeolocation() to — self-installs the
+// platform source on the real runtime; the stub just returns the container.
+@Composable
+fun rememberPyreonGeolocation(): PyreonGeolocation = PyreonGeolocation()
 
 class PyreonWebSocket {
   val lastMessage = mutableStateOf<String?>(null)

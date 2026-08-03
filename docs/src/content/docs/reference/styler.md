@@ -24,6 +24,7 @@ Pyreon's CSS-in-JS engine. `styled('div')` is a tagged template that returns a `
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
+| [`defineTheme`](#definetheme) | function | Declare the app's design tokens. |
 | [`styled`](#styled) | function | Component factory. |
 | [`css`](#css) | function | Tagged-template that returns a LAZY `CSSResult` — it is NOT a class name or a CSS string until resolved by `styled()`, ` |
 | [`keyframes`](#keyframes) | function | Tagged-template returning a `KeyframesResult` whose string form is the GENERATED, content-hashed `@keyframes` animation  |
@@ -47,6 +48,40 @@ Pyreon's CSS-in-JS engine. `styled('div')` is a tagged template that returns a `
 | [`setStyleExtraction`](#setstyleextraction) | function | Internal dependency-injection seam for Custom-Property Style Extraction (CPSE). |
 
 ## API
+
+### defineTheme `function`
+
+```ts
+defineTheme<T extends object>(theme: T): T
+```
+
+Declare the app's design tokens. On the web this is a TYPED IDENTITY helper — it returns the object unchanged for passing to `<PyreonUI theme={…}>`. Its real weight is MULTIPLATFORM: the PMTC native compiler parses the `defineTheme({ … })` declaration at COMPILE time (literal leaves only), resolves `styled()` / rocketstyle token interpolations (`${(t) => t.spacing.md}`) against it merged over the bundled defaults, bakes the values into the SwiftUI/Compose emit, and drops the declaration from native output. A shared source importing it builds on all three targets.
+
+**Example**
+
+```tsx
+import { defineTheme, styled } from "@pyreon/styler"
+import { Stack } from "@pyreon/primitives"
+
+const theme = defineTheme({
+  color:   { primary: "#ff3b30" },
+  spacing: { sm: 8, xl: 40 },
+})
+const Card = styled(Stack)`
+  padding: ${(t) => t.spacing.xl};
+`
+// native: VStack{…}.padding(40) / Column(Modifier.padding(40.dp)) — baked
+```
+
+**Common mistakes**
+
+- Computing token leaves at runtime (`spacing: { md: base * 2 }`) and expecting native resolution — the PMTC parse takes LITERAL leaves only (a native theme must be static); computed values warn + drop on native
+- Expecting defineTheme alone to theme the WEB app — on web it is identity; pass the object to the theme provider (`<PyreonUI theme={…}>`) for the styler interpolations to see it
+- Referencing an unknown token (`t.spacing.doesNotExist`) — the native compiler warns + drops the declaration rather than guessing
+
+**See also:** `styled` · `css`
+
+---
 
 ### styled `function`
 

@@ -2978,7 +2978,22 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           // `Array.from({ length: n }, (_, i) => body)` → `(0..<n).map { i in body }`.
           const range = objectLengthRangeForm(e)
           if (range !== null) {
-            return `(0..<${emitSwiftExpr(range.lenExpr, indent)}).map({ ${swiftIdent(range.indexParam)} in ${emitSwiftExpr(range.body, indent)} })`
+            // Seed the INDEX param as Int for the body emit — without it,
+            // every type-dependent lowering inside the body sees the param
+            // as unknown; the load-bearing case is the object-literal
+            // struct synthesis (`{ id: i, label: … }` bailed to a labelled
+            // TUPLE, whose key paths break `ForEach(id: \\.id)` — the 10k
+            // list-row shape). Save/restore mirrors the element-callback
+            // seeding idiom.
+            const had = _exprInferCtx.locals.has(range.indexParam)
+            const prev = _exprInferCtx.locals.get(range.indexParam)
+            _exprInferCtx.locals.set(range.indexParam, { kind: 'number' })
+            try {
+              return `(0..<${emitSwiftExpr(range.lenExpr, indent)}).map({ ${swiftIdent(range.indexParam)} in ${emitSwiftExpr(range.body, indent)} })`
+            } finally {
+              if (had) _exprInferCtx.locals.set(range.indexParam, prev!)
+              else _exprInferCtx.locals.delete(range.indexParam)
+            }
           }
           const mapForm = arrayFromMapRewrite(e)
           if (mapForm !== null) return emitSwiftExpr(mapForm, indent)
@@ -3210,6 +3225,21 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           if (
             _fieldArrayNamesSwift.has(recv) &&
             (e.callee.property === 'items' || e.callee.property === 'length')
+          ) {
+            return `${swiftIdent(recv)}.${e.callee.property}`
+          }
+          // WebSocket read-field unwrap — `ws.isConnected()` etc. are web
+          // signal READS; the Swift runtime declares them as PROPERTIES
+          // (`public private(set) var isConnected: Bool`), so the call
+          // parens must go. Kotlin has had this unwrap since the hook
+          // landed (_wsNames in emit-kotlin); Swift never did — the
+          // lowered-hooks matrix missed it because its usage never READ a
+          // field, only sent.
+          if (
+            _websocketUrlsSwift.has(recv) &&
+            ['lastMessage', 'messages', 'isConnected', 'error'].includes(
+              e.callee.property,
+            )
           ) {
             return `${swiftIdent(recv)}.${e.callee.property}`
           }
@@ -5554,11 +5584,44 @@ function emitSwiftWalledTagAsChildren(
   )
 }
 
+/** CSS-easing → SwiftUI Animation factory. `duration` is SECONDS here
+ * (converted from the ms prop). A duration with no easing takes
+ * `.easeInOut` — the closest analog of CSS's default `ease`. */
+function swiftAnimationFor(durationMs: number | undefined, easing: string | undefined): string {
+  if (durationMs === undefined && easing === undefined) return '.default'
+  const secs = ((durationMs ?? 300) / 1000).toString()
+  const fn =
+    easing === 'linear'
+      ? 'linear'
+      : easing === 'ease-in'
+        ? 'easeIn'
+        : easing === 'ease-out'
+          ? 'easeOut'
+          : 'easeInOut'
+  return `.${fn}(duration: ${secs})`
+}
+
 function emitSwiftTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const show = e.attrs.find((a) => a.kind === 'attr' && a.name === 'show') as
     | Extract<AttrIR, { kind: 'attr' }>
     | undefined
   const cond = show ? emitSwiftSignalRead(unwrapAccessorArrow(show.value)) : 'true'
+  // Animation CONFIG (v1): `duration` (ms, static literal) + `easing`
+  // (linear | ease-in | ease-out | ease-in-out). Absent props emit the
+  // byte-identical `.default` shape shipped since M2.7. A non-literal
+  // duration warns + falls back to default (the useWebSocket literal rule —
+  // a native animation spec must be static).
+  const durRaw = readStaticAttr(e, 'duration')
+  const easeRaw = readStaticAttr(e, 'easing')
+  const durAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'duration')
+  if (durAttr !== undefined && typeof durRaw !== 'number') {
+    _emitWarnings.push(
+      `<Transition duration>: must be a static number of milliseconds; got a non-literal — falling back to the default animation.`,
+    )
+  }
+  const duration = typeof durRaw === 'number' ? durRaw : undefined
+  const easing = typeof easeRaw === 'string' ? easeRaw : undefined
+  const anim = swiftAnimationFor(duration, easing)
   const inner = ' '.repeat(indent + 6)
   const body = e.children.map((c) => inner + emitSwiftChild(c, indent + 6)).join('\n')
   const p = ' '.repeat(indent)
@@ -5569,7 +5632,7 @@ function emitSwiftTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
     `${p}      .transition(.opacity)\n` +
     `${p}  }\n` +
     `${p}}\n` +
-    `${p}.animation(.default, value: ${cond})`
+    `${p}.animation(${anim}, value: ${cond})`
   )
 }
 
@@ -6523,6 +6586,44 @@ function emitSwiftPress(
       ).replace(/^\{/, '{ _ in')})`
     : ''
 
+  // `onSwipeLeft` / `onSwipeRight` → a HIGH-PRIORITY DragGesture — NOT
+  // `.simultaneousGesture` like long-press. Device-found: a SwiftUI
+  // Button fires on touch-up-INSIDE regardless of drag distance, so a
+  // simultaneous drag and the tap BOTH fired on a real swipe and the tap
+  // won the state write (XCUITest read `Swiped: tap` after a swipe).
+  // `.highPriorityGesture` CLAIMS the gesture once it exceeds
+  // `minimumDistance: 20`, so the Button never fires for drags; a real
+  // tap moves <20pt, the drag fails, and the tap passes through to the
+  // Button — exactly the swipe/tap split. (Long-press must stay
+  // SIMULTANEOUS: a high-priority hold would delay every tap.)
+  // Horizontal-dominance guard so a sloppy vertical scroll never fires a
+  // swipe; ±40pt end-translation threshold matches the Compose emit and
+  // the web polyfill. Handlers are `() -> Void` closures from
+  // `emitSwiftAction` — invoked in place via `(<closure>)()`.
+  const onSwipeLeft = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> =>
+      a.kind === 'event' && a.name === 'swipeleft',
+  )
+  const onSwipeRight = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> =>
+      a.kind === 'event' && a.name === 'swiperight',
+  )
+  let swipeGesture = ''
+  if (onSwipeLeft || onSwipeRight) {
+    const branches: string[] = []
+    if (onSwipeLeft) {
+      branches.push(
+        `if value.translation.width < -40 { (${emitSwiftAction(onSwipeLeft.handler, indent)})() }`,
+      )
+    }
+    if (onSwipeRight) {
+      branches.push(
+        `${onSwipeLeft ? 'else ' : ''}if value.translation.width > 40 { (${emitSwiftAction(onSwipeRight.handler, indent)})() }`,
+      )
+    }
+    swipeGesture = `.highPriorityGesture(DragGesture(minimumDistance: 20).onEnded { value in if abs(value.translation.width) > abs(value.translation.height) { ${branches.join(' ')} } })`
+  }
+
   const pad = ' '.repeat(indent + 2)
   const contentLines = e.children
     .map((c) => pad + emitSwiftChild(c, indent + 2))
@@ -6539,7 +6640,7 @@ function emitSwiftPress(
   // explicit `action:` argument form is the unambiguous canonical
   // SwiftUI Button initializer and type-checks clean. (`action` already
   // carries its `{ … }` braces from `emitSwiftAction`.)
-  return `Button(action: ${action}) {\n${contentLines}\n${' '.repeat(indent)}}.buttonStyle(.plain)${modifiers}${longGesture}`
+  return `Button(action: ${action}) {\n${contentLines}\n${' '.repeat(indent)}}.buttonStyle(.plain)${modifiers}${longGesture}${swipeGesture}`
 }
 
 /**

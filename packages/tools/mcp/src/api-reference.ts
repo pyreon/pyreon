@@ -1115,9 +1115,9 @@ type Props = ExtractProps<typeof Iterator>
   },
 
   'primitives/Press': {
-    signature: '(props: { onPress: () => void; onLongPress?: () => void; disabled?: boolean; children }) => VNode',
+    signature: '(props: { onPress: () => void; onLongPress?: () => void; onSwipeLeft?: () => void; onSwipeRight?: () => void; disabled?: boolean; children }) => VNode',
     example: '<Press onPress={() => select(item)}><Card item={item} /></Press>',
-    notes: 'Unstyled tap target (no chrome). Web `<div role="button">`; iOS `Button {}` (plain); Android `Box(clickable)`. Use to make arbitrary content tappable; supports `onLongPress`. See also: Button.',
+    notes: 'Unstyled tap target (no chrome). Web `<div role="button">`; iOS `Button {}` (plain); Android `Box(clickable)`. Use to make arbitrary content tappable; supports `onLongPress` and `onSwipeLeft`/`onSwipeRight` (horizontally-dominant ≥40px swipe — iOS high-priority DragGesture, Android direction-locked drag detector, web pointer-delta polyfill; taps still fire `onPress`). See also: Button.',
     mistakes: '- Using `<Press>` for a primary action — use `<Button>` for styled CTAs',
   },
 
@@ -6264,6 +6264,25 @@ resolveCssVarReferences('var(--px-missing, 1rem)', registry)           // '1rem'
   // ═══════════════════════════════════════════════════════════════════════════
 
   // <gen-docs:api-reference:start @pyreon/styler>
+
+  'styler/defineTheme': {
+    signature: 'defineTheme<T extends object>(theme: T): T',
+    example: `import { defineTheme, styled } from "@pyreon/styler"
+import { Stack } from "@pyreon/primitives"
+
+const theme = defineTheme({
+  color:   { primary: "#ff3b30" },
+  spacing: { sm: 8, xl: 40 },
+})
+const Card = styled(Stack)\`
+  padding: \${(t) => t.spacing.xl};
+\`
+// native: VStack{…}.padding(40) / Column(Modifier.padding(40.dp)) — baked`,
+    notes: `Declare the app's design tokens. On the web this is a TYPED IDENTITY helper — it returns the object unchanged for passing to \`<PyreonUI theme={…}>\`. Its real weight is MULTIPLATFORM: the PMTC native compiler parses the \`defineTheme({ … })\` declaration at COMPILE time (literal leaves only), resolves \`styled()\` / rocketstyle token interpolations (\`\${(t) => t.spacing.md}\`) against it merged over the bundled defaults, bakes the values into the SwiftUI/Compose emit, and drops the declaration from native output. A shared source importing it builds on all three targets. See also: styled, css.`,
+    mistakes: `- Computing token leaves at runtime (\`spacing: { md: base * 2 }\`) and expecting native resolution — the PMTC parse takes LITERAL leaves only (a native theme must be static); computed values warn + drop on native
+- Expecting defineTheme alone to theme the WEB app — on web it is identity; pass the object to the theme provider (\`<PyreonUI theme={…}>\`) for the styler interpolations to see it
+- Referencing an unknown token (\`t.spacing.doesNotExist\`) — the native compiler warns + drops the declaration rather than guessing`,
+  },
 
   'styler/styled': {
     signature: 'styled: ((tag: Tag, options?: StyledOptions) => TagTemplateFn) & { div: TagTemplateFn; span: TagTemplateFn; /* …all HTML tags via Proxy */ }',

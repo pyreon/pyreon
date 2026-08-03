@@ -512,6 +512,24 @@ describe('@pyreon/native-cli build', () => {
     expect(link).toContain('import androidx.compose.foundation.clickable')
   })
 
+  it('Kotlin <Press onSwipeLeft/Right> pulls the pointerInput + drag-detector imports', () => {
+    // Gestures-row swipe arc: `.pointerInput` lives in
+    // androidx.compose.ui.input.pointer and `detectHorizontalDragGestures`
+    // in androidx.compose.foundation.gestures — BOTH sub-packages the star
+    // imports do not cover, so both are the stub-masked-symbol class (the
+    // validate loop resolves them from concatenated stubs with or without
+    // the import; only the real gradle build fails).
+    const swipe = conditionalKotlinImports(
+      'Box(Modifier.clickable(onClick = {}).pointerInput(Unit) { var dragTotal = 0f; detectHorizontalDragGestures(onDragStart = { dragTotal = 0f }, onDragEnd = { if (dragTotal < -40f) run({ d = "l" }) }, onHorizontalDrag = { _, amount -> dragTotal += amount }) })',
+    )
+    expect(swipe).toContain('import androidx.compose.ui.input.pointer.pointerInput')
+    expect(swipe).toContain('import androidx.compose.foundation.gestures.detectHorizontalDragGestures')
+    // A swipe-free emit pulls NEITHER (no dead imports).
+    const plain = conditionalKotlinImports('Box(Modifier.clickable(onClick = {}))')
+    expect(plain).not.toContain('pointerInput')
+    expect(plain).not.toContain('detectHorizontalDragGestures')
+  })
+
   it('Kotlin .combinedClickable( still does NOT pull the plain clickable import', () => {
     // Guards the widened predicate against over-matching: `combinedClickable`
     // capitalises the C, so `.clickable` is not a substring of it. If this ever
@@ -569,4 +587,17 @@ export function Reset() {
       rmSync(src, { recursive: true, force: true })
     }
   })
+})
+
+it('Kotlin conditional imports: <Transition duration/easing> fade specs pull the animation sub-package symbols', () => {
+  const emitted = `AnimatedVisibility(visible = on, enter = fadeIn(animationSpec = tween(durationMillis = 2500, easing = LinearEasing)), exit = fadeOut(animationSpec = tween(durationMillis = 2500, easing = LinearEasing))) {}`
+  const out = conditionalKotlinImports(emitted)
+  expect(out).toContain('import androidx.compose.animation.fadeIn')
+  expect(out).toContain('import androidx.compose.animation.fadeOut')
+  expect(out).toContain('import androidx.compose.animation.core.tween')
+  expect(out).toContain('import androidx.compose.animation.core.LinearEasing')
+  // A default (unconfigured) AnimatedVisibility must NOT pull them.
+  const plain = conditionalKotlinImports('AnimatedVisibility(visible = on) {}')
+  expect(plain).not.toContain('fadeIn')
+  expect(plain).not.toContain('tween')
 })

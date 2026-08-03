@@ -28,6 +28,7 @@
 // path + nightly schedule, NOT on every PR. Promote to required once
 // green across multiple consecutive nightly runs.
 
+import UIKit
 import XCTest
 
 final class PyreonRouterDemoUITests: XCTestCase {
@@ -307,6 +308,160 @@ final class PyreonRouterDemoUITests: XCTestCase {
         )
     }
 
+    // Animations row — the CONFIGURED animation path runs on-device
+    // (show → hide → show through the emitted
+    // `.animation(.linear(duration: 2.5), value:)`), with the honest
+    // MEASUREMENT LIMIT named: SwiftUI removes the view from the
+    // ACCESSIBILITY tree the moment the `if` gate flips — the 2500ms fade
+    // is visual-only, so exit TIMING is not observable through XCUITest
+    // existence (measured: the box reads gone 0.8s into a 2.5s exit). The
+    // same instrument class as rendered colours; screenshot-diff is the
+    // tracked follow-up. The DEVICE-LEVEL timing proof for duration config
+    // lives in the Android half (virtual-clock, deterministic); the iOS
+    // config emit is locked by emit specs + the real-SDK typecheck gate.
+    func test_transitionConfigAnimatesShowHide() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            "Home page did not render"
+        )
+        app.buttons["View motion"].tap()
+        XCTAssertTrue(
+            app.otherElements["motion-page"].firstMatch.waitForExistence(timeout: 15),
+            "Motion page did not render"
+        )
+        let box = app.staticTexts["slow-box"]
+        XCTAssertTrue(box.waitForExistence(timeout: 10), "slow box missing pre-toggle")
+
+        app.buttons["motion-toggle"].tap()
+        XCTAssertTrue(
+            box.waitForNonExistence(timeout: 6),
+            "slow box never left after hide — the configured animation gate did not flip"
+        )
+        app.buttons["motion-toggle"].tap()
+        XCTAssertTrue(
+            box.waitForExistence(timeout: 6),
+            "slow box did not return after show — the configured animation gate is stuck"
+        )
+    }
+
+    // Adaptive row — the COMPACT half of the responsive-prop proof on the
+    // iPhone simulator: the A→B vertical gap carries the compact token
+    // (2 → 8pt; a regular resolution would read 24pt, a dropped adaptive
+    // prop the Stack default 12pt — all three separable). The REGULAR half
+    // is Android's live wm-resize flip (deterministic on one device); the
+    // size-class READ on iPad is already device-proven (M2.2).
+    func test_adaptivePropsResolveCompactOnPhone() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            "Home page did not render"
+        )
+        let a = app.staticTexts["adaptive-a"]
+        let b = app.staticTexts["adaptive-b"]
+        XCTAssertTrue(a.waitForExistence(timeout: 10), "adaptive-a missing")
+        XCTAssertTrue(b.exists, "adaptive-b missing")
+        let gap = b.frame.minY - a.frame.maxY
+        XCTAssertEqual(
+            gap, 8, accuracy: 3,
+            "compact gap is \(gap)pt, expected the compact token (2 → 8pt); "
+                + "24 would mean regular resolved on an iPhone, ~12 the "
+                + "adaptive prop was dropped for the Stack default"
+        )
+    }
+
+    // Styling row — defineTheme tokens + styled(Prim) device-proven by
+    // GEOMETRY. iOS measurement reality (read off a live frame dump, per
+    // the #2593 discipline): a11y frames HUG the glyphs — a container's
+    // frame equals its child's, so padding is HORIZONTALLY invisible to
+    // XCUITest. But padded boxes consume VERTICAL space exactly, so the
+    // token values are pinned through the stack's y-gaps:
+    //   title → sm-child gap = stack spacing (12) + sm top pad (8)  = 20
+    //   sm-child → xl-child gap = sm bottom (8) + 12 + xl top (40)  = 60
+    // The FIRST gap pins spacing.sm individually, so the pair is not
+    // swap-symmetric; the second pins the sum. Wrong, defaulted, or
+    // dropped tokens shift both. (The Android half asserts the horizontal
+    // start-aligned offsets — Compose Columns start-align where SwiftUI
+    // VStacks center, which is why the iOS shape is vertical.)
+    func test_themeTokenPaddingDrivesLayout() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            "Home page did not render"
+        )
+        app.buttons["View styles"].tap()
+        XCTAssertTrue(
+            app.otherElements["styles-page"].firstMatch.waitForExistence(timeout: 15),
+            "Styles page did not render"
+        )
+
+        let title = app.staticTexts["Styles"]
+        let sm = app.staticTexts["card-sm-child"]
+        let xl = app.staticTexts["card-xl-child"]
+        XCTAssertTrue(sm.waitForExistence(timeout: 10), "card-sm-child missing")
+        XCTAssertTrue(xl.exists, "card-xl-child missing")
+
+        let titleToSm = sm.frame.minY - title.frame.maxY
+        XCTAssertEqual(
+            titleToSm, 20, accuracy: 4,
+            "title→sm gap is \(titleToSm)pt, expected spacing(12) + sm pad(8) "
+                + "= 20 — spacing.sm did not drive the styled() layout"
+        )
+        let smToXl = xl.frame.minY - sm.frame.maxY
+        XCTAssertEqual(
+            smToXl, 60, accuracy: 4,
+            "sm→xl gap is \(smToXl)pt, expected sm(8) + spacing(12) + xl(40) "
+                + "= 60 — the defineTheme literals did not drive the layout"
+        )
+    }
+
+    // Networking row — useWebSocket device-proven: a full frame ROUND TRIP
+    // through the REAL network stack against the loopback echo server
+    // (scripts/ws-echo-server.ts; the iOS Simulator shares the host
+    // loopback). The LOAD-BEARING assertion is the echo: send "ping-42" →
+    // server replies "echo:ping-42" → received() re-renders the text. The
+    // ws-status gate is deliberately NOT the proof — the Swift runtime
+    // marks isConnected optimistically on task.resume(), before any
+    // handshake completes, so "WS: open" alone would pass against a dead
+    // server; only the echo proves a live socket.
+    //
+    // Requires the echo server: `bun examples/native-router-demo-ios/scripts/ws-echo-server.ts`
+    // (CI starts it in the workflow step; locally the device-test recipe does).
+    func test_webSocketEchoRoundTripsOnDevice() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            "Home page did not render"
+        )
+        app.buttons["View user 42"].tap()
+        XCTAssertTrue(
+            app.otherElements["user-page"].firstMatch.waitForExistence(timeout: 15),
+            "User page did not render"
+        )
+        XCTAssertTrue(
+            app.staticTexts["ws-status"].waitForExistence(timeout: 10),
+            "ws-status missing — the WebSocket section did not render"
+        )
+
+        app.buttons["ws-send"].tap()
+        if !app.staticTexts["Echo: echo:ping-42"].waitForExistence(timeout: 10) {
+            XCTFail(
+                "echo never rendered — live state: "
+                    + "\"\(app.staticTexts["ws-status"].label) / "
+                    + "\(app.staticTexts["ws-last"].label)\" (is the echo "
+                    + "server running? bun scripts/ws-echo-server.ts)"
+            )
+        }
+    }
+
     // Storage row — useSecureStorage device-proven: the secret SURVIVES a
     // genuine terminate + relaunch, which only the Keychain can explain.
     //
@@ -357,6 +512,194 @@ final class PyreonRouterDemoUITests: XCTestCase {
                     + "\"\(app.staticTexts["secure-value"].label)\""
             )
         }
+    }
+
+    // Gestures row — the swipe vocabulary, injected as REAL XCUITest
+    // swipes (coordinate drags through the compositor, not synthetic
+    // events). The status text is three-way separable: 'left'/'right'
+    // proves the simultaneous DragGesture fired with the right threshold
+    // SIGN; 'tap' after a swipe would mean the drag degraded to the
+    // Button's press (the coexistence failure mode); a final REAL tap
+    // must still read 'tap' — the drag recognizer must not swallow taps.
+    func test_swipeGesturesFireDirectionalHandlers() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            "Home page did not render"
+        )
+        app.buttons["View motion"].tap()
+        XCTAssertTrue(
+            app.otherElements["motion-page"].firstMatch.waitForExistence(timeout: 15),
+            "Motion page did not render"
+        )
+        let zone = app.buttons["swipe-zone"].firstMatch
+        XCTAssertTrue(zone.waitForExistence(timeout: 10), "swipe zone missing")
+        XCTAssertTrue(
+            app.staticTexts["Swiped: none"].firstMatch.exists,
+            "status should start at none"
+        )
+
+        zone.swipeLeft()
+        XCTAssertTrue(
+            app.staticTexts["Swiped: left"].firstMatch.waitForExistence(timeout: 5),
+            "left swipe did not fire onSwipeLeft (status: \(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Swiped:'")).firstMatch.label))"
+        )
+
+        zone.swipeRight()
+        XCTAssertTrue(
+            app.staticTexts["Swiped: right"].firstMatch.waitForExistence(timeout: 5),
+            "right swipe did not fire onSwipeRight"
+        )
+
+        zone.tap()
+        XCTAssertTrue(
+            app.staticTexts["Swiped: tap"].firstMatch.waitForExistence(timeout: 5),
+            "tap no longer fires onPress — the drag gesture swallowed it"
+        )
+    }
+
+    // Lists-at-scale row — 10,000 keyed rows through <Scroll><For>. Three
+    // claims, each separable: (1) CREATION at scale — Row 0 renders inside
+    // the timeout (an EAGER 10k build hangs far past it); (2) LAZINESS —
+    // the LazyVStack wrap means a deep row is NOT in the a11y tree at
+    // launch (a bare ForEach in a ScrollView materializes all 10k);
+    // (3) SCROLLING works — after swiping, Row 0 leaves the tree (lazy
+    // lists drop off-screen rows). Deep-jump to Row 9999 is Android's half
+    // (XCUITest has no scroll-to-element primitive for untagged rows —
+    // disclosed, not implied).
+    func test_tenThousandRowListIsLazyAndScrolls() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            "Home page did not render"
+        )
+        app.buttons["View big list"].tap()
+        XCTAssertTrue(
+            app.otherElements["biglist-page"].firstMatch.waitForExistence(timeout: 15),
+            "Big list page did not render"
+        )
+        XCTAssertTrue(
+            app.staticTexts["Row 0"].firstMatch.waitForExistence(timeout: 10),
+            "Row 0 missing — 10k-row creation failed or hung"
+        )
+        XCTAssertFalse(
+            app.staticTexts["Row 9999"].firstMatch.exists,
+            "Row 9999 is materialized at launch — the list is EAGER (LazyVStack wrap lost)"
+        )
+        let scroll = app.scrollViews.firstMatch
+        scroll.swipeUp()
+        scroll.swipeUp()
+        scroll.swipeUp()
+        XCTAssertFalse(
+            app.staticTexts["Row 0"].firstMatch.exists,
+            "Row 0 still on screen after three swipes — the list did not scroll"
+        )
+    }
+
+    // Accessibility row — the ROLE prop landing in the real accessibility
+    // tree. The discriminating shape: a plain Text carrying
+    // accessibilityRole="button" + accessibilityLabel. XCUITest derives an
+    // element's TYPE from its accessibility traits, so that text is
+    // queryable under app.buttons ONLY if .isButton actually landed — and
+    // by "Add item" ONLY if the label override landed on the same element.
+    // The plain sibling is the negative control (a staticText, not a
+    // button). `.isHeader` and .accessibilityHidden stay emit-locked on
+    // iOS: XCUITest surfaces neither as a queryable property (disclosed
+    // tooling limitation; both are device-asserted on Android, where the
+    // Compose semantics tree exposes them directly).
+    func test_a11yButtonTraitSurfacesInAccessibilityTree() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            "Home page did not render"
+        )
+        app.buttons["View a11y"].tap()
+        XCTAssertTrue(
+            app.otherElements["a11y-page"].firstMatch.waitForExistence(timeout: 15),
+            "A11y page did not render"
+        )
+        if !app.buttons["Add item"].firstMatch.exists {
+            // Self-diagnosing failure: dump the live tree so the element's
+            // actual type/label is in the artifact (the read-the-device rule).
+            print(app.debugDescription)
+        }
+        XCTAssertTrue(
+            app.buttons["Add item"].firstMatch.exists,
+            "Text with accessibilityRole=button + label is not queryable as a button — trait or label emit lost"
+        )
+        XCTAssertFalse(
+            app.buttons["plain sibling"].firstMatch.exists,
+            "Plain sibling text surfaces as a button — the trait leaked to siblings"
+        )
+        XCTAssertTrue(
+            app.staticTexts["plain sibling"].firstMatch.exists,
+            "Plain sibling text missing entirely"
+        )
+    }
+
+    // Media row — a REMOTE image through the real network stack. The
+    // fixture (ws-echo server /dot.png) serves a solid-RED PNG; the
+    // assertion samples the RENDERED element's pixels (screenshot of the
+    // element scaled to 1x1 = its average colour), so it can only pass if
+    // the bytes were fetched over HTTP, decoded, and drawn. A placeholder,
+    // an ATS-blocked fetch, or a dropped AsyncImage emit all read white /
+    // not-red. Requires NSAllowsLocalNetworking (this page is what
+    // surfaced that ATS gates URLSession cleartext even to localhost —
+    // the ws test never saw it because the ws runtime rides
+    // Network.framework, which ATS does not cover).
+    func test_remoteImageRendersFetchedPixels() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            "Home page did not render"
+        )
+        app.buttons["View media"].tap()
+        XCTAssertTrue(
+            app.otherElements["media-page"].firstMatch.waitForExistence(timeout: 15),
+            "Media page did not render"
+        )
+        let el = app.descendants(matching: .any)["remote-dot"].firstMatch
+        XCTAssertTrue(el.waitForExistence(timeout: 15), "remote-dot element missing")
+
+        var sawRed = false
+        let deadline = Date().addingTimeInterval(20)
+        while Date() < deadline {
+            if let px = Self.averageColor(of: el.screenshot().image),
+               px.r > 200, px.g < 80, px.b < 80 {
+                sawRed = true
+                break
+            }
+            usleep(500_000)
+        }
+        if !sawRed { print(app.debugDescription) }
+        XCTAssertTrue(
+            sawRed,
+            "remote image never rendered red — fetch/decode/draw failed (dead server, ATS block, or lost AsyncImage emit)"
+        )
+    }
+
+    /// Average colour of a UIImage: draw the whole image into a 1x1 RGBA
+    /// context — for the solid-red fixture the average IS the fixture
+    /// colour, and averaging is immune to off-by-center sampling.
+    private static func averageColor(of image: UIImage) -> (r: Int, g: Int, b: Int)? {
+        guard let cg = image.cgImage else { return nil }
+        var pixel = [UInt8](repeating: 0, count: 4)
+        guard let ctx = CGContext(
+            data: &pixel, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        ctx.interpolationQuality = .medium
+        ctx.draw(cg, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        return (Int(pixel[0]), Int(pixel[1]), Int(pixel[2]))
     }
 
 }
