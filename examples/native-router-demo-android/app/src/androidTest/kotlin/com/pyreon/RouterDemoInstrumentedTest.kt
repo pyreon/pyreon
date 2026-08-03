@@ -505,6 +505,69 @@ class RouterDemoInstrumentedTest {
     //    sibling as the positive control proving the text query works
     //    (an assertion that something is absent proves nothing unless the
     //    same query finds a present sibling).
+    // Styling row — @pyreon/coolgrid, which the styling table has listed as
+    // supported since it landed but which had never rendered on a device.
+    // The 12-column split is ASYMMETRIC (3/9) on purpose: a dropped grid
+    // leaves both columns full-width or adjacent, and a defaulted/swapped
+    // span puts the boundary at the wrong fraction — neither of which a 6/6
+    // split could distinguish from correct.
+    @Test
+    fun coolgridColumnsTakeTheirDeclaredFractionOfTheRow() {
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        composeRule.onNodeWithText("View styles").performClick()
+        composeRule.onNodeWithTag("styles-page").assertIsDisplayed()
+
+        val container = composeRule.onNodeWithTag("grid-container").getUnclippedBoundsInRoot()
+        val narrow = composeRule.onNodeWithTag("grid-col-narrow").getUnclippedBoundsInRoot()
+        val wide = composeRule.onNodeWithTag("grid-col-wide").getUnclippedBoundsInRoot()
+
+        val total = (container.right - container.left).value
+        val narrowFrac = (narrow.right - narrow.left).value / total
+        val wideFrac = (wide.right - wide.left).value / total
+        // 3/12 and 9/12 of the row, within a tolerance that still rejects
+        // every wrong answer this can produce (a dropped span -> ~1.0; the
+        // remaining-width bug -> 0.5625 for the wide column).
+        check(narrowFrac > 0.20f && narrowFrac < 0.30f) {
+            "narrow column is ${narrowFrac} of the row, expected ~0.25 " +
+                "(col ${narrow.right - narrow.left}, row ${container.right - container.left})"
+        }
+        check(wideFrac > 0.70f && wideFrac < 0.80f) {
+            "wide column is ${wideFrac} of the row, expected ~0.75 " +
+                "(col ${wide.right - wide.left}, row ${container.right - container.left})"
+        }
+    }
+
+    // Styling row — @pyreon/elements' Element, the other named gap with no
+    // native example. `padding={4}` is scale step 4 -> 16dp, so the box must
+    // be its child's height plus 32dp (16 top + 16 bottom). Reading the
+    // DELTA rather than an absolute makes the assertion independent of the
+    // font metrics that decide the child's own height.
+    @Test
+    fun elementPaddingConsumesRealLayoutSpace() {
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        composeRule.onNodeWithText("View styles").performClick()
+        composeRule.onNodeWithTag("styles-page").assertIsDisplayed()
+
+        // Measured as the OFFSET from the marker above, not as the tagged
+        // box's own bounds: Compose applies `padding` BEFORE `testTag` in the
+        // emitted chain, so the semantics node reports the already-padded
+        // INNER area and box-minus-child reads 0 whether or not the padding
+        // exists. (That ordering also shrinks an element's a11y touch target
+        // to exclude its padding — a small real defect, recorded here rather
+        // than churned in this pass because reordering the shared modifier
+        // builder touches every emitted node.) The sibling token-padding
+        // test measures child offsets for exactly this reason.
+        val marker = composeRule.onNodeWithTag("element-marker").getUnclippedBoundsInRoot()
+        val child = composeRule.onNodeWithTag("element-child").getUnclippedBoundsInRoot()
+        val gap = (child.top - marker.bottom).value
+        // Stack gap={3} = 12dp, plus Element padding={4} = 16dp -> ~28.
+        // Padding dropped would leave the bare 12.
+        check(gap > 24f && gap < 32f) {
+            "marker->child offset is ${gap}dp, expected ~28 (12dp stack gap + 16dp " +
+                "Element padding) — a bare ~12 means the padding never reached layout"
+        }
+    }
+
     @Test
     fun a11yRolesAndHiddenLandInSemanticsTree() {
         composeRule.onNodeWithTag("home-page").assertIsDisplayed()

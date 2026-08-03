@@ -19,6 +19,8 @@ import { For, onMount } from '@pyreon/core'
 import { useSecureStorage, useSizeClass, useWebSocket } from '@pyreon/hooks'
 import { useFieldArray } from '@pyreon/form'
 import { Button, Heading, Image, Inline, Layer, Link, Press, Spacer, Stack, Text } from '@pyreon/primitives'
+import { Element } from '@pyreon/elements'
+import { Col, Container, Row } from '@pyreon/coolgrid'
 import { signal } from '@pyreon/reactivity'
 import { createRouter, useNavigate, RouterProvider, RouterView } from '@pyreon/router'
 import { defineTheme, styled } from '@pyreon/styler'
@@ -261,6 +263,45 @@ function StylesPage() {
       <RoomyCard data-testid="card-xl">
         <Text data-testid="card-xl-child">xl</Text>
       </RoomyCard>
+
+      {/* Styling row — the two named gaps with no native example at all:
+          @pyreon/coolgrid and @pyreon/elements' Element. Both LOWER (the
+          styling table has listed them as supported all along) but neither
+          had ever rendered on a device, so "supported" was a compile-level
+          claim: a grid that silently collapses to full-width columns
+          compiles perfectly.
+
+          The 12-column split is deliberately ASYMMETRIC (3/9, not 6/6) so
+          the geometry discriminates rather than merely existing:
+            - a DROPPED grid leaves both columns at the row's left edge, so
+              the right column's x-origin collapses onto the left one's;
+            - a SWAPPED or defaulted span puts the boundary at the wrong
+              fraction, which a 6/6 split could never reveal.
+          Android reads the columns' real widths (getBoundsInRoot); iOS
+          reads the right column's x-ORIGIN — XCUITest a11y frames hug
+          glyphs, so a container's WIDTH is invisible there (the #2593
+          lesson), but where a glyph STARTS is a real layout fact. */}
+      <Container data-testid="grid-container">
+        <Row>
+          <Col size={3} data-testid="grid-col-narrow">
+            <Text data-testid="grid-text-narrow">L</Text>
+          </Col>
+          <Col size={9} data-testid="grid-col-wide">
+            <Text data-testid="grid-text-wide">R</Text>
+          </Col>
+        </Row>
+      </Container>
+
+      {/* Element with a padding scale step — lowers to VStack.padding(16) /
+          Column(Modifier.padding(16.dp)). Padded boxes consume VERTICAL
+          space exactly on both platforms (the token-padding proof's
+          finding), so the child's vertical offset from the marker above it
+          is the assertion on iOS; Android reads the box bounds directly. */}
+      <Text data-testid="element-marker">marker</Text>
+      <Element tag="div" padding={4} data-testid="element-box">
+        <Text data-testid="element-child">boxed</Text>
+      </Element>
+
       <Button onPress={() => navigate('/')}>Back to Home</Button>
     </Stack>
   )

@@ -113,7 +113,8 @@ run_with_timeout() {
 # gate that has previously tripped freshly-pushed PRs on CI:
 #   check-doc-claims, check-changeset-required, check-bundle-budgets,
 #   check-distribution, check-release-readiness, check-manifest-depth,
-#   check-client-bundle-node-imports, check-mcp-docs, gen-docs --check.
+#   check-client-bundle-node-imports, check-shared-source-deps,
+#   check-mcp-docs, gen-docs --check.
 # Total runtime: ~2-5s. Catches the failure modes that the bare
 # lint+typecheck+test triple historically missed.
 echo "[1/3] fast gates (lint + doc/dist/budget/manifest)"

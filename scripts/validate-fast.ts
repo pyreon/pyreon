@@ -16,6 +16,7 @@
  *   - check-manifest-examples (a manifest api[].example no longer typechecks vs the shipped export)
  *   - check-client-bundle-node-imports (node: import leaked into client entry)
  *   - check-ios-signing-policy (unsigned test step -> CI-only Keychain denial)
+ *   - check-shared-source-deps (tri-target shared source unbuildable for web)
  *   - check-mcp-docs        (MCP tool added without docs/src/content/docs/mcp.md section)
  *   - loom-scan             (dependency-fabric errors: phantom deps, runtime cycles, drift)
  *   - check-advisory-comment-steps (advisory PR-comment step that can turn a check red)
@@ -77,6 +78,15 @@ const GATES: Gate[] = [
   {
     name: 'check-ios-signing-policy',
     cmd: 'bun scripts/check-ios-signing-policy.ts',
+  },
+  // A tri-target shared source must be buildable for the WEB target too. The
+  // two native targets compile it through PMTC and never read node_modules,
+  // so they stay green while the web build cannot resolve a new import —
+  // which is how @pyreon/elements + @pyreon/coolgrid shipped as a red e2e
+  // ~50 minutes into CI, reported as a blank page rather than a missing dep.
+  {
+    name: 'check-shared-source-deps',
+    cmd: 'bun scripts/check-shared-source-deps.ts',
   },
   // Dogfood: the workspace's own dependency fabric, gated by @pyreon/loom.
   // Errors only (phantom deps, runtime cycles, cross-major drift, internal-

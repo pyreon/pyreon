@@ -13,7 +13,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@pyreon/coolgrid": "workspace:*",
     "@pyreon/core": "workspace:*",
+    "@pyreon/elements": "workspace:*",
     "@pyreon/form": "workspace:*",
     "@pyreon/hooks": "workspace:*",
     "@pyreon/primitives": "workspace:*",
