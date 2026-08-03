@@ -4566,10 +4566,47 @@ function emitKotlinTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, inden
   }
   const duration = typeof durRaw === 'number' ? durRaw : undefined
   const easing = typeof easeRaw === 'string' ? easeRaw : undefined
+  // ASYMMETRIC timing — mirror of the Swift twin. Compose already takes
+  // SEPARATE enter/exit specs, so this is a per-side spec rather than a
+  // different transition shape.
+  const enterDurRaw = readStaticAttrKotlin(e, 'enterDuration')
+  const leaveDurRaw = readStaticAttrKotlin(e, 'leaveDuration')
+  const enterEaseRaw = readStaticAttrKotlin(e, 'enterEasing')
+  const leaveEaseRaw = readStaticAttrKotlin(e, 'leaveEasing')
+  for (const [name, raw] of [
+    ['enterDuration', enterDurRaw],
+    ['leaveDuration', leaveDurRaw],
+  ] as const) {
+    if (
+      e.attrs.some((a) => a.kind === 'attr' && a.name === name) &&
+      typeof raw !== 'number'
+    ) {
+      _emitWarnings.push(
+        `<Transition ${name}>: must be a static number of milliseconds; got a non-literal — falling back to the symmetric duration.`,
+      )
+    }
+  }
+  const enterDur = typeof enterDurRaw === 'number' ? enterDurRaw : undefined
+  const leaveDur = typeof leaveDurRaw === 'number' ? leaveDurRaw : undefined
+  const enterEase = typeof enterEaseRaw === 'string' ? enterEaseRaw : undefined
+  const leaveEase = typeof leaveEaseRaw === 'string' ? leaveEaseRaw : undefined
+  const asymmetric =
+    enterDur !== undefined ||
+    leaveDur !== undefined ||
+    enterEase !== undefined ||
+    leaveEase !== undefined
   const pad = ' '.repeat(indent + 2)
   const body = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
-  if (duration === undefined && easing === undefined) {
+  if (duration === undefined && easing === undefined && !asymmetric) {
     return `AnimatedVisibility(visible = ${cond}) {\n${body}\n${' '.repeat(indent)}}`
+  }
+  if (asymmetric) {
+    const enterSpec = `tween(durationMillis = ${enterDur ?? duration ?? 300}, easing = ${kotlinEasingFor(enterEase ?? easing)})`
+    const exitSpec = `tween(durationMillis = ${leaveDur ?? duration ?? 300}, easing = ${kotlinEasingFor(leaveEase ?? easing)})`
+    return (
+      `AnimatedVisibility(visible = ${cond}, enter = fadeIn(animationSpec = ${enterSpec}), exit = fadeOut(animationSpec = ${exitSpec})) {\n` +
+      `${body}\n${' '.repeat(indent)}}`
+    )
   }
   const spec = `tween(durationMillis = ${duration ?? 300}, easing = ${kotlinEasingFor(easing)})`
   return (

@@ -172,7 +172,15 @@ public struct Animation {
   public static func easeOut(duration: Double) -> Animation { Animation() }
   public static func easeInOut(duration: Double) -> Animation { Animation() }
 }
-public struct AnyTransition { public static let opacity = AnyTransition() }
+// Mirrors SwiftUI's AnyTransition surface the emit uses. \`asymmetric\` and the
+// per-side \`animation(_:)\` were MISSING, so the asymmetric enter/leave emit
+// failed this gate while compiling fine against the real SDK — the
+// subset-stub-manufactures-failures half of the stub-fidelity rule.
+public struct AnyTransition {
+  public static let opacity = AnyTransition()
+  public static func asymmetric(insertion: AnyTransition, removal: AnyTransition) -> AnyTransition { AnyTransition() }
+  public func animation(_ animation: Animation?) -> AnyTransition { self }
+}
 public protocol Gesture {}
 public struct LongPressGesture: Gesture {
   public init(minimumDuration: Double = 0.5) {}

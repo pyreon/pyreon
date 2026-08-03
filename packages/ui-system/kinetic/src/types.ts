@@ -63,7 +63,47 @@ export type TransitionProps = ClassTransitionProps &
     timeout?: number | undefined
     /** Single child element. Must accept ref. */
     children: VNode
-  }
+  } & TimingTransitionProps
+
+/**
+ * Numeric timing config — the CROSS-TARGET animation vocabulary.
+ *
+ * The CSS-shorthand props above (`enterTransition` / `leaveTransition`) are
+ * web-only by construction: native animation systems take a duration and a
+ * curve, not a CSS string. `duration` / `easing` already lowered on both
+ * native targets, but they were never typed here and the web renderer ignored
+ * them — so one shared source animated over 2.5s on a phone and over the CSS
+ * default in a browser, silently. (Same class as the documented web
+ * `defineTheme` that turned out not to exist.)
+ *
+ * `enterDuration` / `leaveDuration` (and their easings) allow an ASYMMETRIC
+ * transition — a quick enter and a slow leave is the common real shape — and
+ * each falls back to the symmetric `duration` / `easing` when absent. An
+ * explicit `enterTransition` / `leaveTransition` shorthand still wins on web,
+ * so nothing that already worked changes.
+ */
+export type TimingTransitionProps = {
+  /** Duration in ms for BOTH directions unless overridden per side. */
+  duration?: number | undefined
+  /** Timing curve for both directions unless overridden per side. */
+  easing?: TransitionEasing | undefined
+  /** Enter-only duration in ms. Falls back to `duration`. */
+  enterDuration?: number | undefined
+  /** Leave-only duration in ms. Falls back to `duration`. */
+  leaveDuration?: number | undefined
+  /** Enter-only curve. Falls back to `easing`. */
+  enterEasing?: TransitionEasing | undefined
+  /** Leave-only curve. Falls back to `easing`. */
+  leaveEasing?: TransitionEasing | undefined
+}
+
+/**
+ * The curves that map 1:1 across all three targets — CSS timing functions,
+ * SwiftUI `Animation` cases, and Compose easings. Deliberately closed: a
+ * `cubic-bezier(...)` string has no faithful Compose/SwiftUI equivalent
+ * without emitting a custom curve, which is a separate arc.
+ */
+export type TransitionEasing = 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out'
 
 export type TransitionGroupProps = ClassTransitionProps &
   StyleTransitionProps &
