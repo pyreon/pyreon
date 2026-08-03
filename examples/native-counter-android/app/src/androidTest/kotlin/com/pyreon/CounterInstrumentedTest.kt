@@ -32,6 +32,7 @@ package com.pyreon
 
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
@@ -602,6 +603,16 @@ class CounterInstrumentedTest {
             .executeShellCommand("pm grant $pkg android.permission.ACCESS_FINE_LOCATION")
             .close()
         instr.uiAutomation.executeShellCommand("appops set $pkg android:mock_location allow").close()
+        // The device's MASTER location switch must be ON, or the runtime's
+        // provider pick dead-ends: with location globally off,
+        // isProviderEnabled(GPS) reports false even for an added+enabled
+        // TEST provider, AndroidLocationSource errors "no location provider
+        // enabled", and no fix can ever arrive. CI emulator images ship with
+        // location OFF (a local emulator that happens to have it on is what
+        // let this test pass locally while failing every CI run — reproduced
+        // exactly by flipping the local switch off). The test owns this
+        // precondition like it owns the permission + mock-location appop.
+        instr.uiAutomation.executeShellCommand("cmd location set-location-enabled true").close()
         // The appop grant is asynchronous-ish through the shell — poll until
         // addTestProvider stops throwing SecurityException rather than sleeping.
         val lm =
@@ -622,6 +633,13 @@ class CounterInstrumentedTest {
             } catch (_: SecurityException) {
                 false
             }
+        }
+        // State-verify the EXACT precondition the runtime checks before it
+        // registers: the GPS provider must read enabled (test provider on +
+        // master switch on). Tapping Locate before this holds races the
+        // shell-command settle and reproduces the dead-end.
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            lm.isProviderEnabled(LocationManager.GPS_PROVIDER)
         }
 
         composeRule.onNodeWithText("Locate").performSemanticsAction(SemanticsActions.OnClick)
@@ -644,6 +662,29 @@ class CounterInstrumentedTest {
                     .fetchSemanticsNodes()
                     .isNotEmpty()
             }
+        } catch (e: androidx.compose.ui.test.ComposeTimeoutException) {
+            // A CI-only failure's message IS the artifact — carry the observed
+            // state instead of a bare "condition not satisfied": the rendered
+            // Geo text plus the two provider preconditions, so the next remote
+            // failure names its cause in one round.
+            val geoTexts =
+                try {
+                    composeRule
+                        .onAllNodesWithText("Geo", substring = true)
+                        .fetchSemanticsNodes()
+                        .joinToString(" | ") { n ->
+                            n.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text)
+                                ?.joinToString() ?: "<no text>"
+                        }
+                } catch (_: Throwable) {
+                    "<semantics read failed>"
+                }
+            throw AssertionError(
+                "geo fix never rendered — observed: [$geoTexts], " +
+                    "gpsProviderEnabled=${lm.isProviderEnabled(LocationManager.GPS_PROVIDER)}, " +
+                    "locationEnabled=${lm.isLocationEnabled}",
+                e,
+            )
         } finally {
             try {
                 lm.setTestProviderEnabled(LocationManager.GPS_PROVIDER, false)
