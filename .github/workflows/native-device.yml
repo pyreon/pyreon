@@ -167,13 +167,19 @@ jobs:
     #
     #   sum of the five cells' measured work      90m
     #   minus 4x the duplicated per-cell prelude  -28m   (install + checkout)
-    #   plus one shared prelude, install cached    ~2m
+    #   plus one shared prelude, install UNCACHED  ~6m   (see the note above)
     #   plus the location-grant step, once         ~3m
-    #     => ~67m, and the cache makes that the pessimistic end
+    #     => ~71m
     #
-    # +40% headroom for runner variance (the counter app alone has measured
-    # 24m and 35m on identical content) => 95. A run that hits this ceiling is
-    # a real regression, not a slow day.
+    # +~34% headroom for runner variance (the counter app alone has measured
+    # 24m, 35m and 46m on identical content -- the 46 is what timed out its
+    # 45-minute cell) => 95. A run that hits this ceiling is a real
+    # regression, not a slow day.
+    #
+    # NOTE the install is ~6m, not the ~2m an earlier draft of this comment
+    # assumed: that draft was written while a bun-install cache step existed
+    # here, and removing it (see above) moved the number. Stating it wrong
+    # would have been the same guessed-budget mistake one more time.
     timeout-minutes: 95
     permissions:
       contents: read
@@ -187,16 +193,20 @@ jobs:
           bun-version-file: .bun-version
 
       # The matrix pays this install ONCE PER CELL, so a cold 6-minute
-      # install became ~30 runner-minutes of duplicated work when the iOS job
-      # was split per app. Measured on the counter cell: 5.9 min of a 36-min
-      # budget spent re-downloading identical packages. The cache is shared
-      # cross-run and cross-PR on the lockfile hash, exactly as ci.yml does it.
-      - name: Cache bun install cache
-        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8 # v6.0.0
-        with:
-          path: ~/.bun/install/cache
-          key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-          restore-keys: bun-install-cache-${{ runner.os }}-
+      # NO bun-install cache here, deliberately. I added one earlier today to
+      # kill the ~6 min cold install, and it was a bad trade once measured:
+      # the repo's Actions cache sits at 9.74 GB of its 10 GB limit, and this
+      # entry is 257 MB per BRANCH. Bootstrap caches — the ones that let a job
+      # skip rebuilding all 74 packages — are only 5 MB each, so one large
+      # write LRU-evicts hundreds of them. PR #2642's Build found no bootstrap
+      # cache on ANY of its three keys and rebuilt from scratch: ~6 min, on
+      # every lib-needing job, on every PR.
+      #
+      # So this bought ~4 min on ONE macOS job (it was 5 jobs when the matrix
+      # existed, which is what justified it) at the cost of ~6 min on roughly
+      # eight ubuntu jobs elsewhere. Restore it only alongside a real cache
+      # budget — the 1.2 GB Linux bun-install entries are the bigger tenant
+      # and would need looking at first.
 
       - name: Install workspace deps (bootstraps @pyreon/native-cli used by the preBuildScript)
         run: |
@@ -538,16 +548,6 @@ jobs:
 
       - name: Verify gradle availability
         run: gradle --version
-
-      # Same cache as the iOS cells above — the Android job pays one cold
-      # install per run, and it is keyed on the same lockfile hash so the two
-      # jobs warm each other.
-      - name: Cache bun install cache
-        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8 # v6.0.0
-        with:
-          path: ~/.bun/install/cache
-          key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-          restore-keys: bun-install-cache-${{ runner.os }}-
 
       - name: Install workspace deps (bootstraps @pyreon/native-cli)
         run: |
