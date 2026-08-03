@@ -46,6 +46,13 @@ export type { UseWebSocketOptions, UseWebSocketResult } from './useWebSocket'
 // nowhere else — the same gap useGeolocation/useDatabase/useWebSocket had.
 export { useAuth } from './useAuth'
 export type { UseAuthResult, UseAuthStatus } from './useAuth'
+// usePush / usePayments — the LAST two web halves of natively-lowered hooks.
+// With these, every hook in the compiler's NATIVE_LOWERED_HOOKS registry has
+// a web implementation (same resolvability gap as the four before them).
+export { usePush } from './usePush'
+export type { PyreonPushHandlers, PyreonPushNotification, UsePushResult } from './usePush'
+export { usePayments } from './usePayments'
+export type { PyreonPaymentActions, PyreonProduct, UsePaymentsResult } from './usePayments'
 // useSecureStorage — the web half of the imperative secret store
 // (Keychain on iOS, AndroidKeyStore AES-GCM on Android; module-scoped
 // in-memory on web, which has no OS secret store — persisting secrets to

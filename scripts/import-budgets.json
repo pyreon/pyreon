@@ -7,5 +7,7 @@
   "@pyreon/elements::element": 4411,
   "@pyreon/styler::useTheme": 1183,
   "@pyreon/styler::css": 1588,
-  "@pyreon/core::jsx": 1001
+  "@pyreon/core::jsx": 1001,
+  "@pyreon/hooks::useEventListener": 596,
+  "@pyreon/hooks::useAuth": 709
 }
