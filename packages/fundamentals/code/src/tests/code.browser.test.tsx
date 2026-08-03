@@ -7,7 +7,7 @@ import { bindEditorToSignal } from '../bind-signal'
 import { CodeEditor } from '../components/code-editor'
 import { DiffEditor } from '../components/diff-editor'
 import { createEditor, openSearchPanel } from '../editor'
-import { getAvailableLanguages, registerLanguage } from '../languages'
+import { getAvailableLanguages, loadLanguage, registerLanguage } from '../languages'
 
 // Poll until `pred` is truthy — DiffEditor / createEditor lazy-load language
 // grammars asynchronously, so a bare flush() can race the dynamic import.
@@ -38,11 +38,33 @@ async function untilHighlighted(container: HTMLElement): Promise<void> {
   while (spans() === 0 && Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 25))
   }
+  if (spans() > 0) {
+    expect(spans()).toBeGreaterThan(0)
+    return
+  }
+
+  // FAILING: gather the evidence that distinguishes the three possible
+  // causes, because this reproduces only on CI and the message is the sole
+  // artifact. Built defensively — a diagnostic that throws while explaining a
+  // failure replaces a diagnosable error with an opaque one.
+  let probe = ''
+  try {
+    const { Language } = await import('@codemirror/language')
+    const support = (await import('@codemirror/lang-javascript')).javascript({ typescript: true })
+    const ext = await loadLanguage('typescript')
+    const extShape = Array.isArray(ext) ? `array(${ext.length})` : typeof ext
+    probe =
+      ` | loadLanguage('typescript')=${extShape}` +
+      ` sameLanguageInstance=${(support as { language?: unknown }).language instanceof Language}` +
+      ` firstLineHTML=${JSON.stringify(container.querySelector('.cm-line')?.innerHTML?.slice(0, 80) ?? '')}`
+  } catch (err) {
+    probe = ` | probe failed: ${err instanceof Error ? err.message : String(err)}`
+  }
   const lines = container.querySelectorAll('.cm-line').length
   const mounted = container.querySelector('.cm-editor') !== null
   expect(
     spans(),
-    `expected highlight spans — observed ${spans()} span(s) across ${lines} line(s), editor ${mounted ? 'mounted' : 'MISSING'}`,
+    `expected highlight spans — observed 0 span(s) across ${lines} line(s), editor ${mounted ? 'mounted' : 'MISSING'}${probe}`,
   ).toBeGreaterThan(0)
 }
 
