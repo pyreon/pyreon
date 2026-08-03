@@ -27,6 +27,13 @@ export { slugify, scenarioId, makeScenario } from './scenario'
 
 export { buildVariantMatrix, variantLabel, autoVariantScenarios } from './variants'
 
+export type { AtlasExtension } from './extension'
+export {
+  defineExtension,
+  resolveExtensions,
+  validateExtension,
+  validateExtensions,
+} from './extension'
 export type { ComponentIdentity } from './identity'
 export { ambiguousComponentMessage, componentKey, resolveComponent } from './identity'
 export type { CatalogGraph, SearchHit } from './graph'

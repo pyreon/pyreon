@@ -13,7 +13,8 @@
  */
 import { existsSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
-import type { ComponentRef } from '../core'
+import type { AtlasExtension, ComponentRef } from '../core'
+import { validateExtensions } from '../core'
 // Type-only: the presets CONTRACT lives with the UI that renders it, and a
 // type import is erased — `atlas scan` never loads the workbench.
 import type { WorkbenchPresets } from '../ui/catalog'
@@ -87,6 +88,19 @@ export interface AtlasConfig {
    * ```
    */
   projects?: readonly ProjectRoot[]
+  /**
+   * Render extensions — what a scenario needs to render like your app.
+   *
+   * Each contributes a layer around every scenario and/or a one-time setup,
+   * and several COMPOSE (outside-in, in declaration order). `wrapper` is the
+   * one-provider shorthand and composes as the innermost layer.
+   *
+   * @example
+   * ```ts
+   * extensions: [pyreonUI({ theme }), fonts({ family: 'Inter' })]
+   * ```
+   */
+  extensions?: readonly AtlasExtension[]
 }
 
 /** One monorepo root — see `AtlasConfig.projects`. */
@@ -239,6 +253,7 @@ export async function loadAtlasConfig(
     take('title', (v) => (typeof v === 'string' ? undefined : '`title` must be a string')),
     take('pages', validatePages),
     take('projects', validateProjects),
+    take('extensions', validateExtensions),
   ].filter((p): p is string => p !== undefined)
 
   return { config, path: found, ...(problems[0] ? { error: problems[0] } : {}) }

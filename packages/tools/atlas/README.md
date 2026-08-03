@@ -108,6 +108,36 @@ Even `init` is optional. With no config at all, a monorepo whose root has no
 components has its packages detected automatically — and the scan says so,
 rather than producing a catalog from nowhere.
 
+### Render extensions — what a scenario needs to render like your app
+
+A single `wrapper` holds one provider. Extensions COMPOSE, so packages can ship
+their own and a project can stack them:
+
+```ts
+export default defineConfig({
+  atlas: {
+    extensions: [
+      { name: 'theme', wrap: ({ children }) => <PyreonUI theme={theme}>{children}</PyreonUI> },
+      { name: 'router', wrap: ({ children }) => <RouterProvider>{children}</RouterProvider> },
+      { name: 'fonts', setup: () => document.head.append(fontLink()) },
+    ],
+  },
+})
+```
+
+- **`wrap`** layers around every scenario. First listed is OUTERMOST — the order
+  the equivalent JSX would be written by hand.
+- **`setup`** runs once at boot, for document-level work a wrapper cannot reach
+  because it renders *inside* the preview: a font `<link>`, a global stylesheet,
+  `<html lang>`. Return a function to undo it.
+- Each `setup` is isolated — one that throws is reported BY NAME and the rest
+  still run, rather than taking the workbench down before first paint.
+- `wrapper` still works and composes as the INNERMOST layer, so a theme can be
+  added outside an existing wrapper without touching it.
+
+Extensions run in the BROWSER. They may use JSX and your own components, but not
+`node:*` — a factory needing build-time data takes it as a serializable option.
+
 ### Configuration lives in `pyreon.config.ts`
 
 One file for the ecosystem, a section per package (see `@pyreon/config`):

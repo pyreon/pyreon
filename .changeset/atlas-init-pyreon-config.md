@@ -24,6 +24,15 @@ Per-tool files (`atlas.config.ts`) keep working and win where both exist, so a
 half-finished migration never has the general file silently override the
 specific one.
 
+**Render extensions.** A single `wrapper` could hold one provider — a second
+silently won, so two packages could not both contribute and no package could
+ship its own setup at all. `extensions: [{ name, wrap?, setup? }]` composes:
+`wrap` layers around every scenario (first listed outermost, the order the JSX
+would be written by hand), `setup` runs once at boot for document-level work a
+wrapper cannot reach — a font link, a global stylesheet. Each setup is isolated
+and reported by name on failure, rather than taking the workbench down before
+first paint. `wrapper` still works, composing as the innermost layer.
+
 **`atlas init`** reads the workspace's own `workspaces` / `pnpm-workspace.yaml`
 declaration, probes each package for components, and writes the config —
 refusing to overwrite an existing one without `--force`, because that file is
