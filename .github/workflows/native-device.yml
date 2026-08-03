@@ -133,15 +133,32 @@ jobs:
         (github.event.action != 'labeled' && contains(github.event.pull_request.labels.*.name, 'native-device'))
       )) ||
       (failure() && needs.changes.result != 'success')
-    name: iOS — xcodebuild (Simulator SDK)
+    name: iOS app (${{ matrix.app }})
+    # ONE app per runner. This job used to build and UITest all five example
+    # apps SEQUENTIALLY on a single macOS runner, and every row that added a
+    # test pushed it closer to the ceiling: 40 minutes was raised to 60 for
+    # exactly this reason, and 60 then timed out too — mid-way through the
+    # fifth app, with every earlier app green. Raising it again is the
+    # non-fix; the job is serial by construction, so the wall-clock grows
+    # with the suite forever.
+    #
+    # A per-app matrix makes wall-clock the SLOWEST APP rather than their
+    # sum, and isolates a flake to its own cell. It costs ~5x the runner
+    # minutes — deliberate: macOS minutes are the price of a device gate that
+    # does not throttle how much can be proven.
+    #
+    # The required-check name lives on the `ios-build-result` aggregator
+    # below, NOT here — branch protection pins the context by name, so a
+    # matrix cell must never carry it.
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [todomvc, counter, finance, router-demo, tasks]
     runs-on: macos-15
-    # 60, not 40: the fetch-arc run data showed 40 is AT the wire —
-    # attempt 1 timed out BOTH jobs at ~40:01/40:30; attempt 2's iOS
-    # finished at 38.8 and Android timed out INSIDE the final (tasks)
-    # Espresso step with every prior step green. Advisory, label-gated
-    # jobs end when done — a generous ceiling only prevents the
-    # false-cancel class, it never adds wall-clock to green runs.
-    timeout-minutes: 60
+    # Per CELL now, not for all five apps: one app's emit + xcodegen + build
+    # + UITest, plus the shared prelude. A cell that hits this is a real
+    # regression in one app rather than the suite outgrowing its runner.
+    timeout-minutes: 35
     permissions:
       contents: read
     steps:
@@ -178,6 +195,7 @@ jobs:
         run: brew install xcodegen
 
       - name: Emit Swift (PMTC .tsx → generated/*.swift)
+        if: matrix.app == 'todomvc'
         # Run the compile loop up front so `generated/` exists before
         # xcodegen/xcodebuild (the project.yml preBuildScript re-runs it,
         # but populating it here gives a clearer failure if PMTC itself
@@ -186,10 +204,12 @@ jobs:
         run: bash scripts/build.sh
 
       - name: Generate Xcode project
+        if: matrix.app == 'todomvc'
         working-directory: examples/native-todomvc-ios
         run: xcodegen generate
 
       - name: Build app for the iOS Simulator
+        if: matrix.app == 'todomvc'
         # Build only — proves the emitted Swift links against real
         # SwiftUI. The launch-and-render UI smoke is the NEXT step.
         # `CODE_SIGNING_ALLOWED=NO` because a Simulator build needs no
@@ -226,6 +246,7 @@ jobs:
           echo "PYREON_SIM_NAME=$SIM_NAME" >> "$GITHUB_ENV"
 
       - name: Run UITest on iOS Simulator (Phase 2.2 launch-and-render smoke)
+        if: matrix.app == 'todomvc'
         # The Phase-2.2 deliverable from the plan: BOOT the Simulator,
         # install the app, run an XCUITest that asserts the root view
         # (accessibilityIdentifier=todo-app, emitted from the canonical
@@ -254,8 +275,7 @@ jobs:
             -scheme PyreonTodoMVC \
             -sdk iphonesimulator \
             -destination "platform=iOS Simulator,name=${PYREON_SIM_NAME},OS=latest" \
-            -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO
+            -configuration Debug
 
       # ── Gap 7 part (a) — XCUITest coverage beyond TodoMVC ──
       # The audit (2026-06-05 native-readiness) explicitly calls out
@@ -292,6 +312,7 @@ jobs:
       # Pinned to the same 37.3349 the XCUITest asserts; changing one without
       # the other surfaces as a confusing timeout rather than a clear mismatch.
       - name: Grant location + inject a fix — native-counter-ios
+        if: matrix.app == 'counter'
         run: |
           set -euo pipefail
           UDID=$(xcrun simctl list devices available | grep -F "${PYREON_SIM_NAME} (" | head -1 | grep -oE '[0-9A-Fa-f-]{36}')
@@ -309,6 +330,7 @@ jobs:
           echo "injected 37.3349,-122.0090"
 
       - name: Emit + xcodegen + UITest — native-counter-ios
+        if: matrix.app == 'counter'
         working-directory: examples/native-counter-ios
         run: |
           set -o pipefail
@@ -321,8 +343,7 @@ jobs:
             -scheme PyreonCounter \
             -sdk iphonesimulator \
             -destination "platform=iOS Simulator,name=${PYREON_SIM_NAME},OS=latest" \
-            -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO
+            -configuration Debug
 
       # THE REAL-APP GATE. Every step above builds a DEMO — one screen, one
       # list, navigation only. This one builds a realistic app and asserts a
@@ -334,6 +355,7 @@ jobs:
       # not (SwiftUI's LocalizedStringKey grouping shows below 1000 as-is,
       # so the counter's "Count: 0" never surfaced it; a 2700 balance did).
       - name: Emit + xcodegen + UITest — native-finance-ios (real-app gate)
+        if: matrix.app == 'finance'
         working-directory: examples/native-finance-ios
         run: |
           set -o pipefail
@@ -346,24 +368,26 @@ jobs:
             -scheme PyreonFinance \
             -sdk iphonesimulator \
             -destination "platform=iOS Simulator,name=${PYREON_SIM_NAME},OS=latest" \
-            -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO
+            -configuration Debug
 
       # The useWebSocket device proof needs a live loopback peer — the iOS
       # Simulator shares the host loopback, so a background bun process is
       # all it takes. Started here (not globally) because ONLY the
       # router-demo suite touches the socket.
       - name: Start ws echo server — native-router-demo-ios
+        if: matrix.app == 'router-demo'
         run: |
           nohup bun examples/native-router-demo-ios/scripts/ws-echo-server.ts > /tmp/ws-echo.log 2>&1 &
           sleep 1
           grep -q "listening" /tmp/ws-echo.log && echo "ws-echo up" || (cat /tmp/ws-echo.log; exit 1)
 
       - name: Emit + xcodegen + UITest — native-router-demo-ios
+        if: matrix.app == 'router-demo'
         working-directory: examples/native-router-demo-ios
-        # NO `CODE_SIGNING_ALLOWED=NO` here, deliberately: an UNSIGNED app
-        # carries no signature entitlements, and the iOS 18.5 simulator's
-        # securityd DENIES SecItemAdd for it — the router-demo suite's
+        # POLICY (enforced by scripts/check-ios-signing-policy.ts): a step that
+        # RUNS the app carries no `CODE_SIGNING_ALLOWED=NO`. An UNSIGNED app has
+        # no signature entitlements, and the simulator's securityd DENIES
+        # SecItemAdd for it — the router-demo suite's
         # secure-storage test failed 3/3 retries with "Secret: write-failed"
         # on CI while passing locally, and the unsigned invocation was the
         # ONLY divergence (locally REPRODUCED byte-identically by adding
@@ -395,6 +419,7 @@ jobs:
       # in-app. Started ONCE, before the tasks UITest; the trailing
       # `&` + disown keeps it alive across steps within this job.
       - name: Start quotes fixture server (port 8787)
+        if: matrix.app == 'tasks'
         run: |
           # -u + file-redirect: python block-buffers a non-tty pipe
           # (zero observability) and an orphan holding the step's pipe
@@ -413,6 +438,7 @@ jobs:
           i=0; while ! curl -fsS http://127.0.0.1:8787/quotes.json >/dev/null 2>&1; do i=$((i+1)); [ "$i" -ge 30 ] && { echo "fixture server FAILED to start within 30s"; cat /tmp/fixture-server.log 2>/dev/null || true; exit 1; }; sleep 1; done; echo "fixture server OK (ready after ${i}s)"
 
       - name: Emit + xcodegen + UITest — native-tasks-ios
+        if: matrix.app == 'tasks'
         working-directory: examples/native-tasks-ios
         run: |
           set -o pipefail
@@ -425,8 +451,37 @@ jobs:
             -scheme PyreonTasks \
             -sdk iphonesimulator \
             -destination "platform=iOS Simulator,name=${PYREON_SIM_NAME},OS=latest" \
-            -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO
+            -configuration Debug
+
+  # The name branch protection pins. It must live on a job that always
+  # reports, never on a matrix cell — a matrix turns one context into N
+  # named `… (app)` contexts, so a pinned context would simply never appear
+  # and the PR would wait on it forever.
+  #
+  # `if: always()` plus an explicit result check is the fail-closed half: a
+  # SKIPPED required check reports SUCCESS to branch protection, so a
+  # cancelled or skipped matrix must red this job rather than vanish.
+  ios-build-result:
+    name: iOS — xcodebuild (Simulator SDK)
+    needs: ios-build
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Report the matrix verdict
+        run: |
+          RESULT='${{ needs.ios-build.result }}'
+          echo "ios-build matrix result: $RESULT"
+          case "$RESULT" in
+            success) echo "All iOS app cells passed." ;;
+            skipped) echo "iOS app cells were skipped (job gate not met) — reporting success." ;;
+            *)
+              echo "::error::iOS app matrix did not succeed (result: $RESULT)"
+              exit 1
+              ;;
+          esac
 
   android-build:
     # Same gate as ios-build — see the comment there.
@@ -778,7 +833,7 @@ jobs:
   notify-nightly:
     name: Nightly status → sticky issue
     if: always() && github.event_name == 'schedule'
-    needs: [ios-build, android-build]
+    needs: [ios-build-result, android-build]
     runs-on: ubuntu-latest
     permissions:
       issues: write
@@ -797,7 +852,7 @@ jobs:
           script: |
             const title = '[native-device] Nightly device build is RED'
             const failed =
-              '${{ needs.ios-build.result }}' === 'failure' ||
+              '${{ needs.ios-build-result.result }}' === 'failure' ||
               '${{ needs.android-build.result }}' === 'failure'
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
             const { data: issues } = await github.rest.issues.listForRepo({
@@ -811,7 +866,7 @@ jobs:
             if (failed) {
               const line = [
                 `Nightly run failed: ${runUrl}`,
-                `- iOS (xcodebuild + XCUITest): **${{ needs.ios-build.result }}**`,
+                `- iOS (xcodebuild + XCUITest): **${{ needs.ios-build-result.result }}**`,
                 `- Android (gradle + Compose test): **${{ needs.android-build.result }}**`,
               ].join('\n')
               if (sticky) {

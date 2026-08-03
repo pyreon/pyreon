@@ -51,9 +51,9 @@
 
 import { signal, computed } from '@pyreon/reactivity'
 import { useForm } from '@pyreon/form'
-import { useAuth, useDatabase } from '@pyreon/hooks'
+import { useAuth, useDatabase, useSecureStorage } from '@pyreon/hooks'
 import { defineStore } from '@pyreon/store'
-import { For, Show } from '@pyreon/core'
+import { For, Show, onMount } from '@pyreon/core'
 import { Stack, Inline, Field, Button, Text, Scroll } from '@pyreon/primitives'
 import { createRouter, useNavigate, RouterProvider, RouterView } from '@pyreon/router'
 
@@ -78,16 +78,41 @@ const useFinance = defineStore('finance', () => {
 function LoginPage() {
   const navigate = useNavigate()
   const auth = useAuth<User>()
+  // Session rehydration — the auth row's remaining reachable gap. The
+  // documented composition is `PyreonAuth` (pure reactive state, no platform
+  // edge) ⊕ `PyreonSecureStorage` (Keychain / Keystore AES-GCM): sign-in
+  // persists the session, launch restores it. Nothing gated exercised that
+  // pairing, so it was R1-R2 (compiles, unproven) — and writing the natural
+  // shape found a real emit bug: `secrets.read()` returns `String?` on both
+  // runtimes, but inference had no model for service METHOD RETURNS, so
+  // `if (token)` emitted a bare optional as the condition and compiled on
+  // NEITHER target (see native-auth-rehydrate.test.ts).
+  const secrets = useSecureStorage()
+  onMount(() => {
+    const token = secrets.read('finance-session')
+    if (token) {
+      // Restore the container AND the store flag the route guard reads, then
+      // land the user where they left off — the whole chain a returning user
+      // experiences (secret store → auth container → guard → dashboard),
+      // which is what the terminate-and-relaunch device tests assert.
+      auth.signInSucceeded({ id: token, name: token })
+      useFinance().store.isAuthed.set(true)
+      navigate('/dashboard')
+    }
+  })
 
   const form = useForm({
     initialValues: { username: '' },
     validators: {
       username: (v) => (v.length < 3 ? 'At least 3 characters' : ''),
     },
-    onSubmit: (_values) => {
-      // Drive the auth-state container through its no-arg transition, then
-      // flip the cross-screen store flag the route guard reads.
+    onSubmit: (values) => {
+      // Drive the auth-state container through its transitions, persist the
+      // session to the platform secret store, then flip the cross-screen
+      // store flag the route guard reads.
       auth.beginSignIn()
+      secrets.write('finance-session', values.username)
+      auth.signInSucceeded({ id: values.username, name: values.username })
       useFinance().store.isAuthed.set(true)
       navigate('/dashboard')
     },
@@ -118,6 +143,8 @@ function LoginPage() {
 function DashboardPage() {
   const navigate = useNavigate()
   const db = useDatabase()
+  const auth = useAuth<User>()
+  const secrets = useSecureStorage()
   const description = signal<string>('')
   const amount = signal<string>('')
 
@@ -150,6 +177,12 @@ function DashboardPage() {
   }
 
   const logout = () => {
+    // Clearing the persisted session is HALF of sign-out once rehydration
+    // exists: leaving the token behind means the next launch silently signs
+    // the user back in. The device tests assert the logout->relaunch path
+    // lands on LOGIN, which is what makes this line load-bearing.
+    secrets.remove('finance-session')
+    auth.signOut()
     useFinance().store.isAuthed.set(false)
     navigate('/login')
   }

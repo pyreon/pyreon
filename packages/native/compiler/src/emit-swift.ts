@@ -326,6 +326,21 @@ let _fieldArrayItemParamsSwift: string[] = []
  *  Field binding emit. */
 let _formNamesSwift: Set<string> = new Set()
 /**
+ * The onSubmit param name currently in scope, if any — a STACK so a nested
+ * form emit can't clobber the outer one.
+ *
+ * The runtimes hand `onSubmit` a string-keyed dictionary (`[String: String]`
+ * / `Map<String, String>`), but the TS author writes `values.username`, which
+ * is correct TypeScript against `initialValues: { username: '' }` and is
+ * exactly what `form.values().username` already lowers to a subscript. Without
+ * the same rewrite HERE, the natural shape emitted `values.username` verbatim
+ * and compiled on NEITHER target ("value of type '[String : String]' has no
+ * member 'username'" / "Unresolved reference 'username'"). It stayed hidden
+ * because every gated app named the param `_values` and never read a field
+ * off it — an unused parameter is an unexercised contract.
+ */
+let _formSubmitParamsSwift: string[] = []
+/**
  * Fetch-arc: every `useFetch` decl name in scope. A zero-arg CALL on a
  * fetch FIELD (`quotes.data()` — the web signal-read shape) rewrites to
  * a plain property read (`quotes.data`); `refetch()` keeps its parens
@@ -1462,6 +1477,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   _serviceKindByNameSwift = new Map()
   _i18nNames = new Set()
   _formNamesSwift = new Set()
+  _formSubmitParamsSwift = []
   _fetchNamesSwift = new Set()
   _websocketUrlsSwift = new Map()
   // C4: reset router-usage tracking. Set during decl-pass if any
@@ -1689,9 +1705,15 @@ function emitSwiftComponent(c: ComponentIR): string {
   for (const d of c.decls) {
     if (d.kind !== 'form' || d.onSubmit === undefined) continue
     const name = swiftIdent(d.name)
-    const bodyLines = d.onSubmit.body
-      .map((st) => `          ${emitSwiftStatement(st, 10)}`)
-      .join('\n')
+    _formSubmitParamsSwift.push(d.onSubmit.param)
+    let bodyLines: string
+    try {
+      bodyLines = d.onSubmit.body
+        .map((st) => `          ${emitSwiftStatement(st, 10)}`)
+        .join('\n')
+    } finally {
+      _formSubmitParamsSwift.pop()
+    }
     lines.push(`      .onAppear {`)
     lines.push(`        ${name}.onSubmit = { ${swiftIdent(d.onSubmit.param)} in`)
     lines.push(bodyLines)
@@ -2408,6 +2430,37 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       return emitSwiftExpr(s.expr, indent)
     case 'if': {
       const pad = ' '.repeat(indent)
+      // JS truthiness on a bare-identifier OPTIONAL local must BOTH nil-test
+      // AND unwrap on Swift: `if token != nil` alone leaves the then-body
+      // reading `String?` where `String` is expected (the session-rehydrate
+      // shape `if (token) { auth.signInSucceeded(User(name: token)) }` fails
+      // swiftc on the ARGUMENT even with the condition lowered). So the
+      // identifier form lowers to the shorthand binding `if let token {`
+      // (Swift 5.7+ — the runtime floor is iOS 17), and the then-body emits
+      // with the local NARROWED to its unwrapped type (restored after), so
+      // downstream type-dependent emits see the non-optional. Kotlin needs no
+      // twin: `if (token != null)` smart-casts a val local by language rule.
+      // Non-identifier optional conditions keep the `!= nil` lowering below.
+      const optC = classifyOptionalCondition(s.cond, _exprInferCtx)
+      if (optC?.form === 'present' && s.cond.kind === 'identifier') {
+        const name = s.cond.name
+        const prev = _exprInferCtx.locals.get(name)
+        if (prev !== undefined) _exprInferCtx.locals.set(name, unwrapOptionalType(prev))
+        let thenLines: string
+        try {
+          thenLines = s.then
+            .map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`)
+            .join('\n')
+        } finally {
+          if (prev !== undefined) _exprInferCtx.locals.set(name, prev)
+        }
+        const head = `if let ${swiftIdent(name)} {\n${thenLines}\n${pad}}`
+        if (!s.elseBody) return head
+        const elseLines = s.elseBody
+          .map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`)
+          .join('\n')
+        return `${head} else {\n${elseLines}\n${pad}}`
+      }
       const cond = swiftCondition(s.cond, (x) => emitSwiftExpr(x, indent))
       const thenLines = s.then.map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`).join('\n')
       const head = `if ${cond} {\n${thenLines}\n${pad}}`
@@ -4057,6 +4110,17 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // warning, and the shape that did work natively (`form.values.email`)
       // is a type error on web. Unwrap a zero-arg call on the accessor so
       // both lower identically. Additive: the property form is untouched.
+      // A field read off the onSubmit VALUES param — `values.username` →
+      // `values["username"] ?? ""`. Same shape (and same default) as the
+      // `form.values.email` rewrite below; the difference is only that the
+      // dictionary arrives as a closure parameter rather than a container
+      // property. See `_formSubmitParamsSwift`.
+      if (
+        e.object.kind === 'identifier' &&
+        _formSubmitParamsSwift.includes(e.object.name)
+      ) {
+        return `(${swiftIdent(e.object.name)}[${JSON.stringify(e.property)}] ?? "")`
+      }
       const _formAccessorObj =
         e.object.kind === 'call' && e.object.args.length === 0 && e.object.callee.kind === 'member'
           ? e.object.callee

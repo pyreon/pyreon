@@ -163,6 +163,15 @@ let _fetchNames: Set<string> = new Set()
  */
 let _formNames: Set<string> = new Set()
 /**
+ * The onSubmit param name currently in scope — mirror of
+ * `_formSubmitParamsSwift`. `PyreonForm`'s onSubmit receives a
+ * `Map<String, String>`, so a field read on the param must lower to a map
+ * lookup exactly as `form.values().username` already does. See the Swift
+ * twin for the full rationale (the bug hid behind an unused `_values` param
+ * in every gated app).
+ */
+let _formSubmitParamsKotlin: string[] = []
+/**
  * Phase 4: every `useOnline()` decl name in scope. A `net.isOnline` read emits
  * with a trailing `.value` (Compose `MutableState`); Swift exposes it as a
  * plain @Observable property, so it needs no rewrite.
@@ -1186,6 +1195,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _i18nNamesKotlin = new Set()
   _fetchNames = new Set()
   _formNames = new Set()
+  _formSubmitParamsKotlin = []
   _netStatusNames = new Set()
   _appStateNames = new Set()
   _geoNames = new Set()
@@ -1392,6 +1402,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _i18nNamesKotlin = new Set()
   _fetchNames = new Set()
   _formNames = new Set()
+  _formSubmitParamsKotlin = []
   _netStatusNames = new Set()
   _appStateNames = new Set()
   _geoNames = new Set()
@@ -1583,9 +1594,15 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       parts.push(`validators = mapOf(${entries})`)
     }
     if (d.onSubmit !== undefined) {
-      const bodyLines = d.onSubmit.body
-        .map((st) => `      ${emitKotlinStatement(st, 6, ctx)}`)
-        .join('\n')
+      _formSubmitParamsKotlin.push(d.onSubmit.param)
+      let bodyLines: string
+      try {
+        bodyLines = d.onSubmit.body
+          .map((st) => `      ${emitKotlinStatement(st, 6, ctx)}`)
+          .join('\n')
+      } finally {
+        _formSubmitParamsKotlin.pop()
+      }
       parts.push(
         `onSubmit = { ${kotlinIdent(d.onSubmit.param)} ->\n${bodyLines}\n    }`,
       )
@@ -2051,9 +2068,30 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
     case 'if': {
       const pad = ' '.repeat(indent)
       const cond = kotlinCondition(s.cond, (x) => emitKotlinExpr(x, indent))
-      const thenLines = s.then
-        .map((t) => `${pad}  ${emitKotlinStatement(t, indent + 2, ctx)}`)
-        .join('\n')
+      // Mirror of the Swift if-let narrowing, for the EMITTER's own eyes:
+      // kotlinc smart-casts a val local inside `if (token != null)` by
+      // language rule, but OUR type-dependent emits (struct-literal field
+      // synthesis, optional-interpolation guards) consult the infer ctx —
+      // narrow the bare-identifier optional for the then-body so they see
+      // the non-null type (restored after).
+      const optC = classifyOptionalCondition(s.cond, _kotlinExprInferCtx)
+      const narrowName =
+        optC?.form === 'present' && s.cond.kind === 'identifier' ? s.cond.name : undefined
+      const narrowPrev =
+        narrowName !== undefined ? _kotlinExprInferCtx.locals.get(narrowName) : undefined
+      if (narrowName !== undefined && narrowPrev !== undefined) {
+        _kotlinExprInferCtx.locals.set(narrowName, unwrapOptionalType(narrowPrev))
+      }
+      let thenLines: string
+      try {
+        thenLines = s.then
+          .map((t) => `${pad}  ${emitKotlinStatement(t, indent + 2, ctx)}`)
+          .join('\n')
+      } finally {
+        if (narrowName !== undefined && narrowPrev !== undefined) {
+          _kotlinExprInferCtx.locals.set(narrowName, narrowPrev)
+        }
+      }
       const head = `if (${cond}) {\n${thenLines}\n${pad}}`
       if (!s.elseBody) return head
       const elseLines = s.elseBody
@@ -3287,6 +3325,16 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         e.object.kind === 'call' && e.object.args.length === 0 && e.object.callee.kind === 'member'
           ? e.object.callee
           : e.object
+      // A field read off the onSubmit VALUES param — `values.username` →
+      // `values["username"] ?: ""`. Same shape and default as the
+      // `form.values().username` rewrite just below; the dictionary simply
+      // arrives as a lambda parameter instead of a container property.
+      if (
+        e.object.kind === 'identifier' &&
+        _formSubmitParamsKotlin.includes(e.object.name)
+      ) {
+        return `(${kotlinIdent(e.object.name)}[${JSON.stringify(e.property)}] ?: "")`
+      }
       if (
         _formAccessorObj.kind === 'member' &&
         _formAccessorObj.object.kind === 'identifier' &&

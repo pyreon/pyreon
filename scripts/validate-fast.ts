@@ -15,6 +15,7 @@
  *   - check-manifest-depth  (LOCKED package density regressed)
  *   - check-manifest-examples (a manifest api[].example no longer typechecks vs the shipped export)
  *   - check-client-bundle-node-imports (node: import leaked into client entry)
+ *   - check-ios-signing-policy (unsigned test step -> CI-only Keychain denial)
  *   - check-mcp-docs        (MCP tool added without docs/src/content/docs/mcp.md section)
  *   - loom-scan             (dependency-fabric errors: phantom deps, runtime cycles, drift)
  *   - check-advisory-comment-steps (advisory PR-comment step that can turn a check red)
@@ -70,6 +71,13 @@ const GATES: Gate[] = [
     cmd: 'bun scripts/check-client-bundle-node-imports.ts',
   },
   { name: 'check-mcp-docs', cmd: 'bun scripts/check-mcp-docs.ts' },
+  // A workflow step that RUNS an iOS app must not disable code signing: an
+  // unsigned app has no entitlements and securityd denies SecItemAdd, so any
+  // Keychain use fails ONLY in CI while passing on every developer machine.
+  {
+    name: 'check-ios-signing-policy',
+    cmd: 'bun scripts/check-ios-signing-policy.ts',
+  },
   // Dogfood: the workspace's own dependency fabric, gated by @pyreon/loom.
   // Errors only (phantom deps, runtime cycles, cross-major drift, internal-
   // range lies); warnings stay advisory. ~1s over the whole repo.
