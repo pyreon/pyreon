@@ -166,7 +166,8 @@
     "@codemirror/state": "6.7.1",
     "vite": "8.0.16",
     "playwright": "1.61.1",
-    "@playwright/test": "1.61.1"
+    "@playwright/test": "1.61.1",
+    "@codemirror/language": "6.12.4"
   },
   "dependencies": {
     "@tanstack/query-core": "^5.101.2",

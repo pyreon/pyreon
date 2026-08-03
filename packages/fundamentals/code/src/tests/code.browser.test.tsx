@@ -86,6 +86,29 @@ describe('code editor in real browser', () => {
   // text, none that tokens are actually styled. CodeMirror wraps highlighted
   // tokens in <span>s (generated `ͼ…` classes), so their presence is the
   // honest proof that the grammar loaded AND a highlight style applied.
+  /**
+   * CodeMirror REQUIRES `@codemirror/language` to be a single instance: it
+   * hosts both the `Language` facet and `syntaxHighlighting`, so two copies
+   * mean the highlighter never recognises the parser's tree. The failure mode
+   * is silent — the editor mounts, the text renders, nothing is coloured, and
+   * no error is raised anywhere. That shipped once already (a lockfile
+   * carrying 6.12.3 alongside 6.12.4; it reproduced only on a clean install,
+   * so a warm local tree that happened to dedupe never saw it).
+   *
+   * This asserts the invariant directly, so a dependency-graph regression
+   * fails by NAME instead of as unexplained missing highlighting.
+   */
+  it('resolves ONE @codemirror/language instance (highlighting depends on it)', async () => {
+    const { Language } = await import('@codemirror/language')
+    const support = (await import('@codemirror/lang-javascript')).javascript({ typescript: true })
+    expect(
+      (support as { language?: unknown }).language instanceof Language,
+      'duplicate @codemirror/language: the grammar and the highlighter hold different copies of the Language facet, ' +
+        'so nothing will highlight. Pin it in the root package.json `overrides` (its siblings @codemirror/state and ' +
+        '@codemirror/view are pinned there for the same reason) and regenerate bun.lock.',
+    ).toBe(true)
+  })
+
   it('HIGHLIGHTS tokens — the grammar loads and styles the content', async () => {
     const editor = createEditor({
       value: 'const answer: number = 42 // a comment\n',
