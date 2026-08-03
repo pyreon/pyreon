@@ -88,6 +88,15 @@ const GATES: Gate[] = [
     name: 'check-ci-job-timeouts',
     cmd: 'bun scripts/check-ci-job-timeouts.ts',
   },
+  // A cache SAVE key and its RESTORE key must hash the same inputs. hashFiles()
+  // is a pure function of its argument list, so two different lists can never
+  // produce a matching digest — the restore just misses, silently, forever.
+  // Measured cost of the drift this caught: 228 of one CI run's 401
+  // runner-minutes spent rebuilding artifacts cached minutes earlier.
+  {
+    name: 'check-cache-key-sync',
+    cmd: 'bun scripts/check-cache-key-sync.ts',
+  },
   // A tri-target shared source must be buildable for the WEB target too. The
   // two native targets compile it through PMTC and never read node_modules,
   // so they stay green while the web build cannot resolve a new import —

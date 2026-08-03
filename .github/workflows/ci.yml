@@ -1016,8 +1016,23 @@ jobs:
       - uses: ./.github/actions/setup-pyreon
         with:
           node-version: '24'
-      - name: Cache Playwright browsers
-        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8 # v6.0.0
+      # RESTORE always; SAVE only on main. The browser bundle is ~261 MB and
+      # depends only on the Playwright version in bun.lock, so a per-branch save
+      # stored the SAME bytes once per PR — four live copies, 783 MB of pure
+      # duplication, in a cache that is at 9.77 GB of its 10 GB limit.
+      #
+      # That ceiling is not an abstract tidiness concern. Bootstrap caches are
+      # 5 MB, and one saved at 19:04 on run 30840261671 was already GONE when a
+      # downstream job looked at 19:23. Every lib-needing job then rebuilds all
+      # 74 packages: 43 jobs x ~350s = 228 of that run's 401 runner-minutes.
+      # Large low-value entries evict small high-value ones.
+      #
+      # A PR that changes bun.lock misses the exact key, falls through the
+      # `playwright-chromium-<os>-` prefix to main's nearest browser, and the
+      # install step below reconciles it — the same path a cold runner takes.
+      - name: Restore Playwright browsers
+        id: pw-cache
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ~/.cache/ms-playwright
           key: playwright-chromium-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -1040,6 +1055,15 @@ jobs:
           sudo grep -rlZ packages.microsoft.com /etc/apt/sources.list.d/ 2>/dev/null | sudo xargs -0 -r rm -f || true
           timeout 240 bunx playwright install-deps chromium || echo "::warning::playwright install-deps timed out or failed — relying on the runner's preinstalled Chromium libs"
           bunx playwright install chromium
+      # Populate the shared entry ONLY from main, so one copy serves every PR
+      # instead of one copy per PR. `if: always()` is deliberate: a failing spec
+      # must not throw away a browser download the next run would reuse.
+      - name: Save Playwright browsers (main only)
+        if: always() && github.ref == 'refs/heads/main' && steps.pw-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('bun.lock') }}
       - run: bun run test:browser
 
   # ── Test (Rust binary): cross-backend equivalence gate ───────────────
@@ -1149,8 +1173,23 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: ./.github/actions/setup-pyreon
-      - name: Cache Playwright browsers
-        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8 # v6.0.0
+      # RESTORE always; SAVE only on main. The browser bundle is ~261 MB and
+      # depends only on the Playwright version in bun.lock, so a per-branch save
+      # stored the SAME bytes once per PR — four live copies, 783 MB of pure
+      # duplication, in a cache that is at 9.77 GB of its 10 GB limit.
+      #
+      # That ceiling is not an abstract tidiness concern. Bootstrap caches are
+      # 5 MB, and one saved at 19:04 on run 30840261671 was already GONE when a
+      # downstream job looked at 19:23. Every lib-needing job then rebuilds all
+      # 74 packages: 43 jobs x ~350s = 228 of that run's 401 runner-minutes.
+      # Large low-value entries evict small high-value ones.
+      #
+      # A PR that changes bun.lock misses the exact key, falls through the
+      # `playwright-chromium-<os>-` prefix to main's nearest browser, and the
+      # install step below reconciles it — the same path a cold runner takes.
+      - name: Restore Playwright browsers
+        id: pw-cache
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ~/.cache/ms-playwright
           key: playwright-chromium-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -1173,6 +1212,13 @@ jobs:
           sudo grep -rlZ packages.microsoft.com /etc/apt/sources.list.d/ 2>/dev/null | sudo xargs -0 -r rm -f || true
           timeout 240 bunx playwright install-deps chromium || echo "::warning::playwright install-deps timed out or failed — relying on the runner's preinstalled Chromium libs"
           bunx playwright install chromium
+      # Same shared-entry rule as the browser-test job above.
+      - name: Save Playwright browsers (main only)
+        if: always() && github.ref == 'refs/heads/main' && steps.pw-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('bun.lock') }}
       - name: Run e2e — ${{ matrix.name }}
         # Tee the combined output so the next step can surface FLAKY
         # specs. `set -o pipefail` keeps Playwright's real exit code

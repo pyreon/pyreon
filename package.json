@@ -92,6 +92,7 @@
     "check-client-bundle-node-imports": "bun scripts/check-client-bundle-node-imports.ts",
     "check-ios-signing-policy": "bun scripts/check-ios-signing-policy.ts",
     "check-ci-job-timeouts": "bun scripts/check-ci-job-timeouts.ts",
+    "check-cache-key-sync": "bun scripts/check-cache-key-sync.ts",
     "check-shared-source-deps": "bun scripts/check-shared-source-deps.ts",
     "check-distribution": "bun scripts/check-distribution.ts",
     "check-export-entries": "bun scripts/check-export-entries.ts",

@@ -139,7 +139,7 @@ runs:
         path: packages/*/*/lib
         key: ${{ env.BOOTSTRAP_KEY }}
         restore-keys: |
-          bootstrap-ubuntu-${{ hashFiles('packages/*/*/src/**', 'packages/*/*/package.json', 'scripts/bootstrap.ts', 'bun.lock') }}
+          bootstrap-ubuntu-${{ hashFiles('packages/*/*/src/**', 'packages/*/*/package.json', 'packages/*/*/tsconfig.json', 'tsconfig.json', 'scripts/bootstrap.ts', 'bun.lock') }}
           bootstrap-ubuntu-
     # Same fallback for the lib/ cache: rebuild via the bootstrap script
     # (~45s) instead of letting every lib-needing job fail on missing
