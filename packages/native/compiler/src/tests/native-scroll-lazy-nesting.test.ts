@@ -53,14 +53,22 @@ describe('<Scroll> wrapping a lazy list (Kotlin)', () => {
     expect(kotlin(LIST).warnings ?? []).toEqual([])
   })
 
-  it('KEEPS the scroll wrapper when the <Scroll> carries its own layout', () => {
-    // Unwrapping would silently drop the padding/testTag. The author's nesting
-    // is then their own to resolve — the compiler must not restructure a tree
-    // in a way that loses declared layout.
+  it('KEEPS the declared layout — but NOT the scroll modifier — when the <Scroll> carries its own layout', () => {
+    // The protected invariant is unchanged: unwrapping must not drop the
+    // author's padding/testTag. But the ORIGINAL assertion (keep
+    // `verticalScroll` alongside the layout) encoded the crash itself —
+    // Column(Modifier.verticalScroll()) { LazyColumn } throws the same
+    // measure-time IllegalStateException regardless of a testTag, which was
+    // reproduced on a real emulator with exactly this shape (the 10k-row
+    // BigListPage carried data-testid="biglist-scroll" and took the activity
+    // down). The corrected emit keeps the wrapper Column WITH the declared
+    // layout and WITHOUT the scroll modifier: the LazyColumn already
+    // scrolls, and `verticalScroll` was never something the author declared.
     const WITH_LAYOUT = LIST.replace('<Scroll>', '<Scroll data-testid="list-scroll">')
     const out = kotlin(WITH_LAYOUT).code
-    expect(out).toContain('verticalScroll(rememberScrollState())')
-    expect(out).toContain('list-scroll')
+    expect(out).toContain('Column(modifier = Modifier.testTag("list-scroll"))')
+    expect(out).toContain('LazyColumn {')
+    expect(out).not.toContain('verticalScroll')
   })
 
   it('KEEPS the wrapper for a MIXED child list (a header plus the list)', () => {
