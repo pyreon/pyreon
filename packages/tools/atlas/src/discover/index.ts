@@ -6,6 +6,8 @@
  * client-safe `@pyreon/atlas/auto` entry.
  */
 export { scanSource } from './scan'
+export type { UnmatchedFile } from './unmatched'
+export { findUnmatched, formatUnmatched, pascalExports } from './unmatched'
 export type { DiscoverOptions } from './discover'
 export { discoverComponents, fileDiscoveryPlugin, listComponentFiles } from './discover'
 export type { RocketstyleDiscoveryOptions } from './rocketstyle'

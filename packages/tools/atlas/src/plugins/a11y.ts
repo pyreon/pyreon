@@ -7,6 +7,7 @@
  * carries a real verdict.
  */
 import type { VerifyCheck } from '../core'
+import { skipped } from './registry'
 import type { AtlasPlugin, VerifyContext } from './types'
 import { defineAtlasPlugin } from './define'
 
@@ -21,7 +22,17 @@ export function a11yPlugin(): AtlasPlugin {
     name: 'atlas:a11y-static',
     verify(ctx: VerifyContext): { a11y: VerifyCheck } {
       const nameProps = ctx.component.controls.filter((c) => c.required && NAME_PROP.test(c.name))
-      if (nameProps.length === 0) return { a11y: { status: 'skip' } }
+      if (nameProps.length === 0) {
+        // NOT a gap in the component — this static check only knows how to
+        // verify that a required name-like prop was supplied, and this one has
+        // none. Saying so distinguishes it from "the check failed to run",
+        // which is what a bare skip reads as.
+        return {
+          a11y: skipped(
+            'no required name-like prop to check statically — run `atlas verify-browser` for real axe-core coverage',
+          ),
+        }
+      }
       const missing = nameProps
         .filter((c) => isEmpty(ctx.scenario.args[c.name]))
         .map((c) => `missing accessible name: "${c.name}" is empty`)

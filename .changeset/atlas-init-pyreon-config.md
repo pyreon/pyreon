@@ -44,6 +44,22 @@ no components — today a dead end that prints "no components found" — the
 workspace's packages are detected automatically, and the scan says so rather
 than producing a catalog from nowhere.
 
+**Discovery is no longer silent.** A component the scanner does not recognise
+was pure absence — the catalog quietly one smaller, with nothing distinguishing
+"you have 12 components" from "you have 14 and I found 12". `atlas scan` now
+reports files that export something PascalCase and produced no component, with
+a reason where the shape is a known gap (a class, a re-export, a `styled()`
+call, a member-call chain). Framed as a list to look at, not a failure — a
+provider or a schema belongs there too. Silent on a healthy full scan of the
+workshop example: zero false positives.
+
+**Skips now say why.** A bare `skip` was three situations wearing one label:
+cannot run here, needs a different command, or nothing looked. `reactivityCoverage`
+and `snapshot` carry `browser-only — run atlas verify-browser`; the static a11y
+check explains that a component with no required name-like prop has nothing it
+can check statically. "2 of 5 skipped" read as a hole in the tool when it was a
+command the user had not run.
+
 **Detector widened**, each of these previously a silent absence:
 
 - `export default function Button()`, and anonymous defaults (named after the file)

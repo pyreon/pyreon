@@ -7,8 +7,8 @@
  * outside the CLI-package allowlist. `runScan` is pure (returns data + writes
  * files); `runCli` is the thin arg-parsing + printing layer a bin invokes.
  */
-import { renameSync, unlinkSync, writeFileSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
+import { join, relative, resolve } from 'node:path'
 import { createAtlas } from '../index'
 import type { CatalogGraph } from '../core'
 import type { WorkbenchPresets } from '../ui/catalog'
@@ -19,6 +19,8 @@ import {
   createModuleLoader,
   type DiscoverOptions,
   fileDiscoveryPlugin,
+  findUnmatched,
+  formatUnmatched,
   loadAtlasConfig,
   listComponentFiles,
   loadRuntime,
@@ -75,6 +77,14 @@ export interface ScanResult {
    * grouped / titled?" with nothing to point at.
    */
   configError?: string
+  /**
+   * Files that export something PascalCase and produced NO component.
+   *
+   * The catalog cannot report a component it never found, so without this a
+   * discovery gap is pure absence — indistinguishable from a project that
+   * simply has fewer components.
+   */
+  unmatched?: readonly import('../discover').UnmatchedFile[]
   /**
    * Packages found by scanning the workspace because nothing was configured
    * and the default root was empty.
@@ -232,6 +242,25 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
     const failing = scenarios
       .filter((s) => s.verify && !s.verify.ok && s.verify.checked > 0)
       .map((s) => s.id)
+    // Which files were LOOKED at and produced nothing. Computed from the same
+    // roots discovery walked, minus the files that yielded a component — so it
+    // is a difference, not a second opinion.
+    const producing = new Set(
+      graph
+        .list()
+        .map((c) => c.source)
+        .filter((s): s is string => Boolean(s))
+        .map((s) => resolve(cwd, s)),
+    )
+    const scanned = scanRoots(options, effectiveProjects).flatMap((root) =>
+      listComponentFiles({ cwd, ...(root.dir !== undefined ? { dir: root.dir } : {}) }).map((f) =>
+        resolve(cwd, f),
+      ),
+    )
+    const unmatched = findUnmatched(scanned, producing, {
+      readSource: (file) => readFileSync(file, 'utf8'),
+    }).map((entry) => ({ ...entry, file: relative(cwd, entry.file) }))
+
     const result: ScanResult = {
       components: graph.size(),
       scenarios: scenarios.length,
@@ -249,6 +278,7 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
       ...(effectiveProjects ? { projects: effectiveProjects } : {}),
       ...(autoDetected.length > 0 ? { autoDetected } : {}),
       ...(loaded.error ? { configError: loaded.error } : {}),
+      ...(unmatched.length > 0 ? { unmatched } : {}),
     }
 
     if (options.write !== false && graph.size() > 0) {
@@ -388,6 +418,13 @@ export async function runCli(argv: readonly string[]): Promise<number> {
         `${result.unverified} unverified.\n`,
     )
     if (result.catalogPath) out(`  → ${result.catalogPath}\n  → ${result.guidePath}\n`)
+    // What the scan LOOKED at and could not catalogue. Not a failure — a
+    // provider or a schema belongs in that list too — but a component you
+    // expected and cannot find will be in it, and without this the only
+    // evidence of a discovery gap is a number that is quietly too small.
+    if (result.unmatched && result.unmatched.length > 0) {
+      err(`${formatUnmatched(result.unmatched).join('\n')}\n`)
+    }
     if (result.failed > 0) {
       // A red scan is a red exit — otherwise wiring `atlas scan` into CI gates
       // nothing. The ids make the failure actionable without opening the JSON.
