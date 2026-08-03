@@ -18,10 +18,22 @@
         <activity
             android:name="com.pyreon.MainActivity"
             android:exported="true"
-            android:theme="@android:style/Theme.Material.Light.NoActionBar">
+            android:theme="@android:style/Theme.Material.Light.NoActionBar"
+            android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- The custom scheme the deep-link device test opens. Without an
+                 intent-filter the OS has nothing to route to this activity and
+                 `am start -a VIEW -d pyreondemo://…` fails before any Pyreon
+                 code runs. singleTop (below) is what makes the WARM path
+                 deliver onNewIntent instead of recreating the activity. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="pyreondemo" />
             </intent-filter>
         </activity>
     </application>

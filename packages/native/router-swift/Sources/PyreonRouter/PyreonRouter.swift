@@ -269,8 +269,12 @@ public final class PyreonRouter {
     /// directly keep working without changes. Apps adopting the new
     /// dispatcher pass a `[RouteRecord]` and (optionally) a
     /// `notFoundComponent` for the wildcard catch-all (Phase A6).
+    /// `initialPath` defaults to any pending inbound DEEP LINK, so an app
+    /// launched by a URL opens at that route with no host or emit change —
+    /// the emitted `PyreonRouter()` picks it up through this default. An
+    /// explicit `initialPath` still wins.
     public init(
-        initialPath: [String] = [],
+        initialPath: [String] = PyreonDeepLink.takePendingPath(),
         routes: [RouteRecord] = [],
         notFoundComponent: (() -> AnyView)? = nil,
     ) {
@@ -283,6 +287,22 @@ public final class PyreonRouter {
         if !initialPath.isEmpty, let resolved = self.resolve(initialPath.last!) {
             self.params = resolved.params
         }
+        // WARM links — a URL handed to an app that is already running. The
+        // newest router owns them (single listener slot, see PyreonDeepLink),
+        // and the handle is released on deinit so a torn-down router never
+        // keeps navigating.
+        releaseDeepLinkListener = PyreonDeepLink.setListener { [weak self] path in
+            self?.push(path)
+        }
+    }
+
+    /// Release handle for the deep-link listener. Held so `deinit` can drop it
+    /// — without this the global would retain a closure over a dead router,
+    /// which is the leak shape the single-slot design exists to avoid.
+    @ObservationIgnored private var releaseDeepLinkListener: (() -> Void)?
+
+    deinit {
+        releaseDeepLinkListener?()
     }
 
     /// Phase A4.5 — element of a resolved chain. The router walks the

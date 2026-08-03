@@ -10,12 +10,10 @@
  *
  * ## What gets validated
  *
- * - PyreonRouter.kt (imperative model, NON-Composable)
- * - RouterProvider.kt (@Composable wrapper, CompositionLocal)
- * - RouterView.kt (@Composable placeholder)
- * - Link.kt (@Composable navigation primitive)
- * - Hooks.kt (@Composable useNavigate/useParams)
- * - PyreonRouterTest.kt (top-level main() smoke runner)
+ * EVERY .kt under src/main/kotlin/com/pyreon/router (discovered by glob —
+ * a hand-maintained list silently excluded PyreonDeepLink.kt the first
+ * time a file was added), plus PyreonRouterTest.kt (top-level main()
+ * smoke runner).
  *
  * The smoke main() exercises ONLY the imperative model (push /
  * replace / back / reset / params reactivity) — Composable surface
@@ -24,7 +22,7 @@
  */
 
 import { execSync, spawnSync } from 'node:child_process'
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -32,14 +30,25 @@ import { fileURLToPath } from 'node:url'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PACKAGE_ROOT = resolve(HERE, '..')
 
-const SOURCES = [
-  'src/main/kotlin/com/pyreon/router/PyreonRouter.kt',
-  'src/main/kotlin/com/pyreon/router/RouterProvider.kt',
-  'src/main/kotlin/com/pyreon/router/RouterView.kt',
-  'src/main/kotlin/com/pyreon/router/Link.kt',
-  'src/main/kotlin/com/pyreon/router/Hooks.kt',
-  'src/main/kotlin/com/pyreon/router/RouteLoader.kt',
-].map(rel => resolve(PACKAGE_ROOT, rel))
+// EVERY .kt under the module's source root — discovered, not enumerated.
+// This was a hardcoded six-file list, and the first new source file added
+// after it (PyreonDeepLink.kt) was silently excluded: PyreonRouter.kt
+// references the class, so kotlinc failed with "unresolved reference" in a
+// file that compiles fine in any real Gradle build, and the red run read as a
+// product bug. A gate whose input set is a hand-maintained list fails
+// exactly when a file is ADDED — the moment it has something new to check.
+// (Same family as ".claude/rules"'s "per-file gate cannot see cross-file
+// collision": narrowing a gate's input set makes questions unanswerable.)
+const SOURCE_DIR = resolve(PACKAGE_ROOT, 'src/main/kotlin/com/pyreon/router')
+const SOURCES = readdirSync(SOURCE_DIR)
+  .filter((f) => f.endsWith('.kt'))
+  .sort()
+  .map((f) => resolve(SOURCE_DIR, f))
+if (SOURCES.length === 0) {
+  // An empty scan must be a loud failure, never a vacuous green.
+  console.error('[verify-kotlin] FAILED — no .kt sources found under', SOURCE_DIR)
+  process.exit(1)
+}
 
 const TEST_FILE = resolve(
   PACKAGE_ROOT,
@@ -149,11 +158,27 @@ fun CompositionLocalProvider(vararg values: ProvidedValue<*>, content: @Composab
 }
 `
 
+// android.net.Uri — EXACTLY the surface PyreonDeepLink.kt reads
+// (`uri.path` / `uri.host`, both nullable). Mirrored, not a superset:
+// a wider stub would mask a reference the real SDK rejects (the
+// stub-must-mirror rule), a narrower one manufactures failures — this
+// gate found PyreonDeepLink at all only because the source list became
+// a glob, and then needed exactly this stub.
+const ANDROID_NET_STUBS = `package android.net
+
+class Uri {
+  val path: String? = null
+  val host: String? = null
+}
+`
+
 const tempDir = mkdtempSync(join(tmpdir(), 'pyreon-router-kotlin-verify-'))
 
 try {
   const composeRuntimePath = join(tempDir, 'ComposeRuntime.kt')
   writeFileSync(composeRuntimePath, COMPOSE_RUNTIME_STUBS, 'utf8')
+  const androidNetPath = join(tempDir, 'AndroidNet.kt')
+  writeFileSync(androidNetPath, ANDROID_NET_STUBS, 'utf8')
 
   const jarPath = join(tempDir, 'pyreon-router.jar')
 
@@ -161,11 +186,11 @@ try {
   console.log(`[verify-kotlin] mode: ${typecheckOnly ? 'typecheck-only' : 'full (build + smoke)'}`)
   console.log(`[verify-kotlin] sources: ${SOURCES.length} files`)
   if (!typecheckOnly) console.log(`[verify-kotlin] test: ${TEST_FILE}`)
-  console.log(`[verify-kotlin] stubs: ${tempDir}/ (1 file)`)
+  console.log(`[verify-kotlin] stubs: ${tempDir}/ (2 files)`)
 
   const kotlincArgs = typecheckOnly
-    ? ['-d', tempDir, composeRuntimePath, ...SOURCES]
-    : ['-include-runtime', '-d', jarPath, composeRuntimePath, ...SOURCES, TEST_FILE]
+    ? ['-d', tempDir, composeRuntimePath, androidNetPath, ...SOURCES]
+    : ['-include-runtime', '-d', jarPath, composeRuntimePath, androidNetPath, ...SOURCES, TEST_FILE]
 
   const result = spawnSync(kotlinc, kotlincArgs, { encoding: 'utf8' })
 

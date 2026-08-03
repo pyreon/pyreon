@@ -70,6 +70,12 @@ targets:
         CFBundlePackageType: APPL
         CFBundleShortVersionString: 0.0.1
         CFBundleVersion: '1'
+        # The custom scheme the deep-link device test opens. Without a
+        # registered URL type the OS has nothing to hand the app and
+        # `simctl openurl` fails before any Pyreon code runs.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.pyreon.PyreonRouterDemo
+            CFBundleURLSchemes: [pyreondemo]
         # Media-row remote image: AsyncImage fetches over URLSession, which
         # App Transport Security gates — cleartext http://localhost is
         # BLOCKED by default (the ws test never hit this because the ws

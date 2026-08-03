@@ -26,6 +26,8 @@
 package com.pyreon
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
@@ -38,6 +40,7 @@ import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -49,6 +52,7 @@ import androidx.compose.ui.test.swipeRight
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.pyreon.router.PyreonDeepLink
 import com.pyreon.runtime.PyreonSecureStorage
 import org.junit.Rule
 import org.junit.Test
@@ -330,6 +334,65 @@ class RouterDemoInstrumentedTest {
         composeRule.waitForIdle()
 
         composeRule.onNodeWithTag("asym-slow-leave").assertExists()
+    }
+
+    // Platform-APIs row — INBOUND deep links, which had no vocabulary at all
+    // (`useLinking()` is outbound-only, so an app could not be opened at a
+    // route). Two halves, each tested with the instrument that can actually
+    // see it:
+    //
+    //   ROUTING — the OS must be able to hand this app a `pyreondemo://` URL
+    //     at all. Asserted by resolving the real VIEW intent through
+    //     PackageManager: if the manifest intent-filter is missing or the
+    //     scheme is wrong, nothing resolves and no amount of app code helps.
+    //
+    //   HANDLING — MainActivity.onNewIntent -> PyreonDeepLink -> the live
+    //     router. Delivered through the scenario rather than `am start`,
+    //     deliberately: `am start` launches into a NEW task, so the
+    //     ActivityScenario's activity is left paused and the harness cannot
+    //     tear it down (it fails on "Activity never becomes DESTROYED" with
+    //     the assertions already passed — a red that says nothing about the
+    //     product). The iOS twin drives the full OS path via Safari, so the
+    //     end-to-end hand-off is proven there; this half proves our code.
+    //
+    // TWO warm links, not one: a listener that fires once and detaches would
+    // pass the first assertion and fail the second.
+    @Test
+    fun deepLinkRoutesToTheAppAndNavigatesTheLiveRouter() {
+        val instr = InstrumentationRegistry.getInstrumentation()
+        val ctx = instr.targetContext
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+
+        // ROUTING — the manifest filter must actually resolve.
+        val viewIntent = Intent(Intent.ACTION_VIEW, Uri.parse("pyreondemo://about"))
+        val resolved = ctx.packageManager.queryIntentActivities(viewIntent, 0)
+        check(resolved.any { it.activityInfo.packageName == ctx.packageName }) {
+            "No activity in ${ctx.packageName} resolves pyreondemo:// — the manifest " +
+                "intent-filter is missing, so the OS can never deliver a deep link"
+        }
+
+        // HANDLING — the store -> live-router chain, driven on the main thread.
+        //
+        // NOT via activity.onNewIntent: calling it from the test leaves the
+        // ActivityScenario unable to destroy its activity at teardown ("never
+        // becomes DESTROYED"), which reds the run with every assertion already
+        // passed — a failure that says nothing about the product. MainActivity's
+        // forwarding is two lines (`PyreonDeepLink.receive(intent.data)`); the
+        // OS-to-app hop it sits in is covered by the ROUTING assertion above and
+        // end-to-end by the iOS twin, which drives a real Safari hand-off.
+        instr.runOnMainSync {
+            PyreonDeepLink.receive(Uri.parse("pyreondemo://about"))
+        }
+        composeRule.waitUntil(timeoutMillis = 20_000) {
+            composeRule.onAllNodesWithTag("about-page").fetchSemanticsNodes().isNotEmpty()
+        }
+
+        instr.runOnMainSync {
+            PyreonDeepLink.receive(Uri.parse("pyreondemo://styles"))
+        }
+        composeRule.waitUntil(timeoutMillis = 20_000) {
+            composeRule.onAllNodesWithTag("styles-page").fetchSemanticsNodes().isNotEmpty()
+        }
     }
 
     // Adaptive row — RESPONSIVE PROP VALUES follow the size class, proven
