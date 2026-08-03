@@ -1795,7 +1795,16 @@ final class PyreonRuntimeTests: XCTestCase {
         let ws = PyreonWebSocket()
         ws.connect(to: URL(string: "wss://example.invalid/socket")!)
         XCTAssertTrue(ws.isOpen)
-        XCTAssertTrue(ws.isConnected) // opened() fired optimistically on resume
+        // `isOpen` is the LIFECYCLE flag (connect called, close not yet);
+        // `isConnected` is the REACTIVE one and now requires a real handshake.
+        // This line used to assert TRUE with the comment "opened() fired
+        // optimistically on resume" — it ENCODED the inaccuracy rather than
+        // catching it, so it could never have failed when the behaviour was
+        // wrong. The invariant it protected (the connect/close lifecycle and
+        // its idempotency) is unchanged below; only this assertion moves to the
+        // corrected truth: an unreachable host never completes a handshake, so
+        // it must NOT read as connected.
+        XCTAssertFalse(ws.isConnected)
         ws.connect(to: URL(string: "wss://example.invalid/other")!) // idempotent
         XCTAssertTrue(ws.isOpen)
         ws.close()
@@ -1915,6 +1924,37 @@ final class PyreonRuntimeTests: XCTestCase {
         let bio = PyreonBiometrics()
         _ = bio
     }
+
+    /// `isConnected` must reflect the real handshake, not the request being
+    /// queued. It used to flip on `task.resume()` — so a socket pointed at a
+    /// DEAD server read as connected for a beat, and any UI gating on it showed
+    /// a connection that never existed. That was disclosed in the matrix as a
+    /// runtime-accuracy follow-up rather than fixed; Kotlin flipped on OkHttp's
+    /// real `onOpen` all along.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testConnectDoesNotReportConnectedBeforeTheHandshake() {
+        let ws = PyreonWebSocket()
+        XCTAssertFalse(ws.isConnected, "a fresh socket must not be connected")
+
+        // A port nothing listens on: `resume()` succeeds (the request is
+        // queued), the handshake never completes.
+        ws.connect(to: URL(string: "ws://127.0.0.1:1/never")!)
+        XCTAssertFalse(
+            ws.isConnected,
+            "isConnected flipped on resume() — a dead server must not read as open"
+        )
+        ws.close()
+    }
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testOpenedIsWhatFlipsConnected() {
+        let ws = PyreonWebSocket()
+        ws.opened()
+        XCTAssertTrue(ws.isConnected, "opened() must flip the reactive flag")
+        ws.closed()
+        XCTAssertFalse(ws.isConnected, "closed() must clear it")
+    }
+
 }
 
 /// Tiny mutable-reference-type flag so a `@Sendable` `onChange` closure
