@@ -769,5 +769,99 @@ final class PyreonRouterDemoUITests: XCTestCase {
             "asymmetric fast-leave box never came back"
         )
     }
-}
 
+
+    // Styling row — @pyreon/coolgrid, listed as supported since it landed but
+    // never rendered on a device. The 12-column split is ASYMMETRIC (3/9) so
+    // the geometry discriminates: a dropped grid leaves both columns at the
+    // row's left edge, and a defaulted or swapped span puts the boundary at
+    // the wrong fraction — neither of which a 6/6 split could reveal.
+    //
+    // iOS reads the wide column's x-ORIGIN rather than any width: XCUITest
+    // a11y frames hug their glyphs, so a container's WIDTH is invisible here
+    // (the #2593 lesson, which the token-padding proof re-measured before
+    // asserting), but where a glyph STARTS is a real layout fact. The wide
+    // column begins after the narrow one's 3/12, so its text must sit at
+    // roughly a quarter of the screen — and far to the right of the narrow
+    // column's text, which a collapsed grid would not do.
+    func test_coolgridColumnsSplitTheRowByTheirSpans() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            "Home page did not render"
+        )
+        app.buttons["View styles"].tap()
+        XCTAssertTrue(
+            app.otherElements["styles-page"].firstMatch.waitForExistence(timeout: 15),
+            "Styles page did not render"
+        )
+
+        let narrow = app.staticTexts["grid-text-narrow"].firstMatch
+        let wide = app.staticTexts["grid-text-wide"].firstMatch
+        XCTAssertTrue(narrow.waitForExistence(timeout: 10), "narrow column text missing")
+        XCTAssertTrue(wide.waitForExistence(timeout: 10), "wide column text missing")
+
+        // The measurement is each glyph's CENTRE, not a column edge:
+        // `containerRelativeFrame(count:span:)` sizes the column and the
+        // stack centres its content, so the text sits mid-column. A first
+        // reading of 249.75pt on a 402pt screen looked like a broken grid
+        // until that was accounted for — it is exactly the midpoint of a
+        // column spanning 25%->100%. Centres pin BOTH spans at once:
+        // narrow (0->3/12) centres at 12.5% of the screen, wide (3/12->12/12)
+        // at 62.5%. A collapsed grid puts both glyphs together near the left.
+        let screen = app.windows.firstMatch.frame.width
+        let narrowCentre = narrow.frame.midX
+        let wideCentre = wide.frame.midX
+        XCTAssertEqual(
+            narrowCentre, screen * 0.125, accuracy: screen * 0.06,
+            "The 3/12 column's text centres at \(narrowCentre) on a \(screen)pt screen; "
+                + "a 3/12 span centres near \(screen * 0.125)"
+        )
+        XCTAssertEqual(
+            wideCentre, screen * 0.625, accuracy: screen * 0.06,
+            "The 9/12 column's text centres at \(wideCentre) on a \(screen)pt screen; "
+                + "a span from 3/12 to 12/12 centres near \(screen * 0.625). A collapsed "
+                + "grid would leave both columns bunched at the row's left edge"
+        )
+        XCTAssertGreaterThan(
+            wideCentre, narrow.frame.maxX,
+            "The wide column's text is not to the right of the narrow column's — the "
+                + "columns are not being laid out side by side at all"
+        )
+    }
+
+
+    // Styling row — @pyreon/elements' Element, the other named gap with no
+    // native example. `padding={4}` is scale step 4 -> 16pt. Padded boxes
+    // consume VERTICAL space exactly on iOS (horizontal padding is invisible
+    // to a11y frames, vertical is not), so the assertion is the offset from
+    // the marker above: the 12pt stack gap plus 16pt of padding.
+    func test_elementPaddingConsumesRealVerticalSpace() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            "Home page did not render"
+        )
+        app.buttons["View styles"].tap()
+        XCTAssertTrue(
+            app.otherElements["styles-page"].firstMatch.waitForExistence(timeout: 15),
+            "Styles page did not render"
+        )
+
+        let marker = app.staticTexts["element-marker"].firstMatch
+        let child = app.staticTexts["element-child"].firstMatch
+        XCTAssertTrue(marker.waitForExistence(timeout: 10), "marker text missing")
+        XCTAssertTrue(child.waitForExistence(timeout: 10), "element child text missing")
+
+        let gap = child.frame.minY - marker.frame.maxY
+        XCTAssertEqual(
+            gap, 28, accuracy: 6,
+            "marker->child offset is \(gap)pt; expected ~28 (12pt stack gap + 16pt "
+                + "Element padding). A bare ~12 means the padding never reached layout"
+        )
+    }
+}

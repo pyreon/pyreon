@@ -114,9 +114,24 @@ export function colSizeLiteral(e: AnyNode): number | null {
 }
 
 /** The `<Col>` body as a plain `<Stack>` (its children, column direction) — the
- *  emit wraps THIS with the per-target equal-fill modifier. */
-export function colToStack(e: AnyNode): AnyNode {
-  const attrs = (e.attrs as AnyNode[]).filter((a) => !(a.kind === 'attr' && STRIP.has(a.name)))
+ *  emit wraps THIS with the per-target equal-fill modifier.
+ *
+ *  `dropTestId` moves the column's `data-testid` OUT of the inner stack so the
+ *  caller can put it on the node that actually carries the WIDTH. Device-found:
+ *  with the id on the inner stack, the tagged node hugs its glyph (a 3/12
+ *  column measured 7.2dp of a 308dp row — 2.3%, not 25%), so the column's real
+ *  geometry was unaddressable and therefore unassertable. Same class as the
+ *  `<Link>` identifier drop: an element you cannot select is an element nobody
+ *  can prove works. Swift never had the split — it puts
+ *  `.accessibilityIdentifier` and `.containerRelativeFrame` on one node. */
+export function colToStack(e: AnyNode, dropTestId = false): AnyNode {
+  const attrs = (e.attrs as AnyNode[]).filter(
+    (a) =>
+      !(
+        a.kind === 'attr' &&
+        (STRIP.has(a.name) || (dropTestId && a.name === 'data-testid'))
+      ),
+  )
   attrs.push({ kind: 'attr', name: 'direction', value: litString('column') })
   return { ...e, tag: 'Stack', attrs }
 }

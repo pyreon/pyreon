@@ -2,10 +2,20 @@
 //
 // Container (column) → VStack/Column; Row (row) → HStack/Row; Col → a FRACTIONAL
 // span for a literal size (SwiftUI containerRelativeFrame span/12, Compose
-// fillMaxWidth(size/12f)), or an EQUAL-fill child with no size (SwiftUI
+// RowScope Modifier.weight(size)), or an EQUAL-fill child with no size (SwiftUI
 // .frame(maxWidth:.infinity), Compose Box(Modifier.weight(1f))). coolgrid's
 // raw-px gap is converted to the Stack scale index. A responsive/non-literal
 // size warns + falls back to an equal column.
+//
+// Compose used to lower a span to `fillMaxWidth(size/12f)`, which this file
+// asserted. DEVICE-FOUND (router-demo /styles, real emulator geometry): a Row
+// measures each child against the REMAINING width, so fractional fills
+// COMPOUND — 3/12 then 9/12 lays out as 25% + 56% and the row never adds up.
+// `weight(3f)` + `weight(9f)` divides the row exactly, which is what a grid
+// means and what the Swift twin's containerRelativeFrame(count:span:) always
+// did. The assertions below are the corrected truth; the old ones encoded the
+// bug (they matched the emitted string perfectly while the layout was wrong —
+// a compile-level assertion can only ever confirm the code agrees with itself).
 
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
@@ -66,9 +76,10 @@ export function App() { return (<Container><Row><Col size={8}><Text>Main</Text><
     // Swift: iOS 17 grid-column primitive, span/12 of the container.
     expect(swift(src).code).toContain('.containerRelativeFrame(.horizontal, count: 12, span: 8, spacing: 0)')
     expect(swift(src).code).toContain('.containerRelativeFrame(.horizontal, count: 12, span: 4, spacing: 0)')
-    // Compose: absolute size/12 fraction of the Row width.
-    expect(kotlin(src).code).toContain('Modifier.fillMaxWidth(8f / 12f)')
-    expect(kotlin(src).code).toContain('Modifier.fillMaxWidth(4f / 12f)')
+    // Compose: RowScope weight — an exact 8:4 division of the row.
+    expect(kotlin(src).code).toContain('Modifier.weight(8f)')
+    expect(kotlin(src).code).toContain('Modifier.weight(4f)')
+    expect(kotlin(src).code).not.toContain('fillMaxWidth')
     // A literal span is fully supported → no fallback warning.
     expect(swift(src).warnings.join('\n')).not.toMatch(/EQUAL column/)
     expect(kotlin(src).warnings.join('\n')).not.toMatch(/EQUAL column/)
@@ -79,7 +90,7 @@ export function App() { return (<Container><Row><Col size={8}><Text>Main</Text><
 import { Text } from '@pyreon/elements'
 export function App() { return (<Container><Row><Col size={16}><Text>Wide</Text></Col></Row></Container>) }`
     expect(swift(src).code).toContain('span: 12')
-    expect(kotlin(src).code).toContain('Modifier.fillMaxWidth(12f / 12f)')
+    expect(kotlin(src).code).toContain('Modifier.weight(12f)')
   })
 
   it('a responsive / non-literal `size` warns + falls back to an equal column', () => {
@@ -119,8 +130,34 @@ describe('coolgrid-native — toolchain gates (real SDKs)', () => {
     const res = validateSwiftTypecheck(swift(GRID_FRACTIONAL).code)
     expect(res.ok, res.error).toBe(true)
   })
-  it.skipIf(!isKotlincAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')('the FRACTIONAL grid compiles — fillMaxWidth resolves (real kotlinc)', () => {
+  it.skipIf(!isKotlincAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')('the FRACTIONAL grid compiles — RowScope weight resolves (real kotlinc)', () => {
     const res = validateKotlin(kotlin(GRID_FRACTIONAL).code)
     expect(res.ok, res.error).toBe(true)
+  })
+})
+
+describe('Col test identifiers ride the SIZED node', () => {
+  // Device-found alongside the weight() fix: the `data-testid` on a <Col> was
+  // landing on the INNER stack while the width lived on the wrapper Box, so
+  // the tagged node hugged its glyph — a 3/12 column measured 7.2dp of a 308dp
+  // row (2.3%, not 25%) and the column's real geometry was unaddressable.
+  // Same class as the <Link> identifier drop: an element you cannot select is
+  // an element nobody can prove works. Swift never had the split.
+  const SRC = `import { Container, Row, Col } from '@pyreon/coolgrid'
+import { Text } from '@pyreon/elements'
+export function App() {
+  return (<Container><Row><Col size={3} data-testid="c3"><Text>L</Text></Col></Row></Container>)
+}`
+
+  it('Kotlin: the tag is on the weighted Box, and appears exactly once', () => {
+    const out = transform(SRC, { target: 'kotlin' }).code
+    expect(out).toContain('Modifier.weight(3f).testTag("c3")')
+    // Exactly one node may carry it — two would make onNodeWithTag ambiguous.
+    expect(out.match(/testTag\("c3"\)/g)).toHaveLength(1)
+  })
+
+  it('Swift: identifier and span already share one node', () => {
+    const out = transform(SRC, { target: 'swift' }).code
+    expect(out).toContain('.accessibilityIdentifier("c3").containerRelativeFrame(.horizontal, count: 12, span: 3, spacing: 0)')
   })
 })

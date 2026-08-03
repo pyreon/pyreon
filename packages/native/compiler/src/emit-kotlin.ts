@@ -46,7 +46,7 @@ import { kotlinIdent, safeIdent } from './identifier-safety'
 import { resolveRocketstyleUseSite } from './rocketstyle-native'
 import type { AttrsComponentIR } from './attrs-native'
 import { elementToStack } from './elements-native'
-import { coolgridToStack, colToStack, colHasExplicitSize, colSizeLiteral, DEFAULT_COLUMNS } from './coolgrid-native'
+import { coolgridToStack, colToStack, colHasExplicitSize, colSizeLiteral } from './coolgrid-native'
 import { extractTextTypography, kotlinTextTypographyArgs, styleToNativeModifiers } from './style-to-native'
 import {
   type FlatRouteEntry,
@@ -3790,12 +3790,21 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if ((tag === 'Container' || tag === 'Row') && canAliasIntercept(tag, '@pyreon/coolgrid')) return emitKotlinJsx(coolgridToStack(e), indent)
   if (tag === 'Col' && canAliasIntercept(tag, '@pyreon/coolgrid')) {
     const p = ' '.repeat(indent)
-    const inner = `${' '.repeat(indent + 2)}${emitKotlinJsx(colToStack(e), indent + 2)}`
+    // The test id rides the SIZED node (the Box), not the inner stack — see
+    // colToStack's `dropTestId`. The id is emitted here as part of the Box's
+    // modifier chain so exactly one node carries it.
+    const colTestId = readStaticAttrKotlin(e, 'data-testid')
+    const idMod = typeof colTestId === 'string' ? `.testTag(${JSON.stringify(colTestId)})` : ''
+    const inner = `${' '.repeat(indent + 2)}${emitKotlinJsx(colToStack(e, true), indent + 2)}`
     const size = colSizeLiteral(e)
     if (size !== null) {
-      // Fractional span of a 12-column grid — an absolute size/12 fraction of the
-      // Row width (exact + parent-relative). A partial row leaves the rest empty.
-      return `Box(modifier = Modifier.fillMaxWidth(${size}f / ${DEFAULT_COLUMNS}f)) {\n${inner}\n${p}}`
+      // A 12-column span lowers to RowScope `weight`, NOT `fillMaxWidth(n/12)`.
+      // Device-found: a Row measures each child against the REMAINING width, so
+      // fractional fills compound — 3/12 then 9/12 yields 25% + 56%, and the row
+      // never adds up. `weight(3f)` + `weight(9f)` divides the row exactly, which
+      // is what a grid means and what the Swift twin's
+      // `containerRelativeFrame(count:span:)` already did.
+      return `Box(modifier = Modifier.weight(${size}f)${idMod}) {\n${inner}\n${p}}`
     }
     if (colHasExplicitSize(e)) {
       // A responsive / non-literal `size` can't resolve to a static span → equal.
@@ -3804,7 +3813,7 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
           `a responsive ({ xs, md } / [a,b]) or non-literal size lowers as an EQUAL column.`,
       )
     }
-    return `Box(modifier = Modifier.weight(1f)) {\n${inner}\n${p}}`
+    return `Box(modifier = Modifier.weight(1f)${idMod}) {\n${inner}\n${p}}`
   }
 
   // styled(Prim)`css` — rewrite `<X>` to `<Prim>` + the captured CSS as a
