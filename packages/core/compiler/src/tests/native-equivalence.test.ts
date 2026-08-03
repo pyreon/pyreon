@@ -1203,7 +1203,10 @@ describeNative('SSR compile-to-string fast path (ssrTemplate) parity', () => {
   const bails: [string, string][] = [
     ['spread attribute', `const N = <div {...props}>y</div>`],
     ['component child', `const N = <div><Widget /></div>`],
-    ['void element', `const N = <img src="/a.png" />`],
+    // `<img src="/a.png" />` moved OUT of this list: a root self-closing
+    // element is now ELIGIBLE, so it is no longer an h()-fallback case. Both
+    // backends must still agree on the `_ssr(...)` they emit for it — that is
+    // asserted directly below, where it belongs.
     ['select value', `const N = <select value="b"><option>a</option></select>`],
     ['& in JSXText', `const N = <p>Tom &amp; Jerry</p>`],
     ['bare & in JSXText', `const N = <p>fish & chips</p>`],
@@ -1216,6 +1219,26 @@ describeNative('SSR compile-to-string fast path (ssrTemplate) parity', () => {
   ]
   for (const [name, src] of bails) {
     test(`bail agrees: ${name}`, () => compareSsrTemplate(src))
+  }
+
+  // ROOT self-closing became eligible after #2515 left the root gate in place.
+  // The widening had to land in BOTH backends or the ~80% of users on the
+  // native path would keep the slow h() emit while the JS oracle reported the
+  // fast one — so these lock JS↔Rust byte-equality on the newly-eligible shapes.
+  const selfClosingRoots: [string, string][] = [
+    ['root void <img/>', `const N = <img src="/a.png" alt="a" />`],
+    ['root void <hr/>', `const N = <hr class="sep" />`],
+    ['root void <input/>', `const N = <input type="text" name="q" />`],
+    ['root non-void <div/>', `const N = <div class="box" />`],
+    ['root <img/> with dynamic attr', `const R = (r) => <img src={r.src} />`],
+    ['.map item body <img/>', `const N = <div>{items.map(i => <img src={i.src} />)}</div>`],
+    [
+      '<For> item body <img/>',
+      `const N = <div><For each={rows} by={r => r.id}>{r => <img src={r.src} />}</For></div>`,
+    ],
+  ]
+  for (const [name, src] of selfClosingRoots) {
+    test(`self-closing eligible agrees: ${name}`, () => compareSsrTemplate(src))
   }
 })
 

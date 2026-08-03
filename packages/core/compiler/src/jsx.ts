@@ -1765,7 +1765,9 @@ export function transformJSX_JS(
     if (cb.body?.type === 'BlockStatement') return false // only concise arrows
     const body = unwrapTypeLayers(cb.body)
     if (body.type !== 'JSXElement') return false
-    if (isSelfClosing(body)) return false
+    // A self-closing item body is eligible — `items.map(i => <img src={i.src}/>)`
+    // is an image gallery, not an exotic shape, and bailing dropped the whole
+    // list onto the h() path.
     const itemBuf = buildSsrBuf(body, 'mapitem')
     if (itemBuf === null) return false
     const recv = sliceExpr(callee.object)
@@ -1865,7 +1867,8 @@ export function transformJSX_JS(
     if (cb.body?.type === 'BlockStatement') return false
     const body = unwrapTypeLayers(cb.body)
     if (body.type !== 'JSXElement') return false
-    if (isSelfClosing(body)) return false
+    // Self-closing `<For>` item bodies are eligible for the same reason as the
+    // `.map` case above.
     const itemBuf = buildSsrBuf(body, 'foritem')
     if (itemBuf === null) return false
     const params = cb.params ?? []
@@ -2018,16 +2021,28 @@ export function transformJSX_JS(
       .filter((g): g is string => g !== null)
     const fallbackHoles = buf.holes.map((_, i) => `_h${i}`).join(', ')
     const staticsArr = buf.statics.map((s) => JSON.stringify(s)).join(', ')
-    needsSsrItemImport = true
     const fallback = `_ssrItem([${staticsArr}], ${fallbackHoles})`
     // Every hole provably string → no guard, no fallback branch needed.
     const body =
       guards.length === 0 ? concat : `${guards.join(' && ')} ? ${concat} : ${fallback}`
+    // Request the import ONLY when the fallback is actually emitted. Setting it
+    // unconditionally (as this did) shipped a DEAD `_ssrItem` import whenever
+    // every hole was provably a string — the `guards.length === 0` branch
+    // discards `fallback` entirely. Harmless at runtime (bundlers drop it) but
+    // it is dead code in user output and, more importantly, a real JS↔Rust
+    // divergence: the native backend never had the bug. Latent until
+    // self-closing item bodies became eligible, because those carry attr holes
+    // (all `: string`-typed helpers) and no text children, so they land on the
+    // no-guard branch essentially every time.
+    if (guards.length > 0) needsSsrItemImport = true
     return `{ const ${temps}; return ${body} }`
   }
 
   function trySsrTemplateEmit(node: N): boolean {
-    if (isSelfClosing(node)) return false
+    // Self-closing roots are eligible. `ssrSerializeElement` already emits both
+    // forms correctly (void → `<img …  />`, non-void → `<div …></div>`), so the
+    // only thing that kept `<Icon> = () => <img …/>`, `<Divider> = () => <hr/>`
+    // and `<Input> = () => <input …/>` on the slow h() path was this gate.
     const call = buildSsrCall(node, 'recursed')
     if (call === null) return false
     const start = node.start as number
@@ -3011,7 +3026,7 @@ export function transformJSX_JS(
       // Compile-to-string SSR fast path (opt-in via `options.ssrTemplate`).
       // Emits `_ssr(...)` for eligible static-skeleton subtrees; falls through
       // to the h() path on any non-eligible shape. JS backend only for now.
-      if (ssrTemplate && !isSelfClosing(node) && trySsrTemplateEmit(node)) {
+      if (ssrTemplate && trySsrTemplateEmit(node)) {
         return
       }
       if (!isSelfClosing(node) && tryTemplateEmit(node)) {
