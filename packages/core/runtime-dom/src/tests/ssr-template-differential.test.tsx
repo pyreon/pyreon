@@ -411,6 +411,30 @@ const cases: DiffCase[] = [
     deps: { title: 'x' },
     oracle: (deps) => h('div', { class: 'w' }, h('div', null), h('span', null, deps.title as string)),
   },
+  // ── ROOT-level self-closing (the residual hole #2515 left open) ───────────
+  {
+    name: 'ROOT void <img/> (an <Icon>/<Avatar> component body)',
+    src: `const Node = <img src={src} alt={alt} />`,
+    deps: { src: '/a&b.png', alt: 'a<b' },
+    oracle: (deps) => h('img', { src: deps.src as string, alt: deps.alt as string }),
+  },
+  {
+    name: 'ROOT void <hr/> (a <Divider> component body)',
+    src: `const Node = <hr class="sep" />`,
+    oracle: () => h('hr', { class: 'sep' }),
+  },
+  {
+    name: 'ROOT void <input/> (an <Input> component body)',
+    src: `const Node = <input type="text" name="q" value={v} />`,
+    deps: { v: 'a<b&c' },
+    oracle: (deps) => h('input', { type: 'text', name: 'q', value: deps.v as string }),
+  },
+  {
+    name: 'ROOT non-void self-closing <div/> renders as <div></div>',
+    src: `const Node = <div class={cls} />`,
+    deps: { cls: 'box' },
+    oracle: (deps) => h('div', { class: deps.cls as string }),
+  },
 ]
 
 describe('SSR fast path — byte-identical to h() (compiled → eval → render)', () => {
@@ -447,6 +471,23 @@ describe('SSR fast path — nested void / self-closing elements are eligible', (
     ['<hr/> between blocks', `const N = <section><p>{a}</p><hr /><p>b</p></section>`],
     ['self-closing non-void <div/>', `const N = <div class="w"><div /><span>{s}</span></div>`],
     ['several void siblings', `const N = <div><img src="/a" /><br /><input value="v" /></div>`],
+    // ROOT-level self-closing. #2515 made a NESTED `<img/>` eligible but left
+    // the ROOT gate (`ssrTemplate && !isSelfClosing(node)`) in place, so a
+    // component whose OWN body is self-closing still fell to h() — and that is
+    // the shape of `<Icon>`, `<Avatar>`, `<Divider>`, `<Input>`, `<Spacer>`:
+    // exactly the small leaf components a design system renders most often.
+    ['ROOT <img/>', `const N = <img src="/a.png" alt="a" />`],
+    ['ROOT <hr/>', `const N = <hr class="sep" />`],
+    ['ROOT <input/>', `const N = <input type="text" name="q" />`],
+    ['ROOT <br/>', `const N = <br />`],
+    ['ROOT non-void <div/>', `const N = <div class="box" />`],
+    // Item bodies. `items.map(i => <img src={i.src}/>)` is an image gallery,
+    // not an exotic shape; it bailed the whole list onto h() before.
+    ['.map item body is <img/>', `const N = <div>{items.map(i => <img src={i.src} />)}</div>`],
+    // `by` is required by the keyed SSR path (and by `<For>`'s own contract —
+    // see the `for-missing-by` detector); omitting it bails for that reason,
+    // not because of the self-closing body.
+    ['<For> item body is <img/>', `const N = <div><For each={items} by={(i) => i.id}>{(i) => <img src={i.src} />}</For></div>`],
   ]
   for (const [name, src] of eligible) {
     test(`eligible: ${name}`, () => {
@@ -467,10 +508,12 @@ describe('SSR fast path — conservative bail catalogue (stays on h())', () => {
   const bails: [string, string][] = [
     ['spread attribute', `const N = <div {...props}>y</div>`],
     ['component child', `const N = <div><Widget /></div>`],
-    // ROOT-level self-closing still bails — the root gate (`ssrTemplate &&
-    // !isSelfClosing(node)`) is intentionally untouched. Only the NESTED case
-    // was widened, because that is the one whose bail propagated upward.
-    ['void element (self-closing) at ROOT', `const N = <img src="/a.png" />`],
+    // NOTE: 'void element (self-closing) at ROOT' used to live here. It was a
+    // SCOPE decision, not a safety one — the comment said the root gate was
+    // "intentionally untouched" because #2515 only widened the nested case.
+    // The byte-identity oracles above now cover ROOT <img/>, <hr/>, <input/>
+    // and non-void <div/> against the h() path, so the conservatism had no
+    // remaining justification and the entry moved to the eligible list.
     ['select element', `const N = <select value="b"><option>a</option></select>`],
     ['innerHTML content prop', `const N = <div innerHTML={'<x>'}></div>`],
     ['dangerouslySetInnerHTML content prop', `const N = <div dangerouslySetInnerHTML={{ __html: '<x>' }}></div>`],

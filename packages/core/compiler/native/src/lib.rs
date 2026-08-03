@@ -4284,7 +4284,7 @@ fn handle_jsx_element(el: &JSXElement, ctx: &mut Ctx) {
     // to the h() path on any non-eligible shape. Byte-identical to the JS
     // backend's `trySsrTemplateEmit` (native-equivalence oracle). Placed at
     // the SAME walk position as the JS `if (ssrTemplate && … trySsrTemplateEmit)`.
-    if ctx.ssr_template && !is_self_closing(el) && try_ssr_template_emit(el, ctx) {
+    if ctx.ssr_template && try_ssr_template_emit(el, ctx) {
         return;
     }
 
@@ -5198,9 +5198,8 @@ fn ssr_try_map(buf: &mut SsrBuf, expr: &Expression, ctx: &mut Ctx) -> bool {
         Expression::JSXElement(el) => el,
         _ => return false,
     };
-    if is_self_closing(body_el) {
-        return false;
-    }
+    // A self-closing item body is eligible (`items.map(i => <img src={i.src}/>)`
+    // is an image gallery). Mirrors the JS backend.
     let item_buf = match build_ssr_buf(body_el, SsrMode::MapItem, ctx) {
         Some(s) => s,
         None => return false,
@@ -5354,9 +5353,7 @@ fn ssr_try_for_keyed(buf: &mut SsrBuf, el: &JSXElement, ctx: &mut Ctx) -> bool {
         Expression::JSXElement(el) => el,
         _ => return false,
     };
-    if is_self_closing(body_el) {
-        return false;
-    }
+    // Self-closing `<For>` item bodies are eligible, same as `.map` above.
     let item_buf = match build_ssr_buf(body_el, SsrMode::ForItem, ctx) {
         Some(s) => s,
         None => return false,
@@ -5613,9 +5610,9 @@ fn is_ident_char(c: u8) -> bool {
 /// Emit a `_ssr(...)` replacement for an eligible element, or bail. Mirrors JS
 /// `trySsrTemplateEmit`.
 fn try_ssr_template_emit(el: &JSXElement, ctx: &mut Ctx) -> bool {
-    if is_self_closing(el) {
-        return false;
-    }
+    // Self-closing roots are eligible — `ssr_serialize_element` already emits
+    // both forms (void → `<img … />`, non-void → `<div …></div>`). Mirrors the
+    // JS backend; byte-identity is locked by `ssr-template-differential`.
     let call = match build_ssr_call(el, SsrMode::Recursed, ctx) {
         Some(s) => s,
         None => return false,

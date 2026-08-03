@@ -139,7 +139,11 @@ describe('ssrTemplate — bail catalogue (stays on h())', () => {
   const bails: [string, string][] = [
     ['spread attribute', `const N = <div {...props}>y</div>`],
     ['component child', `const N = <div><Widget /></div>`],
-    ['void element', `const N = <img src="/a.png" />`],
+    // NOTE: a ROOT self-closing element (`<img src="/a.png" />`) used to bail
+    // here. It is now ELIGIBLE — see the self-closing-root block below. The
+    // bail was conservatism left over from #2515 widening only the NESTED
+    // case; byte-identity against h() is locked in
+    // runtime-dom's `ssr-template-differential`.
     ['select value', `const N = <select value="b"><option>a</option></select>`],
     ['& in JSXText (entity-decode ambiguity)', `const N = <p>Tom &amp; Jerry</p>`],
     ['bare & in JSXText', `const N = <p>fish & chips</p>`],
@@ -153,6 +157,39 @@ describe('ssrTemplate — bail catalogue (stays on h())', () => {
       expect(ssrFast(src)).not.toContain('_ssr(')
     })
   }
+})
+
+/**
+ * ROOT-level self-closing elements are eligible.
+ *
+ * #2515 widened the NESTED case (a `<img/>` inside a parent no longer drops the
+ * whole enclosing component onto h()), but left the ROOT gate — so a component
+ * whose OWN body is self-closing still bailed. That is the shape of `<Icon>`,
+ * `<Avatar>`, `<Divider>`, `<Input>`, `<Spacer>`: the small leaf components a
+ * design system renders most often, and the ones most likely to appear inside a
+ * list. The exact emitted bytes are asserted here; equality against the h()
+ * path is locked in runtime-dom's `ssr-template-differential`.
+ */
+describe('ssrTemplate — ROOT self-closing elements are eligible', () => {
+  test('root void element bakes with the load-bearing " />" spelling', () => {
+    // The runtime closes a void element as `${open} />`. The SPACE is
+    // hydration-visible — any other spelling diverges.
+    expect(ssrFast(`const N = <img src="/a.png" alt="a" />`)).toContain(
+      '_ssr(["<img src=\\"/a.png\\" alt=\\"a\\" />"])',
+    )
+  })
+
+  test('root non-void self-closing emits its closing tag', () => {
+    expect(ssrFast(`const N = <div class="box" />`)).toContain('_ssr(["<div class=\\"box\\"></div>"])')
+  })
+
+  test('root self-closing with a dynamic attr keeps the hole', () => {
+    expect(ssrFast(`const R = (r) => <img src={r.src} />`)).toContain('_ssrAttrUrl("img", "src", r.src)')
+  })
+
+  test('a void element GIVEN children still bails (ambiguous)', () => {
+    expect(ssrFast(`const N = <div><img src="/a.png">x</img></div>`)).not.toContain('_ssr(')
+  })
 })
 
 describe('ssrTemplate — fused keyed <For> (_ssrForKeyed)', () => {
