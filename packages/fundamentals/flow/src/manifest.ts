@@ -17,7 +17,7 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      'wraps elkjs + SVG rendering (browser layout engine); consume on native via the <WebView> bridge subpath',
+      'wraps elkjs + SVG rendering (browser layout engine); consume on native via the `<WebView>` bridge subpath',
   },
   peerDeps: ['@pyreon/runtime-dom'],
   longExample: `import { createFlow, useFlow, Flow, Background, Controls, MiniMap, Handle, Position, type NodeComponentProps } from '@pyreon/flow'

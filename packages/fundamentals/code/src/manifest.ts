@@ -11,7 +11,7 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      'wraps CodeMirror 6 (DOM editor engine); consume on native via the <WebView> bridge subpath',
+      'wraps CodeMirror 6 (DOM editor engine); consume on native via the `<WebView>` bridge subpath',
   },
   peerDeps: ['@pyreon/runtime-dom'],
   longExample: `import { createEditor, createTabbedEditor, CodeEditor, DiffEditor, TabbedEditor, bindEditorToSignal, loadLanguage, minimapExtension } from '@pyreon/code'

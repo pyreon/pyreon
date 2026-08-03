@@ -11,7 +11,7 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      'wraps ECharts (browser canvas engine); consume on native via the <WebView> bridge subpath',
+      'wraps ECharts (browser canvas engine); consume on native via the `<WebView>` bridge subpath',
   },
   longExample: `import { Chart, useChart, type EChartsOption, type ComposeOption, type BarSeriesOption, type LineSeriesOption } from '@pyreon/charts'
 import { signal } from '@pyreon/reactivity'

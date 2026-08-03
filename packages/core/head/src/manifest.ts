@@ -11,7 +11,7 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      'document <head> management — no equivalent surface exists on iOS/Android',
+      'document `<head>` management — no equivalent surface exists on iOS/Android',
   },
   features: [
     'useHead(input | () => input) — register head tags from any component',

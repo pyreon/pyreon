@@ -11,7 +11,7 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      'wraps TipTap/ProseMirror (DOM editor); consume on native via the <WebView> bridge subpath',
+      'wraps TipTap/ProseMirror (DOM editor); consume on native via the `<WebView>` bridge subpath',
   },
   peerDeps: ['@pyreon/runtime-dom'],
   longExample: `import { createRichTextEditor, RichText, bindRichTextToSignal } from '@pyreon/rich-text'

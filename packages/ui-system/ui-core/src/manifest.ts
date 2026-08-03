@@ -11,7 +11,7 @@ export default defineManifest({
   multiplatform: {
     tier: 'shared',
     rationale:
-      '<PyreonUI> lowers transparently on native (theme is compile-time; dark mode is the system read)',
+      '`<PyreonUI>` lowers transparently on native (theme is compile-time; dark mode is the system read)',
   },
   features: [
     'PyreonUI({ theme, mode, inversed }) — single provider replaces 3 separate providers',

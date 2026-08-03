@@ -40,10 +40,36 @@ describe('renderTierTable', () => {
     expect(table.match(/@pyreon\/reactivity/g)).toHaveLength(1)
   })
 
-  it('is wrapped in the gen markers the drift check keys on', () => {
+  it('emits MDX-safe output — zero-content compiles docs .md as MDX', () => {
+    // Two classes broke the REAL docs build (Build Docs red on the first CI
+    // run): HTML comments (<!-- -->) are invalid MDX, and a raw <Tag> in a
+    // table cell parses as an unclosed JSX element. Markers are MDX comments
+    // and every OPENING angle bracket must live inside a backtick code span (a bare > is legal markdown — blockquotes).
     const table = renderTierTable(rows)
-    expect(table.startsWith('<!-- gen:multiplatform-tiers:start -->')).toBe(true)
-    expect(table.endsWith('<!-- gen:multiplatform-tiers:end -->')).toBe(true)
+    expect(table).not.toContain('<!--')
+    for (const line of table.split('\n')) {
+      const outsideCode = line.split('`').filter((_, i) => i % 2 === 0).join('')
+      expect(outsideCode, `raw angle bracket outside a code span in: ${line}`).not.toMatch(/</)
+    }
+  })
+
+  it('the REAL rendered table is MDX-safe too — rationales are data, not markup', async () => {
+    const manifests = await findManifests(REPO)
+    const realRows = manifests.map((m) => {
+      const mp = (m.manifest as { multiplatform?: { tier?: string; rationale?: string } })
+        .multiplatform
+      return { name: m.manifest.name, tier: mp?.tier ?? '', rationale: mp?.rationale ?? '' }
+    })
+    for (const line of renderTierTable(realRows).split('\n')) {
+      const outsideCode = line.split('`').filter((_, i) => i % 2 === 0).join('')
+      expect(outsideCode, `raw angle bracket outside a code span in: ${line}`).not.toMatch(/</)
+    }
+  })
+
+  it('is wrapped in the gen markers the drift check keys on (MDX comments, not HTML)', () => {
+    const table = renderTierTable(rows)
+    expect(table.startsWith('{/* gen:multiplatform-tiers:start */}')).toBe(true)
+    expect(table.endsWith('{/* gen:multiplatform-tiers:end */}')).toBe(true)
   })
 })
 

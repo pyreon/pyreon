@@ -108,8 +108,8 @@ interface TierRow {
   rationale: string
 }
 
-const TABLE_START = '<!-- gen:multiplatform-tiers:start -->'
-const TABLE_END = '<!-- gen:multiplatform-tiers:end -->'
+const TABLE_START = '{/* gen:multiplatform-tiers:start */}'
+const TABLE_END = '{/* gen:multiplatform-tiers:end */}'
 
 /** Render the per-tier markdown table between the gen markers. */
 export function renderTierTable(rows: TierRow[]): string {

@@ -11,7 +11,7 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      'the store core is pure logic but <Toaster> is DOM; no native runtime port yet',
+      'the store core is pure logic but `<Toaster>` is DOM; no native runtime port yet',
   },
   peerDeps: ['@pyreon/runtime-dom'],
   longExample: `import { toast, Toaster } from '@pyreon/toast'

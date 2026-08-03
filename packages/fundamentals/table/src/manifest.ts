@@ -10,7 +10,7 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      'headless table over web rendering patterns; PMTC has no lowering — native lists are <For> + primitives',
+      'headless table over web rendering patterns; PMTC has no lowering — native lists are `<For>` + primitives',
   },
   longExample: `import { useTable, flexRender, getCoreRowModel, getSortedRowModel, type ColumnDef } from '@pyreon/table'
 import { signal } from '@pyreon/reactivity'

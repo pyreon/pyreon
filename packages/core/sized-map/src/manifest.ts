@@ -11,7 +11,7 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      'pure-logic LRU map with no platform edge, but PMTC has no class-API lowering (new SizedMap() warns); usable in <Web> branches',
+      'pure-logic LRU map with no platform edge, but PMTC has no class-API lowering (new SizedMap() warns); usable in `<Web>` branches',
   },
   features: [
     'FIFO mode (default) — .get() does NOT touch ordering; eviction drops the first-inserted entry',
