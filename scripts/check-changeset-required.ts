@@ -21,8 +21,16 @@
  *
  * - Changes to a PRIVATE package (`@pyreon/test-utils`, `@pyreon/manifest`,
  *   `@pyreon/perf-harness`, `@pyreon/vitest-config`, `@pyreon/playwright-config`,
- *   `@pyreon/devtools`, `@pyreon/ui-*`, every `@pyreon/native-*` workspace).
+ *   `@pyreon/devtools`, `@pyreon/ui-*`).
  *   These are repo-internal: tooling, demos, test infra. They don't ship.
+ *
+ *   NOTE: this list once included "every `@pyreon/native-*` workspace", which
+ *   is no longer true — all six native packages are published now, and the
+ *   only exclusion the CODE applies is `"private": true` (there is no
+ *   name-based rule). The stale sentence read as permission to skip a
+ *   changeset for a native change; it is not. If a native edit genuinely
+ *   ships nothing (their `files` is `["src", …]`, so `scripts/` never
+ *   reaches a consumer), use the `skip-changeset` label and say why.
  * - Changes to an `ignore`d package per `.changeset/config.json` —
  *   examples, the docs site, the AI-reference workspace. They're tagged
  *   along in the monorepo but not on the published-packages train.
