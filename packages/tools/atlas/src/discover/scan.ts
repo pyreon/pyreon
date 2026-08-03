@@ -161,26 +161,32 @@ function toComponent(
 }
 
 /**
- * Unwrap a component out of the expressions people actually write.
+ * Unwrap a component out of the expressions Pyreon code actually writes.
  *
- * `memo(forwardRef(Button))`, `styled(Base)`, `observer(Button)` — a wrapper
- * call whose component argument is the thing being exported. Recursion is
- * depth-bounded because the input is arbitrary source: a pathological nest must
- * not be able to blow the stack of a scan.
+ * The wrapper that matters here is `nativeCompat(Component)` — the compat
+ * marker. The props are on the INNER function, which is the only place they are
+ * written down.
  *
- * A wrapper's props are read from the INNER function, which is the only place
- * they are written down; a `forwardRef` puts them on its second parameter's
- * sibling, and the common shapes all keep them on the first parameter of the
- * function being wrapped.
+ * Recursion is depth-bounded because the input is arbitrary source: a
+ * pathological nest must not be able to blow the stack of a scan.
  */
 function unwrapComponentExpression(
   expression: ts.Expression,
   depth = 0,
 ): ts.ArrowFunction | ts.FunctionExpression | undefined {
   if (depth > 4) return undefined
-  if (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression)) return expression
+  if (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression)) {
+    // A ZERO-parameter function is a component at the top level (`const Logo =
+    // () => <svg/>`) but a THUNK when it is an argument — `lazy(() =>
+    // import('./Heavy'))` passes a loader, not a component. Unwrapping that
+    // loader catalogued the lazy boundary itself as a propless component:
+    // present in the sidebar, nothing useful to render. Same false-positive
+    // class as the rocketstyle theme callback, just quieter.
+    if (depth > 0 && expression.parameters.length === 0) return undefined
+    return expression
+  }
   if (ts.isCallExpression(expression)) {
-    // ONLY a bare-identifier callee — `memo(…)`, `forwardRef(…)`, `observer(…)`.
+    // ONLY a bare-identifier callee — `nativeCompat(…)` and friends.
     //
     // A METHOD call is excluded because a rocketstyle component is exactly
     // that: `chipBase.attrs({…}).theme((t) => ({…}))`. Unwrapping it finds the
@@ -190,10 +196,10 @@ function unwrapComponentExpression(
     // its real `.variants()` axes are never discovered. Measured on the
     // workshop example: 43 scenarios collapsed to 29, silently.
     //
-    // `React.memo(…)` is a member call too and is therefore missed. That is the
-    // deliberate side of the trade: a missed wrapper is a component absent from
-    // the catalog, while a mis-unwrapped chain is a component present with
-    // fabricated props AND a working discovery path suppressed.
+    // A MEMBER-call wrapper is therefore missed. That is the deliberate side of
+    // the trade: a missed wrapper is a component absent from the catalog, while
+    // a mis-unwrapped chain is a component present with fabricated props AND a
+    // working discovery path suppressed.
     if (ts.isIdentifier(expression.expression)) {
       for (const argument of expression.arguments) {
         const found = unwrapComponentExpression(argument, depth + 1)
@@ -212,7 +218,7 @@ function unwrapComponentExpression(
 }
 
 /**
- * The props type of a `const Button: FC<Props> = …` style annotation.
+ * The props type of a `const Button: ComponentFn<Props> = …` annotation.
  *
  * The props live in the TYPE ARGUMENT, not on the parameter — which is why the
  * parameter-only reader saw nothing and every control came back `unknown` for

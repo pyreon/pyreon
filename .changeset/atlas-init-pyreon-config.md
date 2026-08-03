@@ -38,9 +38,8 @@ than producing a catalog from nowhere.
 **Detector widened**, each of these previously a silent absence:
 
 - `export default function Button()`, and anonymous defaults (named after the file)
-- `const Button: FC<Props> = (props) => …` — props live in the type argument, so
-  every control came back `unknown`
-- `memo(…)` / `forwardRef(…)` wrappers, and parenthesised or cast forms
+- `const Button: ComponentFn<Props> = …` and `nativeCompat(…)` wrappers, plus
+  parenthesised and cast forms
 - `.jsx` and `.ts` files — a rocketstyle component is a call chain with no JSX
   in it, so it legitimately lives in a `.ts` file the scanner never opened
 
@@ -50,6 +49,10 @@ callback as the component's props — cataloguing fabricated props AND suppressi
 the rocketstyle pass that would have found the real axes. Measured on the
 workshop example: 43 scenarios silently became 29. Unwrapping is now restricted
 to bare-identifier callees, and the regression is locked by a test.
+
+Also fixed: `lazy(() => import('./Heavy'))` catalogued the lazy BOUNDARY as a
+propless component — a zero-parameter function is a component at the top level
+but a thunk when it is an argument.
 
 Also fixed: the workspace probe counted FILES, so once `.ts` joined the scanned
 extensions a package of `math.ts` utilities read as "has components" and earned

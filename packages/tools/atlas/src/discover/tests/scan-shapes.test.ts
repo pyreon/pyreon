@@ -54,12 +54,12 @@ describe('export default', () => {
 })
 
 describe('typed-variable form', () => {
-  it('reads props from an FC<Props> annotation', () => {
+  it('reads props from a ComponentFn<Props> annotation', () => {
     // The props are in the TYPE ARGUMENT, not on the parameter — the
     // parameter-only reader returned `unknown` for every control here.
     const code = `
       interface Props { label: string; count: number }
-      export const Button: FC<Props> = (props) => null
+      export const Button: ComponentFn<Props> = (props) => null
     `
     expect(names(code)).toEqual(['Button'])
     expect(controlsOf(code)).toEqual({ label: 'text', count: 'number' })
@@ -69,7 +69,7 @@ describe('typed-variable form', () => {
     const code = `
       interface Outer { wrong: string }
       interface Inner { right: number }
-      export const Button: FC<Outer> = (props: Inner) => null
+      export const Button: ComponentFn<Outer> = (props: Inner) => null
     `
     expect(controlsOf(code)).toEqual({ right: 'number' })
   })
@@ -77,13 +77,13 @@ describe('typed-variable form', () => {
 
 describe('wrapped components', () => {
   it('unwraps a single call wrapper', () => {
-    const code = 'export const Button = memo((props: { label: string }) => null)'
+    const code = 'export const Button = nativeCompat((props: { label: string }) => null)'
     expect(names(code)).toEqual(['Button'])
     expect(controlsOf(code)).toEqual({ label: 'text' })
   })
 
   it('unwraps a nested wrapper', () => {
-    const code = 'export const Button = memo(forwardRef((props: { label: string }, ref) => null))'
+    const code = 'export const Button = nativeCompat(attrs((props: { label: string }) => null))'
     expect(controlsOf(code)).toEqual({ label: 'text' })
   })
 
@@ -124,11 +124,11 @@ describe('wrapped components', () => {
   })
 
   it('does not unwrap a member-call wrapper either — the safe side of the trade', () => {
-    // `React.memo(…)` is missed. A missed wrapper means a component absent from
+    // A member-call wrapper is missed. A missed wrapper means a component absent from
     // the catalog; a mis-unwrapped chain means a component present with wrong
     // props AND a working discovery path suppressed. Absence is the cheaper
     // failure, and it is the one this picks.
-    expect(names('export const Button = React.memo((props: { a: string }) => null)')).toEqual([])
+    expect(names('export const Button = ns.wrap((props: { a: string }) => null)')).toEqual([])
   })
 })
 
@@ -148,6 +148,28 @@ describe('what is still NOT found — stated, not pretended', () => {
     // PascalCase is the component convention; without it every exported helper
     // would enter the catalog.
     expect(names('export function helper(props: { a: string }) { return null }')).toEqual([])
+  })
+
+  it('does not catalogue a `lazy()` boundary as a component', () => {
+    // `lazy(() => import('./Heavy'))` passes a LOADER, not a component. Reading
+    // that thunk as the component listed the boundary itself in the sidebar,
+    // propless and with nothing useful to render. A zero-parameter function is
+    // a component at the top level and a thunk as an argument.
+    expect(names("export const Deferred = lazy(() => import('./Heavy'))")).toEqual([])
+  })
+
+  it('still finds a propless component declared directly', () => {
+    // The other side of that rule: `const Logo = () => <svg/>` is a real,
+    // perfectly ordinary component that happens to take no props.
+    expect(names('export const Logo = () => null')).toEqual(['Logo'])
+  })
+
+  it('does not find a bare `styled()` component', () => {
+    // `styled('div')` has no props written anywhere for a static reader to
+    // find. Like a rocketstyle chain it needs the runtime pass — which today
+    // only recognises rocketstyle, so these are absent. A real gap, named here
+    // rather than left for someone to discover from an empty sidebar.
+    expect(names("export const Box = styled('div')")).toEqual([])
   })
 })
 

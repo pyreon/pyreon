@@ -85,6 +85,20 @@ and writes the config. It refuses to overwrite an existing one without
 `--force` — that file is hand-edited the moment it exists. `--dry-run` prints
 it instead.
 
+### Which components are found
+
+Pyreon shapes, verified: `export function C(props: P)`, `export const C = (props: P) => …`, `export const C: ComponentFn<P> = …`, destructured params, `export default` (named or anonymous), `nativeCompat(…)` wrappers, and rocketstyle chains (via the runtime pass — needs `theme` in the config). Scanned in `.tsx`, `.jsx` and `.ts`.
+
+Named gaps, so nobody has to discover them from an empty sidebar:
+
+| Shape | Result |
+| --- | --- |
+| `import type { Props }` — props typed in another file | found, but **no controls** (needs a cross-file checker) |
+| generic prop (`items: T[]`) | found; that prop is `unknown` |
+| `'a' \| 'b' \| (string & {})` | found; no select, no variant axis |
+| `styled('div')` | **missed** — no props written anywhere a static reader can see; needs runtime discovery, which today only covers rocketstyle |
+| member-call wrapper (`ns.wrap(C)`) | **missed** — deliberate: matching member calls swallowed rocketstyle chains |
+
 **It writes no story files, and there is no flag to.** A per-component file
 restating props the component already declares is the thing Atlas exists not to
 need: it drifts the moment the component changes and nothing tells you.
