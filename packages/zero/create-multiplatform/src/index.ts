@@ -179,37 +179,16 @@ export async function main(argv: string[]): Promise<void> {
   validateProjectName(name)
   validateTargetDir(dir)
   const written = await writeScaffold(name, dir)
+  // The native toolchain (@pyreon/native-cli, the Swift/Kotlin runtimes and
+  // routers) publishes to npm alongside this scaffolder — same fixed release
+  // group — so `npm install` resolves every declared dependency. The
+  // "toolchain not published, install will 404" notice that used to print
+  // here described the pre-publish state and was removed the release the
+  // stack went public; native builds need only the local platform SDKs.
   // eslint-disable-next-line no-console
   console.log(
     `[create-multiplatform] scaffolded "${name}" → ${dir}/ (${written.length} files)\n` +
       `  next: cd ${dir} && npm install && npm run dev\n` +
-      NATIVE_TOOLCHAIN_NOTICE,
+      '  native: npm run build:ios (Xcode) · npm run build:android (Android SDK)',
   )
 }
-
-/**
- * Printed after every scaffold, because the line above it is not yet true for
- * the native targets.
- *
- * `npm install` FAILS today: the emitted package.json depends on the native
- * toolchain — `@pyreon/native-cli`, the Swift/Kotlin runtimes and routers — and
- * every one of those is `private: true` in the Pyreon workspace, so npm 404s
- * them. The native COMPILER is private too, so there is no vendoring or
- * bundling that would make a standalone app compile `.tsx` → Swift/Kotlin.
- *
- * The web half is genuinely installable (`@pyreon/core`, `primitives`,
- * `reactivity`, `vite-plugin` all publish), which is exactly why the failure is
- * confusing without this notice: `npm install` gets partway, then 404s on a
- * package whose name looks like it should exist.
- *
- * So: say it. A scaffolder that prints instructions it knows cannot succeed is
- * worse than one that prints nothing. This notice costs three lines and turns a
- * mystifying registry error into a known limitation with a working path.
- */
-const NATIVE_TOOLCHAIN_NOTICE = [
-  '',
-  '  NOTE — the WEB target works from this scaffold; the NATIVE targets do not yet.',
-  '  The native toolchain (@pyreon/native-cli, the Swift/Kotlin runtimes) is not',
-  '  published to npm, so `npm install` will 404 on it. Build iOS/Android from a',
-  '  Pyreon workspace checkout for now: https://pyreon.dev/docs/multiplatform',
-].join('\n')

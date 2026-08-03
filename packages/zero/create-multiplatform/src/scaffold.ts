@@ -553,20 +553,14 @@ fi
 A multiplatform Pyreon app — one \`src/App.tsx\` source rendered on **web**,
 **iOS** (SwiftUI), and **Android** (Jetpack Compose).
 
-> **Status: the web target works from this scaffold; the native targets need a
-> Pyreon workspace checkout.**
->
-> \`npm install\` will fail here. The native toolchain — \`@pyreon/native-cli\`
-> and the Swift/Kotlin runtimes this project's \`package.json\` lists — is not
-> published to npm yet, and neither is the compiler that turns \`src/App.tsx\`
-> into Swift and Kotlin, so there is no way to build iOS or Android from a
-> standalone checkout today.
->
-> The web dependencies DO publish, which is why the install gets partway before
-> 404-ing on a package whose name looks like it should exist.
->
-> To build the native targets, work inside a Pyreon workspace:
-> <https://pyreon.dev/docs/multiplatform>
+Every dependency — the web packages AND the native toolchain
+(\`@pyreon/native-cli\`, the Swift/Kotlin runtimes and routers) — installs from
+npm. The iOS project consumes \`@pyreon/native-runtime-swift\` straight out of
+\`node_modules\` as a local SwiftPM package, and the Android project adds the
+Kotlin runtime as a Gradle source set, so \`npm install\` is the only fetch
+step. Building the native targets additionally needs the platform SDKs on this
+machine (Xcode + xcodegen for iOS; the Android SDK + Gradle for Android) — see
+<https://pyreon.dev/docs/multiplatform>.
 
 ## Web
 
