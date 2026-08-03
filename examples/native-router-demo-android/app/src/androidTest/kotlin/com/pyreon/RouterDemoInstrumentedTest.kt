@@ -393,6 +393,72 @@ class RouterDemoInstrumentedTest {
         composeRule.waitUntil(timeoutMillis = 20_000) {
             composeRule.onAllNodesWithTag("styles-page").fetchSemanticsNodes().isNotEmpty()
         }
+    // Offline/sync row — the OFFLINE-FIRST half, two independent claims.
+    //
+    // (1) CONNECTIVITY, as a live FLIP on one device: the radios go down,
+    //     useOnline() must report false, and come back up. Asserting only the
+    //     online state would pass on a hook hard-wired to `true`; the flip is
+    //     what makes it a real read. The radios are restored in a finally so a
+    //     failure here cannot leave the emulator offline for every later test.
+    //
+    // (2) DURABILITY across ACTIVITY RELAUNCH: a record written while offline
+    //     survives a recreate() and is re-read from the database by the mount
+    //     effect. `recreate()` is the in-process ceiling this repo documents —
+    //     the iOS twin kills the process outright — but the read goes through
+    //     a NEW PyreonDatabase instance either way, so the value came off
+    //     disk rather than out of a remembered object.
+    //
+    // The test also exercises the presence check (`if (db.get(...))`) that did
+    // not compile on either target until database.get joined
+    // SERVICE_METHOD_RETURNS — "State: restored" can only render through it.
+    @Test
+    fun offlineFirstWritesSurviveAndConnectivityIsReported() {
+        val instr = InstrumentationRegistry.getInstrumentation()
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        composeRule.onNodeWithText("View offline").performClick()
+        composeRule.onNodeWithTag("offline-page").assertIsDisplayed()
+
+        // Start from a known-empty store so the counts below are unambiguous.
+        composeRule.onNodeWithTag("clear-note").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("note-count").assertTextEquals("Notes: 0")
+
+        try {
+            instr.uiAutomation.executeShellCommand("svc wifi disable").close()
+            instr.uiAutomation.executeShellCommand("svc data disable").close()
+            composeRule.waitUntil(timeoutMillis = 30_000) {
+                composeRule
+                    .onAllNodesWithText("Online: false")
+                    .fetchSemanticsNodes()
+                    .isNotEmpty()
+            }
+
+            // Written with no network at all — the whole point of offline-first.
+            composeRule.onNodeWithTag("write-note").performClick()
+            composeRule.waitForIdle()
+            composeRule.onNodeWithTag("note-count").assertTextEquals("Notes: 1")
+        } finally {
+            instr.uiAutomation.executeShellCommand("svc wifi enable").close()
+            instr.uiAutomation.executeShellCommand("svc data enable").close()
+        }
+
+        // Connectivity comes BACK — proves the read tracks the device rather
+        // than latching on the first value it saw.
+        composeRule.waitUntil(timeoutMillis = 60_000) {
+            composeRule.onAllNodesWithText("Online: true").fetchSemanticsNodes().isNotEmpty()
+        }
+
+        // Durability: a fresh composition re-reads the record from the store.
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("View offline").performClick()
+        composeRule.onNodeWithTag("offline-page").assertIsDisplayed()
+        composeRule.onNodeWithTag("note-count").assertTextEquals("Notes: 1")
+        // Only reachable through the `if (db.get(...))` presence check.
+        composeRule.onNodeWithTag("note-state").assertTextEquals("State: restored")
+
+        composeRule.onNodeWithTag("clear-note").performClick()
+        composeRule.waitForIdle()
     }
 
     // Adaptive row — RESPONSIVE PROP VALUES follow the size class, proven

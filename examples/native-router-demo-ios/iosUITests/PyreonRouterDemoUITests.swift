@@ -770,6 +770,76 @@ final class PyreonRouterDemoUITests: XCTestCase {
         )
     }
 
+    // Offline/sync row — the DURABILITY half on iOS, across REAL process
+    // death. The mounted read seeds the count and state from the DATABASE, so
+    // a record still there after `app.terminate()` plus a cold launch can only
+    // have come off disk — the second launch shares nothing else with the
+    // first.
+    //
+    // The row's CONNECTIVITY half is Android-only and that is a tooling limit,
+    // not an omission: the iOS Simulator has no supported per-app network
+    // toggle, so a `useOnline()` flip cannot be driven here. Android proves it
+    // as a live radio flip on one device. Asserting the online state alone
+    // would be worthless — it passes on a hook hard-wired to `true`, which is
+    // exactly what Android's was until this arc.
+    //
+    // "State: restored" is reachable only through the `if (db.get(...))`
+    // presence check, which compiled on NEITHER target until `database.get`
+    // joined SERVICE_METHOD_RETURNS.
+    func test_offlineWritesSurviveProcessDeath() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            "Home page did not render"
+        )
+        app.buttons["View offline"].tap()
+        XCTAssertTrue(
+            app.otherElements["offline-page"].firstMatch.waitForExistence(timeout: 15),
+            "Offline page did not render"
+        )
+
+        // Known-empty start so the counts below are unambiguous.
+        app.buttons["clear-note"].tap()
+        XCTAssertTrue(
+            app.staticTexts["Notes: 0"].waitForExistence(timeout: 10),
+            "Could not clear the store before the durability check"
+        )
+
+        app.buttons["write-note"].tap()
+        XCTAssertTrue(
+            app.staticTexts["Notes: 1"].waitForExistence(timeout: 10),
+            "The write did not land in the database"
+        )
+
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(
+            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            "Home page did not render after relaunch"
+        )
+        app.buttons["View offline"].tap()
+        XCTAssertTrue(
+            app.otherElements["offline-page"].firstMatch.waitForExistence(timeout: 15),
+            "Offline page did not render after relaunch"
+        )
+
+        XCTAssertTrue(
+            app.staticTexts["Notes: 1"].waitForExistence(timeout: 15),
+            "The record did not survive process death — the database is not persisting"
+        )
+        XCTAssertTrue(
+            app.staticTexts["State: restored"].waitForExistence(timeout: 10),
+            "The presence check did not resolve the stored record after relaunch"
+        )
+
+        // Leave the store clean for whichever test runs next.
+        app.buttons["clear-note"].tap()
+        _ = app.staticTexts["Notes: 0"].waitForExistence(timeout: 10)
+    }
+}
+
     // Platform-APIs row — INBOUND deep links, which had no vocabulary at all
     // (`useLinking()` is outbound-only, so an app could not be opened at a
     // route). Both arrival shapes are asserted, because they take different

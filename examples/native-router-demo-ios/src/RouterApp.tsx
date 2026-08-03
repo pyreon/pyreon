@@ -16,7 +16,7 @@
 // targets — provable by `ls` + `diff`.
 
 import { For, onMount } from '@pyreon/core'
-import { useSecureStorage, useSizeClass, useWebSocket } from '@pyreon/hooks'
+import { useDatabase, useOnline, useSecureStorage, useSizeClass, useWebSocket } from '@pyreon/hooks'
 import { useFieldArray } from '@pyreon/form'
 import { Button, Heading, Image, Inline, Layer, Link, Press, Spacer, Stack, Text } from '@pyreon/primitives'
 import { Element } from '@pyreon/elements'
@@ -133,6 +133,66 @@ function AnimPage() {
       >
         <Text data-testid="asym-fast-leave">Asym Fast Leave</Text>
       </Transition>
+      <Button onPress={() => navigate('/')}>Back to Home</Button>
+    </Stack>
+  )
+}
+
+function OfflinePage() {
+  const navigate = useNavigate()
+  // Offline/sync row — the OFFLINE-FIRST half, which is the part a real app
+  // depends on and which sat at R2 (compiles, never run) while the row read
+  // 0.0. Two independent claims, because neither alone is "works offline":
+  //
+  //   DURABILITY — a record written now must still be there after the process
+  //   dies. The mounted read seeds the status from the DATABASE, so a value
+  //   rendered after a relaunch can only have come off disk.
+  //
+  //   CONNECTIVITY — `useOnline()` must report the device's real state, so an
+  //   app can tell "no data yet" from "no network". Android drives this as a
+  //   live FLIP (radios off -> on) on one device; the iOS simulator has no
+  //   supported per-app network toggle, so that half is disclosed, not faked.
+  //
+  // Writing this page is also what surfaced the `if (db.get(...))` gap: the
+  // presence check below — read a row, branch on whether it exists — compiled
+  // on NEITHER target until `database.get` joined SERVICE_METHOD_RETURNS.
+  const net = useOnline()
+  const db = useDatabase()
+  const noteCount = signal<number>(0)
+  const state = signal<string>('empty')
+  onMount(() => {
+    noteCount.set(db.count('notes'))
+    const found = db.get('notes', 'n1')
+    if (found) {
+      state.set('restored')
+    }
+  })
+  return (
+    <Stack gap={3} padding={4} data-testid="offline-page">
+      <Text>Offline</Text>
+      <Text data-testid="net-status">Online: {net.isOnline}</Text>
+      <Text data-testid="note-count">Notes: {noteCount()}</Text>
+      <Text data-testid="note-state">State: {state()}</Text>
+      <Button
+        onPress={() => {
+          db.insert('notes', { id: 'n1', fields: { body: 'written-offline' } })
+          noteCount.set(db.count('notes'))
+          state.set('written')
+        }}
+        data-testid="write-note"
+      >
+        Write Note
+      </Button>
+      <Button
+        onPress={() => {
+          db.delete('notes', 'n1')
+          noteCount.set(db.count('notes'))
+          state.set('cleared')
+        }}
+        data-testid="clear-note"
+      >
+        Clear Note
+      </Button>
       <Button onPress={() => navigate('/')}>Back to Home</Button>
     </Stack>
   )
@@ -355,6 +415,9 @@ function HomePage() {
         <Button onPress={() => navigate('/anim')}>View anim</Button>
       </Inline>
       <Inline gap={2}>
+        <Button onPress={() => navigate('/offline')}>View offline</Button>
+      </Inline>
+      <Inline gap={2}>
         <Button onPress={() => navigate('/media')}>View media</Button>
       </Inline>
       {/* Core-UI row closure — `Link` was listed "not individually asserted",
@@ -496,6 +559,7 @@ export function RouterApp() {
       { path: '/biglist', component: BigListPage },
       { path: '/a11y', component: A11yPage },
       { path: '/anim', component: AnimPage },
+      { path: '/offline', component: OfflinePage },
       { path: '/media', component: MediaPage },
     ],
   })

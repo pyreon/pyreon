@@ -409,6 +409,29 @@ const SERVICE_METHOD_RETURNS: ReadonlyMap<string, ReadonlyMap<string, TypeIR>> =
       ['read', { kind: 'union', branches: [{ kind: 'string' }, { kind: 'null' }] }],
     ]),
   ],
+  [
+    // `db.get(collection, id)` returns an optional RECORD on both runtimes
+    // (`PyreonRecord?` / `PyreonRecord?`), which makes the single most common
+    // database shape — read a row, branch on whether it exists —
+    //
+    //     const found = db.get('notes', id)
+    //     if (found) { … }
+    //
+    // fail on BOTH targets without this entry: swiftc "optional type
+    // 'PyreonRecord?' cannot be used as a boolean", kotlinc "condition type
+    // mismatch". Exactly the shape `secureStorage.read` above was added for;
+    // this was named as its follow-up when that landed.
+    //
+    // The branch is `unknown`, not a record type: the CONDITION lowering only
+    // needs the type to be OPTIONAL, and a per-collection record type would
+    // require collection→struct inference the compiler does not have. Member
+    // reads on the unwrapped value stay `Any`, which is what they were
+    // before — no capability is lost, and the presence check now compiles.
+    'database',
+    new Map<string, TypeIR>([
+      ['get', { kind: 'union', branches: [{ kind: 'unknown' }, { kind: 'null' }] }],
+    ]),
+  ],
 ])
 
 export function buildInferenceCtx(
