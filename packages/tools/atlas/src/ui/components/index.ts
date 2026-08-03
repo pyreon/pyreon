@@ -5,6 +5,8 @@
  */
 export * from './shell'
 export * from './topbar'
+export * from './search'
+export * from './profile'
 export * from './sidebar'
 export * from './canvas'
 export * from './controls'

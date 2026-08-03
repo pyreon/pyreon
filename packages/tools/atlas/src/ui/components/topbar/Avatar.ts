@@ -2,7 +2,8 @@ import { el, type T } from '../../kit'
 
 export const Avatar = el
   .attrs({
-    tag: 'div',
+    tag: 'button',
+    contentDirection: 'inline',
     contentAlignX: 'center',
     contentAlignY: 'center',
   })
@@ -15,4 +16,5 @@ export const Avatar = el
     fontSize: t.size.body,
     fontFamily: '\'Space Grotesk\',sans-serif',
     background: `linear-gradient(135deg,${t.accent},${t.accent2})`,
+    border: 'none', cursor: 'pointer', padding: '0',
   }))

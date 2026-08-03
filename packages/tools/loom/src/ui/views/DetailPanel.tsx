@@ -99,10 +99,10 @@ export function DetailPanel(props: { model: ObservatoryModel }) {
               <Show when={() => issues.length > 0}>
                 <C.PanelSection>{`FINDINGS · ${issues.length}`}</C.PanelSection>
                 {issues.slice(0, 8).map((issue) => (
-                  <C.CycleWarn data-testid={`finding-${issue.code}`}>
-                    <C.CycleWarnTitle>{`${issue.severity.toUpperCase()} · ${issue.code}`}</C.CycleWarnTitle>
-                    <C.CycleWarnText>{issue.message}</C.CycleWarnText>
-                  </C.CycleWarn>
+                  <C.FindingCard variant={issue.severity} data-testid={`finding-${issue.code}`}>
+                    <C.FindingTitle variant={issue.severity}>{`${issue.severity.toUpperCase()} · ${issue.code}`}</C.FindingTitle>
+                    <C.FindingText>{issue.message}</C.FindingText>
+                  </C.FindingCard>
                 ))}
               </Show>
 

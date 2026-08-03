@@ -108,6 +108,8 @@ test.describe('Atlas workshop — real-Chromium e2e', () => {
     const page = await open(browser, errors)
 
     const emberBtn = await bg(page, PREVIEW_BTN)
+    // Brand themes moved into the profile menu (avatar, top-right).
+    await page.getByTestId('profile-btn').click()
     await page.getByRole('button', { name: 'Aurora', exact: true }).click()
     await expect.poll(() => bg(page, PREVIEW_BTN)).not.toBe(emberBtn)
 
@@ -149,10 +151,12 @@ test.describe('Atlas workshop — real-Chromium e2e', () => {
     await page.getByRole('button', { name: 'Actions', exact: true }).click()
     await expect(page.getByText('onClick', { exact: true })).toBeVisible()
 
+    await page.getByTestId('search-trigger').click()
     await page.locator('input[data-search]').fill('badge')
-    await expect(page.getByRole('button', { name: /Badge/ })).toBeVisible()
-    await expect(page.getByRole('button', { name: /^Button/ })).toHaveCount(0)
-    await page.getByRole('button', { name: /Badge/ }).click()
+    const dialog = page.getByTestId('search-dialog')
+    await expect(dialog.getByRole('button', { name: /Badge/ })).toBeVisible()
+    await expect(dialog.getByRole('button', { name: /^Button/ })).toHaveCount(0)
+    await dialog.getByRole('button', { name: /Badge/ }).click()
     await expect(page.getByTestId('canvas-name')).toHaveText('Badge')
 
     expect(errors).toEqual([])

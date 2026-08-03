@@ -44,7 +44,7 @@ export function AddonPanel(props: { model: WorkbenchModel }) {
   const panels = getAddonPanels()
 
   return (
-    <C.AddonPanel>
+    <C.AddonPanel style={() => `width:${m.panelW()}px`}>
       <C.AddonTabs>
         {panels.map((panel) => (
           <C.SegBtn

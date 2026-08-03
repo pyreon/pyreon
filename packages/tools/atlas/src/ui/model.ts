@@ -57,6 +57,14 @@ export interface WorkbenchModel {
   dark: Signal<boolean>
   selId: Signal<string>
   query: Signal<string>
+  /** The ⌘K search dialog (docs-site style modal; the top-bar input became a trigger). */
+  searchOpen: Signal<boolean>
+  // Resizable shell panels — widths in px (drag handles clamp them), open flags
+  // for the collapse toggles.
+  sidebarW: Signal<number>
+  panelW: Signal<number>
+  sidebarOpen: Signal<boolean>
+  panelOpen: Signal<boolean>
   zoomIdx: Signal<number>
   view: Signal<View>
   addon: Signal<Addon>
@@ -327,6 +335,12 @@ export function createModel(
   }
   const clearActions = () => actions.set([])
 
+  const searchOpen = signal(false)
+  const sidebarW = signal(272)
+  const panelW = signal(352)
+  const sidebarOpen = signal(true)
+  const panelOpen = signal(true)
+
   let searchEl: HTMLInputElement | null = null
   const searchRef = (el: HTMLInputElement | null) => {
     searchEl = el
@@ -474,5 +488,6 @@ export function createModel(
     viewports, backgrounds, locales, roles, viewportPreset, backgroundPreset, dir,
     brand, theme, sel, vals, visibleGroups, tree, collapsed, toggleGroup, noResults, a11y,
     setValue, selectScenario, runPlay, reset, logAction, clearActions, search, preview, searchRef, focusSearch, previewRef,
+    searchOpen, sidebarW, panelW, sidebarOpen, panelOpen,
   }
 }

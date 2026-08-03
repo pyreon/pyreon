@@ -204,10 +204,10 @@ export function Observatory(props: { report: LoomReport; brand?: string }) {
               <C.SmallBtn data-testid="nav-toggle" onClick={() => m.navOpen.set(!m.navOpen())} title="Toggle package list">
                 {() => (m.navOpen() ? '⇤' : '⇥')}
               </C.SmallBtn>
-              <C.Col>
+              <C.ViewTitleBlock>
                 <C.ViewTitle data-testid="view-title">{() => TITLES[m.view()][0]}</C.ViewTitle>
                 <C.ViewEyebrow>{() => TITLES[m.view()][1]}</C.ViewEyebrow>
-              </C.Col>
+              </C.ViewTitleBlock>
               <C.Spacer />
               <C.CyclesBtn
                 data-testid="cycles-toggle"
