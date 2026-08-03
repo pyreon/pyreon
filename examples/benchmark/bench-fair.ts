@@ -86,8 +86,25 @@ const ALL_FRAMEWORKS = [
   'Vue 3',
   'SolidJS',
   'Svelte 5',
+  'Octane',
   'Pyreon',
 ] as const
+
+/**
+ * Medians below this are at/under `performance.now()`'s practical resolution
+ * once GC and rAF jitter are folded in — they are "too fast to time here",
+ * NOT a measured quantity. Any ratio taken against such a denominator, and
+ * any ranking that treats one as a leader, is float noise dressed as a
+ * result.
+ *
+ * This lived as a bare `0.1` in exactly ONE of the three sites that needed
+ * it, which is how the `Infinity×` / `NaN×` cells and the `leader 0µs`
+ * "outright win" survived: the author had clearly seen the problem (the
+ * Vanilla table is guarded and carries a comment about it) but the guard was
+ * never generalised. Adding an 8th framework is what finally printed it.
+ * One constant, applied at every ratio and verdict site.
+ */
+const RESOLUTION_FLOOR_MS = 0.1
 
 interface BenchResult {
   name: string
@@ -596,8 +613,14 @@ function printMarkdownTable(suites: SuiteResult[]): void {
       (s) => s.results.find((x) => x.name === t)?.median ?? Number.POSITIVE_INFINITY,
     )
     const best = Math.min(...medians)
+    // A ratio against a sub-resolution denominator is not a measurement.
+    // The old guard tested `Number.isFinite(m)` — the NUMERATOR — so a
+    // leader median of 0 (select/clear land there for fine-grained
+    // frameworks) printed `Infinity×` next to every rival and `NaN×` next
+    // to the leader itself. That reads as "rival is infinitely slower"
+    // when the truth is only "our own number is too small to time".
     const cells = medians.map((m) =>
-      pad(Number.isFinite(m) ? `${(m / best).toFixed(2)}×` : '—', FCOL),
+      pad(Number.isFinite(m) && best >= RESOLUTION_FLOOR_MS ? `${(m / best).toFixed(2)}×` : '—', FCOL),
     )
     console.log(`${t.padEnd(28)}${cells.join('')}`)
   }
@@ -620,9 +643,7 @@ function printMarkdownTable(suites: SuiteResult[]): void {
         const m = s.results.find((x) => x.name === t)?.median
         if (m === undefined) return pad('—', FCOL)
         // Below performance.now() resolution → can't make a ratio.
-        // Threshold of 0.1ms: below that, the noise floor swamps any
-        // meaningful ratio. Above it, ratios are meaningful.
-        if (vanillaMedian < 0.1) return pad('—', FCOL)
+        if (vanillaMedian < RESOLUTION_FLOOR_MS) return pad('—', FCOL)
         return pad(`${(m / vanillaMedian).toFixed(2)}×`, FCOL)
       })
       console.log(`${t.padEnd(28)}${cells.join('')}`)
@@ -680,6 +701,20 @@ function printMarkdownTable(suites: SuiteResult[]): void {
       } else {
         break
       }
+    }
+    // You cannot rank what you cannot measure. When the leader's median is
+    // under the timer's resolution floor, every framework at/below it is
+    // indistinguishable from zero, so declaring an "outright" winner would
+    // be an artifact of float noise — not a result. Report the floor
+    // instead and name everyone who reached it.
+    if (leader.median < RESOLUTION_FLOOR_MS) {
+      const atFloor = rows.filter((r) => r.median < RESOLUTION_FLOOR_MS).map((r) => r.framework)
+      const above = rows.length - atFloor.length
+      console.log(
+        `  ${t.padEnd(28)} ⏱ too fast to time (<${RESOLUTION_FLOOR_MS}ms) — no ratio; at floor: ${atFloor.join(' = ')}` +
+          (above > 0 ? ` (${above} above floor — see absolute medians)` : ''),
+      )
+      continue
     }
     const marker = tied.length === 1 ? '🥇 outright' : `🤝 tied (n=${tied.length})`
     console.log(`  ${t.padEnd(28)} ${marker} ${tied.join(' = ')} — leader ${fmtMs(leader.median)}`)
@@ -749,6 +784,10 @@ function printDiffTable(baseline: SuiteResult[], current: SuiteResult[]): void {
       const base = baseline.find((b) => b.framework === s.framework)?.results.find((x) => x.name === t)
         ?.median
       if (cur === undefined || base === undefined) return pad('—', COLW)
+      // Same sub-resolution guard as the slowdown tables: a baseline median
+      // of 0 would otherwise render `✗ Infinity×` and read as a catastrophic
+      // regression when nothing was measurable in the first place.
+      if (base < RESOLUTION_FLOOR_MS) return pad('—', COLW)
       const ratio = cur / base
       const sign = ratio < 1 ? '✓' : ratio > 1.05 ? '✗' : '·'
       return pad(`${sign} ${ratio.toFixed(2)}×`, COLW)
