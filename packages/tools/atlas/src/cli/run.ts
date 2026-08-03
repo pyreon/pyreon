@@ -22,6 +22,7 @@ import {
   loadAtlasConfig,
   loadRuntime,
   type ModuleLoader,
+  type PageMeta,
 } from '../discover'
 
 export interface ScanOptions extends DiscoverOptions {
@@ -58,6 +59,10 @@ export interface ScanResult {
   configPath?: string
   /** Validated addon presets from atlas.config.ts, when it exports any. */
   presets?: WorkbenchPresets
+  /** The site title from atlas.config.ts, when it exports one. */
+  title?: string
+  /** Per-component presentation overrides from atlas.config.ts, when it exports any. */
+  pages?: Record<string, PageMeta>
 }
 
 /** Discover a project's components, build the verified catalog, emit assets. */
@@ -146,6 +151,8 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
       graph,
       ...(loaded.config.wrapper && loaded.path ? { configPath: loaded.path } : {}),
       ...(loaded.config.presets ? { presets: loaded.config.presets } : {}),
+      ...(loaded.config.title ? { title: loaded.config.title } : {}),
+      ...(loaded.config.pages ? { pages: loaded.config.pages } : {}),
     }
 
     if (options.write !== false && graph.size() > 0) {
@@ -187,6 +194,13 @@ Usage:
                       exits non-zero when any scenario FAILS a check
     --no-mount        purely static scan — never imports (= executes) the
                       project's modules; runtime checks report skip
+  atlas build [dir]   compile the workbench into a STATIC, deployable site —
+                      the same catalog atlas dev serves, with the node-only
+                      answers (source, Reactivity Lens) baked in as data
+    --out <dir>       output directory (default atlas-dist)
+    --title <text>    site title (wins over atlas.config.ts's \`title\`)
+    --base <path>     public base path for a subdirectory deploy,
+                      e.g. --base /my-repo/ for GitHub Pages
   atlas verify-browser [dir]
                       run the browser half of verification in real Chromium —
                       reactive coverage measured on the client build, and a
@@ -202,6 +216,30 @@ function out(text: string): void {
 }
 function err(text: string): void {
   process.stderr.write(text)
+}
+
+/**
+ * Read `--flag=value` or `--flag value`.
+ *
+ * Both forms, because both are typed by real people and supporting only one
+ * means the other silently becomes a positional argument — `atlas build --out
+ * docs` would have taken `docs` as the project directory and written the site
+ * to the default location, with nothing to indicate the flag was ignored.
+ */
+export function flagValue(args: readonly string[], flag: string): string | undefined {
+  const inline = args.find((a) => a.startsWith(`${flag}=`))
+  if (inline) return inline.slice(flag.length + 1)
+  const index = args.indexOf(flag)
+  if (index === -1) return undefined
+  const next = args[index + 1]
+  // A following flag means the value is missing; treating it as the value would
+  // set `--out` to `--title`.
+  return next && !next.startsWith('-') ? next : undefined
+}
+
+/** `{ key: value }` only when set — `exactOptionalPropertyTypes` rejects `undefined`. */
+function optional<K extends string, V>(key: K, value: V | undefined): Record<K, V> | object {
+  return value === undefined ? {} : ({ [key]: value } as Record<K, V>)
 }
 
 /** Parse argv + run a command. Returns the process exit code. */
@@ -292,6 +330,39 @@ export async function runCli(argv: readonly string[]): Promise<number> {
       out(`atlas dev: ${handle.components} component(s) → ${handle.url}\n`)
       // Resolve never: the server owns the process until interrupted.
       await new Promise<void>(() => {})
+      return 0
+    } catch (error) {
+      err(`${String((error as Error)?.message ?? error)}\n`)
+      return 1
+    }
+  }
+
+  if (cmd === 'build') {
+    const dir = rest.find((a) => !a.startsWith('-'))
+    // Imported lazily, same reason as `dev`: this path pulls in Vite, and
+    // `atlas scan` must keep working — and starting fast — without it.
+    const { buildStatic } = await import('../build/static')
+    try {
+      const result = await buildStatic({
+        cwd: dir ?? '.',
+        ...optional('out', flagValue(rest, '--out')),
+        ...optional('title', flagValue(rest, '--title')),
+        ...optional('base', flagValue(rest, '--base')),
+        onLog: (message) => err(`${message}\n`),
+      })
+      out(
+        `atlas build: ${result.components} component(s) → ${result.outDir}\n` +
+          `  title: ${result.title}\n`,
+      )
+      if (result.warnings.length > 0) {
+        // Named, not counted. A site missing one component's Lens is fine; a
+        // site missing ALL of them means the compiler is not installed, and the
+        // difference is only visible if the reasons are printed.
+        err(
+          `atlas build: ${result.warnings.length} panel answer(s) could not be baked — ` +
+            `those views will report themselves unavailable on the built site.\n`,
+        )
+      }
       return 0
     } catch (error) {
       err(`${String((error as Error)?.message ?? error)}\n`)

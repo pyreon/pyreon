@@ -72,6 +72,61 @@ same shape typed for a config file. Need full control over a component's shape?
 Drop to a raw `discover()` plugin returning `ComponentIntelligence` (see
 `@pyreon/atlas/core`).
 
+## Shipping the docs — `atlas build`
+
+`atlas dev` needs a checkout and a running Node process. A design system needs a
+URL. `atlas build` emits one as plain static files:
+
+```bash
+atlas build                          # → ./atlas-dist
+atlas build --out docs/components    # somewhere else
+atlas build --title "Acme DS"        # site name (tab + chrome)
+atlas build --base /my-repo/         # GitHub Pages project site
+```
+
+Deploy the directory to Pages, Netlify, Cloudflare, S3 — anything that serves
+files. There is no server component.
+
+**What makes this more than `vite build`.** The workbench is not purely a client
+app: the Docs source block and the Reactivity Lens are answered by Node over the
+dev-server RPC channel, because they read files and run the TypeScript compiler
+API. A naive build produces a site that *looks* complete while both sit dark
+forever. So `atlas build` precomputes those answers per component and ships them
+as data — the Lens still shows real per-expression `live` / `static` verdicts on
+a fully static page. An answer that genuinely cannot be computed (no
+`@pyreon/compiler` installed) bakes its REASON instead, so the panel says what
+is wrong rather than reporting a network error about a request that was never
+going to work.
+
+### Naming the site and its pages
+
+`atlas.config.ts` carries presentation alongside the wrapper and theme:
+
+```ts
+export default {
+  title: 'Acme Design System',
+  pages: {
+    Button: { title: 'Button (CTA)', group: 'Actions', order: 1 },
+    Chip:   { summary: 'A compact, removable label.' },
+  },
+}
+```
+
+`pages` is presentation ONLY. A `title` relabels the sidebar entry and the docs
+heading; the component's real `name` is untouched, because that is what the
+usage snippet writes, what the source/Lens lookup keys on, and what an agent
+imports. `order` pins a component to the top of *its own group* — it cannot pull
+it into a different one — and everything unordered keeps its discovery order, so
+adding one line does not reshuffle a sidebar.
+
+`--title` wins over `title`, and `atlas dev` reads the same config, so the
+workbench and the deployed site cannot end up named differently.
+
+> **Monorepos.** Building one site from several packages is not supported yet.
+> The catalog graph is keyed by component name alone, so two packages exporting
+> a `Button` would silently collapse into one — the exact silent-drop this tool
+> exists to prevent. It is the next piece of work, not a config flag away.
+
 ## Built-in plugins
 
 Every capability is a plugin on one contract. The built-in suite is all pure and

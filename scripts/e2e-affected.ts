@@ -314,6 +314,22 @@ const SUITES: Suite[] = [
     ],
   },
   {
+    // `atlas build` — the STATIC site on a plain file server. The only gate
+    // that can catch an unbaked node-answered panel: a built site has no
+    // server, so the Docs source block and the Reactivity Lens work there only
+    // if the build embedded their answers in the page.
+    name: 'atlas-build',
+    script: 'test:e2e:atlas-build',
+    triggers: [
+      ...RENDER_CORE,
+      'packages/tools/atlas/',
+      'packages/tools/vite-plugin/',
+      'packages/core/compiler/',
+      'examples/atlas-workshop/',
+      'e2e/atlas-build.spec.ts',
+    ],
+  },
+  {
     // `atlas verify-browser` — the browser half of the verify pipeline as a
     // subprocess: real coverage on the page's own reactivity instance +
     // baseline-create/compare snapshots, merged back into the catalog.

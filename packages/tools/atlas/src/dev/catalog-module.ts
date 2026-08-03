@@ -138,6 +138,62 @@ export interface GenerateOptions {
   configPath?: string
   /** Addon presets — serialized VERBATIM onto the catalog (plain JSON data). */
   presets?: import('../ui/catalog').WorkbenchPresets
+  /**
+   * Per-component presentation overrides from `atlas.config.ts`.
+   *
+   * Presentation ONLY — see `PageMeta`. `name` is deliberately NOT overridable:
+   * it is the component's real, importable identifier, and the machine surface
+   * an agent reads must never carry a display string in its place. A `title`
+   * changes the label; `name` stays true.
+   */
+  pages?: Record<string, import('../discover/config').PageMeta>
+}
+
+/** The group an entry is filed under, before any sorting. */
+function resolvedGroup(entry: CatalogEntrySource, options: GenerateOptions): string {
+  return (
+    options.pages?.[entry.component.name]?.group ?? groupFor(entry.file, options.root)
+  )
+}
+
+/**
+ * Order the catalog. The sidebar renders it verbatim (`groupComponents`
+ * preserves catalog order), so this IS the sidebar's ordering.
+ *
+ * Sorted by group-first-appearance, then `pages.order`, then discovery order.
+ * The first key is what keeps a configured order from scrambling the tree: a
+ * plain global sort by `order` would pull a pinned component out of its group
+ * and file it wherever the sort landed. The last key is what makes this a
+ * no-op for a project that configures nothing — today's behaviour, unchanged,
+ * rather than a silent reshuffle on upgrade.
+ */
+export function sortEntries(
+  entries: readonly CatalogEntrySource[],
+  options: GenerateOptions,
+): CatalogEntrySource[] {
+  const groupRank = new Map<string, number>()
+  for (const entry of entries) {
+    const group = resolvedGroup(entry, options)
+    if (!groupRank.has(group)) groupRank.set(group, groupRank.size)
+  }
+  // Unordered components sort AFTER every ordered one, so pinning three
+  // favourites to the top of a group leaves the rest exactly as they were.
+  const orderOf = (entry: CatalogEntrySource): number => {
+    const order = options.pages?.[entry.component.name]?.order
+    return typeof order === 'number' && Number.isFinite(order) ? order : Number.POSITIVE_INFINITY
+  }
+  return entries
+    .map((entry, index) => ({ entry, index }))
+    .sort((a, b) => {
+      const ga = groupRank.get(resolvedGroup(a.entry, options)) ?? 0
+      const gb = groupRank.get(resolvedGroup(b.entry, options)) ?? 0
+      if (ga !== gb) return ga - gb
+      const oa = orderOf(a.entry)
+      const ob = orderOf(b.entry)
+      if (oa !== ob) return oa - ob
+      return a.index - b.index
+    })
+    .map((e) => e.entry)
 }
 
 /**
@@ -166,10 +222,11 @@ export function generateCatalogModule(
     ].join('\n')
   }
 
-  const ids = uniqueIds(entries.map((e) => e.component.name))
+  const ordered = sortEntries(entries, options)
+  const ids = uniqueIds(ordered.map((e) => e.component.name))
   const lines: string[] = ["import { h } from '@pyreon/core'", '']
 
-  entries.forEach((entry, i) => {
+  ordered.forEach((entry, i) => {
     lines.push(`import * as __mod${i} from ${lit(entry.file)}`)
   })
   if (options.configPath) {
@@ -198,21 +255,28 @@ export function generateCatalogModule(
   if (options.presets) lines.push(`  presets: ${JSON.stringify(options.presets)},`)
   lines.push('  components: [')
 
-  entries.forEach((entry, i) => {
+  ordered.forEach((entry, i) => {
     const { component } = entry
     const controls = component.controls.filter(isEditableControl).map(toWorkbenchControl)
     // The discovered event surface. These are the props the Actions panel can
     // observe — the controls list deliberately excludes them (a function is not
     // an editable value), so they are threaded separately.
     const reactiveProps = component.controls.filter((c) => c.reactive).map((c) => c.name)
+    const page = options.pages?.[component.name]
     lines.push('    {')
     lines.push(`      id: ${lit(ids[i]!)},`)
+    // The REAL name, always. It is what the usage snippet writes, what the
+    // `source`/`lens` RPC looks up, and what an agent imports. A configured
+    // `title` is a separate DISPLAY field precisely so overriding the label can
+    // never desynchronise any of those.
     lines.push(`      name: ${lit(component.name)},`)
-    lines.push(`      group: ${lit(groupFor(entry.file, options.root))},`)
+    if (page?.title) lines.push(`      title: ${lit(page.title)},`)
+    lines.push(`      group: ${lit(resolvedGroup(entry, options))},`)
     // No `status`: nothing in a derived catalog measures maturity, and a
     // hardcoded 'stable' pill on every component is decorative fiction — the
     // docs view simply omits the pill when the field is absent.
-    if (component.summary) lines.push(`      desc: ${lit(component.summary)},`)
+    const desc = page?.summary ?? component.summary
+    if (desc) lines.push(`      desc: ${lit(desc)},`)
     lines.push(`      controls: ${JSON.stringify(controls)},`)
     if (component.scenarios.length > 0) {
       // The pipeline's derived scenarios, WITH their verdicts — the sidebar

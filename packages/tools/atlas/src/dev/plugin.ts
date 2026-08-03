@@ -110,6 +110,8 @@ export interface AtlasDevPluginOptions {
   configPath?: string
   /** Validated addon presets from atlas.config.ts (plain JSON — serialized into the catalog). */
   presets?: import('../ui/catalog').WorkbenchPresets
+  /** Per-component presentation overrides from atlas.config.ts (`pages`). */
+  pages?: Record<string, import('../discover/config').PageMeta>
   /** Title shown in the workbench chrome. */
   title?: string
   /** Extra RPC methods (a plugin's node-only half registers here). */
@@ -152,6 +154,7 @@ export function atlasDevPlugin(options: AtlasDevPluginOptions): VitePluginLike {
           root: options.scanRoot,
           ...(options.configPath ? { configPath: options.configPath } : {}),
           ...(options.presets ? { presets: options.presets } : {}),
+          ...(options.pages ? { pages: options.pages } : {}),
         })
       }
       if (id === resolved(ENTRY_ID)) {

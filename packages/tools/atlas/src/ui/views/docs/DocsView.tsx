@@ -69,7 +69,7 @@ export function DocsView(props: { model: WorkbenchModel }) {
       <C.DocsWrap>
         <C.DocsArticle>
           <C.DocsTitleRow>
-            <C.DocsTitle>{c.name}</C.DocsTitle>
+            <C.DocsTitle>{c.title ?? c.name}</C.DocsTitle>
             {/* Only when the catalog SAYS so — defaulting the pill to 'stable'
                 asserted a maturity nothing measured. */}
             {c.status ? <C.DocsStatus>{c.status}</C.DocsStatus> : null}
