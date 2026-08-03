@@ -1258,7 +1258,7 @@ jobs:
     needs: [bootstrap, lint, changes] # typecheck edge dropped 2026-07 (queue-contention pass — see test-cell)
     if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: ./.github/actions/setup-pyreon
@@ -1424,7 +1424,24 @@ jobs:
     needs: [bootstrap, lint, changes] # typecheck edge dropped 2026-07 (queue-contention pass — see test-cell)
     if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # 15, not 5. `setup-pyreon` defaults `restore-bootstrap: true`, and
+    # restoring the lib/ cache measured 5.9-6.0 min across TWELVE jobs of run
+    # 30840261671 — so a 5-minute budget was spent entirely inside setup, with
+    # nothing left for the check. The job could not pass, and a timed-out job
+    # reports `cancelled`, which never satisfies a required context: this and
+    # its three siblings below are REQUIRED, so every affected PR was
+    # permanently unmergeable with no red X to explain why.
+    #
+    # Derived, not guessed:
+    #   bootstrap-cache restore   6.0m  (measured, 12/12 jobs at 5.9-6.0)
+    #   the check step itself    ~0.8m  (Build's own step, same run)
+    #   checkout + teardown      ~0.3m
+    #     => ~7m, and setup is the variable that broke it, so ~100% headroom
+    #
+    # The lib-FREE gates (Lint Ratchet, Check Manifest Depth) call the same
+    # action with restore-bootstrap 'false' and finish in ~0.3m; their small
+    # budgets are correct. `check-ci-job-timeouts` enforces the distinction.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: ./.github/actions/setup-pyreon
@@ -1444,7 +1461,7 @@ jobs:
     needs: [bootstrap, lint, changes] # typecheck edge dropped 2026-07 (queue-contention pass — see test-cell)
     if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: ./.github/actions/setup-pyreon
@@ -1469,7 +1486,7 @@ jobs:
     needs: [bootstrap, lint, changes] # typecheck edge dropped 2026-07 (queue-contention pass — see test-cell)
     if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: ./.github/actions/setup-pyreon
@@ -1490,7 +1507,7 @@ jobs:
     needs: [bootstrap, lint, changes] # typecheck edge dropped 2026-07 (queue-contention pass — see test-cell)
     if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: ./.github/actions/setup-pyreon
@@ -1904,7 +1921,7 @@ jobs:
     # not src/. Needs Bootstrap.
     needs: bootstrap
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: ./.github/actions/setup-pyreon

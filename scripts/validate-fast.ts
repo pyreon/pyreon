@@ -79,6 +79,15 @@ const GATES: Gate[] = [
     name: 'check-ios-signing-policy',
     cmd: 'bun scripts/check-ios-signing-policy.ts',
   },
+  // A CI job that restores the bootstrap cache (~6 min) must budget for it.
+  // Four REQUIRED gates sat at `timeout-minutes: 5`, so setup consumed the
+  // whole budget and the check never ran — and a timed-out job reports
+  // `cancelled`, which satisfies no required context and shows no red X. The
+  // PR just sits at BLOCKED with nothing failing and nothing to fix.
+  {
+    name: 'check-ci-job-timeouts',
+    cmd: 'bun scripts/check-ci-job-timeouts.ts',
+  },
   // A tri-target shared source must be buildable for the WEB target too. The
   // two native targets compile it through PMTC and never read node_modules,
   // so they stay green while the web build cannot resolve a new import —
