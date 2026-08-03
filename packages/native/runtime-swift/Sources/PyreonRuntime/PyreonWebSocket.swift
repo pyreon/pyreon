@@ -75,6 +75,11 @@ public final class PyreonWebSocket {
     /// The URLSession backing the task. Held so `close()` can invalidate it.
     @ObservationIgnored private var session: URLSession?
 
+    /// Retained so the URLSession delegate outlives `connect`. The session
+    /// retains it too; clearing both on `close()` is what releases it, which is
+    /// why `close()` invalidates the session rather than only cancelling.
+    @ObservationIgnored private var delegate: NSObject?
+
     /// Lifecycle flag — true iff a `connect(to:)` has been matched by no
     /// `close()` yet. Decoupled from `isConnected` (the REACTIVE flag, which
     /// a `failed(_:)` flips false while the lifecycle stays "connected" until
@@ -132,19 +137,64 @@ public final class PyreonWebSocket {
 
     /// Open a live WebSocket to `url` and start pumping inbound frames into
     /// `received` / `failed`. Idempotent — a second call while already open
-    /// is a no-op. Calls `opened()` optimistically on `resume()` (a precise
-    /// readiness signal needs a `URLSessionWebSocketDelegate`
-    /// `didOpenWithProtocol` callback — a device-loop refinement).
+    /// is a no-op.
+    ///
+    /// `isConnected` flips on the REAL handshake (`URLSessionWebSocketDelegate`
+    /// `didOpenWithProtocol`), not on `resume()`. The optimistic version was a
+    /// disclosed inaccuracy: `resume()` only means the request was queued, so a
+    /// socket pointed at a DEAD server read as connected for a beat and any UI
+    /// gating on `isConnected` showed a connection that never existed. Kotlin
+    /// has always flipped on OkHttp's real `onOpen`; this brings Swift to the
+    /// same contract instead of documenting the difference.
     public func connect(to url: URL) {
         guard !_connected else { return }
         _connected = true
-        let session = URLSession(configuration: .default)
+        let socketDelegate = SocketDelegate(
+            onOpen: { [weak self] in self?.opened() },
+            onClose: { [weak self] in self?.closed() }
+        )
+        self.delegate = socketDelegate
+        let session = URLSession(
+            configuration: .default,
+            delegate: socketDelegate,
+            delegateQueue: nil
+        )
         let task = session.webSocketTask(with: url)
         self.session = session
         self.task = task
         task.resume()
-        opened()
         listen()
+    }
+
+    /// Bridges `URLSessionWebSocketDelegate` callbacks back to the container.
+    /// A separate object because `URLSession` retains its delegate — making the
+    /// @Observable container itself the delegate would create a cycle it could
+    /// not break.
+    private final class SocketDelegate: NSObject, URLSessionWebSocketDelegate {
+        private let onOpen: () -> Void
+        private let onClose: () -> Void
+
+        init(onOpen: @escaping () -> Void, onClose: @escaping () -> Void) {
+            self.onOpen = onOpen
+            self.onClose = onClose
+        }
+
+        func urlSession(
+            _ session: URLSession,
+            webSocketTask: URLSessionWebSocketTask,
+            didOpenWithProtocol protocolName: String?
+        ) {
+            DispatchQueue.main.async { [onOpen] in onOpen() }
+        }
+
+        func urlSession(
+            _ session: URLSession,
+            webSocketTask: URLSessionWebSocketTask,
+            didCloseWith closeCode: URLSessionWebSocketTask.CloseCode,
+            reason: Data?
+        ) {
+            DispatchQueue.main.async { [onClose] in onClose() }
+        }
     }
 
     /// Send a text frame over the live socket. No-op when not connected.
@@ -167,6 +217,7 @@ public final class PyreonWebSocket {
         task = nil
         session?.invalidateAndCancel()
         session = nil
+        delegate = nil
         closed()
     }
 
