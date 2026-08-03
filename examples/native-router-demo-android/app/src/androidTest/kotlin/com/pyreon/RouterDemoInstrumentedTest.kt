@@ -268,6 +268,70 @@ class RouterDemoInstrumentedTest {
         composeRule.onNodeWithTag("slow-box").assertDoesNotExist()
     }
 
+    // Animations row — ASYMMETRIC enter/leave, the row's named gap. Before
+    // this, one `duration` drove BOTH directions on every target, so "quick
+    // in, slow out" — the common real shape — had no vocabulary at all.
+    //
+    // The discriminator is two boxes with OPPOSITE configs driven by the SAME
+    // signal, read at ONE instant: 1000ms into the exit, the slow-leave box
+    // (2500ms) is still present while the fast-leave box (200ms) is already
+    // gone. A symmetric emit cannot produce opposite outcomes at the same
+    // moment whichever duration it picks — which is exactly what the bisect
+    // drives, and why this needs two elements rather than one.
+    //
+    // Enter TIMING is deliberately not asserted: AnimatedVisibility keeps the
+    // node in the semantics tree for the whole enter animation, so existence
+    // cannot discriminate a 200ms enter from a 2500ms one. Reading alpha off
+    // captureToImage could, and is the tracked follow-up; the enter specs are
+    // locked at the emit level instead.
+    @Test
+    fun asymmetricEnterLeaveDrivesEachDirectionIndependently() {
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        composeRule.onNodeWithText("View anim").performClick()
+        composeRule.onNodeWithTag("anim-page").assertIsDisplayed()
+        composeRule.onNodeWithTag("asym-slow-leave").assertExists()
+        composeRule.onNodeWithTag("asym-fast-leave").assertExists()
+
+        composeRule.mainClock.autoAdvance = false
+        composeRule.onNodeWithTag("anim-toggle").performClick()
+        composeRule.mainClock.advanceTimeBy(1000)
+
+        // One instant, opposite outcomes — this is the whole proof.
+        composeRule.onNodeWithTag("asym-slow-leave").assertExists()
+        composeRule.onNodeWithTag("asym-fast-leave").assertDoesNotExist()
+
+        composeRule.mainClock.advanceTimeBy(2500)
+        composeRule.mainClock.autoAdvance = true
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("asym-slow-leave").assertDoesNotExist()
+    }
+
+    // INTERRUPTION — re-showing while a leave is still in flight. Surfaced
+    // by the asymmetric arc on iOS, where a second toggle 100ms into a 2500ms
+    // removal left every transition child absent from the accessibility tree
+    // and it never returned (15s). This asserts the Compose half recovers, so
+    // the shared source and the emit are sound and the iOS behaviour is
+    // narrowed to SwiftUI transition interruption. Deterministic on the
+    // virtual clock: interrupt at +100ms of a 2500ms exit, flip back, and the
+    // child must be present once the (200ms) enter completes.
+    @Test
+    fun reShowingDuringAnInFlightLeaveRecovers() {
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        composeRule.onNodeWithText("View anim").performClick()
+        composeRule.onNodeWithTag("anim-page").assertIsDisplayed()
+        composeRule.onNodeWithTag("asym-slow-leave").assertExists()
+
+        composeRule.mainClock.autoAdvance = false
+        composeRule.onNodeWithTag("anim-toggle").performClick()
+        composeRule.mainClock.advanceTimeBy(100)
+        composeRule.onNodeWithTag("anim-toggle").performClick()
+        composeRule.mainClock.advanceTimeBy(1000)
+        composeRule.mainClock.autoAdvance = true
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("asym-slow-leave").assertExists()
+    }
+
     // Adaptive row — RESPONSIVE PROP VALUES follow the size class, proven
     // as a live FLIP on ONE device: the A→B gap is measured at the phone
     // width (compact → gap token 2 → 8dp), then `wm size` resizes the

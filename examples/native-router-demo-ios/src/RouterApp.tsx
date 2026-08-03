@@ -81,6 +81,61 @@ function BigListPage() {
   )
 }
 
+function AnimPage() {
+  const navigate = useNavigate()
+  // Animations row — ASYMMETRIC enter/leave lives on its OWN page, not on
+  // MotionPage, and that is a finding rather than tidiness.
+  //
+  // MEASURED: with ONE <Transition> on a page, hiding and immediately
+  // re-showing works. With THREE driven by the same signal, a re-show issued
+  // while a leave is still in flight leaves every transition child absent
+  // from the iOS accessibility tree, and it does not return (15s). The
+  // pre-existing symmetric-duration test passes on a single-transition page
+  // and fails on a three-transition one — verified both ways by removing and
+  // restoring these boxes. Compose recovers from the identical interruption
+  // on the virtual clock, so the shared source and both emits are sound; this
+  // is SwiftUI transition-interruption behaviour, disclosed in the matrix.
+  //
+  // Keeping MotionPage at one transition preserves that gate honestly instead
+  // of loosening it, and the two boxes here still give the one-instant
+  // opposite-outcomes comparison the asymmetry proof needs.
+  const on = signal<boolean>(true)
+  return (
+    <Stack gap={3} padding={4} data-testid="anim-page">
+      <Text>Animations</Text>
+      <Button onPress={() => on.set(!on())} data-testid="anim-toggle">
+        Toggle Boxes
+      </Button>
+      {/* Animations row — ASYMMETRIC enter/leave, the row's named gap. The
+          two boxes carry OPPOSITE configs and are driven by the SAME signal,
+          so one instant discriminates: 1000ms after hiding, the slow-leave
+          box is still mid-exit (2500ms) while the fast-leave box is already
+          gone (200ms). A symmetric emit — one duration driving both sides,
+          which is all the vocabulary supported before this — cannot produce
+          opposite outcomes at the same moment no matter which duration it
+          picks. Android asserts it on the compose rule's VIRTUAL clock, so
+          the timing is deterministic rather than a wall-clock race. */}
+      <Transition
+        show={() => on()}
+        enterDuration={200}
+        leaveDuration={2500}
+        easing="linear"
+      >
+        <Text data-testid="asym-slow-leave">Asym Slow Leave</Text>
+      </Transition>
+      <Transition
+        show={() => on()}
+        enterDuration={2500}
+        leaveDuration={200}
+        easing="linear"
+      >
+        <Text data-testid="asym-fast-leave">Asym Fast Leave</Text>
+      </Transition>
+      <Button onPress={() => navigate('/')}>Back to Home</Button>
+    </Stack>
+  )
+}
+
 function MotionPage() {
   const navigate = useNavigate()
   // Animations-row proof — CONFIGURED duration/easing. The slow box exits
@@ -121,6 +176,7 @@ function MotionPage() {
       <Transition show={() => boxOn()} duration={2500} easing="linear">
         <Text data-testid="slow-box">Slow Box</Text>
       </Transition>
+
       <Button onPress={() => navigate('/')}>Back to Home</Button>
     </Stack>
   )
@@ -253,6 +309,9 @@ function HomePage() {
       <Inline gap={2}>
         <Button onPress={() => navigate('/biglist')}>View big list</Button>
         <Button onPress={() => navigate('/a11y')}>View a11y</Button>
+      </Inline>
+      <Inline gap={2}>
+        <Button onPress={() => navigate('/anim')}>View anim</Button>
       </Inline>
       <Inline gap={2}>
         <Button onPress={() => navigate('/media')}>View media</Button>
@@ -395,6 +454,7 @@ export function RouterApp() {
       { path: '/motion', component: MotionPage },
       { path: '/biglist', component: BigListPage },
       { path: '/a11y', component: A11yPage },
+      { path: '/anim', component: AnimPage },
       { path: '/media', component: MediaPage },
     ],
   })

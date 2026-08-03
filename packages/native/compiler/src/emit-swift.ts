@@ -5621,10 +5621,66 @@ function emitSwiftTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
   }
   const duration = typeof durRaw === 'number' ? durRaw : undefined
   const easing = typeof easeRaw === 'string' ? easeRaw : undefined
+  // ASYMMETRIC timing — `enterDuration`/`leaveDuration` (+ easings), each
+  // falling back to the symmetric `duration`/`easing`. A quick enter with a
+  // slow leave is the common real shape and had no vocabulary on any target.
+  //
+  // SwiftUI expresses it with `.asymmetric(insertion:removal:)`, each side
+  // carrying its OWN `.animation(...)`. That is why the symmetric case keeps
+  // emitting the container-level `.animation(_:value:)` byte-identically:
+  // per-side animations only exist inside a transition, and rewriting the
+  // symmetric shape would churn every already-proven emit.
+  const enterDurRaw = readStaticAttr(e, 'enterDuration')
+  const leaveDurRaw = readStaticAttr(e, 'leaveDuration')
+  const enterEaseRaw = readStaticAttr(e, 'enterEasing')
+  const leaveEaseRaw = readStaticAttr(e, 'leaveEasing')
+  for (const [name, raw] of [
+    ['enterDuration', enterDurRaw],
+    ['leaveDuration', leaveDurRaw],
+  ] as const) {
+    if (
+      e.attrs.some((a) => a.kind === 'attr' && a.name === name) &&
+      typeof raw !== 'number'
+    ) {
+      _emitWarnings.push(
+        `<Transition ${name}>: must be a static number of milliseconds; got a non-literal — falling back to the symmetric duration.`,
+      )
+    }
+  }
+  const enterDur = typeof enterDurRaw === 'number' ? enterDurRaw : undefined
+  const leaveDur = typeof leaveDurRaw === 'number' ? leaveDurRaw : undefined
+  const enterEase = typeof enterEaseRaw === 'string' ? enterEaseRaw : undefined
+  const leaveEase = typeof leaveEaseRaw === 'string' ? leaveEaseRaw : undefined
+  const asymmetric =
+    enterDur !== undefined ||
+    leaveDur !== undefined ||
+    enterEase !== undefined ||
+    leaveEase !== undefined
   const anim = swiftAnimationFor(duration, easing)
   const inner = ' '.repeat(indent + 6)
   const body = e.children.map((c) => inner + emitSwiftChild(c, indent + 6)).join('\n')
   const p = ' '.repeat(indent)
+  if (asymmetric) {
+    const insertion = swiftAnimationFor(enterDur ?? duration, enterEase ?? easing)
+    const removal = swiftAnimationFor(leaveDur ?? duration, leaveEase ?? easing)
+    return (
+      `ZStack {\n` +
+      `${p}  if ${cond} {\n` +
+      `${p}    Group {\n${body}\n${p}    }\n` +
+      `${p}      .transition(.asymmetric(\n` +
+      `${p}        insertion: AnyTransition.opacity.animation(${insertion}),\n` +
+      `${p}        removal: AnyTransition.opacity.animation(${removal})\n` +
+      `${p}      ))\n` +
+      `${p}  }\n` +
+      // NO container `.animation(_:value:)` here, unlike the symmetric branch
+      // below: `AnyTransition.animation(_:)` is self-contained — each side
+      // carries its own curve — so an ambient animation would be redundant and
+      // would also apply to unrelated property changes on this container.
+      // (I first added one on the theory that a transition needs an ambient
+      // trigger scope; bisecting it out proved that wrong, so it is not here.)
+      `${p}}`
+    )
+  }
   return (
     `ZStack {\n` +
     `${p}  if ${cond} {\n` +

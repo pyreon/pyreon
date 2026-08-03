@@ -702,4 +702,72 @@ final class PyreonRouterDemoUITests: XCTestCase {
         return (Int(pixel[0]), Int(pixel[1]), Int(pixel[2]))
     }
 
+    // Animations row — ASYMMETRIC enter/leave. iOS asserts the BEHAVIOUR of
+    // the configured path (both boxes hide and come back), not the timing.
+    //
+    // That limit is measured, not assumed, and it is the same one the
+    // symmetric duration proof already records: SwiftUI drops a view from the
+    // ACCESSIBILITY tree the instant the `if` gate flips, so the fade is
+    // visual-only and no XCUITest query can distinguish a 200ms removal from
+    // a 2500ms one. The asymmetric TIMING is proven on Android's virtual
+    // clock instead, where two boxes with opposite configs give opposite
+    // answers at one instant; here the load-bearing claim is that
+    // `.transition(.asymmetric(insertion:removal:))` — a different emit shape
+    // from the symmetric `.animation(_:value:)` container — still mounts and
+    // unmounts correctly, which a broken transition modifier would not.
+    func test_asymmetricTransitionShowsAndHides() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            "Home page did not render"
+        )
+        app.buttons["View anim"].tap()
+        XCTAssertTrue(
+            app.otherElements["anim-page"].firstMatch.waitForExistence(timeout: 15),
+            "Anim page did not render"
+        )
+
+        let slow = app.staticTexts["asym-slow-leave"]
+        let fast = app.staticTexts["asym-fast-leave"]
+        XCTAssertTrue(slow.waitForExistence(timeout: 10), "asymmetric slow-leave box missing")
+        XCTAssertTrue(fast.waitForExistence(timeout: 10), "asymmetric fast-leave box missing")
+
+        app.buttons["anim-toggle"].tap()
+        XCTAssertTrue(
+            slow.waitForNonExistence(timeout: 15),
+            "asymmetric slow-leave box never left — the .asymmetric transition did not drive the removal"
+        )
+        XCTAssertTrue(
+            fast.waitForNonExistence(timeout: 15),
+            "asymmetric fast-leave box never left"
+        )
+
+        // Let the 2500ms removal FINISH before re-showing. This is not
+        // padding: re-showing 100ms into an in-flight leave leaves every
+        // transition child absent from the accessibility tree on iOS, and it
+        // does not return (measured: still absent after 15s, including the
+        // pre-existing symmetric slow-box — so it is not specific to the
+        // asymmetric emit). The Compose half recovers from the identical
+        // interruption on the virtual clock
+        // (`reShowingDuringAnInFlightLeaveRecovers`), so the shared source and
+        // the emit are sound and this is SwiftUI transition-interruption
+        // behaviour. Whether the view is genuinely gone or merely dropped from
+        // the a11y tree is NOT determinable with XCUITest — the same
+        // instrument limit this row already records for fade timing — so it is
+        // disclosed in the matrix as an open question rather than asserted
+        // either way.
+        Thread.sleep(forTimeInterval: 3.5)
+        app.buttons["anim-toggle"].tap()
+        XCTAssertTrue(
+            slow.waitForExistence(timeout: 15),
+            "asymmetric slow-leave box never came back — the insertion side is broken"
+        )
+        XCTAssertTrue(
+            fast.waitForExistence(timeout: 15),
+            "asymmetric fast-leave box never came back"
+        )
+    }
 }
+

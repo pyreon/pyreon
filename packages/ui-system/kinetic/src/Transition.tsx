@@ -1,7 +1,12 @@
 import type { VNode } from '@pyreon/core'
 import { createRef, cx, Show } from '@pyreon/core'
 import { watch } from '@pyreon/reactivity'
-import type { ClassTransitionProps, StyleTransitionProps, TransitionProps } from './types'
+import type {
+  ClassTransitionProps,
+  StyleTransitionProps,
+  TransitionEasing,
+  TransitionProps,
+} from './types'
 import useAnimationEnd from './useAnimationEnd'
 import { useReducedMotion } from './useReducedMotion'
 import useTransitionState from './useTransitionState'
@@ -139,6 +144,19 @@ const Transition = (props: TransitionProps): VNode | null => {
     onAfterLeave: props.onAfterLeave,
   }
 
+  // Numeric timing -> the CSS shorthand the web renderer applies. An explicit
+  // `enterTransition` / `leaveTransition` still wins, so this only fills a gap
+  // rather than overriding an author's own shorthand. Without it, `duration` /
+  // `easing` (which BOTH native targets have honoured since the config arc)
+  // were silently ignored in a browser — one source, two behaviours.
+  const timingShorthand = (
+    ms: number | undefined,
+    curve: TransitionEasing | undefined,
+  ): string | undefined =>
+    ms === undefined && curve === undefined
+      ? undefined
+      : `all ${ms ?? 300}ms ${curve ?? 'ease-in-out'}`
+
   const transitionConfig = {
     enter: props.enter,
     enterFrom: props.enterFrom,
@@ -148,10 +166,20 @@ const Transition = (props: TransitionProps): VNode | null => {
     leaveTo: props.leaveTo,
     enterStyle: props.enterStyle,
     enterToStyle: props.enterToStyle,
-    enterTransition: props.enterTransition,
+    enterTransition:
+      props.enterTransition ??
+      timingShorthand(
+        props.enterDuration ?? props.duration,
+        props.enterEasing ?? props.easing,
+      ),
     leaveStyle: props.leaveStyle,
     leaveToStyle: props.leaveToStyle,
-    leaveTransition: props.leaveTransition,
+    leaveTransition:
+      props.leaveTransition ??
+      timingShorthand(
+        props.leaveDuration ?? props.duration,
+        props.leaveEasing ?? props.easing,
+      ),
   }
 
   useAnimationEnd({
