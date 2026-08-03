@@ -167,6 +167,30 @@ export const SCENARIOS: Scenario[] = [
     dir: 'core/core',
     imports: ['h', 'Fragment', 'createContext', 'useContext'],
   },
+  {
+    // @pyreon/hooks is a 36-hook grab-bag, and essentially every consumer
+    // imports one to three of them — so the KITCHEN-SINK budget (which the
+    // main-entry gate locks) is not the number that reaches a real app. The
+    // meaningful property is that one hook costs one hook. Locked here
+    // because nothing measured it before: `sideEffects: false` made
+    // tree-shaking an ASSUMPTION, and the web halves of the lowered native
+    // hooks (useAuth/usePush/usePayments) are exactly the shape that breaks
+    // it — a top-level registry write or a shared eager singleton would pin
+    // all three into every `useEventListener` import without moving the
+    // main-entry budget at all.
+    id: '@pyreon/hooks::useEventListener',
+    pkg: '@pyreon/hooks',
+    dir: 'fundamentals/hooks',
+    imports: ['useEventListener'],
+  },
+  {
+    // The native-lowered hook's own web half, isolated: locks that it does
+    // not drag its two siblings (or the rest of the barrel) in with it.
+    id: '@pyreon/hooks::useAuth',
+    pkg: '@pyreon/hooks',
+    dir: 'fundamentals/hooks',
+    imports: ['useAuth'],
+  },
 ]
 
 /**
