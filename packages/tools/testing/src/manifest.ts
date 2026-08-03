@@ -8,6 +8,11 @@ export default defineManifest({
   description:
     'The official test kit for Pyreon — a thin adapter over `@testing-library/dom` (the shared foundation under React/Vue/Solid/Svelte Testing Library), so the whole Testing-Library API you already know works verbatim, PLUS Pyreon-native additions. Pyreon-native: `render` (mounts a Pyreon VNode via `@pyreon/runtime-dom`), `cleanup`, `renderHook`, and REACTIVE-GRAPH matchers (`expectSignal` / `expectEffect` / `expectGarbageCollected` / `expectNoReactiveLeak`) that read Pyreon\'s fine-grained reactive graph to assert things no DOM-only testing library can express (fire counts, effect re-runs, retained-node leaks). Re-exported verbatim from `@testing-library/dom`: `screen`, `fireEvent`, `waitFor`, `within`, every `getBy*`/`queryBy*`/`findBy*` query, `prettyDOM`, `configure`, etc. — with the ecosystem\'s battle-tested ARIA + accessible-name edge-case handling. PLUS library-specific helper SUBPATHS (each gated on its optional peer, so the main entry stays dependency-light): `@pyreon/testing/form` (`renderForm`/`fillForm`/`submitForm`/`expectForm`), `/ui` (`renderWithTheme`/`expectComputedStyle`), `/router` (`renderWithRouter`/`expectRouter`), `/store` (`installStoreReset`/`withFreshStore`), `/i18n` (`renderWithI18n`), `/toast` (`expectToast`/`findToast`/`clearToasts`), `/query` (`renderWithQueryClient`/`createTestQueryClient`). Every render harness takes a `wrapper` option — compose providers (theme+router+query) instead of a mega renderApp. Distinct from the PRIVATE framework-internal `@pyreon/test-utils`.',
   category: 'browser',
+  multiplatform: {
+    tier: 'web-only',
+    rationale:
+      'the web testing kit (Testing-Library parity over the DOM renderer); native testing is XCUITest/Compose-test territory',
+  },
   peerDeps: ['@pyreon/runtime-dom', '@pyreon/reactivity'],
   features: [
     'render(ui, options?) — mount a Pyreon component, query-bound (Testing-Library API)',

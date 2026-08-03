@@ -16,6 +16,11 @@ export default defineManifest({
   description:
     'Pyreon adapter for TanStack Query. Fine-grained signals per observer field (data, error, isFetching) so effects only re-run for the fields they read. Re-exports TanStack core (QueryClient, dehydrate/hydrate, etc.) so users import everything from `@pyreon/query`. Real-time hooks `useSubscription` (WebSocket, auto-reconnect, bidirectional) and `useSSE` (Server-Sent Events, read-only) share the QueryClient so cache invalidation from push updates is one line.',
   category: 'universal',
+  multiplatform: {
+    tier: 'web-only',
+    rationale:
+      'wraps TanStack Query (JS runtime cache); native data fetching is useFetch/PyreonFetch',
+  },
   longExample: `import {
   QueryClient,
   QueryClientProvider,

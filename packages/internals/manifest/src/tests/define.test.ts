@@ -9,6 +9,7 @@ describe('defineManifest', () => {
       tagline: 't',
       description: 'd',
       category: 'universal',
+      multiplatform: { tier: 'shared' },
       features: [],
       api: [],
     }
@@ -22,6 +23,7 @@ describe('defineManifest', () => {
       tagline: 't',
       description: 'd',
       category: 'browser',
+      multiplatform: { tier: 'shared' },
       features: [],
       api: [],
     })
@@ -35,6 +37,7 @@ describe('defineManifest', () => {
       tagline: 't',
       description: 'd',
       category: 'universal',
+      multiplatform: { tier: 'shared' },
       features: [],
       api: [
         {
@@ -56,6 +59,7 @@ describe('defineManifest', () => {
       tagline: 't',
       description: 'd',
       category: 'universal',
+      multiplatform: { tier: 'shared' },
       api: [],
     })
   })
@@ -71,6 +75,7 @@ describe('defineManifest', () => {
       tagline: 't',
       description: 'd',
       category: 'universal',
+      multiplatform: { tier: 'shared' },
       features: [],
       api: [],
     })
@@ -90,6 +95,7 @@ describe('defineManifest', () => {
         tagline: 't',
         description: 'd',
         category: 'universal',
+        multiplatform: { tier: 'shared' },
         features: [],
         api: [
           {
@@ -112,6 +118,7 @@ describe('defineManifest', () => {
         tagline: 't',
         description: 'd',
         category: 'universal',
+        multiplatform: { tier: 'shared' },
         features: [],
         api: [
           {
@@ -135,6 +142,7 @@ describe('defineManifest', () => {
         tagline: 't',
         description: 'd',
         category: 'universal',
+        multiplatform: { tier: 'shared' },
         features: [],
         api: [
           {
@@ -162,6 +170,7 @@ describe('defineManifest', () => {
         tagline: 't',
         description: 'd',
         category: 'universal',
+        multiplatform: { tier: 'shared' },
         features: [],
         api: [
           {
@@ -191,6 +200,7 @@ describe('defineManifest', () => {
         tagline: 't',
         description: 'd',
         category: 'browser',
+        multiplatform: { tier: 'shared' },
         features: [],
         api: [
           {

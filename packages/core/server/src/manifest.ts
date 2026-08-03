@@ -8,6 +8,11 @@ export default defineManifest({
   description:
     '`@pyreon/server` is the production HTTP entry point and SSG generator. `createHandler()` produces a `(req: Request) => Promise<Response>` that handles SSR for every request, with a precompiled template (one parse at handler-creation, not per request) and middleware-chain support that short-circuits on the first `Response`. `prerender()` turns the same handler into a static-site generator. `island()` wraps a lazy-loaded component in a `<pyreon-island>` boundary with a hydration strategy (`load` / `idle` / `visible` / `interaction` / `media` / `never`) — the rest of the page stays HTML-only. `serverIsland()` is the INVERSE: a cacheable page with per-request SERVER-rendered holes — the marker self-activates on the client and fetches its fragment from the auto-mounted name-allowlisted endpoint.',
   category: 'server',
+  multiplatform: {
+    tier: 'web-only',
+    rationale:
+      'SSR handler + islands for web deployments; native apps have no server-rendered HTML',
+  },
   features: [
     'createHandler({ App, routes, template?, clientEntry?, middleware?, mode?, collectStyles? })',
     'mode: "string" (renderToString) or "stream" (renderToStream with Suspense out-of-order)',

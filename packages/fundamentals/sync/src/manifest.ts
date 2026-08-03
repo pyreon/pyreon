@@ -14,6 +14,11 @@ export default defineManifest({
   description:
     'A local-first / collaborative sync layer for Pyreon. A synced value is a normal `Signal` (built via `wrapSignal`), so a remote change becomes one `signal.set` → one surgical fine-grained DOM update — never a VDOM re-render + diff. The engine-neutral `CrdtAdapter` seam keeps the reactive bridge engine-free; the real engine (raw Yjs) lives behind `@pyreon/sync/yjs` so importing the core never pulls in `yjs`. Covers offline persistence (IndexedDB), same-origin cross-tab + cross-device WebSocket transport, collaborative text + lists, and a Node/Bun relay with per-room/per-doc authz at `@pyreon/sync/server`. v1 syncs scalar map fields + collaborative `Y.Text` / `Y.Array`.',
   category: 'universal',
+  multiplatform: {
+    tier: 'web-only',
+    rationale:
+      'Yjs CRDT engine + IndexedDB/WebSocket transports; the engine-neutral core is portable but no native runtime exists',
+  },
   features: [
     'syncedSignal / syncedStore — bind a Signal to a CRDT map entry; a synced signal is indistinguishable from a normal signal to the compiler and every effect',
     'Engine-neutral CrdtAdapter / CrdtDoc / CrdtMap seam + an in-memory FakeCrdtAdapter for dependency-free unit tests',

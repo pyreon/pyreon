@@ -8,6 +8,11 @@ export default defineManifest({
   description:
     'Reactive code editor for Pyreon built on CodeMirror 6 — the core editor is ~138 KB gz (measured), ~7x lighter than Monaco\'s ~940 KB gz core. `editor.value` is a writable Signal<string> — reads track reactively, writes push back into CodeMirror. 19 language grammars lazy-loaded on demand. Canvas-based minimap, diff editor, tabbed editor, and two-way signal binding with built-in loop prevention.',
   category: 'browser',
+  multiplatform: {
+    tier: 'web-only',
+    rationale:
+      'wraps CodeMirror 6 (DOM editor engine); consume on native via the `<WebView>` bridge subpath',
+  },
   peerDeps: ['@pyreon/runtime-dom'],
   longExample: `import { createEditor, createTabbedEditor, CodeEditor, DiffEditor, TabbedEditor, bindEditorToSignal, loadLanguage, minimapExtension } from '@pyreon/code'
 import { signal } from '@pyreon/reactivity'

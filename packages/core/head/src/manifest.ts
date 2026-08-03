@@ -8,6 +8,11 @@ export default defineManifest({
   description:
     'Reactive head tag management for Pyreon — `useHead()` collects title, meta, link, script, style, noscript, base, jsonLd entries from any component in the tree (static or signal-driven). `HeadProvider` collects them on the client and syncs to the live `<head>` element; `renderWithHead()` collects them on the server and returns the serialized HTML alongside the rendered app. External `<script>` tags (those with `src`) default to `defer` for non-blocking page load — module scripts, import maps, and inline scripts are left untouched; the `ScriptTag` type carries the full attribute surface (`integrity` / `nomodule` / `referrerpolicy` / `fetchpriority` / …).',
   category: 'browser',
+  multiplatform: {
+    tier: 'web-only',
+    rationale:
+      'document `<head>` management — no equivalent surface exists on iOS/Android',
+  },
   features: [
     'useHead(input | () => input) — register head tags from any component',
     'Reactive: pass a function to re-register on signal change',

@@ -8,6 +8,11 @@ export default defineManifest({
   description:
     'Bootstrap-style flexbox grid for Pyreon where every numeric prop is responsive (single value, mobile-first array, or breakpoint-keyed object). Configuration (`columns`, `gap`, `gutter`, `padding`, `contentAlignX`) cascades through Pyreon context — set it on `Container` and every nested `Row` / `Col` inherits, with per-element overrides for that subtree only. Breakpoint names and column counts are theme-driven, not hardcoded: ship with the default Bootstrap-4 theme (12 columns, xs–xl) or define your own (`{ phone: 0, tablet: 600 }` × `columns: 24`). Built on `@pyreon/unistyle` + `@pyreon/styler`.',
   category: 'browser',
+  multiplatform: {
+    tier: 'shared',
+    rationale:
+      'Container/Row/Col lower (equal-fill + literal fractional Col spans)',
+  },
   longExample: `import { Provider, Container, Row, Col, theme } from '@pyreon/coolgrid'
 
 // Provider scopes breakpoints, rootSize, and grid defaults to the subtree.

@@ -8,6 +8,11 @@ export default defineManifest({
   description:
     'Signal-aware reactive data transforms for Pyreon. Every collection/aggregation function is overloaded: pass a `Signal<T[]>` and get a `Computed<T[]>` that auto-tracks and re-derives when the source changes; pass a plain `T[]` and get a static result. Signal detection is purely `typeof source === "function"` — any function is treated as a reactive source and called inside a computed; a resolved value (already-called signal) takes the static path and never updates. 42 functions across collections (filter, map, flatMap, sortBy — with an asc/desc direction param —, groupBy, countBy, keyBy, uniqBy, take, skip, last, chunk, flatten, find, mapValues, first, compact, reverse, partition, takeWhile, dropWhile, unique, sample, intersection, difference, union — the set ops are signal-aware on BOTH inputs), aggregation (count, sum, min, max, average, reduce, every, some), operators (distinct, scan, combine, zip, merge), timing (debounce, throttle), and search. `pipe(source, ...ops)` collapses a chain into ONE computed (vs N computeds for N separate calls). Also exported as a namespaced `rx` object for dot-notation usage.',
   category: 'universal',
+  multiplatform: {
+    tier: 'shared',
+    rationale:
+      'the namespace form (rx.filter/map/…) lowers per-method to native collection ops; standalone transforms warn',
+  },
   longExample: `import { signal, effect } from '@pyreon/reactivity'
 import { rx, pipe, filter, sortBy, map, flatMap, groupBy, countBy, take, sum, debounce, search } from '@pyreon/rx'
 

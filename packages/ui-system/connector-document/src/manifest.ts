@@ -8,6 +8,11 @@ export default defineManifest({
   description:
     "The bridge between Pyreon's component layer and the `@pyreon/document` rendering pipeline. `extractDocumentTree(vnode)` walks a Pyreon JSX tree, finds components carrying a `_documentType` marker (the 18 `@pyreon/document-primitives`, or your own marked components), resolves their `_documentProps` and `$rocketstyle` CSS-in-JS styles, and produces a serializable `DocNode` tree that `@pyreon/document` renders to PDF, DOCX, XLSX, email, Markdown, and the other output formats. The hot path is fast: real rocketstyle primitives expose their accumulated `.attrs()` chain as `__rs_attrs`, and the extractor runs that chain directly — no styled-wrapper invocation, no dimension resolution.",
   category: 'browser',
+  multiplatform: {
+    tier: 'web-only',
+    rationale:
+      'bridges ui-components to @pyreon/document extraction — both ends are web/document engines',
+  },
   longExample: `import { extractDocumentTree, resolveStyles } from '@pyreon/connector-document'
 import { render } from '@pyreon/document'
 import { DocDocument, DocHeading, DocText } from '@pyreon/document-primitives'

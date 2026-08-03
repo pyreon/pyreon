@@ -18,6 +18,11 @@ export default defineManifest({
   description:
     "Pyreon's full-stack meta-framework. Single `zero({ mode, base, ssg, i18n })` plugin chooses rendering mode (`ssg` / `ssr` / `isr` / `spa`), wires file-system routing under `src/routes/`, and composes with seo / favicon / og-image / ai / i18n-routing / csp plugins. Per-route exports for `meta`, `getStaticPaths`, `revalidate`, `validateSearch`, `loader`, `renderMode` (per-route 'ssr' | 'ssg' | 'spa' | 'isr' hybrid rendering), plus `.server.{ts,tsx,js,jsx}` SIBLINGS exporting `serverLoader(ctx)` — server-only data loaders structurally excluded from the client bundle (client navigations fetch the whole chain's data in ONE request from `GET /_pyreon/data`; layouts cannot carry server loaders). `mode: 'ssr'` STREAMS by default (`ssr: { mode: 'string' }` opts back). Re-exports `island` + `serverIsland` (per-request server-rendered holes in cacheable pages). SSG delivery polish: `ssg.speculationRules`, `ssg.viewTransitions`, `ssg.cssMode: 'asset'`, `ssg.earlyHints`. ISR: tag-based invalidation (`isr.tagsForRequest` + `revalidateTag(tag)`) and a restart-surviving `createFsStore(dir)`. Deployment via per-platform adapters (Vercel / Cloudflare Pages / Netlify / Node / Bun / static). Built-in image / font / resource-hint primitives: bi-modal `<Image>` (a `?optimize` descriptor OR a runtime URL with required `width`+`height`) plus `<OptimizedImage>`, the `<NoOptimize>` subtree opt-out boundary, and `createImageRegistry()`; font preload via `usePreloadFont()` + the `?font` import (auto `@font-face` + hashed-URL descriptor); and `usePreconnect` / `useDnsPrefetch` / `usePreload` typed resource hints — all auto-wired through `zero({ image, font })`.",
   category: 'server',
+  multiplatform: {
+    tier: 'web-only',
+    rationale:
+      'the web meta-framework (SSR/SSG/ISR, Vite, fs-router); native apps are built by PMTC + create-multiplatform, not zero',
+  },
   longExample: `import { defineConfig } from 'vite'
 import pyreon from '@pyreon/vite-plugin'
 import zero from '@pyreon/zero/server'

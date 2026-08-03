@@ -8,6 +8,11 @@ export default defineManifest({
   description:
     'Signal-based internationalization for Pyreon. `createI18n` returns a reactive `t(key, values?)` plus locale-reactive `Intl` formatters `n()` (number/currency/percent), `d()` (date/time) and `rt()` (relative time) — formatters are memoized per (locale, options). Translations support `{{name}}` interpolation, inline format specifiers (`{{amount, currency}}`, `{{when, date}}`, `{{n, relativetime, day}}`), `_one`/`_other`/`_zero` plural suffixes, `context` (gender/variant), `defaultValue`, and `$t(key)` nesting. Namespace lazy loading deduplicates concurrent requests. Two entry points: `@pyreon/i18n` (full — includes JSX `Trans` component, `I18nProvider`, `useI18n`) and `@pyreon/i18n/core` (framework-agnostic — only `createI18n`, `interpolate`, `resolvePluralCategory`, types). The `/core` entry transitively depends only on `@pyreon/reactivity` with zero JSX, making it suitable for backend translation pipelines, edge workers, and non-Pyreon frontends.',
   category: 'universal',
+  multiplatform: {
+    tier: 'service-backend',
+    rationale:
+      'createI18n core (t(), interpolation, one/other plurals) lowers to PyreonI18n; translation device-proven both platforms',
+  },
   longExample: `import { createI18n, I18nProvider, useI18n, Trans } from '@pyreon/i18n'
 
 // Create an i18n instance with initial messages:

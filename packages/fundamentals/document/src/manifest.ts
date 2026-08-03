@@ -8,6 +8,11 @@ export default defineManifest({
   description:
     'Universal document rendering for Pyreon. One template, every output format: HTML, PDF, DOCX, XLSX, PPTX, email, Markdown, plain text, CSV, SVG, JSON, JSONL, Slack, Teams, Discord, Telegram, Notion, Confluence, WhatsApp, Google Chat. Heavy renderers are lazy-loaded — chunks (PDF ~3MB pdfmake + fonts, DOCX ~700KB, XLSX ~1.1MB, PPTX ~400KB) only load when invoked. The vendored architecture means one npm install covers every format; apps that never render to a heavy format never pay its chunk cost. Supports both JSX primitives and a fluent builder API.',
   category: 'universal',
+  multiplatform: {
+    tier: 'web-only',
+    rationale:
+      'wraps pdfmake/docx/exceljs/pptxgenjs (browser/node document engines); no native lowering',
+  },
   longExample: `import { Document, Page, Heading, Text, Table, Image, List, Code, Divider, render, createDocument, download } from '@pyreon/document'
 
 // JSX primitives — compose a document tree

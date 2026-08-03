@@ -8,6 +8,11 @@ export default defineManifest({
   description:
     'CSS-transition animation engine for Pyreon. One factory — `kinetic(tag)` — produces a renderable, chainable component that animates an element as it enters and leaves the DOM. No JavaScript animation loop: kinetic applies your enter/leave classes or inline styles across a double-`requestAnimationFrame` and lets the browser\'s compositor interpolate, listening for `transitionend` / `animationend` (with a safety timeout) to know when it\'s done. Four modes: transition (single element enter/leave), collapse (height 0 ↔ auto), stagger (sequenced children), group (keyed-list enter/exit). Reduced motion is respected automatically; SSR always emits initially-hidden children with the hidden-state class inlined so scroll-reveal content reaches crawlers.',
   category: 'browser',
+  multiplatform: {
+    tier: 'web-only',
+    rationale:
+      'CSS-transition animation engine (classes + rAF over real CSSOM); native animation is the primitives\' animate vocabulary, not this runtime',
+  },
   peerDeps: ['@pyreon/core', '@pyreon/reactivity', '@pyreon/runtime-dom'],
   longExample: `import { kinetic, fade, slideUp } from '@pyreon/kinetic'
 import { signal } from '@pyreon/reactivity'

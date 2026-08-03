@@ -8,6 +8,11 @@ export default defineManifest({
   description:
     'Surgical signal-to-DOM renderer with zero virtual DOM overhead. The compiler emits `_tpl()` (cloneNode-based template instantiation) + `_bind()` (per-node reactive bindings) calls that mount directly to the DOM without VNode diffing. Reactive text uses `TextNode.data` assignment (not `.textContent`) for minimal DOM mutation. Supports SVG/MathML namespace auto-detection (67 tags), custom elements (props as properties), CSS transitions via `<Transition>` / `<TransitionGroup>`, and component caching via `<KeepAlive>`. Dev-mode warnings use the bundler-agnostic bare `process.env.NODE_ENV` production gate (auto-replaced by every modern bundler) so they tree-shake to zero bytes in production Vite builds.',
   category: 'browser',
+  multiplatform: {
+    tier: 'web-only',
+    rationale:
+      'the DOM renderer — on native, PMTC emits SwiftUI/Compose instead of running a renderer',
+  },
   longExample: `import { mount, hydrateRoot, Transition, TransitionGroup, KeepAlive } from "@pyreon/runtime-dom"
 import { signal } from "@pyreon/reactivity"
 import { Show } from "@pyreon/core"

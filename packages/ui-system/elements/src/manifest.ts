@@ -8,6 +8,11 @@ export default defineManifest({
   description:
     "The structural layer every styled / rocketstyle component renders through. `Element` is the responsive flexbox block (direction / alignX / alignY / gap / block + before/after content slots); `Text` is inline typography; `List` is a flowing-children container with the four-overload Iterator data API; `Overlay` is a positioned layer with backdrop driven by `useOverlay` (viewport flip, ESC, click-outside, scroll tracking, hover delay — never reimplement this); `Portal` renders children outside the DOM hierarchy into a per-instance wrapper. Element has a 2026-Q2 simple-path fast path that inlines the Wrapper helper for non-compound, non-needsFix tags (31-45% faster mount) — its rendered VNode then exposes the HTML tag as `props.as` and layout under `props.$element.{...}` instead of flat props.",
   category: 'browser',
+  multiplatform: {
+    tier: 'shared',
+    rationale:
+      'Element→Stack and Text lower via elements-native; the rich web-only surfaces (Overlay/Portal/List slots) warn per-construct',
+  },
   features: [
     'Element — responsive flexbox block: direction / alignX / alignY / gap / block, beforeContent / afterContent slots, equalBeforeAfter (ResizeObserver-tracked)',
     'Text — inline typography primitive',

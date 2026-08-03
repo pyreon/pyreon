@@ -8,6 +8,11 @@ export default defineManifest({
   description:
     'The preset catalog for `@pyreon/kinetic`. Every preset is a plain `Preset` object — style-form fields (`enterStyle` / `enterToStyle` / `enterTransition` + leave siblings) and/or class-form fields (`enter` / `enterFrom` / `enterTo` + leave siblings) — passed straight to `kinetic(...).preset(...)`. 122 ready-made presets ship as named exports AND on the `presets` map (for dynamic selection by name); five factories (`createFade` / `createSlide` / `createScale` / `createRotate` / `createBlur`) generate parameterized variants; five utilities (`compose` / `withDuration` / `withEasing` / `withDelay` / `reverse`) transform presets without forking them. Zero dependencies, framework-agnostic — presets are plain objects.',
   category: 'universal',
+  multiplatform: {
+    tier: 'web-only',
+    rationale:
+      'preset pack for the kinetic CSS engine',
+  },
   longExample: `import { kinetic } from '@pyreon/kinetic'
 import {
   fadeUp, bounceIn, presets,

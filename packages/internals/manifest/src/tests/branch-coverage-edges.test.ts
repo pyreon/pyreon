@@ -20,6 +20,7 @@ describe('define — manifest without `api`', () => {
       tagline: 'Test pkg',
       description: 'Edge.',
       category: 'universal',
+      multiplatform: { tier: 'shared' },
       features: [],
       api: [],
       longExample: 'Test pkg.',
@@ -78,6 +79,7 @@ describe('render — empty + deprecated + stability edges', () => {
     tagline: 'Test pkg',
     description: '',
     category: 'universal',
+    multiplatform: { tier: 'shared' },
     features: [],
     longExample: 'Test pkg.',
     api: [
@@ -127,6 +129,7 @@ describe('render — empty + deprecated + stability edges', () => {
       tagline: 'Empty',
       description: '',
       category: 'universal',
+      multiplatform: { tier: 'shared' },
       features: [],
       longExample: 'Empty.',
       api: [

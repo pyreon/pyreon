@@ -8,6 +8,11 @@ export default defineManifest({
   description:
     '18 rocketstyle-based document primitives — `DocDocument`, `DocPage`, `DocSection`, `DocRow`, `DocColumn`, `DocHeading`, `DocText`, `DocLink`, `DocImage`, `DocTable`, `DocList`, `DocListItem`, `DocCode`, `DocDivider`, `DocSpacer`, `DocButton`, `DocQuote`, `DocPageBreak`. The same JSX tree renders in the browser AND exports to 14+ output formats (PDF, DOCX, XLSX, PPTX, HTML, Markdown, email, Slack, Teams, etc.). Primitives carry `_documentType` static markers; `extractDocumentTree` (from `@pyreon/connector-document`) walks the tree to produce a `DocNode` for `@pyreon/document`\\\'s `render()` to consume. `DocDocument` accepts reactive accessors for `title` / `author` / `subject` — function values are stored in `_documentProps` and resolved at extraction time so each export click reads the LIVE value from the underlying signal.',
   category: 'browser',
+  multiplatform: {
+    tier: 'web-only',
+    rationale:
+      'document-authoring primitives feeding the pdfmake/docx renderers',
+  },
   features: [
     '18 primitives covering structure, text, lists, tables, code, layout',
     'Same component tree renders in browser AND exports to 14+ formats',

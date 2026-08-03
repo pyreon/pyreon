@@ -8,6 +8,11 @@ export default defineManifest({
   description:
     'Zero-setup accessibility building blocks for Pyreon. `announce(message)` speaks status updates and errors to screen readers via an `aria-live` region that is created lazily on first call — no provider, no component to mount, SSR-safe (no-op on the server). `<VisuallyHidden>` renders content that is invisible on screen but kept in the accessibility tree (unlike `display:none`). `<LiveRegion>` is the declarative complement to `announce()` — a persistent `aria-live` region you place in your tree and drive with a signal, so screen readers announce every content change with zero wiring. `createA11yId(prefix?)` produces stable, SSR-safe ids for ARIA relationship attributes (`aria-labelledby` / `aria-describedby` / `for`). The shared foundation other Pyreon packages build on for out-of-the-box accessibility.',
   category: 'browser',
+  multiplatform: {
+    tier: 'web-only',
+    rationale:
+      'DOM/ARIA utilities; the native a11y story is the AccessibilityProps vocabulary on @pyreon/primitives',
+  },
   features: [
     'announce(message) — speak status/errors to screen readers via a lazily-created aria-live region; zero setup, no provider, SSR-safe no-op',
     'polite (default, queued) and assertive (interrupts) politeness; clearAfter to auto-empty stale text; identical repeats re-announced via clear-then-set',

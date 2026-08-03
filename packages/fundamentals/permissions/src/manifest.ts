@@ -8,6 +8,11 @@ export default defineManifest({
   description:
     'Universal reactive permissions for Pyreon. A permission is a boolean or a predicate function — check with `can(key, context?)` which reads as a reactive signal in effects, computeds, and JSX. Supports wildcard matching (`posts.*` for one segment, `posts.**` for any depth below, `*` for everything — most-specific-first so a `**`/exact deny overrides a broader grant), inverse and multi-checks, throw-on-deny via `can.assert()`, and runtime updates via `can.set()` / `can.patch()` / `can.clear()`. Works for any authorization model: RBAC, ABAC, feature flags, subscription tiers. PermissionsProvider/usePermissions context pattern enables SSR and testing isolation.',
   category: 'universal',
+  multiplatform: {
+    tier: 'service-backend',
+    rationale:
+      'usePermissions read surface lowers to PyreonPermissions (callable can/all/any)',
+  },
   longExample: `import { createPermissions, PermissionsProvider, usePermissions } from '@pyreon/permissions'
 
 // Create a reactive permissions instance:

@@ -18,6 +18,11 @@ export default defineManifest({
   description:
     'Signal-based hooks for Pyreon — 55 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.',
   category: 'universal',
+  multiplatform: {
+    tier: 'service-backend',
+    rationale:
+      'the L2 service-hook layer: every hook in PMTC\'s NATIVE_LOWERED_HOOKS (29) has a web implementation and Swift/Kotlin runtime ports; the remaining hooks are web conveniences',
+  },
   longExample: `import {
   // State
   useToggle, useCounter, usePrevious, useLatest, useControllableState,

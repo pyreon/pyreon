@@ -474,3 +474,89 @@ That's still multi-quarter work. Not on the current roadmap.
 6. Write your library, choose your tier, verify with the appropriate test:
    - Tier 2: PMTC integration fixture (above).
    - Tier 3: per-target runtime port + PMTC parser update.
+
+## The declared tier of every package
+
+Every package manifest declares its multiplatform story as data
+(`multiplatform: { tier, rationale }` — see `@pyreon/manifest`), gated by
+`check-multiplatform-tier` in `validate-fast`, so a new package cannot
+silently default to web-only. The prose above is the narrative; this table is
+the machine-checked contract.
+
+{/* gen:multiplatform-tiers:start */}
+
+> Generated from each package manifest's `multiplatform` declaration by
+> `bun scripts/check-multiplatform-tier.ts --write-table` — edit the
+> manifests, not this table. The gate fails when they drift.
+
+### `shared` — the authoring surface lowers on every target (10)
+
+| Package | Why |
+| --- | --- |
+| `@pyreon/core` | the JSX authoring surface PMTC compiles — For/Show/Suspense/ErrorBoundary lower; Switch/Match/Dynamic/Portal/Index warn with concrete alternatives |
+| `@pyreon/primitives` | the 15 canonical primitives: real web DOM runtime AND SwiftUI/Compose emit — the compiler's native target vocabulary |
+| `@pyreon/reactivity` | L0 of the shared-code model: signal/computed/effect lower as-is; PyreonReactivity runtime ports on both native targets |
+| `@pyreon/rx` | the namespace form (rx.filter/map/…) lowers per-method to native collection ops; standalone transforms warn |
+| `@pyreon/coolgrid` | Container/Row/Col lower (equal-fill + literal fractional Col spans) |
+| `@pyreon/ui-core` | `<PyreonUI>` lowers transparently on native (theme is compile-time; dark mode is the system read) |
+| `@pyreon/attrs` | attrs(Base) default-prop HOC lowers via attrs-native (use-site wins) |
+| `@pyreon/elements` | Element→Stack and Text lower via elements-native; the rich web-only surfaces (Overlay/Portal/List slots) warn per-construct |
+| `@pyreon/styler` | styled(Prim) + defineTheme tokens lower via the styler-native frontend; the CSS-in-JS runtime is web, the authored patterns compile |
+| `@pyreon/rocketstyle` | rocketstyle-over-primitive chains lower (static cascade + one dynamic dimension) via rocketstyle-native |
+
+### `service-backend` — one API, per-target runtime backends (9)
+
+| Package | Why |
+| --- | --- |
+| `@pyreon/router` | web history/hash router + @pyreon/native-router-{swift,kotlin} ports; nav/params/guards/loaders device-proven |
+| `@pyreon/form` | useForm v2 + useFieldArray lower to PyreonForm/PyreonFieldArray; device-proven both platforms |
+| `@pyreon/permissions` | usePermissions read surface lowers to PyreonPermissions (callable can/all/any) |
+| `@pyreon/storage` | useStorage family over @PyreonAppStorage (Swift) / rememberPyreonStorage (Kotlin); persistence device-proven |
+| `@pyreon/hooks` | the L2 service-hook layer: every hook in PMTC's NATIVE_LOWERED_HOOKS (29) has a web implementation and Swift/Kotlin runtime ports; the remaining hooks are web conveniences |
+| `@pyreon/machine` | createMachine lowers to PyreonMachine on both targets; transition device-asserted |
+| `@pyreon/state-tree` | model() lowers to PyreonModel singletons on both targets |
+| `@pyreon/i18n` | createI18n core (t(), interpolation, one/other plurals) lowers to PyreonI18n; translation device-proven both platforms |
+| `@pyreon/store` | defineStore lowers to @Observable singleton (Swift) / mutableStateOf object (Kotlin); cross-screen state device-proven |
+
+### `web-only` — architecturally coupled to the web platform (36)
+
+| Package | Why |
+| --- | --- |
+| `@pyreon/runtime-dom` | the DOM renderer — on native, PMTC emits SwiftUI/Compose instead of running a renderer |
+| `@pyreon/server` | SSR handler + islands for web deployments; native apps have no server-rendered HTML |
+| `@pyreon/runtime-server` | server-side HTML rendering (SSR/streaming) — a web-platform concern with no native analogue |
+| `@pyreon/head` | document `<head>` management — no equivalent surface exists on iOS/Android |
+| `@pyreon/compiler` | the web JSX compiler + build tooling itself; the native sibling is @pyreon/native-compiler — nothing here ships to an app runtime |
+| `@pyreon/sized-map` | pure-logic LRU map with no platform edge, but PMTC has no class-API lowering (new SizedMap() warns); usable in `<Web>` branches |
+| `@pyreon/validate` | pure-logic schema DSL; per-validator native lowering is tracked (Tier-2 Strategy A) but not shipped — validators run web-side today |
+| `@pyreon/dnd` | wraps pragmatic-drag-and-drop (DOM events/pointers); native drag interactions are platform-gesture territory |
+| `@pyreon/toast` | the store core is pure logic but `<Toaster>` is DOM; no native runtime port yet |
+| `@pyreon/hotkeys` | keyboard-shortcut layer over DOM KeyboardEvent; touch platforms have no hardware-shortcut surface |
+| `@pyreon/code` | wraps CodeMirror 6 (DOM editor engine); consume on native via the `<WebView>` bridge subpath |
+| `@pyreon/charts` | wraps ECharts (browser canvas engine); consume on native via the `<WebView>` bridge subpath |
+| `@pyreon/document` | wraps pdfmake/docx/exceljs/pptxgenjs (browser/node document engines); no native lowering |
+| `@pyreon/url-state` | URL/query-string state — the web address bar is the platform surface; native deep links are the router's territory |
+| `@pyreon/table` | headless table over web rendering patterns; PMTC has no lowering — native lists are `<For>` + primitives |
+| `@pyreon/http` | universal web/node HTTP client (WHATWG fetch); PMTC has no lowering for createHttp — native networking is useFetch + the PyreonHttp runtime layer, convergence tracked |
+| `@pyreon/virtual` | DOM virtualization (scroll containers, measured rows); native lists are lazy by construction (LazyColumn/LazyVStack) |
+| `@pyreon/rich-text` | wraps TipTap/ProseMirror (DOM editor); consume on native via the `<WebView>` bridge subpath |
+| `@pyreon/a11y` | DOM/ARIA utilities; the native a11y story is the AccessibilityProps vocabulary on @pyreon/primitives |
+| `@pyreon/feature` | composite over query/form/store/validation — lowers only when every dependency does; tracked as a Tier-2 composite |
+| `@pyreon/sync` | Yjs CRDT engine + IndexedDB/WebSocket transports; the engine-neutral core is portable but no native runtime exists |
+| `@pyreon/query` | wraps TanStack Query (JS runtime cache); native data fetching is useFetch/PyreonFetch |
+| `@pyreon/validation` | Standard Schema adapters (zod/valibot/arktype are JS libraries); per-validator lowering tracked, not shipped |
+| `@pyreon/flow` | wraps elkjs + SVG rendering (browser layout engine); consume on native via the `<WebView>` bridge subpath |
+| `@pyreon/lint` | lint tooling — runs at dev time, not app runtime |
+| `@pyreon/mcp` | the MCP server — dev/AI tooling, not app runtime |
+| `@pyreon/testing` | the web testing kit (Testing-Library parity over the DOM renderer); native testing is XCUITest/Compose-test territory |
+| `@pyreon/atlas` | the component workbench — dev tooling that runs in a browser, not app runtime |
+| `@pyreon/loom` | the dependency observatory — dev tooling, not app runtime |
+| `@pyreon/kinetic-presets` | preset pack for the kinetic CSS engine |
+| `@pyreon/connector-document` | bridges ui-components to @pyreon/document extraction — both ends are web/document engines |
+| `@pyreon/document-primitives` | document-authoring primitives feeding the pdfmake/docx renderers |
+| `@pyreon/kinetic` | CSS-transition animation engine (classes + rAF over real CSSOM); native animation is the primitives' animate vocabulary, not this runtime |
+| `@pyreon/unistyle` | responsive breakpoints + CSS-variable theming over real CSS; native theming is compile-time tokens + the 2-bucket size-class model |
+| `@pyreon/zero-content` | markdown/MDX content pipeline for zero's web rendering |
+| `@pyreon/zero` | the web meta-framework (SSR/SSG/ISR, Vite, fs-router); native apps are built by PMTC + create-multiplatform, not zero |
+
+{/* gen:multiplatform-tiers:end */}

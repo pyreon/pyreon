@@ -8,6 +8,11 @@ export default defineManifest({
   description:
     'Reactive URL search-param state for Pyreon. Each search parameter is a signal synced with the browser URL. Supports single-param mode (`useUrlState("page", 1)`) and schema mode (`useUrlState({ page: 1, sort: "name" })`). Auto-coerces types (numbers, booleans, arrays), uses `replaceState` to avoid history spam, supports configurable debounce for high-frequency updates, and is SSR-safe (signals initialize to the default value on the server — it does NOT read the request URL; reads `window.location` on the client).',
   category: 'universal',
+  multiplatform: {
+    tier: 'web-only',
+    rationale:
+      'URL/query-string state — the web address bar is the platform surface; native deep links are the router\'s territory',
+  },
   longExample: `import { useUrlState, setUrlRouter } from '@pyreon/url-state'
 import { signal } from '@pyreon/reactivity'
 

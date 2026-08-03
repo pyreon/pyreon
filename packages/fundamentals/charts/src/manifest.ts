@@ -8,6 +8,11 @@ export default defineManifest({
   description:
     'Reactive ECharts bridge for Pyreon. Zero ECharts bytes in your bundle until a chart actually renders — chart types and components are auto-detected from your options and dynamically imported on demand. Signal-driven options reactively update the chart when tracked signals change. `useChart` is the low-level hook with full control; `<Chart />` is the declarative component with event binding. Both auto-resize via ResizeObserver and clean up on unmount.',
   category: 'browser',
+  multiplatform: {
+    tier: 'web-only',
+    rationale:
+      'wraps ECharts (browser canvas engine); consume on native via the `<WebView>` bridge subpath',
+  },
   longExample: `import { Chart, useChart, type EChartsOption, type ComposeOption, type BarSeriesOption, type LineSeriesOption } from '@pyreon/charts'
 import { signal } from '@pyreon/reactivity'
 

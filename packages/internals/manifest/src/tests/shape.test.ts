@@ -8,6 +8,7 @@ describe('PackageManifest — type shape', () => {
       tagline: 't',
       description: 'd',
       category: 'universal' as const,
+      multiplatform: { tier: 'shared' as const },
       features: ['f'],
       api: [],
     } satisfies PackageManifest
@@ -20,6 +21,7 @@ describe('PackageManifest — type shape', () => {
       tagline: 't',
       description: 'd',
       category: 'browser' as const,
+      multiplatform: { tier: 'shared' as const },
       peerDeps: ['@pyreon/runtime-dom'],
       features: ['f1', 'f2'],
       gotchas: ['g1'],
@@ -56,6 +58,22 @@ describe('PackageManifest — type shape', () => {
       },
     } satisfies ApiEntry
     expectTypeOf(entry).toExtend<ApiEntry>()
+  })
+
+  it('rejects web-only without a rationale at compile time', () => {
+    // The discriminated union's load-bearing rule: "why can this never
+    // lower?" is not optional for a web-only declaration.
+    const _bad = {
+      name: 'x',
+      tagline: 't',
+      description: 'd',
+      category: 'universal' as const,
+      // @ts-expect-error — tier 'web-only' REQUIRES a rationale
+      multiplatform: { tier: 'web-only' as const },
+      features: [],
+      api: [],
+    } satisfies PackageManifest
+    void _bad
   })
 
   it('rejects unknown category values at compile time', () => {
@@ -114,6 +132,7 @@ describe('PackageManifest — type shape', () => {
       tagline: 't',
       description: 'd',
       category: 'universal',
+      multiplatform: { tier: 'shared' },
       features: [],
       api: [],
     }

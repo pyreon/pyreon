@@ -14,6 +14,11 @@ export default defineManifest({
   description:
     'Reactive flow diagrams for Pyreon. Signal-native nodes and edges, pan/zoom via pointer events + CSS transforms, auto-layout via lazy-loaded elkjs. No D3 dependency. Each node mounts exactly once across the lifetime of the graph; drags and selection patches are O(1) via per-node reactive accessors, so a 60fps drag in a 1000-node graph stays cheap.',
   category: 'browser',
+  multiplatform: {
+    tier: 'web-only',
+    rationale:
+      'wraps elkjs + SVG rendering (browser layout engine); consume on native via the `<WebView>` bridge subpath',
+  },
   peerDeps: ['@pyreon/runtime-dom'],
   longExample: `import { createFlow, useFlow, Flow, Background, Controls, MiniMap, Handle, Position, type NodeComponentProps } from '@pyreon/flow'
 
