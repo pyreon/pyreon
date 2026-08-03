@@ -109,7 +109,7 @@ export function DocsView(props: { model: WorkbenchModel }) {
           {() => {
             const state = sourceState()
             if (state === 'shown' && sourceFor === c.id) {
-              return <C.UsagePre data-testid="docs-source">{source()}</C.UsagePre>
+              return <C.UsagePre data-testid="docs-source">{() => source()}</C.UsagePre>
             }
             if (state === 'unavailable') {
               return <C.DocsDesc>Source is served by `atlas dev` — start the workbench with it to read files here.</C.DocsDesc>

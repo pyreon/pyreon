@@ -77,7 +77,7 @@ export function SearchDialog(props: { model: WorkbenchModel }) {
                 onClick={() => select(id)}
                 onMouseEnter={() => activeIdx.set(i)}
               >
-                <C.SearchRowName>{nameOf(id)}</C.SearchRowName>
+                <C.SearchRowName>{() => nameOf(id)}</C.SearchRowName>
                 <C.SearchRowPath>{`components/${id}`}</C.SearchRowPath>
                 <Show when={() => activeIdx() === i}>
                   <C.SearchEnterHint>↵</C.SearchEnterHint>

@@ -5,7 +5,7 @@
  * shortcuts, and composes the region views (`./views/*`) inside the themed
  * `<PyreonUI>` + `<Shell>`. All chrome + state live in their own modules.
  */
-import { Show } from '@pyreon/core'
+import { isServer, Show } from '@pyreon/core'
 import { useEventListener } from '@pyreon/hooks'
 import { createGlobalStyle } from '@pyreon/styler'
 import { PyreonUI } from '@pyreon/ui-core'
@@ -115,6 +115,7 @@ export function Workbench(props: WorkbenchProps) {
     ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
   }
   const dragMove = (e: PointerEvent) => {
+    if (isServer) return
     if (dragging === 'sidebar') m.sidebarW.set(Math.min(420, Math.max(200, e.clientX)))
     else if (dragging === 'panel') m.panelW.set(Math.min(560, Math.max(280, window.innerWidth - e.clientX)))
   }
