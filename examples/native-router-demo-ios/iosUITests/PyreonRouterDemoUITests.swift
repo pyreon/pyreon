@@ -770,6 +770,69 @@ final class PyreonRouterDemoUITests: XCTestCase {
         )
     }
 
+    // Platform-APIs row — INBOUND deep links, which had no vocabulary at all
+    // (`useLinking()` is outbound-only, so an app could not be opened at a
+    // route). Both arrival shapes are asserted, because they take different
+    // paths through the runtime and only one of them is the obvious case:
+    //
+    //   COLD — the app is launched BY the URL. No router exists yet, so
+    //          PyreonDeepLink holds the path and the first router consumes it
+    //          through its `initialPath` default.
+    //   WARM — the app is already running and is handed another URL. A router
+    //          exists, so the link is delivered straight to it.
+    //
+    // A cold-only test would pass on an implementation that drops every link
+    // after launch, which is the more common real interaction (tapping a link
+    // while the app sits in the background).
+    func test_deepLinkOpensTheRouteColdAndWarm() throws {
+        let app = XCUIApplication()
+
+        // COLD: launch via the URL itself.
+        app.launch()
+        XCTAssertTrue(
+            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            "Home page did not render"
+        )
+        app.terminate()
+
+        openURL("pyreondemo://about")
+        XCTAssertTrue(
+            app.otherElements["about-page"].firstMatch.waitForExistence(timeout: 30),
+            "A cold launch via pyreondemo://about did not open the about route — the "
+                + "pending link was not consumed by the router's initialPath"
+        )
+
+        // WARM: the app is already running; hand it a different link.
+        openURL("pyreondemo://styles")
+        XCTAssertTrue(
+            app.otherElements["styles-page"].firstMatch.waitForExistence(timeout: 20),
+            "A warm deep link did not navigate — the live router is not receiving "
+                + "links, so every link after launch is dropped"
+        )
+    }
+
+    /// Open a URL the way the OS would. XCUITest has no API for this, so it
+    /// goes through Safari's address bar — the standard XCUITest approach, and
+    /// closer to a real user's path than any private hook would be.
+    private func openURL(_ url: String) {
+        let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
+        safari.launch()
+        XCTAssertTrue(safari.wait(for: .runningForeground, timeout: 20), "Safari did not open")
+
+        // The address field is a text field on the URL bar; its identifier has
+        // moved across iOS versions, so match either of the shipped ones.
+        let field = safari.textFields["Address"].exists
+            ? safari.textFields["Address"]
+            : safari.textFields.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 20), "Safari address field missing")
+        field.tap()
+        field.typeText("\(url)\n")
+
+        // Safari asks before handing off to another app.
+        let open = safari.buttons["Open"]
+        if open.waitForExistence(timeout: 10) { open.tap() }
+    }
+
 
     // Styling row — @pyreon/coolgrid, listed as supported since it landed but
     // never rendered on a device. The 12-column split is ASYMMETRIC (3/9) so

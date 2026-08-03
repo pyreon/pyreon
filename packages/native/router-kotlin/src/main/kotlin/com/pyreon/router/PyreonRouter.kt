@@ -126,7 +126,11 @@ public val LocalRouterDepth: androidx.compose.runtime.ProvidableCompositionLocal
  * | `router.reset()`                          | `router.reset()`             |
  */
 public class PyreonRouter(
-    initialPath: List<String> = emptyList(),
+    // Defaults to any pending inbound DEEP LINK, so an app launched by a URL
+    // opens at that route with no host or emit change — the emitted
+    // `PyreonRouter()` picks it up through this default. An explicit
+    // initialPath still wins.
+    initialPath: List<String> = PyreonDeepLink.takePendingPath(),
     routes: List<RouteRecord> = emptyList(),
     notFoundComponent: (@Composable () -> Unit)? = null,
 ) {
@@ -135,6 +139,17 @@ public class PyreonRouter(
      * branching. Compose observers recompose when this changes.
      */
     public val path: MutableState<List<String>> = mutableStateOf(initialPath)
+
+    init {
+        // WARM deep links — a URL handed to an app that is already running.
+        // The newest router owns them: PyreonDeepLink keeps a SINGLE listener
+        // slot, so registering here replaces any previous router's and a dead
+        // router's closure cannot accumulate. That bound is why no dispose
+        // handle is threaded through the emitted `remember { PyreonRouter() }`
+        // — with one slot the worst case is one stale closure, replaced by the
+        // next router that is constructed.
+        PyreonDeepLink.setListener { path -> push(path) }
+    }
 
     /** Phase B8 — forward-history stack. Captures paths popped via
      *  [back] so a subsequent [forward] can re-push them. Mirrors
