@@ -27,8 +27,37 @@
 // transition fires via the listener's `onClosed` callback, keeping ONE
 // state-machine driver (the listener) for both local and remote closes.
 
+// ## Callback threading
+//
+// OkHttp delivers every `WebSocketListener` callback on its own reader thread,
+// and the handlers below drive [PyreonWebSocket]'s `MutableState` fields
+// (`isConnected` / `messages` / `lastMessage` / `error`). Writing Compose state
+// off the main thread races the UI thread's measure/layout, and Compose throws:
+//
+//   IllegalArgumentException: Detected multithreaded access to
+//   SnapshotStateObserver
+//
+// This is not theoretical and it is not latent. `native-router-demo-android`
+// calls `useWebSocket`, and its device gate fails intermittently with exactly
+// that error on `tenThousandRowListIsLazyAndDeepRowReachable` — a 10,000-row
+// lazy list is simply the frame most likely to still be laying out when a
+// socket callback lands. The race needs that collision, so the same commit
+// passes on one run and fails on the next, which is why it read as flake for
+// as long as it did.
+//
+// Hopping every callback to the main looper puts the writes back on the thread
+// that owns the state. [rememberPyreonGeolocation] already passed
+// `Looper.getMainLooper()` to `requestLocationUpdates`; this call site had
+// diverged from that pattern.
+//
+// No compile-level gate can catch this — the emitted Kotlin typechecks clean
+// with the bug present (verified by reverting and re-running). The device gate
+// is the only proof.
+
 package com.pyreon.runtime
 
+import android.os.Handler
+import android.os.Looper
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -36,6 +65,20 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 
 private val sharedOkHttpClient: OkHttpClient by lazy { OkHttpClient() }
+
+/**
+ * Main-thread hop for listener callbacks. Posts unconditionally rather than
+ * checking `Looper.myLooper() == mainLooper` first: OkHttp never delivers on
+ * main, so the check would always take the post branch anyway, and posting
+ * unconditionally keeps the ORDER of `onOpen`/`onMessage`/`onClosed` intact —
+ * a "run inline when already on main" fast path can reorder a later callback
+ * ahead of an earlier queued one.
+ */
+private val mainThread: Handler by lazy { Handler(Looper.getMainLooper()) }
+
+private fun onMain(block: () -> Unit) {
+    mainThread.post(block)
+}
 
 /**
  * Open a live socket to [url] over the shared OkHttp client — the default
@@ -49,19 +92,19 @@ public fun PyreonWebSocket.connect(url: String) {
             Request.Builder().url(url).build(),
             object : WebSocketListener() {
                 override fun onOpen(webSocket: WebSocket, response: Response) {
-                    handlers.onOpen()
+                    onMain { handlers.onOpen() }
                 }
 
                 override fun onMessage(webSocket: WebSocket, text: String) {
-                    handlers.onMessage(text)
+                    onMain { handlers.onMessage(text) }
                 }
 
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                    handlers.onError(t)
+                    onMain { handlers.onError(t) }
                 }
 
                 override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                    handlers.onClosed()
+                    onMain { handlers.onClosed() }
                 }
             },
         )

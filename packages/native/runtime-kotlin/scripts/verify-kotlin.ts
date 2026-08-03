@@ -467,6 +467,27 @@ class NotificationManagerCompat {
 // transport file uses, mirrored EXACTLY (no superset — a superset stub
 // masks; the same rule the compiler's kotlin-stubs.ts documents 4×).
 // Gated behind --service=PyreonWebSocketOkHttp.
+// android.os for the WEBSOCKET service — EXACTLY what PyreonWebSocketOkHttp.kt
+// touches: a Handler built from the main Looper, used only to move OkHttp's
+// reader-thread callbacks onto the thread that owns the Compose state.
+// Deliberately separate from ANDROID_OS_STUBS (which mirrors Build.VERSION for
+// PyreonNotifications): each service compiles alone against only its own stubs,
+// so merging the two would hand every notification check a Handler it never
+// uses — a superset, and supersets mask.
+const ANDROID_OS_HANDLER_STUBS = `package android.os
+
+public class Looper {
+  public companion object {
+    public fun getMainLooper(): Looper = Looper()
+  }
+}
+
+public class Handler(looper: Looper) {
+  @Suppress("UNUSED_PARAMETER")
+  public fun post(r: Runnable): Boolean = true
+}
+`
+
 const OKHTTP3_STUBS = `package okhttp3
 
 open class OkHttpClient {
@@ -803,6 +824,8 @@ try {
   const okhttpPath = join(tempDir, 'OkHttp3.kt')
   if (SERVICE === 'PyreonWebSocketOkHttp') {
     writeFileSync(okhttpPath, OKHTTP3_STUBS, 'utf8')
+    // The transport hops every listener callback to the main looper.
+    writeFileSync(join(tempDir, 'AndroidOsHandler.kt'), ANDROID_OS_HANDLER_STUBS, 'utf8')
   }
 
   const jarPath = join(tempDir, 'pyreon-runtime.jar')
@@ -915,7 +938,11 @@ try {
   // compile needs the sibling PyreonWebSocket.kt source + the okhttp3 stubs.
   const okhttpExtras =
     SERVICE === 'PyreonWebSocketOkHttp'
-      ? [okhttpPath, resolve(PACKAGE_ROOT, 'src/main/kotlin/com/pyreon/runtime/PyreonWebSocket.kt')]
+      ? [
+          okhttpPath,
+          join(tempDir, 'AndroidOsHandler.kt'),
+          resolve(PACKAGE_ROOT, 'src/main/kotlin/com/pyreon/runtime/PyreonWebSocket.kt'),
+        ]
       : []
 
   const kotlincArgs = typecheckOnly
