@@ -78,6 +78,20 @@ check explains that a component with no required name-like prop has nothing it
 can check statically. "2 of 5 skipped" read as a hole in the tool when it was a
 command the user had not run.
 
+**Imported prop types now resolve** — the largest remaining gap between
+"works" and "usable on a real design system". `import type { ButtonProps } from
+'./types'` is what most projects do, and it produced ZERO controls: the
+component was found, its whole contract was not — no knobs, no variant axes, no
+scenarios past the edge cases. Relative imports are followed to the file,
+through barrel re-exports (`export type { X } from './y'`, `export *`) and
+aliased imports. Measured on a fixture: a component went from 0 controls / 2
+edge-case scenarios to a full contract with its variant axis and 6 scenarios.
+
+Not a type checker, deliberately: `node_modules` is not followed, because
+resolving it needs the real module-resolution algorithm and guessing produces
+confident wrong answers — worse than the honest `unknown` it replaces. Depth-
+bounded and cycle-guarded, so a barrel cycle cannot hang a scan.
+
 **Detector widened**, each of these previously a silent absence:
 
 - `export default function Button()`, and anonymous defaults (named after the file)

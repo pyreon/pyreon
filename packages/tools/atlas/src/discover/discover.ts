@@ -10,6 +10,7 @@ import type { AtlasPlugin } from '../plugins'
 import { defineAtlasPlugin } from '../plugins'
 import { discoverRocketstyle, type RocketstyleDiscoveryOptions } from './rocketstyle'
 import { scanSource } from './scan'
+import { createTypeResolver } from './resolve-types'
 
 export interface DiscoverOptions {
   /** project root (default '.') */
@@ -70,6 +71,12 @@ export function listComponentFiles(options: DiscoverOptions = {}): string[] {
 export function discoverComponents(options: DiscoverOptions = {}): ComponentIntelligence[] {
   const files = listComponentFiles(options)
 
+  // ONE resolver per scan, not per file: a design system's components all
+  // import from the same two or three type files, so parsing them once here
+  // rather than once per component is the difference between negligible and
+  // quadratic.
+  const resolveImportedType = createTypeResolver()
+
   const out: ComponentIntelligence[] = []
   const seen = new Set<string>()
   for (const file of files) {
@@ -79,7 +86,7 @@ export function discoverComponents(options: DiscoverOptions = {}): ComponentInte
     } catch {
       continue
     }
-    for (const comp of scanSource(code, file)) {
+    for (const comp of scanSource(code, file, { resolveImportedType })) {
       // First occurrence of a name wins WITHIN one root. Across roots the
       // dedup does not apply — that is the whole point of `project`: two
       // packages may legitimately each export a `Button`, and the graph keys

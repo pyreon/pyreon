@@ -9,10 +9,20 @@
  * `unknown`); the fs wrapper lives in `./discover`.
  */
 import ts from 'typescript'
+import { collectImportedTypes } from './resolve-types'
 import type { ComponentIntelligence, PropShape, PropType, VariantAxis } from '../core'
 import { inferControls } from '../core'
 
 type PropsTypeNode = ts.TypeLiteralNode | ts.InterfaceDeclaration
+
+/**
+ * Resolve a props type by NAME — same-file first, then imported.
+ *
+ * A function rather than the old `Map`, because an imported type is a
+ * filesystem lookup that must stay lazy: a component whose props are declared
+ * locally should never trigger one.
+ */
+type TypeLookup = (name: string) => PropsTypeNode | undefined
 
 /** The three shapes a component can be declared in. */
 type ComponentFnNode = ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression
@@ -128,13 +138,13 @@ function readBodyDefaults(fn: ComponentFnNode, shapes: PropShape[]): void {
 /** Resolve the props-type node for a component's first parameter. */
 function resolvePropsType(
   param: ts.ParameterDeclaration | undefined,
-  types: Map<string, PropsTypeNode>,
+  lookup: TypeLookup,
 ): PropsTypeNode | undefined {
   const type = param?.type
   if (!type) return undefined
   if (ts.isTypeLiteralNode(type)) return type
   if (ts.isTypeReferenceNode(type) && ts.isIdentifier(type.typeName)) {
-    return types.get(type.typeName.text)
+    return lookup(type.typeName.text)
   }
   return undefined
 }
@@ -226,20 +236,20 @@ function unwrapComponentExpression(
  */
 function propsFromTypeAnnotation(
   type: ts.TypeNode | undefined,
-  types: Map<string, PropsTypeNode>,
+  lookup: TypeLookup,
 ): PropsTypeNode | undefined {
   if (!type || !ts.isTypeReferenceNode(type)) return undefined
   const argument = type.typeArguments?.[0]
   if (!argument) return undefined
   if (ts.isTypeLiteralNode(argument)) return argument
   if (ts.isTypeReferenceNode(argument) && ts.isIdentifier(argument.typeName)) {
-    return types.get(argument.typeName.text)
+    return lookup(argument.typeName.text)
   }
   return undefined
 }
 
 /** Extract a component from a top-level statement, if it is one. */
-function extractComponent(node: ts.Node, types: Map<string, PropsTypeNode>, source: string): ComponentIntelligence | undefined {
+function extractComponent(node: ts.Node, lookup: TypeLookup, source: string): ComponentIntelligence | undefined {
   const isExported = (n: ts.Node): boolean =>
     ts.canHaveModifiers(n) && (ts.getModifiers(n) ?? []).some((m) => m.kind === ts.SyntaxKind.ExportKeyword)
   const isDefault = (n: ts.Node): boolean =>
@@ -252,7 +262,7 @@ function extractComponent(node: ts.Node, types: Map<string, PropsTypeNode>, sour
     // call it anyway.
     const name = node.name?.text ?? (isDefault(node) ? fileBaseName(source) : undefined)
     if (name && isPascal(name)) {
-      return toComponent(name, resolvePropsType(node.parameters[0], types), source, node)
+      return toComponent(name, resolvePropsType(node.parameters[0], lookup), source, node)
     }
   }
 
@@ -269,7 +279,7 @@ function extractComponent(node: ts.Node, types: Map<string, PropsTypeNode>, sour
       // The parameter's own type wins; the `FC<Props>` annotation is the
       // fallback, because a component that has both means the parameter.
       const props =
-        resolvePropsType(fn.parameters[0], types) ?? propsFromTypeAnnotation(decl.type, types)
+        resolvePropsType(fn.parameters[0], lookup) ?? propsFromTypeAnnotation(decl.type, lookup)
       return toComponent(decl.name.text, props, source, fn)
     }
   }
@@ -302,7 +312,29 @@ export function fileBaseName(source: string): string {
 }
 
 /** Extract every exported component + its prop controls from one source string. */
-export function scanSource(code: string, fileName = 'component.tsx'): ComponentIntelligence[] {
+export interface ScanOptions {
+  /**
+   * Resolves a props type imported from another file.
+   *
+   * Injected rather than done here so `scanSource` stays PURE — it takes a
+   * string and returns data, which is what makes its failure modes testable
+   * without a disk. The filesystem half lives in `./resolve-types`, and
+   * `discoverComponents` supplies it.
+   *
+   * Omitted, an imported props type resolves to `unknown` exactly as before.
+   */
+  resolveImportedType?: (
+    typeName: string,
+    imports: import('./resolve-types').ImportedTypes,
+    fromFile: string,
+  ) => PropsTypeNode | undefined
+}
+
+export function scanSource(
+  code: string,
+  fileName = 'component.tsx',
+  options: ScanOptions = {},
+): ComponentIntelligence[] {
   // ScriptKind from the EXTENSION: in a `.ts` file `<T>(x) => …` is a generic
   // arrow, and parsing it as TSX reads that same text as a JSX element — the
   // file then fails to parse and its components vanish silently.
@@ -316,10 +348,21 @@ export function scanSource(code: string, fileName = 'component.tsx'): ComponentI
     else if (ts.isTypeAliasDeclaration(node) && ts.isTypeLiteralNode(node.type)) types.set(node.name.text, node.type)
   })
 
+  // pass 1b — the types this file IMPORTS. Resolved lazily: a component whose
+  // props type is declared locally never pays for the lookup.
+  const imported = collectImportedTypes(sf)
+  const resolve = options.resolveImportedType
+  const lookup: TypeLookup = (name) => {
+    const local = types.get(name)
+    if (local) return local
+    if (!resolve || !imported.bySpecifier.has(name)) return undefined
+    return resolve(name, imported, fileName)
+  }
+
   // pass 2 — extract components
   const out: ComponentIntelligence[] = []
   sf.forEachChild((node) => {
-    const comp = extractComponent(node, types, fileName)
+    const comp = extractComponent(node, lookup, fileName)
     if (comp) out.push(comp)
   })
   return out

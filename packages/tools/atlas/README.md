@@ -93,7 +93,7 @@ Named gaps, so nobody has to discover them from an empty sidebar:
 
 | Shape | Result |
 | --- | --- |
-| `import type { Props }` — props typed in another file | found, but **no controls** (needs a cross-file checker) |
+| `import type { Props }` — props typed in another file | ✅ resolved, including through barrels and aliases |
 | generic prop (`items: T[]`) | found; that prop is `unknown` |
 | `'a' \| 'b' \| (string & {})` | found; no select, no variant axis |
 | `styled('div')` | **missed** — no props written anywhere a static reader can see; needs runtime discovery, which today only covers rocketstyle |
