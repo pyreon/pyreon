@@ -75,7 +75,11 @@ export function Sidebar(props: { model: WorkbenchModel }) {
   )
 
   return (
-    <C.Sidebar>
+    <C.Sidebar
+      // Width is live drag geometry (measurement, not styling) — a hashed
+      // class per pixel would grow the style cache without bound.
+      style={() => `width:${m.sidebarW()}px`}
+    >
       <C.SideHead>
         <C.SideLabel>components</C.SideLabel>
         <C.CountPill>{m.total}</C.CountPill>

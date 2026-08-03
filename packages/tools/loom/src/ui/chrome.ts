@@ -213,9 +213,13 @@ export const ViewBar = el
     // flexWrap + a two-axis gap have no Element prop — the documented
     // theme-level special case, riding on the wrapper's own flex display.
     flexWrap: 'wrap', gap: '8px 16px',
-    flex: 'none', padding: '8px 16px',
+    flex: 'none', padding: '12px 16px',
     borderWidthBottom: '1px', borderStyleBottom: 'solid', borderColorBottom: t.border, background: t.surface,
   }))
+/** Title + eyebrow stack in the ViewBar — real gap so the two never collide. */
+export const ViewTitleBlock = el
+  .attrs({ tag: 'div', contentDirection: 'rows', gap: 2 })
+  .theme(() => ({ lineHeight: '1.3' }))
 export const ViewTitle = txt
   .attrs({ tag: 'span' })
   .theme(() => ({ fontFamily: DISPLAY, fontWeight: '600', fontSize: '15px', extendCss: 'white-space:nowrap;' }))
@@ -223,7 +227,7 @@ export const ViewEyebrow = txt
   .attrs({ tag: 'span' })
   .theme((t: T) => ({
     fontFamily: MONO, fontSize: '10px', color: t.faint,
-    extendCss: 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',
+    extendCss: 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.06em;',
   }))
 export const CyclesBtn = el
   .attrs({ tag: 'button', contentDirection: 'inline', contentAlignY: 'center', gap: 8 })
@@ -477,6 +481,33 @@ export const CycleWarnTitle = txt
 export const CycleWarnText = txt
   .attrs({ tag: 'div' })
   .theme((t: T) => ({ fontSize: '12.5px', color: t.muted, extendCss: 'line-height:1.5;' }))
+/**
+ * A detector finding — severity-TRUE styling: info must read as information,
+ * not as the danger card it used to borrow (CycleWarn).
+ */
+export const FindingCard = el
+  .attrs({ tag: 'div' })
+  .variants(dim((t) => ({
+    error: { borderColor: t.dangerRing, background: t.dangerSoft },
+    warning: { borderColor: t.warnRing, background: t.warnSoft },
+    info: { borderColor: t.border, background: t.surface2 },
+  })))
+  .theme(() => ({
+    borderWidth: '1px', borderStyle: 'solid',
+    borderRadius: '8px', padding: '12px', marginBottom: '8px',
+  }))
+export const FindingTitle = txt
+  .attrs({ tag: 'div' })
+  .variants(dim((t) => ({
+    error: { color: t.danger },
+    warning: { color: t.warn },
+    info: { color: t.muted },
+  })))
+  .theme(() => ({ fontFamily: MONO, fontSize: '9.5px', marginBottom: '4px', extendCss: 'letter-spacing:.12em;' }))
+export const FindingText = txt
+  .attrs({ tag: 'div' })
+  .theme((t: T) => ({ fontSize: '12.5px', color: t.muted, extendCss: 'line-height:1.5;' }))
+
 export const MetricRow = el
   // block = full row width; without it the shrink-wrapped row leaves
   // spaceBetween nothing to distribute ("Resolution depth0").

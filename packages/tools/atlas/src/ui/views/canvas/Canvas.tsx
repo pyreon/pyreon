@@ -68,6 +68,13 @@ export function Canvas(props: { model: WorkbenchModel }) {
   return (
     <C.Main>
       <C.CanvasBar>
+        <C.ZoomBtn
+          data-testid="toggle-sidebar"
+          title="Toggle sidebar"
+          onClick={() => m.sidebarOpen.set(!m.sidebarOpen())}
+        >
+          {() => (m.sidebarOpen() ? '⇤' : '⇥')}
+        </C.ZoomBtn>
         <C.Col>
           <C.CanvasName data-testid="canvas-name">{() => m.sel()?.name ?? ''}</C.CanvasName>
           <C.CanvasPath>{() => `components/${m.selId()}`}</C.CanvasPath>
@@ -78,6 +85,13 @@ export function Canvas(props: { model: WorkbenchModel }) {
           <C.ZoomLabel data-testid="zoom-label">{() => `${ZOOM_PCT[m.zoomIdx()]}%`}</C.ZoomLabel>
           <C.ZoomBtn onClick={() => m.zoomIdx.set(Math.min(ZOOM_PCT.length - 1, m.zoomIdx() + 1))}>+</C.ZoomBtn>
         </C.Segment>
+        <C.ZoomBtn
+          data-testid="toggle-panel"
+          title="Toggle addon panel"
+          onClick={() => m.panelOpen.set(!m.panelOpen())}
+        >
+          {() => (m.panelOpen() ? '⇥' : '⇤')}
+        </C.ZoomBtn>
       </C.CanvasBar>
 
       {/*
