@@ -77,6 +77,12 @@ dependencies {
     // ws.connect(). Every app compiling the runtime srcDir needs the dep,
     // websockets used or not (the srcDir compiles all runtime sources).
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // Media-row remote image: the emit lowers <Image src="http…"> to
+    // Coil's AsyncImage composable (build.ts adds the conditional
+    // import; the DEP lives here — an emit whose import resolves but
+    // whose artifact is missing fails only at the real gradle build,
+    // the stub-masked-symbol class).
+    implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("androidx.compose.material:material")

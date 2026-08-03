@@ -18,7 +18,7 @@
 import { For, onMount } from '@pyreon/core'
 import { useSecureStorage, useSizeClass, useWebSocket } from '@pyreon/hooks'
 import { useFieldArray } from '@pyreon/form'
-import { Button, Heading, Inline, Layer, Link, Press, Spacer, Stack, Text } from '@pyreon/primitives'
+import { Button, Heading, Image, Inline, Layer, Link, Press, Spacer, Stack, Text } from '@pyreon/primitives'
 import { signal } from '@pyreon/reactivity'
 import { createRouter, useNavigate, RouterProvider, RouterView } from '@pyreon/router'
 import { defineTheme, styled } from '@pyreon/styler'
@@ -126,6 +126,37 @@ function MotionPage() {
   )
 }
 
+function MediaPage() {
+  const navigate = useNavigate()
+  // Media-row proof — a REMOTE image through the real network stack.
+  // <Image src="http…"> lowers to SwiftUI AsyncImage(url:) / Coil
+  // AsyncImage(model=) / web <img>. The fixture server (the ws-echo
+  // server's /dot.png route) serves a solid-RED 48x48 PNG over plain
+  // HTTP, and the device tests assert the RENDERED PIXEL is red —
+  // fetched, decoded, drawn. A placeholder, a failed fetch (ATS block,
+  // missing Coil artifact, dead server), or a dropped remote emit all
+  // read as not-red. Same literal URL on both platforms: the iOS sim
+  // shares host loopback; Android maps it via `adb reverse tcp:8790`.
+  // Infra this page surfaced: iOS needed NSAllowsLocalNetworking (ATS
+  // gates URLSession cleartext — the ws test never hit it because the
+  // ws runtime rides Network.framework, outside ATS); Android needed
+  // the io.coil-kt:coil-compose ARTIFACT (the conditional import
+  // resolved against nothing — the dep half of the stub-masked class).
+  return (
+    <Stack gap={3} padding={4} data-testid="media-page">
+      <Text>Media</Text>
+      <Image
+        src="http://localhost:8790/dot.png"
+        alt="remote red dot"
+        width={48}
+        height={48}
+        data-testid="remote-dot"
+      />
+      <Button onPress={() => navigate('/')}>Back to Home</Button>
+    </Stack>
+  )
+}
+
 function A11yPage() {
   const navigate = useNavigate()
   // Accessibility-row proof — the three neutral a11y props landing in the
@@ -222,6 +253,9 @@ function HomePage() {
       <Inline gap={2}>
         <Button onPress={() => navigate('/biglist')}>View big list</Button>
         <Button onPress={() => navigate('/a11y')}>View a11y</Button>
+      </Inline>
+      <Inline gap={2}>
+        <Button onPress={() => navigate('/media')}>View media</Button>
       </Inline>
       {/* Core-UI row closure — `Link` was listed "not individually asserted",
           and it had NO usage in any gated app despite this file's header
@@ -361,6 +395,7 @@ export function RouterApp() {
       { path: '/motion', component: MotionPage },
       { path: '/biglist', component: BigListPage },
       { path: '/a11y', component: A11yPage },
+      { path: '/media', component: MediaPage },
     ],
   })
 

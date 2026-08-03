@@ -30,7 +30,9 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasScrollAction
@@ -459,5 +461,31 @@ class RouterDemoInstrumentedTest {
 
         composeRule.onNodeWithText("plain sibling").assertExists()
         composeRule.onNodeWithText("decorative-glyphs").assertDoesNotExist()
+    }
+    // Media row — a REMOTE image through the real network stack (Coil
+    // AsyncImage <- adb-reversed localhost fixture serving a solid-RED
+    // PNG). captureToImage reads the node's RENDERED pixels, so the
+    // assertion can only pass if the bytes were fetched over HTTP,
+    // decoded by Coil, and drawn — a placeholder, a missing coil-compose
+    // artifact, or a dead fixture server all read as not-red.
+    @Test
+    fun remoteImageRendersFetchedPixels() {
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        composeRule.onNodeWithText("View media").performClick()
+        composeRule.onNodeWithTag("media-page").assertIsDisplayed()
+        composeRule.onNodeWithTag("remote-dot").assertExists()
+
+        composeRule.waitUntil(timeoutMillis = 20_000) {
+            try {
+                val bmp = composeRule.onNodeWithTag("remote-dot")
+                    .captureToImage().asAndroidBitmap()
+                val p = bmp.getPixel(bmp.width / 2, bmp.height / 2)
+                android.graphics.Color.red(p) > 200 &&
+                    android.graphics.Color.green(p) < 80 &&
+                    android.graphics.Color.blue(p) < 80
+            } catch (_: Throwable) {
+                false
+            }
+        }
     }
 }

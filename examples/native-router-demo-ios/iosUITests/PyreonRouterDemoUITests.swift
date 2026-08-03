@@ -28,6 +28,7 @@
 // path + nightly schedule, NOT on every PR. Promote to required once
 // green across multiple consecutive nightly runs.
 
+import UIKit
 import XCTest
 
 final class PyreonRouterDemoUITests: XCTestCase {
@@ -640,6 +641,65 @@ final class PyreonRouterDemoUITests: XCTestCase {
             app.staticTexts["plain sibling"].firstMatch.exists,
             "Plain sibling text missing entirely"
         )
+    }
+
+    // Media row — a REMOTE image through the real network stack. The
+    // fixture (ws-echo server /dot.png) serves a solid-RED PNG; the
+    // assertion samples the RENDERED element's pixels (screenshot of the
+    // element scaled to 1x1 = its average colour), so it can only pass if
+    // the bytes were fetched over HTTP, decoded, and drawn. A placeholder,
+    // an ATS-blocked fetch, or a dropped AsyncImage emit all read white /
+    // not-red. Requires NSAllowsLocalNetworking (this page is what
+    // surfaced that ATS gates URLSession cleartext even to localhost —
+    // the ws test never saw it because the ws runtime rides
+    // Network.framework, which ATS does not cover).
+    func test_remoteImageRendersFetchedPixels() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            "Home page did not render"
+        )
+        app.buttons["View media"].tap()
+        XCTAssertTrue(
+            app.otherElements["media-page"].firstMatch.waitForExistence(timeout: 15),
+            "Media page did not render"
+        )
+        let el = app.descendants(matching: .any)["remote-dot"].firstMatch
+        XCTAssertTrue(el.waitForExistence(timeout: 15), "remote-dot element missing")
+
+        var sawRed = false
+        let deadline = Date().addingTimeInterval(20)
+        while Date() < deadline {
+            if let px = Self.averageColor(of: el.screenshot().image),
+               px.r > 200, px.g < 80, px.b < 80 {
+                sawRed = true
+                break
+            }
+            usleep(500_000)
+        }
+        if !sawRed { print(app.debugDescription) }
+        XCTAssertTrue(
+            sawRed,
+            "remote image never rendered red — fetch/decode/draw failed (dead server, ATS block, or lost AsyncImage emit)"
+        )
+    }
+
+    /// Average colour of a UIImage: draw the whole image into a 1x1 RGBA
+    /// context — for the solid-red fixture the average IS the fixture
+    /// colour, and averaging is immune to off-by-center sampling.
+    private static func averageColor(of image: UIImage) -> (r: Int, g: Int, b: Int)? {
+        guard let cg = image.cgImage else { return nil }
+        var pixel = [UInt8](repeating: 0, count: 4)
+        guard let ctx = CGContext(
+            data: &pixel, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        ctx.interpolationQuality = .medium
+        ctx.draw(cg, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        return (Int(pixel[0]), Int(pixel[1]), Int(pixel[2]))
     }
 
 }

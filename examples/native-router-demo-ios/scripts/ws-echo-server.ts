@@ -18,9 +18,28 @@
 // workflow step before shipping.
 const port = Number(process.env.PYREON_WS_PORT ?? 8790)
 
+// Media-row fixture: a solid-red 48x48 PNG served over plain HTTP on the
+// SAME port (the ws upgrade branch ignores ordinary GETs). The remote-image
+// device tests point <Image src="http://localhost:8790/dot.png"> here and
+// assert the RENDERED pixel is red — bytes fetched through the real network
+// stack, decoded, and drawn; a placeholder, a failed fetch, or a dropped
+// AsyncImage emit all read as not-red. Solid red so any sample point is
+// discriminating; embedded so the server stays dependency-free.
+const RED_DOT_PNG = Uint8Array.from(
+  atob(
+    'iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAAAQUlEQVR4nO3OQQ0AMBAEofNvupWx8yBBAPfuUvYDISEhoZj9QEhISChmPxASEhKK2Q+EhISEYvYDISEhoZj9oB763xP3eV+LAIgAAAAASUVORK5CYII=',
+  ),
+  (c) => c.charCodeAt(0),
+)
+
 Bun.serve({
   port,
   fetch(req, server) {
+    if (new URL(req.url).pathname === '/dot.png') {
+      return new Response(RED_DOT_PNG, {
+        headers: { 'content-type': 'image/png' },
+      })
+    }
     if (server.upgrade(req)) return undefined
     return new Response('websocket echo server — connect with a ws client', {
       status: 426,
