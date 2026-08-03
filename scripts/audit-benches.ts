@@ -97,6 +97,8 @@ function packageVariesByNodeEnv(pkg: string): boolean {
 interface Row {
   file: string
   deterministic: boolean
+  /** Does this file ever read a clock? If not, it published no speed number. */
+  timing: boolean
   competitor: string | null
   competitorStatic: boolean
   competitorSpecifier: string | null
@@ -115,10 +117,65 @@ interface Row {
 const isDeterministicCount = (src: string) =>
   /deterministic (render )?count|render COUNT|DETERMINISTIC/i.test(src)
 
+/**
+ * Not every competitor-comparing file is a TIMING benchmark.
+ *
+ * `validate/typecheck.ts` is a compile-time inference-equality check — `tsc`
+ * errors ARE the result, nothing executes. `validate/behavior.ts` prints each
+ * library's real error shapes side by side and asserts nothing. Both compare
+ * against zod/valibot/arktype, so they look competitor-facing, but neither
+ * makes a throughput claim — and PROD / STATS exist solely to protect
+ * throughput claims. Flagging them demanded a production gate and a median for
+ * code that never calls a clock, which is noise that trains people to ignore
+ * the audit.
+ *
+ * The discriminator is mechanical rather than a name list: a file that never
+ * reads a clock cannot have published a speed number.
+ */
+const isTimingBench = (src: string) => /performance\.now\(|Bun\.nanoseconds\(|hrtime/.test(src)
+
+/**
+ * Runner + injected-payload pairs.
+ *
+ * A bench is not always ONE file. `packages/ui-system/kinetic/bench` is a
+ * `run.ts` harness that `Bun.build`s `scenarios.ts` and executes it inside real
+ * Chromium — the competitor (`motion`) is imported by the PAYLOAD while the
+ * controls (NODE_ENV, correctness gate, median + CI95) live in the RUNNER,
+ * which is the only correct place for them: a `process.env.NODE_ENV` assignment
+ * inside browser-injected code is meaningless.
+ *
+ * Auditing the payload alone reported `PROD:none, no STATS` for a bench that is
+ * fully controlled — a false positive that would have been "fixed" by adding
+ * dead code to the payload. So a file's control surface includes any SIBLING
+ * bench file that references it by name.
+ */
+const siblingHarnessSrc = new Map<string, string>()
+for (const f of files) {
+  const dir = f.slice(0, f.lastIndexOf('/'))
+  const base = f.slice(f.lastIndexOf('/') + 1)
+  let extra = ''
+  for (const other of files) {
+    // SAME directory only, not the whole subtree: `scripts/bench/run-all.ts`
+    // names every `scripts/bench/core/*.ts` it orchestrates, and a subtree
+    // match folded all of their sources into it — which made the orchestrator
+    // itself look competitor-facing. A runner/payload pair is always siblings.
+    if (other === f || other.slice(0, other.lastIndexOf('/')) !== dir) continue
+    try {
+      const otherSrc = readFileSync(other, 'utf8')
+      if (otherSrc.includes(base)) extra += `\n${otherSrc}`
+    } catch {
+      /* unreadable sibling — ignore */
+    }
+  }
+  if (extra) siblingHarnessSrc.set(f, extra)
+}
+
 const rows: Row[] = []
 for (const f of files) {
   let raw: string
   try { raw = readFileSync(f, 'utf8') } catch { continue }
+  // Fold in the harness that injects this file, if any — see above.
+  raw += siblingHarnessSrc.get(f) ?? ''
   // Strip comments FIRST — every early false positive came from prose. Four
   // benches were flagged for "forced GC" purely because their headers explain
   // why they deliberately do NOT call `Bun.gc(true)`.
@@ -173,6 +230,7 @@ for (const f of files) {
   rows.push({
     file: f,
     deterministic: isDeterministicCount(raw),
+    timing: isTimingBench(src),
     competitor,
     competitorStatic,
     competitorSpecifier,
@@ -200,7 +258,9 @@ const isBundleSize = (f: string) => /bundle|bundle-size|\/bundle\//.test(f)
 
 const bad = (r: Row) => {
   const issues: string[] = []
-  if (r.competitor && !isBundleSize(r.file)) {
+  // A file that never reads a clock published no speed number, so the
+  // throughput controls do not apply to it — see `isTimingBench`.
+  if (r.competitor && !isBundleSize(r.file) && r.timing) {
     // A top-level assignment IS sufficient when the competitor is loaded by a
     // DYNAMIC import (it runs after the assignment). Only a STATIC competitor
     // import needs the self-re-exec guard.

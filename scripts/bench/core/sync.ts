@@ -309,7 +309,90 @@ function benchRemoteOp(): BenchResult[] {
   return [{ ...r, label: r.label, avgNs: Math.round(r.avgNs / K) }]
 }
 
+// ── Correctness gate (runs BEFORE any timing) ─────────────────────────────────
+//
+// This bench publishes a "wrapper tax" — raw y-protocols vs `syncedAwareness` —
+// and a wrapper that silently does nothing is INDISTINGUISHABLE from a wrapper
+// that is free: the tax reads ~0 (or negative) and the row looks like a win.
+// That is not hypothetical; `@pyreon/storage`'s bench shipped exactly that
+// shape, where every Pyreon write threw into a swallowed catch and the
+// documented "loss" turned out to be a wiring bug. So assert each measured path
+// actually mutates observable state before trusting a single number from it.
+function correctnessGate(): void {
+  const fail = (what: string, got: unknown, want: unknown): never => {
+    console.error(
+      `x correctness gate: ${what}\n  got:  ${JSON.stringify(got)}\n  want: ${JSON.stringify(want)}\n` +
+        '  A path that silently no-ops would report as FASTER — refusing to print numbers.',
+    )
+    process.exit(1)
+  }
+
+  // 1. RAW baseline actually writes (it is the denominator of the tax).
+  const rawDoc = new Y.Doc()
+  const awRaw = new Awareness(rawDoc)
+  awRaw.setLocalState({ name: 'me', cursor: { x: 0, y: 0 } })
+  awRaw.setLocalStateField('cursor', { x: 11, y: 22 })
+  const rawCursor = (awRaw.getLocalState() as { cursor?: unknown } | null)?.cursor
+  if (JSON.stringify(rawCursor) !== JSON.stringify({ x: 11, y: 22 })) {
+    fail('raw Awareness.setLocalStateField did not update local state', rawCursor, { x: 11, y: 22 })
+  }
+
+  // 2. WRAPPED path writes THROUGH to the same underlying awareness AND
+  //    surfaces on the presence signal (the two halves the wrapper exists for).
+  const wDoc = createYjsDoc()
+  const presence = syncedAwareness<{ name: string; cursor: { x: number; y: number } }>(wDoc, {
+    name: 'me',
+    cursor: { x: 0, y: 0 },
+  })
+  presence.setLocalField('cursor', { x: 33, y: 44 })
+  const underlying = (
+    getDocAwareness(wDoc).getLocalState() as { cursor?: unknown } | null
+  )?.cursor
+  if (JSON.stringify(underlying) !== JSON.stringify({ x: 33, y: 44 })) {
+    fail('syncedAwareness.setLocalField did not reach the underlying Awareness', underlying, {
+      x: 33,
+      y: 44,
+    })
+  }
+  const localCursor = presence.local()?.cursor
+  if (JSON.stringify(localCursor) !== JSON.stringify({ x: 33, y: 44 })) {
+    fail('syncedAwareness `local` signal did not reflect the write', localCursor, { x: 33, y: 44 })
+  }
+
+  // 3. syncedList rebuild reads the real array (the row claims a per-change cost).
+  const listDoc = createYjsDoc()
+  const yarr = listDoc.yDoc.getArray<number>('items')
+  yarr.push([1, 2, 3])
+  if (yarr.toArray().length !== 3) {
+    fail('Y.Array rebuild did not observe pushed items', yarr.toArray().length, 3)
+  }
+
+  // 4. Remote-op path: a syncedSignal write must reach the signal AND re-run
+  //    its effect — the propagation being measured.
+  const sDoc = createYjsDoc()
+  const sig = syncedSignal<number>({ doc: sDoc, key: 'v', initial: 0 })
+  let runs = 0
+  const stop = effect(() => {
+    sig()
+    runs++
+  })
+  const before = runs
+  sig.set(7)
+  if (sig() !== 7) fail('syncedSignal.set did not update the signal', sig(), 7)
+  if (runs <= before) fail('syncedSignal write did not re-run its effect', runs, `> ${before}`)
+  stop.dispose?.()
+
+  presence.dispose()
+  wDoc.destroy()
+  listDoc.destroy()
+  sDoc.destroy()
+  awRaw.destroy()
+  rawDoc.destroy()
+  console.log('  correctness gate passed (raw + wrapped writes observable; list + signal propagate)')
+}
+
 console.log('\n@pyreon/sync — CRDT→signal hot-path benchmark (NODE_ENV=production)')
+correctnessGate()
 printSection('Awareness recompute (per cursor move)', benchAwareness())
 printWrapperTax(benchPresenceWrapperTax())
 printSection('syncedList rebuild (per change)', benchSyncedList())

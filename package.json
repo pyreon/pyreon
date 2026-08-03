@@ -159,6 +159,8 @@
     "vite": "^8.0.16",
     "vitest": "^4.1.10",
     "vue-router": "^5.2.0",
+    "y-protocols": "^1.0.6",
+    "yjs": "^13.6.31",
     "zod": "^4.4.3"
   },
   "overrides": {

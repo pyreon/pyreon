@@ -230,6 +230,9 @@ export function findOwningPackage(
  *   `lib/` (never imported by the package's runtime entry), so it does not
  *   change shipped code. Same non-shipping rationale as test files: a
  *   manifest-only edit needs a docs regen, not a changeset.
+ * - File must NOT be a benchmark source (`<package>/bench/**`) — `bench` is
+ *   absent from every published `files` array, so a harness change ships
+ *   nothing. Same non-shipping rationale as test files.
  * - File must NOT be a vitest test-runner config (`vitest*.config.ts`) —
  *   dev tooling, never in a package's published `files`. A flaky-test or
  *   parallelism fix in a vitest config has zero consumer impact.
@@ -246,6 +249,7 @@ export function isConsumerAffectingFile(
   if (ignoredNames.has(owner.name)) return false
   if (isTestPath(file)) return false
   if (isManifestPath(file)) return false
+  if (isBenchPath(file)) return false
   if (isTestRunnerConfigPath(file)) return false
   if (isRepoTsconfigPath(file)) return false
   return true
@@ -297,6 +301,26 @@ export function isRepoTsconfigPath(file: string): boolean {
  */
 export function isManifestPath(file: string): boolean {
   return /(?:^|\/)src\/manifest\.ts$/.test(file.split('\\').join('/'))
+}
+
+/**
+ * Benchmark sources (`<package>/bench/**`) never reach consumers.
+ *
+ * Same non-shipping rationale as test files, manifests and vitest configs: a
+ * published package's `files` array lists `lib` / `src` / README / LICENSE and
+ * NOT `bench`, so nothing under `bench/` is in the tarball. A benchmark is dev
+ * tooling that measures the package — adding statistics to a harness, or
+ * fixing an unfair comparison, changes no shipped byte.
+ *
+ * Without this, a bench-only change demanded a changeset describing a
+ * consumer-visible change that does not exist, and the honest author has only
+ * two bad options: invent release-note prose for nothing, or reach for
+ * `skip-changeset` and blunt the label's meaning for the cases that need it.
+ *
+ * @internal exported for unit testing
+ */
+export function isBenchPath(file: string): boolean {
+  return /(?:^|\/)bench\//.test(file.split('\\').join('/'))
 }
 
 /**

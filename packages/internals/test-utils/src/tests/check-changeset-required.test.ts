@@ -10,6 +10,7 @@ import {
   isConsumerAffectingFile,
   isRepoTsconfigPath,
   isTestRunnerConfigPath,
+  isBenchPath,
   readChangesetIgnore,
   type GateInputs,
   type PackageInfo,
@@ -359,6 +360,20 @@ describe('isConsumerAffectingFile', () => {
       expect(isTestRunnerConfigPath('packages/x/tsconfig.json')).toBe(false)
       expect(isTestRunnerConfigPath('packages/x/src/vitest-helpers.ts')).toBe(false)
       expect(isTestRunnerConfigPath('packages/x/vite.config.ts')).toBe(false)
+    })
+
+    it('isBenchPath: benchmark sources never ship, so they need no changeset', () => {
+      // A published package's `files` array lists lib/src/README/LICENSE and
+      // NOT `bench`, so nothing under bench/ reaches the tarball. Adding
+      // statistics to a harness or fixing an unfair comparison ships no byte.
+      expect(isBenchPath('packages/fundamentals/hooks/bench/hooks-bench.ts')).toBe(true)
+      expect(isBenchPath('packages/ui-system/kinetic/bench/run.ts')).toBe(true)
+      expect(isBenchPath('packages/fundamentals/validate/bench/bundle/zod.ts')).toBe(true)
+      // Real source must STILL require a changeset — the exemption is scoped to
+      // a `bench/` path segment, not to the substring "bench" anywhere.
+      expect(isBenchPath('packages/fundamentals/hooks/src/index.ts')).toBe(false)
+      expect(isBenchPath('packages/fundamentals/hooks/src/benchmark-helpers.ts')).toBe(false)
+      expect(isBenchPath('packages/fundamentals/hooks/src/bench.ts')).toBe(false)
     })
 
     it('isRepoTsconfigPath: repo tsconfigs are tooling, template tsconfigs are product', () => {
