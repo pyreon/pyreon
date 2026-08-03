@@ -40,7 +40,8 @@ export type {
 export { bindEditorToSignal } from './bind-signal'
 export { useEditorSignal } from './use-editor-signal'
 // Languages
-export { getAvailableLanguages, loadLanguage } from './languages'
+export { getAvailableLanguages, loadLanguage, registerLanguage } from './languages'
+export type { LanguageLoader } from './languages'
 // Minimap
 export { minimapExtension } from './minimap'
 // Themes

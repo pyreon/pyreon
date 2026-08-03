@@ -4,6 +4,10 @@ import { createEditor } from '../editor'
 import { getAvailableLanguages, loadLanguage } from '../languages'
 import { createTabbedEditor } from '../tabbed-editor'
 import { darkTheme, lightTheme, resolveTheme } from '../themes'
+// Grammars beyond the core set (JS family + JSON) live behind this entry —
+// importing it registers the full built-in set, which is the contract these
+// specs assert. See `../languages` for why the core does not ship them all.
+import '../languages-all'
 
 // ─── createEditor — Computed Properties ────────────────────────────────────
 

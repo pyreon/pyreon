@@ -176,7 +176,14 @@ test.describe('atlas dev', () => {
     await page.getByTestId('docs-source-load').click()
     const src = page.getByTestId('docs-source')
     await expect(src).toBeVisible()
-    await expect(src).toContainText('chipBase')
+    // The block is a read-only `@pyreon/code` editor now, and CodeMirror
+    // VIRTUALIZES — only lines near the viewport are in the DOM. The invariant
+    // is unchanged (this shows Chip.tsx's REAL source, fetched over the dev
+    // channel); the assertion moves to top-of-file content, because the old
+    // `chipBase` token sits below the fold and would flake on layout.
+    await expect(src).toContainText('./chip-kit')
+    // …and it is HIGHLIGHTED, not a <pre>: the editor actually mounted.
+    await expect(src.locator('.cm-editor')).toBeVisible()
 
     // Clicking a scenario jumps to the canvas IN that state (the links story).
     await solid.click()

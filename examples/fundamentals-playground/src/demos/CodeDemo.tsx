@@ -1,6 +1,10 @@
 import type { EditorLanguage } from '@pyreon/code'
 import { CodeEditor, createEditor, getAvailableLanguages } from '@pyreon/code'
 import { computed, signal } from '@pyreon/reactivity'
+// Grammars beyond the core set (css / python) live behind this entry — the editor
+// core registers only the JS family + JSON so a consumer never pre-bundles
+// the whole language ecosystem it does not use.
+import '@pyreon/code/languages-all'
 
 const sampleFiles: Record<string, { language: EditorLanguage; value: string }> = {
   'main.ts': {

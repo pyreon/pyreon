@@ -7,6 +7,7 @@ import { bindEditorToSignal } from '../bind-signal'
 import { CodeEditor } from '../components/code-editor'
 import { DiffEditor } from '../components/diff-editor'
 import { createEditor, openSearchPanel } from '../editor'
+import { getAvailableLanguages, loadLanguage, registerLanguage } from '../languages'
 
 // Poll until `pred` is truthy — DiffEditor / createEditor lazy-load language
 // grammars asynchronously, so a bare flush() can race the dynamic import.
@@ -16,6 +17,55 @@ async function until(pred: () => boolean, ms = 3000): Promise<void> {
     if (Date.now() - start > ms) throw new Error('until(): timed out')
     await new Promise((r) => setTimeout(r, 20))
   }
+}
+
+/**
+ * Wait for HIGHLIGHT spans, then assert with the observed state.
+ *
+ * Two lessons baked in. The budget is generous (15s, not `until`'s 3s
+ * default) because the wait spans a dynamic grammar import, which a loaded CI
+ * runner serves far slower than a warm local one — the first cut passed
+ * locally and failed on every CI attempt. And the failure MESSAGE carries the
+ * observed DOM, because a CI-only failure's message is the only artifact you
+ * get: "0 spans across 1 line(s), editor mounted" says the grammar never
+ * arrived, while "0 spans across 0 line(s), editor missing" says the editor
+ * itself never mounted — two very different bugs the bare
+ * `expect(n).toBeGreaterThan(0)` could not tell apart.
+ */
+async function untilHighlighted(container: HTMLElement): Promise<void> {
+  const spans = () => container.querySelectorAll('.cm-line span').length
+  const deadline = Date.now() + 15_000
+  while (spans() === 0 && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 25))
+  }
+  if (spans() > 0) {
+    expect(spans()).toBeGreaterThan(0)
+    return
+  }
+
+  // FAILING: gather the evidence that distinguishes the three possible
+  // causes, because this reproduces only on CI and the message is the sole
+  // artifact. Built defensively — a diagnostic that throws while explaining a
+  // failure replaces a diagnosable error with an opaque one.
+  let probe = ''
+  try {
+    const { Language } = await import('@codemirror/language')
+    const support = (await import('@codemirror/lang-javascript')).javascript({ typescript: true })
+    const ext = await loadLanguage('typescript')
+    const extShape = Array.isArray(ext) ? `array(${ext.length})` : typeof ext
+    probe =
+      ` | loadLanguage('typescript')=${extShape}` +
+      ` sameLanguageInstance=${(support as { language?: unknown }).language instanceof Language}` +
+      ` firstLineHTML=${JSON.stringify(container.querySelector('.cm-line')?.innerHTML?.slice(0, 80) ?? '')}`
+  } catch (err) {
+    probe = ` | probe failed: ${err instanceof Error ? err.message : String(err)}`
+  }
+  const lines = container.querySelectorAll('.cm-line').length
+  const mounted = container.querySelector('.cm-editor') !== null
+  expect(
+    spans(),
+    `expected highlight spans — observed 0 span(s) across ${lines} line(s), editor ${mounted ? 'mounted' : 'MISSING'}${probe}`,
+  ).toBeGreaterThan(0)
 }
 
 // Real-Chromium smoke for @pyreon/code.
@@ -29,6 +79,114 @@ async function until(pred: () => boolean, ms = 3000): Promise<void> {
 describe('code editor in real browser', () => {
   afterEach(() => {
     document.body.innerHTML = ''
+  })
+
+  // Syntax HIGHLIGHTING is the package's headline value and was entirely
+  // untested: every prior spec asserted the editor mounts and round-trips
+  // text, none that tokens are actually styled. CodeMirror wraps highlighted
+  // tokens in <span>s (generated `ͼ…` classes), so their presence is the
+  // honest proof that the grammar loaded AND a highlight style applied.
+  /**
+   * CodeMirror REQUIRES `@codemirror/language` to be a single instance: it
+   * hosts both the `Language` facet and `syntaxHighlighting`, so two copies
+   * mean the highlighter never recognises the parser's tree. The failure mode
+   * is silent — the editor mounts, the text renders, nothing is coloured, and
+   * no error is raised anywhere. That shipped once already (a lockfile
+   * carrying 6.12.3 alongside 6.12.4; it reproduced only on a clean install,
+   * so a warm local tree that happened to dedupe never saw it).
+   *
+   * This asserts the invariant directly, so a dependency-graph regression
+   * fails by NAME instead of as unexplained missing highlighting.
+   */
+  it('resolves ONE @codemirror/language instance (highlighting depends on it)', async () => {
+    const { Language } = await import('@codemirror/language')
+    const support = (await import('@codemirror/lang-javascript')).javascript({ typescript: true })
+    expect(
+      (support as { language?: unknown }).language instanceof Language,
+      'duplicate @codemirror/language: the grammar and the highlighter hold different copies of the Language facet, ' +
+        'so nothing will highlight. Pin it in the root package.json `overrides` (its siblings @codemirror/state and ' +
+        '@codemirror/view are pinned there for the same reason) and regenerate bun.lock.',
+    ).toBe(true)
+  })
+
+  it('HIGHLIGHTS tokens — the grammar loads and styles the content', async () => {
+    const editor = createEditor({
+      value: 'const answer: number = 42 // a comment\n',
+      language: 'typescript',
+    })
+    const { container, unmount } = mountInBrowser(
+      h(CodeEditor, { instance: editor, style: 'height: 200px' }),
+    )
+    await flush()
+    await untilHighlighted(container)
+    unmount()
+  })
+
+  it('highlights a READ-ONLY, non-editable block (the docs-display shape)', async () => {
+    // The shape a docs/workbench surface uses: no contenteditable, no
+    // gutters, wrapped lines. None of those may switch highlighting off.
+    const editor = createEditor({
+      value: 'export const x = { a: 1 } // tsx\n',
+      language: 'tsx',
+      editable: false,
+      readOnly: true,
+      lineNumbers: false,
+      foldGutter: false,
+      search: false,
+      lineWrapping: true,
+    })
+    const { container, unmount } = mountInBrowser(
+      h(CodeEditor, { instance: editor, style: 'height: auto' }),
+    )
+    await flush()
+    await untilHighlighted(container)
+    unmount()
+  })
+
+  // The grammar REGISTRY contract: the core registers the JS family + JSON so
+  // a consumer that only shows those never pre-bundles the whole
+  // `@codemirror/lang-*` ecosystem. Anything else is unregistered until
+  // `@pyreon/code/languages-all` (or a hand-registered loader) provides it —
+  // and an unregistered language must still MOUNT, just unhighlighted.
+  it('core registers the JS family + JSON, and nothing else', () => {
+    const ids = getAvailableLanguages()
+    expect(ids).toContain('tsx')
+    expect(ids).toContain('typescript')
+    expect(ids).toContain('json')
+    // Not in the core — these arrive via `@pyreon/code/languages-all`.
+    expect(ids).not.toContain('python')
+    expect(ids).not.toContain('markdown')
+  })
+
+  it('an UNREGISTERED language still mounts, unhighlighted', async () => {
+    const editor = createEditor({ value: 'print("hi")', language: 'python' })
+    const { container, unmount } = mountInBrowser(
+      h(CodeEditor, { instance: editor, style: 'height: 120px' }),
+    )
+    await flush()
+    await until(() => container.querySelector('.cm-editor') !== null)
+    // Text is there; highlighting is not — the documented degrade.
+    expect(container.textContent).toContain('print("hi")')
+    unmount()
+  })
+
+  it('registerLanguage installs a grammar the core does not ship', async () => {
+    // A DISTINCT id, not `python`: registering into the shared registry would
+    // otherwise make the two specs above pass or fail on file order.
+    registerLanguage('custom-py', () =>
+      import('@codemirror/lang-python').then((m) => m.python()),
+    )
+    expect(getAvailableLanguages()).toContain('custom-py')
+    const editor = createEditor({
+      value: 'def f():\n    return 1\n',
+      language: 'custom-py' as never,
+    })
+    const { container, unmount } = mountInBrowser(
+      h(CodeEditor, { instance: editor, style: 'height: 160px' }),
+    )
+    await flush()
+    await untilHighlighted(container)
+    unmount()
   })
 
   it('mounts a CodeMirror editor with the initial value', async () => {

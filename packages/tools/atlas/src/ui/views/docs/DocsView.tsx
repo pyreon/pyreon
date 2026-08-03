@@ -9,6 +9,7 @@ import { signal } from '@pyreon/reactivity'
 import * as C from '../../components'
 import { callRpc } from '../../lens-client'
 import type { WorkbenchModel } from '../../model'
+import { CodeBlock } from './CodeBlock'
 
 export function DocsView(props: { model: WorkbenchModel }) {
   const m = props.model
@@ -92,7 +93,7 @@ export function DocsView(props: { model: WorkbenchModel }) {
             ))}
           </C.PropsTable>
           <C.DocsH2>Usage</C.DocsH2>
-          <C.UsagePre>{() => usage()}</C.UsagePre>
+          <CodeBlock model={m} code={() => usage()} language="tsx" />
           {c.scenarios && c.scenarios.length > 0 ? (
             <>
               <C.DocsH2>Scenarios</C.DocsH2>
@@ -109,7 +110,7 @@ export function DocsView(props: { model: WorkbenchModel }) {
           {() => {
             const state = sourceState()
             if (state === 'shown' && sourceFor === c.id) {
-              return <C.UsagePre data-testid="docs-source">{() => source()}</C.UsagePre>
+              return <CodeBlock model={m} code={() => source()} language="tsx" variant="source" testId="docs-source" />
             }
             if (state === 'unavailable') {
               return <C.DocsDesc>Source is served by `atlas dev` — start the workbench with it to read files here.</C.DocsDesc>

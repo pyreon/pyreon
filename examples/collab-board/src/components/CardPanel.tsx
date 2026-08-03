@@ -3,6 +3,10 @@ import { For, onUnmount } from '@pyreon/core'
 import type { SyncedText } from '@pyreon/sync/yjs'
 import { canEdit } from '../state/permissions'
 import { type BoardDoc, CARD_LABELS, type CardLabel } from '../sync/board-doc'
+// Grammars beyond the core set (markdown) live behind this entry — the editor
+// core registers only the JS family + JSON so a consumer never pre-bundles
+// the whole language ecosystem it does not use.
+import '@pyreon/code/languages-all'
 
 /**
  * The card detail panel. It edits the card's scalar fields (title, label —
