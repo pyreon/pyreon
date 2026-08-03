@@ -835,7 +835,9 @@
       "name": "@pyreon/example-native-router-demo-web",
       "version": "0.50.0",
       "dependencies": {
+        "@pyreon/coolgrid": "workspace:*",
         "@pyreon/core": "workspace:*",
+        "@pyreon/elements": "workspace:*",
         "@pyreon/form": "workspace:*",
         "@pyreon/hooks": "workspace:*",
         "@pyreon/primitives": "workspace:*",
