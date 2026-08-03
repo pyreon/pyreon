@@ -26,6 +26,10 @@
 package com.pyreon
 
 import android.content.Context
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
@@ -420,5 +424,40 @@ class RouterDemoInstrumentedTest {
 
         composeRule.onNode(hasScrollAction()).performScrollToNode(hasText("Row 9999"))
         composeRule.onNodeWithText("Row 9999").assertExists()
+    }
+
+    // Accessibility row — roles + hidden landing in the REAL semantics
+    // (TalkBack) tree, not just the emit:
+    //  - heading(): the Heading semantics key is DEFINED on the header text
+    //    (the TalkBack rotor grouping signal).
+    //  - Role.Button on a PLAIN Text — the discriminating shape: a Button
+    //    composable carries the role natively, so only a non-button element
+    //    proves the accessibilityRole prop did the work. The same node also
+    //    carries the contentDescription from accessibilityLabel.
+    //  - accessibilityHidden -> clearAndSetSemantics { }: the decorative
+    //    text is ABSENT from the semantics tree by TEXT, with the visible
+    //    sibling as the positive control proving the text query works
+    //    (an assertion that something is absent proves nothing unless the
+    //    same query finds a present sibling).
+    @Test
+    fun a11yRolesAndHiddenLandInSemanticsTree() {
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        composeRule.onNodeWithText("View a11y").performClick()
+        composeRule.onNodeWithTag("a11y-page").assertIsDisplayed()
+
+        composeRule.onNodeWithTag("a11y-header")
+            .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
+
+        composeRule.onNodeWithTag("a11y-fake-button")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+        composeRule.onNodeWithTag("a11y-fake-button")
+            .assert(
+                SemanticsMatcher.expectValue(
+                    SemanticsProperties.ContentDescription, listOf("Add item"),
+                ),
+            )
+
+        composeRule.onNodeWithText("plain sibling").assertExists()
+        composeRule.onNodeWithText("decorative-glyphs").assertDoesNotExist()
     }
 }

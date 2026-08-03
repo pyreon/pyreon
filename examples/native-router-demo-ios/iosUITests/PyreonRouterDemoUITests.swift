@@ -599,4 +599,47 @@ final class PyreonRouterDemoUITests: XCTestCase {
         )
     }
 
+    // Accessibility row — the ROLE prop landing in the real accessibility
+    // tree. The discriminating shape: a plain Text carrying
+    // accessibilityRole="button" + accessibilityLabel. XCUITest derives an
+    // element's TYPE from its accessibility traits, so that text is
+    // queryable under app.buttons ONLY if .isButton actually landed — and
+    // by "Add item" ONLY if the label override landed on the same element.
+    // The plain sibling is the negative control (a staticText, not a
+    // button). `.isHeader` and .accessibilityHidden stay emit-locked on
+    // iOS: XCUITest surfaces neither as a queryable property (disclosed
+    // tooling limitation; both are device-asserted on Android, where the
+    // Compose semantics tree exposes them directly).
+    func test_a11yButtonTraitSurfacesInAccessibilityTree() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            "Home page did not render"
+        )
+        app.buttons["View a11y"].tap()
+        XCTAssertTrue(
+            app.otherElements["a11y-page"].firstMatch.waitForExistence(timeout: 15),
+            "A11y page did not render"
+        )
+        if !app.buttons["Add item"].firstMatch.exists {
+            // Self-diagnosing failure: dump the live tree so the element's
+            // actual type/label is in the artifact (the read-the-device rule).
+            print(app.debugDescription)
+        }
+        XCTAssertTrue(
+            app.buttons["Add item"].firstMatch.exists,
+            "Text with accessibilityRole=button + label is not queryable as a button — trait or label emit lost"
+        )
+        XCTAssertFalse(
+            app.buttons["plain sibling"].firstMatch.exists,
+            "Plain sibling text surfaces as a button — the trait leaked to siblings"
+        )
+        XCTAssertTrue(
+            app.staticTexts["plain sibling"].firstMatch.exists,
+            "Plain sibling text missing entirely"
+        )
+    }
+
 }

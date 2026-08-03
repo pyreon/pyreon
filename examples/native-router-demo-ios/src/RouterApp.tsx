@@ -126,6 +126,43 @@ function MotionPage() {
   )
 }
 
+function A11yPage() {
+  const navigate = useNavigate()
+  // Accessibility-row proof — the three neutral a11y props landing in the
+  // REAL platform accessibility trees (not just the emit):
+  //
+  //   accessibilityRole="button" on a plain <Text> — the discriminating
+  //   shape: a Press/Button carries the trait natively, so only a
+  //   NON-button element proves the ROLE prop did the work. iOS asserts
+  //   the element surfaces under XCUIApplication.buttons (XCUITest derives
+  //   the element TYPE from the trait — a static text is only queryable
+  //   there if .isButton actually landed); Android asserts the semantics
+  //   node carries Role.Button.
+  //
+  //   accessibilityRole="header" — Android asserts the Heading semantics
+  //   key is defined (the TalkBack rotor grouping). iOS `.isHeader` stays
+  //   emit-locked: XCUITest does not surface the header trait as an
+  //   element type or queryable property (same tooling limitation as
+  //   accessibilityHidden on iOS, disclosed in the matrix).
+  //
+  //   accessibilityHidden on a decorative <Text> — Android asserts the
+  //   node is ABSENT from the semantics tree by TEXT (clearAndSetSemantics
+  //   clears text semantics too, so onNodeWithText finds nothing) with the
+  //   visible sibling as the positive control proving the query works.
+  //   Deliberately NO data-testid on the hidden node: testTag is itself a
+  //   semantics property, and pinning the interaction between testTag and
+  //   clearAndSetSemantics ordering is not what this row proves.
+  return (
+    <Stack gap={3} padding={4} data-testid="a11y-page">
+      <Text accessibilityRole="header" data-testid="a11y-header">Accessibility</Text>
+      <Text accessibilityRole="button" accessibilityLabel="Add item" data-testid="a11y-fake-button">+</Text>
+      <Text data-testid="a11y-plain">plain sibling</Text>
+      <Text accessibilityHidden>decorative-glyphs</Text>
+      <Button onPress={() => navigate('/')}>Back to Home</Button>
+    </Stack>
+  )
+}
+
 function StylesPage() {
   const navigate = useNavigate()
   return (
@@ -184,6 +221,7 @@ function HomePage() {
       </Inline>
       <Inline gap={2}>
         <Button onPress={() => navigate('/biglist')}>View big list</Button>
+        <Button onPress={() => navigate('/a11y')}>View a11y</Button>
       </Inline>
       {/* Core-UI row closure — `Link` was listed "not individually asserted",
           and it had NO usage in any gated app despite this file's header
@@ -322,6 +360,7 @@ export function RouterApp() {
       { path: '/styles', component: StylesPage },
       { path: '/motion', component: MotionPage },
       { path: '/biglist', component: BigListPage },
+      { path: '/a11y', component: A11yPage },
     ],
   })
 
