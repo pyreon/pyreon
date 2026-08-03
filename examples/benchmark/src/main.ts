@@ -1,3 +1,4 @@
+import { runOctane } from './impl/octane.tsrx'
 import { runPreact } from './impl/preact'
 import { runPyreon } from './impl/pyreon'
 import { runReact } from './impl/react'
@@ -132,6 +133,7 @@ const ALL_FRAMEWORKS = [
   { name: 'Vue 3', run: runVue },
   { name: 'SolidJS', run: runSolid },
   { name: 'Svelte 5', run: runSvelte },
+  { name: 'Octane', run: runOctane },
   { name: 'Pyreon', run: runPyreon },
 ] as const
 
