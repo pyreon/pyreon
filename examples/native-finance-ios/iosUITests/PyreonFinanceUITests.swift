@@ -34,6 +34,23 @@ final class PyreonFinanceUITests: XCTestCase {
         XCUIApplication().terminate()
     }
 
+    /// Sign out if the app is on the dashboard, so this test leaves the
+    /// persisted session CLEARED for the next one.
+    ///
+    /// Once the Keychain actually persists (it silently did not while the CI
+    /// step built the app unsigned — securityd denies SecItemAdd), a test that
+    /// ends signed in leaves a session the NEXT test rehydrates. The
+    /// `launchOnLoginScreen` self-heal covers that, but it decides by PROBING
+    /// for the dashboard on a timeout, and a slow cold launch can land the
+    /// rehydrate after the probe — an intermittent failure, which is worse
+    /// than none. Clearing here makes the steady state deterministic and
+    /// leaves the probe as a crash-recovery net rather than the mechanism.
+    private func signOutIfSignedIn(_ app: XCUIApplication) {
+        guard app.otherElements["dashboard-page"].exists else { return }
+        app.buttons["dash-logout"].tap()
+        _ = app.otherElements["login-page"].waitForExistence(timeout: 15)
+    }
+
     /// Launch, and guarantee we start on the LOGIN screen.
     ///
     /// Session rehydration writes a real Keychain entry, and the Keychain
@@ -140,6 +157,8 @@ final class PyreonFinanceUITests: XCTestCase {
             "2700",
             "Computed balance is wrong — the reduce over store.txns did not run on-device"
         )
+
+        signOutIfSignedIn(app)
     }
 
     // Keyed-<For> mutation through a store, with the useDatabase side-channel
@@ -176,6 +195,8 @@ final class PyreonFinanceUITests: XCTestCase {
                     + "(balance was \"\(balance.label)\")"
             )
         }
+
+        signOutIfSignedIn(app)
     }
 
     // Auth row — SESSION REHYDRATION, the row's remaining reachable gap, and

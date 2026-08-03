@@ -254,8 +254,7 @@ jobs:
             -scheme PyreonTodoMVC \
             -sdk iphonesimulator \
             -destination "platform=iOS Simulator,name=${PYREON_SIM_NAME},OS=latest" \
-            -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO
+            -configuration Debug
 
       # ── Gap 7 part (a) — XCUITest coverage beyond TodoMVC ──
       # The audit (2026-06-05 native-readiness) explicitly calls out
@@ -321,8 +320,7 @@ jobs:
             -scheme PyreonCounter \
             -sdk iphonesimulator \
             -destination "platform=iOS Simulator,name=${PYREON_SIM_NAME},OS=latest" \
-            -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO
+            -configuration Debug
 
       # THE REAL-APP GATE. Every step above builds a DEMO — one screen, one
       # list, navigation only. This one builds a realistic app and asserts a
@@ -346,8 +344,7 @@ jobs:
             -scheme PyreonFinance \
             -sdk iphonesimulator \
             -destination "platform=iOS Simulator,name=${PYREON_SIM_NAME},OS=latest" \
-            -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO
+            -configuration Debug
 
       # The useWebSocket device proof needs a live loopback peer — the iOS
       # Simulator shares the host loopback, so a background bun process is
@@ -361,9 +358,10 @@ jobs:
 
       - name: Emit + xcodegen + UITest — native-router-demo-ios
         working-directory: examples/native-router-demo-ios
-        # NO `CODE_SIGNING_ALLOWED=NO` here, deliberately: an UNSIGNED app
-        # carries no signature entitlements, and the iOS 18.5 simulator's
-        # securityd DENIES SecItemAdd for it — the router-demo suite's
+        # POLICY (enforced by scripts/check-ios-signing-policy.ts): a step that
+        # RUNS the app carries no `CODE_SIGNING_ALLOWED=NO`. An UNSIGNED app has
+        # no signature entitlements, and the simulator's securityd DENIES
+        # SecItemAdd for it — the router-demo suite's
         # secure-storage test failed 3/3 retries with "Secret: write-failed"
         # on CI while passing locally, and the unsigned invocation was the
         # ONLY divergence (locally REPRODUCED byte-identically by adding
@@ -425,8 +423,7 @@ jobs:
             -scheme PyreonTasks \
             -sdk iphonesimulator \
             -destination "platform=iOS Simulator,name=${PYREON_SIM_NAME},OS=latest" \
-            -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO
+            -configuration Debug
 
   android-build:
     # Same gate as ios-build — see the comment there.

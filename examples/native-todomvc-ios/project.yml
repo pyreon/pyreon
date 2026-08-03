@@ -90,6 +90,20 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.pyreon.PyreonTodoMVC
+        # POLICY (enforced by scripts/check-ios-signing-policy.ts): every iOS
+        # example sets CODE_SIGN_ENTITLEMENTS, uniformly, whether or not its
+        # CURRENT tests touch the Keychain.
+        #
+        # An unsigned/entitlement-less simulator app is denied SecItemAdd by
+        # securityd, so a Keychain-touching test fails ONLY in CI. Router-demo
+        # hit that, was fixed alone, and left four examples one test away from
+        # the same CI-only failure — which is exactly how the finance app's
+        # session-rehydration test broke. xcodegen's `entitlements:` block
+        # alone does NOT embed under ad-hoc signing (verified: `codesign -d
+        # --entitlements :-` read an EMPTY dict); the explicit build setting is
+        # what does. The file itself is an empty dict — what matters is that a
+        # signature with an entitlements blob exists at all.
+        CODE_SIGN_ENTITLEMENTS: ios/PyreonTodoMVC.entitlements
         ENABLE_BITCODE: NO
         SWIFT_VERSION: '5.0'
         CODE_SIGN_STYLE: Automatic
