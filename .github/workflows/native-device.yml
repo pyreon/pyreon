@@ -32,17 +32,16 @@ name: Native Device Build
 #
 # ## Status + promotion protocol
 #
-# Advisory — NOT YET in branch-protection's required checks. The encoded
-# promotion gate is `bun scripts/check-native-device-streak.ts`: 14
-# consecutive green nightlies (the audit's 2-week observation window;
-# every red night resets the clock — see the sticky-issue job below).
-# THIS workflow shape is required-check-SAFE by construction: the
+# REQUIRED — both build jobs ("iOS — xcodebuild (Simulator SDK)" and
+# "Android — gradlew assembleDebug") are branch-protection required
+# checks, promoted after the encoded streak gate
+# (`bun scripts/check-native-device-streak.ts`: 14 consecutive green
+# nightlies) passed. THIS workflow shape is what makes that safe: the
 # pull_request trigger has NO path filter (a filtered-out trigger creates
 # no check run → a required check would deadlock every non-native PR);
 # instead the `changes` job skips the build jobs at the JOB level, and a
-# skipped job satisfies a required status check. When the streak gate
-# passes, promotion is a pure branch-protection change (add the two build
-# job names as required checks) — zero workflow surgery.
+# skipped job satisfies a required status check. NEVER rename either job
+# — branch protection pins the exact context strings.
 
 on:
   workflow_dispatch:
@@ -675,8 +674,8 @@ jobs:
         # SHA-pinned same as the TodoMVC step above so supply-chain
         # hardening is consistent. Fresh emulator boot per step
         # (reactivecircus/android-emulator-runner re-boots when invoked
-        # multiple times in the same job) — acceptable cost on the
-        # label-gated advisory path.
+        # multiple times in the same job) — an acceptable cost for this
+        # job's runtime budget.
         uses: reactivecircus/android-emulator-runner@e89f39f1abbbd05b1113a29cf4db69e7540cae5a # v2.37.0
         with:
           api-level: 33
@@ -816,11 +815,11 @@ jobs:
 
   # ── Nightly-failure visibility (sticky issue) ──
   #
-  # The device gate is ADVISORY (not in branch protection) and its
-  # nightly schedule has no human watching the Actions tab — the gate
-  # was red for 13 consecutive nights (2026-05-29 → 2026-06-10) before
-  # anyone noticed, because nothing surfaced the failures anywhere a
-  # maintainer looks. This job closes that visibility hole: a FAILED
+  # The device gate's NIGHTLY schedule has no human watching the Actions
+  # tab (the per-PR runs are now REQUIRED checks, but a nightly drift
+  # failure on main gates nothing) — the gate was red for 13 consecutive
+  # nights (2026-05-29 → 2026-06-10) before anyone noticed, because
+  # nothing surfaced the failures anywhere a maintainer looks. This job closes that visibility hole: a FAILED
   # scheduled run creates (or comments on) ONE sticky issue titled
   # below; a SUCCESSFUL scheduled run closes it. Label-gated PR runs
   # are excluded — their failures are visible on the PR itself, and an

@@ -286,7 +286,7 @@ jobs:
         # Phase 2 feature set is still emitted end-to-end. The real
         # `swiftc -typecheck` against the SwiftUI SDK now runs in the
         # `validate-swift-typecheck` macOS job below (per-PR, native-
-        # affected), not just locally / on the advisory device gate.
+        # affected), not just locally / on the device gate.
         run: |
           set -eo pipefail
           cd examples/native-todomvc-ios
@@ -353,8 +353,9 @@ jobs:
     # and (2) the `@Observable`/Observation surface a struct stub cannot fake.
     # It does NOT close the heavy PyreonRuntime-service fixtures (same `-I`
     # scope limit as `validateSwiftTypecheck`; a tracked follow-up). Before
-    # this cell those real-SDK blocks ran ONLY on a dev's local macOS and the
-    # advisory `native-device.yml` (which gates 0 PRs) — never in per-PR CI.
+    # this cell those real-SDK blocks ran ONLY on a dev's local macOS and
+    # `native-device.yml` — never in per-PR CI. (Both are now required
+    # branch-protection checks.)
     #
     # Kotlin blocks skip gracefully (no kotlinc installed here — Kotlin is
     # already fully gated on the ubuntu `validate` job via Compose stubs), so
@@ -364,11 +365,14 @@ jobs:
     # SDK cannot slip past — otherwise every real-SDK block would silently
     # `skipIf` and the cell would go green-but-empty (a dead gate).
     #
-    # `macos-15` matches native-device.yml's pinned image. ADVISORY-first:
-    # this job is NOT yet a required branch-protection check — promote it once
-    # a few weeks prove it stable against macOS-image / Xcode drift (the repo's
-    # advisory→required pattern). It runs on native-affected PRs only (shared
-    # `decide` gate); a non-native PR skips → reports success (deadlock-free).
+    # `macos-15` matches native-device.yml's pinned image. REQUIRED: this
+    # job ("Validate emitted Swift (real-SDK typecheck, macOS)") is a
+    # branch-protection required check — promoted via the repo's
+    # advisory→required pattern once it proved stable against
+    # macOS-image / Xcode drift. NEVER rename it (branch protection pins
+    # the exact context string). It runs on native-affected PRs only
+    # (shared `decide` gate); a non-native PR skips → reports success
+    # (deadlock-free).
     runs-on: macos-15
     # This suite cold-starts `swiftc -typecheck` against the real SwiftUI SDK
     # per fixture — it ran ~26 min on main, only ~4 min under the previous 30-min
