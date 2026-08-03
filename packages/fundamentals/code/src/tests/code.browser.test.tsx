@@ -18,6 +18,33 @@ async function until(pred: () => boolean, ms = 3000): Promise<void> {
   }
 }
 
+/**
+ * Wait for HIGHLIGHT spans, then assert with the observed state.
+ *
+ * Two lessons baked in. The budget is generous (15s, not `until`'s 3s
+ * default) because the wait spans a dynamic grammar import, which a loaded CI
+ * runner serves far slower than a warm local one — the first cut passed
+ * locally and failed on every CI attempt. And the failure MESSAGE carries the
+ * observed DOM, because a CI-only failure's message is the only artifact you
+ * get: "0 spans across 1 line(s), editor mounted" says the grammar never
+ * arrived, while "0 spans across 0 line(s), editor missing" says the editor
+ * itself never mounted — two very different bugs the bare
+ * `expect(n).toBeGreaterThan(0)` could not tell apart.
+ */
+async function untilHighlighted(container: HTMLElement): Promise<void> {
+  const spans = () => container.querySelectorAll('.cm-line span').length
+  const deadline = Date.now() + 15_000
+  while (spans() === 0 && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 25))
+  }
+  const lines = container.querySelectorAll('.cm-line').length
+  const mounted = container.querySelector('.cm-editor') !== null
+  expect(
+    spans(),
+    `expected highlight spans — observed ${spans()} span(s) across ${lines} line(s), editor ${mounted ? 'mounted' : 'MISSING'}`,
+  ).toBeGreaterThan(0)
+}
+
 // Real-Chromium smoke for @pyreon/code.
 //
 // CodeMirror 6 leans on real measurement — line heights, scroll, IME,
@@ -45,8 +72,7 @@ describe('code editor in real browser', () => {
       h(CodeEditor, { instance: editor, style: 'height: 200px' }),
     )
     await flush()
-    await until(() => container.querySelectorAll('.cm-line span').length > 0)
-    expect(container.querySelectorAll('.cm-line span').length).toBeGreaterThan(0)
+    await untilHighlighted(container)
     unmount()
   })
 
@@ -67,8 +93,7 @@ describe('code editor in real browser', () => {
       h(CodeEditor, { instance: editor, style: 'height: auto' }),
     )
     await flush()
-    await until(() => container.querySelectorAll('.cm-line span').length > 0)
-    expect(container.querySelectorAll('.cm-line span').length).toBeGreaterThan(0)
+    await untilHighlighted(container)
     unmount()
   })
 
