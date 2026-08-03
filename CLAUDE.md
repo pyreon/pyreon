@@ -235,10 +235,10 @@ Quick reference (full bug-class detail + reproducers in `.claude/rules/anti-patt
 
 ## Monorepo Structure
 
-74 published packages across 6 categories under `packages/`, plus 7 private support packages:
+75 published packages across 6 categories under `packages/`, plus 7 private support packages:
 - `packages/core/` (10): reactivity, core, compiler, runtime-dom, runtime-server, router, head, server, primitives, sized-map
 - `packages/fundamentals/` (27): a11y, store, state-tree, form, validation, validate, http, query, table, virtual, i18n, feature, charts, storage, hooks, hotkeys, permissions, machine, flow, code, rich-text, document, rx, toast, url-state, dnd, sync
-- `packages/tools/` (13 published): cli, lint, mcp, vite-plugin, typescript, storybook, atlas, loom, react-compat, preact-compat, vue-compat, solid-compat, svelte-compat; + `devtools` (private)
+- `packages/tools/` (14 published): cli, config, lint, mcp, vite-plugin, typescript, storybook, atlas, loom, react-compat, preact-compat, vue-compat, solid-compat, svelte-compat; + `devtools` (private)
 - `packages/ui-system/` (11): ui-core, styler, unistyle, elements, attrs, rocketstyle, coolgrid, kinetic, kinetic-presets, connector-document, document-primitives
 - `packages/zero/` (6): zero, zero-cli, create-zero, create-multiplatform, meta, zero-content
 - `packages/native/` (6): native-compiler, native-cli, native-runtime-swift, native-router-swift, native-runtime-kotlin, native-router-kotlin — the PMTC stack. The two JS packages build to `lib/`; the four runtime/router packages SHIP SOURCE (Swift files consumed by SPM via XcodeGen `path:`, Kotlin via Gradle `srcDir`), which is why a scaffolded app resolves them from `node_modules` and why npm is the required distribution channel for them.
