@@ -44,8 +44,10 @@ function printUsage(): void {
     add <pkg...> [--dry-run] [--json] Install @pyreon/* packages (PM auto-detected) + print how to wire each in
     new [name] [--native]            Scaffold a new Pyreon project (create-zero, or -multiplatform with --native)
     mcp [args]                       Launch the Pyreon MCP server (delegates to @pyreon/mcp; prefers project-local)
-    atlas [args]                     Component workbench (delegates to @pyreon/atlas): scan derives a verified
-                                     catalog, dev serves the workbench, verify-browser runs Chromium verification
+    atlas [args]                     Component workbench (delegates to @pyreon/atlas): init detects this
+                                     workspace's packages and writes pyreon.config.ts, scan derives a verified
+                                     catalog (no story files — it reads your components), dev serves the
+                                     workbench, build emits a static site, verify-browser runs Chromium checks
     loom [args]                      Dependency observatory (delegates to @pyreon/loom): scan analyzes the
                                      workspace fabric with a red-exit CI contract, dev serves the graph UI
     doctor [options]                 Project-wide health audit with 0-100 score.

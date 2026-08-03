@@ -120,8 +120,23 @@ export interface AuthoredScenario {
   play?: import('../core').PlayFn
 }
 
-/** Filenames tried, in order. */
+/**
+ * Filenames tried, in order.
+ *
+ * `atlas.config.*` first, then the ecosystem-wide `pyreon.config.*`'s `atlas`
+ * key. The per-tool file wins deliberately: a project that has both has almost
+ * certainly just started migrating, and having the general file silently
+ * override the specific one mid-migration is the worst possible ordering.
+ */
 const CANDIDATES = ['atlas.config.tsx', 'atlas.config.ts', 'atlas.config.mjs', 'atlas.config.js']
+
+/** The ecosystem-wide config, read for its `atlas` section. */
+const SHARED_CANDIDATES = [
+  'pyreon.config.ts',
+  'pyreon.config.tsx',
+  'pyreon.config.mjs',
+  'pyreon.config.js',
+]
 
 export interface LoadedConfig {
   config: AtlasConfig
@@ -149,18 +164,39 @@ export async function loadAtlasConfig(
   cwd: string,
   loader: ModuleLoader = runtimeLoader(),
 ): Promise<LoadedConfig> {
-  const found = CANDIDATES.map((name) => resolve(cwd, name)).find((file) => existsSync(file))
+  const own = CANDIDATES.map((name) => resolve(cwd, name)).find((file) => existsSync(file))
+  const shared = SHARED_CANDIDATES.map((name) => resolve(cwd, name)).find((file) => existsSync(file))
+  const found = own ?? shared
   if (!found) return { config: {} }
 
-  let mod: Record<string, unknown>
+  let loadedModule: Record<string, unknown>
   try {
-    mod = await loader.load(found)
+    loadedModule = await loader.load(found)
   } catch (err) {
     return {
       config: {},
       path: found,
       error: `could not load ${found}: ${err instanceof Error ? err.message : String(err)}`,
     }
+  }
+
+  // From `pyreon.config.*` the config is one SECTION of the module, not the
+  // module itself — everything below then reads identically for both files,
+  // which is the point: one shape, two places it can live.
+  let mod = loadedModule
+  if (!own) {
+    const section = (loadedModule.atlas ??
+      ((loadedModule.default ?? {}) as Record<string, unknown>).atlas) as unknown
+    if (section === undefined) {
+      // A `pyreon.config.ts` with no `atlas` key is not an error — it is a
+      // project configuring some other tool. Silence is correct here.
+      return { config: {} }
+    }
+    if (typeof section !== 'object' || section === null || Array.isArray(section)) {
+      return { config: {}, path: found, error: `${found}: \`atlas\` must be an object` }
+    }
+    // Wrapped so the named-export pass below finds the section's own fields.
+    mod = { default: section }
   }
 
   // Accept a named export or a default object — both read naturally, and

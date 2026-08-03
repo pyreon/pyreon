@@ -2208,6 +2208,14 @@
         "typescript": ">=5.0.0 <7.0.0",
       },
     },
+    "packages/tools/config": {
+      "name": "@pyreon/config",
+      "version": "0.50.0",
+      "devDependencies": {
+        "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/vitest-config": "workspace:*",
+      },
+    },
     "packages/tools/devtools": {
       "name": "@pyreon/devtools",
       "version": "0.50.0",
@@ -3609,6 +3617,8 @@
     "@pyreon/compiler-linux-x64-musl": ["@pyreon/compiler-linux-x64-musl@workspace:packages/core/compiler/npm/linux-x64-musl"],
 
     "@pyreon/compiler-win32-x64-msvc": ["@pyreon/compiler-win32-x64-msvc@workspace:packages/core/compiler/npm/win32-x64-msvc"],
+
+    "@pyreon/config": ["@pyreon/config@workspace:packages/tools/config"],
 
     "@pyreon/connector-document": ["@pyreon/connector-document@workspace:packages/ui-system/connector-document"],
 

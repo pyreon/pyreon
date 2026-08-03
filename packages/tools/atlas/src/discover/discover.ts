@@ -16,7 +16,7 @@ export interface DiscoverOptions {
   cwd?: string
   /** directory to scan, relative to cwd (default 'src') */
   dir?: string
-  /** file extensions to scan (default ['.tsx']) */
+  /** file extensions to scan (default `.tsx`/`.jsx`/`.ts`) */
   extensions?: readonly string[]
   /** path substrings to skip (default node_modules + test/spec/stories files) */
   ignore?: readonly string[]
@@ -29,6 +29,16 @@ export interface DiscoverOptions {
    */
   project?: string
 }
+
+/**
+ * Extensions scanned by default.
+ *
+ * `.tsx` alone was too narrow twice over: a `.jsx` project was invisible, and a
+ * rocketstyle component is a CALL CHAIN with no JSX in it, so it legitimately
+ * lives in a `.ts` file — where the scanner never looked. A component that is
+ * simply absent, with no error, is the failure mode this tool exists to avoid.
+ */
+export const DEFAULT_EXTENSIONS = ['.tsx', '.jsx', '.ts'] as const
 
 const DEFAULT_IGNORE = ['node_modules', '.test.', '.spec.', '.stories.', '.d.ts']
 
@@ -52,7 +62,7 @@ function walk(dir: string, exts: readonly string[], ignore: readonly string[], a
 export function listComponentFiles(options: DiscoverOptions = {}): string[] {
   const root = join(options.cwd ?? '.', options.dir ?? 'src')
   const files: string[] = []
-  walk(root, options.extensions ?? ['.tsx'], options.ignore ?? DEFAULT_IGNORE, files)
+  walk(root, options.extensions ?? DEFAULT_EXTENSIONS, options.ignore ?? DEFAULT_IGNORE, files)
   return files.sort() // deterministic order
 }
 

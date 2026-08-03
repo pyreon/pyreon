@@ -72,6 +72,46 @@ same shape typed for a config file. Need full control over a component's shape?
 Drop to a raw `discover()` plugin returning `ComponentIntelligence` (see
 `@pyreon/atlas/core`).
 
+## Getting started — `atlas init`
+
+```bash
+atlas init          # detects your packages, writes pyreon.config.ts
+atlas dev           # the workbench, against your real components
+```
+
+`init` reads the workspace declaration you already have (`workspaces` in
+`package.json`, or `pnpm-workspace.yaml`), probes each package for components,
+and writes the config. It refuses to overwrite an existing one without
+`--force` — that file is hand-edited the moment it exists. `--dry-run` prints
+it instead.
+
+**It writes no story files, and there is no flag to.** A per-component file
+restating props the component already declares is the thing Atlas exists not to
+need: it drifts the moment the component changes and nothing tells you.
+Components, controls and scenarios are DERIVED from your source.
+
+Even `init` is optional. With no config at all, a monorepo whose root has no
+components has its packages detected automatically — and the scan says so,
+rather than producing a catalog from nowhere.
+
+### Configuration lives in `pyreon.config.ts`
+
+One file for the ecosystem, a section per package (see `@pyreon/config`):
+
+```ts
+import { defineConfig } from '@pyreon/config'
+
+export default defineConfig({
+  atlas: {
+    title: 'Acme Design System',
+    projects: [{ name: 'Core', dir: 'packages/core/src' }],
+  },
+})
+```
+
+A per-tool `atlas.config.ts` still works and wins where both exist, so a
+partly-finished migration never has the general file override the specific one.
+
 ## Shipping the docs — `atlas build`
 
 `atlas dev` needs a checkout and a running Node process. A design system needs a

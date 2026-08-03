@@ -8,6 +8,7 @@
   "@pyreon/cli": 14848,
   "@pyreon/code": 7168,
   "@pyreon/compiler": 70912,
+  "@pyreon/config": 256,
   "@pyreon/connector-document": 2304,
   "@pyreon/coolgrid": 2304,
   "@pyreon/core": 5888,

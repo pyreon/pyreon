@@ -20,11 +20,13 @@ import {
   type DiscoverOptions,
   fileDiscoveryPlugin,
   loadAtlasConfig,
+  listComponentFiles,
   loadRuntime,
   type ModuleLoader,
   type PageMeta,
   type ProjectRoot,
 } from '../discover'
+import { type DetectedProject, detectProjects } from '../discover/workspace'
 
 export interface ScanOptions extends DiscoverOptions {
   /** output directory for the catalog + guide, relative to cwd (default '.') */
@@ -73,6 +75,46 @@ export interface ScanResult {
    * grouped / titled?" with nothing to point at.
    */
   configError?: string
+  /**
+   * Packages found by scanning the workspace because nothing was configured
+   * and the default root was empty.
+   *
+   * Reported rather than applied silently: a catalog that appeared out of
+   * nowhere is a surprise, and the reader needs to know it came from a guess
+   * they can pin with `atlas init`.
+   */
+  autoDetected?: readonly DetectedProject[]
+}
+
+/**
+ * Detect a monorepo's packages, but ONLY when there is nothing else to scan.
+ *
+ * The guard is the whole design. Auto-detection that could fire on a project
+ * which already works would silently change its catalog — new groups, new keys,
+ * a reshuffled sidebar — on an upgrade nobody asked for. So it runs only when
+ * the ordinary single-root scan finds ZERO components, which today produces
+ * `no components found under ./src` and nothing else.
+ *
+ * That makes this purely additive: the only behaviour it can change is the
+ * behaviour that was already a dead end.
+ */
+export function autoDetectProjects(
+  cwd: string,
+  dir: string,
+  declared: readonly ProjectRoot[] | undefined,
+  deps: {
+    hasComponents?: (cwd: string, dir: string) => boolean
+    detect?: typeof detectProjects
+  } = {},
+): DetectedProject[] {
+  // An explicit list is the author's decision and is never second-guessed.
+  if (declared && declared.length > 0) return []
+
+  const hasComponents =
+    deps.hasComponents ?? ((c: string, d: string) => listComponentFiles({ cwd: c, dir: d }).length > 0)
+  if (hasComponents(cwd, dir)) return []
+
+  return (deps.detect ?? detectProjects)(cwd, { dir })
 }
 
 /**
@@ -118,6 +160,10 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
   // `loadRuntime`. Undefined means Atlas resolves its own, which is right only
   // when nothing else has loaded a copy.
   const runtime = loader ? await loadRuntime(loader) : undefined
+  // Only when the ordinary root scan finds nothing — see `autoDetectProjects`.
+  const autoDetected = autoDetectProjects(cwd, options.dir ?? 'src', loaded.config.projects)
+  const effectiveProjects: readonly ProjectRoot[] | undefined =
+    loaded.config.projects ?? (autoDetected.length > 0 ? autoDetected : undefined)
   let asset: AgentAsset | undefined
   try {
     return await buildScan()
@@ -147,7 +193,7 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
         // `project`, so the graph keys their components apart. Without that
         // stamp two roots exporting the same name would collapse in the graph's
         // map — which is exactly the bug this fans out to support.
-        ...scanRoots(options, loaded.config.projects).map((root) =>
+        ...scanRoots(options, effectiveProjects).map((root) =>
           fileDiscoveryPlugin({
             ...options,
             ...root,
@@ -200,7 +246,8 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
       ...(loaded.config.presets ? { presets: loaded.config.presets } : {}),
       ...(loaded.config.title ? { title: loaded.config.title } : {}),
       ...(loaded.config.pages ? { pages: loaded.config.pages } : {}),
-      ...(loaded.config.projects ? { projects: loaded.config.projects } : {}),
+      ...(effectiveProjects ? { projects: effectiveProjects } : {}),
+      ...(autoDetected.length > 0 ? { autoDetected } : {}),
       ...(loaded.error ? { configError: loaded.error } : {}),
     }
 
@@ -236,6 +283,13 @@ function writeAtomic(path: string, content: string): void {
 const HELP = `atlas — component workshop + catalog for the Pyreon ecosystem
 
 Usage:
+  atlas init [dir]    detect this workspace's packages and write atlas.config.ts —
+                      the ONLY file you write; components, controls and
+                      scenarios are derived from source, so there are no
+                      story files to create or keep in sync
+    --force           overwrite an existing config
+    --dry-run         print it instead of writing it
+    --title <text>    site title (default: the root package name)
   atlas dev [dir]     start the workbench against <dir>'s real components —
                       catalog derived from source, no stories to write
   atlas scan [dir]    discover components under <dir>/src, build a verified
@@ -311,6 +365,16 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     // explains most of what follows (no groups, no title, no projects), and
     // reading it after the counts is reading it too late.
     if (result.configError) err(`atlas: ${result.configError}\n`)
+    // A catalog that appeared without any configuration is a surprise unless it
+    // says where it came from — and the reader's next question is always "can I
+    // change that list?", which `atlas init` answers by writing it down.
+    if (result.autoDetected && result.autoDetected.length > 0) {
+      err(
+        `atlas: no atlas.config.ts — detected ${result.autoDetected.length} workspace package(s): ` +
+          `${result.autoDetected.map((p) => p.name).join(', ')}.\n` +
+          `  Run \`atlas init\` to write that list down and edit it.\n`,
+      )
+    }
     if (result.components === 0) {
       err(`atlas: no components found under ${join(dir ?? '.', 'src')}\n`)
       return 1
@@ -388,6 +452,49 @@ export async function runCli(argv: readonly string[]): Promise<number> {
       err(`${String((error as Error)?.message ?? error)}\n`)
       return 1
     }
+  }
+
+  if (cmd === 'init') {
+    const dir = rest.find((a) => !a.startsWith('-'))
+    const { runInit } = await import('./init')
+    const result = runInit({
+      cwd: dir ?? '.',
+      force: rest.includes('--force'),
+      dryRun: rest.includes('--dry-run'),
+      ...optional('title', flagValue(rest, '--title')),
+    })
+
+    if (result.kind === 'exists') {
+      // Not an error — re-running `init` in a configured project is a
+      // reasonable thing to do, and the answer is "you already have one".
+      err(
+        `atlas: ${result.path} already exists. Pass --force to overwrite it ` +
+          `(it is hand-edited — your wrapper, theme and authored scenarios live there).\n`,
+      )
+      return 1
+    }
+    if (result.kind === 'nothing-found') {
+      err(
+        `atlas: found no components under ${result.searched}, and no workspace packages containing any.\n` +
+          `  Point it somewhere else: atlas init <dir>\n`,
+      )
+      return 1
+    }
+
+    if (result.kind === 'dry-run') {
+      out(`# ${result.path}\n${result.source}`)
+      return 0
+    }
+    out(
+      `atlas init: wrote ${result.path}\n` +
+        `  title: ${result.title}\n` +
+        (result.projects.length > 0
+          ? result.projects.map((p) => `  · ${p.name} → ${p.dir}\n`).join('')
+          : '  (single package — no `projects` needed)\n') +
+        `\nNo story files: components, controls and scenarios are derived from your\n` +
+        `source. Run \`atlas dev\` to see them.\n`,
+    )
+    return 0
   }
 
   if (cmd === 'build') {
