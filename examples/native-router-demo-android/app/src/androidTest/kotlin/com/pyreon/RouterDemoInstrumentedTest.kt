@@ -52,6 +52,7 @@ import androidx.compose.ui.test.swipeRight
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import android.os.ParcelFileDescriptor
 import com.pyreon.router.PyreonDeepLink
 import com.pyreon.runtime.PyreonSecureStorage
 import org.junit.Rule
@@ -426,13 +427,32 @@ class RouterDemoInstrumentedTest {
         composeRule.onNodeWithTag("note-count").assertTextEquals("Notes: 0")
 
         try {
-            instr.uiAutomation.executeShellCommand("svc wifi disable").close()
-            instr.uiAutomation.executeShellCommand("svc data disable").close()
-            composeRule.waitUntil(timeoutMillis = 30_000) {
-                composeRule
-                    .onAllNodesWithText("Online: false")
-                    .fetchSemanticsNodes()
-                    .isNotEmpty()
+            shell(instr, "svc wifi disable")
+            shell(instr, "svc data disable")
+            try {
+                composeRule.waitUntil(timeoutMillis = 30_000) {
+                    composeRule
+                        .onAllNodesWithText("Online: false")
+                        .fetchSemanticsNodes()
+                        .isNotEmpty()
+                }
+            } catch (e: Throwable) {
+                // A bare "condition not satisfied after 30000 ms" says nothing
+                // about WHICH half failed: the radios may still be up, or
+                // useOnline() may not be tracking them. Print what the app
+                // actually rendered so the next CI-only failure is diagnosable
+                // rather than another round of guessing.
+                val shown = composeRule.onAllNodesWithText("Online: true")
+                    .fetchSemanticsNodes().size
+                throw AssertionError(
+                    "useOnline() never reported false within 30s after " +
+                        "`svc wifi/data disable`. Nodes still showing " +
+                        "\"Online: true\": $shown. If that is 1, the radios " +
+                        "went down but the hook did not observe it; if the " +
+                        "device is still online, the shell command did not " +
+                        "take effect on this emulator image.",
+                    e,
+                )
             }
 
             // Written with no network at all — the whole point of offline-first.
@@ -440,8 +460,8 @@ class RouterDemoInstrumentedTest {
             composeRule.waitForIdle()
             composeRule.onNodeWithTag("note-count").assertTextEquals("Notes: 1")
         } finally {
-            instr.uiAutomation.executeShellCommand("svc wifi enable").close()
-            instr.uiAutomation.executeShellCommand("svc data enable").close()
+            shell(instr, "svc wifi enable")
+            shell(instr, "svc data enable")
         }
 
         // Connectivity comes BACK — proves the read tracks the device rather
@@ -746,4 +766,20 @@ class RouterDemoInstrumentedTest {
             }
         }
     }
+
+    /**
+     * Run a shell command through UiAutomation and WAIT for it to finish.
+     *
+     * `executeShellCommand` returns a descriptor wired to the command's stdout
+     * and the command runs asynchronously; closing that descriptor immediately
+     * can tear the pipe down before the command has applied its effect. The
+     * radios then stay up and the connectivity assertion below times out with
+     * no indication of why. Reading to EOF is what makes it synchronous.
+     */
+    private fun shell(instr: android.app.Instrumentation, cmd: String) {
+        ParcelFileDescriptor.AutoCloseInputStream(
+            instr.uiAutomation.executeShellCommand(cmd),
+        ).use { it.readBytes() }
+    }
+
 }
