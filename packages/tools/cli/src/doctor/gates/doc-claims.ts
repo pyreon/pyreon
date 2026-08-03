@@ -361,11 +361,11 @@ const checks: ClaimCheck[] = [
       },
       {
         file: 'README.md',
-        pattern: /(\d+) packages across 5 categories/,
+        pattern: /(\d+) packages across 6 categories/,
       },
       {
         file: 'CLAUDE.md',
-        pattern: /(\d+) published packages across 5 categories/,
+        pattern: /(\d+) published packages across 6 categories/,
       },
     ],
   },

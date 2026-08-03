@@ -39,6 +39,13 @@ export type {
 // and nowhere else — the same gap useGeolocation and useDatabase had.
 export { useWebSocket } from './useWebSocket'
 export type { UseWebSocketOptions, UseWebSocketResult } from './useWebSocket'
+// useAuth — the web half of the auth-state container PMTC lowers to
+// `PyreonAuth<User>` on both native targets (device-proven incl. session
+// rehydration, #2620). Without this export the flagship finance real app's
+// `import { useAuth } from '@pyreon/hooks'` resolved on iOS and Android and
+// nowhere else — the same gap useGeolocation/useDatabase/useWebSocket had.
+export { useAuth } from './useAuth'
+export type { UseAuthResult, UseAuthStatus } from './useAuth'
 // useSecureStorage — the web half of the imperative secret store
 // (Keychain on iOS, AndroidKeyStore AES-GCM on Android; module-scoped
 // in-memory on web, which has no OS secret store — persisting secrets to
