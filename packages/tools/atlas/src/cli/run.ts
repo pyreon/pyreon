@@ -320,6 +320,11 @@ Usage:
     --force           overwrite an existing config
     --dry-run         print it instead of writing it
     --title <text>    site title (default: the root package name)
+  atlas check <Component> [json]
+                      validate a proposed usage against the derived contract —
+                      catches the value that renders silently wrong
+                      (state="primry"). Exits non-zero on findings, so it
+                      works in a hook or a CI step
   atlas dev [dir]     start the workbench against <dir>'s real components —
                       catalog derived from source, no stories to write
   atlas scan [dir]    discover components under <dir>/src, build a verified
@@ -532,6 +537,43 @@ export async function runCli(argv: readonly string[]): Promise<number> {
         `source. Run \`atlas dev\` to see them.\n`,
     )
     return 0
+  }
+
+  if (cmd === 'check') {
+    // `atlas check Button '{"state":"primry"}'` — the catalog as a guardrail.
+    //
+    // Reads the CATALOG rather than rescanning: checking a usage should be
+    // instant, and the answer must be the same one the workbench and the agent
+    // guide give. Rescanning here would also make the check disagree with the
+    // catalog an agent was handed moments earlier.
+    const positional = rest.filter((a) => !a.startsWith('-'))
+    const [name, argsJson] = positional
+    if (!name) {
+      err('atlas: usage — atlas check <Component> \'{"prop":"value"}\'\n')
+      return 1
+    }
+    const { runCheck } = await import('./check')
+    const result = runCheck({
+      cwd: flagValue(rest, '--cwd') ?? '.',
+      component: name,
+      ...(argsJson !== undefined ? { argsJson } : {}),
+    })
+    if (result.kind === 'no-catalog') {
+      err(`atlas: no atlas-catalog.json found near ${result.searched}. Run \`atlas scan\` first.\n`)
+      return 1
+    }
+    if (result.kind === 'bad-json') {
+      err(`atlas: could not parse the args — ${result.reason}\n`)
+      return 1
+    }
+    if (result.kind === 'unknown-component') {
+      err(`atlas: ${result.message}\n`)
+      return 1
+    }
+    out(`${result.text}\n`)
+    // Non-zero on findings: this is meant to be usable in a hook or a CI step,
+    // where "it printed a problem" has to mean "it failed".
+    return result.ok ? 0 : 1
   }
 
   if (cmd === 'build') {

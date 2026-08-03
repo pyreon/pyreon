@@ -44,6 +44,16 @@ no components — today a dead end that prints "no components found" — the
 workspace's packages are detected automatically, and the scan says so rather
 than producing a catalog from nowhere.
 
+**`atlas check` — the catalog as a guardrail.** Atlas already knew `state`
+accepts exactly three values; that knowledge could only be READ, and reading is
+not checking. The most common failure when an AI writes UI code is a plausible
+prop value that does not exist — `state="primry"` typechecks in a JS file,
+renders without throwing, and silently does nothing. `atlas check Button
+'{"state":"primry"}'` catches it and suggests `primary`, plus unknown props,
+wrong types (including a non-function event handler) and missing required props.
+Exits non-zero, so it works in a hook or a CI step. Reads the catalog rather
+than rescanning, so it cannot disagree with the guide an agent was just handed.
+
 **Discovery is no longer silent.** A component the scanner does not recognise
 was pure absence — the catalog quietly one smaller, with nothing distinguishing
 "you have 12 components" from "you have 14 and I found 12". `atlas scan` now

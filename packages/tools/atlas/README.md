@@ -245,6 +245,31 @@ one package, or a bare `'Button'` when it is unambiguous.
 Single-package projects set no `project`, so every derived key, id and group is
 byte-identical to before this existed.
 
+## `atlas check` — the catalog as a guardrail
+
+```bash
+$ atlas check Button '{"label":"Save","state":"primry"}'
+Button: 1 problem(s):
+  · `state` must be one of `primary`, `secondary`, `danger` — got `primry` — did you mean `primary`?
+```
+
+Exits non-zero on findings, so it works in a pre-commit hook or a CI step.
+
+This is what the derived catalog is FOR. Atlas already knows `state` accepts
+exactly three values — until now that could only be READ, and reading is not
+checking. The single most common failure when an AI writes UI code is a
+plausible prop value that does not exist: `state="primry"`, `size="medium"`,
+`variant="ghost"`. Each typechecks in a JS file, renders without throwing, and
+silently does nothing.
+
+It catches invalid values, unknown props, wrong types (including a non-function
+for an event handler — the documented footgun), and missing required props,
+suggesting the nearest legal name where one is close enough to be a typo rather
+than a different value.
+
+Reads `atlas-catalog.json` rather than rescanning, so the answer is instant and
+is the SAME one the workbench and the agent guide give.
+
 ## Built-in plugins
 
 Every capability is a plugin on one contract. The built-in suite is all pure and
