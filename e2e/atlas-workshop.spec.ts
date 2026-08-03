@@ -162,6 +162,21 @@ test.describe('Atlas workshop — real-Chromium e2e', () => {
     expect(errors).toEqual([])
   })
 
+  test('fulltext search: an enum OPTION surfaces its component with the reason chip', async ({ browser }) => {
+    const page = await open(browser)
+    await page.getByTestId('search-trigger').click()
+    // `soft` is a VARIANT OPTION on Badge — not a component name. The hit
+    // carries the matched field so the row explains itself.
+    await page.locator('input[data-search]').fill('soft')
+    const dialog = page.getByTestId('search-dialog')
+    await expect(dialog.getByRole('button', { name: /Badge/ })).toBeVisible()
+    // Both Badge AND Chip carry a `soft` variant — assert the chip exists
+    // rather than pretending the option is unique to one component.
+    await expect(dialog.getByText('variant · soft').first()).toBeVisible()
+    await page.keyboard.press('Enter')
+    await expect(page.getByTestId('canvas-name')).toHaveText('Badge')
+  })
+
   test('rocketstyle dimensions apply: active-tab highlight, variant flip, zoom scale', async ({
     browser,
   }) => {

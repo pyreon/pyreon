@@ -11,6 +11,14 @@ export type KindFilter = 'all' | 'internal' | 'external'
 export type NodeStatus = 'circular' | 'drift' | 'issue' | 'current'
 
 /** One node of the observatory — internal member or external dependency. */
+/** A ranked search hit with WHY it matched (`finding · unused-dep`, `depends on · @pyreon/core`). */
+export interface LoomSearchHit {
+  id: string
+  kind: 'internal' | 'external'
+  score: number
+  reason?: string
+}
+
 export interface NodeVM {
   id: string
   kind: 'internal' | 'external'
@@ -37,6 +45,10 @@ export interface ObservatoryModel {
   view: Signal<ViewId>
   kind: Signal<KindFilter>
   query: Signal<string>
+  /** The ⌘K search dialog (docs-site style; the header input became a trigger). */
+  searchOpen: Signal<boolean>
+  /** Fulltext hits with the matched-field reason — id, version, kind, findings, deps. */
+  searchHits: (q: string) => LoomSearchHit[]
   selId: Signal<string>
   hoverId: Signal<string | null>
   showCycles: Signal<boolean>
@@ -137,6 +149,7 @@ export function createModel(report: LoomReport): ObservatoryModel {
   const view = signal<ViewId>('graph')
   const kind = signal<KindFilter>('all')
   const query = signal('')
+  const searchOpen = signal(false)
   const selId = signal(nodes[0]?.id ?? '')
   const hoverId = signal<string | null>(null)
   const showCycles = signal(true)
@@ -154,6 +167,66 @@ export function createModel(report: LoomReport): ObservatoryModel {
 
   const sel = computed(() => byId.get(selId()) ?? nodes[0]!)
 
+  // ── fulltext search index (the ⌘K dialog) ─────────────────────────────────
+  // Beyond ids: versions, kind, license, FINDINGS (code + message — searching
+  // `unused-dep` lists every flagged package), and the dependency edges in
+  // both directions. Multi-token AND; keyword hits carry the matched field.
+  interface SearchEntry {
+    text: string
+    weight: number
+    reason?: string
+  }
+  const issuesByPkg = new Map<string, { code: string; severity: string; message: string }[]>()
+  for (const issue of report.issues) {
+    const list = issuesByPkg.get(issue.pkg) ?? []
+    list.push({ code: issue.code, severity: issue.severity, message: issue.message })
+    issuesByPkg.set(issue.pkg, list)
+  }
+  const searchIndex = nodes.map((n) => {
+    const entries: SearchEntry[] = [
+      { text: n.id.toLowerCase(), weight: 100 },
+      { text: n.version.toLowerCase(), weight: 30, reason: `version · ${n.version}` },
+      { text: n.kind, weight: 15, reason: `kind · ${n.kind}` },
+    ]
+    if (n.license) entries.push({ text: n.license.toLowerCase(), weight: 20, reason: `license · ${n.license}` })
+    for (const d of n.deps) entries.push({ text: d.toLowerCase(), weight: 25, reason: `depends on · ${d}` })
+    for (const d of n.dependents) entries.push({ text: d.toLowerCase(), weight: 25, reason: `needed by · ${d}` })
+    for (const iss of issuesByPkg.get(n.id) ?? []) {
+      entries.push({ text: iss.code, weight: 45, reason: `finding · ${iss.code}` })
+      entries.push({ text: iss.message.toLowerCase(), weight: 15, reason: `finding · ${iss.code}` })
+    }
+    return { n, entries }
+  })
+  const searchHits = (q: string): LoomSearchHit[] => {
+    const tokens = q.trim().toLowerCase().split(/\s+/).filter(Boolean)
+    if (tokens.length === 0) return nodes.map((n) => ({ id: n.id, kind: n.kind, score: 0 }))
+    const hits: LoomSearchHit[] = []
+    for (const { n, entries } of searchIndex) {
+      let total = 0
+      let reason: string | undefined
+      let reasonWeight = 0
+      let ok = true
+      for (const t of tokens) {
+        let best: SearchEntry | undefined
+        for (const e of entries) {
+          if (!e.text.includes(t)) continue
+          if (!best || e.weight > best.weight) best = e
+        }
+        if (!best) {
+          ok = false
+          break
+        }
+        total += best.weight + (best.weight === 100 && n.id.toLowerCase().startsWith(t) ? 20 : 0)
+        if (best.reason && best.weight > reasonWeight) {
+          reason = best.reason
+          reasonWeight = best.weight
+        }
+      }
+      if (ok) hits.push({ id: n.id, kind: n.kind, score: total, ...(reason ? { reason } : {}) })
+    }
+    return hits.sort((a, b) => b.score - a.score || a.id.localeCompare(b.id))
+  }
+
   return {
     report,
     nodes,
@@ -162,6 +235,8 @@ export function createModel(report: LoomReport): ObservatoryModel {
     view,
     kind,
     query,
+    searchOpen,
+    searchHits,
     selId,
     hoverId,
     showCycles,

@@ -613,3 +613,87 @@ export const MatrixCellDot = el
     dim: { extendCss: 'opacity:.55;' },
   })))
   .theme(() => ({ width: '12px', height: '12px', borderRadius: '4px', extendCss: 'transition:opacity .15s;' }))
+
+// ── ⌘K search dialog (docs-site style; shared shape with atlas) ────────────
+export const SearchBackdrop = el
+  .attrs({ tag: 'div', contentDirection: 'rows', contentAlignX: 'center' })
+  .theme((t: T) => ({
+    position: 'fixed', top: '0', left: '0', right: '0', bottom: '0', zIndex: '80',
+    fontFamily: "'Public Sans',system-ui,sans-serif", fontSize: '14px', color: t.text,
+    extendCss: 'background:rgba(8,10,16,.55);backdrop-filter:blur(4px);',
+  }))
+export const SearchDialogCard = el
+  .attrs({ tag: 'div', contentDirection: 'rows', contentAlignX: 'block' })
+  .theme((t: T) => ({
+    width: 'min(600px,92vw)', marginTop: '12vh', maxHeight: '60vh',
+    borderRadius: '16px', overflow: 'hidden',
+    background: t.surface, borderWidth: '1px', borderStyle: 'solid', borderColor: t.border,
+    extendCss: 'box-shadow:0 24px 80px -16px rgba(0,0,0,.55);animation:lm-in .14s ease-out;',
+  }))
+export const SearchDialogHead = el
+  .attrs({ tag: 'div', contentDirection: 'inline', contentAlignY: 'center', gap: 8 })
+  .theme((t: T) => ({
+    padding: '4px 16px', flex: 'none',
+    borderWidthBottom: '1px', borderStyleBottom: 'solid', borderColorBottom: t.border,
+  }))
+export const SearchDialogField = el
+  .attrs({ tag: 'input' })
+  .theme((t: T) => ({
+    flex: '1', border: 'none', background: 'transparent', color: t.text,
+    fontSize: '15px', padding: '12px 0',
+    extendCss: `outline:none;font-family:inherit;&::placeholder{color:${t.faint};}`,
+  })) as unknown as InputEl
+export const SearchResults = el
+  .attrs({ tag: 'div', contentDirection: 'rows', contentAlignX: 'block' })
+  .theme(() => ({ overflowY: 'auto', padding: '8px', flex: '1' }))
+export const SearchRow = el
+  .attrs({ tag: 'button', contentDirection: 'inline', contentAlignY: 'center', gap: 12, block: true })
+  .states(dim((t) => ({
+    active: { background: t.accentSoft },
+    idle: { background: 'transparent', hover: { background: t.surface2 } },
+  })))
+  .theme(() => ({
+    font: 'inherit', cursor: 'pointer', textAlign: 'left', border: 'none',
+    padding: '8px 12px', borderRadius: '8px',
+  }))
+export const SearchRowName = txt
+  .attrs({ tag: 'span' })
+  .theme(() => ({ fontFamily: MONO, fontSize: '12.5px', fontWeight: '600', flex: 'none' }))
+export const SearchRowKind = txt
+  .attrs({ tag: 'span' })
+  .variants(dim((t) => ({ internal: { color: t.accent }, external: { color: t.ext } })))
+  .theme(() => ({ fontFamily: MONO, fontSize: '9.5px', flex: '1', minWidth: '0', extendCss: 'letter-spacing:.08em;' }))
+export const SearchRowReason = txt
+  .attrs({ tag: 'span' })
+  .theme((t: T) => ({
+    fontFamily: MONO, fontSize: '9.5px', color: t.accent, flex: 'none',
+    padding: '2px 8px', borderRadius: '4px', background: t.accentSoft,
+    extendCss: 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:240px;',
+  }))
+export const SearchEnterHint = txt
+  .attrs({ tag: 'span' })
+  .theme((t: T) => ({
+    fontFamily: MONO, fontSize: '9px', color: t.faint, flex: 'none',
+    padding: '2px 8px', borderRadius: '4px',
+    borderWidth: '1px', borderStyle: 'solid', borderColor: t.border,
+  }))
+export const SearchEmpty = el
+  .attrs({ tag: 'div', contentDirection: 'rows', contentAlignX: 'center' })
+  .theme((t: T) => ({ padding: '32px 16px', color: t.faint, fontSize: '13px', textAlign: 'center' }))
+export const SearchFoot = el
+  .attrs({ tag: 'div', contentDirection: 'inline', contentAlignY: 'center', gap: 12 })
+  .theme((t: T) => ({
+    padding: '8px 16px', flex: 'none',
+    borderWidthTop: '1px', borderStyleTop: 'solid', borderColorTop: t.border,
+    fontFamily: MONO, fontSize: '9px', color: t.faint,
+  }))
+export const SearchTrigger = el
+  .attrs({ tag: 'button', contentDirection: 'inline', contentAlignY: 'center', gap: 8, block: true })
+  .theme((t: T) => ({
+    font: 'inherit', cursor: 'pointer', textAlign: 'left',
+    maxWidth: '400px', padding: '8px 12px', borderRadius: '8px',
+    borderWidth: '1px', borderStyle: 'solid', borderColor: t.border,
+    background: t.bg, color: t.faint, fontSize: '13px',
+    extendCss: `margin:0 auto;&:hover{border-color:${t.accent};}`,
+  }))
+export const SearchTriggerText = txt.attrs({ tag: 'span' }).theme(() => ({ flex: '1' }))

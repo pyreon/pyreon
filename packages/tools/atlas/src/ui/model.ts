@@ -20,7 +20,7 @@ import {
 import { makeQueryResult, type FakeQueryResult, type QueryStateId } from './query-states'
 import { parseUrlState, serializeUrlState, urlStateChanged, type UrlState } from './url-state'
 import type { CatalogGroup, WorkbenchCatalog, WorkbenchComponent } from './catalog'
-import { buildSearch, defaultValues, groupComponents } from './catalog'
+import { buildSearch, buildSearchIndex, defaultValues, groupComponents } from './catalog'
 import { buildHierarchy, filterHierarchy, type HierarchyNode } from './hierarchy'
 import type { BrandTheme, ThemeTokens } from './theme'
 import { THEMES, tokens } from './theme'
@@ -140,6 +140,8 @@ export interface WorkbenchModel {
   logAction: (name: string, detail: string) => void
   clearActions: () => void
   search: (q: string) => string[]
+  /** Fulltext hits with the matched-field reason — the ⌘K dialog's surface. */
+  searchHits: (q: string) => import('./catalog').CatalogSearchHit[]
   preview: () => VNodeChildAtom | VNodeChildAtom[]
   /** `ref` for the search `<input>` — attach in the top bar so ⌘K can focus it. */
   searchRef: (el: HTMLInputElement | null) => void
@@ -153,6 +155,7 @@ export function createModel(
 ): WorkbenchModel {
   const groups = groupComponents(catalog)
   const search = buildSearch(catalog)
+  const searchHits = buildSearchIndex(catalog)
   const total = catalog.components.length
 
   // Per-project presets — every omitted family keeps the shipped defaults.
@@ -487,7 +490,7 @@ export function createModel(
     previewElement: () => previewEl,
     viewports, backgrounds, locales, roles, viewportPreset, backgroundPreset, dir,
     brand, theme, sel, vals, visibleGroups, tree, collapsed, toggleGroup, noResults, a11y,
-    setValue, selectScenario, runPlay, reset, logAction, clearActions, search, preview, searchRef, focusSearch, previewRef,
+    setValue, selectScenario, runPlay, reset, logAction, clearActions, search, searchHits, preview, searchRef, focusSearch, previewRef,
     searchOpen, sidebarW, panelW, sidebarOpen, panelOpen,
   }
 }
