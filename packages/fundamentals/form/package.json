@@ -53,7 +53,7 @@
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/validate": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "@tanstack/form-core": "^1.33.2",
+    "@tanstack/form-core": "^4.0.2",
     "arktype": "^2.2.3",
     "formik": "^2.4.9",
     "react": "^19.2.7",
