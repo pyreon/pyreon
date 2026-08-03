@@ -140,7 +140,20 @@ export interface WorkbenchScenario {
 
 export interface WorkbenchComponent {
   id: string
+  /**
+   * The component's REAL, importable name. Never a display string: it is what
+   * the usage snippet writes, what the `source`/`lens` RPC looks up, and what
+   * an agent imports. A configured label lives in `title`.
+   */
   name: string
+  /**
+   * Identity key — `project/Name` in a monorepo. Present ONLY when it differs
+   * from `name`. Every node-answered lookup (source, Lens) must send this, or
+   * two packages exporting the same name ask the same question.
+   */
+  key?: string
+  /** Display label from `pages.<name>.title`; falls back to `name`. */
+  title?: string
   /** Sidebar group heading (components are grouped by this). */
   group: string
   /** Docs status pill, e.g. `'stable'`. */

@@ -42,7 +42,50 @@ export type LensState =
   | { state: 'unavailable'; reason: string }
 
 /**
- * Call an RPC method on the dev server.
+ * The payload `atlas build` installs on a STATIC site.
+ *
+ * A built site has no server, so the two node-answered methods (`source`,
+ * `lens`) are precomputed at build time and shipped as data. Reading it here —
+ * at the single call site every panel already goes through — is what makes a
+ * deployed site fully functional instead of quietly missing its two best views.
+ */
+interface StaticRpcHost {
+  __ATLAS_STATIC_RPC__?: Record<string, Record<string, unknown>>
+}
+
+/** A baked failure carries the REAL reason, not a network error about it. */
+function bakedError(value: unknown): string | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  const reason = (value as { __atlasRpcError?: unknown }).__atlasRpcError
+  return typeof reason === 'string' ? reason : undefined
+}
+
+/**
+ * Look the answer up in the baked payload, if there is one.
+ *
+ * Returns `undefined` for "not baked" so the caller falls through to the live
+ * channel — which is what `atlas dev` wants, since it bakes nothing and must
+ * keep answering from Node.
+ */
+export function readBakedRpc(
+  method: string,
+  params: Record<string, unknown>,
+): { ok: true; result: unknown } | { ok: false; error: string } | undefined {
+  const baked = (globalThis as StaticRpcHost).__ATLAS_STATIC_RPC__?.[method]
+  if (!baked) return undefined
+  const key = String(params.component ?? '')
+  // `in` rather than a truthiness check: a method whose legitimate answer is
+  // `null` or `''` is still an answer, and falling through to a fetch that
+  // cannot succeed would report it as a network failure.
+  if (!(key in baked)) return undefined
+  const value = baked[key]
+  const reason = bakedError(value)
+  return reason ? { ok: false, error: reason } : { ok: true, result: value }
+}
+
+/**
+ * Call an RPC method — from the baked payload on a static site, otherwise over
+ * the dev server's channel.
  *
  * Returns a discriminated result rather than throwing: every caller here is a
  * render path, and an unhandled rejection in one would blank a panel while
@@ -53,6 +96,9 @@ export async function callRpc(
   params: Record<string, unknown> = {},
   fetchImpl: typeof fetch = fetch,
 ): Promise<{ ok: true; result: unknown } | { ok: false; error: string }> {
+  const baked = readBakedRpc(method, params)
+  if (baked) return baked
+
   try {
     const response = await fetchImpl('/__atlas/rpc', {
       method: 'POST',

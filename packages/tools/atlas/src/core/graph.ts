@@ -17,6 +17,7 @@ import type {
   Scenario,
   VerifyVerdict,
 } from './types'
+import { componentKey, resolveComponent } from './identity'
 
 /** A single search match, ranked by `score` (higher = better). */
 export interface SearchHit {
@@ -27,11 +28,16 @@ export interface SearchHit {
 }
 
 export interface CatalogGraph {
-  /** add or replace a component (keyed by name); chainable. */
+  /** add or replace a component (keyed by `componentKey` — `project/Name` in a monorepo); chainable. */
   add(ci: ComponentIntelligence): CatalogGraph
   /** every component, in insertion order. */
   list(): ComponentIntelligence[]
-  /** a component by name, or undefined. */
+  /**
+   * A component by KEY or by bare NAME, or undefined.
+   *
+   * A bare name matching several components across projects returns undefined
+   * rather than an arbitrary one — see `resolveComponent`.
+   */
   get(name: string): ComponentIntelligence | undefined
   /** every scenario across every component. */
   scenarios(): Scenario[]
@@ -51,41 +57,51 @@ export interface CatalogGraph {
 
 /** Create an empty graph, optionally seeded with components. */
 export function createCatalogGraph(initial: readonly ComponentIntelligence[] = []): CatalogGraph {
-  // insertion-ordered map keyed by component name (last write wins).
-  const byName = new Map<string, ComponentIntelligence>()
-  for (const ci of initial) byName.set(ci.name, ci)
+  // Insertion-ordered, keyed by component KEY — `project/Name` in a monorepo,
+  // bare `Name` otherwise (see `./identity`).
+  //
+  // It used to key on `name` alone, which meant two packages each exporting a
+  // `Button` collapsed into one with no error and no warning: the catalog's own
+  // silent-drop, in the tool built to prevent them. Single-package scans set no
+  // `project`, so their keys are unchanged.
+  const byKey = new Map<string, ComponentIntelligence>()
+  for (const ci of initial) byKey.set(componentKey(ci), ci)
 
   const graph: CatalogGraph = {
     add(ci) {
-      byName.set(ci.name, ci)
+      byKey.set(componentKey(ci), ci)
       return graph
     },
     list() {
-      return [...byName.values()]
+      return [...byKey.values()]
     },
     get(name) {
-      return byName.get(name)
+      // Accepts a key OR a bare name. A bare name that matches several
+      // components across projects resolves to `undefined` rather than to
+      // whichever happened to be first — guessing there is how the original bug
+      // stayed invisible.
+      return resolveComponent([...byKey.values()], name).found
     },
     scenarios() {
-      return [...byName.values()].flatMap((ci) => ci.scenarios)
+      return [...byKey.values()].flatMap((ci) => ci.scenarios)
     },
     findByTag(tag) {
-      return [...byName.values()].filter((ci) => ci.tags.includes(tag))
+      return [...byKey.values()].filter((ci) => ci.tags.includes(tag))
     },
     search(query) {
-      return searchCatalog([...byName.values()], query)
+      return searchCatalog([...byKey.values()], query)
     },
     size() {
-      return byName.size
+      return byKey.size
     },
     toJSON() {
-      return { version: 1, components: [...byName.values()] }
+      return { version: 1, components: [...byKey.values()] }
     },
     toLlmsText() {
-      return renderLlmsText([...byName.values()])
+      return renderLlmsText([...byKey.values()])
     },
     toAgentGuide() {
-      return renderAgentGuide([...byName.values()])
+      return renderAgentGuide([...byKey.values()])
     },
   }
   return graph

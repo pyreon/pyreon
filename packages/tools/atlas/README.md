@@ -72,6 +72,95 @@ same shape typed for a config file. Need full control over a component's shape?
 Drop to a raw `discover()` plugin returning `ComponentIntelligence` (see
 `@pyreon/atlas/core`).
 
+## Shipping the docs — `atlas build`
+
+`atlas dev` needs a checkout and a running Node process. A design system needs a
+URL. `atlas build` emits one as plain static files:
+
+```bash
+atlas build                          # → ./atlas-dist
+atlas build --out docs/components    # somewhere else
+atlas build --title "Acme DS"        # site name (tab + chrome)
+atlas build --base /my-repo/         # GitHub Pages project site
+```
+
+Deploy the directory to Pages, Netlify, Cloudflare, S3 — anything that serves
+files. There is no server component.
+
+**What makes this more than `vite build`.** The workbench is not purely a client
+app: the Docs source block and the Reactivity Lens are answered by Node over the
+dev-server RPC channel, because they read files and run the TypeScript compiler
+API. A naive build produces a site that *looks* complete while both sit dark
+forever. So `atlas build` precomputes those answers per component and ships them
+as data — the Lens still shows real per-expression `live` / `static` verdicts on
+a fully static page. An answer that genuinely cannot be computed (no
+`@pyreon/compiler` installed) bakes its REASON instead, so the panel says what
+is wrong rather than reporting a network error about a request that was never
+going to work.
+
+### Naming the site and its pages
+
+`atlas.config.ts` carries presentation alongside the wrapper and theme:
+
+```ts
+export default {
+  title: 'Acme Design System',
+  pages: {
+    Button: { title: 'Button (CTA)', group: 'Actions', order: 1 },
+    Chip:   { summary: 'A compact, removable label.' },
+  },
+}
+```
+
+`pages` is presentation ONLY. A `title` relabels the sidebar entry and the docs
+heading; the component's real `name` is untouched, because that is what the
+usage snippet writes, what the source/Lens lookup keys on, and what an agent
+imports. `order` pins a component to the top of *its own group* — it cannot pull
+it into a different one — and everything unordered keeps its discovery order, so
+adding one line does not reshuffle a sidebar.
+
+`--title` wins over `title`, and `atlas dev` reads the same config, so the
+workbench and the deployed site cannot end up named differently.
+
+### Monorepos — one site, several packages
+
+```ts
+export default {
+  title: 'Acme Design System',
+  projects: [
+    { name: 'Core',  dir: 'packages/core/src' },
+    { name: 'Admin', dir: 'packages/admin/src' },
+  ],
+}
+```
+
+Every package is scanned into one catalog and filed under its own name, so the
+sidebar reads `Core/Forms/Button`. `atlas dev`, `atlas scan` and `atlas build`
+all follow it; `--dir` is ignored when `projects` is set.
+
+**Two packages may both export a `Button`.** That is the case this feature is
+actually about. A component's *identity* becomes `project/Name`, so both survive
+— in the catalog, in the sidebar, and in their scenario ids (`core-button--…`
+vs `admin-button--…`, which otherwise collide in `atlas-catalog.json`, in the
+verify verdicts, and in the snapshot filenames).
+
+Its `name` is untouched: `Button` is what you import in both packages, and the
+machine surface an agent reads must say so.
+
+Where a bare name is now ambiguous, Atlas **refuses and names the candidates**
+rather than picking one:
+
+```
+[Pyreon] atlas: "Button" matches 2 components across projects
+(Core/Button, Admin/Button). Ask for one of those keys.
+```
+
+Authored `scenarios` and `pages` accept either form — `'Core/Button'` to target
+one package, or a bare `'Button'` when it is unambiguous.
+
+Single-package projects set no `project`, so every derived key, id and group is
+byte-identical to before this existed.
+
 ## Built-in plugins
 
 Every capability is a plugin on one contract. The built-in suite is all pure and

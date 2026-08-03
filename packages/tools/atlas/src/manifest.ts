@@ -96,6 +96,24 @@ atlas dev: 9 component(s) → http://localhost:5210/`,
       seeAlso: ['atlas scan'],
     },
     {
+      name: 'atlas build',
+      kind: 'function',
+      signature: 'atlas build [dir] [--out <dir>] [--title <text>] [--base <path>]',
+      summary:
+        'Compile the workbench into a STATIC, deployable site — the same derived catalog `atlas dev` serves, as plain files for Pages / Netlify / Cloudflare / S3, with no server component. Crucially it BAKES the two node-answered panels: the Docs source block and the Reactivity Lens read files and run the TypeScript compiler API, neither of which can run in a page, so the build precomputes them per component and ships the answers as data — the Lens still reports real per-expression live/static verdicts on a fully static page. An answer that genuinely cannot be computed bakes its REASON, so the panel says what is wrong instead of surfacing a network error about a request that was never going to work. `--out` defaults to `atlas-dist`; `--base` is for a subdirectory deploy (`--base /my-repo/` for a GitHub Pages project site); `--title` wins over `atlas.config.ts`’s `title`. Fails loudly when discovery finds nothing rather than deploying an empty site.',
+      example: `$ atlas build . --out docs/components --title "Acme DS"
+atlas build: 9 component(s) → /repo/docs/components
+  title: Acme DS`,
+      mistakes: [
+        'Assuming a plain `vite build` of the workbench is equivalent — it produces a site that LOOKS complete while the Docs source block and the Reactivity Lens are permanently dark, because nothing baked their node-only answers',
+        'Deploying to a subdirectory without `--base` — assets are requested from the domain root and every one 404s, leaving a blank page with no error on the page itself',
+        'Expecting `pages.<name>.title` to rename the component — it is a DISPLAY label only; the usage snippet, the source/Lens lookup and an agent’s import all use the real `name`, which is exactly why the two are separate fields',
+        'Expecting `pages.<name>.order` to sort across groups — it pins a component within its OWN group; a cross-group sort would scramble the tree from a single config line',
+        'Expecting `--dir` to apply when `atlas.config.ts` declares `projects` — the declared roots win, because a monorepo that listed its packages meant it and silently scanning `src` instead would emit an empty site',
+      ],
+      seeAlso: ['atlas dev', 'atlas scan'],
+    },
+    {
       name: 'atlas verify-browser',
       kind: 'function',
       signature: 'atlas verify-browser [dir] [--update-snapshots]',
@@ -126,6 +144,29 @@ graph.search('button')                 // Catalog Graph queries`,
         'Passing an explicit plugin list WITHOUT `preset: "none"` — the recommended bundle is appended a second time and a duplicate mount plugin’s empty-graph default verdict can overwrite the real one',
       ],
       seeAlso: ['atlas scan'],
+    },
+    {
+      name: 'AtlasConfig.projects (monorepo — one site, several packages)',
+      kind: 'type',
+      signature: 'projects?: { name: string; dir: string }[]',
+      summary:
+        'Scan several packages into ONE catalog, each filed under its own `name` (the sidebar reads `Core/Forms/Button`). `atlas dev`, `atlas scan` and `atlas build` all follow it, and `--dir` is ignored when it is set. The case it exists for: two packages may both export a `Button`. A component’s IDENTITY becomes `project/Name` (`componentKey`), so both survive — in the catalog, in the sidebar, and in their scenario ids (`core-button--…` vs `admin-button--…`, which otherwise collide in atlas-catalog.json, in the verify verdicts, and in the snapshot filenames). Its `name` is untouched, because `Button` is what you import in both packages and the machine surface an agent reads must say so. Where a bare name becomes ambiguous, Atlas REFUSES and names the candidates rather than picking one. `pages` and authored `scenarios` accept either form — `\'Core/Button\'` targets one package, a bare `\'Button\'` applies wherever it is unambiguous (and to BOTH when it is not). A single-package project sets no `project`, so every derived key, id and group is byte-identical to a scan without this.',
+      example: `export default {
+  title: 'Acme Design System',
+  projects: [
+    { name: 'Core', dir: 'packages/core/src' },
+    { name: 'Admin', dir: 'packages/admin/src' },
+  ],
+  pages: { 'Admin/Button': { title: 'Button (admin shell)' } },
+}`,
+      mistakes: [
+        'Expecting `graph.get("Button")` to return something in a workspace where two packages export one — an ambiguous bare name resolves to `undefined` ON PURPOSE; ask for `Core/Button`. Returning the first match is how the original silent-collapse stayed invisible',
+        'Giving two projects the same `name` — their components would key identically, reintroducing the exact collapse `project` prevents (rejected at config load)',
+        'Putting a `/` in a project `name` — it is the key separator, so the resulting `A/B/Name` is ambiguous to read and nests a group level the author did not mean (rejected at config load)',
+        'Keying `pages` or `scenarios` by a bare shared name and expecting it to hit one package — it applies to EVERY component with that name; use the `project/Name` form to target one',
+        'Assuming `--dir` still narrows the scan — declared `projects` replace it entirely',
+      ],
+      seeAlso: ['atlas build', 'atlas dev'],
     },
     {
       name: 'AtlasConfig.scenarios (authored scenarios + play)',

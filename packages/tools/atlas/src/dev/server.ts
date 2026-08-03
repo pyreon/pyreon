@@ -12,9 +12,9 @@
  * CI), and a top-level import would drag a dev server into that path — and into
  * anything that imports the CLI at all.
  */
-import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { discoverComponents } from '../discover'
+import { collectEntries } from '../build/entries'
 import { runScan } from '../cli/run'
 import type { ComponentIntelligence } from '../core'
 import { atlasDevPlugin, devHtml, type RpcMethod } from './plugin'
@@ -41,16 +41,10 @@ export interface DevServerHandle {
   close(): Promise<void>
 }
 
-/**
- * Does this source IMPORT the workbench package? Static `import … from`,
- * `export … from`, dynamic `import()` and `require()` specifiers only —
- * never a bare substring, which would count comments and strings as
- * dependencies.
- */
-export function importsAtlas(source: string): boolean {
-  // `import(`, side-effect `import '…'`, `from '…'`, `require('…')`.
-  return /(?:from\s*|import\s*\(?\s*|require\s*\(\s*)['"]@pyreon\/atlas(?:['"/])/.test(source)
-}
+// Re-exported, NOT redefined. It lives with `collectEntries`, which is the only
+// thing that calls it; a second copy here is how the dev server and the static
+// build would come to disagree about which components are infrastructure.
+export { importsAtlas } from '../build/entries'
 
 /**
  * Missing-Vite message.
@@ -82,11 +76,24 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
   let components: readonly ComponentIntelligence[]
   let configPath: string | undefined
   let presets: import('../ui/catalog').WorkbenchPresets | undefined
+  let pages: Record<string, import('../discover/config').PageMeta> | undefined
+  let projects: readonly { name: string; dir: string }[] | undefined
+  let configProblem: string | undefined
+  let configTitle: string | undefined
   try {
     const scan = await runScan({ cwd: root, dir: scanDir, write: false })
     components = scan.graph.list()
     configPath = scan.configPath
     presets = scan.presets
+    pages = scan.pages
+    // Absolute dirs: grouping resolves each component against ITS OWN project
+    // root, which a relative path cannot express once there are several roots.
+    projects = scan.projects?.map((pr) => ({ name: pr.name, dir: resolve(root, pr.dir) }))
+    configTitle = scan.title
+    // A config that was found and could not be used explains the absence of
+    // everything it would have configured; silence here reads as "my config
+    // does nothing" with no way to find out why.
+    if (scan.configError) configProblem = scan.configError
   } catch (err) {
     process.stderr.write(
       `[Pyreon] atlas dev: the scan pipeline failed — falling back to the static walk (no rocketstyle discovery, no scenarios, no atlas.config.ts): ${err instanceof Error ? err.message : String(err)}\n`,
@@ -94,40 +101,12 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
     components = discoverComponents({ cwd: root, dir: scanDir })
   }
 
-  const entries: CatalogEntrySource[] = [...components]
-    // A component with no recorded source cannot be imported, so it cannot be
-    // rendered. Including it would put an entry in the sidebar that blanks the
-    // canvas when selected — worse than not listing it.
-    .filter((c) => Boolean(c.source))
-    // Skip the workbench's own host component.
-    //
-    // A project that mounts `<Workbench>` has a component doing so, and
-    // discovery finds it like any other. Cataloguing it renders a workbench
-    // INSIDE the workbench — every control, panel and sidebar entry duplicated,
-    // and every `getByRole` in a user's test suddenly ambiguous. Observed on the
-    // workshop example, where `Workshop.tsx` is exactly that host.
-    //
-    // Detected by import rather than by name: a component that imports
-    // `@pyreon/atlas` is workbench infrastructure, whatever it is called. The
-    // read is cheap (once per component at boot) and only over files discovery
-    // already parsed. Applies to BOTH discovery passes — a rocketstyle chain in
-    // a workbench-infrastructure file is still infrastructure.
-    //
-    // Matched as an IMPORT SPECIFIER, not a substring of the file: the first
-    // cut used `.includes('@pyreon/atlas')`, and a component whose COMMENT
-    // merely mentioned the package name silently vanished from the sidebar —
-    // prose is not a dependency.
-    .filter((c) => {
-      try {
-        return !importsAtlas(readFileSync(resolve(root, c.source!), 'utf8'))
-      } catch {
-        return true // unreadable — let it through and fail visibly, not silently
-      }
-    })
-    .map((component) => ({
-      component,
-      file: resolve(root, component.source!),
-    }))
+  if (configProblem) process.stderr.write(`[Pyreon] atlas dev: ${configProblem}\n`)
+
+  // Shared with `atlas build` — see `../build/entries`. The filtering used to
+  // live inline here, which meant the static build would have had to restate
+  // it, and a restated filter is a filter that diverges.
+  const entries: CatalogEntrySource[] = collectEntries(root, components)
 
   // Typed structurally, NOT as `typeof import('vite')`: naming Vite's types
   // here would put it in the type graph unconditionally, which defeats the
@@ -179,7 +158,11 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
   // about a feature the workbench does not use.
   const pyreonPlugin: unknown = factory({ devErrorPrinter: false })
 
-  const html = devHtml(options.title ?? 'atlas')
+  // Explicit option wins over the config, which wins over the default — the
+  // same precedence `atlas build --title` follows, so a project cannot end up
+  // with one title in the dev workbench and another on its deployed site.
+  const title = options.title ?? configTitle ?? 'atlas'
+  const html = devHtml(title)
 
   const server = await createServer({
     root,
@@ -204,7 +187,9 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
         // buys nothing and risks dragging node-only code into it.
         ...(configPath ? { configPath } : {}),
         ...(presets ? { presets } : {}),
-        ...(options.title !== undefined ? { title: options.title } : {}),
+        ...(pages ? { pages } : {}),
+        ...(projects ? { projects } : {}),
+        title,
         ...(options.methods !== undefined ? { methods: options.methods } : {}),
       }),
       {

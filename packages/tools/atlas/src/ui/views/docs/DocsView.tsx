@@ -40,7 +40,10 @@ export function DocsView(props: { model: WorkbenchModel }) {
     if (!c) return
     if (sourceFor === c.id && sourceState() === 'shown') return
     sourceState.set('loading')
-    const res = await callRpc('source', { component: c.name })
+    // By identity KEY (name outside a monorepo) — see `componentKey`. Asking by
+    // name where two packages export a `Button` would show one component's
+    // source under the other's heading.
+    const res = await callRpc('source', { component: c.key ?? c.name })
     if (res.ok) {
       source.set(String((res.result as { source?: unknown }).source ?? ''))
       sourceFor = c.id
@@ -70,7 +73,7 @@ export function DocsView(props: { model: WorkbenchModel }) {
       <C.DocsWrap>
         <C.DocsArticle>
           <C.DocsTitleRow>
-            <C.DocsTitle>{c.name}</C.DocsTitle>
+            <C.DocsTitle>{c.title ?? c.name}</C.DocsTitle>
             {/* Only when the catalog SAYS so — defaulting the pill to 'stable'
                 asserted a maturity nothing measured. */}
             {c.status ? <C.DocsStatus>{c.status}</C.DocsStatus> : null}

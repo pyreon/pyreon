@@ -50,6 +50,67 @@ export interface AtlasConfig {
    * with the same id.
    */
   scenarios?: Record<string, readonly AuthoredScenario[]>
+  /**
+   * The site's name — browser tab, workbench chrome, and the `<title>` of a
+   * built static site. `--title` on the CLI wins over this.
+   */
+  title?: string
+  /**
+   * Per-component presentation, keyed by COMPONENT NAME.
+   *
+   * Presentation ONLY. Nothing here can change what was discovered or
+   * verified: a `title` renames the sidebar entry, it does not rename the
+   * component, and the catalog keeps the real name so an agent reading the
+   * machine surface is never handed a display string it cannot import.
+   */
+  pages?: Record<string, PageMeta>
+  /**
+   * Monorepo roots — scan several packages into ONE site.
+   *
+   * Each project contributes its components under its own `name`, which becomes
+   * both the top-level sidebar group and part of each component's identity
+   * (`project/Name`). That identity is what lets two packages each export a
+   * `Button` without one silently replacing the other.
+   *
+   * With this set the single `dir` is ignored; without it nothing changes and
+   * every derived key stays byte-identical to a single-package scan.
+   *
+   * @example
+   * ```ts
+   * export default {
+   *   title: 'Acme Design System',
+   *   projects: [
+   *     { name: 'Core', dir: 'packages/core/src' },
+   *     { name: 'Admin', dir: 'packages/admin/src' },
+   *   ],
+   * }
+   * ```
+   */
+  projects?: readonly ProjectRoot[]
+}
+
+/** One monorepo root — see `AtlasConfig.projects`. */
+export interface ProjectRoot {
+  /** Top-level group, and the qualifier in every component's key. */
+  name: string
+  /** Directory to scan, relative to the project root. */
+  dir: string
+}
+
+/** Per-component presentation — see `AtlasConfig.pages`. */
+export interface PageMeta {
+  /** Display name in the sidebar and the docs heading. */
+  title?: string
+  /** Overrides the group derived from the file's directory. */
+  group?: string
+  /**
+   * Sort weight within a group; lower sorts first, ties fall back to name.
+   * Components with no order sort AFTER every ordered one, so pinning three
+   * favourites to the top does not scramble the rest.
+   */
+  order?: number
+  /** One-line summary, shown under the heading. Overrides a derived summary. */
+  summary?: string
 }
 
 /** One authored scenario — see `AtlasConfig.scenarios`. */
@@ -110,45 +171,94 @@ export async function loadAtlasConfig(
     return { config: {}, path: found, error: `${found}: \`wrapper\` must be a component function` }
   }
   const theme = mod.theme ?? fromDefault.theme
-  const rawScenarios = (mod.scenarios ?? fromDefault.scenarios) as unknown
-  const scenariosError = rawScenarios === undefined ? undefined : validateAuthoredScenarios(rawScenarios)
-  const rawPresets = (mod.presets ?? fromDefault.presets) as unknown
-  const presetsError = rawPresets === undefined ? undefined : validatePresets(rawPresets)
-  if (presetsError) {
-    // The other exports still apply — a typo in one preset list must not
-    // silently unwrap the whole catalog — but the problem is NAMED.
-    return {
-      config: {
-        ...(wrapper ? { wrapper: wrapper as ComponentRef } : {}),
-        ...(theme !== undefined ? { theme } : {}),
-      },
-      path: found,
-      error: `${found}: \`presets\` ignored — ${presetsError}`,
-    }
+
+  // Accumulated progressively rather than re-spread at each early return: the
+  // rule is "one bad export is NAMED and ignored, every other export still
+  // applies", and the previous shape restated the whole object per error
+  // branch — so each new field had to be added to every branch, and the one
+  // that got missed would be silently dropped whenever an unrelated export
+  // was malformed.
+  const config: AtlasConfig = {
+    ...(wrapper ? { wrapper: wrapper as ComponentRef } : {}),
+    ...(theme !== undefined ? { theme } : {}),
   }
-  if (scenariosError) {
-    return {
-      config: {
-        ...(wrapper ? { wrapper: wrapper as ComponentRef } : {}),
-        ...(theme !== undefined ? { theme } : {}),
-        ...(rawPresets !== undefined ? { presets: rawPresets as WorkbenchPresets } : {}),
-      },
-      path: found,
-      error: `${found}: \`scenarios\` ignored — ${scenariosError}`,
-    }
+  /** Validate one optional export; on failure NAME it and leave it out. */
+  const take = (
+    key: keyof AtlasConfig,
+    validate: (value: unknown) => string | undefined,
+  ): string | undefined => {
+    const raw = (mod[key] ?? (fromDefault as Record<string, unknown>)[key]) as unknown
+    if (raw === undefined) return undefined
+    const problem = validate(raw)
+    if (problem) return `${found}: \`${key}\` ignored — ${problem}`
+    ;(config as Record<string, unknown>)[key] = raw
+    return undefined
   }
-  return {
-    config: {
-      ...(wrapper ? { wrapper: wrapper as ComponentRef } : {}),
-      ...(theme !== undefined ? { theme } : {}),
-      ...(rawPresets !== undefined ? { presets: rawPresets as WorkbenchPresets } : {}),
-      ...(rawScenarios !== undefined
-        ? { scenarios: rawScenarios as Record<string, readonly AuthoredScenario[]> }
-        : {}),
-    },
-    path: found,
-  }
+
+  // First problem wins the `error` slot; every VALID export is applied either
+  // way, which is why these run unconditionally rather than short-circuiting.
+  const problems = [
+    take('presets', validatePresets),
+    take('scenarios', validateAuthoredScenarios),
+    take('title', (v) => (typeof v === 'string' ? undefined : '`title` must be a string')),
+    take('pages', validatePages),
+    take('projects', validateProjects),
+  ].filter((p): p is string => p !== undefined)
+
+  return { config, path: found, ...(problems[0] ? { error: problems[0] } : {}) }
 }
+
+/** Shape-check the `projects` export — the monorepo roots. */
+export function validateProjects(value: unknown): string | undefined {
+  if (!Array.isArray(value)) return '`projects` must be an array'
+  if (value.length === 0) return '`projects` must not be empty'
+  const names = new Set<string>()
+  for (const entry of value as unknown[]) {
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+      return 'every `projects` entry must be an object'
+    }
+    const p = entry as Record<string, unknown>
+    if (typeof p.name !== 'string' || p.name.length === 0) {
+      return 'every `projects` entry needs a non-empty string `name`'
+    }
+    if (typeof p.dir !== 'string' || p.dir.length === 0) {
+      return `\`projects.${p.name}\` needs a non-empty string \`dir\``
+    }
+    // A `/` would make `project/Name` keys ambiguous to read and would nest a
+    // group where the author meant one level.
+    if (p.name.includes('/')) return `\`projects\` name "${p.name}" must not contain "/"`
+    // Two projects sharing a name would key their components identically —
+    // reintroducing the exact silent collapse `project` exists to prevent.
+    if (names.has(p.name)) return `duplicate \`projects\` name "${p.name}"`
+    names.add(p.name)
+  }
+  return undefined
+}
+
+/** Shape-check the `pages` export — presentation overrides keyed by component. */
+export function validatePages(value: unknown): string | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return '`pages` must be an object keyed by component name'
+  }
+  for (const [component, meta] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof meta !== 'object' || meta === null || Array.isArray(meta)) {
+      return `\`pages.${component}\` must be an object`
+    }
+    const m = meta as Record<string, unknown>
+    for (const key of ['title', 'group', 'summary'] as const) {
+      if (m[key] !== undefined && typeof m[key] !== 'string') {
+        return `\`pages.${component}.${key}\` must be a string`
+      }
+    }
+    // `Number.isFinite` rather than `typeof === 'number'`: NaN is a number and
+    // would sort unpredictably against every sibling.
+    if (m.order !== undefined && !Number.isFinite(m.order)) {
+      return `\`pages.${component}.order\` must be a finite number`
+    }
+  }
+  return undefined
+}
+
 
 /** Shape-check the authored-scenarios export — the message names what is wrong. */
 export function validateAuthoredScenarios(value: unknown): string | undefined {

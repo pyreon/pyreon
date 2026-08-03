@@ -149,7 +149,21 @@ export interface VerifyVerdict {
 
 /** Everything Atlas derives about one component. */
 export interface ComponentIntelligence {
+  /**
+   * The component's REAL, importable identifier.
+   *
+   * Not its identity in a monorepo — see `project` and `componentKey`. Two
+   * packages may legitimately both export a `Button`, and both are called
+   * `Button` in the code that imports them.
+   */
   name: string
+  /**
+   * Owning project root, set only by a MULTI-ROOT (monorepo) scan.
+   *
+   * Absent for a single-package scan, which keeps every derived key byte-
+   * identical to what it was before multi-root existed.
+   */
+  project?: string
   /** the component itself, when available (optional so the graph is buildable from metadata alone) */
   component?: ComponentRef
   controls: readonly PropControl[]

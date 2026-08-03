@@ -42,7 +42,12 @@ export function registerLensPanel(): void {
       let lastRequested = ''
 
       const load = async () => {
-        const name = m.sel()?.name
+        const selected = m.sel()
+        // The identity KEY, falling back to the name outside a monorepo. Asking
+        // by name in a workspace where two packages export a `Button` is
+        // ambiguous, and the node side refuses it rather than analysing
+        // whichever it found first.
+        const name = selected ? (selected.key ?? selected.name) : undefined
         if (!name) return
         lastRequested = name
         view.set({ state: 'loading' })

@@ -22,6 +22,8 @@ import {
   loadAtlasConfig,
   loadRuntime,
   type ModuleLoader,
+  type PageMeta,
+  type ProjectRoot,
 } from '../discover'
 
 export interface ScanOptions extends DiscoverOptions {
@@ -58,6 +60,38 @@ export interface ScanResult {
   configPath?: string
   /** Validated addon presets from atlas.config.ts, when it exports any. */
   presets?: WorkbenchPresets
+  /** The site title from atlas.config.ts, when it exports one. */
+  title?: string
+  /** Per-component presentation overrides from atlas.config.ts, when it exports any. */
+  pages?: Record<string, PageMeta>
+  /** Monorepo roots from atlas.config.ts, when it declares any. */
+  projects?: readonly ProjectRoot[]
+  /**
+   * Set when an atlas.config.* EXISTS but could not be used, or one of its
+   * exports was malformed. Surfaced rather than swallowed: a config that is
+   * silently ignored produces a puzzling round of "why is nothing wrapped /
+   * grouped / titled?" with nothing to point at.
+   */
+  configError?: string
+}
+
+/**
+ * The `{ dir, project }` pairs to scan.
+ *
+ * `projects` in the config wins over `--dir`: a monorepo that has declared its
+ * packages means it, and quietly scanning `src` instead would produce an empty
+ * site with nothing to explain it.
+ */
+export function scanRoots(
+  options: Pick<DiscoverOptions, 'dir'>,
+  projects: readonly ProjectRoot[] | undefined,
+): { dir: string; project?: string }[] {
+  if (projects && projects.length > 0) {
+    return projects.map((p) => ({ dir: p.dir, project: p.name }))
+  }
+  // `dir` left undefined rather than defaulted here — `discoverComponents`
+  // owns that default, and restating it is how the two come to disagree.
+  return [options.dir === undefined ? {} : { dir: options.dir }] as { dir: string }[]
 }
 
 /** Discover a project's components, build the verified catalog, emit assets. */
@@ -69,9 +103,17 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
   const loader: ModuleLoader | undefined = mount
     ? await createModuleLoader(resolve(cwd))
     : undefined
-  // The project's own providers. Only meaningful when scenarios are actually
-  // mounted, so it is not loaded — and its absence is not reported — otherwise.
-  const loaded = loader ? await loadAtlasConfig(cwd, loader) : { config: {} }
+  // The project's own config. ALWAYS loaded — not only when mounting.
+  //
+  // This used to be `loader ? await loadAtlasConfig(...) : { config: {} }`, on
+  // the reasoning that a config is "only meaningful when scenarios are actually
+  // mounted". That is true of `wrapper` and `theme` and false of everything
+  // else: under `--no-mount` the config's `projects`, `title`, `pages` and
+  // authored `scenarios` were all silently discarded, so a monorepo scan found
+  // nothing and reported it as a project with no components. Without a module
+  // loader `loadAtlasConfig` falls back to its runtime loader, which is exactly
+  // the degradation that path already documents.
+  const loaded = await loadAtlasConfig(cwd, loader)
   // Mount with the framework the COMPONENTS were compiled against — see
   // `loadRuntime`. Undefined means Atlas resolves its own, which is right only
   // when nothing else has loaded a copy.
@@ -98,14 +140,24 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
       // was invisible while both instances produced identical verdicts.
       preset: 'none',
       plugins: [
-        fileDiscoveryPlugin({
-        ...options,
-        cwd,
-        // Rocketstyle components are a call chain, not a typed function, so the
-        // static scan cannot see them at all. Detecting them needs the module
-        // loaded — the same loader the mount checks use.
-        ...(loader ? { rocketstyle: { loader, theme: loaded.config.theme } } : {}),
-      }),
+        // ONE discovery plugin per root. A monorepo config (`projects`) fans
+        // out; everything else is the single default root, unchanged.
+        //
+        // Several discovery plugins are safe here BECAUSE each stamps its
+        // `project`, so the graph keys their components apart. Without that
+        // stamp two roots exporting the same name would collapse in the graph's
+        // map — which is exactly the bug this fans out to support.
+        ...scanRoots(options, loaded.config.projects).map((root) =>
+          fileDiscoveryPlugin({
+            ...options,
+            ...root,
+            cwd,
+            // Rocketstyle components are a call chain, not a typed function, so
+            // the static scan cannot see them at all. Detecting them needs the
+            // module loaded — the same loader the mount checks use.
+            ...(loader ? { rocketstyle: { loader, theme: loaded.config.theme } } : {}),
+          }),
+        ),
         // Between discovery and the recommended bundle: discovery is static, and
         // this is what turns a scanned name into a function the verify stage can
         // MOUNT. Without it every runtime check skips, which is honest but
@@ -146,6 +198,10 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
       graph,
       ...(loaded.config.wrapper && loaded.path ? { configPath: loaded.path } : {}),
       ...(loaded.config.presets ? { presets: loaded.config.presets } : {}),
+      ...(loaded.config.title ? { title: loaded.config.title } : {}),
+      ...(loaded.config.pages ? { pages: loaded.config.pages } : {}),
+      ...(loaded.config.projects ? { projects: loaded.config.projects } : {}),
+      ...(loaded.error ? { configError: loaded.error } : {}),
     }
 
     if (options.write !== false && graph.size() > 0) {
@@ -187,6 +243,13 @@ Usage:
                       exits non-zero when any scenario FAILS a check
     --no-mount        purely static scan — never imports (= executes) the
                       project's modules; runtime checks report skip
+  atlas build [dir]   compile the workbench into a STATIC, deployable site —
+                      the same catalog atlas dev serves, with the node-only
+                      answers (source, Reactivity Lens) baked in as data
+    --out <dir>       output directory (default atlas-dist)
+    --title <text>    site title (wins over atlas.config.ts's \`title\`)
+    --base <path>     public base path for a subdirectory deploy,
+                      e.g. --base /my-repo/ for GitHub Pages
   atlas verify-browser [dir]
                       run the browser half of verification in real Chromium —
                       reactive coverage measured on the client build, and a
@@ -202,6 +265,30 @@ function out(text: string): void {
 }
 function err(text: string): void {
   process.stderr.write(text)
+}
+
+/**
+ * Read `--flag=value` or `--flag value`.
+ *
+ * Both forms, because both are typed by real people and supporting only one
+ * means the other silently becomes a positional argument — `atlas build --out
+ * docs` would have taken `docs` as the project directory and written the site
+ * to the default location, with nothing to indicate the flag was ignored.
+ */
+export function flagValue(args: readonly string[], flag: string): string | undefined {
+  const inline = args.find((a) => a.startsWith(`${flag}=`))
+  if (inline) return inline.slice(flag.length + 1)
+  const index = args.indexOf(flag)
+  if (index === -1) return undefined
+  const next = args[index + 1]
+  // A following flag means the value is missing; treating it as the value would
+  // set `--out` to `--title`.
+  return next && !next.startsWith('-') ? next : undefined
+}
+
+/** `{ key: value }` only when set — `exactOptionalPropertyTypes` rejects `undefined`. */
+function optional<K extends string, V>(key: K, value: V | undefined): Record<K, V> | object {
+  return value === undefined ? {} : ({ [key]: value } as Record<K, V>)
 }
 
 /** Parse argv + run a command. Returns the process exit code. */
@@ -220,6 +307,10 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     // it. `--no-mount` keeps the scan purely static.
     const mount = !rest.includes('--no-mount')
     const result = await runScan({ cwd: dir ?? '.', mount })
+    // Before the summary: a config that was found and could not be used
+    // explains most of what follows (no groups, no title, no projects), and
+    // reading it after the counts is reading it too late.
+    if (result.configError) err(`atlas: ${result.configError}\n`)
     if (result.components === 0) {
       err(`atlas: no components found under ${join(dir ?? '.', 'src')}\n`)
       return 1
@@ -292,6 +383,39 @@ export async function runCli(argv: readonly string[]): Promise<number> {
       out(`atlas dev: ${handle.components} component(s) → ${handle.url}\n`)
       // Resolve never: the server owns the process until interrupted.
       await new Promise<void>(() => {})
+      return 0
+    } catch (error) {
+      err(`${String((error as Error)?.message ?? error)}\n`)
+      return 1
+    }
+  }
+
+  if (cmd === 'build') {
+    const dir = rest.find((a) => !a.startsWith('-'))
+    // Imported lazily, same reason as `dev`: this path pulls in Vite, and
+    // `atlas scan` must keep working — and starting fast — without it.
+    const { buildStatic } = await import('../build/static')
+    try {
+      const result = await buildStatic({
+        cwd: dir ?? '.',
+        ...optional('out', flagValue(rest, '--out')),
+        ...optional('title', flagValue(rest, '--title')),
+        ...optional('base', flagValue(rest, '--base')),
+        onLog: (message) => err(`${message}\n`),
+      })
+      out(
+        `atlas build: ${result.components} component(s) → ${result.outDir}\n` +
+          `  title: ${result.title}\n`,
+      )
+      if (result.warnings.length > 0) {
+        // Named, not counted. A site missing one component's Lens is fine; a
+        // site missing ALL of them means the compiler is not installed, and the
+        // difference is only visible if the reasons are printed.
+        err(
+          `atlas build: ${result.warnings.length} panel answer(s) could not be baked — ` +
+            `those views will report themselves unavailable on the built site.\n`,
+        )
+      }
       return 0
     } catch (error) {
       err(`${String((error as Error)?.message ?? error)}\n`)

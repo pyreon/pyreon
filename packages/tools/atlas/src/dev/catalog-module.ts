@@ -13,7 +13,7 @@
  * component whose name collides, a path that needs escaping, a project with
  * nothing in it).
  */
-import type { ComponentIntelligence, PropControl } from '../core'
+import { componentKey, type ComponentIntelligence, type PropControl } from '../core'
 
 /** A component paired with the absolute path it is imported from. */
 export interface CatalogEntrySource {
@@ -138,6 +138,102 @@ export interface GenerateOptions {
   configPath?: string
   /** Addon presets — serialized VERBATIM onto the catalog (plain JSON data). */
   presets?: import('../ui/catalog').WorkbenchPresets
+  /**
+   * Per-component presentation overrides from `atlas.config.ts`.
+   *
+   * Presentation ONLY — see `PageMeta`. `name` is deliberately NOT overridable:
+   * it is the component's real, importable identifier, and the machine surface
+   * an agent reads must never carry a display string in its place. A `title`
+   * changes the label; `name` stays true.
+   */
+  pages?: Record<string, import('../discover/config').PageMeta>
+  /**
+   * Monorepo roots, with ABSOLUTE directories — set only for a multi-root scan.
+   *
+   * Needed because each project has its OWN root, so a group cannot be derived
+   * from one shared scan root: `packages/core/src/forms/Button.tsx` should read
+   * `Core/Forms`, not `Packages/Core/Src/Forms`.
+   */
+  projects?: readonly { name: string; dir: string }[]
+}
+
+/**
+ * The presentation override for one component.
+ *
+ * Keyed by identity FIRST, then by bare name. A single-package config writes
+ * `{ Button: {...} }` and always has; a monorepo needs `{ 'Core/Button': {...} }`
+ * to say WHICH Button — and without the key pass, one entry would silently
+ * retitle every package's `Button`.
+ */
+export function pageFor(
+  component: ComponentIntelligence,
+  pages: GenerateOptions['pages'],
+): import('../discover/config').PageMeta | undefined {
+  if (!pages) return undefined
+  return pages[componentKey(component)] ?? pages[component.name]
+}
+
+/**
+ * The group an entry is filed under, before any sorting.
+ *
+ * In a monorepo the PROJECT leads (`Core/Forms`), because in a combined site
+ * "which package is this from" is the first distinction a reader needs — and it
+ * is the one the file path alone cannot express once each package has its own
+ * root.
+ */
+function resolvedGroup(entry: CatalogEntrySource, options: GenerateOptions): string {
+  const override = pageFor(entry.component, options.pages)?.group
+  if (override) return override
+
+  const project = entry.component.project
+  if (!project) return groupFor(entry.file, options.root)
+
+  const root = options.projects?.find((p) => p.name === project)
+  const within = groupFor(entry.file, root?.dir ?? options.root)
+  // `groupFor` answers 'Components' for a file sitting directly in a root.
+  // Appending it would file every top-level component under `Core/Components`,
+  // a directory that does not exist.
+  return within === 'Components' ? project : `${project}/${within}`
+}
+
+/**
+ * Order the catalog. The sidebar renders it verbatim (`groupComponents`
+ * preserves catalog order), so this IS the sidebar's ordering.
+ *
+ * Sorted by group-first-appearance, then `pages.order`, then discovery order.
+ * The first key is what keeps a configured order from scrambling the tree: a
+ * plain global sort by `order` would pull a pinned component out of its group
+ * and file it wherever the sort landed. The last key is what makes this a
+ * no-op for a project that configures nothing — today's behaviour, unchanged,
+ * rather than a silent reshuffle on upgrade.
+ */
+export function sortEntries(
+  entries: readonly CatalogEntrySource[],
+  options: GenerateOptions,
+): CatalogEntrySource[] {
+  const groupRank = new Map<string, number>()
+  for (const entry of entries) {
+    const group = resolvedGroup(entry, options)
+    if (!groupRank.has(group)) groupRank.set(group, groupRank.size)
+  }
+  // Unordered components sort AFTER every ordered one, so pinning three
+  // favourites to the top of a group leaves the rest exactly as they were.
+  const orderOf = (entry: CatalogEntrySource): number => {
+    const order = pageFor(entry.component, options.pages)?.order
+    return typeof order === 'number' && Number.isFinite(order) ? order : Number.POSITIVE_INFINITY
+  }
+  return entries
+    .map((entry, index) => ({ entry, index }))
+    .sort((a, b) => {
+      const ga = groupRank.get(resolvedGroup(a.entry, options)) ?? 0
+      const gb = groupRank.get(resolvedGroup(b.entry, options)) ?? 0
+      if (ga !== gb) return ga - gb
+      const oa = orderOf(a.entry)
+      const ob = orderOf(b.entry)
+      if (oa !== ob) return oa - ob
+      return a.index - b.index
+    })
+    .map((e) => e.entry)
 }
 
 /**
@@ -166,10 +262,17 @@ export function generateCatalogModule(
     ].join('\n')
   }
 
-  const ids = uniqueIds(entries.map((e) => e.component.name))
+  const ordered = sortEntries(entries, options)
+  // Ids from the identity KEY, not the name. Two packages' `Button`s would
+  // otherwise slugify to `button` and `button-2` — unique, but arbitrary: which
+  // one got the suffix depends on discovery order, so a URL or a `data-testid`
+  // could point at the other package's component after an unrelated file was
+  // added. From the key they are `core-button` and `admin-button`: stable, and
+  // readable. Outside a monorepo the key IS the name, so nothing changes.
+  const ids = uniqueIds(ordered.map((e) => componentKey(e.component)))
   const lines: string[] = ["import { h } from '@pyreon/core'", '']
 
-  entries.forEach((entry, i) => {
+  ordered.forEach((entry, i) => {
     lines.push(`import * as __mod${i} from ${lit(entry.file)}`)
   })
   if (options.configPath) {
@@ -198,21 +301,35 @@ export function generateCatalogModule(
   if (options.presets) lines.push(`  presets: ${JSON.stringify(options.presets)},`)
   lines.push('  components: [')
 
-  entries.forEach((entry, i) => {
+  ordered.forEach((entry, i) => {
     const { component } = entry
     const controls = component.controls.filter(isEditableControl).map(toWorkbenchControl)
     // The discovered event surface. These are the props the Actions panel can
     // observe — the controls list deliberately excludes them (a function is not
     // an editable value), so they are threaded separately.
     const reactiveProps = component.controls.filter((c) => c.reactive).map((c) => c.name)
+    const page = pageFor(component, options.pages)
     lines.push('    {')
     lines.push(`      id: ${lit(ids[i]!)},`)
+    // The REAL name, always. It is what the usage snippet writes, what the
+    // `source`/`lens` RPC looks up, and what an agent imports. A configured
+    // `title` is a separate DISPLAY field precisely so overriding the label can
+    // never desynchronise any of those.
     lines.push(`      name: ${lit(component.name)},`)
-    lines.push(`      group: ${lit(groupFor(entry.file, options.root))},`)
+    // The identity key. Emitted only when it differs from the name (i.e. in a
+    // monorepo), so a single-package catalog is byte-identical to before. Every
+    // node-answered lookup (`source`, `lens`) sends THIS, not the name —
+    // otherwise two packages' `Button`s would ask the same question and one
+    // would be shown the other's source.
+    const key = componentKey(component)
+    if (key !== component.name) lines.push(`      key: ${lit(key)},`)
+    if (page?.title) lines.push(`      title: ${lit(page.title)},`)
+    lines.push(`      group: ${lit(resolvedGroup(entry, options))},`)
     // No `status`: nothing in a derived catalog measures maturity, and a
     // hardcoded 'stable' pill on every component is decorative fiction — the
     // docs view simply omits the pill when the field is absent.
-    if (component.summary) lines.push(`      desc: ${lit(component.summary)},`)
+    const desc = page?.summary ?? component.summary
+    if (desc) lines.push(`      desc: ${lit(desc)},`)
     lines.push(`      controls: ${JSON.stringify(controls)},`)
     if (component.scenarios.length > 0) {
       // The pipeline's derived scenarios, WITH their verdicts — the sidebar

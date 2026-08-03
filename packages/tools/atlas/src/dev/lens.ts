@@ -18,7 +18,7 @@
  */
 import { readFileSync } from 'node:fs'
 import { isAbsolute, resolve, sep } from 'node:path'
-import type { ComponentIntelligence } from '../core'
+import { ambiguousComponentMessage, type ComponentIntelligence, resolveComponent } from '../core'
 import type { RpcMethod } from './plugin'
 
 /** One line of source, with whatever the compiler said about it. */
@@ -129,7 +129,14 @@ export interface LensContext {
 export function lensMethod(ctx: LensContext): RpcMethod {
   return async (params) => {
     const name = String(params.component ?? '')
-    const found = ctx.components.find((c) => c.name === name)
+    // By KEY or unambiguous NAME — same reasoning as the `source` method: in a
+    // monorepo, analysing the wrong `Button` reports verdicts for source the
+    // reader is not looking at, which is worse than refusing.
+    const match = resolveComponent(ctx.components, name)
+    if (!match.found && match.ambiguous.length > 0) {
+      throw new Error(ambiguousComponentMessage(name, match.ambiguous))
+    }
+    const found = match.found
     if (!found?.source) {
       throw new Error(`[Pyreon] atlas dev: no source on record for component "${name}"`)
     }

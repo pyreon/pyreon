@@ -24,7 +24,7 @@ export function Sidebar(props: { model: WorkbenchModel }) {
         {...(depth > 0 ? { 'data-depth': String(depth) } : {})}
       >
         <C.CompBar state={() => (m.selId() === c.id ? 'active' : 'idle')} />
-        <C.CompName>{c.name}</C.CompName>
+        <C.CompName>{c.title ?? c.name}</C.CompName>
         {c.isNew ? <C.NewTag>NEW</C.NewTag> : null}
       </C.CompBtn>
       {/* The pipeline's derived scenarios, expanded under the SELECTED
