@@ -61,36 +61,81 @@ interface Result {
   label: string
   avgNs: number
   opsPerSec: number
+  /** CI95 bounds on the median, ns/op. */
+  loNs: number
+  hiNs: number
+  noisy: boolean
+}
+
+const WINDOWS = 7
+
+function percentile(sorted: number[], p: number): number {
+  if (sorted.length === 0) return 0
+  const i = Math.min(sorted.length - 1, Math.max(0, Math.round((sorted.length - 1) * p)))
+  return sorted[i]!
+}
+
+/**
+ * 95% bootstrap CI on the median.
+ *
+ * The window-median alone was not enough to publish from: this bench compares
+ * against `@preact/signals`, and without an interval a reader cannot tell a
+ * real 10% delta from window noise — which is how a one-sample ratio gets
+ * quoted as fact. Cells whose half-width exceeds 10% of the median are marked
+ * `~noisy` and must not be quoted.
+ */
+function bootstrapCI(samples: number[], B = 1000): { median: number; lo: number; hi: number } {
+  const sorted = samples.slice().sort((a, b) => a - b)
+  const n = samples.length
+  const medians: number[] = new Array(B)
+  for (let b = 0; b < B; b++) {
+    const resample: number[] = new Array(n)
+    for (let i = 0; i < n; i++) resample[i] = samples[(Math.random() * n) | 0]!
+    resample.sort((x, y) => x - y)
+    medians[b] = percentile(resample, 0.5)
+  }
+  medians.sort((a, b) => a - b)
+  return { median: percentile(sorted, 0.5), lo: percentile(medians, 0.025), hi: percentile(medians, 0.975) }
 }
 
 function bench(label: string, fn: (i: number) => void, durationMs = 1500): Result {
   for (let i = 0; i < 2000; i++) fn(i) // warmup (JIT tier-up)
-  // Median over repeated windows absorbs GC pauses / tier changes.
+  // Repeated windows absorb GC pauses / tier changes; the median + CI95 below
+  // is computed from these samples.
   const windows: number[] = []
-  for (let w = 0; w < 7; w++) {
+  for (let w = 0; w < WINDOWS; w++) {
     let ops = 0
     const start = performance.now()
-    const end = start + durationMs / 7
+    const end = start + durationMs / WINDOWS
     while (performance.now() < end) {
       fn(ops)
       ops++
     }
     windows.push((performance.now() - start) / ops)
   }
-  windows.sort((a, b) => a - b)
-  const medMs = windows[Math.floor(windows.length / 2)]!
-  return { label, avgNs: Math.round(medMs * 1_000_000), opsPerSec: Math.round(1000 / medMs) }
+  const { median: medMs, lo, hi } = bootstrapCI(windows)
+  return {
+    label,
+    avgNs: Math.round(medMs * 1_000_000),
+    opsPerSec: Math.round(1000 / medMs),
+    loNs: Math.round(lo * 1_000_000),
+    hiNs: Math.round(hi * 1_000_000),
+    noisy: (hi - lo) / 2 / medMs > 0.1,
+  }
 }
 
 function printSection(title: string, results: Result[]) {
   const fastest = Math.min(...results.map((r) => r.avgNs))
   console.log(`\n── ${title} ${'─'.repeat(Math.max(0, 60 - title.length))}`)
-  console.log(`${'impl'.padEnd(32)}${'ns/op'.padStart(12)}${'ops/sec'.padStart(15)}${'  rel'}`)
-  console.log('-'.repeat(72))
+  console.log(
+    `${'impl'.padEnd(32)}${'ns/op'.padStart(12)}${'ops/sec'.padStart(15)}${'  rel'}${'ci95 ns/op'.padStart(24)}`,
+  )
+  console.log('-'.repeat(88))
   for (const r of results) {
     const rel = (r.avgNs / fastest).toFixed(2)
+    const ci = `[${r.loNs.toLocaleString()}–${r.hiNs.toLocaleString()}]${r.noisy ? ' ~noisy' : ''}`
     console.log(
-      `${r.label.padEnd(32)}${r.avgNs.toLocaleString().padStart(12)}${r.opsPerSec.toLocaleString().padStart(15)}${`  ${rel}x`.padStart(8)}`,
+      `${r.label.padEnd(32)}${r.avgNs.toLocaleString().padStart(12)}${r.opsPerSec.toLocaleString().padStart(15)}${`  ${rel}x`.padStart(8)}${ci.padStart(24)}`,
     )
   }
 }
