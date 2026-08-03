@@ -192,6 +192,24 @@ function renderAgentGuide(components: readonly ComponentIntelligence[]): string 
     '',
     'Minimal correct usage per component. Use ONLY the listed prop values.',
     '',
+    // The guide describes the contract; this is how to CHECK against it.
+    // Without the affordance the reader has to already know the command
+    // exists, so the most valuable thing the catalog can do goes unused — the
+    // same gap as knowing the legal values but having no way to ask.
+    'Verify before you commit to a usage:',
+    '',
+    '    atlas check <Component> \'{"prop":"value"}\'',
+    '',
+    'It exits non-zero and names the problem — an invalid value (with the',
+    'nearest legal one), an unknown prop, a wrong type, a missing required prop.',
+    '',
+    // Scenario labels below are `[pass]` / `[FAIL]` / `[unverified]`, and the
+    // difference is load-bearing: presenting an unchecked state as a known-good
+    // example is the failure the whole verify model exists to prevent.
+    'Scenario labels are literal. `[pass]` means a check ran and passed;',
+    '`[unverified]` means nothing examined it — it is not a weaker pass, and it',
+    'is not evidence the usage is correct.',
+    '',
   ]
   for (const ci of components) {
     const tags = ci.tags.length > 0 ? ` [${ci.tags.join(', ')}]` : ''
