@@ -838,7 +838,6 @@ final class PyreonRouterDemoUITests: XCTestCase {
         app.buttons["clear-note"].tap()
         _ = app.staticTexts["Notes: 0"].waitForExistence(timeout: 10)
     }
-}
 
     // Platform-APIs row — INBOUND deep links, which had no vocabulary at all
     // (`useLinking()` is outbound-only, so an app could not be opened at a

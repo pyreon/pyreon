@@ -393,6 +393,8 @@ class RouterDemoInstrumentedTest {
         composeRule.waitUntil(timeoutMillis = 20_000) {
             composeRule.onAllNodesWithTag("styles-page").fetchSemanticsNodes().isNotEmpty()
         }
+    }
+
     // Offline/sync row — the OFFLINE-FIRST half, two independent claims.
     //
     // (1) CONNECTIVITY, as a live FLIP on one device: the radios go down,
