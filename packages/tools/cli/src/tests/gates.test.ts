@@ -492,7 +492,7 @@ describe('runDocClaimsGate', () => {
     mk('internals', 'test-utils', true) // private — excluded
     fs.writeFileSync(
       path.join(tmp, 'CLAUDE.md'),
-      '99 published packages across 5 categories under `packages/`.\n',
+      '99 published packages across 6 categories under `packages/`.\n',
     )
 
     const result = await runDocClaimsGate({ cwd: tmp })
