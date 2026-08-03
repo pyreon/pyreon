@@ -8,6 +8,11 @@ export default defineManifest({
   description:
     'Reactive keyboard shortcut management for Pyreon. Register global or scoped shortcuts with automatic lifecycle management. Supports `mod` alias (Command on Mac, Ctrl elsewhere), multi-key combos, comma-separated lists (`ctrl+s, mod+p`), sequential combos (`g t`, Gmail/vim-style), keyup bindings, `once` / `ignoreRepeat`, reference-counted scope activation, element-scoped targets, selective input filtering, shifted-symbol shortcuts (`?` fires on Shift+/), pressed-key introspection, programmatic `trigger`, and conflict detection. Dispatch is KEY-BUCKETED — a keystroke touches only the entries bound to that exact key, so the miss path (every non-shortcut keypress) is one Map lookup regardless of how many hotkeys are registered. Component-scoped hooks auto-unregister on unmount; ONE shared listener per (target, event-type) backs every shortcut. SSR-safe.',
   category: 'universal',
+  multiplatform: {
+    tier: 'web-only',
+    rationale:
+      'keyboard-shortcut layer over DOM KeyboardEvent; touch platforms have no hardware-shortcut surface',
+  },
   longExample: `import { useHotkey, useHotkeyScope, registerHotkey, getRegisteredHotkeys, getHotkeyConflicts, enableScope, disableScope } from '@pyreon/hotkeys'
 
 // Global shortcut — auto-unregisters on unmount

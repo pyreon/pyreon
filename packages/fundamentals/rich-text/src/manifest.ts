@@ -8,6 +8,11 @@ export default defineManifest({
   description:
     "Reactive WYSIWYG rich-text editor for Pyreon, built as a thin signal layer over TipTap (the MIT, framework-agnostic headless editor framework over ProseMirror) — the same adapter shape as `@pyreon/code` (CodeMirror) and `@pyreon/charts` (ECharts). `editor.json` is a writable Signal<JSONContent> (the ProseMirror document); `html`/`text`/`isEmpty`/`characterCount`/`canUndo`/`canRedo` are computed signals. The TipTap engine is lazy-loaded on mount so `@tiptap/*` stays out of the initial bundle. The content area is a labeled `role=\"textbox\"` multiline region. Two-way signal binding (`bindRichTextToSignal`) handles loop prevention. Collaboration composes with `@pyreon/sync` (bind to the same Y.Doc XML fragment) rather than a paid cloud.",
   category: 'browser',
+  multiplatform: {
+    tier: 'web-only',
+    rationale:
+      'wraps TipTap/ProseMirror (DOM editor); consume on native via the <WebView> bridge subpath',
+  },
   peerDeps: ['@pyreon/runtime-dom'],
   longExample: `import { createRichTextEditor, RichText, bindRichTextToSignal } from '@pyreon/rich-text'
 import { signal } from '@pyreon/reactivity'

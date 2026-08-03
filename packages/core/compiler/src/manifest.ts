@@ -8,6 +8,11 @@ export default defineManifest({
   description:
     "Pyreon's JSX-to-reactive transform. `transformJSX` dispatches to a Rust native binary (napi-rs, 3.7-8.9× faster) and falls back per-call to the pure-JS `transformJSX_JS` when the binary is unavailable (CI, WASM, wrong platform); the two backends are asserted byte-identical by 180+ cross-backend equivalence tests. Emits `_tpl()` (cloneNode templates) + per-text-node `_bind()`, hoists static JSX, inlines `const`-from-`props`, and auto-calls bare signal references in JSX. Also ships the experimental Reactivity-Lens sidecar (`analyzeReactivity` — surfaces the compiler's own per-expression reactive/static decision back to editors), React-pattern detection + one-shot migration, the Pyreon anti-pattern detector behind the MCP `validate` tool, and the syntactic project audits powering `pyreon doctor` (test-environment / islands / SSG).",
   category: 'universal',
+  multiplatform: {
+    tier: 'web-only',
+    rationale:
+      'the web JSX compiler + build tooling itself; the native sibling is @pyreon/native-compiler — nothing here ships to an app runtime',
+  },
   features: [
     'Dual-backend transformJSX — Rust native (napi-rs) with automatic per-call JS fallback, byte-identical output',
     'Reactivity-Lens: analyzeReactivity / formatReactivityLens surface the compiler’s per-expression reactive-vs-static verdict (live/static/hoisted), served as editor inlay hints via `@pyreon/lint --lsp`',

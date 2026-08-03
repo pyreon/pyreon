@@ -8,6 +8,11 @@ export default defineManifest({
   description:
     "Pyreon's server-side renderer: walks a VNode tree and produces HTML. Signal accessors are called synchronously to SNAPSHOT their current value — no effects, no reactivity on the server (reactivity resumes post-hydration on the client). Async component functions are awaited. `renderToStream` flushes progressively and resolves Suspense boundaries out-of-order (fallback first, then a `<template>` + inline swap script). Concurrency-safe: every `renderToString` / `renderToStream` / `runWithRequestContext` call runs in its own `AsyncLocalStorage` store so concurrent requests never share context frames; `configureStoreIsolation()` extends the same isolation to the `@pyreon/store` registry. Most apps consume this transitively through `@pyreon/server` (`createHandler` / `prerender`) rather than calling it directly.",
   category: 'server',
+  multiplatform: {
+    tier: 'web-only',
+    rationale:
+      'server-side HTML rendering (SSR/streaming) — a web-platform concern with no native analogue',
+  },
   features: [
     'renderToString(vnode) → Promise<string> — one-shot HTML, awaits async components',
     'renderToStream(vnode, { signal?, suspenseTimeoutMs? }) → ReadableStream<string> — progressive, out-of-order Suspense (default 30s per-boundary timeout, configurable; signal threads AbortSignal end-to-end)',

@@ -8,6 +8,11 @@ export default defineManifest({
   description:
     'Pyreon-specific lint rules powered by `oxc-parser`. Covers reactivity (14), JSX (11), lifecycle (6), performance (6), SSR (5), architecture (10), store (3), form (4), styling (4), hooks (3), accessibility (3), router (5), SSG (3), frontend (12), query (1), rx (1), i18n (1), storage (1) — 97 rules total. Programmatic API (`lint`, `lintFile`), CLI (`pyreon-lint`), watch mode (fs.watch + 100ms debounce + AstCache), LSP server, and `.pyreonlintrc.json` config with per-rule options via ESLint-style tuple form. The `frontend`/`query`/`rx`/`i18n`/`storage` categories + the `form`/`router` opt-in rules are **opt-in best-practice rules** (`meta.optIn`): off in the `recommended`/`strict`/`app`/`lib` presets, enabled wholesale by the `best-practices` preset or per-rule config. Library-scoped opt-in rules auto-gate on the project’s `package.json` dependencies (a project that doesn’t use `@pyreon/query` never sees query rules). Notable rules: `pyreon/no-process-dev-gate` (auto-fixable), `pyreon/query-options-as-function` (auto-fixable — wraps the options object literal in `() => (...)`; also a proactive MCP `validate` detector), `pyreon/require-img-alt` / `pyreon/img-requires-dimensions` / `pyreon/no-discarded-optimize-fields` (a11y + CLS — the last flags a raw `<img src={x.src}>` that discards a `?optimize` descriptor), `pyreon/heading-order` (a11y — flags a skipped heading level), `pyreon/color-contrast` (a11y — literal-hex contrast pairs), `pyreon/i18n-prefer-trans-for-rich-jsx`, `pyreon/prefer-typed-search-params`.',
   category: 'server',
+  multiplatform: {
+    tier: 'web-only',
+    rationale:
+      'lint tooling — runs at dev time, not app runtime',
+  },
   features: [
     '97 rules across 19 categories',
     'lint(options) programmatic API + lintFile() low-level entry',

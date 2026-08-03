@@ -18,6 +18,11 @@ export default defineManifest({
   description:
     'The multiplatform UI vocabulary for Pyreon. ONE canonical name per concept (`<Stack>` not `<View>`/`<VStack>`/`<div>`; `onPress` everywhere, not `onClick` vs `action:`). Web renders real DOM via `@pyreon/runtime-dom`; on iOS/Android the PMTC compiler intercepts the JSX at build time and emits idiomatic SwiftUI / Compose (the import is a type-anchor on native). Tokens-first styling (`padding={4}`, `gap="md"`) resolves through the theme per target. No responsive props / animations in v1 — apps needing responsive web use `@pyreon/elements` directly. CRITICAL boundary for native: PMTC compiles your component SOURCE in a narrow declarative TS subset, NOT npm libraries — see `get_pattern({ name: "multiplatform" })` for the supported subset + the silent-failure cliff.',
   category: 'browser',
+  multiplatform: {
+    tier: 'shared',
+    rationale:
+      'the 15 canonical primitives: real web DOM runtime AND SwiftUI/Compose emit — the compiler\'s native target vocabulary',
+  },
   features: [
     '15 canonical primitives compile to web DOM + iOS SwiftUI + Android Compose from one .tsx',
     'One canonical name + event per concept — `<Stack>` (not View/VStack/div), `onPress` everywhere',

@@ -20,6 +20,7 @@
  *   - loom-scan             (dependency-fabric errors: phantom deps, runtime cycles, drift)
  *   - check-advisory-comment-steps (advisory PR-comment step that can turn a check red)
  *   - check-lint-ratchet    (oxlint warn-finding count grew above baseline)
+ *   - check-multiplatform-tier (published pkg without a declared multiplatform story)
  *   - check-pyreon-lint-ratchet (@pyreon/lint advisory-finding count over framework src grew above baseline)
  *   - gen-docs --check      (manifest edited but generated files stale)
  *
@@ -54,6 +55,7 @@ interface Gate {
 const GATES: Gate[] = [
   { name: 'lint', cmd: 'bun run lint' },
   { name: 'check-lint-ratchet', cmd: 'bun scripts/check-lint-ratchet.ts' },
+  { name: 'check-multiplatform-tier', cmd: 'bun scripts/check-multiplatform-tier.ts' },
   { name: 'check-pyreon-lint-ratchet', cmd: 'bun scripts/check-pyreon-lint-ratchet.ts' },
   { name: 'gen-docs --check', cmd: 'bun run gen-docs --check' },
   { name: 'check-doc-claims', cmd: 'bun scripts/check-doc-claims.ts' },

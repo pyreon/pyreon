@@ -7,6 +7,11 @@ export default defineManifest({
   description:
     'Reactive TanStack Table adapter for Pyreon. Options are passed as a function so signal reads inside (data, columns, sorting) automatically re-sync the table when any tracked signal changes. Returns a Computed<Table<T>> that consumers read inside templates or effects. Re-exports all TanStack Table core utilities and types for single-import convenience.',
   category: 'universal',
+  multiplatform: {
+    tier: 'web-only',
+    rationale:
+      'headless table over web rendering patterns; PMTC has no lowering — native lists are <For> + primitives',
+  },
   longExample: `import { useTable, flexRender, getCoreRowModel, getSortedRowModel, type ColumnDef } from '@pyreon/table'
 import { signal } from '@pyreon/reactivity'
 

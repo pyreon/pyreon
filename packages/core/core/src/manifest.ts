@@ -8,6 +8,11 @@ export default defineManifest({
   description:
     'Component model and lifecycle for Pyreon. Provides the VNode type system, `h()` hyperscript function, JSX automatic runtime (`@pyreon/core/jsx-runtime`), lifecycle hooks (`onMount`, `onUnmount`), two-tier context system (`createContext` for static values, `createReactiveContext` for signal-backed values), control-flow components (`Show`, `Switch`/`Match`, `For`, `Suspense`, `ErrorBoundary`), code-splitting via `lazy()`, dynamic rendering via `Dynamic`, and props utilities (`splitProps`, `mergeProps`, `cx`, `createUniqueId`). Components are plain functions (`ComponentFn<P> = (props: P) => VNodeChild`) that run ONCE — reactivity comes from reading signals inside reactive scopes, not from re-running the component.',
   category: 'universal',
+  multiplatform: {
+    tier: 'shared',
+    rationale:
+      'the JSX authoring surface PMTC compiles — For/Show/Suspense/ErrorBoundary lower; Switch/Match/Dynamic/Portal/Index warn with concrete alternatives',
+  },
   longExample: `import { h, Fragment, onMount, onUnmount, provide, createContext, createReactiveContext, useContext, Show, Switch, Match, For, Suspense, ErrorBoundary, lazy, Dynamic, cx, splitProps, mergeProps, createUniqueId } from "@pyreon/core"
 import { signal, computed } from "@pyreon/reactivity"
 

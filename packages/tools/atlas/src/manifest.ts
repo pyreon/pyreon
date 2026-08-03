@@ -8,6 +8,11 @@ export default defineManifest({
   description:
     'Atlas inverts Storybook’s authoring-first model: your components and their TypeScript types are the source of truth, and Atlas DERIVES the catalog — controls inferred from props, scenarios generated from variant axes (rocketstyle dimensions included), and a five-check verify verdict per scenario (a11y, interaction, leak, reactivity coverage, snapshot). `atlas scan` writes `atlas-catalog.json` + `atlas-agent-guide.md` (the machine-readable surface an AI assistant consumes), `atlas dev` serves a zero-config workbench over the real Vite compiler, and `atlas verify-browser` runs the browser half of verification in real Chromium. Authoring is opt-in, not required: an `atlas.config.ts` can add a theme, a wrapper, presets (viewports / locales / roles), and authored scenarios with `play` interaction scripts.',
   category: 'universal',
+  multiplatform: {
+    tier: 'web-only',
+    rationale:
+      'the component workbench — dev tooling that runs in a browser, not app runtime',
+  },
   features: [
     'Derived catalog: controls inferred from prop types, scenarios generated from variant axes (rocketstyle dimensions resolved through the project theme)',
     'Five-check verify verdict per scenario — a11y, interaction (play scripts or auto click-walk), REAL leak check (reactive-graph accumulation past GC), reactivity coverage, visual snapshot',

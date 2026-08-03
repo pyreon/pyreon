@@ -8,6 +8,11 @@ export default defineManifest({
   description:
     'MobX-State-Tree-inspired structured state management built on Pyreon signals. Models compose state (signals), views (computeds), and actions into self-contained units that support typed snapshots, JSON-patch record/replay, and action interception middleware. Models can nest other models for tree-shaped state, and `.asHook(id)` provides singleton instances scoped to a store-like registry.',
   category: 'universal',
+  multiplatform: {
+    tier: 'service-backend',
+    rationale:
+      'model() lowers to PyreonModel singletons on both targets',
+  },
   longExample: `import { model, getSnapshot, applySnapshot, onPatch, applyPatch, addMiddleware } from '@pyreon/state-tree'
 
 // Define a model — chainable: state, then .views(), then .actions():

@@ -18,6 +18,7 @@ function mk(overrides: Partial<PackageManifest> = {}): PackageManifest {
     tagline: 't',
     description: 'd',
     category: 'browser',
+    multiplatform: { tier: 'shared' },
     features: [],
     api: [
       {

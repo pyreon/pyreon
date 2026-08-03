@@ -8,6 +8,11 @@ export default defineManifest({
   description:
     'Foundational responsive-style layer that powers every visual package above it (`elements`, `rocketstyle`, `coolgrid`, `kinetic`). `enrichTheme()` merges a partial user theme with the default breakpoints / spacing / unit utilities so the rest of the system has a complete theme to read. `makeItResponsive()` turns a value or per-breakpoint map into the right CSS for the current screen. `createMediaQueries()` builds breakpoint-keyed media queries; `styles()` generates CSS from a theme; `alignContent()` resolves alignment shorthand to flex / grid CSS. The package is the single source of truth for responsive prop semantics across the UI system.',
   category: 'browser',
+  multiplatform: {
+    tier: 'web-only',
+    rationale:
+      'responsive breakpoints + CSS-variable theming over real CSS; native theming is compile-time tokens + the 2-bucket size-class model',
+  },
   features: [
     'enrichTheme(theme) — merge a partial theme with default breakpoints / spacing / units',
     'breakpoints() — default responsive breakpoint set',

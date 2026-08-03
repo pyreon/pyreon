@@ -8,6 +8,11 @@ export default defineManifest({
   description:
     'Foundation layer for the Pyreon UI system. `PyreonUI` is the single provider replacing the previous theme / mode / config split — it accepts a theme, a `mode` of `"light" | "dark" | "system"`, and an optional `inversed` flip, then auto-detects OS preference via `prefers-color-scheme` when `mode="system"`. `useMode()` returns the resolved mode as a reactive signal. The package also exposes the `init()` escape hatch (called internally by `PyreonUI` but available for SSR / test setups), the static `HTML_TAGS` / `HTML_TEXT_TAGS` lists used by the bases, and zero-dep utilities (`get`, `set`, `merge`, `pick`, `omit`, `throttle`, `isEmpty`, `isEqual`).',
   category: 'browser',
+  multiplatform: {
+    tier: 'shared',
+    rationale:
+      '<PyreonUI> lowers transparently on native (theme is compile-time; dark mode is the system read)',
+  },
   features: [
     'PyreonUI({ theme, mode, inversed }) — single provider replaces 3 separate providers',
     'mode="system" auto-detects OS preference via matchMedia and updates reactively',

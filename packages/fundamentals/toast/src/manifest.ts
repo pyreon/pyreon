@@ -8,6 +8,11 @@ export default defineManifest({
   description:
     'Imperative toast notifications for Pyreon. Call `toast()` from anywhere in your app — no provider or context needed. Preset variants (`toast.success`, `toast.error`, etc.), a `toast.promise()` helper for async operations, and `toast.update()` for loading-to-success patterns. Render `<Toaster />` once at the app root — it uses Portal, animated enter/leave CSS transitions, auto-dismiss, and pause-on-hover-and-focus. Accessible with a type-aware live-region role — `role="alert"` (assertive) for error/warning, `role="status"` (polite) for info/success — plus `aria-atomic`.',
   category: 'browser',
+  multiplatform: {
+    tier: 'web-only',
+    rationale:
+      'the store core is pure logic but <Toaster> is DOM; no native runtime port yet',
+  },
   peerDeps: ['@pyreon/runtime-dom'],
   longExample: `import { toast, Toaster } from '@pyreon/toast'
 

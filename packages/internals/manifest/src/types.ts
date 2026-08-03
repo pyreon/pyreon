@@ -197,6 +197,23 @@ export type Gotcha = string | { label: string; note: string }
  * first (typically `createX`/`useX`), then supporting types, then
  * advanced or rare APIs.
  */
+/** The three multiplatform tiers a package can declare. */
+export type MultiplatformTier = 'shared' | 'service-backend' | 'web-only'
+
+/**
+ * A package's declared multiplatform contract. See
+ * `PackageManifest.multiplatform` for the tier definitions and the gate
+ * that enforces presence. A DISCRIMINATED union so the type system itself
+ * enforces the load-bearing rule: `'web-only'` REQUIRES a rationale —
+ * "why can this never lower, and what is the native consumption story
+ * (WebView bridge / `<Web>` branch / none)?" is the sentence that keeps
+ * the tier honest. The other tiers take an optional rationale (naming
+ * the native runtime port or the PMTC frontend is encouraged).
+ */
+export type MultiplatformStory =
+  | { tier: 'shared' | 'service-backend'; rationale?: string }
+  | { tier: 'web-only'; rationale: string }
+
 export interface PackageManifest {
   /** Package name including scope — `@pyreon/flow`. */
   name: string
@@ -223,6 +240,32 @@ export interface PackageManifest {
    * file (e.g. `'worker'`), widen this union in the same PR.
    */
   category: 'browser' | 'server' | 'universal'
+  /**
+   * The package's MULTIPLATFORM story — does one shared `.tsx` source
+   * using this package build for web AND iOS/Android through PMTC?
+   *
+   * This is a declared CONTRACT, not documentation: the
+   * `check-multiplatform-tier` gate (validate-fast family) fails any
+   * manifest without it, so a new package cannot silently default to
+   * web-only while the ecosystem advertises "one code, three targets".
+   * The per-package assignments transcribe the classification
+   * `docs/multiplatform.md` + `multiplatform-libraries.md` maintain in
+   * prose; those docs stay the narrative source, this field is the
+   * machine-readable half the gate and generators read.
+   *
+   * - `'shared'` — the authoring surface compiles/lowers as-is on every
+   *   target (PMTC recognises it, or it is pure logic with no platform
+   *   edge). Examples: `@pyreon/reactivity`, `@pyreon/primitives`.
+   * - `'service-backend'` — one API, per-target runtime backends
+   *   (web impl + a Swift/Kotlin port PMTC binds to). Examples:
+   *   `@pyreon/router`, `@pyreon/storage`, `@pyreon/form`.
+   * - `'web-only'` — architecturally coupled to the web platform
+   *   (DOM/canvas/vendor engine/CSS-in-JS). `rationale` is REQUIRED for
+   *   this tier — "why can this never lower?" is the load-bearing
+   *   sentence, and the WebView bridge / `<Web>` escape hatches are the
+   *   consumption story on native.
+   */
+  multiplatform: MultiplatformStory
   /**
    * Peer dependencies the package quietly requires but doesn't list
    * in its own `package.json` — typically `@pyreon/runtime-dom` for

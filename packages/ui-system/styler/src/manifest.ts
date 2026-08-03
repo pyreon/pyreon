@@ -8,6 +8,11 @@ export default defineManifest({
   description:
     "Pyreon's CSS-in-JS engine. `styled('div')` is a tagged template that returns a `ComponentFn` injecting a generated class; `css` is a tagged template returning a LAZY `CSSResult` resolved on use (not a string); `keyframes` returns the generated animation-name string. Tagged-template interpolations receive the component's `props` (and the theme) so styles can be signal-driven — function interpolations flip the component onto the dynamic resolve path (`isDynamic`). A singleton `StyleSheet` with FNV-1a hashing dedupes and supports SSR; `createSheet()` makes an isolated instance. Theme is delivered through a REACTIVE context — `useTheme()` snapshots at call time, `useThemeAccessor()` returns the raw `() => Theme` accessor for tracking inside effects so whole-theme swaps re-resolve without remounting.",
   category: 'browser',
+  multiplatform: {
+    tier: 'shared',
+    rationale:
+      'styled(Prim) + defineTheme tokens lower via the styler-native frontend; the CSS-in-JS runtime is web, the authored patterns compile',
+  },
   features: [
     "styled('div')`...` / styled(Component)`...` / styled.div`...` (Proxy) — component factory with `as` polymorphism + $-transient props",
     'css`...` — lazy CSSResult, resolved on use (NOT a string)',

@@ -8,6 +8,11 @@ export default defineManifest({
   description:
     'Type-safe client-side router for Pyreon with nested routes, per-route and global navigation guards, data loaders, middleware chain, View Transitions API integration, and typed search params. Context-based (`RouterContext`) with hash and history mode support. Route params are inferred from path strings (`"/user/:id"` yields `{ id: string }`). Named routes enable typed programmatic navigation. SSR-compatible with server-side route resolution. Hash mode uses `history.pushState` (not `window.location.hash`) to avoid double-update. `await router.push()` resolves after the View Transition `updateCallbackDone` (DOM commit), not after animation completion.',
   category: 'browser',
+  multiplatform: {
+    tier: 'service-backend',
+    rationale:
+      'web history/hash router + @pyreon/native-router-{swift,kotlin} ports; nav/params/guards/loaders device-proven',
+  },
   longExample: `import { createRouter, RouterProvider, RouterView, RouterLink, useRouter, useRoute, useIsActive, useTypedSearchParams, useTransition, useLoaderData, useMiddlewareData } from "@pyreon/router"
 import { mount } from "@pyreon/runtime-dom"
 

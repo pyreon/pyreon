@@ -8,6 +8,11 @@ export default defineManifest({
   description:
     'Lightweight state machine library built on Pyreon signals. A machine is a constrained signal — it can only hold values from the configured state set and can only transition between them via named events. Guards enable conditional transitions with optional payloads. There is no built-in context or side-effect system — use existing Pyreon signals alongside the machine for data and effects. The machine reads like a signal and subscribes like one, making it natural in JSX and reactive scopes.',
   category: 'universal',
+  multiplatform: {
+    tier: 'service-backend',
+    rationale:
+      'createMachine lowers to PyreonMachine on both targets; transition device-asserted',
+  },
   longExample: `import { createMachine } from '@pyreon/machine'
 
 // Define states and transitions — type-safe:

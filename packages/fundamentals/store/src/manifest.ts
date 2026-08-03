@@ -8,6 +8,11 @@ export default defineManifest({
   description:
     'Composition-style global state management built on @pyreon/reactivity signals. Stores are singletons identified by string ID — the setup function runs once, returning signals (auto-tracked as state), computeds (pass-through), and functions (auto-wrapped as actions with onAction interception). The returned StoreApi provides batch patching, mutation subscription, action hooks, reset, and dispose. For concurrent SSR, setStoreRegistryProvider() swaps the store map to an AsyncLocalStorage-backed provider so each request gets isolated state.',
   category: 'universal',
+  multiplatform: {
+    tier: 'service-backend',
+    rationale:
+      'defineStore lowers to @Observable singleton (Swift) / mutableStateOf object (Kotlin); cross-screen state device-proven',
+  },
   longExample: `import { signal, computed } from '@pyreon/reactivity'
 import { defineStore, addStorePlugin, resetAllStores } from '@pyreon/store'
 

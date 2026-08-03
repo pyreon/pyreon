@@ -8,6 +8,11 @@ export default defineManifest({
   description:
     'Chainable HOC factory for Pyreon components. `attrs({ name, component })` wraps a component in an immutable builder that accumulates default props (`.attrs()`), reconfigures the base (`.config()`), composes named HOCs (`.compose()`), and attaches static metadata (`.statics()`). Every chain method returns a NEW component — the original is never mutated — and `.attrs<P>()` generics accumulate into the component\'s prop type. It is the chaining foundation `@pyreon/rocketstyle` builds on; use it directly for default-prop composition without the dimension-styling layer.',
   category: 'universal',
+  multiplatform: {
+    tier: 'shared',
+    rationale:
+      'attrs(Base) default-prop HOC lowers via attrs-native (use-site wins)',
+  },
   longExample: `import attrs, { isAttrsComponent } from '@pyreon/attrs'
 import { Element } from '@pyreon/elements'
 

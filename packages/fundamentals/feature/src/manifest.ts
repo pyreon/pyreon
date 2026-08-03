@@ -7,6 +7,11 @@ export default defineManifest({
   description:
     'Schema-driven feature factory for Pyreon. Define a validation schema (Zod / Valibot / ArkType) and an API base path once, and `defineFeature` auto-generates reactive hooks for listing, fetching, searching, creating, updating, deleting, form management, table configuration, and store access. Composes `@pyreon/query`, `@pyreon/form`, `@pyreon/validation`, `@pyreon/store`, and `@pyreon/table` under the hood.',
   category: 'universal',
+  multiplatform: {
+    tier: 'web-only',
+    rationale:
+      'composite over query/form/store/validation — lowers only when every dependency does; tracked as a Tier-2 composite',
+  },
   longExample: `import { defineFeature } from '@pyreon/feature'
 import { signal } from '@pyreon/reactivity'
 import { z } from 'zod'

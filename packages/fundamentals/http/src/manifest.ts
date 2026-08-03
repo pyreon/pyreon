@@ -7,6 +7,11 @@ export default defineManifest({
   description:
     'The request/response layer beneath @pyreon/query. It owns how a request is made — URL building, headers, body encoding, cancellation, typed errors and optional response validation — and deliberately owns no cache, no dedup-by-key and no reactive container, because those already have owners. Mirrors the split the native runtime already made, where PyreonFetch is the reactive result container and PyreonHttp is the request/response layer beneath it. The core has zero dependencies; retry, schema validation, TanStack adapters, mocking and SSR each live behind their own entry so an unused one costs nothing.',
   category: 'universal',
+  multiplatform: {
+    tier: 'web-only',
+    rationale:
+      'universal web/node HTTP client (WHATWG fetch); PMTC has no lowering for createHttp — native networking is useFetch + the PyreonHttp runtime layer, convergence tracked',
+  },
   features: [
     'Onion middleware `(req, next) => res` — retry, auth-refresh and short-circuit are ordinary middleware, which axios interceptor arrays structurally cannot express',
     'Immutable clients: `extend()` returns a new instance, so no shared mutable defaults can leak across concurrent SSR requests',
