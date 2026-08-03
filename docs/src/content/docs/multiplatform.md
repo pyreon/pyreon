@@ -1154,10 +1154,17 @@ every warning; treat any warning as "this construct is outside v1."
 %=` (a reassigned local is emitted `var`, not `let`/`val`, automatically), so
 an imperative loop body can accumulate. C-style `for (let i = 0; …; …)` is NOT
 in v1 — use `for…of` over an array or `while`. **Array** destructuring of
-locals (`const [a, b] = xs`) is NOT in v1 — the binding is silently dropped,
-leaving later references undefined; index explicitly (`xs()[0]`) instead.
+locals (`const [a, b] = xs()`) LOWERS — in function/computed bodies (a
+block-scoped container + indexed `let`s) AND at component scope (a synthetic
+container const + `__pyDestrN[i]` aliases, the same IR as the explicit
+`xs()[0]` shape; the component-scope form was a silent drop until 2026-08 —
+the emit referenced `a`/`b` unbound and failed swiftc/kotlinc with zero
+warnings). Holes, rest, defaults, and nested patterns warn by name — at BOTH
+scopes — and the declaration is skipped whole, never half-bound.
 (**Object** destructuring `const {a, b} = obj` DOES lower — body-local,
-component-param, and hook-result forms, e.g. `const { data } = useFetch(url)`.)
+component-param, and hook-result forms, e.g. `const { data } = useFetch(url)`;
+its non-simple component-scope shapes now warn loudly too, where they
+previously vanished silently.)
 `<For>` remains the idiom for RENDERING a list; these loops are for
 in-body data work.
 
