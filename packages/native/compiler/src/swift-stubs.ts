@@ -495,11 +495,31 @@ public final class PyreonForm {
     validators: [String: (String) -> String] = [:],
     onSubmit: (([String: String]) -> Void)? = nil
   ) {}
+  // Mirrors packages/native/runtime-swift/Sources/PyreonRuntime/PyreonForm.swift.
+  // values / touched / setFieldValue / setValue / validateField / validateAll
+  // / isValid / reset were MISSING here, so a form shape the REAL runtime
+  // accepts failed this gate — the subset-stub-manufactures-failures half of
+  // the stub-fidelity rule (the superset half is the one that masks). Found
+  // when the onSubmit values-param rewrite's regression test compiled against
+  // the real toolchains but not against the stub.
+  public private(set) var values: [String: String] = [:]
   public private(set) var errors: [String: String] = [:]
+  public private(set) var touched: [String: Bool] = [:]
   public private(set) var isSubmitting: Bool = false
   public var onSubmit: (([String: String]) -> Void)?
+  public func setValue(_ name: String, _ value: String) {}
+  public func setFieldValue(_ name: String, _ value: String) {}
   public func binding(_ name: String) -> Binding<String> { Binding(get: { "" }, set: { _ in }) }
+  public func validateField(_ name: String) -> Bool { true }
+  public func validateAll() -> Bool { true }
   public func submit() {}
+  public func handleSubmit() {}
+  public func setError(_ name: String, _ message: String?) {}
+  public func setTouched(_ name: String, _ isTouched: Bool = true) {}
+  public var isValid: Bool { true }
+  public func beginSubmit() {}
+  public func endSubmit() {}
+  public func reset() {}
 }
 
 // ---- PyreonRouter (the router-swift module surface the emit imports) ----

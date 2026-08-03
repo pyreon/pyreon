@@ -386,6 +386,31 @@ const SERVICE_OPTIONAL_FIELDS: ReadonlyMap<string, ReadonlyMap<string, TypeIR>> 
   ],
 ])
 
+/**
+ * Optional-returning METHODS on the native service containers, by decl kind —
+ * the CALL-RETURN sibling of `SERVICE_OPTIONAL_FIELDS` (which types member
+ * READS). Without this, `const token = secrets.read('k')` inferred `unknown`,
+ * so `classifyOptionalCondition` never fired and the natural session-rehydrate
+ * shape `if (token) { auth.signInSucceeded(...) }` emitted a bare optional as
+ * a condition — uncompilable on BOTH targets (swiftc: "optional type 'String?'
+ * cannot be used as a boolean"; kotlinc: "condition type mismatch") — found by
+ * the auth-rehydration probe, invisible to every prior gate because no gated
+ * app branched on a service method's return.
+ *
+ * Only methods whose return the RUNTIMES declare optional belong here
+ * (PyreonSecureStorage.read is `String?` on both targets). `db.get(...)`'s
+ * optional RECORD return is the known next entry — its type is per-collection
+ * (needs the collection→struct inference), tracked with the auth arc.
+ */
+const SERVICE_METHOD_RETURNS: ReadonlyMap<string, ReadonlyMap<string, TypeIR>> = new Map([
+  [
+    'secureStorage',
+    new Map<string, TypeIR>([
+      ['read', { kind: 'union', branches: [{ kind: 'string' }, { kind: 'null' }] }],
+    ]),
+  ],
+])
+
 export function buildInferenceCtx(
   decls: DeclIR[],
   storeDefs: StoreDefnIR[] = [],
@@ -417,7 +442,9 @@ export function buildInferenceCtx(
     // typed against SERVICE_OPTIONAL_FIELDS above.
     services: new Map(
       decls.flatMap((d) =>
-        'name' in d && typeof d.name === 'string' && SERVICE_OPTIONAL_FIELDS.has(d.kind)
+        'name' in d &&
+        typeof d.name === 'string' &&
+        (SERVICE_OPTIONAL_FIELDS.has(d.kind) || SERVICE_METHOD_RETURNS.has(d.kind))
           ? [[d.name, d.kind] as const]
           : [],
       ),
@@ -1138,6 +1165,17 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       {
         const rw = rewriteObjectValues(expr, ctx)
         if (rw !== null) return inferType(rw, ctx)
+      }
+      // A method call on a service-container binding whose return the
+      // runtimes declare optional — `secrets.read('k')` → `string | null` —
+      // so a local seeded from it classifies for the optional-condition
+      // lowering (see SERVICE_METHOD_RETURNS above).
+      if (expr.callee.kind === 'member' && expr.callee.object.kind === 'identifier') {
+        const svcKind = ctx.services.get(expr.callee.object.name)
+        if (svcKind !== undefined) {
+          const ret = SERVICE_METHOD_RETURNS.get(svcKind)?.get(expr.callee.property)
+          if (ret !== undefined) return ret
+        }
       }
       // Zero-arg call on a bare identifier is the canonical signal /
       // computed read shape: `count()` reads signal `count`. Walk the

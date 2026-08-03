@@ -76,14 +76,22 @@ const sw = (src: string) => transform(src, { target: 'swift' }).code
 const kt = (src: string) => transform(src, { target: 'kotlin' }).code
 
 describe('P1 — handler-LOCAL optional in a statement condition lowers (completes optional-truthiness)', () => {
-  it('Swift: named-handler `if (localOpt)` lowers to `!= nil`', () => {
-    expect(sw(named(findIf))).toContain('!= nil')
+  // The bare-identifier PRESENT form upgraded from `if t != nil` to the
+  // shorthand BINDING `if let t {` (auth-rehydration arc): the `!= nil` form
+  // nil-tests but does NOT unwrap, so a then-body USING the value in a
+  // non-optional position (`User(name: token)` — the session-rehydrate
+  // shape) failed swiftc even with the condition lowered. `if let` does
+  // both, matching JS narrowing. The negated form keeps `== nil` (nothing
+  // to unwrap on the absent branch).
+  it('Swift: named-handler `if (localOpt)` lowers to the `if let` binding', () => {
+    expect(sw(named(findIf))).toContain('if let t {')
+    expect(sw(named(findIf))).not.toContain('t != nil')
   })
   it('Swift: named-handler `if (!localOpt)` lowers to `== nil`', () => {
     expect(sw(named(findIfNot))).toContain('== nil')
   })
-  it('Swift: inline-handler `if (localOpt)` lowers to `!= nil`', () => {
-    expect(sw(inline(findIf))).toContain('!= nil')
+  it('Swift: inline-handler `if (localOpt)` lowers to the `if let` binding', () => {
+    expect(sw(inline(findIf))).toContain('if let t {')
   })
   it('Kotlin: named + inline handler-local conditions lower to `!= null` / `== null`', () => {
     expect(kt(named(findIf))).toContain('!= null')
