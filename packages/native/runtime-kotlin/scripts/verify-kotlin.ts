@@ -424,6 +424,16 @@ public open class ConnectivityManager {
   public val activeNetwork: Network? = null
   public fun getNetworkCapabilities(network: Network): NetworkCapabilities? = null
   public fun registerNetworkCallback(request: NetworkRequest, callback: NetworkCallback) {}
+  // The API-26 Handler overload. Present because the REAL ConnectivityManager
+  // has it and the runtime depends on it: without a Handler the callback is
+  // delivered on a binder thread and its Compose state writes race the UI
+  // thread's measure/layout. Omitting it would make the stub a SUBSET and
+  // reject correct code — the mirror image of a superset masking a break.
+  public fun registerNetworkCallback(
+    request: NetworkRequest,
+    callback: NetworkCallback,
+    handler: android.os.Handler,
+  ) {}
   public fun unregisterNetworkCallback(callback: NetworkCallback) {}
 }
 `
@@ -994,6 +1004,9 @@ try {
   const netPath = join(tempDir, 'AndroidNet.kt')
   const netContextPath = join(tempDir, 'AndroidNetContext.kt')
   if (SERVICE === 'PyreonNetworkStatusAndroid') {
+    // Same android.os mirror the websocket service uses — the connectivity
+    // callback is registered with a main-looper Handler.
+    writeFileSync(join(tempDir, 'AndroidOsHandler.kt'), ANDROID_OS_HANDLER_STUBS, 'utf8')
     writeFileSync(netPath, ANDROID_CONNECTIVITY_STUBS, 'utf8')
     writeFileSync(netContextPath, ANDROID_NET_CONTEXT_STUBS, 'utf8')
     writeFileSync(composePlatformPath, ANDROIDX_COMPOSE_PLATFORM_STUBS, 'utf8')
@@ -1001,6 +1014,7 @@ try {
   const networkAndroidExtras =
     SERVICE === 'PyreonNetworkStatusAndroid'
       ? [
+          join(tempDir, 'AndroidOsHandler.kt'),
           netPath,
           netContextPath,
           composePlatformPath,
