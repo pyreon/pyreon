@@ -3,6 +3,10 @@ import { describe, expect, it } from 'vitest'
 import { createEditor } from '../editor'
 import { getAvailableLanguages } from '../languages'
 import { createTabbedEditor } from '../tabbed-editor'
+// Grammars beyond the core set (JS family + JSON) live behind this entry —
+// importing it registers the full built-in set, which is the contract these
+// specs assert. See `../languages` for why the core does not ship them all.
+import '../languages-all'
 
 describe('createEditor', () => {
   describe('initialization', () => {

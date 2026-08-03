@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/code",
   "version": "0.50.0",
-  "description": "Reactive code editor for Pyreon — CodeMirror 6 with signals, minimap, diff editor, lazy-loaded languages",
+  "description": "Reactive code editor for Pyreon \u2014 CodeMirror 6 with signals, minimap, diff editor, lazy-loaded languages",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/code#readme",
   "bugs": {
@@ -27,6 +27,11 @@
       "bun": "./src/webview.ts",
       "import": "./lib/webview.js",
       "types": "./lib/types/webview.d.ts"
+    },
+    "./languages-all": {
+      "bun": "./src/languages-all.ts",
+      "import": "./lib/languages-all.js",
+      "types": "./lib/types/languages-all.d.ts"
     }
   },
   "files": [

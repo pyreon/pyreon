@@ -7,6 +7,7 @@ import { bindEditorToSignal } from '../bind-signal'
 import { CodeEditor } from '../components/code-editor'
 import { DiffEditor } from '../components/diff-editor'
 import { createEditor, openSearchPanel } from '../editor'
+import { getAvailableLanguages, registerLanguage } from '../languages'
 
 // Poll until `pred` is truthy — DiffEditor / createEditor lazy-load language
 // grammars asynchronously, so a bare flush() can race the dynamic import.
@@ -91,6 +92,52 @@ describe('code editor in real browser', () => {
     })
     const { container, unmount } = mountInBrowser(
       h(CodeEditor, { instance: editor, style: 'height: auto' }),
+    )
+    await flush()
+    await untilHighlighted(container)
+    unmount()
+  })
+
+  // The grammar REGISTRY contract: the core registers the JS family + JSON so
+  // a consumer that only shows those never pre-bundles the whole
+  // `@codemirror/lang-*` ecosystem. Anything else is unregistered until
+  // `@pyreon/code/languages-all` (or a hand-registered loader) provides it —
+  // and an unregistered language must still MOUNT, just unhighlighted.
+  it('core registers the JS family + JSON, and nothing else', () => {
+    const ids = getAvailableLanguages()
+    expect(ids).toContain('tsx')
+    expect(ids).toContain('typescript')
+    expect(ids).toContain('json')
+    // Not in the core — these arrive via `@pyreon/code/languages-all`.
+    expect(ids).not.toContain('python')
+    expect(ids).not.toContain('markdown')
+  })
+
+  it('an UNREGISTERED language still mounts, unhighlighted', async () => {
+    const editor = createEditor({ value: 'print("hi")', language: 'python' })
+    const { container, unmount } = mountInBrowser(
+      h(CodeEditor, { instance: editor, style: 'height: 120px' }),
+    )
+    await flush()
+    await until(() => container.querySelector('.cm-editor') !== null)
+    // Text is there; highlighting is not — the documented degrade.
+    expect(container.textContent).toContain('print("hi")')
+    unmount()
+  })
+
+  it('registerLanguage installs a grammar the core does not ship', async () => {
+    // A DISTINCT id, not `python`: registering into the shared registry would
+    // otherwise make the two specs above pass or fail on file order.
+    registerLanguage('custom-py', () =>
+      import('@codemirror/lang-python').then((m) => m.python()),
+    )
+    expect(getAvailableLanguages()).toContain('custom-py')
+    const editor = createEditor({
+      value: 'def f():\n    return 1\n',
+      language: 'custom-py' as never,
+    })
+    const { container, unmount } = mountInBrowser(
+      h(CodeEditor, { instance: editor, style: 'height: 160px' }),
     )
     await flush()
     await untilHighlighted(container)

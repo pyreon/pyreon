@@ -2143,6 +2143,7 @@
         "atlas": "./bin/atlas.js",
       },
       "dependencies": {
+        "@pyreon/code": "workspace:*",
         "@pyreon/core": "workspace:*",
         "@pyreon/elements": "workspace:*",
         "@pyreon/feature": "workspace:*",
