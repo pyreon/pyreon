@@ -1408,6 +1408,35 @@ export function _ssrChildren(items: readonly unknown[]): RawHtml | Promise<RawHt
   return _ssrChildrenFrom(items, 0, '')
 }
 
+/**
+ * Render ONE compiler-emitted child node — a COMPONENT element inside an
+ * otherwise-templatable subtree — as an `_ssr(...)` hole.
+ *
+ * A component's output is only knowable at runtime, so the compiler cannot bake
+ * it into the statics. Before this existed, that made a component child a BAIL:
+ * `<main class="m"><Widget /></main>` emitted ZERO `_ssr` and the whole wrapper
+ * fell to the h() path, which is every layout wrapper in a real app.
+ *
+ * This is deliberately a one-line delegation to `renderNode` and MUST stay one.
+ * The bytes have to match the h() path exactly or hydration breaks, and
+ * `renderNode`/`renderComponent` already own the two subtleties a
+ * reimplementation would get wrong:
+ *
+ *   - a SYNC component inlines with NO markers, while an ASYNC one is bracketed
+ *     by `<!--$pas-->`/`<!--$pae-->` so the client can locate the still-pending
+ *     range and attach reactivity;
+ *   - the context stack is snapshotted and trimmed around the component so a
+ *     `provide()` frame cannot leak into later siblings.
+ *
+ * Delegating means byte-identity holds BY CONSTRUCTION rather than by
+ * re-derivation — the compiler picks a different route to the same function.
+ * The return type is intentionally the raw `string | Promise<string>` that
+ * `_ssrChildren` and the `_ssr` hole path already accept.
+ */
+export function _ssrNode(node: VNodeChild): MaybeAsync {
+  return renderNode(node)
+}
+
 function _ssrChildrenFrom(
   items: readonly unknown[],
   start: number,
