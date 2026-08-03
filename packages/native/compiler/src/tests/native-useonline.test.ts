@@ -57,7 +57,7 @@ describe('Phase 4 — useOnline() native emit (shared web-idiomatic net() access
   it('Kotlin: net() lowers to the MutableState isOnline.value read', () => {
     const r = transform(SHARED, { target: 'kotlin' })
     expect(r.warnings).toEqual([])
-    expect(r.code).toContain('val net = remember { PyreonNetworkStatus() }')
+    expect(r.code).toContain('val net = rememberPyreonNetworkStatus()')
     expect(r.code).toContain('net.isOnline.value')
     expect(r.code).not.toContain('if (net)')
   })

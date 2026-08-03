@@ -1168,6 +1168,12 @@ class PyreonPermissions(granted: Set<String> = emptySet()) {
 // plus the isOnline MutableState<Boolean> field, read as net.isOnline.value.
 // useOnline() returns a web ACCESSOR read as net() — the emit lowers that
 // call to this net.isOnline.value reactive-Bool read.
+// Self-installing variant the useOnline emit references (mirrors
+// PyreonNetworkStatusAndroid.kt's @Composable — no-arg, returns the
+// container; the real one wires a ConnectivityManager callback).
+@Composable
+fun rememberPyreonNetworkStatus(): PyreonNetworkStatus = PyreonNetworkStatus()
+
 class PyreonNetworkStatus(isOnline: Boolean = true) {
   val isOnline: MutableState<Boolean> = mutableStateOf(isOnline)
 }
