@@ -132,42 +132,55 @@ jobs:
         (github.event.action != 'labeled' && contains(github.event.pull_request.labels.*.name, 'native-device'))
       )) ||
       (failure() && needs.changes.result != 'success')
-    name: iOS app (${{ matrix.app }})
-    # ONE app per runner. This job used to build and UITest all five example
-    # apps SEQUENTIALLY on a single macOS runner, and every row that added a
-    # test pushed it closer to the ceiling: 40 minutes was raised to 60 for
-    # exactly this reason, and 60 then timed out too — mid-way through the
-    # fifth app, with every earlier app green. Raising it again is the
-    # non-fix; the job is serial by construction, so the wall-clock grows
-    # with the suite forever.
+    name: iOS — xcodebuild (Simulator SDK)
+    # ONE runner builds and UITests all five example apps, sequentially.
     #
-    # A per-app matrix makes wall-clock the SLOWEST APP rather than their
-    # sum, and isolates a flake to its own cell. It costs ~5x the runner
-    # minutes — deliberate: macOS minutes are the price of a device gate that
-    # does not throttle how much can be proven.
+    # This was a per-app matrix for exactly one day. The reasoning behind the
+    # split was sound in isolation -- the serial job kept outgrowing its
+    # timeout (40 raised to 60, then 60 timed out too), and a matrix makes
+    # wall-clock the slowest app rather than their sum. What it missed is that
+    # macOS runners are the scarce resource, and the split multiplied demand
+    # for them by five.
     #
-    # The required-check name lives on the `ios-build-result` aggregator
-    # below, NOT here — branch protection pins the context by name, so a
-    # matrix cell must never carry it.
-    strategy:
-      fail-fast: false
-      matrix:
-        app: [todomvc, counter, finance, router-demo, tasks]
+    # Measured on run 30829487861, the five cells of ONE pull request:
+    #
+    #   finance      17:15 -> 17:30   15m
+    #   counter      17:21 -> 17:55   35m
+    #   tasks        18:09 -> 18:24   15m   (14m gap: no free runner)
+    #   todomvc      18:19 -> 18:29   11m
+    #   router-demo  18:50 -> 19:05   15m   (20m gap: no free runner)
+    #
+    # Never more than TWO cells ran at once, with idle gaps between them:
+    # 1h50m of wall clock for 90m of work, and ~28m of that work was the same
+    # bun install paid five times over. Sequentially it is ~62m on ONE runner.
+    #
+    # So the matrix was slower per PR *and* held five slots instead of one.
+    # With a dozen PRs open it starved every other PR's iOS gate, which is the
+    # form the failure actually took: PRs blocked all day on a single queued
+    # `iOS - xcodebuild` context.
+    #
+    # The original problem was never the shape of the job -- it was a timeout
+    # guessed instead of derived. That is fixed below.
     runs-on: macos-15
-    # DERIVED from the slowest cell's measured composition, not guessed — 35
-    # was set from a 24-minute observation of the counter cell without counting
-    # the prelude, and then timed out at 36 with the app's own UITest step
-    # still running. That is the same mistake the old 40 -> 60 bump made, one
-    # level down, so the number is now built from parts:
+    # DERIVED from measured composition, not guessed -- guessing is what
+    # produced 40, then 60, then the split:
     #
-    #   install (cached above, was 5.9 cold) ~2 · location grant 2.5 ·
-    #   counter UITest step 26.2 observed · checkout/teardown ~1
-    #     => ~32 for the worst cell, +40% headroom for runner variance
-    #        (the same cell has measured 24 and 26+ on identical content)
+    #   sum of the five cells' measured work      90m
+    #   minus 4x the duplicated per-cell prelude  -28m   (install + checkout)
+    #   plus one shared prelude, install UNCACHED  ~6m   (see the note above)
+    #   plus the location-grant step, once         ~3m
+    #     => ~71m
     #
-    # The other four cells finish in 14-20 minutes, so this ceiling is sized
-    # for the outlier and a cell that hits it is a real regression.
-    timeout-minutes: 45
+    # +~34% headroom for runner variance (the counter app alone has measured
+    # 24m, 35m and 46m on identical content -- the 46 is what timed out its
+    # 45-minute cell) => 95. A run that hits this ceiling is a real
+    # regression, not a slow day.
+    #
+    # NOTE the install is ~6m, not the ~2m an earlier draft of this comment
+    # assumed: that draft was written while a bun-install cache step existed
+    # here, and removing it (see above) moved the number. Stating it wrong
+    # would have been the same guessed-budget mistake one more time.
+    timeout-minutes: 95
     permissions:
       contents: read
     steps:
@@ -180,16 +193,20 @@ jobs:
           bun-version-file: .bun-version
 
       # The matrix pays this install ONCE PER CELL, so a cold 6-minute
-      # install became ~30 runner-minutes of duplicated work when the iOS job
-      # was split per app. Measured on the counter cell: 5.9 min of a 36-min
-      # budget spent re-downloading identical packages. The cache is shared
-      # cross-run and cross-PR on the lockfile hash, exactly as ci.yml does it.
-      - name: Cache bun install cache
-        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8 # v6.0.0
-        with:
-          path: ~/.bun/install/cache
-          key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-          restore-keys: bun-install-cache-${{ runner.os }}-
+      # NO bun-install cache here, deliberately. I added one earlier today to
+      # kill the ~6 min cold install, and it was a bad trade once measured:
+      # the repo's Actions cache sits at 9.74 GB of its 10 GB limit, and this
+      # entry is 257 MB per BRANCH. Bootstrap caches — the ones that let a job
+      # skip rebuilding all 74 packages — are only 5 MB each, so one large
+      # write LRU-evicts hundreds of them. PR #2642's Build found no bootstrap
+      # cache on ANY of its three keys and rebuilt from scratch: ~6 min, on
+      # every lib-needing job, on every PR.
+      #
+      # So this bought ~4 min on ONE macOS job (it was 5 jobs when the matrix
+      # existed, which is what justified it) at the cost of ~6 min on roughly
+      # eight ubuntu jobs elsewhere. Restore it only alongside a real cache
+      # budget — the 1.2 GB Linux bun-install entries are the bigger tenant
+      # and would need looking at first.
 
       - name: Install workspace deps (bootstraps @pyreon/native-cli used by the preBuildScript)
         run: |
@@ -216,7 +233,6 @@ jobs:
         run: brew install xcodegen
 
       - name: Emit Swift (PMTC .tsx → generated/*.swift)
-        if: matrix.app == 'todomvc'
         # Run the compile loop up front so `generated/` exists before
         # xcodegen/xcodebuild (the project.yml preBuildScript re-runs it,
         # but populating it here gives a clearer failure if PMTC itself
@@ -225,12 +241,10 @@ jobs:
         run: bash scripts/build.sh
 
       - name: Generate Xcode project
-        if: matrix.app == 'todomvc'
         working-directory: examples/native-todomvc-ios
         run: xcodegen generate
 
       - name: Build app for the iOS Simulator
-        if: matrix.app == 'todomvc'
         # Build only — proves the emitted Swift links against real
         # SwiftUI. The launch-and-render UI smoke is the NEXT step.
         # `CODE_SIGNING_ALLOWED=NO` because a Simulator build needs no
@@ -267,7 +281,6 @@ jobs:
           echo "PYREON_SIM_NAME=$SIM_NAME" >> "$GITHUB_ENV"
 
       - name: Run UITest on iOS Simulator (Phase 2.2 launch-and-render smoke)
-        if: matrix.app == 'todomvc'
         # The Phase-2.2 deliverable from the plan: BOOT the Simulator,
         # install the app, run an XCUITest that asserts the root view
         # (accessibilityIdentifier=todo-app, emitted from the canonical
@@ -333,7 +346,6 @@ jobs:
       # Pinned to the same 37.3349 the XCUITest asserts; changing one without
       # the other surfaces as a confusing timeout rather than a clear mismatch.
       - name: Grant location + inject a fix — native-counter-ios
-        if: matrix.app == 'counter'
         run: |
           set -euo pipefail
           UDID=$(xcrun simctl list devices available | grep -F "${PYREON_SIM_NAME} (" | head -1 | grep -oE '[0-9A-Fa-f-]{36}')
@@ -351,7 +363,6 @@ jobs:
           echo "injected 37.3349,-122.0090"
 
       - name: Emit + xcodegen + UITest — native-counter-ios
-        if: matrix.app == 'counter'
         working-directory: examples/native-counter-ios
         run: |
           set -o pipefail
@@ -376,7 +387,6 @@ jobs:
       # not (SwiftUI's LocalizedStringKey grouping shows below 1000 as-is,
       # so the counter's "Count: 0" never surfaced it; a 2700 balance did).
       - name: Emit + xcodegen + UITest — native-finance-ios (real-app gate)
-        if: matrix.app == 'finance'
         working-directory: examples/native-finance-ios
         run: |
           set -o pipefail
@@ -396,14 +406,12 @@ jobs:
       # all it takes. Started here (not globally) because ONLY the
       # router-demo suite touches the socket.
       - name: Start ws echo server — native-router-demo-ios
-        if: matrix.app == 'router-demo'
         run: |
           nohup bun examples/native-router-demo-ios/scripts/ws-echo-server.ts > /tmp/ws-echo.log 2>&1 &
           sleep 1
           grep -q "listening" /tmp/ws-echo.log && echo "ws-echo up" || (cat /tmp/ws-echo.log; exit 1)
 
       - name: Emit + xcodegen + UITest — native-router-demo-ios
-        if: matrix.app == 'router-demo'
         working-directory: examples/native-router-demo-ios
         # POLICY (enforced by scripts/check-ios-signing-policy.ts): a step that
         # RUNS the app carries no `CODE_SIGNING_ALLOWED=NO`. An UNSIGNED app has
@@ -440,7 +448,6 @@ jobs:
       # in-app. Started ONCE, before the tasks UITest; the trailing
       # `&` + disown keeps it alive across steps within this job.
       - name: Start quotes fixture server (port 8787)
-        if: matrix.app == 'tasks'
         run: |
           # -u + file-redirect: python block-buffers a non-tty pipe
           # (zero observability) and an orphan holding the step's pipe
@@ -459,7 +466,6 @@ jobs:
           i=0; while ! curl -fsS http://127.0.0.1:8787/quotes.json >/dev/null 2>&1; do i=$((i+1)); [ "$i" -ge 30 ] && { echo "fixture server FAILED to start within 30s"; cat /tmp/fixture-server.log 2>/dev/null || true; exit 1; }; sleep 1; done; echo "fixture server OK (ready after ${i}s)"
 
       - name: Emit + xcodegen + UITest — native-tasks-ios
-        if: matrix.app == 'tasks'
         working-directory: examples/native-tasks-ios
         run: |
           set -o pipefail
@@ -473,36 +479,6 @@ jobs:
             -sdk iphonesimulator \
             -destination "platform=iOS Simulator,name=${PYREON_SIM_NAME},OS=latest" \
             -configuration Debug
-
-  # The name branch protection pins. It must live on a job that always
-  # reports, never on a matrix cell — a matrix turns one context into N
-  # named `… (app)` contexts, so a pinned context would simply never appear
-  # and the PR would wait on it forever.
-  #
-  # `if: always()` plus an explicit result check is the fail-closed half: a
-  # SKIPPED required check reports SUCCESS to branch protection, so a
-  # cancelled or skipped matrix must red this job rather than vanish.
-  ios-build-result:
-    name: iOS — xcodebuild (Simulator SDK)
-    needs: ios-build
-    if: always()
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    steps:
-      - name: Report the matrix verdict
-        run: |
-          RESULT='${{ needs.ios-build.result }}'
-          echo "ios-build matrix result: $RESULT"
-          case "$RESULT" in
-            success) echo "All iOS app cells passed." ;;
-            skipped) echo "iOS app cells were skipped (job gate not met) — reporting success." ;;
-            *)
-              echo "::error::iOS app matrix did not succeed (result: $RESULT)"
-              exit 1
-              ;;
-          esac
 
   android-build:
     # Same gate as ios-build — see the comment there.
@@ -572,16 +548,6 @@ jobs:
 
       - name: Verify gradle availability
         run: gradle --version
-
-      # Same cache as the iOS cells above — the Android job pays one cold
-      # install per run, and it is keyed on the same lockfile hash so the two
-      # jobs warm each other.
-      - name: Cache bun install cache
-        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8 # v6.0.0
-        with:
-          path: ~/.bun/install/cache
-          key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-          restore-keys: bun-install-cache-${{ runner.os }}-
 
       - name: Install workspace deps (bootstraps @pyreon/native-cli)
         run: |
@@ -864,7 +830,7 @@ jobs:
   notify-nightly:
     name: Nightly status → sticky issue
     if: always() && github.event_name == 'schedule'
-    needs: [ios-build-result, android-build]
+    needs: [ios-build, android-build]
     runs-on: ubuntu-latest
     permissions:
       issues: write
@@ -883,7 +849,7 @@ jobs:
           script: |
             const title = '[native-device] Nightly device build is RED'
             const failed =
-              '${{ needs.ios-build-result.result }}' === 'failure' ||
+              '${{ needs.ios-build.result }}' === 'failure' ||
               '${{ needs.android-build.result }}' === 'failure'
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
             const { data: issues } = await github.rest.issues.listForRepo({
@@ -897,7 +863,7 @@ jobs:
             if (failed) {
               const line = [
                 `Nightly run failed: ${runUrl}`,
-                `- iOS (xcodebuild + XCUITest): **${{ needs.ios-build-result.result }}**`,
+                `- iOS (xcodebuild + XCUITest): **${{ needs.ios-build.result }}**`,
                 `- Android (gradle + Compose test): **${{ needs.android-build.result }}**`,
               ].join('\n')
               if (sticky) {
