@@ -5,6 +5,8 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
+import android.os.Handler
+import android.os.Looper
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
@@ -88,11 +90,22 @@ public fun rememberPyreonNetworkStatus(): PyreonNetworkStatus {
                 }
             val registered =
                 try {
+                    // The HANDLER overload is load-bearing, not a nicety:
+                    // without it ConnectivityManager delivers callbacks on a
+                    // binder/handler thread, and each `status.update(...)` is
+                    // then a Compose MutableState WRITE off the main thread —
+                    // which crashed router-demo's instrumented 10k-row test
+                    // with "Detected multithreaded access to
+                    // SnapshotStateObserver" the moment the emulator delivered
+                    // a connectivity event mid-layout. Pinning delivery to the
+                    // main looper makes every write UI-thread, same as the
+                    // recomposition that reads it.
                     manager.registerNetworkCallback(
                         NetworkRequest.Builder()
                             .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
                             .build(),
                         callback,
+                        Handler(Looper.getMainLooper()),
                     )
                     true
                 } catch (_: SecurityException) {
