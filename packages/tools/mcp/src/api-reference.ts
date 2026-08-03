@@ -9793,7 +9793,7 @@ atlas build: 9 component(s) → /repo/docs/components
 - Deploying to a subdirectory without \`--base\` — assets are requested from the domain root and every one 404s, leaving a blank page with no error on the page itself
 - Expecting \`pages.<name>.title\` to rename the component — it is a DISPLAY label only; the usage snippet, the source/Lens lookup and an agent’s import all use the real \`name\`, which is exactly why the two are separate fields
 - Expecting \`pages.<name>.order\` to sort across groups — it pins a component within its OWN group; a cross-group sort would scramble the tree from a single config line
-- Pointing it at a monorepo root expecting one combined site — multi-package builds are not supported yet (the catalog is keyed by component name alone, so two packages exporting \`Button\` would collapse into one)`,
+- Expecting \`--dir\` to apply when \`atlas.config.ts\` declares \`projects\` — the declared roots win, because a monorepo that listed its packages meant it and silently scanning \`src\` instead would emit an empty site`,
   },
 
   'atlas/atlas verify-browser': {
@@ -9816,6 +9816,24 @@ const graph = await atlas.build()      // discover → decorate → verify → g
 graph.search('button')                 // Catalog Graph queries`,
     notes: 'The programmatic pipeline factory behind the CLI: `discover → decorate → verify → graph`, plugin-driven. The recommended preset bundles the built-in plugins (controls inference, variant matrix, mount/interaction/leak verification). Pass `preset: "none"` when you assemble the plugin list yourself — appending the recommended bundle on top of an explicit list runs duplicate plugins whose default verdicts can overwrite real ones. See also: atlas scan.',
     mistakes: '- Passing an explicit plugin list WITHOUT `preset: "none"` — the recommended bundle is appended a second time and a duplicate mount plugin’s empty-graph default verdict can overwrite the real one',
+  },
+
+  'atlas/AtlasConfig.projects (monorepo — one site, several packages)': {
+    signature: 'projects?: { name: string; dir: string }[]',
+    example: `export default {
+  title: 'Acme Design System',
+  projects: [
+    { name: 'Core', dir: 'packages/core/src' },
+    { name: 'Admin', dir: 'packages/admin/src' },
+  ],
+  pages: { 'Admin/Button': { title: 'Button (admin shell)' } },
+}`,
+    notes: `Scan several packages into ONE catalog, each filed under its own \`name\` (the sidebar reads \`Core/Forms/Button\`). \`atlas dev\`, \`atlas scan\` and \`atlas build\` all follow it, and \`--dir\` is ignored when it is set. The case it exists for: two packages may both export a \`Button\`. A component’s IDENTITY becomes \`project/Name\` (\`componentKey\`), so both survive — in the catalog, in the sidebar, and in their scenario ids (\`core-button--…\` vs \`admin-button--…\`, which otherwise collide in atlas-catalog.json, in the verify verdicts, and in the snapshot filenames). Its \`name\` is untouched, because \`Button\` is what you import in both packages and the machine surface an agent reads must say so. Where a bare name becomes ambiguous, Atlas REFUSES and names the candidates rather than picking one. \`pages\` and authored \`scenarios\` accept either form — \`'Core/Button'\` targets one package, a bare \`'Button'\` applies wherever it is unambiguous (and to BOTH when it is not). A single-package project sets no \`project\`, so every derived key, id and group is byte-identical to a scan without this. See also: atlas build, atlas dev.`,
+    mistakes: `- Expecting \`graph.get("Button")\` to return something in a workspace where two packages export one — an ambiguous bare name resolves to \`undefined\` ON PURPOSE; ask for \`Core/Button\`. Returning the first match is how the original silent-collapse stayed invisible
+- Giving two projects the same \`name\` — their components would key identically, reintroducing the exact collapse \`project\` prevents (rejected at config load)
+- Putting a \`/\` in a project \`name\` — it is the key separator, so the resulting \`A/B/Name\` is ambiguous to read and nests a group level the author did not mean (rejected at config load)
+- Keying \`pages\` or \`scenarios\` by a bare shared name and expecting it to hit one package — it applies to EVERY component with that name; use the \`project/Name\` form to target one
+- Assuming \`--dir\` still narrows the scan — declared \`projects\` replace it entirely`,
   },
 
   'atlas/AtlasConfig.scenarios (authored scenarios + play)': {

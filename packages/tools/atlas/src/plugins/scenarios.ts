@@ -5,7 +5,7 @@
  * dedupe by scenario id so an authored/AI scenario is never overwritten.
  */
 import type { AtlasPlugin } from './types'
-import { makeScenario } from '../core'
+import { componentKey, makeScenario } from '../core'
 import { defineAtlasPlugin } from './define'
 
 /** Append scenarios to a component, skipping any whose id already exists. */
@@ -24,11 +24,15 @@ export function authoredScenariosPlugin(
   return defineAtlasPlugin({
     name: 'atlas:authored-scenarios',
     decorate(ci) {
-      const list = byComponent[ci.name]
+      // Keyed by identity FIRST, then by bare name. A single-package config
+      // writes `{ Button: [...] }` and always has; a monorepo needs
+      // `{ 'Core/Button': [...] }` to say WHICH Button — and without the key
+      // pass, one entry would silently apply to every package's `Button`.
+      const list = byComponent[componentKey(ci)] ?? byComponent[ci.name]
       if (!list || list.length === 0) return ci
       const authored = list.map((a) =>
         makeScenario({
-          component: ci.name,
+          component: componentKey(ci),
           name: a.name,
           ...(a.args ? { args: a.args } : {}),
           ...(a.play ? { play: a.play } : {}),
@@ -62,7 +66,7 @@ export function defaultScenarioPlugin(): AtlasPlugin {
       if (ci.scenarios.length > 0) return ci
       return {
         ...ci,
-        scenarios: [makeScenario({ component: ci.name, name: 'Default', source: 'auto-default' })],
+        scenarios: [makeScenario({ component: componentKey(ci), name: 'Default', source: 'auto-default' })],
       }
     },
   })
@@ -98,7 +102,7 @@ export function statesPlugin(options: StatesOptions = {}): AtlasPlugin {
       return appendScenarios(ci, () =>
         stateControls.map((c) =>
           makeScenario({
-            component: ci.name,
+            component: componentKey(ci),
             name: c.name,
             args: { [c.name]: true },
             source: 'auto-variant',
@@ -126,8 +130,8 @@ export function edgeCasesPlugin(options: EdgeCaseOptions = {}): AtlasPlugin {
       const text = ci.controls.find((c) => c.kind === 'text')
       if (!text) return ci
       return appendScenarios(ci, () => [
-        makeScenario({ component: ci.name, name: 'Empty', args: { [text.name]: '' }, source: 'auto-variant' }),
-        makeScenario({ component: ci.name, name: 'Long content', args: { [text.name]: long }, source: 'auto-variant' }),
+        makeScenario({ component: componentKey(ci), name: 'Empty', args: { [text.name]: '' }, source: 'auto-variant' }),
+        makeScenario({ component: componentKey(ci), name: 'Long content', args: { [text.name]: long }, source: 'auto-variant' }),
       ])
     },
   })
@@ -151,7 +155,7 @@ export function themePlugin(options: ThemeOptions = {}): AtlasPlugin {
       return appendScenarios(ci, () =>
         modes.map((mode) =>
           makeScenario({
-            component: ci.name,
+            component: componentKey(ci),
             name: `Theme ${mode}`,
             variant: { theme: mode },
             source: 'auto-variant',

@@ -6,7 +6,7 @@
  * never overwritten by a generated one.
  */
 import type { AtlasPlugin } from './types'
-import { autoVariantScenarios } from '../core'
+import { autoVariantScenarios, componentKey } from '../core'
 import { defineAtlasPlugin } from './define'
 
 export interface VariantMatrixOptions {
@@ -20,7 +20,11 @@ export function variantMatrixPlugin(options: VariantMatrixOptions = {}): AtlasPl
     decorate(ci) {
       if (ci.axes.length === 0) return ci
       const existing = new Set(ci.scenarios.map((s) => s.id))
-      const generated = autoVariantScenarios(ci.name, ci.axes, options.baseArgs).filter(
+      // Keyed by IDENTITY, not name. Two packages exporting a `Button` with the
+      // same `state` axis would otherwise both generate `button--state-primary`
+      // — colliding in the catalog file, in the verify verdicts, and in the
+      // snapshot filenames, each one a silent overwrite.
+      const generated = autoVariantScenarios(componentKey(ci), ci.axes, options.baseArgs).filter(
         (s) => !existing.has(s.id),
       )
       if (generated.length === 0) return ci

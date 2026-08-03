@@ -13,7 +13,7 @@
  * component whose name collides, a path that needs escaping, a project with
  * nothing in it).
  */
-import type { ComponentIntelligence, PropControl } from '../core'
+import { componentKey, type ComponentIntelligence, type PropControl } from '../core'
 
 /** A component paired with the absolute path it is imported from. */
 export interface CatalogEntrySource {
@@ -147,13 +147,53 @@ export interface GenerateOptions {
    * changes the label; `name` stays true.
    */
   pages?: Record<string, import('../discover/config').PageMeta>
+  /**
+   * Monorepo roots, with ABSOLUTE directories — set only for a multi-root scan.
+   *
+   * Needed because each project has its OWN root, so a group cannot be derived
+   * from one shared scan root: `packages/core/src/forms/Button.tsx` should read
+   * `Core/Forms`, not `Packages/Core/Src/Forms`.
+   */
+  projects?: readonly { name: string; dir: string }[]
 }
 
-/** The group an entry is filed under, before any sorting. */
+/**
+ * The presentation override for one component.
+ *
+ * Keyed by identity FIRST, then by bare name. A single-package config writes
+ * `{ Button: {...} }` and always has; a monorepo needs `{ 'Core/Button': {...} }`
+ * to say WHICH Button — and without the key pass, one entry would silently
+ * retitle every package's `Button`.
+ */
+export function pageFor(
+  component: ComponentIntelligence,
+  pages: GenerateOptions['pages'],
+): import('../discover/config').PageMeta | undefined {
+  if (!pages) return undefined
+  return pages[componentKey(component)] ?? pages[component.name]
+}
+
+/**
+ * The group an entry is filed under, before any sorting.
+ *
+ * In a monorepo the PROJECT leads (`Core/Forms`), because in a combined site
+ * "which package is this from" is the first distinction a reader needs — and it
+ * is the one the file path alone cannot express once each package has its own
+ * root.
+ */
 function resolvedGroup(entry: CatalogEntrySource, options: GenerateOptions): string {
-  return (
-    options.pages?.[entry.component.name]?.group ?? groupFor(entry.file, options.root)
-  )
+  const override = pageFor(entry.component, options.pages)?.group
+  if (override) return override
+
+  const project = entry.component.project
+  if (!project) return groupFor(entry.file, options.root)
+
+  const root = options.projects?.find((p) => p.name === project)
+  const within = groupFor(entry.file, root?.dir ?? options.root)
+  // `groupFor` answers 'Components' for a file sitting directly in a root.
+  // Appending it would file every top-level component under `Core/Components`,
+  // a directory that does not exist.
+  return within === 'Components' ? project : `${project}/${within}`
 }
 
 /**
@@ -179,7 +219,7 @@ export function sortEntries(
   // Unordered components sort AFTER every ordered one, so pinning three
   // favourites to the top of a group leaves the rest exactly as they were.
   const orderOf = (entry: CatalogEntrySource): number => {
-    const order = options.pages?.[entry.component.name]?.order
+    const order = pageFor(entry.component, options.pages)?.order
     return typeof order === 'number' && Number.isFinite(order) ? order : Number.POSITIVE_INFINITY
   }
   return entries
@@ -223,7 +263,13 @@ export function generateCatalogModule(
   }
 
   const ordered = sortEntries(entries, options)
-  const ids = uniqueIds(ordered.map((e) => e.component.name))
+  // Ids from the identity KEY, not the name. Two packages' `Button`s would
+  // otherwise slugify to `button` and `button-2` — unique, but arbitrary: which
+  // one got the suffix depends on discovery order, so a URL or a `data-testid`
+  // could point at the other package's component after an unrelated file was
+  // added. From the key they are `core-button` and `admin-button`: stable, and
+  // readable. Outside a monorepo the key IS the name, so nothing changes.
+  const ids = uniqueIds(ordered.map((e) => componentKey(e.component)))
   const lines: string[] = ["import { h } from '@pyreon/core'", '']
 
   ordered.forEach((entry, i) => {
@@ -262,7 +308,7 @@ export function generateCatalogModule(
     // observe — the controls list deliberately excludes them (a function is not
     // an editable value), so they are threaded separately.
     const reactiveProps = component.controls.filter((c) => c.reactive).map((c) => c.name)
-    const page = options.pages?.[component.name]
+    const page = pageFor(component, options.pages)
     lines.push('    {')
     lines.push(`      id: ${lit(ids[i]!)},`)
     // The REAL name, always. It is what the usage snippet writes, what the
@@ -270,6 +316,13 @@ export function generateCatalogModule(
     // `title` is a separate DISPLAY field precisely so overriding the label can
     // never desynchronise any of those.
     lines.push(`      name: ${lit(component.name)},`)
+    // The identity key. Emitted only when it differs from the name (i.e. in a
+    // monorepo), so a single-package catalog is byte-identical to before. Every
+    // node-answered lookup (`source`, `lens`) sends THIS, not the name —
+    // otherwise two packages' `Button`s would ask the same question and one
+    // would be shown the other's source.
+    const key = componentKey(component)
+    if (key !== component.name) lines.push(`      key: ${lit(key)},`)
     if (page?.title) lines.push(`      title: ${lit(page.title)},`)
     lines.push(`      group: ${lit(resolvedGroup(entry, options))},`)
     // No `status`: nothing in a derived catalog measures maturity, and a

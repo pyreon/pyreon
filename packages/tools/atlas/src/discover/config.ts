@@ -64,6 +64,37 @@ export interface AtlasConfig {
    * machine surface is never handed a display string it cannot import.
    */
   pages?: Record<string, PageMeta>
+  /**
+   * Monorepo roots — scan several packages into ONE site.
+   *
+   * Each project contributes its components under its own `name`, which becomes
+   * both the top-level sidebar group and part of each component's identity
+   * (`project/Name`). That identity is what lets two packages each export a
+   * `Button` without one silently replacing the other.
+   *
+   * With this set the single `dir` is ignored; without it nothing changes and
+   * every derived key stays byte-identical to a single-package scan.
+   *
+   * @example
+   * ```ts
+   * export default {
+   *   title: 'Acme Design System',
+   *   projects: [
+   *     { name: 'Core', dir: 'packages/core/src' },
+   *     { name: 'Admin', dir: 'packages/admin/src' },
+   *   ],
+   * }
+   * ```
+   */
+  projects?: readonly ProjectRoot[]
+}
+
+/** One monorepo root — see `AtlasConfig.projects`. */
+export interface ProjectRoot {
+  /** Top-level group, and the qualifier in every component's key. */
+  name: string
+  /** Directory to scan, relative to the project root. */
+  dir: string
 }
 
 /** Per-component presentation — see `AtlasConfig.pages`. */
@@ -171,9 +202,37 @@ export async function loadAtlasConfig(
     take('scenarios', validateAuthoredScenarios),
     take('title', (v) => (typeof v === 'string' ? undefined : '`title` must be a string')),
     take('pages', validatePages),
+    take('projects', validateProjects),
   ].filter((p): p is string => p !== undefined)
 
   return { config, path: found, ...(problems[0] ? { error: problems[0] } : {}) }
+}
+
+/** Shape-check the `projects` export — the monorepo roots. */
+export function validateProjects(value: unknown): string | undefined {
+  if (!Array.isArray(value)) return '`projects` must be an array'
+  if (value.length === 0) return '`projects` must not be empty'
+  const names = new Set<string>()
+  for (const entry of value as unknown[]) {
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+      return 'every `projects` entry must be an object'
+    }
+    const p = entry as Record<string, unknown>
+    if (typeof p.name !== 'string' || p.name.length === 0) {
+      return 'every `projects` entry needs a non-empty string `name`'
+    }
+    if (typeof p.dir !== 'string' || p.dir.length === 0) {
+      return `\`projects.${p.name}\` needs a non-empty string \`dir\``
+    }
+    // A `/` would make `project/Name` keys ambiguous to read and would nest a
+    // group where the author meant one level.
+    if (p.name.includes('/')) return `\`projects\` name "${p.name}" must not contain "/"`
+    // Two projects sharing a name would key their components identically —
+    // reintroducing the exact silent collapse `project` exists to prevent.
+    if (names.has(p.name)) return `duplicate \`projects\` name "${p.name}"`
+    names.add(p.name)
+  }
+  return undefined
 }
 
 /** Shape-check the `pages` export — presentation overrides keyed by component. */

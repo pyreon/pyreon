@@ -122,10 +122,44 @@ adding one line does not reshuffle a sidebar.
 `--title` wins over `title`, and `atlas dev` reads the same config, so the
 workbench and the deployed site cannot end up named differently.
 
-> **Monorepos.** Building one site from several packages is not supported yet.
-> The catalog graph is keyed by component name alone, so two packages exporting
-> a `Button` would silently collapse into one — the exact silent-drop this tool
-> exists to prevent. It is the next piece of work, not a config flag away.
+### Monorepos — one site, several packages
+
+```ts
+export default {
+  title: 'Acme Design System',
+  projects: [
+    { name: 'Core',  dir: 'packages/core/src' },
+    { name: 'Admin', dir: 'packages/admin/src' },
+  ],
+}
+```
+
+Every package is scanned into one catalog and filed under its own name, so the
+sidebar reads `Core/Forms/Button`. `atlas dev`, `atlas scan` and `atlas build`
+all follow it; `--dir` is ignored when `projects` is set.
+
+**Two packages may both export a `Button`.** That is the case this feature is
+actually about. A component's *identity* becomes `project/Name`, so both survive
+— in the catalog, in the sidebar, and in their scenario ids (`core-button--…`
+vs `admin-button--…`, which otherwise collide in `atlas-catalog.json`, in the
+verify verdicts, and in the snapshot filenames).
+
+Its `name` is untouched: `Button` is what you import in both packages, and the
+machine surface an agent reads must say so.
+
+Where a bare name is now ambiguous, Atlas **refuses and names the candidates**
+rather than picking one:
+
+```
+[Pyreon] atlas: "Button" matches 2 components across projects
+(Core/Button, Admin/Button). Ask for one of those keys.
+```
+
+Authored `scenarios` and `pages` accept either form — `'Core/Button'` to target
+one package, or a bare `'Button'` when it is unambiguous.
+
+Single-package projects set no `project`, so every derived key, id and group is
+byte-identical to before this existed.
 
 ## Built-in plugins
 

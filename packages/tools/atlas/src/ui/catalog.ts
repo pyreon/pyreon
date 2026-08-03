@@ -146,6 +146,12 @@ export interface WorkbenchComponent {
    * an agent imports. A configured label lives in `title`.
    */
   name: string
+  /**
+   * Identity key — `project/Name` in a monorepo. Present ONLY when it differs
+   * from `name`. Every node-answered lookup (source, Lens) must send this, or
+   * two packages exporting the same name ask the same question.
+   */
+  key?: string
   /** Display label from `pages.<name>.title`; falls back to `name`. */
   title?: string
   /** Sidebar group heading (components are grouped by this). */

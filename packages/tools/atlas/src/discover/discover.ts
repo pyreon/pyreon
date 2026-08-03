@@ -20,6 +20,14 @@ export interface DiscoverOptions {
   extensions?: readonly string[]
   /** path substrings to skip (default node_modules + test/spec/stories files) */
   ignore?: readonly string[]
+  /**
+   * Owning project name, stamped onto every component found here.
+   *
+   * Set only by a MULTI-ROOT (monorepo) scan. It becomes part of each
+   * component's identity (`componentKey`), which is what lets two packages both
+   * export a `Button` without one silently replacing the other.
+   */
+  project?: string
 }
 
 const DEFAULT_IGNORE = ['node_modules', '.test.', '.spec.', '.stories.', '.d.ts']
@@ -62,9 +70,13 @@ export function discoverComponents(options: DiscoverOptions = {}): ComponentInte
       continue
     }
     for (const comp of scanSource(code, file)) {
-      if (seen.has(comp.name)) continue // first occurrence of a name wins
+      // First occurrence of a name wins WITHIN one root. Across roots the
+      // dedup does not apply — that is the whole point of `project`: two
+      // packages may legitimately each export a `Button`, and the graph keys
+      // them apart by `componentKey`.
+      if (seen.has(comp.name)) continue
       seen.add(comp.name)
-      out.push(comp)
+      out.push(options.project ? { ...comp, project: options.project } : comp)
     }
   }
   return out
@@ -93,7 +105,15 @@ export function fileDiscoveryPlugin(
         rocketstyle,
         new Set(scanned.map((c) => c.name)),
       )
-      return [...scanned, ...extra]
+      // The project stamp applies to BOTH discovery passes — a rocketstyle
+      // chain in package A is package A's component just as much as a plain
+      // function is. Missing it here would leave those components unqualified
+      // and re-open the collision for exactly the components the static scan
+      // cannot see, which is the hardest case to notice.
+      const stamped = resolved.project
+        ? extra.map((c) => ({ ...c, project: resolved.project! }))
+        : extra
+      return [...scanned, ...stamped]
     },
   })
 }

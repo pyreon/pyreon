@@ -25,7 +25,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { runScan } from '../cli/run'
 import { discoverComponents } from '../discover'
-import type { ComponentIntelligence } from '../core'
+import { componentKey, type ComponentIntelligence } from '../core'
 import { atlasDevPlugin, builtinMethods, CATALOG_ID, type RpcMethod } from '../dev/plugin'
 import type { CatalogEntrySource } from '../dev/catalog-module'
 import { bakedRpcScript, bakeRpc } from './bake'
@@ -92,6 +92,8 @@ export async function buildStatic(options: BuildOptions = {}): Promise<BuildResu
   let presets: import('../ui/catalog').WorkbenchPresets | undefined
   let configTitle: string | undefined
   let pages: Record<string, import('../discover/config').PageMeta> | undefined
+  let projects: readonly { name: string; dir: string }[] | undefined
+  let configProblem: string | undefined
 
   try {
     const scan = await runScan({ cwd: root, dir: scanDir, write: false })
@@ -99,7 +101,14 @@ export async function buildStatic(options: BuildOptions = {}): Promise<BuildResu
     configPath = scan.configPath
     presets = scan.presets
     configTitle = scan.title
+    // A config that was found and could not be used explains the absence of
+    // everything it would have configured; silence here reads as "my config
+    // does nothing" with no way to find out why.
+    if (scan.configError) configProblem = scan.configError
     pages = scan.pages
+    // Absolute dirs: grouping resolves each component against ITS OWN project
+    // root, which a relative path cannot express once there are several roots.
+    projects = scan.projects?.map((pr) => ({ name: pr.name, dir: resolve(root, pr.dir) }))
   } catch (err) {
     // Same degradation contract as `atlas dev`: a failed pipeline falls back to
     // the static walk and SAYS SO, rather than emitting a thin site that looks
@@ -111,6 +120,8 @@ export async function buildStatic(options: BuildOptions = {}): Promise<BuildResu
     )
     components = discoverComponents({ cwd: root, dir: scanDir })
   }
+
+  if (configProblem) log(`atlas build: ${configProblem}`)
 
   const title = options.title ?? configTitle ?? 'atlas'
   const entries: readonly CatalogEntrySource[] = collectEntries(root, components)
@@ -133,7 +144,11 @@ export async function buildStatic(options: BuildOptions = {}): Promise<BuildResu
   })
   const baked = await bakeRpc({
     methods,
-    components: entries.map((e) => e.component.name),
+    // Baked by identity KEY, because the KEY is what the page asks with. Baking
+    // by name would key two packages' `Button`s to the same slot — the second
+    // overwriting the first, so one component's page would show the other's
+    // source on the deployed site with nothing to indicate it.
+    components: entries.map((e) => componentKey(e.component)),
     onWarn: (message) => {
       warnings.push(message)
       log(message)
@@ -189,6 +204,7 @@ export async function buildStatic(options: BuildOptions = {}): Promise<BuildResu
           ...(configPath ? { configPath } : {}),
           ...(presets ? { presets } : {}),
           ...(pages ? { pages } : {}),
+          ...(projects ? { projects } : {}),
           title,
         }),
       ],

@@ -25,7 +25,7 @@
  */
 import { readFileSync } from 'node:fs'
 import { isAbsolute, resolve, sep } from 'node:path'
-import type { ComponentIntelligence } from '../core'
+import { ambiguousComponentMessage, type ComponentIntelligence, resolveComponent } from '../core'
 import { generateCatalogModule, type CatalogEntrySource } from './catalog-module'
 import { lensMethod } from './lens'
 
@@ -69,7 +69,15 @@ export function builtinMethods(ctx: RpcContext): Record<string, RpcMethod> {
     /** `{ component }` → `{ path, source }` for a discovered component. */
     source: (params) => {
       const name = String(params.component ?? '')
-      const found = ctx.components.find((c) => c.name === name)
+      // Resolved by KEY or by unambiguous NAME. In a monorepo two packages can
+      // both export a `Button`; picking the first match would show one
+      // component's source under the other's heading, which is worse than
+      // saying it is ambiguous.
+      const match = resolveComponent(ctx.components, name)
+      if (!match.found && match.ambiguous.length > 0) {
+        throw new Error(ambiguousComponentMessage(name, match.ambiguous))
+      }
+      const found = match.found
       if (!found?.source) throw new Error(`[Pyreon] atlas dev: no source on record for component "${name}"`)
 
       const abs = isAbsolute(found.source) ? found.source : resolve(ctx.root, found.source)
@@ -112,6 +120,8 @@ export interface AtlasDevPluginOptions {
   presets?: import('../ui/catalog').WorkbenchPresets
   /** Per-component presentation overrides from atlas.config.ts (`pages`). */
   pages?: Record<string, import('../discover/config').PageMeta>
+  /** Monorepo roots with ABSOLUTE dirs — grouping needs each project`s own root. */
+  projects?: readonly { name: string; dir: string }[]
   /** Title shown in the workbench chrome. */
   title?: string
   /** Extra RPC methods (a plugin's node-only half registers here). */
@@ -155,6 +165,7 @@ export function atlasDevPlugin(options: AtlasDevPluginOptions): VitePluginLike {
           ...(options.configPath ? { configPath: options.configPath } : {}),
           ...(options.presets ? { presets: options.presets } : {}),
           ...(options.pages ? { pages: options.pages } : {}),
+          ...(options.projects ? { projects: options.projects } : {}),
         })
       }
       if (id === resolved(ENTRY_ID)) {

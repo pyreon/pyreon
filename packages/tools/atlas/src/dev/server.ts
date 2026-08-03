@@ -77,6 +77,8 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
   let configPath: string | undefined
   let presets: import('../ui/catalog').WorkbenchPresets | undefined
   let pages: Record<string, import('../discover/config').PageMeta> | undefined
+  let projects: readonly { name: string; dir: string }[] | undefined
+  let configProblem: string | undefined
   let configTitle: string | undefined
   try {
     const scan = await runScan({ cwd: root, dir: scanDir, write: false })
@@ -84,13 +86,22 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
     configPath = scan.configPath
     presets = scan.presets
     pages = scan.pages
+    // Absolute dirs: grouping resolves each component against ITS OWN project
+    // root, which a relative path cannot express once there are several roots.
+    projects = scan.projects?.map((pr) => ({ name: pr.name, dir: resolve(root, pr.dir) }))
     configTitle = scan.title
+    // A config that was found and could not be used explains the absence of
+    // everything it would have configured; silence here reads as "my config
+    // does nothing" with no way to find out why.
+    if (scan.configError) configProblem = scan.configError
   } catch (err) {
     process.stderr.write(
       `[Pyreon] atlas dev: the scan pipeline failed — falling back to the static walk (no rocketstyle discovery, no scenarios, no atlas.config.ts): ${err instanceof Error ? err.message : String(err)}\n`,
     )
     components = discoverComponents({ cwd: root, dir: scanDir })
   }
+
+  if (configProblem) process.stderr.write(`[Pyreon] atlas dev: ${configProblem}\n`)
 
   // Shared with `atlas build` — see `../build/entries`. The filtering used to
   // live inline here, which meant the static build would have had to restate
@@ -177,6 +188,7 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
         ...(configPath ? { configPath } : {}),
         ...(presets ? { presets } : {}),
         ...(pages ? { pages } : {}),
+        ...(projects ? { projects } : {}),
         title,
         ...(options.methods !== undefined ? { methods: options.methods } : {}),
       }),
