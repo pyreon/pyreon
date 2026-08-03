@@ -31,6 +31,47 @@ describe('code editor in real browser', () => {
     document.body.innerHTML = ''
   })
 
+  // Syntax HIGHLIGHTING is the package's headline value and was entirely
+  // untested: every prior spec asserted the editor mounts and round-trips
+  // text, none that tokens are actually styled. CodeMirror wraps highlighted
+  // tokens in <span>s (generated `ͼ…` classes), so their presence is the
+  // honest proof that the grammar loaded AND a highlight style applied.
+  it('HIGHLIGHTS tokens — the grammar loads and styles the content', async () => {
+    const editor = createEditor({
+      value: 'const answer: number = 42 // a comment\n',
+      language: 'typescript',
+    })
+    const { container, unmount } = mountInBrowser(
+      h(CodeEditor, { instance: editor, style: 'height: 200px' }),
+    )
+    await flush()
+    await until(() => container.querySelectorAll('.cm-line span').length > 0)
+    expect(container.querySelectorAll('.cm-line span').length).toBeGreaterThan(0)
+    unmount()
+  })
+
+  it('highlights a READ-ONLY, non-editable block (the docs-display shape)', async () => {
+    // The shape a docs/workbench surface uses: no contenteditable, no
+    // gutters, wrapped lines. None of those may switch highlighting off.
+    const editor = createEditor({
+      value: 'export const x = { a: 1 } // tsx\n',
+      language: 'tsx',
+      editable: false,
+      readOnly: true,
+      lineNumbers: false,
+      foldGutter: false,
+      search: false,
+      lineWrapping: true,
+    })
+    const { container, unmount } = mountInBrowser(
+      h(CodeEditor, { instance: editor, style: 'height: auto' }),
+    )
+    await flush()
+    await until(() => container.querySelectorAll('.cm-line span').length > 0)
+    expect(container.querySelectorAll('.cm-line span').length).toBeGreaterThan(0)
+    unmount()
+  })
+
   it('mounts a CodeMirror editor with the initial value', async () => {
     const editor = createEditor({ value: 'const x = 1' })
     const { container, unmount } = mountInBrowser(

@@ -126,6 +126,23 @@ describe('pyreon/no-eager-import (info, performance)', () => {
     const result = lintFile(fp, `import { x } from '@pyreon/reactivity'`, allRules, defaultConfig())
     expect(find(result, 'pyreon/no-eager-import').length).toBe(0)
   })
+
+  // A type-only import is erased before bundling — it cannot add weight, and
+  // it is exactly how a correctly lazy consumer types the heavy package.
+  it('does NOT report a TYPE-ONLY import of a heavy package', () => {
+    const result = lintFile(fp, `import type { EditorInstance } from '@pyreon/code'`, allRules, defaultConfig())
+    expect(find(result, 'pyreon/no-eager-import').length).toBe(0)
+  })
+
+  it('does NOT report when every specifier is inline-type', () => {
+    const result = lintFile(fp, `import { type A, type B } from '@pyreon/code'`, allRules, defaultConfig())
+    expect(find(result, 'pyreon/no-eager-import').length).toBe(0)
+  })
+
+  it('STILL reports a value import that also carries an inline type', () => {
+    const result = lintFile(fp, `import { createEditor, type EditorInstance } from '@pyreon/code'`, allRules, defaultConfig())
+    expect(find(result, 'pyreon/no-eager-import').length).toBeGreaterThan(0)
+  })
 })
 
 describe('pyreon/promise-race-needs-cleartimeout (performance)', () => {
