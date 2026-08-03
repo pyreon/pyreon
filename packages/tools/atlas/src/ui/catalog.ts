@@ -16,6 +16,14 @@ export interface WorkbenchControl {
   type: 'text' | 'enum' | 'bool' | 'number' | 'color'
   options?: readonly string[]
   default: unknown
+  /**
+   * Whether the component requires this prop.
+   *
+   * Rendered in the docs table, and the same fact `atlas check` reports as
+   * `missing-required` — a props table that shows the shape but not which
+   * parts are mandatory documents less than the validator does.
+   */
+  required?: boolean
 }
 
 /** Context handed to a component's `render` — lets the preview log events + write control values back. */

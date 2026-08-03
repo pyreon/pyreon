@@ -79,13 +79,20 @@ export function toWorkbenchControl(control: PropControl): {
   type: 'text' | 'enum' | 'bool' | 'number' | 'color'
   options?: readonly string[]
   default: unknown
+  /**
+   * Threaded to the docs table. Which props are REQUIRED, and what an enum
+   * ACCEPTS, are the two facts that decide whether a usage is correct — and
+   * they are exactly what `atlas check` validates against. A props table
+   * without them documents the shape but not the contract.
+   */
+  required?: boolean
 } {
   const label = control.name
     .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
     .replace(/^./, (c) => c.toUpperCase())
 
   if (control.kind === 'boolean') {
-    return { key: control.name, label, type: 'bool', default: control.defaultValue ?? false }
+    return { key: control.name, label, type: 'bool', default: control.defaultValue ?? false, ...(control.required ? { required: true } : {}) }
   }
   if (control.kind === 'select' && control.options && control.options.length > 0) {
     return {
@@ -94,16 +101,17 @@ export function toWorkbenchControl(control: PropControl): {
       type: 'enum',
       options: control.options,
       default: control.defaultValue ?? control.options[0],
+      ...(control.required ? { required: true } : {}),
     }
   }
   if (control.kind === 'number') {
-    return { key: control.name, label, type: 'number', default: control.defaultValue ?? 0 }
+    return { key: control.name, label, type: 'number', default: control.defaultValue ?? 0, ...(control.required ? { required: true } : {}) }
   }
   if (control.kind === 'color') {
-    return { key: control.name, label, type: 'color', default: control.defaultValue ?? '#3b82f6' }
+    return { key: control.name, label, type: 'color', default: control.defaultValue ?? '#3b82f6', ...(control.required ? { required: true } : {}) }
   }
   // Everything else edits as text.
-  return { key: control.name, label, type: 'text', default: control.defaultValue ?? '' }
+  return { key: control.name, label, type: 'text', default: control.defaultValue ?? '', ...(control.required ? { required: true } : {}) }
 }
 
 /**

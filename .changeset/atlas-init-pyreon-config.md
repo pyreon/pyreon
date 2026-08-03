@@ -54,6 +54,14 @@ wrong types (including a non-function event handler) and missing required props.
 Exits non-zero, so it works in a hook or a CI step. Reads the catalog rather
 than rescanning, so it cannot disagree with the guide an agent was just handed.
 
+**The props table now documents the CONTRACT, not just the shape.** It showed
+NAME / TYPE / DEFAULT — so an enum read as the word `enum` and you had to open
+the control dropdown to learn what it accepts, and nothing said which props were
+required. Those are the two facts that decide whether a usage is correct, and
+exactly what `atlas check` validates against. Allowed values now render in place
+of the type (`solid | outline`), required props are marked, and a missing
+default renders as `—` rather than the literal text `undefined`.
+
 **Discovery is no longer silent.** A component the scanner does not recognise
 was pure absence — the catalog quietly one smaller, with nothing distinguishing
 "you have 12 components" from "you have 14 and I found 12". `atlas scan` now

@@ -11,6 +11,19 @@ import { callRpc } from '../../lens-client'
 import type { WorkbenchModel } from '../../model'
 import { CodeBlock } from './CodeBlock'
 
+/**
+ * A default, as a props table should show it.
+ *
+ * `String(undefined)` rendered the literal text "undefined" into a column a
+ * reader scans for real values, and an empty string rendered as nothing at all
+ * — indistinguishable from a missing cell.
+ */
+export function formatDefault(value: unknown): string {
+  if (value === undefined || value === null) return '—'
+  if (value === '') return '""'
+  return String(value)
+}
+
 export function DocsView(props: { model: WorkbenchModel }) {
   const m = props.model
   const usage = () => {
@@ -89,9 +102,25 @@ export function DocsView(props: { model: WorkbenchModel }) {
             </C.PropsHead>
             {c.controls.map((ct) => (
               <C.PropsRow>
-                <C.PropName>{ct.key}</C.PropName>
-                <C.PropKind>{ct.type}</C.PropKind>
-                <C.PropDef>{String(ct.default)}</C.PropDef>
+                <C.PropName>
+                  {ct.key}
+                  {/* Required is the first thing a reader needs and the table
+                      did not say it — the same fact `atlas check` reports as
+                      `missing-required`. Marked rather than columned so the
+                      table stays three columns wide on a narrow panel. */}
+                  {ct.required ? <C.PropReq title="required">*</C.PropReq> : null}
+                </C.PropName>
+                {/* An enum's ALLOWED VALUES, not just the word "enum". This is
+                    the fact that decides whether a usage is correct, and a
+                    reader had to open the control dropdown to discover it. */}
+                <C.PropKind>
+                  {ct.type === 'enum' && ct.options && ct.options.length > 0
+                    ? ct.options.join(' | ')
+                    : ct.type}
+                </C.PropKind>
+                {/* `String(undefined)` rendered the literal text "undefined" in
+                    a column a reader scans for real values. */}
+                <C.PropDef>{formatDefault(ct.default)}</C.PropDef>
               </C.PropsRow>
             ))}
           </C.PropsTable>
