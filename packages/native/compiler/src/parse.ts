@@ -97,7 +97,10 @@ interface ParseCtx {
    * warn-dropped (producing an unbound reference) ever record an alias, so a
    * bug here cannot affect any previously-compiling code.
    */
-  hookFieldAliases: Map<string, { object: string; field: string }>
+  hookFieldAliases: Map<
+    string,
+    { object: string; field: string } | { object: string; index: number }
+  >
   /** Monotonic counter for synthetic hook-destructure container names
    * (`__pyHook0`, `__pyHook1`, …). Reset per top-level node alongside
    * `hookFieldAliases`, so names are unique within one component. */
@@ -4155,7 +4158,57 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
         return containerDecl
       }
     }
-    // not lowerable → fall through to the drop below (unchanged behavior)
+    // not lowerable → fall through to the LOUD residual warning below
+  }
+  // General local ARRAY destructure — `const [a, b] = <expr>` at COMPONENT
+  // scope (the parallel of the object arm above; the helper/computed BODY
+  // walker has its own block-scoped expansion). Previously this fell through
+  // to the name-based bail (an ArrayPattern id has no `.name`) and was
+  // dropped with NO warning — the emitted body then referenced `a`/`b`
+  // unbound, so swiftc/kotlinc failed with "cannot find 'a' in scope" while
+  // the transform reported zero warnings. Same container+alias approach as
+  // the object arm: synthesize `const __pyDestrN = <expr>` (recurse — value
+  // consts, signal reads, hook results all resolve there) and alias each
+  // element to `__pyDestrN[i]` in parseExpr's Identifier case — the exact IR
+  // of the documented explicit-index shape (`xs()[0]`), so emit + inference
+  // are shared with a proven path on both targets. A hole (`[, b]`), rest
+  // (`[...r]`), default (`[a = 1]`), or nested pattern bails the whole
+  // lowering (allSimple guard) to the residual warning below — never a
+  // half-binding.
+  if (node.id?.type === 'ArrayPattern' && init) {
+    const els = (node.id.elements as (AnyNode | null)[] | undefined) ?? []
+    const allSimple = els.length > 0 && els.every((el) => el?.type === 'Identifier')
+    if (allSimple) {
+      const synthName = `__pyDestr${ctx.hookDestructureCounter}`
+      const synthNode = {
+        ...node,
+        id: { type: 'Identifier', name: synthName },
+      } as AnyNode
+      const containerDecl = tryDeclFromVarDeclarator(synthNode, ctx)
+      if (containerDecl) {
+        ctx.hookDestructureCounter += 1
+        els.forEach((el, i) => {
+          ctx.hookFieldAliases.set((el as AnyNode).name as string, {
+            object: synthName,
+            index: i,
+          })
+        })
+        return containerDecl
+      }
+    }
+  }
+  // A component-level destructure that did NOT lower above — a non-simple
+  // pattern (nested / rest / default / hole), or a RHS whose single-binding
+  // container form yields no decl. Without this, the declaration silently
+  // vanishes and every later reference to the pattern's locals emits UNBOUND
+  // → uncompilable native code with zero diagnostics (the exact class the
+  // helper-body walker already warns on). Zero silent drops in the supported
+  // vocab: fail loudly, naming the working shapes.
+  if ((node.id?.type === 'ObjectPattern' || node.id?.type === 'ArrayPattern') && init) {
+    ctx.warnings.push(
+      'Component-body destructuring in this shape is not lowered to native — only flat `const { x, y } = …` and flat `const [a, b] = …` lower (no nesting, rest, defaults, or holes). Bind explicitly instead (`const a = o().a` / `const first = xs()[0]`); the declaration was skipped and its names would otherwise emit unbound.',
+    )
+    return null
   }
   const name = node.id?.name as string | undefined
   if (!name || !init) return null
@@ -6169,6 +6222,16 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       {
         const fieldAlias = ctx.hookFieldAliases.get(node.name as string)
         if (fieldAlias !== undefined) {
+          if ('index' in fieldAlias) {
+            // Array-destructured local (`const [a, b] = xs()`) — rewrite to
+            // `__pyDestrN[i]`, the same IR as the documented explicit-index
+            // shape (`xs()[0]`), so the emit + inference paths are shared.
+            return {
+              kind: 'index',
+              object: { kind: 'identifier', name: fieldAlias.object },
+              index: { kind: 'literal', value: fieldAlias.index },
+            }
+          }
           return {
             kind: 'member',
             object: { kind: 'identifier', name: fieldAlias.object },
