@@ -75,6 +75,7 @@ export const scenarios = {
 | --- | --- | --- |
 | [`atlas scan`](#atlas-scan) | function | Discover components (static TS scan + rocketstyle runtime detection), derive controls and variant scenarios, MOUNT each  |
 | [`atlas dev`](#atlas-dev) | function | Boot the workbench: real Vite + the real Pyreon compiler over your source, a derived catalog in the sidebar (nested by d |
+| [`atlas build`](#atlas-build) | function | Compile the workbench into a STATIC, deployable site — the same derived catalog `atlas dev` serves, as plain files for P |
 | [`atlas verify-browser`](#atlas-verify-browser) | function | The browser half of verification, in real Chromium (playwright-core is an OPTIONAL peer — scan/dev work without it). |
 | [`createAtlas`](#createatlas) | function | The programmatic pipeline factory behind the CLI: `discover → decorate → verify → graph`, plugin-driven. |
 | [`AtlasConfig.scenarios (authored scenarios + play)`](#atlasconfig-scenarios-authored-scenarios-play) | function | Authored scenarios in `atlas.config.ts`, keyed by component name. |
@@ -131,6 +132,34 @@ atlas dev: 9 component(s) → http://localhost:5210/
 - Styling per-instance frames with inline styles — the workbench styles through the Element `css` prop channel (hashed classes); custom viewport widths ship zero inline styles
 
 **See also:** `atlas scan`
+
+---
+
+### atlas build `function`
+
+```ts
+atlas build [dir] [--out <dir>] [--title <text>] [--base <path>]
+```
+
+Compile the workbench into a STATIC, deployable site — the same derived catalog `atlas dev` serves, as plain files for Pages / Netlify / Cloudflare / S3, with no server component. Crucially it BAKES the two node-answered panels: the Docs source block and the Reactivity Lens read files and run the TypeScript compiler API, neither of which can run in a page, so the build precomputes them per component and ships the answers as data — the Lens still reports real per-expression live/static verdicts on a fully static page. An answer that genuinely cannot be computed bakes its REASON, so the panel says what is wrong instead of surfacing a network error about a request that was never going to work. `--out` defaults to `atlas-dist`; `--base` is for a subdirectory deploy (`--base /my-repo/` for a GitHub Pages project site); `--title` wins over `atlas.config.ts`’s `title`. Fails loudly when discovery finds nothing rather than deploying an empty site.
+
+**Example**
+
+```tsx
+$ atlas build . --out docs/components --title "Acme DS"
+atlas build: 9 component(s) → /repo/docs/components
+  title: Acme DS
+```
+
+**Common mistakes**
+
+- Assuming a plain `vite build` of the workbench is equivalent — it produces a site that LOOKS complete while the Docs source block and the Reactivity Lens are permanently dark, because nothing baked their node-only answers
+- Deploying to a subdirectory without `--base` — assets are requested from the domain root and every one 404s, leaving a blank page with no error on the page itself
+- Expecting `pages.<name>.title` to rename the component — it is a DISPLAY label only; the usage snippet, the source/Lens lookup and an agent’s import all use the real `name`, which is exactly why the two are separate fields
+- Expecting `pages.<name>.order` to sort across groups — it pins a component within its OWN group; a cross-group sort would scramble the tree from a single config line
+- Pointing it at a monorepo root expecting one combined site — multi-package builds are not supported yet (the catalog is keyed by component name alone, so two packages exporting `Button` would collapse into one)
+
+**See also:** `atlas dev` · `atlas scan`
 
 ---
 
