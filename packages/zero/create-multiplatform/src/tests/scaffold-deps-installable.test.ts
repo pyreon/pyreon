@@ -1,32 +1,17 @@
 // Can a scaffolded app actually `npm install`?
 //
-// It cannot. `@pyreon/create-multiplatform` is PUBLISHED — it is what
-// `pyreon new --native` npx-runs — and the app it emits depends on five
-// packages that are `"private": true` in this workspace and therefore absent
-// from npm:
-//
-//   @pyreon/native-cli · native-runtime-swift · native-router-swift
-//   native-runtime-kotlin · native-router-kotlin
-//
-// Verified against the registry 2026-07-28: all five 404, while the web deps
-// the same scaffold emits (`@pyreon/core`, `primitives`, `reactivity`,
-// `vite-plugin`) resolve at 0.50.0. So the scaffolder's own closing line —
-// "next: cd <dir> && npm install && npm run dev" — fails at step one for
-// anyone outside this repo.
-//
-// Nothing caught it. #2529 proved the scaffold's template COMPILES, by driving
-// the workspace compiler directly; the unit tests assert the emitted file list.
-// Neither asks whether the emitted package.json describes an installable app,
-// which is the first thing a user finds out.
-//
-// ## Why this test allows the current state instead of failing
-//
-// Publishing those packages is a release decision, not a code fix — they are
-// private deliberately (their own descriptions read "PRIVATE / EXPERIMENTAL").
-// A gate that goes red on arrival trains people to ignore it, so the five are
-// listed explicitly and the list may only SHRINK, exactly like the compiler's
-// stub-coverage ratchet. What the test DOES enforce today: no SIXTH unpublished
-// dependency can be added to the scaffold silently.
+// It can, and this file is the ratchet that keeps it that way.
+// `@pyreon/create-multiplatform` is what `pyreon new --native` npx-runs, and
+// the app it emits declares the full native toolchain — `@pyreon/native-cli`,
+// the Swift/Kotlin runtimes and routers. Those five were `"private": true`
+// for the stack's whole pre-publish life, so `npm install` 404'd at step one
+// for anyone outside this repo, and NOTHING caught it: #2529 proved the
+// template COMPILES (by driving the workspace compiler directly) and the unit
+// tests assert the emitted file list; neither asks whether the emitted
+// package.json describes an installable app — the first thing a user finds
+// out. This file was added to record that debt (KNOWN_UNPUBLISHED), force it
+// to only ever shrink, and fire the moment publishing flipped the truth.
+// It fired; the list is empty; the guards below keep it empty.
 
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -158,15 +143,20 @@ describe('a scaffolded app can be installed', () => {
     }
   })
 
-  it('the scaffolded README states the native targets are not installable', () => {
-    // The check above records the defect; this asserts the USER is told. A
-    // scaffolder that emits instructions it knows cannot succeed is worse than
-    // one that says nothing, and the terminal notice scrolls away — the README
-    // is where someone looks ten minutes later.
+  it('the scaffolded README no longer claims the native toolchain is unpublished', () => {
+    // The inverse of the pre-publish assertion that used to live here. While
+    // the native packages were private, the README HAD to warn that
+    // `npm install` would 404 — a scaffolder printing instructions it knows
+    // cannot succeed is worse than one that says nothing. Publishing the stack
+    // flipped the truth, so the warning must be GONE (a stale "will fail"
+    // banner on a working install is the same lie in the other direction) and
+    // the README must state the working contract instead.
     const readme = files.find((f) => f.path === 'README.md')?.content ?? ''
-    expect(readme).toContain('not\n> published to npm yet')
-    expect(readme).toMatch(/npm install.+will fail/s)
-    // And it must name the WORKING path, not just the broken one.
-    expect(readme).toContain('Pyreon workspace')
+    expect(readme).not.toMatch(/not\s+published to npm/i)
+    expect(readme).not.toMatch(/npm install.+will fail/is)
+    // The working contract: one fetch step, plus local platform SDKs.
+    expect(readme).toMatch(/installs from\s+npm/)
+    expect(readme).toMatch(/Xcode/)
+    expect(readme).toMatch(/Android SDK/)
   })
 })

@@ -1204,11 +1204,13 @@ for (const w of warnings) console.warn(w)
 
 The shipped surface today is the `pyreon-native build` CLI, which
 aggregates warnings per file and prints them to stderr as
-`[pyreon-native] N warning(s):` after each build. There is **no
-Vite-plugin / LSP / editor-diagnostic surfacer yet** — that's an
-explicit Phase 6 DX follow-up. The package is `@pyreon/native-compiler`
-(private / workspace-only); consumers using `transform()` directly are
-the path until a public published API lands.
+`[pyreon-native] N warning(s):` after each build, plus `pyreon-native
+check --lsp` (a stdio LSP server; warnings are currently position-less —
+threading spans through the compiler's warn sites is a follow-up). There
+is **no Vite-plugin surfacer yet** — that's an explicit Phase 6 DX
+follow-up. `@pyreon/native-compiler` publishes to npm with the rest of
+the native stack, so `transform()` is importable from a standalone
+project as well as the workspace.
 
 ## WebView host — embedding web-only-rich viz (charts / flow)
 
