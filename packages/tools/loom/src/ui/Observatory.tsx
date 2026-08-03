@@ -17,6 +17,7 @@ import * as C from './chrome'
 import { createModel, shortName, type ObservatoryModel, type ViewId } from './model'
 import { tokens } from './theme'
 import { GraphView } from './views/GraphView'
+import { SearchDialog } from './views/SearchDialog'
 import { MatrixView } from './views/MatrixView'
 import { CyclesView } from './views/CyclesView'
 import { ImpactView } from './views/ImpactView'
@@ -64,10 +65,16 @@ export function Observatory(props: { report: LoomReport; brand?: string }) {
     const typing = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA'
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
       e.preventDefault()
-      searchEl?.focus()
+      m.searchOpen.set(true)
+      queueMicrotask(() => searchEl?.focus())
       return
     }
     if (e.key === 'Escape') {
+      if (m.searchOpen()) {
+        m.searchOpen.set(false)
+        m.query.set('')
+        return
+      }
       if (m.query()) m.query.set('')
       ;(document.activeElement as HTMLElement | null)?.blur()
       return
@@ -154,15 +161,11 @@ export function Observatory(props: { report: LoomReport; brand?: string }) {
           </C.NavTabs>
           <C.Spacer />
           <C.SearchWrap>
-            <C.SearchGlyph>⌕</C.SearchGlyph>
-            <C.SearchInput
-              data-testid="loom-search"
-              ref={searchRef}
-              placeholder="Search packages…"
-              value={() => m.query()}
-              onInput={(e: Event) => m.query.set((e.target as HTMLInputElement).value)}
-            />
-            <C.SearchKbd>⌘K</C.SearchKbd>
+            <C.SearchTrigger data-testid="search-trigger" onClick={() => m.searchOpen.set(true)}>
+              <C.SearchGlyph>⌕</C.SearchGlyph>
+              <C.SearchTriggerText>Search packages, findings…</C.SearchTriggerText>
+              <C.SearchKbd>⌘K</C.SearchKbd>
+            </C.SearchTrigger>
           </C.SearchWrap>
           <C.Spacer />
           <C.HealthPill data-testid="loom-health" state={health}>
@@ -264,6 +267,7 @@ export function Observatory(props: { report: LoomReport; brand?: string }) {
           </C.FootDanger>
         </C.Footer>
       </C.Shell>
+      <SearchDialog model={m} fieldRef={searchRef} focusField={() => searchEl?.focus()} />
     </PyreonUI>
   )
 }

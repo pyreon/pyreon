@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import type { WorkbenchCatalog, WorkbenchComponent } from '../catalog'
-import { buildSearch, componentById, defaultValues, groupComponents } from '../catalog'
+import { buildSearch, buildSearchIndex, componentById, defaultValues, groupComponents } from '../catalog'
 
 const comp = (
   id: string,
@@ -107,5 +107,55 @@ describe('buildSearch', () => {
 
   it('builds without throwing for a control-less catalog', () => {
     expect(() => buildSearch(catalogOf(comp('bare', 'g')))).not.toThrow()
+  })
+})
+
+describe('buildSearchIndex (fulltext)', () => {
+  const catalog = {
+    components: [
+      {
+        id: 'button',
+        name: 'Button',
+        group: 'Components',
+        controls: [
+          { key: 'label', type: 'text' as const, default: 'Hi' },
+          { key: 'variant', type: 'enum' as const, options: ['soft', 'solid'], default: 'soft' },
+        ],
+        scenarios: [{ id: 'button--long', name: 'Long content', verdict: 'ok' as const }],
+        render: () => null,
+      },
+      {
+        id: 'badge',
+        name: 'Badge',
+        group: 'Feedback',
+        controls: [{ key: 'tone', type: 'enum' as const, options: ['soft', 'danger'], default: 'soft' }],
+        render: () => null,
+      },
+    ],
+  } as never
+
+  it('an enum OPTION matches with the control-attributed reason', () => {
+    const hits = buildSearchIndex(catalog)('danger')
+    expect(hits.map((h) => h.id)).toEqual(['badge'])
+    expect(hits[0]!.reason).toBe('tone · danger')
+  })
+
+  it('a scenario name matches with a scenario reason', () => {
+    const hits = buildSearchIndex(catalog)('long')
+    expect(hits.map((h) => h.id)).toEqual(['button'])
+    expect(hits[0]!.reason).toBe('scenario · Long content')
+  })
+
+  it('a name match RANKS above a keyword match and carries no reason', () => {
+    // `b` prefixes BOTH names — name hits, no keyword reason.
+    const hits = buildSearchIndex(catalog)('button')
+    expect(hits[0]!.id).toBe('button')
+    expect(hits[0]!.reason).toBeUndefined()
+  })
+
+  it('multi-token queries AND across different fields', () => {
+    // `soft` matches both; `feedback` (group) only Badge.
+    const hits = buildSearchIndex(catalog)('soft feedback')
+    expect(hits.map((h) => h.id)).toEqual(['badge'])
   })
 })

@@ -6,8 +6,6 @@
  * the `atlas dev` CLI generates one from a project's discovered components.
  */
 import type { VNodeChildAtom } from '@pyreon/core'
-import { createCatalogGraph, inferControls } from '../core'
-import type { PropShape } from '../core'
 import type { Permissions } from '@pyreon/permissions'
 import type { FakeQueryResult } from './query-states'
 
@@ -217,26 +215,93 @@ export function componentById(catalog: WorkbenchCatalog, id: string): WorkbenchC
  * real `@pyreon/atlas` Catalog Graph, not a substring filter. Returns a
  * function mapping a query to ranked component ids (all, in order, when blank).
  */
-export function buildSearch(catalog: WorkbenchCatalog): (query: string) => string[] {
-  const toShapes = (c: WorkbenchComponent): PropShape[] =>
-    c.controls.map((ctrl) => ({
-      name: ctrl.key,
-      type: ctrl.type === 'enum' ? { union: ctrl.options ?? [] } : ctrl.type === 'bool' ? 'boolean' : 'string',
-    }))
-  const graph = createCatalogGraph(
-    catalog.components.map((c) => ({
-      name: c.name,
-      controls: inferControls(toShapes(c)),
-      axes: [],
-      scenarios: [],
-      tags: [c.group.toLowerCase()],
-    })),
-  )
-  const allIds = catalog.components.map((c) => c.id)
-  return (query: string): string[] => {
-    const q = query.trim().toLowerCase()
-    if (q === '') return allIds
-    const names = new Set(graph.search(q).map((h) => h.component))
-    return catalog.components.filter((c) => names.has(c.name) || c.id.includes(q)).map((c) => c.id)
+/** A ranked search hit with the FIELD that matched — the dialog shows why. */
+export interface CatalogSearchHit {
+  id: string
+  name: string
+  score: number
+  /** Why a non-name match surfaced, e.g. `option · soft`, `scenario · Long content`. */
+  reason?: string
+}
+
+/**
+ * FULLTEXT search over the catalog — not just names. Every component indexes
+ * its name, id, group path, control keys, enum OPTIONS (the state/variant
+ * axes — searching `soft` finds the component with a `variant: soft`), and
+ * scenario names. Multi-token queries AND across fields; results rank
+ * name-prefix > name > id > keyword, and keyword hits carry the matched
+ * field as `reason` so the dialog can say why a row is there.
+ */
+export function buildSearchIndex(catalog: WorkbenchCatalog): (query: string) => CatalogSearchHit[] {
+  interface Entry {
+    text: string
+    /** Higher wins when picking the visible reason. */
+    weight: number
+    reason?: string
   }
+  const index = catalog.components.map((c) => {
+    const entries: Entry[] = [
+      { text: c.name.toLowerCase(), weight: 100 },
+      { text: c.id.toLowerCase(), weight: 60 },
+      { text: c.group.toLowerCase(), weight: 20, reason: `group · ${c.group}` },
+    ]
+    for (const ctrl of c.controls) {
+      entries.push({ text: ctrl.key.toLowerCase(), weight: 30, reason: `control · ${ctrl.key}` })
+      for (const opt of ctrl.options ?? []) {
+        entries.push({ text: String(opt).toLowerCase(), weight: 40, reason: `${ctrl.key} · ${opt}` })
+      }
+    }
+    for (const sc of c.scenarios ?? []) {
+      entries.push({ text: sc.name.toLowerCase(), weight: 35, reason: `scenario · ${sc.name}` })
+    }
+    if (c.desc) entries.push({ text: c.desc.toLowerCase(), weight: 10, reason: 'description' })
+    return { c, entries }
+  })
+
+  return (query: string): CatalogSearchHit[] => {
+    const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean)
+    if (tokens.length === 0) {
+      return catalog.components.map((c) => ({ id: c.id, name: c.name, score: 0 }))
+    }
+    const hits: CatalogSearchHit[] = []
+    for (const { c, entries } of index) {
+      let total = 0
+      let reason: string | undefined
+      let reasonWeight = 0
+      let ok = true
+      for (const t of tokens) {
+        let best: Entry | undefined
+        for (const e of entries) {
+          if (!e.text.includes(t)) continue
+          if (!best || e.weight > best.weight) best = e
+        }
+        if (!best) {
+          ok = false
+          break
+        }
+        // name-PREFIX beats a mid-name substring
+        total += best.weight + (best.weight === 100 && c.name.toLowerCase().startsWith(t) ? 20 : 0)
+        if (best.reason && best.weight > reasonWeight) {
+          reason = best.reason
+          reasonWeight = best.weight
+        }
+      }
+      if (ok) hits.push({ id: c.id, name: c.name, score: total, ...(reason ? { reason } : {}) })
+    }
+    return hits.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
+  }
+}
+
+/**
+ * The id-only view of the fulltext index — sidebar filtering + ↑↓ browse.
+ * Results come back in CATALOG order, not match order: a filtered TREE must
+ * keep its curated ordering (the dialog is where ranking belongs).
+ */
+export function buildSearch(catalog: WorkbenchCatalog): (query: string) => string[] {
+  const rich = buildSearchIndex(catalog)
+  const order = new Map(catalog.components.map((c, i) => [c.id, i]))
+  return (query: string): string[] =>
+    rich(query)
+      .map((h) => h.id)
+      .sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0))
 }

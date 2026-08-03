@@ -1,15 +1,20 @@
 /**
- * The ⌘K search dialog — docs-site style (zero-content's Search precedent):
- * dim blurred backdrop, centered card, one big input, keyboard-driven results
- * (↑↓ + Enter), Escape/backdrop closes. The top bar only renders the TRIGGER;
- * this is the real search surface.
+ * The ⌘K search dialog — the atlas shape on loom's chrome. Fulltext over the
+ * fabric: package ids, versions, kind, license, FINDINGS (searching
+ * `unused-dep` lists every flagged package), and dependency edges both ways.
+ * Keyword hits carry the matched field as a chip.
  */
 import { onMount, Show } from '@pyreon/core'
 import { batch, computed, signal } from '@pyreon/reactivity'
-import * as C from '../../components'
-import type { WorkbenchModel } from '../../model'
+import * as C from '../chrome'
+import { shortName, type ObservatoryModel } from '../model'
 
-export function SearchDialog(props: { model: WorkbenchModel }) {
+export function SearchDialog(props: {
+  model: ObservatoryModel
+  /** `ref` for the field so the ⌘K handler can (re)focus it. */
+  fieldRef: (el: HTMLInputElement | null) => void
+  focusField: () => void
+}) {
   const m = props.model
   const activeIdx = signal(0)
   const results = computed(() => m.searchHits(m.query()))
@@ -22,8 +27,7 @@ export function SearchDialog(props: { model: WorkbenchModel }) {
     })
   const select = (id: string) =>
     batch(() => {
-      m.selId.set(id)
-      m.view.set('canvas')
+      m.select(id)
       close()
     })
 
@@ -42,21 +46,18 @@ export function SearchDialog(props: { model: WorkbenchModel }) {
     }
   }
 
-  // Mounted only while open (the <Show> below) — focus the field on open.
   const Body = () => {
     onMount(() => {
-      // Post-paint: the field must exist AND the browser must have committed
-      // the dialog before focus sticks reliably.
-      requestAnimationFrame(() => m.focusSearch())
+      requestAnimationFrame(() => props.focusField())
     })
     return (
       <C.SearchDialogCard data-testid="search-dialog" onClick={(e: Event) => e.stopPropagation()}>
-        <C.SearchHead>
+        <C.SearchDialogHead>
           <C.SearchGlyph>⌕</C.SearchGlyph>
-          <C.SearchField
-            ref={m.searchRef}
-            data-search
-            placeholder="Search components…"
+          <C.SearchDialogField
+            ref={props.fieldRef}
+            data-testid="loom-search"
+            placeholder="Search packages, findings, versions…"
             value={() => m.query()}
             onInput={(e: Event) =>
               batch(() => {
@@ -66,8 +67,8 @@ export function SearchDialog(props: { model: WorkbenchModel }) {
             }
             onKeyDown={onKey}
           />
-          <C.Kbd>esc</C.Kbd>
-        </C.SearchHead>
+          <C.SearchKbd>esc</C.SearchKbd>
+        </C.SearchDialogHead>
         <C.SearchResults>
           {() =>
             results().map((hit, i) => (
@@ -76,8 +77,8 @@ export function SearchDialog(props: { model: WorkbenchModel }) {
                 onClick={() => select(hit.id)}
                 onMouseEnter={() => activeIdx.set(i)}
               >
-                <C.SearchRowName>{hit.name}</C.SearchRowName>
-                <C.SearchRowPath>{`components/${hit.id}`}</C.SearchRowPath>
+                <C.SearchRowName>{() => shortName(hit.id)}</C.SearchRowName>
+                <C.SearchRowKind variant={hit.kind}>{hit.kind}</C.SearchRowKind>
                 {hit.reason ? <C.SearchRowReason>{hit.reason}</C.SearchRowReason> : null}
                 <Show when={() => activeIdx() === i}>
                   <C.SearchEnterHint>↵</C.SearchEnterHint>
@@ -87,12 +88,13 @@ export function SearchDialog(props: { model: WorkbenchModel }) {
           }
         </C.SearchResults>
         <Show when={() => results().length === 0}>
-          <C.SearchEmpty>{() => `No components match “${m.query()}”.`}</C.SearchEmpty>
+          <C.SearchEmpty>{() => `Nothing in the fabric matches “${m.query()}”.`}</C.SearchEmpty>
         </Show>
         <C.SearchFoot>
           <span>↑↓ navigate</span>
-          <span>↵ open</span>
+          <span>↵ select</span>
           <span>esc close</span>
+          <span>try: a finding code, a version, a dependency</span>
         </C.SearchFoot>
       </C.SearchDialogCard>
     )

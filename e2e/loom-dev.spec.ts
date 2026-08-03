@@ -31,11 +31,36 @@ test('dep chips navigate the selection', async ({ page }) => {
 })
 
 test('search filters the sidebar; escape clears', async ({ page }) => {
+  // Search moved into the ⌘K dialog — the header keeps the trigger. The query
+  // still drives the sidebar filter, so typing in the dialog narrows both.
+  await page.getByTestId('search-trigger').click()
   await page.getByTestId('loom-search').fill('rocketstyle')
   await expect(page.getByTestId('pkg-@pyreon/rocketstyle')).toBeVisible()
   expect(await page.locator('[data-testid^="pkg-"]').count()).toBeLessThan(6)
   await page.keyboard.press('Escape')
+  await expect(page.getByTestId('search-dialog')).toHaveCount(0)
   expect(await page.locator('[data-testid^="pkg-"]').count()).toBeGreaterThan(100)
+})
+
+test('fulltext: a finding code surfaces flagged packages with the reason chip', async ({ page }) => {
+  await page.getByTestId('search-trigger').click()
+  await page.getByTestId('loom-search').fill('unused-dep')
+  const dialog = page.getByTestId('search-dialog')
+  // The workspace ships with unused-dep INFO findings — the hits are packages
+  // whose FINDINGS matched, not whose names did, and the chip says so.
+  await expect(dialog.getByText('finding · unused-dep').first()).toBeVisible()
+  // Enter selects the top hit and closes — the detail rail follows.
+  await page.keyboard.press('Enter')
+  await expect(dialog).toHaveCount(0)
+})
+
+test('fulltext: a package name surfaces its dependents via the edge chips', async ({ page }) => {
+  await page.getByTestId('search-trigger').click()
+  await page.getByTestId('loom-search').fill('@pyreon/reactivity')
+  const dialog = page.getByTestId('search-dialog')
+  // Hits are reactivity itself PLUS every package whose EDGES matched — the
+  // chip names the relationship, so the row explains why it surfaced.
+  await expect(dialog.getByText('depends on · @pyreon/reactivity').first()).toBeVisible()
 })
 
 test('kind filter narrows to externals', async ({ page }) => {
