@@ -6,10 +6,18 @@
  * client-safe `@pyreon/atlas/auto` entry.
  */
 export { scanSource } from './scan'
+export type { PackageMap } from './workspace-packages'
+export {
+  buildPackageMap,
+  entryFromExports,
+  packageEntry,
+  resolveWorkspaceSpecifier,
+} from './workspace-packages'
 export type { UnmatchedFile } from './unmatched'
 export { findUnmatched, formatUnmatched, pascalExports } from './unmatched'
 export type { DiscoverOptions } from './discover'
 export { discoverComponents, fileDiscoveryPlugin, listComponentFiles } from './discover'
+export { workspacePackageDirs } from './workspace'
 export type { RocketstyleDiscoveryOptions } from './rocketstyle'
 export { discoverRocketstyle, readDimensions } from './rocketstyle'
 export type { AtlasConfig, LoadedConfig, PageMeta, ProjectRoot } from './config'
