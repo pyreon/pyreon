@@ -85,6 +85,7 @@ export type IssueCode =
   | 'internal-range'
   | 'cycle'
   | 'phantom-dep'
+  | 'phantom-type-dep'
   | 'prod-import-of-dev-dep'
   | 'unused-dep'
   | 'peer-mismatch'

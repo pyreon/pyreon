@@ -195,6 +195,10 @@ export function detectPhantoms(model: WorkspaceModel, imports: ImportScan): Loom
     for (const d of p.deps) {
       if (d.field !== 'devDependencies') devOnly.delete(d.name)
     }
+    // TYPE-ONLY imports are deliberately absent here: `import type { X } from
+    // 'devDep'` is the CORRECT pattern (the import erases, so a consumer never
+    // needs it installed). Counting them made this detector fire on 9 of 12
+    // findings in a real TypeScript monorepo — all of them correct code.
     for (const [dep, files] of prod) {
       if (!devOnly.has(dep)) continue
       // The hazard is a CONSUMER's missing install — a private package has no
@@ -208,6 +212,28 @@ export function detectPhantoms(model: WorkspaceModel, imports: ImportScan): Loom
         details: { files },
       })
     }
+    // A type-only import of a package declared NOWHERE is still a real defect
+    // — typecheck resolves it through hoisting — but it is not the runtime
+    // hazard `phantom-dep` describes, so it is reported as what it is.
+    const typeOnly = imports.type.get(p.name)
+    if (typeOnly) {
+      for (const [dep, files] of typeOnly) {
+        if (declared.has(dep)) continue
+        const typesTwin = dep.startsWith('@')
+          ? `@types/${dep.slice(1).replace('/', '__')}`
+          : `@types/${dep}`
+        if (declared.has(typesTwin)) continue
+        if (prod.has(dep) || (imports.dev.get(p.name)?.has(dep) ?? false)) continue // already reported above
+        issues.push({
+          code: 'phantom-type-dep',
+          severity: 'info',
+          pkg: p.name,
+          dep,
+          message: `\`${p.name}\` imports \`${dep}\` type-only but never declares it — erased at runtime, so consumers are unaffected, but typecheck resolves it through hoisting luck; declare it in devDependencies`,
+          details: { files },
+        })
+      }
+    }
   }
   return issues
 }
@@ -218,9 +244,14 @@ export function detectUnused(model: WorkspaceModel, imports: ImportScan): LoomIs
   for (const p of model.packages) {
     const prod = imports.prod.get(p.name) ?? new Map<string, string[]>()
     const dev = imports.dev.get(p.name) ?? new Map<string, string[]>()
+    // TYPE-ONLY counts as USED. Splitting type imports out of `prod` without
+    // consulting them here would have turned every type-only dependency into
+    // a fresh `unused-dep` accusation — the fix manufacturing the very class
+    // of false positive it set out to remove.
+    const type = imports.type.get(p.name) ?? new Map<string, string[]>()
     for (const d of p.deps) {
       if (d.field !== 'dependencies') continue
-      if (prod.has(d.name) || dev.has(d.name)) continue
+      if (prod.has(d.name) || dev.has(d.name) || type.has(d.name)) continue
       // `@types/*` and tool-invoked packages are the classic lexical misses.
       if (d.name.startsWith('@types/')) continue
       issues.push({
