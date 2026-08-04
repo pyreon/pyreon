@@ -1,0 +1,35 @@
+# Delete a closed PR's actions caches. Cache entries saved during a PR's runs
+# are scoped to `refs/pull/N/merge` — readable ONLY by re-runs of that same
+# PR, so the moment the PR closes they are dead weight that still counts
+# against the repo's shared 10GB budget. Found the hard way (2026-08-04): the
+# budget sat at 9.73GB — dominated by per-merge-ref copies of the 1.2GB bun
+# tarball store — and the LRU eviction that pressure causes is what silently
+# killed the native verdict cache. The tarball store's per-ref SAVES are also
+# fixed at the source (main-only, ci.yml Install job); this workflow is the
+# whole-class backstop for every OTHER per-ref cache (bootstrap-ubuntu,
+# native-validate, node-modules) without touching their in-run semantics.
+#
+# `gh cache delete --all --ref` exits non-zero when the ref has no caches —
+# a normal case (docs-only PRs save nothing), hence the `|| echo`.
+name: Cache Cleanup
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  actions: write
+
+jobs:
+  cleanup:
+    name: Delete closed PR's caches
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Delete caches on the merge ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: refs/pull/${{ github.event.pull_request.number }}/merge
+        run: |
+          gh cache delete --all --repo "$GITHUB_REPOSITORY" --ref "$REF" \
+            || echo "no caches on $REF (nothing saved, or already evicted)"

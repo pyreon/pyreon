@@ -146,6 +146,17 @@ echo
 # run is heavyweight (60+ parallel vitest workers, occasional flakes
 # from resource contention) and bypasses the whole point of "affected".
 FILTER=$(bun run scripts/affected.ts --base=origin/main 2>/dev/null || echo "")
+# ── Full-wall auto-budget ────────────────────────────────────────────
+# A root-file change resolves to `--filter=*` — the ENTIRE workspace.
+# Measured 2026-08-04: that wall runs 10-25 minutes, structurally beyond
+# the 300s per-step budget sized for the affected case. Killing a
+# HEALTHY full wall at 300s trains people to bypass the hook wholesale
+# (it happened twice that day), which costs more than the longer wait.
+# An explicit PYREON_PRE_PUSH_TIMEOUT_SEC always wins.
+if [ "$FILTER" = "--filter=*" ] && [ -z "${PYREON_PRE_PUSH_TIMEOUT_SEC:-}" ]; then
+  TIMEOUT_SEC=1800
+  echo "[pyreon pre-push] full-workspace filter (root-file change) — per-step timeout auto-raised to ${TIMEOUT_SEC}s"
+fi
 if [ -z "$FILTER" ]; then
   echo "[pyreon pre-push] no affected packages — skipping typecheck + tests"
   echo
