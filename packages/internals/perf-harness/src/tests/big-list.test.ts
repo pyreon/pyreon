@@ -168,35 +168,41 @@ describe('big-list scaling', () => {
     60_000,
   )
 
-  it('append 1000 rows to existing 1000-row list', async () => {
+  it('append 1000 rows to existing 1000-row list — insertFast, zero lisOps', async () => {
     const { items, dispose } = await mountList(1000)
     const outcome = await perfHarness.record('append-1k-to-1k', () => {
       items.set([...items(), ...Array.from({ length: 1000 }, (_, i) => i + 1000)])
     })
     const mountChild = outcome.after['runtime.mountChild'] ?? 0
     const lisOps = outcome.after['runtime.mountFor.lisOps'] ?? 0
+    const insertFast = outcome.after['runtime.mountFor.insertFast'] ?? 0
     // oxlint-disable-next-line no-console
     console.log(`[big-list] 1k→2k append: mountChild=${mountChild}, lisOps=${lisOps}`)
     // Should mount 1000 new rows (one mountChild per row).
     expect(mountChild).toBeGreaterThanOrEqual(1000)
-    // Monotonic append fast path: zero binary-search probes.
+    // Pure contiguous insertion fast path: the whole update is the run mount —
+    // no cache.has pre-pass, no stale Set scan, no LIS walk at all.
+    expect(insertFast).toBe(1)
     expect(lisOps).toBe(0)
     dispose()
   })
 
-  it('prepend 1000 rows to existing 1000-row list — zero lisOps via known-slot fast path', async () => {
+  it('prepend 1000 rows to existing 1000-row list — insertFast, zero lisOps', async () => {
     const { items, dispose } = await mountList(1000)
     const outcome = await perfHarness.record('prepend-1k-to-1k', () => {
       items.set([...Array.from({ length: 1000 }, (_, i) => i + 1000), ...items()])
     })
     const mountChild = outcome.after['runtime.mountChild'] ?? 0
     const lisOps = outcome.after['runtime.mountFor.lisOps'] ?? 0
+    const insertFast = outcome.after['runtime.mountFor.insertFast'] ?? 0
     // oxlint-disable-next-line no-console
     console.log(`[big-list] 1k→2k prepend: mountChild=${mountChild}, lisOps=${lisOps}`)
     // Should mount 1000 new rows.
     expect(mountChild).toBeGreaterThanOrEqual(1000)
-    // Piecewise-monotonic known-slot fast path: zero binary-search probes.
-    // Before the fix, this was ~10000 probes.
+    // Pure contiguous insertion fast path (was: tier-2 known-slot LIS at 0
+    // probes; now the LIS is skipped outright and the run mounts via one
+    // fragment insertBefore).
+    expect(insertFast).toBe(1)
     expect(lisOps).toBe(0)
     dispose()
   })
