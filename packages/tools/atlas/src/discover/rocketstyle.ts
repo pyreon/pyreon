@@ -109,6 +109,13 @@ export async function discoverRocketstyle(
   const out: ComponentIntelligence[] = []
   const seen = new Set(skip)
 
+  // Serial on purpose. Issuing the loads concurrently (bounded at 12, results
+  // still consumed in file order so `seen` stays deterministic) was measured
+  // and is SLOWER — median 4916ms against 4613ms on `@pyreon/ui-components`.
+  // Vite's `ssrLoadModule` serializes on the shared module graph, so a fan-out
+  // adds contention without adding parallelism, and the cost here is dominated
+  // by building that graph once: the first two files take ~300ms and ~120ms,
+  // every file after them ~0.8ms.
   for (const file of files) {
     let mod: Record<string, unknown>
     try {
