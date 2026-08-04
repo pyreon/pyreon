@@ -102,6 +102,44 @@ describe('Phase D2 — JSX auto-import for canonical primitives', () => {
     expect(out).not.toContain(`Button, Stack`)
   })
 
+  it('does NOT shadow a DESTRUCTURED local binding', async () => {
+    // The shape that made a real app unbuildable: a form factory returning
+    // named components. `const { Form, Text } = createForm(schema)` binds
+    // `Text` locally, but the shadow scan required the name immediately after
+    // the keyword, so the auto-import injected a colliding
+    // `import { Text } from '@pyreon/primitives'` and the build died with
+    // `Identifier 'Text' has already been declared` — pointing at a line the
+    // author never wrote.
+    const plugin = pyreonPlugin()
+    const input = `
+      import { createForm } from '@acme/forms'
+      const { Form, Text, Textarea } = createForm({})
+      export function TagForm() {
+        return <Form><Text name="key" /><Stack>x</Stack></Form>
+      }
+    `
+    const out = await runTransform(plugin, input)
+    // Stack is genuinely missing and still auto-imported...
+    expect(out).toContain(`import { Stack } from '@pyreon/primitives'`)
+    // ...while Text, which is already bound, is left alone.
+    expect(out).not.toContain(`import { Text`)
+    expect(out).not.toContain(`Stack, Text`)
+    expect(out).not.toContain(`Text, Stack`)
+  })
+
+  it('does NOT shadow an ARRAY-destructured local binding', async () => {
+    const plugin = pyreonPlugin()
+    const input = `
+      const [Text, setText] = makePair()
+      export function App() {
+        return <Stack><Text /></Stack>
+      }
+    `
+    const out = await runTransform(plugin, input)
+    expect(out).toContain(`import { Stack } from '@pyreon/primitives'`)
+    expect(out).not.toContain(`import { Text`)
+  })
+
   it('does NOT auto-import a name that is already imported from another source', async () => {
     const plugin = pyreonPlugin()
     const input = `

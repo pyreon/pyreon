@@ -80,6 +80,15 @@ export interface ScanResult {
    */
   configError?: string
   /**
+   * The config file that was FOUND, whether or not it loaded.
+   *
+   * Distinct from `configPath`, which is set only when a config supplies a
+   * `wrapper` (the dev server reloads on it). This one answers the plainer
+   * question the CLI has to answer before it can tell a reader there is no
+   * config: is there a file here at all?
+   */
+  configFound?: string
+  /**
    * Files that export something PascalCase and produced NO component.
    *
    * The catalog cannot report a component it never found, so without this a
@@ -154,8 +163,17 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
   const mount = options.mount !== false
   // One module pipeline for both the components and the config, so a config
   // written in JSX compiles exactly the way the components it wraps do.
+  // ONE package map for the whole scan, built BEFORE the loader because the
+  // loader needs it: a config at the repo root importing the project's own
+  // theme is not resolvable by ordinary node resolution (a package manager
+  // links a workspace member only into packages that declare it, and the root
+  // declares none of them). See `createModuleLoader`.
+  //
+  // It also feeds prop-type resolution, where a component importing its props
+  // from a SIBLING package is the dominant monorepo shape.
+  const packages = buildPackageMap(workspacePackageDirs(resolve(cwd)))
   const loader: ModuleLoader | undefined = mount
-    ? await createModuleLoader(resolve(cwd))
+    ? await createModuleLoader(resolve(cwd), packages)
     : undefined
   // The project's own config. ALWAYS loaded — not only when mounting.
   //
@@ -176,11 +194,6 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
   const autoDetected = autoDetectProjects(cwd, options.dir ?? 'src', loaded.config.projects)
   const effectiveProjects: readonly ProjectRoot[] | undefined =
     loaded.config.projects ?? (autoDetected.length > 0 ? autoDetected : undefined)
-  // ONE package map for the whole scan. A component importing its props from a
-  // SIBLING package (`import type { Props } from '@acme/ui-core'`) is the
-  // dominant shape in a real monorepo, and without this those components land
-  // in the catalog with no controls at all — found, but contract-less.
-  const packages = buildPackageMap(workspacePackageDirs(resolve(cwd)))
   let asset: AgentAsset | undefined
   try {
     return await buildScan()
@@ -286,6 +299,7 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
       ...(effectiveProjects ? { projects: effectiveProjects } : {}),
       ...(autoDetected.length > 0 ? { autoDetected } : {}),
       ...(loaded.error ? { configError: loaded.error } : {}),
+      ...(loaded.path ? { configFound: loaded.path } : {}),
       ...(unmatched.length > 0 ? { unmatched } : {}),
     }
 
@@ -371,6 +385,10 @@ function err(text: string): void {
  * means the other silently becomes a positional argument — `atlas build --out
  * docs` would have taken `docs` as the project directory and written the site
  * to the default location, with nothing to indicate the flag was ignored.
+ *
+ * Reading the value here is only HALF of that, which is worth stating because
+ * the half looked like the whole: the positional finder is a separate pass, and
+ * it went on claiming `docs` as the directory as well. See `positionalDir`.
  */
 export function flagValue(args: readonly string[], flag: string): string | undefined {
   const inline = args.find((a) => a.startsWith(`${flag}=`))
@@ -381,6 +399,48 @@ export function flagValue(args: readonly string[], flag: string): string | undef
   // A following flag means the value is missing; treating it as the value would
   // set `--out` to `--title`.
   return next && !next.startsWith('-') ? next : undefined
+}
+
+/**
+ * Flags that take a VALUE as the next argument.
+ *
+ * Needed by `positional` below, which otherwise cannot tell `--out dist` (a
+ * flag and its value) from `dist` (the directory to scan).
+ */
+const VALUE_FLAGS = new Set([
+  '--out',
+  '--title',
+  '--base',
+  '--dir',
+  '--port',
+  '--project',
+  '--catalog',
+])
+
+/**
+ * The first positional argument — the directory — skipping flag VALUES.
+ *
+ * `rest.find((a) => !a.startsWith('-'))` looks right and is wrong: in
+ * `atlas build --out dist/atlas` the first non-dash argument is `dist/atlas`,
+ * the value of `--out`, so the build scanned its own output directory and
+ * reported `no components found under dist/atlas/src` — for a completely
+ * ordinary invocation, with nothing in the message pointing at the real cause.
+ *
+ * All five commands shared the line, so all five shared the bug.
+ */
+export function positionalDir(args: readonly string[]): string | undefined {
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]
+    if (arg === undefined) continue
+    if (arg.startsWith('-')) {
+      // `--out=dist` carries its value inline; only the spaced form consumes
+      // the NEXT argument.
+      if (VALUE_FLAGS.has(arg)) i++
+      continue
+    }
+    return arg
+  }
+  return undefined
 }
 
 /** `{ key: value }` only when set — `exactOptionalPropertyTypes` rejects `undefined`. */
@@ -398,7 +458,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
   }
 
   if (cmd === 'scan') {
-    const dir = rest.find((a) => !a.startsWith('-'))
+    const dir = positionalDir(rest)
     // Importing a project's modules runs its top-level code — a decision the
     // loader's own docs assign to the user, so the CLI has to actually offer
     // it. `--no-mount` keeps the scan purely static.
@@ -412,10 +472,24 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     // says where it came from — and the reader's next question is always "can I
     // change that list?", which `atlas init` answers by writing it down.
     if (result.autoDetected && result.autoDetected.length > 0) {
+      // Three states reach here, and "no atlas.config.ts" is true of exactly
+      // one of them. It used to be printed for all three: a project whose
+      // config had just failed was told it had no config (contradicting the
+      // error one line above) and sent off to write a file it already wrote,
+      // and a project whose config loaded fine but simply lists no `projects`
+      // was told the same. Auto-detection is what fills the gap in every case;
+      // WHY the gap exists is what changes the reader's next move.
+      const lead = result.configError
+        ? `atlas: falling back to auto-detection because the config above did not load`
+        : result.configFound
+          ? `atlas: your config sets no \`projects\``
+          : `atlas: no atlas.config.ts`
+      const next = result.configError
+        ? `  Fix the config to get your theme, wrapper and groups back.\n`
+        : `  Run \`atlas init\` to write that list down and edit it.\n`
       err(
-        `atlas: no atlas.config.ts — detected ${result.autoDetected.length} workspace package(s): ` +
-          `${result.autoDetected.map((p) => p.name).join(', ')}.\n` +
-          `  Run \`atlas init\` to write that list down and edit it.\n`,
+        `${lead} — detected ${result.autoDetected.length} workspace package(s): ` +
+          `${result.autoDetected.map((p) => p.name).join(', ')}.\n${next}`,
       )
     }
     if (result.components === 0) {
@@ -448,7 +522,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
   }
 
   if (cmd === 'verify-browser') {
-    const dir = rest.find((a) => !a.startsWith('-'))
+    const dir = positionalDir(rest)
     const { runBrowserVerify } = await import('../verify-browser/runner')
     try {
       const summary = await runBrowserVerify({
@@ -476,7 +550,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
   }
 
   if (cmd === 'dev') {
-    const dir = rest.find((a) => !a.startsWith('-'))
+    const dir = positionalDir(rest)
     const portArg = rest.find((a) => a.startsWith('--port='))
     const port = portArg ? Number(portArg.slice('--port='.length)) : undefined
     // Imported lazily: the dev server pulls in Vite, and `atlas scan` must keep
@@ -505,7 +579,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
   }
 
   if (cmd === 'init') {
-    const dir = rest.find((a) => !a.startsWith('-'))
+    const dir = positionalDir(rest)
     const { runInit } = await import('./init')
     const result = runInit({
       cwd: dir ?? '.',
@@ -585,7 +659,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
   }
 
   if (cmd === 'build') {
-    const dir = rest.find((a) => !a.startsWith('-'))
+    const dir = positionalDir(rest)
     // Imported lazily, same reason as `dev`: this path pulls in Vite, and
     // `atlas scan` must keep working — and starting fast — without it.
     const { buildStatic } = await import('../build/static')

@@ -2202,6 +2202,24 @@ function autoImportCanonicalPrimitives(
       `(?:^|\\n)\\s*(?:export\\s+)?(?:function\\s+${name}\\b|const\\s+${name}\\b|let\\s+${name}\\b|var\\s+${name}\\b|class\\s+${name}\\b)`,
     )
     if (declRe.test(code)) alreadyInScope.add(name)
+    // DESTRUCTURED bindings — `const { Form, Text } = createForm(schema)`.
+    //
+    // The pattern above requires the name immediately after the keyword, so a
+    // destructured binding was invisible to it and the auto-import injected a
+    // colliding `import { Text }`, failing the build outright with
+    // `Identifier 'Text' has already been declared`. Found on a real app: a
+    // form factory returning named components is an entirely ordinary shape,
+    // and it made the file unbuildable with nothing pointing at the cause —
+    // the error names a line the author never wrote.
+    //
+    // Deliberately over-eager: `const { Text: Renamed } = x` binds `Renamed`,
+    // not `Text`, and is matched anyway. Skipping an auto-import costs an
+    // explicit import the author can add; injecting a colliding one costs them
+    // a build, so the two errors are not worth trading evenly.
+    const destructureRe = new RegExp(
+      `(?:^|\\n)\\s*(?:export\\s+)?(?:const|let|var)\\s*(?:\\{[^}]*\\b${name}\\b[^}]*\\}|\\[[^\\]]*\\b${name}\\b[^\\]]*\\])`,
+    )
+    if (destructureRe.test(code)) alreadyInScope.add(name)
   }
 
   // The set to inject, grouped by source.
