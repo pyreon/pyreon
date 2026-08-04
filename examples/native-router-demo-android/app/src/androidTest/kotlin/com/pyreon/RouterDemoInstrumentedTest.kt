@@ -450,14 +450,44 @@ class RouterDemoInstrumentedTest {
                 // rather than another round of guessing.
                 val shown = composeRule.onAllNodesWithText("Online: true")
                     .fetchSemanticsNodes().size
+                // GRACE WINDOW. The three-way verdict below needs it.
+                //
+                // The first version of this message offered only two outcomes —
+                // device-offline means a product bug, device-online means the
+                // test is wrong. That is a false dichotomy, and it misfired on
+                // #2480 (2026-08-04): it reported "product bug" while the same
+                // suite passed 8/8 on other branches minutes earlier. The case
+                // it could not express is the real one — ConnectivityManager's
+                // callback is CORRECT but had not been delivered yet on a
+                // loaded runner, i.e. "not yet", not "never".
+                //
+                // So re-check after a further grace period and report which of
+                // the THREE it was. A diagnostic that collapses a timing
+                // outcome into a correctness verdict sends the next reader
+                // hunting a bug that is not there.
+                Thread.sleep(GRACE_MS)
+                val settled = composeRule.onAllNodesWithText("Online: false")
+                    .fetchSemanticsNodes().isNotEmpty()
+                val verdict = when {
+                    settled ->
+                        "SLOW, NOT BROKEN: the hook DID report offline during a " +
+                            "further ${GRACE_MS}ms. The callback works; the 30s " +
+                            "budget is too tight for this runner. Raise the " +
+                            "budget — do NOT go looking for a product bug."
+                    deviceNetworkState(instr).contains("wifi_on=0") ->
+                        "the device reports itself OFFLINE and the hook still " +
+                            "has not observed it after 30s + ${GRACE_MS}ms — " +
+                            "this is a PRODUCT bug in useOnline."
+                    else ->
+                        "the device still reports a live network, so the " +
+                            "emulator ignored the disable commands and the " +
+                            "TEST is wrong."
+                }
                 throw AssertionError(
                     "useOnline() never reported false within 30s. " +
                         "App still showing \"Online: true\" on $shown node(s). " +
                         "DEVICE says: ${deviceNetworkState(instr)}. " +
-                        "If the device reports itself OFFLINE here, the hook " +
-                        "is not observing the change and this is a product " +
-                        "bug; if it still reports a live network, the emulator " +
-                        "ignored the disable commands and the TEST is wrong.",
+                        "VERDICT: $verdict",
                     e,
                 )
             }
@@ -818,6 +848,16 @@ class RouterDemoInstrumentedTest {
      * radios then stay up and the connectivity assertion below times out with
      * no indication of why. Reading to EOF is what makes it synchronous.
      */
+    /**
+     * Extra time the offline assertion allows before deciding WHY it failed.
+     *
+     * Not a retry of the assertion — the test still fails. It only separates
+     * "the callback is slow on this runner" from "the hook never observes the
+     * change", which the first version of that message could not express and
+     * therefore got wrong.
+     */
+    private val GRACE_MS = 15_000L
+
     private fun shell(instr: android.app.Instrumentation, cmd: String): String =
         ParcelFileDescriptor.AutoCloseInputStream(
             instr.uiAutomation.executeShellCommand(cmd),
