@@ -862,6 +862,34 @@ jobs:
           node-version: '24'
           # P3c — needs lib/ for bundle-size tests + nested-Vite-SSR
           # tests; default `restore-bootstrap: 'true'` is correct.
+      # Native compile-verdict cache — the single biggest work item in CI.
+      #
+      # The two native-compiler cells were measured at ~1030s EACH on an
+      # ordinary PR run (2026-08-04, run 30901780195): 44% of the entire run's
+      # work minutes, and the wall-clock critical path. Per-file timing showed
+      # where it goes — validate-kotlin.test.ts alone was 697s — because
+      # ubuntu runner images SHIP kotlinc, so the ~600 real compile
+      # validations run, and they ran COLD every time: the content-addressed
+      # verdict cache (validate-cache.ts; measured 397s cold → 6s warm) was
+      # only ever wired up in native-validate.yml. These cells fell back to
+      # tmpdir(), fresh per runner. The in-file comment above calling the
+      # toolchain cost "irreducible" predates that cache.
+      #
+      # Correctness is carried by the CACHE'S OWN KEYS (validator kind +
+      # compiler version + exact compiled bytes), not by this workflow key —
+      # a stale entry can only miss, never lie. RESTORE always; SAVE on
+      # push:main only (the #2652 lesson: per-branch saves duplicate the
+      # store once per branch and evict everything else out of the 10 GB
+      # repo budget). PRs restore main's latest store via the prefix key.
+      # The nightly native-validate schedule stays deliberately UNCACHED.
+      - name: Restore native compile-verdict cache
+        if: startsWith(matrix.category, 'native')
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: .cache/pyreon-native-validate
+          key: native-verdicts-ci-${{ runner.os }}-${{ github.sha }}
+          restore-keys: native-verdicts-ci-${{ runner.os }}-
+
       - name: Run tests (${{ matrix.category }})
         # PYREON_SKIP_SLOW_TESTS=1 makes individual tests opt OUT of the
         # PR-time fast path. Today this skips `bootstrap-exit-codes.test.ts`
@@ -872,6 +900,10 @@ jobs:
         # merge_group also run the full suite (no env var passed).
         env:
           PYREON_SKIP_SLOW_TESTS: ${{ github.event_name == 'pull_request' && '1' || '' }}
+          # Verdict store for the native cells (see the restore step above).
+          # Harmless for non-native cells: validate-cache only engages when a
+          # validator actually runs.
+          PYREON_VALIDATE_CACHE_DIR: ${{ github.workspace }}/.cache/pyreon-native-validate
         run: |
           # Most cells map 1:1 onto `packages/<category>/`. The two `native-*`
           # cells are PSEUDO-categories splitting `packages/native/` across two
@@ -951,6 +983,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
+      # Save the verdict store — push:main only (see the restore step's note).
+      # `if: always()` so a red main run still saves the verdicts it derived;
+      # they are content-addressed, so verdicts from a failing run are just as
+      # valid as from a green one.
+      - name: Save native compile-verdict cache
+        if: always() && github.ref == 'refs/heads/main' && startsWith(matrix.category, 'native')
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: .cache/pyreon-native-validate
+          key: native-verdicts-ci-${{ runner.os }}-${{ github.sha }}
+
       - name: Aggregate test matrix result
         run: |
           RESULT='${{ needs.test-cell.result }}'
@@ -1372,6 +1415,11 @@ jobs:
           # TRUE — see the `needs:` note above. The floor check would be happy
           # without it; the affected run is not, because it runs real suites.
           restore-bootstrap: 'true'
+          # Coverage REQUIRES node (bun's inspector lacks the V8 coverage API
+          # — 'Coverage APIs are not supported'). check-coverage.ts spawns
+          # vitest under node explicitly and preflights for it; this pins the
+          # version instead of trusting whatever the runner image ships.
+          node-version: '24'
       - name: Coverage floor + exemption drift check
         run: bun run coverage:floor
 
@@ -1461,6 +1509,13 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: ./.github/actions/setup-pyreon
+        with:
+          # Coverage REQUIRES node — bun's inspector lacks the V8 coverage API
+          # ('Coverage APIs are not supported'; the 2026-08-04 all-72-packages
+          # red main). check-coverage.ts spawns vitest under node explicitly
+          # and preflights for it; this pins the version instead of trusting
+          # whatever the runner image happens to ship on PATH that day.
+          node-version: '24'
       - name: Run full per-package coverage
         run: bun run coverage
 
