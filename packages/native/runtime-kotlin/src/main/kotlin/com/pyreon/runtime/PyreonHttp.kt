@@ -85,12 +85,59 @@ public data class PyreonHttpResponse(
 }
 
 /**
- * Injected HTTP executor — the app wires an OkHttp-backed implementation;
- * the container / `useFetch` emit calls [send]. Kept injected so this file
- * needs no Android HTTP dependency (kotlinc-stub compatible). A real
- * OkHttp executor is a Phase-2+ Android-CI follow-up.
+ * Injected HTTP executor. Kept injected so THIS file needs no Android HTTP
+ * dependency (it compiles under the kotlinc stub set like every other core
+ * container); the real OkHttp implementation lives in its own file so the
+ * dependency is attributable to exactly one source — the same split
+ * `PyreonWebSocket` / `PyreonWebSocketOkHttp` uses.
  */
 public interface PyreonHttpExecutor {
     /** Execute [request] and return the response. */
     public fun send(request: PyreonHttpRequest): PyreonHttpResponse
+}
+
+/** HTTP failures distinct from the transport's own exceptions. */
+public sealed class PyreonHttpError(message: String) : Exception(message) {
+    /** The url could not be parsed. */
+    public class InvalidUrl(public val url: String) : PyreonHttpError("invalid url: $url")
+
+    /**
+     * The server answered with a non-2xx status.
+     *
+     * Distinct from a decode failure on purpose — handing an error page to
+     * the JSON decoder surfaces as "the server sent bad JSON", which sends
+     * the reader looking at their model types when the real answer is a 404.
+     */
+    public class BadStatus(public val status: Int) : PyreonHttpError("HTTP $status")
+
+    /** No executor was installed and no default could be created. */
+    public class NoExecutor : PyreonHttpError(
+        "no PyreonHttpExecutor installed — call PyreonHttp.install(executor) " +
+            "or depend on the OkHttp default (PyreonHttpOkHttp)",
+    )
+}
+
+/**
+ * The entry point the `useFetch` emit calls.
+ *
+ * Mirrors Swift's `PyreonHttp.send(_:)` one-for-one so ONE shared source
+ * lowers to the same request on both targets. The executor is resolved once:
+ * an explicitly installed one wins, otherwise the OkHttp default is used when
+ * it is on the classpath (it registers itself), and failing both this throws
+ * rather than silently doing nothing.
+ */
+public object PyreonHttp {
+    @Volatile
+    private var executor: PyreonHttpExecutor? = null
+
+    /** Install a custom executor (tests, or a non-OkHttp stack). */
+    public fun install(executor: PyreonHttpExecutor) {
+        this.executor = executor
+    }
+
+    /** Execute [request]. Blocking — callers run it off the main thread. */
+    public fun send(request: PyreonHttpRequest): PyreonHttpResponse {
+        val exec = executor ?: throw PyreonHttpError.NoExecutor()
+        return exec.send(request)
+    }
 }

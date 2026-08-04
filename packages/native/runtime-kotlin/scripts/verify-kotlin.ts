@@ -594,6 +594,72 @@ abstract class WebSocketListener {
 }
 `
 
+// PyreonHttpOkHttp-specific stubs — the okhttp3 4.x REQUEST/RESPONSE surface,
+// mirrored EXACTLY. Deliberately SEPARATE from OKHTTP3_STUBS above (which
+// mirrors the websocket surface): each service compiles alone against only its
+// own stubs, and merging the two would hand the websocket check a
+// `newCall`/`execute` it never uses, and this one a `newWebSocket` it never
+// uses — supersets, and supersets mask.
+//
+// The shapes that matter and are easy to get wrong: `Request.Builder.method`
+// takes `(String, RequestBody?)` — a NULLABLE body, which is the whole reason
+// the executor branches per verb; `toRequestBody` and `toMediaTypeOrNull` are
+// COMPANION extensions in 4.x (not top-level functions); `Response` is
+// `Closeable` so `use { }` resolves; `Response.body` is NULLABLE and
+// `string()` consumes the stream; and `Headers` is `Iterable<Pair<String,
+// String>>`, which is what makes the destructuring loop compile.
+const OKHTTP3_HTTP_STUBS = `package okhttp3
+
+import java.io.Closeable
+
+class MediaType {
+  companion object {
+    fun String.toMediaTypeOrNull(): MediaType? = null
+  }
+}
+
+abstract class RequestBody {
+  companion object {
+    @Suppress("UNUSED_PARAMETER")
+    fun String.toRequestBody(contentType: MediaType? = null): RequestBody =
+      throw UnsupportedOperationException("stub")
+  }
+}
+
+class Headers : Iterable<Pair<String, String>> {
+  override fun iterator(): Iterator<Pair<String, String>> = emptyList<Pair<String, String>>().iterator()
+}
+
+class ResponseBody {
+  fun string(): String = ""
+}
+
+class Response : Closeable {
+  val code: Int = 0
+  val headers: Headers = Headers()
+  val body: ResponseBody? = null
+  override fun close() {}
+}
+
+interface Call {
+  fun execute(): Response
+}
+
+class Request private constructor() {
+  class Builder {
+    fun url(url: String): Builder = this
+    fun addHeader(name: String, value: String): Builder = this
+    @Suppress("UNUSED_PARAMETER")
+    fun method(method: String, body: RequestBody?): Builder = this
+    fun build(): Request = throw UnsupportedOperationException("stub")
+  }
+}
+
+open class OkHttpClient {
+  fun newCall(request: Request): Call = throw UnsupportedOperationException("stub")
+}
+`
+
 // PyreonImagePicker-specific stubs — the androidx.activity ActivityResult
 // surface the Android Photo Picker is driven through.
 //
@@ -908,6 +974,10 @@ try {
     // The transport hops every listener callback to the main looper.
     writeFileSync(join(tempDir, 'AndroidOsHandler.kt'), ANDROID_OS_HANDLER_STUBS, 'utf8')
   }
+  const okhttpHttpPath = join(tempDir, 'OkHttp3Http.kt')
+  if (SERVICE === 'PyreonHttpOkHttp') {
+    writeFileSync(okhttpHttpPath, OKHTTP3_HTTP_STUBS, 'utf8')
+  }
 
   const jarPath = join(tempDir, 'pyreon-runtime.jar')
 
@@ -1046,6 +1116,15 @@ try {
           resolve(PACKAGE_ROOT, 'src/main/kotlin/com/pyreon/runtime/PyreonWebSocket.kt'),
         ]
       : []
+  // Same shape as okhttpExtras: the executor is an EXTENSION over the core
+  // PyreonHttp container, so its compile needs that sibling source too.
+  const okhttpHttpExtras =
+    SERVICE === 'PyreonHttpOkHttp'
+      ? [
+          okhttpHttpPath,
+          resolve(PACKAGE_ROOT, 'src/main/kotlin/com/pyreon/runtime/PyreonHttp.kt'),
+        ]
+      : []
 
   const kotlincArgs = typecheckOnly
     ? [
@@ -1064,6 +1143,7 @@ try {
         ...linkingStubs,
         ...notifStubs,
         ...okhttpExtras,
+        ...okhttpHttpExtras,
         ...geolocationAndroidExtras,
         ...networkAndroidExtras,
         SOURCE_FILE,
@@ -1085,6 +1165,7 @@ try {
         ...linkingStubs,
         ...notifStubs,
         ...okhttpExtras,
+        ...okhttpHttpExtras,
         ...geolocationAndroidExtras,
         ...networkAndroidExtras,
         SOURCE_FILE,

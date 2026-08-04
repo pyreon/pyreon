@@ -1304,15 +1304,50 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         if (m !== null) return m
       }
       // Fetch-field read: `quotes.data()` (CALL form — web reads the
-      // signal). data → T; isPending → boolean; error → unknown.
+      // signal). data → T | undefined; isPending → boolean; error → unknown.
+      //
+      // `data` is OPTIONAL and every layer says so — the web hook is
+      // `signal<T | undefined>(undefined)`, Swift is `var data: T?`, Kotlin is
+      // `MutableState<T?>`. Inferring a bare `T` made the receiver look
+      // provably non-null, so the Swift member emit STRIPPED the `?.` the
+      // author wrote and produced `created.data.id` for `created.data()?.id`:
+      // uncompilable ("value of optional type 'Item?' must be unwrapped").
+      //
+      // Nothing caught it because every device-proven example fetches an
+      // ARRAY and reads it as `quotes.data() ?? []` — a `??` fallback, never
+      // an optional MEMBER access. So the single-object shape, which is the
+      // natural one for a POST response, had never been compiled.
       if (
         expr.args.length === 0 &&
         expr.callee.kind === 'member' &&
         expr.callee.object.kind === 'identifier' &&
         ctx.fetches.has(expr.callee.object.name)
       ) {
-        if (expr.callee.property === 'data') return ctx.fetches.get(expr.callee.object.name)!
+        if (expr.callee.property === 'data') {
+          const t = ctx.fetches.get(expr.callee.object.name)!
+          // Already a union carrying null/undefined — leave it alone rather
+          // than nesting a second optional layer.
+          if (
+            t.kind === 'union' &&
+            t.branches.some((b) => b.kind === 'null' || b.kind === 'undefined')
+          ) {
+            return t
+          }
+          return { kind: 'union', branches: [t, { kind: 'undefined' }] }
+        }
         if (expr.callee.property === 'isPending') return { kind: 'boolean' }
+        // `error` in CALL form. `SERVICE_OPTIONAL_FIELDS` already types the
+        // MEMBER read as optional, but the call form — which is what shared
+        // source actually writes, because web reads a signal — fell through to
+        // `unknown`. So `{fetch.error() ? 'x' : 'y'}` never reached the
+        // optional-condition rewrite and emitted a bare `Throwable?` as a
+        // Kotlin condition: "condition type mismatch: inferred type is
+        // 'Throwable?' but 'Boolean' was expected". Same class as the
+        // session-rehydrate `if (token)` shape SERVICE_METHOD_RETURNS exists
+        // for; the fetch container's call form was simply never listed.
+        if (expr.callee.property === 'error') {
+          return { kind: 'union', branches: [{ kind: 'string' }, { kind: 'undefined' }] }
+        }
       }
       // Store-read chain: `useApp().store.tasks()` — zero-arg call on a
       // field of `.store` on a zero-arg store-hook call. Resolves to

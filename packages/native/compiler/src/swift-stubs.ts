@@ -603,6 +603,43 @@ public final class PyreonFetch<T> {
   public func load(_ fetcher: @escaping () throws -> T) {}
   public func refetch() {}
 }
+// PyreonHttp — what a \`useFetch(url, { method, headers, body })\` decl emits.
+// Mirrors the REAL PyreonHttp.swift surface exactly (a superset stub masks):
+// \`send\` is \`async throws\`, \`isOK\` is capitalised where Kotlin's is \`isOk\`,
+// \`decode\` is generic + throwing, and the request init's arguments are all
+// defaulted except \`url\`.
+public enum PyreonHttpMethod: String, Sendable {
+  case get = "GET"
+  case post = "POST"
+  case put = "PUT"
+  case patch = "PATCH"
+  case delete = "DELETE"
+}
+public struct PyreonHttpRequest: Sendable {
+  public init(
+    method: PyreonHttpMethod = .get,
+    url: String,
+    headers: [String: String] = [:],
+    body: Data? = nil
+  ) {}
+}
+public struct PyreonHttpResponse: Sendable {
+  public let status: Int = 0
+  public var isOK: Bool { true }
+  public var text: String { "" }
+  public func decode<T: Decodable>(_ type: T.Type) throws -> T {
+    throw PyreonHttpError.invalidURL("stub")
+  }
+}
+public enum PyreonHttpError: Error, Equatable {
+  case invalidURL(String)
+  case badStatus(Int)
+}
+public enum PyreonHttp {
+  public static func send(_ request: PyreonHttpRequest) async throws -> PyreonHttpResponse {
+    PyreonHttpResponse()
+  }
+}
 public final class PyreonDatabase {
   public init() {}
   public func insert(_ collection: String, _ record: PyreonRecord) {}

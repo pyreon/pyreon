@@ -576,6 +576,39 @@ class RouterDemoInstrumentedTest {
         composeRule.onNodeWithTag("ws-last").assertTextEquals("Echo: echo:ping-42")
     }
 
+    // Networking row — HTTP VERBS device-proven on Android, through the real
+    // OkHttp executor this arc had to write (`PyreonHttp` shipped with an
+    // executor INTERFACE and a comment calling the implementation a
+    // "Phase-2+ follow-up"; nothing implemented it, and separately nothing in
+    // the compiler lowered to it, so the whole HTTP layer was unreachable).
+    //
+    // The assertion is on what the SERVER SAW: `/echo` reflects the request,
+    // so a POST that silently degraded to a GET — what every version before
+    // this emitted, since the parser never read useFetch's second argument —
+    // renders "Method: GET" and fails here instead of passing quietly.
+    //
+    // Needs `adb reverse tcp:8790 tcp:8790` like the websocket test above.
+    @Test
+    fun httpVerbAndBodyReachTheWire() {
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        composeRule.onNodeWithText("View http").performClick()
+        composeRule.onNodeWithTag("http-page").assertIsDisplayed()
+
+        // The verb the server actually received.
+        composeRule.waitUntil(timeoutMillis = 15_000) {
+            composeRule.onAllNodesWithText("Method: POST").fetchSemanticsNodes().isNotEmpty()
+        }
+        // ...and the body. Separate assertion: a fix that carried the verb but
+        // dropped the payload would satisfy the check above on its own.
+        composeRule
+            .onNodeWithTag("http-body")
+            .assertTextEquals("Body: {\"name\":\"pyreon\"}")
+        // A non-2xx must REJECT rather than reach the decoder.
+        composeRule.waitUntil(timeoutMillis = 15_000) {
+            composeRule.onAllNodesWithText("Bad: rejected").fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
     @Test
     fun navigatesToUserDetailWithParam() {
         // Tap "View user 42" → assert user-page renders + the

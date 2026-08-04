@@ -16,7 +16,7 @@
 // targets — provable by `ls` + `diff`.
 
 import { For, onMount } from '@pyreon/core'
-import { useDatabase, useOnline, useSecureStorage, useSizeClass, useWebSocket } from '@pyreon/hooks'
+import { useDatabase, useFetch, useOnline, useSecureStorage, useSizeClass, useWebSocket } from '@pyreon/hooks'
 import { useFieldArray } from '@pyreon/form'
 import { Button, Heading, Image, Inline, Layer, Link, Press, Spacer, Stack, Text } from '@pyreon/primitives'
 import { Element } from '@pyreon/elements'
@@ -419,6 +419,7 @@ function HomePage() {
       </Inline>
       <Inline gap={2}>
         <Button onPress={() => navigate('/media')}>View media</Button>
+        <Button onPress={() => navigate('/http')}>View http</Button>
       </Inline>
       {/* Core-UI row closure — `Link` was listed "not individually asserted",
           and it had NO usage in any gated app despite this file's header
@@ -542,6 +543,48 @@ function UserPage(props: { params: { id: string } }) {
   )
 }
 
+// Networking-row proof — HTTP VERBS through the shared source.
+//
+// `useFetch(url, { method, headers, body })` is the shape an author reaches
+// for, and until this arc every field of that init object was READ BY NOBODY:
+// the parser only looked at argument[0], so both targets emitted a plain GET
+// and the app silently performed the wrong verb with no diagnostic anywhere.
+// It now lowers to `PyreonHttp` — a runtime that had shipped on BOTH targets
+// with full verb support and nothing calling it (URLSession on iOS, and on
+// Android an executor interface whose real OkHttp implementation this arc
+// also had to write).
+//
+// The server REFLECTS what it received, so the assertion is on what actually
+// reached the wire: a request that degraded to GET reads `Method: GET` rather
+// than quietly passing. `/boom` answers 500 so the emitted isOK/isOk guard
+// has something to reject on — a non-2xx must surface as an ERROR, not as a
+// decode failure that reads like "the server sent bad JSON".
+interface EchoReply {
+  id: string
+  method: string
+  body: string
+}
+
+function HttpPage() {
+  const navigate = useNavigate()
+  const posted = useFetch<EchoReply>('http://localhost:8790/echo', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{"name":"pyreon"}',
+  })
+  const failed = useFetch<EchoReply>('http://localhost:8790/boom', { method: 'PUT' })
+  return (
+    <Stack gap={3} padding={4} data-testid="http-page">
+      <Text>Http</Text>
+      <Text data-testid="http-method">Method: {posted.data()?.method ?? 'none'}</Text>
+      <Text data-testid="http-body">Body: {posted.data()?.body ?? 'none'}</Text>
+      <Text data-testid="http-id">Id: {posted.data()?.id ?? 'none'}</Text>
+      <Text data-testid="http-bad">Bad: {failed.error() ? 'rejected' : 'no'}</Text>
+      <Button onPress={() => navigate('/')}>Back to Home</Button>
+    </Stack>
+  )
+}
+
 export function RouterApp() {
   // `mode: 'history'` is web-only (HTML5 pushState + path-based URLs).
   // PMTC's parser only reads `routes` from createRouter's options
@@ -561,6 +604,7 @@ export function RouterApp() {
       { path: '/anim', component: AnimPage },
       { path: '/offline', component: OfflinePage },
       { path: '/media', component: MediaPage },
+      { path: '/http', component: HttpPage },
     ],
   })
 

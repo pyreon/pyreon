@@ -1738,10 +1738,42 @@ function emitSwiftComponent(c: ComponentIR): string {
     lines.push(`      .task {`)
     lines.push(`        ${name}.begin()`)
     lines.push(`        do {`)
-    lines.push(
-      `          let (bytes, _) = try await URLSession.shared.data(from: URL(string: ${JSON.stringify(d.url)})!)`,
-    )
-    lines.push(`          ${name}.resolve(try JSONDecoder().decode(${swiftType(d.type)}.self, from: bytes))`)
+    if (d.method || d.headers || d.body) {
+      // A request with a VERB, headers, or a body goes through PyreonHttp —
+      // the runtime that has shipped on both targets with full verb support
+      // and, until now, nothing that lowered to it. The bare-GET path below
+      // is left alone deliberately: it is device-proven, and re-routing it
+      // would put a proven path behind a brand-new Android executor. Folding
+      // the two together once this one is device-proven is the follow-up.
+      const method = (d.method ?? 'GET').toLowerCase()
+      const parts = [`method: .${method}`, `url: ${JSON.stringify(d.url)}`]
+      if (d.headers) {
+        const pairs = Object.entries(d.headers)
+          .map(([k, v]) => `${JSON.stringify(k)}: ${JSON.stringify(v)}`)
+          .join(', ')
+        parts.push(`headers: [${pairs}]`)
+      }
+      if (d.body !== undefined) parts.push(`body: Data(${JSON.stringify(d.body)}.utf8)`)
+      lines.push(`          let __response = try await PyreonHttp.send(`)
+      lines.push(`            PyreonHttpRequest(${parts.join(', ')})`)
+      lines.push(`          )`)
+      // A non-2xx must REJECT rather than decode. Handing an error page to
+      // JSONDecoder surfaces as a decode failure, which reads as "the server
+      // sent bad JSON" and hides the actual status.
+      lines.push(`          guard __response.isOK else {`)
+      lines.push(
+        `            throw PyreonHttpError.badStatus(__response.status)`,
+      )
+      lines.push(`          }`)
+      lines.push(`          ${name}.resolve(try __response.decode(${swiftType(d.type)}.self))`)
+    } else {
+      lines.push(
+        `          let (bytes, _) = try await URLSession.shared.data(from: URL(string: ${JSON.stringify(d.url)})!)`,
+      )
+      lines.push(
+        `          ${name}.resolve(try JSONDecoder().decode(${swiftType(d.type)}.self, from: bytes))`,
+      )
+    }
     lines.push(`        } catch { ${name}.reject(error) }`)
     lines.push(`      }`)
   }

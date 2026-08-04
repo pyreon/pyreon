@@ -462,6 +462,60 @@ final class PyreonRouterDemoUITests: XCTestCase {
         }
     }
 
+    // Networking row — HTTP VERBS device-proven. The assertion is on what the
+    // SERVER SAW: `/echo` reflects the request back, so a POST that silently
+    // degraded to a GET — exactly what every version before this arc emitted,
+    // because the parser never read `useFetch`'s second argument — renders
+    // "Method: GET" and fails here rather than passing quietly.
+    //
+    // Three things are proven together: the verb reached the wire, the BODY
+    // reached it too (a header-only fix would still drop the payload), and a
+    // non-2xx REJECTS instead of being handed to the decoder (the /boom PUT).
+    // The decode itself is implied by any of the three rendering at all — the
+    // reply is only readable as EchoReply if PyreonHttp -> JSONDecoder ran.
+    //
+    // Requires the fixture: `bun examples/native-router-demo-ios/scripts/ws-echo-server.ts`
+    func test_httpVerbAndBodyReachTheWire() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            "Home page did not render"
+        )
+        app.buttons["View http"].tap()
+        XCTAssertTrue(
+            app.otherElements["http-page"].firstMatch.waitForExistence(timeout: 15),
+            "http page did not render"
+        )
+
+        // The server echoes the METHOD it received.
+        if !app.staticTexts["Method: POST"].waitForExistence(timeout: 15) {
+            XCTFail(
+                "the server did not see a POST — live state: "
+                    + "\"\(app.staticTexts["http-method"].label) / "
+                    + "\(app.staticTexts["http-body"].label) / "
+                    + "\(app.staticTexts["http-id"].label)\" (is the fixture "
+                    + "server running? bun scripts/ws-echo-server.ts)"
+            )
+        }
+
+        // ...and the BODY. Asserted separately because a fix that carried the
+        // verb but dropped the payload would pass the check above.
+        XCTAssertTrue(
+            app.staticTexts["Body: {\"name\":\"pyreon\"}"].waitForExistence(timeout: 10),
+            "the request body never reached the server — got "
+                + "\"\(app.staticTexts["http-body"].label)\""
+        )
+
+        // A non-2xx must surface as an ERROR, not as a decode failure.
+        XCTAssertTrue(
+            app.staticTexts["Bad: rejected"].waitForExistence(timeout: 10),
+            "the 500 from /boom did not reject — got "
+                + "\"\(app.staticTexts["http-bad"].label)\""
+        )
+    }
+
     // Storage row — useSecureStorage device-proven: the secret SURVIVES a
     // genuine terminate + relaunch, which only the Keychain can explain.
     //

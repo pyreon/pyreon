@@ -119,6 +119,13 @@ public struct PyreonHttpResponse: Sendable {
 /// HTTP failures distinct from URLSession's own errors.
 public enum PyreonHttpError: Error, Equatable {
     case invalidURL(String)
+    /// The server answered with a non-2xx status.
+    ///
+    /// Distinct from a decode failure on purpose. Handing an error page to
+    /// `JSONDecoder` surfaces as "the server sent bad JSON", which sends the
+    /// reader looking at their model types when the real answer is a 404 or a
+    /// 500. The `useFetch` emit checks `isOK` and throws this instead.
+    case badStatus(Int)
 }
 
 /// The HTTP layer `PyreonFetch`'s injected fetcher uses for richer requests.

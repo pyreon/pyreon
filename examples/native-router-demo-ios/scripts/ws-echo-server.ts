@@ -40,6 +40,34 @@ Bun.serve({
         headers: { 'content-type': 'image/png' },
       })
     }
+    // Networking-row http-VERB fixture: reflect the request back as JSON so a
+    // device test can prove the METHOD and BODY survived the whole lowering —
+    // shared source -> PyreonHttpRequest -> URLSession / OkHttp -> the wire.
+    // Reflecting rather than asserting is deliberate: the test compares what
+    // the SERVER saw, so a request that silently degraded to GET (the exact
+    // bug this arc fixes) reads as `method: "GET"` instead of quietly passing.
+    if (new URL(req.url).pathname === '/echo') {
+      return req.text().then(
+        (body) =>
+          new Response(
+            JSON.stringify({
+              id: 'srv-1',
+              method: req.method,
+              body,
+              contentType: req.headers.get('content-type') ?? '',
+            }),
+            { headers: { 'content-type': 'application/json' } },
+          ),
+      )
+    }
+    // A deliberate non-2xx, so the emitted `isOK`/`isOk` guard has something
+    // to reject on. Without it a status check is untestable.
+    if (new URL(req.url).pathname === '/boom') {
+      return new Response('{"error":"nope"}', {
+        status: 500,
+        headers: { 'content-type': 'application/json' },
+      })
+    }
     if (server.upgrade(req)) return undefined
     return new Response('websocket echo server — connect with a ws client', {
       status: 426,
@@ -52,4 +80,4 @@ Bun.serve({
   },
 })
 
-console.log(`[ws-echo] listening on ws://localhost:${port}`)
+console.log(`[ws-echo] listening on ws://localhost:${port} (+ http /echo, /boom, /dot.png)`)

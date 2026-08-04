@@ -4430,7 +4430,97 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
         `Declaration ${name}: useFetch without a response type lowers to decode(Any.self, ...) on Swift, which does NOT compile - Any cannot conform to Decodable. Give it the shape you expect: useFetch<Response>('${urlArg.value}') with a type/interface declared alongside the component. Kotlin compiles either way, so this breaks iOS only.`,
       )
     }
-    return { kind: 'fetch', name, type, url: urlArg.value }
+    // The request init — `useFetch<T>(url, { method, headers, body })`.
+    //
+    // Read LOUDLY. Every field here used to be discarded in silence: nothing
+    // looked past `arguments[0]`, so an author writing `method: 'POST'` got a
+    // GET on both targets with no diagnostic anywhere. The rule below is the
+    // same one the url argument already follows — literals are baked, anything
+    // non-literal WARNS rather than being quietly ignored, because a request
+    // that silently uses the wrong verb is a data-corrupting no-op, not a
+    // missing feature.
+    const initArg = init.arguments?.[1]
+    const req: { method?: string; headers?: Record<string, string>; body?: string } = {}
+    if (initArg) {
+      if (initArg.type !== 'ObjectExpression') {
+        ctx.warnings.push(
+          `Declaration ${name}: useFetch init must be an object literal to lower to native; got ${initArg.type}. The request will be a plain GET on iOS and Android.`,
+        )
+      } else {
+        for (const prop of initArg.properties ?? []) {
+          if (prop.type !== 'Property' || prop.computed) continue
+          const key =
+            prop.key?.type === 'Identifier'
+              ? prop.key.name
+              : typeof prop.key?.value === 'string'
+                ? prop.key.value
+                : undefined
+          if (!key) continue
+          const value = prop.value
+          const isStringLit =
+            (value?.type === 'Literal' || value?.type === 'StringLiteral') &&
+            typeof value.value === 'string'
+
+          if (key === 'method') {
+            if (!isStringLit) {
+              ctx.warnings.push(
+                `Declaration ${name}: useFetch method must be a string literal to lower to native; got ${value?.type ?? 'nothing'}. The request will be a plain GET on iOS and Android.`,
+              )
+              continue
+            }
+            req.method = String(value.value).toUpperCase()
+          } else if (key === 'body') {
+            if (!isStringLit) {
+              // A JSON.stringify(obj) body is the obvious next shape and is
+              // NOT supported — say so rather than sending an empty body.
+              ctx.warnings.push(
+                `Declaration ${name}: useFetch body must be a string literal to lower to native; got ${value?.type ?? 'nothing'}. The request will be sent with NO body on iOS and Android.`,
+              )
+              continue
+            }
+            req.body = String(value.value)
+          } else if (key === 'headers') {
+            if (value?.type !== 'ObjectExpression') {
+              ctx.warnings.push(
+                `Declaration ${name}: useFetch headers must be an object literal of string literals to lower to native; got ${value?.type ?? 'nothing'}. The request will be sent with NO headers on iOS and Android.`,
+              )
+              continue
+            }
+            const headers: Record<string, string> = {}
+            for (const h of value.properties ?? []) {
+              if (h.type !== 'Property' || h.computed) continue
+              const hk =
+                h.key?.type === 'Identifier'
+                  ? h.key.name
+                  : typeof h.key?.value === 'string'
+                    ? h.key.value
+                    : undefined
+              const hv = h.value
+              if (
+                hk &&
+                (hv?.type === 'Literal' || hv?.type === 'StringLiteral') &&
+                typeof hv.value === 'string'
+              ) {
+                headers[hk] = hv.value
+              } else if (hk) {
+                ctx.warnings.push(
+                  `Declaration ${name}: useFetch header "${hk}" must be a string literal to lower to native; it will be OMITTED on iOS and Android.`,
+                )
+              }
+            }
+            if (Object.keys(headers).length > 0) req.headers = headers
+          } else {
+            // `signal`, `credentials`, `mode`, … are web-fetch options with no
+            // native analogue. Naming them beats dropping them silently.
+            ctx.warnings.push(
+              `Declaration ${name}: useFetch init option "${key}" has no native equivalent and is ignored on iOS and Android.`,
+            )
+          }
+        }
+      }
+    }
+
+    return { kind: 'fetch', name, type, url: urlArg.value, ...req }
   }
   // Phase 4.2 — `useForm({ initialValues })` from @pyreon/form. The config
   // arg is optional; when present we capture the string-keyed literal
