@@ -38,7 +38,21 @@ export interface UnmatchedFile {
   reason?: string
 }
 
-const isPascal = (name: string): boolean => /^[A-Z]/.test(name)
+/**
+ * PascalCase, and NOT a screaming constant.
+ *
+ * `DATASET_FINDINGS` starts with a capital, so a bare `/^[A-Z]/` counted every
+ * exported constant as a candidate component. Measured on a real 78-package
+ * monorepo: a large share of the noise, and noise is what makes a report like
+ * this get ignored.
+ *
+ * Keyed on the UNDERSCORE, not on being all-caps: `UI`, `API` and a
+ * single-letter `A` are legal component names, and excluding them would trade
+ * this false positive for a false negative — which is the worse of the two,
+ * because a missing component is the thing this report exists to surface.
+ */
+const isPascal = (name: string): boolean =>
+  /^[A-Z]/.test(name) && !/^[A-Z0-9]+(?:_[A-Z0-9]+)+$/.test(name)
 
 /**
  * Recognise the shapes that are known not to be catalogued, so the report can
@@ -166,14 +180,36 @@ export function findUnmatched(
  * perfectly fine (a provider, a schema, a const), so the framing is "look at
  * these" and the reasons carry the actionable part.
  */
-export function formatUnmatched(unmatched: readonly UnmatchedFile[]): string[] {
+export function formatUnmatched(unmatched: readonly UnmatchedFile[], limit = 8): string[] {
   if (unmatched.length === 0) return []
+
+  // Grouped and CAPPED.
+  //
+  // On a real 78-package monorepo this listed 1112 files. A report that long is
+  // not read — it is scrolled past, which makes it exactly as useless as the
+  // silence it replaced. The counts are the finding ("900 of these are barrel
+  // re-exports") and a handful of examples is what makes it actionable; the
+  // full list stays in `atlas-catalog.json` for anyone who wants it.
+  const byReason = new Map<string, UnmatchedFile[]>()
+  const UNKNOWN = 'no recognised component declaration'
+  for (const entry of unmatched) {
+    const key = entry.reason ?? UNKNOWN
+    const bucket = byReason.get(key)
+    if (bucket) bucket.push(entry)
+    else byReason.set(key, [entry])
+  }
+
   const lines = [
     `atlas: ${unmatched.length} file(s) export something PascalCase that produced no component:`,
   ]
-  for (const entry of unmatched) {
-    lines.push(`  · ${entry.file} — ${entry.exports.join(', ')}`)
-    if (entry.reason) lines.push(`    ${entry.reason}`)
+  // Largest bucket first — the biggest group is the one worth understanding.
+  const groups = [...byReason.entries()].sort((a, b) => b[1].length - a[1].length)
+  for (const [reason, entries] of groups) {
+    lines.push(`  ${entries.length}× ${reason}`)
+    for (const entry of entries.slice(0, limit)) {
+      lines.push(`    · ${entry.file} — ${entry.exports.slice(0, 4).join(', ')}`)
+    }
+    if (entries.length > limit) lines.push(`    … and ${entries.length - limit} more`)
   }
   lines.push(
     '  Not necessarily wrong — a provider, a schema or a const belongs here too.',

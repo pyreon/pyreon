@@ -17,7 +17,7 @@ import type {
   Scenario,
   VerifyVerdict,
 } from './types'
-import { componentKey, resolveComponent } from './identity'
+import { componentKey, fileQualifierFor, pathQualifierFor, resolveComponent } from './identity'
 
 /** A single search match, ranked by `score` (higher = better). */
 export interface SearchHit {
@@ -65,11 +65,52 @@ export function createCatalogGraph(initial: readonly ComponentIntelligence[] = [
   // silent-drop, in the tool built to prevent them. Single-package scans set no
   // `project`, so their keys are unchanged.
   const byKey = new Map<string, ComponentIntelligence>()
-  for (const ci of initial) byKey.set(componentKey(ci), ci)
+
+  /**
+   * Insert, qualifying by PATH when a name genuinely collides.
+   *
+   * A same-named component in a different directory is ordinary — a per-page
+   * `MainFilter`, an icon file exporting `Glyph`. Plain last-write-wins dropped
+   * every one after the first; measured on a real monorepo, 1042 components.
+   *
+   * The FIRST occupant is re-keyed too, so neither wins by arriving first and
+   * both carry the directory that tells them apart. A repeat from the SAME
+   * source is a genuine re-registration (a plugin refining a component) and
+   * still replaces.
+   */
+  const insert = (ci: ComponentIntelligence): void => {
+    const key = componentKey(ci)
+    const existing = byKey.get(key)
+    if (!existing || existing.source === ci.source) {
+      byKey.set(key, ci)
+      return
+    }
+    // Directory first, then FILENAME when the directory is shared. A generated
+    // icon package puts 995 `Glyph` files in one directory, so directory alone
+    // still collapsed 994 of them.
+    let incoming = pathQualifierFor(ci.source)
+    let held = pathQualifierFor(existing.source)
+    if (!incoming || !held || incoming === held) {
+      incoming = fileQualifierFor(ci.source)
+      held = fileQualifierFor(existing.source)
+    }
+    // Genuinely nothing to tell them apart — keep the last, as before.
+    if (!incoming || !held || incoming === held) {
+      byKey.set(key, ci)
+      return
+    }
+    byKey.delete(key)
+    const requalified = { ...existing, pathQualifier: held }
+    byKey.set(componentKey(requalified), requalified)
+    const qualified = { ...ci, pathQualifier: incoming }
+    byKey.set(componentKey(qualified), qualified)
+  }
+
+  for (const ci of initial) insert(ci)
 
   const graph: CatalogGraph = {
     add(ci) {
-      byKey.set(componentKey(ci), ci)
+      insert(ci)
       return graph
     },
     list() {

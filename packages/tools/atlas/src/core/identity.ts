@@ -33,6 +33,13 @@ export interface ComponentIdentity {
   name: string
   /** Owning project root, for a multi-root (monorepo) scan. */
   project?: string
+  /**
+   * Source directory, appended to the key ONLY when set.
+   *
+   * Set by the graph when a name genuinely collides, so identity stays short
+   * for the common case and becomes unambiguous exactly where it must.
+   */
+  pathQualifier?: string
 }
 
 /**
@@ -42,7 +49,52 @@ export interface ComponentIdentity {
  * a key read in a log or a catalog file points at a place a reader recognises.
  */
 export function componentKey(component: ComponentIdentity): string {
-  return component.project ? `${component.project}/${component.name}` : component.name
+  const base = component.project ? `${component.project}/${component.name}` : component.name
+  // A same-named component in a DIFFERENT directory is ordinary — a per-page
+  // `MainFilter`, a per-section `ChartsRow`, an icon file exporting `Glyph`.
+  // Without the path they collide and all but one vanish; measured on a real
+  // monorepo that was 1042 components.
+  //
+  // The qualifier is the source DIRECTORY, and it is appended only when the
+  // caller supplies one — so a single-file-per-name project (the common case)
+  // keeps byte-identical keys.
+  return component.pathQualifier ? `${base}@${component.pathQualifier}` : base
+}
+
+/**
+ * The directory a component was declared in, relative to its scan root.
+ *
+ * Used to keep same-named components apart. Only the DIRECTORY, never the
+ * filename: `Button/index.tsx` and `Button.tsx` are the same component to a
+ * reader, and letting the filename into identity would split them.
+ */
+export function pathQualifierFor(source: string | undefined): string | undefined {
+  if (!source) return undefined
+  const parts = source.split(/[/\\]/).filter(Boolean)
+  parts.pop()
+  return parts.length > 0 ? parts.join('/') : undefined
+}
+
+/**
+ * The filename, without extension — the qualifier of last resort.
+ *
+ * Needed when the directory does NOT tell two components apart. The case that
+ * forced it: a generated icon package where 995 files under one `generated/`
+ * directory each export `default function Glyph`. The directory is identical
+ * for all of them, so directory-qualification still collapsed them to one and
+ * 994 icons stayed invisible.
+ *
+ * Tried second rather than first because `Button/index.tsx` and `Button.tsx`
+ * are the same component to a reader, and leading with the filename would split
+ * a component from itself.
+ */
+export function fileQualifierFor(source: string | undefined): string | undefined {
+  if (!source) return undefined
+  const base = source.split(/[/\\]/).filter(Boolean).pop()
+  if (!base) return undefined
+  const stem = base.replace(/\.[jt]sx?$/, '')
+  // `index` names the directory, not the component — useless as a qualifier.
+  return stem && stem !== 'index' ? stem : undefined
 }
 
 /**

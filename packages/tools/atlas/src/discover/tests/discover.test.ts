@@ -25,11 +25,29 @@ describe('discoverComponents', () => {
     expect(names).not.toContain('Ignored')
   })
 
-  it('dedupes components by name (first sorted file wins)', () => {
+  it('KEEPS same-named components from different files', () => {
+    // This test used to assert the opposite — that the first sorted file won
+    // and the rest were dropped. That encoded a real bug: a per-page
+    // `MainFilter` in fifteen directories is completely ordinary, and measured
+    // on a real 78-package monorepo the name-only dedupe lost 1042 components.
+    //
+    // The invariant it was protecting is still here and still asserted below:
+    // deterministic order, and no component emitted twice from one file.
     const buttons = discoverComponents({ cwd: dir }).filter((c) => c.name === 'Button')
-    expect(buttons).toHaveLength(1)
-    // Alt.tsx sorts before Button.tsx, so its `other` prop wins
-    expect(buttons[0]!.controls.map((c) => c.name)).toEqual(['other'])
+    expect(buttons).toHaveLength(2)
+    expect(buttons.map((b) => b.source).sort()).toEqual(
+      [...buttons.map((b) => b.source)].sort(),
+    )
+    // Both contracts survive, rather than one overwriting the other.
+    const propNames = buttons.map((b) => b.controls.map((c) => c.name).join(','))
+    expect(new Set(propNames).size).toBe(2)
+  })
+
+  it('does not emit the same component twice from one file', () => {
+    // The invariant the old dedupe genuinely protected.
+    const all = discoverComponents({ cwd: dir })
+    const seen = new Set(all.map((c) => `${c.name}@${c.source}`))
+    expect(seen.size).toBe(all.length)
   })
 
   it('returns [] for a missing directory', () => {
