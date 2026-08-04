@@ -429,6 +429,12 @@ class RouterDemoInstrumentedTest {
         try {
             shell(instr, "svc wifi disable")
             shell(instr, "svc data disable")
+            // Emulators frequently keep a virtual network up through
+            // `svc wifi/data disable`; airplane mode is the switch that
+            // actually drops it. Both are applied so a device where either
+            // works behaves the same.
+            shell(instr, "settings put global airplane_mode_on 1")
+            shell(instr, "am broadcast -a android.intent.action.AIRPLANE_MODE --ez state true")
             try {
                 composeRule.waitUntil(timeoutMillis = 30_000) {
                     composeRule
@@ -445,12 +451,13 @@ class RouterDemoInstrumentedTest {
                 val shown = composeRule.onAllNodesWithText("Online: true")
                     .fetchSemanticsNodes().size
                 throw AssertionError(
-                    "useOnline() never reported false within 30s after " +
-                        "`svc wifi/data disable`. Nodes still showing " +
-                        "\"Online: true\": $shown. If that is 1, the radios " +
-                        "went down but the hook did not observe it; if the " +
-                        "device is still online, the shell command did not " +
-                        "take effect on this emulator image.",
+                    "useOnline() never reported false within 30s. " +
+                        "App still showing \"Online: true\" on $shown node(s). " +
+                        "DEVICE says: ${deviceNetworkState(instr)}. " +
+                        "If the device reports itself OFFLINE here, the hook " +
+                        "is not observing the change and this is a product " +
+                        "bug; if it still reports a live network, the emulator " +
+                        "ignored the disable commands and the TEST is wrong.",
                     e,
                 )
             }
@@ -460,6 +467,8 @@ class RouterDemoInstrumentedTest {
             composeRule.waitForIdle()
             composeRule.onNodeWithTag("note-count").assertTextEquals("Notes: 1")
         } finally {
+            shell(instr, "settings put global airplane_mode_on 0")
+            shell(instr, "am broadcast -a android.intent.action.AIRPLANE_MODE --ez state false")
             shell(instr, "svc wifi enable")
             shell(instr, "svc data enable")
         }
@@ -776,10 +785,25 @@ class RouterDemoInstrumentedTest {
      * radios then stay up and the connectivity assertion below times out with
      * no indication of why. Reading to EOF is what makes it synchronous.
      */
-    private fun shell(instr: android.app.Instrumentation, cmd: String) {
+    private fun shell(instr: android.app.Instrumentation, cmd: String): String =
         ParcelFileDescriptor.AutoCloseInputStream(
             instr.uiAutomation.executeShellCommand(cmd),
-        ).use { it.readBytes() }
+        ).use { String(it.readBytes()) }
+
+    /**
+     * What the DEVICE thinks its connectivity is, independent of the app.
+     *
+     * Without this the failure cannot distinguish "the radios never went down"
+     * from "they went down and useOnline() did not observe it" -- the first
+     * version of this diagnostic reported only what the app rendered, which is
+     * the same string in both cases.
+     */
+    private fun deviceNetworkState(instr: android.app.Instrumentation): String {
+        val wifi = shell(instr, "settings get global wifi_on").trim()
+        val airplane = shell(instr, "settings get global airplane_mode_on").trim()
+        val active = shell(instr, "dumpsys connectivity --short")
+            .lineSequence().firstOrNull { it.contains("NetworkAgentInfo") } ?: "<no active network line>"
+        return "wifi_on=$wifi airplane_mode_on=$airplane active=${active.trim().take(120)}"
     }
 
 }
