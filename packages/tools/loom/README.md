@@ -27,6 +27,37 @@ loom dev .         # the observatory UI — graph · matrix · cycles · impact 
 
 `loom scan` exits non-zero on error findings (`--strict` includes warnings) — wire it into CI and the fabric gates itself.
 
+## Configuration
+
+Two homes, one shape. The root `package.json`'s `loom` key, or a `loom` section
+in the ecosystem-wide `pyreon.config.*`:
+
+```ts
+// pyreon.config.ts
+import { defineConfig } from '@pyreon/config'
+
+export default defineConfig({
+  loom: {
+    // Package-relative globs that are NOT shipping source.
+    devPaths: ['src/manifest.ts', '**/*.gen.ts'],
+    // Suppressions. `reason` is mandatory and is shown in the report.
+    ignore: [{ dep: 'sharp', code: 'unused-dep', reason: 'loaded by the image plugin at runtime' }],
+    // Exit non-zero on warnings without passing --strict at every call site.
+    strict: true,
+    // Adopt incrementally: raise a code once it is clean, lower one while it burns down.
+    severity: { 'unused-dep': 'info', 'phantom-dep': 'error' },
+  },
+})
+```
+
+The manifest wins **per key**, so a project mid-migration can move one setting
+at a time without the manifest silently blanking everything it does not
+mention. A `pyreon.config.*` that exists but cannot be loaded is a named error,
+never a silent skip — `loom scan` has no bundler, so a TypeScript config needs
+a runtime that strips types (Bun, or Node >= 23.6); otherwise use
+`pyreon.config.mjs` or the manifest key. An unknown `severity` code is rejected
+with the list of real ones rather than quietly doing nothing.
+
 ## Honest limits
 
 - The import scan is **lexical** (comments and template-literal contents stripped, specifier grammar validated) — an import mentioned in an ordinary-quoted string can still false-positive, which is why `unused-dep` stays `info` and every finding carries its file evidence.

@@ -8,6 +8,12 @@
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { buildReport } from '../core/report'
+import {
+  loadSharedLoomConfig,
+  mergeLoomSettings,
+  readManifestLoomSection,
+  validateLoomSection,
+} from '../core/config'
 import type { LoomIssue } from '../core/types'
 
 const HELP = `
@@ -24,6 +30,14 @@ const HELP = `
       --no-write        Don't write loom-report.json.
       --json            Print the full report as JSON to stdout (implies --no-write is OFF).
   loom --help           Show this help.
+
+  Configuration (both homes read the same shape; package.json wins per key):
+    package.json      "loom": { devPaths, ignore, strict, severity }
+    pyreon.config.*   export default { loom: { … } }
+                      devPaths  globs that are NOT shipping source
+                      ignore    [{ pkg?, dep?, code?, reason }] — reason required
+                      strict    exit non-zero on warnings too
+                      severity  per-code override: error | warning | info
 `
 
 function out(text: string): void {
@@ -51,8 +65,15 @@ export async function runCli(argv: readonly string[]): Promise<number> {
   if (cmd === 'scan') {
     const dir = rest.find((a) => !a.startsWith('-')) ?? '.'
     let report
+    let settings
     try {
-      report = buildReport(dir, { noImports: rest.includes('--no-imports') })
+      // Config is resolved HERE, before the synchronous analysis, so
+      // `buildReport` stays a pure function of (workspace, options). The root
+      // manifest's `loom` key wins per-key over the shared file.
+      const shared = await loadSharedLoomConfig(dir)
+      const manifest = validateLoomSection(readManifestLoomSection(dir), `${dir}/package.json`)
+      settings = mergeLoomSettings(shared, manifest)
+      report = buildReport(dir, { noImports: rest.includes('--no-imports'), settings })
     } catch (error) {
       err(`${String((error as Error)?.message ?? error)}\n`)
       return 1
@@ -82,11 +103,12 @@ export async function runCli(argv: readonly string[]): Promise<number> {
       out(`  → ${reportPath}\n`)
     }
 
-    const red = report.stats.errors > 0 || (rest.includes('--strict') && report.stats.warnings > 0)
+    const strict = rest.includes('--strict') || settings.strict === true
+    const red = report.stats.errors > 0 || (strict && report.stats.warnings > 0)
     if (red) {
       err(
         `loom: ${report.stats.errors} error(s)` +
-          (rest.includes('--strict') ? ` + ${report.stats.warnings} warning(s) (--strict)` : '') +
+          (strict ? ` + ${report.stats.warnings} warning(s) (strict)` : '') +
           '\n',
       )
       return 1
