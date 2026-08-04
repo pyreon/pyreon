@@ -435,6 +435,38 @@ class RouterDemoInstrumentedTest {
             // works behaves the same.
             shell(instr, "settings put global airplane_mode_on 1")
             shell(instr, "am broadcast -a android.intent.action.AIRPLANE_MODE --ez state true")
+
+            // PRECONDITION, not an assertion. Give the platform a moment, then
+            // ask ConnectivityManager — the same authority useOnline reads —
+            // whether the device is ACTUALLY offline. Some emulator images
+            // simply refuse: captured 2026-08-04, `airplane_mode_on=1` and
+            // `wifi_on=0` while ConnectivityManager still reported
+            // activeNetwork=109 validated=true, with onAvailable firing again
+            // 45s later.
+            //
+            // SKIP rather than fail. A test that cannot create the condition it
+            // exists to test has proven nothing, and failing here blames
+            // `useOnline` for the emulator's behaviour — which is exactly what
+            // this test did for weeks, reading as a ~25% flake and then, once
+            // the diagnostic got more confident, as a phantom PRODUCT BUG.
+            // Passing would be worse still: it would claim proof it does not
+            // have. Skipping is the only honest third answer.
+            var offline = false
+            for (attempt in 1..10) {
+                if (!connectivityManagerSaysOnline()) { offline = true; break }
+                Thread.sleep(1_000)
+            }
+            org.junit.Assume.assumeTrue(
+                "SKIPPED — this emulator will not go offline. ConnectivityManager " +
+                    "still reports a VALIDATED active network after airplane mode + " +
+                    "wifi/data disable (${deviceNetworkState(instr)}). The offline " +
+                    "path is therefore UNVERIFIED on this device, not broken: " +
+                    "useOnline reads the same source and is correct to report online. " +
+                    "Run this on a device/image where airplane mode really drops the " +
+                    "network to get actual coverage.",
+                offline,
+            )
+
             try {
                 composeRule.waitUntil(timeoutMillis = 30_000) {
                     composeRule
@@ -468,20 +500,33 @@ class RouterDemoInstrumentedTest {
                 Thread.sleep(GRACE_MS)
                 val settled = composeRule.onAllNodesWithText("Online: false")
                     .fetchSemanticsNodes().isNotEmpty()
+                // ORDER MATTERS. The "did the device actually go offline?"
+                // question is asked FIRST and against ConnectivityManager —
+                // the same authority `useOnline` reads. The previous version
+                // asked `wifi_on=0` (a settings value) and therefore announced
+                // a PRODUCT bug on an emulator that had simply refused to drop
+                // its network: captured 2026-08-04, settings said offline while
+                // ConnectivityManager reported activeNetwork=109 validated=true
+                // at the same instant. A test that cannot establish its own
+                // precondition must say INCONCLUSIVE, never blame the code.
                 val verdict = when {
+                    connectivityManagerSaysOnline() ->
+                        "INCONCLUSIVE — the device never actually went offline. " +
+                            "ConnectivityManager (the same source useOnline reads) " +
+                            "still reports a VALIDATED active network, whatever the " +
+                            "airplane_mode_on / wifi_on settings say. This emulator " +
+                            "image does not reliably drop the network for airplane " +
+                            "mode, so the precondition failed — useOnline is NOT " +
+                            "implicated and there is nothing here to fix in it."
                     settled ->
                         "SLOW, NOT BROKEN: the hook DID report offline during a " +
                             "further ${GRACE_MS}ms. The callback works; the 30s " +
                             "budget is too tight for this runner. Raise the " +
                             "budget — do NOT go looking for a product bug."
-                    deviceNetworkState(instr).contains("wifi_on=0") ->
-                        "the device reports itself OFFLINE and the hook still " +
-                            "has not observed it after 30s + ${GRACE_MS}ms — " +
-                            "this is a PRODUCT bug in useOnline."
                     else ->
-                        "the device still reports a live network, so the " +
-                            "emulator ignored the disable commands and the " +
-                            "TEST is wrong."
+                        "the device is genuinely offline BY CONNECTIVITYMANAGER and " +
+                            "the hook still has not observed it after 30s + " +
+                            "${GRACE_MS}ms — this one IS a product bug in useOnline."
                 }
                 throw AssertionError(
                     "useOnline() never reported false within 30s. " +
@@ -911,12 +956,45 @@ class RouterDemoInstrumentedTest {
      * version of this diagnostic reported only what the app rendered, which is
      * the same string in both cases.
      */
+    /**
+     * Is the device online ACCORDING TO THE SAME AUTHORITY THE HOOK USES?
+     *
+     * This is the load-bearing half, and getting it from the wrong source is
+     * what made this test capable of a false accusation. The previous version
+     * read `settings get global wifi_on/airplane_mode_on` plus a
+     * `dumpsys connectivity` grep, and reported "device is OFFLINE" — while
+     * ConnectivityManager, which is what `useOnline` actually reads, still had
+     * `activeNetwork=109 validated=true` at the same instant (captured
+     * 2026-08-04 12:16:28). On this emulator, airplane mode does NOT reliably
+     * tear the network down: `onLost` fires, the aggregate is still validated,
+     * and `onAvailable` fires again 45s later.
+     *
+     * So the settings/dumpsys view and the ConnectivityManager view disagree,
+     * and only the latter is the contract `useOnline` is written against.
+     * Asserting against the former turned "this emulator will not go offline"
+     * into "this is a PRODUCT bug in useOnline", which is worse than a bare
+     * timeout — it sends the next reader to fix code that is behaving
+     * correctly.
+     */
+    private fun connectivityManagerSaysOnline(): Boolean {
+        val ctx = androidx.test.platform.app.InstrumentationRegistry
+            .getInstrumentation().targetContext.applicationContext
+        val cm = ctx.getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
+            as? android.net.ConnectivityManager ?: return true
+        val active = cm.activeNetwork ?: return false
+        val caps = cm.getNetworkCapabilities(active) ?: return false
+        return caps.hasCapability(
+            android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED,
+        )
+    }
+
     private fun deviceNetworkState(instr: android.app.Instrumentation): String {
         val wifi = shell(instr, "settings get global wifi_on").trim()
         val airplane = shell(instr, "settings get global airplane_mode_on").trim()
         val active = shell(instr, "dumpsys connectivity --short")
             .lineSequence().firstOrNull { it.contains("NetworkAgentInfo") } ?: "<no active network line>"
-        return "wifi_on=$wifi airplane_mode_on=$airplane active=${active.trim().take(120)}"
+        return "wifi_on=$wifi airplane_mode_on=$airplane active=${active.trim().take(120)} " +
+            "connectivityManagerSaysOnline=${connectivityManagerSaysOnline()}"
     }
 
 }
