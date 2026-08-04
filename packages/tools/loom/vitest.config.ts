@@ -16,6 +16,12 @@ export default defineNodeConfig({
   coverageExclude: [
     // gen-docs data, no logic (scaffold-recipe convention).
     'src/manifest.ts',
+    // The validate-fast gate entry: a top-level-await script ending in
+    // `process.exit`, so importing it under vitest would kill the run. It is
+    // NOT unexercised — `bun run validate-fast` executes it against this repo
+    // on every invocation (gate name: `loom-scan`), which is stronger coverage
+    // than a unit test of the same three lines.
+    'src/cli/run-scan-gate.ts',
     'src/ui/bases.tsx',
     'src/ui/chrome.ts',
     'src/ui/kit.ts',
