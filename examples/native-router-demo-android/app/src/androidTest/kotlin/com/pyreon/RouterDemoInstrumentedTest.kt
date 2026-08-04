@@ -625,8 +625,48 @@ class RouterDemoInstrumentedTest {
         composeRule.onNodeWithTag("http-page").assertIsDisplayed()
 
         // The verb the server actually received.
-        composeRule.waitUntil(timeoutMillis = 15_000) {
-            composeRule.onAllNodesWithText("Method: POST").fetchSemanticsNodes().isNotEmpty()
+        //
+        // Wrapped so the failure REPORTS the live state. A bare waitUntil
+        // raises `ComposeTimeoutException: Condition still not satisfied
+        // after 15000 ms`, which says nothing about WHICH half failed — the
+        // request never left the device, the executor was not installed, the
+        // server was unreachable, or the verb degraded. That is the same
+        // silent-timeout mistake the offline test was just fixed for; a
+        // device-only failure's message IS the artifact.
+        try {
+            composeRule.waitUntil(timeoutMillis = 15_000) {
+                composeRule.onAllNodesWithText("Method: POST").fetchSemanticsNodes().isNotEmpty()
+            }
+        } catch (e: Throwable) {
+            // Probe for the strings the page CAN render rather than reading a
+            // node's text: `SemanticsConfiguration` text access differs across
+            // Compose versions, and a diagnostic that fails to COMPILE is
+            // worse than none. Presence checks work on every version.
+            fun shows(t: String) =
+                composeRule.onAllNodesWithText(t, substring = true)
+                    .fetchSemanticsNodes().isNotEmpty()
+            val method = listOf("Method: GET", "Method: POST", "Method: none")
+                .firstOrNull { shows(it) } ?: "Method: <absent>"
+            val id = if (shows("Id: none")) "Id: none" else "Id: <set>"
+            val bad = if (shows("Bad: rejected")) "Bad: rejected" else "Bad: no"
+            throw AssertionError(
+                "the server did not report a POST within 15s. LIVE STATE: " +
+                    "$method / $id / $bad. " +
+                    "\"Id: none\" means the request never SUCCEEDED, which has " +
+                    "THREE causes and the first version of this message only " +
+                    "listed two — costing real time when the answer was the " +
+                    "third: (1) no executor installed (PyreonHttp.install), " +
+                    "(2) the fixture unreachable (is `adb reverse " +
+                    "tcp:8790 tcp:8790` set and the server up?), or (3) the " +
+                    "response arrived 200 and the DECODE threw — " +
+                    "kotlinx's default Json rejects a key the type does not " +
+                    "declare, where Swift's JSONDecoder ignores it (that is " +
+                    "what PyreonFetchJson exists to fix). Rule out (2) by " +
+                    "running webSocketEchoRoundTripsOnDevice, which uses the " +
+                    "same port and forwarding. \"Method: GET\" means the " +
+                    "request arrived but the VERB degraded.",
+                e,
+            )
         }
         // ...and the body. Separate assertion: a fix that carried the verb but
         // dropped the payload would satisfy the check above on its own.

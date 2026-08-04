@@ -830,6 +830,11 @@ fun pyreonFont(name: String): FontFamily = FontFamily()
 // it, NO useFetch shape was kotlinc-validated (the Swift loop is
 // -parse-only, so it never resolves references; kotlinc fully
 // typechecks and is the one that catches missing runtime surface).
+// The parity-configured JSON reader the fetch emit decodes with. The real one
+// in PyreonFetch.kt sets ignoreUnknownKeys = true, matching Swift's
+// JSONDecoder — kotlinx's default THROWS on an unknown key.
+val PyreonFetchJson: Json = Json
+
 class PyreonFetch<T> {
   val data: MutableState<T?> = mutableStateOf(null)
   val error: MutableState<Throwable?> = mutableStateOf(null)

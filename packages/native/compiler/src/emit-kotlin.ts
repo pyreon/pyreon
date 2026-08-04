@@ -1386,13 +1386,13 @@ function emitKotlinComponent(c: ComponentIR): string {
       // JSON decoder reads as "the server sent bad JSON" and hides the status.
       lines.push(`      if (!__response.isOk) throw PyreonHttpError.BadStatus(__response.status)`)
       lines.push(
-        `      ${name}.resolve(Json.decodeFromString<${kotlinType(d.type, ctx)}>(__response.body))`,
+        `      ${name}.resolve(PyreonFetchJson.decodeFromString<${kotlinType(d.type, ctx)}>(__response.body))`,
       )
     } else {
       lines.push(
         `      val body = withContext(Dispatchers.IO) { java.net.URL(${JSON.stringify(d.url)}).readText() }`,
       )
-      lines.push(`      ${name}.resolve(Json.decodeFromString<${kotlinType(d.type, ctx)}>(body))`)
+      lines.push(`      ${name}.resolve(PyreonFetchJson.decodeFromString<${kotlinType(d.type, ctx)}>(body))`)
     }
     lines.push(`    } catch (e: Throwable) { ${name}.reject(e) }`)
     lines.push(`  }`)

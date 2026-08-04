@@ -42,6 +42,35 @@ package com.pyreon.runtime
 
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
+import kotlinx.serialization.json.Json
+
+/**
+ * The JSON reader every emitted `useFetch` decode uses.
+ *
+ * Named `PyreonFetchJson`, not `PyreonJson`: that name is already the
+ * WebView bridge's encoder (`PyreonJson.encode(signal)`), a different
+ * concern with a different policy.
+ *
+ * `ignoreUnknownKeys = true` is the whole point, and it is a CROSS-PLATFORM
+ * PARITY fix, not a preference. kotlinx.serialization's default `Json` THROWS
+ * on a key the target type does not declare; Swift's `JSONDecoder` silently
+ * ignores it. So the same shared `useFetch<T>(url)` against the same server
+ * decoded fine on iOS and threw on Android the moment the response carried one
+ * extra field — which is to say, against essentially every real API, since a
+ * server returning exactly the fields one client declares is the exception.
+ *
+ * Measured on a real emulator (2026-08-04): a 200 response
+ * `{"id":…,"method":…,"body":…,"contentType":…}` decoded into a three-field
+ * type raised `JsonDecodingException: Encountered an unknown key
+ * 'contentType'`, while the identical iOS run passed. It stayed invisible
+ * because the only device-proven fetch fixture is a hand-written `quotes.json`
+ * whose shape matches its type exactly.
+ *
+ * Deliberately NOT `isLenient` (that would accept malformed JSON, which is a
+ * real error worth surfacing) and NOT `explicitNulls = false` — this closes
+ * exactly the one divergence from Swift and nothing more.
+ */
+public val PyreonFetchJson: Json = Json { ignoreUnknownKeys = true }
 
 /**
  * Reactive async-data container — the Compose half of `useFetch`.

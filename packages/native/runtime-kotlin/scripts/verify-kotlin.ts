@@ -189,6 +189,23 @@ const KOTLINX_SERIALIZATION_JSON_STUBS = `package kotlinx.serialization.json
 
 import kotlinx.serialization.KSerializer
 
+// The real kotlinx surface is BOTH: a \`Json\` object (the default instance)
+// and a top-level \`Json(builderAction)\` FUNCTION returning a configured one.
+// PyreonFetchJson uses the builder form, so the stub must carry both or the
+// gate rejects correct code. Mirrored, not approximated — a stub that is a
+// SUPERSET masks, and one that is a SUBSET manufactures failures.
+class JsonBuilder {
+  var ignoreUnknownKeys: Boolean = false
+  var isLenient: Boolean = false
+  var encodeDefaults: Boolean = false
+}
+
+@Suppress("UNUSED_PARAMETER", "FunctionName")
+fun Json(builderAction: JsonBuilder.() -> Unit): Json {
+  JsonBuilder().builderAction()
+  return Json
+}
+
 object Json {
   @Suppress("UNUSED_PARAMETER")
   inline fun <reified T> encodeToString(value: T): String = value.toString()

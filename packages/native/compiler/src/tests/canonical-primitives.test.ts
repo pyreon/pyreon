@@ -1715,7 +1715,13 @@ describe('Phase 4.1 — useFetch emit (PyreonFetch container + async harness)', 
     expect(out).toContain('LaunchedEffect(Unit) {')
     expect(out).toContain('user.begin()')
     expect(out).toContain('java.net.URL("/api/user").readText()')
-    expect(out).toContain('user.resolve(Json.decodeFromString<User>(body))')
+    // `PyreonFetchJson`, not the bare `Json`: kotlinx's default THROWS on a
+    // key the target type does not declare, where Swift's JSONDecoder ignores
+    // it — so the same shared source decoded on iOS and threw on Android
+    // against any real API. The invariant this line guards is unchanged (the
+    // harness resolves the container by decoding the response); only the
+    // reader it decodes with is now the parity-configured one.
+    expect(out).toContain('user.resolve(PyreonFetchJson.decodeFromString<User>(body))')
     expect(out).toContain('user.reject(e)')
     // Kotlin field access reads through Compose MutableState `.value`.
     expect(out).toContain('user.data.value')

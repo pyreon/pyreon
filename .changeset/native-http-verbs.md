@@ -33,3 +33,22 @@ by the fact that every existing example fetches an array and reads
 
 `@pyreon/hooks`: `useFetch` takes an optional second argument (`UseFetchInit` —
 `method` / `headers` / `body`), matching the native lowering.
+
+**`useFetch` decoding on Android now matches iOS.** kotlinx.serialization's
+default `Json` THROWS on a JSON key the target type does not declare; Swift's
+`JSONDecoder` silently ignores it. The emit used the bare default, so the same
+shared `useFetch<T>(url)` against the same server decoded fine on iOS and threw
+on Android the moment the response carried one extra field — i.e. against
+essentially every real API, since a server returning exactly the fields one
+client declares is the exception. Decoding now goes through
+`PyreonFetchJson` (`Json { ignoreUnknownKeys = true }`).
+
+This was PRE-EXISTING and is not limited to the new verb path — the plain GET
+path decoded the same way. It stayed invisible because the only device-proven
+fetch fixture is a hand-written `quotes.json` whose shape matches its type
+exactly; measured on a real emulator, a 200 response with one extra field
+raised `JsonDecodingException: Encountered an unknown key 'contentType'` while
+the identical iOS run passed.
+
+Deliberately scoped: `ignoreUnknownKeys` only. NOT `isLenient` (malformed JSON
+is a real error worth surfacing) and NOT `explicitNulls = false`.
