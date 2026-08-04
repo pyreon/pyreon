@@ -2878,6 +2878,31 @@ import { Provider } from "@pyreon/elements"
 >
 > **Portal nests a per-instance wrapper**: `Portal` renders into its OWN wrapper element inside the DOMLocation (default `document.body`), not directly as a body child. DOM assertions must traverse one extra level; multiple Portals do not share a container.
 
+## @pyreon/config — Ecosystem Config
+
+Every Pyreon tool grew its own config file — `atlas.config.ts`, `.pyreonlintrc.json`, a `zero()` call in `vite.config.ts`, a `loom` key in package.json. Each is defensible alone; together they are four places to look and four things to keep in sync when a project moves a directory. `@pyreon/config` is the single file with a key per package: `defineConfig` gives it types and editor completion, `CONFIG_FILENAMES` is the filename list every loader tries, and `sectionFrom` is the one named-vs-default section lookup they share. The tool that reads a key owns its meaning, so nothing becomes a god object — and a key appears in the type ONLY once a package actually reads it, because a config surface that advertises options nothing consumes is the typed-but-unimplemented class this repo gates against.
+
+```typescript
+// pyreon.config.ts
+import { defineConfig } from '@pyreon/config'
+
+export default defineConfig({
+  atlas: {
+    title: 'Acme Design System',
+    projects: [{ name: 'Core', dir: 'packages/core/src' }],
+  },
+  loom: {
+    // Package-relative globs that are NOT shipping source.
+    devPaths: ['src/manifest.ts', '**/*.gen.ts'],
+    // `reason` is mandatory and is shown in the report.
+    ignore: [{ dep: 'sharp', code: 'unused-dep', reason: 'loaded by the image plugin at runtime' }],
+    strict: true,
+    // Adopt incrementally: raise a code once clean, lower one while it burns down.
+    severity: { 'unused-dep': 'info', 'phantom-dep': 'error' },
+  },
+})
+```
+
 ## @pyreon/loom — Dependency Observatory
 
 Loom reads a workspace the way an install tool does — root workspace globs (npm/bun/yarn array + object forms, `packages/*/*`-style nesting, negations, pnpm-workspace.yaml) and every member manifest — and turns the dependency fabric into DATA: the internal graph (longest-path depths, RUNTIME cycles with dev edges deliberately excluded, transitive blast radius), the external version-usage map (every dep → every declared range → who declares it), and a detector-driven issue list with honest severities. `loom scan` writes `loom-report.json` and exits non-zero on error findings, so wiring it into CI gates the fabric; `loom dev` serves the five-view observatory UI over the same report. Loom reads DECLARED truth only — no lockfile parsing, no registry calls (outdated/duplicate-install analysis are documented future layers).

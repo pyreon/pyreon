@@ -21,6 +21,10 @@ export const REFERENCE_GROUPS: SidebarGroup[] = [
         "slug": "reference/compiler"
       },
       {
+        "text": "config",
+        "slug": "reference/config"
+      },
+      {
         "text": "core",
         "slug": "reference/core"
       },

@@ -299,6 +299,7 @@ const mode = useMode()  // "light" | "dark" (reactive signal)
 - @pyreon/lint — Pyreon-specific linter — 97 rules across 19 categories, config files, watch mode, AST cache, CLI + LSP
 - @pyreon/atlas — AI-native component workbench — derives, verifies, and serves a machine-readable component catalog
 - @pyreon/loom — Monorepo dependency observatory — workspace graph, version-sync drift, cycles, phantom deps, and blast radius, as data
+- @pyreon/config — One `pyreon.config.ts` for the whole ecosystem — a typed section per package
 - @pyreon/testing — Testing-Library-compatible test kit for Pyreon — render/cleanup/renderHook + the full @testing-library/dom surface + reactive-graph matchers (peer: @pyreon/runtime-dom, @pyreon/reactivity). The main `@pyreon/testing` entry does NOT auto-register `afterEach(cleanup)`. Add `@pyreon/testing/vitest` to your vitest `setupFiles` to wire auto-cleanup AND extend `expect` with jest-dom matchers; otherwise call `cleanup()` manually in `afterEach`.
 - @pyreon/dnd — Signal-driven drag and drop over @atlaskit/pragmatic-drag-and-drop — draggable, droppable, sortable, file drop, monitor. The element-bound hooks (`useDraggable` / `useDroppable` / `useFileDrop`) defer pdnd registration to the next microtask so `ref` callbacks are populated first — call the hook in the component body and let the ref land. `useDragMonitor` registers immediately (it has no element to wait for).
 
