@@ -2214,6 +2214,7 @@
       "name": "@pyreon/config",
       "version": "0.50.0",
       "devDependencies": {
+        "@pyreon/manifest": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
       },

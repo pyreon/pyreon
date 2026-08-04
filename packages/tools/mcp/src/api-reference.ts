@@ -9718,6 +9718,43 @@ await findByText('write tests')`,
 - Seeding AFTER the component mounted with \`staleTime: 0\` and asserting no refetch — \`setQueryData\` marks data fresh at write time, but an already-mounted observer may have a fetch in flight; seed BEFORE render (create the client via \`createTestQueryClient\`, seed, pass as \`client\`) for deterministic first paint.`,
   },
   // <gen-docs:api-reference:end @pyreon/testing>
+  // <gen-docs:api-reference:start @pyreon/config>
+
+  'config/defineConfig': {
+    signature: 'defineConfig(config: PyreonConfig): PyreonConfig',
+    example: `import { defineConfig } from '@pyreon/config'
+
+export default defineConfig({
+  loom: { devPaths: ['src/manifest.ts'] },
+})`,
+    notes: 'Identity helper that gives a config file types and editor completion without the author writing `satisfies PyreonConfig` by hand — the same reason every config-driven tool ships one. Returns its argument untouched; there is no validation here, because the tool that READS a section is the one that can say what is wrong with it, and it reports that with the file named. `PyreonConfig` is indexed as well as keyed, so a section for a tool this version does not know about typechecks and is carried through. See also: CONFIG_FILENAMES, sectionFrom.',
+    mistakes: `- Expecting \`defineConfig\` to validate — it is identity by design; each tool validates its own section and names the offending file, because only that tool knows what its keys mean
+- Assuming a key here overrides the per-tool file — it is the other way round: \`atlas.config.*\` wins over the \`atlas\` key, and \`package.json\`'s \`loom\` key wins over the \`loom\` section, so a half-finished migration is never silently reversed
+- Adding a key for a tool that does not read it yet and expecting it to take effect — the type carries unknown keys deliberately, but carrying is not consuming
+- Writing the file as \`pyreon.config.ts\` in a project whose tooling runs on a Node older than 23.6 — \`loom scan\` has no bundler, so use \`pyreon.config.mjs\` (or the package.json key) there; the loader names the file and says so rather than skipping it`,
+  },
+
+  'config/CONFIG_FILENAMES': {
+    signature: `CONFIG_FILENAMES: readonly ['pyreon.config.ts', 'pyreon.config.tsx', 'pyreon.config.mjs', 'pyreon.config.js']`,
+    example: `import { CONFIG_FILENAMES } from '@pyreon/config'
+
+const found = CONFIG_FILENAMES.map((n) => resolve(cwd, n)).find(existsSync)`,
+    notes: 'The filenames a loader tries, in order. Exported so every consumer shares ONE list: atlas and loom both read it, so adding an extension here reaches both at once. The alternative — each loader restating the list — is a config file that is silently ignored the day the lists disagree, which is the exact failure this package exists to reduce. See also: sectionFrom, defineConfig.',
+    mistakes: `- Restating the list in your own loader — that is the drift this export removes; iterate the constant (atlas's loader test does exactly that, so a new filename is covered without anyone remembering a second list)
+- Assuming order does not matter — it is a PRECEDENCE list, tried first-to-last`,
+  },
+
+  'config/sectionFrom': {
+    signature: 'sectionFrom(module: Record<string, unknown>, tool: string): unknown',
+    example: `import { sectionFrom } from '@pyreon/config'
+
+const section = sectionFrom(loadedModule, 'loom') // default OR named export`,
+    notes: `Read one tool's section out of a loaded config module, accepting either a default export or a named one. Both spellings read naturally to an author, and guessing wrong between them produces a config that is silently ignored — so the lookup lives here once rather than in each consumer. Returns \`undefined\` when the file has no section for that tool, which callers must treat as "not configured", never as an error: a project configuring some other tool is the normal case. See also: CONFIG_FILENAMES, defineConfig.`,
+    mistakes: `- Treating \`undefined\` as a failure — a \`pyreon.config.ts\` with no section for your tool is a project configuring something else, and saying nothing is correct
+- Validating inside the loader instead of after — read the section here, then validate it with YOUR rules and name the file in the message`,
+  },
+  // <gen-docs:api-reference:end @pyreon/config>
+
   // <gen-docs:api-reference:start @pyreon/loom>
 
   'loom/loom scan': {
