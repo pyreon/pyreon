@@ -63,7 +63,7 @@ describe('workspace declaration shapes', () => {
 
 describe('internal-range shapes', () => {
   const model = (range: string, actual = '2.0.0') => ({
-    root: { dir: '.', overrides: {}, workspaceGlobs: [], ignores: [] },
+    root: { dir: '.', overrides: {}, workspaceGlobs: [], ignores: [], devPaths: [] },
     packages: [
       { name: 'a', version: '1.0.0', dir: 'a', private: false, deps: [{ name: 'b', range, field: 'dependencies' as const }] },
       { name: 'b', version: actual, dir: 'b', private: false, deps: [] },

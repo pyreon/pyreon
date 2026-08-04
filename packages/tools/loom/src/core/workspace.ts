@@ -19,7 +19,7 @@ const DEP_FIELDS: DepField[] = ['dependencies', 'devDependencies', 'peerDependen
 
 interface RawManifest {
   name?: string
-  loom?: { ignore?: unknown }
+  loom?: { ignore?: unknown; devPaths?: unknown }
   version?: string
   private?: boolean
   license?: string
@@ -199,12 +199,29 @@ export function scanWorkspace(rootDir: string): WorkspaceModel {
     }
   }
 
+  // `loom.devPaths` — package-relative globs that are NOT shipping source.
+  // Validated the same way `ignore` is: a malformed value is a loud error, not
+  // a silently-ignored config, because a suppression that quietly does nothing
+  // is worse than no suppression at all.
+  const devPaths: string[] = []
+  const rawDevPaths = rootManifest.loom?.devPaths
+  if (rawDevPaths !== undefined) {
+    if (!Array.isArray(rawDevPaths) || rawDevPaths.some((g) => typeof g !== 'string')) {
+      throw new Error(
+        '[Pyreon] loom: root `loom.devPaths` must be an array of package-relative globs ' +
+          "(e.g. [\"src/manifest.ts\", \"**/*.gen.ts\"]).",
+      )
+    }
+    devPaths.push(...(rawDevPaths as string[]))
+  }
+
   const root: WorkspaceRoot = {
     ...(rootManifest.name ? { name: rootManifest.name } : {}),
     dir: relative(process.cwd(), rootDir) || '.',
     overrides,
     workspaceGlobs: globs,
     ignores,
+    devPaths,
   }
 
   return { root, packages }

@@ -9,7 +9,7 @@ export {
   majorOf, detectVersionDrift, detectInternalRange, detectCycles,
   detectPhantoms, detectUnused, detectPeerMismatch,
 } from './detect'
-export { specifierToPackage, isDevSurfacePath, scanPackageImports, scanImports } from './imports'
+export { specifierToPackage, isDevSurfacePath, matchesPathGlob, scanPackageImports, scanImports } from './imports'
 export type { ImportScan } from './imports'
 export { buildReport } from './report'
 export type { BuildReportOptions } from './report'
