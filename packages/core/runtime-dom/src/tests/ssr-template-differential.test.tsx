@@ -16,12 +16,11 @@
  * this file exercises the JS emit — same text by that lock. See
  * `TransformOptions.ssrTemplate`.
  */
-import { transformSync } from 'esbuild'
 import { transformJSX_JS } from '@pyreon/compiler'
 import type { VNode } from '@pyreon/core'
 import { For, Fragment, h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
-import { _esc, _ssr, _ssrAttr, _ssrAttrGen, _ssrAttrUrl, _ssrChildren, _ssrForKeyed, _ssrItem, _ssrNode, renderToString } from '@pyreon/runtime-server'
+import { _esc, _ssr, _ssrAttr, _ssrAttrGen, _ssrAttrUrl, _ssrChildren, _ssrForKeyed, _ssrItem, renderToString } from '@pyreon/runtime-server'
 import { disableHydrationWarnings, hydrateRoot, mount, onHydrationMismatch } from '../index'
 
 function stripImports(code: string): string {
@@ -36,24 +35,12 @@ function stripImports(code: string): string {
  */
 function evalSsr(src: string, deps: Record<string, unknown> = {}): unknown {
   const out = transformJSX_JS(src, 'case.tsx', { ssr: true, ssrTemplate: true })
-  // MIRROR THE REAL PIPELINE: Pyreon's compiler does not lower JSX itself — it
-  // rewrites expressions and leaves the JSX for the downstream transform. That
-  // is invisible for statics-only emits (nothing survives), but a COMPONENT
-  // child is PRESERVED as JSX inside the `_ssrNode(...)` hole on purpose, so
-  // the emitted code is JS-with-JSX and `new Function` cannot parse it
-  // (`SyntaxError: Unexpected token '<'`). Running esbuild here is not a
-  // workaround for the feature — it is the step a real build already performs
-  // between the compiler and the runtime.
-  const lowered = transformSync(stripImports(out.code), {
-    loader: 'jsx',
-    jsxFactory: 'h',
-    jsxFragment: 'Fragment',
-  }).code
+  const body = stripImports(out.code)
   // Every differential source names its renderable binding `Node`.
-  const depNames = ['_ssr', '_ssrChildren', '_ssrItem', '_ssrForKeyed', '_esc', '_ssrAttr', '_ssrAttrGen', '_ssrAttrUrl', '_ssrNode', 'signal', 'For', 'h', 'Fragment', ...Object.keys(deps)]
-  const depValues = [_ssr, _ssrChildren, _ssrItem, _ssrForKeyed, _esc, _ssrAttr, _ssrAttrGen, _ssrAttrUrl, _ssrNode, signal, For, h, Fragment, ...Object.values(deps)]
+  const depNames = ['_ssr', '_ssrChildren', '_ssrItem', '_ssrForKeyed', '_esc', '_ssrAttr', '_ssrAttrGen', '_ssrAttrUrl', 'signal', 'For', ...Object.keys(deps)]
+  const depValues = [_ssr, _ssrChildren, _ssrItem, _ssrForKeyed, _esc, _ssrAttr, _ssrAttrGen, _ssrAttrUrl, signal, For, ...Object.values(deps)]
   // eslint-disable-next-line no-new-func
-  const fn = new Function(...depNames, `${lowered}\nreturn Node`)
+  const fn = new Function(...depNames, `${body}\nreturn Node`)
   return fn(...depValues)
 }
 
@@ -448,69 +435,6 @@ const cases: DiffCase[] = [
     deps: { cls: 'box' },
     oracle: (deps) => h('div', { class: deps.cls as string }),
   },
-  // ── COMPONENT CHILDREN as preserved-source holes ─────────────────────────
-  // The bytes are the whole point: a SYNC component child inlines with NO
-  // markers, an ASYNC one is bracketed by `<!--$pas-->`/`<!--$pae-->`. Both
-  // come from `renderComponent` via `_ssrNode`, so identity should hold BY
-  // CONSTRUCTION — these assert it actually does.
-  {
-    name: 'wrapper whose ONLY child is a component',
-    src: `const Node = <main class="m"><Widget /></main>`,
-    deps: { Widget: () => h('section', { class: 'w' }, 'x') },
-    oracle: (deps) => h('main', { class: 'm' }, h(deps.Widget as never, null)),
-  },
-  {
-    name: 'component child with a dynamic prop',
-    src: `const Node = <main class="m"><Widget id={id} /></main>`,
-    deps: { Widget: (p: { id: number }) => h('span', null, String(p.id)), id: 7 },
-    oracle: (deps) => h('main', { class: 'm' }, h(deps.Widget as never, { id: deps.id })),
-  },
-  {
-    name: 'static + component + static siblings',
-    src: `const Node = <div class="s"><header>H</header><Widget /><footer>F</footer></div>`,
-    deps: { Widget: () => h('b', null, 'w') },
-    oracle: (deps) =>
-      h(
-        'div',
-        { class: 's' },
-        h('header', null, 'H'),
-        h(deps.Widget as never, null),
-        h('footer', null, 'F'),
-      ),
-  },
-  {
-    name: 'TWO component children (multi-hole bracketing)',
-    src: `const Node = <div><A /><B /></div>`,
-    deps: { A: () => h('i', null, 'a'), B: () => h('u', null, 'b') },
-    oracle: (deps) => h('div', null, h(deps.A as never, null), h(deps.B as never, null)),
-  },
-  {
-    name: 'component child adjacent to a text hole',
-    src: `const Node = <div><Widget />{t}</div>`,
-    deps: { Widget: () => h('i', null, 'w'), t: 'a<b' },
-    oracle: (deps) => h('div', null, h(deps.Widget as never, null), deps.t as string),
-  },
-  {
-    name: 'component child that receives children',
-    src: `const Node = <main><Widget>inner</Widget></main>`,
-    deps: { Widget: (p: { children?: unknown }) => h('p', null, p.children as never) },
-    oracle: (deps) => h('main', null, h(deps.Widget as never, null, 'inner')),
-  },
-  {
-    name: 'ASYNC component child keeps its $pas/$pae hydration sentinels',
-    src: `const Node = <main><Slow /></main>`,
-    deps: { Slow: async () => h('em', null, 'late') },
-    oracle: (deps) => h('main', null, h(deps.Slow as never, null)),
-  },
-  {
-    name: 'a provider component does not leak its context frame to later siblings',
-    src: `const Node = <div><Prov /><After /></div>`,
-    deps: {
-      Prov: () => h('span', null, 'p'),
-      After: () => h('span', null, 'a'),
-    },
-    oracle: (deps) => h('div', null, h(deps.Prov as never, null), h(deps.After as never, null)),
-  },
 ]
 
 describe('SSR fast path — byte-identical to h() (compiled → eval → render)', () => {
@@ -557,11 +481,6 @@ describe('SSR fast path — nested void / self-closing elements are eligible', (
     ['ROOT <input/>', `const N = <input type="text" name="q" />`],
     ['ROOT <br/>', `const N = <br />`],
     ['ROOT non-void <div/>', `const N = <div class="box" />`],
-    // Component children — the largest hole that remained after self-closing.
-    ['wrapper whose only child is a component', `const N = <main class="m"><Widget /></main>`],
-    ['component with a dynamic prop', `const N = <main class="m"><Widget id={p.id} /></main>`],
-    ['component between static siblings', `const N = <div><header>H</header><Widget /><footer>F</footer></div>`],
-    ['two component children', `const N = <div><A /><B /></div>`],
     // Item bodies. `items.map(i => <img src={i.src}/>)` is an image gallery,
     // not an exotic shape; it bailed the whole list onto h() before.
     ['.map item body is <img/>', `const N = <div>{items.map(i => <img src={i.src} />)}</div>`],
@@ -583,25 +502,12 @@ describe('SSR fast path — nested void / self-closing elements are eligible', (
   test('still bails: void element given children', () => {
     expect(compiledRootUsesSsr(`const N = <div><img src="/a.png">x</img></div>`)).toBe(false)
   })
-
-  // JSX extracts `key` specially (it is why `<For>` takes `by`, not `key`), so
-  // the two paths could disagree on whether it reaches props. Unverified —
-  // therefore bailed rather than guessed at.
-  test('still bails: component child carrying a key', () => {
-    expect(compiledRootUsesSsr(`const N = <div><Widget key="k" /></div>`)).toBe(false)
-  })
 })
 
 describe('SSR fast path — conservative bail catalogue (stays on h())', () => {
   const bails: [string, string][] = [
     ['spread attribute', `const N = <div {...props}>y</div>`],
-    // NOTE: 'component child' used to live here, and it was the single largest
-    // remaining eligibility hole — `<main class="m"><Widget /></main>` emitted
-    // ZERO `_ssr`, so every layout wrapper in a real app fell to h(). It is now
-    // a PRESERVED-SOURCE hole (`_ssrNode`), with byte-identity against h()
-    // asserted above for the sync, async, dynamic-prop, multi-hole,
-    // children-passing and provider-sibling shapes.
-    // A component child carrying `key` still bails — see below.
+    ['component child', `const N = <div><Widget /></div>`],
     // NOTE: 'void element (self-closing) at ROOT' used to live here. It was a
     // SCOPE decision, not a safety one — the comment said the root gate was
     // "intentionally untouched" because #2515 only widened the nested case.
@@ -653,76 +559,6 @@ describe('SSR fast path output hydrates without mismatch', () => {
     expect(container.querySelectorAll('li.row').length).toBe(2)
     expect(container.textContent).toContain('Alice')
     expect(container.textContent).toContain('Bob')
-    off()
-    dispose()
-    document.body.removeChild(container)
-  })
-
-  /**
-   * Component children are the shape where getting this wrong breaks
-   * HYDRATION rather than merely producing different bytes, so the byte
-   * oracles above are necessary but not sufficient: they compare two SSR
-   * strings, and hydration is what happens when the client walks that DOM.
-   *
-   * The async case is the one that matters most — `renderComponent` brackets a
-   * pending component with `<!--$pas-->`/`<!--$pae-->` precisely so the client
-   * can locate the range and attach reactivity. If the fast path emitted those
-   * markers in a different place (or dropped them), hydration would silently
-   * mis-align every following sibling.
-   */
-  test('a component child inside an _ssr wrapper hydrates with no mismatch', async () => {
-    const Widget = (p: { id: number }) => h('section', { class: 'w' }, String(p.id))
-    const ssrNode = evalSsr(
-      `const Node = <main class="m"><header>H</header><Widget id={id} /><footer>F</footer></main>`,
-      { Widget, id: 7 },
-    ) as VNode
-    const html = await renderToString(ssrNode)
-
-    const container = document.createElement('div')
-    container.innerHTML = html
-    document.body.appendChild(container)
-
-    const mismatches: unknown[] = []
-    const off = onHydrationMismatch((e) => mismatches.push(e))
-    const clientTree = h(
-      'main',
-      { class: 'm' },
-      h('header', null, 'H'),
-      h(Widget as never, { id: 7 }),
-      h('footer', null, 'F'),
-    )
-    const dispose = hydrateRoot(container, clientTree)
-    expect(mismatches).toEqual([])
-    expect(container.querySelectorAll('section.w').length).toBe(1)
-    expect(container.textContent).toBe('H7F')
-    off()
-    dispose()
-    document.body.removeChild(container)
-  })
-
-  test('an ASYNC component child hydrates over its $pas/$pae range', async () => {
-    const Slow = async () => h('em', null, 'late')
-    const ssrNode = evalSsr(`const Node = <main class="m"><Slow /><footer>F</footer></main>`, {
-      Slow,
-    }) as VNode
-    const html = await renderToString(ssrNode)
-    // The sentinels are what hydration keys on — assert they actually shipped.
-    expect(html).toContain('<!--$pas-->')
-    expect(html).toContain('<!--$pae-->')
-
-    const container = document.createElement('div')
-    container.innerHTML = html
-    document.body.appendChild(container)
-
-    const mismatches: unknown[] = []
-    const off = onHydrationMismatch((e) => mismatches.push(e))
-    const dispose = hydrateRoot(
-      container,
-      h('main', { class: 'm' }, h(Slow as never, null), h('footer', null, 'F')),
-    )
-    await Promise.resolve()
-    expect(mismatches).toEqual([])
-    expect(container.textContent).toContain('F')
     off()
     dispose()
     document.body.removeChild(container)

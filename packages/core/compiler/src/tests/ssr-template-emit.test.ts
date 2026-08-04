@@ -138,10 +138,7 @@ describe('ssrTemplate — dynamic attributes via _ssrAttr (renderProp verbatim)'
 describe('ssrTemplate — bail catalogue (stays on h())', () => {
   const bails: [string, string][] = [
     ['spread attribute', `const N = <div {...props}>y</div>`],
-    // NOTE: 'component child' used to bail here — it was the single largest
-    // remaining eligibility hole. It is now a PRESERVED-SOURCE hole; see the
-    // component-children block below and runtime-dom's
-    // `ssr-template-differential` for byte-identity vs h().
+    ['component child', `const N = <div><Widget /></div>`],
     // NOTE: a ROOT self-closing element (`<img src="/a.png" />`) used to bail
     // here. It is now ELIGIBLE — see the self-closing-root block below. The
     // bail was conservatism left over from #2515 widening only the NESTED
@@ -173,51 +170,6 @@ describe('ssrTemplate — bail catalogue (stays on h())', () => {
  * list. The exact emitted bytes are asserted here; equality against the h()
  * path is locked in runtime-dom's `ssr-template-differential`.
  */
-/**
- * COMPONENT CHILDREN compile to a preserved-source `_ssrNode(...)` hole.
- *
- * The emit is deliberately BRACKETING rather than spanning: the child's own
- * source range is left in place (so its props still get their normal
- * transformation) and the surrounding text is emitted as separate edits.
- * Replacements must be disjoint, and re-generating the component call here
- * would mean duplicating the reactive-prop machinery — the reimplementation
- * that makes the two backends drift.
- */
-describe('ssrTemplate — component children are preserved-source holes', () => {
-  test('a wrapper whose only child is a component now compiles', () => {
-    expect(ssrFast(`const N = <main class="m"><Widget /></main>`)).toContain(
-      '_ssr(["<main class=\\"m\\">", "</main>"], _ssrNode(<Widget />))',
-    )
-  })
-
-  test("the child's source is PRESERVED, so its props still transform in place", () => {
-    // `p` is a component prop, so the reactive-prop pass must still wrap it
-    // INSIDE the preserved range. A missing `_rp` here would mean the child was
-    // never walked and the component would receive a dead snapshot.
-    expect(ssrFast(`const Page = (p) => <main class="m"><Widget id={p.id} /></main>`)).toContain(
-      '_ssrNode(<Widget id={_rp(() => p.id)} />)',
-    )
-  })
-
-  test('multiple component children bracket in document order', () => {
-    expect(ssrFast(`const N = <div><A /><B /></div>`)).toContain(
-      '_ssr(["<div>", "", "</div>"], _ssrNode(<A />), _ssrNode(<B />))',
-    )
-  })
-
-  test('a component child interleaves correctly with a generated text hole', () => {
-    expect(ssrFast(`const N = <div><Widget />{t}</div>`)).toContain(
-      '_ssr(["<div>", "", "</div>"], _ssrNode(<Widget />), _esc(t))',
-    )
-  })
-
-  test('a component child carrying `key` still bails', () => {
-    // JSX extracts `key` specially — the two paths could disagree on whether it
-    // reaches props, so it is bailed rather than guessed at.
-    expect(ssrFast(`const N = <div><Widget key="k" /></div>`)).not.toContain('_ssr(')
-  })
-})
-
 describe('ssrTemplate — ROOT self-closing elements are eligible', () => {
   test('root void element bakes with the load-bearing " />" spelling', () => {
     // The runtime closes a void element as `${open} />`. The SPACE is

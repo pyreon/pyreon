@@ -590,32 +590,6 @@ const { nonce } = useRequestLocals()`,
     }),
   },
   {
-    // VERSION SKEW introduced by the compile-to-string fast path. The compiler
-    // emits calls to runtime helpers (`_ssr`, `_ssrNode`, `_ssrChildren`, …)
-    // into the app's own module. If `@pyreon/compiler` is newer than the
-    // installed `@pyreon/runtime-server`, the emitted call names a helper the
-    // runtime does not export yet — and the failure surfaces at RENDER time in
-    // app code, naming an underscore-prefixed symbol the user never wrote,
-    // which reads as a framework bug rather than a version mismatch.
-    // Anchored on the LINE containing an `_ssr*` symbol plus a failure phrase,
-    // in EITHER word order — `_ssrNode is not a function` and
-    // `does not provide an export named '_ssrNode'` are both real shapes.
-    pattern:
-      /(?=[^\n]*\b_ssr\w*\b)[^\n]*(?:is not a function|is not defined|is not exported|(?:does not provide|has no) an? export named)/i,
-    diagnose: (m) => ({
-      cause: `The compiler emitted a call to \`${(m[0] ?? '_ssr').match(/_ssr\w*/)?.[0] ?? '_ssr'}\`, a runtime helper for the compile-to-string SSR fast path, but the installed \`@pyreon/runtime-server\` does not export it. You did not write this symbol — the JSX transform did. It means \`@pyreon/compiler\` (or \`@pyreon/vite-plugin\`, which bundles it) is NEWER than \`@pyreon/runtime-server\`: each widening of the fast path adds helpers, so a mixed install compiles against a surface the runtime has not caught up to.`,
-      fix: `Align every \`@pyreon/*\` package to the same version — they ship as one fixed release group, so a partial upgrade is never expected to work. \`pyreon info\` prints the installed versions and flags skew; \`pyreon upgrade\` aligns them.`,
-      fixCode: `pyreon info      # shows @pyreon/* versions + highlights the skew
-pyreon upgrade   # align them all to one release
-
-# or pin them together by hand, e.g.
-#   "@pyreon/compiler": "0.51.0"
-#   "@pyreon/runtime-server": "0.51.0"
-#   "@pyreon/vite-plugin": "0.51.0"`,
-      related: `Only SSR/SSG builds hit this: the helpers are emitted when the JSX transform runs with the SSR fast path on. A stale lockfile entry or a hoisted duplicate copy of \`@pyreon/runtime-server\` can also cause it even when package.json looks aligned — check for more than one installed copy before assuming the versions are wrong.`,
-    }),
-  },
-  {
     // TWO distinct Pyreon causes share this message shape — teaching only the
     // signal one was actively wrong for the reactive-prop variant (PZ-10),
     // where the fix is the OPPOSITE direction (stop calling it).
