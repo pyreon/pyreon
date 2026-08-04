@@ -604,6 +604,43 @@ function forLisReorder(
  *  - Fast clear path: moves nodes to DocumentFragment for O(n) bulk detach
  *  - Fresh render fast path: skips stale-check and reorder on first render
  */
+/**
+ * SSR-block adoption context for a hydrating `<For>` — parsed from the
+ * `<!--pyreon-for--> <!--k:KEY-->row… <!--/pyreon-for-->` markers by
+ * hydrate.ts and handed to `mountFor` via the one-shot slot below. When the
+ * client's first items align 1:1 (same keys, same order) with the SSR rows,
+ * each row's vnode is HYDRATED against its existing DOM range instead of
+ * being rebuilt — the SSR DOM is adopted, not thrown away. Any mismatch
+ * (different/missing/extra/reordered keys, empty rows) bails to the previous
+ * correctness-first swap semantics: clear the block, mount fresh.
+ */
+export interface ForAdoption {
+  startMarker: Comment
+  tailMarker: Comment
+  /** Ordered SSR rows. `marker` is the row's `k:` comment (removed on adopt). */
+  rows: { key: string; marker: Comment; first: ChildNode; last: ChildNode }[]
+  /** Hydrate one row vnode against its existing DOM range; returns cleanup. */
+  hydrateRow: (
+    vnode: import('@pyreon/core').VNode | import('@pyreon/core').NativeItem,
+    first: ChildNode,
+    after: Node | null,
+  ) => Cleanup
+}
+
+// One-shot synchronous handoff: hydrate.ts sets it immediately before its
+// mountChild(For vnode) call; mount.ts's For branch consumes + clears it in the
+// same synchronous dispatch. Never survives past a single mountFor call — not
+// a registry, no cleanup contract (always cleared on read).
+let _pendingForAdoption: ForAdoption | null = null
+export function _setPendingForAdoption(a: ForAdoption): void {
+  _pendingForAdoption = a
+}
+export function _takePendingForAdoption(): ForAdoption | null {
+  const a = _pendingForAdoption
+  _pendingForAdoption = null
+  return a
+}
+
 export function mountFor<T>(
   source: () => T[],
   getKey: (item: T) => string | number,
@@ -611,11 +648,22 @@ export function mountFor<T>(
   parent: Node,
   anchor: Node | null,
   mountChild: MountFn,
+  adoption?: ForAdoption | null,
 ): Cleanup {
-  const startMarker = document.createComment('')
-  const tailMarker = document.createComment('')
-  parent.insertBefore(startMarker, anchor)
-  parent.insertBefore(tailMarker, anchor)
+  let startMarker: Comment
+  let tailMarker: Comment
+  if (adoption) {
+    // Hydration adoption: the SSR block's own boundary comments become this
+    // For's live markers — they already sit at the right positions.
+    startMarker = adoption.startMarker
+    tailMarker = adoption.tailMarker
+  } else {
+    startMarker = document.createComment('')
+    tailMarker = document.createComment('')
+    parent.insertBefore(startMarker, anchor)
+    parent.insertBefore(tailMarker, anchor)
+  }
+  let pendingAdoption: ForAdoption | null = adoption ?? null
 
   let cache = new Map<string | number, ForEntry>()
   let currentKeys: (string | number)[] = []
@@ -708,6 +756,53 @@ export function mountFor<T>(
       })
     }
     cleanupCount++
+  }
+
+  /**
+   * Adopt the SSR rows on the hydration first-run. STRICT happy path: fires
+   * only when the client items align 1:1 with the SSR rows (same count, same
+   * keys via decodeURIComponent of the marker text, same order) and every row
+   * has at least one DOM node. Each row's vnode is hydrated IN PLACE (bindings
+   * + events wired onto the existing nodes), its range recorded as a normal
+   * ForEntry (`pos === index` invariant holds by construction), and the `k:`
+   * markers are removed. Returns false on ANY mismatch — the caller clears the
+   * block and falls through to the fresh render (the previous swap semantics).
+   */
+  const tryAdoptSsrRows = (items: T[], n: number, a: ForAdoption): boolean => {
+    if (n !== a.rows.length) return false
+    const keys = new Array<string | number>(n)
+    for (let i = 0; i < n; i++) {
+      const key = getKey(items[i] as T)
+      const row = a.rows[i]!
+      let markerKey: string
+      try {
+        markerKey = decodeURIComponent(row.key)
+      } catch {
+        return false // malformed marker — bail, never throw mid-hydration
+      }
+      if (String(key) !== markerKey) return false
+      keys[i] = key
+    }
+    for (let i = 0; i < n; i++) {
+      const row = a.rows[i]!
+      const key = keys[i] as string | number
+      // `after` = the boundary following this row (next row's k: marker, or the
+      // tail marker) — recovery-mounts inside hydrateRow insert before it.
+      const after: Node = i + 1 < n ? a.rows[i + 1]!.marker : tailMarker
+      const cleanup = a.hydrateRow(renderItem(items[i] as T), row.first, after)
+      cache.set(key, {
+        anchor: row.first,
+        cleanup,
+        pos: i,
+        end: row.last !== row.first ? row.last : null,
+      })
+      cleanupCount++
+    }
+    for (let i = 0; i < n; i++) a.rows[i]!.marker.remove()
+    currentKeys = keys
+    if (process.env.NODE_ENV !== 'production')
+      _countSink.__pyreon_count__?.('runtime.mountFor.hydrateAdopt')
+    return true
   }
 
   const handleFreshRender = (items: T[], n: number, liveParent: Node) => {
@@ -1083,6 +1178,17 @@ export function mountFor<T>(
     // incremental update skips re-mount on key match — leaving the subtree's
     // inner effects gone forever. Locked by fanout-repro.test.tsx.
     runUntracked(() => {
+      // Hydration adoption — first run only (one-shot). On a 1:1 key match the
+      // SSR rows are adopted in place; any mismatch clears the SSR block and
+      // falls through to the normal dispatch (fresh render / fast clear) — the
+      // previous correctness-first swap semantics, now internal to mountFor.
+      if (pendingAdoption) {
+        const a = pendingAdoption
+        pendingAdoption = null
+        if (n > 0 && tryAdoptSsrRows(items, n, a)) return
+        clearBetween(startMarker, tailMarker)
+      }
+
       if (n === 0) {
         handleFastClear(liveParent)
         return

@@ -198,9 +198,35 @@ runBtn.addEventListener('click', () => {
 //                       and for backwards compatibility — but the
 //                       fair-bench runner has switched to
 //                       per-framework page isolation.
+//   ?mode=hydration&framework=<name>
+//                       Cross-framework HYDRATION suite (SSR HTML →
+//                       interactive) — one framework per fresh page,
+//                       driven by `bench-hydration.ts`. Lazy-imported so
+//                       the DOM suite's bundle is unaffected.
 const __url = new URL(window.location.href)
 const __frameworkParam = __url.searchParams.get('framework')
-if (__frameworkParam) {
+if (__url.searchParams.get('mode') === 'hydration') {
+  void (async () => {
+    const { runHydration, HYDRATION_FRAMEWORKS } = await import('./impl/hydration')
+    if (!__frameworkParam || !HYDRATION_FRAMEWORKS.includes(__frameworkParam)) {
+      setStatus(`Unknown hydration framework: ${__frameworkParam}. Valid: ${HYDRATION_FRAMEWORKS.join(', ')}`)
+      return
+    }
+    setStatus(`Running hydration: ${__frameworkParam}…`)
+    const container = makeContainer()
+    try {
+      const suite = await runHydration(__frameworkParam, container)
+      buildTable([suite])
+      ;(globalThis as { __benchResults?: BenchSuite[] }).__benchResults = [suite]
+      setStatus('Done ✓')
+    } catch (err) {
+      console.error(`hydration ${__frameworkParam} failed:`, err)
+      setStatus(`FAILED: ${String(err)}`)
+    } finally {
+      removeContainer(container)
+    }
+  })()
+} else if (__frameworkParam) {
   const entry = ALL_FRAMEWORKS.find((f) => f.name === __frameworkParam)
   if (entry) {
     void runSelected([entry])

@@ -37,7 +37,8 @@ import { setupDelegation } from './delegate'
 import { installDevTools } from './devtools'
 import { warnHydrationMismatch } from './hydration-debug'
 import { bindPolymorphicText, mountChild } from './mount'
-import { mountReactive } from './nodes'
+import { _setPendingForAdoption, mountReactive } from './nodes'
+import type { ForAdoption } from './nodes'
 import { applyProps, applySelectValueProp } from './props'
 
 type Cleanup = () => void
@@ -352,15 +353,55 @@ function hydrateVNode(
       }
       if (end) {
         const after = end.nextSibling
-        const marker = insertMarker(parent, domNode, 'pyreon-for')
-        const cleanup = mountChild(vnode, parent, marker)
-        // Remove the SSR block [start..end] inclusive.
-        let cur: ChildNode | null = domNode
-        while (cur) {
-          const nx: ChildNode | null = cur === end ? null : cur.nextSibling
-          cur.remove()
-          cur = nx
+        // Parse the block's TOP-LEVEL rows off the <!--k:KEY--> markers
+        // (depth-aware — a nested <For>'s k: markers belong to ITS block, not
+        // this one). Every row needs ≥1 real DOM node; an empty row makes the
+        // parse bail (rows = null) → swap semantics inside mountFor.
+        let rows: ForAdoption['rows'] | null = []
+        {
+          let rowDepth = 0
+          let cur: ChildNode | null = domNode.nextSibling
+          let open: { key: string; marker: Comment; first: ChildNode | null } | null = null
+          const closeRow = (lastBoundary: ChildNode) => {
+            if (!open) return true
+            const last = lastBoundary.previousSibling
+            if (!open.first || !last || open.first === lastBoundary) {
+              rows = null // empty row — no adoptable range
+              return false
+            }
+            rows?.push({ key: open.key, marker: open.marker, first: open.first, last })
+            open = null
+            return true
+          }
+          while (cur && cur !== end && rows) {
+            if (cur.nodeType === Node.COMMENT_NODE) {
+              const d = (cur as Comment).data
+              if (d === 'pyreon-for') rowDepth++
+              else if (d === '/pyreon-for') rowDepth--
+              else if (rowDepth === 0 && d.startsWith('k:')) {
+                if (!closeRow(cur)) break
+                open = { key: d.slice(2), marker: cur as Comment, first: cur.nextSibling }
+              }
+            }
+            cur = cur.nextSibling
+          }
+          if (rows && !closeRow(end)) rows = null
+          // Content before the first k: marker (shouldn't exist) → not adoptable.
+          if (rows && rows.length === 0 && domNode.nextSibling !== end) rows = null
         }
+
+        // Hand the parsed block to mountFor via the one-shot slot. mountFor
+        // adopts on a 1:1 key match (hydrating each row's vnode against its
+        // existing DOM range) and clears-the-block + fresh-renders on ANY
+        // mismatch — the previous swap semantics, now internal.
+        _setPendingForAdoption({
+          startMarker: domNode as Comment,
+          tailMarker: end as Comment,
+          rows: rows ?? [],
+          hydrateRow: (rowVNode, first, rowAfter) =>
+            hydrateChild(rowVNode as VNodeChild, first, parent, rowAfter, `${path}.for`)[0],
+        })
+        const cleanup = mountChild(vnode, parent, end)
         return [cleanup, after ? firstReal(after) : null]
       }
     }
