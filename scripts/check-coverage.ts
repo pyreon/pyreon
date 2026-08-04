@@ -46,7 +46,7 @@
  * threshold differs from what's listed, the check fails so the
  * exemption is updated in lockstep with real package improvements.
  */
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { readdirSync, existsSync, readFileSync, appendFileSync, realpathSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -83,6 +83,15 @@ const CONCURRENCY = 4
  * next CI run says so in the table rather than leaving it to be guessed at.
  */
 const PACKAGE_TIMEOUT_MS = 600_000
+
+/**
+ * The vitest CLI entry, run under `node` (see the spawn comment in
+ * `runCoverage` for why the runtime must be explicit). Resolved from the
+ * workspace root — bun hoists it there — and verified up front so a missing
+ * binary or a node-less environment fails ONCE with a message, not 72 times
+ * with per-package noise.
+ */
+const VITEST_ENTRY = join(process.cwd(), 'node_modules', 'vitest', 'vitest.mjs')
 
 /**
  * Packages that legitimately have NO instrumentable source, so a coverage run
@@ -303,6 +312,13 @@ export type CoverageOutcome =
  *
  * Pure — unit-tested.
  */
+/** Last ~700 chars of a child's output, ANSI-stripped, for failure records. */
+function tailOf(stdout: string): string {
+  // oxlint-disable-next-line no-control-regex -- deliberately matching ESC to strip ANSI color codes
+  const clean = stdout.replace(/\x1b\[[0-9;]*m/g, '').trimEnd()
+  return clean.length > 700 ? '…' + clean.slice(-700) : clean
+}
+
 export function parseCoverageOutput(stdout: string): CoverageOutcome {
   const read = (label: string): { pct: number; total: number } | null => {
     // `Unknown%` is what istanbul prints for 0/0, so the percent is optional.
@@ -372,6 +388,16 @@ interface CoverageProblem {
   kind: 'empty' | 'unparseable'
   timedOut: boolean
   error?: string
+  /**
+   * The tail of what the child actually printed, ANSI-stripped.
+   *
+   * A failure record without it is undiagnosable from CI: the 2026-08-04
+   * incident printed 72 × "NO COVERAGE OUTPUT" and NOTHING else, so the real
+   * cause (`Error: Coverage APIs are not supported` — vitest running under
+   * bun) was only recoverable by rebuilding the environment in Docker. The
+   * message is the artifact; it must carry the evidence.
+   */
+  outputTail?: string
 }
 
 /** Run coverage for a single package asynchronously. */
@@ -381,10 +407,38 @@ function runCoverage(
   threshold: number,
 ): Promise<CoverageResult | CoverageProblem> {
   return new Promise((resolve) => {
-    const child = spawn('bun', ['run', 'test', '--', '--coverage', '--reporter=json'], {
-      cwd: pkgDir,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    })
+    // Vitest runs under NODE, explicitly — never under whatever the shebang
+    // happens to resolve to.
+    //
+    // `@vitest/coverage-v8` drives coverage through `node:inspector`'s
+    // Profiler API. Bun's inspector does not implement it: under bun the run
+    // dies in ~2s with `Error: Coverage APIs are not supported`, ZERO tests
+    // execute, the coverage table prints 0% for every file, and the
+    // text-summary block never prints (thresholds abort first). That is not
+    // hypothetical — it is exactly what turned every main push red on
+    // 2026-08-04 (72/72 packages "NO COVERAGE OUTPUT"): the previous spawn was
+    // `bun run test`, which leaves the vitest binary's `#!/usr/bin/env node`
+    // shebang to decide the runtime from ambient PATH. Locally that found
+    // node; on the runner, between two pushes five hours apart with no
+    // relevant repo change, it stopped finding it — an environmental flip we
+    // do not control. Every measured package's test script is exactly
+    // `vitest run` (verified across all six package dirs), so invoking the
+    // vitest entry directly is faithful, and pinning the runtime removes the
+    // whole class instead of depending on PATH luck.
+    // `--coverage.reporter=text-summary` EXPLICITLY, for the same reason the
+    // runtime is explicit: the parser reads the istanbul text-summary block,
+    // and whether the AMBIENT default reporter set includes it turned out to
+    // vary by environment (observed 2026-08-04: the identical vitest version
+    // printed the block on macOS and not on Linux). A gate must ask for the
+    // output it parses, not hope the default includes it. Side benefit: the
+    // CLI list REPLACES the default ['text','html','clover','json'], so
+    // children stop writing html/clover/json reports nobody reads — less work
+    // per package.
+    const child = spawn(
+      'node',
+      [VITEST_ENTRY, 'run', '--coverage', '--reporter=json', '--coverage.reporter=text-summary'],
+      { cwd: pkgDir, stdio: ['pipe', 'pipe', 'pipe'] },
+    )
 
     let stdout = ''
     child.stdout.on('data', (data: Buffer) => {
@@ -415,13 +469,19 @@ function runCoverage(
           threshold,
         })
       } else {
-        resolve({ package: pkgName, kind: outcome.kind, timedOut })
+        resolve({ package: pkgName, kind: outcome.kind, timedOut, outputTail: tailOf(stdout) })
       }
     })
 
     child.on('error', (err) => {
       clearTimeout(timer)
-      resolve({ package: pkgName, kind: 'unparseable', timedOut, error: String(err) })
+      resolve({
+        package: pkgName,
+        kind: 'unparseable',
+        timedOut,
+        error: String(err),
+        outputTail: tailOf(stdout),
+      })
     })
   })
 }
@@ -550,7 +610,12 @@ function describeProblem(p: CoverageProblem): string {
   }
   return (
     `${p.package}: produced no parseable coverage summary${p.error ? ` (${p.error})` : ''}.\n` +
-    `    Run \`bun run test -- --coverage\` in the package to see what it printed.`
+    (p.outputTail
+      ? `    The child printed:\n${p.outputTail
+          .split('\n')
+          .map((l) => `      | ${l}`)
+          .join('\n')}`
+      : `    Run \`bun run test -- --coverage\` in the package to see what it printed.`)
   )
 }
 
@@ -708,7 +773,33 @@ if (isFloorOnly) {
   process.exit(0)
 }
 
-console.log(`\nRunning coverage for ${packages.length} packages (${CONCURRENCY} parallel)...\n`)
+// Preflight ONCE, loudly. A node-less environment (or a missing vitest
+// entry) must fail here with a sentence, not as 72 per-package
+// "NO COVERAGE OUTPUT" rows a reader has to reverse-engineer.
+const nodeVersion = (() => {
+  const nodeCheck = spawnSync('node', ['--version'], { encoding: 'utf8' })
+  if (nodeCheck.error || nodeCheck.status !== 0) {
+    console.error(
+      '[check-coverage] FAILED — `node` is not runnable in this environment. ' +
+        'Coverage REQUIRES node: @vitest/coverage-v8 drives the V8 profiler through ' +
+        "node:inspector, which bun does not implement ('Coverage APIs are not supported'). " +
+        'Install node (CI: pass node-version to setup-pyreon).',
+    )
+    process.exit(1)
+  }
+  if (!existsSync(VITEST_ENTRY)) {
+    console.error(
+      `[check-coverage] FAILED — vitest entry not found at ${VITEST_ENTRY}. ` +
+        'Run from the workspace root after `bun install`.',
+    )
+    process.exit(1)
+  }
+  return nodeCheck.stdout.trim()
+})()
+
+console.log(
+  `\nRunning coverage for ${packages.length} packages (${CONCURRENCY} parallel, vitest under node ${nodeVersion})...\n`,
+)
 
 const { results, problems, staleDeclarations } = await runWithConcurrency(packages)
 const sorted = results.sort((a, b) => a.package.localeCompare(b.package))
