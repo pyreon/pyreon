@@ -59,6 +59,46 @@ Plus a detail panel per package (metrics, depends-on / required-by, findings, re
 
 Vite + `@pyreon/vite-plugin` are **optional peers**: `loom scan` runs without them; `loom dev` names the install when missing.
 
+## Configuration
+
+Two homes, one shape. The root `package.json`'s `loom` key, or a `loom` section in the ecosystem-wide `pyreon.config.*`:
+
+```ts
+// pyreon.config.ts
+import { defineConfig } from '@pyreon/config'
+
+export default defineConfig({
+  loom: {
+    // Package-relative globs that are NOT shipping source.
+    devPaths: ['src/manifest.ts', '**/*.gen.ts'],
+    // Suppressions. `reason` is mandatory and is shown in the report.
+    ignore: [{ dep: 'sharp', code: 'unused-dep', reason: 'loaded by the image plugin at runtime' }],
+    // Exit non-zero on warnings without passing --strict at every call site.
+    strict: true,
+    // Adopt incrementally: raise a code once it is clean, lower one while it burns down.
+    severity: { 'unused-dep': 'info', 'phantom-dep': 'error' },
+  },
+})
+```
+
+The manifest wins **per key**, so a project mid-migration can move one setting at a time without the manifest silently blanking everything it does not mention. Both homes go through one validator — two would let one home accept what the other rejects, which is a config that works until you move it.
+
+### `devPaths` — what is not shipping source
+
+Loom classifies imports by surface. Shipping source drives `phantom-dep` and `prod-import-of-dev-dep`, both statements about what a **consumer** receives; the dev surface only proves a dependency is used. Loom infers that surface from path shape — tests, configs, scripts — which covers the common cases and cannot cover a repo's own build conventions.
+
+This monorepo is the worked example. Every package's `src/manifest.ts` imports `@pyreon/manifest` at runtime to feed the docs generator, and the publish script strips `src/` from every tarball, so no consumer can ever need it. Loom was right by its own rules and wrong about the world: **55 of the repo's 60 non-example gating warnings were that one convention**, stated nowhere a tool could read.
+
+Declaring `devPaths: ['src/manifest.ts']` took it from **73 gating warnings to 18**, with all 166 `unused-dep` findings intact — a declared path still counts as **used**, it just stops counting as **shipped**.
+
+### `severity` — adopting loom on an existing repo
+
+Raise a code to `error` once it is clean, lower one to `info` while it is being burned down. Severity is applied **before** suppressions, so an explicit `ignore` still has the last word — a finding you deliberately waved through is not resurrected by a blanket raise. An unknown code is rejected with the list of real ones rather than quietly doing nothing.
+
+### When a config file cannot be read
+
+A `pyreon.config.*` that exists but fails to load is a **named error**, never a silent skip. `loom scan` has no bundler — vite is an optional peer used only by `loom dev` — so a TypeScript config needs a runtime that strips types (Bun, or Node ≥ 23.6). On an older Node, write `pyreon.config.mjs` or use the `package.json` key; the message says exactly that.
+
 ## Honest limits
 
 - The import scan is **lexical** — comments and template-literal contents are stripped and specifier grammar is validated (an import line inside a recipe string doesn't count), but an import mentioned in an ordinary-quoted string can still false-positive. That's why `unused-dep` stays `info` and every finding carries its file evidence.
