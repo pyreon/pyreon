@@ -81,6 +81,49 @@ export const ADD_RECIPES: Record<string, AddRecipe> = {
     usage: `import { useRoute, RouterLink } from '@pyreon/router'\n// <RouterLink to="/about">About</RouterLink>`,
     docs: '/docs/router',
   },
+  // The three TOOL packages: nothing to wire into app code, so `usage` is the
+  // command you actually run. A dev tool with a provider-shaped recipe would be
+  // wrong in a way that wastes someone's afternoon.
+  '@pyreon/loom': {
+    summary: 'Dependency observatory — workspace graph, cycles, phantom deps, blast radius, as data.',
+    usage: `# Scan the fabric; red exit on error findings, so it gates CI as-is.
+npx loom scan .
+
+# Configure via package.json's \`loom\` key or a \`loom\` section in pyreon.config.*:
+#   devPaths  globs that are NOT shipping source (build-time codegen, manifests)
+#   ignore    [{ pkg?, dep?, code?, reason }] — reason mandatory, shown in the report
+#   strict    exit non-zero on warnings too
+#   severity  per-code override: error | warning | info
+
+# The observatory UI (needs vite + @pyreon/vite-plugin as dev deps):
+npx loom dev`,
+    docs: '/docs/loom',
+  },
+  '@pyreon/atlas': {
+    summary: 'AI-native component workbench — derives a verified catalog from your source.',
+    usage: `# Derive the catalog (writes atlas-catalog.json — the machine surface):
+npx atlas scan
+
+# Serve the workbench:
+npx atlas dev
+
+# Optional atlas.config.ts, or an \`atlas\` section in pyreon.config.*.`,
+    docs: '/docs/atlas',
+  },
+  '@pyreon/config': {
+    summary: 'One pyreon.config.ts for the whole ecosystem — a typed section per package.',
+    usage: `// pyreon.config.ts
+import { defineConfig } from '@pyreon/config'
+
+export default defineConfig({
+  atlas: { title: 'Acme Design System' },
+  loom: { devPaths: ['src/manifest.ts'] },
+})
+
+// Per-tool files still win: atlas.config.* beats the \`atlas\` key, and
+// package.json's \`loom\` key beats the \`loom\` section.`,
+    docs: '/docs/reference/config',
+  },
   '@pyreon/head': {
     summary: 'Document <head> management — useHead, HeadProvider, SSR head rendering.',
     provider: {
