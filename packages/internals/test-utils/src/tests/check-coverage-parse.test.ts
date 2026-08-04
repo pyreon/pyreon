@@ -16,7 +16,7 @@
 // carries the ratio.
 
 import { describe, expect, it } from 'vitest'
-import { parseCoverageOutput } from '../../../../../scripts/check-coverage'
+import { extractVitestFailures, parseCoverageOutput } from '../../../../../scripts/check-coverage'
 
 const summary = (stmts: string, branches = '90% ( 9/10 )', funcs = '90% ( 9/10 )', lines = '90% ( 9/10 )') =>
   [
@@ -90,5 +90,59 @@ describe('parseCoverageOutput', () => {
 
   it('handles an integer percentage with no decimal part', () => {
     expect(parseCoverageOutput(summary('100% ( 10/10 )'))).toMatchObject({ statements: 100 })
+  })
+})
+
+// The child is spawned with `--reporter=json` precisely so its output is
+// machine-readable — and until 2026-08 the gate never read it. When a test
+// failed under the coverage run, the error was "produced no parseable coverage
+// summary" with a tail of raw coverageMap JSON, while the SAME captured blob
+// named the failing test (main run 30946924730, @pyreon/mcp, load-dependent).
+// These specs lock the extraction that turns that mystery into a named test.
+describe('extractVitestFailures', () => {
+  const blob = (assertions: unknown[]) =>
+    JSON.stringify({
+      numFailedTests: assertions.filter((a) => (a as { status: string }).status === 'failed').length,
+      testResults: [{ assertionResults: assertions }],
+      coverageMap: { '/w/src/x.ts': { statementMap: {}, s: {} } },
+    })
+
+  it('names failed tests with their first failure message, whitespace-collapsed', () => {
+    const out = extractVitestFailures(
+      blob([
+        { fullName: 'suite > passes', status: 'passed' },
+        {
+          fullName: 'suite > flakes under load',
+          status: 'failed',
+          failureMessages: ['AssertionError:\n  expected 1\n  to be 2'],
+        },
+      ]),
+    )
+    expect(out).toEqual([
+      { name: 'suite > flakes under load', message: 'AssertionError: expected 1 to be 2' },
+    ])
+  })
+
+  it('returns an empty list for an all-green blob (vitest threshold exits fall through to measured)', () => {
+    expect(extractVitestFailures(blob([{ fullName: 'ok', status: 'passed' }]))).toEqual([])
+  })
+
+  it('returns null when no json-reporter blob is present (crash before reporting)', () => {
+    expect(extractVitestFailures('Error: Coverage APIs are not supported\n')).toBeNull()
+  })
+
+  it('parses the LAST json line and survives leading non-json noise', () => {
+    const noise = '{ not json at all\n'
+    const out = extractVitestFailures(
+      noise + blob([{ fullName: 'a > b', status: 'failed', failureMessages: [] }]),
+    )
+    expect(out).toEqual([{ name: 'a > b', message: '' }])
+  })
+
+  it('caps a runaway failure message at 240 chars', () => {
+    const out = extractVitestFailures(
+      blob([{ fullName: 'big', status: 'failed', failureMessages: ['x'.repeat(1000)] }]),
+    )
+    expect(out?.[0]?.message).toHaveLength(240)
   })
 })

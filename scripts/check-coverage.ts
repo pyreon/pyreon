@@ -319,6 +319,64 @@ function tailOf(stdout: string): string {
   return clean.length > 700 ? '…' + clean.slice(-700) : clean
 }
 
+/** A test the child's `--reporter=json` blob recorded as failed. */
+export interface VitestFailure {
+  name: string
+  message: string
+}
+
+/**
+ * Pull failing-test names out of the child's `--reporter=json` output.
+ *
+ * The spawn asks vitest for the json TEST reporter precisely so the output is
+ * machine-readable — and then, until 2026-08, the gate never read it. When a
+ * test failed under the coverage run, vitest exited 1 and (with
+ * `coverage.reportOnFailure` at its false default) skipped the coverage
+ * report entirely, so the error read "produced no parseable coverage summary
+ * (child ended with exit=1 signal=none)" with a tail of raw coverageMap JSON —
+ * structurally undiagnosable, while the SAME captured output carried the
+ * failing test's name and assertion message a few hundred KB earlier.
+ * (Observed on main run 30946924730: @pyreon/mcp, load-dependent — green on
+ * macOS, green in an idle Linux container, red only under the runner.)
+ *
+ * The blob is one giant line: Jest-shaped `{ testResults: [ {
+ * assertionResults: [...] } ] }` with a trailing coverageMap. Parse the LAST
+ * `{`-prefixed line that yields `testResults`; cap what we keep so a mass
+ * failure doesn't flood the gate's error line. Pure — unit-tested.
+ */
+export function extractVitestFailures(stdout: string): VitestFailure[] | null {
+  const lines = stdout.split('\n').filter((l) => l.trimStart().startsWith('{'))
+  for (let i = lines.length - 1; i >= 0; i--) {
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(lines[i]!)
+    } catch {
+      continue
+    }
+    const doc = parsed as {
+      testResults?: Array<{
+        assertionResults?: Array<{
+          fullName?: string
+          title?: string
+          status?: string
+          failureMessages?: string[]
+        }>
+      }>
+    }
+    if (!Array.isArray(doc.testResults)) continue
+    const failures: VitestFailure[] = []
+    for (const tr of doc.testResults) {
+      for (const a of tr.assertionResults ?? []) {
+        if (a.status !== 'failed') continue
+        const message = (a.failureMessages?.[0] ?? '').replace(/\s+/g, ' ').slice(0, 240)
+        failures.push({ name: a.fullName ?? a.title ?? '(unnamed test)', message })
+      }
+    }
+    return failures
+  }
+  return null
+}
+
 export function parseCoverageOutput(stdout: string): CoverageOutcome {
   const read = (label: string): { pct: number; total: number } | null => {
     // `Unknown%` is what istanbul prints for 0/0, so the percent is optional.
@@ -385,9 +443,11 @@ function getPackageBranchThreshold(pkgDir: string): number {
  */
 interface CoverageProblem {
   package: string
-  kind: 'empty' | 'unparseable'
+  kind: 'empty' | 'unparseable' | 'tests-failed'
   timedOut: boolean
   error?: string
+  /** For `tests-failed`: the failing tests named by the json reporter blob. */
+  failedTests?: VitestFailure[]
   /**
    * The tail of what the child actually printed, ANSI-stripped.
    *
@@ -434,9 +494,22 @@ function runCoverage(
     // CLI list REPLACES the default ['text','html','clover','json'], so
     // children stop writing html/clover/json reports nobody reads — less work
     // per package.
+    // `--coverage.reportOnFailure` because its false default couples two
+    // independent facts: one failing test (vitest exit 1) suppresses the
+    // ENTIRE coverage report, so the gate reads "no parseable summary" when
+    // the truth is "measured fine, one test flaked". With the flag, a
+    // failing-test run still prints the summary — the gate then reports BOTH
+    // the named failure and the measured numbers instead of a mystery.
     const child = spawn(
       'node',
-      [VITEST_ENTRY, 'run', '--coverage', '--reporter=json', '--coverage.reporter=text-summary'],
+      [
+        VITEST_ENTRY,
+        'run',
+        '--coverage',
+        '--reporter=json',
+        '--coverage.reporter=text-summary',
+        '--coverage.reportOnFailure',
+      ],
       { cwd: pkgDir, stdio: ['pipe', 'pipe', 'pipe'] },
     )
 
@@ -458,7 +531,35 @@ function runCoverage(
       clearTimeout(timer)
 
       const outcome = parseCoverageOutput(stdout)
-      if (outcome.kind === 'measured') {
+      // A non-zero exit with named test failures is its OWN outcome — even
+      // when the summary parsed. Without this branch, `reportOnFailure` would
+      // quietly LAUNDER a main-branch test failure into a green coverage row
+      // (the Test cells run the same specs uninstrumented, so a failure that
+      // only reproduces under coverage load would vanish entirely).
+      // A non-zero exit with ZERO failed tests + a parsed summary is vitest's
+      // own threshold enforcement — fall through to `measured`, where this
+      // gate applies its floors itself.
+      const failures = code !== 0 && !timedOut ? extractVitestFailures(stdout) : null
+      if (failures && failures.length > 0) {
+        const named = failures
+          .slice(0, 3)
+          .map((f) => `"${f.name}"${f.message ? ` — ${f.message}` : ''}`)
+          .join('; ')
+        const measuredNote =
+          outcome.kind === 'measured'
+            ? ` Coverage WAS measured (${outcome.statements}% stmts / ${outcome.branches}% branch).`
+            : ''
+        resolve({
+          package: pkgName,
+          kind: 'tests-failed',
+          timedOut: false,
+          failedTests: failures,
+          error:
+            `${failures.length} test(s) FAILED under the coverage run (exit=${code ?? 'null'}): ` +
+            `${named}${failures.length > 3 ? `; +${failures.length - 3} more` : ''}.${measuredNote}`,
+          outputTail: tailOf(stdout),
+        })
+      } else if (outcome.kind === 'measured') {
         resolve({
           package: pkgName,
           statements: outcome.statements,
@@ -579,9 +680,11 @@ async function runWithConcurrency(
         const why =
           outcome.kind === 'empty'
             ? 'MEASURED NOTHING'
-            : outcome.timedOut
-              ? 'TIMED OUT'
-              : 'NO COVERAGE OUTPUT'
+            : outcome.kind === 'tests-failed'
+              ? `${outcome.failedTests?.length ?? '?'} TEST(S) FAILED`
+              : outcome.timedOut
+                ? 'TIMED OUT'
+                : 'NO COVERAGE OUTPUT'
         console.log(`  ${pkg.name}: \u274c ${why}`)
       }
     }
@@ -609,6 +712,15 @@ function describeProblem(p: CoverageProblem): string {
       `    Almost always: the package's logic lives in src/index.ts, which the shared\n` +
       `    vitest config excludes as a re-export barrel. Fix by setting\n` +
       `    \`includeIndexInCoverage: true\` in the package's vitest.config.ts.`
+    )
+  }
+  if (p.kind === 'tests-failed') {
+    return (
+      `${p.package}: ${p.error ?? 'tests failed under the coverage run'}\n` +
+      `    This job runs on main pushes, so the failure is main-branch evidence. If the\n` +
+      `    same spec is green in the Test cells, it fails only under coverage\n` +
+      `    instrumentation load \u2014 deflake the NAMED test (see testing.md "the message\n` +
+      `    is the artifact"); do not re-run past it.`
     )
   }
   if (p.timedOut) {
@@ -837,7 +949,14 @@ for (const r of sorted) {
 // once mid-run and then dropped \u2014 so a package whose thresholds were never
 // enforced looked exactly like a package that did not exist.
 for (const p of sortedProblems) {
-  const what = p.kind === 'empty' ? 'MEASURED NOTHING' : p.timedOut ? 'TIMED OUT' : 'NO OUTPUT'
+  const what =
+    p.kind === 'empty'
+      ? 'MEASURED NOTHING'
+      : p.kind === 'tests-failed'
+        ? 'TESTS FAILED'
+        : p.timedOut
+          ? 'TIMED OUT'
+          : 'NO OUTPUT'
   reportLines.push(`| ${p.package} | \u2014 | \u2014 | \u2014 | \u2014 | \u2014 | \u274c ${what} |`)
 }
 
