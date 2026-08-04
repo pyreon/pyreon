@@ -339,7 +339,7 @@ Measured against the previous per-scenario design:
 
 | package | scenarios/component | before | after |
 | --- | --- | --- | --- |
-| a variant-heavy design system | 10.1 | 56.0s | 4.3s |
+| a variant-heavy design system | 10.1 | 42.2s | 4.5s |
 | a headless primitive set | 2.2 | 3.3s | 0.8s |
 
 `ATLAS_PROFILE=1` reports where a scan's time went, per plugin hook — useful

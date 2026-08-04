@@ -5,7 +5,7 @@
 `atlas scan` 4-13x faster — the leak check was paying a full GC per scenario
 
 A scan of a variant-heavy design system (108 components, 1090 scenarios) took
-56s, and 98.3% of it was one plugin hook. Two hypotheses about which part died
+42s, and 98.3% of it was one plugin hook. Two hypotheses about which part died
 to measurement first — the static scan is 35ms, and the settle loop exits
 immediately rather than burning its runway — so the attribution now comes off a
 profiling seam (`ATLAS_PROFILE=1`) rather than from reading the code. What it
@@ -25,10 +25,12 @@ floor).
 Because the cost now tracks components rather than scenarios, the win scales
 with how many scenarios each component has:
 
-| scenarios/component | before | after |
-| --- | --- | --- |
-| 10.1 | 56.0s | 4.3s |
-| 2.2 | 3.3s | 0.8s |
+| scenarios/component | before | after | |
+| --- | --- | --- | --- |
+| 10.1 | 42.2s | 4.5s | 9.3x |
+| 2.2 | 3.3s | 0.8s | 4.3x |
+
+(medians of interleaved runs on an idle machine)
 
 Identical output throughout: same components, same scenarios, same interaction
 verdicts, same leak verdicts, byte-identical agent guide. Bisect-verified — the
