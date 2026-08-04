@@ -180,5 +180,10 @@
   "dependencies": {
     "@tanstack/query-core": "^5.101.2",
     "@vitest/browser-playwright": "^4.1.10"
+  },
+  "loom": {
+    "devPaths": [
+      "src/manifest.ts"
+    ]
   }
 }

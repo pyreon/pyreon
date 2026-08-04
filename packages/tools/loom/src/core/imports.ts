@@ -234,6 +234,38 @@ function isTypeDeclarationFile(relPath: string): boolean {
   return /\.d\.[cm]?ts$/.test(relPath)
 }
 
+/**
+ * Does a package-relative path match one glob?
+ *
+ * Segment-wise, the same vocabulary `expandGlob` uses for workspace globs —
+ * `*` matches within ONE segment, `**` matches any depth including zero. A
+ * regex built from the whole glob in one pass is the tempting shortcut and is
+ * where the escaping bugs live (`**` rewritten to `.*` then re-scanned by the
+ * single-`*` pass), so this walks segments instead.
+ *
+ * `src/manifest.ts` · `**\/manifest.ts` · `src/**` · `**\/*.gen.ts`
+ */
+export function matchesPathGlob(relPath: string, glob: string): boolean {
+  const p = relPath.split('/')
+  const g = glob.split('/')
+  const segMatches = (name: string, seg: string): boolean => {
+    if (seg === '*') return true
+    if (!seg.includes('*')) return name === seg
+    const escaped = seg.split('*').map((part) => part.replace(/[.+^${}()|[\]\\?]/g, '\\$&'))
+    return new RegExp(`^${escaped.join('[^/]*')}$`).test(name)
+  }
+  const walk = (pi: number, gi: number): boolean => {
+    if (gi === g.length) return pi === p.length
+    if (g[gi] === '**') {
+      for (let k = pi; k <= p.length; k += 1) if (walk(k, gi + 1)) return true
+      return false
+    }
+    if (pi === p.length) return false
+    return segMatches(p[pi]!, g[gi]!) && walk(pi + 1, gi + 1)
+  }
+  return walk(0, 0)
+}
+
 /** Test/dev-surface classification, aligned with the repo's `isTestPath` idiom. */
 export function isDevSurfacePath(relPath: string): boolean {
   if (/(^|\/)(tests?|__tests__|__mocks__|e2e|bench(es)?|scripts|fixtures|templates)(\/|$)/.test(relPath)) return true
@@ -266,8 +298,22 @@ function walkFiles(dir: string, rel: string, out: string[], depthLeft: number): 
   }
 }
 
-/** Scan one package directory. Returns specifier → files (relative) per surface. */
-export function scanPackageImports(pkgAbsDir: string, rootDir?: string): {
+/**
+ * Scan one package directory. Returns specifier → files (relative) per surface.
+ *
+ * `devPaths` are package-relative globs the PROJECT declares as not-shipping
+ * source. They extend {@link isDevSurfacePath} rather than forming a separate
+ * exclusion, because that is exactly what they mean: the file is real, its
+ * imports are real evidence the dependency is USED, but a consumer never
+ * receives it — so it must not drive `phantom-dep` or `prod-import-of-dev-dep`
+ * while still keeping `unused-dep` quiet.
+ *
+ * The motivating case is unknowable from inside loom: this repo's
+ * `src/manifest.ts` files import `@pyreon/manifest` at runtime to feed
+ * gen-docs, and `scripts/publish.ts` strips `src/` from every tarball. 55 of
+ * the repo's 60 non-example gating warnings were that one convention.
+ */
+export function scanPackageImports(pkgAbsDir: string, rootDir?: string, devPaths: readonly string[] = []): {
   prod: Map<string, string[]>
   dev: Map<string, string[]>
   type: Map<string, string[]>
@@ -285,7 +331,8 @@ export function scanPackageImports(pkgAbsDir: string, rootDir?: string): {
     } catch {
       continue
     }
-    const runtimeBucket = isDevSurfacePath(file) ? dev : prod
+    const declaredDev = devPaths.some((glob) => matchesPathGlob(file, glob))
+    const runtimeBucket = isDevSurfacePath(file) || declaredDev ? dev : prod
     const { stripped, codeAt } = stripWithMask(text)
     // Every import in a `.d.ts` is type-only by construction.
     const declarationFile = isTypeDeclarationFile(file)
@@ -311,13 +358,17 @@ export function scanPackageImports(pkgAbsDir: string, rootDir?: string): {
   return { prod, dev, type }
 }
 
-/** Scan every workspace member. */
-export function scanImports(rootDir: string, packages: { name: string; dir: string }[]): ImportScan {
+/** Scan every workspace member. `devPaths` — see {@link scanPackageImports}. */
+export function scanImports(
+  rootDir: string,
+  packages: { name: string; dir: string }[],
+  devPaths: readonly string[] = [],
+): ImportScan {
   const prod = new Map<string, Map<string, string[]>>()
   const dev = new Map<string, Map<string, string[]>>()
   const type = new Map<string, Map<string, string[]>>()
   for (const p of packages) {
-    const scan = scanPackageImports(join(rootDir, p.dir), rootDir)
+    const scan = scanPackageImports(join(rootDir, p.dir), rootDir, devPaths)
     prod.set(p.name, scan.prod)
     dev.set(p.name, scan.dev)
     type.set(p.name, scan.type)

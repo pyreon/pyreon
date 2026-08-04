@@ -34,7 +34,7 @@ export function buildReport(rootDir: string, options: BuildReportOptions = {}): 
     ...detectPeerMismatch(model),
   ]
   if (!options.noImports) {
-    const imports = scanImports(rootDir, model.packages)
+    const imports = scanImports(rootDir, model.packages, model.root.devPaths)
     issues.push(...detectPhantoms(model, imports), ...detectUnused(model, imports))
   }
   // Suppressions downgrade to info WITH the reason attached — a finding is

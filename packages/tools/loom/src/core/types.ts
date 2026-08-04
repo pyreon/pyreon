@@ -57,6 +57,15 @@ export interface WorkspaceRoot {
   workspaceGlobs: string[]
   /** Suppressions from the root manifest's `loom.ignore` (validated). */
   ignores: LoomIgnore[]
+  /**
+   * Package-relative globs the project declares as NOT shipping source
+   * (`loom.devPaths`) — build-time codegen, manifest files, generators.
+   *
+   * Loom cannot infer this. It reads `src/**` as shipped because most repos
+   * ship it; a repo that builds to `lib/` and strips `src/` at publish does
+   * not, and nothing in the manifest says so.
+   */
+  devPaths: string[]
 }
 
 export interface WorkspaceModel {
