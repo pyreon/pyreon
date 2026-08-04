@@ -22,15 +22,17 @@ carries across components, and each GC call sweeps once rather than twice
 (the settle loop already retries, and stops as soon as the count is at the
 floor).
 
-Because the cost now tracks components rather than scenarios, the win scales
-with how many scenarios each component has:
+One sweep now answers for the WHOLE catalog, not just one component: 2767
+collections become 3, and a 108-component / 1090-scenario scan goes from 40.8s
+to 1.0s (medians of interleaved runs on an idle machine). A catalog that does
+retain something falls back to per-component and then per-scenario resolution,
+so a real leak is still attributed to the scenario causing it.
 
-| scenarios/component | before | after | |
-| --- | --- | --- | --- |
-| 10.1 | 42.2s | 4.5s | 9.3x |
-| 2.2 | 3.3s | 0.8s | 4.3x |
-
-(medians of interleaved runs on an idle machine)
+This also removes a pre-existing flaky FALSE POSITIVE. Requiring accumulation
+across two full catalog passes is a much stronger filter than across two mounts
+of one scenario, so a one-node engine straggler no longer reads as a leak:
+`stack--indent-large-gap-xxlarge-gapy-medium` failed 1 run in 5 before and is
+stable across 6 runs now.
 
 Identical output throughout: same components, same scenarios, same interaction
 verdicts, same leak verdicts, byte-identical agent guide. Bisect-verified — the

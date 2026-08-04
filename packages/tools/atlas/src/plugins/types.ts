@@ -22,6 +22,24 @@ export interface DecorateContext {
 export interface VerifyContext {
   readonly scenario: Scenario
   readonly component: ComponentIntelligence
+  /**
+   * Every decorated component in this run, `component` included.
+   *
+   * Present so a plugin whose check has a large FIXED cost can pay it once for
+   * the catalog instead of once per component. The mount plugin's leak check is
+   * the motivating case: its verdict costs a forced garbage collection, and a
+   * single collection answers "did anything here retain nodes" for a thousand
+   * scenarios as well as for one.
+   *
+   * A plugin that ignores this field behaves exactly as before — it is a wider
+   * view of the same run, not a change to what `scenario` and `component` mean.
+   *
+   * OPTIONAL, because a caller driving a plugin's `verify` directly — a test, a
+   * host embedding one check — has one scenario and no catalog, and requiring
+   * a set it does not have would make the field a breaking change rather than
+   * an opportunity. `createAtlas` always supplies it.
+   */
+  readonly components?: readonly ComponentIntelligence[]
 }
 
 export interface GraphContext {

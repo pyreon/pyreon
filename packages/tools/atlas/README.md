@@ -333,14 +333,15 @@ them retained anything. Only a batch that comes back dirty is separated, first
 by re-running the batch (which tells one-time retention from a per-mount leak)
 and then, if it really is climbing, scenario by scenario.
 
-The practical consequence is that scan time tracks your COMPONENT count far
-more than your scenario count, so generated variant matrices are close to free.
-Measured against the previous per-scenario design:
+In the common case — a catalog where nothing leaks — the whole thing is answered
+by a handful of collections rather than one per component, so scan time is
+dominated by discovery and mounting rather than by GC. Measured on a
+108-component, 1090-scenario design system: 40.8s before, 1.0s after, with the
+collection count falling from 2767 to 3.
 
-| package | scenarios/component | before | after |
-| --- | --- | --- | --- |
-| a variant-heavy design system | 10.1 | 42.2s | 4.5s |
-| a headless primitive set | 2.2 | 3.3s | 0.8s |
+A catalog that DOES retain something falls back to per-component and then to
+per-scenario resolution, so a real leak is still attributed to the scenario that
+causes it — it just costs more to find, which is the right way round.
 
 `ATLAS_PROFILE=1` reports where a scan's time went, per plugin hook — useful
 when a project's own components dominate rather than the framework.
