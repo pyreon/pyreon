@@ -1351,7 +1351,15 @@ jobs:
   # push:main + merge_group as the whole-repo backstop.
   coverage:
     name: Coverage
-    needs: [install, changes]
+    # `bootstrap` is REQUIRED, not an optimisation to shave off. The floor
+    # check alone reads vitest.config.ts and needs no `lib/`, which is why this
+    # job ran without it for a long time — but the affected-coverage step below
+    # EXECUTES each package's suite, and not every suite resolves purely
+    # through the bun condition to `src`. `@pyreon/atlas` is the counter-example
+    # that proved it: without `lib/` its tests never reach a coverage summary,
+    # and the step failed with "NO COVERAGE OUTPUT" on unrelated PRs within
+    # half an hour of the affected step landing (#2659 → #2666, #2480).
+    needs: [install, changes, bootstrap]
     if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
@@ -1361,9 +1369,9 @@ jobs:
           fetch-depth: 0 # affected.ts needs the merge-base to compute a real diff
       - uses: ./.github/actions/setup-pyreon
         with:
-          # Coverage resolves @pyreon/* through the bun condition to `src`, so
-          # neither the floor check nor the affected run needs a built `lib/`.
-          restore-bootstrap: 'false'
+          # TRUE — see the `needs:` note above. The floor check would be happy
+          # without it; the affected run is not, because it runs real suites.
+          restore-bootstrap: 'true'
       - name: Coverage floor + exemption drift check
         run: bun run coverage:floor
 
@@ -1398,7 +1406,20 @@ jobs:
             exit 0
           fi
           NAMES=$(printf '%s\n' $FILTER | sed 's/^--filter=//' | paste -sd, -)
-          echo "Affected: ${NAMES:-<none>}"
+          COUNT=$(printf '%s\n' $FILTER | grep -c . || true)
+          # CAP the set. `--filter=*` is not the only way to end up with the
+          # whole monorepo: a release PR touches every package.json, so
+          # affected.ts legitimately returns ~130 EXPLICIT filters and this
+          # step tried to run the entire suite at PR time — the exact cost the
+          # step exists to avoid, and it reds the release PR (#2480). The
+          # push:main + merge_group full run is the backstop for wide changes;
+          # this step is for the ordinary 1-5 package PR.
+          if [ "$COUNT" -gt 15 ]; then
+            echo "$COUNT affected packages — too wide for a PR-time run;"
+            echo "full coverage runs on push:main + merge_group."
+            exit 0
+          fi
+          echo "Affected ($COUNT): ${NAMES:-<none>}"
           bun scripts/check-coverage.ts --only="$NAMES"
 
   coverage-full:
