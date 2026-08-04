@@ -19,8 +19,9 @@ loom dev .         # the observatory UI — graph · matrix · cycles · impact 
 | `version-drift` | error (cross-major) / warning (same-major) / info (root-overridden) | one external dep declared with different ranges across packages |
 | `internal-range` | error | a workspace member referenced by a bare semver (registry install waiting to happen) or a `workspace:` pin whose major no longer exists |
 | `cycle` | error | a runtime import loop between workspace packages (dev edges deliberately excluded — shared test utilities legitimately "cycle") |
-| `phantom-dep` | error (published) / warning (private) | shipping source imports a package the manifest never declares — hoisting luck |
-| `prod-import-of-dev-dep` | warning (published) / info (private) | shipping source leans on a devDependency consumers won't have |
+| `phantom-dep` | error (published) / warning (private) | shipping source imports a package at RUNTIME that the manifest never declares — hoisting luck |
+| `phantom-type-dep` | info | a `import type` / `.d.ts` import of an undeclared package — erased at build, so consumers are fine, but typecheck rides on hoisting |
+| `prod-import-of-dev-dep` | warning (published) / info (private) | shipping source leans at RUNTIME on a devDependency consumers won't have |
 | `peer-mismatch` | warning | an internal peer range disagreeing with the workspace copy by a major |
 | `unused-dep` | info | a declared dependency no source file imports — lexical evidence only, verify before removing |
 
@@ -29,6 +30,8 @@ loom dev .         # the observatory UI — graph · matrix · cycles · impact 
 ## Honest limits
 
 - The import scan is **lexical** (comments and template-literal contents stripped, specifier grammar validated) — an import mentioned in an ordinary-quoted string can still false-positive, which is why `unused-dep` stays `info` and every finding carries its file evidence.
+- Type-only detection is **statement-level**: `import type` / `export type` (multi-line included) and every import inside a `.d.ts`. An INLINE modifier — `import { type A, b } from 'x'` — is treated as a runtime import, because it is one, and under `verbatimModuleSyntax` even `import { type A } from 'x'` still emits the statement.
+- tsconfig aliases are read from the package's own `tsconfig.json` plus the workspace root's, following one **relative** `extends` hop. An alias declared only through a chain that leaves the repo (a base config in `node_modules`) is not seen; the cost is a possible `phantom-dep` on that alias, never a wrong graph.
 - Loom reads **declared** truth (manifests + source), not installed state: no lockfile parsing, no registry calls. Outdated-vs-latest and duplicate-install analysis are explicitly future layers.
 - Workspace globs support the shapes real repos use (`dir/*`, `dir/*/*`, `dir/**`, literals, negations, pnpm-workspace.yaml, object-form `workspaces`).
 

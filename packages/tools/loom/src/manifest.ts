@@ -16,8 +16,10 @@ export default defineManifest({
   features: [
     'Workspace discovery matching real repos: npm/bun/yarn `workspaces` (array + object forms), pnpm-workspace.yaml, segment-wise globs (`packages/*/*`, `**`, negations)',
     'Graph analysis split by edge SEMANTICS: runtime (dependencies + peers) drives cycles/depths/reach; dev edges tracked separately — shared test utilities never read as circular',
-    'Seven detectors with honest severities: version-drift (peer-contract + strict-superset-containment aware), internal-range, cycle, phantom-dep, prod-import-of-dev-dep, peer-mismatch, unused-dep (info — lexical evidence, not proof)',
+    'Seven detectors with honest severities: version-drift (peer-contract + strict-superset-containment aware), internal-range, cycle, phantom-dep (+ phantom-type-dep), prod-import-of-dev-dep, peer-mismatch, unused-dep (info — lexical evidence, not proof)',
     'Severity respects reality: a private package has no consumers, so its phantom-dep is a warning and its dev-dep import is info',
+    'TYPE-AWARE import scan: `import type` / `export type` (multi-line included) and everything in a `.d.ts` are tracked separately from runtime imports — importing types from a devDependency is correct code, so it is never reported, while an undeclared type-only import surfaces as info-level `phantom-type-dep` rather than a runtime phantom',
+    'tsconfig `paths` aware: `~/*`, `@app/*` and other internal aliases are read from the package + root tsconfig (JSONC, one `extends` hop) so they never scan as phantom packages',
     'Lexical import scan that strips comments + template-literal contents and validates specifier grammar — recipe catalogs carrying whole import lines as strings never false-positive',
     'Red exit contract: `loom scan` fails CI on error findings (`--strict` includes warnings); `loom-report.json` is the machine surface with stable codes + per-finding evidence',
     'The observatory (`loom dev`): layered graph, adjacency matrix, cycle cards, blast-radius ranking, manifest table + detail panel, ⌘K, keyboard nav, dark/light — on the public Pyreon UI stack; vite + @pyreon/vite-plugin optional peers',
