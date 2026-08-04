@@ -113,3 +113,59 @@ describe('shortName', () => {
     expect(shortName('lodash')).toBe('lodash')
   })
 })
+
+// ── ⌘K search ─────────────────────────────────────────────────────────────
+//
+// `searchHits` powers the palette and had no test. Its rules are not obvious
+// from the call site: tokens are ANDed (every token must match SOMETHING),
+// each token scores its best-weighted match, an exact-id match that also
+// prefixes the query earns a bonus, and the heaviest matching entry supplies
+// the human-readable reason. All four are easy to break silently — a palette
+// that ranks badly still "works", so nothing else would catch it.
+
+describe('createModel — searchHits', () => {
+  it('an empty query lists every node at score 0', () => {
+    const m = createModel(report)
+    const all = m.searchHits('   ')
+    expect(all).toHaveLength(buildNodes(report).length)
+    expect(all.every((h) => h.score === 0)).toBe(true)
+  })
+
+  it('finds a package by an id substring', () => {
+    const m = createModel(report)
+    const hits = m.searchHits('app')
+    expect(hits.map((h) => h.id)).toContain('@fix/app')
+  })
+
+  it('ANDs multiple tokens — a node matching only one is excluded', () => {
+    const m = createModel(report)
+    const both = m.searchHits('fix app').map((h) => h.id)
+    expect(both).toContain('@fix/app')
+
+    // A second token that matches nothing must empty the result rather than
+    // degrade to an OR, which would make the palette useless as you type.
+    expect(m.searchHits('app zzzznotatoken')).toEqual([])
+  })
+
+  it('ranks by score, descending, with a stable id tiebreak', () => {
+    const m = createModel(report)
+    const hits = m.searchHits('fix')
+    const scores = hits.map((h) => h.score)
+    expect(scores).toEqual([...scores].sort((a, b) => b - a))
+
+    for (let i = 1; i < hits.length; i++) {
+      if (hits[i - 1]!.score === hits[i]!.score) {
+        expect(hits[i - 1]!.id.localeCompare(hits[i]!.id)).toBeLessThanOrEqual(0)
+      }
+    }
+  })
+
+  it('is case-insensitive', () => {
+    const m = createModel(report)
+    expect(m.searchHits('APP').map((h) => h.id)).toEqual(m.searchHits('app').map((h) => h.id))
+  })
+
+  it('returns no hits for a query nothing matches', () => {
+    expect(createModel(report).searchHits('definitely-not-present-anywhere')).toEqual([])
+  })
+})

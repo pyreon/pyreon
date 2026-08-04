@@ -88,4 +88,60 @@ describe('<ChartWebView>', () => {
     ;(vnode.props as { onMessage: (m: string) => void }).onMessage('raw-string')
     expect(onSelect).toHaveBeenCalledWith({ name: 'raw-string' })
   })
+
+  // ── `data` is a live getter, not a captured value ───────────────────────
+  //
+  // The whole reason `data` is defined with `Object.defineProperty` instead of
+  // written as `data: props.option` is the descriptor-copy rule: reading a
+  // compiler-wrapped reactive prop eagerly collapses it to a static value, and
+  // the chart then never updates. That contract had no test — the accessor
+  // branch was the one uncovered line in the file.
+
+  it('re-reads `option` on EVERY access, so a signal change reaches the WebView', () => {
+    let n = 0
+    const vnode = ChartWebView({ option: () => ({ series: [{ data: [++n] }] }) })
+    const props = vnode.props as { data: unknown }
+
+    // Two reads must produce two evaluations. A captured value would return
+    // the same object both times and the chart would freeze at first render.
+    expect(props.data).toEqual({ series: [{ data: [1] }] })
+    expect(props.data).toEqual({ series: [{ data: [2] }] })
+  })
+
+  it('passes a plain (non-accessor) option object straight through', () => {
+    const option = { series: [{ type: 'bar' }] }
+    const vnode = ChartWebView({ option })
+    expect((vnode.props as { data: unknown }).data).toBe(option)
+  })
+
+  it('does NOT evaluate the option accessor at construction time', () => {
+    // Eager evaluation is the bug this shape exists to prevent, and it is
+    // observable: the accessor must not run until something reads `data`.
+    const option = vi.fn(() => ({}))
+    const vnode = ChartWebView({ option })
+    expect(option).not.toHaveBeenCalled()
+    void (vnode.props as { data: unknown }).data
+    expect(option).toHaveBeenCalledTimes(1)
+  })
+
+  it('forwards each host-builder option to buildChartHostHtml', () => {
+    // Every `if (props.X !== undefined)` arm — previously only exercised by
+    // calling buildChartHostHtml directly, never THROUGH the component, so a
+    // forwarding line could have been dropped without failing anything.
+    const vnode = ChartWebView({
+      option: {},
+      echartsSrc: 'https://example.test/echarts.js',
+      theme: 'dark',
+      renderer: 'svg',
+    })
+    const html = (vnode.props as { html: string }).html
+    expect(html).toContain('https://example.test/echarts.js')
+    expect(html).toContain('dark')
+    expect(html).toContain('svg')
+  })
+
+  it('forwards an inlined echartsScript through the component', () => {
+    const vnode = ChartWebView({ option: {}, echartsScript: '/*INLINE_ECHARTS*/' })
+    expect((vnode.props as { html: string }).html).toContain('/*INLINE_ECHARTS*/')
+  })
 })

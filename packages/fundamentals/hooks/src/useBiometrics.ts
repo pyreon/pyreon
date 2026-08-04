@@ -62,6 +62,7 @@ export function useBiometrics(): UseBiometricsResult {
     // false (never authenticated) without rejecting.
     authenticate: (_reason: string) => Promise.resolve(false),
     isAvailable: () => {
+      /* v8 ignore next — SSR arm; `isClient` is a module-load constant and this suite runs under happy-dom, so this is unreachable without mocking @pyreon/reactivity (forbidden by the test-environment rules). */
       if (!isClient) return false
       return typeof (window as { PublicKeyCredential?: unknown }).PublicKeyCredential === 'function'
     },

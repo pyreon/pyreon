@@ -66,6 +66,7 @@ export interface UseImagePickerResult {
 export function useImagePicker(): UseImagePickerResult {
   return {
     pick: () => {
+      /* v8 ignore next — SSR arm; `isClient` is a module-load constant and this suite runs under happy-dom, so this is unreachable without mocking @pyreon/reactivity (forbidden by the test-environment rules). */
       if (!isClient) return Promise.resolve(null)
       return new Promise<string | null>((resolve) => {
         const input = document.createElement('input')

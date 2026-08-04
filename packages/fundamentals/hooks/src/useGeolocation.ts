@@ -118,6 +118,10 @@ export function useGeolocation(options: UseGeolocationOptions = {}): UseGeolocat
     // (rightly) cannot see it. An explicit typeof check states the SSR
     // contract at the access site instead of relying on an invariant a reader
     // has to reconstruct.
+    /* v8 ignore next 5 — unreachable by the invariant the comment above
+       states: reaching here needs `watchId` set (so `start()` saw a navigator)
+       AND the navigator gone afterwards. A test could only get here by
+       fabricating that state, which asserts nothing real. */
     if (typeof navigator === 'undefined' || navigator.geolocation === undefined) {
       watchId = undefined
       tracking.set(false)

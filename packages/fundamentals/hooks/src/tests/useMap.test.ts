@@ -123,3 +123,29 @@ describe('shared-code contract with PyreonMapState', () => {
     expect('error' in map).toBe(false)
   })
 })
+
+describe('useMap — setCamera', () => {
+  it('replaces the whole camera, unlike moveTo which preserves zoom', () => {
+    // `setCamera` is the absolute setter and `moveTo` the relative one; the
+    // pair is easy to conflate in a refactor, and setCamera had no test.
+    const map = useMap()
+    map.setCamera({ latitude: 10, longitude: 20, zoom: 5 })
+    expect(map.camera).toEqual({ latitude: 10, longitude: 20, zoom: 5 })
+
+    map.moveTo(30, 40)
+    // zoom SURVIVES a moveTo with no zoom argument...
+    expect(map.camera).toEqual({ latitude: 30, longitude: 40, zoom: 5 })
+
+    // ...whereas setCamera overwrites every field.
+    map.setCamera({ latitude: 1, longitude: 2, zoom: 0 })
+    expect(map.camera).toEqual({ latitude: 1, longitude: 2, zoom: 0 })
+  })
+
+  it('accepts zoom 0 rather than treating it as absent', () => {
+    // The sibling `moveTo` documents `?? ` over `||` for exactly this reason;
+    // pinning it on setCamera too keeps the pair honest.
+    const map = useMap()
+    map.setCamera({ latitude: 0, longitude: 0, zoom: 0 })
+    expect(map.camera.zoom).toBe(0)
+  })
+})

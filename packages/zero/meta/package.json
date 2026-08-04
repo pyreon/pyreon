@@ -34,7 +34,7 @@
   "scripts": {
     "build": "vl_rolldown_build && tsc",
     "dev": "vl_rolldown_build-watch",
-    "test": "bun test",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint ."
   },
