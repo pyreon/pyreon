@@ -28,7 +28,10 @@ const HELP = `
       --strict          Exit non-zero on warnings too.
       --no-imports      Skip the source-import scan (phantom/dev-dep/unused detectors).
       --no-write        Don't write loom-report.json.
-      --json            Print the full report as JSON to stdout (implies --no-write is OFF).
+      --json            Print the full report as JSON to stdout — and ONLY that, so
+                        "loom scan . --json > report.json" is valid JSON (the
+                        write notice goes to stderr instead). Still writes the
+                        report unless --no-write.
   loom --help           Show this help.
 
   Configuration (both homes read the same shape; package.json wins per key):
@@ -100,7 +103,16 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     if (!rest.includes('--no-write')) {
       const reportPath = join(dir, 'loom-report.json')
       writeFileSync(reportPath, JSON.stringify(report, null, 2))
-      out(`  → ${reportPath}\n`)
+      // Under `--json`, stdout is a MACHINE channel and may carry nothing but
+      // the document — `loom scan . --json > report.json` is the documented
+      // machine surface, and a trailing "→ path" line makes that file
+      // unparseable by every JSON reader. Narration goes to stderr there, so
+      // the notice is still visible in a terminal (both streams land there)
+      // while a redirect gets exactly the report. In human mode the narration
+      // IS the requested output, so it stays on stdout.
+      const notice = `  → ${reportPath}\n`
+      if (rest.includes('--json')) err(notice)
+      else out(notice)
     }
 
     const strict = rest.includes('--strict') || settings.strict === true
