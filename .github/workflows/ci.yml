@@ -120,8 +120,20 @@ jobs:
       # this cache. Without it bun re-fetches every package from npm registry —
       # ~30-90s on cold starts. Content-addressed by tarball hash, safe to
       # share cross-run AND cross-PR.
-      - name: Cache bun install cache
-        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8 # v6.0.0
+      # RESTORE always, SAVE on push:main only — the same discipline as the
+      # verdict store (#2652), applied to CI's BIGGEST cache consumer. The
+      # combined actions/cache form saved this 1.2GB tarball store on EVERY
+      # ref: each PR whose bun.lock hash differed from main minted a copy
+      # scoped to its own merge ref — reusable only by re-runs of that same
+      # PR — and five such copies (~6GB) had pushed the repo's 10GB cache
+      # budget to 9.73GB, LRU-evicting every smaller cache (including the
+      # native verdict store this branch exists to make work). A PR with a
+      # lockfile change now pays one cold fetch per push (~30-90s) instead of
+      # poisoning the shared budget; main's saves keep the store fresh for
+      # every PR via the prefix restore-key.
+      - name: Restore bun install cache
+        id: bun-tarball-cache
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ~/.bun/install/cache
           key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -163,6 +175,21 @@ jobs:
             examples/*/node_modules
             docs/node_modules
           key: node-modules-${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+      # The tarball-store save half of the restore above — push:main only, and
+      # only when the exact key missed (a fresh bun.lock hash). NOTE the
+      # node_modules save above deliberately KEEPS per-ref saves: downstream
+      # jobs of a lockfile-changing PR run restore it by exact key, and
+      # without it every one of them would pay the fallback install. The
+      # tarball store has no such role — it is only the fetch-accelerator
+      # behind cold installs, and a prefix-restored stale store is always
+      # valid (content-addressed tarballs) — so its per-ref copies were pure
+      # budget poison.
+      - name: Save bun install cache (main only)
+        if: github.ref == 'refs/heads/main' && steps.bun-tarball-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.bun/install/cache
+          key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
 
   # ── Bootstrap (P3c): builds lib/ separately from Install ──────────────
   # Restores node_modules from the Install job (per-run cache), runs
@@ -1563,7 +1590,10 @@ jobs:
   # job's context; then the aliases get deleted (expand/contract).
   fast-gates:
     name: Fast Gates
-    needs: [install, changes]
+    # needs NO `changes` edge: this job reads none of its outputs (it runs
+    # every gate unconditionally — strictly more checking than the old
+    # per-gate skip), so waiting on the decide job was pure DAG latency.
+    needs: [install]
     if: always() && needs.install.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
