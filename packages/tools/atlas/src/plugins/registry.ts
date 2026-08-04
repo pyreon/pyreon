@@ -91,33 +91,74 @@ export interface PluginRegistry {
   runGraph(ctx: GraphContext): Promise<void>
 }
 
+/**
+ * Per-hook timing, off unless `ATLAS_PROFILE=1`.
+ *
+ * Every plugin hook runs through this one seam, which makes it the only place
+ * a scan's cost can be attributed to the plugin that actually incurred it.
+ * Guessing at that from the outside cost two wrong hypotheses (the static scan,
+ * then the GC settling — 35ms and 0ms respectively against a 75s total), so the
+ * attribution is now measured rather than reasoned about.
+ *
+ * The check is a module-level const, so the hot path is one already-false
+ * boolean test per hook rather than an env read.
+ */
+const PROFILE = process.env.ATLAS_PROFILE === '1'
+const profile = new Map<string, { ms: number; calls: number }>()
+
+function record(key: string, startedAt: number): void {
+  const entry = profile.get(key) ?? { ms: 0, calls: 0 }
+  entry.ms += performance.now() - startedAt
+  entry.calls += 1
+  profile.set(key, entry)
+}
+
+/** Collected per-hook costs, slowest first. Empty unless `ATLAS_PROFILE=1`. */
+export function pluginProfile(): { name: string; ms: number; calls: number }[] {
+  return [...profile.entries()]
+    .map(([name, t]) => ({ name, ...t }))
+    .sort((a, b) => b.ms - a.ms)
+}
+
 export function createPluginRegistry(plugins: readonly AtlasPlugin[]): PluginRegistry {
   return {
     plugins,
     async runDiscover(ctx) {
       const out: ComponentIntelligence[] = []
       for (const plugin of plugins) {
-        if (plugin.discover) out.push(...(await plugin.discover(ctx)))
+        if (!plugin.discover) continue
+        const t0 = PROFILE ? performance.now() : 0
+        out.push(...(await plugin.discover(ctx)))
+        if (PROFILE) record(`${plugin.name}.discover`, t0)
       }
       return out
     },
     async runDecorate(ci, ctx) {
       let current = ci
       for (const plugin of plugins) {
-        if (plugin.decorate) current = await plugin.decorate(current, ctx)
+        if (!plugin.decorate) continue
+        const t0 = PROFILE ? performance.now() : 0
+        current = await plugin.decorate(current, ctx)
+        if (PROFILE) record(`${plugin.name}.decorate`, t0)
       }
       return current
     },
     async runVerify(ctx) {
       let verdict = emptyVerdict()
       for (const plugin of plugins) {
-        if (plugin.verify) verdict = mergeVerdict(verdict, await plugin.verify(ctx))
+        if (!plugin.verify) continue
+        const t0 = PROFILE ? performance.now() : 0
+        verdict = mergeVerdict(verdict, await plugin.verify(ctx))
+        if (PROFILE) record(`${plugin.name}.verify`, t0)
       }
       return verdict
     },
     async runGraph(ctx) {
       for (const plugin of plugins) {
-        if (plugin.graph) await plugin.graph(ctx)
+        if (!plugin.graph) continue
+        const t0 = PROFILE ? performance.now() : 0
+        await plugin.graph(ctx)
+        if (PROFILE) record(`${plugin.name}.graph`, t0)
       }
     },
   }

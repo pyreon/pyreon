@@ -50,10 +50,25 @@ export interface MountRuntime {
 
 /**
  * A best-effort GC hook for the host runtime: Bun's `Bun.gc(true)`, or node's
- * `--expose-gc` global. Two passes around a macrotask yield, because the
- * framework legitimately DEFERS some reclamation by one event-loop turn —
- * a single synchronous pass would count garbage-in-flight as retained (the
- * exact mistake the repo's own benchmark methodology documents).
+ * `--expose-gc` global. ONE full sweep, then a macrotask yield.
+ *
+ * The yield is load-bearing: the framework legitimately defers some reclamation
+ * by an event-loop turn, so reading the graph in the same turn as the sweep
+ * counts garbage-in-flight as retained. The RETRY for that is the caller's — a
+ * settle loop sweeps again when the count is still above its floor, and stops
+ * the moment it is not.
+ *
+ * This used to sweep TWICE per call, which made the retry unconditional: every
+ * caller paid a second full collection even when the first had already settled
+ * the graph. Measured on `@pyreon/ui-components` (1090 scenarios) the second
+ * sweep cost 3.5s of a 9.3s scan for no change in any verdict — the loop
+ * already provides the second pass, and only when it is needed.
+ *
+ * A NURSERY collection (`Bun.gc(false)`) was measured as an alternative and is
+ * far worse, not better: it does not run the FinalizationRegistry callbacks the
+ * devtools registry drops nodes through, so the settle loop never reaches its
+ * floor and burns its full runway on every scenario — 58s against 5.8s for one
+ * full sweep. Cheaper per call, ruinous per answer.
  */
 export function hostCollectGarbage(): (() => Promise<void>) | undefined {
   const g = globalThis as { Bun?: { gc?: (full: boolean) => unknown }; gc?: () => void }
@@ -61,8 +76,10 @@ export function hostCollectGarbage(): (() => Promise<void>) | undefined {
   if (!sweep) return undefined
   return async () => {
     sweep()
+    // ONE yield. Two and four were measured and are both slower: the settle
+    // loop typically needs a SECOND sweep, and that is real work rather than
+    // scheduling lag — extra yields wait for a drain that has already happened.
     await new Promise((r) => setTimeout(r, 0))
-    sweep()
   }
 }
 
