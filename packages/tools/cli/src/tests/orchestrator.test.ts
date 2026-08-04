@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { FAST_GATES, SLOW_GATES, resolveGates, runDoctor } from '../doctor/orchestrator'
 
 describe('resolveGates', () => {
-  it('default = 12 fast gates (no audit-types / bundle-budgets)', () => {
+  it('default = 13 fast gates (no audit-types / bundle-budgets)', () => {
     const gates = resolveGates({ cwd: '/' })
     expect(gates).toEqual([
       'react-patterns',
@@ -16,6 +16,7 @@ describe('resolveGates', () => {
       'distribution',
       'doc-claims',
       'islands-audit',
+      'dependency-fabric',
       'ssg-audit',
       'content-audit',
       'native-audit',
@@ -25,11 +26,11 @@ describe('resolveGates', () => {
     ])
   })
 
-  it('--full enables 14 gates total (adds the 2 slow ones)', () => {
+  it('--full enables 15 gates total (adds the 2 slow ones)', () => {
     const gates = resolveGates({ cwd: '/', full: true })
     expect(gates).toContain('audit-types')
     expect(gates).toContain('bundle-budgets')
-    expect(gates).toHaveLength(14)
+    expect(gates).toHaveLength(15)
   })
 
   it('--only restricts to the listed gates', () => {

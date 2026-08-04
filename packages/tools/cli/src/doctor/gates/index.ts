@@ -60,3 +60,4 @@ export {
   type CheckDedupGateOptions,
 } from './check-dedup'
 export { runLintGate, type LintGateOptions } from './lint'
+export { runDependencyFabricGate, findingsFromReport, resolveLoomBin } from './dependency-fabric'
