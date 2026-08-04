@@ -470,7 +470,11 @@ function hydrateChild(
     if (domNode?.nodeType === Node.TEXT_NODE) {
       const data = (domNode as Text).data
       if (data === expected) {
-        return [() => (domNode as Text).remove(), nextReal(domNode)]
+        const tns = domNode.nextSibling
+        return [
+          () => (domNode as Text).remove(),
+          tns !== null && tns.nodeType === 1 ? tns : firstReal(tns),
+        ]
       }
       // MERGED adjacent text: the HTML parser joins text-producing siblings SSR
       // emitted back-to-back ('23' + 'hello' parses as ONE '23hello' node). Adopt
@@ -529,7 +533,12 @@ function hydrateElement(
   anchor: Node | null,
   path = 'root',
 ): [Cleanup, ChildNode | null] {
-  const elPath = `${path} > ${vnode.type as string}`
+  // Diagnostic path strings compound per element (root > table > tbody > tr >
+  // td …) and were built UNCONDITIONALLY — thousands of growing string allocs
+  // per hydration feeding GC, purely for mismatch warnings that are themselves
+  // dev-rare. In production pass the parent's path ref through unchanged.
+  const elPath =
+    process.env.NODE_ENV !== 'production' ? `${path} > ${vnode.type as string}` : path
 
   // Check if existing DOM node matches
   if (
@@ -547,8 +556,10 @@ function hydrateElement(
     const propCleanup = applyProps(el, vnode.props, isSelect ? 'value' : undefined)
     if (propCleanup) cleanups.push(propCleanup)
 
-    // Hydrate children
-    const firstChild = firstReal(el.firstChild as ChildNode | null)
+    // Hydrate children. Fast path: an ELEMENT first-child is always "real"
+    // (firstReal returns it untouched) — skip the scan for the dominant case.
+    const fc = el.firstChild as ChildNode | null
+    const firstChild = fc !== null && fc.nodeType === 1 ? fc : firstReal(fc)
     const [childCleanup] = hydrateChildren(vnode.children ?? [], firstChild, el, null, elPath)
     cleanups.push(childCleanup)
 
@@ -573,7 +584,9 @@ function hydrateElement(
       el.remove()
     }
 
-    return [cleanup, nextReal(domNode)]
+    // Fast path: an ELEMENT next-sibling is always "real" — skip the scan.
+    const ns = domNode.nextSibling
+    return [cleanup, ns !== null && ns.nodeType === 1 ? ns : firstReal(ns)]
   }
 
   // Mismatch — fall back to fresh mount
