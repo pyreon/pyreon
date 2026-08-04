@@ -123,6 +123,18 @@ inline operator fun <T> MutableState<T>.setValue(
 
 fun <T> mutableStateOf(initial: T): MutableState<T> = MutableStateImpl(initial)
 
+// DisposableEffect + its DisposableEffectScope — how a composable registers
+// something with a teardown (the connectivity callback). Mirrors the real
+// signature: the block RETURNS the disposal handle via onDispose.
+class DisposableEffectResult
+class DisposableEffectScope {
+  fun onDispose(onDisposeEffect: () -> Unit): DisposableEffectResult = DisposableEffectResult()
+}
+@Suppress("UNUSED_PARAMETER")
+fun DisposableEffect(key1: Any?, effect: DisposableEffectScope.() -> DisposableEffectResult) {
+  DisposableEffectScope().effect()
+}
+
 // SnapshotStateList — the reactive list PyreonFieldArray builds on. The stub
 // is FUNCTIONAL (a MutableList delegate), not type-only, because the
 // PyreonFieldArray smoke test RUNS: append/remove/values must actually
@@ -370,6 +382,70 @@ class Intent {
   constructor(action: String, uri: Uri)
   @Suppress("UNUSED_PARAMETER")
   fun addFlags(flags: Int): Intent = this
+}
+`
+
+/**
+ * `android.content.Context` for the connectivity edge — exactly the members
+ * PyreonNetworkStatusAndroid touches (applicationContext, getSystemService,
+ * CONNECTIVITY_SERVICE). Separate from the location Context stub because each
+ * mirrors only its own file's usage; a shared superset would mask a break.
+ */
+/**
+ * `android.net` connectivity surface for PyreonNetworkStatusAndroid — exactly
+ * the members that file touches. Named CONNECTIVITY, not NET: ANDROID_NET_STUBS
+ * is already the linking service's `android.net.Uri` stub.
+ */
+const ANDROID_CONNECTIVITY_STUBS = `package android.net
+
+public class Network
+
+public class NetworkCapabilities {
+  public fun hasCapability(capability: Int): Boolean = true
+  public companion object {
+    public const val NET_CAPABILITY_INTERNET: Int = 12
+    public const val NET_CAPABILITY_VALIDATED: Int = 16
+  }
+}
+
+public class NetworkRequest {
+  public class Builder {
+    public fun addCapability(capability: Int): Builder = this
+    public fun build(): NetworkRequest = NetworkRequest()
+  }
+}
+
+public open class ConnectivityManager {
+  public open class NetworkCallback {
+    public open fun onAvailable(network: Network) {}
+    public open fun onLost(network: Network) {}
+    public open fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {}
+  }
+  public val activeNetwork: Network? = null
+  public fun getNetworkCapabilities(network: Network): NetworkCapabilities? = null
+  public fun registerNetworkCallback(request: NetworkRequest, callback: NetworkCallback) {}
+  // The API-26 Handler overload. Present because the REAL ConnectivityManager
+  // has it and the runtime depends on it: without a Handler the callback is
+  // delivered on a binder thread and its Compose state writes race the UI
+  // thread's measure/layout. Omitting it would make the stub a SUBSET and
+  // reject correct code — the mirror image of a superset masking a break.
+  public fun registerNetworkCallback(
+    request: NetworkRequest,
+    callback: NetworkCallback,
+    handler: android.os.Handler,
+  ) {}
+  public fun unregisterNetworkCallback(callback: NetworkCallback) {}
+}
+`
+
+const ANDROID_NET_CONTEXT_STUBS = `package android.content
+
+public open class Context {
+  public val applicationContext: Context get() = this
+  public fun getSystemService(name: String): Any? = null
+  public companion object {
+    public const val CONNECTIVITY_SERVICE: String = "connectivity"
+  }
 }
 `
 
@@ -664,6 +740,11 @@ fun <T> CompletableDeferred(parent: Job? = null): CompletableDeferred<T> =
 // a superset stub masks). The Context carries getSystemService +
 // checkSelfPermission (the members the source calls); LOCATION_SERVICE is
 // the companion constant the lookup keys on.
+/**
+ * Minimal `android.net` + Context surface for PyreonNetworkStatusAndroid.
+ * Mirrors ONLY the members that file touches — a superset stub masks a real
+ * break, a subset manufactures one, so this is deliberately exact.
+ */
 const ANDROID_LOCATION_STUBS = `package android.location
 
 import android.os.Bundle
@@ -920,6 +1001,27 @@ try {
     writeFileSync(locationPmPath, ANDROID_LOCATION_PM_STUBS, 'utf8')
     writeFileSync(composePlatformPath, ANDROIDX_COMPOSE_PLATFORM_STUBS, 'utf8')
   }
+  const netPath = join(tempDir, 'AndroidNet.kt')
+  const netContextPath = join(tempDir, 'AndroidNetContext.kt')
+  if (SERVICE === 'PyreonNetworkStatusAndroid') {
+    // Same android.os mirror the websocket service uses — the connectivity
+    // callback is registered with a main-looper Handler.
+    writeFileSync(join(tempDir, 'AndroidOsHandler.kt'), ANDROID_OS_HANDLER_STUBS, 'utf8')
+    writeFileSync(netPath, ANDROID_CONNECTIVITY_STUBS, 'utf8')
+    writeFileSync(netContextPath, ANDROID_NET_CONTEXT_STUBS, 'utf8')
+    writeFileSync(composePlatformPath, ANDROIDX_COMPOSE_PLATFORM_STUBS, 'utf8')
+  }
+  const networkAndroidExtras =
+    SERVICE === 'PyreonNetworkStatusAndroid'
+      ? [
+          join(tempDir, 'AndroidOsHandler.kt'),
+          netPath,
+          netContextPath,
+          composePlatformPath,
+          resolve(PACKAGE_ROOT, 'src/main/kotlin/com/pyreon/runtime/PyreonNetworkStatus.kt'),
+        ]
+      : []
+
   const geolocationAndroidExtras =
     SERVICE === 'PyreonGeolocationAndroid'
       ? [
@@ -963,6 +1065,7 @@ try {
         ...notifStubs,
         ...okhttpExtras,
         ...geolocationAndroidExtras,
+        ...networkAndroidExtras,
         SOURCE_FILE,
       ]
     : [
@@ -983,6 +1086,7 @@ try {
         ...notifStubs,
         ...okhttpExtras,
         ...geolocationAndroidExtras,
+        ...networkAndroidExtras,
         SOURCE_FILE,
         TEST_FILE,
       ]

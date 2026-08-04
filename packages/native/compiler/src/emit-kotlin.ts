@@ -1611,7 +1611,15 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   }
   // Phase 4: `const net = useOnline()` → a remembered PyreonNetworkStatus.
   if (d.kind === 'network-status') {
-    return `val ${kotlinIdent(d.name)} = remember { PyreonNetworkStatus() }`
+    // rememberPyreonNetworkStatus SELF-INSTALLS a real
+    // ConnectivityManager.NetworkCallback and tears it down on leave. Before
+    // it, `PyreonNetworkStatus()` was a pure container defaulting to `true`
+    // with a `start(register)` seam the app was expected to wire — so
+    // `useOnline()` on Android reported online forever regardless of the
+    // device, and a device test that turned the radios off waited for a flip
+    // that could never arrive. Same shape as the geolocation registry: a
+    // default that requires a step nobody takes is not a default.
+    return `val ${kotlinIdent(d.name)} = rememberPyreonNetworkStatus()`
   }
   // Phase 5 (M3.7): `const state = useAppState()` → a remembered PyreonAppState.
   if (d.kind === 'app-state') {

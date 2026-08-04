@@ -201,7 +201,7 @@ export type DeclIR =
    * Phase 4 — connectivity flag via `useOnline()` from `@pyreon/hooks` (the
    * native subset). Emits the PyreonNetworkStatus reactive container:
    *   Swift  → @State private var net = PyreonNetworkStatus()
-   *   Kotlin → val net = remember { PyreonNetworkStatus() }
+   *   Kotlin → val net = rememberPyreonNetworkStatus()  (self-installing callback)
    *
    * `useOnline()` takes no arguments. The reactive read is `net.isOnline` —
    * a plain @Observable property on Swift, a Compose `MutableState` (`.value`)

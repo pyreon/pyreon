@@ -52,6 +52,7 @@ import androidx.compose.ui.test.swipeRight
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import android.os.ParcelFileDescriptor
 import com.pyreon.router.PyreonDeepLink
 import com.pyreon.runtime.PyreonSecureStorage
 import org.junit.Rule
@@ -395,6 +396,102 @@ class RouterDemoInstrumentedTest {
         }
     }
 
+    // Offline/sync row — the OFFLINE-FIRST half, two independent claims.
+    //
+    // (1) CONNECTIVITY, as a live FLIP on one device: the radios go down,
+    //     useOnline() must report false, and come back up. Asserting only the
+    //     online state would pass on a hook hard-wired to `true`; the flip is
+    //     what makes it a real read. The radios are restored in a finally so a
+    //     failure here cannot leave the emulator offline for every later test.
+    //
+    // (2) DURABILITY across ACTIVITY RELAUNCH: a record written while offline
+    //     survives a recreate() and is re-read from the database by the mount
+    //     effect. `recreate()` is the in-process ceiling this repo documents —
+    //     the iOS twin kills the process outright — but the read goes through
+    //     a NEW PyreonDatabase instance either way, so the value came off
+    //     disk rather than out of a remembered object.
+    //
+    // The test also exercises the presence check (`if (db.get(...))`) that did
+    // not compile on either target until database.get joined
+    // SERVICE_METHOD_RETURNS — "State: restored" can only render through it.
+    @Test
+    fun offlineFirstWritesSurviveAndConnectivityIsReported() {
+        val instr = InstrumentationRegistry.getInstrumentation()
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        composeRule.onNodeWithText("View offline").performClick()
+        composeRule.onNodeWithTag("offline-page").assertIsDisplayed()
+
+        // Start from a known-empty store so the counts below are unambiguous.
+        composeRule.onNodeWithTag("clear-note").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("note-count").assertTextEquals("Notes: 0")
+
+        try {
+            shell(instr, "svc wifi disable")
+            shell(instr, "svc data disable")
+            // Emulators frequently keep a virtual network up through
+            // `svc wifi/data disable`; airplane mode is the switch that
+            // actually drops it. Both are applied so a device where either
+            // works behaves the same.
+            shell(instr, "settings put global airplane_mode_on 1")
+            shell(instr, "am broadcast -a android.intent.action.AIRPLANE_MODE --ez state true")
+            try {
+                composeRule.waitUntil(timeoutMillis = 30_000) {
+                    composeRule
+                        .onAllNodesWithText("Online: false")
+                        .fetchSemanticsNodes()
+                        .isNotEmpty()
+                }
+            } catch (e: Throwable) {
+                // A bare "condition not satisfied after 30000 ms" says nothing
+                // about WHICH half failed: the radios may still be up, or
+                // useOnline() may not be tracking them. Print what the app
+                // actually rendered so the next CI-only failure is diagnosable
+                // rather than another round of guessing.
+                val shown = composeRule.onAllNodesWithText("Online: true")
+                    .fetchSemanticsNodes().size
+                throw AssertionError(
+                    "useOnline() never reported false within 30s. " +
+                        "App still showing \"Online: true\" on $shown node(s). " +
+                        "DEVICE says: ${deviceNetworkState(instr)}. " +
+                        "If the device reports itself OFFLINE here, the hook " +
+                        "is not observing the change and this is a product " +
+                        "bug; if it still reports a live network, the emulator " +
+                        "ignored the disable commands and the TEST is wrong.",
+                    e,
+                )
+            }
+
+            // Written with no network at all — the whole point of offline-first.
+            composeRule.onNodeWithTag("write-note").performClick()
+            composeRule.waitForIdle()
+            composeRule.onNodeWithTag("note-count").assertTextEquals("Notes: 1")
+        } finally {
+            shell(instr, "settings put global airplane_mode_on 0")
+            shell(instr, "am broadcast -a android.intent.action.AIRPLANE_MODE --ez state false")
+            shell(instr, "svc wifi enable")
+            shell(instr, "svc data enable")
+        }
+
+        // Connectivity comes BACK — proves the read tracks the device rather
+        // than latching on the first value it saw.
+        composeRule.waitUntil(timeoutMillis = 60_000) {
+            composeRule.onAllNodesWithText("Online: true").fetchSemanticsNodes().isNotEmpty()
+        }
+
+        // Durability: a fresh composition re-reads the record from the store.
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("View offline").performClick()
+        composeRule.onNodeWithTag("offline-page").assertIsDisplayed()
+        composeRule.onNodeWithTag("note-count").assertTextEquals("Notes: 1")
+        // Only reachable through the `if (db.get(...))` presence check.
+        composeRule.onNodeWithTag("note-state").assertTextEquals("State: restored")
+
+        composeRule.onNodeWithTag("clear-note").performClick()
+        composeRule.waitForIdle()
+    }
+
     // Adaptive row — RESPONSIVE PROP VALUES follow the size class, proven
     // as a live FLIP on ONE device: the A→B gap is measured at the phone
     // width (compact → gap token 2 → 8dp), then `wm size` resizes the
@@ -678,4 +775,35 @@ class RouterDemoInstrumentedTest {
             }
         }
     }
+
+    /**
+     * Run a shell command through UiAutomation and WAIT for it to finish.
+     *
+     * `executeShellCommand` returns a descriptor wired to the command's stdout
+     * and the command runs asynchronously; closing that descriptor immediately
+     * can tear the pipe down before the command has applied its effect. The
+     * radios then stay up and the connectivity assertion below times out with
+     * no indication of why. Reading to EOF is what makes it synchronous.
+     */
+    private fun shell(instr: android.app.Instrumentation, cmd: String): String =
+        ParcelFileDescriptor.AutoCloseInputStream(
+            instr.uiAutomation.executeShellCommand(cmd),
+        ).use { String(it.readBytes()) }
+
+    /**
+     * What the DEVICE thinks its connectivity is, independent of the app.
+     *
+     * Without this the failure cannot distinguish "the radios never went down"
+     * from "they went down and useOnline() did not observe it" -- the first
+     * version of this diagnostic reported only what the app rendered, which is
+     * the same string in both cases.
+     */
+    private fun deviceNetworkState(instr: android.app.Instrumentation): String {
+        val wifi = shell(instr, "settings get global wifi_on").trim()
+        val airplane = shell(instr, "settings get global airplane_mode_on").trim()
+        val active = shell(instr, "dumpsys connectivity --short")
+            .lineSequence().firstOrNull { it.contains("NetworkAgentInfo") } ?: "<no active network line>"
+        return "wifi_on=$wifi airplane_mode_on=$airplane active=${active.trim().take(120)}"
+    }
+
 }
