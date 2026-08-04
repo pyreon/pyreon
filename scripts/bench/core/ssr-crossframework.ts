@@ -616,24 +616,17 @@ function evalPyreonFast(src: string, file: string): Record<string, (arg: never) 
   }
   const lowered = jsxLowerer.transformSync(out.code)
   const body = lowered.replace(/^import\s+.*$/gm, '').replace(/^export /gm, '').trim()
-  const names = [
-    '_ssr',
-    '_ssrChildren',
-    '_ssrItem',
-    '_esc',
-    '_ssrAttr',
-    '_ssrAttrGen',
-    '_ssrAttrUrl',
-    '_ssrForKeyed',
-    // Component-child holes: the wrapper is emitted as
-    // `_ssrDeferred(() => _ssr(…, _ssrNode(<Comp />)))`. Both must be bound or
-    // the `layout` scenario dies at eval with `_ssrDeferred is not defined` —
-    // which is exactly how it failed the first time this bench ran.
-    '_ssrNode',
-    '_ssrDeferred',
-    'h',
-    '_rp',
-  ]
+  // Bindings are DERIVED from the emitted code, not hand-listed.
+  //
+  // A hardcoded list is wrong the moment the compiler learns to emit a new
+  // helper: the `layout` scenario died at `_ssrDeferred is not defined` because
+  // that name was added to the emit and not here. The compile-shape guard did
+  // NOT catch it — it inspects the emitted TEXT, which was perfectly correct;
+  // the gap was in the harness evaluating it. So scan for every framework
+  // helper the code actually references and resolve each one, failing with the
+  // NAME of anything unresolvable instead of a bare ReferenceError at call time.
+  const referenced = new Set(lowered.match(/\b(?:_ssr[A-Za-z]*|_esc|_rp)\b/g) ?? [])
+  const names = ['h', ...[...referenced].sort()]
   // TOP-LEVEL declarations only (anchored with ^ + the m flag). An unanchored
   // scan also picks up bindings inside nested scopes — the compiler's fused
   // per-item SSR emit declares `const _h0 = …` inside `.map()` callbacks, and
@@ -646,7 +639,18 @@ function evalPyreonFast(src: string, file: string): Record<string, (arg: never) 
   // `h`/`_rp` come from @pyreon/core (the bailed-to-h() half); the rest from
   // the SSR runtime. Same two modules a real build links against.
   const core: Record<string, unknown> = { h, _rp }
-  return fn(...names.map((n) => core[n] ?? (pyreonRuntime as Record<string, unknown>)[n]))
+  const values = names.map((n) => {
+    const v = core[n] ?? (pyreonRuntime as Record<string, unknown>)[n]
+    if (v === undefined) {
+      throw new Error(
+        `[ssr-bench] ${file} references \`${n}\`, which neither @pyreon/core nor ` +
+          `@pyreon/runtime-server exports. Either the compiler emits a helper the ` +
+          `runtime has not shipped, or the helper was renamed on one side only.`,
+      )
+    }
+    return v
+  })
+  return fn(...values)
 }
 // The `layout` scenario — a page whose DOM wrappers hold COMPONENT children.
 // This is the dominant real-app SSR shape and the one the fast path handles
