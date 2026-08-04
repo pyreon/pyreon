@@ -136,6 +136,11 @@ export function fileDiscoveryPlugin(
         rocketstyle,
         new Set(scanned.map((c) => c.name)),
       )
+      // A pass that found NOTHING while every file it tried failed to load is
+      // not an empty package — it is a broken one, and the two are
+      // indistinguishable from the count alone. Reported here rather than
+      // inside the loop so the message is one line about the package rather
+      // than one line per file.
       // The project stamp applies to BOTH discovery passes — a rocketstyle
       // chain in package A is package A's component just as much as a plain
       // function is. Missing it here would leave those components unqualified

@@ -1570,6 +1570,16 @@ jobs:
         run: bun run gen-docs --check
       - name: Docs Sync (check-mcp-docs)
         run: bun run check-mcp-docs
+      # The AI-facing prop contract for @pyreon/ui-components, DERIVED by
+      # running its rocketstyle chains against a real theme (dimension values
+      # live in `.states((t) => …)` callbacks, so they cannot be read from
+      # types). Rename a value and the committed guide no longer matches.
+      #
+      # Runs here rather than in `validate-fast` because it mounts 108
+      # components and costs ~48s cold — enough to make the pre-push hook worth
+      # bypassing, which would cost more than this gate is worth.
+      - name: Atlas Agent Guide (AI prop contract in sync)
+        run: bun run atlas-guide
       - name: Docs Generated Fresh
         run: bun docs/scripts/check-generated-fresh.ts
       - name: Lint Ratchet (oxlint warn baseline)

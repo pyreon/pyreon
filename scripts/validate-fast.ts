@@ -74,6 +74,12 @@ const GATES: Gate[] = [
     cmd: 'bun scripts/check-client-bundle-node-imports.ts',
   },
   { name: 'check-mcp-docs', cmd: 'bun scripts/check-mcp-docs.ts' },
+  // NOT here: `check-atlas-guide`. It MOUNTS 108 components through Vite, and
+  // measured cold it costs ~48s — which would take this list from ~19s to ~66s
+  // and turn the pre-push hook into something people reach for `--no-verify` to
+  // avoid. A gate everyone bypasses protects nothing. It runs in CI instead
+  // (`Fast Gates` → "Atlas Agent Guide"), and locally on demand via
+  // `bun run atlas-guide`.
   // A workflow step that RUNS an iOS app must not disable code signing: an
   // unsigned app has no entitlements and securityd denies SecItemAdd, so any
   // Keychain use fails ONLY in CI while passing on every developer machine.

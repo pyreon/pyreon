@@ -49,6 +49,20 @@ export interface RocketstyleDiscoveryOptions {
    * component reports no axes rather than crashing the scan.
    */
   theme?: unknown
+  /**
+   * Called once per file that could not be LOADED.
+   *
+   * A file that fails to load is not the same as a file with no rocketstyle in
+   * it, and treating them alike is how this pass came to report zero for a
+   * whole package while looking healthy. Measured on `@pyreon/ui-components`:
+   * all ~67 rocketstyle components vanished because one broken `exports` map
+   * upstream made every file throw, and the loop swallowed each throw as "has
+   * nothing to introspect".
+   *
+   * Optional, so existing callers are unchanged — but the CLI passes one, and
+   * the scan reports what it could not read instead of quietly under-counting.
+   */
+  onLoadError?: (file: string, message: string) => void
 }
 
 /** Dimension values → a select control, so the workbench can drive it. */
@@ -104,8 +118,14 @@ export async function discoverRocketstyle(
       // component in a file with a `./sibling` import was silently dropped
       // (plus a Vite "Failed to load url" logged on every scan).
       mod = await options.loader.load(resolve(file))
-    } catch {
-      continue // a module that will not load has nothing to introspect
+    } catch (err) {
+      // REPORTED, not swallowed. "Will not load" and "contains no rocketstyle"
+      // produce the same zero here, and only one of them is a finding — so a
+      // silent `continue` turns a broken import into a package that simply
+      // looks like it has no components. That is the exact silent-drop this
+      // tool exists to prevent, committed by the tool itself.
+      options.onLoadError?.(file, err instanceof Error ? err.message : String(err))
+      continue
     }
     for (const [name, value] of Object.entries(mod)) {
       if (seen.has(name) || !/^[A-Z]/.test(name)) continue

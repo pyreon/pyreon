@@ -106,6 +106,15 @@ export interface ScanResult {
    */
   unmatched?: readonly import('../discover').UnmatchedFile[]
   /**
+   * Files the rocketstyle pass could not LOAD.
+   *
+   * Separate from `unmatched`, which is about files that loaded and produced
+   * nothing. These produced nothing because they THREW, which is a different
+   * finding with a different fix — and reporting them as merely "unmatched"
+   * would send the reader after the wrong thing.
+   */
+  loadErrors?: readonly { file: string; message: string }[]
+  /**
    * Packages found by scanning the workspace because nothing was configured
    * and the default root was empty.
    *
@@ -219,6 +228,11 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
   const effectiveProjects: readonly ProjectRoot[] | undefined =
     loaded.config.projects ?? (autoDetected.length > 0 ? autoDetected : undefined)
   let asset: AgentAsset | undefined
+  // Files the rocketstyle pass could not LOAD. Collected rather than logged
+  // per-file: one broken import upstream makes every file in a package throw,
+  // and 67 identical lines is noise where one line naming the cause is a
+  // finding. See `discoverRocketstyle`'s `onLoadError`.
+  const rocketstyleLoadErrors: { file: string; message: string }[] = []
   try {
     return await buildScan()
   } finally {
@@ -256,7 +270,17 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
             // the static scan cannot see them at all. Detecting them needs the
             // module loaded — the same loader the mount checks use.
             ...(packages.size > 0 ? { packages } : {}),
-            ...(loader ? { rocketstyle: { loader, theme: loaded.config.theme } } : {}),
+            ...(loader
+              ? {
+                  rocketstyle: {
+                    loader,
+                    theme: loaded.config.theme,
+                    onLoadError: (file: string, message: string) => {
+                      rocketstyleLoadErrors.push({ file, message })
+                    },
+                  },
+                }
+              : {}),
           }),
         ),
         // Between discovery and the recommended bundle: discovery is static, and
@@ -326,6 +350,7 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
       ...(loaded.path ? { configFound: loaded.path } : {}),
       ...(dualInstance ? { dualInstance: true } : {}),
       ...(unmatched.length > 0 ? { unmatched } : {}),
+      ...(rocketstyleLoadErrors.length > 0 ? { loadErrors: rocketstyleLoadErrors } : {}),
     }
 
     if (options.write !== false && graph.size() > 0) {
@@ -546,6 +571,29 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     // provider or a schema belongs in that list too — but a component you
     // expected and cannot find will be in it, and without this the only
     // evidence of a discovery gap is a number that is quietly too small.
+    // BEFORE the unmatched list: a file that threw is reported there too (as
+    // "a chained/member call … needs `theme`"), and that reading sends the
+    // reader to their config when the real cause is an import that does not
+    // resolve. The load error is the actionable one, so it goes first.
+    if (result.loadErrors && result.loadErrors.length > 0) {
+      // Grouped by MESSAGE: one broken import upstream throws the identical
+      // error in every file that reaches it, so the distinct causes are the
+      // finding and the file count is how bad it is.
+      const byMessage = new Map<string, string[]>()
+      for (const e of result.loadErrors) {
+        const list = byMessage.get(e.message) ?? []
+        list.push(e.file)
+        byMessage.set(e.message, list)
+      }
+      const lines = [...byMessage.entries()]
+        .sort((a, b) => b[1].length - a[1].length)
+        .map(([message, files]) => `  ${files.length}× ${message}\n     · ${files[0]}`)
+      err(
+        `atlas: ${result.loadErrors.length} file(s) could not be LOADED, so any rocketstyle ` +
+          `component in them is missing from this catalog:\n${lines.join('\n')}\n` +
+          `  These threw on import — fix the import and re-run; a \`theme\` in your config cannot help.\n`,
+      )
+    }
     if (result.unmatched && result.unmatched.length > 0) {
       err(`${formatUnmatched(result.unmatched).join('\n')}\n`)
     }
