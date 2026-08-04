@@ -185,8 +185,15 @@ describe('the project wrapper (atlas.config.ts)', () => {
     // Named export wins over default.wrapper — the same resolution
     // `loadAtlasConfig` applies on the Node side.
     expect(code).toContain('typeof __config.wrapper === "function"')
-    expect(code).toContain('__config.default?.wrapper')
-    expect(code).toContain('__wrapper ? h(__wrapper, {}, __el) : __el')
+    // The default's fields now resolve through `__section`, which also handles
+    // `pyreon.config.ts` nesting them under `atlas`. Same invariant — a named
+    // export wins over the default's — expressed once for both file shapes.
+    expect(code).toContain('__config.atlas ?? __default.atlas ?? __default')
+    expect(code).toContain('typeof __section.wrapper === "function"')
+    // Wrapping is COMPOSED now rather than a single function, so that every
+    // extension contributes instead of the last one winning.
+    expect(code).toContain('__wrapAll(__el)')
+    expect(code).toContain('__layers.reduceRight')
     // The recording permissions provider goes INNERMOST: a project wrapper
     // commonly carries its own static PermissionsProvider, and nearest-wins
     // context would let it shadow the workbench's RECORDING instance — the

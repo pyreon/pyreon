@@ -79,13 +79,20 @@ export function toWorkbenchControl(control: PropControl): {
   type: 'text' | 'enum' | 'bool' | 'number' | 'color'
   options?: readonly string[]
   default: unknown
+  /**
+   * Threaded to the docs table. Which props are REQUIRED, and what an enum
+   * ACCEPTS, are the two facts that decide whether a usage is correct — and
+   * they are exactly what `atlas check` validates against. A props table
+   * without them documents the shape but not the contract.
+   */
+  required?: boolean
 } {
   const label = control.name
     .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
     .replace(/^./, (c) => c.toUpperCase())
 
   if (control.kind === 'boolean') {
-    return { key: control.name, label, type: 'bool', default: control.defaultValue ?? false }
+    return { key: control.name, label, type: 'bool', default: control.defaultValue ?? false, ...(control.required ? { required: true } : {}) }
   }
   if (control.kind === 'select' && control.options && control.options.length > 0) {
     return {
@@ -94,16 +101,17 @@ export function toWorkbenchControl(control: PropControl): {
       type: 'enum',
       options: control.options,
       default: control.defaultValue ?? control.options[0],
+      ...(control.required ? { required: true } : {}),
     }
   }
   if (control.kind === 'number') {
-    return { key: control.name, label, type: 'number', default: control.defaultValue ?? 0 }
+    return { key: control.name, label, type: 'number', default: control.defaultValue ?? 0, ...(control.required ? { required: true } : {}) }
   }
   if (control.kind === 'color') {
-    return { key: control.name, label, type: 'color', default: control.defaultValue ?? '#3b82f6' }
+    return { key: control.name, label, type: 'color', default: control.defaultValue ?? '#3b82f6', ...(control.required ? { required: true } : {}) }
   }
   // Everything else edits as text.
-  return { key: control.name, label, type: 'text', default: control.defaultValue ?? '' }
+  return { key: control.name, label, type: 'text', default: control.defaultValue ?? '', ...(control.required ? { required: true } : {}) }
 }
 
 /**
@@ -287,13 +295,50 @@ export function generateCatalogModule(
   lines.push('')
 
   if (options.configPath) {
-    // Mirrors `loadAtlasConfig`'s resolution exactly: a named `wrapper` export
-    // wins over `default.wrapper`, and a non-function is ignored rather than
-    // mounted (the Node side already surfaced that as a config error).
+    // Mirrors `loadAtlasConfig`'s resolution exactly: a named export wins over
+    // `default.*`, and a non-function is ignored rather than mounted (the Node
+    // side already surfaced that as a config error).
+    //
+    // `__section` handles BOTH config files: `atlas.config.ts` exports the
+    // fields directly, `pyreon.config.ts` nests them under `atlas`. Resolving
+    // it once here means everything below reads identically for either.
+    lines.push('const __default = __config.default ?? {}')
+    lines.push('const __section = __config.atlas ?? __default.atlas ?? __default')
     lines.push('const __wrapper =')
     lines.push('  typeof __config.wrapper === "function" ? __config.wrapper')
-    lines.push('  : typeof __config.default?.wrapper === "function" ? __config.default.wrapper')
+    lines.push('  : typeof __section.wrapper === "function" ? __section.wrapper')
     lines.push('  : undefined')
+    // Render EXTENSIONS, composed OUTSIDE-IN in declaration order, with the
+    // `wrapper` shorthand innermost. Filtered to entries that actually carry a
+    // `wrap`: a setup-only extension is legitimate and must not become an
+    // `h(undefined, …)`, which renders a literal `<undefined>` element.
+    lines.push('const __extensions = [')
+    lines.push('  ...(Array.isArray(__config.extensions) ? __config.extensions')
+    lines.push('    : Array.isArray(__section.extensions) ? __section.extensions : []),')
+    lines.push('  ...(__wrapper ? [{ name: "wrapper", wrap: __wrapper }] : []),')
+    lines.push(']')
+    lines.push('const __layers = __extensions.filter((e) => typeof e?.wrap === "function")')
+    lines.push('')
+    // One-time setup — fonts, a global stylesheet, anything document-level a
+    // wrapper cannot reach because it renders INSIDE the preview.
+    //
+    // Each is isolated: an extension that throws during setup must not stop the
+    // others, and must not take the whole workbench down before anything
+    // renders. It is reported, named, and the rest continue.
+    lines.push('for (const __ext of __extensions) {')
+    lines.push('  if (typeof __ext?.setup !== "function") continue')
+    lines.push('  try { __ext.setup() } catch (err) {')
+    lines.push(
+      '    console.error("[Pyreon] atlas: extension \\"" + __ext.name + "\\" failed during setup:", err)',
+    )
+    lines.push('  }')
+    lines.push('}')
+    lines.push('')
+    // `reduceRight` so the FIRST listed extension ends up outermost — the order
+    // the equivalent JSX would be written by hand, which is the only ordering a
+    // reader can predict without consulting docs.
+    lines.push('const __wrapAll = (__el) =>')
+    lines.push('  __layers.reduceRight((__acc, __ext) => h(__ext.wrap, {}, __acc), __el)')
     lines.push('')
   }
 
@@ -390,7 +435,7 @@ export function generateCatalogModule(
     lines.push(`        if (Comp.IS_ROCKETSTYLE) Object.assign(merged, ctx.pseudo)`)
     if (options.configPath) {
       lines.push(`        const __el = h(__Perms, { value: ctx.can }, h(Comp, merged))`)
-      lines.push(`        return __wrapper ? h(__wrapper, {}, __el) : __el`)
+      lines.push(`        return __wrapAll(__el)`)
     } else {
       lines.push(`        return h(Comp, merged)`)
     }

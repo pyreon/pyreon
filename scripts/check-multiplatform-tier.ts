@@ -53,6 +53,12 @@ const NO_MANIFEST_EXEMPT = new Set([
   '@pyreon/create-multiplatform',
   '@pyreon/meta',
   '@pyreon/typescript',
+  // Build-time config SHAPE, not a runtime API: `defineConfig` is an identity
+  // helper, plus a filename list and a section reader that tooling calls while
+  // it boots. Nothing here executes in a rendered app on any target, so there
+  // is no multiplatform story to tell — the same reasoning as @pyreon/typescript
+  // directly above.
+  '@pyreon/config',
   '@pyreon/storybook',
   '@pyreon/vite-plugin',
   '@pyreon/react-compat',

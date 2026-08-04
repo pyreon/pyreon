@@ -10,13 +10,14 @@ import type { AtlasPlugin } from '../plugins'
 import { defineAtlasPlugin } from '../plugins'
 import { discoverRocketstyle, type RocketstyleDiscoveryOptions } from './rocketstyle'
 import { scanSource } from './scan'
+import { createTypeResolver } from './resolve-types'
 
 export interface DiscoverOptions {
   /** project root (default '.') */
   cwd?: string
   /** directory to scan, relative to cwd (default 'src') */
   dir?: string
-  /** file extensions to scan (default ['.tsx']) */
+  /** file extensions to scan (default `.tsx`/`.jsx`/`.ts`) */
   extensions?: readonly string[]
   /** path substrings to skip (default node_modules + test/spec/stories files) */
   ignore?: readonly string[]
@@ -29,6 +30,16 @@ export interface DiscoverOptions {
    */
   project?: string
 }
+
+/**
+ * Extensions scanned by default.
+ *
+ * `.tsx` alone was too narrow twice over: a `.jsx` project was invisible, and a
+ * rocketstyle component is a CALL CHAIN with no JSX in it, so it legitimately
+ * lives in a `.ts` file — where the scanner never looked. A component that is
+ * simply absent, with no error, is the failure mode this tool exists to avoid.
+ */
+export const DEFAULT_EXTENSIONS = ['.tsx', '.jsx', '.ts'] as const
 
 const DEFAULT_IGNORE = ['node_modules', '.test.', '.spec.', '.stories.', '.d.ts']
 
@@ -52,13 +63,19 @@ function walk(dir: string, exts: readonly string[], ignore: readonly string[], a
 export function listComponentFiles(options: DiscoverOptions = {}): string[] {
   const root = join(options.cwd ?? '.', options.dir ?? 'src')
   const files: string[] = []
-  walk(root, options.extensions ?? ['.tsx'], options.ignore ?? DEFAULT_IGNORE, files)
+  walk(root, options.extensions ?? DEFAULT_EXTENSIONS, options.ignore ?? DEFAULT_IGNORE, files)
   return files.sort() // deterministic order
 }
 
 /** Discover every exported component under a project directory. */
 export function discoverComponents(options: DiscoverOptions = {}): ComponentIntelligence[] {
   const files = listComponentFiles(options)
+
+  // ONE resolver per scan, not per file: a design system's components all
+  // import from the same two or three type files, so parsing them once here
+  // rather than once per component is the difference between negligible and
+  // quadratic.
+  const resolveImportedType = createTypeResolver()
 
   const out: ComponentIntelligence[] = []
   const seen = new Set<string>()
@@ -69,7 +86,7 @@ export function discoverComponents(options: DiscoverOptions = {}): ComponentInte
     } catch {
       continue
     }
-    for (const comp of scanSource(code, file)) {
+    for (const comp of scanSource(code, file, { resolveImportedType })) {
       // First occurrence of a name wins WITHIN one root. Across roots the
       // dedup does not apply — that is the whole point of `project`: two
       // packages may legitimately each export a `Button`, and the graph keys

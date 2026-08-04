@@ -9,10 +9,20 @@
  * `unknown`); the fs wrapper lives in `./discover`.
  */
 import ts from 'typescript'
+import { collectImportedTypes } from './resolve-types'
 import type { ComponentIntelligence, PropShape, PropType, VariantAxis } from '../core'
 import { inferControls } from '../core'
 
 type PropsTypeNode = ts.TypeLiteralNode | ts.InterfaceDeclaration
+
+/**
+ * Resolve a props type by NAME — same-file first, then imported.
+ *
+ * A function rather than the old `Map`, because an imported type is a
+ * filesystem lookup that must stay lazy: a component whose props are declared
+ * locally should never trigger one.
+ */
+type TypeLookup = (name: string) => PropsTypeNode | undefined
 
 /** The three shapes a component can be declared in. */
 type ComponentFnNode = ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression
@@ -128,13 +138,13 @@ function readBodyDefaults(fn: ComponentFnNode, shapes: PropShape[]): void {
 /** Resolve the props-type node for a component's first parameter. */
 function resolvePropsType(
   param: ts.ParameterDeclaration | undefined,
-  types: Map<string, PropsTypeNode>,
+  lookup: TypeLookup,
 ): PropsTypeNode | undefined {
   const type = param?.type
   if (!type) return undefined
   if (ts.isTypeLiteralNode(type)) return type
   if (ts.isTypeReferenceNode(type) && ts.isIdentifier(type.typeName)) {
-    return types.get(type.typeName.text)
+    return lookup(type.typeName.text)
   }
   return undefined
 }
@@ -160,31 +170,176 @@ function toComponent(
   return { name, controls, axes, scenarios: [], tags: [], source }
 }
 
-/** Extract a component from a top-level statement, if it is one. */
-function extractComponent(node: ts.Node, types: Map<string, PropsTypeNode>, source: string): ComponentIntelligence | undefined {
-  const isExported = (n: ts.Node): boolean =>
-    ts.canHaveModifiers(n) && (ts.getModifiers(n) ?? []).some((m) => m.kind === ts.SyntaxKind.ExportKeyword)
-
-  // export function Button(props: P) { … }
-  if (ts.isFunctionDeclaration(node) && node.name && isPascal(node.name.text) && isExported(node)) {
-    return toComponent(node.name.text, resolvePropsType(node.parameters[0], types), source, node)
+/**
+ * Unwrap a component out of the expressions Pyreon code actually writes.
+ *
+ * The wrapper that matters here is `nativeCompat(Component)` — the compat
+ * marker. The props are on the INNER function, which is the only place they are
+ * written down.
+ *
+ * Recursion is depth-bounded because the input is arbitrary source: a
+ * pathological nest must not be able to blow the stack of a scan.
+ */
+function unwrapComponentExpression(
+  expression: ts.Expression,
+  depth = 0,
+): ts.ArrowFunction | ts.FunctionExpression | undefined {
+  if (depth > 4) return undefined
+  if (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression)) {
+    // A ZERO-parameter function is a component at the top level (`const Logo =
+    // () => <svg/>`) but a THUNK when it is an argument — `lazy(() =>
+    // import('./Heavy'))` passes a loader, not a component. Unwrapping that
+    // loader catalogued the lazy boundary itself as a propless component:
+    // present in the sidebar, nothing useful to render. Same false-positive
+    // class as the rocketstyle theme callback, just quieter.
+    if (depth > 0 && expression.parameters.length === 0) return undefined
+    return expression
   }
-  // export const Button = (props: P) => …   /   export const Button = function (props: P) { … }
-  if (ts.isVariableStatement(node) && isExported(node)) {
-    for (const decl of node.declarationList.declarations) {
-      if (!ts.isIdentifier(decl.name) || !isPascal(decl.name.text)) continue
-      const init = decl.initializer
-      if (init && (ts.isArrowFunction(init) || ts.isFunctionExpression(init))) {
-        return toComponent(decl.name.text, resolvePropsType(init.parameters[0], types), source, init)
+  if (ts.isCallExpression(expression)) {
+    // ONLY a bare-identifier callee — `nativeCompat(…)` and friends.
+    //
+    // A METHOD call is excluded because a rocketstyle component is exactly
+    // that: `chipBase.attrs({…}).theme((t) => ({…}))`. Unwrapping it finds the
+    // THEME CALLBACK and reads `t` as the component's props — which is bad
+    // twice over. The component is catalogued with nonsense props, and because
+    // the static pass now claims the name, the rocketstyle pass skips it and
+    // its real `.variants()` axes are never discovered. Measured on the
+    // workshop example: 43 scenarios collapsed to 29, silently.
+    //
+    // A MEMBER-call wrapper is therefore missed. That is the deliberate side of
+    // the trade: a missed wrapper is a component absent from the catalog, while
+    // a mis-unwrapped chain is a component present with fabricated props AND a
+    // working discovery path suppressed.
+    if (ts.isIdentifier(expression.expression)) {
+      for (const argument of expression.arguments) {
+        const found = unwrapComponentExpression(argument, depth + 1)
+        if (found) return found
       }
     }
+  }
+  // `Button as FC<Props>` / `(Button)` / `Button!`
+  if (ts.isAsExpression(expression) || ts.isSatisfiesExpression(expression)) {
+    return unwrapComponentExpression(expression.expression, depth + 1)
+  }
+  if (ts.isParenthesizedExpression(expression) || ts.isNonNullExpression(expression)) {
+    return unwrapComponentExpression(expression.expression, depth + 1)
   }
   return undefined
 }
 
+/**
+ * The props type of a `const Button: ComponentFn<Props> = …` annotation.
+ *
+ * The props live in the TYPE ARGUMENT, not on the parameter — which is why the
+ * parameter-only reader saw nothing and every control came back `unknown` for
+ * one of the most common ways to declare a component.
+ */
+function propsFromTypeAnnotation(
+  type: ts.TypeNode | undefined,
+  lookup: TypeLookup,
+): PropsTypeNode | undefined {
+  if (!type || !ts.isTypeReferenceNode(type)) return undefined
+  const argument = type.typeArguments?.[0]
+  if (!argument) return undefined
+  if (ts.isTypeLiteralNode(argument)) return argument
+  if (ts.isTypeReferenceNode(argument) && ts.isIdentifier(argument.typeName)) {
+    return lookup(argument.typeName.text)
+  }
+  return undefined
+}
+
+/** Extract a component from a top-level statement, if it is one. */
+function extractComponent(node: ts.Node, lookup: TypeLookup, source: string): ComponentIntelligence | undefined {
+  const isExported = (n: ts.Node): boolean =>
+    ts.canHaveModifiers(n) && (ts.getModifiers(n) ?? []).some((m) => m.kind === ts.SyntaxKind.ExportKeyword)
+  const isDefault = (n: ts.Node): boolean =>
+    ts.canHaveModifiers(n) && (ts.getModifiers(n) ?? []).some((m) => m.kind === ts.SyntaxKind.DefaultKeyword)
+
+  // export function Button(props: P) { … }   — including `export default`
+  if (ts.isFunctionDeclaration(node) && isExported(node)) {
+    // `export default function Button()` has a name; `export default function()`
+    // does not, and takes the FILE's name — which is what the import site will
+    // call it anyway.
+    const name = node.name?.text ?? (isDefault(node) ? fileBaseName(source) : undefined)
+    if (name && isPascal(name)) {
+      return toComponent(name, resolvePropsType(node.parameters[0], lookup), source, node)
+    }
+  }
+
+  // export const Button = (props: P) => …
+  // export const Button: FC<P> = (props) => …
+  // export const Button = memo(forwardRef((props: P, ref) => …))
+  if (ts.isVariableStatement(node) && isExported(node)) {
+    for (const decl of node.declarationList.declarations) {
+      if (!ts.isIdentifier(decl.name) || !isPascal(decl.name.text)) continue
+      const init = decl.initializer
+      if (!init) continue
+      const fn = unwrapComponentExpression(init)
+      if (!fn) continue
+      // The parameter's own type wins; the `FC<Props>` annotation is the
+      // fallback, because a component that has both means the parameter.
+      const props =
+        resolvePropsType(fn.parameters[0], lookup) ?? propsFromTypeAnnotation(decl.type, lookup)
+      return toComponent(decl.name.text, props, source, fn)
+    }
+  }
+
+  // export default Button   — a named function or const declared above.
+  if (ts.isExportAssignment(node) && !node.isExportEquals && ts.isIdentifier(node.expression)) {
+    // Deliberately NOT emitted here: the declaration it points at is a separate
+    // statement this walk visits on its own, so emitting would produce the
+    // component twice under the same name. Handled by making the declaration
+    // itself discoverable rather than by following the re-export.
+    return undefined
+  }
+
+  return undefined
+}
+
+/**
+ * A PascalCase name from a file path — `button-group.tsx` → `ButtonGroup`.
+ *
+ * Only used for an anonymous `export default function()`, where there is no
+ * name in the source and the file name is what every import site chooses.
+ */
+export function fileBaseName(source: string): string {
+  const base = (source.split(/[/\\]/).pop() ?? source).replace(/\.[jt]sx?$/, '')
+  return base
+    .split(/[-_.\s]+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join('')
+}
+
 /** Extract every exported component + its prop controls from one source string. */
-export function scanSource(code: string, fileName = 'component.tsx'): ComponentIntelligence[] {
-  const sf = ts.createSourceFile(fileName, code, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+export interface ScanOptions {
+  /**
+   * Resolves a props type imported from another file.
+   *
+   * Injected rather than done here so `scanSource` stays PURE — it takes a
+   * string and returns data, which is what makes its failure modes testable
+   * without a disk. The filesystem half lives in `./resolve-types`, and
+   * `discoverComponents` supplies it.
+   *
+   * Omitted, an imported props type resolves to `unknown` exactly as before.
+   */
+  resolveImportedType?: (
+    typeName: string,
+    imports: import('./resolve-types').ImportedTypes,
+    fromFile: string,
+  ) => PropsTypeNode | undefined
+}
+
+export function scanSource(
+  code: string,
+  fileName = 'component.tsx',
+  options: ScanOptions = {},
+): ComponentIntelligence[] {
+  // ScriptKind from the EXTENSION: in a `.ts` file `<T>(x) => …` is a generic
+  // arrow, and parsing it as TSX reads that same text as a JSX element — the
+  // file then fails to parse and its components vanish silently.
+  const kind = /\.tsx?$/.test(fileName) && !fileName.endsWith('.tsx') ? ts.ScriptKind.TS : ts.ScriptKind.TSX
+  const sf = ts.createSourceFile(fileName, code, ts.ScriptTarget.Latest, true, kind)
 
   // pass 1 — collect same-file interfaces + object type aliases
   const types = new Map<string, PropsTypeNode>()
@@ -193,10 +348,21 @@ export function scanSource(code: string, fileName = 'component.tsx'): ComponentI
     else if (ts.isTypeAliasDeclaration(node) && ts.isTypeLiteralNode(node.type)) types.set(node.name.text, node.type)
   })
 
+  // pass 1b — the types this file IMPORTS. Resolved lazily: a component whose
+  // props type is declared locally never pays for the lookup.
+  const imported = collectImportedTypes(sf)
+  const resolve = options.resolveImportedType
+  const lookup: TypeLookup = (name) => {
+    const local = types.get(name)
+    if (local) return local
+    if (!resolve || !imported.bySpecifier.has(name)) return undefined
+    return resolve(name, imported, fileName)
+  }
+
   // pass 2 — extract components
   const out: ComponentIntelligence[] = []
   sf.forEachChild((node) => {
-    const comp = extractComponent(node, types, fileName)
+    const comp = extractComponent(node, lookup, fileName)
     if (comp) out.push(comp)
   })
   return out

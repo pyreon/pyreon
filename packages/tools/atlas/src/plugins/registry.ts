@@ -19,11 +19,40 @@ import type {
 const SKIP: VerifyCheck = { status: 'skip' }
 
 /**
+ * Why a check did not run.
+ *
+ * A bare `skip` is three different situations wearing one label: this check
+ * cannot run here, this check needs a different command, or nothing has looked
+ * yet. A reader cannot tell which — so "2 of 5 checks skipped" reads as a hole
+ * in the tool when it may be a command they have not run, or a check that does
+ * not apply to their component.
+ *
+ * Saying which is the same honesty rule `ok`/`checked` already follows: report
+ * what was established, and be specific about what was not.
+ */
+export const SKIP_REASON = {
+  /** Measured in a real browser; `atlas scan` cannot do it in Node. */
+  browserOnly:
+    'browser-only — run `atlas verify-browser` to measure this (a Node scan cannot)',
+  /** Nothing has examined this scenario at all. */
+  notRun: 'not run — no plugin claimed this check',
+} as const
+
+/** A skip that says why. */
+export function skipped(reason: string): VerifyCheck {
+  return { status: 'skip', findings: [reason] }
+}
+
+/**
  * A verdict with every check skipped — the neutral element for merging.
  *
  * It is NOT `ok`. Nothing has run, so there is nothing to vouch for; claiming
  * `ok` here is what made an unverified scenario read as a passing one all the
  * way out to the agent guide.
+ *
+ * The two browser-measured checks carry their reason from the start, so a
+ * catalog produced by `atlas scan` alone explains its own gaps rather than
+ * presenting them as unexplained absence.
  */
 export function emptyVerdict(): VerifyVerdict {
   return {
@@ -31,9 +60,9 @@ export function emptyVerdict(): VerifyVerdict {
     checked: 0,
     a11y: SKIP,
     interaction: SKIP,
-    reactivityCoverage: SKIP,
+    reactivityCoverage: skipped(SKIP_REASON.browserOnly),
     leak: SKIP,
-    snapshot: SKIP,
+    snapshot: skipped(SKIP_REASON.browserOnly),
   }
 }
 

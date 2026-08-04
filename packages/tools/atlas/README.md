@@ -72,6 +72,90 @@ same shape typed for a config file. Need full control over a component's shape?
 Drop to a raw `discover()` plugin returning `ComponentIntelligence` (see
 `@pyreon/atlas/core`).
 
+## Getting started — `atlas init`
+
+```bash
+atlas init          # detects your packages, writes pyreon.config.ts
+atlas dev           # the workbench, against your real components
+```
+
+`init` reads the workspace declaration you already have (`workspaces` in
+`package.json`, or `pnpm-workspace.yaml`), probes each package for components,
+and writes the config. It refuses to overwrite an existing one without
+`--force` — that file is hand-edited the moment it exists. `--dry-run` prints
+it instead.
+
+### Which components are found
+
+Pyreon shapes, verified: `export function C(props: P)`, `export const C = (props: P) => …`, `export const C: ComponentFn<P> = …`, destructured params, `export default` (named or anonymous), `nativeCompat(…)` wrappers, and rocketstyle chains (via the runtime pass — needs `theme` in the config). Scanned in `.tsx`, `.jsx` and `.ts`.
+
+Named gaps, so nobody has to discover them from an empty sidebar:
+
+| Shape | Result |
+| --- | --- |
+| `import type { Props }` — props typed in another file | ✅ resolved, including through barrels and aliases |
+| generic prop (`items: T[]`) | found; that prop is `unknown` |
+| `'a' \| 'b' \| (string & {})` | found; no select, no variant axis |
+| `styled('div')` | **missed** — no props written anywhere a static reader can see; needs runtime discovery, which today only covers rocketstyle |
+| member-call wrapper (`ns.wrap(C)`) | **missed** — deliberate: matching member calls swallowed rocketstyle chains |
+
+**It writes no story files, and there is no flag to.** A per-component file
+restating props the component already declares is the thing Atlas exists not to
+need: it drifts the moment the component changes and nothing tells you.
+Components, controls and scenarios are DERIVED from your source.
+
+Even `init` is optional. With no config at all, a monorepo whose root has no
+components has its packages detected automatically — and the scan says so,
+rather than producing a catalog from nowhere.
+
+### Render extensions — what a scenario needs to render like your app
+
+A single `wrapper` holds one provider. Extensions COMPOSE, so packages can ship
+their own and a project can stack them:
+
+```ts
+export default defineConfig({
+  atlas: {
+    extensions: [
+      { name: 'theme', wrap: ({ children }) => <PyreonUI theme={theme}>{children}</PyreonUI> },
+      { name: 'router', wrap: ({ children }) => <RouterProvider>{children}</RouterProvider> },
+      { name: 'fonts', setup: () => document.head.append(fontLink()) },
+    ],
+  },
+})
+```
+
+- **`wrap`** layers around every scenario. First listed is OUTERMOST — the order
+  the equivalent JSX would be written by hand.
+- **`setup`** runs once at boot, for document-level work a wrapper cannot reach
+  because it renders *inside* the preview: a font `<link>`, a global stylesheet,
+  `<html lang>`. Return a function to undo it.
+- Each `setup` is isolated — one that throws is reported BY NAME and the rest
+  still run, rather than taking the workbench down before first paint.
+- `wrapper` still works and composes as the INNERMOST layer, so a theme can be
+  added outside an existing wrapper without touching it.
+
+Extensions run in the BROWSER. They may use JSX and your own components, but not
+`node:*` — a factory needing build-time data takes it as a serializable option.
+
+### Configuration lives in `pyreon.config.ts`
+
+One file for the ecosystem, a section per package (see `@pyreon/config`):
+
+```ts
+import { defineConfig } from '@pyreon/config'
+
+export default defineConfig({
+  atlas: {
+    title: 'Acme Design System',
+    projects: [{ name: 'Core', dir: 'packages/core/src' }],
+  },
+})
+```
+
+A per-tool `atlas.config.ts` still works and wins where both exist, so a
+partly-finished migration never has the general file override the specific one.
+
 ## Shipping the docs — `atlas build`
 
 `atlas dev` needs a checkout and a running Node process. A design system needs a
@@ -160,6 +244,31 @@ one package, or a bare `'Button'` when it is unambiguous.
 
 Single-package projects set no `project`, so every derived key, id and group is
 byte-identical to before this existed.
+
+## `atlas check` — the catalog as a guardrail
+
+```bash
+$ atlas check Button '{"label":"Save","state":"primry"}'
+Button: 1 problem(s):
+  · `state` must be one of `primary`, `secondary`, `danger` — got `primry` — did you mean `primary`?
+```
+
+Exits non-zero on findings, so it works in a pre-commit hook or a CI step.
+
+This is what the derived catalog is FOR. Atlas already knows `state` accepts
+exactly three values — until now that could only be READ, and reading is not
+checking. The single most common failure when an AI writes UI code is a
+plausible prop value that does not exist: `state="primry"`, `size="medium"`,
+`variant="ghost"`. Each typechecks in a JS file, renders without throwing, and
+silently does nothing.
+
+It catches invalid values, unknown props, wrong types (including a non-function
+for an event handler — the documented footgun), and missing required props,
+suggesting the nearest legal name where one is close enough to be a typo rather
+than a different value.
+
+Reads `atlas-catalog.json` rather than rescanning, so the answer is instant and
+is the SAME one the workbench and the agent guide give.
 
 ## Built-in plugins
 
