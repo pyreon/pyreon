@@ -882,13 +882,18 @@ jobs:
       # store once per branch and evict everything else out of the 10 GB
       # repo budget). PRs restore main's latest store via the prefix key.
       # The nightly native-validate schedule stays deliberately UNCACHED.
+      # Keys are PER-CATEGORY: the three native cells derive DISJOINT verdict
+      # sets (two vitest shards + the rest), so a shared key would (a) make
+      # the three saves race one immutable key — first wins, the others error
+      # — and (b) let a cell restore a sibling's store, all misses. Each cell
+      # saves and restores its own category's lineage.
       - name: Restore native compile-verdict cache
         if: startsWith(matrix.category, 'native')
         uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: .cache/pyreon-native-validate
-          key: native-verdicts-ci-${{ runner.os }}-${{ github.sha }}
-          restore-keys: native-verdicts-ci-${{ runner.os }}-
+          key: native-verdicts-ci-${{ runner.os }}-${{ matrix.category }}-${{ github.sha }}
+          restore-keys: native-verdicts-ci-${{ runner.os }}-${{ matrix.category }}-
 
       - name: Run tests (${{ matrix.category }})
         # PYREON_SKIP_SLOW_TESTS=1 makes individual tests opt OUT of the
@@ -976,6 +981,22 @@ jobs:
           fi
           exit $EXIT
 
+      # Save the verdict store — push:main only (the PR side only restores,
+      # so a PR can never poison the shared store). `if: always()` so a red
+      # main run still saves the verdicts it derived; they are
+      # content-addressed, so verdicts from a failing run are just as valid
+      # as from a green one. This step MUST live in THIS matrix job: the
+      # first cut sat in the `Test` aggregator, where `matrix.category`
+      # doesn't exist (condition never true) and the derived store isn't on
+      # disk — so zero caches were ever saved and every native cell stayed
+      # cold at ~15-17min while the restore step missed forever.
+      - name: Save native compile-verdict cache
+        if: always() && github.ref == 'refs/heads/main' && startsWith(matrix.category, 'native')
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: .cache/pyreon-native-validate
+          key: native-verdicts-ci-${{ runner.os }}-${{ matrix.category }}-${{ github.sha }}
+
   test:
     name: Test
     needs: test-cell
@@ -983,17 +1004,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      # Save the verdict store — push:main only (see the restore step's note).
-      # `if: always()` so a red main run still saves the verdicts it derived;
-      # they are content-addressed, so verdicts from a failing run are just as
-      # valid as from a green one.
-      - name: Save native compile-verdict cache
-        if: always() && github.ref == 'refs/heads/main' && startsWith(matrix.category, 'native')
-        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: .cache/pyreon-native-validate
-          key: native-verdicts-ci-${{ runner.os }}-${{ github.sha }}
-
       - name: Aggregate test matrix result
         run: |
           RESULT='${{ needs.test-cell.result }}'
