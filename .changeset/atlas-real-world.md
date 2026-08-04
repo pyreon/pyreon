@@ -30,6 +30,17 @@ A project with one file per name keeps byte-identical keys.
 On that repo: **343 → 1378 components, 405 → 1451 scenarios, and the unmatched
 report fell from 1112 files to 69.**
 
+**Prop types imported from a SIBLING workspace package now resolve.**
+`import type { Props } from '@acme/ui-core'` is the dominant shape in a
+monorepo, and those components landed in the catalog found-but-contract-less.
+
+`node_modules` is still not followed — that needs the real module-resolution
+algorithm and guessing produces confident wrong answers. A workspace package is
+a different question with an exact answer: the workspace declares where its
+packages are, each declares its `name`, and matching the two is a lookup. Root
+imports and subpaths both resolve, longest-package-name-first so `@a/ui-grid` is
+never matched by a lookup for `@a/ui`.
+
 Also fixed, both surfaced by the same run:
 
 - The unmatched report printed all 1112 entries. A report that long is scrolled
