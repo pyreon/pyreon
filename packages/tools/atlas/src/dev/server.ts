@@ -14,6 +14,7 @@
  */
 import { resolve } from 'node:path'
 import { discoverComponents } from '../discover'
+import { workspaceResolvePlugin } from '../discover/workspace-packages'
 import { collectEntries } from '../build/entries'
 import { runScan } from '../cli/run'
 import type { ComponentIntelligence } from '../core'
@@ -174,6 +175,15 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
     // reports failures that have nothing to do with the workbench.
     optimizeDeps: { entries: [] },
     plugins: [
+      // The workbench entry and catalog are VIRTUAL modules, so their imports
+      // are resolved against the Vite root — the project root, which in a
+      // monorepo declares none of the framework. Without this the shell served
+      // HTTP 200 while the catalog module failed with `Failed to resolve import
+      // "@pyreon/core"`, so the page rendered an error rather than components:
+      // a dev server that looks up and is not.
+      //
+      // Same resolver the static build and the module loader use.
+      workspaceResolvePlugin(root),
       pyreonPlugin,
       atlasDevPlugin({
         root,

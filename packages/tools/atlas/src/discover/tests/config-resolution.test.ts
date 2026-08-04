@@ -26,7 +26,7 @@
  * gets and a component does not, because a component that cannot resolve an
  * import has a real dependency bug worth surfacing.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -107,8 +107,10 @@ describe('resolveFromWorkspace — resolve as a package that declares it would',
   }
 
   it('finds a dependency the ROOT cannot see', () => {
+    // realpath: the resolver returns the REAL path so a package's siblings stay
+    // reachable (see `consumer-install.test.ts`), and macOS symlinks /var.
     expect(resolveFromWorkspace('@pyreon/core', setup())).toBe(
-      join(root, 'packages/ui/node_modules/@pyreon/core/lib/index.js'),
+      realpathSync(join(root, 'packages/ui/node_modules/@pyreon/core/lib/index.js')),
     )
   })
 
@@ -135,7 +137,7 @@ describe('resolveFromWorkspace — resolve as a package that declares it would',
     )
     write('packages/ui/node_modules/@pyreon/core/lib/jsx.js', 'export const jsx = 1')
     expect(resolveFromWorkspace('@pyreon/core/jsx-runtime', dirs)).toBe(
-      join(root, 'packages/ui/node_modules/@pyreon/core/lib/jsx.js'),
+      realpathSync(join(root, 'packages/ui/node_modules/@pyreon/core/lib/jsx.js')),
     )
   })
 
@@ -144,7 +146,7 @@ describe('resolveFromWorkspace — resolve as a package that declares it would',
     write('node_modules/left-pad/i.js', 'module.exports = 1')
     write('packages/ui/package.json', JSON.stringify({ name: '@a/ui' }))
     expect(resolveFromWorkspace('left-pad', [join(root, 'packages/ui')])).toBe(
-      join(root, 'node_modules/left-pad/i.js'),
+      realpathSync(join(root, 'node_modules/left-pad/i.js')),
     )
   })
 

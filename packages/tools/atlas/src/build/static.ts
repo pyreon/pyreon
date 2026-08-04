@@ -25,6 +25,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { runScan } from '../cli/run'
 import { discoverComponents } from '../discover'
+import { workspaceResolvePlugin } from '../discover/workspace-packages'
 import { componentKey, type ComponentIntelligence } from '../core'
 import { atlasDevPlugin, builtinMethods, CATALOG_ID, type RpcMethod } from '../dev/plugin'
 import type { CatalogEntrySource } from '../dev/catalog-module'
@@ -191,6 +192,19 @@ export async function buildStatic(options: BuildOptions = {}): Promise<BuildResu
       configFile: false,
       logLevel: 'warn',
       plugins: [
+        workspaceResolvePlugin(root),
+        // Resolve the framework for the GENERATED entry.
+        //
+        // `entry.js` is written into `<project>/node_modules/.atlas-build/`, so
+        // the bundler resolves its imports by walking up from there — and in a
+        // monorepo that lands on the repo root, which declares none of the
+        // framework. The build then died with `Rolldown failed to resolve
+        // import "@pyreon/runtime-dom"`, on an ordinary installed project.
+        //
+        // Same lookup the module loader uses, and the same argument: the
+        // workspace declares where its packages are, so this is not a guess.
+        // Atlas's own directory is included because the entry is Atlas's UI
+        // code — in a matched install both answers are the same copy anyway.
         factory({ devErrorPrinter: false }),
         atlasDevPlugin({
           root,
