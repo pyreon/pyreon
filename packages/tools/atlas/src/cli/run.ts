@@ -19,6 +19,7 @@ import {
   createModuleLoader,
   type DiscoverOptions,
   fileDiscoveryPlugin,
+  buildPackageMap,
   findUnmatched,
   formatUnmatched,
   loadAtlasConfig,
@@ -27,6 +28,7 @@ import {
   type ModuleLoader,
   type PageMeta,
   type ProjectRoot,
+  workspacePackageDirs,
 } from '../discover'
 import { type DetectedProject, detectProjects } from '../discover/workspace'
 
@@ -174,6 +176,11 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
   const autoDetected = autoDetectProjects(cwd, options.dir ?? 'src', loaded.config.projects)
   const effectiveProjects: readonly ProjectRoot[] | undefined =
     loaded.config.projects ?? (autoDetected.length > 0 ? autoDetected : undefined)
+  // ONE package map for the whole scan. A component importing its props from a
+  // SIBLING package (`import type { Props } from '@acme/ui-core'`) is the
+  // dominant shape in a real monorepo, and without this those components land
+  // in the catalog with no controls at all — found, but contract-less.
+  const packages = buildPackageMap(workspacePackageDirs(resolve(cwd)))
   let asset: AgentAsset | undefined
   try {
     return await buildScan()
@@ -211,6 +218,7 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
             // Rocketstyle components are a call chain, not a typed function, so
             // the static scan cannot see them at all. Detecting them needs the
             // module loaded — the same loader the mount checks use.
+            ...(packages.size > 0 ? { packages } : {}),
             ...(loader ? { rocketstyle: { loader, theme: loaded.config.theme } } : {}),
           }),
         ),

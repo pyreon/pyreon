@@ -37,6 +37,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import ts from 'typescript'
+import { type PackageMap, resolveWorkspaceSpecifier } from './workspace-packages'
 
 /** A props type node, as `scanSource` consumes it. */
 export type ResolvedTypeNode = ts.TypeLiteralNode | ts.InterfaceDeclaration
@@ -163,6 +164,19 @@ export interface TypeResolverOptions {
   readSource?: (file: string) => string
   /** Resolves a specifier to a file. Injected for the same reason. */
   resolveFile?: (specifier: string, fromFile: string) => string | undefined
+  /**
+   * Workspace packages, so a BARE specifier that names a sibling resolves.
+   *
+   * `node_modules` is still not followed — that needs the real resolution
+   * algorithm. A workspace package is a different question with an exact
+   * answer: the workspace declares where its packages are and each declares
+   * its name, so `@acme/ui-grid` → `packages/ui-grid` is a lookup.
+   *
+   * This is where the contracts live. On a real 78-package monorepo, components
+   * import their props from sibling packages, and refusing those left most of
+   * the catalog found-but-contract-less.
+   */
+  packages?: PackageMap
 }
 
 /**
@@ -175,7 +189,13 @@ export interface TypeResolverOptions {
  */
 export function createTypeResolver(options: TypeResolverOptions = {}) {
   const read = options.readSource ?? ((file: string) => readFileSync(file, 'utf8'))
-  const resolveFile = options.resolveFile ?? resolveSpecifier
+  const base = options.resolveFile ?? resolveSpecifier
+  // Relative first, then the workspace map. Relative wins because a file that
+  // names `./types` means its own sibling, whatever a package happens to be
+  // called.
+  const packages = options.packages
+  const resolveFile = (specifier: string, fromFile: string): string | undefined =>
+    base(specifier, fromFile) ?? (packages ? resolveWorkspaceSpecifier(specifier, packages) : undefined)
   const parsed = new Map<string, ts.SourceFile | null>()
 
   const parse = (file: string): ts.SourceFile | null => {

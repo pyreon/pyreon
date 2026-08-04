@@ -22,6 +22,11 @@ export interface DiscoverOptions {
   /** path substrings to skip (default node_modules + test/spec/stories files) */
   ignore?: readonly string[]
   /**
+   * Workspace packages (name → dir), so a prop type imported from a SIBLING
+   * package resolves. Supplied by the scan, which already expanded the globs.
+   */
+  packages?: import('./workspace-packages').PackageMap
+  /**
    * Owning project name, stamped onto every component found here.
    *
    * Set only by a MULTI-ROOT (monorepo) scan. It becomes part of each
@@ -75,7 +80,9 @@ export function discoverComponents(options: DiscoverOptions = {}): ComponentInte
   // import from the same two or three type files, so parsing them once here
   // rather than once per component is the difference between negligible and
   // quadratic.
-  const resolveImportedType = createTypeResolver()
+  const resolveImportedType = createTypeResolver(
+    options.packages ? { packages: options.packages } : {},
+  )
 
   const out: ComponentIntelligence[] = []
   const seen = new Set<string>()

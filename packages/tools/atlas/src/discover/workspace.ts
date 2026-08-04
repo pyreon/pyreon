@@ -92,6 +92,20 @@ export function pnpmWorkspaceGlobs(yaml: string): string[] {
   return globs
 }
 
+/**
+ * Every workspace package directory, from the declared globs.
+ *
+ * Exported so the SCAN can build a name → dir map from the same expansion
+ * `detectProjects` uses. Two answers to "where are this workspace's packages"
+ * is how a monorepo tool starts disagreeing with itself.
+ */
+export function workspacePackageDirs(root: string): string[] {
+  const globs = readWorkspaceGlobs(root)
+  const seen = new Set<string>()
+  for (const glob of globs) for (const dir of expandGlob(root, glob)) seen.add(dir)
+  return [...seen]
+}
+
 /** Every workspace glob a root declares, from either source. */
 export function readWorkspaceGlobs(root: string): string[] {
   const pkg = readJson(join(root, 'package.json'))
