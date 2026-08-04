@@ -152,8 +152,8 @@ import 'real-pkg'`,
     const { stripped, codeAt } = stripWithMask(`import 'a'
 const s = "from 'b'"`)
     const fromInString = stripped.lastIndexOf('from')
-    expect(codeAt[fromInString]).toBe(false)
-    expect(codeAt[0]).toBe(true) // the real import keyword
+    expect(codeAt[fromInString]).toBe(0)
+    expect(codeAt[0]).toBe(1) // the real import keyword
   })
 
   it('a subtree with its own package.json is a separate unit (not scanned)', () => {
