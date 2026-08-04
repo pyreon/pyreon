@@ -47,4 +47,24 @@ describe('<CodeWebView>', () => {
     ;(vnode.props as { onMessage: (m: string) => void }).onMessage(JSON.stringify({ value: 'typed' }))
     expect(onChange).toHaveBeenCalledWith('typed')
   })
+
+  // The reverse-bridge is a STRING channel — the native side hands over
+  // whatever the hosted page posted. These two arms are what stops a malformed
+  // or plain-text message from being silently dropped, and neither was covered.
+
+  it('hands a non-JSON reverse message back verbatim rather than dropping it', () => {
+    const onChange = vi.fn()
+    const vnode = CodeWebView({ state: { value: '' }, onChange })
+    ;(vnode.props as { onMessage: (m: string) => void }).onMessage('not json at all')
+    expect(onChange).toHaveBeenCalledWith('not json at all')
+  })
+
+  it('ignores well-formed JSON whose `value` is not a string', () => {
+    // Valid JSON, wrong shape: the guard must not forward a non-string to a
+    // consumer typed for `string`.
+    const onChange = vi.fn()
+    const vnode = CodeWebView({ state: { value: '' }, onChange })
+    ;(vnode.props as { onMessage: (m: string) => void }).onMessage(JSON.stringify({ value: 42 }))
+    expect(onChange).not.toHaveBeenCalled()
+  })
 })

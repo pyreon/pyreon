@@ -47,4 +47,22 @@ describe('<RichTextWebView>', () => {
     ;(vnode.props as { onMessage: (m: string) => void }).onMessage(JSON.stringify({ content: doc }))
     expect(onChange).toHaveBeenCalledWith(doc)
   })
+
+  // The reverse bridge carries a raw string from the hosted page. Both the
+  // malformed and the wrong-shape arm existed untested, so a change that
+  // dropped either would not have failed anything.
+
+  it('hands a non-JSON reverse message back verbatim rather than dropping it', () => {
+    const onChange = vi.fn()
+    const vnode = RichTextWebView({ state: { content: null }, onChange })
+    ;(vnode.props as { onMessage: (m: string) => void }).onMessage('<p>not json</p>')
+    expect(onChange).toHaveBeenCalledWith('<p>not json</p>')
+  })
+
+  it('ignores well-formed JSON that carries no `content` key', () => {
+    const onChange = vi.fn()
+    const vnode = RichTextWebView({ state: { content: null }, onChange })
+    ;(vnode.props as { onMessage: (m: string) => void }).onMessage(JSON.stringify({ other: 1 }))
+    expect(onChange).not.toHaveBeenCalled()
+  })
 })

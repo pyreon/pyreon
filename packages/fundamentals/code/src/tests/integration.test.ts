@@ -1,7 +1,7 @@
 import { effect } from '@pyreon/reactivity'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { createEditor } from '../editor'
-import { getAvailableLanguages, loadLanguage } from '../languages'
+import { getAvailableLanguages, loadLanguage, registerLanguage } from '../languages'
 import { createTabbedEditor } from '../tabbed-editor'
 import { darkTheme, lightTheme, resolveTheme } from '../themes'
 // Grammars beyond the core set (JS family + JSON) live behind this entry —
@@ -89,6 +89,40 @@ describe('loadLanguage', () => {
     const ext1 = await loadLanguage('plain')
     const ext2 = await loadLanguage('plain')
     expect(ext1).toBe(ext2)
+  })
+
+  it('DEGRADES to unhighlighted text when a grammar loader rejects', async () => {
+    // A missing or broken grammar package must not take the editor down with
+    // it — the contract is "render unhighlighted, but say so". This arm had no
+    // test, so a change that let the rejection escape would have surfaced as a
+    // crashed editor in a real app rather than a failed build.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    registerLanguage('broken-grammar-fixture', () =>
+      Promise.reject(new Error('grammar package is missing')),
+    )
+
+    await expect(loadLanguage('broken-grammar-fixture')).resolves.toEqual([])
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('broken-grammar-fixture'),
+      expect.any(Error),
+    )
+    warn.mockRestore()
+  })
+
+  it('does NOT cache a failed grammar, so a later retry can still succeed', async () => {
+    // Caching the failure would make one transient import error permanent for
+    // the life of the process.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    let attempt = 0
+    registerLanguage('flaky-grammar-fixture', () => {
+      attempt += 1
+      return attempt === 1 ? Promise.reject(new Error('transient')) : Promise.resolve([])
+    })
+
+    expect(await loadLanguage('flaky-grammar-fixture')).toEqual([])
+    expect(await loadLanguage('flaky-grammar-fixture')).toEqual([])
+    expect(attempt).toBe(2)
+    warn.mockRestore()
   })
 
   it('getAvailableLanguages includes common languages', () => {

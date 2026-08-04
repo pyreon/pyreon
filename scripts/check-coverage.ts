@@ -47,8 +47,9 @@
  * exemption is updated in lockstep with real package improvements.
  */
 import { spawn } from 'node:child_process'
-import { readdirSync, existsSync, readFileSync, appendFileSync } from 'node:fs'
+import { readdirSync, existsSync, readFileSync, appendFileSync, realpathSync } from 'node:fs'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 const PACKAGE_DIRS = [
   'packages/core',
@@ -65,6 +66,48 @@ const DEFAULT_THRESHOLD = 95
 const MINIMUM_FLOOR = 95
 const MINIMUM_BRANCH_FLOOR = 95
 const CONCURRENCY = 4
+/**
+ * Per-package wall-clock ceiling.
+ *
+ * Three packages — `@pyreon/zero`, `@pyreon/mcp`, `@pyreon/vite-plugin` — are
+ * absent from every CI coverage table, so their thresholds have never actually
+ * been enforced (two BELOW_FLOOR_EXEMPTIONS entries say as much, attributing it
+ * to this timeout when it was 120s). Measured serially on an M3 Max they take
+ * 20s / 17s / 38s and all three PASS, which means the local run cannot
+ * reproduce whatever CI hit — 4-way concurrency on a slower runner is the
+ * likely cause but is not proven here.
+ *
+ * So this number is deliberately generous rather than tuned: the point is that
+ * a package must be measured, and a run that blows even this budget is now
+ * REPORTED with its cause instead of vanishing. Whichever mechanism it was, the
+ * next CI run says so in the table rather than leaving it to be guessed at.
+ */
+const PACKAGE_TIMEOUT_MS = 600_000
+
+/**
+ * Packages that legitimately have NO instrumentable source, so a coverage run
+ * measuring zero files is the correct outcome rather than a misconfiguration.
+ *
+ * This list must stay tiny and each entry must argue why. It exists because
+ * "measured nothing" is otherwise a hard failure — which is the right default
+ * (it is how `@pyreon/config` was caught reporting 0% with full coverage), but
+ * a pure re-export barrel genuinely has nothing to instrument and must not be
+ * given `includeIndexInCoverage: true` to fake a number.
+ *
+ * An entry here is NOT "coverage does not apply to this package": the package
+ * must still have tests, and they still run. It only says the coverage
+ * PERCENTAGE is not a meaningful signal for it.
+ */
+const NO_INSTRUMENTABLE_SOURCE: Record<string, string> = {
+  '@pyreon/meta': [
+    'A pure re-export barrel: `src/index.ts` is 337 lines of `export { … } from`',
+    'and there is no other source file. The one failure mode a barrel has —',
+    'does it export every symbol it claims — is exactly what its 149-assertion',
+    'export test checks, and that runs. Setting `includeIndexInCoverage` here',
+    'would report 100% for "the module evaluated", which is a number that',
+    'cannot go down and therefore protects nothing.',
+  ].join(' '),
+}
 
 /**
  * Packages allowed to configure thresholds below the floor. Each
@@ -89,6 +132,12 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
     currentBranches: 85,
     reason:
       'JSX transform compiler. PR #1079 excluded load-native.ts (napi-rs binary loader) + event-names.ts (DOM-event remap data). Ratcheted 89/83 → 91/85 (measured 91.79/85.56) after validate-emit.ts — the pure TS-compiler-API compile-time @pyreon/validate specializer — gained full behavioral coverage (56.3%→98.9% stmts) of its check vocabulary + emitSchemaSource mini rewrite. Residual gap is the jsx.ts codegen edge-case tail (dual-backend, covered by native-equivalence + fuzz-equivalence in the `test (native)` cell) plus the syntactic audit modules (native-audit/content-audit/island-audit/ssg-audit) and diagnose.ts (exercised by e2e/dev-error-printer.spec.ts). Lifting to 95/95 is multi-PR work tracked as a long-tail effort.',
+  },
+  '@pyreon/atlas': {
+    currentStatements: 79,
+    currentBranches: 75,
+    reason:
+      'AI-native component workbench. FIRST time this package has ever been enforced: it was absent from every CI coverage table because the runner silently dropped any package whose output it could not parse, so its declared 95/95/95 was decorative and the package sat ~15pp under it. Honest first baseline (measured 79.72/75.98, functions 66.06, lines 79.94). The uncovered surface is concentrated and named: `static.ts` (the `atlas build` static-docs generator, landed with no tests), `server.ts`/`plugin.ts`/`run.ts` (the vite-booting dev surface, proven by e2e/atlas-workshop.spec.ts rather than node vitest), `lens.ts`/`lens-client.ts`/`axe.ts` (browser-side instrumentation measured on the page\'s own devtools bridge), and the `A11y*` styled-declaration modules. This is the low end of a deliberate ratchet — raise these thresholds + this entry in lockstep as tests land, never lower.',
   },
   '@pyreon/ui-components': {
     currentStatements: 62,
@@ -221,6 +270,66 @@ interface CoverageResult {
   threshold: number
 }
 
+/**
+ * What a package's coverage run actually produced.
+ *
+ * The three cases are deliberately distinct, because conflating them is how
+ * this gate went dead. A package that MEASURED NOTHING is not a package with
+ * bad coverage, and a package whose run never finished is not a package that
+ * passed — but before this, the first was reported as `0%` (sending you to
+ * write tests that already existed) and the second was printed once mid-run
+ * and then dropped from the table, the exit code, and CI entirely.
+ */
+export type CoverageOutcome =
+  | { kind: 'measured'; statements: number; branches: number; functions: number; lines: number }
+  /** The run succeeded but ZERO files were instrumented — `( 0/0 )`. */
+  | { kind: 'empty' }
+  /** The run timed out, crashed, or printed nothing parseable. */
+  | { kind: 'unparseable' }
+
+/**
+ * Read the istanbul `text-summary` block, which is the authoritative and
+ * always-present output:
+ *
+ * ```
+ * Statements   : 99.18% ( 365/368 )
+ * ```
+ *
+ * The ASCII `All files | …` table is NOT a reliable parse target: when a
+ * package measures exactly one file the reporter omits the aggregate row, so
+ * the old regex silently failed to match and the package was dropped. The
+ * summary block also carries the RATIO, which is the only way to tell
+ * `0% of 500 statements` (real, terrible) from `0/0` (nothing measured at all).
+ *
+ * Pure — unit-tested.
+ */
+export function parseCoverageOutput(stdout: string): CoverageOutcome {
+  const read = (label: string): { pct: number; total: number } | null => {
+    // `Unknown%` is what istanbul prints for 0/0, so the percent is optional.
+    const m = stdout.match(
+      new RegExp(`${label}\\s*:\\s*(?:([\\d.]+)%|Unknown%)\\s*\\(\\s*\\d+/(\\d+)\\s*\\)`),
+    )
+    if (!m) return null
+    return { pct: m[1] ? Number(m[1]) : 0, total: Number(m[2]) }
+  }
+
+  const s = read('Statements')
+  const b = read('Branches')
+  const f = read('Functions')
+  const l = read('Lines')
+
+  if (!s || !b || !f || !l) return { kind: 'unparseable' }
+  if (s.total === 0) return { kind: 'empty' }
+
+  return {
+    kind: 'measured',
+    statements: s.pct,
+    branches: b.pct,
+    functions: f.pct,
+    lines: l.pct,
+  }
+}
+
 /** Extract coverage threshold from a package's vitest.config.ts if present. */
 function getPackageThreshold(pkgDir: string): number {
   const configPath = join(pkgDir, 'vitest.config.ts')
@@ -253,12 +362,24 @@ function getPackageBranchThreshold(pkgDir: string): number {
   return DEFAULT_THRESHOLD
 }
 
+/**
+ * A package whose coverage could NOT be established. Never silently dropped:
+ * these fail the gate, because a gate that cannot tell "not measured" from
+ * "measured and fine" protects nothing.
+ */
+interface CoverageProblem {
+  package: string
+  kind: 'empty' | 'unparseable'
+  timedOut: boolean
+  error?: string
+}
+
 /** Run coverage for a single package asynchronously. */
 function runCoverage(
   pkgDir: string,
   pkgName: string,
   threshold: number,
-): Promise<CoverageResult | null> {
+): Promise<CoverageResult | CoverageProblem> {
   return new Promise((resolve) => {
     const child = spawn('bun', ['run', 'test', '--', '--coverage', '--reporter=json'], {
       cwd: pkgDir,
@@ -273,36 +394,34 @@ function runCoverage(
       stdout += data.toString()
     })
 
+    let timedOut = false
     const timer = setTimeout(() => {
+      timedOut = true
       child.kill('SIGTERM')
-    }, 120_000)
+    }, PACKAGE_TIMEOUT_MS)
 
     child.on('close', () => {
       clearTimeout(timer)
 
-      const match = stdout.match(
-        /All files\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)/,
-      )
-      if (match) {
-        const [, stmts, branches, funcs, lines] = match.map(Number)
-        const pass = (stmts ?? 0) >= threshold
+      const outcome = parseCoverageOutput(stdout)
+      if (outcome.kind === 'measured') {
         resolve({
           package: pkgName,
-          statements: stmts ?? 0,
-          branches: branches ?? 0,
-          functions: funcs ?? 0,
-          lines: lines ?? 0,
-          pass,
+          statements: outcome.statements,
+          branches: outcome.branches,
+          functions: outcome.functions,
+          lines: outcome.lines,
+          pass: outcome.statements >= threshold,
           threshold,
         })
       } else {
-        resolve(null)
+        resolve({ package: pkgName, kind: outcome.kind, timedOut })
       }
     })
 
-    child.on('error', () => {
+    child.on('error', (err) => {
       clearTimeout(timer)
-      resolve(null)
+      resolve({ package: pkgName, kind: 'unparseable', timedOut, error: String(err) })
     })
   })
 }
@@ -347,8 +466,14 @@ function collectPackages(): PackageInfo[] {
 /** Run packages with bounded concurrency using async spawn. */
 async function runWithConcurrency(
   packages: PackageInfo[],
-): Promise<CoverageResult[]> {
+): Promise<{
+  results: CoverageResult[]
+  problems: CoverageProblem[]
+  staleDeclarations: string[]
+}> {
   const results: CoverageResult[] = []
+  const problems: CoverageProblem[] = []
+  const staleDeclarations: string[] = []
   const queue = [...packages]
 
   async function worker() {
@@ -356,13 +481,38 @@ async function runWithConcurrency(
       const pkg = queue.shift()
       if (!pkg) break
 
-      process.stdout.write(`  Testing ${pkg.name}...`)
-      const result = await runCoverage(pkg.dir, pkg.name, pkg.threshold)
-      if (result) {
-        results.push(result)
-        console.log(` ${result.statements}% ${result.pass ? '\u2705' : '\u274c'}`)
+      // ONE atomic line per package, written when that package finishes.
+      //
+      // This was a newline-less `Testing <name>...` followed by the result in
+      // a separate log after the await. With four workers that interleaves:
+      // worker A opens a line, worker B opens another, then A's percentage
+      // lands on B's line — so the log confidently attributes one package's
+      // number to a different package. Reading it during this very change,
+      // `@pyreon/atlas`'s 79.72% appeared beside `@pyreon/zero`, which reads
+      // as a real finding about entirely the wrong package.
+      const outcome = await runCoverage(pkg.dir, pkg.name, pkg.threshold)
+      if ('statements' in outcome) {
+        results.push(outcome)
+        console.log(`  ${pkg.name}: ${outcome.statements}% ${outcome.pass ? '\u2705' : '\u274c'}`)
+        if (NO_INSTRUMENTABLE_SOURCE[pkg.name]) {
+          // The declaration has gone stale: the package now HAS measurable
+          // source, so the exemption is hiding a real threshold. Without this
+          // the entry would quietly outlive its reason \u2014 which is the same rot
+          // that made this gate worth fixing in the first place.
+          staleDeclarations.push(pkg.name)
+        }
+      } else if (outcome.kind === 'empty' && NO_INSTRUMENTABLE_SOURCE[pkg.name]) {
+        // Declared to have nothing to instrument \u2014 its tests still ran.
+        console.log(`  ${pkg.name}: \u2014 (no instrumentable source, by declaration)`)
       } else {
-        console.log(' (skipped)')
+        problems.push(outcome)
+        const why =
+          outcome.kind === 'empty'
+            ? 'MEASURED NOTHING'
+            : outcome.timedOut
+              ? 'TIMED OUT'
+              : 'NO COVERAGE OUTPUT'
+        console.log(`  ${pkg.name}: \u274c ${why}`)
       }
     }
   }
@@ -370,7 +520,38 @@ async function runWithConcurrency(
   const workers = Array.from({ length: Math.min(CONCURRENCY, packages.length) }, () => worker())
   await Promise.all(workers)
 
-  return results
+  return { results, problems, staleDeclarations }
+}
+
+/**
+ * Explain a package whose coverage could not be established, and say what to
+ * do about it. The `empty` case is the one that has burned three packages now
+ * (`@pyreon/store` #2167, `@pyreon/runtime-server`, `@pyreon/config`), and the
+ * old gate reported it as `0% statements (need 95%)` \u2014 which reads as "write
+ * some tests" when in fact the tests exist and pass, and the real problem is
+ * that not one file was handed to the instrumenter.
+ */
+function describeProblem(p: CoverageProblem): string {
+  if (p.kind === 'empty') {
+    return (
+      `${p.package}: coverage ran and measured ZERO files ( 0/0 ).\n` +
+      `    This is a MEASUREMENT failure, not a coverage failure \u2014 the tests may all pass.\n` +
+      `    Almost always: the package's logic lives in src/index.ts, which the shared\n` +
+      `    vitest config excludes as a re-export barrel. Fix by setting\n` +
+      `    \`includeIndexInCoverage: true\` in the package's vitest.config.ts.`
+    )
+  }
+  if (p.timedOut) {
+    return (
+      `${p.package}: coverage run exceeded ${PACKAGE_TIMEOUT_MS / 1000}s and was killed.\n` +
+      `    Its thresholds were NOT enforced. Speed the suite up or raise PACKAGE_TIMEOUT_MS \u2014\n` +
+      `    do not leave it unmeasured.`
+    )
+  }
+  return (
+    `${p.package}: produced no parseable coverage summary${p.error ? ` (${p.error})` : ''}.\n` +
+    `    Run \`bun run test -- --coverage\` in the package to see what it printed.`
+  )
 }
 
 /**
@@ -433,13 +614,74 @@ function enforceFloor(packages: PackageInfo[]): string[] {
 
 // ─── Main ──────────────────────────────────────────────────────────────────
 
+/**
+ * Run the gate only when this file IS the process entry.
+ *
+ * Without this, importing the module for its pure helpers RUNS the whole gate:
+ * under vitest the cwd is the importing package, so no `packages/*` directory
+ * resolves, every exemption looks stale, and the import dies on `process.exit(1)`
+ * before a single test executes.
+ *
+ * `import.meta.main` is Bun-and-Node-≥24.2 only, so it is a hint, not the test —
+ * the repo hit exactly that with `@pyreon/mcp`'s bin, which started nothing
+ * under Node LTS. Falling back to comparing the resolved entry path keeps this
+ * working on every runtime.
+ */
+const isEntry = (() => {
+  const flag = (import.meta as { main?: boolean }).main
+  if (typeof flag === 'boolean') return flag
+  const entry = process.argv[1]
+  if (!entry) return false
+  try {
+    return pathToFileURL(realpathSync(entry)).href === import.meta.url
+  } catch {
+    return false
+  }
+})()
+
+if (!isEntry) {
+  // Imported for `parseCoverageOutput` — export surface only, no gate.
+} else {
+
 const isCI = !!process.env.CI
 const isFloorOnly = process.argv.includes('--floor-only')
-const packages = collectPackages()
+
+/**
+ * `--only a,b` restricts the run to named packages.
+ *
+ * This exists so coverage can be enforced at PR time for the packages a PR
+ * actually touches. The full run is `push:main`-only, and that cadence is why
+ * this gate has now rotted twice inside a month: nothing measures coverage
+ * while a change is still reviewable, so drift lands freely and surfaces on
+ * main, where a red gate blocks nobody and gets re-run past.
+ */
+const onlyArg = process.argv.find((a) => a.startsWith('--only='))
+const onlyNames = onlyArg
+  ? new Set(
+      onlyArg
+        .slice('--only='.length)
+        .split(',')
+        .map((n) => n.trim())
+        .filter(Boolean),
+    )
+  : null
+
+const allPackages = collectPackages()
+const packages = onlyNames ? allPackages.filter((p) => onlyNames.has(p.name)) : allPackages
+
+if (onlyNames && packages.length === 0) {
+  // Nothing to measure is a legitimate outcome here (a docs-only PR), but say
+  // so explicitly rather than printing an empty table that reads like a pass.
+  console.log(
+    `\n\u2705 Coverage (affected): no packages from --only matched a testable workspace ` +
+      `(${[...onlyNames].join(', ') || 'none given'}) — nothing to measure.\n`,
+  )
+  process.exit(0)
+}
 
 // Enforce the floor BEFORE running coverage so misconfigured
 // thresholds surface even if coverage execution times out / skips.
-const floorErrors = enforceFloor(packages)
+const floorErrors = enforceFloor(allPackages)
 if (floorErrors.length > 0) {
   console.error(
     `\n❌ Coverage floor violations (MINIMUM_FLOOR=${MINIMUM_FLOOR}% statements, ` +
@@ -468,9 +710,11 @@ if (isFloorOnly) {
 
 console.log(`\nRunning coverage for ${packages.length} packages (${CONCURRENCY} parallel)...\n`)
 
-const results = await runWithConcurrency(packages)
+const { results, problems, staleDeclarations } = await runWithConcurrency(packages)
 const sorted = results.sort((a, b) => a.package.localeCompare(b.package))
-const hasFailures = sorted.some((r) => !r.pass)
+const sortedProblems = problems.sort((a, b) => a.package.localeCompare(b.package))
+const hasFailures =
+  sorted.some((r) => !r.pass) || sortedProblems.length > 0 || staleDeclarations.length > 0
 
 // Build report
 const reportLines: string[] = [
@@ -488,9 +732,37 @@ for (const r of sorted) {
   )
 }
 
-if (hasFailures) {
+// Unmeasured packages appear in the SAME table. Before this they were printed
+// once mid-run and then dropped \u2014 so a package whose thresholds were never
+// enforced looked exactly like a package that did not exist.
+for (const p of sortedProblems) {
+  const what = p.kind === 'empty' ? 'MEASURED NOTHING' : p.timedOut ? 'TIMED OUT' : 'NO OUTPUT'
+  reportLines.push(`| ${p.package} | \u2014 | \u2014 | \u2014 | \u2014 | \u2014 | \u274c ${what} |`)
+}
+
+if (sortedProblems.length > 0) {
+  reportLines.push(
+    '',
+    `\u274c ${sortedProblems.length} package(s) could not be measured \u2014 their thresholds were NOT enforced:`,
+    '',
+    ...sortedProblems.map((p) => `  ${describeProblem(p)}`),
+  )
+}
+
+if (staleDeclarations.length > 0) {
+  reportLines.push(
+    '',
+    `\u274c ${staleDeclarations.length} NO_INSTRUMENTABLE_SOURCE declaration(s) are STALE — ` +
+      `these packages now have measurable source, so the exemption is hiding a real threshold:`,
+    ...staleDeclarations.map(
+      (n) => `  ${n}: remove its NO_INSTRUMENTABLE_SOURCE entry in scripts/check-coverage.ts.`,
+    ),
+  )
+}
+
+if (sorted.some((r) => !r.pass)) {
   reportLines.push('', '\u274c Some packages below their coverage threshold')
-} else {
+} else if (sortedProblems.length === 0) {
   reportLines.push('', '\u2705 All packages meet their coverage thresholds')
 }
 
@@ -506,6 +778,9 @@ if (isCI) {
       )
     }
   }
+  for (const p of sortedProblems) {
+    console.log(`::error::${describeProblem(p).replace(/\n\s*/g, ' ')}`)
+  }
 
   if (process.env.GITHUB_STEP_SUMMARY) {
     appendFileSync(process.env.GITHUB_STEP_SUMMARY, report + '\n')
@@ -515,3 +790,5 @@ if (isCI) {
 if (hasFailures) {
   process.exit(1)
 }
+
+} // end `isEntry` gate

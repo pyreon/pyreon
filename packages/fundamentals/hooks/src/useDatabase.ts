@@ -73,6 +73,9 @@ const memory = new Map<string, PyreonRecord[]>()
 
 function readCollection(collection: string): PyreonRecord[] {
   const key = KEY_PREFIX + collection
+  /* v8 ignore next — the server arm. `isServer` is a module-load constant and
+     these tests run under happy-dom, so reaching it would mean mocking
+     @pyreon/reactivity, which the test-environment rules forbid. */
   if (isServer) return memory.get(key) ?? []
   try {
     const store = globalThis.localStorage
@@ -104,6 +107,7 @@ function writeCollection(collection: string, records: PyreonRecord[]): void {
   // the data still round-trips for this page rather than vanishing between an
   // insert and the next read.
   memory.set(key, records)
+  /* v8 ignore next — server arm; see readCollection above. */
   if (isServer) return
   try {
     globalThis.localStorage?.setItem(key, JSON.stringify(records))

@@ -43,6 +43,7 @@ export function useAppState(): () => AppStatePhase {
 
 /** Derive the current phase from the DOM visibility + focus state. */
 function computeAppPhase(): AppStatePhase {
+  /* v8 ignore next — SSR arm; `isClient` is a module-load constant and this suite runs under happy-dom, so this is unreachable without mocking @pyreon/reactivity (forbidden by the test-environment rules). */
   if (!isClient) return 'active'
   if (document.visibilityState === 'hidden') return 'background'
   return document.hasFocus() ? 'active' : 'inactive'

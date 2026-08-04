@@ -15,7 +15,7 @@
 // shared-code break that made `@pyreon/form` non-shared. `localStorage` is the
 // faithful analogue.
 
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { useDatabase, type PyreonRecord } from '../useDatabase'
 
 const rec = (id: string, fields: Record<string, string> = {}): PyreonRecord => ({ id, fields })
@@ -119,5 +119,108 @@ describe('useDatabase (web)', () => {
     for (const m of ['insert', 'get', 'all', 'delete', 'find', 'count'] as const) {
       expect(typeof db[m], `missing method: ${m}`).toBe('function')
     }
+  })
+})
+
+// ── Degradation ───────────────────────────────────────────────────────────
+//
+// Everything below was untested. The reads and writes both carry deliberate,
+// commented decisions about what to do when persistence misbehaves — and those
+// decisions are the ones that produce user-visible bugs when they change (a
+// cleared store resurrecting deleted records, an insert vanishing before the
+// next read). Each spec pins one of them.
+
+describe('useDatabase — persistence degradation', () => {
+  // Each spec uses its OWN collection. The in-memory mirror is module-scoped
+  // by design (so reads and writes agree within one page), which means it also
+  // outlives a test — sharing a collection name let one spec's records leak
+  // into the next and made two of these fail for a reason that had nothing to
+  // do with the behaviour under test.
+  let n = 0
+  let coll = ''
+  let key = ''
+  let real: Storage | undefined
+
+  beforeEach(() => {
+    real = globalThis.localStorage
+    coll = `degrade-${++n}`
+    key = `pyreon:db:${coll}`
+    globalThis.localStorage?.clear()
+  })
+
+  afterEach(() => {
+    if (real) Object.defineProperty(globalThis, 'localStorage', { value: real, configurable: true })
+  })
+
+  const swapStorage = (impl: Partial<Storage> | undefined) => {
+    Object.defineProperty(globalThis, 'localStorage', { value: impl, configurable: true })
+  }
+
+  it('a MISS is authoritative — a cleared store does NOT resurrect records', () => {
+    // The mirror exists for when persistence is UNAVAILABLE, not when it
+    // answers "no such key". Consulting it on a miss made deleted records come
+    // back for the rest of the session after a user cleared site data.
+    const db = useDatabase()
+    db.insert(coll, rec('a'))
+    expect(db.count(coll)).toBe(1)
+
+    globalThis.localStorage?.clear()
+    expect(db.all(coll)).toEqual([])
+  })
+
+  it('falls back to the in-memory mirror when localStorage is absent entirely', () => {
+    swapStorage(undefined)
+    const db = useDatabase()
+    db.insert(coll, rec('m1'))
+    // insert-then-read must agree even with no persistence at all.
+    expect(db.all(coll).map((r) => r.id)).toEqual(['m1'])
+  })
+
+  it('survives a throwing getItem by reading the mirror', () => {
+    const db = useDatabase()
+    db.insert(coll, rec('kept'))
+    swapStorage({
+      getItem: () => {
+        throw new Error('SecurityError: access denied')
+      },
+      setItem: () => {},
+    })
+    expect(db.all(coll).map((r) => r.id)).toEqual(['kept'])
+  })
+
+  it('still round-trips when setItem throws (quota / private mode)', () => {
+    // The write is mirrored BEFORE the persist attempt precisely so a quota
+    // failure costs persistence, not the data for this page.
+    swapStorage({
+      getItem: () => null,
+      setItem: () => {
+        throw new Error('QuotaExceededError')
+      },
+    })
+    const db = useDatabase()
+    expect(() => db.insert(coll, rec('q1'))).not.toThrow()
+  })
+
+  it('treats a non-array payload as empty rather than throwing', () => {
+    real?.setItem(key, JSON.stringify({ not: 'an array' }))
+    expect(useDatabase().all(coll)).toEqual([])
+  })
+
+  it('unparseable JSON falls back to the mirror, NOT to a hard empty', () => {
+    // A parse failure means persistence is broken, which is exactly the case
+    // the mirror covers — so an insert made this session must still be
+    // readable. (With an untouched collection the mirror is empty and the
+    // result is [], which is why this needs its own collection to be honest
+    // about which branch it is pinning.)
+    const db = useDatabase()
+    db.insert(coll, rec('mirrored'))
+    real?.setItem(key, '{ this is not json')
+    expect(db.all(coll).map((r) => r.id)).toEqual(['mirrored'])
+  })
+
+  it('drops individual corrupt records instead of losing the whole collection', () => {
+    // One hand-edited entry should cost one record, not crash the app on load.
+    real?.setItem(key, JSON.stringify([{ id: 'ok', fields: {} }, { noId: true }, null, 'nope']))
+    expect(useDatabase().all(coll).map((r) => r.id)).toEqual(['ok'])
   })
 })

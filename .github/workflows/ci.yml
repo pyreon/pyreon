@@ -1338,25 +1338,68 @@ jobs:
   #    runs on push:main + merge_group only. Main is never allowed to
   #    regress; merge_group acts as the final pre-merge safety check.
   #
-  # Trade-off: a PR that drops a package's actual coverage from 92% to
-  # 88% (still above the 90% floor of its vitest.config.ts threshold)
-  # passes `Coverage` but fails `Coverage (Full)` at merge-queue time
-  # — that's the documented safety policy. To opt INTO full coverage
-  # on a specific PR, push the merge_group event manually or add a
-  # `full-coverage` label (label-gating is a follow-up, not in this PR).
+  # The trade-off USED to be: a PR that drops a package's actual coverage
+  # passes `Coverage` and fails only later on main. That policy is what
+  # rotted — twice inside a month (2026-07: 15 packages; 2026-08: seven).
+  # A gate whose failures land where nobody is blocked gets re-run past,
+  # and by the time anyone looks the baseline and the regression are
+  # indistinguishable.
+  #
+  # So this job now ALSO measures the packages the PR actually touches
+  # (see the step below). Cost tracks the PR rather than the monorepo —
+  # affected packages only, ~3s for two of them. The full run stays on
+  # push:main + merge_group as the whole-repo backstop.
   coverage:
     name: Coverage
     needs: [install, changes]
     if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0 # affected.ts needs the merge-base to compute a real diff
       - uses: ./.github/actions/setup-pyreon
         with:
-          restore-bootstrap: 'false' # floor check reads vitest.config.ts only
+          # Coverage resolves @pyreon/* through the bun condition to `src`, so
+          # neither the floor check nor the affected run needs a built `lib/`.
+          restore-bootstrap: 'false'
       - name: Coverage floor + exemption drift check
         run: bun run coverage:floor
+
+      # Measure the packages this PR actually touches.
+      #
+      # The full run is `push:main` + `merge_group` only, and that cadence is
+      # the reason this gate has now rotted TWICE inside a month: nothing
+      # measured coverage while a change was still reviewable, so drift landed
+      # freely and only surfaced on main — where a red gate blocks nobody and
+      # gets re-run past. Seven packages had drifted under by 2026-08.
+      #
+      # This is deliberately NOT the full run: it measures only affected
+      # packages, so cost tracks the PR (two packages measure in ~3s locally;
+      # the heaviest single package is ~40s). A docs-only PR measures nothing
+      # and exits 0.
+      #
+      # NOTE this changes a previously-documented trade-off — a PR that drops a
+      # package's coverage used to pass here and fail only on main. That policy
+      # is what rotted; catching it on the PR that causes it is the point.
+      - name: Coverage (affected packages)
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          git fetch origin "${{ github.base_ref }}" || true
+          # affected.ts emits `--filter=@pyreon/x` flags (or `--filter=*`).
+          FILTER=$(bun run scripts/affected.ts --base=origin/${{ github.base_ref }})
+          if [ "$FILTER" = "--filter=*" ]; then
+            # Unknowable blast radius (a root-file change). The full run is far
+            # too slow for a PR, and the `push:main` run covers it — so skip
+            # rather than pretend, and say which it was.
+            echo "Root-file change → blast radius unknowable; full coverage runs on main."
+            exit 0
+          fi
+          NAMES=$(printf '%s\n' $FILTER | sed 's/^--filter=//' | paste -sd, -)
+          echo "Affected: ${NAMES:-<none>}"
+          bun scripts/check-coverage.ts --only="$NAMES"
 
   coverage-full:
     name: Coverage (Full)
