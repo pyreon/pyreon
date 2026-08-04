@@ -2,32 +2,42 @@
 '@pyreon/atlas': patch
 ---
 
-`atlas scan` ~10x faster — the leak check was paying a full GC per scenario
+`atlas scan` 4-13x faster — the leak check was paying a full GC per scenario
 
-A scan of `@pyreon/ui-components` (108 components, 1090 scenarios) took 56s, and
-98% of it was one plugin hook. Profiling it — after two hypotheses that
-measurement disproved — showed the cost was `Bun.gc(true)`: ~2767 full
-collections, ~20ms each.
+A scan of a variant-heavy design system (108 components, 1090 scenarios) took
+56s, and 98.3% of it was one plugin hook. Two hypotheses about which part died
+to measurement first — the static scan is 35ms, and the settle loop exits
+immediately rather than burning its runway — so the attribution now comes off a
+profiling seam (`ATLAS_PROFILE=1`) rather than from reading the code. What it
+found: 2767 `Bun.gc(true)` calls at ~20ms each.
 
-Three changes, each measured end-to-end and each leaving every verdict identical:
+The leak check is now charged per COMPONENT rather than per scenario. One sweep
+answers the question for every scenario a component owns, because a graph that
+returns to its baseline after all of them have been mounted and disposed proves
+none of them retained anything. A dirty batch is re-run once — which tells
+one-time retention (a module-level store registry, a memoized theme) from a
+per-mount leak — and only something genuinely climbing is separated scenario by
+scenario. The warm-up mount no longer needs its own settle, the resting graph
+carries across components, and each GC call sweeps once rather than twice
+(the settle loop already retries, and stops as soon as the count is at the
+floor).
 
-- **The resting graph carries across scenarios.** The baseline settle re-derived
-  per scenario a value the previous scenario's settle had already established.
-  It now runs once per component. (26.6s of the 56s.)
-- **One GC answers a batch of scenarios.** If the graph returns to its baseline
-  after 32 scenarios have been mounted and disposed, none of them retained
-  anything; only a dirty batch needs the scenarios separated, and that path is
-  rare. Batch size 32 is the measured knee of the curve.
-- **One sweep per GC call, not two.** The settle loop already retries, and it
-  stops as soon as the count is at the floor — so the unconditional second sweep
-  was paid even when the first had settled the graph. A nursery collection was
-  measured as an alternative and is 10x *worse*: it does not run the
-  FinalizationRegistry callbacks the registry drops nodes through, so the loop
-  never reaches its floor.
+Because the cost now tracks components rather than scenarios, the win scales
+with how many scenarios each component has:
 
-Verified identical: same components, same scenarios, same per-scenario verdicts,
-byte-identical agent guide. The real end-to-end leak proof (`scan-leak.test.ts`,
-real GC against a leaky fixture) still catches its leak.
+| scenarios/component | before | after |
+| --- | --- | --- |
+| 10.1 | 56.0s | 4.3s |
+| 2.2 | 3.3s | 0.8s |
 
-Also adds `ATLAS_PROFILE=1`, which reports scan cost per plugin hook — the
-attribution that found this after guessing failed twice.
+Identical output throughout: same components, same scenarios, same interaction
+verdicts, same leak verdicts, byte-identical agent guide. Bisect-verified — the
+real end-to-end leak test still fails when the detection is disabled.
+
+Two alternatives were measured and are NOT taken, recorded in the source so they
+are not re-tried: a nursery GC (`Bun.gc(false)`) is 10x worse, because it does
+not run the FinalizationRegistry callbacks the registry drops nodes through; and
+loading discovery's modules concurrently is slower, because Vite's
+`ssrLoadModule` serializes on the shared module graph.
+
+Adds `ATLAS_PROFILE=1`, which reports scan cost per plugin hook.

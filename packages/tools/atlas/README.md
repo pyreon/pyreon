@@ -322,6 +322,29 @@ mounted is what the project ships. Two consequences worth knowing:
 Pass `mount: false` to keep a scan purely static; importing a project's modules
 runs its top-level code.
 
+#### What a scan costs, and why
+
+The runtime half also runs a leak check — "did nodes this scenario created
+survive a GC" — and a forced full collection is by far the most expensive thing
+in a scan. It is charged per COMPONENT, not per scenario: one sweep answers the
+question for every scenario the component owns, because a graph that returns to
+its baseline after all of them have been mounted and disposed proves none of
+them retained anything. Only a batch that comes back dirty is separated, first
+by re-running the batch (which tells one-time retention from a per-mount leak)
+and then, if it really is climbing, scenario by scenario.
+
+The practical consequence is that scan time tracks your COMPONENT count far
+more than your scenario count, so generated variant matrices are close to free.
+Measured against the previous per-scenario design:
+
+| package | scenarios/component | before | after |
+| --- | --- | --- | --- |
+| a variant-heavy design system | 10.1 | 56.0s | 4.3s |
+| a headless primitive set | 2.2 | 3.3s | 0.8s |
+
+`ATLAS_PROFILE=1` reports where a scan's time went, per plugin hook — useful
+when a project's own components dominate rather than the framework.
+
 ## Canvas addons — the Storybook set, built in
 
 `<Workbench>` ships the addons a component workbench is actually judged on. In
