@@ -83,6 +83,16 @@ export interface ReactiveFire {
   id: number
   /** `performance.now()` at fire time. */
   ts: number
+  /**
+   * Synchronous-cascade sequence number. A SIGNAL fire starts a new cascade
+   * (signals are the only roots of a synchronous update cascade — they have no
+   * incoming dependency edges); every derived/effect fire inherits the current
+   * one. JS is single-threaded, so a cascade's fires are an unbroken run and
+   * the stamp is EXACT — unlike wall-clock clustering, which broke whenever a
+   * GC pause / loaded CI runner stretched a cascade past the window (the
+   * `reactive-cause` main-branch flake, 2026-08-04).
+   */
+  cascade: number
 }
 
 /**
@@ -202,6 +212,7 @@ const _finalizer = /* @__PURE__ */ new FinalizationRegistry<number>(_rdPrune)
 const FIRE_CAP = 512
 let _fireBuf: ReactiveFire[] | null = null
 let _fireCount = 0
+let _cascadeSeq = 0
 
 const PREVIEW_MAX = 60
 
@@ -263,6 +274,7 @@ export function __resetReactiveDevtoolsForTesting(): void {
   _retained.clear()
   _fireBuf = null
   _fireCount = 0
+  _cascadeSeq = 0
 }
 
 export function isReactiveDevtoolsActive(): boolean {
@@ -483,9 +495,14 @@ export function _rdRecordFire(node: object): void {
   if (rec) {
     rec.fires++
     rec.lastFire = ts
+    // A signal fire ROOTS a new synchronous cascade; derived/effect fires
+    // belong to the one in flight. (A multi-write `batch` advances the seq
+    // per write — downstream fires stamp with the LATEST write, which is the
+    // most-recent cause and still walks to a root. See ReactiveFire.cascade.)
+    if (rec.kind === 'signal') _cascadeSeq++
   }
   if (_fireBuf === null) _fireBuf = new Array<ReactiveFire>(FIRE_CAP)
-  _fireBuf[_fireCount % FIRE_CAP] = { id, ts }
+  _fireBuf[_fireCount % FIRE_CAP] = { id, ts, cascade: _cascadeSeq }
   _fireCount++
 }
 
@@ -733,9 +750,9 @@ export function getUpdateCause(nodeId: number): UpdateCause | null {
     for (const e of graph.edges) if (e.to === id) out.push(e.from)
     return out
   }
-  const lastFireTs = (id: number): number | null => {
-    let best: number | null = null
-    for (const f of fires) if (f.id === id && (best === null || f.ts > best)) best = f.ts
+  const lastFireOf = (id: number): ReactiveFire | null => {
+    let best: ReactiveFire | null = null
+    for (const f of fires) if (f.id === id && (best === null || f.ts > best.ts)) best = f
     return best
   }
   const toLink = (id: number, ts: number): CauseLink => {
@@ -743,16 +760,22 @@ export function getUpdateCause(nodeId: number): UpdateCause | null {
     return { id, kind: n.kind, name: n.name, ...(n.loc ? { loc: n.loc } : {}), ts }
   }
 
-  const targetTs = lastFireTs(nodeId)
-  if (targetTs === null) return null // never fired
+  const targetFire = lastFireOf(nodeId)
+  if (targetFire === null) return null // never fired
+  const targetTs = targetFire.ts
 
-  // A whole synchronous cascade completes within ~one animation frame; use that
-  // as the cluster window so a node's stale fire from an earlier interaction is
-  // not mistaken for a cause.
-  const CLUSTER_MS = 16
-  const firedInCluster = new Map<number, number>() // id → latest fire ts in cluster
+  // "Same synchronous cascade" is decided by the CASCADE STAMP, not by
+  // wall-clock proximity. The previous 16ms cluster window assumed a cascade
+  // completes within an animation frame — true on an idle machine, FALSE under
+  // load: a GC pause / preempted CI runner stretched one `set → recompute →
+  // effect` cascade past 16ms, the root signal's fire fell out of the window,
+  // and the reconstructed chain silently TRUNCATED (the reactive-cause
+  // main-branch flake, 2026-08-04). The stamp is assigned at fire time — a
+  // signal fire opens a cascade, downstream fires inherit it — so membership
+  // is exact regardless of how long the cascade took.
+  const firedInCluster = new Map<number, number>() // id → latest fire ts in cascade
   for (const f of fires) {
-    if (Math.abs(f.ts - targetTs) <= CLUSTER_MS) {
+    if (f.cascade === targetFire.cascade) {
       const prev = firedInCluster.get(f.id)
       if (prev === undefined || f.ts > prev) firedInCluster.set(f.id, f.ts)
     }

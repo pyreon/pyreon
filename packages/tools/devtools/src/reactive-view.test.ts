@@ -82,10 +82,10 @@ describe('bucketFires', () => {
   it('buckets by frame window and counts total', () => {
     const b = bucketFires(
       [
-        { id: 1, ts: 0 },
-        { id: 1, ts: 50 },
-        { id: 2, ts: 150 },
-        { id: 2, ts: 999 },
+        { id: 1, ts: 0, cascade: 0 },
+        { id: 1, ts: 50, cascade: 0 },
+        { id: 2, ts: 150, cascade: 0 },
+        { id: 2, ts: 999, cascade: 0 },
       ],
       100,
     )
@@ -97,7 +97,7 @@ describe('bucketFires', () => {
   })
 
   it('clamps to maxFrames', () => {
-    const fires = Array.from({ length: 500 }, (_, i) => ({ id: 1, ts: i * 100 }))
+    const fires = Array.from({ length: 500 }, (_, i) => ({ id: 1, ts: i * 100, cascade: 0 }))
     const b = bucketFires(fires, 100, 60)
     expect(b.frames.length).toBeLessThanOrEqual(60)
     expect(b.total).toBe(500)
@@ -106,9 +106,9 @@ describe('bucketFires', () => {
   it('out-of-range timestamps clamp into the first/last frame', () => {
     const b = bucketFires(
       [
-        { id: 1, ts: 100 },
-        { id: 1, ts: 100 },
-        { id: 1, ts: 300 },
+        { id: 1, ts: 100, cascade: 0 },
+        { id: 1, ts: 100, cascade: 0 },
+        { id: 1, ts: 300, cascade: 0 },
       ],
       100,
     )

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { computed } from '../computed'
 import { effect } from '../effect'
 import {
@@ -42,6 +42,49 @@ describe('getUpdateCause — "why did this update?"', () => {
     expect(cause!.chain[0]!.name).toBe('$price')
     expect(cause!.rootReached).toBe(true)
     expect(cause!.target.kind).toBe('effect')
+  })
+
+  it('reconstructs the FULL chain even when the cascade is stretched past 16ms (load immunity)', () => {
+    // The main-branch flake (2026-08-04): "same cascade" used to be decided by
+    // a 16ms wall-clock window around the target's fire. A GC pause / loaded
+    // CI runner stretching one `set → recompute → effect` cascade past 16ms
+    // dropped the ROOT SIGNAL out of the window and silently truncated the
+    // chain to `['derived:…']`. Simulate exactly that: every timestamp read
+    // during the cascade advances the clock by 20ms, so consecutive fires are
+    // 20ms apart — beyond any wall-clock window, same synchronous cascade.
+    activateReactiveDevtools()
+    const price = signal(10, { name: '$price' })
+    const total = computed(() => price() * 2)
+    let ran = 0
+    effect(() => {
+      total()
+      ran++
+    })
+    expect(ran).toBe(1)
+
+    const realNow = performance.now.bind(performance)
+    let drift = 0
+    const spy = vi.spyOn(performance, 'now').mockImplementation(() => {
+      drift += 20
+      return realNow() + drift
+    })
+    try {
+      price.set(20)
+    } finally {
+      spy.mockRestore()
+    }
+    expect(ran).toBe(2)
+
+    const cause = getUpdateCause(nodeId('effect'))
+    expect(cause).not.toBeNull()
+    // The stretched cascade must still reconstruct root-first and complete —
+    // truncation to just the derived link is the bug this locks against. (The
+    // derived's auto-name numbering is file-global, so assert the shape.)
+    const rendered = cause!.chain.map((l) => `${l.kind}:${l.name}`)
+    expect(rendered).toHaveLength(2)
+    expect(rendered[0]).toBe('signal:$price')
+    expect(rendered[1]).toMatch(/^derived:derived#\d+$/)
+    expect(cause!.rootReached).toBe(true)
   })
 
   it('a derived names the signal that caused its recompute', () => {

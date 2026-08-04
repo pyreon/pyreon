@@ -82,6 +82,8 @@ export interface UpdateCause {
 export interface ReactiveFire {
   id: number
   ts: number
+  /** Synchronous-cascade sequence stamp (see @pyreon/reactivity's ReactiveFire). */
+  cascade: number
 }
 
 // Exact structural mirror of @pyreon/runtime-dom's `PyreonReactiveDevtools`.
