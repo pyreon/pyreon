@@ -24,6 +24,7 @@ import {
   formatUnmatched,
   loadAtlasConfig,
   listComponentFiles,
+  isDualInstanceFailure,
   loadRuntime,
   type ModuleLoader,
   type PageMeta,
@@ -88,6 +89,14 @@ export interface ScanResult {
    * config: is there a file here at all?
    */
   configFound?: string
+  /**
+   * Atlas and the project hold DIFFERENT copies of the framework, so nothing
+   * was mounted and every scenario is `unverified`.
+   *
+   * Reported rather than worked around: mounting across two copies produces
+   * verdicts about the mismatch, not about the components.
+   */
+  dualInstance?: boolean
   /**
    * Files that export something PascalCase and produced NO component.
    *
@@ -189,7 +198,22 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
   // Mount with the framework the COMPONENTS were compiled against — see
   // `loadRuntime`. Undefined means Atlas resolves its own, which is right only
   // when nothing else has loaded a copy.
-  const runtime = loader ? await loadRuntime(loader) : undefined
+  let runtimeFailure: string | undefined
+  const runtime = loader
+    ? await loadRuntime(loader, (message) => {
+        runtimeFailure = message
+      })
+    : undefined
+  // Atlas and the project holding different framework copies is not a reason to
+  // mount anyway. Mounting still "succeeds" in that state — it just mounts
+  // components compiled against one copy using another — so every check reports
+  // on the mismatch instead of on the component. Measured on a real workspace,
+  // that produced 2051 failing scenarios, none of which were about the code.
+  //
+  // `unverified` is the truthful answer here, and Atlas already models it as a
+  // real state rather than a weak pass, so the honest move is to decline.
+  const dualInstance = runtimeFailure !== undefined && isDualInstanceFailure(runtimeFailure)
+  const canMount = mount && !dualInstance
   // Only when the ordinary root scan finds nothing — see `autoDetectProjects`.
   const autoDetected = autoDetectProjects(cwd, options.dir ?? 'src', loaded.config.projects)
   const effectiveProjects: readonly ProjectRoot[] | undefined =
@@ -246,7 +270,7 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
         ...recommendedPlugins({ mount: false }),
         // Appended AFTER the bundle so it can carry the project's wrapper. The
         // bundle's own entry is disabled above rather than duplicated.
-        ...(mount ? [mountPlugin({ ...loaded.config, ...(runtime ? { runtime } : {}) })] : []),
+        ...(canMount ? [mountPlugin({ ...loaded.config, ...(runtime ? { runtime } : {}) })] : []),
         aiAssetsPlugin({
           onAsset: (a) => {
             asset = a
@@ -300,6 +324,7 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
       ...(autoDetected.length > 0 ? { autoDetected } : {}),
       ...(loaded.error ? { configError: loaded.error } : {}),
       ...(loaded.path ? { configFound: loaded.path } : {}),
+      ...(dualInstance ? { dualInstance: true } : {}),
       ...(unmatched.length > 0 ? { unmatched } : {}),
     }
 
@@ -468,6 +493,18 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     // explains most of what follows (no groups, no title, no projects), and
     // reading it after the counts is reading it too late.
     if (result.configError) err(`atlas: ${result.configError}\n`)
+    // Before the summary, for the same reason: it explains why every scenario
+    // below says `unverified`, and reading that after the counts is too late.
+    if (result.dualInstance) {
+      err(
+        `atlas: Atlas and this project hold DIFFERENT copies of the Pyreon framework, ` +
+          `so nothing was mounted — every scenario is reported as unverified.\n` +
+          `  Mounting across two copies would produce verdicts about the mismatch ` +
+          `rather than about your components, which is worse than no verdict.\n` +
+          `  Align the versions (Atlas ships in the same release group as the framework) ` +
+          `and re-run to get real verify results.\n`,
+      )
+    }
     // A catalog that appeared without any configuration is a surprise unless it
     // says where it came from — and the reader's next question is always "can I
     // change that list?", which `atlas init` answers by writing it down.

@@ -221,7 +221,10 @@ const isBun = typeof (globalThis as { Bun?: unknown }).Bun !== 'undefined'
  * a consumer can take away. The answer is not to fight that but to mount with
  * the copy the components already hold, which is what this returns.
  */
-export async function loadRuntime(loader: ModuleLoader): Promise<MountRuntime | undefined> {
+export async function loadRuntime(
+  loader: ModuleLoader,
+  onFailure?: (message: string) => void,
+): Promise<MountRuntime | undefined> {
   if (loader.kind !== 'vite') return undefined
   try {
     const [core, dom, reactivity] = await Promise.all([
@@ -255,12 +258,30 @@ export async function loadRuntime(loader: ModuleLoader): Promise<MountRuntime | 
         : {}),
       ...(gc ? { collectGarbage: gc } : {}),
     }
-  } catch {
+  } catch (err) {
     // The project may not depend on the DOM runtime at all (a headless catalog).
     // Falling back to Atlas's own copy is wrong here — it would be a second
     // instance — so the caller mounts nothing and the check skips.
+    onFailure?.(err instanceof Error ? err.message : String(err))
     return undefined
   }
+}
+
+/**
+ * Does this failure mean Atlas and the project hold DIFFERENT framework copies?
+ *
+ * Worth its own predicate because the consequence is specific and severe. When
+ * the two disagree, mounting still "works" — it just mounts components compiled
+ * against one copy using another — and every check then reports a verdict about
+ * the mismatch rather than about the component. Observed on a real workspace:
+ * 2051 scenarios reported as failing, every one of them a harness artifact.
+ *
+ * Atlas ships in the fixed release group, so an ordinary install puts both on
+ * one copy. The way to reach this is to upgrade Atlas alone, or to run a
+ * development build against an installed project.
+ */
+export function isDualInstanceFailure(message: string): boolean {
+  return /Multiple instances of @pyreon\//.test(message)
 }
 
 export interface LoadResult {
