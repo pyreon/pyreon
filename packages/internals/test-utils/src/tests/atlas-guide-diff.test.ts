@@ -10,7 +10,7 @@
  * `destructive` makes it exit 1 and report `changed: Button`).
  */
 import { describe, expect, it } from 'vitest'
-import { diffComponents } from '../../../../../scripts/check-atlas-guide'
+import { diffComponents } from '../../../../../scripts/atlas-contract'
 
 const guide = (blocks: Record<string, string>): string =>
   ['# Agent Guide', '', ...Object.entries(blocks).map(([n, b]) => `## ${n}\n${b}`)].join('\n')

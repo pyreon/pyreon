@@ -17,18 +17,30 @@
  * and a `Button` carries both in a single `.attrs()`. Prose is the worst
  * possible medium for a distinction like that.
  *
- * ## Why the guide, and not the catalog
+ * ## Why a CONTRACT digest, and not `toAgentGuide()` or the catalog
  *
- * `atlas scan` emits both. The catalog is ~1.8 MB of JSON — a real machine
- * surface, but it churns on every scenario and no reviewer can read its diff.
- * The agent guide is ~9.5 KB of exactly the thing that must not drift:
+ * `atlas scan` emits both an agent guide and a catalog, and neither can be the
+ * committed artifact.
+ *
+ * The catalog is ~1.8 MB of JSON: a real machine surface, but it churns on
+ * every scenario and no reviewer can read its diff.
+ *
+ * The agent guide looked ideal and is disqualified for a subtler reason — it
+ * embeds VERIFY VERDICTS. Its `correct:` line is drawn from whichever scenario
+ * actually passed, so the file is a function of the mount, not of the contract.
+ * Committing it produced a gate that passed locally and failed in CI on one
+ * component (`Slider`) purely because a verdict landed differently there. A
+ * drift gate whose expected value depends on the machine is a flaky gate, and a
+ * flaky gate is a dead one.
+ *
+ * So this renders its own digest from the graph: names, tags, and every prop
+ * with its legal values. Nothing runtime-dependent, nothing verdict-derived.
  *
  *     ## Button [form]
- *     optional: state(primary|secondary|danger|success), size(small|medium|large), …
- *     correct: {"state":"primary","size":"small","variant":"solid"}
+ *     optional: size(small|medium|large), state(primary|secondary|danger|success), …
  *
- * One line per component, listing every legal value, with a VERIFIED example.
- * Rename a value and that line changes, so the diff is the finding.
+ * Rename a value and that line changes, so the diff is the finding — and it
+ * changes for that reason ONLY.
  *
  * ## Semi-automatic, deliberately
  *
@@ -44,7 +56,7 @@
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { runScan } from '../packages/tools/atlas/src/cli/run'
+import { diffComponents, renderContract } from './atlas-contract'
 
 /**
  * Packages whose derived contract is committed.
@@ -53,11 +65,16 @@ import { runScan } from '../packages/tools/atlas/src/cli/run'
  * `atlas.config.ts`: the guide is only worth committing where the prop surface
  * is large enough that prose has already failed to keep up with it.
  */
-const TRACKED = [{ dir: 'packages/ui/components', guide: 'atlas-agent-guide.md' }]
+const TRACKED = [{ dir: 'packages/ui/components', guide: 'atlas-contract.md' }]
 
 const ROOT = join(import.meta.dirname, '..')
 
 async function main(): Promise<number> {
+  // Imported LAZILY. A static import pulls Atlas's entire type graph into
+  // anything that imports this file — including the unit test for the pure
+  // renderers below, which then needs `pngjs` types it has no business
+  // declaring. Same reasoning Atlas itself uses for Vite.
+  const { runScan } = await import('../packages/tools/atlas/src/cli/run')
   const update = process.argv.includes('--update')
   let failed = 0
 
@@ -69,6 +86,7 @@ async function main(): Promise<number> {
     // Otherwise a verify run would silently "fix" the drift it is checking for,
     // and the gate could never fail.
     const result = await runScan({ cwd: pkgDir, write: false })
+    const derived = renderContract(result.graph.list())
 
     // A scan that found almost nothing is a BROKEN scan, not an empty package,
     // and writing its guide would erase the real contract. This package has 108
@@ -88,7 +106,7 @@ async function main(): Promise<number> {
     }
 
     if (update) {
-      writeFileSync(guidePath, result.guide, 'utf8')
+      writeFileSync(guidePath, derived, 'utf8')
       process.stdout.write(
         `[atlas-guide] ${dir}: wrote ${guide} (${result.components} components)\n`,
       )
@@ -104,10 +122,10 @@ async function main(): Promise<number> {
     }
 
     const committed = readFileSync(guidePath, 'utf8')
-    if (committed !== result.guide) {
+    if (committed !== derived) {
       // Name the components whose contract line changed — the diff is the
       // finding, and a bare "out of date" makes the reader go hunting for it.
-      const changed = diffComponents(committed, result.guide)
+      const changed = diffComponents(committed, derived)
       process.stderr.write(
         `[atlas-guide] ${dir}: ${guide} is out of date — the components changed and the ` +
           `AI-facing contract did not.\n` +
@@ -124,31 +142,6 @@ async function main(): Promise<number> {
     process.stdout.write(`[atlas-guide] ${TRACKED.length} package(s) in sync.\n`)
   }
   return failed === 0 ? 0 : 1
-}
-
-/** Component headings whose block differs between two guides. */
-export function diffComponents(before: string, after: string): string[] {
-  const blocks = (text: string): Map<string, string> => {
-    const out = new Map<string, string>()
-    let name = ''
-    let body: string[] = []
-    for (const line of text.split('\n')) {
-      const heading = /^## (\S+)/.exec(line)
-      if (heading) {
-        if (name) out.set(name, body.join('\n'))
-        name = heading[1]!
-        body = []
-      } else if (name) {
-        body.push(line)
-      }
-    }
-    if (name) out.set(name, body.join('\n'))
-    return out
-  }
-  const a = blocks(before)
-  const b = blocks(after)
-  const names = new Set([...a.keys(), ...b.keys()])
-  return [...names].filter((n) => a.get(n) !== b.get(n)).sort()
 }
 
 if (import.meta.main) {
