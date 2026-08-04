@@ -14,10 +14,19 @@ import {
 } from './detect'
 import { scanWorkspace } from './workspace'
 import type { LoomIssue, LoomReport } from './types'
+import type { LoomSettings } from './config'
 
 export interface BuildReportOptions {
   /** Skip the source-import scan (phantom / dev-dep / unused detectors). */
   noImports?: boolean
+  /**
+   * Settings resolved from `pyreon.config.*` + the root manifest.
+   *
+   * Passed IN rather than read here: loading a config module is async and
+   * `buildReport` is a pure synchronous function of (workspace, options),
+   * which is what makes it testable without a filesystem full of config.
+   */
+  settings?: Partial<LoomSettings>
 }
 
 const SEVERITY_ORDER = { error: 0, warning: 1, info: 2 } as const
@@ -34,14 +43,29 @@ export function buildReport(rootDir: string, options: BuildReportOptions = {}): 
     ...detectPeerMismatch(model),
   ]
   if (!options.noImports) {
-    const imports = scanImports(rootDir, model.packages, model.root.devPaths)
+    const devPaths = options.settings?.devPaths ?? model.root.devPaths
+    const imports = scanImports(rootDir, model.packages, devPaths)
     issues.push(...detectPhantoms(model, imports), ...detectUnused(model, imports))
   }
+  // Per-code severity overrides run BEFORE suppressions so an `ignore` still
+  // has the last word — a project that explicitly waved one finding through
+  // should not have it resurrected by a blanket severity raise.
+  const severityOverrides = options.settings?.severity
+  if (severityOverrides) {
+    for (const issue of issues) {
+      const level = severityOverrides[issue.code]
+      if (level) issue.severity = level
+    }
+  }
+
+  const allIgnores = options.settings?.ignores?.length
+    ? options.settings.ignores
+    : model.root.ignores
   // Suppressions downgrade to info WITH the reason attached — a finding is
   // never silently dropped, and the report shows what was waved through.
   for (const issue of issues) {
     if (issue.severity === 'info') continue
-    const match = model.root.ignores.find(
+    const match = allIgnores.find(
       (ig) =>
         (ig.pkg === undefined || ig.pkg === issue.pkg) &&
         (ig.dep === undefined || ig.dep === issue.dep) &&

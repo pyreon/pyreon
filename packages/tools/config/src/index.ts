@@ -35,6 +35,41 @@
  * for a tool that has not landed yet without losing type safety on the rest.
  */
 
+/**
+ * Loom's configuration — see `@pyreon/loom`'s README for the field docs.
+ *
+ * Every key here has a reader in `@pyreon/loom`; the root `package.json`'s
+ * `loom` key remains supported and WINS per-key, matching how atlas lets
+ * `atlas.config.*` beat this file. A project that has both has almost
+ * certainly just started migrating, and having the general file silently
+ * override the specific one mid-migration is the worst possible ordering.
+ */
+export interface LoomSection {
+  /**
+   * Package-relative globs that are NOT shipping source — build-time codegen,
+   * manifest files, generators. Segment-wise: `*` within one segment, `**` any
+   * depth. A declared path still counts as USED; it stops counting as SHIPPED.
+   */
+  devPaths?: string[]
+  /**
+   * Suppressions. `reason` is mandatory — an unexplained suppression is a lie
+   * waiting to age — and a match is downgraded to `info` with the reason
+   * attached rather than dropped, so the report still shows what was waved
+   * through.
+   */
+  ignore?: { pkg?: string; dep?: string; code?: string; reason: string }[]
+  /** Exit non-zero on warnings too, without passing `--strict` at every call site. */
+  strict?: boolean
+  /**
+   * Per-code severity overrides, keyed by issue code (`unused-dep`,
+   * `version-drift`, …). The escape hatch for adopting loom on an existing
+   * repo: raise a code to `error` once it is clean, or lower one to `info`
+   * while it is being burned down — the ratchet this repo already runs its
+   * lint backlogs on. An unknown code is a loud error, not a silent no-op.
+   */
+  severity?: Record<string, 'error' | 'warning' | 'info'>
+}
+
 /** Atlas's configuration — see `@pyreon/atlas`'s `AtlasConfig` for the field docs. */
 export interface AtlasSection {
   title?: string
@@ -60,6 +95,8 @@ export interface AtlasSection {
 export interface PyreonConfig {
   /** `@pyreon/atlas` — the component workbench. */
   atlas?: AtlasSection
+  /** `@pyreon/loom` — the dependency observatory. */
+  loom?: LoomSection
   /** Config for a tool this version does not know about. Carried, never read. */
   [tool: string]: unknown
 }

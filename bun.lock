@@ -2257,6 +2257,7 @@
         "loom": "./bin/loom.js",
       },
       "dependencies": {
+        "@pyreon/config": "workspace:*",
         "@pyreon/core": "workspace:*",
         "@pyreon/elements": "workspace:*",
         "@pyreon/hooks": "workspace:*",

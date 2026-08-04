@@ -13,3 +13,11 @@ export { specifierToPackage, isDevSurfacePath, matchesPathGlob, scanPackageImpor
 export type { ImportScan } from './imports'
 export { buildReport } from './report'
 export type { BuildReportOptions } from './report'
+export {
+  loadSharedLoomConfig,
+  mergeLoomSettings,
+  readManifestLoomSection,
+  validateLoomSection,
+  ISSUE_CODES,
+} from './config'
+export type { LoomSettings } from './config'
