@@ -312,6 +312,62 @@ export function mountKeyedList(
     return added
   }
 
+  /**
+   * Pure contiguous insertion fast path — the keyed-array sibling of mountFor's
+   * `tryContiguousInsertion` (same class, same proof; see the comment there).
+   * When `newKeyOrder` is exactly `currentKeyOrder` with one contiguous run of
+   * NEW keys inserted, mounting the run at its slot IS the whole update: no key
+   * can be stale (`p + s === oldLen` proves every old key survives) and no
+   * survivor moves — so the newKey-Set build + O(m) stale scan AND the O(n) LIS
+   * reorder are skipped. The caller's shared tail (curPos rebuild +
+   * `currentKeyOrder` assignment) still runs, so bookkeeping is untouched.
+   *
+   * Guards: bails when any vnode is KEYLESS (`newKeyOrder.length !== n` —
+   * key↔vnode index alignment would be unsound), on non-growth, and duplicates
+   * in the run are SKIPPED with the same first-wins semantics as
+   * `mountNewEntries`.
+   */
+  const tryContiguousInsertionKeyed = (
+    newList: VNode[],
+    n: number,
+    newKeyOrder: (string | number)[],
+    liveParent: Node,
+  ): boolean => {
+    if (newKeyOrder.length !== n) return false // keyless vnodes — indices misalign
+    const oldLen = currentKeyOrder.length
+    if (n <= oldLen || oldLen === 0) return false
+
+    let p = 0
+    while (p < oldLen && currentKeyOrder[p] === newKeyOrder[p]) p++
+    let s = 0
+    const maxS = oldLen - p
+    while (s < maxS && currentKeyOrder[oldLen - 1 - s] === newKeyOrder[n - 1 - s]) s++
+    if (p + s !== oldLen) return false
+
+    const runEnd = n - s
+    let before: Node = tailMarker
+    if (s > 0) {
+      const suffixEntry = cache.get(newKeyOrder[runEnd] as string | number)
+      if (!suffixEntry) return false
+      before = suffixEntry.anchor
+    }
+
+    for (let i = p; i < runEnd; i++) {
+      const key = newKeyOrder[i] as string | number
+      if (cache.has(key)) continue // duplicate — first wins, like mountNewEntries
+      const anchor = document.createComment('')
+      liveParent.insertBefore(anchor, before)
+      const cleanup = mountVNode(newList[i] as VNode, liveParent, before)
+      // Content just mounted immediately before `before` — its last node is
+      // `before`'s previous sibling (or the anchor itself when empty).
+      const last = before.previousSibling
+      cache.set(key, { anchor, cleanup, end: last === anchor ? null : last })
+    }
+    if (process.env.NODE_ENV !== 'production')
+      _countSink.__pyreon_count__?.('runtime.mountFor.insertFast')
+    return true
+  }
+
   const e = effect(() => {
     const newList = accessor()
     const n = newList.length
@@ -339,16 +395,21 @@ export function mountKeyedList(
       }
 
       const newKeyOrder = collectKeyOrder(newList)
-      // Pure-reorder skip (mirrors mountFor): mount new entries FIRST + count.
-      // Nothing added AND the cache already holds exactly the keyed count means a
-      // same-key-set reorder, so skip the newKey Set + O(m) stale scan.
-      const added = mountNewEntries(newList, liveParent)
-      if (added !== 0 || cache.size !== newKeyOrder.length) {
-        removeStaleEntries(new Set(newKeyOrder))
-      }
+      // Pure contiguous insertion (append / prepend / middle-insert with all old
+      // keys surviving in order) mounts the run and skips stale scan + reorder;
+      // the shared curPos/currentKeyOrder tail below still runs.
+      if (!tryContiguousInsertionKeyed(newList, n, newKeyOrder, liveParent)) {
+        // Pure-reorder skip (mirrors mountFor): mount new entries FIRST + count.
+        // Nothing added AND the cache already holds exactly the keyed count means a
+        // same-key-set reorder, so skip the newKey Set + O(m) stale scan.
+        const added = mountNewEntries(newList, liveParent)
+        if (added !== 0 || cache.size !== newKeyOrder.length) {
+          removeStaleEntries(new Set(newKeyOrder))
+        }
 
-      if (currentKeyOrder.length > 0 && n > 0) {
-        lis = keyedListReorder(lis, n, newKeyOrder, curPos, cache, liveParent, tailMarker)
+        if (currentKeyOrder.length > 0 && n > 0) {
+          lis = keyedListReorder(lis, n, newKeyOrder, curPos, cache, liveParent, tailMarker)
+        }
       }
 
       curPos.clear()
@@ -805,6 +866,93 @@ export function mountFor<T>(
     return true
   }
 
+  /**
+   * Fast path for a pure contiguous insertion — the krausest `append` op, plus
+   * prepend and middle-insert. The mirror of `tryContiguousRemoval`: when
+   * `newKeys` is exactly `currentKeys` with one contiguous run of NEW keys
+   * inserted — no removals, no survivor reorder — the DOM already matches the
+   * target once the run is mounted at its slot. That skips the general path's
+   * per-key `cache.has` pre-pass over ALL n keys (`mountNewForEntries`), the
+   * O(n) newKey-Set build + O(n) stale scan (`removeStaleForEntries` — nothing
+   * can be stale: `p + s === oldLen` proves every old key survives), AND the
+   * O(n) LIS walk — replacing ~4n Map/Set hash ops with an O(oldLen) `===`
+   * prefix/suffix scan + the O(added) mount that is genuinely required work.
+   * The run mounts into a DocumentFragment and lands with ONE live
+   * `insertBefore` (the fresh-render pattern) instead of one per row.
+   *
+   * SAFETY: only fires when `n > oldLen` (a net growth) AND the prefix+suffix
+   * cover every OLD key (`p + s === oldLen`). That gate guarantees (a) nothing
+   * was REMOVED — every `currentKeys[i]` maps to a distinct `newKeys` position
+   * — so the stale scan is provably a no-op, and (b) the survivors keep their
+   * old relative order — so no DOM moves are needed. A grow-plus-remove or
+   * grow-plus-reorder fails `p + s === oldLen` and falls through unchanged.
+   *
+   * DUPLICATE keys (a warned-invalid state): a run key already in the cache —
+   * a duplicate of a survivor or an earlier run key — is SKIPPED, byte-matching
+   * `mountNewForEntries`' `cache.has → continue` first-wins semantics, so the
+   * invalid-input behavior stays identical to the general path (no overwrite,
+   * no leaked cleanup). The skipped-stale-scan stays sound: no old key can be
+   * stale regardless of duplicates.
+   *
+   * `pos === current index` postcondition (what the LIS fast tiers + the
+   * removal fast path rely on): prefix entries keep their pos (unchanged
+   * index), run entries record their logical index at `renderInto`, and the
+   * shifted suffix is refreshed to `[runEnd .. n)` below — same discipline as
+   * `tryContiguousRemoval`.
+   */
+  const tryContiguousInsertion = (
+    items: T[],
+    n: number,
+    newKeys: (string | number)[],
+    liveParent: Node,
+  ): boolean => {
+    const oldLen = currentKeys.length
+    if (n <= oldLen || oldLen === 0) return false // not a growth — fresh/other paths own it
+
+    // Longest common prefix over the OLD keys.
+    let p = 0
+    while (p < oldLen && currentKeys[p] === newKeys[p]) p++
+    // Longest common suffix, not overlapping the prefix. `n > oldLen` keeps the
+    // new-side index `n - 1 - s` >= p for every s < maxS, so the scans never
+    // cross.
+    let s = 0
+    const maxS = oldLen - p
+    while (s < maxS && currentKeys[oldLen - 1 - s] === newKeys[n - 1 - s]) s++
+
+    // Pure contiguous insertion ⟺ prefix + suffix account for every old key.
+    if (p + s !== oldLen) return false
+
+    // The suffix's first entry is the DOM anchor the run mounts before. It is a
+    // survivor (newKeys[runEnd] === currentKeys[p]) so the lookup can't miss;
+    // bail defensively rather than corrupt if it somehow does.
+    const runEnd = n - s
+    let before: Node = tailMarker
+    if (s > 0) {
+      const suffixEntry = cache.get(newKeys[runEnd] as string | number)
+      if (!suffixEntry) return false
+      before = suffixEntry.anchor
+    }
+
+    // Mount the run `newKeys[p .. runEnd)` into a fragment — one live
+    // insertBefore for the whole run.
+    const frag = document.createDocumentFragment()
+    for (let i = p; i < runEnd; i++) {
+      const key = newKeys[i] as string | number
+      if (cache.has(key)) continue // duplicate — first wins, like mountNewForEntries
+      renderInto(items[i] as T, key, i, frag, null)
+    }
+    liveParent.insertBefore(frag, before)
+
+    // Refresh the shifted suffix's pos to its new indices `[runEnd .. n)`.
+    for (let i = runEnd; i < n; i++) {
+      const entry = cache.get(newKeys[i] as string | number)
+      if (entry) entry.pos = i
+    }
+    if (process.env.NODE_ENV !== 'production')
+      _countSink.__pyreon_count__?.('runtime.mountFor.insertFast')
+    return true
+  }
+
   const mountNewForEntries = (
     items: T[],
     n: number,
@@ -888,6 +1036,14 @@ export function mountFor<T>(
     // prefix/suffix `===` scan replaces the general path's per-key cache probe,
     // full-cache Set scan and all-stay LIS. Falls through unchanged otherwise.
     if (tryContiguousRemoval(n, newKeys)) {
+      currentKeys = newKeys
+      return
+    }
+
+    // Fast path: pure contiguous insertion (the krausest `append` op, plus
+    // prepend / middle-insert). Disjoint with removal by the length gates
+    // (n < oldLen vs n > oldLen), so same-length updates pay two O(1) checks.
+    if (tryContiguousInsertion(items, n, newKeys, liveParent)) {
       currentKeys = newKeys
       return
     }
