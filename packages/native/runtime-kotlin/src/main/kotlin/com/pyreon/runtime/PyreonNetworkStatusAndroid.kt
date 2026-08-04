@@ -63,6 +63,7 @@ public fun rememberPyreonNetworkStatus(): PyreonNetworkStatus {
         if (manager == null) {
             onDispose {}
         } else {
+            val handler = Handler(Looper.getMainLooper())
             val callback =
                 object : ConnectivityManager.NetworkCallback() {
                     override fun onAvailable(network: Network) {
@@ -105,19 +106,48 @@ public fun rememberPyreonNetworkStatus(): PyreonNetworkStatus {
                             .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
                             .build(),
                         callback,
-                        Handler(Looper.getMainLooper()),
+                        handler,
                     )
                     true
                 } catch (_: SecurityException) {
                     // ACCESS_NETWORK_STATE missing — degrade, do not crash.
                     false
                 }
-            onDispose { if (registered) runCatching { manager.unregisterNetworkCallback(callback) } }
+            // RECONCILIATION FLOOR — the callback stream is the fast path, not
+            // the only path. ConnectivityManager callback DELIVERY can go
+            // silent while the queryable state is correct: captured twice on
+            // CI (2026-08-04, API-33 emulator, runs 30894374690/30901780222)
+            // — `activeNetwork` was null and a poll-read said offline, yet no
+            // onLost/onCapabilitiesChanged arrived for 45+ seconds, so the
+            // flag stayed at its seed forever. A connectivity flag that can be
+            // wrong FOREVER after one dropped callback is a worse contract
+            // than one that is at most RECONCILE_MS stale, and emulator/OEM
+            // delivery quirks are a documented reality. The re-read is one
+            // binder call every few seconds, only while a composable using the
+            // hook is mounted; an equal-value `update` is a no-op recompose
+            // (MutableState structural equality), so the steady state costs
+            // nothing downstream. Callbacks still deliver sub-second flips.
+            val reconcile = object : Runnable {
+                override fun run() {
+                    status.update(isDeviceOnline(context))
+                    handler.postDelayed(this, RECONCILE_MS)
+                }
+            }
+            handler.postDelayed(reconcile, RECONCILE_MS)
+            onDispose {
+                handler.removeCallbacks(reconcile)
+                if (registered) runCatching { manager.unregisterNetworkCallback(callback) }
+            }
         }
     }
 
     return status
 }
+
+/** Staleness ceiling for the reconciliation re-read. 3s is fast enough that a
+ * user watching an offline banner sees it flip "immediately", and slow enough
+ * that the cost is one binder read per few seconds per mounted hook. */
+private const val RECONCILE_MS: Long = 3_000
 
 /** Current aggregate connectivity, or `true` when it cannot be determined. */
 private fun isDeviceOnline(context: Context): Boolean {

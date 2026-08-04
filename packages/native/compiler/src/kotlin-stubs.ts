@@ -830,6 +830,11 @@ fun pyreonFont(name: String): FontFamily = FontFamily()
 // it, NO useFetch shape was kotlinc-validated (the Swift loop is
 // -parse-only, so it never resolves references; kotlinc fully
 // typechecks and is the one that catches missing runtime surface).
+// The parity-configured JSON reader the fetch emit decodes with. The real one
+// in PyreonFetch.kt sets ignoreUnknownKeys = true, matching Swift's
+// JSONDecoder — kotlinx's default THROWS on an unknown key.
+val PyreonFetchJson: Json = Json
+
 class PyreonFetch<T> {
   val data: MutableState<T?> = mutableStateOf(null)
   val error: MutableState<Throwable?> = mutableStateOf(null)
@@ -838,6 +843,37 @@ class PyreonFetch<T> {
   fun resolve(value: T) {}
   fun reject(e: Throwable) {}
   fun refetch() {}
+}
+
+// PyreonHttp — what a \`useFetch(url, { method, headers, body })\` decl emits.
+// Mirrors the REAL PyreonHttp.kt surface exactly (a superset stub masks):
+// \`isOk\` is lower-k here where Swift's is \`isOK\`, \`body\` is a non-null
+// String on the response and a NULLABLE String on the request, and the errors
+// are nested classes on a sealed class (so \`PyreonHttpError.BadStatus(n)\`
+// resolves as a constructor call, not an enum case).
+enum class PyreonHttpMethod(val verb: String) {
+  GET("GET"), POST("POST"), PUT("PUT"), PATCH("PATCH"), DELETE("DELETE"),
+}
+data class PyreonHttpRequest(
+  val method: PyreonHttpMethod = PyreonHttpMethod.GET,
+  val url: String,
+  val headers: Map<String, String> = emptyMap(),
+  val body: String? = null,
+)
+data class PyreonHttpResponse(
+  val status: Int,
+  val headers: Map<String, String> = emptyMap(),
+  val body: String = "",
+) {
+  val isOk: Boolean get() = status in 200..299
+}
+sealed class PyreonHttpError(message: String) : Exception(message) {
+  class InvalidUrl(val url: String) : PyreonHttpError("invalid url: " + url)
+  class BadStatus(val status: Int) : PyreonHttpError("HTTP " + status)
+  class NoExecutor : PyreonHttpError("no executor")
+}
+object PyreonHttp {
+  fun send(request: PyreonHttpRequest): PyreonHttpResponse = PyreonHttpResponse(200)
 }
 
 // kotlinx.coroutines surface the emitted fetch harness drives —

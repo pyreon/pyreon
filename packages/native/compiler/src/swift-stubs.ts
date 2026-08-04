@@ -258,6 +258,7 @@ extension View {
   // the same way: Kotlin accepted the identical source.
   public func scaledToFill() -> some View { self }
   public func onAppear(_ action: (() -> Void)? = nil) -> some View { self }
+  public func onDisappear(_ action: (() -> Void)? = nil) -> some View { self }
 }
 public enum ImageScale { case small, medium, large }
 
@@ -457,9 +458,15 @@ public struct PyreonPermissions {
 // so a plain class type-checks an @State PyreonNetworkStatus + net.isOnline
 // identically. useOnline() returns a web ACCESSOR read as net() — the emit
 // lowers that call to this net.isOnline Bool read.
+// start()/stop() joined the mirrored surface when the emit gained the
+// .onAppear/.onDisappear start/stop harness — the NWPathMonitor behind them
+// existed from inception with nothing calling it, so useOnline() on iOS was
+// frozen at true forever (2026-08-04).
 public final class PyreonNetworkStatus {
   public private(set) var isOnline: Bool
   public init(isOnline: Bool = true) { self.isOnline = isOnline }
+  public func start() {}
+  public func stop() {}
 }
 // PyreonAppState — mirror of @pyreon/native-runtime-swift's PyreonAppState.swift
 // surface the emit touches: the no-arg constructor + the phase String read
@@ -602,6 +609,43 @@ public final class PyreonFetch<T> {
   public func reject(_ failure: Error) {}
   public func load(_ fetcher: @escaping () throws -> T) {}
   public func refetch() {}
+}
+// PyreonHttp — what a \`useFetch(url, { method, headers, body })\` decl emits.
+// Mirrors the REAL PyreonHttp.swift surface exactly (a superset stub masks):
+// \`send\` is \`async throws\`, \`isOK\` is capitalised where Kotlin's is \`isOk\`,
+// \`decode\` is generic + throwing, and the request init's arguments are all
+// defaulted except \`url\`.
+public enum PyreonHttpMethod: String, Sendable {
+  case get = "GET"
+  case post = "POST"
+  case put = "PUT"
+  case patch = "PATCH"
+  case delete = "DELETE"
+}
+public struct PyreonHttpRequest: Sendable {
+  public init(
+    method: PyreonHttpMethod = .get,
+    url: String,
+    headers: [String: String] = [:],
+    body: Data? = nil
+  ) {}
+}
+public struct PyreonHttpResponse: Sendable {
+  public let status: Int = 0
+  public var isOK: Bool { true }
+  public var text: String { "" }
+  public func decode<T: Decodable>(_ type: T.Type) throws -> T {
+    throw PyreonHttpError.invalidURL("stub")
+  }
+}
+public enum PyreonHttpError: Error, Equatable {
+  case invalidURL(String)
+  case badStatus(Int)
+}
+public enum PyreonHttp {
+  public static func send(_ request: PyreonHttpRequest) async throws -> PyreonHttpResponse {
+    PyreonHttpResponse()
+  }
 }
 public final class PyreonDatabase {
   public init() {}

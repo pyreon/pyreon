@@ -1363,10 +1363,37 @@ function emitKotlinComponent(c: ComponentIR): string {
     lines.push(`  LaunchedEffect(Unit) {`)
     lines.push(`    ${name}.begin()`)
     lines.push(`    try {`)
-    lines.push(
-      `      val body = withContext(Dispatchers.IO) { java.net.URL(${JSON.stringify(d.url)}).readText() }`,
-    )
-    lines.push(`      ${name}.resolve(Json.decodeFromString<${kotlinType(d.type, ctx)}>(body))`)
+    if (d.method || d.headers || d.body) {
+      // Mirrors the Swift branch one-for-one: a request carrying a VERB,
+      // headers, or a body goes through PyreonHttp — the runtime that shipped
+      // on both targets with full verb support and nothing lowering to it.
+      // `readText()` below cannot express any of the three.
+      const parts = [
+        `method = PyreonHttpMethod.${(d.method ?? 'GET').toUpperCase()}`,
+        `url = ${JSON.stringify(d.url)}`,
+      ]
+      if (d.headers) {
+        const pairs = Object.entries(d.headers)
+          .map(([k, v]) => `${JSON.stringify(k)} to ${JSON.stringify(v)}`)
+          .join(', ')
+        parts.push(`headers = mapOf(${pairs})`)
+      }
+      if (d.body !== undefined) parts.push(`body = ${JSON.stringify(d.body)}`)
+      lines.push(`      val __response = withContext(Dispatchers.IO) {`)
+      lines.push(`        PyreonHttp.send(PyreonHttpRequest(${parts.join(', ')}))`)
+      lines.push(`      }`)
+      // A non-2xx REJECTS rather than decoding — handing an error page to the
+      // JSON decoder reads as "the server sent bad JSON" and hides the status.
+      lines.push(`      if (!__response.isOk) throw PyreonHttpError.BadStatus(__response.status)`)
+      lines.push(
+        `      ${name}.resolve(PyreonFetchJson.decodeFromString<${kotlinType(d.type, ctx)}>(__response.body))`,
+      )
+    } else {
+      lines.push(
+        `      val body = withContext(Dispatchers.IO) { java.net.URL(${JSON.stringify(d.url)}).readText() }`,
+      )
+      lines.push(`      ${name}.resolve(PyreonFetchJson.decodeFromString<${kotlinType(d.type, ctx)}>(body))`)
+    }
     lines.push(`    } catch (e: Throwable) { ${name}.reject(e) }`)
     lines.push(`  }`)
   }

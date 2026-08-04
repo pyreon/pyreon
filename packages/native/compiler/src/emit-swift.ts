@@ -1688,7 +1688,13 @@ function emitSwiftComponent(c: ComponentIR): string {
   // transparent Group is redistributed onto conditional branches and
   // RE-FIRES per flip — the same device-found class as .task.
   const _hasOnMount = c.decls.some((d) => d.kind === 'on-mount')
-  if (_hasFetchDecl || _hasOnMount) {
+  // network-status needs the same stable host: its `.onAppear { net.start() }`
+  // / `.onDisappear { net.stop() }` pair on a transparent Group would be
+  // redistributed onto conditional branches — a branch flip would STOP the
+  // monitor while the view is still on screen. (start() is idempotent, so a
+  // spurious re-appear is safe; a spurious disappear is not.)
+  const _hasNetDecl = c.decls.some((d) => d.kind === 'network-status')
+  if (_hasFetchDecl || _hasOnMount || _hasNetDecl) {
     lines.push(`    ZStack {`)
     lines.push(`      ${emitSwiftReturnExpr(c.returnExpr, 6)}`)
     lines.push(`    }`)
@@ -1732,16 +1738,64 @@ function emitSwiftComponent(c: ComponentIR): string {
     lines.push(bodyLines)
     lines.push(`      }`)
   }
+  // network-status: START the live monitor. The runtime shipped a real
+  // NWPathMonitor behind `start()` from inception — and nothing ever called
+  // it, so `useOnline()` on iOS was frozen at its initial `true` forever
+  // (the same never-wired class the Android edge had before
+  // rememberPyreonNetworkStatus; found 2026-08-04 while root-causing the
+  // Android offline test). Masked because the simulator is always online and
+  // no iOS test toggles connectivity — `Online: true` is indistinguishable
+  // from a working hook on an online device. `.onDisappear { stop() }`
+  // releases the monitor with the screen; both attach to the ZStack host
+  // above, so branch flips can't spuriously stop it.
+  for (const d of c.decls) {
+    if (d.kind !== 'network-status') continue
+    const name = swiftIdent(d.name)
+    lines.push(`      .onAppear { ${name}.start() }`)
+    lines.push(`      .onDisappear { ${name}.stop() }`)
+  }
   for (const d of c.decls) {
     if (d.kind !== 'fetch') continue
     const name = swiftIdent(d.name)
     lines.push(`      .task {`)
     lines.push(`        ${name}.begin()`)
     lines.push(`        do {`)
-    lines.push(
-      `          let (bytes, _) = try await URLSession.shared.data(from: URL(string: ${JSON.stringify(d.url)})!)`,
-    )
-    lines.push(`          ${name}.resolve(try JSONDecoder().decode(${swiftType(d.type)}.self, from: bytes))`)
+    if (d.method || d.headers || d.body) {
+      // A request with a VERB, headers, or a body goes through PyreonHttp —
+      // the runtime that has shipped on both targets with full verb support
+      // and, until now, nothing that lowered to it. The bare-GET path below
+      // is left alone deliberately: it is device-proven, and re-routing it
+      // would put a proven path behind a brand-new Android executor. Folding
+      // the two together once this one is device-proven is the follow-up.
+      const method = (d.method ?? 'GET').toLowerCase()
+      const parts = [`method: .${method}`, `url: ${JSON.stringify(d.url)}`]
+      if (d.headers) {
+        const pairs = Object.entries(d.headers)
+          .map(([k, v]) => `${JSON.stringify(k)}: ${JSON.stringify(v)}`)
+          .join(', ')
+        parts.push(`headers: [${pairs}]`)
+      }
+      if (d.body !== undefined) parts.push(`body: Data(${JSON.stringify(d.body)}.utf8)`)
+      lines.push(`          let __response = try await PyreonHttp.send(`)
+      lines.push(`            PyreonHttpRequest(${parts.join(', ')})`)
+      lines.push(`          )`)
+      // A non-2xx must REJECT rather than decode. Handing an error page to
+      // JSONDecoder surfaces as a decode failure, which reads as "the server
+      // sent bad JSON" and hides the actual status.
+      lines.push(`          guard __response.isOK else {`)
+      lines.push(
+        `            throw PyreonHttpError.badStatus(__response.status)`,
+      )
+      lines.push(`          }`)
+      lines.push(`          ${name}.resolve(try __response.decode(${swiftType(d.type)}.self))`)
+    } else {
+      lines.push(
+        `          let (bytes, _) = try await URLSession.shared.data(from: URL(string: ${JSON.stringify(d.url)})!)`,
+      )
+      lines.push(
+        `          ${name}.resolve(try JSONDecoder().decode(${swiftType(d.type)}.self, from: bytes))`,
+      )
+    }
     lines.push(`        } catch { ${name}.reject(error) }`)
     lines.push(`      }`)
   }

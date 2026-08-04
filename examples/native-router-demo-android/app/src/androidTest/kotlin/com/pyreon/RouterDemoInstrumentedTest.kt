@@ -426,6 +426,47 @@ class RouterDemoInstrumentedTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("note-count").assertTextEquals("Notes: 0")
 
+        // FORENSIC PROBE — a second NetworkCallback with the hook's exact
+        // request shape, registered pre-toggle from the SAME process, so a
+        // residual failure can say whether the callback CHANNEL was silent
+        // (two CI captures on 2026-08-04 showed poll-reads offline while no
+        // callback arrived for 45+ seconds — the reason the hook now carries
+        // a reconciliation floor) or delivered events the hook then ignored.
+        // Report-only: nothing asserts on it.
+        val probeStart = android.os.SystemClock.elapsedRealtime()
+        val probeEvents = java.util.Collections.synchronizedList(mutableListOf<String>())
+        fun stamp(e: String) {
+            probeEvents.add("$e@+${android.os.SystemClock.elapsedRealtime() - probeStart}ms")
+        }
+        val probeCm = instr.targetContext.applicationContext
+            .getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
+            as? android.net.ConnectivityManager
+        val probe = object : android.net.ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: android.net.Network) = stamp("onAvailable")
+            override fun onLost(network: android.net.Network) = stamp("onLost")
+            override fun onCapabilitiesChanged(
+                network: android.net.Network,
+                capabilities: android.net.NetworkCapabilities,
+            ) = stamp(
+                if (capabilities.hasCapability(
+                        android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED,
+                    )
+                ) {
+                    "onCaps(validated)"
+                } else {
+                    "onCaps(unvalidated)"
+                },
+            )
+        }
+        runCatching {
+            probeCm?.registerNetworkCallback(
+                android.net.NetworkRequest.Builder()
+                    .addCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    .build(),
+                probe,
+            )
+        }
+
         try {
             shell(instr, "svc wifi disable")
             shell(instr, "svc data disable")
@@ -435,6 +476,38 @@ class RouterDemoInstrumentedTest {
             // works behaves the same.
             shell(instr, "settings put global airplane_mode_on 1")
             shell(instr, "am broadcast -a android.intent.action.AIRPLANE_MODE --ez state true")
+
+            // PRECONDITION, not an assertion. Give the platform a moment, then
+            // ask ConnectivityManager — the same authority useOnline reads —
+            // whether the device is ACTUALLY offline. Some emulator images
+            // simply refuse: captured 2026-08-04, `airplane_mode_on=1` and
+            // `wifi_on=0` while ConnectivityManager still reported
+            // activeNetwork=109 validated=true, with onAvailable firing again
+            // 45s later.
+            //
+            // SKIP rather than fail. A test that cannot create the condition it
+            // exists to test has proven nothing, and failing here blames
+            // `useOnline` for the emulator's behaviour — which is exactly what
+            // this test did for weeks, reading as a ~25% flake and then, once
+            // the diagnostic got more confident, as a phantom PRODUCT BUG.
+            // Passing would be worse still: it would claim proof it does not
+            // have. Skipping is the only honest third answer.
+            var offline = false
+            for (attempt in 1..10) {
+                if (!connectivityManagerSaysOnline()) { offline = true; break }
+                Thread.sleep(1_000)
+            }
+            org.junit.Assume.assumeTrue(
+                "SKIPPED — this emulator will not go offline. ConnectivityManager " +
+                    "still reports a VALIDATED active network after airplane mode + " +
+                    "wifi/data disable (${deviceNetworkState(instr)}). The offline " +
+                    "path is therefore UNVERIFIED on this device, not broken: " +
+                    "useOnline reads the same source and is correct to report online. " +
+                    "Run this on a device/image where airplane mode really drops the " +
+                    "network to get actual coverage.",
+                offline,
+            )
+
             try {
                 composeRule.waitUntil(timeoutMillis = 30_000) {
                     composeRule
@@ -450,14 +523,59 @@ class RouterDemoInstrumentedTest {
                 // rather than another round of guessing.
                 val shown = composeRule.onAllNodesWithText("Online: true")
                     .fetchSemanticsNodes().size
+                // GRACE WINDOW. The three-way verdict below needs it.
+                //
+                // The first version of this message offered only two outcomes —
+                // device-offline means a product bug, device-online means the
+                // test is wrong. That is a false dichotomy, and it misfired on
+                // #2480 (2026-08-04): it reported "product bug" while the same
+                // suite passed 8/8 on other branches minutes earlier. The case
+                // it could not express is the real one — ConnectivityManager's
+                // callback is CORRECT but had not been delivered yet on a
+                // loaded runner, i.e. "not yet", not "never".
+                //
+                // So re-check after a further grace period and report which of
+                // the THREE it was. A diagnostic that collapses a timing
+                // outcome into a correctness verdict sends the next reader
+                // hunting a bug that is not there.
+                Thread.sleep(GRACE_MS)
+                val settled = composeRule.onAllNodesWithText("Online: false")
+                    .fetchSemanticsNodes().isNotEmpty()
+                // ORDER MATTERS. The "did the device actually go offline?"
+                // question is asked FIRST and against ConnectivityManager —
+                // the same authority `useOnline` reads. The previous version
+                // asked `wifi_on=0` (a settings value) and therefore announced
+                // a PRODUCT bug on an emulator that had simply refused to drop
+                // its network: captured 2026-08-04, settings said offline while
+                // ConnectivityManager reported activeNetwork=109 validated=true
+                // at the same instant. A test that cannot establish its own
+                // precondition must say INCONCLUSIVE, never blame the code.
+                val verdict = when {
+                    connectivityManagerSaysOnline() ->
+                        "INCONCLUSIVE — the device never actually went offline. " +
+                            "ConnectivityManager (the same source useOnline reads) " +
+                            "still reports a VALIDATED active network, whatever the " +
+                            "airplane_mode_on / wifi_on settings say. This emulator " +
+                            "image does not reliably drop the network for airplane " +
+                            "mode, so the precondition failed — useOnline is NOT " +
+                            "implicated and there is nothing here to fix in it."
+                    settled ->
+                        "SLOW, NOT BROKEN: the hook DID report offline during a " +
+                            "further ${GRACE_MS}ms. The callback works; the 30s " +
+                            "budget is too tight for this runner. Raise the " +
+                            "budget — do NOT go looking for a product bug."
+                    else ->
+                        "the device is genuinely offline BY CONNECTIVITYMANAGER and " +
+                            "the hook still has not observed it after 30s + " +
+                            "${GRACE_MS}ms — this one IS a product bug in useOnline."
+                }
                 throw AssertionError(
                     "useOnline() never reported false within 30s. " +
                         "App still showing \"Online: true\" on $shown node(s). " +
                         "DEVICE says: ${deviceNetworkState(instr)}. " +
-                        "If the device reports itself OFFLINE here, the hook " +
-                        "is not observing the change and this is a product " +
-                        "bug; if it still reports a live network, the emulator " +
-                        "ignored the disable commands and the TEST is wrong.",
+                        "CALLBACK PROBE (hook-shaped request, registered pre-toggle, " +
+                        "same process) received: ${probeEvents.toList()}. " +
+                        "VERDICT: $verdict",
                     e,
                 )
             }
@@ -467,6 +585,7 @@ class RouterDemoInstrumentedTest {
             composeRule.waitForIdle()
             composeRule.onNodeWithTag("note-count").assertTextEquals("Notes: 1")
         } finally {
+            runCatching { probeCm?.unregisterNetworkCallback(probe) }
             shell(instr, "settings put global airplane_mode_on 0")
             shell(instr, "am broadcast -a android.intent.action.AIRPLANE_MODE --ez state false")
             shell(instr, "svc wifi enable")
@@ -574,6 +693,79 @@ class RouterDemoInstrumentedTest {
                 .isNotEmpty()
         }
         composeRule.onNodeWithTag("ws-last").assertTextEquals("Echo: echo:ping-42")
+    }
+
+    // Networking row — HTTP VERBS device-proven on Android, through the real
+    // OkHttp executor this arc had to write (`PyreonHttp` shipped with an
+    // executor INTERFACE and a comment calling the implementation a
+    // "Phase-2+ follow-up"; nothing implemented it, and separately nothing in
+    // the compiler lowered to it, so the whole HTTP layer was unreachable).
+    //
+    // The assertion is on what the SERVER SAW: `/echo` reflects the request,
+    // so a POST that silently degraded to a GET — what every version before
+    // this emitted, since the parser never read useFetch's second argument —
+    // renders "Method: GET" and fails here instead of passing quietly.
+    //
+    // Needs `adb reverse tcp:8790 tcp:8790` like the websocket test above.
+    @Test
+    fun httpVerbAndBodyReachTheWire() {
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        composeRule.onNodeWithText("View http").performClick()
+        composeRule.onNodeWithTag("http-page").assertIsDisplayed()
+
+        // The verb the server actually received.
+        //
+        // Wrapped so the failure REPORTS the live state. A bare waitUntil
+        // raises `ComposeTimeoutException: Condition still not satisfied
+        // after 15000 ms`, which says nothing about WHICH half failed — the
+        // request never left the device, the executor was not installed, the
+        // server was unreachable, or the verb degraded. That is the same
+        // silent-timeout mistake the offline test was just fixed for; a
+        // device-only failure's message IS the artifact.
+        try {
+            composeRule.waitUntil(timeoutMillis = 15_000) {
+                composeRule.onAllNodesWithText("Method: POST").fetchSemanticsNodes().isNotEmpty()
+            }
+        } catch (e: Throwable) {
+            // Probe for the strings the page CAN render rather than reading a
+            // node's text: `SemanticsConfiguration` text access differs across
+            // Compose versions, and a diagnostic that fails to COMPILE is
+            // worse than none. Presence checks work on every version.
+            fun shows(t: String) =
+                composeRule.onAllNodesWithText(t, substring = true)
+                    .fetchSemanticsNodes().isNotEmpty()
+            val method = listOf("Method: GET", "Method: POST", "Method: none")
+                .firstOrNull { shows(it) } ?: "Method: <absent>"
+            val id = if (shows("Id: none")) "Id: none" else "Id: <set>"
+            val bad = if (shows("Bad: rejected")) "Bad: rejected" else "Bad: no"
+            throw AssertionError(
+                "the server did not report a POST within 15s. LIVE STATE: " +
+                    "$method / $id / $bad. " +
+                    "\"Id: none\" means the request never SUCCEEDED, which has " +
+                    "THREE causes and the first version of this message only " +
+                    "listed two — costing real time when the answer was the " +
+                    "third: (1) no executor installed (PyreonHttp.install), " +
+                    "(2) the fixture unreachable (is `adb reverse " +
+                    "tcp:8790 tcp:8790` set and the server up?), or (3) the " +
+                    "response arrived 200 and the DECODE threw — " +
+                    "kotlinx's default Json rejects a key the type does not " +
+                    "declare, where Swift's JSONDecoder ignores it (that is " +
+                    "what PyreonFetchJson exists to fix). Rule out (2) by " +
+                    "running webSocketEchoRoundTripsOnDevice, which uses the " +
+                    "same port and forwarding. \"Method: GET\" means the " +
+                    "request arrived but the VERB degraded.",
+                e,
+            )
+        }
+        // ...and the body. Separate assertion: a fix that carried the verb but
+        // dropped the payload would satisfy the check above on its own.
+        composeRule
+            .onNodeWithTag("http-body")
+            .assertTextEquals("Body: {\"name\":\"pyreon\"}")
+        // A non-2xx must REJECT rather than reach the decoder.
+        composeRule.waitUntil(timeoutMillis = 15_000) {
+            composeRule.onAllNodesWithText("Bad: rejected").fetchSemanticsNodes().isNotEmpty()
+        }
     }
 
     @Test
@@ -785,6 +977,16 @@ class RouterDemoInstrumentedTest {
      * radios then stay up and the connectivity assertion below times out with
      * no indication of why. Reading to EOF is what makes it synchronous.
      */
+    /**
+     * Extra time the offline assertion allows before deciding WHY it failed.
+     *
+     * Not a retry of the assertion — the test still fails. It only separates
+     * "the callback is slow on this runner" from "the hook never observes the
+     * change", which the first version of that message could not express and
+     * therefore got wrong.
+     */
+    private val GRACE_MS = 15_000L
+
     private fun shell(instr: android.app.Instrumentation, cmd: String): String =
         ParcelFileDescriptor.AutoCloseInputStream(
             instr.uiAutomation.executeShellCommand(cmd),
@@ -798,12 +1000,45 @@ class RouterDemoInstrumentedTest {
      * version of this diagnostic reported only what the app rendered, which is
      * the same string in both cases.
      */
+    /**
+     * Is the device online ACCORDING TO THE SAME AUTHORITY THE HOOK USES?
+     *
+     * This is the load-bearing half, and getting it from the wrong source is
+     * what made this test capable of a false accusation. The previous version
+     * read `settings get global wifi_on/airplane_mode_on` plus a
+     * `dumpsys connectivity` grep, and reported "device is OFFLINE" — while
+     * ConnectivityManager, which is what `useOnline` actually reads, still had
+     * `activeNetwork=109 validated=true` at the same instant (captured
+     * 2026-08-04 12:16:28). On this emulator, airplane mode does NOT reliably
+     * tear the network down: `onLost` fires, the aggregate is still validated,
+     * and `onAvailable` fires again 45s later.
+     *
+     * So the settings/dumpsys view and the ConnectivityManager view disagree,
+     * and only the latter is the contract `useOnline` is written against.
+     * Asserting against the former turned "this emulator will not go offline"
+     * into "this is a PRODUCT bug in useOnline", which is worse than a bare
+     * timeout — it sends the next reader to fix code that is behaving
+     * correctly.
+     */
+    private fun connectivityManagerSaysOnline(): Boolean {
+        val ctx = androidx.test.platform.app.InstrumentationRegistry
+            .getInstrumentation().targetContext.applicationContext
+        val cm = ctx.getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
+            as? android.net.ConnectivityManager ?: return true
+        val active = cm.activeNetwork ?: return false
+        val caps = cm.getNetworkCapabilities(active) ?: return false
+        return caps.hasCapability(
+            android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED,
+        )
+    }
+
     private fun deviceNetworkState(instr: android.app.Instrumentation): String {
         val wifi = shell(instr, "settings get global wifi_on").trim()
         val airplane = shell(instr, "settings get global airplane_mode_on").trim()
         val active = shell(instr, "dumpsys connectivity --short")
             .lineSequence().firstOrNull { it.contains("NetworkAgentInfo") } ?: "<no active network line>"
-        return "wifi_on=$wifi airplane_mode_on=$airplane active=${active.trim().take(120)}"
+        return "wifi_on=$wifi airplane_mode_on=$airplane active=${active.trim().take(120)} " +
+            "connectivityManagerSaysOnline=${connectivityManagerSaysOnline()}"
     }
 
 }

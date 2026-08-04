@@ -1,5 +1,24 @@
 import { isClient, onCleanup, signal, type Signal } from '@pyreon/reactivity'
 
+/**
+ * The request options `useFetch` accepts.
+ *
+ * A deliberately SMALL subset of the web `RequestInit`, because every field
+ * here must lower to both native targets. PMTC reads `method` / `headers` /
+ * `body` off this object literal and builds a `PyreonHttpRequest`; anything
+ * else has no native analogue and the compiler warns rather than dropping it
+ * silently. `body` is a STRING (serialize before calling) — a `FormData` or
+ * `Blob` body has no shared-source meaning across three targets.
+ */
+export interface UseFetchInit {
+  /** HTTP verb. Defaults to GET. */
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+  /** Request headers. Must be a literal object to reach native. */
+  headers?: Record<string, string>
+  /** Request body, already serialized. */
+  body?: string
+}
+
 export interface UseFetchResult<T> {
   /** Decoded JSON result — `undefined` until the first successful fetch. */
   data: Signal<T | undefined>
@@ -27,6 +46,13 @@ export interface UseFetchResult<T> {
  * Each `refetch()` aborts the previous in-flight request, so a slow
  * stale response can never clobber a fresh one; unmount aborts too.
  *
+ * Pass `init` for a non-GET request. On native it lowers to `PyreonHttp`
+ * (URLSession on iOS, OkHttp on Android) — the layer that carries verbs,
+ * headers and a body. Keep every value a LITERAL: PMTC bakes them into the
+ * emitted request at compile time and warns loudly for anything it cannot
+ * read, because a request that silently falls back to GET is worse than one
+ * that fails to build.
+ *
  * @example
  * ```tsx
  * type Quote = { id: number; text: string }
@@ -37,7 +63,7 @@ export interface UseFetchResult<T> {
  * </For>
  * ```
  */
-export function useFetch<T>(url: string): UseFetchResult<T> {
+export function useFetch<T>(url: string, init?: UseFetchInit): UseFetchResult<T> {
   const data = signal<T | undefined>(undefined)
   const error = signal<unknown>(undefined)
   const isPending = signal(false)
@@ -48,7 +74,12 @@ export function useFetch<T>(url: string): UseFetchResult<T> {
     controller?.abort()
     const current = (controller = new AbortController())
     isPending.set(true)
-    fetch(url, { signal: current.signal })
+    fetch(url, {
+      signal: current.signal,
+      ...(init?.method ? { method: init.method } : {}),
+      ...(init?.headers ? { headers: init.headers } : {}),
+      ...(init?.body !== undefined ? { body: init.body } : {}),
+    })
       .then((res) => {
         if (!res.ok) {
           throw new Error(`[Pyreon] useFetch ${url}: HTTP ${res.status}`)

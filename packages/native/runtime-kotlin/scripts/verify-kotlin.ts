@@ -189,6 +189,23 @@ const KOTLINX_SERIALIZATION_JSON_STUBS = `package kotlinx.serialization.json
 
 import kotlinx.serialization.KSerializer
 
+// The real kotlinx surface is BOTH: a \`Json\` object (the default instance)
+// and a top-level \`Json(builderAction)\` FUNCTION returning a configured one.
+// PyreonFetchJson uses the builder form, so the stub must carry both or the
+// gate rejects correct code. Mirrored, not approximated — a stub that is a
+// SUPERSET masks, and one that is a SUBSET manufactures failures.
+class JsonBuilder {
+  var ignoreUnknownKeys: Boolean = false
+  var isLenient: Boolean = false
+  var encodeDefaults: Boolean = false
+}
+
+@Suppress("UNUSED_PARAMETER", "FunctionName")
+fun Json(builderAction: JsonBuilder.() -> Unit): Json {
+  JsonBuilder().builderAction()
+  return Json
+}
+
 object Json {
   @Suppress("UNUSED_PARAMETER")
   inline fun <reified T> encodeToString(value: T): String = value.toString()
@@ -564,6 +581,28 @@ public class Handler(looper: Looper) {
 }
 `
 
+// android.os for the CONNECTIVITY service — EXACTLY what
+// PyreonNetworkStatusAndroid.kt touches: a main-looper Handler used for (a)
+// the registerNetworkCallback delivery thread and (b) the reconciliation
+// re-read loop (postDelayed / removeCallbacks). Separate from
+// ANDROID_OS_HANDLER_STUBS (websocket — `post` only): per-service exact
+// mirrors, because a shared superset masks (the 4x-documented rule).
+const ANDROID_OS_CONNECTIVITY_HANDLER_STUBS = `package android.os
+
+public class Looper {
+  public companion object {
+    public fun getMainLooper(): Looper = Looper()
+  }
+}
+
+public class Handler(looper: Looper) {
+  @Suppress("UNUSED_PARAMETER")
+  public fun postDelayed(r: Runnable, delayMillis: Long): Boolean = true
+  @Suppress("UNUSED_PARAMETER")
+  public fun removeCallbacks(r: Runnable) {}
+}
+`
+
 const OKHTTP3_STUBS = `package okhttp3
 
 open class OkHttpClient {
@@ -591,6 +630,72 @@ abstract class WebSocketListener {
     open fun onClosing(webSocket: WebSocket, code: Int, reason: String) {}
     open fun onClosed(webSocket: WebSocket, code: Int, reason: String) {}
     open fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {}
+}
+`
+
+// PyreonHttpOkHttp-specific stubs — the okhttp3 4.x REQUEST/RESPONSE surface,
+// mirrored EXACTLY. Deliberately SEPARATE from OKHTTP3_STUBS above (which
+// mirrors the websocket surface): each service compiles alone against only its
+// own stubs, and merging the two would hand the websocket check a
+// `newCall`/`execute` it never uses, and this one a `newWebSocket` it never
+// uses — supersets, and supersets mask.
+//
+// The shapes that matter and are easy to get wrong: `Request.Builder.method`
+// takes `(String, RequestBody?)` — a NULLABLE body, which is the whole reason
+// the executor branches per verb; `toRequestBody` and `toMediaTypeOrNull` are
+// COMPANION extensions in 4.x (not top-level functions); `Response` is
+// `Closeable` so `use { }` resolves; `Response.body` is NULLABLE and
+// `string()` consumes the stream; and `Headers` is `Iterable<Pair<String,
+// String>>`, which is what makes the destructuring loop compile.
+const OKHTTP3_HTTP_STUBS = `package okhttp3
+
+import java.io.Closeable
+
+class MediaType {
+  companion object {
+    fun String.toMediaTypeOrNull(): MediaType? = null
+  }
+}
+
+abstract class RequestBody {
+  companion object {
+    @Suppress("UNUSED_PARAMETER")
+    fun String.toRequestBody(contentType: MediaType? = null): RequestBody =
+      throw UnsupportedOperationException("stub")
+  }
+}
+
+class Headers : Iterable<Pair<String, String>> {
+  override fun iterator(): Iterator<Pair<String, String>> = emptyList<Pair<String, String>>().iterator()
+}
+
+class ResponseBody {
+  fun string(): String = ""
+}
+
+class Response : Closeable {
+  val code: Int = 0
+  val headers: Headers = Headers()
+  val body: ResponseBody? = null
+  override fun close() {}
+}
+
+interface Call {
+  fun execute(): Response
+}
+
+class Request private constructor() {
+  class Builder {
+    fun url(url: String): Builder = this
+    fun addHeader(name: String, value: String): Builder = this
+    @Suppress("UNUSED_PARAMETER")
+    fun method(method: String, body: RequestBody?): Builder = this
+    fun build(): Request = throw UnsupportedOperationException("stub")
+  }
+}
+
+open class OkHttpClient {
+  fun newCall(request: Request): Call = throw UnsupportedOperationException("stub")
 }
 `
 
@@ -908,6 +1013,10 @@ try {
     // The transport hops every listener callback to the main looper.
     writeFileSync(join(tempDir, 'AndroidOsHandler.kt'), ANDROID_OS_HANDLER_STUBS, 'utf8')
   }
+  const okhttpHttpPath = join(tempDir, 'OkHttp3Http.kt')
+  if (SERVICE === 'PyreonHttpOkHttp') {
+    writeFileSync(okhttpHttpPath, OKHTTP3_HTTP_STUBS, 'utf8')
+  }
 
   const jarPath = join(tempDir, 'pyreon-runtime.jar')
 
@@ -1004,9 +1113,9 @@ try {
   const netPath = join(tempDir, 'AndroidNet.kt')
   const netContextPath = join(tempDir, 'AndroidNetContext.kt')
   if (SERVICE === 'PyreonNetworkStatusAndroid') {
-    // Same android.os mirror the websocket service uses — the connectivity
-    // callback is registered with a main-looper Handler.
-    writeFileSync(join(tempDir, 'AndroidOsHandler.kt'), ANDROID_OS_HANDLER_STUBS, 'utf8')
+    // Connectivity's OWN android.os mirror (postDelayed/removeCallbacks for
+    // the reconciliation loop) — no longer the websocket's `post`-only one.
+    writeFileSync(join(tempDir, 'AndroidOsHandler.kt'), ANDROID_OS_CONNECTIVITY_HANDLER_STUBS, 'utf8')
     writeFileSync(netPath, ANDROID_CONNECTIVITY_STUBS, 'utf8')
     writeFileSync(netContextPath, ANDROID_NET_CONTEXT_STUBS, 'utf8')
     writeFileSync(composePlatformPath, ANDROIDX_COMPOSE_PLATFORM_STUBS, 'utf8')
@@ -1046,6 +1155,15 @@ try {
           resolve(PACKAGE_ROOT, 'src/main/kotlin/com/pyreon/runtime/PyreonWebSocket.kt'),
         ]
       : []
+  // Same shape as okhttpExtras: the executor is an EXTENSION over the core
+  // PyreonHttp container, so its compile needs that sibling source too.
+  const okhttpHttpExtras =
+    SERVICE === 'PyreonHttpOkHttp'
+      ? [
+          okhttpHttpPath,
+          resolve(PACKAGE_ROOT, 'src/main/kotlin/com/pyreon/runtime/PyreonHttp.kt'),
+        ]
+      : []
 
   const kotlincArgs = typecheckOnly
     ? [
@@ -1064,6 +1182,7 @@ try {
         ...linkingStubs,
         ...notifStubs,
         ...okhttpExtras,
+        ...okhttpHttpExtras,
         ...geolocationAndroidExtras,
         ...networkAndroidExtras,
         SOURCE_FILE,
@@ -1085,6 +1204,7 @@ try {
         ...linkingStubs,
         ...notifStubs,
         ...okhttpExtras,
+        ...okhttpHttpExtras,
         ...geolocationAndroidExtras,
         ...networkAndroidExtras,
         SOURCE_FILE,

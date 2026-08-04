@@ -26,7 +26,11 @@ describe('synthesized data classes — @Serializable consistency', () => {
       { target: 'kotlin' },
     ).code
     expect(out).toContain('@Serializable\ndata class AppData(val name: String, val age: Int)')
-    expect(out).toContain('Json.decodeFromString<List<AppData>>(body)')
+    // Spelled with the PyreonFetchJson prefix on purpose: the bare
+    // `Json.decodeFromString<…>` is a SUBSTRING of it, so the old assertion
+    // kept passing after the decode moved to the parity-configured reader —
+    // green, but no longer asserting which reader is used.
+    expect(out).toContain('PyreonFetchJson.decodeFromString<List<AppData>>(body)')
   })
 
   it('named type structs keep their annotation (no regression)', () => {
