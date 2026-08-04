@@ -1356,6 +1356,13 @@ class PyreonPushNotifications {
   fun stop() {}
 }
 
+// Self-installing variant the usePush emit references (mirrors
+// PyreonPushNotificationsAndroid.kt's @Composable — no-arg, returns the
+// container; the real one registers the PYREON_PUSH_ACTION BroadcastReceiver
+// delivery seam for the composable's lifetime).
+@Composable
+fun rememberPyreonPushNotifications(): PyreonPushNotifications = PyreonPushNotifications()
+
 class PyreonProduct(val id: String, val displayName: String, val price: String)
 class PyreonPayments {
   val products = mutableStateOf<List<PyreonProduct>>(emptyList())

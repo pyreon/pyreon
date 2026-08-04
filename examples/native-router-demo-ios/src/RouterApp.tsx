@@ -16,7 +16,7 @@
 // targets — provable by `ls` + `diff`.
 
 import { For, onMount } from '@pyreon/core'
-import { useDatabase, useFetch, useOnline, useSecureStorage, useSizeClass, useWebSocket } from '@pyreon/hooks'
+import { useDatabase, useFetch, useOnline, usePush, useSecureStorage, useSizeClass, useWebSocket } from '@pyreon/hooks'
 import { useFieldArray } from '@pyreon/form'
 import { Button, Heading, Image, Inline, Layer, Link, Press, Spacer, Stack, Text } from '@pyreon/primitives'
 import { Element } from '@pyreon/elements'
@@ -244,6 +244,34 @@ function MotionPage() {
   )
 }
 
+function PushPage() {
+  const navigate = useNavigate()
+  // Background/push row — the RECEIPT half, which sat at 0.0 while both
+  // runtimes shipped pure containers with a `start(register)` seam nobody
+  // wired (the useOnline never-wired class). The emit now self-installs the
+  // platform delivery pipeline:
+  //
+  //   iOS — a container-owned UNUserNotificationCenter delegate: foreground
+  //   presentation + taps land in `notificationReceived`. `simctl push`
+  //   injects a REAL APNs payload through exactly that pipeline, credential-
+  //   free, which is what makes this device-provable at all. The APNs TOKEN
+  //   half genuinely needs AppDelegate wiring + credentials — disclosed.
+  //
+  //   Android — a NOT_EXPORTED BroadcastReceiver on com.pyreon.runtime.PUSH:
+  //   the app-internal delivery seam an FCM service forwards into. The
+  //   instrumented test (same UID) broadcasts through it; FCM transport
+  //   itself stays credential-blocked — disclosed.
+  const push = usePush()
+  return (
+    <Stack gap={3} padding={4} data-testid="push-page">
+      <Text>Push</Text>
+      <Text data-testid="push-title">Push: {push.lastNotification?.title ?? 'none'}</Text>
+      <Text data-testid="push-count">Count: {push.notifications.length}</Text>
+      <Button onPress={() => navigate('/')}>Back to Home</Button>
+    </Stack>
+  )
+}
+
 function MediaPage() {
   const navigate = useNavigate()
   // Media-row proof — a REMOTE image through the real network stack.
@@ -418,6 +446,7 @@ function HomePage() {
         <Button onPress={() => navigate('/offline')}>View offline</Button>
       </Inline>
       <Inline gap={2}>
+        <Button onPress={() => navigate('/push')}>View push</Button>
         <Button onPress={() => navigate('/media')}>View media</Button>
         <Button onPress={() => navigate('/http')}>View http</Button>
       </Inline>
@@ -603,6 +632,7 @@ export function RouterApp() {
       { path: '/a11y', component: A11yPage },
       { path: '/anim', component: AnimPage },
       { path: '/offline', component: OfflinePage },
+      { path: '/push', component: PushPage },
       { path: '/media', component: MediaPage },
       { path: '/http', component: HttpPage },
     ],

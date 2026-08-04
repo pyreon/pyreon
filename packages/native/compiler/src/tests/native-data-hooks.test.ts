@@ -11,8 +11,10 @@
 //   Kotlin → val x = remember { PyreonX() }          (MutableState reads → .value)
 //
 // Mirrors the useOnline / usePermissions reactive-container template. The
-// lifecycle auto-start (geolocation.start / websocket.connect / push.start on
-// mount) is a documented follow-up — the binding + reactive reads ship now.
+// lifecycle auto-start for geolocation (rememberPyreonGeolocation) and push
+// (.onAppear { push.start() } / rememberPyreonPushNotifications — see
+// native-usepush.test.ts) has since shipped; websocket.connect-on-mount
+// remains a documented follow-up.
 // `useSecureStorage` lowers on both targets (Keychain / Keystore defaults) —
 // it warns + drops.
 
@@ -70,7 +72,12 @@ describe('Phase 5 — native data/services hook emit', () => {
     // on relaunch. Android needs a Context to find app-private storage.
     expect(out).toContain('val dbCtx = LocalContext.current')
     expect(out).toContain('val db = remember { PyreonDatabase(dbCtx) }')
-    expect(out).toContain('val push = remember { PyreonPushNotifications() }')
+    // Push lowers to the SELF-INSTALLING composable (mirrors
+    // rememberPyreonNetworkStatus): the prior bare
+    // `remember { PyreonPushNotifications() }` compiled green while the
+    // container rendered its initial state forever — nothing wired the
+    // start(register) seam, the same never-wired class.
+    expect(out).toContain('val push = rememberPyreonPushNotifications()')
     expect(out).toContain('val pay = remember { PyreonPayments() }')
     expect(out).toContain('val map = remember { PyreonMapState() }')
     expect(out).toContain('val auth = remember { PyreonAuth<User>() }')

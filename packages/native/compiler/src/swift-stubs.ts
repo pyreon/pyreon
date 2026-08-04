@@ -339,6 +339,7 @@ public final class PyreonPushNotifications {
   public private(set) var error: Error?
   public init() {}
   public var isRegistered: Bool { false }
+  public func start() {}
   public func stop() {}
 }
 public final class PyreonWebSocket {

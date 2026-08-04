@@ -38,6 +38,9 @@
 
 import Foundation
 import Observation
+#if canImport(UserNotifications)
+import UserNotifications
+#endif
 
 /// A received push notification — title + body + arbitrary data payload.
 /// Mirrors the Kotlin `PyreonPushNotification`.
@@ -84,6 +87,9 @@ public final class PyreonPushNotifications {
     @ObservationIgnored private var unregister: (() -> Void)?
     /// Lifecycle flag — guards `start` / `stop` (mirrors NetworkStatus).
     @ObservationIgnored private var _started: Bool = false
+    /// The container-owned notification-center delegate (self-owned `start()`
+    /// path). `AnyObject` because the concrete type is `canImport`-gated.
+    @ObservationIgnored private var _selfDelegate: AnyObject?
 
     public init() {}
 
@@ -117,6 +123,61 @@ public final class PyreonPushNotifications {
         error = failure
     }
 
+    // MARK: - Self-owned receipt edge (no-arg start)
+
+    /// Begin receiving notifications through the SYSTEM pipeline with no app
+    /// wiring: installs a container-owned `UNUserNotificationCenter` delegate
+    /// (foreground presentation + taps both land in `notificationReceived`)
+    /// and requests notification authorization (driving `authorize`).
+    ///
+    /// This is the half of push that CAN be self-owned — and the half that
+    /// shipped inert. The file's own header argued the whole capability had
+    /// to be injected because the APNs TOKEN lands in the AppDelegate; that
+    /// is true of the token and only the token. Receipt + authorization go
+    /// through `UNUserNotificationCenter`, whose delegate anyone can own —
+    /// which is exactly the pipeline `simctl push` exercises. The same
+    /// never-wired class as `useOnline()`'s NWPathMonitor: a `start(register:)`
+    /// seam nobody wires is not a default (found 2026-08-04; the emit now
+    /// calls THIS overload from `.onAppear`).
+    ///
+    /// `token` stays `nil` on this path — APNs registration genuinely needs
+    /// the AppDelegate + a push entitlement + credentials. Apps that have
+    /// those use `start(register:)` instead; the first `start` of either kind
+    /// wins (both are idempotent behind `_started`).
+    ///
+    /// Outside an app bundle (SPM unit tests, CLI) `UNUserNotificationCenter`
+    /// CRASHES on access ("bundleProxyForCurrentProcess is nil"), so this
+    /// degrades to started-but-inert there — the pure transitions remain the
+    /// test surface, matching the injected path's testability.
+    public func start() {
+        guard !_started else { return }
+        _started = true
+        #if canImport(UserNotifications)
+        guard Bundle.main.bundleIdentifier != nil else { return }
+        let delegate = PyreonPushCenterDelegate()
+        delegate.owner = self
+        let center = UNUserNotificationCenter.current()
+        let previous = center.delegate
+        center.delegate = delegate
+        _selfDelegate = delegate
+        center.requestAuthorization(options: [.alert, .badge, .sound]) { [weak self] granted, error in
+            DispatchQueue.main.async {
+                self?.authorize(granted)
+                if let error { self?.fail(error) }
+            }
+        }
+        unregister = { [weak self] in
+            let center = UNUserNotificationCenter.current()
+            // Restore only if WE are still the delegate — an app that swapped
+            // in its own delegate after us must not have it torn away.
+            if let mine = self?._selfDelegate, center.delegate === mine {
+                center.delegate = previous
+            }
+            self?._selfDelegate = nil
+        }
+        #endif
+    }
+
     // MARK: - Injected registration edge
 
     /// Begin forwarding push events via the app-supplied `register`. The app
@@ -147,3 +208,47 @@ public final class PyreonPushNotifications {
         unregister = nil
     }
 }
+
+#if canImport(UserNotifications)
+/// The container-owned `UNUserNotificationCenter` delegate behind the no-arg
+/// `start()`. Foreground presentation (`willPresent`) and taps (`didReceive`)
+/// both funnel into the owner's `notificationReceived` — the exact pipeline
+/// `simctl push` (an APNs payload injected on the Simulator, no credentials)
+/// exercises, which is what makes the receipt half device-provable at all.
+@available(iOS 17.0, macOS 14.0, *)
+private final class PyreonPushCenterDelegate: NSObject, UNUserNotificationCenterDelegate {
+    weak var owner: PyreonPushNotifications?
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification
+    ) async -> UNNotificationPresentationOptions {
+        deliver(notification)
+        // Still show the system banner — receipt into app state must not
+        // silently suppress the OS-level presentation the user expects.
+        return [.banner, .list]
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse
+    ) async {
+        deliver(response.notification)
+    }
+
+    private func deliver(_ notification: UNNotification) {
+        let content = notification.request.content
+        var data: [String: String] = [:]
+        for (key, value) in content.userInfo {
+            if let k = key as? String, let v = value as? String { data[k] = v }
+        }
+        owner?.notificationReceived(
+            PyreonPushNotification(
+                title: content.title.isEmpty ? nil : content.title,
+                body: content.body.isEmpty ? nil : content.body,
+                data: data
+            )
+        )
+    }
+}
+#endif

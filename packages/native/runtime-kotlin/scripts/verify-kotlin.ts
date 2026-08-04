@@ -476,6 +476,66 @@ class Uri {
 }
 `
 
+/**
+ * `android.content` surface for PyreonPushNotificationsAndroid — exactly the
+ * members that file touches (BroadcastReceiver, the two registerReceiver
+ * overloads + RECEIVER_NOT_EXPORTED, Intent extras, IntentFilter). Own copy of
+ * Context per the per-service discipline: a shared superset would mask a
+ * break. Signatures mirror the real SDK (nullable receiver/intent params,
+ * `Intent?` returns) — a subset stub manufactures failures on correct code.
+ */
+const ANDROID_PUSH_CONTENT_STUBS = `package android.content
+
+import android.os.Bundle
+
+public abstract class BroadcastReceiver {
+  public abstract fun onReceive(context: Context?, intent: Intent?)
+}
+
+public class Intent {
+  public val extras: Bundle? = null
+  @Suppress("UNUSED_PARAMETER")
+  public fun getStringExtra(name: String): String? = null
+}
+
+public class IntentFilter(@Suppress("UNUSED_PARAMETER") action: String)
+
+public open class Context {
+  @Suppress("UNUSED_PARAMETER")
+  public fun registerReceiver(receiver: BroadcastReceiver?, filter: IntentFilter): Intent? = null
+  @Suppress("UNUSED_PARAMETER")
+  public fun registerReceiver(receiver: BroadcastReceiver?, filter: IntentFilter, flags: Int): Intent? = null
+  @Suppress("UNUSED_PARAMETER")
+  public fun unregisterReceiver(receiver: BroadcastReceiver) {}
+  public companion object {
+    public const val RECEIVER_NOT_EXPORTED: Int = 4
+  }
+}
+`
+
+/**
+ * `android.os` for the push edge — Build.VERSION.SDK_INT (the API-33
+ * registerReceiver-flags gate) + the Bundle members the data-extras walk
+ * reads. Separate from the connectivity Handler mirror: push does not touch
+ * Handler, and per-service stubs mirror only their own file's usage.
+ */
+const ANDROID_PUSH_OS_STUBS = `package android.os
+
+public class Build {
+  public class VERSION {
+    public companion object {
+      public const val SDK_INT: Int = 33
+    }
+  }
+}
+
+public class Bundle {
+  public fun keySet(): Set<String> = emptySet()
+  @Suppress("UNUSED_PARAMETER")
+  public fun getString(key: String): String? = null
+}
+`
+
 // PyreonNotifications-specific stubs — the android.app + android.content +
 // android.os + android.R + androidx.core.app surface PyreonNotifications.kt
 // uses, mirrored EXACTLY. Split by package (a .kt file declares one
@@ -1131,6 +1191,28 @@ try {
         ]
       : []
 
+  // PyreonPushNotificationsAndroid: its own android.content (BroadcastReceiver
+  // / registerReceiver overloads / RECEIVER_NOT_EXPORTED) + android.os (Build
+  // / Bundle) mirrors, the Compose platform LocalContext, and the CORE sibling
+  // (the composable returns PyreonPushNotifications and drives its
+  // notificationReceived transition).
+  const pushContentPath = join(tempDir, 'AndroidPushContent.kt')
+  const pushOsPath = join(tempDir, 'AndroidPushOs.kt')
+  if (SERVICE === 'PyreonPushNotificationsAndroid') {
+    writeFileSync(pushContentPath, ANDROID_PUSH_CONTENT_STUBS, 'utf8')
+    writeFileSync(pushOsPath, ANDROID_PUSH_OS_STUBS, 'utf8')
+    writeFileSync(composePlatformPath, ANDROIDX_COMPOSE_PLATFORM_STUBS, 'utf8')
+  }
+  const pushAndroidExtras =
+    SERVICE === 'PyreonPushNotificationsAndroid'
+      ? [
+          pushContentPath,
+          pushOsPath,
+          composePlatformPath,
+          resolve(PACKAGE_ROOT, 'src/main/kotlin/com/pyreon/runtime/PyreonPushNotifications.kt'),
+        ]
+      : []
+
   const geolocationAndroidExtras =
     SERVICE === 'PyreonGeolocationAndroid'
       ? [
@@ -1185,6 +1267,7 @@ try {
         ...okhttpHttpExtras,
         ...geolocationAndroidExtras,
         ...networkAndroidExtras,
+        ...pushAndroidExtras,
         SOURCE_FILE,
       ]
     : [
@@ -1207,6 +1290,7 @@ try {
         ...okhttpHttpExtras,
         ...geolocationAndroidExtras,
         ...networkAndroidExtras,
+        ...pushAndroidExtras,
         SOURCE_FILE,
         TEST_FILE,
       ]
