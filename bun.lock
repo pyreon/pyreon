@@ -2150,6 +2150,7 @@
       },
       "dependencies": {
         "@pyreon/code": "workspace:*",
+        "@pyreon/config": "workspace:*",
         "@pyreon/core": "workspace:*",
         "@pyreon/elements": "workspace:*",
         "@pyreon/feature": "workspace:*",
