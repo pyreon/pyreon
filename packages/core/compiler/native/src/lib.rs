@@ -237,6 +237,43 @@ fn escape_html_attr(s: &str) -> String {
 /// bind line independent of the JSX quote style — today only the
 /// `<select value="…">` deferred property set (PZ-09). The
 /// native-equivalence suite is the parity oracle.
+
+/// One static HTML run as a JS string literal for the emitted module.
+///
+/// Mirrors `ssrStaticLit` in `jsx.ts` EXACTLY — see the doc comment there for
+/// why `</script` and U+2028/U+2029 are escaped on top of ordinary JS string
+/// quoting. Both backends must agree byte-for-byte, so this is deliberately a
+/// thin wrapper over the SAME `escape_js_string` the other statics sites use
+/// rather than a second quoting implementation.
+fn ssr_static_lit(s: &str) -> String {
+    let quoted = escape_js_string(s);
+    let mut out = String::with_capacity(quoted.len());
+    let mut rest = quoted.as_str();
+    loop {
+        match rest.find("</") {
+            Some(idx) => {
+                let after = &rest[idx + 2..];
+                out.push_str(&rest[..idx]);
+                if after
+                    .get(..6)
+                    .map_or(false, |p| p.eq_ignore_ascii_case("script"))
+                {
+                    out.push_str("<\\/");
+                } else {
+                    out.push_str("</");
+                }
+                rest = after;
+            }
+            None => {
+                out.push_str(rest);
+                break;
+            }
+        }
+    }
+    out.replace('\u{2028}', "\\u2028")
+        .replace('\u{2029}', "\\u2029")
+}
+
 fn escape_js_string(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');
@@ -5552,7 +5589,7 @@ fn ssr_call_text(buf: &SsrBuf, mode: SsrMode, ctx: &mut Ctx) -> String {
     let statics_arr = buf
         .statics
         .iter()
-        .map(|s| escape_js_string(s))
+        .map(|s| ssr_static_lit(s))
         .collect::<Vec<_>>()
         .join(", ");
     let holes_arr = if buf.holes.is_empty() {
@@ -5601,7 +5638,7 @@ fn build_ssr_for_item_body(buf: &SsrBuf, param_text: &str, ctx: &mut Ctx) -> Opt
     let mut parts: Vec<String> = Vec::new();
     for (i, st) in buf.statics.iter().enumerate() {
         if !st.is_empty() {
-            parts.push(escape_js_string(st));
+            parts.push(ssr_static_lit(st));
         }
         if i < buf.holes.len() {
             parts.push(format!("_h{}", i));
@@ -5629,7 +5666,7 @@ fn build_ssr_for_item_body(buf: &SsrBuf, param_text: &str, ctx: &mut Ctx) -> Opt
         let statics_arr = buf
             .statics
             .iter()
-            .map(|s| escape_js_string(s))
+            .map(|s| ssr_static_lit(s))
             .collect::<Vec<_>>()
             .join(", ");
         ctx.needs_ssr_item_import = true;
@@ -5738,7 +5775,7 @@ fn try_ssr_template_emit(el: &JSXElement, ctx: &mut Ctx) -> bool {
     // on the h() path. Holes are produced in document order, so `preserved` is
     // ascending by start and the segments tile left-to-right without overlap.
     // Mirrors the JS backend's `trySsrTemplateEmit`.
-    let statics_arr: Vec<String> = buf.statics.iter().map(|s| json_string(s)).collect();
+    let statics_arr: Vec<String> = buf.statics.iter().map(|s| ssr_static_lit(s)).collect();
     let statics_arr = statics_arr.join(", ");
     let mut hole = 0usize;
     let generated_up_to = |stop: usize, hole: &mut usize, buf: &SsrBuf| -> String {

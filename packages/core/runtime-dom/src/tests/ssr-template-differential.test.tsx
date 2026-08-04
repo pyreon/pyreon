@@ -457,6 +457,15 @@ const cases: DiffCase[] = [
   // come from `renderComponent` via `_ssrNode`, so identity should hold BY
   // CONSTRUCTION — these assert it actually does.
   {
+    // The statics escape `</script` so an inlined chunk can't end an HTML
+    // <script> element early. `"<\\/script>"` === `"</script>"` in JS, so the
+    // RENDERED bytes must be unchanged — that is what this case proves.
+    name: 'a <script> element renders identically despite statics sanitization',
+    src: `const Node = <div class="d"><script>{code}</script></div>`,
+    deps: { code: 'var a = 1' },
+    oracle: (deps) => h('div', { class: 'd' }, h('script', null, deps.code as string)),
+  },
+  {
     name: 'wrapper whose ONLY child is a component',
     src: `const Node = <main class="m"><Widget /></main>`,
     deps: { Widget: () => h('section', { class: 'w' }, 'x') },

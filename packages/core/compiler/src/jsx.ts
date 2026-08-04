@@ -2031,8 +2031,35 @@ export function transformJSX_JS(
     return buf
   }
 
+  /**
+   * One static HTML run as a JS string literal for the emitted module.
+   *
+   * `JSON.stringify` alone cannot break OUT of the literal — it escapes `"`,
+   * `\` and every control character — so the emitted code is well-formed for
+   * any static. Two things it does NOT escape are worth handling anyway:
+   *
+   *   - `</script`. Harmless in a `.js` module, but these statics are baked
+   *     HTML, so a user's own `<script>` element puts a literal `</script` in
+   *     the string — and if a bundler ever INLINES the chunk into an HTML
+   *     `<script>` block, the HTML tokenizer ends the element there. Escaping
+   *     the slash is invisible to JS (`"<\/script"` === `"</script"`) and is
+   *     the same defence `stringifyLoaderData` already applies to SSR data.
+   *   - U+2028 / U+2029. Legal inside a string literal since ES2019, but still
+   *     mishandled by some downstream tooling, and free to escape.
+   *
+   * Shared by every statics-literal site so there is ONE escaping contract
+   * rather than four copies of `JSON.stringify` drifting apart — the Rust
+   * backend mirrors this exactly (`ssr_static_lit`).
+   */
+  function ssrStaticLit(s: string): string {
+    return JSON.stringify(s)
+      .replace(/<\/(script)/gi, '<\\/$1')
+      .replace(/\u2028/g, '\\u2028')
+      .replace(/\u2029/g, '\\u2029')
+  }
+
   function ssrCallText(buf: SsrBuf, mode: SsrMode): string {
-    const staticsArr = buf.statics.map((s) => JSON.stringify(s)).join(', ')
+    const staticsArr = buf.statics.map(ssrStaticLit).join(', ')
     const holesArr = buf.holes.length > 0 ? `, ${buf.holes.join(', ')}` : ''
     const fn = mode === 'recursed' ? '_ssr' : '_ssrItem'
     if (fn === '_ssrItem') needsSsrItemImport = true
@@ -2072,7 +2099,7 @@ export function transformJSX_JS(
     const temps = buf.holes.map((h, i) => `_h${i} = ${h}`).join(', ')
     const parts: string[] = []
     for (let i = 0; i < buf.statics.length; i++) {
-      if (buf.statics[i] !== '') parts.push(JSON.stringify(buf.statics[i]))
+      if (buf.statics[i] !== '') parts.push(ssrStaticLit(buf.statics[i]!))
       if (i < buf.holes.length) parts.push(`_h${i}`)
     }
     const concat = parts.length > 0 ? parts.join(' + ') : '""'
@@ -2080,7 +2107,7 @@ export function transformJSX_JS(
       .map((_, i) => (buf.holeStr[i] ? null : `typeof _h${i} === "string"`))
       .filter((g): g is string => g !== null)
     const fallbackHoles = buf.holes.map((_, i) => `_h${i}`).join(', ')
-    const staticsArr = buf.statics.map((s) => JSON.stringify(s)).join(', ')
+    const staticsArr = buf.statics.map(ssrStaticLit).join(', ')
     const fallback = `_ssrItem([${staticsArr}], ${fallbackHoles})`
     // Every hole provably string → no guard, no fallback branch needed.
     const body =
@@ -2137,7 +2164,7 @@ export function transformJSX_JS(
     // `_ssr` collapses into this same call, so one thunk covers the subtree and
     // nothing has to propagate laziness through the runtime's concat helpers.
     // See `DeferredHtml` in runtime-server for the 26-spec failure this avoids.
-    const staticsArr = buf.statics.map((s) => JSON.stringify(s)).join(', ')
+    const staticsArr = buf.statics.map(ssrStaticLit).join(', ')
     let hole = 0
     /** Emit `, <generated hole>` for every hole up to (not including) `stop`. */
     const generatedUpTo = (stop: number): string => {

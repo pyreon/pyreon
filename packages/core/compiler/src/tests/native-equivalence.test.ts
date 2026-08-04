@@ -1257,6 +1257,9 @@ describeNative('SSR compile-to-string fast path (ssrTemplate) parity', () => {
     ['component receiving children', `const N = <main><Widget>inner</Widget></main>`],
     ['nested templatable subtree inside the preserved child', `const Page = (p) => <main><Widget><span class="x">{p.t}</span></Widget></main>`],
     ['component child carrying key still bails', `const N = <div><Widget key="k" /></div>`],
+    // The two backends reached statics quoting through two separately-written
+    // functions until they were unified — exactly how an emit divergence starts.
+    ['`</script` sanitization in statics', `const N = <div class="d"><script>{s}</script><Widget /></div>`],
   ]
   for (const [name, src] of componentChildren) {
     test(`component-child agrees: ${name}`, () => compareSsrTemplate(src))
