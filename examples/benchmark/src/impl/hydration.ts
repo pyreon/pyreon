@@ -28,7 +28,6 @@ import * as React from 'react'
 import * as ReactDOMClient from 'react-dom/client'
 import { hydrate as preactHydrate, render as preactRender } from 'preact'
 import { createSSRApp } from 'vue'
-import fixtures from './hydration-fixtures.json'
 import type { BenchSuite } from '../runner'
 import { bench } from '../runner'
 import {
@@ -40,7 +39,6 @@ import {
   type FixtureRow,
 } from './hydration-shared'
 
-const rows: FixtureRow[] = fixtures.rows
 
 type Teardown = () => void
 
@@ -55,10 +53,15 @@ interface HydrationTarget {
   verifyClickTarget?: undefined
 }
 
-const targets: HydrationTarget[] = [
+const makeTargets = (fixtures: {
+  rows: FixtureRow[]
+  html: Record<string, string>
+}): HydrationTarget[] => {
+  const rows = fixtures.rows
+  return [
   {
     name: 'Pyreon',
-    html: fixtures.html.pyreon,
+    html: fixtures.html.pyreon!,
     hydrate(container) {
       const rowState = rows.map((r) => ({ id: r.id, label: signal(r.label) }))
       const rowsSig = signal(rowState)
@@ -77,7 +80,7 @@ const targets: HydrationTarget[] = [
   },
   {
     name: 'React 19',
-    html: fixtures.html.react,
+    html: fixtures.html.react!,
     async hydrate(container) {
       function App() {
         const [selected, set] = React.useState<number | null>(null)
@@ -94,7 +97,7 @@ const targets: HydrationTarget[] = [
   },
   {
     name: 'Preact',
-    html: fixtures.html.preact,
+    html: fixtures.html.preact!,
     hydrate(container) {
       // Preact hydrates statelessly here; selection re-render goes through a
       // fresh render of the same tree on click (component-level state is not
@@ -111,7 +114,7 @@ const targets: HydrationTarget[] = [
   },
   {
     name: 'Vue 3',
-    html: fixtures.html.vue,
+    html: fixtures.html.vue!,
     hydrate(container) {
       const { component } = vueApp(rows)
       const app = createSSRApp(component)
@@ -119,12 +122,21 @@ const targets: HydrationTarget[] = [
       return () => app.unmount()
     },
   },
-]
+  ]
+}
 
 export async function runHydration(
   frameworkName: string,
   container: HTMLElement,
 ): Promise<BenchSuite> {
+  // Fixtures are generated into public/ by scripts/gen-hydration-fixtures.ts
+  // and fetched at runtime — no build-time/typecheck dependency on the
+  // generated file (it is gitignored).
+  const fixtures = (await fetch('/hydration-fixtures.json').then((r) => {
+    if (!r.ok) throw new Error('[hydration] fixtures missing — run scripts/gen-hydration-fixtures.ts first')
+    return r.json()
+  })) as { rows: FixtureRow[]; html: Record<string, string> }
+  const targets = makeTargets(fixtures)
   const target = targets.find((t) => t.name === frameworkName)
   if (!target) throw new Error(`[hydration] unknown framework: ${frameworkName}`)
   const suite: BenchSuite = { framework: target.name, container, results: [] }
@@ -192,4 +204,4 @@ export async function runHydration(
   return suite
 }
 
-export const HYDRATION_FRAMEWORKS = targets.map((t) => t.name)
+export const HYDRATION_FRAMEWORKS = ['Pyreon', 'React 19', 'Preact', 'Vue 3']
