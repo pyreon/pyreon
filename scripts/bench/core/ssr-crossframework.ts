@@ -625,6 +625,12 @@ function evalPyreonFast(src: string, file: string): Record<string, (arg: never) 
     '_ssrAttrGen',
     '_ssrAttrUrl',
     '_ssrForKeyed',
+    // Component-child holes: the wrapper is emitted as
+    // `_ssrDeferred(() => _ssr(…, _ssrNode(<Comp />)))`. Both must be bound or
+    // the `layout` scenario dies at eval with `_ssrDeferred is not defined` —
+    // which is exactly how it failed the first time this bench ran.
+    '_ssrNode',
+    '_ssrDeferred',
     'h',
     '_rp',
   ]
