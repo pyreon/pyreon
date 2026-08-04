@@ -85,6 +85,35 @@ class RawHtml {
   constructor(readonly value: string) {}
 }
 
+/**
+ * A templated subtree that must NOT be serialized where it was written.
+ *
+ * An `_ssr(...)` hole is an ordinary function argument, so it is evaluated at
+ * the CALL SITE. That is correct for every hole that reads a value — the h()
+ * path evaluates those in the same place — but wrong for a hole that RENDERS a
+ * component, because rendering has context side effects and h() defers it. For
+ *
+ *     <Provider theme={t}><div class="page"><Consumer /></div></Provider>
+ *
+ * the h() path builds a lazy `h(Consumer)` vnode and renders it later, INSIDE
+ * the provider. A bare `_ssr([...], _ssrNode(<Consumer/>))` would instead run
+ * `Consumer` while Provider's children argument is still being built — before
+ * `provide()` has pushed anything — so every context read returns the default.
+ * That shipped once and broke 26 ui-showcase specs while every unit gate stayed
+ * green, because the gates all rendered the node at TOP LEVEL, the one position
+ * where the two timings coincide.
+ *
+ * The fix is to defer the WHOLE call rather than the individual hole: the
+ * compiler wraps a component-bearing `_ssr(...)` in a thunk, and `renderNode` /
+ * `streamNode` invoke it exactly where they would have rendered the h() vnode.
+ * Deferring the whole call is what makes this composable — a nested `_ssr`
+ * collapses into its parent's call, so it rides inside the same thunk and no
+ * laziness has to propagate through `_ssrConcat` / `_ssrChildren` / holes.
+ */
+class DeferredHtml {
+  constructor(readonly render: () => RawHtml | Promise<RawHtml>) {}
+}
+
 // ─── Streaming Suspense context ───────────────────────────────────────────────
 // Tracks in-flight async Suspense boundary resolutions within a single stream.
 
@@ -579,6 +608,13 @@ async function streamNode(
     enqueue(node.value)
     return
   }
+  // A component-bearing templated subtree — run it HERE, which is where the
+  // h() path would have rendered the same vnode, so enclosing providers have
+  // already pushed. See `DeferredHtml`.
+  if (node instanceof DeferredHtml) {
+    enqueue((await node.render()).value)
+    return
+  }
   if (node == null || node === false) return
   if (typeof node === 'string') {
     enqueue(escapeHtml(node))
@@ -791,6 +827,15 @@ function renderNode(node: VNodeChild | (() => VNodeChild)): MaybeAsync {
   // Already-rendered HTML from the `_ssr` fast path (or a component that
   // returned `_ssr(...)`). Append VERBATIM — it was escaped when built.
   if (node instanceof RawHtml) return node.value
+
+  // A component-bearing templated subtree — see `DeferredHtml`. Invoking the
+  // thunk HERE is the whole point: this is the exact position at which the h()
+  // path would have rendered the equivalent vnode, so the context stack holds
+  // every enclosing provider.
+  if (node instanceof DeferredHtml) {
+    const r = node.render()
+    return r instanceof RawHtml ? r.value : r.then((x) => x.value)
+  }
 
   // A Promise root — the value of an eligible `_ssr(...)` subtree whose own hole
   // was async. Through a COMPONENT this is handled by `renderComponent`'s Promise
@@ -1406,6 +1451,49 @@ function _ssrConcat(
  */
 export function _ssrChildren(items: readonly unknown[]): RawHtml | Promise<RawHtml> {
   return _ssrChildrenFrom(items, 0, '')
+}
+
+/**
+ * Render ONE compiler-emitted child node — a COMPONENT element inside an
+ * otherwise-templatable subtree — as an `_ssr(...)` hole.
+ *
+ * A component's output is only knowable at runtime, so the compiler cannot bake
+ * it into the statics. Before this existed, a component child was a BAIL:
+ * `<main class="m"><Widget /></main>` emitted ZERO `_ssr` and the whole wrapper
+ * fell to the h() path — which is every layout wrapper in a real app.
+ *
+ * This is deliberately a one-line delegation to `renderNode` and MUST stay one.
+ * The bytes have to match the h() path exactly or hydration breaks, and
+ * `renderNode`/`renderComponent` already own the two subtleties a
+ * reimplementation would get wrong:
+ *
+ *   - a SYNC component inlines with NO markers, while an ASYNC one is bracketed
+ *     by `<!--$pas-->`/`<!--$pae-->` so the client can locate the still-pending
+ *     range and attach reactivity;
+ *   - the context stack is snapshotted and trimmed around the component so a
+ *     `provide()` frame cannot leak into later siblings.
+ *
+ * Delegating means byte-identity holds BY CONSTRUCTION rather than by
+ * re-derivation — the compiler picks a different route to the same function.
+ *
+ * WHEN this runs is not this function's business: it is only ever called from
+ * inside an `_ssrDeferred` thunk, which is what places it at the h() path's
+ * render time. Calling it eagerly is the bug documented on `DeferredHtml`.
+ */
+export function _ssrNode(node: VNodeChild): MaybeAsync {
+  return renderNode(node)
+}
+
+/**
+ * Defer a component-bearing `_ssr(...)` call to its render position.
+ *
+ * The compiler wraps the ENTIRE call — not the individual component hole —
+ * because the enclosing `_ssr(...)` is evaluated in the same eager position as
+ * its arguments, so deferring only the hole would fix nothing. See
+ * `DeferredHtml` for the failure this exists to prevent.
+ */
+export function _ssrDeferred(fn: () => RawHtml | Promise<RawHtml>): DeferredHtml {
+  return new DeferredHtml(fn)
 }
 
 function _ssrChildrenFrom(

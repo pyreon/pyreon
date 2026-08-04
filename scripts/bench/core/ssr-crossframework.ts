@@ -71,7 +71,7 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 // ─── Dynamic imports (prod-env child only) ────────────────────────────────────
-const { h } = await import('../../../packages/core/core/src/index')
+const { h, _rp } = await import('../../../packages/core/core/src/index')
 const pyreonRuntime = await import('../../../packages/core/runtime-server/src/index')
 const { renderToString: pyreonRenderToString } = pyreonRuntime
 const { transformJSX_JS } = await import('../../../packages/core/compiler/src/index')
@@ -113,6 +113,29 @@ const CARD: Card = {
   href: '/read/fine-grained-ssr',
 }
 
+interface Crumb {
+  label: string
+  href: string
+}
+interface Page {
+  title: string
+  crumbs: Crumb[]
+  card: Card
+  rows: Row[]
+  year: string
+}
+const PAGE: Page = {
+  title: 'Server-rendered page',
+  crumbs: [
+    { label: 'Home', href: '/' },
+    { label: 'Docs', href: '/docs' },
+    { label: 'SSR', href: '/docs/ssr' },
+  ],
+  card: CARD,
+  rows: makeRows(50),
+  year: '2026',
+}
+
 // ─── Framework tree builders (idiomatic per lib, identical HTML output) ────────
 // Pyreon / Preact / Solid use `class`; React uses `className` (→ `class` attr).
 // Only non-boolean attributes so all four serialize byte-identically.
@@ -139,6 +162,36 @@ function pyRow(r: Row) {
 function pyList(rows: Row[]) {
   return h('div', { class: 'list' }, ...rows.map(pyRow))
 }
+// COMPONENT children under DOM wrappers — the `layout` scenario's whole point.
+// Every framework here renders components inline with no extra markup, so the
+// four outputs stay byte-identical while the TREE SHAPE is the realistic one.
+function pyCrumbs(p: { crumbs: Crumb[] }) {
+  return h('nav', { class: 'nav' }, ...p.crumbs.map((c) => h('a', { class: 'crumb', href: c.href }, c.label)))
+}
+function pyCardC(p: { card: Card }) {
+  return pyCard(p.card)
+}
+function pyListC(p: { rows: Row[] }) {
+  return pyList(p.rows)
+}
+function pyMeta(p: { year: string }) {
+  return h('small', { class: 'meta' }, p.year)
+}
+function pyPage(d: Page) {
+  return h(
+    'main',
+    { class: 'page' },
+    h('header', { class: 'hd' }, h('h1', null, d.title)),
+    h(pyCrumbs, { crumbs: d.crumbs }),
+    h(
+      'section',
+      { class: 'content' },
+      h(pyCardC, { card: d.card }),
+      h(pyListC, { rows: d.rows }),
+    ),
+    h('footer', { class: 'ft' }, h(pyMeta, { year: d.year })),
+  )
+}
 
 // React (react-dom/server)
 function reCard(c: Card) {
@@ -162,6 +215,37 @@ function reRow(r: Row) {
 function reList(rows: Row[]) {
   return reactCreateElement('div', { className: 'list' }, rows.map(reRow))
 }
+function reCrumbs(p: { crumbs: Crumb[] }) {
+  return reactCreateElement(
+    'nav',
+    { className: 'nav' },
+    p.crumbs.map((c, i) => reactCreateElement('a', { className: 'crumb', href: c.href, key: i }, c.label)),
+  )
+}
+function reCardC(p: { card: Card }) {
+  return reCard(p.card)
+}
+function reListC(p: { rows: Row[] }) {
+  return reList(p.rows)
+}
+function reMeta(p: { year: string }) {
+  return reactCreateElement('small', { className: 'meta' }, p.year)
+}
+function rePage(d: Page) {
+  return reactCreateElement(
+    'main',
+    { className: 'page' },
+    reactCreateElement('header', { className: 'hd' }, reactCreateElement('h1', null, d.title)),
+    reactCreateElement(reCrumbs, { crumbs: d.crumbs }),
+    reactCreateElement(
+      'section',
+      { className: 'content' },
+      reactCreateElement(reCardC, { card: d.card }),
+      reactCreateElement(reListC, { rows: d.rows }),
+    ),
+    reactCreateElement('footer', { className: 'ft' }, reactCreateElement(reMeta, { year: d.year })),
+  )
+}
 
 // Preact (preact-render-to-string)
 function prCard(c: Card) {
@@ -184,6 +268,37 @@ function prRow(r: Row) {
 }
 function prList(rows: Row[]) {
   return preactCreateElement('div', { class: 'list' }, rows.map(prRow))
+}
+function prCrumbs(p: { crumbs: Crumb[] }) {
+  return preactCreateElement(
+    'nav',
+    { class: 'nav' },
+    p.crumbs.map((c, i) => preactCreateElement('a', { class: 'crumb', href: c.href, key: i }, c.label)),
+  )
+}
+function prCardC(p: { card: Card }) {
+  return prCard(p.card)
+}
+function prListC(p: { rows: Row[] }) {
+  return prList(p.rows)
+}
+function prMeta(p: { year: string }) {
+  return preactCreateElement('small', { class: 'meta' }, p.year)
+}
+function prPage(d: Page) {
+  return preactCreateElement(
+    'main',
+    { class: 'page' },
+    preactCreateElement('header', { class: 'hd' }, preactCreateElement('h1', null, d.title)),
+    preactCreateElement(prCrumbs, { crumbs: d.crumbs }),
+    preactCreateElement(
+      'section',
+      { class: 'content' },
+      preactCreateElement(prCardC, { card: d.card }),
+      preactCreateElement(prListC, { rows: d.rows }),
+    ),
+    preactCreateElement('footer', { class: 'ft' }, preactCreateElement(prMeta, { year: d.year })),
+  )
 }
 
 // Solid (compiled from JSX source via babel-preset-solid — the shipped shape)
@@ -210,8 +325,31 @@ export function List(props) {
     </div>
   )
 }
+export function Crumbs(props) {
+  return (
+    <nav class="nav">
+      {props.crumbs.map((c) => <a class="crumb" href={c.href}>{c.label}</a>)}
+    </nav>
+  )
+}
+export function Meta(props) {
+  return <small class="meta">{props.year}</small>
+}
+export function PageC(props) {
+  return (
+    <main class="page">
+      <header class="hd"><h1>{props.data.title}</h1></header>
+      <Crumbs crumbs={props.data.crumbs} />
+      <section class="content">
+        <Card card={props.data.card} />
+        <List rows={props.data.rows} />
+      </section>
+      <footer class="ft"><Meta year={props.data.year} /></footer>
+    </main>
+  )
+}
 `
-async function compileSolid(): Promise<{ Card: any; List: any }> {
+async function compileSolid(): Promise<{ Card: any; List: any; PageC: any }> {
   const out = transformSync(SOLID_SRC, {
     presets: [[solidPreset, { generate: 'ssr', hydratable: false }]],
     filename: 'solid-ssr-components.jsx',
@@ -223,7 +361,7 @@ async function compileSolid(): Promise<{ Card: any; List: any }> {
   writeFileSync(tmp, out.code, 'utf8')
   try {
     const mod: any = await import(`${tmp}?t=${Date.now()}`)
-    return { Card: mod.Card, List: mod.List }
+    return { Card: mod.Card, List: mod.List, PageC: mod.PageC }
   } finally {
     try {
       unlinkSync(tmp)
@@ -458,13 +596,38 @@ export const List = (rows) => (
   </div>
 )
 `
+// Residual JSX is NOT an error — it is the measurement. Any element the SSR
+// fast path declines (today: every wrapper holding a COMPONENT child) is left
+// as JSX for the app's own bundler to lower to `h()`. So the eval pipeline runs
+// the compiler pass FIRST and then lowers whatever JSX survived, exactly like a
+// real build: `transformJSX_JS` → Bun's transpiler (classic factory `h`) →
+// `new Function`. Without the second step a bailed wrapper is a syntax error,
+// which is why this bench could only ever hold fully-templatable sources before.
+const jsxLowerer = new Bun.Transpiler({
+  loader: 'tsx',
+  tsconfig: JSON.stringify({
+    compilerOptions: { jsx: 'react', jsxFactory: 'h', jsxFragmentFactory: 'Fragment' },
+  }),
+})
 function evalPyreonFast(src: string, file: string): Record<string, (arg: never) => unknown> {
   const out = transformJSX_JS(src, file, { ssr: true, ssrTemplate: true })
   if (!out.code.includes('_ssr(')) {
     throw new Error(`[ssr-bench] ${file} did not compile to _ssr — eligibility regressed`)
   }
-  const body = out.code.replace(/^import\s+.*$/gm, '').replace(/^export /gm, '').trim()
-  const names = ['_ssr', '_ssrChildren', '_ssrItem', '_esc', '_ssrAttr', '_ssrAttrGen', '_ssrAttrUrl']
+  const lowered = jsxLowerer.transformSync(out.code)
+  const body = lowered.replace(/^import\s+.*$/gm, '').replace(/^export /gm, '').trim()
+  const names = [
+    '_ssr',
+    '_ssrChildren',
+    '_ssrItem',
+    '_esc',
+    '_ssrAttr',
+    '_ssrAttrGen',
+    '_ssrAttrUrl',
+    '_ssrForKeyed',
+    'h',
+    '_rp',
+  ]
   // TOP-LEVEL declarations only (anchored with ^ + the m flag). An unanchored
   // scan also picks up bindings inside nested scopes — the compiler's fused
   // per-item SSR emit declares `const _h0 = …` inside `.map()` callbacks, and
@@ -474,8 +637,54 @@ function evalPyreonFast(src: string, file: string): Record<string, (arg: never) 
   const bindings = body.match(/^(?:const|function)\s+(\w+)/gm)?.map((m) => m.split(/\s+/)[1]) ?? []
   // eslint-disable-next-line no-new-func
   const fn = new Function(...names, `${body}\nreturn { ${bindings.join(', ')} }`)
-  return fn(...names.map((n) => (pyreonRuntime as Record<string, unknown>)[n]))
+  // `h`/`_rp` come from @pyreon/core (the bailed-to-h() half); the rest from
+  // the SSR runtime. Same two modules a real build links against.
+  const core: Record<string, unknown> = { h, _rp }
+  return fn(...names.map((n) => core[n] ?? (pyreonRuntime as Record<string, unknown>)[n]))
 }
+// The `layout` scenario — a page whose DOM wrappers hold COMPONENT children.
+// This is the dominant real-app SSR shape and the one the fast path handles
+// WORST: an element with a component child is declined outright, so `<main>`,
+// `<section>` and `<footer>` here all fall back to `h()` while only the leaf
+// components template. It exists to measure that gap honestly rather than
+// benchmarking only the shapes the fast path already wins.
+const PYREON_FAST_LAYOUT_SRC = `
+export const Crumbs = (p) => (
+  <nav class="nav">
+    {p.crumbs.map((c) => <a class="crumb" href={c.href}>{c.label}</a>)}
+  </nav>
+)
+export const CardC = (p) => (
+  <section class="card" data-variant="primary">
+    <header class="hd"><h2>{p.card.title}</h2></header>
+    <p class="body">{p.card.body}</p>
+    <a class="cta" href={p.card.href}>Read more</a>
+  </section>
+)
+export const ListC = (p) => (
+  <div class="list">
+    {p.rows.map((r) => (
+      <div class="row" data-id={String(r.id)}>
+        <span class="id">{String(r.id)}</span>
+        <a class="label" href={\`/item/\${r.id}\`}>{r.label}</a>
+        <span class="tag">{r.tag}</span>
+      </div>
+    ))}
+  </div>
+)
+export const Meta = (p) => <small class="meta">{p.year}</small>
+export const PageC = (p) => (
+  <main class="page">
+    <header class="hd"><h1>{p.data.title}</h1></header>
+    <Crumbs crumbs={p.data.crumbs} />
+    <section class="content">
+      <CardC card={p.data.card} />
+      <ListC rows={p.data.rows} />
+    </section>
+    <footer class="ft"><Meta year={p.data.year} /></footer>
+  </main>
+)
+`
 function compilePyreonFast(): { Card: (c: Card) => unknown; List: (rows: Row[]) => unknown } {
   return evalPyreonFast(PYREON_FAST_SRC, 'pyreon-fast.tsx') as {
     Card: (c: Card) => unknown
@@ -489,6 +698,24 @@ const solid = await compileSolid()
 const pyFast = compilePyreonFast()
 const pyFastNullable = evalPyreonFast(PYREON_FAST_NULLABLE_SRC, 'pyreon-fast-nullable.tsx') as {
   List: (rows: Row[]) => unknown
+}
+const pyFastLayout = evalPyreonFast(PYREON_FAST_LAYOUT_SRC, 'pyreon-fast-layout.tsx') as {
+  PageC: (p: { data: Page }) => unknown
+}
+// Without this the `layout` row silently degrades into a second h() baseline the
+// moment component-hole eligibility regresses — the scenario would still pass its
+// correctness gate and report a meaningless tie. Assert the shape it measures.
+{
+  const layoutCode = transformJSX_JS(PYREON_FAST_LAYOUT_SRC, 'pyreon-fast-layout.tsx', {
+    ssr: true,
+    ssrTemplate: true,
+  }).code
+  if (!layoutCode.includes('_ssrDeferred(() => _ssr(')) {
+    throw new Error(
+      '[ssr-bench] the layout scenario no longer compiles its wrapper to a deferred _ssr — ' +
+        'component-hole eligibility regressed, and this row would silently measure h() twice',
+    )
+  }
 }
 
 const rows50 = makeRows(50)
@@ -520,6 +747,14 @@ const scenarios = [
     re: () => reactRenderToString(reList(rows1000)),
     pr: () => preactRender(prList(rows1000)),
     so: () => solidRenderToString(() => solid.List({ rows: rows1000 })),
+  },
+  {
+    label: 'layout (component children)',
+    py: () => pyreonRenderToString(pyPage(PAGE)),
+    pyf: () => pyreonRenderToString(pyFastLayout.PageC({ data: PAGE }) as never),
+    re: () => reactRenderToString(rePage(PAGE)),
+    pr: () => preactRender(prPage(PAGE)),
+    so: () => solidRenderToString(() => solid.PageC({ data: PAGE })),
   },
 ]
 
