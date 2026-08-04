@@ -74,6 +74,11 @@ const GATES: Gate[] = [
     cmd: 'bun scripts/check-client-bundle-node-imports.ts',
   },
   { name: 'check-mcp-docs', cmd: 'bun scripts/check-mcp-docs.ts' },
+  // Milliseconds — it reads two markdown files and one .ts, no scan. This is
+  // the half of the docs problem that CANNOT be derived (semantics stay
+  // hand-written); the gate makes the one checkable claim about them, that
+  // every prop name the prose cites actually exists.
+  { name: 'check-prose-props', cmd: 'bun scripts/check-prose-props.ts' },
   // NOT here: `check-atlas-guide`. It MOUNTS 108 components through Vite, and
   // measured cold it costs ~48s — which would take this list from ~19s to ~66s
   // and turn the pre-push hook into something people reach for `--no-verify` to
