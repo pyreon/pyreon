@@ -13,6 +13,7 @@
  */
 import { existsSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
+import { CONFIG_FILENAMES, sectionFrom } from '@pyreon/config'
 import type { AtlasExtension, ComponentRef } from '../core'
 import { validateExtensions } from '../core'
 // Type-only: the presets CONTRACT lives with the UI that renders it, and a
@@ -144,13 +145,17 @@ export interface AuthoredScenario {
  */
 const CANDIDATES = ['atlas.config.tsx', 'atlas.config.ts', 'atlas.config.mjs', 'atlas.config.js']
 
-/** The ecosystem-wide config, read for its `atlas` section. */
-const SHARED_CANDIDATES = [
-  'pyreon.config.ts',
-  'pyreon.config.tsx',
-  'pyreon.config.mjs',
-  'pyreon.config.js',
-]
+/**
+ * The ecosystem-wide config, read for its `atlas` section.
+ *
+ * The filename list and the section reader come from `@pyreon/config` rather
+ * than being restated here. They were duplicated when this loader landed, and
+ * a second copy of "which filenames, and how to pull a tool's section out" is
+ * a drift waiting to happen: the day `pyreon.config.mts` is added to one list,
+ * the other silently keeps ignoring it — and a config that is silently ignored
+ * is the exact failure the shared file exists to reduce.
+ */
+const SHARED_CANDIDATES = CONFIG_FILENAMES
 
 export interface LoadedConfig {
   config: AtlasConfig
@@ -199,8 +204,10 @@ export async function loadAtlasConfig(
   // which is the point: one shape, two places it can live.
   let mod = loadedModule
   if (!own) {
-    const section = (loadedModule.atlas ??
-      ((loadedModule.default ?? {}) as Record<string, unknown>).atlas) as unknown
+    // `sectionFrom` owns the named-vs-default lookup for every tool, so atlas
+    // and the next package to read this file cannot disagree about where a
+    // section lives.
+    const section = sectionFrom(loadedModule, 'atlas')
     if (section === undefined) {
       // A `pyreon.config.ts` with no `atlas` key is not an error — it is a
       // project configuring some other tool. Silence is correct here.

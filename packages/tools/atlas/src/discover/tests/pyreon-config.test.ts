@@ -11,6 +11,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { CONFIG_FILENAMES } from '@pyreon/config'
 import { loadAtlasConfig } from '../config'
 import type { ModuleLoader } from '../load'
 
@@ -36,6 +37,21 @@ const loaderFor = (modules: Record<string, Record<string, unknown>>): ModuleLoad
 const write = (name: string): void => writeFileSync(join(root, name), '// stub\n', 'utf8')
 
 describe('pyreon.config.ts', () => {
+  // Drift lock. The filename list and the section reader live in
+  // `@pyreon/config`; this loader used to restate both. A second copy is a
+  // config that is silently ignored the day the lists disagree — the exact
+  // failure the shared file exists to reduce. Iterating the SHARED constant
+  // means a filename added there is covered here without anyone remembering to.
+  it.each([...CONFIG_FILENAMES])('discovers %s from the shared filename list', async (name) => {
+    write(name)
+    const loaded = await loadAtlasConfig(
+      root,
+      loaderFor({ [name]: { default: { atlas: { title: `via ${name}` } } } }),
+    )
+    expect(loaded.config.title).toBe(`via ${name}`)
+    expect(loaded.path).toBe(join(root, name))
+  })
+
   it('reads the atlas section from a default export', async () => {
     write('pyreon.config.ts')
     const loaded = await loadAtlasConfig(
