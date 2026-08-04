@@ -26,8 +26,10 @@
  * build is both stale and stripped of the types this needs. `main`/`module` are
  * read only as a fallback, and a plain `src/index.ts` as the last one.
  */
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { workspacePackageDirs } from './workspace'
 
 /** package name → absolute directory. */
 export type PackageMap = ReadonlyMap<string, string>
@@ -218,7 +220,32 @@ export function resolveFromWorkspace(
           subpath === ''
             ? packageEntry(candidate, 'runtime')
             : subpathEntry(candidate, subpath, 'runtime')
-        if (entry) return entry
+        // The REAL path, not the symlink.
+        //
+        // An isolated install (bun, pnpm) links `packages/app/node_modules/
+        // @pyreon/core` at a content-addressed store directory, and that
+        // package's own dependencies sit as SIBLINGS inside the store — not
+        // under the link. Handing back the link means the resolver walks up
+        // from `packages/app/…` instead, never reaches the store, and the
+        // module's transitive imports fail with `Cannot find module
+        // '@pyreon/reactivity' imported from …/@pyreon/core/lib/index.js`.
+        //
+        // Invisible in a hoisted layout and invisible when the tool runs from
+        // the same workspace as its target — it took installing the published
+        // package into a separate consumer workspace to see it at all.
+        // The REAL path, not the symlink. An isolated install (bun, pnpm)
+        // links a dependency at a content-addressed store, and that package's
+        // OWN dependencies sit as SIBLINGS inside the store — hand back the
+        // link and the resolver walks up from the consuming package instead,
+        // so transitive imports fail with `Cannot find module
+        // '@pyreon/reactivity' imported from …/@pyreon/core/lib/index.js`.
+        if (entry) {
+          try {
+            return realpathSync(entry)
+          } catch {
+            return entry
+          }
+        }
       }
       const parent = dirname(current)
       if (parent === current) break
@@ -227,6 +254,119 @@ export function resolveFromWorkspace(
   }
   return undefined
 }
+
+/**
+ * A Vite/Rolldown plugin that resolves bare specifiers against the workspace.
+ *
+ * Exists because two places need the identical behaviour — the module loader
+ * (so a root `atlas.config.ts` can import anything) and the static build (so the
+ * generated entry, which lives in `node_modules/.atlas-build/`, can resolve the
+ * framework). Writing it twice is how the two come to disagree.
+ *
+ * `enforce: 'pre'` so it answers before ordinary resolution walks up to a repo
+ * root that declares nothing. Returns undefined for anything the workspace does
+ * not own, so a real third-party dependency resolves normally.
+ */
+export function workspaceResolvePlugin(root: string, extraBases: readonly string[] = []) {
+  const dirs = [...workspaceDirsFor(root), ...extraBases]
+  return {
+    name: 'atlas:workspace-resolve-build',
+    // POST, emphatically not `pre`. A resolver that answers FIRST wins even
+    // when ordinary resolution would have succeeded, and then hands back a
+    // symlinked `node_modules` path while Vite resolving the same specifier
+    // itself reaches the package's real location. Two ids for one file loads
+    // the framework TWICE, and the workbench dies with
+    // `props.model.view.set(...) is not a function`.
+    //
+    // Running last makes this a genuine fallback: Rollup stops at the first
+    // non-null answer, so this is consulted only for specifiers nothing else
+    // could resolve — which is exactly the case it exists for.
+    enforce: 'post' as const,
+    resolveId(id: string, importer?: string): string | undefined {
+      if (id.startsWith('.') || id.startsWith('/') || id.startsWith('\0')) return undefined
+      // ONLY for Atlas's own generated modules.
+      //
+      // This is the hard-won part. A blanket resolver looks like the obvious
+      // fix and breaks the workbench: the id it returns is a symlinked
+      // `node_modules` path, while Vite resolving the same specifier itself
+      // arrives at the package's real location. Two ids for one file means the
+      // framework is loaded TWICE, and the workbench dies with
+      // `props.model.view.set(...) is not a function` — a reactivity break from
+      // a split instance. `realpathSync` does not save it either: on macOS it
+      // rewrites `/tmp` to `/private/tmp` and produces the same divergence from
+      // the other side. The axe-audit e2e caught both attempts.
+      //
+      // So: claim nothing a project file imports. Atlas's generated entry and
+      // its virtual catalog are the only modules that genuinely cannot resolve
+      // on their own — they live in `node_modules/.atlas-build/` or nowhere at
+      // all — and they are the only ones this answers for.
+      if (!isAtlasGenerated(importer)) return undefined
+      return resolveFromWorkspace(id, dirs)
+    },
+  }
+}
+
+/**
+ * A module Atlas owns, and therefore may answer resolution for.
+ *
+ * Three kinds: its virtual modules, its generated build input, and the
+ * project's `atlas.config.*` — which is Atlas's file in every sense that
+ * matters here. The config carries the `wrapper`, so the static build pulls it
+ * into the bundle, and it sits at the repo ROOT where ordinary resolution finds
+ * nothing.
+ */
+function isAtlasGenerated(importer: string | undefined): boolean {
+  if (!importer) return false
+  return (
+    importer.startsWith('\0') ||
+    importer.includes('virtual:atlas') ||
+    importer.includes('.atlas-build') ||
+    /[/\\](?:atlas|pyreon)\.config\.[cm]?[jt]sx?$/.test(importer)
+  )
+}
+
+/**
+ * Package directories for a workspace root, plus the root itself.
+ *
+ * The root is included as a resolution base because a single-package project
+ * keeps its dependencies there, and a monorepo root occasionally does too.
+ */
+function workspaceDirsFor(root: string): string[] {
+  // Atlas's OWN directory is a base too, and it is the one that matters for the
+  // generated entry: that entry is Atlas's UI code, so it imports the framework
+  // — and in a consumer install NO project package declares `@pyreon/runtime-dom`,
+  // only Atlas does. Without this the build failed with `Rolldown failed to
+  // resolve import "@pyreon/runtime-dom"` on an ordinary installed project.
+  //
+  // Last in the order, so a package the PROJECT declares always wins: if both
+  // hold a copy they should be the same one, and preferring the project's keeps
+  // it that way when they are not.
+  const own = atlasOwnDir()
+  return [...workspacePackageDirs(root), root, ...(own ? [own] : [])]
+}
+
+/**
+ * The directory of Atlas's own package — the nearest ancestor with a
+ * `package.json`.
+ *
+ * Derived from this module's location rather than passed in, because every
+ * caller would otherwise have to know it and they would eventually disagree.
+ * Works from `src/` in development and from `lib/_chunks/` once bundled.
+ */
+function atlasOwnDir(): string | undefined {
+  try {
+    let dir = dirname(fileURLToPath(import.meta.url))
+    for (;;) {
+      if (existsSync(join(dir, 'package.json'))) return dir
+      const parent = dirname(dir)
+      if (parent === dir) return undefined
+      dir = parent
+    }
+  } catch {
+    return undefined
+  }
+}
+
 
 /** A package subpath (`@scope/pkg/sub`), via its exports map or on disk. */
 function subpathEntry(dir: string, subpath: string, want: EntryKind): string | undefined {

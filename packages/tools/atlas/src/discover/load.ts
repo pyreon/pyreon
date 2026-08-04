@@ -142,8 +142,16 @@ export async function createModuleLoader(
             // Tier 1 — a workspace package, by name. Exact for everyone.
             const own = resolveWorkspaceSpecifier(id, packages)
             if (own) return own
-            // Tier 2 — anything else the CONFIG imports (`@pyreon/core` for a
-            // `wrapper`), resolved from a package that declares it.
+            // Tier 2 — the CONFIG only: anything else it imports
+            // (`@pyreon/core`, for a `wrapper`), resolved from a package that
+            // declares it.
+            //
+            // Deliberately NOT extended to Atlas's own bare loads (`loadRuntime`
+            // fetching `@pyreon/core`). That was tried, to silence three
+            // `Failed to load url` lines — and those lines are cosmetic in a
+            // matched install, where `loadRuntime` falls back to Atlas's copy
+            // and it is the same copy. Widening resolution to quiet a harmless
+            // message is not a trade worth making.
             if (importer && configFiles.has(importer)) {
               return resolveFromWorkspace(id, workspaceDirs)
             }

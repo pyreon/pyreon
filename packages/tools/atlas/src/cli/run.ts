@@ -588,8 +588,13 @@ export async function runCli(argv: readonly string[]): Promise<number> {
 
   if (cmd === 'dev') {
     const dir = positionalDir(rest)
-    const portArg = rest.find((a) => a.startsWith('--port='))
-    const port = portArg ? Number(portArg.slice('--port='.length)) : undefined
+    // Both flag forms, via the same reader every other flag uses. This read
+    // only `--port=5199`, so `--port 5199` — the form people type, and the one
+    // `--out` and `--title` accept — was silently ignored and the server came
+    // up on the default port. A flag that is quietly dropped is worse than one
+    // that is rejected.
+    const portArg = flagValue(rest, '--port')
+    const port = portArg !== undefined ? Number(portArg) : undefined
     // Imported lazily: the dev server pulls in Vite, and `atlas scan` must keep
     // working (and starting fast) in a project that has none.
     const { startDevServer } = await import('../dev/server')
