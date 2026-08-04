@@ -39,6 +39,11 @@ import type { ComponentIntelligence, ComponentRef } from '../core'
 import { defineAtlasPlugin } from '../plugins'
 import type { AtlasPlugin, DecorateContext } from '../plugins'
 import { hostCollectGarbage, type MountRuntime, sizeOfGraph } from '../verify/harness'
+import {
+  type PackageMap,
+  resolveFromWorkspace,
+  resolveWorkspaceSpecifier,
+} from './workspace-packages'
 
 /** Loads a module by absolute path. */
 export interface ModuleLoader {
@@ -64,7 +69,10 @@ export function runtimeLoader(): ModuleLoader {
  * a library validating its catalog in CI without Vite still gets *something*,
  * and `kind` says which it got rather than leaving the caller to guess.
  */
-export async function createModuleLoader(root: string): Promise<ModuleLoader> {
+export async function createModuleLoader(
+  root: string,
+  packages: PackageMap = new Map(),
+): Promise<ModuleLoader> {
   // Structural types, not `typeof import('vite')`: naming Vite's types here
   // would put it in the type graph unconditionally, defeating the dynamic
   // import — `atlas scan` must typecheck in a project that has no Vite.
@@ -93,6 +101,56 @@ export async function createModuleLoader(root: string): Promise<ModuleLoader> {
   } catch {
     return runtimeLoader()
   }
+
+  // Resolve WORKSPACE specifiers by lookup.
+  //
+  // A package manager links a workspace member only into the packages that
+  // DECLARE it, so resolution from a given file depends on that file having a
+  // `node_modules` neighbour with the link. Components satisfy this by
+  // construction — they live inside a package that declares its own
+  // dependencies — which is why they mount without help.
+  //
+  // `atlas.config.ts` does not. It sits at the repo ROOT, whose `package.json`
+  // has no reason to depend on the UI packages, so importing the project's own
+  // theme from it fails to resolve. That is the ONE field that unlocks
+  // rocketstyle discovery, in the one file that structurally cannot import it —
+  // measured on a real 78-package monorepo, where the config errored and every
+  // rocketstyle chain stayed invisible.
+  //
+  // A `resolveId` hook rather than `resolve.alias`: an alias `find` string
+  // matches by PREFIX, so aliasing `@acme/ui` would also capture `@acme/ui-grid`.
+  // This reuses the same longest-name-first lookup the prop-type resolver uses,
+  // so both answers come from one place, and it defers to Vite for anything the
+  // workspace does not own — a real third-party dependency resolves normally.
+  // Only the config gets the second tier. A COMPONENT that fails to resolve an
+  // import has a real dependency bug, and quietly resolving it from some other
+  // package would hide it — the config is special precisely because the root is
+  // not a package that can declare anything.
+  const configFiles = new Set(
+    ['ts', 'tsx', 'mjs', 'js'].flatMap((ext) => [
+      resolve(root, `atlas.config.${ext}`),
+      resolve(root, `pyreon.config.${ext}`),
+    ]),
+  )
+  const workspaceDirs = [...packages.values()]
+  const workspaceResolver =
+    packages.size > 0
+      ? {
+          name: 'atlas:workspace-resolve',
+          enforce: 'pre' as const,
+          resolveId(id: string, importer?: string): string | undefined {
+            // Tier 1 — a workspace package, by name. Exact for everyone.
+            const own = resolveWorkspaceSpecifier(id, packages)
+            if (own) return own
+            // Tier 2 — anything else the CONFIG imports (`@pyreon/core` for a
+            // `wrapper`), resolved from a package that declares it.
+            if (importer && configFiles.has(importer)) {
+              return resolveFromWorkspace(id, workspaceDirs)
+            }
+            return undefined
+          },
+        }
+      : undefined
 
   const server = await createServer({
     root,
@@ -137,7 +195,9 @@ export async function createModuleLoader(root: string): Promise<ModuleLoader> {
     //      honours the `bun` condition) picks `src/` — the same package, two
     //      files, two instances. Prepended, not replaced, so a package without
     //      a `bun` export resolves exactly as before.
-    plugins: [plugin],
+    // The workspace resolver is `enforce: 'pre'`, so it answers before Vite's
+    // own resolution reaches `node_modules` and finds nothing.
+    plugins: workspaceResolver ? [workspaceResolver, plugin] : [plugin],
   })
 
   return {
@@ -161,7 +221,10 @@ const isBun = typeof (globalThis as { Bun?: unknown }).Bun !== 'undefined'
  * a consumer can take away. The answer is not to fight that but to mount with
  * the copy the components already hold, which is what this returns.
  */
-export async function loadRuntime(loader: ModuleLoader): Promise<MountRuntime | undefined> {
+export async function loadRuntime(
+  loader: ModuleLoader,
+  onFailure?: (message: string) => void,
+): Promise<MountRuntime | undefined> {
   if (loader.kind !== 'vite') return undefined
   try {
     const [core, dom, reactivity] = await Promise.all([
@@ -195,12 +258,30 @@ export async function loadRuntime(loader: ModuleLoader): Promise<MountRuntime | 
         : {}),
       ...(gc ? { collectGarbage: gc } : {}),
     }
-  } catch {
+  } catch (err) {
     // The project may not depend on the DOM runtime at all (a headless catalog).
     // Falling back to Atlas's own copy is wrong here — it would be a second
     // instance — so the caller mounts nothing and the check skips.
+    onFailure?.(err instanceof Error ? err.message : String(err))
     return undefined
   }
+}
+
+/**
+ * Does this failure mean Atlas and the project hold DIFFERENT framework copies?
+ *
+ * Worth its own predicate because the consequence is specific and severe. When
+ * the two disagree, mounting still "works" — it just mounts components compiled
+ * against one copy using another — and every check then reports a verdict about
+ * the mismatch rather than about the component. Observed on a real workspace:
+ * 2051 scenarios reported as failing, every one of them a harness artifact.
+ *
+ * Atlas ships in the fixed release group, so an ordinary install puts both on
+ * one copy. The way to reach this is to upgrade Atlas alone, or to run a
+ * development build against an installed project.
+ */
+export function isDualInstanceFailure(message: string): boolean {
+  return /Multiple instances of @pyreon\//.test(message)
 }
 
 export interface LoadResult {

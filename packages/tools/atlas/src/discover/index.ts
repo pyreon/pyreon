@@ -28,6 +28,7 @@ export {
   componentLoaderPlugin,
   createModuleLoader,
   loadComponent,
+  isDualInstanceFailure,
   loadRuntime,
   runtimeLoader,
 } from './load'
