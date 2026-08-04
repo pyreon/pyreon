@@ -254,18 +254,19 @@ function interactionVerdict(ex: Exercised, hasWrapper: boolean): VerifyCheck {
  * retained anything. Only a batch that comes back dirty needs the scenarios
  * separated, and that path is the rare one.
  *
- * Bounded rather than whole-component because the scenarios in flight hold
- * their nodes until the sweep: a component with 150 generated variants would
- * otherwise pile all 150 up before anything is reclaimed.
+ * Bounded rather than unbounded so a component with thousands of generated
+ * variants cannot pile all of them up before anything is reclaimed — but the
+ * bound is high, because the memory it was guarding turned out not to exist.
+ * Peak RSS across batch sizes 32 / 128 / 256 / 1024 on `@pyreon/ui-components`
+ * is 537 / 546 / 547 / 539 MB: flat. The peak is the loaded module graph — Vite
+ * plus the design system — not the scenarios in flight.
  *
- * 32 is measured, not guessed. Across 1,4,16,32,64,128 on `@pyreon/ui-components`
- * the curve flattens hard after 32 (16 → 6.9s, 32 → 5.6s, 64 → 7.2s, 128 → 5.3s):
- * past that point the extra garbage held in flight costs about as much in sweep
- * time as the saved sweeps recover. 32 sits at the knee with the tightest
- * spread, and keeps the peak heap modest — which matters more on a monorepo
- * scan than the last few percent.
+ * With memory flat, the only axis left is time, and it falls monotonically as
+ * batches grow (median 5419ms at 32, 4870ms at 64, 4102ms at 256). 256 is past
+ * the point where any real component splits, so in practice this batches a
+ * whole component at a time and the bound only engages on pathological ones.
  */
-const LEAK_BATCH = 32
+const LEAK_BATCH = 256
 
 export function mountPlugin(options: MountPluginOptions = {}): AtlasPlugin {
   // Memoised HERE rather than written back onto `options`: the caller owns that
@@ -397,22 +398,11 @@ export function mountPlugin(options: MountPluginOptions = {}): AtlasPlugin {
     const tWarm = PROFILE ? performance.now() : 0
     mountScenario(dom.env, runtime, component, scenarios[0]!.args ?? {}, options.wrapper).dispose()
     step('warmup mount+dispose', tWarm)
-    // Floor at the previous component's resting value rather than 0: the graph
-    // never returns to zero once anything has been mounted (module-level
-    // signals are retained on purpose), so a 0 floor asks the loop for
-    // something unreachable and burns its whole runway proving it.
-    //
-    // Settled SEPARATELY from the first batch, deliberately. Folding the two
-    // together saves a sweep per component and measured slightly faster at the
-    // minimum (4.8s vs 5.5s) — but with double the spread, because a component
-    // that retains anything by design then makes its first batch look dirty and
-    // pays a full per-scenario bisect. Predictable beats 13% here: the bisect
-    // path is the expensive one, and a design that enters it as a matter of
-    // course on singleton-holding components scales badly on exactly the
-    // codebases that have them.
-    const tBase = PROFILE ? performance.now() : 0
-    let baseline = await settleGraph(graphSize!, gc!, restingGraph ?? 0)
-    step('settleGraph(baseline)', tBase)
+    // The warm-up's OWN garbage is deliberately left for the first batch's
+    // sweep. Settling here as well would collect it a few milliseconds earlier
+    // at the cost of a whole extra GC per component — and the graph only has to
+    // be at a known floor by the time a verdict is read, not before.
+    let baseline = restingGraph ?? 0
 
     for (let i = 0; i < scenarios.length; i += LEAK_BATCH) {
       const batch = scenarios.slice(i, i + LEAK_BATCH)
@@ -436,10 +426,43 @@ export function mountPlugin(options: MountPluginOptions = {}): AtlasPlugin {
         continue
       }
 
-      // Something in this batch retained nodes. Only now is it worth paying a
-      // sweep per scenario, and only for this batch.
+      // Something is retained — but "retained" is not yet "leaked". A component
+      // whose FIRST mount creates a module-level singleton (a store registry, a
+      // memoized theme) holds it by design and holds it exactly once, and this
+      // is the batch where that happens.
+      //
+      // The two are told apart the same way `bisectLeak` tells them apart, but
+      // at BATCH granularity: run the batch again and see whether the count
+      // keeps climbing. One-time retention does not; a per-mount leak always
+      // does. That costs one extra sweep for the components that have
+      // singletons, instead of a per-scenario sweep for every scenario they
+      // own — and it is why the warm-up above no longer needs its own settle.
+      const tRe = PROFILE ? performance.now() : 0
+      for (const s of batch) {
+        // The verdicts from this pass are discarded: the first pass already
+        // recorded what each scenario did, and re-running is only a probe of
+        // whether retention ACCUMULATES.
+        await exercise(dom.env, runtime, component, s, options.wrapper)
+      }
+      const again = await settleGraph(graphSize!, gc!, after)
+      step('settleGraph(batch re-probe)', tRe)
+
+      if (again <= after) {
+        // Retention that did not grow on a second pass over the same scenarios
+        // is one-time, not per-mount. Every scenario in the batch passes, and
+        // the new resting value becomes the floor.
+        for (const ex of exercised) {
+          out.set(ex.id, { interaction: interactionVerdict(ex, hasWrapper), leak: { status: 'pass' } })
+        }
+        baseline = again
+        continue
+      }
+
+      // It kept climbing across two passes over the same scenarios. Something
+      // here leaks per mount, and only now is it worth a sweep per scenario to
+      // say which.
       step('batch dirty → bisect', PROFILE ? performance.now() : 0)
-      let floor = after
+      let floor = again
       for (const ex of exercised) {
         const leak = await bisectLeak(dom.env, runtime!, component, ex, floor, graphSize!, gc!)
         out.set(ex.id, { interaction: interactionVerdict(ex, hasWrapper), leak: leak.check })
