@@ -36,6 +36,7 @@ import {
   runContentAuditGate,
   runDistributionGate,
   runDocClaimsGate,
+  runDependencyFabricGate,
   runIslandsAuditGate,
   runLintGate,
   runNativeAuditGate,
@@ -58,6 +59,7 @@ export type GateName =
   | 'doc-claims'
   | 'audit-tests'
   | 'islands-audit'
+  | 'dependency-fabric'
   | 'ssg-audit'
   | 'content-audit'
   | 'native-audit'
@@ -74,6 +76,7 @@ export const FAST_GATES: GateName[] = [
   'distribution',
   'doc-claims',
   'islands-audit',
+  'dependency-fabric',
   'ssg-audit',
   'content-audit',
   'native-audit',
@@ -124,6 +127,7 @@ const ALL_GATE_CATEGORIES: Record<GateName, GateResult['category']> = {
   'doc-claims': 'documentation',
   'audit-tests': 'testing',
   'islands-audit': 'architecture',
+  'dependency-fabric': 'architecture',
   'ssg-audit': 'architecture',
   'content-audit': 'architecture',
   'native-audit': 'architecture',
@@ -240,6 +244,8 @@ const runGate = async (
       })
     case 'islands-audit':
       return runIslandsAuditGate({ cwd: opts.cwd })
+    case 'dependency-fabric':
+      return runDependencyFabricGate({ cwd: opts.cwd })
     case 'ssg-audit':
       return runSsgAuditGate({ cwd: opts.cwd })
     case 'content-audit':

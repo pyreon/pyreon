@@ -1,6 +1,6 @@
 ---
 title: '@pyreon/cli'
-description: Command-line tools for Pyreon — the doctor health audit (14 gates, 0-100 score) and the context generator for AI tools.
+description: Command-line tools for Pyreon — the doctor health audit (15 gates, 0-100 score) and the context generator for AI tools.
 ---
 
 `@pyreon/cli` is the command-line companion for Pyreon projects. It ships five commands: **`pyreon doctor`** — a project-wide health audit that runs a battery of independent **gates** in parallel, aggregates every finding into a unified report, and computes a **0-100 health score** with a letter grade and a per-category bar chart; **`pyreon context`** — a project-structure scanner that writes a machine-readable summary for AI coding assistants; **`pyreon info`** — an environment report that lists every installed `@pyreon/*` version and flags version skew before it trips the duplicate-instance guard; **`pyreon upgrade`** — the fix for that skew, aligning every `@pyreon/*` dependency to one version; and **`pyreon lint`** — a thin front door to `@pyreon/lint` that forwards every `pyreon-lint` flag.
@@ -86,10 +86,10 @@ pyreon doctor
   ! className → class (HTML standard attribute).  react-patterns/className
      src/App.tsx:3:18
 
-  1 error · 1 warning · 12 gates · 1.4s
+  1 error · 1 warning · 13 gates · 1.4s
 ```
 
-By default `pyreon doctor` runs the **12 fast gates** (~2-5s on a warm cache). The 2 slow gates are opt-in via `--full`.
+By default `pyreon doctor` runs the **13 fast gates** (~2-5s on a warm cache). The 2 slow gates are opt-in via `--full`.
 
 ## `pyreon check`
 
@@ -202,7 +202,7 @@ The report header shows what was scanned (`Scope: 4 package root(s) from workspa
 
 ### Gates
 
-There are **14 gates** total: 12 fast (run by default) and 2 slow (opt in with `--full`).
+There are **15 gates** total: 13 fast (run by default) and 2 slow (opt in with `--full`).
 
 | Gate | Speed | Category | What it checks |
 | --- | --- | --- | --- |
@@ -217,6 +217,7 @@ There are **14 gates** total: 12 fast (run by default) and 2 slow (opt in with `
 | `native-audit` | fast | `architecture` | Multiplatform (PMTC) build hazards in `.tsx` files importing `@pyreon/primitives` — `web-only-package-import` (a package that can't render on native) and `native-unsupported-decl` (a top-level `interface`/`enum`/`class` PMTC silently drops). Both warnings — they don't break the web build. Skips when no `@pyreon/primitives` importer is found. |
 | `audit-tests` | fast | `testing` | The mock-vnode anti-pattern — tests that build `{ type, props, children }` literals (or a `vnode()` helper) instead of going through real `h()`. Classifies each file HIGH / MEDIUM / LOW. |
 | `check-dedup` | fast | `architecture` | Duplicate `@pyreon/*` versions in the lockfile (`bun.lock` / `package-lock.json` / `pnpm-lock.yaml`). Multiple module instances of one Pyreon package break framework contracts; this catches it statically before the runtime sentinel throws. |
+| `dependency-fabric` | fast | `architecture` | The workspace's dependency fabric, from `@pyreon/loom` — phantom deps, version drift, runtime cycles, prod-imports-of-dev-deps, peer mismatches. Runs the project's **own** installed loom (resolved through your `node_modules`, never fetched) and **skips** when it isn't installed, so doctor never installs anything mid-audit. Loom's severities are carried through unchanged — `unused-dep` stays `info` because it is lexical evidence, not proof. The scan uses `--no-write`: auditing your repo must not leave a `loom-report.json` in it. |
 | `audit-leak-classes` | fast | `best-practices` (advisory) | The memory-leak class heuristics (Class A / C / D / I). **Advisory** — false-positive-prone, so findings are VISIBLE but excluded from the grade and from `--ci`. |
 | `audit-types` | slow | `architecture` | Typed-but-unimplemented public fields — interface fields with zero non-type references in their owning package (the `mode: "ssg"` typed-but-never-read bug class). Requires `--full`. |
 | `bundle-budgets` | slow | `performance` | Each published package's gzipped main-entry size against its locked budget (`over-budget`), packages missing a budget entry (`missing-budget`), and packages the bundler couldn't measure (`bundle-failed`). Requires `--full`. |
@@ -268,8 +269,8 @@ Letter grades:
 Valid gate names for `--only` / `--skip`: `react-patterns`, `pyreon-patterns`, `lint`, `distribution`, `doc-claims`, `islands-audit`, `ssg-audit`, `content-audit`, `native-audit`, `audit-tests`, `check-dedup`, `audit-leak-classes`, `audit-types`, `bundle-budgets`. An unknown gate name is rejected with an error listing the valid set.
 
 ```bash
-pyreon doctor                                  # 12 fast gates + score
-pyreon doctor --full                           # add audit-types + bundle-budgets (14 gates)
+pyreon doctor                                  # 13 fast gates + score
+pyreon doctor --full                           # add audit-types + bundle-budgets (15 gates)
 pyreon doctor --only lint,react-patterns       # run a focused subset
 pyreon doctor --skip doc-claims                # everything except doc-claims
 pyreon doctor --only audit-types --full        # one slow gate in isolation
@@ -576,7 +577,7 @@ console.log(context.components.length, 'components')
 | `pyreon add <pkg...> [--dry-run] [--json]` | Install `@pyreon/*` packages (PM auto-detected) and print a tailored setup recipe for each. |
 | `pyreon new [name] [--native]` | Scaffold a new Pyreon project (delegates to `@pyreon/create-zero`, or `-multiplatform` with `--native`). |
 | `pyreon mcp [args]` | Launch the Pyreon MCP server (delegates to `@pyreon/mcp`; prefers the project-local install). |
-| `pyreon doctor [options]` | Project-wide health audit with a 0-100 score. Runs 12 fast gates by default; `--full` enables 2 slow gates. |
+| `pyreon doctor [options]` | Project-wide health audit with a 0-100 score. Runs 13 fast gates by default; `--full` enables 2 slow gates. |
 | `pyreon context [--out <path>]` | Generate `.pyreon/context.json` for AI tools. |
 | `pyreon --help` / `-h` | Show usage. |
 | `pyreon --version` / `-v` | Show the CLI version. |
