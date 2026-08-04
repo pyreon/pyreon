@@ -32,6 +32,7 @@ describe('gen-docs — mcp snapshot', () => {
       'mcp/get_browser_smoke_status',
       'mcp/get_changelog',
       'mcp/get_components',
+      'mcp/get_dependency_fabric',
       'mcp/get_pattern',
       'mcp/get_routes',
       'mcp/mcp_overview',

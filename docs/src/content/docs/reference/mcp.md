@@ -68,6 +68,7 @@ A full, end-to-end usage of the package:
 | [`get_routes`](#get-routes) | constant | List every route in the current project — path, loader presence, guards, params, and named-route name. |
 | [`get_components`](#get-components) | constant | List every component in the current project with its props and signal usage. |
 | [`get_atlas_catalog`](#get-atlas-catalog) | constant | Serve the VERIFIED component catalog `atlas scan` writes (`atlas-catalog.json`) — every component with its real props, a |
+| [`get_dependency_fabric`](#get-dependency-fabric) | constant | Serve the workspace dependency graph `loom scan` writes (`loom-report.json`): the shape (packages, edges, depth), runtim |
 | [`get_atlas_component`](#get-atlas-component) | constant | Prescriptive usage for ONE catalogued component: required and optional props with their exact allowed values, which prop |
 | [`get_pattern`](#get-pattern) | constant | Fetch a canonical "how do I do X" pattern body from `docs/patterns/`. |
 | [`get_anti_patterns`](#get-anti-patterns) | constant | Browse the anti-patterns catalog from `.claude/rules/anti-patterns.md`, token-frugal by default. |
@@ -412,6 +413,34 @@ get_atlas_catalog({ tag: 'form' })
 - Expecting per-prop detail here — the index is deliberately token-frugal. Use `get_atlas_component` for one component's exact prop values.
 
 **See also:** `get_atlas_component` · `get_api`
+
+---
+
+### get_dependency_fabric `constant`
+
+```ts
+tool: get_dependency_fabric({ package?: string }) → string
+```
+
+Serve the workspace dependency graph `loom scan` writes (`loom-report.json`): the shape (packages, edges, depth), runtime cycles, gating findings, and the blast-radius ranking that answers "what does changing this reach?". Pass `package` for one package's declared runtime deps, its dependents, its depth and reach, and its own findings. Every rendering carries loom's honesty rule — DECLARED truth only, so it cannot say which version is INSTALLED, and `unused-dep` is lexical evidence rather than proof. A report older than a day is flagged; with none present the tool returns instructions to run `loom scan` rather than an invented graph.
+
+**Example**
+
+```tsx
+get_dependency_fabric({})
+// → # Dependency fabric — 142 workspace package(s) … Blast radius: @pyreon/core → 96 dependent(s)
+get_dependency_fabric({ package: '@pyreon/router' })
+// → declares, depended-on-by, depth, reach, and that package's findings
+```
+
+**Common mistakes**
+
+- Reading `unused-dep` as "safe to delete" — it is lexical evidence with INFO severity; bins, plugin autoloads and CSS imports load without an import statement, so verify before removing.
+- Asking it which version is installed — loom reads manifests and source, never a lockfile or the registry. Declared ranges are all it can honestly report.
+- Trusting a stale report — the fabric changes with every dependency edit, so the tool prints the artifact age and you should re-run `loom scan` after one.
+- Expecting dev-dependency cycles — loom excludes dev edges from cycle detection on purpose, because monorepos legitimately share test utilities both ways.
+
+**See also:** `get_atlas_catalog` · `get_api`
 
 ---
 

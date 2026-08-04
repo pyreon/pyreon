@@ -271,6 +271,24 @@ get_atlas_catalog({ tag: 'form' })
       seeAlso: ['get_atlas_component', 'get_api'],
     },
     {
+      name: 'get_dependency_fabric',
+      kind: 'constant',
+      signature: 'tool: get_dependency_fabric({ package?: string }) → string',
+      summary:
+        "Serve the workspace dependency graph `loom scan` writes (`loom-report.json`): the shape (packages, edges, depth), runtime cycles, gating findings, and the blast-radius ranking that answers \"what does changing this reach?\". Pass `package` for one package's declared runtime deps, its dependents, its depth and reach, and its own findings. Every rendering carries loom's honesty rule — DECLARED truth only, so it cannot say which version is INSTALLED, and `unused-dep` is lexical evidence rather than proof. A report older than a day is flagged; with none present the tool returns instructions to run `loom scan` rather than an invented graph.",
+      example: `get_dependency_fabric({})
+// → # Dependency fabric — 142 workspace package(s) … Blast radius: @pyreon/core → 96 dependent(s)
+get_dependency_fabric({ package: '@pyreon/router' })
+// → declares, depended-on-by, depth, reach, and that package's findings`,
+      mistakes: [
+        'Reading `unused-dep` as "safe to delete" — it is lexical evidence with INFO severity; bins, plugin autoloads and CSS imports load without an import statement, so verify before removing.',
+        'Asking it which version is installed — loom reads manifests and source, never a lockfile or the registry. Declared ranges are all it can honestly report.',
+        'Trusting a stale report — the fabric changes with every dependency edit, so the tool prints the artifact age and you should re-run `loom scan` after one.',
+        'Expecting dev-dependency cycles — loom excludes dev edges from cycle detection on purpose, because monorepos legitimately share test utilities both ways.',
+      ],
+      seeAlso: ['get_atlas_catalog', 'get_api'],
+    },
+    {
       name: 'get_atlas_component',
       kind: 'constant',
       signature: 'tool: get_atlas_component({ name: string }) → string',
