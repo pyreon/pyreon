@@ -45,6 +45,7 @@
 ## UI Components (@pyreon/ui-components)
 
 - **Layout in `.attrs()`, CSS in `.theme()`**: Element layout props go in `.attrs()`; visual styles (colors, spacing, borders, shadows, type) go in `.theme()`. Element IS a flex box natively — never re-declare `display`/`flexDirection`/`alignItems`/`justifyContent` in a theme (it fights the wrapper CSS Element already emits and never reaches the button/fieldset/legend flex-fix inner layer). The verified prop contract (2026-08, atlas/loom conversion + bokisch.com precedent):
+  <!-- @props @pyreon/elements Element: contentDirection, contentAlignX, contentAlignY, direction, alignX, alignY, gap, block, equalCols, equalBeforeAfter, beforeContent, afterContent -->
   - **Simple elements** (no before/after slots — the dominant case) read the `content*` trio: `contentDirection` (`'inline'` row / `'rows'` column — default `rows`), `contentAlignX`, `contentAlignY`. The bare `direction`/`alignX`/`alignY` trio governs the SLOT axis of compound elements.
   - **Alignment is AXIS-FIXED**, not main/cross: X is always horizontal (`left|center|right|spaceBetween|spaceAround|block`), Y always vertical (`top|center|bottom|block`); `block` = stretch. On an `inline` row, `contentAlignX` is justify-content and `contentAlignY` is align-items; on `rows` they swap roles automatically.
   - **`gap` is a prop** (number → rem): wired on the simple path AND the needsFix (button/fieldset/legend) flex-fix layer as of 0.51 (before that, slots only — the reason old code reached for theme-level gap).
