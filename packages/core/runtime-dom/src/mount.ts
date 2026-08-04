@@ -30,7 +30,7 @@ import {
 } from '@pyreon/reactivity'
 import { setupDelegation } from './delegate'
 import { registerComponent, unregisterComponent } from './devtools'
-import { mountFor, mountKeyedList, mountReactive } from './nodes'
+import { _takePendingForAdoption, mountFor, mountKeyedList, mountReactive } from './nodes'
 import { applyProps, applySelectValueProp } from './props'
 
 // Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
@@ -171,6 +171,9 @@ export function mountChild(
       parent,
       anchor,
       mountChild,
+      // One-shot hydration-adoption handoff — non-null only when hydrate.ts
+      // set it synchronously before dispatching this <For> vnode.
+      _takePendingForAdoption(),
     )
     _elementDepth = prevDepth
     return cleanup
