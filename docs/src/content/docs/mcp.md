@@ -762,6 +762,21 @@ CI-gate it by piping `--json` and asserting `findings.length === 0`.
 
 ---
 
+### get_dependency_fabric
+
+Serves the **workspace dependency graph** `loom scan` writes to `loom-report.json` — the shape (packages, internal edges, depth), runtime cycles, the gating findings, and the blast-radius ranking that answers the question a graph exists to answer: *what does changing this reach?*
+
+Call it with no arguments for the whole-fabric overview. Pass `package` for one package's declared runtime dependencies, its dependents, its depth and reach, and its own findings.
+
+Every rendering carries loom's honesty rule through. Loom reads **declared truth** — manifests and source imports, never a lockfile or the registry — so it cannot tell you which version is *installed*, and `unused-dep` is lexical evidence rather than proof: bins, plugin autoloads and CSS imports all load without an import statement. An agent that reads "unused" as "safe to delete" will delete a package a bin loads at runtime, which is exactly why the note travels with the data.
+
+The report is a build artifact, so a report older than a day is flagged with its age, and a missing one returns instructions to run `loom scan` rather than an invented graph.
+
+```
+get_dependency_fabric({})
+get_dependency_fabric({ package: '@pyreon/router' })
+```
+
 ### get_atlas_catalog
 
 Serves the **verified component catalog** `atlas scan` writes to `atlas-catalog.json` — every component with the props it actually takes, the values those props actually allow, and how many of its scenarios have been checked. All of it is read from your source, so an assistant writing UI code stops guessing prop names.

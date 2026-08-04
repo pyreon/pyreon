@@ -24,6 +24,9 @@
  *   get_changelog             — Recent release notes for a @pyreon/* package, parsed from CHANGELOG.md
  *   audit_test_environment    — Scan test files for mock-vnode patterns (PR #197 bug class)
  *   audit_islands             — Project-wide islands audit (5 cross-file foot-guns)
+ *   get_atlas_catalog         — The verified component catalog `atlas scan` derives from source
+ *   get_atlas_component       — One component's exact props, allowed values and scenarios
+ *   get_dependency_fabric     — The workspace dependency graph `loom scan` produces: cycles, blast radius, findings
  *
  * Usage:
  *   bunx @pyreon/mcp          # stdio transport (for IDE integration)
@@ -48,6 +51,12 @@ import { realpathSync } from 'node:fs'
 import { relative } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { z } from 'zod'
+import {
+  MISSING_REPORT_MESSAGE,
+  loadReport,
+  renderFabricOverview,
+  renderPackageFabric,
+} from './loom'
 import {
   loadCatalog,
   MISSING_CATALOG_MESSAGE,
@@ -790,6 +799,39 @@ server.tool(
         )
       }
       return textResult(renderComponent(loaded.catalog, name))
+    },
+  )
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // Tool: get_dependency_fabric — the workspace graph `loom scan` produces
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  server.tool(
+    'get_dependency_fabric',
+    {
+      package: z
+        .string()
+        .optional()
+        .describe(
+          'A workspace package name. Omit for the whole-fabric overview (shape, cycles, gating findings, blast-radius ranking).',
+        ),
+    },
+    async ({ package: pkgName }) => {
+      // `loom scan` wrote this graph and nothing served it: an agent asked
+      // "is it safe to change X?" had to infer from a package.json read.
+      const loaded = loadReport(process.cwd())
+      if (!loaded.ok) {
+        return textResult(
+          loaded.reason === 'missing'
+            ? MISSING_REPORT_MESSAGE
+            : `Found loom-report.json but could not read it${loaded.detail ? `: ${loaded.detail}` : ''}. Re-run \`loom scan\`.`,
+        )
+      }
+      return textResult(
+        pkgName
+          ? renderPackageFabric(loaded.report, pkgName, loaded.ageDays)
+          : renderFabricOverview(loaded.report, loaded.ageDays),
+      )
     },
   )
 
