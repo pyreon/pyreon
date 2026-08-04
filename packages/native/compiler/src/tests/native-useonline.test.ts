@@ -54,6 +54,19 @@ describe('Phase 4 — useOnline() native emit (shared web-idiomatic net() access
     expect(r.code).not.toContain('net.isOnline.value')
   })
 
+  it('Swift: the emit STARTS the monitor on a stable host (never-wired class)', () => {
+    const r = transform(SHARED, { target: 'swift' })
+    // The runtime shipped a real NWPathMonitor behind start() with nothing
+    // calling it — useOnline() on iOS was frozen at its initial `true`
+    // forever, masked because the simulator is always online (2026-08-04).
+    expect(r.code).toContain('.onAppear { net.start() }')
+    expect(r.code).toContain('.onDisappear { net.stop() }')
+    // The harness needs the concrete-host wrap: on a transparent Group a
+    // branch flip would redistribute .onDisappear and STOP the monitor while
+    // the view is still on screen (the .task device-found class).
+    expect(r.code).toContain('ZStack {')
+  })
+
   it('Kotlin: net() lowers to the MutableState isOnline.value read', () => {
     const r = transform(SHARED, { target: 'kotlin' })
     expect(r.warnings).toEqual([])

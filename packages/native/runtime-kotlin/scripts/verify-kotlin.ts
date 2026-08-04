@@ -581,6 +581,28 @@ public class Handler(looper: Looper) {
 }
 `
 
+// android.os for the CONNECTIVITY service — EXACTLY what
+// PyreonNetworkStatusAndroid.kt touches: a main-looper Handler used for (a)
+// the registerNetworkCallback delivery thread and (b) the reconciliation
+// re-read loop (postDelayed / removeCallbacks). Separate from
+// ANDROID_OS_HANDLER_STUBS (websocket — `post` only): per-service exact
+// mirrors, because a shared superset masks (the 4x-documented rule).
+const ANDROID_OS_CONNECTIVITY_HANDLER_STUBS = `package android.os
+
+public class Looper {
+  public companion object {
+    public fun getMainLooper(): Looper = Looper()
+  }
+}
+
+public class Handler(looper: Looper) {
+  @Suppress("UNUSED_PARAMETER")
+  public fun postDelayed(r: Runnable, delayMillis: Long): Boolean = true
+  @Suppress("UNUSED_PARAMETER")
+  public fun removeCallbacks(r: Runnable) {}
+}
+`
+
 const OKHTTP3_STUBS = `package okhttp3
 
 open class OkHttpClient {
@@ -1091,9 +1113,9 @@ try {
   const netPath = join(tempDir, 'AndroidNet.kt')
   const netContextPath = join(tempDir, 'AndroidNetContext.kt')
   if (SERVICE === 'PyreonNetworkStatusAndroid') {
-    // Same android.os mirror the websocket service uses — the connectivity
-    // callback is registered with a main-looper Handler.
-    writeFileSync(join(tempDir, 'AndroidOsHandler.kt'), ANDROID_OS_HANDLER_STUBS, 'utf8')
+    // Connectivity's OWN android.os mirror (postDelayed/removeCallbacks for
+    // the reconciliation loop) — no longer the websocket's `post`-only one.
+    writeFileSync(join(tempDir, 'AndroidOsHandler.kt'), ANDROID_OS_CONNECTIVITY_HANDLER_STUBS, 'utf8')
     writeFileSync(netPath, ANDROID_CONNECTIVITY_STUBS, 'utf8')
     writeFileSync(netContextPath, ANDROID_NET_CONTEXT_STUBS, 'utf8')
     writeFileSync(composePlatformPath, ANDROIDX_COMPOSE_PLATFORM_STUBS, 'utf8')

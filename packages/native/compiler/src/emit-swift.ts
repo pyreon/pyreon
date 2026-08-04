@@ -1688,7 +1688,13 @@ function emitSwiftComponent(c: ComponentIR): string {
   // transparent Group is redistributed onto conditional branches and
   // RE-FIRES per flip — the same device-found class as .task.
   const _hasOnMount = c.decls.some((d) => d.kind === 'on-mount')
-  if (_hasFetchDecl || _hasOnMount) {
+  // network-status needs the same stable host: its `.onAppear { net.start() }`
+  // / `.onDisappear { net.stop() }` pair on a transparent Group would be
+  // redistributed onto conditional branches — a branch flip would STOP the
+  // monitor while the view is still on screen. (start() is idempotent, so a
+  // spurious re-appear is safe; a spurious disappear is not.)
+  const _hasNetDecl = c.decls.some((d) => d.kind === 'network-status')
+  if (_hasFetchDecl || _hasOnMount || _hasNetDecl) {
     lines.push(`    ZStack {`)
     lines.push(`      ${emitSwiftReturnExpr(c.returnExpr, 6)}`)
     lines.push(`    }`)
@@ -1731,6 +1737,22 @@ function emitSwiftComponent(c: ComponentIR): string {
     lines.push(`      .onAppear {`)
     lines.push(bodyLines)
     lines.push(`      }`)
+  }
+  // network-status: START the live monitor. The runtime shipped a real
+  // NWPathMonitor behind `start()` from inception — and nothing ever called
+  // it, so `useOnline()` on iOS was frozen at its initial `true` forever
+  // (the same never-wired class the Android edge had before
+  // rememberPyreonNetworkStatus; found 2026-08-04 while root-causing the
+  // Android offline test). Masked because the simulator is always online and
+  // no iOS test toggles connectivity — `Online: true` is indistinguishable
+  // from a working hook on an online device. `.onDisappear { stop() }`
+  // releases the monitor with the screen; both attach to the ZStack host
+  // above, so branch flips can't spuriously stop it.
+  for (const d of c.decls) {
+    if (d.kind !== 'network-status') continue
+    const name = swiftIdent(d.name)
+    lines.push(`      .onAppear { ${name}.start() }`)
+    lines.push(`      .onDisappear { ${name}.stop() }`)
   }
   for (const d of c.decls) {
     if (d.kind !== 'fetch') continue

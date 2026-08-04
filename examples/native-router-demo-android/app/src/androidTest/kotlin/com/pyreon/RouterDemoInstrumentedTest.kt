@@ -426,6 +426,47 @@ class RouterDemoInstrumentedTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("note-count").assertTextEquals("Notes: 0")
 
+        // FORENSIC PROBE — a second NetworkCallback with the hook's exact
+        // request shape, registered pre-toggle from the SAME process, so a
+        // residual failure can say whether the callback CHANNEL was silent
+        // (two CI captures on 2026-08-04 showed poll-reads offline while no
+        // callback arrived for 45+ seconds — the reason the hook now carries
+        // a reconciliation floor) or delivered events the hook then ignored.
+        // Report-only: nothing asserts on it.
+        val probeStart = android.os.SystemClock.elapsedRealtime()
+        val probeEvents = java.util.Collections.synchronizedList(mutableListOf<String>())
+        fun stamp(e: String) {
+            probeEvents.add("$e@+${android.os.SystemClock.elapsedRealtime() - probeStart}ms")
+        }
+        val probeCm = instr.targetContext.applicationContext
+            .getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
+            as? android.net.ConnectivityManager
+        val probe = object : android.net.ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: android.net.Network) = stamp("onAvailable")
+            override fun onLost(network: android.net.Network) = stamp("onLost")
+            override fun onCapabilitiesChanged(
+                network: android.net.Network,
+                capabilities: android.net.NetworkCapabilities,
+            ) = stamp(
+                if (capabilities.hasCapability(
+                        android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED,
+                    )
+                ) {
+                    "onCaps(validated)"
+                } else {
+                    "onCaps(unvalidated)"
+                },
+            )
+        }
+        runCatching {
+            probeCm?.registerNetworkCallback(
+                android.net.NetworkRequest.Builder()
+                    .addCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    .build(),
+                probe,
+            )
+        }
+
         try {
             shell(instr, "svc wifi disable")
             shell(instr, "svc data disable")
@@ -532,6 +573,8 @@ class RouterDemoInstrumentedTest {
                     "useOnline() never reported false within 30s. " +
                         "App still showing \"Online: true\" on $shown node(s). " +
                         "DEVICE says: ${deviceNetworkState(instr)}. " +
+                        "CALLBACK PROBE (hook-shaped request, registered pre-toggle, " +
+                        "same process) received: ${probeEvents.toList()}. " +
                         "VERDICT: $verdict",
                     e,
                 )
@@ -542,6 +585,7 @@ class RouterDemoInstrumentedTest {
             composeRule.waitForIdle()
             composeRule.onNodeWithTag("note-count").assertTextEquals("Notes: 1")
         } finally {
+            runCatching { probeCm?.unregisterNetworkCallback(probe) }
             shell(instr, "settings put global airplane_mode_on 0")
             shell(instr, "am broadcast -a android.intent.action.AIRPLANE_MODE --ez state false")
             shell(instr, "svc wifi enable")

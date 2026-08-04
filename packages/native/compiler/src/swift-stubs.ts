@@ -258,6 +258,7 @@ extension View {
   // the same way: Kotlin accepted the identical source.
   public func scaledToFill() -> some View { self }
   public func onAppear(_ action: (() -> Void)? = nil) -> some View { self }
+  public func onDisappear(_ action: (() -> Void)? = nil) -> some View { self }
 }
 public enum ImageScale { case small, medium, large }
 
@@ -457,9 +458,15 @@ public struct PyreonPermissions {
 // so a plain class type-checks an @State PyreonNetworkStatus + net.isOnline
 // identically. useOnline() returns a web ACCESSOR read as net() — the emit
 // lowers that call to this net.isOnline Bool read.
+// start()/stop() joined the mirrored surface when the emit gained the
+// .onAppear/.onDisappear start/stop harness — the NWPathMonitor behind them
+// existed from inception with nothing calling it, so useOnline() on iOS was
+// frozen at true forever (2026-08-04).
 public final class PyreonNetworkStatus {
   public private(set) var isOnline: Bool
   public init(isOnline: Bool = true) { self.isOnline = isOnline }
+  public func start() {}
+  public func stop() {}
 }
 // PyreonAppState — mirror of @pyreon/native-runtime-swift's PyreonAppState.swift
 // surface the emit touches: the no-arg constructor + the phase String read
