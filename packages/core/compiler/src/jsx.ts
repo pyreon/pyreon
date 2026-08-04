@@ -1104,6 +1104,7 @@ export function transformJSX_JS(
   let needsSsrImport = false
   let needsSsrChildrenImport = false
   let needsSsrItemImport = false
+  let needsSsrNodeImport = false
   let needsSsrForKeyedImport = false
   let needsEscImport = false
   let needsSsrAttrImport = false
@@ -1435,7 +1436,7 @@ export function transformJSX_JS(
   // DOM `_tpl()` cloneNode path. Correctness rests entirely on the runtime
   // resolving each hole through the SAME `renderNode` the h() path uses.
   //
-  // Eligibility is CONSERVATIVE: `buildSsrCall` returns null (bail to h()) on ANY
+  // Eligibility is CONSERVATIVE: `buildSsrBuf` returns null (bail to h()) on ANY
   // shape it can't prove renders byte-identically. A false negative is fine; a
   // false positive is a hydration bug.
   //
@@ -1465,6 +1466,14 @@ export function transformJSX_JS(
      * see `buildSsrForItemBody`.
      */
     holeStr: boolean[]
+    /**
+     * Per-hole: a PRESERVED source range, or null for a generated-text hole.
+     *
+     * Non-null means "this hole's text is the child's own source, left where it
+     * is" — see `ssrEmitSourceHole`. The emitter then brackets the range with
+     * replacements instead of replacing across it.
+     */
+    holeSrc: ({ start: number; end: number; node: N } | null)[]
   }
 
   function ssrEmitStatic(buf: SsrBuf, s: string): void {
@@ -1473,6 +1482,50 @@ export function transformJSX_JS(
   function ssrEmitHole(buf: SsrBuf, exprText: string, provablyString = false): void {
     buf.holes.push(exprText)
     buf.holeStr.push(provablyString)
+    buf.holeSrc.push(null)
+    buf.statics.push('')
+  }
+  /**
+   * A hole whose text is the child's OWN source range, left in place.
+   *
+   * Component children cannot be serialized (their output is only known at
+   * runtime) and cannot be re-emitted as generated text either: building the
+   * `h()` call ourselves would mean duplicating the reactive-prop machinery
+   * (`_rp(() => …)` wrapping, hoisting, nested-JSX props) — a reimplementation,
+   * which is exactly how these two backends drift apart.
+   *
+   * So we do not generate the text at all. The element's source range is
+   * PRESERVED: `trySsrTemplateEmit` emits its replacements AROUND the range
+   * rather than one spanning it, and `walkNode` still visits the child so its
+   * props get their normal transformations in place. Replacements stay
+   * disjoint (MagicString's `update` throws on overlap), and the component
+   * keeps the one code path it already had.
+   *
+   * Recursed (top-level `_ssr`) mode ONLY — the `mapitem`/`foritem` bodies are
+   * built as generated text, so a preserved range has nowhere to live there.
+   */
+  /**
+   * Which component children may become preserved holes.
+   *
+   * Deliberately conservative on `key`: JSX extracts `key` specially (it is why
+   * `<For>` takes `by` and not `key`), so the two paths could disagree on
+   * whether it reaches props. Unverified, therefore bailed rather than guessed.
+   * Everything else is safe by construction — the source is preserved verbatim,
+   * so esbuild lowers it exactly as it would have on the h() path.
+   */
+  function ssrComponentChildEligible(el: N): boolean {
+    for (const a of jsxAttrs(el)) {
+      if (a.type === 'JSXAttribute' && a.name?.type === 'JSXIdentifier' && a.name.name === 'key') {
+        return false
+      }
+    }
+    return true
+  }
+
+  function ssrEmitSourceHole(buf: SsrBuf, el: N): void {
+    buf.holes.push('')
+    buf.holeStr.push(false)
+    buf.holeSrc.push({ start: el.start as number, end: el.end as number, node: el })
     buf.statics.push('')
   }
 
@@ -1830,7 +1883,7 @@ export function transformJSX_JS(
    * `_ssrForKeyed(E, B, (p) => <item _ssr>)` — the runtime helper produces the
    * SAME `<!--pyreon-for-->` / per-item `<!--k:KEY-->` / `<!--/pyreon-for-->`
    * bytes as `renderForItems`, and the item call is built by the SAME
-   * serializer (`buildSsrCall`, recursed mode so wrapped exprs keep their
+   * serializer (`buildSsrBuf`, recursed mode so wrapped exprs keep their
    * `<!--$-->` markers) that guarantees `_ssr(...)` ≡ `renderNode(<el>)`.
    * Conditions are EXACT — any other prop (`fallback`, spreads), a non-arrow
    * or block-bodied child, or an ineligible item element bails to h(), whose
@@ -1903,6 +1956,19 @@ export function transformJSX_JS(
     }
     if (child.type === 'JSXElement') {
       if (mode !== 'mapitem' && ssrTryForKeyed(buf, child)) return true
+      // A COMPONENT child becomes a preserved-source hole rather than a bail.
+      // Its output is only knowable at runtime, but that is what holes are for
+      // — and `_ssrNode` delegates to the SAME `renderNode` the h() path uses,
+      // so the bytes (including a sync child's absence of markers and an async
+      // child's `<!--$pas-->`/`<!--$pae-->` sentinels) are identical by
+      // construction rather than by re-derivation.
+      const childTag = jsxTagName(child)
+      if (mode === 'recursed' && childTag && !isLowerCase(childTag)) {
+        if (!ssrComponentChildEligible(child)) return false
+        ssrEmitSourceHole(buf, child)
+        needsSsrNodeImport = true
+        return true
+      }
       return ssrSerializeElement(buf, child, mode)
     }
     if (child.type === 'JSXExpressionContainer') return ssrSerializeExprChild(buf, child, mode)
@@ -1959,20 +2025,41 @@ export function transformJSX_JS(
   /** Build the `_ssr([...statics], ...holes)` call text, or null to bail. A
    * `.map` ITEM (mapitem mode) uses `_ssrItem` — a plain-string variant that
    * `_ssrChildren` concatenates without a per-item `RawHtml` wrap. */
-  function buildSsrCall(el: N, mode: SsrMode): string | null {
-    const buf = buildSsrBuf(el, mode)
-    if (buf === null) return null
-    return ssrCallText(buf, mode)
-  }
-
   function buildSsrBuf(el: N, mode: SsrMode): SsrBuf | null {
-    const buf: SsrBuf = { statics: [''], holes: [], holeStr: [] }
+    const buf: SsrBuf = { statics: [''], holes: [], holeStr: [], holeSrc: [] }
     if (!ssrSerializeElement(buf, el, mode)) return null
     return buf
   }
 
+  /**
+   * One static HTML run as a JS string literal for the emitted module.
+   *
+   * `JSON.stringify` alone cannot break OUT of the literal — it escapes `"`,
+   * `\` and every control character — so the emitted code is well-formed for
+   * any static. Two things it does NOT escape are worth handling anyway:
+   *
+   *   - `</script`. Harmless in a `.js` module, but these statics are baked
+   *     HTML, so a user's own `<script>` element puts a literal `</script` in
+   *     the string — and if a bundler ever INLINES the chunk into an HTML
+   *     `<script>` block, the HTML tokenizer ends the element there. Escaping
+   *     the slash is invisible to JS (`"<\/script"` === `"</script"`) and is
+   *     the same defence `stringifyLoaderData` already applies to SSR data.
+   *   - U+2028 / U+2029. Legal inside a string literal since ES2019, but still
+   *     mishandled by some downstream tooling, and free to escape.
+   *
+   * Shared by every statics-literal site so there is ONE escaping contract
+   * rather than four copies of `JSON.stringify` drifting apart — the Rust
+   * backend mirrors this exactly (`ssr_static_lit`).
+   */
+  function ssrStaticLit(s: string): string {
+    return JSON.stringify(s)
+      .replace(/<\/(script)/gi, '<\\/$1')
+      .replace(/\u2028/g, '\\u2028')
+      .replace(/\u2029/g, '\\u2029')
+  }
+
   function ssrCallText(buf: SsrBuf, mode: SsrMode): string {
-    const staticsArr = buf.statics.map((s) => JSON.stringify(s)).join(', ')
+    const staticsArr = buf.statics.map(ssrStaticLit).join(', ')
     const holesArr = buf.holes.length > 0 ? `, ${buf.holes.join(', ')}` : ''
     const fn = mode === 'recursed' ? '_ssr' : '_ssrItem'
     if (fn === '_ssrItem') needsSsrItemImport = true
@@ -2012,7 +2099,7 @@ export function transformJSX_JS(
     const temps = buf.holes.map((h, i) => `_h${i} = ${h}`).join(', ')
     const parts: string[] = []
     for (let i = 0; i < buf.statics.length; i++) {
-      if (buf.statics[i] !== '') parts.push(JSON.stringify(buf.statics[i]))
+      if (buf.statics[i] !== '') parts.push(ssrStaticLit(buf.statics[i]!))
       if (i < buf.holes.length) parts.push(`_h${i}`)
     }
     const concat = parts.length > 0 ? parts.join(' + ') : '""'
@@ -2020,7 +2107,7 @@ export function transformJSX_JS(
       .map((_, i) => (buf.holeStr[i] ? null : `typeof _h${i} === "string"`))
       .filter((g): g is string => g !== null)
     const fallbackHoles = buf.holes.map((_, i) => `_h${i}`).join(', ')
-    const staticsArr = buf.statics.map((s) => JSON.stringify(s)).join(', ')
+    const staticsArr = buf.statics.map(ssrStaticLit).join(', ')
     const fallback = `_ssrItem([${staticsArr}], ${fallbackHoles})`
     // Every hole provably string → no guard, no fallback branch needed.
     const body =
@@ -2043,13 +2130,78 @@ export function transformJSX_JS(
     // forms correctly (void → `<img …  />`, non-void → `<div …></div>`), so the
     // only thing that kept `<Icon> = () => <img …/>`, `<Divider> = () => <hr/>`
     // and `<Input> = () => <input …/>` on the slow h() path was this gate.
-    const call = buildSsrCall(node, 'recursed')
-    if (call === null) return false
+    const buf = buildSsrBuf(node, 'recursed')
+    if (buf === null) return false
     const start = node.start as number
     const end = node.end as number
     const parent = findParent(node)
     const needsBraces = parent && (parent.type === 'JSXElement' || parent.type === 'JSXFragment')
-    replacements.push({ start, end, text: needsBraces ? `{${call}}` : call })
+
+    const preserved = buf.holeSrc.filter((h): h is NonNullable<(typeof buf.holeSrc)[number]> => h !== null)
+    if (preserved.length === 0) {
+      const call = ssrCallText(buf, 'recursed')
+      replacements.push({ start, end, text: needsBraces ? `{${call}}` : call })
+      needsSsrImport = true
+      return true
+    }
+
+    // ── Bracketing emission (component children are PRESERVED source) ────────
+    //
+    // One replacement spanning the element would sit ON TOP of the child's own
+    // range, and replacements must be DISJOINT (MagicString's `update` throws
+    // on overlap). So emit the surrounding text as separate edits and leave
+    // each child's range alone; `walkNode` below then transforms it in place
+    // exactly as it would have on the h() path.
+    //
+    // Holes appear in document order, so `preserved` is ascending by `start`
+    // and the segments below tile the element left-to-right without overlap.
+    //
+    // The whole call is wrapped in `_ssrDeferred(() => …)`. A hole is an
+    // ordinary argument, so it is evaluated at the CALL SITE — fine for a hole
+    // that reads a value (h() reads it there too), fatal for one that RENDERS a
+    // component, because rendering pushes context and h() defers it. Wrapping
+    // the CALL rather than the hole is what makes it composable: a nested
+    // `_ssr` collapses into this same call, so one thunk covers the subtree and
+    // nothing has to propagate laziness through the runtime's concat helpers.
+    // See `DeferredHtml` in runtime-server for the 26-spec failure this avoids.
+    const staticsArr = buf.statics.map(ssrStaticLit).join(', ')
+    let hole = 0
+    /** Emit `, <generated hole>` for every hole up to (not including) `stop`. */
+    const generatedUpTo = (stop: number): string => {
+      let out = ''
+      for (; hole < stop; hole++) {
+        if (buf.holeSrc[hole] === null) out += `, ${buf.holes[hole]}`
+      }
+      return out
+    }
+    const indexOfHole = (h: (typeof preserved)[number]): number => buf.holeSrc.indexOf(h)
+
+    const firstIdx = indexOfHole(preserved[0]!)
+    let prefix = `_ssrDeferred(() => _ssr([${staticsArr}]${generatedUpTo(firstIdx)}, _ssrNode(`
+    if (needsBraces) prefix = `{${prefix}`
+    replacements.push({ start, end: preserved[0]!.start, text: prefix })
+    hole = firstIdx + 1
+
+    for (let k = 1; k < preserved.length; k++) {
+      const idx = indexOfHole(preserved[k]!)
+      replacements.push({
+        start: preserved[k - 1]!.end,
+        end: preserved[k]!.start,
+        text: `)${generatedUpTo(idx)}, _ssrNode(`,
+      })
+      hole = idx + 1
+    }
+
+    // Two closers for the call + one for the `_ssrDeferred(() => …)` wrap.
+    let suffix = `)${generatedUpTo(buf.holes.length)}))`
+    if (needsBraces) suffix = `${suffix}}`
+    replacements.push({ start: preserved[preserved.length - 1]!.end, end, text: suffix })
+
+    // The preserved subtrees are NOT covered by any replacement above, so they
+    // still need their normal visit — reactive props, nested templates, signal
+    // auto-call. This is the whole point of preserving rather than re-emitting.
+    for (const p of preserved) walkNode(p.node)
+
     needsSsrImport = true
     return true
   }
@@ -3126,6 +3278,7 @@ export function transformJSX_JS(
     const ssrImports = ['_ssr']
     if (needsSsrChildrenImport) ssrImports.push('_ssrChildren')
     if (needsSsrItemImport) ssrImports.push('_ssrItem')
+    if (needsSsrNodeImport) ssrImports.push('_ssrNode', '_ssrDeferred')
     if (needsSsrForKeyedImport) ssrImports.push('_ssrForKeyed')
     if (needsEscImport) ssrImports.push('_esc')
     if (needsSsrAttrImport) ssrImports.push('_ssrAttr')

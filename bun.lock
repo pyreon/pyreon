@@ -1150,6 +1150,7 @@
         "@pyreon/rocketstyle": "workspace:*",
         "@pyreon/router": "workspace:*",
         "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/runtime-server": "workspace:*",
         "@pyreon/styler": "workspace:*",
         "@pyreon/ui-components": "workspace:*",
         "@pyreon/ui-core": "workspace:*",

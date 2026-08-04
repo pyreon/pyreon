@@ -9,17 +9,20 @@
  * `<!--$-->` markers) and the hand-written h() oracle, and asserts equality.
  */
 import type { ComponentFn, VNode } from '@pyreon/core'
-import { h } from '@pyreon/core'
+import { createContext, h, provide, useContext } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 // eslint-disable-next-line import/no-unresolved
 import {
   _esc,
   _ssr,
   _ssrAttr,
+  _ssrDeferred,
+  _ssrNode,
   _ssrAttrGen,
   _ssrAttrUrl,
   _ssrChildren,
   _ssrItem,
+  renderToStream,
   renderToString,
 } from '../index'
 
@@ -233,5 +236,52 @@ describe('_ssr composes through a component boundary', () => {
     const slow = await renderToString(h('main', null, h('article', { class: 'c' }, 'hi & bye')))
     expect(fast).toBe(slow)
     expect(fast).toBe('<main><article class="c">hi &amp; bye</article></main>')
+  })
+})
+
+// ─── `_ssrDeferred` — the component-hole deferral, on BOTH render paths ───────
+//
+// The string path is covered end-to-end by runtime-dom's
+// `ssr-template-differential.test.tsx` (which compiles real source). What that
+// file cannot reach is `streamNode`: the stream renderer has its OWN node
+// dispatch, so a branch added to `renderNode` alone would leave streaming SSR
+// emitting `[object Object]` — a divergence between the two renderers, which is
+// exactly the pair this repo keeps getting bitten by. These assert both.
+describe('_ssrDeferred — deferred component holes render on both paths', () => {
+  const Theme = createContext<string>('DEFAULT')
+  const Consumer: ComponentFn = () => h('i', null, useContext(Theme))
+  /** What the compiler emits for `<div class="p"><Consumer /></div>`. */
+  const deferred = () => _ssrDeferred(() => _ssr(['<div class="p">', '</div>'], _ssrNode(h(Consumer, null))) as never)
+  const Provider: ComponentFn = (p: { children?: unknown }) => {
+    provide(Theme, 'PROVIDED')
+    return h('main', null, p.children as never)
+  }
+
+  it('renderToString resolves the thunk inside the provider', async () => {
+    const html = await renderToString(h(Provider, null, deferred() as never))
+    expect(html).toBe('<main><div class="p"><i>PROVIDED</i></div></main>')
+  })
+
+  it('renderToStream resolves it identically — no [object Object]', async () => {
+    const stream = renderToStream(h(Provider, null, deferred() as never))
+    // The stream enqueues STRINGS (not bytes) — see `streamNode`'s `enqueue`.
+    const reader = (stream as ReadableStream<string>).getReader()
+    let out = ''
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      out += typeof value === 'string' ? value : new TextDecoder().decode(value)
+    }
+    expect(out).not.toContain('[object Object]')
+    expect(out).toContain('<div class="p"><i>PROVIDED</i></div>')
+  })
+
+  it('an ASYNC component hole still resolves through the deferral', async () => {
+    const Slow = (async () => h('em', null, 'late')) as unknown as ComponentFn
+    const node = _ssrDeferred(
+      () => _ssr(['<main>', '</main>'], _ssrNode(h(Slow, null))) as never,
+    )
+    const html = await renderToString(node as never)
+    expect(html).toContain('late')
   })
 })

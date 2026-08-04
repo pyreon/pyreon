@@ -1202,7 +1202,9 @@ describeNative('SSR compile-to-string fast path (ssrTemplate) parity', () => {
   // that h() output byte-for-byte (they already did — this locks it under the flag).
   const bails: [string, string][] = [
     ['spread attribute', `const N = <div {...props}>y</div>`],
-    ['component child', `const N = <div><Widget /></div>`],
+    // 'component child' moved OUT: it is now ELIGIBLE (a preserved-source
+    // `_ssrNode` hole), so it is no longer an h()-fallback case. Both backends
+    // must still agree on the bracketing emit — asserted below.
     // `<img src="/a.png" />` moved OUT of this list: a root self-closing
     // element is now ELIGIBLE, so it is no longer an h()-fallback case. Both
     // backends must still agree on the `_ssr(...)` they emit for it — that is
@@ -1239,6 +1241,28 @@ describeNative('SSR compile-to-string fast path (ssrTemplate) parity', () => {
   ]
   for (const [name, src] of selfClosingRoots) {
     test(`self-closing eligible agrees: ${name}`, () => compareSsrTemplate(src))
+  }
+
+  // Component children are the first eligibility widening whose emit is
+  // BRACKETING — several disjoint replacements around a preserved range,
+  // rather than one spanning edit. Segment boundaries, argument order and the
+  // `_ssrNode` import must all agree between backends, and the JS-only state
+  // would ship nothing (native is what ~80% of users compile with).
+  const componentChildren: [string, string][] = [
+    ['only child is a component', `const N = <main class="m"><Widget /></main>`],
+    ['component with a dynamic prop', `const Page = (p) => <main class="m"><Widget id={p.id} /></main>`],
+    ['component between static siblings', `const N = <div><header>H</header><Widget /><footer>F</footer></div>`],
+    ['two component children', `const N = <div><A /><B /></div>`],
+    ['component adjacent to a text hole', `const N = <div><Widget />{t}</div>`],
+    ['component receiving children', `const N = <main><Widget>inner</Widget></main>`],
+    ['nested templatable subtree inside the preserved child', `const Page = (p) => <main><Widget><span class="x">{p.t}</span></Widget></main>`],
+    ['component child carrying key still bails', `const N = <div><Widget key="k" /></div>`],
+    // The two backends reached statics quoting through two separately-written
+    // functions until they were unified — exactly how an emit divergence starts.
+    ['`</script` sanitization in statics', `const N = <div class="d"><script>{s}</script><Widget /></div>`],
+  ]
+  for (const [name, src] of componentChildren) {
+    test(`component-child agrees: ${name}`, () => compareSsrTemplate(src))
   }
 })
 

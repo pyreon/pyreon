@@ -237,6 +237,43 @@ fn escape_html_attr(s: &str) -> String {
 /// bind line independent of the JSX quote style — today only the
 /// `<select value="…">` deferred property set (PZ-09). The
 /// native-equivalence suite is the parity oracle.
+
+/// One static HTML run as a JS string literal for the emitted module.
+///
+/// Mirrors `ssrStaticLit` in `jsx.ts` EXACTLY — see the doc comment there for
+/// why `</script` and U+2028/U+2029 are escaped on top of ordinary JS string
+/// quoting. Both backends must agree byte-for-byte, so this is deliberately a
+/// thin wrapper over the SAME `escape_js_string` the other statics sites use
+/// rather than a second quoting implementation.
+fn ssr_static_lit(s: &str) -> String {
+    let quoted = escape_js_string(s);
+    let mut out = String::with_capacity(quoted.len());
+    let mut rest = quoted.as_str();
+    loop {
+        match rest.find("</") {
+            Some(idx) => {
+                let after = &rest[idx + 2..];
+                out.push_str(&rest[..idx]);
+                if after
+                    .get(..6)
+                    .map_or(false, |p| p.eq_ignore_ascii_case("script"))
+                {
+                    out.push_str("<\\/");
+                } else {
+                    out.push_str("</");
+                }
+                rest = after;
+            }
+            None => {
+                out.push_str(rest);
+                break;
+            }
+        }
+    }
+    out.replace('\u{2028}', "\\u2028")
+        .replace('\u{2029}', "\\u2029")
+}
+
 fn escape_js_string(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');
@@ -480,6 +517,7 @@ struct Ctx<'a> {
     needs_ssr_import: bool,
     needs_ssr_children_import: bool,
     needs_ssr_item_import: bool,
+    needs_ssr_node_import: bool,
     needs_ssr_for_keyed_import: bool,
     needs_esc_import: bool,
     needs_ssr_attr_import: bool,
@@ -615,6 +653,7 @@ impl<'a> Ctx<'a> {
             needs_ssr_import: false,
             needs_ssr_children_import: false,
             needs_ssr_item_import: false,
+            needs_ssr_node_import: false,
             needs_ssr_for_keyed_import: false,
             needs_esc_import: false,
             needs_ssr_attr_import: false,
@@ -812,6 +851,10 @@ impl<'a> Ctx<'a> {
             }
             if self.needs_ssr_item_import {
                 ssr_imports.push("_ssrItem");
+            }
+            if self.needs_ssr_node_import {
+                ssr_imports.push("_ssrNode");
+                ssr_imports.push("_ssrDeferred");
             }
             if self.needs_ssr_for_keyed_import {
                 ssr_imports.push("_ssrForKeyed");
@@ -4713,6 +4756,16 @@ struct SsrBuf {
     /// those need a `typeof === 'string'` guard — see `build_ssr_for_item_body`.
     /// Mirrors the JS backend's `SsrBuf.holeStr` exactly.
     hole_str: Vec<bool>,
+    /// Per-hole: a PRESERVED source SPAN, or `None` for a generated-text hole.
+    ///
+    /// A COMPONENT child cannot be serialized (its output is runtime-only) and
+    /// must not be re-emitted as generated text either — building the `h()`
+    /// call here would duplicate the reactive-prop machinery and is exactly how
+    /// the two backends drift. Instead the child's source range is PRESERVED:
+    /// `try_ssr_template_emit` brackets it with replacements and re-walks it so
+    /// its props transform in place. Spans (not node refs) are stored so
+    /// `SsrBuf` needs no lifetime parameter. Mirrors the JS `SsrBuf.holeSrc`.
+    hole_src: Vec<Option<(u32, u32)>>,
 }
 
 impl SsrBuf {
@@ -4721,6 +4774,7 @@ impl SsrBuf {
             statics: vec![String::new()],
             holes: Vec::new(),
             hole_str: Vec::new(),
+            hole_src: Vec::new(),
         }
     }
     fn emit_static(&mut self, s: &str) {
@@ -4736,6 +4790,15 @@ impl SsrBuf {
     fn emit_hole_kind(&mut self, expr_text: String, provably_string: bool) {
         self.holes.push(expr_text);
         self.hole_str.push(provably_string);
+        self.hole_src.push(None);
+        self.statics.push(String::new());
+    }
+    /// A hole whose text is the child's OWN source range, left in place.
+    /// Mirrors the JS `ssrEmitSourceHole`.
+    fn emit_source_hole(&mut self, start: u32, end: u32) {
+        self.holes.push(String::new());
+        self.hole_str.push(false);
+        self.hole_src.push(Some((start, end)));
         self.statics.push(String::new());
     }
 }
@@ -5386,6 +5449,27 @@ fn ssr_try_for_keyed(buf: &mut SsrBuf, el: &JSXElement, ctx: &mut Ctx) -> bool {
     true
 }
 
+/// Which component children may become preserved holes.
+///
+/// Conservative on `key`: JSX extracts `key` specially (it is why `<For>` takes
+/// `by`), so the two paths could disagree on whether it reaches props.
+/// Unverified, therefore bailed rather than guessed. Everything else is safe by
+/// construction — the source is preserved verbatim, so the downstream JSX
+/// transform lowers it exactly as it would have on the h() path.
+/// Mirrors the JS `ssrComponentChildEligible`.
+fn ssr_component_child_eligible(el: &JSXElement) -> bool {
+    for attr in &el.opening_element.attributes {
+        if let JSXAttributeItem::Attribute(a) = attr {
+            if let JSXAttributeName::Identifier(name) = &a.name {
+                if name.name.as_str() == "key" {
+                    return false;
+                }
+            }
+        }
+    }
+    true
+}
+
 fn ssr_serialize_child(buf: &mut SsrBuf, child: &JSXChild, mode: SsrMode, ctx: &mut Ctx) -> bool {
     match child {
         JSXChild::Text(t) => {
@@ -5401,6 +5485,22 @@ fn ssr_serialize_child(buf: &mut SsrBuf, child: &JSXChild, mode: SsrMode, ctx: &
         }
         JSXChild::Element(el) => {
             if mode != SsrMode::MapItem && ssr_try_for_keyed(buf, el, ctx) {
+                return true;
+            }
+            // A COMPONENT child becomes a PRESERVED-SOURCE hole rather than a
+            // bail. `_ssrNode` delegates to the same `renderNode` the h() path
+            // uses, so the bytes — a sync child's absence of markers, an async
+            // child's `<!--$pas-->`/`<!--$pae-->` sentinels — are identical by
+            // construction. Recursed (top-level `_ssr`) mode ONLY: the
+            // mapitem/foritem bodies are built as generated text, so a
+            // preserved range has nowhere to live there. Mirrors the JS backend.
+            let child_tag = jsx_tag_name(el);
+            if mode == SsrMode::Recursed && !child_tag.is_empty() && !is_lower_case(child_tag) {
+                if !ssr_component_child_eligible(el) {
+                    return false;
+                }
+                buf.emit_source_hole(el.span().start, el.span().end);
+                ctx.needs_ssr_node_import = true;
                 return true;
             }
             ssr_serialize_element(buf, el, mode, ctx)
@@ -5489,7 +5589,7 @@ fn ssr_call_text(buf: &SsrBuf, mode: SsrMode, ctx: &mut Ctx) -> String {
     let statics_arr = buf
         .statics
         .iter()
-        .map(|s| escape_js_string(s))
+        .map(|s| ssr_static_lit(s))
         .collect::<Vec<_>>()
         .join(", ");
     let holes_arr = if buf.holes.is_empty() {
@@ -5538,7 +5638,7 @@ fn build_ssr_for_item_body(buf: &SsrBuf, param_text: &str, ctx: &mut Ctx) -> Opt
     let mut parts: Vec<String> = Vec::new();
     for (i, st) in buf.statics.iter().enumerate() {
         if !st.is_empty() {
-            parts.push(escape_js_string(st));
+            parts.push(ssr_static_lit(st));
         }
         if i < buf.holes.len() {
             parts.push(format!("_h{}", i));
@@ -5566,7 +5666,7 @@ fn build_ssr_for_item_body(buf: &SsrBuf, param_text: &str, ctx: &mut Ctx) -> Opt
         let statics_arr = buf
             .statics
             .iter()
-            .map(|s| escape_js_string(s))
+            .map(|s| ssr_static_lit(s))
             .collect::<Vec<_>>()
             .join(", ");
         ctx.needs_ssr_item_import = true;
@@ -5609,12 +5709,35 @@ fn is_ident_char(c: u8) -> bool {
 
 /// Emit a `_ssr(...)` replacement for an eligible element, or bail. Mirrors JS
 /// `trySsrTemplateEmit`.
+/// Find the descendant `JSXElement` occupying exactly `(start, end)`.
+///
+/// Preserved component-child holes are recorded as SPANS (so `SsrBuf` needs no
+/// lifetime parameter); this maps a span back to its node so it can be walked.
+/// Depth is a template subtree, so the linear scan is trivially small.
+fn find_jsx_element_by_span<'a>(
+    el: &'a JSXElement<'a>,
+    start: u32,
+    end: u32,
+) -> Option<&'a JSXElement<'a>> {
+    if el.span().start == start && el.span().end == end {
+        return Some(el);
+    }
+    for child in &el.children {
+        if let JSXChild::Element(c) = child {
+            if let Some(found) = find_jsx_element_by_span(c, start, end) {
+                return Some(found);
+            }
+        }
+    }
+    None
+}
+
 fn try_ssr_template_emit(el: &JSXElement, ctx: &mut Ctx) -> bool {
     // Self-closing roots are eligible — `ssr_serialize_element` already emits
     // both forms (void → `<img … />`, non-void → `<div …></div>`). Mirrors the
     // JS backend; byte-identity is locked by `ssr-template-differential`.
-    let call = match build_ssr_call(el, SsrMode::Recursed, ctx) {
-        Some(s) => s,
+    let buf = match build_ssr_buf(el, SsrMode::Recursed, ctx) {
+        Some(b) => b,
         None => return false,
     };
     let start = el.span().start;
@@ -5623,12 +5746,90 @@ fn try_ssr_template_emit(el: &JSXElement, ctx: &mut Ctx) -> bool {
     // (set by the parent's children walk — same source-order boundary the
     // template path's `needs_braces` already relies on).
     let needs_braces = ctx.parent_is_jsx;
-    let text = if needs_braces {
-        format!("{{{}}}", call)
-    } else {
-        call
+
+    let preserved: Vec<(usize, (u32, u32))> = buf
+        .hole_src
+        .iter()
+        .enumerate()
+        .filter_map(|(i, o)| o.map(|sp| (i, sp)))
+        .collect();
+
+    if preserved.is_empty() {
+        let call = ssr_call_text(&buf, SsrMode::Recursed, ctx);
+        let text = if needs_braces {
+            format!("{{{}}}", call)
+        } else {
+            call
+        };
+        ctx.add_replacement(start, end, text);
+        ctx.needs_ssr_import = true;
+        return true;
+    }
+
+    // ── Bracketing emission (component children are PRESERVED source) ───────
+    //
+    // One replacement spanning the element would sit ON TOP of each child's own
+    // range, and replacements must be DISJOINT. So emit the surrounding text as
+    // separate edits and leave each child's range alone; the recursive
+    // `handle_jsx_element` calls below then transform them in place exactly as
+    // on the h() path. Holes are produced in document order, so `preserved` is
+    // ascending by start and the segments tile left-to-right without overlap.
+    // Mirrors the JS backend's `trySsrTemplateEmit`.
+    let statics_arr: Vec<String> = buf.statics.iter().map(|s| ssr_static_lit(s)).collect();
+    let statics_arr = statics_arr.join(", ");
+    let mut hole = 0usize;
+    let generated_up_to = |stop: usize, hole: &mut usize, buf: &SsrBuf| -> String {
+        let mut out = String::new();
+        while *hole < stop {
+            if buf.hole_src[*hole].is_none() {
+                out.push_str(", ");
+                out.push_str(&buf.holes[*hole]);
+            }
+            *hole += 1;
+        }
+        out
     };
-    ctx.add_replacement(start, end, text);
+
+    let (first_idx, first_span) = preserved[0];
+    // The whole call is wrapped in `_ssrDeferred(() => …)` — a hole is an
+    // ordinary argument evaluated at the CALL SITE, which is wrong for a hole
+    // that RENDERS a component (rendering pushes context; h() defers it).
+    // Wrapping the CALL rather than the hole also makes it composable: a nested
+    // `_ssr` collapses into this same call. Mirrors the JS backend exactly.
+    let mut prefix = format!(
+        "_ssrDeferred(() => _ssr([{}]{}, _ssrNode(",
+        statics_arr,
+        generated_up_to(first_idx, &mut hole, &buf)
+    );
+    if needs_braces {
+        prefix = format!("{{{}", prefix);
+    }
+    ctx.add_replacement(start, first_span.0, prefix);
+    hole = first_idx + 1;
+
+    for k in 1..preserved.len() {
+        let (idx, span) = preserved[k];
+        let between = format!("){}, _ssrNode(", generated_up_to(idx, &mut hole, &buf));
+        ctx.add_replacement(preserved[k - 1].1 .1, span.0, between);
+        hole = idx + 1;
+    }
+
+    // Two closers for the call + one for the `_ssrDeferred(() => …)` wrap.
+    let mut suffix = format!("){}))", generated_up_to(buf.holes.len(), &mut hole, &buf));
+    if needs_braces {
+        suffix = format!("{}}}", suffix);
+    }
+    ctx.add_replacement(preserved[preserved.len() - 1].1 .1, end, suffix);
+
+    // The preserved subtrees are NOT covered by any replacement above, so they
+    // still need their normal visit — reactive props, nested templates, signal
+    // auto-call. This is the whole point of preserving rather than re-emitting.
+    for (_, (ps, pe)) in &preserved {
+        if let Some(child) = find_jsx_element_by_span(el, *ps, *pe) {
+            handle_jsx_element(child, ctx);
+        }
+    }
+
     ctx.needs_ssr_import = true;
     true
 }
