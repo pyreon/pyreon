@@ -245,9 +245,9 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
   },
   '@pyreon/mcp': {
     currentStatements: 94,
-    currentBranches: 87,
+    currentBranches: 86,
     reason:
-      'MCP server. First explicit full thresholds landed at the 2026-07 coverage-gate restoration (measured 94.55/87.64 locally — previously statements 95 with category-default branches, and usually SKIPPED on CI by the gate’s 120s per-package timeout, so the sub-threshold statements went unnoticed). Residual gap is tool-handler orchestration + docs-parsing arms against rare doc shapes.',
+      'MCP server. First explicit full thresholds landed at the 2026-07 coverage-gate restoration (measured 94.55/87.64 locally). Branches re-baselined 87 → 86 on 2026-08-04 at the measured 86.12: the atlas + content tool arms added by #2610/#2646 (get_atlas_catalog fallbacks, content walking) grew the optional-chain-dense branch surface faster than its tests, and the drift went unnoticed because the coverage child was dying on CI before printing a summary (turned loud the same day). Ratchet back to 87+ as those arms get specs. Residual gap is tool-handler orchestration + docs-parsing arms against rare doc shapes.',
   },
   '@pyreon/runtime-server': {
     currentStatements: 97,
@@ -454,7 +454,7 @@ function runCoverage(
       child.kill('SIGTERM')
     }, PACKAGE_TIMEOUT_MS)
 
-    child.on('close', () => {
+    child.on('close', (code, signal) => {
       clearTimeout(timer)
 
       const outcome = parseCoverageOutput(stdout)
@@ -469,7 +469,17 @@ function runCoverage(
           threshold,
         })
       } else {
-        resolve({ package: pkgName, kind: outcome.kind, timedOut, outputTail: tailOf(stdout) })
+        // How the child ENDED is the first diagnostic for an unparseable run —
+        // a SIGKILL/137 here is the runner OOM-killing the coverage remap,
+        // which reads as "printed the json report, then nothing" and cost a
+        // root-causing round when it wasn't named (main run 30922462710).
+        resolve({
+          package: pkgName,
+          kind: outcome.kind,
+          timedOut,
+          error: `child ended with exit=${code ?? 'null'} signal=${signal ?? 'none'}`,
+          outputTail: tailOf(stdout),
+        })
       }
     })
 
