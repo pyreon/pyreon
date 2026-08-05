@@ -334,8 +334,13 @@ of them retained a node.
 Components are grouped until a group holds ~256 scenarios, and each group gets
 one sweep — so the run costs a handful of collections rather than thousands, and
 scan time is dominated by discovery and mounting rather than by GC. Measured on
-a 108-component, 1090-scenario design system: 40.8s before, ~2s after, with the
-collection count falling from 2767 to 8.
+a 108-component, 1090-scenario design system, the collection count fell from
+2767 to 8 and the scan from ~41s to ~2s.
+
+Take the collection count as the real figure: it is the same on any machine. The
+wall-clock ratio is not — the old path was GC-dominated and so degrades much
+faster under load than the new one, which makes the speedup look better the
+busier the box is (20x to 51x observed). 20x is the conservative end.
 
 The group is also the unit that falls back, which is why it is bounded rather
 than "the whole catalog": one leaking component sends its own group down the

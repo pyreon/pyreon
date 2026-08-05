@@ -2,7 +2,7 @@
 '@pyreon/atlas': patch
 ---
 
-`atlas scan` ~40x faster — the leak check was paying a full GC per scenario
+`atlas scan` ~20x faster — the leak check was paying a full GC per scenario
 
 A scan of a variant-heavy design system (108 components, 1090 scenarios) took
 41s, and 98.3% of it was one plugin hook. Two hypotheses about which part died
@@ -15,9 +15,16 @@ A forced collection is now charged for a GROUP OF COMPONENTS, not for each
 scenario. One sweep answers the question for all of them, because a reactive
 graph that returns to its baseline after every scenario in the group has been
 mounted and disposed proves that none of them retained a node. Components are
-grouped until a group holds ~256 scenarios: 2767 collections become 8, and the
-scan goes from 40.8s to ~2s (medians of interleaved runs on an idle machine).
-`atlas build` benefits identically.
+grouped until a group holds ~256 scenarios: **2767 collections become 8**, and a
+108-component / 1090-scenario scan goes from ~41s to ~2s. `atlas build` benefits
+identically.
+
+The collection count is the honest headline, because it does not move with the
+machine. The wall-clock ratio does, a lot, and always in the flattering
+direction: the old path is GC-dominated and therefore far more sensitive to load
+than the new one, so interleaved runs measured anywhere from 20x to 51x
+depending on what else the box was doing. ~20x is the conservative end and the
+number worth quoting.
 
 The bound costs nothing measurable — grouped and ungrouped medians are within
 noise of each other — and buys two things: peak memory that stays knowable at
