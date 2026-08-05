@@ -3,8 +3,11 @@ import { signal } from '@pyreon/reactivity'
 import { rx } from '@pyreon/rx'
 import {
   type ColumnDef,
-  getCoreRowModel,
-  getSortedRowModel,
+  createSortedRowModel,
+  rowSortingFeature,
+  sortFn_alphanumeric,
+  sortFn_text,
+  tableFeatures,
   useTable,
 } from '@pyreon/table'
 import { toast } from '@pyreon/toast'
@@ -69,6 +72,24 @@ interface ColumnSpec {
  * defs free of JSX (which the Pyreon compiler can't always inline
  * cleanly when JSX lives inside an object literal inside an array).
  */
+/**
+ * v9 requires every non-core capability to be registered explicitly. This table
+ * uses TanStack purely as a sort state machine, so sorting is the whole set —
+ * no filtered/paginated row models (search and paging are done by the @pyreon/rx
+ * pipeline and a local `pageIndex` signal below), and no column visibility.
+ *
+ * `sortFns` carries what `sortFn: 'auto'` resolves for the sortable STRING
+ * columns (`id`, `customer`, `category`, `createdAt`); the numeric `items` and
+ * `total` fall back to the built-in basic comparator with nothing registered.
+ *
+ * Defined at module level so it is a stable reference across renders.
+ */
+const features = tableFeatures({
+  rowSortingFeature,
+  sortedRowModel: createSortedRowModel(),
+  sortFns: { alphanumeric: sortFn_alphanumeric, text: sortFn_text },
+})
+
 const COLUMNS: ColumnSpec[] = [
   { id: 'id', label: 'Order', sortable: true },
   { id: 'customer', label: 'Customer', sortable: true },
@@ -157,22 +178,23 @@ export function OrdersTable() {
 
   // Plain TanStack column defs — only used to drive the sort state.
   // No `cell` render functions; cells are rendered inline below.
-  const tableColumns: ColumnDef<Order>[] = COLUMNS.filter((c) => c.id !== 'actions').map((c) => ({
+  const tableColumns: ColumnDef<typeof features, Order>[] = COLUMNS.filter(
+    (c) => c.id !== 'actions',
+  ).map((c) => ({
     accessorKey: c.id as keyof Order,
     enableSorting: c.sortable,
   }))
 
   // ── Reactive TanStack Table instance — used purely for sort state ──
-  const table = useTable<Order>(() => ({
+  const table = useTable(() => ({
+    features,
     data: filtered(),
     columns: tableColumns,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
   }))
 
   // Sorted + paginated rows for the current page.
   const visibleRows = (): Order[] => {
-    const sorted = table().getSortedRowModel().rows.map((row) => row.original)
+    const sorted = table.getSortedRowModel().rows.map((row) => row.original)
     const start = pageIndex() * PAGE_SIZE
     return sorted.slice(start, start + PAGE_SIZE)
   }
@@ -184,12 +206,12 @@ export function OrdersTable() {
   }
 
   function toggleSort(columnId: string) {
-    const column = table().getColumn(columnId)
+    const column = table.getColumn(columnId)
     if (column?.getCanSort()) column.toggleSorting()
   }
 
   function sortIndicator(columnId: string): string {
-    const dir = table().getColumn(columnId)?.getIsSorted()
+    const dir = table.getColumn(columnId)?.getIsSorted()
     return dir === 'asc' ? ' ↑' : dir === 'desc' ? ' ↓' : ''
   }
 

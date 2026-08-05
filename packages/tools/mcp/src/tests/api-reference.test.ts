@@ -565,8 +565,14 @@ describe('api-reference', () => {
     it.each(['table/useTable', 'table/flexRender'])('exposes %s', (key) => {
       const e = API_REFERENCE[key]; expect(e).toBeDefined(); expect(e!.signature).toBeTruthy()
     })
-    it('useTable documents options-as-function contract', () => {
-      expect(API_REFERENCE['table/useTable']?.notes).toContain('Computed<Table<T>>')
+    it('useTable documents the options-as-function + return-type contract', () => {
+      const notes = API_REFERENCE['table/useTable']?.notes
+      // The two things an assistant must get right to write working code:
+      // options are a FUNCTION (so signal reads track), and v9 returns the
+      // Table INSTANCE — not the v8 `Computed<Table<T>>` that needed `table()`.
+      expect(notes).toContain('function')
+      expect(notes).toContain('Table instance DIRECTLY')
+      expect(notes).not.toContain('Computed<Table<T>>')
     })
   })
 

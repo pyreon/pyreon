@@ -2,12 +2,18 @@ import type { VNodeChild } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import type { SortingState } from '@pyreon/table'
 import {
+  columnFilteringFeature,
   createColumnHelper,
+  createFilteredRowModel,
+  createPaginatedRowModel,
+  createSortedRowModel,
   flexRender,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
+  globalFilteringFeature,
+  rowPaginationFeature,
+  rowSortingFeature,
+  sortFn_alphanumeric,
+  sortFn_text,
+  tableFeatures,
   useTable,
 } from '@pyreon/table'
 
@@ -106,8 +112,41 @@ const employees: Employee[] = [
   },
 ]
 
-const columnHelper = createColumnHelper<Employee>()
-const columns = [
+/**
+ * v9 registers every non-core capability explicitly — this set is exactly what
+ * the demo below exercises (sorting, a global search box, pagination) and
+ * nothing more, which is what keeps the rest of table-core out of the bundle.
+ * The core row model is automatic, so there is no `coreRowModel` slot.
+ *
+ * Notes on the two non-obvious entries:
+ *   • `columnFilteringFeature` is a required prerequisite of
+ *     `globalFilteringFeature` (and of `filteredRowModel`). No `filterFns`
+ *     registry is needed: the search box is a GLOBAL filter, and the default
+ *     `globalFilterFn: 'auto'` resolves `includesString` directly rather than
+ *     through the registry. Per-column filters would need one.
+ *   • `sortFns` carries what `sortFn: 'auto'` resolves for the STRING columns
+ *     (`alphanumeric` for multi-token values, `text` for single-token ones).
+ *     Numeric columns fall back to the built-in basic comparator with nothing
+ *     registered, so `salary` needs no entry.
+ *
+ * Defined at module level so it is a stable reference across renders.
+ */
+const features = tableFeatures({
+  rowSortingFeature,
+  sortedRowModel: createSortedRowModel(),
+  sortFns: { alphanumeric: sortFn_alphanumeric, text: sortFn_text },
+  columnFilteringFeature,
+  globalFilteringFeature,
+  filteredRowModel: createFilteredRowModel(),
+  rowPaginationFeature,
+  paginatedRowModel: createPaginatedRowModel(),
+})
+
+const columnHelper = createColumnHelper<typeof features, Employee>()
+// `helper.columns([...])` is v9's wrapper for a mixed-value column array — it
+// preserves each column's own TValue (string / number here) instead of widening
+// the array to a single element type.
+const columns = columnHelper.columns([
   columnHelper.accessor('name', { header: 'Name' }),
   columnHelper.accessor('department', { header: 'Department' }),
   columnHelper.accessor('salary', {
@@ -118,29 +157,26 @@ const columns = [
     header: 'Start Date',
     cell: (info) => new Date(info.getValue()).toLocaleDateString(),
   }),
-]
+])
 
 export function TableDemo() {
   const sorting = signal<SortingState>([])
   const globalFilter = signal('')
 
   const table = useTable(() => ({
+    features,
     data: employees,
     columns,
     state: {
       sorting: sorting(),
       globalFilter: globalFilter(),
     },
-    onSortingChange: (updater: any) => {
+    onSortingChange: (updater) => {
       sorting.set(typeof updater === 'function' ? updater(sorting()) : updater)
     },
-    onGlobalFilterChange: (updater: any) => {
+    onGlobalFilterChange: (updater) => {
       globalFilter.set(typeof updater === 'function' ? updater(globalFilter()) : updater)
     },
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
   }))
 
   return (
@@ -162,59 +198,71 @@ export function TableDemo() {
         <table>
           <thead>
             {() =>
-              table()
-                .getHeaderGroups()
-                .map((group) => (
-                  <tr key={group.id}>
-                    {group.headers.map((header) => (
-                      <th key={header.id} onClick={header.column.getToggleSortingHandler()}>
-                        {
-                          flexRender(
-                            header.column.columnDef.header,
-                            header.getContext(),
-                          ) as VNodeChild
-                        }
-                        {header.column.getIsSorted() === 'asc'
+              table.getHeaderGroups().map((group) => (
+                <tr key={group.id}>
+                  {group.headers.map((header) => (
+                    <th key={header.id} onClick={header.column.getToggleSortingHandler()}>
+                      {
+                        flexRender(
+                          header.column.columnDef.header,
+                          header.getContext(),
+                        ) as VNodeChild
+                      }
+                      {/* The indicator MUST be read inside an accessor. `<th>`
+                          carries a `key`, so the keyed reconciler reuses this
+                          node on a state change and never re-runs its body — a
+                          bare read here freezes at its first value. This is the
+                          documented keyed-freeze anti-pattern, which names "a
+                          sort indicator" as its example; caught by the table
+                          e2e, which found the arrow never appearing. */}
+                      {() =>
+                        header.column.getIsSorted() === 'asc'
                           ? ' ↑'
                           : header.column.getIsSorted() === 'desc'
                             ? ' ↓'
-                            : ''}
-                      </th>
-                    ))}
-                  </tr>
-                ))
+                            : ''
+                      }
+                    </th>
+                  ))}
+                </tr>
+              ))
             }
           </thead>
           <tbody>
             {() =>
-              table()
-                .getRowModel()
-                .rows.map((row) => (
-                  <tr key={row.id}>
-                    {row.getVisibleCells().map((cell) => (
-                      <td key={cell.id}>
-                        {flexRender(cell.column.columnDef.cell, cell.getContext()) as VNodeChild}
-                      </td>
-                    ))}
-                  </tr>
-                ))
+              // `getAllCells()` is core. `getVisibleCells()` is provided by
+              // `columnVisibilityFeature`, which this demo does not register
+              // because it never hides a column — every column is visible, so
+              // the two render identically here.
+              table.getRowModel().rows.map((row) => (
+                <tr key={row.id}>
+                  {row.getAllCells().map((cell) => (
+                    <td key={cell.id}>
+                      {flexRender(cell.column.columnDef.cell, cell.getContext()) as VNodeChild}
+                    </td>
+                  ))}
+                </tr>
+              ))
             }
           </tbody>
         </table>
 
         <div class="row" style="margin-top: 12px">
-          <button onClick={() => table().previousPage()} disabled={!table().getCanPreviousPage()}>
+          <button
+            onClick={() => table.previousPage()}
+            disabled={() => !table.getCanPreviousPage()}
+          >
             Previous
           </button>
           <span style="font-size: 13px">
-            Page {() => table().getState().pagination.pageIndex + 1} of{' '}
-            {() => table().getPageCount()}
+            Page {() => table.store.state.pagination.pageIndex + 1} of{' '}
+            {() => table.getPageCount()}
           </span>
-          <button onClick={() => table().nextPage()} disabled={!table().getCanNextPage()}>
+          <button onClick={() => table.nextPage()} disabled={() => !table.getCanNextPage()}>
             Next
           </button>
           <span class="badge gray" style="margin-left: auto">
-            {() => table().getFilteredRowModel().rows.length} of {employees.length} rows
+            {() => table.getFilteredRowModel().rows.length} of {employees.length} rows
           </span>
         </div>
       </div>

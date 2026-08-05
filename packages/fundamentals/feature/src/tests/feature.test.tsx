@@ -1086,7 +1086,7 @@ describe('useTable', () => {
     expect(result.columns.length).toBeGreaterThan(0)
     expect(result.columns[0]!.name).toBe('name')
     expect(result.columns[0]!.label).toBe('Name')
-    expect(result.table().getRowModel().rows).toHaveLength(1)
+    expect(result.table.getRowModel().rows).toHaveLength(1)
     unmount()
   })
 
@@ -1123,7 +1123,7 @@ describe('useTable', () => {
     const client = new QueryClient()
     const { result, unmount } = mountWith(client, () => users.useTable(() => data()))
 
-    expect(result.table().getRowModel().rows).toHaveLength(1)
+    expect(result.table.getRowModel().rows).toHaveLength(1)
     unmount()
   })
 })
@@ -1388,7 +1388,7 @@ describe('edge cases', () => {
     const { result, unmount } = mountWith(client, () => users.useTable(data))
 
     // Trigger sorting via the table's toggle handler (function updater)
-    result.table().getColumn('name')!.toggleSorting(false)
+    result.table.getColumn('name')!.toggleSorting(false)
     expect(result.sorting().length).toBe(1)
 
     // Also set sorting directly (non-function updater path)

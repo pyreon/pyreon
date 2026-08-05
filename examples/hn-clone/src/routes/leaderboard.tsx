@@ -1,16 +1,24 @@
 import { useQuery } from '@pyreon/query'
 import { useHead } from '@pyreon/head'
 import { useI18n } from '@pyreon/i18n'
-import { useTable } from '@pyreon/table'
+// Everything table-related comes from `@pyreon/table` — it re-exports the
+// table-core surface a table author needs, so it is the single supported
+// import source (reaching into `@tanstack/table-core` directly risks a second
+// copy of the library and bypasses the adapter's own exports).
 import {
   type ColumnDef,
   type SortingState,
   type Table,
-  getCoreRowModel,
-  getSortedRowModel,
-  getPaginationRowModel,
-} from '@tanstack/table-core'
-import { type Computed, signal, computed } from '@pyreon/reactivity'
+  createPaginatedRowModel,
+  createSortedRowModel,
+  rowPaginationFeature,
+  rowSortingFeature,
+  sortFn_alphanumeric,
+  sortFn_text,
+  tableFeatures,
+  useTable,
+} from '@pyreon/table'
+import { signal, computed } from '@pyreon/reactivity'
 import { For } from '@pyreon/core'
 import { groupBy } from '@pyreon/rx'
 import { Link } from '@pyreon/zero/link'
@@ -34,6 +42,25 @@ interface UserRow {
   avgPoints: number
   topStory: string
 }
+
+/**
+ * v9 requires every non-core capability to be registered explicitly; this set
+ * is exactly the two the page demonstrates — click-to-sort headers and the
+ * 10-row pager. The core row model is automatic, so there is no slot for it.
+ *
+ * `sortFns` carries what `sortFn: 'auto'` resolves for the STRING columns
+ * (`user`, `topStory`); the three numeric columns fall back to the built-in
+ * basic comparator with nothing registered.
+ *
+ * Defined at module level so it is a stable reference across renders.
+ */
+const features = tableFeatures({
+  rowSortingFeature,
+  sortedRowModel: createSortedRowModel(),
+  sortFns: { alphanumeric: sortFn_alphanumeric, text: sortFn_text },
+  rowPaginationFeature,
+  paginatedRowModel: createPaginatedRowModel(),
+})
 
 export default function LeaderboardPage() {
   const { t } = useI18n()
@@ -77,7 +104,7 @@ export default function LeaderboardPage() {
 
   const sorting = signal<SortingState>([{ id: 'totalPoints', desc: true }])
 
-  const columns: ColumnDef<UserRow>[] = [
+  const columns: ColumnDef<typeof features, UserRow>[] = [
     { accessorKey: 'user', header: 'User', cell: (i) => i.getValue<string>() },
     { accessorKey: 'storyCount', header: '# Stories', cell: (i) => i.getValue<number>() },
     { accessorKey: 'totalPoints', header: 'Total Points', cell: (i) => i.getValue<number>() },
@@ -89,16 +116,14 @@ export default function LeaderboardPage() {
     },
   ]
 
-  const table = useTable<UserRow>(() => ({
+  const table = useTable(() => ({
+    features,
     data: tableData(),
     columns,
     state: { sorting: sorting() },
     onSortingChange: (updater) => {
       sorting.set(typeof updater === 'function' ? updater(sorting.peek()) : updater)
     },
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
     initialState: { pagination: { pageIndex: 0, pageSize: 10 } },
   }))
 
@@ -131,73 +156,60 @@ export default function LeaderboardPage() {
 // stringifies the value to `[object Object]` when the function
 // returns an array of VNodes). Using `<For>` produces VNode children
 // directly, sidestepping the text-bind path.
-function LeaderboardTable(props: { table: Computed<Table<UserRow>> }) {
+function LeaderboardTable(props: { table: Table<typeof features, UserRow> }) {
   return (
     <>
       <table class="leaderboard-table">
         <thead>
           <tr>
             <For
-              each={() => props.table().getHeaderGroups()[0]?.headers ?? []}
+              each={() => props.table.getHeaderGroups()[0]?.headers ?? []}
               by={(h) => h.id}
             >
-              {(header) => {
-                const h = header as {
-                  column: {
-                    id: string
-                    getCanSort: () => boolean
-                    getIsSorted: () => 'asc' | 'desc' | false
-                    getToggleSortingHandler: () => ((e: Event) => void) | undefined
-                    columnDef: { header: unknown }
+              {(h) => (
+                // No structural cast needed: with `typeof features` on the
+                // table type, `h` is a fully typed Header and the sorting APIs
+                // below are present because `rowSortingFeature` is registered.
+                <th
+                  data-testid={`th-${h.column.id}`}
+                  class={() => (h.column.getCanSort() ? 'sortable' : '')}
+                  onClick={
+                    h.column.getCanSort()
+                      ? h.column.getToggleSortingHandler()
+                      : undefined
                   }
-                }
-                return (
-                  <th
-                    data-testid={`th-${h.column.id}`}
-                    class={() => (h.column.getCanSort() ? 'sortable' : '')}
-                    onClick={
-                      h.column.getCanSort()
-                        ? h.column.getToggleSortingHandler()
-                        : undefined
-                    }
-                  >
-                    {String(h.column.columnDef.header)}
-                    {() => {
-                      const s = h.column.getIsSorted()
-                      return s === 'asc' ? ' ▲' : s === 'desc' ? ' ▼' : ''
-                    }}
-                  </th>
-                )
-              }}
+                >
+                  {String(h.column.columnDef.header)}
+                  {() => {
+                    const s = h.column.getIsSorted()
+                    return s === 'asc' ? ' ▲' : s === 'desc' ? ' ▼' : ''
+                  }}
+                </th>
+              )}
             </For>
           </tr>
         </thead>
         <tbody>
-          <For each={() => props.table().getRowModel().rows} by={(r) => r.id}>
-            {(row) => {
-              const r = row as {
-                original: UserRow
-                getVisibleCells: () => Array<{
-                  column: { id: string }
-                  getValue: () => unknown
-                }>
-              }
-              return (
-                <tr data-testid={`row-${r.original.user}`}>
-                  {r.getVisibleCells().map((cell) =>
-                    cell.column.id === 'user' ? (
-                      <td>
-                        <Link href={`/user/${r.original.user}`} class="story-user">
-                          {String(cell.getValue())}
-                        </Link>
-                      </td>
-                    ) : (
-                      <td>{String(cell.getValue())}</td>
-                    ),
-                  )}
-                </tr>
-              )
-            }}
+          <For each={() => props.table.getRowModel().rows} by={(r) => r.id}>
+            {(r) => (
+              // `getAllCells()` is core. `getVisibleCells()` comes from
+              // `columnVisibilityFeature`, which this page does not register
+              // because it never hides a column — every column is visible, so
+              // the two render identically here.
+              <tr data-testid={`row-${r.original.user}`}>
+                {r.getAllCells().map((cell) =>
+                  cell.column.id === 'user' ? (
+                    <td>
+                      <Link href={`/user/${r.original.user}`} class="story-user">
+                        {String(cell.getValue())}
+                      </Link>
+                    </td>
+                  ) : (
+                    <td>{String(cell.getValue())}</td>
+                  ),
+                )}
+              </tr>
+            )}
           </For>
         </tbody>
       </table>
@@ -205,22 +217,22 @@ function LeaderboardTable(props: { table: Computed<Table<UserRow>> }) {
       <div class="leaderboard-pagination">
         <button
           type="button"
-          onClick={() => props.table().previousPage()}
-          disabled={() => !props.table().getCanPreviousPage()}
+          onClick={() => props.table.previousPage()}
+          disabled={() => !props.table.getCanPreviousPage()}
         >
           ‹ prev
         </button>
         <span>
           {() => {
-            const p = props.table().getState().pagination.pageIndex + 1
-            const total = props.table().getPageCount()
+            const p = props.table.store.state.pagination.pageIndex + 1
+            const total = props.table.getPageCount()
             return `Page ${p} of ${total}`
           }}
         </span>
         <button
           type="button"
-          onClick={() => props.table().nextPage()}
-          disabled={() => !props.table().getCanNextPage()}
+          onClick={() => props.table.nextPage()}
+          disabled={() => !props.table.getCanNextPage()}
         >
           next ›
         </button>

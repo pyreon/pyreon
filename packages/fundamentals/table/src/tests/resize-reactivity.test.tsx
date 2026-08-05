@@ -15,9 +15,9 @@
 import { For, h } from '@pyreon/core'
 import { computed, effect } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
-import { getCoreRowModel } from '@tanstack/table-core'
 import { describe, expect, it } from 'vitest'
 import { useTable } from '../use-table'
+import { allFeatures } from './fixtures'
 
 const flush = async () => {
   await Promise.resolve()
@@ -28,34 +28,34 @@ function makeTable() {
   return useTable(() => ({
     data: [{ name: 'Alice' }],
     columns: [{ accessorKey: 'name', id: 'name' }],
-    getCoreRowModel: getCoreRowModel(),
+    features: allFeatures,
   }))
 }
 
 describe('column-resize reactivity', () => {
-  it('the table() accessor re-notifies subscribers on a size change (NOT suppressed)', () => {
+  it('the table re-notifies subscribers on a size change (NOT suppressed)', () => {
     const table = makeTable()
     let runs = 0
     let size = 0
     effect(() => {
       runs++
-      size = table().getColumn('name')!.getSize()
+      size = table.getColumn('name')!.getSize()
     })
     const runsAtMount = runs
 
     // Resize the way the TanStack handler commits — through setColumnSizing,
     // which routes onStateChange → the version bump useTable wires.
-    table().setColumnSizing({ name: 330 })
+    table.setColumnSizing({ name: 330 })
 
     expect(runs).toBeGreaterThan(runsAtMount) // subscriber re-ran
     expect(size).toBe(330) // and observed the new size
   })
 
-  it('a computed derived from table().getSize() re-evaluates on resize', () => {
+  it('a computed derived from table.getSize() re-evaluates on resize', () => {
     const table = makeTable()
-    const width = computed(() => table().getColumn('name')!.getSize())
+    const width = computed(() => table.getColumn('name')!.getSize())
     const before = width()
-    table().setColumnSizing({ name: 275 })
+    table.setColumnSizing({ name: 275 })
     expect(width()).toBe(275)
     expect(width()).not.toBe(before)
   })
@@ -70,14 +70,14 @@ describe('column-resize reactivity', () => {
       h('span', { class: 'cell', 'data-w': String(props.width) })
     mount(
       <div>
-        <For each={() => table().getHeaderGroups()[0]!.headers} by={(hd) => hd.id}>
+        <For each={() => table.getHeaderGroups()[0]!.headers} by={(hd) => hd.id}>
           {(hd) => h(Cell, { width: hd.column.getSize() })}
         </For>
       </div>,
       el,
     )
     const before = el.querySelector('.cell')?.getAttribute('data-w')
-    table().setColumnSizing({ name: 330 })
+    table.setColumnSizing({ name: 330 })
     await flush()
     const after = el.querySelector('.cell')?.getAttribute('data-w')
 
@@ -95,18 +95,18 @@ describe('column-resize reactivity', () => {
     const Cell = (props: { id: string }) =>
       h('span', {
         class: 'cell',
-        'data-w': () => String(table().getColumn(props.id)!.getSize()),
+        'data-w': () => String(table.getColumn(props.id)!.getSize()),
       })
     mount(
       <div>
-        <For each={() => table().getHeaderGroups()[0]!.headers} by={(hd) => hd.id}>
+        <For each={() => table.getHeaderGroups()[0]!.headers} by={(hd) => hd.id}>
           {(hd) => h(Cell, { id: hd.column.id })}
         </For>
       </div>,
       el,
     )
     const before = el.querySelector('.cell')?.getAttribute('data-w')
-    table().setColumnSizing({ name: 330 })
+    table.setColumnSizing({ name: 330 })
     await flush()
     const after = el.querySelector('.cell')?.getAttribute('data-w')
 

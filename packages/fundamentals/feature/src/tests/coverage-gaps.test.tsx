@@ -7,8 +7,9 @@
  *  - createValidator custom-validate short-circuit
  *  - useList / useSearch optional `staleTime` / `enabled` spreads
  *  - useUpdate onError with no previous cache (optimistic-rollback skip)
- *  - useTable sorting/global-filter updaters (value + function form) and
- *    the pagination-row-model opt-in
+ *  - useTable sorting/global-filter updaters (value + function form), the
+ *    pagination opt-in, and the controlled-state round trip that carries both
+ *    slices back into the row model
  *  - schema.ts duck-typed v4 / edge-shape introspection paths
  *
  * All are genuine paths driven by real public API calls — no internal
@@ -305,11 +306,11 @@ describe('useTable — updaters and pagination', () => {
     const { result, unmount } = mountWith(client, () => feat.useTable(rows))
 
     // Value-form updater → cond-expr@379#1 (typeof updater !== 'function').
-    result.table().setSorting([{ id: 'name', desc: false }])
+    result.table.setSorting([{ id: 'name', desc: false }])
     expect(result.sorting()).toEqual([{ id: 'name', desc: false }])
 
     // Function-form updater → cond-expr@379#0.
-    result.table().setSorting((prev) => [...prev, { id: 'email', desc: true }])
+    result.table.setSorting((prev) => [...prev, { id: 'email', desc: true }])
     expect(result.sorting()).toEqual([
       { id: 'name', desc: false },
       { id: 'email', desc: true },
@@ -329,16 +330,16 @@ describe('useTable — updaters and pagination', () => {
     const { result, unmount } = mountWith(client, () => feat.useTable(rows))
 
     // Value-form updater → cond-expr@386#1.
-    result.table().setGlobalFilter('ali')
+    result.table.setGlobalFilter('ali')
     expect(result.globalFilter()).toBe('ali')
 
     // Function-form updater → cond-expr@386#0.
-    result.table().setGlobalFilter((prev: string) => `${prev}ce`)
+    result.table.setGlobalFilter((prev: string) => `${prev}ce`)
     expect(result.globalFilter()).toBe('alice')
     unmount()
   })
 
-  // cond-expr@394#0: pageSize provided → getPaginationRowModel wired in.
+  // pageSize provided → pagination active (v9: `manualPagination` off).
   it('wires the pagination row model when pageSize is provided', () => {
     const feat = defineFeature<TV>({
       name: 'cg-table-paginated',
@@ -355,8 +356,107 @@ describe('useTable — updaters and pagination', () => {
     const { result, unmount } = mountWith(client, () => feat.useTable(many, { pageSize: 10 }))
 
     // With pagination wired, the paginated row model exposes >1 page.
-    expect(result.table().getPageCount()).toBeGreaterThan(1)
+    expect(result.table.getPageCount()).toBeGreaterThan(1)
     unmount()
+  })
+})
+
+// ─── useTable — controlled state actually reaches the ROW MODEL ────────────────
+//
+// The block above asserts that `onSortingChange` / `onGlobalFilterChange` write
+// the signal. That alone proves nothing about whether the table SORTS or
+// FILTERS: the callback sets the signal directly, so those assertions pass even
+// if the value never travels back into the table.
+//
+// It is a real hazard under TanStack Table v9. Supplying `on<Slice>Change`
+// REPLACES core's own state updater for that slice, so the table stops
+// self-updating it — the value only reaches the row model if `useTable`'s
+// options function re-runs (it reads both signals) and pushes the new `state`
+// back in. Break that round trip and every assertion in the block above still
+// passes while sorting and filtering are silently dead.
+//
+// So these assert the OBSERVABLE EFFECT — the rows themselves — in both
+// directions: table API → signal → row model, and signal → row model.
+describe('useTable — controlled state reaches the row model', () => {
+  const tableSchema = z.object({
+    name: z.string(),
+    email: z.string(),
+  })
+  type TV = z.infer<typeof tableSchema>
+  const rows: TV[] = [
+    { name: 'Bob', email: 'b@t.com' },
+    { name: 'Alice', email: 'a@t.com' },
+  ]
+  const names = (t: { getRowModel: () => { rows: { original: TV }[] } }) =>
+    t.getRowModel().rows.map((r) => r.original.name)
+
+  it('setSorting reorders the rendered rows', () => {
+    const feat = defineFeature<TV>({ name: 'cg-ctl-sort', schema: tableSchema, api: '/api/x' })
+    const { result, unmount } = mountWith(new QueryClient(), () => feat.useTable(rows))
+
+    expect(names(result.table)).toEqual(['Bob', 'Alice'])
+
+    result.table.setSorting([{ id: 'name', desc: false }])
+    expect(result.table.store.state.sorting).toEqual([{ id: 'name', desc: false }])
+    expect(names(result.table)).toEqual(['Alice', 'Bob'])
+
+    unmount()
+  })
+
+  it('setGlobalFilter narrows the rendered rows', () => {
+    const feat = defineFeature<TV>({ name: 'cg-ctl-filter', schema: tableSchema, api: '/api/x' })
+    const { result, unmount } = mountWith(new QueryClient(), () => feat.useTable(rows))
+
+    result.table.setGlobalFilter('ali')
+    expect(result.table.store.state.globalFilter).toBe('ali')
+    expect(names(result.table)).toEqual(['Alice'])
+
+    // Clearing restores every row — an empty string is "no filter", not a
+    // filter that matches nothing.
+    result.table.setGlobalFilter('')
+    expect(names(result.table)).toEqual(['Bob', 'Alice'])
+
+    unmount()
+  })
+
+  it('writing the returned signals drives the row model (two-way binding)', () => {
+    const feat = defineFeature<TV>({ name: 'cg-ctl-signal', schema: tableSchema, api: '/api/x' })
+    const { result, unmount } = mountWith(new QueryClient(), () => feat.useTable(rows))
+
+    // The signals are the binding surface a UI control writes to, so the
+    // signal-first direction has to work as well as the table-API one.
+    result.sorting.set([{ id: 'name', desc: false }])
+    expect(names(result.table)).toEqual(['Alice', 'Bob'])
+
+    result.globalFilter.set('bob')
+    expect(names(result.table)).toEqual(['Bob'])
+
+    unmount()
+  })
+
+  it('omitting pageSize leaves every row in the model, and pageSize pages them', () => {
+    const feat = defineFeature<TV>({ name: 'cg-ctl-page', schema: tableSchema, api: '/api/x' })
+    const many: TV[] = Array.from({ length: 25 }, (_, i) => ({
+      name: `User ${i}`,
+      email: `u${i}@t.com`,
+    }))
+
+    // No pageSize → the row model carries all 25. v9 always REGISTERS the
+    // pagination feature (the set is a compile-time type), so this is what
+    // proves `manualPagination` still disables it — without that, the default
+    // page size of 10 would silently truncate every unpaginated table.
+    const off = mountWith(new QueryClient(), () => feat.useTable(many))
+    expect(off.result.table.getRowModel().rows).toHaveLength(25)
+    off.unmount()
+
+    // pageSize is honored as a real page size, not just as an on/off flag.
+    const on = mountWith(new QueryClient(), () => feat.useTable(many, { pageSize: 5 }))
+    expect(on.result.table.getRowModel().rows).toHaveLength(5)
+    expect(on.result.table.getPageCount()).toBe(5)
+
+    on.result.table.nextPage()
+    expect(on.result.table.getRowModel().rows[0]!.original.name).toBe('User 5')
+    on.unmount()
   })
 })
 
