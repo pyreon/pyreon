@@ -362,33 +362,42 @@ function hydrateVNode(
         // parse bail (rows = null) → swap semantics inside mountFor.
         let rows: ForAdoption['rows'] | null = []
         {
+          // Local-tracked open-row state (no per-row intermediate object /
+          // closure — this loop visits every top-level block node once).
           let rowDepth = 0
           let cur: ChildNode | null = domNode.nextSibling
-          let open: { key: string; marker: Comment; first: ChildNode | null } | null = null
-          const closeRow = (lastBoundary: ChildNode) => {
-            if (!open) return true
-            const last = lastBoundary.previousSibling
-            if (!open.first || !last || open.first === lastBoundary) {
-              rows = null // empty row — no adoptable range
-              return false
-            }
-            rows?.push({ key: open.key, marker: open.marker, first: open.first, last })
-            open = null
-            return true
-          }
-          while (cur && cur !== end && rows) {
-            if (cur.nodeType === Node.COMMENT_NODE) {
+          let openKey = ''
+          let openMarker: Comment | null = null
+          let openFirst: ChildNode | null = null
+          while (cur && cur !== end) {
+            if (cur.nodeType === 8 /* comment */) {
               const d = (cur as Comment).data
-              if (d === 'pyreon-for') rowDepth++
+              if (
+                rowDepth === 0 &&
+                d.charCodeAt(0) === 107 /* k */ &&
+                d.charCodeAt(1) === 58 /* : */
+              ) {
+                if (openMarker) {
+                  const last = cur.previousSibling
+                  if (!openFirst || !last || openFirst === cur) {
+                    rows = null // empty row — no adoptable range
+                    break
+                  }
+                  rows.push({ key: openKey, marker: openMarker, first: openFirst, last })
+                }
+                openKey = d.slice(2)
+                openMarker = cur as Comment
+                openFirst = cur.nextSibling
+              } else if (d === 'pyreon-for') rowDepth++
               else if (d === '/pyreon-for') rowDepth--
-              else if (rowDepth === 0 && d.startsWith('k:')) {
-                if (!closeRow(cur)) break
-                open = { key: d.slice(2), marker: cur as Comment, first: cur.nextSibling }
-              }
             }
             cur = cur.nextSibling
           }
-          if (rows && !closeRow(end)) rows = null
+          if (rows && openMarker) {
+            const last = end.previousSibling
+            if (!openFirst || !last || openFirst === end) rows = null
+            else rows.push({ key: openKey, marker: openMarker, first: openFirst, last })
+          }
           // Content before the first k: marker (shouldn't exist) → not adoptable.
           if (rows && rows.length === 0 && domNode.nextSibling !== end) rows = null
         }
