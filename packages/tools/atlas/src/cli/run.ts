@@ -498,6 +498,18 @@ function optional<K extends string, V>(key: K, value: V | undefined): Record<K, 
   return value === undefined ? {} : ({ [key]: value } as Record<K, V>)
 }
 
+/**
+ * Make an explicit `--out` absolute, against the shell's cwd.
+ *
+ * Only an EXPLICIT value is rewritten. The DEFAULT (`atlas-dist`) is a path the
+ * tool chose, not one a user typed, and it belongs beside the project it
+ * documents — the same place `atlas scan` writes `atlas-catalog.json`. A path
+ * someone types belongs where they are standing.
+ */
+export function resolveOut(value: string | undefined): string | undefined {
+  return value === undefined ? undefined : resolve(value)
+}
+
 /** Parse argv + run a command. Returns the process exit code. */
 export async function runCli(argv: readonly string[]): Promise<number> {
   const [cmd, ...rest] = argv
@@ -756,7 +768,20 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     try {
       const result = await buildStatic({
         cwd: dir ?? '.',
-        ...optional('out', flagValue(rest, '--out')),
+        // Resolved against the SHELL's cwd, not against `[dir]`.
+        //
+        // `buildStatic` treats a relative `out` as relative to its own `cwd`
+        // option, which is right for a programmatic caller that passes both.
+        // For someone typing a path it is not: standing at a repo root,
+        //
+        //   atlas build packages/ui/components --out docs/dist/atlas
+        //
+        // means `./docs/dist/atlas` — nobody means
+        // `packages/ui/components/docs/dist/atlas`, which is where it landed,
+        // silently and successfully, so the only symptom was an output
+        // directory that was not where it was asked for. Every other CLI
+        // (tsc, storybook, esbuild) reads an output path against the cwd.
+        ...optional('out', resolveOut(flagValue(rest, '--out'))),
         ...optional('title', flagValue(rest, '--title')),
         ...optional('base', flagValue(rest, '--base')),
         onLog: (message) => err(`${message}\n`),

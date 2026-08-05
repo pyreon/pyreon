@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { runCli, runScan } from '../run'
+import { join, resolve } from 'node:path'
+import { resolveOut, runCli, runScan } from '../run'
 
 function fixture(name: string, files: Record<string, string>): string {
   const dir = mkdtempSync(join(tmpdir(), `atlas-${name}-`))
@@ -124,5 +124,36 @@ describe('runCli', () => {
   it('an unknown command returns 1', async () => {
     expect(await runCli(['bogus'])).toBe(1)
     expect(stderr).toContain('unknown command')
+  })
+})
+
+describe('resolveOut — where an explicit --out lands', () => {
+  /**
+   * `atlas build [dir] --out <path>` takes a project dir AND an output path,
+   * and `buildStatic` resolves a relative `out` against its `cwd` option — so
+   * without this, standing at a repo root and running
+   *
+   *   atlas build packages/ui/components --out docs/dist/atlas
+   *
+   * emitted into `packages/ui/components/docs/dist/atlas`. Silently, and with
+   * a success message, so the only symptom was a site that was not where it
+   * was asked for — which is how it reached a CI workflow.
+   */
+  it('resolves a relative path against the shell cwd, not the scanned project', () => {
+    expect(resolveOut('docs/dist/atlas')).toBe(resolve(process.cwd(), 'docs/dist/atlas'))
+    // The consequence, stated directly: a project dir on the argv must not
+    // appear in the output path.
+    expect(resolveOut('docs/dist/atlas')).not.toContain(join('packages', 'ui', 'components'))
+  })
+
+  it('leaves an absolute path alone', () => {
+    expect(resolveOut(resolve('/tmp/site'))).toBe(resolve('/tmp/site'))
+  })
+
+  it('leaves the DEFAULT alone', () => {
+    // Not rewritten on purpose: `atlas-dist` is a path the tool chose, and it
+    // belongs beside the project it documents — the same place `atlas scan`
+    // writes `atlas-catalog.json`. Only a path someone TYPED follows the shell.
+    expect(resolveOut(undefined)).toBeUndefined()
   })
 })
