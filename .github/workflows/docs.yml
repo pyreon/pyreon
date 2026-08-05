@@ -35,6 +35,14 @@ on:
       - 'packages/core/core/**'
       - 'packages/core/compiler/**'
       - 'packages/core/head/**'
+      # The Atlas workbench site deployed alongside the docs at /atlas.
+      # Its catalog is DERIVED from `packages/ui/components`, rendered through
+      # the ui-system styling layer — so a change to any of them changes what
+      # the published site shows, and a site nobody rebuilds is a site that
+      # quietly stops matching the components it documents.
+      - 'packages/tools/atlas/**'
+      - 'packages/ui/**'
+      - 'packages/ui-system/**'
       - '.github/workflows/docs.yml'
   # Also run the BUILD job (not deploy) on PRs touching the docs source or the
   # framework packages the docs build depends on — so a docs-SITE build break
@@ -58,6 +66,12 @@ on:
       - 'packages/core/core/**'
       - 'packages/core/compiler/**'
       - 'packages/core/head/**'
+      # Mirrors the push filter — see the note there. The PR run builds the
+      # Atlas site too, so a break in it is a red PR check rather than a red
+      # main deploy after the fact.
+      - 'packages/tools/atlas/**'
+      - 'packages/ui/**'
+      - 'packages/ui-system/**'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
 
@@ -101,6 +115,35 @@ jobs:
         run: |
           cd docs
           bunx vite build
+
+      - name: Build the Atlas workbench site
+        # Publishes the workbench at pyreon.dev/atlas, against the REAL
+        # `@pyreon/ui-components` catalog — 108 components derived from source,
+        # not a hand-written demo. That distinction is the whole pitch: a
+        # Storybook demo proves someone wrote stories, this proves the catalog
+        # comes out of the components themselves.
+        #
+        # Emitted INSIDE `docs/dist` so the existing Pages artifact carries
+        # both sites and one deploy serves them. `--base /atlas/` because it is
+        # a subdirectory of the apex domain, not its own origin.
+        #
+        # A failure here FAILS the docs deploy rather than skipping quietly.
+        # That is deliberate: this is part of the published deliverable, not an
+        # advisory extra, and the PR run above catches a break before it can
+        # ever block main. The alternative — swallowing the error — publishes a
+        # docs site whose /atlas link 404s, with nothing red to say so.
+        #
+        # `--out` is ABSOLUTE on purpose. A relative `--out` resolves against
+        # the SCANNED project, not the shell — the same base as the default
+        # `atlas-dist`, and the same rule Vite applies to `outDir` — so a bare
+        # `--out docs/dist/atlas` here would emit into
+        # `packages/ui/components/docs/dist/atlas` and the upload would ship a
+        # docs site with no /atlas in it.
+        run: |
+          bun packages/tools/atlas/bin/atlas.js build packages/ui/components \
+            --out "$GITHUB_WORKSPACE/docs/dist/atlas" \
+            --base /atlas/ \
+            --title "Pyreon UI"
 
       - name: Upload pages artifact
         # Only the main-push build feeds the deploy; a PR build is

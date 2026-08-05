@@ -26,7 +26,7 @@
  * build is both stale and stripped of the types this needs. `main`/`module` are
  * read only as a fallback, and a plain `src/index.ts` as the last one.
  */
-import { existsSync, readFileSync, realpathSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { workspacePackageDirs } from './workspace'
@@ -158,11 +158,29 @@ export function resolveWorkspaceSpecifier(
   const subpath = specifier.slice(best.name.length + 1)
   for (const extension of ['', '.ts', '.tsx', '.d.ts', '/index.ts', '/index.tsx']) {
     const candidate = join(best.dir, `${subpath}${extension}`)
-    if (existsSync(candidate)) return candidate
+    if (isFile(candidate)) return candidate
     const inSrc = join(best.dir, 'src', `${subpath}${extension}`)
-    if (existsSync(inSrc)) return inSrc
+    if (isFile(inSrc)) return inSrc
   }
   return undefined
+}
+
+/**
+ * Exists AND is a file.
+ *
+ * The bare-`''` probe above runs first, so a plain `existsSync` matched a
+ * DIRECTORY whenever a package ships both — `src/ui.ts` next to `src/ui/` is
+ * the normal shape for a barrel with an implementation folder, and Atlas's own
+ * `@pyreon/atlas/ui` is exactly it. The bundler then reported
+ * `UNLOADABLE_DEPENDENCY: Could not load .../src/ui`, which reads as a broken
+ * package rather than a resolver that stopped one candidate too early.
+ */
+function isFile(path: string): boolean {
+  try {
+    return statSync(path).isFile()
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -301,7 +319,31 @@ export function workspaceResolvePlugin(root: string, extraBases: readonly string
       // on their own — they live in `node_modules/.atlas-build/` or nowhere at
       // all — and they are the only ones this answers for.
       if (!isAtlasGenerated(importer)) return undefined
-      return resolveFromWorkspace(id, dirs)
+      const found = resolveFromWorkspace(id, dirs)
+      if (found) return found
+
+      // `@pyreon/atlas` itself — the one specifier the `node_modules` walk
+      // above structurally CANNOT answer.
+      //
+      // A package manager never links a package inside its own `node_modules`,
+      // and nothing above it links it either unless some project declares it.
+      // So the generated entry — which is Atlas's UI code, and therefore
+      // imports `@pyreon/atlas/ui` — resolved every framework package (those
+      // sit in Atlas's own `node_modules`) and died on the workbench itself:
+      //
+      //   Rolldown failed to resolve import "@pyreon/atlas/ui"
+      //     from ".../node_modules/.atlas-build/entry.js"
+      //
+      // The effect was that `atlas build` only worked against a project that
+      // happened to declare `@pyreon/atlas` as a dependency. A component
+      // library never does — the workbench is a tool you point AT it — so the
+      // monorepo case this build exists for failed on every real package.
+      //
+      // Resolving by the workspace's own package MAP rather than by walking
+      // `node_modules` is the same lookup-not-a-guess argument this file is
+      // built on: the workspace declares where its packages live, and Atlas's
+      // own directory is known from this module's location.
+      return resolveWorkspaceSpecifier(id, buildPackageMap(dirs))
     },
   }
 }

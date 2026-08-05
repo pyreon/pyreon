@@ -19,6 +19,7 @@ import {
   entryFromExports,
   packageEntry,
   resolveWorkspaceSpecifier,
+  workspaceResolvePlugin,
 } from '../workspace-packages'
 import { createTypeResolver } from '../resolve-types'
 import { scanSource } from '../scan'
@@ -122,6 +123,40 @@ describe('resolveWorkspaceSpecifier', () => {
   it('does not touch relative specifiers', () => {
     expect(resolveWorkspaceSpecifier('./types', setup())).toBeUndefined()
   })
+
+  it('resolves a subpath to the FILE when a directory shares its name', () => {
+    // The shape that broke the static build: a barrel `src/ui.ts` sitting next
+    // to its implementation folder `src/ui/`. The probe list starts with the
+    // bare `''` extension, so an existence check matched the DIRECTORY and
+    // returned it — the bundler then failed with `UNLOADABLE_DEPENDENCY: Could
+    // not load .../src/ui`, which reads as a broken package rather than a
+    // resolver that stopped one candidate too early.
+    //
+    // `@pyreon/atlas/ui` is exactly this shape, so it is the specifier the
+    // generated entry of every `atlas build` depends on.
+    write('packages/kit/package.json', JSON.stringify({ name: '@a/kit' }))
+    write('packages/kit/src/index.ts', 'export {}')
+    write('packages/kit/src/ui.ts', 'export const Workbench = 1')
+    write('packages/kit/src/ui/Workbench.tsx', 'export const Inner = 1')
+    const packages = buildPackageMap([join(root, 'packages/kit')])
+
+    expect(resolveWorkspaceSpecifier('@a/kit/ui', packages)).toBe(
+      join(root, 'packages/kit/src/ui.ts'),
+    )
+  })
+
+  it('still resolves a subpath that is ONLY a directory, via its index', () => {
+    // The companion direction: preferring a file must not stop a plain
+    // `folder/index.ts` subpath from resolving.
+    write('packages/only-dir/package.json', JSON.stringify({ name: '@a/only-dir' }))
+    write('packages/only-dir/src/index.ts', 'export {}')
+    write('packages/only-dir/src/panels/index.ts', 'export const P = 1')
+    const packages = buildPackageMap([join(root, 'packages/only-dir')])
+
+    expect(resolveWorkspaceSpecifier('@a/only-dir/panels', packages)).toBe(
+      join(root, 'packages/only-dir/src/panels/index.ts'),
+    )
+  })
 })
 
 describe('end to end — a component whose props live in a sibling package', () => {
@@ -164,5 +199,51 @@ describe('buildPackageMap', () => {
     write('b/package.json', JSON.stringify({ name: '@a/dup' }))
     const map = buildPackageMap([join(root, 'a'), join(root, 'b')])
     expect(map.get('@a/dup')).toBe(join(root, 'a'))
+  })
+})
+
+describe('workspaceResolvePlugin — Atlas resolving its OWN package', () => {
+  /**
+   * The bug this locks: `atlas build` only worked against a project that
+   * happened to declare `@pyreon/atlas` as a dependency.
+   *
+   * The generated entry lives in `<project>/node_modules/.atlas-build/` and is
+   * Atlas's UI code, so it imports `@pyreon/atlas/ui`. Resolution walks up from
+   * there looking for `node_modules/@pyreon/atlas` — and a package manager
+   * NEVER links a package inside its own `node_modules`, nor above it unless
+   * some project declares it. Every other framework package resolved (those sit
+   * in Atlas's own `node_modules`); the workbench itself did not:
+   *
+   *   Rolldown failed to resolve import "@pyreon/atlas/ui"
+   *
+   * A component library never declares the workbench — you point the tool AT
+   * it — so this failed on every real package in a monorepo, which is the case
+   * the static build exists for.
+   *
+   * Asserted against the REAL Atlas package (the plugin derives its own
+   * directory from this module's location), because that is the copy a build
+   * has to reach.
+   */
+  const generatedImporter = (): string => join(root, 'node_modules/.atlas-build/entry.js')
+
+  it('resolves @pyreon/atlas/ui from a project that does not depend on Atlas', () => {
+    write('package.json', JSON.stringify({ name: '@a/lib', dependencies: {} }))
+    const resolved = workspaceResolvePlugin(root).resolveId('@pyreon/atlas/ui', generatedImporter())
+
+    expect(resolved).toBeDefined()
+    expect(resolved).toMatch(/atlas[/\\](?:src[/\\]ui\.ts|lib[/\\]ui\.js)$/)
+  })
+
+  it('claims NOTHING a project file imports', () => {
+    // The hard-won constraint: answering for a project's own import hands back
+    // one id while Vite resolving the same specifier reaches another, the
+    // framework loads twice, and the workbench dies on a split reactivity
+    // instance. Widening the fallback must not widen this.
+    write('package.json', JSON.stringify({ name: '@a/lib' }))
+    const plugin = workspaceResolvePlugin(root)
+
+    expect(plugin.resolveId('@pyreon/atlas/ui', join(root, 'src/Button.tsx'))).toBeUndefined()
+    expect(plugin.resolveId('@pyreon/core', join(root, 'src/Button.tsx'))).toBeUndefined()
+    expect(plugin.resolveId('@pyreon/atlas/ui', undefined)).toBeUndefined()
   })
 })

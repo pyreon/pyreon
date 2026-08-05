@@ -215,6 +215,29 @@ function resolvedGroup(entry: CatalogEntrySource, options: GenerateOptions): str
  * no-op for a project that configures nothing — today's behaviour, unchanged,
  * rather than a silent reshuffle on upgrade.
  */
+/**
+ * The workbench ids, in catalog order — the SINGLE owner of that computation.
+ *
+ * Ids from the identity KEY, not the name. Two packages' `Button`s would
+ * otherwise slugify to `button` and `button-2` — unique, but arbitrary: which
+ * one got the suffix depends on discovery order, so a URL or a `data-testid`
+ * could point at the other package's component after an unrelated file was
+ * added. From the key they are `core-button` and `admin-button`: stable, and
+ * readable. Outside a monorepo the key IS the name, so nothing changes.
+ *
+ * Extracted because `atlas build` now emits a DIRECTORY per component and the
+ * page has to find itself by matching its own path against these ids. Deriving
+ * them twice is how the directory `core/button` and the id `core-button` came
+ * to disagree — the key carries a `/` and the id does not, so every
+ * per-component URL in a monorepo would have missed.
+ */
+export function catalogIds(
+  entries: readonly CatalogEntrySource[],
+  options: GenerateOptions,
+): string[] {
+  return uniqueIds(sortEntries(entries, options).map((e) => componentKey(e.component)))
+}
+
 export function sortEntries(
   entries: readonly CatalogEntrySource[],
   options: GenerateOptions,
@@ -271,13 +294,7 @@ export function generateCatalogModule(
   }
 
   const ordered = sortEntries(entries, options)
-  // Ids from the identity KEY, not the name. Two packages' `Button`s would
-  // otherwise slugify to `button` and `button-2` — unique, but arbitrary: which
-  // one got the suffix depends on discovery order, so a URL or a `data-testid`
-  // could point at the other package's component after an unrelated file was
-  // added. From the key they are `core-button` and `admin-button`: stable, and
-  // readable. Outside a monorepo the key IS the name, so nothing changes.
-  const ids = uniqueIds(ordered.map((e) => componentKey(e.component)))
+  const ids = catalogIds(entries, options)
   const lines: string[] = ["import { h } from '@pyreon/core'", '']
 
   ordered.forEach((entry, i) => {

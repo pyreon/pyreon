@@ -18,7 +18,15 @@ import {
   type RecordingPermissions,
 } from './permission-sets'
 import { makeQueryResult, type FakeQueryResult, type QueryStateId } from './query-states'
-import { parseUrlState, serializeUrlState, urlStateChanged, type UrlState } from './url-state'
+import {
+  componentFromPath,
+  componentUrl,
+  parseUrlState,
+  pathBase,
+  serializeUrlState,
+  urlStateChanged,
+  type UrlState,
+} from './url-state'
 import type { CatalogGroup, WorkbenchCatalog, WorkbenchComponent } from './catalog'
 import { buildSearch, buildSearchIndex, defaultValues, groupComponents } from './catalog'
 import { buildHierarchy, filterHierarchy, type HierarchyNode } from './hierarchy'
@@ -179,6 +187,23 @@ export function createModel(
   // packages ended up disagreeing about it. It is also the form
   // `pyreon/no-window-in-ssr` recognises.
   const initial: UrlState = isClient ? parseUrlState(location.search) : {}
+
+  // Path URLs — `/atlas/button/` rather than `/atlas/?c=button`.
+  //
+  // Opt-in via a global the HOST sets, not something inferred, because writing
+  // a path is only safe where a page actually exists at it. `atlas build`
+  // emits a directory per component and sets this; `atlas dev` sets it too
+  // (its middleware already serves the shell for any extensionless GET). A
+  // workbench EMBEDDED in someone else's app sets nothing and keeps the
+  // query-string behaviour — writing `/button/` there would 404 on reload,
+  // because that app's router has never heard of the route.
+  const hasRoutes = isClient && (globalThis as { __ATLAS_ROUTES__?: boolean }).__ATLAS_ROUTES__ === true
+  const catalogIds = catalog.components.map((c) => c.id)
+  const pathId = hasRoutes ? componentFromPath(location.pathname, catalogIds) : undefined
+  // The path WINS over `?c=`. Both are only ever present together on a link
+  // written before this existed, and the path is the more specific statement.
+  if (pathId !== undefined) initial.c = pathId
+  const routeBase = hasRoutes ? pathBase(location.pathname, pathId) : ''
 
   const brandId = signal(initial.brand ?? 'ember')
   const dark = signal(initial.dark ?? true)
@@ -478,7 +503,27 @@ export function createModel(
       // `nextQuery`, because both obvious names are taken in this scope:
       // `query` is the search-box signal and `search` is the search function.
       // Shadowing either would read as the URL state being related to search.
-      const nextQuery = serializeUrlState(next)
+      //
+      // With path routes the component moves OUT of the query — carrying it in
+      // both would let them disagree, and a URL that says `/button/?c=modal`
+      // has no defensible reading.
+      // `delete` on a copy rather than spreading `c: undefined` — under
+      // `exactOptionalPropertyTypes` an explicit `undefined` is not the same as
+      // an absent optional property, and the spread does not typecheck.
+      let forQuery: UrlState = next
+      if (hasRoutes) {
+        forQuery = { ...next }
+        delete forQuery.c
+      }
+      const nextQuery = serializeUrlState(forQuery)
+      if (hasRoutes) {
+        // An ABSOLUTE path, not the bare `?query` below. That form resolves
+        // against the current directory, so once the URL is `/atlas/button/`
+        // it would keep the stale segment and only swap the query — the exact
+        // disagreement this branch exists to prevent.
+        hist.replaceState(hist.state, '', componentUrl(routeBase, next.c ?? '', nextQuery))
+        return
+      }
       hist.replaceState(hist.state, '', nextQuery ? `?${nextQuery}` : loc.pathname)
     })
   }

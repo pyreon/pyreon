@@ -39,6 +39,81 @@ export interface UrlState {
  */
 const ARGS_KEY = 'args'
 
+/**
+ * Read the selected component out of the PATH, when the path names one.
+ *
+ * `atlas build` emits a directory per component, so `/atlas/button/` is a real
+ * URL a person can paste into a chat and a crawler can index — which
+ * `/atlas/?c=button` is not. This is the reading half.
+ *
+ * Deliberately base-agnostic: it takes the LAST non-empty segment and only
+ * accepts it if the catalog already contains that id. Deriving the base
+ * instead would mean knowing it, and the base is a deploy-time choice
+ * (`--base /atlas/`, `/`, a user's own subdirectory) that this layer has no
+ * honest way to learn. Checking membership makes a wrong guess impossible:
+ * an unrecognised segment simply is not a component, and the caller falls back
+ * to the query string.
+ *
+ * The residual is a deploy whose own last path segment collides with a
+ * component id (a site served AT `/button/`). It resolves to that component,
+ * which is the same thing the link would have meant anyway.
+ */
+export function componentFromPath(pathname: string, ids: Iterable<string>): string | undefined {
+  const segments = pathname.split('/').filter((s) => s.length > 0)
+  const last = segments.at(-1)
+  if (last === undefined) return undefined
+  const decoded = decodeSegment(last)
+  if (decoded === undefined) return undefined
+  for (const id of ids) if (id === decoded) return decoded
+  return undefined
+}
+
+/**
+ * `decodeURIComponent`, with a malformed escape reported as "no match".
+ *
+ * The segment travelled through a URL, so it is percent-encoded; ids are slugs
+ * so this is normally a no-op. A hand-mangled URL (`/%E0%A4%A/`) makes
+ * `decodeURIComponent` THROW, and this runs on a render path where an
+ * exception would blank the workbench over a typo in the address bar.
+ */
+function decodeSegment(segment: string): string | undefined {
+  try {
+    return decodeURIComponent(segment)
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * The directory a component page lives under — the writing half's prefix.
+ *
+ * Given the current pathname and the id the path resolved to, returns the part
+ * BEFORE it, with a trailing slash. When the path does not end in a component
+ * (the site root), the pathname itself is already that prefix.
+ */
+export function pathBase(pathname: string, matchedId: string | undefined): string {
+  const withSlash = pathname.endsWith('/') ? pathname : `${pathname}/`
+  if (matchedId === undefined) return withSlash
+  const suffix = `${matchedId}/`
+  return withSlash.endsWith(suffix) ? withSlash.slice(0, -suffix.length) : withSlash
+}
+
+/**
+ * The URL for one component page: `<base><id>/` plus any remaining query.
+ *
+ * Absolute by construction (the base carries the leading slash), because the
+ * caller writes it with `replaceState` — and a relative `?query` there
+ * resolves against whatever directory the URL already has, which is how a path
+ * and a query come to name different components.
+ *
+ * An empty id degrades to the base rather than emitting `//`: a catalog with
+ * no components is a real state, and it should land on the site root.
+ */
+export function componentUrl(base: string, id: string, query: string): string {
+  const path = id ? `${base}${encodeURIComponent(id)}/` : base
+  return query ? `${path}?${query}` : path
+}
+
 /** Encode state into a query string (no leading `?`). */
 export function serializeUrlState(state: UrlState): string {
   const params = new URLSearchParams()

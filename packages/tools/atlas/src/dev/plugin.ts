@@ -265,6 +265,21 @@ function escapeHtml(text: string): string {
     .replaceAll("'", '&#39;')
 }
 
+/**
+ * Tell the page that a directory exists for every component.
+ *
+ * The workbench writes `/atlas/button/` instead of `/atlas/?c=button` only
+ * when this is set, because writing a path is safe only where a page answers
+ * at it. `atlas build` fans those directories out and sets this; `atlas dev`
+ * sets it because its middleware already serves the shell for any extensionless
+ * GET. A workbench embedded in someone else's app sets nothing and keeps the
+ * query string — its host router has never heard of `/button/`, so a reload
+ * there would 404.
+ */
+export function routesFlagScript(): string {
+  return '<script>globalThis.__ATLAS_ROUTES__ = true</script>'
+}
+
 export function devHtml(title = 'atlas'): string {
   return [
     '<!doctype html>',
@@ -282,6 +297,7 @@ export function devHtml(title = 'atlas'): string {
     '    <link rel="preconnect" href="https://fonts.googleapis.com" />',
     '    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />',
     '    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />',
+    `    ${routesFlagScript()}`,
     '  </head>',
     '  <body>',
     '    <div id="atlas-root"></div>',

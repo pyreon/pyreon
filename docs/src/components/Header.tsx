@@ -120,6 +120,20 @@ export function Header(props: HeaderProps) {
             <RouterLink to="/docs/getting-started" class="docs-header__link">
               Docs
             </RouterLink>
+            {/*
+              A plain anchor, deliberately — NOT a RouterLink.
+
+              `/atlas` is same-origin but it is a SEPARATE static site emitted
+              by `atlas build` into the same Pages artifact; it is not in this
+              app's route table. A RouterLink would try to resolve it
+              client-side and land on the 404 page. `data-allow-reload` is the
+              router's documented opt-out for an intentional same-origin full
+              load, and without it the dev build warns about exactly this
+              anchor.
+            */}
+            <a href="/atlas/" class="docs-header__link" data-allow-reload>
+              Components
+            </a>
           </nav>
 
           <ThemeToggle />

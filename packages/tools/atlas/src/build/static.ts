@@ -21,14 +21,20 @@
  * when it is missing, so `atlas scan` keeps working in a project that has no
  * bundler at all.
  */
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { runScan } from '../cli/run'
 import { discoverComponents } from '../discover'
 import { workspaceResolvePlugin } from '../discover/workspace-packages'
 import { componentKey, type ComponentIntelligence } from '../core'
-import { atlasDevPlugin, builtinMethods, CATALOG_ID, type RpcMethod } from '../dev/plugin'
-import type { CatalogEntrySource } from '../dev/catalog-module'
+import {
+  atlasDevPlugin,
+  builtinMethods,
+  CATALOG_ID,
+  routesFlagScript,
+  type RpcMethod,
+} from '../dev/plugin'
+import { catalogIds, type CatalogEntrySource } from '../dev/catalog-module'
 import { bakedRpcScript, bakeRpc } from './bake'
 import { collectEntries } from './entries'
 
@@ -59,6 +65,8 @@ export interface BuildResult {
   warnings: readonly string[]
   /** The resolved site title. */
   title: string
+  /** Per-component `<id>/index.html` pages emitted (0 for a relative base). */
+  routedPages: number
 }
 
 const NO_VITE =
@@ -238,7 +246,88 @@ export async function buildStatic(options: BuildOptions = {}): Promise<BuildResu
     rmSync(workDir, { recursive: true, force: true })
   }
 
-  return { outDir, components: entries.length, warnings, title }
+  // ── 5. A directory per component ────────────────────────────────────────
+  // The SAME ids the catalog module generates — `catalogIds` is the one owner.
+  // These are slugs (`core-button`), not identity keys (`Core/Button`): the key
+  // carries a `/`, so deriving directories from it would both write outside the
+  // component's folder and never match what the page looks itself up by.
+  const routed = emitComponentPages(
+    outDir,
+    catalogIds(entries, {
+      root: scanRoot,
+      ...(pages ? { pages } : {}),
+      ...(projects ? { projects } : {}),
+    }),
+    options.base ?? '/',
+    log,
+  )
+
+  return { outDir, components: entries.length, warnings, title, routedPages: routed }
+}
+
+/**
+ * Emit `<outDir>/<id>/index.html` for every component.
+ *
+ * Why a copy of the shell rather than anything cleverer: the workbench is
+ * client-rendered, so every component page IS the same document — what differs
+ * is which component it selects, and it learns that from its own path (see
+ * `componentFromPath`). Copying costs a few hundred KB of identical HTML and
+ * buys a URL you can paste into a chat, bookmark, or link from a design doc,
+ * on a plain file server with no rewrite rules.
+ *
+ * What this does NOT buy, and the comment exists so nobody assumes it does:
+ * the emitted HTML has an EMPTY body until JavaScript runs. These are real
+ * URLs, not prerendered pages — a crawler sees the shell's title and nothing
+ * else. Rendering the component into the HTML needs SSR, which is a different
+ * and much larger change.
+ *
+ * Skipped for a RELATIVE base. Vite rewrites the shell's asset URLs against
+ * the base, and a relative one (`./assets/…`) resolves against the DIRECTORY
+ * the document is in — correct at the root, broken one level down. Rather than
+ * emit pages that silently fail to load their own JavaScript, this says so and
+ * emits none.
+ */
+export function emitComponentPages(
+  outDir: string,
+  ids: readonly string[],
+  base: string,
+  log: (message: string) => void,
+): number {
+  if (!base.startsWith('/')) {
+    log(
+      `atlas build: --base ${base} is relative, so per-component pages were NOT emitted ` +
+        `(their assets would resolve against the wrong directory). The site works at its ` +
+        `root; use an absolute --base to get /<component>/ URLs.`,
+    )
+    return 0
+  }
+
+  let shell: string
+  try {
+    shell = readFileSync(resolve(outDir, 'index.html'), 'utf8')
+  } catch {
+    // The build just wrote it, so this is a genuinely broken state rather than
+    // a case to paper over.
+    log('atlas build: could not read the built index.html — per-component pages were not emitted.')
+    return 0
+  }
+
+  let written = 0
+  for (const id of ids) {
+    // The ids come from `componentKey`, which slugifies — but this value
+    // becomes a DIRECTORY NAME, so a separator or a parent reference would
+    // write outside `outDir`. Checked rather than trusted: the cost is a
+    // string test and the failure mode is arbitrary file placement.
+    if (id.length === 0 || id.includes('/') || id.includes('\\') || id === '.' || id === '..') {
+      log(`atlas build: skipped a component page for the unsafe id ${JSON.stringify(id)}`)
+      continue
+    }
+    const dir = resolve(outDir, id)
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(resolve(dir, 'index.html'), shell, 'utf8')
+    written += 1
+  }
+  return written
 }
 
 /** Resolve `@pyreon/vite-plugin`'s factory, with a written-out failure. */
@@ -316,6 +405,7 @@ export function staticHtml(title: string, baked: Parameters<typeof bakedRpcScrip
     '    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />',
     // Before the module script, which is deferred — see `bakedRpcScript`.
     `    ${bakedRpcScript(baked)}`,
+    `    ${routesFlagScript()}`,
     '  </head>',
     '  <body>',
     '    <div id="atlas-root"></div>',

@@ -60,4 +60,36 @@ test.describe('atlas build — static site', () => {
       timeout: 10_000,
     })
   })
+
+  /**
+   * Path URLs — `/button/` rather than `/?c=button`.
+   *
+   * Only this gate sees the whole mechanism. The unit tests cover the pure
+   * parse/serialise halves, but whether a DIRECTORY was actually emitted, and
+   * whether a plain file server answers at it, is a property of the built
+   * artifact — and the failure is silent in the worst way: the SPA still works
+   * from the root, so nothing announces that every shared link 404s.
+   */
+  test('a component URL is a real page on a dumb file server', async ({ page }) => {
+    const response = await page.goto('/button/')
+    // 200 from the static server, not an SPA fallback — `serve-ssg.ts` has no
+    // fallback, which is exactly why this config uses it over `vite preview`.
+    expect(response?.status()).toBe(200)
+    await expect(page.getByTestId('canvas-name')).toHaveText('Button')
+  })
+
+  test('navigating REWRITES the path, and the reload lands on it', async ({ page }) => {
+    // The half that is easy to get wrong: `replaceState(…, '?query')` is
+    // RELATIVE, so a naive write keeps `/button/` in the path and swaps only
+    // the query — leaving a URL that names one component and shows another.
+    await page.goto('/button/')
+    await page.getByText('Chip', { exact: true }).first().click()
+    await expect(page).toHaveURL(/\/chip\/(\?|$)/)
+    // And the component must not ALSO be carried in the query, or the two can
+    // disagree.
+    expect(new URL(page.url()).searchParams.get('c')).toBeNull()
+
+    await page.reload()
+    await expect(page.getByTestId('canvas-name')).toHaveText('Chip')
+  })
 })
