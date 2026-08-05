@@ -341,7 +341,7 @@ jobs:
   # under the 10min job timeout with comfortable margin on the OOM-
   # sensitive `--sequential` path.
   typecheck-cell:
-    name: typecheck (${{ matrix.category }})
+    name: typecheck (${{ matrix.name }})
     # DYNAMIC matrix (2026-07): only categories with affected packages spawn a
     # cell — `changes` computes the list with the SAME script+base each cell
     # uses, so the spawn decision and the cell's own filter can never disagree.
@@ -359,7 +359,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        category: ${{ fromJSON(needs.changes.outputs.typecheck-matrix || '["core","fundamentals","internals","native","tools","ui","ui-system","zero","examples"]') }}
+        include: ${{ fromJSON(needs.changes.outputs.typecheck-matrix || '[{"name":"all","members":"core fundamentals internals native tools ui ui-system zero examples"}]') }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -373,8 +373,16 @@ jobs:
           # bootstrap restore lets typecheck start as soon as Install
           # finishes (~60s) instead of waiting for Bootstrap (~210s).
           restore-bootstrap: 'false'
-      - name: Run typecheck (${{ matrix.category }})
+      - name: Run typecheck (${{ matrix.name }})
+        env:
+          MEMBERS: ${{ matrix.members }}
         run: |
+          # A cell runs a BATCH of categories sequentially. No `set -e`: one
+          # failing category must not hide the ones behind it, so failures are
+          # collected and reported together at the end.
+          FAILED=""
+          for category in $MEMBERS; do
+          echo "::group::typecheck — $category"
           # Recompute the filter per-cell with --category narrowing.
           # We DON'T reuse install.outputs.affected-filter because it
           # spans every category; per-cell we need only this slice.
@@ -385,16 +393,16 @@ jobs:
           #
           # The `examples` pseudo-category maps to the top-level examples/
           # dir; every other category maps to packages/<cat>/.
-          if [ "${{ matrix.category }}" = "examples" ]; then
+          if [ "$category" = "examples" ]; then
             CATEGORY_GLOB="./examples/*"
           else
-            CATEGORY_GLOB="./packages/${{ matrix.category }}/*"
+            CATEGORY_GLOB="./packages/$category/*"
           fi
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             git fetch origin "${{ github.base_ref }}" || true
             FILTER=$(bun run scripts/affected.ts \
               --base=origin/${{ github.base_ref }} \
-              --category=${{ matrix.category }})
+              --category="$category")
             # Root-file change in a PR returns --filter=* from the
             # script (the only safe escalation when blast radius is
             # unknowable). At the cell level we translate that to the
@@ -412,7 +420,8 @@ jobs:
           fi
           if [ -z "$FILTER" ]; then
             echo "No affected packages in this category — skipping."
-            exit 0
+            echo "::endgroup::"
+            continue
           fi
           echo "Cell filter: $FILTER"
           set -f
@@ -421,7 +430,15 @@ jobs:
           # for fundamentals-playground — the heaviest are the example
           # apps, now covered by the `examples` cell). --sequential keeps
           # per-cell peak memory at one tsc at a time.
-          bun run $FILTER --sequential typecheck
+          # shellcheck disable=SC2086
+          bun run $FILTER --sequential typecheck || FAILED="$FAILED $category"
+          set +f
+          echo "::endgroup::"
+          done
+          if [ -n "$FAILED" ]; then
+            echo "::error title=typecheck batch failed::category(ies):$FAILED"
+            exit 1
+          fi
 
   typecheck:
     name: Typecheck
@@ -611,67 +628,108 @@ jobs:
           # resolve the SAME package and differ only by vitest `--shard`.
           TC_ALL='["core","fundamentals","internals","native","tools","ui","ui-system","zero","examples"]'
           TEST_ALL='["core","fundamentals","internals","native-compiler-1","native-compiler-2","native-rest","tools","ui","ui-system","zero"]'
+          # The three native TEST cells must never share a runner: each keys a
+          # compile-verdict cache on its own category and the three derive
+          # DISJOINT verdict sets, so merging them would make the key ambiguous
+          # and silently turn every lookup into a miss.
+          NATIVE_ISO='native-compiler-1,native-compiler-2,native-rest'
           emit() { # emit <prefix> <json>
             echo "$1=$2" >> "$GITHUB_OUTPUT"
             if [ "$2" = "[]" ]; then echo "$1-has=false" >> "$GITHUB_OUTPUT"; else echo "$1-has=true" >> "$GITHUB_OUTPUT"; fi
             echo "$1 matrix: $2"
           }
           if [ "${{ github.event_name }}" != "pull_request" ]; then
-            emit typecheck "$TC_ALL"
-            emit test "$TEST_ALL"
+            batch typecheck "$TC_ALL" 3
+            batch test "$TEST_ALL" 2 "$NATIVE_ISO"
             exit 0
           fi
           BASE="origin/${{ github.base_ref }}"
           # pick <output-prefix> <full-json> <cat>:<affected-args>...
           # Fail-closed: any affected.ts error, or a root-file `--filter=*`
           # verdict, emits the FULL list — never a silently-narrowed one.
+          # Echoes the selected-cell JSON on stdout; progress notes go to
+          # stderr so they cannot contaminate the captured value. Fail-closed
+          # behaviour is unchanged — any error or a root-file verdict returns
+          # the FULL list.
           pick() {
-            local prefix="$1" full="$2"; shift 2
+            local full="$1"; shift
             local list="" cat args out
             for spec in "$@"; do
               cat="${spec%%:*}"; args="${spec#*:}"
               # shellcheck disable=SC2086
               if ! out=$(bun run scripts/affected.ts --base="$BASE" $args); then
-                echo "affected.ts failed for $cat — fail-closed to full $prefix matrix"
-                emit "$prefix" "$full"; return 0
+                echo "affected.ts failed for $cat — fail-closed to full matrix" >&2
+                echo "$full"; return 0
               fi
               if [ "$out" = "--filter=*" ]; then
-                echo "root-file change — full $prefix matrix"
-                emit "$prefix" "$full"; return 0
+                echo "root-file change — full matrix" >&2
+                echo "$full"; return 0
               fi
               [ -n "$out" ] && list="$list\"$cat\","
             done
-            emit "$prefix" "[${list%,}]"
+            echo "[${list%,}]"
           }
-          pick typecheck "$TC_ALL" \
+          # BATCH the selected categories into at most `max` cells. Same
+          # reasoning as the e2e matrix: a cell's fixed cost (queue wait +
+          # checkout + setup-pyreon) is ~30-60s, and most category cells RUN
+          # for under two minutes — so past a handful of cells the fan-out
+          # buys queue tax rather than wall-clock. See scripts/ci-batch.ts.
+          batch() { # batch <prefix> <json-list> <max> [isolate-csv]
+            local prefix="$1" json="$2" max="$3" iso="${4:-}" out
+            if [ "$json" = "[]" ]; then emit "$prefix" "[]"; return 0; fi
+            # Fail-closed: if batching errors, fall back to the UNBATCHED list
+            # (slower, but never fewer cells than were selected).
+            if ! out=$(bun run scripts/ci-batch.ts --items="$json" --max="$max" --isolate="$iso"); then
+              echo "ci-batch failed for $prefix — falling back to unbatched"
+              emit "$prefix" "$json"; return 0
+            fi
+            emit "$prefix" "$out"
+          }
+          TC_SEL=$(pick "$TC_ALL" \
             "core:--category=core" "fundamentals:--category=fundamentals" \
             "internals:--category=internals" "native:--category=native" \
             "tools:--category=tools" "ui:--category=ui" \
             "ui-system:--category=ui-system" "zero:--category=zero" \
-            "examples:--category=examples"
-          pick test "$TEST_ALL" \
+            "examples:--category=examples")
+          TEST_SEL=$(pick "$TEST_ALL" \
             "core:--category=core" "fundamentals:--category=fundamentals" \
             "internals:--category=internals" \
             "native-compiler-1:--category=native/compiler" \
             "native-compiler-2:--category=native/compiler" \
             "native-rest:--category=native --exclude=native/compiler" \
             "tools:--category=tools" "ui:--category=ui" \
-            "ui-system:--category=ui-system" "zero:--category=zero"
+            "ui-system:--category=ui-system" "zero:--category=zero")
+          # typecheck: 9 categories -> 3 cells (~12 min serial).
+          # test: 7 non-native categories -> 2 cells, plus the 3 native cells
+          # kept 1:1 = 5 cells (down from 10).
+          batch typecheck "$TC_SEL" 3
+          batch test "$TEST_SEL" 2 "$NATIVE_ISO"
       - name: Select affected e2e suites
         id: e2e
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            MATRIX=$(bun run scripts/e2e-affected.ts --base=origin/${{ github.base_ref }})
+            SUITES=$(bun run scripts/e2e-affected.ts --base=origin/${{ github.base_ref }})
           else
-            MATRIX=$(bun run scripts/e2e-affected.ts --all)
+            SUITES=$(bun run scripts/e2e-affected.ts --all)
           fi
+          # BATCH the selected suites into at most 4 cells. A cell's fixed cost
+          # (queue wait + checkout + setup-pyreon + a Playwright browser
+          # install) is 35-52s, while most suites RUN for 8-30s — measured on
+          # run 31023199747, where 25 e2e cells spent ~19 min of runner time on
+          # setup to execute ~8 min of tests, and the median cell waited 30.6
+          # min for a slot. Splitting only pays while runners are free; under
+          # contention the cells serialise through the queue anyway and the
+          # split just multiplies the fixed cost. See scripts/ci-batch.ts.
+          NAMES=$(echo "$SUITES" | jq -c '[.[].name]')
+          MATRIX=$(bun run scripts/ci-batch.ts --items="$NAMES" --max=4)
           echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
           if [ "$MATRIX" = "[]" ]; then
             echo "has=false" >> "$GITHUB_OUTPUT"
           else
             echo "has=true" >> "$GITHUB_OUTPUT"
           fi
-          echo "Selected e2e matrix: $MATRIX"
+          echo "Selected e2e suites: $SUITES"
+          echo "Batched e2e matrix: $MATRIX"
       - name: Detect scaffold-relevant changes
         id: scaffold
         run: |
@@ -770,7 +828,7 @@ jobs:
   # because Install is now ~60s instead of ~210s, freeing the runner
   # pool sooner for everything downstream.
   test-cell:
-    name: test (${{ matrix.category }})
+    name: test (${{ matrix.name }})
     # Cost gate: also depend on `lint` (fast, deterministic, needs only
     # install — it finishes before bootstrap on every green run, so it adds
     # zero latency). When lint fails, the expensive matrix SKIPS via the
@@ -866,13 +924,13 @@ jobs:
     #
     # Non-native cells are vitest-only and keep the tight 10-minute cap so a
     # genuine hang there still fails fast.
-    timeout-minutes: ${{ startsWith(matrix.category, 'native') && 25 || 10 }}
+    timeout-minutes: ${{ startsWith(matrix.name, 'native') && 25 || 20 }}
     strategy:
       fail-fast: false
       matrix:
         # Dynamic (see typecheck-cell): only affected categories spawn;
         # `|| full-list` fallback keeps a `changes` failure fail-closed.
-        category: ${{ fromJSON(needs.changes.outputs.test-matrix || '["core","fundamentals","internals","native-compiler-1","native-compiler-2","native-rest","tools","ui","ui-system","zero"]') }}
+        include: ${{ fromJSON(needs.changes.outputs.test-matrix || '[{"name":"native-compiler-1","members":"native-compiler-1"},{"name":"native-compiler-2","members":"native-compiler-2"},{"name":"native-rest","members":"native-rest"},{"name":"batch-a","members":"core fundamentals internals"},{"name":"batch-b","members":"tools ui ui-system zero"}]') }}
     steps:
       # Pin Node — vitest's `#!/usr/bin/env node` shebang means tests
       # run under whatever Node is on PATH. Without this, ubuntu-latest's
@@ -915,14 +973,14 @@ jobs:
       # — and (b) let a cell restore a sibling's store, all misses. Each cell
       # saves and restores its own category's lineage.
       - name: Restore native compile-verdict cache
-        if: startsWith(matrix.category, 'native')
+        if: startsWith(matrix.name, 'native')
         uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: .cache/pyreon-native-validate
-          key: native-verdicts-ci-${{ runner.os }}-${{ matrix.category }}-${{ github.sha }}
-          restore-keys: native-verdicts-ci-${{ runner.os }}-${{ matrix.category }}-
+          key: native-verdicts-ci-${{ runner.os }}-${{ matrix.name }}-${{ github.sha }}
+          restore-keys: native-verdicts-ci-${{ runner.os }}-${{ matrix.name }}-
 
-      - name: Run tests (${{ matrix.category }})
+      - name: Run tests (${{ matrix.name }})
         # PYREON_SKIP_SLOW_TESTS=1 makes individual tests opt OUT of the
         # PR-time fast path. Today this skips `bootstrap-exit-codes.test.ts`
         # in test (internals) — which takes ~190s on CI due to 8 subprocess
@@ -936,13 +994,19 @@ jobs:
           # Harmless for non-native cells: validate-cache only engages when a
           # validator actually runs.
           PYREON_VALIDATE_CACHE_DIR: ${{ github.workspace }}/.cache/pyreon-native-validate
+          MEMBERS: ${{ matrix.members }}
         run: |
+          # A cell runs a BATCH of categories sequentially. No `set -e` around
+          # the loop: one failing category must not hide the ones behind it.
+          BATCH_FAILED=""
+          for category in $MEMBERS; do
+          echo "::group::test — $category"
           # Most cells map 1:1 onto `packages/<category>/`. The two `native-*`
           # cells are PSEUDO-categories splitting `packages/native/` across two
           # runners (see the timeout-minutes comment). Their `--exclude`/glob
           # complement is derived, never enumerated, so a new native package is
           # always covered by exactly one of them.
-          case "${{ matrix.category }}" in
+          case "$category" in
             # Both compiler shards resolve the SAME package; they differ only
             # by vitest `--shard`, which splits the package's test FILES into
             # two disjoint halves whose union is every file (verified: 8 files
@@ -967,8 +1031,8 @@ jobs:
               done)
               ;;
             *)
-              AFFECTED_ARGS="--category=${{ matrix.category }}"
-              FULL_FILTER="--filter=./packages/${{ matrix.category }}/*"
+              AFFECTED_ARGS="--category=$category"
+              FULL_FILTER="--filter=./packages/$category/*"
               ;;
           esac
           if [ "${{ github.event_name }}" = "pull_request" ]; then
@@ -984,7 +1048,8 @@ jobs:
           fi
           if [ -z "$FILTER" ]; then
             echo "No affected packages in this category — skipping."
-            exit 0
+            echo "::endgroup::"
+            continue
           fi
           echo "Cell filter: $FILTER${SHARD_ARGS:+ (shard $SHARD_ARGS)}"
           set -f
@@ -1004,25 +1069,32 @@ jobs:
           echo "$OUTPUT"
           if [ $EXIT -ne 0 ] && echo "$OUTPUT" | grep -q "No packages matched the filter"; then
             echo "(no matching packages have a 'test' script — treating as no-op)"
-            exit 0
+            EXIT=0
           fi
-          exit $EXIT
+          [ $EXIT -ne 0 ] && BATCH_FAILED="$BATCH_FAILED $category"
+          set +f
+          echo "::endgroup::"
+          done
+          if [ -n "$BATCH_FAILED" ]; then
+            echo "::error title=test batch failed::category(ies):$BATCH_FAILED"
+            exit 1
+          fi
 
       # Save the verdict store — push:main only (the PR side only restores,
       # so a PR can never poison the shared store). `if: always()` so a red
       # main run still saves the verdicts it derived; they are
       # content-addressed, so verdicts from a failing run are just as valid
       # as from a green one. This step MUST live in THIS matrix job: the
-      # first cut sat in the `Test` aggregator, where `matrix.category`
+      # first cut sat in the `Test` aggregator, where `matrix.name`
       # doesn't exist (condition never true) and the derived store isn't on
       # disk — so zero caches were ever saved and every native cell stayed
       # cold at ~15-17min while the restore step missed forever.
       - name: Save native compile-verdict cache
-        if: always() && github.ref == 'refs/heads/main' && startsWith(matrix.category, 'native')
+        if: always() && github.ref == 'refs/heads/main' && startsWith(matrix.name, 'native')
         uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: .cache/pyreon-native-validate
-          key: native-verdicts-ci-${{ runner.os }}-${{ matrix.category }}-${{ github.sha }}
+          key: native-verdicts-ci-${{ runner.os }}-${{ matrix.name }}-${{ github.sha }}
 
   test:
     name: Test
@@ -1245,7 +1317,11 @@ jobs:
     needs: [bootstrap, lint, changes]
     if: needs.changes.outputs.e2e-has == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # A cell runs a BATCH of suites now, so the cap covers the batch, not one
+    # suite. Full serial e2e is ~8-20 min across every suite; at 4 batches the
+    # heaviest lands well under 10 min, and 25 leaves real headroom for a slow
+    # runner without letting a genuine hang sit for an hour.
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -1303,9 +1379,37 @@ jobs:
         # Tee the combined output so the next step can surface FLAKY
         # specs. `set -o pipefail` keeps Playwright's real exit code
         # through the pipe so a genuine failure still fails the job.
+        #
+        # A cell now runs a BATCH of suites sequentially (see the batching
+        # comment on `Select affected e2e suites`). Every suite still runs as
+        # its own `bun run`, so behaviour per suite is unchanged — only the
+        # number of RUNNERS changed.
+        #
+        # Deliberately NO `set -e`: a failing suite must not abort the rest of
+        # the batch, or one red suite would mask every suite behind it (the
+        # isolation the per-suite matrix was originally introduced to get). We
+        # collect failures and fail the job at the end with all of them named.
+        env:
+          MEMBERS: ${{ matrix.members }}
         run: |
           set -o pipefail
-          bun run ${{ matrix.script }} 2>&1 | tee /tmp/e2e-out.txt
+          : > /tmp/e2e-out.txt
+          FAILED=""
+          for suite in $MEMBERS; do
+            script=$(bun run scripts/e2e-affected.ts --scripts-for="$suite")
+            echo "::group::e2e suite — $suite ($script)"
+            if bun run "$script" 2>&1 | tee -a /tmp/e2e-out.txt; then
+              echo "✓ $suite"
+            else
+              echo "::error title=e2e suite failed::$suite"
+              FAILED="$FAILED $suite"
+            fi
+            echo "::endgroup::"
+          done
+          if [ -n "$FAILED" ]; then
+            echo "::error title=e2e batch failed::suite(s):$FAILED"
+            exit 1
+          fi
       - name: Surface flaky specs (passed only on retry)
         # `retries: 2` means a flaky spec self-heals → the job is green
         # and the flake is INVISIBLE. That hides a degrading spec. This
