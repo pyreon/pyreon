@@ -3277,9 +3277,26 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           case 'replaceAll':
             // JS `str.replaceAll(a, b)` → Kotlin `String.replace(a, b)`
             // (Kotlin's `replace` is replace-ALL — faithful; Swift uses
-            // `replacingOccurrences`). Plain `replace` (JS first-only) is
-            // deliberately NOT mapped.
+            // `replacingOccurrences`).
             if (e.args.length === 2) return `${obj}.replace(${argExprs[0]!}, ${argExprs[1]!})`
+            break
+          case 'replace':
+            // JS `str.replace(a, b)` with a STRING pattern replaces only the
+            // FIRST occurrence — Kotlin's `replace` replaces every one, so the
+            // identical-looking call is the wrong function. `replaceFirst` with
+            // String args is the literal, first-only twin.
+            //
+            // This arm used to be absent on the reasoning that the first-vs-all
+            // mismatch made `replace` unmappable. The decision was right and
+            // the FALLTHROUGH was not: an unmapped method is emitted verbatim,
+            // so `s.replace(a, b)` compiled here and quietly replaced ALL
+            // occurrences, while Swift emitted a method that does not exist
+            // (`missing argument label 'with:'`) — one target silently wrong,
+            // the other uncompilable, and no warning on either. "Deliberately
+            // not mapped" only holds if something catches the shape.
+            if (e.args.length === 2) {
+              return `${obj}.replaceFirst(${argExprs[0]!}, ${argExprs[1]!})`
+            }
             break
           case 'flat':
             // JS `arr.flat()` (one level) → Kotlin `flatten()` (Swift:

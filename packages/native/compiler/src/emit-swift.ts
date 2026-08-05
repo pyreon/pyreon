@@ -4045,12 +4045,38 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             break
           case 'replaceAll':
             // JS `str.replaceAll(a, b)` → Swift `replacingOccurrences(of:with:)`
-            // (both replace EVERY occurrence — faithful, unlike `replace`
-            // which is first-only in JS). Kotlin's `String.replace(a, b)` is
-            // also replace-all. (Plain `replace` is deliberately NOT mapped —
-            // first-vs-all mismatch.)
+            // (both replace EVERY occurrence — faithful, unlike `replace`,
+            // which is first-only in JS and handled below). Kotlin's
+            // `String.replace(a, b)` is also replace-all.
             if (e.args.length === 2) {
               return `${obj}.replacingOccurrences(of: ${argExprs[0]!}, with: ${argExprs[1]!})`
+            }
+            break
+          case 'replace':
+            // JS `str.replace(a, b)` with a STRING pattern replaces only the
+            // FIRST occurrence. Swift has no stdlib one-liner for that, so this
+            // is an IIFE (the same shape the single-spread object copy uses)
+            // over `replacingOccurrences(of:with:options:range:)` bounded to the
+            // first match: a non-nil range replaces INSIDE it, i.e. once; a nil
+            // range means the needle is absent, where replace-all is also a
+            // no-op. Every operand is bound as a parameter so the receiver and
+            // the search string are each evaluated exactly ONCE — the receiver
+            // appears twice in the body (as the string and to locate the range).
+            //
+            // This arm used to be absent on the reasoning that the first-vs-all
+            // mismatch made `replace` unmappable. The decision was right and the
+            // FALLTHROUGH was not: an unmapped method is emitted verbatim, so
+            // `s.replace(a, b)` became a Swift call with no such signature
+            // (`missing argument label 'with:'`) — a HARD compile error — while
+            // Kotlin compiled the identical-looking line and quietly replaced
+            // ALL occurrences. No warning on either. "Deliberately not mapped"
+            // only holds if something catches the shape.
+            if (e.args.length === 2) {
+              return (
+                `{ (s: String, f: String, r: String) -> String in ` +
+                `s.replacingOccurrences(of: f, with: r, options: [], range: s.range(of: f)) }` +
+                `(${obj}, ${argExprs[0]!}, ${argExprs[1]!})`
+              )
             }
             break
           case 'flat':

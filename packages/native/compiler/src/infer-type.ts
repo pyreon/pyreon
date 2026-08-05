@@ -1615,6 +1615,15 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
             case 'substring':
             case 'slice':
             case 'replace':
+            // `replaceAll` and `repeat` both LOWER on the emitters but were
+            // absent here, so a helper wrapping one — `const shout = () =>
+            // s.replaceAll('-', '+')` — inferred `unknown` and emitted a Swift
+            // `private func shout()` with NO return type, i.e. returning Void.
+            // The emitted call still typechecks inside a string interpolation
+            // (Swift will interpolate `()`), which is how it stayed hidden;
+            // assigning the result anywhere typed is where it breaks.
+            case 'replaceAll':
+            case 'repeat':
             case 'concat':
             case 'charAt': // 1-char string
             case 'padStart':
