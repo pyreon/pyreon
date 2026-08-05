@@ -104,23 +104,39 @@ describe('leak check — verdict plumbing', () => {
   })
 
   it('FAILS when the count CLIMBS across repeated mounts', async () => {
-    // Each settle window reads a higher plateau: 0 → 2 → 4. That is the
-    // signature of a per-mount leak — every mount strands more nodes.
+    // The invariant: every mount strands more nodes, and that is what a
+    // per-mount leak looks like. So the scripted graph is a function of MOUNTS,
+    // not of how many times the checker happens to read it.
     //
-    // Read-indexed, not gc-indexed: the baseline settle exits on its FIRST
-    // read (0 ≤ floor) without ever calling gc. The afterA window then reads a
-    // stable 2 (floor 0 → the loop burns its runway), and the afterB window a
-    // stable 4 (floor 2 → same).
-    let reads = 0
-    const plateau = () => {
-      reads += 1
-      if (reads === 1) return 0 // baseline
-      if (reads <= 14) return 2 // afterA window
-      return 4 // afterB window
+    // The earlier version indexed on read count, with hand-computed windows
+    // ("reads 2..14 are the afterA window"). That pinned the checker's exact
+    // call sequence rather than its meaning: batching the leak pass changed how
+    // many settles run and the scripted plateaus stopped lining up, failing a
+    // check whose behaviour was still correct. A mount-indexed reader states
+    // the same leak and survives any settling strategy — which is the property
+    // a plumbing test should have.
+    let mounts = 0
+    const counting: MountRuntime = {
+      ...runtimeWith(() => mounts * 2, async () => {}),
+      mount: ((root: unknown, container: Element) => {
+        mounts += 1
+        return (mount as unknown as MountRuntime['mount'])(root, container)
+      }) as MountRuntime['mount'],
     }
-    const result = await verify(runtimeWith(plateau, async () => {}))
+    const result = await verify(counting)
     expect(result.leak.status).toBe('fail')
-    expect(result.leak.findings?.[0]).toMatch(/climbed 0 → 2 → 4/)
+    expect(result.leak.findings?.[0]).toMatch(/climbed \d+ → \d+ → \d+/)
+  })
+
+  it('PASSES a component whose retention does not grow with mounts', async () => {
+    // The same mount-indexed harness with a FLAT graph: repeated mounts strand
+    // nothing new. This is the other side of the accumulation rule, and it is
+    // what keeps an engine straggler from reading as a leak.
+    const flat: MountRuntime = {
+      ...runtimeWith(() => 7, async () => {}),
+      mount: mount as unknown as MountRuntime['mount'],
+    }
+    expect((await verify(flat)).leak.status).toBe('pass')
   })
 })
 
