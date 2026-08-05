@@ -1089,6 +1089,24 @@ class RouterDemoInstrumentedTest {
         composeRule.onNodeWithTag("phase-text").assertTextEquals("Phase: active")
     }
 
+    // Styling — `@pyreon/attrs` default props reaching real layout. The card's
+    // `gap: 5` (→ 20dp) comes ONLY from the attrs chain: the use site passes
+    // padding, not gap. A dropped chain falls back to the page's 12dp gap.
+    @Test
+    fun attrsDefaultPropsReachLayout() {
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        composeRule.onNodeWithText("View styles").performClick()
+        composeRule.onNodeWithTag("styles-page").assertIsDisplayed()
+
+        val a = composeRule.onNodeWithTag("attrs-a").getUnclippedBoundsInRoot()
+        val b = composeRule.onNodeWithTag("attrs-b").getUnclippedBoundsInRoot()
+        val gap = b.top.value - a.bottom.value
+        require(gap > 16f && gap < 24f) {
+            "attrs children are ${gap}dp apart; expected ~20 (the gap:5 DEFAULT). " +
+                "~12 means the attrs chain was dropped and the page gap applied"
+        }
+    }
+
     // Styling row — TYPOGRAPHY tokens by geometry + COLOUR token by RENDERED
     // PIXEL. The two "Aa" lines take fontSize from different token leaves
     // (body=16, display=34 — both absent from the compiler's DEFAULT scale, so

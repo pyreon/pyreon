@@ -19,6 +19,7 @@ import { For, onMount } from '@pyreon/core'
 import { useAppState, useDatabase, useFetch, useOnline, usePush, useSecureStorage, useSizeClass, useWebSocket } from '@pyreon/hooks'
 import { useFieldArray } from '@pyreon/form'
 import { Button, Heading, Image, Inline, Layer, Link, Press, Spacer, Stack, Text, Video } from '@pyreon/primitives'
+import { attrs } from '@pyreon/attrs'
 import { Element } from '@pyreon/elements'
 import { Col, Container, Row } from '@pyreon/coolgrid'
 import { signal } from '@pyreon/reactivity'
@@ -55,6 +56,12 @@ const TightCard = styled(Stack)`
 const RoomyCard = styled(Stack)`
   padding: ${(t) => t.spacing.xl};
 `
+
+// attrs(Base).attrs({…}) — the default-prop HOC @pyreon/rocketstyle builds
+// on. `gap: 5` is the card's ONLY gap source (the use site passes padding,
+// not gap), so the measured child spacing IS the default surviving the
+// merge; a dropped chain falls back to the parent's spacing.
+const AttrsCard = attrs(Stack).attrs({ gap: 5 })
 
 // Typography from tokens → .font(.system(size:)) / fontSize = N.sp. Same
 // glyph both lines, so the a11y-frame HEIGHT delta is purely the token values
@@ -436,6 +443,20 @@ function StylesPage() {
           finding), so the child's vertical offset from the marker above it
           is the assertion on iOS; Android reads the box bounds directly. */}
       <Text data-testid="element-marker">marker</Text>
+      {/* Styling row — `@pyreon/attrs`, the last named absent with no native
+          example at all. attrs(Base).attrs({…}) accumulates DEFAULT props
+          over a base; the emit rewrites each use site to the base carrying
+          those defaults, so the defaults must reach real LAYOUT to be worth
+          anything. Geometry, not existence: the card's gap comes ONLY from
+          the attrs default (gap 5 → 20pt/dp), and the use-site `padding`
+          proves the merge order (use-site wins over the default). A dropped
+          attrs chain lays the two texts out at the parent's gap instead —
+          a 12pt/dp difference the harnesses can read on both platforms. */}
+      <AttrsCard padding={3} data-testid="attrs-card">
+        <Text data-testid="attrs-a">A</Text>
+        <Text data-testid="attrs-b">B</Text>
+      </AttrsCard>
+
       <Element tag="div" padding={4} data-testid="element-box">
         <Text data-testid="element-child">boxed</Text>
       </Element>
