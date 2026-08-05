@@ -84,6 +84,25 @@ export const TreeBase: ComponentFn<TreeBaseProps> = (props) => {
     onChange: own.onChange,
   })
 
+  /**
+   * The tree's data, normalized ONCE.
+   *
+   * `data` is a required prop, so TypeScript already catches the case where it
+   * was simply forgotten. The case that survives to runtime is the legitimate
+   * one — `<Tree data={query.data} />` while the fetch is in flight — and there
+   * the old behaviour was a hard `TypeError` from `for (const node of
+   * undefined)`, thrown inside an effect, which Pyreon routes to the error
+   * handler and which can take the subtree down. Rendering nothing until the
+   * data arrives is what every list-shaped primitive does, and it is a far
+   * smaller answer to "not loaded yet" than a crash.
+   *
+   * An ACCESSOR, not a captured const: `own.data` is a getter and reading it
+   * eagerly here would freeze the tree at whatever was passed on first render.
+   * Normalized in ONE place so a fourth read site cannot forget the guard —
+   * three already existed, and each had its own chance to.
+   */
+  const data = (): TreeNode[] => own.data ?? []
+
   const expanded = signal(new Set<string>(own.defaultExpanded ?? []))
   const focused = signal<string | null>(null)
   // Per-instance typeahead buffer (WAI-ARIA tree "type-to-select").
@@ -137,7 +156,7 @@ export const TreeBase: ComponentFn<TreeBaseProps> = (props) => {
         }
       }
     }
-    walk(own.data, 0)
+    walk(data(), 0)
     return result
   }
 
@@ -267,7 +286,7 @@ export const TreeBase: ComponentFn<TreeBaseProps> = (props) => {
       }
       return false
     }
-    walk(own.data)
+    walk(data())
     return result
   }
 
@@ -328,7 +347,7 @@ export const TreeBase: ComponentFn<TreeBaseProps> = (props) => {
      * never re-created. Render items STATICALLY.
      */
     getItemProps: (id: string, depth: number, hasChildren: boolean) => {
-      const node = findNode(id, own.data)
+      const node = findNode(id, data())
       return {
         role: 'treeitem',
         id: `${baseId}-item-${id}`,
