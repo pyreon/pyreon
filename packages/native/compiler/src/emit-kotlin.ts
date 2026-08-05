@@ -1357,6 +1357,32 @@ function emitKotlinComponent(c: ComponentIR): string {
   for (const declText of declTexts) {
     lines.push(`  ${declText}`)
   }
+  // Form onSubmit is assigned AFTER the decl, never passed as a constructor
+  // argument — the mirror of what Swift does from `.onAppear`, and for the
+  // same reason. The most common authoring shape references the form ITSELF
+  // ("clear the field after submit":
+  // `onSubmit: (values) => form.setFieldValue('x', '')`), and inside
+  // `remember { PyreonForm(onSubmit = { … form … }) }` that body is a
+  // self-reference in the form's own initializer, which Kotlin rejects
+  // ("unresolved reference 'form'"). So the idiom did not compile on Android
+  // at all while working on iOS — a "one source, three targets" break the
+  // auth-rehydration arc found and recorded rather than fixed.
+  for (const d of c.decls) {
+    if (d.kind !== 'form' || d.onSubmit === undefined) continue
+    const name = kotlinIdent(d.name)
+    _formSubmitParamsKotlin.push(d.onSubmit.param)
+    let bodyLines: string
+    try {
+      bodyLines = d.onSubmit.body
+        .map((st) => `    ${emitKotlinStatement(st, 4, ctx)}`)
+        .join('\n')
+    } finally {
+      _formSubmitParamsKotlin.pop()
+    }
+    lines.push(`  ${name}.onSubmit = { ${kotlinIdent(d.onSubmit.param)} ->`)
+    lines.push(bodyLines)
+    lines.push(`  }`)
+  }
   // Phase 4: a `LaunchedEffect(Unit)` per useFetch decl runs the fetch on
   // first composition (Compose's async-on-mount hook), driving the
   // PyreonFetch state machine begin → resolve|reject. The suspendable HTTP
@@ -1635,20 +1661,10 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
         .join(', ')
       parts.push(`validators = mapOf(${entries})`)
     }
-    if (d.onSubmit !== undefined) {
-      _formSubmitParamsKotlin.push(d.onSubmit.param)
-      let bodyLines: string
-      try {
-        bodyLines = d.onSubmit.body
-          .map((st) => `      ${emitKotlinStatement(st, 6, ctx)}`)
-          .join('\n')
-      } finally {
-        _formSubmitParamsKotlin.pop()
-      }
-      parts.push(
-        `onSubmit = { ${kotlinIdent(d.onSubmit.param)} ->\n${bodyLines}\n    }`,
-      )
-    }
+    // onSubmit is deliberately NOT a constructor arg here — it is assigned
+    // post-decl in the composable body (see the emit loop after declTexts).
+    // Keeping both paths would let a self-referencing handler take the
+    // constructor route and fail to compile again.
     return `val ${kotlinIdent(d.name)} = remember { PyreonForm(${parts.join(', ')}) }`
   }
   // Phase 4: `const net = useOnline()` → a remembered PyreonNetworkStatus.
