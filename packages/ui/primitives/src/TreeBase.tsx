@@ -55,7 +55,8 @@ export interface TreeState {
   /**
    * Keyboard handler (WAI-ARIA tree pattern). ArrowUp/ArrowDown move focus
    * between visible nodes, ArrowRight expands / enters a child, ArrowLeft
-   * collapses, Enter/Space selects, Home/End focus the first/last visible
+   * collapses an expanded node or moves focus to the PARENT of a collapsed
+   * node or leaf, Enter/Space selects, Home/End focus the first/last visible
    * node, `*` expands all siblings at the focused node's level, and printable
    * characters type-ahead to the next visible node whose label starts with the
    * typed buffer (buffer resets after ~500ms idle; a repeated same letter
@@ -224,8 +225,23 @@ export const TreeBase: ComponentFn<TreeBaseProps> = (props) => {
         else if (node.children[0]) moveFocusTo(e, node.children[0].id)
       }
     } else if (e.key === 'ArrowLeft' && focusedId) {
+      // WAI-ARIA tree, BOTH halves: on an EXPANDED node ArrowLeft closes it;
+      // on a COLLAPSED node or a LEAF it moves focus to the node's PARENT.
+      // The second half was tracked-but-missing, which made ArrowLeft a dead
+      // key at every leaf — the one place a user presses it most, since
+      // walking back out of a subtree is how you leave it without reaching
+      // for ArrowUp repeatedly.
       e.preventDefault()
-      if (isExpanded(focusedId)) collapse(focusedId)
+      if (isExpanded(focusedId)) {
+        collapse(focusedId)
+      } else {
+        const parent = getParentOf(focusedId)
+        // Only VISIBLE parents are focusable targets — a parent is visible by
+        // construction here (its child has focus, so the chain is expanded),
+        // but root-level nodes have none and ArrowLeft is a no-op there,
+        // exactly as the pattern specifies.
+        if (parent) moveFocusTo(e, parent.id)
+      }
     } else if ((e.key === 'Enter' || e.key === ' ') && focusedId) {
       e.preventDefault()
       const node = visible[idx]?.node
@@ -274,6 +290,28 @@ export const TreeBase: ComponentFn<TreeBaseProps> = (props) => {
 
   /** Return the array of nodes that are siblings of `id` (i.e. the array that
    *  directly contains it — its parent's `children`, or the root list). */
+  /**
+   * The node whose `children` contain `id`, or null for a root-level node.
+   * Walks the WHOLE tree rather than the visible list: a parent is by
+   * definition expanded when its child holds focus, but resolving against
+   * the data keeps this independent of expansion state.
+   */
+  function getParentOf(id: string): TreeNode | null {
+    let result: TreeNode | null = null
+    function walk(nodes: TreeNode[], parent: TreeNode | null): boolean {
+      for (const n of nodes) {
+        if (n.id === id) {
+          result = parent
+          return true
+        }
+        if (n.children?.length && walk(n.children, n)) return true
+      }
+      return false
+    }
+    walk(data(), null)
+    return result
+  }
+
   function getSiblingsOf(id: string): TreeNode[] {
     let result: TreeNode[] = []
     function walk(nodes: TreeNode[]): boolean {

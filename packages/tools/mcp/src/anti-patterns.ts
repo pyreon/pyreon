@@ -350,6 +350,31 @@ export function formatAntiPatterns(
  */
 const INDEX_HOOK_MAX = 100
 
+/**
+ * A hook is added only when the entry's TITLE is at most this many characters.
+ *
+ * The hook exists to disambiguate a title that does not stand on its own —
+ * "Missing batch" needs "3+ signal updates without `batch()`"; it means nothing
+ * without it. But this catalog's convention is that a title carries the whole
+ * CLAIM ("A drain that visits queued recomputes in SUBSCRIPTION order while
+ * relying on visit-time PULLS of un-dirtied deps …"), and for those the hook is
+ * a truncated restatement of the body's opening that adds nothing to discovery
+ * while costing as much as the title itself.
+ *
+ * So the hook follows the need rather than the format: terse titles keep it,
+ * self-describing ones do not. Measured over the current 236 entries: 8,064
+ * index tokens instead of 11,329 — hooks retained on 88, dropped on 148 — which
+ * moves the index from 94% of the 12,000-token design boundary in
+ * `token-budget.test.ts` to 67%, i.e. from ~14 entries of headroom to ~115.
+ *
+ * Chosen over the two alternatives for a reason. Shortening the clamp uniformly
+ * (100 -> 45 chars) reaches a similar total but pays for it by truncating the
+ * hooks that are actually load-bearing. Paginating — the other option the budget
+ * test names — costs a second round trip on the discovery path, which is the one
+ * path that should stay a single call.
+ */
+const INDEX_HOOK_TITLE_MAX = 70
+
 function indexHook(description: string): string {
   // First non-empty line, first sentence-ish, bounded.
   const firstLine = description.split('\n').find((l) => l.trim().length > 0) ?? ''
@@ -384,7 +409,9 @@ export function formatAntiPatternsIndex(entries: AntiPatternEntry[]): string {
         entry.detectorCodes.length > 0
           ? ` \`[detector: ${entry.detectorCodes.join(' / ')}]\``
           : ''
-      parts.push(`- **${entry.name}**${tag} — ${indexHook(entry.description)}`)
+      const hook =
+        entry.name.length <= INDEX_HOOK_TITLE_MAX ? ` — ${indexHook(entry.description)}` : ''
+      parts.push(`- **${entry.name}**${tag}${hook}`)
     }
     parts.push('')
   }
