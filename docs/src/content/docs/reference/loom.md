@@ -60,7 +60,7 @@ $ loom dev . --port=5230   # the observatory UI over the same report
 loom scan [dir] [--strict] [--json] [--no-imports] [--no-write]
 ```
 
-Read the workspace, analyze the dependency fabric, and report. Discovery reads the same declarations an install tool reads; analysis splits edges by semantics (runtime vs dev); seven detectors emit findings with stable codes, honest severities (error gates, warning advises, info knows its own limits), and structured evidence (which files import the phantom, which packages declare which range). Writes `loom-report.json` next to the root manifest and EXITS NON-ZERO on error-severity findings — the CI contract. `--strict` reds on warnings too; `--no-imports` skips the lexical detectors (phantom/dev-dep/unused); `--json` prints the full report.
+Read the workspace, analyze the dependency fabric, and report. Discovery reads the same declarations an install tool reads; analysis splits edges by semantics (runtime vs dev); seven detectors emit findings with stable codes, honest severities (error gates, warning advises, info knows its own limits), and structured evidence (which files import the phantom, which packages declare which range). Writes `loom-report.json` next to the root manifest and EXITS NON-ZERO on error-severity findings — the CI contract. `--strict` reds on warnings too; `--no-imports` skips the lexical detectors (phantom/dev-dep/unused); `--json` prints the full report to stdout and ONLY that (the write notice moves to stderr), so `loom scan . --json > report.json` is a valid JSON file.
 
 **Example**
 

@@ -50,8 +50,29 @@ describe('loom scan', () => {
   it('--json prints the full report to stdout', async () => {
     capture()
     await runCli(['scan', root, '--json', '--no-write'])
-    const parsed = JSON.parse(out.join('').split('  →')[0]!)
+    // Parsed WHOLE, deliberately. This assertion used to read
+    // `out.join('').split('  →')[0]` — stripping the write notice before
+    // parsing. That split was a fossil: it made the spec pass while stdout was
+    // polluted, so it could never catch the pollution.
+    const parsed = JSON.parse(out.join(''))
     expect(parsed.model.packages).toHaveLength(5)
+  })
+
+  it('--json keeps stdout pure by DEFAULT — the write notice goes to stderr', async () => {
+    // The default is `--json` WITHOUT `--no-write`, and that is exactly the
+    // documented machine surface: `loom scan . --json > report.json`. Every
+    // pre-existing `--json` spec passed `--no-write`, so the default
+    // combination was never exercised and shipped emitting a trailing
+    // `  → path` line after the document — an unparseable file.
+    rmSync(join(root, 'loom-report.json'), { force: true })
+    capture()
+    await runCli(['scan', root, '--json'])
+    const parsed = JSON.parse(out.join(''))
+    expect(parsed.model.packages).toHaveLength(5)
+    // Still written, and still announced — narration just moved channels, so a
+    // human at a terminal (where both streams land) sees no change.
+    expect(existsSync(join(root, 'loom-report.json'))).toBe(true)
+    expect(err.join('')).toContain('loom-report.json')
   })
 
   it('--no-write leaves no artifact', async () => {

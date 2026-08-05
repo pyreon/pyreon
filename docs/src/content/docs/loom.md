@@ -39,7 +39,7 @@ It reads the same declarations an install tool reads — root `workspaces` globs
 | `peer-mismatch` | warning | an internal peer range disagreeing with the workspace copy by a major |
 | `unused-dep` | info | a declared dependency no source file imports — lexical evidence only; verify before removing |
 
-`loom scan` **exits non-zero on error findings** (`--strict` includes warnings) — wire it into CI and the fabric gates itself. `--json` prints the full report; `--no-imports` skips the lexical detectors; `--no-write` skips the report file.
+`loom scan` **exits non-zero on error findings** (`--strict` includes warnings) — wire it into CI and the fabric gates itself. `--json` prints the full report to stdout and *only* that — the write notice goes to stderr, so `loom scan . --json > report.json` is a valid JSON file; `--no-imports` skips the lexical detectors; `--no-write` skips the report file.
 
 ## `loom dev` — the observatory
 
