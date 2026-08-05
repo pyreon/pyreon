@@ -551,12 +551,14 @@ function replayAdoptPlan(root: Element, plan: AdoptPlan): boolean {
     if (a && a.nodeType === 3) {
       const b = a.nextSibling
       if (!b || b.nodeType !== 8 || (b as Comment).data !== '/$') return false
-      ;(n as Comment).remove()
-      ;(b as Comment).remove()
+      // MOVE the text before the open marker (1 DOM op) instead of removing
+      // both markers (2 ops): compiled refs only need the text FIRST at its
+      // slot; the markers become inert trailing comments inside the row
+      // (bindText targets the text node directly; _setChild slots never carry
+      // triplets — their template text-count is 0/bare).
+      parent.insertBefore(a, n)
     } else if (a && a.nodeType === 8 && (a as Comment).data === '/$') {
-      parent.insertBefore(document.createTextNode(''), a)
-      ;(n as Comment).remove()
-      ;(a as Comment).remove()
+      parent.insertBefore(document.createTextNode(''), n)
     } else return false
   }
   for (const spot of plan.removalSpots) {
@@ -654,9 +656,11 @@ function normalizeDollarTriplets(
   triplets: { open: Comment; text: Text | null; close: Comment }[],
 ): void {
   for (const t of triplets) {
-    if (!t.text) t.open.parentNode?.insertBefore(document.createTextNode(''), t.close)
-    t.open.remove()
-    t.close.remove()
+    // Move-not-remove (see replayAdoptPlan): the text lands before the open
+    // marker so compiled `.firstChild` refs align; markers stay as inert
+    // trailing comments.
+    if (t.text) t.open.parentNode?.insertBefore(t.text, t.open)
+    else t.open.parentNode?.insertBefore(document.createTextNode(''), t.open)
   }
 }
 
