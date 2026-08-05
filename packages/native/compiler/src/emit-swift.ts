@@ -44,6 +44,7 @@ import {
   typeIsOptional,
   unwrapOptionalType,
   synthesizeWebSocketAutoConnect,
+  widenFloatLocals,
   widenFloatSignals,
 } from './infer-type'
 import { safeIdent, swiftIdent } from './identifier-safety'
@@ -1477,6 +1478,13 @@ function emitSwiftComponent(c: ComponentIR): string {
   // coerce. Reset to empty after the component so non-component expr emits
   // (store/module) don't read a stale ctx (a literal-only mix still types
   // correctly against the empty ctx).
+  // Same write-site widening as `widenFloatSignals` above, for the plain
+  // imperative accumulator (`let acc = 0; for (…) acc += it.price`). Runs with
+  // the component's inference context so a for-of item's field type is
+  // resolvable. Idempotent + mirrored in the Kotlin emitter, like its sibling.
+  for (const d of c.decls) {
+    if (d.kind === 'function') widenFloatLocals(d.body, inferCtx)
+  }
   _activeInferCtx = inferCtx
   _activePropsParamName = c.propsParamName
   // Build the per-component signal-name → enum-type-name map for use
