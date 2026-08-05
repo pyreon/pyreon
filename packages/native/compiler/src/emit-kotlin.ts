@@ -3346,7 +3346,37 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
                 break
               }
               const ps = cmp!.params.map((p) => kotlinIdent(p)).join(', ')
-              return `${obj}.sortedWith(Comparator { ${ps} -> ${emitKotlinExpr(cmp!.body, indent)} })`
+              const body = emitKotlinExpr(cmp!.body, indent)
+              // A JS comparator returns any NUMBER — only its sign matters.
+              // Kotlin's `Comparator.compare` must return Int, so the natural
+              // `(a, b) => a.price - b.price` over a DOUBLE column emitted a
+              // Double where Int was required: a hard compile error, on
+              // Kotlin only (Swift converts the difference to the Bool its
+              // `sorted(by:)` wants, so it never saw the type). Sorting a
+              // ledger by amount is ordinary app code.
+              //
+              // Convert the sign explicitly when the body is fractional:
+              // `Double.compareTo(0.0)` IS the Int sign. Gated on inferred
+              // float rather than applied always, because a comparator body
+              // need not be numeric at all (`a.name > b.name ? 1 : -1`), and
+              // `compareTo(0.0)` would be wrong on those. An Int body keeps
+              // the raw difference — same sign, same order, unchanged emit.
+              const srcT = inferType(e.callee.object, _kotlinExprInferCtx)
+              const elemT = srcT.kind === 'array' ? srcT.element : undefined
+              let bodyT: TypeIR = { kind: 'unknown' }
+              if (elemT !== undefined) {
+                const cmpCtx = {
+                  ..._kotlinExprInferCtx,
+                  locals: new Map(_kotlinExprInferCtx.locals),
+                }
+                for (const pn of cmp!.params) cmpCtx.locals.set(pn, elemT)
+                bodyT = inferType(cmp!.body, cmpCtx)
+              }
+              const cmpBody =
+                bodyT.kind === 'number' && bodyT.float === true
+                  ? `(${body}).compareTo(0.0)`
+                  : body
+              return `${obj}.sortedWith(Comparator { ${ps} -> ${cmpBody} })`
             }
             break
           }
