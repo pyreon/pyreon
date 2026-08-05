@@ -260,6 +260,12 @@ isolation, correctness gates):
   over the Yjs engine seam.
 - **Document renderers** (`bun run bench:document`) — the 18-primitive /
   20-format render matrix.
+- **Loom workspace scan** (`bun run bench:loom`) — phase timings for a real
+  `loom scan` (walk / graph / import scan / detectors) over an actual
+  monorepo. ~98% of a scan is the import phase, so the phase split is the
+  point; a total alone invites optimizing the other 2%. Warm-cache, median of
+  N, with a correctness gate that refuses to print timings for a scan that
+  found nothing.
 - **Hooks wrapper tax** (`@pyreon/hooks` bench) — hook wrappers vs raw
   signals (the deltas mirror the reactivity standings above).
 - **Compiler rocketstyle collapse** — the opt-in build-time collapse

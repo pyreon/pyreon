@@ -10,6 +10,36 @@
  * false-positive; detectors that consume this therefore phrase their
  * findings as evidence-with-files, and `unused-dep` (where a lexical miss
  * would ACCUSE wrongly) stays `info` severity.
+ *
+ * ── The performance frontier, measured ────────────────────────────────────
+ *
+ * This module is ~98% of a `loom scan`, so it is where optimization goes and
+ * where the tempting-but-wrong ideas live. Reproduce any of this with
+ * `bun run bench:loom`. The two changes that DID pay are described at
+ * {@link stripWithMask} and {@link walkFiles}; these three did not, and are
+ * recorded because each looks obviously right on paper:
+ *
+ *  - READING FILES CONCURRENTLY. Read in isolation the phase is syscall-bound
+ *    and parallelises well: 4,308 files cost 87ms serially and 46ms at 32-way,
+ *    with UTF-8 decoding only 7ms of that. In the REAL scan it is worth 1.09x
+ *    (210ms → 193ms), not the 1.25x that isolated number projects, because the
+ *    per-file CPU work between reads already hides most of the syscall latency.
+ *    A 9% gain does not justify making `buildReport` — a documented public
+ *    export — async. Measuring a phase in isolation overstates it whenever the
+ *    real pipeline already overlaps it.
+ *
+ *  - FUSING THE SPECIFIER MATCH INTO THE LEXER, so the stripped string is
+ *    never materialised. Every specifier is a string literal the lexer
+ *    explicitly enters, so candidates are exactly the CODE→string transitions
+ *    and the code mask becomes unnecessary. Prototyped and measured over this
+ *    repo: 140.8ms vs 114.0ms — 0.81x, a LOSS. `isTypeOnlyStatement` wants
+ *    random access into the stripped text, and tracking the nearest statement
+ *    head incrementally instead costs more than the string building it avoids.
+ *
+ *  - SKIPPING WORK PER FILE. Files containing no `import`/`require` at all:
+ *    221 of 4,308, 1.6% of bytes. Files needing no comment/template removal:
+ *    474 of 4,308, 1.0% of bytes. Caching the per-package tsconfig alias read:
+ *    1.6ms. None of these is worth a branch.
  */
 import { readdirSync, readFileSync } from 'node:fs'
 import type { Dirent } from 'node:fs'
