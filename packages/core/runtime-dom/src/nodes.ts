@@ -614,31 +614,34 @@ function forLisReorder(
  * (different/missing/extra/reordered keys, empty rows) bails to the previous
  * correctness-first swap semantics: clear the block, mount fresh.
  */
+export interface ForAdoptOps {
+  items: unknown[]
+  n: number
+  getKey: (item: unknown) => string | number
+  renderItem: (item: unknown) => unknown
+  tailMarker: Comment
+  /** Record one adopted row as a normal ForEntry (pos === index invariant). */
+  setEntry: (
+    key: string | number,
+    anchor: Node,
+    cleanup: Cleanup | null,
+    pos: number,
+    end: Node | null,
+  ) => void
+}
+
 export interface ForAdoption {
   startMarker: Comment
   tailMarker: Comment
-  /** Ordered SSR rows. `marker` is the row's `k:` comment (removed on adopt). */
-  rows: { key: string; marker: Comment; first: ChildNode; last: ChildNode }[]
-  /** Hydrate one row vnode against its existing DOM range; returns cleanup. */
-  hydrateRow: (
-    vnode: import('@pyreon/core').VNode | import('@pyreon/core').NativeItem,
-    first: ChildNode,
-    after: Node | null,
-  ) => Cleanup
   /**
-   * Optional dispatch-free fast path: replay a recorded row plan against this
-   * row's DOM (rows are structurally identical for a given <For>). Returns
-   * null when the row's shape fails verification — the caller falls back to
-   * `hydrateRow` for that row. See hydration-plan.ts.
+   * Adopt the SSR rows (1:1 key match) — the WHOLE adoption routine (row
+   * verify, compiled-template arming, plan replay, interpretive fallback,
+   * anchor bookkeeping) lives on the HYDRATION side and is handed in here, so
+   * mountFor carries only this dispatch and CSR bundles tree-shake all of it.
+   * Returns the adopted key order, or null on ANY mismatch (caller clears the
+   * SSR block and falls through to a fresh render — the swap semantics).
    */
-  tryReplayRow?: (
-    vnode: import('@pyreon/core').VNode | import('@pyreon/core').NativeItem,
-    first: ChildNode,
-  ) => Cleanup | null
-  /** Arm (or clear) the one-shot compiled-template adoption target. */
-  armTplAdopt?: (el: Element | null) => void
-  /** Did the last armed _tpl call adopt (vs clone)? */
-  tplAdopted?: () => boolean
+  adoptRows: (ops: ForAdoptOps) => (string | number)[] | null
 }
 
 // One-shot synchronous handoff: hydrate.ts sets it immediately before its
@@ -770,101 +773,6 @@ export function mountFor<T>(
       })
     }
     cleanupCount++
-  }
-
-  /**
-   * Adopt the SSR rows on the hydration first-run. STRICT happy path: fires
-   * only when the client items align 1:1 with the SSR rows (same count, same
-   * keys via decodeURIComponent of the marker text, same order) and every row
-   * has at least one DOM node. Each row's vnode is hydrated IN PLACE (bindings
-   * + events wired onto the existing nodes), its range recorded as a normal
-   * ForEntry (`pos === index` invariant holds by construction), and the `k:`
-   * markers are removed. Returns false on ANY mismatch — the caller clears the
-   * block and falls through to the fresh render (the previous swap semantics).
-   */
-  const tryAdoptSsrRows = (items: T[], n: number, a: ForAdoption): boolean => {
-    if (n !== a.rows.length) return false
-    const keys = new Array<string | number>(n)
-    for (let i = 0; i < n; i++) {
-      const key = getKey(items[i] as T)
-      const row = a.rows[i]!
-      let markerKey: string
-      if (row.key.indexOf('%') < 0) {
-        markerKey = row.key // no escapes — decode is identity (dominant case)
-      } else {
-        try {
-          markerKey = decodeURIComponent(row.key)
-        } catch {
-          return false // malformed marker — bail, never throw mid-hydration
-        }
-      }
-      if (String(key) !== markerKey) return false
-      keys[i] = key
-    }
-    for (let i = 0; i < n; i++) {
-      const row = a.rows[i]!
-      const key = keys[i] as string | number
-      // `after` = the boundary following this row (next row's k: marker, or the
-      // tail marker) — recovery-mounts inside hydrateRow insert before it.
-      const after: Node = i + 1 < n ? a.rows[i + 1]!.marker : tailMarker
-      // COMPILED rows: arm the one-shot _tpl adoption target BEFORE renderItem —
-      // the _tpl call inside binds against the SSR row when the structure
-      // verifies (see template.ts), making compiled apps adopt server DOM.
-      // h()-rows ignore the target (no _tpl call); it is cleared either way.
-      if (a.armTplAdopt && row.first.nodeType === 1) a.armTplAdopt(row.first as Element)
-      const rowVNode = renderItem(items[i] as T)
-      const tplAdopted = a.armTplAdopt ? a.tplAdopted!() : false
-      if (a.armTplAdopt) a.armTplAdopt(null) // defensive clear (renderItem may not call _tpl)
-      let cleanup: Cleanup | null
-      // Anchor on the row's k: MARKER (kept in the DOM) — the row range is
-      // [marker .. last]; moves/removals carry the marker with the row, so no
-      // per-row marker removal is needed at adoption time.
-      let rowAnchor: Node = row.marker
-      let endNode: Node | null = row.last !== row.marker ? row.last : null
-      if (tplAdopted) {
-        // The template bound the SSR row in place — its NativeItem cleanup is
-        // the row cleanup; DOM untouched.
-        const native = rowVNode as import('@pyreon/core').NativeItem
-        const nativeCleanup = native.cleanup ?? null
-        const el = native.el as ChildNode
-        cleanup = () => {
-          nativeCleanup?.()
-          // NativeItem binds don't remove their element (fresh-mount rows are
-          // removed by the reconciler's range ops) — mirror hydrateElement's
-          // cleanup contract by removing the adopted element explicitly.
-          el.remove()
-        }
-      } else {
-        // Dispatch-free plan replay first (structurally-identical rows); any
-        // verification failure falls back to the interpretive walk for THIS row.
-        cleanup =
-          (a.tryReplayRow ? a.tryReplayRow(rowVNode, row.first) : null) ??
-          a.hydrateRow(rowVNode, row.first, after)
-        // A NativeItem row that did NOT adopt was SWAPPED by the interpretive
-        // walk: the fresh subtree replaced `row.first`, leaving the recorded
-        // anchor DETACHED — every later move/removal of this entry would
-        // operate on a dead node. Re-resolve the live anchor from the row's
-        // still-present k: marker (markers are removed after this loop).
-        if (!(row.first as ChildNode).isConnected) {
-          const lastLive = (after as ChildNode).previousSibling
-          endNode = lastLive && lastLive !== (row.marker as ChildNode) ? lastLive : null
-        }
-      }
-      cache.set(key, {
-        anchor: rowAnchor,
-        cleanup,
-        pos: i,
-        end: endNode,
-      })
-      cleanupCount++
-    }
-    // The k: markers are ADOPTED as row anchors (anchor = marker, see the
-    // cache.set above) — zero removals; each marker travels/dies with its row
-    // exactly like mountKeyedList's comment anchors.
-    currentKeys = keys
-    if (process.env.NODE_ENV !== 'production')
-      _countSink.__pyreon_count__?.('runtime.mountFor.hydrateAdopt')
-    return true
   }
 
   const handleFreshRender = (items: T[], n: number, liveParent: Node) => {
@@ -1247,7 +1155,25 @@ export function mountFor<T>(
       if (pendingAdoption) {
         const a = pendingAdoption
         pendingAdoption = null
-        if (n > 0 && tryAdoptSsrRows(items, n, a)) return
+        if (n > 0) {
+          const keys = a.adoptRows({
+            items: items as unknown[],
+            n,
+            getKey: getKey as (item: unknown) => string | number,
+            renderItem: renderItem as (item: unknown) => unknown,
+            tailMarker,
+            setEntry: (key, anchor, cleanup, pos, end) => {
+              cache.set(key, { anchor, cleanup, pos, end })
+              cleanupCount++
+            },
+          })
+          if (keys) {
+            currentKeys = keys
+            if (process.env.NODE_ENV !== 'production')
+              _countSink.__pyreon_count__?.('runtime.mountFor.hydrateAdopt')
+            return
+          }
+        }
         clearBetween(startMarker, tailMarker)
       }
 

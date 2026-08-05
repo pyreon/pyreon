@@ -333,3 +333,285 @@ export function replayRowPlan(plan: RowPlan, rowVNode: VNodeChild, first: ChildN
     rootEl.remove()
   }
 }
+
+// ─── Compiled-template adoption VERIFIER (registered into _tpl by hydrateRoot) ─
+// One-shot handoff: the <For> hydration-adoption path sets the SSR row root
+// immediately before invoking renderItem; the _tpl call inside consumes it and
+// — when the SSR DOM verifiably matches the template's structure — runs its
+// bind against the EXISTING nodes instead of cloning. This is what makes
+// compiled apps ADOPT server DOM (previously every compiled row was rebuilt
+// and swapped in). Verification is all-or-nothing BEFORE any mutation, so a
+// bail leaves the SSR row untouched for the interpretive fallback.
+/** Per-template parsed signature (tag + text-count per element, tree order),
+ * cached on first adoption attempt — replay compares with zero string allocs. */
+interface TplSig {
+  tags: string[]
+  counts: number[]
+}
+const _tplSignature = new WeakMap<HTMLTemplateElement, TplSig | null>()
+
+function templateSignature(tpl: HTMLTemplateElement, html: string): TplSig | null {
+  let sig = _tplSignature.get(tpl)
+  if (sig !== undefined) return sig
+  // Templates with comment placeholders (`<!>` dynamic slots / mountSlot
+  // machinery) have clone-time structure the SSR DOM does not — never adopt.
+  if (html.includes('<!')) {
+    _tplSignature.set(tpl, null)
+    return null
+  }
+  const root = tpl.content.firstElementChild
+  if (!root || root.nextElementSibling) {
+    _tplSignature.set(tpl, null)
+    return null
+  }
+  const tags: string[] = []
+  const counts: number[] = []
+  const walk = (el: Element) => {
+    // tag + textChildCount — the count gates BIND-SLOT alignment: a template
+    // text slot (dynamic or static) must have a counterpart text node in the
+    // SSR DOM, else a compiled `.firstChild` text ref would land on
+    // null/wrong-node (e.g. an UNMARKED empty dynamic slot in compiled-SSR
+    // output). Element-only walks keep it marker-comment-immune.
+    let texts = 0
+    for (let n = el.firstChild; n; n = n.nextSibling) {
+      if (n.nodeType === 3) texts++
+    }
+    tags.push(el.tagName)
+    counts.push(texts)
+    for (let c = el.firstElementChild; c; c = c.nextElementSibling) walk(c)
+  }
+  walk(root)
+  sig = { tags, counts }
+  _tplSignature.set(tpl, sig)
+  return sig
+}
+
+/**
+ * Walk the SSR target in the SAME element order as templateSignature,
+ * comparing TAG:textCount per element against the template's signature parts.
+ * Where the template expects ZERO texts but the SSR element has bare text
+ * children (the compiled `_setChild`-managed static slot: the bind rewrites
+ * the element's content wholesale, so pre-existing SSR text must simply go —
+ * exactly what a clone-and-swap would produce), those texts are collected for
+ * pre-bind REMOVAL instead of bailing. Any NONZERO-count mismatch still bails
+ * (`.firstChild` text refs would misalign). Returns the removal list, or null
+ * on mismatch.
+ */
+interface AdoptMatch {
+  removals: Text[] | null
+  triplets: { open: Comment; text: Text | null; close: Comment }[] | null
+}
+
+/**
+ * Positional replay plan, built from the FIRST fully-verified row: element
+ * child-hop paths to each `$` triplet's parent + its child index, and to each
+ * kept/removed bare-text position. Rows of a non-`<!` compiled template are
+ * structurally IDENTICAL by construction (same template, no conditional
+ * slots), so subsequent rows verify at the recorded SPOTS (is the `$` comment
+ * where the plan says?) instead of re-walking every node — any spot mismatch
+ * bails that row to the full verify.
+ */
+interface TripletSpot {
+  /** Element-index hops from the row root to the triplet's parent element. */
+  path: number[]
+  /** Child index of the `$` open comment within that parent. */
+  childIndex: number
+}
+interface AdoptPlan {
+  sig: TplSig
+  tripletSpots: TripletSpot[]
+  /** domPaths of elements whose EXTRA bare texts get removed (template 0, >1 texts). */
+  removalSpots: number[][]
+}
+const _tplAdoptPlan = new WeakMap<HTMLTemplateElement, AdoptPlan | null>()
+
+function elByPath(root: Element, path: number[], upto: number): Element | null {
+  let el: Element | null = root
+  for (let i = 0; i < upto && el; i++) {
+    let c: Element | null = el.firstElementChild
+    for (let k = 0; k < (path[i] as number) && c; k++) c = c.nextElementSibling
+    el = c
+  }
+  return el
+}
+
+/** Record element paths (element-index hops) alongside a full verify. */
+function buildAdoptPlan(root: Element, sig: TplSig, match: AdoptMatch): AdoptPlan {
+  const tripletSpots: TripletSpot[] = []
+  const removalSpots: number[][] = []
+  const pathOf = (el: Element): number[] => {
+    const path: number[] = []
+    let cur: Element = el
+    while (cur !== root) {
+      const parent = cur.parentElement as Element
+      let idx = 0
+      for (let c = parent.firstElementChild; c && c !== cur; c = c.nextElementSibling) idx++
+      path.unshift(idx)
+      cur = parent
+    }
+    return path
+  }
+  if (match.triplets) {
+    for (const t of match.triplets) {
+      const parent = t.open.parentElement as Element
+      let ci = 0
+      for (let n = parent.firstChild; n && n !== t.open; n = n.nextSibling) ci++
+      tripletSpots.push({ path: pathOf(parent), childIndex: ci })
+    }
+  }
+  if (match.removals) {
+    for (const r of match.removals) removalSpots.push(pathOf(r.parentElement as Element))
+  }
+  return { sig, tripletSpots, removalSpots }
+}
+
+/**
+ * Spot-verify + normalize a subsequent row against the recorded plan.
+ * Returns false on any spot mismatch (caller re-runs the full verify).
+ */
+function replayAdoptPlan(root: Element, plan: AdoptPlan): boolean {
+  for (const spot of plan.tripletSpots) {
+    const parent = elByPath(root, spot.path, spot.path.length)
+    if (!parent) return false
+    let n: ChildNode | null = parent.firstChild
+    for (let k = 0; k < spot.childIndex && n; k++) n = n.nextSibling
+    if (!n || n.nodeType !== 8 || (n as Comment).data !== '$') return false
+    const a = n.nextSibling
+    if (a && a.nodeType === 3) {
+      const b = a.nextSibling
+      if (!b || b.nodeType !== 8 || (b as Comment).data !== '/$') return false
+      // Remove ONLY the open marker — the text shifts into the slot position
+      // naturally (compiled refs need the text FIRST); the close marker stays
+      // as an inert trailing comment that travels with the row. One cheap
+      // removeChild beats moving the text (an implicit remove+insert).
+      ;(n as Comment).remove()
+    } else if (a && a.nodeType === 8 && (a as Comment).data === '/$') {
+      parent.insertBefore(document.createTextNode(''), a)
+      ;(n as Comment).remove()
+    } else return false
+  }
+  for (const spot of plan.removalSpots) {
+    const parent = elByPath(root, spot, spot.length)
+    if (!parent) return false
+    let n: ChildNode | null = parent.firstChild
+    while (n) {
+      const nx: ChildNode | null = n.nextSibling
+      if (n.nodeType === 3 && !(nx === null && parent.firstChild === n)) {
+        // remove extras; sole-text keeps are template-0 single-text cases which
+        // never land in removalSpots (removals recorded only for >1 bare texts)
+        ;(n as Text).remove()
+      }
+      n = nx
+    }
+  }
+  return true
+}
+
+function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | null {
+  let removals: Text[] | null = null
+  let triplets: { open: Comment; text: Text | null; close: Comment }[] | null = null
+  const tags = expected.tags
+  const wantCounts = expected.counts
+  const total = tags.length
+  let idx = 0
+  const walk = (el: Element): boolean => {
+    const at = idx++
+    if (at >= total || tags[at] !== el.tagName) return false
+    let texts = 0
+    let bare: Text[] | null = null
+    // Single pass over children: count texts, validate + collect `$` triplets
+    // inline (adjacency rules from collectDollarTriplets), gather bare texts.
+    let n: ChildNode | null = el.firstChild
+    while (n) {
+      if (n.nodeType === 8) {
+        const d = (n as Comment).data
+        if (d === '$') {
+          texts++
+          const prev = n.previousSibling
+          if (prev && prev.nodeType === 3) return false // adjacent-text seam
+          const a = n.nextSibling
+          if (!a) return false
+          if (a.nodeType === 8 && (a as Comment).data === '/$') {
+            const after = a.nextSibling
+            if (after && after.nodeType === 3) return false
+            ;(triplets ??= []).push({ open: n as Comment, text: null, close: a as Comment })
+            n = a.nextSibling
+            continue
+          }
+          if (a.nodeType !== 3) return false
+          const b = a.nextSibling
+          if (!b || b.nodeType !== 8 || (b as Comment).data !== '/$') return false
+          const after = b.nextSibling
+          if (after && after.nodeType === 3) return false
+          ;(triplets ??= []).push({ open: n as Comment, text: a as Text, close: b as Comment })
+          n = b.nextSibling
+          continue
+        }
+        if (d === '/$') return false // orphan close
+        // Foreign marker (k:, pyreon-for, async) inside a row — bail.
+        return false
+      }
+      if (n.nodeType === 3) {
+        texts++
+        ;(bare ??= []).push(n as Text)
+      }
+      n = n.nextSibling
+    }
+    const wantTexts = wantCounts[at] as number
+    if (texts !== wantTexts) {
+      // Template expects NO texts here → the bind manages this element's
+      // content (`_setChild`). A SOLE bare text is KEPT — `_setChild`'s
+      // sole-text fast path writes `.data` in place, reusing the SSR node
+      // (and the value matches by construction, making the write ~free).
+      // Multiple bare texts are removed pre-bind (parser-merge shapes the
+      // sole-text path can't reuse). Any other mismatch is a structural
+      // divergence: bail.
+      if (wantTexts === 0 && bare) {
+        if (bare.length > 1) (removals ??= []).push(...bare)
+      } else return false
+    }
+    for (let c = el.firstElementChild; c; c = c.nextElementSibling) {
+      if (!walk(c)) return false
+    }
+    return true
+  }
+  if (!walk(root)) return null
+  if (idx !== total) return null
+  return { removals, triplets }
+}
+
+/** All checks passed — strip markers, ensuring one text node per slot. */
+function normalizeDollarTriplets(
+  triplets: { open: Comment; text: Text | null; close: Comment }[],
+): void {
+  for (const t of triplets) {
+    // Remove only the OPEN marker (see replayAdoptPlan) — the text shifts to
+    // the slot position; the close marker trails inertly with the row.
+    if (!t.text) t.open.parentNode?.insertBefore(document.createTextNode(''), t.close)
+    t.open.remove()
+  }
+}
+
+
+/**
+ * The verifier `_tpl` dispatches to (registered by hydrateRoot at call time):
+ * tag gate → positional plan replay (rows 2..N) → full signature/triplet
+ * verify + plan build (row 1). True = target normalized, bind may run.
+ */
+export function tplAdoptVerify(
+  tpl: HTMLTemplateElement,
+  html: string,
+  target: Element,
+): boolean {
+  const troot = tpl.content.firstElementChild
+  if (!troot || target.tagName !== troot.tagName) return false
+  const plan = _tplAdoptPlan.get(tpl)
+  if (plan && replayAdoptPlan(target, plan)) return true
+  const sig = templateSignature(tpl, html)
+  const match = sig !== null ? matchDomAgainstTemplate(target, sig) : null
+  if (match === null) return false
+  if (plan === undefined) _tplAdoptPlan.set(tpl, buildAdoptPlan(target, sig as TplSig, match))
+  if (match.removals) for (const t of match.removals) t.remove()
+  if (match.triplets) normalizeDollarTriplets(match.triplets)
+  return true
+}
