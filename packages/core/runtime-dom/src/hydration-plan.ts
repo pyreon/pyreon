@@ -29,7 +29,7 @@
  */
 import type { VNode, VNodeChild } from '@pyreon/core'
 import { bindPolymorphicText } from './mount'
-import { applyProps } from './props'
+import { applyProp, applyProps } from './props'
 
 type Cleanup = () => void
 
@@ -39,6 +39,16 @@ interface ElementStep {
   vnodePath: number[]
   /** Tag recorded at build time — replay verifies each row's node matches. */
   tag: string
+  /**
+   * Prop keys recorded from row 0 (key/children/ref excluded), or null when
+   * row 0 carried getter-shaped props (compiler `_rp` descriptors) — then the
+   * full `applyProps` (which handles getters) runs instead. With a key list,
+   * replay loops `applyProp` directly per key — the SAME per-key primitive
+   * `applyProps` dispatches to — skipping the per-row for-in enumeration and
+   * per-key getOwnPropertyDescriptor scan. Semantics identical by
+   * construction.
+   */
+  propKeys: string[] | null
 }
 
 interface ReactiveTextStep {
@@ -54,10 +64,29 @@ export type PlanStep = ElementStep | ReactiveTextStep
 export interface RowPlan {
   rootTag: string
   rootHasWork: boolean
+  /** Root element's recorded prop keys (same contract as ElementStep.propKeys). */
+  rootPropKeys: string[] | null
   steps: PlanStep[]
 }
 
 const EMPTY_PATH: number[] = []
+
+/**
+ * Record the applicable prop keys from row 0, or null when any prop is
+ * getter-shaped (descriptor.get) — the getter-aware `applyProps` must own
+ * that case. `key`/`children`/`ref` are excluded (ref is handled separately
+ * by the replay; key/children are never DOM props).
+ */
+function collectPropKeys(props: Record<string, unknown>): string[] | null {
+  const keys: string[] = []
+  for (const key in props) {
+    if (key === 'key' || key === 'children' || key === 'ref') continue
+    const d = Object.getOwnPropertyDescriptor(props, key)
+    if (d?.get) return null
+    keys.push(key)
+  }
+  return keys
+}
 
 function hasPropsWork(vnode: VNode): boolean {
   const props = vnode.props as Record<string, unknown>
@@ -86,7 +115,12 @@ export function buildRowPlan(root: VNodeChild): RowPlan | null {
   const steps: PlanStep[] = []
   const rootHasWork = hasPropsWork(root)
   if (!walkPlan(root, EMPTY_PATH, EMPTY_PATH, steps)) return null
-  return { rootTag: root.type as string, rootHasWork, steps }
+  return {
+    rootTag: root.type as string,
+    rootHasWork,
+    rootPropKeys: rootHasWork ? collectPropKeys(root.props as Record<string, unknown>) : null,
+    steps,
+  }
 }
 
 /** Recurse the vnode; append steps; false = unsupported shape. */
@@ -100,7 +134,13 @@ function walkPlan(
   const props = vnode.props as Record<string, unknown>
   if ('dangerouslySetInnerHTML' in props || 'innerHTML' in props) return false
   if (vnodePath.length > 0 && hasPropsWork(vnode)) {
-    steps.push({ kind: 0, domPath, vnodePath, tag: vnode.type as string })
+    steps.push({
+      kind: 0,
+      domPath,
+      vnodePath,
+      tag: vnode.type as string,
+      propKeys: collectPropKeys(vnode.props as Record<string, unknown>),
+    })
   }
   const children = vnode.children ?? []
   let domIdx = 0
@@ -168,6 +208,31 @@ function resolveVNode(root: VNode, path: number[]): VNodeChild | undefined {
  * walk for this row; nothing has been bound when null is returned — all
  * verification happens BEFORE the first binding is applied).
  */
+/** Apply a recorded key list via the canonical per-key primitive. */
+function applyPropList(
+  el: Element,
+  props: Record<string, unknown> | object,
+  keys: string[],
+): Cleanup | null {
+  let first: Cleanup | null = null
+  let rest: Cleanup[] | null = null
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i] as string
+    const c = applyProp(el, key, (props as Record<string, unknown>)[key])
+    if (c) {
+      if (!first) first = c
+      else (rest ??= []).push(c)
+    }
+  }
+  if (!rest) return first
+  const f = first as Cleanup
+  const r = rest
+  return () => {
+    f()
+    for (const c of r) c()
+  }
+}
+
 export function replayRowPlan(plan: RowPlan, rowVNode: VNodeChild, first: ChildNode): Cleanup | null {
   if (!isElementVNode(rowVNode)) return null
   if (first.nodeType !== 1) return null
@@ -222,12 +287,18 @@ export function replayRowPlan(plan: RowPlan, rowVNode: VNodeChild, first: ChildN
 
   // Phase 2 — APPLY (same primitives the interpretive path uses).
   let disposers: Cleanup[] | null = null
-  const rootProps = plan.rootHasWork ? applyProps(rootEl, rowVNode.props) : null
+  const rootProps = plan.rootHasWork
+    ? plan.rootPropKeys
+      ? applyPropList(rootEl, rowVNode.props, plan.rootPropKeys)
+      : applyProps(rootEl, rowVNode.props)
+    : null
   for (let s = 0; s < n; s++) {
     const step = steps[s] as PlanStep
     let c: Cleanup | null
     if (step.kind === 0) {
-      c = applyProps(els[s] as Element, (vnodes[s] as VNode).props)
+      c = step.propKeys
+        ? applyPropList(els[s] as Element, (vnodes[s] as VNode).props, step.propKeys)
+        : applyProps(els[s] as Element, (vnodes[s] as VNode).props)
       const ref = (vnodes[s] as VNode).props.ref as
         | ((el: Element | null) => void)
         | { current: Element | null }
