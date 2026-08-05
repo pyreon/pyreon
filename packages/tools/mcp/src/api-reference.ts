@@ -1099,6 +1099,14 @@ type Props = ExtractProps<typeof Iterator>
     mistakes: '- Omitting `alt` (required — a11y + it is the native contentDescription)',
   },
 
+  'primitives/Video': {
+    signature: `(props: { src: string; autoPlay?: boolean; loop?: boolean; muted?: boolean; controls?: boolean; width?: number|string; height?: number|string; onStatusChange?: (status: 'waiting'|'playing'|'paused') => void }) => VNode`,
+    example: '<Video src="https://cdn.example.com/intro.mp4" autoPlay muted loop onStatusChange={(s) => playState.set(s)} />',
+    notes: 'Video playback. Web `<video playsinline>`; iOS AVKit `VideoPlayer` over `AVPlayer` (`PyreonVideoPlayer`); Android Media3 ExoPlayer in an `AndroidView`. `onStatusChange` surfaces the player state as ONE three-value vocabulary across all targets (`waiting`/`playing`/`paused`) — web media events, AVPlayer `timeControlStatus` KVO, ExoPlayer `Player.Listener`. See also: Image.',
+    mistakes: `- Expecting unmuted autoplay on the web — browsers only permit MUTED autoplay; pair \`autoPlay\` with \`muted\`
+- Asserting rendered video FRAMES in tests — video draws on a surface layer neither XCUITest nor captureToImage can read; assert the onStatusChange-driven state instead`,
+  },
+
   'primitives/Icon': {
     signature: `(props: { name: string; size?: 'sm'|'md'|'lg'; color?: ColorToken }) => VNode`,
     example: '<Icon name="star" size="md" color="primary" />',

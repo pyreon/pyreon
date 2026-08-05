@@ -1363,6 +1363,16 @@ class PyreonPushNotifications {
 @Composable
 fun rememberPyreonPushNotifications(): PyreonPushNotifications = PyreonPushNotifications()
 
+@Composable
+fun PyreonVideoPlayer(
+  url: String,
+  autoPlay: Boolean = false,
+  loop: Boolean = false,
+  muted: Boolean = false,
+  onStatusChange: ((String) -> Unit)? = null,
+  modifier: Modifier = Modifier,
+) {}
+
 class PyreonProduct(val id: String, val displayName: String, val price: String)
 class PyreonPayments {
   val products = mutableStateOf<List<PyreonProduct>>(emptyList())

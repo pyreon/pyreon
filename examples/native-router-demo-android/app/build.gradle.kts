@@ -79,6 +79,12 @@ dependencies {
     // until it was written). Every app compiling the runtime srcDir needs the
     // dep whether or not it uses either (the srcDir compiles all sources).
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // media3 — PyreonVideoPlayerAndroid.kt (in the runtime-kotlin srcDir
+    // above) imports androidx.media3.* for the <Video> primitive. Same deal
+    // as okhttp: every app compiling the srcDir needs the artifacts, video
+    // used or not; R8 strips the unused classes from release builds.
+    implementation("androidx.media3:media3-exoplayer:1.4.1")
+    implementation("androidx.media3:media3-ui:1.4.1")
     // Media-row remote image: the emit lowers <Image src="http…"> to
     // Coil's AsyncImage composable (build.ts adds the conditional
     // import; the DEP lives here — an emit whose import resolves but

@@ -3973,6 +3973,7 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if (tag === 'Heading') return emitKotlinHeading(e, indent)
   if (tag === 'Icon') return emitKotlinIcon(e, indent)
   if (tag === 'Image') return emitKotlinImage(e, indent)
+  if (tag === 'Video') return emitKotlinVideo(e, indent)
   if (tag === 'Modal') return emitKotlinModal(e, indent)
   if (tag === 'Press') return emitKotlinPress(e, indent)
   if (tag === 'Field') return emitKotlinField(e, indent)
@@ -5287,6 +5288,48 @@ function kotlinImageDim(
     return `(${emitKotlinExpr(attr.value, 0)}).dp`
   }
   return undefined
+}
+
+/**
+ * Emit `<Video src autoPlay? loop? muted? onStatusChange?>` as the runtime
+ * `PyreonVideoPlayer(url = …)` (Media3 ExoPlayer in an AndroidView). The
+ * `onStatusChange` handler reuses the WebView message-handler closure shape;
+ * the status vocabulary (`waiting`/`playing`/`paused`) mirrors the web
+ * `<video>` events and the Swift `timeControlStatus` observation. Modifier
+ * threads through the generic layout tail (the `<Link>`/`<Toggle>` lesson —
+ * an early return drops `data-testid` and the element becomes unassertable).
+ */
+function emitKotlinVideo(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const src = readStaticAttrKotlin(e, 'src')
+  if (typeof src !== 'string') return emitKotlinGeneric(e, indent)
+  const args = [`url = ${JSON.stringify(src)}`]
+  if (readStaticAttrKotlin(e, 'autoPlay') === true) args.push('autoPlay = true')
+  if (readStaticAttrKotlin(e, 'loop') === true) args.push('loop = true')
+  if (readStaticAttrKotlin(e, 'muted') === true) args.push('muted = true')
+  const statusAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> =>
+      a.kind === 'event' && a.name === 'statuschange',
+  )
+  if (statusAttr !== undefined) {
+    args.push(`onStatusChange = ${emitKotlinMessageHandler(statusAttr.handler)}`)
+  }
+  const layoutMod = emitKotlinLayoutModifier(e)
+  const modParts: string[] = []
+  const width = kotlinImageDim(e, 'width')
+  if (width !== undefined) modParts.push(`.width(${width})`)
+  const height = kotlinImageDim(e, 'height')
+  if (height !== undefined) modParts.push(`.height(${height})`)
+  const modifier =
+    layoutMod !== ''
+      ? `${layoutMod}${modParts.join('')}`
+      : modParts.length > 0
+        ? `Modifier${modParts.join('')}`
+        : ''
+  if (modifier !== '') args.push(`modifier = ${modifier}`)
+  return `PyreonVideoPlayer(${args.join(', ')})`
 }
 
 function emitKotlinImage(
