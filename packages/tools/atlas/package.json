@@ -114,11 +114,19 @@
   },
   "peerDependencies": {
     "vite": ">=6",
+    "@pyreon/vite-plugin": "workspace:*",
     "@pyreon/compiler": "workspace:*",
+    "happy-dom": ">=15",
     "playwright-core": ">=1.40"
   },
   "peerDependenciesMeta": {
     "vite": {
+      "optional": true
+    },
+    "@pyreon/vite-plugin": {
+      "optional": true
+    },
+    "happy-dom": {
       "optional": true
     },
     "@pyreon/compiler": {

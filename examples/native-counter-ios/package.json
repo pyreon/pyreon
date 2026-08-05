@@ -2,7 +2,7 @@
   "name": "@pyreon/example-native-counter-ios",
   "version": "0.50.0",
   "private": true,
-  "description": "PRIVATE / EXPERIMENTAL — first iOS example for the PMTC pipeline. Phase 0 roadmap PR 3 scaffold; counter implementation lands in PR 4.",
+  "description": "PRIVATE / EXPERIMENTAL \u2014 first iOS example for the PMTC pipeline. Phase 0 roadmap PR 3 scaffold; counter implementation lands in PR 4.",
   "license": "MIT",
   "scripts": {
     "build": "./scripts/build.sh",
@@ -12,6 +12,13 @@
     "typecheck": "echo '[native-counter-ios] no TS typecheck surface'"
   },
   "devDependencies": {
-    "@pyreon/native-cli": "workspace:*"
+    "@pyreon/core": "workspace:*",
+    "@pyreon/hooks": "workspace:*",
+    "@pyreon/i18n": "workspace:*",
+    "@pyreon/machine": "workspace:*",
+    "@pyreon/native-cli": "workspace:*",
+    "@pyreon/primitives": "workspace:*",
+    "@pyreon/reactivity": "workspace:*",
+    "@pyreon/rocketstyle": "workspace:*"
   }
 }

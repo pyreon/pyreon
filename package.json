@@ -187,6 +187,26 @@
   "loom": {
     "devPaths": [
       "src/manifest.ts"
+    ],
+    "ignore": [
+      {
+        "pkg": "@pyreon/cli",
+        "dep": "@pyreon/ansi",
+        "code": "prod-import-of-dev-dep",
+        "reason": "@pyreon/ansi is a PRIVATE workspace package and the build inlines it — the published lib/ carries no import of it, only a comment. Loom reads declared truth and cannot see the bundler, so the warning is correct about the declaration and wrong about the consumer."
+      },
+      {
+        "pkg": "@pyreon/example-react-compat",
+        "dep": "react-dom",
+        "code": "phantom-dep",
+        "reason": "`@pyreon/vite-plugin` with compat:'react' ALIASES react-dom (and react-dom/client) to @pyreon/react-compat/dom. Installing the real react-dom would defeat the example, whose entire point is that React-shaped code runs with no React present."
+      },
+      {
+        "pkg": "@pyreon/lint",
+        "dep": "@pyreon/ansi",
+        "code": "prod-import-of-dev-dep",
+        "reason": "Same as @pyreon/cli: private workspace package, inlined at build, absent from the published output as an import."
+      }
     ]
   }
 }
