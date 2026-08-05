@@ -38,6 +38,14 @@ import { defineTheme, styled } from '@pyreon/styler'
 // provider) — underscore-named for lint.
 const _theme = defineTheme({
   spacing: { sm: 8, xl: 40 },
+  // Typography + colour tokens — the styling row's remaining named absents.
+  // body/display are DELIBERATELY absent from the compiler's DEFAULT_THEME
+  // fontSize scale, so a rendered 16/34 can only have come from THIS
+  // declaration surviving the parse→merge→resolve pipeline (the collectTheme
+  // hand-enumeration bug dropped exactly these while fontWeight.bold kept
+  // "working" off the default — masked-by-default).
+  fontSize: { body: 16, display: 34 },
+  color: { accent: '#ff3b30' },
 })
 
 const TightCard = styled(Stack)`
@@ -46,6 +54,28 @@ const TightCard = styled(Stack)`
 
 const RoomyCard = styled(Stack)`
   padding: ${(t) => t.spacing.xl};
+`
+
+// Typography from tokens → .font(.system(size:)) / fontSize = N.sp. Same
+// glyph both lines, so the a11y-frame HEIGHT delta is purely the token values
+// (iOS frames hug glyphs — height IS visible there, unlike container widths).
+const BodyLine = styled(Text)`
+  font-size: ${(t) => t.fontSize.body};
+`
+
+const DisplayLine = styled(Text)`
+  font-size: ${(t) => t.fontSize.display};
+`
+
+// Colour from a token → .background(Color(...)) / Modifier.background(Color(0xFFFF3B30)).
+// Android asserts the RENDERED PIXEL via captureToImage (the Media row's
+// instrument) — closing "a token resolving to the wrong colour compiles
+// perfectly" on one platform; iOS colour stays a disclosed follow-up
+// (XCUITest cannot read pixels; a screenshot-diff instrument is tracked).
+const AccentChip = styled(Text)`
+  color: #ffffff;
+  background-color: ${(t) => t.color.accent};
+  padding: 8;
 `
 
 function BigListPage() {
@@ -389,6 +419,14 @@ function StylesPage() {
       <Element tag="div" padding={4} data-testid="element-box">
         <Text data-testid="element-child">boxed</Text>
       </Element>
+
+      {/* Typography tokens: same glyph, sizes from different token leaves
+          (body=16, display=34) — the glyph-box HEIGHT ratio pins both values
+          on both platforms. Colour token: Android reads the chip's rendered
+          pixel; iOS asserts existence only (disclosed). */}
+      <BodyLine data-testid="typo-body">Aa</BodyLine>
+      <DisplayLine data-testid="typo-display">Aa</DisplayLine>
+      <AccentChip data-testid="accent-chip">chip</AccentChip>
 
       <Button onPress={() => navigate('/')}>Back to Home</Button>
     </Stack>

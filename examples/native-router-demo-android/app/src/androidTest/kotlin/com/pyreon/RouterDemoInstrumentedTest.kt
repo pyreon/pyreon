@@ -1010,6 +1010,49 @@ class RouterDemoInstrumentedTest {
         }
     }
 
+    // Styling row — TYPOGRAPHY tokens by geometry + COLOUR token by RENDERED
+    // PIXEL. The two "Aa" lines take fontSize from different token leaves
+    // (body=16, display=34 — both absent from the compiler's DEFAULT scale, so
+    // the rendered sizes can only be the app's declaration surviving
+    // parse→merge→resolve; the collectTheme hand-enumeration dropped exactly
+    // these). The height ratio pins both values; a dropped/defaulted token
+    // collapses it to ~1.0.
+    //
+    // The chip closes the row's oldest honesty hole — "a token resolving to
+    // the wrong colour compiles perfectly" — with the Media row's instrument:
+    // captureToImage reads the RENDERED pixel, so #ff3b30 (r255 g59 b48) at
+    // the chip's centre can only mean the colour token reached the drawn
+    // background. (iOS cannot read pixels; its twin asserts existence and the
+    // screenshot-diff instrument stays the tracked follow-up.)
+    @Test
+    fun typographyAndColourTokensReachRenderedOutput() {
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        composeRule.onNodeWithText("View styles").performClick()
+        composeRule.onNodeWithTag("styles-page").assertIsDisplayed()
+
+        val bodyBounds = composeRule.onNodeWithTag("typo-body").getUnclippedBoundsInRoot()
+        val displayBounds = composeRule.onNodeWithTag("typo-display").getUnclippedBoundsInRoot()
+        val bodyH = bodyBounds.bottom.value - bodyBounds.top.value
+        val displayH = displayBounds.bottom.value - displayBounds.top.value
+        require(bodyH > 0f) { "body glyph box has no height" }
+        val ratio = displayH / bodyH
+        require(ratio > 1.6f) {
+            "display/body glyph-height ratio is $ratio ($displayH/$bodyH)dp; " +
+                "expected ~2.1 (34/16) — the fontSize tokens never reached the rendered font"
+        }
+
+        val bmp = composeRule.onNodeWithTag("accent-chip")
+            .captureToImage().asAndroidBitmap()
+        val p = bmp.getPixel(bmp.width / 2, bmp.height / 4)
+        val r = android.graphics.Color.red(p)
+        val g = android.graphics.Color.green(p)
+        val b = android.graphics.Color.blue(p)
+        require(r > 200 && g in 20..110 && b in 10..100) {
+            "accent-chip centre pixel is rgb($r,$g,$b); expected ~#ff3b30 — " +
+                "the colour token never reached the drawn background"
+        }
+    }
+
     /**
      * Run a shell command through UiAutomation and WAIT for it to finish.
      *
