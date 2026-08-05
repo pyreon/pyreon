@@ -34,7 +34,6 @@ import type { BenchSuite } from '../runner'
 import { bench } from '../runner'
 import {
   HYDRATION_ROW_COUNT,
-  pyreonApp,
   preactApp,
   reactApp,
   vueApp,

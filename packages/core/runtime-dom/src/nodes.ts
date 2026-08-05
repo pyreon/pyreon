@@ -812,7 +812,7 @@ export function mountFor<T>(
       const tplAdopted = a.armTplAdopt ? a.tplAdopted!() : false
       if (a.armTplAdopt) a.armTplAdopt(null) // defensive clear (renderItem may not call _tpl)
       let cleanup: Cleanup | null
-      let anchor: Node = row.first
+      let rowAnchor: Node = row.first
       let endNode: Node | null = row.last !== row.first ? row.last : null
       if (tplAdopted) {
         // The template bound the SSR row in place — its NativeItem cleanup is
@@ -832,14 +832,14 @@ export function mountFor<T>(
         if (!(row.first as ChildNode).isConnected) {
           const live = row.marker.nextSibling
           if (live && live !== after) {
-            anchor = live
+            rowAnchor = live
             const lastLive = (after as ChildNode).previousSibling
             endNode = lastLive && lastLive !== live ? lastLive : null
           }
         }
       }
       cache.set(key, {
-        anchor,
+        anchor: rowAnchor,
         cleanup,
         pos: i,
         end: endNode,
