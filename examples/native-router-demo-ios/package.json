@@ -12,6 +12,7 @@
     "typecheck": "echo '[native-router-demo-ios] no TS typecheck surface'"
   },
   "devDependencies": {
+    "@pyreon/attrs": "workspace:*",
     "@pyreon/coolgrid": "workspace:*",
     "@pyreon/core": "workspace:*",
     "@pyreon/elements": "workspace:*",

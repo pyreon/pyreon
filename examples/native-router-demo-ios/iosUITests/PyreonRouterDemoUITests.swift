@@ -1145,6 +1145,41 @@ final class PyreonRouterDemoUITests: XCTestCase {
         )
     }
 
+    // Styling — `@pyreon/attrs`, the row's last named absent with no native
+    // example at all. `attrs(Stack).attrs({ gap: 5 })` accumulates a DEFAULT
+    // prop over a base; the use site passes only `padding`, so the card's
+    // child spacing can ONLY come from the attrs default surviving the merge
+    // (gap 5 → 20pt). A dropped chain lays the children out at the parent
+    // page's gap (12pt) instead — a decisive 8pt difference. iOS a11y frames
+    // hug glyphs, so the gap between two sibling text frames is real layout.
+    func test_attrsDefaultPropsReachLayout() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            "Home page did not render"
+        )
+        app.buttons["View styles"].tap()
+        XCTAssertTrue(
+            app.otherElements["styles-page"].firstMatch.waitForExistence(timeout: 15),
+            "Styles page did not render"
+        )
+
+        let a = app.staticTexts["attrs-a"].firstMatch
+        let b = app.staticTexts["attrs-b"].firstMatch
+        XCTAssertTrue(a.waitForExistence(timeout: 10), "attrs-a missing")
+        XCTAssertTrue(b.waitForExistence(timeout: 10), "attrs-b missing")
+
+        let gap = b.frame.minY - a.frame.maxY
+        XCTAssertEqual(
+            gap, 20, accuracy: 5,
+            "attrs children are \(gap)pt apart; expected ~20 (the gap:5 DEFAULT). "
+                + "~12 means the attrs chain was dropped and the parent page's "
+                + "gap applied instead"
+        )
+    }
+
     // Styling — TYPOGRAPHY from theme tokens, by glyph-box GEOMETRY. The two
     // lines render the SAME glyph ("Aa") at sizes from DIFFERENT token leaves
     // (fontSize.body=16, fontSize.display=34 — both deliberately absent from
