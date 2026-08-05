@@ -39,6 +39,7 @@ import {
   typeIsOptional,
   unwrapOptionalType,
   synthesizeWebSocketAutoConnect,
+  widenFloatLocals,
   widenFloatSignals,
 } from './infer-type'
 import type { InferenceCtx } from './infer-type'
@@ -1301,6 +1302,10 @@ function emitKotlinComponent(c: ComponentIR): string {
       .filter((d) => d.kind === 'websocket')
       .map((d) => [(d as { name: string }).name, (d as { url: string }).url] as const),
   )
+  // Mirror of the Swift emitter's call — see infer-type.ts:widenFloatLocals.
+  for (const d of c.decls) {
+    if (d.kind === 'function') widenFloatLocals(d.body, inferCtx)
+  }
   _kotlinExprInferCtx = inferCtx
   // Pass 1: walk decls — emits decl bodies AND discovers synthesized
   // types from decl annotations. The actual decl text is buffered into

@@ -830,6 +830,100 @@ export function optionalMemberTernary(
  * (`ctx.locals = saved`) — keeping the seeding scoped to this one body and
  * re-entrant-safe for nested handlers.
  */
+/**
+ * Widen an integer-seeded LOCAL accumulator to Double when the function later
+ * writes it a fractional value.
+ *
+ *   const total = () => {
+ *     let acc = 0
+ *     for (const it of items()) acc += it.price   // price is Double
+ *     return acc
+ *   }
+ *
+ * JS has one numeric type, so this is the ordinary way to sum a column. Both
+ * targets rejected it — `var acc = 0` is Int and `acc += <Double>` does not
+ * typecheck — and there was NO way to write it correctly: `let acc = 0.0` is
+ * `Number.isInteger`, so it reads as an integer literal too. The only
+ * workaround was to rewrite the loop as `reduce`.
+ *
+ * The seed-flip idea is not new: `widenFloatSignals` does exactly this for a
+ * `signal(0)` written a Double, and `refineReduceSeedFloats` for a `reduce`
+ * seed. The plain imperative local was the member of that family nobody had
+ * written yet.
+ *
+ * Strictly ADDITIVE — a local is widened only when an assignment to it
+ * PROVABLY infers fractional, so an integer accumulator is untouched.
+ */
+export function widenFloatLocals(stmts: StatementIR[], outer: InferenceCtx): void {
+  // Candidate seeds: `let x = <integer literal>` at any depth.
+  const candidates = new Map<string, Extract<StatementIR, { kind: 'let' }>>()
+  const collectSeeds = (list: StatementIR[]): void => {
+    for (const s of list) {
+      if (
+        s.kind === 'let' &&
+        s.expr.kind === 'literal' &&
+        typeof s.expr.value === 'number' &&
+        Number.isInteger(s.expr.value) &&
+        s.expr.float !== true
+      ) {
+        candidates.set(s.name, s)
+      }
+      forEachNestedBody(s, collectSeeds)
+    }
+  }
+  collectSeeds(stmts)
+  if (candidates.size === 0) return
+
+  // Walk again with a LOCAL context, seeding `let` bindings and — the part
+  // `seedHandlerLocals` does not do — for-of ITEM bindings from the iterated
+  // expression's element type. Without that, `acc += it.price` infers unknown
+  // and the accumulator is never widened, which is the whole shape.
+  const scan = (list: StatementIR[], ctx: InferenceCtx): void => {
+    for (const s of list) {
+      if (s.kind === 'let') {
+        ctx.locals.set(s.name, inferType(s.expr, ctx))
+        continue
+      }
+      if (s.kind === 'assign' && s.target.kind === 'identifier') {
+        const seed = candidates.get(s.target.name)
+        if (seed !== undefined) {
+          const written = inferType(s.value, ctx)
+          // Re-narrow: `candidates` holds the `let` STATEMENT, whose `expr` is
+          // the wide ExprIR union, and `float` lives only on the literal
+          // variant. (Only literal seeds are collected, so this always holds.)
+          if (written.kind === 'number' && written.float === true && seed.expr.kind === 'literal') {
+            seed.expr = { ...seed.expr, float: true }
+            ctx.locals.set(s.target.name, { kind: 'number', float: true })
+            candidates.delete(s.target.name)
+          }
+        }
+        continue
+      }
+      if (s.kind === 'for-of') {
+        const it = inferType(s.iterable, ctx)
+        const inner: InferenceCtx = { ...ctx, locals: new Map(ctx.locals) }
+        if (it.kind === 'array') inner.locals.set(s.item, it.element)
+        scan(s.body, inner)
+        continue
+      }
+      forEachNestedBody(s, (b) => scan(b, { ...ctx, locals: new Map(ctx.locals) }))
+    }
+  }
+  scan(stmts, { ...outer, locals: new Map(outer.locals) })
+}
+
+/** Run `visit` on every nested statement list of a control-flow statement. */
+function forEachNestedBody(s: StatementIR, visit: (body: StatementIR[]) => void): void {
+  if (s.kind === 'if') {
+    visit(s.then)
+    if (s.elseBody) visit(s.elseBody)
+  } else if (s.kind === 'while' || s.kind === 'for-of' || s.kind === 'for-range' || s.kind === 'do-while') {
+    visit(s.body)
+  } else if (s.kind === 'switch') {
+    for (const c of s.cases) visit(c.body)
+  }
+}
+
 export function seedHandlerLocals(
   stmts: StatementIR[],
   ctx: InferenceCtx,
@@ -1143,9 +1237,16 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         // refinement passes; the computed/expression path was the
         // remaining root gap. Float is contagious through the binary
         // case below, so this also fixes all-float-operand arithmetic.
-        return Number.isInteger(expr.value)
-          ? { kind: 'number' }
-          : { kind: 'number', float: true }
+        // An EXPLICIT `float` marker on the literal wins over its value.
+        // `widenFloatSignals` already stamps it when a `signal(0)` is written
+        // a Double, and the emitters already render such a literal as `0.0` —
+        // but inferType ignored it, so the VALUE (`0`, an integer) still typed
+        // the surrounding expression Int. The marker exists precisely to say
+        // "this integer-valued literal is a Double"; honouring it here is what
+        // makes that claim reach the emitted TYPES and not just the digits.
+        return expr.float === true || !Number.isInteger(expr.value)
+          ? { kind: 'number', float: true }
+          : { kind: 'number' }
       }
       if (typeof expr.value === 'boolean') return { kind: 'boolean' }
       return { kind: 'unknown' }
