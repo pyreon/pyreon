@@ -1142,7 +1142,7 @@ every warning; treat any warning as "this construct is outside v1."
 **Types**
 | Shape | Notes |
 |---|---|
-| `string` / `number` / `boolean`, arrays, `T \| null` | **`number` infers `Int` OR `Double`** from literal evidence: a fractional literal (`12.5`) → `Double`, integer literals stay `Int`. Applies to scalars (`signal(12.5)` / `signal<number>(12.5)`), struct fields, array elements (`signal([12.5, 8.3])` → `[Double]`), and `reduce` seeds (a Double accumulation flips the seed to `0.0`). Whole-number elements in a Double array render `15.0` so `[Double]` / `List<Double>` stays homogeneous. |
+| `string` / `number` / `boolean`, arrays, `T \| null` | **`number` infers `Int` OR `Double`** from literal evidence — including THROUGH an explicit annotation: `signal<{ price: number }[]>([{ price: 2.5 }])` types the field Double, because a TS `number` carries no int/float distinction and so must not override the initializer beside it (the annotated and un-annotated spellings emit identically). Literal evidence: a fractional literal (`12.5`) → `Double`, integer literals stay `Int`. Applies to scalars (`signal(12.5)` / `signal<number>(12.5)`), struct fields, array elements (`signal([12.5, 8.3])` → `[Double]`), and `reduce` seeds (a Double accumulation flips the seed to `0.0`). Whole-number elements in a Double array render `15.0` so `[Double]` / `List<Double>` stays homogeneous. |
 | `type X = {...}` / interfaces | become Codable structs / @Serializable data classes |
 | string-literal unions | become native enums |
 | anonymous object types in props | synthesize named structs (`UserPage`+`params` → `UserPageParam`); declared structs win on structural match |
