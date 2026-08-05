@@ -37,7 +37,16 @@ interface IntegrationMeta {
 const META: Record<IntegrationId, IntegrationMeta> = {
   supabase: {
     id: 'supabase',
-    deps: () => ({ '@supabase/supabase-js': '^2.49.0' }),
+    // EXACT pin, temporarily: `^2.49.0` resolves to whatever npm serves as
+    // latest, and on 2026-08-05 that was 2.112.1 — whose own hard dep
+    // `@supabase/realtime-js@2.112.1` is ABSENT from the registry (the
+    // published versions jump to a `999.9.2-canary.0` mispublish marker), so
+    // every fresh scaffold failed `bun install` and the Scaffold Smoke gate
+    // went red on main. 2.112.0 is the newest fully-resolvable release
+    // (verified: its realtime dep exists). Restore the caret once upstream
+    // ships a resolvable release ABOVE the broken one — an exact pin is a
+    // freshness tax, not the desired end state.
+    deps: () => ({ '@supabase/supabase-js': '2.112.0' }),
     envKeys: () => ['SUPABASE_URL', 'SUPABASE_ANON_KEY'],
   },
   email: {
