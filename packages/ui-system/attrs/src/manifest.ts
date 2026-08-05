@@ -11,7 +11,7 @@ export default defineManifest({
   multiplatform: {
     tier: 'shared',
     rationale:
-      'attrs(Base) default-prop HOC lowers via attrs-native (use-site wins)',
+      'attrs({ name, component }) default-prop HOC lowers via attrs-native (use-site wins)',
   },
   longExample: `import attrs, { isAttrsComponent } from '@pyreon/attrs'
 import { Element } from '@pyreon/elements'

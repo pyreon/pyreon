@@ -499,7 +499,7 @@ the machine-checked contract.
 | `@pyreon/rx` | the namespace form (rx.filter/map/…) lowers per-method to native collection ops; standalone transforms warn |
 | `@pyreon/coolgrid` | Container/Row/Col lower (equal-fill + literal fractional Col spans) |
 | `@pyreon/ui-core` | `<PyreonUI>` lowers transparently on native (theme is compile-time; dark mode is the system read) |
-| `@pyreon/attrs` | attrs(Base) default-prop HOC lowers via attrs-native (use-site wins) |
+| `@pyreon/attrs` | attrs({ name, component }) default-prop HOC lowers via attrs-native (use-site wins) |
 | `@pyreon/elements` | Element→Stack and Text lower via elements-native; the rich web-only surfaces (Overlay/Portal/List slots) warn per-construct |
 | `@pyreon/styler` | styled(Prim) + defineTheme tokens lower via the styler-native frontend; the CSS-in-JS runtime is web, the authored patterns compile |
 | `@pyreon/rocketstyle` | rocketstyle-over-primitive chains lower (static cascade + one dynamic dimension) via rocketstyle-native |
