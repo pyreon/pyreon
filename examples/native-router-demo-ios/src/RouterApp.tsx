@@ -507,15 +507,6 @@ function HomePage() {
         <Button onPress={() => navigate('/push')}>View push</Button>
         <Button onPress={() => navigate('/media')}>View media</Button>
         <Button onPress={() => navigate('/http')}>View http</Button>
-        {/* LAST deliberately: the home column is non-scrollable and the
-            Android emulator's fold falls right after "View http" (its test
-            failed the moment this button sat before it — the rerun localized
-            the fold between positions 23 and 24). The Android lifecycle test
-            navigates via PyreonDeepLink instead of this tap; the iOS test
-            taps it (the last position is iOS-proven — http's iOS test passed
-            there for weeks). Growing this list further needs a real
-            fold-budget decision, not another insertion. */}
-        <Button onPress={() => navigate('/lifecycle')}>View lifecycle</Button>
       </Inline>
       {/* Core-UI row closure — `Link` was listed "not individually asserted",
           and it had NO usage in any gated app despite this file's header
@@ -602,6 +593,16 @@ function AboutPage() {
       <Button onPress={() => tags.remove(0)} data-testid="tag-remove">
         Remove First
       </Button>
+      {/* The lifecycle route is reached from ABOUT, not from home. The home
+          nav column is non-scrollable and AT its fold budget on the Android
+          emulator: inserting a 24th button there pushed the adaptive-row
+          markers past the fold, where Compose measures them at ZERO height
+          and the size-class gap assertion read 0.0dp. The About page is
+          short and its own tests already tap through it, so this is the
+          insertion that does NOT spend fold budget — the alternative (making
+          home scrollable) changes tap discipline for every existing test on
+          both platforms and is a deliberate, separate decision. */}
+      <Button onPress={() => navigate('/lifecycle')}>View lifecycle</Button>
       <Button onPress={() => navigate('/')}>Back to Home</Button>
       {/* The keyed list goes LAST: its Compose lowering is a LazyColumn,
           which fills the parent Column's remaining height — siblings after

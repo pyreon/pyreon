@@ -1063,15 +1063,6 @@ final class PyreonRouterDemoUITests: XCTestCase {
     // Requires the ws-echo fixture server on :8790 (same as the remote-dot
     // and websocket tests — one server, all fixtures).
     func test_videoPlaybackStateReachesUI() throws {
-    // Platform APIs — app LIFECYCLE through the REAL UIApplication
-    // notifications. The lifecycle page renders the STICKY wasBackgrounded
-    // flag; backgrounding via the Home button and re-activating must flip it
-    // "false" → "true" — an end-state a frozen (never-started) container can
-    // never reach, independent of how many transition notifications the OS
-    // fires on this path. The third member of the never-wired class:
-    // PyreonAppState.start() wired these notifications from inception and no
-    // emit ever called it, so useAppState() reported "active" forever.
-    func test_appLifecycleBackgroundingSetsStickyFlag() throws {
         let app = XCUIApplication()
         app.launch()
 
@@ -1089,6 +1080,36 @@ final class PyreonRouterDemoUITests: XCTestCase {
             app.staticTexts["Video: playing"].waitForExistence(timeout: 30),
             "Video status never reached playing — the AVPlayer pipeline did "
                 + "not start (observed: \(app.staticTexts["video-status"].firstMatch.label))"
+        )
+    }
+
+    // Platform APIs — app LIFECYCLE through the REAL UIApplication
+    // notifications. The lifecycle page renders the STICKY wasBackgrounded
+    // flag; backgrounding via the Home button and re-activating must flip it
+    // "false" → "true" — an end-state a frozen (never-started) container can
+    // never reach, independent of how many transition notifications the OS
+    // fires on this path. The third member of the never-wired class:
+    // PyreonAppState.start() wired these notifications from inception and no
+    // emit ever called it, so useAppState() reported "active" forever.
+    func test_appLifecycleBackgroundingSetsStickyFlag() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            "Home page did not render"
+        )
+        // Reached from ABOUT, not home: the home nav column is at its fold
+        // budget on the Android emulator (a 24th button pushed the adaptive
+        // markers past the fold, where Compose measures zero height and the
+        // size-class assertion read 0.0dp). The shared source is one file, so
+        // the button lives where it costs no budget and both platforms
+        // navigate the same way.
+        app.buttons["Go to About"].tap()
+        XCTAssertTrue(
+            app.otherElements["about-page"].firstMatch.waitForExistence(timeout: 15),
+            "About page did not render"
+        )
         app.buttons["View lifecycle"].tap()
         XCTAssertTrue(
             app.otherElements["lifecycle-page"].firstMatch.waitForExistence(timeout: 15),
