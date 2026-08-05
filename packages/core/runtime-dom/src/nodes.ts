@@ -635,6 +635,10 @@ export interface ForAdoption {
     vnode: import('@pyreon/core').VNode | import('@pyreon/core').NativeItem,
     first: ChildNode,
   ) => Cleanup | null
+  /** Arm (or clear) the one-shot compiled-template adoption target. */
+  armTplAdopt?: (el: Element | null) => void
+  /** Did the last armed _tpl call adopt (vs clone)? */
+  tplAdopted?: () => boolean
 }
 
 // One-shot synchronous handoff: hydrate.ts sets it immediately before its
@@ -799,17 +803,46 @@ export function mountFor<T>(
       // `after` = the boundary following this row (next row's k: marker, or the
       // tail marker) — recovery-mounts inside hydrateRow insert before it.
       const after: Node = i + 1 < n ? a.rows[i + 1]!.marker : tailMarker
+      // COMPILED rows: arm the one-shot _tpl adoption target BEFORE renderItem —
+      // the _tpl call inside binds against the SSR row when the structure
+      // verifies (see template.ts), making compiled apps adopt server DOM.
+      // h()-rows ignore the target (no _tpl call); it is cleared either way.
+      if (a.armTplAdopt && row.first.nodeType === 1) a.armTplAdopt(row.first as Element)
       const rowVNode = renderItem(items[i] as T)
-      // Dispatch-free plan replay first (structurally-identical rows); any
-      // verification failure falls back to the interpretive walk for THIS row.
-      const cleanup =
-        (a.tryReplayRow ? a.tryReplayRow(rowVNode, row.first) : null) ??
-        a.hydrateRow(rowVNode, row.first, after)
+      const tplAdopted = a.armTplAdopt ? a.tplAdopted!() : false
+      if (a.armTplAdopt) a.armTplAdopt(null) // defensive clear (renderItem may not call _tpl)
+      let cleanup: Cleanup | null
+      let anchor: Node = row.first
+      let endNode: Node | null = row.last !== row.first ? row.last : null
+      if (tplAdopted) {
+        // The template bound the SSR row in place — its NativeItem cleanup is
+        // the row cleanup; DOM untouched.
+        cleanup = (rowVNode as import('@pyreon/core').NativeItem).cleanup ?? null
+      } else {
+        // Dispatch-free plan replay first (structurally-identical rows); any
+        // verification failure falls back to the interpretive walk for THIS row.
+        cleanup =
+          (a.tryReplayRow ? a.tryReplayRow(rowVNode, row.first) : null) ??
+          a.hydrateRow(rowVNode, row.first, after)
+        // A NativeItem row that did NOT adopt was SWAPPED by the interpretive
+        // walk: the fresh subtree replaced `row.first`, leaving the recorded
+        // anchor DETACHED — every later move/removal of this entry would
+        // operate on a dead node. Re-resolve the live anchor from the row's
+        // still-present k: marker (markers are removed after this loop).
+        if (!(row.first as ChildNode).isConnected) {
+          const live = row.marker.nextSibling
+          if (live && live !== after) {
+            anchor = live
+            const lastLive = (after as ChildNode).previousSibling
+            endNode = lastLive && lastLive !== live ? lastLive : null
+          }
+        }
+      }
       cache.set(key, {
-        anchor: row.first,
+        anchor,
         cleanup,
         pos: i,
-        end: row.last !== row.first ? row.last : null,
+        end: endNode,
       })
       cleanupCount++
     }

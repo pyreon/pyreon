@@ -382,6 +382,168 @@ function isSvgRooted(html: string): boolean {
   return !SVG_ROOT_EXCLUDE.has(tag) && SVG_TAGS.has(tag)
 }
 
+// ─── Compiled-template hydration adoption ────────────────────────────────────
+// One-shot handoff: the <For> hydration-adoption path sets the SSR row root
+// immediately before invoking renderItem; the _tpl call inside consumes it and
+// — when the SSR DOM verifiably matches the template's structure — runs its
+// bind against the EXISTING nodes instead of cloning. This is what makes
+// compiled apps ADOPT server DOM (previously every compiled row was rebuilt
+// and swapped in). Verification is all-or-nothing BEFORE any mutation, so a
+// bail leaves the SSR row untouched for the interpretive fallback.
+let _tplAdoptTarget: Element | null = null
+let _tplAdoptConsumed = false
+
+/** Set/clear the one-shot adoption target (For hydration adoption only). */
+export function _setTplAdoptTarget(el: Element | null): void {
+  _tplAdoptTarget = el
+  _tplAdoptConsumed = false
+}
+
+/** Did the last _tpl call adopt the target (vs clone)? */
+export function _tplAdoptDidConsume(): boolean {
+  return _tplAdoptConsumed
+}
+
+/** Per-template parsed signature (tag + text-count per element, tree order),
+ * cached on first adoption attempt — replay compares with zero string allocs. */
+interface TplSig {
+  tags: string[]
+  counts: number[]
+}
+const _tplSignature = new WeakMap<HTMLTemplateElement, TplSig | null>()
+
+function templateSignature(tpl: HTMLTemplateElement, html: string): TplSig | null {
+  let sig = _tplSignature.get(tpl)
+  if (sig !== undefined) return sig
+  // Templates with comment placeholders (`<!>` dynamic slots / mountSlot
+  // machinery) have clone-time structure the SSR DOM does not — never adopt.
+  if (html.includes('<!')) {
+    _tplSignature.set(tpl, null)
+    return null
+  }
+  const root = tpl.content.firstElementChild
+  if (!root || root.nextElementSibling) {
+    _tplSignature.set(tpl, null)
+    return null
+  }
+  const tags: string[] = []
+  const counts: number[] = []
+  const walk = (el: Element) => {
+    // tag + textChildCount — the count gates BIND-SLOT alignment: a template
+    // text slot (dynamic or static) must have a counterpart text node in the
+    // SSR DOM, else a compiled `.firstChild` text ref would land on
+    // null/wrong-node (e.g. an UNMARKED empty dynamic slot in compiled-SSR
+    // output). Element-only walks keep it marker-comment-immune.
+    let texts = 0
+    for (let n = el.firstChild; n; n = n.nextSibling) {
+      if (n.nodeType === 3) texts++
+    }
+    tags.push(el.tagName)
+    counts.push(texts)
+    for (let c = el.firstElementChild; c; c = c.nextElementSibling) walk(c)
+  }
+  walk(root)
+  sig = { tags, counts }
+  _tplSignature.set(tpl, sig)
+  return sig
+}
+
+/**
+ * Walk the SSR target in the SAME element order as templateSignature,
+ * comparing TAG:textCount per element against the template's signature parts.
+ * Where the template expects ZERO texts but the SSR element has bare text
+ * children (the compiled `_setChild`-managed static slot: the bind rewrites
+ * the element's content wholesale, so pre-existing SSR text must simply go —
+ * exactly what a clone-and-swap would produce), those texts are collected for
+ * pre-bind REMOVAL instead of bailing. Any NONZERO-count mismatch still bails
+ * (`.firstChild` text refs would misalign). Returns the removal list, or null
+ * on mismatch.
+ */
+interface AdoptMatch {
+  removals: Text[] | null
+  triplets: { open: Comment; text: Text | null; close: Comment }[] | null
+}
+
+function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | null {
+  let removals: Text[] | null = null
+  let triplets: { open: Comment; text: Text | null; close: Comment }[] | null = null
+  const tags = expected.tags
+  const wantCounts = expected.counts
+  const total = tags.length
+  let idx = 0
+  const walk = (el: Element): boolean => {
+    const at = idx++
+    if (at >= total || tags[at] !== el.tagName) return false
+    let texts = 0
+    let bare: Text[] | null = null
+    // Single pass over children: count texts, validate + collect `$` triplets
+    // inline (adjacency rules from collectDollarTriplets), gather bare texts.
+    let n: ChildNode | null = el.firstChild
+    while (n) {
+      if (n.nodeType === 8) {
+        const d = (n as Comment).data
+        if (d === '$') {
+          texts++
+          const prev = n.previousSibling
+          if (prev && prev.nodeType === 3) return false // adjacent-text seam
+          const a = n.nextSibling
+          if (!a) return false
+          if (a.nodeType === 8 && (a as Comment).data === '/$') {
+            const after = a.nextSibling
+            if (after && after.nodeType === 3) return false
+            ;(triplets ??= []).push({ open: n as Comment, text: null, close: a as Comment })
+            n = a.nextSibling
+            continue
+          }
+          if (a.nodeType !== 3) return false
+          const b = a.nextSibling
+          if (!b || b.nodeType !== 8 || (b as Comment).data !== '/$') return false
+          const after = b.nextSibling
+          if (after && after.nodeType === 3) return false
+          ;(triplets ??= []).push({ open: n as Comment, text: a as Text, close: b as Comment })
+          n = b.nextSibling
+          continue
+        }
+        if (d === '/$') return false // orphan close
+        // Foreign marker (k:, pyreon-for, async) inside a row — bail.
+        return false
+      }
+      if (n.nodeType === 3) {
+        texts++
+        ;(bare ??= []).push(n as Text)
+      }
+      n = n.nextSibling
+    }
+    const wantTexts = wantCounts[at] as number
+    if (texts !== wantTexts) {
+      // Template expects NO texts here → the bind manages this element's
+      // content (`_setChild`) — SSR texts are removed pre-bind. Any other
+      // mismatch is a structural divergence: bail.
+      if (wantTexts === 0 && bare) {
+        ;(removals ??= []).push(...bare)
+      } else return false
+    }
+    for (let c = el.firstElementChild; c; c = c.nextElementSibling) {
+      if (!walk(c)) return false
+    }
+    return true
+  }
+  if (!walk(root)) return null
+  if (idx !== total) return null
+  return { removals, triplets }
+}
+
+/** All checks passed — strip markers, ensuring one text node per slot. */
+function normalizeDollarTriplets(
+  triplets: { open: Comment; text: Text | null; close: Comment }[],
+): void {
+  for (const t of triplets) {
+    if (!t.text) t.open.parentNode?.insertBefore(document.createTextNode(''), t.close)
+    t.open.remove()
+    t.close.remove()
+  }
+}
+
 export function _tpl(html: string, bind: (el: HTMLElement) => (() => void) | null): NativeItem {
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.tpl')
   let tpl = _tplCache.get(html)
@@ -412,6 +574,26 @@ export function _tpl(html: string, bind: (el: HTMLElement) => (() => void) | nul
   // early template before a rarely-used later one, but only once the cache is
   // full; no realistic app approaches 1024 distinct templates, and the worst
   // case is a one-time re-parse.
+  // Hydration adoption: bind against the verified SSR row instead of cloning.
+  if (_tplAdoptTarget) {
+    const target = _tplAdoptTarget
+    _tplAdoptTarget = null // one-shot, cleared on ANY outcome
+    const troot = tpl.content.firstElementChild
+    if (troot && target.tagName === troot.tagName) {
+      const sig = templateSignature(tpl, html)
+      const match = sig !== null ? matchDomAgainstTemplate(target, sig) : null
+      if (match !== null) {
+        if (match.removals) for (const t of match.removals) t.remove()
+        if (match.triplets) normalizeDollarTriplets(match.triplets)
+        const cleanup = bind(target as HTMLElement)
+        _tplAdoptConsumed = true
+        if (process.env.NODE_ENV !== 'production')
+          _countSink.__pyreon_count__?.('runtime.tpl.adopt')
+        return { __isNative: true, el: target as HTMLElement, cleanup }
+      }
+    }
+  }
+  // (adoption falls through to a normal clone on any verification bail)
   const el = tpl.content.firstElementChild?.cloneNode(true) as HTMLElement
   const cleanup = bind(el)
   return { __isNative: true, el, cleanup }

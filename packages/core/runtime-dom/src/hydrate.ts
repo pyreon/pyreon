@@ -40,6 +40,7 @@ import { bindPolymorphicText, mountChild } from './mount'
 import { buildRowPlan, replayRowPlan } from './hydration-plan'
 import type { RowPlan } from './hydration-plan'
 import { _setPendingForAdoption, mountReactive } from './nodes'
+import { _setTplAdoptTarget, _tplAdoptDidConsume } from './template'
 import type { ForAdoption } from './nodes'
 import { applyProps, applySelectValueProp } from './props'
 
@@ -415,6 +416,8 @@ function hydrateVNode(
             }
             return rowPlan ? replayRowPlan(rowPlan, rowVNode as VNodeChild, first) : null
           },
+          armTplAdopt: _setTplAdoptTarget,
+          tplAdopted: _tplAdoptDidConsume,
         })
         const cleanup = mountChild(vnode, parent, end)
         return [cleanup, after ? firstReal(after) : null]
