@@ -28,11 +28,9 @@
     "@pyreon/runtime-server": "workspace:^",
     "@pyreon/server": "workspace:^",
     "@pyreon/store": "workspace:^",
-    "@pyreon/table": "workspace:^",
     "@pyreon/validation": "workspace:^",
     "@pyreon/zero": "workspace:^",
     "@tanstack/query-core": "^5.101.2",
-    "@tanstack/table-core": "^8.21.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {

@@ -83,7 +83,7 @@ describe('gen-docs — feature snapshot', () => {
         const { table } = Posts.useTable(() => list.data() ?? [], {
           columns: ['title', 'published'],
         })
-        // table is a Computed<Table<Post>> — render with flexRender
+        // table is a Table — read it directly (no table() call), render with flexRender
       }
 
       // Global store access — the state lives on the StoreApi's \`.store\`

@@ -12,15 +12,10 @@ import {
 import { batch, signal } from '@pyreon/reactivity'
 import { defineStore } from '@pyreon/store'
 import type { ColumnDef, SortingState } from '@pyreon/table'
-import {
-  useTable as _useTable,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-} from '@pyreon/table'
+import { useTable as _useTable } from '@pyreon/table'
 import { isStandardSchema, standardSchemaToValidator, zodSchema } from '@pyreon/validation'
 import { defaultInitialValues, extractFields } from './schema'
+import { type FeatureTableFeatures, featureTableFeatures } from './table-features'
 import type {
   Feature,
   FeatureConfig,
@@ -486,18 +481,40 @@ export function defineFeature<TValues extends Record<string, unknown>>(
         ? fields.filter((f) => options.columns!.includes(f.name as keyof TValues & string))
         : fields
 
-      const columns: ColumnDef<TValues, unknown>[] = visibleFields.map((field) => ({
-        accessorKey: field.name,
-        header: field.label,
-        ...options?.columnOverrides?.[field.name as keyof TValues & string],
-      }))
+      const columns: ColumnDef<FeatureTableFeatures, TValues, unknown>[] = visibleFields.map(
+        (field) => ({
+          accessorKey: field.name,
+          header: field.label,
+          ...options?.columnOverrides?.[field.name as keyof TValues & string],
+        }),
+      )
 
       const sorting = signal<SortingState>([])
       const globalFilter = signal('')
 
-      const table = _useTable(() => ({
+      // `sorting` and `globalFilter` are CONTROLLED: supplying
+      // `onSortingChange` / `onGlobalFilterChange` replaces core's own state
+      // updater for that slice, so the table no longer self-updates it — the
+      // callback writes the signal, `options()` re-runs (it reads both
+      // signals), and `useTable`'s effect pushes the new `state` back in. The
+      // round trip is what makes `result.sorting` a real two-way binding
+      // rather than a mirror.
+      const table = _useTable<FeatureTableFeatures, TValues>(() => ({
+        features: featureTableFeatures,
         data: typeof data === 'function' ? data() : data,
         columns,
+        // Only pageSize needs a starting value; every other slice starts blank.
+        // `initialState` is read once at construction (v9 keeps it out of later
+        // option merges), which is correct — pageSize is a static option.
+        ...(options?.pageSize
+          ? { initialState: { pagination: { pageIndex: 0, pageSize: options.pageSize } } }
+          : {}),
+        // No pageSize → pagination off. `manualPagination` makes
+        // `getPaginatedRowModel()` return the pre-paginated rows, i.e. all of
+        // them, which is exactly what omitting the row model did under v8. The
+        // feature stays registered so `TFeatures` is one static type (see
+        // `table-features.ts`) and the pagination APIs remain available.
+        manualPagination: !options?.pageSize,
         state: {
           sorting: sorting(),
           globalFilter: globalFilter(),
@@ -516,10 +533,6 @@ export function defineFeature<TValues extends Record<string, unknown>>(
               : (updater as string),
           )
         },
-        getCoreRowModel: getCoreRowModel(),
-        getSortedRowModel: getSortedRowModel(),
-        getFilteredRowModel: getFilteredRowModel(),
-        ...(options?.pageSize ? { getPaginationRowModel: getPaginationRowModel() } : {}),
       }))
 
       return {

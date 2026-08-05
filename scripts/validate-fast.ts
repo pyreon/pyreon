@@ -8,6 +8,7 @@
  *
  *   - check-doc-claims      (CLAUDE.md doc page count drifted)
  *   - check-changeset-required (no changeset for published-pkg source change)
+ *   - check-no-major-changesets (a `major` bump is illegal while Pyreon is 0.x)
  *   - check-bundle-budgets   (new publishable package missing entry)
  *   - check-distribution    (sideEffects / source-map invariants)
  *   - check-export-entries  (subpath export has a build entry — release-build guard)
@@ -62,6 +63,10 @@ const GATES: Gate[] = [
   { name: 'check-doc-claims', cmd: 'bun scripts/check-doc-claims.ts' },
   { name: 'check-no-legacy-playground', cmd: 'bun scripts/check-no-legacy-playground.ts' },
   { name: 'check-changeset-required', cmd: 'bun scripts/check-changeset-required.ts' },
+  // Pairs with the one above: having a changeset is not enough, its SEVERITY
+  // must be legal for 0.x. Pure file read, milliseconds — and without it the
+  // only feedback on a `major` bump is a CI round trip.
+  { name: 'check-no-major-changesets', cmd: 'bun scripts/check-no-major-changesets.ts' },
   { name: 'check-bundle-budgets', cmd: 'bun scripts/check-bundle-budgets.ts' },
   { name: 'check-distribution', cmd: 'bun scripts/check-distribution.ts' },
   { name: 'check-export-entries', cmd: 'bun scripts/check-export-entries.ts' },

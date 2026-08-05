@@ -1,9 +1,10 @@
 import type { FormState, SchemaValidateFn } from '@pyreon/form'
 import type { QueryKey, UseMutationResult, UseQueryResult } from '@pyreon/query'
-import type { Computed, Signal } from '@pyreon/reactivity'
+import type { Signal } from '@pyreon/reactivity'
 import type { StoreApi } from '@pyreon/store'
-import type { SortingState } from '@pyreon/table'
+import type { SortingState, Table } from '@pyreon/table'
 import type { FieldInfo } from './schema'
+import type { FeatureTableFeatures } from './table-features'
 
 /**
  * Duck-typed schema inference. Matches Zod (`_output`), Valibot, ArkType
@@ -78,7 +79,10 @@ export interface FeatureTableOptions<TValues extends Record<string, unknown>> {
   columns?: (keyof TValues & string)[]
   /** Per-column overrides (header text, cell renderer, size, etc.). */
   columnOverrides?: Partial<Record<keyof TValues & string, Record<string, unknown>>>
-  /** Page size for pagination. If not provided, pagination is disabled. */
+  /**
+   * Rows per page. When omitted, pagination is disabled and the row model
+   * carries every row.
+   */
   pageSize?: number
 }
 
@@ -86,8 +90,14 @@ export interface FeatureTableOptions<TValues extends Record<string, unknown>> {
  * Return type of feature.useTable().
  */
 export interface FeatureTableResult<TValues extends Record<string, unknown>> {
-  /** The reactive TanStack Table instance. */
-  table: Computed<import('@pyreon/table').Table<TValues>>
+  /**
+   * The reactive TanStack Table instance.
+   *
+   * A `Table` DIRECTLY — not a `Computed<Table>`. v9 owns its own reactivity
+   * (state slices are atoms bound to Pyreon signals), so reading the table
+   * inside any reactive scope subscribes natively; there is no `table()` call.
+   */
+  table: Table<FeatureTableFeatures, TValues>
   /** Sorting state signal — bind to UI controls. */
   sorting: Signal<SortingState>
   /** Global filter signal — bind to search input. */

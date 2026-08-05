@@ -186,7 +186,7 @@ users.useForm()      // validates via Valibot; fields come from initialValues
 users.useList()      // works — schema-agnostic
 ```
 
-Because `useTable` derives its columns from Zod introspection, a non-Zod-schema table has no auto columns — build it with `@pyreon/table`'s `useTable` directly (passing an explicit `ColumnDef[]`).
+Because `useTable` derives its columns from Zod introspection, a non-Zod-schema table has no auto columns — build it with `@pyreon/table`'s `useTable` directly (declaring your own `tableFeatures({ … })` set and passing an explicit `ColumnDef<typeof features, T>[]`).
 
 `defineFeature` emits a one-time dev warning if a non-Zod schema yields no fields and no `initialValues` was provided, so the confusing downstream `Field … does not exist` error never surprises you.
 :::
@@ -513,7 +513,7 @@ The auto-fetch is unmount-safe: if the component unmounts before the `getById` p
 `useTable(data, options?)` infers columns from the schema and returns a configured `@pyreon/table` instance plus reactive sorting / filtering signals. **The data is the first argument** — an array or an accessor; the table does not fetch on its own. Pair it with `useList`:
 
 ```tsx
-import { flexRender } from '@pyreon/table'
+import { flexRender, flexRenderCell } from '@pyreon/table'
 
 function TaskTable() {
   const { data } = tasks.useList()
@@ -530,7 +530,7 @@ function TaskTable() {
       />
       <table>
         <thead>
-          <For each={() => table().getHeaderGroups()} by={(g) => g.id}>
+          <For each={() => table.getHeaderGroups()} by={(g) => g.id}>
             {(headerGroup) => (
               <tr>
                 <For each={() => headerGroup.headers} by={(h) => h.id}>
@@ -545,11 +545,14 @@ function TaskTable() {
           </For>
         </thead>
         <tbody>
-          <For each={() => table().getRowModel().rows} by={(r) => r.id}>
+          <For each={() => table.getRowModel().rows} by={(r) => r.id}>
             {(row) => (
               <tr>
-                <For each={() => row.getVisibleCells()} by={(c) => c.id}>
-                  {(cell) => <td>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>}
+                {/* `getAllCells()` — the feature table does not register
+                    `columnVisibilityFeature`, so `getVisibleCells()` is absent.
+                    `flexRenderCell` in an accessor keeps cells fine-grained. */}
+                <For each={() => row.getAllCells()} by={(c) => c.id}>
+                  {(cell) => <td>{() => flexRenderCell(table, row.id, cell.column.id)}</td>}
                 </For>
               </tr>
             )}
@@ -561,7 +564,23 @@ function TaskTable() {
 }
 ```
 
-`table` is a `Computed<Table<TValues>>` — **call it** (`table()`) to read the live TanStack Table instance. Core, sorted, and filtered row models are wired by default; pagination is enabled only when `pageSize` is set.
+`table` is a `Table<FeatureTableFeatures, TValues>` — the TanStack Table **instance**, not a
+`Computed`, so there is no `table()` call. Its state lives in Pyreon signals, so reading it
+inside a reactive scope (`each={() => table.getRowModel().rows}`) subscribes; a bare read
+outside one captures a snapshot.
+
+Every feature table is built with one static feature set, `featureTableFeatures` — sorting,
+column filtering, global filtering, and pagination, plus their row models and the `sortFns` /
+`filterFns` registries. TanStack Table v9 makes the feature set a compile-time type
+parameter, so it cannot vary per call; `pageSize` therefore controls pagination *behaviour*
+(omitting it passes `manualPagination: true`, so the row model carries every row) rather than
+registration. Column visibility, ordering, pinning, sizing, grouping, expanding, faceting,
+and row selection are **not** registered — a table needing those (or a minimal bundle) should
+be built with `@pyreon/table`'s `useTable` directly.
+
+Use `FeatureTableFeatures` when you need to name the type outside the hook — e.g.
+`Table<FeatureTableFeatures, Task>` or `ColumnDef<FeatureTableFeatures, Task>` for a
+`columnOverrides` entry.
 
 ### `FeatureTableOptions`
 
@@ -583,12 +602,19 @@ const { table } = tasks.useTable(() => data() ?? [], {
 
 ### `FeatureTableResult`
 
-| Property       | Type                            | Description                                                |
-| -------------- | ------------------------------- | ---------------------------------------------------------- |
-| `table`        | `Computed<Table<TValues>>`      | The reactive TanStack Table instance — call it to read.    |
-| `sorting`      | `Signal<SortingState>`          | Sorting state. Bind to header click handlers.              |
-| `globalFilter` | `Signal<string>`                | Global filter term. Bind to a search input.                |
-| `columns`      | `FieldInfo[]`                   | The introspected metadata for the visible columns.         |
+| Property       | Type                                       | Description                                                     |
+| -------------- | ------------------------------------------ | --------------------------------------------------------------- |
+| `table`        | `Table<FeatureTableFeatures, TValues>`     | The reactive TanStack Table instance — read it, don't call it.   |
+| `sorting`      | `Signal<SortingState>`                     | Sorting state. Bind to header click handlers.                   |
+| `globalFilter` | `Signal<string>`                           | Global filter term. Bind to a search input.                     |
+| `columns`      | `FieldInfo[]`                              | The introspected metadata for the visible columns.               |
+
+`sorting` and `globalFilter` are real two-way bindings, not mirrors: `useTable` supplies
+`onSortingChange` / `onGlobalFilterChange`, which under v9 puts those slices in **controlled**
+mode (core stops self-updating them). The callback writes the signal, the options function
+re-reads it, and the new `state` is pushed back into the table. So writing
+`sorting.set([{ id: 'title', desc: false }])` re-sorts the table, and a header click updates
+the signal.
 
 ## Store
 
@@ -765,7 +791,11 @@ A Zod schema (it exposes `safeParseAsync`) is wrapped with `@pyreon/validation`'
 
 ### `@pyreon/table`
 
-`useTable` wraps `@pyreon/table`'s `useTable` with schema-inferred `ColumnDef`s and wires the core / sorted / filtered (and optional paginated) row models. Use `flexRender` to render headers and cells.
+`useTable` wraps `@pyreon/table`'s `useTable` with schema-inferred `ColumnDef`s, built on the
+static `featureTableFeatures` set (sorting, column filtering, global filtering, pagination —
+each with its row model, plus the `sortFns` / `filterFns` registries). It returns the TanStack
+Table **instance** directly. Use `flexRender` for headers and `flexRenderCell` for cells;
+`row.getAllCells()` is the cell list (`columnVisibilityFeature` is not registered).
 
 ### `@pyreon/store`
 
@@ -809,10 +839,11 @@ const useDashboard = defineStore('dashboard', () => {
 | `isReference(value)`         | `(value: unknown) => value is ReferenceSchema`           | Type-guard for `reference()` results.                 |
 | `extractFields(schema)`      | `(schema: unknown) => FieldInfo[]`                       | Introspect a schema's fields.                         |
 | `defaultInitialValues(fields)` | `(fields: FieldInfo[]) => Record<string, unknown>`     | Seed create-mode values from extracted fields.        |
+| `featureTableFeatures`       | `TableFeatures`                                          | The static v9 feature set every `useTable` builds with. |
 
 ### Exported types
 
-`Feature`, `FeatureConfig`, `FeatureFormOptions`, `FeatureStore`, `FeatureTableOptions`, `FeatureTableResult`, `InferSchemaValues`, `ListOptions`, `FieldInfo`, `FieldType`, `ReferenceSchema`.
+`Feature`, `FeatureConfig`, `FeatureFormOptions`, `FeatureStore`, `FeatureTableOptions`, `FeatureTableResult`, `FeatureTableFeatures`, `InferSchemaValues`, `ListOptions`, `FieldInfo`, `FieldType`, `ReferenceSchema`.
 
 ## Why
 

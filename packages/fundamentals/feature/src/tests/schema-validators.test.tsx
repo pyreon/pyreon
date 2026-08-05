@@ -416,7 +416,7 @@ describe('generated table reads query data reactively', () => {
     })
 
     await new Promise((r) => setTimeout(r, 50))
-    expect(result.table.table().getRowModel().rows).toHaveLength(1)
+    expect(result.table.table.getRowModel().rows).toHaveLength(1)
 
     // Change the data + refetch the SAME query key → data() flips.
     rows.set([
@@ -429,7 +429,7 @@ describe('generated table reads query data reactively', () => {
 
     // The table's row model tracked the reactive data() through the refetch.
     expect(result.list.data()).toHaveLength(3)
-    expect(result.table.table().getRowModel().rows).toHaveLength(3)
+    expect(result.table.table.getRowModel().rows).toHaveLength(3)
     unmount()
   })
 })

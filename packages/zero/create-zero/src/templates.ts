@@ -191,7 +191,12 @@ export const FEATURES = {
   },
   table: {
     label: 'Tables (@pyreon/table)',
-    deps: ['@pyreon/table', '@tanstack/table-core'],
+    // `@tanstack/table-core` is NOT installed directly: @pyreon/table owns the
+    // version and re-exports the whole author surface (features, row models,
+    // built-in fns, types). A scaffolded app importing table-core itself would
+    // risk a second, drifting copy — and under v9's feature-object model a
+    // mismatched copy produces confusing type errors rather than a clean failure.
+    deps: ['@pyreon/table'],
   },
   virtual: {
     label: 'Virtual Lists (@pyreon/virtual)',

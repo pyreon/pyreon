@@ -10,11 +10,12 @@
  * compiler).
  */
 import { For as ForBase, h } from '@pyreon/core'
-import { computed, signal } from '@pyreon/reactivity'
+import { effect, signal, untrack } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
-import { getCoreRowModel, getFilteredRowModel, getSortedRowModel } from '@tanstack/table-core'
 import { describe, expect, it } from 'vitest'
-import { flexRenderCell, useTable } from '../index'
+import { constructTable } from '@tanstack/table-core'
+import { flexRenderCell, pyreonReactivity, useTable } from '../index'
+import { allFeatures } from './fixtures'
 
 const flush = async () => {
   await Promise.resolve()
@@ -52,19 +53,18 @@ function mountFineTable(data: ReturnType<typeof signal<Row[]>>, extraOpts: objec
   const cellRuns: number[] = [0] // boxed so closures share it
   const el = document.createElement('div')
   document.body.appendChild(el)
-  let tableAccessor!: () => any
+  let tableAccessor!: any
   const App = () => {
     const table = useTable(() => ({
       data: data(),
       columns: cols,
-      getCoreRowModel: getCoreRowModel(),
-      getSortedRowModel: getSortedRowModel(),
+      features: allFeatures,
       getRowId: (r: Row) => String(r.id),
       ...extraOpts,
     }))
     tableAccessor = table
     return h('table', {}, h('tbody', {}, () =>
-      hFor({ each: () => table().getRowModel().rows, by: (r: any) => r.id }, (row: any) => {
+      hFor({ each: () => table.getRowModel().rows, by: (r: any) => r.id }, (row: any) => {
         const rowId = row.id
         return h('tr', { 'data-rowid': rowId },
           hFor({ each: () => row.getVisibleCells(), by: (c: any) => c.id }, (cell: any) => {
@@ -81,7 +81,7 @@ function mountFineTable(data: ReturnType<typeof signal<Row[]>>, extraOpts: objec
   const dispose = mount(hAny(App), el)
   return {
     el,
-    table: () => tableAccessor(),
+    table: () => tableAccessor,
     cellRuns,
     cellText: (rowId: number, colId: string) =>
       el.querySelector(`[data-rowid="${rowId}"] .col-${colId}`)?.textContent,
@@ -150,25 +150,25 @@ describe('flexRenderCell — fine-grained invalidation', () => {
     const el = document.createElement('div')
     document.body.appendChild(el)
     let cellRuns = 0
-    let tableAccessor!: () => any
+    let tableAccessor!: any
     const App = () => {
       const table = useTable(() => ({
         data: data(),
         columns: cols,
-        getCoreRowModel: getCoreRowModel(),
+        features: allFeatures,
         getRowId: (r: Row) => String(r.id),
         enableRowSelection: true,
       }))
       tableAccessor = table
       // A cell that renders table STATE (selection), not row data.
       return h('table', {}, h('tbody', {}, () =>
-        hFor({ each: () => table().getRowModel().rows, by: (r: any) => r.id }, (row: any) => {
+        hFor({ each: () => table.getRowModel().rows, by: (r: any) => r.id }, (row: any) => {
           const rowId = row.id
           return h('tr', { 'data-rowid': rowId },
             h('td', { class: 'sel' }, () => {
               cellRuns++
               // read the LIVE row's selection state
-              const live = table().getRowModel().rowsById[rowId]
+              const live = table.getRowModel().rowsById[rowId]
               return live?.getIsSelected() ? 'SELECTED' : '-'
             }),
           )
@@ -178,7 +178,7 @@ describe('flexRenderCell — fine-grained invalidation', () => {
     const dispose = mount(hAny(App), el)
     expect(el.querySelector('[data-rowid="1"] .sel')?.textContent).toBe('-')
     cellRuns = 0
-    tableAccessor().getRowModel().rowsById['1'].toggleSelected(true)
+    tableAccessor.getRowModel().rowsById['1'].toggleSelected(true)
     await flush()
     expect(el.querySelector('[data-rowid="1"] .sel')?.textContent).toBe('SELECTED')
     if (typeof dispose === 'function') dispose()
@@ -228,27 +228,31 @@ describe('flexRenderCell — fine-grained invalidation', () => {
     t.unmount()
   })
 
-  it('coarse fallback: a plain Computed<Table> (not from useTable) still renders reactively', async () => {
+  it('coarse fallback: a table NOT from useTable (no row-signal bridge) still renders reactively', async () => {
+    // v9 note: this replaces the v8 `plain Computed<Table>` case. `useTable`
+    // now returns the Table itself, so the way to get a bridge-less table is to
+    // construct one directly. flexRenderCell must then fall back to TRACKED
+    // reads (coarse but correct) instead of the per-row signal.
     const data = signal(makeData(2))
     const el = document.createElement('div')
     document.body.appendChild(el)
-    let tableAccessor!: () => any
     const App = () => {
-      const t = useTable(() => ({
+      const bare = constructTable({
+        features: { coreReactivityFeature: pyreonReactivity(), ...allFeatures },
         data: data(),
         columns: cols,
-        getCoreRowModel: getCoreRowModel(),
         getRowId: (r: Row) => String(r.id),
-      }))
-      // Wrap in a PLAIN computed — not registered in the row-signal registry,
-      // so flexRenderCell must fall back to a coarse subscription.
-      const plain = computed(() => t())
-      tableAccessor = t
+      } as never) as any
+      // Drive options reactively the way useTable does, minus the bridge.
+      effect(() => {
+        const d = data()
+        untrack(() => bare.setOptions((prev: any) => ({ ...prev, data: d })))
+      })
       return h('table', {}, h('tbody', {}, () =>
-        hFor({ each: () => t().getRowModel().rows, by: (r: any) => r.id }, (row: any) => {
+        hFor({ each: () => bare.getRowModel().rows, by: (r: any) => r.id }, (row: any) => {
           const rowId = row.id
           return h('tr', { 'data-rowid': rowId },
-            h('td', { class: 'col-a' }, () => String(flexRenderCell(plain, rowId, 'a'))),
+            h('td', { class: 'col-a' }, () => String(flexRenderCell(bare, rowId, 'a'))),
           )
         }),
       ))
@@ -262,7 +266,7 @@ describe('flexRenderCell — fine-grained invalidation', () => {
     el.remove()
   })
 
-  it('raw Table instance form — flexRenderCell(table(), ...) subscribes coarsely', async () => {
+  it('the useTable instance form — flexRenderCell(table, ...) resolves the bridge', async () => {
     const data = signal(makeData(3))
     const el = document.createElement('div')
     document.body.appendChild(el)
@@ -270,15 +274,16 @@ describe('flexRenderCell — fine-grained invalidation', () => {
       const t = useTable(() => ({
         data: data(),
         columns: cols,
-        getCoreRowModel: getCoreRowModel(),
+        features: allFeatures,
         getRowId: (r: Row) => String(r.id),
       }))
       return h('table', {}, h('tbody', {}, () =>
-        hFor({ each: () => t().getRowModel().rows, by: (r: any) => r.id }, (row: any) => {
+        hFor({ each: () => t.getRowModel().rows, by: (r: any) => r.id }, (row: any) => {
           const rowId = row.id
-          // Pass the RESOLVED instance t() — coarse subscription via the closure.
+          // v9: `useTable` returns the instance itself, so this IS the
+          // fine-grained form — the bridge is found by table identity.
           return h('tr', { 'data-rowid': rowId },
-            h('td', { class: 'col-a' }, () => String(flexRenderCell(t(), rowId, 'a'))),
+            h('td', { class: 'col-a' }, () => String(flexRenderCell(t, rowId, 'a'))),
           )
         }),
       ))
@@ -322,14 +327,14 @@ describe('flexRenderCell — fine-grained invalidation', () => {
       const t = useTable(() => ({
         data: data(),
         columns: columns(),
-        getCoreRowModel: getCoreRowModel(),
-        getRowId: (r: Row) => String(r.id),
+                features: allFeatures,
+                getRowId: (r: Row) => String(r.id),
       }))
       return h('table', {}, h('tbody', {}, () =>
-        hFor({ each: () => t().getRowModel().rows, by: (r: any) => r.id }, (row: any) => {
+        hFor({ each: () => t.getRowModel().rows, by: (r: any) => r.id }, (row: any) => {
           const rowId = row.id
           return h('tr', { 'data-rowid': rowId },
-            hFor({ each: () => t().getRow(rowId).getVisibleCells(), by: (c: any) => c.id }, (cell: any) => {
+            hFor({ each: () => t.getRow(rowId).getVisibleCells(), by: (c: any) => c.id }, (cell: any) => {
               const colId = cell.column.id
               return h('td', { class: `col-${colId}` }, () => {
                 cellRuns++
@@ -364,7 +369,7 @@ describe('flexRenderCell — fine-grained invalidation', () => {
       const t = useTable(() => ({
         data: data(),
         columns: cols,
-        getCoreRowModel: getCoreRowModel(),
+        features: allFeatures,
         getRowId: (r: Row) => String(r.id),
       }))
       return h('div', {},
@@ -386,18 +391,17 @@ describe('flexRenderCell — fine-grained invalidation', () => {
     const el = document.createElement('div')
     document.body.appendChild(el)
     let cellRuns = 0
-    let tableAccessor!: () => any
+    let tableAccessor!: any
     const App = () => {
       const t = useTable(() => ({
         data: data(),
         columns: cols,
-        getCoreRowModel: getCoreRowModel(),
-        getFilteredRowModel: getFilteredRowModel(),
-        getRowId: (r: Row) => String(r.id),
+                        features: allFeatures,
+                        getRowId: (r: Row) => String(r.id),
       }))
       tableAccessor = t
       return h('table', {}, h('tbody', {}, () =>
-        hFor({ each: () => t().getRowModel().rows, by: (r: any) => r.id }, (row: any) =>
+        hFor({ each: () => t.getRowModel().rows, by: (r: any) => r.id }, (row: any) =>
           h('tr', { 'data-rowid': row.id },
             h('td', {}, () => {
               cellRuns++
@@ -408,11 +412,26 @@ describe('flexRenderCell — fine-grained invalidation', () => {
       ))
     }
     const dispose = mount(hAny(App), el)
+    expect(el.querySelectorAll('tbody tr')).toHaveLength(3)
     cellRuns = 0
-    // globalFilter: undefined -> 'a' (a string slice → sliceEqual primitive path)
-    tableAccessor().setGlobalFilter('a')
+
+    // v9 note: the v8 version filtered by 'a', which matches EVERY row — under
+    // v8's whole-state structural diff that still coarse-invalidated all cells.
+    // v9 state slices are atoms, so a filter that changes neither membership nor
+    // any rendered value now correctly does NO work. The invariant worth keeping
+    // is the real one: a global filter that DOES change membership must reach
+    // the DOM and re-run the surviving cells.
+    tableAccessor.setGlobalFilter('a1')
     await flush()
+
+    expect(el.querySelectorAll('tbody tr')).toHaveLength(1)
+    expect(el.querySelector('[data-rowid="1"] td')?.textContent).toBe('a1')
     expect(cellRuns).toBeGreaterThan(0)
+
+    // …and clearing it restores every row.
+    tableAccessor.setGlobalFilter('')
+    await flush()
+    expect(el.querySelectorAll('tbody tr')).toHaveLength(3)
     if (typeof dispose === 'function') dispose()
     el.remove()
   })

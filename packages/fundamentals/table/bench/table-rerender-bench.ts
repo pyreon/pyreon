@@ -2,9 +2,9 @@
 /**
  * Re-render / recompute COUNT benchmark — @pyreon/table vs @tanstack/react-table.
  *
- * BOTH adapters wrap the SAME `@tanstack/table-core` (react-table@8.21.3 depends
- * on table-core@8.21.3; @pyreon/table depends on ^8.21.3 — deduped to the same
- * 8.21.3 copy). So the row-model / sorting / filtering WORK is byte-identical in
+ * BOTH adapters wrap the SAME `@tanstack/table-core` (react-table@9.0.0 depends
+ * on table-core@9.0.0; @pyreon/table depends on ^9.0.0 — deduped to the same
+ * 9.0.0 copy). So the row-model / sorting / filtering WORK is byte-identical in
  * both — the ONLY thing this bench measures is the ADAPTER's render strategy:
  *
  *   - react-table re-renders React components (VDOM) on a state change.
@@ -122,13 +122,28 @@ async function reactHarness(
   const { createElement: h, useState } = React
   const { createRoot } = await import('react-dom/client')
   const { flushSync } = await import('react-dom')
-  const { useReactTable, getCoreRowModel, getSortedRowModel, flexRender } = await import(
-    '@tanstack/react-table'
-  )
+  const {
+    useTable: useReactTable,
+    flexRender,
+    tableFeatures: reactTableFeatures,
+    rowSortingFeature: reactRowSorting,
+    columnVisibilityFeature: reactColumnVisibility,
+    createSortedRowModel: reactCreateSortedRowModel,
+    sortFns: reactSortFns,
+  } = await import('@tanstack/react-table')
+  // Same capability set as the Pyreon side — the comparison is only fair if
+  // both tables register identical features and row models.
+  const reactFeatures = reactTableFeatures({
+    rowSortingFeature: reactRowSorting,
+    // `row.getVisibleCells()` is provided by columnVisibilityFeature in v9.
+    columnVisibilityFeature: reactColumnVisibility,
+    sortedRowModel: reactCreateSortedRowModel(),
+    sortFns: reactSortFns,
+  })
 
   let cellUnits = 0
   let setData!: (d: Row[]) => void
-  let tableRef: ReturnType<typeof useReactTable<Row>> | null = null
+  let tableRef: any = null
   // ONE base array — reused so the immutable edit keeps unchanged row refs.
   const base = makeData(n)
   const baseC0Row0 = base[0]!.c0
@@ -152,13 +167,12 @@ async function reactHarness(
   function Table() {
     const [data, sd] = useState(() => base)
     setData = sd
-    const table = useReactTable<Row>({
+    const table = useReactTable({
+      features: reactFeatures,
       data,
       columns: columnDefs as any,
-      getCoreRowModel: getCoreRowModel(),
-      getSortedRowModel: getSortedRowModel(),
-      getRowId: (r) => String(r.id),
-    })
+      getRowId: (r: Row) => String(r.id),
+    } as any) as any
     tableRef = table
     return h(
       'table',
@@ -213,9 +227,18 @@ async function pyreonHarness(
   const { For, h } = await import('@pyreon/core')
   const { signal } = await import('@pyreon/reactivity')
   const { mount } = await import('@pyreon/runtime-dom')
-  const { useTable, flexRender, flexRenderCell, getCoreRowModel, getSortedRowModel } = await import(
-    '../src/index'
-  )
+  const {
+    useTable, flexRender, flexRenderCell,
+    tableFeatures, rowSortingFeature, columnVisibilityFeature,
+    createSortedRowModel, sortFns,
+  } = await import('../src/index')
+  const pyreonFeatures = tableFeatures({
+    rowSortingFeature,
+    // `row.getVisibleCells()` is provided by columnVisibilityFeature in v9.
+    columnVisibilityFeature,
+    sortedRowModel: createSortedRowModel(),
+    sortFns,
+  })
 
   let cellUnits = 0
   const base = makeData(n)
@@ -225,13 +248,12 @@ async function pyreonHarness(
   const container = document.createElement('div')
   document.body.appendChild(container)
 
-  let tableAccessor!: () => any
+  let tableAccessor!: any
   function App() {
     const table = useTable(() => ({
       data: data(),
       columns: columnDefs as any,
-      getCoreRowModel: getCoreRowModel(),
-      getSortedRowModel: getSortedRowModel(),
+      features: pyreonFeatures,
       getRowId: (r: Row) => String(r.id),
     }))
     tableAccessor = table
@@ -239,7 +261,7 @@ async function pyreonHarness(
     if (mode === 'naive-map') {
       // ANTI-PATTERN: full tbody rebuild on every change.
       return h('table', {}, h('tbody', {}, () =>
-        table().getRowModel().rows.map((row: any) =>
+        table.getRowModel().rows.map((row: any) =>
           h('tr', { 'data-rowid': row.id },
             ...row.getVisibleCells().map((cell: any) => {
               cellUnits++
@@ -251,7 +273,7 @@ async function pyreonHarness(
     }
     // RECOMMENDED: keyed <For> + fine-grained reactive cells.
     return h('table', {}, h('tbody', {}, () =>
-      h(For, { each: () => table().getRowModel().rows, by: (r: any) => r.id }, (row: any) => {
+      h(For, { each: () => table.getRowModel().rows, by: (r: any) => r.id }, (row: any) => {
         const rowId = row.id
         return h('tr', { 'data-rowid': rowId },
           h(For, { each: () => row.getVisibleCells(), by: (c: any) => c.id }, (cell: any) => {
@@ -282,7 +304,7 @@ async function pyreonHarness(
     const other = container.querySelector(`[data-rowid="0"]`)?.children[0]?.textContent
     if (other !== baseC0Row0) throw new Error(`[pyreon ${mode}] unchanged cell corrupted: ${other}`)
   } else {
-    tableAccessor().getColumn('c0').toggleSorting(false)
+    tableAccessor.getColumn('c0').toggleSorting(false)
     const first = container.querySelector('tbody [data-rowid]')?.getAttribute('data-rowid')
     if (first == null) throw new Error('[pyreon] sort produced no rows')
   }

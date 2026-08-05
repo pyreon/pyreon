@@ -5507,30 +5507,38 @@ formatCombo(combo) // → 'Ctrl+K' (or '⌘+K' on Mac)`,
   // <gen-docs:api-reference:start @pyreon/table>
 
   'table/useTable': {
-    signature: '<TData extends RowData>(options: () => TableOptions<TData>) => Computed<Table<TData>>',
-    example: `const table = useTable(() => ({
+    signature: '<TFeatures extends TableFeatures, TData extends RowData>(options: () => TableOptions<TFeatures, TData>) => Table<TFeatures, TData>',
+    example: `// Define the feature set ONCE, outside the component — only what you use.
+const features = tableFeatures({
+  rowSortingFeature,
+  sortedRowModel: createSortedRowModel(),
+  sortFns: { alphanumeric: sortFn_alphanumeric },
+})
+
+const table = useTable(() => ({
+  features,
   data: users(),
   columns: [
     { accessorKey: 'name', header: 'Name' },
     { accessorKey: 'email', header: 'Email' },
   ],
-  getCoreRowModel: getCoreRowModel(),
 }))
 
-// Read inside reactive scope:
-<For each={() => table().getRowModel().rows} by={(r) => r.id}>
+// Read inside a reactive scope — no accessor call, the table IS the instance:
+<For each={() => table.getRowModel().rows} by={(r) => r.id}>
   {(row) => <tr>...</tr>}
 </For>`,
-    notes: 'Create a reactive TanStack Table instance. Options are passed as a function so reactive signals (data, columns, sorting state) can be read inside and the table updates automatically when they change. Returns a Computed<Table<T>> — read it inside JSX expression thunks or effects to track state changes. Internal state management uses a version counter to force re-notification even when the table reference is the same object. See also: flexRender, flexRenderCell.',
+    notes: `Create a reactive TanStack Table v9 instance. Options are passed as a function so reactive signals (data, columns, state) can be read inside and the table re-syncs automatically when they change. Returns the Table instance DIRECTLY — its state lives in Pyreon signals via v9's \`coreReactivityFeature\` seam, so reading it inside any reactive scope (a JSX accessor, an effect, a computed) subscribes natively. v9 requires every non-core capability to be registered explicitly in a \`features\` object built with \`tableFeatures({...})\`; the core row model is automatic. See also: flexRender, flexRenderCell.`,
     mistakes: `- Passing options as a plain object instead of a function — signal reads are not tracked and the table never updates when data changes
-- Reading \`table\` without calling it — \`table\` is a Computed, you must call \`table()\` to get the Table instance
-- Forgetting getCoreRowModel() — TanStack Table requires at least getCoreRowModel in options or it throws
+- Calling \`table()\` — under v9 \`useTable\` returns the Table INSTANCE, not a Computed. The v8 accessor call is gone; reads track natively
+- Forgetting to register a feature — v9 exposes an API only when its feature is in \`tableFeatures({...})\`. If \`table.nextPage\` or \`column.toggleSorting\` is missing, add \`rowPaginationFeature\` / \`rowSortingFeature\` (plus its row-model slot); do NOT cast the table to a broader type
+- Building the \`features\` object inside the component or inline in the options function — it is a compile-time type parameter, so define it once at module scope
 - Using \`.map()\` on rows instead of \`<For>\` — loses Pyreon's keyed reconciliation, rebuilds the whole tbody on every change (worst-case DOM churn)
-- Binding a value that CHANGES (a cell value, column width from \`getSize()\`, a sort indicator) as a STATIC prop/attr/child through a keyed \`<For>\` — the keyed cell is reused on a state change and its body never re-runs, so the value freezes. Read it inside a reactive closure at the point of use: cell content via \`<td>{() => flexRenderCell(table, row.id, cell.column.id)}</td>\`, an attribute via \`style={() => ({ width: table().getColumn(id).getSize() + "px" })}\``,
+- Binding a value that CHANGES (a cell value, column width from \`getSize()\`, a sort indicator) as a STATIC prop/attr/child through a keyed \`<For>\` — the keyed cell is reused on a state change and its body never re-runs, so the value freezes. Read it inside a reactive closure at the point of use: cell content via \`<td>{() => flexRenderCell(table, row.id, cell.column.id)}</td>\`, an attribute via \`style={() => ({ width: table.getColumn(id).getSize() + "px" })}\``,
   },
 
   'table/flexRender': {
-    signature: '<TData extends RowData, TValue>(component: Renderable<TValue>, props: TValue) => unknown',
+    signature: '<TValue>(component: Renderable<TValue>, props: TValue) => unknown',
     example: `// Header:
 flexRender(header.column.columnDef.header, header.getContext())
 // Cell:
@@ -5542,14 +5550,13 @@ flexRender(cell.column.columnDef.cell, cell.getContext())`,
   },
 
   'table/flexRenderCell': {
-    signature: '<TData extends RowData>(table: Table<TData> | Computed<Table<TData>>, rowId: string, columnId: string) => unknown',
-    example: `// Place inside an accessor child, passing the \`table\` ACCESSOR (not \`table()\`):
+    signature: '<TFeatures extends TableFeatures, TData extends RowData>(table: Table<TFeatures, TData>, rowId: string, columnId: string) => unknown',
+    example: `// Place inside an accessor child so a single-cell edit patches ONLY that cell:
 //   <td>{() => flexRenderCell(table, row.id, cell.column.id)}</td>
-// so a single-cell edit patches ONLY that cell.
 flexRenderCell(table, row.id, columnId)`,
-    notes: `Fine-grained per-cell renderer for live cell values. Inside a keyed \`<For>\`, the \`row\`/\`cell\` objects are captured ONCE (the reconciler reuses the DOM node and never re-runs its body), so plain \`flexRender(cell…, cell.getContext())\` FREEZES when a value changes in place. \`flexRenderCell\` re-navigates to the live cell from the current row model each read — place it in an explicit accessor \`<td>{() => flexRenderCell(table, row.id, cell.column.id)}</td>\`. Pass the Computed<Table> ACCESSOR (\`table\`, not \`table()\`) for fine-grained updates: the cell then subscribes to only its own row's signal, so an in-place data edit patches ONLY the changed rows' cells — matching a hand-memoized react-table row without any React.memo boilerplate. Returns null when the row is not in the current (filtered/paginated) row model. See also: useTable, flexRender.`,
-    mistakes: `- Passing the resolved instance \`table()\` instead of the accessor \`table\` — still correct, but subscribes coarsely (every cell re-runs on any change) instead of fine-grained per-row
-- Forgetting the explicit accessor wrapper \`{() => …}\` — without it the cell is captured once and freezes on the next change`,
+    notes: `Fine-grained per-cell renderer for live cell values. Inside a keyed \`<For>\`, the \`row\`/\`cell\` objects are captured ONCE (the reconciler reuses the DOM node and never re-runs its body), so plain \`flexRender(cell…, cell.getContext())\` FREEZES when a value changes in place. \`flexRenderCell\` re-navigates to the live cell from the current row model each read — place it in an explicit accessor \`<td>{() => flexRenderCell(table, row.id, cell.column.id)}</td>\`. A table from \`useTable\` carries a per-row signal bridge, so the cell subscribes to ONLY its own row's signal and an in-place data edit patches just the changed rows' cells — matching a hand-memoized react-table row without any React.memo boilerplate. Returns null when the row is not in the current (filtered/paginated) row model. See also: useTable, flexRender.`,
+    mistakes: `- Forgetting the explicit accessor wrapper \`{() => …}\` — without it the cell is captured once and freezes on the next change
+- Passing a table built directly with \`constructTable\` instead of one from \`useTable\` — it renders correctly but has no per-row bridge, so it subscribes coarsely (every cell re-runs on any change)`,
   },
   // <gen-docs:api-reference:end @pyreon/table>
 
@@ -5628,7 +5635,8 @@ Posts.useTable(() => items() ?? [], { columns: ['title'] })`,
 - Expecting auto form fields / table columns from a Valibot or ArkType schema — field INTROSPECTION is Zod-only (validation works for all of them). With a non-Zod schema, \`useForm()\` has no fields (setFieldValue throws) and \`useTable()\` has no columns until you supply \`initialValues\` + build the table via @pyreon/table directly. defineFeature dev-warns when this happens.
 - Passing \`api\` as an object (\`{ baseUrl: "…" }\`) — \`api\` is a plain string base path; there are no per-endpoint override fields (the REST routes are derived from it)
 - Passing a bare id to useForm — useForm takes an OPTIONS object: \`useForm({ mode: "edit", id })\` for edit, \`useForm()\` (or \`useForm({ initialValues })\`) for create
-- Passing options as useTable’s first argument — useTable takes the DATA first (\`useTable(data, { columns })\`), not \`useTable({ columns })\``,
+- Passing options as useTable’s first argument — useTable takes the DATA first (\`useTable(data, { columns })\`), not \`useTable({ columns })\`
+- Calling \`table()\` on useTable’s result — \`table\` is a TanStack Table v9 instance, NOT a \`Computed<Table>\`. Read it directly (\`table.getRowModel()\`); v9 owns its reactivity, so reading it in a reactive scope already subscribes`,
   },
 
   'feature/reference': {

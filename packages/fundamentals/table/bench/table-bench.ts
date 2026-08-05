@@ -3,7 +3,7 @@
  * Wall-clock benchmark — @pyreon/table vs @tanstack/react-table.
  *
  * Companion to the deterministic COUNT bench (`bench:table`). Same fair
- * foundation: BOTH adapters wrap the SAME `@tanstack/table-core@8.21.3`, so the
+ * foundation: BOTH adapters wrap the SAME `@tanstack/table-core@9.0.0`, so the
  * row-model work is identical — this times only the ADAPTER's render strategy.
  *
  * Objectivity contract (mirrors store-bench.ts):
@@ -116,9 +116,24 @@ async function reactSamples(
   const { createElement: h, useState } = React
   const { createRoot } = await import('react-dom/client')
   const { flushSync } = await import('react-dom')
-  const { useReactTable, getCoreRowModel, getSortedRowModel, flexRender } = await import(
-    '@tanstack/react-table'
-  )
+  const {
+    useTable: useReactTable,
+    flexRender,
+    tableFeatures: reactTableFeatures,
+    rowSortingFeature: reactRowSorting,
+    columnVisibilityFeature: reactColumnVisibility,
+    createSortedRowModel: reactCreateSortedRowModel,
+    sortFns: reactSortFns,
+  } = await import('@tanstack/react-table')
+  // Same capability set as the Pyreon side — the comparison is only fair if
+  // both tables register identical features and row models.
+  const reactFeatures = reactTableFeatures({
+    rowSortingFeature: reactRowSorting,
+    // `row.getVisibleCells()` is provided by columnVisibilityFeature in v9.
+    columnVisibilityFeature: reactColumnVisibility,
+    sortedRowModel: reactCreateSortedRowModel(),
+    sortFns: reactSortFns,
+  })
 
   const base = makeData(n)
   const Cell = ({ cell }: { cell: any }) =>
@@ -133,13 +148,12 @@ async function reactSamples(
   function Table() {
     const [data, sd] = useState<Row[]>(() => base)
     setData = sd
-    const table = useReactTable<Row>({
+    const table = useReactTable({
+      features: reactFeatures,
       data,
       columns: columnDefs as any,
-      getCoreRowModel: getCoreRowModel(),
-      getSortedRowModel: getSortedRowModel(),
-      getRowId: (r) => String(r.id),
-    })
+      getRowId: (r: Row) => String(r.id),
+    } as any) as any
     tableRef = table
     return h('table', null, h('tbody', null, table.getRowModel().rows.map((row) => h(RowComponent as any, { key: row.id, row }))))
   }
@@ -202,15 +216,14 @@ const App = () => {
   const table = useTable(() => ({
     data: data(),
     columns: columnDefs,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
+    features: pyreonFeatures,
     getRowId: (r) => String(r.id),
   }))
   setTableAccessor(table)
   return (
     <table>
       <tbody>
-        <For each={() => table().getRowModel().rows} by={(r) => r.id}>
+        <For each={() => table.getRowModel().rows} by={(r) => r.id}>
           {(row) => {
             const rowId = row.id
             return (
@@ -238,12 +251,23 @@ async function pyreonSamples(n: number, scenario: Scenario, useCompiled: boolean
   const { signal } = reactivity
   const rd = await import('@pyreon/runtime-dom')
   const { mount } = rd
-  const { useTable, flexRenderCell, getCoreRowModel, getSortedRowModel } = await import('../src/index')
+  const {
+    useTable, flexRenderCell,
+    tableFeatures, rowSortingFeature, columnVisibilityFeature,
+    createSortedRowModel, sortFns,
+  } = await import('../src/index')
+  const pyreonFeatures = tableFeatures({
+    rowSortingFeature,
+    // `row.getVisibleCells()` is provided by columnVisibilityFeature in v9.
+    columnVisibilityFeature,
+    sortedRowModel: createSortedRowModel(),
+    sortFns,
+  })
 
   const base = makeData(n)
   const data = signal<Row[]>(base)
-  let tableAccessor!: () => any
-  const setTableAccessor = (t: () => any) => {
+  let tableAccessor!: any
+  const setTableAccessor = (t: any) => {
     tableAccessor = t
   }
 
@@ -293,8 +317,7 @@ async function pyreonSamples(n: number, scenario: Scenario, useCompiled: boolean
       For,
       useTable,
       flexRenderCell,
-      getCoreRowModel,
-      getSortedRowModel,
+      pyreonFeatures,
       data,
       columnDefs,
       setTableAccessor,
@@ -306,13 +329,12 @@ async function pyreonSamples(n: number, scenario: Scenario, useCompiled: boolean
       const table = useTable(() => ({
         data: data(),
         columns: columnDefs as any,
-        getCoreRowModel: getCoreRowModel(),
-        getSortedRowModel: getSortedRowModel(),
+        features: pyreonFeatures,
         getRowId: (r: Row) => String(r.id),
       }))
       tableAccessor = table
       return h('table', {}, h('tbody', {}, () =>
-        h(For, { each: () => table().getRowModel().rows, by: (r: any) => r.id }, (row: any) => {
+        h(For, { each: () => table.getRowModel().rows, by: (r: any) => r.id }, (row: any) => {
           const rowId = row.id
           return h('tr', { 'data-rowid': rowId },
             h(For, { each: () => row.getVisibleCells(), by: (c: any) => c.id }, (cell: any) => {
@@ -371,7 +393,7 @@ async function pyreonSamples(n: number, scenario: Scenario, useCompiled: boolean
     let desc = false
     op = () => {
       desc = !desc
-      tableAccessor().getColumn('c0').toggleSorting(desc)
+      tableAccessor.getColumn('c0').toggleSorting(desc)
     }
   }
   const samples = measure(op, { runs: 25, warmup: 8, iters: 1 })
@@ -428,7 +450,7 @@ function runCell(variant: Variant, n: number, scenario: Scenario): Cell {
 console.log(
   `=== @pyreon/table vs @tanstack/react-table (${process.platform}/${process.arch}, happy-dom, NODE_ENV=production, per-cell isolated processes, median ms/op [CI95], 🤝 = CI-overlap tie) ===`,
 )
-console.log(`(both wrap @tanstack/table-core@8.21.3; ${COLS} columns; ratio = react ÷ pyreon, >1 ⇒ Pyreon faster)\n`)
+console.log(`(both wrap @tanstack/table-core@9.0.0; ${COLS} columns; ratio = react ÷ pyreon, >1 ⇒ Pyreon faster)\n`)
 
 const pad = (s: string, w: number) => s.padEnd(w)
 const padL = (s: string, w: number) => s.padStart(w)

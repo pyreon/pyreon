@@ -1,15 +1,8 @@
 import { type Computed, computed, signal } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
-import type { ColumnDef } from '../index'
-import {
-  createColumnHelper,
-  flexRender,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useTable,
-} from '../index'
+import type { ColumnDef, SortingState } from '../index'
+import { createColumnHelper, flexRender, useTable } from '../index'
+import { type AllFeatures, allFeatures } from './fixtures'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -24,7 +17,7 @@ const defaultData: Person[] = [
   { name: 'Charlie', age: 35 },
 ]
 
-const defaultColumns: ColumnDef<Person, unknown>[] = [
+const defaultColumns: ColumnDef<AllFeatures, Person, unknown>[] = [
   { accessorKey: 'name', header: 'Name' },
   { accessorKey: 'age', header: 'Age' },
 ]
@@ -53,43 +46,45 @@ describe('useTable — reactive table creation', () => {
   it('creates a table instance with correct row count', () => {
     const { result: table, unmount } = mountWithTable(() =>
       useTable(() => ({
+        features: allFeatures,
         data: defaultData,
         columns: defaultColumns,
-        getCoreRowModel: getCoreRowModel(),
       })),
     )
 
-    expect(table().getRowModel().rows).toHaveLength(3)
+    expect(table.getRowModel().rows).toHaveLength(3)
     unmount()
   })
 
-  it('table signal is a computed that returns a Table instance', () => {
+  it('useTable returns the Table instance directly (no accessor wrapper)', () => {
     const { result: table, unmount } = mountWithTable(() =>
       useTable(() => ({
+        features: allFeatures,
         data: defaultData,
         columns: defaultColumns,
-        getCoreRowModel: getCoreRowModel(),
       })),
     )
 
-    expect(typeof table).toBe('function')
-    const inst = table()
-    expect(inst.getRowModel).toBeDefined()
-    expect(inst.getHeaderGroups).toBeDefined()
-    expect(inst.getAllColumns).toBeDefined()
+    // v9's reactivity seam puts table state in Pyreon signals, so the table
+    // itself is a stable object — NOT the `Computed<Table>` accessor v8 needed.
+    expect(typeof table).toBe('object')
+    expect(typeof table).not.toBe('function')
+    expect(table.getRowModel).toBeDefined()
+    expect(table.getHeaderGroups).toBeDefined()
+    expect(table.getAllColumns).toBeDefined()
     unmount()
   })
 
   it('rows contain original data', () => {
     const { result: table, unmount } = mountWithTable(() =>
       useTable(() => ({
+        features: allFeatures,
         data: defaultData,
         columns: defaultColumns,
-        getCoreRowModel: getCoreRowModel(),
       })),
     )
 
-    const rows = table().getRowModel().rows
+    const rows = table.getRowModel().rows
     expect(rows[0]!.original).toEqual({ name: 'Alice', age: 30 })
     expect(rows[1]!.original).toEqual({ name: 'Bob', age: 25 })
     expect(rows[2]!.original).toEqual({ name: 'Charlie', age: 35 })
@@ -155,38 +150,38 @@ describe('useTable — reactive options (signal-driven)', () => {
     const data = signal<Person[]>(defaultData)
     const { result: table, unmount } = mountWithTable(() =>
       useTable(() => ({
+        features: allFeatures,
         data: data(),
         columns: defaultColumns,
-        getCoreRowModel: getCoreRowModel(),
       })),
     )
 
-    expect(table().getRowModel().rows).toHaveLength(3)
+    expect(table.getRowModel().rows).toHaveLength(3)
 
     data.set([{ name: 'Diana', age: 28 }])
-    expect(table().getRowModel().rows).toHaveLength(1)
-    expect(table().getRowModel().rows[0]!.original.name).toBe('Diana')
+    expect(table.getRowModel().rows).toHaveLength(1)
+    expect(table.getRowModel().rows[0]!.original.name).toBe('Diana')
 
     data.set([])
-    expect(table().getRowModel().rows).toHaveLength(0)
+    expect(table.getRowModel().rows).toHaveLength(0)
     unmount()
   })
 
   it('column signal changes update column model', () => {
-    const cols = signal<ColumnDef<Person, unknown>[]>(defaultColumns)
+    const cols = signal<ColumnDef<AllFeatures, Person, unknown>[]>(defaultColumns)
     const { result: table, unmount } = mountWithTable(() =>
       useTable(() => ({
+        features: allFeatures,
         data: defaultData,
         columns: cols(),
-        getCoreRowModel: getCoreRowModel(),
       })),
     )
 
-    expect(table().getAllColumns()).toHaveLength(2)
+    expect(table.getAllColumns()).toHaveLength(2)
 
     cols.set([{ accessorKey: 'name', header: 'Name' }])
-    expect(table().getAllColumns()).toHaveLength(1)
-    expect(table().getAllColumns()[0]!.id).toBe('name')
+    expect(table.getAllColumns()).toHaveLength(1)
+    expect(table.getAllColumns()[0]!.id).toBe('name')
     unmount()
   })
 
@@ -196,11 +191,11 @@ describe('useTable — reactive options (signal-driven)', () => {
 
     const { unmount } = mountWithTable(() => {
       const table = useTable(() => ({
+        features: allFeatures,
         data: data(),
         columns: defaultColumns,
-        getCoreRowModel: getCoreRowModel(),
       }))
-      rowCount = computed(() => table().getRowModel().rows.length)
+      rowCount = computed(() => table.getRowModel().rows.length)
       return table
     })
 
@@ -221,15 +216,14 @@ describe('useTable — sorting', () => {
   it('toggleSorting by age ascending', () => {
     const { result: table, unmount } = mountWithTable(() =>
       useTable(() => ({
+        features: allFeatures,
         data: defaultData,
         columns: defaultColumns,
-        getCoreRowModel: getCoreRowModel(),
-        getSortedRowModel: getSortedRowModel(),
       })),
     )
 
-    table().getColumn('age')!.toggleSorting(false)
-    const rows = table().getRowModel().rows
+    table.getColumn('age')!.toggleSorting(false)
+    const rows = table.getRowModel().rows
     expect(rows[0]!.original.age).toBe(25)
     expect(rows[1]!.original.age).toBe(30)
     expect(rows[2]!.original.age).toBe(35)
@@ -239,33 +233,31 @@ describe('useTable — sorting', () => {
   it('toggleSorting by age descending', () => {
     const { result: table, unmount } = mountWithTable(() =>
       useTable(() => ({
+        features: allFeatures,
         data: defaultData,
         columns: defaultColumns,
-        getCoreRowModel: getCoreRowModel(),
-        getSortedRowModel: getSortedRowModel(),
       })),
     )
 
-    table().getColumn('age')!.toggleSorting(true)
-    const rows = table().getRowModel().rows
+    table.getColumn('age')!.toggleSorting(true)
+    const rows = table.getRowModel().rows
     expect(rows[0]!.original.age).toBe(35)
     expect(rows[2]!.original.age).toBe(25)
     unmount()
   })
 
-  it('sorting state reflected in getState()', () => {
+  it('sorting state reflected in store.state', () => {
     const { result: table, unmount } = mountWithTable(() =>
       useTable(() => ({
+        features: allFeatures,
         data: defaultData,
         columns: defaultColumns,
-        getCoreRowModel: getCoreRowModel(),
-        getSortedRowModel: getSortedRowModel(),
       })),
     )
 
-    expect(table().getState().sorting).toEqual([])
-    table().getColumn('name')!.toggleSorting(false)
-    expect(table().getState().sorting).toEqual([{ id: 'name', desc: false }])
+    expect(table.store.state.sorting).toEqual([])
+    table.getColumn('name')!.toggleSorting(false)
+    expect(table.store.state.sorting).toEqual([{ id: 'name', desc: false }])
     unmount()
   })
 })
@@ -276,15 +268,14 @@ describe('useTable — filtering', () => {
   it('setFilterValue filters rows by partial match', () => {
     const { result: table, unmount } = mountWithTable(() =>
       useTable(() => ({
+        features: allFeatures,
         data: defaultData,
         columns: defaultColumns,
-        getCoreRowModel: getCoreRowModel(),
-        getFilteredRowModel: getFilteredRowModel(),
       })),
     )
 
-    table().getColumn('name')!.setFilterValue('Bob')
-    const rows = table().getRowModel().rows
+    table.getColumn('name')!.setFilterValue('Bob')
+    const rows = table.getRowModel().rows
     expect(rows).toHaveLength(1)
     expect(rows[0]!.original.name).toBe('Bob')
     unmount()
@@ -293,18 +284,17 @@ describe('useTable — filtering', () => {
   it('clearing filter restores all rows', () => {
     const { result: table, unmount } = mountWithTable(() =>
       useTable(() => ({
+        features: allFeatures,
         data: defaultData,
         columns: defaultColumns,
-        getCoreRowModel: getCoreRowModel(),
-        getFilteredRowModel: getFilteredRowModel(),
       })),
     )
 
-    table().getColumn('name')!.setFilterValue('Alice')
-    expect(table().getRowModel().rows).toHaveLength(1)
+    table.getColumn('name')!.setFilterValue('Alice')
+    expect(table.getRowModel().rows).toHaveLength(1)
 
-    table().getColumn('name')!.setFilterValue('')
-    expect(table().getRowModel().rows).toHaveLength(3)
+    table.getColumn('name')!.setFilterValue('')
+    expect(table.getRowModel().rows).toHaveLength(3)
     unmount()
   })
 })
@@ -320,36 +310,34 @@ describe('useTable — pagination', () => {
   it('default page size is 10', () => {
     const { result: table, unmount } = mountWithTable(() =>
       useTable(() => ({
+        features: allFeatures,
         data: bigData,
         columns: defaultColumns,
-        getCoreRowModel: getCoreRowModel(),
-        getPaginationRowModel: getPaginationRowModel(),
       })),
     )
 
-    expect(table().getRowModel().rows).toHaveLength(10)
+    expect(table.getRowModel().rows).toHaveLength(10)
     unmount()
   })
 
   it('can navigate pages', () => {
     const { result: table, unmount } = mountWithTable(() =>
       useTable(() => ({
+        features: allFeatures,
         data: bigData,
         columns: defaultColumns,
-        getCoreRowModel: getCoreRowModel(),
-        getPaginationRowModel: getPaginationRowModel(),
       })),
     )
 
-    expect(table().getCanNextPage()).toBe(true)
-    expect(table().getCanPreviousPage()).toBe(false)
+    expect(table.getCanNextPage()).toBe(true)
+    expect(table.getCanPreviousPage()).toBe(false)
 
-    table().nextPage()
-    expect(table().getRowModel().rows[0]!.original.name).toBe('Person 10')
+    table.nextPage()
+    expect(table.getRowModel().rows[0]!.original.name).toBe('Person 10')
 
-    table().nextPage()
-    expect(table().getRowModel().rows).toHaveLength(5) // last page has 5
-    expect(table().getCanNextPage()).toBe(false)
+    table.nextPage()
+    expect(table.getRowModel().rows).toHaveLength(5) // last page has 5
+    expect(table.getCanNextPage()).toBe(false)
     unmount()
   })
 })
@@ -358,21 +346,24 @@ describe('useTable — pagination', () => {
 
 describe('createColumnHelper', () => {
   it('creates typed column definitions', () => {
-    const helper = createColumnHelper<Person>()
-    const cols = [
+    const helper = createColumnHelper<AllFeatures, Person>()
+    // `helper.columns([...])` is v9's wrapper for a mixed-value column array —
+    // it preserves each column's own `TValue` (string / number here) instead of
+    // widening the array to a single element type.
+    const cols = helper.columns([
       helper.accessor('name', { header: 'Full Name' }),
       helper.accessor('age', { header: 'Years' }),
-    ]
+    ])
 
     const { result: table, unmount } = mountWithTable(() =>
       useTable(() => ({
+        features: allFeatures,
         data: defaultData,
         columns: cols,
-        getCoreRowModel: getCoreRowModel(),
       })),
     )
 
-    const headers = table().getHeaderGroups()[0]!.headers
+    const headers = table.getHeaderGroups()[0]!.headers
     expect(headers).toHaveLength(2)
     expect(headers[0]!.id).toBe('name')
     expect(headers[1]!.id).toBe('age')
@@ -386,20 +377,20 @@ describe('useTable — column visibility', () => {
   it('hides and shows columns', () => {
     const { result: table, unmount } = mountWithTable(() =>
       useTable(() => ({
+        features: allFeatures,
         data: defaultData,
         columns: defaultColumns,
-        getCoreRowModel: getCoreRowModel(),
       })),
     )
 
-    expect(table().getVisibleFlatColumns()).toHaveLength(2)
+    expect(table.getVisibleFlatColumns()).toHaveLength(2)
 
-    table().getColumn('age')!.toggleVisibility(false)
-    expect(table().getVisibleFlatColumns()).toHaveLength(1)
-    expect(table().getVisibleFlatColumns()[0]!.id).toBe('name')
+    table.getColumn('age')!.toggleVisibility(false)
+    expect(table.getVisibleFlatColumns()).toHaveLength(1)
+    expect(table.getVisibleFlatColumns()[0]!.id).toBe('name')
 
-    table().getColumn('age')!.toggleVisibility(true)
-    expect(table().getVisibleFlatColumns()).toHaveLength(2)
+    table.getColumn('age')!.toggleVisibility(true)
+    expect(table.getVisibleFlatColumns()).toHaveLength(2)
     unmount()
   })
 })
@@ -410,64 +401,62 @@ describe('useTable — row selection', () => {
   it('selects and deselects rows', () => {
     const { result: table, unmount } = mountWithTable(() =>
       useTable(() => ({
+        features: allFeatures,
         data: defaultData,
         columns: defaultColumns,
-        getCoreRowModel: getCoreRowModel(),
         enableRowSelection: true,
       })),
     )
 
-    expect(table().getSelectedRowModel().rows).toHaveLength(0)
+    expect(table.getSelectedRowModel().rows).toHaveLength(0)
 
-    table().getRowModel().rows[1]!.toggleSelected(true)
-    expect(table().getSelectedRowModel().rows).toHaveLength(1)
-    expect(table().getSelectedRowModel().rows[0]!.original.name).toBe('Bob')
+    table.getRowModel().rows[1]!.toggleSelected(true)
+    expect(table.getSelectedRowModel().rows).toHaveLength(1)
+    expect(table.getSelectedRowModel().rows[0]!.original.name).toBe('Bob')
 
-    table().getRowModel().rows[1]!.toggleSelected(false)
-    expect(table().getSelectedRowModel().rows).toHaveLength(0)
+    table.getRowModel().rows[1]!.toggleSelected(false)
+    expect(table.getSelectedRowModel().rows).toHaveLength(0)
     unmount()
   })
 })
 
-// ─── onStateChange edge case ───────────────────────────────────────────────
+// ─── Per-slice state change edge case ──────────────────────────────────────
+//
+// v9 removed the top-level `onStateChange` in favour of a per-slice
+// `on<Slice>Change` callback. The original pair of tests covered the
+// non-function-updater branch and the forwarding of that value to a
+// user-supplied callback; both are kept here against the per-slice surface.
 
-describe('useTable — onStateChange', () => {
-  it('handles non-function updater (plain state object)', () => {
+describe('useTable — per-slice state change', () => {
+  it('handles non-function updater (plain state value)', () => {
     const { result: table, unmount } = mountWithTable(() =>
       useTable(() => ({
+        features: allFeatures,
         data: defaultData,
         columns: defaultColumns,
-        getCoreRowModel: getCoreRowModel(),
-        getSortedRowModel: getSortedRowModel(),
       })),
     )
 
-    const currentState = table().getState()
-    const newState = {
-      ...currentState,
-      sorting: [{ id: 'name', desc: true }],
-    }
-
-    table().options.onStateChange(newState as any)
-    expect(table().getState().sorting).toEqual([{ id: 'name', desc: true }])
+    const newSorting: SortingState = [{ id: 'name', desc: true }]
+    table.options.onSortingChange!(newSorting)
+    expect(table.store.state.sorting).toEqual([{ id: 'name', desc: true }])
     unmount()
   })
 
-  it('forwards updater to user-provided onStateChange callback', () => {
+  it('forwards updater to user-provided per-slice callback', () => {
     const stateChanges: unknown[] = []
     const { result: table, unmount } = mountWithTable(() =>
       useTable(() => ({
+        features: allFeatures,
         data: defaultData,
         columns: defaultColumns,
-        getCoreRowModel: getCoreRowModel(),
-        onStateChange: (updater) => {
+        onColumnOrderChange: (updater) => {
           stateChanges.push(updater)
         },
       })),
     )
 
-    const currentState = table().getState()
-    table().options.onStateChange({ ...currentState, columnOrder: ['age', 'name'] } as any)
+    table.options.onColumnOrderChange!(['age', 'name'])
 
     expect(stateChanges.length).toBeGreaterThanOrEqual(1)
     unmount()
