@@ -327,6 +327,19 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   // number→float, never the reverse, so integer structs are untouched).
   refineStructFloatsFromInitializers(structs, components)
 
+  // Same evidence as the pass above, for the shape that has no StructIR to
+  // attach it to: an inline object generic (`signal<{ price: number }[]>([{
+  // price: 2.5 }])`) is synthesised into a struct by the EMITTERS, so the
+  // named-struct pass cannot see it.
+  //
+  // ORDER IS LOAD-BEARING: refineReduceSeedFloats below reads these field
+  // types to decide whether a `reduce` seed must flip to 0.0. Placed after it,
+  // the Kotlin `fold(0, …)` seed stayed Int against a Double accumulation —
+  // and ONLY Kotlin failed, because a Swift `reduce(0, …)` literal coerces to
+  // Double while Kotlin's binds Int strictly. A one-target failure from a
+  // pass-ordering mistake is exactly why both toolchains gate this.
+  refineInlineObjectFloats(components)
+
   // Double-type follow-up: a `reduce` over a Double column lowers to an
   // Int `0` seed, which swiftc/kotlinc reject against Double accumulation.
   // Flag the seed literal Double when the reducer accumulates a fractional
@@ -340,6 +353,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   // Refine the signal's number type to Double from its fractional literal
   // initializer — additive (only flips number→float on a fractional).
   refineSignalNumberFloats(components)
+
 
   // Shape-A follow-up: a top-level helper function declared WITHOUT a return
   // annotation (`function dbl(x: number) { return x * 2 }`) is collected with
@@ -2656,18 +2670,71 @@ function refineStructFloatsFromInitializers(
       if (structName === undefined) continue
       const struct = byName.get(structName)
       if (struct === undefined) continue
-      for (const obj of collectObjectLiterals(d.initial)) {
-        for (const f of obj.fields) {
-          const sf = struct.fields.find((x) => x.name === f.name)
-          if (sf === undefined || sf.type.kind !== 'number' || sf.type.float === true) continue
-          if (
-            f.value.kind === 'literal' &&
-            typeof f.value.value === 'number' &&
-            !Number.isInteger(f.value.value)
-          ) {
-            sf.type = { kind: 'number', float: true }
-          }
-        }
+      refineFieldsFromObjectLiterals(struct.fields, collectObjectLiterals(d.initial))
+    }
+  }
+}
+
+/**
+ * The INLINE-object half of the pass above, and the shape that actually
+ * reaches most apps.
+ *
+ * `signal<{ id: number; price: number }[]>([{ id: 1, price: 2.5 }])` — an
+ * ordinary TypeScript annotation on ordinary data — produces NO `StructIR` at
+ * parse time: `d.type` holds the inline object type and the emitters
+ * synthesise the struct from it later. So the named-struct pass above could
+ * never fire here (`structNameOfType` returns undefined, and `structs` is
+ * empty), and the field defaulted to Int while the initializer beside it said
+ * 2.5 — invalid on BOTH targets, with everything downstream inheriting it (a
+ * `reduce` over the column typed Int against a Double accumulation, an
+ * imperative `let acc = 0` loop the same).
+ *
+ * There was no way to spell it correctly either: `0.0` is `Number.isInteger`,
+ * so it reads as an integer literal, and the only fix was to DELETE the type
+ * annotation — the wrong incentive to give an author, since the annotation is
+ * exactly where the compiler should be most confident.
+ *
+ * A TS `number` carries no int/float distinction, so Int is the right DEFAULT
+ * when there is no other evidence. It must not override evidence, and the
+ * initializer beside it is evidence.
+ */
+function refineInlineObjectFloats(components: ComponentIR[]): void {
+  for (const c of components) {
+    for (const d of c.decls) {
+      if (d.kind !== 'signal') continue
+      const elem = d.type.kind === 'array' ? d.type.element : d.type
+      if (elem.kind !== 'object') continue
+      refineFieldsFromObjectLiterals(elem.fields, collectObjectLiterals(d.initial))
+    }
+  }
+}
+
+/**
+ * Shared by both halves: flip a `number` field to Double when ANY initializer
+ * object gives it a fractional literal, then mark that field's INTEGER
+ * literals float so the emitted collection stays homogeneous. The second step
+ * is load-bearing on Kotlin, where `price = 3` against a `Double` field is an
+ * error (Swift would coerce the literal); it is why `[{ price: 2.5 }, { price:
+ * 3 }]` compiles rather than half-compiling.
+ *
+ * Strictly ADDITIVE — only ever `number` → `number & float`, only on
+ * fractional evidence, so an all-integer column is untouched.
+ */
+function refineFieldsFromObjectLiterals(
+  fields: { name: string; type: TypeIR }[],
+  objects: Extract<ExprIR, { kind: 'object' }>[],
+): void {
+  if (objects.length === 0) return
+  for (const field of fields) {
+    if (field.type.kind !== 'number' || field.type.float === true) continue
+    const values = objects
+      .map((o) => o.fields.find((f) => f.name === field.name)?.value)
+      .filter((v): v is ExprIR => v !== undefined)
+    if (!values.some(isFractionalLiteral)) continue
+    field.type = { kind: 'number', float: true }
+    for (const v of values) {
+      if (v.kind === 'literal' && typeof v.value === 'number' && Number.isInteger(v.value)) {
+        v.float = true
       }
     }
   }
@@ -2772,7 +2839,16 @@ function refineReduceSeedFloats(
   structs: StructIR[],
   storeDefs: StoreDefnIR[],
 ): void {
-  if (structs.length === 0) return
+  // NO `structs.length === 0` bail. The pass used to return immediately when
+  // the file declared no NAMED struct — but a component whose data is typed
+  // inline (`signal<{ price: number }[]>([…])`) synthesises its struct in the
+  // EMITTERS and so has none at parse time, which is the common shape. The
+  // bail meant its `reduce` seed was never examined: Kotlin emitted
+  // `fold(0, …)` against a Double accumulation (a hard error), while Swift
+  // happened to compile because a `reduce(0, …)` literal coerces to Double
+  // there. `structObjectType` simply returns undefined for such a type and
+  // the inference context resolves it instead, so dropping the bail costs
+  // nothing and the pass stays additive.
   const structObjectType = (name: string): TypeIR | undefined => {
     const s = structs.find((x) => x.name === name)
     return s === undefined ? undefined : { kind: 'object', fields: s.fields }
@@ -2816,11 +2892,19 @@ function refineReduceSeedFloats(
       // Resolve the source's element struct, bind the reducer's element
       // param (2nd) to it, and infer the accumulator body.
       const srcType = inferType(source, ctx)
-      const elemName =
-        srcType.kind === 'array' && srcType.element.kind === 'typeRef'
-          ? srcType.element.name
-          : undefined
-      const elemType = elemName === undefined ? undefined : structObjectType(elemName)
+      // The element type may be a NAMED struct (`type Item = {…}` → typeRef)
+      // or an INLINE object (`signal<{ price: number }[]>`), which produces no
+      // StructIR at all. Only the named form was handled, so the inline form —
+      // the common one — never reached the seed check.
+      const srcElem = srcType.kind === 'array' ? srcType.element : undefined
+      const elemType =
+        srcElem === undefined
+          ? undefined
+          : srcElem.kind === 'typeRef'
+            ? structObjectType(srcElem.name)
+            : srcElem.kind === 'object'
+              ? srcElem
+              : undefined
       if (elemType === undefined) return
       const reduceCtx: InferenceCtx = { ...ctx, locals: new Map(ctx.locals) }
       reduceCtx.locals.set(reducer.params[1]!, elemType)
