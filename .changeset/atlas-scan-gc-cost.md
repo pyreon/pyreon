@@ -11,12 +11,18 @@ immediately rather than burning its runway — so the attribution now comes off 
 profiling seam (`ATLAS_PROFILE=1`) rather than from reading the code. What it
 found: 2767 `Bun.gc(true)` calls at ~20ms each.
 
-A forced collection is now charged for the CATALOG, not for each scenario. One
-sweep answers the question for everything, because a reactive graph that returns
-to its baseline after every scenario has been mounted and disposed proves that
-none of them retained a node. 2767 collections become 3; the scan goes from
-40.8s to 1.0s (medians of interleaved runs on an idle machine), and `atlas build`
-benefits identically.
+A forced collection is now charged for a GROUP OF COMPONENTS, not for each
+scenario. One sweep answers the question for all of them, because a reactive
+graph that returns to its baseline after every scenario in the group has been
+mounted and disposed proves that none of them retained a node. Components are
+grouped until a group holds ~256 scenarios: 2767 collections become 8, and the
+scan goes from 40.8s to ~2s (medians of interleaved runs on an idle machine).
+`atlas build` benefits identically.
+
+The bound costs nothing measurable — grouped and ungrouped medians are within
+noise of each other — and buys two things: peak memory that stays knowable at
+monorepo scale rather than extrapolated from a smaller one, and a blast radius
+of one group when something does leak, instead of the whole catalog.
 
 Nothing is guessed when a catalog is not clean. It is re-probed once — exercise
 everything again and require the count to keep CLIMBING, which separates

@@ -388,13 +388,61 @@ export function mountPlugin(options: MountPluginOptions = {}): AtlasPlugin {
     if (!graphSize || !gc) return
 
     const hasWrapper = Boolean(options.wrapper)
+
+    // Whole components, grouped until the group holds about `LEAK_BATCH`
+    // scenarios. Two reasons, and the second is the one that matters more.
+    //
+    // Memory: the scenarios in a group hold their nodes until its sweep. Peak
+    // RSS measured FLAT across 32/128/256/1024 scenarios per sweep — the peak
+    // is the loaded module graph, not the scenarios in flight — but that was
+    // measured on a 1090-scenario catalog, and a monorepo scan is several times
+    // that. An unbounded group would be extrapolating past what was measured.
+    //
+    // Blast radius: a group is the unit that falls back. Ungrouped, ONE leaking
+    // component anywhere would send the entire catalog through the per-scenario
+    // path — the slowest one — on exactly the large catalogs this exists for.
+    // Grouped, only its own group pays.
+    //
+    // Groups hold WHOLE components so a verdict is never split across sweeps.
+    const groups: ComponentIntelligence[][] = []
+    let group: ComponentIntelligence[] = []
+    let held = 0
+    for (const ci of mountable) {
+      group.push(ci)
+      held += ci.scenarios.length
+      if (held >= LEAK_BATCH) {
+        groups.push(group)
+        group = []
+        held = 0
+      }
+    }
+    if (group.length > 0) groups.push(group)
+
+    for (const members of groups) await verifyGroup(members, dom.env, runtime, graphSize, gc, hasWrapper)
+  }
+
+  /**
+   * One sweep for a group of components — the fast path, with its own fallback.
+   *
+   * Records nothing unless the sweep proves it: a group whose retention keeps
+   * climbing leaves its components unrecorded, and each then falls through to
+   * `verifyComponent`. No verdict is ever written optimistically and retracted.
+   */
+  async function verifyGroup(
+    mountable: readonly ComponentIntelligence[],
+    dom: DomEnv,
+    rt: MountRuntime,
+    graphSize: NonNullable<MountRuntime['reactiveGraphSize']>,
+    gc: NonNullable<MountRuntime['collectGarbage']>,
+    hasWrapper: boolean,
+  ): Promise<void> {
     const tAll = PROFILE ? performance.now() : 0
 
     // Warm every component up FIRST. A component's first mount may create
     // module-level singletons it retains by design, and those have to be inside
-    // the baseline rather than showing up as catalog-wide retention.
+    // the baseline rather than showing up as group-wide retention.
     for (const ci of mountable) {
-      mountScenario(dom.env, runtime, ci.component as ComponentRef, ci.scenarios[0]!.args ?? {}, options.wrapper).dispose()
+      mountScenario(dom, rt, ci.component as ComponentRef, ci.scenarios[0]!.args ?? {}, options.wrapper).dispose()
     }
     const baseline = await settleGraph(graphSize, gc, restingGraph ?? 0)
 
@@ -405,7 +453,7 @@ export function mountPlugin(options: MountPluginOptions = {}): AtlasPlugin {
     for (const ci of mountable) {
       const byId = new Map<string, ScenarioVerdict>()
       for (const scenario of ci.scenarios) {
-        const ex = await exercise(dom.env, runtime, ci.component as ComponentRef, scenario, options.wrapper)
+        const ex = await exercise(dom, rt, ci.component as ComponentRef, scenario, options.wrapper)
         byId.set(ex.id, { interaction: interactionVerdict(ex, hasWrapper), leak: { status: 'pass' } })
       }
       pending.set(ci, byId)
@@ -432,19 +480,19 @@ export function mountPlugin(options: MountPluginOptions = {}): AtlasPlugin {
         for (const scenario of ci.scenarios) {
           // Verdicts discarded: the first pass already recorded what each
           // scenario did, and this is only a probe of whether it accumulates.
-          await exercise(dom.env, runtime, ci.component as ComponentRef, scenario, options.wrapper)
+          await exercise(dom, rt, ci.component as ComponentRef, scenario, options.wrapper)
         }
       }
       const again = await settleGraph(graphSize, gc, after)
       step('settleGraph(catalog re-probe)', tRe)
 
       if (again > after) {
-        // It kept climbing over two passes of the same scenarios. Something
-        // here leaks per mount, and WHICH component is a question this pass
-        // cannot answer — guessing is exactly what a leak check must not do. So
-        // it records nothing and lets the per-component path work it out. The
-        // resting value is real and is carried forward, so that path starts
-        // from a correct floor rather than a stale one.
+        // It kept climbing over two passes of the same scenarios. Something in
+        // THIS GROUP leaks per mount, and which component is a question this
+        // pass cannot answer — guessing is exactly what a leak check must not
+        // do. So it records nothing for the group and lets the per-component
+        // path work it out. The resting value is real and is carried forward,
+        // so that path starts from a correct floor rather than a stale one.
         restingGraph = again
         step('catalog dirty → per-component', PROFILE ? performance.now() : 0)
         return

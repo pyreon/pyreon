@@ -128,6 +128,48 @@ describe('the catalog-wide leak pass', () => {
     expect([...verdicts.values()].some((v) => v.leak === 'fail')).toBe(true)
   })
 
+  it('confines a leak to its OWN group — the rest of the catalog keeps the fast path', async () => {
+    // The blast-radius property. Grouping exists as much for this as for
+    // memory: ungrouped, one leaking component anywhere would send the ENTIRE
+    // catalog down the per-scenario path, which is the slowest one, on exactly
+    // the large catalogs the wide pass is for.
+    //
+    // Scripted so that only mounts of the LEAKY component strand anything.
+    // Every other component's group must still settle clean and be answered by
+    // its own single sweep.
+    let leakyMounts = 0
+    const state = { gcCalls: 0 }
+    const runtime: MountRuntime = {
+      h: h as MountRuntime['h'],
+      mount: ((root: unknown, container: Element) => {
+        // The leaky component is identified by the args its scenarios carry.
+        return (mount as unknown as MountRuntime['mount'])(root, container)
+      }) as MountRuntime['mount'],
+      registerErrorHandler: () => () => {},
+      reactiveGraphSize: () => leakyMounts * 2,
+      collectGarbage: async () => {
+        state.gcCalls += 1
+      },
+    }
+    // Only the leaky component increments, via its own component function.
+    const Leaky = () => {
+      leakyMounts += 1
+      return h('button', {}, 'leaky')
+    }
+    const leaky = {
+      ...componentFor('Leaky', ['leak-1']),
+      component: Leaky,
+    } as unknown as ComponentIntelligence
+    const clean = Array.from({ length: 4 }, (_, i) => componentFor(`Clean${i}`, [`c${i}-1`, `c${i}-2`]))
+
+    const verdicts = await verifyAll(runtime, [leaky, ...clean])
+    // Every scenario answered, and the clean ones pass.
+    expect(verdicts.size).toBe(9)
+    for (const c of clean) {
+      for (const s of c.scenarios) expect(verdicts.get(s.id)!.leak, s.id).toBe('pass')
+    }
+  })
+
   it('SKIPS the wide pass when no leak verdict is possible at all', async () => {
     // No GC hook: the leak check cannot make its claim, so it must skip with a
     // reason rather than fabricate a pass — and the wide pass must not swallow

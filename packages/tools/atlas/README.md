@@ -331,10 +331,15 @@ answers the question for everything, because a reactive graph that returns to
 its baseline after every scenario has been mounted and disposed proves that none
 of them retained a node.
 
-So in the common case — a catalog where nothing leaks — the whole run costs a
-handful of collections, and scan time is dominated by discovery and mounting
-rather than by GC. Measured on a 108-component, 1090-scenario design system:
-40.8s before, 1.0s after, with the collection count falling from 2767 to 3.
+Components are grouped until a group holds ~256 scenarios, and each group gets
+one sweep — so the run costs a handful of collections rather than thousands, and
+scan time is dominated by discovery and mounting rather than by GC. Measured on
+a 108-component, 1090-scenario design system: 40.8s before, ~2s after, with the
+collection count falling from 2767 to 8.
+
+The group is also the unit that falls back, which is why it is bounded rather
+than "the whole catalog": one leaking component sends its own group down the
+slow path, not everything you own.
 
 Nothing is guessed when a catalog is NOT clean. It is re-probed once — exercise
 everything again and require the count to keep climbing, which separates
