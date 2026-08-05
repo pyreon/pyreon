@@ -1694,7 +1694,13 @@ function emitSwiftComponent(c: ComponentIR): string {
   // monitor while the view is still on screen. (start() is idempotent, so a
   // spurious re-appear is safe; a spurious disappear is not.)
   const _hasNetDecl = c.decls.some((d) => d.kind === 'network-status')
-  if (_hasFetchDecl || _hasOnMount || _hasNetDecl) {
+  // push shares network-status's stable-host requirement for the same
+  // reason: `.onAppear { push.start() }` / `.onDisappear { push.stop() }` on
+  // a transparent Group would be redistributed onto conditional branches — a
+  // branch flip would tear the notification-center delegate away while the
+  // view is still on screen.
+  const _hasPushDecl = c.decls.some((d) => d.kind === 'push')
+  if (_hasFetchDecl || _hasOnMount || _hasNetDecl || _hasPushDecl) {
     lines.push(`    ZStack {`)
     lines.push(`      ${emitSwiftReturnExpr(c.returnExpr, 6)}`)
     lines.push(`    }`)
@@ -1750,6 +1756,21 @@ function emitSwiftComponent(c: ComponentIR): string {
   // above, so branch flips can't spuriously stop it.
   for (const d of c.decls) {
     if (d.kind !== 'network-status') continue
+    const name = swiftIdent(d.name)
+    lines.push(`      .onAppear { ${name}.start() }`)
+    lines.push(`      .onDisappear { ${name}.stop() }`)
+  }
+  // push: START the self-owned receipt pipeline. The runtime shipped a pure
+  // container with a `start(register:)` seam the app was expected to wire —
+  // and nothing wired it, so `usePush()` rendered its initial state forever
+  // (the same never-wired class as network-status, found in the same sweep).
+  // The no-arg `start()` installs a container-owned UNUserNotificationCenter
+  // delegate + requests authorization; `simctl push` delivers through exactly
+  // that pipeline, credential-free. The APNs TOKEN half genuinely needs
+  // AppDelegate wiring + credentials and stays injected (`start(register:)`
+  // wins if the app called it first — both are idempotent).
+  for (const d of c.decls) {
+    if (d.kind !== 'push') continue
     const name = swiftIdent(d.name)
     lines.push(`      .onAppear { ${name}.start() }`)
     lines.push(`      .onDisappear { ${name}.stop() }`)

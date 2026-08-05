@@ -1698,7 +1698,12 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     return `val ${kotlinIdent(d.name)} = remember { PyreonFieldArray(${init}) }`
   }
   if (d.kind === 'push') {
-    return `val ${kotlinIdent(d.name)} = remember { PyreonPushNotifications() }`
+    // rememberPyreonPushNotifications SELF-INSTALLS the PYREON_PUSH_ACTION
+    // BroadcastReceiver delivery seam for the composable's lifetime (a bare
+    // `remember { PyreonPushNotifications() }` was the never-wired class —
+    // the container rendered its initial state forever). FCM transport
+    // remains app-wired (credentials); it forwards into the same container.
+    return `val ${kotlinIdent(d.name)} = rememberPyreonPushNotifications()`
   }
   if (d.kind === 'payments') {
     return `val ${kotlinIdent(d.name)} = remember { PyreonPayments() }`

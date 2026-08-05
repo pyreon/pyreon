@@ -1050,4 +1050,79 @@ final class PyreonRouterDemoUITests: XCTestCase {
                 + "Element padding). A bare ~12 means the padding never reached layout"
         )
     }
+
+    // Background/push — the RECEIPT half device-asserted through the REAL
+    // system pipeline. The shared PushPage renders
+    // `Push: {push.lastNotification?.title ?? 'none'}`; the emit's
+    // `.onAppear { push.start() }` installs a container-owned
+    // UNUserNotificationCenter delegate, and `xcrun simctl push` injects an
+    // actual APNs payload through that delegate — no credentials involved.
+    //
+    // Two-part like the geolocation coordinate assert:
+    //   - Plain CI run: page renders, the container starts without crashing,
+    //     the initial "Push: none" state is committed. The system permission
+    //     alert (requestAuthorization fires on appear) is dismissed via
+    //     Springboard so it cannot wedge later launches (the modal-wedge
+    //     class, #2314).
+    //   - Under scripts/push-device-test.sh (TEST_RUNNER_PYREON_PUSH_INJECTED):
+    //     the script pushes a payload every 3s while this test polls for the
+    //     rendered title — asserting delivery -> delegate -> container ->
+    //     SwiftUI re-render, the full chain.
+    func test_pushReceiptRendersInjectedPayload() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            "Home page did not render"
+        )
+        app.buttons["View push"].tap()
+        XCTAssertTrue(
+            app.otherElements["push-page"].firstMatch.waitForExistence(timeout: 15),
+            "Push page did not render"
+        )
+
+        // The no-arg start() requests notification authorization on appear —
+        // answer the Springboard-owned alert so it can't linger over later
+        // tests. "Allow" specifically: an authorized app is also the shape
+        // the injected-payload half needs for the banner presentation path.
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        for label in ["Allow", "OK"] {
+            let button = springboard.buttons[label]
+            if button.waitForExistence(timeout: 3) {
+                button.tap()
+                break
+            }
+        }
+
+        guard ProcessInfo.processInfo.environment["PYREON_PUSH_INJECTED"] == "1" else {
+            // No injector running — assert the committed INITIAL state: the
+            // container started without crashing and the reads rendered.
+            // This assert is only valid here: under the injector the first
+            // payload lands within ~3s of page-appear, so "Push: none" is a
+            // transient the poll below has usually already missed (the first
+            // local run failed exactly that way — the tree showed
+            // "Push: Hello from Pyreon" / "Count: 4" while the test was
+            // still waiting for "none"). The delivery assertion needs
+            // scripts/push-device-test.sh (it passes
+            // TEST_RUNNER_PYREON_PUSH_INJECTED — a bare env var does NOT
+            // reach the runner).
+            XCTAssertTrue(
+                app.staticTexts["Push: none"].waitForExistence(timeout: 10),
+                "Push page did not commit its initial state — the container "
+                    + "start() crashed or the reads never rendered"
+            )
+            return
+        }
+
+        // The injector loops `simctl push` with this title every 3s; the
+        // delegate's willPresent must land it in the container and SwiftUI
+        // must re-render the read. 60s is ~20 injection attempts.
+        XCTAssertTrue(
+            app.staticTexts["Push: Hello from Pyreon"].waitForExistence(timeout: 60),
+            "Injected APNs payload never rendered — delivery through the "
+                + "UNUserNotificationCenter delegate did not reach the container "
+                + "(observed: \(app.staticTexts["push-title"].firstMatch.label))"
+        )
+    }
 }

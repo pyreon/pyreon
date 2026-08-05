@@ -28,6 +28,7 @@ package com.pyreon
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import com.pyreon.runtime.PYREON_PUSH_ACTION
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
@@ -414,6 +415,47 @@ class RouterDemoInstrumentedTest {
     // The test also exercises the presence check (`if (db.get(...))`) that did
     // not compile on either target until database.get joined
     // SERVICE_METHOD_RETURNS — "State: restored" can only render through it.
+    // Background/push — the DELIVERY SEAM device-asserted. The shared
+    // PushPage renders `Push: {push.lastNotification?.title ?? 'none'}`; the
+    // emit's `rememberPyreonPushNotifications()` registers a NOT_EXPORTED
+    // BroadcastReceiver on PYREON_PUSH_ACTION for the composable's lifetime
+    // (the prior bare `remember { PyreonPushNotifications() }` was the
+    // never-wired class — the page rendered "none" forever, no matter what).
+    //
+    // The instrumentation shares the app's UID, so its broadcast clears
+    // NOT_EXPORTED and travels the real Binder broadcast path into the
+    // receiver -> container -> Compose re-render. What this does NOT prove is
+    // the FCM transport itself — that needs google-services credentials and
+    // stays app-wired (an FCM service forwards onMessageReceived into this
+    // same seam). The action string is imported from the RUNTIME's constant,
+    // not retyped, so a rename fails this test instead of silently orphaning
+    // the seam.
+    @Test
+    fun pushBroadcastDeliversToPageAndRerenders() {
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        composeRule.onNodeWithText("View push").performClick()
+        composeRule.onNodeWithTag("push-page").assertIsDisplayed()
+        composeRule.onNodeWithTag("push-title").assertTextEquals("Push: none")
+
+        val ctx = InstrumentationRegistry.getInstrumentation().targetContext
+        val intent = Intent(PYREON_PUSH_ACTION)
+            .setPackage(ctx.packageName)
+            .putExtra("title", "Hello from Pyreon")
+            .putExtra("body", "device-proven delivery")
+            .putExtra("source", "instrumentation")
+        ctx.sendBroadcast(intent)
+
+        composeRule.waitUntil(timeoutMillis = 15_000) {
+            composeRule.onAllNodesWithText("Push: Hello from Pyreon")
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("push-title")
+            .assertTextEquals("Push: Hello from Pyreon")
+        // The data extras walk: non-title/body String extras land in `data`,
+        // and the count read proves the notifications list re-rendered too.
+        composeRule.onNodeWithTag("push-count").assertTextEquals("Count: 1")
+    }
+
     @Test
     fun offlineFirstWritesSurviveAndConnectivityIsReported() {
         val instr = InstrumentationRegistry.getInstrumentation()
