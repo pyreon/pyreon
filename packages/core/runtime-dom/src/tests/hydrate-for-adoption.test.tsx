@@ -35,6 +35,7 @@ afterEach(() => {
   g.__pyreon_count__ = prevSink
 })
 const adopted = () => counts['runtime.mountFor.hydrateAdopt'] ?? 0
+const replayed = () => counts['runtime.hydrate.rowReplay'] ?? 0
 
 interface RowData {
   id: number
@@ -94,6 +95,12 @@ describe('For hydration — keyed adoption', () => {
     expect(after).toHaveLength(3)
     for (let i = 0; i < 3; i++) expect(after[i]).toBe(before[i]) // same node objects
     expect(adopted()).toBe(1)
+    // The dispatch-free row-plan replay handled every row (this row shape —
+    // element root + reactive class/text + delegated onClick — is in the
+    // supported set). Bisect-load-bearing: forcing buildRowPlan to return
+    // null keeps ALL specs green (interpretive fallback is the old path) but
+    // fails THIS assertion.
+    expect(replayed()).toBe(3)
     // k: markers removed
     expect(host.innerHTML).not.toContain('k:')
     dispose()

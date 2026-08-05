@@ -625,6 +625,16 @@ export interface ForAdoption {
     first: ChildNode,
     after: Node | null,
   ) => Cleanup
+  /**
+   * Optional dispatch-free fast path: replay a recorded row plan against this
+   * row's DOM (rows are structurally identical for a given <For>). Returns
+   * null when the row's shape fails verification — the caller falls back to
+   * `hydrateRow` for that row. See hydration-plan.ts.
+   */
+  tryReplayRow?: (
+    vnode: import('@pyreon/core').VNode | import('@pyreon/core').NativeItem,
+    first: ChildNode,
+  ) => Cleanup | null
 }
 
 // One-shot synchronous handoff: hydrate.ts sets it immediately before its
@@ -789,7 +799,12 @@ export function mountFor<T>(
       // `after` = the boundary following this row (next row's k: marker, or the
       // tail marker) — recovery-mounts inside hydrateRow insert before it.
       const after: Node = i + 1 < n ? a.rows[i + 1]!.marker : tailMarker
-      const cleanup = a.hydrateRow(renderItem(items[i] as T), row.first, after)
+      const rowVNode = renderItem(items[i] as T)
+      // Dispatch-free plan replay first (structurally-identical rows); any
+      // verification failure falls back to the interpretive walk for THIS row.
+      const cleanup =
+        (a.tryReplayRow ? a.tryReplayRow(rowVNode, row.first) : null) ??
+        a.hydrateRow(rowVNode, row.first, after)
       cache.set(key, {
         anchor: row.first,
         cleanup,

@@ -37,6 +37,8 @@ import { setupDelegation } from './delegate'
 import { installDevTools } from './devtools'
 import { warnHydrationMismatch } from './hydration-debug'
 import { bindPolymorphicText, mountChild } from './mount'
+import { buildRowPlan, replayRowPlan } from './hydration-plan'
+import type { RowPlan } from './hydration-plan'
 import { _setPendingForAdoption, mountReactive } from './nodes'
 import type { ForAdoption } from './nodes'
 import { applyProps, applySelectValueProp } from './props'
@@ -394,12 +396,25 @@ function hydrateVNode(
         // adopts on a 1:1 key match (hydrating each row's vnode against its
         // existing DOM range) and clears-the-block + fresh-renders on ANY
         // mismatch — the previous swap semantics, now internal.
+        // Lazy per-<For> row plan: built from the FIRST row vnode that reaches
+        // the replay hook; null = unsupported shape → interpretive walk for all
+        // rows (previous behavior). `planTried` distinguishes "not built yet"
+        // from "build bailed".
+        let rowPlan: RowPlan | null = null
+        let planTried = false
         _setPendingForAdoption({
           startMarker: domNode as Comment,
           tailMarker: end as Comment,
           rows: rows ?? [],
           hydrateRow: (rowVNode, first, rowAfter) =>
             hydrateChild(rowVNode as VNodeChild, first, parent, rowAfter, `${path}.for`)[0],
+          tryReplayRow: (rowVNode, first) => {
+            if (!planTried) {
+              planTried = true
+              rowPlan = buildRowPlan(rowVNode as VNodeChild)
+            }
+            return rowPlan ? replayRowPlan(rowPlan, rowVNode as VNodeChild, first) : null
+          },
         })
         const cleanup = mountChild(vnode, parent, end)
         return [cleanup, after ? firstReal(after) : null]
