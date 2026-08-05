@@ -111,6 +111,18 @@ class FinanceInstrumentedTest {
 
         composeRule.onNodeWithTag("new-tx-desc").assertEditableTextIsEmpty()
         composeRule.onNodeWithTag("new-tx-amount").assertEditableTextIsEmpty()
+
+        // Undo the append. The ledger lives in a MODULE-LEVEL `defineStore`, and
+        // `createAndroidComposeRule` recreates the ACTIVITY, not the PROCESS —
+        // so a row added here is still there when the next test in this class
+        // runs, and `signInNavigatesToDashboardWithComputedBalance` asserts the
+        // SEEDED 2700. The iOS suite does not have this hazard: every XCUITest
+        // calls `app.launch()`, which is a fresh process. So an Android test
+        // that mutates shared state must restore it, or it breaks a sibling
+        // rather than itself — which is exactly how this surfaced.
+        composeRule.onAllNodesWithTag("tx-remove")[2].performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("dash-balance").assertTextEquals("2700")
     }
 
     private fun SemanticsNodeInteraction.assertEditableTextIsEmpty() = assert(
@@ -145,7 +157,15 @@ class FinanceInstrumentedTest {
         composeRule.onNodeWithTag("dashboard-page").assertIsDisplayed()
         // 4200 + (-1500) — proves the computed re-derived over the STORE's
         // seeded ledger on-device rather than rendering a constant.
-        composeRule.onNodeWithText("2700").assertIsDisplayed()
+        //
+        // Asserted on the balance NODE by value, not as `onNodeWithText("2700")
+        // .assertIsDisplayed()`. That form conflated two claims — "the computed
+        // re-derived" and "the node is inside the viewport" — and only the first
+        // is what this test is about. The dashboard's `<Scroll>` lowers to a
+        // LazyColumn that takes the remaining height, so adding anything below
+        // it can move what is on screen and fail this on geometry grounds while
+        // the balance is perfectly correct.
+        composeRule.onNodeWithTag("dash-balance").assertTextEquals("2700")
     }
 
     // Auth row — SESSION REHYDRATION and its inverse. `PyreonAuth` is pure
