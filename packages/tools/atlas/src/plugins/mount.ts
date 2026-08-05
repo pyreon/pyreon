@@ -214,6 +214,30 @@ async function exercise(
   return { id: scenario.id, args, errors, clicks, ...(playFailure ? { playFailure } : {}) }
 }
 
+/**
+ * Mount and dispose a scenario, exercising NOTHING.
+ *
+ * The re-probes ask one question — does retention ACCUMULATE across repeated
+ * mounts — and mounting is the whole of what they need. Reusing `exercise` for
+ * it would re-run the scenario's authored `play`, whose side effects are the
+ * author's and are not idempotent by contract; the long-standing per-scenario
+ * accumulation check has always used a plain mount for exactly this reason, and
+ * a probe that quietly replays a form submission is not a probe.
+ *
+ * Cheaper too, but that is the smaller half.
+ */
+function probeMount(
+  dom: DomEnv,
+  runtime: MountRuntime,
+  component: ComponentRef,
+  args: Record<string, unknown>,
+  wrapper: ComponentRef | undefined,
+): void {
+  let mounted: MountedScenario | undefined = mountScenario(dom, runtime, component, args, wrapper)
+  mounted.dispose()
+  mounted = undefined
+}
+
 /** The interaction verdict for one exercised scenario. */
 function interactionVerdict(ex: Exercised, hasWrapper: boolean): VerifyCheck {
   if (ex.errors.length === 0 && !ex.playFailure) {
@@ -301,6 +325,8 @@ export function mountPlugin(options: MountPluginOptions = {}): AtlasPlugin {
   // two verifies of the same function with different scenario sets — and serve
   // the first one's verdicts for the second one's scenarios.
   const verified = new WeakMap<object, Map<string, ScenarioVerdict>>()
+  /** The catalog-wide pass, started once and awaited by every later scenario. */
+  let catalogRun: Promise<void> | undefined
 
   return defineAtlasPlugin({
     name: 'atlas:mount',
@@ -312,11 +338,23 @@ export function mountPlugin(options: MountPluginOptions = {}): AtlasPlugin {
         return { interaction: { status: 'skip' }, leak: { status: 'skip' } }
       }
 
-      // Every scenario of this component is verified together, on the first one
-      // that asks. The pipeline calls this hook once per scenario, but the
-      // expensive half — proving nothing was retained — is answered for a whole
-      // batch by a single GC, so computing it per scenario pays the same sweep
-      // over and over for an answer that covers all of them.
+      // The WHOLE CATALOG is verified together, on the first scenario that asks.
+      //
+      // The pipeline calls this hook once per scenario, but the expensive half —
+      // proving nothing was retained — is answered for a whole SWEEP of
+      // scenarios by a single GC, and that sweep does not care which component
+      // each scenario belonged to. Verifying per component therefore pays one
+      // collection per component for an answer a handful of collections give
+      // for the entire catalog: on a 1400-component monorepo that is ~2400
+      // sweeps against ~10.
+      //
+      // `ctx.components` is what makes it possible — the pipeline decorates
+      // everything before verifying anything, so the full set is in hand here.
+      // A caller that does not supply it (a plugin driven directly, as the unit
+      // tests do) falls back to this component alone, which is the previous
+      // behaviour exactly.
+      if (!catalogRun) catalogRun = verifyCatalog(ctx.components ?? [ctx.component])
+      await catalogRun
       let byId = verified.get(ctx.component)
       if (!byId) {
         byId = await verifyComponent(ctx.component, component)
@@ -341,6 +379,155 @@ export function mountPlugin(options: MountPluginOptions = {}): AtlasPlugin {
       return { interaction: { status: 'skip' }, leak: { status: 'skip' } }
     },
   })
+
+  /**
+   * Verify the WHOLE catalog with as few garbage collections as possible.
+   *
+   * The optimistic path is one sweep for everything: warm every component up,
+   * exercise every scenario, collect once, and if the graph came back to where
+   * it started then nothing anywhere retained a node. That is a complete,
+   * exact answer for the entire catalog — the same claim the per-component pass
+   * makes, just not repeated N times.
+   *
+   * When it does NOT come back, this pass records nothing and returns. Every
+   * component then falls through to `verifyComponent`, which is the previous
+   * behaviour unchanged. So the worst case is one wasted sweep on top of what
+   * the scan used to cost, and the best case — the overwhelmingly common one,
+   * because most catalogs leak nothing — collapses thousands of collections
+   * into one.
+   */
+  async function verifyCatalog(components: readonly ComponentIntelligence[]): Promise<void> {
+    const mountable = components.filter((ci) => typeof ci.component === 'function' && (ci.scenarios?.length ?? 0) > 0)
+    // Below two components there is nothing to amortise across, and the extra
+    // sweep would be pure overhead against the per-component path.
+    if (mountable.length < 2) return
+
+    const dom = await getDom()
+    if (!dom.ok) return // the per-component path reports the skip, with its reason
+
+    runtime ??= await defaultRuntime()
+    const graphSize = runtime.reactiveGraphSize
+    const gc = runtime.collectGarbage
+    // No leak verdict is possible at all, so there is nothing to amortise.
+    if (!graphSize || !gc) return
+
+    const hasWrapper = Boolean(options.wrapper)
+
+    // Whole components, grouped until the group holds about `LEAK_BATCH`
+    // scenarios. Two reasons, and the second is the one that matters more.
+    //
+    // Memory: the scenarios in a group hold their nodes until its sweep. Peak
+    // RSS measured FLAT across 32/128/256/1024 scenarios per sweep — the peak
+    // is the loaded module graph, not the scenarios in flight — but that was
+    // measured on a 1090-scenario catalog, and a monorepo scan is several times
+    // that. An unbounded group would be extrapolating past what was measured.
+    //
+    // Blast radius: a group is the unit that falls back. Ungrouped, ONE leaking
+    // component anywhere would send the entire catalog through the per-scenario
+    // path — the slowest one — on exactly the large catalogs this exists for.
+    // Grouped, only its own group pays.
+    //
+    // Groups hold WHOLE components so a verdict is never split across sweeps.
+    const groups: ComponentIntelligence[][] = []
+    let group: ComponentIntelligence[] = []
+    let held = 0
+    for (const ci of mountable) {
+      group.push(ci)
+      held += ci.scenarios.length
+      if (held >= LEAK_BATCH) {
+        groups.push(group)
+        group = []
+        held = 0
+      }
+    }
+    if (group.length > 0) groups.push(group)
+
+    for (const members of groups) await verifyGroup(members, dom.env, runtime, graphSize, gc, hasWrapper)
+  }
+
+  /**
+   * One sweep for a group of components — the fast path, with its own fallback.
+   *
+   * Records nothing unless the sweep proves it: a group whose retention keeps
+   * climbing leaves its components unrecorded, and each then falls through to
+   * `verifyComponent`. No verdict is ever written optimistically and retracted.
+   */
+  async function verifyGroup(
+    mountable: readonly ComponentIntelligence[],
+    dom: DomEnv,
+    rt: MountRuntime,
+    graphSize: NonNullable<MountRuntime['reactiveGraphSize']>,
+    gc: NonNullable<MountRuntime['collectGarbage']>,
+    hasWrapper: boolean,
+  ): Promise<void> {
+    const tAll = PROFILE ? performance.now() : 0
+
+    // Warm every component up FIRST. A component's first mount may create
+    // module-level singletons it retains by design, and those have to be inside
+    // the baseline rather than showing up as group-wide retention.
+    for (const ci of mountable) {
+      mountScenario(dom, rt, ci.component as ComponentRef, ci.scenarios[0]!.args ?? {}, options.wrapper).dispose()
+    }
+    const baseline = await settleGraph(graphSize, gc, restingGraph ?? 0)
+
+    // Exercise everything. Verdicts are held locally until the sweep says
+    // whether they can be trusted — recording them first and retracting later
+    // would be the optimistic-verdict design this deliberately avoids.
+    const pending = new Map<object, Map<string, ScenarioVerdict>>()
+    for (const ci of mountable) {
+      const byId = new Map<string, ScenarioVerdict>()
+      for (const scenario of ci.scenarios) {
+        const ex = await exercise(dom, rt, ci.component as ComponentRef, scenario, options.wrapper)
+        byId.set(ex.id, { interaction: interactionVerdict(ex, hasWrapper), leak: { status: 'pass' } })
+      }
+      pending.set(ci, byId)
+    }
+
+    let after = await settleGraph(graphSize, gc, baseline)
+    step('settleGraph(catalog)', tAll)
+
+    if (after > baseline) {
+      // Something is retained — across a whole catalog, that is much more often
+      // an engine straggler than a leak. A FinalizationRegistry callback that
+      // outlives the runway strands the same one to three nodes wherever it
+      // lands, and with a thousand scenarios in the sweep the chance that none
+      // of them produces one is not good. Falling straight through to the
+      // per-component path on that basis would forfeit the entire optimization
+      // to noise, on exactly the large catalogs it is for.
+      //
+      // So the same accumulation rule that separates one-time retention from a
+      // per-mount leak everywhere else in this plugin is applied here: exercise
+      // the catalog again and require the count to keep CLIMBING. A per-mount
+      // leak always does — it strands more on every pass. A straggler does not.
+      const tRe = PROFILE ? performance.now() : 0
+      for (const ci of mountable) {
+        for (const scenario of ci.scenarios) {
+          // A plain mount, not `exercise`: this only asks whether retention
+          // accumulates, and re-running the scenario's authored `play` to find
+          // out would replay its side effects.
+          probeMount(dom, rt, ci.component as ComponentRef, scenario.args ?? {}, options.wrapper)
+        }
+      }
+      const again = await settleGraph(graphSize, gc, after)
+      step('settleGraph(catalog re-probe)', tRe)
+
+      if (again > after) {
+        // It kept climbing over two passes of the same scenarios. Something in
+        // THIS GROUP leaks per mount, and which component is a question this
+        // pass cannot answer — guessing is exactly what a leak check must not
+        // do. So it records nothing for the group and lets the per-component
+        // path work it out. The resting value is real and is carried forward,
+        // so that path starts from a correct floor rather than a stale one.
+        restingGraph = again
+        step('catalog dirty → per-component', PROFILE ? performance.now() : 0)
+        return
+      }
+      after = again
+    }
+
+    for (const [ci, byId] of pending) verified.set(ci, byId)
+    restingGraph = after
+  }
 
   /** Exercise and verify every scenario of one component. */
   async function verifyComponent(
@@ -439,10 +626,10 @@ export function mountPlugin(options: MountPluginOptions = {}): AtlasPlugin {
       // own — and it is why the warm-up above no longer needs its own settle.
       const tRe = PROFILE ? performance.now() : 0
       for (const s of batch) {
-        // The verdicts from this pass are discarded: the first pass already
-        // recorded what each scenario did, and re-running is only a probe of
-        // whether retention ACCUMULATES.
-        await exercise(dom.env, runtime, component, s, options.wrapper)
+        // A plain mount, not `exercise` — see `probeMount`. This asks only
+        // whether retention accumulates, and re-running the scenario's authored
+        // `play` to find out would replay its side effects.
+        probeMount(dom.env, runtime, component, s.args ?? {}, options.wrapper)
       }
       const again = await settleGraph(graphSize!, gc!, after)
       step('settleGraph(batch re-probe)', tRe)

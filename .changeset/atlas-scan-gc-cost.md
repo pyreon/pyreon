@@ -2,44 +2,62 @@
 '@pyreon/atlas': patch
 ---
 
-`atlas scan` 4-13x faster — the leak check was paying a full GC per scenario
+`atlas scan` ~20x faster — the leak check was paying a full GC per scenario
 
 A scan of a variant-heavy design system (108 components, 1090 scenarios) took
-42s, and 98.3% of it was one plugin hook. Two hypotheses about which part died
+41s, and 98.3% of it was one plugin hook. Two hypotheses about which part died
 to measurement first — the static scan is 35ms, and the settle loop exits
 immediately rather than burning its runway — so the attribution now comes off a
 profiling seam (`ATLAS_PROFILE=1`) rather than from reading the code. What it
 found: 2767 `Bun.gc(true)` calls at ~20ms each.
 
-The leak check is now charged per COMPONENT rather than per scenario. One sweep
-answers the question for every scenario a component owns, because a graph that
-returns to its baseline after all of them have been mounted and disposed proves
-none of them retained anything. A dirty batch is re-run once — which tells
+A forced collection is now charged for a GROUP OF COMPONENTS, not for each
+scenario. One sweep answers the question for all of them, because a reactive
+graph that returns to its baseline after every scenario in the group has been
+mounted and disposed proves that none of them retained a node. Components are
+grouped until a group holds ~256 scenarios: **2767 collections become 8**, and a
+108-component / 1090-scenario scan goes from ~41s to ~2s. `atlas build` benefits
+identically.
+
+The collection count is the honest headline, because it does not move with the
+machine. The wall-clock ratio does, a lot, and always in the flattering
+direction: the old path is GC-dominated and therefore far more sensitive to load
+than the new one, so interleaved runs measured anywhere from 20x to 51x
+depending on what else the box was doing. ~20x is the conservative end and the
+number worth quoting.
+
+The bound costs nothing measurable — grouped and ungrouped medians are within
+noise of each other — and buys two things: peak memory that stays knowable at
+monorepo scale rather than extrapolated from a smaller one, and a blast radius
+of one group when something does leak, instead of the whole catalog.
+
+Nothing is guessed when a catalog is not clean. It is re-probed once — exercise
+everything again and require the count to keep CLIMBING, which separates
 one-time retention (a module-level store registry, a memoized theme) from a
-per-mount leak — and only something genuinely climbing is separated scenario by
-scenario. The warm-up mount no longer needs its own settle, the resting graph
-carries across components, and each GC call sweeps once rather than twice
-(the settle loop already retries, and stops as soon as the count is at the
-floor).
+per-mount leak — then falls back to per-component and finally to per-scenario
+resolution, so a real leak is still attributed to the scenario that causes it.
 
-Because the cost now tracks components rather than scenarios, the win scales
-with how many scenarios each component has:
+This also removes a pre-existing flaky FALSE POSITIVE. Requiring accumulation
+across two full catalog passes is a much stronger filter than across two mounts
+of one scenario, so a one-node engine straggler no longer reads as a leak:
+`stack--indent-large-gap-xxlarge-gapy-medium` failed 1 run in 5 before and is
+stable across 6 runs now.
 
-| scenarios/component | before | after | |
-| --- | --- | --- | --- |
-| 10.1 | 42.2s | 4.5s | 9.3x |
-| 2.2 | 3.3s | 0.8s | 4.3x |
+`VerifyContext` gains an optional `components` field — every decorated component
+in the run — so a plugin whose check has a large FIXED cost can pay it once for
+the catalog instead of once per component. `createAtlas` now decorates
+everything before verifying anything, which is what makes that set available.
 
-(medians of interleaved runs on an idle machine)
+Identical output otherwise: same components, same scenarios, same interaction
+verdicts, same a11y verdicts, byte-identical agent guide. Bisect-verified at
+every decision point that gates leak detection — each one, disabled, makes the
+real end-to-end leak test fail.
 
-Identical output throughout: same components, same scenarios, same interaction
-verdicts, same leak verdicts, byte-identical agent guide. Bisect-verified — the
-real end-to-end leak test still fails when the detection is disabled.
-
-Two alternatives were measured and are NOT taken, recorded in the source so they
-are not re-tried: a nursery GC (`Bun.gc(false)`) is 10x worse, because it does
-not run the FinalizationRegistry callbacks the registry drops nodes through; and
-loading discovery's modules concurrently is slower, because Vite's
-`ssrLoadModule` serializes on the shared module graph.
+Alternatives measured and NOT taken, recorded in the source so they are not
+re-tried: a nursery GC (`Bun.gc(false)`) is 10x worse, because it does not run
+the FinalizationRegistry callbacks the registry drops nodes through; loading
+discovery's modules concurrently is slower, because Vite's `ssrLoadModule`
+serializes on the shared module graph; and extra yields after a sweep do not
+replace the second sweep.
 
 Adds `ATLAS_PROFILE=1`, which reports scan cost per plugin hook.

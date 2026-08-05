@@ -66,16 +66,30 @@ export function createAtlas(config: AtlasConfig = {}): Atlas {
       // 1. discover — every plugin contributes components
       const discovered = await registry.runDiscover({ cwd })
 
-      // 2. decorate + 3. verify — enrich each component, then verify its scenarios
+      // 2. decorate — EVERY component, before anything is verified.
+      //
+      // Decorating and verifying one component at a time would be the obvious
+      // loop, and it structurally prevents the most valuable optimization a
+      // verify plugin can make: answering for many components at once. The
+      // mount plugin's leak check costs a forced garbage collection, and one
+      // collection can answer for the whole catalog exactly as well as for one
+      // component — but only if the plugin can see the whole catalog when its
+      // first scenario is verified.
+      //
+      // Nothing else changes: decoration has never depended on another
+      // component's verdict, so the two phases are independent.
+      const decorated: ComponentIntelligence[] = []
+      for (const ci of discovered) decorated.push(await registry.runDecorate(ci, { cwd }))
+
+      // 3. verify — each scenario, with the whole decorated set in context.
       const enriched: ComponentIntelligence[] = []
-      for (const ci of discovered) {
-        const decorated = await registry.runDecorate(ci, { cwd })
+      for (const component of decorated) {
         const scenarios: Scenario[] = []
-        for (const scenario of decorated.scenarios) {
-          const verify = await registry.runVerify({ scenario, component: decorated })
+        for (const scenario of component.scenarios) {
+          const verify = await registry.runVerify({ scenario, component, components: decorated })
           scenarios.push({ ...scenario, verify })
         }
-        enriched.push({ ...decorated, scenarios })
+        enriched.push({ ...component, scenarios })
       }
 
       // 4. graph — assemble, then let plugins run a final pass over the whole graph
