@@ -51,42 +51,14 @@ import {
   type WorkspaceRoots,
 } from './utils/workspace-roots'
 
-export type GateName =
-  | 'react-patterns'
-  | 'pyreon-patterns'
-  | 'lint'
-  | 'distribution'
-  | 'doc-claims'
-  | 'audit-tests'
-  | 'islands-audit'
-  | 'dependency-fabric'
-  | 'ssg-audit'
-  | 'content-audit'
-  | 'native-audit'
-  | 'check-dedup'
-  | 'audit-leak-classes'
-  | 'audit-types'
-  | 'bundle-budgets'
-
-/** Gates that run by default (fast). */
-export const FAST_GATES: GateName[] = [
-  'react-patterns',
-  'pyreon-patterns',
-  'lint',
-  'distribution',
-  'doc-claims',
-  'islands-audit',
-  'dependency-fabric',
-  'ssg-audit',
-  'content-audit',
-  'native-audit',
-  'audit-tests',
-  'check-dedup',
-  'audit-leak-classes',
-]
-
-/** Gates that require `--full` to enable. */
-export const SLOW_GATES: GateName[] = ['audit-types', 'bundle-budgets']
+// Gate NAMES live in the dependency-free `gate-names.ts` so `--help` can
+// print them without importing a single gate implementation (the
+// heavy-eager-import fix — `doctor --help` was 45.8s because index.ts's
+// eager import of these lists rode this module's `./gates` graph).
+// Re-exported here so existing `from './doctor/orchestrator'` imports keep
+// working.
+export { FAST_GATES, SLOW_GATES, type GateName } from './gate-names'
+import { FAST_GATES, SLOW_GATES, type GateName } from './gate-names'
 
 export interface OrchestratorOptions {
   cwd: string

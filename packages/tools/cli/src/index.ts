@@ -18,7 +18,7 @@
  */
 
 import cliPkg from '../package.json' with { type: 'json' }
-import { FAST_GATES, type GateName, SLOW_GATES } from './doctor/orchestrator'
+import { FAST_GATES, type GateName, SLOW_GATES } from './doctor/gate-names'
 // Command handlers are lazy-imported in `main()` (below) so each loads only
 // when its command runs — the bin stays a slim dispatcher and a new command
 // never grows the main-entry bundle. (FAST_GATES/SLOW_GATES are kept static:

@@ -367,15 +367,23 @@ describe('MCP server — other tool handlers over real JSON-RPC transport', () =
     }
   })
 
-  it('audit_islands runs the project-wide audit without throwing', async () => {
-    const { client, close } = await newConnectedClient()
-    try {
-      const text = await callTool(client, 'audit_islands')
-      expect(text.length).toBeGreaterThan(0)
-    } finally {
-      await close()
-    }
-  })
+  // Same budget rationale as audit-islands-server.test.ts: the audit walks
+  // the real repo inside the (possibly V8-instrumented) server process — the
+  // vitest 20s default timed out under Coverage (Full) on main, named by the
+  // #2685 diagnostic. 120s under CI/coverage, 30s locally.
+  it(
+    'audit_islands runs the project-wide audit without throwing',
+    async () => {
+      const { client, close } = await newConnectedClient()
+      try {
+        const text = await callTool(client, 'audit_islands')
+        expect(text.length).toBeGreaterThan(0)
+      } finally {
+        await close()
+      }
+    },
+    process.env.CI === 'true' ? 120_000 : 30_000,
+  )
 
   it('mcp_overview returns the "what tool when" map sourced from the manifest', async () => {
     const { client, close } = await newConnectedClient()

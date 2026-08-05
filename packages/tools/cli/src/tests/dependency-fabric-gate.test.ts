@@ -161,11 +161,26 @@ describe('runDependencyFabricGate', () => {
 })
 
 describe('the gate is registered', () => {
+  // Spawns a REAL `bun doctor --help` subprocess. Budget derived, not
+  // guessed: the child is a fresh bun boot + the CLI's static import graph —
+  // which this fix cut from the full doctor gates graph (45.8s measured,
+  // where it timed out vitest's 20s default under Coverage (Full) — the
+  // failure that surfaced the heavy-eager-import) down to the slim
+  // dispatcher. A loaded CI runner still pays contention on the child boot,
+  // so the wall-clock backstop is 60s — comfortably above a healthy child,
+  // and a re-regression to the 45s graph plus any load lands back over it
+  // with the diagnostic naming the mechanism instead of a bare timeout.
   it('appears in doctor --help\'s gate list so it is discoverable', () => {
+    const startedAt = Date.now()
     const out = execFileSync('bun', [resolve(__dirname, '../index.ts'), 'doctor', '--help'], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
     })
-    expect(out).toContain('dependency-fabric')
-  })
+    expect(
+      out,
+      `doctor --help took ${Date.now() - startedAt}ms — if this crept back toward ` +
+        `the timeout, a heavy static import returned to the --help path ` +
+        `(gate-names.ts must stay dependency-free)`,
+    ).toContain('dependency-fabric')
+  }, 60_000)
 })
