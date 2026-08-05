@@ -41,7 +41,6 @@ import { buildRowPlan, replayRowPlan, tplAdoptVerify } from './hydration-plan'
 import type { RowPlan } from './hydration-plan'
 import { _setPendingForAdoption, mountReactive } from './nodes'
 import { _setTplAdoptTarget, _setTplAdoptVerifier, _tplAdoptDidConsume } from './template'
-import type { ForAdoption } from './nodes'
 import { applyProps, applySelectValueProp } from './props'
 
 type Cleanup = () => void
@@ -427,10 +426,10 @@ function hydrateVNode(
           adoptRows: (ops) => {
             if (!parsedRows || ops.n !== parsedRows.length) return null
             // Hoist the ops fields — the per-row loop below runs 1000+ times.
-            const { items, n, getKey, renderItem, tailMarker: opsTail, setEntry } = ops
-            const keys = new Array<string | number>(n)
+            const { items, n: rowCount, getKey, renderItem, tailMarker: opsTail, setEntry } = ops
+            const keys = new Array<string | number>(rowCount)
             // Phase 1 — verify every key BEFORE any mutation (all-or-nothing).
-            for (let i = 0; i < n; i++) {
+            for (let i = 0; i < rowCount; i++) {
               const key = getKey(items[i])
               const row = parsedRows[i]!
               let markerKey: string
@@ -449,9 +448,9 @@ function hydrateVNode(
             // Register the compiled-template verifier (idempotent; also set by
             // hydrateRoot — kept here for direct-adoption robustness).
             _setTplAdoptVerifier(tplAdoptVerify)
-            for (let i = 0; i < n; i++) {
+            for (let i = 0; i < rowCount; i++) {
               const row = parsedRows[i]!
-              const after: Node = i + 1 < n ? parsedRows[i + 1]!.marker : opsTail
+              const rowAfter: Node = i + 1 < rowCount ? parsedRows[i + 1]!.marker : opsTail
               // COMPILED rows: arm the one-shot _tpl target BEFORE renderItem —
               // the _tpl call inside binds against the SSR row when the
               // structure verifies. h()-rows ignore it; cleared either way.
@@ -483,11 +482,11 @@ function hydrateVNode(
                 }
                 cleanup =
                   (rowPlan ? replayRowPlan(rowPlan, rowVNode as VNodeChild, row.first) : null) ??
-                  hydrateChild(rowVNode as VNodeChild, row.first, parent, after, `${path}.for`)[0]
+                  hydrateChild(rowVNode as VNodeChild, row.first, parent, rowAfter, `${path}.for`)[0]
                 // A NativeItem row that did NOT adopt was SWAPPED — re-derive
                 // the live end from the still-present neighbors.
                 if (!(row.first as ChildNode).isConnected) {
-                  const lastLive = (after as ChildNode).previousSibling
+                  const lastLive = (rowAfter as ChildNode).previousSibling
                   endNode = lastLive && lastLive !== (row.marker as ChildNode) ? lastLive : null
                 }
               }

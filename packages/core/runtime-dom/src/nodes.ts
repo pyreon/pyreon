@@ -1162,8 +1162,8 @@ export function mountFor<T>(
             getKey: getKey as (item: unknown) => string | number,
             renderItem: renderItem as (item: unknown) => unknown,
             tailMarker,
-            setEntry: (key, anchor, cleanup, pos, end) => {
-              cache.set(key, { anchor, cleanup, pos, end })
+            setEntry: (key, entryAnchor, cleanup, pos, end) => {
+              cache.set(key, { anchor: entryAnchor, cleanup, pos, end })
               cleanupCount++
             },
           })
