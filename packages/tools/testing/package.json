@@ -105,7 +105,7 @@
     "@pyreon/store": "workspace:^",
     "@pyreon/toast": "workspace:^",
     "@pyreon/ui-core": "workspace:^",
-    "@testing-library/jest-dom": "^6.0.0",
+    "@testing-library/jest-dom": "^6.0.0 || ^7.0.0",
     "vitest": ">=2.0.0"
   },
   "peerDependenciesMeta": {
@@ -149,7 +149,7 @@
     "@pyreon/typescript": "workspace:^",
     "@pyreon/ui-core": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/jest-dom": "^7.0.0",
     "@vitest/browser-playwright": "^4.1.10",
     "@vitus-labs/tools-rolldown": "^2.5.0"
   },

@@ -207,7 +207,7 @@
   },
   "dependencies": {
     "@capsizecss/core": "^4.1.3",
-    "@capsizecss/metrics": "^4.1.0",
+    "@capsizecss/metrics": "^4.2.0",
     "@capsizecss/unpack": "^4.0.1",
     "@pyreon/compiler": "workspace:^",
     "@pyreon/head": "workspace:^",
@@ -216,7 +216,7 @@
     "@pyreon/server": "workspace:^",
     "@pyreon/sized-map": "workspace:*",
     "@pyreon/vite-plugin": "workspace:^",
-    "vite": "^8.0.16"
+    "vite": "^8.2.0"
   },
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",

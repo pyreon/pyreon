@@ -65,7 +65,7 @@
     "@pyreon/runtime-dom": "workspace:^"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.9.0",
+    "@happy-dom/global-registrator": "^20.11.1",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",

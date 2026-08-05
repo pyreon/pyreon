@@ -49,13 +49,13 @@
     "@pyreon/runtime-dom": "workspace:^"
   },
   "dependencies": {
-    "@tiptap/core": "^3.28.0",
-    "@tiptap/pm": "^3.28.0",
-    "@tiptap/starter-kit": "^3.28.0",
+    "@tiptap/core": "^3.29.2",
+    "@tiptap/pm": "^3.29.2",
+    "@tiptap/starter-kit": "^3.29.2",
     "@pyreon/primitives": "workspace:^"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.9.0",
+    "@happy-dom/global-registrator": "^20.11.1",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
