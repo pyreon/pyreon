@@ -97,15 +97,24 @@ export const ComboboxBase: ComponentFn<ComboboxBaseProps> = (props) => {
   // Per-instance typeahead buffer (WAI-ARIA listbox "type-to-select").
   const typeahead = createTypeahead()
 
+  /**
+   * The option list, normalized ONCE — see `TreeBase`'s `data` for the full
+   * reasoning. Same shape, same required prop, same legitimate runtime hole:
+   * `<Combobox options={query.data} />` threw from `.filter` of undefined while
+   * the fetch was in flight. An accessor rather than a captured const, so the
+   * list stays reactive.
+   */
+  const options = (): ComboboxOption[] => own.options ?? []
+
   const filtered = computed(() => {
     const q = query().toLowerCase()
-    if (!q) return own.options
-    return own.options.filter((o) => o.label.toLowerCase().includes(q))
+    if (!q) return options()
+    return options().filter((o) => o.label.toLowerCase().includes(q))
   })
 
   function select(value: string) {
     if (own.disabled) return
-    const opt = own.options.find((o) => o.value === value)
+    const opt = options().find((o) => o.value === value)
     if (opt?.disabled) return
 
     if (own.multiple) {
@@ -135,7 +144,7 @@ export const ComboboxBase: ComponentFn<ComboboxBaseProps> = (props) => {
   }
 
   function getLabel(value: string): string {
-    return own.options.find((o) => o.value === value)?.label ?? value
+    return options().find((o) => o.value === value)?.label ?? value
   }
 
   function isSelectedFn(value: string): boolean {
@@ -282,7 +291,7 @@ export const ComboboxBase: ComponentFn<ComboboxBaseProps> = (props) => {
       role: 'option',
       id: `${baseId}-option-${index}`,
       'aria-selected': isSelectedFn(value) ? 'true' : 'false',
-      'aria-disabled': own.options.find((o) => o.value === value)?.disabled ? 'true' : undefined,
+      'aria-disabled': options().find((o) => o.value === value)?.disabled ? 'true' : undefined,
     }),
   }
 
