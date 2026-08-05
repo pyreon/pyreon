@@ -443,6 +443,10 @@ function StylesPage() {
           finding), so the child's vertical offset from the marker above it
           is the assertion on iOS; Android reads the box bounds directly. */}
       <Text data-testid="element-marker">marker</Text>
+      <Element tag="div" padding={4} data-testid="element-box">
+        <Text data-testid="element-child">boxed</Text>
+      </Element>
+
       {/* Styling row — `@pyreon/attrs`, the last named absent with no native
           example at all. attrs(Base).attrs({…}) accumulates DEFAULT props
           over a base; the emit rewrites each use site to the base carrying
@@ -451,15 +455,20 @@ function StylesPage() {
           the attrs default (gap 5 → 20pt/dp), and the use-site `padding`
           proves the merge order (use-site wins over the default). A dropped
           attrs chain lays the two texts out at the parent's gap instead —
-          a 12pt/dp difference the harnesses can read on both platforms. */}
+          a 12pt/dp difference the harnesses can read on both platforms.
+
+          Placed AFTER the Element block on purpose: the sibling padding
+          proof measures the element-marker -> element-child OFFSET, so any
+          node inserted between them is added to the number it asserts. The
+          first draft sat in that span and moved it from ~28 to ~118dp — a
+          real regression in a passing test, caused by adding a sibling
+          rather than by touching either the emit or the assertion. An
+          offset-based geometry assertion makes the SPAN between its two
+          ids load-bearing; append to the page, never into it. */}
       <AttrsCard padding={3} data-testid="attrs-card">
         <Text data-testid="attrs-a">A</Text>
         <Text data-testid="attrs-b">B</Text>
       </AttrsCard>
-
-      <Element tag="div" padding={4} data-testid="element-box">
-        <Text data-testid="element-child">boxed</Text>
-      </Element>
 
       {/* Typography tokens: same glyph, sizes from different token leaves
           (body=16, display=34) — the glyph-box HEIGHT ratio pins both values
