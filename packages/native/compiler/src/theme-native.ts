@@ -38,6 +38,8 @@ export interface ThemeTable {
   color: Record<string, string>
   spacing: Record<string, number>
   radius: Record<string, number>
+  fontSize: Record<string, number>
+  fontWeight: Record<string, number>
 }
 
 // Defaults — mirror packages/native/compiler/src/canonical-primitives.ts
@@ -56,6 +58,13 @@ export const DEFAULT_THEME: ThemeTable = {
   },
   spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 },
   radius: { none: 0, sm: 4, md: 8, lg: 16, full: 9999 },
+  // Typography groups — mirror @pyreon/ui-theme's fontSize/fontWeight scales
+  // (the repo's canonical theme shape). Absent until 2026-08: GROUP_ALIAS knew
+  // only color/spacing/radius, so `font-size: ${(t) => t.fontSize.large}` in a
+  // styled() template warn-DROPPED while the padding token beside it resolved —
+  // typography-from-tokens was structurally unlowerable.
+  fontSize: { xSmall: 10, small: 12, base: 14, medium: 16, large: 18, xLarge: 20, xxLarge: 24 },
+  fontWeight: { light: 300, base: 400, medium: 500, semiBold: 600, bold: 700 },
 }
 
 // Group-name aliases → the canonical ThemeTable group. `t.colors.primary` and
@@ -68,6 +77,10 @@ const GROUP_ALIAS: Record<string, keyof ThemeTable> = {
   radius: 'radius',
   radii: 'radius',
   borderRadius: 'radius',
+  fontSize: 'fontSize',
+  fontSizes: 'fontSize',
+  fontWeight: 'fontWeight',
+  fontWeights: 'fontWeight',
 }
 
 const TS_WRAPPERS = new Set([
@@ -160,6 +173,8 @@ export function mergeTheme(over: Partial<ThemeTable> | null | undefined): ThemeT
     color: { ...DEFAULT_THEME.color, ...over.color },
     spacing: { ...DEFAULT_THEME.spacing, ...over.spacing },
     radius: { ...DEFAULT_THEME.radius, ...over.radius },
+    fontSize: { ...DEFAULT_THEME.fontSize, ...over.fontSize },
+    fontWeight: { ...DEFAULT_THEME.fontWeight, ...over.fontWeight },
   }
 }
 
