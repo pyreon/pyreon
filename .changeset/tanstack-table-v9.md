@@ -1,7 +1,7 @@
 ---
-"@pyreon/table": major
-"@pyreon/feature": major
-"@pyreon/meta": major
+"@pyreon/table": minor
+"@pyreon/feature": minor
+"@pyreon/meta": minor
 "@pyreon/create-zero": patch
 ---
 
