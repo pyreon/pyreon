@@ -485,10 +485,15 @@ interface AdoptMatch {
  * where the plan says?) instead of re-walking every node — any spot mismatch
  * bails that row to the full verify.
  */
+interface TripletSpot {
+  /** Element-index hops from the row root to the triplet's parent element. */
+  path: number[]
+  /** Child index of the `$` open comment within that parent. */
+  childIndex: number
+}
 interface AdoptPlan {
   sig: TplSig
-  /** [domPath to parent element..., childIndex] per triplet. */
-  tripletSpots: number[][]
+  tripletSpots: TripletSpot[]
   /** domPaths of elements whose EXTRA bare texts get removed (template 0, >1 texts). */
   removalSpots: number[][]
 }
@@ -506,7 +511,7 @@ function elByPath(root: Element, path: number[], upto: number): Element | null {
 
 /** Record element paths (element-index hops) alongside a full verify. */
 function buildAdoptPlan(root: Element, sig: TplSig, match: AdoptMatch): AdoptPlan {
-  const tripletSpots: number[][] = []
+  const tripletSpots: TripletSpot[] = []
   const removalSpots: number[][] = []
   const pathOf = (el: Element): number[] => {
     const path: number[] = []
@@ -525,7 +530,7 @@ function buildAdoptPlan(root: Element, sig: TplSig, match: AdoptMatch): AdoptPla
       const parent = t.open.parentElement as Element
       let ci = 0
       for (let n = parent.firstChild; n && n !== t.open; n = n.nextSibling) ci++
-      tripletSpots.push([...pathOf(parent), -1, ci])
+      tripletSpots.push({ path: pathOf(parent), childIndex: ci })
     }
   }
   if (match.removals) {
@@ -540,25 +545,23 @@ function buildAdoptPlan(root: Element, sig: TplSig, match: AdoptMatch): AdoptPla
  */
 function replayAdoptPlan(root: Element, plan: AdoptPlan): boolean {
   for (const spot of plan.tripletSpots) {
-    const sep = spot.indexOf(-1)
-    const parent = elByPath(root, spot, sep)
+    const parent = elByPath(root, spot.path, spot.path.length)
     if (!parent) return false
-    const ci = spot[sep + 1] as number
     let n: ChildNode | null = parent.firstChild
-    for (let k = 0; k < ci && n; k++) n = n.nextSibling
+    for (let k = 0; k < spot.childIndex && n; k++) n = n.nextSibling
     if (!n || n.nodeType !== 8 || (n as Comment).data !== '$') return false
     const a = n.nextSibling
     if (a && a.nodeType === 3) {
       const b = a.nextSibling
       if (!b || b.nodeType !== 8 || (b as Comment).data !== '/$') return false
-      // MOVE the text before the open marker (1 DOM op) instead of removing
-      // both markers (2 ops): compiled refs only need the text FIRST at its
-      // slot; the markers become inert trailing comments inside the row
-      // (bindText targets the text node directly; _setChild slots never carry
-      // triplets — their template text-count is 0/bare).
-      parent.insertBefore(a, n)
+      // Remove ONLY the open marker — the text shifts into the slot position
+      // naturally (compiled refs need the text FIRST); the close marker stays
+      // as an inert trailing comment that travels with the row. One cheap
+      // removeChild beats moving the text (an implicit remove+insert).
+      ;(n as Comment).remove()
     } else if (a && a.nodeType === 8 && (a as Comment).data === '/$') {
-      parent.insertBefore(document.createTextNode(''), n)
+      parent.insertBefore(document.createTextNode(''), a)
+      ;(n as Comment).remove()
     } else return false
   }
   for (const spot of plan.removalSpots) {
@@ -656,11 +659,10 @@ function normalizeDollarTriplets(
   triplets: { open: Comment; text: Text | null; close: Comment }[],
 ): void {
   for (const t of triplets) {
-    // Move-not-remove (see replayAdoptPlan): the text lands before the open
-    // marker so compiled `.firstChild` refs align; markers stay as inert
-    // trailing comments.
-    if (t.text) t.open.parentNode?.insertBefore(t.text, t.open)
-    else t.open.parentNode?.insertBefore(document.createTextNode(''), t.open)
+    // Remove only the OPEN marker (see replayAdoptPlan) — the text shifts to
+    // the slot position; the close marker trails inertly with the row.
+    if (!t.text) t.open.parentNode?.insertBefore(document.createTextNode(''), t.close)
+    t.open.remove()
   }
 }
 
