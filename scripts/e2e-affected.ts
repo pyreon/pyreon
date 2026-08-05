@@ -416,10 +416,29 @@ function main(): void {
   let base = 'origin/main'
   let all = false
   let list = false
+  let scriptsFor: string | undefined
   for (const arg of process.argv.slice(2)) {
     if (arg === '--all') all = true
     else if (arg === '--list') list = true
     else if (arg.startsWith('--base=')) base = arg.slice('--base='.length)
+    else if (arg.startsWith('--scripts-for=')) scriptsFor = arg.slice('--scripts-for='.length)
+  }
+
+  // `--scripts-for="a b c"` resolves a BATCH of suite names to the package
+  // scripts that run them, one per line. The workflow batches by NAME (see
+  // scripts/ci-batch.ts) and needs the scripts back; resolving here keeps this
+  // file the single source of the name → script mapping rather than
+  // duplicating it into YAML, where it would drift silently.
+  if (scriptsFor !== undefined) {
+    const wanted = scriptsFor.split(/\s+/).filter(Boolean)
+    const byName = new Map(SUITES.map((s) => [s.name, s.script]))
+    const missing = wanted.filter((n) => !byName.has(n))
+    if (missing.length > 0) {
+      console.error(`[e2e-affected] unknown suite(s): ${missing.join(', ')}`)
+      process.exit(1)
+    }
+    console.log(wanted.map((n) => byName.get(n)!).join('\n'))
+    return
   }
 
   let changed: string[] | null

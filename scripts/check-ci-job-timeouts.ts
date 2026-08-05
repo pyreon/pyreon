@@ -61,10 +61,16 @@ export function parseJobTimeouts(workflowText: string): JobTimeout[] {
   const flush = (): void => {
     if (current === null) return
     const text = body.join('\n')
-    const usesSetup = text.includes('setup-pyreon')
+    // Strip full-line `#` comments before looking for the action. A prose
+    // mention of `setup-pyreon` — e.g. a comment explaining what a cell's
+    // fixed cost consists of — is not a USE of it, and matching one makes the
+    // gate fail a job that never restores anything. Found exactly that way:
+    // a comment added to the (setup-bun-only) `changes` job tripped this.
+    const code = body.filter((l) => !/^\s*#/.test(l)).join('\n')
+    const usesSetup = code.includes('setup-pyreon')
     // An explicit 'false' opts OUT of the expensive restore; the action's
     // default is 'true', so absence means it DOES restore.
-    const restoresBootstrap = usesSetup && !/restore-bootstrap:\s*'false'/.test(text)
+    const restoresBootstrap = usesSetup && !/restore-bootstrap:\s*'false'/.test(code)
     const m = /^\s{4}timeout-minutes:\s*(\d+)\s*$/m.exec(text)
     out.push({
       job: current,
