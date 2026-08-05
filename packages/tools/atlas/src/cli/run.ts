@@ -9,7 +9,6 @@
  */
 import { readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
-import { resolveOut } from './out-path'
 import { createAtlas } from '../index'
 import type { CatalogGraph } from '../core'
 import type { WorkbenchPresets } from '../ui/catalog'
@@ -499,7 +498,6 @@ function optional<K extends string, V>(key: K, value: V | undefined): Record<K, 
   return value === undefined ? {} : ({ [key]: value } as Record<K, V>)
 }
 
-
 /** Parse argv + run a command. Returns the process exit code. */
 export async function runCli(argv: readonly string[]): Promise<number> {
   const [cmd, ...rest] = argv
@@ -758,20 +756,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     try {
       const result = await buildStatic({
         cwd: dir ?? '.',
-        // Resolved against the SHELL's cwd, not against `[dir]`.
-        //
-        // `buildStatic` treats a relative `out` as relative to its own `cwd`
-        // option, which is right for a programmatic caller that passes both.
-        // For someone typing a path it is not: standing at a repo root,
-        //
-        //   atlas build packages/ui/components --out docs/dist/atlas
-        //
-        // means `./docs/dist/atlas` — nobody means
-        // `packages/ui/components/docs/dist/atlas`, which is where it landed,
-        // silently and successfully, so the only symptom was an output
-        // directory that was not where it was asked for. Every other CLI
-        // (tsc, storybook, esbuild) reads an output path against the cwd.
-        ...optional('out', resolveOut(flagValue(rest, '--out'))),
+        ...optional('out', flagValue(rest, '--out')),
         ...optional('title', flagValue(rest, '--title')),
         ...optional('base', flagValue(rest, '--base')),
         onLog: (message) => err(`${message}\n`),

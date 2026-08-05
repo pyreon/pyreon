@@ -132,9 +132,16 @@ jobs:
         # advisory extra, and the PR run above catches a break before it can
         # ever block main. The alternative — swallowing the error — publishes a
         # docs site whose /atlas link 404s, with nothing red to say so.
+        #
+        # `--out` is ABSOLUTE on purpose. A relative `--out` resolves against
+        # the SCANNED project, not the shell — the same base as the default
+        # `atlas-dist`, and the same rule Vite applies to `outDir` — so a bare
+        # `--out docs/dist/atlas` here would emit into
+        # `packages/ui/components/docs/dist/atlas` and the upload would ship a
+        # docs site with no /atlas in it.
         run: |
           bun packages/tools/atlas/bin/atlas.js build packages/ui/components \
-            --out docs/dist/atlas \
+            --out "$GITHUB_WORKSPACE/docs/dist/atlas" \
             --base /atlas/ \
             --title "Pyreon UI"
 
