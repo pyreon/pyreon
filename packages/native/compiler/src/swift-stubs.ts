@@ -480,6 +480,9 @@ public final class PyreonNetworkStatus {
 // ACCESSOR read as state(); the emit lowers that call to state.phase.
 public final class PyreonAppState {
   public private(set) var phase: String
+  public private(set) var wasBackgrounded: Bool = false
+  public func start() {}
+  public func stop() {}
   public init(phase: String = "active") { self.phase = phase }
 }
 public struct PyreonLink<Label: View>: View {

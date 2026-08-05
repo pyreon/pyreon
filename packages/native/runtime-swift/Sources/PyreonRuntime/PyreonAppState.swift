@@ -25,6 +25,14 @@ public final class PyreonAppState {
     /// The current lifecycle phase. Drives SwiftUI re-render on change.
     public private(set) var phase: String
 
+    /// STICKY: true once the phase has EVER reached "background". The
+    /// device-test assertion surface — an end-state a frozen (never-started)
+    /// container can never reach, and one that does not depend on the exact
+    /// number of OS transition notifications (which varies by OS version and
+    /// backgrounding path). Web has no analogue (the web hook returns a bare
+    /// accessor) — a native-only member read, same footing as `net.isOnline`.
+    public private(set) var wasBackgrounded: Bool = false
+
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
     @ObservationIgnored private var _started: Bool = false
 
@@ -39,6 +47,7 @@ public final class PyreonAppState {
     /// Set the phase directly (used by the notification handlers + tests).
     public func update(_ phase: String) {
         self.phase = phase
+        if phase == "background" { wasBackgrounded = true }
     }
 
     /// Begin observing the OS lifecycle notifications. Idempotent — a second

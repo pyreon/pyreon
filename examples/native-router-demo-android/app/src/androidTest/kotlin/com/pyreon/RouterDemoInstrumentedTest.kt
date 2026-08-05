@@ -52,6 +52,7 @@ import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.test.swipeRight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import android.os.ParcelFileDescriptor
@@ -1052,6 +1053,27 @@ class RouterDemoInstrumentedTest {
                 .fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithTag("video-status").assertTextEquals("Video: playing")
+    // Platform APIs — app LIFECYCLE through the REAL Activity lifecycle. The
+    // lifecycle page renders the STICKY wasBackgrounded flag;
+    // rememberPyreonAppState() observes the hosting Activity via a
+    // LifecycleEventObserver (ON_STOP → "background"). Driving the activity
+    // to CREATED (stopped) and back to RESUMED must flip the flag "false" →
+    // "true" — an end-state the pre-fix bare `remember { PyreonAppState() }`
+    // (the never-wired class) can never reach.
+    @Test
+    fun appLifecycleBackgroundingSetsStickyFlag() {
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        composeRule.onNodeWithText("View lifecycle").performClick()
+        composeRule.onNodeWithTag("lifecycle-page").assertIsDisplayed()
+        composeRule.onNodeWithTag("bg-flag").assertTextEquals("BG: false")
+
+        composeRule.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
+        composeRule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithText("BG: true").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("phase-text").assertTextEquals("Phase: active")
     }
 
     // Styling row — TYPOGRAPHY tokens by geometry + COLOUR token by RENDERED

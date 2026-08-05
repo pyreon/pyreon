@@ -1063,6 +1063,15 @@ final class PyreonRouterDemoUITests: XCTestCase {
     // Requires the ws-echo fixture server on :8790 (same as the remote-dot
     // and websocket tests — one server, all fixtures).
     func test_videoPlaybackStateReachesUI() throws {
+    // Platform APIs — app LIFECYCLE through the REAL UIApplication
+    // notifications. The lifecycle page renders the STICKY wasBackgrounded
+    // flag; backgrounding via the Home button and re-activating must flip it
+    // "false" → "true" — an end-state a frozen (never-started) container can
+    // never reach, independent of how many transition notifications the OS
+    // fires on this path. The third member of the never-wired class:
+    // PyreonAppState.start() wired these notifications from inception and no
+    // emit ever called it, so useAppState() reported "active" forever.
+    func test_appLifecycleBackgroundingSetsStickyFlag() throws {
         let app = XCUIApplication()
         app.launch()
 
@@ -1080,6 +1089,38 @@ final class PyreonRouterDemoUITests: XCTestCase {
             app.staticTexts["Video: playing"].waitForExistence(timeout: 30),
             "Video status never reached playing — the AVPlayer pipeline did "
                 + "not start (observed: \(app.staticTexts["video-status"].firstMatch.label))"
+        app.buttons["View lifecycle"].tap()
+        XCTAssertTrue(
+            app.otherElements["lifecycle-page"].firstMatch.waitForExistence(timeout: 15),
+            "Lifecycle page did not render"
+        )
+        XCTAssertTrue(
+            app.staticTexts["BG: false"].waitForExistence(timeout: 10),
+            "Initial sticky flag not rendered — the container reads did not lower"
+        )
+        XCTAssertTrue(
+            app.staticTexts["Phase: active"].exists,
+            "Initial phase is not active"
+        )
+
+        XCUIDevice.shared.press(.home)
+        // Give the OS a beat to deliver didEnterBackground before returning.
+        Thread.sleep(forTimeInterval: 2)
+        app.activate()
+
+        XCTAssertTrue(
+            app.otherElements["lifecycle-page"].firstMatch.waitForExistence(timeout: 15),
+            "Lifecycle page did not restore after re-activation"
+        )
+        XCTAssertTrue(
+            app.staticTexts["BG: true"].waitForExistence(timeout: 10),
+            "Sticky wasBackgrounded never flipped — the lifecycle observers "
+                + "did not start (observed: \(app.staticTexts["bg-flag"].firstMatch.label), "
+                + "\(app.staticTexts["phase-text"].firstMatch.label))"
+        )
+        XCTAssertTrue(
+            app.staticTexts["Phase: active"].waitForExistence(timeout: 10),
+            "Phase did not return to active after re-activation"
         )
     }
 

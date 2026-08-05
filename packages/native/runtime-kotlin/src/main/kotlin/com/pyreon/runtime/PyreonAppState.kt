@@ -25,9 +25,18 @@ public class PyreonAppState(phase: String = "active") {
     /** The current lifecycle phase. Read `.value`; drives recomposition. */
     public val phase: MutableState<String> = mutableStateOf(phase)
 
+    /**
+     * STICKY: true once the phase has EVER reached "background". The
+     * device-test assertion surface — an end-state a frozen (never-observed)
+     * container can never reach, independent of the exact number of
+     * lifecycle events a backgrounding path fires. Mirrors the Swift field.
+     */
+    public val wasBackgrounded: MutableState<Boolean> = mutableStateOf(false)
+
     /** Set the phase directly (used by the injected source + tests). */
     public fun update(phase: String) {
         this.phase.value = phase
+        if (phase == "background") wasBackgrounded.value = true
     }
 
     /**
