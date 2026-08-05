@@ -92,7 +92,7 @@ const TableView = () => {
   const { table } = Posts.useTable(() => list.data() ?? [], {
     columns: ['title', 'published'],
   })
-  // table is a Computed<Table<Post>> — render with flexRender
+  // table is a Table — read it directly (no table() call), render with flexRender
 }
 
 // Global store access — the state lives on the StoreApi's `.store`
@@ -151,6 +151,7 @@ Posts.useTable(() => items() ?? [], { columns: ['title'] })
 - Passing `api` as an object (`{ baseUrl: "…" }`) — `api` is a plain string base path; there are no per-endpoint override fields (the REST routes are derived from it)
 - Passing a bare id to useForm — useForm takes an OPTIONS object: `useForm({ mode: "edit", id })` for edit, `useForm()` (or `useForm({ initialValues })`) for create
 - Passing options as useTable’s first argument — useTable takes the DATA first (`useTable(data, { columns })`), not `useTable({ columns })`
+- Calling `table()` on useTable’s result — `table` is a TanStack Table v9 instance, NOT a `Computed<Table>`. Read it directly (`table.getRowModel()`); v9 owns its reactivity, so reading it in a reactive scope already subscribes
 
 **See also:** `reference` · `extractFields` · `defaultInitialValues`
 
