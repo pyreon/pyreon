@@ -837,6 +837,7 @@
       "name": "@pyreon/example-native-router-demo-ios",
       "version": "0.50.0",
       "devDependencies": {
+        "@pyreon/attrs": "workspace:*",
         "@pyreon/coolgrid": "workspace:*",
         "@pyreon/core": "workspace:*",
         "@pyreon/elements": "workspace:*",
@@ -853,6 +854,7 @@
       "name": "@pyreon/example-native-router-demo-web",
       "version": "0.50.0",
       "dependencies": {
+        "@pyreon/attrs": "workspace:*",
         "@pyreon/coolgrid": "workspace:*",
         "@pyreon/core": "workspace:*",
         "@pyreon/elements": "workspace:*",
