@@ -20,7 +20,12 @@ package com.pyreon
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -75,24 +80,42 @@ class FinanceInstrumentedTest {
     // `.onAppear` and was unaffected — a one-source-three-targets break whose
     // failure mode was a hard compile error, invisible to any runtime test.
     //
-    // Signing in and returning to the login screen must show an EMPTY field:
-    // the handler ran and cleared it. A field still carrying the submitted
-    // username means the assignment never happened.
+    // The assertion is deliberately made against the DASHBOARD's add-transaction
+    // form, not the login form. The login handler navigates away, so any
+    // assertion after a sign-in round trip cannot distinguish "the handler
+    // cleared the field" from "the login page remounted with fresh initial
+    // values" — it would pass either way. The add form clears IN PLACE, so an
+    // empty field is only reachable through the self-reference.
+    //
+    // It asserts EditableText specifically rather than `assertTextEquals("")`:
+    // an EMPTY Compose TextField publishes its PLACEHOLDER in the `Text`
+    // semantics property, so the text-equality form sees ["Description", ""]
+    // and fails on a field that is, in fact, correctly empty.
     @Test
-    fun selfReferencingSubmitClearsTheField() {
-        composeRule.onNodeWithTag("login-page").assertIsDisplayed()
+    fun selfReferencingSubmitClearsTheFormInPlace() {
         composeRule.onNodeWithTag("login-username").performTextInput("ada")
         composeRule.onNodeWithTag("login-submit").performClick()
         composeRule.waitUntil(timeoutMillis = 15_000) {
             composeRule.onAllNodesWithTag("dashboard-page").fetchSemanticsNodes().isNotEmpty()
         }
 
-        composeRule.onNodeWithTag("dash-logout").performClick()
-        composeRule.waitUntil(timeoutMillis = 15_000) {
-            composeRule.onAllNodesWithTag("login-page").fetchSemanticsNodes().isNotEmpty()
-        }
-        composeRule.onNodeWithTag("login-username").assertTextEquals("", includeEditableText = true)
+        composeRule.onNodeWithTag("new-tx-desc").performTextInput("Coffee")
+        composeRule.onNodeWithTag("new-tx-amount").performTextInput("-5")
+        composeRule.onNodeWithTag("new-tx-add").performClick()
+        composeRule.waitForIdle()
+
+        // The handler ran: the row landed and the balance moved 2700 -> 2695.
+        composeRule.onNodeWithTag("dash-balance").assertTextEquals("2695")
+        // ...and we never left the screen, so the clear below is the handler's.
+        composeRule.onNodeWithTag("dashboard-page").assertIsDisplayed()
+
+        composeRule.onNodeWithTag("new-tx-desc").assertEditableTextIsEmpty()
+        composeRule.onNodeWithTag("new-tx-amount").assertEditableTextIsEmpty()
     }
+
+    private fun SemanticsNodeInteraction.assertEditableTextIsEmpty() = assert(
+        SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")),
+    )
 
     // The useForm validation GATE — the negative half. A short username must
     // keep us on the login screen, proving the guard actually blocks rather

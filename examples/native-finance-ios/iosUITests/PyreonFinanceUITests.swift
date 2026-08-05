@@ -199,6 +199,74 @@ final class PyreonFinanceUITests: XCTestCase {
         signOutIfSignedIn(app)
     }
 
+    // The SELF-REFERENCING onSubmit — `onSubmit: () => form.setFieldValue(…)`,
+    // the "clear the field after submit" idiom, where the handler names the
+    // form it belongs to. Swift has always assigned `form.onSubmit` post-init
+    // from `.onAppear`; the Kotlin emit passed it as a CONSTRUCTOR argument,
+    // where the body is a self-reference inside the form's own initializer, so
+    // the shape did not COMPILE on Android at all. This is the iOS half of the
+    // parity assertion: the same source line, proven on both targets.
+    //
+    // The add form is the right place for it because it clears IN PLACE. The
+    // login form clears too, but navigates away — an assertion after that round
+    // trip cannot tell "the handler cleared it" from "the page remounted".
+    func test_selfReferencingSubmitClearsTheFormInPlace() throws {
+        let app = launchOnLoginScreen()
+
+        let field = app.textFields["login-username"]
+        XCTAssertTrue(field.waitForExistence(timeout: 30), "Username field did not render")
+        field.tap()
+        field.typeText("alice")
+        app.buttons["login-submit"].tap()
+        XCTAssertTrue(
+            app.otherElements["dashboard-page"].waitForExistence(timeout: 15),
+            "Did not reach the dashboard"
+        )
+
+        let desc = app.textFields["new-tx-desc"]
+        XCTAssertTrue(desc.waitForExistence(timeout: 10), "Add-transaction field did not render")
+        desc.tap()
+        desc.typeText("Coffee")
+        let amount = app.textFields["new-tx-amount"]
+        amount.tap()
+        amount.typeText("-5")
+        app.buttons["new-tx-add"].tap()
+
+        // The handler ran: 2700 + (−5).
+        let balance = app.staticTexts["dash-balance"]
+        expectation(
+            for: NSPredicate(format: "label == %@", "2695"),
+            evaluatedWith: balance,
+            handler: nil
+        )
+        waitForExpectations(timeout: 10) { error in
+            XCTAssertNil(
+                error,
+                "onSubmit did not append the transaction (balance was \"\(balance.label)\")"
+            )
+        }
+
+        // ...and we never left the screen, so an empty field is the handler's
+        // own `txForm.setFieldValue(…, '')` and not a fresh mount.
+        XCTAssertTrue(app.otherElements["dashboard-page"].exists)
+        // An empty SwiftUI TextField reports its PLACEHOLDER as the value, so
+        // "" and the placeholder both mean cleared; "Coffee" means it is not.
+        let clearedDesc = desc.value as? String ?? ""
+        XCTAssertTrue(
+            clearedDesc.isEmpty || clearedDesc == "Description",
+            "Description field was not cleared by the self-referencing onSubmit "
+                + "(value was \"\(clearedDesc)\")"
+        )
+        let clearedAmount = amount.value as? String ?? ""
+        XCTAssertTrue(
+            clearedAmount.isEmpty || clearedAmount == "Amount",
+            "Amount field was not cleared by the self-referencing onSubmit "
+                + "(value was \"\(clearedAmount)\")"
+        )
+
+        signOutIfSignedIn(app)
+    }
+
     // Auth row — SESSION REHYDRATION, the row's remaining reachable gap, and
     // its inverse. `PyreonAuth` is pure reactive state with no platform edge;
     // durability comes from composing it with `PyreonSecureStorage`. Nothing
