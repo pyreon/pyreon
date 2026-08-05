@@ -145,3 +145,55 @@ describe('findTimeoutViolations', () => {
     expect(MIN_BOOTSTRAP_TIMEOUT).toBeGreaterThan(6)
   })
 })
+
+describe('comments are not uses (regression: a prose mention tripped the gate)', () => {
+  it('a job that only MENTIONS setup-pyreon in a comment is not flagged', () => {
+    // The `changes` job uses setup-bun directly and never restores lib/. A
+    // comment explaining what a matrix cell's fixed cost consists of made the
+    // substring scan think otherwise, failing an 8-minute budget that is
+    // correct.
+    const wf = [
+      'jobs:',
+      '  changes:',
+      '    runs-on: ubuntu-latest',
+      '    timeout-minutes: 8',
+      '    steps:',
+      '      - uses: oven-sh/setup-bun@abc',
+      '      - name: Decide',
+      '        run: |',
+      '          # cost per cell = queue + checkout + setup-pyreon + browsers',
+      '          echo hi',
+    ].join('\n')
+    const [job] = parseJobTimeouts(wf)
+    expect(job!.usesSetup).toBe(false)
+    expect(job!.restoresBootstrap).toBe(false)
+    expect(findTimeoutViolations(parseJobTimeouts(wf), MIN_BOOTSTRAP_TIMEOUT)).toEqual([])
+  })
+
+  it('a REAL setup-pyreon use is still flagged under budget', () => {
+    const wf = [
+      'jobs:',
+      '  real:',
+      '    timeout-minutes: 8',
+      '    steps:',
+      '      - uses: ./.github/actions/setup-pyreon',
+    ].join('\n')
+    expect(findTimeoutViolations(parseJobTimeouts(wf), MIN_BOOTSTRAP_TIMEOUT)).toEqual([
+      { job: 'real', timeout: 8 },
+    ])
+  })
+
+  it('a COMMENTED-OUT opt-out does not exempt a real user', () => {
+    const wf = [
+      'jobs:',
+      '  sneaky:',
+      '    timeout-minutes: 8',
+      '    steps:',
+      '      - uses: ./.github/actions/setup-pyreon',
+      "        # restore-bootstrap: 'false'  <- commented out, not in effect",
+    ].join('\n')
+    expect(findTimeoutViolations(parseJobTimeouts(wf), MIN_BOOTSTRAP_TIMEOUT)).toEqual([
+      { job: 'sneaky', timeout: 8 },
+    ])
+  })
+})
