@@ -49,18 +49,37 @@ function unwrap(node: AnyNode | undefined): AnyNode | undefined {
 
 /** Extract the `component:` field (a primitive identifier / string) from the
  *  head `attrs({ name, component })` config object. */
-function readComponentField(cfg: AnyNode): string | null {
-  // `attrs(Text)` — a BARE component. This is the form `@pyreon/attrs` actually
-  // exposes (`attrs(component)` chainable, per its own docs and the
-  // multiplatform styling table), and it silently produced uncompilable native
-  // code: the chain fell through to the generic emit as
-  // `attrs(Text).attrs(__Obj0(…))`, and there is no `attrs` function in Swift
-  // or Kotlin.
+function readComponentField(cfg: AnyNode, name: string, warnings: string[]): string | null {
+  // `attrs(Text)` — a BARE component — is NOT a form `@pyreon/attrs` accepts.
+  // The runtime signature is `attrs({ name, component })`, it validates its
+  // params, and the bare call throws at mount:
   //
-  // Only the config-object form `attrs({ component: Text })` was recognised —
-  // a shape the runtime does not require and the docs never showed. Accepting
-  // both makes the DOCUMENTED API work rather than warning that it does not.
-  if (cfg?.type === 'Identifier') return cfg.name as string
+  //   Parameter `component` is missing in params!
+  //
+  // This function used to accept the bare form, on a comment claiming it was
+  // "the form @pyreon/attrs actually exposes, per its own docs". It is not:
+  // the README and the manifest both show the options object, consistently.
+  // The belief came from a PROSE shorthand in the manifest's multiplatform
+  // line — "attrs(Base) default-prop HOC lowers via attrs-native", meaning
+  // "attrs over a base" — being read as a call signature.
+  //
+  // The cost of accepting it was the worst shape a multi-target compiler can
+  // produce: both native targets emitted and compiled clean while the web app
+  // died at mount with a blank page. One source, two targets green, one
+  // broken — and no gate before the web e2e can see it.
+  //
+  // So: refuse, and say exactly what to write. Refusing (rather than lowering
+  // with a warning) keeps the three targets CONSISTENT — a shape that cannot
+  // run on web must not quietly work on the other two.
+  if (cfg?.type === 'Identifier') {
+    warnings.push(
+      `attrs(${cfg.name as string}) on '${name}': @pyreon/attrs takes an OPTIONS OBJECT — ` +
+        `write attrs({ name: '${name}', component: ${cfg.name as string} }). The bare form ` +
+        `throws at mount on web ("Parameter \`component\` is missing in params!"), so it would ` +
+        `compile on iOS and Android and render a blank page in the browser.`,
+    )
+    return null
+  }
   if (!cfg || cfg.type !== 'ObjectExpression') return null
   for (const p of (cfg.properties as AnyNode[]) ?? []) {
     if (p.type !== 'Property' && p.type !== 'ObjectProperty') continue
@@ -102,7 +121,7 @@ export function parseAttrsDefn(
   }
   if (!head) return null
 
-  const base = readComponentField(unwrap((head.arguments as AnyNode[])?.[0]))
+  const base = readComponentField(unwrap((head.arguments as AnyNode[])?.[0]), name, warnings)
   if (base === null) return null
   if (!isCanonicalPrimitive(base) && !isElementsPrimitive(base)) {
     warnings.push(
