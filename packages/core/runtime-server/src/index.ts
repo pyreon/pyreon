@@ -1551,7 +1551,13 @@ function renderPropValue(key: string, value: unknown): string | null {
 
   if (key === 'class') {
     const cls = cx(value as ClassValue)
-    return cls ? `class="${escapeHtml(cls)}"` : null
+    // Emit `class=""` for an EMPTY-STRING resolution (nullish was already
+    // omitted above): the CLIENT materializes class="" for the same value
+    // (applyClassProp's presence contract — [class] selectors distinguish
+    // attribute presence), so omitting it server-side was a real SSR/CSR
+    // parity divergence AND forced hydration-adoption's initial class effect
+    // to pay a setAttribute per row purely to materialize the attribute.
+    return `class="${escapeHtml(cls)}"`
   }
 
   if (key === 'style') {

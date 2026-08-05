@@ -637,9 +637,14 @@ describe('renderToString — class and style edge cases', () => {
     expect(html).not.toContain('hidden')
   })
 
-  test('renders empty class as no attribute', async () => {
-    const html = await renderToString(h('div', { class: '' }))
-    expect(html).toBe('<div></div>')
+  test('renders empty class as class="" (CSR parity), nullish class as no attribute', async () => {
+    // The client materializes class="" for an empty-string resolution
+    // (presence contract — [class] selectors); SSR emitting it too keeps
+    // pre/post-hydration CSS identical and lets hydration adopt without an
+    // attribute write. Nullish keeps the null-omit contract.
+    expect(await renderToString(h('div', { class: '' }))).toBe('<div class=""></div>')
+    expect(await renderToString(h('div', { class: null }))).toBe('<div></div>')
+    expect(await renderToString(h('div', { class: undefined }))).toBe('<div></div>')
   })
 
   test('renders numeric class value as string', async () => {
