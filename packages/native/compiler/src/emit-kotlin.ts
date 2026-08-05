@@ -1686,7 +1686,11 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   }
   // Phase 5 (M3.7): `const state = useAppState()` → a remembered PyreonAppState.
   if (d.kind === 'app-state') {
-    return `val ${kotlinIdent(d.name)} = remember { PyreonAppState() }`
+    // rememberPyreonAppState SELF-INSTALLS a LifecycleEventObserver on the
+    // hosting Activity for the composable's lifetime (a bare
+    // `remember { PyreonAppState() }` was the never-wired class — the
+    // container reported its initial "active" forever).
+    return `val ${kotlinIdent(d.name)} = rememberPyreonAppState()`
   }
   // Phase 5: native data/services hooks → remembered container. Reactive
   // FIELD reads append `.value` (see emitKotlinExpr); methods + Bool getters
@@ -3487,13 +3491,16 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       ) {
         return `${kotlinIdent(e.object.name)}.isOnline.value`
       }
-      // Phase 5 (M3.7): a useAppState decl's `phase` is Compose MutableState.
+      // Phase 5 (M3.7): a useAppState decl's `phase` is Compose MutableState —
+      // as is the sticky `wasBackgrounded` flag (the lifecycle-arc device-test
+      // surface): both need `.value` or the emitted read renders the
+      // MutableState object's toString.
       if (
         e.object.kind === 'identifier' &&
         _appStateNames.has(e.object.name) &&
-        e.property === 'phase'
+        (e.property === 'phase' || e.property === 'wasBackgrounded')
       ) {
-        return `${kotlinIdent(e.object.name)}.phase.value`
+        return `${kotlinIdent(e.object.name)}.${e.property}.value`
       }
       // Phase 5: native data/services hooks. Each container's reactive fields
       // are Compose `MutableState` (read `.value`); Bool getters

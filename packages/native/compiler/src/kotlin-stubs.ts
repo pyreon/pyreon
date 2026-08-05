@@ -1225,7 +1225,14 @@ class PyreonNetworkStatus(isOnline: Boolean = true) {
 // state.phase.value.
 class PyreonAppState(phase: String = "active") {
   val phase: MutableState<String> = mutableStateOf(phase)
+  val wasBackgrounded: MutableState<Boolean> = mutableStateOf(false)
 }
+
+// Self-installing variant the useAppState emit references (mirrors
+// PyreonAppStateAndroid.kt's @Composable — the real one observes the
+// hosting Activity's lifecycle).
+@Composable
+fun rememberPyreonAppState(): PyreonAppState = PyreonAppState()
 
 // PyreonStore — Gap 4 Strategy-B v1 marker interface for emitted
 // per-store singleton classes. Real impl in @pyreon/native-runtime-

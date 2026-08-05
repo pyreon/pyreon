@@ -1,6 +1,6 @@
 // M3.7 — `useAppState()` native emit. `const state = useAppState()` → the
 // PyreonAppState reactive lifecycle container. Swift `@State PyreonAppState()`;
-// Kotlin `remember { PyreonAppState() }`.
+// Kotlin `rememberPyreonAppState()` (the self-installing lifecycle edge).
 //
 // The web `useAppState()` returns an ACCESSOR (`() => 'active'|…`), so ONE
 // shared source reads it as `state()` — the emit lowers that accessor call to
@@ -44,7 +44,7 @@ describe('M3.7 — useAppState() native emit (shared state() accessor)', () => {
   it('Kotlin: state() lowers to the MutableState phase.value read', () => {
     const r = transform(SHARED, { target: 'kotlin' })
     expect(r.warnings).toEqual([])
-    expect(r.code).toContain('val state = remember { PyreonAppState() }')
+    expect(r.code).toContain('val state = rememberPyreonAppState()')
     expect(r.code).toContain('state.phase.value')
     expect(r.code).not.toContain('if (state)')
   })

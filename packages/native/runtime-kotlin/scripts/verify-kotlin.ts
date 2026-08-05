@@ -619,6 +619,34 @@ public open class Context {
  * reads. Separate from the connectivity Handler mirror: push does not touch
  * Handler, and per-service stubs mirror only their own file's usage.
  */
+/**
+ * androidx.lifecycle surface for PyreonAppStateAndroid — exactly the members
+ * that file touches (Lifecycle.Event values it branches on, the observer
+ * interface, the owner's lifecycle + add/removeObserver). The fun-interface
+ * form mirrors the real LifecycleEventObserver so the lambda shape compiles.
+ */
+const ANDROIDX_LIFECYCLE_STUBS = `package androidx.lifecycle
+
+public abstract class Lifecycle {
+  public enum class Event { ON_CREATE, ON_START, ON_RESUME, ON_PAUSE, ON_STOP, ON_DESTROY, ON_ANY }
+  public abstract fun addObserver(observer: LifecycleEventObserver)
+  public abstract fun removeObserver(observer: LifecycleEventObserver)
+}
+
+public fun interface LifecycleEventObserver {
+  public fun onStateChanged(source: LifecycleOwner, event: Lifecycle.Event)
+}
+
+public interface LifecycleOwner {
+  public val lifecycle: Lifecycle
+}
+`
+
+const ANDROID_APPSTATE_CONTEXT_STUBS = `package android.content
+
+public open class Context
+`
+
 const ANDROID_PUSH_OS_STUBS = `package android.os
 
 public class Build {
@@ -1344,6 +1372,26 @@ try {
         ]
       : []
 
+  // PyreonAppStateAndroid: the androidx.lifecycle mirror + a bare Context +
+  // the Compose platform LocalContext + the CORE sibling (the composable
+  // returns PyreonAppState and drives update()).
+  const lifecyclePath = join(tempDir, 'AndroidxLifecycle.kt')
+  const appStateContextPath = join(tempDir, 'AppStateContext.kt')
+  if (SERVICE === 'PyreonAppStateAndroid') {
+    writeFileSync(lifecyclePath, ANDROIDX_LIFECYCLE_STUBS, 'utf8')
+    writeFileSync(appStateContextPath, ANDROID_APPSTATE_CONTEXT_STUBS, 'utf8')
+    writeFileSync(composePlatformPath, ANDROIDX_COMPOSE_PLATFORM_STUBS, 'utf8')
+  }
+  const appStateAndroidExtras =
+    SERVICE === 'PyreonAppStateAndroid'
+      ? [
+          lifecyclePath,
+          appStateContextPath,
+          composePlatformPath,
+          resolve(PACKAGE_ROOT, 'src/main/kotlin/com/pyreon/runtime/PyreonAppState.kt'),
+        ]
+      : []
+
   const geolocationAndroidExtras =
     SERVICE === 'PyreonGeolocationAndroid'
       ? [
@@ -1400,6 +1448,7 @@ try {
         ...networkAndroidExtras,
         ...pushAndroidExtras,
         ...videoAndroidExtras,
+        ...appStateAndroidExtras,
         SOURCE_FILE,
       ]
     : [
@@ -1424,6 +1473,7 @@ try {
         ...networkAndroidExtras,
         ...pushAndroidExtras,
         ...videoAndroidExtras,
+        ...appStateAndroidExtras,
         SOURCE_FILE,
         TEST_FILE,
       ]

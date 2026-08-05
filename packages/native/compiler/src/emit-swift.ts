@@ -1736,7 +1736,10 @@ function emitSwiftComponent(c: ComponentIR): string {
   // branch flip would tear the notification-center delegate away while the
   // view is still on screen.
   const _hasPushDecl = c.decls.some((d) => d.kind === 'push')
-  if (_hasFetchDecl || _hasOnMount || _hasNetDecl || _hasPushDecl) {
+  // app-state shares the stable-host requirement: its onAppear-start on a
+  // transparent Group would be redistributed onto conditional branches.
+  const _hasAppStateDecl = c.decls.some((d) => d.kind === 'app-state')
+  if (_hasFetchDecl || _hasOnMount || _hasNetDecl || _hasPushDecl || _hasAppStateDecl) {
     lines.push(`    ZStack {`)
     lines.push(`      ${emitSwiftReturnExpr(c.returnExpr, 6)}`)
     lines.push(`    }`)
@@ -1807,6 +1810,18 @@ function emitSwiftComponent(c: ComponentIR): string {
   // wins if the app called it first — both are idempotent).
   for (const d of c.decls) {
     if (d.kind !== 'push') continue
+    const name = swiftIdent(d.name)
+    lines.push(`      .onAppear { ${name}.start() }`)
+    lines.push(`      .onDisappear { ${name}.stop() }`)
+  }
+  // app-state: START the lifecycle observers. The runtime wired REAL
+  // UIApplication notifications behind start() from inception — and no emit
+  // ever called it, so useAppState() was frozen at its initial "active"
+  // forever (the THIRD member of the never-wired class, after
+  // network-status and push; found by pattern-hunting the remaining
+  // start(register) seams).
+  for (const d of c.decls) {
+    if (d.kind !== 'app-state') continue
     const name = swiftIdent(d.name)
     lines.push(`      .onAppear { ${name}.start() }`)
     lines.push(`      .onDisappear { ${name}.stop() }`)

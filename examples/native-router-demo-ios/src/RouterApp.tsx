@@ -16,7 +16,7 @@
 // targets — provable by `ls` + `diff`.
 
 import { For, onMount } from '@pyreon/core'
-import { useDatabase, useFetch, useOnline, usePush, useSecureStorage, useSizeClass, useWebSocket } from '@pyreon/hooks'
+import { useAppState, useDatabase, useFetch, useOnline, usePush, useSecureStorage, useSizeClass, useWebSocket } from '@pyreon/hooks'
 import { useFieldArray } from '@pyreon/form'
 import { Button, Heading, Image, Inline, Layer, Link, Press, Spacer, Stack, Text, Video } from '@pyreon/primitives'
 import { Element } from '@pyreon/elements'
@@ -593,6 +593,16 @@ function AboutPage() {
       <Button onPress={() => tags.remove(0)} data-testid="tag-remove">
         Remove First
       </Button>
+      {/* The lifecycle route is reached from ABOUT, not from home. The home
+          nav column is non-scrollable and AT its fold budget on the Android
+          emulator: inserting a 24th button there pushed the adaptive-row
+          markers past the fold, where Compose measures them at ZERO height
+          and the size-class gap assertion read 0.0dp. The About page is
+          short and its own tests already tap through it, so this is the
+          insertion that does NOT spend fold budget — the alternative (making
+          home scrollable) changes tap discipline for every existing test on
+          both platforms and is a deliberate, separate decision. */}
+      <Button onPress={() => navigate('/lifecycle')}>View lifecycle</Button>
       <Button onPress={() => navigate('/')}>Back to Home</Button>
       {/* The keyed list goes LAST: its Compose lowering is a LazyColumn,
           which fills the parent Column's remaining height — siblings after
@@ -652,6 +662,33 @@ interface EchoReply {
   body: string
 }
 
+function LifecyclePage() {
+  const navigate = useNavigate()
+  // Platform-APIs row — app LIFECYCLE, the third member of the never-wired
+  // class: PyreonAppState's Swift start() wired real UIApplication
+  // notifications from inception and NO emit called it; the Kotlin container
+  // had an injected seam and no Android edge at all. useAppState() reported
+  // its initial "active" forever on both targets.
+  //
+  // The emit now self-starts observation (.onAppear { app.start() } on the
+  // stable host / rememberPyreonAppState()'s LifecycleEventObserver). The
+  // assertion surface is the STICKY wasBackgrounded flag: an end-state a
+  // frozen container can never reach, independent of the exact number of
+  // transition events a backgrounding path fires (which varies by OS). The
+  // web hook returns a bare accessor with no such member — a native-only
+  // read, same footing as the legacy net.isOnline member shape; on web this
+  // line renders "BG: undefined" and no web test asserts it (disclosed).
+  const app = useAppState()
+  return (
+    <Stack gap={3} padding={4} data-testid="lifecycle-page">
+      <Text>Lifecycle</Text>
+      <Text data-testid="phase-text">Phase: {app()}</Text>
+      <Text data-testid="bg-flag">BG: {app.wasBackgrounded}</Text>
+      <Button onPress={() => navigate('/')}>Back to Home</Button>
+    </Stack>
+  )
+}
+
 function HttpPage() {
   const navigate = useNavigate()
   const posted = useFetch<EchoReply>('http://localhost:8790/echo', {
@@ -691,6 +728,7 @@ export function RouterApp() {
       { path: '/anim', component: AnimPage },
       { path: '/offline', component: OfflinePage },
       { path: '/push', component: PushPage },
+      { path: '/lifecycle', component: LifecyclePage },
       { path: '/media', component: MediaPage },
       { path: '/http', component: HttpPage },
     ],
