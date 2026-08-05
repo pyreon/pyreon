@@ -62,17 +62,26 @@ export function componentFromPath(pathname: string, ids: Iterable<string>): stri
   const segments = pathname.split('/').filter((s) => s.length > 0)
   const last = segments.at(-1)
   if (last === undefined) return undefined
-  // `decodeURIComponent` because the segment travelled through a URL; ids are
-  // slugs so this is normally a no-op, and a malformed escape must not throw
-  // on a render path.
-  let decoded = last
+  const decoded = decodeSegment(last)
+  if (decoded === undefined) return undefined
+  for (const id of ids) if (id === decoded) return decoded
+  return undefined
+}
+
+/**
+ * `decodeURIComponent`, with a malformed escape reported as "no match".
+ *
+ * The segment travelled through a URL, so it is percent-encoded; ids are slugs
+ * so this is normally a no-op. A hand-mangled URL (`/%E0%A4%A/`) makes
+ * `decodeURIComponent` THROW, and this runs on a render path where an
+ * exception would blank the workbench over a typo in the address bar.
+ */
+function decodeSegment(segment: string): string | undefined {
   try {
-    decoded = decodeURIComponent(last)
+    return decodeURIComponent(segment)
   } catch {
     return undefined
   }
-  for (const id of ids) if (id === decoded) return decoded
-  return undefined
 }
 
 /**
