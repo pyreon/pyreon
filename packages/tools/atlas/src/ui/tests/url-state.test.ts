@@ -14,7 +14,14 @@ import {
   flattenHierarchy,
   splitPath,
 } from '../hierarchy'
-import { parseUrlState, serializeUrlState, urlStateChanged } from '../url-state'
+import {
+  componentFromPath,
+  componentUrl,
+  parseUrlState,
+  pathBase,
+  serializeUrlState,
+  urlStateChanged,
+} from '../url-state'
 
 const comp = (id: string, group: string): WorkbenchComponent =>
   ({ id, name: id, group, status: 'stable', controls: [], render: () => null }) as unknown as WorkbenchComponent
@@ -157,5 +164,68 @@ describe('splitPath', () => {
   it('drops empty segments', () => {
     expect(splitPath('Forms//Inputs/')).toEqual(['Forms', 'Inputs'])
     expect(splitPath('  ')).toEqual([])
+  })
+})
+
+describe('componentFromPath — path URLs', () => {
+  const ids = ['button', 'modal', 'core-button']
+
+  it('reads the component from the last path segment', () => {
+    expect(componentFromPath('/atlas/button/', ids)).toBe('button')
+    expect(componentFromPath('/atlas/button', ids)).toBe('button')
+  })
+
+  it('is base-agnostic — any depth of prefix works', () => {
+    // Deliberately not derived from a configured base: the base is a
+    // deploy-time choice (`--base /atlas/`, `/`, someone's own subdirectory)
+    // this layer has no honest way to learn.
+    expect(componentFromPath('/modal/', ids)).toBe('modal')
+    expect(componentFromPath('/a/b/c/modal/', ids)).toBe('modal')
+  })
+
+  it('ignores a segment that is not a component', () => {
+    // The membership check is what makes a wrong guess impossible — an
+    // unrecognised segment is simply not a component, and the caller falls
+    // back to the query string.
+    expect(componentFromPath('/atlas/', ids)).toBeUndefined()
+    expect(componentFromPath('/', ids)).toBeUndefined()
+    expect(componentFromPath('/atlas/nope/', ids)).toBeUndefined()
+  })
+
+  it('decodes the segment, and survives a malformed escape', () => {
+    expect(componentFromPath('/atlas/core-button/', ids)).toBe('core-button')
+    // A render path must never throw on a hand-mangled URL.
+    expect(() => componentFromPath('/atlas/%E0%A4%A/', ids)).not.toThrow()
+    expect(componentFromPath('/atlas/%E0%A4%A/', ids)).toBeUndefined()
+  })
+})
+
+describe('pathBase + componentUrl — the writing half', () => {
+  it('strips the matched component to leave the base', () => {
+    expect(pathBase('/atlas/button/', 'button')).toBe('/atlas/')
+    expect(pathBase('/button/', 'button')).toBe('/')
+  })
+
+  it('treats an unmatched path as already being the base', () => {
+    expect(pathBase('/atlas/', undefined)).toBe('/atlas/')
+    expect(pathBase('/atlas', undefined)).toBe('/atlas/')
+  })
+
+  it('round-trips: a written URL reads back as the same component', () => {
+    const written = componentUrl(pathBase('/atlas/button/', 'button'), 'modal', 'p=controls')
+    expect(written).toBe('/atlas/modal/?p=controls')
+    expect(componentFromPath('/atlas/modal/', ['modal'])).toBe('modal')
+  })
+
+  it('builds an ABSOLUTE url — a relative one would keep a stale segment', () => {
+    // `replaceState(…, '?q')` resolves against the current directory, so once
+    // the URL is `/atlas/button/` a relative write would swap only the query
+    // and leave the path naming a different component.
+    expect(componentUrl('/atlas/', 'modal', '').startsWith('/')).toBe(true)
+  })
+
+  it('degrades to the base for an empty id, never `//`', () => {
+    expect(componentUrl('/atlas/', '', 'p=controls')).toBe('/atlas/?p=controls')
+    expect(componentUrl('/atlas/', '', '')).toBe('/atlas/')
   })
 })

@@ -138,3 +138,4 @@ export function bakedRpcScript(baked: BakedRpc): string {
     .replaceAll(String.fromCharCode(0x2029), '\\u2029')
   return `<script>globalThis.__ATLAS_STATIC_RPC__ = ${json}</script>`
 }
+

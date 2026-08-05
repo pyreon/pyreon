@@ -11,3 +11,9 @@ Fix two defects that made `atlas build` unusable against any real package, and p
 - **A subpath resolved to a directory instead of a file.** `resolveWorkspaceSpecifier` probed the bare extension first and used an existence check, so a barrel `src/ui.ts` next to its `src/ui/` folder matched the folder (`UNLOADABLE_DEPENDENCY: Could not load .../src/ui`). `@pyreon/atlas/ui` is exactly that shape.
 
 Both are bisect-verified. Verified end to end against `@pyreon/ui-components`: 108 components build and render in real Chromium with zero console errors, and the baked RPC is real — 108/108 source entries, 108/108 Lens verdicts, 9 carrying findings, 0 bake failures.
+
+Also gives the built site real URLs. `atlas build` now emits a directory per component, so `/atlas/button/` is a page a plain file server answers at — pasteable into a chat, bookmarkable, linkable from a design doc — instead of `/atlas/?c=button`. The workbench reads its own path (base-agnostic: it matches the last segment against the catalog, so it works under any `--base`) and writes the path back on navigation, with the component removed from the query so the two can never disagree.
+
+Opt-in via a global the host sets, because writing a path is only safe where a page answers at it: `atlas build` sets it, `atlas dev` sets it (its middleware already serves the shell for any extensionless GET), and a workbench EMBEDDED in someone else's app sets nothing and keeps the query string — writing `/button/` there would 404 on reload. Skipped for a relative `--base`, which would resolve assets against the wrong directory, and it says so rather than emitting pages that cannot load their own JavaScript.
+
+Honest limit: these are real URLs, not prerendered pages. The HTML body is empty until JavaScript runs, so a crawler sees the title and nothing else — rendering the component into the HTML needs SSR, which is a different change.
