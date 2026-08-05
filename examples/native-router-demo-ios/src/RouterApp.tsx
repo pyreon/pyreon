@@ -57,11 +57,19 @@ const RoomyCard = styled(Stack)`
   padding: ${(t) => t.spacing.xl};
 `
 
-// attrs(Base).attrs({…}) — the default-prop HOC @pyreon/rocketstyle builds
-// on. `gap: 5` is the card's ONLY gap source (the use site passes padding,
-// not gap), so the measured child spacing IS the default surviving the
-// merge; a dropped chain falls back to the parent's spacing.
-const AttrsCard = attrs(Stack).attrs({ gap: 5 })
+// attrs({ name, component }).attrs({…}) — the default-prop HOC
+// @pyreon/rocketstyle builds on. `gap: 5` is the card's ONLY gap source (the
+// use site passes padding, not gap), so the measured child spacing IS the
+// default surviving the merge; a dropped chain falls back to the parent's
+// spacing.
+//
+// The OPTIONS-OBJECT form is the real signature, and the first draft here
+// wrote the shorthand `attrs(Stack)` instead. That threw at mount on WEB
+// (`Parameter 'component' is missing in params!`) while both native targets
+// emitted and compiled clean — PMTC pattern-matches the `attrs(…).attrs({…})`
+// chain syntactically and never checked the argument against the real web API.
+// One source, two targets green, one blank page.
+const AttrsCard = attrs({ name: 'AttrsCard', component: Stack }).attrs({ gap: 5 })
 
 // Typography from tokens → .font(.system(size:)) / fontSize = N.sp. Same
 // glyph both lines, so the a11y-frame HEIGHT delta is purely the token values
