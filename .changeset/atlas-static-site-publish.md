@@ -1,5 +1,6 @@
 ---
 '@pyreon/atlas': patch
+'@pyreon/mcp': patch
 ---
 
 Fix three defects that made `atlas build` unusable against any real package, and publish the workbench at pyreon.dev/atlas.

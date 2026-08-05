@@ -9,6 +9,7 @@
  */
 import { readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
+import { resolveOut } from './out-path'
 import { createAtlas } from '../index'
 import type { CatalogGraph } from '../core'
 import type { WorkbenchPresets } from '../ui/catalog'
@@ -498,17 +499,6 @@ function optional<K extends string, V>(key: K, value: V | undefined): Record<K, 
   return value === undefined ? {} : ({ [key]: value } as Record<K, V>)
 }
 
-/**
- * Make an explicit `--out` absolute, against the shell's cwd.
- *
- * Only an EXPLICIT value is rewritten. The DEFAULT (`atlas-dist`) is a path the
- * tool chose, not one a user typed, and it belongs beside the project it
- * documents — the same place `atlas scan` writes `atlas-catalog.json`. A path
- * someone types belongs where they are standing.
- */
-export function resolveOut(value: string | undefined): string | undefined {
-  return value === undefined ? undefined : resolve(value)
-}
 
 /** Parse argv + run a command. Returns the process exit code. */
 export async function runCli(argv: readonly string[]): Promise<number> {

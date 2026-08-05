@@ -1,7 +1,8 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { resolveOut, runCli, runScan } from '../run'
+import { resolveOut } from '../out-path'
+import { runCli, runScan } from '../run'
 
 function fixture(name: string, files: Record<string, string>): string {
   const dir = mkdtempSync(join(tmpdir(), `atlas-${name}-`))
