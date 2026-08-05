@@ -37,6 +37,7 @@ import {
   Stack,
   Text,
   Toggle,
+  Video,
   Web,
   WebView,
 } from '../index'
@@ -277,6 +278,86 @@ describe('<Heading> happy-dom unit', () => {
   it('resets default heading margin to 0', () => {
     const { container, unmount } = mountTest(h(Heading, null, 'x'))
     expect((container.firstElementChild as HTMLHeadingElement).style.margin).toBe('0px')
+    unmount()
+  })
+})
+
+describe('<Video> happy-dom unit', () => {
+  it('renders a <video> with controls on and playsinline always set', () => {
+    // `playsinline` is not a preference — iOS Safari fullscreens without it,
+    // so the cross-platform baseline depends on it being unconditional.
+    const { container, unmount } = mountTest(h(Video, { src: '/clip.mp4' }))
+    const video = container.firstElementChild as HTMLVideoElement
+    expect(video.tagName).toBe('VIDEO')
+    expect(video.getAttribute('src')).toBe('/clip.mp4')
+    expect(video.hasAttribute('playsinline')).toBe(true)
+    expect(video.hasAttribute('controls')).toBe(true)
+    unmount()
+  })
+
+  it('a BARE src name resolves to the bundled asset path', () => {
+    const { container, unmount } = mountTest(h(Video, { src: 'clip.mp4' }))
+    expect((container.firstElementChild as HTMLVideoElement).getAttribute('src')).toBe(
+      '/assets/clip.mp4',
+    )
+    unmount()
+  })
+
+  it('an absolute URL and a path-style src pass through untouched', () => {
+    // The dispatch keys off "looks like a URL or a path"; getting this wrong
+    // silently rewrites a working remote src into a 404 under /assets/.
+    for (const src of ['https://cdn.example.com/a.mp4', 'media/a.mp4']) {
+      const { container, unmount } = mountTest(h(Video, { src }))
+      expect((container.firstElementChild as HTMLVideoElement).getAttribute('src')).toBe(src)
+      unmount()
+    }
+  })
+
+  it('autoplay / loop / muted default OFF and are opt-in', () => {
+    const { container, unmount } = mountTest(h(Video, { src: '/a.mp4' }))
+    const v = container.firstElementChild as HTMLVideoElement
+    expect(v.hasAttribute('autoplay')).toBe(false)
+    expect(v.hasAttribute('loop')).toBe(false)
+    expect(v.hasAttribute('muted')).toBe(false)
+    unmount()
+
+    const on = mountTest(h(Video, { src: '/a.mp4', autoPlay: true, loop: true, muted: true }))
+    const v2 = on.container.firstElementChild as HTMLVideoElement
+    expect(v2.hasAttribute('autoplay')).toBe(true)
+    expect(v2.hasAttribute('loop')).toBe(true)
+    expect(v2.hasAttribute('muted')).toBe(true)
+    on.unmount()
+  })
+
+  it('controls can be turned off', () => {
+    const { container, unmount } = mountTest(h(Video, { src: '/a.mp4', controls: false }))
+    expect((container.firstElementChild as HTMLVideoElement).hasAttribute('controls')).toBe(false)
+    unmount()
+  })
+
+  it('numeric width/height → px; string passes through', () => {
+    const { container, unmount } = mountTest(
+      h(Video, { src: '/a.mp4', width: 320, height: '50%' }),
+    )
+    const v = container.firstElementChild as HTMLVideoElement
+    expect(v.style.width).toBe('320px')
+    expect(v.style.height).toBe('50%')
+    unmount()
+  })
+
+  it('maps the three media events onto onStatusChange', () => {
+    // The whole point of the prop: three DOM event names collapse to one
+    // cross-platform status vocabulary, and `pause` → 'paused' is the rename
+    // most likely to be got wrong.
+    const seen: string[] = []
+    const { container, unmount } = mountTest(
+      h(Video, { src: '/a.mp4', onStatusChange: (s: string) => seen.push(s) }),
+    )
+    const v = container.firstElementChild as HTMLVideoElement
+    for (const type of ['playing', 'pause', 'waiting']) {
+      v.dispatchEvent(new Event(type))
+    }
+    expect(seen).toEqual(['playing', 'paused', 'waiting'])
     unmount()
   })
 })
