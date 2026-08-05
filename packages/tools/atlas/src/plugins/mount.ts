@@ -214,6 +214,30 @@ async function exercise(
   return { id: scenario.id, args, errors, clicks, ...(playFailure ? { playFailure } : {}) }
 }
 
+/**
+ * Mount and dispose a scenario, exercising NOTHING.
+ *
+ * The re-probes ask one question — does retention ACCUMULATE across repeated
+ * mounts — and mounting is the whole of what they need. Reusing `exercise` for
+ * it would re-run the scenario's authored `play`, whose side effects are the
+ * author's and are not idempotent by contract; the long-standing per-scenario
+ * accumulation check has always used a plain mount for exactly this reason, and
+ * a probe that quietly replays a form submission is not a probe.
+ *
+ * Cheaper too, but that is the smaller half.
+ */
+function probeMount(
+  dom: DomEnv,
+  runtime: MountRuntime,
+  component: ComponentRef,
+  args: Record<string, unknown>,
+  wrapper: ComponentRef | undefined,
+): void {
+  let mounted: MountedScenario | undefined = mountScenario(dom, runtime, component, args, wrapper)
+  mounted.dispose()
+  mounted = undefined
+}
+
 /** The interaction verdict for one exercised scenario. */
 function interactionVerdict(ex: Exercised, hasWrapper: boolean): VerifyCheck {
   if (ex.errors.length === 0 && !ex.playFailure) {
@@ -478,9 +502,10 @@ export function mountPlugin(options: MountPluginOptions = {}): AtlasPlugin {
       const tRe = PROFILE ? performance.now() : 0
       for (const ci of mountable) {
         for (const scenario of ci.scenarios) {
-          // Verdicts discarded: the first pass already recorded what each
-          // scenario did, and this is only a probe of whether it accumulates.
-          await exercise(dom, rt, ci.component as ComponentRef, scenario, options.wrapper)
+          // A plain mount, not `exercise`: this only asks whether retention
+          // accumulates, and re-running the scenario's authored `play` to find
+          // out would replay its side effects.
+          probeMount(dom, rt, ci.component as ComponentRef, scenario.args ?? {}, options.wrapper)
         }
       }
       const again = await settleGraph(graphSize, gc, after)
@@ -601,10 +626,10 @@ export function mountPlugin(options: MountPluginOptions = {}): AtlasPlugin {
       // own — and it is why the warm-up above no longer needs its own settle.
       const tRe = PROFILE ? performance.now() : 0
       for (const s of batch) {
-        // The verdicts from this pass are discarded: the first pass already
-        // recorded what each scenario did, and re-running is only a probe of
-        // whether retention ACCUMULATES.
-        await exercise(dom.env, runtime, component, s, options.wrapper)
+        // A plain mount, not `exercise` — see `probeMount`. This asks only
+        // whether retention accumulates, and re-running the scenario's authored
+        // `play` to find out would replay its side effects.
+        probeMount(dom.env, runtime, component, s.args ?? {}, options.wrapper)
       }
       const again = await settleGraph(graphSize!, gc!, after)
       step('settleGraph(batch re-probe)', tRe)

@@ -170,6 +170,37 @@ describe('the catalog-wide leak pass', () => {
     }
   })
 
+  it('never replays an authored `play` when probing for accumulation', async () => {
+    // A re-probe asks one question — does retention ACCUMULATE — and mounting
+    // is the whole of what it needs. Answering it by re-running the scenario
+    // instead would replay the author's `play`, whose side effects are theirs
+    // and are not idempotent by contract: a probe that submits a form twice is
+    // not a probe. The long-standing per-scenario accumulation check has always
+    // used a plain mount, and the wide passes must match it.
+    //
+    // Driven on a DIRTY catalog, because that is the only path that probes.
+    let plays = 0
+    const play = async () => {
+      plays += 1
+    }
+    const withPlay = {
+      ...componentFor('Played', ['p-1']),
+      scenarios: [{ ...scenarioFor('p-1'), play }],
+    } as unknown as ComponentIntelligence
+
+    // The retention must appear AFTER the baseline is taken, or the warm-up
+    // absorbs it and the group reads clean — in which case no probe runs and
+    // this asserts nothing. Two components means two warm-up mounts, so the
+    // jump is scripted past them: flat through the baseline, raised for the
+    // exercise pass, then flat again so the probe reads "not accumulating".
+    const WARMUPS = 2
+    const { runtime, state } = scriptedRuntime((mounts) => (mounts > WARMUPS ? 3 : 0))
+    await verifyAll(runtime, [withPlay, componentFor('Other', ['o-1'])])
+    // The probe must actually have run, or the assertion below is vacuous.
+    expect(state.mounts).toBeGreaterThan(WARMUPS + 2)
+    expect(plays).toBe(1)
+  })
+
   it('SKIPS the wide pass when no leak verdict is possible at all', async () => {
     // No GC hook: the leak check cannot make its claim, so it must skip with a
     // reason rather than fabricate a pass — and the wide pass must not swallow
