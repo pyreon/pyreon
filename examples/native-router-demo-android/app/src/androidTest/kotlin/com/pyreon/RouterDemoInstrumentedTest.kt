@@ -1053,6 +1053,8 @@ class RouterDemoInstrumentedTest {
                 .fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithTag("video-status").assertTextEquals("Video: playing")
+    }
+
     // Platform APIs — app LIFECYCLE through the REAL Activity lifecycle. The
     // lifecycle page renders the STICKY wasBackgrounded flag;
     // rememberPyreonAppState() observes the hosting Activity via a
