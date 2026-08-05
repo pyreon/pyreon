@@ -59,7 +59,7 @@ interface ReactiveTextStep {
   markerIndex: number
 }
 
-export type PlanStep = ElementStep | ReactiveTextStep
+type PlanStep = ElementStep | ReactiveTextStep
 
 export interface RowPlan {
   rootTag: string
