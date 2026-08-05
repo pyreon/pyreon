@@ -1062,9 +1062,20 @@ class RouterDemoInstrumentedTest {
     // (the never-wired class) can never reach.
     @Test
     fun appLifecycleBackgroundingSetsStickyFlag() {
+        val instr = InstrumentationRegistry.getInstrumentation()
         composeRule.onNodeWithTag("home-page").assertIsDisplayed()
-        composeRule.onNodeWithText("View lifecycle").performClick()
-        composeRule.onNodeWithTag("lifecycle-page").assertIsDisplayed()
+        // Navigate via the deep-link seam, NOT the home button: the button
+        // sits LAST in a non-scrollable column and the emulator's fold falls
+        // right before it (clicking a below-fold node is a silent no-op tap —
+        // exactly how "View http" failed when the lifecycle button displaced
+        // it). The deep-link path is itself device-proven by
+        // deepLinkRoutesToTheAppAndNavigatesTheLiveRouter above.
+        instr.runOnMainSync {
+            com.pyreon.router.PyreonDeepLink.receive(Uri.parse("pyreondemo://lifecycle"))
+        }
+        composeRule.waitUntil(timeoutMillis = 15_000) {
+            composeRule.onAllNodesWithTag("lifecycle-page").fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithTag("bg-flag").assertTextEquals("BG: false")
 
         composeRule.activityRule.scenario.moveToState(Lifecycle.State.CREATED)

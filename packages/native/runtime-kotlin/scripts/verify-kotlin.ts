@@ -1369,6 +1369,9 @@ try {
           composeInteropPath,
           videoContextPath,
           composePlatformPath,
+        ]
+      : []
+
   // PyreonAppStateAndroid: the androidx.lifecycle mirror + a bare Context +
   // the Compose platform LocalContext + the CORE sibling (the composable
   // returns PyreonAppState and drives update()).
