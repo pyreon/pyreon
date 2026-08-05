@@ -546,7 +546,6 @@ function hydrateElement(
     (domNode as Element).tagName.toLowerCase() === vnode.type
   ) {
     const el = domNode as Element
-    const cleanups: Cleanup[] = []
 
     // Attach props (events + reactive effects); static attrs are already in the
     // SSR DOM. `<select value>` is deferred until after children hydrate (PZ-09):
@@ -554,19 +553,19 @@ function hydrateElement(
     // after `hydrateChildren` guarantees the assignment sees the FINAL list.
     const isSelect = vnode.type === 'select'
     const propCleanup = applyProps(el, vnode.props, isSelect ? 'value' : undefined)
-    if (propCleanup) cleanups.push(propCleanup)
 
     // Hydrate children. Fast path: an ELEMENT first-child is always "real"
     // (firstReal returns it untouched) — skip the scan for the dominant case.
     const fc = el.firstChild as ChildNode | null
     const firstChild = fc !== null && fc.nodeType === 1 ? fc : firstReal(fc)
     const [childCleanup] = hydrateChildren(vnode.children ?? [], firstChild, el, null, elPath)
-    cleanups.push(childCleanup)
 
-    if (isSelect && 'value' in vnode.props) {
-      const valueCleanup = applySelectValueProp(el, vnode.props)
-      if (valueCleanup) cleanups.push(valueCleanup)
-    }
+    // The cleanup slots are statically known (props / children / select-value /
+    // ref) — compose the disposer over locals instead of allocating + pushing a
+    // cleanups array per element (~1 array + N pushes for every hydrated
+    // element; the dominant td/tr case carries only childCleanup [+propCleanup]).
+    const valueCleanup =
+      isSelect && 'value' in vnode.props ? applySelectValueProp(el, vnode.props) : null
 
     // Set ref
     const ref = vnode.props.ref as RefProp<Element> | undefined
@@ -580,7 +579,9 @@ function hydrateElement(
         if (typeof ref === 'function') ref(null)
         else ref.current = null
       }
-      for (const c of cleanups) c()
+      if (propCleanup) propCleanup()
+      childCleanup()
+      if (valueCleanup) valueCleanup()
       el.remove()
     }
 
