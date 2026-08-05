@@ -1,5 +1,19 @@
 # zero-cli
 
+## 0.51.0
+
+### Patch Changes
+
+- [#2478](https://github.com/pyreon/pyreon/pull/2478) [`c20686b`](https://github.com/pyreon/pyreon/commit/c20686b3095e292ed297e19cc56b64846a032d44) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `zero doctor`: register + forward the `--full` flag so the `audit-types` and
+  `bundle-budgets` gates (which the tool lists under "enable with --full") are
+  actually reachable. Previously `zero doctor --full` crashed with an uncaught
+  `CACError: Unknown option --full`. Also catch cac argv errors so any unknown
+  option prints a friendly usage hint instead of a raw stack trace.
+- Updated dependencies [[`f7835ed`](https://github.com/pyreon/pyreon/commit/f7835ed8e3027165c7a8eda93d624fc8ac0526ff), [`a26f5f0`](https://github.com/pyreon/pyreon/commit/a26f5f0606e78121628f6dfd4363787c9540b0f9), [`2908ca9`](https://github.com/pyreon/pyreon/commit/2908ca95a1b8d1e50423b1d9e88f22e347b9ac30), [`7ce09ad`](https://github.com/pyreon/pyreon/commit/7ce09ad3ed844f4b71145d106d27868320bbf6cc), [`3b2893e`](https://github.com/pyreon/pyreon/commit/3b2893e2eb812e49c16e47fb42e433f6fb3a0d2c), [`a961be8`](https://github.com/pyreon/pyreon/commit/a961be854606494a24b075a14cde36b73bd6e5b0), [`19ee507`](https://github.com/pyreon/pyreon/commit/19ee507df579bcf719ab385b0b60ea64e587e731), [`4e53471`](https://github.com/pyreon/pyreon/commit/4e53471d6f92266bbf6a84f35eea6cf58fb529e3), [`e6ff11f`](https://github.com/pyreon/pyreon/commit/e6ff11f6a539b60c5d6ddc634ff4940feedca8f8), [`0df82be`](https://github.com/pyreon/pyreon/commit/0df82be98788dfbfec3d324ecc102e8bb05fa07e), [`175a232`](https://github.com/pyreon/pyreon/commit/175a2322a14818730f3a32ad7a4a68e34b5a7a2c)]:
+  - @pyreon/cli@0.51.0
+  - @pyreon/zero@0.51.0
+  - @pyreon/create-zero@0.51.0
+
 ## 0.50.0
 
 ### Patch Changes

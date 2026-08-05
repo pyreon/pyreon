@@ -1,5 +1,62 @@
 # @pyreon/primitives
 
+## 0.51.0
+
+### Minor Changes
+
+- [#2510](https://github.com/pyreon/pyreon/pull/2510) [`7417fdb`](https://github.com/pyreon/pyreon/commit/7417fdbff839c0bbdcd8ab92c5d5d1ea85fd228c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add `useNativeModule` / `defineNativeModule` — the FFI escape hatch for user-defined native modules.
+
+  Platform services were previously recognised by hard-coded hook name inside the PMTC compiler, so adding any capability the framework did not ship (Bluetooth, ARKit, a payments or analytics SDK) required a framework PR. `<NativeIOS>` / `<NativeAndroid>` did not help: they compile their children through the normal canonical-primitive path, so they BRANCH between platforms rather than hosting raw platform code.
+
+  `useNativeModule<T>('Name')` lowers to an instance of a class the app provides — `Name()` on iOS, `Name(context)` on Android — and passes member calls through verbatim, so the platform compiler type-checks the surface. `await mod.method()` composes with the existing async lowering with no extra machinery. On web the same call resolves the implementation registered by `defineNativeModule`, so one source still runs on all three targets; `hasNativeModule` feature-gates without throwing.
+
+  The module name must be a string literal at the call site and a valid identifier (it is emitted verbatim as a native type name); anything else is a named compiler warning and the declaration is skipped rather than mis-emitted.
+
+  Device-proven on iOS (XCUITest asserts a value produced by an app-provided `DeviceInfo` Swift class) with the Android half asserted in the Compose instrumented test.
+
+- [#2614](https://github.com/pyreon/pyreon/pull/2614) [`9154c8a`](https://github.com/pyreon/pyreon/commit/9154c8aca81ce858ef99b213564af870c378f37f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<Press>` gains the swipe vocabulary: `onSwipeLeft` / `onSwipeRight` fire on a horizontally-dominant ≥40px pointer delta. On web a pointer-delta polyfill (a swipe suppresses the same gesture's click, so one gesture is never both a swipe and a press); via PMTC, iOS lowers to a simultaneous `DragGesture` (taps still fire `onPress`) and Android to `pointerInput { detectHorizontalDragGestures }` (direction-locked — taps and vertical scrolls pass through).
+
+- [#2697](https://github.com/pyreon/pyreon/pull/2697) [`5ca9b4c`](https://github.com/pyreon/pyreon/commit/5ca9b4c010049fb9a80efc3ccce68bcc61a8eb6c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<Video src autoPlay? loop? muted? controls? onStatusChange?>` — the canonical video-playback primitive. Web `<video>` (playsinline, media events → `onStatusChange`); iOS `PyreonVideoPlayer` (AVKit `VideoPlayer` over `AVPlayer`, KVO `timeControlStatus` → the same `waiting`/`playing`/`paused` vocabulary); Android `PyreonVideoPlayer` (Media3 ExoPlayer in an `AndroidView`, `Player.Listener`). The create-multiplatform Android template gains the media3 artifacts — and the okhttp artifact the runtime srcDir has required since the networking arc (absent from the template, masked because scaffolds install the runtime from npm, which lagged the workspace; the next release would have shipped scaffolded Android apps uncompilable).
+
+### Patch Changes
+
+- [#2720](https://github.com/pyreon/pyreon/pull/2720) [`3c79989`](https://github.com/pyreon/pyreon/commit/3c79989c620e18651bfa82af7351eae60ab705a9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Tests for the two modules that landed under-covered today and turned `Coverage (Full)` red on every main run.
+
+  `<Video>` (the canonical media primitive) shipped at 8.33% statements, dragging `@pyreon/primitives` to 96.78% against its 99% gate. It now has happy-dom coverage for the whole contract: src dispatch (bare name → bundled asset, absolute URL and path-style pass through untouched), the autoplay/loop/muted defaults, unconditional `playsinline`, dimension resolution, and the three-media-event → `onStatusChange` mapping where `pause` → `'paused'` is the rename most likely to be got wrong. 96.78% → 99.73%.
+
+  `hydration-plan.ts` (row-plan replay hydration) shipped at 72.57% statements / 59.34% branches. The new tests target its BAIL contract, which is where a fast path's correctness actually lives — every row shape outside the supported grammar must be refused rather than half-understood — plus `tplAdoptVerify`. 72.57% → 78%.
+
+- [#2612](https://github.com/pyreon/pyreon/pull/2612) [`19ee507`](https://github.com/pyreon/pyreon/commit/19ee507df579bcf719ab385b0b60ea64e587e731) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `@pyreon/loom`: the phantom detector now recognizes the DefinitelyTyped
+  pattern (a declared `@types/x` twin satisfies a type-only import of `x`,
+  scoped names included), the lexical scanner requires the import KEYWORD to
+  sit in code (a `from '…'` inside a string — rule messages, fix catalogs,
+  generated examples — never scans as an import), subtrees with their own
+  package.json are separate units, and a root `loom.ignore` (reason
+  REQUIRED) downgrades findings to info with the reason attached — never a
+  silent drop.
+
+  The other packages: devDependency range alignment only (same-major sync
+  surfaced by `loom scan`); no runtime change.
+
+- [#2642](https://github.com/pyreon/pyreon/pull/2642) [`4e53471`](https://github.com/pyreon/pyreon/commit/4e53471d6f92266bbf6a84f35eea6cf58fb529e3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Every package manifest now declares its MULTIPLATFORM story as data:
+  `multiplatform: { tier: 'shared' | 'service-backend' | 'web-only', rationale }`
+  (a discriminated union — `web-only` REQUIRES the rationale sentence). The
+  assignments transcribe the classification the multiplatform docs and the PMTC
+  compiler's own `WEB_ONLY_PACKAGES` registry already maintain, and the new
+  `check-multiplatform-tier` gate (validate-fast family) holds the contract:
+  a manifest without a tier, a published package with neither manifest nor
+  explicit exemption, a `web-only` without a rationale, or a stale generated
+  tier table all fail CI — so a new package can never again silently default
+  to web-only while the ecosystem advertises "one codebase, three targets".
+
+  No runtime change in any package: manifests are docs-pipeline inputs and are
+  stripped from published tarballs; every generated surface (llms, MCP
+  api-reference, reference pages) is byte-identical.
+
+- Updated dependencies [[`9729e91`](https://github.com/pyreon/pyreon/commit/9729e91111b7d5c1414d7df5d7ed0080a904eee8), [`39610a7`](https://github.com/pyreon/pyreon/commit/39610a7457903d8fc8e05d4099173ce23d261203), [`4e53471`](https://github.com/pyreon/pyreon/commit/4e53471d6f92266bbf6a84f35eea6cf58fb529e3), [`83fc05a`](https://github.com/pyreon/pyreon/commit/83fc05ab940a01f69f21ed5fad1aa4b5fcfde7ce), [`abd71ef`](https://github.com/pyreon/pyreon/commit/abd71efb3b21a1b86b2aabd625ea2198cc9354c9)]:
+  - @pyreon/reactivity@0.51.0
+  - @pyreon/core@0.51.0
+
 ## 0.50.0
 
 ### Patch Changes

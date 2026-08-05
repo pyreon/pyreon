@@ -1,5 +1,71 @@
 # @pyreon/toast
 
+## 0.51.0
+
+### Patch Changes
+
+- [#2642](https://github.com/pyreon/pyreon/pull/2642) [`4e53471`](https://github.com/pyreon/pyreon/commit/4e53471d6f92266bbf6a84f35eea6cf58fb529e3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Every package manifest now declares its MULTIPLATFORM story as data:
+  `multiplatform: { tier: 'shared' | 'service-backend' | 'web-only', rationale }`
+  (a discriminated union — `web-only` REQUIRES the rationale sentence). The
+  assignments transcribe the classification the multiplatform docs and the PMTC
+  compiler's own `WEB_ONLY_PACKAGES` registry already maintain, and the new
+  `check-multiplatform-tier` gate (validate-fast family) holds the contract:
+  a manifest without a tier, a published package with neither manifest nor
+  explicit exemption, a `web-only` without a rationale, or a stale generated
+  tier table all fail CI — so a new package can never again silently default
+  to web-only while the ecosystem advertises "one codebase, three targets".
+
+  No runtime change in any package: manifests are docs-pipeline inputs and are
+  stripped from published tarballs; every generated surface (llms, MCP
+  api-reference, reference pages) is byte-identical.
+
+- [#2573](https://github.com/pyreon/pyreon/pull/2573) [`abd71ef`](https://github.com/pyreon/pyreon/commit/abd71efb3b21a1b86b2aabd625ea2198cc9354c9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A reactive accessor was legal as a SOLE child and rejected among MULTIPLE children.
+
+  ```tsx
+  <Text>{count}</Text>          // ✅ sole child — hits the accessor arm
+  <Text>Count: {count}</Text>   // ❌ two children — hits the atoms-only arm
+  ```
+
+  `VNodeChild`'s array arm was `VNodeChildAtom[]` — atoms only — so an accessor
+  could not appear alongside anything else. That is the most common reactive
+  pattern there is, and it failed on the canonical `@pyreon/primitives` while the
+  IDENTICAL shape on a DOM element compiled, because the JSX runtime already types
+  children as `VNodeChild | VNodeChild[]`.
+
+  `mountChild` has always mounted accessors anywhere in a children array. Only the
+  type disagreed, which is why nothing broke at runtime and nothing caught it.
+
+  FIXED AT THE ROOT, and the first attempt is worth recording because the failure
+  was the useful signal. Widening `ChildrenProp` in the primitives broke ELEVEN
+  internal `h()` call sites; that read like "the narrow type is load-bearing" but
+  actually meant "you are patching a symptom". Widening `VNodeChild` itself needed
+  ZERO call-site changes. 11 vs 0 is the tell.
+
+  Two honest consequences:
+
+  - `VNodeChildAccessor`'s RETURN needed the same widening, or `suspense.ts`
+    could not express its own children (`h(Fragment, null, () => …)`).
+    Deliberately `() => VNodeChildAtom | VNodeChild[]` and NOT `() => VNodeChild`
+    — the latter would also permit an accessor returning an accessor, which the
+    runtime renders as a function rather than unwrapping.
+  - `@pyreon/toast`'s `resolve` carried a comment asserting "a reactive child
+    callback may not RETURN an accessor (it must yield an atom)". This change
+    makes that untrue, so the type was widened to match and the comment
+    corrected rather than cast past.
+
+  Blast radius measured, not assumed: the pre-fix run isolated every failure to
+  ONE real file (toaster.tsx) — the rest were downstream consumers reporting the
+  same line. Whole-monorepo typecheck is clean, `@pyreon/core` 625/625,
+  `@pyreon/toast` 130/130.
+
+  This clears 5 of the 8 remaining type errors in the flagship native counter
+  example, which is how the asymmetry was found.
+
+- Updated dependencies [[`9729e91`](https://github.com/pyreon/pyreon/commit/9729e91111b7d5c1414d7df5d7ed0080a904eee8), [`39610a7`](https://github.com/pyreon/pyreon/commit/39610a7457903d8fc8e05d4099173ce23d261203), [`3c79989`](https://github.com/pyreon/pyreon/commit/3c79989c620e18651bfa82af7351eae60ab705a9), [`4b430ca`](https://github.com/pyreon/pyreon/commit/4b430cac51008cce48606203dd9f874b419e3db0), [`26ae1be`](https://github.com/pyreon/pyreon/commit/26ae1beecd112ef91dc840719bff8934d571e63b), [`5b3442e`](https://github.com/pyreon/pyreon/commit/5b3442e4262cca5f49fcbfc8d83e88861ce3d821), [`9729e91`](https://github.com/pyreon/pyreon/commit/9729e91111b7d5c1414d7df5d7ed0080a904eee8), [`e10f9fc`](https://github.com/pyreon/pyreon/commit/e10f9fc5143e119d02722951df721f3ee9389749), [`19ee507`](https://github.com/pyreon/pyreon/commit/19ee507df579bcf719ab385b0b60ea64e587e731), [`4e53471`](https://github.com/pyreon/pyreon/commit/4e53471d6f92266bbf6a84f35eea6cf58fb529e3), [`d82f233`](https://github.com/pyreon/pyreon/commit/d82f233f55fcc57b5d231d09a8b79fcb105c60b7), [`83fc05a`](https://github.com/pyreon/pyreon/commit/83fc05ab940a01f69f21ed5fad1aa4b5fcfde7ce), [`9729e91`](https://github.com/pyreon/pyreon/commit/9729e91111b7d5c1414d7df5d7ed0080a904eee8), [`9729e91`](https://github.com/pyreon/pyreon/commit/9729e91111b7d5c1414d7df5d7ed0080a904eee8), [`abd71ef`](https://github.com/pyreon/pyreon/commit/abd71efb3b21a1b86b2aabd625ea2198cc9354c9)]:
+  - @pyreon/runtime-dom@0.51.0
+  - @pyreon/reactivity@0.51.0
+  - @pyreon/core@0.51.0
+
 ## 0.50.0
 
 ### Patch Changes

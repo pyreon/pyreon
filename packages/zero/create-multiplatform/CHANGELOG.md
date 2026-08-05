@@ -1,5 +1,98 @@
 # @pyreon/create-multiplatform
 
+## 0.51.0
+
+### Patch Changes
+
+- [#2561](https://github.com/pyreon/pyreon/pull/2561) [`1a7c3f0`](https://github.com/pyreon/pyreon/commit/1a7c3f005f3796754efcb6401a491def537a5071) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `npx create-multiplatform --help` exited 1 and printed nothing to stdout.
+
+  `--help` fell through to `parseArgs`, which saw no project name and threw. The
+  usage line went to **stderr** and the process exited **non-zero** — so any
+  script or CI step checking the exit code treated a help request as a failure,
+  and a plain `| grep` saw nothing.
+
+  Every other published Pyreon bin (`pyreon-lint`, `zero`, `create-zero`) already
+  exits 0 on stdout. This one was the outlier, and it is the first command a new
+  user runs.
+
+  `--help` / `-h` now short-circuit before any validation or filesystem work,
+  print usage to stdout, and exit 0. A genuine missing project name still errors
+  exactly as before, and both paths share one usage string so they cannot drift.
+
+  The bin-liveness gate had special-cased this bin — "prints usage to stderr and
+  exits 1 on --help … that IS the liveness signal" — which **encoded** the bug
+  instead of catching it. That special case is removed, so the bin is held to the
+  same bar as every other and a regression fails the gate.
+
+- [#2634](https://github.com/pyreon/pyreon/pull/2634) [`3f1e70e`](https://github.com/pyreon/pyreon/commit/3f1e70e8f31889af858f461b87f78346ed5cfb7c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Drop the "native toolchain is not published, `npm install` will 404" notice —
+  it ships in the same release that publishes the toolchain, so from this version
+  on the notice would be the lie in the other direction.
+
+  While `@pyreon/native-cli` and the Swift/Kotlin runtimes were `private: true`,
+  the scaffolder deliberately warned after every scaffold and in the emitted
+  README that the native targets could not be built from a standalone checkout.
+  The stack is now publishable and rides the same fixed release group as this
+  package, so the published `create-multiplatform` and the packages it declares
+  always appear on npm together. The terminal notice is replaced by a one-line
+  pointer to `npm run build:ios` / `build:android`; the README's warning block is
+  replaced by the working contract (everything installs from npm; native builds
+  need the local platform SDKs — Xcode + xcodegen, Android SDK + Gradle).
+
+  The installability ratchet stays: `scaffold-deps-installable.test.ts` still
+  fails if any scaffolded `@pyreon/*` dependency is `private: true` in the
+  workspace, and its README assertion now checks the stale warning can never
+  come back (bisect-verified — restoring the old README fails exactly that
+  spec).
+
+- [#2535](https://github.com/pyreon/pyreon/pull/2535) [`624a51e`](https://github.com/pyreon/pyreon/commit/624a51e5efb2db8de337cf75f5f7e05f741543e5) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A scaffolded multiplatform app cannot `npm install`.
+
+  `@pyreon/create-multiplatform` is PUBLISHED — it is what `pyreon new --native`
+  npx-runs — and the app it emits depends on five packages that are
+  `"private": true` in this workspace and therefore absent from npm:
+  `native-cli`, `native-runtime-swift`, `native-router-swift`,
+  `native-runtime-kotlin`, `native-router-kotlin`.
+
+  Verified against the registry: all five 404, while the web deps the same
+  scaffold emits (`core`, `primitives`, `reactivity`, `vite-plugin`) resolve at
+  0.50.0. The scaffolder's own closing line — "next: cd <dir> && npm install &&
+  npm run dev" — fails at step one for anyone outside this repo.
+
+  Nothing caught it. The scaffold-compile gate drives the WORKSPACE compiler
+  directly, and the unit tests assert the emitted file list; neither asks whether
+  the emitted package.json describes an installable app.
+
+  The scaffolder and the scaffolded README now SAY so — the terminal prints a
+  notice after every scaffold, and the README leads with a status block naming
+  what works (web), what does not (native), why (`npm install` 404s on the
+  unpublished toolchain, and the compiler is private too so nothing can be
+  vendored), and the path that does work (a workspace checkout). A scaffolder
+  that prints instructions it knows cannot succeed is worse than one that says
+  nothing.
+
+  This also adds the check. It does not fix the cause: publishing those packages is a
+  release decision, and they are private deliberately. So the five are listed
+  explicitly, the list may only SHRINK, and what is enforced today is that no
+  SIXTH unpublished dependency joins them silently — plus the converse, that the
+  web deps which DO resolve stay publishable.
+
+- [#2524](https://github.com/pyreon/pyreon/pull/2524) [`60073d2`](https://github.com/pyreon/pyreon/commit/60073d22b00d0ce80869cd9406c749b8d87c2e4e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Document the `useNativeModule` escape hatch in the scaffolded README.
+
+  A new multiplatform app had no indication that it can add a platform capability
+  the framework does not ship — Bluetooth, ARKit, a vendor SDK — so the natural
+  conclusion from the scaffold was that the built-in hook set is the ceiling and a
+  missing capability means waiting for a framework release.
+
+  The scaffolded README now shows the shape end to end: `defineNativeModule` for
+  the web implementation, `useNativeModule` at the call site, and the two platform
+  halves with the contract that is easy to get wrong (a NO-ARGUMENT initialiser on
+  Swift, a SINGLE `Context` parameter on Kotlin, and the Kotlin class declared in
+  the generated sources' package since the emit references it unqualified).
+
+  Locked by a test asserting the README carries the contract, not just the name —
+  bisect-verified.
+
+- [#2697](https://github.com/pyreon/pyreon/pull/2697) [`5ca9b4c`](https://github.com/pyreon/pyreon/commit/5ca9b4c010049fb9a80efc3ccce68bcc61a8eb6c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<Video src autoPlay? loop? muted? controls? onStatusChange?>` — the canonical video-playback primitive. Web `<video>` (playsinline, media events → `onStatusChange`); iOS `PyreonVideoPlayer` (AVKit `VideoPlayer` over `AVPlayer`, KVO `timeControlStatus` → the same `waiting`/`playing`/`paused` vocabulary); Android `PyreonVideoPlayer` (Media3 ExoPlayer in an `AndroidView`, `Player.Listener`). The create-multiplatform Android template gains the media3 artifacts — and the okhttp artifact the runtime srcDir has required since the networking arc (absent from the template, masked because scaffolds install the runtime from npm, which lagged the workspace; the next release would have shipped scaffolded Android apps uncompilable).
+
 ## 0.50.0
 
 ## 0.49.0

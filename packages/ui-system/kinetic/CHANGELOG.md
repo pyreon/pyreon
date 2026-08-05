@@ -1,5 +1,42 @@
 # @pyreon/kinetic
 
+## 0.51.0
+
+### Minor Changes
+
+- [#2622](https://github.com/pyreon/pyreon/pull/2622) [`b315e7a`](https://github.com/pyreon/pyreon/commit/b315e7a01ca87a8931192d8b2ee02388c8aac08b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add asymmetric enter/leave transition timing, and give the numeric timing vocabulary a web implementation it never had.
+
+  `<Transition>` gains `enterDuration` / `leaveDuration` (and `enterEasing` / `leaveEasing`), each falling back to the symmetric `duration` / `easing`. "Quick in, slow out" is the common real shape and had no expression on any target before this.
+
+  - **Web (`@pyreon/kinetic`)**: `duration` / `easing` were never typed at all, so the numeric timing both native targets had honoured since the config arc was silently ignored in a browser — one shared source animating over 2.5s on a phone and over the CSS default on the web. `TransitionProps` now carries the timing vocabulary and synthesizes the CSS shorthand from it; an explicit `enterTransition` / `leaveTransition` still wins, so nothing that already worked changes.
+  - **Swift**: lowers to `.transition(.asymmetric(insertion:removal:))` with a per-side `AnyTransition.animation(_:)`. The symmetric shape is untouched, byte for byte.
+  - **Compose**: separate `fadeIn` / `fadeOut` tween specs.
+
+  Also brings the Swift `AnyTransition` validation stub up to the real SwiftUI surface (`asymmetric` and the per-side `animation(_:)` were missing), which failed an emit the real SDK accepts.
+
+### Patch Changes
+
+- [#2642](https://github.com/pyreon/pyreon/pull/2642) [`4e53471`](https://github.com/pyreon/pyreon/commit/4e53471d6f92266bbf6a84f35eea6cf58fb529e3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Every package manifest now declares its MULTIPLATFORM story as data:
+  `multiplatform: { tier: 'shared' | 'service-backend' | 'web-only', rationale }`
+  (a discriminated union — `web-only` REQUIRES the rationale sentence). The
+  assignments transcribe the classification the multiplatform docs and the PMTC
+  compiler's own `WEB_ONLY_PACKAGES` registry already maintain, and the new
+  `check-multiplatform-tier` gate (validate-fast family) holds the contract:
+  a manifest without a tier, a published package with neither manifest nor
+  explicit exemption, a `web-only` without a rationale, or a stale generated
+  tier table all fail CI — so a new package can never again silently default
+  to web-only while the ecosystem advertises "one codebase, three targets".
+
+  No runtime change in any package: manifests are docs-pipeline inputs and are
+  stripped from published tarballs; every generated surface (llms, MCP
+  api-reference, reference pages) is byte-identical.
+
+- Updated dependencies [[`9729e91`](https://github.com/pyreon/pyreon/commit/9729e91111b7d5c1414d7df5d7ed0080a904eee8), [`39610a7`](https://github.com/pyreon/pyreon/commit/39610a7457903d8fc8e05d4099173ce23d261203), [`3c79989`](https://github.com/pyreon/pyreon/commit/3c79989c620e18651bfa82af7351eae60ab705a9), [`4b430ca`](https://github.com/pyreon/pyreon/commit/4b430cac51008cce48606203dd9f874b419e3db0), [`26ae1be`](https://github.com/pyreon/pyreon/commit/26ae1beecd112ef91dc840719bff8934d571e63b), [`5b3442e`](https://github.com/pyreon/pyreon/commit/5b3442e4262cca5f49fcbfc8d83e88861ce3d821), [`9729e91`](https://github.com/pyreon/pyreon/commit/9729e91111b7d5c1414d7df5d7ed0080a904eee8), [`e10f9fc`](https://github.com/pyreon/pyreon/commit/e10f9fc5143e119d02722951df721f3ee9389749), [`19ee507`](https://github.com/pyreon/pyreon/commit/19ee507df579bcf719ab385b0b60ea64e587e731), [`4e53471`](https://github.com/pyreon/pyreon/commit/4e53471d6f92266bbf6a84f35eea6cf58fb529e3), [`d82f233`](https://github.com/pyreon/pyreon/commit/d82f233f55fcc57b5d231d09a8b79fcb105c60b7), [`83fc05a`](https://github.com/pyreon/pyreon/commit/83fc05ab940a01f69f21ed5fad1aa4b5fcfde7ce), [`9729e91`](https://github.com/pyreon/pyreon/commit/9729e91111b7d5c1414d7df5d7ed0080a904eee8), [`9729e91`](https://github.com/pyreon/pyreon/commit/9729e91111b7d5c1414d7df5d7ed0080a904eee8), [`abd71ef`](https://github.com/pyreon/pyreon/commit/abd71efb3b21a1b86b2aabd625ea2198cc9354c9)]:
+  - @pyreon/runtime-dom@0.51.0
+  - @pyreon/reactivity@0.51.0
+  - @pyreon/core@0.51.0
+  - @pyreon/sized-map@0.51.0
+
 ## 0.50.0
 
 ### Patch Changes

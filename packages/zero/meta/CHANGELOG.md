@@ -1,5 +1,78 @@
 # @pyreon/meta
 
+## 0.51.0
+
+### Minor Changes
+
+- [#2709](https://github.com/pyreon/pyreon/pull/2709) [`175a232`](https://github.com/pyreon/pyreon/commit/175a2322a14818730f3a32ad7a4a68e34b5a7a2c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Migrate to TanStack Table v9.
+
+  **`useTable` now returns the `Table` instance directly** instead of `Computed<Table>` — there is no `table()` call. v9 exposes a pluggable reactivity seam (`coreReactivityFeature`) and the adapter backs its atoms with Pyreon signals, so reading the table inside any reactive scope subscribes natively. The v8 version counter, the whole-`TableState` structural diff, and the `onStateChange` interception all existed only because v8 had no such seam; they are gone.
+
+  **Features must now be registered explicitly.** v9 exposes an API only when its feature is present, and row models are feature slots rather than options: `getCoreRowModel()` is automatic (delete it), and the rest become `tableFeatures({ rowSortingFeature, sortedRowModel: createSortedRowModel(), … })`. Define the set once at module scope — it is a compile-time type parameter. Note `row.getVisibleCells()` requires `columnVisibilityFeature`.
+
+  **Core types take a leading `TFeatures` generic** (`ColumnDef<typeof features, User>`), `table.getState()` → `table.store.state`, top-level `onStateChange` → per-slice `on<Slice>Change` (supplying one puts that slice in controlled mode), column pinning is logical (`start`/`end`, not `left`/`right`), `sortingFn` → `sortFn`, and `getIsSomeRowsSelected()` now means "at least one" including all-selected.
+
+  **The runtime re-export surface is now an explicit curated list rather than `export *`.** Under the wildcard, table-core's public surface was literally ours — an upstream major retired 40 of 51 runtime exports and leaked internals (`noop`, `getMemoOptions`, `_getVisibleLeafColumns`). The curated list covers the full author surface (all 16 features, every row model and built-in fn) while keeping adapter-construction plumbing out; types are still re-exported wholesale. A future upstream major is now our migration rather than yours.
+
+  `@pyreon/feature`'s `useTable` gains a fix along the way: `pageSize` was typed-but-unimplemented under v8 — it was read only as a boolean and its value discarded, so `pageSize: 25` silently paged by 10. It now sets the initial page size, and an unpaginated table is unpaginated (rather than truncated to v9's default of 10).
+
+  Fine-grained per-cell updates are preserved and verified: a single-cell edit still re-runs only the changed row's cells (6 cell units, 1 DOM write at both N=100 and N=1000 — matching hand-memoized react-table with no memo boilerplate). See the migration section in the table docs for a before/after.
+
+  `flexRender` and `flexRenderCell` now return a resolved-child type instead of `unknown`/`VNodeChild`. `VNodeChild` includes the accessor arm, so returning it made Pyreon's own documented `<td>{() => flexRenderCell(…)}</td>` pattern a nested accessor that the type system rejected; both functions always return already-resolved content, and the narrower type says so. `{flexRender(…)}` now typechecks directly in JSX.
+
+### Patch Changes
+
+- [#2659](https://github.com/pyreon/pyreon/pull/2659) [`3017511`](https://github.com/pyreon/pyreon/commit/30175115cb150beeca64d94d2d62f5dae7c0b0a6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `@pyreon/hooks`: add the missing SSR-guard coverage annotations to the native
+  hooks (`useAppState`, `useBiometrics`, `useDatabase`, `useFilePicker`,
+  `useGeolocation`, `useImagePicker`). Comment-only — no runtime change. The arms
+  they mark are unreachable from a node+happy-dom run, so they were counted
+  against a threshold they could never satisfy in that environment; marking them
+  is what lets the package hold a real 99% bar instead of quietly sitting under
+  it. Ships alongside genuine new tests for the same hooks: the `useAppState`
+  listener cleanup (leak class D), `useDatabase`'s persistence-degradation
+  contracts, `useBiometrics`, and `useMap.setCamera`.
+
+  `@pyreon/meta`: run its tests on vitest instead of `bun test`. All 149 tests
+  already passed under vitest and the package already had a `vitest.config.ts` —
+  only the `test` script was never switched, which meant it emitted Bun's coverage
+  format and the coverage gate could not read it at all.
+
+- Updated dependencies [[`b315e7a`](https://github.com/pyreon/pyreon/commit/b315e7a01ca87a8931192d8b2ee02388c8aac08b), [`f07aa78`](https://github.com/pyreon/pyreon/commit/f07aa783dbb784398f9302046147bb3d05a1e746), [`9729e91`](https://github.com/pyreon/pyreon/commit/9729e91111b7d5c1414d7df5d7ed0080a904eee8), [`39610a7`](https://github.com/pyreon/pyreon/commit/39610a7457903d8fc8e05d4099173ce23d261203), [`a0c0555`](https://github.com/pyreon/pyreon/commit/a0c05555d075d30605188a9d4c4afe2661ab796e), [`77eaf81`](https://github.com/pyreon/pyreon/commit/77eaf81469ad4a00ae55fcb328e83d67b508d157), [`a0c0555`](https://github.com/pyreon/pyreon/commit/a0c05555d075d30605188a9d4c4afe2661ab796e), [`77eaf81`](https://github.com/pyreon/pyreon/commit/77eaf81469ad4a00ae55fcb328e83d67b508d157), [`3017511`](https://github.com/pyreon/pyreon/commit/30175115cb150beeca64d94d2d62f5dae7c0b0a6), [`cd442ea`](https://github.com/pyreon/pyreon/commit/cd442eaf03af2a7c4b91481d5273d900a0f3478f), [`0b5ce4c`](https://github.com/pyreon/pyreon/commit/0b5ce4c53128389ebfda73f986c9dc1436f4c048), [`331c206`](https://github.com/pyreon/pyreon/commit/331c2069528bebfa806950cdcb48aef77aedd640), [`a0c0555`](https://github.com/pyreon/pyreon/commit/a0c05555d075d30605188a9d4c4afe2661ab796e), [`6c05ef0`](https://github.com/pyreon/pyreon/commit/6c05ef0561747c7b75cd8f5123c8bfc5fe98234a), [`3b2893e`](https://github.com/pyreon/pyreon/commit/3b2893e2eb812e49c16e47fb42e433f6fb3a0d2c), [`19ee507`](https://github.com/pyreon/pyreon/commit/19ee507df579bcf719ab385b0b60ea64e587e731), [`4e53471`](https://github.com/pyreon/pyreon/commit/4e53471d6f92266bbf6a84f35eea6cf58fb529e3), [`25b5f5a`](https://github.com/pyreon/pyreon/commit/25b5f5a2374c3a9cecabb478a8b1c2cf62d1d23c), [`83fc05a`](https://github.com/pyreon/pyreon/commit/83fc05ab940a01f69f21ed5fad1aa4b5fcfde7ce), [`8c7d231`](https://github.com/pyreon/pyreon/commit/8c7d2313d713f7aa46a37ce827852339f71180ad), [`cfd2e8c`](https://github.com/pyreon/pyreon/commit/cfd2e8cdad8a0025c79b3638ab829d490a7f675d), [`9590027`](https://github.com/pyreon/pyreon/commit/9590027d8358321a0509b9cbb87d7f30858db442), [`9154c8a`](https://github.com/pyreon/pyreon/commit/9154c8aca81ce858ef99b213564af870c378f37f), [`175a232`](https://github.com/pyreon/pyreon/commit/175a2322a14818730f3a32ad7a4a68e34b5a7a2c), [`abd71ef`](https://github.com/pyreon/pyreon/commit/abd71efb3b21a1b86b2aabd625ea2198cc9354c9), [`2334088`](https://github.com/pyreon/pyreon/commit/2334088c71d296cce45f02c88b53606e49e69c19), [`e610e59`](https://github.com/pyreon/pyreon/commit/e610e59d56031687cd7dccad653019b441983b4b), [`f7541e0`](https://github.com/pyreon/pyreon/commit/f7541e01455a56fb2ef8bf23d17909199ecc5c5a), [`834523b`](https://github.com/pyreon/pyreon/commit/834523bddd6ce81e852360bc339805a6b095c419)]:
+  - @pyreon/kinetic@0.51.0
+  - @pyreon/ui-core@0.51.0
+  - @pyreon/rocketstyle@0.51.0
+  - @pyreon/reactivity@0.51.0
+  - @pyreon/charts@0.51.0
+  - @pyreon/code@0.51.0
+  - @pyreon/hooks@0.51.0
+  - @pyreon/elements@0.51.0
+  - @pyreon/feature@0.51.0
+  - @pyreon/flow@0.51.0
+  - @pyreon/document@0.51.0
+  - @pyreon/dnd@0.51.0
+  - @pyreon/form@0.51.0
+  - @pyreon/hotkeys@0.51.0
+  - @pyreon/i18n@0.51.0
+  - @pyreon/machine@0.51.0
+  - @pyreon/permissions@0.51.0
+  - @pyreon/query@0.51.0
+  - @pyreon/rx@0.51.0
+  - @pyreon/state-tree@0.51.0
+  - @pyreon/storage@0.51.0
+  - @pyreon/store@0.51.0
+  - @pyreon/table@0.51.0
+  - @pyreon/toast@0.51.0
+  - @pyreon/url-state@0.51.0
+  - @pyreon/validation@0.51.0
+  - @pyreon/virtual@0.51.0
+  - @pyreon/attrs@0.51.0
+  - @pyreon/connector-document@0.51.0
+  - @pyreon/coolgrid@0.51.0
+  - @pyreon/document-primitives@0.51.0
+  - @pyreon/kinetic-presets@0.51.0
+  - @pyreon/styler@0.51.0
+  - @pyreon/unistyle@0.51.0
+
 ## 0.50.0
 
 ### Patch Changes

@@ -1,5 +1,46 @@
 # @pyreon/table
 
+## 0.51.0
+
+### Minor Changes
+
+- [#2709](https://github.com/pyreon/pyreon/pull/2709) [`175a232`](https://github.com/pyreon/pyreon/commit/175a2322a14818730f3a32ad7a4a68e34b5a7a2c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Migrate to TanStack Table v9.
+
+  **`useTable` now returns the `Table` instance directly** instead of `Computed<Table>` — there is no `table()` call. v9 exposes a pluggable reactivity seam (`coreReactivityFeature`) and the adapter backs its atoms with Pyreon signals, so reading the table inside any reactive scope subscribes natively. The v8 version counter, the whole-`TableState` structural diff, and the `onStateChange` interception all existed only because v8 had no such seam; they are gone.
+
+  **Features must now be registered explicitly.** v9 exposes an API only when its feature is present, and row models are feature slots rather than options: `getCoreRowModel()` is automatic (delete it), and the rest become `tableFeatures({ rowSortingFeature, sortedRowModel: createSortedRowModel(), … })`. Define the set once at module scope — it is a compile-time type parameter. Note `row.getVisibleCells()` requires `columnVisibilityFeature`.
+
+  **Core types take a leading `TFeatures` generic** (`ColumnDef<typeof features, User>`), `table.getState()` → `table.store.state`, top-level `onStateChange` → per-slice `on<Slice>Change` (supplying one puts that slice in controlled mode), column pinning is logical (`start`/`end`, not `left`/`right`), `sortingFn` → `sortFn`, and `getIsSomeRowsSelected()` now means "at least one" including all-selected.
+
+  **The runtime re-export surface is now an explicit curated list rather than `export *`.** Under the wildcard, table-core's public surface was literally ours — an upstream major retired 40 of 51 runtime exports and leaked internals (`noop`, `getMemoOptions`, `_getVisibleLeafColumns`). The curated list covers the full author surface (all 16 features, every row model and built-in fn) while keeping adapter-construction plumbing out; types are still re-exported wholesale. A future upstream major is now our migration rather than yours.
+
+  `@pyreon/feature`'s `useTable` gains a fix along the way: `pageSize` was typed-but-unimplemented under v8 — it was read only as a boolean and its value discarded, so `pageSize: 25` silently paged by 10. It now sets the initial page size, and an unpaginated table is unpaginated (rather than truncated to v9's default of 10).
+
+  Fine-grained per-cell updates are preserved and verified: a single-cell edit still re-runs only the changed row's cells (6 cell units, 1 DOM write at both N=100 and N=1000 — matching hand-memoized react-table with no memo boilerplate). See the migration section in the table docs for a before/after.
+
+  `flexRender` and `flexRenderCell` now return a resolved-child type instead of `unknown`/`VNodeChild`. `VNodeChild` includes the accessor arm, so returning it made Pyreon's own documented `<td>{() => flexRenderCell(…)}</td>` pattern a nested accessor that the type system rejected; both functions always return already-resolved content, and the narrower type says so. `{flexRender(…)}` now typechecks directly in JSX.
+
+### Patch Changes
+
+- [#2642](https://github.com/pyreon/pyreon/pull/2642) [`4e53471`](https://github.com/pyreon/pyreon/commit/4e53471d6f92266bbf6a84f35eea6cf58fb529e3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Every package manifest now declares its MULTIPLATFORM story as data:
+  `multiplatform: { tier: 'shared' | 'service-backend' | 'web-only', rationale }`
+  (a discriminated union — `web-only` REQUIRES the rationale sentence). The
+  assignments transcribe the classification the multiplatform docs and the PMTC
+  compiler's own `WEB_ONLY_PACKAGES` registry already maintain, and the new
+  `check-multiplatform-tier` gate (validate-fast family) holds the contract:
+  a manifest without a tier, a published package with neither manifest nor
+  explicit exemption, a `web-only` without a rationale, or a stale generated
+  tier table all fail CI — so a new package can never again silently default
+  to web-only while the ecosystem advertises "one codebase, three targets".
+
+  No runtime change in any package: manifests are docs-pipeline inputs and are
+  stripped from published tarballs; every generated surface (llms, MCP
+  api-reference, reference pages) is byte-identical.
+
+- Updated dependencies [[`9729e91`](https://github.com/pyreon/pyreon/commit/9729e91111b7d5c1414d7df5d7ed0080a904eee8), [`39610a7`](https://github.com/pyreon/pyreon/commit/39610a7457903d8fc8e05d4099173ce23d261203), [`4e53471`](https://github.com/pyreon/pyreon/commit/4e53471d6f92266bbf6a84f35eea6cf58fb529e3), [`83fc05a`](https://github.com/pyreon/pyreon/commit/83fc05ab940a01f69f21ed5fad1aa4b5fcfde7ce), [`abd71ef`](https://github.com/pyreon/pyreon/commit/abd71efb3b21a1b86b2aabd625ea2198cc9354c9)]:
+  - @pyreon/reactivity@0.51.0
+  - @pyreon/core@0.51.0
+
 ## 0.50.0
 
 ### Patch Changes
