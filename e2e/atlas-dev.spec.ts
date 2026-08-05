@@ -408,8 +408,14 @@ test.describe('URL state', () => {
     await page.getByTestId('addon-tab-controls').click()
     await page.locator('input[placeholder]').last().fill('Shipped')
 
-    // The URL follows the view.
-    await expect(page).toHaveURL(/c=badge/)
+    // The URL follows the view. The component lives in the PATH now
+    // (`/badge/`, a page `atlas build` emits and `atlas dev`'s middleware
+    // serves), and it deliberately leaves the query — carrying it in both is
+    // how a URL comes to name one component while showing another. The
+    // invariant this test protects is unchanged: the URL tracks the view, and
+    // a reload restores BOTH the component and the edited args.
+    await expect(page).toHaveURL(/\/badge\//)
+    await expect(page).not.toHaveURL(/[?&]c=/)
     await expect(page).toHaveURL(/args=/)
 
     await page.reload()
