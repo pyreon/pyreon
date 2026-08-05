@@ -59,6 +59,7 @@ export const CANONICAL_PRIMITIVES = new Set([
   'Text',
   'Heading',
   'Image',
+  'Video',
   'Icon',
   // Interaction (3)
   'Button',
@@ -93,6 +94,7 @@ export const SWIFT_NAMES: Record<string, string> = {
   Text: 'Text',
   Heading: 'Text', // .font(.largeTitle) at emit time
   Image: 'Image',
+  Video: 'PyreonVideoPlayer',
   Icon: 'Image', // systemName: from `name` prop
   Button: 'Button',
   Press: 'Button', // no chrome — emits the trailing-closure-only form
@@ -114,6 +116,7 @@ export const KOTLIN_NAMES: Record<string, string> = {
   Text: 'Text',
   Heading: 'Text', // style=MaterialTheme.typography... at emit time
   Image: 'AsyncImage',
+  Video: 'PyreonVideoPlayer',
   Icon: 'Icon',
   Button: 'Button',
   Press: 'Box', // Modifier.clickable

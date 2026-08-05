@@ -4828,6 +4828,7 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   if (tag === 'Heading') return emitSwiftHeading(e, indent)
   if (tag === 'Icon') return emitSwiftIcon(e, indent)
   if (tag === 'Image') return emitSwiftImage(e, indent)
+  if (tag === 'Video') return emitSwiftVideo(e, indent)
   if (tag === 'Modal') return emitSwiftModal(e, indent)
   if (tag === 'Press') return emitSwiftPress(e, indent)
   if (tag === 'Field') return emitSwiftField(e, indent)
@@ -6647,6 +6648,48 @@ function emitSwiftImage(
   if (typeof alt === 'string') {
     result += `.accessibilityLabel(${JSON.stringify(alt)})`
   }
+  return result + emitSwiftLayoutModifiers(e)
+}
+
+/**
+ * Emit `<Video src autoPlay? loop? muted? onStatusChange?>` as the runtime
+ * `PyreonVideoPlayer(url:…)` (AVKit VideoPlayer over AVPlayer). The
+ * `onStatusChange` handler receives the runtime's three-value status string
+ * (`waiting`/`playing`/`paused`) — the same vocabulary the web `<video>`
+ * events map to, and the observable surface the device tests assert.
+ * Ends with the generic modifier tail (the `<Link>`/`<Toggle>` lesson:
+ * a special-case emitter that returns early drops `data-testid` and makes
+ * the element structurally unassertable).
+ */
+function emitSwiftVideo(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const src = readStaticAttr(e, 'src')
+  if (typeof src !== 'string') return emitSwiftGeneric(e, indent)
+  const args = [`url: URL(string: ${JSON.stringify(src)})`]
+  if (readStaticAttr(e, 'autoPlay') === true) args.push('autoPlay: true')
+  if (readStaticAttr(e, 'loop') === true) args.push('loop: true')
+  if (readStaticAttr(e, 'muted') === true) args.push('muted: true')
+  const statusAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> =>
+      a.kind === 'event' && a.name === 'statuschange',
+  )
+  if (statusAttr !== undefined) {
+    const body = stripSwiftClosureBody(emitSwiftAction(statusAttr.handler, indent + 2))
+    const param =
+      statusAttr.handler.kind === 'arrow' && statusAttr.handler.params.length > 0
+        ? swiftIdent(statusAttr.handler.params[0]!)
+        : '_'
+    args.push(`onStatusChange: { ${param} in ${body} }`)
+  }
+  let result = `PyreonVideoPlayer(${args.join(', ')})`
+  const frameArgs: string[] = []
+  const width = swiftImageDim(e, 'width')
+  if (width !== undefined) frameArgs.push(`width: ${width}`)
+  const height = swiftImageDim(e, 'height')
+  if (height !== undefined) frameArgs.push(`height: ${height}`)
+  if (frameArgs.length > 0) result += `.frame(${frameArgs.join(', ')})`
   return result + emitSwiftLayoutModifiers(e)
 }
 

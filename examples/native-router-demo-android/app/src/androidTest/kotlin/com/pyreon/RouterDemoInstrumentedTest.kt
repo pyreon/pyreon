@@ -1010,6 +1010,27 @@ class RouterDemoInstrumentedTest {
         }
     }
 
+    // Media — VIDEO playback state through the REAL ExoPlayer pipeline. The
+    // media page's <Video> lowers to PyreonVideoPlayer (Media3 ExoPlayer in
+    // an AndroidView); autoPlay+muted+loop against the fixture's 1s clip
+    // (adb-reversed localhost:8790, same server as the remote-dot test), and
+    // the Player.Listener drives the status text. "Video: playing" can only
+    // render if the bytes were fetched, buffered, and playback started.
+    // Rendered FRAMES are deliberately not asserted: the video draws on a
+    // SurfaceView layer captureToImage cannot read (disclosed).
+    @Test
+    fun videoPlaybackStateReachesUI() {
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        composeRule.onNodeWithText("View media").performClick()
+        composeRule.onNodeWithTag("media-page").assertIsDisplayed()
+
+        composeRule.waitUntil(timeoutMillis = 30_000) {
+            composeRule.onAllNodesWithText("Video: playing")
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("video-status").assertTextEquals("Video: playing")
+    }
+
     // Styling row — TYPOGRAPHY tokens by geometry + COLOUR token by RENDERED
     // PIXEL. The two "Aa" lines take fontSize from different token leaves
     // (body=16, display=34 — both absent from the compiler's DEFAULT scale, so

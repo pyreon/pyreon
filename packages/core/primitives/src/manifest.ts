@@ -14,7 +14,7 @@ export default defineManifest({
   name: '@pyreon/primitives',
   title: 'Canonical Multiplatform Primitives',
   tagline:
-    '15 cross-platform UI primitives that compile to DOM + SwiftUI + Compose from one .tsx: Stack, Inline, Layer, Scroll, Spacer (layout); Text, Heading, Image, Icon (content); Button, Press, Link (interaction); Field, Toggle, Modal (input). Plus <WebView> (host a web-only component natively, bidirectional bridge) and <Web>/<NativeIOS>/<NativeAndroid> escape hatches.',
+    '16 cross-platform UI primitives that compile to DOM + SwiftUI + Compose from one .tsx: Stack, Inline, Layer, Scroll, Spacer (layout); Text, Heading, Image, Icon, Video (content); Button, Press, Link (interaction); Field, Toggle, Modal (input). Plus <WebView> (host a web-only component natively, bidirectional bridge) and <Web>/<NativeIOS>/<NativeAndroid> escape hatches.',
   description:
     'The multiplatform UI vocabulary for Pyreon. ONE canonical name per concept (`<Stack>` not `<View>`/`<VStack>`/`<div>`; `onPress` everywhere, not `onClick` vs `action:`). Web renders real DOM via `@pyreon/runtime-dom`; on iOS/Android the PMTC compiler intercepts the JSX at build time and emits idiomatic SwiftUI / Compose (the import is a type-anchor on native). Tokens-first styling (`padding={4}`, `gap="md"`) resolves through the theme per target. No responsive props / animations in v1 — apps needing responsive web use `@pyreon/elements` directly. CRITICAL boundary for native: PMTC compiles your component SOURCE in a narrow declarative TS subset, NOT npm libraries — see `get_pattern({ name: "multiplatform" })` for the supported subset + the silent-failure cliff.',
   category: 'browser',
@@ -155,6 +155,20 @@ export function App() {
       example: `<Image src={logo} alt="Logo" width={120} height={40} fit="contain" />`,
       mistakes: ['Omitting `alt` (required — a11y + it is the native contentDescription)'],
       seeAlso: ['Icon'],
+    },
+    {
+      name: 'Video',
+      kind: 'component',
+      signature:
+        "(props: { src: string; autoPlay?: boolean; loop?: boolean; muted?: boolean; controls?: boolean; width?: number|string; height?: number|string; onStatusChange?: (status: 'waiting'|'playing'|'paused') => void }) => VNode",
+      summary:
+        'Video playback. Web `<video playsinline>`; iOS AVKit `VideoPlayer` over `AVPlayer` (`PyreonVideoPlayer`); Android Media3 ExoPlayer in an `AndroidView`. `onStatusChange` surfaces the player state as ONE three-value vocabulary across all targets (`waiting`/`playing`/`paused`) — web media events, AVPlayer `timeControlStatus` KVO, ExoPlayer `Player.Listener`.',
+      example: `<Video src="https://cdn.example.com/intro.mp4" autoPlay muted loop onStatusChange={(s) => playState.set(s)} />`,
+      mistakes: [
+        'Expecting unmuted autoplay on the web — browsers only permit MUTED autoplay; pair `autoPlay` with `muted`',
+        'Asserting rendered video FRAMES in tests — video draws on a surface layer neither XCUITest nor captureToImage can read; assert the onStatusChange-driven state instead',
+      ],
+      seeAlso: ['Image'],
     },
     {
       name: 'Icon',

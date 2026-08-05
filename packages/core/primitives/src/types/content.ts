@@ -61,6 +61,36 @@ export interface ImageProps extends HtmlPassthroughProps {
 }
 
 /**
+ * `<Video>` — video playback.
+ *
+ * Per-platform mapping:
+ * - Web: `<video src autoplay loop muted playsinline controls>`
+ * - iOS: `PyreonVideoPlayer(url:)` (AVKit `VideoPlayer` over `AVPlayer`;
+ *   `onStatusChange` observes `timeControlStatus`)
+ * - Android: `PyreonVideoPlayer(url = …)` (Media3 ExoPlayer in an
+ *   `AndroidView`; `onStatusChange` observes `isPlaying`/state)
+ *
+ * `onStatusChange` fires with `'waiting' | 'playing' | 'paused'` as the
+ * underlying player's state moves — the observable surface the device
+ * tests assert (playback STATE is provable; rendered video FRAMES are
+ * not v1: video draws on a surface layer the test harnesses cannot
+ * capture, disclosed in the matrix).
+ */
+export interface VideoProps extends HtmlPassthroughProps {
+  src: string
+  /** Start playback on mount. Muted autoplay is the only reliably
+   *  permitted form on the web — pair `autoPlay` with `muted`. */
+  autoPlay?: boolean
+  loop?: boolean
+  muted?: boolean
+  /** Show the platform's native transport controls. Default `true`. */
+  controls?: boolean
+  width?: number | string
+  height?: number | string
+  onStatusChange?: (status: 'waiting' | 'playing' | 'paused') => void
+}
+
+/**
  * `<Icon>` — vector icon. Names are platform-agnostic semantic
  * identifiers; each platform maps to its native icon system.
  *

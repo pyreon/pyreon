@@ -18,7 +18,7 @@
 import { For, onMount } from '@pyreon/core'
 import { useDatabase, useFetch, useOnline, usePush, useSecureStorage, useSizeClass, useWebSocket } from '@pyreon/hooks'
 import { useFieldArray } from '@pyreon/form'
-import { Button, Heading, Image, Inline, Layer, Link, Press, Spacer, Stack, Text } from '@pyreon/primitives'
+import { Button, Heading, Image, Inline, Layer, Link, Press, Spacer, Stack, Text, Video } from '@pyreon/primitives'
 import { Element } from '@pyreon/elements'
 import { Col, Container, Row } from '@pyreon/coolgrid'
 import { signal } from '@pyreon/reactivity'
@@ -304,6 +304,7 @@ function PushPage() {
 
 function MediaPage() {
   const navigate = useNavigate()
+  const videoStatus = signal<string>('waiting')
   // Media-row proof — a REMOTE image through the real network stack.
   // <Image src="http…"> lowers to SwiftUI AsyncImage(url:) / Coil
   // AsyncImage(model=) / web <img>. The fixture server (the ws-echo
@@ -328,6 +329,25 @@ function MediaPage() {
         height={48}
         data-testid="remote-dot"
       />
+      {/* Video-row proof — the Media row's AV half, which had NO vocabulary.
+          <Video> lowers to web <video> / AVKit VideoPlayer over AVPlayer /
+          Media3 ExoPlayer in an AndroidView. The fixture's 1s clip plays
+          autoPlay+muted+loop, and onStatusChange surfaces the player's REAL
+          state (timeControlStatus KVO / ExoPlayer listener) into the status
+          text — the assertion surface. Playback STATE is provable; rendered
+          video FRAMES are not (surface layer, uncapturable by either
+          harness — disclosed in the matrix). Loop so the 1s clip cannot
+          race the poll back to "paused". */}
+      <Video
+        src="http://localhost:8790/clip.mp4"
+        autoPlay
+        muted
+        loop
+        height={120}
+        onStatusChange={(s) => videoStatus.set(s)}
+        data-testid="video-player"
+      />
+      <Text data-testid="video-status">Video: {videoStatus()}</Text>
       <Button onPress={() => navigate('/')}>Back to Home</Button>
     </Stack>
   )

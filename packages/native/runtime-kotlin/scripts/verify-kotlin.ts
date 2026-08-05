@@ -477,6 +477,106 @@ class Uri {
 `
 
 /**
+ * androidx.media3 surface for PyreonVideoPlayerAndroid — exactly the members
+ * that file touches, split by real package. Player carries the playback
+ * surface (media3 puts setMediaItem/prepare/release/repeatMode/volume/
+ * playWhenReady on Player, not ExoPlayer); ExoPlayer only adds its Builder.
+ * Mirror-exact per the stub discipline: a superset masks, a subset
+ * manufactures failures on correct code.
+ */
+const ANDROIDX_MEDIA3_COMMON_STUBS = `package androidx.media3.common
+
+public class MediaItem {
+  public companion object {
+    @Suppress("UNUSED_PARAMETER")
+    public fun fromUri(uri: String): MediaItem = MediaItem()
+  }
+}
+
+public interface Player {
+  public interface Listener {
+    public fun onIsPlayingChanged(isPlaying: Boolean) {}
+    public fun onPlaybackStateChanged(playbackState: Int) {}
+  }
+  public val playbackState: Int
+  public var repeatMode: Int
+  public var volume: Float
+  public var playWhenReady: Boolean
+  public fun setMediaItem(mediaItem: MediaItem)
+  public fun prepare()
+  public fun release()
+  public fun addListener(listener: Listener)
+  public fun removeListener(listener: Listener)
+  public companion object {
+    public const val REPEAT_MODE_OFF: Int = 0
+    public const val REPEAT_MODE_ONE: Int = 1
+    public const val STATE_BUFFERING: Int = 2
+  }
+}
+`
+
+const ANDROIDX_MEDIA3_EXOPLAYER_STUBS = `package androidx.media3.exoplayer
+
+import android.content.Context
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+
+public class ExoPlayer private constructor() : Player {
+  override val playbackState: Int = 1
+  override var repeatMode: Int = 0
+  override var volume: Float = 1f
+  override var playWhenReady: Boolean = false
+  @Suppress("UNUSED_PARAMETER")
+  override fun setMediaItem(mediaItem: MediaItem) {}
+  override fun prepare() {}
+  override fun release() {}
+  @Suppress("UNUSED_PARAMETER")
+  override fun addListener(listener: Player.Listener) {}
+  @Suppress("UNUSED_PARAMETER")
+  override fun removeListener(listener: Player.Listener) {}
+  public class Builder(@Suppress("UNUSED_PARAMETER") context: Context) {
+    public fun build(): ExoPlayer = ExoPlayer()
+  }
+}
+`
+
+const ANDROIDX_MEDIA3_UI_STUBS = `package androidx.media3.ui
+
+import android.content.Context
+import androidx.media3.common.Player
+
+public class PlayerView(@Suppress("UNUSED_PARAMETER") context: Context) {
+  public var player: Player? = null
+  public var useController: Boolean = true
+}
+`
+
+/** androidx.compose.ui surface for the video edge: the Modifier companion +
+ *  the AndroidView interop composable (factory receives the view Context). */
+const ANDROIDX_COMPOSE_UI_VIDEO_STUBS = `package androidx.compose.ui
+
+public interface Modifier {
+  public companion object : Modifier
+}
+`
+
+const ANDROIDX_COMPOSE_VIEWINTEROP_STUBS = `package androidx.compose.ui.viewinterop
+
+import android.content.Context
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+
+@Composable
+@Suppress("UNUSED_PARAMETER")
+public fun <T> AndroidView(factory: (Context) -> T, modifier: Modifier = Modifier) {}
+`
+
+const ANDROID_VIDEO_CONTEXT_STUBS = `package android.content
+
+public open class Context
+`
+
+/**
  * `android.content` surface for PyreonPushNotificationsAndroid — exactly the
  * members that file touches (BroadcastReceiver, the two registerReceiver
  * overloads + RECEIVER_NOT_EXPORTED, Intent extras, IntentFilter). Own copy of
@@ -1213,6 +1313,37 @@ try {
         ]
       : []
 
+  // PyreonVideoPlayerAndroid: the androidx.media3 mirrors (common/exoplayer/ui)
+  // + the compose-ui Modifier companion + the AndroidView interop composable +
+  // a bare Context + the Compose platform LocalContext.
+  const media3CommonPath = join(tempDir, 'Media3Common.kt')
+  const media3ExoPath = join(tempDir, 'Media3Exo.kt')
+  const media3UiPath = join(tempDir, 'Media3Ui.kt')
+  const composeUiVideoPath = join(tempDir, 'ComposeUiVideo.kt')
+  const composeInteropPath = join(tempDir, 'ComposeInterop.kt')
+  const videoContextPath = join(tempDir, 'VideoContext.kt')
+  if (SERVICE === 'PyreonVideoPlayerAndroid') {
+    writeFileSync(media3CommonPath, ANDROIDX_MEDIA3_COMMON_STUBS, 'utf8')
+    writeFileSync(media3ExoPath, ANDROIDX_MEDIA3_EXOPLAYER_STUBS, 'utf8')
+    writeFileSync(media3UiPath, ANDROIDX_MEDIA3_UI_STUBS, 'utf8')
+    writeFileSync(composeUiVideoPath, ANDROIDX_COMPOSE_UI_VIDEO_STUBS, 'utf8')
+    writeFileSync(composeInteropPath, ANDROIDX_COMPOSE_VIEWINTEROP_STUBS, 'utf8')
+    writeFileSync(videoContextPath, ANDROID_VIDEO_CONTEXT_STUBS, 'utf8')
+    writeFileSync(composePlatformPath, ANDROIDX_COMPOSE_PLATFORM_STUBS, 'utf8')
+  }
+  const videoAndroidExtras =
+    SERVICE === 'PyreonVideoPlayerAndroid'
+      ? [
+          media3CommonPath,
+          media3ExoPath,
+          media3UiPath,
+          composeUiVideoPath,
+          composeInteropPath,
+          videoContextPath,
+          composePlatformPath,
+        ]
+      : []
+
   const geolocationAndroidExtras =
     SERVICE === 'PyreonGeolocationAndroid'
       ? [
@@ -1268,6 +1399,7 @@ try {
         ...geolocationAndroidExtras,
         ...networkAndroidExtras,
         ...pushAndroidExtras,
+        ...videoAndroidExtras,
         SOURCE_FILE,
       ]
     : [
@@ -1291,6 +1423,7 @@ try {
         ...geolocationAndroidExtras,
         ...networkAndroidExtras,
         ...pushAndroidExtras,
+        ...videoAndroidExtras,
         SOURCE_FILE,
         TEST_FILE,
       ]

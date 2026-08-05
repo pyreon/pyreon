@@ -32,6 +32,19 @@ const RED_DOT_PNG = Uint8Array.from(
   (c) => c.charCodeAt(0),
 )
 
+// Video-row fixture: a 1s solid-red 48x48 H.264 mp4 (12 frames, generated
+// clean-room via AVAssetWriter — no third-party bytes) served on the same
+// port. The <Video> device tests point PyreonVideoPlayer here with
+// autoPlay+muted+loop and assert the STATUS text flips to "playing" —
+// playback state through the real AVPlayer / ExoPlayer pipeline. Loop so
+// the 1s clip cannot race the poll back to "paused".
+const CLIP_MP4 = Uint8Array.from(
+  atob(
+    'AAAAHGZ0eXBtcDQyAAAAAWlzb21tcDQxbXA0MgAAAAFtZGF0AAAAAAAAAdAAAAA6BgUyR1ZK3FxMQz+U78URPNFDqAEAAAMAAQMAAAMAAQIAAeYACwAAAwAAAwAANSAMA4kkAQ3/////gAAAAEEluCAf3gjjxv9/b8RwrinTMfCmIAKDvaxgqlGTe0ZabuCWlkE1KhzjPcwigF2Vo//9yHoACUmWbUA9bwAiaIaCCAAAABkh4RBfQDBAPUeTtnSqxbCzc2AB1lLPyt3AAAAAGyGogoS/sUcoSy7thtd3YAaHtHxMABQVWt760AAAABgBqMGP/7nuZ5GyPElCKiSCD6ACetH/dkgAAAAWAajDi/9M0Vx6QsFO86GxABGS+nmqYAAAACAh4yGiIn/WsN96c33X0jSojcb7QOECmRJ6ACaOGy2J6gAAAB4hqQaET/7PkiT3C3CVOa0PuBnuAuPX9OAAxnDhvTwAAAAWAalFj/9TDGAsKmPKLW44gAnr8fUQIAAAABYBqUeP/1MMXd6hKu50E74AIW8d2FqAAAAAGSHlLaIi/4dqVsUOU4spdjQCAA1q7wn/e0AAAAAWIamKhE87931KP0OMiXx/YAJtO69ijAAAABYBqcmP/1MMYCwqY8otbjiACevx9RAgAAADZm1vb3YAAABsbXZoZAAAAADmmKsm5pirJgAAAlgAAAJYAAEAAAEAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAALydHJhawAAAFx0a2hkAAAAAeaYqybmmKsmAAAAAQAAAAAAAAJYAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAQAAAAAAwAAAAMAAAAAAAJGVkdHMAAAAcZWxzdAAAAAAAAAABAAACWAAAAGQAAQAAAAACam1kaWEAAAAgbWRoZAAAAADmmKsm5pirJgAAAlgAAAJYVcQAAAAAADFoZGxyAAAAAAAAAAB2aWRlAAAAAAAAAAAAAAAAQ29yZSBNZWRpYSBWaWRlbwAAAAIRbWluZgAAABR2bWhkAAAAAQAAAAAAAAAAAAAAJGRpbmYAAAAcZHJlZgAAAAAAAAABAAAADHVybCAAAAABAAAB0XN0YmwAAAChc3RzZAAAAAAAAAABAAAAkWF2YzEAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAMAAwAEgAAABIAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY//8AAAAnYXZjQwFkAAv/4QAMJ2QAC6xWUMN4EmGUAQAEKO48sP34+AAAAAAKZmllbAEAAAAACmNocm0AAAAAABhzdHRzAAAAAAAAAAEAAAAMAAAAMgAAAHBjdHRzAAAAAAAAAAwAAAABAAAAZAAAAAEAAAD6AAAAAQAAAGQAAAABAAAAAAAAAAEAAAAyAAAAAQAAAPoAAAABAAAAZAAAAAEAAAAAAAAAAQAAADIAAAABAAAAyAAAAAEAAABkAAAAAQAAAAAAAAAUc3RzcwAAAAAAAAABAAAAAQAAABhzZHRwAAAAACAQEBgYEBAYGBAQGAAAABxzdHNjAAAAAAAAAAEAAAABAAAADAAAAAEAAABEc3RzegAAAAAAAAAAAAAADAAAAIMAAAAdAAAAHwAAABwAAAAaAAAAJAAAACIAAAAaAAAAGgAAAB0AAAAaAAAAGgAAABRzdGNvAAAAAAAAAAEAAAAs',
+  ),
+  (c) => c.charCodeAt(0),
+)
+
 Bun.serve({
   port,
   fetch(req, server) {
@@ -46,6 +59,37 @@ Bun.serve({
     // Reflecting rather than asserting is deliberate: the test compares what
     // the SERVER saw, so a request that silently degraded to GET (the exact
     // bug this arc fixes) reads as `method: "GET"` instead of quietly passing.
+    if (new URL(req.url).pathname === '/clip.mp4') {
+      // AVFoundation refuses progressive HTTP playback from a server that
+      // ignores Range headers — AVURLAsset probes with byte-range requests
+      // and stalls forever on plain 200s (the device test observed
+      // "Video: waiting" with a perfectly healthy 200 fixture; the PNG
+      // fetch never surfaced this because URLSession GETs don't need
+      // ranges). Honour Range with a 206 + Content-Range slice.
+      const range = req.headers.get('range')
+      const total = CLIP_MP4.byteLength
+      if (range !== null) {
+        const m = /bytes=(\d+)-(\d*)/.exec(range)
+        const start = m ? Number(m[1]) : 0
+        const end = m && m[2] !== '' ? Math.min(Number(m[2]), total - 1) : total - 1
+        return new Response(CLIP_MP4.slice(start, end + 1), {
+          status: 206,
+          headers: {
+            'content-type': 'video/mp4',
+            'accept-ranges': 'bytes',
+            'content-range': `bytes ${start}-${end}/${total}`,
+            'content-length': String(end - start + 1),
+          },
+        })
+      }
+      return new Response(CLIP_MP4, {
+        headers: {
+          'content-type': 'video/mp4',
+          'accept-ranges': 'bytes',
+          'content-length': String(total),
+        },
+      })
+    }
     if (new URL(req.url).pathname === '/echo') {
       return req.text().then(
         (body) =>

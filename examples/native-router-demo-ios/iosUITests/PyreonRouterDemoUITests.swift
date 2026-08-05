@@ -1051,6 +1051,38 @@ final class PyreonRouterDemoUITests: XCTestCase {
         )
     }
 
+    // Media — VIDEO playback state through the REAL AVPlayer pipeline. The
+    // media page's <Video> lowers to PyreonVideoPlayer (AVKit VideoPlayer
+    // over AVPlayer); autoPlay+muted+loop against the fixture server's 1s
+    // clip, and the KVO timeControlStatus observation drives the status
+    // text. "Video: playing" can only render if the player FETCHED the
+    // clip over HTTP, buffered it, and entered .playing — a dead server, a
+    // dropped emit, or a never-started player all park it at "waiting".
+    // Rendered video FRAMES are deliberately not asserted: video draws on
+    // a surface layer XCUITest cannot capture (disclosed in the matrix).
+    // Requires the ws-echo fixture server on :8790 (same as the remote-dot
+    // and websocket tests — one server, all fixtures).
+    func test_videoPlaybackStateReachesUI() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            "Home page did not render"
+        )
+        app.buttons["View media"].tap()
+        XCTAssertTrue(
+            app.otherElements["media-page"].firstMatch.waitForExistence(timeout: 15),
+            "Media page did not render"
+        )
+
+        XCTAssertTrue(
+            app.staticTexts["Video: playing"].waitForExistence(timeout: 30),
+            "Video status never reached playing — the AVPlayer pipeline did "
+                + "not start (observed: \(app.staticTexts["video-status"].firstMatch.label))"
+        )
+    }
+
     // Styling — TYPOGRAPHY from theme tokens, by glyph-box GEOMETRY. The two
     // lines render the SAME glyph ("Aa") at sizes from DIFFERENT token leaves
     // (fontSize.body=16, fontSize.display=34 — both deliberately absent from

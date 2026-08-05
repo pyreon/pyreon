@@ -448,6 +448,18 @@ dependencies {
     implementation("androidx.compose.material:material-icons-core")
     // Remote <Image src="http…"> → Coil's AsyncImage.
     implementation("io.coil-kt:coil-compose:2.7.0")
+    // okhttp — PyreonWebSocketOkHttp.kt / PyreonHttpOkHttp.kt (runtime srcDir
+    // above) import okhttp3; the srcDir compiles ALL runtime sources, so the
+    // artifact is required whether the app uses websockets or not. Absent
+    // until the <Video> arc: the runtime gained these files after this
+    // template was last touched, masked because scaffolds install the runtime
+    // from npm, which lagged the workspace — the next release would have
+    // shipped every scaffolded Android app broken.
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // media3 — PyreonVideoPlayerAndroid.kt (<Video> primitive) imports
+    // androidx.media3.*. Same deal; R8 strips unused classes from release.
+    implementation("androidx.media3:media3-exoplayer:1.4.1")
+    implementation("androidx.media3:media3-ui:1.4.1")
 }
 
 // Re-run the .tsx → .kt compile on every build (mirrors iOS preBuildScript).

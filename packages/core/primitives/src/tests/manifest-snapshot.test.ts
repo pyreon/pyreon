@@ -17,7 +17,7 @@ describe('gen-docs — @pyreon/primitives snapshot', () => {
   it('renders the llms.txt bullet', () => {
     const line = renderLlmsTxtLine(primitivesManifest)
     expect(line.startsWith('- @pyreon/primitives — ')).toBe(true)
-    expect(line).toContain('15 cross-platform UI primitives')
+    expect(line).toContain('16 cross-platform UI primitives')
     expect(line).toContain('WebView')
   })
 

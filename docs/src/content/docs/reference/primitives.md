@@ -1,6 +1,6 @@
 ---
 title: "Canonical Multiplatform Primitives — API Reference"
-description: "15 cross-platform UI primitives that compile to DOM + SwiftUI + Compose from one .tsx: Stack, Inline, Layer, Scroll, Spacer (layout); Text, Heading, Image, Icon"
+description: "16 cross-platform UI primitives that compile to DOM + SwiftUI + Compose from one .tsx: Stack, Inline, Layer, Scroll, Spacer (layout); Text, Heading, Image, Icon"
 ---
 
 # @pyreon/primitives — API Reference
@@ -69,6 +69,7 @@ export function App() {
 | [`Text`](#text) | component | Inline text. |
 | [`Heading`](#heading) | component | Heading text. |
 | [`Image`](#image) | component | Image. |
+| [`Video`](#video) | component | Video playback. |
 | [`Icon`](#icon) | component | Icon by canonical name. |
 | [`Button`](#button) | component | Styled CTA. |
 | [`Press`](#press) | component | Unstyled tap target (no chrome). |
@@ -259,6 +260,29 @@ Image. Web `<img>`; iOS `Image`; Android `AsyncImage` (Coil). `src` + `alt` REQU
 - Omitting `alt` (required — a11y + it is the native contentDescription)
 
 **See also:** `Icon`
+
+---
+
+### Video `component`
+
+```ts
+(props: { src: string; autoPlay?: boolean; loop?: boolean; muted?: boolean; controls?: boolean; width?: number|string; height?: number|string; onStatusChange?: (status: 'waiting'|'playing'|'paused') => void }) => VNode
+```
+
+Video playback. Web `<video playsinline>`; iOS AVKit `VideoPlayer` over `AVPlayer` (`PyreonVideoPlayer`); Android Media3 ExoPlayer in an `AndroidView`. `onStatusChange` surfaces the player state as ONE three-value vocabulary across all targets (`waiting`/`playing`/`paused`) — web media events, AVPlayer `timeControlStatus` KVO, ExoPlayer `Player.Listener`.
+
+**Example**
+
+```tsx
+<Video src="https://cdn.example.com/intro.mp4" autoPlay muted loop onStatusChange={(s) => playState.set(s)} />
+```
+
+**Common mistakes**
+
+- Expecting unmuted autoplay on the web — browsers only permit MUTED autoplay; pair `autoPlay` with `muted`
+- Asserting rendered video FRAMES in tests — video draws on a surface layer neither XCUITest nor captureToImage can read; assert the onStatusChange-driven state instead
+
+**See also:** `Image`
 
 ---
 
