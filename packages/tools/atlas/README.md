@@ -326,22 +326,22 @@ runs its top-level code.
 
 The runtime half also runs a leak check — "did nodes this scenario created
 survive a GC" — and a forced full collection is by far the most expensive thing
-in a scan. It is charged per COMPONENT, not per scenario: one sweep answers the
-question for every scenario the component owns, because a graph that returns to
-its baseline after all of them have been mounted and disposed proves none of
-them retained anything. Only a batch that comes back dirty is separated, first
-by re-running the batch (which tells one-time retention from a per-mount leak)
-and then, if it really is climbing, scenario by scenario.
+in a scan. It is charged for the CATALOG, not for each scenario: one sweep
+answers the question for everything, because a reactive graph that returns to
+its baseline after every scenario has been mounted and disposed proves that none
+of them retained a node.
 
-In the common case — a catalog where nothing leaks — the whole thing is answered
-by a handful of collections rather than one per component, so scan time is
-dominated by discovery and mounting rather than by GC. Measured on a
-108-component, 1090-scenario design system: 40.8s before, 1.0s after, with the
-collection count falling from 2767 to 3.
+So in the common case — a catalog where nothing leaks — the whole run costs a
+handful of collections, and scan time is dominated by discovery and mounting
+rather than by GC. Measured on a 108-component, 1090-scenario design system:
+40.8s before, 1.0s after, with the collection count falling from 2767 to 3.
 
-A catalog that DOES retain something falls back to per-component and then to
-per-scenario resolution, so a real leak is still attributed to the scenario that
-causes it — it just costs more to find, which is the right way round.
+Nothing is guessed when a catalog is NOT clean. It is re-probed once — exercise
+everything again and require the count to keep climbing, which separates
+one-time retention (a store registry, a memoized theme) from a per-mount leak —
+then resolved per component, and finally per scenario. A real leak is still
+attributed to the scenario that causes it; it just costs more to find, which is
+the right way round.
 
 `ATLAS_PROFILE=1` reports where a scan's time went, per plugin hook — useful
 when a project's own components dominate rather than the framework.
