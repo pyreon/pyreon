@@ -11,6 +11,9 @@
  *   - mount.ts (lines 204-206)
  *   - hydration-debug.ts (line 35)
  */
+// Sanitized-innerHTML specs need the default sanitizer registered (the
+// tree-shakeable seam — vite-plugin injects this for apps; tests do it here).
+import '../sanitizer'
 import type { ComponentFn, VNodeChild } from '@pyreon/core'
 import { createRef, defineComponent, For, Fragment, h, onMount, onUnmount } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'

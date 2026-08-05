@@ -3,6 +3,7 @@
  * Targets honest gaps in props.ts and devtools.ts paths.
  * NO v8-ignore annotations.
  */
+import '../sanitizer' // sanitized-innerHTML specs need the default registered
 import { describe, expect, it, vi } from 'vitest'
 import { applyProp } from '../props'
 
