@@ -31,11 +31,17 @@
 # clean → green. A second drift while the fix PR is open just force-updates
 # the same branch from the newer main state.
 #
-# TOKEN. Mirrors release.yml's documented pattern: prefer `RELEASE_PAT`
-# (fine-grained PAT — PRs it creates DO trigger CI, so required checks run
-# and auto-merge can complete), fall back to `GITHUB_TOKEN` (fix PR is still
-# created, but GitHub suppresses CI events for it — close & reopen the PR to
-# trigger checks, or configure RELEASE_PAT).
+# TOKEN. The write path (branch push + fix PR) runs EXCLUSIVELY on
+# `RELEASE_PAT` (fine-grained PAT, same secret release.yml uses — PRs it
+# creates DO trigger CI, so required checks run and auto-merge can
+# complete). The workflow's own GITHUB_TOKEN stays READ-ONLY by design:
+# a `GITHUB_TOKEN` fallback would require job-level `contents: write`
+# (an OpenSSF Scorecard Token-Permissions warn) AND produce a fix PR that
+# gets no CI events (GitHub suppresses them for GITHUB_TOKEN-created PRs)
+# — a degraded PR that used to need a manual close/reopen anyway. If the
+# secret is ever removed, the guard degrades to signal-only: the drift run
+# still FAILS loudly (the core contract), it just skips the fix PR with a
+# warning naming the manual regeneration commands.
 #
 # This workflow never blocks PR merges — it is a main-health signal plus
 # self-heal, not a required check.
@@ -50,8 +56,9 @@ concurrency:
   group: docs-freshness-guard
   cancel-in-progress: true
 
-# Least-privilege default: every job is read-only unless it opts into more.
-# The single `guard` job below scopes the write it needs (see its own block).
+# Read-only GITHUB_TOKEN — workflow-wide. All writes (branch push, fix PR)
+# authenticate with RELEASE_PAT directly in the one step that needs them
+# (see TOKEN above), so no job ever holds workflow-token write.
 permissions:
   contents: read
 
@@ -60,16 +67,14 @@ jobs:
     name: Docs Freshness Guard
     runs-on: ubuntu-latest
     timeout-minutes: 6
-    # Needed to push the auto-regen branch + open/update the fix PR when
-    # main's generated docs have drifted. Scoped here (not top-level) so a
-    # future added job doesn't inherit write it doesn't need.
-    permissions:
-      contents: write
-      pull-requests: write
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          token: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
+          # No credential persisted into .git/config: the generator step runs
+          # the whole workspace dependency tree, and it must have no write
+          # credential in reach. The push step authenticates its one command
+          # explicitly with RELEASE_PAT.
+          persist-credentials: false
 
       - uses: ./.github/actions/setup-pyreon
         with:
@@ -115,8 +120,14 @@ jobs:
       - name: Open / update the auto-regen fix PR
         if: steps.drift.outputs.fresh == 'false'
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
+          # Deliberately NO GITHUB_TOKEN fallback — see the TOKEN comment.
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
         run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning::RELEASE_PAT is not configured — skipping the auto-regen fix PR. The guard still fails loudly below. Heal manually: run 'bun run gen-docs && bun docs/scripts/gen-all.ts' on main and commit, or configure the RELEASE_PAT secret (see release.yml) to restore the self-heal."
+            echo "RELEASE_PAT not configured — fix PR skipped; regenerate manually" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
@@ -140,7 +151,10 @@ jobs:
             docs/src/content/docs/troubleshooting.md docs/src/content/docs/examples.md \
             docs/src/reference-nav.generated.ts docs/src/troubleshooting-nav.generated.ts
           git commit -m "docs: regenerate stale generated docs (freshness guard, main@${GITHUB_SHA::9})"
-          git push --force origin auto/docs-regen
+          # Inline-authenticated push (checkout persisted no credentials):
+          # the PAT authorizes exactly this one command and is never written
+          # to .git/config. GitHub masks the secret in logs.
+          git push --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" auto/docs-regen
 
           BODY=$(cat <<EOF
           Automated regeneration: main's committed generated docs drifted from what the generators produce (concurrent-merge staleness — two PRs touching generator inputs merged without seeing each other; branch protection is non-strict so checks don't re-run on base movement).
@@ -151,8 +165,6 @@ jobs:
           \`\`\`
 
           Produced by the **Docs Freshness Guard** workflow from \`main@${GITHUB_SHA::9}\` — the diff is exactly \`bun run gen-docs && bun docs/scripts/gen-all.ts\`.
-
-          > If the checks below show "Expected — waiting" forever, this PR was created with \`GITHUB_TOKEN\` (GitHub suppresses CI events for it). Close & reopen it to trigger CI, or configure the \`RELEASE_PAT\` secret (see release.yml).
           EOF
           )
           EXISTING=$(gh pr list --head auto/docs-regen --state open --json number --jq '.[0].number // empty')
@@ -171,5 +183,5 @@ jobs:
       - name: Fail loudly while main is stale
         if: steps.drift.outputs.fresh == 'false'
         run: |
-          echo "::error::main's generated docs are STALE (concurrent-merge staleness). A fix PR has been opened/updated on branch auto/docs-regen — merge it to heal. This red run is the visibility signal, not a merge blocker."
+          echo "::error::main's generated docs are STALE (concurrent-merge staleness). If RELEASE_PAT is configured, a fix PR has been opened/updated on branch auto/docs-regen — merge it to heal (otherwise regenerate manually, see the step above). This red run is the visibility signal, not a merge blocker."
           exit 1
