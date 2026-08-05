@@ -40,13 +40,13 @@
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vite-plugin": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/jest-dom": "^7.0.0",
     "@types/bun": "^1.3.14",
     "@vitest/browser-playwright": "^4.1.10",
     "@vitus-labs/tools-vitest": "^2.5.0",
     "happy-dom": "^20.11.1",
     "typescript": "^6.0.3",
-    "vite": "^8.0.16",
+    "vite": "^8.2.0",
     "vitest": "^4.1.10"
   }
 }

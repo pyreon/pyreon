@@ -69,7 +69,7 @@
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vite-plugin": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "vite": "^8.0.16"
+    "vite": "^8.2.0"
   },
   "dependencies": {
     "@pyreon/config": "workspace:*",

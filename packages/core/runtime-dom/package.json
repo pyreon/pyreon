@@ -62,7 +62,7 @@
     "@pyreon/sized-map": "workspace:*"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.9.0",
+    "@happy-dom/global-registrator": "^20.11.1",
     "@pyreon/compiler": "workspace:^",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/runtime-server": "workspace:^",
@@ -72,8 +72,8 @@
     "@vitest/browser-playwright": "^4.1.10",
     "esbuild": "^0.28.1",
     "happy-dom": "^20.11.1",
-    "rolldown": "^1.2.0",
-    "vite": "^8.0.16"
+    "rolldown": "^1.2.3",
+    "vite": "^8.2.0"
   },
   "publishConfig": {
     "access": "public"

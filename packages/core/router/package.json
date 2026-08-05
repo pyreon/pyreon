@@ -48,7 +48,7 @@
     "@pyreon/sized-map": "workspace:*"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.9.0",
+    "@happy-dom/global-registrator": "^20.11.1",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
