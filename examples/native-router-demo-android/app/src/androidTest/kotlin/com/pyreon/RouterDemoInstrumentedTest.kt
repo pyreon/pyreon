@@ -49,6 +49,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.test.swipeRight
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -882,7 +883,29 @@ class RouterDemoInstrumentedTest {
             composeRule.onAllNodesWithText("Row 9999").fetchSemanticsNodes().isEmpty()
         ) { "Row 9999 is composed at launch — the list is EAGER, not lazy" }
 
-        composeRule.onNode(hasScrollAction()).performScrollToNode(hasText("Row 9999"))
+        // Reachability WITHOUT performScrollToNode. That API drives synchronous
+        // scroll-and-remeasure from the INSTRUMENTATION thread, and on a
+        // 10k-row LazyColumn it raced the main thread's own prefetcher
+        // (AndroidPrefetchScheduler premeasure) into
+        // "Detected multithreaded access to SnapshotStateObserver" — an
+        // app-process CRASH, three times on CI (runs 30955095609,
+        // 30992-era ×2; the stack is entirely inside Compose's prefetcher, no
+        // Pyreon frame). Not locally reproducible — load-dependent, so per the
+        // cross-tab precedent the structural argument is the fix's proof:
+        // injected swipe FLINGS are processed by the main thread like real
+        // input, and the waitForIdle() between chunks drains pending prefetch
+        // work before the next gesture, so the test thread never measures
+        // while the prefetcher holds the observer. The laziness claim above
+        // and the reachability claim below are unchanged.
+        var flings = 0
+        while (
+            composeRule.onAllNodesWithText("Row 9999").fetchSemanticsNodes().isEmpty() &&
+            flings < 400
+        ) {
+            composeRule.onNode(hasScrollAction()).performTouchInput { swipeUp() }
+            composeRule.waitForIdle()
+            flings++
+        }
         composeRule.onNodeWithText("Row 9999").assertExists()
     }
 
