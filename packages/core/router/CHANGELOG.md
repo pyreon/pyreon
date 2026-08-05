@@ -1,5 +1,76 @@
 # @pyreon/router
 
+## 0.51.0
+
+### Patch Changes
+
+- [#2642](https://github.com/pyreon/pyreon/pull/2642) [`4e53471`](https://github.com/pyreon/pyreon/commit/4e53471d6f92266bbf6a84f35eea6cf58fb529e3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Every package manifest now declares its MULTIPLATFORM story as data:
+  `multiplatform: { tier: 'shared' | 'service-backend' | 'web-only', rationale }`
+  (a discriminated union — `web-only` REQUIRES the rationale sentence). The
+  assignments transcribe the classification the multiplatform docs and the PMTC
+  compiler's own `WEB_ONLY_PACKAGES` registry already maintain, and the new
+  `check-multiplatform-tier` gate (validate-fast family) holds the contract:
+  a manifest without a tier, a published package with neither manifest nor
+  explicit exemption, a `web-only` without a rationale, or a stale generated
+  tier table all fail CI — so a new package can never again silently default
+  to web-only while the ecosystem advertises "one codebase, three targets".
+
+  No runtime change in any package: manifests are docs-pipeline inputs and are
+  stripped from published tarballs; every generated surface (llms, MCP
+  api-reference, reference pages) is byte-identical.
+
+- [#2502](https://github.com/pyreon/pyreon/pull/2502) [`83fc05a`](https://github.com/pyreon/pyreon/commit/83fc05ab940a01f69f21ed5fad1aa4b5fcfde7ce) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Teach `pyreon doctor diagnose` / MCP `diagnose` the MAX_PASSES batch-flush error.
+
+  The reactivity batch flush drops queued effects after 32 passes and logs in both
+  dev and production, so users hit the string in production builds — but the
+  catalog had no entry for it. The new entry explains the cause (an effect that
+  writes a signal it also reads, re-enqueueing until the cap) and the three real
+  remedies: use `computed()` when only deriving, `.peek()` to read without
+  subscribing, or gate the write so it cannot re-trigger.
+
+  Also compresses verbose source comments across the core packages. No runtime
+  behaviour changes — the published artifacts are byte-identical, since `src/` is
+  stripped from the tarball and the bundler strips comments from `lib/`.
+
+- [#2584](https://github.com/pyreon/pyreon/pull/2584) [`2454a80`](https://github.com/pyreon/pyreon/commit/2454a8014dededa8055eefbc36442df8c850c7e1) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The browser Back tests waited a fixed number of milliseconds, and flaked in CI.
+
+  `router.browser.test.tsx` drove real browser traversals with
+  `window.history.back(); await flushMs(150)`. That encodes a guess about how long
+  Chromium takes to fire popstate AND how long the router's navigation pipeline
+  takes to run — and since the Back pipeline now does the full job (loaders,
+  guards, blockers, afterEach, scroll, title) rather than a bare state sync, 150ms
+  is not enough under CI load.
+
+  It surfaced on [#2553](https://github.com/pyreon/pyreon/issues/2553), a bench-hygiene PR touching only `scripts/`, which cannot
+  affect the router at all. It ran the browser suite because any `scripts/**`
+  change forces `--filter=*`, and then failed with
+  `expected '/about' to be '/posts'` — the assertion running before the pipeline
+  finished. The same suite passes 46/46 locally on that exact branch, and main was
+  green: the signature of a load-dependent timing flake, not a regression.
+
+  Three of the four fixed sleeps are now condition polls (`waitUntil(pred, label)`
+  with a generous 4s BACKSTOP — a passing case costs one 20ms interval, so the
+  budget only matters when the test is already failing, and a timeout now names
+  what it was waiting for instead of asserting on a half-finished navigation).
+
+  The fourth is deliberately NOT converted, and that is the interesting one. It
+  asserts a BLOCKED traversal changes nothing, so its expected end state is
+  identical to its start state — any predicate would pass instantly, before
+  Chromium had even moved the URL, and the test would assert nothing at all.
+  A fixed wait is the only honest option for proving the absence of a change; its
+  budget is raised from 250ms to 1200ms because it must cover the traversal event,
+  the pipeline, and the restoring `go()` round-trip.
+
+  Verified the poll is load-bearing rather than a no-op: making one predicate
+  unsatisfiable fails with `waitUntil timed out after 300ms: Back to settle on
+/posts with the loader re-run`, so it genuinely waits. 46/46 pass restored.
+
+- Updated dependencies [[`9729e91`](https://github.com/pyreon/pyreon/commit/9729e91111b7d5c1414d7df5d7ed0080a904eee8), [`39610a7`](https://github.com/pyreon/pyreon/commit/39610a7457903d8fc8e05d4099173ce23d261203), [`3c79989`](https://github.com/pyreon/pyreon/commit/3c79989c620e18651bfa82af7351eae60ab705a9), [`4b430ca`](https://github.com/pyreon/pyreon/commit/4b430cac51008cce48606203dd9f874b419e3db0), [`26ae1be`](https://github.com/pyreon/pyreon/commit/26ae1beecd112ef91dc840719bff8934d571e63b), [`5b3442e`](https://github.com/pyreon/pyreon/commit/5b3442e4262cca5f49fcbfc8d83e88861ce3d821), [`9729e91`](https://github.com/pyreon/pyreon/commit/9729e91111b7d5c1414d7df5d7ed0080a904eee8), [`e10f9fc`](https://github.com/pyreon/pyreon/commit/e10f9fc5143e119d02722951df721f3ee9389749), [`19ee507`](https://github.com/pyreon/pyreon/commit/19ee507df579bcf719ab385b0b60ea64e587e731), [`4e53471`](https://github.com/pyreon/pyreon/commit/4e53471d6f92266bbf6a84f35eea6cf58fb529e3), [`d82f233`](https://github.com/pyreon/pyreon/commit/d82f233f55fcc57b5d231d09a8b79fcb105c60b7), [`83fc05a`](https://github.com/pyreon/pyreon/commit/83fc05ab940a01f69f21ed5fad1aa4b5fcfde7ce), [`9729e91`](https://github.com/pyreon/pyreon/commit/9729e91111b7d5c1414d7df5d7ed0080a904eee8), [`9729e91`](https://github.com/pyreon/pyreon/commit/9729e91111b7d5c1414d7df5d7ed0080a904eee8), [`abd71ef`](https://github.com/pyreon/pyreon/commit/abd71efb3b21a1b86b2aabd625ea2198cc9354c9)]:
+  - @pyreon/runtime-dom@0.51.0
+  - @pyreon/reactivity@0.51.0
+  - @pyreon/core@0.51.0
+  - @pyreon/sized-map@0.51.0
+
 ## 0.50.0
 
 ### Patch Changes

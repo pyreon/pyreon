@@ -1,5 +1,62 @@
 # @pyreon/code
 
+## 0.51.0
+
+### Minor Changes
+
+- [#2623](https://github.com/pyreon/pyreon/pull/2623) [`77eaf81`](https://github.com/pyreon/pyreon/commit/77eaf81469ad4a00ae55fcb328e83d67b508d157) Thanks [@vitbokisch](https://github.com/vitbokisch)! - **Breaking (pre-1.0):** grammars now load from a REGISTRY, and the core registers only the JavaScript family (js/ts/jsx/tsx — one package) plus JSON. Every other built-in grammar moves behind a new `@pyreon/code/languages-all` entry:
+
+  ```ts
+  import "@pyreon/code/languages-all"; // css, python, markdown, html, rust, sql, xml, yaml, cpp, java, go, php, ruby, shell
+  ```
+
+  Why: a dynamic `import()` is lazy at RUNTIME but not to a bundler's dependency scanner, which follows the specifier at build / dev-server-start time. The old single map naming eighteen `@codemirror/lang-*` packages therefore pulled the whole language ecosystem into every consumer's pre-bundle step, even one that only ever shows TSX — measured taking a dev-server-backed command from ~27s to over five minutes. The map's "only the requested language is imported" comment held for the shipped bundle and quietly failed for the dep graph.
+
+  New API: `registerLanguage(id, loader)` (plus the `LanguageLoader` type) registers a grammar the package does not ship, or replaces one that it does.
+
+  Also: an unregistered or failed grammar still mounts the editor unhighlighted — as before — but now WARNS in dev naming the fix, instead of returning an empty extension silently. "The editor renders but nothing is coloured, and nothing says why" was close to undiagnosable.
+
+  And the package's headline feature finally has tests: real-Chromium specs assert CodeMirror emits highlight spans, including in the read-only/no-gutter/wrapped shape a docs surface uses.
+
+- [#2479](https://github.com/pyreon/pyreon/pull/2479) [`a0c0555`](https://github.com/pyreon/pyreon/commit/a0c05555d075d30605188a9d4c4afe2661ab796e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - New `@pyreon/code/webview` subpath — host a real CodeMirror 6 editor inside a native `<WebView>` (WKWebView on iOS, Android WebView) so the full editor works on every target from one source, driven by the same value/language/read-only signals as `createEditor`. `buildCodeHostHtml({ codemirrorScript? | codemirrorSrc? })` builds a self-contained host page that WAITS for a `window.CM` namespace (`{ EditorView, EditorState, Compartment, basicSetup, languageFor? }` — the app bundles its own `@codemirror/*`, exactly like `buildChartHostHtml({ echartsScript })`, since CodeMirror 6 is modular ESM with no single UMD), applies `{ value, language?, readOnly? }` from the `<WebView>` data bridge (cursor-preserving doc replacement + Compartment reconfigure — no reload), and posts new text via `window.pyreonPostMessage` on user edits (loop-guarded against the echo of a value we pushed). `<CodeWebView state onChange>` is the web-side ergonomic wrapper (emits `<WebView>`); native apps use `<WebView html={buildCodeHostHtml(...)} data={{ value, language }} onMessage={…}>` directly. Real-CodeMirror-in-a-real-iframe bridge proof in the browser suite (forward value push → editor renders → in-place doc replace; reverse edit → onChange; loop guard suppresses the pushed-value echo; readOnly applies).
+
+### Patch Changes
+
+- [#2623](https://github.com/pyreon/pyreon/pull/2623) [`77eaf81`](https://github.com/pyreon/pyreon/commit/77eaf81469ad4a00ae55fcb328e83d67b508d157) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Pin `@codemirror/language` to a single version. It hosts both the `Language` facet and `syntaxHighlighting`, so two resolved copies mean the highlighter never recognises the parser's tree — the editor mounts, the text renders, and nothing is coloured, with no error anywhere. The lockfile carried 6.12.3 alongside 6.12.4, which only bit on a clean install (a warm local tree that happened to dedupe never showed it). Its siblings `@codemirror/state` and `@codemirror/view` were already pinned in the root `overrides` for exactly this reason; `@codemirror/language` simply was not. A browser spec now asserts the single-instance invariant directly, so a future dependency-graph regression fails by name instead of as unexplained missing highlighting.
+
+- [#2612](https://github.com/pyreon/pyreon/pull/2612) [`19ee507`](https://github.com/pyreon/pyreon/commit/19ee507df579bcf719ab385b0b60ea64e587e731) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `@pyreon/loom`: the phantom detector now recognizes the DefinitelyTyped
+  pattern (a declared `@types/x` twin satisfies a type-only import of `x`,
+  scoped names included), the lexical scanner requires the import KEYWORD to
+  sit in code (a `from '…'` inside a string — rule messages, fix catalogs,
+  generated examples — never scans as an import), subtrees with their own
+  package.json are separate units, and a root `loom.ignore` (reason
+  REQUIRED) downgrades findings to info with the reason attached — never a
+  silent drop.
+
+  The other packages: devDependency range alignment only (same-major sync
+  surfaced by `loom scan`); no runtime change.
+
+- [#2642](https://github.com/pyreon/pyreon/pull/2642) [`4e53471`](https://github.com/pyreon/pyreon/commit/4e53471d6f92266bbf6a84f35eea6cf58fb529e3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Every package manifest now declares its MULTIPLATFORM story as data:
+  `multiplatform: { tier: 'shared' | 'service-backend' | 'web-only', rationale }`
+  (a discriminated union — `web-only` REQUIRES the rationale sentence). The
+  assignments transcribe the classification the multiplatform docs and the PMTC
+  compiler's own `WEB_ONLY_PACKAGES` registry already maintain, and the new
+  `check-multiplatform-tier` gate (validate-fast family) holds the contract:
+  a manifest without a tier, a published package with neither manifest nor
+  explicit exemption, a `web-only` without a rationale, or a stale generated
+  tier table all fail CI — so a new package can never again silently default
+  to web-only while the ecosystem advertises "one codebase, three targets".
+
+  No runtime change in any package: manifests are docs-pipeline inputs and are
+  stripped from published tarballs; every generated surface (llms, MCP
+  api-reference, reference pages) is byte-identical.
+
+- Updated dependencies [[`9729e91`](https://github.com/pyreon/pyreon/commit/9729e91111b7d5c1414d7df5d7ed0080a904eee8), [`39610a7`](https://github.com/pyreon/pyreon/commit/39610a7457903d8fc8e05d4099173ce23d261203), [`3c79989`](https://github.com/pyreon/pyreon/commit/3c79989c620e18651bfa82af7351eae60ab705a9), [`4b430ca`](https://github.com/pyreon/pyreon/commit/4b430cac51008cce48606203dd9f874b419e3db0), [`26ae1be`](https://github.com/pyreon/pyreon/commit/26ae1beecd112ef91dc840719bff8934d571e63b), [`5b3442e`](https://github.com/pyreon/pyreon/commit/5b3442e4262cca5f49fcbfc8d83e88861ce3d821), [`9729e91`](https://github.com/pyreon/pyreon/commit/9729e91111b7d5c1414d7df5d7ed0080a904eee8), [`e10f9fc`](https://github.com/pyreon/pyreon/commit/e10f9fc5143e119d02722951df721f3ee9389749), [`19ee507`](https://github.com/pyreon/pyreon/commit/19ee507df579bcf719ab385b0b60ea64e587e731), [`4e53471`](https://github.com/pyreon/pyreon/commit/4e53471d6f92266bbf6a84f35eea6cf58fb529e3), [`7417fdb`](https://github.com/pyreon/pyreon/commit/7417fdbff839c0bbdcd8ab92c5d5d1ea85fd228c), [`d82f233`](https://github.com/pyreon/pyreon/commit/d82f233f55fcc57b5d231d09a8b79fcb105c60b7), [`83fc05a`](https://github.com/pyreon/pyreon/commit/83fc05ab940a01f69f21ed5fad1aa4b5fcfde7ce), [`9729e91`](https://github.com/pyreon/pyreon/commit/9729e91111b7d5c1414d7df5d7ed0080a904eee8), [`9154c8a`](https://github.com/pyreon/pyreon/commit/9154c8aca81ce858ef99b213564af870c378f37f), [`9729e91`](https://github.com/pyreon/pyreon/commit/9729e91111b7d5c1414d7df5d7ed0080a904eee8), [`5ca9b4c`](https://github.com/pyreon/pyreon/commit/5ca9b4c010049fb9a80efc3ccce68bcc61a8eb6c), [`abd71ef`](https://github.com/pyreon/pyreon/commit/abd71efb3b21a1b86b2aabd625ea2198cc9354c9)]:
+  - @pyreon/runtime-dom@0.51.0
+  - @pyreon/reactivity@0.51.0
+  - @pyreon/primitives@0.51.0
+  - @pyreon/core@0.51.0
+
 ## 0.50.0
 
 ### Minor Changes

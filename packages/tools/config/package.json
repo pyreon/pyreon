@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/config",
-  "version": "0.50.0",
-  "description": "One pyreon.config.ts for the whole ecosystem \u2014 a typed section per package.",
+  "version": "0.51.0",
+  "description": "One pyreon.config.ts for the whole ecosystem — a typed section per package.",
   "license": "MIT",
   "publishConfig": {
     "access": "public"

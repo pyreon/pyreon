@@ -1,5 +1,54 @@
 # @pyreon/vite-plugin
 
+## 0.51.0
+
+### Patch Changes
+
+- [#2660](https://github.com/pyreon/pyreon/pull/2660) [`e252318`](https://github.com/pyreon/pyreon/commit/e252318fdd68a07fbc292b0f012fe7bafaa54653) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix four bugs that made Atlas unusable on a real monorepo, and one that broke ordinary app builds.
+
+  Found by running `atlas scan` against a 78-package workspace rather than a fixture.
+
+  **`@pyreon/vite-plugin` — JSX auto-import collided with destructured bindings.**
+  The shadow check required the name immediately after the keyword, so
+  `const { Form, Text } = createForm(schema)` was invisible to it and the pass
+  injected `import { Text } from '@pyreon/primitives'` on top of it. The build
+  died with `Identifier 'Text' has already been declared`, pointing at a line the
+  author never wrote. A form factory returning named components is an entirely
+  ordinary shape; this broke any app using one, independently of Atlas.
+
+  **`@pyreon/atlas` — a root `atlas.config.ts` could not import anything.**
+  A package manager links a dependency only into packages that declare it, and the
+  repo root declares almost none — so the file that supplies `theme` (which makes
+  rocketstyle chains discoverable) and `wrapper` (which lets theme-reading
+  components mount) could import neither the project's own packages nor
+  `@pyreon/core`. Config imports now resolve against the workspace: by name for a
+  workspace package, and otherwise as a package that declares the dependency
+  would. Components are deliberately excluded from the second tier — one that
+  cannot resolve an import has a real dependency bug worth surfacing.
+
+  **`@pyreon/atlas` — `entryFromExports` answered a loading question with a types
+  answer.** Reading `types` first is right for prop-type resolution and wrong for
+  loading, where it lands on `index.d.ts` and fails as if the file were missing.
+  Callers now say which they want.
+
+  **`@pyreon/atlas` — a flag's value was taken as the directory to scan.**
+  `atlas build --out dist/atlas` scanned `dist/atlas`, then reported
+  `no components found under dist/atlas/src`. All five commands shared the line.
+
+  **`@pyreon/atlas` — "no atlas.config.ts" was printed when there was one.**
+  Both a config that failed to load and one that simply sets no `projects` got the
+  message, the first contradicting the error printed directly above it.
+
+  Measured on that workspace, with a `theme` and `wrapper` configured: 1378 → 1419
+  components, 1451 → 3356 scenarios, 1055 → 3127 verified.
+
+- [#2694](https://github.com/pyreon/pyreon/pull/2694) [`9729e91`](https://github.com/pyreon/pyreon/commit/9729e91111b7d5c1414d7df5d7ed0080a904eee8) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The default innerHTML sanitizer (~100-tag allowlists + walker) moves behind a tree-shakeable registration seam: `@pyreon/runtime-dom/sanitizer` registers it as a side effect, and `@pyreon/vite-plugin` auto-injects that import into any module whose source uses the sanitized `innerHTML` prop — Vite apps keep zero-config semantics while apps that never use it (most) drop the machinery entirely (mount-only import: 8,028 → 7,580 gz). Non-Vite consumers using `innerHTML` add the one-line import once; without any sanitizer registered, the sanitized path THROWS naming both fixes rather than ever applying unsanitized HTML (the security-critical direction — locked by a dedicated unregistered-state spec). `dangerouslySetInnerHTML` is raw by design (React semantics) and is unaffected; `setSanitizer(...)` custom sanitizers work without the default.
+
+- Updated dependencies [[`9729e91`](https://github.com/pyreon/pyreon/commit/9729e91111b7d5c1414d7df5d7ed0080a904eee8), [`39610a7`](https://github.com/pyreon/pyreon/commit/39610a7457903d8fc8e05d4099173ce23d261203), [`3c79989`](https://github.com/pyreon/pyreon/commit/3c79989c620e18651bfa82af7351eae60ab705a9), [`4b430ca`](https://github.com/pyreon/pyreon/commit/4b430cac51008cce48606203dd9f874b419e3db0), [`26ae1be`](https://github.com/pyreon/pyreon/commit/26ae1beecd112ef91dc840719bff8934d571e63b), [`5b3442e`](https://github.com/pyreon/pyreon/commit/5b3442e4262cca5f49fcbfc8d83e88861ce3d821), [`9729e91`](https://github.com/pyreon/pyreon/commit/9729e91111b7d5c1414d7df5d7ed0080a904eee8), [`e10f9fc`](https://github.com/pyreon/pyreon/commit/e10f9fc5143e119d02722951df721f3ee9389749), [`19ee507`](https://github.com/pyreon/pyreon/commit/19ee507df579bcf719ab385b0b60ea64e587e731), [`4e53471`](https://github.com/pyreon/pyreon/commit/4e53471d6f92266bbf6a84f35eea6cf58fb529e3), [`d82f233`](https://github.com/pyreon/pyreon/commit/d82f233f55fcc57b5d231d09a8b79fcb105c60b7), [`9415d31`](https://github.com/pyreon/pyreon/commit/9415d31a864be2cb66da4775baec8f9b059203de), [`83fc05a`](https://github.com/pyreon/pyreon/commit/83fc05ab940a01f69f21ed5fad1aa4b5fcfde7ce), [`9729e91`](https://github.com/pyreon/pyreon/commit/9729e91111b7d5c1414d7df5d7ed0080a904eee8), [`f498ee6`](https://github.com/pyreon/pyreon/commit/f498ee6604f0d4be0756caef5f07b30e9c1c6de9), [`a4a1766`](https://github.com/pyreon/pyreon/commit/a4a1766e341a4f8b3557c4d55885b183aab2d62b), [`9729e91`](https://github.com/pyreon/pyreon/commit/9729e91111b7d5c1414d7df5d7ed0080a904eee8), [`85ad5bf`](https://github.com/pyreon/pyreon/commit/85ad5bf91a6e822afbc109721b51b1cbb1422274), [`9729e91`](https://github.com/pyreon/pyreon/commit/9729e91111b7d5c1414d7df5d7ed0080a904eee8)]:
+  - @pyreon/runtime-dom@0.51.0
+  - @pyreon/reactivity@0.51.0
+  - @pyreon/compiler@0.51.0
+
 ## 0.50.0
 
 ### Patch Changes

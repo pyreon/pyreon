@@ -1,5 +1,36 @@
 # @pyreon/flow
 
+## 0.51.0
+
+### Minor Changes
+
+- [#2479](https://github.com/pyreon/pyreon/pull/2479) [`a0c0555`](https://github.com/pyreon/pyreon/commit/a0c05555d075d30605188a9d4c4afe2661ab796e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - New `@pyreon/flow/webview` subpath — host a flow diagram inside a native `<WebView>` (WKWebView / Android WebView) so a graph renders on every target from one source, driven by the same `{ nodes, edges }` model as `<Flow>`. `buildFlowHostHtml()` builds a FULLY self-contained SVG diagram renderer (no external bundle): nodes as labeled rounded rects, edges via flow's real `getBezierPath` geometry, pan + wheel/pinch zoom, fit-on-load, re-render on the forward bridge, node-tap → `window.pyreonPostMessage`. `<FlowWebView graph onSelect>` is the web-side wrapper; native apps use `<WebView html={buildFlowHostHtml()} data={graph} onMessage={…}>`. For the full interactive editor (custom-JSX nodes / connection dragging), pass a bundled `@pyreon/flow` web app as the host via the `html` escape hatch. Real SVG-render + bridge proof in the browser suite (forward push → nodes + bezier edges; real node-tap → onSelect).
+
+  Performance-tuned: rapid graph pushes / resize storms coalesce to one SVG rebuild per frame — verified by a real-Chromium perf test (coalescing, a 100-node/99-edge graph, graceful malformed-graph handling).
+
+### Patch Changes
+
+- [#2642](https://github.com/pyreon/pyreon/pull/2642) [`4e53471`](https://github.com/pyreon/pyreon/commit/4e53471d6f92266bbf6a84f35eea6cf58fb529e3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Every package manifest now declares its MULTIPLATFORM story as data:
+  `multiplatform: { tier: 'shared' | 'service-backend' | 'web-only', rationale }`
+  (a discriminated union — `web-only` REQUIRES the rationale sentence). The
+  assignments transcribe the classification the multiplatform docs and the PMTC
+  compiler's own `WEB_ONLY_PACKAGES` registry already maintain, and the new
+  `check-multiplatform-tier` gate (validate-fast family) holds the contract:
+  a manifest without a tier, a published package with neither manifest nor
+  explicit exemption, a `web-only` without a rationale, or a stale generated
+  tier table all fail CI — so a new package can never again silently default
+  to web-only while the ecosystem advertises "one codebase, three targets".
+
+  No runtime change in any package: manifests are docs-pipeline inputs and are
+  stripped from published tarballs; every generated surface (llms, MCP
+  api-reference, reference pages) is byte-identical.
+
+- Updated dependencies [[`9729e91`](https://github.com/pyreon/pyreon/commit/9729e91111b7d5c1414d7df5d7ed0080a904eee8), [`39610a7`](https://github.com/pyreon/pyreon/commit/39610a7457903d8fc8e05d4099173ce23d261203), [`3c79989`](https://github.com/pyreon/pyreon/commit/3c79989c620e18651bfa82af7351eae60ab705a9), [`4b430ca`](https://github.com/pyreon/pyreon/commit/4b430cac51008cce48606203dd9f874b419e3db0), [`26ae1be`](https://github.com/pyreon/pyreon/commit/26ae1beecd112ef91dc840719bff8934d571e63b), [`5b3442e`](https://github.com/pyreon/pyreon/commit/5b3442e4262cca5f49fcbfc8d83e88861ce3d821), [`9729e91`](https://github.com/pyreon/pyreon/commit/9729e91111b7d5c1414d7df5d7ed0080a904eee8), [`e10f9fc`](https://github.com/pyreon/pyreon/commit/e10f9fc5143e119d02722951df721f3ee9389749), [`19ee507`](https://github.com/pyreon/pyreon/commit/19ee507df579bcf719ab385b0b60ea64e587e731), [`4e53471`](https://github.com/pyreon/pyreon/commit/4e53471d6f92266bbf6a84f35eea6cf58fb529e3), [`7417fdb`](https://github.com/pyreon/pyreon/commit/7417fdbff839c0bbdcd8ab92c5d5d1ea85fd228c), [`d82f233`](https://github.com/pyreon/pyreon/commit/d82f233f55fcc57b5d231d09a8b79fcb105c60b7), [`83fc05a`](https://github.com/pyreon/pyreon/commit/83fc05ab940a01f69f21ed5fad1aa4b5fcfde7ce), [`9729e91`](https://github.com/pyreon/pyreon/commit/9729e91111b7d5c1414d7df5d7ed0080a904eee8), [`9154c8a`](https://github.com/pyreon/pyreon/commit/9154c8aca81ce858ef99b213564af870c378f37f), [`9729e91`](https://github.com/pyreon/pyreon/commit/9729e91111b7d5c1414d7df5d7ed0080a904eee8), [`5ca9b4c`](https://github.com/pyreon/pyreon/commit/5ca9b4c010049fb9a80efc3ccce68bcc61a8eb6c), [`abd71ef`](https://github.com/pyreon/pyreon/commit/abd71efb3b21a1b86b2aabd625ea2198cc9354c9)]:
+  - @pyreon/runtime-dom@0.51.0
+  - @pyreon/reactivity@0.51.0
+  - @pyreon/primitives@0.51.0
+  - @pyreon/core@0.51.0
+
 ## 0.50.0
 
 ### Minor Changes
