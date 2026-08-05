@@ -789,10 +789,14 @@ export function mountFor<T>(
       const key = getKey(items[i] as T)
       const row = a.rows[i]!
       let markerKey: string
-      try {
-        markerKey = decodeURIComponent(row.key)
-      } catch {
-        return false // malformed marker — bail, never throw mid-hydration
+      if (row.key.indexOf('%') < 0) {
+        markerKey = row.key // no escapes — decode is identity (dominant case)
+      } else {
+        try {
+          markerKey = decodeURIComponent(row.key)
+        } catch {
+          return false // malformed marker — bail, never throw mid-hydration
+        }
       }
       if (String(key) !== markerKey) return false
       keys[i] = key

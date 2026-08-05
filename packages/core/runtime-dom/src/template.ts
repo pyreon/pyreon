@@ -110,7 +110,19 @@ export function _setChild(node: Element, value: unknown): void {
   if (_isMountableTextValue(value)) {
     mountChild(value as VNodeChild, node, null)
   } else {
-    node.textContent = value as string
+    // Sole-text fast path: when the element already holds exactly one text
+    // node (the hydration-ADOPTION case — the SSR text is still in place —
+    // and any repeat-set case), write `.data` in place instead of
+    // `textContent =` (which removes + recreates the node). Chromium
+    // short-circuits same-value data writes, so an adopted row whose SSR text
+    // already matches pays nearly nothing. Fresh mounts have no children and
+    // take the textContent branch unchanged.
+    const fc = node.firstChild
+    if (fc !== null && fc.nodeType === 3 && fc.nextSibling === null) {
+      ;(fc as Text).data = value as string
+    } else {
+      node.textContent = value as string
+    }
   }
 }
 
@@ -517,10 +529,14 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
     const wantTexts = wantCounts[at] as number
     if (texts !== wantTexts) {
       // Template expects NO texts here → the bind manages this element's
-      // content (`_setChild`) — SSR texts are removed pre-bind. Any other
-      // mismatch is a structural divergence: bail.
+      // content (`_setChild`). A SOLE bare text is KEPT — `_setChild`'s
+      // sole-text fast path writes `.data` in place, reusing the SSR node
+      // (and the value matches by construction, making the write ~free).
+      // Multiple bare texts are removed pre-bind (parser-merge shapes the
+      // sole-text path can't reuse). Any other mismatch is a structural
+      // divergence: bail.
       if (wantTexts === 0 && bare) {
-        ;(removals ??= []).push(...bare)
+        if (bare.length > 1) (removals ??= []).push(...bare)
       } else return false
     }
     for (let c = el.firstElementChild; c; c = c.nextElementSibling) {

@@ -601,8 +601,15 @@ export function applyStyleProp(el: HTMLElement, value: unknown): void {
 // is a read-only `SVGAnimatedString`) — which is why flow edges rendered nothing
 // once `_tpl` gave them the correct SVG namespace.
 export function applyClassProp(el: Element, value: unknown): void {
-  const resolved = typeof value === 'string' ? value : cx(value as ClassValue)
-  el.setAttribute('class', resolved || '')
+  const resolved = (typeof value === 'string' ? value : cx(value as ClassValue)) || ''
+  // Skip-if-equal: reactive class effects re-run with unchanged output, and
+  // hydration-adoption's initial run writes the value the SSR attr already
+  // holds — a getAttribute compare is far cheaper than a setAttribute
+  // (attr-mutation bookkeeping) for those. PRESENCE is part of the contract
+  // (an empty resolved value still materializes `class=""` — [class]
+  // selectors distinguish it), so absent (null) ≠ '' and the first empty
+  // write still happens.
+  if (el.getAttribute('class') !== resolved) el.setAttribute('class', resolved)
 }
 
 /**
