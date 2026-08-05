@@ -69,6 +69,11 @@ export interface AntiPatternEntry {
  */
 const CATEGORY_MAP: Record<string, AntiPatternCategory> = {
   'Reactivity Mistakes': 'reactivity',
+  // Mapped onto `reactivity` rather than given its own slug: these ARE
+  // reactivity mistakes (they just arise when Pyreon's primitives back a third
+  // party's atom-style seam), so a reader hunting a reactivity bug finds them
+  // in the one place they would look.
+  'Reactivity-Seam Adapter Mistakes': 'reactivity',
   'JSX Mistakes': 'jsx',
   'Context & Provider Mistakes': 'context',
   'Architecture Mistakes': 'architecture',

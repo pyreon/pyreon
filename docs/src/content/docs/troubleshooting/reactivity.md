@@ -116,3 +116,33 @@ PR #1177 added a two-tier subscriber store on `signal()` — `_d1` is an inline 
 (enforced by `@pyreon/lint` rule `pyreon/storage-signal-v-forwarding`): The compiler's `_bindText` / `_bindDirect` fast paths read `source._v` directly (not `source()`) for zero-call-overhead initial-value reads on cached signals. If you write a custom callable that wraps a base signal — delegating `.direct` / `.subscribe` / `.peek` to the underlying `sig` — you MUST also forward `_v` via getter: `Object.defineProperty(wrapper, '_v', { get: () => sig._v, configurable: true })`. Without this, the binding initializes the text/attribute to `''` (because `undefined` coerces to empty string) AND every subsequent `direct` callback reads `undefined` again — the binding fires, but writes the same empty value every time. The bug is invisible in unit tests that call `wrapper()` directly (which DOES delegate correctly via the function call) but fires in any consumer of the compiler-emitted fast path. **Real-world hit**: `@pyreon/storage`'s `useStorage` / `useSessionStorage` / `useCookie` / `useMemoryStorage` / `useIndexedDB` all shipped without `_v` forwarding from inception; SSR rendered `<strong>light</strong>` correctly but post-hydration the strong went empty and stayed empty even after `theme.set('dark')` updated localStorage. Reference: `packages/fundamentals/storage/src/local.ts:createStorageSignal` for the canonical fix shape; `_bindText` contract documented at `packages/core/runtime-dom/src/template.ts:_bindText` ("source has .direct() implies source has ._v"). The compiler triggers the fast path for the JSX shape `{() => identifier()}` where `identifier` resolves to a callable — including anything that quacks signal-like. **Canonical fix — use `wrapSignal(base, { set })` from `@pyreon/reactivity`** instead of hand-rolling the facade: it forwards `_v` / `.direct` / `.peek` / `.subscribe` / `.label` by construction, so the contract is impossible to forget. `@pyreon/storage` (all 5 backends) and `@pyreon/state-tree` (`trackedSignal`) now use it — and that surfaced the bug class in state-tree: its hand-rolled `trackedSignal` forwarded neither `.direct` NOR `_v`, so a model field bound via `{() => model.field()}` rendered empty (regression-locked by `state-tree/src/tests/tracked-signal-bind-contract.test.ts`, bisect-verified). The lint rule remains for any future hand-rolled facade that bypasses the primitive.
 
 ---
+
+### A sync effect that calls `setX((prev) => …)` SUBSCRIBES to what it is about to write — an unbounded self-retrigger.
+
+The updater form READS the library's own options/state atom; inside a tracked effect that read is a subscription, so the write re-fires the effect forever (measured: the effect ran until the test's cell-render counter blew past every bound). **Rule: in a "sync my reactive inputs INTO the library" effect, track ONLY your own inputs and wrap the library write in `untrack`.** The tracked part is `options()`; the write is not.
+
+---
+
+### When a per-item signal is meant to be the SOLE subscription, the whole lookup must be untracked — untracking one call is not enough.
+
+Under a fully-reactive library EVERY navigation step is a derived-atom read (`getRowModel()`, `getVisibleCells()`, `getContext()`), so any one left tracked re-subscribes the item to library-wide state and silently restores coarse invalidation (measured: 20 cell re-runs where 2 were correct, with only the first call untracked). Untrack the entire lookup, or accept coarse.
+
+---
+
+### Never compare a user-supplied collection by ARRAY IDENTITY to decide "did this change?"
+
+The idiomatic call site inlines the literal (`columns: [...]` inside an options function), so the reference churns on every sync and the check reports "changed" every time — coarse-invalidating everything and defeating the fine-grained path for exactly the users who wrote the most natural code. Compare a cheap STRUCTURAL signature instead.
+
+---
+
+### A "nothing changed → invalidate everything" fallback is unsound in a multi-atom graph.
+
+Such an effect can legitimately re-run more than once per user change (different atoms settle separately), and on the later pass the baselines have already been advanced — so the fallback fires on a spurious re-run and coarse-invalidates the whole view. Bump on a POSITIVELY DETECTED change only; a re-run that detects nothing must do nothing.
+
+---
+
+### Adopting the seam DELETES hand-rolled machinery — check what becomes dead.
+
+The v8 adapter's version counter, whole-`TableState` structural diff (`sameTableState`/`sliceEqual`), and `onStateChange` interception all existed solely because v8 had no seam; v9 made them obsolete (372 → ~250 lines with MORE capability). When a dependency grows a reactivity seam, the migration is an opportunity to delete, not just to rename.
+
+---
