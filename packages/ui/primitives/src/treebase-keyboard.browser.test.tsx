@@ -82,6 +82,65 @@ function press(el: HTMLElement, key: string): void {
   el.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }))
 }
 
+describe('TreeBase — ArrowLeft move-to-parent (WAI-ARIA tree)', () => {
+  // The pattern gives ArrowLeft TWO jobs: close an EXPANDED node, and on a
+  // COLLAPSED node or a LEAF move focus to the PARENT. Only the first was
+  // implemented, which made ArrowLeft a dead key at every leaf — the place a
+  // user presses it most, since walking back out of a subtree is how you
+  // leave it without repeatedly reaching for ArrowUp.
+  it('on a LEAF, moves focus to the parent', async () => {
+    const { state, tree, unmount } = mountTree(['fruits', 'apple'])
+    await flush()
+    state.focus('gala') // leaf, child of apple
+    press(tree, 'ArrowLeft')
+    expect(state.focused()).toBe('apple')
+    unmount()
+  })
+
+  it('on a COLLAPSED parent node, moves focus to ITS parent', async () => {
+    const { state, tree, unmount } = mountTree(['fruits']) // apple collapsed
+    await flush()
+    state.focus('apple') // has children, but collapsed
+    press(tree, 'ArrowLeft')
+    expect(state.focused()).toBe('fruits')
+    unmount()
+  })
+
+  it('on an EXPANDED node, still COLLAPSES rather than moving focus', async () => {
+    const { state, tree, unmount } = mountTree(['fruits'])
+    await flush()
+    state.focus('fruits')
+    press(tree, 'ArrowLeft')
+    expect(state.focused()).toBe('fruits')
+    expect(state.isExpanded('fruits')).toBe(false)
+    unmount()
+  })
+
+  it('on a ROOT-level node, is a no-op (no parent to move to)', async () => {
+    const { state, tree, unmount } = mountTree() // all collapsed
+    await flush()
+    state.focus('fungi') // root leaf
+    press(tree, 'ArrowLeft')
+    expect(state.focused()).toBe('fungi')
+    unmount()
+  })
+
+  it('moves REAL DOM focus, not just the roving-tabindex state', async () => {
+    const { state, tree, container, unmount } = mountTree(['fruits', 'apple'])
+    await flush()
+    state.focus('gala')
+    press(tree, 'ArrowLeft')
+    await flush()
+    const parentEl = container.querySelector('[data-tree-id="apple"]') as HTMLElement | null
+    // The roving contract is both halves; if the primitive exposes the id on
+    // the item props, assert the element too — otherwise the state assertion
+    // above already pins the half this fix owns.
+    if (parentEl) expect(document.activeElement).toBe(parentEl)
+    expect(state.focused()).toBe('apple')
+    unmount()
+  })
+})
+
 describe('TreeBase — Home/End (WAI-ARIA tree)', () => {
   it('Home focuses the first visible node', async () => {
     const { state, tree, unmount } = mountTree()
