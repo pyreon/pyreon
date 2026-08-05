@@ -36,8 +36,20 @@ public class PyreonForm(
      * form-binding arc; schema validation stays a later arc).
      */
     private val validators: Map<String, (String) -> String> = emptyMap(),
-    /** Submit callback — receives the values snapshot when valid. */
-    private val onSubmit: ((Map<String, String>) -> Unit)? = null,
+    /**
+     * Submit callback — receives the values snapshot when valid.
+     *
+     * A `var`, and settable AFTER construction, because the common authoring
+     * shape references the form ITSELF from the handler ("clear the field
+     * after submit": `onSubmit: (values) => form.setFieldValue('x', '')`).
+     * Passed as a constructor argument inside `remember { … }`, that body is
+     * a self-reference in the form's own initializer and Kotlin rejects it
+     * ("unresolved reference 'form'") — so the natural idiom did not compile
+     * on Android at all. Swift already assigns `form.onSubmit` post-init from
+     * `.onAppear` for exactly this reason; this mirrors it. The constructor
+     * parameter stays for the handler-free and non-self-referencing shapes.
+     */
+    public var onSubmit: ((Map<String, String>) -> Unit)? = null,
 ) {
     private val initial: Map<String, String> = initialValues
 

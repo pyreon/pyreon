@@ -1050,7 +1050,11 @@ fun <I, O> rememberLauncherForActivityResult(
 class PyreonForm(
   initialValues: Map<String, String> = emptyMap(),
   private val validators: Map<String, (String) -> String> = emptyMap(),
-  private val onSubmit: ((Map<String, String>) -> Unit)? = null,
+  // \`var\`, mirroring the real PyreonForm: the emit assigns onSubmit AFTER
+  // the decl so a handler referencing the form itself is not a
+  // self-reference in its own initializer. A \`val\` here would reject the
+  // emit the runtime accepts — a stub stricter than reality.
+  var onSubmit: ((Map<String, String>) -> Unit)? = null,
 ) {
   val values: MutableState<Map<String, String>> = mutableStateOf(initialValues)
   val errors: MutableState<Map<String, String>> = mutableStateOf(emptyMap())

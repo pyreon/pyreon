@@ -114,6 +114,14 @@ function LoginPage() {
       secrets.write('finance-session', values.username)
       auth.signInSucceeded({ id: values.username, name: values.username })
       useFinance().store.isAuthed.set(true)
+      // Clear the field after a successful submit — the most common reason a
+      // submit handler exists, and a SELF-reference: the handler names the
+      // form it belongs to. That shape did not COMPILE on Android until the
+      // Kotlin emit stopped passing onSubmit as a constructor argument
+      // (inside `remember { PyreonForm(onSubmit = { … form … }) }` the body
+      // is a self-reference in the form's own initializer). Swift always
+      // assigned it post-init from `.onAppear`; Kotlin now mirrors that.
+      form.setFieldValue('username', '')
       navigate('/dashboard')
     },
   })
@@ -145,26 +153,36 @@ function DashboardPage() {
   const db = useDatabase()
   const auth = useAuth<User>()
   const secrets = useSecureStorage()
-  const description = signal<string>('')
-  const amount = signal<string>('')
-
   const balance = computed(() =>
     useFinance()
       .store.txns()
       .reduce((sum, t) => sum + t.amount, 0),
   )
 
-  const addTransaction = () => {
-    const desc = description().trim()
-    if (desc.length === 0) return
-    const value = parseInt(amount(), 10)
-    useFinance().store.txns.set([
-      ...useFinance().store.txns(),
-      { id: nextTxId++, description: desc, amount: value },
-    ])
-    description.set('')
-    amount.set('')
-  }
+  // The add-transaction form is the SELF-REFERENCE proof that stays put: its
+  // handler names the form it belongs to, clears it, and does NOT navigate —
+  // so the cleared field is observable on the SAME screen. (The login form
+  // clears too, but it navigates away, and a device assertion after a
+  // round trip cannot tell "cleared" from "the page remounted".)
+  const txForm = useForm({
+    initialValues: { description: '', amount: '' },
+    validators: {
+      description: (v) => (v.trim().length === 0 ? 'Description required' : ''),
+      amount: (v) => (v.trim().length === 0 ? 'Amount required' : ''),
+    },
+    onSubmit: (values) => {
+      useFinance().store.txns.set([
+        ...useFinance().store.txns(),
+        {
+          id: nextTxId++,
+          description: values.description.trim(),
+          amount: parseInt(values.amount, 10),
+        },
+      ])
+      txForm.setFieldValue('description', '')
+      txForm.setFieldValue('amount', '')
+    },
+  })
 
   const remove = (id: number) => {
     useFinance().store.txns.set(
@@ -207,19 +225,22 @@ function DashboardPage() {
         </For>
       </Scroll>
       <Field
-        value={description}
-        onChangeText={(v) => description.set(v)}
+        value={txForm.values().description}
+        onChangeText={(v) => txForm.setFieldValue('description', v)}
         placeholder="Description"
         data-testid="new-tx-desc"
       />
       <Field
-        value={amount}
-        onChangeText={(v) => amount.set(v)}
+        value={txForm.values().amount}
+        onChangeText={(v) => txForm.setFieldValue('amount', v)}
         placeholder="Amount"
         data-testid="new-tx-amount"
       />
+      <Show when={() => txForm.errors().description !== ''}>
+        <Text data-testid="new-tx-error">{txForm.errors().description}</Text>
+      </Show>
       <Inline gap={2}>
-        <Button onPress={addTransaction} data-testid="new-tx-add">
+        <Button onPress={() => txForm.submit()} data-testid="new-tx-add">
           Add
         </Button>
         <Button onPress={logout} data-testid="dash-logout">
