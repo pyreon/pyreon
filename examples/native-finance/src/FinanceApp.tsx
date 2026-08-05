@@ -114,6 +114,14 @@ function LoginPage() {
       secrets.write('finance-session', values.username)
       auth.signInSucceeded({ id: values.username, name: values.username })
       useFinance().store.isAuthed.set(true)
+      // Clear the field after a successful submit — the most common reason a
+      // submit handler exists, and a SELF-reference: the handler names the
+      // form it belongs to. That shape did not COMPILE on Android until the
+      // Kotlin emit stopped passing onSubmit as a constructor argument
+      // (inside `remember { PyreonForm(onSubmit = { … form … }) }` the body
+      // is a self-reference in the form's own initializer). Swift always
+      // assigned it post-init from `.onAppear`; Kotlin now mirrors that.
+      form.setFieldValue('username', '')
       navigate('/dashboard')
     },
   })

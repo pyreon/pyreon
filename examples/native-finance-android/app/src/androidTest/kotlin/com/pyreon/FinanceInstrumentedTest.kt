@@ -19,6 +19,7 @@
 package com.pyreon
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -63,6 +64,34 @@ class FinanceInstrumentedTest {
     fun launchesOnLoginWithSignedOutAuthState() {
         composeRule.onNodeWithTag("login-page").assertIsDisplayed()
         composeRule.onNodeWithText("signedOut").assertIsDisplayed()
+    }
+
+    // The SELF-REFERENCING onSubmit — `onSubmit: () => form.setFieldValue(…)`,
+    // the "clear the field after submit" idiom. This shape did not COMPILE on
+    // Android at all: the Kotlin emit passed onSubmit as a constructor
+    // argument inside `remember { PyreonForm(onSubmit = { … form … }) }`, so
+    // the body was a self-reference in the form's own initializer
+    // ("unresolved reference 'form'"). Swift assigned it post-init from
+    // `.onAppear` and was unaffected — a one-source-three-targets break whose
+    // failure mode was a hard compile error, invisible to any runtime test.
+    //
+    // Signing in and returning to the login screen must show an EMPTY field:
+    // the handler ran and cleared it. A field still carrying the submitted
+    // username means the assignment never happened.
+    @Test
+    fun selfReferencingSubmitClearsTheField() {
+        composeRule.onNodeWithTag("login-page").assertIsDisplayed()
+        composeRule.onNodeWithTag("login-username").performTextInput("ada")
+        composeRule.onNodeWithTag("login-submit").performClick()
+        composeRule.waitUntil(timeoutMillis = 15_000) {
+            composeRule.onAllNodesWithTag("dashboard-page").fetchSemanticsNodes().isNotEmpty()
+        }
+
+        composeRule.onNodeWithTag("dash-logout").performClick()
+        composeRule.waitUntil(timeoutMillis = 15_000) {
+            composeRule.onAllNodesWithTag("login-page").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("login-username").assertTextEquals("", includeEditableText = true)
     }
 
     // The useForm validation GATE — the negative half. A short username must
