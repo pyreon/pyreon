@@ -1,3 +1,6 @@
+// Sanitized-innerHTML specs need the default sanitizer registered (the
+// tree-shakeable seam — vite-plugin injects this for apps; tests do it here).
+import '../sanitizer'
 import type { ComponentFn, VNodeChild } from '@pyreon/core'
 import {
   ErrorBoundary as _ErrorBoundary,

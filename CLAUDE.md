@@ -152,7 +152,7 @@ SVG/MathML (67 tags) created via `createElementNS` + ALWAYS `setAttribute` (many
 
 ### Dev-mode perf counters (`@pyreon/perf-harness`)
 
-Framework packages emit named counters via `globalThis.__pyreon_count__?.('name')` — NO import of `@pyreon/perf-harness` (zero coupling, zero cost until a consumer installs the sink). Browser packages gate on `import.meta.env.DEV`; server packages on `process.env.NODE_ENV !== 'production'`. 92 counters across styler/unistyle/rocketstyle/runtime/runtime-server/reactivity/router/store/rx/query/island/i18n/ssg. Names live ONCE in `COUNTERS.md` (drift-tested both directions). Tree-shake-tested per layer. Consumer: `perfHarness.snapshot()/reset()/record()/diff()/overlay()`. Automation: `examples/perf-dashboard` + `bun run perf:record/perf:diff` + `.github/workflows/perf.yml` (advisory).
+Framework packages emit named counters via `globalThis.__pyreon_count__?.('name')` — NO import of `@pyreon/perf-harness` (zero coupling, zero cost until a consumer installs the sink). Browser packages gate on `import.meta.env.DEV`; server packages on `process.env.NODE_ENV !== 'production'`. 94 counters across styler/unistyle/rocketstyle/runtime/runtime-server/reactivity/router/store/rx/query/island/i18n/ssg. Names live ONCE in `COUNTERS.md` (drift-tested both directions). Tree-shake-tested per layer. Consumer: `perfHarness.snapshot()/reset()/record()/diff()/overlay()`. Automation: `examples/perf-dashboard` + `bun run perf:record/perf:diff` + `.github/workflows/perf.yml` (advisory).
 
 ### exactOptionalPropertyTypes
 

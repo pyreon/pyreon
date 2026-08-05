@@ -5097,9 +5097,8 @@ fn ssr_try_bake_dynamic_attr(
 /// URL literal.
 fn ssr_bake_string_attr(buf: &mut SsrBuf, name: &str, value: &str) -> bool {
     if name == "class" {
-        if value.is_empty() {
-            return true;
-        }
+        // Empty string EMITS class="" (CSR parity — mirrors JS ssrBakeStringAttr
+        // + runtime-server renderPropValue).
         buf.emit_static(&format!(" class=\"{}\"", escape_html_ssr(value)));
         return true;
     }

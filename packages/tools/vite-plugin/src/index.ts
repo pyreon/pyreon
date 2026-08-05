@@ -1246,6 +1246,20 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
 
       let output = result.code
 
+      // ── Sanitizer auto-registration ────────────────────────────────────
+      // The default innerHTML sanitizer lives behind a tree-shakeable
+      // registration seam (@pyreon/runtime-dom/sanitizer). Inject the
+      // side-effect import into any module whose SOURCE uses the sanitized
+      // `innerHTML` prop, so Vite apps keep zero-config semantics while apps
+      // that never use it drop the ~100-tag allowlists + walker entirely.
+      // (`dangerouslySetInnerHTML` is raw by design and needs no sanitizer —
+      // the check deliberately excludes it via the negative lookbehind on
+      // the attribute/key spellings that end in `innerHTML`.)
+      if (/(?<!dangerouslySet)innerHTML\s*[=:]/.test(code)) {
+        output = `import '@pyreon/runtime-dom/sanitizer';
+` + output
+      }
+
       // ── Build-only: append compiled validator verdicts (.tsx path) ──────
       // `verdictTail` is only non-empty when compileValidators is on AND
       // isBuild — so this is implicitly build-only. Appended after the JSX

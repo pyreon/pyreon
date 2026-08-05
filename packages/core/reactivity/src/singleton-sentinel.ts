@@ -112,25 +112,30 @@ function normalizeLocation(url: string): string {
 }
 
 function formatError(pkg: string, existing: SingletonMarker, current: SingletonMarker): string {
-  return (
-    `[Pyreon] Multiple instances of ${pkg} detected.\n\n` +
-    `This breaks the framework's contracts (reactivity, lifecycle hooks, context).\n` +
-    `Two distinct module instances of the same package were loaded in this heap:\n\n` +
-    `  Instance A: ${existing.location} (version ${existing.version})\n` +
-    `  Instance B: ${current.location} (version ${current.version})\n\n` +
-    `Likely causes:\n` +
-    `  1. Sub-dependency pinned an older @pyreon/* version → npm/bun hoisted two copies.\n` +
-    `  2. Your bundler's resolver loaded the package via two different paths (Vite's [bare] vs [package entry] resolvers).\n` +
-    `  3. A workspace + npm-published mix (monorepo importing both).\n\n` +
-    `Fix:\n` +
-    `  Vite:    @pyreon/vite-plugin injects resolve.dedupe automatically. If you have a custom Vite config, ensure resolve.dedupe includes ['@pyreon/*'].\n` +
-    `  Webpack: Use resolve.alias to force a single resolution path.\n` +
-    `  Diagnostic: Run 'pyreon doctor --check-dedup' to identify duplicates in your lockfile.\n` +
-    `  npm:     Check 'npm ls @pyreon/*' for version conflicts.\n` +
-    `  bun:     Check 'bun pm ls' for version conflicts.\n\n` +
-    `Set PYREON_SINGLE_INSTANCE=warn to demote this to a warning (NOT recommended — your app's reactivity will be broken).\n` +
-    `Set PYREON_SINGLE_INSTANCE=silent to disable detection entirely (only for browser extensions / micro-frontends where dual loading is intentional).`
-  )
+  const core =
+    `[Pyreon] Multiple instances of ${pkg} detected — this breaks reactivity/lifecycle/context contracts.\n` +
+    `  A: ${existing.location} (v${existing.version})\n` +
+    `  B: ${current.location} (v${current.version})\n` +
+    `Run 'pyreon doctor --check-dedup'. PYREON_SINGLE_INSTANCE=warn|silent overrides.`
+  // The full remediation guide ships in DEV only — the strings were ~1KB of
+  // every production bundle for a message users act on at dev time; prod keeps
+  // the compact core (both locations + versions + the doctor pointer).
+  if (process.env.NODE_ENV !== 'production') {
+    return (
+      core +
+      `\n\nLikely causes:\n` +
+      `  1. Sub-dependency pinned an older @pyreon/* version → npm/bun hoisted two copies.\n` +
+      `  2. Your bundler's resolver loaded the package via two different paths (Vite's [bare] vs [package entry] resolvers).\n` +
+      `  3. A workspace + npm-published mix (monorepo importing both).\n\n` +
+      `Fix:\n` +
+      `  Vite:    @pyreon/vite-plugin injects resolve.dedupe automatically. If you have a custom Vite config, ensure resolve.dedupe includes ['@pyreon/*'].\n` +
+      `  Webpack: Use resolve.alias to force a single resolution path.\n` +
+      `  npm:     Check 'npm ls @pyreon/*' for version conflicts.\n` +
+      `  bun:     Check 'bun pm ls' for version conflicts.\n\n` +
+      `PYREON_SINGLE_INSTANCE=warn demotes to a warning (NOT recommended); PYREON_SINGLE_INSTANCE=silent disables detection (browser extensions / micro-frontends only).`
+    )
+  }
+  return core
 }
 
 /**

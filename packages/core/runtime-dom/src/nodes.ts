@@ -614,17 +614,34 @@ function forLisReorder(
  * (different/missing/extra/reordered keys, empty rows) bails to the previous
  * correctness-first swap semantics: clear the block, mount fresh.
  */
+export interface ForAdoptOps {
+  items: unknown[]
+  n: number
+  getKey: (item: unknown) => string | number
+  renderItem: (item: unknown) => unknown
+  tailMarker: Comment
+  /** Record one adopted row as a normal ForEntry (pos === index invariant). */
+  setEntry: (
+    key: string | number,
+    anchor: Node,
+    cleanup: Cleanup | null,
+    pos: number,
+    end: Node | null,
+  ) => void
+}
+
 export interface ForAdoption {
   startMarker: Comment
   tailMarker: Comment
-  /** Ordered SSR rows. `marker` is the row's `k:` comment (removed on adopt). */
-  rows: { key: string; marker: Comment; first: ChildNode; last: ChildNode }[]
-  /** Hydrate one row vnode against its existing DOM range; returns cleanup. */
-  hydrateRow: (
-    vnode: import('@pyreon/core').VNode | import('@pyreon/core').NativeItem,
-    first: ChildNode,
-    after: Node | null,
-  ) => Cleanup
+  /**
+   * Adopt the SSR rows (1:1 key match) — the WHOLE adoption routine (row
+   * verify, compiled-template arming, plan replay, interpretive fallback,
+   * anchor bookkeeping) lives on the HYDRATION side and is handed in here, so
+   * mountFor carries only this dispatch and CSR bundles tree-shake all of it.
+   * Returns the adopted key order, or null on ANY mismatch (caller clears the
+   * SSR block and falls through to a fresh render — the swap semantics).
+   */
+  adoptRows: (ops: ForAdoptOps) => (string | number)[] | null
 }
 
 // One-shot synchronous handoff: hydrate.ts sets it immediately before its
@@ -756,53 +773,6 @@ export function mountFor<T>(
       })
     }
     cleanupCount++
-  }
-
-  /**
-   * Adopt the SSR rows on the hydration first-run. STRICT happy path: fires
-   * only when the client items align 1:1 with the SSR rows (same count, same
-   * keys via decodeURIComponent of the marker text, same order) and every row
-   * has at least one DOM node. Each row's vnode is hydrated IN PLACE (bindings
-   * + events wired onto the existing nodes), its range recorded as a normal
-   * ForEntry (`pos === index` invariant holds by construction), and the `k:`
-   * markers are removed. Returns false on ANY mismatch — the caller clears the
-   * block and falls through to the fresh render (the previous swap semantics).
-   */
-  const tryAdoptSsrRows = (items: T[], n: number, a: ForAdoption): boolean => {
-    if (n !== a.rows.length) return false
-    const keys = new Array<string | number>(n)
-    for (let i = 0; i < n; i++) {
-      const key = getKey(items[i] as T)
-      const row = a.rows[i]!
-      let markerKey: string
-      try {
-        markerKey = decodeURIComponent(row.key)
-      } catch {
-        return false // malformed marker — bail, never throw mid-hydration
-      }
-      if (String(key) !== markerKey) return false
-      keys[i] = key
-    }
-    for (let i = 0; i < n; i++) {
-      const row = a.rows[i]!
-      const key = keys[i] as string | number
-      // `after` = the boundary following this row (next row's k: marker, or the
-      // tail marker) — recovery-mounts inside hydrateRow insert before it.
-      const after: Node = i + 1 < n ? a.rows[i + 1]!.marker : tailMarker
-      const cleanup = a.hydrateRow(renderItem(items[i] as T), row.first, after)
-      cache.set(key, {
-        anchor: row.first,
-        cleanup,
-        pos: i,
-        end: row.last !== row.first ? row.last : null,
-      })
-      cleanupCount++
-    }
-    for (let i = 0; i < n; i++) a.rows[i]!.marker.remove()
-    currentKeys = keys
-    if (process.env.NODE_ENV !== 'production')
-      _countSink.__pyreon_count__?.('runtime.mountFor.hydrateAdopt')
-    return true
   }
 
   const handleFreshRender = (items: T[], n: number, liveParent: Node) => {
@@ -1185,7 +1155,25 @@ export function mountFor<T>(
       if (pendingAdoption) {
         const a = pendingAdoption
         pendingAdoption = null
-        if (n > 0 && tryAdoptSsrRows(items, n, a)) return
+        if (n > 0) {
+          const keys = a.adoptRows({
+            items: items as unknown[],
+            n,
+            getKey: getKey as (item: unknown) => string | number,
+            renderItem: renderItem as (item: unknown) => unknown,
+            tailMarker,
+            setEntry: (key, entryAnchor, cleanup, pos, end) => {
+              cache.set(key, { anchor: entryAnchor, cleanup, pos, end })
+              cleanupCount++
+            },
+          })
+          if (keys) {
+            currentKeys = keys
+            if (process.env.NODE_ENV !== 'production')
+              _countSink.__pyreon_count__?.('runtime.mountFor.hydrateAdopt')
+            return
+          }
+        }
         clearBetween(startMarker, tailMarker)
       }
 

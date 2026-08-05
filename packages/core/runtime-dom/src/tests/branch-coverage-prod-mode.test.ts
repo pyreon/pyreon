@@ -3,6 +3,7 @@
  * Hits the FALSE arms of `process.env.NODE_ENV !== 'production'` gates.
  * NO v8-ignore annotations.
  */
+import '../sanitizer' // sanitized-innerHTML specs need the default registered
 import type { ComponentFn } from '@pyreon/core'
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'

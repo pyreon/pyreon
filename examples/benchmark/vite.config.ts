@@ -3,7 +3,15 @@ import { svelte } from '@sveltejs/vite-plugin-svelte'
 import pyreon from '@pyreon/vite-plugin'
 import { defineConfig } from 'vite'
 
+// bench-bundle.ts: per-framework isolated production builds — the driver sets
+// BENCH_BUNDLE_ENTRY to a keep-reference entry file and this config swaps the
+// rollup input (same plugins/minifier for every framework = fair comparison).
+const bundleEntry = process.env.BENCH_BUNDLE_ENTRY
+
 export default defineConfig({
+  ...(bundleEntry
+    ? { build: { rollupOptions: { input: bundleEntry } } }
+    : {}),
   plugins: [
     pyreon(),
     // Octane — the compiled-React framework (`.tsrx`). `requireDirective: true`

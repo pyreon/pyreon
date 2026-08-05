@@ -1777,8 +1777,8 @@ export function transformJSX_JS(
   /** Bake a static string-valued attribute, mirroring `renderPropValue`. */
   function ssrBakeStringAttr(buf: SsrBuf, name: string, value: string): boolean {
     if (name === 'class') {
-      // cx(string) === string; empty → renderPropValue returns null (omit).
-      if (value === '') return true
+      // cx(string) === string. Empty string EMITS class="" (CSR parity — the
+      // client materializes it; renderPropValue mirrors this).
       ssrEmitStatic(buf, ` class="${escapeHtmlSsr(value)}"`)
       return true
     }

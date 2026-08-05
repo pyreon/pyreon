@@ -110,7 +110,19 @@ export function _setChild(node: Element, value: unknown): void {
   if (_isMountableTextValue(value)) {
     mountChild(value as VNodeChild, node, null)
   } else {
-    node.textContent = value as string
+    // Sole-text fast path: when the element already holds exactly one text
+    // node (the hydration-ADOPTION case — the SSR text is still in place —
+    // and any repeat-set case), write `.data` in place instead of
+    // `textContent =` (which removes + recreates the node). Chromium
+    // short-circuits same-value data writes, so an adopted row whose SSR text
+    // already matches pays nearly nothing. Fresh mounts have no children and
+    // take the textContent branch unchanged.
+    const fc = node.firstChild
+    if (fc !== null && fc.nodeType === 3 && fc.nextSibling === null) {
+      ;(fc as Text).data = value as string
+    } else {
+      node.textContent = value as string
+    }
   }
 }
 
@@ -382,6 +394,40 @@ function isSvgRooted(html: string): boolean {
   return !SVG_ROOT_EXCLUDE.has(tag) && SVG_TAGS.has(tag)
 }
 
+// ─── Compiled-template hydration adoption (SEAM) ────────────────────────────
+// One-shot handoff: the <For> hydration-adoption path sets the SSR row root
+// before invoking renderItem; the _tpl call inside consumes it and — when the
+// registered VERIFIER approves — runs its bind against the EXISTING nodes.
+// The verify/plan machinery lives in hydration-plan.ts and is registered at
+// hydrateRoot CALL time (a module-load registration would be a top-level side
+// effect pinning it into CSR bundles), so compiled CSR apps tree-shake ALL of
+// it — _tpl carries only this slot and a nullable hook check.
+let _tplAdoptTarget: Element | null = null
+let _tplAdoptConsumed = false
+
+/** Set/clear the one-shot adoption target (For hydration adoption only). */
+export function _setTplAdoptTarget(el: Element | null): void {
+  _tplAdoptTarget = el
+  _tplAdoptConsumed = false
+}
+
+/** Did the last _tpl call adopt the target (vs clone)? */
+export function _tplAdoptDidConsume(): boolean {
+  return _tplAdoptConsumed
+}
+
+/** Verifier hook — registered by hydrateRoot; true = target verified +
+ * normalized, the compiled bind may run against it. */
+export type TplAdoptVerifier = (
+  tpl: HTMLTemplateElement,
+  html: string,
+  target: Element,
+) => boolean
+let _tplAdoptVerifier: TplAdoptVerifier | null = null
+export function _setTplAdoptVerifier(v: TplAdoptVerifier): void {
+  _tplAdoptVerifier = v
+}
+
 export function _tpl(html: string, bind: (el: HTMLElement) => (() => void) | null): NativeItem {
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.tpl')
   let tpl = _tplCache.get(html)
@@ -412,6 +458,20 @@ export function _tpl(html: string, bind: (el: HTMLElement) => (() => void) | nul
   // early template before a rarely-used later one, but only once the cache is
   // full; no realistic app approaches 1024 distinct templates, and the worst
   // case is a one-time re-parse.
+  // Hydration adoption: bind against the verified SSR row instead of cloning.
+  // The verifier is registered by hydrateRoot — null in CSR-only bundles.
+  if (_tplAdoptTarget !== null) {
+    const target = _tplAdoptTarget
+    _tplAdoptTarget = null // one-shot, cleared on ANY outcome
+    if (_tplAdoptVerifier !== null && _tplAdoptVerifier(tpl, html, target)) {
+      const cleanup = bind(target as HTMLElement)
+      _tplAdoptConsumed = true
+      if (process.env.NODE_ENV !== 'production')
+        _countSink.__pyreon_count__?.('runtime.tpl.adopt')
+      return { __isNative: true, el: target as HTMLElement, cleanup }
+    }
+  }
+  // (adoption falls through to a normal clone on any verification bail)
   const el = tpl.content.firstElementChild?.cloneNode(true) as HTMLElement
   const cleanup = bind(el)
   return { __isNative: true, el, cleanup }

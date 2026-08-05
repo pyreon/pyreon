@@ -32,6 +32,11 @@
       "bun": "./src/keep-alive-entry.ts",
       "import": "./lib/keep-alive-entry.js",
       "types": "./lib/types/keep-alive-entry.d.ts"
+    },
+    "./sanitizer": {
+      "bun": "./src/sanitizer.ts",
+      "import": "./lib/sanitizer.js",
+      "types": "./lib/types/sanitizer.d.ts"
     }
   },
   "files": [

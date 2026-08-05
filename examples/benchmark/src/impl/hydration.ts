@@ -23,7 +23,9 @@
  *    region.
  */
 import { hydrateRoot as pyreonHydrate } from '@pyreon/runtime-dom'
+import { h as ph2 } from '@pyreon/core'
 import { signal, createSelector } from '@pyreon/reactivity'
+import { PyreonCompiledApp } from './hydration-pyreon-compiled'
 import * as React from 'react'
 import * as ReactDOMClient from 'react-dom/client'
 import { hydrate as preactHydrate, render as preactRender } from 'preact'
@@ -32,7 +34,6 @@ import type { BenchSuite } from '../runner'
 import { bench } from '../runner'
 import {
   HYDRATION_ROW_COUNT,
-  pyreonApp,
   preactApp,
   reactApp,
   vueApp,
@@ -67,13 +68,15 @@ const makeTargets = (fixtures: {
       const rowsSig = signal(rowState)
       const selectedId = signal<number | null>(null)
       const isSelected = createSelector(selectedId)
+      // COMPILED app (what real Pyreon apps ship): rows are _tpl templates;
+      // hydration adopts the SSR rows through the compiled binds.
       const dispose = pyreonHydrate(
         container,
-        pyreonApp(
-          () => rowsSig(),
+        ph2(PyreonCompiledApp as never, {
+          rows: () => rowsSig(),
           isSelected,
-          (id) => selectedId.set(id),
-        ),
+          onSelect: (id: number) => selectedId.set(id),
+        }),
       )
       return () => dispose()
     },
