@@ -101,8 +101,15 @@ describe('For hydration — keyed adoption', () => {
     // null keeps ALL specs green (interpretive fallback is the old path) but
     // fails THIS assertion.
     expect(replayed()).toBe(3)
-    // k: markers removed
-    expect(host.innerHTML).not.toContain('k:')
+    // k: markers are ADOPTED as the rows' anchors (zero removals at hydrate
+    // time); each marker travels and DIES with its row through the normal
+    // reconciler — removing a row removes its marker.
+    expect(host.innerHTML).toContain('k:1')
+    const shrunk = [...clientRows()]
+    shrunk.splice(0, 1) // drop id 1
+    clientRows.set(shrunk)
+    expect(host.innerHTML).not.toContain('k:1')
+    expect(host.innerHTML).toContain('k:2')
     dispose()
   })
 

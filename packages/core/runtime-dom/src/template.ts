@@ -476,6 +476,106 @@ interface AdoptMatch {
   triplets: { open: Comment; text: Text | null; close: Comment }[] | null
 }
 
+/**
+ * Positional replay plan, built from the FIRST fully-verified row: element
+ * child-hop paths to each `$` triplet's parent + its child index, and to each
+ * kept/removed bare-text position. Rows of a non-`<!` compiled template are
+ * structurally IDENTICAL by construction (same template, no conditional
+ * slots), so subsequent rows verify at the recorded SPOTS (is the `$` comment
+ * where the plan says?) instead of re-walking every node — any spot mismatch
+ * bails that row to the full verify.
+ */
+interface AdoptPlan {
+  sig: TplSig
+  /** [domPath to parent element..., childIndex] per triplet. */
+  tripletSpots: number[][]
+  /** domPaths of elements whose EXTRA bare texts get removed (template 0, >1 texts). */
+  removalSpots: number[][]
+}
+const _tplAdoptPlan = new WeakMap<HTMLTemplateElement, AdoptPlan | null>()
+
+function elByPath(root: Element, path: number[], upto: number): Element | null {
+  let el: Element | null = root
+  for (let i = 0; i < upto && el; i++) {
+    let c: Element | null = el.firstElementChild
+    for (let k = 0; k < (path[i] as number) && c; k++) c = c.nextElementSibling
+    el = c
+  }
+  return el
+}
+
+/** Record element paths (element-index hops) alongside a full verify. */
+function buildAdoptPlan(root: Element, sig: TplSig, match: AdoptMatch): AdoptPlan {
+  const tripletSpots: number[][] = []
+  const removalSpots: number[][] = []
+  const pathOf = (el: Element): number[] => {
+    const path: number[] = []
+    let cur: Element = el
+    while (cur !== root) {
+      const parent = cur.parentElement as Element
+      let idx = 0
+      for (let c = parent.firstElementChild; c && c !== cur; c = c.nextElementSibling) idx++
+      path.unshift(idx)
+      cur = parent
+    }
+    return path
+  }
+  if (match.triplets) {
+    for (const t of match.triplets) {
+      const parent = t.open.parentElement as Element
+      let ci = 0
+      for (let n = parent.firstChild; n && n !== t.open; n = n.nextSibling) ci++
+      tripletSpots.push([...pathOf(parent), -1, ci])
+    }
+  }
+  if (match.removals) {
+    for (const r of match.removals) removalSpots.push(pathOf(r.parentElement as Element))
+  }
+  return { sig, tripletSpots, removalSpots }
+}
+
+/**
+ * Spot-verify + normalize a subsequent row against the recorded plan.
+ * Returns false on any spot mismatch (caller re-runs the full verify).
+ */
+function replayAdoptPlan(root: Element, plan: AdoptPlan): boolean {
+  for (const spot of plan.tripletSpots) {
+    const sep = spot.indexOf(-1)
+    const parent = elByPath(root, spot, sep)
+    if (!parent) return false
+    const ci = spot[sep + 1] as number
+    let n: ChildNode | null = parent.firstChild
+    for (let k = 0; k < ci && n; k++) n = n.nextSibling
+    if (!n || n.nodeType !== 8 || (n as Comment).data !== '$') return false
+    const a = n.nextSibling
+    if (a && a.nodeType === 3) {
+      const b = a.nextSibling
+      if (!b || b.nodeType !== 8 || (b as Comment).data !== '/$') return false
+      ;(n as Comment).remove()
+      ;(b as Comment).remove()
+    } else if (a && a.nodeType === 8 && (a as Comment).data === '/$') {
+      parent.insertBefore(document.createTextNode(''), a)
+      ;(n as Comment).remove()
+      ;(a as Comment).remove()
+    } else return false
+  }
+  for (const spot of plan.removalSpots) {
+    const parent = elByPath(root, spot, spot.length)
+    if (!parent) return false
+    let n: ChildNode | null = parent.firstChild
+    while (n) {
+      const nx: ChildNode | null = n.nextSibling
+      if (n.nodeType === 3 && !(nx === null && parent.firstChild === n)) {
+        // remove extras; sole-text keeps are template-0 single-text cases which
+        // never land in removalSpots (removals recorded only for >1 bare texts)
+        ;(n as Text).remove()
+      }
+      n = nx
+    }
+  }
+  return true
+}
+
 function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | null {
   let removals: Text[] | null = null
   let triplets: { open: Comment; text: Text | null; close: Comment }[] | null = null
@@ -596,9 +696,20 @@ export function _tpl(html: string, bind: (el: HTMLElement) => (() => void) | nul
     _tplAdoptTarget = null // one-shot, cleared on ANY outcome
     const troot = tpl.content.firstElementChild
     if (troot && target.tagName === troot.tagName) {
+      // Positional fast path: rows after the first spot-verify + normalize at
+      // the recorded positions (structurally-identical rows by construction).
+      const plan = _tplAdoptPlan.get(tpl)
+      if (plan && replayAdoptPlan(target, plan)) {
+        const cleanup = bind(target as HTMLElement)
+        _tplAdoptConsumed = true
+        if (process.env.NODE_ENV !== 'production')
+          _countSink.__pyreon_count__?.('runtime.tpl.adopt')
+        return { __isNative: true, el: target as HTMLElement, cleanup }
+      }
       const sig = templateSignature(tpl, html)
       const match = sig !== null ? matchDomAgainstTemplate(target, sig) : null
       if (match !== null) {
+        if (plan === undefined) _tplAdoptPlan.set(tpl, buildAdoptPlan(target, sig!, match))
         if (match.removals) for (const t of match.removals) t.remove()
         if (match.triplets) normalizeDollarTriplets(match.triplets)
         const cleanup = bind(target as HTMLElement)

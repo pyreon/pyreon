@@ -816,12 +816,24 @@ export function mountFor<T>(
       const tplAdopted = a.armTplAdopt ? a.tplAdopted!() : false
       if (a.armTplAdopt) a.armTplAdopt(null) // defensive clear (renderItem may not call _tpl)
       let cleanup: Cleanup | null
-      let rowAnchor: Node = row.first
-      let endNode: Node | null = row.last !== row.first ? row.last : null
+      // Anchor on the row's k: MARKER (kept in the DOM) — the row range is
+      // [marker .. last]; moves/removals carry the marker with the row, so no
+      // per-row marker removal is needed at adoption time.
+      let rowAnchor: Node = row.marker
+      let endNode: Node | null = row.last !== row.marker ? row.last : null
       if (tplAdopted) {
         // The template bound the SSR row in place — its NativeItem cleanup is
         // the row cleanup; DOM untouched.
-        cleanup = (rowVNode as import('@pyreon/core').NativeItem).cleanup ?? null
+        const native = rowVNode as import('@pyreon/core').NativeItem
+        const nativeCleanup = native.cleanup ?? null
+        const el = native.el as ChildNode
+        cleanup = () => {
+          nativeCleanup?.()
+          // NativeItem binds don't remove their element (fresh-mount rows are
+          // removed by the reconciler's range ops) — mirror hydrateElement's
+          // cleanup contract by removing the adopted element explicitly.
+          el.remove()
+        }
       } else {
         // Dispatch-free plan replay first (structurally-identical rows); any
         // verification failure falls back to the interpretive walk for THIS row.
@@ -834,12 +846,8 @@ export function mountFor<T>(
         // operate on a dead node. Re-resolve the live anchor from the row's
         // still-present k: marker (markers are removed after this loop).
         if (!(row.first as ChildNode).isConnected) {
-          const live = row.marker.nextSibling
-          if (live && live !== after) {
-            rowAnchor = live
-            const lastLive = (after as ChildNode).previousSibling
-            endNode = lastLive && lastLive !== live ? lastLive : null
-          }
+          const lastLive = (after as ChildNode).previousSibling
+          endNode = lastLive && lastLive !== (row.marker as ChildNode) ? lastLive : null
         }
       }
       cache.set(key, {
@@ -850,7 +858,9 @@ export function mountFor<T>(
       })
       cleanupCount++
     }
-    for (let i = 0; i < n; i++) a.rows[i]!.marker.remove()
+    // The k: markers are ADOPTED as row anchors (anchor = marker, see the
+    // cache.set above) — zero removals; each marker travels/dies with its row
+    // exactly like mountKeyedList's comment anchors.
     currentKeys = keys
     if (process.env.NODE_ENV !== 'production')
       _countSink.__pyreon_count__?.('runtime.mountFor.hydrateAdopt')
