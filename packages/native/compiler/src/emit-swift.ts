@@ -369,6 +369,29 @@ let _helperFnNames: Set<string> = new Set()
  * ctx so a computed over a helper call infers its return type (not `Any`). */
 let _helperReturns: Map<string, TypeIR> = new Map()
 /**
+ * Names of ZERO-ARG functions in scope (file-scope helpers + component-scope
+ * `const f = () => …` decls). Used ONLY by the text/child-interpolation path,
+ * to CALL a bare reference: `<Text>{shout}</Text>` where `const shout = () =>
+ * raw().toUpperCase()`.
+ *
+ * On web that child is an ACCESSOR — Pyreon renders `shout()`. Natively there
+ * is no accessor concept (the body re-runs), so the equivalent is the call.
+ * Emitting the bare name instead interpolates the FUNCTION: swiftc only warns
+ * ("string interpolation produces a debug description for a function value")
+ * and renders garbage, while kotlinc hard-errors ("function invocation
+ * 'shout()' expected") — so one shared source built on iOS and did not build
+ * on Android, with nothing said at emit time.
+ *
+ * A bare SIGNAL child (`{raw}`) already worked, which is what made this
+ * invisible: the two shapes look identical in the source and only one of them
+ * was handled. Deliberately NOT applied in prop position — `onPress={handler}`
+ * passes a reference and must stay one. Arity zero only: a bare reference to a
+ * function that takes arguments is not an accessor.
+ */
+let _zeroArgFnNames: Set<string> = new Set()
+/** File-scope half of `_zeroArgFnNames`, re-seeded per component. */
+let _zeroArgHelperNames: Set<string> = new Set()
+/**
  * Per-component: set to true when the component declares any router
  * hook (`useNavigate()` / `useParams()`). When set, the View struct
  * gains `@Environment(\.pyreonRouter) private var pyreonRouter:
@@ -618,6 +641,7 @@ export function emitSwift(
   // Helper name → return type, so a computed over a helper call
   // (`computed(() => dbl(21))`) infers `Int` instead of `Any`.
   _helperReturns = new Map(helperFns.map((h) => [h.name, h.returnType]))
+  _zeroArgHelperNames = new Set(helperFns.filter((h) => h.params.length === 0).map((h) => h.name))
   _fontMap = fonts
   _constStringMap = new Map()
   for (const md of moduleDecls) {
@@ -1468,6 +1492,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // them only for `count()` (signal read). Seed with the file-scope helper
   // names so a `dbl(21)` call in this component resolves as a free function.
   _functionNames = new Set(_helperFnNames)
+  _zeroArgFnNames = new Set(_zeroArgHelperNames)
   // Gap 4 PR-2: track machine names so `m()` keeps parens (Swift
   // callAsFunction).
   _machineNames = new Set()
@@ -1510,7 +1535,10 @@ function emitSwiftComponent(c: ComponentIR): string {
     // parens for both. (Naming is a slight misnomer kept for continuity
     // with G1; could rename to `_propertyNames` in a follow-up cleanup.)
     if (d.kind === 'signal' || d.kind === 'computed') _signalNames.add(d.name)
-    if (d.kind === 'function') _functionNames.add(d.name)
+    if (d.kind === 'function') {
+      _functionNames.add(d.name)
+      if (d.params.length === 0) _zeroArgFnNames.add(d.name)
+    }
     // Gap 4 PR-2: PyreonMachine reads via `m()` (callAsFunction).
     // Keep machine names OUT of _signalNames (parens preserved) and
     // OUT of _functionNames (it's a property, not a free function).
@@ -5015,7 +5043,7 @@ function swiftInterpSegment(e: ExprIR, indent: number): string {
   // modifier paths already apply. Unwrapping before inferType also matters: an
   // arrow's type is a function (never optional), so the nil-render path below
   // would never fire for an arrow-wrapped optional.
-  const expr = unwrapAccessorArrow(e)
+  const expr = resolveAccessorChild(e)
   const emitted = emitSwiftExpr(expr, indent)
   if (typeIsOptional(inferType(expr, _activeInferCtx))) {
     return `\\((${emitted}).map { "\\($0)" } ?? "")`
@@ -5036,8 +5064,8 @@ function emitSwiftTextCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     }
     // Unwrap a zero-arg accessor arrow so `{() => `Hi ${n}`}` still hits the
     // template fast-path below (and `{() => sig()}` the value path) — see
-    // swiftInterpSegment.
-    const childExpr = unwrapAccessorArrow(c.expr)
+    // swiftInterpSegment. Same pass calls a BARE zero-arg fn reference.
+    const childExpr = resolveAccessorChild(c.expr)
     if (childExpr.kind === 'template') {
       // Splice a template child's segments directly into the Text's own
       // interpolation so `<Text>{`Hi ${n}`}</Text>` emits `Text("Hi \(n)")`
@@ -7913,6 +7941,24 @@ function emitSwiftChild(c: ChildIR, indent: number): string {
  */
 function unwrapAccessorArrow(e: ExprIR): ExprIR {
   return e.kind === 'arrow' && e.params.length === 0 ? e.body : e
+}
+
+/**
+ * The NAMED sibling of `unwrapAccessorArrow`. `{() => shout()}` arrives as an
+ * inline arrow and is unwrapped to its body; `{shout}` arrives as a bare
+ * identifier naming a zero-arg function, and is the SAME accessor idiom by
+ * reference. In text/child position both mean "the value", so the named form
+ * becomes a call. See `_zeroArgFnNames` for why the bare form was broken.
+ * Mirror in emit-kotlin.ts.
+ */
+function callBareAccessorFn(e: ExprIR): ExprIR {
+  if (e.kind !== 'identifier' || !_zeroArgFnNames.has(e.name)) return e
+  return { kind: 'call', callee: e, args: [] }
+}
+
+/** `unwrapAccessorArrow` + `callBareAccessorFn` — the child/text-position pair. */
+function resolveAccessorChild(e: ExprIR): ExprIR {
+  return callBareAccessorFn(unwrapAccessorArrow(e))
 }
 
 /** Read a value that may be a bare signal reference or an arbitrary expr. */

@@ -224,6 +224,16 @@ let _helperFnNames: Set<string> = new Set()
  * still benefits). */
 let _helperReturns: Map<string, TypeIR> = new Map()
 /**
+ * Mirror of emit-swift's `_zeroArgFnNames` — see its doc comment. Kotlin is
+ * the LOUD half of that bug: a bare zero-arg fn reference in a Text
+ * interpolation is a hard `function invocation 'shout()' expected`, while the
+ * same source only WARNS on swiftc. One shared source built on iOS and failed
+ * to build on Android.
+ */
+let _zeroArgFnNames: Set<string> = new Set()
+/** File-scope half of `_zeroArgFnNames`, re-seeded per component. */
+let _zeroArgHelperNames: Set<string> = new Set()
+/**
  * Per-component: every machine decl name (DeclIR.machine — Gap 4
  * PR-2). PyreonMachine has `operator fun invoke()` so `m()` reads
  * current state. Without this set, the call-emit drops parens for
@@ -342,6 +352,7 @@ export function emitKotlin(
   // free-function call in ANY component.
   _helperFnNames = new Set(helperFns.map((h) => h.name))
   _helperReturns = new Map(helperFns.map((h) => [h.name, h.returnType]))
+  _zeroArgHelperNames = new Set(helperFns.filter((h) => h.params.length === 0).map((h) => h.name))
   _constStringMapKotlin = new Map()
   _kotlinStoreDefs = stores
   // Declared structs for per-component inference (typed object-array
@@ -1191,6 +1202,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   // Seed with file-scope helper names so a `dbl(21)` call in this component
   // resolves as a free function.
   _functionNames = new Set(_helperFnNames)
+  _zeroArgFnNames = new Set(_zeroArgHelperNames)
   _machineNames = new Set()
   _i18nNamesKotlin = new Set()
   _fetchNames = new Set()
@@ -1220,7 +1232,10 @@ function emitKotlinComponent(c: ComponentIR): string {
     // signal + computed both map to Kotlin `var`/`val`/`derivedStateOf`
     // properties read without parens — same disambiguation as Swift.
     if (d.kind === 'signal' || d.kind === 'computed') _signalNames.add(d.name)
-    if (d.kind === 'function') _functionNames.add(d.name)
+    if (d.kind === 'function') {
+      _functionNames.add(d.name)
+      if (d.params.length === 0) _zeroArgFnNames.add(d.name)
+    }
     // Gap 4 PR-2: PyreonMachine. Keep `m` OUT of _signalNames (so
     // `m()` keeps parens for `operator fun invoke()`) AND OUT of
     // _functionNames (it's a property, not a free fn).
@@ -4116,7 +4131,7 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
     // Unwrap a zero-arg accessor arrow so `{() => `Hi ${n}`}` still hits the
     // template fast-path below (and `{() => sig()}` the value path) — see
     // kotlinInterpSegment.
-    const childExpr = unwrapAccessorArrow(c.expr)
+    const childExpr = resolveAccessorChild(c.expr)
     if (childExpr.kind === 'template') {
       // Splice a template child's segments directly into the Text's own
       // interpolation so `<Text>{`Hi ${n}`}</Text>` emits `Text(text = "Hi
@@ -4146,7 +4161,7 @@ function kotlinInterpSegment(e: ExprIR, indent: number): string {
   // in the string template), which renders the lambda's toString at runtime.
   // Same unwrap the `<Show when>` / modifier paths apply; unwrapping before
   // inferType also fixes optional inference (an arrow's type is never optional).
-  const expr = unwrapAccessorArrow(e)
+  const expr = resolveAccessorChild(e)
   const emitted = emitKotlinExpr(expr, indent)
   if (typeIsOptional(inferType(expr, _kotlinExprInferCtx))) {
     return `\${${emitted} ?: ""}`
@@ -5071,7 +5086,7 @@ function kotlinTextArg(
     // the Kotlin twin of the Text value-interpolation fix; `kotlinTextArg` is a
     // SEPARATE (Heading-only) text builder, so it needs the same unwrap. (Swift
     // Heading reuses the shared `emitSwiftTextCore` and so has no twin bug.)
-    const childExpr = unwrapAccessorArrow(c.expr)
+    const childExpr = resolveAccessorChild(c.expr)
     parts.push(`\${${emitKotlinExpr(childExpr, indent)}}`)
   }
   return `"${parts.join('')}"`
@@ -6491,6 +6506,17 @@ function emitKotlinChild(c: ChildIR, indent: number): string {
  */
 function unwrapAccessorArrow(e: ExprIR): ExprIR {
   return e.kind === 'arrow' && e.params.length === 0 ? e.body : e
+}
+
+/** Mirror of emit-swift's `callBareAccessorFn` — see its doc comment. */
+function callBareAccessorFn(e: ExprIR): ExprIR {
+  if (e.kind !== 'identifier' || !_zeroArgFnNames.has(e.name)) return e
+  return { kind: 'call', callee: e, args: [] }
+}
+
+/** Mirror of emit-swift's `resolveAccessorChild`. */
+function resolveAccessorChild(e: ExprIR): ExprIR {
+  return callBareAccessorFn(unwrapAccessorArrow(e))
 }
 
 function emitKotlinSignalRead(e: ExprIR): string {

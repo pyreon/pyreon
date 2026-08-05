@@ -1137,6 +1137,7 @@ every warning; treat any warning as "this construct is outside v1."
 | object literals | construct declared structs / synthesized types; an **anonymous all-scalar-literal** object (`{ id: 1, name: 'a' }`) matching no declared struct **synthesizes** a module-scope struct (Swift `Codable`) / data class (Kotlin), deduped by field name:type shape (`__Obj0`, …; cross-target names align) — replaces the old labelled-tuple emit (illegal single-field Swift tuple; tuple key-paths break `ForEach(id:)`). A **non-literal field whose type INFERS to a scalar** (`{ id: count(), name: label() }` — signal reads) now synthesizes too; only a non-scalar (array / nested-object / typeRef) field keeps the tuple emit. `{ ...t, field: v }` single-spread becomes Swift IIFE-copy / Kotlin `.copy(...)` |
 | array literals + spreads | `[...xs, item]` → concatenation |
 | zero-param accessor arrows in condition positions | unwrap to their body (`when={() => cond()}`) |
+| zero-arg accessors in TEXT/child position | both spellings resolve to the VALUE: the inline arrow `{() => shout()}` unwraps to its body, and a bare reference to a zero-arg function (`const shout = () => …` used as `{shout}`) is CALLED. Native has no accessor concept — the surrounding body re-runs — so the call is the equivalent. Scope is text/child position and arity zero: a bare reference in PROP position (`onPress={handler}`) stays a reference, and a function taking arguments is left alone |
 
 **Types**
 | Shape | Notes |
