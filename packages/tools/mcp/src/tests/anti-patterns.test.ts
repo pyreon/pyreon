@@ -6,6 +6,7 @@ import {
   type AntiPatternCategory,
   catalogHeadings,
   formatAntiPatterns,
+  formatAntiPatternsIndex,
   parseAntiPatterns,
 } from '../anti-patterns'
 
@@ -98,6 +99,39 @@ describe('every catalog section reaches the readers', () => {
     // Bullets outside a `##` section (none today) would legitimately differ,
     // so assert parity rather than a hardcoded number.
     expect(parsed).toBe(bulletsInFile)
+  })
+})
+
+// The index's hook policy, asserted on BEHAVIOUR rather than on a total. A
+// token count alone would pass for the wrong reason — e.g. if hooks vanished
+// everywhere, or came back everywhere while some other line shrank.
+describe('index hook follows the NEED, not the format', () => {
+  const doc = readFileSync(ANTI_PATTERNS_PATH, 'utf8')
+  const entries = parseAntiPatterns(doc)
+  const index = formatAntiPatternsIndex(entries)
+  const lineFor = (name: string) =>
+    index.split('\n').find((l) => l.startsWith(`- **${name}**`)) ?? ''
+
+  it('a TERSE title keeps its hook — the title alone does not identify it', () => {
+    const terse = entries.find((e) => e.name.length < 30 && e.description.length > 40)
+    expect(terse, 'catalog has no terse-titled entry to check').toBeDefined()
+    const line = lineFor(terse!.name)
+    expect(line).not.toBe('')
+    expect(line.length).toBeGreaterThan(`- **${terse!.name}**`.length + 5)
+  })
+
+  it('a SELF-DESCRIBING title carries no hook — it would only restate the body', () => {
+    const long = entries.find((e) => e.name.length > 120)
+    expect(long, 'catalog has no long-titled entry to check').toBeDefined()
+    const line = lineFor(long!.name)
+    expect(line).not.toBe('')
+    // Title (+ optional detector tag) and nothing else.
+    expect(line.replace(/ `\[detector:[^`]+`$/, '')).toBe(`- **${long!.name}**`)
+  })
+
+  it('every entry still gets exactly one index line', () => {
+    const lines = index.split('\n').filter((l) => l.startsWith('- '))
+    expect(lines.length).toBe(entries.length)
   })
 })
 
