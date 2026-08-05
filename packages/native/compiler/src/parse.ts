@@ -385,7 +385,13 @@ function isThemeDefinitionNode(node: AnyNode): boolean {
 }
 
 function collectTheme(body: AnyNode[], ctx: ParseCtx): void {
-  const acc: ThemeTable = { color: {}, spacing: {}, radius: {} }
+  // Accumulate GENERICALLY over whatever groups parseThemeDefinition returns —
+  // this was a hand-enumerated color/spacing/radius copy, so when the
+  // fontSize/fontWeight groups joined ThemeTable the parser returned them and
+  // this site silently dropped them: `font-size: ${(t) => t.fontSize.body}`
+  // warn-dropped while the padding token beside it resolved (the hand-listed
+  // input-set class — a per-group list rots on the next group).
+  const acc: Partial<ThemeTable> = {}
   let found = false
   for (const node of body) {
     const decl = node?.type === 'ExportNamedDeclaration' ? node.declaration : node
@@ -394,9 +400,10 @@ function collectTheme(body: AnyNode[], ctx: ParseCtx): void {
       const parsed = parseThemeDefinition(d?.init)
       if (!parsed) continue
       found = true
-      Object.assign(acc.color, parsed.color)
-      Object.assign(acc.spacing, parsed.spacing)
-      Object.assign(acc.radius, parsed.radius)
+      for (const [group, entries] of Object.entries(parsed)) {
+        const key = group as keyof ThemeTable
+        acc[key] = { ...(acc[key] as Record<string, never> | undefined), ...entries } as never
+      }
     }
   }
   if (found) ctx.theme = mergeTheme(acc)

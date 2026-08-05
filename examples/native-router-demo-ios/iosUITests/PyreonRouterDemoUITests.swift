@@ -1051,6 +1051,54 @@ final class PyreonRouterDemoUITests: XCTestCase {
         )
     }
 
+    // Styling — TYPOGRAPHY from theme tokens, by glyph-box GEOMETRY. The two
+    // lines render the SAME glyph ("Aa") at sizes from DIFFERENT token leaves
+    // (fontSize.body=16, fontSize.display=34 — both deliberately absent from
+    // the compiler's DEFAULT scale, so a rendered 16/34 can only be the app's
+    // declaration surviving parse→merge→resolve; the collectTheme bug dropped
+    // exactly these while fontWeight kept "working" off the default). iOS
+    // a11y frames HUG glyphs, so unlike container widths the glyph HEIGHT is
+    // real geometry here: the display line's box must be decisively taller,
+    // ~in the 34/16 ratio. A dropped/defaulted token collapses the ratio
+    // to ~1.0. The colour chip is asserted by EXISTENCE only on iOS —
+    // XCUITest cannot read pixels (the Android twin reads the rendered ARGB
+    // via captureToImage; an iOS screenshot-diff instrument stays tracked).
+    func test_typographyTokensScaleGlyphGeometry() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            "Home page did not render"
+        )
+        app.buttons["View styles"].tap()
+        XCTAssertTrue(
+            app.otherElements["styles-page"].firstMatch.waitForExistence(timeout: 15),
+            "Styles page did not render"
+        )
+
+        let body = app.staticTexts["typo-body"].firstMatch
+        let display = app.staticTexts["typo-display"].firstMatch
+        XCTAssertTrue(body.waitForExistence(timeout: 10), "typo-body text missing")
+        XCTAssertTrue(display.waitForExistence(timeout: 10), "typo-display text missing")
+
+        let bodyH = body.frame.height
+        let displayH = display.frame.height
+        XCTAssertGreaterThan(bodyH, 0, "body glyph box has no height")
+        let ratio = displayH / bodyH
+        XCTAssertGreaterThan(
+            ratio, 1.6,
+            "display/body glyph-height ratio is \(ratio) (\(displayH)/\(bodyH))pt; "
+                + "expected ~2.1 (34/16). A ratio near 1.0 means the fontSize "
+                + "tokens never reached the rendered font"
+        )
+
+        XCTAssertTrue(
+            app.staticTexts["accent-chip"].firstMatch.waitForExistence(timeout: 10),
+            "accent chip missing — the colour-token styled(Text) did not render"
+        )
+    }
+
     // Background/push — the RECEIPT half device-asserted through the REAL
     // system pipeline. The shared PushPage renders
     // `Push: {push.lastNotification?.title ?? 'none'}`; the emit's
