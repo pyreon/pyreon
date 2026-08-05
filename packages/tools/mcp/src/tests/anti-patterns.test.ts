@@ -4,7 +4,9 @@ import { fileURLToPath } from 'node:url'
 import {
   ANTI_PATTERN_CATEGORIES,
   type AntiPatternCategory,
+  catalogHeadings,
   formatAntiPatterns,
+  formatAntiPatternsIndex,
   parseAntiPatterns,
 } from '../anti-patterns'
 
@@ -57,6 +59,79 @@ describe('parseAntiPatterns — real repo file', () => {
     // The first reactivity bullet is "Bare signal in JSX text"
     const firstReactivity = entries.find((e) => e.category === 'reactivity')
     expect(firstReactivity!.name).toBe('Bare signal in JSX text')
+  })
+})
+
+// The gate that keeps CATEGORY_MAP honest. `parseAntiPatterns` drops an
+// unmapped `##` section with a bare `continue`, so the failure mode is not an
+// error — it is a smaller number. NINE sections were unmapped, hiding 86 of
+// 237 entries (36%) from MCP `get_anti_patterns` and from the generated
+// troubleshooting docs, including all 27 of `Build Pipeline Mistakes` where
+// most of the compiler/native institutional memory lives. The response header
+// kept advertising a total, so a partial catalog read as the whole one.
+//
+// Asserted against the REAL catalog rather than a fixture: a fixture would
+// only ever agree with whatever the map already contains.
+describe('every catalog section reaches the readers', () => {
+  const doc = readFileSync(ANTI_PATTERNS_PATH, 'utf8')
+
+  it('has no unmapped `##` heading', () => {
+    const unmapped = catalogHeadings(doc)
+      .filter((h) => h.category === null)
+      // Deliberate exclusion: a TABLE section contributes no bullets, so
+      // mapping it would add a category that is always empty.
+      .filter((h) => !h.heading.startsWith('Memory Leak Classes'))
+      .map((h) => h.heading)
+    expect(
+      unmapped,
+      `Unmapped anti-patterns.md section(s): ${unmapped.join(', ')}. Add each to ` +
+        'CATEGORY_MAP + ANTI_PATTERN_CATEGORIES — an unmapped heading is dropped ' +
+        'SILENTLY, so its entries never reach MCP or the docs.',
+    ).toEqual([])
+  })
+
+  // The count half: proves the mapping actually CARRIES the entries, not just
+  // that the headings are listed. A regression that maps a heading to a slug
+  // the formatter never emits would pass the check above and fail this one.
+  it('parses every bullet in the file', () => {
+    const bulletsInFile = doc.split('\n').filter((l) => l.startsWith('- **')).length
+    const parsed = parseAntiPatterns(doc).length
+    // Bullets outside a `##` section (none today) would legitimately differ,
+    // so assert parity rather than a hardcoded number.
+    expect(parsed).toBe(bulletsInFile)
+  })
+})
+
+// The index's hook policy, asserted on BEHAVIOUR rather than on a total. A
+// token count alone would pass for the wrong reason — e.g. if hooks vanished
+// everywhere, or came back everywhere while some other line shrank.
+describe('index hook follows the NEED, not the format', () => {
+  const doc = readFileSync(ANTI_PATTERNS_PATH, 'utf8')
+  const entries = parseAntiPatterns(doc)
+  const index = formatAntiPatternsIndex(entries)
+  const lineFor = (name: string) =>
+    index.split('\n').find((l) => l.startsWith(`- **${name}**`)) ?? ''
+
+  it('a TERSE title keeps its hook — the title alone does not identify it', () => {
+    const terse = entries.find((e) => e.name.length < 30 && e.description.length > 40)
+    expect(terse, 'catalog has no terse-titled entry to check').toBeDefined()
+    const line = lineFor(terse!.name)
+    expect(line).not.toBe('')
+    expect(line.length).toBeGreaterThan(`- **${terse!.name}**`.length + 5)
+  })
+
+  it('a SELF-DESCRIBING title carries no hook — it would only restate the body', () => {
+    const long = entries.find((e) => e.name.length > 120)
+    expect(long, 'catalog has no long-titled entry to check').toBeDefined()
+    const line = lineFor(long!.name)
+    expect(line).not.toBe('')
+    // Title (+ optional detector tag) and nothing else.
+    expect(line.replace(/ `\[detector:[^`]+`$/, '')).toBe(`- **${long!.name}**`)
+  })
+
+  it('every entry still gets exactly one index line', () => {
+    const lines = index.split('\n').filter((l) => l.startsWith('- '))
+    expect(lines.length).toBe(entries.length)
   })
 })
 
