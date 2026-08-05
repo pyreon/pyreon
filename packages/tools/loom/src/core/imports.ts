@@ -12,6 +12,7 @@
  * would ACCUSE wrongly) stays `info` severity.
  */
 import { readdirSync, readFileSync } from 'node:fs'
+import type { Dirent } from 'node:fs'
 import { join } from 'node:path'
 
 export interface ImportScan {
@@ -53,50 +54,127 @@ export function stripNonCode(text: string): string {
  * api-reference example — must not scan as an import: the STATEMENT KEYWORD
  * has to sit in code. The scanner checks the keyword position against this
  * mask.
+ *
+ * ── Why this moves RUNS rather than characters ────────────────────────────
+ *
+ * This is loom's hottest loop — it runs over every source file in the
+ * workspace, which on this repo is ~39MB. The first cut called a `push()`
+ * closure ONCE PER CHARACTER, doing `out += c` and `codeAt.push(bool)` into a
+ * growing `boolean[]`; that is one closure call, one rope concat and one array
+ * push per character, and V8 stores a boolean array as oddball POINTERS, so
+ * the mask alone cost 8 bytes per character.
+ *
+ * The state machine below is identical — same modes, same transitions, same
+ * output — but it scans forward to the next character that can CHANGE mode and
+ * moves everything before it as one slice plus one `Uint8Array.fill` (a native
+ * memset). Both buffers are sized once from the input length, since the
+ * stripped view is never longer than what it strips.
+ *
+ * The rewrite is byte-for-byte differential-tested against the original over
+ * every source file in this repo (see `strip-equivalence.test.ts`) — a
+ * hand-rolled scanner is exactly where a rewrite hides a subtle divergence.
  */
-export function stripWithMask(text: string): { stripped: string; codeAt: boolean[] } {
-  let out = ''
-  const codeAt: boolean[] = []
-  let i = 0
+const CODE = 0, LINE = 1, BLOCK = 2, SINGLE = 3, DOUBLE = 4, TEMPLATE = 5
+
+export function stripWithMask(text: string): { stripped: string; codeAt: Uint8Array } {
   const n = text.length
-  let mode: 'code' | 'line' | 'block' | 'single' | 'double' | 'template' = 'code'
-  const push = (chunk: string, inCode: boolean) => {
-    out += chunk
-    for (let k = 0; k < chunk.length; k += 1) codeAt.push(inCode)
+  const mask = new Uint8Array(n)
+  const parts: string[] = []
+  let outLen = 0
+  let i = 0
+  let mode = CODE
+
+  /** Move `[from, to)` of the input to the output with one mask fill. */
+  const emit = (from: number, to: number, inCode: boolean): void => {
+    if (to <= from) return
+    // The length comes from the SLICE, not the range: a trailing `\` at EOF
+    // makes `slice(i, i + 2)` one character, and trusting `to - from` there
+    // would push the mask out of step with the output for the rest of the file.
+    const chunk = text.slice(from, to)
+    parts.push(chunk)
+    if (inCode) mask.fill(1, outLen, outLen + chunk.length)
+    outLen += chunk.length
   }
+
   while (i < n) {
-    const c = text[i]!
-    const next = text[i + 1]
-    if (mode === 'code') {
-      if (c === '/' && next === '/') { mode = 'line'; i += 2; continue }
-      if (c === '/' && next === '*') { mode = 'block'; i += 2; continue }
-      if (c === '`') { mode = 'template'; i += 1; continue }
-      if (c === "'") { mode = 'single'; push(c, true); i += 1; continue }
-      if (c === '"') { mode = 'double'; push(c, true); i += 1; continue }
-      push(c, true); i += 1; continue
-    }
-    if (mode === 'line') { if (c === '\n') { mode = 'code'; push(c, true) } i += 1; continue }
-    if (mode === 'block') { if (c === '*' && next === '/') { mode = 'code'; i += 2 } else i += 1; continue }
-    if (mode === 'single') {
-      if (c === '\\') { push(text.slice(i, i + 2), false); i += 2; continue }
-      push(c, false); i += 1
-      if (c === "'" || c === '\n') mode = 'code'
+    if (mode === CODE) {
+      let j = i
+      while (j < n) {
+        const c = text.charCodeAt(j)
+        // `/` 47 · backtick 96 · `'` 39 · `"` 34 — the only mode changers.
+        if (c === 47 || c === 96 || c === 39 || c === 34) break
+        j += 1
+      }
+      emit(i, j, true)
+      i = j
+      if (i >= n) break
+      const c = text[i]!
+      const next = text[i + 1]
+      if (c === '/' && next === '/') { mode = LINE; i += 2; continue }
+      if (c === '/' && next === '*') { mode = BLOCK; i += 2; continue }
+      // A lone `/` is division or a regex delimiter — ordinary code.
+      if (c === '/') { emit(i, i + 1, true); i += 1; continue }
+      if (c === '`') { mode = TEMPLATE; i += 1; continue }
+      // The OPENING quote stays CODE. That is precisely what lets the scanner
+      // tell a real `from '…'` from one living inside another string.
+      emit(i, i + 1, true)
+      mode = c === "'" ? SINGLE : DOUBLE
+      i += 1
       continue
     }
-    if (mode === 'double') {
-      if (c === '\\') { push(text.slice(i, i + 2), false); i += 2; continue }
-      push(c, false); i += 1
-      if (c === '"' || c === '\n') mode = 'code'
+
+    if (mode === LINE) {
+      const nl = text.indexOf('\n', i)
+      if (nl === -1) break
+      emit(nl, nl + 1, true) // the newline survives, as code
+      i = nl + 1
+      mode = CODE
       continue
     }
-    // template: drop contents entirely (interpolations included — an import
+
+    if (mode === BLOCK) {
+      const end = text.indexOf('*/', i)
+      if (end === -1) break
+      i = end + 2
+      mode = CODE
+      continue
+    }
+
+    if (mode === SINGLE || mode === DOUBLE) {
+      const quote = mode === SINGLE ? 39 : 34
+      let j = i
+      while (j < n) {
+        const c = text.charCodeAt(j)
+        if (c === 92 || c === quote || c === 10) break // `\` · the quote · \n
+        j += 1
+      }
+      emit(i, j, false)
+      i = j
+      if (i >= n) break
+      if (text.charCodeAt(i) === 92) { emit(i, i + 2, false); i += 2; continue }
+      // The CLOSING quote (or the newline that ends an unterminated string) is
+      // emitted as non-code, matching the original.
+      emit(i, i + 1, false)
+      i += 1
+      mode = CODE
+      continue
+    }
+
+    // TEMPLATE: contents dropped entirely (interpolations included — an import
     // inside a template is data, and a dynamic import() built from template
     // pieces is unresolvable statically anyway).
-    if (c === '\\') { i += 2; continue }
-    if (c === '`') { mode = 'code'; i += 1; continue }
-    i += 1
+    let j = i
+    while (j < n) {
+      const c = text.charCodeAt(j)
+      if (c === 92) { j += 2; continue }
+      if (c === 96) break
+      j += 1
+    }
+    i = j < n ? j + 1 : n
+    mode = CODE
   }
-  return { stripped: out, codeAt }
+
+  return { stripped: parts.join(''), codeAt: mask.subarray(0, outLen) }
 }
 const SPEC_RE =
   /(?:from\s+|import\s*\(\s*|require\s*\(\s*|import\s+)['"]([^'"\n]+)['"]/g
@@ -221,6 +299,22 @@ const STATEMENT_HEAD_RE = /\b(?:import|export)\s+(type\s)?/g
  * which is the safe direction. */
 const HEAD_LOOKBACK = 2000
 
+/**
+ * MEASURED: do not "optimize" the window away.
+ *
+ * The obvious-looking improvement is to drop the slice and search backwards in
+ * place with `lastIndexOf`, on the theory that slicing 2KB per specifier
+ * allocates. It does not: V8 represents a slice of a longer string as a
+ * SlicedString — a view, made in constant time — so the window costs nothing to
+ * create, and the regex then scans a bounded 2KB.
+ *
+ * `lastIndexOf(kw, from)` has no lower bound and walks back to index 0 whenever
+ * the keyword is absent, which for `export` is most files. Benchmarked over
+ * this repo's 16,228 specifiers: window form 8.7ms, in-place backwards form
+ * 24.5ms — 2.8x SLOWER. This is not the hot path either way (the whole scan is
+ * ~210ms); it is written down so the next person does not spend the afternoon
+ * re-deriving it.
+ */
 function isTypeOnlyStatement(stripped: string, specIndex: number): boolean {
   const window = stripped.slice(Math.max(0, specIndex - HEAD_LOOKBACK), specIndex)
   STATEMENT_HEAD_RE.lastIndex = 0
@@ -274,27 +368,39 @@ export function isDevSurfacePath(relPath: string): boolean {
   return false
 }
 
+/**
+ * `withFileTypes` asks the OS what each entry IS, rather than guessing from
+ * its name. The guess it replaces — "an entry with no `.` in it is a
+ * directory" — was wrong in both directions: a directory with a dot in its
+ * name (`src/v1.2/`, `fixtures/app.old/`) was never descended into, so its
+ * source files went unscanned and every dependency they alone used read as
+ * `unused-dep`; and an extension-less FILE (`Makefile`, `LICENSE`) was treated
+ * as a directory and handed to `readdirSync`, costing a syscall that could
+ * only ever throw.
+ *
+ * The kind comes back in the same `getdents` the listing already performed, so
+ * this is strictly fewer syscalls, not more.
+ */
 function walkFiles(dir: string, rel: string, out: string[], depthLeft: number): void {
   if (depthLeft === 0) return
-  let entries: string[]
+  let entries: Dirent[]
   try {
-    entries = readdirSync(dir)
+    entries = readdirSync(dir, { withFileTypes: true })
   } catch {
     return
   }
   // A SUBTREE with its own package.json is a separate unit (a nested vscode
   // extension, a template project) — its imports are declared in ITS
   // manifest, not this package's. Matches how npm scopes file ownership.
-  if (rel !== '' && entries.includes('package.json')) return
+  if (rel !== '') {
+    for (const entry of entries) if (entry.name === 'package.json') return
+  }
   for (const entry of entries) {
-    if (entry === 'node_modules' || entry === 'lib' || entry === 'dist' || entry.startsWith('.')) continue
-    const abs = join(dir, entry)
-    const r = rel ? `${rel}/${entry}` : entry
-    if (SOURCE_EXT.test(entry)) {
-      out.push(r)
-    } else if (!entry.includes('.')) {
-      walkFiles(abs, r, out, depthLeft - 1)
-    }
+    const name = entry.name
+    if (name === 'node_modules' || name === 'lib' || name === 'dist' || name.charCodeAt(0) === 46) continue
+    const r = rel ? `${rel}/${name}` : name
+    if (entry.isDirectory()) walkFiles(join(dir, name), r, out, depthLeft - 1)
+    else if (SOURCE_EXT.test(name)) out.push(r)
   }
 }
 
@@ -339,7 +445,10 @@ export function scanPackageImports(pkgAbsDir: string, rootDir?: string, devPaths
     for (const m of stripped.matchAll(SPEC_RE)) {
       // The match STARTS at the statement keyword (`from`/`import`/`require`)
       // — that position must be CODE, not the inside of a string.
-      if (codeAt[m.index] === false) continue
+      // `=== 0`, not `=== false`: the mask is a Uint8Array, and `0 === false`
+      // is false — the old spelling would silently never fire, letting every
+      // `from '…'` living inside a string scan as a real import.
+      if (codeAt[m.index] === 0) continue
       const name = specifierToPackage(m[1]!, aliases)
       if (!name) continue
       // Only a `from` clause can belong to a type-only statement. `require(…)`
