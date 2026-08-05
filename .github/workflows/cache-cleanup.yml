@@ -17,14 +17,24 @@ on:
   pull_request:
     types: [closed]
 
-permissions:
-  actions: write
+# No workflow-level grants: the single job below scopes the one write it
+# needs. A TOP-level `actions: write` zero-scores the whole OpenSSF Scorecard
+# Token-Permissions check (job-level scoping with a declared top level is
+# score-neutral — and the right shape regardless: a future job added here
+# starts from zero permissions).
+permissions: {}
 
 jobs:
   cleanup:
     name: Delete closed PR's caches
     runs-on: ubuntu-latest
     timeout-minutes: 3
+    # `gh cache delete` requires `actions: write` — the API's minimum; no
+    # read-only alternative exists. Residual risk is negligible: one run
+    # step, no checkout, no third-party actions, and the only input is the
+    # PR number (an integer from the event payload).
+    permissions:
+      actions: write
     steps:
       - name: Delete caches on the merge ref
         env:
