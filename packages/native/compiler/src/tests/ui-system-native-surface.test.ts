@@ -34,9 +34,14 @@ const ELEMENT = `import { Element } from '@pyreon/elements'
 import { Text } from '@pyreon/primitives'
 export function C(){ return (<Element><Text>x</Text></Element>) }`
 
+// The OPTIONS-object form — the only one `@pyreon/attrs` accepts. This fixture
+// used the bare `attrs(Text)` until the call shape was verified against the
+// runtime, which throws on it; see attrs-bare-component.test.ts. The invariant
+// asserted here (attrs lowers natively, warning-free, and type-checks) is
+// unchanged — only the spelling was wrong.
 const ATTRS = `import attrs from '@pyreon/attrs'
 import { Text } from '@pyreon/primitives'
-const T = attrs(Text).attrs({ })
+const T = attrs({ name: 'T', component: Text }).attrs({ })
 export function C(){ return (<T>x</T>) }`
 
 const STYLED_RAW_TAG = `import styled from '@pyreon/styler'
