@@ -29,12 +29,40 @@ export const TROUBLESHOOTING_GROUPS: SidebarGroup[] = [
         "slug": "troubleshooting/architecture"
       },
       {
+        "text": "Islands Mistakes",
+        "slug": "troubleshooting/islands"
+      },
+      {
+        "text": "SSR-rendering Mistakes",
+        "slug": "troubleshooting/ssr"
+      },
+      {
+        "text": "SSG / e2e Test-Server Mistakes",
+        "slug": "troubleshooting/ssg"
+      },
+      {
         "text": "Testing Mistakes",
         "slug": "troubleshooting/testing"
       },
       {
         "text": "Lifecycle & Cleanup Mistakes",
         "slug": "troubleshooting/lifecycle"
+      },
+      {
+        "text": "Build Pipeline Mistakes",
+        "slug": "troubleshooting/build"
+      },
+      {
+        "text": "CI / Build Gate Mistakes",
+        "slug": "troubleshooting/ci"
+      },
+      {
+        "text": "Best-Practice Mistakes (opt-in `@pyreon/lint` rules)",
+        "slug": "troubleshooting/best-practices"
+      },
+      {
+        "text": "Library API-Shape Mistakes",
+        "slug": "troubleshooting/library-api"
       },
       {
         "text": "Documentation Mistakes",

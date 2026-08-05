@@ -26,8 +26,15 @@ export type AntiPatternCategory =
   | 'jsx'
   | 'context'
   | 'architecture'
+  | 'islands'
+  | 'ssr'
+  | 'ssg'
   | 'testing'
   | 'lifecycle'
+  | 'build'
+  | 'ci'
+  | 'best-practices'
+  | 'library-api'
   | 'documentation'
 
 export interface AntiPatternEntry {
@@ -43,15 +50,42 @@ export interface AntiPatternEntry {
   detectorCodes: string[]
 }
 
-// Heading → slug. Keep in sync with the anti-patterns.md section list.
+/**
+ * Heading → slug. EVERY `##` section in `anti-patterns.md` must appear here:
+ * `parseAntiPatterns` skips an unmapped heading with a bare `continue`, so a
+ * section absent from this map is silently invisible to MCP `get_anti_patterns`
+ * AND to the generated troubleshooting docs — while the response header still
+ * advertises a total, presenting a partial catalog as the whole one.
+ *
+ * That is not hypothetical: NINE sections were unmapped, dropping 86 of 236
+ * entries (36%), including all 27 of `Build Pipeline Mistakes` — where most of
+ * the compiler/native institutional memory lives. The catalog exists to be READ
+ * by agents; a section that never reaches them is documentation that was never
+ * written.
+ *
+ * `catalogHeadings()` below turns the silent skip into a loud failure, so adding
+ * a section to the file without adding it here fails a test instead of quietly
+ * shrinking the catalog.
+ */
 const CATEGORY_MAP: Record<string, AntiPatternCategory> = {
   'Reactivity Mistakes': 'reactivity',
   'JSX Mistakes': 'jsx',
   'Context & Provider Mistakes': 'context',
   'Architecture Mistakes': 'architecture',
+  'Islands Mistakes': 'islands',
+  'SSR-rendering Mistakes': 'ssr',
+  'SSG / e2e Test-Server Mistakes': 'ssg',
+  'SSG / ISR Correctness': 'ssg',
   'Testing Mistakes': 'testing',
   'Lifecycle & Cleanup Mistakes': 'lifecycle',
+  'Build Pipeline Mistakes': 'build',
+  'CI / Build Gate Mistakes': 'ci',
+  'Best-Practice Mistakes (opt-in `@pyreon/lint` rules)': 'best-practices',
+  'Library API-Shape Mistakes': 'library-api',
   'Documentation Mistakes': 'documentation',
+  // `Memory Leak Classes (catalog)` is deliberately absent: it is a TABLE, not
+  // a bullet list, so it contributes no entries either way. The leak classes
+  // have their own documentation.
 }
 
 export const ANTI_PATTERN_CATEGORIES: readonly AntiPatternCategory[] = [
@@ -59,8 +93,15 @@ export const ANTI_PATTERN_CATEGORIES: readonly AntiPatternCategory[] = [
   'jsx',
   'context',
   'architecture',
+  'islands',
+  'ssr',
+  'ssg',
   'testing',
   'lifecycle',
+  'build',
+  'ci',
+  'best-practices',
+  'library-api',
   'documentation',
 ] as const
 
@@ -118,7 +159,14 @@ function parseBullet(bullet: string): {
 } | null {
   // `- **Name** [detector: ...]: body...` or `- **Name**: body...`
   // Extract the **bolded** name first.
-  const nameMatch = /^- \*\*([^*]+)\*\*/.exec(bullet)
+  //
+  // NON-GREEDY up to the closing `**`, rather than "any run of non-asterisks".
+  // The exclusion form silently rejected a title containing a LITERAL asterisk
+  // — `` `node:*` ``, `@pyreon/*`, `packages/*` are all natural here — and a
+  // rejected bullet is dropped with a bare `continue`, so the entry simply
+  // never existed for MCP or the docs. Same silent-drop shape as the unmapped
+  // -heading skip above, one level down.
+  const nameMatch = /^- \*\*(.+?)\*\*/s.exec(bullet)
   if (!nameMatch) return null
   const name = nameMatch[1]!.trim()
 
@@ -193,6 +241,25 @@ export function loadAntiPatternsDoc(
     }
   }
   return live
+}
+
+/**
+ * Every `##` heading in the catalog, paired with the slug it maps to (or `null`
+ * when unmapped). The gate that keeps `CATEGORY_MAP` honest: an unmapped
+ * heading is dropped SILENTLY, so without this the only symptom is a total that
+ * quietly under-counts.
+ *
+ * Exported so the test can assert against the real catalog file rather than a
+ * fixture — a fixture would only ever agree with whatever the map contains.
+ */
+export function catalogHeadings(doc: string): Array<{
+  heading: string
+  category: AntiPatternCategory | null
+}> {
+  return splitSections(doc).map(({ heading }) => ({
+    heading,
+    category: normaliseCategory(heading),
+  }))
 }
 
 export function parseAntiPatterns(doc: string): AntiPatternEntry[] {
