@@ -86,7 +86,7 @@
     "@pyreon/validation": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@pyreon/zero": "workspace:^",
-    "@tanstack/query-core": "^5.101.2",
+    "@tanstack/query-core": "^5.101.4",
     "@vitest/browser-playwright": "^4.1.10",
     "arktype": "^2.2.3",
     "valibot": "^1.4.1",

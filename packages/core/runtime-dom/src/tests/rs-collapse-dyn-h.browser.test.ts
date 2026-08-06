@@ -2,6 +2,7 @@ import { signal } from '@pyreon/reactivity'
 import { flush } from '@pyreon/test-utils/browser'
 import { query } from '@pyreon/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
+import { watchDispatch } from './delegation-diagnostics'
 import { _rsCollapseDynH, mount } from '../index'
 
 // Runtime helper for the HANDLER-COMBINED dynamic-collapse slice — the
@@ -203,17 +204,21 @@ describe('_rsCollapseDynH (real browser)', () => {
     )
     await flush()
     const btn = query(root, 'button')
+    // This pair has failed on CI only (`expected 2 to be 1`), so the assertion
+    // carries the observed dispatch state — see delegation-diagnostics.ts.
+    const diag = watchDispatch()
     btn.click()
     btn.dispatchEvent(new PointerEvent('pointerenter'))
-    expect(clicks).toBe(1)
-    expect(enters).toBe(1)
+    expect(clicks, diag.describe()).toBe(1)
+    expect(enters, diag.describe()).toBe(1)
 
     cond.set(true)
     await flush()
     btn.click()
     btn.dispatchEvent(new PointerEvent('pointerenter'))
-    expect(clicks).toBe(2)
-    expect(enters).toBe(2)
+    expect(clicks, diag.describe()).toBe(2)
+    expect(enters, diag.describe()).toBe(2)
+    diag.stop()
   })
 
   it('out-of-range valueIndex coerces to empty className — handlers still work', async () => {

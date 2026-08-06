@@ -110,7 +110,7 @@ jobs:
       # require full history here was dead weight: every consumer (cells,
       # changes) computes its own; the `affected-filter` output had ZERO
       # readers. Removed 2026-07 (queue-contention optimization pass).
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
@@ -133,7 +133,7 @@ jobs:
       # every PR via the prefix restore-key.
       - name: Restore bun install cache
         id: bun-tarball-cache
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.bun/install/cache
           key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -141,7 +141,7 @@ jobs:
       # Try to restore a previous lockfile-matched cache (fast path)
       - name: Restore node_modules
         id: nm-restore
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             node_modules
@@ -167,7 +167,7 @@ jobs:
       # service degradation) plus ~317MB of quota churn per run.
       - name: Save node_modules (lockfile key)
         if: steps.nm-restore.outputs.cache-hit != 'true'
-        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             node_modules
@@ -186,7 +186,7 @@ jobs:
       # budget poison.
       - name: Save bun install cache (main only)
         if: github.ref == 'refs/heads/main' && steps.bun-tarball-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.bun/install/cache
           key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -234,7 +234,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Composite restores node_modules (default) from Install's per-run
       # cache. We disable bootstrap restore because the cache doesn't
       # exist yet — THIS job populates it.
@@ -264,7 +264,7 @@ jobs:
       # `env:`. Keep inputs in sync between this restore and the saves below.
       - name: Restore source-hashed lib/ cache (+ incremental manifest)
         id: bootstrap-cache
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             packages/*/*/lib
@@ -290,7 +290,7 @@ jobs:
       # we just BUILT (no point re-saving identical bytes on cache-hit).
       - name: Save source-hashed lib/ cache for next runs
         if: steps.bootstrap-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           # Save the manifest alongside lib/ so the next run's restore gets
           # the per-package hashes that describe exactly this lib/.
@@ -307,7 +307,7 @@ jobs:
       # jobs see the same lib/ they always have, no composite-action edits
       # needed.
       - name: Save lib/ under per-run-id key for downstream jobs
-        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: packages/*/*/lib
           key: ${{ env.BOOTSTRAP_KEY }}
@@ -361,7 +361,7 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.changes.outputs.typecheck-matrix || '[{"name":"all","members":"core fundamentals internals native tools ui ui-system zero examples"}]') }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # affected.ts needs the merge-base to compute a real diff;
           # the install job uses fetch-depth: 0 for the same reason.
@@ -468,7 +468,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-pyreon
         with:
           restore-bootstrap: 'false'
@@ -587,7 +587,7 @@ jobs:
       scaffold-has: ${{ steps.scaffold.outputs.has }}
       bootstrap-exit-codes: ${{ steps.bexit.outputs.run }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -939,7 +939,7 @@ jobs:
       # in vitest.setup.ts) that ubuntu's stale Node masks. Pinning to
       # active-LTS Node 24 makes the CI env reflect what modern consumers
       # use, so bugs surface in CI instead of only at pre-push.
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - uses: ./.github/actions/setup-pyreon
@@ -974,7 +974,7 @@ jobs:
       # saves and restores its own category's lineage.
       - name: Restore native compile-verdict cache
         if: startsWith(matrix.name, 'native')
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .cache/pyreon-native-validate
           key: native-verdicts-ci-${{ runner.os }}-${{ matrix.name }}-${{ github.sha }}
@@ -1091,7 +1091,7 @@ jobs:
       # cold at ~15-17min while the restore step missed forever.
       - name: Save native compile-verdict cache
         if: always() && github.ref == 'refs/heads/main' && startsWith(matrix.name, 'native')
-        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .cache/pyreon-native-validate
           key: native-verdicts-ci-${{ runner.os }}-${{ matrix.name }}-${{ github.sha }}
@@ -1141,7 +1141,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-pyreon
         with:
           node-version: '24'
@@ -1164,7 +1164,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-pyreon
         with:
           node-version: '24'
@@ -1184,7 +1184,7 @@ jobs:
       # install step below reconciles it — the same path a cold runner takes.
       - name: Restore Playwright browsers
         id: pw-cache
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-chromium-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -1212,7 +1212,7 @@ jobs:
       # must not throw away a browser download the next run would reuse.
       - name: Save Playwright browsers (main only)
         if: always() && github.ref == 'refs/heads/main' && steps.pw-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-chromium-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -1235,7 +1235,7 @@ jobs:
     steps:
       # Composite handles checkout + bun + node + NM/bootstrap cache restore;
       # rust toolchain + cargo caches stay manual (specific ordering needs).
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-pyreon
         with:
           node-version: '24'
@@ -1243,11 +1243,11 @@ jobs:
           # (its own src/), and the rust binary is built in this job
           # below. Other packages' lib/ is not needed.
           restore-bootstrap: 'false'
-      - uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537 # master — pinned (OpenSSF Pinned-Dependencies)
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master — pinned (OpenSSF Pinned-Dependencies)
         with:
           toolchain: stable
       - name: Cache cargo registry
-        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8 # v6.0.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -1260,7 +1260,7 @@ jobs:
       # exact compiled output is reproducible. Saves ~2-3 min on common case
       # where compiler source is unchanged (vast majority of CI runs).
       - name: Cache cargo target/
-        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8 # v6.0.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: packages/core/compiler/native/target
           key: cargo-target-${{ runner.os }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock', 'packages/core/compiler/native/src/**/*.rs') }}
@@ -1327,7 +1327,7 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.changes.outputs.e2e-matrix || '[]') }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-pyreon
       # RESTORE always; SAVE only on main. The browser bundle is ~261 MB and
       # depends only on the Playwright version in bun.lock, so a per-branch save
@@ -1345,7 +1345,7 @@ jobs:
       # install step below reconciles it — the same path a cold runner takes.
       - name: Restore Playwright browsers
         id: pw-cache
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-chromium-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -1371,7 +1371,7 @@ jobs:
       # Same shared-entry rule as the browser-test job above.
       - name: Save Playwright browsers (main only)
         if: always() && github.ref == 'refs/heads/main' && steps.pw-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-chromium-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -1490,7 +1490,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-pyreon
       - name: Run build
         run: |
@@ -1548,7 +1548,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # affected.ts needs the merge-base to compute a real diff
       - uses: ./.github/actions/setup-pyreon
@@ -1648,7 +1648,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-pyreon
         with:
           # Coverage REQUIRES node — bun's inspector lacks the V8 coverage API
@@ -1702,7 +1702,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # Docs Sync diffs against the base ref
       - uses: ./.github/actions/setup-pyreon
@@ -1774,7 +1774,7 @@ jobs:
     # budgets are correct. `check-ci-job-timeouts` enforces the distinction.
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-pyreon
       - name: Verify each package main-entry within budget
         run: bun run check-bundle-budgets
@@ -1794,7 +1794,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-pyreon
       - name: Verify canonical minimal imports within budget
         run: bun run check-import-budgets
@@ -1819,7 +1819,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-pyreon
       - name: Check sideEffects + source-map exclusion
         run: bun run check-distribution
@@ -1840,7 +1840,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-pyreon
       - name: Spawn every published bin, assert it does something
         run: bun run check-bin-liveness
@@ -1852,7 +1852,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-pyreon
         with:
           restore-bootstrap: 'false'
@@ -1871,7 +1871,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-pyreon
       - run: bun run verify-modes
 
@@ -1924,7 +1924,7 @@ jobs:
           - cpa-smoke-dashboard-node-supabase
           - cpa-smoke-monorepo-vercel
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-pyreon
       # scaffold-smoke.ts accepts a positional cell filter:
       #   `bun scripts/scaffold-smoke.ts cpa-smoke-app-vercel` runs only that cell.
@@ -1971,7 +1971,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-pyreon
         with:
           # P3c — `bun pm untrusted` + lockfile diff only need NM, not lib/.
@@ -1992,7 +1992,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-pyreon
       - name: Run core benchmarks
         run: bun run bench:all > bench-results.json
@@ -2017,7 +2017,7 @@ jobs:
     # internal-budgets rule from testing.md).
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       # The trufflehog action `docker run`s ghcr.io/trufflesecurity/
@@ -2041,6 +2041,6 @@ jobs:
           done
           echo "::error::trufflehog image pull failed after 4 attempts — genuine ghcr.io outage, not a transient flake"
           exit 1
-      - uses: trufflesecurity/trufflehog@30d5bb91af1a771378349dbbb0c82129392acf70 # v3.95.6
+      - uses: trufflesecurity/trufflehog@6f3c981e7b77f235fd2702dd74af25fc4b72bf11 # v3.96.0
         with:
           extra_args: --only-verified
