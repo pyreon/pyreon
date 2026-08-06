@@ -106,6 +106,14 @@ const GATES: Gate[] = [
     name: 'check-ci-job-timeouts',
     cmd: 'bun scripts/check-ci-job-timeouts.ts',
   },
+  // Shell has no hoisting, and `bash -n` cannot see it — the script is
+  // syntactically valid and the failure is ordering. A helper defined below an
+  // EARLY-EXIT branch is a path no pull request exercises, so it stays green on
+  // every PR and exits 127 on the first push to main.
+  {
+    name: 'check-workflow-shell-order',
+    cmd: 'bun scripts/check-workflow-shell-order.ts',
+  },
   // A cache SAVE key and its RESTORE key must hash the same inputs. hashFiles()
   // is a pure function of its argument list, so two different lists can never
   // produce a matching digest — the restore just misses, silently, forever.
