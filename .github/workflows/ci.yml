@@ -638,6 +638,17 @@ jobs:
             if [ "$2" = "[]" ]; then echo "$1-has=false" >> "$GITHUB_OUTPUT"; else echo "$1-has=true" >> "$GITHUB_OUTPUT"; fi
             echo "$1 matrix: $2"
           }
+          batch() { # batch <prefix> <json-list> <max> [isolate-csv]
+            local prefix="$1" json="$2" max="$3" iso="${4:-}" out
+            if [ "$json" = "[]" ]; then emit "$prefix" "[]"; return 0; fi
+            # Fail-closed: if batching errors, fall back to the UNBATCHED list
+            # (slower, but never fewer cells than were selected).
+            if ! out=$(bun run scripts/ci-batch.ts --items="$json" --max="$max" --isolate="$iso"); then
+              echo "ci-batch failed for $prefix — falling back to unbatched"
+              emit "$prefix" "$json"; return 0
+            fi
+            emit "$prefix" "$out"
+          }
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             batch typecheck "$TC_ALL" 3
             batch test "$TEST_ALL" 2 "$NATIVE_ISO"
@@ -674,17 +685,6 @@ jobs:
           # checkout + setup-pyreon) is ~30-60s, and most category cells RUN
           # for under two minutes — so past a handful of cells the fan-out
           # buys queue tax rather than wall-clock. See scripts/ci-batch.ts.
-          batch() { # batch <prefix> <json-list> <max> [isolate-csv]
-            local prefix="$1" json="$2" max="$3" iso="${4:-}" out
-            if [ "$json" = "[]" ]; then emit "$prefix" "[]"; return 0; fi
-            # Fail-closed: if batching errors, fall back to the UNBATCHED list
-            # (slower, but never fewer cells than were selected).
-            if ! out=$(bun run scripts/ci-batch.ts --items="$json" --max="$max" --isolate="$iso"); then
-              echo "ci-batch failed for $prefix — falling back to unbatched"
-              emit "$prefix" "$json"; return 0
-            fi
-            emit "$prefix" "$out"
-          }
           TC_SEL=$(pick "$TC_ALL" \
             "core:--category=core" "fundamentals:--category=fundamentals" \
             "internals:--category=internals" "native:--category=native" \
