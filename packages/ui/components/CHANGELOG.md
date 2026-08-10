@@ -1,5 +1,19 @@
 # @pyreon/ui-components
 
+## 0.51.0
+
+### Patch Changes
+
+- Updated dependencies:
+  - @pyreon/rocketstyle@0.51.0
+  - @pyreon/reactivity@0.51.0
+  - @pyreon/elements@0.51.0
+  - @pyreon/core@0.51.0
+  - @pyreon/coolgrid@0.51.0
+  - @pyreon/unistyle@0.51.0
+  - @pyreon/ui-primitives@0.51.0
+  - @pyreon/ui-theme@0.50.1
+
 ## 0.40.0
 
 ### Patch Changes

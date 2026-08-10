@@ -1,5 +1,61 @@
 # @pyreon/code
 
+## 0.51.0
+
+### Minor Changes
+
+- **Breaking (pre-1.0):** grammars now load from a REGISTRY, and the core registers only the JavaScript family (js/ts/jsx/tsx — one package) plus JSON. Every other built-in grammar moves behind a new `@pyreon/code/languages-all` entry: (77eaf81)
+
+  ```ts
+  import "@pyreon/code/languages-all"; // css, python, markdown, html, rust, sql, xml, yaml, cpp, java, go, php, ruby, shell
+  ```
+
+  Why: a dynamic `import()` is lazy at RUNTIME but not to a bundler's dependency scanner, which follows the specifier at build / dev-server-start time. The old single map naming eighteen `@codemirror/lang-*` packages therefore pulled the whole language ecosystem into every consumer's pre-bundle step, even one that only ever shows TSX — measured taking a dev-server-backed command from ~27s to over five minutes. The map's "only the requested language is imported" comment held for the shipped bundle and quietly failed for the dep graph.
+
+  New API: `registerLanguage(id, loader)` (plus the `LanguageLoader` type) registers a grammar the package does not ship, or replaces one that it does.
+
+  Also: an unregistered or failed grammar still mounts the editor unhighlighted — as before — but now WARNS in dev naming the fix, instead of returning an empty extension silently. "The editor renders but nothing is coloured, and nothing says why" was close to undiagnosable.
+
+  And the package's headline feature finally has tests: real-Chromium specs assert CodeMirror emits highlight spans, including in the read-only/no-gutter/wrapped shape a docs surface uses.
+
+- New `@pyreon/code/webview` subpath — host a real CodeMirror 6 editor inside a native `<WebView>` (WKWebView on iOS, Android WebView) so the full editor works on every target from one source, driven by the same value/language/read-only signals as `createEditor`. `buildCodeHostHtml({ codemirrorScript? | codemirrorSrc? })` builds a self-contained host page that WAITS for a `window.CM` namespace (`{ EditorView, EditorState, Compartment, basicSetup, languageFor? }` — the app bundles its own `@codemirror/*`, exactly like `buildChartHostHtml({ echartsScript })`, since CodeMirror 6 is modular ESM with no single UMD), applies `{ value, language?, readOnly? }` from the `<WebView>` data bridge (cursor-preserving doc replacement + Compartment reconfigure — no reload), and posts new text via `window.pyreonPostMessage` on user edits (loop-guarded against the echo of a value we pushed). `<CodeWebView state onChange>` is the web-side ergonomic wrapper (emits `<WebView>`); native apps use `<WebView html={buildCodeHostHtml(...)} data={{ value, language }} onMessage={…}>` directly. Real-CodeMirror-in-a-real-iframe bridge proof in the browser suite (forward value push → editor renders → in-place doc replace; reverse edit → onChange; loop guard suppresses the pushed-value echo; readOnly applies). (a0c0555)
+
+### Patch Changes
+
+- Pin `@codemirror/language` to a single version. It hosts both the `Language` facet and `syntaxHighlighting`, so two resolved copies mean the highlighter never recognises the parser's tree — the editor mounts, the text renders, and nothing is coloured, with no error anywhere. The lockfile carried 6.12.3 alongside 6.12.4, which only bit on a clean install (a warm local tree that happened to dedupe never showed it). Its siblings `@codemirror/state` and `@codemirror/view` were already pinned in the root `overrides` for exactly this reason; `@codemirror/language` simply was not. A browser spec now asserts the single-instance invariant directly, so a future dependency-graph regression fails by name instead of as unexplained missing highlighting. (77eaf81)
+- `@pyreon/loom`: the phantom detector now recognizes the DefinitelyTyped (19ee507)
+  pattern (a declared `@types/x` twin satisfies a type-only import of `x`,
+  scoped names included), the lexical scanner requires the import KEYWORD to
+  sit in code (a `from '…'` inside a string — rule messages, fix catalogs,
+  generated examples — never scans as an import), subtrees with their own
+  package.json are separate units, and a root `loom.ignore` (reason
+  REQUIRED) downgrades findings to info with the reason attached — never a
+  silent drop.
+
+  The other packages: devDependency range alignment only (same-major sync
+  surfaced by `loom scan`); no runtime change.
+
+- Every package manifest now declares its MULTIPLATFORM story as data: (4e53471)
+  `multiplatform: { tier: 'shared' | 'service-backend' | 'web-only', rationale }`
+  (a discriminated union — `web-only` REQUIRES the rationale sentence). The
+  assignments transcribe the classification the multiplatform docs and the PMTC
+  compiler's own `WEB_ONLY_PACKAGES` registry already maintain, and the new
+  `check-multiplatform-tier` gate (validate-fast family) holds the contract:
+  a manifest without a tier, a published package with neither manifest nor
+  explicit exemption, a `web-only` without a rationale, or a stale generated
+  tier table all fail CI — so a new package can never again silently default
+  to web-only while the ecosystem advertises "one codebase, three targets".
+
+  No runtime change in any package: manifests are docs-pipeline inputs and are
+  stripped from published tarballs; every generated surface (llms, MCP
+  api-reference, reference pages) is byte-identical.
+
+- Updated dependencies:
+  - @pyreon/runtime-dom@0.51.0
+  - @pyreon/reactivity@0.51.0
+  - @pyreon/primitives@0.51.0
+  - @pyreon/core@0.51.0
+
 ## 0.50.0
 
 ### Minor Changes

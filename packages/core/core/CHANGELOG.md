@@ -1,5 +1,82 @@
 # @pyreon/core
 
+## 0.51.0
+
+### Patch Changes
+
+- Every package manifest now declares its MULTIPLATFORM story as data: (4e53471)
+  `multiplatform: { tier: 'shared' | 'service-backend' | 'web-only', rationale }`
+  (a discriminated union — `web-only` REQUIRES the rationale sentence). The
+  assignments transcribe the classification the multiplatform docs and the PMTC
+  compiler's own `WEB_ONLY_PACKAGES` registry already maintain, and the new
+  `check-multiplatform-tier` gate (validate-fast family) holds the contract:
+  a manifest without a tier, a published package with neither manifest nor
+  explicit exemption, a `web-only` without a rationale, or a stale generated
+  tier table all fail CI — so a new package can never again silently default
+  to web-only while the ecosystem advertises "one codebase, three targets".
+
+  No runtime change in any package: manifests are docs-pipeline inputs and are
+  stripped from published tarballs; every generated surface (llms, MCP
+  api-reference, reference pages) is byte-identical.
+
+- Teach `pyreon doctor diagnose` / MCP `diagnose` the MAX_PASSES batch-flush error. (83fc05a)
+
+  The reactivity batch flush drops queued effects after 32 passes and logs in both
+  dev and production, so users hit the string in production builds — but the
+  catalog had no entry for it. The new entry explains the cause (an effect that
+  writes a signal it also reads, re-enqueueing until the cap) and the three real
+  remedies: use `computed()` when only deriving, `.peek()` to read without
+  subscribing, or gate the write so it cannot re-trigger.
+
+  Also compresses verbose source comments across the core packages. No runtime
+  behaviour changes — the published artifacts are byte-identical, since `src/` is
+  stripped from the tarball and the bundler strips comments from `lib/`.
+
+- A reactive accessor was legal as a SOLE child and rejected among MULTIPLE children. (abd71ef)
+
+  ```tsx
+  <Text>{count}</Text>          // ✅ sole child — hits the accessor arm
+  <Text>Count: {count}</Text>   // ❌ two children — hits the atoms-only arm
+  ```
+
+  `VNodeChild`'s array arm was `VNodeChildAtom[]` — atoms only — so an accessor
+  could not appear alongside anything else. That is the most common reactive
+  pattern there is, and it failed on the canonical `@pyreon/primitives` while the
+  IDENTICAL shape on a DOM element compiled, because the JSX runtime already types
+  children as `VNodeChild | VNodeChild[]`.
+
+  `mountChild` has always mounted accessors anywhere in a children array. Only the
+  type disagreed, which is why nothing broke at runtime and nothing caught it.
+
+  FIXED AT THE ROOT, and the first attempt is worth recording because the failure
+  was the useful signal. Widening `ChildrenProp` in the primitives broke ELEVEN
+  internal `h()` call sites; that read like "the narrow type is load-bearing" but
+  actually meant "you are patching a symptom". Widening `VNodeChild` itself needed
+  ZERO call-site changes. 11 vs 0 is the tell.
+
+  Two honest consequences:
+
+  - `VNodeChildAccessor`'s RETURN needed the same widening, or `suspense.ts`
+    could not express its own children (`h(Fragment, null, () => …)`).
+    Deliberately `() => VNodeChildAtom | VNodeChild[]` and NOT `() => VNodeChild`
+    — the latter would also permit an accessor returning an accessor, which the
+    runtime renders as a function rather than unwrapping.
+  - `@pyreon/toast`'s `resolve` carried a comment asserting "a reactive child
+    callback may not RETURN an accessor (it must yield an atom)". This change
+    makes that untrue, so the type was widened to match and the comment
+    corrected rather than cast past.
+
+  Blast radius measured, not assumed: the pre-fix run isolated every failure to
+  ONE real file (toaster.tsx) — the rest were downstream consumers reporting the
+  same line. Whole-monorepo typecheck is clean, `@pyreon/core` 625/625,
+  `@pyreon/toast` 130/130.
+
+  This clears 5 of the 8 remaining type errors in the flagship native counter
+  example, which is how the asymmetry was found.
+
+- Updated dependencies:
+  - @pyreon/reactivity@0.51.0
+
 ## 0.50.0
 
 ### Patch Changes

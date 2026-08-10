@@ -1,5 +1,39 @@
 # @pyreon/reactivity
 
+## 0.51.0
+
+### Patch Changes
+
+- Bundle-size pass (sourcemap-attributed): the compiled-template adoption verify/plan machinery moves out of `_tpl`'s module into hydration-plan.ts behind a call-time-registered verifier hook, and the whole For-adoption routine moves out of `mountFor`'s closure onto the hydration-side `ForAdoption.adoptRows` — compiled CSR apps now tree-shake ALL hydration-adoption code (the fair-bench table app drops 15.0 → 13.4 KB gz; mount-only import: 8278 → 8028, below its pre-arc baseline). The singleton sentinel's ~1KB remediation guide is dev-gated (prod keeps a compact one-liner with both locations, versions, and the doctor pointer — the acted-on-at-dev-time guidance ships in dev only). Behavior identical: full suites + the 5000-seed hydration parity fuzz green; adoption verified working through the seam by the bench's node-identity gates. (9729e91)
+- `getUpdateCause` reconstructs the causal chain by CASCADE STAMP instead of a 16ms wall-clock cluster window. Each recorded fire now carries a synchronous-cascade sequence number (a signal fire opens a cascade; derived/effect fires inherit it), so "same cascade" membership is exact regardless of how long the cascade took — previously a GC pause or a loaded machine stretching one `set → recompute → effect` cascade past 16ms silently dropped the root signal from the reconstructed chain. `ReactiveFire` gains a `cascade: number` field (additive). (39610a7)
+- Every package manifest now declares its MULTIPLATFORM story as data: (4e53471)
+  `multiplatform: { tier: 'shared' | 'service-backend' | 'web-only', rationale }`
+  (a discriminated union — `web-only` REQUIRES the rationale sentence). The
+  assignments transcribe the classification the multiplatform docs and the PMTC
+  compiler's own `WEB_ONLY_PACKAGES` registry already maintain, and the new
+  `check-multiplatform-tier` gate (validate-fast family) holds the contract:
+  a manifest without a tier, a published package with neither manifest nor
+  explicit exemption, a `web-only` without a rationale, or a stale generated
+  tier table all fail CI — so a new package can never again silently default
+  to web-only while the ecosystem advertises "one codebase, three targets".
+
+  No runtime change in any package: manifests are docs-pipeline inputs and are
+  stripped from published tarballs; every generated surface (llms, MCP
+  api-reference, reference pages) is byte-identical.
+
+- Teach `pyreon doctor diagnose` / MCP `diagnose` the MAX_PASSES batch-flush error. (83fc05a)
+
+  The reactivity batch flush drops queued effects after 32 passes and logs in both
+  dev and production, so users hit the string in production builds — but the
+  catalog had no entry for it. The new entry explains the cause (an effect that
+  writes a signal it also reads, re-enqueueing until the cap) and the three real
+  remedies: use `computed()` when only deriving, `.peek()` to read without
+  subscribing, or gate the write so it cannot re-trigger.
+
+  Also compresses verbose source comments across the core packages. No runtime
+  behaviour changes — the published artifacts are byte-identical, since `src/` is
+  stripped from the tarball and the bundler strips comments from `lib/`.
+
 ## 0.50.0
 
 ## 0.49.0

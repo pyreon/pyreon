@@ -1,5 +1,83 @@
 # @pyreon/runtime-server
 
+## 0.51.0
+
+### Patch Changes
+
+- Stop reading `process.env.NODE_ENV` once per element during SSR. (dfc3f03)
+
+  `warnIfUnsafeTag` runs for every element rendered and gated itself with an
+  inline `process.env.NODE_ENV === 'production'` check. In Node that is not a
+  constant — it is a getter over the real environ, measured at 767ns per read vs
+  25.6ns for a resolved value. A CPU profile of a 1,000-row `h()` render showed
+  that single check at **36.7% of SSR self-time**.
+
+  The gate is now resolved ONCE at module init by selecting a no-op implementation
+  in production. Measured on Node, paired before/after per round:
+
+      4.723ms -> 2.868ms   (1.65x)
+      2.568ms -> 0.933ms   (2.75x)
+      1.414ms -> 0.756ms   (1.87x)
+
+  Bundled consumers are unaffected: the ternary condition is still the bare inline
+  expression, so a bundler define folds it to `true`, the ternary collapses to the
+  no-op, and the warning string becomes unreachable and tree-shakes.
+
+- Every package manifest now declares its MULTIPLATFORM story as data: (4e53471)
+  `multiplatform: { tier: 'shared' | 'service-backend' | 'web-only', rationale }`
+  (a discriminated union — `web-only` REQUIRES the rationale sentence). The
+  assignments transcribe the classification the multiplatform docs and the PMTC
+  compiler's own `WEB_ONLY_PACKAGES` registry already maintain, and the new
+  `check-multiplatform-tier` gate (validate-fast family) holds the contract:
+  a manifest without a tier, a published package with neither manifest nor
+  explicit exemption, a `web-only` without a rationale, or a stale generated
+  tier table all fail CI — so a new package can never again silently default
+  to web-only while the ecosystem advertises "one codebase, three targets".
+
+  No runtime change in any package: manifests are docs-pipeline inputs and are
+  stripped from published tarballs; every generated surface (llms, MCP
+  api-reference, reference pages) is byte-identical.
+
+- Teach `pyreon doctor diagnose` / MCP `diagnose` the MAX_PASSES batch-flush error. (83fc05a)
+
+  The reactivity batch flush drops queued effects after 32 passes and logs in both
+  dev and production, so users hit the string in production builds — but the
+  catalog had no entry for it. The new entry explains the cause (an effect that
+  writes a signal it also reads, re-enqueueing until the cap) and the three real
+  remedies: use `computed()` when only deriving, `.peek()` to read without
+  subscribing, or gate the write so it cannot re-trigger.
+
+  Also compresses verbose source comments across the core packages. No runtime
+  behaviour changes — the published artifacts are byte-identical, since `src/` is
+  stripped from the tarball and the bundler strips comments from `lib/`.
+
+- SSR fast path: a DOM wrapper holding a COMPONENT child now compiles to `_ssr(...)` (f498ee6)
+
+  Until now any element with a component child was declined outright, so
+  `<main class="page"><Header /><Content /></main>` — the shape of essentially
+  every layout wrapper in a real app — emitted zero `_ssr` and fell back to the
+  h() tree walk. Component children now become holes, and the wrapper templates.
+
+  The mechanism is the interesting part. An `_ssr(...)` hole is an ordinary
+  function argument, so it is evaluated at the CALL SITE. That matches h() for a
+  hole that reads a value, but not for one that RENDERS a component: rendering has
+  context side effects, and h() defers it. So the compiler wraps the whole call in
+  `_ssrDeferred(() => _ssr(...))`, and `renderNode` / `streamNode` invoke the thunk
+  exactly where they would have rendered the equivalent vnode. Deferring the CALL
+  rather than the individual hole is what makes it compose — a nested `_ssr`
+  collapses into its parent's call and rides inside the same thunk, so no laziness
+  has to propagate through the concat helpers.
+
+  A previous attempt emitted the hole eagerly. It passed every unit gate and still
+  broke 26 ui-showcase specs, because every one of those gates rendered the node at
+  top level — the single position where call site and render position coincide.
+  The regression tests added here cover the whole position space instead.
+
+- SSR now emits `class=""` for an EMPTY-STRING class resolution (nullish stays omitted), across all emission paths: `renderPropValue`, `_ssrAttr`, and both compiler backends' static bakes. The client has always materialized `class=""` for the same value (`[class]` attribute selectors distinguish presence), so omitting it server-side was a real SSR/CSR parity divergence — CSS matching `[class]` behaved differently before and after hydration — and it forced hydration adoption to pay an attribute write per row purely to materialize the attribute. The SSR render-fuzz byte-identity gate verified all four sites agree. (9729e91)
+- Updated dependencies:
+  - @pyreon/reactivity@0.51.0
+  - @pyreon/core@0.51.0
+
 ## 0.50.0
 
 ### Patch Changes

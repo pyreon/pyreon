@@ -1,5 +1,93 @@
 # @pyreon/runtime-dom
 
+## 0.51.0
+
+### Patch Changes
+
+- Bundle-size pass (sourcemap-attributed): the compiled-template adoption verify/plan machinery moves out of `_tpl`'s module into hydration-plan.ts behind a call-time-registered verifier hook, and the whole For-adoption routine moves out of `mountFor`'s closure onto the hydration-side `ForAdoption.adoptRows` — compiled CSR apps now tree-shake ALL hydration-adoption code (the fair-bench table app drops 15.0 → 13.4 KB gz; mount-only import: 8278 → 8028, below its pre-arc baseline). The singleton sentinel's ~1KB remediation guide is dev-gated (prod keeps a compact one-liner with both locations, versions, and the doctor pointer — the acted-on-at-dev-time guidance ships in dev only). Behavior identical: full suites + the 5000-seed hydration parity fuzz green; adoption verified working through the seam by the bench's node-identity gates. (9729e91)
+- Tests for the two modules that landed under-covered today and turned `Coverage (Full)` red on every main run. (3c79989)
+
+  `<Video>` (the canonical media primitive) shipped at 8.33% statements, dragging `@pyreon/primitives` to 96.78% against its 99% gate. It now has happy-dom coverage for the whole contract: src dispatch (bare name → bundled asset, absolute URL and path-style pass through untouched), the autoplay/loop/muted defaults, unconditional `playsinline`, dimension resolution, and the three-media-event → `onStatusChange` mapping where `pause` → `'paused'` is the rename most likely to be got wrong. 96.78% → 99.73%.
+
+  `hydration-plan.ts` (row-plan replay hydration) shipped at 72.57% statements / 59.34% branches. The new tests target its BAIL contract, which is where a fast path's correctness actually lives — every row shape outside the supported grammar must be refused rather than half-understood — plus `tplAdoptVerify`. 72.57% → 78%.
+
+- Pure contiguous-insertion fast path for both keyed reconcilers — the mirror of the contiguous-removal fast path. When a keyed list update is exactly the old keys with one contiguous run of new keys inserted (append, prepend, or middle-insert — no removals, no survivor reorder), `mountFor` and `mountKeyedList` now mount just the run via a single fragment `insertBefore` and skip the per-key `cache.has` pre-pass, the newKey-Set build + full-cache stale scan, and the LIS walk entirely. Isolated reconcile A/B on a 10k-row list: append-1k ~1.8× faster, prepend-1k ~11× (the general path mounted new rows at the tail then moved each to its slot; the fast path does zero moves). Emits the `runtime.mountFor.insertFast` dev counter. Non-contiguous inserts, insert-plus-remove, and reorders fall through to the general reconciler unchanged. (4b430ca)
+- Keyed `<For>` hydration now ADOPTS the SSR rows instead of rebuilding them. Previously a hydrating `<For>` mounted fresh rows and discarded the server DOM (the documented "true keyed adoption is a perf follow-up" swap); now, when the client's items align 1:1 with the SSR block's `<!--k:KEY-->` markers (same count, keys, order — the dominant real-app case), each row's vnode hydrates in place against its existing DOM range: bindings and delegated events wire onto the server-rendered nodes, node identity is preserved, and the `k:` markers are removed. Any mismatch (different/missing/extra/reordered keys, empty rows, legacy SSR output) bails to the previous clear-and-remount semantics, so correctness is unchanged by construction. Verified by the cross-framework hydration bench's node-identity adoption gate (which previously failed for Pyreon and now passes) and the 5000-seed hydration parity fuzz. Emits the `runtime.mountFor.hydrateAdopt` dev counter. (26ae1be)
+- hydrateElement composes its disposer over statically-known cleanup slots (props / children / select-value / ref) instead of allocating a cleanups array per hydrated element. (5b3442e)
+- Row-plan replay hydration for keyed `<For>` adoption. A `<For>`'s rows are structurally identical, but hydration re-interpreted the same vnode shape for every row. Now a plan is built once from the first row's shape (which positions need props applied, which are reactive text bindings — prop-less elements and static text need no step at all) and replayed per row with direct node hops and zero interpretive dispatch, using the same binding primitives (`applyProps`, `bindPolymorphicText`). Every step is verified per row before anything is bound; any mismatch — and any unsupported row shape (components, fragments, nested For, `<select>`, adjacent text) — falls back to the interpretive walk for that row, so correctness is unchanged by construction. Cross-framework hydration bench: Pyreon 1.33× → 1.20× vs Vue (~0.8ms off a 1,000-row page), with React/Preact ratios unchanged as in-run controls. Emits `runtime.hydrate.rowReplay`. (9729e91)
+- Hydration walk micro-optimizations: diagnostic path strings (which compounded per element — thousands of growing string allocations per hydration) are now built only outside production, and the hot cursor-scan exits take an inline element fast path. Strictly less work per hydrated element; no measured median shift on the 1,000-row hydration benchmark (honest null — the remaining gap vs Vue is per-node dispatch, tracked separately as compiled-template hydration). (e10f9fc)
+- `@pyreon/loom`: the phantom detector now recognizes the DefinitelyTyped (19ee507)
+  pattern (a declared `@types/x` twin satisfies a type-only import of `x`,
+  scoped names included), the lexical scanner requires the import KEYWORD to
+  sit in code (a `from '…'` inside a string — rule messages, fix catalogs,
+  generated examples — never scans as an import), subtrees with their own
+  package.json are separate units, and a root `loom.ignore` (reason
+  REQUIRED) downgrades findings to info with the reason attached — never a
+  silent drop.
+
+  The other packages: devDependency range alignment only (same-major sync
+  surfaced by `loom scan`); no runtime change.
+
+- Every package manifest now declares its MULTIPLATFORM story as data: (4e53471)
+  `multiplatform: { tier: 'shared' | 'service-backend' | 'web-only', rationale }`
+  (a discriminated union — `web-only` REQUIRES the rationale sentence). The
+  assignments transcribe the classification the multiplatform docs and the PMTC
+  compiler's own `WEB_ONLY_PACKAGES` registry already maintain, and the new
+  `check-multiplatform-tier` gate (validate-fast family) holds the contract:
+  a manifest without a tier, a published package with neither manifest nor
+  explicit exemption, a `web-only` without a rationale, or a stale generated
+  tier table all fail CI — so a new package can never again silently default
+  to web-only while the ecosystem advertises "one codebase, three targets".
+
+  No runtime change in any package: manifests are docs-pipeline inputs and are
+  stripped from published tarballs; every generated surface (llms, MCP
+  api-reference, reference pages) is byte-identical.
+
+- Drop the fresh-render duplicate-key `Set` in `<For>`'s keyed reconciler. (d82f233)
+
+  `handleFreshRender` allocated a second `Set` purely for duplicate detection and
+  paid `has` + `add` per row — an n-entry allocation plus two hash ops per row on
+  the bulk-create path. The keyed `cache` already IS that membership set on this
+  path (it is provably empty on entry, and every `renderInto` branch writes each
+  key into it), so the check now reads `cache.has(key)`: one hash op per row, no
+  second allocation.
+
+  Semantics are unchanged — duplicate keys are still skipped, so the
+  DOM-corruption safety the check exists for is intact, and the dev warnings are
+  byte-identical. Measured in isolation at 0.144ms per 10,000 rows.
+
+  Also teaches `pyreon doctor diagnose` / MCP `diagnose` the `<For>` duplicate-key
+  error. The reconciler skips a duplicate key, so the visible symptom is a list
+  rendering fewer rows than the data has — the new entry explains that causal
+  chain and steers the fix away from the array index, which is unique but not
+  stable across reorders.
+
+  Benchmark fixes (no runtime impact): `form-bench` discarded its timed results,
+  letting the JIT eliminate the work — that inflated our reported wins (191x ->
+  171x) and fabricated a loss on setup-12-fields that is actually a tie. It now
+  consumes results into a sink and gained the correctness gate it lacked. Adds a
+  repo-wide benchmark objectivity audit and a Chromium-isolated DOM micro-harness.
+
+- Teach `pyreon doctor diagnose` / MCP `diagnose` the MAX_PASSES batch-flush error. (83fc05a)
+
+  The reactivity batch flush drops queued effects after 32 passes and logs in both
+  dev and production, so users hit the string in production builds — but the
+  catalog had no entry for it. The new entry explains the cause (an effect that
+  writes a signal it also reads, re-enqueueing until the cap) and the three real
+  remedies: use `computed()` when only deriving, `.peek()` to read without
+  subscribing, or gate the write so it cannot re-trigger.
+
+  Also compresses verbose source comments across the core packages. No runtime
+  behaviour changes — the published artifacts are byte-identical, since `src/` is
+  stripped from the tarball and the bundler strips comments from `lib/`.
+
+- The default innerHTML sanitizer (~100-tag allowlists + walker) moves behind a tree-shakeable registration seam: `@pyreon/runtime-dom/sanitizer` registers it as a side effect, and `@pyreon/vite-plugin` auto-injects that import into any module whose source uses the sanitized `innerHTML` prop — Vite apps keep zero-config semantics while apps that never use it (most) drop the machinery entirely (mount-only import: 8,028 → 7,580 gz). Non-Vite consumers using `innerHTML` add the one-line import once; without any sanitizer registered, the sanitized path THROWS naming both fixes rather than ever applying unsanitized HTML (the security-critical direction — locked by a dedicated unregistered-state spec). `dangerouslySetInnerHTML` is raw by design (React semantics) and is unaffected; `setSanitizer(...)` custom sanitizers work without the default. (9729e91)
+- Compiled-template hydration adoption: `_tpl` can now bind against existing SSR DOM instead of cloning. The `<For>` hydration-adoption path arms a one-shot target before each row's renderItem; the compiled row's `_tpl` call verifies the SSR row against its template (tag + per-element text-count signature, `$`-triplet validation, all before any mutation) and on match runs the compiled bind over the server-rendered nodes — compiled apps now ADOPT server DOM. Previously every compiled row was rebuilt and swapped in, and the swap left each ForEntry's anchor pointing at the detached SSR node, corrupting later list moves/removals after hydration — that anchor bookkeeping is also fixed (re-resolved from the row's k: marker), locked by a bisect-verified regression test that reproduces the exact duplication corruption when reverted. Any verification bail falls back to the (now-correct) swap. Emits `runtime.tpl.adopt`. (9729e91)
+- Updated dependencies:
+  - @pyreon/reactivity@0.51.0
+  - @pyreon/core@0.51.0
+  - @pyreon/sized-map@0.51.0
+
 ## 0.50.0
 
 ### Patch Changes

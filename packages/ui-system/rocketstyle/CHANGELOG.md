@@ -1,5 +1,47 @@
 # @pyreon/rocketstyle
 
+## 0.51.0
+
+### Patch Changes
+
+- Accept an ACCESSOR for `<PyreonUI theme>`, and type rocketstyle dimension props to match their runtime. (f07aa78)
+
+  **`@pyreon/ui-core`** — `theme` now accepts `PyreonTheme | (() => PyreonTheme)`, resolved inside the existing `enrichedTheme` computed so an accessor's signal reads stay tracked. This mirrors what `mode` already supported. It matters for any package that ships a PREBUILT lib compiled with the plain automatic JSX runtime (every `@pyreon` UI package does): there the compiler never wraps `theme={themeSignal()}` in `_rp()`, so the theme was read exactly once and a theme swap silently did nothing. Hand-wrapping in `_rp()` is not a workaround — in a compiled file the compiler wraps it a second time and `enrichTheme` receives a function.
+
+  **`@pyreon/rocketstyle`** — `ExtractDimensionProps` now also accepts an accessor per dimension prop (`state={() => cond ? 'a' : 'b'}`). `calculateStylingAttrs` has resolved function-valued dimension props since the inline-signal fix, but the type was never widened, so the very form that fix exists to support failed to typecheck. Applied only to the props-facing type, never to `ExtractDimensions` (the resolved `$$rocketstyle` shape, where a function is not a valid value). Widening only accepts more, so no existing call site changes.
+
+- Every package manifest now declares its MULTIPLATFORM story as data: (4e53471)
+  `multiplatform: { tier: 'shared' | 'service-backend' | 'web-only', rationale }`
+  (a discriminated union — `web-only` REQUIRES the rationale sentence). The
+  assignments transcribe the classification the multiplatform docs and the PMTC
+  compiler's own `WEB_ONLY_PACKAGES` registry already maintain, and the new
+  `check-multiplatform-tier` gate (validate-fast family) holds the contract:
+  a manifest without a tier, a published package with neither manifest nor
+  explicit exemption, a `web-only` without a rationale, or a stale generated
+  tier table all fail CI — so a new package can never again silently default
+  to web-only while the ecosystem advertises "one codebase, three targets".
+
+  No runtime change in any package: manifests are docs-pipeline inputs and are
+  stripped from published tarballs; every generated surface (llms, MCP
+  api-reference, reference pages) is byte-identical.
+
+- fix(rocketstyle): resolve function-valued dimension props so INLINE reactive dimension props apply (8c7d231)
+
+  The Pyreon compiler emits an inline reactive dimension prop — `state={sig() ? 'a' : 'b'}` — as a bare accessor `state: () => …` (a `.map()`/helper-scoped prop stays a plain value). rocketstyle's `calculateStylingAttrs` only handled `string`/`number`, so a function fell to the `undefined` arm and the dimension was silently dropped: active-tab highlighting, signal-driven `variant`/`size`/`state`, etc. never applied for inline reactive dimension props. It now resolves a function-valued dimension prop — and, since this runs inside rocketstyle's reactive resolution, the read is tracked, so a dimension flip re-resolves the class with no remount. Static values, plain-value props, and `_rp`-getter (already-resolved-to-string) props are unchanged.
+
+- `Theme<T>` now actually uses its type argument. (cfd2e8c)
+
+  It was written `T extends unknown ? ThemeDefault : Merge<[ThemeDefault, T]>`. Every type extends `unknown` — it is the top type — so the conditional was degenerate: always the true branch, `Theme<T>` collapsed to the empty `ThemeDefault`, and the generic was silently discarded for every caller. The check is now `unknown extends T`, which means what was intended: no type argument → the augmentable `ThemeDefault`; a concrete `T` → that shape merged over it.
+
+  This is why passing a theme type never typed a `.theme()` callback's `t`, and why consumers reached for a global `declare module '@pyreon/rocketstyle'` augmentation — which merges into _every_ other consumer's `t` and makes their tokens claim properties that are `undefined` at runtime — or cast at each call site. Widening only accepts more, so no existing call site changes (verified: rocketstyle, elements, ui-components, coolgrid and atlas all typecheck unchanged).
+
+- Updated dependencies:
+  - @pyreon/ui-core@0.51.0
+  - @pyreon/reactivity@0.51.0
+  - @pyreon/core@0.51.0
+  - @pyreon/sized-map@0.51.0
+  - @pyreon/styler@0.51.0
+
 ## 0.50.0
 
 ### Patch Changes

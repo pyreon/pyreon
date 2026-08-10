@@ -1,5 +1,63 @@
 # @pyreon/feature
 
+## 0.51.0
+
+### Minor Changes
+
+- `@pyreon/feature` now forwards TanStack's `AbortSignal`, so query cancellation works. (331c206)
+
+  Every read hook (`useList`, `useById`, `useSearch`) called its REST layer as `queryFn: () => http.getById(api, id)`. That signature took no `AbortSignal`, so the per-fetch signal TanStack aborts on unmount, on supersede and on `cancelQueries` never reached the network — cancellation has been silently dead for every feature-driven query since the package shipped. An unmounted component kept fetching, and a rapidly-retyped search fired one request per keystroke, all of which ran to completion and raced each other into the cache, so the last response to arrive won rather than the newest.
+
+  The REST layer now runs on `@pyreon/http` and threads `{ signal }` through all three hooks. Two further defects go with it: path parameters are URL-encoded, so an id containing `/` can no longer escape its segment (`1/../admin` reaching `/admin`), and requests get a 30s deadline where raw `fetch` had none.
+
+  The thrown error shape is deliberately unchanged — `message` from the response body when present, else `<METHOD> <url> failed: <status>`, plus `status`, plus `errors` only when the body carries them. Migrating the transport must not silently re-shape what consumers catch, so the client runs with `throwHttpErrors: false` and the original extraction is preserved verbatim. `config.fetcher` remains a plain `typeof fetch`.
+
+  `pyreon/query-fn-must-forward-signal` also gains a false-positive fix: it scanned only the function body, so a correct `queryFn: ({ signal: abortSignal }) => …` — where `signal` appears only in the parameter pattern — was reported as a violation. It now scans parameters too.
+
+- Migrate to TanStack Table v9. (175a232)
+
+  **`useTable` now returns the `Table` instance directly** instead of `Computed<Table>` — there is no `table()` call. v9 exposes a pluggable reactivity seam (`coreReactivityFeature`) and the adapter backs its atoms with Pyreon signals, so reading the table inside any reactive scope subscribes natively. The v8 version counter, the whole-`TableState` structural diff, and the `onStateChange` interception all existed only because v8 had no such seam; they are gone.
+
+  **Features must now be registered explicitly.** v9 exposes an API only when its feature is present, and row models are feature slots rather than options: `getCoreRowModel()` is automatic (delete it), and the rest become `tableFeatures({ rowSortingFeature, sortedRowModel: createSortedRowModel(), … })`. Define the set once at module scope — it is a compile-time type parameter. Note `row.getVisibleCells()` requires `columnVisibilityFeature`.
+
+  **Core types take a leading `TFeatures` generic** (`ColumnDef<typeof features, User>`), `table.getState()` → `table.store.state`, top-level `onStateChange` → per-slice `on<Slice>Change` (supplying one puts that slice in controlled mode), column pinning is logical (`start`/`end`, not `left`/`right`), `sortingFn` → `sortFn`, and `getIsSomeRowsSelected()` now means "at least one" including all-selected.
+
+  **The runtime re-export surface is now an explicit curated list rather than `export *`.** Under the wildcard, table-core's public surface was literally ours — an upstream major retired 40 of 51 runtime exports and leaked internals (`noop`, `getMemoOptions`, `_getVisibleLeafColumns`). The curated list covers the full author surface (all 16 features, every row model and built-in fn) while keeping adapter-construction plumbing out; types are still re-exported wholesale. A future upstream major is now our migration rather than yours.
+
+  `@pyreon/feature`'s `useTable` gains a fix along the way: `pageSize` was typed-but-unimplemented under v8 — it was read only as a boolean and its value discarded, so `pageSize: 25` silently paged by 10. It now sets the initial page size, and an unpaginated table is unpaginated (rather than truncated to v9's default of 10).
+
+  Fine-grained per-cell updates are preserved and verified: a single-cell edit still re-runs only the changed row's cells (6 cell units, 1 DOM write at both N=100 and N=1000 — matching hand-memoized react-table with no memo boilerplate). See the migration section in the table docs for a before/after.
+
+  `flexRender` and `flexRenderCell` now return a resolved-child type instead of `unknown`/`VNodeChild`. `VNodeChild` includes the accessor arm, so returning it made Pyreon's own documented `<td>{() => flexRenderCell(…)}</td>` pattern a nested accessor that the type system rejected; both functions always return already-resolved content, and the narrower type says so. `{flexRender(…)}` now typechecks directly in JSX.
+
+### Patch Changes
+
+- `extractFields` now reads enum members from zod v4 schemas. It looked for `_def.values`, which v4 does not have — v4 stores members as an entries map and exposes them as `.options` — so an enum field came back correctly typed with `enumValues: undefined`, a documented field that was silently always empty. Downstream that reads as "this enum has no members" rather than "we could not read them", which is the difference between generating a picker with the real options and generating a free-text box. Native enums are read by value, since a native enum maps name → value. (0b5ce4c)
+- Every package manifest now declares its MULTIPLATFORM story as data: (4e53471)
+  `multiplatform: { tier: 'shared' | 'service-backend' | 'web-only', rationale }`
+  (a discriminated union — `web-only` REQUIRES the rationale sentence). The
+  assignments transcribe the classification the multiplatform docs and the PMTC
+  compiler's own `WEB_ONLY_PACKAGES` registry already maintain, and the new
+  `check-multiplatform-tier` gate (validate-fast family) holds the contract:
+  a manifest without a tier, a published package with neither manifest nor
+  explicit exemption, a `web-only` without a rationale, or a stale generated
+  tier table all fail CI — so a new package can never again silently default
+  to web-only while the ecosystem advertises "one codebase, three targets".
+
+  No runtime change in any package: manifests are docs-pipeline inputs and are
+  stripped from published tarballs; every generated surface (llms, MCP
+  api-reference, reference pages) is byte-identical.
+
+- Updated dependencies:
+  - @pyreon/reactivity@0.51.0
+  - @pyreon/http@0.51.0
+  - @pyreon/core@0.51.0
+  - @pyreon/form@0.51.0
+  - @pyreon/query@0.51.0
+  - @pyreon/store@0.51.0
+  - @pyreon/table@0.51.0
+  - @pyreon/validation@0.51.0
+
 ## 0.50.0
 
 ### Patch Changes

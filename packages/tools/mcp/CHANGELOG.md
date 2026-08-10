@@ -1,5 +1,83 @@
 # @pyreon/mcp
 
+## 0.51.0
+
+### Minor Changes
+
+- New MCP tool: `get_dependency_fabric` — serves the workspace dependency graph (91c39d1)
+  `loom scan` writes to `loom-report.json`.
+
+  Atlas had two MCP tools; loom had none. An assistant could ask what components
+  exist and what props they take, but not what the packages are, what depends on
+  what, or what is wrong with the fabric — so "is it safe to change this?" got
+  answered from a `package.json` read at best, when a machine-readable graph with
+  blast-radius ranking was sitting on disk unread.
+
+  Call it with no arguments for the overview (shape, runtime cycles, gating
+  findings, the packages whose change reaches the most others); pass `package`
+  for one package's runtime deps, dependents, depth, reach and findings.
+
+  Reads the artifact rather than importing `@pyreon/loom`, matching `atlas.ts`
+  and for one more reason: loom's scan walks every file in the workspace, so
+  re-running it per tool call would make every question pay for a full scan.
+  A missing report returns instructions to run `loom scan`; a corrupt one is
+  named as unreadable rather than rendered as an empty fabric; a report older
+  than a day is flagged with its age.
+
+  Loom's honesty rule travels with the data: DECLARED truth only — no lockfile,
+  no registry, so it cannot say what is INSTALLED — and `unused-dep` is lexical
+  evidence, not proof. An agent that reads "unused" as "safe to delete" will
+  delete a package a bin loads at runtime.
+
+  Also corrects `index.ts`'s header roster, which claims to enumerate every tool
+  and had been missing `get_atlas_catalog` and `get_atlas_component` since they
+  landed.
+
+- Serve the Atlas component catalog to AI agents: `get_atlas_catalog({ tag? })` returns the verified catalog `atlas scan` writes (props, allowed values, and per-component verified/failing/unverified scenario counts), and `get_atlas_component({ name })` returns prescriptive usage for one component — required and optional props with exact allowed values, which props need a signal accessor, a known-good example only when a check actually passed, and `avoid:` lines for real failures. An unverified example is labelled as such rather than presented as correct, and a missing catalog returns instructions to run `atlas scan` instead of a guess. (5da7305)
+
+### Patch Changes
+
+- `get_anti_patterns` was silently serving 64% of the catalog. Nine `##` sections of `anti-patterns.md` were absent from `CATEGORY_MAP`, and `parseAntiPatterns` skips an unmapped heading with a bare `continue` — so 86 of 236 entries never reached MCP consumers or the generated troubleshooting docs, including all 27 of `Build Pipeline Mistakes`, while the response header kept advertising a total. A second silent drop sat one level down: the title regex excluded literal asterisks, so a bullet titled with `` `node:*` `` was rejected outright. Both are fixed, all 236 entries are now served across 14 categories (7 new public troubleshooting pages), and a test asserts every catalog heading is mapped plus every bullet is parsed — so the next section added to the file fails a test instead of quietly shrinking the catalog. (ccb60cf)
+- MCP `get_api` now serves `@pyreon/atlas` — the manifest's marker pair was (9ffcb6c)
+  missing, so the workbench's API reference (scan / dev / verify-browser /
+  createAtlas / authored scenarios, with their mistake catalogs) never reached
+  AI assistants despite being generated for llms.txt.
+- Fix two defects that made `atlas build` unusable against any real package, and publish the workbench at pyreon.dev/atlas. (7f8d3bd)
+
+  `atlas build` shipped in 0.50.0 but only worked against a project that happened to declare `@pyreon/atlas` as its own dependency — in this repo, exactly one example. Two bugs, both found by pointing it at a real 108-component library:
+
+  - **`@pyreon/atlas` itself was unresolvable.** The generated entry lives in `<project>/node_modules/.atlas-build/` and imports `@pyreon/atlas/ui`. Resolution walks up looking for `node_modules/@pyreon/atlas`, and a package manager never links a package inside its own `node_modules` — so every framework package resolved and the workbench did not (`Rolldown failed to resolve import "@pyreon/atlas/ui"`). A component library never declares the workbench; you point the tool at it. Now resolved through the workspace's own package map, and only ever for Atlas's generated modules.
+  - **A subpath resolved to a directory instead of a file.** `resolveWorkspaceSpecifier` probed the bare extension first and used an existence check, so a barrel `src/ui.ts` next to its `src/ui/` folder matched the folder (`UNLOADABLE_DEPENDENCY: Could not load .../src/ui`). `@pyreon/atlas/ui` is exactly that shape.
+
+  Both are bisect-verified. Verified end to end against `@pyreon/ui-components`: 108 components build and render in real Chromium with zero console errors, and the baked RPC is real — 108/108 source entries, 108/108 Lens verdicts, 9 carrying findings, 0 bake failures.
+
+  Also gives the built site real URLs. `atlas build` now emits a directory per component, so `/atlas/button/` is a page a plain file server answers at — pasteable into a chat, bookmarkable, linkable from a design doc — instead of `/atlas/?c=button`. The workbench reads its own path (base-agnostic: it matches the last segment against the catalog, so it works under any `--base`) and writes the path back on navigation, with the component removed from the query so the two can never disagree.
+
+  Opt-in via a global the host sets, because writing a path is only safe where a page answers at it: `atlas build` sets it, `atlas dev` sets it (its middleware already serves the shell for any extensionless GET), and a workbench EMBEDDED in someone else's app sets nothing and keeps the query string — writing `/button/` there would 404 on reload. Skipped for a relative `--base`, which would resolve assets against the wrong directory, and it says so rather than emitting pages that cannot load their own JavaScript.
+
+  Honest limit: these are real URLs, not prerendered pages. The HTML body is empty until JavaScript runs, so a crawler sees the title and nothing else — rendering the component into the HTML needs SSR, which is a different change.
+
+- `pyreon doctor --help` no longer boots the entire gates graph to print a usage string. The CLI's eager `FAST_GATES`/`SLOW_GATES` import rode the orchestrator's `./gates` module — every gate implementation, the compiler, the TypeScript API — measuring 45.8s wall for `--help`. The gate NAME registry now lives in a dependency-free `gate-names.ts` (orchestrator re-exports it, so existing imports keep working), and the three tests the Coverage (Full) diagnostic named on main carry derived budgets instead of defaults (the mcp audit specs get coverage-aware arms — the instrumented server pays a 2-5x multiplier the uninstrumented Test cells never see). (7ce09ad)
+- `get_anti_patterns({})` now adds a one-line hook only where the entry's TITLE is too terse to identify it on its own. This catalog's convention is that a title carries the whole claim, so on a long title the hook was a truncated restatement of the body that cost as much as the title and added nothing to discovery. Measured over 236 entries: 8,064 index tokens instead of 11,329 (hooks kept on 88, dropped on 148), taking the index from 94% of the 12,000-token design boundary to 67% — from roughly 14 entries of headroom to 115. Discovery stays a single call; the drill-downs (`name`, `category`, `full`) are unchanged. (ccb60cf)
+- Every package manifest now declares its MULTIPLATFORM story as data: (4e53471)
+  `multiplatform: { tier: 'shared' | 'service-backend' | 'web-only', rationale }`
+  (a discriminated union — `web-only` REQUIRES the rationale sentence). The
+  assignments transcribe the classification the multiplatform docs and the PMTC
+  compiler's own `WEB_ONLY_PACKAGES` registry already maintain, and the new
+  `check-multiplatform-tier` gate (validate-fast family) holds the contract:
+  a manifest without a tier, a published package with neither manifest nor
+  explicit exemption, a `web-only` without a rationale, or a stale generated
+  tier table all fail CI — so a new package can never again silently default
+  to web-only while the ecosystem advertises "one codebase, three targets".
+
+  No runtime change in any package: manifests are docs-pipeline inputs and are
+  stripped from published tarballs; every generated surface (llms, MCP
+  api-reference, reference pages) is byte-identical.
+
+- Regenerated api-reference for `@pyreon/primitives`' `<Press>` swipe vocabulary (`onSwipeLeft`/`onSwipeRight`). (9154c8a)
+- Updated dependencies:
+  - @pyreon/compiler@0.51.0
+
 ## 0.50.0
 
 ### Patch Changes

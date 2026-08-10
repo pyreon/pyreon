@@ -1,5 +1,76 @@
 # @pyreon/router
 
+## 0.51.0
+
+### Patch Changes
+
+- Every package manifest now declares its MULTIPLATFORM story as data: (4e53471)
+  `multiplatform: { tier: 'shared' | 'service-backend' | 'web-only', rationale }`
+  (a discriminated union — `web-only` REQUIRES the rationale sentence). The
+  assignments transcribe the classification the multiplatform docs and the PMTC
+  compiler's own `WEB_ONLY_PACKAGES` registry already maintain, and the new
+  `check-multiplatform-tier` gate (validate-fast family) holds the contract:
+  a manifest without a tier, a published package with neither manifest nor
+  explicit exemption, a `web-only` without a rationale, or a stale generated
+  tier table all fail CI — so a new package can never again silently default
+  to web-only while the ecosystem advertises "one codebase, three targets".
+
+  No runtime change in any package: manifests are docs-pipeline inputs and are
+  stripped from published tarballs; every generated surface (llms, MCP
+  api-reference, reference pages) is byte-identical.
+
+- Teach `pyreon doctor diagnose` / MCP `diagnose` the MAX_PASSES batch-flush error. (83fc05a)
+
+  The reactivity batch flush drops queued effects after 32 passes and logs in both
+  dev and production, so users hit the string in production builds — but the
+  catalog had no entry for it. The new entry explains the cause (an effect that
+  writes a signal it also reads, re-enqueueing until the cap) and the three real
+  remedies: use `computed()` when only deriving, `.peek()` to read without
+  subscribing, or gate the write so it cannot re-trigger.
+
+  Also compresses verbose source comments across the core packages. No runtime
+  behaviour changes — the published artifacts are byte-identical, since `src/` is
+  stripped from the tarball and the bundler strips comments from `lib/`.
+
+- The browser Back tests waited a fixed number of milliseconds, and flaked in CI. (2454a80)
+
+  `router.browser.test.tsx` drove real browser traversals with
+  `window.history.back(); await flushMs(150)`. That encodes a guess about how long
+  Chromium takes to fire popstate AND how long the router's navigation pipeline
+  takes to run — and since the Back pipeline now does the full job (loaders,
+  guards, blockers, afterEach, scroll, title) rather than a bare state sync, 150ms
+  is not enough under CI load.
+
+  It surfaced on #2553, a bench-hygiene PR touching only `scripts/`, which cannot
+  affect the router at all. It ran the browser suite because any `scripts/**`
+  change forces `--filter=*`, and then failed with
+  `expected '/about' to be '/posts'` — the assertion running before the pipeline
+  finished. The same suite passes 46/46 locally on that exact branch, and main was
+  green: the signature of a load-dependent timing flake, not a regression.
+
+  Three of the four fixed sleeps are now condition polls (`waitUntil(pred, label)`
+  with a generous 4s BACKSTOP — a passing case costs one 20ms interval, so the
+  budget only matters when the test is already failing, and a timeout now names
+  what it was waiting for instead of asserting on a half-finished navigation).
+
+  The fourth is deliberately NOT converted, and that is the interesting one. It
+  asserts a BLOCKED traversal changes nothing, so its expected end state is
+  identical to its start state — any predicate would pass instantly, before
+  Chromium had even moved the URL, and the test would assert nothing at all.
+  A fixed wait is the only honest option for proving the absence of a change; its
+  budget is raised from 250ms to 1200ms because it must cover the traversal event,
+  the pipeline, and the restoring `go()` round-trip.
+
+  Verified the poll is load-bearing rather than a no-op: making one predicate
+  unsatisfiable fails with `waitUntil timed out after 300ms: Back to settle on
+/posts with the loader re-run`, so it genuinely waits. 46/46 pass restored.
+
+- Updated dependencies:
+  - @pyreon/runtime-dom@0.51.0
+  - @pyreon/reactivity@0.51.0
+  - @pyreon/core@0.51.0
+  - @pyreon/sized-map@0.51.0
+
 ## 0.50.0
 
 ### Patch Changes

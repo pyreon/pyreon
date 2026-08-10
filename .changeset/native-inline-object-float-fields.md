@@ -1,5 +1,0 @@
----
-'@pyreon/native-compiler': patch
----
-
-Annotating your data types no longer makes the app uncompilable. `signal<{ id: number; price: number }[]>([{ id: 1, price: 2.5 }])` synthesised a struct with `price: Int` and initialised it with `2.5` — invalid Swift AND Kotlin — and everything downstream inherited it (a `reduce` over the column typed Int against a Double accumulation; the same for an imperative accumulator loop). Deleting the type annotation was the only fix, and there was no way to spell it correctly since `0.0` reads as an integer literal. Root cause was one assumption in three places: an INLINE object type produces no `StructIR` at parse time, and all three Double-refinement passes resolved element types through a NAMED struct only — one via `structNameOfType`, one via an outright `structs.length === 0` bail, and one via a `typeRef`-only element check. All three now accept the inline form, so the annotated and un-annotated spellings emit identically. Additive: an all-integer column is untouched.

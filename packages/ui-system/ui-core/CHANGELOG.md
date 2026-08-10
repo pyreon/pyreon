@@ -1,5 +1,35 @@
 # @pyreon/ui-core
 
+## 0.51.0
+
+### Patch Changes
+
+- Accept an ACCESSOR for `<PyreonUI theme>`, and type rocketstyle dimension props to match their runtime. (f07aa78)
+
+  **`@pyreon/ui-core`** — `theme` now accepts `PyreonTheme | (() => PyreonTheme)`, resolved inside the existing `enrichedTheme` computed so an accessor's signal reads stay tracked. This mirrors what `mode` already supported. It matters for any package that ships a PREBUILT lib compiled with the plain automatic JSX runtime (every `@pyreon` UI package does): there the compiler never wraps `theme={themeSignal()}` in `_rp()`, so the theme was read exactly once and a theme swap silently did nothing. Hand-wrapping in `_rp()` is not a workaround — in a compiled file the compiler wraps it a second time and `enrichTheme` receives a function.
+
+  **`@pyreon/rocketstyle`** — `ExtractDimensionProps` now also accepts an accessor per dimension prop (`state={() => cond ? 'a' : 'b'}`). `calculateStylingAttrs` has resolved function-valued dimension props since the inline-signal fix, but the type was never widened, so the very form that fix exists to support failed to typecheck. Applied only to the props-facing type, never to `ExtractDimensions` (the resolved `$$rocketstyle` shape, where a function is not a valid value). Widening only accepts more, so no existing call site changes.
+
+- Every package manifest now declares its MULTIPLATFORM story as data: (4e53471)
+  `multiplatform: { tier: 'shared' | 'service-backend' | 'web-only', rationale }`
+  (a discriminated union — `web-only` REQUIRES the rationale sentence). The
+  assignments transcribe the classification the multiplatform docs and the PMTC
+  compiler's own `WEB_ONLY_PACKAGES` registry already maintain, and the new
+  `check-multiplatform-tier` gate (validate-fast family) holds the contract:
+  a manifest without a tier, a published package with neither manifest nor
+  explicit exemption, a `web-only` without a rationale, or a stale generated
+  tier table all fail CI — so a new package can never again silently default
+  to web-only while the ecosystem advertises "one codebase, three targets".
+
+  No runtime change in any package: manifests are docs-pipeline inputs and are
+  stripped from published tarballs; every generated surface (llms, MCP
+  api-reference, reference pages) is byte-identical.
+
+- Updated dependencies:
+  - @pyreon/reactivity@0.51.0
+  - @pyreon/core@0.51.0
+  - @pyreon/styler@0.51.0
+
 ## 0.50.0
 
 ### Minor Changes
