@@ -76,6 +76,11 @@ jobs:
       contents: write
       pull-requests: write
       id-token: write
+      # actions: write — heal-release-chain's dispatch fallback: a tag pushed
+      # with the default GITHUB_TOKEN does not trigger workflows (recursive-
+      # trigger protection), so when no release-native run appears for the
+      # umbrella tag the healer starts one explicitly via `gh workflow run`.
+      actions: write
     # 15 min was too tight for a fresh full-monorepo publish — the 0.15.0
     # release timed out mid-publish at minute 15 with ~5 of 55 packages
     # still queued. Each `npm publish --provenance` takes 5-15s and the
@@ -186,55 +191,23 @@ jobs:
       # Release for the suite — matches how other fixed-group monorepos
       # (React, Apollo, Babel) ship: ONE release per cut, per-package
       # detail in each `packages/*/CHANGELOG.md`.
-      - name: Create umbrella GitHub Release
-        if: steps.changesets.outputs.published == 'true'
+      # Post-publish chain healing — umbrella tag, release-native trigger,
+      # GitHub Release. Decides from GROUND TRUTH (npm + origin), never from
+      # `steps.changesets.outputs`: the action sets its outputs only AFTER its
+      # per-package tag pushes, so one transient push failure (v0.50.0:
+      # `remote: fatal error in commit_refs`) left the outputs unset, the old
+      # `if: outputs.published == 'true'` umbrella step silently skipped, the
+      # v-tag was never created, release-native never fired, and the native
+      # binaries froze at 0.48.0 while JS moved on (same class previously ate
+      # v0.46.0 and v0.49.0 — three instances = a class). `always()` +
+      # derive-then-converge also RETRO-heals: the first run on main after a
+      # hole repairs the previous version's chain. No-ops in <2s when the
+      # chain is healthy or nothing is published at the repo version.
+      - name: Heal release chain (umbrella tag, native trigger, GitHub Release)
+        if: always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          # Anchor version on @pyreon/core — the foundation package every
-          # other Pyreon package transitively depends on. Under the fixed
-          # group, every internal package shares this version after
-          # `changeset version` runs, so the tag accurately represents
-          # the whole suite.
-          VERSION=$(node -p "require('./packages/core/core/package.json').version")
-          TAG="v${VERSION}"
-
-          # Idempotent tag: skip if it already exists (e.g. retried run).
-          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
-            echo "::notice::Tag ${TAG} already exists — skipping tag step."
-          else
-            git tag "${TAG}"
-            git push origin "${TAG}"
-          fi
-
-          # Build a markdown list of every published package@version from
-          # the action's structured output.
-          PACKAGES=$(echo '${{ steps.changesets.outputs.publishedPackages }}' \
-            | jq -r '[.[] | "- `\(.name)@\(.version)`"] | join("\n")')
-
-          BODY=$(cat <<EOF
-          All packages in the \`@pyreon/*\` suite at **${VERSION}**.
-
-          ## Published
-
-          ${PACKAGES}
-
-          ## Per-package detail
-
-          See each \`packages/*/CHANGELOG.md\` for the package-specific entry generated from the changesets that bumped it.
-          EOF
-          )
-
-          # Create the Release. `--verify-tag` ensures we point at a real
-          # ref. Idempotent via `|| true` if a Release already exists for
-          # this tag (manual retry scenario).
-          gh release create "${TAG}" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --title "${TAG}" \
-            --notes "${BODY}" \
-            --verify-tag \
-            || echo "::warning::Release for ${TAG} already exists — skipping creation."
+        run: bun scripts/heal-release-chain.ts
 
       # Publish-state verification — the structural fix for the silent-dead-
       # release class (v0.31.0: the Version PR merged, the publish step died
