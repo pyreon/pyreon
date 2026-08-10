@@ -92,4 +92,23 @@ describe('suggestNames', () => {
   it('deduplicates a name exported from several files', () => {
     expect(suggestNames(['Button', 'Button', 'Button'], 'Buton')).toEqual(['Button'])
   })
+
+  it('stays cheap for an enormous lookup across a large catalog', () => {
+    // Edit distance is O(n·m) and this runs on the ERROR path, where the
+    // "lookup" is whatever reached argv. Without the length short-circuit a
+    // 20k-character argument against 1419 names measured 1622ms; the bound is
+    // sound rather than a heuristic (distance is at least the length gap), so
+    // the suggestions above are unchanged.
+    const names = Array.from({ length: 1419 }, (_, i) => `Component${i}`)
+    const started = performance.now()
+    expect(suggestNames(names, 'x'.repeat(20_000))).toEqual([])
+    expect(performance.now() - started).toBeLessThan(250)
+  })
+
+  it('still suggests across a large catalog — the bound must not silence it', () => {
+    // The mirror error: a short-circuit that skips too much would make the
+    // suggestion machinery quietly useless on exactly the catalogs that need it.
+    const names = [...Array.from({ length: 1419 }, (_, i) => `Component${i}`), 'Button']
+    expect(suggestNames(names, 'Buton')).toContain('Button')
+  })
 })

@@ -57,7 +57,16 @@ export function suggestNames(names: readonly string[], lookup: string, limit = 3
   return [...new Set(names)]
     .map((name) => {
       const lower = name.toLowerCase()
-      return { name, score: lower.includes(needle) ? 0 : distance(needle, lower) }
+      if (lower.includes(needle)) return { name, score: 0 }
+      // Edit distance is at least the LENGTH difference, so a candidate whose
+      // length already puts it past the budget cannot qualify and never needs
+      // the O(n·m) walk. Sound, not a heuristic — and it is what keeps this
+      // path cheap when the "lookup" is something enormous pasted into argv:
+      // measured 1622ms → 3ms for a 20k-character lookup against 1419 names.
+      if (Math.abs(lower.length - needle.length) > budget) {
+        return { name, score: Number.POSITIVE_INFINITY }
+      }
+      return { name, score: distance(needle, lower) }
     })
     .filter((c) => c.score <= budget)
     .sort((a, b) => a.score - b.score || a.name.localeCompare(b.name))
