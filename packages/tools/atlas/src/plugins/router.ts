@@ -44,9 +44,33 @@ export interface RouterPluginOptions {
   load?: () => RouterModule | undefined | Promise<RouterModule | undefined>
 }
 
-/** A URL turned into a scenario-name fragment: `/users/7` → `users-7`. */
+/**
+ * A URL turned into a scenario-name fragment: `/users/7` → `users-7`.
+ *
+ * Query/hash removal and slash trimming are done with string operations, not
+ * regexes. `/[?#].*$/` and `/^\/+|\/+$/` both BACKTRACK — CodeQL flagged them,
+ * correctly, on input with many repetitions of `/` or `#`. I had judged them
+ * linear by eye, which is the mistake: an anchored quantifier is exactly where
+ * a scan is ambiguous, and "it looks simple" is not an analysis.
+ *
+ * The surviving regex, `[^a-z0-9]+`, is a single character class with no
+ * ambiguity — one position, one match, no backtracking.
+ */
 export function urlSlug(url: string): string {
-  const cleaned = url.replace(/[?#].*$/, '').replace(/^\/+|\/+$/g, '')
+  // Cut at the first `?` or `#`, whichever comes first.
+  const q = url.indexOf('?')
+  const h = url.indexOf('#')
+  const cut = q < 0 ? h : h < 0 ? q : Math.min(q, h)
+  const path = cut < 0 ? url : url.slice(0, cut)
+
+  // Trim leading/trailing slashes by walking, so a string of many slashes is
+  // O(n) rather than a backtracking anchor match.
+  let from = 0
+  let to = path.length
+  while (from < to && path[from] === '/') from += 1
+  while (to > from && path[to - 1] === '/') to -= 1
+
+  const cleaned = path.slice(from, to)
   return cleaned.length === 0 ? 'root' : cleaned.replace(/[^a-z0-9]+/gi, '-').toLowerCase()
 }
 

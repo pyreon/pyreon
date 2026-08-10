@@ -26,6 +26,19 @@ describe('urlSlug', () => {
 
   it('drops query and hash — they do not belong in an id', () => {
     expect(urlSlug('/users/7?tab=x#frag')).toBe('users-7')
+    // Whichever comes FIRST wins — a `#` before a `?` is a fragment that
+    // happens to contain one, not a query.
+    expect(urlSlug('/users/7#a?b')).toBe('users-7')
+  })
+
+  it('is LINEAR on pathological input', () => {
+    // CodeQL flagged `/^\/+|\/+$/` and `/[?#].*$/` as polynomial, on strings
+    // with many repetitions of `/` or `#`. I had judged them linear by eye —
+    // an anchored quantifier is exactly where that judgement fails.
+    const started = Date.now()
+    expect(urlSlug('/'.repeat(60000))).toBe('root')
+    expect(urlSlug(`${'#'.repeat(60000)}x`)).toBe('root')
+    expect(Date.now() - started).toBeLessThan(500)
   })
 })
 
