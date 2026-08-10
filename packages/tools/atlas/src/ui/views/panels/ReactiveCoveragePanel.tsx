@@ -17,6 +17,7 @@ import { Show } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import type { ReactiveCoverageReport } from '@pyreon/reactivity/coverage'
 import * as C from '../../components'
+import { createInsightSession, type InsightRow, insightSummary } from '../../graph-insights'
 import type { WorkbenchModel } from '../../model'
 import { registerAddonPanel } from '../../panels'
 import {
@@ -51,10 +52,24 @@ export function registerReactiveCoveragePanel(): void {
     render: (model) => {
       const m = model as WorkbenchModel
       const session = createCoverageSession()
+      // Baselined at panel construction: whatever is already in the graph is
+      // the workbench's own, and only what appears afterwards is the
+      // component's. Without this the panel reports Atlas's chrome as the
+      // component's smells — confidently, about someone else's code.
+      const shape = createInsightSession()
+      shape.baseline()
       const report = signal<ReactiveCoverageReport | null>(null)
+      const insights = signal<InsightRow[]>([])
       const recording = signal(false)
 
-      const refresh = () => report.set(session.sample())
+      const refresh = () => {
+        report.set(session.sample())
+        // Re-read the SHAPE at the same moment as coverage. The two answer
+        // different questions off one graph — coverage is "did this edge ever
+        // fire", shape is "is this graph a sensible one" — and a component can
+        // be at 100% coverage and still drive forty effects from one signal.
+        insights.set(shape.sample())
+      }
 
       const start = () => {
         session.start()
@@ -112,6 +127,34 @@ export function registerReactiveCoveragePanel(): void {
 
           <Show when={() => available && report() === null}>
             <C.ActionsEmpty>No recording yet — press Record.</C.ActionsEmpty>
+          </Show>
+
+          {/*
+            Graph SHAPE, distinct from coverage above. Shown whenever a graph
+            exists rather than gated on a recording: a smell is a property of
+            the graph, not of a session, so requiring Record to see an orphan
+            signal would hide the one finding that is usually a real bug.
+          */}
+          <Show when={() => available && insights().length > 0}>
+            <>
+              <C.A11ySummary data-testid="insights-summary">
+                <C.A11yStat>
+                  <C.A11yDot state="warn" />
+                  {() => insightSummary(insights())}
+                </C.A11yStat>
+              </C.A11ySummary>
+              {() =>
+                insights().map((row) => (
+                  <C.A11yRow data-testid="insight-row">
+                    <C.A11yIcon state={row.kind === 'orphan-signal' ? 'danger' : 'warn'}>!</C.A11yIcon>
+                    <C.A11yBody>
+                      <C.A11yTitle>{`${row.kind} · ${row.name}`}</C.A11yTitle>
+                      <C.A11yNote>{`${row.detail} — ${row.meaning}`}</C.A11yNote>
+                    </C.A11yBody>
+                  </C.A11yRow>
+                ))
+              }
+            </>
           </Show>
 
           <Show when={() => available && report() !== null}>
