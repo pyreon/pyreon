@@ -54,3 +54,11 @@ export { aiAssetsPlugin } from './ai-assets'
 // curated bundle
 export type { RecommendedOptions } from './recommended'
 export { recommendedPlugins } from './recommended'
+export {
+  type BundleCost,
+  bundleCostPlugin,
+  type BundleCostOptions,
+  canMeasureBundleCost,
+  formatBytes,
+  measureBundleCost,
+} from './bundle-cost'
