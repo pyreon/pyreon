@@ -70,3 +70,13 @@ export {
   ssrParityPlugin,
   type SsrParityOptions,
 } from './ssr-parity'
+export {
+  CATCH_ALL_ROUTE,
+  installRouter,
+  routerPlugin,
+  type RouterModule,
+  type RouterPluginOptions,
+  uniqueSlugs,
+  urlSlug,
+  withRouteAxis,
+} from './router'

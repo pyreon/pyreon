@@ -81,6 +81,14 @@ export interface Scenario {
   variant?: Record<string, string>
   /** provenance */
   source: ScenarioSource
+  /**
+   * The URL this scenario renders under, when a route axis is in play.
+   *
+   * Scenario METADATA rather than an arg: it is not a prop, and putting it in
+   * `args` would render it as a control the component does not have and let a
+   * user "edit" something with no effect.
+   */
+  route?: string
   /** authored interaction script — replaces the automatic click-walk when set */
   play?: PlayFn
   /** the verify verdict, once the pipeline has run */
