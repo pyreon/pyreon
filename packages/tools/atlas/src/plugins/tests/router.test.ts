@@ -1,5 +1,5 @@
 import type { ComponentIntelligence, Scenario } from '../../core'
-import { installRouter, routerPlugin, urlSlug, withRouteAxis } from '../router'
+import { installRouter, routerPlugin, uniqueSlugs, urlSlug, withRouteAxis } from '../router'
 
 const scenario = (id: string, name = id): Scenario => ({
   id,
@@ -29,7 +29,31 @@ describe('urlSlug', () => {
   })
 })
 
+describe('uniqueSlugs', () => {
+  it('deduplicates URLs that slug to the SAME string', () => {
+    // `urlSlug` is lossy by design, so `/a/b` and `/a-b` collapse. Left alone
+    // that produces two scenarios with one id, and a duplicate id collides in
+    // three places at once: the catalog, the verdicts, and the snapshot
+    // filenames — where the second silently overwrites the first's baseline.
+    expect(uniqueSlugs(['/a/b', '/a-b'])).toEqual(['a-b', 'a-b-2'])
+  })
+
+  it('leaves distinct slugs alone', () => {
+    expect(uniqueSlugs(['/users/1', '/users/2'])).toEqual(['users-1', 'users-2'])
+  })
+
+  it('keeps ids READABLE — suffixed, not hashed', () => {
+    // The id reaches a URL and a `data-testid`.
+    expect(uniqueSlugs(['/x', '/x', '/x'])).toEqual(['x', 'x-2', 'x-3'])
+  })
+})
+
 describe('withRouteAxis', () => {
+  it('produces UNIQUE ids even when URLs collapse to one slug', () => {
+    const rows = withRouteAxis([scenario('c--d')], ['/a/b', '/a-b'])
+    expect(new Set(rows.map((r) => r.id)).size).toBe(rows.length)
+  })
+
   it('is the identity when no URLs are configured', () => {
     // The plugin must cost nothing until it is given something to vary.
     const input = [scenario('a'), scenario('b')]

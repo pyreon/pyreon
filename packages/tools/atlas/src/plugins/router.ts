@@ -51,6 +51,31 @@ export function urlSlug(url: string): string {
 }
 
 /**
+ * Slug each URL, DEDUPED across the set.
+ *
+ * `urlSlug` is lossy by design — it strips separators — so distinct URLs
+ * collapse: `/a/b` and `/a-b` both slug to `a-b`. Left alone that produces two
+ * scenarios with the SAME id, and a duplicate id collides in three places at
+ * once: `atlas-catalog.json`, the verify verdicts, and the snapshot filenames,
+ * where the second silently overwrites the first's baseline.
+ *
+ * Suffix-numbered rather than hashed, matching `uniqueIds` in the catalog
+ * module — the id reaches a URL and a `data-testid`, so it has to stay
+ * readable. The same lesson as deriving component ids from the identity key:
+ * uniqueness has to be established where the ids are MADE, not asserted
+ * afterwards.
+ */
+export function uniqueSlugs(urls: readonly string[]): string[] {
+  const seen = new Map<string, number>()
+  return urls.map((url) => {
+    const base = urlSlug(url)
+    const n = seen.get(base) ?? 0
+    seen.set(base, n + 1)
+    return n === 0 ? base : `${base}-${n + 1}`
+  })
+}
+
+/**
  * Fan a component's scenarios across the configured URLs.
  *
  * Multiplicative on purpose, and bounded by the caller passing few URLs: a
@@ -64,10 +89,11 @@ export function withRouteAxis(
   urls: readonly string[],
 ): Scenario[] {
   if (urls.length === 0) return [...scenarios]
+  const slugs = uniqueSlugs(urls)
   return scenarios.flatMap((s) =>
-    urls.map((url) => ({
+    urls.map((url, i) => ({
       ...s,
-      id: `${s.id}--at-${urlSlug(url)}`,
+      id: `${s.id}--at-${slugs[i]}`,
       name: `${s.name} @ ${url}`,
       // Carried as scenario METADATA rather than as an arg: it is not a prop,
       // and putting it in `args` would show it as a control the component does
