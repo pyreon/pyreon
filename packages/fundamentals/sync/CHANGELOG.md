@@ -1,5 +1,33 @@
 # @pyreon/sync
 
+## 0.51.0
+
+### Patch Changes
+
+- Every package manifest now declares its MULTIPLATFORM story as data: (4e53471)
+  `multiplatform: { tier: 'shared' | 'service-backend' | 'web-only', rationale }`
+  (a discriminated union — `web-only` REQUIRES the rationale sentence). The
+  assignments transcribe the classification the multiplatform docs and the PMTC
+  compiler's own `WEB_ONLY_PACKAGES` registry already maintain, and the new
+  `check-multiplatform-tier` gate (validate-fast family) holds the contract:
+  a manifest without a tier, a published package with neither manifest nor
+  explicit exemption, a `web-only` without a rationale, or a stale generated
+  tier table all fail CI — so a new package can never again silently default
+  to web-only while the ecosystem advertises "one codebase, three targets".
+
+  No runtime change in any package: manifests are docs-pipeline inputs and are
+  stripped from published tarballs; every generated surface (llms, MCP
+  api-reference, reference pages) is byte-identical.
+
+- A create-if-missing default can no longer destroy real data. (cfd2e8c)
+
+  Seeding `initial` into the same CRDT map as real data made a default able to BEAT that data: two fresh peers in an empty room both seed on first sync, so one peer's seed is causally CONCURRENT with the other's real write, and `Y.Map` resolves concurrency by clientId — which Yjs assigns randomly. Roughly half the time the default won and the value was permanently lost (the "two devices open, one types, the other's default wipes it" report).
+
+  Defaults now live in a companion `<map>:defaults` key space. Reads prefer the data map, so a default can never outrank a real value no matter how the tie falls; concurrent defaults still tie among themselves, which is harmless (peers converge on one default instead of diverging). Backward compatible: docs persisted with their default in the data map keep reading it.
+
+- Updated dependencies:
+  - @pyreon/reactivity@0.51.0
+
 ## 0.50.0
 
 ### Patch Changes

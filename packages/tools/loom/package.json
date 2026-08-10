@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/loom",
-  "version": "0.50.0",
-  "description": "Monorepo dependency observatory \u2014 workspace graph, version-sync drift, cycles, phantom deps, and blast radius, as data.",
+  "version": "0.51.0",
+  "description": "Monorepo dependency observatory — workspace graph, version-sync drift, cycles, phantom deps, and blast radius, as data.",
   "license": "MIT",
   "publishConfig": {
     "access": "public"

@@ -1,5 +1,34 @@
 # @pyreon/rich-text
 
+## 0.51.0
+
+### Minor Changes
+
+- New `@pyreon/rich-text/webview` subpath — host a real TipTap WYSIWYG editor inside a native `<WebView>` (WKWebView on iOS, Android WebView) so the full editor works on every target from one source, driven by the same content/editable signals as `createRichTextEditor`. `buildRichTextHostHtml({ tiptapScript? | tiptapSrc? })` builds a self-contained host page that WAITS for a `window.TT` factory (`{ createEditor(el, { content, editable, onUpdate }) => { setContent, setEditable, destroy } }` — a ~10-line factory the app bundles with its own `@tiptap/*` + chosen extensions, since TipTap is modular ESM with no single UMD), applies `{ content, editable? }` from the `<WebView>` data bridge (replacing the document only when it changed — no reload), and posts the new TipTap JSON via `window.pyreonPostMessage` on user edits (loop-guarded against the echo of content we pushed, via the factory's `emitUpdate:false`). `<RichTextWebView state onChange>` is the web-side ergonomic wrapper (emits `<WebView>`); native apps use `<WebView html={buildRichTextHostHtml(...)} data={{ content }} onMessage={…}>` directly. Real-TipTap-in-a-real-iframe bridge proof in the browser suite (forward content push → editor renders → in-place replace; reverse edit → onChange; loop guard suppresses the pushed-content echo; editable:false → read-only). (a0c0555)
+
+### Patch Changes
+
+- Every package manifest now declares its MULTIPLATFORM story as data: (4e53471)
+  `multiplatform: { tier: 'shared' | 'service-backend' | 'web-only', rationale }`
+  (a discriminated union — `web-only` REQUIRES the rationale sentence). The
+  assignments transcribe the classification the multiplatform docs and the PMTC
+  compiler's own `WEB_ONLY_PACKAGES` registry already maintain, and the new
+  `check-multiplatform-tier` gate (validate-fast family) holds the contract:
+  a manifest without a tier, a published package with neither manifest nor
+  explicit exemption, a `web-only` without a rationale, or a stale generated
+  tier table all fail CI — so a new package can never again silently default
+  to web-only while the ecosystem advertises "one codebase, three targets".
+
+  No runtime change in any package: manifests are docs-pipeline inputs and are
+  stripped from published tarballs; every generated surface (llms, MCP
+  api-reference, reference pages) is byte-identical.
+
+- Updated dependencies:
+  - @pyreon/runtime-dom@0.51.0
+  - @pyreon/reactivity@0.51.0
+  - @pyreon/primitives@0.51.0
+  - @pyreon/core@0.51.0
+
 ## 0.50.0
 
 ### Patch Changes

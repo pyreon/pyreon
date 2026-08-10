@@ -1,5 +1,59 @@
 # @pyreon/lint
 
+## 0.51.0
+
+### Minor Changes
+
+- New `@pyreon/http` package — the transport layer beneath `@pyreon/query`. (663ac5a)
+
+  It owns how a request is made (URL building, path params, query encoding, headers, body, cancellation, typed errors, optional response validation) and deliberately owns no cache, no dedup-by-key and no reactive container, because `@pyreon/query`, `useFetch` and `createResource` already do. That split mirrors the one the native runtime already made, where `PyreonFetch` is the reactive result container and `PyreonHttp` the request/response layer beneath it.
+
+  The core has zero dependencies. Each capability lives behind its own entry so an unused one costs nothing: `@pyreon/http/middleware` (`retry`, `dedupe`, `bearer`, `refresh`, `logger`, `forwardHeaders`), `@pyreon/http/schema` (Standard Schema validation), `@pyreon/http/query` (TanStack adapters), `@pyreon/http/mock` (network-free mocking) and `@pyreon/http/server` (per-request SSR context, the only `node:async_hooks` import).
+
+  Middleware is onion-shaped — `(request, next) => response` — because that is the only form in which retry, auth-refresh and short-circuiting are ordinary middleware; an axios-style interceptor pair cannot re-enter the chain. Clients are immutable: `extend()` returns a new instance, so no mutable shared default can leak across concurrent SSR requests. Response validation is three tiers, and only the third costs a dependency: an unchecked cast, any `(raw: unknown) => T` parse function, or any Standard Schema (zod, valibot, arktype, `@pyreon/validate`'s `s`, and `@pyreon/validation`'s typed adapters). `endpoint('GET /users/:id', { response })` derives the callable, a stable cache key and the response type from one declaration, so `queryKey` and URL cannot drift; `.query()` forwards TanStack's `AbortSignal`.
+
+  Defaults are chosen against real failure modes: a 30s timeout is ON because `fetch` has none and a hung request otherwise never settles, while retry is OFF because it compounds with query's own retry into nine requests per logical query.
+
+  `@pyreon/lint` gains three opt-in, dependency-gated rules and a new `http` category: `pyreon/query-fn-must-forward-signal` (a `queryFn` that performs a request but drops the `AbortSignal`, which silently disables cancellation), `pyreon/no-unencoded-path-interpolation` (interpolating into a path skips URL encoding, so a value containing `/` escapes its segment) and `pyreon/no-untimed-raw-fetch` (a raw `fetch` with no signal has no deadline).
+
+### Patch Changes
+
+- `@pyreon/feature` now forwards TanStack's `AbortSignal`, so query cancellation works. (331c206)
+
+  Every read hook (`useList`, `useById`, `useSearch`) called its REST layer as `queryFn: () => http.getById(api, id)`. That signature took no `AbortSignal`, so the per-fetch signal TanStack aborts on unmount, on supersede and on `cancelQueries` never reached the network — cancellation has been silently dead for every feature-driven query since the package shipped. An unmounted component kept fetching, and a rapidly-retyped search fired one request per keystroke, all of which ran to completion and raced each other into the cache, so the last response to arrive won rather than the newest.
+
+  The REST layer now runs on `@pyreon/http` and threads `{ signal }` through all three hooks. Two further defects go with it: path parameters are URL-encoded, so an id containing `/` can no longer escape its segment (`1/../admin` reaching `/admin`), and requests get a 30s deadline where raw `fetch` had none.
+
+  The thrown error shape is deliberately unchanged — `message` from the response body when present, else `<METHOD> <url> failed: <status>`, plus `status`, plus `errors` only when the body carries them. Migrating the transport must not silently re-shape what consumers catch, so the client runs with `throwHttpErrors: false` and the original extraction is preserved verbatim. `config.fetcher` remains a plain `typeof fetch`.
+
+  `pyreon/query-fn-must-forward-signal` also gains a false-positive fix: it scanned only the function body, so a correct `queryFn: ({ signal: abortSignal }) => …` — where `signal` appears only in the parameter pattern — was reported as a violation. It now scans parameters too.
+
+- `pyreon/no-eager-import` no longer flags TYPE-ONLY imports of heavy packages. A `import type { EditorInstance } from '@pyreon/code'` is erased before any bundler sees it, so it cannot add initial-bundle weight — and it is precisely how a correctly lazy consumer types the package it `await import()`s, so flagging it steered authors away from the pattern the rule exists to encourage. Covers both `import type {…}` and declarations whose every specifier is inline-`type`; a value import carrying an inline type still reports. Same guard the sibling `no-heavy-import-only-in-handler` already applied. (77eaf81)
+- Every package manifest now declares its MULTIPLATFORM story as data: (4e53471)
+  `multiplatform: { tier: 'shared' | 'service-backend' | 'web-only', rationale }`
+  (a discriminated union — `web-only` REQUIRES the rationale sentence). The
+  assignments transcribe the classification the multiplatform docs and the PMTC
+  compiler's own `WEB_ONLY_PACKAGES` registry already maintain, and the new
+  `check-multiplatform-tier` gate (validate-fast family) holds the contract:
+  a manifest without a tier, a published package with neither manifest nor
+  explicit exemption, a `web-only` without a rationale, or a stale generated
+  tier table all fail CI — so a new package can never again silently default
+  to web-only while the ecosystem advertises "one codebase, three targets".
+
+  No runtime change in any package: manifests are docs-pipeline inputs and are
+  stripped from published tarballs; every generated surface (llms, MCP
+  api-reference, reference pages) is byte-identical.
+
+- Bump `oxc-parser` to `^0.142.0` (from `^0.140.0`). (9415d31)
+
+  The parser sits under the JS compiler backend, so an AST-shape change would surface as a JS/Rust divergence rather than a crash. Verified where that would show: `@pyreon/compiler` 1961 tests passing — including `native-equivalence` (the byte-identical oracle) and the 300-seed × 3-mode differential fuzz — plus `@pyreon/lint` 1150 and `@pyreon/native-compiler` 2311.
+
+  No API or behavior change; this is a dependency-range bump only.
+
+- Updated dependencies:
+  - @pyreon/compiler@0.51.0
+  - @pyreon/sized-map@0.51.0
+
 ## 0.50.0
 
 ### Patch Changes

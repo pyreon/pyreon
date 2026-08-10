@@ -1,5 +1,128 @@
 # @pyreon/compiler
 
+## 0.51.0
+
+### Patch Changes
+
+- `@pyreon/loom`: the phantom detector now recognizes the DefinitelyTyped (19ee507)
+  pattern (a declared `@types/x` twin satisfies a type-only import of `x`,
+  scoped names included), the lexical scanner requires the import KEYWORD to
+  sit in code (a `from '…'` inside a string — rule messages, fix catalogs,
+  generated examples — never scans as an import), subtrees with their own
+  package.json are separate units, and a root `loom.ignore` (reason
+  REQUIRED) downgrades findings to info with the reason attached — never a
+  silent drop.
+
+  The other packages: devDependency range alignment only (same-major sync
+  surfaced by `loom scan`); no runtime change.
+
+- Every package manifest now declares its MULTIPLATFORM story as data: (4e53471)
+  `multiplatform: { tier: 'shared' | 'service-backend' | 'web-only', rationale }`
+  (a discriminated union — `web-only` REQUIRES the rationale sentence). The
+  assignments transcribe the classification the multiplatform docs and the PMTC
+  compiler's own `WEB_ONLY_PACKAGES` registry already maintain, and the new
+  `check-multiplatform-tier` gate (validate-fast family) holds the contract:
+  a manifest without a tier, a published package with neither manifest nor
+  explicit exemption, a `web-only` without a rationale, or a stale generated
+  tier table all fail CI — so a new package can never again silently default
+  to web-only while the ecosystem advertises "one codebase, three targets".
+
+  No runtime change in any package: manifests are docs-pipeline inputs and are
+  stripped from published tarballs; every generated surface (llms, MCP
+  api-reference, reference pages) is byte-identical.
+
+- Drop the fresh-render duplicate-key `Set` in `<For>`'s keyed reconciler. (d82f233)
+
+  `handleFreshRender` allocated a second `Set` purely for duplicate detection and
+  paid `has` + `add` per row — an n-entry allocation plus two hash ops per row on
+  the bulk-create path. The keyed `cache` already IS that membership set on this
+  path (it is provably empty on entry, and every `renderInto` branch writes each
+  key into it), so the check now reads `cache.has(key)`: one hash op per row, no
+  second allocation.
+
+  Semantics are unchanged — duplicate keys are still skipped, so the
+  DOM-corruption safety the check exists for is intact, and the dev warnings are
+  byte-identical. Measured in isolation at 0.144ms per 10,000 rows.
+
+  Also teaches `pyreon doctor diagnose` / MCP `diagnose` the `<For>` duplicate-key
+  error. The reconciler skips a duplicate key, so the visible symptom is a list
+  rendering fewer rows than the data has — the new entry explains that causal
+  chain and steers the fix away from the array index, which is unique but not
+  stable across reorders.
+
+  Benchmark fixes (no runtime impact): `form-bench` discarded its timed results,
+  letting the JIT eliminate the work — that inflated our reported wins (191x ->
+  171x) and fabricated a loss on setup-12-fields that is actually a tie. It now
+  consumes results into a sink and gained the correctness gate it lacked. Adds a
+  repo-wide benchmark objectivity audit and a Chromium-isolated DOM micro-harness.
+
+- Bump `oxc-parser` to `^0.142.0` (from `^0.140.0`). (9415d31)
+
+  The parser sits under the JS compiler backend, so an AST-shape change would surface as a JS/Rust divergence rather than a crash. Verified where that would show: `@pyreon/compiler` 1961 tests passing — including `native-equivalence` (the byte-identical oracle) and the 300-seed × 3-mode differential fuzz — plus `@pyreon/lint` 1150 and `@pyreon/native-compiler` 2311.
+
+  No API or behavior change; this is a dependency-range bump only.
+
+- Teach `pyreon doctor diagnose` / MCP `diagnose` the MAX_PASSES batch-flush error. (83fc05a)
+
+  The reactivity batch flush drops queued effects after 32 passes and logs in both
+  dev and production, so users hit the string in production builds — but the
+  catalog had no entry for it. The new entry explains the cause (an effect that
+  writes a signal it also reads, re-enqueueing until the cap) and the three real
+  remedies: use `computed()` when only deriving, `.peek()` to read without
+  subscribing, or gate the write so it cannot re-trigger.
+
+  Also compresses verbose source comments across the core packages. No runtime
+  behaviour changes — the published artifacts are byte-identical, since `src/` is
+  stripped from the tarball and the bundler strips comments from `lib/`.
+
+- SSR fast path: a DOM wrapper holding a COMPONENT child now compiles to `_ssr(...)` (f498ee6)
+
+  Until now any element with a component child was declined outright, so
+  `<main class="page"><Header /><Content /></main>` — the shape of essentially
+  every layout wrapper in a real app — emitted zero `_ssr` and fell back to the
+  h() tree walk. Component children now become holes, and the wrapper templates.
+
+  The mechanism is the interesting part. An `_ssr(...)` hole is an ordinary
+  function argument, so it is evaluated at the CALL SITE. That matches h() for a
+  hole that reads a value, but not for one that RENDERS a component: rendering has
+  context side effects, and h() defers it. So the compiler wraps the whole call in
+  `_ssrDeferred(() => _ssr(...))`, and `renderNode` / `streamNode` invoke the thunk
+  exactly where they would have rendered the equivalent vnode. Deferring the CALL
+  rather than the individual hole is what makes it compose — a nested `_ssr`
+  collapses into its parent's call and rides inside the same thunk, so no laziness
+  has to propagate through the concat helpers.
+
+  A previous attempt emitted the hole eagerly. It passed every unit gate and still
+  broke 26 ui-showcase specs, because every one of those gates rendered the node at
+  top level — the single position where call site and render position coincide.
+  The regression tests added here cover the whole position space instead.
+
+- Stop bailing the SSR compile-to-string fast path on nested self-closing / void elements. (a4a1766)
+
+  `ssrSerializeElement` bailed on any self-closing element — a bail commented "rare", but `<img/>`, `<input/>`, `<br/>` and `<hr/>` are in most real markup, and the bail **propagates**: one `<img/>` dropped its whole enclosing component onto the slow `h()` path. Only void-free SIBLING subtrees were salvaged into their own `_ssr(...)`, which is why a substring check for `_ssr(` false-positives on this shape and hid the loss.
+
+  Both forms serialize trivially, so they are now handled inline:
+
+  - a **void** tag closes as `` ` />` `` — byte-identical to the runtime's `enqueue(`${open} />`)`; the space is load-bearing, any other spelling is a hydration-visible divergence
+  - a **self-closing non-void** tag (`<div />`) emits `<div></div>`, matching the `h()` path
+
+  A void tag written WITH an explicit children list (`<img>x</img>`) still bails deliberately — the runtime drops those children, so guessing which side to match would be wrong.
+
+  Measured on a 9-shape corpus of realistic markup: **0/9 → 8/9 on the fast path**, byte-identity preserved in both states. Mirrored in the Rust backend; `native-equivalence` and the 300-seed × 3-mode differential fuzz are green. Root-level self-closing elements still bail (that gate is untouched) — only the propagating nested case was widened.
+
+- SSR now emits `class=""` for an EMPTY-STRING class resolution (nullish stays omitted), across all emission paths: `renderPropValue`, `_ssrAttr`, and both compiler backends' static bakes. The client has always materialized `class=""` for the same value (`[class]` attribute selectors distinguish presence), so omitting it server-side was a real SSR/CSR parity divergence — CSS matching `[class]` behaved differently before and after hydration — and it forced hydration adoption to pay an attribute write per row purely to materialize the attribute. The SSR render-fuzz byte-identity gate verified all four sites agree. (9729e91)
+- perf(ssr): root self-closing elements are eligible for the compile-to-string fast path (85ad5bf)
+
+  A component whose own body is a self-closing element — `<Icon> = () => <img …/>`, `<Divider> = () => <hr/>`, `<Input> = () => <input …/>`, `<Spacer> = () => <br/>`, or a bare `<div class="box" />` — fell to the slow `h()` SSR path. #2515 widened the NESTED case (a `<img/>` inside a parent no longer drops its whole enclosing component) but deliberately left the ROOT gate in place; this closes it, plus the `.map` and `<For>` item-body gates, so `items.map(i => <img src={i.src}/>)` (an image gallery) no longer bails the whole list.
+
+  These are the small leaf components a design system renders most often, and the ones most likely to appear inside a list — so the bail was multiplying across a page. The repo's own measurement of where SSR headroom remains points here: the `h()`-path self-time floor is structural (VNode allocation inherent to `h()`), so widening `_ssr` ELIGIBILITY is the lever, not micro-optimising `h()`.
+
+  Semantics were already implemented — `ssrSerializeElement` has emitted both forms correctly since #2515 (void → `<img … />` with the load-bearing space, non-void → `<div …></div>`). Only the gates were left closed. Landed in BOTH backends; the native binary is what ~80% of users compile with, so a JS-only fix would have changed nothing for them.
+
+  Also fixes a latent JS-backend bug this surfaced: `buildSsrForItemBody` requested the `_ssrItem` import unconditionally while only emitting the `_ssrItem` fallback when a hole was not provably a string, shipping a DEAD import on the no-guard branch. The native backend never had it. Self-closing item bodies made it visible because they carry attr holes (all `: string`-typed helpers) and no text children, so they take the no-guard branch essentially every time.
+
+  Byte-identity against the `h()` path is locked per shape in `ssr-template-differential`, exact emitted bytes in `ssr-template-emit`, and JS↔Rust equality in `native-equivalence`. A void element given explicit children still bails — that one is genuinely ambiguous.
+
 ## 0.50.0
 
 ### Minor Changes

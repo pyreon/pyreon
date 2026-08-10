@@ -1,5 +1,396 @@
 # @pyreon/hooks
 
+## 0.51.0
+
+### Minor Changes
+
+- `usePush` and `usePayments` had no web halves — the fifth and sixth hooks (6c05ef0)
+  with the resolvability gap `useGeolocation` / `useDatabase` / `useWebSocket`
+  / `useAuth` had. With these two, **every hook in the compiler's
+  `NATIVE_LOWERED_HOOKS` registry now has a web implementation** — the "one
+  source, three targets" import contract holds for the full lowered surface.
+
+  Both mirror their native containers (`PyreonPushNotifications` /
+  `PyreonPayments`, Swift + Kotlin verified line-for-line): pure reactive state
+  machines with an injected platform edge, which on these two services is not a
+  convenience but the only correct shape — a push token arrives through the
+  app's AppDelegate / FCM service natively and a service-worker subscription
+  flow on web; a purchase resolves through StoreKit / Play Billing natively and
+  Stripe / Payment Request on web. `start(register)` / `connect(register)` hand
+  the app handler thunks that drive the pure transitions, exactly as native.
+
+  The subtle native semantics are matched exactly and each has a test:
+  `push.fail` keeps the prior token + notifications (stale-while-error) and
+  only `tokenReceived` clears `error`; `push.start` never invokes `register`
+  twice; `pay.purchase(id)` is a TOTAL no-op when not connected (it does not
+  even enter the purchasing state — native guards before `purchaseStarted`);
+  `pay.purchaseSucceeded` deliberately does NOT clear `error`. Members are live
+  getters over signals with batched transitions; `error` narrows to
+  `string | null` per the compiler's SERVICE_OPTIONAL_FIELDS contract.
+
+  Bisect-verified: mutating the stale-while-error and unconnected-purchase
+  guards fails exactly the specs that document them. Hook count 53 → 55 across
+  every gated claim site.
+
+- `useAuth` had no web half — the fourth hook in this arc with that gap, after (3b2893e)
+  `useGeolocation`, `useDatabase`, and `useWebSocket`.
+
+  PMTC lowers `useAuth<User>()` to `PyreonAuth<User>` on both native targets
+  (device-proven including session rehydration), so the hook was fully real on
+  iOS and Android and did not exist on web: no implementation, no export, no
+  type anywhere outside `packages/native/`. Because PMTC matches hook NAMES and
+  never resolves imports, the flagship finance real app's
+  `import { useAuth } from '@pyreon/hooks'` compiled natively while being an
+  unresolvable import in any web build — and the compiler's own
+  `lowered-hooks-typecheck` fixture writes exactly that import.
+
+  The web half mirrors `PyreonAuth` exactly, because one component body reads
+  the same members on three targets: `status` renders the cross-target
+  spellings (`'signedOut' | 'signingIn' | 'signedIn' | 'error'` — Swift's
+  camelCase enum rendering and Kotlin's `toString()` override), `error` is a
+  `string | null` (the shared-source type the compiler's
+  SERVICE_OPTIONAL_FIELDS declares), and the transition edge cases match
+  line-for-line: `beginSignIn` and `signInFailed` both KEEP the existing `user`
+  (a token refresh must not blank the UI; a failed refresh keeps the prior
+  session visible). Members are live getters over signals — a component body
+  runs once, and plain values would freeze at the mount state — and every
+  transition batches its multi-signal write so subscribers never observe a torn
+  intermediate state the native `@Observable` container could not produce.
+
+  Pure state machine, no platform edge, so it is SSR-safe with no environment
+  guard. Session persistence composes with `useSecureStorage` exactly as the
+  native finance gate device-proves.
+
+  Also revives a DEAD doc-claims check found while wiring the hook counts
+  (`@pyreon/cli` doctor gate): the "published package count" patterns expected
+  "across 5 categories" but the repo has had 6 since `packages/native/` — the
+  pattern could never match, so the claim was warned-and-skipped on every run.
+  The patterns now match reality and the count is verified again (23 claim
+  sites checked, 0 misses).
+
+- `useSecureStorage` is real on all three targets — the encrypted secret store (9590027)
+  (iOS Keychain / Android Keystore AES-GCM / web in-memory), device-proven.
+
+  The sub-capability was three-quarters missing: the PMTC emit was a warn-drop
+  ("deferred v1"), the Kotlin runtime shipped no real backend (in-memory only,
+  behind an app-injection requirement the compiler could not satisfy), and the
+  web half did not exist, so the shared import resolved on neither web app.
+
+  - **`@pyreon/native-runtime-kotlin`**: `KeystoreSecureBackend(context)` —
+    AndroidKeyStore AES-256-GCM over app-private SharedPreferences (no new
+    gradle dependency; androidx security-crypto is deprecated and wrapped
+    exactly this surface) + a `PyreonSecureStorage(context)` factory, the
+    `PyreonDatabase(context)` shape. Fail-closed reads (tampered/undecryptable
+    → null).
+  - **`@pyreon/native-runtime-swift` + `-kotlin` (BREAKING, pre-1.0)**:
+    `write` is now KEY-FIRST — `write(key:value:)` / `write(key, value)`. The
+    old `write(value, key)` order was a live hazard: both parameters are
+    String, so a positional lowering of the natural TS call
+    `sec.write('auth', token)` would have compiled with the arguments crossed
+    and stored the secret under the wrong key.
+  - **`@pyreon/native-compiler`**: `useSecureStorage()` lowers on both targets
+    (Swift `PyreonSecureStorage()` Keychain default; Kotlin Context-threaded
+    Keystore default); method calls emit with Swift labels
+    (`write(key:value:)`), making a crossed positional call uncompilable.
+    Validate stubs mirror the real key-first surface on both toolchains.
+  - **`@pyreon/hooks`**: the web `useSecureStorage()` — a module-scoped
+    in-memory store (the web has no OS secret store; persisting secrets to
+    localStorage would be the exact bug the hook prevents), same key-first
+    surface.
+
+  Device-proven in router-demo and bisect-verified on both platforms by
+  swapping the defaults to the in-memory backend: iOS's secret survives a
+  genuine terminate+relaunch only with the real Keychain; Android's cold
+  `PyreonSecureStorage(context)` decrypts the UI's write and the raw prefs
+  value is asserted to be ciphertext, not plaintext (encryption at rest).
+
+- `useDatabase` had no web half — and the kitchen-sink example imported it from a package that never exported it. (2334088)
+
+  PMTC lowers `useDatabase()` to `PyreonDatabase` on both native targets and it is
+  device-proven (file-backed, survives relaunch). There was no web
+  implementation, no export, and no type anywhere in `packages/`.
+
+  That is not hypothetical. `examples/native-counter-ios/src/Counter.tsx` — 19
+  passing XCUITests — imported `useDatabase` from `@pyreon/primitives`, which does
+  not export it. PMTC matches hook NAMES and never resolves imports, and that
+  example is one of four with **no typechecked web sibling**, so nothing caught
+  it. The flagship device-proven example was source no TypeScript build would
+  accept. The import now points at `@pyreon/hooks`, where the implementation
+  lives; the emit is byte-identical before and after on both targets, so the 19
+  device tests provably cannot regress from the change.
+
+  The API is SYNCHRONOUS because the native one is (`get` returns
+  `PyreonRecord?`, not a promise). That rules out IndexedDB: its async API would
+  force `await` into source compiling for three targets — the same shared-code
+  break that made `@pyreon/form` non-shared. `localStorage` is the faithful
+  analogue: synchronous, persistent across reloads, same read-modify-write
+  semantics.
+
+  A real bug surfaced during testing and is worth recording, because it is a
+  storage failure a user would experience as data resurrection: the in-memory
+  mirror (which exists so records still round-trip when persistence is blocked)
+  was also consulted on a `localStorage` MISS. So after a user cleared site data,
+  deleted records came back for the rest of the session. A miss is authoritative;
+  the mirror is now used only when storage is genuinely unavailable.
+
+  HONEST LIMITS, stated because a storage layer that quietly stops persisting is
+  worse than one that never claimed to: ~5 MB per origin; values are strings on
+  every target (the native `fields` is `[String: String]`), so callers serialise
+  numbers and dates themselves; `find` is a linear scan, as it is natively.
+
+- `useGeolocation` had no web half — the import did not resolve at all. (e610e59)
+
+  PMTC has lowered `useGeolocation()` to `PyreonGeolocation` on both native
+  targets since Phase 5, and the compiler's lowered-hook allowlist lists it. But
+  there was no web implementation, no export, and no type anywhere in
+  `packages/`, so `import { useGeolocation } from '@pyreon/hooks'` did not
+  resolve and an app using it could not build for web.
+
+  That made it native-only in practice while sitting alongside hooks that are
+  genuinely shared — `useHaptics`, `useShare`, `useClipboard` and `useAppState`
+  all ship web implementations. `useMap`, `usePush` and `usePayments` remain in
+  that state; this closes the one with a straightforward browser equivalent
+  (`navigator.geolocation.watchPosition`).
+
+  The returned SHAPE is the contract, and it is not arbitrary: PMTC reads
+  `geo.latitude` / `geo.start()` as MEMBERS on the native container, so the web
+  object exposes exactly those names as getters over signals. Returning bare
+  signals would force `geo.latitude()` on web and diverge from the native member
+  read — the exact mismatch that made `@pyreon/form` non-shared. Verified by
+  emitting this source through the native compiler and confirming the Swift and
+  Kotlin output reads the right fields.
+
+  HONEST SCOPE — the reactive reads (`latitude`/`longitude`/`accuracy`/`error`/
+  `isTracking`) are shared on all three targets, but **`start()` is web + iOS
+  only**. Kotlin's `PyreonGeolocation.start` takes a host closure because it has
+  no default location transport, while Swift's is 0-arg — the same
+  OkHttp-for-WebSocket asymmetry already tracked for `usePush`/`usePayments`. The
+  API documents that on the member itself rather than burying it in a note.
+
+  A position fix is delivered as ONE batched update: four bare `.set()` calls
+  would fire up to four reactive passes per fix, and a consumer reading lat+lng
+  could observe a TORN pair — a new latitude against the previous longitude, a
+  coordinate that was never real. The `no-unbatched-updates` ratchet caught this.
+
+  The watch is stopped on unmount; a leaked watch keeps GPS active and holds its
+  callback closure alive, which the user cannot see.
+
+- `useMap` had no web half, `map.moveTo(…)` did not compile on iOS, and the compiler advertised a field the runtime does not have. (f7541e0)
+
+  Three defects, found by writing the component an author would write and checking
+  BOTH targets.
+
+  **1. No web half (`@pyreon/hooks`).** PMTC lowers `useMap()` to
+  `PyreonMapState` on both native targets. The web half did not exist, so
+  `import { useMap } from '@pyreon/hooks'` compiled for two targets and was
+  unresolvable on the third — the fourth hook in this arc with that gap, after
+  `useGeolocation`, `useDatabase` and `useWebSocket`. The compiler's own
+  `lowered-hooks-typecheck` fixture already writes that import.
+
+  The web half is STATE, not a renderer, exactly as `PyreonMapState` is: camera,
+  markers, selection, nothing else. So it needs no mapping library and imposes no
+  choice of one — feed `map.camera` / `map.markers` to Leaflet, MapLibre, Google
+  Maps or an `<svg>`. Semantics are copied from the native container including the
+  parts easy to get subtly wrong, each locked by a test: `addMarker` upserts by id
+  and PRESERVES list position; `removeMarker` clears a selection pointing at it;
+  `moveTo` keeps the current zoom when omitted (via `??`, since `||` would drop a
+  legitimate zoom of 0); `selectedMarker` is DERIVED, never stored.
+
+  **2. `map.moveTo(…)` and `map.removeMarker(…)` did not compile on Swift**
+  (`@pyreon/native-compiler`). Swift labels arguments, the shared TS surface is
+  positional, and the generic emit is positional — so the primary map API failed
+  with `missing argument labels 'latitude:longitude:' in call`. Kotlin accepted
+  the identical source, since named arguments are optional there.
+
+  This is the SAME defect #2514 fixed for `PyreonDatabase`, which was fixed in a
+  database-shaped way and so left every other service exposed. Rather than add a
+  second special case, the table is now per-service-kind with full-positional
+  labels — the database table's "labels after a leading unlabelled argument" shape
+  cannot express `moveTo`, whose FIRST argument is labelled.
+
+  Scope was ENUMERATED, not guessed: every `public func` in runtime-swift with a
+  labelled parameter was listed, then each probed for reachability from the hook
+  surface. `PyreonGeolocation.update` and the `PyreonWebSocket` internals are not
+  on it, `selectMarker(_ id:)` is unlabelled natively, and `PyreonSecureStorage`
+  is not lowered at all — so map was the only remaining reachable gap.
+
+  **3. The service-optional table was wrong in BOTH directions.**
+
+  A PHANTOM entry and a MISSING one, from the same mistake seen from opposite
+  sides: the table was written from a pattern rather than from the runtimes.
+  `{map.error}` failed swiftc with `value of type 'PyreonMapState' has no member
+'error'`. That entry was added in #2566 by generalising "every service container
+  has an optional `error`" across the services without checking each runtime —
+  my own over-generalisation, the same mistake documented for `@pyreon/rx`.
+  `PyreonMapState` holds camera/markers/selection, performs no I/O and cannot
+  fail. The entry is removed rather than the field added: an always-nil `error` on
+  a container that cannot fail is dead surface, and if map gains I/O the field
+  should arrive with the failure it reports. The web half has no `error` either,
+  for the same reason.
+
+  Bisect-verified: reverting the label path fails the three map specs while all
+  four guards — unlabelled `selectMarker`, the over-long-call fallthrough, the
+  unchanged database output, and Kotlin — stay green, proving they do not pass
+  merely because of the fix. Verified end to end: the natural component compiles
+  clean on both targets with zero warnings.
+
+  The hooks manifest enumeration was also stale — bumped to 48 for
+  `useGeolocation` without naming it — so both data hooks are now named.
+
+  The MISSING half, found while auditing `useAuth`: `PyreonAuth` declares
+  `error: Error?` (Swift) / `Throwable?` (Kotlin), and `auth` had no entry — so
+  `{auth.error}` COMPILED and rendered `Optional("boom")` at runtime. Silent, and
+  invisible to a typecheck gate by construction, which is why #2566 missed it
+  while claiming to have covered "every optional field of every service
+  container". That claim is corrected in the test file rather than quietly
+  dropped.
+
+  Sharp edge worth recording: before this fix the bare read rendered wrongly AND
+  the workaround an author reaches for first, `{auth.error ?? ''}`, does not
+  compile — Swift's `Error?` cannot be coalesced with a String. So both the
+  natural form and its obvious repair were broken.
+
+  Two residuals, stated rather than left to be discovered: `{auth.error ?? ''}`
+  still fails (loudly — the coalesce path does not consult the field table), and
+  `{auth.user?.name}` still renders `Optional(…)` because a nested optional CHAIN
+  is not a direct service-field read. `{auth.user?.name ?? ''}` works. Neither is
+  silent-and-wrong in the way `{auth.error}` was.
+
+- `useWebSocket` had no web half — the third hook in this arc with that gap. (834523b)
+
+  PMTC lowers `useWebSocket(url)` to `PyreonWebSocket` on BOTH native targets, and
+  the emitters synthesize an implicit auto-connect on mount, so the hook was fully
+  real on iOS and Android. On web it did not exist: no implementation, no export,
+  no type anywhere outside `packages/native/`.
+
+  That is the same failure `useGeolocation` and `useDatabase` had, for the same
+  reason — PMTC matches hook NAMES and never resolves imports, so
+  `import { useWebSocket } from '@pyreon/hooks'` compiles for two targets and is
+  unresolvable on the third. The compiler's own `lowered-hooks-typecheck` fixture
+  already writes exactly that import.
+
+  Found by a systematic sweep rather than by stumbling into it: every hook in
+  `NATIVE_LOWERED_HOOKS` was checked for a non-native implementation. `useAuth`,
+  `useMap`, `useSecureStorage`, `usePayments` and `usePush` remain without one and
+  are NOT fixed here.
+
+  The surface mirrors `PyreonWebSocket` member for member — `lastMessage`,
+  `messages`, `isConnected`, `error`, `connect`/`send`/`close` — because the point
+  is that one component body reads the same fields on three targets. Verified, not
+  assumed: the natural component compiles clean on both native targets with zero
+  warnings, and `{ws.lastMessage}` emits
+  `(ws.lastMessage).map { "\($0)" } ?? ""` rather than rendering
+  `Optional("hi")` — the trap that bit `useGeolocation`'s `Double?`.
+
+  `error` is a STRING, not an `Error`, to match what the native side can render
+  and what the compiler's `SERVICE_OPTIONAL_FIELDS` types it as. Keeping the web
+  type narrower than JS allows is what keeps one source valid everywhere.
+
+  Fields are GETTERS over signals. A component body runs once, so returning
+  resolved values would freeze every field at its mount value — the native
+  `@Observable` / `mutableStateOf` fields do not behave that way.
+
+  Three real bugs were written and then caught while building it, each locked by a
+  test: a synchronous `new WebSocket(bad)` throw left the lifecycle flag stuck
+  true so no later `connect()` could ever open (invalid URLs throw from the
+  constructor rather than firing `onerror`); a frame arriving between `close()`
+  and teardown could write into a disposed component's signals, so handlers are
+  dropped BEFORE closing; and `send` guards on `readyState`, since a frame sent
+  before `onopen` throws `InvalidStateError`.
+
+  HONEST LIMITS, matching the native half rather than exceeding it: TEXT frames
+  only (a binary frame is ignored, not stringified into data the native side
+  could never produce); no automatic reconnect or backoff; and `messages` grows
+  unbounded, exactly as `[String]` does natively.
+
+  The hooks manifest enumeration was also stale — it had been bumped to 48 for
+  `useGeolocation` without ever naming it, so the list no longer summed to its own
+  count. Both data hooks are now named.
+
+### Patch Changes
+
+- `@pyreon/hooks`: add the missing SSR-guard coverage annotations to the native (3017511)
+  hooks (`useAppState`, `useBiometrics`, `useDatabase`, `useFilePicker`,
+  `useGeolocation`, `useImagePicker`). Comment-only — no runtime change. The arms
+  they mark are unreachable from a node+happy-dom run, so they were counted
+  against a threshold they could never satisfy in that environment; marking them
+  is what lets the package hold a real 99% bar instead of quietly sitting under
+  it. Ships alongside genuine new tests for the same hooks: the `useAppState`
+  listener cleanup (leak class D), `useDatabase`'s persistence-degradation
+  contracts, `useBiometrics`, and `useMap.setCamera`.
+
+  `@pyreon/meta`: run its tests on vitest instead of `bun test`. All 149 tests
+  already passed under vitest and the package already had a `vitest.config.ts` —
+  only the `test` script was never switched, which meant it emitted Bun's coverage
+  format and the coverage gate could not read it at all.
+
+- Every package manifest now declares its MULTIPLATFORM story as data: (4e53471)
+  `multiplatform: { tier: 'shared' | 'service-backend' | 'web-only', rationale }`
+  (a discriminated union — `web-only` REQUIRES the rationale sentence). The
+  assignments transcribe the classification the multiplatform docs and the PMTC
+  compiler's own `WEB_ONLY_PACKAGES` registry already maintain, and the new
+  `check-multiplatform-tier` gate (validate-fast family) holds the contract:
+  a manifest without a tier, a published package with neither manifest nor
+  explicit exemption, a `web-only` without a rationale, or a stale generated
+  tier table all fail CI — so a new package can never again silently default
+  to web-only while the ecosystem advertises "one codebase, three targets".
+
+  No runtime change in any package: manifests are docs-pipeline inputs and are
+  stripped from published tarballs; every generated surface (llms, MCP
+  api-reference, reference pages) is byte-identical.
+
+- `useFetch(url, { method, headers, body })` now reaches the wire on iOS and (25b5f5a)
+  Android. Every field of that init object was previously read by nobody — the
+  native parser only looked at the first argument — so both targets emitted a
+  plain GET and an app asking for a POST silently performed the wrong verb with
+  no diagnostic anywhere.
+
+  Requests carrying a verb, headers or a body now lower to `PyreonHttp`, which
+  had shipped on both runtimes with full verb support and nothing calling it:
+  Swift had a live `URLSession` edge no emit reached, and Android had an executor
+  interface whose real OkHttp implementation did not exist (`PyreonHttpOkHttp`,
+  new here). A non-2xx now rejects rather than being handed to the JSON decoder,
+  where it read as "the server sent bad JSON" instead of a 404. Values the
+  compiler cannot bake — a computed method, a `JSON.stringify(...)` body — now
+  WARN loudly instead of degrading to a GET.
+
+  Two pre-existing breaks in the same container, both fixed here and both hidden
+  by the fact that every existing example fetches an array and reads
+  `data() ?? []`:
+
+  - a single-object `data()?.field` read emitted `data.field` on Swift, which
+    does not compile — the inference reported the container's `data` as
+    non-optional even though the web hook, Swift and Kotlin all declare it
+    optional, so the member emit stripped the `?.` the author wrote;
+  - `error()` in call form inferred `unknown`, so `{f.error() ? … }` emitted a
+    bare `Throwable?` as a Kotlin condition ("condition type mismatch").
+
+  `@pyreon/hooks`: `useFetch` takes an optional second argument (`UseFetchInit` —
+  `method` / `headers` / `body`), matching the native lowering.
+
+  **`useFetch` decoding on Android now matches iOS.** kotlinx.serialization's
+  default `Json` THROWS on a JSON key the target type does not declare; Swift's
+  `JSONDecoder` silently ignores it. The emit used the bare default, so the same
+  shared `useFetch<T>(url)` against the same server decoded fine on iOS and threw
+  on Android the moment the response carried one extra field — i.e. against
+  essentially every real API, since a server returning exactly the fields one
+  client declares is the exception. Decoding now goes through
+  `PyreonFetchJson` (`Json { ignoreUnknownKeys = true }`).
+
+  This was PRE-EXISTING and is not limited to the new verb path — the plain GET
+  path decoded the same way. It stayed invisible because the only device-proven
+  fetch fixture is a hand-written `quotes.json` whose shape matches its type
+  exactly; measured on a real emulator, a 200 response with one extra field
+  raised `JsonDecodingException: Encountered an unknown key 'contentType'` while
+  the identical iOS run passed.
+
+  Deliberately scoped: `ignoreUnknownKeys` only. NOT `isLenient` (malformed JSON
+  is a real error worth surfacing) and NOT `explicitNulls = false`.
+
+- Updated dependencies:
+  - @pyreon/reactivity@0.51.0
+  - @pyreon/core@0.51.0
+
 ## 0.50.0
 
 ### Minor Changes

@@ -1,5 +1,15 @@
 # @pyreon/test-utils
 
+## 0.50.1
+
+### Patch Changes
+
+- Updated dependencies:
+  - @pyreon/ui-core@0.51.0
+  - @pyreon/rocketstyle@0.51.0
+  - @pyreon/runtime-dom@0.51.0
+  - @pyreon/core@0.51.0
+
 ## 0.13.38
 
 ### Patch Changes

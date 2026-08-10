@@ -1,5 +1,36 @@
 # @pyreon/flow
 
+## 0.51.0
+
+### Minor Changes
+
+- New `@pyreon/flow/webview` subpath — host a flow diagram inside a native `<WebView>` (WKWebView / Android WebView) so a graph renders on every target from one source, driven by the same `{ nodes, edges }` model as `<Flow>`. `buildFlowHostHtml()` builds a FULLY self-contained SVG diagram renderer (no external bundle): nodes as labeled rounded rects, edges via flow's real `getBezierPath` geometry, pan + wheel/pinch zoom, fit-on-load, re-render on the forward bridge, node-tap → `window.pyreonPostMessage`. `<FlowWebView graph onSelect>` is the web-side wrapper; native apps use `<WebView html={buildFlowHostHtml()} data={graph} onMessage={…}>`. For the full interactive editor (custom-JSX nodes / connection dragging), pass a bundled `@pyreon/flow` web app as the host via the `html` escape hatch. Real SVG-render + bridge proof in the browser suite (forward push → nodes + bezier edges; real node-tap → onSelect). (a0c0555)
+
+  Performance-tuned: rapid graph pushes / resize storms coalesce to one SVG rebuild per frame — verified by a real-Chromium perf test (coalescing, a 100-node/99-edge graph, graceful malformed-graph handling).
+
+### Patch Changes
+
+- Every package manifest now declares its MULTIPLATFORM story as data: (4e53471)
+  `multiplatform: { tier: 'shared' | 'service-backend' | 'web-only', rationale }`
+  (a discriminated union — `web-only` REQUIRES the rationale sentence). The
+  assignments transcribe the classification the multiplatform docs and the PMTC
+  compiler's own `WEB_ONLY_PACKAGES` registry already maintain, and the new
+  `check-multiplatform-tier` gate (validate-fast family) holds the contract:
+  a manifest without a tier, a published package with neither manifest nor
+  explicit exemption, a `web-only` without a rationale, or a stale generated
+  tier table all fail CI — so a new package can never again silently default
+  to web-only while the ecosystem advertises "one codebase, three targets".
+
+  No runtime change in any package: manifests are docs-pipeline inputs and are
+  stripped from published tarballs; every generated surface (llms, MCP
+  api-reference, reference pages) is byte-identical.
+
+- Updated dependencies:
+  - @pyreon/runtime-dom@0.51.0
+  - @pyreon/reactivity@0.51.0
+  - @pyreon/primitives@0.51.0
+  - @pyreon/core@0.51.0
+
 ## 0.50.0
 
 ### Minor Changes

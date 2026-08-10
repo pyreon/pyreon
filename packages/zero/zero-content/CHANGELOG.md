@@ -1,5 +1,44 @@
 # @pyreon/zero-content
 
+## 0.51.0
+
+### Patch Changes
+
+- `@pyreon/loom`: the phantom detector now recognizes the DefinitelyTyped (19ee507)
+  pattern (a declared `@types/x` twin satisfies a type-only import of `x`,
+  scoped names included), the lexical scanner requires the import KEYWORD to
+  sit in code (a `from '…'` inside a string — rule messages, fix catalogs,
+  generated examples — never scans as an import), subtrees with their own
+  package.json are separate units, and a root `loom.ignore` (reason
+  REQUIRED) downgrades findings to info with the reason attached — never a
+  silent drop.
+
+  The other packages: devDependency range alignment only (same-major sync
+  surfaced by `loom scan`); no runtime change.
+
+- Every package manifest now declares its MULTIPLATFORM story as data: (4e53471)
+  `multiplatform: { tier: 'shared' | 'service-backend' | 'web-only', rationale }`
+  (a discriminated union — `web-only` REQUIRES the rationale sentence). The
+  assignments transcribe the classification the multiplatform docs and the PMTC
+  compiler's own `WEB_ONLY_PACKAGES` registry already maintain, and the new
+  `check-multiplatform-tier` gate (validate-fast family) holds the contract:
+  a manifest without a tier, a published package with neither manifest nor
+  explicit exemption, a `web-only` without a rationale, or a stale generated
+  tier table all fail CI — so a new package can never again silently default
+  to web-only while the ecosystem advertises "one codebase, three targets".
+
+  No runtime change in any package: manifests are docs-pipeline inputs and are
+  stripped from published tarballs; every generated surface (llms, MCP
+  api-reference, reference pages) is byte-identical.
+
+- Updated dependencies:
+  - @pyreon/runtime-dom@0.51.0
+  - @pyreon/reactivity@0.51.0
+  - @pyreon/core@0.51.0
+  - @pyreon/head@0.51.0
+  - @pyreon/router@0.51.0
+  - @pyreon/zero@0.51.0
+
 ## 0.50.0
 
 ### Patch Changes
