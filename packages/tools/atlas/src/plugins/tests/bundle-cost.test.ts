@@ -65,6 +65,17 @@ describe.runIf(canMeasureBundleCost())('measureBundleCost — with a bundler', (
 })
 
 describe('measureBundleCost — degradation', () => {
+  it('leaves no temp directory behind', async () => {
+    // One per measured component would otherwise accumulate for the life of
+    // the machine — 108 per scan on a real library.
+    const { readdirSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const before = readdirSync(tmpdir()).filter((n) => n.startsWith('atlas-cost-')).length
+    await measureBundleCost(join(dir, 'nope.ts'))
+    const after = readdirSync(tmpdir()).filter((n) => n.startsWith('atlas-cost-')).length
+    expect(after).toBe(before)
+  })
+
   it('is UNDEFINED, never zero, for a file that cannot be bundled', async () => {
     // Zero would read as "free" — the most misleading number available.
     expect(await measureBundleCost(join(dir, 'does-not-exist.ts'))).toBeUndefined()

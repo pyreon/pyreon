@@ -21,6 +21,9 @@
  * same shared runtime and make the numbers useless for comparing components,
  * which is the only thing they are good for.
  */
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import type { AtlasPlugin } from './types'
 
@@ -90,6 +93,18 @@ export async function measureBundleCost(
   const Bun = (globalThis as { Bun?: { build?: (o: unknown) => Promise<unknown> } }).Bun
   if (typeof Bun?.build !== 'function') return undefined
 
+  // `mkdtempSync`, not a path derived from the file name.
+  //
+  // A derived name is PREDICTABLE, and `/tmp` is world-writable: anything that
+  // can guess the path can pre-plant a symlink there and redirect the build's
+  // writes. Traversal was already handled (every non-alphanumeric becomes `-`,
+  // so `../` cannot survive) — this is the other half, and the half that is
+  // easy to miss because the path *looks* sanitised.
+  //
+  // `mkdtempSync` creates the directory itself, with a random suffix and
+  // owner-only permissions, so there is nothing to pre-empt.
+  const outdir = mkdtempSync(join(tmpdir(), 'atlas-cost-'))
+
   try {
     const result = (await Bun.build({
       entrypoints: [file],
@@ -103,7 +118,7 @@ export async function measureBundleCost(
       // heavy dependency is not charged for bytes the consumer only pays on
       // demand. Same reasoning as the repo-wide gate.
       splitting: true,
-      outdir: `/tmp/atlas-bundle-cost/${file.replace(/[^a-z0-9]+/gi, '-')}`,
+      outdir,
       external: ['@pyreon/*', 'node:*', ...(options.external ?? [])],
       // The PRODUCTION size. Without this the measurement includes every
       // dev-only warning string, overstating what consumers ship by 5-20% and
@@ -121,6 +136,10 @@ export async function measureBundleCost(
     }
   } catch {
     return undefined
+  } finally {
+    // Removed either way. One directory per measured component would otherwise
+    // accumulate for the life of the machine — 108 per scan on a real library.
+    rmSync(outdir, { recursive: true, force: true })
   }
 }
 
