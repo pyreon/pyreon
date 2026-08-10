@@ -70,13 +70,47 @@ export const SSR_SKIP = {
  * corrupts.
  */
 export function normalizeHtml(html: string): string {
-  return html
-    .replaceAll(/<!--[^>]*-->/g, '')
+  return stripComments(html)
     // Whitespace BETWEEN tags only. Collapsing inside text would hide a real
     // difference between "a  b" and "a b", which is exactly the kind of text
-    // corruption a mismatch produces.
+    // corruption a mismatch produces. Linear: `\s+` between two literals has
+    // no nested quantifier to backtrack through.
     .replaceAll(/>\s+</g, '><')
     .trim()
+}
+
+/**
+ * Remove HTML comments, by scanning rather than by regex.
+ *
+ * The obvious `/<!--[^>]*-->/g` is wrong twice, and CodeQL caught both:
+ *
+ *  - INCOMPLETE. One pass over `<!--<!-- -->-->` removes the inner comment and
+ *    leaves a bare `<!--` behind. Any single-pass regex replace has this
+ *    shape — the residue is exactly the token being stripped.
+ *  - POLYNOMIAL. `[^>]*` between two literals backtracks on input with many
+ *    `<!--` runs, so a component emitting pathological markup could stall the
+ *    scan rather than fail it.
+ *
+ * A scan has neither problem: it is O(n), and it consumes each comment WHOLE,
+ * so a `<!--` inside a comment is part of that comment rather than the start
+ * of a new one. An unterminated comment drops the remainder, which is what a
+ * parser does with it too.
+ *
+ * Worth being careful about even though this output is only ever COMPARED,
+ * never inserted into a document: the function is exported, and "it is not a
+ * sink today" is not a property that survives its next caller.
+ */
+function stripComments(html: string): string {
+  let out = ''
+  let at = 0
+  for (;;) {
+    const start = html.indexOf('<!--', at)
+    if (start === -1) return out + html.slice(at)
+    out += html.slice(at, start)
+    const end = html.indexOf('-->', start + 4)
+    if (end === -1) return out // unterminated — the rest is comment
+    at = end + 3
+  }
 }
 
 /** A short, readable line per mismatch the runtime reported. */

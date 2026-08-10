@@ -45,6 +45,38 @@ describe('normalizeHtml', () => {
     )
   })
 
+  it('leaves NO residual `<!--` behind', () => {
+    // CodeQL's incomplete-multi-character-sanitization finding. One pass of
+    // `/<!--[^>]*-->/g` consumes the CLOSED comment and leaves the trailing
+    // opener untouched — the residue is exactly the token being stripped,
+    // which is the shape of every single-pass replace.
+    //
+    // (My first attempt at this test used a NESTED comment and passed against
+    // the broken regex too, because `[^>]*` cannot cross the inner `>`. A
+    // trailing opener is the case that actually distinguishes them.)
+    expect(normalizeHtml('<!-- a --><!--')).not.toContain('<!--')
+  })
+
+  it('drops an UNTERMINATED comment rather than emitting it', () => {
+    expect(normalizeHtml('<div><!-- never closed')).toBe('<div>')
+  })
+
+  it('is LINEAR on pathological input', () => {
+    // The polynomial-regex finding. `[^>]*` between two literals backtracks on
+    // many `<!--` runs, so a component emitting bad markup could stall the
+    // scan rather than fail it. A budget rather than a shape assertion,
+    // because "does not backtrack" is only observable as time.
+    // 60k openers: the linear scan finishes in single-digit ms, the
+    // backtracking regex takes seconds. A wide margin on purpose — at 20k the
+    // broken version came in at 927ms against a 1000ms budget, which is a
+    // coin-flip rather than a test.
+    const nasty = `${'<!--'.repeat(60000)}<div>x</div>`
+    const started = Date.now()
+    const out = normalizeHtml(nasty)
+    expect(Date.now() - started).toBeLessThan(500)
+    expect(out).not.toContain('<!--')
+  })
+
   it('keeps whitespace INSIDE text, which a mismatch really does corrupt', () => {
     expect(normalizeHtml('<p>a  b</p>')).toBe('<p>a  b</p>')
     expect(normalizeHtml('<p>a</p>\n  <p>b</p>')).toBe('<p>a</p><p>b</p>')
