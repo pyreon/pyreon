@@ -46,7 +46,8 @@ function printUsage(): void {
     mcp [args]                       Launch the Pyreon MCP server (delegates to @pyreon/mcp; prefers project-local)
     atlas [args]                     Component workbench (delegates to @pyreon/atlas): init detects this
                                      workspace's packages and writes pyreon.config.ts, scan derives a verified
-                                     catalog (no story files — it reads your components), dev serves the
+                                     catalog (no story files — it reads your components), verify <Component>
+                                     re-checks one component and names WHICH check failed, dev serves the
                                      workbench, build emits a static site, verify-browser runs Chromium checks
     loom [args]                      Dependency observatory (delegates to @pyreon/loom): scan analyzes the
                                      workspace fabric with a red-exit CI contract, dev serves the graph UI

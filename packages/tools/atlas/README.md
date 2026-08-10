@@ -291,6 +291,48 @@ metadata-driven (no rendering required):
 The remaining DOM-backed checks (axe a11y, visual regression, reactive-prop
 liveness) sit on the same mount harness as they land.
 
+### Reading the verdicts — `atlas verify`
+
+A scan reports `41 verified, 2 failing`. That is a count of *scenarios*, and the
+question it withholds is the whole finding: **which of the six checks failed?**
+So every run prints a per-check tally, and the checks that did not run say why:
+
+```text
+atlas: discovered 9 component(s), 43 scenario(s) — 41 verified, 2 failing, 0 unverified.
+  checks: a11y 18/20 ✗ · interaction 43/43 · ssrParity 43/43 · leak 43/43
+  not run: reactivityCoverage, snapshot — browser-only — run `atlas verify-browser`
+```
+
+That line matters more than it looks. On a package where `@pyreon/runtime-server`
+does not resolve, the scan reports **1090 of 1090 scenarios verified** having run
+exactly two of the six checks — true, and completely misleading without the tally.
+
+`atlas verify <Component>` is the loop for iterating on one component:
+
+```bash
+$ atlas verify Button
+atlas verify Button: 1 component(s), 15 scenario(s)
+  checks: a11y 14/15 ✗ · interaction 15/15 · ssrParity 15/15 · leak 15/15
+
+✗ button--empty
+    a11y: missing accessible name: "label" is empty
+
+1 failing · 14 verified · 0 unverified
+```
+
+Discovery still walks the project — a component's file is not known until it
+does — but mounting, exercising, hydrating and GC-probing run only for the
+match. Measured on `@pyreon/ui-components` (108 components, 1090 scenarios):
+1.35s full scan against 0.90s scoped to one component's 60 scenarios. The verify
+work drops ~18×; discovery dominates the residual, so this is a **focus** tool
+first and a speed tool second.
+
+`--json` emits the same report as data. Three refusals are deliberate: it never
+writes `atlas-catalog.json` (a one-component catalog would replace the real one),
+an unmatched name exits non-zero with suggestions rather than reporting an empty
+green run, and a run where *nothing* could be verified exits non-zero too —
+zero failures is not a pass when zero checks ran.
+
 ### Verifying at runtime
 
 `atlas scan` mounts each scenario, clicks every interactive element, and

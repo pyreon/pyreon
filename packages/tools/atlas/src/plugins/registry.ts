@@ -67,7 +67,16 @@ export function emptyVerdict(): VerifyVerdict {
   }
 }
 
-const CHECK_KEYS = [
+/**
+ * Every check a verdict carries — the SINGLE owner of that list.
+ *
+ * Exported because more than one place has to enumerate the checks (merging a
+ * partial verdict here, tallying results for the CLI report), and a second
+ * hand-written list is a silent-hole generator: a seventh check would be merged
+ * but never counted, so a whole check could fail with the summary reporting
+ * everything green. Anything that iterates checks imports this.
+ */
+export const CHECK_KEYS = [
   'a11y',
   'interaction',
   'reactivityCoverage',
@@ -75,6 +84,9 @@ const CHECK_KEYS = [
   'snapshot',
   'ssrParity',
 ] as const
+
+/** One check's name. Derived from the list, so the two can never disagree. */
+export type CheckKey = (typeof CHECK_KEYS)[number]
 
 /** Merge a plugin's partial verdict onto an accumulator (checks only). */
 function mergeVerdict(base: VerifyVerdict, partial: Partial<VerifyVerdict>): VerifyVerdict {

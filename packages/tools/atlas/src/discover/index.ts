@@ -32,3 +32,13 @@ export {
   loadRuntime,
   runtimeLoader,
 } from './load'
+export {
+  classifyLoadErrors,
+  formatBrokenImports,
+  formatPluginVirtuals,
+  isPluginVirtual,
+  type ClassifiedLoadErrors,
+  type LoadError,
+  type LoadErrorKind,
+  specifierFrom,
+} from './load-errors'

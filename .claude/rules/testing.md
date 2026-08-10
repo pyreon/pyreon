@@ -146,6 +146,31 @@ Consequences you need to know when working in this package:
   fresh compiler release changing strictness, and a cache hit would mask exactly
   that — so it re-derives every verdict from scratch.
 
+## A spawn-based test reads `lib/`, so it can pass against code you already changed
+
+The dev-server trap below has a quieter twin that needs no dev server: **any
+test that SPAWNS a package's `bin` is running the BUILT output**, because a bin
+loads `lib/`, never `src/`. A source edit is invisible to it until
+`bun scripts/bootstrap.ts` rebuilds — and in the meantime the suite keeps
+passing against the *previous* version's behaviour.
+
+That failure mode is worse than a red test, because green is exactly what you
+were hoping to see. Observed directly (2026-08, `@pyreon/atlas`): changing the
+scan's failure output left `scan-mount.test.ts` and `scan-leak.test.ts` green
+through a full `bun run test` — 842 passing — and both failed the instant a
+bootstrap ran. Had the change shipped on that green, the two specs asserting the
+old format would have been the CI failure, not the local one.
+
+**Rule: any suite that spawns a bin must be run AFTER a bootstrap, and the
+bisect recipe for it is `edit source → bootstrap → run`.** A green spawn-based
+run against unbuilt changes is not evidence. The same applies to a test
+asserting on `lib/` bytes, a nested Vite SSR build, or anything else in
+CLAUDE.md's "lib-needing" category — that list is about CI job wiring, but the
+reason is this one, and it holds locally too.
+
+Mark the `BIN` constant in such a file with a comment saying so; the cost of
+re-discovering it is a shipped regression.
+
 ## Dev-server bisect
 
 When bisect-verifying an e2e spec that runs against a Vite dev server (anything under the `examples/{ssr-showcase,fundamentals-playground,…} dev` webServer in `playwright.config.ts`), reverting source alone is NOT enough.
