@@ -92,3 +92,4 @@ atlas-dist-*/
 # Kotlin 2.x per-project session dirs (error logs etc.) — emitted next to
 # gradle builds in the native example apps
 .kotlin/
+publish-result.json
