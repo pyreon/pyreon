@@ -52,6 +52,20 @@ function readonlyAtom<T>(fn: () => T, options?: TableAtomOptions<T>): ReadonlyAt
     get: () => c(),
     subscribe: ((observer: unknown) => {
       const next = toNext<T>(observer)
+      // Prime the computed before attaching. Pyreon's `computed` is LAZY: it
+      // subscribes to its dependencies only when first evaluated, so a direct
+      // subscriber registered on a never-read computed attaches to a node with
+      // no upstream edges and NEVER fires. Reading once builds the graph.
+      //
+      // `untrack` so priming cannot leak this read into whatever reactive
+      // scope happened to call `subscribe` — that would make the caller
+      // re-run on every table state change.
+      //
+      // The shipped table hides this: rendering reads the row models before
+      // anything subscribes. It surfaces the moment core (or a consumer)
+      // subscribes to a derived atom it has not read yet, and the failure is
+      // silent — no error, just an atom that never updates.
+      untrack(() => c())
       // Pyreon's `Computed` exposes `direct()`/`_v` (the compiler-binding
       // seam) rather than `subscribe()`/`peek()`.
       const dispose = c.direct(() => next(c._v))

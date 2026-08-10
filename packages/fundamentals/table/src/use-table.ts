@@ -44,12 +44,18 @@ export function _getRowSignalBridge(table: object): RowSignalBridge | undefined 
 }
 
 /**
+ * Exported for unit test only — `index.ts` re-exports by NAME, so this does not
+ * widen the package's public surface. Tested directly because it is pure and
+ * its branches (absent list, missing `id`/`accessorKey`, non-string `header`)
+ * are the shapes a real column list hits, but are awkward to drive through a
+ * mounted table.
+ *
  * A stable, structural key for a column list — the identity of each column and
  * the order they appear in. Used instead of an array-identity check so that an
  * inline `columns: [...]` literal (recreated on every options run) is not
  * mistaken for a real column change.
  */
-function columnSignature(columns: readonly unknown[] | undefined): string {
+export function columnSignature(columns: readonly unknown[] | undefined): string {
   if (!columns) return ''
   let out = ''
   for (const column of columns) {
