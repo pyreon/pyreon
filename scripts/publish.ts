@@ -394,9 +394,15 @@ for (const { dirPath, pkgPath, raw, pkg, resolved } of publishOrder) {
       // and a clear release message, matching the per-package tag style
       // `changesets/cli` emits.
       const tagName = `${pkg.name}@${pkg.version}`
-      const exists = Bun.spawnSync(['git', 'tag', '-l', tagName], { stdout: 'pipe' })
-      if (exists.stdout.toString().trim() === '') {
-        Bun.spawnSync(['git', 'tag', '-a', tagName, '-m', `Release ${tagName}`])
+      // Not under --dry-run: a dry run must be SIDE-EFFECT-FREE — `npm publish
+      // --dry-run` exits 0, so this success branch runs for every package and
+      // would otherwise mint real local tags for a release that never happened
+      // (the Release Build CI job dry-runs this script on every push).
+      if (!dryRun) {
+        const exists = Bun.spawnSync(['git', 'tag', '-l', tagName], { stdout: 'pipe' })
+        if (exists.stdout.toString().trim() === '') {
+          Bun.spawnSync(['git', 'tag', '-a', tagName, '-m', `Release ${tagName}`])
+        }
       }
 
       // Emit the line format changesets/action parses to populate
@@ -425,7 +431,11 @@ console.log(
 // `heal-release-chain.ts` (if: always()) reads it and completes the chain
 // without asking the registry. Written UNCONDITIONALLY — a partially-failed
 // run's published packages still deserve their tags.
-{
+// NEVER on --dry-run: a dry-run's `npm publish --dry-run` exits 0, so
+// `published[]` fills exactly as in a real release — a manifest written here
+// would claim a publish that never happened, and phase 1 of the finalize step
+// would tag HEAD for it. The absence of the file IS the dry-run signal.
+if (!dryRun) {
   const anchorEntry = plan.find((e) => e.pkg.name === '@pyreon/core') ?? plan[0]
   await writeFile(
     'publish-result.json',

@@ -181,4 +181,16 @@ describe('parsePublishResult — phase 1 local truth must be SOUND or absent', (
       parsePublishResult(JSON.stringify({ version: '0.51.0', published: [42] })),
     ).toBeNull()
   })
+
+
+  it('PRERELEASE version → null — the umbrella chain is stable-only', () => {
+    // The prerelease job runs publish.ts too; release-native's tag trigger
+    // matches only v[0-9]+.[0-9]+.[0-9]+, so finalizing a snapshot would mint
+    // a tag that triggers nothing plus a GitHub Release for an alpha.
+    expect(
+      parsePublishResult(
+        JSON.stringify({ version: '0.51.1-alpha-20260810', published: ['@pyreon/core'] }),
+      ),
+    ).toBeNull()
+  })
 })

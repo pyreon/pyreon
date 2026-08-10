@@ -234,7 +234,14 @@ jobs:
         # the run for the exact condition the Version PR exists to fix.
         # The scheduled published-state.yml still covers the
         # whole-workflow-crashed class daily.
-        if: always() && steps.changesets.outputs.published == 'true'
+        #
+        # Gated on the publish-result MANIFEST, not the action's outputs: the
+        # action sets outputs only after its per-package tag pushes, so in the
+        # v0.50.0 shape (published, then a tag push died) the old gate skipped
+        # this verify EXACTLY when it was needed. The manifest exists the
+        # moment publishing finishes — same source of truth as the finalize
+        # step's phase 1.
+        if: always() && hashFiles('publish-result.json') != ''
         run: bun scripts/check-published-state.ts
 
   # ── Prerelease snapshot (release/** branches) ────────────────────

@@ -113,6 +113,13 @@ export function parsePublishResult(
   const obj = raw as { version?: unknown; published?: unknown }
   const version = validateReleaseVersion(obj.version)
   if (version === null) return null
+  // STABLE versions only. The prerelease job (`release/**` snapshots) runs
+  // publish.ts too, and the umbrella chain is DEFINED only for stable cuts —
+  // release-native's tag trigger is literally `v[0-9]+.[0-9]+.[0-9]+`, so a
+  // snapshot finalize would mint a tag that triggers nothing plus a GitHub
+  // Release for an alpha. Refusing here makes that impossible regardless of
+  // which job ever runs this script.
+  if (version.includes('-')) return null
   if (!Array.isArray(obj.published) || obj.published.length === 0) return null
   if (!obj.published.every((p) => typeof p === 'string')) return null
   return { version, published: obj.published }
@@ -252,7 +259,16 @@ async function ensureNativeRun(tag: string): Promise<void> {
     ['gh', 'run', 'list', '--workflow', NATIVE_WORKFLOW, '--branch', tag, '--limit', '1', '--json', 'databaseId'],
     { allowFail: true },
   )
-  if (again.ok && again.out.includes('databaseId')) {
+  if (!again.ok) {
+    // "No run" and "cannot SEE runs" are different facts. Dispatching blind on
+    // a failed listing could start a SECOND publishing run on top of one the
+    // tag push already triggered — refuse to act on unverifiable state.
+    console.error(
+      `[heal-release-chain] cannot list ${NATIVE_WORKFLOW} runs — refusing to dispatch blind:\n${again.out}`,
+    )
+    process.exit(2)
+  }
+  if (again.out.includes('databaseId')) {
     console.log(`[heal-release-chain] tag push triggered ${NATIVE_WORKFLOW} on its own — no dispatch needed`)
     return
   }
@@ -331,6 +347,21 @@ async function finalizeCurrentRun(): Promise<void> {
   if (result === null) {
     console.log(
       '[heal-release-chain] phase 1: no valid publish-result.json — nothing published in THIS run (Version-PR path). Phase 2 reconciles standing state.',
+    )
+    return
+  }
+  // Stale-manifest guard. In CI the checkout is fresh, so the file can only
+  // come from THIS run — but locally a leftover manifest from an earlier
+  // publish could sit next to a checkout of a different version, and tagging
+  // HEAD for it would mistag. The checkout's own anchor version is the
+  // cross-check: a mismatch means the manifest does not describe this tree.
+  const checkoutVersion = validateReleaseVersion(
+    (JSON.parse(readFileSync(join(REPO_ROOT, ANCHOR_PATH), 'utf-8')) as { version: string })
+      .version,
+  )
+  if (checkoutVersion !== result.version) {
+    console.warn(
+      `[heal-release-chain] phase 1: publish-result.json is for ${result.version} but this checkout is at ${checkoutVersion ?? '<invalid>'} — STALE manifest, ignoring it. Phase 2 reconciles from npm.`,
     )
     return
   }
