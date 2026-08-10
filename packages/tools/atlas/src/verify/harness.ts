@@ -46,6 +46,31 @@ export interface MountRuntime {
    * without a GC hook that claim cannot be made, so the check skips.
    */
   collectGarbage?: () => Promise<void>
+  /**
+   * Render a vnode to an SSR HTML string, and hydrate one back.
+   *
+   * BOTH come from the loader's own module graph, for the same reason
+   * `reactiveGraphSize` does: the components build their vnodes with the
+   * loader's `@pyreon/core`, and a renderer from a second instance is a
+   * different program reading the same-shaped data. Fragment survives such a
+   * split (its symbol comes from the global registry) but nothing guarantees
+   * the rest does, and a parity check that reports a mismatch caused by its
+   * OWN instance split is worse than no check at all.
+   *
+   * Absent when `@pyreon/runtime-server` is not installed — a component
+   * library with no SSR story is a legitimate project, so the check SKIPS with
+   * that reason rather than failing.
+   */
+  renderToString?: (root: unknown) => string | Promise<string>
+  hydrateRoot?: (container: Element, root: unknown) => () => void
+  /**
+   * Register a hydration-mismatch collector; returns an unregister function.
+   *
+   * The runtime already reports every mismatch through this channel — the
+   * check subscribes rather than diffing HTML itself, so it sees exactly what
+   * a real app's telemetry would see, with the same `type`/`path` detail.
+   */
+  onHydrationMismatch?: (handler: (ctx: unknown) => void) => () => void
 }
 
 /**

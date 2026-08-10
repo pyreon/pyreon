@@ -13,7 +13,13 @@ import { createAtlas } from '../index'
 import type { CatalogGraph } from '../core'
 import type { WorkbenchPresets } from '../ui/catalog'
 import type { AgentAsset } from '../plugins'
-import { aiAssetsPlugin, authoredScenariosPlugin, mountPlugin, recommendedPlugins } from '../plugins'
+import {
+  aiAssetsPlugin,
+  authoredScenariosPlugin,
+  mountPlugin,
+  recommendedPlugins,
+  ssrParityPlugin,
+} from '../plugins'
 import {
   componentLoaderPlugin,
   createModuleLoader,
@@ -295,6 +301,13 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
         // Appended AFTER the bundle so it can carry the project's wrapper. The
         // bundle's own entry is disabled above rather than duplicated.
         ...(canMount ? [mountPlugin({ ...loaded.config, ...(runtime ? { runtime } : {}) })] : []),
+        // Same gate and same wrapper as the mount check — a scenario that
+        // cannot be mounted cannot be hydrated either, and one rendered
+        // WITHOUT the project's providers would report a parity failure that is
+        // really a missing theme.
+        ...(canMount
+          ? [ssrParityPlugin({ ...loaded.config, ...(runtime ? { runtime } : {}) })]
+          : []),
         aiAssetsPlugin({
           onAsset: (a) => {
             asset = a

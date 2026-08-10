@@ -98,6 +98,10 @@ export function mergeBrowserVerdict(
     interaction: verify?.interaction ?? SKIP,
     reactivityCoverage: result.reactivityCoverage,
     leak: verify?.leak ?? SKIP,
+    // Carried through, not recomputed: parity is a NODE-side verdict and the
+    // browser pass has nothing to say about it. Dropping it here would let a
+    // `verify-browser` run silently erase a real failure the scan found.
+    ssrParity: verify?.ssrParity ?? SKIP,
     snapshot: result.snapshot,
   }
   const keys = ['a11y', 'interaction', 'reactivityCoverage', 'leak', 'snapshot'] as const

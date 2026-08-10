@@ -25,6 +25,7 @@ const verdict = (a11y: CheckStatus, ok: boolean): VerifyVerdict => ({
   reactivityCoverage: { status: 'skip' },
   leak: { status: 'skip' },
   snapshot: { status: 'skip' },
+  ssrParity: { status: 'skip' },
 })
 
 const failVerdict = (findings: string[]): VerifyVerdict => ({
@@ -35,6 +36,7 @@ const failVerdict = (findings: string[]): VerifyVerdict => ({
   reactivityCoverage: { status: 'skip' },
   leak: { status: 'skip' },
   snapshot: { status: 'skip' },
+  ssrParity: { status: 'skip' },
 })
 
 /** A verdict from a pipeline where every check was a stub — the common case. */
@@ -46,6 +48,7 @@ const unverifiedVerdict = (): VerifyVerdict => ({
   reactivityCoverage: { status: 'skip' },
   leak: { status: 'skip' },
   snapshot: { status: 'skip' },
+  ssrParity: { status: 'skip' },
 })
 
 describe('createCatalogGraph', () => {

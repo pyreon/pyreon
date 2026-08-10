@@ -24,6 +24,7 @@ describe('mergeBrowserVerdict', () => {
       reactivityCoverage: SKIP,
       leak: PASS,
       snapshot: SKIP,
+      ssrParity: { status: 'skip' },
     }
     const merged = mergeBrowserVerdict(scan, { reactivityCoverage: PASS, snapshot: PASS })
     expect(merged.a11y).toBe(PASS)
@@ -43,6 +44,7 @@ describe('mergeBrowserVerdict', () => {
       reactivityCoverage: SKIP,
       leak: PASS,
       snapshot: SKIP,
+      ssrParity: { status: 'skip' },
     }
     const merged = mergeBrowserVerdict(scan, { reactivityCoverage: PASS, snapshot: FAIL })
     expect(merged.ok).toBe(false)
@@ -58,6 +60,7 @@ describe('mergeBrowserVerdict', () => {
       reactivityCoverage: SKIP,
       leak: PASS,
       snapshot: SKIP,
+      ssrParity: { status: 'skip' },
     }
     const merged = mergeBrowserVerdict(scan, { reactivityCoverage: PASS, snapshot: PASS })
     expect(merged.ok).toBe(false)

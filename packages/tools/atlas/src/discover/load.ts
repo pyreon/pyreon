@@ -235,10 +235,14 @@ export async function loadRuntime(
 ): Promise<MountRuntime | undefined> {
   if (loader.kind !== 'vite') return undefined
   try {
-    const [core, dom, reactivity] = await Promise.all([
+    const [core, dom, reactivity, server] = await Promise.all([
       loader.load('@pyreon/core'),
       loader.load('@pyreon/runtime-dom'),
       loader.load('@pyreon/reactivity'),
+      // Optional: a component library with no SSR story is a legitimate
+      // project. Absent -> the parity check skips with that reason, so a
+      // missing renderer never reads as a failing component.
+      loader.load('@pyreon/runtime-server').catch(() => undefined),
     ])
     const h = core.h
     const mount = dom.mount
@@ -265,6 +269,7 @@ export async function loadRuntime(
           }
         : {}),
       ...(gc ? { collectGarbage: gc } : {}),
+      ...ssrHalf(dom, server),
     }
   } catch (err) {
     // The project may not depend on the DOM runtime at all (a headless catalog).
@@ -272,6 +277,39 @@ export async function loadRuntime(
     // instance — so the caller mounts nothing and the check skips.
     onFailure?.(err instanceof Error ? err.message : String(err))
     return undefined
+  }
+}
+
+/**
+ * The SSR half of the runtime, when the project actually has one.
+ *
+ * All three pieces or none: a `renderToString` without a matching
+ * `hydrateRoot` cannot express the check, and reporting a partial capability
+ * would make the parity verdict depend on which module happened to resolve.
+ *
+ * `onHydrationMismatch` is taken from the SAME `@pyreon/runtime-dom` the
+ * hydration runs through. Taken from anywhere else it subscribes to a
+ * different module's collector and reports a serene zero for every scenario —
+ * the silent-false-pass shape this whole check exists to prevent.
+ */
+function ssrHalf(
+  dom: Record<string, unknown>,
+  server: Record<string, unknown> | undefined,
+): Partial<MountRuntime> {
+  const renderToString = server?.renderToString
+  const hydrateRoot = dom.hydrateRoot
+  const onHydrationMismatch = dom.onHydrationMismatch
+  if (
+    typeof renderToString !== 'function' ||
+    typeof hydrateRoot !== 'function' ||
+    typeof onHydrationMismatch !== 'function'
+  ) {
+    return {}
+  }
+  return {
+    renderToString: renderToString as NonNullable<MountRuntime['renderToString']>,
+    hydrateRoot: hydrateRoot as NonNullable<MountRuntime['hydrateRoot']>,
+    onHydrationMismatch: onHydrationMismatch as NonNullable<MountRuntime['onHydrationMismatch']>,
   }
 }
 

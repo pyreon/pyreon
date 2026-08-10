@@ -173,6 +173,7 @@ describe('usageDocsPlugin (graph stage)', () => {
               reactivityCoverage: { status: 'skip' },
               leak: { status: 'skip' },
               snapshot: { status: 'skip' },
+              ssrParity: { status: 'skip' },
             },
           },
           {
@@ -186,6 +187,7 @@ describe('usageDocsPlugin (graph stage)', () => {
               reactivityCoverage: { status: 'skip' },
               leak: { status: 'skip' },
               snapshot: { status: 'skip' },
+              ssrParity: { status: 'skip' },
             },
           },
         ],
