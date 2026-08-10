@@ -28,7 +28,7 @@
     "@pyreon/store": "workspace:^",
     "@pyreon/validation": "workspace:^",
     "@pyreon/zero": "workspace:^",
-    "@tanstack/query-core": "^5.101.2",
+    "@tanstack/query-core": "^5.101.4",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -38,6 +38,6 @@
     "@pyreon/vite-plugin": "workspace:^",
     "@pyreon/zero-cli": "workspace:^",
     "typescript": "^6.0.3",
-    "vite": "^8.0.16"
+    "vite": "^8.2.1"
   }
 }

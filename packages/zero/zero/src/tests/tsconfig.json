@@ -1,0 +1,16 @@
+{
+  // The package root tsconfig EXCLUDES src/tests (declaration emit +
+  // typecheck scope). That leaves test files outside every tsconfig
+  // file-set — and vite 8.1+ (tsconfck-driven oxc transform) gives such
+  // files NO JSX config, so raw JSX reaches rolldown's parser
+  // ("RolldownError: Unexpected JSX expression"; worked on vite 8.0 only
+  // via its fallback transform). This nested config is what tsconfck
+  // resolves for test files — nearest-first — restoring the automatic
+  // JSX runtime (@pyreon/core via the preset chain). `tsc -p .` at the
+  // package root is unaffected (it uses the root config's file set).
+  "extends": "@pyreon/tsconfig/lib-jsx.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["./**/*"]
+}

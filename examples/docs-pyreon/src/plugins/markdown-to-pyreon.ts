@@ -30,7 +30,11 @@
  */
 import { relative } from 'node:path'
 import type { Plugin } from 'vite'
+// markdown-it 15 exports the instance type as a NAMED type (the default
+// export is the callable/constructable value only), so the type-position
+// use below needs the aliased type import.
 import MarkdownIt from 'markdown-it'
+import type { MarkdownIt as MarkdownItInstance } from 'markdown-it'
 import anchor from 'markdown-it-anchor'
 import { createHighlighter, type Highlighter } from 'shiki'
 
@@ -95,7 +99,7 @@ function extractFrontmatter(src: string): { body: string; data: Record<string, s
  * survive HTML serialization untouched. Markdown inside callout bodies
  * is re-rendered as a nested pass.
  */
-function preprocess(src: string, md: MarkdownIt): string {
+function preprocess(src: string, md: MarkdownItInstance): string {
   let out = src
 
   // <Playground title="..." height="200"> ... </Playground>

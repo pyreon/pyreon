@@ -2,6 +2,7 @@ import { signal } from '@pyreon/reactivity'
 import { flush } from '@pyreon/test-utils/browser'
 import { query } from '@pyreon/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
+import { watchDispatch } from './delegation-diagnostics'
 import { _rsCollapseDynH, mount } from '../index'
 
 // Runtime helper for the HANDLER-COMBINED dynamic-collapse slice — the
@@ -42,6 +43,17 @@ describe('_rsCollapseDynH (real browser)', () => {
 
   function mountInto(node: ReturnType<typeof _rsCollapseDynH>): HTMLElement {
     const root = document.createElement('div')
+    // Keep the mounted content AWAY from (0,0): headless CI Chromium parks
+    // its virtual pointer at the origin, and when sequential specs in this
+    // shared page shift layout, an element moving UNDER the stationary
+    // pointer gets a NATIVE (isTrusted) pointerenter synthesized by the
+    // browser — which fires the direct-attached onPointerEnter binding and
+    // doubles the counter. Four diagnostic rounds pinned this: handlers are
+    // invoked exactly once per observed event; the extra invocation is a
+    // real browser-synthesized hover, present only where linux font metrics
+    // put the button's box over the origin (why it never reproduced on
+    // macOS). Positioning out of the pointer's reach removes the input.
+    root.style.cssText = 'position:absolute;left:400px;top:400px'
     document.body.appendChild(root)
     const dispose = mount(node as unknown as Parameters<typeof mount>[0], root)
     cleanup.push(() => {
@@ -189,6 +201,12 @@ describe('_rsCollapseDynH (real browser)', () => {
     const isDark = signal(false)
     let clicks = 0
     let enters = 0
+    // Round-3 CI-only-failure instrumentation: round 2 proved the extra
+    // increment arrives with ONE observed event, ONE delegated invocation,
+    // ONE el.click() call, and NO listener registered while armed — so the
+    // only question left is WHO CALLS THE HANDLER. Record a stack per
+    // invocation; the failure message prints them all.
+    const clickStacks: string[] = []
     const root = mountInto(
       _rsCollapseDynH(
         '<button>M</button>',
@@ -196,24 +214,45 @@ describe('_rsCollapseDynH (real browser)', () => {
         () => (cond() ? 1 : 0),
         () => isDark(),
         {
-          onClick: () => clicks++,
+          onClick: () => {
+            clicks++
+            clickStacks.push(new Error().stack ?? '<no stack>')
+          },
           onPointerEnter: () => enters++,
         },
       ),
     )
     await flush()
     const btn = query(root, 'button')
+    // NEWLINE-FREE on purpose: round 3 proved CI's reporter truncates the
+    // assertion message at the first newline — the stacks never reached the
+    // log. ' ⏎ ' keeps each frame separable without a real newline.
+    const stacks = (): string =>
+      `handlerStacks=[${clickStacks.map((st) => st.replace(/\s*\n\s*/g, ' ⏎ ')).join(' ||| ')}]`
+    // Round 3 datum: this PASSED on CI — no invocation precedes the click.
+    expect(clicks, `pre-click invocation? ${stacks()}`).toBe(0)
+    const diag = watchDispatch()
     btn.click()
+    // Round 4: assert BETWEEN the two dispatches. Round 3 showed clicks
+    // jumping 0→2 across a window holding exactly one click event
+    // (invoked=1, clickCalls=1) and one pointerenter dispatch — arithmetic
+    // that fits only "the pointerenter dispatch also increments clicks".
+    // This split assertion decides it: a failure HERE means the click alone
+    // double-fired; a pass here + failure AFTER the pointerenter convicts
+    // the pointerenter path.
+    expect(clicks, `after click, BEFORE pointerenter: ${diag.describe()} ${stacks()}`).toBe(1)
     btn.dispatchEvent(new PointerEvent('pointerenter'))
-    expect(clicks).toBe(1)
-    expect(enters).toBe(1)
+    expect(clicks, `AFTER pointerenter: ${diag.describe()} ${stacks()}`).toBe(1)
+    expect(enters, diag.describe()).toBe(1)
 
     cond.set(true)
     await flush()
     btn.click()
+    expect(clicks, `after 2nd click, BEFORE pointerenter: ${diag.describe()} ${stacks()}`).toBe(2)
     btn.dispatchEvent(new PointerEvent('pointerenter'))
-    expect(clicks).toBe(2)
-    expect(enters).toBe(2)
+    expect(clicks, `AFTER 2nd pointerenter: ${diag.describe()} ${stacks()}`).toBe(2)
+    expect(enters, diag.describe()).toBe(2)
+    diag.stop()
   })
 
   it('out-of-range valueIndex coerces to empty className — handlers still work', async () => {

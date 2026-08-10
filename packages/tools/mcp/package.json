@@ -43,7 +43,7 @@
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@pyreon/compiler": "workspace:^",
     "typescript": ">=5.0.0 <7.0.0",
     "zod": "^4.4.3"
