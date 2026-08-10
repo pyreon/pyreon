@@ -70,6 +70,43 @@ if (process.env.NODE_ENV !== 'production') {
   process.exit(child.exitCode ?? 0)
 }
 
+// ─── Per-scenario PROCESS isolation (issue #2665) ─────────────────────────────
+// Scenarios contaminate each other when they share one JSC heap: a byte-
+// identical `card` emit moved 22% depending on what OTHER scenarios pushed
+// through the shared runtime call sites in the same process (inline caches
+// driven megamorphic by earlier traffic — the store-bench/charts-bench lesson).
+// So the default run is an ORCHESTRATOR that spawns one fresh `bun` child per
+// scenario, SEQUENTIALLY (concurrent benches flip verdicts). Within a child all
+// frameworks still share the process — cross-framework RATIOS were always the
+// sound part and stay measured under identical conditions. `--scenario=<label>`
+// runs one scenario directly (also the A/B unit); `--no-isolate` restores the
+// old single-process sweep for comparison against historical numbers.
+export const SCENARIO_LABELS = ['card', 'list-50', 'list-1000', 'layout (component children)'] as const
+const scenarioArg = process.argv.find((a) => a.startsWith('--scenario='))?.slice('--scenario='.length)
+if (!scenarioArg && !process.argv.includes('--no-isolate')) {
+  console.log('\n=== Cross-framework SSR benchmark — renderToString ===')
+  console.log(
+    `  Bun ${Bun.version} · ${process.platform}/${process.arch} · NODE_ENV=${process.env.NODE_ENV}`,
+  )
+  const uptime = Bun.spawnSync(['uptime'], { stdout: 'pipe' }).stdout.toString().trim()
+  if (uptime) console.log(`  load: ${uptime}`)
+  console.log('  @pyreon/runtime-server vs react-dom/server · preact-render-to-string · solid-js/web')
+  console.log('  (author-judge bench — see header. higher renders/sec = better; 🤝 = CI-overlap tie)')
+  console.log('  per-scenario process isolation: one fresh bun child per scenario (#2665)')
+  for (const label of SCENARIO_LABELS) {
+    const child = Bun.spawnSync(
+      ['bun', import.meta.path, `--scenario=${label}`, ...process.argv.slice(2)],
+      { env: { ...process.env, NODE_ENV: 'production' }, stdio: ['inherit', 'inherit', 'inherit'] },
+    )
+    if ((child.exitCode ?? 1) !== 0) {
+      console.error(`[ssr-bench] scenario child failed: ${label}`)
+      process.exit(child.exitCode ?? 1)
+    }
+  }
+  console.log('')
+  process.exit(0)
+}
+
 // ─── Dynamic imports (prod-env child only) ────────────────────────────────────
 const { h, _rp } = await import('../../../packages/core/core/src/index')
 const pyreonRuntime = await import('../../../packages/core/runtime-server/src/index')
@@ -768,16 +805,41 @@ const scenarios = [
   },
 ]
 
-console.log('\n=== Cross-framework SSR benchmark — renderToString ===')
-console.log(
-  `  Bun ${Bun.version} · ${process.platform}/${process.arch} · NODE_ENV=${process.env.NODE_ENV}`,
-)
-console.log('  @pyreon/runtime-server vs react-dom/server · preact-render-to-string · solid-js/web')
-console.log('  (author-judge bench — see header. higher renders/sec = better; 🤝 = CI-overlap tie)')
+// Drift tripwire: the orchestrator's SCENARIO_LABELS is written before the
+// heavy imports, so it cannot derive from `scenarios` — a hand-listed input
+// set is a silent-hole generator the moment a scenario is added. Fail LOUDLY
+// in every child instead: an added/renamed scenario reds the very first run.
+{
+  const defined = scenarios.map((sc) => sc.label)
+  if (JSON.stringify(defined) !== JSON.stringify([...SCENARIO_LABELS])) {
+    throw new Error(
+      `[ssr-bench] SCENARIO_LABELS drifted from the scenarios array — orchestrator would silently skip work.\n` +
+        `  labels:    ${JSON.stringify([...SCENARIO_LABELS])}\n  scenarios: ${JSON.stringify(defined)}`,
+    )
+  }
+}
 
-await correctnessGate(scenarios)
+// A scenario child measures ONLY its scenario; the orchestrator owns the
+// header. `--no-isolate` keeps the legacy single-process sweep (header here).
+const selected = scenarioArg ? scenarios.filter((sc) => sc.label === scenarioArg) : scenarios
+if (scenarioArg && selected.length === 0) {
+  console.error(
+    `[ssr-bench] unknown --scenario=${scenarioArg} — valid: ${scenarios.map((sc) => sc.label).join(', ')}`,
+  )
+  process.exit(1)
+}
+if (!scenarioArg) {
+  console.log('\n=== Cross-framework SSR benchmark — renderToString (--no-isolate) ===')
+  console.log(
+    `  Bun ${Bun.version} · ${process.platform}/${process.arch} · NODE_ENV=${process.env.NODE_ENV}`,
+  )
+  console.log('  @pyreon/runtime-server vs react-dom/server · preact-render-to-string · solid-js/web')
+  console.log('  (author-judge bench — see header. higher renders/sec = better; 🤝 = CI-overlap tie)')
+}
 
-for (const s of scenarios) {
+await correctnessGate(selected)
+
+for (const s of selected) {
   const avgBytes = (await s.py()).length
   // Native calling convention per framework: Pyreon awaited (async), rest sync.
   const pyOps = await calibrate(s.py, true)
