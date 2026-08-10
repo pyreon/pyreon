@@ -172,6 +172,15 @@ export interface ComponentIntelligence {
   tags: readonly string[]
   /** source file path, when known */
   source?: string
+  /**
+   * What this component's OWN source costs a consumer, minified + gzipped.
+   *
+   * Present only when `bundleCostPlugin` ran — it is opt-in, because each
+   * measurement is a real bundler run. Workspace packages and bare deps are
+   * external, so this compares components against each other; it is not the
+   * page weight of rendering one.
+   */
+  bundleCost?: { raw: number; gzip: number }
   /** a one-line summary (from a manifest or generated) */
   summary?: string
 }
