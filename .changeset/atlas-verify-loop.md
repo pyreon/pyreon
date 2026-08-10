@@ -1,5 +1,6 @@
 ---
 '@pyreon/atlas': minor
+'@pyreon/cli': minor
 ---
 
 **`atlas verify <Component>` — the write → verify → fix loop, and a scan that says WHICH check failed.**
@@ -17,3 +18,5 @@ Three refusals in `atlas verify` are deliberate. It **never writes `atlas-catalo
 **Fixes a pre-existing arg-parsing bug**: `--cwd` was missing from the value-flag set, so any command reading a positional alongside it took the *path* as that positional. `atlas check Button --cwd ./ui` parsed `./ui` as the component's args JSON and reported "could not parse the args" for a command line that is entirely correct.
 
 `CHECK_KEYS` and `CheckKey` are now exported from the plugin registry as the single owner of the check list, so a seventh check cannot be merged into verdicts while going uncounted in the report.
+
+`pyreon atlas --help` lists the new `verify` subcommand (`@pyreon/cli` passes every argument through, so the command itself already worked — the help text was the gap).
