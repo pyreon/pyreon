@@ -37,7 +37,7 @@
     "@pyreon/create-zero": "workspace:^",
     "@pyreon/zero": "workspace:^",
     "cac": "^7.0.0",
-    "vite": "^8.2.0"
+    "vite": "^8.2.1"
   },
   "devDependencies": {
     "@pyreon/router": "workspace:*",
