@@ -213,23 +213,33 @@ describe('_rsCollapseDynH (real browser)', () => {
     )
     await flush()
     const btn = query(root, 'button')
-    const stacks = (): string => `handler stacks:\n${clickStacks.join('\n---\n')}`
-    // Round 2 line-213 shape: clicks was ALREADY wrong relative to observed
-    // events — pin down whether an invocation precedes the first click.
+    // NEWLINE-FREE on purpose: round 3 proved CI's reporter truncates the
+    // assertion message at the first newline — the stacks never reached the
+    // log. ' ⏎ ' keeps each frame separable without a real newline.
+    const stacks = (): string =>
+      `handlerStacks=[${clickStacks.map((st) => st.replace(/\s*\n\s*/g, ' ⏎ ')).join(' ||| ')}]`
+    // Round 3 datum: this PASSED on CI — no invocation precedes the click.
     expect(clicks, `pre-click invocation? ${stacks()}`).toBe(0)
-    // This pair has failed on CI only (`expected 2 to be 1`), so the assertion
-    // carries the observed dispatch state — see delegation-diagnostics.ts.
     const diag = watchDispatch()
     btn.click()
+    // Round 4: assert BETWEEN the two dispatches. Round 3 showed clicks
+    // jumping 0→2 across a window holding exactly one click event
+    // (invoked=1, clickCalls=1) and one pointerenter dispatch — arithmetic
+    // that fits only "the pointerenter dispatch also increments clicks".
+    // This split assertion decides it: a failure HERE means the click alone
+    // double-fired; a pass here + failure AFTER the pointerenter convicts
+    // the pointerenter path.
+    expect(clicks, `after click, BEFORE pointerenter: ${diag.describe()} ${stacks()}`).toBe(1)
     btn.dispatchEvent(new PointerEvent('pointerenter'))
-    expect(clicks, `${diag.describe()}\n${stacks()}`).toBe(1)
+    expect(clicks, `AFTER pointerenter: ${diag.describe()} ${stacks()}`).toBe(1)
     expect(enters, diag.describe()).toBe(1)
 
     cond.set(true)
     await flush()
     btn.click()
+    expect(clicks, `after 2nd click, BEFORE pointerenter: ${diag.describe()} ${stacks()}`).toBe(2)
     btn.dispatchEvent(new PointerEvent('pointerenter'))
-    expect(clicks, `${diag.describe()}\n${stacks()}`).toBe(2)
+    expect(clicks, `AFTER 2nd pointerenter: ${diag.describe()} ${stacks()}`).toBe(2)
     expect(enters, diag.describe()).toBe(2)
     diag.stop()
   })
