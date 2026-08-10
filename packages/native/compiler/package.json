@@ -27,7 +27,7 @@
     "build": "vl_rolldown_build"
   },
   "dependencies": {
-    "oxc-parser": "^0.142.0"
+    "oxc-parser": "^0.143.0"
   },
   "devDependencies": {
     "@pyreon/tsconfig": "workspace:*",
