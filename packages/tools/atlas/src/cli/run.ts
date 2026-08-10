@@ -10,7 +10,14 @@
 import { readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { createAtlas } from '../index'
-import type { CatalogGraph } from '../core'
+import type { CatalogGraph, ComponentIntelligence } from '../core'
+import { focusComponents } from '../verify/focus'
+import {
+  buildVerifyReport,
+  formatCheckTally,
+  formatFailures,
+  formatNotRun,
+} from '../verify/report'
 import type { WorkbenchPresets } from '../ui/catalog'
 import type { AgentAsset } from '../plugins'
 import {
@@ -36,6 +43,9 @@ import {
   type PageMeta,
   type ProjectRoot,
   workspacePackageDirs,
+  classifyLoadErrors,
+  formatBrokenImports,
+  formatPluginVirtuals,
 } from '../discover'
 import { type DetectedProject, detectProjects } from '../discover/workspace'
 
@@ -50,6 +60,15 @@ export interface ScanOptions extends DiscoverOptions {
    * source runs its top-level code.
    */
   mount?: boolean
+  /**
+   * Verify ONE component (key or bare name) instead of the whole catalog.
+   *
+   * Discovery still walks everything — a component's file is not known until it
+   * does — but decoration and verification, which is where the cost is, run
+   * only for the match. An unmatched or ambiguous name is reported on
+   * `focusError` rather than silently producing an empty, green scan.
+   */
+  only?: string
 }
 
 export interface ScanResult {
@@ -61,6 +80,16 @@ export interface ScanResult {
   failed: number
   /** ids of the failing scenarios, so a red scan names what to look at */
   failing: readonly string[]
+  /**
+   * Set when `only` matched nothing, or matched ambiguously.
+   *
+   * A separate field rather than an empty result, because the two are opposite
+   * findings that look identical in the counts: a scoped scan that matched
+   * nothing reports zero scenarios and zero failures, which reads as a pass.
+   */
+  focusError?: string
+  /** Set when `only` resolved by something other than an exact match. */
+  focusNote?: string
   /** scenarios nothing examined. Not a pass; most scenarios are here today. */
   unverified: number
   guide: string
@@ -249,8 +278,30 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
   }
 
   async function buildScan(): Promise<ScanResult> {
+    // Recorded by the focus filter below, read after the build. A closure
+    // rather than a return value because `createAtlas` owns the pipeline and
+    // the outcome is a CLI concern — the same shape `onAsset`/`onLoadError`
+    // already use here.
+    let focusError: string | undefined
+    let focusNote: string | undefined
     const graph = await createAtlas({
       cwd,
+      ...(options.only !== undefined
+        ? {
+            focus: (discovered: readonly ComponentIntelligence[]) => {
+              const outcome = focusComponents(discovered, options.only!)
+              if (outcome.kind === 'matched') {
+                focusNote = outcome.note
+                return outcome.components
+              }
+              focusError = outcome.message
+              // Nothing verified, and `focusError` is what stops that reading
+              // as a clean run. Returning the full set instead would verify the
+              // whole catalog for someone who asked about one component.
+              return []
+            },
+          }
+        : {}),
       // The scan assembles the WHOLE pipeline itself — without this,
       // `createAtlas` appends the recommended bundle a SECOND time, including a
       // bare `mountPlugin()` whose default runtime reads Atlas's OWN (empty)
@@ -364,6 +415,8 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
       ...(dualInstance ? { dualInstance: true } : {}),
       ...(unmatched.length > 0 ? { unmatched } : {}),
       ...(rocketstyleLoadErrors.length > 0 ? { loadErrors: rocketstyleLoadErrors } : {}),
+      ...(focusError ? { focusError } : {}),
+      ...(focusNote ? { focusNote } : {}),
     }
 
     if (options.write !== false && graph.size() > 0) {
@@ -395,6 +448,15 @@ function writeAtomic(path: string, content: string): void {
   }
 }
 
+/**
+ * How many failing scenarios a whole-catalog scan prints in full.
+ *
+ * One broken provider fails every scenario in the catalog, and a thousand
+ * identical rows bury the summary that explains them. `atlas verify <Component>`
+ * is the un-capped view of any one component.
+ */
+const FAILURE_PRINT_LIMIT = 20
+
 const HELP = `atlas — component workshop + catalog for the Pyreon ecosystem
 
 Usage:
@@ -424,6 +486,14 @@ Usage:
     --title <text>    site title (wins over atlas.config.ts's \`title\`)
     --base <path>     public base path for a subdirectory deploy,
                       e.g. --base /my-repo/ for GitHub Pages
+  atlas verify [Component] [dir]
+                      re-check ONE component and report WHICH check failed and
+                      why — the fast write → verify → fix loop. Only the match
+                      is mounted, exercised and hydrated, so this is a question
+                      about one component rather than a whole-catalog scan.
+                      Omit the name to report every component. Exits non-zero
+                      on any failing check, or on a name that matched nothing
+    --json            machine-readable report (for agents and CI)
   atlas verify-browser [dir]
                       run the browser half of verification in real Chromium —
                       reactive coverage measured on the client build, and a
@@ -478,6 +548,11 @@ const VALUE_FLAGS = new Set([
   '--port',
   '--project',
   '--catalog',
+  // `--cwd` was missing, and every command that reads a positional alongside it
+  // took the PATH as that positional: `atlas check Button --cwd ./ui` parsed
+  // `./ui` as the component's args JSON and reported "could not parse the args"
+  // for a command line that is entirely correct.
+  '--cwd',
 ])
 
 /**
@@ -491,7 +566,8 @@ const VALUE_FLAGS = new Set([
  *
  * All five commands shared the line, so all five shared the bug.
  */
-export function positionalDir(args: readonly string[]): string | undefined {
+export function positionalArgs(args: readonly string[]): string[] {
+  const positional: string[] = []
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]
     if (arg === undefined) continue
@@ -501,9 +577,13 @@ export function positionalDir(args: readonly string[]): string | undefined {
       if (VALUE_FLAGS.has(arg)) i++
       continue
     }
-    return arg
+    positional.push(arg)
   }
-  return undefined
+  return positional
+}
+
+export function positionalDir(args: readonly string[]): string | undefined {
+  return positionalArgs(args)[0]
 }
 
 /** `{ key: value }` only when set — `exactOptionalPropertyTypes` rejects `undefined`. */
@@ -579,6 +659,12 @@ export async function runCli(argv: readonly string[]): Promise<number> {
         `— ${result.verified} verified, ${result.failed} failing, ` +
         `${result.unverified} unverified.\n`,
     )
+    // WHICH check, not how many. Six checks run per scenario, and the one that
+    // failed is the whole content of the message — without this line, answering
+    // it meant opening the catalog JSON and walking it by hand.
+    const report = buildVerifyReport(result.graph.scenarios())
+    out(`  checks: ${formatCheckTally(report.tallies)}\n`)
+    for (const line of formatNotRun(report.tallies)) out(`  ${line}\n`)
     if (result.catalogPath) out(`  → ${result.catalogPath}\n  → ${result.guidePath}\n`)
     // What the scan LOOKED at and could not catalogue. Not a failure — a
     // provider or a schema belongs in that list too — but a component you
@@ -589,31 +675,107 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     // reader to their config when the real cause is an import that does not
     // resolve. The load error is the actionable one, so it goes first.
     if (result.loadErrors && result.loadErrors.length > 0) {
-      // Grouped by MESSAGE: one broken import upstream throws the identical
-      // error in every file that reaches it, so the distinct causes are the
-      // finding and the file count is how bad it is.
-      const byMessage = new Map<string, string[]>()
-      for (const e of result.loadErrors) {
-        const list = byMessage.get(e.message) ?? []
-        list.push(e.file)
-        byMessage.set(e.message, list)
-      }
-      const lines = [...byMessage.entries()]
-        .sort((a, b) => b[1].length - a[1].length)
-        .map(([message, files]) => `  ${files.length}× ${message}\n     · ${files[0]}`)
-      err(
-        `atlas: ${result.loadErrors.length} file(s) could not be LOADED, so any rocketstyle ` +
-          `component in them is missing from this catalog:\n${lines.join('\n')}\n` +
-          `  These threw on import — fix the import and re-run; a \`theme\` in your config cannot help.\n`,
-      )
+      // Split by KIND, not just grouped by message. A `virtual:` id is a module
+      // a build plugin synthesises — the import is correct and only
+      // unresolvable because Atlas does not run that plugin — so the old
+      // blanket "fix the import and re-run" was wrong advice, printed on every
+      // scan of every zero app. See `classifyLoadErrors`.
+      const groups = classifyLoadErrors(result.loadErrors)
+      for (const line of formatBrokenImports(groups)) err(`${line}\n`)
+      for (const line of formatPluginVirtuals(groups)) err(`${line}\n`)
     }
     if (result.unmatched && result.unmatched.length > 0) {
       err(`${formatUnmatched(result.unmatched).join('\n')}\n`)
     }
     if (result.failed > 0) {
       // A red scan is a red exit — otherwise wiring `atlas scan` into CI gates
-      // nothing. The ids make the failure actionable without opening the JSON.
-      err(`atlas: ${result.failed} failing scenario(s): ${result.failing.join(', ')}\n`)
+      // nothing. The FINDINGS make the failure actionable without opening the
+      // JSON; a bare id list named the scenario and withheld the diagnosis.
+      //
+      // Capped, because a systemic failure produces one row per scenario and a
+      // thousand of them buries the summary that explains them. The cap reports
+      // itself — a silently truncated list reads as a complete one.
+      err(`atlas: ${result.failed} failing scenario(s):\n`)
+      for (const line of formatFailures(report.failures, FAILURE_PRINT_LIMIT)) err(`  ${line}\n`)
+      err(`  Run \`atlas verify <Component>\` to re-check one component on its own.\n`)
+      return 1
+    }
+    return 0
+  }
+
+  if (cmd === 'verify') {
+    // `atlas verify Button` — the write → verify → fix loop.
+    //
+    // Positional component + `--cwd`, matching `atlas check`, which is the
+    // closest sibling: both answer a question about ONE named component.
+    const positional = positionalArgs(rest)
+    const [name] = positional
+    const json = rest.includes('--json')
+    const result = await runScan({
+      cwd: flagValue(rest, '--cwd') ?? '.',
+      ...(name !== undefined ? { only: name } : {}),
+      // NEVER writes. A scoped run holds one component, and writing that as
+      // `atlas-catalog.json` would replace the whole catalog with a
+      // one-component view — silently breaking the agent guide, the MCP tools
+      // and `atlas check` for every other component until the next full scan.
+      write: false,
+    })
+
+    // A name that matched nothing is the failure this command most has to get
+    // right: the counts for "your typo matched no components" and "everything
+    // passed" are identical, and the wrong one is green.
+    if (result.focusError) {
+      if (json) out(`${JSON.stringify({ ok: false, error: result.focusError }, null, 2)}\n`)
+      else err(`atlas: ${result.focusError}\n`)
+      return 1
+    }
+
+    const report = buildVerifyReport(result.graph.scenarios())
+    if (json) {
+      out(
+        `${JSON.stringify(
+          {
+            ok: report.failed === 0 && report.verified > 0,
+            component: name ?? null,
+            ...(result.focusNote ? { note: result.focusNote } : {}),
+            ...report,
+          },
+          null,
+          2,
+        )}\n`,
+      )
+    } else {
+      if (result.focusNote) err(`atlas: ${result.focusNote}\n`)
+      out(
+        `atlas verify${name ? ` ${name}` : ''}: ${result.components} component(s), ` +
+          `${report.scenarios} scenario(s)\n`,
+      )
+      out(`  checks: ${formatCheckTally(report.tallies)}\n`)
+      for (const line of formatNotRun(report.tallies)) out(`  ${line}\n`)
+      // UNCAPPED, unlike the whole-catalog scan: this is a question about one
+      // component, and truncating its answer would defeat the command.
+      if (report.failures.length > 0) {
+        err('\n')
+        for (const line of formatFailures(report.failures)) err(`${line}\n`)
+      }
+      out(
+        `\n${report.failed} failing · ${report.verified} verified · ` +
+          `${report.unverified} unverified\n`,
+      )
+    }
+
+    if (report.failed > 0) return 1
+    // Nothing verified is NOT a pass. A dual-instance workspace, a component
+    // that cannot mount, a scan that found no scenarios — each produces zero
+    // failures, and exiting 0 would report "green" for a run that established
+    // nothing. That is the false-green this whole catalog is written against.
+    if (report.verified === 0) {
+      if (!json) {
+        err(
+          `atlas: nothing was verified — ${report.scenarios} scenario(s), none of which a check ` +
+            `could examine. This is not a pass; see the reasons above.\n`,
+        )
+      }
       return 1
     }
     return 0
@@ -731,7 +893,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     // instant, and the answer must be the same one the workbench and the agent
     // guide give. Rescanning here would also make the check disagree with the
     // catalog an agent was handed moments earlier.
-    const positional = rest.filter((a) => !a.startsWith('-'))
+    const positional = positionalArgs(rest)
     const [name, argsJson] = positional
     if (!name) {
       err('atlas: usage — atlas check <Component> \'{"prop":"value"}\'\n')

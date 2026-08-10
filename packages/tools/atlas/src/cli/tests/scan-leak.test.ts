@@ -16,6 +16,11 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 const ROOT = resolve(import.meta.dirname, '../../../../../..')
+/**
+ * The BUILT bin — see the same note in `scan-mount.test.ts`. A CLI source edit
+ * is invisible to this suite until `bun scripts/bootstrap.ts` rebuilds `lib/`,
+ * so a green run against unbuilt changes proves nothing.
+ */
 const BIN = resolve(ROOT, 'packages/tools/atlas/bin/atlas.js')
 const FIXTURE = 'packages/tools/atlas/src/plugins/tests/fixtures/leaky-project'
 
@@ -31,7 +36,12 @@ describe('atlas scan catches a real subscription-retention leak', () => {
     // costs more trust than it earns.
     expect(run.status, run.stderr).toBe(1)
     expect(run.stdout).toMatch(/2 component\(s\), 4 scenario\(s\) — 2 verified, 2 failing/)
-    expect(run.stderr).toContain('failing scenario(s): leaky--empty, leaky--long-content')
+    // Both scenarios still named; the failing CHECK is named with them now, so
+    // a reader learns it was the LEAK check without opening the catalog.
+    expect(run.stderr).toContain('leaky--empty')
+    expect(run.stderr).toContain('leaky--long-content')
+    expect(run.stderr).toContain('leak:')
+    expect(run.stdout).toMatch(/checks:.*leak \d+\/\d+ ✗/)
     // 320s: the spawn's own descriptive killer is timeout: 300_000 above;
     // the vitest backstop must EXCEED the composed inner budget (the ws-relay
     // rule) — the default 20s killed this opaquely whenever a lockfile change

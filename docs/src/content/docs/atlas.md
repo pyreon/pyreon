@@ -15,17 +15,23 @@ pyreon add @pyreon/atlas
 
 Or run it through the CLI front door with zero setup — `pyreon atlas <cmd>` delegates to the project-local install.
 
-## The three commands
+## The four commands
 
 ### `atlas scan` — derive + verify the catalog
 
 ```bash
 pyreon atlas scan .
 # atlas: discovered 9 component(s), 43 scenario(s) — 41 verified, 2 failing, 0 unverified.
+#   checks: a11y 18/20 ✗ · interaction 43/43 · ssrParity 43/43 · leak 43/43
+#   not run: reactivityCoverage, snapshot — browser-only — run `atlas verify-browser`
 #   → atlas-catalog.json
 #   → atlas-agent-guide.md
-# atlas: 2 failing scenario(s): button--empty, badge--empty
+# atlas: 2 failing scenario(s):
+#   ✗ button--empty
+#       a11y: missing accessible name: "label" is empty
 ```
+
+The **`checks:` line is the one to read**. `41 verified` counts *scenarios*, not checks — a package where `@pyreon/runtime-server` does not resolve can report every scenario verified having run only two of the six. The tally says which ran, which failed, and the `not run:` lines say why the rest did not.
 
 The scan discovers components (static TypeScript scan + rocketstyle runtime detection), derives controls and scenarios, **mounts every scenario** through a real module loader, and runs the node half of the verify pipeline. It writes two artifacts:
 
@@ -33,6 +39,43 @@ The scan discovers components (static TypeScript scan + rocketstyle runtime dete
 - **`atlas-agent-guide.md`** — the compact, prescriptive summary an AI assistant reads to know what exists, what's verified, and what's broken.
 
 A failing scenario is a **red exit** — wire `atlas scan` into CI and the catalog gates itself. `--no-mount` keeps the scan purely static (no project code executes).
+
+### `atlas verify` — re-check one component
+
+```bash
+pyreon atlas verify Button
+# atlas verify Button: 1 component(s), 15 scenario(s)
+#   checks: a11y 14/15 ✗ · interaction 15/15 · ssrParity 15/15 · leak 15/15
+#
+# ✗ button--empty
+#     a11y: missing accessible name: "label" is empty
+#
+# 1 failing · 14 verified · 0 unverified
+```
+
+The **write → verify → fix loop**. Discovery still walks the project — a component's file is not known until it does — but mounting, exercising, hydrating and GC-probing run only for the match. On `@pyreon/ui-components` (108 components, 1090 scenarios) that is 1.35s for a full scan against 0.90s scoped to one component's 60; the verify work drops ~18× while discovery dominates the residual, so it is a **focus** tool first and a speed tool second.
+
+Failing scenarios print **uncapped** here, unlike a whole-catalog scan — this is a question about one component, and truncating its answer would defeat the command.
+
+`--json` emits the same report as data, which is what an agent branches on:
+
+```jsonc
+{
+  "ok": false,
+  "component": "Button",
+  "verified": 14, "failed": 1, "unverified": 0,
+  "tallies": [{ "key": "a11y", "pass": 14, "fail": 1, "skip": 0 }, /* … */],
+  "failures": [{ "id": "button--empty", "checks": [{ "key": "a11y", "findings": ["…"] }] }]
+}
+```
+
+Three things it deliberately refuses to do:
+
+- **It never writes `atlas-catalog.json`.** A scoped run holds one component; writing it would replace the whole catalog and silently break the agent guide, the MCP tools and `atlas check` for everything else until the next full scan.
+- **An unmatched name is a non-zero exit**, with suggestions — filtering to nothing otherwise reports "0 scenarios, 0 failing", which reads as a pass.
+- **A run where nothing could be verified is a non-zero exit.** Zero failures is not a pass when zero checks ran.
+
+The first positional is the **component** (matching `atlas check`); the directory is `--cwd`.
 
 ### `atlas dev` — the workbench
 

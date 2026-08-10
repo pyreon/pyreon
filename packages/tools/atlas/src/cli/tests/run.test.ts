@@ -95,7 +95,143 @@ describe('runCli', () => {
     try {
       expect(await runCli(['scan', dir])).toBe(1)
       expect(stdout).toContain('1 failing')
-      expect(stderr).toContain('failing scenario(s): card--empty')
+      // The scenario is still named — that invariant is unchanged.
+      expect(stderr).toContain('card--empty')
+      // And now the CHECK and its finding are named too. A bare id said WHERE
+      // to look and withheld WHAT was wrong, which meant opening the catalog
+      // JSON to learn which of six checks had failed.
+      expect(stderr).toContain('a11y:')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('scan names WHICH check failed in the per-check tally', async () => {
+    // The line that answers "which check?" without a second command.
+    const dir = fixture('cli', { 'Card.tsx': `export function Card(props: { title: string }) { return null }` })
+    try {
+      await runCli(['scan', dir])
+      expect(stdout).toContain('checks:')
+      expect(stdout).toMatch(/a11y \d+\/\d+ ✗/)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('scan reports the checks that did NOT run, rather than omitting them', async () => {
+    // A check that is structurally unavailable in a Node scan is a different
+    // statement from one that ran and passed; silence conflates them.
+    const dir = fixture('cli', { 'Card.tsx': `export function Card(props: { title?: string }) { return null }` })
+    try {
+      await runCli(['scan', dir])
+      expect(stdout).toContain('not run:')
+      expect(stdout).toContain('verify-browser')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('verify scopes to ONE component and leaves the others unmounted', async () => {
+    // The point of the command: decoration and verification are where the cost
+    // is, and a question about Button should not verify Card.
+    const dir = fixture('verify-scope', {
+      'Button.tsx': `export function Button(props: { label?: string }) { return null }`,
+      'Card.tsx': `export function Card(props: { title?: string }) { return null }`,
+    })
+    try {
+      expect(await runCli(['verify', 'Button', '--cwd', dir])).toBe(0)
+      expect(stdout).toContain('1 component(s)')
+      expect(stdout).not.toContain('Card')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('verify NEVER writes the catalog — a scoped run would replace it wholesale', async () => {
+    // A one-component catalog written over the real one silently breaks the
+    // agent guide, the MCP tools and `atlas check` for every other component
+    // until the next full scan.
+    const dir = fixture('verify-nowrite', {
+      'Button.tsx': `export function Button(props: { label?: string }) { return null }`,
+      'Card.tsx': `export function Card(props: { title?: string }) { return null }`,
+    })
+    try {
+      await runCli(['scan', dir])
+      const before = readFileSync(join(dir, 'atlas-catalog.json'), 'utf8')
+      await runCli(['verify', 'Button', '--cwd', dir])
+      expect(readFileSync(join(dir, 'atlas-catalog.json'), 'utf8')).toBe(before)
+      expect(JSON.parse(before).components).toHaveLength(2)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('verify returns 1 for a name that matched nothing, and suggests', async () => {
+    // The failure this command most has to get right: filtering to nothing
+    // reports zero scenarios and zero failures, which reads as a pass.
+    const dir = fixture('verify-typo', {
+      'Button.tsx': `export function Button(props: { label?: string }) { return null }`,
+    })
+    try {
+      expect(await runCli(['verify', 'Buton', '--cwd', dir])).toBe(1)
+      expect(stderr).toContain('no component named "Buton"')
+      expect(stderr).toContain('Button')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('verify --json emits a machine report an agent can branch on', async () => {
+    const dir = fixture('verify-json', {
+      'Button.tsx': `export function Button(props: { label?: string }) { return null }`,
+    })
+    try {
+      await runCli(['verify', 'Button', '--cwd', dir, '--json'])
+      const report = JSON.parse(stdout)
+      expect(report.ok).toBe(true)
+      expect(report.component).toBe('Button')
+      expect(Array.isArray(report.tallies)).toBe(true)
+      expect(report.tallies.some((t: { key: string }) => t.key === 'a11y')).toBe(true)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('verify --json reports an unmatched name as ok:false, not an empty pass', async () => {
+    const dir = fixture('verify-json-typo', {
+      'Button.tsx': `export function Button(props: { label?: string }) { return null }`,
+    })
+    try {
+      expect(await runCli(['verify', 'Nope', '--cwd', dir, '--json'])).toBe(1)
+      const report = JSON.parse(stdout)
+      expect(report.ok).toBe(false)
+      expect(report.error).toContain('Nope')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('verify returns 1 and names the failing check', async () => {
+    const dir = fixture('verify-fail', {
+      'Card.tsx': `export function Card(props: { title: string }) { return null }`,
+    })
+    try {
+      expect(await runCli(['verify', 'Card', '--cwd', dir])).toBe(1)
+      expect(stderr).toContain('a11y:')
+      expect(stdout).toContain('1 failing')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('verify with no name reports the whole catalog', async () => {
+    const dir = fixture('verify-all', {
+      'Button.tsx': `export function Button(props: { label?: string }) { return null }`,
+      'Card.tsx': `export function Card(props: { title?: string }) { return null }`,
+    })
+    try {
+      expect(await runCli(['verify', '--cwd', dir])).toBe(0)
+      expect(stdout).toContain('2 component(s)')
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

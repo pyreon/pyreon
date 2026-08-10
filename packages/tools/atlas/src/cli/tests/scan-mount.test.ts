@@ -17,6 +17,18 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 const ROOT = resolve(import.meta.dirname, '../../../../../..')
+/**
+ * The BUILT bin, which loads `lib/` — NOT `src/`.
+ *
+ * So an edit to the CLI's source is INVISIBLE here until `bun scripts/bootstrap.ts`
+ * rebuilds it, and this suite keeps passing against the PREVIOUS version's
+ * output in the meantime. That is a false green, and it is the spawn-based twin
+ * of the dev-server bisect trap in `.claude/rules/testing.md` — observed
+ * directly: changing the scan's failure format left both real-scan specs green
+ * until a bootstrap ran, and they failed the moment it did.
+ *
+ * Bisect-verifying anything in this file means: edit source → bootstrap → run.
+ */
 const BIN = resolve(ROOT, 'packages/tools/atlas/bin/atlas.js')
 
 describe('atlas scan mounts the example', () => {
@@ -31,7 +43,15 @@ describe('atlas scan mounts the example', () => {
     // the whole CI-gating contract. The stderr line names them so the failure
     // is actionable without opening the JSON.
     expect(run.status, run.stderr).toBe(1)
-    expect(run.stderr).toContain('failing scenario(s): button--empty, badge--empty')
+    // Both scenarios still NAMED — that invariant is unchanged — and now the
+    // failing CHECK and its finding are named with them. A bare id list said
+    // WHERE to look and withheld WHAT was wrong, which meant opening the
+    // catalog JSON to learn which of the six checks had failed.
+    expect(run.stderr).toContain('button--empty')
+    expect(run.stderr).toContain('badge--empty')
+    expect(run.stderr).toContain('a11y: missing accessible name')
+    // And the tally answers "which check?" from the summary alone.
+    expect(run.stdout).toMatch(/checks:.*a11y \d+\/\d+ ✗/)
 
     // The exact counts, not just "nothing unverified".
     //

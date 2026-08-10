@@ -41,6 +41,22 @@ export interface AtlasConfig {
   baseArgs?: Record<string, unknown>
   /** the directory Atlas is pointed at (defaults to the process cwd) */
   cwd?: string
+  /**
+   * Narrow the discovered set before anything is decorated or verified.
+   *
+   * Discovery has to run in full — a component's file is not known until the
+   * source is walked — but decoration and verification are per-component and
+   * are where the cost is: mounting, exercising, hydrating and GC-probing every
+   * scenario. Filtering here is what makes `atlas verify Button` a question
+   * about Button rather than a whole-catalog scan with the answer filtered out
+   * at the end.
+   *
+   * A WHOLE-SET filter rather than a per-item predicate, because the caller
+   * needs to see everything that was found to answer "did the name match, and
+   * was it ambiguous?" — questions a predicate is called too many times to
+   * answer once.
+   */
+  focus?: (discovered: readonly ComponentIntelligence[]) => readonly ComponentIntelligence[]
 }
 
 /** Identity helper for a typed Atlas config (config-file ergonomics). */
@@ -64,7 +80,9 @@ export function createAtlas(config: AtlasConfig = {}): Atlas {
   return {
     async build() {
       // 1. discover — every plugin contributes components
-      const discovered = await registry.runDiscover({ cwd })
+      const found = await registry.runDiscover({ cwd })
+      // Narrowed BEFORE decorate/verify, not after: see `AtlasConfig.focus`.
+      const discovered = config.focus ? [...config.focus(found)] : found
 
       // 2. decorate — EVERY component, before anything is verified.
       //
