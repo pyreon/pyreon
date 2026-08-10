@@ -416,6 +416,33 @@ console.log(
   `\n📊 Published: ${published.length}, Skipped: ${skipped.length}, Failed: ${failed.length}, Needs bootstrap: ${needsBootstrap.length}, Blocked (unmet dep): ${blocked.length}`,
 )
 
+// Publish-result manifest — the LOCAL source of truth for the post-publish
+// chain (umbrella tag, GitHub Release, native build). The chain used to key on
+// changesets/action's outputs, which are set only after the action's own
+// per-package tag pushes — so one transient push failure erased the fact that
+// 75 packages had published (the v0.50.0 hole). This file exists the moment
+// publishing finishes, regardless of what happens to any step afterward;
+// `heal-release-chain.ts` (if: always()) reads it and completes the chain
+// without asking the registry. Written UNCONDITIONALLY — a partially-failed
+// run's published packages still deserve their tags.
+{
+  const anchorEntry = plan.find((e) => e.pkg.name === '@pyreon/core') ?? plan[0]
+  await writeFile(
+    'publish-result.json',
+    `${JSON.stringify(
+      {
+        version: anchorEntry?.pkg.version ?? null,
+        published,
+        failed,
+        needsBootstrap,
+        blocked,
+      },
+      null,
+      2,
+    )}\n`,
+  )
+}
+
 if (blocked.length > 0) {
   console.warn(
     `\n⛔ Skipped (a workspace dep did not publish this run — would leave an unresolvable ^-range):`,

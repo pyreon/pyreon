@@ -11,7 +11,7 @@
  * ground truth (npm + origin), so these specs pin the decision table.
  */
 import { describe, expect, it } from 'vitest'
-import { planHeal, resolveBumpCommit, validateReleaseVersion } from '../../../../../scripts/heal-release-chain'
+import { parsePublishResult, planHeal, resolveBumpCommit, validateReleaseVersion } from '../../../../../scripts/heal-release-chain'
 
 const HEALTHY = {
   npmHasVersion: true,
@@ -149,5 +149,36 @@ describe('validateReleaseVersion — the file-data → URL/argv barrier', () => 
     ]) {
       expect(validateReleaseVersion(bad), String(bad)).toBeNull()
     }
+  })
+})
+
+describe('parsePublishResult — phase 1 local truth must be SOUND or absent', () => {
+  it('accepts a valid manifest', () => {
+    const text = JSON.stringify({ version: '0.51.0', published: ['@pyreon/core'] })
+    expect(parsePublishResult(text)).toEqual({ version: '0.51.0', published: ['@pyreon/core'] })
+  })
+
+  it('absent file → null (the Version-PR path)', () => {
+    expect(parsePublishResult(null)).toBeNull()
+  })
+
+  it('malformed JSON → null, never a throw — the always() step must not crash', () => {
+    expect(parsePublishResult('{oops')).toBeNull()
+  })
+
+  it('nothing published → null (a publish run that skipped everything)', () => {
+    expect(parsePublishResult(JSON.stringify({ version: '0.51.0', published: [] }))).toBeNull()
+  })
+
+  it('non-semver version → null — phase 1 must never tag garbage', () => {
+    expect(
+      parsePublishResult(JSON.stringify({ version: '--force', published: ['@pyreon/core'] })),
+    ).toBeNull()
+  })
+
+  it('non-string entries in published → null', () => {
+    expect(
+      parsePublishResult(JSON.stringify({ version: '0.51.0', published: [42] })),
+    ).toBeNull()
   })
 })

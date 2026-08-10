@@ -191,19 +191,27 @@ jobs:
       # Release for the suite — matches how other fixed-group monorepos
       # (React, Apollo, Babel) ship: ONE release per cut, per-package
       # detail in each `packages/*/CHANGELOG.md`.
-      # Post-publish chain healing — umbrella tag, release-native trigger,
-      # GitHub Release. Decides from GROUND TRUTH (npm + origin), never from
-      # `steps.changesets.outputs`: the action sets its outputs only AFTER its
-      # per-package tag pushes, so one transient push failure (v0.50.0:
-      # `remote: fatal error in commit_refs`) left the outputs unset, the old
-      # `if: outputs.published == 'true'` umbrella step silently skipped, the
-      # v-tag was never created, release-native never fired, and the native
-      # binaries froze at 0.48.0 while JS moved on (same class previously ate
-      # v0.46.0 and v0.49.0 — three instances = a class). `always()` +
-      # derive-then-converge also RETRO-heals: the first run on main after a
-      # hole repairs the previous version's chain. No-ops in <2s when the
-      # chain is healthy or nothing is published at the repo version.
-      - name: Heal release chain (umbrella tag, native trigger, GitHub Release)
+      # Post-publish chain completion — umbrella tag, GitHub Release,
+      # native-binary build. TWO layers, each with the right source of truth:
+      #
+      # Phase 1 (LOCAL): publish.ts writes publish-result.json the moment
+      # publishing finishes — before any tag push can fail — so "did THIS run
+      # publish?" is answered by our own process with no network and no
+      # third-party step outputs. The old gate keyed on
+      # `steps.changesets.outputs`, which the action sets only AFTER its
+      # per-package tag pushes: one transient push failure (v0.50.0:
+      # `remote: fatal error in commit_refs`) erased the fact that 75 packages
+      # had published, the umbrella step silently skipped, and the native
+      # binaries froze at 0.48.0 (same class ate v0.46.0 and v0.49.0).
+      #
+      # Phase 2 (REMOTE reconcile): whether a PREVIOUS run's publish landed has
+      # no local source — the registry is asked (constant-URL packument, the
+      # same npm this workflow publishes to) and any standing hole is healed:
+      # tag at the version-bump commit, missing native run dispatched, missing
+      # Release created. This is what retro-heals v0.50.0 on the first run
+      # after merge. `always()`: both phases decide from evidence, never from
+      # a prior step's outcome. No-ops in seconds when the chain is healthy.
+      - name: Finalize release chain (umbrella tag, native trigger, GitHub Release)
         if: always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
