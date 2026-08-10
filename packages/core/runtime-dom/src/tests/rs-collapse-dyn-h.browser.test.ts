@@ -190,6 +190,12 @@ describe('_rsCollapseDynH (real browser)', () => {
     const isDark = signal(false)
     let clicks = 0
     let enters = 0
+    // Round-3 CI-only-failure instrumentation: round 2 proved the extra
+    // increment arrives with ONE observed event, ONE delegated invocation,
+    // ONE el.click() call, and NO listener registered while armed — so the
+    // only question left is WHO CALLS THE HANDLER. Record a stack per
+    // invocation; the failure message prints them all.
+    const clickStacks: string[] = []
     const root = mountInto(
       _rsCollapseDynH(
         '<button>M</button>',
@@ -197,26 +203,33 @@ describe('_rsCollapseDynH (real browser)', () => {
         () => (cond() ? 1 : 0),
         () => isDark(),
         {
-          onClick: () => clicks++,
+          onClick: () => {
+            clicks++
+            clickStacks.push(new Error().stack ?? '<no stack>')
+          },
           onPointerEnter: () => enters++,
         },
       ),
     )
     await flush()
     const btn = query(root, 'button')
+    const stacks = (): string => `handler stacks:\n${clickStacks.join('\n---\n')}`
+    // Round 2 line-213 shape: clicks was ALREADY wrong relative to observed
+    // events — pin down whether an invocation precedes the first click.
+    expect(clicks, `pre-click invocation? ${stacks()}`).toBe(0)
     // This pair has failed on CI only (`expected 2 to be 1`), so the assertion
     // carries the observed dispatch state — see delegation-diagnostics.ts.
     const diag = watchDispatch()
     btn.click()
     btn.dispatchEvent(new PointerEvent('pointerenter'))
-    expect(clicks, diag.describe()).toBe(1)
+    expect(clicks, `${diag.describe()}\n${stacks()}`).toBe(1)
     expect(enters, diag.describe()).toBe(1)
 
     cond.set(true)
     await flush()
     btn.click()
     btn.dispatchEvent(new PointerEvent('pointerenter'))
-    expect(clicks, diag.describe()).toBe(2)
+    expect(clicks, `${diag.describe()}\n${stacks()}`).toBe(2)
     expect(enters, diag.describe()).toBe(2)
     diag.stop()
   })
