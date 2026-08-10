@@ -89,10 +89,10 @@ export const scenarios = {
 ### atlas scan `function`
 
 ```ts
-atlas scan [dir] [--no-mount]
+atlas scan [dir] [--no-mount] [--check]
 ```
 
-Discover components (static TS scan + rocketstyle runtime detection), derive controls and variant scenarios, MOUNT each scenario (real module load through a Vite-powered loader) and run the node half of the verify pipeline — a11y (static), interaction (mount + play/click-walk), a REAL leak check (reactive-graph accumulation across repeated mounts, past GC), and SSR-PARITY (`renderToString` + hydrate, asserting the runtime reported no mismatch AND the hydrated DOM equals a fresh client mount — two oracles because SSR and hydrate can agree on the same wrong DOM). Parity skips with a reason when `@pyreon/runtime-server` is absent, and is blind to `typeof window` branching because both renders share one process. Writes `atlas-catalog.json` (every component, control, scenario, and verdict) and `atlas-agent-guide.md` (the AI-consumable summary). Exits non-zero when any scenario FAILS — wiring the scan into CI gates the catalog. `--no-mount` keeps the scan purely static (no project code executes).
+Discover components (static TS scan + rocketstyle runtime detection), derive controls and variant scenarios, MOUNT each scenario (real module load through a Vite-powered loader) and run the node half of the verify pipeline — a11y (static), interaction (mount + play/click-walk), a REAL leak check (reactive-graph accumulation across repeated mounts, past GC), and SSR-PARITY (`renderToString` + hydrate, asserting the runtime reported no mismatch AND the hydrated DOM equals a fresh client mount — two oracles because SSR and hydrate can agree on the same wrong DOM). Parity skips with a reason when `@pyreon/runtime-server` is absent, and is blind to `typeof window` branching because both renders share one process. Writes `atlas-catalog.json` (every component, control, scenario, and verdict) and `atlas-agent-guide.md` (the AI-consumable summary). Exits non-zero when any scenario FAILS — wiring the scan into CI gates the catalog. `--no-mount` keeps the scan purely static (no project code executes). `--check` turns the scan into a RATCHET: it compares against the COMMITTED `atlas-catalog.json` instead of rewriting it (a ratchet that overwrites its own baseline compares a run to itself and can never report a regression again) and exits non-zero on a REGRESSION. A check that STOPPED RUNNING counts as one — that is the case absolute counts cannot catch, because losing coverage makes the numbers improve: delete a wrapper and every mount-dependent check drops to skip, so `2 failing` becomes `0 failing` and a broken catalog reads as fixed. A missing or unreadable baseline is exit 0 with a note, never a failure — making the first `--check` run red for everybody is how a ratchet gets disabled on day one.
 
 **Example**
 
@@ -115,6 +115,7 @@ atlas: 2 failing scenario(s):
 - Running the scan without the project theme in `atlas.config.ts` for rocketstyle components — dimension axes resolve empty and the variant scenarios collapse to defaults
 - Expecting the leak check under plain `node` — it needs a GC hook (`bun`, or `node --expose-gc`); without one it reports skip, not pass
 - Expecting reactivityCoverage/snapshot verdicts from the scan — those are browser-only claims; run `atlas verify-browser` to earn them
+- Reading a `--check` run that reports FEWER failures as an improvement without looking at the ratchet line — fewer failures is exactly what losing a check produces, and only the diff distinguishes "fixed" from "no longer measured"
 
 **See also:** `atlas verify` · `atlas verify-browser` · `createAtlas`
 
@@ -123,7 +124,7 @@ atlas: 2 failing scenario(s):
 ### atlas verify `function`
 
 ```ts
-atlas verify [Component] [--cwd <dir>] [--json]
+atlas verify [Component] [--cwd <dir>] [--json] [--check]
 ```
 
 Re-check ONE component and report WHICH check failed and why — the write → verify → fix loop, for a person or an agent iterating on a single component. Discovery still walks the whole project (a component’s file is not known until it does), but decoration and verification — mounting, exercising, hydrating and GC-probing every scenario — run only for the match, so this is a question about one component rather than a whole-catalog scan with the answer filtered out at the end. Measured on `@pyreon/ui-components` (108 components, 1090 scenarios): 1.35s for a full scan against 0.90s scoped to one component’s 60 scenarios; the verify work drops ~18× but discovery dominates the residual, so treat this as a focus tool first and a speed tool second. Prints a per-check tally, the checks that did NOT run and why, and every failing scenario UNCAPPED with its findings. `--json` emits the same report as data for an agent to branch on. Never writes `atlas-catalog.json`: a scoped run holds one component, and writing that would replace the whole catalog. Exits non-zero on any failing check, on a name that matched nothing, and on a run where nothing could be verified at all.

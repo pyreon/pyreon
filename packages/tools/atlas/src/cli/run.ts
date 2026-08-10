@@ -10,8 +10,9 @@
 import { readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { createAtlas } from '../index'
-import type { CatalogGraph, ComponentIntelligence } from '../core'
+import type { CatalogGraph, ComponentIntelligence, Scenario } from '../core'
 import { focusComponents } from '../verify/focus'
+import { diffVerdicts, formatDiff, readBaselineScenarios, summarizeDiff } from '../verify/diff'
 import {
   buildVerifyReport,
   formatCheckTally,
@@ -432,6 +433,42 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
   }
 }
 
+/**
+ * Compare a run against the COMMITTED catalog and report the delta.
+ *
+ * The baseline is `atlas-catalog.json` itself rather than a second file: the
+ * catalog is already the record of what was verified, and a parallel baseline
+ * would be one more artifact to keep in sync — with the two disagreeing as the
+ * failure mode.
+ *
+ * Returns the exit code. A MISSING or unreadable baseline is exit 0 with a
+ * note: nothing to compare is not a regression, and making the first `--check`
+ * run red for everybody is how a ratchet gets disabled on day one.
+ */
+function reportRatchet(catalogPath: string, current: readonly Scenario[]): number {
+  let raw: unknown
+  try {
+    raw = JSON.parse(readFileSync(catalogPath, 'utf8'))
+  } catch {
+    err(
+      `atlas: no readable baseline at ${catalogPath} — nothing to compare against. ` +
+        `Run \`atlas scan\` and commit the catalog to enable --check.\n`,
+    )
+    return 0
+  }
+  const baseline = readBaselineScenarios(raw)
+  if (!baseline) {
+    err(`atlas: ${catalogPath} is not a readable catalog — skipping the comparison.\n`)
+    return 0
+  }
+  const diff = diffVerdicts(baseline, current)
+  out(`atlas --check: ${summarizeDiff(diff)}\n`)
+  for (const line of formatDiff(diff)) out(`  ${line}\n`)
+  // Only a REGRESSION is a red exit. An improvement is information, and an
+  // unchanged run is the common case — neither should fail a build.
+  return diff.regressed ? 1 : 0
+}
+
 /** Write via tmp-then-rename — a reader sees the old file or the whole new one. */
 function writeAtomic(path: string, content: string): void {
   const tmp = `${path}.tmp.${process.pid}`
@@ -479,6 +516,12 @@ Usage:
                       exits non-zero when any scenario FAILS a check
     --no-mount        purely static scan — never imports (= executes) the
                       project's modules; runtime checks report skip
+    --check           RATCHET: compare against the committed atlas-catalog.json
+                      instead of rewriting it, and exit non-zero on a
+                      REGRESSION. A check that stopped RUNNING counts as one —
+                      losing coverage makes the counts improve, which is the
+                      one way to "fix" a red catalog that must never read as
+                      green
   atlas build [dir]   compile the workbench into a STATIC, deployable site —
                       the same catalog atlas dev serves, with the node-only
                       answers (source, Reactivity Lens) baked in as data
@@ -494,6 +537,8 @@ Usage:
                       Omit the name to report every component. Exits non-zero
                       on any failing check, or on a name that matched nothing
     --json            machine-readable report (for agents and CI)
+    --check           RATCHET: also report what MOVED since the committed
+                      catalog, and exit non-zero on a regression
   atlas verify-browser [dir]
                       run the browser half of verification in real Chromium —
                       reactive coverage measured on the client build, and a
@@ -601,12 +646,18 @@ export async function runCli(argv: readonly string[]): Promise<number> {
   }
 
   if (cmd === 'scan') {
+    // `--check` compares against the COMMITTED catalog and does not rewrite it:
+    // a ratchet that overwrites its own baseline compares a run to itself and
+    // can never report a regression again.
+    const ratchet = rest.includes('--check')
     const dir = positionalDir(rest)
     // Importing a project's modules runs its top-level code — a decision the
     // loader's own docs assign to the user, so the CLI has to actually offer
     // it. `--no-mount` keeps the scan purely static.
     const mount = !rest.includes('--no-mount')
-    const result = await runScan({ cwd: dir ?? '.', mount })
+    // `--check` must NOT write: a ratchet that overwrites its own baseline
+    // compares a run against itself and can never report a regression again.
+    const result = await runScan({ cwd: dir ?? '.', mount, ...(ratchet ? { write: false } : {}) })
     // Before the summary: a config that was found and could not be used
     // explains most of what follows (no groups, no title, no projects), and
     // reading it after the counts is reading it too late.
@@ -687,6 +738,15 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     if (result.unmatched && result.unmatched.length > 0) {
       err(`${formatUnmatched(result.unmatched).join('\n')}\n`)
     }
+    if (ratchet) {
+      // Reported BEFORE the absolute failures below: a reader running --check
+      // is asking "did I change anything", and the answer has to lead.
+      const code = reportRatchet(
+        join(dir ?? '.', 'atlas-catalog.json'),
+        result.graph.scenarios(),
+      )
+      if (code !== 0) return code
+    }
     if (result.failed > 0) {
       // A red scan is a red exit — otherwise wiring `atlas scan` into CI gates
       // nothing. The FINDINGS make the failure actionable without opening the
@@ -764,6 +824,16 @@ export async function runCli(argv: readonly string[]): Promise<number> {
       )
     }
 
+    // The ratchet, scoped to the same component. Reported before the absolute
+    // verdict for the same reason as `scan --check`: "did I help" is the
+    // question, and the answer must lead.
+    if (rest.includes('--check') && !json) {
+      const code = reportRatchet(
+        join(flagValue(rest, '--cwd') ?? '.', 'atlas-catalog.json'),
+        result.graph.scenarios(),
+      )
+      if (code !== 0) return code
+    }
     if (report.failed > 0) return 1
     // Nothing verified is NOT a pass. A dual-instance workspace, a component
     // that cannot mount, a scan that found no scenarios — each produces zero

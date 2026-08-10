@@ -243,6 +243,90 @@ describe('runCli', () => {
     }
   })
 
+  it('scan --check reports no movement and exits 0 when nothing changed', async () => {
+    const dir = fixture('ratchet-same', {
+      'Button.tsx': `export function Button(props: { label?: string }) { return null }`,
+    })
+    try {
+      await runCli(['scan', dir])
+      expect(await runCli(['scan', dir, '--check'])).toBe(0)
+      expect(stdout).toContain('no change in any check')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('scan --check exits 1 when a check starts failing', async () => {
+    const dir = fixture('ratchet-worse', {
+      'Card.tsx': `export function Card(props: { title?: string }) { return null }`,
+    })
+    try {
+      await runCli(['scan', dir])
+      // Same component, now with a REQUIRED name prop: the generated Empty
+      // edge case starts failing the static a11y check.
+      writeFileSync(
+        join(dir, 'src', 'Card.tsx'),
+        `export function Card(props: { title: string }) { return null }`,
+      )
+      expect(await runCli(['scan', dir, '--check'])).toBe(1)
+      expect(stdout).toContain('REGRESSED')
+      expect(stdout).toContain('now failing: a11y')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('scan --check calls LOST COVERAGE a regression, though the counts improve', async () => {
+    // The failure the ratchet uniquely catches. Baseline has failing checks;
+    // the second run cannot mount, so those checks SKIP — `2 failing` becomes
+    // `0 failing` and the absolute summary reads as a fix.
+    const dir = fixture('ratchet-coverage', {
+      'Boom.tsx': `export function Boom(props: { label?: string }) { throw new Error('boom') }`,
+    })
+    try {
+      await runCli(['scan', dir])
+      expect(stdout).toContain('failing')
+      stdout = ''
+      expect(await runCli(['scan', dir, '--check', '--no-mount'])).toBe(1)
+      expect(stdout).toContain('0 failing')
+      expect(stdout).toContain('REGRESSED')
+      expect(stdout).toContain('stopped running')
+      expect(stdout).toContain('the failure did not go away, the check did')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('scan --check does NOT rewrite the baseline it compares against', async () => {
+    // A ratchet that overwrites its own baseline compares a run to itself and
+    // can never report a regression again.
+    const dir = fixture('ratchet-nowrite', {
+      'Button.tsx': `export function Button(props: { label?: string }) { return null }`,
+    })
+    try {
+      await runCli(['scan', dir])
+      const before = readFileSync(join(dir, 'atlas-catalog.json'), 'utf8')
+      await runCli(['scan', dir, '--check'])
+      expect(readFileSync(join(dir, 'atlas-catalog.json'), 'utf8')).toBe(before)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('scan --check is NOT a failure when there is no baseline yet', async () => {
+    // Making the very first --check run red for everybody is how a ratchet
+    // gets disabled on day one.
+    const dir = fixture('ratchet-first', {
+      'Button.tsx': `export function Button(props: { label?: string }) { return null }`,
+    })
+    try {
+      expect(await runCli(['scan', dir, '--check'])).toBe(0)
+      expect(stderr).toContain('nothing to compare')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('scan returns 1 when nothing is found', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'atlas-empty2-'))
     try {

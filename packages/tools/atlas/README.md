@@ -350,6 +350,32 @@ an unmatched name exits non-zero with suggestions rather than reporting an empty
 green run, and a run where *nothing* could be verified exits non-zero too —
 zero failures is not a pass when zero checks ran.
 
+### `--check` — the ratchet
+
+`atlas scan --check` and `atlas verify --check` compare against the **committed**
+catalog rather than rewriting it, and exit non-zero on a regression. Absolute counts
+answer "how is it now"; they cannot answer "did I help".
+
+The case that makes it worth having: **a check that stops running is a regression**,
+even though it makes the counts improve.
+
+```
+# baseline: 2 failing
+$ atlas scan . --check --no-mount
+atlas: discovered 1 component(s), 2 scenario(s) — 0 verified, 0 failing, 2 unverified.
+atlas --check: REGRESSED — 4 check(s) stopped running
+  ✗ button--empty — no longer checked: interaction, leak
+    (coverage lost — the failure did not go away, the check did)
+```
+
+Delete a wrapper and every mount-dependent check drops to `skip`: failures vanish,
+numbers improve, catalog looks fixed. That is the one way to "fix" a red catalog that
+must never read as green.
+
+`--check` never writes the catalog (a ratchet that overwrites its own baseline compares
+a run to itself), a missing baseline is exit 0 with a note rather than a failure, and a
+new or removed scenario is not a regression.
+
 ### Verifying at runtime
 
 `atlas scan` mounts each scenario, clicks every interactive element, and

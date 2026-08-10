@@ -101,6 +101,38 @@ Three things it deliberately refuses to do:
 
 The first positional is the **component** (matching `atlas check`); the directory is `--cwd`.
 
+### `--check` — the ratchet
+
+Both `atlas scan` and `atlas verify` take `--check`, which compares the run against the **committed** `atlas-catalog.json` instead of rewriting it:
+
+```bash
+pyreon atlas scan . --check
+# atlas --check: REGRESSED — 2 check(s) started failing
+#   ✗ button--empty — now failing: interaction
+```
+
+Absolute counts answer *"how is it now"*. They cannot answer *"did I help"*, which is the question anyone iterating actually has — and the only signal an agent can use to decide whether to keep a change or back it out.
+
+**A check that stops running counts as a regression.** This is the case counts structurally cannot catch, because losing coverage makes the numbers *improve*:
+
+```bash
+# baseline: 2 failing
+pyreon atlas scan . --check --no-mount
+# atlas: discovered 1 component(s), 2 scenario(s) — 0 verified, 0 failing, 2 unverified.
+#                                                              ^^^^^^^^^ looks fixed
+# atlas --check: REGRESSED — 4 check(s) stopped running
+#   ✗ button--empty — no longer checked: interaction, leak
+#     (coverage lost — the failure did not go away, the check did)
+```
+
+Delete a wrapper from `atlas.config.ts` and every mount-dependent check drops to `skip`: the failures vanish, the counts improve, and the catalog looks better than it did. Losing coverage is the one way to "fix" a red catalog that must never read as green.
+
+Three deliberate behaviours:
+
+- **`--check` never writes the catalog.** A ratchet that overwrites its own baseline compares a run against itself and can never report a regression again.
+- **A missing baseline is exit 0**, with a note. Making the very first `--check` run red for everybody is how a ratchet gets disabled on day one.
+- **A new or removed scenario is not a regression.** Adding a component with a failing edge case is new information, and deleting one is a legitimate edit; flagging either would make the ratchet fire on ordinary refactors until people stopped believing it.
+
 ### `atlas dev` — the workbench
 
 ```bash
