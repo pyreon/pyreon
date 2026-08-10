@@ -79,6 +79,20 @@ export interface ChainState {
   releaseExists: boolean
 }
 
+/**
+ * Strict semver gate for the anchor version. The version string is FILE data
+ * (package.json) that flows into a registry URL, git tag names, and gh CLI
+ * argv — so it is validated at the read boundary and the MATCH RESULT is what
+ * flows onward, never the raw string (CodeQL js/file-access-to-http, and the
+ * same validation kills the `--flag`-shaped-argv class for the git/gh calls).
+ * Returns null for anything that is not a plain release version.
+ */
+export function validateReleaseVersion(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null
+  const m = /^(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/.exec(raw)
+  return m ? m[1]! : null
+}
+
 export type HealAction =
   | 'push-umbrella-tag'
   | 'dispatch-native'
@@ -162,7 +176,9 @@ async function pushWithRetry(refs: string[], attempts = 3): Promise<boolean> {
 
 async function npmVersionExists(pkg: string, version: string): Promise<boolean> {
   for (let i = 0; i < 2; i++) {
-    const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(pkg)}/${version}`)
+    const res = await fetch(
+      `https://registry.npmjs.org/${encodeURIComponent(pkg)}/${encodeURIComponent(version)}`,
+    )
     if (res.status === 200) return true
     if (res.status === 404) return false
     await new Promise((r) => setTimeout(r, 1000))
@@ -172,9 +188,16 @@ async function npmVersionExists(pkg: string, version: string): Promise<boolean> 
 }
 
 async function main(): Promise<void> {
-  const version = (
-    JSON.parse(readFileSync(join(REPO_ROOT, ANCHOR_PATH), 'utf-8')) as { version: string }
-  ).version
+  const version = validateReleaseVersion(
+    (JSON.parse(readFileSync(join(REPO_ROOT, ANCHOR_PATH), 'utf-8')) as { version: string })
+      .version,
+  )
+  if (version === null) {
+    console.error(
+      `[heal-release-chain] ${ANCHOR_PATH} carries a non-semver version — refusing to build tags/URLs from it`,
+    )
+    process.exit(1)
+  }
   const tag = `v${version}`
   console.log(`[heal-release-chain] anchor ${ANCHOR_PKG}@${version} → umbrella tag ${tag}`)
 

@@ -11,7 +11,7 @@
  * ground truth (npm + origin), so these specs pin the decision table.
  */
 import { describe, expect, it } from 'vitest'
-import { planHeal, resolveBumpCommit } from '../../../../../scripts/heal-release-chain'
+import { planHeal, resolveBumpCommit, validateReleaseVersion } from '../../../../../scripts/heal-release-chain'
 
 const HEALTHY = {
   npmHasVersion: true,
@@ -125,5 +125,29 @@ describe('resolveBumpCommit — tag the bump, not HEAD', () => {
     // mid1 unreadable breaks the contiguous window at the newest side — the
     // conservative answer is the oldest CONTIGUOUS match seen before the gap.
     expect(resolveBumpCommit(SHAS, flaky, '0.51.0')).toBe('mid2')
+  })
+})
+
+describe('validateReleaseVersion — the file-data → URL/argv barrier', () => {
+  it('accepts plain release versions and prerelease suffixes', () => {
+    expect(validateReleaseVersion('0.51.0')).toBe('0.51.0')
+    expect(validateReleaseVersion('1.2.3-alpha-20260810')).toBe('1.2.3-alpha-20260810')
+  })
+
+  it('rejects anything that could alter a URL path or be parsed as a CLI flag', () => {
+    // The version flows into the registry URL, git tag names, and gh argv —
+    // a corrupt/hostile package.json must stop the healer, not steer it.
+    for (const bad of [
+      '../0.51.0',
+      '0.51.0/../../evil',
+      '--force',
+      '0.51.0 --tags',
+      'v0.51.0', // the tag prefix is OURS to add, not the file's
+      '',
+      undefined,
+      42,
+    ]) {
+      expect(validateReleaseVersion(bad), String(bad)).toBeNull()
+    }
   })
 })
