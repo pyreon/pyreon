@@ -37,6 +37,17 @@ describe('_rsCollapseH (real browser) — PR 2 partial-collapse runtime', () => 
 
   function mountInto(node: ReturnType<typeof _rsCollapseH>): HTMLElement {
     const root = document.createElement('div')
+    // Keep the mounted content AWAY from (0,0): headless CI Chromium parks
+    // its virtual pointer at the origin, and when sequential specs in this
+    // shared page shift layout, an element moving UNDER the stationary
+    // pointer gets a NATIVE (isTrusted) pointerenter synthesized by the
+    // browser — which fires the direct-attached onPointerEnter binding and
+    // doubles the counter. Four diagnostic rounds pinned this: handlers are
+    // invoked exactly once per observed event; the extra invocation is a
+    // real browser-synthesized hover, present only where linux font metrics
+    // put the button's box over the origin (why it never reproduced on
+    // macOS). Positioning out of the pointer's reach removes the input.
+    root.style.cssText = 'position:absolute;left:400px;top:400px'
     document.body.appendChild(root)
     const dispose = mount(node as unknown as Parameters<typeof mount>[0], root)
     cleanup.push(() => {
@@ -134,6 +145,17 @@ describe('_rsCollapseH (real browser) — PR 2 partial-collapse runtime', () => 
     const isDark = signal(false)
     let clicks = 0
     const root = document.createElement('div')
+    // Keep the mounted content AWAY from (0,0): headless CI Chromium parks
+    // its virtual pointer at the origin, and when sequential specs in this
+    // shared page shift layout, an element moving UNDER the stationary
+    // pointer gets a NATIVE (isTrusted) pointerenter synthesized by the
+    // browser — which fires the direct-attached onPointerEnter binding and
+    // doubles the counter. Four diagnostic rounds pinned this: handlers are
+    // invoked exactly once per observed event; the extra invocation is a
+    // real browser-synthesized hover, present only where linux font metrics
+    // put the button's box over the origin (why it never reproduced on
+    // macOS). Positioning out of the pointer's reach removes the input.
+    root.style.cssText = 'position:absolute;left:400px;top:400px'
     document.body.appendChild(root)
     const dispose = mount(
       _rsCollapseH('<button>C</button>', 'rsh-c', 'rsh-c', () => isDark(), {
