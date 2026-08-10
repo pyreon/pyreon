@@ -63,6 +63,7 @@ interface PackageManifest {
   version?: string
   private?: boolean
   publishConfig?: { access?: string }
+  repository?: { type?: string; url?: string; directory?: string } | string
 }
 
 interface ChangesetConfig {
@@ -167,6 +168,37 @@ function checkPublishConfig(
   return out
 }
 
+/**
+ * 3. **repository field for provenance** — `publish.ts` publishes with
+ * `--provenance` in CI, and npm's sigstore validation REJECTS (422
+ * Unprocessable Entity) any package whose `repository.url` does not match the
+ * repo the OIDC token attests to. This is not cosmetic metadata: the 0.51.0
+ * release shipped 69/75 because the six `@pyreon/native-*` packages carried
+ * NO repository field — `"repository.url" is "", expected to match
+ * "https://github.com/pyreon/pyreon"` — and nothing gated it before the
+ * publish loop discovered it one 422 at a time.
+ */
+function checkRepositoryField(
+  packages: { path: string; manifest: PackageManifest }[],
+): Violation[] {
+  const out: Violation[] = []
+  for (const { path, manifest } of packages) {
+    if (!manifest.name?.startsWith('@pyreon/')) continue
+    if (manifest.private === true) continue
+    const repo = manifest.repository
+    const url = typeof repo === 'string' ? repo : (repo?.url ?? '')
+    if (url.includes('github.com/pyreon/pyreon')) continue
+
+    out.push({
+      package: manifest.name,
+      path: path.slice(REPO_ROOT.length + 1),
+      reason: `repository.url ${url === '' ? 'is missing' : `is "${url}"`} — npm provenance validation (--provenance) rejects the publish with 422 unless it matches https://github.com/pyreon/pyreon`,
+      fix: 'Add `"repository": { "type": "git", "url": "git+https://github.com/pyreon/pyreon.git", "directory": "<package dir>" }` to the package.json — the shape every other publishable @pyreon/* package uses.',
+    })
+  }
+  return out
+}
+
 function checkFixedGroupCoverage(
   packages: { path: string; manifest: PackageManifest }[],
   changeset: ChangesetConfig,
@@ -204,6 +236,7 @@ const changeset = await loadChangesetConfig()
 
 const violations: Violation[] = [
   ...checkPublishConfig(packages),
+  ...checkRepositoryField(packages),
   ...checkFixedGroupCoverage(packages, changeset),
 ]
 
@@ -215,7 +248,7 @@ if (violations.length === 0) {
       !PLATFORM_STUB_NAMES.has(p.manifest.name),
   ).length
   console.log(
-    `[check-release-readiness] OK — ${publishableCount} publishable @pyreon/* packages all carry publishConfig.access=public AND are in the changeset \`fixed\` group (or \`ignore\` array).`,
+    `[check-release-readiness] OK — ${publishableCount} publishable @pyreon/* packages all carry publishConfig.access=public, a provenance-valid repository.url, AND are in the changeset \`fixed\` group (or \`ignore\` array).`,
   )
   process.exit(0)
 }
