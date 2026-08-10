@@ -35,8 +35,9 @@ interface CatalogJson {
       verify?: {
         ok: boolean
         checked: number
-        reactivityCoverage: { status: string; findings?: string[] }
-        snapshot: { status: string; findings?: string[] }
+        // Catalog v2: a finding is `{ code, message, fix? }`, not a string.
+        reactivityCoverage: { status: string; findings?: { code: string; message: string }[] }
+        snapshot: { status: string; findings?: { code: string; message: string }[] }
       }
     }[]
   }[]
@@ -92,8 +93,8 @@ test('scan → create baselines → compare → merged catalog verdicts', () => 
   // instance — at least one scenario must have seen reactive nodes, and the
   // all-zeros signature of the dual-instance split must not reappear.
   const totals = driven.map((s) => {
-    const finding = s.verify?.reactivityCoverage.findings?.[0] ?? ''
-    const m = finding.match(/of (\d+) reactive node/)
+    const message = s.verify?.reactivityCoverage.findings?.[0]?.message ?? ''
+    const m = message.match(/of (\d+) reactive node/)
     return m ? Number(m[1]) : 0
   })
   expect(Math.max(...totals)).toBeGreaterThan(0)
