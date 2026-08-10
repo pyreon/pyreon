@@ -42,46 +42,105 @@ export interface DispatchDiagnostics {
 }
 
 /**
- * Watch the next `event` dispatch on `window` and report what the delegation
- * layer tagged onto it. Install BEFORE the dispatch under test.
+ * Watch `event` dispatches on `window` and report what the delegation layer
+ * tagged onto them. Install BEFORE the dispatch under test.
+ *
+ * Round 2 of the CI-only double-fire investigation. Round 1 (tag-symbol
+ * count) ruled OUT the duplicate-runtime theory: ONE symbol, invoked=1 —
+ * a single instance whose delegation walk invoked the handler once per
+ * event. That leaves exactly two mechanisms for a doubled counter, and
+ * round 1 could not tell them apart because it captured only the LAST
+ * event:
+ *
+ *   (a) TWO click events were dispatched (something re-dispatches/replays);
+ *   (b) one event, with a SECOND, non-delegated listener also invoking the
+ *       handler (a stray addEventListener somewhere).
+ *
+ * So this version counts EVERY dispatch (with per-event tag state),
+ * counts `HTMLElement.prototype.click` calls, and records click-listener
+ * registrations while armed. Those three numbers fully determine the
+ * mechanism: events=2 → (a), and clickCalls tells whether the second came
+ * through el.click(); events=1 + a registration on button/container →
+ * (b) with the culprit's constructor named.
  */
 export function watchDispatch(eventName = 'click'): DispatchDiagnostics {
-  let captured: Event | null = null
+  interface Seen {
+    targetDesc: string
+    tags: TagInfo[]
+    isTrusted: boolean
+  }
+  const seen: Seen[] = []
+  let clickCalls = 0
+  const registrations: string[] = []
+
+  const describeTarget = (t: EventTarget | null): string => {
+    if (t === null) return '<none>'
+    if (t instanceof Element) return `${t.nodeName.toLowerCase()}.${t.className || '·'}`
+    if (t === window) return 'window'
+    if (t === document) return 'document'
+    return Object.prototype.toString.call(t)
+  }
+
   const onEvent = (e: Event): void => {
-    captured = e
+    const ev = e as Event & Record<symbol, unknown>
+    const tags: TagInfo[] = []
+    for (const sym of Object.getOwnPropertySymbols(ev)) {
+      const desc = sym.description ?? '<anonymous>'
+      if (!desc.toLowerCase().includes('delegated')) continue
+      const value = ev[sym]
+      tags.push({ description: desc, size: value instanceof Set ? value.size : -1 })
+    }
+    seen.push({ targetDesc: describeTarget(e.target), tags, isTrusted: e.isTrusted })
   }
   // Bubble phase: runs after the delegation roots between target and window.
   window.addEventListener(eventName, onEvent)
 
+  // Spy el.click() — a second DISPATCH via .click() shows up here.
+  const origClick = HTMLElement.prototype.click
+  HTMLElement.prototype.click = function patchedClick(this: HTMLElement) {
+    clickCalls++
+    return origClick.call(this)
+  }
+  // Record click-listener REGISTRATIONS made while armed — mechanism (b)
+  // requires one, and the stack's top frame names the culprit.
+  const origAdd = EventTarget.prototype.addEventListener
+  EventTarget.prototype.addEventListener = function patchedAdd(
+    this: EventTarget,
+    type: string,
+    ...rest: unknown[]
+  ) {
+    if (type === eventName) {
+      const site = (new Error().stack ?? '').split('\n')[2]?.trim() ?? '<no stack>'
+      registrations.push(`${describeTarget(this)} @ ${site}`)
+    }
+    return (origAdd as (this: EventTarget, t: string, ...r: unknown[]) => void).call(
+      this,
+      type,
+      ...rest,
+    )
+  }
+
   const describe = (): string => {
     try {
-      if (captured === null) {
+      if (seen.length === 0) {
         return `no ${eventName} reached window — the dispatch never propagated`
       }
-      const ev = captured as Event & Record<symbol, unknown>
-      const tags: TagInfo[] = []
-      for (const sym of Object.getOwnPropertySymbols(ev)) {
-        const desc = sym.description ?? '<anonymous>'
-        if (!desc.toLowerCase().includes('delegated')) continue
-        const value = ev[sym]
-        tags.push({
-          description: desc,
-          size: value instanceof Set ? value.size : -1,
+      const events = seen
+        .map((s, i) => {
+          const tagStr =
+            s.tags.length === 0
+              ? 'NO delegation tag (bypassed the delegated path)'
+              : s.tags.map((t) => `${t.description}(invoked=${t.size})`).join('+')
+          return `#${i + 1} target=${s.targetDesc} trusted=${s.isTrusted} ${tagStr}`
         })
-      }
-      const target = captured.target as Element | null
-      const targetDesc =
-        target === null ? '<none>' : `${target.nodeName.toLowerCase()}.${target.className || '·'}`
-
-      if (tags.length === 0) {
-        return `target=${targetDesc}; NO delegation tag on the event — the handler ran outside the delegated path (a direct addEventListener?)`
-      }
-      const rendered = tags.map((t, i) => `#${i + 1} ${t.description} (invoked=${t.size})`).join(', ')
+        .join(' | ')
+      const regStr =
+        registrations.length === 0 ? 'none' : registrations.join(' ; ')
       const verdict =
-        tags.length > 1
-          ? 'TWO+ DISTINCT tag symbols ⇒ @pyreon/runtime-dom is DUPLICATED in this bundle; the roots cannot dedupe across copies'
-          : 'ONE tag symbol ⇒ a single runtime instance; the double fire is NOT a duplicate-module problem'
-      return `target=${targetDesc}; tags=[${rendered}]; ${verdict}`
+        seen.length > 1
+          ? `${seen.length} SEPARATE ${eventName} events dispatched (clickCalls=${clickCalls}) — something re-dispatches`
+          : `ONE event (clickCalls=${clickCalls}) — a second invocation must come from an extra listener`
+      return `events=[${events}]; listenersAddedWhileArmed=[${regStr}]; ${verdict}`
     } catch (err) {
       // A diagnostic that throws while building its message replaces a
       // diagnosable failure with an opaque one — the exact thing this exists
@@ -90,5 +149,12 @@ export function watchDispatch(eventName = 'click'): DispatchDiagnostics {
     }
   }
 
-  return { describe, stop: () => window.removeEventListener(eventName, onEvent) }
+  return {
+    describe,
+    stop: () => {
+      window.removeEventListener(eventName, onEvent)
+      HTMLElement.prototype.click = origClick
+      EventTarget.prototype.addEventListener = origAdd
+    },
+  }
 }
