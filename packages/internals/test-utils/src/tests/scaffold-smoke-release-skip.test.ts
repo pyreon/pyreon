@@ -260,4 +260,21 @@ describe('scaffold-smoke isReleaseInFlightInstallFailure', () => {
       'error: No version matching "^0x51y0" found for specifier "@pyreon/mcp" (but package exists)'
     expect(isReleaseInFlightInstallFailure(line, '0.51.0')).toBe(false)
   })
+
+  it('escapes BACKSLASHES too — a partial escape invites the next metachar through', () => {
+    // CodeQL js/incomplete-sanitization: the dot-only escape let a backslash
+    // in the version alter the pattern. It must simply never match.
+    const real =
+      'error: No version matching "^0.51.0" found for specifier "@pyreon/mcp" (but package exists)'
+    expect(isReleaseInFlightInstallFailure(real, '0\\.51.0')).toBe(false)
+  })
+
+  it('never THROWS on a metachar-bearing version — a classifier that crashes turns a diagnosable failure into an opaque one', () => {
+    // Pre-fix, "0.5(1.0" threw `SyntaxError: Invalid regular expression`
+    // inside the CATCH path of a failed install — replacing the real error.
+    const real =
+      'error: No version matching "^0.51.0" found for specifier "@pyreon/mcp" (but package exists)'
+    expect(() => isReleaseInFlightInstallFailure(real, '0.5(1.0')).not.toThrow()
+    expect(isReleaseInFlightInstallFailure(real, '0.5(1.0')).toBe(false)
+  })
 })

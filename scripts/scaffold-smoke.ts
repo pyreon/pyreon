@@ -425,8 +425,14 @@ export function isReleaseInFlightInstallFailure(
   workspaceVersion: string | null,
 ): boolean {
   if (workspaceVersion === null) return false
+  // FULL regex-metachar escape, not just dots — an escape that handles some
+  // metacharacters invites the next one through (CodeQL js/incomplete-
+  // sanitization flagged the dot-only version for backslashes). The version
+  // is first-party file data, but the classifier must stay correct for ANY
+  // input rather than reason about its source.
+  const escaped = workspaceVersion.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const re = new RegExp(
-    `No version matching "\\^${workspaceVersion.replace(/\./g, '\\.')}" found for specifier "@pyreon/[^"]+" \\(but package exists\\)`,
+    `No version matching "\\^${escaped}" found for specifier "@pyreon/[^"]+" \\(but package exists\\)`,
   )
   return re.test(output)
 }
