@@ -284,6 +284,7 @@ describe('derived scenarios reach the workbench catalog', () => {
       reactivityCoverage: { status: 'skip' as const },
       leak: { status: 'skip' as const },
       snapshot: { status: 'skip' as const },
+      ssrParity: { status: 'skip' as const },
     })
     const code = generateCatalogModule(
       [

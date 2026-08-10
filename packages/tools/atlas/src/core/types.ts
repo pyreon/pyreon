@@ -145,6 +145,15 @@ export interface VerifyVerdict {
   reactivityCoverage: VerifyCheck
   leak: VerifyCheck
   snapshot: VerifyCheck
+  /**
+   * Does this scenario survive `renderToString` + hydrate?
+   *
+   * Its own check rather than a facet of `interaction`, because it fails for
+   * reasons interaction cannot see: a mismatch corrupts the DOM at hydration
+   * time, before any interaction happens, and a component that mounts
+   * perfectly on the client can still be unusable in an SSR app.
+   */
+  ssrParity: VerifyCheck
 }
 
 /** Everything Atlas derives about one component. */

@@ -63,10 +63,18 @@ export function emptyVerdict(): VerifyVerdict {
     reactivityCoverage: skipped(SKIP_REASON.browserOnly),
     leak: SKIP,
     snapshot: skipped(SKIP_REASON.browserOnly),
+    ssrParity: SKIP,
   }
 }
 
-const CHECK_KEYS = ['a11y', 'interaction', 'reactivityCoverage', 'leak', 'snapshot'] as const
+const CHECK_KEYS = [
+  'a11y',
+  'interaction',
+  'reactivityCoverage',
+  'leak',
+  'snapshot',
+  'ssrParity',
+] as const
 
 /** Merge a plugin's partial verdict onto an accumulator (checks only). */
 function mergeVerdict(base: VerifyVerdict, partial: Partial<VerifyVerdict>): VerifyVerdict {
