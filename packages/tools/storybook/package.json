@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/storybook",
   "version": "0.51.0",
-  "description": "Storybook renderer for Pyreon — mount, render, and interact with Pyreon components in Storybook",
+  "description": "Storybook renderer for Pyreon \u2014 mount, render, and interact with Pyreon components in Storybook",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/tools/storybook#readme",
   "bugs": {
@@ -21,17 +21,20 @@
     ".": {
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
-      "types": "./lib/types/index.d.ts"
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
     },
     "./preset": {
       "bun": "./src/preset.ts",
       "import": "./lib/preset.js",
-      "types": "./lib/types/preset.d.ts"
+      "types": "./lib/types/preset.d.ts",
+      "default": "./lib/preset.js"
     },
     "./preview": {
       "bun": "./src/preview.ts",
       "import": "./lib/preview.js",
-      "types": "./lib/types/preview.d.ts"
+      "types": "./lib/types/preview.d.ts",
+      "default": "./lib/preview.js"
     },
     "./package.json": "./package.json"
   },
@@ -49,6 +52,7 @@
     "lint": "oxlint ."
   },
   "peerDependencies": {
+    "@storybook/builder-vite": ">=8.0.0",
     "storybook": ">=8.0.0"
   },
   "dependencies": {

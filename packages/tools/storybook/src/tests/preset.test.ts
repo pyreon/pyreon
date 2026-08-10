@@ -18,7 +18,7 @@ describe('storybook preset module', () => {
     expect(previewAnnotations[0]).toMatch(/preview$/)
   })
 
-  it('exports core.renderer set to the @pyreon/storybook framework name', () => {
-    expect(core).toEqual({ renderer: '@pyreon/storybook' })
+  it('exports core.builder + core.renderer — Storybook requires BOTH from a framework preset', () => {
+    expect(core).toEqual({ builder: '@storybook/builder-vite', renderer: '@pyreon/storybook' })
   })
 })
