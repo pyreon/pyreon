@@ -400,6 +400,37 @@ function runScaffolder(cell: Cell, cwd: string): void {
   }
 }
 
+/**
+ * Classify an ISOLATED-cell install failure as the release-in-flight state.
+ *
+ * The pre-install canary (`shouldSkipIsolatedCell`) compares ONE package —
+ * `@pyreon/create-zero` — against npm. But a release publishes ~75 packages
+ * over several minutes in topological order, and create-zero lands EARLY: on
+ * the 0.51.0 release-merge commit the canary said "npm has it" while
+ * `@pyreon/mcp`/`query`/`validation`/`store` were still minutes away, so the
+ * cell ran and failed on exactly the state the skip exists for. A single
+ * canary structurally cannot represent an in-flight publish; the install
+ * FAILURE ITSELF is the reliable evidence, so it is classified at the point
+ * of failure instead (same design as publish.ts's 404-bootstrap classifier).
+ *
+ * The signature is bun's resolution error for a version that is not on the
+ * registry YET: `No version matching "^X.Y.Z" found for specifier
+ * "@pyreon/<pkg>" (but package exists)` — "but package exists" discriminates
+ * the in-flight/lag state from a typo'd package name, and the @pyreon scope +
+ * the workspace version pin discriminate it from a scaffold declaring a
+ * genuinely wrong external range. Pure — unit-tested.
+ */
+export function isReleaseInFlightInstallFailure(
+  output: string,
+  workspaceVersion: string | null,
+): boolean {
+  if (workspaceVersion === null) return false
+  const re = new RegExp(
+    `No version matching "\\^${workspaceVersion.replace(/\./g, '\\.')}" found for specifier "@pyreon/[^"]+" \\(but package exists\\)`,
+  )
+  return re.test(output)
+}
+
 function runBunInstall(projectDir: string, isolated: boolean): void {
   // Isolated cells (e.g. monorepo template) run install from inside the
   // scaffolded project root so Bun's workspace discovery picks up the
@@ -408,11 +439,32 @@ function runBunInstall(projectDir: string, isolated: boolean): void {
   // as a workspace member of Pyreon's monorepo (resolving @pyreon/* to
   // local source).
   const cwd = isolated ? projectDir : REPO_ROOT
-  const result = spawnSync('bun', ['install'], { cwd, stdio: 'inherit' })
+  if (!isolated) {
+    const result = spawnSync('bun', ['install'], { cwd, stdio: 'inherit' })
+    if (result.status !== 0) {
+      throw new Error(`bun install exited with code ${result.status}`)
+    }
+    return
+  }
+  // Isolated cells CAPTURE the output (and replay it to the log) so a
+  // failure can be classified — the release-in-flight signature lives in
+  // bun's stderr, and `stdio: 'inherit'` would throw it away.
+  const result = spawnSync('bun', ['install'], { cwd, encoding: 'utf-8' })
+  if (result.stdout) process.stdout.write(result.stdout)
+  if (result.stderr) process.stderr.write(result.stderr)
   if (result.status !== 0) {
+    const output = `${result.stdout ?? ''}${result.stderr ?? ''}`
+    if (isReleaseInFlightInstallFailure(output, readWorkspaceCreateZeroVersion())) {
+      throw new ReleaseInFlightError(
+        'bun install failed resolving @pyreon/* at the workspace version — a release publish is in flight (packages land over several minutes; the create-zero canary can be live while siblings lag)',
+      )
+    }
     throw new Error(`bun install exited with code ${result.status}`)
   }
 }
+
+/** Typed marker so the cell runner can turn this failure into a SKIP. */
+export class ReleaseInFlightError extends Error {}
 
 function runBuild(cwd: string): void {
   const result = spawnSync('bun', ['run', 'build'], { cwd, stdio: 'inherit' })
@@ -703,6 +755,14 @@ async function runCell(cell: Cell, opts: { keep: boolean }): Promise<CellResult>
   } catch (err) {
     const durationMs = Date.now() - start
     const msg = err instanceof Error ? err.message : String(err)
+    // Release-in-flight is the same STRUCTURAL state the pre-install canary
+    // skips — it just materialized between the canary check and the install
+    // (packages land over minutes; the canary can be live while siblings
+    // lag). Same verdict: SKIP, loudly, not a failure.
+    if (err instanceof ReleaseInFlightError) {
+      console.log(`⊘ ${cell.name} SKIPPED (${(durationMs / 1000).toFixed(1)}s) — ${msg}`)
+      return { name: cell.name, ok: true, skipped: true, skipReason: msg, durationMs }
+    }
     console.log(`✗ ${cell.name} (${(durationMs / 1000).toFixed(1)}s): ${msg}`)
     return { name: cell.name, ok: false, error: msg, durationMs }
   } finally {

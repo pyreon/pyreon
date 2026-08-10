@@ -26,7 +26,7 @@
  * they install from REPO_ROOT (workspace resolution) and don't need
  * npm at all.
  */
-import { shouldSkipIsolatedCell } from '../../../../../scripts/scaffold-smoke'
+import { shouldSkipIsolatedCell, isReleaseInFlightInstallFailure } from '../../../../../scripts/scaffold-smoke'
 
 // Stubs that pretend "npm is unreachable" so the workspace-vs-npm
 // check falls through and only branch-name + env-override matter for
@@ -218,5 +218,46 @@ describe('scaffold-smoke shouldSkipIsolatedCell', () => {
     expect(result.skip).toBe(true)
     // branch reason wins
     expect(result.reason).toContain('changeset-release/main')
+  })
+})
+
+describe('scaffold-smoke isReleaseInFlightInstallFailure', () => {
+  // The 0.51.0 release-merge incident: the create-zero canary was the FIRST
+  // package published, so shouldSkipIsolatedCell said "npm has it" while
+  // @pyreon/mcp et al. were still minutes away — the cell ran and failed on
+  // exactly the state the skip exists for. A single canary cannot represent
+  // an in-flight multi-minute publish; the install failure itself is the
+  // reliable evidence, so it is classified at the point of failure.
+  const REAL_CI_LINE =
+    'error: No version matching "^0.51.0" found for specifier "@pyreon/mcp" (but package exists)'
+
+  it('matches the exact error line from the 0.51.0 incident', () => {
+    expect(isReleaseInFlightInstallFailure(REAL_CI_LINE, '0.51.0')).toBe(true)
+  })
+
+  it('requires the WORKSPACE version — a mismatched pin is a real scaffold bug', () => {
+    expect(isReleaseInFlightInstallFailure(REAL_CI_LINE, '0.50.0')).toBe(false)
+  })
+
+  it('ignores external packages — only the @pyreon scope is release-coupled', () => {
+    const external =
+      'error: No version matching "^0.51.0" found for specifier "left-pad" (but package exists)'
+    expect(isReleaseInFlightInstallFailure(external, '0.51.0')).toBe(false)
+  })
+
+  it('requires "(but package exists)" — its absence means a typo, not lag', () => {
+    const typo = 'error: No version matching "^0.51.0" found for specifier "@pyreon/typo"'
+    expect(isReleaseInFlightInstallFailure(typo, '0.51.0')).toBe(false)
+  })
+
+  it('null workspace version (unreadable package.json) never classifies as in-flight', () => {
+    expect(isReleaseInFlightInstallFailure(REAL_CI_LINE, null)).toBe(false)
+  })
+
+  it('escapes regex metacharacters in the version', () => {
+    // "0.51.0" must not match "0x51y0" through unescaped dots.
+    const line =
+      'error: No version matching "^0x51y0" found for specifier "@pyreon/mcp" (but package exists)'
+    expect(isReleaseInFlightInstallFailure(line, '0.51.0')).toBe(false)
   })
 })

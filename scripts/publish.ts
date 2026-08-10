@@ -370,7 +370,24 @@ for (const { dirPath, pkgPath, raw, pkg, resolved } of publishOrder) {
       const is404NeedsBootstrap =
         /npm (error|ERR!) 404 Not Found - PUT/i.test(stderrText) &&
         /could not be found or you do not have permission to access/i.test(stderrText)
-      if (is404NeedsBootstrap) {
+      // Already-published-at-this-version is a SKIP, not a failure. The
+      // pre-publish `npm view` check (Phase 1) catches the settled case, but
+      // it races an IN-FLIGHT publish of the same commit: the 0.51.0
+      // release-merge CI ran this script's --dry-run while the real Release
+      // run was landing packages, so the view said "absent" and the PUT then
+      // hit "cannot publish over" — reddening a gate for the exact state a
+      // successful release produces. The same race hits a re-run resuming a
+      // partial release. npm's conflict message is the ground truth that the
+      // version is live, which is precisely what "skip already-published"
+      // means.
+      const isAlreadyPublishedConflict =
+        /cannot publish over the previously published version/i.test(stderrText)
+      if (isAlreadyPublishedConflict) {
+        console.log(
+          `⏭️  ${pkg.name}@${pkg.version} — already on npm (publish landed between the pre-check and this PUT; in-flight release or resumed run)`,
+        )
+        skipped.push(pkg.name)
+      } else if (is404NeedsBootstrap) {
         console.warn(
           `⚠️  ${pkg.name} not on npm yet — needs manual bootstrap (classic npm token publish + Trusted Publisher setup on npmjs.com). Skipping; release continues.`,
         )
