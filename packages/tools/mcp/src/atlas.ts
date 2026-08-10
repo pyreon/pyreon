@@ -31,10 +31,24 @@ import { dirname, join } from 'node:path'
 
 export const CATALOG_FILENAME = 'atlas-catalog.json'
 
+/**
+ * One thing a check found — catalog `version: 2`.
+ *
+ * `code` is the stable, greppable class; `message` is prose; `fix` is the one
+ * concrete next step, when there is one. Structured so an agent can branch on
+ * the KIND of failure rather than pattern-match a sentence that is free to be
+ * reworded between releases.
+ */
+export interface AtlasFinding {
+  code: string
+  message: string
+  fix?: string
+}
+
 /** The subset of the catalog shape this server relies on. */
 export interface AtlasVerifyCheck {
   status: 'pass' | 'fail' | 'skip'
-  findings?: readonly string[]
+  findings?: readonly AtlasFinding[]
 }
 export interface AtlasVerdict {
   ok: boolean
@@ -91,9 +105,20 @@ export function findCatalogPath(startDir: string): string | undefined {
   return undefined
 }
 
+/**
+ * The catalog schema this server understands.
+ *
+ * Reading an OLDER catalog is refused rather than attempted. At v1 a finding
+ * was a plain string; at v2 it is `{ code, message, fix? }` — so a v1 catalog
+ * read by this code renders `undefined` for every finding and reports a
+ * component's failures as blanks. Silently wrong is the worst outcome here,
+ * because the reader is an agent that cannot see the blank is anomalous.
+ */
+export const SUPPORTED_CATALOG_VERSION = 2
+
 export type LoadResult =
   | { ok: true; catalog: AtlasCatalog; path: string }
-  | { ok: false; reason: 'missing' | 'unreadable'; detail?: string }
+  | { ok: false; reason: 'missing' | 'unreadable' | 'stale-version'; detail?: string }
 
 export function loadCatalog(startDir: string): LoadResult {
   const path = findCatalogPath(startDir)
@@ -102,6 +127,18 @@ export function loadCatalog(startDir: string): LoadResult {
     const parsed = JSON.parse(readFileSync(path, 'utf8')) as AtlasCatalog
     if (!Array.isArray(parsed?.components)) {
       return { ok: false, reason: 'unreadable', detail: 'no `components` array' }
+    }
+    // A version we do not understand is refused, not best-efforted. An OLDER
+    // one is the real case: its findings are strings, and reading them as
+    // objects yields blanks rather than an error.
+    if (parsed.version !== SUPPORTED_CATALOG_VERSION) {
+      return {
+        ok: false,
+        reason: 'stale-version',
+        detail:
+          `catalog is version ${String(parsed.version)}, this server reads version ` +
+          `${SUPPORTED_CATALOG_VERSION} — re-run \`atlas scan\` to regenerate it`,
+      }
     }
     return { ok: true, catalog: parsed, path }
   } catch (err) {
@@ -256,9 +293,18 @@ export function renderComponent(catalog: AtlasCatalog, name: string): string {
 function collectFindings(verify: AtlasVerdict | undefined): string {
   if (!verify) return ''
   const out: string[] = []
-  for (const key of ['a11y', 'interaction', 'reactivityCoverage', 'leak', 'snapshot'] as const) {
-    const check = verify[key]
-    if (check?.status === 'fail' && check.findings) out.push(...check.findings)
+  // Every check on the verdict, read from the OBJECT rather than a hand-written
+  // list. The list here named five checks and never learned about `ssrParity`,
+  // so a hydration failure was recorded in the catalog and then dropped on its
+  // way to the agent — the one surface where a missing failure is most costly.
+  // Reading the keys off the verdict cannot go stale.
+  for (const key of Object.keys(verify)) {
+    if (key === 'ok' || key === 'checked') continue
+    const check = (verify as unknown as Record<string, AtlasVerifyCheck | undefined>)[key]
+    if (check?.status !== 'fail' || !check.findings) continue
+    // The FIX travels with the finding, so an agent gets the actionable half
+    // and not only the diagnosis.
+    out.push(...check.findings.map((f) => (f.fix ? `${f.message} → ${f.fix}` : f.message)))
   }
   return out.join('; ')
 }

@@ -17,6 +17,7 @@ import type {
   Scenario,
   VerifyVerdict,
 } from './types'
+import { CHECK_KEYS } from './types'
 import { componentKey, fileQualifierFor, pathQualifierFor, resolveComponent } from './identity'
 
 /** A single search match, ranked by `score` (higher = better). */
@@ -136,7 +137,7 @@ export function createCatalogGraph(initial: readonly ComponentIntelligence[] = [
       return byKey.size
     },
     toJSON() {
-      return { version: 1, components: [...byKey.values()] }
+      return { version: 2, components: [...byKey.values()] }
     },
     toLlmsText() {
       return renderLlmsText([...byKey.values()])
@@ -211,13 +212,25 @@ function formatControl(c: PropControl): string {
   return `${c.name}(${type})`
 }
 
-/** Join the findings of every failed check on a verdict. */
+/**
+ * Join the findings of every failed check on a verdict.
+ *
+ * Derived from the verdict's OWN keys rather than a hand-written list. The
+ * hand-written one had gone stale: it named five checks and `ssrParity` was
+ * added as a sixth, so a hydration failure was recorded in the catalog and
+ * then silently dropped from the agent guide and the llms text — the surfaces
+ * an AI assistant actually reads. Exactly the hole `CHECK_KEYS` exists to
+ * close, committed by the code that renders the catalog.
+ */
 function collectFindings(verify: VerifyVerdict): string {
-  const keys = ['a11y', 'interaction', 'reactivityCoverage', 'leak', 'snapshot'] as const
   const findings: string[] = []
-  for (const key of keys) {
+  for (const key of CHECK_KEYS) {
     const check = verify[key]
-    if (check.status === 'fail' && check.findings) findings.push(...check.findings)
+    if (check.status === 'fail' && check.findings) {
+      // The FIX travels with the finding, so an agent reading only this text
+      // still gets the actionable half rather than just the diagnosis.
+      findings.push(...check.findings.map((f) => (f.fix ? `${f.message} → ${f.fix}` : f.message)))
+    }
   }
   return findings.join('; ')
 }

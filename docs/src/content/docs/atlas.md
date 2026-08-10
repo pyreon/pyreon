@@ -65,9 +65,33 @@ Failing scenarios print **uncapped** here, unlike a whole-catalog scan — this 
   "component": "Button",
   "verified": 14, "failed": 1, "unverified": 0,
   "tallies": [{ "key": "a11y", "pass": 14, "fail": 1, "skip": 0 }, /* … */],
-  "failures": [{ "id": "button--empty", "checks": [{ "key": "a11y", "findings": ["…"] }] }]
+  "failures": [{
+    "id": "button--empty",
+    "checks": [{
+      "key": "a11y",
+      "findings": [{
+        "code": "missing-accessible-name",
+        "message": "missing accessible name: \"label\" is empty",
+        "fix": "Give \"label\" a non-empty value, or an aria-label if the text is genuinely decorative."
+      }]
+    }]
+  }]
 }
 ```
+
+### Findings are structured
+
+Every finding carries three things:
+
+| field | what it is |
+|---|---|
+| `code` | A **stable** identifier for the class of failure — `hydrate-threw`, `missing-accessible-name`, `reactive-nodes-retained`. This is what you grep, quote in an issue, or branch on. Codes are permanent once shipped: a reworded message is a patch, a renamed code is a breaking change. |
+| `message` | What happened, in prose. Free to be reworded. |
+| `fix` | The one concrete thing to change — present only when there **is** one. A finding that cannot name a single next step omits it rather than inventing one. |
+
+The `fix` travels **with** the finding rather than living in a lookup table a consumer has to know to consult, so an agent reading the agent guide, the MCP tools, or `--json` gets the actionable half without a second call.
+
+This is catalog **`version: 2`**. A v1 catalog had plain-string findings; reading one with v2 code would render blanks for every finding, so the MCP server refuses it by version and tells you to re-run `atlas scan` rather than showing you a component with no failures.
 
 Three things it deliberately refuses to do:
 

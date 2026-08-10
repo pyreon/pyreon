@@ -7,6 +7,7 @@
  * carries a real verdict.
  */
 import type { VerifyCheck } from '../core'
+import { finding } from '../core'
 import { skipped } from './registry'
 import type { AtlasPlugin, VerifyContext } from './types'
 import { defineAtlasPlugin } from './define'
@@ -29,13 +30,20 @@ export function a11yPlugin(): AtlasPlugin {
         // which is what a bare skip reads as.
         return {
           a11y: skipped(
+            'nothing-to-check',
             'no required name-like prop to check statically — run `atlas verify-browser` for real axe-core coverage',
           ),
         }
       }
       const missing = nameProps
         .filter((c) => isEmpty(ctx.scenario.args[c.name]))
-        .map((c) => `missing accessible name: "${c.name}" is empty`)
+        .map((c) =>
+          finding(
+            'missing-accessible-name',
+            `missing accessible name: "${c.name}" is empty`,
+            `Give "${c.name}" a non-empty value, or an aria-label if the text is genuinely decorative.`,
+          ),
+        )
       return {
         a11y: missing.length > 0 ? { status: 'fail', findings: missing } : { status: 'pass' },
       }

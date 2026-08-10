@@ -15,8 +15,15 @@
  * Kept PURE — no DOM, no fs, no mounting — so every shaping rule below is
  * testable against a literal verdict rather than against a scan.
  */
-import { CHECK_KEYS, type CheckKey } from '../plugins/registry'
-import type { Scenario, VerifyCheck, VerifyVerdict } from '../core/types'
+import {
+  CHECK_KEYS,
+  type CheckKey,
+  finding,
+  type Scenario,
+  type VerifyCheck,
+  type VerifyFinding,
+  type VerifyVerdict,
+} from '../core/types'
 
 /** How one check fared across the scenarios examined. */
 export interface CheckTally {
@@ -34,7 +41,7 @@ export interface FailingScenario {
   id: string
   component: string
   /** Only the checks with `status: 'fail'`, in display order. */
-  checks: readonly { key: CheckKey; findings: readonly string[] }[]
+  checks: readonly { key: CheckKey; findings: readonly VerifyFinding[] }[]
 }
 
 /** The whole picture, ready to print or serialise. */
@@ -91,9 +98,11 @@ function orderedKeys(): CheckKey[] {
  * explaining), and printing an empty bullet reads as a rendering bug rather
  * than as a plugin that said nothing. Say so instead.
  */
-function findingsOf(check: VerifyCheck): readonly string[] {
+function findingsOf(check: VerifyCheck): readonly VerifyFinding[] {
   const found = check.findings ?? []
-  return found.length > 0 ? found : ['failed without reporting a reason']
+  return found.length > 0
+    ? found
+    : [finding('not-run', 'failed without reporting a reason')]
 }
 
 /** Build the report from scenarios carrying verdicts. */
@@ -120,7 +129,7 @@ export function buildVerifyReport(scenarios: readonly Scenario[]): VerifyReport 
       for (const key of keys) tallies.get(key)!.skip += 1
       continue
     }
-    const failedChecks: { key: CheckKey; findings: readonly string[] }[] = []
+    const failedChecks: { key: CheckKey; findings: readonly VerifyFinding[] }[] = []
     for (const key of keys) {
       const check = verdict[key]
       const tally = tallies.get(key)!
@@ -130,7 +139,7 @@ export function buildVerifyReport(scenarios: readonly Scenario[]): VerifyReport 
         failedChecks.push({ key, findings: findingsOf(check) })
       } else {
         tally.skip += 1
-        const reason = check.findings?.[0]
+        const reason = check.findings?.[0]?.message
         if (reason) reasons.get(key)!.add(reason)
       }
     }
@@ -219,7 +228,15 @@ export function formatFailures(
   for (const failure of failures.slice(0, limit)) {
     lines.push(`✗ ${failure.id}`)
     for (const check of failure.checks) {
-      for (const finding of check.findings) lines.push(`    ${check.key}: ${finding}`)
+      for (const f of check.findings) {
+        // The code is printed alongside the message: it is the part a reader
+        // can grep for, quote in an issue, or branch on — and it is stable
+        // while the prose is free to be reworded.
+        lines.push(`    ${check.key} [${f.code}]: ${f.message}`)
+        // The fix goes on its own line, indented under its finding, so a
+        // multi-finding failure never leaves you guessing which one it answers.
+        if (f.fix) lines.push(`      → ${f.fix}`)
+      }
     }
   }
   if (failures.length > limit) {

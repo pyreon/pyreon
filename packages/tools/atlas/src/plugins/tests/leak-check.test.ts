@@ -16,6 +16,12 @@ import { mountPlugin } from '../mount'
 import type { MountRuntime } from '../../verify/harness'
 import type { VerifyContext } from '../types'
 
+/** Finding messages as one string — assertions read the prose, not the shape. */
+function messages(check: { findings?: readonly { message: string }[] } | undefined): string {
+  return (check?.findings ?? []).map((f) => f.message).join(' ')
+}
+
+
 const scenario: Scenario = {
   id: 's',
   component: 'X',
@@ -46,14 +52,14 @@ const ctxFor = (runtime?: MountRuntime): VerifyContext =>
 
 async function verify(runtime: MountRuntime) {
   const plugin = mountPlugin({ runtime })
-  return (await plugin.verify!(ctxFor())) as { interaction: { status: string }; leak: { status: string; findings?: string[] } }
+  return (await plugin.verify!(ctxFor())) as { interaction: { status: string }; leak: { status: string; findings?: { code: string; message: string }[] } }
 }
 
 describe('leak check — verdict plumbing', () => {
   it('SKIPS with the reason when no GC hook exists', async () => {
     const result = await verify(runtimeWith(() => 0, undefined))
     expect(result.leak.status).toBe('skip')
-    expect(result.leak.findings?.[0]).toContain('no GC hook')
+    expect(messages(result.leak)).toContain('no GC hook')
     // the mount half still ran
     expect(result.interaction.status).toBe('pass')
   })
@@ -67,9 +73,9 @@ describe('leak check — verdict plumbing', () => {
         collectGarbage: async () => {},
       },
     })
-    const result = (await plugin.verify!(ctxFor())) as { leak: { status: string; findings?: string[] } }
+    const result = (await plugin.verify!(ctxFor())) as { leak: { status: string; findings?: { code: string; message: string }[] } }
     expect(result.leak.status).toBe('skip')
-    expect(result.leak.findings?.[0]).toContain('introspection unavailable')
+    expect(messages(result.leak)).toContain('introspection unavailable')
   })
 
   it('PASSES when the count returns to the baseline', async () => {
@@ -125,7 +131,7 @@ describe('leak check — verdict plumbing', () => {
     }
     const result = await verify(counting)
     expect(result.leak.status).toBe('fail')
-    expect(result.leak.findings?.[0]).toMatch(/climbed \d+ → \d+ → \d+/)
+    expect(messages(result.leak)).toMatch(/climbed \d+ → \d+ → \d+/)
   })
 
   it('PASSES a component whose retention does not grow with mounts', async () => {
@@ -157,7 +163,7 @@ describe('play — the authored script replaces the click-walk', () => {
       scenario: playedScenario(play),
       cwd: '.',
     } as unknown as VerifyContext
-    return (await plugin.verify!(ctx)) as { interaction: { status: string; findings?: string[] } }
+    return (await plugin.verify!(ctx)) as { interaction: { status: string; findings?: { code: string; message: string }[] } }
   }
 
   it('a passing play verifies the scenario', async () => {
@@ -180,7 +186,7 @@ describe('play — the authored script replaces the click-walk', () => {
       })
     })
     expect(r.interaction.status).toBe('fail')
-    expect(r.interaction.findings?.join(' ')).toContain('play failed at step "assert the impossible"')
-    expect(r.interaction.findings?.join(' ')).toContain('expected 2 rows, found 0')
+    expect(messages(r.interaction)).toContain('play failed at step "assert the impossible"')
+    expect(messages(r.interaction)).toContain('expected 2 rows, found 0')
   })
 })

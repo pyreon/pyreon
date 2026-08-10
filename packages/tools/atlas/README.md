@@ -327,6 +327,23 @@ match. Measured on `@pyreon/ui-components` (108 components, 1090 scenarios):
 work drops ~18×; discovery dominates the residual, so this is a **focus** tool
 first and a speed tool second.
 
+Every finding is structured — `{ code, message, fix? }`:
+
+```
+✗ button--empty
+    a11y [missing-accessible-name]: missing accessible name: "label" is empty
+      → Give "label" a non-empty value, or an aria-label if the text is decorative.
+```
+
+`code` is the **stable** class (`hydrate-threw`, `reactive-nodes-retained`, …) — what you
+grep, quote, or branch on; the message is prose and free to be reworded. `fix` names the
+one concrete change, and is present only when there **is** one. It travels *with* the
+finding rather than in a lookup table, so the agent guide, the MCP tools and `--json` all
+carry the actionable half without a second call.
+
+That is catalog **`version: 2`**. At v1 findings were plain strings, so the MCP server
+refuses a v1 catalog by version rather than rendering a blank for every finding.
+
 `--json` emits the same report as data. Three refusals are deliberate: it never
 writes `atlas-catalog.json` (a one-component catalog would replace the real one),
 an unmatched name exits non-zero with suggestions rather than reporting an empty

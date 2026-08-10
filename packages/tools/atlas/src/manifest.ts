@@ -104,7 +104,8 @@ atlas verify Button: 1 component(s), 15 scenario(s)
   not run: reactivityCoverage, snapshot — browser-only — run \`atlas verify-browser\`
 
 ✗ button--empty
-    a11y: missing accessible name: "label" is empty
+    a11y [missing-accessible-name]: missing accessible name: "label" is empty
+      → Give "label" a non-empty value, or an aria-label if the text is decorative.
 
 1 failing · 14 verified · 0 unverified`,
       mistakes: [
@@ -112,9 +113,28 @@ atlas verify Button: 1 component(s), 15 scenario(s)
         'Expecting a scoped run to refresh `atlas-catalog.json` — it deliberately never writes; a one-component catalog would replace the real one and silently break the agent guide, the MCP tools and `atlas check` for every other component until the next full scan',
         'Passing a directory as the first positional — the first positional is the COMPONENT (matching `atlas check`); the directory is `--cwd`',
         'Assuming a typo degrades gracefully — an unmatched name is a non-zero exit with suggestions, precisely because filtering to nothing otherwise reports "0 scenarios, 0 failing", which reads as a pass',
+        'Pattern-matching a finding\'s MESSAGE instead of its `code` — the message is prose and free to be reworded between releases; the code is the stable contract, and each finding also carries a `fix` naming the one thing to change',
         'Expecting an ambiguous bare name to pick one — a name matching several components across projects REFUSES and names the candidate keys, the same rule the graph and the MCP tools apply',
       ],
-      seeAlso: ['atlas scan', 'atlas verify-browser'],
+      seeAlso: ['atlas scan', 'atlas verify-browser', 'VerifyFinding'],
+    },
+    {
+      name: 'VerifyFinding',
+      kind: 'type',
+      signature: 'interface VerifyFinding { code: FindingCode; message: string; fix?: string }',
+      summary:
+        'One thing a verify check found — catalog `version: 2`. `code` is a STABLE identifier for the CLASS of failure (`hydrate-threw`, `missing-accessible-name`, `reactive-nodes-retained`, `ssr-render-threw`, `reactive-nodes-retained`, plus codes for every reason a check did not run: `browser-only`, `no-dom`, `no-gc-hook`, `no-ssr-renderer`, `not-run`, `nothing-to-check`); `message` is prose; `fix` names the ONE concrete thing to change, and is present only when there is one — a finding that cannot name a single next step omits it rather than inventing one. The fix travels WITH the finding rather than living in a lookup table a consumer has to know to consult, so the agent guide, the MCP tools and `atlas verify --json` all carry the actionable half without a second call. Codes are permanent once shipped: a reworded message is a patch, a renamed code is a breaking change. Findings were plain strings at catalog `version: 1`, which meant an agent could only pattern-match a sentence — the MCP server now refuses a v1 catalog by version rather than rendering blanks for every finding.',
+      example: `{
+  code: 'missing-accessible-name',
+  message: 'missing accessible name: "label" is empty',
+  fix: 'Give "label" a non-empty value, or an aria-label if the text is decorative.',
+}`,
+      mistakes: [
+        'Branching on `message` — it is prose, and rewording it is a patch-level change; branch on `code`',
+        'Expecting every finding to carry a `fix` — one is present only when a single concrete next step exists, because a confident wrong instruction costs more than none',
+        'Reading a `version: 1` catalog with code that expects objects — every finding renders blank rather than erroring, which is why the loader refuses by version',
+      ],
+      seeAlso: ['atlas verify', 'atlas scan'],
     },
     {
       name: 'atlas dev',

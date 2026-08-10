@@ -23,7 +23,7 @@ describe('runScan', () => {
       expect(r.llms).toContain('Button')
       expect(r.catalogPath).toBe(join(dir, 'atlas-catalog.json'))
       const catalog = JSON.parse(readFileSync(r.catalogPath!, 'utf8'))
-      expect(catalog.version).toBe(1)
+      expect(catalog.version).toBe(2)
       expect(catalog.components[0].name).toBe('Button')
       expect(readFileSync(r.guidePath!, 'utf8')).toContain('# Agent Guide')
     } finally {
@@ -100,7 +100,10 @@ describe('runCli', () => {
       // And now the CHECK and its finding are named too. A bare id said WHERE
       // to look and withheld WHAT was wrong, which meant opening the catalog
       // JSON to learn which of six checks had failed.
-      expect(stderr).toContain('a11y:')
+      // The CHECK, its stable CODE, and the fix — the code is what a consumer
+      // greps for or branches on, and the fix travels with the finding.
+      expect(stderr).toContain('a11y [missing-accessible-name]:')
+      expect(stderr).toContain('→ Give "title" a non-empty value')
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
@@ -217,7 +220,10 @@ describe('runCli', () => {
     })
     try {
       expect(await runCli(['verify', 'Card', '--cwd', dir])).toBe(1)
-      expect(stderr).toContain('a11y:')
+      // The CHECK, its stable CODE, and the fix — the code is what a consumer
+      // greps for or branches on, and the fix travels with the finding.
+      expect(stderr).toContain('a11y [missing-accessible-name]:')
+      expect(stderr).toContain('→ Give "title" a non-empty value')
       expect(stdout).toContain('1 failing')
     } finally {
       rmSync(dir, { recursive: true, force: true })

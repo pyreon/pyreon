@@ -41,6 +41,8 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { CheckStatus, VerifyCheck, VerifyVerdict } from '../core'
+import { finding } from '../core'
+import { skipped } from '../plugins/registry'
 
 export interface BrowserVerifyOptions {
   cwd?: string
@@ -234,16 +236,22 @@ export async function runBrowserVerify(
           reactivityCoverage = {
             status: 'pass',
             findings: [
-              coverage.total === 0
-                ? 'measured in real Chromium: no reactive nodes created by this scenario (static render)'
-                : `measured in real Chromium: ${coverage.percent}% of ${coverage.total} reactive node(s) fired` +
-                  (coverage.uncovered > 0 ? `; ${coverage.uncovered} never re-fired` : ''),
+              finding(
+                'coverage-measured',
+                coverage.total === 0
+                  ? 'measured in real Chromium: no reactive nodes created by this scenario (static render)'
+                  : `measured in real Chromium: ${coverage.percent}% of ${coverage.total} reactive node(s) fired` +
+                    (coverage.uncovered > 0 ? `; ${coverage.uncovered} never re-fired` : ''),
+              ),
             ],
           }
         } else if (coverage.status === 'skip') {
-          reactivityCoverage = { status: 'skip', findings: [coverage.reason] }
+          reactivityCoverage = skipped('not-run', coverage.reason)
         } else {
-          reactivityCoverage = { status: 'fail', findings: [`coverage measurement errored: ${coverage.reason}`] }
+          reactivityCoverage = {
+            status: 'fail',
+            findings: [finding('coverage-errored', `coverage measurement errored: ${coverage.reason}`)],
+          }
         }
 
         // Snapshot the preview surface.
@@ -267,13 +275,23 @@ export async function runBrowserVerify(
           if (options.updateSnapshots) {
             writeFileSync(baselinePath, shot)
             snapshotsCreated += 1
-            snapshot = { status: 'pass', findings: ['baseline UPDATED this run (re-baselined on request)'] }
+            snapshot = {
+              status: 'pass',
+              findings: [
+                finding('baseline-updated', 'baseline UPDATED this run (re-baselined on request)'),
+              ],
+            }
           } else if (baseline === null) {
             writeFileSync(baselinePath, shot)
             snapshotsCreated += 1
             snapshot = {
               status: 'pass',
-              findings: ['baseline created this run — a created baseline is recorded, not yet compared'],
+              findings: [
+                finding(
+                  'baseline-created',
+                  'baseline created this run — a created baseline is recorded, not yet compared',
+                ),
+              ],
             }
           } else {
             const ratio = diffPngs(baseline, shot, { PNG, pixelmatch })
@@ -286,7 +304,11 @@ export async function runBrowserVerify(
               snapshot = {
                 status: 'fail',
                 findings: [
-                  `visual diff ${(ratio * 100).toFixed(2)}% of pixels (limit ${(maxRatio * 100).toFixed(2)}%) — actual written to ${actualPath}`,
+                  finding(
+                    'snapshot-differs',
+                    `visual diff ${(ratio * 100).toFixed(2)}% of pixels (limit ${(maxRatio * 100).toFixed(2)}%) — actual written to ${actualPath}`,
+                    `Compare ${actualPath} against the baseline. If the change is intended, re-run with --update-snapshots.`,
+                  ),
                 ],
               }
             }
@@ -294,7 +316,12 @@ export async function runBrowserVerify(
         } catch (err) {
           snapshot = {
             status: 'fail',
-            findings: [`screenshot failed: ${err instanceof Error ? err.message : String(err)}`],
+            findings: [
+              finding(
+                'snapshot-failed',
+                `screenshot failed: ${err instanceof Error ? err.message : String(err)}`,
+              ),
+            ],
           }
         }
 

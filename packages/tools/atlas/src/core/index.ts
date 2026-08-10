@@ -12,12 +12,16 @@ export type {
   Scenario,
   PlayContext,
   PlayFn,
+  CheckKey,
   CheckStatus,
+  FindingCode,
   VerifyCheck,
+  VerifyFinding,
   VerifyVerdict,
   ComponentIntelligence,
   CatalogGraphData,
 } from './types'
+export { CHECK_KEYS, finding } from './types'
 
 export type { PropType, PropShape } from './controls'
 export { inferControl, inferControls } from './controls'

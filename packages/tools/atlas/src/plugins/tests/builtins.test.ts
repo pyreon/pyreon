@@ -4,6 +4,12 @@ import { a11yPlugin } from '../a11y'
 import { defineAtlasPlugin } from '../define'
 import { variantMatrixPlugin } from '../variant-matrix'
 
+/** Finding messages as one string — assertions read the prose, not the shape. */
+function messages(check: { findings?: readonly { message: string }[] } | undefined): string {
+  return (check?.findings ?? []).map((f) => f.message).join(' ')
+}
+
+
 const ci = (over: Partial<ComponentIntelligence> = {}): ComponentIntelligence => ({
   name: 'Button',
   controls: [],
@@ -71,7 +77,7 @@ describe('a11yPlugin', () => {
     const c = ci({ controls: [{ name: 'alt', kind: 'text', reactive: false, required: true }] })
     const result = await check(c, { alt: '' })
     expect(result.status).toBe('fail')
-    expect(result.findings?.[0]).toContain('alt')
+    expect(messages(result)).toContain('alt')
   })
 
   it('treats undefined and null as empty', async () => {

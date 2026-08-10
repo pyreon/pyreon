@@ -1,5 +1,12 @@
-import type { Scenario, VerifyCheck, VerifyVerdict } from '../../core/types'
-import { CHECK_KEYS, type CheckKey, emptyVerdict } from '../../plugins/registry'
+import {
+  CHECK_KEYS,
+  type CheckKey,
+  finding,
+  type Scenario,
+  type VerifyCheck,
+  type VerifyVerdict,
+} from '../../core/types'
+import { emptyVerdict } from '../../plugins/registry'
 import {
   buildVerifyReport,
   formatCheckTally,
@@ -8,7 +15,10 @@ import {
 } from '../report'
 
 const pass: VerifyCheck = { status: 'pass' }
-const fail = (...findings: string[]): VerifyCheck => ({ status: 'fail', findings })
+const fail = (...messages: string[]): VerifyCheck => ({
+  status: 'fail',
+  findings: messages.map((m) => finding('mount-threw', m)),
+})
 
 /** A verdict with the named checks overridden, and `ok`/`checked` DERIVED. */
 function verdict(overrides: Partial<Record<CheckKey, VerifyCheck>>): VerifyVerdict {
@@ -88,21 +98,23 @@ describe('buildVerifyReport', () => {
 
   it('never renders an empty bullet for a check that failed without saying why', () => {
     const report = buildVerifyReport([scenario('b--a', verdict({ a11y: { status: 'fail' } }))])
-    expect(report.failures[0]?.checks[0]?.findings).toEqual(['failed without reporting a reason'])
+    expect(report.failures[0]?.checks[0]?.findings[0]?.message).toBe(
+      'failed without reporting a reason',
+    )
   })
 
   it('reports a skip reason only when every skip agreed on one', () => {
     // Summarising two different reasons as one would make a claim about
     // scenarios that never reached it.
     const one = buildVerifyReport([
-      scenario('b--a', verdict({ leak: { status: 'skip', findings: ['no runtime'] } })),
-      scenario('b--b', verdict({ leak: { status: 'skip', findings: ['no runtime'] } })),
+      scenario('b--a', verdict({ leak: { status: 'skip', findings: [finding('no-dom', 'no runtime')] } })),
+      scenario('b--b', verdict({ leak: { status: 'skip', findings: [finding('no-dom', 'no runtime')] } })),
     ])
     expect(one.tallies.find((t) => t.key === 'leak')?.skipReason).toBe('no runtime')
 
     const two = buildVerifyReport([
-      scenario('b--a', verdict({ leak: { status: 'skip', findings: ['no runtime'] } })),
-      scenario('b--b', verdict({ leak: { status: 'skip', findings: ['no wrapper'] } })),
+      scenario('b--a', verdict({ leak: { status: 'skip', findings: [finding('no-dom', 'no runtime')] } })),
+      scenario('b--b', verdict({ leak: { status: 'skip', findings: [finding('no-dom', 'no wrapper')] } })),
     ])
     expect(two.tallies.find((t) => t.key === 'leak')?.skipReason).toBeUndefined()
   })
@@ -207,13 +219,16 @@ describe('formatFailures', () => {
     ])
     expect(formatFailures(report.failures)).toEqual([
       '✗ button--solid',
-      '    a11y: no accessible name',
+      // The CODE is printed with the message: it is the part a reader can grep,
+      // quote in an issue, or branch on, and it is stable while the prose is
+      // free to be reworded.
+      '    a11y [mount-threw]: no accessible name',
     ])
   })
 
   it('prints every finding a check reported, not just the first', () => {
     const report = buildVerifyReport([scenario('b--a', verdict({ a11y: fail('one', 'two') }))])
-    expect(formatFailures(report.failures)).toContain('    a11y: two')
+    expect(formatFailures(report.failures)).toContain('    a11y [mount-threw]: two')
   })
 
   it('REPORTS the cap when it truncates — a silent cut reads as a full list', () => {

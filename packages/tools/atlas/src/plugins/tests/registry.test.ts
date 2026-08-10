@@ -1,5 +1,5 @@
 import type { ComponentIntelligence } from '../../core'
-import { createCatalogGraph, makeScenario } from '../../core'
+import { createCatalogGraph, finding, makeScenario } from '../../core'
 import type { AtlasPlugin } from '../types'
 import { createPluginRegistry, emptyVerdict } from '../registry'
 
@@ -54,7 +54,9 @@ describe('createPluginRegistry', () => {
     const reg = createPluginRegistry([
       { name: 'pass', verify: () => ({ a11y: { status: 'pass' } }) },
       { name: 'skip-only' },
-      { name: 'fail', verify: async () => ({ interaction: { status: 'fail', findings: ['boom'] } }) },
+      { name: 'fail', verify: async () => ({
+          interaction: { status: 'fail', findings: [finding('mount-threw', 'boom')] },
+        }) },
     ])
     const v = await reg.runVerify({
       scenario: makeScenario({ component: 'X', name: 's' }),

@@ -27,7 +27,9 @@
  * does not pass: `checked` exists precisely so "nothing ran" and "nothing was
  * wrong" stay distinguishable.
  */
-import type { ComponentIntelligence, ComponentRef, PlayFn, VerifyCheck } from '../core'
+import type { ComponentIntelligence, ComponentRef, PlayFn, VerifyCheck, VerifyFinding } from '../core'
+import { finding } from '../core'
+import { skipped } from './registry'
 import { defineAtlasPlugin } from './define'
 import type { AtlasPlugin, VerifyContext } from './types'
 import { type DomEnv, ensureDom } from '../verify/dom'
@@ -248,23 +250,41 @@ function interactionVerdict(ex: Exercised, hasWrapper: boolean): VerifyCheck {
     if (ex.clicks === 0) {
       return {
         status: 'pass',
-        findings: ['mounted and unmounted cleanly; no interactive elements to drive'],
+        findings: [
+          finding(
+            'nothing-to-drive',
+            'mounted and unmounted cleanly; no interactive elements to drive',
+          ),
+        ],
       }
     }
     return { status: 'pass' }
   }
-  const findings = [
-    ...ex.errors.map((e) => `threw while mounted: ${e}`),
-    ...(ex.playFailure ? [ex.playFailure] : []),
+  const findings: VerifyFinding[] = [
+    ...ex.errors.map((e) =>
+      finding(
+        'mount-threw',
+        `threw while mounted: ${e}`,
+        // The most common first cause by a wide margin, and the one least
+        // obvious from the message alone: a design-system component reading a
+        // theme token out of a context nothing provided. Carried on the
+        // finding rather than appended as a separate one, so a consumer
+        // counting findings does not see a phantom second failure.
+        hasWrapper
+          ? undefined
+          : 'No wrapper is configured. If this component needs providers (theme, router, i18n), export `wrapper` from atlas.config.ts.',
+      ),
+    ),
+    ...(ex.playFailure
+      ? [
+          finding(
+            'play-failed',
+            ex.playFailure,
+            'The authored `play` script failed at the step named above.',
+          ),
+        ]
+      : []),
   ]
-  if (!hasWrapper) {
-    // The most common first failure by a wide margin, and the one whose cause
-    // is least obvious from the message alone: a design-system component
-    // reading a theme token out of a context nothing provided.
-    findings.push(
-      'no wrapper is configured — if this component needs providers (theme, router, i18n), export `wrapper` from atlas.config.ts',
-    )
-  }
   return { status: 'fail', findings }
 }
 
@@ -541,8 +561,8 @@ export function mountPlugin(options: MountPluginOptions = {}): AtlasPlugin {
     const dom = await getDom()
     if (!dom.ok) {
       const skip: ScenarioVerdict = {
-        interaction: { status: 'skip', findings: [dom.reason] },
-        leak: { status: 'skip', findings: [dom.reason] },
+        interaction: skipped('no-dom', dom.reason),
+        leak: skipped('no-dom', dom.reason),
       }
       for (const s of scenarios) out.set(s.id, skip)
       return out
@@ -571,7 +591,7 @@ export function mountPlugin(options: MountPluginOptions = {}): AtlasPlugin {
         const ex = await exercise(dom.env, runtime, component, s, options.wrapper)
         out.set(s.id, {
           interaction: interactionVerdict(ex, hasWrapper),
-          leak: { status: 'skip', findings: [leakReason] },
+          leak: skipped('no-gc-hook', leakReason),
         })
       }
       return out
@@ -699,9 +719,13 @@ export function mountPlugin(options: MountPluginOptions = {}): AtlasPlugin {
       check: {
         status: 'fail',
         findings: [
-          `reactive-graph node count climbed ${floor} → ${afterA} → ${afterB} across ` +
-            'repeated mounts and stayed grown past GC — effects/computeds/signals created ' +
-            'per mount are not disposed (the subscription-retention leak class)',
+          finding(
+            'reactive-nodes-retained',
+            `reactive-graph node count climbed ${floor} → ${afterA} → ${afterB} across ` +
+              'repeated mounts and stayed grown past GC — effects/computeds/signals created ' +
+              'per mount are not disposed (the subscription-retention leak class)',
+            'Return the disposer from every `effect`/`computed` this component creates, or create them inside the component so unmount disposes them.',
+          ),
         ],
       },
       resting: afterB,
