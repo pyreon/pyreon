@@ -144,6 +144,32 @@ describe('formatCheckTally', () => {
     expect(line).not.toContain('snapshot')
   })
 
+  it('still PRINTS a check it has no display weight for', () => {
+    // The other half of the drift guard. `buildVerifyReport` covers every key
+    // in CHECK_KEYS; this covers a key the ORDERING table has not been taught
+    // about — it sorts last instead of vanishing. A seventh check being merged
+    // into verdicts and then dropped from the summary is the failure mode, and
+    // "displayed in the wrong position" is a far cheaper one than "invisible".
+    // Equal fail counts on purpose: the sort compares failures FIRST, so a
+    // differing count would short-circuit before the weight lookup and the
+    // spec would assert nothing about ordering an unknown key.
+    const line = formatCheckTally([
+      { key: 'brandNewCheck' as CheckKey, pass: 1, fail: 0, skip: 0 },
+      { key: 'a11y', pass: 1, fail: 0, skip: 0 },
+    ])
+    expect(line).toContain('brandNewCheck 1/1')
+    // Sorts LAST (weight 99) rather than vanishing.
+    expect(line).toBe('a11y 1/1 · brandNewCheck 1/1')
+  })
+
+  it('leads with an unknown check when it is the one FAILING', () => {
+    const line = formatCheckTally([
+      { key: 'a11y', pass: 1, fail: 0, skip: 0 },
+      { key: 'brandNewCheck' as CheckKey, pass: 0, fail: 1, skip: 0 },
+    ])
+    expect(line.startsWith('brandNewCheck 0/1 ✗')).toBe(true)
+  })
+
   it('says so plainly when nothing ran at all', () => {
     expect(formatCheckTally(buildVerifyReport([scenario('b--a', emptyVerdict())]).tallies)).toBe(
       'no checks ran',

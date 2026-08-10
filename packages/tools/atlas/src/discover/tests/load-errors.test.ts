@@ -86,6 +86,30 @@ describe('classifyLoadErrors', () => {
     expect(groups[0]?.files).toEqual(['src/entry-client.ts', 'src/entry-server.ts'])
   })
 
+  it('classifies a failure that names NO specifier as a broken import', () => {
+    // A syntax error in the file itself — real, and it carries no module id.
+    // It must land in the actionable bucket: defaulting an unreadable message
+    // to "plugin-provided, nothing to fix" would silence genuine breakage,
+    // which is the exact failure this split exists to avoid.
+    const groups = classifyLoadErrors([
+      { file: 'src/Broken.tsx', message: 'Unexpected token (12:4)' },
+    ])
+    expect(groups[0]?.kind).toBe('broken-import')
+    expect(groups[0]?.specifier).toBeUndefined()
+    expect(formatBrokenImports(groups).join('\n')).toContain('Unexpected token')
+  })
+
+  it('breaks a full tie by message, so the order is stable between runs', () => {
+    // Same kind, same file count. Without a final tie-break the order would
+    // follow Map insertion and shuffle as unrelated files change — output that
+    // cannot be diffed, which is how a reader tells whether they helped.
+    const groups = classifyLoadErrors([
+      { file: 'b.tsx', message: `Cannot find module './zebra'` },
+      { file: 'a.tsx', message: `Cannot find module './alpha'` },
+    ])
+    expect(groups.map((g) => g.files[0])).toEqual(['a.tsx', 'b.tsx'])
+  })
+
   it('orders by file count within a kind, so the widest cause leads', () => {
     const groups = classifyLoadErrors([
       { file: 'a.tsx', message: `Cannot find module './rare'` },
