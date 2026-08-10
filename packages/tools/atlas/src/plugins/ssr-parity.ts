@@ -185,6 +185,21 @@ export async function checkSsrParity(
 
   let disposeHydrated: (() => void) | undefined
   try {
+    // An `innerHTML` assignment, deliberately, and safe here for reasons worth
+    // stating rather than leaving the next reader (or scanner) to re-derive:
+    //
+    //  - `html` is the PROJECT's own `renderToString` output for the PROJECT's
+    //    own component. It is not third-party input arriving from a network.
+    //  - the container is DETACHED — created here, never appended to a
+    //    document — so nothing it contains is in a live tree.
+    //  - this whole harness already imports and MOUNTS the project's modules,
+    //    which is arbitrary code execution by design and by the user's explicit
+    //    opt-in (`--no-mount` declines it). Parsing markup that code produced
+    //    crosses no boundary the mount did not already cross.
+    //
+    // It is also the only faithful way to run the check: hydration's entire
+    // contract is "adopt DOM the server produced", so building that DOM any
+    // other way would test a different thing.
     container.innerHTML = html
     disposeHydrated = hydrateRoot(container, build())
   } catch (err) {
