@@ -232,6 +232,27 @@ export interface EdgePathResult {
   labelY: number
 }
 
+/**
+ * A fully-derived edge geometry packet — endpoint coordinates, tangent sides,
+ * the SVG path string, and the label anchor. Produced by `computeEdgeGeometry`
+ * (edge-geometry.ts) and memoized per edge on the instance
+ * (`FlowInstance._edgeGeometry`); the EdgeLayer's path/marker/label thunks and
+ * custom-edge accessor props all read the shared computed.
+ */
+export interface EdgeGeometry {
+  sourceX: number
+  sourceY: number
+  targetX: number
+  targetY: number
+  /** Side the edge departs from — the source tangent for path builders */
+  sourcePosition: Position
+  /** Side the edge approaches — the target tangent for path builders */
+  targetPosition: Position
+  path: string
+  labelX: number
+  labelY: number
+}
+
 // ─── Flow config ─────────────────────────────────────────────────────────────
 
 export interface FlowConfig<TData = Record<string, unknown>> {
@@ -547,6 +568,36 @@ export interface FlowInstance<TData = Record<string, unknown>> {
 
   /** Animate viewport to a new position/zoom */
   animateViewport: (target: Partial<Viewport>, duration?: number) => void
+
+  // ── Internal per-id computeds (used by Flow component) ──────────────────
+
+  /**
+   * Per-id node computed (`{ equals: Object.is }`) — notifies a subscriber
+   * ONLY when THIS node's object identity changes. Every write path (the drag
+   * frame's `nds.map`, `updateNode`, `filter` removals) preserves the identity
+   * of untouched nodes, so a single-node drag re-runs only the moved node's
+   * thunks instead of all N (a default computed like `nodeMap` notifies
+   * UNCONDITIONALLY). Cached per id on the instance; evicted when the id
+   * leaves `nodeMap`. Reading it tracks reactively.
+   * @internal
+   */
+  _nodeById: (id: string) => Computed<FlowNode<TData> | undefined>
+  /**
+   * Per-id edge computed — `_nodeById`'s edge twin (equality-gated on the
+   * edge object's identity, evicted when the id leaves `edgeMap`).
+   * @internal
+   */
+  _edgeById: (id: string) => Computed<FlowEdge | undefined>
+  /**
+   * Per-edge geometry computed — memoizes `computeEdgeGeometry` so the N
+   * consuming thunks (path `d`, markers, label, custom-edge accessors) share
+   * ONE computation per change instead of re-deriving it each. Depends on the
+   * two per-ENDPOINT `_nodeById` computeds (not `nodeMap`), so another node's
+   * drag frame does not recompute this edge. `null` while either endpoint (or
+   * the edge itself) is missing — e.g. mid-removal.
+   * @internal
+   */
+  _edgeGeometry: (id: string) => Computed<EdgeGeometry | null>
 
   // ── Internal emitters (used by Flow component) ──────────────────────────
 

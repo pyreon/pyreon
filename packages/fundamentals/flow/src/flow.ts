@@ -1,9 +1,12 @@
-import { batch, computed, signal } from '@pyreon/reactivity'
+import type { Computed } from '@pyreon/reactivity'
+import { batch, computed, getCurrentScope, setCurrentScope, signal } from '@pyreon/reactivity'
+import { computeEdgeGeometry } from './edge-geometry'
 import { getEffectiveDimensions } from './edges'
 import { computeLayout } from './layout'
 import type {
   Connection,
   Dimensions,
+  EdgeGeometry,
   FlowConfig,
   FlowEdge,
   FlowInstance,
@@ -123,20 +126,144 @@ export function createFlow<TData = Record<string, unknown>>(
 
   // Identity lookup maps — O(1) node/edge access by id. Rebuilt ONCE per
   // nodes()/edges() change instead of an O(N) `.find()` per accessor call.
-  // The per-node/per-edge reactive accessors in flow-component.tsx read these
-  // maps, so a drag frame (which writes the whole nodes() array, notifying
-  // every node + edge style/class/path thunk) stays O(N) total — one map
-  // rebuild + N O(1) gets — instead of O(N²) (N thunks × O(N) find each).
+  // The imperative geometry consumers (and the virtualization filters) read
+  // these directly; the per-node/per-edge REACTIVE thunks in
+  // flow-component.tsx go through the equality-gated `_nodeById`/`_edgeById`
+  // computeds below instead, so a drag frame's whole-array write does NOT
+  // fan out to every thunk (a default computed notifies UNCONDITIONALLY).
+  // The rebuild doubles as the per-id cache SWEEP point — an id that left the
+  // map has its cached computed disposed here (see `sweepCache`).
   const nodeMap = computed(() => {
     const m = new Map<string, FlowNode<TData>>()
     for (const n of nodes()) m.set(n.id, n)
+    sweepCache(nodeByIdCache, m)
     return m
   })
   const edgeMap = computed(() => {
     const m = new Map<string, FlowEdge>()
     for (const e of edges()) m.set(e.id ?? '', e)
+    sweepCache(edgeByIdCache, m)
+    sweepCache(edgeGeometryCache, m)
     return m
   })
+
+  // ── Per-id computeds (single-node-drag fan-out fix) ──────────────────────
+  //
+  // A drag frame writes the WHOLE nodes() array once per pointermove, and
+  // `nodeMap` — a DEFAULT computed — notifies unconditionally, so every
+  // per-node class/style/data thunk and every edge-geometry read that
+  // subscribed to it re-ran on every frame even when its node didn't move:
+  // O(N) thunk re-runs + O(E) full `computeEdgeGeometry` calls per frame.
+  //
+  // These per-id computeds are the equality gate: `{ equals: Object.is }`
+  // re-notifies a consumer ONLY when the node/edge OBJECT IDENTITY changed —
+  // and every write path (the drag `nds.map`, `updateNode`, `filter`
+  // removals) preserves the identity of untouched nodes/edges — so a
+  // single-node drag frame re-runs the moved node's thunks plus the geometry
+  // of its touching edges: O(1 + deg) instead of O(N + E). Each per-id
+  // computed still refreshes its own `nodeMap().get(id)` (an O(1) Map.get)
+  // in the tier-1 drain; only the propagation is gated.
+  //
+  // Cache lifecycle (the 3 questions): (1) eviction trigger — the
+  // `nodeMap`/`edgeMap` rebuild sweeps any id that left the map (above);
+  // `dispose()` clears the rest. (2) cleanup contract — identity-based
+  // dispose+delete per id. (3) exercised by `tests/drag-fanout.test.tsx`
+  // (removal sweep + instance dispose + remount specs).
+  const nodeByIdCache = new Map<string, Computed<FlowNode<TData> | undefined>>()
+  const edgeByIdCache = new Map<string, Computed<FlowEdge | undefined>>()
+  const edgeGeometryCache = new Map<string, Computed<EdgeGeometry | null>>()
+
+  // Create a cache-owned computed DETACHED from the current EffectScope.
+  // `computed()` registers its dispose on `getCurrentScope()` — correct for
+  // setup-frame creation, but these are created lazily at ROW-mount time from
+  // inside thunk runs, and the instance outlives any one `<Flow>` mount
+  // (unmount + remount with the same instance is supported). A scope-
+  // registered computed would be disposed by that WRONG owner on unmount,
+  // leaving the cache serving permanently stale values on remount
+  // (`recompute` early-returns on `_disposed`). NOTE: in the CURRENT
+  // runtime-dom this is defensive — `mountComponent` nulls the scope after
+  // setup (mount.ts `finally { setCurrentScope(null) }`), so thunk-time
+  // creation already sees no scope — but that is another package's internal
+  // ordering, not a contract; the detach makes the instance-owned lifecycle
+  // hold regardless. The instance owns disposal (sweep + `dispose()`).
+  function detachedComputed<V>(create: () => Computed<V>): Computed<V> {
+    const prev = getCurrentScope()
+    setCurrentScope(null)
+    try {
+      return create()
+    } finally {
+      setCurrentScope(prev)
+    }
+  }
+
+  // Dispose a cache-owned computed AND clear its dirty flag. The flag clear
+  // closes a re-subscription hole: when a consumer batches a write that
+  // dirty-marked this computed WITH the removal that sweeps it (e.g. a node
+  // move + `removeEdge` in one `batch`), the already-enqueued thunk dispatch
+  // still READS the disposed computed after the sweep — and a dirty read
+  // re-evaluates and RE-subscribes it to its deps via `runVerify`, stranding
+  // a permanent zombie subscriber. Clean, a late read returns the cached
+  // value without re-tracking (the row is about to unmount anyway).
+  function disposeCached(c: Computed<unknown>): void {
+    c.dispose()
+    ;(c as unknown as { _dirty: boolean })._dirty = false
+  }
+
+  function sweepCache<V>(cache: Map<string, Computed<V>>, live: Map<string, unknown>): void {
+    if (cache.size === 0) return
+    for (const [id, c] of cache) {
+      if (!live.has(id)) {
+        disposeCached(c as Computed<unknown>)
+        cache.delete(id)
+      }
+    }
+  }
+
+  const _nodeById = (id: string): Computed<FlowNode<TData> | undefined> => {
+    let c = nodeByIdCache.get(id)
+    if (!c) {
+      c = detachedComputed(() => computed(() => nodeMap().get(id), { equals: Object.is }))
+      nodeByIdCache.set(id, c)
+    }
+    return c
+  }
+
+  const _edgeById = (id: string): Computed<FlowEdge | undefined> => {
+    let c = edgeByIdCache.get(id)
+    if (!c) {
+      c = detachedComputed(() => computed(() => edgeMap().get(id), { equals: Object.is }))
+      edgeByIdCache.set(id, c)
+    }
+    return c
+  }
+
+  // Per-edge memoized geometry — ONE `computeEdgeGeometry` per change, shared
+  // by every consuming thunk (path `d`, both markers, label, or a custom
+  // edge's 6 accessor props; previously each consumer re-derived the whole
+  // packet). Reads the two per-ENDPOINT `_nodeById` computeds — NOT
+  // `nodeMap` — so another node's drag never recomputes this edge. A plain
+  // (lazy) computed: no useful structural equality exists for a fresh packet,
+  // and its deps are already equality-gated upstream.
+  const _edgeGeometry = (id: string): Computed<EdgeGeometry | null> => {
+    let c = edgeGeometryCache.get(id)
+    if (!c) {
+      c = detachedComputed(() =>
+        computed<EdgeGeometry | null>(() => {
+          const e = _edgeById(id)()
+          if (!e) return null
+          const sourceNode = _nodeById(e.source)()
+          const targetNode = _nodeById(e.target)()
+          if (!sourceNode || !targetNode) return null
+          // Read `measurements()` reactively so the edge re-derives its path
+          // the moment a node's real rendered size lands (first-frame snap
+          // from the 150×40 fallback to the measured box → the edge connects).
+          return computeEdgeGeometry(e, sourceNode, targetNode, measurements())
+        }),
+      )
+      edgeGeometryCache.set(id, c)
+    }
+    return c
+  }
 
   // ── Animation frame tracking ─────────────────────────────────────────────
   // Prevents frame leaks when layout()/animateViewport() are called multiple
@@ -1117,6 +1244,16 @@ export function createFlow<TData = Record<string, unknown>>(
     nodeDragStartListeners.clear()
     nodeDragEndListeners.clear()
     nodeDoubleClickListeners.clear()
+
+    // The per-id computed caches are instance-owned (created scope-DETACHED —
+    // see `detachedComputed`), so this is their terminal disposal point; the
+    // map sweeps only cover ids that leave a LIVE graph.
+    for (const c of edgeGeometryCache.values()) disposeCached(c as Computed<unknown>)
+    edgeGeometryCache.clear()
+    for (const c of edgeByIdCache.values()) disposeCached(c as Computed<unknown>)
+    edgeByIdCache.clear()
+    for (const c of nodeByIdCache.values()) disposeCached(c as Computed<unknown>)
+    nodeByIdCache.clear()
   }
 
   // ── Initial fitView ──────────────────────────────────────────────────────
@@ -1197,6 +1334,9 @@ export function createFlow<TData = Record<string, unknown>>(
     selectedEdges,
     nodeMap,
     edgeMap,
+    _nodeById,
+    _edgeById,
+    _edgeGeometry,
     getNode,
     addNode,
     removeNode,
