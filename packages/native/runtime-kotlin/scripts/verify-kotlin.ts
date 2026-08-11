@@ -1267,6 +1267,17 @@ try {
     SERVICE === 'PyreonDatabaseAndroid'
       ? [resolve(PACKAGE_ROOT, 'src/main/kotlin/com/pyreon/runtime/PyreonDatabase.kt')]
       : []
+  // PyreonCrashReporter persists through the backend interface in
+  // PyreonStorageBackends.kt and encodes via PyreonJson — both siblings come
+  // along (the backend file is Compose-free by design; PyreonJson is the
+  // hand-written codec the persistence assertions rely on being REAL).
+  const crashReporterExtras =
+    SERVICE === 'PyreonCrashReporter'
+      ? [
+          resolve(PACKAGE_ROOT, 'src/main/kotlin/com/pyreon/runtime/PyreonStorageBackends.kt'),
+          resolve(PACKAGE_ROOT, 'src/main/kotlin/com/pyreon/runtime/PyreonJson.kt'),
+        ]
+      : []
   // PyreonStorageBackend + FileStorageBackend live in PyreonStorageBackends.kt so
   // they compile (and their persistence test RUNS) without Compose. Both the
   // Compose half and the Android factory reference them, so that sibling comes
@@ -1438,6 +1449,7 @@ try {
         ...pickerStubs,
         ...databaseStubs,
         ...databaseCoreExtras,
+    ...crashReporterExtras,
         ...storageExtras,
         ...secureAndroidExtras,
         ...linkingStubs,
@@ -1463,6 +1475,7 @@ try {
         ...pickerStubs,
         ...databaseStubs,
         ...databaseCoreExtras,
+    ...crashReporterExtras,
         ...storageExtras,
         ...secureAndroidExtras,
         ...linkingStubs,
