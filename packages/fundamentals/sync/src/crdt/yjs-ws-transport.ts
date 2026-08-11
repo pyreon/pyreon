@@ -249,13 +249,16 @@ export function connectViaWebSocket(
       }
     }
     ws.onmessage = (event: MessageEvent) => {
-      // Sync fast path: `binaryType = 'arraybuffer'` means every inbound frame
-      // arrives as an ArrayBuffer (or a Buffer — a Uint8Array subclass — under
-      // Node `ws`), so it is decoded + applied BEFORE `onmessage` returns — no
-      // per-frame promise allocation + microtask hop on the remote-op hot path.
-      // Blob / fragmented-Buffer[] frames (impls that ignore binaryType) keep
-      // the async normalization; a single socket delivers ONE data shape, so
-      // the two branches never interleave and relative frame order holds.
+      // Sync fast path: `binaryType = 'arraybuffer'` means binary frames
+      // arrive as an ArrayBuffer (or a Buffer — a Uint8Array subclass — under
+      // Node `ws`), so they are decoded + applied BEFORE `onmessage` returns —
+      // no per-frame promise allocation + microtask hop on the remote-op hot
+      // path. Ordering across the two branches cannot break: for every shape
+      // `toBytesSync` rejects OTHER than Blob / fragmented Buffer[] (e.g. a
+      // text frame's string), `toBytes` resolves to an EMPTY Uint8Array that
+      // `handleFrame` drops — a no-op that cannot reorder anything — and
+      // Blob / Buffer[] occur only on an impl that ignores binaryType, where
+      // ALL binary frames take the async branch and stay mutually ordered.
       const syncBytes = toBytesSync(event.data)
       if (syncBytes !== null) handleFrame(syncBytes)
       else void toBytes(event.data).then(handleFrame)

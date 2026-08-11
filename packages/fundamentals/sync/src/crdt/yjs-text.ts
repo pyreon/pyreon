@@ -41,21 +41,27 @@ export function syncedText(doc: YjsCrdtDoc, key: string): SyncedText {
 
   // `prev` for the .set diff. FAST PATH: the observer above is the SOLE base
   // writer and Yjs fires it synchronously when the OUTERMOST transaction
-  // commits, so between transactions `base` is an exact mirror of
-  // `ytext.toString()` — `base.peek()` yields prev with zero work instead of a
-  // second O(docLen) tree walk + allocation per keystroke (the observer already
-  // pays one). The mirror does NOT hold on three paths, all falling back to a
-  // real materialization (each locked by `tests/synced-text-premise.test.ts`):
-  //   • inside an outer `doc.transact(...)` — observers are deferred to its
-  //     end, so base is stale w.r.t. mutations already applied in it
-  //     (`_transaction !== null`, typed public on Y.Doc);
-  //   • during a transaction's observer/cleanup phase — a SIBLING observer can
-  //     run before ours and call .set while base lags the same transaction's
-  //     text edit (`_transactionCleanups` non-empty; Yjs clears it after all
-  //     observers ran);
-  //   • after dispose() — the observer is detached, base is permanently stale.
+  // commits, so the mirror INVARIANT is two-axis — base === ytext.toString()
+  // iff the observer is ATTACHED (`!disposed`) AND yjs is IDLE. `base.peek()`
+  // then yields prev with zero work instead of a second O(items) tree walk +
+  // allocation per keystroke (the observer already pays one).
+  //
+  // Yjs represents BOTH non-idle states in ONE field: `_transactionCleanups`
+  // (typed public on Y.Doc) gains its entry in the same statement pair that
+  // opens a transaction and is cleared only AFTER the last observer/cleanup
+  // ran — so the single `length === 0` check covers the outer-`doc.transact`
+  // window AND the observer-phase window (a sibling observer calling .set
+  // before ours saw the same transaction's text edit), and any FUTURE window
+  // is a non-idle state under the same check by construction. Both windows +
+  // the post-dispose path are locked by `tests/synced-text-premise.test.ts`.
+  //
+  // The `_transaction === null` read is REDUNDANT belt-and-braces — implied by
+  // empty cleanups on every yjs 13.x path (per-clause bisect: dropping it
+  // fails zero tests; the other two clauses each fail exactly one spec). It is
+  // kept ONLY as a one-property-read hedge against yjs-internals drift, never
+  // as covering a distinct window.
   const prevText = (): string =>
-    !disposed && doc.yDoc._transaction === null && doc.yDoc._transactionCleanups.length === 0
+    !disposed && doc.yDoc._transactionCleanups.length === 0 && doc.yDoc._transaction === null
       ? base.peek()
       : ytext.toString()
 

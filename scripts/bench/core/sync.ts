@@ -383,8 +383,8 @@ function makeFragmentedTemplate(chars: number): Uint8Array {
   return update
 }
 
-function benchSyncedTextKeystroke(): (BenchResult & { lo: number; hi: number })[] {
-  const results: (BenchResult & { lo: number; hi: number })[] = []
+function benchSyncedTextKeystroke(): BenchResult[] {
+  const results: BenchResult[] = []
 
   const run = (label: string, K: number, setup: (doc: ReturnType<typeof createYjsDoc>) => void) => {
     const r = benchMedian(
@@ -407,13 +407,15 @@ function benchSyncedTextKeystroke(): (BenchResult & { lo: number; hi: number })[
       // inner loop warms the JIT within a single unit).
       30,
     )
-    // Normalize the per-UNIT numbers to per-KEYSTROKE.
+    // Normalize the per-UNIT numbers to per-KEYSTROKE. NOTE the printed
+    // figure still includes the unit's amortized setup (doc create + template
+    // clone) / K — measured ~10% at the fragmented row — so ABSOLUTES read
+    // slightly HIGH and an A/B ratio reads slightly LOW (conservative); the
+    // arm-to-arm DELTA is the clean signal.
     results.push({
       label: r.label,
       avgNs: Math.round(r.avgNs / K),
       opsPerSec: r.opsPerSec * K,
-      lo: r.lo * K,
-      hi: r.hi * K,
     })
   }
 
@@ -610,6 +612,40 @@ function correctnessGate(): void {
   fSrc.destroy()
   fDst.destroy()
 
+  // 7. The TIMED fragmented workload itself must produce the right text — a
+  //    .set that corrupted the diff on the FRAGMENTED shape specifically would
+  //    bench FASTER under a gate that only checked a contiguous doc (the
+  //    @pyreon/storage lesson: assert the effect the op claims to measure, on
+  //    the same shape the timing runs). Same template + append loop as the
+  //    timed unit, asserted here outside any timed region.
+  const fragTemplate = makeFragmentedTemplate(10_000)
+  const fragDoc = createYjsDoc()
+  Y.applyUpdate(fragDoc.yDoc, fragTemplate)
+  const fragBase = fragDoc.yDoc.getText('body').toString()
+  const fragText = syncedText(fragDoc, 'body')
+  let fragS = fragText.peek()
+  for (let i = 0; i < 5; i++) {
+    fragS += 'y'
+    fragText.set(fragS)
+  }
+  const fragFinal = fragDoc.yDoc.getText('body').toString()
+  if (fragFinal !== `${fragBase}yyyyy`) {
+    fail(
+      'fragmented-template keystroke workload corrupted the text',
+      { length: fragFinal.length, tail: fragFinal.slice(-10) },
+      { length: fragBase.length + 5, tail: `${fragBase.slice(-5)}yyyyy` },
+    )
+  }
+  if (fragText.peek() !== fragFinal) {
+    fail(
+      'fragmented-template signal did not mirror the final text',
+      fragText.peek().length,
+      fragFinal.length,
+    )
+  }
+  fragText.dispose()
+  fragDoc.destroy()
+
   text.dispose()
   tDoc.destroy()
   presence.dispose()
@@ -626,8 +662,22 @@ function correctnessGate(): void {
 // Optional section filter for A/B iteration on ONE cell without paying the
 // whole suite: `bun scripts/bench/core/sync.ts --only=text,frame`. Sections:
 // awareness | presence | list | text | frame | remote. Default: all.
+// Unknown tokens are REFUSED loudly — a typo (`--only=frames`) would otherwise
+// silently select NOTHING and exit green, the documented empty-input-set class
+// ("a gate must fail loudly when its input set is EMPTY").
+const SECTIONS: readonly string[] = ['awareness', 'presence', 'list', 'text', 'frame', 'remote']
 const onlyArg = process.argv.find((a) => a.startsWith('--only='))
 const only = onlyArg ? new Set(onlyArg.slice('--only='.length).split(',')) : null
+if (only !== null) {
+  const unknown = [...only].filter((s) => !SECTIONS.includes(s))
+  if (unknown.length > 0 || only.size === 0) {
+    console.error(
+      `x unknown --only section(s): ${unknown.join(', ') || '(none given)'} — valid: ${SECTIONS.join(', ')}\n` +
+        '  An unknown token would silently select NOTHING and exit green — refusing.',
+    )
+    process.exit(1)
+  }
+}
 const wants = (name: string) => only === null || only.has(name)
 
 console.log('\n@pyreon/sync — CRDT→signal hot-path benchmark (NODE_ENV=production)')
