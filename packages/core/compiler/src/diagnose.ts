@@ -29,6 +29,36 @@ interface ErrorPattern {
 
 const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // The test-environment audit matches on SHAPE: a `{ type, props, children }`
+    // literal in a test file reads as a hand-rolled mock VNode, which is the
+    // real anti-pattern it exists to catch (PR #197's silent metadata drop).
+    //
+    // But that shape is not exclusive to Pyreon. `@pyreon/document`'s `DocNode`
+    // is its own tree format that happens to share it, and those tests call the
+    // REAL constructors — so the audit was reporting HIGH findings on files
+    // doing exactly the right thing.
+    //
+    // The residual footgun the exemption leaves behind is the reflex it invites:
+    // when your OWN package has a `{ type, props, children }` tree, the fix is
+    // an explicit entry on the ratchet list, NOT a widened heuristic. Guessing a
+    // general rule for "this literal is not a VNode" hides genuine findings —
+    // which is the failure this audit exists to prevent, committed by the audit.
+    pattern: /mock[- ]?vnode|audit_test_environment|--audit-tests/i,
+    diagnose: () => ({
+      cause:
+        "The test-environment audit flags `{ type, props, children }` object literals in test files as hand-rolled mock VNodes. That shape is the real anti-pattern in Pyreon tests — a mock vnode bypasses the pipeline, which is how PR #197's metadata drop stayed invisible for a package's whole lifetime. It is NOT exclusive to Pyreon, though: a package with its own tree format (`@pyreon/document`'s `DocNode`) carries the same shape while its tests call the real constructors, and the audit cannot tell the two apart from the literal alone.",
+      fix: "First check whether it is a REAL finding: does the test build a vnode by hand instead of calling `h()` or the component? If so, add a parallel real-`h()` test — that is the whole point. Only if the literal is genuinely a different tree format, add the file to the audit's explicit exemption list. Do NOT widen the detector's heuristic to exclude it: a general rule for 'this literal is not a VNode' hides the findings the audit exists to surface.",
+      fixCode: `// BAD — a hand-rolled vnode never exercises the real pipeline
+const vnode = { type: 'div', props: { _documentProps: {} }, children: [] }
+expect(extractDocumentTree(vnode).props).toEqual({})
+
+// GOOD — the real \`h()\` shape, which is what ships
+import { h } from '@pyreon/core'
+expect(extractDocumentTree(h(DocDocument, { title: 'Test' })).props.title).toBe('Test')`,
+      docs: '.claude/rules/test-environment-parity.md',
+    }),
+  },
+  {
     // Before the VNodeChild array arm was widened, a reactive accessor was
     // legal as a SOLE child and rejected among MULTIPLE children — so
     // `<Text>Count: {count}</Text>` failed to typecheck on the canonical
