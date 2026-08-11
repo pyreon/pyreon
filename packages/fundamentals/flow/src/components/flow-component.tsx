@@ -1432,8 +1432,16 @@ export function Flow(props: FlowComponentProps): VNodeChild {
       onKeyDown={handleKeyDown}
     >
       {children}
-      {() => {
-        const vp = instance.viewport()
+      {/* The viewport div is mounted STATICALLY and only its `style` string is
+          a reactive thunk. It used to be the body of a reactive child accessor
+          that read `instance.viewport()` at its top — which made every wheel
+          tick, every pan pointermove, and every `animateViewport` frame TEAR
+          DOWN AND RE-CREATE this entire subtree (all N node divs + their
+          ResizeObservers + all E edge paths), the "reactive mount accessor
+          reading display values" anti-pattern. Pan/zoom is now one cssText
+          write per frame; the browser composites the transform. */}
+      <div
+        class="pyreon-flow-viewport"
         // `width/height: 100%` on the viewport is load-bearing, NOT cosmetic:
         // without a definite size this absolutely-positioned, shrink-to-fit div
         // collapses to 0×0 (all its children are absolutely positioned →
@@ -1444,17 +1452,18 @@ export function Flow(props: FlowComponentProps): VNodeChild {
         // (React Flow's model — `.react-flow__viewport { width:100%; height:100% }`)
         // gives the svg a real paintable viewport; `overflow: visible` still lets
         // nodes/edges extend past it (the container's `overflow: hidden` clips).
-        return (
-          <div
-            class="pyreon-flow-viewport"
-            // `pointer-events: none` is paired with the full-size fix above: now
-            // that the viewport fills the container it would otherwise swallow
-            // every click meant for the sibling Controls / MiniMap panels and the
-            // container's own pan handler. `none` lets those pass through; the
-            // interactive descendants (node wrappers, edge paths) opt back in with
-            // `pointer-events: auto` / `stroke`. Mirrors React Flow's viewport.
-            style={`position: absolute; width: 100%; height: 100%; transform-origin: 0 0; transform: translate(${vp.x}px, ${vp.y}px) scale(${vp.zoom}); pointer-events: none;`}
-          >
+        //
+        // `pointer-events: none` is paired with the full-size fix above: now
+        // that the viewport fills the container it would otherwise swallow
+        // every click meant for the sibling Controls / MiniMap panels and the
+        // container's own pan handler. `none` lets those pass through; the
+        // interactive descendants (node wrappers, edge paths) opt back in with
+        // `pointer-events: auto` / `stroke`. Mirrors React Flow's viewport.
+        style={() => {
+          const vp = instance.viewport()
+          return `position: absolute; width: 100%; height: 100%; transform-origin: 0 0; transform: translate(${vp.x}px, ${vp.y}px) scale(${vp.zoom}); pointer-events: none;`
+        }}
+      >
             <EdgeLayer
               instance={instance}
               connectionState={() => connectionState()}
@@ -1511,9 +1520,7 @@ export function Flow(props: FlowComponentProps): VNodeChild {
               onNodePointerDown={handleNodePointerDown}
               onHandlePointerDown={handleHandlePointerDown}
             />
-          </div>
-        )
-      }}
+      </div>
     </div>
   )
 }

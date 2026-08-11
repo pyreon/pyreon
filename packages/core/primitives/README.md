@@ -2,7 +2,7 @@
 
 > Canonical multi-platform UI primitives — semantic vocabulary that compiles to DOM (web), SwiftUI (iOS), and Compose (Android). The Pyreon Multi-Target story.
 
-**Status:** experimental. Phase A of a 5-phase rollout. 6 of 16 primitives have web implementations; the rest ship in follow-ups.
+**Status:** experimental, and further along than this line used to say. All **17** primitives now have real web implementations, and PMTC emits them for iOS + Android. Per-capability native maturity (what is device-proven vs merely emitted) lives in the multiplatform tier table, not here — it moves per release and a copy in this file would go stale, which is exactly what happened to the sentence this replaced.
 
 ## What this is
 
@@ -27,20 +27,33 @@ function TodoApp() {
 
 On the **web target** this compiles via `@pyreon/runtime-dom` to DOM (the implementations in `src/web/`). On **iOS** + **Android** via PMTC, the compiler intercepts JSX at compile time and emits SwiftUI / Compose primitives — the imports here are type-anchor only on native targets.
 
-## Phase A scope (this package)
+## The primitives
 
-**6 primitives with real web implementations**:
+All 17 have a real web implementation in `src/web/` — there is no
+type-definition-only tier any more.
 
 | Primitive | DOM shape | Notes |
 |-----------|-----------|-------|
 | `<Stack>` | `<div style="display:flex">` | Default `direction="column"` |
 | `<Inline>` | `<div style="display:flex;flex-direction:row">` | Sugar for `<Stack direction="row">` |
+| `<Layer>` | `<div style="position:relative">` | Stacking context for overlays |
+| `<Scroll>` | `<div style="overflow:auto">` | Scrollable region |
+| `<Spacer>` | `<div>` | Flexible or fixed gap |
 | `<Text>` | `<span>` | Tokenized color / size / weight / truncate |
+| `<Heading>` | `<h1>`–`<h6>` | `level` selects the tag |
+| `<Image>` | `<img>` | Tokenized sizing + fit |
+| `<Video>` | `<video>` | AV playback; device-proven on both native targets |
+| `<Icon>` | `<svg>` | Named icon, tokenized size |
 | `<Button>` | `<button>` | 4 variants (primary/secondary/ghost/danger) |
 | `<Press>` | `<div role="button" tabindex="0">` | ARIA-button keyboard contract + long-press polyfill |
+| `<Link>` | `<a>` | Router-aware where a router is present |
 | `<Field>` | `<input>` | `kind` prop selects type (text/email/password/etc.) |
+| `<Toggle>` | `<input type="checkbox">` | Switch semantics |
+| `<Modal>` | portal + `role="dialog"` | Focus trap, ESC, scroll lock |
+| `<WebView>` | `<iframe>` | Embedded web content |
 
-**10 more primitives** have type definitions but no web runtime yet (`<Layer>`, `<Scroll>`, `<Spacer>`, `<Heading>`, `<Image>`, `<Icon>`, `<Link>`, `<Toggle>`, `<Modal>`). They ship in follow-up PRs as real apps demand each.
+Plus the escape hatches — `<Web>` / `<NativeIOS>` / `<NativeAndroid>` — for the
+cases a canonical primitive deliberately does not cover.
 
 ## Design principles
 
@@ -48,7 +61,7 @@ On the **web target** this compiles via `@pyreon/runtime-dom` to DOM (the implem
 2. **One canonical event name per concept.** `onPress` everywhere (not `onClick` on web + `action:` on iOS).
 3. **Tokens-first styling.** `padding={4}` / `gap="md"` resolve via theme. No raw pixels.
 4. **Pyreon idioms preserved.** Existing `<For>` / `<Show>` / `<Match>` control flow stays.
-5. **Minimal first; expand from real-world usage.** 16 primitives; more when demanded.
+5. **Minimal first; expand from real-world usage.** 17 primitives; more when demanded.
 
 ## Per-platform import resolution
 

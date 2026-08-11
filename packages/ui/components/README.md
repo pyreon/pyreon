@@ -2,7 +2,7 @@
 
 > **Private — internal to the Pyreon monorepo. Not published to npm.**
 
-67 rocketstyle components across 10 categories, built on `@pyreon/elements` + `@pyreon/rocketstyle` + `@pyreon/styler` and themed by `@pyreon/ui-theme`. Every component carries the rocketstyle dimension surface (`state` / `size` / `variant` / `useDarkMode`) with `useBooleans: false` semantics — props accept string values (`state="primary"`, `size="medium"`), not booleans. The component library Pyreon demos itself with — the canonical real-app shape that's used by example apps under `examples/` and exercised end-to-end in the `ui-showcase` Playwright suite.
+80 rocketstyle components across 14 categories, built on `@pyreon/elements` + `@pyreon/rocketstyle` + `@pyreon/styler` and themed by `@pyreon/ui-theme`. Every component carries the rocketstyle dimension surface (`state` / `size` / `variant` / `useDarkMode`) with `useBooleans: false` semantics — props accept string values (`state="primary"`, `size="medium"`), not booleans. The component library Pyreon demos itself with — the canonical real-app shape that's used by example apps under `examples/` and exercised end-to-end in the `ui-showcase` Playwright suite.
 
 ## Quick start
 
@@ -37,9 +37,9 @@ import {
 
 ## Components by category
 
-### Layout (7)
+### Layout (8)
 
-`Box`, `Stack`, `Group`, `Center`, `Divider`, `AspectRatio`, plus the simple-grid trio `GridContainer` / `GridRow` / `GridCol`.
+`Box`, `Stack`, `Group`, `Center`, `Divider`, `AspectRatio`, `ScrollArea`, plus the simple-grid trio `GridContainer` / `GridRow` / `GridCol`.
 
 ### Typography (2)
 
@@ -54,17 +54,17 @@ import {
 - **sizes**: `small`, `medium`, `large`
 - **variants**: `solid` (default), `outline`, `subtle`, `ghost`, `link`
 
-### Forms (10)
+### Forms (13)
 
-`FormField` (+ `FieldLabel`, `FieldDescription`, `FieldError`), `Input`, `Textarea`, `Checkbox` (+ `CheckboxIndicator`), `Radio` (+ `RadioGroup`, `RadioIndicator`, `RadioDot`), `Switch` (+ `SwitchThumb`), `Select`, `Slider`.
+`FormField` (+ `FieldLabel`, `FieldDescription`, `FieldError`), `Fieldset` (+ `FieldsetLegend`), `Input`, `PasswordInput`, `Textarea`, `Checkbox` (+ `CheckboxIndicator`), `Radio` (+ `RadioGroup`, `RadioIndicator`, `RadioDot`), `Switch` (+ `SwitchThumb`), `Select`, `Slider`, `RangeSlider`.
 
 ### Data display (10)
 
 `Badge`, `Chip`, `Card`, `Avatar` (+ `AvatarGroup`), `Image`, `Kbd`, `Table`, `Timeline`, `Code`, `Highlight`.
 
-### Feedback (5)
+### Feedback (6)
 
-`Alert`, `Notification`, `Progress`, `Loader`, `Skeleton`.
+`Alert`, `Notification`, `Progress`, `RingProgress`, `Loader`, `Skeleton`.
 
 ### Indicators (1)
 
@@ -86,9 +86,9 @@ import {
 
 `Calendar`, `DatePicker`, `DateRangePicker`, `TimePicker`, `DateTimePicker`, `MonthPicker`.
 
-### Advanced inputs (10)
+### Advanced inputs (12)
 
-`Combobox`, `Autocomplete`, `MultiSelect`, `FileUpload`, `ColorPicker`, `ColorSwatch`, `InputGroup`, `NumberInput`, `PinInput`, `SegmentedControl` (+ `SegmentedControlItem`).
+`Combobox`, `Autocomplete`, `MultiSelect`, `TagsInput`, `FileUpload`, `ColorPicker`, `ColorSwatch`, `InputGroup`, `NumberInput`, `PinInput`, `Rating`, `SegmentedControl` (+ `SegmentedControlItem`).
 
 ### Data (1)
 

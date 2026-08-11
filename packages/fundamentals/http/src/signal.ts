@@ -41,6 +41,18 @@ export interface LinkedSignal {
 }
 
 const NOOP = (): void => {}
+const NEVER_TIMED_OUT = (): boolean => false
+
+/**
+ * The shared nothing-to-cancel-on link. Frozen and stateless, so one
+ * instance serves every request — the no-signal/no-timeout case allocates
+ * nothing per call.
+ */
+const NO_LINK: LinkedSignal = Object.freeze({
+  signal: undefined,
+  cleanup: NOOP,
+  timedOut: NEVER_TIMED_OUT,
+})
 
 /** Compose a caller signal and a timeout into one signal. */
 export function linkSignals(
@@ -48,9 +60,7 @@ export function linkSignals(
   timeoutMs: number | false | undefined,
 ): LinkedSignal {
   const hasTimeout = typeof timeoutMs === 'number' && timeoutMs > 0
-  if (!userSignal && !hasTimeout) {
-    return { signal: undefined, cleanup: NOOP, timedOut: () => false }
-  }
+  if (!userSignal && !hasTimeout) return NO_LINK
 
   const controller = new AbortController()
   let timedOut = false

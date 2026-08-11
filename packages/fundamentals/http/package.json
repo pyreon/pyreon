@@ -57,6 +57,7 @@
     "LICENSE"
   ],
   "scripts": {
+    "bench:http": "NODE_ENV=production bun bench/http-bench.ts",
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
@@ -89,6 +90,10 @@
     "@tanstack/query-core": "^5.101.4",
     "@vitest/browser-playwright": "^4.1.10",
     "arktype": "^2.2.3",
+    "axios": "^1.13.2",
+    "ky": "^1.14.0",
+    "ofetch": "^1.4.1",
+    "redaxios": "^0.5.1",
     "valibot": "^1.4.1",
     "zod": "^4.4.3"
   },

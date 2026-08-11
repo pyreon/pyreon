@@ -80,6 +80,7 @@
     "coverage": "bun scripts/check-coverage.ts",
     "prose-props": "bun scripts/check-prose-props.ts",
     "check-readme-imports": "bun scripts/check-readme-imports.ts",
+    "check-component-docs": "bun scripts/check-component-docs.ts",
     "atlas-guide": "bun scripts/check-atlas-guide.ts",
     "coverage:floor": "bun scripts/check-coverage.ts --floor-only",
     "test:coverage": "bun scripts/check-coverage.ts",

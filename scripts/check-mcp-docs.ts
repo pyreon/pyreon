@@ -20,7 +20,7 @@
  *   bun run check-mcp-docs --json    # machine-readable
  */
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
 const REPO_ROOT = resolve(import.meta.dir, '..')
@@ -35,6 +35,8 @@ interface MissingEntry {
 interface CheckResult {
   ok: boolean
   toolCount: number
+  /** Manifest-bearing packages `get_api` cannot answer for. */
+  unreachable: string[]
   documented: string[]
   missing: MissingEntry[]
 }
@@ -94,6 +96,7 @@ function readDocSections(): Set<string> {
 function check(): CheckResult {
   const tools = readManifestTools()
   const sections = readDocSections()
+  const unreachable = findUnreachablePackages()
 
   const documented: string[] = []
   const missing: MissingEntry[] = []
@@ -106,11 +109,51 @@ function check(): CheckResult {
   }
 
   return {
-    ok: missing.length === 0,
+    ok: missing.length === 0 && unreachable.length === 0,
     toolCount: tools.length,
     documented: documented.sort(),
     missing: missing.sort((a, b) => a.tool.localeCompare(b.tool)),
+    unreachable,
   }
+}
+
+/**
+ * Packages with a manifest that `get_api` cannot answer for.
+ *
+ * A manifest is the docs pipeline's INPUT; an `api-reference.ts` entry is what
+ * an agent can actually retrieve. Nothing connected the two, so a package could
+ * be fully documented for humans and completely invisible to every assistant —
+ * with no error anywhere, because absence is not a failure state.
+ *
+ * That is not hypothetical: `@pyreon/a11y` and `@pyreon/rich-text` both had
+ * manifests and ZERO `get_api` entries until this gate was written.
+ *
+ * A package may be reachable EITHER through generated regions (a marker pair)
+ * or through hand-written entries — `@pyreon/i18n` is the latter — so the check
+ * is on the reachable KEYS, not on the marker. Checking markers would demand a
+ * migration the pipeline explicitly makes optional.
+ */
+function findUnreachablePackages(): string[] {
+  const apiRef = join(REPO_ROOT, 'packages/tools/mcp/src/api-reference.ts')
+  if (!existsSync(apiRef)) return []
+  const src = readFileSync(apiRef, 'utf8')
+  // Entry keys are `'<package>/<symbol>'` at the top level of the record.
+  const served = new Set(
+    [...src.matchAll(/^ {2}'([a-z][a-z0-9-]*)\//gm)].map((m) => m[1]!),
+  )
+  const out: string[] = []
+  const pkgsDir = join(REPO_ROOT, 'packages')
+  for (const cat of readdirSync(pkgsDir)) {
+    const catDir = join(pkgsDir, cat)
+    if (!statSync(catDir).isDirectory()) continue
+    for (const pkg of readdirSync(catDir)) {
+      if (!existsSync(join(catDir, pkg, 'src', 'manifest.ts'))) continue
+      // The MCP package documents its own TOOLS, not an importable API.
+      if (pkg === 'mcp') continue
+      if (!served.has(pkg)) out.push(pkg)
+    }
+  }
+  return out.sort()
 }
 
 function main(): void {
@@ -120,6 +163,20 @@ function main(): void {
   if (json) {
     console.log(JSON.stringify(result, null, 2))
     process.exit(result.ok ? 0 : 1)
+  }
+
+  if (!result.ok && result.unreachable.length > 0) {
+    console.error(
+      `✗ ${result.unreachable.length} package(s) have a manifest but NO get_api entry, ` +
+        `so an agent asking about them gets nothing:\n`,
+    )
+    for (const pkg of result.unreachable) console.error(`  @pyreon/${pkg}`)
+    console.error(
+      `\n  Fix: add a marker pair to packages/tools/mcp/src/api-reference.ts —\n` +
+        `    // <gen-docs:api-reference:start @pyreon/<name>>\n` +
+        `    // <gen-docs:api-reference:end @pyreon/<name>>\n` +
+        `  then run \`bun run gen-docs\` to fill it from the package's manifest.\n`,
+    )
   }
 
   if (result.ok) {
