@@ -16,6 +16,7 @@ import {
   decodeSyncMessage,
   encodeSyncMessage,
   toBytes,
+  toBytesSync,
 } from './ws-protocol'
 
 /** The `{ added, updated, removed }` clientId lists a y-protocols awareness event carries. */
@@ -212,41 +213,55 @@ export function connectViaWebSocket(
       if (aw) ws?.send(encodeSyncMessage(MSG_AWARENESS, encodeAwarenessUpdate(aw, [aw.clientID])))
       options.onConnect?.()
     }
-    ws.onmessage = (event: MessageEvent) => {
-      void toBytes(event.data).then((bytes) => {
-        /* v8 ignore next — closed/empty-frame guard: a frame arriving after close, or an
-           empty frame from a buggy relay, is integration-only timing (covered by the e2e). */
-        if (closed || bytes.length === 0) return
-        // Defensive: a buggy / hostile relay can send a garbage frame, and Yjs
-        // THROWS on a malformed update / state vector (even an empty one). Without
-        // this guard the throw escapes the `.then` as an UNHANDLED rejection
-        // (which can hard-crash a Node host). Drop the bad frame instead.
-        try {
-          const { type, payload } = decodeSyncMessage(bytes)
-          if (type === MSG_STATE_VECTOR) {
-            ws?.send(encodeSyncMessage(MSG_UPDATE, Y.encodeStateAsUpdate(doc.yDoc, payload)))
-          } else if (type === MSG_AWARENESS) {
-            // Apply under REMOTE_ORIGIN so our send-listener doesn't echo it back.
-            /* v8 ignore next — false arm unreachable: a peer only sends MSG_AWARENESS frames
-               when awareness is in use, in which case `aw` is always set on this transport. */
-            if (aw) applyAwarenessUpdate(aw, payload, REMOTE_ORIGIN)
-          } else {
-            // The first inbound update after open is the relay's reply to our
-            // state vector — the sync round-trip is complete. Apply first, THEN
-            // mark synced, so a create-if-missing seed re-checking on `synced`
-            // sees any peer value the relay just delivered.
-            Y.applyUpdate(doc.yDoc, payload, REMOTE_ORIGIN)
-            markSynced()
-          }
-        } catch (err) {
-          if (process.env.NODE_ENV !== 'production') {
-            console.warn(
-              '[Pyreon] connectViaWebSocket: dropped a malformed frame from the relay:',
-              err,
-            )
-          }
+    const handleFrame = (bytes: Uint8Array): void => {
+      /* v8 ignore next — closed/empty-frame guard: a frame arriving after close, or an
+         empty frame from a buggy relay, is integration-only timing (covered by the e2e). */
+      if (closed || bytes.length === 0) return
+      // Defensive: a buggy / hostile relay can send a garbage frame, and Yjs
+      // THROWS on a malformed update / state vector (even an empty one). Without
+      // this guard the throw would escape as an UNHANDLED rejection on the async
+      // path (which can hard-crash a Node host) or straight into the WS event
+      // dispatcher on the sync path. Drop the bad frame instead.
+      try {
+        const { type, payload } = decodeSyncMessage(bytes)
+        if (type === MSG_STATE_VECTOR) {
+          ws?.send(encodeSyncMessage(MSG_UPDATE, Y.encodeStateAsUpdate(doc.yDoc, payload)))
+        } else if (type === MSG_AWARENESS) {
+          // Apply under REMOTE_ORIGIN so our send-listener doesn't echo it back.
+          /* v8 ignore next — false arm unreachable: a peer only sends MSG_AWARENESS frames
+             when awareness is in use, in which case `aw` is always set on this transport. */
+          if (aw) applyAwarenessUpdate(aw, payload, REMOTE_ORIGIN)
+        } else {
+          // The first inbound update after open is the relay's reply to our
+          // state vector — the sync round-trip is complete. Apply first, THEN
+          // mark synced, so a create-if-missing seed re-checking on `synced`
+          // sees any peer value the relay just delivered.
+          Y.applyUpdate(doc.yDoc, payload, REMOTE_ORIGIN)
+          markSynced()
         }
-      })
+      } catch (err) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn(
+            '[Pyreon] connectViaWebSocket: dropped a malformed frame from the relay:',
+            err,
+          )
+        }
+      }
+    }
+    ws.onmessage = (event: MessageEvent) => {
+      // Sync fast path: `binaryType = 'arraybuffer'` means binary frames
+      // arrive as an ArrayBuffer (or a Buffer — a Uint8Array subclass — under
+      // Node `ws`), so they are decoded + applied BEFORE `onmessage` returns —
+      // no per-frame promise allocation + microtask hop on the remote-op hot
+      // path. Ordering across the two branches cannot break: for every shape
+      // `toBytesSync` rejects OTHER than Blob / fragmented Buffer[] (e.g. a
+      // text frame's string), `toBytes` resolves to an EMPTY Uint8Array that
+      // `handleFrame` drops — a no-op that cannot reorder anything — and
+      // Blob / Buffer[] occur only on an impl that ignores binaryType, where
+      // ALL binary frames take the async branch and stay mutually ordered.
+      const syncBytes = toBytesSync(event.data)
+      if (syncBytes !== null) handleFrame(syncBytes)
+      else void toBytes(event.data).then(handleFrame)
     }
     ws.onclose = (event: CloseEvent) => {
       connected = false

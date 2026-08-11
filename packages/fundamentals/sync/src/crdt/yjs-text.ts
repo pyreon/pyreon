@@ -31,6 +31,7 @@ export interface SyncedText extends Signal<string> {
 export function syncedText(doc: YjsCrdtDoc, key: string): SyncedText {
   const ytext = doc.yDoc.getText(key)
   const base = signal(ytext.toString())
+  let disposed = false
 
   // The single update path: Y.Text → base, on every committed change (local and
   // remote). Whole-string re-read keeps the bridge simple; the signal's Object.is
@@ -38,9 +39,35 @@ export function syncedText(doc: YjsCrdtDoc, key: string): SyncedText {
   const observer = () => base.set(ytext.toString())
   ytext.observe(observer)
 
+  // `prev` for the .set diff. FAST PATH: the observer above is the SOLE base
+  // writer and Yjs fires it synchronously when the OUTERMOST transaction
+  // commits, so the mirror INVARIANT is two-axis — base === ytext.toString()
+  // iff the observer is ATTACHED (`!disposed`) AND yjs is IDLE. `base.peek()`
+  // then yields prev with zero work instead of a second O(items) tree walk +
+  // allocation per keystroke (the observer already pays one).
+  //
+  // Yjs represents BOTH non-idle states in ONE field: `_transactionCleanups`
+  // (typed public on Y.Doc) gains its entry in the same statement pair that
+  // opens a transaction and is cleared only AFTER the last observer/cleanup
+  // ran — so the single `length === 0` check covers the outer-`doc.transact`
+  // window AND the observer-phase window (a sibling observer calling .set
+  // before ours saw the same transaction's text edit), and any FUTURE window
+  // is a non-idle state under the same check by construction. Both windows +
+  // the post-dispose path are locked by `tests/synced-text-premise.test.ts`.
+  //
+  // The `_transaction === null` read is REDUNDANT belt-and-braces — implied by
+  // empty cleanups on every yjs 13.x path (per-clause bisect: dropping it
+  // fails zero tests; the other two clauses each fail exactly one spec). It is
+  // kept ONLY as a one-property-read hedge against yjs-internals drift, never
+  // as covering a distinct window.
+  const prevText = (): string =>
+    !disposed && doc.yDoc._transactionCleanups.length === 0 && doc.yDoc._transaction === null
+      ? base.peek()
+      : ytext.toString()
+
   const facade = wrapSignal(base, {
     set: (next: string) => {
-      const prev = ytext.toString()
+      const prev = prevText()
       if (prev === next) return
       // Minimal single-region diff: keep the common prefix + suffix, replace the
       // middle. Covers the dominant controlled-input edit shape.
@@ -67,7 +94,6 @@ export function syncedText(doc: YjsCrdtDoc, key: string): SyncedText {
     doc.yDoc.transact(() => ytext.delete(index, length), LOCAL_ORIGIN)
   }
 
-  let disposed = false
   facade.dispose = () => {
     if (disposed) return
     disposed = true
