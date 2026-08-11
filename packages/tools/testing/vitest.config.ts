@@ -15,7 +15,9 @@ export default mergeConfig(
     // registers afterEach(cleanup) + the jest-dom matchers for THIS suite the
     // same way consumer suites wire it — the setup module is real shipped
     // surface, so it must be exercised (it sat at 0% coverage before this).
-    setupFiles: ['./src/vitest.ts'],
+    // + the happy-dom hashchange-echo guard (TEST-ONLY, not shipped surface):
+    // this suite drives real routers in happy-dom — see src/tests/setup.ts.
+    setupFiles: ['./src/vitest.ts', './src/tests/setup.ts'],
     // Explicit honest thresholds (2026-07 coverage-gate restoration): without
     // an explicit `statements:` entry the check-coverage gate assumed 95 while
     // the category-default vitest gate enforced 80/75 — so the package failed
