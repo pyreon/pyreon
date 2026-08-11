@@ -875,6 +875,375 @@ describe('detectPyreonPatterns', () => {
       `
       expect(hasPyreonPatterns(code)).toBe(true)
     })
+
+    // ── Hook tier — `const x = useX()` bindings called zero-arg ──────────
+
+    it('flags a zero-arg call of a hook-result binding — `const loading = useLoading()`', () => {
+      const code = `
+        function Card() {
+          const loading = useLoading()
+          if (loading()) return <Skeleton />
+          return <Content />
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      const hits = diags.filter((d) => d.code === 'static-early-return-conditional')
+      expect(hits).toHaveLength(1)
+      expect(hits[0]!.message).toContain('loading()')
+    })
+
+    it('flags a module-scope hook binding read in a component early return', () => {
+      const code = `
+        const hasItems = useHasAnyItem()
+        function List() {
+          if (!hasItems()) return <Empty />
+          return <ul>…</ul>
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(
+        diags.filter((d) => d.code === 'static-early-return-conditional'),
+      ).toHaveLength(1)
+    })
+
+    it('does NOT fire on a const bound to a non-hook helper call', () => {
+      const code = `
+        function Card() {
+          const loading = getLoading()
+          if (loading()) return <Spinner />
+          return <Content />
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'static-early-return-conditional')).toEqual([])
+    })
+
+    it('does NOT fire on a `let`-bound hook result (may be reassigned)', () => {
+      const code = `
+        function Card() {
+          let loading = useLoading()
+          if (loading()) return <Spinner />
+          return <Content />
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'static-early-return-conditional')).toEqual([])
+    })
+
+    it('hook-only file passes the hasPyreonPatterns pre-filter (const x = useX( line)', () => {
+      const code = `
+        function Card() {
+          const loading = useLoading()
+          if (loading()) return <Spinner />
+          return <Content />
+        }
+      `
+      expect(hasPyreonPatterns(code)).toBe(true)
+    })
+  })
+
+  describe('accessor-uncalled-in-template', () => {
+    it('flags a computed binding interpolated UNCALLED into a template literal', () => {
+      const code = `
+        const itemWidth = computed(() => 100 / count())
+        const style = \`width: \${itemWidth}%\`
+      `
+      const diags = detectPyreonPatterns(code)
+      const hits = diags.filter((d) => d.code === 'accessor-uncalled-in-template')
+      expect(hits).toHaveLength(1)
+      expect(hits[0]!.message).toContain('function SOURCE')
+      expect(hits[0]!.suggested).toBe('${itemWidth()}')
+      expect(hits[0]!.fixable).toBe(false)
+    })
+
+    it('flags a signal binding in a template inside JSX (auto-call does NOT reach interpolations)', () => {
+      const code = `
+        const itemWidth = signal(25)
+        const Bar = () => <div style={\`width: \${itemWidth}%\`}>bar</div>
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(
+        diags.filter((d) => d.code === 'accessor-uncalled-in-template'),
+      ).toHaveLength(1)
+    })
+
+    it('flags a hook-result binding WITH in-file zero-arg-call evidence', () => {
+      const code = `
+        const width = useItemWidth()
+        const px = width()
+        const style = \`\${width}px\`
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(
+        diags.filter((d) => d.code === 'accessor-uncalled-in-template'),
+      ).toHaveLength(1)
+    })
+
+    it('flags a cast-wrapped bare accessor — `${itemWidth as never}`', () => {
+      const code = `
+        const itemWidth = computed(() => 10)
+        const style = \`width: \${itemWidth as never}%\`
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(
+        diags.filter((d) => d.code === 'accessor-uncalled-in-template'),
+      ).toHaveLength(1)
+    })
+
+    it('does NOT flag the called form — `${itemWidth()}`', () => {
+      const code = `
+        const itemWidth = computed(() => 10)
+        const style = \`width: \${itemWidth()}%\`
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'accessor-uncalled-in-template')).toEqual([])
+    })
+
+    it('does NOT flag a hook-result binding WITHOUT call evidence (may be a plain value)', () => {
+      // `useId()` returns a string — interpolating it bare is CORRECT.
+      const code = `
+        const id = useId()
+        const key = \`row-\${id}\`
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'accessor-uncalled-in-template')).toEqual([])
+    })
+
+    it('does NOT flag untracked identifiers', () => {
+      const code = `
+        const name = 'world'
+        const s = \`hello \${name}\`
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'accessor-uncalled-in-template')).toEqual([])
+    })
+
+    it('does NOT flag TAGGED templates (tag functions may call interpolated fns)', () => {
+      const code = `
+        const itemWidth = computed(() => 10)
+        const rule = css\`width: \${itemWidth}%\`
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'accessor-uncalled-in-template')).toEqual([])
+    })
+
+    it('does NOT flag a param-shadowed name (scope-blind collector, param wins)', () => {
+      const code = `
+        const itemWidth = computed(() => 10)
+        const labels = widths.map((itemWidth) => \`\${itemWidth}%\`)
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'accessor-uncalled-in-template')).toEqual([])
+    })
+
+    it('does NOT flag a name re-declared elsewhere via destructuring (corpus FP shape)', () => {
+      // Real-corpus FP: a compat-layer test declared `const count =
+      // signal(0)` in one test and `const [count] = useState(0)` in
+      // another — the `${count}` interpolation refers to the useState
+      // NUMBER. Any non-accessor re-declaration makes the name ambiguous.
+      const code = `
+        const count = signal(0)
+        function Comp() {
+          const [count, setCount] = useState(0)
+          return h('div', null, \`id-\${count}\`)
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'accessor-uncalled-in-template')).toEqual([])
+    })
+
+    it('does NOT flag member access — `${obj.itemWidth}`', () => {
+      const code = `
+        const itemWidth = computed(() => 10)
+        const s = \`\${config.itemWidth}%\`
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'accessor-uncalled-in-template')).toEqual([])
+    })
+  })
+
+  describe('accessor-uncalled-in-condition', () => {
+    it('flags a bare computed binding under `!` in an if-condition (always truthy)', () => {
+      const code = `
+        const hasItems = computed(() => list().length > 0)
+        function pickLabel() {
+          if (!hasItems) return 'empty'
+          return 'full'
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      const hits = diags.filter((d) => d.code === 'accessor-uncalled-in-condition')
+      expect(hits).toHaveLength(1)
+      expect(hits[0]!.message).toContain('ALWAYS truthy')
+      expect(hits[0]!.suggested).toBe('hasItems()')
+      expect(hits[0]!.fixable).toBe(false)
+    })
+
+    it('flags a bare signal binding as a ternary condition', () => {
+      const code = `
+        const dark = signal(false)
+        const theme = dark ? 'dark' : 'light'
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(
+        diags.filter((d) => d.code === 'accessor-uncalled-in-condition'),
+      ).toHaveLength(1)
+    })
+
+    it('flags a bare binding as a top-level `&&`/`||` operand (one diag per condition)', () => {
+      const code = `
+        const ready = signal(false)
+        const hasItems = computed(() => list().length > 0)
+        function check(flag) {
+          if (flag && !hasItems || ready) return 1
+          return 0
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(
+        diags.filter((d) => d.code === 'accessor-uncalled-in-condition'),
+      ).toHaveLength(1)
+    })
+
+    it('flags a hook-result binding WITH in-file zero-arg-call evidence', () => {
+      const code = `
+        const hasAny = useHasAnyItem()
+        const snapshot = hasAny()
+        function pick() {
+          if (!hasAny) return null
+          return snapshot
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(
+        diags.filter((d) => d.code === 'accessor-uncalled-in-condition'),
+      ).toHaveLength(1)
+    })
+
+    it('does NOT flag the called form — `if (!hasItems())`', () => {
+      const code = `
+        const hasItems = computed(() => list().length > 0)
+        function pick() {
+          if (!hasItems()) return 'empty'
+          return 'full'
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'accessor-uncalled-in-condition')).toEqual([])
+    })
+
+    it('does NOT flag `typeof x === "function"` checks', () => {
+      const code = `
+        const hasItems = computed(() => list().length > 0)
+        function pick() {
+          if (typeof hasItems === 'function') return 'accessor'
+          return 'value'
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'accessor-uncalled-in-condition')).toEqual([])
+    })
+
+    it('does NOT flag `x == null` / `x != null` existence tests', () => {
+      const code = `
+        const hasItems = computed(() => list().length > 0)
+        function pick() {
+          if (hasItems == null) return 'missing'
+          if (hasItems != null) return 'present'
+          return 'other'
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'accessor-uncalled-in-condition')).toEqual([])
+    })
+
+    it('does NOT flag property access — `if (x.length)`', () => {
+      const code = `
+        const hasItems = computed(() => list().length > 0)
+        function pick() {
+          if (hasItems.length) return 1
+          return 0
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'accessor-uncalled-in-condition')).toEqual([])
+    })
+
+    it('does NOT flag conditions inside JSX (the compiler auto-calls known signals there)', () => {
+      const code = `
+        const dark = signal(false)
+        const App = () => <div class={dark ? 'dark' : 'light'}>x</div>
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'accessor-uncalled-in-condition')).toEqual([])
+    })
+
+    it('does NOT flag a hook-result binding WITHOUT call evidence (nullable handle)', () => {
+      // `useRouter()` may legitimately return null — `if (!router)` is a
+      // real existence test, not a truthiness misuse.
+      const code = `
+        const router = useRouter()
+        function guard() {
+          if (!router) return null
+          return router.currentRoute
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'accessor-uncalled-in-condition')).toEqual([])
+    })
+
+    it('does NOT flag the guard shape — the name is called in the same statement', () => {
+      const code = `
+        const fmt = useFormatter()
+        const probe = fmt()
+        const label = fmt ? fmt() : '-'
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'accessor-uncalled-in-condition')).toEqual([])
+    })
+
+    it('does NOT flag a param-shadowed name', () => {
+      const code = `
+        const hasItems = computed(() => list().length > 0)
+        function pick(hasItems) {
+          if (!hasItems) return 'empty'
+          return 'full'
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'accessor-uncalled-in-condition')).toEqual([])
+    })
+
+    it('does NOT flag untracked identifiers', () => {
+      const code = `
+        function pick(flag) {
+          if (!flag) return 'off'
+          return 'on'
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'accessor-uncalled-in-condition')).toEqual([])
+    })
+
+    it('does NOT flag a name re-declared elsewhere with a non-accessor initializer (corpus FP shape)', () => {
+      // Real-corpus FP: `const items = signal([])` inside a component,
+      // and a module-level helper doing `const items = ref.current;
+      // if (!items) return` — a legit null check on the re-declared
+      // LOCAL. Any non-accessor re-declaration makes the name ambiguous.
+      const code = `
+        function Section() {
+          const items = signal([])
+          return <div>{items()}</div>
+        }
+        function drive() {
+          const items = activeItems.current
+          if (!items) return
+          items.set([])
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'accessor-uncalled-in-condition')).toEqual([])
+    })
   })
 
   describe('as-unknown-as-vnodechild', () => {

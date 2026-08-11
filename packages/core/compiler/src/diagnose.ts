@@ -1033,6 +1033,27 @@ const html = (await renderToString(<App />)).replace('<!--x-->', head)`,
       related: `The void set is the HTML standard one: area, base, br, col, embed, hr, img, input, link, meta, param, source, track, wbr. The SSR compile-to-string fast path deliberately BAILS on a void tag written with an explicit children list (rather than guessing which side to match), so this shape also silently costs you the fast path for that subtree.`,
     }),
   },
+  {
+    // Accessor interpolated UNCALLED — function source rendered into a CSS
+    // value or DOM text. No exception fires (String(fn) is legal), so the
+    // symptom is the pasted OUTPUT: "() =>" appearing in a style/width/text.
+    // The compiler's signal auto-call pass covers JSX expression regions,
+    // NOT template-literal interpolations, so nothing rewrites or warns.
+    pattern:
+      /(width|height|style|transform|margin|padding|class)\s*[:=]\s*["'`]?\s*\(\)\s*=>|\(\)\s*=>[^\n]{0,120}(render|interpolat|template literal|css|style|dom text|text content)|(render|interpolat)[^\n]{0,80}function source/i,
+    diagnose: () => ({
+      cause:
+        'A reactive accessor (a signal/computed, or a zero-arg callable returned by a hook) was interpolated into a template literal WITHOUT being called — `` `${itemWidth}%` `` where `itemWidth = computed(...)`. `String(fn)` is legal JavaScript, so no error fires; the function SOURCE (`() => …`) is silently baked into the CSS value / text. The compiler auto-calls known signals in JSX expression regions, but template-literal interpolations are plain JS — nothing rewrites them.',
+      fix: 'Call the accessor inside the interpolation: `` `${itemWidth()}%` ``. For a REACTIVE result, build the template inside a tracking scope — a JSX accessor (`style={() => `width: ${itemWidth()}%`}`), an effect, or a computed — so the string re-derives when the signal changes. The `accessor-uncalled-in-template` static detector (MCP `validate` / `pyreon check`) flags this shape at edit time.',
+      fixCode: `// WRONG — bakes the function source into the CSS value
+const style = \`width: \${itemWidth}%\`   // -> "width: () => 100 / count()%"
+
+// RIGHT — call it (and derive reactively where it should track)
+<div style={() => \`width: \${itemWidth()}%\`} />`,
+      related:
+        'Sibling shape: a bare accessor as an `if`/ternary condition outside JSX (`if (!has) return null` where `has = useHasAnyItem()`) — a function is always truthy, so the branch is pinned; call it (`if (!has())`). Flagged by `accessor-uncalled-in-condition`.',
+    }),
+  },
 ]
 
 /** Diagnose an error message and return structured fix information */
