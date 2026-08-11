@@ -81,6 +81,9 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
   let projects: readonly { name: string; dir: string }[] | undefined
   let configProblem: string | undefined
   let configTitle: string | undefined
+  // Same set the scan resolved with — see `ScanResult.alias`. Recomputing it
+  // here would let the workbench and the catalog disagree about what resolves.
+  let alias: readonly { find: string | RegExp; replacement: string }[] = []
   try {
     const scan = await runScan({ cwd: root, dir: scanDir, write: false })
     components = scan.graph.list()
@@ -91,6 +94,11 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
     // root, which a relative path cannot express once there are several roots.
     projects = scan.projects?.map((pr) => ({ name: pr.name, dir: resolve(root, pr.dir) }))
     configTitle = scan.title
+    alias = scan.alias ?? []
+    // A config that exists and cannot be read is reported once, here: the
+    // consequence (aliased imports fail) shows up as a broken component, and
+    // pointing at the cause beats leaving that to be guessed.
+    if (scan.aliasWarning) process.stderr.write(`atlas: ${scan.aliasWarning}\n`)
     // A config that was found and could not be used explains the absence of
     // everything it would have configured; silence here reads as "my config
     // does nothing" with no way to find out why.
@@ -168,6 +176,11 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
   const server = await createServer({
     root,
     configFile: false,
+    // The project's own `resolve.alias`, put back after `configFile: false`
+    // removed it. Without this a single `~/components/…` import fails to
+    // resolve and the dev overlay covers the WHOLE workbench, not just that
+    // component's card (#2744).
+    ...(alias.length > 0 ? { resolve: { alias: [...alias] } } : {}),
     server: { port: options.port ?? 5210, strictPort: true },
     // The workbench entry is VIRTUAL, so Vite must not crawl the project's own
     // `index.html` for dependencies — that file belongs to the consuming app

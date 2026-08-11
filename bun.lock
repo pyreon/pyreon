@@ -2191,6 +2191,7 @@
         "@pyreon/manifest": "workspace:*",
         "@pyreon/query": "workspace:*",
         "@pyreon/runtime-server": "workspace:*",
+        "@pyreon/store": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vite-plugin": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
@@ -2201,6 +2202,7 @@
       },
       "peerDependencies": {
         "@pyreon/compiler": "workspace:*",
+        "@pyreon/store": "workspace:*",
         "@pyreon/vite-plugin": "workspace:*",
         "happy-dom": ">=15",
         "playwright-core": ">=1.40",
@@ -2208,6 +2210,7 @@
       },
       "optionalPeers": [
         "@pyreon/compiler",
+        "@pyreon/store",
         "@pyreon/vite-plugin",
         "happy-dom",
         "playwright-core",

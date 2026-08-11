@@ -90,6 +90,28 @@ export interface AtlasConfig {
    */
   projects?: readonly ProjectRoot[]
   /**
+   * Extra module aliases, for imports Atlas cannot otherwise resolve.
+   *
+   * Atlas ALREADY reads `resolve.alias` out of the project's own vite config,
+   * so most projects need nothing here — this is the escape hatch for when
+   * that config cannot be loaded (it imports a plugin this command does not
+   * install, or reads env the workbench does not set), and for aliases that
+   * live somewhere else entirely.
+   *
+   * Entries declared here WIN over discovered ones: Vite matches aliases in
+   * order and these are placed first.
+   *
+   * Only `resolve.alias` is ever taken from the project's config — never its
+   * plugins. Atlas runs the real `@pyreon/vite-plugin` itself, and applying a
+   * second copy would compile every component's JSX twice.
+   *
+   * @example
+   * ```ts
+   * export const alias = { '~': './src', '@app': './src/app' }
+   * ```
+   */
+  alias?: Record<string, string> | readonly { find: string | RegExp; replacement: string }[]
+  /**
    * Render extensions — what a scenario needs to render like your app.
    *
    * Each contributes a layer around every scenario and/or a one-time setup,
@@ -239,7 +261,37 @@ export async function loadAtlasConfig(
     ...(wrapper ? { wrapper: wrapper as ComponentRef } : {}),
     ...(theme !== undefined ? { theme } : {}),
   }
-  /** Validate one optional export; on failure NAME it and leave it out. */
+  /**
+ * `alias` must be Vite's own shape — the object form or the array form.
+ *
+ * Validated rather than trusted because a malformed alias does not fail
+ * loudly: Vite ignores an entry it cannot read, so the import it was meant to
+ * fix keeps failing and the config LOOKS applied. Naming it here is the
+ * difference between a five-second fix and an afternoon.
+ */
+function validateAlias(value: unknown): string | undefined {
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const e = entry as { find?: unknown; replacement?: unknown }
+      if (!e || (typeof e.find !== 'string' && !(e.find instanceof RegExp))) {
+        return 'every array entry needs a string or RegExp `find`'
+      }
+      if (typeof e.replacement !== 'string') {
+        return 'every array entry needs a string `replacement`'
+      }
+    }
+    return undefined
+  }
+  if (typeof value !== 'object' || value === null) {
+    return '`alias` must be an object (`{ "~": "./src" }`) or an array of { find, replacement }'
+  }
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof v !== 'string') return `\`alias["${k}"]\` must be a string path`
+  }
+  return undefined
+}
+
+/** Validate one optional export; on failure NAME it and leave it out. */
   const take = (
     key: keyof AtlasConfig,
     validate: (value: unknown) => string | undefined,
@@ -261,6 +313,7 @@ export async function loadAtlasConfig(
     take('pages', validatePages),
     take('projects', validateProjects),
     take('extensions', validateExtensions),
+    take('alias', validateAlias),
   ].filter((p): p is string => p !== undefined)
 
   return { config, path: found, ...(problems[0] ? { error: problems[0] } : {}) }

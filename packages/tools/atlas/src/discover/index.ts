@@ -42,3 +42,10 @@ export {
   type LoadErrorKind,
   specifierFrom,
 } from './load-errors'
+export {
+  mergeAlias,
+  normalizeAlias,
+  projectAlias,
+  type AliasEntry,
+  type ProjectAliasResult,
+} from './project-alias'

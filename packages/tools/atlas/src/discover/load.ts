@@ -72,6 +72,15 @@ export function runtimeLoader(): ModuleLoader {
 export async function createModuleLoader(
   root: string,
   packages: PackageMap = new Map(),
+  /**
+   * The project's module aliases.
+   *
+   * The SCAN needs these as much as the dev server does: a component importing
+   * through `~/components/…` fails to LOAD here, which drops it from the
+   * catalog entirely — a quieter failure than the dev overlay, and the reason
+   * this is threaded through rather than being a dev-server-only fix.
+   */
+  alias: readonly { find: string | RegExp; replacement: string }[] = [],
 ): Promise<ModuleLoader> {
   // Structural types, not `typeof import('vite')`: naming Vite's types here
   // would put it in the type graph unconditionally, defeating the dynamic
@@ -163,6 +172,10 @@ export async function createModuleLoader(
   const server = await createServer({
     root,
     configFile: false,
+    // `configFile: false` throws out the project's `resolve.alias` along with
+    // its plugins, so the aliases are put back explicitly. Only alias — see
+    // `project-alias.ts` for why conditions are deliberately not inherited.
+    ...(alias.length > 0 ? { resolve: { alias: [...alias] } } : {}),
     // Middleware mode with no app: nothing is served, the server exists purely
     // as a module pipeline. `optimizeDeps.entries: []` stops it crawling the
     // project's `index.html`, which belongs to the app and pre-bundles a graph

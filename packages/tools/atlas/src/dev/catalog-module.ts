@@ -297,9 +297,30 @@ export function generateCatalogModule(
   const ids = catalogIds(entries, options)
   const lines: string[] = ["import { h } from '@pyreon/core'", '']
 
-  ordered.forEach((entry, i) => {
-    lines.push(`import * as __mod${i} from ${lit(entry.file)}`)
+  // Component modules are imported INDIVIDUALLY and non-fatally.
+  //
+  // These used to be static `import * as __modN from '…'`. A static import
+  // cannot be caught, so one component whose own imports do not resolve failed
+  // the whole generated module — and the workbench died entirely rather than
+  // losing one card. That is what made a single aliased import take down the
+  // entire catalog (#2744): every other component was fine and none of them
+  // rendered.
+  //
+  // A caught dynamic import per component keeps the failure local. The render
+  // path below already degrades to an error card when a component is not a
+  // function, so nothing downstream changes — that branch simply becomes
+  // reachable, which it never was for this failure mode.
+  //
+  // Top-level await is fine here: this is an ESM module served by Vite, and
+  // the imports were already blocking as static ones.
+  lines.push('const __load = (p) => p.then((m) => m, (err) => ({ __atlasError: err }))')
+  lines.push(
+    `const [${ordered.map((_, i) => `__mod${i}`).join(', ')}] = await Promise.all([`,
+  )
+  ordered.forEach((entry) => {
+    lines.push(`  __load(import(${lit(entry.file)})),`)
   })
+  lines.push('])')
   if (options.configPath) {
     lines.push(`import * as __config from ${lit(options.configPath)}`)
     // The recording permissions provider goes INNERMOST when a wrapper exists:
@@ -432,9 +453,13 @@ export function generateCatalogModule(
     lines.push(`      render: (props, ctx) => {`)
     lines.push(`        const Comp = __mod${i}[${lit(component.name)}] ?? __mod${i}.default`)
     lines.push(`        if (typeof Comp !== 'function') {`)
+    // The module's OWN load error when there was one: "Cannot find module
+    // '~/shared/tokens'" names the fix, "could not load Badge" names a symptom.
+    lines.push(`          const why = __mod${i}.__atlasError`)
     lines.push(
       `          return h('div', { 'data-atlas-error': ${lit(component.name)} }, ` +
-        `${lit(`Could not load ${component.name} from `)} + ${lit(entry.file)})`,
+        `why ? ${lit(`${component.name} failed to load: `)} + (why.message ?? String(why)) ` +
+        `: ${lit(`Could not load ${component.name} from `)} + ${lit(entry.file)})`,
     )
     lines.push(`        }`)
     lines.push(`        const merged = { ...props }`)
