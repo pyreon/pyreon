@@ -458,8 +458,16 @@ export function createModel(
     // semantics (assistive tech, `:dir()` selectors) and the CSS direction,
     // which a `direction:` dimension alone would not give.
     stopDir ??= effect(() => {
+      // Read the signal BEFORE the element guard: an effect whose only
+      // reactive read sits behind a non-reactive guard subscribes to
+      // nothing when the guard short-circuits on the first run and then
+      // never re-runs (pyreon/no-guard-only-signal-reads-in-effect).
+      // Here the effect is created only after `previewEl` is captured,
+      // so the guard was truthy in practice — hoisting removes the
+      // fragility without changing behavior.
+      const d = dir()
       const el2 = previewEl
-      if (el2) el2.setAttribute('dir', dir())
+      if (el2) el2.setAttribute('dir', d)
     })
     if (typeof MutationObserver === 'undefined') return
     observer?.disconnect()

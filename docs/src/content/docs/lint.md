@@ -1,6 +1,6 @@
 ---
 title: '@pyreon/lint'
-description: Pyreon-specific linter — 97 rules across 19 categories for signals, JSX, lifecycle, SSR, performance, architecture, routing, SSG, and opt-in best practices (frontend a11y/CLS, query/rx/form/i18n/router/storage library usage). CLI, programmatic API, watch mode, AST cache, and an LSP server.
+description: Pyreon-specific linter — 99 rules across 19 categories for signals, JSX, lifecycle, SSR, performance, architecture, routing, SSG, and opt-in best practices (frontend a11y/CLS, query/rx/form/i18n/router/storage library usage). CLI, programmatic API, watch mode, AST cache, and an LSP server.
 ---
 
 `@pyreon/lint` is a framework-specific linter that catches Pyreon anti-patterns at the AST level — bare signal reads in JSX, props destructuring that breaks reactivity, browser globals in SSR code, bundler-coupled dev gates, and dozens more. It is powered by [`oxc-parser`](https://oxc.rs) for fast ESTree/TS-ESTree parsing, ships a CLI (`pyreon-lint`), a programmatic API (`lint` / `lintFile`), watch mode, an AST cache, and an LSP server for editor integration.
@@ -332,13 +332,13 @@ Library-scoped opt-in rules — `query`, `rx`, `i18n`, `storage`, form's `no-sig
 
 ## Rules
 
-There are **97 rules across 19 categories**. The `frontend`, `query`, `rx`, `i18n`, and `storage` categories (plus the two opt-in rules in `form` and `router`) are opt-in best-practice rules — off in the standard presets. Run `pyreon-lint --list` for the authoritative list with live severities.
+There are **99 rules across 19 categories**. The `frontend`, `query`, `rx`, `i18n`, and `storage` categories (plus the two opt-in rules in `form` and `router`) are opt-in best-practice rules — off in the standard presets. Run `pyreon-lint --list` for the authoritative list with live severities.
 
 ### Categories at a glance
 
 | Category          | Rules | Opt-in? | Purpose                                                             |
 | ----------------- | ----- | ------- | ------------------------------------------------------------------ |
-| `reactivity`      | 14    |         | Signal/effect/computed correctness — tracking, batching, leaks     |
+| `reactivity`      | 15    |         | Signal/effect/computed correctness — tracking, batching, leaks     |
 | `jsx`             | 11    |         | Pyreon JSX semantics — `class`/`for`, `<For>`/`by`, props, `<Show>`|
 | `lifecycle`       | 6     |         | `onMount`/`effect` setup-vs-mount, cleanup, idempotent `init*`     |
 | `performance`     | 6     |         | Keyed lists, lazy imports, leak-prone timers                       |
@@ -346,7 +346,7 @@ There are **97 rules across 19 categories**. The `frontend`, `query`, `rx`, `i18
 | `architecture`    | 10    |         | Import layering, dev gates, error prefixes, test/config contracts  |
 | `store`           | 3     |         | `defineStore` ids, mutation discipline, provider scope             |
 | `form`            | 4     | 1 of 4  | `useField`/`register`, validation, field arrays                    |
-| `styling`         | 4     |         | Inline style objects, dynamic `styled()`, theme/cx usage           |
+| `styling`         | 5     |         | Inline style objects, dynamic `styled()`, theme/cx, rocketstyle `.attrs()` |
 | `hooks`           | 3     |         | Prefer auto-cleanup hooks over raw listeners/timers/storage        |
 | `accessibility`   | 3     |         | Dialog / overlay / toast ARIA                                      |
 | `router`          | 5     | 1 of 5  | `<Link>` vs `<a>`, navigate-in-render, fallback, active state      |
@@ -359,7 +359,7 @@ There are **97 rules across 19 categories**. The `frontend`, `query`, `rx`, `i18
 
 Opt-in (`ᵒ`) rules below are off in `recommended`/`strict`/`app`/`lib` — enable via `best-practices` or per-rule config; library-scoped ones additionally auto-gate on `package.json` deps.
 
-### Reactivity (14)
+### Reactivity (15)
 
 | Rule                                  | Severity | Fixable | Description                                                                        |
 | ------------------------------------- | -------- | ------- | ---------------------------------------------------------------------------------- |
@@ -377,6 +377,7 @@ Opt-in (`ᵒ`) rules below are off in `recommended`/`strict`/`app`/`lib` — ena
 | `pyreon/no-signal-leak`               | warn     |         | Signal created but never read                                                      |
 | `pyreon/storage-signal-v-forwarding`  | error    |         | Signal-like wrapper callable missing `_v` forwarding — breaks the `_bindText` fast path |
 | `pyreon/no-iterate-children-without-resolve` | error |     | Iterating `props.children` at the VNode level (`cloneVNode`, `.map`/`.filter`, `.props`) must first unwrap a possible compiler accessor via `resolveChildren(…)` |
+| `pyreon/no-guard-only-signal-reads-in-effect` | info |    | Every reactive read in an `effect()` sits behind a non-reactive guard (`if (ref.current) { … }`) — the first run can short-circuit before any read, so the effect subscribes to nothing and never re-runs |
 
 ### JSX (11)
 
@@ -457,7 +458,7 @@ Opt-in (`ᵒ`) rules below are off in `recommended`/`strict`/`app`/`lib` — ena
 | `pyreon/prefer-field-array`                 | info     | `signal([])` in form files — use `useFieldArray()` |
 | `pyreon/no-signal-in-form-initial-values` ᵒ | warn     | `useForm({ initialValues: { x: sig() } })` snapshots the signal once — pass the plain value / use a reactive field |
 
-### Styling (4)
+### Styling (5)
 
 | Rule                               | Severity | Description                                        |
 | ---------------------------------- | -------- | -------------------------------------------------- |
@@ -465,6 +466,7 @@ Opt-in (`ᵒ`) rules below are off in `recommended`/`strict`/`app`/`lib` — ena
 | `pyreon/no-dynamic-styled`         | warn     | `styled()` inside component body                   |
 | `pyreon/no-theme-outside-provider` | warn     | `useTheme()` without provider                      |
 | `pyreon/prefer-cx`                 | info     | String concatenation for class names — use `cx()`  |
+| `pyreon/no-signal-read-in-attrs-callback` | warn | Signal/computed read inside a rocketstyle `.attrs()` callback — the callback runs once at setup, so the read captures a dead value (auto-gated on `@pyreon/rocketstyle`) |
 
 ### Hooks (3)
 
