@@ -1710,6 +1710,8 @@ jobs:
           restore-bootstrap: 'false' # every folded gate is lib-free
       - name: Check Doc Claims
         run: bun run check-doc-claims
+      - name: Multiplatform Matrix (headline == table sum)
+        run: bun scripts/check-multiplatform-matrix.ts
       - name: Docs Sync (gen-docs --check)
         run: bun run gen-docs --check
       - name: Docs Sync (check-mcp-docs)
