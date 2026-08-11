@@ -224,10 +224,32 @@ export interface BudgetRegression {
 
 /**
  * Compare measured sizes to locked budgets. A scenario regresses when
- * its gzip exceeds its budget. Missing budgets are reported as
- * regressions too (a new scenario must be locked via `--update`). Pure
- * — unit-tested.
+ * its gzip exceeds its budget by more than `VERSION_NOISE_BYTES`. Missing
+ * budgets are reported as regressions too (a new scenario must be locked via
+ * `--update`). Pure — unit-tested.
  */
+/**
+ * Bytes of slack, because a release changes gzip output without changing code.
+ *
+ * Every package embeds its OWN version — `registerSingleton(name, version, …)`
+ * reads it from `package.json` and the build inlines the literal (that
+ * derivation exists so the two can never drift). `"0.51.0"` and `"0.52.0"` are
+ * the same LENGTH, but they are different bytes, and gzip compresses them
+ * differently: measured on `@pyreon/hooks`, a plain version bump moved
+ * `useEventListener` 596 → 597 and `useAuth` 709 → 710.
+ *
+ * Budgets are locked at the exact measured value, so zero headroom means every
+ * release PR reds this gate for a change that touched no code — and the only
+ * available fix is to bump the number, which teaches people to bump it.
+ *
+ * 4 bytes is chosen to be larger than that fluctuation and far smaller than
+ * anything this gate exists to catch: a feature that stops tree-shaking moves a
+ * minimal import by hundreds of bytes, not by one. Sustained real growth still
+ * fails, because the budget is re-locked at the new measured value on `--update`
+ * and the slack does not accumulate.
+ */
+export const VERSION_NOISE_BYTES = 4
+
 export function compareToBudgets(
   measured: MeasuredImport[],
   budgets: Record<string, number>,
@@ -241,7 +263,7 @@ export function compareToBudgets(
       missing.push(m.id)
       continue
     }
-    if (m.gzip > budget) {
+    if (m.gzip > budget + VERSION_NOISE_BYTES) {
       regressions.push({ id: m.id, gzip: m.gzip, budget, overBy: m.gzip - budget })
     }
   }
