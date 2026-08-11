@@ -82,6 +82,33 @@ describe('RouteAnnouncer / useRouteAnnouncer', () => {
     expect(region()).toBeNull() // no navigation has happened yet
   })
 
+  it('ignores a stale happy-dom hashchange echo from a prior pushState (guard installed)', async () => {
+    // DETERMINISTIC form of a LOAD-DEPENDENT CI flake. happy-dom queues a
+    // DEFERRED synthetic `hashchange` (a setTimeout) for any hash-changing
+    // `history.pushState`/`replaceState` — real browsers never fire those.
+    // In the wild the echo from one spec's `router.push('/about')` (a
+    // hash-mode pushState) crosses the spec boundary only under CI/parallel
+    // event-loop pressure, so the ORIGINAL failure does not reproduce on an
+    // idle local machine. This spec forces the interleaving: queue the echo,
+    // mount the announcer BEFORE it dispatches, then let real timers fire —
+    // the structural-argument-as-bisect-proof pattern from
+    // .claude/rules/testing.md (cross-tab Playwright specs).
+    //
+    // Without the setup.ts guard (`installHappyDomHashchangeEchoGuard`), the
+    // echo reaches the fresh router's `hashchange` listener, runs the full
+    // navigation pipeline to '/about', the announcer's afterEach fires, and
+    // region() is non-null with 'About' — the observed flake shape.
+    window.history.replaceState(null, '', '/') // known hash-less baseline
+    window.history.pushState(null, '', '#/about') // queues the deferred echo
+    const { dispose } = mountAnnouncer('/') // mount while the echo is pending
+    active = dispose
+    // Let happy-dom's deferred dispatch fire (it's a real setTimeout), then
+    // give the announcer a frame in case it (wrongly) announced.
+    await new Promise((r) => setTimeout(r, 50))
+    await nextFrame()
+    expect(region()).toBeNull() // the echo must NOT be treated as a traversal
+  })
+
   it('announces the initial route when announceInitial is set', async () => {
     const { dispose } = mountAnnouncer('/about', { announceInitial: true })
     active = dispose

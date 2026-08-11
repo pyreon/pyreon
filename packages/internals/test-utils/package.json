@@ -17,6 +17,11 @@
       "import": "./src/browser/index.ts",
       "types": "./src/browser/index.ts"
     },
+    "./happy-dom-hashchange-guard": {
+      "bun": "./src/happy-dom-hashchange-guard.ts",
+      "import": "./src/happy-dom-hashchange-guard.ts",
+      "types": "./src/happy-dom-hashchange-guard.ts"
+    },
     "./globals": {
       "types": "./src/globals.d.ts"
     }
