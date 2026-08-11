@@ -41,7 +41,7 @@
  * types to keep it cheap, so `TS2749` and friends are artifacts of the probe,
  * not findings about the repo. A gate that reported those would be noise.
  */
-import { execSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -134,12 +134,35 @@ export function taughtImports(readmes: readonly string[]): Map<string, Set<strin
   return out
 }
 
+/**
+ * `packages/<cat>/<pkg>/README.md`, walked rather than globbed.
+ *
+ * A glob needs a shell; a shell needs a command string; a command string built
+ * from an absolute path is what CodeQL flags (js/shell-command-injection-from-
+ * environment) — correctly, because the repo path is not this script's to
+ * trust. Walking removes the shell instead of arguing about the path.
+ */
+function findReadmes(root: string): string[] {
+  const out: string[] = []
+  const pkgsDir = join(root, 'packages')
+  if (!existsSync(pkgsDir)) return out
+  for (const cat of readdirSync(pkgsDir)) {
+    const catDir = join(pkgsDir, cat)
+    try {
+      if (!statSync(catDir).isDirectory()) continue
+    } catch {
+      continue
+    }
+    for (const pkg of readdirSync(catDir)) {
+      const readme = join(catDir, pkg, 'README.md')
+      if (existsSync(readme)) out.push(readme)
+    }
+  }
+  return out.sort()
+}
+
 function main(): number {
-  const readmes = execSync('ls packages/*/*/README.md', { cwd: REPO_ROOT, encoding: 'utf8' })
-    .trim()
-    .split('\n')
-    .filter(Boolean)
-    .map((p) => join(REPO_ROOT, p))
+  const readmes = findReadmes(REPO_ROOT)
 
   const paths = pyreonPaths(REPO_ROOT)
   const taught = taughtImports(readmes)
@@ -188,7 +211,13 @@ function main(): number {
 
   let output = ''
   try {
-    execSync(`bunx tsc -p ${tsconfig} --noEmit`, { cwd: REPO_ROOT, encoding: 'utf8', stdio: 'pipe' })
+    // argv array, not a command STRING: nothing is parsed by a shell, so the
+    // generated config path cannot be read as anything but one argument.
+    execFileSync('bunx', ['tsc', '-p', tsconfig, '--noEmit'], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+      stdio: 'pipe',
+    })
   } catch (err) {
     output = String((err as { stdout?: string }).stdout ?? '')
   } finally {
