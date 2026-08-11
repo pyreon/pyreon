@@ -126,7 +126,7 @@ A `never`-strategy island MUST NOT have a registry entry. The whole point is shi
 
 ```ts
 // vite.config.ts
-import { pyreon } from '@pyreon/vite-plugin'
+import pyreon from '@pyreon/vite-plugin'
 export default { plugins: [pyreon({ islands: true })] }
 ```
 

@@ -61,7 +61,10 @@ jobs:
             exit 0
           fi
           # Same relevance surface the old trigger-level `paths:` filter had.
-          if echo "$CHANGED" | grep -qE '^(docs/src/content/docs/|packages/core/(core|reactivity|runtime-dom|runtime-server|router)/src/|scripts/check-doc-examples\.ts|\.github/workflows/doc-examples-check\.yml)'; then
+          # `packages/.../README.md` and any package `src/` are in scope now:
+          # check-readme-imports compiles every @pyreon/* symbol a README
+          # imports, so a README edit OR an export rename can break it.
+          if echo "$CHANGED" | grep -qE '^(docs/src/content/docs/|packages/[^/]+/[^/]+/README\.md|packages/[^/]+/[^/]+/src/|scripts/check-(doc-examples|readme-imports)\.ts|\.github/workflows/doc-examples-check\.yml)'; then
             echo "run=true" >> "$GITHUB_OUTPUT"
             echo "Relevant changes found — running doc-examples typecheck."
           else
@@ -96,3 +99,11 @@ jobs:
       - name: Typecheck opted-in doc examples
         if: steps.rel.outputs.run == 'true'
         run: bun scripts/check-doc-examples.ts
+
+      # Every @pyreon/* symbol a package README tells you to import must exist.
+      # Narrower than the block typecheck above and needs no opt-in, so it
+      # covers all ~550 README blocks rather than the handful that qualify as
+      # self-contained. Same lib-free contract: resolves through workspace src.
+      - name: README imports resolve
+        if: steps.rel.outputs.run == 'true'
+        run: bun scripts/check-readme-imports.ts

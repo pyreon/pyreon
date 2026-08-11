@@ -91,11 +91,11 @@ Replace iframe-sandboxed `<Playground code={`…`} />` with real `.tsx` files th
 
 ```ts
 // entry-client.ts — one-time consumer-side registration
-import { registerExamples, startClient } from '@pyreon/zero/client'
-import { registerExamples as registerContentExamples } from '@pyreon/zero-content'
+import { startClient } from '@pyreon/zero/client'
+import { registerExamples } from '@pyreon/zero-content'
 import { routes } from 'virtual:zero/routes'
 
-registerContentExamples(
+registerExamples(
   import.meta.glob('./examples/**/*.tsx') as Record<
     string,
     () => Promise<unknown>
