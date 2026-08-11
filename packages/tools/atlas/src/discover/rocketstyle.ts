@@ -116,6 +116,29 @@ export async function discoverRocketstyle(
   // adds contention without adding parallelism, and the cost here is dominated
   // by building that graph once: the first two files take ~300ms and ~120ms,
   // every file after them ~0.8ms.
+  //
+  // ── There is deliberately NO per-file load cache here ────────────────────
+  //
+  // The obvious next optimisation is a `file → exported names` index so a
+  // SCOPED run (`atlas verify Button`) loads one file instead of all of them.
+  // It was built and measured (2026-08-11) and does not pay:
+  //
+  //   @pyreon/ui-components (82 files, has a barrel)  313-330ms → 336ms  SLOWER
+  //   examples/atlas-workshop (9 files, no barrel)     26-28ms  →   7-8ms
+  //
+  // The plan itself worked — 1 load instead of 82 — and saved nothing, because
+  // Vite's module graph already caches transitively. A design system's files
+  // import shared bases and a barrel re-exports everything, so loading ANY
+  // connected file pulls the rest in; the 81 "skipped" loads were already
+  // near-free graph hits. Best case is ~20ms of a ~1950ms command (1%), and the
+  // dominant costs are elsewhere and irreducible by a cache: ~800ms of process
+  // start + module import, and ~291ms building the graph for the first file you
+  // load — which a scoped run must load regardless.
+  //
+  // It also came with a correctness surface (staleness, and a full-load
+  // fallback so a stale index could never answer "no such component" for a
+  // component that exists). Do not rebuild it without first measuring a shape
+  // where the per-file marginal cost is actually the bottleneck.
   for (const file of files) {
     let mod: Record<string, unknown>
     try {
