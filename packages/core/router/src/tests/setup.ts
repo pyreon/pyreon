@@ -5,49 +5,18 @@
 // vitest.browser.config.ts) do NOT load this file: real browsers already
 // behave per spec.
 //
-// Real browsers do NOT fire `hashchange` for `history.pushState` /
-// `history.replaceState` (WHATWG HTML: only fragment NAVIGATIONS fire it).
-// happy-dom's `Location[PropertySymbol.setURL]` — which History.pushState/
-// replaceState delegate to — queues one on a `setTimeout` whenever the URL
-// hash differs. Because that dispatch is DEFERRED, the synthetic event can
-// land during the NEXT test, where the router's browser-navigation handler
-// (which routes `hashchange` through the full navigation pipeline, exactly
-// like a real Back) treats the stale echo as a genuine traversal and
-// SUPERSEDES the fresh test's in-flight navigation. That failure shape is
-// happy-dom-ONLY — real Chromium never fires these events (the pipeline
-// behavior itself is covered by router.browser.test.tsx in real Chromium).
+// The shim itself is the SHARED `installHappyDomHashchangeEchoGuard` in
+// `@pyreon/test-utils` (extracted from this file — full mechanism + rationale
+// documented there). Any package driving a real router in happy-dom must
+// install it; keeping the logic in one place is what prevents the
+// "fix applied to ONE call site is folklore" recurrence (`@pyreon/a11y` was
+// the latent second instance).
 //
-// The patch counts hash-CHANGING pushState/replaceState calls and swallows
-// that many happy-dom-synthesized `hashchange` events in a capture-phase
-// listener registered before any router listener. Synthetic events are
-// discriminated from tests' manual `new HashChangeEvent('hashchange')`
-// dispatches by the non-empty `oldURL` happy-dom populates (manual test
-// events leave it `''`), so `replaceState + dispatchEvent(hashchange)`
-// back-button simulations still reach the router. `location.hash = …`
-// assignments (a REAL fragment navigation — hashchange IS spec there) do
-// not go through the wrapped History methods and are never swallowed.
-let _pendingSyntheticHashEvents = 0
+// SUBPATH import (not the `@pyreon/test-utils` barrel) is load-bearing: the
+// barrel pulls @pyreon/core + @pyreon/reactivity src instances into every
+// test file's setup context, which trips the duplicate-instance singleton
+// sentinel in this package's treeshake specs (they bundle + evaluate built
+// lib/ output — a second reactivity instance).
+import { installHappyDomHashchangeEchoGuard } from '@pyreon/test-utils/happy-dom-hashchange-guard'
 
-function wrapHistoryWrite(
-  orig: (data: unknown, unused: string, url?: string | URL | null) => void,
-): (data: unknown, unused: string, url?: string | URL | null) => void {
-  return function (this: History, data: unknown, unused: string, url?: string | URL | null) {
-    const hashBefore = window.location.hash
-    orig.call(this, data, unused, url)
-    if (window.location.hash !== hashBefore) _pendingSyntheticHashEvents++
-  }
-}
-
-window.history.pushState = wrapHistoryWrite(window.history.pushState.bind(window.history))
-window.history.replaceState = wrapHistoryWrite(window.history.replaceState.bind(window.history))
-
-window.addEventListener(
-  'hashchange',
-  (e) => {
-    if (_pendingSyntheticHashEvents > 0 && (e as HashChangeEvent).oldURL !== '') {
-      _pendingSyntheticHashEvents--
-      e.stopImmediatePropagation()
-    }
-  },
-  true,
-)
+installHappyDomHashchangeEchoGuard()

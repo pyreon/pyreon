@@ -64,7 +64,8 @@
           "packages/internals/perf-harness/",
           "packages/ui-system/elements/src/Overlay/",
           "packages/fundamentals/http/",
-          "packages/tools/atlas/src/verify/"
+          "packages/tools/atlas/src/verify/",
+          "packages/internals/test-utils/src/happy-dom-hashchange-guard.ts"
         ]
       }
     ],
@@ -153,7 +154,8 @@
           "packages/fundamentals/virtual/src/use-window-virtualizer.ts",
           "packages/ui-system/elements/src/Overlay/positioning.ts",
           "packages/ui-system/elements/src/Portal/component.tsx",
-          "packages/ui-system/styler/src/sheet.ts"
+          "packages/ui-system/styler/src/sheet.ts",
+          "packages/internals/test-utils/src/happy-dom-hashchange-guard.ts"
         ]
       }
     ]

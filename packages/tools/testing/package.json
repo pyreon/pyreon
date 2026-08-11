@@ -144,6 +144,7 @@
     "@pyreon/query": "workspace:*",
     "@pyreon/router": "workspace:*",
     "@pyreon/store": "workspace:*",
+    "@pyreon/test-utils": "workspace:*",
     "@pyreon/toast": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/typescript": "workspace:^",

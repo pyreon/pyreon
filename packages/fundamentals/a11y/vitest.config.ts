@@ -4,6 +4,13 @@ export default defineNodeConfig({
   category: 'fundamentals',
   environment: 'happy-dom',
   excludeBrowserTests: true,
+  // happy-dom spec-parity: suppress the non-spec deferred `hashchange` events
+  // happy-dom queues for history.pushState/replaceState — router.test.tsx
+  // drives a real (hash-mode) router, so without this the echo from one
+  // spec's `router.push` lands in the next spec under CI load and the route
+  // announcer fires for a traversal the test never made (see
+  // src/tests/setup.ts + @pyreon/test-utils happy-dom-hashchange-guard.ts).
+  setupFiles: ['./src/tests/setup.ts'],
   coverageThresholds: { statements: 99, branches: 98, functions: 99, lines: 99 },
   // visually-hidden.tsx is the render layer — exercised by the real-Chromium
   // `a11y.browser.test.tsx` (run via `bun run test:browser`), not the
