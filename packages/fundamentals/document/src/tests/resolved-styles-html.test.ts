@@ -186,3 +186,40 @@ describe('orphan list-item + unknown-node-type arms per renderer', () => {
     })
   }
 })
+
+describe('html resolved styles on code/divider/button/quote (the `extra ?` arms)', () => {
+  // Each of these four switch arms appends resolved-style declarations via
+  // `${extra ? `;${extra}` : ''}` — the truthy arm was never exercised.
+  const wrap = (node: DocNode) =>
+    Document({ title: 'x', children: [Page({ children: [node] })] })
+
+  it('code: resolved styles land on the <pre>', async () => {
+    const { Code } = await import('../nodes')
+    const node = Object.assign(Code({ children: 'x' }), { styles: { color: '#123456' } })
+    const out = (await render(wrap(node), 'html' as never)) as string
+    expect(out).toContain('overflow-x:auto;color:#123456')
+  })
+
+  it('divider: resolved styles land on the <hr>', async () => {
+    const { Divider } = await import('../nodes')
+    const node = Object.assign(Divider({}), { styles: { margin: 4 } })
+    const out = (await render(wrap(node), 'html' as never)) as string
+    expect(out).toContain('margin:16px 0;margin:4px')
+  })
+
+  it('button: resolved styles land on the <a>', async () => {
+    const { Button } = await import('../nodes')
+    const node = Object.assign(Button({ href: 'https://e.com', children: 'B' }), {
+      styles: { letterSpacing: '1px' },
+    })
+    const out = (await render(wrap(node), 'html' as never)) as string
+    expect(out).toContain('font-weight:bold;letter-spacing:1px')
+  })
+
+  it('quote: resolved styles land on the <blockquote>', async () => {
+    const { Quote } = await import('../nodes')
+    const node = Object.assign(Quote({ children: 'Q' }), { styles: { opacity: 0.5 } })
+    const out = (await render(wrap(node), 'html' as never)) as string
+    expect(out).toContain('color:#555;opacity:0.5')
+  })
+})

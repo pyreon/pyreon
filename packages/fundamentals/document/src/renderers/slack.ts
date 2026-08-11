@@ -64,15 +64,18 @@ function nodeToBlocks(node: DocNode): SlackBlock[] {
 
     case 'text': {
       const runs = getInlineRuns(node.children)
-      let text = hasLinkRun(runs)
-        ? runs
-            .map((r) =>
-              r.href !== undefined
-                ? `<${sanitizeHref(r.href)}|${mrkdwnEscape(r.text)}>`
-                : mrkdwnEscape(r.text),
-            )
-            .join('')
-        : mrkdwnEscape(getTextContent(node.children))
+      let text: string
+      if (hasLinkRun(runs)) {
+        text = ''
+        for (const r of runs) {
+          text +=
+            r.href !== undefined
+              ? `<${sanitizeHref(r.href)}|${mrkdwnEscape(r.text)}>`
+              : mrkdwnEscape(r.text)
+        }
+      } else {
+        text = mrkdwnEscape(getTextContent(node.children))
+      }
       if (p.bold) text = `*${text}*`
       if (p.italic) text = `_${text}_`
       if (p.strikethrough) text = `~${text}~`

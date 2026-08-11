@@ -26,11 +26,15 @@ function renderChild(child: DocChild): string {
 }
 
 function renderChildren(children: DocChild[]): string {
-  return children.map(renderChild).join('')
+  let acc = ''
+  for (const c of children) acc += renderChild(c)
+  return acc
 }
 
 function renderInline(children: DocChild[]): string {
-  return children.map(renderChild).join('')
+  let acc = ''
+  for (const c of children) acc += renderChild(c)
+  return acc
 }
 
 /**

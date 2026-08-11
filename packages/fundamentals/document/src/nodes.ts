@@ -54,9 +54,13 @@ function normalizeChildren(children: unknown): DocChild[] {
  * walk the tree structurally).
  */
 export function getTextContent(children: DocChild[]): string {
-  return children
-    .map((c) => (typeof c === 'string' ? c : getTextContent((c as DocNode).children)))
-    .join('')
+  // `acc +=` over .map().join('') — measured faster at every size in this
+  // repo (V8 cons-strings; see pyreon-benchmarks core-micro).
+  let acc = ''
+  for (const c of children) {
+    acc += typeof c === 'string' ? c : getTextContent((c as DocNode).children)
+  }
+  return acc
 }
 
 /**

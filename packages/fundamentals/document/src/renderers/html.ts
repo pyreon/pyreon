@@ -92,7 +92,9 @@ function renderChild(child: DocChild, opts?: RenderOptions): string {
 }
 
 function renderChildren(children: DocChild[], opts?: RenderOptions): string {
-  return children.map((c) => renderChild(c, opts)).join('')
+  let acc = ''
+  for (const c of children) acc += renderChild(c, opts)
+  return acc
 }
 
 function renderNode(node: DocNode, opts?: RenderOptions): string {
@@ -245,7 +247,12 @@ function renderNode(node: DocNode, opts?: RenderOptions): string {
 
     case 'code': {
       const extra = styleDecls(rs)
-      return `<pre style="background:#f5f5f5;padding:12px;border-radius:4px;overflow-x:auto${extra ? `;${extra}` : ''}"><code>${escapeHtml(renderChildren(node.children, opts))}</code></pre>`
+      // NO outer escapeHtml here: renderChildren already escapes every
+      // string child via renderChild, and non-string children go through
+      // renderNode (which escapes its own text leaves). A second outer
+      // escape double-escaped code content — `a < b` emitted `a &amp;lt; b`
+      // and the entities rendered literally.
+      return `<pre style="background:#f5f5f5;padding:12px;border-radius:4px;overflow-x:auto${extra ? `;${extra}` : ''}"><code>${renderChildren(node.children, opts)}</code></pre>`
     }
 
     case 'divider': {
