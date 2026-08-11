@@ -70,12 +70,12 @@ describe('useCrashReporter() emit', () => {
   it.runIf(isSwiftcAvailable())('Swift emit typechecks against the stubs', () => {
     const r = transform(SRC, { target: 'swift' })
     const v = validateSwiftWithStubs(r.code)
-    expect(v.ok, v.errors?.join('\n')).toBe(true)
+    expect(v.ok, v.error).toBe(true)
   })
 
   it.runIf(isKotlincAvailable())('Kotlin emit typechecks against the stubs', () => {
     const r = transform(SRC, { target: 'kotlin' })
     const v = validateKotlin(r.code)
-    expect(v.ok, v.errors?.join('\n')).toBe(true)
+    expect(v.ok, v.error).toBe(true)
   })
 })
