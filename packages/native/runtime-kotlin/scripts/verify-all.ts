@@ -45,12 +45,13 @@
  *   bun scripts/verify-all.ts --mode=typecheck # everything typecheck-only
  *   bun scripts/verify-all.ts --concurrency=2
  */
-import { spawn } from 'node:child_process'
-import { existsSync, readdirSync } from 'node:fs'
+import { spawn, spawnSync } from 'node:child_process'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { availableParallelism } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { planServices } from './services'
+import { cacheDisabled, readVerdict, verdictKey, writeVerdict } from './verdict-cache'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PACKAGE_ROOT = join(HERE, '..')
@@ -91,11 +92,42 @@ if (import.meta.main) {
   )
   const start = Date.now()
 
+  // Key material shared by every service: the compiler, and the harness whose
+  // bytes carry the per-service stubs (see ./verdict-cache.ts).
+  const compilerVersion = (() => {
+    const p = spawnSync('kotlinc', ['-version'], { encoding: 'utf8' })
+    return `${p.stdout ?? ''}${p.stderr ?? ''}`.trim() || 'unknown'
+  })()
+  const harness = readFileSync(join(HERE, 'verify-kotlin.ts'), 'utf8')
+  const read = (f: string) => {
+    try {
+      return readFileSync(f, 'utf8')
+    } catch {
+      return ''
+    }
+  }
+
   const failures: { name: string; output: string }[] = []
+  let cached = 0
   let next = 0
   const worker = async (): Promise<void> => {
     while (next < plan.length) {
       const { name, typecheckOnly } = plan[next++]!
+      const key = verdictKey({
+        compilerVersion,
+        harness,
+        source: read(join(SOURCE_DIR, `${name}.kt`)),
+        test: read(join(PACKAGE_ROOT, `src/test/kotlin/com/pyreon/runtime/${name}Test.kt`)),
+        typecheckOnly,
+      })
+      const hit = readVerdict(key)
+      // Only a PASS is served from cache. A cached failure is re-derived so the
+      // error text is fresh and a fixed-but-unchanged-key case cannot stick —
+      // and re-running a failure costs nothing anyone minds.
+      if (hit?.ok === true) {
+        cached++
+        continue
+      }
       const args = [join(HERE, 'verify-kotlin.ts'), `--service=${name}`]
       if (typecheckOnly) args.push('--typecheck-only')
       const child = spawn('bun', args, { cwd: PACKAGE_ROOT, stdio: ['ignore', 'pipe', 'pipe'] })
@@ -104,6 +136,7 @@ if (import.meta.main) {
       child.stderr.on('data', (c: Buffer) => (out += c))
       const code = await new Promise<number>((r) => child.on('close', (c) => r(c ?? 1)))
       if (code !== 0) failures.push({ name, output: out.trim() })
+      else writeVerdict(key, { ok: true })
     }
   }
   // EVERY service runs even after one fails. The `&&` chain stopped at the
@@ -121,5 +154,10 @@ if (import.meta.main) {
     }
     process.exit(1)
   }
-  console.log(`[verify-all] ✓ ${plan.length} service(s) verified in ${elapsed}s`)
+  const how = cacheDisabled()
+    ? ' (cache disabled)'
+    : cached > 0
+      ? ` (${cached} from cache, ${plan.length - cached} compiled)`
+      : ''
+  console.log(`[verify-all] ✓ ${plan.length} service(s) verified in ${elapsed}s${how}`)
 }
