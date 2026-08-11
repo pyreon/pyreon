@@ -839,6 +839,7 @@ function warnWebOnlyImports(body: AnyNode[], ctx: ParseCtx): void {
  */
 export const NATIVE_LOWERED_HOOKS: ReadonlySet<string> = new Set([
   'useAppState', 'useAuth', 'useBiometrics', 'useClipboard', 'useColorScheme',
+  'useCrashReporter',
   'useDatabase', 'useFetch', 'useFieldArray', 'useFilePicker', 'useForm', 'useGeolocation',
   'useHaptics', 'useImagePicker', 'useLinking', 'useLoaderData', 'useMap',
   'useNativeModule', 'useNavigate', 'useNotifications', 'useOnline',
@@ -3949,6 +3950,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     'usePermissions',
     'useOnline',
     'useAppState',
+    'useCrashReporter',
     'useColorScheme',
     'useSizeClass',
     'useNetworkStatus',
@@ -4684,6 +4686,12 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // reactive lifecycle container. No arguments.
   if (calleeName === 'useAppState') {
     return { kind: 'app-state', name }
+  }
+  // `useCrashReporter()` from @pyreon/hooks → the PyreonCrashReporter reactive
+  // container. No arguments. Reactive reads `crash.lastCrash`/`crash.hadCrash`;
+  // imperative `recordError`/`breadcrumb`/`clear`; `start()` auto-called.
+  if (calleeName === 'useCrashReporter') {
+    return { kind: 'crash-reporter', name }
   }
   // Phase 4 — `usePermissions(['posts.edit', 'posts.*'])` from
   // @pyreon/permissions. The array of literal grant keys seeds the native
@@ -6954,6 +6962,7 @@ function warnIfHookInsideRenderCallback(
     'useShare',
     'useLinking',
     'useNotifications',
+    'useCrashReporter',
     'useBiometrics',
     'useImagePicker',
     'useFilePicker',

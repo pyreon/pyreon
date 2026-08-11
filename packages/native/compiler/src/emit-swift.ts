@@ -234,6 +234,10 @@ let _netStatusNames: Set<string> = new Set()
  *  native the accessor call lowers to the `state.phase` read on the
  *  PyreonAppState container (same accessor semantics as useOnline). */
 let _appStateNames: Set<string> = new Set()
+/** Per-component: `useCrashReporter()` decl names. Reactive member reads
+ *  (`crash.lastCrash`/`crash.hadCrash`) are plain @Observable properties on
+ *  Swift (no rewrite); `start()` is auto-called on the stable host. */
+let _crashNames: Set<string> = new Set()
 /**
  * Per-component: `useDatabase()` decl names.
  *
@@ -1506,6 +1510,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   _machineNames = new Set()
   _netStatusNames = new Set()
   _appStateNames = new Set()
+  _crashNames = new Set()
   _databaseNames = new Set()
   _serviceKindByNameSwift = new Map()
   _i18nNames = new Set()
@@ -1553,6 +1558,7 @@ function emitSwiftComponent(c: ComponentIR): string {
     if (d.kind === 'machine') _machineNames.add(d.name)
     if (d.kind === 'network-status') _netStatusNames.add(d.name)
     if (d.kind === 'app-state') _appStateNames.add(d.name)
+    if (d.kind === 'crash-reporter') _crashNames.add(d.name)
     if (d.kind === 'database') _databaseNames.add(d.name)
     if (d.kind === 'fieldArray') _fieldArrayNamesSwift.add(d.name)
     if (SWIFT_SERVICE_ARG_LABELS[d.kind] !== undefined && 'name' in d) {
@@ -1739,7 +1745,10 @@ function emitSwiftComponent(c: ComponentIR): string {
   // app-state shares the stable-host requirement: its onAppear-start on a
   // transparent Group would be redistributed onto conditional branches.
   const _hasAppStateDecl = c.decls.some((d) => d.kind === 'app-state')
-  if (_hasFetchDecl || _hasOnMount || _hasNetDecl || _hasPushDecl || _hasAppStateDecl) {
+  // crash-reporter: same stable-host requirement — its onAppear-start on a
+  // transparent Group would be redistributed onto conditional branches.
+  const _hasCrashDecl = c.decls.some((d) => d.kind === 'crash-reporter')
+  if (_hasFetchDecl || _hasOnMount || _hasNetDecl || _hasPushDecl || _hasAppStateDecl || _hasCrashDecl) {
     lines.push(`    ZStack {`)
     lines.push(`      ${emitSwiftReturnExpr(c.returnExpr, 6)}`)
     lines.push(`    }`)
@@ -1825,6 +1834,13 @@ function emitSwiftComponent(c: ComponentIR): string {
     const name = swiftIdent(d.name)
     lines.push(`      .onAppear { ${name}.start() }`)
     lines.push(`      .onDisappear { ${name}.stop() }`)
+  }
+  // crash-reporter: install the uncaught-exception hook + rehydrate the last
+  // launch's report on appear (the never-wired-class fix — start() was never
+  // called, so lastCrash/hadCrash stayed frozen).
+  for (const d of c.decls) {
+    if (d.kind !== 'crash-reporter') continue
+    lines.push(`      .onAppear { ${swiftIdent(d.name)}.start() }`)
   }
   for (const d of c.decls) {
     if (d.kind !== 'fetch') continue
@@ -2167,6 +2183,11 @@ function emitSwiftDecl(
   // The `state.phase` read is a plain @Observable String property (no rewrite).
   if (d.kind === 'app-state') {
     return `@State private var ${swiftIdent(d.name)} = PyreonAppState()`
+  }
+  // `const crash = useCrashReporter()` → an @State PyreonCrashReporter. Reads
+  // (`crash.lastCrash`/`crash.hadCrash`) are plain @Observable properties.
+  if (d.kind === 'crash-reporter') {
+    return `@State private var ${swiftIdent(d.name)} = PyreonCrashReporter()`
   }
   // Phase 5: native data/services hooks → @State container instantiation.
   // Swift containers expose reactive fields via @Observable (read bare, no

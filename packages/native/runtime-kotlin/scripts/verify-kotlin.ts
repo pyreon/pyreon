@@ -1135,9 +1135,14 @@ try {
     SERVICE === 'PyreonDatabaseAndroid' ||
     SERVICE === 'PyreonStorageAndroid' ||
     SERVICE === 'PyreonStorage' ||
-    SERVICE === 'PyreonSecureStorageAndroid'
+    SERVICE === 'PyreonSecureStorageAndroid' ||
+    SERVICE === 'PyreonCrashReporterAndroid'
   ) {
     writeFileSync(androidContentDatabasePath, ANDROID_CONTENT_DATABASE_STUBS, 'utf8')
+  }
+  // PyreonCrashReporterAndroid also needs the Compose LocalContext platform stub.
+  if (SERVICE === 'PyreonCrashReporterAndroid') {
+    writeFileSync(composePlatformPath, ANDROIDX_COMPOSE_PLATFORM_STUBS, 'utf8')
   }
   const androidKeystorePath = join(tempDir, 'AndroidKeystore.kt')
   if (SERVICE === 'PyreonSecureStorageAndroid') {
@@ -1393,6 +1398,17 @@ try {
     writeFileSync(appStateContextPath, ANDROID_APPSTATE_CONTEXT_STUBS, 'utf8')
     writeFileSync(composePlatformPath, ANDROIDX_COMPOSE_PLATFORM_STUBS, 'utf8')
   }
+  const crashReporterAndroidExtras =
+    SERVICE === 'PyreonCrashReporterAndroid'
+      ? [
+          androidContentDatabasePath,
+          composePlatformPath,
+          resolve(PACKAGE_ROOT, 'src/main/kotlin/com/pyreon/runtime/PyreonCrashReporter.kt'),
+          resolve(PACKAGE_ROOT, 'src/main/kotlin/com/pyreon/runtime/PyreonStorageBackends.kt'),
+          resolve(PACKAGE_ROOT, 'src/main/kotlin/com/pyreon/runtime/PyreonJson.kt'),
+        ]
+      : []
+
   const appStateAndroidExtras =
     SERVICE === 'PyreonAppStateAndroid'
       ? [
@@ -1461,6 +1477,7 @@ try {
         ...pushAndroidExtras,
         ...videoAndroidExtras,
         ...appStateAndroidExtras,
+        ...crashReporterAndroidExtras,
         SOURCE_FILE,
       ]
     : [
@@ -1487,6 +1504,7 @@ try {
         ...pushAndroidExtras,
         ...videoAndroidExtras,
         ...appStateAndroidExtras,
+        ...crashReporterAndroidExtras,
         SOURCE_FILE,
         TEST_FILE,
       ]

@@ -1234,6 +1234,20 @@ class PyreonAppState(phase: String = "active") {
 @Composable
 fun rememberPyreonAppState(): PyreonAppState = PyreonAppState()
 
+// PyreonCrashReporter — mirror of the runtime-kotlin surface the emit touches:
+// lastCrash/hadCrash MutableState (read dot-value), recordError/breadcrumb/
+// clear methods. The self-installing @Composable factory the emit references.
+class PyreonCrashReporter {
+  val lastCrash: MutableState<String> = mutableStateOf("")
+  val hadCrash: MutableState<Boolean> = mutableStateOf(false)
+  fun start() {}
+  fun recordError(message: String) {}
+  fun breadcrumb(message: String) {}
+  fun clear() {}
+}
+@Composable
+fun rememberPyreonCrashReporter(): PyreonCrashReporter = PyreonCrashReporter()
+
 // PyreonStore — Gap 4 Strategy-B v1 marker interface for emitted
 // per-store singleton classes. Real impl in @pyreon/native-runtime-
 // kotlin's PyreonStore.kt. Empty by design — purely a documentation

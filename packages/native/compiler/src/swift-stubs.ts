@@ -485,6 +485,18 @@ public final class PyreonAppState {
   public func stop() {}
   public init(phase: String = "active") { self.phase = phase }
 }
+// PyreonCrashReporter — mirror of the runtime-swift surface the emit touches:
+// no-arg init, start(), the lastCrash/hadCrash reads (bare — the real type is
+// @Observable), and recordError/breadcrumb/clear methods.
+public final class PyreonCrashReporter {
+  public private(set) var lastCrash: String = ""
+  public private(set) var hadCrash: Bool = false
+  public init() {}
+  public func start() {}
+  public func recordError(_ message: String) {}
+  public func breadcrumb(_ message: String) {}
+  public func clear() {}
+}
 public struct PyreonLink<Label: View>: View {
   public init(_ to: String, @ViewBuilder label: () -> Label) {}
   public typealias Body = Never
