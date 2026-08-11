@@ -1,16 +1,22 @@
 // The Kotlin runtime's gate-coverage assertion.
 //
-// `verify-kotlin.ts` checks ONE service at a time, and the SET of services is a
-// hand-written list repeated across three package.json scripts. A
+// `verify-kotlin.ts` checks ONE service at a time, and the SET of services used
+// to be a hand-written list repeated across three package.json scripts. A
 // hand-maintained input list fails in a specific, silent way: it is wrong
 // exactly when a file is ADDED — the moment it has something new to check.
 //
-// The router package had the same shape as a hardcoded six-file array, and the
-// seventh file (`PyreonDeepLink.kt`) was excluded the day it was added. That one
-// was LOUD only by luck: an existing file referenced the new class, so kotlinc
-// failed on an unresolved reference. A new file that nothing references yet
-// would simply have gone unchecked in silence — and a scan of the runtime
-// package found six sources in exactly that state.
+// It had already failed that way. Eight services were missing from at least one
+// of the three chains; seven (PyreonBiometrics, PyreonFilePicker,
+// PyreonHaptics, PyreonImagePicker, PyreonLinking, PyreonNotifications,
+// PyreonShare) were verified by `test` but by neither `build` nor `typecheck`.
+// The gate reported ✓ throughout, because it grepped the WHOLE package.json and
+// so could only answer "verified somewhere?" — not "verified by the script I am
+// running?".
+//
+// The list is now DERIVED from the sources (`services.ts`), which makes that
+// class impossible: a new `.kt` file is in the plan the moment it exists. What
+// still needs asserting is what derivation cannot give you — that EXEMPT stays a
+// ratchet, and that an empty or all-exempt scan is never a vacuous pass.
 
 import { describe, expect, it } from 'vitest'
 import {
@@ -18,63 +24,47 @@ import {
   findCoverageGaps,
   sourceNames,
 } from '../../../../native/runtime-kotlin/scripts/check-service-coverage'
+import { planServices } from '../../../../native/runtime-kotlin/scripts/services'
 
-const VERIFY_DEFAULT = `const SERVICE =
-  process.argv.find((a) => a.startsWith('--service=')) ?.split('=')[1] ?? 'PyreonStorage'`
+describe('planServices — the derivation', () => {
+  const files = ['PyreonFetch.kt', 'PyreonJson.kt', 'PyreonAssets.kt', 'README.md', 'PyreonForm.kt']
+  const exempt = { PyreonAssets: 'needs stubs' }
 
-describe('coveredServices', () => {
-  it('collects every --service= flag', () => {
-    const pkg = `"build": "bun scripts/verify-kotlin.ts --service=PyreonFetch && bun scripts/verify-kotlin.ts --service=PyreonForm --typecheck-only"`
-    expect([...coveredServices(pkg, VERIFY_DEFAULT)].sort()).toEqual([
+  it('derives one entry per .kt source, minus EXEMPT, sorted', () => {
+    expect(planServices(files, 'full', exempt).map((s) => s.name)).toEqual([
       'PyreonFetch',
       'PyreonForm',
+      'PyreonJson',
     ])
   })
 
-  it("counts a BARE invocation as the script's own default", () => {
-    // `bun scripts/verify-kotlin.ts` with no flag runs the default service, so
-    // that file IS gated even though no --service= names it.
-    const pkg = `"build": "bun scripts/verify-kotlin.ts && bun scripts/verify-kotlin.ts --service=PyreonFetch"`
-    expect([...coveredServices(pkg, VERIFY_DEFAULT)].sort()).toEqual([
-      'PyreonFetch',
-      'PyreonStorage',
-    ])
+  it('covers a NEW source with no list to edit — the whole point', () => {
+    const plan = planServices([...files, 'PyreonBrandNew.kt'], 'full', exempt)
+    expect(plan.map((s) => s.name)).toContain('PyreonBrandNew')
   })
 
-  it('reads the default from the script rather than assuming it', () => {
-    // A hardcoded 'PyreonStorage' here would silently drift the day the
-    // default changed — the exact failure mode this gate exists to prevent.
-    const renamed = VERIFY_DEFAULT.replace("'PyreonStorage'", "'PyreonSomethingElse'")
-    expect([...coveredServices(`"build": "bun scripts/verify-kotlin.ts"`, renamed)]).toEqual([
-      'PyreonSomethingElse',
-    ])
+  it('marks a service typecheck-only when it cannot run its smoke main()', () => {
+    // PyreonJson is in TYPECHECK_ONLY; PyreonFetch is not.
+    const plan = planServices(files, 'full', exempt)
+    expect(plan.find((s) => s.name === 'PyreonJson')?.typecheckOnly).toBe(true)
+    expect(plan.find((s) => s.name === 'PyreonFetch')?.typecheckOnly).toBe(false)
   })
 
-  it('ignores segments that do not invoke the verify script', () => {
-    const pkg = `"build": "bun scripts/check-duplicate-declarations.ts && echo skipping"`
-    expect(coveredServices(pkg, VERIFY_DEFAULT).size).toBe(0)
+  it('forces EVERY service typecheck-only in typecheck mode', () => {
+    expect(planServices(files, 'typecheck', exempt).every((s) => s.typecheckOnly)).toBe(true)
   })
 
-  it('does not confuse a service name that is a prefix of another', () => {
-    const pkg = `"build": "bun scripts/verify-kotlin.ts --service=PyreonStorageAndroid"`
-    const covered = coveredServices(pkg, VERIFY_DEFAULT)
-    expect(covered.has('PyreonStorageAndroid')).toBe(true)
-    expect(covered.has('PyreonStorage')).toBe(false)
-  })
-
-  it('handles a service name containing digits', () => {
-    // `[A-Za-z]+` truncates PyreonI18n to "PyreonI" and reports a false gap.
-    const pkg = `"build": "bun scripts/verify-kotlin.ts --service=PyreonI18n"`
-    expect(coveredServices(pkg, VERIFY_DEFAULT).has('PyreonI18n')).toBe(true)
+  it('ignores non-Kotlin files', () => {
+    expect(planServices(['notes.md', 'build.gradle'], 'full', exempt)).toEqual([])
   })
 })
 
-describe('sourceNames', () => {
-  it('strips the .kt suffix and ignores anything else', () => {
-    expect(sourceNames(['PyreonFetch.kt', 'README.md', 'PyreonAuth.kt'])).toEqual([
-      'PyreonAuth',
-      'PyreonFetch',
-    ])
+describe('coveredServices', () => {
+  it('reports exactly what the runner will execute', () => {
+    // The gate and the runner read the SAME derivation, so they cannot
+    // disagree — which is the failure the old package.json grep allowed.
+    const files = ['PyreonFetch.kt', 'PyreonAssets.kt', 'PyreonWebView.kt']
+    expect([...coveredServices(files)]).toEqual(['PyreonFetch'])
   })
 })
 
