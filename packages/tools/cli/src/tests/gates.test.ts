@@ -142,14 +142,21 @@ describe('runDocClaimsGate', () => {
     const result = await runDocClaimsGate({ cwd: REPO_ROOT })
     assertGateResultShape(result, 'doc-claims')
     expect(result.category).toBe('documentation')
-    // The real repo has 25 claim sites configured today (7 hook/doc +
-    // 5 lint-rule + 4 lint-category + 2 detector-code + 4 doc-format +
-    // 3 package-count); verify the scanner found them all (any missing
-    // files would surface as file-missing findings, scanned count stays
-    // stable). CLAUDE.md was consolidated to ONE claim site per count
-    // (the package-overview table rows + summary line); the redundant
-    // per-category bullets / API-description claim sites were removed.
-    expect(result.meta.scanned).toBe(23)
+    // Pins the number of claim SITES the scanner reached. The invariant is
+    // "nothing was silently skipped": a claim whose file went missing or whose
+    // pattern stopped matching drops out of this count, and without the pin
+    // that reads as a passing gate with less coverage.
+    //
+    // 30 today: 23 as before, plus the 7 added when an audit found several
+    // ungated counts had rotted — the MCP tool count (18 vs a real 19), the
+    // manifest coverage ("52 of 65" vs 56 of 75), the exempt count, and the
+    // three primitives-README claims ("6 of 16 primitives have web
+    // implementations" against a real 17 of 17).
+    //
+    // The old comment here said 25 while the assertion said 23; a hand-kept
+    // breakdown drifts exactly like the claims it describes, so this one names
+    // the reason for the number rather than re-deriving it arithmetically.
+    expect(result.meta.scanned).toBe(30)
     // The real repo must be drift-free — this gate runs in CI; if a
     // count claim drifts, EVERY PR's doctor run fails until it's fixed.
     const errs = result.findings.filter((f) => f.severity === 'error')

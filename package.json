@@ -79,6 +79,7 @@
     "visual-test:update": "bun scripts/visual-test/update.ts",
     "coverage": "bun scripts/check-coverage.ts",
     "prose-props": "bun scripts/check-prose-props.ts",
+    "check-component-docs": "bun scripts/check-component-docs.ts",
     "atlas-guide": "bun scripts/check-atlas-guide.ts",
     "coverage:floor": "bun scripts/check-coverage.ts --floor-only",
     "test:coverage": "bun scripts/check-coverage.ts",

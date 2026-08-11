@@ -172,6 +172,67 @@ const countDocumentFormats = (repoRoot: string): number => {
 // and filters by the private flag, so `packages/internals|ui|native` (all
 // private) drop out automatically. This is THE most-frequently-drifting
 // count in the repo (README + CLAUDE.md both quote it).
+/**
+ * MCP tools the server registers.
+ *
+ * Text-parsed from the server source for the same reason as the counters
+ * below: importing it would drag the MCP dependency tree into a gate that must
+ * stay fast. `check-mcp-docs` separately asserts every registered tool has a
+ * docs section — this one asserts the COUNT quoted in prose, which that gate
+ * never looks at and which had drifted to 18 against a real 19.
+ */
+const countMcpTools = (repoRoot: string): number => {
+  const file = join(repoRoot, 'packages/tools/mcp/src/manifest.ts')
+  if (!existsSync(file)) return 0
+  const src = readFileSync(file, 'utf8')
+  // The SAME scan `check-mcp-docs` uses — a manifest `api[]` entry whose
+  // signature starts with `tool: ` is a live MCP tool. Sharing the definition
+  // matters more than sharing the code here: two gates counting the same thing
+  // by different rules is how they come to disagree about which is right.
+  const entry = /name:\s*'([a-z_][a-z0-9_]*)',\s*kind:\s*'[^']*',\s*signature:\s*['"]([^'"]+)['"]/gs
+  let count = 0
+  for (const [, , signature] of src.matchAll(entry)) {
+    if (signature?.startsWith('tool: ')) count++
+  }
+  return count
+}
+
+/**
+ * Canonical multi-platform primitives with a real WEB implementation.
+ *
+ * Counted from `src/web/*.tsx`, minus the escape-hatch module — which exports
+ * `Web`/`NativeIOS`/`NativeAndroid` and is deliberately not a primitive.
+ *
+ * This one had rotted the furthest of anything the audit found: the README
+ * said "6 of 16 primitives have web implementations; the rest ship in
+ * follow-ups" and listed ten by name as unimplemented, when every one of them
+ * had shipped. A reader was being told the package barely worked.
+ */
+const countWebPrimitives = (repoRoot: string): number => {
+  const dir = join(repoRoot, 'packages/core/primitives/src/web')
+  if (!existsSync(dir)) return 0
+  return readdirSync(dir).filter((f) => f.endsWith('.tsx') && f !== 'escape-hatch.tsx').length
+}
+
+/** Packages carrying a `src/manifest.ts` — the docs pipeline's input set. */
+const countManifests = (repoRoot: string): number => {
+  const pkgsDir = join(repoRoot, 'packages')
+  if (!existsSync(pkgsDir)) return 0
+  let count = 0
+  for (const cat of readdirSync(pkgsDir)) {
+    const catDir = join(pkgsDir, cat)
+    try {
+      if (!statSync(catDir).isDirectory()) continue
+    } catch {
+      continue
+    }
+    for (const pkg of readdirSync(catDir)) {
+      if (existsSync(join(catDir, pkg, 'src', 'manifest.ts'))) count++
+    }
+  }
+  return count
+}
+
 const countPublishedPackages = (repoRoot: string): number => {
   const pkgsDir = join(repoRoot, 'packages')
   if (!existsSync(pkgsDir)) return 0
@@ -350,6 +411,61 @@ const checks: ClaimCheck[] = [
     ],
   },
   {
+    name: 'web primitive count',
+    codeId: 'web-primitive-count',
+    actual: countWebPrimitives,
+    claims: [
+      {
+        file: 'packages/core/primitives/README.md',
+        pattern: /All \*\*(\d+)\*\* primitives now have real web implementations/,
+      },
+      {
+        file: 'packages/core/primitives/README.md',
+        pattern: /All (\d+) have a real web implementation/,
+      },
+      {
+        file: 'packages/core/primitives/README.md',
+        pattern: /(\d+) primitives; more when demanded/,
+      },
+    ],
+  },
+  {
+    name: 'MCP tool count',
+    codeId: 'mcp-tool-count',
+    actual: countMcpTools,
+    claims: [
+      {
+        file: 'CLAUDE.md',
+        pattern: /MCP server, so its (\d+) tools are available/,
+      },
+    ],
+  },
+  {
+    name: 'package manifest count',
+    codeId: 'manifest-count',
+    actual: countManifests,
+    claims: [
+      {
+        file: 'CLAUDE.md',
+        pattern: /Coverage: (\d+) of \d+ published packages have a manifest/,
+      },
+    ],
+  },
+  {
+    name: 'manifest-exempt package count',
+    codeId: 'manifest-exempt-count',
+    // Derived, not counted twice: every published package either has a
+    // manifest or is exempt, so the exempt figure IS the difference. Reading
+    // the exempt list separately would let the two disagree.
+    actual: (root: string) => countPublishedPackages(root) - countManifests(root),
+    claims: [
+      {
+        file: 'CLAUDE.md',
+        pattern: /The remaining (\d+) are EXPLICITLY EXEMPT/,
+      },
+    ],
+  },
+  {
     name: 'published package count',
     codeId: 'package-count',
     actual: countPublishedPackages,
@@ -366,6 +482,10 @@ const checks: ClaimCheck[] = [
       {
         file: 'CLAUDE.md',
         pattern: /(\d+) published packages across 6 categories/,
+      },
+      {
+        file: 'CLAUDE.md',
+        pattern: /Coverage: \d+ of (\d+) published packages have a manifest/,
       },
     ],
   },
