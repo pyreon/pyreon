@@ -31,7 +31,28 @@
     "declaration": true,
     "declarationMap": true,
     "inlineSources": true,
-    "noEmit": true
+    "noEmit": true,
+    // Every package resolves its `@pyreon/*` dependencies to their SOURCE (the
+    // `bun` condition), so a typecheck re-parses its whole dependency subtree —
+    // `@pyreon/core`'s src is parsed again by each of the ~70 packages that
+    // depend on it. Measured on the full workspace: 143 typechecks, 701s of CPU.
+    //
+    // `incremental` lets each package reuse the type information it already
+    // computed, keyed on file versions. Measured on `@pyreon/core`: 0.90s ->
+    // 0.41s wall, 1.90s -> 0.92s CPU on a repeat run — which is the case the
+    // pre-push hook hits on every push after the first.
+    //
+    // Correctness is NOT traded away for it, and that was verified rather than
+    // assumed: an error introduced in the package's own src is still reported,
+    // and so is one introduced in a DEPENDENCY's src across the workspace alias
+    // (breaking `signal()`'s arity in @pyreon/reactivity surfaces TS2554 in
+    // @pyreon/core's files). TypeScript versions every file in the program, not
+    // just the package's own.
+    //
+    // The cache lives under the package's `node_modules`, so it is ignored by
+    // git for free and cannot be mistaken for build output.
+    "incremental": true,
+    "tsBuildInfoFile": "${configDir}/node_modules/.cache/tsbuildinfo"
   },
   "exclude": ["${configDir}/node_modules", "${configDir}/**/lib/**", "${configDir}/**/dist/**"]
 }
