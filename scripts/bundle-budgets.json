@@ -22,7 +22,7 @@
   "@pyreon/flow": 15872,
   "@pyreon/form": 6400,
   "@pyreon/head": 256,
-  "@pyreon/hooks": 8192,
+  "@pyreon/hooks": 8704,
   "@pyreon/hotkeys": 3584,
   "@pyreon/http": 4608,
   "@pyreon/i18n": 3584,

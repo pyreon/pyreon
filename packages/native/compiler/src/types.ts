@@ -241,6 +241,18 @@ export type DeclIR =
    */
   | { kind: 'app-state'; name: string }
   /**
+   * Crash reporting via `useCrashReporter()` from `@pyreon/hooks`. Emits the
+   * PyreonCrashReporter reactive container:
+   *   Swift  → @State private var crash = PyreonCrashReporter()
+   *   Kotlin → val crash = remember { rememberPyreonCrashReporter() }
+   * Reactive member reads (`crash.lastCrash` / `crash.hadCrash`) append
+   * `.value` on Kotlin (Compose MutableState), read bare on Swift
+   * (@Observable) — the useFetch divergence. Imperative methods
+   * (`recordError` / `breadcrumb` / `clear`) pass through; `start()` is
+   * auto-called on the stable host (the never-wired-class fix).
+   */
+  | { kind: 'crash-reporter'; name: string }
+  /**
    * A component-body `onMount(() => { … })` call — the documented lifecycle
    * escape hatch ("call .start()/.connect() from an onMount"). Lowers to a
    * mount-time harness: SwiftUI `.onAppear { … }` on the stable-identity

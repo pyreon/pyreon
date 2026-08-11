@@ -127,6 +127,14 @@ export { useMergedRef } from './useMergedRef'
 export { useOnline } from './useOnline'
 export type { AppStatePhase } from './useAppState'
 export { useAppState } from './useAppState'
+
+// useCrashReporter — the web half of the PyreonCrashReporter container PMTC
+// lowers to (capture via window.onerror/unhandledrejection, persist to
+// localStorage, rehydrate the previous session's report). The vendor
+// transport is app-wired via setCrashTransport (the native registry mirror).
+export { useCrashReporter } from './useCrashReporter'
+export { setCrashTransport } from './useCrashReporter'
+export type { UseCrashReporterResult } from './useCrashReporter'
 export { usePrevious } from './usePrevious'
 export { useReducedMotion } from './useReducedMotion'
 export { useScrollLock } from './useScrollLock'

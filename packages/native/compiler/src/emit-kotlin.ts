@@ -181,6 +181,10 @@ let _netStatusNames: Set<string> = new Set()
 /** Per-component: `useAppState()` decl names — drives `state()` → `.phase.value`
  *  and `state.phase` → `.phase.value` (the Compose MutableState read). */
 let _appStateNames: Set<string> = new Set()
+/** Per-component: `useCrashReporter()` decl names — drives the `.value`
+ *  member-read rewrite for `crash.lastCrash`/`crash.hadCrash` (Compose
+ *  MutableState). */
+let _crashNames: Set<string> = new Set()
 /**
  * Phase 5: native data/services hook decl names → per-hook MutableState
  * field-read rewrite (append `.value`). Each maps a binding name to the
@@ -207,7 +211,8 @@ function isContainerMutableStateField(obj: string, p: string): boolean {
       ['token', 'lastNotification', 'notifications', 'isAuthorized', 'error'].includes(p)) ||
     (_payNames.has(obj) && ['products', 'ownedProductIds', 'purchasing', 'error'].includes(p)) ||
     (_mapNames.has(obj) && ['camera', 'markers', 'selectedMarkerId'].includes(p)) ||
-    (_authNames.has(obj) && ['status', 'user', 'error'].includes(p))
+    (_authNames.has(obj) && ['status', 'user', 'error'].includes(p)) ||
+    (_crashNames.has(obj) && ['lastCrash', 'hadCrash'].includes(p))
   )
 }
 let _pushNames: Set<string> = new Set()
@@ -1211,6 +1216,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _formSubmitParamsKotlin = []
   _netStatusNames = new Set()
   _appStateNames = new Set()
+  _crashNames = new Set()
   _geoNames = new Set()
   _wsNames = new Set()
   _pushNames = new Set()
@@ -1266,6 +1272,7 @@ function emitKotlinComponent(c: ComponentIR): string {
     if (d.kind === 'form') _formNames.add(d.name)
     if (d.kind === 'network-status') _netStatusNames.add(d.name)
     if (d.kind === 'app-state') _appStateNames.add(d.name)
+    if (d.kind === 'crash-reporter') _crashNames.add(d.name)
     // Phase 5: native data/services hook decl names (for the .value rewrite).
     if (d.kind === 'geolocation') _geoNames.add(d.name)
     if (d.kind === 'websocket') _wsNames.add(d.name)
@@ -1478,6 +1485,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _formSubmitParamsKotlin = []
   _netStatusNames = new Set()
   _appStateNames = new Set()
+  _crashNames = new Set()
   _geoNames = new Set()
   _wsNames = new Set()
   _pushNames = new Set()
@@ -1691,6 +1699,14 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     // `remember { PyreonAppState() }` was the never-wired class — the
     // container reported its initial "active" forever).
     return `val ${kotlinIdent(d.name)} = rememberPyreonAppState()`
+  }
+  // `const crash = useCrashReporter()` → a remembered PyreonCrashReporter.
+  // rememberPyreonCrashReporter SELF-INSTALLS a file-backed backend + calls
+  // start() (the never-wired-class fix — a report that vanishes on relaunch
+  // is worse than none). Reads `crash.lastCrash`/`crash.hadCrash` append
+  // `.value` (see isContainerMutableStateField); methods read bare.
+  if (d.kind === 'crash-reporter') {
+    return `val ${kotlinIdent(d.name)} = rememberPyreonCrashReporter()`
   }
   // Phase 5: native data/services hooks → remembered container. Reactive
   // FIELD reads append `.value` (see emitKotlinExpr); methods + Bool getters

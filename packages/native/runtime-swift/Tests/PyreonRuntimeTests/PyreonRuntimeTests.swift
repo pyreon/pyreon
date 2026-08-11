@@ -1955,6 +1955,61 @@ final class PyreonRuntimeTests: XCTestCase {
         XCTAssertFalse(ws.isConnected, "closed() must clear it")
     }
 
+    // MARK: - PyreonCrashReporter (persist → rehydrate against a temp dir)
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testCrashReporterPersistAndRehydrate() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pyreon-crash-test-\(UUID().uuidString)")
+        // Launch 1: a report is persisted (the path the exception hook takes).
+        let first = PyreonCrashReporter(directory: dir)
+        first.breadcrumb("opened settings")
+        first.persist(message: "TestCrash: boom", stack: "frame0\nframe1")
+        // Launch 2 (cold instance over the same dir — a relaunch IS a new
+        // instance): start() rehydrates the report into observable state.
+        let second = PyreonCrashReporter(directory: dir)
+        XCTAssertFalse(second.hadCrash)
+        second.start()
+        XCTAssertTrue(second.hadCrash)
+        XCTAssertTrue(second.lastCrash.contains("TestCrash: boom"))
+        XCTAssertTrue(second.lastCrash.contains("opened settings"))
+        // clear() removes the file: a THIRD instance rehydrates nothing.
+        second.clear()
+        let third = PyreonCrashReporter(directory: dir)
+        third.start()
+        XCTAssertFalse(third.hadCrash)
+        XCTAssertEqual(third.lastCrash, "")
+    }
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testCrashReporterTransportSeamForwardsOnRehydrate() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pyreon-crash-test-\(UUID().uuidString)")
+        PyreonCrashReporter(directory: dir).persist(message: "T: x", stack: "s")
+        nonisolated(unsafe) var sent: [String] = []
+        PyreonCrashTransportRegistry.send = { sent.append($0) }
+        defer { PyreonCrashTransportRegistry.send = nil }
+        let r = PyreonCrashReporter(directory: dir)
+        r.start()
+        XCTAssertEqual(sent.count, 1)
+        XCTAssertTrue(sent[0].contains("T: x"))
+        // recordError forwards too, and persists for the next launch.
+        r.recordError("manual: caught")
+        XCTAssertEqual(sent.count, 2)
+    }
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testCrashReporterBreadcrumbRingIsCapped() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pyreon-crash-test-\(UUID().uuidString)")
+        let r = PyreonCrashReporter(directory: dir)
+        for i in 0..<100 { r.breadcrumb("b\(i)") }
+        r.persist(message: "m", stack: "s")
+        let text = try String(contentsOf: dir.appendingPathComponent("last-crash.json"), encoding: .utf8)
+        XCTAssertFalse(text.contains("\"b0\""))   // evicted
+        XCTAssertTrue(text.contains("b99"))          // newest kept
+    }
+
 }
 
 /// Tiny mutable-reference-type flag so a `@Sendable` `onChange` closure
@@ -1967,5 +2022,6 @@ final class PyreonRuntimeTests: XCTestCase {
 /// single-threaded so atomicity is not a concern.
 final class ObservationFlag: @unchecked Sendable {
     var fired: Bool = false
+
 
 }

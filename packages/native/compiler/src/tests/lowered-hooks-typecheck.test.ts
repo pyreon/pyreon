@@ -46,6 +46,7 @@ const USAGES: ReadonlyArray<readonly [string, string, string]> = [
   ['useBiometrics', '@pyreon/hooks', 'const b = useBiometrics()'],
   ['useClipboard', '@pyreon/hooks', 'const c = useClipboard()'],
   ['useColorScheme', '@pyreon/hooks', 'const c = useColorScheme()'],
+  ['useCrashReporter', '@pyreon/hooks', 'const crash = useCrashReporter(); const go = () => { crash.recordError("x") }'],
   ['useDatabase', '@pyreon/hooks', 'const db = useDatabase()'],
   ['useFetch', '@pyreon/hooks', 'const f = useFetch<Resp>("https://x.dev/a")'],
   ['useFilePicker', '@pyreon/hooks', 'const p = useFilePicker()'],
