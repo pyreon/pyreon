@@ -110,6 +110,95 @@ describe('createHttp — headers', () => {
     expect(seen[0]!.headers.get('x-a')).toBe('1')
     expect(seen[0]!.headers.get('x-b')).toBe('2')
   })
+
+  // The three regression tests below lock the static-source FOLD (statics are
+  // pre-merged once and cloned per request; sources from the first FUNCTION
+  // source onward stay dynamic). Bisect-verified: folding ALL sources
+  // (ignoring the function boundary) fails the ordering test; applying the
+  // pair-array form via per-pair `set` (instead of the combining Headers
+  // constructor) fails the duplicate-key test.
+
+  it('a static source AFTER an accessor source still overrides it (fold stops at the first function source)', async () => {
+    const { transport, seen } = stub()
+    let token = 'live'
+    const api = createHttp({ transport, headers: { 'x-base': 'a', 'x-shared': 'base' } })
+      .extend({ headers: () => ({ authorization: token, 'x-shared': 'fn' }) })
+      .extend({ headers: { 'x-shared': 'late-static' } })
+
+    await api.get('/x')
+    token = 'rotated'
+    await api.get('/y')
+
+    // Later sources override earlier keys, INCLUDING a static after a function:
+    expect(seen[0]!.headers.get('x-shared')).toBe('late-static')
+    expect(seen[0]!.headers.get('x-base')).toBe('a')
+    // ...and the function source still re-evaluates per request:
+    expect(seen[0]!.headers.get('authorization')).toBe('live')
+    expect(seen[1]!.headers.get('authorization')).toBe('rotated')
+  })
+
+  it('pair-array header sources COMBINE duplicate keys (Headers append semantics)', async () => {
+    const { transport, seen } = stub()
+    const api = createHttp({
+      transport,
+      headers: [
+        ['accept', 'application/json'],
+        ['accept', 'text/plain'],
+      ],
+    })
+
+    await api.get('/x')
+
+    expect(seen[0]!.headers.get('accept')).toBe('application/json, text/plain')
+  })
+
+  it('accepts a Headers instance as a source', async () => {
+    const { transport, seen } = stub()
+    const preset = new Headers({ 'x-from-headers': 'yes' })
+    const api = createHttp({ transport, headers: preset })
+
+    await api.get('/x')
+
+    expect(seen[0]!.headers.get('x-from-headers')).toBe('yes')
+  })
+})
+
+describe('createHttp — response promise surface (thenable contract)', () => {
+  it('supports .catch for rejection routing and .finally on both paths', async () => {
+    const failing: Transport = () => Promise.reject(new Error('boom'))
+    const api = createHttp({ transport: failing, timeout: false })
+
+    let caught: unknown
+    let finallyRan = 0
+    await api
+      .get('/x')
+      .catch((err: unknown) => {
+        caught = err
+      })
+      .finally(() => {
+        finallyRan++
+      })
+    // A custom transport's rejection propagates raw (NetworkError wrapping
+    // is fetchTransport's job, not the client's).
+    expect(caught).toBeInstanceOf(Error)
+    expect((caught as Error).message).toBe('boom')
+
+    const { transport } = stub({ ok: true })
+    const ok = createHttp({ transport })
+    await ok.get('/x').finally(() => {
+      finallyRan++
+    })
+    expect(finallyRan).toBe(2)
+  })
+
+  it('works with Promise.all and .then chaining like a native promise', async () => {
+    const { transport } = stub({ n: 7 })
+    const api = createHttp({ transport })
+
+    const [a, b] = await Promise.all([api.get('/a'), api.get('/b').then((r) => r.status)])
+    expect(a.status).toBe(200)
+    expect(b).toBe(200)
+  })
 })
 
 describe('createHttp — extend is immutable', () => {
