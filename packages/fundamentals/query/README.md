@@ -14,6 +14,7 @@ bun add @pyreon/query @pyreon/core @pyreon/reactivity
 ## Quick start
 
 ```tsx
+// @check
 import { QueryClient, QueryClientProvider, useQuery } from '@pyreon/query'
 
 const queryClient = new QueryClient()

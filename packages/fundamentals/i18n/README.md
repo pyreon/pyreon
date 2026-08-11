@@ -20,6 +20,7 @@ bun add @pyreon/i18n @pyreon/core @pyreon/reactivity
 The `/core` entry transitively depends ONLY on `@pyreon/reactivity` — zero JSX, zero `@pyreon/core`. Use it for backend translation pipelines, edge workers, non-Pyreon frontends, or any context where you don't need the `<Trans>` JSX component. Both entries return identical `I18nInstance` objects, so switching later is non-breaking.
 
 ```ts
+// @check
 import { createI18n } from '@pyreon/i18n/core'
 
 const i18n = createI18n({ locale: 'en', messages: { en: { hello: 'Hi' } } })

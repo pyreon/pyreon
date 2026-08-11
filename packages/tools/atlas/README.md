@@ -43,6 +43,7 @@ variant axis; a `?` suffix marks a prop optional). That's the whole thing you
 write:
 
 ```ts
+// @check
 import { createAtlas } from '@pyreon/atlas'
 import { components } from '@pyreon/atlas/auto'
 
