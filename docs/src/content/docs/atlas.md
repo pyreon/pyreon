@@ -168,6 +168,30 @@ Real Vite + the real Pyreon compiler over your source. The workbench ships:
 
 Components living in files that import `@pyreon/atlas` are treated as workbench *hosts* and excluded from the nav (matched on import specifiers, never on file content).
 
+### Store panel — the writes an interaction made, steppable
+
+`@pyreon/store` publishes a **mutation stream**: every write announces its store, whether it was a `patch` or a direct set, and the per-key old/new values. Storybook has no equivalent, because React state changes are private to the component that owns them.
+
+Press **Record**, interact with the preview, then step back through what happened:
+
+```
+step 2 of 3 — stepped back
+  #1  cart · set count      1
+  #2  cart · set count      2     ← selected
+  #3  cart · set name       "y"
+
+State at this step
+  count  1
+  name   "x"
+
+Written more than once
+  count  2 writes
+```
+
+Stepping back shows the store **as it was**, not a recomputation. "Written more than once" flags a key written repeatedly in one interaction — a loop, or a chain of dependent writes. Worth seeing; not automatically wrong.
+
+Recording is explicit rather than always-on: `addStorePlugin` attaches to every store created afterwards, and a workbench subscribed for the whole session would pay for every write whether anyone is looking or not.
+
 ### `atlas verify-browser` — the browser half of verification
 
 ```bash

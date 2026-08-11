@@ -105,6 +105,7 @@
     "@pyreon/manifest": "workspace:*",
     "@pyreon/query": "workspace:*",
     "@pyreon/runtime-server": "workspace:*",
+    "@pyreon/store": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vite-plugin": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
@@ -114,14 +115,18 @@
     "zod": "^4.4.3"
   },
   "peerDependencies": {
-    "vite": ">=6",
-    "@pyreon/vite-plugin": "workspace:*",
     "@pyreon/compiler": "workspace:*",
+    "@pyreon/store": "workspace:*",
+    "@pyreon/vite-plugin": "workspace:*",
     "happy-dom": ">=15",
-    "playwright-core": ">=1.40"
+    "playwright-core": ">=1.40",
+    "vite": ">=6"
   },
   "peerDependenciesMeta": {
-    "vite": {
+    "@pyreon/compiler": {
+      "optional": true
+    },
+    "@pyreon/store": {
       "optional": true
     },
     "@pyreon/vite-plugin": {
@@ -130,10 +135,10 @@
     "happy-dom": {
       "optional": true
     },
-    "@pyreon/compiler": {
+    "playwright-core": {
       "optional": true
     },
-    "playwright-core": {
+    "vite": {
       "optional": true
     }
   }

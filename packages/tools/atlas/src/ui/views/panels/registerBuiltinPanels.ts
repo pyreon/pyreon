@@ -8,6 +8,7 @@
  * addon-viewport, addon-backgrounds, addon-pseudo-states and addon-outline.
  */
 import { registerAddonPanel } from '../../panels'
+import { registerStorePanel } from './StorePanel'
 import { a11yPanel } from './A11yPanel'
 import { actionsPanel } from './ActionsPanel'
 import { canvasPanel } from './CanvasPanel'
@@ -18,4 +19,5 @@ export function registerBuiltinPanels(): void {
   registerAddonPanel(actionsPanel)
   registerAddonPanel(a11yPanel)
   registerAddonPanel(canvasPanel)
+  registerStorePanel()
 }
