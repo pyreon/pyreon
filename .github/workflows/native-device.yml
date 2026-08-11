@@ -495,6 +495,21 @@ jobs:
             -destination "platform=iOS Simulator,name=${PYREON_SIM_NAME},OS=latest" \
             -configuration Debug
 
+      # ── Release & distribution: the iOS ARCHIVE lane ──
+      # Every other xcodebuild invocation in this workflow is
+      # Simulator-SDK; `archive` against generic/platform=iOS compiles
+      # the app + both Pyreon Swift runtimes for the DEVICE SDK (real
+      # arm64-ios) and produces the .xcarchive a TestFlight export
+      # starts from. Unsigned by design (exporting a signed .ipa needs
+      # an Apple Developer account — user-side credential); the archive
+      # never LAUNCHES the app, so CODE_SIGNING_ALLOWED=NO is legal
+      # under check-ios-signing-policy (which forbids it only on
+      # `xcodebuild test`). The script asserts the archive CONTAINS an
+      # arm64 executable — an empty archive dir is not a pass.
+      - name: Device-SDK archive lane — native-todomvc-ios
+        working-directory: examples/native-todomvc-ios
+        run: bash scripts/archive.sh
+
   android-build:
     # Same gate as ios-build — see the comment there.
     needs: changes
@@ -638,7 +653,32 @@ jobs:
           # run that ever REACHED this step (the build steps before
           # it use step-level working-directory and were fine).
           working-directory: examples/native-todomvc-android
-          script: gradle connectedCheck --no-daemon --stacktrace
+          # Two lanes on ONE emulator boot (a second boot would be a
+          # separate 3-5 min runner cost): the debug suite, then the
+          # RELEASE lane — self-signed keystore (credential-free; Play
+          # App Signing re-signs uploads) + the SAME instrumented
+          # assertions re-run against the signed, R8-MINIFIED release
+          # build via the testBuildType toggle. This is the artifact a
+          # user would install; R8/keep-rule breakage only exists here.
+          script: |
+            gradle connectedCheck --no-daemon --stacktrace
+            bash scripts/ensure-release-keystore.sh
+            # Debug→release signature transition: installing the
+            # release-signed APK over the debug-signed one fails with
+            # INSTALL_FAILED_UPDATE_INCOMPATIBLE (observed in the local
+            # bisect) — uninstall between the lanes.
+            adb uninstall com.pyreon.PyreonTodoMVC >/dev/null 2>&1 || true
+            gradle -PpyreonReleaseTests connectedCheck --no-daemon --stacktrace
+            gradle assembleRelease --no-daemon --stacktrace
+            bash scripts/release-smoke.sh
+      - name: Assert the release lane tested a minified RELEASE build
+        # Two silent-vacuity holes this closes: minify dropped → the lane
+        # passes against an unminified APK (mapping.txt is the R8 proof);
+        # testBuildType toggle removed → `-PpyreonReleaseTests` is an
+        # unused property (NOT an error) and the lane silently re-runs
+        # the debug tests. Same script a local run uses.
+        working-directory: examples/native-todomvc-android
+        run: bash scripts/assert-release-lane.sh
 
       # ── The REAL-APP gate, Android half ──
       # The iOS job builds + tests native-finance-ios; this is its counterpart,

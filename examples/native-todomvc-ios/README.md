@@ -70,3 +70,19 @@ Three reasons:
 ## Privacy
 
 This example is marked `"private": true` and excluded from npm publishing. Internal-only during PMTC's experimental phase.
+
+## Device-SDK archive lane (release packaging)
+
+```bash
+bash scripts/archive.sh   # emit → xcodegen → xcodebuild archive (generic/platform=iOS)
+```
+
+Every other xcodebuild invocation in this repo is Simulator-SDK; this lane
+compiles the app + both Pyreon Swift runtimes for the REAL device SDK
+(arm64-ios) and produces the `.xcarchive` a TestFlight export starts from,
+asserting the archive contains an arm64 executable. Unsigned by design —
+exporting a signed `.ipa` needs an Apple Developer account; when one
+exists, `xcodebuild -exportArchive -exportOptionsPlist` picks up from this
+artifact. (The script's first run caught its own vacuity shape: without
+the emit step, xcodegen's `optional: true` on `generated/` builds the
+target WITHOUT the app — `cannot find 'TodoApp' in scope`.)

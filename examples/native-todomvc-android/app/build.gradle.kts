@@ -6,6 +6,11 @@
 // shells out to `../scripts/build.sh` so a `gradle build` re-runs the
 // Pyreon compile loop the same way Xcode's preBuildScript does.
 
+// java.util.Properties by explicit import — inside android {} the bare
+// `java` resolves to Gradle's JavaPluginExtension accessor, shadowing the
+// package root (`Unresolved reference 'util'`).
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     kotlin("android")
@@ -44,6 +49,74 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    // ── Release lane (Release & distribution matrix row) ──
+    //
+    // A release build that cannot be SIGNED cannot be INSTALLED, so an
+    // unsigned `assembleRelease` proves compilation and nothing more.
+    // The keystore is SELF-GENERATED on demand (scripts/
+    // ensure-release-keystore.sh → keystore.properties + release.keystore,
+    // both gitignored) — credential-free by design: Play App Signing
+    // re-signs uploads, so a locally-generated key is the correct
+    // default for install-and-run proof, and a real upload key drops
+    // into the same keystore.properties shape without a build edit.
+    signingConfigs {
+        create("release") {
+            val props = rootProject.file("keystore.properties")
+            if (props.exists()) {
+                val ks = Properties().apply { props.inputStream().use { load(it) } }
+                storeFile = rootProject.file(ks.getProperty("storeFile"))
+                storePassword = ks.getProperty("storePassword")
+                keyAlias = ks.getProperty("keyAlias")
+                keyPassword = ks.getProperty("keyPassword")
+            }
+            // No keystore.properties → storeFile stays null and
+            // `assembleRelease` fails LOUDLY at the signing step naming
+            // this config — run scripts/ensure-release-keystore.sh first.
+            // Never fall back to the debug key: a debug-signed "release"
+            // masks exactly the signing path this lane exists to prove.
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            // Minified + optimized — the R8 pass is the POINT: reflection
+            // and keep-rule breakage only surfaces in a minified build
+            // (kotlinx-serialization ships its own auto-applied R8 rules;
+            // this build type is what verifies they actually hold against
+            // the runtime srcDirs above).
+            isMinifyEnabled = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+            signingConfig = signingConfigs.getByName("release")
+            // Test-APK-only rules (see proguard-test-rules.pro): androidx.test
+            // references compile-only errorprone annotations R8 error-flags
+            // when the androidTest APK is minified under testBuildType=release.
+            testProguardFiles("proguard-test-rules.pro")
+            // Runner-startup keep, applied ONLY in the release-test lane —
+            // the shipping config never sees it (see the .pro file's header
+            // for the AGP-dedup + R8-strip mechanism it closes).
+            if (project.hasProperty("pyreonReleaseTests")) {
+                proguardFile("proguard-releasetest-keep.pro")
+            }
+        }
+    }
+
+    // Release-mode device proof: `-PpyreonReleaseTests` points the
+    // instrumented suite at the SIGNED release build — same-certificate
+    // instrumentation (both APKs signed with the release key) is what
+    // makes a non-debuggable app testable; the test uses
+    // createAndroidComposeRule<MainActivity>, the app's own manifest
+    // activity, so no ui-test-manifest is merged. Stated precisely, the
+    // TESTED build differs from a shipping release in exactly two ways:
+    // the test APK beside it, and proguard-releasetest-keep.pro's
+    // -dontshrink (obfuscation + optimization stay ON — see that file's
+    // header for the AGP-dedup mechanism that forces it). Behavior under
+    // full SHRINKING is covered by scripts/release-smoke.sh against the
+    // untouched artifact.
+    testBuildType = if (project.hasProperty("pyreonReleaseTests")) "release" else "debug"
 
     // Compile the @pyreon/native runtime + router Kotlin sources into
     // the app module. The PMTC emit imports `com.pyreon.runtime.*`
