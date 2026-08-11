@@ -188,6 +188,49 @@ describe('buildScaffold — native runtime delivery wiring (local-proof-found fi
     expect(g).toContain('kotlinx-coroutines-android')
   })
 
+  it('Android release lane: signed release buildType + the release-test toggle', () => {
+    const g = get('android/app/build.gradle.kts')
+    // A release that cannot be signed cannot be installed — the release
+    // buildType must reference the keystore-backed signingConfig, and
+    // minify stays ON (R8 breakage only exists in a minified build).
+    expect(g).toContain('signingConfigs')
+    expect(g).toContain('rootProject.file("keystore.properties")')
+    expect(g).toContain('signingConfig = signingConfigs.getByName("release")')
+    expect(g).toContain('isMinifyEnabled = true')
+    // -PpyreonReleaseTests points the instrumented suite at the signed,
+    // minified release build. Without this toggle the property is silently
+    // unused and a "release test run" re-tests debug.
+    expect(g).toContain(
+      'testBuildType = if (project.hasProperty("pyreonReleaseTests")) "release" else "debug"',
+    )
+  })
+
+  it('Android release lane: keystore generator script + gitignored signing material', () => {
+    const ks = get('scripts/ensure-release-keystore.sh')
+    expect(ks).toContain('keytool -genkeypair')
+    // Idempotent: an app-provided real upload key is never overwritten.
+    expect(ks).toContain('keystore.properties present — keeping it')
+    // The generated shell must carry a LITERAL ${BASH_SOURCE[0]} — an
+    // unescaped TS template interpolation here would have thrown at
+    // scaffold time or baked in an empty string.
+    expect(ks).toContain('dirname "${BASH_SOURCE[0]}"')
+    // The release-test lane's runner-startup keep is property-gated — the
+    // SHIPPING config must never include it unconditionally.
+    const g2 = get('android/app/build.gradle.kts')
+    expect(g2).toContain('if (project.hasProperty("pyreonReleaseTests"))')
+    expect(g2).toContain('proguardFile("proguard-releasetest-keep.pro")')
+    // -dontshrink (NOT an enumerated keep list): the tested build disables
+    // shrinking wholesale — per-class keeps were whack-a-mole (four classes
+    // deep on the reference example before the shape was recognized).
+    expect(get('android/app/proguard-releasetest-keep.pro')).toContain('-dontshrink')
+    const gi = get('.gitignore')
+    expect(gi).toContain('android/release.keystore')
+    expect(gi).toContain('android/keystore.properties')
+    const pkg = get('package.json')
+    expect(pkg).toContain('"release:keystore"')
+    expect(pkg).toContain('"release:android"')
+  })
+
   it('MainActivity extends ComponentActivity (Compose setContent receiver)', () => {
     // bug #4: setContent {} is an extension on ComponentActivity, not the
     // plain android.app.Activity the scaffold previously used.

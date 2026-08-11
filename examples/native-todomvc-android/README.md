@@ -69,6 +69,40 @@ What requires Android SDK + emulator/device:
 
 The honest framing: the **structural** multiplatform contract is proven AND CI-gated (one source, two emit targets, both typecheck-clean against their respective compiler-stub harnesses). The **runtime** multiplatform contract awaits real-device CI (Apple-hardware-class blocker on the iOS side too).
 
+## Release lane (signed + R8-minified, device-proven)
+
+```bash
+bash scripts/ensure-release-keystore.sh        # one-time: self-signed keystore (gitignored)
+gradle assembleRelease                          # signed, minified release APK
+gradle -PpyreonReleaseTests connectedCheck      # the SAME instrumented suite vs the RELEASE build
+bash scripts/assert-release-lane.sh             # proves R8 ran + the release build was what got tested
+```
+
+The keystore is self-signed and generated locally — Play App Signing re-signs
+store uploads, so this key is enough to install and run the real release
+artifact today; a real upload key drops into the same `keystore.properties`.
+
+Two lanes, two claims, stated precisely:
+
+- **`release-smoke.sh`** boots the UNTOUCHED release APK — full R8
+  shrink+obfuscate+optimize, the exact bytes a user would install — and
+  asserts a REACTIVE Compose text landed in the accessibility tree (no test
+  APK, no instrumentation relationship, so nothing about the artifact is
+  altered to test it).
+- **`-PpyreonReleaseTests connectedCheck`** re-runs the full instrumented
+  suite against the SIGNED release build with `-dontshrink` applied (test
+  frameworks resolve the stdlib/coroutines/tracing/compose hooks from the
+  app's classpath, which shrinking strips — found four classes deep before
+  the shape was recognized). Obfuscation + optimization stay ON, so renamed
+  reflection lookups and inlining are exercised; behavior under full
+  shrinking is the smoke lane's claim, not this one's.
+
+The assert script closes the silent-vacuity holes: minify dropped (no
+`mapping.txt`), toggle removed (`-P` silently unused → the suite re-tests
+debug), and a runner that crashed at startup (0 executed tests). CI runs
+both lanes on the required Android job, on the same emulator boot as the
+debug suite.
+
 ## Why a separate example dir (vs sharing iOS's)
 
 Three reasons matching the iOS rationale:
