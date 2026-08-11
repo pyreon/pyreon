@@ -86,6 +86,7 @@ const GATES: Gate[] = [
   { name: 'check-prose-props', cmd: 'bun scripts/check-prose-props.ts' },
   { name: 'check-native-runtime-parity', cmd: 'bun scripts/check-native-runtime-parity.ts' },
   { name: 'check-gates-wired', cmd: 'bun scripts/check-gates-wired.ts' },
+  { name: 'check-component-docs', cmd: 'bun scripts/check-component-docs.ts' },
   // NOT here: `check-atlas-guide`. It MOUNTS 108 components through Vite, and
   // measured cold it costs ~48s — which would take this list from ~19s to ~66s
   // and turn the pre-push hook into something people reach for `--no-verify` to

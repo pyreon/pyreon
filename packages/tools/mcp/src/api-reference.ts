@@ -6825,6 +6825,126 @@ effect(() => { void throttled() })
   // @pyreon/toast
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // <gen-docs:api-reference:start @pyreon/a11y>
+
+  'a11y/announce': {
+    signature: 'announce(message: string, options?: { politeness?: "polite" | "assertive"; clearAfter?: number }): void',
+    example: `announce('Item added to cart')
+announce('Error: name is required', { politeness: 'assertive' })`,
+    notes: 'Speak a message to screen readers via an aria-live region. Lazily creates a visually-hidden region on document.body on first call and reuses it — zero setup, no provider. Clears the region then writes on the next frame so two identical consecutive messages still re-announce. No-op on the server.',
+    mistakes: `- Using \`assertive\` for routine status updates — it interrupts whatever the screen reader is saying. Reserve it for errors and time-critical alerts; default \`polite\` queues politely.
+- Calling announce() during SSR expecting output — it is a no-op on the server. Announcements are client-side, user-triggered events; trigger them in handlers / effects, not render.
+- Expecting visible UI — the live region is visually hidden by design. Render your own visible toast/status separately; announce() is the screen-reader channel.`,
+  },
+
+  'a11y/VisuallyHidden': {
+    signature: 'function VisuallyHidden(props: { as?: string; children?: VNodeChild; [key: string]: unknown }): VNodeChild',
+    example: '<button><SearchIcon /><VisuallyHidden>Search</VisuallyHidden></button>',
+    notes: 'Render content invisible on screen but kept in the accessibility tree (unlike display:none / the hidden attribute). For labels and status text sighted users get from visual context but assistive-tech users need spelled out. Defaults to a <span>; pass `as` for a different tag. Caller styles merge over the clipping base.',
+    mistakes: `- Using \`display:none\` or the \`hidden\` attribute instead — those remove the content from the accessibility tree, so screen readers never see it. VisuallyHidden clips it but keeps it readable.
+- Putting interactive controls inside it — a visually-hidden focusable element is a keyboard trap for sighted keyboard users (focus jumps to invisible content). Keep it to non-interactive text.`,
+  },
+
+  'a11y/LiveRegion': {
+    signature: 'function LiveRegion(props: { politeness?: "polite" | "assertive" | "off"; atomic?: boolean; role?: "status" | "alert" | "log"; visible?: boolean; children?: VNodeChild; [key: string]: unknown }): VNodeChild',
+    example: `<LiveRegion>{() => status()}</LiveRegion>
+<LiveRegion politeness="assertive">{() => error()}</LiveRegion>
+<LiveRegion visible>{() => saveState()}</LiveRegion>`,
+    notes: 'A declarative aria-live region — the persistent, reactive complement to imperative announce(). Place it once in your tree and drive its children with a signal; the browser announces every content change automatically (no announce() call, no effect). Screen-reader-only by default (reuses VisuallyHidden clipping); pass `visible` for status text that should also be seen. Defaults: politeness "polite" → role "status", "assertive" → role "alert", "off" silences without a contradictory implicit role. Renders on the server too, so the region exists at hydration and the first reactive update is announced.',
+    mistakes: `- Reaching for announce() in an effect when the status already lives in your tree — <LiveRegion>{() => status()}</LiveRegion> announces on change with zero wiring. Use announce() for fire-and-forget events with no home in the layout.
+- Using \`assertive\` for routine status — it interrupts the screen reader. Reserve it for errors; default \`polite\` queues politely.
+- Mounting/unmounting the region to "turn it off" — toggle \`politeness="off"\` instead so the element (and its announce history) stays stable.
+- Reading the children eagerly (e.g. \`{status()}\` without the accessor) — pass \`{() => status()}\` so the region tracks the signal and re-announces on change.`,
+  },
+
+  'a11y/SkipLink': {
+    signature: 'function SkipLink(props: { href?: string; children?: VNodeChild; [key: string]: unknown }): VNodeChild',
+    example: `<SkipLink href="#main">Skip to content</SkipLink>
+<nav>…</nav>
+<main id="main">…</main>`,
+    notes: 'A keyboard "skip to content" link (WCAG 2.4.1 Bypass Blocks): render it as the first focusable element on the page. It is clipped out of view until it receives focus (first Tab), then appears at the top-left; activating it moves BOTH scroll and keyboard focus to the target landmark (default `#main`), so the next Tab continues from the main content. Adds a programmatic-focus tabindex to a non-focusable target automatically. A `style` object merges over the built-in reveal styles to restyle the focused appearance without losing the hide-until-focus behavior.',
+    mistakes: `- Not rendering it FIRST — a skip link only works if it is the first focusable element, so the very first Tab reveals it. Put it at the top of <body> / the app root, before nav.
+- Pointing href at a non-existent id — if \`#main\` has no matching element nothing moves. Ensure the target landmark carries the id (e.g. <main id="main">).
+- Hiding it with display:none / the hidden attribute to keep it off-screen — that removes it from the tab order so it can never be focused. SkipLink clips it (stays focusable) and reveals it on focus; don't override that with display:none.`,
+  },
+
+  'a11y/createA11yId': {
+    signature: 'createA11yId(prefix?: string): string',
+    example: `const id = createA11yId('hint')
+<input aria-describedby={id} /><span id={id}>…</span>`,
+    notes: `Generate a stable, SSR-safe unique id for ARIA relationship attributes (aria-labelledby / aria-describedby / aria-controls / for). Wraps @pyreon/core's createUniqueId so server and client agree — no hydration mismatch. The optional prefix is cosmetic (DOM-inspection readability).`,
+    mistakes: `- Calling it at module scope and sharing one id across many instances — call it inside the component so each instance gets its own id, or two elements will collide.
+- Hardcoding ids instead — duplicate ids across a page break aria-labelledby/describedby resolution. createA11yId guarantees uniqueness.`,
+  },
+
+  'a11y/RouteAnnouncer': {
+    signature: `import { RouteAnnouncer } from '@pyreon/a11y/router'
+function RouteAnnouncer(props?: { format?: (to, from) => string | null; politeness?: 'polite' | 'assertive'; clearAfter?: number; announceInitial?: boolean }): null`,
+    example: `<RouterProvider router={router}>
+  <RouteAnnouncer />
+  <RouterView />
+</RouterProvider>`,
+    notes: `Announce client-side route changes to screen-reader users — the canonical SPA accessibility gap (single-page navigations change the URL + DOM but fire no page-load event, so assistive tech never says "you are now on <page>"). Renders nothing; registers ONE router afterEach hook that pushes the destination route's meta.title (or "Navigated to <path>") to a polite aria-live region via announce(). Drop one near the router root. Imported from the @pyreon/a11y/router subpath so the base @pyreon/a11y entry stays router-free.`,
+    mistakes: `- Importing it from \`@pyreon/a11y\` instead of \`@pyreon/a11y/router\` — the router integration lives in the subpath so the base entry never pulls @pyreon/router into bundles that only use announce()/VisuallyHidden.
+- Mounting more than one — each registers its own afterEach hook, so the route gets announced N times. Mount exactly one, in a component that lives for the app's lifetime (the root layout).
+- Expecting it to announce the initial page load — it does not by default (the screen reader already reads a freshly-loaded page; a redundant announcement is noise). Set \`announceInitial\` only when the announcer mounts after the first navigation already committed.
+- Relying on it for \`<head>\`-driven dynamic titles — the default reads \`route.meta.title\`; if you set titles via @pyreon/head at runtime, pass a \`format\` callback that returns the live title.`,
+  },
+
+  'a11y/useRouteAnnouncer': {
+    signature: `import { useRouteAnnouncer } from '@pyreon/a11y/router'
+useRouteAnnouncer(options?: RouteAnnouncerOptions): void`,
+    example: 'useRouteAnnouncer({ format: (to) => `${to.meta.title ?? to.path} page` })',
+    notes: 'Hook form of <RouteAnnouncer>. Call once from a long-lived component to announce route changes. Registers a single router afterEach hook (auto-removed on unmount) and announces via the zero-setup announce() polite live region. SSR-safe — the hook only registers in onMount and announce() no-ops on the server.',
+    mistakes: `- Calling it in a component that mounts/unmounts per navigation — the hook would re-register each time. Call it in the persistent root layout, not a per-route page.
+- Using it without a <RouterProvider> in scope — it calls useRouter(), which throws if no router is installed.`,
+  },
+  // <gen-docs:api-reference:end @pyreon/a11y>
+
+  // <gen-docs:api-reference:start @pyreon/rich-text>
+
+  'rich-text/createRichTextEditor': {
+    signature: '(config?: RichTextConfig) => RichTextEditor',
+    example: `const editor = createRichTextEditor({
+  content: '<p>Hello</p>',
+  ariaLabel: 'Post body',
+  onChange: (json) => console.log('edit:', json),
+})
+
+editor.json()                       // reactive read
+editor.json.set(draft)              // replace content
+editor.text()                       // computed plain text
+editor.chain()?.toggleBold().run()  // run a command
+
+<RichText instance={editor} style="min-height: 12rem" />`,
+    notes: `Create a reactive WYSIWYG editor instance. \`editor.json\` is a writable Signal<JSONContent> — \`editor.json()\` reads reactively, \`editor.json.set(next)\` replaces the editor content (loop-safe). \`html\`/\`text\`/\`isEmpty\`/\`characterCount\`/\`wordCount\`/\`canUndo\`/\`canRedo\` are computed signals; \`editable\` is a writable Signal<boolean> (runtime read-only toggle); \`editor.isActive('bold')\` is the reactive toolbar primitive. \`characterCount\`/\`wordCount\`/\`isEmpty\` derive from the document JSON, so they report accurately BEFORE the (lazy) engine mounts (stored-JSON draft lists), count VISIBLE characters (not the \`\\n\\n\` block separators \`getText()\` inserts), and — like \`text\`/\`html\`/\`canUndo\` — re-derive only on a CONTENT change, never a pure cursor move (a live word-counter effect doesn't re-fire on every arrow-key); \`isActive\` still tracks the selection. Commands run through \`editor.chain()\` (toggleBold/toggleHeading/toggleBulletList/…) plus \`undo\`/\`redo\`/\`focus\`/\`blur\` helpers. The TipTap \`Editor\` (over ProseMirror) is created lazily when mounted via \`<RichText>\`, so \`@tiptap/*\` stays out of the initial bundle. Config accepts content (HTML string or ProseMirror JSON), editable, ariaLabel, starterKit, extensions, autofocus, onChange, and onError (mount failures route here instead of an unhandled rejection). The instance is framework-independent — mount it via \`<RichText instance={editor} />\`. See also: RichText, bindRichTextToSignal.`,
+    mistakes: `- Forgetting to declare @pyreon/runtime-dom in consumer app deps — <RichText> JSX emits _tpl() which needs runtime-dom
+- Calling editor.json(newDoc) to write — that reads and ignores the argument. Use editor.json.set(newDoc)
+- Reading editor.html() / editor.chain() before mount — the TipTap Editor is created on mount (async, lazy import). html falls back to the initial string; chain() returns null. Use editor.json.set(...) to set content independently of the view
+- Hand-rolling the applyingExternal flag pair for external sync — use bindRichTextToSignal instead
+- Forgetting editor.dispose() on unmount — like @pyreon/code, the instance is user-owned (the component does not auto-dispose so it can be re-mounted). A re-mount restores the CURRENT document (edits are preserved), and a dispose() during the pending async mount is safe (no leaked editor)
+- Relying on a thrown error to debug a broken extension set (e.g. starterKit:false with no schema-providing extension) — mount failures no longer surface as an unhandled rejection; pass onError to observe them, otherwise they log a [Pyreon] message in dev`,
+  },
+
+  'rich-text/RichText': {
+    signature: '(props: RichTextProps) => VNodeChild',
+    example: '<RichText instance={editor} style="min-height: 12rem" class="prose" />',
+    notes: 'Mount component for a `createRichTextEditor` instance. Accepts `instance`, `class`, and `style`, and renders a container `<div>` the TipTap editor mounts into (lazy-loading the engine on first render). The instance is user-owned — call `editor.dispose()` in `onCleanup`/`onUnmount` if it will not be re-mounted. See also: createRichTextEditor.',
+  },
+
+  'rich-text/bindRichTextToSignal': {
+    signature: '<T = JSONContent>(options: BindRichTextToSignalOptions<T>) => RichTextBinding',
+    example: `const draft = signal(editor.json())
+const binding = bindRichTextToSignal({ editor, signal: draft })
+// or HTML: bindRichTextToSignal({ editor, signal: htmlStr, format: 'html' })
+// onCleanup(() => binding.dispose())`,
+    notes: `Two-way binding between an editor instance and an external Signal — the editor mirror of \`@pyreon/code\`'s \`bindEditorToSignal\`. \`format: 'json'\` (default) mirrors the structured ProseMirror document (\`T = JSONContent\`); \`format: 'html'\` mirrors an HTML string. Internal flags break the echo loop; a value/peek compare short-circuits no-op writes. Returns \`{ dispose }\` to stop both directions. See also: createRichTextEditor.`,
+    mistakes: `- Forgetting to call binding.dispose() on unmount — leaks both effects
+- Passing format: 'html' with a Signal<JSONContent> (or vice versa) — T must match the format
+- Using bindRichTextToSignal AND a manual editor.json.set() loop — defeats loop prevention`,
+  },
+  // <gen-docs:api-reference:end @pyreon/rich-text>
+
   // <gen-docs:api-reference:start @pyreon/toast>
 
   'toast/toast': {
