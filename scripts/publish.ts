@@ -11,9 +11,11 @@
  *                 `next` tag so consumers can opt in via `@pkg@next`.
  */
 
+import { writeFileSync } from 'node:fs'
 import { appendFile, readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { topoSortByWorkspaceDeps } from './publish-order'
+import { runPool } from './run-pool'
 import { stripBunCondition, stripSrcFromFiles } from './strip-bun-condition'
 
 const PACKAGES_DIR = join(import.meta.dirname, '..', 'packages')
@@ -135,6 +137,49 @@ function resolveWorkspaceDeps(
 }
 
 
+// ── Signal-safe manifest restore ─────────────────────────────────────────────
+//
+// The publish loop REWRITES each package.json (resolving `workspace:` ranges to
+// `^X.Y.Z`) and restores it in a `finally`. A `finally` covers a thrown error —
+// it does not cover the process being KILLED, and this script gets killed in
+// ordinary circumstances: a cancelled CI job, a Ctrl-C, a step timeout.
+//
+// When that happens the working tree is left with resolved manifests, which is
+// committable and wrong: `@pyreon/create-zero` would ship declaring
+// `"@pyreon/tsconfig": "0.50.1"` instead of `workspace:*`, silently installing
+// the REGISTRY copy instead of linking the workspace. Found exactly that way —
+// a killed dry-run left one manifest rewritten and `loom-scan` caught it.
+//
+// Restores are SYNCHRONOUS: an async write queued from a signal handler is not
+// guaranteed to flush before the process goes away, and a half-restored tree is
+// the thing being prevented.
+const openManifests = new Map<string, string>()
+let restoring = false
+function restoreOpenManifests(): void {
+  if (restoring) return
+  restoring = true
+  for (const [path, original] of openManifests) {
+    try {
+      writeFileSync(path, original)
+    } catch {
+      // Best effort — report what could not be put back rather than throwing
+      // from a signal handler, which would lose the remaining restores.
+      console.error(`⚠️  could not restore ${path} — check \`git status\``)
+    }
+  }
+  openManifests.clear()
+}
+for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
+  process.on(signal, () => {
+    restoreOpenManifests()
+    // Re-raise with the conventional 128+n so callers see a real signal exit
+    // rather than a masked success.
+    process.exit(signal === 'SIGINT' ? 130 : signal === 'SIGTERM' ? 143 : 129)
+  })
+}
+// Covers a throw that escapes the loop entirely (nothing else would run).
+process.on('exit', restoreOpenManifests)
+
 const failed: string[] = []
 const published: string[] = []
 const skipped: string[] = []
@@ -183,6 +228,55 @@ type PlanEntry = {
 const plan: PlanEntry[] = []
 const resolveErrors: string[] = []
 
+// ── Registry pre-check, in parallel ──────────────────────────────────────────
+//
+// Every package asks npm whether its version is already published. That is 75
+// network round-trips, and measured they run at 24-49% CPU — almost entirely
+// waiting. Sequentially that is ~67s of dead time on `Release Build`, which at
+// 449s is the longest job in CI and a required check.
+//
+// Hoisted here rather than parallelising the loop below: these are pure READS
+// with no ordering between them, while the loop that consumes them has real
+// sequencing (it builds the topo-sorted plan). Keeping the loop's logic
+// untouched means this speedup cannot change what gets published.
+//
+// A failed lookup is indistinguishable from "not published" for our purposes —
+// npm view exits non-zero for an absent version, which is exactly the case we
+// want to publish. So a network error degrades to "attempt the publish", which
+// npm itself will then reject; it never silently SKIPS a package.
+const registryVersions = new Map<string, string>()
+{
+  const candidates = await Promise.all(
+    packageDirs.map(async (dir) => {
+      const pkgPath = join(dir.path, 'package.json')
+      try {
+        const pkg = JSON.parse(await readFile(pkgPath, 'utf-8'))
+        if (pkg.private || !pkg.name || PLATFORM_STUB_PACKAGES.has(pkg.name)) return undefined
+        return { key: dir.path, spec: `${pkg.name}@${pkg.version}` }
+      } catch {
+        return undefined
+      }
+    }),
+  )
+  const wanted = candidates.filter((c): c is { key: string; spec: string } => c !== undefined)
+  const found = await runPool(
+    wanted,
+    async ({ spec }) => {
+      const proc = Bun.spawn(['npm', 'view', spec, 'version'], {
+        stdout: 'pipe',
+        stderr: 'ignore',
+      })
+      const text = await new Response(proc.stdout).text()
+      await proc.exited
+      return text.trim()
+    },
+    // Latency-bound, so the limit is about being a good citizen to the registry
+    // rather than about local cores.
+    { concurrency: 10 },
+  )
+  wanted.forEach((w, i) => registryVersions.set(w.key, found[i] ?? ''))
+}
+
 for (const dir of packageDirs) {
   const pkgPath = join(dir.path, 'package.json')
   const raw = await readFile(pkgPath, 'utf-8')
@@ -194,11 +288,8 @@ for (const dir of packageDirs) {
     continue
   }
 
-  const check = Bun.spawnSync(['npm', 'view', `${pkg.name}@${pkg.version}`, 'version'], {
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  if (check.stdout.toString().trim() === pkg.version) {
+  // Answered by the parallel pre-check above; the decision is unchanged.
+  if (registryVersions.get(dir.path) === pkg.version) {
     console.log(`⏭️  ${pkg.name}@${pkg.version} — already published`)
     skipped.push(pkg.name)
     continue
@@ -324,6 +415,9 @@ for (const { dirPath, pkgPath, raw, pkg, resolved } of publishOrder) {
     continue
   }
   console.log(`📦 ${pkg.name}@${pkg.version}`)
+  // Registered BEFORE the write: a kill between the two would otherwise leave
+  // a rewritten manifest nothing knows to put back.
+  openManifests.set(pkgPath, raw)
   await writeFile(pkgPath, `${JSON.stringify(resolved, null, 2)}\n`)
 
   try {
@@ -432,6 +526,7 @@ for (const { dirPath, pkgPath, raw, pkg, resolved } of publishOrder) {
     }
   } finally {
     await writeFile(pkgPath, raw)
+    openManifests.delete(pkgPath)
   }
 }
 
