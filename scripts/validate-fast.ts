@@ -27,15 +27,22 @@
  *   - check-pyreon-lint-ratchet (@pyreon/lint advisory-finding count over framework src grew above baseline)
  *   - gen-docs --check      (manifest edited but generated files stale)
  *
- * Each gate runs ~1-15s, total ~30-60s. The point is: catch ALL the
+ * 30 gates, ~4-8s warm on an unloaded machine. The point is: catch ALL the
  * cheap-to-detect failures locally with ONE command before pushing.
+ *
+ * That number is worth keeping honest, because it is what decides whether
+ * people run this or reach for `--no-verify`. It was ~19s until two changes:
+ * `check-manifest-examples` stopped rebuilding a 3,191-file TypeScript program
+ * four times per run (74% of the wall on its own), and the gates stopped
+ * running one at a time.
  *
  * Run:
  *   bun run validate-fast              # all gates, exit 1 on any fail
  *   bun run validate-fast --json       # machine-readable result
  *
- * Gates are run SEQUENTIALLY so the output is easy to read top-down.
- * If you want parallel, run individual scripts via `bun run check-X`.
+ * Gates run CONCURRENTLY (they are independent — see the runner below), but
+ * their results print in declaration order, so the output still reads top-down.
+ * `--serial` forces one-at-a-time when you need to isolate a gate.
  *
  * NOT included (too slow for "fast"):
  *   - verify-modes (~90s)
@@ -46,7 +53,8 @@
  *
  * Run those separately when the change actually warrants it.
  */
-import { spawnSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
+import { availableParallelism } from 'node:os'
 
 interface Gate {
   name: string
@@ -157,35 +165,86 @@ interface Result {
 }
 
 const startTotal = Date.now()
-const results: Result[] = []
 const json = process.argv.includes('--json')
+const serial = process.argv.includes('--serial')
 
-for (const gate of GATES) {
+const CWD = new URL('..', import.meta.url).pathname
+
+/**
+ * Why these run CONCURRENTLY.
+ *
+ * The gates are independent by construction — every one of them either only
+ * READS the tree, or writes somewhere no other gate touches. The three that can
+ * write a shared file (`check-lint-ratchet`, `check-pyreon-lint-ratchet`,
+ * `check-bundle-budgets`) do so only behind `--update` / `--write-table`, which
+ * this runner never passes; `check-manifest-examples` owns `.cache/manifest-
+ * examples` exclusively. So there is no ordering constraint to respect, and
+ * running them one at a time just serialises ~30 process startups behind one
+ * long gate.
+ *
+ * Output ordering is preserved exactly: results are printed in DECLARATION
+ * order as a cursor advances over completed gates, so the transcript reads
+ * top-down the same way it always has. Concurrency changes when work happens,
+ * not how it is reported.
+ *
+ * `--serial` restores one-at-a-time execution. Keep it: when a gate misbehaves
+ * only under load, being able to take concurrency out of the picture is the
+ * difference between a diagnosis and a guess.
+ */
+const POOL = serial ? 1 : Math.max(2, Math.min(8, (availableParallelism?.() ?? 4) - 1))
+
+function runGate(gate: Gate): Promise<Result> {
   if (gate.skipIf?.()) {
-    results.push({ name: gate.name, ok: true, durationMs: 0, output: '(skipped)' })
-    continue
+    return Promise.resolve({ name: gate.name, ok: true, durationMs: 0, output: '(skipped)' })
   }
-  const start = Date.now()
-  const r = spawnSync('sh', ['-c', gate.cmd], {
-    cwd: new URL('..', import.meta.url).pathname,
-    encoding: 'utf-8',
-    stdio: ['ignore', 'pipe', 'pipe'],
+  return new Promise((resolveGate) => {
+    const start = Date.now()
+    const child = spawn('sh', ['-c', gate.cmd], { cwd: CWD, stdio: ['ignore', 'pipe', 'pipe'] })
+    let out = ''
+    let settled = false
+    // Every exit path must resolve exactly once. A pool worker awaits this
+    // promise, so an unhandled spawn failure would not fail the run — it would
+    // HANG it, with no output and nothing to read. Worse than a red gate.
+    const finish = (ok: boolean, text: string) => {
+      if (settled) return
+      settled = true
+      resolveGate({ name: gate.name, ok, durationMs: Date.now() - start, output: text.trim() })
+    }
+    child.stdout.on('data', (c: Buffer) => (out += c))
+    child.stderr.on('data', (c: Buffer) => (out += c))
+    child.on('error', (err) => finish(false, `${out}\nfailed to start: ${err.message}`))
+    child.on('close', (code) => finish(code === 0, out))
   })
-  const durationMs = Date.now() - start
-  const ok = r.status === 0
-  const output = `${r.stdout ?? ''}${r.stderr ?? ''}`.trim()
-  results.push({ name: gate.name, ok, durationMs, output })
-  if (!json) {
-    const status = ok ? '✓' : '✗'
-    const time = `${(durationMs / 1000).toFixed(1)}s`
-    console.log(`${status} ${gate.name.padEnd(38)} ${time.padStart(7)}`)
-    if (!ok) {
-      console.log()
-      console.log(output)
-      console.log()
+}
+
+const results: Result[] = new Array(GATES.length)
+
+async function runAll(): Promise<void> {
+  let next = 0
+  // The print cursor. A gate is only printed once every gate declared before it
+  // has finished, which is what keeps the output identical to the serial run.
+  let printed = 0
+  const flush = () => {
+    if (json) return
+    while (printed < GATES.length && results[printed] !== undefined) {
+      const r = results[printed]!
+      const time = `${(r.durationMs / 1000).toFixed(1)}s`
+      console.log(`${r.ok ? '✓' : '✗'} ${r.name.padEnd(38)} ${time.padStart(7)}`)
+      if (!r.ok) console.log(`\n${r.output}\n`)
+      printed++
     }
   }
+  const worker = async (): Promise<void> => {
+    while (next < GATES.length) {
+      const index = next++
+      results[index] = await runGate(GATES[index]!)
+      flush()
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(POOL, GATES.length) }, worker))
 }
+
+await runAll()
 
 const totalMs = Date.now() - startTotal
 const failed = results.filter((r) => !r.ok)
