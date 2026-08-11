@@ -13,6 +13,7 @@ bun add @pyreon/hooks @pyreon/core @pyreon/reactivity
 ## Quick start
 
 ```tsx
+// @check
 import { effect, signal } from '@pyreon/reactivity'
 import {
   useControllableState,

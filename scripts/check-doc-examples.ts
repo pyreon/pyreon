@@ -51,6 +51,20 @@ import { join, relative, resolve } from 'node:path'
 
 const REPO_ROOT = resolve(import.meta.dirname, '..')
 const DOCS_DIR = join(REPO_ROOT, 'docs', 'src', 'content', 'docs')
+
+/**
+ * Package READMEs are checked by the same opt-in mechanism.
+ *
+ * They carry ~550 `ts`/`tsx` fenced blocks and NOTHING verified any of them —
+ * while `docs/` had this gate all along. A README is the first thing a reader
+ * sees on npm and GitHub, so an example that no longer compiles there teaches
+ * broken code to precisely the audience with the least context to notice.
+ *
+ * Adding the root costs nothing until a block opts in with the marker, which
+ * is the same trade `docs/` already makes: most blocks are illustrative
+ * partials, and gating them all would produce noise nobody reads.
+ */
+const README_GLOB = join(REPO_ROOT, 'packages')
 const CACHE_DIR = join(REPO_ROOT, '.cache', 'doc-examples')
 const MARKER = '// @check'
 
@@ -58,44 +72,69 @@ const MARKER = '// @check'
 
 function discoverPyreonPaths(): Record<string, string[]> {
   const paths: Record<string, string[]> = {}
-  const categories = ['core', 'fundamentals', 'tools', 'ui-system', 'zero', 'internals']
-  for (const cat of categories) {
-    const catDir = join(REPO_ROOT, 'packages', cat)
-    if (!existsSync(catDir)) continue
+  // Categories are READ, not listed. The hardcoded six omitted `native` and
+  // `ui`, so no example importing from those packages could ever be checked —
+  // and nothing said so, because an unresolvable import fails as TS2307 and
+  // reads like a broken example rather than a gate that cannot see the package.
+  const packagesDir = join(REPO_ROOT, 'packages')
+  if (!existsSync(packagesDir)) return paths
+  for (const cat of readdirSync(packagesDir)) {
+    const catDir = join(packagesDir, cat)
+    try {
+      if (!statSync(catDir).isDirectory()) continue
+    } catch {
+      continue
+    }
     for (const pkg of readdirSync(catDir)) {
       const pkgDir = join(catDir, pkg)
       const pjPath = join(pkgDir, 'package.json')
       if (!existsSync(pjPath)) continue
-      let name: string
+      let pj: { name?: unknown; exports?: unknown }
       try {
-        name = JSON.parse(readFileSync(pjPath, 'utf8')).name
+        pj = JSON.parse(readFileSync(pjPath, 'utf8'))
       } catch {
         continue
       }
+      const name = pj.name
       if (typeof name !== 'string' || !name.startsWith('@pyreon/')) continue
+
       const indexPath = join(pkgDir, 'src', 'index.ts')
       if (existsSync(indexPath)) paths[name] = [relative(REPO_ROOT, indexPath)]
+
+      // SUBPATHS, derived from the package's own `exports` map.
+      //
+      // This used to be a hand-written list of "common subpaths the docs
+      // reference" — the silent-hole shape: 36 packages expose subpaths and
+      // the list named two of them, so an example importing
+      // `@pyreon/atlas/auto` (a real export) failed to resolve and could not
+      // be opted in at all. A gate that rejects correct code is worse than no
+      // gate, because the only way to make it pass is to stop checking.
+      //
+      // The `vl_rolldown` convention makes the mapping mechanical: an exports
+      // KEY `./x` is built from `src/x.ts` — the same derivation the build
+      // itself uses (see `check-export-entries`).
+      const exports = pj.exports
+      if (exports && typeof exports === 'object') {
+        for (const key of Object.keys(exports as Record<string, unknown>)) {
+          if (!key.startsWith('./') || key === './package.json') continue
+          const stem = key.slice(2)
+          for (const ext of ['.ts', '.tsx', '/index.ts', '/index.tsx']) {
+            const candidate = join(pkgDir, 'src', `${stem}${ext}`)
+            if (existsSync(candidate)) {
+              paths[`${name}/${stem}`] = [relative(REPO_ROOT, candidate)]
+              break
+            }
+          }
+        }
+      }
     }
   }
-  // Common subpaths the docs reference. `@pyreon/core/jsx-runtime` is
-  // required by `jsxImportSource: '@pyreon/core'` — without it, every JSX
-  // expression errors with TS2875.
-  const subpaths: Record<string, string> = {
-    '@pyreon/core/jsx-runtime': 'packages/core/core/src/jsx-runtime.ts',
-    '@pyreon/core/jsx-dev-runtime': 'packages/core/core/src/jsx-dev-runtime.ts',
-    // @pyreon/testing library-helper subpaths (each maps exports-key → src file
-    // per the vl_rolldown convention, so the alias is mechanical).
-    '@pyreon/testing/form': 'packages/tools/testing/src/form.ts',
-    '@pyreon/testing/ui': 'packages/tools/testing/src/ui.ts',
-    '@pyreon/testing/router': 'packages/tools/testing/src/router.ts',
-    '@pyreon/testing/store': 'packages/tools/testing/src/store.ts',
-    '@pyreon/testing/i18n': 'packages/tools/testing/src/i18n.ts',
-    '@pyreon/testing/toast': 'packages/tools/testing/src/toast.ts',
-    '@pyreon/testing/query': 'packages/tools/testing/src/query.ts',
-  }
-  for (const [alias, p] of Object.entries(subpaths)) {
-    if (existsSync(join(REPO_ROOT, p))) paths[alias] = [p]
-  }
+  // `@pyreon/core/jsx-runtime` is required by `jsxImportSource: '@pyreon/core'`
+  // — without it every JSX expression errors with TS2875. It is covered by the
+  // exports walk above; kept explicit because a regression here breaks EVERY
+  // tsx block at once rather than one example, which is worth failing loudly.
+  const jsx = 'packages/core/core/src/jsx-runtime.ts'
+  if (existsSync(join(REPO_ROOT, jsx))) paths['@pyreon/core/jsx-runtime'] = [jsx]
   return paths
 }
 
@@ -227,6 +266,31 @@ function runTsc(): { ok: boolean; out: string } {
   }
 }
 
+/**
+ * Every `packages/<cat>/<pkg>/README.md`.
+ *
+ * Deliberately shallow: a README nested deeper is a sub-package's or a
+ * fixture's, and walking the whole tree would pull in `node_modules` and the
+ * scaffolding templates — user-shipped files this repo does not typecheck.
+ */
+function walkReadmes(packagesDir: string): string[] {
+  if (!existsSync(packagesDir)) return []
+  const out: string[] = []
+  for (const cat of readdirSync(packagesDir)) {
+    const catDir = join(packagesDir, cat)
+    try {
+      if (!statSync(catDir).isDirectory()) continue
+    } catch {
+      continue
+    }
+    for (const pkg of readdirSync(catDir)) {
+      const readme = join(catDir, pkg, 'README.md')
+      if (existsSync(readme)) out.push(readme)
+    }
+  }
+  return out.sort()
+}
+
 // ─── Run ───────────────────────────────────────────────────────────────────
 
 function main(): number {
@@ -243,7 +307,7 @@ function main(): number {
   const filenames: string[] = []
   const fileMap: Record<string, ExtractedBlock> = {}
 
-  for (const md of walkMd(DOCS_DIR)) {
+  for (const md of [...walkMd(DOCS_DIR), ...walkReadmes(README_GLOB)]) {
     for (const block of extractBlocks(md)) {
       const fname = writeBlock(block, all.length + 1)
       all.push(block)

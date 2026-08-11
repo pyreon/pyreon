@@ -13,6 +13,7 @@ bun add @pyreon/rx @pyreon/reactivity
 ## Quick start
 
 ```ts
+// @check
 import { signal } from '@pyreon/reactivity'
 import { rx } from '@pyreon/rx'
 

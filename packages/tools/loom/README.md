@@ -33,6 +33,7 @@ Two homes, one shape. The root `package.json`'s `loom` key, or a `loom` section
 in the ecosystem-wide `pyreon.config.*`:
 
 ```ts
+// @check
 // pyreon.config.ts
 import { defineConfig } from '@pyreon/config'
 

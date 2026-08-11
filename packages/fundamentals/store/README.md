@@ -13,6 +13,7 @@ bun add @pyreon/store @pyreon/reactivity
 ## Quick start
 
 ```ts
+// @check
 import { defineStore, signal, computed } from '@pyreon/store'
 
 const useCounter = defineStore('counter', () => {

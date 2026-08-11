@@ -13,6 +13,7 @@ bun add @pyreon/form @pyreon/core @pyreon/reactivity
 ## Quick start
 
 ```tsx
+// @check
 import { useForm } from '@pyreon/form'
 
 function LoginForm() {
