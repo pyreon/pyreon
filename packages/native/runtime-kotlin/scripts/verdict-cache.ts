@@ -44,8 +44,8 @@
  * the same two knobs the sibling uses, so CI wiring is shared rather than
  * reinvented.
  */
-import { createHash } from 'node:crypto'
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { createHash, randomBytes } from 'node:crypto'
+import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -109,16 +109,45 @@ export function readVerdict(key: string): Verdict | undefined {
   }
 }
 
+/**
+ * Write a verdict atomically and safely.
+ *
+ * Three properties, all load-bearing, and all lifted verbatim from
+ * `@pyreon/native-compiler`'s `validate-cache.ts`:
+ *
+ * - **Unpredictable temp name** (`randomBytes`, not `process.pid`): a pid is
+ *   guessable, so an attacker could pre-create the temp path as a symlink and
+ *   have this write land somewhere else. The cache lives under the OS temp dir,
+ *   which is world-writable.
+ * - **`flag: 'wx'`** — exclusive create. If the path already exists (including
+ *   as a symlink) the write FAILS rather than following it. This is the actual
+ *   defense; the random name only makes a collision vanishingly unlikely.
+ * - **`mode: 0o600`** — the verdict is ours to read.
+ *
+ * The rename is what makes it atomic: a reader, or a killed writer, can only
+ * observe the absent file or the whole file — never a truncated one that
+ * happens to parse as a verdict. Several services finish concurrently, so that
+ * matters here.
+ *
+ * The first version of this function used `process.pid` and no `wx`, which is
+ * precisely the mistake the sibling's comment warns about — CodeQL flagged it
+ * as `js/insecure-temporary-file`. Worth recording, because it is the cost of
+ * the reimplement-rather-than-import decision at the top of this file showing up
+ * within the hour: copying the design while leaving behind the hard-won details
+ * is exactly how a "same design as X" comment becomes false.
+ */
 export function writeVerdict(key: string, verdict: Verdict): void {
   const dir = cacheDir()
   if (dir === null || cacheDisabled()) return
-  // Write-then-rename: a reader must never observe a partial file, and several
-  // services finish concurrently.
-  const tmp = join(dir, `${key}.${process.pid}.tmp`)
+  const tmp = join(dir, `.${randomBytes(12).toString('hex')}.tmp`)
   try {
-    writeFileSync(tmp, JSON.stringify(verdict))
+    writeFileSync(tmp, JSON.stringify(verdict), { encoding: 'utf8', flag: 'wx', mode: 0o600 })
     renameSync(tmp, join(dir, `${key}.json`))
   } catch {
-    // Best effort — a cache that cannot be written is not a build failure.
+    try {
+      unlinkSync(tmp)
+    } catch {
+      // Best effort — a failed write only costs the next process a recompute.
+    }
   }
 }
