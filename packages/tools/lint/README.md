@@ -1,6 +1,6 @@
 # @pyreon/lint
 
-Pyreon-specific linter — 97 rules across 19 categories, CLI + LSP + programmatic API.
+Pyreon-specific linter — 99 rules across 19 categories, CLI + LSP + programmatic API.
 
 `@pyreon/lint` is a custom linter focused on Pyreon-specific correctness (signals, JSX-as-reactivity, SSR safety, lifecycle, architecture) — complementary to oxlint, not a replacement. Powered by `oxc-parser` for fast AST traversal with an FNV-1a-hashed AST cache for repeat runs. Ships a `pyreon-lint` CLI, a `lint()` programmatic API, a `--lsp` LSP server for IDE inlay hints + diagnostics, and `.pyreonlintrc.json` config files with per-rule options. Opt-in best-practice rules (frontend a11y/CLS, library-scoped query/rx/i18n/storage/form/router) auto-gate on the project's `package.json` deps — a project that doesn't use `@pyreon/query` never sees query rules.
 
@@ -69,28 +69,29 @@ Omitting the rule id suppresses every rule on the next line.
 
 ESLint-style tuple form: `[severity, options]`. Rules declare their option shape in `meta.schema`; invalid options disable the rule and emit a `LintResult.configDiagnostics` error.
 
-## Rule categories (18)
+## Rule categories (19)
 
 | Category        | Count | Notes                                                                      |
 | --------------- | ----- | -------------------------------------------------------------------------- |
-| `reactivity`    | 14    | Signal misuse, peek-in-tracked, unbatched-updates, nested-effect, …        |
+| `reactivity`    | 15    | Signal misuse, peek-in-tracked, guard-only-signal-reads-in-effect, …       |
 | `jsx`           | 11    | `class` over `className`, `<For by>` keying, no-props-destructure, …       |
-| `lifecycle`     | 5     | onMount cleanup, mount-in-effect, missing fallback                         |
-| `performance`   | 5     | Eager heavy imports, large `<For>` without `by`, heavy-import-in-handler   |
-| `ssr`           | 3     | `no-window-in-ssr`, `no-dom-in-setup`, `prefer-request-context`            |
-| `architecture`  | 7     | `no-process-dev-gate` (auto-fix), no-circular / no-cross-layer / …         |
+| `lifecycle`     | 6     | onMount cleanup, mount-in-effect, init-fn idempotency                      |
+| `performance`   | 6     | Eager heavy imports, large `<For>` without `by`, heavy-import-in-handler   |
+| `ssr`           | 5     | `no-window-in-ssr`, `no-private-env-in-client`, `prefer-request-context`   |
+| `architecture`  | 11    | `no-process-dev-gate` (auto-fix), no-circular / no-cross-layer / …         |
 | `store`         | 3     | Provider scope, mutation, duplicate ids                                    |
 | `form`          | 4     | `no-unregistered-field`, `no-submit-without-validation`, …                 |
-| `styling`       | 4     | `prefer-cx`, `no-inline-style-object`, `prefer-show-over-display`, …       |
+| `styling`       | 5     | `prefer-cx`, `no-signal-read-in-attrs-callback` (rocketstyle-gated), …     |
 | `hooks`         | 3     | No raw `addEventListener` / `localStorage` / `setInterval` in hook bodies  |
 | `accessibility` | 3     | Toast / Dialog / Overlay ARIA                                              |
 | `router`        | 5     | Imperative navigate in render, href navigation, prefer `useIsActive`       |
 | `ssg`           | 3     | Revalidate-not-pure-literal, missing-getStaticPaths, invalid-loader-export |
-| `frontend`      | 7     | **opt-in** — a11y/CLS: img-alt, dimensions, no-positive-tabindex, …        |
-| `query`         | 1     | **opt-in** — `query-options-as-function` (auto-fix)                        |
+| `frontend`      | 12    | **opt-in** — a11y/CLS: img-alt, dimensions, no-positive-tabindex, …        |
+| `query`         | 2     | **opt-in** — `query-options-as-function` (auto-fix), signal-forwarding     |
 | `rx`            | 1     | **opt-in** — `rx-prefer-pipe`                                              |
 | `i18n`          | 1     | **opt-in** — `i18n-prefer-trans-for-rich-jsx`                              |
 | `storage`       | 1     | **opt-in** — `no-storage-write-as-call` (auto-fix)                         |
+| `http`          | 2     | **opt-in** — unencoded path interpolation, untimed raw fetch               |
 
 The five **opt-in** categories + the `form/no-signal-in-form-initial-values` + `router/prefer-typed-search-params` rules default `off` in `recommended` / `strict` / `app` / `lib`. The `best-practices` preset enables them wholesale; library-scoped ones (`query`, `rx`, `i18n`, `storage`, `frontend/prefer-zero-image`) auto-gate on `package.json` deps via `isProjectDependency` so a project never sees rules for libraries it doesn't use.
 

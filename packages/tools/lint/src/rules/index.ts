@@ -81,6 +81,7 @@ import { noAsyncEffect } from './reactivity/no-async-effect'
 import { noBareSignalInJsx } from './reactivity/no-bare-signal-in-jsx'
 import { noContextDestructure } from './reactivity/no-context-destructure'
 import { noEffectAssignment } from './reactivity/no-effect-assignment'
+import { noGuardOnlySignalReadsInEffect } from './reactivity/no-guard-only-signal-reads-in-effect'
 import { noIterateChildrenWithoutResolve } from './reactivity/no-iterate-children-without-resolve'
 import { noNestedEffect } from './reactivity/no-nested-effect'
 import { noPeekInTracked } from './reactivity/no-peek-in-tracked'
@@ -113,11 +114,12 @@ import { noStoreOutsideProvider } from './store/no-store-outside-provider'
 import { noDynamicStyled } from './styling/no-dynamic-styled'
 // Styling
 import { noInlineStyleObject } from './styling/no-inline-style-object'
+import { noSignalReadInAttrsCallback } from './styling/no-signal-read-in-attrs-callback'
 import { noThemeOutsideProvider } from './styling/no-theme-outside-provider'
 import { preferCx } from './styling/prefer-cx'
 
 export const allRules: Rule[] = [
-  // Reactivity (14)
+  // Reactivity (15)
   noAsyncEffect,
   noBareSignalInJsx,
   noContextDestructure,
@@ -132,6 +134,7 @@ export const allRules: Rule[] = [
   noSignalCallWrite,
   storageSignalVForwarding,
   noIterateChildrenWithoutResolve,
+  noGuardOnlySignalReadsInEffect,
   // JSX (11)
   noMapInJsx,
   useByNotKey,
@@ -185,11 +188,12 @@ export const allRules: Rule[] = [
   noSubmitWithoutValidation,
   preferFieldArray,
   noSignalInFormInitialValues,
-  // Styling (4)
+  // Styling (5)
   noInlineStyleObject,
   noDynamicStyled,
   preferCx,
   noThemeOutsideProvider,
+  noSignalReadInAttrsCallback,
   // Hooks (3)
   noRawAddEventListener,
   noRawSetInterval,
@@ -261,6 +265,7 @@ export {
   noEffectInFor,
   noEffectInMount,
   noErrorWithoutPrefix,
+  noGuardOnlySignalReadsInEffect,
   noHrefNavigation,
   noHtmlFor,
   noHeavyImportOnlyInHandler,
@@ -298,6 +303,7 @@ export {
   noSignalInLoop,
   noSignalInProps,
   noSignalLeak,
+  noSignalReadInAttrsCallback,
   // Store
   noStoreOutsideProvider,
   noSubmitWithoutValidation,
