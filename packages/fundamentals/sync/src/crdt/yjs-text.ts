@@ -31,6 +31,7 @@ export interface SyncedText extends Signal<string> {
 export function syncedText(doc: YjsCrdtDoc, key: string): SyncedText {
   const ytext = doc.yDoc.getText(key)
   const base = signal(ytext.toString())
+  let disposed = false
 
   // The single update path: Y.Text → base, on every committed change (local and
   // remote). Whole-string re-read keeps the bridge simple; the signal's Object.is
@@ -38,9 +39,29 @@ export function syncedText(doc: YjsCrdtDoc, key: string): SyncedText {
   const observer = () => base.set(ytext.toString())
   ytext.observe(observer)
 
+  // `prev` for the .set diff. FAST PATH: the observer above is the SOLE base
+  // writer and Yjs fires it synchronously when the OUTERMOST transaction
+  // commits, so between transactions `base` is an exact mirror of
+  // `ytext.toString()` — `base.peek()` yields prev with zero work instead of a
+  // second O(docLen) tree walk + allocation per keystroke (the observer already
+  // pays one). The mirror does NOT hold on three paths, all falling back to a
+  // real materialization (each locked by `tests/synced-text-premise.test.ts`):
+  //   • inside an outer `doc.transact(...)` — observers are deferred to its
+  //     end, so base is stale w.r.t. mutations already applied in it
+  //     (`_transaction !== null`, typed public on Y.Doc);
+  //   • during a transaction's observer/cleanup phase — a SIBLING observer can
+  //     run before ours and call .set while base lags the same transaction's
+  //     text edit (`_transactionCleanups` non-empty; Yjs clears it after all
+  //     observers ran);
+  //   • after dispose() — the observer is detached, base is permanently stale.
+  const prevText = (): string =>
+    !disposed && doc.yDoc._transaction === null && doc.yDoc._transactionCleanups.length === 0
+      ? base.peek()
+      : ytext.toString()
+
   const facade = wrapSignal(base, {
     set: (next: string) => {
-      const prev = ytext.toString()
+      const prev = prevText()
       if (prev === next) return
       // Minimal single-region diff: keep the common prefix + suffix, replace the
       // middle. Covers the dominant controlled-input edit shape.
@@ -67,7 +88,6 @@ export function syncedText(doc: YjsCrdtDoc, key: string): SyncedText {
     doc.yDoc.transact(() => ytext.delete(index, length), LOCAL_ORIGIN)
   }
 
-  let disposed = false
   facade.dispose = () => {
     if (disposed) return
     disposed = true

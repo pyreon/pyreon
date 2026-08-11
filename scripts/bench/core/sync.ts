@@ -17,6 +17,11 @@
  *      an O(N) materialization per change (the keyed <For> keeps the DOM surgical;
  *      this measures only the array rebuild).
  *
+ * Plus two hot-path cells added with the 2026-08 perf pass (see their section
+ * comments): `syncedText .set` per-keystroke cost (the prev-materialization
+ * fast path) and WS inbound frame delivery (async `toBytes` vs the sync fast
+ * path the arraybuffer binaryType permits).
+ *
  * Usage: bun scripts/bench/core/sync.ts
  *
  * NODE_ENV=production is forced FIRST — Pyreon's dev mode keeps the
@@ -89,7 +94,19 @@ import {
   createYjsDoc,
   getDocAwareness,
   syncedAwareness,
+  syncedText,
 } from '../../../packages/fundamentals/sync/src/yjs'
+// INTERNAL import (the one exception to the public-entry convention above): the
+// inbound-frame cell measures the WS transport's normalization seam
+// (`toBytes` vs `toBytesSync`) in isolation, and no public entry exposes it —
+// the public path requires a live socket, which would bench the network stack.
+import {
+  MSG_UPDATE,
+  decodeSyncMessage,
+  encodeSyncMessage,
+  toBytes,
+  toBytesSync,
+} from '../../../packages/fundamentals/sync/src/crdt/ws-protocol'
 
 interface BenchResult {
   label: string
@@ -97,8 +114,17 @@ interface BenchResult {
   avgNs: number
 }
 
-function bench(label: string, fn: () => void, durationMs = 1500): BenchResult {
-  for (let i = 0; i < 1000; i++) fn() // warmup
+function bench(
+  label: string,
+  fn: () => void,
+  durationMs = 1500,
+  // Warmup is ITERATION-counted, so a cell whose unit is a millisecond-scale
+  // composite (fresh doc + K keystrokes) must pass a smaller count — 1000 such
+  // units is tens of seconds of pure warmup (worse under machine load), for a
+  // JIT that the unit's own inner loop already warms.
+  warmupIters = 1000,
+): BenchResult {
+  for (let i = 0; i < warmupIters; i++) fn() // warmup
   let ops = 0
   const start = performance.now()
   const end = start + durationMs
@@ -127,9 +153,10 @@ function benchMedian(
   fn: () => void,
   runs = 5,
   durationMs = 600,
+  warmupIters = 1000,
 ): BenchResult & { lo: number; hi: number } {
   const samples: BenchResult[] = []
-  for (let i = 0; i < runs; i++) samples.push(bench(label, fn, durationMs))
+  for (let i = 0; i < runs; i++) samples.push(bench(label, fn, durationMs, warmupIters))
   samples.sort((a, b) => a.opsPerSec - b.opsPerSec)
   const mid = samples[Math.floor(runs / 2)]
   return {
@@ -138,6 +165,33 @@ function benchMedian(
     avgNs: mid.avgNs,
     lo: samples[0].opsPerSec,
     hi: samples[runs - 1].opsPerSec,
+  }
+}
+
+/**
+ * Async sibling of `bench` for paths whose REAL shape awaits a promise per op
+ * (the historical WS inbound handler). The await machinery is deliberately
+ * INSIDE the timed region — the per-op microtask hop is exactly the cost the
+ * sync fast path removes, so excluding it would bench away the finding.
+ */
+async function benchAsync(
+  label: string,
+  fn: () => Promise<void>,
+  durationMs = 1500,
+): Promise<BenchResult> {
+  for (let i = 0; i < 1000; i++) await fn() // warmup
+  let ops = 0
+  const start = performance.now()
+  const end = start + durationMs
+  while (performance.now() < end) {
+    await fn()
+    ops++
+  }
+  const elapsed = performance.now() - start
+  return {
+    label,
+    opsPerSec: Math.round((ops / elapsed) * 1000),
+    avgNs: Math.round((elapsed / ops) * 1_000_000),
   }
 }
 
@@ -281,6 +335,133 @@ function benchSyncedList(): BenchResult[] {
   return results
 }
 
+// ── syncedText per-keystroke .set (controlled-input hot path) ─────────────────
+// The dominant collaborative-text write shape: a controlled <textarea> hands the
+// FULL next string to `.set` on every keystroke and `.set` diffs it against the
+// previous text. Historically `prev` was materialized with `ytext.toString()`
+// even though the observer had ALREADY materialized the identical string into
+// the base signal at the last transaction end — two full materializations per
+// keystroke. The fast path reads `base.peek()` instead (guarded: falls back to
+// toString() mid-transaction / mid-observer-phase / post-dispose).
+//
+// MEASURED SHAPE FINDING (2026-08, decided the fix's fate — keep it honest):
+// `ytext.toString()` cost is dominated by the Y.Text's ITEM COUNT, not its
+// character length. A CONTIGUOUS doc (one insert + tail appends — what a naive
+// bench builds) is ~1 merged item and toString is memcpy-cheap (~106ns at 10k
+// chars), so removing one of them is INVISIBLE (<±3%, inside noise) — the
+// contiguous rows below exist to lock that honest null result. A FRAGMENTED doc
+// (2000 interleaved 5-char inserts — what real collaborative editing produces)
+// pays ~50µs PER toString at the same 10k chars, so the removed prev
+// materialization is roughly HALF the keystroke cost — the fragmented row is
+// the representative workload and the fix's justification.
+//
+// Fresh doc per timed unit (the benchRemoteOp convention) so Yjs history can't
+// grow unboundedly and skew steady-state cost; the fragmented initial state is
+// cloned per unit via a prebuilt binary update (preserves fragmentation, far
+// cheaper than replaying 2000 inserts). Setup is amortized over K keystrokes
+// and identical across arms — the A/B DELTA between arms is the clean signal.
+// The observer's own toString + the prefix/suffix diff scan + the app-side
+// string build are inherent to `.set(fullText)` and identical in both arms.
+
+/** A 10k-char Y.Text built from 2000 random-position inserts, as a binary update. */
+function makeFragmentedTemplate(chars: number): Uint8Array {
+  const d = new Y.Doc()
+  const t = d.getText('body')
+  let len = 0
+  // Deterministic LCG so the fragmentation shape is identical across runs/arms.
+  let seed = 42
+  const rnd = () => {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff
+    return seed / 0x7fffffff
+  }
+  while (len < chars) {
+    t.insert(Math.floor(rnd() * len), 'abcde')
+    len += 5
+  }
+  const update = Y.encodeStateAsUpdate(d)
+  d.destroy()
+  return update
+}
+
+function benchSyncedTextKeystroke(): (BenchResult & { lo: number; hi: number })[] {
+  const results: (BenchResult & { lo: number; hi: number })[] = []
+
+  const run = (label: string, K: number, setup: (doc: ReturnType<typeof createYjsDoc>) => void) => {
+    const r = benchMedian(
+      label,
+      () => {
+        const doc = createYjsDoc()
+        setup(doc)
+        const t = syncedText(doc, 'body')
+        let s = t.peek()
+        for (let i = 0; i < K; i++) {
+          s += 'y'
+          t.set(s)
+        }
+        t.dispose()
+        doc.destroy()
+      },
+      5,
+      600,
+      // Composite ms-scale units: 30 warmup units suffice (the K-keystroke
+      // inner loop warms the JIT within a single unit).
+      30,
+    )
+    // Normalize the per-UNIT numbers to per-KEYSTROKE.
+    results.push({
+      label: r.label,
+      avgNs: Math.round(r.avgNs / K),
+      opsPerSec: r.opsPerSec * K,
+      lo: r.lo * K,
+      hi: r.hi * K,
+    })
+  }
+
+  for (const n of [1000, 10_000]) {
+    const initial = 'x'.repeat(n)
+    run(`syncedText .set keystroke (contiguous ${n})`, 100, (doc) =>
+      doc.yDoc.getText('body').insert(0, initial),
+    )
+  }
+  const template = makeFragmentedTemplate(10_000)
+  // K=200 keeps the per-unit clone (applyUpdate of the template) under ~10%
+  // of the unit, so the per-keystroke number is dominated by keystrokes.
+  run('syncedText .set keystroke (FRAGMENTED 10k)', 200, (doc) =>
+    Y.applyUpdate(doc.yDoc, template),
+  )
+  return results
+}
+
+// ── WS inbound frame delivery — async toBytes vs sync fast path ───────────────
+// The transport sets `binaryType = 'arraybuffer'`, yet the inbound handler
+// historically routed EVERY frame through `toBytes(...).then(...)` — a promise
+// allocation + a microtask hop per remote op, and the update landed a tick
+// AFTER `onmessage` returned. `toBytesSync` handles the already-binary shapes
+// (ArrayBuffer / Uint8Array, i.e. every frame in practice) inline. Both arms
+// run normalize+decode on the same realistic single-keystroke update frame;
+// the async arm's await machinery is inside the timed region on purpose — the
+// microtask hop IS the cost the fast path removes.
+async function benchInboundFrame(): Promise<BenchResult[]> {
+  const src = new Y.Doc()
+  src.getText('body').insert(0, 'x')
+  const frame = encodeSyncMessage(MSG_UPDATE, Y.encodeStateAsUpdate(src))
+  const ab = frame.buffer // ArrayBuffer-shaped, as a browser WS delivers it
+  src.destroy()
+
+  let sink = 0
+  const asyncArm = await benchAsync('inbound frame normalize+decode (async, old)', async () => {
+    const bytes = await toBytes(ab)
+    sink += decodeSyncMessage(bytes).type
+  })
+  const syncArm = bench('inbound frame normalize+decode (SYNC fast path)', () => {
+    const bytes = toBytesSync(ab)
+    /* the gate proved this path is taken for ArrayBuffer — non-null by construction */
+    sink += decodeSyncMessage(bytes as Uint8Array).type
+  })
+  void sink
+  return [asyncArm, syncArm]
+}
+
 // ── Remote op → signal propagation (signature path, BOUNDED) ──────────────────
 // A syncedSignal observer write IS just `base.set(map.get(key))`. We measure
 // that propagation against a FRESH doc per micro-batch so the Yjs history can't
@@ -382,19 +563,85 @@ function correctnessGate(): void {
   if (runs <= before) fail('syncedSignal write did not re-run its effect', runs, `> ${before}`)
   stop.dispose?.()
 
+  // 5. syncedText keystroke path: the .set diff must actually land in the
+  //    Y.Text AND the signal must mirror it — the two halves the keystroke cell
+  //    times. A .set that silently corrupted the diff would read as FASTER.
+  const tDoc = createYjsDoc()
+  const text = syncedText(tDoc, 'body')
+  text.set('hello world')
+  text.set('hello brave world')
+  const ytextNow = tDoc.yDoc.getText('body').toString()
+  if (ytextNow !== 'hello brave world') {
+    fail('syncedText.set diff did not land in the Y.Text', ytextNow, 'hello brave world')
+  }
+  if (text() !== 'hello brave world') {
+    fail('syncedText signal did not mirror the .set', text(), 'hello brave world')
+  }
+
+  // 6. Inbound-frame cell: BOTH normalize paths must produce identical bytes
+  //    from the same ArrayBuffer frame, and the payload must be a REAL update
+  //    (applies to a fresh doc). A normalize path returning wrong/empty bytes
+  //    would decode garbage and bench a no-op.
+  const fSrc = new Y.Doc()
+  fSrc.getText('body').insert(0, 'x')
+  const fFrame = encodeSyncMessage(MSG_UPDATE, Y.encodeStateAsUpdate(fSrc))
+  const fromSync = toBytesSync(fFrame.buffer)
+  if (fromSync === null) {
+    fail('toBytesSync missed the ArrayBuffer shape (fast path never taken)', null, 'Uint8Array')
+  }
+  const fromAsyncP = toBytes(fFrame.buffer)
+  // (async check completes before timing starts — see the await below)
+  const fDst = new Y.Doc()
+  const decoded = decodeSyncMessage(fromSync as Uint8Array)
+  if (decoded.type !== MSG_UPDATE) {
+    fail('inbound frame decoded to the wrong type', decoded.type, MSG_UPDATE)
+  }
+  Y.applyUpdate(fDst, decoded.payload)
+  if (fDst.getText('body').toString() !== 'x') {
+    fail('inbound frame payload did not apply', fDst.getText('body').toString(), 'x')
+  }
+  void fromAsyncP.then((fromAsync) => {
+    if (JSON.stringify([...fromAsync]) !== JSON.stringify([...(fromSync as Uint8Array)])) {
+      fail('toBytes and toBytesSync disagree on the same frame', [...fromAsync], [
+        ...(fromSync as Uint8Array),
+      ])
+    }
+  })
+  fSrc.destroy()
+  fDst.destroy()
+
+  text.dispose()
+  tDoc.destroy()
   presence.dispose()
   wDoc.destroy()
   listDoc.destroy()
   sDoc.destroy()
   awRaw.destroy()
   rawDoc.destroy()
-  console.log('  correctness gate passed (raw + wrapped writes observable; list + signal propagate)')
+  console.log(
+    '  correctness gate passed (raw + wrapped writes observable; list + signal + text + frames propagate)',
+  )
 }
+
+// Optional section filter for A/B iteration on ONE cell without paying the
+// whole suite: `bun scripts/bench/core/sync.ts --only=text,frame`. Sections:
+// awareness | presence | list | text | frame | remote. Default: all.
+const onlyArg = process.argv.find((a) => a.startsWith('--only='))
+const only = onlyArg ? new Set(onlyArg.slice('--only='.length).split(',')) : null
+const wants = (name: string) => only === null || only.has(name)
 
 console.log('\n@pyreon/sync — CRDT→signal hot-path benchmark (NODE_ENV=production)')
 correctnessGate()
-printSection('Awareness recompute (per cursor move)', benchAwareness())
-printWrapperTax(benchPresenceWrapperTax())
-printSection('syncedList rebuild (per change)', benchSyncedList())
-printSection('Remote op → signal (signature path, per-write ns)', benchRemoteOp())
+// Let the gate's async toBytes-parity check settle before any timing starts —
+// a macrotask hop drains ALL pending microtasks (one bare Promise.resolve()
+// would not guarantee the `.then` chain inside the gate has run).
+await new Promise((resolve) => setTimeout(resolve, 0))
+if (wants('awareness')) printSection('Awareness recompute (per cursor move)', benchAwareness())
+if (wants('presence')) printWrapperTax(benchPresenceWrapperTax())
+if (wants('list')) printSection('syncedList rebuild (per change)', benchSyncedList())
+if (wants('text')) printSection('syncedText .set (per-keystroke ns)', benchSyncedTextKeystroke())
+if (wants('frame')) printSection('WS inbound frame (per-frame ns)', await benchInboundFrame())
+if (wants('remote')) {
+  printSection('Remote op → signal (signature path, per-write ns)', benchRemoteOp())
+}
 console.log()

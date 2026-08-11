@@ -6,6 +6,7 @@ import {
   decodeSyncMessage,
   encodeSyncMessage,
   toBytes,
+  toBytesSync,
 } from '../crdt/ws-protocol'
 
 describe('ws-protocol — frame encode/decode', () => {
@@ -68,5 +69,39 @@ describe('ws-protocol — toBytes (normalizes every WS data shape)', () => {
     expect((await toBytes(12345 as unknown)).length).toBe(0)
     expect((await toBytes(null)).length).toBe(0)
     expect((await toBytes(undefined)).length).toBe(0)
+  })
+})
+
+describe('ws-protocol — toBytesSync (synchronous fast path)', () => {
+  it('passes a Uint8Array through unchanged (zero-copy, same reference)', () => {
+    const u = new Uint8Array([1, 2, 3])
+    expect(toBytesSync(u)).toBe(u)
+  })
+
+  it('wraps an ArrayBuffer synchronously', () => {
+    const ab = new Uint8Array([4, 5, 6]).buffer
+    const out = toBytesSync(ab)
+    expect(out).not.toBeNull()
+    expect([...(out as Uint8Array)]).toEqual([4, 5, 6])
+  })
+
+  it('handles a Node Buffer (Uint8Array subclass)', () => {
+    const buf = Buffer.from([7, 8])
+    expect(toBytesSync(buf)).toBe(buf)
+  })
+
+  it('returns null for the shapes that NEED the async path (Blob, Buffer[], garbage)', () => {
+    expect(toBytesSync(new Blob([new Uint8Array([9])]))).toBeNull()
+    expect(toBytesSync([new Uint8Array([1])])).toBeNull()
+    expect(toBytesSync('text')).toBeNull()
+    expect(toBytesSync(null)).toBeNull()
+    expect(toBytesSync(undefined)).toBeNull()
+  })
+
+  it('agrees with toBytes on every shared shape (the async path delegates to it)', async () => {
+    const u = new Uint8Array([1, 2, 3])
+    expect(await toBytes(u)).toBe(toBytesSync(u))
+    const ab = new Uint8Array([4, 5]).buffer
+    expect([...(await toBytes(ab))]).toEqual([...(toBytesSync(ab) as Uint8Array)])
   })
 })

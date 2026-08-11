@@ -32,10 +32,25 @@ export function decodeSyncMessage(bytes: Uint8Array): { type: number; payload: U
   return { type: bytes[0]!, payload: bytes.subarray(1) }
 }
 
-/** Normalize a WS `message` event's data (Blob / ArrayBuffer / Buffer / Uint8Array) to a Uint8Array. */
-export async function toBytes(data: unknown): Promise<Uint8Array> {
+/**
+ * Synchronous fast path of {@link toBytes}: returns the bytes when `data` is
+ * already binary — a `Uint8Array` (incl. Node Buffers, a Uint8Array subclass)
+ * or an `ArrayBuffer` — else `null` (Blob and fragmented `Buffer[]` frames need
+ * the async path). The WS transport sets `binaryType = 'arraybuffer'`, so in
+ * practice EVERY inbound frame takes this path: one promise allocation + one
+ * microtask hop per remote op removed, and the update is applied before
+ * `onmessage` returns instead of a tick later.
+ */
+export function toBytesSync(data: unknown): Uint8Array | null {
   if (data instanceof Uint8Array) return data
   if (data instanceof ArrayBuffer) return new Uint8Array(data)
+  return null
+}
+
+/** Normalize a WS `message` event's data (Blob / ArrayBuffer / Buffer / Uint8Array) to a Uint8Array. */
+export async function toBytes(data: unknown): Promise<Uint8Array> {
+  const sync = toBytesSync(data)
+  if (sync !== null) return sync
   // Browser Blob (some WS impls deliver Blob unless binaryType='arraybuffer').
   if (typeof Blob !== 'undefined' && data instanceof Blob) {
     return new Uint8Array(await data.arrayBuffer())
