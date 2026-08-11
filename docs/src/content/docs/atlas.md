@@ -133,6 +133,23 @@ Three deliberate behaviours:
 - **A missing baseline is exit 0**, with a note. Making the very first `--check` run red for everybody is how a ratchet gets disabled on day one.
 - **A new or removed scenario is not a regression.** Adding a component with a failing edge case is new information, and deleting one is a legitimate edit; flagging either would make the ratchet fire on ordinary refactors until people stopped believing it.
 
+### Path aliases
+
+Atlas reads `resolve.alias` out of your project's **own vite config** — so a component importing through `~/components/…` resolves without any Atlas configuration.
+
+Only `resolve.alias` is taken, never your plugins: Atlas already runs the real `@pyreon/vite-plugin`, and a second copy would compile every component's JSX twice. `resolve.conditions` is deliberately not inherited either — Atlas resolves workspace packages through the `bun` condition on purpose.
+
+If your vite config can't be loaded (it imports a plugin this command doesn't install, or reads env the workbench doesn't set), Atlas says so and you can declare aliases explicitly:
+
+```ts
+// atlas.config.ts
+export const alias = { '~': './src' }
+```
+
+Explicit entries win — Vite matches in order, and these are placed first.
+
+**A component that fails to load no longer takes down the workbench.** Each component is imported individually and non-fatally, so a broken import degrades that component's canvas to an error card naming the real cause (`Cannot find module '~/shared/tokens'`) while every other component still renders.
+
 ### `atlas dev` — the workbench
 
 ```bash

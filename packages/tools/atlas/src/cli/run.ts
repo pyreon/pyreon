@@ -44,6 +44,9 @@ import {
   type PageMeta,
   type ProjectRoot,
   workspacePackageDirs,
+  mergeAlias,
+  normalizeAlias,
+  projectAlias,
   classifyLoadErrors,
   formatBrokenImports,
   formatPluginVirtuals,
@@ -91,6 +94,17 @@ export interface ScanResult {
   focusError?: string
   /** Set when `only` resolved by something other than an exact match. */
   focusNote?: string
+  /**
+   * The module aliases this scan resolved with — the project's own
+   * `resolve.alias` plus any declared in `atlas.config.ts`.
+   *
+   * Exposed so `atlas dev` and `atlas build` configure their Vite contexts
+   * identically. Three servers computing this separately is how the workbench
+   * comes to render a component the scan could not load.
+   */
+  alias?: readonly { find: string | RegExp; replacement: string }[]
+  /** Set when the project's vite config exists but could not be read. */
+  aliasWarning?: string
   /** scenarios nothing examined. Not a pass; most scenarios are here today. */
   unverified: number
   guide: string
@@ -226,8 +240,16 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
   // It also feeds prop-type resolution, where a component importing its props
   // from a SIBLING package is the dominant monorepo shape.
   const packages = buildPackageMap(workspacePackageDirs(resolve(cwd)))
-  const loader: ModuleLoader | undefined = mount
-    ? await createModuleLoader(resolve(cwd), packages)
+  // The project's `resolve.alias`, read from its own vite config BEFORE the
+  // loader exists — because the loader is what fails without it. A component
+  // importing `~/components/…` does not load, which drops it from the catalog
+  // silently, and in `atlas dev` puts an overlay over the whole workbench.
+  //
+  // Discovered first, config-declared aliases layered on below: the config is
+  // itself loaded THROUGH this loader, so its own `alias` cannot be known yet.
+  const discoveredAlias = await projectAlias(resolve(cwd))
+  let loader: ModuleLoader | undefined = mount
+    ? await createModuleLoader(resolve(cwd), packages, discoveredAlias.alias)
     : undefined
   // The project's own config. ALWAYS loaded — not only when mounting.
   //
@@ -240,6 +262,18 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
   // loader `loadAtlasConfig` falls back to its runtime loader, which is exactly
   // the degradation that path already documents.
   const loaded = await loadAtlasConfig(cwd, loader)
+  // A config that declares its OWN aliases has to reach the loader too, and
+  // the loader that read the config was built before those were known. So the
+  // loader is rebuilt — only when the config actually adds something, which is
+  // the escape-hatch path, not the common one. The alternative (explicit
+  // aliases apply to the workbench but not the scan) would mean `atlas dev`
+  // renders a component that `atlas scan` cannot find.
+  const explicitAlias = normalizeAlias(loaded.config.alias, resolve(cwd))
+  const alias = mergeAlias(discoveredAlias.alias, explicitAlias)
+  if (loader && explicitAlias.length > 0) {
+    await loader.close()
+    loader = await createModuleLoader(resolve(cwd), packages, alias)
+  }
   // Mount with the framework the COMPONENTS were compiled against — see
   // `loadRuntime`. Undefined means Atlas resolves its own, which is right only
   // when nothing else has loaded a copy.
@@ -418,6 +452,8 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
       ...(rocketstyleLoadErrors.length > 0 ? { loadErrors: rocketstyleLoadErrors } : {}),
       ...(focusError ? { focusError } : {}),
       ...(focusNote ? { focusNote } : {}),
+      ...(alias.length > 0 ? { alias } : {}),
+      ...(discoveredAlias.warning ? { aliasWarning: discoveredAlias.warning } : {}),
     }
 
     if (options.write !== false && graph.size() > 0) {

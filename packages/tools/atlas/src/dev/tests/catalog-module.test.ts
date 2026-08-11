@@ -126,9 +126,39 @@ describe('the emitted module', () => {
       [{ component: ci({ name: 'Button' }), file: '/p/src/Button.tsx' }],
       { root: '/p/src' },
     )
-    expect(code).toContain('import * as __mod0 from "/p/src/Button.tsx"')
+    // Dynamic, and CAUGHT. A static import cannot be caught, so one component
+    // whose own imports do not resolve used to fail the whole generated module
+    // — the workbench died entirely instead of losing one card (#2744).
+    expect(code).toContain('__load(import("/p/src/Button.tsx"))')
     expect(code).toContain('id: "button"')
     expect(code).toContain('name: "Button"')
+  })
+
+  it('isolates a failing component import so the others still render', () => {
+    // The property that makes one broken component a broken CARD rather than a
+    // broken workbench: every module is awaited through a rejection handler,
+    // and the render path reads the captured error.
+    const code = generateCatalogModule(
+      [
+        { component: ci({ name: 'Good' }), file: '/p/src/Good.tsx' },
+        { component: ci({ name: 'Bad' }), file: '/p/src/Bad.tsx' },
+      ],
+      { root: '/p/src' },
+    )
+    expect(code).toContain('(err) => ({ __atlasError: err })')
+    expect(code).toContain('__load(import("/p/src/Good.tsx"))')
+    expect(code).toContain('__load(import("/p/src/Bad.tsx"))')
+    // No bare static import survives — one is enough to take the module down.
+    expect(code).not.toMatch(/^import \* as __mod/m)
+  })
+
+  it('reports the module\'s OWN error, not a generic "could not load"', () => {
+    const code = generateCatalogModule(
+      [{ component: ci({ name: 'Badge' }), file: '/p/src/Badge.tsx' }],
+      { root: '/p/src' },
+    )
+    expect(code).toContain('__atlasError')
+    expect(code).toContain('failed to load: ')
   })
 
   it('escapes a path so a quote or backslash cannot break the module', () => {
