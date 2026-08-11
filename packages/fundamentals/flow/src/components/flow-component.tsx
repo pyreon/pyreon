@@ -5,10 +5,7 @@ import {
   DEFAULT_MARKER_END,
   getEdgePath,
   getEffectiveDimensions,
-  getFloatingEndpoints,
   getHandlePosition,
-  getSmartHandlePositions,
-  getWaypointPath,
   markerId,
   resolveEdgeMarkers,
   resolveHandleAnchor,
@@ -16,6 +13,7 @@ import {
 import { FlowContext } from './flow-context'
 import type {
   Connection,
+  EdgeGeometry,
   EdgeMarker,
   EdgeMarkerSpec,
   FlowEdge,
@@ -249,183 +247,11 @@ const emptyDrag: DragState = {
 }
 
 // ─── Edge Layer ──────────────────────────────────────────────────────────────
-
-interface EdgeGeometry {
-  sourceX: number
-  sourceY: number
-  targetX: number
-  targetY: number
-  /** Side the edge departs from — the source tangent for path builders */
-  sourcePosition: Position
-  /** Side the edge approaches — the target tangent for path builders */
-  targetPosition: Position
-  path: string
-  labelX: number
-  labelY: number
-}
-
-/**
- * Compute a path geometry packet from live source/target nodes. The
- * EdgeLayer's per-edge accessor calls this inside a reactive scope
- * so position updates flow through. Pulled out as a top-level
- * helper so the EdgeLayer body stays readable.
- */
-// Dev-only: an `edge.sourceHandle`/`targetHandle` naming an id that matches
-// NONE of the node's handles silently anchors at the first-handle fallback —
-// warn ONCE per edge+side so the typo is visible. Only judged when the node
-// HAS handle info (measured or config); pre-measurement nodes are skipped so
-// the first un-measured frame can't false-positive.
-const _warnedHandleIds = new Set<string>()
-
-function warnUnknownHandleOnce(
-  edge: FlowEdge,
-  sourceNode: FlowNode,
-  targetNode: FlowNode,
-  sm: NodeMeasurement | undefined,
-  tm: NodeMeasurement | undefined,
-): void {
-  // Early-return dev guard (in addition to the call-site gate) so the warn is
-  // provably tree-shaken — the `dev-guard-warnings` lint rule checks per-function.
-  if (process.env.NODE_ENV === 'production') return
-  const check = (
-    side: 'source' | 'target',
-    handleId: string | undefined,
-    node: FlowNode,
-    m: NodeMeasurement | undefined,
-  ): void => {
-    if (!handleId) return
-    const config = side === 'source' ? node.sourceHandles : node.targetHandles
-    const measuredIds = m?.handles?.filter((h) => h.type === side).map((h) => h.id) ?? []
-    const configIds = config?.map((h) => h.id ?? h.type) ?? []
-    const known = [...measuredIds, ...configIds]
-    if (known.length === 0) return
-    if (known.includes(handleId)) return
-    const key = `${edge.id ?? `${edge.source}->${edge.target}`}:${side}`
-    if (_warnedHandleIds.has(key)) return
-    _warnedHandleIds.add(key)
-    // oxlint-disable-next-line no-console
-    console.warn(
-      `[Pyreon] flow: edge "${edge.id ?? `${edge.source}->${edge.target}`}" references ${side}Handle "${handleId}" ` +
-        `but node "${node.id}" has no handle with that id (known: ${known.join(', ')}). ` +
-        `The edge anchors at the node's first ${side} handle instead — fix the id to target the intended handle.`,
-    )
-  }
-  check('source', edge.sourceHandle, sourceNode, sm)
-  check('target', edge.targetHandle, targetNode, tm)
-}
-
-function computeEdgeGeometry(
-  edge: FlowEdge,
-  sourceNode: FlowNode,
-  targetNode: FlowNode,
-  measured: Map<string, NodeMeasurement>,
-): EdgeGeometry {
-  // Effective node boxes — explicit `node.width`/`height` (a deliberate
-  // consumer override) → measured DOM size → 150×40 default (pre-measurement
-  // first frame / SSR). Anchors edges to the real node.
-  const sm = measured.get(sourceNode.id)
-  const tm = measured.get(targetNode.id)
-  const sDims = getEffectiveDimensions(sourceNode, sm)
-  const tDims = getEffectiveDimensions(targetNode, tm)
-  const sourceW = sDims.width
-  const sourceH = sDims.height
-  const targetW = tDims.width
-  const targetH = tDims.height
-
-  // Handle-anchored endpoints: `edge.sourceHandle`/`targetHandle` (or a node's
-  // first handle) resolve to the MEASURED `<Handle>` dot center when the DOM
-  // pass has recorded one — the arrow touches the actual dot, wherever the
-  // consumer's CSS placed it — else the declared side's midpoint from the
-  // node's config handles. Nodes with NO handles fall through to null.
-  const sourceAnchor = resolveHandleAnchor(sourceNode, edge.sourceHandle, 'source', sDims, sm)
-  const targetAnchor = resolveHandleAnchor(targetNode, edge.targetHandle, 'target', tDims, tm)
-
-  if (process.env.NODE_ENV !== 'production') {
-    warnUnknownHandleOnce(edge, sourceNode, targetNode, sm, tm)
-  }
-
-  // Auto-routed edges (neither endpoint resolves to a handle, no waypoints)
-  // use FLOATING endpoints: connect where the center-to-center line crosses
-  // each node's perimeter so the edge approaches at the natural angle instead
-  // of docking at a fixed side's midpoint (which forces a horizontal/vertical
-  // kink). Handle-anchored endpoints — and waypoint routes — keep their fixed
-  // docking points.
-  const useFloating =
-    !sourceAnchor && !targetAnchor && !(edge.waypoints && edge.waypoints.length > 0)
-
-  let sourcePos: { x: number; y: number }
-  let targetPos: { x: number; y: number }
-  let sourcePosition: Position
-  let targetPosition: Position
-
-  if (useFloating) {
-    const fe = getFloatingEndpoints(sourceNode, targetNode, { sourceW, sourceH, targetW, targetH })
-    sourcePos = { x: fe.source.x, y: fe.source.y }
-    targetPos = { x: fe.target.x, y: fe.target.y }
-    sourcePosition = fe.source.position
-    targetPosition = fe.target.position
-  } else {
-    // At least one side is handle-anchored; the other (if handle-less) docks
-    // at the smart side facing the other node.
-    const smart = getSmartHandlePositions(sourceNode, targetNode, {
-      sourceW,
-      sourceH,
-      targetW,
-      targetH,
-    })
-    sourcePosition = sourceAnchor?.position ?? smart.sourcePosition
-    targetPosition = targetAnchor?.position ?? smart.targetPosition
-    sourcePos =
-      sourceAnchor ??
-      getHandlePosition(
-        sourcePosition,
-        sourceNode.position.x,
-        sourceNode.position.y,
-        sourceW,
-        sourceH,
-      )
-    targetPos =
-      targetAnchor ??
-      getHandlePosition(
-        targetPosition,
-        targetNode.position.x,
-        targetNode.position.y,
-        targetW,
-        targetH,
-      )
-  }
-
-  const { path, labelX, labelY } = edge.waypoints?.length
-    ? getWaypointPath({
-        sourceX: sourcePos.x,
-        sourceY: sourcePos.y,
-        targetX: targetPos.x,
-        targetY: targetPos.y,
-        waypoints: edge.waypoints,
-      })
-    : getEdgePath(
-        edge.type ?? 'bezier',
-        sourcePos.x,
-        sourcePos.y,
-        sourcePosition,
-        targetPos.x,
-        targetPos.y,
-        targetPosition,
-        edge.pathOptions,
-      )
-
-  return {
-    sourceX: sourcePos.x,
-    sourceY: sourcePos.y,
-    targetX: targetPos.x,
-    targetY: targetPos.y,
-    sourcePosition,
-    targetPosition,
-    path,
-    labelX,
-    labelY,
-  }
-}
+//
+// The geometry derivation (`computeEdgeGeometry` + the unknown-handle warn)
+// lives in ../edge-geometry.ts — moved there verbatim so `createFlow` can own
+// the per-edge memoized geometry computeds (`instance._edgeGeometry`), whose
+// lifecycle must span row mounts.
 
 function EdgeLayer(props: {
   instance: FlowInstance
@@ -435,16 +261,20 @@ function EdgeLayer(props: {
   const { instance, connectionState, edgeTypes } = props
 
   // <For> keys edges by id and runs the children function ONCE per
-  // id. Per-edge accessors read live source/target nodes from
-  // instance.nodes() inside their bodies, so node drags re-evaluate
-  // path coordinates without re-mounting the edge.
+  // id. Per-edge accessors read the instance's per-edge geometry computed
+  // (`_edgeGeometry` — deps: the two per-ENDPOINT `_nodeById` computeds), so
+  // a node drag re-evaluates path coordinates for the TOUCHING edges only,
+  // without re-mounting anything.
   //
   // Before this rewrite, EdgeLayer subscribed to nodes() AND edges()
   // at the top of its reactive thunk, then did edges.map(...) which
   // re-emitted every <g><path /></g> SVG element on every node drag.
   // Custom edge components re-mounted at 60×/sec during drags —
   // strictly worse than the NodeLayer remount bug because SVG
-  // element creation is heavier than DOM div creation.
+  // element creation is heavier than DOM div creation. (And before the
+  // per-id computeds, the per-edge accessors read the shared `nodeMap` —
+  // which notifies unconditionally — so every edge still RECOMPUTED its
+  // geometry on every drag frame; see flow.ts "Per-id computeds".)
   return () => (
     <svg
       role="img"
@@ -478,24 +308,23 @@ function EdgeLayer(props: {
           // prop-derived var scan bails on `NodeFlags.Let`).
           // oxlint-disable prefer-const
           let liveEdge: () => FlowEdge = () => {
-            // O(1) map lookup — see flow.ts `edgeMap`. Reading the computed
-            // tracks reactively (recomputes once per `edges()` change), so
-            // this stays O(1) per call instead of an O(E) `.find()`.
-            return instance.edgeMap().get(edgeId) ?? initialEdge
+            // Per-id computed (flow.ts `_edgeById`, `{ equals: Object.is }`) —
+            // notifies this edge's thunks ONLY when ITS edge object changes,
+            // not on every `edges()` write. O(1) map lookup inside.
+            return instance._edgeById(edgeId)() ?? initialEdge
           }
 
           let geometry: () => EdgeGeometry | null = () => {
-            const e = liveEdge()
-            // O(1) source/target lookup via `nodeMap` — was 2× O(N) `.find()`
-            // per edge per `nodes()` write (drag frame), i.e. O(E×N) total.
-            const nm = instance.nodeMap()
-            const sourceNode = nm.get(e.source)
-            const targetNode = nm.get(e.target)
-            if (!sourceNode || !targetNode) return null
-            // Read `measurements()` reactively so the edge re-derives its path the
-            // moment a node's real rendered size lands (first-frame snap from the
-            // 150×40 fallback to the measured box → the edge connects).
-            return computeEdgeGeometry(e, sourceNode, targetNode, instance.measurements())
+            // Per-edge MEMOIZED geometry (flow.ts `_edgeGeometry`): one
+            // `computeEdgeGeometry` per change shared by every consuming
+            // thunk (previously each of the 2 built-in / 6 custom-edge
+            // readers re-derived the whole packet), and its deps are the two
+            // per-ENDPOINT `_nodeById` computeds — so another node's drag
+            // frame no longer recomputes this edge at all (O(1 + deg) per
+            // frame instead of O(E)). It reads `measurements()` internally,
+            // so the first-frame snap from the 150×40 fallback to the
+            // measured box still flows through.
+            return instance._edgeGeometry(edgeId)()
           }
 
           let isSelected: () => boolean = () =>
@@ -632,12 +461,14 @@ function NodeLayer(props: {
   // change, every selection toggle, every data mutation).
   //
   // Inside the children function, all per-node state (position,
-  // data, class, selection, drag) is read via accessors that
-  // re-read `instance.nodes()` from inside their own scope. The
-  // accessors track reactively, so individual style/class/text
-  // thunks patch in place — but the wrapper div and the user's
-  // custom NodeComponent both mount exactly once per id and never
-  // re-mount across the lifetime of the graph.
+  // data, class, selection, drag) is read via accessors that read the
+  // instance's per-id `_nodeById` computed from inside their own scope.
+  // The accessors track reactively — and the per-id computed's
+  // `Object.is` equality gate means they re-run ONLY when THIS node's
+  // object changes — so individual style/class/text thunks patch in
+  // place, while the wrapper div and the user's custom NodeComponent
+  // both mount exactly once per id and never re-mount across the
+  // lifetime of the graph.
   //
   // Before the For-based rewrite, the outer loop did
   // `nodes.map(node => ...)` which re-emitted every wrapper VNode
@@ -649,18 +480,20 @@ function NodeLayer(props: {
       {(initialNode: FlowNode) => {
         const id = initialNode.id
 
-        // Reactive node accessor — reads the LIVE node by id from
-        // `instance.nodes()` so position/data/class/style updates
-        // propagate without re-mounting. The fallback to
+        // Reactive node accessor — reads the LIVE node by id so
+        // position/data/class/style updates propagate without
+        // re-mounting. The fallback to
         // `initialNode` covers the brief window between an
         // updateNode call that removes the node and the For loop
         // catching up.
         const node = (): FlowNode => {
-          // O(1) map lookup — see flow.ts `nodeMap`. Reading the computed
-          // tracks reactively (recomputes once per `nodes()` change), so the
-          // per-node class/style thunks that call this stay O(1) per frame
-          // instead of an O(N) `.find()` each → O(N²) per drag frame removed.
-          return instance.nodeMap().get(id) ?? initialNode
+          // Per-id computed (flow.ts `_nodeById`, `{ equals: Object.is }`) —
+          // re-notifies this node's class/style/data thunks ONLY when ITS
+          // node object identity changes. Every write path preserves the
+          // identity of untouched nodes, so a single-node drag frame re-runs
+          // O(1) thunks instead of all N (the shared `nodeMap` computed
+          // notifies unconditionally on every `nodes()` write).
+          return instance._nodeById(id)() ?? initialNode
         }
 
         const isSelected = (): boolean => instance.selectedNodes().includes(id)

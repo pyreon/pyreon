@@ -1,0 +1,5 @@
+---
+'@pyreon/flow': patch
+---
+
+Single-node drag no longer fans out to every node and edge. A drag frame writes the whole `nodes()` array, and the shared `nodeMap`/`edgeMap` computeds notify unconditionally — so every node's class/style/data thunk re-ran and every edge recomputed its full geometry on every pointermove, even when untouched (O(N + E) per frame). Per-node/per-edge thunks now subscribe through per-id `computed(() => nodeMap().get(id), { equals: Object.is })` gates (every write path preserves untouched objects' identity), and edge geometry is memoized per edge with the two per-ENDPOINT node computeds as its deps — a single-node drag frame re-runs only the moved node's thunks plus its touching edges' geometry: O(1 + deg). Measured at 300 nodes / 300 edges: ~6.7–8.7 ms/frame → ~0.26 ms/frame (~25–33×), with unmoved-node and unmoved-edge thunk re-runs going from 299 + 298 per frame to 0. The per-id computeds are instance-cached, created detached from the mounting component's scope (an instance outlives any one `<Flow>` mount), swept when their id leaves the graph, and disposed with the instance.
