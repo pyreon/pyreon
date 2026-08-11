@@ -65,6 +65,11 @@ const USAGES: ReadonlyArray<readonly [string, string, string]> = [
   ['usePayments', '@pyreon/hooks', 'const p = usePayments()'],
   ['usePermissions', '@pyreon/hooks', 'const p = usePermissions()'],
   ['usePush', '@pyreon/hooks', 'const p = usePush()'],
+  [
+    'useQuery',
+    '@pyreon/query',
+    'const q = useQuery<Resp>(() => ({ queryKey: ["k"], queryFn: () => fetch("/x"), staleTime: 0 }))',
+  ],
   ['useShare', '@pyreon/hooks', 'const s = useShare()'],
   ['useSizeClass', '@pyreon/hooks', 'const s = useSizeClass()'],
   ['useStorage', '@pyreon/hooks', 'const s = useStorage("k", "")'],

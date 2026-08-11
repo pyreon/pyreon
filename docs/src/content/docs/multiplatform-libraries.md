@@ -512,7 +512,7 @@ the machine-checked contract.
 | `@pyreon/form` | useForm v2 + useFieldArray lower to PyreonForm/PyreonFieldArray; device-proven both platforms |
 | `@pyreon/permissions` | usePermissions read surface lowers to PyreonPermissions (callable can/all/any) |
 | `@pyreon/storage` | useStorage family over @PyreonAppStorage (Swift) / rememberPyreonStorage (Kotlin); persistence device-proven |
-| `@pyreon/hooks` | the L2 service-hook layer: every hook in PMTC's NATIVE_LOWERED_HOOKS (29) has a web implementation and Swift/Kotlin runtime ports; the remaining hooks are web conveniences |
+| `@pyreon/hooks` | the L2 service-hook layer: every hook in PMTC's NATIVE_LOWERED_HOOKS has a web implementation and Swift/Kotlin runtime ports; the remaining hooks are web conveniences |
 | `@pyreon/machine` | createMachine lowers to PyreonMachine on both targets; transition device-asserted |
 | `@pyreon/state-tree` | model() lowers to PyreonModel singletons on both targets |
 | `@pyreon/i18n` | createI18n core (t(), interpolation, one/other plurals) lowers to PyreonI18n; translation device-proven both platforms |

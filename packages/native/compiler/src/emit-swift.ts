@@ -1566,7 +1566,7 @@ function emitSwiftComponent(c: ComponentIR): string {
     }
     if (d.kind === 'i18n') _i18nNames.add(d.name)
     if (d.kind === 'form') _formNamesSwift.add(d.name)
-    if (d.kind === 'fetch') _fetchNamesSwift.add(d.name)
+    if (d.kind === 'fetch' || d.kind === 'query') _fetchNamesSwift.add(d.name)
     if (d.kind === 'websocket') _websocketUrlsSwift.set(d.name, d.url)
     // C4: router-instance decls (`const r = createRouter({...})`) map to
     // `@State` properties, so the identifier reads bare like a signal —
@@ -1725,7 +1725,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // a stable host that fires ONCE on appear; the inner conditional's
   // flips no longer touch the ZStack's identity. (Non-fetch components
   // keep the bare body — no `.task`, no restart hazard.)
-  const _hasFetchDecl = c.decls.some((d) => d.kind === 'fetch')
+  const _hasFetchDecl = c.decls.some((d) => d.kind === 'fetch' || d.kind === 'query')
   // on-mount shares the stable-identity requirement: .onAppear on a
   // transparent Group is redistributed onto conditional branches and
   // RE-FIRES per flip — the same device-found class as .task.
@@ -1885,6 +1885,27 @@ function emitSwiftComponent(c: ComponentIR): string {
       )
     }
     lines.push(`        } catch { ${name}.reject(error) }`)
+    lines.push(`      }`)
+  }
+  // useQuery: a `.task` per decl, guarded on `isStale` so a FRESH cache hit
+  // skips the network (serving the hydrated value). The stale/miss path drives
+  // the same begin → resolve|reject machine as useFetch; a background refresh
+  // flips only isFetching, never isPending, so already-shown data never blanks.
+  for (const d of c.decls) {
+    if (d.kind !== 'query') continue
+    const name = swiftIdent(d.name)
+    lines.push(`      .task {`)
+    lines.push(`        if ${name}.isStale {`)
+    lines.push(`          ${name}.begin()`)
+    lines.push(`          do {`)
+    lines.push(
+      `            let (bytes, _) = try await URLSession.shared.data(from: URL(string: ${JSON.stringify(d.url)})!)`,
+    )
+    lines.push(
+      `            ${name}.resolve(try JSONDecoder().decode(${swiftType(d.type)}.self, from: bytes))`,
+    )
+    lines.push(`          } catch { ${name}.reject(error) }`)
+    lines.push(`        }`)
     lines.push(`      }`)
   }
   lines.push(`  }`)
@@ -2140,6 +2161,13 @@ function emitSwiftDecl(
   // `data`/`isPending`/`error` as @Observable properties directly.
   if (d.kind === 'fetch') {
     return `@State private var ${swiftIdent(d.name)} = PyreonFetch<${swiftType(d.type)}>()`
+  }
+  // `const q = useQuery<T>(() => ({ queryKey, queryFn, staleTime }))` → a
+  // @State PyreonQuery<T> seeded with the cache key + staleSeconds (staleTime
+  // ms → seconds). The isStale-guarded `.task` harness is appended on the body.
+  if (d.kind === 'query') {
+    const staleSeconds = d.staleMillis / 1000
+    return `@State private var ${swiftIdent(d.name)} = PyreonQuery<${swiftType(d.type)}>(queryKey: ${JSON.stringify(d.queryKey)}, staleSeconds: ${staleSeconds})`
   }
   // Phase 4.2: `const form = useForm({ initialValues })` → an @State
   // PyreonForm container seeded with the literal string defaults. Unlike
@@ -3318,6 +3346,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         _fetchNamesSwift.has(e.callee.object.name) &&
         (e.callee.property === 'data' ||
           e.callee.property === 'isPending' ||
+          e.callee.property === 'isFetching' ||
           e.callee.property === 'error')
       ) {
         return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`

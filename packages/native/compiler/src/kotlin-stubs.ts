@@ -845,6 +845,23 @@ class PyreonFetch<T> {
   fun refetch() {}
 }
 
+// PyreonQuery — mirror of @pyreon/native-runtime-kotlin's PyreonQuery.kt.
+// The cached data container a \`useQuery\` decl emits: MutableState fields
+// (\`data\`/\`error\`/\`isPending\`/\`isFetching\` — the emit reads \`.value\`),
+// an \`isStale\` getter the emit's LaunchedEffect guards on, and a ctor taking
+// \`queryKey\` + defaulted \`staleMillis\`. Signatures track the runtime exactly.
+class PyreonQuery<T>(val queryKey: String, val staleMillis: Long = 0) {
+  val data: MutableState<T?> = mutableStateOf(null)
+  val error: MutableState<Throwable?> = mutableStateOf(null)
+  val isPending: MutableState<Boolean> = mutableStateOf(false)
+  val isFetching: MutableState<Boolean> = mutableStateOf(false)
+  val isStale: Boolean get() = true
+  fun begin() {}
+  fun resolve(value: T) {}
+  fun reject(e: Throwable) {}
+  fun refetch() {}
+}
+
 // PyreonHttp — what a \`useFetch(url, { method, headers, body })\` decl emits.
 // Mirrors the REAL PyreonHttp.kt surface exactly (a superset stub masks):
 // \`isOk\` is lower-k here where Swift's is \`isOK\`, \`body\` is a non-null

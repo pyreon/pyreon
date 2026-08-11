@@ -21,7 +21,7 @@ export default defineManifest({
   multiplatform: {
     tier: 'service-backend',
     rationale:
-      'the L2 service-hook layer: every hook in PMTC\'s NATIVE_LOWERED_HOOKS (29) has a web implementation and Swift/Kotlin runtime ports; the remaining hooks are web conveniences',
+      'the L2 service-hook layer: every hook in PMTC\'s NATIVE_LOWERED_HOOKS has a web implementation and Swift/Kotlin runtime ports; the remaining hooks are web conveniences',
   },
   longExample: `import {
   // State
