@@ -719,6 +719,44 @@ describe('Compiler integration — class/style binding fidelity', () => {
     color.set('green')
     expect(div.style.color).toBe('green')
   })
+
+  test('STRING style thunk re-emitting the same string skips the cssText write (template _setStyle = applyStyleProp guard)', () => {
+    // The compiled template path emits `_setStyle(el, expr)` — the SAME
+    // exported applyStyleProp the h() path uses — so the string
+    // skip-if-equal guard MUST cover both. Count cssText setter calls via a
+    // per-instance shadow of the prototype accessor.
+    const tick = signal(0)
+    const { container } = compileAndMount(
+      `<div style={() => { tick(); return 'color: red; font-size: 14px' }}>y</div>`,
+      { tick },
+    )
+    const div = container.querySelector('div')! as HTMLDivElement
+    let proto: object | null = Object.getPrototypeOf(div.style)
+    let desc: PropertyDescriptor | undefined
+    while (proto !== null) {
+      desc = Object.getOwnPropertyDescriptor(proto, 'cssText')
+      if (desc) break
+      proto = Object.getPrototypeOf(proto)
+    }
+    const { get, set } = desc!
+    let writes = 0
+    Object.defineProperty(div.style, 'cssText', {
+      configurable: true,
+      get() {
+        return get!.call(this)
+      },
+      set(v: string) {
+        writes++
+        set!.call(this, v)
+      },
+    })
+    // Byte-identical re-emits after the initial (pre-spy) write: zero writes.
+    tick.set(1)
+    tick.set(2)
+    expect(writes).toBe(0)
+    expect(div.style.color).toBe('red')
+    delete (div.style as unknown as Record<string, unknown>).cssText
+  })
 })
 
 // Regression: a reactive/forwarded `dangerouslySetInnerHTML` on a TEMPLATE-ized
