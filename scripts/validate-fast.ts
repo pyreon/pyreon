@@ -7,6 +7,7 @@
  * tripped freshly-pushed PRs:
  *
  *   - check-doc-claims      (CLAUDE.md doc page count drifted)
+ *   - check-multiplatform-matrix (matrix headline drifted from its own table)
  *   - check-changeset-required (no changeset for published-pkg source change)
  *   - check-no-major-changesets (a `major` bump is illegal while Pyreon is 0.x)
  *   - check-bundle-budgets   (new publishable package missing entry)
@@ -61,6 +62,9 @@ const GATES: Gate[] = [
   { name: 'check-pyreon-lint-ratchet', cmd: 'bun scripts/check-pyreon-lint-ratchet.ts' },
   { name: 'gen-docs --check', cmd: 'bun run gen-docs --check' },
   { name: 'check-doc-claims', cmd: 'bun scripts/check-doc-claims.ts' },
+  // The multiplatform capability matrix's headline must equal its own table's
+  // Σ(weight × fraction) — the page once carried three disagreeing self-ratings.
+  { name: 'check-multiplatform-matrix', cmd: 'bun scripts/check-multiplatform-matrix.ts' },
   { name: 'check-no-legacy-playground', cmd: 'bun scripts/check-no-legacy-playground.ts' },
   { name: 'check-changeset-required', cmd: 'bun scripts/check-changeset-required.ts' },
   // Pairs with the one above: having a changeset is not enough, its SEVERITY
