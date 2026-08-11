@@ -352,6 +352,25 @@ export function applyProp(el: Element, key: string, value: unknown): Cleanup | n
 // stale `fontSize`. React/Vue/Solid all do this diff.
 const _prevStyleKeys: WeakMap<HTMLElement, Set<string>> = new WeakMap()
 
+// Skip-if-equal cache for the STRING style path (the sibling of
+// `applyClassProp`'s getAttribute compare). A class guard can compare the
+// live attribute against the resolved value directly because setAttribute
+// stores it verbatim — `el.style.cssText` readback is NORMALIZED by the
+// engine (whitespace, casing, shorthand expansion), so it never equals the
+// input string and a readback-only compare would never skip. We therefore
+// cache BOTH the last string this function wrote (`raw`) and what the
+// declaration serialized to right after that write (`css`). A re-emit skips
+// only when the source string is unchanged AND the live declaration still
+// serializes to what our write produced — so an EXTERNAL style mutation
+// between identical emits invalidates the skip and the framework write goes
+// through, mirroring applyClassProp's live-DOM-compare philosophy rather
+// than trusting a write-only expando. Entries die with their element
+// (WeakMap, same shape as `_prevStyleKeys`); the object-style path is
+// deliberately untouched — a stale entry left behind by a string→object
+// transition is self-correcting, because the object writes change the
+// declaration and the `css` readback compare then fails.
+const _prevStyleText: WeakMap<HTMLElement, { raw: string; css: string }> = new WeakMap()
+
 /**
  * Apply a style prop (string or object). Exported as `_setStyle` for the
  * compiler's template fast path so a compiled style binding normalizes
@@ -361,8 +380,22 @@ const _prevStyleKeys: WeakMap<HTMLElement, Set<string>> = new WeakMap()
  */
 export function applyStyleProp(el: HTMLElement, value: unknown): void {
   if (typeof value === 'string') {
+    // Skip-if-equal: reactive style effects re-run with unchanged output, and
+    // an unconditional cssText assign is a full parse + style invalidation
+    // even when nothing changed. See `_prevStyleText` above for why the
+    // guard compares a cached last-written pair instead of readback alone.
+    const cached = _prevStyleText.get(el)
+    if (cached !== undefined && cached.raw === value && el.style.cssText === cached.css) {
+      return
+    }
     // cssText replaces everything — drop any tracked object-mode keys.
     el.style.cssText = value
+    if (cached !== undefined) {
+      cached.raw = value
+      cached.css = el.style.cssText
+    } else {
+      _prevStyleText.set(el, { raw: value, css: el.style.cssText })
+    }
     _prevStyleKeys.delete(el)
     return
   }
