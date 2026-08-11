@@ -38,7 +38,7 @@ Same surface the web router exposes, mapped to SwiftUI's NavigationStack model:
 Same `.tsx` source, two targets. The PMTC compiler emits matching Swift / Kotlin from a JSX source:
 
 ```tsx
-import { RouterProvider, RouterView, Link, useNavigate } from '@pyreon/router'
+import { createRouter, RouterProvider, RouterView, RouterLink, useNavigate } from '@pyreon/router'
 import { Stack, Button, Text } from '@pyreon/primitives'
 
 function App() {
@@ -46,7 +46,7 @@ function App() {
   return (
     <RouterProvider router={router}>
       <Stack>
-        <Link to="/users/123"><Text>View Profile</Text></Link>
+        <RouterLink to="/users/123"><Text>View Profile</Text></RouterLink>
         <RouterView />
       </Stack>
     </RouterProvider>
