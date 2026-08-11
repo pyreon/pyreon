@@ -92,3 +92,34 @@ describe('SCENARIOS', () => {
     }
   })
 })
+
+describe('VERSION_NOISE_BYTES', () => {
+  const measured = (gzip: number) => [{ id: 'p::x', gzip, failed: false } as never]
+
+  it('tolerates the byte a version bump moves, with no code change', () => {
+    // Every package embeds its own version, and `"0.51.0"` vs `"0.52.0"` gzip
+    // to different sizes despite being the same length. Budgets are locked at
+    // the exact measured value, so without slack every release PR reds this
+    // gate for a change that touched no code.
+    expect(compareToBudgets(measured(597), { 'p::x': 596 }).regressions).toEqual([])
+  })
+
+  it('still fails a real regression', () => {
+    // A feature that stops tree-shaking moves a minimal import by hundreds of
+    // bytes. The slack must not reach anywhere near that.
+    const r = compareToBudgets(measured(700), { 'p::x': 596 }).regressions
+    expect(r).toHaveLength(1)
+    expect(r[0]?.overBy).toBe(104)
+  })
+
+  it('fails one byte past the tolerance, so the band is exact', () => {
+    expect(compareToBudgets(measured(600), { 'p::x': 596 }).regressions).toEqual([])
+    expect(compareToBudgets(measured(601), { 'p::x': 596 }).regressions).toHaveLength(1)
+  })
+
+  it('reports overBy against the BUDGET, not the tolerated line', () => {
+    // The number a reader acts on is the distance from the lock, not from an
+    // internal allowance they cannot see.
+    expect(compareToBudgets(measured(601), { 'p::x': 596 }).regressions[0]?.overBy).toBe(5)
+  })
+})
