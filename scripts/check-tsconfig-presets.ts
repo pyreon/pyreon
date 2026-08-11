@@ -54,8 +54,70 @@ export interface Finding {
   problem: string
 }
 
-const stripJsonComments = (s: string) =>
-  s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+/**
+ * Strip JSONC comments, honouring string context.
+ *
+ * The regex pair this replaces (`/\/\*[\s\S]*?\*\//g` then `/^\s*\/\/.*$/gm`)
+ * could not tell a comment from a `/*` that merely APPEARS inside a string or
+ * inside another comment — and both are ordinary in a tsconfig. A comment
+ * mentioning `@pyreon/*` opened a block comment that the very next
+ * `"${configDir}/**` + `/lib/**"` closed, silently deleting every option
+ * between them. Here that swallowed `incremental` and `tsBuildInfoFile` and
+ * reported the file as unparseable, which at least failed loudly — but the same
+ * bug can just as easily yield JSON that still parses and is missing options.
+ *
+ * Same lesson as the styler `insertGlobal` splitter: a hand-rolled scanner over
+ * a language with quoting must model the quoting before trusting its
+ * delimiters. So this walks the text once and only treats `//` and `/*` as
+ * comment openers when it is not inside a string.
+ */
+export function stripJsonComments(source: string): string {
+  let out = ''
+  for (let i = 0; i < source.length; i++) {
+    const c = source[i]!
+    if (c === '"') {
+      // Copy the whole string literal verbatim, backslash escapes included.
+      out += c
+      for (i++; i < source.length; i++) {
+        out += source[i]
+        if (source[i] === '\\') {
+          out += source[++i] ?? ''
+          continue
+        }
+        if (source[i] === '"') break
+      }
+      continue
+    }
+    if (c === '/' && source[i + 1] === '/') {
+      while (i < source.length && source[i] !== '\n') i++
+      out += '\n'
+      continue
+    }
+    if (c === '/' && source[i + 1] === '*') {
+      const end = source.indexOf('*/', i + 2)
+      i = end === -1 ? source.length : end + 1
+      continue
+    }
+    out += c
+  }
+  return out
+}
+
+/**
+ * Read a file, or undefined when it is absent.
+ *
+ * Absent and corrupt are different answers. The synthetic trees the unit tests
+ * build legitimately have no preset package, and reporting those as
+ * "unparseable" would have been a wrong diagnosis for a file that simply is not
+ * there.
+ */
+function readIfPresent(file: string): string | undefined {
+  try {
+    return readFileSync(file, 'utf8')
+  } catch {
+    return undefined
+  }
+}
 
 export function checkTsconfigPresets(root: string): Finding[] {
   const findings: Finding[] = []
@@ -81,6 +143,31 @@ export function checkTsconfigPresets(root: string): Finding[] {
       findings.push({
         file: rel,
         problem: `must extend an @pyreon/tsconfig preset (packages/internals/tsconfig/*.json); got ${JSON.stringify(json.extends ?? null)}`,
+      })
+    }
+  }
+
+  // The incremental cache must stay somewhere git already ignores.
+  //
+  // `base.json` turns on `incremental`, which writes a ~74 KB `tsbuildinfo` per
+  // package — 115 of them across this workspace. Pointed anywhere but
+  // `node_modules/`, they become untracked clutter in every `git status` and,
+  // sooner or later, a committed cache. The path is the whole safeguard, so it
+  // is asserted rather than trusted to a comment.
+  const basePath = 'packages/internals/tsconfig/base.json'
+  const baseSource = readIfPresent(path.join(root, basePath))
+  if (baseSource !== undefined) {
+    let base: { compilerOptions?: { incremental?: boolean; tsBuildInfoFile?: string } } | undefined
+    try {
+      base = JSON.parse(stripJsonComments(baseSource))
+    } catch {
+      findings.push({ file: basePath, problem: 'unparseable' })
+    }
+    const opts = base?.compilerOptions ?? {}
+    if (opts.incremental && !(opts.tsBuildInfoFile ?? '').includes('node_modules/')) {
+      findings.push({
+        file: basePath,
+        problem: `incremental is on but tsBuildInfoFile (${JSON.stringify(opts.tsBuildInfoFile ?? null)}) is not under node_modules/ — the cache would show up in git status`,
       })
     }
   }

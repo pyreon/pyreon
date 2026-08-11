@@ -83,7 +83,6 @@
     "check-gates-wired": "bun scripts/check-gates-wired.ts",
     "check-readme-imports": "bun scripts/check-readme-imports.ts",
     "check-component-docs": "bun scripts/check-component-docs.ts",
-    "check-readme-imports": "bun scripts/check-readme-imports.ts",
     "atlas-guide": "bun scripts/check-atlas-guide.ts",
     "coverage:floor": "bun scripts/check-coverage.ts --floor-only",
     "test:coverage": "bun scripts/check-coverage.ts",

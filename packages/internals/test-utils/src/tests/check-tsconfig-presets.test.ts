@@ -2,7 +2,11 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { checkTsconfigPresets, EXEMPT } from '../../../../../scripts/check-tsconfig-presets'
+import {
+  checkTsconfigPresets,
+  EXEMPT,
+  stripJsonComments,
+} from '../../../../../scripts/check-tsconfig-presets'
 
 // Contract test for the @pyreon/tsconfig drift guard: every package/example
 // tsconfig must extend a shared preset; template trees are never scanned;
@@ -90,5 +94,63 @@ describe('check-tsconfig-presets', () => {
     } finally {
       delete EXEMPT['packages/tools/odd/tsconfig.json']
     }
+  })
+})
+
+// The JSONC stripper.
+//
+// Comments are stripped before parsing, and the regex pair that used to do it
+// could not tell a real comment from `/*` appearing inside a string or inside
+// another comment. A tsconfig is full of both — scoped globs (`@pyreon/*`) and
+// path globs (`**` + `/lib/**`) — so a comment mentioning one opened a block
+// comment that a later path closed, deleting every option in between.
+//
+// That is how `incremental` and `tsBuildInfoFile` vanished from `base.json`:
+// the file reported as unparseable, which failed loudly. The dangerous version
+// of the same bug leaves JSON that still PARSES and is quietly missing options,
+// so the property worth pinning is that quoting is honoured, not that a
+// particular file survives.
+describe('stripJsonComments', () => {
+  const parsed = (s: string) => JSON.parse(stripJsonComments(s)) as Record<string, unknown>
+
+  it('does not treat `/*` inside a comment as a block-comment opener', () => {
+    const src = `{
+  // mentions @pyreon/* in prose
+  "a": 1,
+  "exclude": ["\${configDir}/**/lib/**"],
+  "b": 2
+}`
+    // Pre-fix this threw: the fake opener ran to the `*/` inside the glob and
+    // swallowed "a" and "exclude" with it.
+    expect(parsed(src)).toEqual({ a: 1, exclude: ['${configDir}/**/lib/**'], b: 2 })
+  })
+
+  it('does not treat `//` or `/*` inside a STRING as a comment', () => {
+    const src = `{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "paths": { "@x/*": ["./src/*"] },
+  "keep": true
+}`
+    expect(parsed(src)).toEqual({
+      $schema: 'https://json.schemastore.org/tsconfig',
+      paths: { '@x/*': ['./src/*'] },
+      keep: true,
+    })
+  })
+
+  it('still strips genuine line and block comments', () => {
+    const src = `{
+  /* a block comment */
+  "a": 1, // trailing line comment
+  "b": 2
+}`
+    expect(parsed(src)).toEqual({ a: 1, b: 2 })
+  })
+
+  it('keeps an escaped quote from ending a string early', () => {
+    expect(parsed('{ "a": "he said \\" // not a comment", "b": 1 }')).toEqual({
+      a: 'he said " // not a comment',
+      b: 1,
+    })
   })
 })
