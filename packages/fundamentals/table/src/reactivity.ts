@@ -98,6 +98,13 @@ export function pyreonReactivity(): TableReactivityBindings {
     // the table's graph stays uniformly Pyreon (bidirectionally synced by
     // core, which is why `addSubscription` must be real, not a throw).
     wrapExternalAtoms: true,
+    // `commit` (v9.1+) is DELIBERATELY not implemented: it exists for
+    // RENDER-PHASE adapters that stage options during a host render and
+    // publish captured controlled state after the host commits
+    // (`publishExternalState` is its only caller in core). This adapter is
+    // fine-grained — `createOptionsStore: true` makes options a real atom, so
+    // derived atoms subscribe reactively and no out-of-band invalidation
+    // channel exists to signal. Implementing it would be dead code.
     addSubscription: (subscription) => subscriptions.push(subscription),
     createWritableAtom: (initialValue, options) => writableAtom(initialValue, options),
     createReadonlyAtom: (fn, options) => readonlyAtom(fn, options),
