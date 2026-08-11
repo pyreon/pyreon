@@ -20,7 +20,11 @@ function renderNode(node: DocNode): string {
     case 'section':
     case 'row':
     case 'column':
-      return node.children.map((c) => (typeof c === 'string' ? c : renderNode(c))).join('')
+    {
+      let acc = ''
+      for (const c of node.children) acc += typeof c === 'string' ? c : renderNode(c)
+      return acc
+    }
 
     case 'heading': {
       const text = getTextContent(node.children)

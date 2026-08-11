@@ -92,10 +92,31 @@ export function sanitizeStyle(value: string | undefined): string {
  * consolidated here. (csv/runtime-server/compiler escapes are
  * intentionally separate — different algorithm/layer.)
  */
+// Fast test — most document strings (prose, labels, cell values) carry no
+// metacharacters, so the dominant case returns the input untouched.
+// NOTE: document's entity set is `& < > "` ONLY — no `'`/&#39; (unlike
+// runtime-server's escapeHtml) — so the regex must not include `'`.
+const NEEDS_ESCAPE_RE = /[&<>"]/
+
 export function escapeXml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
+  if (!NEEDS_ESCAPE_RE.test(str)) return str
+  // Dirty path: single charCode scan with lazy slicing (the canonical
+  // shape from runtime-server's escapeHtml). The previous 4× chained
+  // `.replace()` did 4 full scans + up to 3 intermediate strings per
+  // call — paid even on clean strings.
+  let out = ''
+  let last = 0
+  for (let i = 0; i < str.length; i++) {
+    const c = str.charCodeAt(i)
+    let entity: string | null = null
+    if (c === 38) entity = '&amp;'
+    else if (c === 60) entity = '&lt;'
+    else if (c === 62) entity = '&gt;'
+    else if (c === 34) entity = '&quot;'
+    if (entity !== null) {
+      out += str.slice(last, i) + entity
+      last = i + 1
+    }
+  }
+  return out + str.slice(last)
 }

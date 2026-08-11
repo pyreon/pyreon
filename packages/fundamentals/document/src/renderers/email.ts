@@ -23,7 +23,9 @@ function renderChild(child: DocChild): string {
 }
 
 function renderChildren(children: DocChild[]): string {
-  return children.map(renderChild).join('')
+  let acc = ''
+  for (const c of children) acc += renderChild(c)
+  return acc
 }
 
 function wrapInTable(content: string, style = ''): string {
@@ -168,7 +170,10 @@ function renderNode(node: DocNode): string {
       return `<li style="margin:0 0 4px 0;font-size:14px;color:#333">${renderChildren(node.children)}</li>`
 
     case 'code':
-      return `<pre style="background-color:#f5f5f5;padding:12px;border-radius:4px;font-family:Courier New,monospace;font-size:13px;color:#333;overflow-x:auto;margin:0 0 12px 0"><code>${esc(renderChildren(node.children))}</code></pre>`
+      // NO outer esc here: renderChildren already escapes string children
+      // via renderChild — a second escape double-escaped code content
+      // (`a < b` → `a &amp;lt; b`, entities rendered literally).
+      return `<pre style="background-color:#f5f5f5;padding:12px;border-radius:4px;font-family:Courier New,monospace;font-size:13px;color:#333;overflow-x:auto;margin:0 0 12px 0"><code>${renderChildren(node.children)}</code></pre>`
 
     case 'divider': {
       const color = sanitizeColor((p.color as string) ?? '#dddddd')
