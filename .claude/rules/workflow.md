@@ -58,7 +58,7 @@ The standing default a great senior engineer would apply — assume this is the 
 
 A small set of CI gates trips freshly-pushed PRs over and over. Before
 every push, run **`bun run validate-fast`** — it executes all of these in
-~2-5s. The pre-push hook does this automatically, but `PYREON_SKIP_PRE_PUSH=1`
+~4-8s warm. The pre-push hook does this automatically, but `PYREON_SKIP_PRE_PUSH=1`
 bypasses bring the trap back. If a gate fails CI, ask "would
 `validate-fast` have caught this?" — if yes, that's a workflow failure,
 not a gate failure.
@@ -167,7 +167,7 @@ The local-fast subset of the validation checklist runs automatically on
    - `check-lint-ratchet` — oxlint `warn`-finding counts didn't grow above `lint-baseline.json`
    - `check-pyreon-lint-ratchet` — `@pyreon/lint` advisory-finding counts over framework `src` didn't grow above `pyreon-lint-baseline.json`
 
-   Total runtime: ~2-5s. **If you push without running this and CI fails
+   Total runtime: ~4-8s warm. **If you push without running this and CI fails
    on one of these gates, the failure was preventable.**
 
 2. `bun run --filter=<affected> typecheck` — affected packages only

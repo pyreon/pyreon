@@ -57,10 +57,10 @@
  * Exits 0 when every ENFORCED package is clean, 1 on any enforced drift.
  */
 
-import { execSync } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { resolveOptions, TscBatch } from './tsc-batch'
 
 const REPO_ROOT = resolve(import.meta.dirname, '..')
 const CACHE_DIR = join(REPO_ROOT, '.cache', 'manifest-examples')
@@ -333,8 +333,10 @@ function probeExports(
   pkgToNames: Map<string, string[]>,
   subpathsByPkg: Map<string, string[]>,
 ): Map<string, PkgExportProbe> {
-  const probeDir = join(CACHE_DIR, '__probe')
-  mkdirSync(probeDir, { recursive: true })
+  // Probe files sit alongside the example files, not in a subdirectory, so
+  // both passes compile under ONE set of options and the workspace is parsed
+  // once for the whole run. `p-` and `ex-` prefixes keep the two sets apart.
+  mkdirSync(CACHE_DIR, { recursive: true })
   // Each probe file imports one package's full name list from one
   // specifier (main or a subpath). The names that DON'T error are
   // exported by that specifier.
@@ -346,7 +348,7 @@ function probeExports(
     if (names.length === 0) return
     i++
     const fname = `p-${String(i).padStart(4, '0')}.ts`
-    writeFileSync(join(probeDir, fname), `import { ${names.join(', ')} } from '${specifier}'\n`)
+    writeFileSync(join(CACHE_DIR, fname), `import { ${names.join(', ')} } from '${specifier}'\n`)
     filenames.push(fname)
     fileToProbe.set(fname, { pkg, isMain, names })
   }
@@ -356,41 +358,20 @@ function probeExports(
     for (const sub of subpathsByPkg.get(pkg) ?? []) addProbe(pkg, sub, false, names)
   }
 
-  const pyreonPaths = discoverPyreonPaths()
-  writeFileSync(
-    join(probeDir, 'tsconfig.json'),
-    JSON.stringify(
-      {
-        compilerOptions: {
-          target: 'ES2022', module: 'ESNext', moduleResolution: 'Bundler',
-          strict: false, noImplicitAny: false, skipLibCheck: true,
-          esModuleInterop: true, noEmit: true, types: ['node'],
-          ignoreDeprecations: '6.0', baseUrl: '.',
-          paths: Object.fromEntries(
-            Object.entries(pyreonPaths).map(([n, ps]) => [n, ps.map((p) => join('..', '..', '..', p))]),
-          ),
-        },
-        include: filenames,
-      },
-      null,
-      2,
-    ),
+  // This is the run that pays for parsing the workspace; every example round
+  // after it reuses the same SourceFiles. Scoped to the probe files, so the
+  // ~2,400 workspace files are resolved but never type-checked.
+  const { diagnostics } = tscBatch().check(
+    filenames.map((f) => join(CACHE_DIR, f)),
+    (fileName) => /\/p-\d+\.ts$/.test(fileName),
   )
-  let out = ''
-  try {
-    execSync('bunx tsc --project tsconfig.json', { cwd: probeDir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
-  } catch (e) {
-    out = ((e as { stdout?: string }).stdout ?? '') + ((e as { stderr?: string }).stderr ?? '')
-  }
   // Per probe file, collect the names it reported as missing.
   const missingPerFile = new Map<string, Set<string>>()
-  for (const line of out.split('\n')) {
-    const fm = /^(p-\d+\.ts)/.exec(line.trim())
-    if (!fm) continue
-    const nm = /has no exported member (?:named )?'([^']+)'/.exec(line)
+  for (const d of diagnostics) {
+    const nm = /has no exported member (?:named )?'([^']+)'/.exec(d.message)
     if (!nm) continue
-    if (!missingPerFile.has(fm[1]!)) missingPerFile.set(fm[1]!, new Set())
-    missingPerFile.get(fm[1]!)!.add(nm[1]!)
+    if (!missingPerFile.has(d.file)) missingPerFile.set(d.file, new Set())
+    missingPerFile.get(d.file)!.add(nm[1]!)
   }
 
   // Aggregate per package: names resolved by main, names resolved anywhere.
@@ -427,45 +408,70 @@ function probeExports(
   return result
 }
 
-function writeTsconfig(filenames: string[]): void {
+/**
+ * The compiler options both passes run under.
+ *
+ * ONE object, deliberately. The probe files and the example files live in the
+ * same directory and compile under the same options so a single `TscBatch` can
+ * carry its parsed workspace from the probe program into every example program
+ * — TypeScript will not reuse a program whose options differ, so two configs
+ * would mean parsing all 3,191 files twice for no gain.
+ */
+function compilerOptionsObject(): Record<string, unknown> {
   const pyreonPaths = discoverPyreonPaths()
-  const tsconfig = {
-    compilerOptions: {
-      target: 'ES2022',
-      module: 'ESNext',
-      moduleResolution: 'Bundler',
-      jsx: 'preserve',
-      jsxImportSource: '@pyreon/core',
-      strict: false,
-      noImplicitAny: false,
-      skipLibCheck: true,
-      esModuleInterop: true,
-      allowSyntheticDefaultImports: true,
-      noEmit: true,
-      types: ['node'],
-      ignoreDeprecations: '6.0',
-      baseUrl: '.',
-      paths: Object.fromEntries(
-        Object.entries(pyreonPaths).map(([name, ps]) => [name, ps.map((p) => join('..', '..', p))]),
-      ),
-    },
-    include: ['__ambient.d.ts', ...filenames],
+  return {
+    target: 'ES2022',
+    module: 'ESNext',
+    moduleResolution: 'Bundler',
+    jsx: 'preserve',
+    jsxImportSource: '@pyreon/core',
+    strict: false,
+    noImplicitAny: false,
+    skipLibCheck: true,
+    esModuleInterop: true,
+    allowSyntheticDefaultImports: true,
+    noEmit: true,
+    types: ['node'],
+    ignoreDeprecations: '6.0',
+    baseUrl: '.',
+    paths: Object.fromEntries(
+      Object.entries(pyreonPaths).map(([name, ps]) => [name, ps.map((p) => join('..', '..', p))]),
+    ),
   }
-  writeFileSync(join(CACHE_DIR, 'tsconfig.json'), JSON.stringify(tsconfig, null, 2))
 }
 
-function runTsc(): { ok: boolean; out: string } {
-  try {
-    const out = execSync('bunx tsc --project tsconfig.json', {
-      cwd: CACHE_DIR,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-    return { ok: true, out }
-  } catch (e) {
-    const err = e as { stdout?: string; stderr?: string }
-    return { ok: false, out: (err.stdout ?? '') + (err.stderr ?? '') }
-  }
+/**
+ * Write the tsconfig the checks run under.
+ *
+ * Nothing reads this back — the typechecker is driven by explicit root names.
+ * It is written so a human can reproduce a finding by hand:
+ *
+ *     cd .cache/manifest-examples && bunx tsc --project tsconfig.json
+ *
+ * which is how every finding in this gate has ever been debugged. Dropping it
+ * would make the cache directory a black box.
+ */
+function writeTsconfig(filenames: string[]): void {
+  writeFileSync(
+    join(CACHE_DIR, 'tsconfig.json'),
+    JSON.stringify({ compilerOptions: compilerOptionsObject(), include: ['__ambient.d.ts', ...filenames] }, null, 2),
+  )
+}
+
+/**
+ * The shared program factory, built once per run.
+ *
+ * Lazily created so the config synthesis (which stats every package) happens
+ * after the cache directory exists, and so a run that finds no examples never
+ * pays for it.
+ */
+let batch: TscBatch | undefined
+function tscBatch(): TscBatch {
+  batch ??= new TscBatch({
+    dir: CACHE_DIR,
+    options: resolveOptions({ compilerOptions: compilerOptionsObject() }, CACHE_DIR),
+  })
+  return batch
 }
 
 // ─── Error classification ────────────────────────────────────────────────────
@@ -606,28 +612,30 @@ async function main(): Promise<number> {
     loc: string
     msg: string
   }
-  function parseErrors(out: string): RawError[] {
-    const errs: RawError[] = []
-    for (const line of out.split('\n')) {
-      const m = /^(ex-\d+\.tsx)(\(\d+,\d+\))?:\s*error TS(\d+):\s*(.+)$/.exec(line.trim())
-      if (!m || !fileMeta[m[1]!]) continue
-      errs.push({ file: m[1]!, code: Number(m[3]), loc: m[2] ?? '', msg: m[4]! })
-    }
-    return errs
-  }
 
   // Exclusion loop — drop syntax-broken example files until the semantic
-  // diagnostics surface (see isSyntaxCategory). Converges in ≤2 rounds:
-  // pass 1 reports every syntax error (always), pass 2 has none.
+  // diagnostics surface (see isSyntaxCategory). Measured on this repo it takes
+  // three rounds, not the two the previous comment here claimed: round 0 sheds
+  // 120 files on parse errors, round 1 sheds 12 more on grammar errors that
+  // only surface once the parse errors are gone (TS1108 `return` outside a
+  // function), round 2 is clean.
+  //
+  // Each round reuses the program built for the probe pass, so only the example
+  // files are re-checked — the workspace is parsed exactly once for all four
+  // programs this gate builds.
   let include = [...filenames]
   const unparseable = new Set<string>()
   let lastErrors: RawError[] = []
   for (let round = 0; round < 4; round++) {
     writeTsconfig(include)
-    const { ok, out } = runTsc()
-    lastErrors = parseErrors(out)
-    if (ok) {
-      lastErrors = []
+    const { diagnostics } = tscBatch().check(
+      [join(CACHE_DIR, '__ambient.d.ts'), ...include.map((f) => join(CACHE_DIR, f))],
+      (fileName) => /\/ex-\d+\.tsx$/.test(fileName),
+    )
+    lastErrors = diagnostics
+      .filter((d) => fileMeta[d.file])
+      .map((d) => ({ file: d.file, code: d.code, loc: d.loc, msg: d.message }))
+    if (lastErrors.length === 0) {
       break
     }
     const syntaxFiles = new Set(
