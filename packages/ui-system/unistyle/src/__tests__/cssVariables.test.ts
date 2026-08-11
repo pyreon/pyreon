@@ -247,17 +247,70 @@ describe('resolveCssVarReferences — non-CSS consumer resolution', () => {
 describe('resolveCssVarReferences — ReDoS-safe (linear scan)', () => {
   const { registry } = themeToCssVars({ spacing: { small: 8 } })
 
-  it('the CodeQL-flagged pathological input resolves in linear time', () => {
-    // `var(---,` + many spaces was the polynomial-ReDoS attack string for the
-    // old alternation regex. The linear scanner must handle it instantly.
-    const evil = 'var(--' + '-'.repeat(0) + ',' + ' '.repeat(100000) + ')'
-    const t0 = performance.now()
-    const out = resolveCssVarReferences(evil, registry)
-    const ms = performance.now() - t0
-    expect(ms).toBeLessThan(50) // linear: trivially fast even at 100k chars
-    // unknown name → falls back to the (whitespace) fallback, trimmed to ''
-    expect(out).toBe('')
-  })
+  // `var(--,` + a long whitespace run was the polynomial-ReDoS attack string
+  // for the old alternation regex (quadratic backtracking over the fallback
+  // whitespace). The linear scanner must stay O(n) in the run length.
+  //
+  // LOAD-IMMUNE SHAPE (the ws-relay lesson, .claude/rules/testing.md): the
+  // previous absolute wall-clock ceiling (`ms < 50`) was a statement about
+  // the MACHINE, not the algorithm — it read 51.1ms under full-workspace
+  // saturation (2026-08) while green in isolation. Linearity is a statement
+  // about GROWTH, so assert the growth: time the attack at N and 4N and
+  // require the per-call ratio to stay far below the quadratic signature
+  // (~16x). Load inflates both sizes proportionally, so the ratio survives
+  // saturation; min-of-K sampling after a warm-up call discards scheduler
+  // spikes + first-call JIT cost, and the timer-resolution floor keeps a
+  // sub-resolution tSmall from fabricating a large ratio.
+  const SPACES_SMALL = 10_000
+  const SIZE_FACTOR = 4 // linear ⇒ per-call ratio ~4; quadratic ⇒ ~16
+  const RATIO_CEILING = 8 // generous for linear (~4), unreachable for quadratic (~16)
+  const TIMER_FLOOR_MS = 0.05
+  const SAMPLES = 5
+
+  const attackString = (spaces: number): string => 'var(--,' + ' '.repeat(spaces) + ')'
+
+  const minTimeMs = (evil: string): number => {
+    // Warm-up: the first call pays JIT/allocation cost that has nothing to do
+    // with algorithmic growth. It doubles as the correctness assertion —
+    // unknown name → falls back to the (whitespace) fallback, trimmed to ''.
+    expect(resolveCssVarReferences(evil, registry)).toBe('')
+    let best = Infinity
+    for (let k = 0; k < SAMPLES; k++) {
+      const t0 = performance.now()
+      resolveCssVarReferences(evil, registry)
+      const dt = performance.now() - t0
+      if (dt < best) best = dt
+    }
+    return best
+  }
+
+  it(
+    'the CodeQL-flagged pathological input resolves in linear time (N vs 4N growth ratio)',
+    () => {
+      const tSmall = minTimeMs(attackString(SPACES_SMALL))
+      const tBig = minTimeMs(attackString(SPACES_SMALL * SIZE_FACTOR))
+      const ratio = Math.max(tBig, TIMER_FLOOR_MS) / Math.max(tSmall, TIMER_FLOOR_MS)
+      expect(
+        ratio,
+        `super-linear growth: ${SIZE_FACTOR}x input took ${ratio.toFixed(1)}x the time ` +
+          `(tSmall=${tSmall.toFixed(3)}ms @ ${SPACES_SMALL} spaces, ` +
+          `tBig=${tBig.toFixed(3)}ms @ ${SPACES_SMALL * SIZE_FACTOR} spaces; ` +
+          `linear ~${SIZE_FACTOR}x, quadratic ~${SIZE_FACTOR ** 2}x)`,
+      ).toBeLessThan(RATIO_CEILING)
+      // Belt-and-braces against an "equally catastrophic at both sizes"
+      // implementation the ratio alone can't see: ~4 orders of magnitude above
+      // the linear reality (~0.1ms), so no plausible load spike reaches it —
+      // this is NOT a perf assertion.
+      expect(
+        tBig,
+        `pathological input took ${tBig.toFixed(1)}ms at ${SPACES_SMALL * SIZE_FACTOR} spaces`,
+      ).toBeLessThan(2000)
+    },
+    // Generous backstop so a genuinely quadratic regression completes its
+    // samples and fails on the DIAGNOSTIC ratio assertion above rather than
+    // an opaque vitest timeout (the healthy path is single-digit ms).
+    120_000,
+  )
 
   it('handles a deep nested-paren fallback without backtracking', () => {
     const out = resolveCssVarReferences('var(--px-missing, calc(calc(1rem) * 2))', registry)
