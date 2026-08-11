@@ -2010,6 +2010,67 @@ final class PyreonRuntimeTests: XCTestCase {
         XCTAssertTrue(text.contains("b99"))          // newest kept
     }
 
+    // MARK: - PyreonQuery (cache + stale-while-revalidate state machine)
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testQueryFetchesOnMissThenServesFromCache() throws {
+        let cache = PyreonQueryCache()
+        var calls = 0
+        // First instance: cache miss → fetches, isPending true during flight.
+        let q1 = PyreonQuery<Int>(queryKey: "count", staleSeconds: 60, cache: cache)
+        XCTAssertNil(q1.data)
+        q1.load { calls += 1; return 42 }
+        XCTAssertEqual(q1.data, 42)
+        XCTAssertEqual(calls, 1)
+        XCTAssertFalse(q1.isPending)
+        // Second instance, same key, still fresh: hydrates from cache, NO fetch.
+        let q2 = PyreonQuery<Int>(queryKey: "count", staleSeconds: 60, cache: cache)
+        XCTAssertEqual(q2.data, 42, "second instance did not hydrate from the shared cache")
+        q2.load { calls += 1; return 99 }
+        XCTAssertEqual(calls, 1, "a fresh cache hit must NOT refetch")
+        XCTAssertEqual(q2.data, 42)
+    }
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testQueryStaleServesCachedThenRefetches() throws {
+        let cache = PyreonQueryCache()
+        cache.write("k", 1) // pre-seed a value that is immediately stale (staleSeconds 0)
+        let q = PyreonQuery<Int>(queryKey: "k", staleSeconds: 0, cache: cache)
+        XCTAssertEqual(q.data, 1, "stale value must be served immediately (no UI blank)")
+        XCTAssertTrue(q.isStale)
+        var calls = 0
+        q.load { calls += 1; return 2 }
+        XCTAssertEqual(calls, 1, "a stale value must trigger a background refetch")
+        XCTAssertEqual(q.data, 2)
+    }
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testQueryBackgroundRefreshDoesNotBlankUI() throws {
+        let cache = PyreonQueryCache()
+        let q = PyreonQuery<Int>(queryKey: "b", staleSeconds: 0, cache: cache)
+        q.load { 7 }
+        XCTAssertEqual(q.data, 7)
+        // A refetch with data present: isPending stays false, only isFetching flips.
+        q.begin()
+        XCTAssertFalse(q.isPending, "a refetch of shown data must not flip isPending (would blank the UI)")
+        XCTAssertTrue(q.isFetching)
+        q.resolve(8)
+        XCTAssertEqual(q.data, 8)
+        XCTAssertFalse(q.isFetching)
+    }
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testQueryRejectKeepsStaleData() throws {
+        let cache = PyreonQueryCache()
+        let q = PyreonQuery<Int>(queryKey: "e", cache: cache)
+        q.load { 5 }
+        q.begin()
+        struct Boom: Error {}
+        q.reject(Boom())
+        XCTAssertNotNil(q.error)
+        XCTAssertEqual(q.data, 5, "an error must leave the last good data in place (stale-while-error)")
+    }
+
 }
 
 /// Tiny mutable-reference-type flag so a `@Sendable` `onChange` closure
