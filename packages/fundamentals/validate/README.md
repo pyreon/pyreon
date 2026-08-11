@@ -2,6 +2,8 @@
 
 Pyreon's validator + **Standard Schema** DX layer — field metadata, reactive parse, i18n-aware error formatting, and (since v1) Pyreon's own validator runtime.
 
+> **Not to be confused with [`@pyreon/validation`](../validation/).** Two published packages, near-identical names, different jobs. **`@pyreon/validate`** (this package) is a *validator you use*: the `s` schema runtime + DX helpers on top of any Standard Schema library. **`@pyreon/validation`** is the *stack-wide contract*: the `ValidationError`/`ValidateFn` types, the `~standard` bridge, and the `zodSchema`/`valibotSchema`/`arktypeSchema` typed adapters that `@pyreon/form`/`store`/`state-tree` consume. If you're writing schemas (`import { s } from …`), you want **this** package; if you're wiring a third-party validator into a form/store with a typed adapter, you want `@pyreon/validation`.
+
 Standard Schema (https://standardschema.dev) is the cross-library protocol implemented natively by Zod 3.24+, Valibot 1.0+, ArkType 2.0+, and any future spec-compliant validator. `@pyreon/validate` adds the things the spec deliberately omits, plus Pyreon-native bridges to `@pyreon/reactivity` and `@pyreon/i18n`.
 
 **Two ways to use it:**

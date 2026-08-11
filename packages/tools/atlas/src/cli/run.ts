@@ -38,6 +38,7 @@ import {
   formatUnmatched,
   loadAtlasConfig,
   listComponentFiles,
+  dualInstanceDetail,
   isDualInstanceFailure,
   loadRuntime,
   type ModuleLoader,
@@ -133,6 +134,14 @@ export interface ScanResult {
    * verdicts about the mismatch, not about the components.
    */
   dualInstance?: boolean
+  /**
+   * The sentinel's own `A: <path> (vX)` / `B: <path> (vY)` lines — the two
+   * resolved module locations. Threaded through so the CLI can print them:
+   * the summary alone says WHAT happened, these say WHERE the second copy
+   * lives, which is the difference between a one-line fix and lockfile
+   * archaeology.
+   */
+  dualInstanceDetail?: string
   /**
    * Files that export something PascalCase and produced NO component.
    *
@@ -258,6 +267,10 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
   // `unverified` is the truthful answer here, and Atlas already models it as a
   // real state rather than a weak pass, so the honest move is to decline.
   const dualInstance = runtimeFailure !== undefined && isDualInstanceFailure(runtimeFailure)
+  // The caught sentinel error already NAMES both module locations + versions —
+  // extract them here so the re-report below doesn't drop the one fact that
+  // makes the condition diagnosable (see `dualInstanceDetail`'s doc).
+  const dualDetail = dualInstance ? dualInstanceDetail(runtimeFailure as string) : undefined
   const canMount = mount && !dualInstance
   // Only when the ordinary root scan finds nothing — see `autoDetectProjects`.
   const autoDetected = autoDetectProjects(cwd, options.dir ?? 'src', loaded.config.projects)
@@ -414,6 +427,7 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
       ...(loaded.error ? { configError: loaded.error } : {}),
       ...(loaded.path ? { configFound: loaded.path } : {}),
       ...(dualInstance ? { dualInstance: true } : {}),
+      ...(dualDetail ? { dualInstanceDetail: dualDetail } : {}),
       ...(unmatched.length > 0 ? { unmatched } : {}),
       ...(rocketstyleLoadErrors.length > 0 ? { loadErrors: rocketstyleLoadErrors } : {}),
       ...(focusError ? { focusError } : {}),
@@ -552,6 +566,34 @@ Usage:
 function out(text: string): void {
   process.stdout.write(text)
 }
+/**
+ * The dual-instance refusal notice, with the two resolved copies named.
+ *
+ * The locations are the actionable half of this message — without them "align
+ * the versions" sends the reader into node_modules archaeology for paths the
+ * caught sentinel error already carried (upstream-reported: a manifest revert
+ * and a --force reinstall before finding the second copy). `detail` is the
+ * sentinel's own `A:`/`B:` lines (see `dualInstanceDetail`); absent, the
+ * summary stands alone.
+ */
+export function formatDualInstanceNotice(detail: string | undefined): string {
+  const where = detail
+    ? `  The two copies:\n${detail
+        .split('\n')
+        .map((line) => `    ${line}`)
+        .join('\n')}\n`
+    : ''
+  return (
+    `atlas: Atlas and this project hold DIFFERENT copies of the Pyreon framework, ` +
+    `so nothing was mounted — every scenario is reported as unverified.\n` +
+    where +
+    `  Mounting across two copies would produce verdicts about the mismatch ` +
+    `rather than about your components, which is worse than no verdict.\n` +
+    `  Align the versions (Atlas ships in the same release group as the framework) ` +
+    `and re-run to get real verify results.\n`
+  )
+}
+
 function err(text: string): void {
   process.stderr.write(text)
 }
@@ -665,14 +707,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     // Before the summary, for the same reason: it explains why every scenario
     // below says `unverified`, and reading that after the counts is too late.
     if (result.dualInstance) {
-      err(
-        `atlas: Atlas and this project hold DIFFERENT copies of the Pyreon framework, ` +
-          `so nothing was mounted — every scenario is reported as unverified.\n` +
-          `  Mounting across two copies would produce verdicts about the mismatch ` +
-          `rather than about your components, which is worse than no verdict.\n` +
-          `  Align the versions (Atlas ships in the same release group as the framework) ` +
-          `and re-run to get real verify results.\n`,
-      )
+      err(formatDualInstanceNotice(result.dualInstanceDetail))
     }
     // A catalog that appeared without any configuration is a surprise unless it
     // says where it came from — and the reader's next question is always "can I
