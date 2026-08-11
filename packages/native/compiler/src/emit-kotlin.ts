@@ -1465,12 +1465,35 @@ function emitKotlinComponent(c: ComponentIR): string {
     lines.push(`    if (${name}.isStale) {`)
     lines.push(`      ${name}.begin()`)
     lines.push(`      try {`)
-    lines.push(
-      `        val body = withContext(Dispatchers.IO) { java.net.URL(${JSON.stringify(d.url)}).readText() }`,
-    )
-    lines.push(
-      `        ${name}.resolve(PyreonFetchJson.decodeFromString<${kotlinType(d.type, ctx)}>(body))`,
-    )
+    if (d.method || d.headers || d.body) {
+      // Mirrors the Swift PyreonHttp branch: a request with a VERB, headers, or
+      // a body goes through PyreonHttp (readText() can express none of them).
+      const parts = [
+        `method = PyreonHttpMethod.${(d.method ?? 'GET').toUpperCase()}`,
+        `url = ${JSON.stringify(d.url)}`,
+      ]
+      if (d.headers) {
+        const pairs = Object.entries(d.headers)
+          .map(([k, v]) => `${JSON.stringify(k)} to ${JSON.stringify(v)}`)
+          .join(', ')
+        parts.push(`headers = mapOf(${pairs})`)
+      }
+      if (d.body !== undefined) parts.push(`body = ${JSON.stringify(d.body)}`)
+      lines.push(`        val __response = withContext(Dispatchers.IO) {`)
+      lines.push(`          PyreonHttp.send(PyreonHttpRequest(${parts.join(', ')}))`)
+      lines.push(`        }`)
+      lines.push(`        if (!__response.isOk) throw PyreonHttpError.BadStatus(__response.status)`)
+      lines.push(
+        `        ${name}.resolve(PyreonFetchJson.decodeFromString<${kotlinType(d.type, ctx)}>(__response.body))`,
+      )
+    } else {
+      lines.push(
+        `        val body = withContext(Dispatchers.IO) { java.net.URL(${JSON.stringify(d.url)}).readText() }`,
+      )
+      lines.push(
+        `        ${name}.resolve(PyreonFetchJson.decodeFromString<${kotlinType(d.type, ctx)}>(body))`,
+      )
+    }
     lines.push(`      } catch (e: Throwable) { ${name}.reject(e) }`)
     lines.push(`    }`)
     lines.push(`  }`)

@@ -213,6 +213,14 @@ export type DeclIR =
       /** `staleTime` in milliseconds (Swift converts to seconds). 0 = always
        *  revalidate, but serve the stale value instantly. */
       staleMillis: number
+      /** HTTP verb from an inline `fetch(url, { method })` in queryFn. Absent =
+       *  GET (the bare URLSession/readText path); present routes through
+       *  PyreonHttp, exactly like useFetch. */
+      method?: string
+      /** Literal `{ 'Content-Type': 'application/json' }` header pairs. */
+      headers?: Record<string, string>
+      /** Literal request body (only a string literal survives). */
+      body?: string
     }
   /**
    * Phase 4.2 — form state via `useForm({ initialValues })` from

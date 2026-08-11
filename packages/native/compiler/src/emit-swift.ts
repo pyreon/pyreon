@@ -1898,12 +1898,33 @@ function emitSwiftComponent(c: ComponentIR): string {
     lines.push(`        if ${name}.isStale {`)
     lines.push(`          ${name}.begin()`)
     lines.push(`          do {`)
-    lines.push(
-      `            let (bytes, _) = try await URLSession.shared.data(from: URL(string: ${JSON.stringify(d.url)})!)`,
-    )
-    lines.push(
-      `            ${name}.resolve(try JSONDecoder().decode(${swiftType(d.type)}.self, from: bytes))`,
-    )
+    if (d.method || d.headers || d.body) {
+      // A request with a VERB, headers, or a body routes through PyreonHttp —
+      // exactly like useFetch's method/headers path.
+      const method = (d.method ?? 'GET').toLowerCase()
+      const parts = [`method: .${method}`, `url: ${JSON.stringify(d.url)}`]
+      if (d.headers) {
+        const pairs = Object.entries(d.headers)
+          .map(([k, v]) => `${JSON.stringify(k)}: ${JSON.stringify(v)}`)
+          .join(', ')
+        parts.push(`headers: [${pairs}]`)
+      }
+      if (d.body !== undefined) parts.push(`body: Data(${JSON.stringify(d.body)}.utf8)`)
+      lines.push(`            let __response = try await PyreonHttp.send(`)
+      lines.push(`              PyreonHttpRequest(${parts.join(', ')})`)
+      lines.push(`            )`)
+      lines.push(`            guard __response.isOK else {`)
+      lines.push(`              throw PyreonHttpError.badStatus(__response.status)`)
+      lines.push(`            }`)
+      lines.push(`            ${name}.resolve(try __response.decode(${swiftType(d.type)}.self))`)
+    } else {
+      lines.push(
+        `            let (bytes, _) = try await URLSession.shared.data(from: URL(string: ${JSON.stringify(d.url)})!)`,
+      )
+      lines.push(
+        `            ${name}.resolve(try JSONDecoder().decode(${swiftType(d.type)}.self, from: bytes))`,
+      )
+    }
     lines.push(`          } catch { ${name}.reject(error) }`)
     lines.push(`        }`)
     lines.push(`      }`)

@@ -121,6 +121,55 @@ export function P() {
     expect(r.code).not.toContain('PyreonQuery<')
   })
 
+  // A queryFn whose inline fetch carries a verb/headers/body routes through
+  // PyreonHttp (mirroring useFetch), not the bare URLSession/readText path.
+  const POST_SRC = `
+import { Text } from '@pyreon/primitives'
+import { useQuery } from '@pyreon/query'
+interface Todo { id: number }
+export function P() {
+  const q = useQuery<Todo>(() => ({
+    queryKey: ['todo'],
+    queryFn: () => fetch('/todos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"x":1}' }),
+    staleTime: 0,
+  }))
+  return <Text>{q.data}</Text>
+}
+`
+
+  it('Swift: an inline fetch with method/headers/body routes through PyreonHttp', () => {
+    const r = transform(POST_SRC, { target: 'swift' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('PyreonHttp.send(')
+    expect(r.code).toContain('method: .post')
+    expect(r.code).toContain('url: "/todos"')
+    expect(r.code).toContain('"Content-Type": "application/json"')
+    expect(r.code).toContain('body: Data("{\\"x\\":1}".utf8)')
+    expect(r.code).toContain('q.resolve(try __response.decode(Todo.self))')
+  })
+
+  it('Kotlin: an inline fetch with method/headers/body routes through PyreonHttp', () => {
+    const r = transform(POST_SRC, { target: 'kotlin' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('PyreonHttp.send(PyreonHttpRequest(')
+    expect(r.code).toContain('method = PyreonHttpMethod.POST')
+    expect(r.code).toContain('"Content-Type" to "application/json"')
+    expect(r.code).toContain('body = "{\\"x\\":1}"')
+    expect(r.code).toContain('if (!__response.isOk) throw PyreonHttpError.BadStatus')
+  })
+
+  it.runIf(isSwiftcAvailable())('Swift POST-query emit typechecks against the stubs', () => {
+    const r = transform(POST_SRC, { target: 'swift' })
+    const v = validateSwiftWithStubs(r.code)
+    expect(v.ok, v.error).toBe(true)
+  })
+
+  it.runIf(isKotlincAvailable())('Kotlin POST-query emit typechecks against the stubs', () => {
+    const r = transform(POST_SRC, { target: 'kotlin' })
+    const v = validateKotlin(r.code)
+    expect(v.ok, v.error).toBe(true)
+  })
+
   it.runIf(isSwiftcAvailable())('Swift emit typechecks against the stubs', () => {
     const r = transform(SRC, { target: 'swift' })
     const v = validateSwiftWithStubs(r.code)
