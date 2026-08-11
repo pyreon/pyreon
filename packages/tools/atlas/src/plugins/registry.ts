@@ -5,9 +5,15 @@
  */
 import type {
   ComponentIntelligence,
+  FindingCode,
   VerifyCheck,
   VerifyVerdict,
 } from '../core'
+import { CHECK_KEYS, finding } from '../core'
+
+// Re-exported: this was their home before they moved down to `core`, where the
+// type they enumerate lives. Kept so existing importers do not have to care.
+export { CHECK_KEYS, type CheckKey } from '../core'
 import type {
   AtlasPlugin,
   DecorateContext,
@@ -38,9 +44,15 @@ export const SKIP_REASON = {
   notRun: 'not run — no plugin claimed this check',
 } as const
 
-/** A skip that says why. */
-export function skipped(reason: string): VerifyCheck {
-  return { status: 'skip', findings: [reason] }
+/**
+ * A skip that says why, and carries the CLASS of why.
+ *
+ * The code is what a consumer branches on: "this ran nowhere" and "this needs a
+ * browser" are different states with different next moves, and a caller reading
+ * only prose has to match on a sentence that is free to be reworded.
+ */
+export function skipped(code: FindingCode, reason: string, fix?: string): VerifyCheck {
+  return { status: 'skip', findings: [finding(code, reason, fix)] }
 }
 
 /**
@@ -60,33 +72,12 @@ export function emptyVerdict(): VerifyVerdict {
     checked: 0,
     a11y: SKIP,
     interaction: SKIP,
-    reactivityCoverage: skipped(SKIP_REASON.browserOnly),
+    reactivityCoverage: skipped('browser-only', SKIP_REASON.browserOnly),
     leak: SKIP,
-    snapshot: skipped(SKIP_REASON.browserOnly),
+    snapshot: skipped('browser-only', SKIP_REASON.browserOnly),
     ssrParity: SKIP,
   }
 }
-
-/**
- * Every check a verdict carries — the SINGLE owner of that list.
- *
- * Exported because more than one place has to enumerate the checks (merging a
- * partial verdict here, tallying results for the CLI report), and a second
- * hand-written list is a silent-hole generator: a seventh check would be merged
- * but never counted, so a whole check could fail with the summary reporting
- * everything green. Anything that iterates checks imports this.
- */
-export const CHECK_KEYS = [
-  'a11y',
-  'interaction',
-  'reactivityCoverage',
-  'leak',
-  'snapshot',
-  'ssrParity',
-] as const
-
-/** One check's name. Derived from the list, so the two can never disagree. */
-export type CheckKey = (typeof CHECK_KEYS)[number]
 
 /** Merge a plugin's partial verdict onto an accumulator (checks only). */
 function mergeVerdict(base: VerifyVerdict, partial: Partial<VerifyVerdict>): VerifyVerdict {

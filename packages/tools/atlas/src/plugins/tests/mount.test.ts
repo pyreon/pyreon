@@ -20,6 +20,12 @@ import * as dom from '../../verify/dom'
 import { ensureDom } from '../../verify/dom'
 import { defaultRuntime, driveInteractions, mountScenario } from '../../verify/harness'
 
+/** Finding messages as one string — assertions read the prose, not the shape. */
+function messages(check: { findings?: readonly { message: string }[] } | undefined): string {
+  return (check?.findings ?? []).map((f) => f.message).join(' ')
+}
+
+
 afterAll(() => {
   releaseVerifyDom()
 })
@@ -68,7 +74,7 @@ describe('when a DOM cannot be had', () => {
         })
       ).interaction!
       expect(check.status).toBe('skip')
-      expect(check.findings?.join(' ')).toContain('no window here')
+      expect(messages(check)).toContain('no window here')
     } finally {
       spy.mockRestore()
       releaseVerifyDom() // and drop the failed attempt, so later cases get a real one
@@ -98,7 +104,7 @@ describe('the crash classes it exists to catch', () => {
       throw new Error('boom on mount')
     })
     expect(check.status).toBe('fail')
-    expect(check.findings?.[0]).toContain('boom on mount')
+    expect(messages(check)).toContain('boom on mount')
   })
 
   it('fails when a scenario\'s ARGS are what break it', async () => {
@@ -122,7 +128,7 @@ describe('the crash classes it exists to catch', () => {
     }
     const check = await runVerify(Effectful)
     expect(check.status).toBe('fail')
-    expect(check.findings?.join(' ')).toContain('boom in effect')
+    expect(messages(check)).toContain('boom in effect')
   })
 
   it('fails when a CLICK handler throws', async () => {
@@ -140,7 +146,7 @@ describe('the crash classes it exists to catch', () => {
       )
     const check = await runVerify(Explosive)
     expect(check.status).toBe('fail')
-    expect(check.findings?.join(' ')).toContain('boom on click')
+    expect(messages(check)).toContain('boom on click')
   })
 })
 

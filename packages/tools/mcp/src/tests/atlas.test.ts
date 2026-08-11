@@ -18,6 +18,7 @@ import {
   formatControl,
   isVerified,
   loadCatalog,
+  SUPPORTED_CATALOG_VERSION,
   MISSING_CATALOG_MESSAGE,
   renderCatalogIndex,
   renderComponent,
@@ -38,7 +39,10 @@ const unverifiedVerdict = { ok: false, checked: 0, a11y: { status: 'skip' as con
 const failedVerdict = {
   ok: false,
   checked: 1,
-  a11y: { status: 'fail' as const, findings: ['missing accessible name'] },
+  a11y: {
+    status: 'fail' as const,
+    findings: [{ code: 'missing-accessible-name', message: 'missing accessible name' }],
+  },
 }
 
 const catalog = (over: Partial<AtlasCatalog> = {}): AtlasCatalog => ({
@@ -91,6 +95,35 @@ describe('finding + loading', () => {
     const result = loadCatalog(root)
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.detail).toContain('components')
+  })
+
+  it('REFUSES a stale v1 catalog rather than rendering blank findings', () => {
+    // At v1 a finding was a plain string; at v2 it is `{ code, message, fix? }`.
+    // Reading v1 with v2 code yields `undefined` for every finding, so a
+    // component's failures render as blanks — silently wrong, and the reader is
+    // an agent that cannot tell a blank is anomalous. Refusing names the fix.
+    const root = tmp()
+    writeFileSync(
+      join(root, CATALOG_FILENAME),
+      JSON.stringify({ version: 1, components: [{ name: 'Button' }] }),
+    )
+    const result = loadCatalog(root)
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.reason).toBe('stale-version')
+      expect(result.detail).toContain('atlas scan')
+    }
+  })
+
+  it('accepts the version it was built for', () => {
+    // The mirror: a refusal that fires on the CURRENT version would make the
+    // server useless, so the accepting direction is asserted too.
+    const root = tmp()
+    writeFileSync(
+      join(root, CATALOG_FILENAME),
+      JSON.stringify({ version: SUPPORTED_CATALOG_VERSION, components: [] }),
+    )
+    expect(loadCatalog(root).ok).toBe(true)
   })
 
   it('tells the agent how to produce one, and why it is not guessing', () => {

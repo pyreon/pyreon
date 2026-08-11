@@ -1,5 +1,6 @@
 import type { CheckStatus, ComponentIntelligence, VerifyVerdict } from '../types'
 import { createCatalogGraph } from '../graph'
+import { finding } from '../types'
 import { makeScenario } from '../scenario'
 
 const ci = (over: Partial<ComponentIntelligence> = {}): ComponentIntelligence => ({
@@ -28,10 +29,10 @@ const verdict = (a11y: CheckStatus, ok: boolean): VerifyVerdict => ({
   ssrParity: { status: 'skip' },
 })
 
-const failVerdict = (findings: string[]): VerifyVerdict => ({
+const failVerdict = (messages: string[]): VerifyVerdict => ({
   ok: false,
   checked: 1,
-  a11y: { status: 'fail', findings },
+  a11y: { status: 'fail', findings: messages.map((m) => finding('missing-accessible-name', m)) },
   interaction: { status: 'skip' },
   reactivityCoverage: { status: 'skip' },
   leak: { status: 'skip' },
@@ -82,7 +83,7 @@ describe('createCatalogGraph', () => {
 
   it('serializes toJSON', () => {
     const g = createCatalogGraph([ci({ name: 'A' })])
-    expect(g.toJSON()).toEqual({ version: 1, components: [ci({ name: 'A' })] })
+    expect(g.toJSON()).toEqual({ version: 2, components: [ci({ name: 'A' })] })
   })
 })
 
@@ -191,6 +192,51 @@ describe('toAgentGuide', () => {
     expect(guide).toContain('reactive (pass a signal accessor): onValue')
     expect(guide).toContain('correct: {"label":"Hi","state":"primary"}')
     expect(guide).toContain('avoid: "Empty" — missing accessible name: "label" is empty')
+  })
+
+  it('reports an ssrParity failure in the guide — it used to be silently dropped', () => {
+    // The bug this replaced: `collectFindings` carried a hand-written list of
+    // FIVE check names, and `ssrParity` was added as a sixth. So a hydration
+    // failure was recorded in the catalog, marked the scenario failed, and then
+    // vanished from the agent guide and the llms text — the two surfaces an AI
+    // assistant actually reads. Deriving from CHECK_KEYS makes that impossible.
+    const broken = makeScenario({ component: 'Z', name: 'Hydrate', args: { a: 1 } })
+    broken.verify = {
+      ok: false,
+      checked: 1,
+      a11y: { status: 'skip' },
+      interaction: { status: 'skip' },
+      reactivityCoverage: { status: 'skip' },
+      leak: { status: 'skip' },
+      snapshot: { status: 'skip' },
+      ssrParity: {
+        status: 'fail',
+        findings: [finding('hydrate-threw', 'hydrateRoot threw: boom')],
+      },
+    }
+    const guide = createCatalogGraph([ci({ name: 'Z', scenarios: [broken] })]).toAgentGuide()
+    expect(guide).toContain('hydrateRoot threw: boom')
+  })
+
+  it("carries a finding's FIX into the guide, not just the diagnosis", () => {
+    // An agent reading the guide gets the actionable half. Without this it
+    // learns what broke and is left to infer what to change.
+    const broken = makeScenario({ component: 'W', name: 'Bad', args: { a: 1 } })
+    broken.verify = {
+      ok: false,
+      checked: 1,
+      a11y: {
+        status: 'fail',
+        findings: [finding('missing-accessible-name', 'label is empty', 'Give it a value.')],
+      },
+      interaction: { status: 'skip' },
+      reactivityCoverage: { status: 'skip' },
+      leak: { status: 'skip' },
+      snapshot: { status: 'skip' },
+      ssrParity: { status: 'skip' },
+    }
+    const guide = createCatalogGraph([ci({ name: 'W', scenarios: [broken] })]).toAgentGuide()
+    expect(guide).toContain('label is empty → Give it a value.')
   })
 
   it('skips an empty-args scenario when picking the example', () => {

@@ -13,6 +13,12 @@ import { checkSsrParity, describeMismatch, normalizeHtml } from '../ssr-parity'
 import { ensureDom } from '../../verify/dom'
 import type { MountRuntime } from '../../verify/harness'
 
+/** Finding messages as one string — assertions read the prose, not the shape. */
+function messages(check: { findings?: readonly { message: string }[] } | undefined): string {
+  return (check?.findings ?? []).map((f) => f.message).join(' ')
+}
+
+
 // The same DOM acquisition the plugin performs. Not `@vitest-environment
 // happy-dom`: that would give the TEST a document while the plugin installs
 // its own, so a bug in `ensureDom` would stay invisible here.
@@ -125,7 +131,7 @@ describe('checkSsrParity', () => {
 
     expect(verdict.status).toBe('fail')
     // Oracle 1's shape specifically — the runtime's own channel, with a path.
-    expect((verdict.findings ?? []).join('\n')).toContain('expected render-2, DOM had render-1')
+    expect(messages(verdict)).toContain('expected render-2, DOM had render-1')
   })
 
   it('FAILS on an SSR/client divergence the mismatch channel never reports', async () => {
@@ -149,7 +155,7 @@ describe('checkSsrParity', () => {
     const verdict = await checkSsrParity(silent, Good as never, {}, a, b)
 
     expect(verdict.status).toBe('fail')
-    expect((verdict.findings ?? []).join()).toContain('differs from a fresh client mount')
+    expect(messages(verdict)).toContain('differs from a fresh client mount')
   })
 
   it('FAILS, rather than throws, when the renderer throws', async () => {
@@ -160,7 +166,7 @@ describe('checkSsrParity', () => {
     const verdict = await checkSsrParity(runtime, Boom as never, {}, a, b)
 
     expect(verdict.status).toBe('fail')
-    expect((verdict.findings ?? []).join()).toContain('render exploded')
+    expect(messages(verdict)).toContain('render exploded')
   })
 
   it('SKIPS with a reason when the project has no SSR renderer', async () => {
@@ -173,7 +179,7 @@ describe('checkSsrParity', () => {
     const verdict = await checkSsrParity(noSsr, ((): unknown => h('i', {}, 'x')) as never, {}, a, b)
 
     expect(verdict.status).toBe('skip')
-    expect((verdict.findings ?? []).join()).toContain('@pyreon/runtime-server')
+    expect(messages(verdict)).toContain('@pyreon/runtime-server')
   })
 
   it('unregisters its mismatch collector, on the pass AND the throw path', async () => {

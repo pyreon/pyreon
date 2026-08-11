@@ -14,7 +14,7 @@ import { findCatalog, runCheck } from '../check'
 let root: string
 
 const catalog = (components: unknown[]): string =>
-  JSON.stringify({ version: 1, components })
+  JSON.stringify({ version: 2, components })
 
 const component = (name: string, extra: Record<string, unknown> = {}) => ({
   name,

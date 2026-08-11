@@ -49,7 +49,7 @@ describe('atlas scan mounts the example', () => {
     // catalog JSON to learn which of the six checks had failed.
     expect(run.stderr).toContain('button--empty')
     expect(run.stderr).toContain('badge--empty')
-    expect(run.stderr).toContain('a11y: missing accessible name')
+    expect(run.stderr).toContain('a11y [missing-accessible-name]: missing accessible name')
     // And the tally answers "which check?" from the summary alone.
     expect(run.stdout).toMatch(/checks:.*a11y \d+\/\d+ ✗/)
 

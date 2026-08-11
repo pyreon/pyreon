@@ -327,11 +327,54 @@ match. Measured on `@pyreon/ui-components` (108 components, 1090 scenarios):
 work drops ~18×; discovery dominates the residual, so this is a **focus** tool
 first and a speed tool second.
 
+Every finding is structured — `{ code, message, fix? }`:
+
+```
+✗ button--empty
+    a11y [missing-accessible-name]: missing accessible name: "label" is empty
+      → Give "label" a non-empty value, or an aria-label if the text is decorative.
+```
+
+`code` is the **stable** class (`hydrate-threw`, `reactive-nodes-retained`, …) — what you
+grep, quote, or branch on; the message is prose and free to be reworded. `fix` names the
+one concrete change, and is present only when there **is** one. It travels *with* the
+finding rather than in a lookup table, so the agent guide, the MCP tools and `--json` all
+carry the actionable half without a second call.
+
+That is catalog **`version: 2`**. At v1 findings were plain strings, so the MCP server
+refuses a v1 catalog by version rather than rendering a blank for every finding.
+
 `--json` emits the same report as data. Three refusals are deliberate: it never
 writes `atlas-catalog.json` (a one-component catalog would replace the real one),
 an unmatched name exits non-zero with suggestions rather than reporting an empty
 green run, and a run where *nothing* could be verified exits non-zero too —
 zero failures is not a pass when zero checks ran.
+
+### `--check` — the ratchet
+
+`atlas scan --check` and `atlas verify --check` compare against the **committed**
+catalog rather than rewriting it, and exit non-zero on a regression. Absolute counts
+answer "how is it now"; they cannot answer "did I help".
+
+The case that makes it worth having: **a check that stops running is a regression**,
+even though it makes the counts improve.
+
+```
+# baseline: 2 failing
+$ atlas scan . --check --no-mount
+atlas: discovered 1 component(s), 2 scenario(s) — 0 verified, 0 failing, 2 unverified.
+atlas --check: REGRESSED — 4 check(s) stopped running
+  ✗ button--empty — no longer checked: interaction, leak
+    (coverage lost — the failure did not go away, the check did)
+```
+
+Delete a wrapper and every mount-dependent check drops to `skip`: failures vanish,
+numbers improve, catalog looks fixed. That is the one way to "fix" a red catalog that
+must never read as green.
+
+`--check` never writes the catalog (a ratchet that overwrites its own baseline compares
+a run to itself), a missing baseline is exit 0 with a note rather than a failure, and a
+new or removed scenario is not a regression.
 
 ### Verifying at runtime
 

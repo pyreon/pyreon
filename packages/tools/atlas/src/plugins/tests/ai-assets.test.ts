@@ -25,7 +25,7 @@ describe('aiAssetsPlugin', () => {
     expect(asset!.guide).toContain('# Agent Guide')
     expect(asset!.guide).toContain('## Button [form]')
     expect(asset!.llms).toContain('# Component Catalog')
-    expect(asset!.catalog.version).toBe(1)
+    expect(asset!.catalog.version).toBe(2)
     expect(asset!.catalog.components).toHaveLength(1)
   })
 

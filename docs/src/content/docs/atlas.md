@@ -65,9 +65,33 @@ Failing scenarios print **uncapped** here, unlike a whole-catalog scan — this 
   "component": "Button",
   "verified": 14, "failed": 1, "unverified": 0,
   "tallies": [{ "key": "a11y", "pass": 14, "fail": 1, "skip": 0 }, /* … */],
-  "failures": [{ "id": "button--empty", "checks": [{ "key": "a11y", "findings": ["…"] }] }]
+  "failures": [{
+    "id": "button--empty",
+    "checks": [{
+      "key": "a11y",
+      "findings": [{
+        "code": "missing-accessible-name",
+        "message": "missing accessible name: \"label\" is empty",
+        "fix": "Give \"label\" a non-empty value, or an aria-label if the text is genuinely decorative."
+      }]
+    }]
+  }]
 }
 ```
+
+### Findings are structured
+
+Every finding carries three things:
+
+| field | what it is |
+|---|---|
+| `code` | A **stable** identifier for the class of failure — `hydrate-threw`, `missing-accessible-name`, `reactive-nodes-retained`. This is what you grep, quote in an issue, or branch on. Codes are permanent once shipped: a reworded message is a patch, a renamed code is a breaking change. |
+| `message` | What happened, in prose. Free to be reworded. |
+| `fix` | The one concrete thing to change — present only when there **is** one. A finding that cannot name a single next step omits it rather than inventing one. |
+
+The `fix` travels **with** the finding rather than living in a lookup table a consumer has to know to consult, so an agent reading the agent guide, the MCP tools, or `--json` gets the actionable half without a second call.
+
+This is catalog **`version: 2`**. A v1 catalog had plain-string findings; reading one with v2 code would render blanks for every finding, so the MCP server refuses it by version and tells you to re-run `atlas scan` rather than showing you a component with no failures.
 
 Three things it deliberately refuses to do:
 
@@ -76,6 +100,38 @@ Three things it deliberately refuses to do:
 - **A run where nothing could be verified is a non-zero exit.** Zero failures is not a pass when zero checks ran.
 
 The first positional is the **component** (matching `atlas check`); the directory is `--cwd`.
+
+### `--check` — the ratchet
+
+Both `atlas scan` and `atlas verify` take `--check`, which compares the run against the **committed** `atlas-catalog.json` instead of rewriting it:
+
+```bash
+pyreon atlas scan . --check
+# atlas --check: REGRESSED — 2 check(s) started failing
+#   ✗ button--empty — now failing: interaction
+```
+
+Absolute counts answer *"how is it now"*. They cannot answer *"did I help"*, which is the question anyone iterating actually has — and the only signal an agent can use to decide whether to keep a change or back it out.
+
+**A check that stops running counts as a regression.** This is the case counts structurally cannot catch, because losing coverage makes the numbers *improve*:
+
+```bash
+# baseline: 2 failing
+pyreon atlas scan . --check --no-mount
+# atlas: discovered 1 component(s), 2 scenario(s) — 0 verified, 0 failing, 2 unverified.
+#                                                              ^^^^^^^^^ looks fixed
+# atlas --check: REGRESSED — 4 check(s) stopped running
+#   ✗ button--empty — no longer checked: interaction, leak
+#     (coverage lost — the failure did not go away, the check did)
+```
+
+Delete a wrapper from `atlas.config.ts` and every mount-dependent check drops to `skip`: the failures vanish, the counts improve, and the catalog looks better than it did. Losing coverage is the one way to "fix" a red catalog that must never read as green.
+
+Three deliberate behaviours:
+
+- **`--check` never writes the catalog.** A ratchet that overwrites its own baseline compares a run against itself and can never report a regression again.
+- **A missing baseline is exit 0**, with a note. Making the very first `--check` run red for everybody is how a ratchet gets disabled on day one.
+- **A new or removed scenario is not a regression.** Adding a component with a failing edge case is new information, and deleting one is a legitimate edit; flagging either would make the ratchet fire on ordinary refactors until people stopped believing it.
 
 ### `atlas dev` — the workbench
 

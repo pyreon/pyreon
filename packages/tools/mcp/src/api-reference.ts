@@ -9827,7 +9827,7 @@ report.issues.filter((i) => i.severity === 'error')`,
   // <gen-docs:api-reference:start @pyreon/atlas>
 
   'atlas/atlas scan': {
-    signature: 'atlas scan [dir] [--no-mount]',
+    signature: 'atlas scan [dir] [--no-mount] [--check]',
     example: `$ atlas scan .
 atlas: discovered 9 component(s), 43 scenario(s) — 41 verified, 2 failing, 0 unverified.
   checks: a11y 18/20 ✗ · interaction 43/43 · ssrParity 43/43 · leak 43/43
@@ -9837,31 +9837,47 @@ atlas: discovered 9 component(s), 43 scenario(s) — 41 verified, 2 failing, 0 u
 atlas: 2 failing scenario(s):
   ✗ button--empty
       a11y: missing accessible name: "label" is empty`,
-    notes: 'Discover components (static TS scan + rocketstyle runtime detection), derive controls and variant scenarios, MOUNT each scenario (real module load through a Vite-powered loader) and run the node half of the verify pipeline — a11y (static), interaction (mount + play/click-walk), a REAL leak check (reactive-graph accumulation across repeated mounts, past GC), and SSR-PARITY (`renderToString` + hydrate, asserting the runtime reported no mismatch AND the hydrated DOM equals a fresh client mount — two oracles because SSR and hydrate can agree on the same wrong DOM). Parity skips with a reason when `@pyreon/runtime-server` is absent, and is blind to `typeof window` branching because both renders share one process. Writes `atlas-catalog.json` (every component, control, scenario, and verdict) and `atlas-agent-guide.md` (the AI-consumable summary). Exits non-zero when any scenario FAILS — wiring the scan into CI gates the catalog. `--no-mount` keeps the scan purely static (no project code executes). See also: atlas verify, atlas verify-browser, createAtlas.',
+    notes: 'Discover components (static TS scan + rocketstyle runtime detection), derive controls and variant scenarios, MOUNT each scenario (real module load through a Vite-powered loader) and run the node half of the verify pipeline — a11y (static), interaction (mount + play/click-walk), a REAL leak check (reactive-graph accumulation across repeated mounts, past GC), and SSR-PARITY (`renderToString` + hydrate, asserting the runtime reported no mismatch AND the hydrated DOM equals a fresh client mount — two oracles because SSR and hydrate can agree on the same wrong DOM). Parity skips with a reason when `@pyreon/runtime-server` is absent, and is blind to `typeof window` branching because both renders share one process. Writes `atlas-catalog.json` (every component, control, scenario, and verdict) and `atlas-agent-guide.md` (the AI-consumable summary). Exits non-zero when any scenario FAILS — wiring the scan into CI gates the catalog. `--no-mount` keeps the scan purely static (no project code executes). `--check` turns the scan into a RATCHET: it compares against the COMMITTED `atlas-catalog.json` instead of rewriting it (a ratchet that overwrites its own baseline compares a run to itself and can never report a regression again) and exits non-zero on a REGRESSION. A check that STOPPED RUNNING counts as one — that is the case absolute counts cannot catch, because losing coverage makes the numbers improve: delete a wrapper and every mount-dependent check drops to skip, so `2 failing` becomes `0 failing` and a broken catalog reads as fixed. A missing or unreadable baseline is exit 0 with a note, never a failure — making the first `--check` run red for everybody is how a ratchet gets disabled on day one. See also: atlas verify, atlas verify-browser, createAtlas.',
     mistakes: `- Treating "verified" as a default — a scenario is verified only when a check actually RAN and passed; \`checked: 0\` renders as unverified, never smoothed into a pass
 - Reading \`N verified\` as "everything was checked" — it is a scenario count, not a check count. The \`checks:\` line is the one that says which of the six ran, and a package without \`@pyreon/runtime-server\` resolvable reports 1090/1090 verified having run only two of them
 - Running the scan without the project theme in \`atlas.config.ts\` for rocketstyle components — dimension axes resolve empty and the variant scenarios collapse to defaults
 - Expecting the leak check under plain \`node\` — it needs a GC hook (\`bun\`, or \`node --expose-gc\`); without one it reports skip, not pass
-- Expecting reactivityCoverage/snapshot verdicts from the scan — those are browser-only claims; run \`atlas verify-browser\` to earn them`,
+- Expecting reactivityCoverage/snapshot verdicts from the scan — those are browser-only claims; run \`atlas verify-browser\` to earn them
+- Reading a \`--check\` run that reports FEWER failures as an improvement without looking at the ratchet line — fewer failures is exactly what losing a check produces, and only the diff distinguishes "fixed" from "no longer measured"`,
   },
 
   'atlas/atlas verify': {
-    signature: 'atlas verify [Component] [--cwd <dir>] [--json]',
+    signature: 'atlas verify [Component] [--cwd <dir>] [--json] [--check]',
     example: `$ atlas verify Button
 atlas verify Button: 1 component(s), 15 scenario(s)
   checks: a11y 14/15 ✗ · interaction 15/15 · ssrParity 15/15 · leak 15/15
   not run: reactivityCoverage, snapshot — browser-only — run \`atlas verify-browser\`
 
 ✗ button--empty
-    a11y: missing accessible name: "label" is empty
+    a11y [missing-accessible-name]: missing accessible name: "label" is empty
+      → Give "label" a non-empty value, or an aria-label if the text is decorative.
 
 1 failing · 14 verified · 0 unverified`,
-    notes: 'Re-check ONE component and report WHICH check failed and why — the write → verify → fix loop, for a person or an agent iterating on a single component. Discovery still walks the whole project (a component’s file is not known until it does), but decoration and verification — mounting, exercising, hydrating and GC-probing every scenario — run only for the match, so this is a question about one component rather than a whole-catalog scan with the answer filtered out at the end. Measured on `@pyreon/ui-components` (108 components, 1090 scenarios): 1.35s for a full scan against 0.90s scoped to one component’s 60 scenarios; the verify work drops ~18× but discovery dominates the residual, so treat this as a focus tool first and a speed tool second. Prints a per-check tally, the checks that did NOT run and why, and every failing scenario UNCAPPED with its findings. `--json` emits the same report as data for an agent to branch on. Never writes `atlas-catalog.json`: a scoped run holds one component, and writing that would replace the whole catalog. Exits non-zero on any failing check, on a name that matched nothing, and on a run where nothing could be verified at all. See also: atlas scan, atlas verify-browser.',
+    notes: 'Re-check ONE component and report WHICH check failed and why — the write → verify → fix loop, for a person or an agent iterating on a single component. Discovery still walks the whole project (a component’s file is not known until it does), but decoration and verification — mounting, exercising, hydrating and GC-probing every scenario — run only for the match, so this is a question about one component rather than a whole-catalog scan with the answer filtered out at the end. Measured on `@pyreon/ui-components` (108 components, 1090 scenarios): 1.35s for a full scan against 0.90s scoped to one component’s 60 scenarios; the verify work drops ~18× but discovery dominates the residual, so treat this as a focus tool first and a speed tool second. Prints a per-check tally, the checks that did NOT run and why, and every failing scenario UNCAPPED with its findings. `--json` emits the same report as data for an agent to branch on. Never writes `atlas-catalog.json`: a scoped run holds one component, and writing that would replace the whole catalog. Exits non-zero on any failing check, on a name that matched nothing, and on a run where nothing could be verified at all. See also: atlas scan, atlas verify-browser, VerifyFinding.',
     mistakes: `- Reading exit 0 as "checked and clean" without the \`checks:\` line — a run where nothing could be examined exits NON-zero for exactly this reason, but a run where only two of six checks were available exits 0 and the tally is what says so
 - Expecting a scoped run to refresh \`atlas-catalog.json\` — it deliberately never writes; a one-component catalog would replace the real one and silently break the agent guide, the MCP tools and \`atlas check\` for every other component until the next full scan
 - Passing a directory as the first positional — the first positional is the COMPONENT (matching \`atlas check\`); the directory is \`--cwd\`
 - Assuming a typo degrades gracefully — an unmatched name is a non-zero exit with suggestions, precisely because filtering to nothing otherwise reports "0 scenarios, 0 failing", which reads as a pass
+- Pattern-matching a finding's MESSAGE instead of its \`code\` — the message is prose and free to be reworded between releases; the code is the stable contract, and each finding also carries a \`fix\` naming the one thing to change
 - Expecting an ambiguous bare name to pick one — a name matching several components across projects REFUSES and names the candidate keys, the same rule the graph and the MCP tools apply`,
+  },
+
+  'atlas/VerifyFinding': {
+    signature: 'interface VerifyFinding { code: FindingCode; message: string; fix?: string }',
+    example: `{
+  code: 'missing-accessible-name',
+  message: 'missing accessible name: "label" is empty',
+  fix: 'Give "label" a non-empty value, or an aria-label if the text is decorative.',
+}`,
+    notes: 'One thing a verify check found — catalog `version: 2`. `code` is a STABLE identifier for the CLASS of failure (`hydrate-threw`, `missing-accessible-name`, `reactive-nodes-retained`, `ssr-render-threw`, `reactive-nodes-retained`, plus codes for every reason a check did not run: `browser-only`, `no-dom`, `no-gc-hook`, `no-ssr-renderer`, `not-run`, `nothing-to-check`); `message` is prose; `fix` names the ONE concrete thing to change, and is present only when there is one — a finding that cannot name a single next step omits it rather than inventing one. The fix travels WITH the finding rather than living in a lookup table a consumer has to know to consult, so the agent guide, the MCP tools and `atlas verify --json` all carry the actionable half without a second call. Codes are permanent once shipped: a reworded message is a patch, a renamed code is a breaking change. Findings were plain strings at catalog `version: 1`, which meant an agent could only pattern-match a sentence — the MCP server now refuses a v1 catalog by version rather than rendering blanks for every finding. See also: atlas verify, atlas scan.',
+    mistakes: `- Branching on \`message\` — it is prose, and rewording it is a patch-level change; branch on \`code\`
+- Expecting every finding to carry a \`fix\` — one is present only when a single concrete next step exists, because a confident wrong instruction costs more than none
+- Reading a \`version: 1\` catalog with code that expects objects — every finding renders blank rather than erroring, which is why the loader refuses by version`,
   },
 
   'atlas/atlas dev': {

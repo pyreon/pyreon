@@ -46,7 +46,8 @@
  * framework's own cursor-misalignment class, which is the one the differential
  * fuzz found six live instances of.
  */
-import type { ComponentRef, VerifyCheck } from '../core'
+import type { ComponentRef, VerifyCheck, VerifyFinding } from '../core'
+import { finding } from '../core'
 import { ensureDom } from '../verify/dom'
 import type { MountRuntime } from '../verify/harness'
 import { SKIP_REASON, skipped } from './registry'
@@ -157,7 +158,7 @@ export async function checkSsrParity(
 ): Promise<VerifyCheck> {
   const { h, mount, renderToString, hydrateRoot, onHydrationMismatch } = runtime
   if (!renderToString || !hydrateRoot || !onHydrationMismatch) {
-    return skipped(SSR_SKIP.noRenderer)
+    return skipped('no-ssr-renderer', SSR_SKIP.noRenderer)
   }
 
   const build = (): unknown => {
@@ -165,22 +166,39 @@ export async function checkSsrParity(
     return wrapper ? h(wrapper as unknown, {}, node) : node
   }
 
-  const findings: string[] = []
+  const findings: VerifyFinding[] = []
   let html: string
   try {
     html = await renderToString(build())
   } catch (err) {
     // A component that cannot server-render at all is a real finding, not a
     // skip: it means this scenario is unusable in any SSR app.
-    return { status: 'fail', findings: [`renderToString threw: ${message(err)}`] }
+    return {
+      status: 'fail',
+      findings: [
+        finding(
+          'ssr-render-threw',
+          `renderToString threw: ${message(err)}`,
+          'Guard anything browser-only (window/document access, a measured layout) behind `onMount`, which never runs during SSR.',
+        ),
+      ],
+    }
   }
 
   // ── Oracle 1: the runtime's own mismatch channel ────────────────────────
-  const mismatches: string[] = []
+  const mismatches: VerifyFinding[] = []
   const stop = onHydrationMismatch((ctx) => {
     // Capped: one broken construct can report per node, and a thousand
     // identical lines say nothing the first five do not.
-    if (mismatches.length < 5) mismatches.push(describeMismatch(ctx))
+    if (mismatches.length < 5) {
+      mismatches.push(
+        finding(
+          'hydration-mismatch',
+          describeMismatch(ctx),
+          'The runtime itself reported this: the SSR markup at that node is not what the client would have rendered.',
+        ),
+      )
+    }
   })
 
   let disposeHydrated: (() => void) | undefined
@@ -208,7 +226,16 @@ export async function checkSsrParity(
     // real bug against a refcounted one, where the second call would remove
     // somebody else's handler.
     disposeHydrated?.()
-    return { status: 'fail', findings: [`hydrateRoot threw: ${message(err)}`] }
+    return {
+      status: 'fail',
+      findings: [
+        finding(
+          'hydrate-threw',
+          `hydrateRoot threw: ${message(err)}`,
+          'The server and client rendered different trees. Check for values that differ between the two — a date, a random id, a `typeof window` branch.',
+        ),
+      ],
+    }
   } finally {
     stop()
   }
@@ -222,12 +249,18 @@ export async function checkSsrParity(
     const client = normalizeHtml(clientContainer.innerHTML)
     if (hydrated !== client) {
       findings.push(
-        'hydrated DOM differs from a fresh client mount — ' +
-          `SSR+hydrate produced ${brief(hydrated)}, client mount produced ${brief(client)}`,
+        finding(
+          'hydrated-dom-differs',
+          'hydrated DOM differs from a fresh client mount — ' +
+            `SSR+hydrate produced ${brief(hydrated)}, client mount produced ${brief(client)}`,
+          'Hydration left the DOM in a state a plain client render would not produce, so the two paths disagree even though neither threw.',
+        ),
       )
     }
   } catch (err) {
-    findings.push(`client mount threw while comparing: ${message(err)}`)
+    findings.push(
+      finding('mount-threw', `client mount threw while comparing: ${message(err)}`),
+    )
   } finally {
     // Both roots are torn down even when the comparison threw: this check runs
     // once per scenario across a whole catalog, and a leaked root would be
@@ -256,9 +289,9 @@ export function ssrParityPlugin(options: SsrParityOptions = {}): AtlasPlugin {
     name: 'atlas:ssr-parity',
     async verify(ctx) {
       const runtime = options.runtime
-      if (!runtime) return { ssrParity: skipped(SKIP_REASON.notRun) }
+      if (!runtime) return { ssrParity: skipped('not-run', SKIP_REASON.notRun) }
       const component = ctx.component.component
-      if (typeof component !== 'function') return { ssrParity: skipped(SKIP_REASON.notRun) }
+      if (typeof component !== 'function') return { ssrParity: skipped('not-run', SKIP_REASON.notRun) }
 
       // The DOM is acquired here rather than injected, matching the mount
       // plugin: `ensureDom` installs the globals `@pyreon/runtime-dom` reaches
@@ -266,7 +299,7 @@ export function ssrParityPlugin(options: SsrParityOptions = {}): AtlasPlugin {
       // installed them hydrates against a different `document` than the runtime
       // sees.
       const dom = await ensureDom()
-      if (!dom.ok) return { ssrParity: skipped(dom.reason) }
+      if (!dom.ok) return { ssrParity: skipped('no-dom', dom.reason) }
       const container = dom.env.document.createElement('div')
       const clientContainer = dom.env.document.createElement('div')
 

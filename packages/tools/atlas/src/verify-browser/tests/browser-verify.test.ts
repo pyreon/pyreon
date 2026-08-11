@@ -11,7 +11,7 @@ import type { VerifyVerdict } from '../../core'
 import { diffPngs, mergeBrowserVerdict } from '../runner'
 
 const PASS = { status: 'pass' } as const
-const FAIL = { status: 'fail', findings: ['boom'] } as const
+const FAIL = { status: 'fail', findings: [{ code: 'mount-threw' as const, message: 'boom' }] } as const
 const SKIP = { status: 'skip' } as const
 
 describe('mergeBrowserVerdict', () => {

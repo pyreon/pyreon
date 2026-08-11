@@ -40,7 +40,7 @@ describe('atlas scan catches a real subscription-retention leak', () => {
     // a reader learns it was the LEAK check without opening the catalog.
     expect(run.stderr).toContain('leaky--empty')
     expect(run.stderr).toContain('leaky--long-content')
-    expect(run.stderr).toContain('leak:')
+    expect(run.stderr).toContain('leak [reactive-nodes-retained]:')
     expect(run.stdout).toMatch(/checks:.*leak \d+\/\d+ ✗/)
     // 320s: the spawn's own descriptive killer is timeout: 300_000 above;
     // the vitest backstop must EXCEED the composed inner budget (the ws-relay

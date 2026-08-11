@@ -117,10 +117,94 @@ export type PlayFn = (ctx: PlayContext) => void | Promise<void>
 /** The status of one verify check. */
 export type CheckStatus = 'pass' | 'fail' | 'skip'
 
+/**
+ * A stable identifier for a CLASS of verify outcome.
+ *
+ * Prose is what a person reads; a code is what a tool can act on. Without one,
+ * an agent handed `"hydrateRoot threw: Cannot read properties of undefined"`
+ * can only pattern-match on a sentence that is free to be reworded — so the
+ * catalog could say what was wrong and never say what KIND of wrong it was.
+ *
+ * Grouped by the check that emits it. Codes are permanent once shipped: a
+ * consumer branching on `hydrate-threw` must keep working, so a reworded
+ * message is a patch and a renamed code is a breaking change.
+ *
+ * Mirrors `UsageFinding.kind`, which already applies this shape to the usage
+ * validator — one convention for "what kind of problem is this".
+ */
+export type FindingCode =
+  // ── interaction ──────────────────────────────────────────────────────────
+  /** The component threw while mounted, or during the click-walk. */
+  | 'mount-threw'
+  /** An authored `play` script failed, naming the step it died in. */
+  | 'play-failed'
+  /** Nothing interactive to drive — a pass, stated so it is not read as one. */
+  | 'nothing-to-drive'
+  // ── ssrParity ────────────────────────────────────────────────────────────
+  | 'ssr-render-threw'
+  | 'hydrate-threw'
+  /** The runtime itself reported a hydration mismatch. */
+  | 'hydration-mismatch'
+  /** Hydrated DOM differs from a fresh client mount — the second oracle. */
+  | 'hydrated-dom-differs'
+  // ── a11y ─────────────────────────────────────────────────────────────────
+  | 'missing-accessible-name'
+  // ── leak ─────────────────────────────────────────────────────────────────
+  | 'reactive-nodes-retained'
+  // ── browser-measured ─────────────────────────────────────────────────────
+  | 'coverage-measured'
+  | 'coverage-errored'
+  | 'snapshot-differs'
+  | 'snapshot-failed'
+  | 'baseline-created'
+  | 'baseline-updated'
+  // ── reasons a check did not run ──────────────────────────────────────────
+  /** Measurable only in a real browser. */
+  | 'browser-only'
+  /** No plugin claimed this check. */
+  | 'not-run'
+  /** No DOM could be created to mount into. */
+  | 'no-dom'
+  /** The leak check needs a GC hook (`bun`, or `node --expose-gc`). */
+  | 'no-gc-hook'
+  /** `@pyreon/runtime-server` is not resolvable, so parity cannot be checked. */
+  | 'no-ssr-renderer'
+  /** Nothing statically nameable to check. */
+  | 'nothing-to-check'
+
+/**
+ * One thing a check found.
+ *
+ * `message` states what is wrong; `fix` states what to change, and travels WITH
+ * the finding rather than living in a lookup table a consumer has to know to
+ * consult. A finding that cannot name a single concrete next step omits `fix`
+ * rather than inventing one — a confident wrong instruction costs more than
+ * none, the same rule the name suggester applies.
+ */
+export interface VerifyFinding {
+  code: FindingCode
+  /** Human/agent-readable statement of what happened. */
+  message: string
+  /** The one concrete thing to change, when there is one. */
+  fix?: string
+}
+
 export interface VerifyCheck {
   status: CheckStatus
-  /** human/agent-readable findings when not a clean pass */
-  findings?: readonly string[]
+  /**
+   * What this check found, when it is not a clean pass.
+   *
+   * Structured rather than plain strings (catalog `version: 2`): every
+   * consumer that wants to branch on a failure CLASS — an agent deciding what
+   * to change, a CI step filtering, a ratchet comparing runs — was previously
+   * reduced to matching on a prose sentence.
+   */
+  findings?: readonly VerifyFinding[]
+}
+
+/** A finding, as a one-liner so producers stay readable. */
+export function finding(code: FindingCode, message: string, fix?: string): VerifyFinding {
+  return fix === undefined ? { code, message } : { code, message, fix }
 }
 
 /**
@@ -164,6 +248,29 @@ export interface VerifyVerdict {
   ssrParity: VerifyCheck
 }
 
+/**
+ * Every check a verdict carries — the SINGLE owner of that list.
+ *
+ * Lives beside `VerifyVerdict` because it enumerates exactly its check fields,
+ * and every layer above needs it: the registry merges by it, the CLI report
+ * tallies by it, and the catalog renderer collects findings by it. A second
+ * hand-written list is a silent-hole generator, and this one is not
+ * hypothetical — the catalog renderer carried a five-entry copy that was never
+ * updated when `ssrParity` landed, so hydration failures were recorded and then
+ * dropped from the agent guide. Anything that iterates checks imports this.
+ */
+export const CHECK_KEYS = [
+  'a11y',
+  'interaction',
+  'reactivityCoverage',
+  'leak',
+  'snapshot',
+  'ssrParity',
+] as const
+
+/** One check's name. Derived from the list, so the two can never disagree. */
+export type CheckKey = (typeof CHECK_KEYS)[number]
+
 /** Everything Atlas derives about one component. */
 export interface ComponentIntelligence {
   /**
@@ -204,6 +311,14 @@ export interface ComponentIntelligence {
 
 /** The serialized whole-catalog shape — the machine surface agents consume. */
 export interface CatalogGraphData {
-  version: 1
+  /**
+   * Catalog schema version.
+   *
+   * Bumped 1 → 2 when `VerifyCheck.findings` became structured
+   * (`{ code, message, fix? }`) instead of plain strings. A consumer reading a
+   * v1 catalog would silently render `[object Object]` for every finding, so
+   * the version is the thing that lets it refuse instead.
+   */
+  version: 2
   components: readonly ComponentIntelligence[]
 }
