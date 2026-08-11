@@ -151,3 +151,31 @@ describe('TscBatch — program reuse', () => {
     expect(batch.check(roots, () => true).errorCount).toBe(1)
   })
 })
+
+describe('resolveOptions — empty directories', () => {
+  // This is the CI failure that exposed the bug. `parseJsonConfigFileContent`
+  // reports TS18003 ("No inputs were found") when its glob matches nothing, and
+  // throwing on it made resolution depend on the directory happening to contain
+  // files. It passed locally because /tmp does, and failed on a fresh runner
+  // because /tmp there does not.
+  //
+  // Inputs come from `check()`, never from the config, so an empty directory is
+  // an ordinary case and must resolve.
+  it('resolves against an EMPTY directory', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tsc-batch-empty-'))
+    dirs.push(dir)
+    const opts = resolveOptions(OPTIONS, dir)
+    expect(typeof opts.module).toBe('number')
+  })
+
+  it('still typechecks explicit roots in a directory the config matched nothing in', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tsc-batch-empty2-'))
+    dirs.push(dir)
+    const batch = new TscBatch({ dir, options: resolveOptions(OPTIONS, dir) })
+    writeFileSync(join(dir, 'late.ts'), 'const n: number = "no"\n')
+    // Options were resolved while the directory was empty; the file arrived
+    // after. Roots are explicit, so this must still report the error.
+    const { diagnostics } = batch.check([join(dir, 'late.ts')], () => true)
+    expect(diagnostics.map((d) => d.code)).toEqual([2322])
+  })
+})

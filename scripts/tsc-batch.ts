@@ -84,11 +84,32 @@ export interface TscBatchOptions {
  * fast it reports it.
  */
 export function resolveOptions(configObject: unknown, dir: string): ts.CompilerOptions {
-  const parsed = ts.parseJsonConfigFileContent(configObject, ts.sys, dir)
-  if (parsed.errors.length > 0) {
-    const first = parsed.errors[0]!
+  // `include: []` stops TypeScript globbing `dir` for inputs. Nothing here
+  // reads `parsed.fileNames` — every root name is passed explicitly to
+  // `check()` — so the walk is pure I/O for a result that gets discarded, and
+  // on a big or unfamiliar directory it is not cheap.
+  //
+  // `include` rather than `files`: an empty `files` list is its own error
+  // (TS18002, "The 'files' list in config file is empty"), while an empty
+  // `include` produces the same TS18003 that an unmatched glob does.
+  const parsed = ts.parseJsonConfigFileContent({ ...(configObject as object), include: [] }, ts.sys, dir)
+  // TS18003 ("No inputs were found in config file") is the EXPECTED outcome of
+  // the line above, not a problem: inputs come from `check()`, not the config.
+  //
+  // Worth naming, because the same diagnostic means the opposite thing one
+  // directory over. `check-readme-imports` treats TS18003 as a hard failure —
+  // there it means the probe compiled NOTHING and the gate silently checked
+  // nothing. The difference is whether the config is supposed to supply the
+  // inputs. Here it never is.
+  //
+  // This also fixed a latent bug rather than just a test: throwing on it made
+  // `resolveOptions` depend on `dir` happening to contain files at the moment
+  // it was called. That held by accident (the cache directory is populated
+  // before the first call) and broke the moment a caller passed an empty one.
+  const fatal = parsed.errors.filter((e) => e.code !== 18003)
+  if (fatal.length > 0) {
     throw new Error(
-      `[tsc-batch] invalid compiler options: ${ts.flattenDiagnosticMessageText(first.messageText, ' ')}`,
+      `[tsc-batch] invalid compiler options: ${ts.flattenDiagnosticMessageText(fatal[0]!.messageText, ' ')}`,
     )
   }
   return parsed.options
