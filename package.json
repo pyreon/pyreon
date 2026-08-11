@@ -81,6 +81,7 @@
     "prose-props": "bun scripts/check-prose-props.ts",
     "check-native-runtime-parity": "bun scripts/check-native-runtime-parity.ts",
     "check-gates-wired": "bun scripts/check-gates-wired.ts",
+    "check-readme-imports": "bun scripts/check-readme-imports.ts",
     "check-component-docs": "bun scripts/check-component-docs.ts",
     "check-readme-imports": "bun scripts/check-readme-imports.ts",
     "atlas-guide": "bun scripts/check-atlas-guide.ts",
