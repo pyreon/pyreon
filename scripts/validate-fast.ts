@@ -84,6 +84,8 @@ const GATES: Gate[] = [
   // hand-written); the gate makes the one checkable claim about them, that
   // every prop name the prose cites actually exists.
   { name: 'check-prose-props', cmd: 'bun scripts/check-prose-props.ts' },
+  { name: 'check-native-runtime-parity', cmd: 'bun scripts/check-native-runtime-parity.ts' },
+  { name: 'check-gates-wired', cmd: 'bun scripts/check-gates-wired.ts' },
   { name: 'check-component-docs', cmd: 'bun scripts/check-component-docs.ts' },
   // NOT here: `check-atlas-guide`. It MOUNTS 108 components through Vite, and
   // measured cold it costs ~48s — which would take this list from ~19s to ~66s
