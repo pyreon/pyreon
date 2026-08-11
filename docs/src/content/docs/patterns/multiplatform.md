@@ -10,7 +10,7 @@ seeAlso: [routing-setup, state-management, data-fetching]
 
 **PMTC compiles your COMPONENT SOURCE — signals, the 15 canonical primitives, a fixed hook set, and a narrow declarative TS subset — to SwiftUI (iOS) and Jetpack Compose (Android). It does NOT transpile npm packages to native.** So a multiplatform app is built from: the canonical primitives + reactivity + the ported hooks/services, written in the supported TS subset. Anything outside that compiles for web but **silently breaks or drops on native**. Build inside the lane and it works first-try; step outside and it won't.
 
-> Status: native PMTC is **demo-quality** (self-rated 66/100). Per-PR validation is `swiftc -parse` + `kotlinc`-against-stubs (syntax-level); full device builds are advisory. Treat the rules below as hard constraints, not suggestions.
+> Status: native PMTC is **demo-quality, not production-ready**. The one authoritative number is the gated capability matrix in [multiplatform.md](../multiplatform) (`check-multiplatform-matrix` fails CI when its headline disagrees with its table) — do not quote a score from memory. Per-PR validation is `swiftc -parse` + `kotlinc`-against-stubs (syntax-level); full device builds are advisory. Treat the rules below as hard constraints, not suggestions.
 
 ## Imports — the canonical layer
 
