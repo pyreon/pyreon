@@ -23,5 +23,13 @@
   "publishConfig": {
     "access": "public"
   },
-  "sideEffects": false
+  "sideEffects": false,
+  "pyreon": {
+    "native": {
+      "swift": {
+        "module": "PyreonRuntime",
+        "dir": "Sources/PyreonRuntime"
+      }
+    }
+  }
 }

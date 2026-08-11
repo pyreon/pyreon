@@ -177,6 +177,11 @@ describe('buildScaffold — native runtime delivery wiring (local-proof-found fi
   it('Android app build.gradle.kts wires the Kotlin runtime srcDirs + deps', () => {
     const g = get('android/app/build.gradle.kts')
     expect(g).toContain('kotlin("plugin.serialization")')
+    // The monorepo-safe path: prefer the resolved pyreon-native.srcdirs file
+    // (written by `pyreon-native wire`, hoisting/pnpm-safe)…
+    expect(g).toContain('file("pyreon-native.srcdirs")')
+    expect(g).toContain('resolved.forEach { srcDir(it) }')
+    // …falling back to the legacy fixed node_modules paths (flat layout).
     expect(g).toContain(
       'srcDir("../../node_modules/@pyreon/native-runtime-kotlin/src/main/kotlin")',
     )
@@ -186,6 +191,19 @@ describe('buildScaffold — native runtime delivery wiring (local-proof-found fi
     // Runtime-source deps (useFetch/loader @Serializable + coroutines).
     expect(g).toContain('kotlinx-serialization-json')
     expect(g).toContain('kotlinx-coroutines-android')
+  })
+
+  it('build-android.sh runs `pyreon-native wire` to resolve native srcDirs (monorepo Gap-1 fix)', () => {
+    const buildAndroid = get('scripts/build-android.sh')
+    expect(buildAndroid).toContain('pyreon-native wire')
+    expect(buildAndroid).toContain('--android-out=')
+    expect(buildAndroid).toContain('pyreon-native.srcdirs')
+    // Ordering: wire must run AFTER the emit (both before gradle configures),
+    // so the srcdirs file exists at Gradle config time.
+    const emitIdx = buildAndroid.indexOf('pyreon-native build --target=android')
+    const wireIdx = buildAndroid.indexOf('pyreon-native wire')
+    expect(emitIdx).toBeGreaterThan(-1)
+    expect(wireIdx).toBeGreaterThan(emitIdx)
   })
 
   it('Android release lane: signed release buildType + the release-test toggle', () => {

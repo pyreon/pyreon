@@ -481,15 +481,27 @@ android {
     kotlinOptions { jvmTarget = "17" }
 
     // The Pyreon Kotlin runtimes ship source-only via npm (no AAR), so
-    // add the installed packages' src/main/kotlin as extra source roots.
-    // After npm install they live under node_modules, two levels up from
-    // android/app/. The emitted Kotlin's PyreonReactivity / PyreonRouter /
-    // PyreonFetch / useNavigate compile from these sources.
+    // their src/main/kotlin dirs are extra source roots. The resolved,
+    // hoisting/pnpm-safe list is written to pyreon-native.srcdirs by
+    // pyreon-native wire (run from scripts/build-android.sh, BEFORE this
+    // configures). Prefer that file; fall back to the legacy fixed
+    // node_modules paths for a flat layout where wire hasn't run yet.
     sourceSets {
         getByName("main") {
             kotlin {
-                srcDir("../../node_modules/@pyreon/native-runtime-kotlin/src/main/kotlin")
-                srcDir("../../node_modules/@pyreon/native-router-kotlin/src/main/kotlin")
+                val srcDirsFile = file("pyreon-native.srcdirs")
+                val resolved = if (srcDirsFile.exists()) {
+                    srcDirsFile.readLines()
+                        .map { it.trim() }
+                        .filter { it.isNotEmpty() && !it.startsWith("#") }
+                } else emptyList()
+                if (resolved.isNotEmpty()) {
+                    resolved.forEach { srcDir(it) }
+                } else {
+                    // Fallback (flat layout / wire not yet run).
+                    srcDir("../../node_modules/@pyreon/native-runtime-kotlin/src/main/kotlin")
+                    srcDir("../../node_modules/@pyreon/native-router-kotlin/src/main/kotlin")
+                }
             }
         }
     }
@@ -641,6 +653,13 @@ mkdir -p "\${OUT}"
 # imports (\`${androidPkg}.generated.App\`); without it the emit lands in
 # Kotlin's anonymous root package and the import fails to resolve.
 npx pyreon-native build --target=android --source="\${PROJECT_DIR}/src" --out="\${OUT}" --kotlin-package=${androidPkg}.generated
+# Resolve the Pyreon native Kotlin source roots (base runtime/router + any
+# co-located feature native/kotlin/) and write them where build.gradle.kts
+# reads them. Hoisting/pnpm-safe — the fix for a monorepo where the runtime
+# hoists to the workspace root and the fixed ../../node_modules path dangles.
+# This runs BEFORE gradle configures (npm run build:android precedes the
+# gradle build), so the srcdirs file exists at Gradle config time.
+npx pyreon-native wire --app="\${PROJECT_DIR}" --android-out="\${PROJECT_DIR}/android/app/pyreon-native.srcdirs"
 # Asset pipeline: shared assets/ → res/drawable-* (skipped when empty).
 if [[ -d "\${PROJECT_DIR}/assets" ]]; then
   npx pyreon-native assets --target=android --source="\${PROJECT_DIR}/assets" --out="\${PROJECT_DIR}/android/app/src/main"
