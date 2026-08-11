@@ -319,7 +319,44 @@ function countMockVNodeLiterals(source: string): number {
   return count
 }
 
+/**
+ * A `*.types.test.ts(x)` file asserts TYPES — "the file failing to compile IS
+ * the failure". Nothing renders, so the audit's whole prescription ("add a test
+ * that renders the real component through `h()`") is meaningless there, and a
+ * `{ type, props, children }` literal in one is invariably a cast used to obtain
+ * a value of the type under assertion, not a mock standing in for a render.
+ *
+ * Flagging them trains people to ignore an audit that is specified to sit at
+ * zero — the worst outcome for a gate.
+ */
+function isTypeOnlyTest(relPath: string): boolean {
+  return /\.types\.test\.tsx?$/.test(relPath)
+}
+
+/**
+ * Files whose `{ type, props, children }` literals are NOT Pyreon VNodes, so
+ * the "no `h()` import" signal is structurally inapplicable. Each entry is a
+ * verified false positive with its reason. RATCHET: this list may only shrink —
+ * never add a file to silence a finding you have not read.
+ *
+ * - `document/**`: `@pyreon/document`'s `DocNode` is its own tree format that
+ *   happens to share the shape. Those tests import the REAL `Document`/`Page`/
+ *   `Text` constructors and the real `render`, so the pipeline they exercise is
+ *   the genuine one — there is no `h()` anywhere in the package to import.
+ */
+const NON_VNODE_TREE_FORMATS: readonly RegExp[] = [
+  /packages\/fundamentals\/document\/src\/tests\//,
+]
+
+function hasNonVNodeTreeFormat(relPath: string): boolean {
+  return NON_VNODE_TREE_FORMATS.some((re) => re.test(relPath))
+}
+
 function classifyRisk(entry: Omit<TestAuditEntry, 'risk'>): AuditRisk {
+  // Both checks precede the mock count: these files' literals are not mocks at
+  // all, so counting them and then downgrading would misreport the counts too.
+  if (isTypeOnlyTest(entry.relPath)) return 'low'
+  if (hasNonVNodeTreeFormat(entry.relPath)) return 'low'
   const mocks =
     entry.mockVNodeLiteralCount + entry.mockHelperCount + entry.mockHelperCallCount
   if (mocks === 0) return 'low'

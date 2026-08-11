@@ -482,6 +482,76 @@ describe('auditTestEnvironment — real Pyreon repo', () => {
       expect(entry.realHCallCount).toBeGreaterThanOrEqual(0)
     }
   })
+
+  // `.claude/rules/test-environment-parity.md` states the pre-merge guard as
+  // "verify HIGH + MEDIUM count is still 0", and the comment above records that
+  // T1.2 achieved it — but nothing ASSERTED it, so the count silently drifted
+  // back to 2 HIGH (both false positives). A documented invariant with no test
+  // is a convention, not a guard. This is the guard.
+  it('real-repo HIGH and MEDIUM counts stay at zero', () => {
+    const high = result.entries.filter((e) => e.risk === 'high')
+    const medium = result.entries.filter((e) => e.risk === 'medium')
+    expect(
+      high.map((e) => e.relPath),
+      'HIGH-risk mock-vnode test files (expected none)',
+    ).toEqual([])
+    expect(
+      medium.map((e) => e.relPath),
+      'MEDIUM-risk mock-vnode test files (expected none)',
+    ).toEqual([])
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// False-positive classes the classifier must not flag
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe('classifier false-positive skips', () => {
+  let f: ReturnType<typeof makeFixture>
+  beforeEach(() => {
+    f = makeFixture()
+  })
+  afterEach(() => f.cleanup())
+
+  it('does NOT flag a *.types.test.ts file (type assertions never render)', () => {
+    // The literal is a cast used to obtain a value of the type under assertion.
+    // There is nothing to render, so "add a real h() test" is not a fix.
+    f.writeTest(
+      'core/core/src/tests/shape.types.test.ts',
+      `
+        import type { VNodeChild } from '../types'
+        const node = { type: 'div', props: {}, children: [] } as unknown as VNodeChild
+        const sole: VNodeChild = node
+      `,
+    )
+    expect(auditTestEnvironment(f.root).entries[0]!.risk).toBe('low')
+  })
+
+  it('still flags a plain *.test.ts with the same mock literal', () => {
+    // Guards the skip above from being over-broad: only `.types.test.` is exempt.
+    f.writeTest(
+      'core/core/src/tests/shape.test.ts',
+      `
+        const node = { type: 'div', props: {}, children: [] }
+        it('uses it', () => { expect(node.type).toBe('div') })
+      `,
+    )
+    expect(auditTestEnvironment(f.root).entries[0]!.risk).toBe('high')
+  })
+
+  it('does NOT flag @pyreon/document tests (DocNode is not a VNode)', () => {
+    // `@pyreon/document` has its own tree format that shares the shape. Those
+    // tests call the REAL node constructors; there is no `h()` in the package.
+    f.writeTest(
+      'fundamentals/document/src/tests/doc-tree.test.ts',
+      `
+        import { Document, Page, Text } from '../nodes'
+        const tree = { type: 'document', props: {}, children: [Page({ children: [] })] }
+        it('builds', () => { expect(tree.type).toBe('document') })
+      `,
+    )
+    expect(auditTestEnvironment(f.root).entries[0]!.risk).toBe('low')
+  })
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════
