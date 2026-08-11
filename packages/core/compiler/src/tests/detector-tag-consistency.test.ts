@@ -43,6 +43,8 @@ const COMPILER_CODES = [
   'as-unknown-as-vnodechild',
   'island-never-with-registry-entry',
   'query-options-as-function',
+  'accessor-uncalled-in-template',
+  'accessor-uncalled-in-condition',
 ] as const
 type CompilerCode = (typeof COMPILER_CODES)[number]
 

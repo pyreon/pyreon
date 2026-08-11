@@ -67,6 +67,17 @@
  *                       hooks take options as a FUNCTION so `queryKey` can
  *                       read signals and refetch reactively — wrap it:
  *                       `useQuery(() => ({ ... }))`.
+ *  - `accessor-uncalled-in-template` — a tracked accessor binding
+ *                       interpolated UNCALLED into a template literal
+ *                       (`` `${itemWidth}%` `` where `itemWidth =
+ *                       computed(...)`) stringifies the function SOURCE
+ *                       into the output — a CSS value / text silently
+ *                       renders `() => …`. Call it: `${itemWidth()}`.
+ *  - `accessor-uncalled-in-condition` — a tracked accessor binding used
+ *                       BARE (or under `!`) as an `if`/ternary condition
+ *                       outside JSX. An accessor is a function — always
+ *                       truthy — so `if (!has)` is dead and `if (has)`
+ *                       always-taken. Call it: `if (!has())`.
  *
  * Two-mode surface mirrors `react-intercept.ts`:
  *  - `detectPyreonPatterns(code)` — diagnostics only
@@ -113,6 +124,8 @@ export type PyreonDiagnosticCode =
   | 'as-unknown-as-vnodechild'
   | 'island-never-with-registry-entry'
   | 'query-options-as-function'
+  | 'accessor-uncalled-in-template'
+  | 'accessor-uncalled-in-condition'
 
 export interface PyreonDiagnostic {
   /** Machine-readable code for filtering + programmatic handling */
@@ -146,6 +159,33 @@ interface DetectContext {
    * patterns that should be `sig.set(value)`.
    */
   signalBindings: Set<string>
+  /**
+   * Identifiers bound to a `useX(...)` hook call (`const x = useX(...)` —
+   * PascalCase after `use`). Populated by `collectAccessorBindings()`.
+   * Kept SEPARATE from `signalBindings` on purpose: a hook result called
+   * with arguments (`nav('/home')`) is legitimate, so hook bindings must
+   * never feed `detectSignalWriteAsCall`. Consumed by the accessor-uncalled
+   * detectors (evidence-gated, see `zeroArgCalled`) and by the hook tier of
+   * `static-early-return-conditional` (zero-arg call in the condition).
+   */
+  hookBindings: Set<string>
+  /**
+   * Identifiers invoked as a PLAIN zero-arg call `x()` (not optional-chained
+   * `x?.()`) anywhere in the file. Evidence set for the hook tier of the
+   * accessor-uncalled detectors: a hook result may legitimately be a plain
+   * value (`useId()` → string) or nullable (`useRouter()` → router | null),
+   * so a bare `${x}` / `if (x)` on a hook binding fires ONLY when the file
+   * also calls `x()` — proof the binding is a function, which makes the
+   * uncalled use definitively wrong. Signal/computed bindings need no
+   * evidence (the factory return is always a callable).
+   */
+  zeroArgCalled: Set<string>
+  /**
+   * Names ALSO bound by a non-accessor declaration/param/import somewhere
+   * in the file — ambiguous under the scope-blind collector; the accessor-
+   * uncalled detectors skip them. See `AccessorBindings.otherBound`.
+   */
+  otherBound: Set<string>
   /**
    * Names of `island()` declarations carrying `hydrate: 'never'`. Populated
    * by `collectNeverIslandNames()` before the main detection walk. Used by
@@ -676,29 +716,104 @@ function detectOnClickUndefined(ctx: DetectContext, node: ts.JsxAttribute): void
  * human reviewer can dismiss the rare false positive in seconds.
  */
 export function collectSignalBindings(sf: ts.SourceFile): Set<string> {
-  const names = new Set<string>()
-  function isSignalFactoryCall(init: ts.Expression | undefined): boolean {
-    if (!init || !ts.isCallExpression(init)) return false
+  return collectAccessorBindings(sf).signals
+}
+
+export interface AccessorBindings {
+  /** `const x = signal(...)` / `computed(...)` — definitely accessors. */
+  signals: Set<string>
+  /** `const x = useX(...)` — hook results, MAY be accessors (see zeroArgCalled). */
+  hooks: Set<string>
+  /** Identifiers invoked as a plain zero-arg call `x()` (not `x?.()`) anywhere. */
+  zeroArgCalled: Set<string>
+  /**
+   * Names ALSO bound by something that is NOT a tracked accessor
+   * declaration — any other variable declaration (incl. destructuring:
+   * `const [count] = useState(0)`), a function parameter, a function
+   * declaration, or an import. The collector is scope-blind, so a name in
+   * this set is AMBIGUOUS: the use site may refer to the non-accessor
+   * binding (`const items = ref.current; if (!items)` — a legit null
+   * check — while `const items = signal(…)` exists in another scope of
+   * the same file). The accessor-uncalled detectors skip ambiguous names
+   * entirely (zero-false-positive doctrine: a missed case is acceptable,
+   * a wrong flag is not). Both FP shapes were found by the real-corpus
+   * validation run, not synthetic specs.
+   */
+  otherBound: Set<string>
+}
+
+/**
+ * ONE walk collecting the three identifier sets the accessor-shaped
+ * detectors share (`signal-write-as-call`, `static-early-return-conditional`,
+ * `accessor-uncalled-in-template`, `accessor-uncalled-in-condition`).
+ * `collectSignalBindings` (the historical export `pyreon-migrate` consumes)
+ * delegates here so the two can never drift.
+ */
+export function collectAccessorBindings(sf: ts.SourceFile): AccessorBindings {
+  const signals = new Set<string>()
+  const hooks = new Set<string>()
+  const zeroArgCalled = new Set<string>()
+  const otherBound = new Set<string>()
+  function calleeName(init: ts.Expression | undefined): string | null {
+    if (!init || !ts.isCallExpression(init)) return null
     const callee = init.expression
-    if (!ts.isIdentifier(callee)) return false
-    return callee.text === 'signal' || callee.text === 'computed'
+    if (!ts.isIdentifier(callee)) return null
+    return callee.text
+  }
+  function addBoundNames(binding: ts.BindingName): void {
+    if (ts.isIdentifier(binding)) {
+      otherBound.add(binding.text)
+      return
+    }
+    for (const el of binding.elements) {
+      if (ts.isOmittedExpression(el)) continue
+      addBoundNames(el.name)
+    }
   }
   function walk(node: ts.Node): void {
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
-      // Only `const` — find the parent VariableDeclarationList to check.
+    if (ts.isVariableDeclaration(node)) {
+      // Tracked accessor shape: `const x = signal(...)/computed(...)/useX(...)`
+      // — identifier name, const list, direct factory/hook call initializer.
+      // Only `const` — `let`/`var` may be reassigned to non-accessor values.
       const list = node.parent
-      if (
-        ts.isVariableDeclarationList(list) &&
-        (list.flags & ts.NodeFlags.Const) !== 0 &&
-        isSignalFactoryCall(node.initializer)
-      ) {
-        names.add(node.name.text)
+      const isConstList =
+        ts.isVariableDeclarationList(list) && (list.flags & ts.NodeFlags.Const) !== 0
+      const callee = isConstList && ts.isIdentifier(node.name) ? calleeName(node.initializer) : null
+      if (callee === 'signal' || callee === 'computed') {
+        signals.add((node.name as ts.Identifier).text)
+      } else if (callee && /^use[A-Z]/.test(callee)) {
+        hooks.add((node.name as ts.Identifier).text)
+      } else {
+        // Every OTHER variable declaration (any kind, destructuring
+        // included, catch-clause + for-of/for-in loop variables reach
+        // here too) marks its names ambiguous.
+        addBoundNames(node.name)
       }
+    } else if (
+      ts.isArrowFunction(node) ||
+      ts.isFunctionDeclaration(node) ||
+      ts.isFunctionExpression(node) ||
+      ts.isMethodDeclaration(node)
+    ) {
+      if (ts.isFunctionDeclaration(node) && node.name) otherBound.add(node.name.text)
+      for (const p of node.parameters) addBoundNames(p.name)
+    } else if (ts.isImportSpecifier(node) || ts.isNamespaceImport(node)) {
+      otherBound.add(node.name.text)
+    } else if (ts.isImportClause(node) && node.name) {
+      otherBound.add(node.name.text)
+    }
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.arguments.length === 0 &&
+      !node.questionDotToken
+    ) {
+      zeroArgCalled.add(node.expression.text)
     }
     ts.forEachChild(node, walk)
   }
   walk(sf)
-  return names
+  return { signals, hooks, zeroArgCalled, otherBound }
 }
 
 function detectSignalWriteAsCall(ctx: DetectContext, node: ts.CallExpression): void {
@@ -872,16 +987,20 @@ function detectStaticReturnNullConditional(
  * the compiler emits the shape unchanged with zero warnings, and TS2774
  * does NOT cover it (the signal IS called).
  *
- * Detection (deliberately narrow — signal-binding-gated ONLY):
+ * Detection (deliberately narrow — tracked-binding-gated ONLY):
  *  - Component-shaped function (PascalCase + contains JSX), same walk as
  *    `detectStaticReturnNullConditional`
  *  - Top-level `if` whose then-statement is a NON-null early return
  *    (`return <JSX/>`, `return expr`, bare `return`, or the
  *    single-statement block forms)
  *  - The condition contains a zero-arg CallExpression whose callee is a
- *    TRACKED signal/computed binding (`ctx.signalBindings`). A broader
- *    "any zero-arg call" tier was deliberately rejected — helper calls in
- *    setup guards are legitimate and would be a false-positive factory.
+ *    TRACKED binding: a signal/computed const (`ctx.signalBindings`) OR a
+ *    hook-result const (`ctx.hookBindings` — `const loading = useLoading()`
+ *    then `if (loading()) return <Skeleton/>`; a zero-arg callable returned
+ *    by a `useX` hook is the Pyreon accessor convention, and the CALL in the
+ *    condition proves the author treats it as one). A broader "any zero-arg
+ *    call" tier was deliberately rejected — helper calls in setup guards are
+ *    legitimate and would be a false-positive factory.
  *
  * PRECEDENCE vs `static-return-null-conditional`: the `return null` shape
  * stays with the OLDER code (its message points at the accessor fix for
@@ -911,11 +1030,12 @@ function nonNullEarlyReturn(stmt: ts.Statement): ts.ReturnStatement | null {
 
 /**
  * Walks `cond` for a zero-arg CallExpression whose callee is an identifier
- * tracked in `signalBindings` (a `const x = signal(...)` / `computed(...)`
- * declaration in the same file). Returns the FIRST matching signal name,
- * or null. Zero-arg only: `sig(value)` is the write-misuse shape owned by
- * `signal-write-as-call`, and `sig.peek()` deliberately opts out of
- * tracking (a peeking author knows the read is untracked).
+ * tracked in the given binding set (`const x = signal(...)` / `computed(...)`
+ * or the hook tier `const x = useX(...)` — the caller passes the tiers it
+ * accepts). Returns the FIRST matching name, or null. Zero-arg only:
+ * `sig(value)` is the write-misuse shape owned by `signal-write-as-call`,
+ * and `sig.peek()` deliberately opts out of tracking (a peeking author
+ * knows the read is untracked).
  */
 function findSignalReadInCondition(
   cond: ts.Expression,
@@ -943,11 +1063,11 @@ function detectStaticEarlyReturnConditional(
   ctx: DetectContext,
   node: ts.ArrowFunction | ts.FunctionDeclaration | ts.FunctionExpression,
 ): void {
-  // Fast exit: without a tracked signal binding in the file, no condition
-  // can qualify. (This also means the `hasPyreonPatterns` pre-filter's
-  // existing `signal(`/`computed(` line already admits every file this
-  // detector could fire on — no new pre-filter line needed.)
-  if (ctx.signalBindings.size === 0) return
+  // Fast exit: without a tracked signal/hook binding in the file, no
+  // condition can qualify. (The `hasPyreonPatterns` pre-filter admits the
+  // signal tier via its `signal(`/`computed(` line and the hook tier via
+  // the `const x = useX(` line.)
+  if (ctx.signalBindings.size === 0 && ctx.hookBindings.size === 0) return
   if (!isComponentShapedFunction(node)) return
   if (!containsJsx(node)) return
   const body = node.body
@@ -956,7 +1076,9 @@ function detectStaticEarlyReturnConditional(
   for (const stmt of body.statements) {
     if (!ts.isIfStatement(stmt)) continue
     if (!nonNullEarlyReturn(stmt.thenStatement)) continue
-    const sigName = findSignalReadInCondition(stmt.expression, ctx.signalBindings)
+    const sigName =
+      findSignalReadInCondition(stmt.expression, ctx.signalBindings) ??
+      findSignalReadInCondition(stmt.expression, ctx.hookBindings)
     if (!sigName) continue
     pushDiag(
       ctx,
@@ -969,6 +1091,204 @@ function detectStaticEarlyReturnConditional(
     )
     // Only flag the FIRST occurrence per component — chained early
     // returns are usually one mistake, not three (mirrors the sibling).
+    return
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Patterns: accessor-uncalled-in-template / accessor-uncalled-in-condition
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * "Accessor used as a VALUE" detection round. A tracked accessor binding
+ * (a `const x = signal(...)`/`computed(...)`, or a hook-result const with
+ * in-file proof it is callable — see `DetectContext.zeroArgCalled`) used
+ * UNCALLED where its VALUE was meant:
+ *
+ *  - in a template-literal interpolation (`` `${itemWidth}%` `` where
+ *    `itemWidth = computed(...)`) — stringifies the function SOURCE into
+ *    the output. A CSS width becomes `() => …%`, silently (upstream-
+ *    reported shipped bug; the compiler's signal auto-call pass covers
+ *    JSX expression regions, NOT template interpolations).
+ *  - bare (or under `!`) as an `if`/ternary condition outside JSX — a
+ *    function is ALWAYS truthy, so `if (!has)` is dead and `if (has)`
+ *    always-taken. (Inside JSX the compiler auto-calls known signals in
+ *    conditionals, so JSX-ancestor conditions are skipped.)
+ *
+ * Zero-false-positive doctrine (the repo bar for body-scope detectors —
+ * a missed case is acceptable, a wrong flag is not). The deliberate gates:
+ *
+ *  - TRACKED bindings only — never arbitrary identifiers (a helper the
+ *    author plausibly means to stringify or truthiness-test stays silent).
+ *  - Hook tier is EVIDENCE-GATED: `const x = useX()` may return a plain
+ *    value (`useId()` → string — `${x}` is CORRECT) or a nullable handle
+ *    (`useRouter()` → router | null — `if (!x)` is a legit existence
+ *    test). The tier fires only when the file ALSO calls `x()` plainly
+ *    (proof the binding is a function → truthiness/interpolation of the
+ *    bare name is definitively wrong).
+ *  - Tagged templates are excluded — a tag function legitimately receives
+ *    function interpolations (styled/css APIs call them with props).
+ *  - Condition operands must be the WHOLE test or a top-level `&&`/`||`
+ *    operand, bare or `!`-wrapped. `typeof x === 'function'`, `x == null`,
+ *    `x === y`, and `x.current` never match by construction (they are not
+ *    bare-identifier operands).
+ *  - A name CALLED anywhere in the same `if`/ternary (condition OR
+ *    branches) is skipped — `fmt ? fmt() : '-'` is a guard shape whose
+ *    call sits inside the branch the guard protects, so the call is not
+ *    proof of non-nullability; skipping the whole statement is the safe
+ *    side for both tiers.
+ *  - AMBIGUOUS names skip: the collector is scope-blind, so a name ALSO
+ *    bound by any non-accessor declaration in the file — another variable
+ *    (destructuring included: `const [count] = useState(0)`), a function
+ *    parameter, a function declaration, an import — may be the one the
+ *    use site refers to (`const items = ref.current; if (!items)` is a
+ *    legit null check). Such names never fire (`otherBound`); both
+ *    real-corpus FPs found during validation were this shape.
+ */
+
+/** Unwrap parens + type-only layers (`as` / `satisfies` / `!`-non-null). */
+function unwrapValueLayers(expr: ts.Expression): ts.Expression {
+  let e = expr
+  for (;;) {
+    if (ts.isParenthesizedExpression(e)) e = e.expression
+    else if (ts.isAsExpression(e)) e = e.expression
+    else if (ts.isSatisfiesExpression(e)) e = e.expression
+    else if (ts.isNonNullExpression(e)) e = e.expression
+    else return e
+  }
+}
+
+/** True when any ancestor is a JSX construct (element/fragment/expression/attr). */
+function hasJsxAncestor(node: ts.Node): boolean {
+  let cur: ts.Node | undefined = node.parent
+  while (cur) {
+    if (
+      ts.isJsxElement(cur) ||
+      ts.isJsxSelfClosingElement(cur) ||
+      ts.isJsxFragment(cur) ||
+      ts.isJsxExpression(cur) ||
+      ts.isJsxAttribute(cur) ||
+      ts.isJsxSpreadAttribute(cur)
+    ) {
+      return true
+    }
+    cur = cur.parent
+  }
+  return false
+}
+
+/** Is `name` a tracked accessor for the uncalled-use detectors (tier rules)? */
+function isTrackedAccessorName(ctx: DetectContext, name: string): boolean {
+  // A name ALSO bound by any non-accessor declaration/param/import is
+  // ambiguous under the scope-blind collector — skip (see AccessorBindings.
+  // otherBound; both real-corpus FPs were this shape).
+  if (ctx.otherBound.has(name)) return false
+  if (ctx.signalBindings.has(name)) return true
+  // Hook tier: evidence-gated — see the doctrine comment above.
+  return ctx.hookBindings.has(name) && ctx.zeroArgCalled.has(name)
+}
+
+/** Does the subtree contain a direct call of `name` — `name()`, `name(x)`, `name?.()`? */
+function subtreeCallsName(root: ts.Node, name: string): boolean {
+  let found = false
+  function walk(n: ts.Node): void {
+    if (found) return
+    if (ts.isCallExpression(n)) {
+      const callee = unwrapValueLayers(n.expression)
+      if (ts.isIdentifier(callee) && callee.text === name) {
+        found = true
+        return
+      }
+    }
+    ts.forEachChild(n, walk)
+  }
+  walk(root)
+  return found
+}
+
+function detectAccessorUncalledInTemplate(ctx: DetectContext, node: ts.TemplateExpression): void {
+  if (ctx.signalBindings.size === 0 && ctx.hookBindings.size === 0) return
+  // Tagged templates excluded — the tag function may receive (and call)
+  // function interpolations by design (styled/css APIs).
+  if (node.parent && ts.isTaggedTemplateExpression(node.parent)) return
+  for (const span of node.templateSpans) {
+    const expr = unwrapValueLayers(span.expression)
+    if (!ts.isIdentifier(expr)) continue
+    const name = expr.text
+    if (!isTrackedAccessorName(ctx, name)) continue
+    pushDiag(
+      ctx,
+      span.expression,
+      'accessor-uncalled-in-template',
+      `\`${name}\` is a reactive accessor — a FUNCTION. Interpolating it UNCALLED into a template literal stringifies the function SOURCE, so the output (a CSS value, class string, or text) silently renders \`() => …\` instead of the value. Call it: \`\${${name}()}\`. (For a reactive result, build the template inside a tracking scope — an effect, computed, or JSX accessor.)`,
+      `\${${name}}`,
+      `\${${name}()}`,
+      false,
+    )
+  }
+}
+
+/**
+ * Splits a condition into its top-level truthiness operands (recursing
+ * through `&&` / `||` and parens), then reports tracked accessor names
+ * used bare or under `!` — a function operand's truthiness is constant.
+ */
+function collectBareAccessorOperands(
+  ctx: DetectContext,
+  cond: ts.Expression,
+  out: Set<string>,
+): void {
+  const e = unwrapValueLayers(cond)
+  if (ts.isBinaryExpression(e)) {
+    const op = e.operatorToken.kind
+    if (
+      op === ts.SyntaxKind.AmpersandAmpersandToken ||
+      op === ts.SyntaxKind.BarBarToken
+    ) {
+      collectBareAccessorOperands(ctx, e.left, out)
+      collectBareAccessorOperands(ctx, e.right, out)
+    }
+    // Any other binary (`===`, `== null`, `typeof x === …`) is a real
+    // comparison — never a bare-truthiness misuse. Deliberately silent.
+    return
+  }
+  if (ts.isPrefixUnaryExpression(e) && e.operator === ts.SyntaxKind.ExclamationToken) {
+    // `!x` (and `!!x`) — still a truthiness test of the bare binding.
+    collectBareAccessorOperands(ctx, e.operand, out)
+    return
+  }
+  if (ts.isIdentifier(e) && isTrackedAccessorName(ctx, e.text)) {
+    out.add(e.text)
+  }
+}
+
+function detectAccessorUncalledInCondition(
+  ctx: DetectContext,
+  node: ts.IfStatement | ts.ConditionalExpression,
+): void {
+  if (ctx.signalBindings.size === 0 && ctx.hookBindings.size === 0) return
+  // Inside JSX the compiler auto-calls known signals in conditionals —
+  // flagging there would fight the transform. Outside-JSX only.
+  if (hasJsxAncestor(node)) return
+  const cond = ts.isIfStatement(node) ? node.expression : node.condition
+  const names = new Set<string>()
+  collectBareAccessorOperands(ctx, cond, names)
+  if (names.size === 0) return
+  for (const name of names) {
+    // Called anywhere in the same statement/expression (condition OR
+    // branches) → guard shape, skip. See the doctrine comment above.
+    if (subtreeCallsName(node, name)) continue
+    pushDiag(
+      ctx,
+      cond,
+      'accessor-uncalled-in-condition',
+      `\`${name}\` is a reactive accessor — a FUNCTION, so it is ALWAYS truthy: \`if (${name})\` takes the truthy branch forever and \`if (!${name})\` is dead code; the underlying value is never consulted. Call it — \`${name}()\` — and remember the surrounding scope runs ONCE unless it is a tracking scope (\`<Show when={() => ${name}()}>\` or a returned reactive accessor for render-time branching).`,
+      getNodeText(ctx, cond),
+      `${name}()`,
+      false,
+    )
+    // One diagnostic per condition — the first tracked name names the bug;
+    // additional operands in the same test are the same mistake.
     return
   }
 }
@@ -1126,6 +1446,10 @@ function visitNode(ctx: DetectContext, node: ts.Node): void {
   }
   if (ts.isTemplateExpression(node)) {
     detectDateMathRandomId(ctx, node)
+    detectAccessorUncalledInTemplate(ctx, node)
+  }
+  if (ts.isIfStatement(node) || ts.isConditionalExpression(node)) {
+    detectAccessorUncalledInCondition(ctx, node)
   }
   if (ts.isCallExpression(node)) {
     detectEmptyTheme(ctx, node)
@@ -1156,11 +1480,15 @@ function visit(ctx: DetectContext, node: ts.Node): void {
 export function detectPyreonPatterns(code: string, filename = 'input.tsx'): PyreonDiagnostic[] {
   assertClassicTs()
   const sf = ts.createSourceFile(filename, code, ts.ScriptTarget.ESNext, true, ts.ScriptKind.TSX)
+  const bindings = collectAccessorBindings(sf)
   const ctx: DetectContext = {
     sf,
     code,
     diagnostics: [],
-    signalBindings: collectSignalBindings(sf),
+    signalBindings: bindings.signals,
+    hookBindings: bindings.hooks,
+    zeroArgCalled: bindings.zeroArgCalled,
+    otherBound: bindings.otherBound,
     neverIslandNames: collectNeverIslandNames(sf),
   }
   visit(ctx, sf)
@@ -1194,6 +1522,10 @@ export function hasPyreonPatterns(code: string): boolean {
     /\b(?:const|let|var)\s+\{[^}]{0,500}\}\s*=\s*[A-Za-z_$]/.test(code) ||
     // signal-write-as-call: `const X = signal(` declaration anywhere
     /\b(?:signal|computed)\s*[<(]/.test(code) ||
+    // accessor-uncalled-* hook tier + static-early-return hook tier:
+    // `const x = useX(` declaration anywhere. Bounded identifier length —
+    // linear-time, same discipline as the other pre-filter lines.
+    /\bconst\s+[A-Za-z_$][\w$]{0,60}\s*=\s*use[A-Z]\w{0,60}\s*\(/.test(code) ||
     // static-return-null-conditional: `if (...) return null` anywhere.
     // `[\s{]*` (single class) instead of `\s*\{?\s*` (overlapping
     // quantifiers) — the latter is polynomial on long whitespace runs.
