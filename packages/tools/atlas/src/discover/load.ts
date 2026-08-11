@@ -343,6 +343,27 @@ export function isDualInstanceFailure(message: string): boolean {
   return /Multiple instances of @pyreon\//.test(message)
 }
 
+/**
+ * Pull the two resolved module locations (+ versions) out of the sentinel's
+ * message, so the CLI can PRINT them.
+ *
+ * The sentinel already names both copies (`A: <path> (vX)` / `B: <path> (vY)`)
+ * — but Atlas catches that error and reports its own summary, and a re-report
+ * that drops the paths sends the reader into nested-node_modules archaeology
+ * for a fact the caught error was already carrying (upstream-reported: a
+ * manifest revert and a --force reinstall before finding the cause that two
+ * printed paths make a one-line fix).
+ *
+ * Returns the `A:`/`B:` lines verbatim (trimmed), or undefined when the
+ * message shape has no such lines — the summary then stands alone rather than
+ * echoing an unparseable blob.
+ */
+export function dualInstanceDetail(message: string): string | undefined {
+  const lines = message.split('\n').filter((line) => /^\s*[AB]: \S/.test(line))
+  if (lines.length === 0) return undefined
+  return lines.map((line) => line.trim()).join('\n')
+}
+
 export interface LoadResult {
   component?: ComponentRef
   /** why nothing was attached — for a diagnostic, never for a verdict */

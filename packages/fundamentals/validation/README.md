@@ -2,6 +2,8 @@
 
 The universal, library-agnostic **validation gate** for the Pyreon stack.
 
+> **Not to be confused with [`@pyreon/validate`](../validate/).** Two published packages, near-identical names, different jobs. **`@pyreon/validation`** (this package) is the *stack-wide contract*: validation types, the Standard Schema bridge, and the typed `zodSchema`/`valibotSchema`/`arktypeSchema` adapters — the layer `@pyreon/form`/`store`/`state-tree`/`feature` depend on. **`@pyreon/validate`** is a *validator you use*: Pyreon's own `s` schema runtime (`import { s } from '@pyreon/validate'`) plus DX helpers (field metadata, reactive parse, i18n error formatting) on top of any Standard Schema library. If you're writing schemas, you want `@pyreon/validate`; if you're wiring adapters or consuming the contract types, you want **this** package.
+
 `@pyreon/validation` owns the validation *contract* — the `ValidationError` / `ValidateFn` / `SchemaValidateFn` types and the [Standard Schema](https://standardschema.dev/) bridge — and it depends on **nothing** in Pyreon. Every data package that needs validation (`@pyreon/form`, `@pyreon/store`, `@pyreon/state-tree`, `@pyreon/feature`) depends on *it*, not the other way around. That inversion is what lets any of them accept a raw Zod / Valibot / ArkType schema with no adapter and no cast.
 
 Two ways to plug a validator in:

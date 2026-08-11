@@ -27,6 +27,7 @@ export type { MountRuntime } from '../verify/harness'
 export {
   componentLoaderPlugin,
   createModuleLoader,
+  dualInstanceDetail,
   loadComponent,
   isDualInstanceFailure,
   loadRuntime,
