@@ -45,6 +45,7 @@ targets:
       - path: ../../packages/fundamentals/i18n/native/swift
       - path: ../../packages/fundamentals/permissions/native/swift
       - path: ../../packages/fundamentals/query/native/swift
+      - path: ../../packages/fundamentals/storage/native/swift
         type: group
         optional: true
 

@@ -51,29 +51,42 @@ const PACKAGE_ROOT = resolve(HERE, '..')
 // collide. The workspace `test` script invokes this once per service.
 const SERVICE =
   process.argv.find((a) => a.startsWith('--service='))?.split('=')[1] ?? 'PyreonStorage'
-// `--source-dir=<dir>` compiles ALL `.kt` in a directory together (a co-located
-// package whose runtime spans several interdependent files — e.g.
-// PyreonForm + PyreonFieldArray); `--source=<path>` / `--test=<path>` override a
-// single file. `--service` still selects the stub bundle. Used by
-// scripts/check-native-cosource.ts to verify @pyreon/<pkg>/native/kotlin/.
+// `--files=a,b,c` compiles an EXPLICIT set of `.kt` together — the per-service
+// GROUP mode for a co-located package whose runtime is SEVERAL independent
+// services needing DIFFERENT mutually-exclusive stubs. In this mode the caller
+// provides the COMPLETE runtime set, so the monolith companion-file append
+// (the `resolve(PACKAGE_ROOT, 'src/main/...')` siblings each service pulls in)
+// is SUPPRESSED — see the `kotlincArgs` filter below. `--source-dir=<dir>`
+// compiles ALL `.kt` in a directory together (a runtime spanning interdependent
+// files sharing ONE stub bundle — e.g. PyreonForm + PyreonFieldArray).
+// `--source=<path>` / `--test=<path>` override a single file. `--service` still
+// selects the stub bundle. Precedence: --files > --source-dir > --source >
+// default. Used by scripts/check-native-cosource.ts to verify
+// @pyreon/<pkg>/native/kotlin/.
+const FILES_OVERRIDE = process.argv.find((a) => a.startsWith('--files='))?.split('=')[1]
 const SOURCE_DIR = process.argv.find((a) => a.startsWith('--source-dir='))?.split('=')[1]
 const SOURCE_OVERRIDE = process.argv.find((a) => a.startsWith('--source='))?.split('=')[1]
 const TEST_OVERRIDE = process.argv.find((a) => a.startsWith('--test='))?.split('=')[1]
-const SOURCE_FILES: string[] = SOURCE_DIR
-  ? (function walk(d: string): string[] {
-      const out: string[] = []
-      for (const e of readdirSync(d)) {
-        const p = join(d, e)
-        if (statSync(p).isDirectory()) out.push(...walk(p))
-        else if (p.endsWith('.kt')) out.push(p)
-      }
-      return out
-    })(resolve(SOURCE_DIR))
-  : [
-      SOURCE_OVERRIDE
-        ? resolve(SOURCE_OVERRIDE)
-        : resolve(PACKAGE_ROOT, `src/main/kotlin/com/pyreon/runtime/${SERVICE}.kt`),
-    ]
+const SOURCE_FILES: string[] = FILES_OVERRIDE
+  ? FILES_OVERRIDE.split(',')
+      .map((f) => f.trim())
+      .filter(Boolean)
+      .map((f) => resolve(f))
+  : SOURCE_DIR
+    ? (function walk(d: string): string[] {
+        const out: string[] = []
+        for (const e of readdirSync(d)) {
+          const p = join(d, e)
+          if (statSync(p).isDirectory()) out.push(...walk(p))
+          else if (p.endsWith('.kt')) out.push(p)
+        }
+        return out
+      })(resolve(SOURCE_DIR))
+    : [
+        SOURCE_OVERRIDE
+          ? resolve(SOURCE_OVERRIDE)
+          : resolve(PACKAGE_ROOT, `src/main/kotlin/com/pyreon/runtime/${SERVICE}.kt`),
+      ]
 const SOURCE_FILE = SOURCE_FILES[0]!
 const TEST_FILE = TEST_OVERRIDE
   ? resolve(TEST_OVERRIDE)
@@ -1173,7 +1186,15 @@ try {
   if (SERVICE === 'PyreonSecureStorageAndroid') {
     writeFileSync(androidKeystorePath, ANDROID_KEYSTORE_STUBS, 'utf8')
   }
-  if (SERVICE === 'PyreonStorage' || SERVICE === 'PyreonStorageAndroid') {
+  if (
+    SERVICE === 'PyreonStorage' ||
+    SERVICE === 'PyreonStorageAndroid' ||
+    // Co-located storage verifies ALL of Backends/Storage/StorageAndroid/
+    // SecureStorage/SecureStorageAndroid as ONE group under this service (only
+    // it supplies BOTH android.content + keystore); the Compose half
+    // (PyreonStorage.kt) then also needs the LocalContext platform stub.
+    SERVICE === 'PyreonSecureStorageAndroid'
+  ) {
     writeFileSync(composePlatformPath, ANDROIDX_COMPOSE_PLATFORM_STUBS, 'utf8')
   }
   if (SERVICE === 'PyreonClipboard') {
@@ -1294,6 +1315,7 @@ try {
   const secureAndroidExtras =
     SERVICE === 'PyreonSecureStorageAndroid'
       ? [
+          composePlatformPath,
           androidContentDatabasePath,
           androidKeystorePath,
           resolve(PACKAGE_ROOT, 'src/main/kotlin/com/pyreon/runtime/PyreonSecureStorage.kt'),
@@ -1542,7 +1564,19 @@ try {
         TEST_FILE,
       ]
 
-  const result = spawnSync(kotlinc, kotlincArgs, { encoding: 'utf8' })
+  // `--files` GROUP mode: the caller listed the COMPLETE runtime set, so drop
+  // every monolith companion sibling the per-service `*Extras` arrays pulled in
+  // from `PACKAGE_ROOT/src/main` (those files may have moved out to a co-located
+  // package, so their monolith path dangles). Stubs (in tempDir) + the compose/
+  // serialization stub paths + SOURCE_FILES (co-located) + TEST_FILE (co-located)
+  // are all kept — only the hardcoded monolith runtime siblings are removed.
+  const monolithRuntimePrefix = resolve(PACKAGE_ROOT, 'src', 'main')
+  const explicitFiles = new Set(SOURCE_FILES)
+  const finalKotlincArgs = FILES_OVERRIDE
+    ? kotlincArgs.filter((a) => !a.startsWith(monolithRuntimePrefix) || explicitFiles.has(a))
+    : kotlincArgs
+
+  const result = spawnSync(kotlinc, finalKotlincArgs, { encoding: 'utf8' })
 
   const stderr = result.stderr ?? ''
   const errorLines = stderr

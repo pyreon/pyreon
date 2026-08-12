@@ -57,6 +57,7 @@ android {
                 srcDir("../../../packages/fundamentals/i18n/native/kotlin")
                 srcDir("../../../packages/fundamentals/permissions/native/kotlin")
                 srcDir("../../../packages/fundamentals/query/native/kotlin")
+                srcDir("../../../packages/fundamentals/storage/native/kotlin")
             }
         }
     }
