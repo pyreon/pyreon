@@ -3,11 +3,12 @@
  *
  * ## Why
  *
- * `verify-all.ts` spawns a fresh `kotlinc` per service — 45 of them, and a cold
- * JVM start dominates each one. That runs THREE times per CI run (the typecheck
- * cell, the test cell, and `Release Build`'s clean build), and `Release Build`
- * pays it on EVERY code PR, including the overwhelming majority that never touch
- * a `.kt` file.
+ * `verify-all.ts` spawns a fresh `kotlinc` per service — 46 of them, and a cold
+ * JVM start dominates each one. That runs TWICE per CI run: the test cell and
+ * `Release Build`'s clean build. (The typecheck script deliberately skips in CI
+ * — kotlinc cold-start under parallel load — so it is not a third.) Both are
+ * full mode, so they share cache keys; and `Release Build` pays it on EVERY code
+ * PR, including the overwhelming majority that never touch a `.kt` file.
  *
  * A verification is a pure function of (compiler, harness, source, mode), so the
  * same inputs always imply the same verdict. A hit can never change a result —
