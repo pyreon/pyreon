@@ -256,13 +256,10 @@ export function createInstance(
     const unsubs: Array<() => void> = []
     for (const kid of kids) {
       meta.children.add(kid)
+      // Disposal (above) removes this listener when the key is re-set, so a
+      // detached child can't emit — no stale-emit guard needed here.
       unsubs.push(
-        onPatch(kid, (patch) => {
-          const p = childWiring.get(key)
-          // Guard against a late emit after this key was re-set/disposed.
-          if (!p || !p.kids.includes(kid)) return
-          meta.emitPatch({ ...patch, path: path + patch.path })
-        }),
+        onPatch(kid, (patch) => meta.emitPatch({ ...patch, path: path + patch.path })),
       )
     }
     childWiring.set(key, { unsubs, kids })

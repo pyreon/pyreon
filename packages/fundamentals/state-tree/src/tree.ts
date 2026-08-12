@@ -55,7 +55,8 @@ export function scanForChildren(value: unknown, parent: object, key: string): vo
  * @internal — used by `createInstance`.
  */
 export function collectModelChildren(value: unknown): object[] {
-  if (isModelInstance(value)) return [value as object]
+  // Only array / plain-object CONTAINERS — the caller (`wireContainerChildPropagation`)
+  // pre-filters a direct model-instance value (that's the field-nested path).
   if (Array.isArray(value)) {
     const out: object[] = []
     for (const el of value) if (isModelInstance(el)) out.push(el as object)
