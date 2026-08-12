@@ -742,6 +742,18 @@ export function emitSwift(
   // Gap 4 v2 follow-up: track model instance names → modelId so use-site
   // member access (`<instance>.<field>`) emits as PyreonModel_<id>.shared.<field>.
   _modelInstances = new Map(models.map((m) => [m.instanceName, m.modelId]))
+  // State fields + views are READ (`counter.count()` on web, since a state
+  // field is a signal); actions are CALLED. The two registries are what let
+  // the call-site rewrite tell them apart.
+  _modelReadNames = new Map(
+    models.map((m) => [
+      m.instanceName,
+      new Set([...m.fields.map((f) => f.name), ...(m.views ?? []).map((v) => v.name)]),
+    ]),
+  )
+  _modelMethodNames = new Map(
+    models.map((m) => [m.instanceName, new Set((m.methods ?? []).map((mm) => mm.name))]),
+  )
   // Gap 3 PR-3.4 — reset KeepAlive-wrapper flag per transform.
   _needsSwiftKeepAliveWrapper = false
   const parts: string[] = []
@@ -807,6 +819,8 @@ export function emitSwift(
   _structDefs = []
   _storeMethodNames = new Map()
   _modelInstances = new Map()
+  _modelReadNames = new Map()
+  _modelMethodNames = new Map()
   _needsSwiftKeepAliveWrapper = false
   const warnings = [..._emitWarnings]
   _emitWarnings = []
@@ -826,6 +840,16 @@ let _structDefs: StructIR[] = []
 
 /** Map of model instance name → modelId (e.g. `counter` → `"counter"`). */
 let _modelInstances: Map<string, string> = new Map()
+/** Set while emitting a model view/action body — the factory's `self`
+ * param name. Distinct from `_activePropsParamName` (which also carries it,
+ * for the member-expression rewrite) so the signal-READ rewrite below can
+ * never fire on an ordinary component whose prop happens to share a name
+ * with one of its signals. */
+let _activeModelSelfParam: string | undefined
+/** Per-instance model STATE-FIELD + VIEW names — reads drop their parens. */
+let _modelReadNames: Map<string, Set<string>> = new Map()
+/** Per-instance model ACTION names — calls keep their parens + args. */
+let _modelMethodNames: Map<string, Set<string>> = new Map()
 
 /**
  * Emit a per-store @Observable singleton class:
@@ -925,14 +949,53 @@ function emitSwiftModel(m: ModelDefnIR): string {
   lines.push(`final class PyreonModel_${m.modelId}: PyreonModelProtocol {`)
   lines.push(`    static let shared = PyreonModel_${m.modelId}()`)
   for (const f of m.fields) {
-    const t = f.type === 'string' ? 'String' : f.type === 'number' ? 'Int' : 'Bool'
-    const initial =
-      f.type === 'string'
-        ? JSON.stringify(f.initial)
-        : f.type === 'boolean'
-          ? String(f.initial)
-          : String(f.initial)
-    lines.push(`    var ${f.name}: ${t} = ${initial}`)
+    lines.push(`    var ${f.name}: ${swiftType(f.type)} = ${emitSwiftExpr(f.initial, 4)}`)
+  }
+  // Views + actions live on the singleton, exactly as a store's computeds
+  // + methods do. Their bodies address state through the factory's `self`
+  // param (`self.count()`), which is the same rewrite the props param
+  // already gets — so `_activePropsParamName` carries it rather than a
+  // second, parallel mechanism.
+  const hasMembers = (m.views?.length ?? 0) > 0 || (m.methods?.length ?? 0) > 0
+  if (hasMembers) {
+    const prevSignals = _signalNames
+    const prevFunctions = _functionNames
+    const prevPropsParam = _activePropsParamName
+    const prevModelSelf = _activeModelSelfParam
+    _signalNames = new Set([
+      ...m.fields.map((f) => f.name),
+      ...(m.views ?? []).map((v) => v.name),
+    ])
+    _functionNames = new Set((m.methods ?? []).map((mm) => mm.name))
+    const modelCtx = buildInferenceCtx(
+      m.fields.map((f) => ({
+        kind: 'signal' as const,
+        name: f.name,
+        type: f.type,
+        initial: f.initial,
+      })),
+      [],
+      _structDefs,
+    )
+    for (const v of m.views ?? []) {
+      _activePropsParamName = v.selfParam
+      _activeModelSelfParam = v.selfParam
+      const t = inferType(v.expr, modelCtx)
+      const anno = t.kind === 'unknown' ? 'Any' : swiftType(t)
+      lines.push(`    var ${swiftIdent(v.name)}: ${anno} { ${emitSwiftExpr(v.expr, 4)} }`)
+      // A later view may read an earlier one (the web's cumulative `self`).
+      modelCtx.computeds.set(v.name, t)
+      _signalNames.add(v.name)
+    }
+    for (const mm of m.methods ?? []) {
+      _activePropsParamName = mm.selfParam
+      _activeModelSelfParam = mm.selfParam
+      lines.push(`    ${emitSwiftFunction(mm, 'internal')}`)
+    }
+    _signalNames = prevSignals
+    _functionNames = prevFunctions
+    _activePropsParamName = prevPropsParam
+    _activeModelSelfParam = prevModelSelf
   }
   lines.push(`    private init() {}`)
   lines.push(`}`)
@@ -3384,6 +3447,45 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           `Boolean(${arg}): the argument's type could not be inferred, so the JS-truthiness lowering (!= 0 / !isEmpty / != nil) cannot be chosen — emitting the raw call, which does not compile on Swift. Give the argument a resolvable type (signal<T>, a typed param, a declared struct field).`,
         )
         return `Boolean(${arg})`
+      }
+      // Inside a model view/action body, `self.count()` is a signal READ of
+      // the model's OWN state — emit the stored property bare, exactly as a
+      // store method body's `tasks()` does.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _activeModelSelfParam !== undefined &&
+        e.callee.object.name === _activeModelSelfParam &&
+        e.args.length === 0 &&
+        _signalNames.has(e.callee.property)
+      ) {
+        return swiftIdent(e.callee.property)
+      }
+      // state-tree model member call — `counter.count()` (a state field is
+      // a SIGNAL on web, so the read is a call) drops its parens onto the
+      // singleton's stored property, while `counter.inc()` (an action)
+      // keeps them. Before this, only the paren-less `counter.count` form
+      // emitted — the form that is WRONG on web, which left the package
+      // 1:1-INVERTED: web-correct source failed to compile, and
+      // native-compiling source read the accessor rather than the value.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _modelInstances.has(e.callee.object.name)
+      ) {
+        const instance = e.callee.object.name
+        const modelId = _modelInstances.get(instance)!
+        const member = swiftIdent(e.callee.property)
+        if (
+          e.args.length === 0 &&
+          _modelReadNames.get(instance)?.has(e.callee.property) === true
+        ) {
+          return `PyreonModel_${modelId}.shared.${member}`
+        }
+        if (_modelMethodNames.get(instance)?.has(e.callee.property) === true) {
+          const args = e.args.map((a) => emitSwiftExpr(a, indent)).join(', ')
+          return `PyreonModel_${modelId}.shared.${member}(${args})`
+        }
       }
       // `parseInt(s)` / `parseFloat(s)` / `Number(s)` → Swift `Int(s) ?? 0`
       // / `Double(s) ?? 0`. JS returns NaN on failure; the `?? 0` default

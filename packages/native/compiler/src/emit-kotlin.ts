@@ -434,6 +434,17 @@ export function emitKotlin(
   )
   // Gap 4 v2 follow-up: model instance → modelId for use-site rewriting.
   _modelInstancesKotlin = new Map(models.map((m) => [m.instanceName, m.modelId]))
+  // Mirror of the Swift registries: state fields + views are READ (a state
+  // field is a signal on web, so the read is a call); actions are CALLED.
+  _modelReadNamesKotlin = new Map(
+    models.map((m) => [
+      m.instanceName,
+      new Set([...m.fields.map((f) => f.name), ...(m.views ?? []).map((v) => v.name)]),
+    ]),
+  )
+  _modelMethodNamesKotlin = new Map(
+    models.map((m) => [m.instanceName, new Set((m.methods ?? []).map((mm) => mm.name))]),
+  )
   // Gap 3 PR-3.2 — reset Suspense-wrapper flag per transform run.
   // Gap 3 PR-3.3 — reset ErrorBoundary-wrapper flag per transform.
   // Gap 3 PR-3.4 — reset KeepAlive-wrapper flag.
@@ -504,6 +515,8 @@ export function emitKotlin(
   _storeHooksKotlin = new Map()
   _storeMethodNamesKotlin = new Map()
   _modelInstancesKotlin = new Map()
+  _modelReadNamesKotlin = new Map()
+  _modelMethodNamesKotlin = new Map()
   _needsKotlinKeepAliveWrapper = false
   const warnings = [..._emitWarnings]
   _emitWarnings = []
@@ -527,6 +540,12 @@ let _storeMethodNamesKotlin: Map<string, Set<string>> = new Map()
 
 /** Map of model instance name → modelId for Kotlin use-site rewriting. */
 let _modelInstancesKotlin: Map<string, string> = new Map()
+/** Mirror of the Swift flag — set while emitting a model view/action body. */
+let _activeModelSelfParamKotlin: string | undefined
+/** Per-instance model STATE-FIELD + VIEW names — reads drop their parens. */
+let _modelReadNamesKotlin: Map<string, Set<string>> = new Map()
+/** Per-instance model ACTION names — calls keep their parens + args. */
+let _modelMethodNamesKotlin: Map<string, Set<string>> = new Map()
 
 /**
  * Emit a per-store Kotlin object singleton:
@@ -604,13 +623,42 @@ function emitKotlinModel(m: ModelDefnIR): string {
   const lines: string[] = []
   lines.push(`object PyreonModel_${m.modelId} : PyreonModelProtocol {`)
   for (const f of m.fields) {
-    const initial =
-      f.type === 'string'
-        ? JSON.stringify(f.initial)
-        : f.type === 'boolean'
-          ? String(f.initial)
-          : String(f.initial)
-    lines.push(`    var ${f.name} by mutableStateOf(${initial})`)
+    lines.push(`    var ${f.name} by mutableStateOf(${emitKotlinExpr(f.initial, 4)})`)
+  }
+  // Views + actions on the object — mirror of emitSwiftModel; see
+  // emitKotlinStore for the module-state swap rationale. `selfParam`
+  // rides the props-param rewrite so `self.count()` in a factory body
+  // resolves to the object's own `count`.
+  const hasMembers = (m.views?.length ?? 0) > 0 || (m.methods?.length ?? 0) > 0
+  if (hasMembers) {
+    const prevSignals = _signalNames
+    const prevFunctions = _functionNames
+    const prevPropsParam = _activePropsParamName
+    const prevModelSelf = _activeModelSelfParamKotlin
+    _signalNames = new Set([
+      ...m.fields.map((f) => f.name),
+      ...(m.views ?? []).map((v) => v.name),
+    ])
+    _functionNames = new Set((m.methods ?? []).map((mm) => mm.name))
+    const memberCtx: KotlinCtx = {
+      synthesizedDataClasses: [],
+      componentName: `PyreonModel_${m.modelId}`,
+    }
+    for (const v of m.views ?? []) {
+      _activePropsParamName = v.selfParam
+      _activeModelSelfParamKotlin = v.selfParam
+      lines.push(`    val ${kotlinIdent(v.name)} get() = ${emitKotlinExpr(v.expr, 4)}`)
+      _signalNames.add(v.name)
+    }
+    for (const mm of m.methods ?? []) {
+      _activePropsParamName = mm.selfParam
+      _activeModelSelfParamKotlin = mm.selfParam
+      lines.push(`    ${emitKotlinFunction(mm, memberCtx)}`)
+    }
+    _signalNames = prevSignals
+    _functionNames = prevFunctions
+    _activePropsParamName = prevPropsParam
+    _activeModelSelfParamKotlin = prevModelSelf
   }
   lines.push(`}`)
   return lines.join('\n')
@@ -2908,6 +2956,40 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           `Boolean(${arg}): the argument's type could not be inferred, so the JS-truthiness lowering (!= 0 / isNotEmpty / != null) cannot be chosen — emitting the raw call, which does not compile on Kotlin. Give the argument a resolvable type (signal<T>, a typed param, a declared struct field).`,
         )
         return `Boolean(${arg})`
+      }
+      // `self.count()` inside a model view/action body — a READ of the
+      // model's own state; emit the property bare (mirror of Swift).
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _activeModelSelfParamKotlin !== undefined &&
+        e.callee.object.name === _activeModelSelfParamKotlin &&
+        e.args.length === 0 &&
+        _signalNames.has(e.callee.property)
+      ) {
+        return kotlinIdent(e.callee.property)
+      }
+      // state-tree model member call (mirror of the Swift rewrite):
+      // `counter.count()` is a signal READ and drops its parens onto the
+      // object's property; `counter.inc()` is an ACTION and keeps them.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _modelInstancesKotlin.has(e.callee.object.name)
+      ) {
+        const instance = e.callee.object.name
+        const modelId = _modelInstancesKotlin.get(instance)!
+        const member = kotlinIdent(e.callee.property)
+        if (
+          e.args.length === 0 &&
+          _modelReadNamesKotlin.get(instance)?.has(e.callee.property) === true
+        ) {
+          return `PyreonModel_${modelId}.${member}`
+        }
+        if (_modelMethodNamesKotlin.get(instance)?.has(e.callee.property) === true) {
+          const args = e.args.map((a) => emitKotlinExpr(a, indent)).join(', ')
+          return `PyreonModel_${modelId}.${member}(${args})`
+        }
       }
       // `parseInt(s)` / `parseFloat(s)` / `Number(s)` → Kotlin
       // `(s).toIntOrNull() ?: 0` / `(s).toDoubleOrNull() ?: 0.0`. JS returns

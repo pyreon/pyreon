@@ -1238,21 +1238,40 @@ export interface StoreDefnIR {
 
 /**
  * Gap 4 follow-up v2 — @pyreon/state-tree model defined via the
- * inline `const X = model({ state: { ... literal ... } }).create()`
- * shape. PMTC emits a per-model PyreonModel_<id> class at module
- * scope + a `@State` / `remember` binding inside the component body.
+ * `const X = model({ state: { ... literal ... } }) [.views(f)] [.actions(f)]
+ * .create()` chain. PMTC emits a per-model PyreonModel_<id> singleton at
+ * module scope; use sites rewrite onto it.
  *
- * v2 scope: literal state values only (string / number / boolean).
- * Actions, views, .asHook(), getSnapshot, onPatch, etc. are
- * deferred follow-ups.
+ * v3 scope: literal state values, plus `.views()` / `.actions()` chain
+ * blocks (the canonical web shape — a model with no actions cannot mutate,
+ * so v2's state-only support could not express a useful model).
+ * `.asHook()`, `.create(initialOverride)`, getSnapshot / onPatch and
+ * nested field-models remain deferred follow-ups.
  */
 export interface ModelDefnIR {
   /** User-side instance binding name (e.g. `counter`). */
   instanceName: string
   /** Suffix used to derive the emitted class name (PyreonModel_<id>). */
   modelId: string
-  /** State fields extracted from the literal `state: { ... }` config. */
-  fields: { name: string; type: 'string' | 'number' | 'boolean'; initial: string | number | boolean }[]
+  /**
+   * State fields extracted from the literal `state: { ... }` config.
+   * Typed as `TypeIR`/`ExprIR` (not raw literals) so the store's proven
+   * inference + emit machinery applies unchanged — which is also what
+   * makes a fractional seed (`{ total: 0.5 }`) emit `Double` instead of
+   * an `Int` that cannot hold it.
+   */
+  fields: { name: string; type: TypeIR; initial: ExprIR }[]
+  /**
+   * `.views((self) => ({ name: () => expr }))` — derived values. Emitted
+   * as computed properties on the singleton (Swift `var X: T { expr }`,
+   * Kotlin `val X get() = expr`), mirroring `StoreDefnIR.computeds`.
+   */
+  views?: { name: string; expr: ExprIR; selfParam: string }[]
+  /**
+   * `.actions((self) => ({ name: (args) => … }))` — mutators. Emitted as
+   * methods on the singleton, mirroring `StoreDefnIR.methods`.
+   */
+  methods?: (Extract<DeclIR, { kind: 'function' }> & { selfParam: string })[]
 }
 
 /**
