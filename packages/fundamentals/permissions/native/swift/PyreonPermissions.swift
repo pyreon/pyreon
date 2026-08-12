@@ -37,23 +37,47 @@ import Observation
 @available(iOS 17.0, macOS 14.0, *)
 @Observable
 public final class PyreonPermissions {
-    /// The currently-granted permission keys (exact + `"x.*"` wildcards).
+    /// The currently-granted permission keys — exact, plus the three
+    /// wildcard forms `"x.*"` (one segment), `"x.**"` (any depth) and
+    /// `"*"` (everything).
     public private(set) var granted: Set<String>
 
     public init(_ granted: Set<String> = []) {
         self.granted = granted
     }
 
-    /// True when `key` is granted exactly, or matched by a granted
-    /// `"<prefix>.*"` wildcard.
+    /// Resolve `key` against the granted set, in the SAME order the web
+    /// resolver uses: exact → one-segment wildcard → recursive wildcard
+    /// (most-specific ancestor first) → global.
+    ///
+    /// The previous implementation matched any `"prefix.*"` entry with a
+    /// bare `hasPrefix`, which made `.*` behave like the web's `.**`:
+    /// granting `"posts.*"` also granted `"posts.comments.edit"`, a key
+    /// the web DENIES. That is the wrong direction for a permission
+    /// check — the same source granted more on device than in the
+    /// browser. It also recognised neither `.**` nor `*`, so the two
+    /// wildcards that SHOULD widen a grant were silently ignored.
     public func can(_ key: String) -> Bool {
+        // 1. Exact match.
         if granted.contains(key) { return true }
-        for entry in granted where entry.hasSuffix(".*") {
-            // "posts.*" → prefix "posts." ; matches "posts.edit".
-            let prefix = String(entry.dropLast()) // drop the trailing "*"
-            if key.hasPrefix(prefix) { return true }
+
+        if let dot = key.lastIndex(of: ".") {
+            let parent = String(key[key.startIndex ..< dot])
+            // 2. One-segment wildcard — "posts.*" covers "posts.edit"
+            //    but NOT "posts.comments.edit".
+            if granted.contains(parent + ".*") { return true }
+            // 3. Recursive wildcard, most-specific ancestor first:
+            //    "posts.admin.delete" tries "posts.admin.**" then "posts.**".
+            var ancestor = parent
+            while true {
+                if granted.contains(ancestor + ".**") { return true }
+                guard let i = ancestor.lastIndex(of: ".") else { break }
+                ancestor = String(ancestor[ancestor.startIndex ..< i])
+            }
         }
-        return false
+
+        // 4. Global wildcard — any key, any depth.
+        return granted.contains("*")
     }
 
     /// Inverse of `can`.

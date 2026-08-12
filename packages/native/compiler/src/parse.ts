@@ -1207,8 +1207,13 @@ const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
   [
     '@pyreon/permissions',
     {
+      // The previous advice — "`usePermissions()` DOES lower — use the hook
+      // instead" — was addressed to someone ALREADY using the hook, and
+      // following it changed nothing: `<PermissionsProvider>` is where the
+      // grants come from, so a hook without it lowers to an EMPTY set and
+      // every check denies. Name the seeding shape instead.
       advice:
-        'the non-hook factory has no native container; `usePermissions()` DOES lower — use the hook instead',
+        '`<PermissionsProvider>` does not lower, and it is what carries the grants — a bare `usePermissions()` yields an EMPTY native set, so every check denies. Seed the grants at the call site (`usePermissions(["posts.*", "billing.**"])`), which lowers to a native PyreonPermissions',
     },
   ],
   [
@@ -5331,7 +5336,19 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // `usePermissions()` or a non-literal arg yields an empty grant set and the
   // emit produces a default-constructed container.
   if (calleeName === 'usePermissions') {
-    return { kind: 'permissions', name, grants: tryExtractStringArray(init.arguments?.[0]) }
+    const grants = tryExtractStringArray(init.arguments?.[0])
+    // A bare `usePermissions()` is the CORRECT web call — the grants live in
+    // `<PermissionsProvider>`, which has no native lowering. So the shape a
+    // web author writes produced an empty native set in which every check
+    // denies, silently: guarded UI simply never appeared on device, with
+    // nothing to trace it by. Say so rather than emit a container that is
+    // guaranteed to answer `false`.
+    if (grants.length === 0) {
+      ctx.warnings.push(
+        `usePermissions() \`${name}\`: no literal grant keys, so the native permission set is EMPTY and every check denies (on the web the grants come from <PermissionsProvider>, which has no native lowering). Seed them at the call site — usePermissions(["posts.*", "billing.**"]) — or grant() them before the first check.`,
+      )
+    }
+    return { kind: 'permissions', name, grants }
   }
   // Phase 4 — `const clipboard = useClipboard()` from `@pyreon/hooks` →
   // the PyreonClipboard reactive wrapper. No arguments. V1 supports
