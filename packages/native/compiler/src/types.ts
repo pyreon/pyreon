@@ -956,6 +956,23 @@ export type ExprIR =
       elementType?: TypeIR
       seed?: ExprIR
     }
+  /**
+   * `new SizedMap<K, V>({ maxEntries, lru })` from `@pyreon/sized-map` — a
+   * bounded FIFO/LRU map. Kept as its OWN kind rather than folded into
+   * `new-collection`: it carries construction OPTIONS, not just element types,
+   * and the two targets spell the call differently (`maxEntries:` vs
+   * `maxEntries =`).
+   *
+   * Generic arguments are REQUIRED, for the reason `new Map<K, V>()` states —
+   * neither target can infer element types from later use sites.
+   */
+  | {
+      kind: 'new-sized-map'
+      keyType: TypeIR
+      valueType: TypeIR
+      maxEntries: number
+      lru: boolean
+    }
   | {
       kind: 'binary'
       // Arithmetic + bitwise + exponent. Bitwise ops (`& | ^ << >>`) emit

@@ -1207,6 +1207,11 @@ function inferMathCall(expr: ExprIR, ctx: InferenceCtx): TypeIR | null {
 
 export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
   switch (expr.kind) {
+    // The declared generics ARE the type — a SizedMap<K, V> behaves as a map
+    // at every use site (`m.get(k)` yields V), so downstream inference reads
+    // it exactly like the built-in.
+    case 'new-sized-map':
+      return { kind: 'map', key: expr.keyType, value: expr.valueType }
     case 'new-collection': {
       if (expr.collection === 'map') {
         return { kind: 'map', key: expr.keyType!, value: expr.valueType! }

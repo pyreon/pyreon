@@ -9,9 +9,9 @@ export default defineManifest({
     "A bounded `Map<K, V>` primitive that evicts the oldest entry when a size cap is exceeded. Two modes per instance: FIFO (default) — `.get()` never touches ordering, cheapest semantics for hot paths; LRU-on-read (`lru: true`) — `.get()` re-inserts the entry at the tail so frequently-read entries survive cap pressure. In BOTH modes `.set()` treats a key collision as a recency hit (delete + re-append at the tail). It is the one shared eviction implementation behind Pyreon's internal sized caches — it replaced 9 hand-rolled inline eviction snippets (Memory Leak Class C).",
   category: 'universal',
   multiplatform: {
-    tier: 'web-only',
+    tier: 'shared',
     rationale:
-      'pure-logic LRU map with no platform edge, but PMTC has no class-API lowering (new SizedMap() warns); usable in `<Web>` branches',
+      'pure-logic bounded FIFO/LRU map with no platform edge; `new SizedMap<K, V>({ maxEntries })` lowers to the co-located PyreonSizedMap runtime on both native targets (a computed cap stays web — the literal is baked into the emit)',
   },
   features: [
     'FIFO mode (default) — .get() does NOT touch ordering; eviction drops the first-inserted entry',

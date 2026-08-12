@@ -91,6 +91,8 @@ interface ParseCtx {
    * `PyreonToast`. Empty unless the file imports `toast`.
    */
   toastNames: Set<string>
+  /** Local name(s) bound to `SizedMap` imported from `@pyreon/sized-map`. */
+  sizedMapNames: Set<string>
   /**
    * Local name(s) bound to the `s` schema namespace imported from
    * `@pyreon/validate` (`import { s }` → `s`; `import { s as v }` → `v`).
@@ -166,6 +168,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     toastNames: new Set(),
     validateSchemaNames: new Set(),
     validateSchemaLowered: false,
+    sizedMapNames: new Set(),
     announceNames: new Set(),
     hookFieldAliases: new Map(),
     hookDestructureCounter: 0,
@@ -198,6 +201,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   // to PyreonToast. Handles renamed imports (`import { toast as notify }`).
   collectToastNames(ast.program.body as AnyNode[], ctx)
   collectValidateSchemaNames(ast.program.body as AnyNode[], ctx)
+  collectSizedMapNames(ast.program.body as AnyNode[], ctx)
   // Record the local name(s) bound to `announce` from @pyreon/a11y so parseExpr
   // can lower `announce(...)` to PyreonA11y. Handles renamed imports.
   collectAnnounceNames(ast.program.body as AnyNode[], ctx)
@@ -859,7 +863,6 @@ const WEB_ONLY_PACKAGES: ReadonlySet<string> = new Set([
   '@pyreon/runtime-dom',
   '@pyreon/runtime-server',
   '@pyreon/server',
-  '@pyreon/sized-map',
   '@pyreon/sync',
   '@pyreon/table',
   '@pyreon/testing',
@@ -956,6 +959,24 @@ function collectValidateSchemaNames(body: AnyNode[], ctx: ParseCtx): void {
       ) {
         ctx.validateSchemaLowered = true
         return
+      }
+    }
+  }
+}
+
+/** Record the local name(s) bound to `SizedMap` from `@pyreon/sized-map`.
+ *
+ * Gated on the IMPORT rather than the bare name: `SizedMap` is a plausible
+ * name for a user's own class, and mis-lowering someone else's constructor is
+ * worse than not lowering ours. */
+function collectSizedMapNames(body: AnyNode[], ctx: ParseCtx): void {
+  for (const node of body) {
+    if (node.type !== 'ImportDeclaration') continue
+    if (node.source?.value !== '@pyreon/sized-map') continue
+    for (const spec of (node.specifiers as AnyNode[] | undefined) ?? []) {
+      if (spec.type === 'ImportSpecifier' && spec.imported?.name === 'SizedMap') {
+        const local = spec.local?.name
+        if (typeof local === 'string') ctx.sizedMapNames.add(local)
       }
     }
   }
@@ -3567,6 +3588,7 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     toastNames: new Set(),
     validateSchemaNames: new Set(),
     validateSchemaLowered: false,
+    sizedMapNames: new Set(),
     announceNames: new Set(),
     hookFieldAliases: new Map(),
     hookDestructureCounter: 0,
@@ -7562,6 +7584,40 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       // falls through to the default unsupported warning.
       const calleeName = node.callee?.type === 'Identifier' ? (node.callee.name as string) : ''
       const typeArgs = (node.typeArguments?.params ?? node.typeParameters?.params ?? []) as AnyNode[]
+      // `new SizedMap<K, V>({ maxEntries: N, lru?: B })`. Gated on the IMPORT
+      // (see collectSizedMapNames): `SizedMap` is a plausible name for a
+      // user's own class, and mis-lowering someone else's constructor is
+      // worse than not lowering ours.
+      if (ctx.sizedMapNames.has(calleeName) && typeArgs.length === 2) {
+        const optsNode = (node.arguments as AnyNode[] | undefined)?.[0]
+        const readNum = (key: string): number | undefined => {
+          for (const prop of (optsNode?.properties as AnyNode[] | undefined) ?? []) {
+            const k = prop?.key?.name ?? prop?.key?.value
+            if (k === key && prop.value?.type === 'Literal') {
+              const v = prop.value.value
+              if (typeof v === 'number') return v
+              if (typeof v === 'boolean') return v ? 1 : 0
+            }
+          }
+          return undefined
+        }
+        const maxEntries = readNum('maxEntries')
+        if (optsNode?.type !== 'ObjectExpression' || maxEntries === undefined) {
+          // A non-literal cap cannot be baked in — the same conservative rule
+          // useFetch applies to its URL and useStorage to its key.
+          ctx.warnings.push(
+            `[${locOf(node, ctx)}] new ${calleeName}(...) lowers only with a LITERAL \`{ maxEntries: N }\` option object — a computed cap cannot be baked into the native emit. Use a literal, or keep the call behind a \`<Web>\` escape hatch.`,
+          )
+        } else {
+          return {
+            kind: 'new-sized-map',
+            keyType: parseTypeAnnotation(typeArgs[0]!, ctx),
+            valueType: parseTypeAnnotation(typeArgs[1]!, ctx),
+            maxEntries,
+            lru: readNum('lru') === 1,
+          }
+        }
+      }
       if (calleeName === 'Map' && (node.arguments?.length ?? 0) === 0 && typeArgs.length === 2) {
         return {
           kind: 'new-collection',

@@ -87,3 +87,37 @@ export function App() { const ok = s.string().parse('x'); return null }`
     }
   })
 })
+
+// String LENGTH is not the same operation on the three targets, and the
+// difference is not academic:
+//
+//   JS      "👍".length      === 2   (UTF-16 code units)
+//   Kotlin  "👍".length      === 2   (UTF-16 code units)
+//   Swift   "👍".count       === 1   (GRAPHEME CLUSTERS)
+//
+// The emit used Swift's `.count`, so `s.string().min(2)` REJECTED on iOS what
+// web and Android accepted — for emoji, combining accents, ZWJ sequences,
+// flags, and most non-BMP text. A validator that disagrees per platform is a
+// data-integrity bug, not a rounding difference.
+//
+// The web is the reference implementation: `@pyreon/validate` checks
+// `value.length`. So Swift emits `.utf16.count`, which is the same count.
+describe('validate string-length constraints are 1:1 across targets', () => {
+  const SCHEMA = `import { s } from '@pyreon/validate'
+const userSchema = s.object({ name: s.string().min(2).max(5) })
+export function App() { return null }`
+
+  it('Swift counts UTF-16 units, matching JS and Kotlin — not graphemes', () => {
+    const { code } = transform(SCHEMA, { target: 'swift' })
+    expect(code).toContain('.utf16.count < 2')
+    expect(code).toContain('.utf16.count > 5')
+    // The grapheme form is the bug; it must not come back.
+    expect(code).not.toMatch(/\bnameVal\.count [<>]/)
+  })
+
+  it('Kotlin already counts UTF-16 units', () => {
+    const { code } = transform(SCHEMA, { target: 'kotlin' })
+    expect(code).toContain('.length < 2')
+    expect(code).toContain('.length > 5')
+  })
+})

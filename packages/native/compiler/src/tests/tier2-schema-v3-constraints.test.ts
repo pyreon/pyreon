@@ -23,7 +23,7 @@ export const s = zodSchema(z.object({
     expect(r.code).toContain('var tags: [String]')
     // For-each loop walks the array and applies the element constraint
     expect(r.code).toContain('for tagsElement in tagsVal')
-    expect(r.code).toContain('tagsElement.count < 2')
+    expect(r.code).toContain('tagsElement.utf16.count < 2')
     expect(r.code).toContain('rule: "min length 2 (element)"')
   })
 
@@ -151,7 +151,7 @@ export const s = zodSchema(z.object({
     expect(r.code).toContain('var nickname: String? = nil')
     // The constraint check is emitted inside the if-let block (deeper indent)
     expect(r.code).toContain('if let raw = input["nickname"]')
-    expect(r.code).toContain('nicknameVal.count < 2')
+    expect(r.code).toContain('nicknameVal.utf16.count < 2')
     expect(r.code).toContain('rule: "min length 2"')
   })
 
@@ -186,7 +186,7 @@ export const s = zodSchema(z.object({
     // Element loop is INSIDE the if-let block
     expect(r.code).toContain('if let raw = input["tags"]')
     expect(r.code).toContain('for tagsElement in tagsVal')
-    expect(r.code).toContain('tagsElement.count < 2')
+    expect(r.code).toContain('tagsElement.utf16.count < 2')
     expect(r.code).toContain('rule: "min length 2 (element)"')
   })
 
@@ -260,8 +260,8 @@ export const userSchema = zodSchema(z.object({
     // Required scalar with constraint
     expect(swift.code).toContain('idVal')
     expect(swift.code).toContain('UUID(uuidString: idVal)')
-    expect(swift.code).toContain('nameVal.count < 2')
-    expect(swift.code).toContain('nameVal.count > 50')
+    expect(swift.code).toContain('nameVal.utf16.count < 2')
+    expect(swift.code).toContain('nameVal.utf16.count > 50')
     // Optional scalar with constraint inside present-check
     expect(swift.code).toContain('var age: Int? = nil')
     expect(swift.code).toContain('ageVal < 0')

@@ -1131,14 +1131,21 @@ function emitSwiftScalarConstraints(
   const c = constraints
   if (isString) {
     if (c.min !== undefined) {
-      lines.push(`${ind}if ${targetName}.count < ${c.min} {`)
+      // `.utf16.count`, NOT `.count`. Swift's String.count counts GRAPHEME
+      // CLUSTERS; JS `.length` and Kotlin `.length` both count UTF-16 code
+      // units. The web is the reference implementation here — @pyreon/validate
+      // checks `value.length` — so `.count` made iOS REJECT strings web and
+      // Android accept: `min(2)` against "👍" is 2 units (pass) but 1 grapheme
+      // (fail). A validator that disagrees per platform is a data-integrity
+      // bug, not a rounding difference.
+      lines.push(`${ind}if ${targetName}.utf16.count < ${c.min} {`)
       lines.push(
         `${innerInd}throw PyreonSchemaError.constraintViolation(field: ${JSON.stringify(fieldName)}, rule: "min length ${c.min}${ruleSuffix}")`,
       )
       lines.push(`${ind}}`)
     }
     if (c.max !== undefined) {
-      lines.push(`${ind}if ${targetName}.count > ${c.max} {`)
+      lines.push(`${ind}if ${targetName}.utf16.count > ${c.max} {`)
       lines.push(
         `${innerInd}throw PyreonSchemaError.constraintViolation(field: ${JSON.stringify(fieldName)}, rule: "max length ${c.max}${ruleSuffix}")`,
       )
@@ -4824,6 +4831,13 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       if (e.params.length === 0) return `{ ${emitSwiftExpr(e.body, indent)} }`
       return `{ ${e.params.map(swiftIdent).join(', ')} in ${emitSwiftExpr(e.body, indent)} }`
     }
+    case 'new-sized-map': {
+      // `new SizedMap<K, V>({ maxEntries, lru })` → the co-located
+      // PyreonSizedMap runtime. `lru` is emitted only when true so the
+      // default-FIFO call stays as short as the source that produced it.
+      const lru = e.lru ? ', lru: true' : ''
+      return `PyreonSizedMap<${swiftType(e.keyType)}, ${swiftType(e.valueType)}>(maxEntries: ${e.maxEntries}${lru})`
+    }
     case 'new-collection': {
       // `new Map<K,V>()` → `[K: V]()`; `new Set<T>()` → `Set<T>()`;
       // `new Set(arr)` → `Set(arr)`. See the local-let mutability note in
@@ -6090,19 +6104,26 @@ function swiftAnimationFor(durationMs: number | undefined, easing: string | unde
  * answer than refusing to compile.
  */
 function swiftTransitionForName(name: string | undefined): string {
-  switch (name) {
+  // Accept BOTH spellings. `@pyreon/kinetic` names its presets in camelCase
+  // (`slideUp`, `scaleIn`) while the CSS-class convention on the web is
+  // kebab-case (`slide-up`), and an author reaches for whichever vocabulary
+  // they are already holding. Matching only one meant `name="slideUp"`
+  // silently fell back to a FADE -- the exact bug this mapping exists to fix,
+  // re-entering through a spelling.
+  const key = name?.toLowerCase().replace(/[-_]/g, '')
+  switch (key) {
     case 'scale':
-    case 'scale-in':
+    case 'scalein':
       return '.scale.combined(with: .opacity)'
     // The edge is where the content comes FROM, so a "slide-up" (content
     // rising into place) inserts from the BOTTOM.
-    case 'slide-up':
+    case 'slideup':
       return '.move(edge: .bottom).combined(with: .opacity)'
-    case 'slide-down':
+    case 'slidedown':
       return '.move(edge: .top).combined(with: .opacity)'
-    case 'slide-left':
+    case 'slideleft':
       return '.move(edge: .trailing).combined(with: .opacity)'
-    case 'slide-right':
+    case 'slideright':
       return '.move(edge: .leading).combined(with: .opacity)'
     default:
       return '.opacity'
