@@ -1251,6 +1251,16 @@ class PyreonAppState(phase: String = "active") {
 @Composable
 fun rememberPyreonAppState(): PyreonAppState = PyreonAppState()
 
+// PyreonToast — mirror of runtime-kotlin's PyreonToast.kt surface the emit
+// touches: the object singleton, \`toasts\` (a MutableState<List<Item>> the
+// \`<Toaster/>\` forEach iterates, each item carrying \`message\`), and \`add\`.
+data class PyreonToastItem(val id: String, val message: String, val type: String)
+object PyreonToast {
+  val toasts: MutableState<List<PyreonToastItem>> = mutableStateOf(emptyList())
+  fun add(message: String, type: String = "info", durationMillis: Long? = null): String = ""
+  fun dismiss(id: String) {}
+  fun clear() {}
+}
 // PyreonA11y — mirror of runtime-kotlin's PyreonA11y.kt: the object with an
 // \`announce(message, assertive)\` the imperative \`announce(...)\` call lowers to.
 object PyreonA11y {

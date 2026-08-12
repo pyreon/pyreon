@@ -883,6 +883,14 @@ export type ExprIR =
    */
   | { kind: 'call'; callee: ExprIR; args: ExprIR[]; optional?: boolean }
   /**
+   * An imperative `@pyreon/toast` call — `toast("msg")` or a preset
+   * `toast.success("msg")` / `.error` / `.warning` / `.info` / `.loading`.
+   * Lowers to `PyreonToast.shared.add(message, type:)` (Swift) /
+   * `PyreonToast.add(message, type)` (Kotlin). `toastType` is the resolved
+   * variant; `message` is the first-argument expression.
+   */
+  | { kind: 'toast-call'; message: ExprIR; toastType: string; durationMillis?: number }
+  /**
    * An imperative `@pyreon/a11y` `announce("msg", { politeness })` call.
    * Lowers to `PyreonA11y.announce(message, assertive:)` — a VoiceOver
    * announcement (Swift) / registered-announcer call (Kotlin). `assertive` is

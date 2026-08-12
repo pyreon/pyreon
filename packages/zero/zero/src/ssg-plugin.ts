@@ -22,6 +22,7 @@
  */
 
 import { existsSync } from 'node:fs'
+import { recordSsgOutcome } from './ssg-outcome'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -2122,6 +2123,16 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
         // oxlint-disable-next-line no-console
         console.error(`[zero:ssg] Failed to prerender "${errPath}":`, error)
       }
+      // Hand the REAL numbers to the build summary. It cannot derive them from
+      // disk: a failed path leaves its untouched client shell behind, so
+      // counting `.html` files reports that shell as a rendered page.
+      recordSsgOutcome({
+        rendered: pages,
+        failed: errors.length,
+        ...(errors.length > 0 && config.ssg?.errorArtifact !== 'none'
+          ? { errorArtifact: 'see dist/_pyreon-ssg-errors.json' }
+          : {}),
+      })
 
       // EXPLICITLY-configured adapter (`zero({ adapter })`) whose build
       // failed → fail the build. The user asked for that platform's

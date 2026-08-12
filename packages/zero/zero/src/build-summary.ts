@@ -20,6 +20,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { gzipSync } from 'node:zlib'
+import { readSsgOutcome } from './ssg-outcome'
 
 // ─── Color support ───────────────────────────────────────────────────────────
 
@@ -125,8 +126,16 @@ export interface AssetStat {
 
 export interface BuildStats {
   clientAssets: AssetStat[]
-  /** Prerendered page HTML under outDir (excluding dist/server). */
-  prerendered: { count: number; bytes: number }
+  /**
+   * Prerendered page HTML under outDir (excluding dist/server).
+   *
+   * `count` is what the prerender pass actually RENDERED when it reported an
+   * outcome, not the number of `.html` files on disk — a failed path leaves
+   * its untouched shell behind, and counting files reported that shell as a
+   * rendered page. `failed` is non-zero only when paths threw; `bytes` stays
+   * disk-derived, since the bytes really are there either way.
+   */
+  prerendered: { count: number; bytes: number; failed?: number; errorArtifact?: string }
   /** Top-level files of dist/server when an SSR/ISR bundle was emitted. */
   server: Array<{ file: string; bytes: number }>
 }
@@ -238,7 +247,20 @@ export function collectBuildStats(outDir: string, assetsDir = 'assets'): BuildSt
   }
   server.sort((a, b) => b.bytes - a.bytes)
 
-  return { clientAssets, prerendered: { count: prerenderedCount, bytes: prerenderedBytes }, server }
+  // Prefer the prerender pass's own numbers. Walking the filesystem cannot
+  // distinguish a rendered page from the shell a FAILED render left behind,
+  // which is exactly how a 4-of-5 build reported "5 prerendered pages".
+  const outcome = readSsgOutcome()
+  const prerendered = outcome
+    ? {
+        count: outcome.rendered,
+        bytes: prerenderedBytes,
+        ...(outcome.failed > 0 ? { failed: outcome.failed } : {}),
+        ...(outcome.errorArtifact ? { errorArtifact: outcome.errorArtifact } : {}),
+      }
+    : { count: prerenderedCount, bytes: prerenderedBytes }
+
+  return { clientAssets, prerendered, server }
 }
 
 // ─── Formatting ──────────────────────────────────────────────────────────────
@@ -320,10 +342,25 @@ export function formatBuildSummary(stats: BuildStats, opts: FormatSummaryOptions
     lines.push('')
   }
 
-  if (stats.prerendered.count > 0) {
+  const failed = stats.prerendered.failed ?? 0
+  if (stats.prerendered.count > 0 || failed > 0) {
     lines.push(
       `  ${tone(level, 'warm', '○', true)} ${stats.prerendered.count} prerendered page${stats.prerendered.count === 1 ? '' : 's'} ${dim(level, `(${formatKB(stats.prerendered.bytes)} html)`)}`,
     )
+    if (failed > 0) {
+      // The build continues past a failed path on purpose (one bad route must
+      // not kill a thousand-page build — that is what `ssg.onPathError` and
+      // the errors artifact are for). Reporting it as a success is not part of
+      // that bargain: this is the LAST thing printed, so it has to say so.
+      lines.push(
+        `  ${tone(level, 'core', '✗', true)} ${failed} page${failed === 1 ? '' : 's'} FAILED to prerender — ${
+          stats.prerendered.errorArtifact ?? 'see the errors above'
+        }`,
+      )
+      lines.push(
+        dim(level, `      the client shell is still on disk for ${failed === 1 ? 'it' : 'them'}, so ${failed === 1 ? 'that URL serves' : 'those URLs serve'} an empty page`),
+      )
+    }
   }
 
   const time =

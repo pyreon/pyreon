@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/toast",
   "version": "0.51.0",
-  "description": "Imperative toast notifications for Pyreon — no provider needed",
+  "description": "Imperative toast notifications for Pyreon \u2014 no provider needed",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/toast#readme",
   "bugs": {
@@ -28,7 +28,9 @@
     "lib",
     "src",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "native/swift",
+    "native/kotlin"
   ],
   "scripts": {
     "build": "vl_rolldown_build",
@@ -59,5 +61,11 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "pyreon": {
+    "native": {
+      "swift": "native/swift",
+      "kotlin": "native/kotlin"
+    }
   }
 }
