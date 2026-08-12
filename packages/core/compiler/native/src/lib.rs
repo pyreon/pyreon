@@ -7344,6 +7344,21 @@ fn arrow_contains_jsx(arrow: &ArrowFunctionExpression) -> bool {
 
 // ─── Prop-derived variable collection ────────────────────────────────────────
 
+/// Does this initializer carry JSX? See the SSR bail in `collect_prop_derived`.
+///
+/// Reuses the two predicates the element-const collection already relies on
+/// rather than hand-rolling a second full expression walk: a directly-JSX
+/// initializer (optionally parenthesized), and the array-of-JSX / map-of-JSX
+/// collection shape. Those are the forms a JSX-bearing initializer actually
+/// takes, and both are already exercised by the element-var tests.
+fn contains_jsx(expr: &Expression) -> bool {
+    let mut e = expr;
+    while let Expression::ParenthesizedExpression(p) = e {
+        e = &p.expression;
+    }
+    matches!(e, Expression::JSXElement(_) | Expression::JSXFragment(_)) || is_jsx_collection_init(e)
+}
+
 fn collect_prop_derived(decl: &VariableDeclaration, ctx: &mut Ctx) {
     // Handle splitProps regardless of kind
     for declarator in &decl.declarations {
@@ -7420,6 +7435,19 @@ fn collect_prop_derived(decl: &VariableDeclaration, ctx: &mut Ctx) {
                     if is_selector_call_expr(init) {
                         ctx.selector_vars.insert(id.name.to_string());
                     }
+                    continue;
+                }
+                // Under SSR, a JSX-bearing initializer is never inlinable.
+                // Inlining splices the ORIGINAL source for the initializer, so
+                // JSX inside is re-emitted PRE-transform (never lowered) and
+                // the raw text drifts against offsets the emit has shifted —
+                // two sibling `.map()` callbacks swapped hole expressions and
+                // rendering died with `ReferenceError: p1 is not defined`.
+                // The DOM path still inlines it, and must: there the inlining
+                // is what keeps a prop-derived value reactive at the use site.
+                // SSR renders once, so referencing the const by name is both
+                // correct and sufficient. Mirrors the JS backend 1:1.
+                if ctx.ssr && contains_jsx(init) {
                     continue;
                 }
                 if reads_from_props(init, &ctx.props_names)

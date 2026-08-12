@@ -29,6 +29,13 @@ interface ErrorPattern {
 
 const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    pattern: /is not defined/,
+    title: 'A binding from one callback leaked into another under SSR',
+    explain:
+      'A prop-derived `const` whose initializer contains JSX used to be INLINED at its use sites by splicing the original source. Under the SSR compile-to-string path that put pre-transform text into an `_ssr` hole, and sibling `.map()` callbacks could end up carrying each other\'s expressions — so a binding that exists only in the other callback\'s scope got referenced and the render threw.',
+    fix: 'Update @pyreon/compiler: the SSR path now references such a const by name instead of inlining it. If you are pinned to an older version, compute the value to a plain (non-JSX) local, or move the JSX into its own component.',
+  },
+  {
     // The test-environment audit matches on SHAPE: a `{ type, props, children }`
     // literal in a test file reads as a hand-rolled mock VNode, which is the
     // real anti-pattern it exists to catch (PR #197's silent metadata drop).

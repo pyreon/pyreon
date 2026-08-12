@@ -2704,6 +2704,35 @@ export function transformJSX_JS(
     return found
   }
 
+  /**
+   * Does this subtree contain JSX?
+   *
+   * A prop-derived const is inlined at its use sites by SLICING THE ORIGINAL
+   * SOURCE for its initializer. That is fine for a plain expression and wrong
+   * for anything containing JSX: the sliced text is PRE-transform, so the JSX
+   * inside is re-emitted verbatim and never lowered — and under the `_ssr`
+   * compile-to-string path it lands inside a hole, where the raw text drifts
+   * against the offsets the emit has already shifted. The observed shape was
+   * two sibling `.map()` callbacks whose holes swapped expressions: an axis
+   * label came out carrying the edge map's path literal, referencing a binding
+   * (`p1`) that does not exist in that scope, so the page failed to render
+   * with `ReferenceError: p1 is not defined`.
+   *
+   * Only applied under `ssr`. On the DOM path the same inlining is
+   * load-bearing — it is what keeps a prop-derived value reactive at the use
+   * site — but SSR renders once, so referencing the const by name there is
+   * both correct and sufficient.
+   */
+  function containsJsx(node: N): boolean {
+    if (node.type === 'JSXElement' || node.type === 'JSXFragment') return true
+    let found = false
+    forEachChildFast(node, (child) => {
+      if (found) return
+      if (containsJsx(child)) found = true
+    })
+    return found
+  }
+
   /** Check if an expression references any prop-derived variable. */
   function referencesPropDerived(node: N): boolean {
     if (node.type === 'Identifier' && propDerivedVars.has(node.name)) {
@@ -2769,6 +2798,13 @@ export function transformJSX_JS(
           if (isSelectorCall(decl.init)) selectorVars.add(decl.id.name)
           continue
         }
+        // Under SSR, a JSX-bearing initializer is never inlinable — see
+        // containsJsx. The DOM path still inlines it, and must: there the
+        // inlining is what keeps a prop-derived value REACTIVE at the use
+        // site (locked by the Round-15 characterization). SSR renders once,
+        // so referencing the const by name is both correct and sufficient —
+        // there is no reactivity to preserve and nothing to gain.
+        if (ssr && containsJsx(decl.init)) continue
         // Direct prop read OR transitive (references another prop-derived var)
         if (readsFromProps(decl.init) || referencesPropDerived(decl.init)) {
           propDerivedVars.set(decl.id.name, {
