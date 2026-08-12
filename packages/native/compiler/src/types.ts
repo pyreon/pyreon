@@ -889,7 +889,7 @@ export type ExprIR =
    * `PyreonToast.add(message, type)` (Kotlin). `toastType` is the resolved
    * variant; `message` is the first-argument expression.
    */
-  | { kind: 'toast-call'; message: ExprIR; toastType: string }
+  | { kind: 'toast-call'; message: ExprIR; toastType: string; durationMillis?: number }
   /**
    * `await expr` — an awaited async-result call inside an `async` handler
    * (M4.5). The emitter unwraps to `await <expr>` (Swift) / `<expr>` (Kotlin

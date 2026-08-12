@@ -2555,10 +2555,13 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // `scope.launch { … }` coroutine provides the suspension context. Emit
       // just the inner call.
       return emitKotlinExpr(e.expr, indent)
-    case 'toast-call':
+    case 'toast-call': {
       // Imperative `@pyreon/toast` call → the process-global PyreonToast queue.
       // `toast("x")` / `toast.success("x")` → PyreonToast.add("x", "…").
-      return `PyreonToast.add(${emitKotlinExpr(e.message, indent)}, ${JSON.stringify(e.toastType)})`
+      // A literal duration (ms) sets the auto-dismiss (Long).
+      const durArg = e.durationMillis !== undefined ? `, ${e.durationMillis}L` : ''
+      return `PyreonToast.add(${emitKotlinExpr(e.message, indent)}, ${JSON.stringify(e.toastType)}${durArg})`
+    }
     case 'call': {
       // Field-array accessor unwrap: zero-arg `items()`/`length()` on a
       // PyreonFieldArray decl (and `value()` on a For-item param over its

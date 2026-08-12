@@ -3047,10 +3047,14 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // expression. Only reachable inside an `async` arrow, whose action
       // emitter wraps the body in a `Task { … }` async scope.
       return `await ${emitSwiftExpr(e.expr, indent)}`
-    case 'toast-call':
+    case 'toast-call': {
       // Imperative `@pyreon/toast` call → the process-global PyreonToast queue.
       // `toast("x")` / `toast.success("x")` → PyreonToast.shared.add("x", type: "…").
-      return `PyreonToast.shared.add(${emitSwiftExpr(e.message, indent)}, type: ${JSON.stringify(e.toastType)})`
+      // A literal duration (ms) sets the auto-dismiss (converted to seconds).
+      const durArg =
+        e.durationMillis !== undefined ? `, duration: ${e.durationMillis / 1000}` : ''
+      return `PyreonToast.shared.add(${emitSwiftExpr(e.message, indent)}, type: ${JSON.stringify(e.toastType)}${durArg})`
+    }
     case 'call': {
       // `Object.keys(<object-typed expr>)` → static `[String]` of the
       // struct field names. A synthesized struct's keys are statically

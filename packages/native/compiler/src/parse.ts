@@ -6741,9 +6741,10 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       }
       // Imperative `@pyreon/toast` call → `toast-call` ExprIR (→ PyreonToast).
       // `toast("x")` (info) or a preset `toast.success("x")` / `.error` /
-      // `.warning` / `.info` / `.loading`. The message is the first argument;
-      // an options object (2nd arg) is dropped in v1 (duration/onDismiss are a
-      // follow-up — the preset method already carries the type).
+      // `.warning` / `.info` / `.loading`. The message is the first argument; a
+      // literal `duration` (ms) in the 2nd-arg options object sets the
+      // auto-dismiss (0 = persistent); other options (onDismiss/description/
+      // icon/action) are dropped in v1 (the preset method carries the type).
       if (ctx.toastNames.size > 0) {
         const c = node.callee
         const PRESETS = new Set(['success', 'error', 'warning', 'info', 'loading'])
@@ -6761,11 +6762,30 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
           toastType = c.property.name === 'loading' ? 'info' : c.property.name
         }
         if (toastType !== undefined) {
-          const first = (node.arguments as AnyNode[] | undefined)?.[0]
-          const message: ExprIR = first
-            ? parseExpr(first, ctx)
+          const argNodes = (node.arguments as AnyNode[] | undefined) ?? []
+          const message: ExprIR = argNodes[0]
+            ? parseExpr(argNodes[0], ctx)
             : { kind: 'literal', value: '' }
-          return { kind: 'toast-call', message, toastType }
+          // A literal `duration` (ms) in the options object → auto-dismiss.
+          let durationMillis: number | undefined
+          const opts = argNodes[1]
+          if (opts?.type === 'ObjectExpression') {
+            for (const prop of (opts.properties as AnyNode[] | undefined) ?? []) {
+              if (prop.type !== 'Property' || prop.computed) continue
+              const key = prop.key?.type === 'Identifier' ? prop.key.name : prop.key?.value
+              const val = prop.value as AnyNode | undefined
+              if (
+                key === 'duration' &&
+                (val?.type === 'Literal' || val?.type === 'NumericLiteral') &&
+                typeof val.value === 'number'
+              ) {
+                durationMillis = val.value
+              }
+            }
+          }
+          return durationMillis !== undefined
+            ? { kind: 'toast-call', message, toastType, durationMillis }
+            : { kind: 'toast-call', message, toastType }
         }
       }
       const callee = parseExpr(node.callee, ctx)

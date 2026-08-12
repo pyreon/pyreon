@@ -63,6 +63,20 @@ describe('@pyreon/toast emit', () => {
     expect(r.code).toContain('Text(text = __toast.message)')
   })
 
+  it('a literal duration (ms) sets the auto-dismiss (Swift ms→sec, Kotlin ms Long)', () => {
+    const src = `
+import { Text, Press } from '@pyreon/primitives'
+import { toast } from '@pyreon/toast'
+export function P() {
+  return <Press onPress={() => toast("Bye", { duration: 2000 })}><Text>X</Text></Press>
+}
+`
+    expect(transform(src, { target: 'swift' }).code).toContain(
+      'PyreonToast.shared.add("Bye", type: "info", duration: 2)',
+    )
+    expect(transform(src, { target: 'kotlin' }).code).toContain('PyreonToast.add("Bye", "info", 2000L)')
+  })
+
   it('a renamed import (`toast as notify`) still lowers', () => {
     const src = `
 import { Text, Press } from '@pyreon/primitives'
