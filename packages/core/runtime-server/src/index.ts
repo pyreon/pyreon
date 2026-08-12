@@ -580,13 +580,18 @@ async function streamElementNode(vnode: VNode, enqueue: (s: string) => void): Pr
     // Load-bearing for streams: chunks of CONCURRENT streams interleave at
     // every await, so a module-level stack would cross-contaminate; the
     // ALS context sticks to this stream's continuation graph.
-    const frame = tag === 'select' ? makeSelectFrame(props) : null
-    if (frame) {
-      await _selectValueAls.run(frame, async () => {
-        for (const child of vnode.children) await streamNode(child, enqueue)
-      })
+    const taValue = textareaValue(tag, props)
+    if (taValue !== null) {
+      enqueue(taValue)
     } else {
-      for (const child of vnode.children) await streamNode(child, enqueue)
+      const frame = tag === 'select' ? makeSelectFrame(props) : null
+      if (frame) {
+        await _selectValueAls.run(frame, async () => {
+          for (const child of vnode.children) await streamNode(child, enqueue)
+        })
+      } else {
+        for (const child of vnode.children) await streamNode(child, enqueue)
+      }
     }
   }
   enqueue(`</${tag}>`)
@@ -1038,6 +1043,11 @@ function renderElement(vnode: VNode): MaybeAsync {
     // option renderer sees the nearest enclosing select's value (PZ-09).
     // The context follows async continuations, so an async subtree keeps
     // its frame without any pop/cleanup discipline.
+    const taValue = textareaValue(tag, props)
+    if (taValue !== null) {
+      html += taValue
+      return `${html}</${tag}>`
+    }
     const frame = tag === 'select' ? makeSelectFrame(props) : null
     const inner = frame
       ? _selectValueAls.run(frame, () => renderChildList(vnode.children, 0, ''))
@@ -1576,6 +1586,15 @@ function renderProp(tag: string, key: string, value: unknown): string | null {
   // The selection intent is carried by marking `<option selected>` instead.
   if (key === 'value' && tag === 'select') return null
 
+  // `<textarea value>` is the same class as `<select value>` above, and was
+  // missed when that landed. <textarea> has NO `value` CONTENT attribute
+  // either — the value IS the element's text content — so serializing it
+  // emitted dead bytes AND an EMPTY textarea. Any server-rendered prefilled
+  // textarea (a bio, a comment draft, a description) came back blank, filled
+  // in only after hydration, and stayed blank with JS off. The value is
+  // emitted as the text content instead; see `textareaValue`.
+  if (key === 'value' && tag === 'textarea') return null
+
   if (typeof value === 'function') {
     return renderProp(tag, key, (value as () => unknown)())
   }
@@ -1952,6 +1971,24 @@ const warnIfUnsafeTag: (tag: string) => void =
 
 // Fast test — most strings in SSR have no special chars (tag names, class names, etc.)
 const NEEDS_ESCAPE_RE = /[&<>"']/
+
+/**
+ * The text content a `<textarea value>` must serialize to, or null when the
+ * element carries no value prop and its children stand as written.
+ *
+ * Value WINS over children, which is not an arbitrary choice: it is what the
+ * client already does. `applyProps` sets the `.value` PROPERTY, and a property
+ * set after children mount overrides the text content — verified, not assumed
+ * (`<textarea value="prop">child</textarea>` yields `.value === "prop"` on the
+ * client). SSR emitting the children instead would be a hydration mismatch.
+ */
+function textareaValue(tag: string, props: Record<string, unknown> | null): string | null {
+  if (tag !== 'textarea' || props == null) return null
+  let v = props.value
+  if (typeof v === 'function') v = (v as () => unknown)()
+  if (v === null || v === undefined || typeof v === 'boolean') return null
+  return escapeHtml(String(v))
+}
 
 function escapeHtml(str: string): string {
   if (!NEEDS_ESCAPE_RE.test(str)) return str

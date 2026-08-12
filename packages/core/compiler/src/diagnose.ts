@@ -29,6 +29,26 @@ interface ErrorPattern {
 
 const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // The residual footgun left by the <textarea value> SSR fix. `value` now
+    // serializes correctly, but the React habit `defaultValue` still emits a
+    // nonsense `default-value=""` attribute and a BLANK control -- silently,
+    // since a dead attribute never errors. Same for <select>, whose value is
+    // also not an attribute.
+    //
+    // Keyed on the rendered attribute rather than an exception, because this
+    // shape has no exception: the diagnosis is reachable from a snapshot diff
+    // or a copy-pasted line of markup, which is where an author actually meets
+    // it.
+    pattern: /default-value=|defaultValue.*(textarea|select|input)/i,
+    diagnose: () => ({
+      cause:
+        'Pyreon has no `defaultValue` prop. It is forwarded verbatim, so it renders as a dead `default-value="..."` attribute and the control comes back EMPTY — no error, because an unknown attribute is legal HTML.',
+      fix: 'Use `value`. Pyreon controls are not React-style controlled/uncontrolled pairs: `value` sets the initial content and stays writable, and for <textarea>/<select> — whose value is NOT an HTML attribute — SSR emits it as text content / a `selected` option respectively.',
+      fixCode: '<textarea value={bio} />   // not defaultValue',
+      related: 'https://pyreon.dev/docs/forms#initial-values',
+    }),
+  },
+  {
     // A scope leak under the compile-to-string SSR path: a prop-derived
     // `const` whose initializer contained JSX used to be inlined by splicing
     // the ORIGINAL source, so sibling `.map()` callbacks could carry each
