@@ -13,7 +13,7 @@ import type { LintConfig } from '../types'
 
 const RULES = [colorContrast]
 const RULE_ID = 'pyreon/color-contrast'
-const CONFIG: LintConfig = { rules: { [RULE_ID]: 'warning' } }
+const CONFIG: LintConfig = { rules: { [RULE_ID]: 'warn' } }
 const lint = (src: string, fp = '/abs/src/x.tsx', cfg: LintConfig = CONFIG) =>
   lintFile(fp, src, RULES, cfg).diagnostics.filter((d) => d.ruleId === RULE_ID)
 
@@ -46,7 +46,7 @@ describe('pyreon/color-contrast — shapes it must decline to judge', () => {
   })
 
   it('respects exemptPaths', () => {
-    const cfg: LintConfig = { rules: { [RULE_ID]: ['warning', { exemptPaths: ['src/legacy/'] }] } }
+    const cfg: LintConfig = { rules: { [RULE_ID]: ['warn', { exemptPaths: ['src/legacy/'] }] } }
     expect(
       lint(`const s = { color: '#777777', background: '#888888' }`, '/abs/src/legacy/x.tsx', cfg),
     ).toHaveLength(0)

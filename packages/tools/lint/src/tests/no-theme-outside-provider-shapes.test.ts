@@ -14,7 +14,7 @@ import type { LintConfig } from '../types'
 
 const RULES = [noThemeOutsideProvider]
 const RULE_ID = 'pyreon/no-theme-outside-provider'
-const CONFIG: LintConfig = { rules: { [RULE_ID]: 'warning' } }
+const CONFIG: LintConfig = { rules: { [RULE_ID]: 'warn' } }
 const lint = (src: string) =>
   lintFile('/abs/src/x.tsx', src, RULES, CONFIG).diagnostics.filter((d) => d.ruleId === RULE_ID)
 
