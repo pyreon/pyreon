@@ -3883,6 +3883,11 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       if (e.params.length === 0) return `{ ${emitKotlinExpr(e.body, indent)} }`
       return `{ ${e.params.map(kotlinIdent).join(', ')} -> ${emitKotlinExpr(e.body, indent)} }`
     }
+    case 'new-sized-map': {
+      // Mirror of the Swift emit; Kotlin spells named arguments with `=`.
+      const lru = e.lru ? ', lru = true' : ''
+      return `PyreonSizedMap<${kotlinType(e.keyType)}, ${kotlinType(e.valueType)}>(maxEntries = ${e.maxEntries}${lru})`
+    }
     case 'new-collection': {
       // Mirror of the Swift emit. `val` is fine on Kotlin (the reference is
       // final; contents mutate through it).

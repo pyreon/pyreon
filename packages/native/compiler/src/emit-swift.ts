@@ -4722,6 +4722,13 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       if (e.params.length === 0) return `{ ${emitSwiftExpr(e.body, indent)} }`
       return `{ ${e.params.map(swiftIdent).join(', ')} in ${emitSwiftExpr(e.body, indent)} }`
     }
+    case 'new-sized-map': {
+      // `new SizedMap<K, V>({ maxEntries, lru })` → the co-located
+      // PyreonSizedMap runtime. `lru` is emitted only when true so the
+      // default-FIFO call stays as short as the source that produced it.
+      const lru = e.lru ? ', lru: true' : ''
+      return `PyreonSizedMap<${swiftType(e.keyType)}, ${swiftType(e.valueType)}>(maxEntries: ${e.maxEntries}${lru})`
+    }
     case 'new-collection': {
       // `new Map<K,V>()` → `[K: V]()`; `new Set<T>()` → `Set<T>()`;
       // `new Set(arr)` → `Set(arr)`. See the local-let mutability note in

@@ -489,13 +489,14 @@ the machine-checked contract.
 > `bun scripts/check-multiplatform-tier.ts --write-table` — edit the
 > manifests, not this table. The gate fails when they drift.
 
-### `shared` — the authoring surface lowers on every target (10)
+### `shared` — the authoring surface lowers on every target (11)
 
 | Package | Why |
 | --- | --- |
 | `@pyreon/core` | the JSX authoring surface PMTC compiles — For/Show/Suspense/ErrorBoundary lower; Switch/Match/Dynamic/Portal/Index warn with concrete alternatives |
 | `@pyreon/primitives` | the 15 canonical primitives: real web DOM runtime AND SwiftUI/Compose emit — the compiler's native target vocabulary |
 | `@pyreon/reactivity` | L0 of the shared-code model: signal/computed/effect lower as-is; PyreonReactivity runtime ports on both native targets |
+| `@pyreon/sized-map` | pure-logic bounded FIFO/LRU map with no platform edge; `new SizedMap<K, V>({ maxEntries })` lowers to the co-located PyreonSizedMap runtime on both native targets (a computed cap stays web — the literal is baked into the emit) |
 | `@pyreon/rx` | the namespace form (rx.filter/map/…) lowers per-method to native collection ops; standalone transforms warn |
 | `@pyreon/coolgrid` | Container/Row/Col lower (equal-fill + literal fractional Col spans) |
 | `@pyreon/ui-core` | `<PyreonUI>` lowers transparently on native (theme is compile-time; dark mode is the system read) |
@@ -518,7 +519,7 @@ the machine-checked contract.
 | `@pyreon/i18n` | createI18n core (t(), interpolation, one/other plurals) lowers to PyreonI18n; translation device-proven both platforms |
 | `@pyreon/store` | defineStore lowers to @Observable singleton (Swift) / mutableStateOf object (Kotlin); cross-screen state device-proven |
 
-### `web-only` — architecturally coupled to the web platform (37)
+### `web-only` — architecturally coupled to the web platform (36)
 
 | Package | Why |
 | --- | --- |
@@ -527,7 +528,6 @@ the machine-checked contract.
 | `@pyreon/runtime-server` | server-side HTML rendering (SSR/streaming) — a web-platform concern with no native analogue |
 | `@pyreon/head` | document `<head>` management — no equivalent surface exists on iOS/Android |
 | `@pyreon/compiler` | the web JSX compiler + build tooling itself; the native sibling is @pyreon/native-compiler — nothing here ships to an app runtime |
-| `@pyreon/sized-map` | pure-logic LRU map with no platform edge, but PMTC has no class-API lowering (new SizedMap() warns); usable in `<Web>` branches |
 | `@pyreon/validate` | pure-logic schema DSL; the runtime engine (JIT, JSON-schema export, async refinements, the v1/mini compat surfaces) stays web, and inline uses like `s.string().parse(x)` do not lower |
 | `@pyreon/dnd` | wraps pragmatic-drag-and-drop (DOM events/pointers); native drag interactions are platform-gesture territory |
 | `@pyreon/toast` | the core `toast(...)` + `<Toaster>` now lower to the native PyreonToast runtime (v1); the rich surface (toast.promise/update, options, animation) stays web |
