@@ -2,6 +2,51 @@ import { describe, expect, it } from 'vitest'
 import { buildProps, filterProps } from '../forward'
 
 describe('filterProps', () => {
+  describe('preserves reactive (getter-shaped) props', () => {
+    // The compiler emits `<X title={sig()} />` as a getter-backed `_rp` prop.
+    // A value-copy (`filtered[key] = props[key]`) FIRES that getter at copy
+    // time and freezes it to the current value, silently killing reactivity —
+    // filterProps must copy the DESCRIPTOR so the live getter survives (same
+    // contract as buildProps and what the manifest documents).
+    it('keeps an HTML attr as a live getter, not a fired value', () => {
+      let reads = 0
+      const props: Record<string, unknown> = {}
+      Object.defineProperty(props, 'title', {
+        get() {
+          reads++
+          return `v${reads}`
+        },
+        enumerable: true,
+        configurable: true,
+      })
+
+      const out = filterProps(props)
+      // filterProps must NOT have read the getter while copying.
+      expect(reads).toBe(0)
+      const d = Object.getOwnPropertyDescriptor(out, 'title')
+      expect(typeof d?.get).toBe('function')
+      // The getter stays live on the output — each read re-evaluates.
+      expect(out.title).toBe('v1')
+      expect(out.title).toBe('v2')
+    })
+
+    it('preserves a getter on a data-* attribute too', () => {
+      let reads = 0
+      const props: Record<string, unknown> = {}
+      Object.defineProperty(props, 'data-count', {
+        get() {
+          reads++
+          return reads
+        },
+        enumerable: true,
+        configurable: true,
+      })
+      const out = filterProps(props)
+      expect(reads).toBe(0)
+      expect(typeof Object.getOwnPropertyDescriptor(out, 'data-count')?.get).toBe('function')
+    })
+  })
+
   describe('keeps standard HTML props', () => {
     it('keeps id', () => {
       const result = filterProps({ id: 'test' })

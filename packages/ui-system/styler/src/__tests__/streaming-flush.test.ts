@@ -90,6 +90,32 @@ describe('sheet.flushSSRPending — streaming SSR watermark', () => {
     expect(out).toContain('color: red')
   })
 
+  it('emits @layer ordering on the FIRST flush that carries a layered rule, even after a non-layered flush', () => {
+    // The opening Suspense boundary flushes only a non-layered (global /
+    // keyframe-style) rule — nothing to order yet.
+    s.insert('color: red;')
+    const first = s.flushSSRPending()
+    expect(first).not.toContain('@layer elements, rocketstyle;')
+    expect(first).toContain('color: red')
+
+    // A LATER boundary carries the first layered rule. The ordering statement
+    // must appear HERE (preceding that rule), not be lost — the pre-fix code
+    // gated it on the first flush only, so a non-layered opening boundary
+    // dropped it and later layered rules fell to stream first-appearance order.
+    s.injectRules(['@layer elements{.foo{color:blue}}'], 'k1')
+    const second = s.flushSSRPending()
+    expect(second).toContain('@layer elements, rocketstyle;')
+    expect(second.indexOf('@layer elements, rocketstyle;')).toBeLessThan(
+      second.indexOf('@layer elements{'),
+    )
+
+    // A third flush must NOT re-emit the (already-emitted) ordering statement.
+    s.injectRules(['@layer elements{.bar{color:green}}'], 'k2')
+    const third = s.flushSSRPending()
+    expect(third).not.toContain('@layer elements, rocketstyle;')
+    expect(third).toContain('.bar')
+  })
+
   it('reset() resets the watermark so a re-rendered page starts fresh', () => {
     s.insert('color: red;')
     s.flushSSRPending()
