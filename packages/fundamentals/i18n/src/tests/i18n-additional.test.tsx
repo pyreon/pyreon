@@ -8,8 +8,7 @@ import type { TranslationDictionary } from '../types'
 // <Trans> returns a reactive ACCESSOR; invoke it to get the resolved output
 // these unit tests assert on. Reactivity is covered in trans-context.test.tsx.
 function resolveTrans(props: Parameters<typeof Trans>[0]): unknown {
-  const r = Trans(props)
-  return typeof r === 'function' ? (r as () => unknown)() : r
+  return (Trans(props) as () => unknown)()
 }
 
 // ─── nestFlatKeys via addMessages ────────────────────────────────────────────

@@ -12,8 +12,7 @@ import type { TranslationDictionary } from '../types'
 // unit tests assert on the RESOLVED output, so invoke it. Reactivity itself is
 // covered by the mount + locale.set specs in trans-context.test.tsx.
 function resolveTrans(props: Parameters<typeof Trans>[0]): unknown {
-  const r = Trans(props)
-  return typeof r === 'function' ? (r as () => unknown)() : r
+  return (Trans(props) as () => unknown)()
 }
 
 // ─── interpolate ─────────────────────────────────────────────────────────────
