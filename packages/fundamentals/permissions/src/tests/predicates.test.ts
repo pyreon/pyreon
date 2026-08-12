@@ -34,6 +34,27 @@ describe('createPermissions — predicate permissions', () => {
       })
       expect(can('posts.create')).toBe(false)
     })
+
+    it('DENIES a predicate that returns a truthy NON-boolean (fail-closed)', () => {
+      // Regression: `evaluate` returned the raw predicate result, so a truthy
+      // non-boolean (from an `any`-typed context body) GRANTED access it should
+      // deny. Only an explicit `true` may grant.
+      const can = createPermissions({
+        // (u: any) => u.role — a real body returning a truthy string
+        'posts.edit': (u: any) => u?.role,
+      })
+      expect(can('posts.edit', { role: 'admin' })).toBe(false) // was true (string is truthy)
+      expect(can.not('posts.edit', { role: 'admin' })).toBe(true)
+    })
+
+    it('DENIES an (accidentally) async predicate — a Promise is always truthy', () => {
+      const can = createPermissions({
+        // A thenable slips the `=> boolean` type via `any`; a Promise is truthy.
+        'posts.publish': (() => Promise.resolve(false)) as unknown as (c?: unknown) => boolean,
+      })
+      expect(can('posts.publish')).toBe(false) // was true (Promise is truthy)
+      expect(can.not('posts.publish')).toBe(true)
+    })
   })
 
   describe('complex predicate logic', () => {
