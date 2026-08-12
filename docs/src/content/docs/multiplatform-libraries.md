@@ -540,7 +540,7 @@ the machine-checked contract.
 | `@pyreon/http` | universal web/node HTTP client (WHATWG fetch); PMTC has no lowering for createHttp — native networking is useFetch + the PyreonHttp runtime layer, convergence tracked |
 | `@pyreon/virtual` | DOM virtualization (scroll containers, measured rows); native lists are lazy by construction (LazyColumn/LazyVStack) |
 | `@pyreon/rich-text` | wraps TipTap/ProseMirror (DOM editor); consume on native via the `<WebView>` bridge subpath |
-| `@pyreon/a11y` | DOM/ARIA utilities; the native a11y story is the AccessibilityProps vocabulary on @pyreon/primitives |
+| `@pyreon/a11y` | mostly DOM/ARIA utilities (the native element a11y story is the AccessibilityProps vocabulary on @pyreon/primitives); `announce(...)` now lowers to the native PyreonA11y runtime |
 | `@pyreon/feature` | composite over query/form/store/validation — lowers only when every dependency does; tracked as a Tier-2 composite |
 | `@pyreon/sync` | Yjs CRDT engine + IndexedDB/WebSocket transports; the engine-neutral core is portable but no native runtime exists |
 | `@pyreon/query` | wraps TanStack Query (JS runtime cache); native data fetching is useFetch/PyreonFetch |

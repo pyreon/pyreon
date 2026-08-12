@@ -3055,6 +3055,9 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         e.durationMillis !== undefined ? `, duration: ${e.durationMillis / 1000}` : ''
       return `PyreonToast.shared.add(${emitSwiftExpr(e.message, indent)}, type: ${JSON.stringify(e.toastType)}${durArg})`
     }
+    case 'announce-call':
+      // Imperative @pyreon/a11y announce → PyreonA11y (a VoiceOver announcement).
+      return `PyreonA11y.announce(${emitSwiftExpr(e.message, indent)}, assertive: ${e.assertive})`
     case 'call': {
       // `Object.keys(<object-typed expr>)` → static `[String]` of the
       // struct field names. A synthesized struct's keys are statically

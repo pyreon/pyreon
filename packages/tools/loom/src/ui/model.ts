@@ -141,12 +141,12 @@ export function buildNodes(report: LoomReport): NodeVM[] {
   return nodes
 }
 
-export function createModel(report: LoomReport): ObservatoryModel {
+export function createModel(report: LoomReport, initialView: ViewId = 'graph'): ObservatoryModel {
   const nodes = buildNodes(report)
   const byId = new Map(nodes.map((n) => [n.id, n]))
   const cycleNodes = new Set(report.graph.cycles.flat())
 
-  const view = signal<ViewId>('graph')
+  const view = signal<ViewId>(initialView)
   const kind = signal<KindFilter>('all')
   const query = signal('')
   const searchOpen = signal(false)

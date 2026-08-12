@@ -55,6 +55,8 @@ const SERVICE =
 // harness can verify a CO-LOCATED runtime file (`@pyreon/<pkg>/native/kotlin/…`)
 // rather than one under this package's own `src/`. `--service` still selects
 // the stub bundle. Used by scripts/check-native-cosource.ts.
+// harness can verify a CO-LOCATED runtime file (`@pyreon/<pkg>/native/kotlin/…`).
+// `--service` still selects the stub bundle. Used by scripts/check-native-cosource.ts.
 const SOURCE_OVERRIDE = process.argv.find((a) => a.startsWith('--source='))?.split('=')[1]
 const TEST_OVERRIDE = process.argv.find((a) => a.startsWith('--test='))?.split('=')[1]
 const SOURCE_FILE = SOURCE_OVERRIDE

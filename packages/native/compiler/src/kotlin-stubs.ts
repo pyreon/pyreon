@@ -1261,6 +1261,11 @@ object PyreonToast {
   fun dismiss(id: String) {}
   fun clear() {}
 }
+// PyreonA11y — mirror of runtime-kotlin's PyreonA11y.kt: the object with an
+// \`announce(message, assertive)\` the imperative \`announce(...)\` call lowers to.
+object PyreonA11y {
+  fun announce(message: String, assertive: Boolean = false) {}
+}
 
 // PyreonCrashReporter — mirror of the runtime-kotlin surface the emit touches:
 // lastCrash/hadCrash MutableState (read dot-value), recordError/breadcrumb/

@@ -251,6 +251,7 @@ export function exprReferencesIdent(expr: ExprIR, name: string): boolean {
     case 'await':
       return exprReferencesIdent(expr.expr, name)
     case 'toast-call':
+    case 'announce-call':
       return exprReferencesIdent(expr.message, name)
     case 'spread':
       return exprReferencesIdent(expr.argument, name)
@@ -420,7 +421,8 @@ export function substituteIdentifier(
       if (inner === null) return null
       return { ...expr, inner }
     }
-    case 'toast-call': {
+    case 'toast-call':
+    case 'announce-call': {
       const message = substituteIdentifier(expr.message, name, replacement)
       if (message === null) return null
       return { ...expr, message }
@@ -575,6 +577,7 @@ function walkLowerParams(
     case 'await':
       return { ...expr, expr: rec(expr.expr) }
     case 'toast-call':
+    case 'announce-call':
       return { ...expr, message: rec(expr.message) }
     case 'spread':
       return { ...expr, argument: rec(expr.argument) }

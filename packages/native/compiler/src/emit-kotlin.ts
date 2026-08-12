@@ -2562,6 +2562,9 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       const durArg = e.durationMillis !== undefined ? `, ${e.durationMillis}L` : ''
       return `PyreonToast.add(${emitKotlinExpr(e.message, indent)}, ${JSON.stringify(e.toastType)}${durArg})`
     }
+    case 'announce-call':
+      // Imperative @pyreon/a11y announce → PyreonA11y (the registered announcer).
+      return `PyreonA11y.announce(${emitKotlinExpr(e.message, indent)}, ${e.assertive})`
     case 'call': {
       // Field-array accessor unwrap: zero-arg `items()`/`length()` on a
       // PyreonFieldArray decl (and `value()` on a For-item param over its

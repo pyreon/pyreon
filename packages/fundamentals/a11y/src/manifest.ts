@@ -11,7 +11,7 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      'DOM/ARIA utilities; the native a11y story is the AccessibilityProps vocabulary on @pyreon/primitives',
+      'mostly DOM/ARIA utilities (the native element a11y story is the AccessibilityProps vocabulary on @pyreon/primitives); `announce(...)` now lowers to the native PyreonA11y runtime',
   },
   features: [
     'announce(message) — speak status/errors to screen readers via a lazily-created aria-live region; zero setup, no provider, SSR-safe no-op',
