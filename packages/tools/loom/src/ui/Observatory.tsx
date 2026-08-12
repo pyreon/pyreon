@@ -40,8 +40,18 @@ const TITLES: Record<ViewId, [string, string]> = {
   table: ['Package manifest', '05 · manifest · versions · licenses · findings'],
 }
 
-export function Observatory(props: { report: LoomReport; brand?: string }) {
-  const m = createModel(props.report)
+export function Observatory(props: {
+  report: LoomReport
+  brand?: string
+  /** Seeds the active view. Routed hosts pass their own; the default keeps
+   * `mountObservatory` byte-identical. */
+  initialView?: ViewId
+  /** When supplied, the view tabs render as real links to these hrefs instead
+   * of flipping a signal — that is what makes a routed host's URLs mean
+   * something. Absent (the single-page host), the tabs stay signal-driven. */
+  hrefFor?: (id: ViewId) => string
+}) {
+  const m = createModel(props.report, props.initialView ?? 'graph')
   // The observatory IS a dev tool — its model is its public runtime surface
   // (the same contract the Atlas workbench exposes for its browser runner).
   ;(globalThis as Record<string, unknown>).__LOOM_MODEL__ = m
@@ -153,7 +163,9 @@ export function Observatory(props: { report: LoomReport; brand?: string }) {
               <C.NavTab
                 data-testid={`view-${v.id}`}
                 state={() => (m.view() === v.id ? 'active' : 'idle')}
-                onClick={() => m.view.set(v.id)}
+                {...(props.hrefFor
+                  ? { tag: 'a', href: props.hrefFor(v.id) }
+                  : { onClick: () => m.view.set(v.id) })}
               >
                 {v.label}
               </C.NavTab>

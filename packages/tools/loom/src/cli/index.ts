@@ -28,6 +28,12 @@ const HELP = `
       --strict          Exit non-zero on warnings too.
       --no-imports      Skip the source-import scan (phantom/dev-dep/unused detectors).
       --no-write        Don't write loom-report.json.
+    build [dir]         Prerender the observatory to a STANDALONE STATIC SITE —
+                        one page per view, deployable to any static host or
+                        openable from disk. Needs vite + @pyreon/vite-plugin +
+                        @pyreon/zero (optional peers; scan needs none of them).
+      --out=<dir>       Output directory (default loom-dist).
+      --base=<path>     Public base path for a subdirectory deploy.
       --json            Print the full report as JSON to stdout — and ONLY that, so
                         "loom scan . --json > report.json" is valid JSON (the
                         write notice goes to stderr instead). Still writes the
@@ -126,6 +132,39 @@ export async function runCli(argv: readonly string[]): Promise<number> {
       return 1
     }
     return 0
+  }
+
+  if (cmd === 'build') {
+    const positional = rest.filter((a) => !a.startsWith('-'))
+    const dir = positional[0] ?? '.'
+    const outArg = rest.find((a) => a.startsWith('--out='))
+    const baseArg = rest.find((a) => a.startsWith('--base='))
+    const outOpt = outArg ? outArg.slice('--out='.length) : 'loom-dist'
+
+    let report
+    try {
+      const shared = await loadSharedLoomConfig(dir)
+      const manifest = validateLoomSection(readManifestLoomSection(dir), `${dir}/package.json`)
+      const settings = mergeLoomSettings(shared, manifest)
+      report = buildReport(dir, { noImports: rest.includes('--no-imports'), settings })
+    } catch (error) {
+      err(`${String((error as Error)?.message ?? error)}\n`)
+      return 1
+    }
+
+    try {
+      const { buildStaticSite } = await import('../build/static-site')
+      const outDir = await buildStaticSite({
+        report,
+        outDir: outOpt,
+        ...(baseArg ? { base: baseArg.slice('--base='.length) } : {}),
+      })
+      out(`loom: ${report.stats.internal} package(s) → ${outDir}\n`)
+      return 0
+    } catch (error) {
+      err(`${String((error as Error)?.message ?? error)}\n`)
+      return 1
+    }
   }
 
   if (cmd === 'dev') {
