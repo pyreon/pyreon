@@ -3,10 +3,10 @@ import { formatIssues } from '@pyreon/validation'
 import type { NormalizedConfig } from './model'
 import { runAction } from './middleware'
 import { onPatch, trackedSignal } from './patch'
-import { instanceMeta } from './registry'
+import { instanceMeta, isModelInstance } from './registry'
 import { buildReferenceField, isReferenceMarker } from './references'
 import { getSnapshot } from './snapshot'
-import { scanForChildren } from './tree'
+import { collectModelChildren, scanForChildren } from './tree'
 import type { InstanceMeta, LifecycleHandlers, StateShape } from './types'
 import { MODEL_BRAND, RESERVED_SCHEMA_HELPER_KEYS } from './types'
 
@@ -225,6 +225,46 @@ export function createInstance(
       }
     }
   }
+  // Upward patch/snapshot PROPAGATION for array/object-held model children (the
+  // headline `todos: Todo[]` composition). A field-nested model (`isModelDef`)
+  // is wired once at creation below; array/object children reach the instance
+  // via `scanForChildren` (parent pointer only), so without this a mutation
+  // inside `self.todos()[0]` never fired the parent's onPatch/onSnapshot (stale
+  // persistence) and `destroy(parent)` never tore them down (leak). `path` is
+  // the field's `/key`; propagation prefixes it exactly like the field-nested
+  // branch. Per-key disposal + `meta.children` reconciliation on every re-`.set`
+  // prevents a Class-D listener pile-up and keeps `destroy` from tearing down
+  // instances no longer in the tree.
+  const childWiring = new Map<string, { unsubs: Array<() => void>; kids: object[] }>()
+  const wireContainerChildPropagation = (value: unknown, key: string, path: string): void => {
+    // Dispose the PREVIOUS set's wiring for this key FIRST — regardless of the
+    // new value's shape (the field may have gone from an array to null/scalar).
+    const prev = childWiring.get(key)
+    if (prev) {
+      for (const unsub of prev.unsubs) unsub()
+      for (const kid of prev.kids) meta.children.delete(kid)
+      childWiring.delete(key)
+    }
+    // Wire model-instance children held in an array / plain-object CONTAINER.
+    // A direct model value is either the `isModelDef` field (already wired at
+    // creation) or a bare model on a plain field (keeps parent-only behaviour) —
+    // both outside this gap, so skip it. `collectModelChildren` returns [] for a
+    // scalar/null, so the array/object containers are all that remain.
+    if (isModelInstance(value)) return
+    const kids = collectModelChildren(value)
+    if (kids.length === 0) return
+    const unsubs: Array<() => void> = []
+    for (const kid of kids) {
+      meta.children.add(kid)
+      // Disposal (above) removes this listener when the key is re-set, so a
+      // detached child can't emit — no stale-emit guard needed here.
+      unsubs.push(
+        onPatch(kid, (patch) => meta.emitPatch({ ...patch, path: path + patch.path })),
+      )
+    }
+    childWiring.set(key, { unsubs, kids })
+  }
+
   for (const [key, defaultValue] of Object.entries(allocationSource)) {
     meta.stateKeys.push(key)
     const path = `/${key}`
@@ -294,13 +334,17 @@ export function createInstance(
       // this field — as a value, an array element, or a plain-object value — so
       // getParent / getRoot / getPath work for array children, not just
       // field-nested ones.
-      (v) => scanForChildren(v, instance, key),
+      (v) => {
+        scanForChildren(v, instance, key)
+        wireContainerChildPropagation(v, key, path)
+      },
     )
     instance[key] = tracked
     // Initial-value scan (the rawSig value never went through tracked.set, so
     // afterSet didn't fire) — attaches field-nested children + any model
-    // instances in an initial array/object.
+    // instances in an initial array/object, and wires their upward propagation.
     scanForChildren(rawSig.peek(), instance, key)
+    wireContainerChildPropagation(rawSig.peek(), key, path)
   }
 
   // ── 3. Schema-mode helpers ────────────────────────────────────────────────

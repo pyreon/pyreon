@@ -45,6 +45,31 @@ export function scanForChildren(value: unknown, parent: object, key: string): vo
   }
 }
 
+/**
+ * Collect the model instances a value carries as children (one container level
+ * deep — the same shapes `scanForChildren` attaches). Used by `createInstance`
+ * to wire upward patch/snapshot PROPAGATION for array/object-held children, so a
+ * mutation inside `self.todos()[0]` reaches the parent's `onPatch`/`onSnapshot`
+ * (and `destroy(parent)` tears them down) — matching field-nested children.
+ *
+ * @internal — used by `createInstance`.
+ */
+export function collectModelChildren(value: unknown): object[] {
+  // Only array / plain-object CONTAINERS — the caller (`wireContainerChildPropagation`)
+  // pre-filters a direct model-instance value (that's the field-nested path).
+  if (Array.isArray(value)) {
+    const out: object[] = []
+    for (const el of value) if (isModelInstance(el)) out.push(el as object)
+    return out
+  }
+  if (isPlainObject(value)) {
+    const out: object[] = []
+    for (const v of Object.values(value)) if (isModelInstance(v)) out.push(v as object)
+    return out
+  }
+  return []
+}
+
 // ─── Public tree helpers ─────────────────────────────────────────────────────
 
 function metaOrThrow(instance: object, fn: string): { parent?: object; parentKey?: string } {
