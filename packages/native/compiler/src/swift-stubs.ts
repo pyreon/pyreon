@@ -485,6 +485,23 @@ public final class PyreonAppState {
   public func stop() {}
   public init(phase: String = "active") { self.phase = phase }
 }
+// PyreonToast — mirror of runtime-swift's PyreonToast.swift surface the emit
+// touches: the shared singleton, \`toasts\` (a collection of Identifiable items
+// with a \`message\`, iterated by the \`<Toaster/>\` ForEach), and the
+// \`add(_:type:)\` the imperative \`toast(...)\` call lowers to.
+public struct PyreonToastItem: Identifiable {
+  public let id: String
+  public let message: String
+  public let type: String
+}
+public final class PyreonToast {
+  public static let shared = PyreonToast()
+  public private(set) var toasts: [PyreonToastItem] = []
+  @discardableResult
+  public func add(_ message: String, type: String = "info", duration: TimeInterval? = nil) -> String { "" }
+  public func dismiss(_ id: String) {}
+  public func clear() {}
+}
 // PyreonA11y — mirror of runtime-swift's PyreonA11y.swift: a static
 // \`announce(_:assertive:)\` the imperative \`announce(...)\` call lowers to.
 public enum PyreonA11y {

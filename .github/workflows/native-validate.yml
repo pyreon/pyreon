@@ -225,6 +225,11 @@ jobs:
         run: bun run --filter='@pyreon/native-compiler' test
 
       - name: Verify co-located native runtime sources
+        # Each cross-platform package ships its native runtime beside its src/
+        # (`@pyreon/<pkg>/native/{swift,kotlin}/`, the co-location architecture).
+        # Those files are NOT under @pyreon/native-runtime-*'s own src/, so this
+        # gate compiles + smoke-runs them against the stub harness — a co-located
+        # .swift/.kt can't rot silently. Skips a toolchain gracefully.
         # Co-located native runtimes (@pyreon/<pkg>/native/{swift,kotlin}/) live
         # outside @pyreon/native-runtime-*'s src/, so this gate compiles +
         # smoke-runs them against the stub harness. Skips a toolchain gracefully.

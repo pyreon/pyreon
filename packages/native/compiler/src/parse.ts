@@ -84,6 +84,14 @@ interface ParseCtx {
    */
   storeAliases: Map<string, string>
   /**
+   * Local names bound to the imperative `toast` import from `@pyreon/toast`
+   * (`import { toast }` → `toast`; `import { toast as notify }` → `notify`).
+   * `parseExpr` rewrites a call on one of these — `toast("x")` or a preset
+   * `toast.success("x")` — to a `toast-call` ExprIR so the emit lowers it to
+   * `PyreonToast`. Empty unless the file imports `toast`.
+   */
+  toastNames: Set<string>
+  /**
    * Local names bound to the `announce` import from `@pyreon/a11y` (handles
    * `import { announce as say }`). `parseExpr` lowers a call on one of these to
    * an `announce-call` ExprIR (→ PyreonA11y). Empty unless `announce` is imported.
@@ -136,6 +144,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     storeHookNames: new Set(),
     objectTypeAliases: new Map(),
     storeAliases: new Map(),
+    toastNames: new Set(),
     announceNames: new Set(),
     hookFieldAliases: new Map(),
     hookDestructureCounter: 0,
@@ -163,6 +172,10 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   // that fails the native build with a cryptic `Cannot find 'Chart' in
   // scope`, far from the cause. Name the package + the escape-hatch fix.
   warnWebOnlyImports(ast.program.body as AnyNode[], ctx)
+  // Pre-pass: record the local name(s) bound to the imperative `toast` import
+  // from @pyreon/toast, so parseExpr can lower `toast(...)` / `toast.success(...)`
+  // to PyreonToast. Handles renamed imports (`import { toast as notify }`).
+  collectToastNames(ast.program.body as AnyNode[], ctx)
   // Record the local name(s) bound to `announce` from @pyreon/a11y so parseExpr
   // can lower `announce(...)` to PyreonA11y. Handles renamed imports.
   collectAnnounceNames(ast.program.body as AnyNode[], ctx)
@@ -790,7 +803,9 @@ const WEB_ONLY_PACKAGES = new Set([
   '@pyreon/kinetic',
   '@pyreon/kinetic-presets',
   '@pyreon/dnd',
-  '@pyreon/toast',
+  // @pyreon/toast now has a NATIVE frontend: the imperative `toast(...)` calls
+  // lower to PyreonToast, and `<Toaster />` renders a native overlay. Removed
+  // from the web-only set (was a silent break — the call emitted verbatim).
   '@pyreon/table',
   '@pyreon/virtual',
   // Both were MISSING and failed both targets with no diagnostic at all —
@@ -826,6 +841,24 @@ function warnWebOnlyImports(body: AnyNode[], ctx: ParseCtx): void {
       ctx.warnings.push(
         `${pkg} is WEB-ONLY — it renders via the DOM / a browser-only library and has NO native (iOS/Android) emit, so PMTC can't compile it. On native, render it behind a \`<Web>\` escape hatch (web target only), or use a platform-native equivalent inside \`<NativeIOS>\` / \`<NativeAndroid>\`. The shared, multi-platform UI vocabulary lives in \`@pyreon/primitives\` (Stack / Text / Button / …) — those compile to all three targets.`,
       )
+    }
+  }
+}
+
+/**
+ * Record the local name(s) bound to `toast` imported from `@pyreon/toast`.
+ * `import { toast }` → `toast`; `import { toast as notify }` → `notify`. These
+ * are the callees `parseExpr` lowers to a `toast-call` ExprIR.
+ */
+function collectToastNames(body: AnyNode[], ctx: ParseCtx): void {
+  for (const node of body) {
+    if (node.type !== 'ImportDeclaration') continue
+    if (node.source?.value !== '@pyreon/toast') continue
+    for (const spec of (node.specifiers as AnyNode[] | undefined) ?? []) {
+      if (spec.type === 'ImportSpecifier' && spec.imported?.name === 'toast') {
+        const local = spec.local?.name
+        if (typeof local === 'string') ctx.toastNames.add(local)
+      }
     }
   }
 }
@@ -3219,6 +3252,7 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     storeHookNames: new Set(),
     objectTypeAliases: new Map(),
     storeAliases: new Map(),
+    toastNames: new Set(),
     announceNames: new Set(),
     hookFieldAliases: new Map(),
     hookDestructureCounter: 0,
@@ -6734,6 +6768,55 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
           `\`JSON.${node.callee.property.name}\``,
           'no native lowering yet — keep data in typed signals/structs (fetch decode is handled by useFetch<T>); a serialization bridge is a tracked follow-up.',
         )
+      }
+      // Imperative `@pyreon/toast` call → `toast-call` ExprIR (→ PyreonToast).
+      // `toast("x")` (info) or a preset `toast.success("x")` / `.error` /
+      // `.warning` / `.info` / `.loading`. The message is the first argument; a
+      // literal `duration` (ms) in the 2nd-arg options object sets the
+      // auto-dismiss (0 = persistent); other options (onDismiss/description/
+      // icon/action) are dropped in v1 (the preset method carries the type).
+      if (ctx.toastNames.size > 0) {
+        const c = node.callee
+        const PRESETS = new Set(['success', 'error', 'warning', 'info', 'loading'])
+        let toastType: string | undefined
+        if (c?.type === 'Identifier' && ctx.toastNames.has(c.name)) {
+          toastType = 'info'
+        } else if (
+          c?.type === 'MemberExpression' &&
+          c.object?.type === 'Identifier' &&
+          ctx.toastNames.has(c.object.name) &&
+          c.property?.type === 'Identifier' &&
+          PRESETS.has(c.property.name)
+        ) {
+          // `loading` has no distinct native variant in v1 → treat as info.
+          toastType = c.property.name === 'loading' ? 'info' : c.property.name
+        }
+        if (toastType !== undefined) {
+          const argNodes = (node.arguments as AnyNode[] | undefined) ?? []
+          const message: ExprIR = argNodes[0]
+            ? parseExpr(argNodes[0], ctx)
+            : { kind: 'literal', value: '' }
+          // A literal `duration` (ms) in the options object → auto-dismiss.
+          let durationMillis: number | undefined
+          const opts = argNodes[1]
+          if (opts?.type === 'ObjectExpression') {
+            for (const prop of (opts.properties as AnyNode[] | undefined) ?? []) {
+              if (prop.type !== 'Property' || prop.computed) continue
+              const key = prop.key?.type === 'Identifier' ? prop.key.name : prop.key?.value
+              const val = prop.value as AnyNode | undefined
+              if (
+                key === 'duration' &&
+                (val?.type === 'Literal' || val?.type === 'NumericLiteral') &&
+                typeof val.value === 'number'
+              ) {
+                durationMillis = val.value
+              }
+            }
+          }
+          return durationMillis !== undefined
+            ? { kind: 'toast-call', message, toastType, durationMillis }
+            : { kind: 'toast-call', message, toastType }
+        }
       }
       // Imperative `@pyreon/a11y` `announce("msg", { politeness })` →
       // `announce-call` ExprIR (→ PyreonA11y). The message is the first arg; an
