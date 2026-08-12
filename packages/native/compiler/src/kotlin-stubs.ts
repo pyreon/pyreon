@@ -1228,6 +1228,12 @@ class PyreonMachine(initial: String, val transitions: Map<String, Map<String, St
 // a different TYPE on the property. It therefore rejected the emit's correct
 // \`PyreonPermissions()\`. A stub stricter than reality fails correct code,
 // the inverse of the usual superset-masks problem.
+// Mirrors PyreonPermissions.kt's CompositionLocal. A bare \`usePermissions()\`
+// reads the provider through this; a stub without it rejects a correct emit.
+class ProvidableCompositionLocal<T>(val default: T) { val current: T get() = default }
+fun <T> compositionLocalOf(f: () -> T): ProvidableCompositionLocal<T> = ProvidableCompositionLocal(f())
+infix fun <T> ProvidableCompositionLocal<T>.provides(v: T): Pair<ProvidableCompositionLocal<T>, T> = Pair(this, v)
+fun CompositionLocalProvider(vararg pairs: Pair<*, *>, content: @Composable () -> Unit) { content() }
 class PyreonPermissions(granted: Set<String> = emptySet()) {
   val granted: MutableState<Set<String>> = mutableStateOf(granted)
   fun can(key: String): Boolean {

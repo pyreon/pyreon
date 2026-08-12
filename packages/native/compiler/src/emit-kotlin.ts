@@ -42,6 +42,7 @@ import {
   widenFloatLocals,
   widenFloatSignals,
 } from './infer-type'
+import { permissionsProviderSeed } from './permissions-provider'
 import type { InferenceCtx } from './infer-type'
 import { kotlinIdent, safeIdent } from './identifier-safety'
 import { resolveRocketstyleUseSite } from './rocketstyle-native'
@@ -484,6 +485,12 @@ export function emitKotlin(
   if (components.some((c) => c.decls?.some((d) => d.kind === 'url-state'))) {
     parts.push(KOTLIN_URL_STATE)
   }
+  if (
+    _usesPermissionsEnvKotlin ||
+    components.some((c) => c.decls?.some((d) => d.kind === 'permissions' && d.grants.length === 0))
+  ) {
+    parts.push(KOTLIN_PERMISSIONS_ENV)
+  }
   // Gap 4 v3.2 — emit auxSchemas BEFORE their parent schema so the
   // type-reference order is consistent top-down.
   const emitKotlinSchemaTree = (zs: ZodSchemaDefnIR): void => {
@@ -517,6 +524,7 @@ export function emitKotlin(
   _modelInstancesKotlin = new Map()
   _modelReadNamesKotlin = new Map()
   _modelMethodNamesKotlin = new Map()
+  _usesPermissionsEnvKotlin = false
   _needsKotlinKeepAliveWrapper = false
   const warnings = [..._emitWarnings]
   _emitWarnings = []
@@ -546,6 +554,8 @@ let _activeModelSelfParamKotlin: string | undefined
 let _modelReadNamesKotlin: Map<string, Set<string>> = new Map()
 /** Per-instance model ACTION names — calls keep their parens + args. */
 let _modelMethodNamesKotlin: Map<string, Set<string>> = new Map()
+/** Set when a `<PermissionsProvider>` emits — the file needs the local. */
+let _usesPermissionsEnvKotlin = false
 
 /**
  * Emit a per-store Kotlin object singleton:
@@ -1155,6 +1165,12 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
  * `callAsFunction`, so `q()` reads and `q.set(v)` writes on BOTH targets and
  * shared source does not fork.
  */
+const KOTLIN_PERMISSIONS_ENV = `// CompositionLocal for <PermissionsProvider> — mirror of the Swift env key,
+// emitted inline for the same reason (a co-located runtime should not need
+// Compose's CompositionLocal machinery). An unprovided local is an EMPTY set
+// — a deny, the safe default for an authorization check.
+private val LocalPyreonPermissions = compositionLocalOf { PyreonPermissions() }`
+
 const KOTLIN_URL_STATE = `class PyreonUrlState(
     private val router: PyreonRouter,
     private val key: String,
@@ -1947,9 +1963,12 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // PyreonPermissions seeded with the literal grant keys. Reads are method
   // calls (`can.can("x")`) — no `.value` field-read rewrite needed.
   if (d.kind === 'permissions') {
-    const seed = d.grants.length
-      ? `setOf(${d.grants.map((g) => JSON.stringify(g)).join(', ')})`
-      : ''
+    // Mirror of Swift: a BARE `usePermissions()` reads the provider's
+    // CompositionLocal rather than constructing an empty set that denies.
+    if (d.grants.length === 0) {
+      return `val ${kotlinIdent(d.name)} = LocalPyreonPermissions.current`
+    }
+    const seed = `setOf(${d.grants.map((g) => JSON.stringify(g)).join(', ')})`
     return `val ${kotlinIdent(d.name)} = remember { PyreonPermissions(${seed}) }`
   }
   // Phase 4: `const cb = useClipboard()` → a remembered PyreonClipboard.
@@ -4316,6 +4335,7 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if (tag === 'Field') return emitKotlinField(e, indent)
   if (tag === 'Toggle') return emitKotlinToggle(e, indent)
   if (tag === 'Link') return emitKotlinLink(e, indent)
+  if (tag === 'PermissionsProvider') return emitKotlinPermissionsProvider(e, indent)
   if (tag === 'RouterProvider') return emitKotlinRouterProvider(e, indent)
   if (tag === 'RouterView') return emitKotlinRouterView(e, indent)
   // 8 other canonical primitives fall through to generic emit until
@@ -6434,6 +6454,33 @@ function emitKotlinLink(
  * Falls back to the bare-content emit when routes aren't resolvable
  * (back-compat with C4 scaffold + foreign-router-attr shapes).
  */
+/**
+ * `<PermissionsProvider permissions={{ … }}>` → a CompositionLocal the bare
+ * `usePermissions()` reads. Mirror of emitSwiftPermissionsProvider; see its
+ * comment for why the injection is what makes the web-correct call work.
+ */
+function emitKotlinPermissionsProvider(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  _usesPermissionsEnvKotlin = true
+  const seed = permissionsProviderSeed(e)
+  if (seed === null) {
+    // The suppression of the blanket unlowered-module line is keyed on the
+    // TAG being present, so a provider that cannot be baked would otherwise
+    // go silent — worse than before the tag lowered at all. The emit is the
+    // authority on whether it lowered, so it reports.
+    _emitWarnings.push(
+      '<PermissionsProvider permissions={…}>: the permissions map is not a literal object of boolean values, so the grants cannot be baked into the native emit — the provider injects NOTHING and every check below it denies. Use a literal map, or seed at the call site with usePermissions(["posts.*"]).',
+    )
+    return emitKotlinGeneric(e, indent)
+  }
+  const pad = ' '.repeat(indent + 2)
+  const set = `PyreonPermissions(setOf(${seed.granted.map((g) => JSON.stringify(g)).join(', ')}))`
+  const content = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
+  return `CompositionLocalProvider(LocalPyreonPermissions provides ${set}) {\n${content}\n${' '.repeat(indent)}}`
+}
+
 function emitKotlinRouterProvider(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   indent: number,

@@ -117,6 +117,13 @@ interface ParseCtx {
    * warning must not claim the opposite directly above that struct. */
   validationSchemaLowered: boolean
   /**
+   * A `<PermissionsProvider permissions={{ … }}>` appears in this file, so a
+   * bare `usePermissions()` reads real grants from the environment rather
+   * than lowering to an empty set. Decided in a pre-scan because the warn
+   * pass runs before JSX is walked.
+   */
+  hasPermissionsProvider: boolean
+  /**
    * Local names bound to the `announce` import from `@pyreon/a11y` (handles
    * `import { announce as say }`). `parseExpr` lowers a call on one of these to
    * an `announce-call` ExprIR (→ PyreonA11y). Empty unless `announce` is imported.
@@ -174,6 +181,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     validateSchemaLowered: false,
     sizedMapNames: new Set(),
     validationSchemaLowered: false,
+    hasPermissionsProvider: false,
     announceNames: new Set(),
     hookFieldAliases: new Map(),
     hookDestructureCounter: 0,
@@ -207,6 +215,11 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   collectToastNames(ast.program.body as AnyNode[], ctx)
   collectValidateSchemaNames(ast.program.body as AnyNode[], ctx)
   collectSizedMapNames(ast.program.body as AnyNode[], ctx)
+  // A `<PermissionsProvider>` anywhere in the file means a bare
+  // `usePermissions()` has somewhere to read from. Checked against the source
+  // because the warn pass runs before the JSX walk — the same ordering that
+  // forced the schema pre-scans above.
+  ctx.hasPermissionsProvider = /<\s*PermissionsProvider[\s/>]/.test(source)
   // Record the local name(s) bound to `announce` from @pyreon/a11y so parseExpr
   // can lower `announce(...)` to PyreonA11y. Handles renamed imports.
   collectAnnounceNames(ast.program.body as AnyNode[], ctx)
@@ -1213,7 +1226,7 @@ const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
       // grants come from, so a hook without it lowers to an EMPTY set and
       // every check denies. Name the seeding shape instead.
       advice:
-        '`<PermissionsProvider>` does not lower, and it is what carries the grants — a bare `usePermissions()` yields an EMPTY native set, so every check denies. Seed the grants at the call site (`usePermissions(["posts.*", "billing.**"])`), which lowers to a native PyreonPermissions',
+        'a literal `<PermissionsProvider permissions={{ … }}>` DOES lower — it injects the grants a bare `usePermissions()` reads. What does not lower is a NON-literal permissions map (a variable, a fetch result), and `createPermissions()` used outside the provider',
     },
   ],
   [
@@ -1347,6 +1360,17 @@ function warnUnloweredPyreonModules(body: AnyNode[], ctx: ParseCtx): void {
           imported === 'valibotSchema' ||
           imported === 'arktypeSchema') &&
         ctx.validationSchemaLowered
+      ) {
+        continue
+      }
+      // `<PermissionsProvider permissions={{ … }}>` LOWERS now — it injects
+      // the grants into the SwiftUI environment / Compose CompositionLocal a
+      // bare `usePermissions()` reads. Keeping the blanket line would print
+      // "has NO native lowering" directly above the injection it performs.
+      if (
+        src === '@pyreon/permissions' &&
+        imported === 'PermissionsProvider' &&
+        ctx.hasPermissionsProvider
       ) {
         continue
       }
@@ -3717,6 +3741,7 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     validateSchemaLowered: false,
     sizedMapNames: new Set(),
     validationSchemaLowered: false,
+    hasPermissionsProvider: false,
     announceNames: new Set(),
     hookFieldAliases: new Map(),
     hookDestructureCounter: 0,
@@ -5343,9 +5368,9 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     // denies, silently: guarded UI simply never appeared on device, with
     // nothing to trace it by. Say so rather than emit a container that is
     // guaranteed to answer `false`.
-    if (grants.length === 0) {
+    if (grants.length === 0 && !ctx.hasPermissionsProvider) {
       ctx.warnings.push(
-        `usePermissions() \`${name}\`: no literal grant keys, so the native permission set is EMPTY and every check denies (on the web the grants come from <PermissionsProvider>, which has no native lowering). Seed them at the call site — usePermissions(["posts.*", "billing.**"]) — or grant() them before the first check.`,
+        `usePermissions() \`${name}\`: no grants reach this call — there is no literal argument and no <PermissionsProvider permissions={{ … }}> in this file, so the native permission set is EMPTY and every check denies. Wrap the tree in a provider (which lowers), seed at the call site (usePermissions(["posts.*"])), or grant() before the first check.`,
       )
     }
     return { kind: 'permissions', name, grants }
@@ -7610,8 +7635,20 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
           )
           continue
         }
-        if (p.type === 'Property' && p.key?.name) {
-          fields.push({ name: p.key.name as string, value: parseExpr(p.value, ctx) })
+        // A STRING-LITERAL key (`{ 'posts.*': true }`) is ordinary TS and was
+        // dropped here SILENTLY — no field, no warning, unlike the computed
+        // key above. Preserve it: consumers that need a static struct field
+        // name check the name themselves (a permission map, for instance, is
+        // read as data and never becomes a struct).
+        const literalKey =
+          p.type === 'Property' && p.key?.type === 'Literal' && typeof p.key.value === 'string'
+            ? (p.key.value as string)
+            : undefined
+        if (p.type === 'Property' && (p.key?.name || literalKey !== undefined)) {
+          fields.push({
+            name: (p.key.name as string | undefined) ?? literalKey!,
+            value: parseExpr(p.value, ctx),
+          })
         } else if (p.type === 'SpreadElement') {
           spreads.push(parseExpr(p.argument, ctx))
         }

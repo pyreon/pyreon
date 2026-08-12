@@ -62,19 +62,42 @@ describe('an empty native permission set announces itself', () => {
   })
 })
 
-describe("the provider's advice addresses the reader's actual situation", () => {
-  it('names the provider as the source of grants, not "use the hook"', () => {
+describe('a provider that lowers does not claim it does not', () => {
+  it('a literal <PermissionsProvider> emits no unlowered-module warning', () => {
     const w = transform(
       `import { PermissionsProvider, usePermissions } from '@pyreon/permissions'
+       function Inner() { const can = usePermissions(); return <Text>{can('a') ? 'y' : 'n'}</Text> }
        export function App() {
-         const can = usePermissions(['a'])
-         return <PermissionsProvider permissions={{ a: true }}><Text>{can('a') ? 'y' : 'n'}</Text></PermissionsProvider>
+         return <PermissionsProvider permissions={{ 'posts.*': true }}><Inner /></PermissionsProvider>
        }`,
       { target: 'swift' },
     ).warnings.join('\n')
-    expect(w).toContain('PermissionsProvider')
-    // The advice that shipped told someone already holding the hook to
-    // "use the hook instead", which changed nothing.
-    expect(w).not.toContain('use the hook instead')
+    // It used to warn "has NO native lowering" directly above the injection
+    // it performs, advising a <Web> escape hatch for working code.
+    expect(w).toBe('')
+  })
+
+  it('the grants reach the native container on both targets', () => {
+    const src = `import { PermissionsProvider, usePermissions } from '@pyreon/permissions'
+      function Inner() { const can = usePermissions(); return <Text>{can('a') ? 'y' : 'n'}</Text> }
+      export function App() {
+        return <PermissionsProvider permissions={{ 'posts.*': true, 'billing.**': true }}><Inner /></PermissionsProvider>
+      }`
+    expect(transform(src, { target: 'swift' }).code).toContain(
+      'PyreonPermissions(["posts.*", "billing.**"])',
+    )
+    expect(transform(src, { target: 'kotlin' }).code).toContain(
+      'PyreonPermissions(setOf("posts.*", "billing.**"))',
+    )
+  })
+
+  it('a NON-literal permissions map still declines — it cannot be baked in', () => {
+    const w = transform(
+      `import { PermissionsProvider } from '@pyreon/permissions'
+       export function App() { return <PermissionsProvider permissions={fromServer}><Text>x</Text></PermissionsProvider> }`,
+      { target: 'swift' },
+    ).warnings.join('\n')
+    expect(w).toContain('cannot be baked')
+    expect(w).toContain('every check below it denies')
   })
 })

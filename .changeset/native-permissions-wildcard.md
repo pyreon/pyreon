@@ -37,3 +37,29 @@ to "use the hook instead", which changed nothing.
 Still web-only: predicate permissions (`(context) => boolean`) and explicit
 `false` values, both of which need a value-carrying granted set rather than
 the current `Set<String>`. The web arm pins them so the gap is visible.
+
+## `<PermissionsProvider>` now lowers
+
+Web `usePermissions()` takes no arguments — the grants come from the provider
+above it, which had no native lowering. A literal
+`<PermissionsProvider permissions={{ 'posts.*': true }}>` now injects them
+into the SwiftUI environment / Compose `CompositionLocal` that a bare
+`usePermissions()` reads, so the web-correct call works unchanged instead of
+denying everything.
+
+The plumbing is emitted INLINE rather than shipped in the co-located runtime,
+for the reason `PyreonUrlState` already is: it needs SwiftUI's environment
+machinery / Compose's CompositionLocal, and a runtime that pulls those in
+stops being self-contained (and stops verifying against the compile gate's
+stub set).
+
+A NON-literal map (`permissions={fromServer}`) cannot be baked into the emit
+and declines from the emitter, which is the only layer that knows whether the
+injection happened — the blanket import warning is suppressed once the tag is
+present, so without this a provider that injects nothing would have gone
+silent.
+
+One more silent drop fixed on the way: an object literal with a STRING key
+(`{ 'posts.*': true }` — ordinary TS) was dropped by the parser with no field
+and no warning, unlike the computed-key case beside it which warns. String
+keys are now preserved.

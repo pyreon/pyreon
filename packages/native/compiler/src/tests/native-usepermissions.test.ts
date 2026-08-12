@@ -48,18 +48,24 @@ describe('Phase 4 — usePermissions() native emit', () => {
     expect(out).not.toContain('can.can("posts.edit").value')
   })
 
-  it('bare usePermissions() emits a default-constructed container (empty grants)', () => {
-    const swift = transform(
-      `export function Blank() { const can = usePermissions(); return <Text>x</Text> }`,
-      { target: 'swift' },
-    ).code
-    expect(swift).toContain('@State private var can = PyreonPermissions()')
+  // The invariant this protected — a bare `usePermissions()` still produces
+  // a usable container — is unchanged. What changed is WHERE the container
+  // comes from: a default-constructed one had an empty grant set, so every
+  // check denied while the web read the provider's grants. It now reads the
+  // provider through the environment / CompositionLocal, which is what makes
+  // the web-correct call work rather than silently deny.
+  it('bare usePermissions() reads the provider instead of an empty container', () => {
+    const src = `export function Blank() { const can = usePermissions(); return <Text>x</Text> }`
 
-    const kotlin = transform(
-      `export function Blank() { const can = usePermissions(); return <Text>x</Text> }`,
-      { target: 'kotlin' },
-    ).code
-    expect(kotlin).toContain('val can = remember { PyreonPermissions() }')
+    const swift = transform(src, { target: 'swift' }).code
+    expect(swift).toContain('@Environment(\\.pyreonPermissions) private var can')
+    // The emitted env key legitimately DEFAULTS to an empty container; what
+    // must be gone is the per-call-site construction that ignored the provider.
+    expect(swift).not.toContain('@State private var can = PyreonPermissions()')
+
+    const kotlin = transform(src, { target: 'kotlin' }).code
+    expect(kotlin).toContain('val can = LocalPyreonPermissions.current')
+    expect(kotlin).not.toContain('val can = remember { PyreonPermissions() }')
   })
 
   it('non-literal grant entries drop from the PyreonPermissions seed (string keys only)', () => {
