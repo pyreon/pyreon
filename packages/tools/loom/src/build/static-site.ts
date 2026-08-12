@@ -97,11 +97,13 @@ export async function buildStaticSite(options: BuildOptions): Promise<string> {
     logLevel: 'warn',
     ...(options.base ? { base: options.base } : {}),
     plugins: [
-      // NOTE: options passed to `pyreon()` here do NOT reach the SSR pass.
-      // zero's SSG filters the zero + pyreon plugins out of the captured chain
-      // and re-adds its own with defaults (`ssg-plugin.ts`), so an
-      // `ssrTemplate: false` here is silently a no-op — worth knowing before
-      // trying to configure the SSR transform from this side.
+      // zero's SSG cannot reuse this plugin INSTANCE in its nested SSR build
+      // (a second `configResolved` would rewrite captured output paths), so it
+      // constructs a fresh one and carries the transform options across —
+      // `compat` / `ssrTemplate` / `islands` / `jsxAutoImport` / the validator
+      // options. It deliberately withholds the ones that would mis-steer a
+      // nested build (`ssr.entry` would replace the synthetic entry). See
+      // `@pyreon/zero`'s `inner-pyreon-options.ts` for the per-option split.
       pyreon({ devErrorPrinter: false }),
       zero({ mode: 'ssg' }),
       {
