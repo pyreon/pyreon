@@ -172,7 +172,6 @@ function ToastItem(props: { id: string }): VNodeChild {
   const action = initial?.action
   const dismissible = initial?.dismissible ?? true
   const icon = initial?.icon
-  const hasDescription = initial?.description != null
 
   // `message` / `type` / `state` / `description` DO change (update, promise
   // transition, entering→visible). Read them LIVE via the map inside reactive
@@ -223,7 +222,7 @@ function ToastItem(props: { id: string }): VNodeChild {
       </Show>
       <div class="pyreon-toast__content">
         <div class="pyreon-toast__message">{() => resolve(live()?.message)}</div>
-        <Show when={hasDescription}>
+        <Show when={() => live()?.description != null}>
           <div class="pyreon-toast__description">{() => resolve(live()?.description)}</div>
         </Show>
       </div>
