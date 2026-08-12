@@ -1,4 +1,4 @@
-import { signal } from '@pyreon/reactivity'
+import { effect, signal } from '@pyreon/reactivity'
 import { describe, expect, it, vi } from 'vitest'
 import { createMachine } from '../index'
 
@@ -149,6 +149,29 @@ describe('createMachine — eventless (always) transitions', () => {
     m.send('GO')
     expect(entered).toEqual(['mid', 'end'])
     expect(exited).toEqual(['mid'])
+  })
+
+  it('a reactive reader never observes a transient always state (send is batched)', () => {
+    // Regression: the transition + `always` cascade weren't batched, so an
+    // effect re-ran once per intermediate step and observed the transient
+    // `checking` — contradicting the manifest's "a transient state is never
+    // observed by reactive readers". Batching settles the reader on the final
+    // state; the per-step imperative onEnter/onExit callbacks (above) still fire.
+    const m = createMachine({
+      initial: 'idle',
+      states: {
+        idle: { on: { GO: 'checking' } },
+        checking: { always: 'result' },
+        result: {},
+      },
+    })
+    const seen: string[] = []
+    const e = effect(() => {
+      seen.push(m())
+    })
+    m.send('GO') // idle -> checking -(always)-> result, in one send
+    expect(seen).toEqual(['idle', 'result']) // NOT ['idle', 'checking', 'result']
+    e.dispose()
   })
 
   it('does not transition when no always guard passes', () => {

@@ -90,6 +90,44 @@ describe('createMachine', () => {
         }),
       ).toThrow('[Pyreon] machine: initial state')
     })
+
+    it('throws on a non-existent `on` transition target (was silent → stuck)', () => {
+      // A typo'd target used to `current.set(...)` into an undefined state:
+      // matches() false, nextEvents() empty, every send() a no-op — stuck
+      // forever with no error. Now rejected at construction, like `initial`.
+      expect(() =>
+        createMachine({
+          initial: 'idle',
+          states: {
+            idle: { on: { GO: 'lodaing' } }, // typo — 'loading'
+            loading: { on: { DONE: 'idle' } },
+          } as any,
+        }),
+      ).toThrow(/transition target 'lodaing'.*not defined in states/)
+    })
+
+    it('throws on a non-existent `always` transition target', () => {
+      expect(() =>
+        createMachine({
+          initial: 'start',
+          states: {
+            start: { always: 'redy' }, // typo — 'ready'
+            ready: {},
+          } as any,
+        }),
+      ).toThrow(/transition target 'redy'.*not defined in states/)
+    })
+
+    it('throws on a non-existent guarded transition target', () => {
+      expect(() =>
+        createMachine({
+          initial: 'idle',
+          states: {
+            idle: { on: { GO: { target: 'gone', guard: () => true } } },
+          } as any,
+        }),
+      ).toThrow(/transition target 'gone'.*not defined in states/)
+    })
   })
 
   // ─── Guards ──────────────────────────────────────────────────────────
