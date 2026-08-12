@@ -45,9 +45,10 @@
 // Exit 0 when every source is covered or knowingly exempt; exit 1 listing each
 // uncovered file.
 
-import { readFileSync, readdirSync } from 'node:fs'
+import { readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { EXEMPT, planServices } from './services'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PACKAGE_ROOT = join(HERE, '..')
@@ -61,33 +62,28 @@ const SOURCE_DIR = join(PACKAGE_ROOT, 'src/main/kotlin/com/pyreon/runtime')
  * source set), so they are not unchecked in absolute terms, only absent from
  * the fast gate. Writing the stubs is the follow-up that removes them.
  */
-export const EXEMPT: Record<string, string> = {
-  PyreonAssets: 'needs android.util.Log + androidx.compose.ui.text.font stubs',
-  PyreonWebView: 'needs android.os.Handler/Looper + android.webkit stubs',
-}
+export { EXEMPT }
 
 /**
- * Every service the package's scripts hand to `verify-kotlin.ts`.
+ * Every service `verify-all.ts` will actually run.
  *
- * A segment invoking the script with no `--service=` flag runs the script's own
- * default, so that default is read from the script source rather than assumed —
- * a hardcoded 'PyreonStorage' here would silently drift if the default changed,
- * which is the very failure mode this file exists to prevent. Pure —
- * unit-tested.
+ * This used to grep the WHOLE package.json for `--service=<Name>`, back when
+ * the list lived as three hand-written `&&` chains (`build`, `test`,
+ * `typecheck`). That could only answer "is this service verified SOMEWHERE?",
+ * and the question that matters is "is it verified by the script I am running?"
+ *
+ * The distinction was not academic: seven services — PyreonBiometrics,
+ * PyreonFilePicker, PyreonHaptics, PyreonImagePicker, PyreonLinking,
+ * PyreonNotifications, PyreonShare — appeared only in `test`, so `build` and
+ * `typecheck` never compiled them, and this gate reported ✓ the whole time.
+ *
+ * `verify-all.ts` now DERIVES its list from the sources, so coverage is
+ * structural and a new file is verified the moment it exists. What remains
+ * worth asserting is the part derivation cannot give you: that the EXEMPT
+ * ratchet has not outlived its reasons. Pure — unit-tested.
  */
-export function coveredServices(packageJsonText: string, verifyScriptText: string): Set<string> {
-  const defaultMatch = /\?\?\s*'([A-Za-z0-9_]+)'/.exec(verifyScriptText)
-  const defaultService = defaultMatch?.[1]
-  const covered = new Set<string>()
-
-  // Shell segments, so a bare invocation is distinguishable from a flagged one.
-  for (const segment of packageJsonText.split('&&')) {
-    if (!segment.includes('verify-kotlin.ts')) continue
-    const flag = /--service=([A-Za-z0-9_]+)/.exec(segment)
-    if (flag) covered.add(flag[1]!)
-    else if (defaultService) covered.add(defaultService)
-  }
-  return covered
+export function coveredServices(sourceFiles: readonly string[]): Set<string> {
+  return new Set(planServices(sourceFiles, 'full').map((s) => s.name))
 }
 
 /** Sources present on disk, by base name (`PyreonFetch.kt` -> `PyreonFetch`). */
@@ -123,10 +119,15 @@ export function findCoverageGaps(
 }
 
 // ─── main ─────────────────────────────────────────────────────────────────
-
-const packageJsonText = readFileSync(join(PACKAGE_ROOT, 'package.json'), 'utf8')
-const verifyScriptText = readFileSync(join(HERE, 'verify-kotlin.ts'), 'utf8')
-const sources = sourceNames(readdirSync(SOURCE_DIR))
+//
+// Guarded: this module also EXPORTS `EXEMPT`, which `verify-all.ts` imports to
+// derive its service list. Without the guard that import runs the whole gate as
+// a side effect — printing, and able to `process.exit` out of an unrelated
+// script. A module that both exports and acts must only act when it is the
+// entry point.
+if (import.meta.main) {
+const sourceFiles = readdirSync(SOURCE_DIR)
+const sources = sourceNames(sourceFiles)
 
 // An empty scan is a broken gate, never a vacuous pass.
 if (sources.length === 0) {
@@ -134,7 +135,7 @@ if (sources.length === 0) {
   process.exit(1)
 }
 
-const covered = coveredServices(packageJsonText, verifyScriptText)
+const covered = coveredServices(sourceFiles)
 const { uncovered, staleExempt } = findCoverageGaps(sources, covered, EXEMPT)
 
 if (uncovered.length > 0 || staleExempt.length > 0) {
@@ -168,3 +169,4 @@ console.log(
   `[check-service-coverage] ✓ ${sources.length - exemptCount}/${sources.length} sources gated` +
     (exemptCount > 0 ? ` (${exemptCount} exempt: ${Object.keys(EXEMPT).join(', ')})` : ''),
 )
+}
