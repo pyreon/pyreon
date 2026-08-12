@@ -118,16 +118,25 @@ export function GraphView(props: { model: ObservatoryModel; theme: () => LoomTok
           )
         })
 
-        const axis = layout.depthKeys.map((d, di) => (
-          <text
-            x={String(GRAPH_PAD_L + di * GRAPH_COL_W - 4)}
-            y="22"
-            class="lm-gaxis"
-            fill={t.faint}
-          >
-            {d === 0 ? 'ENTRY' : `DEPTH ${d}`}
-          </text>
-        ))
+        const axis = layout.depthKeys.map((d, di) => {
+          // The label is computed OUT of JSX-child position deliberately. The
+          // `_ssr` compile-to-string lowering mis-substitutes expressions
+          // across sibling `.map()` callbacks, and an inline
+          // `{d === 0 ? 'ENTRY' : `DEPTH ${d}`}` here came out carrying the
+          // EDGE map's path literal — referencing `p1`, which does not exist
+          // in this scope, so `/` failed to prerender entirely.
+          const label = d === 0 ? 'ENTRY' : `DEPTH ${d}`
+          return (
+            <text
+              x={String(GRAPH_PAD_L + di * GRAPH_COL_W - 4)}
+              y="22"
+              class="lm-gaxis"
+              fill={t.faint}
+            >
+              {label}
+            </text>
+          )
+        })
 
         return (
           <svg

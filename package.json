@@ -80,6 +80,7 @@
     "coverage": "bun scripts/check-coverage.ts",
     "prose-props": "bun scripts/check-prose-props.ts",
     "check-native-runtime-parity": "bun scripts/check-native-runtime-parity.ts",
+    "check-native-cosource": "bun scripts/check-native-cosource.ts",
     "check-gates-wired": "bun scripts/check-gates-wired.ts",
     "check-readme-imports": "bun scripts/check-readme-imports.ts",
     "check-component-docs": "bun scripts/check-component-docs.ts",

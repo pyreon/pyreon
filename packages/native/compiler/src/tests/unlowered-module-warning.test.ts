@@ -77,14 +77,15 @@ describe('non-hook exports with no native lowering', () => {
     })
   }
 
-  // a11y and http were added after measuring EVERY export of each — announce /
-  // VisuallyHidden / createA11yId, and endpoint / createClient — rather than
-  // generalising from one probe, which is how the rx entry went wrong.
+  // a11y and http were added after measuring EVERY export of each. NOTE
+  // `announce` now LOWERS (→ PyreonA11y), so the a11y probe uses a still-DOM
+  // export (`VisuallyHidden`) — the per-export `supported` set keeps `announce`
+  // silent while the live-region components still warn.
   for (const [label, src, symbol] of [
     [
       '@pyreon/a11y',
-      `import { announce } from '@pyreon/a11y'\nimport { Stack, Button } from '${P}'\nexport function C(){ return (<Stack><Button onPress={() => announce('hi')}>a</Button></Stack>) }`,
-      'announce',
+      `import { VisuallyHidden } from '@pyreon/a11y'\nimport { Stack, Text } from '${P}'\nexport function C(){ return (<Stack><VisuallyHidden>hi</VisuallyHidden><Text>x</Text></Stack>) }`,
+      'VisuallyHidden',
     ],
     [
       '@pyreon/http',
@@ -99,7 +100,8 @@ describe('non-hook exports with no native lowering', () => {
   }
 
   it('points a11y and http at what native actually offers', () => {
-    const a11y = `import { announce } from '@pyreon/a11y'\nimport { Stack, Text } from '${P}'\nexport function C(){ announce('x'); return (<Stack><Text>x</Text></Stack>) }`
+    // `announce` lowers now, so probe a still-DOM export for the advice string.
+    const a11y = `import { VisuallyHidden } from '@pyreon/a11y'\nimport { Stack, Text } from '${P}'\nexport function C(){ return (<Stack><VisuallyHidden>x</VisuallyHidden><Text>x</Text></Stack>) }`
     const http = `import { endpoint } from '@pyreon/http'\nimport { Stack, Text } from '${P}'\nconst g = endpoint('GET /u')\nexport function C(){ return (<Stack><Text>x</Text></Stack>) }`
     expect(warns(a11y).some((w) => w.includes('accessibilityLabel'))).toBe(true)
     expect(warns(http).some((w) => w.includes('useFetch'))).toBe(true)

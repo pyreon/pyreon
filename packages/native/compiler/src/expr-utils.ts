@@ -250,6 +250,8 @@ export function exprReferencesIdent(expr: ExprIR, name: string): boolean {
       return exprReferencesIdent(expr.inner, name)
     case 'await':
       return exprReferencesIdent(expr.expr, name)
+    case 'announce-call':
+      return exprReferencesIdent(expr.message, name)
     case 'spread':
       return exprReferencesIdent(expr.argument, name)
     case 'jsx-element':
@@ -418,6 +420,11 @@ export function substituteIdentifier(
       if (inner === null) return null
       return { ...expr, inner }
     }
+    case 'announce-call': {
+      const message = substituteIdentifier(expr.message, name, replacement)
+      if (message === null) return null
+      return { ...expr, message }
+    }
     case 'await': {
       // M4.5: `await X` — substitute inside the awaited expr (single-wrapper,
       // like `paren`, but the child slot is `.expr`).
@@ -567,6 +574,8 @@ function walkLowerParams(
       return { ...expr, inner: rec(expr.inner) }
     case 'await':
       return { ...expr, expr: rec(expr.expr) }
+    case 'announce-call':
+      return { ...expr, message: rec(expr.message) }
     case 'spread':
       return { ...expr, argument: rec(expr.argument) }
     case 'jsx-element':
