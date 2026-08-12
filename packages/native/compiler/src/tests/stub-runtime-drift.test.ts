@@ -53,7 +53,7 @@ describe('Swift runtime signatures the emit depends on', () => {
   })
 
   it('@PyreonAppStorage property wrapper — useStorage emit', () => {
-    const src = read('runtime-swift/Sources/PyreonRuntime/PyreonStorage.swift')
+    const src = read('../fundamentals/storage/native/swift/PyreonStorage.swift')
     expect(src).toContain('public struct PyreonAppStorage<Value: Codable>: DynamicProperty')
   })
 })
@@ -79,7 +79,7 @@ describe('Kotlin runtime signatures the emit depends on', () => {
   })
 
   it('rememberPyreonStorage(key, initial) — useStorage emit', () => {
-    const src = read('runtime-kotlin/src/main/kotlin/com/pyreon/runtime/PyreonStorage.kt')
+    const src = read('../fundamentals/storage/native/kotlin/com/pyreon/runtime/PyreonStorage.kt')
     expect(src).toContain('public inline fun <reified T> rememberPyreonStorage(')
   })
 })

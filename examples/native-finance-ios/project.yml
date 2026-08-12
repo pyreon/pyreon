@@ -72,6 +72,7 @@ targets:
       - path: ios
         type: group
       - path: generated
+      - path: ../../packages/fundamentals/storage/native/swift
       - path: ../../packages/fundamentals/form/native/swift
       - path: ../../packages/fundamentals/store/native/swift
       - path: ../../packages/fundamentals/state-tree/native/swift

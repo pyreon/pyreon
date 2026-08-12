@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/storage",
   "version": "0.51.0",
-  "description": "Reactive client-side storage for Pyreon — localStorage, sessionStorage, cookies, IndexedDB",
+  "description": "Reactive client-side storage for Pyreon \u2014 localStorage, sessionStorage, cookies, IndexedDB",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/storage#readme",
   "bugs": {
@@ -28,7 +28,9 @@
     "lib",
     "src",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "native/swift",
+    "native/kotlin"
   ],
   "scripts": {
     "build": "vl_rolldown_build",
@@ -54,5 +56,20 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "pyreon": {
+    "native": {
+      "swift": "native/swift",
+      "kotlin": "native/kotlin",
+      "kotlinServices": {
+        "PyreonSecureStorageAndroid": [
+          "@base/PyreonStorageBackends.kt",
+          "PyreonStorage.kt",
+          "PyreonStorageAndroid.kt",
+          "PyreonSecureStorage.kt",
+          "PyreonSecureStorageAndroid.kt"
+        ]
+      }
+    }
   }
 }

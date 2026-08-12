@@ -33,6 +33,14 @@ interface CoSourcePkg {
   swiftDir?: string
   kotlinDir?: string
   testsDir?: string
+  // Explicit per-service file GROUPS for a package whose Kotlin runtime is
+  // SEVERAL independent services needing mutually-exclusive stubs (storage =
+  // one Storage/SecureStorage/Backends common group; hooks = ~21). Each group
+  // KEY is the `--service` stub bundle; the value lists the group's `.kt` files
+  // (relative to native/kotlin/com/pyreon/runtime). `*Android.kt` files that
+  // need the real Android SDK are omitted here — the device gate verifies them.
+  // Omitted → whole-dir mode.
+  kotlinServices?: Record<string, string[]>
 }
 
 function has(cmd: string): boolean {
@@ -71,7 +79,13 @@ function scanCoSourcePackages(): CoSourcePkg[] {
       if (!existsSync(manifestPath)) continue
       let manifest: {
         name?: string
-        pyreon?: { native?: { swift?: string; kotlin?: string } }
+        pyreon?: {
+          native?: {
+            swift?: string
+            kotlin?: string
+            kotlinServices?: Record<string, string[]>
+          }
+        }
       }
       try {
         manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
@@ -92,6 +106,7 @@ function scanCoSourcePackages(): CoSourcePkg[] {
         ...(swiftDir && existsSync(swiftDir) ? { swiftDir } : {}),
         ...(kotlinDir && existsSync(kotlinDir) ? { kotlinDir } : {}),
         ...(existsSync(testsDir) ? { testsDir } : {}),
+        ...(native.kotlinServices ? { kotlinServices: native.kotlinServices } : {}),
       })
     }
   }
@@ -147,11 +162,59 @@ for (const pkg of pkgs) {
   if (pkg.kotlinDir) {
     if (!kotlinc) {
       console.log(`  ${pkg.name} [kotlin]: kotlinc absent — skipped`)
+    } else if (pkg.kotlinServices) {
+      // PER-SERVICE-GROUP: a package whose Kotlin runtime is SEVERAL independent
+      // services, each needing a DIFFERENT stub bundle (two `package
+      // android.content` stubs can't concatenate — they redeclare `Context`).
+      // Compile each declared group's files together with its own `--service`;
+      // `--files` SUPPRESSES the monolith companion append. Every group `.kt`
+      // whose `<Basename>Test.kt` exists RUNS its smoke test (each test re-uses
+      // the same compiled group); a group with no tests typecheck-only's.
+      // A group file may reference a framework-BASE runtime that STAYS in the
+      // monolith (a shared persistence/codec primitive like
+      // PyreonStorageBackends or PyreonJson) via a `@base/<File>.kt` prefix —
+      // the co-located runtime compiles against it but does not own it.
+      const baseRuntimeDir = join(
+        ROOT, 'packages', 'native', 'runtime-kotlin', 'src', 'main', 'kotlin', 'com', 'pyreon', 'runtime',
+      )
+      const resolveGroupFile = (f: string): string =>
+        f.startsWith('@base/')
+          ? join(baseRuntimeDir, f.slice('@base/'.length))
+          : join(pkg.kotlinDir!, 'com', 'pyreon', 'runtime', f)
+      const ktTests = pkg.testsDir ? filesUnder(pkg.testsDir, '.kt') : []
+      for (const [svc, files] of Object.entries(pkg.kotlinServices)) {
+        const abs = files.map(resolveGroupFile)
+        const missing = abs.filter((f) => !existsSync(f))
+        if (missing.length > 0) {
+          failures++
+          console.error(`  ✗ ${pkg.name} [kotlin ${svc}]: declared file(s) not found:\n    ${missing.join('\n    ')}`)
+          continue
+        }
+        // Tests whose base (minus "Test") matches a group file's base.
+        const groupBases = new Set(files.map((f) => f.replace(/^@base\//, '').replace(/\.kt$/, '')))
+        const tests = ktTests.filter((t) => {
+          const base = t.replace(/^.*\//, '').replace(/Test\.kt$/, '')
+          return t.endsWith('Test.kt') && groupBases.has(base)
+        })
+        const runs =
+          tests.length > 0
+            ? tests.map((t) => ({ label: t.replace(/^.*\//, ''), extra: [`--test=${t}`] }))
+            : [{ label: 'typecheck-only', extra: ['--typecheck-only'] }]
+        for (const run of runs) {
+          const args = [verifyKotlin, `--files=${abs.join(',')}`, `--service=${svc}`, ...run.extra]
+          const r = spawnSync('bun', args, { encoding: 'utf8' })
+          if (r.status !== 0) {
+            failures++
+            console.error(`  ✗ ${pkg.name} [kotlin ${svc} · ${run.label}]:\n${r.stdout}\n${r.stderr}`)
+          } else {
+            console.log(`  ✓ ${pkg.name} [kotlin ${svc} · ${run.label}] (${files.length} file(s))`)
+          }
+        }
+      }
     } else {
-      // Compile the WHOLE package kotlin dir together (a runtime may span
-      // interdependent files — PyreonForm + PyreonFieldArray). The
-      // `--service` (from the primary runtime's basename) selects the stub
-      // bundle; base Compose stubs are always present.
+      // WHOLE-DIR: a single-concept runtime (or interdependent files sharing ONE
+      // stub bundle — PyreonForm + PyreonFieldArray). `--service` (from the
+      // primary runtime's basename) selects the stub bundle.
       const ktFiles = filesUnder(pkg.kotlinDir, '.kt')
       const svc = serviceName(ktFiles[0] ?? `${pkg.name}.kt`)
       const test = pkg.testsDir
