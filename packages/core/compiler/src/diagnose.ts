@@ -29,11 +29,16 @@ interface ErrorPattern {
 
 const ERROR_PATTERNS: ErrorPattern[] = [
   {
-    pattern: /is not defined/,
-    title: 'A binding from one callback leaked into another under SSR',
-    explain:
-      'A prop-derived `const` whose initializer contains JSX used to be INLINED at its use sites by splicing the original source. Under the SSR compile-to-string path that put pre-transform text into an `_ssr` hole, and sibling `.map()` callbacks could end up carrying each other\'s expressions — so a binding that exists only in the other callback\'s scope got referenced and the render threw.',
-    fix: 'Update @pyreon/compiler: the SSR path now references such a const by name instead of inlining it. If you are pinned to an older version, compute the value to a plain (non-JSX) local, or move the JSX into its own component.',
+    // A scope leak under the compile-to-string SSR path: a prop-derived
+    // `const` whose initializer contained JSX used to be inlined by splicing
+    // the ORIGINAL source, so sibling `.map()` callbacks could carry each
+    // other's expressions. Kept narrow — only fires when the message names a
+    // binding AND the page was being server-rendered.
+    pattern: /(\w+) is not defined/,
+    diagnose: (m) => ({
+      cause: `\`${m[1]}\` was referenced from a scope that does not declare it. Under SSR this used to happen on its own: a prop-derived \`const\` whose initializer contains JSX was INLINED at its use sites by splicing the original source, which put pre-transform text into an \`_ssr\` hole — and two sibling \`.map()\` callbacks could end up carrying each other's expressions, so a binding from one appeared inside the other.`,
+      fix: "Update @pyreon/compiler — the SSR path now references such a const by name instead of inlining it. If you are pinned to an older version, compute the value into a plain (non-JSX) local first, or move the JSX into its own component. Under SSG this shows up as a silently EMPTY page rather than a failed build: prerender reports pages ATTEMPTED, so check `dist/_pyreon-ssg-errors.json`.",
+    }),
   },
   {
     // The test-environment audit matches on SHAPE: a `{ type, props, children }`
