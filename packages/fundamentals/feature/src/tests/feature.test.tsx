@@ -889,6 +889,47 @@ describe('auto-fetch edit form', () => {
     unmount()
   })
 
+  it('populates from a real backend response carrying server-only keys (id, createdAt)', async () => {
+    // Regression: the populate loop iterated EVERY server key and called
+    // form.setFieldValue, which THROWS on a field the form doesn't have (`id`,
+    // `createdAt`). Inside the batch that throw aborted before
+    // isSubmitting.set(false) → form stuck submitting, fields unpopulated. The
+    // loop now skips keys that aren't registered form fields.
+    const serverUser = {
+      id: 42, // server-assigned — NOT a schema field
+      name: 'Alice',
+      email: 'alice@example.com',
+      role: 'admin',
+      active: true,
+      createdAt: '2026-01-01T00:00:00Z', // server-only — NOT a schema field
+    }
+    const users = defineFeature<UserValues>({
+      name: 'users-form-autofetch-serverkeys',
+      schema: userSchema,
+      api: '/api/users',
+      fetcher: createMockFetch({
+        'GET /api/users/42': { body: serverUser },
+      }) as typeof fetch,
+    })
+
+    const client = new QueryClient()
+    const { result: form, unmount } = mountWith(client, () =>
+      users.useForm({ mode: 'edit', id: 42 }),
+    )
+
+    expect(form.isSubmitting()).toBe(true)
+    await new Promise((r) => setTimeout(r, 100))
+
+    // Must have SETTLED (not stuck on the throw) and populated the real fields.
+    expect(form.isSubmitting()).toBe(false)
+    expect(form.values().name).toBe('Alice')
+    expect(form.values().email).toBe('alice@example.com')
+    expect(form.values().role).toBe('admin')
+    // The server-only keys were skipped, not written as fields.
+    expect((form.values() as Record<string, unknown>).id).toBeUndefined()
+    unmount()
+  })
+
   it('clears loading state on fetch error', async () => {
     const users = defineFeature<UserValues>({
       name: 'users-form-autofetch-err',
