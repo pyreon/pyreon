@@ -92,6 +92,25 @@ interface ParseCtx {
    */
   toastNames: Set<string>
   /**
+   * Local name(s) bound to the `s` schema namespace imported from
+   * `@pyreon/validate` (`import { s }` → `s`; `import { s as v }` → `v`).
+   *
+   * Gated on the IMPORT rather than the bare name, unlike the zod/valibot
+   * recognizers: those key on a distinctive wrapper call (`zodSchema(...)`),
+   * but `s.object({ … })` is a shape a user's own single-letter binding could
+   * plausibly produce, and mis-lowering someone else's `s` would be worse than
+   * not lowering ours.
+   */
+  validateSchemaNames: Set<string>
+  /**
+   * True when the file declares at least one `const X = s.object({ … })` that
+   * the Gap-4 schema emit will lower. Gates the `s` "no native lowering"
+   * warning off — firing it on a declaration that compiles correctly on both
+   * targets is the stale-entry failure mode, and it is the more damaging
+   * direction: it tells the author a working API is unusable.
+   */
+  validateSchemaLowered: boolean
+  /**
    * Local names bound to the `announce` import from `@pyreon/a11y` (handles
    * `import { announce as say }`). `parseExpr` lowers a call on one of these to
    * an `announce-call` ExprIR (→ PyreonA11y). Empty unless `announce` is imported.
@@ -145,6 +164,8 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     objectTypeAliases: new Map(),
     storeAliases: new Map(),
     toastNames: new Set(),
+    validateSchemaNames: new Set(),
+    validateSchemaLowered: false,
     announceNames: new Set(),
     hookFieldAliases: new Map(),
     hookDestructureCounter: 0,
@@ -176,6 +197,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   // from @pyreon/toast, so parseExpr can lower `toast(...)` / `toast.success(...)`
   // to PyreonToast. Handles renamed imports (`import { toast as notify }`).
   collectToastNames(ast.program.body as AnyNode[], ctx)
+  collectValidateSchemaNames(ast.program.body as AnyNode[], ctx)
   // Record the local name(s) bound to `announce` from @pyreon/a11y so parseExpr
   // can lower `announce(...)` to PyreonA11y. Handles renamed imports.
   collectAnnounceNames(ast.program.body as AnyNode[], ctx)
@@ -299,6 +321,12 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     const as = tryArktypeSchemaDefnFromTopLevel(node, ctx)
     if (as) {
       zodSchemas.push(as)
+      continue
+    }
+    // `@pyreon/validate`'s own `s.object({ … })` DSL — same IR, no wrapper.
+    const pv = tryPyreonValidateSchemaDefnFromTopLevel(node, ctx)
+    if (pv) {
+      zodSchemas.push(pv)
       continue
     }
     // styled(Prim)`css` component lowering — `const X = styled(Stack)`…`` wrapping
@@ -783,42 +811,66 @@ function tryModuleDeclsFromTopLevel(node: AnyNode, ctx: ParseCtx): ModuleDeclIR[
  * i18n,machine,state-tree,form,validation,validate,query,storage,
  * permissions,hooks,rx,url-state,hotkeys}` — is deliberately EXCLUDED.
  */
-const WEB_ONLY_PACKAGES = new Set([
+/**
+ * Packages with no native emit at all — importing one into shared source is a
+ * build failure waiting to happen, so warn at parse time with the fix.
+ *
+ * DERIVED from every package manifest's `multiplatform` declaration: a package
+ * lands here when it declares `tier: 'web-only'` AND no `nativeFrontend`.
+ *
+ * This list used to be hand-written, and it rotted in both directions —
+ * twice. `@pyreon/sync` and `@pyreon/rich-text` were MISSING, so
+ * `syncedSignal(...)` / `createRichTextEditor(...)` emitted verbatim and died
+ * with "cannot find … in scope" and no diagnostic. `@pyreon/toast` went STALE
+ * the other way once its core started lowering to PyreonToast, warning that a
+ * working API was unusable. Both were repaired after the fact, by hand, with a
+ * comment — which is what a silent-hole generator looks like from the inside.
+ *
+ * Packages that lower only PART of their surface (toast, a11y, query) declare
+ * `nativeFrontend` in their manifest and are correctly absent here; their
+ * unlowered halves are still caught by the per-hook and per-construct warns.
+ */
+// <gen:web-only-packages:start>
+// GENERATED — do not edit by hand. Derived from every package manifest's
+// `multiplatform` declaration (tier === 'web-only' AND no `nativeFrontend`)
+// by `bun scripts/check-multiplatform-tier.ts --write-table`, which also
+// gates that this stays in sync. Edit the MANIFEST, not this list.
+const WEB_ONLY_PACKAGES: ReadonlySet<string> = new Set([
+  '@pyreon/atlas',
   '@pyreon/charts',
   '@pyreon/code',
-  '@pyreon/flow',
+  '@pyreon/compiler',
+  '@pyreon/config',
+  '@pyreon/connector-document',
+  '@pyreon/dnd',
   '@pyreon/document',
   '@pyreon/document-primitives',
-  '@pyreon/connector-document',
-  // @pyreon/elements (Element→Stack), @pyreon/styler (styled(Prim)), and
-  // @pyreon/rocketstyle now have NATIVE FRONTENDS — a user imports them to
-  // AUTHOR multiplatform components in their source, which lower. The
-  // per-construct warns (styled('div') / rocketstyle over a non-primitive /
-  // Element's rich web-only slots) still catch the parts that don't lower.
-  // @pyreon/ui-components stays here: PMTC compiles SOURCE, not npm packages,
-  // so an IMPORTED pre-built component can't lower — you re-author the pattern.
+  '@pyreon/feature',
+  '@pyreon/flow',
+  '@pyreon/head',
+  '@pyreon/hotkeys',
+  '@pyreon/http',
+  '@pyreon/kinetic',
+  '@pyreon/kinetic-presets',
+  '@pyreon/lint',
+  '@pyreon/loom',
+  '@pyreon/mcp',
+  '@pyreon/rich-text',
+  '@pyreon/runtime-dom',
+  '@pyreon/runtime-server',
+  '@pyreon/server',
+  '@pyreon/sized-map',
+  '@pyreon/sync',
+  '@pyreon/table',
+  '@pyreon/testing',
   '@pyreon/ui-components',
   '@pyreon/ui-primitives',
   '@pyreon/unistyle',
-  '@pyreon/kinetic',
-  '@pyreon/kinetic-presets',
-  '@pyreon/dnd',
-  // @pyreon/toast now has a NATIVE frontend: the imperative `toast(...)` calls
-  // lower to PyreonToast, and `<Toaster />` renders a native overlay. Removed
-  // from the web-only set (was a silent break — the call emitted verbatim).
-  '@pyreon/table',
   '@pyreon/virtual',
-  // Both were MISSING and failed both targets with no diagnostic at all —
-  // `syncedSignal(...)` and `createRichTextEditor(...)` emitted verbatim and
-  // died with "cannot find ... in scope", while @pyreon/table right above them
-  // warned properly.
-  //
-  // @pyreon/sync is web-only by architecture: the Yjs engine plus the
-  // IndexedDB / WebSocket transports have no native runtime. @pyreon/rich-text
-  // wraps TipTap/ProseMirror, which is DOM-based.
-  '@pyreon/sync',
-  '@pyreon/rich-text',
+  '@pyreon/zero',
+  '@pyreon/zero-content',
 ])
+// <gen:web-only-packages:end>
 
 /**
  * Warn (once per package) on top-level imports of a web-only `@pyreon/*`
@@ -836,7 +888,15 @@ function warnWebOnlyImports(body: AnyNode[], ctx: ParseCtx): void {
     const pkg = src.startsWith('@pyreon/')
       ? `@pyreon/${(src.slice('@pyreon/'.length).split('/')[0] ?? '')}`
       : src
-    if (WEB_ONLY_PACKAGES.has(pkg) && !seen.has(pkg)) {
+    // A package with a granular entry in UNLOWERED_PYREON_MODULES is already
+    // covered at SYMBOL level, with advice specific to it ("use the namespace
+    // form", "validate in a <Web> branch"). That is strictly better than this
+    // blanket warning, and firing both would double-report the same import —
+    // worse, for a package whose lowered half is what the user imported
+    // (`zodSchema(...)` from @pyreon/validation), the blanket line is simply
+    // WRONG. The finer mechanism wins; deferring to it here is what lets the
+    // set above be derived from the tier without hand-tuning the overlap.
+    if (WEB_ONLY_PACKAGES.has(pkg) && !UNLOWERED_PYREON_MODULES.has(pkg) && !seen.has(pkg)) {
       seen.add(pkg)
       ctx.warnings.push(
         `${pkg} is WEB-ONLY — it renders via the DOM / a browser-only library and has NO native (iOS/Android) emit, so PMTC can't compile it. On native, render it behind a \`<Web>\` escape hatch (web target only), or use a platform-native equivalent inside \`<NativeIOS>\` / \`<NativeAndroid>\`. The shared, multi-platform UI vocabulary lives in \`@pyreon/primitives\` (Stack / Text / Button / …) — those compile to all three targets.`,
@@ -850,6 +910,57 @@ function warnWebOnlyImports(body: AnyNode[], ctx: ParseCtx): void {
  * `import { toast }` → `toast`; `import { toast as notify }` → `notify`. These
  * are the callees `parseExpr` lowers to a `toast-call` ExprIR.
  */
+/**
+ * Record the local name(s) bound to the `s` namespace from `@pyreon/validate`.
+ *
+ * `@pyreon/validate`'s `s.object({ … })` is already a Standard Schema, so —
+ * unlike zod/valibot/arktype, which arrive wrapped in `zodSchema(...)` /
+ * `valibotSchema(...)` — there is no wrapper call to key the recognizer on.
+ * The import is the only reliable signal, so we collect it here and the
+ * recognizer refuses to fire without it.
+ */
+function collectValidateSchemaNames(body: AnyNode[], ctx: ParseCtx): void {
+  for (const node of body) {
+    if (node.type !== 'ImportDeclaration') continue
+    if (node.source?.value !== '@pyreon/validate') continue
+    for (const spec of (node.specifiers as AnyNode[] | undefined) ?? []) {
+      if (spec.type === 'ImportSpecifier' && spec.imported?.name === 's') {
+        const local = spec.local?.name
+        if (typeof local === 'string') ctx.validateSchemaNames.add(local)
+      }
+    }
+  }
+  if (ctx.validateSchemaNames.size === 0) return
+  // Does any top-level declaration actually use the lowered shape? The warn
+  // pass runs BEFORE the main body loop that recognizes schemas, so the
+  // question is answered syntactically here rather than by reading a result
+  // that does not exist yet.
+  for (const node of body) {
+    const decl =
+      node.type === 'ExportNamedDeclaration' && node.declaration?.type === 'VariableDeclaration'
+        ? node.declaration
+        : node.type === 'VariableDeclaration'
+          ? node
+          : null
+    if (!decl) continue
+    for (const d of (decl.declarations as AnyNode[] | undefined) ?? []) {
+      const callee = (d.init as AnyNode | undefined)?.callee as AnyNode | undefined
+      if (
+        (d.init as AnyNode | undefined)?.type === 'CallExpression' &&
+        callee?.type === 'MemberExpression' &&
+        callee.object?.type === 'Identifier' &&
+        ctx.validateSchemaNames.has(callee.object.name as string) &&
+        callee.property?.type === 'Identifier' &&
+        ((callee.property.name as string) === 'object' ||
+          (callee.property.name as string) === 'discriminatedUnion')
+      ) {
+        ctx.validateSchemaLowered = true
+        return
+      }
+    }
+  }
+}
+
 function collectToastNames(body: AnyNode[], ctx: ParseCtx): void {
   for (const node of body) {
     if (node.type !== 'ImportDeclaration') continue
@@ -887,6 +998,7 @@ export const NATIVE_LOWERED_HOOKS: ReadonlySet<string> = new Set([
   'useHaptics', 'useImagePicker', 'useLinking', 'useLoaderData', 'useMap',
   'useNativeModule', 'useNavigate', 'useNotifications', 'useOnline',
   'useParams', 'usePayments', 'usePermissions', 'usePush', 'useQuery',
+  'useUrlState',
   'useSecureStorage',
   'useShare', 'useSizeClass', 'useStorage', 'useWebSocket',
 ])
@@ -1004,6 +1116,22 @@ const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
       advice:
         'the standalone transforms are web-only — use the NAMESPACE form (`import { rx } from \'@pyreon/rx\'` then `rx.map(...)`), which lowers on both targets, or compose with `computed()`',
       supported: new Set(['rx']),
+    },
+  ],
+  [
+    '@pyreon/table',
+    {
+      // The blanket line calls a package "renders via the DOM / a browser-only
+      // library", which is simply FALSE here: TanStack Table is HEADLESS. It
+      // also stops short of naming the native answer, which this package's own
+      // manifest states plainly — native lists are `<For>` + primitives.
+      //
+      // The row-model RENDER surface (getRowModel / getVisibleCells /
+      // flexRender) is what has no native analogue; the SORT/FILTER state is
+      // ordinary logic an author can hold in signals today, so the fix is a
+      // real one rather than "give up".
+      advice:
+        "the row model is a WEB render surface (getRowModel/getVisibleCells/flexRender) with no native analogue — hold sort/filter state in plain signals and render rows with `<For each={rows}>` + `@pyreon/primitives`, which compiles to all three targets",
     },
   ],
   [
@@ -1141,6 +1269,10 @@ function warnUnloweredPyreonModules(body: AnyNode[], ctx: ParseCtx): void {
       // diagnostic into noise, and `rx` is a live example of a module that is
       // only PARTLY unlowered.
       if (entry.supported?.has(imported)) continue
+      // `s` from @pyreon/validate lowers when used as a top-level
+      // `s.object({ … })` schema declaration (Gap-4 emit). Other uses do not,
+      // so the warning stays for them.
+      if (src === '@pyreon/validate' && imported === 's' && ctx.validateSchemaLowered) continue
       // When a module lists `unsupported`, ONLY those warn — everything else in
       // it lowers and must stay silent.
       if (entry.unsupported !== undefined && !entry.unsupported.has(imported)) continue
@@ -1167,8 +1299,18 @@ function warnUnloweredPyreonHooks(body: AnyNode[], ctx: ParseCtx): void {
       if (NATIVE_LOWERED_HOOKS.has(imported)) continue
       if (seen.has(imported)) continue
       seen.add(imported)
+      // Prefer the package's OWN advice when it has one. The generic tail
+      // ("replace it with a hook PMTC lowers, or hand-roll the behaviour from
+      // signals") is true but leaves the author guessing; an entry in
+      // UNLOWERED_PYREON_MODULES names the actual alternative for THAT
+      // package, which is the whole reason that map exists.
+      const moduleAdvice = UNLOWERED_PYREON_MODULES.get(src)?.advice
       ctx.warnings.push(
-        `${imported}() (from ${src}) has NO native lowering — the call is reproduced verbatim in the emitted Swift/Kotlin, where no such function exists, so the native build fails with "cannot find '${imported}' in scope". Use it behind a \`<Web>\` escape hatch (web target only), replace it with a hook PMTC lowers, or hand-roll the behaviour from signals. The lowered set is NATIVE_LOWERED_HOOKS in parse.ts.`,
+        `${imported}() (from ${src}) has NO native lowering — the call is reproduced verbatim in the emitted Swift/Kotlin, where no such function exists, so the native build fails with "cannot find '${imported}' in scope". ${
+          moduleAdvice
+            ? `Instead: ${moduleAdvice}. Or keep it behind a \`<Web>\` escape hatch.`
+            : 'Use it behind a `<Web>` escape hatch (web target only), replace it with a hook PMTC lowers, or hand-roll the behaviour from signals. The lowered set is NATIVE_LOWERED_HOOKS in parse.ts.'
+        }`,
       )
     }
   }
@@ -1814,6 +1956,33 @@ function tryFeatureDefnFromTopLevel(
  * v1 emits shape only — no runtime validation methods. v2 follow-up
  * will add `.parse()` + `.safeParse()` runtime + constraint enforcement.
  */
+/**
+ * `@pyreon/validate` `s`-DSL schema recognizer. Matches the wrapper-less shape:
+ *
+ *   import { s } from '@pyreon/validate'
+ *   const userSchema = s.object({ name: s.string().min(2), age: s.number() })
+ *
+ * Reuses the zod/valibot/arktype walker wholesale — the field shapes,
+ * constraint chains, `.optional()`, nested objects, arrays and discriminated
+ * unions are all the same grammar with a different namespace prefix. The only
+ * structural difference is the absent wrapper call, which is why
+ * `tryNamespacedSchemaDefnFromTopLevel` takes a nullable `schemaFn`.
+ *
+ * Refuses to fire unless `s` was actually imported from `@pyreon/validate`
+ * (see `collectValidateSchemaNames`): `s.object(...)` is not a distinctive
+ * enough shape to claim on the bare name.
+ */
+function tryPyreonValidateSchemaDefnFromTopLevel(
+  node: AnyNode,
+  ctx: ParseCtx,
+): ZodSchemaDefnIR | null {
+  for (const local of ctx.validateSchemaNames) {
+    const hit = tryNamespacedSchemaDefnFromTopLevel(node, ctx, null, local, 'pyreon-validate')
+    if (hit) return hit
+  }
+  return null
+}
+
 function tryZodSchemaDefnFromTopLevel(
   node: AnyNode,
   ctx: ParseCtx,
@@ -2049,7 +2218,7 @@ function parseNestedObjectShape(
   name: string,
   ctx: ParseCtx,
   prefix: string,
-  schemaFn: string,
+  schemaFn: string | null,
 ): ZodSchemaDefnIR | null {
   // objectCallNode is `z.object({...})`. Wrap it as `<schemaFn>(z.object({...}))`
   // so the existing walker can extract fields + auxSchemas.
@@ -2072,7 +2241,9 @@ function parseNestedObjectShape(
     ctx,
     schemaFn,
     prefix,
-    /* libraryDisplay (unused here) */ schemaFn,
+    // libraryDisplay — falls back to the namespace prefix for the
+    // wrapper-less form (`@pyreon/validate`'s `s.object(...)`).
+    /* libraryDisplay (unused here) */ schemaFn ?? prefix,
   )
 }
 
@@ -2087,7 +2258,7 @@ function tryParseInnerObjectElement(
   name: string,
   ctx: ParseCtx,
   prefix: string,
-  schemaFn: string,
+  schemaFn: string | null,
 ): ZodSchemaDefnIR | null {
   if (innerArg.type !== 'CallExpression') return null
   const callee = innerArg.callee as AnyNode | undefined
@@ -2113,7 +2284,7 @@ function parseDiscriminatedUnion(
   bindingName: string,
   ctx: ParseCtx,
   prefix: string,
-  schemaFn: string,
+  schemaFn: string | null,
 ): ZodSchemaDefnIR | null {
   const callArgs = (innerCall.arguments as AnyNode[] | undefined) ?? []
   // First arg = discriminator field name (string literal).
@@ -2252,7 +2423,15 @@ function extractDiscriminatorLiteral(
 function tryNamespacedSchemaDefnFromTopLevel(
   node: AnyNode,
   ctx: ParseCtx,
-  schemaFn: string,
+  /**
+   * The wrapper call the schema arrives inside (`zodSchema`, `valibotSchema`,
+   * `arktypeSchema`), or NULL when the declaration is the namespaced call
+   * itself. `@pyreon/validate`'s `s.object({ … })` needs no wrapper because it
+   * already IS a Standard Schema; every other field-walking rule below is
+   * identical, which is why this is a parameter rather than a second copy of
+   * the walker.
+   */
+  schemaFn: string | null,
   prefix: string,
   libraryDisplay: string,
 ): ZodSchemaDefnIR | null {
@@ -2275,11 +2454,17 @@ function tryNamespacedSchemaDefnFromTopLevel(
 
   const init = declarator.init as AnyNode | undefined
   if (init?.type !== 'CallExpression') return null
-  if (init.callee?.type !== 'Identifier') return null
-  if ((init.callee.name as string) !== schemaFn) return null
 
-  const args = (init.arguments as AnyNode[] | undefined) ?? []
-  const innerCall = args[0]
+  let innerCall: AnyNode | undefined
+  if (schemaFn === null) {
+    // Wrapper-less form — the declaration IS `<prefix>.object({ … })`.
+    innerCall = init
+  } else {
+    if (init.callee?.type !== 'Identifier') return null
+    if ((init.callee.name as string) !== schemaFn) return null
+    const args = (init.arguments as AnyNode[] | undefined) ?? []
+    innerCall = args[0]
+  }
   if (!innerCall || innerCall.type !== 'CallExpression') return null
   // innerCall.callee must be `<prefix>.object` MemberExpression.
   const innerCallee = innerCall.callee as AnyNode | undefined
@@ -2303,7 +2488,7 @@ function tryNamespacedSchemaDefnFromTopLevel(
   const shapeArg = (innerCall.arguments as AnyNode[] | undefined)?.[0]
   if (!shapeArg || shapeArg.type !== 'ObjectExpression') {
     ctx.warnings.push(
-      `${schemaFn} declaration \`${bindingName}\`: ${prefix}.object() argument must be a literal shape — v1 emit needs the literal { field: ${prefix}.X() } map. Falling back to silent-drop.`,
+      `${schemaFn ?? prefix} declaration \`${bindingName}\`: ${prefix}.object() argument must be a literal shape — v1 emit needs the literal { field: ${prefix}.X() } map. Falling back to silent-drop.`,
     )
     return null
   }
@@ -3253,6 +3438,8 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     objectTypeAliases: new Map(),
     storeAliases: new Map(),
     toastNames: new Set(),
+    validateSchemaNames: new Set(),
+    validateSchemaLowered: false,
     announceNames: new Set(),
     hookFieldAliases: new Map(),
     hookDestructureCounter: 0,
@@ -4544,6 +4731,31 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   }
   if (calleeName === 'useNavigate') {
     return { kind: 'router-hook', name, hook: 'navigate' }
+  }
+  if (calleeName === 'useUrlState') {
+    // `const q = useUrlState('q', '')`. Both arguments must be literals so the
+    // key can be baked into the emit — same conservative rule as useFetch's
+    // URL and useStorage's key. A dynamic key would need a runtime lookup the
+    // value type does not carry.
+    const args = (init.arguments as AnyNode[] | undefined) ?? []
+    const keyNode = args[0]
+    const defNode = args[1]
+    if (keyNode?.type !== 'Literal' || typeof keyNode.value !== 'string') return null
+    // v1 is string-valued. A number/boolean default would need the web's
+    // pluggable serializer baked in; coercing silently would be worse than
+    // leaving it to the unlowered-hook warning.
+    if (defNode !== undefined && (defNode.type !== 'Literal' || typeof defNode.value !== 'string')) {
+      ctx.warnings.push(
+        `const ${name} = useUrlState(${JSON.stringify(keyNode.value)}, …) lowers only with a STRING default in v1 — a typed serializer is not baked into the native emit yet. Use a string and parse it, or keep the call behind a \`<Web>\` escape hatch.`,
+      )
+      return null
+    }
+    return {
+      kind: 'url-state',
+      name,
+      key: keyNode.value,
+      defaultValue: defNode?.type === 'Literal' ? String(defNode.value) : '',
+    }
   }
   if (calleeName === 'useParams') {
     // The WHOLE-OBJECT form. It lowers to a `[String: String]` / `Map`, so the

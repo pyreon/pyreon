@@ -106,6 +106,62 @@ interface TierRow {
   name: string
   tier: string
   rationale: string
+  /**
+   * Set when a web-only package still lowers part of its surface. Optional
+   * because only `deriveWebOnlyPackages` consults it — `renderTierTable` does
+   * not, and requiring it would make every caller supply a field it ignores.
+   */
+  nativeFrontend?: string
+}
+
+/**
+ * Packages the compiler must warn about that have NO manifest to derive from.
+ *
+ * Both are PRIVATE (`@pyreon/ui-*`), so they never reach `findManifests` — but
+ * a user importing a pre-built component into shared source is exactly the
+ * case the warning exists for. PMTC compiles SOURCE, not npm packages, so an
+ * imported component cannot lower; you re-author the pattern with primitives.
+ *
+ * This is the ONLY hand-maintained part of the set, and it is small and
+ * closed by construction: a package with a manifest must never appear here
+ * (the gate fails if one does), so it cannot silently absorb a package that
+ * should have been derived.
+ */
+const WEB_ONLY_NO_MANIFEST = ['@pyreon/ui-components', '@pyreon/ui-primitives']
+
+const WEB_ONLY_START = '// <gen:web-only-packages:start>'
+const WEB_ONLY_END = '// <gen:web-only-packages:end>'
+
+/**
+ * Derive the set of packages the native compiler blanket-warns on.
+ *
+ * A package qualifies when it declares `tier: 'web-only'` AND does not
+ * declare a `nativeFrontend` — i.e. nothing of it lowers. Deriving this
+ * rather than hand-listing it is the whole point: the previous hand-written
+ * list in `parse.ts` rotted in BOTH directions, and the code comments there
+ * recorded each incident after the fact. A missing entry emits the call
+ * verbatim and dies with `cannot find 'x' in scope` and no diagnostic; a
+ * stale entry tells the user a working API is unusable.
+ */
+export function deriveWebOnlyPackages(rows: TierRow[]): string[] {
+  const derived = rows.filter((r) => r.tier === 'web-only' && !r.nativeFrontend).map((r) => r.name)
+  return [...new Set([...derived, ...WEB_ONLY_NO_MANIFEST])].sort()
+}
+
+/** Render the generated region that replaces the hand-written Set literal. */
+export function renderWebOnlySet(names: string[]): string {
+  const lines = names.map((n) => `  '${n}',`)
+  return [
+    WEB_ONLY_START,
+    '// GENERATED — do not edit by hand. Derived from every package manifest\'s',
+    '// `multiplatform` declaration (tier === \'web-only\' AND no `nativeFrontend`)',
+    '// by `bun scripts/check-multiplatform-tier.ts --write-table`, which also',
+    '// gates that this stays in sync. Edit the MANIFEST, not this list.',
+    'const WEB_ONLY_PACKAGES: ReadonlySet<string> = new Set([',
+    ...lines,
+    '])',
+    WEB_ONLY_END,
+  ].join('\n')
 }
 
 const TABLE_START = '{/* gen:multiplatform-tiers:start */}'
@@ -165,10 +221,23 @@ async function main(): Promise<number> {
       )
       continue
     }
+    const nativeFrontend = (mp as { nativeFrontend?: unknown }).nativeFrontend
+    if (nativeFrontend !== undefined && typeof nativeFrontend !== 'string') {
+      failures.push(`${name}: multiplatform.nativeFrontend must be a string naming what lowers.`)
+      continue
+    }
+    if (typeof nativeFrontend === 'string' && mp.tier !== 'web-only') {
+      failures.push(
+        `${name}: multiplatform.nativeFrontend is only meaningful on tier 'web-only' — ` +
+          `a '${mp.tier}' package already lowers, so the field says nothing.`,
+      )
+      continue
+    }
     rows.push({
       name,
       tier: mp.tier,
       rationale: typeof mp.rationale === 'string' ? mp.rationale : '',
+      nativeFrontend: typeof nativeFrontend === 'string' ? nativeFrontend : '',
     })
   }
 
@@ -212,6 +281,50 @@ async function main(): Promise<number> {
       failures.push(
         `the tier table in multiplatform-libraries.md is STALE — a manifest's multiplatform ` +
           `declaration changed without regenerating it. Run: ` +
+          `bun scripts/check-multiplatform-tier.ts --write-table`,
+      )
+    }
+  }
+
+  // 4. The native compiler's blanket web-only warn set must match the
+  //    declarations. This is the half that shipped a real bug: seven web-only
+  //    packages (validate / validation / url-state / feature / hotkeys / http /
+  //    head) were absent from the hand-written list, so importing them into
+  //    shared source produced NO diagnostic and a cryptic native build failure.
+  const parsePath = join(REPO, 'packages/native/compiler/src/parse.ts')
+  const parseSrc = readFileSync(parsePath, 'utf8')
+  const wStart = parseSrc.indexOf(WEB_ONLY_START)
+  const wEnd = parseSrc.indexOf(WEB_ONLY_END)
+  const derivedNames = deriveWebOnlyPackages(rows)
+  const renderedSet = renderWebOnlySet(derivedNames)
+  // A manifest-bearing package must never be hand-listed — that would let the
+  // hand list quietly outlive the derivation and re-open the rot.
+  for (const name of WEB_ONLY_NO_MANIFEST) {
+    if (byName.has(name)) {
+      failures.push(
+        `${name} is in WEB_ONLY_NO_MANIFEST but HAS a manifest — remove the hand entry so ` +
+          `the tier declaration drives it.`,
+      )
+    }
+  }
+  if (wStart === -1 || wEnd === -1) {
+    failures.push(
+      `packages/native/compiler/src/parse.ts is missing the ${WEB_ONLY_START} / ` +
+        `${WEB_ONLY_END} markers — the web-only warn set is no longer derived from the ` +
+        `manifests, so it will drift silently.`,
+    )
+  } else if (writeTable) {
+    const next =
+      parseSrc.slice(0, wStart) + renderedSet + parseSrc.slice(wEnd + WEB_ONLY_END.length)
+    writeFileSync(parsePath, next)
+    console.log(`[check-multiplatform-tier] compiler web-only set written (${derivedNames.length})`)
+  } else {
+    const current = parseSrc.slice(wStart, wEnd + WEB_ONLY_END.length)
+    if (current !== renderedSet) {
+      failures.push(
+        `the native compiler's WEB_ONLY_PACKAGES set is STALE — a manifest's multiplatform ` +
+          `declaration changed without regenerating it. A package missing from that set ` +
+          `emits verbatim and fails the native build with no diagnostic. Run: ` +
           `bun scripts/check-multiplatform-tier.ts --write-table`,
       )
     }

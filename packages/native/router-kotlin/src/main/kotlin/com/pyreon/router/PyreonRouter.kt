@@ -176,6 +176,18 @@ public class PyreonRouter(
      *  code reads segments directly from [currentPath]. */
     public val params: MutableState<Map<String, String>> = mutableStateOf(emptyMap())
 
+    /** Parsed search parameters for the committed path — `/search?q=cat&page=2`
+     *  becomes `{"q": "cat", "page": "2"}`.
+     *
+     *  This file's header has advertised `query` since the C1 scaffold and
+     *  nothing implemented it: a path carrying `?…` was fed to [matchPath]
+     *  whole, so `/users/42?tab=a` captured `id == "42?tab=a"` and a static
+     *  route stopped matching. Every deep link with a query string hit that.
+     *
+     *  Updated in the SAME step as [params], so both always describe one
+     *  navigation — the atomicity [updateParamsFromPath] already promises. */
+    public val query: MutableState<Map<String, String>> = mutableStateOf(emptyMap())
+
     /** Route table — declaration-order list of [RouteRecord] patterns.
      *  [push]/[replace] walk this list and pick the FIRST match;
      *  declaration order IS precedence. [RouterView] renders the matched
@@ -300,7 +312,28 @@ public class PyreonRouter(
      *  params is the MERGED dict across the chain (parent params +
      *  child params + ...). For flat single-entry chains this matches
      *  pre-A4.5 behavior. */
+    /** Set (or remove, with `null`) one search parameter and rewrite the
+     *  committed URL in place. `replace` semantics, not `push`: changing a
+     *  filter must not add a back-stack entry per keystroke, mirroring
+     *  `useUrlState`'s default on the web. */
+    public fun setQueryParam(key: String, value: String?) {
+        val next = query.value.toMutableMap()
+        if (value == null) next.remove(key) else next[key] = value
+        if (next == query.value) return
+        query.value = next
+        val stack = path.value
+        val top = stack.lastOrNull() ?: return
+        val base = splitPathAndQuery(top).first
+        val serialized = serializeQuery(next)
+        path.value =
+            stack.dropLast(1) + if (serialized.isEmpty()) base else "$base?$serialized"
+    }
+
     private fun updateParamsFromPath(committed: String) {
+        // Parsed FIRST and unconditionally: a path that matches no route still
+        // has a valid query, and clearing it on a 404 would drop the very
+        // parameters a not-found page usually needs.
+        query.value = parseQuery(splitPathAndQuery(committed).second)
         val chain = resolveChainIn(routes.value, committed)
         if (chain == null) {
             params.value = emptyMap()
@@ -662,10 +695,73 @@ public class PyreonRouter(
          *     by the path (`/users/:id?` matches both `/users` and `/users/7`)
          *   - non-splat / non-optional patterns require an exact segment count
          */
+        /** Split a committed path into path and raw query, dropping any
+         *  `#fragment`. The fragment goes first so `/a?b=1#frag` does not
+         *  leave `1#frag`. */
+        public fun splitPathAndQuery(full: String): Pair<String, String> {
+            val noFragment = full.substringBefore('#')
+            val q = noFragment.indexOf('?')
+            return if (q < 0) Pair(noFragment, "")
+            else Pair(noFragment.substring(0, q), noFragment.substring(q + 1))
+        }
+
+        /** Parse `a=1&b=two&flag` into a map. A bare key maps to "", matching
+         *  URLSearchParams; a repeated key keeps the LAST value, which is what
+         *  the web `get()` returns. */
+        public fun parseQuery(raw: String): Map<String, String> {
+            val out = mutableMapOf<String, String>()
+            for (pair in raw.split("&")) {
+                if (pair.isEmpty()) continue
+                val key = pair.substringBefore('=')
+                if (key.isEmpty()) continue
+                val value = if (pair.contains('=')) pair.substringAfter('=') else ""
+                out[percentDecode(key)] = percentDecode(value)
+            }
+            return out
+        }
+
+        /** Serialize back to `a=1&b=two`, sorted so the emitted URL is stable
+         *  (an unstable order would churn history entries on every write). */
+        public fun serializeQuery(q: Map<String, String>): String =
+            q.keys.sorted().joinToString("&") {
+                percentEncode(it) + "=" + percentEncode(q[it] ?: "")
+            }
+
+        private fun percentDecode(s: String): String {
+            val withSpaces = s.replace("+", " ")
+            val out = StringBuilder()
+            var i = 0
+            while (i < withSpaces.length) {
+                val c = withSpaces[i]
+                if (c == '%' && i + 2 < withSpaces.length) {
+                    val hex = withSpaces.substring(i + 1, i + 3)
+                    val code = hex.toIntOrNull(16)
+                    if (code != null) {
+                        out.append(code.toChar()); i += 3; continue
+                    }
+                }
+                out.append(c); i += 1
+            }
+            return out.toString()
+        }
+
+        private fun percentEncode(s: String): String {
+            val unreserved = "-._~"
+            val out = StringBuilder()
+            for (c in s) {
+                if (c.isLetterOrDigit() && c.code < 128 || unreserved.contains(c)) out.append(c)
+                else out.append('%').append(c.code.toString(16).uppercase().padStart(2, '0'))
+            }
+            return out.toString()
+        }
+
         public fun matchPath(path: String, pattern: String): Map<String, String>? {
             // Filter empty segments → leading/trailing slashes ignored, same
             // as the web router's `.split('/').filter(Boolean)`.
-            val pathParts = path.split("/").filter { it.isNotEmpty() }
+            // Strip `?query` / `#fragment` before matching — they are not
+            // path segments. Without this `/users/42?tab=a` matched `:id`
+            // against "42?tab=a" and a static route did not match at all.
+            val pathParts = splitPathAndQuery(path).first.split("/").filter { it.isNotEmpty() }
             val patternParts = pattern.split("/").filter { it.isNotEmpty() }
             val params = mutableMapOf<String, String>()
             for (i in patternParts.indices) {

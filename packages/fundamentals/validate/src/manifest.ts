@@ -11,7 +11,9 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      'pure-logic schema DSL; per-validator native lowering is tracked (Tier-2 Strategy A) but not shipped — validators run web-side today',
+      'pure-logic schema DSL; the runtime engine (JIT, JSON-schema export, async refinements, the v1/mini compat surfaces) stays web, and inline uses like `s.string().parse(x)` do not lower',
+    nativeFrontend:
+      'a top-level `const X = s.object({ … })` declaration, emitted as a Swift Codable struct / Kotlin data class with `parse` + constraint checks',
   },
   longExample: `import { z } from 'zod'
 import { signal } from '@pyreon/reactivity'

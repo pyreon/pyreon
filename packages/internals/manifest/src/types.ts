@@ -209,10 +209,25 @@ export type MultiplatformTier = 'shared' | 'service-backend' | 'web-only'
  * (WebView bridge / `<Web>` branch / none)?" is the sentence that keeps
  * the tier honest. The other tiers take an optional rationale (naming
  * the native runtime port or the PMTC frontend is encouraged).
+ *
+ * `nativeFrontend` exists because the three-value tier vocabulary cannot
+ * express PARTIAL crossing, and that gap shipped a real bug twice. A
+ * package like `@pyreon/toast` is web-only in the large (the rich
+ * `toast.promise` / options / animation surface never lowers) while its
+ * CORE does lower to a native runtime. Declaring the tier alone forced a
+ * choice between two wrong answers, and the compiler's blanket
+ * "this package is WEB-ONLY" warning — derived from the tier — would then
+ * tell users a working API is unusable.
+ *
+ * Set it to a short phrase naming WHAT crosses and to which runtime
+ * (`'PyreonToast — the imperative toast(...) calls and <Toaster />'`).
+ * Its PRESENCE is load-bearing, not just documentation: it removes the
+ * package from the generated `WEB_ONLY_PACKAGES` set in the native
+ * compiler. Leave it unset when nothing at all lowers.
  */
 export type MultiplatformStory =
   | { tier: 'shared' | 'service-backend'; rationale?: string }
-  | { tier: 'web-only'; rationale: string }
+  | { tier: 'web-only'; rationale: string; nativeFrontend?: string }
 
 export interface PackageManifest {
   /** Package name including scope — `@pyreon/flow`. */

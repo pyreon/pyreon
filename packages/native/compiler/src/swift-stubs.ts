@@ -180,6 +180,15 @@ public struct AnyTransition {
   public static let opacity = AnyTransition()
   public static func asymmetric(insertion: AnyTransition, removal: AnyTransition) -> AnyTransition { AnyTransition() }
   public func animation(_ animation: Animation?) -> AnyTransition { self }
+  // A <Transition name> now maps to a real transition instead of always
+  // fading, so the stub grows the members that emit can produce. Same lesson
+  // as the note above: a stub NARROWER than the real SDK rejects correct code.
+  public static let scale = AnyTransition()
+  public static func move(edge: Edge) -> AnyTransition { AnyTransition() }
+  public func combined(with other: AnyTransition) -> AnyTransition { self }
+}
+public enum Edge {
+  case top, bottom, leading, trailing
 }
 public protocol Gesture {}
 public struct LongPressGesture: Gesture {
@@ -582,6 +591,12 @@ public final class PyreonRouter {
   // keeping the OPTIONAL return is load-bearing: an emit that forgets to unwrap
   // it must fail here, not silently on-device.
   public static func matchPath(_ path: String, _ pattern: String) -> [String: String]? { nil }
+  // Search parameters, mirroring the real PyreonRouter. useUrlState lowers to
+  // a value type over these two, so a stub missing them would reject a correct
+  // emit — the subset-stub failure, which manufactures bugs exactly as a
+  // superset stub masks them.
+  public var query: [String: String] { [:] }
+  public func setQueryParam(_ key: String, _ value: String?) {}
 }
 extension EnvironmentValues {
   public var pyreonRouter: PyreonRouter? { get { nil } set {} }

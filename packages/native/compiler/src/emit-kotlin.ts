@@ -221,6 +221,8 @@ let _mapNames: Set<string> = new Set()
 let _authNames: Set<string> = new Set()
 /** G2: every function decl name (Parser-A). Mirrors emit-swift's set. */
 let _functionNames: Set<string> = new Set()
+/** Bindings from `useUrlState` — callable, but NOT signals (see the `.set` guard). */
+let _urlStateNames: Set<string> = new Set()
 /** File-scope helper-function names (persists across the whole emit) — seeded
  * into each component's `_functionNames` so a `dbl(21)` call resolves as a
  * free-function call regardless of which component emits it. */
@@ -467,6 +469,10 @@ export function emitKotlin(
   // Emit the shared PyreonSchemaError sealed class once if any
   // schemas are present.
   if (zodSchemas.length > 0) parts.push(KOTLIN_SCHEMA_ERROR)
+  // Emit the PyreonUrlState helper once, if any component binds a search param.
+  if (components.some((c) => c.decls?.some((d) => d.kind === 'url-state'))) {
+    parts.push(KOTLIN_URL_STATE)
+  }
   // Gap 4 v3.2 — emit auxSchemas BEFORE their parent schema so the
   // type-reference order is consistent top-down.
   const emitKotlinSchemaTree = (zs: ZodSchemaDefnIR): void => {
@@ -1076,6 +1082,27 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
  * present. Single sealed exception hierarchy shared across all
  * schemas in a file.
  */
+
+/**
+ * The Kotlin mirror of `SWIFT_URL_STATE`. Emitted inline for the same reason:
+ * it needs the ACTIVE router, which `useRouter()` supplies from the Compose
+ * local, so a standalone runtime would have to depend on PyreonRouter and stop
+ * being self-contained.
+ *
+ * `operator fun invoke()` is the Kotlin spelling of Swift's
+ * `callAsFunction`, so `q()` reads and `q.set(v)` writes on BOTH targets and
+ * shared source does not fork.
+ */
+const KOTLIN_URL_STATE = `class PyreonUrlState(
+    private val router: PyreonRouter,
+    private val key: String,
+    private val defaultValue: String,
+) {
+    operator fun invoke(): String = router.query.value[key] ?: defaultValue
+    fun set(value: String) { router.setQueryParam(key, value) }
+    fun clear() { router.setQueryParam(key, null) }
+}`
+
 const KOTLIN_SCHEMA_ERROR = `sealed class PyreonSchemaError(message: String) : Exception(message) {
     data class MissingOrWrongType(val field: String, val expected: String) :
         PyreonSchemaError("Field '$field' missing or wrong type (expected $expected)")
@@ -1265,6 +1292,12 @@ function emitKotlinComponent(c: ComponentIR): string {
     // function call, so it stays out of `_functionNames`.
     if (d.kind === 'router-hook' && d.hook === 'navigate') {
       _functionNames.add(d.name)
+    }
+    // `q` is CALLABLE (`operator fun invoke`), so a reference must keep its
+    // parens — the Swift mirror adds it for the same reason.
+    if (d.kind === 'url-state') {
+      _functionNames.add(d.name)
+      _urlStateNames.add(d.name)
     }
     // Phase 4: track useFetch AND useQuery decls so member reads append
     // `.value`. PyreonQuery shares data/error/isPending (+ adds isFetching)
@@ -1526,6 +1559,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _activePropsParamName = undefined
   _signalNames = new Set()
   _functionNames = new Set()
+  _urlStateNames = new Set()
   _machineNames = new Set()
   _i18nNamesKotlin = new Set()
   _fetchNames = new Set()
@@ -2060,6 +2094,9 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // `LocalPyreonRouter.current` directly via CompositionLocal — no
   // explicit router arg needed (unlike Swift). `useParams()` follows
   // the same shape.
+  if (d.kind === 'url-state') {
+    return `val ${kotlinIdent(d.name)} = PyreonUrlState(useRouter(), ${JSON.stringify(d.key)}, ${JSON.stringify(d.defaultValue)})`
+  }
   if (d.kind === 'router-hook') {
     const fn = d.hook === 'navigate' ? 'useNavigate' : 'useParams'
     return `val ${kotlinIdent(d.name)} = ${fn}()`
@@ -3025,7 +3062,15 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       }
       // `signal.set(x)` → `signal = x` (Kotlin's `by mutableStateOf` is a var).
       // Gated to ONE argument — a 2-arg `.set(k, v)` is a Map write.
-      if (e.callee.kind === 'member' && e.callee.property === 'set' && e.args.length === 1) {
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.property === 'set' &&
+        e.args.length === 1 &&
+        // A useUrlState binding is NOT a signal: `q.set(v)` is a real method
+        // on PyreonUrlState, so rewriting it to `q = v` fails with
+        // "val cannot be reassigned". The Swift emit carries the same guard.
+        !(e.callee.object.kind === 'identifier' && _urlStateNames.has(e.callee.object.name))
+      ) {
         const target = emitKotlinExpr(e.callee.object, indent)
         // Enum-aware: when the target signal is enum-typed, set the
         // active-enum context so a string-literal arg rewrites to a
@@ -4835,6 +4880,64 @@ function kotlinEasingFor(easing: string | undefined): string {
         : 'FastOutSlowInEasing'
 }
 
+
+/**
+ * Map a `<Transition name>` to Compose enter/exit transitions — the Kotlin
+ * mirror of `swiftTransitionForName`.
+ *
+ * `name` is the Vue-style prop `@pyreon/runtime-dom`'s Transition already
+ * honours on the web, and `@pyreon/kinetic` ships presets under the same
+ * vocabulary, so an author writes it once and each target resolves it
+ * natively. Before this the emit ignored `name` and every transition became a
+ * fade — an authored slide-up ran as a fade on device, silently.
+ *
+ * An UNKNOWN name falls back to fade, which is the previous behaviour: a
+ * custom CSS animation has no native translation, and a fade beats refusing
+ * to compile.
+ *
+ * Returns the enter/exit EXPRESSIONS; the caller composes the spec so the
+ * duration/easing plumbing stays in one place.
+ */
+function kotlinTransitionForName(
+  name: string | undefined,
+  spec: string,
+): { enter: string; exit: string } {
+  const fade = { enter: `fadeIn(animationSpec = ${spec})`, exit: `fadeOut(animationSpec = ${spec})` }
+  switch (name) {
+    case 'scale':
+    case 'scale-in':
+      return {
+        enter: `fadeIn(animationSpec = ${spec}) + scaleIn(animationSpec = ${spec})`,
+        exit: `fadeOut(animationSpec = ${spec}) + scaleOut(animationSpec = ${spec})`,
+      }
+    // `{ it }` is the full height/width, so the content travels its own size.
+    // A "slide-up" rises INTO place, which in Compose is a positive initial
+    // offset on the vertical axis.
+    case 'slide-up':
+      return {
+        enter: `slideInVertically(animationSpec = ${spec}) { it } + fadeIn(animationSpec = ${spec})`,
+        exit: `slideOutVertically(animationSpec = ${spec}) { it } + fadeOut(animationSpec = ${spec})`,
+      }
+    case 'slide-down':
+      return {
+        enter: `slideInVertically(animationSpec = ${spec}) { -it } + fadeIn(animationSpec = ${spec})`,
+        exit: `slideOutVertically(animationSpec = ${spec}) { -it } + fadeOut(animationSpec = ${spec})`,
+      }
+    case 'slide-left':
+      return {
+        enter: `slideInHorizontally(animationSpec = ${spec}) { it } + fadeIn(animationSpec = ${spec})`,
+        exit: `slideOutHorizontally(animationSpec = ${spec}) { it } + fadeOut(animationSpec = ${spec})`,
+      }
+    case 'slide-right':
+      return {
+        enter: `slideInHorizontally(animationSpec = ${spec}) { -it } + fadeIn(animationSpec = ${spec})`,
+        exit: `slideOutHorizontally(animationSpec = ${spec}) { -it } + fadeOut(animationSpec = ${spec})`,
+      }
+    default:
+      return fade
+  }
+}
+
 function emitKotlinTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const show = e.attrs.find((a) => a.kind === 'attr' && a.name === 'show') as
     | Extract<AttrIR, { kind: 'attr' }>
@@ -4886,20 +4989,32 @@ function emitKotlinTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, inden
     leaveEase !== undefined
   const pad = ' '.repeat(indent + 2)
   const body = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
+  const nameRaw = readStaticAttrKotlin(e, 'name')
+  const transitionName = typeof nameRaw === 'string' ? nameRaw : undefined
   if (duration === undefined && easing === undefined && !asymmetric) {
-    return `AnimatedVisibility(visible = ${cond}) {\n${body}\n${' '.repeat(indent)}}`
+    // No animation config AND no name → the byte-identical default shape that
+    // has shipped since M2.7. A name opts into an explicit enter/exit pair.
+    if (transitionName === undefined) {
+      return `AnimatedVisibility(visible = ${cond}) {\n${body}\n${' '.repeat(indent)}}`
+    }
+    const dflt = `tween(durationMillis = 300, easing = ${kotlinEasingFor(undefined)})`
+    const t = kotlinTransitionForName(transitionName, dflt)
+    return (
+      `AnimatedVisibility(visible = ${cond}, enter = ${t.enter}, exit = ${t.exit}) {\n` +
+      `${body}\n${' '.repeat(indent)}}`
+    )
   }
   if (asymmetric) {
     const enterSpec = `tween(durationMillis = ${enterDur ?? duration ?? 300}, easing = ${kotlinEasingFor(enterEase ?? easing)})`
     const exitSpec = `tween(durationMillis = ${leaveDur ?? duration ?? 300}, easing = ${kotlinEasingFor(leaveEase ?? easing)})`
     return (
-      `AnimatedVisibility(visible = ${cond}, enter = fadeIn(animationSpec = ${enterSpec}), exit = fadeOut(animationSpec = ${exitSpec})) {\n` +
+      `AnimatedVisibility(visible = ${cond}, enter = ${kotlinTransitionForName(transitionName, enterSpec).enter}, exit = ${kotlinTransitionForName(transitionName, exitSpec).exit}) {\n` +
       `${body}\n${' '.repeat(indent)}}`
     )
   }
   const spec = `tween(durationMillis = ${duration ?? 300}, easing = ${kotlinEasingFor(easing)})`
   return (
-    `AnimatedVisibility(visible = ${cond}, enter = fadeIn(animationSpec = ${spec}), exit = fadeOut(animationSpec = ${spec})) {\n` +
+    `AnimatedVisibility(visible = ${cond}, enter = ${kotlinTransitionForName(transitionName, spec).enter}, exit = ${kotlinTransitionForName(transitionName, spec).exit}) {\n` +
     `${body}\n${' '.repeat(indent)}}`
   )
 }

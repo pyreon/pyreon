@@ -3,6 +3,8 @@
 // The hook arc keys on `/^use[A-Z]/`, so plain exports fell straight through:
 //
 //   s                  from @pyreon/validate     ❌ both, 0 warnings
+//                        (the `s.object({…})` DECLARATION form now lowers;
+//                         inline uses like `s.string().parse(x)` still do not)
 //   pipe / map         from @pyreon/rx           ❌ both, 0 warnings
 //   createPermissions  from @pyreon/permissions  ❌ both, 0 warnings
 //
@@ -27,10 +29,18 @@ import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWit
 
 const P = '@pyreon/primitives'
 
+// NOTE this fixture used to be `const Schema = s.object({ name: s.string() })`.
+// That shape now LOWERS — a top-level `s.object({ … })` declaration emits a
+// Swift Codable struct / Kotlin data class with parse + constraints — so
+// asserting a warning on it would assert the stale-entry failure: telling the
+// author a working API is unusable.
+//
+// The invariant this suite protects is unchanged and still worth holding: an
+// `s` use that does NOT lower must warn rather than emit verbatim. Only the
+// fixture moved, to an inline call, which is genuinely not lowered.
 const VALIDATE = `import { s } from '@pyreon/validate'
 import { Stack, Text } from '${P}'
-const Schema = s.object({ name: s.string() })
-export function C(){ return (<Stack><Text>x</Text></Stack>) }`
+export function C(){ const ok = s.string().parse('x'); return (<Stack><Text>{ok}</Text></Stack>) }`
 
 const RX = `import { pipe, map } from '@pyreon/rx'
 import { signal } from '@pyreon/reactivity'

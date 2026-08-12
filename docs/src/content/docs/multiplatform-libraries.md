@@ -528,14 +528,14 @@ the machine-checked contract.
 | `@pyreon/head` | document `<head>` management — no equivalent surface exists on iOS/Android |
 | `@pyreon/compiler` | the web JSX compiler + build tooling itself; the native sibling is @pyreon/native-compiler — nothing here ships to an app runtime |
 | `@pyreon/sized-map` | pure-logic LRU map with no platform edge, but PMTC has no class-API lowering (new SizedMap() warns); usable in `<Web>` branches |
-| `@pyreon/validate` | pure-logic schema DSL; per-validator native lowering is tracked (Tier-2 Strategy A) but not shipped — validators run web-side today |
+| `@pyreon/validate` | pure-logic schema DSL; the runtime engine (JIT, JSON-schema export, async refinements, the v1/mini compat surfaces) stays web, and inline uses like `s.string().parse(x)` do not lower |
 | `@pyreon/dnd` | wraps pragmatic-drag-and-drop (DOM events/pointers); native drag interactions are platform-gesture territory |
 | `@pyreon/toast` | the core `toast(...)` + `<Toaster>` now lower to the native PyreonToast runtime (v1); the rich surface (toast.promise/update, options, animation) stays web |
 | `@pyreon/hotkeys` | keyboard-shortcut layer over DOM KeyboardEvent; touch platforms have no hardware-shortcut surface |
 | `@pyreon/code` | wraps CodeMirror 6 (DOM editor engine); consume on native via the `<WebView>` bridge subpath |
 | `@pyreon/charts` | wraps ECharts (browser canvas engine); consume on native via the `<WebView>` bridge subpath |
 | `@pyreon/document` | wraps pdfmake/docx/exceljs/pptxgenjs (browser/node document engines); no native lowering |
-| `@pyreon/url-state` | URL/query-string state — the web address bar is the platform surface; native deep links are the router's territory |
+| `@pyreon/url-state` | the address bar is the web's own surface — history entries, `popstate`, `batchUrlUpdates` and the pluggable serializers stay web; on native the equivalent is the router's search parameters |
 | `@pyreon/table` | headless table over web rendering patterns; PMTC has no lowering — native lists are `<For>` + primitives |
 | `@pyreon/http` | universal web/node HTTP client (WHATWG fetch); PMTC has no lowering for createHttp — native networking is useFetch + the PyreonHttp runtime layer, convergence tracked |
 | `@pyreon/virtual` | DOM virtualization (scroll containers, measured rows); native lists are lazy by construction (LazyColumn/LazyVStack) |
@@ -543,8 +543,8 @@ the machine-checked contract.
 | `@pyreon/a11y` | mostly DOM/ARIA utilities (the native element a11y story is the AccessibilityProps vocabulary on @pyreon/primitives); `announce(...)` now lowers to the native PyreonA11y runtime |
 | `@pyreon/feature` | composite over query/form/store/validation — lowers only when every dependency does; tracked as a Tier-2 composite |
 | `@pyreon/sync` | Yjs CRDT engine + IndexedDB/WebSocket transports; the engine-neutral core is portable but no native runtime exists |
-| `@pyreon/query` | wraps TanStack Query (JS runtime cache); native data fetching is useFetch/PyreonFetch |
-| `@pyreon/validation` | Standard Schema adapters (zod/valibot/arktype are JS libraries); per-validator lowering tracked, not shipped |
+| `@pyreon/query` | wraps TanStack Query (a JS runtime cache), so the full client — QueryClient config, devtools, infinite/suspense queries — stays web; `useQuery` itself lowers to the PyreonQuery runtime |
+| `@pyreon/validation` | Standard Schema adapters (zod/valibot/arktype are JS libraries), so the adapters themselves stay web; the declarative schema FORMS lower to native validators (Gap-4 v1) |
 | `@pyreon/flow` | wraps elkjs + SVG rendering (browser layout engine); consume on native via the `<WebView>` bridge subpath |
 | `@pyreon/lint` | lint tooling — runs at dev time, not app runtime |
 | `@pyreon/config` | build-time config shape read by the tooling that assembles an app — never part of a rendered app on any target |
@@ -555,7 +555,7 @@ the machine-checked contract.
 | `@pyreon/kinetic-presets` | preset pack for the kinetic CSS engine |
 | `@pyreon/connector-document` | bridges ui-components to @pyreon/document extraction — both ends are web/document engines |
 | `@pyreon/document-primitives` | document-authoring primitives feeding the pdfmake/docx renderers |
-| `@pyreon/kinetic` | CSS-transition animation engine (classes + rAF over real CSSOM); native animation is the primitives' animate vocabulary, not this runtime |
+| `@pyreon/kinetic` | CSS-transition animation engine (classes + rAF over real CSSOM) — the `kinetic()` factory and its class/style machinery are web; its PRESET VOCABULARY (fade / scale-in / slide-up|down|left|right) does cross, via `<Transition name>`, which each target resolves to its own platform transition |
 | `@pyreon/unistyle` | responsive breakpoints + CSS-variable theming over real CSS; native theming is compile-time tokens + the 2-bucket size-class model |
 | `@pyreon/zero-content` | markdown/MDX content pipeline for zero's web rendering |
 | `@pyreon/zero` | the web meta-framework (SSR/SSG/ISR, Vite, fs-router); native apps are built by PMTC + create-multiplatform, not zero |

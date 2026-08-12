@@ -19,7 +19,8 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      'wraps TanStack Query (JS runtime cache); native data fetching is useFetch/PyreonFetch',
+      'wraps TanStack Query (a JS runtime cache), so the full client — QueryClient config, devtools, infinite/suspense queries — stays web; `useQuery` itself lowers to the PyreonQuery runtime',
+    nativeFrontend: 'PyreonQuery — `useQuery` (key + fetcher, loading/error/data state)',
   },
   longExample: `import {
   QueryClient,

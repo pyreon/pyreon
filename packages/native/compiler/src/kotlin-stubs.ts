@@ -798,6 +798,12 @@ fun useNavigate(): (String) -> Unit = { _ -> }
 @Composable
 fun useParams(): Map<String, String> = emptyMap()
 
+// useUrlState lowers to a PyreonUrlState over the active router, so the
+// emit needs a router accessor here too. Same defensive-default shape as
+// the two above.
+@Composable
+fun useRouter(): PyreonRouter = PyreonRouter()
+
 @Composable
 inline fun <reified T : Any> useLoaderData(): T? = null
 
@@ -941,6 +947,17 @@ class EnterTransition
 class ExitTransition
 fun fadeIn(animationSpec: TweenSpec): EnterTransition = EnterTransition()
 fun fadeOut(animationSpec: TweenSpec): ExitTransition = ExitTransition()
+// A <Transition name> maps to a real enter/exit pair rather than always
+// fading, so the stub mirrors the Compose functions that emit can now
+// produce. `+` composes transitions in Compose, hence the operator stubs.
+fun scaleIn(animationSpec: TweenSpec): EnterTransition = EnterTransition()
+fun scaleOut(animationSpec: TweenSpec): ExitTransition = ExitTransition()
+fun slideInVertically(animationSpec: TweenSpec, initialOffsetY: (Int) -> Int = { it }): EnterTransition = EnterTransition()
+fun slideOutVertically(animationSpec: TweenSpec, targetOffsetY: (Int) -> Int = { it }): ExitTransition = ExitTransition()
+fun slideInHorizontally(animationSpec: TweenSpec, initialOffsetX: (Int) -> Int = { it }): EnterTransition = EnterTransition()
+fun slideOutHorizontally(animationSpec: TweenSpec, targetOffsetX: (Int) -> Int = { it }): ExitTransition = ExitTransition()
+operator fun EnterTransition.plus(other: EnterTransition): EnterTransition = this
+operator fun ExitTransition.plus(other: ExitTransition): ExitTransition = this
 @Composable
 fun AnimatedVisibility(
   visible: Boolean,
@@ -1131,6 +1148,10 @@ class PyreonForm(
 class PyreonRouter {
   var currentPath: String = "/"
   fun push(path: String) { currentPath = path }
+  // Search parameters, mirroring the real PyreonRouter. useUrlState lowers to
+  // a class over these two; a stub missing them would reject a correct emit.
+  val query: MutableState<Map<String, String>> = mutableStateOf(emptyMap())
+  fun setQueryParam(key: String, value: String?) {}
   companion object {
     fun matchPath(path: String, pattern: String): Map<String, String>? {
       if (path == pattern) return emptyMap()

@@ -62,6 +62,7 @@ const USAGES: ReadonlyArray<readonly [string, string, string]> = [
   ['useNotifications', '@pyreon/hooks', 'const n = useNotifications()'],
   ['useOnline', '@pyreon/hooks', 'const o = useOnline()'],
   ['useParams', '@pyreon/router', 'const { id } = useParams()'],
+  ['useUrlState', '@pyreon/url-state', "const q = useUrlState('q', 'all'); const go = () => { q.set('b') }"],
   ['usePayments', '@pyreon/hooks', 'const p = usePayments()'],
   ['usePermissions', '@pyreon/hooks', 'const p = usePermissions()'],
   ['usePush', '@pyreon/hooks', 'const p = usePush()'],

@@ -10,6 +10,7 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { findManifests } from '../../../manifest/src'
 import {
+  deriveWebOnlyPackages,
   listPublishedPackages,
   renderTierTable,
 } from '../../../../../scripts/check-multiplatform-tier'
@@ -107,39 +108,99 @@ describe('the real-repo contract the gate holds', () => {
     }
   })
 
-  it('the PMTC compiler and the declared tiers agree on web-only', async () => {
-    // The compiler warns on imports from its WEB_ONLY_PACKAGES set; a package
-    // the compiler treats as web-only must not DECLARE itself shared or
-    // service-backend — that disagreement is exactly the silent divergence
-    // the tier field exists to prevent. (The reverse is fine: a package can
-    // be web-only for reasons the compiler has no list entry for.)
+  it('the PMTC compiler and the declared tiers agree on web-only — BOTH ways', async () => {
+    // This assertion used to run in ONE direction: every entry in the
+    // compiler's set must declare tier 'web-only'. Its comment then waved the
+    // other direction through — "the reverse is fine: a package can be
+    // web-only for reasons the compiler has no list entry for".
+    //
+    // The reverse was not fine, and it is the harmful direction. A package
+    // that DECLARES web-only while the compiler has no entry produces no
+    // diagnostic at all: the import emits verbatim and the native build dies
+    // with `cannot find 'x' in scope`, pointing nowhere near the cause. Four
+    // packages shipped that way (url-state / head / hotkeys / feature), and
+    // the two the maintainers had already found by hand — sync and rich-text
+    // — were patched into the literal after the fact with a comment saying so.
+    //
+    // The set is now DERIVED from the declarations, so equality is the honest
+    // assertion, and the gate regenerates it. Partially-lowering packages are
+    // excluded by declaring `nativeFrontend`, not by being absent.
     const parseSource = (await import('node:fs')).readFileSync(
       resolve(REPO, 'packages/native/compiler/src/parse.ts'),
       'utf8',
     )
     const setMatch = parseSource.match(
-      /const WEB_ONLY_PACKAGES = new Set\(\[([\s\S]*?)\]\)/,
+      /const WEB_ONLY_PACKAGES: ReadonlySet<string> = new Set\(\[([\s\S]*?)\]\)/,
     )
     expect(setMatch, 'WEB_ONLY_PACKAGES not found in parse.ts').toBeTruthy()
-    const compilerWebOnly = [...setMatch![1]!.matchAll(/'(@pyreon\/[a-z-]+)'/g)].map(
-      (m) => m[1]!,
-    )
+    const compilerWebOnly = [...setMatch![1]!.matchAll(/'(@pyreon\/[a-z-]+)'/g)].map((m) => m[1]!)
     expect(compilerWebOnly.length).toBeGreaterThan(10)
 
     const manifests = await findManifests(REPO)
-    const tierOf = new Map(
-      manifests.map((m) => [
-        m.manifest.name,
-        (m.manifest as { multiplatform?: { tier?: string } }).multiplatform?.tier,
-      ]),
-    )
-    for (const name of compilerWebOnly) {
-      const tier = tierOf.get(name)
-      if (tier === undefined) continue // no manifest (e.g. ui-components) — out of scope
-      expect(
-        tier,
-        `${name} is in the compiler's WEB_ONLY_PACKAGES but declares tier '${tier}'`,
-      ).toBe('web-only')
-    }
+    const rows = manifests.map((m) => {
+      const mp = (m.manifest as {
+        multiplatform?: { tier?: string; rationale?: string; nativeFrontend?: string }
+      }).multiplatform
+      return {
+        name: m.manifest.name,
+        tier: mp?.tier ?? '',
+        rationale: mp?.rationale ?? '',
+        nativeFrontend: mp?.nativeFrontend ?? '',
+      }
+    })
+    expect(compilerWebOnly).toEqual(deriveWebOnlyPackages(rows))
+  })
+})
+
+// The derivation that replaced the native compiler's hand-written
+// WEB_ONLY_PACKAGES literal. That list rotted in both directions — a missing
+// entry let an import emit verbatim and die with `cannot find 'x' in scope`
+// and no diagnostic; a stale entry told users a working API was unusable.
+// Deriving it from the declared tier is what closes the class; these lock the
+// policy, and the gate (section 4) locks the generated file against it.
+describe('deriveWebOnlyPackages', () => {
+  const row = (name: string, tier: string, nativeFrontend = '') => ({
+    name,
+    tier,
+    rationale: 'r',
+    nativeFrontend,
+  })
+
+  it('includes web-only packages and excludes every other tier', () => {
+    const got = deriveWebOnlyPackages([
+      row('@pyreon/flow', 'web-only'),
+      row('@pyreon/reactivity', 'shared'),
+      row('@pyreon/store', 'service-backend'),
+    ])
+    expect(got).toContain('@pyreon/flow')
+    expect(got).not.toContain('@pyreon/reactivity')
+    expect(got).not.toContain('@pyreon/store')
+  })
+
+  // The load-bearing half. A package whose CORE lowers (toast → PyreonToast)
+  // is still web-only in the large, so the tier alone cannot decide this; the
+  // presence of `nativeFrontend` is what keeps it out of the blanket warning.
+  it('excludes a web-only package that declares a nativeFrontend', () => {
+    const got = deriveWebOnlyPackages([
+      row('@pyreon/toast', 'web-only', 'PyreonToast — toast(...) and <Toaster />'),
+      row('@pyreon/flow', 'web-only'),
+    ])
+    expect(got).not.toContain('@pyreon/toast')
+    expect(got).toContain('@pyreon/flow')
+  })
+
+  it('always carries the manifest-less private packages', () => {
+    const got = deriveWebOnlyPackages([])
+    expect(got).toEqual(['@pyreon/ui-components', '@pyreon/ui-primitives'])
+  })
+
+  it('is sorted and de-duplicated so the generated file is stable', () => {
+    const got = deriveWebOnlyPackages([
+      row('@pyreon/zzz', 'web-only'),
+      row('@pyreon/aaa', 'web-only'),
+      row('@pyreon/ui-components', 'web-only'),
+    ])
+    expect(got).toEqual([...got].sort())
+    expect(new Set(got).size).toBe(got.length)
   })
 })

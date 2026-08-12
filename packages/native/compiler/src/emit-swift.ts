@@ -366,6 +366,8 @@ let _i18nNames: Set<string> = new Set()
  * `call(callee=identifier, args=[])` in the IR.
  */
 let _functionNames: Set<string> = new Set()
+/** Bindings from `useUrlState` — callable, but NOT signals (see the `.set` guard). */
+let _urlStateNames: Set<string> = new Set()
 /** File-scope helper-function names (module-level, persists across the whole
  * emit) — seeded into each component's `_functionNames` so a `dbl(21)` call
  * resolves as a free-function call regardless of which component emits it. */
@@ -617,6 +619,31 @@ export function _pushSwiftEmitWarning(msg: string): void {
   _emitWarnings.push(msg)
 }
 
+
+/**
+ * Emitted when a component binds a search parameter with `useUrlState`.
+ *
+ * Deliberately a tiny value type rather than a co-located runtime package: it
+ * needs the ACTIVE router, which the emit already injects for router hooks, so
+ * a standalone runtime would have to import PyreonRouter and stop being
+ * self-contained. Inline keeps the dependency pointing the right way — the same
+ * reason `PyreonSchemaError` is emitted rather than shipped.
+ *
+ * `callAsFunction` is what preserves the web call shape: `q()` reads and
+ * `q.set(v)` writes, so shared source does not fork per target.
+ */
+const SWIFT_URL_STATE = `struct PyreonUrlState {
+    // Optional because the environment router is: a component rendered outside
+    // a RouterProvider must degrade to the default rather than crash, which is
+    // the same choice useNavigate/useParams make.
+    let router: PyreonRouter?
+    let key: String
+    let defaultValue: String
+    func callAsFunction() -> String { router?.query[key] ?? defaultValue }
+    func set(_ value: String) { router?.setQueryParam(key, value) }
+    func clear() { router?.setQueryParam(key, nil) }
+}`
+
 export function emitSwift(
   components: ComponentIR[],
   enums: EnumIR[] = [],
@@ -741,6 +768,10 @@ export function emitSwift(
   // Emit the shared PyreonSchemaError enum BEFORE the schemas if
   // any are present (the per-schema .parse() / .safeParse() refer to it).
   if (zodSchemas.length > 0) parts.push(SWIFT_SCHEMA_ERROR)
+  // Emit the PyreonUrlState helper once, if any component binds a search param.
+  if (components.some((c) => c.decls?.some((d) => d.kind === 'url-state'))) {
+    parts.push(SWIFT_URL_STATE)
+  }
   // Gap 4 v3.2 — recursively emit auxSchemas BEFORE their parent
   // schema so Swift can resolve type references top-down.
   const emitSchemaTree = (zs: ZodSchemaDefnIR): void => {
@@ -1591,6 +1622,15 @@ function emitSwiftComponent(c: ComponentIR): string {
     // Phase 3: `const { id } = useParams()` reads via useParams(router:),
     // so the View needs the @Environment(\.pyreonRouter) injection.
     if (d.kind === 'params-destructure') _usesRouter = true
+    // useUrlState reads/writes the active router's query.
+    if (d.kind === 'url-state') {
+      _usesRouter = true
+      _urlStateNames.add(d.name)
+      // `q` is CALLABLE (callAsFunction), so the reference must keep its
+      // parens — unlike useParams, which returns a dictionary and is
+      // deliberately kept out of this set to avoid surprise parens.
+      _functionNames.add(d.name)
+    }
     // Phase 4 follow-up: useColorScheme reads SwiftUI's
     // @Environment(\.colorScheme), so the View needs the injection.
     if (d.kind === 'color-scheme') _usesColorScheme = true
@@ -1935,6 +1975,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   _signalEnumTypes = new Map()
   _signalNames = new Set()
   _functionNames = new Set()
+  _urlStateNames = new Set()
   _usesRouter = false
   _routerRoutes = new Map()
   return lines.join('\n')
@@ -2170,6 +2211,9 @@ function emitSwiftDecl(
   // env-dependent derivations. `useParams()` follows the same shape;
   // return types are per the runtime's signature ((String) -> Void
   // for navigate, [String: String] for params).
+  if (d.kind === 'url-state') {
+    return `private var ${swiftIdent(d.name)}: PyreonUrlState { PyreonUrlState(router: pyreonRouter, key: ${JSON.stringify(d.key)}, defaultValue: ${JSON.stringify(d.defaultValue)}) }`
+  }
   if (d.kind === 'router-hook') {
     const fn = d.hook === 'navigate' ? 'useNavigate' : 'useParams'
     const returnType =
@@ -3644,7 +3688,15 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // Special case: `signal.set(x)` → `signal = x` (Swift @State is a var).
       // Gated to ONE argument — a 2-arg `.set(k, v)` is a Map write (its
       // rewrite runs in the member switch below), never a signal write.
-      if (e.callee.kind === 'member' && e.callee.property === 'set' && e.args.length === 1) {
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.property === 'set' &&
+        e.args.length === 1 &&
+        // A useUrlState binding is NOT a signal: it is a get-only computed
+        // property wrapping the router, so rewriting `q.set(v)` to `q = v`
+        // produces "cannot assign to property". Its `set` is a real method.
+        !(e.callee.object.kind === 'identifier' && _urlStateNames.has(e.callee.object.name))
+      ) {
         const target = emitSwiftExpr(e.callee.object, indent)
         // Look up whether the target signal is enum-typed (e.g.
         // `filter.set('active')` where `filter` is declared as
@@ -5917,6 +5969,44 @@ function swiftAnimationFor(durationMs: number | undefined, easing: string | unde
   return `.${fn}(duration: ${secs})`
 }
 
+
+/**
+ * Map a `<Transition name>` to a SwiftUI transition.
+ *
+ * `name` is the Vue-style prop `@pyreon/runtime-dom`'s Transition already
+ * honours on the web (it derives `${name}-enter-from` and friends), and
+ * `@pyreon/kinetic` ships presets under the same vocabulary. That makes it the
+ * one shape an author can write ONCE: the web resolves it to CSS classes, and
+ * this resolves it to the platform's own transition.
+ *
+ * Before this, the emit ignored `name` entirely and every transition became a
+ * fade. An author who wrote a slide-up got a fade on device, silently — the
+ * animation ran, so nothing looked broken enough to investigate.
+ *
+ * An UNKNOWN name falls back to `.opacity`, which is the previous behaviour:
+ * a custom CSS animation has no native translation, and a fade is a better
+ * answer than refusing to compile.
+ */
+function swiftTransitionForName(name: string | undefined): string {
+  switch (name) {
+    case 'scale':
+    case 'scale-in':
+      return '.scale.combined(with: .opacity)'
+    // The edge is where the content comes FROM, so a "slide-up" (content
+    // rising into place) inserts from the BOTTOM.
+    case 'slide-up':
+      return '.move(edge: .bottom).combined(with: .opacity)'
+    case 'slide-down':
+      return '.move(edge: .top).combined(with: .opacity)'
+    case 'slide-left':
+      return '.move(edge: .trailing).combined(with: .opacity)'
+    case 'slide-right':
+      return '.move(edge: .leading).combined(with: .opacity)'
+    default:
+      return '.opacity'
+  }
+}
+
 function emitSwiftTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const show = e.attrs.find((a) => a.kind === 'attr' && a.name === 'show') as
     | Extract<AttrIR, { kind: 'attr' }>
@@ -5935,6 +6025,10 @@ function emitSwiftTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
       `<Transition duration>: must be a static number of milliseconds; got a non-literal — falling back to the default animation.`,
     )
   }
+  const nameRaw = readStaticAttr(e, 'name')
+  const swiftTransition = swiftTransitionForName(
+    typeof nameRaw === 'string' ? nameRaw : undefined,
+  )
   const duration = typeof durRaw === 'number' ? durRaw : undefined
   const easing = typeof easeRaw === 'string' ? easeRaw : undefined
   // ASYMMETRIC timing — `enterDuration`/`leaveDuration` (+ easings), each
@@ -6001,7 +6095,7 @@ function emitSwiftTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
     `ZStack {\n` +
     `${p}  if ${cond} {\n` +
     `${p}    Group {\n${body}\n${p}    }\n` +
-    `${p}      .transition(.opacity)\n` +
+    `${p}      .transition(${swiftTransition})\n` +
     `${p}  }\n` +
     `${p}}\n` +
     `${p}.animation(${anim}, value: ${cond})`

@@ -11,7 +11,9 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      'Standard Schema adapters (zod/valibot/arktype are JS libraries); per-validator lowering tracked, not shipped',
+      'Standard Schema adapters (zod/valibot/arktype are JS libraries), so the adapters themselves stay web; the declarative schema FORMS lower to native validators (Gap-4 v1)',
+    nativeFrontend:
+      'the `zodSchema(z.object({…}))` / `valibotSchema(...)` / `arkTypeSchema(...)` declaration forms, emitted as native field validators',
   },
   longExample: `import { useForm } from '@pyreon/form'
 import { z } from 'zod'

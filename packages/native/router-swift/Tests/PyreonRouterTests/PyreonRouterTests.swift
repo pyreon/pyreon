@@ -1154,3 +1154,75 @@ final class PyreonRouterTests: XCTestCase {
         XCTAssertEqual(router.resolveCurrentRoute()?.route.path, "/app")
     }
 }
+
+// Search parameters. The file header has advertised `query` since the C1
+// scaffold and nothing implemented it — so a path carrying `?…` went into
+// matchPath whole. `/users/42?tab=a` captured id == "42?tab=a" and a static
+// route stopped matching, which is every deep link with a query string.
+final class PyreonRouterQueryTests: XCTestCase {
+    func testMatchPathIgnoresQueryAndFragment() {
+        // The regression: the param must be the segment, not the segment plus
+        // everything the user appended to the URL.
+        XCTAssertEqual(PyreonRouter.matchPath("/users/42?tab=a", "/users/:id")?["id"], "42")
+        XCTAssertEqual(PyreonRouter.matchPath("/users/42#top", "/users/:id")?["id"], "42")
+        XCTAssertEqual(PyreonRouter.matchPath("/users/42?a=1#top", "/users/:id")?["id"], "42")
+        // A static route must still match with a query attached.
+        XCTAssertNotNil(PyreonRouter.matchPath("/settings?tab=profile", "/settings"))
+    }
+
+    func testParseQuery() {
+        XCTAssertEqual(PyreonRouter.parseQuery("q=cat&page=2"), ["q": "cat", "page": "2"])
+        // A bare key is present-with-empty-value, matching URLSearchParams.
+        XCTAssertEqual(PyreonRouter.parseQuery("flag"), ["flag": ""])
+        // Last value wins for a repeated key — what the web `get()` returns.
+        XCTAssertEqual(PyreonRouter.parseQuery("a=1&a=2"), ["a": "2"])
+        XCTAssertEqual(PyreonRouter.parseQuery(""), [:])
+        // Encoding round-trips, including `+` as a space.
+        XCTAssertEqual(PyreonRouter.parseQuery("q=two+words"), ["q": "two words"])
+        XCTAssertEqual(PyreonRouter.parseQuery("q=a%26b"), ["q": "a&b"])
+    }
+
+    func testSerializeQueryIsStable() {
+        // Sorted: an unstable order would rewrite the URL on every write and
+        // churn history entries.
+        XCTAssertEqual(PyreonRouter.serializeQuery(["b": "2", "a": "1"]), "a=1&b=2")
+        XCTAssertEqual(PyreonRouter.serializeQuery(["q": "a&b"]), "q=a%26b")
+        XCTAssertEqual(PyreonRouter.serializeQuery([:]), "")
+    }
+
+    @MainActor
+    func testQueryTracksNavigation() {
+        let router = PyreonRouter()
+        router.push("/search?q=cat&page=2")
+        XCTAssertEqual(router.query["q"], "cat")
+        XCTAssertEqual(router.query["page"], "2")
+        // Navigating away clears it — a stale query is worse than none.
+        router.push("/about")
+        XCTAssertTrue(router.query.isEmpty)
+    }
+
+    @MainActor
+    func testSetQueryParamRewritesTopOfStackInPlace() {
+        let router = PyreonRouter()
+        router.push("/search?q=cat")
+        let depth = router.path.count
+        router.setQueryParam("page", "2")
+        XCTAssertEqual(router.query["page"], "2")
+        XCTAssertEqual(router.currentPath, "/search?page=2&q=cat")
+        // replace semantics — a filter change must not add a back entry.
+        XCTAssertEqual(router.path.count, depth)
+        router.setQueryParam("q", nil)
+        XCTAssertNil(router.query["q"])
+        XCTAssertEqual(router.currentPath, "/search?page=2")
+    }
+
+    @MainActor
+    func testQuerySurvivesAnUnmatchedPath() {
+        // A 404 page usually needs the very parameters it was called with.
+        let router = PyreonRouter()
+        router.routes = [RouteRecord(path: "/known", component: { AnyView(EmptyView()) })]
+        router.push("/unknown?ref=email")
+        XCTAssertEqual(router.query["ref"], "email")
+        XCTAssertTrue(router.params.isEmpty)
+    }
+}
