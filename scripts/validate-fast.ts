@@ -97,6 +97,11 @@ const GATES: Gate[] = [
   // every prop name the prose cites actually exists.
   { name: 'check-prose-props', cmd: 'bun scripts/check-prose-props.ts' },
   { name: 'check-native-runtime-parity', cmd: 'bun scripts/check-native-runtime-parity.ts' },
+  // Co-located native runtimes (@pyreon/<pkg>/native/{swift,kotlin}) left the
+  // monolith's own test chains — this compiles + smoke-runs them against the
+  // stub harness. Skips gracefully when kotlinc/swiftc are absent (CI Fast
+  // Gates), so it protects on every local push where the toolchains exist.
+  { name: 'check-native-cosource', cmd: 'bun scripts/check-native-cosource.ts' },
   { name: 'check-gates-wired', cmd: 'bun scripts/check-gates-wired.ts' },
   { name: 'check-component-docs', cmd: 'bun scripts/check-component-docs.ts' },
   // NOT here: `check-atlas-guide`. It MOUNTS 108 components through Vite, and

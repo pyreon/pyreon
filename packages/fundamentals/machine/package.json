@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/machine",
   "version": "0.51.0",
-  "description": "Reactive state machines for Pyreon — constrained signals with type-safe transitions",
+  "description": "Reactive state machines for Pyreon \u2014 constrained signals with type-safe transitions",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/machine#readme",
   "bugs": {
@@ -28,7 +28,9 @@
     "lib",
     "src",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "native/swift",
+    "native/kotlin"
   ],
   "scripts": {
     "build": "vl_rolldown_build",
@@ -51,5 +53,11 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "pyreon": {
+    "native": {
+      "swift": "native/swift",
+      "kotlin": "native/kotlin"
+    }
   }
 }

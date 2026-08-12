@@ -21,7 +21,8 @@
 // SwiftUI SDK). An EMPTY scan is a SKIP + warning, never a silent clean pass.
 
 import { execSync, spawnSync } from 'node:child_process'
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
 const ROOT = resolve(import.meta.dirname, '..')
@@ -112,8 +113,31 @@ if (pkgs.length === 0) {
 
 const kotlinc = has('kotlinc')
 const swiftc = has('swiftc')
+// On Linux CI `swiftc` EXISTS but the Apple SDK frameworks the co-located
+// runtimes import (SwiftUI, Observation) do NOT — a co-located `import SwiftUI`
+// file fails to compile there. Swift is verified on a real SDK by the macOS
+// "Validate emitted Swift (real-SDK typecheck)" job + the device gate; here we
+// only run the Swift half when the full SDK is present (macOS). Probe once.
+const swiftFullSdk =
+  swiftc &&
+  (() => {
+    try {
+      // Secure temp dir (mkdtemp → unique, 0700, random suffix) rather than a
+      // predictable `join(tmpdir(), 'fixed-name')` — the latter is a symlink/race
+      // vector (js/insecure-temporary-file).
+      const probeDir = mkdtempSync(join(tmpdir(), 'pyreon-swift-probe-'))
+      const probe = join(probeDir, 'probe.swift')
+      writeFileSync(probe, 'import SwiftUI\nimport Observation\n')
+      // `-typecheck`, NOT `-parse`: parse is syntax-only and accepts `import
+      // SwiftUI` even when the module is absent (Linux). Typecheck RESOLVES the
+      // import, so it fails on Linux and succeeds only with the real SDK (macOS).
+      return spawnSync('swiftc', ['-typecheck', probe], { encoding: 'utf8' }).status === 0
+    } catch {
+      return false
+    }
+  })()
 console.log(
-  `[check-native-cosource] ${pkgs.length} co-located package(s); kotlinc=${kotlinc} swiftc=${swiftc}`,
+  `[check-native-cosource] ${pkgs.length} co-located package(s); kotlinc=${kotlinc} swiftc=${swiftc} swiftFullSdk=${swiftFullSdk}`,
 )
 
 const verifyKotlin = join(ROOT, 'packages', 'native', 'runtime-kotlin', 'scripts', 'verify-kotlin.ts')
@@ -124,27 +148,34 @@ for (const pkg of pkgs) {
     if (!kotlinc) {
       console.log(`  ${pkg.name} [kotlin]: kotlinc absent — skipped`)
     } else {
-      for (const src of filesUnder(pkg.kotlinDir, '.kt')) {
-        const svc = serviceName(src)
-        const test = pkg.testsDir ? join(pkg.testsDir, `${svc}Test.kt`) : undefined
-        const args = [verifyKotlin, `--source=${src}`, `--service=${svc}`]
-        if (test && existsSync(test)) args.push(`--test=${test}`)
-        else args.push('--typecheck-only')
-        const r = spawnSync('bun', args, { encoding: 'utf8' })
-        if (r.status !== 0) {
-          failures++
-          console.error(`  ✗ ${pkg.name} [kotlin] ${svc}:\n${r.stdout}\n${r.stderr}`)
-        } else {
-          console.log(`  ✓ ${pkg.name} [kotlin] ${svc}`)
-        }
+      // Compile the WHOLE package kotlin dir together (a runtime may span
+      // interdependent files — PyreonForm + PyreonFieldArray). The
+      // `--service` (from the primary runtime's basename) selects the stub
+      // bundle; base Compose stubs are always present.
+      const ktFiles = filesUnder(pkg.kotlinDir, '.kt')
+      const svc = serviceName(ktFiles[0] ?? `${pkg.name}.kt`)
+      const test = pkg.testsDir
+        ? filesUnder(pkg.testsDir, '.kt').find((f) => f.endsWith('Test.kt'))
+        : undefined
+      const args = [verifyKotlin, `--source-dir=${pkg.kotlinDir}`, `--service=${svc}`]
+      if (test) args.push(`--test=${test}`)
+      else args.push('--typecheck-only')
+      const r = spawnSync('bun', args, { encoding: 'utf8' })
+      if (r.status !== 0) {
+        failures++
+        console.error(`  ✗ ${pkg.name} [kotlin]:\n${r.stdout}\n${r.stderr}`)
+      } else {
+        console.log(`  ✓ ${pkg.name} [kotlin] (${ktFiles.length} file(s))`)
       }
     }
   }
 
   // --- Swift ---
   if (pkg.swiftDir) {
-    if (!swiftc) {
-      console.log(`  ${pkg.name} [swift]: swiftc absent — skipped`)
+    if (!swiftFullSdk) {
+      console.log(
+        `  ${pkg.name} [swift]: full Swift SDK (SwiftUI/Observation) absent — skipped (macOS real-SDK job + device gate verify)`,
+      )
     } else {
       const srcFiles = filesUnder(pkg.swiftDir, '.swift')
       const testFiles = pkg.testsDir ? filesUnder(pkg.testsDir, '.swift') : []

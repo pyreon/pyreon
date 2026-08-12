@@ -36,7 +36,7 @@
  */
 
 import { execSync, spawnSync } from 'node:child_process'
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, rmSync, readdirSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -51,17 +51,30 @@ const PACKAGE_ROOT = resolve(HERE, '..')
 // collide. The workspace `test` script invokes this once per service.
 const SERVICE =
   process.argv.find((a) => a.startsWith('--service='))?.split('=')[1] ?? 'PyreonStorage'
-// `--source=<path>` / `--test=<path>` override the SERVICE-derived paths so the
-// harness can verify a CO-LOCATED runtime file (`@pyreon/<pkg>/native/kotlin/…`)
-// rather than one under this package's own `src/`. `--service` still selects
-// the stub bundle. Used by scripts/check-native-cosource.ts.
-// harness can verify a CO-LOCATED runtime file (`@pyreon/<pkg>/native/kotlin/…`).
-// `--service` still selects the stub bundle. Used by scripts/check-native-cosource.ts.
+// `--source-dir=<dir>` compiles ALL `.kt` in a directory together (a co-located
+// package whose runtime spans several interdependent files — e.g.
+// PyreonForm + PyreonFieldArray); `--source=<path>` / `--test=<path>` override a
+// single file. `--service` still selects the stub bundle. Used by
+// scripts/check-native-cosource.ts to verify @pyreon/<pkg>/native/kotlin/.
+const SOURCE_DIR = process.argv.find((a) => a.startsWith('--source-dir='))?.split('=')[1]
 const SOURCE_OVERRIDE = process.argv.find((a) => a.startsWith('--source='))?.split('=')[1]
 const TEST_OVERRIDE = process.argv.find((a) => a.startsWith('--test='))?.split('=')[1]
-const SOURCE_FILE = SOURCE_OVERRIDE
-  ? resolve(SOURCE_OVERRIDE)
-  : resolve(PACKAGE_ROOT, `src/main/kotlin/com/pyreon/runtime/${SERVICE}.kt`)
+const SOURCE_FILES: string[] = SOURCE_DIR
+  ? (function walk(d: string): string[] {
+      const out: string[] = []
+      for (const e of readdirSync(d)) {
+        const p = join(d, e)
+        if (statSync(p).isDirectory()) out.push(...walk(p))
+        else if (p.endsWith('.kt')) out.push(p)
+      }
+      return out
+    })(resolve(SOURCE_DIR))
+  : [
+      SOURCE_OVERRIDE
+        ? resolve(SOURCE_OVERRIDE)
+        : resolve(PACKAGE_ROOT, `src/main/kotlin/com/pyreon/runtime/${SERVICE}.kt`),
+    ]
+const SOURCE_FILE = SOURCE_FILES[0]!
 const TEST_FILE = TEST_OVERRIDE
   ? resolve(TEST_OVERRIDE)
   : resolve(PACKAGE_ROOT, `src/test/kotlin/com/pyreon/runtime/${SERVICE}Test.kt`)
@@ -1497,7 +1510,7 @@ try {
         ...videoAndroidExtras,
         ...appStateAndroidExtras,
         ...crashReporterAndroidExtras,
-        SOURCE_FILE,
+        ...SOURCE_FILES,
       ]
     : [
         '-include-runtime',
@@ -1525,7 +1538,7 @@ try {
         ...videoAndroidExtras,
         ...appStateAndroidExtras,
         ...crashReporterAndroidExtras,
-        SOURCE_FILE,
+        ...SOURCE_FILES,
         TEST_FILE,
       ]
 
