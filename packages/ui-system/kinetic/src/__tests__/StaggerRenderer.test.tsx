@@ -238,15 +238,17 @@ describe('StaggerRenderer', () => {
     expect(style?.['--stagger-interval']).toBe('50ms')
   })
 
-  it('reverseLeave reverses stagger index order on leave', () => {
+  it('reverseLeave keeps enter forward and reverses ONLY the leave delay', () => {
     const config = makeConfig()
     const children = [makeChild('a', 'Alpha'), makeChild('b', 'Beta'), makeChild('c', 'Charlie')]
 
-    // show=false with reverseLeave=true
+    // The dominant real usage: visible at mount, reverseLeave affects the LATER
+    // leave. (The reversal must NOT be gated on mount-time show() — that was the
+    // bug: with show=true it never fired, so reverseLeave did nothing.)
     const vnode = StaggerRenderer({
       config,
       htmlProps: {},
-      show: () => false,
+      show: () => true,
       interval: 100,
       reverseLeave: true,
       callbacks: {},
@@ -256,20 +258,29 @@ describe('StaggerRenderer', () => {
     const wrapperChildren = vnode?.children as VNode[]
     const count = wrapperChildren.length
 
-    // With reverseLeave, staggerIndex = count - 1 - index
-    // For 3 children: child 0 gets index 2, child 1 gets index 1, child 2 gets index 0
     for (let i = 0; i < count; i++) {
-      const expectedStaggerIndex = count - 1 - i
-      const clonedChild = extractStaggerChild(wrapperChildren[i] as VNode)
-      const childProps = clonedChild?.props as Record<string, unknown>
-      const style = childProps?.style as Record<string, unknown>
-
-      expect(style?.['--stagger-index']).toBe(expectedStaggerIndex)
-      expect(style?.transitionDelay).toBe(`${expectedStaggerIndex * 100}ms`)
+      const style = (extractStaggerChild(wrapperChildren[i] as VNode)?.props as Record<string, unknown>)
+        ?.style as Record<string, unknown>
+      // Enter is always forward (item 0 enters first).
+      expect(style?.['--stagger-index']).toBe(i)
+      expect(style?.['--kinetic-delay']).toBe(`${i * 100}ms`)
+      // Leave is reversed: the last-entered item (highest index) leaves first.
+      expect(style?.['--kinetic-leave-delay']).toBe(`${(count - 1 - i) * 100}ms`)
     }
+    // Concretely for 3 @ 100ms: child 2 (last-in) leaves first (0ms), child 0 last (200ms).
+    const s0 = (extractStaggerChild(wrapperChildren[0] as VNode)?.props as Record<string, unknown>)
+      ?.style as Record<string, unknown>
+    const s2 = (extractStaggerChild(wrapperChildren[2] as VNode)?.props as Record<string, unknown>)
+      ?.style as Record<string, unknown>
+    expect(s2['--kinetic-leave-delay']).toBe('0ms')
+    expect(s0['--kinetic-leave-delay']).toBe('200ms')
   })
 
-  it('does not reverse stagger index when show is true even if reverseLeave is true', () => {
+  it('reverseLeave reverses the leave delay even when show is true at mount (the common case)', () => {
+    // Regression lock for the mount-time-show() gating bug: before the fix, the
+    // reversal was gated on `!show()` evaluated once at mount, so a stagger
+    // mounted visible (show=true) produced a FORWARD leave delay — reverseLeave
+    // was a silent no-op in its dominant usage.
     const config = makeConfig()
     const children = [makeChild('a', 'Alpha'), makeChild('b', 'Beta')]
 
@@ -284,15 +295,15 @@ describe('StaggerRenderer', () => {
     })
 
     const wrapperChildren = vnode?.children as VNode[]
-
-    // Normal order when showing
-    for (let i = 0; i < wrapperChildren.length; i++) {
-      const clonedChild = extractStaggerChild(wrapperChildren[i] as VNode)
-      const childProps = clonedChild?.props as Record<string, unknown>
-      const style = childProps?.style as Record<string, unknown>
-
-      expect(style?.['--stagger-index']).toBe(i)
-    }
+    const s0 = (extractStaggerChild(wrapperChildren[0] as VNode)?.props as Record<string, unknown>)
+      ?.style as Record<string, unknown>
+    const s1 = (extractStaggerChild(wrapperChildren[1] as VNode)?.props as Record<string, unknown>)
+      ?.style as Record<string, unknown>
+    // Enter forward, leave reversed: child 1 (last-in) leaves first (0ms).
+    expect(s0['--kinetic-delay']).toBe('0ms')
+    expect(s1['--kinetic-delay']).toBe('100ms')
+    expect(s0['--kinetic-leave-delay']).toBe('100ms')
+    expect(s1['--kinetic-leave-delay']).toBe('0ms')
   })
 
   it('passes transition class config to TransitionItem children', () => {

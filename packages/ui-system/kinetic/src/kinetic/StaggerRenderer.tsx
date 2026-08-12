@@ -47,15 +47,20 @@ const StaggerRenderer = ({
   const count = childArray.length
 
   const staggeredChildren = childArray.map((child, index) => {
-    const staggerIndex = !show() && effectiveReverseLeave ? count - 1 - index : index
-    const delay = staggerIndex * effectiveInterval
+    // Enter is ALWAYS forward; `reverseLeave` mirrors ONLY the leave order
+    // (last-entered leaves first). Separate enter/leave delays, picked per
+    // phase by `setTransition`. NOT gated on mount-time `show()` (the old bug
+    // made `reverseLeave` a no-op whenever `show` was true at mount).
+    const enterDelay = index * effectiveInterval
+    const leaveDelay = (effectiveReverseLeave ? count - 1 - index : index) * effectiveInterval
+    const maxDelay = enterDelay > leaveDelay ? enterDelay : leaveDelay
 
     return (
       <TransitionItem
         key={(child as VNode & { key?: string | number }).key ?? index}
         show={show}
         appear={effectiveAppear}
-        timeout={effectiveTimeout + delay}
+        timeout={effectiveTimeout + maxDelay}
         enterStyle={config.enterStyle}
         enterToStyle={config.enterToStyle}
         enterTransition={config.enterTransition}
@@ -75,13 +80,15 @@ const StaggerRenderer = ({
         {cloneVNode(child, {
           style: {
             ...((child.props as Record<string, unknown>)?.style as CSSProperties | undefined),
-            '--stagger-index': staggerIndex,
+            '--stagger-index': index,
             '--stagger-interval': `${effectiveInterval}ms`,
-            // Stable delay source — survives the `transition` shorthand reset
+            // Stable delay sources — survive the `transition` shorthand reset
             // AND the `transition=''` reset at 'entered'; `setTransition`
-            // restores `transition-delay` from it on every enter/leave.
-            '--kinetic-delay': `${delay}ms`,
-            transitionDelay: `${delay}ms`,
+            // restores `transition-delay` from `--kinetic-delay` on enter and
+            // `--kinetic-leave-delay` on leave.
+            '--kinetic-delay': `${enterDelay}ms`,
+            '--kinetic-leave-delay': `${leaveDelay}ms`,
+            transitionDelay: `${enterDelay}ms`,
           } as CSSProperties,
         })}
       </TransitionItem>
