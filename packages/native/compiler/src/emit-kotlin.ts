@@ -2555,6 +2555,10 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // `scope.launch { … }` coroutine provides the suspension context. Emit
       // just the inner call.
       return emitKotlinExpr(e.expr, indent)
+    case 'toast-call':
+      // Imperative `@pyreon/toast` call → the process-global PyreonToast queue.
+      // `toast("x")` / `toast.success("x")` → PyreonToast.add("x", "…").
+      return `PyreonToast.add(${emitKotlinExpr(e.message, indent)}, ${JSON.stringify(e.toastType)})`
     case 'call': {
       // Field-array accessor unwrap: zero-arg `items()`/`length()` on a
       // PyreonFieldArray decl (and `value()` on a For-item param over its
@@ -3986,6 +3990,23 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if ((tag === 'PyreonUI' || tag === 'PyreonUIProvider') && canAliasIntercept(tag, '@pyreon/ui-core')) {
     const p = ' '.repeat(indent + 2)
     return `Column {\n${e.children.map((c) => p + emitKotlinChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
+  }
+
+  // @pyreon/toast `<Toaster />` → a native overlay over the reactive PyreonToast
+  // queue. Reading `PyreonToast.toasts.value` (Compose MutableState) subscribes
+  // this composable, so it recomposes as toasts appear/expire. v1: a Column of
+  // the active messages; positioning/styling/animation are a follow-up. Swift
+  // dispatcher parity.
+  if (tag === 'Toaster' && canAliasIntercept(tag, '@pyreon/toast')) {
+    const p = ' '.repeat(indent + 2)
+    const pi = ' '.repeat(indent + 4)
+    return (
+      `Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {\n` +
+      `${p}PyreonToast.toasts.value.forEach { __toast ->\n` +
+      `${pi}Text(text = __toast.message)\n` +
+      `${p}}\n` +
+      `${' '.repeat(indent)}}`
+    )
   }
 
   // @pyreon/coolgrid — Container → vertical Stack, Row → horizontal Stack, Col →

@@ -15,10 +15,11 @@
 // genuinely lowers while `createPermissions` does not, so warning per-EXPORT
 // rather than per-package is what keeps that entry honest.
 //
-// Every entry was MEASURED. `@pyreon/url-state` and `@pyreon/toast` look like
-// candidates but already warn through other paths, and `@pyreon/state-tree`'s
-// `model()` lowers cleanly — so none of them is listed, and the tests below
-// assert that rather than leaving it to trust.
+// Every entry was MEASURED. `@pyreon/url-state` already warns through another
+// path, `@pyreon/toast` now LOWERS to the native PyreonToast runtime (so it
+// must NOT warn), and `@pyreon/state-tree`'s `model()` lowers cleanly — so none
+// of them is listed, and the tests below assert that rather than leaving it to
+// trust.
 
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'

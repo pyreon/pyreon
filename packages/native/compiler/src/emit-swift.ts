@@ -3047,6 +3047,10 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // expression. Only reachable inside an `async` arrow, whose action
       // emitter wraps the body in a `Task { … }` async scope.
       return `await ${emitSwiftExpr(e.expr, indent)}`
+    case 'toast-call':
+      // Imperative `@pyreon/toast` call → the process-global PyreonToast queue.
+      // `toast("x")` / `toast.success("x")` → PyreonToast.shared.add("x", type: "…").
+      return `PyreonToast.shared.add(${emitSwiftExpr(e.message, indent)}, type: ${JSON.stringify(e.toastType)})`
     case 'call': {
       // `Object.keys(<object-typed expr>)` → static `[String]` of the
       // struct field names. A synthesized struct's keys are statically
@@ -4816,6 +4820,23 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   if ((tag === 'PyreonUI' || tag === 'PyreonUIProvider') && canAliasIntercept(tag, '@pyreon/ui-core')) {
     const p = ' '.repeat(indent + 2)
     return `Group {\n${e.children.map((c) => p + emitSwiftChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
+  }
+
+  // @pyreon/toast `<Toaster />` → a native overlay over the reactive PyreonToast
+  // queue. Reading `PyreonToast.shared.toasts` (an @Observable) subscribes this
+  // view, so it re-renders as toasts appear/expire. v1: a vertical stack of the
+  // active messages the app places where it wants (typically the root);
+  // positioning, per-type styling, and enter/leave animation are a follow-up.
+  if (tag === 'Toaster' && canAliasIntercept(tag, '@pyreon/toast')) {
+    const p = ' '.repeat(indent + 2)
+    const pi = ' '.repeat(indent + 4)
+    return (
+      `VStack(spacing: 8) {\n` +
+      `${p}ForEach(PyreonToast.shared.toasts, id: \\.id) { __toast in\n` +
+      `${pi}Text(__toast.message)\n` +
+      `${p}}\n` +
+      `${' '.repeat(indent)}}`
+    )
   }
 
   // @pyreon/coolgrid — Container → vertical Stack, Row → horizontal Stack, Col →

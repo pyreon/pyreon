@@ -883,6 +883,14 @@ export type ExprIR =
    */
   | { kind: 'call'; callee: ExprIR; args: ExprIR[]; optional?: boolean }
   /**
+   * An imperative `@pyreon/toast` call — `toast("msg")` or a preset
+   * `toast.success("msg")` / `.error` / `.warning` / `.info` / `.loading`.
+   * Lowers to `PyreonToast.shared.add(message, type:)` (Swift) /
+   * `PyreonToast.add(message, type)` (Kotlin). `toastType` is the resolved
+   * variant; `message` is the first-argument expression.
+   */
+  | { kind: 'toast-call'; message: ExprIR; toastType: string }
+  /**
    * `await expr` — an awaited async-result call inside an `async` handler
    * (M4.5). The emitter unwraps to `await <expr>` (Swift) / `<expr>` (Kotlin
    * suspend calls carry no `await` keyword). Only meaningful inside an arrow

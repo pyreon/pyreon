@@ -1156,6 +1156,10 @@ try {
     writeFileSync(androidxCoreContentPath, ANDROIDX_CORE_CONTENT_STUBS, 'utf8')
     writeFileSync(kotlinxCoroutinesPath, KOTLINX_COROUTINES_STUBS, 'utf8')
   }
+  // PyreonToast's auto-dismiss uses CoroutineScope.launch { delay(...) }.
+  if (SERVICE === 'PyreonToast') {
+    writeFileSync(kotlinxCoroutinesPath, KOTLINX_COROUTINES_STUBS, 'utf8')
+  }
   const hapticFeedbackPath = join(tempDir, 'AndroidxComposeHaptic.kt')
   if (SERVICE === 'PyreonHaptics') {
     writeFileSync(hapticFeedbackPath, ANDROIDX_COMPOSE_HAPTIC_STUBS, 'utf8')
@@ -1234,6 +1238,8 @@ try {
     SERVICE === 'PyreonClipboard'
       ? [androidContentPath, androidxCoreContentPath, kotlinxCoroutinesPath]
       : []
+  // PyreonToast-only stub source: kotlinx.coroutines (auto-dismiss coroutine).
+  const toastStubs = SERVICE === 'PyreonToast' ? [kotlinxCoroutinesPath] : []
   // PyreonHaptics-only stub source (the Compose hapticfeedback package).
   const hapticStubs = SERVICE === 'PyreonHaptics' ? [hapticFeedbackPath] : []
   const shareStubs = SERVICE === 'PyreonShare' ? [shareIntentPath] : []
@@ -1460,6 +1466,7 @@ try {
         kotlinxSerializationPath,
         kotlinxSerializationJsonPath,
         ...clipboardStubs,
+        ...toastStubs,
         ...hapticStubs,
         ...shareStubs,
         ...pickerStubs,
@@ -1487,6 +1494,7 @@ try {
         kotlinxSerializationPath,
         kotlinxSerializationJsonPath,
         ...clipboardStubs,
+        ...toastStubs,
         ...hapticStubs,
         ...shareStubs,
         ...pickerStubs,

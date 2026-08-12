@@ -530,7 +530,7 @@ the machine-checked contract.
 | `@pyreon/sized-map` | pure-logic LRU map with no platform edge, but PMTC has no class-API lowering (new SizedMap() warns); usable in `<Web>` branches |
 | `@pyreon/validate` | pure-logic schema DSL; per-validator native lowering is tracked (Tier-2 Strategy A) but not shipped — validators run web-side today |
 | `@pyreon/dnd` | wraps pragmatic-drag-and-drop (DOM events/pointers); native drag interactions are platform-gesture territory |
-| `@pyreon/toast` | the store core is pure logic but `<Toaster>` is DOM; no native runtime port yet |
+| `@pyreon/toast` | the core `toast(...)` + `<Toaster>` now lower to the native PyreonToast runtime (v1); the rich surface (toast.promise/update, options, animation) stays web |
 | `@pyreon/hotkeys` | keyboard-shortcut layer over DOM KeyboardEvent; touch platforms have no hardware-shortcut surface |
 | `@pyreon/code` | wraps CodeMirror 6 (DOM editor engine); consume on native via the `<WebView>` bridge subpath |
 | `@pyreon/charts` | wraps ECharts (browser canvas engine); consume on native via the `<WebView>` bridge subpath |
