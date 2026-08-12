@@ -201,6 +201,12 @@ export function exprReferencesIdent(expr: ExprIR, name: string): boolean {
   switch (expr.kind) {
     case 'new-collection':
       return expr.seed !== undefined ? exprReferencesIdent(expr.seed, name) : false
+    // A SizedMap constructor carries only literal options (cap + flag), so it
+    // can never reference an identifier, be hoisted around one, or need a
+    // param rewrite. Enumerated rather than left to a default so the
+    // exhaustiveness check keeps working for the NEXT ExprIR member.
+    case 'new-sized-map':
+      return false
     case 'literal':
       return false
     case 'identifier':
@@ -300,6 +306,8 @@ export function substituteIdentifier(
   replacement: ExprIR,
 ): ExprIR | null {
   switch (expr.kind) {
+    case 'new-sized-map':
+      return expr
     case 'new-collection': {
       if (expr.seed === undefined) return expr
       const seed = substituteIdentifier(expr.seed, name, replacement)
@@ -525,6 +533,8 @@ function walkLowerParams(
   switch (expr.kind) {
     case 'new-collection':
       return expr.seed !== undefined ? { ...expr, seed: rec(expr.seed) } : expr
+    case 'new-sized-map':
+      return expr
     case 'literal':
       return expr
     case 'identifier':

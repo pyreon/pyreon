@@ -959,6 +959,11 @@ function collectValidateSchemaNames(body: AnyNode[], ctx: ParseCtx): void {
       ) {
         ctx.validateSchemaLowered = true
         return
+      }
+    }
+  }
+}
+
 /** Record the local name(s) bound to `SizedMap` from `@pyreon/sized-map`.
  *
  * Gated on the IMPORT rather than the bare name: `SizedMap` is a plausible
