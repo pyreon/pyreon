@@ -20,6 +20,15 @@ export {
   PyreonCrdtDoc,
   pyreonAdapter,
 } from './crdt/pyreon-adapter'
+// Pure-JS client transport for the LWW engine (JSON over any string duplex) —
+// runs identically on web and in a native JS runtime.
+export {
+  connectPyreonSync,
+  type SyncChannel,
+  webSocketChannel,
+  type WebSocketCtor as PyreonSyncWebSocketCtor,
+  type WebSocketLike,
+} from './crdt/pyreon-sync-transport'
 
 // ─── In-memory adapter (tests / no-engine usage) ────────────────────────────
 // The dependency-free adapter for unit-testing synced stores without standing
