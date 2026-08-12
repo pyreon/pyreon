@@ -373,6 +373,50 @@ jobs:
           # bootstrap restore lets typecheck start as soon as Install
           # finishes (~60s) instead of waiting for Bootstrap (~210s).
           restore-bootstrap: 'false'
+      # Incremental typecheck cache (`incremental` in @pyreon/tsconfig/base.json).
+      #
+      # Every package resolves its @pyreon/* deps to SOURCE, so a cold typecheck
+      # re-parses its whole dependency subtree. Measured locally on the `core`
+      # category: 12.2s cold, 4.9s with a warm cache and a leaf-file change
+      # (2.5x), 9.3s when a BASE package changed. Cells here run 144-235s and
+      # `Typecheck` is a required check, so this is on the merge critical path.
+      #
+      # ## Why the key is what it is
+      #
+      # Cell NAMES are unstable across the PR/main boundary: `ci-batch` packs
+      # whatever categories are affected, so main produces
+      # `core+internals+native+tools` while a PR touching one package produces
+      # `core`. A name-keyed cache would therefore miss in exactly the case it
+      # exists for. The restore-key is a bare `runner.os` prefix so a PR cell
+      # takes whichever tree is nearest, whatever cell built it.
+      #
+      # That works because the trees CONVERGE by construction: each cell
+      # restores the broad prefix BEFORE typechecking and saves afterwards, so
+      # what it saves is (whatever it restored) + (its own categories, fresh).
+      # After one main run every key holds a near-complete tree, and a partial
+      # or mismatched restore costs a cold typecheck — never a wrong one.
+      #
+      # ## Why a stale tree cannot produce a false green
+      #
+      # TypeScript versions every file in the program by CONTENT, so a cache
+      # built on another commit re-checks whatever actually changed. That is the
+      # load-bearing claim, and it is proven rather than assumed:
+      # `incremental-typecheck-safety.test.ts` runs five classes of mutation
+      # (own-source error, dependency arity, exported-type shape, removed
+      # export, type-only change) against a warm cache AND from scratch and
+      # asserts the two report IDENTICAL diagnostics.
+      #
+      # Saves happen on main only. A PR-scoped save is invisible to every other
+      # PR, so it would cost upload time and help nobody.
+      - name: Restore typecheck cache (tsbuildinfo)
+        id: tsbuildinfo-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            packages/*/*/.cache/tsbuildinfo
+            examples/*/.cache/tsbuildinfo
+          key: tsbuildinfo-${{ runner.os }}-${{ github.run_id }}-${{ matrix.name }}
+          restore-keys: tsbuildinfo-${{ runner.os }}-
       - name: Run typecheck (${{ matrix.name }})
         env:
           MEMBERS: ${{ matrix.members }}
@@ -439,6 +483,19 @@ jobs:
             echo "::error title=typecheck batch failed::category(ies):$FAILED"
             exit 1
           fi
+
+      # Save on main only — see the restore step's rationale. `if: always()` so
+      # a cell that FAILED still contributes its cache: the packages that
+      # typechecked cleanly before the failure produced valid buildinfo, and
+      # discarding it would make the next run pay for them again.
+      - name: Save typecheck cache (tsbuildinfo)
+        if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            packages/*/*/.cache/tsbuildinfo
+            examples/*/.cache/tsbuildinfo
+          key: tsbuildinfo-${{ runner.os }}-${{ github.run_id }}-${{ matrix.name }}
 
   typecheck:
     name: Typecheck

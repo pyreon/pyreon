@@ -11,6 +11,7 @@
  * templates), nested tool configs (tsconfig.types-tests.json etc.), and the
  * presets package itself. Exemptions (with rationale) live in EXEMPT below.
  */
+import { spawnSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -119,6 +120,37 @@ function readIfPresent(file: string): string | undefined {
   }
 }
 
+/**
+ * Is the incremental cache path one git ignores?
+ *
+ * `${configDir}` resolves to the directory of the tsconfig that ends up
+ * consuming the preset, so the path is resolved against a REAL package before
+ * asking git — a check against a made-up directory would answer about a
+ * .gitignore rule that may not apply where the file actually lands.
+ *
+ * Returns a problem string, or undefined when the path is safely ignored.
+ */
+export function buildInfoIgnoreProblem(root: string, tsBuildInfoFile?: string): string | undefined {
+  if (!tsBuildInfoFile) {
+    return 'incremental is on but no tsBuildInfoFile is set — TypeScript would write .tsbuildinfo next to the config, where git tracks it'
+  }
+  if (!tsBuildInfoFile.includes('${configDir}')) {
+    return `tsBuildInfoFile (${JSON.stringify(tsBuildInfoFile)}) is not per-package — every package would write to the SAME file and invalidate each other's cache on every run`
+  }
+  // Any real package works; the rule under test is repo-wide.
+  const sample = path.join(root, 'packages/core/core')
+  if (!existsSync(sample)) return undefined
+  const resolved = path.resolve(tsBuildInfoFile.replace('${configDir}', sample))
+  const r = spawnSync('git', ['check-ignore', '-q', '--', resolved], { cwd: root })
+  // 0 = ignored, 1 = NOT ignored, anything else = git could not answer (no
+  // repo, no git). Only a definite "not ignored" is a finding: a gate that
+  // fails because git is unavailable would be reporting on its own environment.
+  if (r.status === 1) {
+    return `incremental is on and tsBuildInfoFile resolves to ${path.relative(root, resolved)}, which git does NOT ignore — one cache file per package would show up in git status`
+  }
+  return undefined
+}
+
 export function checkTsconfigPresets(root: string): Finding[] {
   const findings: Finding[] = []
   const files = [
@@ -150,10 +182,15 @@ export function checkTsconfigPresets(root: string): Finding[] {
   // The incremental cache must stay somewhere git already ignores.
   //
   // `base.json` turns on `incremental`, which writes a ~74 KB `tsbuildinfo` per
-  // package — 115 of them across this workspace. Pointed anywhere but
-  // `node_modules/`, they become untracked clutter in every `git status` and,
-  // sooner or later, a committed cache. The path is the whole safeguard, so it
-  // is asserted rather than trusted to a comment.
+  // package — 115 of them across this workspace. Pointed anywhere git tracks,
+  // they become clutter in every `git status` and, sooner or later, a committed
+  // cache.
+  //
+  // This asks GIT whether the resolved path is ignored, rather than matching the
+  // path against a spelling. A spelling check answers a proxy question and goes
+  // stale the moment the location moves — which it already did once, from
+  // `node_modules/` to `.cache/`. The property that matters is "git ignores it",
+  // so that is what gets asked.
   const basePath = 'packages/internals/tsconfig/base.json'
   const baseSource = readIfPresent(path.join(root, basePath))
   if (baseSource !== undefined) {
@@ -164,11 +201,9 @@ export function checkTsconfigPresets(root: string): Finding[] {
       findings.push({ file: basePath, problem: 'unparseable' })
     }
     const opts = base?.compilerOptions ?? {}
-    if (opts.incremental && !(opts.tsBuildInfoFile ?? '').includes('node_modules/')) {
-      findings.push({
-        file: basePath,
-        problem: `incremental is on but tsBuildInfoFile (${JSON.stringify(opts.tsBuildInfoFile ?? null)}) is not under node_modules/ — the cache would show up in git status`,
-      })
+    if (opts.incremental) {
+      const problem = buildInfoIgnoreProblem(root, opts.tsBuildInfoFile)
+      if (problem) findings.push({ file: basePath, problem })
     }
   }
 

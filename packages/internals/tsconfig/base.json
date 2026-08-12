@@ -49,10 +49,14 @@
     // @pyreon/core's files). TypeScript versions every file in the program, not
     // just the package's own.
     //
-    // The cache lives under the package's `node_modules`, so it is ignored by
-    // git for free and cannot be mistaken for build output.
+    // The cache lives in the package's `.cache/`, which .gitignore already
+    // covers. Deliberately NOT under `node_modules/`: that path is restored by
+    // a shared cache whose restore-key is a PREFIX match, so a build could
+    // receive type information from an unrelated lockfile state — correct
+    // (TypeScript versions every file) but uncontrolled. A dedicated directory
+    // keeps the two caches independently keyed.
     "incremental": true,
-    "tsBuildInfoFile": "${configDir}/node_modules/.cache/tsbuildinfo"
+    "tsBuildInfoFile": "${configDir}/.cache/tsbuildinfo"
   },
   "exclude": ["${configDir}/node_modules", "${configDir}/**/lib/**", "${configDir}/**/dist/**"]
 }
