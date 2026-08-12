@@ -1,5 +1,6 @@
 ---
 '@pyreon/native-compiler': minor
+'@pyreon/kinetic': patch
 '@pyreon/url-state': minor
 '@pyreon/native-router-swift': minor
 '@pyreon/native-router-kotlin': minor
@@ -103,3 +104,22 @@ WITH a reason rather than coercing silently, and a non-literal key declines
 because it cannot be baked into the emit — the conservative rule `useFetch`
 applies to its URL and `useStorage` to its key. History entries, `popstate`,
 `batchUrlUpdates` and the pluggable serializers stay web.
+
+
+## `<Transition name>` resolves to a native transition instead of always fading
+
+The native `<Transition>` emit ignored `name` and animated every show/hide as a
+fade. An author who wrote a slide-up got a fade on device — and because an
+animation still played, nothing looked broken enough to investigate.
+
+`name` is the Vue-style prop `@pyreon/runtime-dom`'s Transition already honours
+on the web, and `@pyreon/kinetic` ships its presets under the same vocabulary,
+so it is the one shape an author writes once. `fade` · `scale-in` · `slide-up` ·
+`slide-down` · `slide-left` · `slide-right` now map to SwiftUI transitions and
+Compose enter/exit pairs respectively. An unknown name still falls back to a
+fade — a custom CSS animation has no native translation, and a fade beats
+refusing to compile — and a `<Transition>` with NO name emits byte-identically
+to before.
+
+`kinetic()` itself stays web: the chainable class/style factory has no native
+model. What crosses is the preset vocabulary.

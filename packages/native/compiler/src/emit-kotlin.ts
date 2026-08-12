@@ -4880,6 +4880,64 @@ function kotlinEasingFor(easing: string | undefined): string {
         : 'FastOutSlowInEasing'
 }
 
+
+/**
+ * Map a `<Transition name>` to Compose enter/exit transitions — the Kotlin
+ * mirror of `swiftTransitionForName`.
+ *
+ * `name` is the Vue-style prop `@pyreon/runtime-dom`'s Transition already
+ * honours on the web, and `@pyreon/kinetic` ships presets under the same
+ * vocabulary, so an author writes it once and each target resolves it
+ * natively. Before this the emit ignored `name` and every transition became a
+ * fade — an authored slide-up ran as a fade on device, silently.
+ *
+ * An UNKNOWN name falls back to fade, which is the previous behaviour: a
+ * custom CSS animation has no native translation, and a fade beats refusing
+ * to compile.
+ *
+ * Returns the enter/exit EXPRESSIONS; the caller composes the spec so the
+ * duration/easing plumbing stays in one place.
+ */
+function kotlinTransitionForName(
+  name: string | undefined,
+  spec: string,
+): { enter: string; exit: string } {
+  const fade = { enter: `fadeIn(animationSpec = ${spec})`, exit: `fadeOut(animationSpec = ${spec})` }
+  switch (name) {
+    case 'scale':
+    case 'scale-in':
+      return {
+        enter: `fadeIn(animationSpec = ${spec}) + scaleIn(animationSpec = ${spec})`,
+        exit: `fadeOut(animationSpec = ${spec}) + scaleOut(animationSpec = ${spec})`,
+      }
+    // `{ it }` is the full height/width, so the content travels its own size.
+    // A "slide-up" rises INTO place, which in Compose is a positive initial
+    // offset on the vertical axis.
+    case 'slide-up':
+      return {
+        enter: `slideInVertically(animationSpec = ${spec}) { it } + fadeIn(animationSpec = ${spec})`,
+        exit: `slideOutVertically(animationSpec = ${spec}) { it } + fadeOut(animationSpec = ${spec})`,
+      }
+    case 'slide-down':
+      return {
+        enter: `slideInVertically(animationSpec = ${spec}) { -it } + fadeIn(animationSpec = ${spec})`,
+        exit: `slideOutVertically(animationSpec = ${spec}) { -it } + fadeOut(animationSpec = ${spec})`,
+      }
+    case 'slide-left':
+      return {
+        enter: `slideInHorizontally(animationSpec = ${spec}) { it } + fadeIn(animationSpec = ${spec})`,
+        exit: `slideOutHorizontally(animationSpec = ${spec}) { it } + fadeOut(animationSpec = ${spec})`,
+      }
+    case 'slide-right':
+      return {
+        enter: `slideInHorizontally(animationSpec = ${spec}) { -it } + fadeIn(animationSpec = ${spec})`,
+        exit: `slideOutHorizontally(animationSpec = ${spec}) { -it } + fadeOut(animationSpec = ${spec})`,
+      }
+    default:
+      return fade
+  }
+}
+
 function emitKotlinTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const show = e.attrs.find((a) => a.kind === 'attr' && a.name === 'show') as
     | Extract<AttrIR, { kind: 'attr' }>
@@ -4931,20 +4989,32 @@ function emitKotlinTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, inden
     leaveEase !== undefined
   const pad = ' '.repeat(indent + 2)
   const body = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
+  const nameRaw = readStaticAttrKotlin(e, 'name')
+  const transitionName = typeof nameRaw === 'string' ? nameRaw : undefined
   if (duration === undefined && easing === undefined && !asymmetric) {
-    return `AnimatedVisibility(visible = ${cond}) {\n${body}\n${' '.repeat(indent)}}`
+    // No animation config AND no name → the byte-identical default shape that
+    // has shipped since M2.7. A name opts into an explicit enter/exit pair.
+    if (transitionName === undefined) {
+      return `AnimatedVisibility(visible = ${cond}) {\n${body}\n${' '.repeat(indent)}}`
+    }
+    const dflt = `tween(durationMillis = 300, easing = ${kotlinEasingFor(undefined)})`
+    const t = kotlinTransitionForName(transitionName, dflt)
+    return (
+      `AnimatedVisibility(visible = ${cond}, enter = ${t.enter}, exit = ${t.exit}) {\n` +
+      `${body}\n${' '.repeat(indent)}}`
+    )
   }
   if (asymmetric) {
     const enterSpec = `tween(durationMillis = ${enterDur ?? duration ?? 300}, easing = ${kotlinEasingFor(enterEase ?? easing)})`
     const exitSpec = `tween(durationMillis = ${leaveDur ?? duration ?? 300}, easing = ${kotlinEasingFor(leaveEase ?? easing)})`
     return (
-      `AnimatedVisibility(visible = ${cond}, enter = fadeIn(animationSpec = ${enterSpec}), exit = fadeOut(animationSpec = ${exitSpec})) {\n` +
+      `AnimatedVisibility(visible = ${cond}, enter = ${kotlinTransitionForName(transitionName, enterSpec).enter}, exit = ${kotlinTransitionForName(transitionName, exitSpec).exit}) {\n` +
       `${body}\n${' '.repeat(indent)}}`
     )
   }
   const spec = `tween(durationMillis = ${duration ?? 300}, easing = ${kotlinEasingFor(easing)})`
   return (
-    `AnimatedVisibility(visible = ${cond}, enter = fadeIn(animationSpec = ${spec}), exit = fadeOut(animationSpec = ${spec})) {\n` +
+    `AnimatedVisibility(visible = ${cond}, enter = ${kotlinTransitionForName(transitionName, spec).enter}, exit = ${kotlinTransitionForName(transitionName, spec).exit}) {\n` +
     `${body}\n${' '.repeat(indent)}}`
   )
 }

@@ -5969,6 +5969,44 @@ function swiftAnimationFor(durationMs: number | undefined, easing: string | unde
   return `.${fn}(duration: ${secs})`
 }
 
+
+/**
+ * Map a `<Transition name>` to a SwiftUI transition.
+ *
+ * `name` is the Vue-style prop `@pyreon/runtime-dom`'s Transition already
+ * honours on the web (it derives `${name}-enter-from` and friends), and
+ * `@pyreon/kinetic` ships presets under the same vocabulary. That makes it the
+ * one shape an author can write ONCE: the web resolves it to CSS classes, and
+ * this resolves it to the platform's own transition.
+ *
+ * Before this, the emit ignored `name` entirely and every transition became a
+ * fade. An author who wrote a slide-up got a fade on device, silently — the
+ * animation ran, so nothing looked broken enough to investigate.
+ *
+ * An UNKNOWN name falls back to `.opacity`, which is the previous behaviour:
+ * a custom CSS animation has no native translation, and a fade is a better
+ * answer than refusing to compile.
+ */
+function swiftTransitionForName(name: string | undefined): string {
+  switch (name) {
+    case 'scale':
+    case 'scale-in':
+      return '.scale.combined(with: .opacity)'
+    // The edge is where the content comes FROM, so a "slide-up" (content
+    // rising into place) inserts from the BOTTOM.
+    case 'slide-up':
+      return '.move(edge: .bottom).combined(with: .opacity)'
+    case 'slide-down':
+      return '.move(edge: .top).combined(with: .opacity)'
+    case 'slide-left':
+      return '.move(edge: .trailing).combined(with: .opacity)'
+    case 'slide-right':
+      return '.move(edge: .leading).combined(with: .opacity)'
+    default:
+      return '.opacity'
+  }
+}
+
 function emitSwiftTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const show = e.attrs.find((a) => a.kind === 'attr' && a.name === 'show') as
     | Extract<AttrIR, { kind: 'attr' }>
@@ -5987,6 +6025,10 @@ function emitSwiftTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
       `<Transition duration>: must be a static number of milliseconds; got a non-literal — falling back to the default animation.`,
     )
   }
+  const nameRaw = readStaticAttr(e, 'name')
+  const swiftTransition = swiftTransitionForName(
+    typeof nameRaw === 'string' ? nameRaw : undefined,
+  )
   const duration = typeof durRaw === 'number' ? durRaw : undefined
   const easing = typeof easeRaw === 'string' ? easeRaw : undefined
   // ASYMMETRIC timing — `enterDuration`/`leaveDuration` (+ easings), each
@@ -6053,7 +6095,7 @@ function emitSwiftTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
     `ZStack {\n` +
     `${p}  if ${cond} {\n` +
     `${p}    Group {\n${body}\n${p}    }\n` +
-    `${p}      .transition(.opacity)\n` +
+    `${p}      .transition(${swiftTransition})\n` +
     `${p}  }\n` +
     `${p}}\n` +
     `${p}.animation(${anim}, value: ${cond})`

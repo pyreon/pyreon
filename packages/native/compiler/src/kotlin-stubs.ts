@@ -947,6 +947,17 @@ class EnterTransition
 class ExitTransition
 fun fadeIn(animationSpec: TweenSpec): EnterTransition = EnterTransition()
 fun fadeOut(animationSpec: TweenSpec): ExitTransition = ExitTransition()
+// A <Transition name> maps to a real enter/exit pair rather than always
+// fading, so the stub mirrors the Compose functions that emit can now
+// produce. `+` composes transitions in Compose, hence the operator stubs.
+fun scaleIn(animationSpec: TweenSpec): EnterTransition = EnterTransition()
+fun scaleOut(animationSpec: TweenSpec): ExitTransition = ExitTransition()
+fun slideInVertically(animationSpec: TweenSpec, initialOffsetY: (Int) -> Int = { it }): EnterTransition = EnterTransition()
+fun slideOutVertically(animationSpec: TweenSpec, targetOffsetY: (Int) -> Int = { it }): ExitTransition = ExitTransition()
+fun slideInHorizontally(animationSpec: TweenSpec, initialOffsetX: (Int) -> Int = { it }): EnterTransition = EnterTransition()
+fun slideOutHorizontally(animationSpec: TweenSpec, targetOffsetX: (Int) -> Int = { it }): ExitTransition = ExitTransition()
+operator fun EnterTransition.plus(other: EnterTransition): EnterTransition = this
+operator fun ExitTransition.plus(other: ExitTransition): ExitTransition = this
 @Composable
 fun AnimatedVisibility(
   visible: Boolean,

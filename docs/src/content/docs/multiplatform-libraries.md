@@ -555,7 +555,7 @@ the machine-checked contract.
 | `@pyreon/kinetic-presets` | preset pack for the kinetic CSS engine |
 | `@pyreon/connector-document` | bridges ui-components to @pyreon/document extraction — both ends are web/document engines |
 | `@pyreon/document-primitives` | document-authoring primitives feeding the pdfmake/docx renderers |
-| `@pyreon/kinetic` | CSS-transition animation engine (classes + rAF over real CSSOM); native animation is the primitives' animate vocabulary, not this runtime |
+| `@pyreon/kinetic` | CSS-transition animation engine (classes + rAF over real CSSOM) — the `kinetic()` factory and its class/style machinery are web; its PRESET VOCABULARY (fade / scale-in / slide-up|down|left|right) does cross, via `<Transition name>`, which each target resolves to its own platform transition |
 | `@pyreon/unistyle` | responsive breakpoints + CSS-variable theming over real CSS; native theming is compile-time tokens + the 2-bucket size-class model |
 | `@pyreon/zero-content` | markdown/MDX content pipeline for zero's web rendering |
 | `@pyreon/zero` | the web meta-framework (SSR/SSG/ISR, Vite, fs-router); native apps are built by PMTC + create-multiplatform, not zero |
