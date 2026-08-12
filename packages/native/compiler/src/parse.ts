@@ -1119,6 +1119,22 @@ const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
     },
   ],
   [
+    '@pyreon/table',
+    {
+      // The blanket line calls a package "renders via the DOM / a browser-only
+      // library", which is simply FALSE here: TanStack Table is HEADLESS. It
+      // also stops short of naming the native answer, which this package's own
+      // manifest states plainly — native lists are `<For>` + primitives.
+      //
+      // The row-model RENDER surface (getRowModel / getVisibleCells /
+      // flexRender) is what has no native analogue; the SORT/FILTER state is
+      // ordinary logic an author can hold in signals today, so the fix is a
+      // real one rather than "give up".
+      advice:
+        "the row model is a WEB render surface (getRowModel/getVisibleCells/flexRender) with no native analogue — hold sort/filter state in plain signals and render rows with `<For each={rows}>` + `@pyreon/primitives`, which compiles to all three targets",
+    },
+  ],
+  [
     '@pyreon/validate',
     {
       advice:
@@ -1283,8 +1299,18 @@ function warnUnloweredPyreonHooks(body: AnyNode[], ctx: ParseCtx): void {
       if (NATIVE_LOWERED_HOOKS.has(imported)) continue
       if (seen.has(imported)) continue
       seen.add(imported)
+      // Prefer the package's OWN advice when it has one. The generic tail
+      // ("replace it with a hook PMTC lowers, or hand-roll the behaviour from
+      // signals") is true but leaves the author guessing; an entry in
+      // UNLOWERED_PYREON_MODULES names the actual alternative for THAT
+      // package, which is the whole reason that map exists.
+      const moduleAdvice = UNLOWERED_PYREON_MODULES.get(src)?.advice
       ctx.warnings.push(
-        `${imported}() (from ${src}) has NO native lowering — the call is reproduced verbatim in the emitted Swift/Kotlin, where no such function exists, so the native build fails with "cannot find '${imported}' in scope". Use it behind a \`<Web>\` escape hatch (web target only), replace it with a hook PMTC lowers, or hand-roll the behaviour from signals. The lowered set is NATIVE_LOWERED_HOOKS in parse.ts.`,
+        `${imported}() (from ${src}) has NO native lowering — the call is reproduced verbatim in the emitted Swift/Kotlin, where no such function exists, so the native build fails with "cannot find '${imported}' in scope". ${
+          moduleAdvice
+            ? `Instead: ${moduleAdvice}. Or keep it behind a \`<Web>\` escape hatch.`
+            : 'Use it behind a `<Web>` escape hatch (web target only), replace it with a hook PMTC lowers, or hand-roll the behaviour from signals. The lowered set is NATIVE_LOWERED_HOOKS in parse.ts.'
+        }`,
       )
     }
   }

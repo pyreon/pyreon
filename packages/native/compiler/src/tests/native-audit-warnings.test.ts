@@ -1003,3 +1003,30 @@ describe('web-only package warnings are derived from the manifests', () => {
     })
   }
 })
+
+// A package with an entry in UNLOWERED_PYREON_MODULES gets ITS advice, not the
+// generic tail — including for HOOK imports, which the hook arc handles.
+//
+// `@pyreon/table` is the case that motivated it: the blanket line calls a
+// package "renders via the DOM / a browser-only library", which is simply
+// false for a HEADLESS table, and it stopped short of naming the native
+// answer this package's own manifest states — `<For>` + primitives.
+describe('unlowered warnings carry the package-specific advice', () => {
+  const warnFor = (src: string): string[] =>
+    transform(`${src}\nexport function App() { return null }`, { target: 'swift' }).warnings
+
+  it('names the real native pattern for @pyreon/table, not the DOM line', () => {
+    const warnings = warnFor(`import { useTable } from '@pyreon/table'`)
+    // One warning, not two: the blanket line defers to the specific entry.
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('<For each={rows}>')
+    expect(warnings[0]).toContain('@pyreon/primitives')
+    // The false claim must be gone.
+    expect(warnings[0]).not.toContain('renders via the DOM')
+  })
+
+  it('still falls back to the generic tail for a package with no entry', () => {
+    const warnings = warnFor(`import { useSomethingElse } from '@pyreon/hooks'`)
+    expect(warnings.some((w) => w.includes('NATIVE_LOWERED_HOOKS in parse.ts'))).toBe(true)
+  })
+})

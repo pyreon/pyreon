@@ -58,14 +58,14 @@ export function C(){ const v = signal(true); return (<Stack><Transition show={v(
   it.runIf(isSwiftcAvailable())('every mapping type-checks against the Swift stubs', () => {
     for (const [name] of CASES) {
       const res = validateSwiftWithStubs(transform(app(name), { target: 'swift' }).code)
-      expect(res.ok, `${name}: ${res.output}`).toBe(true)
+      expect(res.ok, `${name}: ${res.error}`).toBe(true)
     }
   })
 
   it.runIf(isKotlincAvailable())('every mapping type-checks against the Kotlin stubs', () => {
     for (const [name] of CASES) {
       const res = validateKotlin(transform(app(name), { target: 'kotlin' }).code)
-      expect(res.ok, `${name}: ${res.output}`).toBe(true)
+      expect(res.ok, `${name}: ${res.error}`).toBe(true)
     }
   })
 })

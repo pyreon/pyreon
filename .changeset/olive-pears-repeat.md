@@ -123,3 +123,19 @@ to before.
 
 `kinetic()` itself stays web: the chainable class/style factory has no native
 model. What crosses is the preset vocabulary.
+
+
+## An unlowered package's diagnostic names ITS alternative
+
+`@pyreon/table` was told it "renders via the DOM / a browser-only library".
+TanStack Table is HEADLESS — that claim is simply false — and the message
+stopped short of naming the native answer this package's own manifest states.
+
+It now says the real thing: the row model (`getRowModel` / `getVisibleCells` /
+`flexRender`) is a WEB render surface with no native analogue, while sort and
+filter state is ordinary logic to hold in signals and render with
+`<For each={rows}>` + `@pyreon/primitives`.
+
+The hook arc now reads the same per-package advice, so this improves every
+package that has an entry (rx, validate, permissions, storage, http, table) —
+not just the one that surfaced it.
