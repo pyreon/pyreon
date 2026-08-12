@@ -62,6 +62,7 @@ android {
                 srcDir("../../../packages/fundamentals/permissions/native/kotlin")
                 srcDir("../../../packages/fundamentals/query/native/kotlin")
                 srcDir("../../../packages/fundamentals/storage/native/kotlin")
+                srcDir("../../../packages/fundamentals/hooks/native/kotlin")
             }
         }
     }

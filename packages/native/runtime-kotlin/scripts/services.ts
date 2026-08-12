@@ -28,7 +28,6 @@
  */
 export const EXEMPT: Record<string, string> = {
   PyreonAssets: 'needs android.util.Log + androidx.compose.ui.text.font stubs',
-  PyreonWebView: 'needs android.os.Handler/Looper + android.webkit stubs',
 }
 
 /**
@@ -40,22 +39,12 @@ export const EXEMPT: Record<string, string> = {
  * the mode of 22 services, with no principled basis for the difference.
  */
 export const TYPECHECK_ONLY = new Set([
+  // Only the BASE runtimes remain in this package; the feature runtimes (store,
+  // machine, model, storage, and the hook services + their Android/OkHttp
+  // variants) co-located into their own packages, verified by the co-source gate.
   'PyreonStorageBackends',
   'PyreonJson',
-  'PyreonMachine',
-  'PyreonModel',
-  'PyreonStore',
-  'PyreonStorageAndroid',
-  'PyreonNetworkStatusAndroid',
-  'PyreonPushNotificationsAndroid',
-  'PyreonAppStateAndroid',
-  'PyreonCrashReporterAndroid',
-  'PyreonVideoPlayerAndroid',
-  'PyreonGeolocationAndroid',
-  'PyreonSecureStorageAndroid',
-  'PyreonDatabaseAndroid',
   'PyreonHttpOkHttp',
-  'PyreonWebSocketOkHttp',
 ])
 
 export interface ServicePlan {

@@ -51,6 +51,7 @@ android {
                 srcDir("../../../packages/native/runtime-kotlin/src/main/kotlin")
                 srcDir("../../../packages/native/router-kotlin/src/main/kotlin")
                 srcDir("../../../packages/fundamentals/storage/native/kotlin")
+                srcDir("../../../packages/fundamentals/hooks/native/kotlin")
                 srcDir("../../../packages/fundamentals/form/native/kotlin")
                 srcDir("../../../packages/fundamentals/store/native/kotlin")
                 srcDir("../../../packages/fundamentals/state-tree/native/kotlin")

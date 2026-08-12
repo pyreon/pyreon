@@ -28,7 +28,9 @@
     "!lib/analysis",
     "README.md",
     "LICENSE",
-    "src"
+    "src",
+    "native/swift",
+    "native/kotlin"
   ],
   "scripts": {
     "prepublish": "bun run build",
@@ -61,5 +63,86 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "pyreon": {
+    "native": {
+      "swift": "native/swift",
+      "kotlin": "native/kotlin",
+      "kotlinServices": {
+        "PyreonAppStateAndroid": [
+          "PyreonAppState.kt",
+          "PyreonAppStateAndroid.kt"
+        ],
+        "PyreonAuth": [
+          "PyreonAuth.kt",
+          "@base/PyreonHttp.kt"
+        ],
+        "PyreonBiometrics": [
+          "PyreonBiometrics.kt"
+        ],
+        "PyreonClipboard": [
+          "PyreonClipboard.kt"
+        ],
+        "PyreonCrashReporterAndroid": [
+          "PyreonCrashReporter.kt",
+          "PyreonCrashReporterAndroid.kt",
+          "@base/PyreonStorageBackends.kt",
+          "@base/PyreonJson.kt"
+        ],
+        "PyreonDatabaseAndroid": [
+          "PyreonDatabase.kt",
+          "PyreonDatabaseAndroid.kt",
+          "@base/PyreonJson.kt"
+        ],
+        "PyreonFetch": [
+          "PyreonFetch.kt",
+          "@base/PyreonJson.kt"
+        ],
+        "PyreonFilePicker": [
+          "PyreonFilePicker.kt"
+        ],
+        "PyreonGeolocationAndroid": [
+          "PyreonGeolocation.kt",
+          "PyreonGeolocationAndroid.kt",
+          "@base/PyreonStorageBackends.kt"
+        ],
+        "PyreonHaptics": [
+          "PyreonHaptics.kt"
+        ],
+        "PyreonImagePicker": [
+          "PyreonImagePicker.kt"
+        ],
+        "PyreonLinking": [
+          "PyreonLinking.kt"
+        ],
+        "PyreonMapState": [
+          "PyreonMapState.kt"
+        ],
+        "PyreonNetworkStatusAndroid": [
+          "PyreonNetworkStatus.kt",
+          "PyreonNetworkStatusAndroid.kt"
+        ],
+        "PyreonNotifications": [
+          "PyreonNotifications.kt"
+        ],
+        "PyreonPayments": [
+          "PyreonPayments.kt"
+        ],
+        "PyreonPushNotificationsAndroid": [
+          "PyreonPushNotifications.kt",
+          "PyreonPushNotificationsAndroid.kt"
+        ],
+        "PyreonShare": [
+          "PyreonShare.kt"
+        ],
+        "PyreonVideoPlayerAndroid": [
+          "PyreonVideoPlayerAndroid.kt"
+        ],
+        "PyreonWebSocketOkHttp": [
+          "PyreonWebSocket.kt",
+          "PyreonWebSocketOkHttp.kt"
+        ]
+      }
+    }
   }
 }
