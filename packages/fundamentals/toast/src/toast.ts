@@ -5,6 +5,11 @@ import type { Toast, ToastOptions, ToastPromiseOptions, ToastType } from './type
 // ─── State ───────────────────────────────────────────────────────────────────
 
 let _idCounter = 0
+// True while the container is hover/focus-paused (`_pauseAll` between an enter
+// and the matching leave). A toast created during this window must NOT start
+// counting down under the user's cursor — `startTimer` defers arming it to the
+// next `_resumeAll`. Mirrors react-hot-toast / sonner's global paused state.
+let _paused = false
 const DEFAULT_DURATION = 4000
 
 /**
@@ -80,8 +85,17 @@ function generateId(): string {
 
 function startTimer(t: Toast): void {
   if (t.duration <= 0) return
-  t.timerStart = Date.now()
   t.remaining = t.duration
+  // Created (or resurrected via update) while the container is hover/focus
+  // paused: hold the full duration but DON'T arm the timer — else it would
+  // count down and dismiss under the user's cursor. `_resumeAll` arms it (its
+  // `duration > 0 && timer === undefined && remaining > 0` guard matches).
+  if (_paused) {
+    t.timerStart = 0
+    t.timer = undefined
+    return
+  }
+  t.timerStart = Date.now()
   t.timer = setTimeout(() => dismiss(t.id), t.duration)
 }
 
@@ -242,6 +256,7 @@ function updateToast(
 // ─── Pause / resume (for hover) ─────────────────────────────────────────────
 
 export function _pauseAll(): void {
+  _paused = true
   for (const t of _toasts()) {
     if (t.timer !== undefined) {
       clearTimeout(t.timer)
@@ -252,6 +267,7 @@ export function _pauseAll(): void {
 }
 
 export function _resumeAll(): void {
+  _paused = false
   for (const t of _toasts()) {
     // Skip toasts already animating out — resuming must not restart an
     // auto-dismiss timer on a toast whose leave is already in flight.
@@ -368,4 +384,5 @@ export function _reset(): void {
   _toasts.set([])
   _idCounter = 0
   _defaultDuration = DEFAULT_DURATION
+  _paused = false
 }

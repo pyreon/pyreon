@@ -49,6 +49,29 @@ describe('toast — pause/resume with a timer-less (duration:0) toast', () => {
   })
 })
 
+describe('toast — a toast created WHILE paused does not count down under the cursor', () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+
+  it('a toast added during a hover/focus pause is not auto-dismissed until resume', () => {
+    // Regression: pause-on-hover only cleared EXISTING timers on enter; a toast
+    // arriving while the container was already hovered armed its timer anyway
+    // (startTimer ran unconditionally) and dismissed under the user's cursor.
+    _pauseAll() // container hovered/focused
+    const id = toast('arrived during hover', { duration: 100 })
+    // The timer was NOT armed while paused, so advancing well past the duration
+    // must leave the toast present (not exiting).
+    vi.advanceTimersByTime(1000)
+    expect(_toasts().some((t) => t.id === id)).toBe(true)
+    expect(_toasts().find((t) => t.id === id)?.state).not.toBe('exiting')
+
+    // On resume (mouseleave / blur) its timer arms; after the duration it dismisses.
+    _resumeAll()
+    vi.advanceTimersByTime(100)
+    expect(_toasts().find((t) => t.id === id)?.state).toBe('exiting')
+  })
+})
+
 describe('toast — two-phase dismiss / remove (leave animation)', () => {
   beforeEach(() => vi.useFakeTimers())
   afterEach(() => vi.useRealTimers())
