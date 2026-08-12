@@ -813,6 +813,16 @@ function defineSetupStore<T extends Record<string, unknown>>(
     // mount that's 1000 fewer Set allocations per page boot.
     let subscribers: Set<SubscribeCallback> | null = null
     let patchInProgress = false
+    // Nesting depth of the subscribed-patch window. A re-entrant `patch()` (a
+    // user effect fired by the outer patch's batch drain calling `patch()`
+    // again) must NOT close a window it did not open: only the OUTERMOST patch
+    // clears `patchInProgress`, merges `patchEvents`, and emits the ONE
+    // notification. A nested patch decrements without emitting and hands its own
+    // writes to the shared buffer, so they merge into the outermost's single
+    // emit — same as a re-entrant DIRECT write already does. Without this the
+    // nested `finally` reset the flag + stole/cleared the outer's buffer,
+    // producing two notifications with reversed order/attribution.
+    let patchDepth = 0
     // Starts at the shared frozen empty array — a fresh buffer is assigned at
     // the top of every subscribed patch, and `notifyDirect` only pushes while
     // `patchInProgress` (which implies the fresh buffer). Saves one array
@@ -1215,6 +1225,7 @@ function defineSetupStore<T extends Record<string, unknown>>(
           // merge those into this patch's single emit. The common case never
           // touches `patchEvents` (stays the frozen EMPTY buffer, zero alloc).
           patchInProgress = true
+          patchDepth++
           // The suspend/write/resume loop lives in the CACHED `ensureDetachApply`
           // closure (zero per-patch closure allocation — the argument + event
           // buffer are handed across via `patchArg`/`detachEvents`, read into
@@ -1238,29 +1249,43 @@ function defineSetupStore<T extends Record<string, unknown>>(
           } finally {
             patchArg = null
             detachEvents = null
-            patchInProgress = false
-            // Merge any events a re-entrant effect buffered during the drain
-            // (empty in the common case → no concat, no alloc). When `patchEvents`
-            // is non-EMPTY a re-entrant write occurred, which means a patched
-            // signal must have changed to trigger it, so `events` is already
-            // non-empty — `concat` (never a bare swap) is always correct.
-            let finalEvents = events
-            if (patchEvents !== EMPTY_EVENTS) {
-              finalEvents = events.concat(patchEvents)
-              patchEvents = EMPTY_EVENTS
-            }
-            // Emit ONE store notification with the events we built directly.
-            if (finalEvents.length > 0) {
-              // Build the state snapshot inline off hoisted locals rather
-              // than calling `getState()` (a closure hop that re-reads the same
-              // captured arrays) — the snapshot IS a hot-path allocation.
-              const sk = signalKeys
-              const so = signalObjs
-              const state: Record<string, unknown> = {}
-              for (let j = 0; j < sk.length; j++) {
-                state[sk[j] as string] = (so[j] as SignalLike).peek()
+            // Decrement FIRST (and set the flag before the emit) so a raw
+            // subscriber that THROWS inside the emit below cannot wedge either
+            // the depth or `patchInProgress` — same exception-safety contract.
+            patchDepth--
+            if (patchDepth === 0) {
+              // Outermost patch — close the window, merge the buffer, emit ONE.
+              patchInProgress = false
+              // Merge any events a re-entrant effect buffered during the drain
+              // (empty in the common case → no concat, no alloc). When `patchEvents`
+              // is non-EMPTY a re-entrant write occurred, which means a patched
+              // signal must have changed to trigger it, so `events` is already
+              // non-empty — `concat` (never a bare swap) is always correct.
+              let finalEvents = events
+              if (patchEvents !== EMPTY_EVENTS) {
+                finalEvents = events.concat(patchEvents)
+                patchEvents = EMPTY_EVENTS
               }
-              emitToSubscribers({ storeId: id, type: 'patch', events: finalEvents }, state)
+              // Emit ONE store notification with the events we built directly.
+              if (finalEvents.length > 0) {
+                // Build the state snapshot inline off hoisted locals rather
+                // than calling `getState()` (a closure hop that re-reads the same
+                // captured arrays) — the snapshot IS a hot-path allocation.
+                const sk = signalKeys
+                const so = signalObjs
+                const state: Record<string, unknown> = {}
+                for (let j = 0; j < sk.length; j++) {
+                  state[sk[j] as string] = (so[j] as SignalLike).peek()
+                }
+                emitToSubscribers({ storeId: id, type: 'patch', events: finalEvents }, state)
+              }
+            } else if (events.length > 0) {
+              // NESTED patch: do NOT close the outer's still-open window. Hand our
+              // own (detached) writes to the shared buffer so the OUTERMOST patch
+              // merges + emits them in its single notification — the same place a
+              // re-entrant DIRECT write already buffers (notifyDirect).
+              if (patchEvents === EMPTY_EVENTS) patchEvents = []
+              for (let j = 0; j < events.length; j++) patchEvents.push(events[j]!)
             }
           }
           return
@@ -1278,6 +1303,7 @@ function defineSetupStore<T extends Record<string, unknown>>(
           // subs returned above). `patchEvents` stays the frozen EMPTY buffer
           // until a detector fires (lazily allocated in `notifyDirect`).
           patchInProgress = true
+          patchDepth++
         }
 
         patchArg = partialOrFn
@@ -1291,14 +1317,24 @@ function defineSetupStore<T extends Record<string, unknown>>(
         } finally {
           patchArg = null
           if (hasSubs) {
-            patchInProgress = false
-            // Emit a single notification for the patch.
-            if (patchEvents.length > 0) {
-              emitToSubscribers({ storeId: id, type: 'patch', events: patchEvents }, getState())
+            // Decrement FIRST + set the flag before the emit, so a throwing
+            // subscriber in the emit can't wedge the depth or `patchInProgress`.
+            patchDepth--
+            if (patchDepth === 0) {
+              // Outermost patch — close the window + emit ONE. The functional
+              // form's own writes are already in `patchEvents` (detectors were
+              // attached, so `notifyDirect` buffered them), so a NESTED functional
+              // patch needs no push here — the outermost emits the accumulated
+              // buffer.
+              patchInProgress = false
+              // Emit a single notification for the patch.
+              if (patchEvents.length > 0) {
+                emitToSubscribers({ storeId: id, type: 'patch', events: patchEvents }, getState())
+              }
+              // Release the emitted buffer to its subscribers; the shared frozen
+              // empty array stands in until the next subscribed patch.
+              patchEvents = EMPTY_EVENTS
             }
-            // Release the emitted buffer to its subscribers; the shared frozen
-            // empty array stands in until the next subscribed patch.
-            patchEvents = EMPTY_EVENTS
           }
         }
       },
