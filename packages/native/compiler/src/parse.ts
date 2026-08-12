@@ -84,6 +84,12 @@ interface ParseCtx {
    */
   storeAliases: Map<string, string>
   /**
+   * Local names bound to the `announce` import from `@pyreon/a11y` (handles
+   * `import { announce as say }`). `parseExpr` lowers a call on one of these to
+   * an `announce-call` ExprIR (→ PyreonA11y). Empty unless `announce` is imported.
+   */
+  announceNames: Set<string>
+  /**
    * Per-component HOOK-FIELD aliases: a destructured local name →
    * `{ object, field }` where `object` is a synthetic single-binding
    * container name. Populated from `const { data, isPending } =
@@ -130,6 +136,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     storeHookNames: new Set(),
     objectTypeAliases: new Map(),
     storeAliases: new Map(),
+    announceNames: new Set(),
     hookFieldAliases: new Map(),
     hookDestructureCounter: 0,
     helperFns: [],
@@ -156,6 +163,9 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   // that fails the native build with a cryptic `Cannot find 'Chart' in
   // scope`, far from the cause. Name the package + the escape-hatch fix.
   warnWebOnlyImports(ast.program.body as AnyNode[], ctx)
+  // Record the local name(s) bound to `announce` from @pyreon/a11y so parseExpr
+  // can lower `announce(...)` to PyreonA11y. Handles renamed imports.
+  collectAnnounceNames(ast.program.body as AnyNode[], ctx)
   warnUnloweredPyreonHooks(ast.program.body as AnyNode[], ctx)
   warnUnloweredControlFlow(ast.program.body as AnyNode[], ctx)
   warnUnloweredPyreonModules(ast.program.body as AnyNode[], ctx)
@@ -984,12 +994,14 @@ const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
   [
     '@pyreon/a11y',
     {
-      // Measured every export — announce / VisuallyHidden / createA11yId all
-      // fail both targets, so a package-level entry is correct here. That is
-      // NOT an assumption carried over from @pyreon/rx, where exactly this
-      // shortcut was wrong: `rx` lowers and the standalone transforms do not.
+      // `announce` now LOWERS to PyreonA11y (a VoiceOver / announceForAccessibility
+      // call). The remaining exports (VisuallyHidden / LiveRegion / SkipLink /
+      // createA11yId) are DOM-based and still warn — hence a per-export
+      // `supported` set, not a package-level entry (the `rx` lesson: warn per
+      // export, since a module can be only PARTLY unlowered).
+      supported: new Set(['announce']),
       advice:
-        'the live-region helpers are DOM-based — native a11y goes through the `accessibilityLabel` / `accessibilityHidden` props on the canonical primitives, which lower on all three targets',
+        'the live-region helpers are DOM-based — native a11y goes through the `accessibilityLabel` / `accessibilityHidden` props on the canonical primitives (or `announce(...)`, which lowers), which lower on all three targets',
     },
   ],
   [
@@ -1061,6 +1073,23 @@ const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
  * Same shape and same reasoning as the hook and control-flow warnings: keyed on
  * the IMPORT, so a user's own `map` or `s` from their own module is untouched.
  */
+/**
+ * Record the local name(s) bound to `announce` imported from `@pyreon/a11y`.
+ * `import { announce }` → `announce`; `import { announce as say }` → `say`.
+ */
+function collectAnnounceNames(body: AnyNode[], ctx: ParseCtx): void {
+  for (const node of body) {
+    if (node.type !== 'ImportDeclaration') continue
+    if (node.source?.value !== '@pyreon/a11y') continue
+    for (const spec of (node.specifiers as AnyNode[] | undefined) ?? []) {
+      if (spec.type === 'ImportSpecifier' && spec.imported?.name === 'announce') {
+        const local = spec.local?.name
+        if (typeof local === 'string') ctx.announceNames.add(local)
+      }
+    }
+  }
+}
+
 function warnUnloweredPyreonModules(body: AnyNode[], ctx: ParseCtx): void {
   const seen = new Set<string>()
   for (const node of body) {
@@ -3190,6 +3219,7 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     storeHookNames: new Set(),
     objectTypeAliases: new Map(),
     storeAliases: new Map(),
+    announceNames: new Set(),
     hookFieldAliases: new Map(),
     hookDestructureCounter: 0,
     helperFns: [],
@@ -6704,6 +6734,37 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
           `\`JSON.${node.callee.property.name}\``,
           'no native lowering yet — keep data in typed signals/structs (fetch decode is handled by useFetch<T>); a serialization bridge is a tracked follow-up.',
         )
+      }
+      // Imperative `@pyreon/a11y` `announce("msg", { politeness })` →
+      // `announce-call` ExprIR (→ PyreonA11y). The message is the first arg; an
+      // options object's `politeness: 'assertive'` sets `assertive` (default
+      // polite). A `clear` option is dropped in v1.
+      if (
+        ctx.announceNames.size > 0 &&
+        node.callee?.type === 'Identifier' &&
+        ctx.announceNames.has(node.callee.name)
+      ) {
+        const argNodes = (node.arguments as AnyNode[] | undefined) ?? []
+        const message: ExprIR = argNodes[0]
+          ? parseExpr(argNodes[0], ctx)
+          : { kind: 'literal', value: '' }
+        let assertive = false
+        const opts = argNodes[1]
+        if (opts?.type === 'ObjectExpression') {
+          for (const prop of (opts.properties as AnyNode[] | undefined) ?? []) {
+            if (prop.type !== 'Property' || prop.computed) continue
+            const key = prop.key?.type === 'Identifier' ? prop.key.name : prop.key?.value
+            const val = prop.value
+            if (
+              key === 'politeness' &&
+              (val?.type === 'Literal' || val?.type === 'StringLiteral') &&
+              val.value === 'assertive'
+            ) {
+              assertive = true
+            }
+          }
+        }
+        return { kind: 'announce-call', message, assertive }
       }
       const callee = parseExpr(node.callee, ctx)
       const args = (node.arguments as AnyNode[]).map((a) => parseExpr(a, ctx))

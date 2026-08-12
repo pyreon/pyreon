@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/a11y",
   "version": "0.51.0",
-  "description": "Accessibility primitives for Pyreon — screen-reader announcements, visually-hidden content, and stable ARIA ids, with zero setup",
+  "description": "Accessibility primitives for Pyreon \u2014 screen-reader announcements, visually-hidden content, and stable ARIA ids, with zero setup",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/a11y#readme",
   "bugs": {
@@ -33,7 +33,9 @@
     "lib",
     "src",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "native/swift",
+    "native/kotlin"
   ],
   "scripts": {
     "build": "vl_rolldown_build",
@@ -66,5 +68,11 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "pyreon": {
+    "native": {
+      "swift": "native/swift",
+      "kotlin": "native/kotlin"
+    }
   }
 }

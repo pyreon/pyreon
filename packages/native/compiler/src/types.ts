@@ -883,6 +883,13 @@ export type ExprIR =
    */
   | { kind: 'call'; callee: ExprIR; args: ExprIR[]; optional?: boolean }
   /**
+   * An imperative `@pyreon/a11y` `announce("msg", { politeness })` call.
+   * Lowers to `PyreonA11y.announce(message, assertive:)` — a VoiceOver
+   * announcement (Swift) / registered-announcer call (Kotlin). `assertive` is
+   * true when the options carried `politeness: 'assertive'`.
+   */
+  | { kind: 'announce-call'; message: ExprIR; assertive: boolean }
+  /**
    * `await expr` — an awaited async-result call inside an `async` handler
    * (M4.5). The emitter unwraps to `await <expr>` (Swift) / `<expr>` (Kotlin
    * suspend calls carry no `await` keyword). Only meaningful inside an arrow

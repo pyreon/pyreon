@@ -1,0 +1,191 @@
+// check-native-cosource — verify CO-LOCATED native runtime sources.
+//
+// The co-location architecture ships each cross-platform package's native
+// runtime beside its `src/`: `@pyreon/<pkg>/native/{swift,kotlin}/` (declared
+// via the package.json `pyreon.native` field), aggregated into a native app
+// build by `pyreon-native wire`. That means the native code is NO LONGER under
+// `@pyreon/native-runtime-*`'s own `src/`, so the runtime packages' own
+// `swift test` / `verify-kotlin --service` chains don't cover it — this gate
+// does, so a co-located `.swift`/`.kt` can't rot silently.
+//
+// For each package with a `pyreon.native` field (EXCEPT the base
+// `@pyreon/native-*` runtime/router packages, which self-verify via their own
+// build/test):
+//   - Kotlin: `verify-kotlin.ts --source=<file> --test=<file> --service=<Name>`
+//     — reuses the runtime-kotlin stub harness (the `--service` selects the
+//     stub bundle by the file's basename); typechecks + smoke-runs.
+//   - Swift: `swiftc -typecheck` the source; if a `native/tests/*.swift`
+//     exists, compile source+test and run it.
+//
+// Skips gracefully when a toolchain is absent (CI Linux has kotlinc but no
+// SwiftUI SDK). An EMPTY scan is a SKIP + warning, never a silent clean pass.
+
+import { execSync, spawnSync } from 'node:child_process'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { join, resolve } from 'node:path'
+
+const ROOT = resolve(import.meta.dirname, '..')
+
+interface CoSourcePkg {
+  name: string
+  dir: string
+  swiftDir?: string
+  kotlinDir?: string
+  testsDir?: string
+}
+
+function has(cmd: string): boolean {
+  try {
+    execSync(`command -v ${cmd}`, { stdio: 'ignore' })
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** All `.kt`/`.swift` files under a dir, recursively. */
+function filesUnder(dir: string, ext: string): string[] {
+  const out: string[] = []
+  const walk = (d: string): void => {
+    for (const e of readdirSync(d)) {
+      const p = join(d, e)
+      if (statSync(p).isDirectory()) walk(p)
+      else if (p.endsWith(ext)) out.push(p)
+    }
+  }
+  if (existsSync(dir)) walk(dir)
+  return out
+}
+
+/** Scan `packages/<cat>/<pkg>/package.json` for a `pyreon.native` field. */
+function scanCoSourcePackages(): CoSourcePkg[] {
+  const found: CoSourcePkg[] = []
+  const pkgRoot = join(ROOT, 'packages')
+  for (const cat of readdirSync(pkgRoot)) {
+    const catDir = join(pkgRoot, cat)
+    if (!statSync(catDir).isDirectory()) continue
+    for (const pkg of readdirSync(catDir)) {
+      const dir = join(catDir, pkg)
+      const manifestPath = join(dir, 'package.json')
+      if (!existsSync(manifestPath)) continue
+      let manifest: {
+        name?: string
+        pyreon?: { native?: { swift?: string; kotlin?: string } }
+      }
+      try {
+        manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+      } catch {
+        continue
+      }
+      const native = manifest.pyreon?.native
+      if (!native) continue
+      // The base runtime/router packages self-verify (swift build / the
+      // verify-kotlin --service chain); this gate is for FEATURE co-location.
+      if ((manifest.name ?? '').startsWith('@pyreon/native-')) continue
+      const swiftDir = native.swift ? join(dir, native.swift) : undefined
+      const kotlinDir = native.kotlin ? join(dir, native.kotlin) : undefined
+      const testsDir = join(dir, 'native', 'tests')
+      found.push({
+        name: manifest.name ?? pkg,
+        dir,
+        ...(swiftDir && existsSync(swiftDir) ? { swiftDir } : {}),
+        ...(kotlinDir && existsSync(kotlinDir) ? { kotlinDir } : {}),
+        ...(existsSync(testsDir) ? { testsDir } : {}),
+      })
+    }
+  }
+  return found
+}
+
+/** `PyreonToast.kt` → `PyreonToast` (the verify-kotlin --service stub key). */
+function serviceName(file: string): string {
+  return file.replace(/^.*\//, '').replace(/\.(kt|swift)$/, '')
+}
+
+let failures = 0
+const pkgs = scanCoSourcePackages()
+
+if (pkgs.length === 0) {
+  console.warn('[check-native-cosource] no co-located native packages found (pyreon.native) — SKIP')
+  process.exit(0)
+}
+
+const kotlinc = has('kotlinc')
+const swiftc = has('swiftc')
+console.log(
+  `[check-native-cosource] ${pkgs.length} co-located package(s); kotlinc=${kotlinc} swiftc=${swiftc}`,
+)
+
+const verifyKotlin = join(ROOT, 'packages', 'native', 'runtime-kotlin', 'scripts', 'verify-kotlin.ts')
+
+for (const pkg of pkgs) {
+  // --- Kotlin ---
+  if (pkg.kotlinDir) {
+    if (!kotlinc) {
+      console.log(`  ${pkg.name} [kotlin]: kotlinc absent — skipped`)
+    } else {
+      for (const src of filesUnder(pkg.kotlinDir, '.kt')) {
+        const svc = serviceName(src)
+        const test = pkg.testsDir ? join(pkg.testsDir, `${svc}Test.kt`) : undefined
+        const args = [verifyKotlin, `--source=${src}`, `--service=${svc}`]
+        if (test && existsSync(test)) args.push(`--test=${test}`)
+        else args.push('--typecheck-only')
+        const r = spawnSync('bun', args, { encoding: 'utf8' })
+        if (r.status !== 0) {
+          failures++
+          console.error(`  ✗ ${pkg.name} [kotlin] ${svc}:\n${r.stdout}\n${r.stderr}`)
+        } else {
+          console.log(`  ✓ ${pkg.name} [kotlin] ${svc}`)
+        }
+      }
+    }
+  }
+
+  // --- Swift ---
+  if (pkg.swiftDir) {
+    if (!swiftc) {
+      console.log(`  ${pkg.name} [swift]: swiftc absent — skipped`)
+    } else {
+      const srcFiles = filesUnder(pkg.swiftDir, '.swift')
+      const testFiles = pkg.testsDir ? filesUnder(pkg.testsDir, '.swift') : []
+      // Typecheck the source alone; if a test exists, compile source+test and RUN it.
+      if (testFiles.length > 0) {
+        const bin = join('/tmp', `pyreon-cosource-${pkg.name.replace(/[^a-z0-9]/gi, '_')}`)
+        // `-parse-as-library`: the test file provides `@main` (top-level
+        // statements are illegal when compiling multiple files); the source
+        // files are plain library types.
+        const compile = spawnSync(
+          'swiftc',
+          ['-parse-as-library', ...srcFiles, ...testFiles, '-o', bin],
+          { encoding: 'utf8' },
+        )
+        if (compile.status !== 0) {
+          failures++
+          console.error(`  ✗ ${pkg.name} [swift] compile:\n${compile.stderr}`)
+        } else {
+          const run = spawnSync(bin, [], { encoding: 'utf8' })
+          if (run.status !== 0) {
+            failures++
+            console.error(`  ✗ ${pkg.name} [swift] test run:\n${run.stdout}\n${run.stderr}`)
+          } else {
+            console.log(`  ✓ ${pkg.name} [swift] (compiled + ran tests)`)
+          }
+        }
+      } else {
+        const r = spawnSync('swiftc', ['-typecheck', ...srcFiles], { encoding: 'utf8' })
+        if (r.status !== 0) {
+          failures++
+          console.error(`  ✗ ${pkg.name} [swift] typecheck:\n${r.stderr}`)
+        } else {
+          console.log(`  ✓ ${pkg.name} [swift] (typecheck)`)
+        }
+      }
+    }
+  }
+}
+
+if (failures > 0) {
+  console.error(`[check-native-cosource] ${failures} failure(s)`)
+  process.exit(1)
+}
+console.log('[check-native-cosource] ✓ all co-located native sources verified')

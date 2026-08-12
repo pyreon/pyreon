@@ -485,6 +485,11 @@ public final class PyreonAppState {
   public func stop() {}
   public init(phase: String = "active") { self.phase = phase }
 }
+// PyreonA11y — mirror of runtime-swift's PyreonA11y.swift: a static
+// \`announce(_:assertive:)\` the imperative \`announce(...)\` call lowers to.
+public enum PyreonA11y {
+  public static func announce(_ message: String, assertive: Bool = false) {}
+}
 // PyreonCrashReporter — mirror of the runtime-swift surface the emit touches:
 // no-arg init, start(), the lastCrash/hadCrash reads (bare — the real type is
 // @Observable), and recordError/breadcrumb/clear methods.

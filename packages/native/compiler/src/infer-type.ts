@@ -1848,6 +1848,9 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
     case 'await':
       // M4.5: `await X` has the type of the awaited value X.
       return inferType(expr.expr, ctx)
+    case 'announce-call':
+      // An imperative announce is a void statement, not a value.
+      return { kind: 'unknown' }
     case 'comparison':
     case 'logical':
       // `===` / `!==` / `<` / `>` and `&&` / `||` produce boolean.

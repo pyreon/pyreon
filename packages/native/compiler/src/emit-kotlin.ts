@@ -2555,6 +2555,9 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // `scope.launch { … }` coroutine provides the suspension context. Emit
       // just the inner call.
       return emitKotlinExpr(e.expr, indent)
+    case 'announce-call':
+      // Imperative @pyreon/a11y announce → PyreonA11y (the registered announcer).
+      return `PyreonA11y.announce(${emitKotlinExpr(e.message, indent)}, ${e.assertive})`
     case 'call': {
       // Field-array accessor unwrap: zero-arg `items()`/`length()` on a
       // PyreonFieldArray decl (and `value()` on a For-item param over its
