@@ -95,6 +95,38 @@ describe('kind: special descriptors paired with non-special properties', () => {
     expect(output).toContain('color: purple;')
   })
 
+  // The load-bearing case: the `animation` special reads TWO trigger keys —
+  // `keyframe` AND `animation` — but `id` only indexes `animation`. So the
+  // `animation + color` test above (which uses the `animation` key) PASSED even
+  // while `{ keyframe, color }` silently dropped the declaration: `keyframe`
+  // was indexed nowhere, so the fast path never resolved the special and the
+  // `color` hit skipped the fallback full-scan. Fixed by declaring
+  // `keys: ['keyframe']` on the animation descriptor.
+  it('keyframe (without the animation shorthand) + color → both render', () => {
+    const result = styles({
+      theme: { keyframe: 'spin', color: 'red' },
+      css: mockCss,
+      rootSize: 16,
+    })
+    const output = String(result)
+    expect(output).toContain('animation: spin;')
+    expect(output).toContain('color: red;')
+  })
+
+  it('keyframe + animation shorthand + color → all three combine', () => {
+    const result = styles({
+      theme: { keyframe: 'spin', animation: '2s linear', color: 'red' },
+      css: mockCss,
+      rootSize: 16,
+    })
+    const output = String(result)
+    // The special dedups (the `_seen` index guard), so the combined
+    // `keyframe animation` declaration renders exactly once.
+    expect(output).toContain('animation: spin 2s linear;')
+    expect(output.match(/animation:/g)?.length).toBe(1)
+    expect(output).toContain('color: red;')
+  })
+
   it('multiple specials + non-specials → all render', () => {
     const result = styles({
       theme: {
