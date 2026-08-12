@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/loom",
   "version": "0.51.0",
-  "description": "Monorepo dependency observatory — workspace graph, version-sync drift, cycles, phantom deps, and blast radius, as data.",
+  "description": "Monorepo dependency observatory \u2014 workspace graph, version-sync drift, cycles, phantom deps, and blast radius, as data.",
   "license": "MIT",
   "publishConfig": {
     "access": "public"
@@ -65,10 +65,15 @@
     "lint": "oxlint ."
   },
   "devDependencies": {
+    "@pyreon/head": "workspace:*",
     "@pyreon/manifest": "workspace:*",
+    "@pyreon/router": "workspace:*",
+    "@pyreon/runtime-server": "workspace:*",
+    "@pyreon/server": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vite-plugin": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
+    "@pyreon/zero": "workspace:*",
     "vite": "^8.2.1"
   },
   "dependencies": {
@@ -84,14 +89,34 @@
     "@pyreon/unistyle": "workspace:*"
   },
   "peerDependencies": {
-    "vite": ">=6",
-    "@pyreon/vite-plugin": "workspace:*"
+    "@pyreon/head": "workspace:*",
+    "@pyreon/router": "workspace:*",
+    "@pyreon/runtime-server": "workspace:*",
+    "@pyreon/server": "workspace:*",
+    "@pyreon/vite-plugin": "workspace:*",
+    "@pyreon/zero": "workspace:*",
+    "vite": ">=6"
   },
   "peerDependenciesMeta": {
-    "vite": {
+    "@pyreon/head": {
+      "optional": true
+    },
+    "@pyreon/router": {
+      "optional": true
+    },
+    "@pyreon/runtime-server": {
+      "optional": true
+    },
+    "@pyreon/server": {
       "optional": true
     },
     "@pyreon/vite-plugin": {
+      "optional": true
+    },
+    "@pyreon/zero": {
+      "optional": true
+    },
+    "vite": {
       "optional": true
     }
   }
