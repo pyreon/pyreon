@@ -59,7 +59,7 @@ public struct PyreonImagePicker {
         config.selectionLimit = 1
 
         let result = await withCheckedContinuation { (continuation: CheckedContinuation<PHPickerResult?, Never>) in
-            Task { @MainActor in
+            _Concurrency.Task { @MainActor in
                 let picker = PHPickerViewController(configuration: config)
                 let delegate = PyreonPickerDelegate { picked in
                     continuation.resume(returning: picked)

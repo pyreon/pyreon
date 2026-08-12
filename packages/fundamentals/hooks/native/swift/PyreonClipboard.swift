@@ -56,7 +56,7 @@ public final class PyreonClipboard {
     /// "Copied!" feedback in the UI without manual timer wiring.
     public private(set) var copied: Bool = false
 
-    private var resetTask: Task<Void, Never>?
+    private var resetTask: _Concurrency.Task<Void, Never>?
 
     public init() {}
 
@@ -93,9 +93,9 @@ public final class PyreonClipboard {
         #endif
         copied = true
         resetTask?.cancel()
-        resetTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
-            if Task.isCancelled { return }
+        resetTask = _Concurrency.Task { [weak self] in
+            try? await _Concurrency.Task.sleep(nanoseconds: 2_000_000_000)
+            if _Concurrency.Task.isCancelled { return }
             await MainActor.run { self?.copied = false }
         }
     }
