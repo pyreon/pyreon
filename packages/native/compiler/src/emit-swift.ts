@@ -6002,19 +6002,26 @@ function swiftAnimationFor(durationMs: number | undefined, easing: string | unde
  * answer than refusing to compile.
  */
 function swiftTransitionForName(name: string | undefined): string {
-  switch (name) {
+  // Accept BOTH spellings. `@pyreon/kinetic` names its presets in camelCase
+  // (`slideUp`, `scaleIn`) while the CSS-class convention on the web is
+  // kebab-case (`slide-up`), and an author reaches for whichever vocabulary
+  // they are already holding. Matching only one meant `name="slideUp"`
+  // silently fell back to a FADE -- the exact bug this mapping exists to fix,
+  // re-entering through a spelling.
+  const key = name?.toLowerCase().replace(/[-_]/g, '')
+  switch (key) {
     case 'scale':
-    case 'scale-in':
+    case 'scalein':
       return '.scale.combined(with: .opacity)'
     // The edge is where the content comes FROM, so a "slide-up" (content
     // rising into place) inserts from the BOTTOM.
-    case 'slide-up':
+    case 'slideup':
       return '.move(edge: .bottom).combined(with: .opacity)'
-    case 'slide-down':
+    case 'slidedown':
       return '.move(edge: .top).combined(with: .opacity)'
-    case 'slide-left':
+    case 'slideleft':
       return '.move(edge: .trailing).combined(with: .opacity)'
-    case 'slide-right':
+    case 'slideright':
       return '.move(edge: .leading).combined(with: .opacity)'
     default:
       return '.opacity'

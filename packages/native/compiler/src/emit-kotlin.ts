@@ -4908,9 +4908,16 @@ function kotlinTransitionForName(
   spec: string,
 ): { enter: string; exit: string } {
   const fade = { enter: `fadeIn(animationSpec = ${spec})`, exit: `fadeOut(animationSpec = ${spec})` }
-  switch (name) {
+  // Accept BOTH spellings. `@pyreon/kinetic` names its presets in camelCase
+  // (`slideUp`, `scaleIn`) while the CSS-class convention on the web is
+  // kebab-case (`slide-up`), and an author reaches for whichever vocabulary
+  // they are already holding. Matching only one meant `name="slideUp"`
+  // silently fell back to a FADE -- the exact bug this mapping exists to fix,
+  // re-entering through a spelling.
+  const key = name?.toLowerCase().replace(/[-_]/g, '')
+  switch (key) {
     case 'scale':
-    case 'scale-in':
+    case 'scalein':
       return {
         enter: `fadeIn(animationSpec = ${spec}) + scaleIn(animationSpec = ${spec})`,
         exit: `fadeOut(animationSpec = ${spec}) + scaleOut(animationSpec = ${spec})`,
@@ -4918,22 +4925,22 @@ function kotlinTransitionForName(
     // `{ it }` is the full height/width, so the content travels its own size.
     // A "slide-up" rises INTO place, which in Compose is a positive initial
     // offset on the vertical axis.
-    case 'slide-up':
+    case 'slideup':
       return {
         enter: `slideInVertically(animationSpec = ${spec}) { it } + fadeIn(animationSpec = ${spec})`,
         exit: `slideOutVertically(animationSpec = ${spec}) { it } + fadeOut(animationSpec = ${spec})`,
       }
-    case 'slide-down':
+    case 'slidedown':
       return {
         enter: `slideInVertically(animationSpec = ${spec}) { -it } + fadeIn(animationSpec = ${spec})`,
         exit: `slideOutVertically(animationSpec = ${spec}) { -it } + fadeOut(animationSpec = ${spec})`,
       }
-    case 'slide-left':
+    case 'slideleft':
       return {
         enter: `slideInHorizontally(animationSpec = ${spec}) { it } + fadeIn(animationSpec = ${spec})`,
         exit: `slideOutHorizontally(animationSpec = ${spec}) { it } + fadeOut(animationSpec = ${spec})`,
       }
-    case 'slide-right':
+    case 'slideright':
       return {
         enter: `slideInHorizontally(animationSpec = ${spec}) { -it } + fadeIn(animationSpec = ${spec})`,
         exit: `slideOutHorizontally(animationSpec = ${spec}) { -it } + fadeOut(animationSpec = ${spec})`,

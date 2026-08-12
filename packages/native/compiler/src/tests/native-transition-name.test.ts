@@ -69,3 +69,36 @@ export function C(){ const v = signal(true); return (<Stack><Transition show={v(
     }
   })
 })
+
+// `@pyreon/kinetic` names its presets in camelCase (`slideUp`, `scaleIn`) while
+// the CSS-class convention on the web is kebab-case (`slide-up`). An author
+// reaches for whichever vocabulary they already hold, so BOTH must map —
+// matching only kebab meant `name="slideUp"` silently fell back to a fade,
+// which is the exact bug this mapping exists to fix, re-entering through a
+// spelling.
+describe('<Transition name> accepts kinetic camelCase and CSS kebab alike', () => {
+  const PAIRS: ReadonlyArray<readonly [string, string, string, string]> = [
+    ['slideUp', 'slide-up', '.move(edge: .bottom)', 'slideInVertically('],
+    ['slideDown', 'slide-down', '.move(edge: .top)', 'slideInVertically('],
+    ['slideLeft', 'slide-left', '.move(edge: .trailing)', 'slideInHorizontally('],
+    ['slideRight', 'slide-right', '.move(edge: .leading)', 'slideInHorizontally('],
+    ['scaleIn', 'scale-in', '.transition(.scale', 'scaleIn('],
+  ]
+  for (const [camel, kebab, swiftMarker, kotlinMarker] of PAIRS) {
+    it(`${camel} and ${kebab} produce the same transition`, () => {
+      for (const name of [camel, kebab]) {
+        expect(transform(app(name), { target: 'swift' }).code, name).toContain(swiftMarker)
+        expect(transform(app(name), { target: 'kotlin' }).code, name).toContain(kotlinMarker)
+      }
+    })
+  }
+
+  // Case-insensitive, but NOT a free-for-all: an unknown name still falls back
+  // to a fade rather than guessing.
+  it('is case-insensitive without swallowing unknown names', () => {
+    expect(transform(app('SLIDEUP'), { target: 'swift' }).code).toContain('.move(edge: .bottom)')
+    expect(transform(app('slideSideways'), { target: 'swift' }).code).toContain(
+      '.transition(.opacity)',
+    )
+  })
+})
