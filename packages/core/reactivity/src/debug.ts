@@ -9,6 +9,7 @@
  */
 
 import type { Signal, SignalDebugInfo } from './signal'
+import { preview } from './reactive-trace'
 
 // ─── Signal update tracing ───────────────────────────────────────────────────
 
@@ -93,7 +94,7 @@ export function why(): void {
     const _name = e.name ? `"${e.name}"` : '(anonymous signal)'
 
     console.log(
-      `[pyreon:why] ${_name}: ${JSON.stringify(e.prev)} → ${JSON.stringify(e.next)} (${_subCount} subscriber${_subCount === 1 ? '' : 's'})`,
+      `[pyreon:why] ${_name}: ${preview(e.prev)} → ${preview(e.next)} (${_subCount} subscriber${_subCount === 1 ? '' : 's'})`,
     )
     _whyLog.push({ name: e.name, prev: e.prev, next: e.next })
   })
