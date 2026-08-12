@@ -33,7 +33,9 @@
     "lib",
     "src",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "native/swift",
+    "native/kotlin"
   ],
   "scripts": {
     "build": "vl_rolldown_build",
@@ -65,5 +67,11 @@
   },
   "dependencies": {
     "@pyreon/validation": "workspace:^"
+  },
+  "pyreon": {
+    "native": {
+      "swift": "native/swift",
+      "kotlin": "native/kotlin"
+    }
   }
 }

@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/permissions",
   "version": "0.51.0",
-  "description": "Reactive permissions for Pyreon — type-safe, signal-driven, universal",
+  "description": "Reactive permissions for Pyreon \u2014 type-safe, signal-driven, universal",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/permissions#readme",
   "bugs": {
@@ -28,7 +28,9 @@
     "lib",
     "src",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "native/swift",
+    "native/kotlin"
   ],
   "scripts": {
     "build": "vl_rolldown_build",
@@ -52,5 +54,11 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "pyreon": {
+    "native": {
+      "swift": "native/swift",
+      "kotlin": "native/kotlin"
+    }
   }
 }

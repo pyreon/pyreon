@@ -123,7 +123,9 @@ describe('stub mirrors stay aligned with the emit surface', () => {
 // symbol exist" check.
 describe('stub ↔ real runtime fidelity (both drift directions)', () => {
   it('PyreonI18n.fallbackLocale is OPTIONAL and DEFAULTED in the real Swift runtime', () => {
-    const real = read('runtime-swift/Sources/PyreonRuntime/PyreonI18n.swift')
+    // PyreonI18n co-located into @pyreon/i18n (native/swift) — the runtime is
+    // the native half of the same package whose src/ implements the web half.
+    const real = read('../fundamentals/i18n/native/swift/PyreonI18n.swift')
     expect(real).toContain('fallbackLocale: String? = nil')
   })
 
@@ -178,7 +180,7 @@ describe('stub ↔ real runtime fidelity (both drift directions)', () => {
   })
 
   it('the Kotlin stub and runtime agree too (this target was already correct)', () => {
-    const real = read('runtime-kotlin/src/main/kotlin/com/pyreon/runtime/PyreonI18n.kt')
+    const real = read('../fundamentals/i18n/native/kotlin/com/pyreon/runtime/PyreonI18n.kt')
     const stub = readFileSync(resolve(HERE, '..', 'kotlin-stubs.ts'), 'utf8')
     expect(real).toContain('val fallbackLocale: String? = null')
     expect(stub).toContain('val fallbackLocale: String? = null')

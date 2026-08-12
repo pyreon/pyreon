@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/store",
   "version": "0.51.0",
-  "description": "Global state management for Pyreon — Pinia-inspired composition stores",
+  "description": "Global state management for Pyreon \u2014 Pinia-inspired composition stores",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/store#readme",
   "bugs": {
@@ -33,7 +33,9 @@
     "lib",
     "src",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "native/swift",
+    "native/kotlin"
   ],
   "scripts": {
     "build": "vl_rolldown_build",
@@ -64,5 +66,11 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "pyreon": {
+    "native": {
+      "swift": "native/swift",
+      "kotlin": "native/kotlin"
+    }
   }
 }
