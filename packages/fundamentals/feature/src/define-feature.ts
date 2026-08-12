@@ -227,6 +227,7 @@ export function defineFeature<TValues extends Record<string, unknown>>(
   // (never a plain type-only `{ _output }` map) that is NOT Zod, and only when
   // no explicit `initialValues` was given (the case that actually breaks).
   const looksLikeZod =
+    schema != null &&
     typeof (schema as unknown as Record<string, unknown>).safeParseAsync === 'function'
   if (
     process.env.NODE_ENV !== 'production' &&
@@ -456,6 +457,14 @@ export function defineFeature<TValues extends Record<string, unknown>>(
             if (cancelled) return
             batch(() => {
               for (const key of Object.keys(data)) {
+                // Only populate REGISTERED form fields. A real backend returns
+                // server-only keys (`id`, `createdAt`, `updatedAt`, relations)
+                // that aren't schema fields — and `form.setFieldValue` THROWS on
+                // an unknown field. Inside this batch that throw would abort
+                // before `isSubmitting.set(false)`, leaving the form stuck
+                // submitting (button disabled, fields unpopulated) with an
+                // unhandled rejection. Skip anything not in the field set.
+                if (!(key in mergedInitial)) continue
                 form.setFieldValue(
                   key as keyof TValues & string,
                   (data as Record<string, unknown>)[key] as TValues[keyof TValues],
