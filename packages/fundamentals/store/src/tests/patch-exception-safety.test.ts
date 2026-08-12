@@ -312,4 +312,33 @@ describe('@pyreon/store — patch() exception safety', () => {
     e.dispose()
     api.dispose()
   })
+
+  it('a NESTED patch() (an effect calling patch during an outer patch) merges into ONE notification', () => {
+    // Distinct from the re-entrant DIRECT-write case above: here the effect
+    // fired by the outer patch's drain calls `api.patch(...)` ITSELF. Without a
+    // nesting guard, the inner patch's own `finally` closed `patchInProgress`
+    // mid-outer AND emitted its own separate 'patch' notification — so a single
+    // logical mutation surfaced as TWO events, and the prematurely-cleared flag
+    // meant a later re-entrant DIRECT write's event was silently buffered+dropped.
+    // A `patchDepth` counter makes only the OUTERMOST patch close the window,
+    // merge the buffer, and emit once.
+    const use = defineStore('exc-happy-nested-patch', () => ({ a: signal(0), c: signal(0) }))
+    const api = use()
+    const e = effect(() => {
+      const v = api.store.a()
+      if (v > 0) api.patch({ c: v * 10 })
+    })
+    const muts: MutationInfo[] = []
+    api.subscribe((m) => muts.push(m))
+    api.patch({ a: 5 })
+    expect(api.store.a()).toBe(5)
+    expect(api.store.c()).toBe(50)
+    // ONE merged notification, not two — and it carries BOTH the outer's and
+    // the nested patch's writes.
+    expect(muts).toHaveLength(1)
+    const byKey = Object.fromEntries(muts[0]!.events.map((ev) => [ev.key, ev.newValue]))
+    expect(byKey).toEqual({ a: 5, c: 50 })
+    e.dispose()
+    api.dispose()
+  })
 })
