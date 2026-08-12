@@ -121,3 +121,32 @@ describe('hook SSR guards — typeof window guards', () => {
     expect(true).toBe(true)
   })
 })
+
+// `useCrashReporter().start()` registers TWO window listeners and an
+// `onCleanup` to remove them. Only the `error` listener had a test, so the
+// removal path never ran.
+//
+// This is not just a coverage percentage: `start()` attaches to the shared
+// `window`, which is memory-leak class D (event-listener pile-up) in this
+// repo's catalogue. An untested cleanup is exactly how that class ships — the
+// listeners keep firing after the owner is gone, and nothing says so.
+describe('useCrashReporter cleanup', () => {
+  it('removes BOTH window listeners when the cleanup runs', async () => {
+    const { useCrashReporter } = await import('../useCrashReporter')
+    const KEY = 'pyreon.crash.last'
+    window.localStorage.clear()
+
+    useCrashReporter().start()
+    for (const cb of cleanupCallbacks.splice(0)) cb()
+    window.localStorage.clear()
+
+    // Assert the EFFECT — nothing is persisted — rather than a spy count, so
+    // this keeps holding if the implementation changes how it unsubscribes.
+    window.dispatchEvent(new ErrorEvent('error', { message: 'after cleanup' }))
+    const rejection = new Event('unhandledrejection') as Event & { reason: unknown }
+    rejection.reason = new Error('after cleanup')
+    window.dispatchEvent(rejection)
+
+    expect(window.localStorage.getItem(KEY)).toBeNull()
+  })
+})
