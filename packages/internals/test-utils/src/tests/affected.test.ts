@@ -381,6 +381,105 @@ describe('computeAffectedFlags', () => {
     ).toBe('--filter=*')
   })
 
+  describe('directOnly — what the PR-time coverage step measures', () => {
+    // Coverage is a property of a package's OWN sources + OWN tests, so a
+    // dependent's number cannot move when its dependency changes. Expanding to
+    // the closure is what broke the step: a core-package change reached ~49
+    // workspaces, tripped the caller's >15 cap, and the step SKIPPED — so the
+    // packages whose coverage matters most were never measured before merge.
+
+    it('a core change reaches its dependents WITHOUT the flag', () => {
+      // The baseline this contrasts with — and the shape that trips the cap.
+      const out = computeAffectedFlags({
+        changed: ['packages/core/core/src/h.ts'],
+        workspaces: WS,
+        root: ROOT,
+      })
+      expect(out).toContain('--filter=@pyreon/core')
+      expect(out.split(' ').length).toBeGreaterThan(1)
+    })
+
+    it('the SAME change emits only @pyreon/core WITH the flag', () => {
+      expect(
+        computeAffectedFlags({
+          changed: ['packages/core/core/src/h.ts'],
+          workspaces: WS,
+          root: ROOT,
+          directOnly: true,
+        }),
+      ).toBe('--filter=@pyreon/core')
+    })
+
+    it('still emits every DIRECTLY-changed package, not just the first', () => {
+      expect(
+        computeAffectedFlags({
+          changed: ['packages/core/core/src/h.ts', 'packages/fundamentals/toast/src/index.ts'],
+          workspaces: WS,
+          root: ROOT,
+          directOnly: true,
+        }),
+      ).toBe('--filter=@pyreon/core --filter=@pyreon/toast')
+    })
+
+    it('a test-only change still seeds its own package — the drift shape', () => {
+      // #2789 changed only hooks test files and its PR-time Coverage check
+      // passed while hooks was under threshold on main. Whatever the exact
+      // path, a package whose tests changed must be measured.
+      expect(
+        computeAffectedFlags({
+          changed: ['packages/fundamentals/hooks/src/tests/useCrashReporter.test.ts'],
+          workspaces: WS,
+          root: ROOT,
+          directOnly: true,
+        }),
+      ).toBe('--filter=@pyreon/hooks')
+    })
+
+    it('keeps the root-file escalation — an unknowable diff stays unknowable', () => {
+      expect(
+        computeAffectedFlags({
+          changed: ['bun.lock'],
+          workspaces: WS,
+          root: ROOT,
+          directOnly: true,
+        }),
+      ).toBe('--filter=*')
+    })
+
+    it('keeps the empty case empty rather than inventing work', () => {
+      expect(
+        computeAffectedFlags({ changed: [], workspaces: WS, root: ROOT, directOnly: true }),
+      ).toBe('')
+    })
+
+    it('leaf seeds are unaffected — they never expanded anyway', () => {
+      const WS_TU: Workspace[] = [
+        ...WS,
+        { name: '@pyreon/test-utils', dir: `${ROOT}/packages/internals/test-utils`, deps: [] },
+      ]
+      expect(
+        computeAffectedFlags({
+          changed: ['scripts/affected.ts'],
+          workspaces: WS_TU,
+          root: ROOT,
+          directOnly: true,
+        }),
+      ).toBe('--filter=@pyreon/test-utils')
+    })
+
+    it('composes with a category filter', () => {
+      expect(
+        computeAffectedFlags({
+          changed: ['packages/core/core/src/h.ts'],
+          workspaces: WS,
+          category: 'fundamentals',
+          root: ROOT,
+          directOnly: true,
+        }),
+      ).toBe('')
+    })
+  })
+
   describe('scripts/ map to @pyreon/test-utils (never --filter=*)', () => {
     const WS_TU: Workspace[] = [
       ...WS,

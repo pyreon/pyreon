@@ -1637,13 +1637,22 @@ jobs:
       # NOTE this changes a previously-documented trade-off — a PR that drops a
       # package's coverage used to pass here and fail only on main. That policy
       # is what rotted; catching it on the PR that causes it is the point.
-      - name: Coverage (affected packages)
+      - name: Coverage (changed packages)
         if: github.event_name == 'pull_request'
         run: |
           set -euo pipefail
           git fetch origin "${{ github.base_ref }}" || true
-          # affected.ts emits `--filter=@pyreon/x` flags (or `--filter=*`).
-          FILTER=$(bun run scripts/affected.ts --base=origin/${{ github.base_ref }})
+          # `--changed-only`: the DIRECTLY-changed workspaces, NOT the dependent
+          # closure. Coverage is a property of a package's own sources + own
+          # tests, so a dependent's number cannot move — and expanding to the
+          # closure is what broke this step. A `@pyreon/vite-plugin` or
+          # `@pyreon/zero` change expands to ~49 workspaces, tripping the >15 cap
+          # below, so the step SKIPPED: the packages whose coverage matters most
+          # were the ones never measured before merge. That left `Coverage (Full)`
+          # on push:main as the only signal, where a red run blocks nobody and
+          # gets re-run past — it has rotted three times. Direct-only measures 3
+          # packages for that same PR.
+          FILTER=$(bun run scripts/affected.ts --changed-only --base=origin/${{ github.base_ref }})
           if [ "$FILTER" = "--filter=*" ]; then
             # Unknowable blast radius (a root-file change). The full run is far
             # too slow for a PR, and the `push:main` run covers it — so skip

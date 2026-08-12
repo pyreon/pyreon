@@ -331,6 +331,29 @@ export function computeAffectedFlags(opts: {
   category?: string | undefined
   exclude?: string[] | undefined
   root?: string | undefined
+  /**
+   * Emit ONLY the workspaces whose own files changed — skip the expansion to
+   * transitive dependents.
+   *
+   * For correctness jobs (typecheck, test) the expansion is the point: editing
+   * `@pyreon/core` can break a consumer's tests. **Coverage is different.** A
+   * package's coverage is a property of its OWN sources and its OWN tests, so
+   * editing `@pyreon/core` cannot move `@pyreon/example-hn-clone`'s number —
+   * measuring the closure spends minutes to re-derive figures that provably did
+   * not change.
+   *
+   * That is not merely wasteful, it is why the PR-time coverage step stopped
+   * catching drift: a change to a widely-depended-on package expands to ~49
+   * workspaces, which trips the step's >15 cap, and the step SKIPS. So the
+   * packages whose coverage matters most were exactly the ones never measured
+   * before merge, leaving `Coverage (Full)` on main — where a red run blocks
+   * nobody — as the only signal. It has now rotted three times.
+   *
+   * With direct-only the same PR measures 3 packages instead of 49, the cap
+   * stops firing for the ordinary case, and drift is caught while it is still
+   * reviewable.
+   */
+  directOnly?: boolean | undefined
 }): string {
   const { changed, workspaces, category } = opts
   const exclude = opts.exclude ?? []
@@ -376,7 +399,9 @@ export function computeAffectedFlags(opts: {
 
   if (seeds.size === 0 && leafSeeds.size === 0) return ''
 
-  let closure = transitiveDependents(seeds, workspaces)
+  // `directOnly` treats every seed like a leaf: coverage is a property of a
+  // package's own sources + own tests, so a dependent's number cannot move.
+  let closure = opts.directOnly ? new Set(seeds) : transitiveDependents(seeds, workspaces)
   // Add leaf seeds AFTER expansion (no dependents of their own get pulled in).
   for (const leaf of leafSeeds) closure.add(leaf)
 
@@ -466,12 +491,7 @@ export function gitChangedFiles(base: string, cwd: string = ROOT): string[] | nu
  * NOTE `.github/**`, `scripts/**`, `package.json`, lockfiles, tsconfig, and
  * every `packages/**` / `examples/**` source file are NOT docs → code=true.
  */
-const DOCS_PATTERNS: RegExp[] = [
-  /\.mdx?$/i,
-  /^docs\//,
-  /^\.claude\//,
-  /^llms(-full)?\.txt$/,
-]
+const DOCS_PATTERNS: RegExp[] = [/\.mdx?$/i, /^docs\//, /^\.claude\//, /^llms(-full)?\.txt$/]
 
 export function isDocsOnlyChange(changed: string[] | null): boolean {
   // null = git couldn't compute the diff → unknowable → treat as code (run).
@@ -489,6 +509,7 @@ function main(): void {
   const exclude: string[] = []
   let codeChanged = false
   let hasAffected = false
+  let directOnly = false
   for (const arg of process.argv.slice(2)) {
     if (arg.startsWith('--base=')) base = arg.slice('--base='.length)
     else if (arg.startsWith('--category=')) category = arg.slice('--category='.length)
@@ -506,6 +527,11 @@ function main(): void {
     // docs-only for the heavy jobs. Non-empty affected (or an unknowable diff →
     // `--filter=*`) → true; only a genuinely empty affected set → false.
     else if (arg === '--has-affected') hasAffected = true
+    // `--changed-only` emits just the DIRECTLY-changed workspaces (no dependent
+    // expansion). For the PR-time coverage step — see the `directOnly` doc on
+    // computeAffectedFlags for why the closure is both useless and harmful
+    // there.
+    else if (arg === '--changed-only') directOnly = true
   }
 
   const changed = gitChangedFiles(base)
@@ -522,7 +548,7 @@ function main(): void {
   }
 
   const workspaces = discoverWorkspaces()
-  const flags = computeAffectedFlags({ changed, workspaces, category, exclude })
+  const flags = computeAffectedFlags({ changed, workspaces, category, exclude, directOnly })
   process.stdout.write(flags)
 }
 
