@@ -149,6 +149,17 @@ export type DeclIR =
    */
   | { kind: 'router-hook'; name: string; hook: 'navigate' | 'params' }
   /**
+   * `const q = useUrlState('q', '')` from `@pyreon/url-state` — a signal-shaped
+   * binding over ONE router search parameter. Lowers to a small value type
+   * wrapping the active router's `query` / `setQueryParam`, so the web call
+   * shape (`q()` to read, `q.set(v)` to write) survives on both targets.
+   *
+   * String-valued only in v1: the web serializes via pluggable codecs, and
+   * baking a typed codec into the emit is a separate arc. A non-string default
+   * is left undeclared rather than silently coerced.
+   */
+  | { kind: 'url-state'; name: string; key: string; defaultValue: string }
+  /**
    * Phase 4 — data fetch via `useFetch<T>('/url')` from `@pyreon/query`
    * (the native subset). Emits a `PyreonFetch<T>` reactive container plus
    * a mount-time async harness that drives its `begin/resolve/reject`

@@ -1,5 +1,6 @@
 ---
 '@pyreon/native-compiler': minor
+'@pyreon/url-state': minor
 '@pyreon/native-router-swift': minor
 '@pyreon/native-router-kotlin': minor
 '@pyreon/validate': minor
@@ -85,3 +86,20 @@ not add a back-stack entry per keystroke), plus `splitPathAndQuery` /
 key is present-with-empty-value, a repeated key keeps the last. `serializeQuery`
 sorts, so the rewritten URL is stable. The query survives an unmatched path — a
 404 page usually needs the parameters it was called with.
+
+
+## `useUrlState` lowers to the native router's search parameters
+
+`const q = useUrlState('q', 'all')` now binds one search parameter on iOS and
+Android, from the same source: `q()` reads and `q.set(v)` writes, exactly as on
+the web. Built on the router `query` support above.
+
+The helper type is emitted INLINE rather than shipped as a co-located runtime,
+because it needs the ACTIVE router — a standalone runtime would have to import
+PyreonRouter and stop being self-contained. Same reasoning as `PyreonSchemaError`.
+
+Scope: string-valued keys with literal arguments. A non-string default declines
+WITH a reason rather than coercing silently, and a non-literal key declines
+because it cannot be baked into the emit — the conservative rule `useFetch`
+applies to its URL and `useStorage` to its key. History entries, `popstate`,
+`batchUrlUpdates` and the pluggable serializers stay web.

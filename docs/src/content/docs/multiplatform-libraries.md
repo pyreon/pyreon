@@ -535,7 +535,7 @@ the machine-checked contract.
 | `@pyreon/code` | wraps CodeMirror 6 (DOM editor engine); consume on native via the `<WebView>` bridge subpath |
 | `@pyreon/charts` | wraps ECharts (browser canvas engine); consume on native via the `<WebView>` bridge subpath |
 | `@pyreon/document` | wraps pdfmake/docx/exceljs/pptxgenjs (browser/node document engines); no native lowering |
-| `@pyreon/url-state` | URL/query-string state — the web address bar is the platform surface; native deep links are the router's territory |
+| `@pyreon/url-state` | the address bar is the web's own surface — history entries, `popstate`, `batchUrlUpdates` and the pluggable serializers stay web; on native the equivalent is the router's search parameters |
 | `@pyreon/table` | headless table over web rendering patterns; PMTC has no lowering — native lists are `<For>` + primitives |
 | `@pyreon/http` | universal web/node HTTP client (WHATWG fetch); PMTC has no lowering for createHttp — native networking is useFetch + the PyreonHttp runtime layer, convergence tracked |
 | `@pyreon/virtual` | DOM virtualization (scroll containers, measured rows); native lists are lazy by construction (LazyColumn/LazyVStack) |

@@ -798,6 +798,12 @@ fun useNavigate(): (String) -> Unit = { _ -> }
 @Composable
 fun useParams(): Map<String, String> = emptyMap()
 
+// useUrlState lowers to a PyreonUrlState over the active router, so the
+// emit needs a router accessor here too. Same defensive-default shape as
+// the two above.
+@Composable
+fun useRouter(): PyreonRouter = PyreonRouter()
+
 @Composable
 inline fun <reified T : Any> useLoaderData(): T? = null
 
@@ -1131,6 +1137,10 @@ class PyreonForm(
 class PyreonRouter {
   var currentPath: String = "/"
   fun push(path: String) { currentPath = path }
+  // Search parameters, mirroring the real PyreonRouter. useUrlState lowers to
+  // a class over these two; a stub missing them would reject a correct emit.
+  val query: MutableState<Map<String, String>> = mutableStateOf(emptyMap())
+  fun setQueryParam(key: String, value: String?) {}
   companion object {
     fun matchPath(path: String, pattern: String): Map<String, String>? {
       if (path == pattern) return emptyMap()

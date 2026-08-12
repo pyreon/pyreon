@@ -866,7 +866,6 @@ const WEB_ONLY_PACKAGES: ReadonlySet<string> = new Set([
   '@pyreon/ui-components',
   '@pyreon/ui-primitives',
   '@pyreon/unistyle',
-  '@pyreon/url-state',
   '@pyreon/virtual',
   '@pyreon/zero',
   '@pyreon/zero-content',
@@ -999,6 +998,7 @@ export const NATIVE_LOWERED_HOOKS: ReadonlySet<string> = new Set([
   'useHaptics', 'useImagePicker', 'useLinking', 'useLoaderData', 'useMap',
   'useNativeModule', 'useNavigate', 'useNotifications', 'useOnline',
   'useParams', 'usePayments', 'usePermissions', 'usePush', 'useQuery',
+  'useUrlState',
   'useSecureStorage',
   'useShare', 'useSizeClass', 'useStorage', 'useWebSocket',
 ])
@@ -4705,6 +4705,31 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   }
   if (calleeName === 'useNavigate') {
     return { kind: 'router-hook', name, hook: 'navigate' }
+  }
+  if (calleeName === 'useUrlState') {
+    // `const q = useUrlState('q', '')`. Both arguments must be literals so the
+    // key can be baked into the emit — same conservative rule as useFetch's
+    // URL and useStorage's key. A dynamic key would need a runtime lookup the
+    // value type does not carry.
+    const args = (init.arguments as AnyNode[] | undefined) ?? []
+    const keyNode = args[0]
+    const defNode = args[1]
+    if (keyNode?.type !== 'Literal' || typeof keyNode.value !== 'string') return null
+    // v1 is string-valued. A number/boolean default would need the web's
+    // pluggable serializer baked in; coercing silently would be worse than
+    // leaving it to the unlowered-hook warning.
+    if (defNode !== undefined && (defNode.type !== 'Literal' || typeof defNode.value !== 'string')) {
+      ctx.warnings.push(
+        `const ${name} = useUrlState(${JSON.stringify(keyNode.value)}, …) lowers only with a STRING default in v1 — a typed serializer is not baked into the native emit yet. Use a string and parse it, or keep the call behind a \`<Web>\` escape hatch.`,
+      )
+      return null
+    }
+    return {
+      kind: 'url-state',
+      name,
+      key: keyNode.value,
+      defaultValue: defNode?.type === 'Literal' ? String(defNode.value) : '',
+    }
   }
   if (calleeName === 'useParams') {
     // The WHOLE-OBJECT form. It lowers to a `[String: String]` / `Map`, so the

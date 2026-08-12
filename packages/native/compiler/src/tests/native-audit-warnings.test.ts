@@ -973,7 +973,11 @@ describe('web-only package warnings are derived from the manifests', () => {
 
   // The regression. Each of these declares `tier: 'web-only'` and was absent
   // from the hand-written literal, so importing it produced NO warning at all.
-  for (const pkg of ['@pyreon/url-state', '@pyreon/head', '@pyreon/hotkeys', '@pyreon/feature']) {
+  // NOTE `@pyreon/url-state` was in this list until `useUrlState` began
+  // lowering to the router's query in the same branch. It moved to the
+  // nativeFrontend group below — which is the derivation working: declaring
+  // partial crossing removed it from the blanket set with no edit here.
+  for (const pkg of ['@pyreon/head', '@pyreon/hotkeys', '@pyreon/feature']) {
     it(`warns for ${pkg}, which the hand-written list silently omitted`, () => {
       expect(warnFor(pkg).some((w) => w.includes(pkg) && w.includes('WEB-ONLY'))).toBe(true)
     })
@@ -982,7 +986,7 @@ describe('web-only package warnings are derived from the manifests', () => {
   // A package that lowers PART of its surface declares `nativeFrontend` and
   // must NOT be blanket-warned — that is the "stale entry" failure, and it is
   // the more damaging direction: it tells the user a shipped API is unusable.
-  for (const pkg of ['@pyreon/toast', '@pyreon/a11y', '@pyreon/query']) {
+  for (const pkg of ['@pyreon/toast', '@pyreon/a11y', '@pyreon/query', '@pyreon/url-state']) {
     it(`does NOT blanket-warn for ${pkg}, whose core lowers (nativeFrontend)`, () => {
       expect(warnFor(pkg).some((w) => w.includes('WEB-ONLY'))).toBe(false)
     })

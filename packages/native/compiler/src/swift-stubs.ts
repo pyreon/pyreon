@@ -582,6 +582,12 @@ public final class PyreonRouter {
   // keeping the OPTIONAL return is load-bearing: an emit that forgets to unwrap
   // it must fail here, not silently on-device.
   public static func matchPath(_ path: String, _ pattern: String) -> [String: String]? { nil }
+  // Search parameters, mirroring the real PyreonRouter. useUrlState lowers to
+  // a value type over these two, so a stub missing them would reject a correct
+  // emit — the subset-stub failure, which manufactures bugs exactly as a
+  // superset stub masks them.
+  public var query: [String: String] { [:] }
+  public func setQueryParam(_ key: String, _ value: String?) {}
 }
 extension EnvironmentValues {
   public var pyreonRouter: PyreonRouter? { get { nil } set {} }

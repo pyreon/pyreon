@@ -221,6 +221,8 @@ let _mapNames: Set<string> = new Set()
 let _authNames: Set<string> = new Set()
 /** G2: every function decl name (Parser-A). Mirrors emit-swift's set. */
 let _functionNames: Set<string> = new Set()
+/** Bindings from `useUrlState` — callable, but NOT signals (see the `.set` guard). */
+let _urlStateNames: Set<string> = new Set()
 /** File-scope helper-function names (persists across the whole emit) — seeded
  * into each component's `_functionNames` so a `dbl(21)` call resolves as a
  * free-function call regardless of which component emits it. */
@@ -467,6 +469,10 @@ export function emitKotlin(
   // Emit the shared PyreonSchemaError sealed class once if any
   // schemas are present.
   if (zodSchemas.length > 0) parts.push(KOTLIN_SCHEMA_ERROR)
+  // Emit the PyreonUrlState helper once, if any component binds a search param.
+  if (components.some((c) => c.decls?.some((d) => d.kind === 'url-state'))) {
+    parts.push(KOTLIN_URL_STATE)
+  }
   // Gap 4 v3.2 — emit auxSchemas BEFORE their parent schema so the
   // type-reference order is consistent top-down.
   const emitKotlinSchemaTree = (zs: ZodSchemaDefnIR): void => {
@@ -1076,6 +1082,27 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
  * present. Single sealed exception hierarchy shared across all
  * schemas in a file.
  */
+
+/**
+ * The Kotlin mirror of `SWIFT_URL_STATE`. Emitted inline for the same reason:
+ * it needs the ACTIVE router, which `useRouter()` supplies from the Compose
+ * local, so a standalone runtime would have to depend on PyreonRouter and stop
+ * being self-contained.
+ *
+ * `operator fun invoke()` is the Kotlin spelling of Swift's
+ * `callAsFunction`, so `q()` reads and `q.set(v)` writes on BOTH targets and
+ * shared source does not fork.
+ */
+const KOTLIN_URL_STATE = `class PyreonUrlState(
+    private val router: PyreonRouter,
+    private val key: String,
+    private val defaultValue: String,
+) {
+    operator fun invoke(): String = router.query.value[key] ?: defaultValue
+    fun set(value: String) { router.setQueryParam(key, value) }
+    fun clear() { router.setQueryParam(key, null) }
+}`
+
 const KOTLIN_SCHEMA_ERROR = `sealed class PyreonSchemaError(message: String) : Exception(message) {
     data class MissingOrWrongType(val field: String, val expected: String) :
         PyreonSchemaError("Field '$field' missing or wrong type (expected $expected)")
@@ -1265,6 +1292,12 @@ function emitKotlinComponent(c: ComponentIR): string {
     // function call, so it stays out of `_functionNames`.
     if (d.kind === 'router-hook' && d.hook === 'navigate') {
       _functionNames.add(d.name)
+    }
+    // `q` is CALLABLE (`operator fun invoke`), so a reference must keep its
+    // parens — the Swift mirror adds it for the same reason.
+    if (d.kind === 'url-state') {
+      _functionNames.add(d.name)
+      _urlStateNames.add(d.name)
     }
     // Phase 4: track useFetch AND useQuery decls so member reads append
     // `.value`. PyreonQuery shares data/error/isPending (+ adds isFetching)
@@ -1526,6 +1559,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _activePropsParamName = undefined
   _signalNames = new Set()
   _functionNames = new Set()
+  _urlStateNames = new Set()
   _machineNames = new Set()
   _i18nNamesKotlin = new Set()
   _fetchNames = new Set()
@@ -2060,6 +2094,9 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // `LocalPyreonRouter.current` directly via CompositionLocal — no
   // explicit router arg needed (unlike Swift). `useParams()` follows
   // the same shape.
+  if (d.kind === 'url-state') {
+    return `val ${kotlinIdent(d.name)} = PyreonUrlState(useRouter(), ${JSON.stringify(d.key)}, ${JSON.stringify(d.defaultValue)})`
+  }
   if (d.kind === 'router-hook') {
     const fn = d.hook === 'navigate' ? 'useNavigate' : 'useParams'
     return `val ${kotlinIdent(d.name)} = ${fn}()`
@@ -3025,7 +3062,15 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       }
       // `signal.set(x)` → `signal = x` (Kotlin's `by mutableStateOf` is a var).
       // Gated to ONE argument — a 2-arg `.set(k, v)` is a Map write.
-      if (e.callee.kind === 'member' && e.callee.property === 'set' && e.args.length === 1) {
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.property === 'set' &&
+        e.args.length === 1 &&
+        // A useUrlState binding is NOT a signal: `q.set(v)` is a real method
+        // on PyreonUrlState, so rewriting it to `q = v` fails with
+        // "val cannot be reassigned". The Swift emit carries the same guard.
+        !(e.callee.object.kind === 'identifier' && _urlStateNames.has(e.callee.object.name))
+      ) {
         const target = emitKotlinExpr(e.callee.object, indent)
         // Enum-aware: when the target signal is enum-typed, set the
         // active-enum context so a string-literal arg rewrites to a

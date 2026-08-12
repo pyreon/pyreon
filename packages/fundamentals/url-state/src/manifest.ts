@@ -11,7 +11,9 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      'URL/query-string state — the web address bar is the platform surface; native deep links are the router\'s territory',
+      "the address bar is the web's own surface — history entries, `popstate`, `batchUrlUpdates` and the pluggable serializers stay web; on native the equivalent is the router's search parameters",
+    nativeFrontend:
+      "`useUrlState(key, 'default')` with a STRING default, bound to the native router's query (PyreonRouter.query / setQueryParam)",
   },
   longExample: `import { useUrlState, setUrlRouter } from '@pyreon/url-state'
 import { signal } from '@pyreon/reactivity'
