@@ -145,22 +145,63 @@ describe('useForm — schema + validateOn:"blur" (W10 follow-up)', () => {
     expect(form.fields.title.error()).toBeUndefined()
   })
 
-  test('validateOn:"change" still works for schema-only forms (unchanged)', () => {
-    // Change-mode wasn't broken before; we just want to confirm the W10 fix
-    // didn't break the schema-handling path that DID work.
+  test('validateOn:"change" surfaces schema errors on value change (schema-only)', async () => {
+    // Change mode must re-run the form SCHEMA on a value change for a
+    // validator-less field — not merely clear the error. Before the fix the
+    // auto-validate path called validateField, which for a schema-only field
+    // only clears, so change mode never surfaced a schema error.
+    const schema: SchemaValidateFn<{ title: string }> = (v) =>
+      v.title.length < 3 ? { title: 'too short' } : {}
     const { result: form } = mountWith(() =>
       useForm<{ title: string }>({
-        initialValues: { title: '' },
-        schema: () => ({ title: 'on-change error' }),
+        initialValues: { title: 'okay' }, // len 4 — valid at mount
+        schema,
         validateOn: 'change',
         onSubmit: () => {},
       }),
     )
 
-    // Change-mode runs via the auto-validate effect, which still only
-    // calls per-field validators — not the schema. (That's a separate
-    // expectation; the schema-on-change behavior is unchanged by this PR.)
-    // The point of this test is regression-locking the non-W10 path.
-    expect(form.fields.title.value()).toBe('')
+    form.fields.title.setValue('x') // len 1 → invalid
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(form.fields.title.error()).toBe('too short')
+
+    form.fields.title.setValue('abcd') // len 4 → valid again
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(form.fields.title.error()).toBeUndefined()
+  })
+
+  test('schema-only post-submit live-correction re-checks the schema (isValid stays honest)', async () => {
+    // The severe half: after a FAILED submit (submitCount > 0), a keystroke on a
+    // schema-only field must re-run the schema — not blind-clear the error and
+    // flip isValid true while the schema still rejects (which makes invalid data
+    // submittable). validateOn:'blur' proves this is the post-submit path, not
+    // change mode.
+    const schema: SchemaValidateFn<{ title: string }> = (v) =>
+      v.title.length < 3 ? { title: 'too short' } : {}
+    const { result: form } = mountWith(() =>
+      useForm<{ title: string }>({
+        initialValues: { title: '' },
+        schema,
+        validateOn: 'blur',
+        onSubmit: () => {},
+      }),
+    )
+
+    await form.handleSubmit() // fails: '' is too short
+    expect(form.isValid()).toBe(false)
+
+    form.fields.title.setValue('ab') // still invalid (len 2), submitCount > 0
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(form.fields.title.error()).toBe('too short') // was blind-cleared → undefined
+    expect(form.isValid()).toBe(false) // was flipping true
+
+    form.fields.title.setValue('abc') // now valid
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(form.fields.title.error()).toBeUndefined()
+    expect(form.isValid()).toBe(true)
   })
 })

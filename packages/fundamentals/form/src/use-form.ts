@@ -728,7 +728,18 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
         // `.peek()` reads submitCount without subscribing (no tracking needed —
         // setValue is imperative).
         if (validateOn === 'change' || submitCount.peek() > 0) {
-          validateField(value)
+          // A schema-only field (no per-field validator) must re-run the form
+          // SCHEMA here — exactly as the blur path (`setTouched`) does. Calling
+          // `validateField` for a validator-less field only CLEARS the error
+          // (runValidation → getError().set(undefined)), so on a keystroke that
+          // is still invalid it blind-clears and `isValid` flips true while the
+          // schema still rejects (submittable invalid data). Fields WITH a
+          // per-field validator keep `validateField` (validator precedence).
+          if (schema && !fieldValidators[name]) {
+            runSchemaForField(name).catch(() => {})
+          } else {
+            validateField(value)
+          }
         }
       },
       setTouched: () => {
@@ -783,7 +794,15 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     // exactly (per-field, debounced if `debounceMs` is set, since it uses the
     // same `validateField`). blur/submit modes stay passive until a blur /
     // submit. `showError` still gates display on `touched`.
-    if (validateOn === 'change') validateField(valueSig.peek())
+    if (validateOn === 'change') {
+      // Same schema-only rule as setValue above: a validator-less field must
+      // run the schema, not `validateField` (which would only clear).
+      if (schema && !fieldValidators[name]) {
+        runSchemaForField(name).catch(() => {})
+      } else {
+        validateField(valueSig.peek())
+      }
+    }
     return fields[name] as FieldState<unknown>
   }
 
