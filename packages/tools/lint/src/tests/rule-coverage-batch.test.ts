@@ -58,6 +58,35 @@ describe('pyreon/no-bare-signal-in-jsx', () => {
     expect(find(result, 'pyreon/no-bare-signal-in-jsx').length).toBeGreaterThan(0)
   })
 
+  it('does NOT flag a call WITH ARGUMENTS (a signal read is zero-arg)', () => {
+    // `formatDefault(ct.default)` is a plain helper. A signal read is zero-arg
+    // by construction, so an argument list rules the shape out entirely. The
+    // rule used to fire here and then tell the reader, in the finding itself,
+    // to ignore it if the callee was a pure function — a finding that asks to
+    // be disregarded trains people to skim past the whole rule's output.
+    const result = lintFile(
+      fp,
+      `const format = (v: unknown) => String(v);
+       const X = () => <div>{format(props.value)}</div>`,
+      allRules,
+      bpConfig(),
+    )
+    expect(find(result, 'pyreon/no-bare-signal-in-jsx').length).toBe(0)
+  })
+
+  it('still flags the zero-arg form alongside an argumented call (precision)', () => {
+    // Guards the skip above from being over-broad: only the CALL WITH ARGS is
+    // exempt; a bare `{count()}` in the same file must still report.
+    const result = lintFile(
+      fp,
+      `const count = signal(0); const format = (v: unknown) => String(v);
+       const X = () => <div>{format(1)}{count()}</div>`,
+      allRules,
+      bpConfig(),
+    )
+    expect(find(result, 'pyreon/no-bare-signal-in-jsx').length).toBe(1)
+  })
+
   it('does NOT flag {signal()} in an ATTRIBUTE value (compiler _rp/_bind-wraps it)', () => {
     // The exact shape from @pyreon/ui-primitives: `checked={checked()}`,
     // `value={value()}`, `aria-checked={checked()}` are reactive — the rule

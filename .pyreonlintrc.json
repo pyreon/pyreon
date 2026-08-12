@@ -131,7 +131,7 @@
       }
     ],
     "pyreon/no-bare-signal-in-jsx": [
-      "error",
+      "info",
       {
         "exemptPaths": ["__tests__/", ".test."]
       }

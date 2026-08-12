@@ -21,7 +21,7 @@
  * Single source of truth: the manifest. NEVER hand-edit the generated pages.
  * Run: `bun docs/scripts/gen-reference.ts` from the repo root.
  */
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { findManifests } from '../../packages/internals/manifest/src/discovery'
@@ -42,6 +42,32 @@ const KIND_LABEL: Record<string, string> = {
   type: 'type',
   class: 'class',
   constant: 'constant',
+}
+
+/**
+ * The "conceptual guide" pointer, or nothing.
+ *
+ * This line used to hard-code `/docs/${slug}`, which assumed every reference
+ * page has a flat guide beside it. Two of 56 do not: `testing`'s guide lives at
+ * `/docs/guides/testing`, and `config` has no guide at all — so the generated
+ * pages shipped two dead internal links, and `pyreon doctor` reported them as
+ * ERRORS. Hand-patching the pages would have been reverted by the next run,
+ * since the header says "do not edit this page by hand".
+ *
+ * Resolve the real location instead, and omit the sentence when there is no
+ * guide to point at.
+ */
+function guideLinkFor(slug: string): string {
+  const roots = [
+    { file: `docs/src/content/docs/${slug}.md`, href: `/docs/${slug}` },
+    { file: `docs/src/content/docs/guides/${slug}.md`, href: `/docs/guides/${slug}` },
+  ]
+  for (const r of roots) {
+    if (existsSync(join(REPO_ROOT, r.file))) {
+      return ` For the conceptual guide, see [${slug}](${r.href}).`
+    }
+  }
+  return ''
 }
 
 function renderEntry(e: any): string {
@@ -108,7 +134,7 @@ function renderPage(m: any): string {
   out.push(`# ${m.name} — API Reference`)
   out.push('')
   out.push(
-    `> **Generated** from \`${slug}\`'s \`src/manifest.ts\` — the same source that powers \`llms.txt\` and MCP \`get_api\`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [${slug}](/docs/${slug}).`,
+    `> **Generated** from \`${slug}\`'s \`src/manifest.ts\` — the same source that powers \`llms.txt\` and MCP \`get_api\`. Do not edit this page by hand; edit the manifest.${guideLinkFor(slug)}`,
   )
   out.push('')
   if (m.description) {

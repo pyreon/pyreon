@@ -72,6 +72,13 @@ export const noBareSignalInJsx: Rule = {
         if (!textContainers.has(node)) return // attribute value (or non-text) → reactive, skip
         const expr = node.expression
         if (!expr || expr.type !== 'CallExpression') return
+        // A signal read is ZERO-ARG by construction (`sig()`). A call that
+        // passes arguments — `formatDefault(ct.default)` — is a plain helper and
+        // can never be the shape this rule is about. Without this the rule fires
+        // on provably-pure functions and then tells the reader to ignore it,
+        // which is how a finding trains people to distrust the tool.
+        if ((expr.arguments?.length ?? 0) > 0) return
+
         const callee = expr.callee
         if (!callee || callee.type !== 'Identifier') return
 
