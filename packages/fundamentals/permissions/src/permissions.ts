@@ -6,17 +6,26 @@ import type { PermissionMap, Permissions, PermissionValue } from './types'
  * Resolution order: exact match → wildcard (e.g., 'posts.*') → global wildcard ('*') → false.
  */
 /**
- * Safely evaluate a permission value. Predicates that throw are treated as denied.
+ * Safely evaluate a permission value. FAIL-CLOSED: only an explicit `true`
+ * grants — a predicate that throws, or returns anything other than `true`, denies.
+ *
+ * The strict `=== true` is load-bearing for an authorization layer. A predicate
+ * is typed `(context?) => boolean`, but a body reading an `any`-typed context
+ * (`(u: any) => u.permissions.edit`) returns `any` with NO type error — so at
+ * runtime it can yield a truthy non-boolean (a string, a number, an object) or,
+ * worst, a Promise (ALWAYS truthy, so an accidentally-async predicate would
+ * ALWAYS grant). Returning that raw would grant access it should deny. `=== true`
+ * matches the fail-closed posture the throw path already uses.
  */
 function evaluate(value: PermissionValue, context?: unknown): boolean {
   if (typeof value === 'function') {
     try {
-      return value(context)
+      return value(context) === true
     } catch {
       return false
     }
   }
-  return value
+  return value === true
 }
 
 /**
