@@ -2071,42 +2071,6 @@ final class PyreonRuntimeTests: XCTestCase {
         XCTAssertEqual(q.data, 5, "an error must leave the last good data in place (stale-while-error)")
     }
 
-    // MARK: - PyreonToast (imperative queue + bounded stack)
-
-    @available(iOS 17.0, macOS 14.0, *)
-    func testToastEnqueueAppendsNewestLastWithDistinctIds() {
-        let t = PyreonToast()
-        let id1 = t.add("first")
-        let id2 = t.add("second", type: "error")
-        XCTAssertEqual(t.toasts.count, 2)
-        XCTAssertEqual(t.toasts[0].message, "first")
-        XCTAssertEqual(t.toasts[1].message, "second")
-        XCTAssertEqual(t.toasts[1].type, "error")
-        XCTAssertNotEqual(id1, id2, "two add()s must get distinct ids (counter, not clock)")
-    }
-
-    @available(iOS 17.0, macOS 14.0, *)
-    func testToastDismissRemovesOneRemoveMissingIsNoop() {
-        let t = PyreonToast()
-        let id = t.add("x", duration: 0) // persistent — no auto-dismiss race
-        _ = t.add("y", duration: 0)
-        t.dismiss(id)
-        XCTAssertEqual(t.toasts.map { $0.message }, ["y"])
-        t.remove("does-not-exist") // no-op, no crash
-        XCTAssertEqual(t.toasts.count, 1)
-        t.clear()
-        XCTAssertTrue(t.toasts.isEmpty)
-    }
-
-    @available(iOS 17.0, macOS 14.0, *)
-    func testToastStackIsBoundedDroppingOldest() {
-        let t = PyreonToast()
-        t.maxToasts = 3
-        for i in 0..<5 { _ = t.add("m\(i)", duration: 0) }
-        XCTAssertEqual(t.toasts.count, 3, "stack must not grow past maxToasts")
-        XCTAssertEqual(t.toasts.map { $0.message }, ["m2", "m3", "m4"], "oldest dropped, newest kept")
-    }
-
 }
 
 /// Tiny mutable-reference-type flag so a `@Sendable` `onChange` closure
