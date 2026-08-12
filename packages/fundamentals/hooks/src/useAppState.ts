@@ -26,6 +26,10 @@ export type AppStatePhase = 'active' | 'background' | 'inactive'
 export function useAppState(): () => AppStatePhase {
   const phase = signal<AppStatePhase>(computeAppPhase())
 
+  /* v8 ignore next — the server arm. `isClient` is a module-load constant from
+     @pyreon/reactivity and this suite runs under happy-dom, so reaching the
+     false side would mean mocking that module, which the test-environment rules
+     forbid. Same shape and rationale as `useDatabase`'s `isServer` guard. */
   if (isClient) {
     const update = () => phase.set(computeAppPhase())
     document.addEventListener('visibilitychange', update)

@@ -53,6 +53,19 @@ class FakeSocket {
   fail() {
     this.onerror?.()
   }
+  /**
+   * A close the SERVER initiated (or the network dropped) — distinct from the
+   * hook's own `close()`, which nulls the handlers first precisely so a queued
+   * frame cannot write into a disposed component. That design means `onclose`
+   * is reachable ONLY from this direction, and nothing exercised it: the fake's
+   * `close()` never fired the handler, so a real dropped connection was
+   * untested while the fake looked faithful.
+   */
+  drop() {
+    this.readyState = FakeSocket.CLOSED
+    this.closed = true
+    this.onclose?.()
+  }
 }
 
 function withFakeSocket<T>(run: () => T): T {
@@ -204,6 +217,57 @@ describe('useWebSocket — web half', () => {
     } finally {
       ;(globalThis as { WebSocket?: unknown }).WebSocket = prev
     }
+  })
+})
+
+describe('a close the server initiated', () => {
+  it('flips isConnected back to false', () => {
+    withFakeSocket(() => {
+      const ws = useWebSocket('wss://x.dev')
+      last().open()
+      expect(ws.isConnected).toBe(true)
+      last().drop()
+      expect(ws.isConnected).toBe(false)
+    })
+  })
+
+  it('releases the socket, so a later send is a no-op rather than a throw', () => {
+    withFakeSocket(() => {
+      const ws = useWebSocket('wss://x.dev')
+      last().open()
+      const socket = last()
+      socket.drop()
+      expect(() => ws.send('after-drop')).not.toThrow()
+      expect(socket.sent).toEqual([])
+    })
+  })
+
+  it('lets the caller reconnect afterwards', () => {
+    // The handler resets the internal `open` flag. Without that reset a
+    // dropped connection would be permanent: `connect()` early-returns while
+    // `open` is true, so the hook would sit disconnected forever with no way
+    // back and no error to explain it.
+    withFakeSocket(() => {
+      const ws = useWebSocket('wss://x.dev')
+      last().open()
+      last().drop()
+      ws.connect()
+      expect(FakeSocket.instances).toHaveLength(2)
+      last().open()
+      expect(ws.isConnected).toBe(true)
+    })
+  })
+
+  it('does not re-close a socket the server already closed', () => {
+    withFakeSocket(() => {
+      const ws = useWebSocket('wss://x.dev')
+      last().open()
+      const socket = last()
+      socket.drop()
+      // `close()` must early-return on the reset flag rather than touching a
+      // socket it no longer owns.
+      expect(() => ws.close()).not.toThrow()
+    })
   })
 })
 

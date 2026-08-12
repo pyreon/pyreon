@@ -158,6 +158,12 @@ export function useWebSocket(
     open = false
     const ws = sock
     sock = null
+    /* v8 ignore next — the null arm is unreachable through the public API:
+       `open` is only true between `connect()` assigning `sock` and either this
+       close or the server-initiated `onclose`, both of which reset `open`
+       first, and a throwing constructor resets `open` without ever setting
+       `sock`. It stays as a guard because the invariant is maintained by three
+       separate assignments. */
     if (ws !== null) {
       // Drop the handlers BEFORE closing. A frame already queued can otherwise
       // arrive between close() and teardown and write into a disposed

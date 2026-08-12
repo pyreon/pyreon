@@ -188,6 +188,25 @@ describe('useDatabase — persistence degradation', () => {
     expect(db.all(coll).map((r) => r.id)).toEqual(['kept'])
   })
 
+  it('returns EMPTY when getItem throws and nothing was ever mirrored', () => {
+    // The sibling spec above covers a throwing store whose mirror IS populated.
+    // This is the other side, and it is the FIRST read of a fresh page in a
+    // context where storage access throws (Safari private mode, a blocked
+    // third-party frame): the mirror has no entry for this collection, so the
+    // fallback has to produce an empty list rather than `undefined` — every
+    // caller does `.map` / `.length` on the result.
+    swapStorage({
+      getItem: () => {
+        throw new Error('SecurityError: access denied')
+      },
+      setItem: () => {},
+    })
+    const db = useDatabase()
+    expect(db.all(coll)).toEqual([])
+    expect(db.count(coll)).toBe(0)
+    expect(db.get(coll, 'anything')).toBeNull()
+  })
+
   it('still round-trips when setItem throws (quota / private mode)', () => {
     // The write is mirrored BEFORE the persist attempt precisely so a quota
     // failure costs persistence, not the data for this page.

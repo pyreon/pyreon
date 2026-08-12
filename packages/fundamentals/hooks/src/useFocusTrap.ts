@@ -113,9 +113,12 @@ function isHidden(el: HTMLElement): boolean {
       contentVisibilityAuto?: boolean
     }) => boolean
   }
-  /* v8 ignore start — real-browser-only branch (happy-dom has no
-     checkVisibility); exercised by useFocusTrap.browser.test.ts's
-     "skips display:none / [hidden] / inert nodes" + "video[controls]" specs. */
+  // NOTE the ignore below sits on the FALLBACK, not on this branch. An earlier
+  // version had it the other way round, on the stated rationale that "happy-dom
+  // has no checkVisibility" — measured false: happy-dom reports
+  // `typeof el.checkVisibility === 'function'`, so this branch IS the one the
+  // node suite takes, and the ignore was excluding covered code while the
+  // genuinely-unreachable fallback counted against coverage.
   if (typeof withCheck.checkVisibility === 'function') {
     if (
       !withCheck.checkVisibility({
@@ -128,12 +131,15 @@ function isHidden(el: HTMLElement): boolean {
     // Real layout available — a zero-size box has no client rects.
     return el.getClientRects().length === 0
   }
-  /* v8 ignore stop */
 
+  /* v8 ignore start — the pre-checkVisibility fallback. Unreachable in BOTH
+     suites: happy-dom implements checkVisibility (measured) and so does every
+     browser Playwright runs, so control never arrives here. It stays for
+     engines that predate the API, and for a detached element whose
+     ownerDocument has no defaultView (SSR/robustness — `defaultView` is always
+     set in the node suite). Deleting it would be the wrong trade: it is the
+     only path that answers this question on an older engine. */
   const view = el.ownerDocument.defaultView
-  /* v8 ignore next — a detached element with no defaultView is unreachable in
-     the node/happy-dom suite (ownerDocument.defaultView is always set); the
-     guard exists purely for SSR/robustness. */
   if (!view) return false
   const style = view.getComputedStyle(el)
   return (
@@ -141,6 +147,7 @@ function isHidden(el: HTMLElement): boolean {
     style.visibility === 'hidden' ||
     style.visibility === 'collapse'
   )
+  /* v8 ignore stop */
 }
 
 /**
@@ -242,6 +249,11 @@ function topTrap(): { frame: TrapFrame; el: HTMLElement } | null {
 function onSharedKeydown(e: KeyboardEvent): void {
   // SSR guard (documents the contract for the lint rule — the shared
   // listeners are only ever registered client-side).
+  /* v8 ignore next — `isServer` is a module-load constant from
+     @pyreon/reactivity and this suite runs under happy-dom, so the true side
+     is unreachable without mocking that module, which the test-environment
+     rules forbid. The guard documents the client-only contract for the
+     no-window-in-ssr lint rule. Same shape as `useDatabase`'s isServer arm. */
   if (isServer) return
   if (e.key !== 'Tab') return
   const top = topTrap()
@@ -290,6 +302,11 @@ let recapturePending = false
  * early-returns on the containment check.
  */
 function onSharedFocusIn(e: FocusEvent): void {
+  /* v8 ignore next — `isServer` is a module-load constant from
+     @pyreon/reactivity and this suite runs under happy-dom, so the true side
+     is unreachable without mocking that module, which the test-environment
+     rules forbid. The guard documents the client-only contract for the
+     no-window-in-ssr lint rule. Same shape as `useDatabase`'s isServer arm. */
   if (isServer) return
   const top = topTrap()
   if (!top) return
@@ -317,6 +334,11 @@ function onSharedFocusIn(e: FocusEvent): void {
 }
 
 function pushFrame(frame: TrapFrame): void {
+  /* v8 ignore next — `isServer` is a module-load constant from
+     @pyreon/reactivity and this suite runs under happy-dom, so the true side
+     is unreachable without mocking that module, which the test-environment
+     rules forbid. The guard documents the client-only contract for the
+     no-window-in-ssr lint rule. Same shape as `useDatabase`'s isServer arm. */
   if (isServer) return
   trapStack.push(frame)
   if (trapStack.length === 1) {
@@ -326,6 +348,11 @@ function pushFrame(frame: TrapFrame): void {
 }
 
 function removeFrame(frame: TrapFrame): void {
+  /* v8 ignore next — `isServer` is a module-load constant from
+     @pyreon/reactivity and this suite runs under happy-dom, so the true side
+     is unreachable without mocking that module, which the test-environment
+     rules forbid. The guard documents the client-only contract for the
+     no-window-in-ssr lint rule. Same shape as `useDatabase`'s isServer arm. */
   if (isServer) return
   const i = trapStack.lastIndexOf(frame)
   /* v8 ignore next — double-removal guard (detach is idempotent upstream). */
@@ -377,6 +404,11 @@ export function useFocusTrap(
   options?: UseFocusTrapOptions | boolean | (() => boolean),
 ): void {
   /* v8 ignore next — SSR/isServer guard; tests run with happy-dom */
+  /* v8 ignore next — `isServer` is a module-load constant from
+     @pyreon/reactivity and this suite runs under happy-dom, so the true side
+     is unreachable without mocking that module, which the test-environment
+     rules forbid. The guard documents the client-only contract for the
+     no-window-in-ssr lint rule. Same shape as `useDatabase`'s isServer arm. */
   if (isServer) return
 
   // Normalize the overloaded 2nd arg. A boolean / function is the `active`

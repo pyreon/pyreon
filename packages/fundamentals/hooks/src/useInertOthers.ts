@@ -87,9 +87,14 @@ function acquireInert(targets: HTMLElement[]): void {
 /** Release a hold; the LAST holder restores the exact prior state. */
 function releaseInert(targets: HTMLElement[]): void {
   for (const t of targets) {
+    /* v8 ignore next 2 — the no-such-entry pair, and ONLY that pair. `?? 0` and
+       the `count === 0` guard are one defensive shape: a release for a target
+       that was never held. Release paths are idempotent upstream (watch cleanup
+       runs once per application), so neither side is reachable from the public
+       API — the previous ignore covered the guard alone and left its `??`
+       counting. Keep the span at 2: a wider one silently swallows the
+       `count === 1` restore below, which is real logic with real tests. */
     const count = inertCounts.get(t) ?? 0
-    /* v8 ignore next — double-release guard; release paths are idempotent
-       upstream (watch cleanup runs once per application). */
     if (count === 0) continue
     if (count === 1) {
       inertCounts.delete(t)
