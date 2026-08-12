@@ -15,16 +15,20 @@ import {
 export type Rocketstyle = <
   const D extends Dimensions = DefaultDimensions,
   UB extends boolean = false,
->({
-  dimensions,
-  useBooleans,
-}?: {
-  dimensions?: D
-  useBooleans?: UB
-}) => <C extends ElementType>({
-  name,
-  component,
-}: {
+>(
+  // A NAMED optional param, not a destructuring pattern. Binding-pattern
+  // params in a function TYPE are documentary (the names are unreferenceable),
+  // but destructuring an OPTIONAL param (`{ … }?: { … }`) makes some
+  // TypeScript builds report `Property 'x' does not exist on type '{ … } |
+  // undefined'` — a cross-package typecheck of this src (e.g. `@pyreon/loom`
+  // importing rocketstyle) then fails, while rocketstyle's own build may not.
+  // The runtime impl below already destructures WITH defaults, so this is a
+  // type-only, behaviour-preserving change.
+  config?: {
+    dimensions?: D
+    useBooleans?: UB
+  },
+) => <C extends ElementType>(config: {
   name: string
   component: C
 }) => ReturnType<RocketComponent<C, {}, {}, D, UB>>
