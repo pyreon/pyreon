@@ -338,18 +338,28 @@ export function createI18n(options: I18nOptions): I18nInstance {
     const hasCount = !!values && 'count' in values
     const count = hasCount ? Number(values!.count) : undefined
 
-    // Try candidates most-specific first (context × plural × _zero), each
-    // against current locale then the fallback locale.
+    // Try candidates most-specific first (context × plural × _zero). Resolve
+    // ALL candidates in the ACTIVE locale before consulting the fallback — so
+    // an active-locale form (even a less-specific one, e.g. `items_other`) beats
+    // a fallback-ONLY more-specific form (e.g. `items_zero` present only in the
+    // fallback). Per-candidate current-then-fallback (the old order) let a
+    // fallback-locale plural form win over an active-locale one — a German user
+    // could see the English `items_zero` when German had `items_other`. This is
+    // i18next's resolution order (active locale exhausted first).
     const candidates = buildKeyCandidates(keyPath, currentLocale, context, hasCount, count, pluralRules)
     for (const candidate of candidates) {
-      let result = lookupKey(currentLocale, namespace, candidate)
-      if (result === undefined && fallbackLocale && fallbackLocale !== currentLocale) {
-        // Fires when the user-locale missed AND we're consulting fallbackLocale.
-        // Should be ~0 in well-translated apps; growing = missing translations.
-        if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('i18n.lookupKey.fallback')
-        result = lookupKey(fallbackLocale, namespace, candidate)
-      }
+      const result = lookupKey(currentLocale, namespace, candidate)
       if (result !== undefined) return finalize(result, values, currentLocale, depth)
+    }
+    if (fallbackLocale && fallbackLocale !== currentLocale) {
+      for (const candidate of candidates) {
+        // Fires when the active locale missed ALL candidates and we're consulting
+        // fallbackLocale. Should be ~0 in well-translated apps; growing = missing
+        // translations.
+        if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('i18n.lookupKey.fallback')
+        const result = lookupKey(fallbackLocale, namespace, candidate)
+        if (result !== undefined) return finalize(result, values, currentLocale, depth)
+      }
     }
 
     // Explicit default value (interpolated) before the key-as-fallback.
