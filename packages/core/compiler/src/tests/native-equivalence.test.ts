@@ -2196,3 +2196,19 @@ describeNative('Native vs JS equivalence — bare-signal attribute → _bindDire
       ['name'],
     ))
 })
+
+describeNative('ssrTemplate — a JSX-bearing prop-derived const is not inlined (parity)', () => {
+  // Both backends must REFUSE to inline here. Inlining splices PRE-transform
+  // source into an `_ssr` hole, so two sibling `.map()` callbacks swapped
+  // expressions and rendering died with `ReferenceError: p1 is not defined`.
+  // The DOM path still inlines — there it is what keeps a prop-derived value
+  // reactive — so the bail is scoped to SSR and the two backends must agree
+  // on exactly that scoping.
+  test('two sibling maps agree', () =>
+    compareSsrTemplate(
+      "function V(p){" +
+        "const edges=p.edges.map((e)=>{const p1=e.from;return <path d={`M ${p1.x}`}/>});" +
+        "const axis=p.depths.map((d,di)=><text x={String(di)}>{d===0?'E':`D ${d}`}</text>);" +
+        "return <svg><g>{axis}</g><g>{edges}</g></svg>}",
+    ))
+})
