@@ -224,6 +224,12 @@ jobs:
           PYREON_VALIDATE_NO_CACHE: ${{ github.event_name == 'schedule' && '1' || '0' }}
         run: bun run --filter='@pyreon/native-compiler' test
 
+      - name: Verify co-located native runtime sources
+        # Co-located native runtimes (@pyreon/<pkg>/native/{swift,kotlin}/) live
+        # outside @pyreon/native-runtime-*'s src/, so this gate compiles +
+        # smoke-runs them against the stub harness. Skips a toolchain gracefully.
+        run: bun scripts/check-native-cosource.ts
+
       - name: Scaffolded multiplatform app compiles for both targets
         # `create-multiplatform` is what `pyreon new --native` runs — the entry
         # point for every new native app — and it had NO end-to-end coverage.

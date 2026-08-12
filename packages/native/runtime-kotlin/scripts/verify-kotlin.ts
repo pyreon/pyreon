@@ -51,8 +51,17 @@ const PACKAGE_ROOT = resolve(HERE, '..')
 // collide. The workspace `test` script invokes this once per service.
 const SERVICE =
   process.argv.find((a) => a.startsWith('--service='))?.split('=')[1] ?? 'PyreonStorage'
-const SOURCE_FILE = resolve(PACKAGE_ROOT, `src/main/kotlin/com/pyreon/runtime/${SERVICE}.kt`)
-const TEST_FILE = resolve(PACKAGE_ROOT, `src/test/kotlin/com/pyreon/runtime/${SERVICE}Test.kt`)
+// `--source=<path>` / `--test=<path>` override the SERVICE-derived paths so the
+// harness can verify a CO-LOCATED runtime file (`@pyreon/<pkg>/native/kotlin/…`).
+// `--service` still selects the stub bundle. Used by scripts/check-native-cosource.ts.
+const SOURCE_OVERRIDE = process.argv.find((a) => a.startsWith('--source='))?.split('=')[1]
+const TEST_OVERRIDE = process.argv.find((a) => a.startsWith('--test='))?.split('=')[1]
+const SOURCE_FILE = SOURCE_OVERRIDE
+  ? resolve(SOURCE_OVERRIDE)
+  : resolve(PACKAGE_ROOT, `src/main/kotlin/com/pyreon/runtime/${SERVICE}.kt`)
+const TEST_FILE = TEST_OVERRIDE
+  ? resolve(TEST_OVERRIDE)
+  : resolve(PACKAGE_ROOT, `src/test/kotlin/com/pyreon/runtime/${SERVICE}Test.kt`)
 
 // CLI: `bun verify-kotlin.ts` runs the full path; `bun verify-kotlin.ts
 // --typecheck-only` skips the JAR bundling + smoke run (used by the
