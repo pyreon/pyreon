@@ -21,7 +21,8 @@
 // SwiftUI SDK). An EMPTY scan is a SKIP + warning, never a silent clean pass.
 
 import { execSync, spawnSync } from 'node:child_process'
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
 const ROOT = resolve(import.meta.dirname, '..')
@@ -112,8 +113,24 @@ if (pkgs.length === 0) {
 
 const kotlinc = has('kotlinc')
 const swiftc = has('swiftc')
+// On Linux CI `swiftc` EXISTS but the Apple SDK frameworks the co-located
+// runtimes import (SwiftUI, Observation) do NOT — a co-located `import SwiftUI`
+// file fails to compile there. Swift is verified on a real SDK by the macOS
+// "Validate emitted Swift (real-SDK typecheck)" job + the device gate; here we
+// only run the Swift half when the full SDK is present (macOS). Probe once.
+const swiftFullSdk =
+  swiftc &&
+  (() => {
+    try {
+      const probe = join(tmpdir(), `pyreon-swift-sdk-probe-${process.pid}.swift`)
+      writeFileSync(probe, 'import SwiftUI\nimport Observation\n')
+      return spawnSync('swiftc', ['-parse', probe], { encoding: 'utf8' }).status === 0
+    } catch {
+      return false
+    }
+  })()
 console.log(
-  `[check-native-cosource] ${pkgs.length} co-located package(s); kotlinc=${kotlinc} swiftc=${swiftc}`,
+  `[check-native-cosource] ${pkgs.length} co-located package(s); kotlinc=${kotlinc} swiftc=${swiftc} swiftFullSdk=${swiftFullSdk}`,
 )
 
 const verifyKotlin = join(ROOT, 'packages', 'native', 'runtime-kotlin', 'scripts', 'verify-kotlin.ts')
@@ -148,8 +165,10 @@ for (const pkg of pkgs) {
 
   // --- Swift ---
   if (pkg.swiftDir) {
-    if (!swiftc) {
-      console.log(`  ${pkg.name} [swift]: swiftc absent — skipped`)
+    if (!swiftFullSdk) {
+      console.log(
+        `  ${pkg.name} [swift]: full Swift SDK (SwiftUI/Observation) absent — skipped (macOS real-SDK job + device gate verify)`,
+      )
     } else {
       const srcFiles = filesUnder(pkg.swiftDir, '.swift')
       const testFiles = pkg.testsDir ? filesUnder(pkg.testsDir, '.swift') : []
