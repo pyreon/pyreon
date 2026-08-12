@@ -843,7 +843,8 @@ export const NATIVE_LOWERED_HOOKS: ReadonlySet<string> = new Set([
   'useDatabase', 'useFetch', 'useFieldArray', 'useFilePicker', 'useForm', 'useGeolocation',
   'useHaptics', 'useImagePicker', 'useLinking', 'useLoaderData', 'useMap',
   'useNativeModule', 'useNavigate', 'useNotifications', 'useOnline',
-  'useParams', 'usePayments', 'usePermissions', 'usePush', 'useSecureStorage',
+  'useParams', 'usePayments', 'usePermissions', 'usePush', 'useQuery',
+  'useSecureStorage',
   'useShare', 'useSizeClass', 'useStorage', 'useWebSocket',
 ])
 
@@ -3944,6 +3945,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // alias).
   const DESTRUCTURE_CONTAINER_HOOKS = new Set([
     'useFetch',
+    'useQuery',
     'useForm',
     'useClipboard',
     'useStorage',
@@ -4615,6 +4617,88 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
 
     return { kind: 'fetch', name, type, url: urlArg.value, ...req }
   }
+  // `useQuery<T>(() => ({ queryKey, queryFn, staleTime }))` from @pyreon/query
+  // — useFetch + a keyed cache. v1 (conservative, same literal-only rule as
+  // useFetch): queryKey = array of string/number literals (colon-joined into
+  // the cache key); queryFn = inline `() => fetch('<url-literal>')`; staleTime
+  // = number literal (ms). Anything else WARNS and bails to undeclared, so the
+  // hook-arc's "no native lowering" diagnostic still fires rather than the
+  // emit mis-lowering a shape it can't honour.
+  if (calleeName === 'useQuery') {
+    const type = parseGenericTypeArg(init, ctx)
+    if (type.kind === 'unknown') {
+      ctx.warnings.push(
+        `Declaration ${name}: useQuery without a response type lowers to a decode of Any on Swift, which does NOT compile — Any cannot conform to Decodable. Give it the shape you expect: useQuery<Response>(() => ({ … })). Kotlin compiles either way, so this breaks iOS only.`,
+      )
+      return null
+    }
+    const optsFn = init.arguments?.[0] as AnyNode | undefined
+    if (!optsFn || optsFn.type !== 'ArrowFunctionExpression') {
+      ctx.warnings.push(
+        `Declaration ${name}: useQuery expects an options function \`() => ({ queryKey, queryFn, staleTime })\`; got ${optsFn?.type ?? 'nothing'}. The @pyreon/query hooks take options as a FUNCTION so queryKey can read signals.`,
+      )
+      return null
+    }
+    const optsObj = arrowReturnedObject(optsFn)
+    if (!optsObj) {
+      ctx.warnings.push(
+        `Declaration ${name}: useQuery options function must return an object literal \`({ queryKey, queryFn, staleTime })\` to lower to native.`,
+      )
+      return null
+    }
+    let queryKey: string | undefined
+    let url: string | undefined
+    let staleMillis = 0
+    const req: { method?: string; headers?: Record<string, string>; body?: string } = {}
+    for (const prop of (optsObj.properties as AnyNode[] | undefined) ?? []) {
+      if (prop.type !== 'Property' || prop.computed) continue
+      const key =
+        prop.key?.type === 'Identifier'
+          ? prop.key.name
+          : typeof prop.key?.value === 'string'
+            ? prop.key.value
+            : undefined
+      if (!key) continue
+      if (key === 'queryKey') {
+        const k = tryQueryKeyString(prop.value)
+        if (k === undefined) {
+          ctx.warnings.push(
+            `Declaration ${name}: useQuery queryKey must be an array of string/number literals to lower to native (v1); got a non-literal. A reactive key (\`['todo', id()]\`) is a tracked follow-up.`,
+          )
+          return null
+        }
+        queryKey = k
+      } else if (key === 'queryFn') {
+        const f = tryQueryFnFetch(prop.value)
+        if (f === undefined) {
+          ctx.warnings.push(
+            `Declaration ${name}: useQuery queryFn must be an inline \`() => fetch('<url-literal>')\` to lower to native (v1); a function reference or a non-literal fetch URL is a tracked follow-up.`,
+          )
+          return null
+        }
+        url = f.url
+        // An inline `fetch(url, { method, headers, body })` routes through
+        // PyreonHttp (mirroring useFetch); a bare `fetch(url)` stays a GET.
+        if (f.init) Object.assign(req, parseFetchInitObject(f.init, name, ctx))
+      } else if (key === 'staleTime') {
+        const v = prop.value as AnyNode | undefined
+        if ((v?.type === 'Literal' || v?.type === 'NumericLiteral') && typeof v.value === 'number') {
+          staleMillis = v.value
+        } else if (v) {
+          ctx.warnings.push(
+            `Declaration ${name}: useQuery staleTime must be a number literal (ms) to lower to native; got ${v.type}. Defaulting to 0 (always revalidate, serving the stale value instantly).`,
+          )
+        }
+      }
+    }
+    if (queryKey === undefined || url === undefined) {
+      ctx.warnings.push(
+        `Declaration ${name}: useQuery needs both a literal queryKey and an inline fetch queryFn to lower to native (v1).`,
+      )
+      return null
+    }
+    return { kind: 'query', name, type, url, queryKey, staleMillis, ...req }
+  }
   // Phase 4.2 — `useForm({ initialValues })` from @pyreon/form. The config
   // arg is optional; when present we capture the string-keyed literal
   // `initialValues` to seed the native PyreonForm container. `onSubmit` /
@@ -4997,6 +5081,179 @@ const RX_V1_METHODS = new Set([
  * recognition chain. Unknown methods get a directed warning instead of
  * the original silent-drop — strictly better than `main`.
  */
+
+// --- useQuery options-function extraction (v1) --------------------------------
+
+/**
+ * The object literal an arrow function returns, for both the concise form
+ * `() => ({ … })` and the block form `() => { return { … } }`. Returns
+ * undefined for anything else (so the caller warns + bails).
+ */
+function arrowReturnedObject(arrow: AnyNode): AnyNode | undefined {
+  const body = arrow?.body
+  if (!body) return undefined
+  // Concise: `() => ({...})` — the body IS the ObjectExpression (the parens are
+  // grouping the parser drops). Some parsers wrap in ParenthesizedExpression.
+  if (body.type === 'ObjectExpression') return body
+  if (body.type === 'ParenthesizedExpression' && body.expression?.type === 'ObjectExpression') {
+    return body.expression
+  }
+  // Block: `() => { return {...} }` — find the (single) return of an object.
+  if (body.type === 'BlockStatement') {
+    for (const st of (body.body as AnyNode[] | undefined) ?? []) {
+      if (st.type === 'ReturnStatement') {
+        const arg = st.argument
+        if (arg?.type === 'ObjectExpression') return arg
+        if (arg?.type === 'ParenthesizedExpression' && arg.expression?.type === 'ObjectExpression') {
+          return arg.expression
+        }
+      }
+    }
+  }
+  return undefined
+}
+
+/**
+ * Colon-join a `queryKey` array of string/number literals into the native
+ * cache key. `['todos', 5]` → `"todos:5"`. Returns undefined if the node is
+ * not an array of literals (v1 rejects reactive/computed keys).
+ */
+function tryQueryKeyString(node: AnyNode): string | undefined {
+  if (!node || node.type !== 'ArrayExpression') return undefined
+  const parts: string[] = []
+  for (const el of (node.elements as AnyNode[] | undefined) ?? []) {
+    if (!el) return undefined
+    const isLit = el.type === 'Literal' || el.type === 'StringLiteral' || el.type === 'NumericLiteral'
+    if (!isLit || (typeof el.value !== 'string' && typeof el.value !== 'number')) return undefined
+    parts.push(String(el.value))
+  }
+  if (parts.length === 0) return undefined
+  return parts.join(':')
+}
+
+/**
+ * Extract the literal URL + optional init object from an inline
+ * `queryFn: () => fetch('<url>', { method, headers, body })` (also
+ * `() => fetch('<url>').then(r => r.json())`, or a block body returning one).
+ * Walks the arrow's body for the first `fetch(<string-literal>, init?)` call.
+ * Returns `{ url, init }` (init = the second-argument AST node, if any), or
+ * undefined for a function reference or a non-literal fetch URL (v1 follow-up).
+ */
+function tryQueryFnFetch(node: AnyNode): { url: string; init?: AnyNode } | undefined {
+  if (
+    !node ||
+    (node.type !== 'ArrowFunctionExpression' && node.type !== 'FunctionExpression')
+  ) {
+    return undefined
+  }
+  let found: { url: string; init?: AnyNode } | undefined
+  const visit = (n: AnyNode): void => {
+    if (found || !n || typeof n !== 'object') return
+    if (
+      n.type === 'CallExpression' &&
+      n.callee?.type === 'Identifier' &&
+      n.callee.name === 'fetch'
+    ) {
+      const arg = n.arguments?.[0]
+      if (
+        (arg?.type === 'Literal' || arg?.type === 'StringLiteral') &&
+        typeof arg.value === 'string'
+      ) {
+        found = { url: arg.value, init: n.arguments?.[1] }
+        return
+      }
+    }
+    for (const key of Object.keys(n)) {
+      if (key === 'type' || key === 'loc' || key === 'range' || key === 'start' || key === 'end') {
+        continue
+      }
+      const child = (n as Record<string, AnyNode>)[key]
+      if (Array.isArray(child)) {
+        for (const c of child) visit(c)
+      } else if (child && typeof child === 'object') {
+        visit(child)
+      }
+    }
+  }
+  visit(node.body)
+  return found
+}
+
+/**
+ * Parse a `fetch(url, { method, headers, body })` init object into the literal
+ * request fields. Mirrors the useFetch rule: literals are baked, anything
+ * non-literal WARNS (a silently-wrong verb/body is worse than a missing
+ * feature). Returns the request fields; a missing/non-object init → GET.
+ */
+function parseFetchInitObject(
+  initNode: AnyNode,
+  name: string,
+  ctx: ParseCtx,
+): { method?: string; headers?: Record<string, string>; body?: string } {
+  const req: { method?: string; headers?: Record<string, string>; body?: string } = {}
+  if (!initNode) return req
+  if (initNode.type !== 'ObjectExpression') {
+    ctx.warnings.push(
+      `Declaration ${name}: useQuery queryFn fetch init must be an object literal to lower to native; got ${initNode.type}. The request will be a plain GET.`,
+    )
+    return req
+  }
+  for (const prop of (initNode.properties as AnyNode[] | undefined) ?? []) {
+    if (prop.type !== 'Property' || prop.computed) continue
+    const key =
+      prop.key?.type === 'Identifier'
+        ? prop.key.name
+        : typeof prop.key?.value === 'string'
+          ? prop.key.value
+          : undefined
+    if (!key) continue
+    const value = prop.value as AnyNode | undefined
+    const isStringLit =
+      (value?.type === 'Literal' || value?.type === 'StringLiteral') &&
+      typeof value.value === 'string'
+    if (key === 'method') {
+      if (!isStringLit) {
+        ctx.warnings.push(
+          `Declaration ${name}: useQuery queryFn fetch method must be a string literal to lower to native; got ${value?.type ?? 'nothing'}. The request will be a plain GET.`,
+        )
+        continue
+      }
+      req.method = String(value!.value).toUpperCase()
+    } else if (key === 'body') {
+      if (!isStringLit) {
+        ctx.warnings.push(
+          `Declaration ${name}: useQuery queryFn fetch body must be a string literal to lower to native; got ${value?.type ?? 'nothing'}. The request will be sent with NO body.`,
+        )
+        continue
+      }
+      req.body = String(value!.value)
+    } else if (key === 'headers') {
+      if (value?.type !== 'ObjectExpression') {
+        ctx.warnings.push(
+          `Declaration ${name}: useQuery queryFn fetch headers must be an object literal to lower to native; got ${value?.type ?? 'nothing'}. Headers will be omitted.`,
+        )
+        continue
+      }
+      const headers: Record<string, string> = {}
+      for (const h of (value.properties as AnyNode[] | undefined) ?? []) {
+        if (h.type !== 'Property' || h.computed) continue
+        const hk =
+          h.key?.type === 'Identifier'
+            ? h.key.name
+            : typeof h.key?.value === 'string'
+              ? h.key.value
+              : undefined
+        const hv = h.value
+        if (hk && (hv?.type === 'Literal' || hv?.type === 'StringLiteral') && typeof hv.value === 'string') {
+          headers[hk] = hv.value
+        }
+      }
+      if (Object.keys(headers).length > 0) req.headers = headers
+    }
+  }
+  return req
+}
+
 function tryRxNamespaceLowering(
   name: string,
   init: AnyNode,

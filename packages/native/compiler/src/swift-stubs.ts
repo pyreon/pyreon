@@ -630,6 +630,31 @@ public final class PyreonFetch<T> {
   public func load(_ fetcher: @escaping () throws -> T) {}
   public func refetch() {}
 }
+// PyreonQuery — the cached data container a \`useQuery\` decl emits. Mirrors
+// runtime-swift's PyreonQuery.swift: \`data\`/\`error\`/\`isPending\`/\`isFetching\`
+// are private(set) (driven via begin/resolve/reject), \`isStale\` is a computed
+// getter the emit's \`.task\` reads, and the init takes \`queryKey\` +
+// defaulted \`staleSeconds\`. A superset stub would MASK a real mismatch, so
+// the signatures track the runtime exactly.
+public final class PyreonQueryCache {
+  public static let shared = PyreonQueryCache()
+  public init() {}
+  public func invalidate(_ key: String) {}
+  public func clearAll() {}
+}
+public final class PyreonQuery<T> {
+  public private(set) var data: T?
+  public private(set) var error: Error?
+  public private(set) var isPending: Bool = false
+  public private(set) var isFetching: Bool = false
+  public var isStale: Bool { true }
+  public init(queryKey: String, staleSeconds: TimeInterval = 0, cache: PyreonQueryCache = .shared) {}
+  public func begin() {}
+  public func resolve(_ value: T) {}
+  public func reject(_ failure: Error) {}
+  public func load(_ fetcher: @escaping () throws -> T) {}
+  public func refetch() {}
+}
 // PyreonHttp — what a \`useFetch(url, { method, headers, body })\` decl emits.
 // Mirrors the REAL PyreonHttp.swift surface exactly (a superset stub masks):
 // \`send\` is \`async throws\`, \`isOK\` is capitalised where Kotlin's is \`isOk\`,

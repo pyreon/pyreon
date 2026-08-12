@@ -185,6 +185,44 @@ export type DeclIR =
       body?: string
     }
   /**
+   * `useQuery<T>(() => ({ queryKey, queryFn, staleTime }))` from
+   * `@pyreon/query` (the native subset). The delta over `useFetch` is exactly
+   * what a query library adds over a bare fetch: a KEYED CACHE with
+   * stale-while-revalidate. Emits a `PyreonQuery<T>` reactive container plus a
+   * mount-time async harness that runs the fetch ONLY when the cached value is
+   * stale, driving the same `begin/resolve/reject` state machine:
+   *   Swift  →  @State private var q = PyreonQuery<T>(queryKey: "…", staleSeconds: N)
+   *             + `.task { if q.isStale { begin(); resolve(await …); } }`
+   *   Kotlin →  val q = remember { PyreonQuery<T>(queryKey = "…", staleMillis = N) }
+   *             + `LaunchedEffect(Unit) { if (q.isStale) { begin(); resolve(…) } }`
+   *
+   * v1 scope (conservative, same rule as `useFetch`): `queryKey` is an array
+   * of STRING/NUMBER literals (colon-joined into the cache key); `queryFn` is
+   * an inline `() => fetch('<url-literal>')` whose URL literal is baked;
+   * `staleTime` is a number literal (ms). Anything else warns and bails.
+   */
+  | {
+      kind: 'query'
+      name: string
+      /** The decoded result type `T` (from the generic arg). */
+      type: TypeIR
+      /** The literal fetch URL extracted from `queryFn`'s `fetch(...)` call. */
+      url: string
+      /** The cache key — the `queryKey` array's literals colon-joined. */
+      queryKey: string
+      /** `staleTime` in milliseconds (Swift converts to seconds). 0 = always
+       *  revalidate, but serve the stale value instantly. */
+      staleMillis: number
+      /** HTTP verb from an inline `fetch(url, { method })` in queryFn. Absent =
+       *  GET (the bare URLSession/readText path); present routes through
+       *  PyreonHttp, exactly like useFetch. */
+      method?: string
+      /** Literal `{ 'Content-Type': 'application/json' }` header pairs. */
+      headers?: Record<string, string>
+      /** Literal request body (only a string literal survives). */
+      body?: string
+    }
+  /**
    * Phase 4.2 — form state via `useForm({ initialValues })` from
    * `@pyreon/form` (the native subset). Emits a `PyreonForm` reactive
    * container:

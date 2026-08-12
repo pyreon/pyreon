@@ -1266,8 +1266,11 @@ function emitKotlinComponent(c: ComponentIR): string {
     if (d.kind === 'router-hook' && d.hook === 'navigate') {
       _functionNames.add(d.name)
     }
-    // Phase 4: track useFetch decls so member reads append `.value`.
-    if (d.kind === 'fetch') _fetchNames.add(d.name)
+    // Phase 4: track useFetch AND useQuery decls so member reads append
+    // `.value`. PyreonQuery shares data/error/isPending (+ adds isFetching)
+    // with PyreonFetch and behaves identically under Suspense/ErrorBoundary
+    // and the destructure alias, so both live in the async-container set.
+    if (d.kind === 'fetch' || d.kind === 'query') _fetchNames.add(d.name)
     // Phase 4.2: track useForm decls so reactive-field reads append `.value`.
     if (d.kind === 'form') _formNames.add(d.name)
     if (d.kind === 'network-status') _netStatusNames.add(d.name)
@@ -1448,6 +1451,51 @@ function emitKotlinComponent(c: ComponentIR): string {
       lines.push(`      ${name}.resolve(PyreonFetchJson.decodeFromString<${kotlinType(d.type, ctx)}>(body))`)
     }
     lines.push(`    } catch (e: Throwable) { ${name}.reject(e) }`)
+    lines.push(`  }`)
+  }
+  // useQuery: a `LaunchedEffect(Unit)` per decl, guarded on `isStale` so a
+  // FRESH cache hit skips the network entirely (serving the hydrated value).
+  // The stale/miss path drives the same begin → resolve|reject machine as
+  // useFetch — a background refresh of already-cached data flips only
+  // isFetching, never isPending, so the UI never blanks.
+  for (const d of c.decls) {
+    if (d.kind !== 'query') continue
+    const name = kotlinIdent(d.name)
+    lines.push(`  LaunchedEffect(Unit) {`)
+    lines.push(`    if (${name}.isStale) {`)
+    lines.push(`      ${name}.begin()`)
+    lines.push(`      try {`)
+    if (d.method || d.headers || d.body) {
+      // Mirrors the Swift PyreonHttp branch: a request with a VERB, headers, or
+      // a body goes through PyreonHttp (readText() can express none of them).
+      const parts = [
+        `method = PyreonHttpMethod.${(d.method ?? 'GET').toUpperCase()}`,
+        `url = ${JSON.stringify(d.url)}`,
+      ]
+      if (d.headers) {
+        const pairs = Object.entries(d.headers)
+          .map(([k, v]) => `${JSON.stringify(k)} to ${JSON.stringify(v)}`)
+          .join(', ')
+        parts.push(`headers = mapOf(${pairs})`)
+      }
+      if (d.body !== undefined) parts.push(`body = ${JSON.stringify(d.body)}`)
+      lines.push(`        val __response = withContext(Dispatchers.IO) {`)
+      lines.push(`          PyreonHttp.send(PyreonHttpRequest(${parts.join(', ')}))`)
+      lines.push(`        }`)
+      lines.push(`        if (!__response.isOk) throw PyreonHttpError.BadStatus(__response.status)`)
+      lines.push(
+        `        ${name}.resolve(PyreonFetchJson.decodeFromString<${kotlinType(d.type, ctx)}>(__response.body))`,
+      )
+    } else {
+      lines.push(
+        `        val body = withContext(Dispatchers.IO) { java.net.URL(${JSON.stringify(d.url)}).readText() }`,
+      )
+      lines.push(
+        `        ${name}.resolve(PyreonFetchJson.decodeFromString<${kotlinType(d.type, ctx)}>(body))`,
+      )
+    }
+    lines.push(`      } catch (e: Throwable) { ${name}.reject(e) }`)
+    lines.push(`    }`)
     lines.push(`  }`)
   }
   // While emitting a layout's body, its `<RouterView />` emits `content()`.
@@ -1652,6 +1700,12 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // The LaunchedEffect harness that runs it is emitted by emitKotlinComponent.
   if (d.kind === 'fetch') {
     return `val ${kotlinIdent(d.name)} = remember { PyreonFetch<${kotlinType(d.type, ctx)}>() }`
+  }
+  // `const q = useQuery<T>(() => ({ queryKey, queryFn, staleTime }))` → a
+  // remembered PyreonQuery<T> seeded with the cache key + staleMillis. The
+  // LaunchedEffect harness (isStale-guarded) is emitted by emitKotlinComponent.
+  if (d.kind === 'query') {
+    return `val ${kotlinIdent(d.name)} = remember { PyreonQuery<${kotlinType(d.type, ctx)}>(queryKey = ${JSON.stringify(d.queryKey)}, staleMillis = ${d.staleMillis}L) }`
   }
   // Phase 4.2: `const form = useForm({ initialValues })` → a remembered
   // PyreonForm seeded with the literal defaults. No harness (pure state).
@@ -2836,6 +2890,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         _fetchNames.has(e.callee.object.name) &&
         (e.callee.property === 'data' ||
           e.callee.property === 'isPending' ||
+          e.callee.property === 'isFetching' ||
           e.callee.property === 'error')
       ) {
         return `${kotlinIdent(e.callee.object.name)}.${e.callee.property}.value`
@@ -3530,7 +3585,10 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       if (
         e.object.kind === 'identifier' &&
         _fetchNames.has(e.object.name) &&
-        (e.property === 'data' || e.property === 'error' || e.property === 'isPending')
+        (e.property === 'data' ||
+          e.property === 'error' ||
+          e.property === 'isPending' ||
+          e.property === 'isFetching')
       ) {
         return `${kotlinIdent(e.object.name)}.${e.property}.value`
       }
