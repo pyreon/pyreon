@@ -158,6 +158,31 @@ describe('createI18n', () => {
     expect(i18n.t('items', { count: 5 })).toBe('5 items')
   })
 
+  it('an ACTIVE-locale plural form beats a fallback-only more-specific form', () => {
+    // Regression: resolution tried current-then-fallback PER candidate, so a
+    // more-specific form present ONLY in the fallback (`items_zero` in en) beat
+    // a less-specific form present in the ACTIVE locale (`items_other` in de) —
+    // a German user saw the English "No items" at count 0 instead of German
+    // "0 Elemente". Active locale must be exhausted before the fallback.
+    const i18n = createI18n({
+      locale: 'de',
+      fallbackLocale: 'en',
+      messages: {
+        en: { items_zero: 'No items', items_other: '{{count}} items' },
+        de: { items_other: '{{count}} Elemente' }, // no items_zero in German
+      },
+    })
+    // count 0: de has no items_zero, but de HAS items_other → German wins.
+    expect(i18n.t('items', { count: 0 })).toBe('0 Elemente') // was 'No items'
+    // A key entirely missing from de still falls back to en (unchanged).
+    const i18n2 = createI18n({
+      locale: 'de',
+      fallbackLocale: 'en',
+      messages: { en: { greeting: 'Hello' }, de: {} },
+    })
+    expect(i18n2.t('greeting')).toBe('Hello')
+  })
+
   it('reactively updates when locale changes', () => {
     const i18n = createI18n({
       locale: 'en',
