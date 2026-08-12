@@ -24,8 +24,10 @@
  */
 
 import { mkdir, rename, unlink, writeFile } from 'node:fs/promises'
+import type { PyreonPluginOptions } from '@pyreon/vite-plugin'
 import type { BuildOptions, Plugin } from 'vite'
 import { _enterInnerBuild, _exitInnerBuild } from './build-flags'
+import { innerPyreonOptions } from './inner-pyreon-options'
 import type { ZeroConfig } from './types'
 
 /**
@@ -265,7 +267,8 @@ export async function buildSsrBundle(options: BuildSsrBundleOptions): Promise<vo
       import('./vite-plugin'),
       import('@pyreon/vite-plugin'),
     ])
-    const pyreon = (pyreonModule as { default: () => unknown }).default
+    const pyreon = (pyreonModule as { default: (options?: PyreonPluginOptions) => unknown })
+      .default
 
     // Forward user-supplied plugins from the outer Vite config so non-
     // zero plugins (most importantly @pyreon/zero-content's content()
@@ -348,7 +351,28 @@ export async function buildSsrBundle(options: BuildSsrBundleOptions): Promise<vo
       // Also pass at top-level for any non-zero consumer that reads
       // `resolvedConfig.base` directly (forwarded plugins, etc.).
       ...(options.base !== undefined ? { base: options.base } : {}),
-      plugins: [pyreon(), zeroPlugin(innerZeroConfig), ...userPlugins] as Plugin[],
+      // The pyreon plugin is re-CONSTRUCTED rather than forwarded (its
+      // `configResolved` would rewrite captured output paths — see category 1
+      // above), so the user's transform options have to be carried across by
+      // hand. Not all of them may cross: `ssr.entry` would replace the
+      // synthetic entry this build exists to compile. See
+      // `inner-pyreon-options.ts` for the per-option split and why it is typed
+      // as a total Record.
+      plugins: [
+        pyreon(innerPyreonOptions(options.userPlugins)),
+        zeroPlugin(innerZeroConfig),
+        ...userPlugins,
+      ] as Plugin[],
+      // NOTE this REPLACES the user's whole `resolve` block, so a
+      // `resolve.alias` from their vite.config (e.g. `chartsViteAlias()`) does
+      // not reach this build. Measured on `examples/hn-clone`, which is exactly
+      // that combination (`mode: 'ssg'` + `chartsViteAlias()` + a route
+      // importing `@pyreon/charts`): the build prerenders all 13 pages and
+      // exits 0, because the charts runtime is lazily imported and the SSR
+      // graph never has to resolve `tslib`. So this is an un-threaded surface,
+      // NOT a known failure — if an alias ever turns out to be load-bearing for
+      // a prerendered route, thread it the way `base` / `assetsInlineLimit` /
+      // `assetsDir` are threaded above, each with the bug that motivated it.
       resolve: { conditions: ['bun'] },
       build: buildInnerBuildOptions(options),
     })

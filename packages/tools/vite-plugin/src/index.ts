@@ -81,6 +81,18 @@ const ISLANDS_REGISTRY_IMPORT = 'virtual:pyreon/islands-registry'
 
 export type CompatFramework = 'react' | 'preact' | 'vue' | 'solid' | 'svelte'
 
+/**
+ * What the `pyreon` plugin publishes on its Vite `api` field.
+ *
+ * Read it by finding the plugin by name in a resolved config's `plugins`
+ * array. `@pyreon/zero` uses this to carry the user's transform options into
+ * the nested SSR/SSG sub-build it runs over the same source.
+ */
+export interface PyreonPluginApi {
+  /** Exactly the options the instance was constructed with. */
+  pyreonOptions: PyreonPluginOptions
+}
+
 export interface PyreonPluginOptions {
   /**
    * Alias imports from an existing framework to Pyreon's compat layer.
@@ -729,6 +741,26 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
   return {
     name: 'pyreon',
     enforce: 'pre',
+
+    /**
+     * The options this instance was constructed with, readable by another
+     * plugin off `config.plugins`.
+     *
+     * `@pyreon/zero`'s SSG/SSR modes run a NESTED Vite build over the same user
+     * source, and that inner build cannot reuse the outer plugin INSTANCE
+     * (its `configResolved` would rewrite captured output paths — see
+     * `ssr-build-shared.ts`). It therefore constructs a fresh `pyreon()`, which
+     * for a long time was called with NO arguments — so every transform option
+     * the user set silently did not apply to the SSR graph. `ssrTemplate` was
+     * the sharpest case: it exists ONLY to shape the SSR emit, and the SSR pass
+     * was the one place it was dropped.
+     *
+     * Exposed here rather than re-derived so there is a single source of truth.
+     * zero decides WHICH of these may cross into a nested build (not all may —
+     * `ssr.entry` would replace the synthetic entry); see
+     * `inner-pyreon-options.ts` for that split.
+     */
+    api: { pyreonOptions: options ?? {} } satisfies PyreonPluginApi,
 
     config(userConfig, env) {
       isBuild = env.command === 'build'
