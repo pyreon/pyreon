@@ -69,5 +69,11 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "pyreon": {
+    "native": {
+      "swift": "native/swift",
+      "kotlin": "native/kotlin"
+    }
   }
 }

@@ -2,8 +2,13 @@
 "@pyreon/sync": minor
 ---
 
-feat(sync): dependency-free LWW CRDT engine + pure-JS client transport (`pyreonAdapter` / `connectPyreonSync`) — the foundation for multiplatform sync
+feat(sync): multiplatform LWW CRDT — dependency-free JS engine + transport + native iOS/Android ports (wire-compatible, converging)
 
-A pure-TS last-writer-wins CRDT engine implementing the engine-neutral `CrdtAdapter` seam with **no `yjs` dependency**, plus a pure-JS client transport (JSON ops over any string duplex — WebSocket, WebView bridge, in-memory). Each register carries a Lamport-clock timestamp + the writing actor's id; merge is deterministic (higher clock wins, equal clock → higher actor id) — a state-based CvRDT, so merging full states or any op subset, in any order, with duplicates, always converges (offline-then-reconnect is just another merge). Scope matches the v1 seam: flat key → scalar registers; rich `Y.Text`/`Y.Array` stay on `@pyreon/sync/yjs`.
+The foundation for 1:1 multiplatform sync. A pure last-writer-wins CRDT engine implementing the engine-neutral `CrdtAdapter` seam, with **no `yjs`** — shipped as THREE wire-compatible engines that converge with each other:
 
-Why it matters: PMTC compiles UI + signals, not general algorithm code, so a CRDT engine can't cross by source compilation — the 1:1 path runs the SAME JS engine + transport in a native JS runtime (JavaScriptCore) bridged to native signals, and a tiny dependency-free engine is what embeds cleanly there. It also gives web apps a zero-`yjs` scalar-map option today. `pyreonAdapter()` / `connectPyreonSync(doc, channel)` are the entry points; convergence is bisect-covered at both the engine and wire levels.
+- **Web/JS** (`pyreonAdapter`) + a pure-JS client transport (`connectPyreonSync`, JSON ops over any string duplex) + a `NativeSyncHost` bridge contract. `syncedSignal` runs over it end-to-end.
+- **iOS** (`PyreonCrdt.swift`) and **Android** (`PyreonCrdt.kt`) native ports — same `{ ops: [{ map, key, value, clock, actor }] }` wire format, same deterministic LWW merge (higher Lamport clock wins; equal clock → higher actor id), hand-written JSON codec (compiles against the minimal native stubs).
+
+All three converge: concurrent-offline writes resolve to the same winner on every peer, higher-clock-wins, order/duplicate-insensitive, no echo. Verified end to end — JS suite (bisect-covered specs) + the native co-source gate compiles and RUNS the Swift + Kotlin convergence tests (including decoding a web-format message). Scope matches the v1 seam: flat key → scalar registers; rich `Y.Text`/`Y.Array` stay on `@pyreon/sync/yjs`.
+
+PMTC compiles UI + signals, not engine logic, so a CRDT engine can't cross by source compilation — hence real native ports behind the seam (the `PyreonWebSocket`/`PyreonHttp` pattern), giving an iOS/Android/web peer 1:1 convergence over one protocol. Remaining: the reactive UI binding (`@Observable`/`mutableStateOf`) + `PyreonWebSocket` transport wiring + a device convergence test.

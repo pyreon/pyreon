@@ -29,6 +29,12 @@ export {
   type WebSocketCtor as PyreonSyncWebSocketCtor,
   type WebSocketLike,
 } from './crdt/pyreon-sync-transport'
+export {
+  createNativeSyncHost,
+  type NativeSyncHost,
+  type NativeSyncHostOptions,
+} from './crdt/native-bridge'
+
 
 // ─── In-memory adapter (tests / no-engine usage) ────────────────────────────
 // The dependency-free adapter for unit-testing synced stores without standing
