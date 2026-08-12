@@ -54,6 +54,15 @@ describe('collections — plain values', () => {
     expect(sorted[0]!.id).toBe(1)
   })
 
+  it('sortBy a NUMERIC key sorts numerically, not lexicographically (multi-digit)', () => {
+    // Regression: the keyof branch String-coerced the key, so numeric fields
+    // sorted lexicographically — `[2, 10, 1, 9]` → `[1, 10, 2, 9]`. Multi-digit
+    // values are required to surface it (single-digit fixtures mask the bug).
+    const products = [{ price: 2 }, { price: 10 }, { price: 1 }, { price: 9 }]
+    expect(sortBy(products, 'price').map((p) => p.price)).toEqual([1, 2, 9, 10])
+    expect(sortBy(products, 'price', 'desc').map((p) => p.price)).toEqual([10, 9, 2, 1])
+  })
+
   it('groupBy', () => {
     const groups = groupBy(users, 'role')
     expect(groups.admin).toHaveLength(2)
@@ -104,6 +113,13 @@ describe('collections — plain values', () => {
     expect(result).toHaveLength(2)
     expect(result[0]!.name).toBe('Charlie')
     expect(result[1]!.name).toBe('Diana')
+  })
+
+  it('last(x, 0) returns [] (not the whole array via slice(-0))', () => {
+    // Regression: `arr.slice(-0)` === `arr.slice(0)` returns a FULL copy, so
+    // `last(items, 0)` surfaced the entire list instead of nothing.
+    expect(last([1, 2, 3], 0)).toEqual([])
+    expect(last(users, 0)).toEqual([])
   })
 
   it('mapValues', () => {

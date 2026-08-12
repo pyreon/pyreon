@@ -68,7 +68,18 @@ export function sortBy<T>(
   key: KeyOf<T>,
   direction: 'asc' | 'desc' = 'asc',
 ): any {
-  const getKey = resolveKey(key)
+  // Sort on the RAW key value, NOT `resolveKey`'s String-coerced one — else a
+  // numeric field compared as a string sorts lexicographically (`[1, 10, 2]`
+  // instead of `[1, 2, 10]`). The `keyof` branch returns `item[key]` uncoerced
+  // (a number stays a number, so `<`/`>` compare numerically); the function
+  // branch already returns the raw selector value. `resolveKey` stays coercive
+  // for the other consumers (groupBy/keyBy/… genuinely want string record keys).
+  const getKey =
+    typeof key === 'function'
+      ? key
+      : // `item[key]` is `T[keyof T]`; a sort key is a comparable primitive by
+        // contract (same shape the function branch's `string | number` promises).
+        (item: T) => item[key] as unknown as string | number
   const flip = direction === 'desc' ? -1 : 1
   return reactive(source, (arr: T[]) =>
     [...arr].sort((a, b) => {
@@ -236,7 +247,9 @@ export function skip<T>(source: ReadableSignal<T[]> | T[], n: number): any {
 export function last<T>(source: ReadableSignal<T[]>, n: number): ReturnType<typeof computed<T[]>>
 export function last<T>(source: T[], n: number): T[]
 export function last<T>(source: ReadableSignal<T[]> | T[], n: number): any {
-  return reactive(source, (arr: T[]) => arr.slice(-n))
+  // Guard n <= 0: `slice(-0)` === `slice(0)` returns the WHOLE array, so
+  // `last(items, 0)` would surface the entire list instead of nothing.
+  return reactive(source, (arr: T[]) => (n <= 0 ? [] : arr.slice(-n)))
 }
 
 /**
