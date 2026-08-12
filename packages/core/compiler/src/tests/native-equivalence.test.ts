@@ -2197,7 +2197,7 @@ describeNative('Native vs JS equivalence — bare-signal attribute → _bindDire
     ))
 })
 
-describe('ssrTemplate — a JSX-bearing prop-derived const is not inlined (parity)', () => {
+describeNative('ssrTemplate — a JSX-bearing prop-derived const is not inlined (parity)', () => {
   // Both backends must REFUSE to inline here. Inlining splices PRE-transform
   // source into an `_ssr` hole, so two sibling `.map()` callbacks swapped
   // expressions and rendering died with `ReferenceError: p1 is not defined`.
