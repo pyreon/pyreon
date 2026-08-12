@@ -28,8 +28,10 @@
 // natively. Warning people off a documented method would have been the wrong
 // shape.
 
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
+import { readNativeRuntime } from './native-runtime-locations'
 
 const P = '@pyreon/primitives'
 const R = '@pyreon/reactivity'
@@ -82,24 +84,21 @@ describe('picker isAvailable() lowers on both targets', () => {
 // source, and the reverse masks a real one. Both directions are asserted for
 // every target, on both pickers.
 describe('isAvailable exists in BOTH the runtimes and the stubs', () => {
-  const read = async (rel: string) => {
-    const { readFileSync } = await import('node:fs')
-    const { resolve } = await import('node:path')
-    return readFileSync(resolve(import.meta.dirname ?? __dirname, '..', '..', '..', rel), 'utf8')
-  }
+  // The picker runtimes co-located into `@pyreon/hooks/native/` (#2795), so
+  // resolve them via the location-aware helper rather than the monolith path.
+  // tests → src → compiler → native → packages → repo root (five up).
+  const REPO = resolve(import.meta.dirname ?? __dirname, '..', '..', '..', '..', '..')
 
-  it('Swift runtimes declare it', async () => {
+  it('Swift runtimes declare it', () => {
     for (const f of ['PyreonImagePicker', 'PyreonFilePicker']) {
-      const src = await read(`runtime-swift/Sources/PyreonRuntime/${f}.swift`)
+      const src = readNativeRuntime(REPO, f, 'swift')
       expect(src, `${f}.swift`).toContain('public func isAvailable() -> Bool')
     }
   })
 
-  it('Kotlin runtimes declare it', async () => {
+  it('Kotlin runtimes declare it', () => {
     for (const f of ['PyreonImagePicker', 'PyreonFilePicker']) {
-      const src = await read(
-        `runtime-kotlin/src/main/kotlin/com/pyreon/runtime/${f}.kt`,
-      )
+      const src = readNativeRuntime(REPO, f, 'kotlin')
       expect(src, `${f}.kt`).toContain('fun isAvailable(): Boolean')
     }
   })
