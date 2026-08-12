@@ -275,6 +275,10 @@ export class StyleSheet {
   // styles already present (instead of FOUCing until the final
   // consolidated `<style>` flushes at end-of-stream).
   private ssrFlushedIdx = 0
+  // Whether the streaming `@layer` ordering statement has been emitted this
+  // stream. Persists across flushes (a later flush may carry the first layered
+  // rule); reset with the SSR buffer at each request boundary.
+  private ssrLayerDeclEmitted = false
   private isSSR: boolean
   private maxCacheSize: number
   private layer: string | undefined
@@ -903,6 +907,7 @@ export class StyleSheet {
   resetSSRBuffer(): void {
     this.ssrBuffer = []
     this.ssrFlushedIdx = 0
+    this.ssrLayerDeclEmitted = false
   }
 
   /**
@@ -937,20 +942,31 @@ export class StyleSheet {
    */
   flushSSRPending(): string {
     if (this.ssrBuffer.length === this.ssrFlushedIdx) return ''
-    // Emit `@layer` ordering declaration on the FIRST flush of a stream
-    // — only when there are layered rules to order. Once emitted, never
-    // re-emitted (idempotent — second declaration would be redundant).
-    const isFirstFlush = this.ssrFlushedIdx === 0
+    // Emit the `@layer` ordering declaration ONCE per stream, as soon as it can
+    // be decided — then never again (a second declaration is redundant).
+    //
+    // The bug this guards: the default framework order (`@layer elements,
+    // rocketstyle;`) used to be gated on the FIRST flush only. A stream whose
+    // opening Suspense boundary flushed only keyframes / global CSS (neither is
+    // a layered rule) therefore emitted the ordering statement NOWHERE — and if
+    // a later boundary carried the first layered rule, its cascade fell back to
+    // stream first-appearance order (a `rocketstyle`-before-`elements` arrival
+    // then inverts the intended `elements < rocketstyle` cascade). So defer the
+    // default order to the FIRST flush that actually carries a layered rule, so
+    // the statement precedes it. A CONFIGURED custom `this.layer` still decides
+    // upfront on the first flush (its behaviour is unchanged).
     let prefix = ''
-    if (isFirstFlush) {
-      const hasLayered = this.ssrBuffer
+    if (!this.ssrLayerDeclEmitted) {
+      const sliceHasLayered = this.ssrBuffer
         .slice(this.ssrFlushedIdx)
         .some((r) => r.startsWith('@layer '))
-      prefix = hasLayered
-        ? '@layer elements, rocketstyle;'
-        : this.layer
-          ? `@layer ${this.layer};`
-          : ''
+      if (this.layer) {
+        prefix = sliceHasLayered ? '@layer elements, rocketstyle;' : `@layer ${this.layer};`
+        this.ssrLayerDeclEmitted = true
+      } else if (sliceHasLayered) {
+        prefix = '@layer elements, rocketstyle;'
+        this.ssrLayerDeclEmitted = true
+      }
     }
     const slice = this.ssrBuffer.slice(this.ssrFlushedIdx).join('')
     this.ssrFlushedIdx = this.ssrBuffer.length
@@ -977,6 +993,7 @@ export class StyleSheet {
   reset(): void {
     this.ssrBuffer = []
     this.ssrFlushedIdx = 0
+    this.ssrLayerDeclEmitted = false
     this.cache.clear()
     this.insertCache.clear()
     this.icKeysByClass.clear()
@@ -1010,6 +1027,7 @@ export class StyleSheet {
     clearNormCache()
     this.ssrBuffer = []
     this.ssrFlushedIdx = 0
+    this.ssrLayerDeclEmitted = false
     if (this.sheet) {
       while (this.sheet.cssRules.length > 0) {
         this.sheet.deleteRule(0)

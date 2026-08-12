@@ -218,6 +218,19 @@ for (const k of HTML_PROPS_LIST) HTML_PROPS[k] = true
 export const filterProps = (props: Record<string, unknown>): Record<string, unknown> => {
   const filtered: Record<string, unknown> = {}
 
+  // Descriptor-copy, NOT value-copy (`filtered[key] = props[key]`): a
+  // getter-shaped reactive `_rp` prop (what the compiler emits for
+  // `<X title={sig()} />`) is FIRED and frozen to its current value by a value
+  // read at copy time. Copying the descriptor preserves the live getter, so a
+  // consumer using `filterProps` to forward props keeps reactivity — mirrors
+  // `buildProps.copyDescriptor` on the internal render path, and matches what
+  // the manifest documents this helper as doing. Static props are unaffected
+  // (a data descriptor copies identically).
+  const keep = (key: string): void => {
+    const d = Object.getOwnPropertyDescriptor(props, key)
+    if (d) Object.defineProperty(filtered, key, d)
+  }
+
   for (const key in props) {
     // Skip transient props ($-prefixed) — used for styling-only props
     if (key.charCodeAt(0) === 36) continue // '$'
@@ -227,14 +240,14 @@ export const filterProps = (props: Record<string, unknown>): Record<string, unkn
 
     // Keep data-* and aria-* attributes
     if (key.startsWith('data-') || key.startsWith('aria-')) {
-      filtered[key] = props[key]
+      keep(key)
       continue
     }
 
     // Keep known HTML props — `in` against the null-prototype lookup
     // object beats `Set.has` on the hot DOM-filter path.
     if (key in HTML_PROPS) {
-      filtered[key] = props[key]
+      keep(key)
     }
   }
 
