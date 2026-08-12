@@ -124,7 +124,10 @@ const swiftFullSdk =
     try {
       const probe = join(tmpdir(), `pyreon-swift-sdk-probe-${process.pid}.swift`)
       writeFileSync(probe, 'import SwiftUI\nimport Observation\n')
-      return spawnSync('swiftc', ['-parse', probe], { encoding: 'utf8' }).status === 0
+      // `-typecheck`, NOT `-parse`: parse is syntax-only and accepts `import
+      // SwiftUI` even when the module is absent (Linux). Typecheck RESOLVES the
+      // import, so it fails on Linux and succeeds only with the real SDK (macOS).
+      return spawnSync('swiftc', ['-typecheck', probe], { encoding: 'utf8' }).status === 0
     } catch {
       return false
     }
