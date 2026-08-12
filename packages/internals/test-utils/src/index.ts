@@ -13,6 +13,9 @@ export { query, queryAll, queryOptional } from './dom-query'
 // @pyreon/reactivity (src instances) into every test file's setup context,
 // which trips the duplicate-instance singleton sentinel in any test that
 // bundles + evaluates built lib/ output (router's treeshake specs).
+export type { ComplexityOptions, ComplexityResult } from './complexity'
+export { expectSubQuadratic, measureComplexity } from './complexity'
+
 export { installHappyDomHashchangeEchoGuard } from './happy-dom-hashchange-guard'
 // Framework-internal accessors (typed escape hatch for white-box tests)
 export { accessInternal, callInternal } from './internals'

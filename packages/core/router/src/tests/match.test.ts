@@ -1,3 +1,4 @@
+import { expectSubQuadratic } from '@pyreon/test-utils'
 import {
   buildNameIndex,
   buildPath,
@@ -1013,23 +1014,33 @@ describe('resolveRoute — PR-S9 notFoundComponent trie', () => {
     expect(r2.matched.length).toBe(r3.matched.length)
   })
 
-  it('PR-S9 perf: 1000 resolutions across a wide tree stay sub-100ms total', () => {
-    // Stress test: build a tree with many notFoundComponent-bearing
-    // records (mimics i18n × dynamic-route fan-out). The old O(N)
-    // walk would scan every record on every lookup; the trie scales
-    // with URL segments only.
+  it('PR-S9: lookup cost does NOT grow with tree size (trie, not O(N) walk)', () => {
+    // The bug class is "resolution scaled linearly with the NUMBER OF RECORDS".
+    // The previous version of this test asserted a wall-clock budget for a
+    // fixed tree, which could not state that invariant: it fails on a loaded
+    // machine (observed: 144ms against a 100ms budget under parallel suite
+    // load) and, worse, a fast machine can complete a genuinely O(N) walk
+    // inside the budget — so it passed exactly when the hardware was quick.
     //
-    // 5 locales × 5 sections × 1 layout + 1 root = 26
-    // notFoundComponent records. 1000 lookups across them.
-    const localeNames = ['en', 'de', 'cs', 'fr', 'es']
+    // Instead: hold the lookup COUNT fixed and grow the TREE. A trie keyed on
+    // URL segments is ~flat as the record count grows; an O(N) walk is linear
+    // in it. The ratio is measured in-process back to back, so contention and
+    // CPU speed cancel.
     const sectionNames = ['posts', 'users', 'admin', 'blog', 'docs']
-    const routes: RouteRecord[] = [
-      {
-        path: '/',
-        component: Layout,
-        notFoundComponent: NotFoundRoot,
-        children: localeNames.flatMap((loc) => [
-          {
+    const treeCache = new Map<number, RouteRecord[]>()
+
+    // n = locale count ⇒ record count ≈ n * 6. Built OUTSIDE the timed region
+    // (cached) so construction cost never enters the ratio.
+    const treeFor = (n: number): RouteRecord[] => {
+      const cached = treeCache.get(n)
+      if (cached) return cached
+      const locales = Array.from({ length: n }, (_, i) => `l${i}`)
+      const routes: RouteRecord[] = [
+        {
+          path: '/',
+          component: Layout,
+          notFoundComponent: NotFoundRoot,
+          children: locales.map((loc) => ({
             path: `/${loc}`,
             component: Layout,
             notFoundComponent: NotFoundDE,
@@ -1039,28 +1050,45 @@ describe('resolveRoute — PR-S9 notFoundComponent trie', () => {
               notFoundComponent: NotFoundDeep,
               children: [{ path: `/${loc}/${sec}/list`, component: Page }],
             })),
-          },
-        ]),
-      },
-    ]
-
-    // Prime the cache
-    resolveRoute('/en/posts/unknown', routes)
-
-    // Resolve 1000 random 404 URLs across the tree
-    const start = performance.now()
-    for (let i = 0; i < 1000; i++) {
-      const loc = localeNames[i % localeNames.length]
-      const sec = sectionNames[(i + 1) % sectionNames.length]
-      resolveRoute(`/${loc}/${sec}/unknown-${i}`, routes)
+          })),
+        },
+      ]
+      resolveRoute(`/l0/posts/prime`, routes) // prime the per-identity index
+      treeCache.set(n, routes)
+      return routes
     }
-    const elapsed = performance.now() - start
 
-    // Generous threshold (100ms for 1000 calls = 100µs/call). The actual
-    // trie path should land closer to 5-20µs/call on modern hardware.
-    // The threshold is intentionally loose to avoid CI flake — the bug
-    // class the test catches is "scaled linearly with tree size",
-    // which would blow past 100ms easily on this tree shape.
-    expect(elapsed).toBeLessThan(100)
+    const LOOKUPS = 400
+    const result = expectSubQuadratic(
+      (n) => {
+        const routes = treeFor(n)
+        for (let i = 0; i < LOOKUPS; i++) {
+          const loc = `l${i % n}`
+          const sec = sectionNames[(i + 1) % sectionNames.length]
+          resolveRoute(`/${loc}/${sec}/unknown-${i}`, routes)
+        }
+      },
+      8,
+      {
+        scale: 8,
+        // The default bound (scale*3 = 24) only separates linear from
+        // quadratic. This invariant is STRONGER: lookup cost must be ~FLAT in
+        // tree size, so a regression to an O(N) walk would land near 8 — under
+        // the default bound and therefore undetected. Measured ratio on a trie
+        // is ~1.0 (8x more records, same cost), so 3 leaves ample headroom for
+        // constant-factor noise while still failing a linear walk.
+        maxRatio: 3,
+        label: 'resolveRoute vs tree size',
+        samples: 3,
+      },
+    )
+
+    // Sanity: the measurement was real, not a 0ms/0ms ratio.
+    expect(result.baseMs).toBeGreaterThan(0)
+
+    // Behavioural half — the trie must still return the right fallback.
+    const routes = treeFor(8)
+    const r = resolveRoute('/l3/admin/nope', routes)
+    expect(r.matched[r.matched.length - 1]?.component).toBe(NotFoundDeep)
   })
 })

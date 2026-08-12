@@ -2,6 +2,7 @@
  * Vite plugin contract: `transform` returns Pyreon JSX for `.md` /
  * `.mdx` inputs, passes through everything else.
  */
+import { expectSubQuadratic } from '@pyreon/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 import content, { isMarkdownId, shortId } from '../plugin'
 
@@ -136,13 +137,12 @@ describe('isMarkdownId — ReDoS regression', () => {
     // 10k `#` characters followed by no extension. Old regex pattern
     // `[?#].*$` was reported by CodeQL as polynomial; the string-ops
     // rewrite is O(n).
-    const adversarial = '#'.repeat(10000) + 'foo'
-    const t0 = performance.now()
-    const result = isMarkdownId(adversarial)
-    const elapsed = performance.now() - t0
-    expect(result).toBe(false)
-    // Loose budget — strictly we expect <5ms but CI noise can spike.
-    expect(elapsed).toBeLessThan(50)
+    expect(isMarkdownId('#'.repeat(10000) + 'foo')).toBe(false)
+    // Scaling, not wall-clock — a "loose budget for CI noise" still flakes,
+    // and still passes a quadratic implementation on fast hardware.
+    expectSubQuadratic((n) => void isMarkdownId('#'.repeat(n) + 'foo'), 10_000, {
+      label: 'isMarkdownId vs input length',
+    })
   })
 
   it('handles adversarial query/hash input followed by .md correctly', () => {

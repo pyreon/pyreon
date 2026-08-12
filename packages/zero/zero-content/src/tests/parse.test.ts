@@ -3,6 +3,7 @@
  * module string. Asserts the module exports the right shape and the
  * body JSX is wrapped correctly.
  */
+import { expectSubQuadratic } from '@pyreon/test-utils'
 import { describe, expect, it } from 'vitest'
 import { compileMarkdown, deriveSlug } from '../pipeline/parse'
 
@@ -157,14 +158,15 @@ describe('deriveSlug', () => {
     // chain — used to take seconds with the regex; the string-ops rewrite
     // is O(n).
     const segment = '/content/a'
-    const adversarial = '/abs' + segment.repeat(500) + '.md'
-    const t0 = performance.now()
-    const result = deriveSlug(adversarial)
-    const elapsed = performance.now() - t0
+    const result = deriveSlug('/abs' + segment.repeat(500) + '.md')
     // The first /content/ match wins by design.
     expect(result.endsWith('.md')).toBe(false)
     expect(result.startsWith('a/content/')).toBe(true)
-    // Loose budget — strictly <5ms but CI noise can spike.
-    expect(elapsed).toBeLessThan(50)
+    // Scaling, not wall-clock: a "loose budget for CI noise" still flakes under
+    // load, and still passes a quadratic scanner on fast hardware. Growth is
+    // what linearity actually claims, and a ratio is load-immune.
+    expectSubQuadratic((n) => void deriveSlug('/abs' + segment.repeat(n) + '.md'), 500, {
+      label: 'deriveSlug vs segment count',
+    })
   })
 })
