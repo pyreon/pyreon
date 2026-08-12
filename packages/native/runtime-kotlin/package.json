@@ -22,5 +22,12 @@
   "publishConfig": {
     "access": "public"
   },
-  "sideEffects": false
+  "sideEffects": false,
+  "pyreon": {
+    "native": {
+      "kotlin": {
+        "dir": "src/main/kotlin"
+      }
+    }
+  }
 }

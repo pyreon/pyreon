@@ -182,4 +182,49 @@ describe('@pyreon/native-cli main()', () => {
     expect(staged).toEqual(['chart.html', 'chart.js'])
     rmSync(webSrc, { recursive: true, force: true })
   })
+
+  // --- wire (native-source resolution) ---
+
+  it('wire returns 1 when the app dir has no package.json', () => {
+    expect(main(['wire', `--app=${tempOut}`])).toBe(1)
+  })
+
+  it('wire --android-out writes the resolved srcDirs file and returns 0', () => {
+    const app = mkdtempSync(join(tmpdir(), 'pyreon-cli-wire-'))
+    writeFileSync(
+      join(app, 'package.json'),
+      JSON.stringify({ name: 'app', dependencies: { '@pyreon/native-runtime-kotlin': 'latest' } }),
+    )
+    const nm = join(app, 'node_modules', '@pyreon', 'native-runtime-kotlin')
+    const ktDir = join(nm, 'src', 'main', 'kotlin')
+    require('node:fs').mkdirSync(ktDir, { recursive: true })
+    writeFileSync(
+      join(nm, 'package.json'),
+      JSON.stringify({ name: '@pyreon/native-runtime-kotlin', pyreon: { native: { kotlin: { dir: 'src/main/kotlin' } } } }),
+    )
+    const outFile = join(app, 'android', 'pyreon-native.srcdirs')
+    const code = main(['wire', `--app=${app}`, `--android-out=${outFile}`])
+    expect(code).toBe(0)
+    const dirs = readFileSync(outFile, 'utf8')
+      .split('\n')
+      .filter((l) => l.trim() && !l.startsWith('#'))
+    expect(dirs).toEqual([ktDir])
+    rmSync(app, { recursive: true, force: true })
+  })
+
+  it('wire returns 2 when a package declares a native dir that is missing', () => {
+    const app = mkdtempSync(join(tmpdir(), 'pyreon-cli-wire-broken-'))
+    writeFileSync(
+      join(app, 'package.json'),
+      JSON.stringify({ name: 'app', dependencies: { '@pyreon/query': 'latest' } }),
+    )
+    const nm = join(app, 'node_modules', '@pyreon', 'query')
+    require('node:fs').mkdirSync(nm, { recursive: true })
+    writeFileSync(
+      join(nm, 'package.json'),
+      JSON.stringify({ name: '@pyreon/query', pyreon: { native: { swift: { dir: 'native/swift' } } } }),
+    )
+    expect(main(['wire', `--app=${app}`])).toBe(2)
+    rmSync(app, { recursive: true, force: true })
+  })
 })

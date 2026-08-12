@@ -16,8 +16,9 @@ import { materializeAssets, type AssetTarget } from './assets'
 import { stageWebBundle, webBundleOutSubdir, type WebBundleTarget } from './web-bundle'
 import { startLspServer } from './lsp'
 import { scanFontDir } from './fonts'
-import { existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { renderAndroidSrcDirsFile, wireApp } from './wire'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 import type { TargetLanguage } from '@pyreon/native-compiler'
 
 interface ParsedArgs {
@@ -38,6 +39,10 @@ interface ParsedArgs {
   json?: boolean
   /** `check` only: run as a stdio LSP server (editor diagnostics). */
   lsp?: boolean
+  /** `wire` only: the app directory to resolve native sources from (default cwd). */
+  app?: string
+  /** `wire` only: write the Android srcDirs list to this file. */
+  androidOut?: string
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -86,6 +91,8 @@ function parseArgs(argv: string[]): ParsedArgs {
     else if (key === 'out') out.out = value
     else if (key === 'kotlin-package') out.kotlinPackage = value
     else if (key === 'fonts') out.fonts = value
+    else if (key === 'app') out.app = value
+    else if (key === 'android-out') out.androidOut = value
   }
   return out
 }
@@ -106,6 +113,7 @@ Usage:
   pyreon-native check  --lsp   (stdio LSP server — editor diagnostics)
   pyreon-native assets --target=<ios|android|web> --source=<dir> --out=<dir>
   pyreon-native stage-web --target=<ios|android> --source=<dir> --out=<dir>
+  pyreon-native wire   [--app=<dir>] [--android-out=<file>] [--json]
 
 check is the fast authoring-loop command: it runs the PMTC compiler for
 both targets IN MEMORY (no build, no xcodegen/gradle, no file writes) and
@@ -129,6 +137,13 @@ js/css) into the exact app location the PyreonWebView runtime resolves
 a <WebView src="..."> against — ios/WebContent (bundle resources) or
 android assets/ (file:///android_asset/). Flat-only: nested
 subdirectories are skipped with a warning.
+
+wire resolves the app's Pyreon native sources (base runtime/router +
+co-located feature native/{swift,kotlin}/) by walking node_modules
+upward — hoisting- and pnpm-symlink-safe, unlike the scaffold's fixed
+../node_modules paths that dangle in a monorepo. --android-out writes
+the resolved Gradle srcDirs list build.gradle.kts reads; --json prints
+the full wiring (srcDirs + iOS SwiftPM packages + co-located sources).
 
 Targets:
   ios        emit Swift / SwiftUI
@@ -164,6 +179,9 @@ export function main(argv: string[]): number {
   }
   if (parsed.command === 'check') {
     return runCheck(parsed)
+  }
+  if (parsed.command === 'wire') {
+    return runWire(parsed)
   }
   if (parsed.command !== 'build') {
     printUsage()
@@ -343,6 +361,66 @@ function runStageWeb(parsed: ParsedArgs): number {
     console.error(`[pyreon-native] stage-web failed: ${message}`)
     return 2
   }
+}
+
+/**
+ * `wire` — resolve the app's Pyreon native sources (hoisting/pnpm-safe) and
+ * emit the concrete build wiring. The Gap-1 fix: replaces the scaffold's
+ * FIXED `../node_modules/@pyreon/native-runtime-*` paths with paths RESOLVED
+ * at build time, so a monorepo (hoisting / pnpm symlinks) builds where the
+ * fixed path dangles.
+ *
+ *   --app=<dir>            App dir to resolve from (default cwd).
+ *   --android-out=<file>   Write the Gradle srcDirs list to this file.
+ *   --json                 Print the full wiring as JSON (machine/CI).
+ *
+ * A DECLARED-but-missing native dir is a real misconfiguration → exit 2.
+ */
+function runWire(parsed: ParsedArgs): number {
+  const appDir = resolve(parsed.app ?? process.cwd())
+  if (!existsSync(join(appDir, 'package.json'))) {
+    console.error(`error: no package.json in ${appDir} (pass --app=<dir>)`)
+    return 1
+  }
+  const wiring = wireApp(appDir)
+
+  if (parsed.androidOut) {
+    const outFile = resolve(appDir, parsed.androidOut)
+    mkdirSync(dirname(outFile), { recursive: true })
+    writeFileSync(outFile, renderAndroidSrcDirsFile(wiring))
+    if (!parsed.json) {
+      console.log(
+        `[pyreon-native] wrote ${wiring.androidSrcDirs.length} Android srcDir(s) → ${outFile}`,
+      )
+    }
+  }
+
+  if (parsed.json) {
+    console.log(JSON.stringify(wiring, null, 2))
+  } else if (!parsed.androidOut) {
+    console.log(`[pyreon-native] resolved native sources for ${appDir}:`)
+    console.log(`  Android srcDirs (${wiring.androidSrcDirs.length}):`)
+    for (const d of wiring.androidSrcDirs) console.log(`    ${d}`)
+    console.log(`  iOS SwiftPM packages (${wiring.iosSpmPackages.length}):`)
+    for (const p of wiring.iosSpmPackages) console.log(`    ${p.module} → ${p.path}`)
+    if (wiring.iosTargetSources.length > 0) {
+      console.log(`  iOS co-located target sources:`)
+      for (const t of wiring.iosTargetSources) {
+        console.log(`    [${t.module}] ${t.dirs.join(', ')}`)
+      }
+    }
+  }
+
+  if (wiring.brokenDeclarations.length > 0) {
+    console.error(
+      `[pyreon-native] ${wiring.brokenDeclarations.length} broken native declaration(s) — a package declared native sources whose dir is missing:`,
+    )
+    for (const b of wiring.brokenDeclarations) {
+      console.error(`  ${b.package} (${b.target}): ${b.dir}`)
+    }
+    return 2
+  }
+  return 0
 }
 
 /** Print one check finding with a severity glyph + file:target prefix. */
