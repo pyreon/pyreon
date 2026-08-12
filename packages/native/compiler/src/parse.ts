@@ -112,6 +112,10 @@ interface ParseCtx {
    * direction: it tells the author a working API is unusable.
    */
   validateSchemaLowered: boolean
+  /** A top-level `zodSchema(...)`/`valibotSchema(...)`/`arktypeSchema(...)`
+   * declaration lowered to a native struct, so the blanket unlowered-module
+   * warning must not claim the opposite directly above that struct. */
+  validationSchemaLowered: boolean
   /**
    * Local names bound to the `announce` import from `@pyreon/a11y` (handles
    * `import { announce as say }`). `parseExpr` lowers a call on one of these to
@@ -169,6 +173,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     validateSchemaNames: new Set(),
     validateSchemaLowered: false,
     sizedMapNames: new Set(),
+    validationSchemaLowered: false,
     announceNames: new Set(),
     hookFieldAliases: new Map(),
     hookDestructureCounter: 0,
@@ -313,18 +318,21 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     const zs = tryZodSchemaDefnFromTopLevel(node, ctx)
     if (zs) {
       zodSchemas.push(zs)
+      ctx.validationSchemaLowered = true
       continue
     }
     // Gap 4 follow-up — @pyreon/validation Valibot v1.
     const vs = tryValibotSchemaDefnFromTopLevel(node, ctx)
     if (vs) {
       zodSchemas.push(vs) // shared IR (single struct shape)
+      ctx.validationSchemaLowered = true
       continue
     }
     // Gap 4 follow-up — @pyreon/validation ArkType v1.
     const as = tryArktypeSchemaDefnFromTopLevel(node, ctx)
     if (as) {
       zodSchemas.push(as)
+      ctx.validationSchemaLowered = true
       continue
     }
     // `@pyreon/validate`'s own `s.object({ … })` DSL — same IR, no wrapper.
@@ -923,6 +931,28 @@ function warnWebOnlyImports(body: AnyNode[], ctx: ParseCtx): void {
  * recognizer refuses to fire without it.
  */
 function collectValidateSchemaNames(body: AnyNode[], ctx: ParseCtx): void {
+  // Same question for @pyreon/validation's three wrappers, answered the same
+  // way and for the same reason: the warn pass runs BEFORE the loop that
+  // recognizes schemas, so "did a schema lower?" has to be decided
+  // syntactically here. Without it the blanket "has NO native lowering" line
+  // printed directly above the native struct it was denying.
+  for (const node of body) {
+    const d =
+      node.type === 'ExportNamedDeclaration' && node.declaration?.type === 'VariableDeclaration'
+        ? node.declaration
+        : node.type === 'VariableDeclaration'
+          ? node
+          : undefined
+    for (const decl of (d?.declarations as AnyNode[] | undefined) ?? []) {
+      const init = decl.init as AnyNode | undefined
+      if (init?.type !== 'CallExpression') continue
+      if (init.callee?.type !== 'Identifier') continue
+      const fn = init.callee.name as string
+      if (fn === 'zodSchema' || fn === 'valibotSchema' || fn === 'arktypeSchema') {
+        ctx.validationSchemaLowered = true
+      }
+    }
+  }
   for (const node of body) {
     if (node.type !== 'ImportDeclaration') continue
     if (node.source?.value !== '@pyreon/validate') continue
@@ -1164,7 +1194,15 @@ const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
   ],
   [
     '@pyreon/validation',
-    { advice: 'the Standard Schema helpers are web-only — the same guidance as @pyreon/validate' },
+    {
+      // The old advice claimed the helpers are web-only. They are not:
+      // `zodSchema(z.object({…}))` at top level lowers to a real native
+      // struct with parse/safeParse, and the warning appeared directly
+      // ABOVE that struct in the same output — telling an author to wrap
+      // working code in a `<Web>` escape hatch.
+      advice:
+        'a TOP-LEVEL `const X = zodSchema(z.object({ … }))` DOES lower — it emits a native struct with parse/safeParse. What stays web-only is the runtime surface around it (inline `.parse()` on an expression, `standardSchemaToValidator`, the async validate path)',
+    },
   ],
   [
     '@pyreon/permissions',
@@ -1294,6 +1332,19 @@ function warnUnloweredPyreonModules(body: AnyNode[], ctx: ParseCtx): void {
       // `s.object({ … })` schema declaration (Gap-4 emit). Other uses do not,
       // so the warning stays for them.
       if (src === '@pyreon/validate' && imported === 's' && ctx.validateSchemaLowered) continue
+      // Same shape for @pyreon/validation's adapters: a top-level
+      // `const X = zodSchema(z.object({ … }))` emits a real native struct
+      // with parse/safeParse, so the blanket "has NO native lowering"
+      // line was printed directly ABOVE the struct it was denying.
+      if (
+        src === '@pyreon/validation' &&
+        (imported === 'zodSchema' ||
+          imported === 'valibotSchema' ||
+          imported === 'arktypeSchema') &&
+        ctx.validationSchemaLowered
+      ) {
+        continue
+      }
       // When a module lists `unsupported`, ONLY those warn — everything else in
       // it lowers and must stay silent.
       if (entry.unsupported !== undefined && !entry.unsupported.has(imported)) continue
@@ -1627,6 +1678,70 @@ function tryStoreDefnFromTopLevel(
  * Bails (returns null + warning) when the chain doesn't match the
  * v2 shape — silent-drop falls through to the tier2 diagnostic.
  */
+/**
+ * `.regex(/…/)` → a portable pattern, or `null` with a warning naming why.
+ *
+ * The recognizer had no `regex` arm at all, so the modifier fell straight
+ * through its `else if` chain: the field emitted with only a type guard, no
+ * check and no diagnostic. A schema that rejects `"Not A Slug!"` on the web
+ * ACCEPTED it on device — a validation bypass with nothing to trace it by.
+ *
+ * The three engines (JS, NSRegularExpression, java.util.regex) agree on the
+ * common syntax — anchors, classes, quantifiers, groups, alternation — and
+ * diverge on the rest. Rather than emit a check that might disagree with the
+ * web, anything carrying JS-specific syntax or a non-portable flag declines
+ * BY NAME. A declined field is no worse off than before; it is just no
+ * longer silent.
+ */
+function tryPortableRegexLiteral(
+  node: AnyNode | undefined,
+  fieldLabel: string,
+  ctx: ParseCtx,
+): { source: string; ignoreCase: boolean } | null {
+  const re = node?.type === 'Literal' ? (node.regex as { pattern?: string; flags?: string } | undefined) : undefined
+  if (!re || typeof re.pattern !== 'string') {
+    ctx.warnings.push(
+      `${fieldLabel}: .regex() needs an inline regular-expression literal to lower natively — this argument is not one, so the field is NOT validated on device.`,
+    )
+    return null
+  }
+  const flags = re.flags ?? ''
+  // `i` maps to both engines. `g`/`y` are stateful-iteration flags with no
+  // meaning for a single test; `s`/`u`/`v`/`m`/`d` change matching semantics
+  // in ways that do not port identically.
+  const unportableFlags = [...flags].filter((f) => f !== 'i')
+  if (unportableFlags.length > 0) {
+    ctx.warnings.push(
+      `${fieldLabel}: .regex() flag(s) \`${unportableFlags.join('')}\` do not port to NSRegularExpression / java.util.regex, so the field is NOT validated on device. Only the \`i\` flag lowers.`,
+    )
+    return null
+  }
+  // JS-only constructs. Named groups and lookbehind exist in the newer
+  // engines but not identically across the OS versions PMTC targets, and a
+  // pattern that means something different on device is worse than one that
+  // openly does not run.
+  const jsOnly = [
+    ['\\d', null],
+  ] as const
+  void jsOnly
+  const unportable = /\(\?<[=!]|\\p\{|\\P\{|\(\?<[A-Za-z_]/.test(re.pattern)
+  if (unportable) {
+    ctx.warnings.push(
+      `${fieldLabel}: .regex() uses lookbehind, a named group or a Unicode property escape, which do not port identically to NSRegularExpression / java.util.regex — the field is NOT validated on device.`,
+    )
+    return null
+  }
+  // The emitters embed the source in a Swift raw string and a Kotlin string;
+  // a pattern containing the raw-string terminator cannot be embedded safely.
+  if (re.pattern.includes('"#')) {
+    ctx.warnings.push(
+      `${fieldLabel}: .regex() pattern contains \`"#\`, which cannot be embedded in the emitted Swift raw string — the field is NOT validated on device.`,
+    )
+    return null
+  }
+  return { source: re.pattern, ignoreCase: flags.includes('i') }
+}
+
 function tryModelDefnFromTopLevel(
   node: AnyNode,
   ctx: ParseCtx,
@@ -2282,6 +2397,7 @@ function tryArktypeSchemaDefnFromTopLevel(
 function extractTypeAndConstraints(
   expr: AnyNode,
   prefix: string,
+  ctx: ParseCtx,
 ): { method: string; constraints: ZodFieldConstraints } | null {
   const constraints: ZodFieldConstraints = {}
   let cursor: AnyNode | undefined = expr
@@ -2317,6 +2433,9 @@ function extractTypeAndConstraints(
         constraints.url = true
       } else if (modName === 'uuid') {
         constraints.uuid = true
+      } else if (modName === 'regex') {
+        const r = tryPortableRegexLiteral(firstArg, `schema element .regex()`, ctx)
+        if (r) constraints.regex = r
       }
       // `.optional()` / `.nullable()` are deliberately NOT recognized
       // here — they apply at the field level, not to inner elements.
@@ -2700,6 +2819,9 @@ function tryNamespacedSchemaDefnFromTopLevel(
           constraints.url = true
         } else if (modName === 'uuid') {
           constraints.uuid = true
+        } else if (modName === 'regex') {
+          const r = tryPortableRegexLiteral(firstArg, `schema field .regex()`, ctx)
+          if (r) constraints.regex = r
         } else if (modName === 'optional' || modName === 'nullable') {
           // Gap 4 v2.2 — `.optional()` / `.nullable()` mark the field
           // nullable on native. parse() returns nil instead of throwing
@@ -2828,7 +2950,7 @@ function tryNamespacedSchemaDefnFromTopLevel(
       }
       // Otherwise: primitive element (with possible per-element constraints)
       const inner = innerArg
-        ? extractTypeAndConstraints(innerArg, prefix)
+        ? extractTypeAndConstraints(innerArg, prefix, ctx)
         : null
       let innerType: 'string' | 'number' | 'boolean' | undefined
       if (inner) {
@@ -3589,6 +3711,7 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     validateSchemaNames: new Set(),
     validateSchemaLowered: false,
     sizedMapNames: new Set(),
+    validationSchemaLowered: false,
     announceNames: new Set(),
     hookFieldAliases: new Map(),
     hookDestructureCounter: 0,

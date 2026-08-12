@@ -1161,9 +1161,29 @@ function emitSwiftScalarConstraints(
       lines.push(`${ind}}`)
     }
     if (c.url) {
-      lines.push(`${ind}if URL(string: ${targetName}) == nil {`)
+      // `URL(string:)` is a PARSER, not a validator — it accepts
+      // "not a url", "x.com" and "/relative", all of which zod rejects.
+      // Requiring a scheme reproduces zod's rule (an absolute URL), which
+      // still accepts "mailto:a@b.co" and "ftp://x.com" as zod does.
+      lines.push(
+        `${ind}if URL(string: ${targetName})?.scheme == nil {`,
+      )
       lines.push(
         `${innerInd}throw PyreonSchemaError.constraintViolation(field: ${JSON.stringify(fieldName)}, rule: "url${ruleSuffix}")`,
+      )
+      lines.push(`${ind}}`)
+    }
+    if (c.regex) {
+      // Partial match, which is what `RegExp.test()` does on the web — an
+      // anchored pattern still anchors. Raw string so backslashes survive.
+      const opts = c.regex.ignoreCase
+        ? '[.regularExpression, .caseInsensitive]'
+        : '[.regularExpression]'
+      lines.push(
+        `${ind}if ${targetName}.range(of: #"${c.regex.source}"#, options: ${opts}) == nil {`,
+      )
+      lines.push(
+        `${innerInd}throw PyreonSchemaError.constraintViolation(field: ${JSON.stringify(fieldName)}, rule: "regex${ruleSuffix}")`,
       )
       lines.push(`${ind}}`)
     }

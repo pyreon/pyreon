@@ -40,7 +40,11 @@ import { z } from 'zod'
 export const s = zodSchema(z.object({ link: z.string().url() }))
 `
     const r = transform(src, { target: 'swift' })
-    expect(r.code).toContain('URL(string: linkVal) == nil')
+    // The invariant is unchanged — `.url()` emits a check. What changed is
+    // WHICH check: a bare `URL(string:)` PARSES rather than validates, so it
+    // accepted "not a url", "x.com" and "/relative", all of which zod
+    // rejects. Requiring a scheme reproduces zod's rule.
+    expect(r.code).toContain('URL(string: linkVal)?.scheme == nil')
     expect(r.code).toContain('rule: "url"')
   })
 

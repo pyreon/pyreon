@@ -828,8 +828,22 @@ function emitKotlinScalarConstraints(
     }
     if (c.url) {
       const guard = nullableTarget ? `if (${targetName} != null) ` : ''
+      // `URI(...)` PARSES; it does not validate. It accepts "not a url",
+      // "x.com" and "/relative", all of which zod rejects. Requiring a
+      // scheme reproduces zod's rule (an absolute URL) while still
+      // accepting "mailto:a@b.co" and "ftp://x.com" as zod does.
       lines.push(
-        `${ind}${guard}try { java.net.URI(${targetName}${nullableTarget ? '!!' : ''}) } catch (_: Throwable) { throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(fieldName)}, "url${ruleSuffix}") }`,
+        `${ind}${guard}if ((try { java.net.URI(${targetName}${nullableTarget ? '!!' : ''}).scheme } catch (_: Throwable) { null }) == null) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(fieldName)}, "url${ruleSuffix}")`,
+      )
+    }
+    if (c.regex) {
+      const guard = nullableTarget ? `if (${targetName} != null) ` : ''
+      // `containsMatchIn`, not `matches` — `RegExp.test()` is a PARTIAL
+      // match on the web, and an anchored pattern still anchors.
+      const opts = c.regex.ignoreCase ? ', RegexOption.IGNORE_CASE' : ''
+      const pattern = JSON.stringify(c.regex.source)
+      lines.push(
+        `${ind}${guard}if (!Regex(${pattern}${opts}).containsMatchIn(${targetName}${nullableTarget ? '!!' : ''})) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(fieldName)}, "regex${ruleSuffix}")`,
       )
     }
     if (c.uuid) {

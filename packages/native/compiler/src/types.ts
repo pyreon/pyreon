@@ -1366,6 +1366,16 @@ export interface ZodFieldConstraints {
   email?: boolean
   url?: boolean
   uuid?: boolean
+  /**
+   * `.regex(/…/)` — the literal's source, plus whether it carried the `i`
+   * flag. Both targets test for a PARTIAL match, which is what
+   * `RegExp.test()` does on the web (an anchored pattern still anchors).
+   *
+   * Only patterns whose syntax is portable across JS / NSRegularExpression
+   * / java.util.regex reach here; the recognizer declines the rest by name
+   * rather than emitting a check that would disagree with the web.
+   */
+  regex?: { source: string; ignoreCase: boolean }
 }
 
 /**
