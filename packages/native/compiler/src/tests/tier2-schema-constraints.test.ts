@@ -16,8 +16,8 @@ export const userSchema = zodSchema(z.object({
 }))
 `
     const r = transform(src, { target: 'swift' })
-    expect(r.code).toContain('nameVal.count < 2')
-    expect(r.code).toContain('nameVal.count > 50')
+    expect(r.code).toContain('nameVal.utf16.count < 2')
+    expect(r.code).toContain('nameVal.utf16.count > 50')
     expect(r.code).toContain('rule: "min length 2"')
     expect(r.code).toContain('rule: "max length 50"')
   })

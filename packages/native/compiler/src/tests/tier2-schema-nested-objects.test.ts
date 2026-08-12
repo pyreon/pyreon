@@ -334,8 +334,8 @@ export const userSchema = zodSchema(z.object({
     const swift = transform(src, { target: 'swift' })
     // Nested struct carries the constraint emit for its OWN fields
     expect(swift.code).toContain('struct PyreonZodSchema_userSchema_Profile')
-    expect(swift.code).toContain('nameVal.count < 2')
-    expect(swift.code).toContain('nameVal.count > 50')
+    expect(swift.code).toContain('nameVal.utf16.count < 2')
+    expect(swift.code).toContain('nameVal.utf16.count > 50')
     expect(swift.code).toContain('var nickname: String? = nil')
     expect(swift.code).toContain('ageVal < 0')
 

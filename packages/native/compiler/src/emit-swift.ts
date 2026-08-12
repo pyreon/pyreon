@@ -1068,14 +1068,21 @@ function emitSwiftScalarConstraints(
   const c = constraints
   if (isString) {
     if (c.min !== undefined) {
-      lines.push(`${ind}if ${targetName}.count < ${c.min} {`)
+      // `.utf16.count`, NOT `.count`. Swift's String.count counts GRAPHEME
+      // CLUSTERS; JS `.length` and Kotlin `.length` both count UTF-16 code
+      // units. The web is the reference implementation here — @pyreon/validate
+      // checks `value.length` — so `.count` made iOS REJECT strings web and
+      // Android accept: `min(2)` against "👍" is 2 units (pass) but 1 grapheme
+      // (fail). A validator that disagrees per platform is a data-integrity
+      // bug, not a rounding difference.
+      lines.push(`${ind}if ${targetName}.utf16.count < ${c.min} {`)
       lines.push(
         `${innerInd}throw PyreonSchemaError.constraintViolation(field: ${JSON.stringify(fieldName)}, rule: "min length ${c.min}${ruleSuffix}")`,
       )
       lines.push(`${ind}}`)
     }
     if (c.max !== undefined) {
-      lines.push(`${ind}if ${targetName}.count > ${c.max} {`)
+      lines.push(`${ind}if ${targetName}.utf16.count > ${c.max} {`)
       lines.push(
         `${innerInd}throw PyreonSchemaError.constraintViolation(field: ${JSON.stringify(fieldName)}, rule: "max length ${c.max}${ruleSuffix}")`,
       )

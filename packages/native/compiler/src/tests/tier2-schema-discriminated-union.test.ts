@@ -217,7 +217,7 @@ export const eventSchema = zodSchema(z.discriminatedUnion('event', [
     const swift = transform(src, { target: 'swift' })
     expect(swift.code).toContain('enum PyreonZodSchema_eventSchema {')
     expect(swift.code).toContain('var title: String')
-    expect(swift.code).toContain('titleVal.count < 2')
+    expect(swift.code).toContain('titleVal.utf16.count < 2')
     expect(swift.code).toContain('var tags: [String]')
     expect(swift.code).toContain('var note: String? = nil')
 

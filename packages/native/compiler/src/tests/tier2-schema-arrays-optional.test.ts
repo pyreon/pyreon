@@ -210,8 +210,8 @@ export const s = zodSchema(z.object({
     const swift = transform(src, { target: 'swift' })
     const kotlin = transform(src, { target: 'kotlin' })
     // No constraint-violation throw on the array itself in either emit
-    expect(swift.code).not.toContain('tagsVal.count < ')
-    expect(swift.code).not.toContain('tagsVal.count > ')
+    expect(swift.code).not.toContain('tagsVal.utf16.count < ')
+    expect(swift.code).not.toContain('tagsVal.utf16.count > ')
     expect(kotlin.code).not.toContain('tagsVal.length < ')
     expect(kotlin.code).not.toContain('tagsVal.length > ')
   })
@@ -236,7 +236,7 @@ export const userSchema = zodSchema(z.object({
     expect(swift.code).toContain('var tags: [String]')
     expect(swift.code).toContain('var notes: [String]? = nil')
     // The .min(2) on name still emits its constraint
-    expect(swift.code).toContain('nameVal.count < 2')
+    expect(swift.code).toContain('nameVal.utf16.count < 2')
 
     const kotlin = transform(src, { target: 'kotlin' })
     expect(kotlin.code).toContain('var id: String')
