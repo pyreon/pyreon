@@ -97,6 +97,11 @@ export async function buildStaticSite(options: BuildOptions): Promise<string> {
     logLevel: 'warn',
     ...(options.base ? { base: options.base } : {}),
     plugins: [
+      // NOTE: options passed to `pyreon()` here do NOT reach the SSR pass.
+      // zero's SSG filters the zero + pyreon plugins out of the captured chain
+      // and re-adds its own with defaults (`ssg-plugin.ts`), so an
+      // `ssrTemplate: false` here is silently a no-op — worth knowing before
+      // trying to configure the SSR transform from this side.
       pyreon({ devErrorPrinter: false }),
       zero({ mode: 'ssg' }),
       {
