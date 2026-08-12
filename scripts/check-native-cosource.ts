@@ -21,7 +21,7 @@
 // SwiftUI SDK). An EMPTY scan is a SKIP + warning, never a silent clean pass.
 
 import { execSync, spawnSync } from 'node:child_process'
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
@@ -122,7 +122,11 @@ const swiftFullSdk =
   swiftc &&
   (() => {
     try {
-      const probe = join(tmpdir(), `pyreon-swift-sdk-probe-${process.pid}.swift`)
+      // Secure temp dir (mkdtemp → unique, 0700, random suffix) rather than a
+      // predictable `join(tmpdir(), 'fixed-name')` — the latter is a symlink/race
+      // vector (js/insecure-temporary-file).
+      const probeDir = mkdtempSync(join(tmpdir(), 'pyreon-swift-probe-'))
+      const probe = join(probeDir, 'probe.swift')
       writeFileSync(probe, 'import SwiftUI\nimport Observation\n')
       // `-typecheck`, NOT `-parse`: parse is syntax-only and accepts `import
       // SwiftUI` even when the module is absent (Linux). Typecheck RESOLVES the
