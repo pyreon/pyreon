@@ -1251,6 +1251,12 @@ class PyreonAppState(phase: String = "active") {
 @Composable
 fun rememberPyreonAppState(): PyreonAppState = PyreonAppState()
 
+// PyreonA11y — mirror of runtime-kotlin's PyreonA11y.kt: the object with an
+// \`announce(message, assertive)\` the imperative \`announce(...)\` call lowers to.
+object PyreonA11y {
+  fun announce(message: String, assertive: Boolean = false) {}
+}
+
 // PyreonCrashReporter — mirror of the runtime-kotlin surface the emit touches:
 // lastCrash/hadCrash MutableState (read dot-value), recordError/breadcrumb/
 // clear methods. The self-installing @Composable factory the emit references.

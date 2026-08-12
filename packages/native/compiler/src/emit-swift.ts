@@ -3047,6 +3047,9 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // expression. Only reachable inside an `async` arrow, whose action
       // emitter wraps the body in a `Task { … }` async scope.
       return `await ${emitSwiftExpr(e.expr, indent)}`
+    case 'announce-call':
+      // Imperative @pyreon/a11y announce → PyreonA11y (a VoiceOver announcement).
+      return `PyreonA11y.announce(${emitSwiftExpr(e.message, indent)}, assertive: ${e.assertive})`
     case 'call': {
       // `Object.keys(<object-typed expr>)` → static `[String]` of the
       // struct field names. A synthesized struct's keys are statically
