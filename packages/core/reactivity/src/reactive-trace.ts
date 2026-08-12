@@ -58,8 +58,14 @@ const PREVIEW_MAX = 80
  * Safe, bounded stringification. Never throws (a getter or `toJSON`
  * that throws must not break the trace recorder), never returns more
  * than `PREVIEW_MAX` chars + an ellipsis marker.
+ *
+ * Exported because `why()` in debug.ts needs exactly this and had been using a
+ * bare `JSON.stringify` instead — which THROWS on a cyclic value (a DOM node,
+ * a store with a back-reference, a Yjs doc), and cyclic values in signals are
+ * ordinary. The hazard was already understood here (see the comment on the
+ * object branch); it just had not been applied in the sibling.
  */
-function preview(v: unknown): string {
+export function preview(v: unknown): string {
   let s: string
   try {
     if (v === null) return 'null'
