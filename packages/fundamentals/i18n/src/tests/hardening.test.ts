@@ -69,6 +69,27 @@ describe('i18n interpolate — non-serializable value (F5)', () => {
   })
 })
 
+// A placeholder whose name collides with an inherited Object.prototype member
+// must be left LITERAL, not interpolated with the inherited value. The guard was
+// `value === undefined`, but `values['toString']` / `['constructor']` /
+// `['__proto__']` are all non-undefined inherited members — so `{{toString}}`
+// rendered the function source. The guard is now an own-property check.
+describe('i18n interpolate — placeholder colliding with a prototype member', () => {
+  test('{{toString}} is left literal when not an OWN param', () => {
+    expect(interpolate('Hi {{toString}}', { name: 'x' })).toBe('Hi {{toString}}')
+  })
+  test('{{constructor}} / {{valueOf}} / {{__proto__}} are left literal', () => {
+    const vals = { name: 'x' }
+    expect(interpolate('{{constructor}}', vals)).toBe('{{constructor}}')
+    expect(interpolate('{{valueOf}}', vals)).toBe('{{valueOf}}')
+    expect(interpolate('{{__proto__}}', vals)).toBe('{{__proto__}}')
+  })
+  test('an OWN param named like a prototype member still interpolates', () => {
+    // Shadowing the inherited member with a real own key must still work.
+    expect(interpolate('Hi {{toString}}', { toString: 'shadowed' })).toBe('Hi shadowed')
+  })
+})
+
 // F6 — `createI18n({ messages })` must apply the same flat-key expansion
 // that `addMessages` does. Previously the initial-messages loop stored
 // dictionaries verbatim, so `createI18n({ messages: { en: { 'nav.top':

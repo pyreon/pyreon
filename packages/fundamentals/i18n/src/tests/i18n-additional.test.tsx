@@ -5,6 +5,13 @@ import { createI18n } from '../create-i18n'
 import { parseRichText, Trans } from '../trans'
 import type { TranslationDictionary } from '../types'
 
+// <Trans> returns a reactive ACCESSOR; invoke it to get the resolved output
+// these unit tests assert on. Reactivity is covered in trans-context.test.tsx.
+function resolveTrans(props: Parameters<typeof Trans>[0]): unknown {
+  const r = Trans(props)
+  return typeof r === 'function' ? (r as () => unknown)() : r
+}
+
 // ─── nestFlatKeys via addMessages ────────────────────────────────────────────
 
 describe('addMessages with nestFlatKeys', () => {
@@ -344,7 +351,7 @@ describe('Trans — additional', () => {
       },
     })
 
-    const result = Trans({
+    const result = resolveTrans({
       t: i18n.t,
       i18nKey: 'tos',
       components: {
@@ -367,7 +374,7 @@ describe('Trans — additional', () => {
 
   it('returns plain text when translation has no tags and no components', () => {
     const t = (key: string) => (key === 'plain' ? 'Just plain text' : key)
-    const result = Trans({ t, i18nKey: 'plain' })
+    const result = resolveTrans({ t, i18nKey: 'plain' })
     expect(result).toBe('Just plain text')
   })
 })
@@ -418,7 +425,7 @@ describe('Trans — real h() + mount round-trip (i18n-additional)', () => {
         en: { tos: 'Read <terms>terms</terms> and <privacy>privacy</privacy>' },
       },
     })
-    const result = Trans({
+    const result = resolveTrans({
       t: i18n.t,
       i18nKey: 'tos',
       components: {
@@ -438,7 +445,7 @@ describe('Trans — real h() + mount round-trip (i18n-additional)', () => {
 
   it('plain-text translation path renders as text-only DOM', () => {
     const t = (key: string) => (key === 'plain' ? 'Just plain text' : key)
-    const result = Trans({ t, i18nKey: 'plain' })
+    const result = resolveTrans({ t, i18nKey: 'plain' })
     expect(result).toBe('Just plain text')
     const container = newContainer()
     mount(result as never, container)

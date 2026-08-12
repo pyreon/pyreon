@@ -36,7 +36,7 @@
 // from the main entry without realizing the implications.
 //
 // ──────────────────────────────────────────────────────────────────
-import type { Props, VNode } from '@pyreon/core'
+import type { Props, VNodeChild } from '@pyreon/core'
 import { useI18n } from './context'
 import type { InterpolationValues } from './types'
 
@@ -127,26 +127,36 @@ export interface TransProps extends Props {
  *   }}
  * />
  */
-export function Trans(props: TransProps): VNode | string {
-  // Prefer an explicitly-passed `t`; otherwise read the instance from context.
-  // `??` short-circuits, so passing `t` works without an <I18nProvider>.
+export function Trans(props: TransProps): VNodeChild {
+  // Read the instance ONCE at setup — a `useI18n()` context read must run in the
+  // component's owner frame, not lazily inside the accessor. `??` short-circuits,
+  // so passing `t` works without an <I18nProvider>.
   const t = props.t ?? useI18n().t
-  const translated = t(props.i18nKey, props.values)
 
-  if (!props.components) return translated
+  // Return an ACCESSOR, not the resolved value. A component body runs ONCE, and
+  // `t()` reads `locale()` — so returning `translated` directly froze <Trans> in
+  // whatever language it first rendered in, and `i18n.locale.set(...)` never
+  // updated it (while every `{() => t(...)}` binding elsewhere in the app did).
+  // The JSX-child accessor is a tracking scope, so `t()`'s `locale()` read
+  // re-runs this on locale change.
+  return () => {
+    const translated = t(props.i18nKey, props.values)
 
-  const parts = parseRichText(translated)
+    if (!props.components) return translated
 
-  // If the result is a single plain string, return it directly
-  if (parts.length === 1 && typeof parts[0] === 'string') return parts[0]
+    const parts = parseRichText(translated)
 
-  const children = parts.map((part) => {
-    if (typeof part === 'string') return part
-    const component = props.components![part.tag]
-    // Unmatched tags: render children as plain text (no raw HTML markup)
-    if (!component) return part.children
-    return component(part.children)
-  })
+    // If the result is a single plain string, return it directly
+    if (parts.length === 1 && typeof parts[0] === 'string') return parts[0]
 
-  return <>{children}</>
+    const children = parts.map((part) => {
+      if (typeof part === 'string') return part
+      const component = props.components![part.tag]
+      // Unmatched tags: render children as plain text (no raw HTML markup)
+      if (!component) return part.children
+      return component(part.children)
+    })
+
+    return <>{children}</>
+  }
 }
