@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { PyreonCrdtDoc } from '../crdt/pyreon-adapter'
 import { type SyncChannel, connectPyreonSync } from '../crdt/pyreon-sync-transport'
+import { syncedSignal } from '../synced-signal'
 
 // The pure-JS client transport that runs identically on web and in a native JS
 // runtime. These prove the wire-level sync (JSON op exchange) converges — the
@@ -121,5 +122,25 @@ describe('pyreon sync transport — wire-level convergence', () => {
     // A must NOT emit a frame for the merge it received.
     expect(get(a, 'm', 'y')).toBe(2)
     expect(aSends).toBe(afterOpen)
+  })
+
+  // The full app-facing stack, all pure-JS: syncedSignal (reactive bridge) over
+  // the pyreonAdapter engine over the transport. This is exactly what a native
+  // JS runtime hosts — signal.set → CRDT → wire → CRDT → observer → peer signal.
+  it('END-TO-END: syncedSignal over pyreonAdapter propagates across peers', () => {
+    const docA = new PyreonCrdtDoc('a1')
+    const docB = new PyreonCrdtDoc('b1')
+    const titleA = syncedSignal<string>({ doc: docA, key: 'title', initial: '' })
+    const titleB = syncedSignal<string>({ doc: docB, key: 'title', initial: '' })
+    const pair = memoryPair()
+    connectPyreonSync(docA, pair.a)
+    connectPyreonSync(docB, pair.b)
+    pair.open()
+
+    titleA.set('Roadmap')
+    expect(titleB()).toBe('Roadmap') // signal→CRDT→wire→CRDT→observer→signal
+
+    titleB.set('Shipped')
+    expect(titleA()).toBe('Shipped') // and back
   })
 })
