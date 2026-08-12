@@ -209,4 +209,22 @@ describe('Toaster — description + icon', () => {
     await nextFrame()
     expect(document.querySelector('.pyreon-toast__description')).toBeNull()
   })
+
+  it('renders a description ADDED LATER via toast.update (reactive gate, was frozen)', async () => {
+    // Regression: the `<Show>` that decides whether the description container
+    // exists was gated on a boolean captured ONCE from the setup snapshot
+    // (`hasDescription`), while `description` is a mutable field `toast.update`
+    // patches. So a description added after creation never mounted its <div>,
+    // even though the inner content thunk reads `live()` correctly. The gate is
+    // now `when={() => live()?.description != null}` — reactive.
+    const id = toast('Loading…', { duration: 0 }) // created with NO description
+    await nextFrame()
+    expect(document.querySelector('.pyreon-toast__description')).toBeNull()
+
+    toast.update(id, { description: '3 files · 1.2 MB' })
+    await nextFrame()
+    expect(document.querySelector('.pyreon-toast__description')?.textContent).toContain(
+      '3 files · 1.2 MB',
+    )
+  })
 })
