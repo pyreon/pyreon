@@ -5,7 +5,7 @@ description: "One `pyreon.config.ts` for the whole ecosystem — a typed section
 
 # @pyreon/config — API Reference
 
-> **Generated** from `config`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [config](/docs/config).
+> **Generated** from `config`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest.
 
 Every Pyreon tool grew its own config file — `atlas.config.ts`, `.pyreonlintrc.json`, a `zero()` call in `vite.config.ts`, a `loom` key in package.json. Each is defensible alone; together they are four places to look and four things to keep in sync when a project moves a directory. `@pyreon/config` is the single file with a key per package: `defineConfig` gives it types and editor completion, `CONFIG_FILENAMES` is the filename list every loader tries, and `sectionFrom` is the one named-vs-default section lookup they share. The tool that reads a key owns its meaning, so nothing becomes a god object — and a key appears in the type ONLY once a package actually reads it, because a config surface that advertises options nothing consumes is the typed-but-unimplemented class this repo gates against.
 
