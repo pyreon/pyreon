@@ -12,6 +12,7 @@ export default defineManifest({
     tier: 'web-only',
     rationale:
       'the core `toast(...)` + `<Toaster>` now lower to the native PyreonToast runtime (v1); the rich surface (toast.promise/update, options, animation) stays web',
+    nativeFrontend: 'PyreonToast — the imperative `toast(...)` calls and `<Toaster />`',
   },
   peerDeps: ['@pyreon/runtime-dom'],
   longExample: `import { toast, Toaster } from '@pyreon/toast'

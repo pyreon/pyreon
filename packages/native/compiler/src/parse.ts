@@ -783,42 +783,68 @@ function tryModuleDeclsFromTopLevel(node: AnyNode, ctx: ParseCtx): ModuleDeclIR[
  * i18n,machine,state-tree,form,validation,validate,query,storage,
  * permissions,hooks,rx,url-state,hotkeys}` — is deliberately EXCLUDED.
  */
-const WEB_ONLY_PACKAGES = new Set([
+/**
+ * Packages with no native emit at all — importing one into shared source is a
+ * build failure waiting to happen, so warn at parse time with the fix.
+ *
+ * DERIVED from every package manifest's `multiplatform` declaration: a package
+ * lands here when it declares `tier: 'web-only'` AND no `nativeFrontend`.
+ *
+ * This list used to be hand-written, and it rotted in both directions —
+ * twice. `@pyreon/sync` and `@pyreon/rich-text` were MISSING, so
+ * `syncedSignal(...)` / `createRichTextEditor(...)` emitted verbatim and died
+ * with "cannot find … in scope" and no diagnostic. `@pyreon/toast` went STALE
+ * the other way once its core started lowering to PyreonToast, warning that a
+ * working API was unusable. Both were repaired after the fact, by hand, with a
+ * comment — which is what a silent-hole generator looks like from the inside.
+ *
+ * Packages that lower only PART of their surface (toast, a11y, query) declare
+ * `nativeFrontend` in their manifest and are correctly absent here; their
+ * unlowered halves are still caught by the per-hook and per-construct warns.
+ */
+// <gen:web-only-packages:start>
+// GENERATED — do not edit by hand. Derived from every package manifest's
+// `multiplatform` declaration (tier === 'web-only' AND no `nativeFrontend`)
+// by `bun scripts/check-multiplatform-tier.ts --write-table`, which also
+// gates that this stays in sync. Edit the MANIFEST, not this list.
+const WEB_ONLY_PACKAGES: ReadonlySet<string> = new Set([
+  '@pyreon/atlas',
   '@pyreon/charts',
   '@pyreon/code',
-  '@pyreon/flow',
+  '@pyreon/compiler',
+  '@pyreon/config',
+  '@pyreon/connector-document',
+  '@pyreon/dnd',
   '@pyreon/document',
   '@pyreon/document-primitives',
-  '@pyreon/connector-document',
-  // @pyreon/elements (Element→Stack), @pyreon/styler (styled(Prim)), and
-  // @pyreon/rocketstyle now have NATIVE FRONTENDS — a user imports them to
-  // AUTHOR multiplatform components in their source, which lower. The
-  // per-construct warns (styled('div') / rocketstyle over a non-primitive /
-  // Element's rich web-only slots) still catch the parts that don't lower.
-  // @pyreon/ui-components stays here: PMTC compiles SOURCE, not npm packages,
-  // so an IMPORTED pre-built component can't lower — you re-author the pattern.
+  '@pyreon/feature',
+  '@pyreon/flow',
+  '@pyreon/head',
+  '@pyreon/hotkeys',
+  '@pyreon/http',
+  '@pyreon/kinetic',
+  '@pyreon/kinetic-presets',
+  '@pyreon/lint',
+  '@pyreon/loom',
+  '@pyreon/mcp',
+  '@pyreon/rich-text',
+  '@pyreon/runtime-dom',
+  '@pyreon/runtime-server',
+  '@pyreon/server',
+  '@pyreon/sized-map',
+  '@pyreon/sync',
+  '@pyreon/table',
+  '@pyreon/testing',
   '@pyreon/ui-components',
   '@pyreon/ui-primitives',
   '@pyreon/unistyle',
-  '@pyreon/kinetic',
-  '@pyreon/kinetic-presets',
-  '@pyreon/dnd',
-  // @pyreon/toast now has a NATIVE frontend: the imperative `toast(...)` calls
-  // lower to PyreonToast, and `<Toaster />` renders a native overlay. Removed
-  // from the web-only set (was a silent break — the call emitted verbatim).
-  '@pyreon/table',
+  '@pyreon/url-state',
+  '@pyreon/validate',
   '@pyreon/virtual',
-  // Both were MISSING and failed both targets with no diagnostic at all —
-  // `syncedSignal(...)` and `createRichTextEditor(...)` emitted verbatim and
-  // died with "cannot find ... in scope", while @pyreon/table right above them
-  // warned properly.
-  //
-  // @pyreon/sync is web-only by architecture: the Yjs engine plus the
-  // IndexedDB / WebSocket transports have no native runtime. @pyreon/rich-text
-  // wraps TipTap/ProseMirror, which is DOM-based.
-  '@pyreon/sync',
-  '@pyreon/rich-text',
+  '@pyreon/zero',
+  '@pyreon/zero-content',
 ])
+// <gen:web-only-packages:end>
 
 /**
  * Warn (once per package) on top-level imports of a web-only `@pyreon/*`
@@ -836,7 +862,15 @@ function warnWebOnlyImports(body: AnyNode[], ctx: ParseCtx): void {
     const pkg = src.startsWith('@pyreon/')
       ? `@pyreon/${(src.slice('@pyreon/'.length).split('/')[0] ?? '')}`
       : src
-    if (WEB_ONLY_PACKAGES.has(pkg) && !seen.has(pkg)) {
+    // A package with a granular entry in UNLOWERED_PYREON_MODULES is already
+    // covered at SYMBOL level, with advice specific to it ("use the namespace
+    // form", "validate in a <Web> branch"). That is strictly better than this
+    // blanket warning, and firing both would double-report the same import —
+    // worse, for a package whose lowered half is what the user imported
+    // (`zodSchema(...)` from @pyreon/validation), the blanket line is simply
+    // WRONG. The finer mechanism wins; deferring to it here is what lets the
+    // set above be derived from the tier without hand-tuning the overlap.
+    if (WEB_ONLY_PACKAGES.has(pkg) && !UNLOWERED_PYREON_MODULES.has(pkg) && !seen.has(pkg)) {
       seen.add(pkg)
       ctx.warnings.push(
         `${pkg} is WEB-ONLY — it renders via the DOM / a browser-only library and has NO native (iOS/Android) emit, so PMTC can't compile it. On native, render it behind a \`<Web>\` escape hatch (web target only), or use a platform-native equivalent inside \`<NativeIOS>\` / \`<NativeAndroid>\`. The shared, multi-platform UI vocabulary lives in \`@pyreon/primitives\` (Stack / Text / Button / …) — those compile to all three targets.`,

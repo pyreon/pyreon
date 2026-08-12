@@ -942,3 +942,60 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
     }
   })
 })
+
+// The web-only warn set is DERIVED from the package manifests
+// (`multiplatform.tier === 'web-only'` AND no `nativeFrontend`) by
+// `scripts/check-multiplatform-tier.ts --write-table`, which also gates that
+// it stays in sync.
+//
+// It used to be a hand-written literal, and it rotted in BOTH directions —
+// the comments it carried recorded each incident after the fact, which is what
+// a silent-hole generator looks like from the inside:
+//
+//   - MISSING entry  → the import emits verbatim and the native build dies
+//     with `cannot find 'x' in scope`, with no diagnostic pointing at the
+//     cause. `@pyreon/sync` and `@pyreon/rich-text` shipped that way.
+//   - STALE entry    → the warning tells a user that a working API is
+//     unusable. `@pyreon/toast` shipped that way once its core lowered.
+//
+// These lock the three ways the derivation must behave. They are behavioural
+// (they run the real parser), not a snapshot of the generated list — a
+// snapshot would need updating on every legitimate tier change and would
+// stop meaning anything.
+describe('web-only package warnings are derived from the manifests', () => {
+  const warnFor = (pkg: string): string[] => {
+    const result = transform(
+      `import { thing } from '${pkg}'\nexport function App() { return null }`,
+      { target: 'swift' },
+    )
+    return result.warnings
+  }
+
+  // The regression. Each of these declares `tier: 'web-only'` and was absent
+  // from the hand-written literal, so importing it produced NO warning at all.
+  for (const pkg of ['@pyreon/url-state', '@pyreon/head', '@pyreon/hotkeys', '@pyreon/feature']) {
+    it(`warns for ${pkg}, which the hand-written list silently omitted`, () => {
+      expect(warnFor(pkg).some((w) => w.includes(pkg) && w.includes('WEB-ONLY'))).toBe(true)
+    })
+  }
+
+  // A package that lowers PART of its surface declares `nativeFrontend` and
+  // must NOT be blanket-warned — that is the "stale entry" failure, and it is
+  // the more damaging direction: it tells the user a shipped API is unusable.
+  for (const pkg of ['@pyreon/toast', '@pyreon/a11y', '@pyreon/query']) {
+    it(`does NOT blanket-warn for ${pkg}, whose core lowers (nativeFrontend)`, () => {
+      expect(warnFor(pkg).some((w) => w.includes('WEB-ONLY'))).toBe(false)
+    })
+  }
+
+  // A package covered by the SYMBOL-level mechanism gets that warning and only
+  // that one. Both firing would double-report a single import, and for the
+  // lowered half of a partially-lowering package the blanket line is wrong.
+  for (const pkg of ['@pyreon/validate', '@pyreon/validation', '@pyreon/http', '@pyreon/rx']) {
+    it(`warns exactly once for ${pkg} — granular advice wins over the blanket line`, () => {
+      const warnings = warnFor(pkg)
+      expect(warnings).toHaveLength(1)
+      expect(warnings[0]).toContain('NO native lowering')
+    })
+  }
+})

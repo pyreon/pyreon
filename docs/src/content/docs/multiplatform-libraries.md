@@ -543,8 +543,8 @@ the machine-checked contract.
 | `@pyreon/a11y` | mostly DOM/ARIA utilities (the native element a11y story is the AccessibilityProps vocabulary on @pyreon/primitives); `announce(...)` now lowers to the native PyreonA11y runtime |
 | `@pyreon/feature` | composite over query/form/store/validation — lowers only when every dependency does; tracked as a Tier-2 composite |
 | `@pyreon/sync` | Yjs CRDT engine + IndexedDB/WebSocket transports; the engine-neutral core is portable but no native runtime exists |
-| `@pyreon/query` | wraps TanStack Query (JS runtime cache); native data fetching is useFetch/PyreonFetch |
-| `@pyreon/validation` | Standard Schema adapters (zod/valibot/arktype are JS libraries); per-validator lowering tracked, not shipped |
+| `@pyreon/query` | wraps TanStack Query (a JS runtime cache), so the full client — QueryClient config, devtools, infinite/suspense queries — stays web; `useQuery` itself lowers to the PyreonQuery runtime |
+| `@pyreon/validation` | Standard Schema adapters (zod/valibot/arktype are JS libraries), so the adapters themselves stay web; the declarative schema FORMS lower to native validators (Gap-4 v1) |
 | `@pyreon/flow` | wraps elkjs + SVG rendering (browser layout engine); consume on native via the `<WebView>` bridge subpath |
 | `@pyreon/lint` | lint tooling — runs at dev time, not app runtime |
 | `@pyreon/config` | build-time config shape read by the tooling that assembles an app — never part of a rendered app on any target |
