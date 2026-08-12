@@ -9,6 +9,17 @@ registerSingleton(__pkgName, __pkgVersion, import.meta.url)
 // ─── CRDT seam (engine-neutral) ─────────────────────────────────────────────
 export type { CrdtAdapter, CrdtDoc, CrdtMap, CrdtOrigin } from './crdt/types'
 export { LOCAL_ORIGIN, REMOTE_ORIGIN } from './crdt/types'
+// The pure-TS, dependency-free LWW scalar-map engine — no `yjs`. It converges
+// by construction (Lamport clock + deterministic actor tie-break), so it is the
+// engine the native JS-runtime bridge embeds for multiplatform sync (yjs is
+// heavier + engine-only on web). Rich Y.Text/Y.Array stay on `@pyreon/sync/yjs`.
+export {
+  createActorId,
+  type PyreonCrdtOp,
+  PyreonCrdtAdapter,
+  PyreonCrdtDoc,
+  pyreonAdapter,
+} from './crdt/pyreon-adapter'
 
 // ─── In-memory adapter (tests / no-engine usage) ────────────────────────────
 // The dependency-free adapter for unit-testing synced stores without standing
