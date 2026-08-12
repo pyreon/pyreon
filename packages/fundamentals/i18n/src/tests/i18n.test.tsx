@@ -8,6 +8,13 @@ import { resolvePluralCategory } from '../pluralization'
 import { parseRichText, Trans } from '../trans'
 import type { TranslationDictionary } from '../types'
 
+// <Trans> returns a reactive ACCESSOR (so it re-renders on locale change); these
+// unit tests assert on the RESOLVED output, so invoke it. Reactivity itself is
+// covered by the mount + locale.set specs in trans-context.test.tsx.
+function resolveTrans(props: Parameters<typeof Trans>[0]): unknown {
+  return (Trans(props) as () => unknown)()
+}
+
 // ─── interpolate ─────────────────────────────────────────────────────────────
 
 describe('interpolate', () => {
@@ -763,7 +770,7 @@ describe('parseRichText', () => {
 describe('Trans', () => {
   it('returns plain translated text when no components provided', () => {
     const t = (key: string) => (key === 'hello' ? 'Hello World' : key)
-    const result = Trans({ t, i18nKey: 'hello' })
+    const result = resolveTrans({ t, i18nKey: 'hello' })
     expect(result).toBe('Hello World')
   })
 
@@ -772,7 +779,7 @@ describe('Trans', () => {
       locale: 'en',
       messages: { en: { greeting: 'Hi {{name}}!' } },
     })
-    const result = Trans({
+    const result = resolveTrans({
       t: i18n.t,
       i18nKey: 'greeting',
       values: { name: 'Alice' },
@@ -782,7 +789,7 @@ describe('Trans', () => {
 
   it('returns plain string when components map is provided but text has no tags', () => {
     const t = () => 'No tags here'
-    const result = Trans({
+    const result = resolveTrans({
       t,
       i18nKey: 'plain',
       components: { bold: (ch: string) => ({ type: 'strong', children: ch }) },
@@ -792,7 +799,7 @@ describe('Trans', () => {
 
   it('invokes component functions for matched tags', () => {
     const t = () => 'Click <link>here</link> please'
-    const result = Trans({
+    const result = resolveTrans({
       t,
       i18nKey: 'action',
       components: {
@@ -821,7 +828,7 @@ describe('Trans', () => {
 
   it('renders unmatched tags as plain text children (no raw HTML)', () => {
     const t = () => 'Hello <unknown>world</unknown>'
-    const result = Trans({
+    const result = resolveTrans({
       t,
       i18nKey: 'test',
       components: {}, // No matching component
@@ -842,7 +849,7 @@ describe('Trans', () => {
       },
     })
 
-    const result = Trans({
+    const result = resolveTrans({
       t: i18n.t,
       i18nKey: 'items',
       values: { count: 42 },
@@ -914,7 +921,7 @@ describe('Trans — real h() + mount round-trip', () => {
 
   it('renders a single component-tag through h() into the right DOM', () => {
     const t = () => 'Click <link>here</link> please'
-    const result = Trans({
+    const result = resolveTrans({
       t,
       i18nKey: 'action',
       components: {
@@ -931,7 +938,7 @@ describe('Trans — real h() + mount round-trip', () => {
 
   it('renders multiple component tags interleaved with plain text', () => {
     const t = () => 'Hi <bold>Alice</bold>, click <link>here</link>'
-    const result = Trans({
+    const result = resolveTrans({
       t,
       i18nKey: 'mixed',
       components: {
@@ -952,7 +959,7 @@ describe('Trans — real h() + mount round-trip', () => {
       locale: 'en',
       messages: { en: { items: 'You have <bold>{{count}}</bold> items' } },
     })
-    const result = Trans({
+    const result = resolveTrans({
       t: i18n.t,
       i18nKey: 'items',
       values: { count: 42 },
@@ -967,7 +974,7 @@ describe('Trans — real h() + mount round-trip', () => {
 
   it('renders unmatched tags as plain text (no raw HTML injection)', () => {
     const t = () => 'Hello <unknown>world</unknown>'
-    const result = Trans({
+    const result = resolveTrans({
       t,
       i18nKey: 'safety',
       components: { bold: (children: string) => h('strong', null, children) },
@@ -983,7 +990,7 @@ describe('Trans — real h() + mount round-trip', () => {
 
   it('plain string (no tags) — Trans returns the string and DOM is text-only', () => {
     const t = () => 'No tags here'
-    const result = Trans({
+    const result = resolveTrans({
       t,
       i18nKey: 'plain',
       components: { bold: (children: string) => h('strong', null, children) },

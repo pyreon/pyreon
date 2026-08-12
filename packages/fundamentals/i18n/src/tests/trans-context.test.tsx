@@ -70,4 +70,52 @@ describe('Trans — reads t from context (no t prop)', () => {
   it('throws a clear error when no t prop AND no provider', () => {
     expect(() => Trans({ i18nKey: 'k' })).toThrow(/useI18n\(\) must be used within an <I18nProvider>/)
   })
+
+  // Regression: <Trans> ran its body ONCE and returned the resolved string, so a
+  // `locale.set(...)` never updated it (while every `{() => t(...)}` binding in
+  // the app did). It now returns an accessor, so the rendered DOM tracks locale.
+  it('re-renders when the locale changes (was frozen at first render)', () => {
+    const i18n = createI18n({
+      locale: 'en',
+      messages: {
+        en: { greeting: 'Hello {{name}}' },
+        de: { greeting: 'Hallo {{name}}' },
+      },
+    })
+    const container = newContainer()
+    mount(
+      h(I18nProvider, { value: i18n }, h(Trans, { i18nKey: 'greeting', values: { name: 'Bo' } })),
+      container,
+    )
+    expect(container.textContent).toBe('Hello Bo')
+    i18n.locale.set('de')
+    expect(container.textContent).toBe('Hallo Bo')
+    container.remove()
+  })
+
+  it('re-renders rich (components) translations when the locale changes', () => {
+    const i18n = createI18n({
+      locale: 'en',
+      messages: {
+        en: { legal: 'Read the <terms>terms</terms>' },
+        de: { legal: 'Lies die <terms>Bedingungen</terms>' },
+      },
+    })
+    const container = newContainer()
+    mount(
+      h(
+        I18nProvider,
+        { value: i18n },
+        h(Trans, {
+          i18nKey: 'legal',
+          components: { terms: (children: string) => h('a', { href: '/terms' }, children) },
+        }),
+      ),
+      container,
+    )
+    expect(container.textContent).toBe('Read the terms')
+    i18n.locale.set('de')
+    expect(container.textContent).toBe('Lies die Bedingungen')
+    container.remove()
+  })
 })

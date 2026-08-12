@@ -46,6 +46,12 @@ export function interpolate(
     // Not a `{{word}}` placeholder (e.g. `{{not a key}}`) — leave it literal.
     if (!KEY_RE.test(key)) return whole
 
+    // Own-property check, NOT `value === undefined`: `values` is a user object,
+    // so `values['toString']` / `['constructor']` / `['__proto__']` resolve to
+    // inherited prototype members (all non-undefined). A placeholder colliding
+    // with one of those names would otherwise interpolate the inherited value
+    // (`{{toString}}` → the function source) instead of being left literal.
+    if (!Object.hasOwn(values, key)) return whole
     const value = values[key]
     if (value === undefined) return whole
 
