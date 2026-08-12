@@ -1,4 +1,4 @@
-import { signal } from '@pyreon/reactivity'
+import { batch, signal } from '@pyreon/reactivity'
 import type {
   EnterCallback,
   InferEvents,
@@ -50,6 +50,34 @@ export function createMachine<const TConfig extends MachineConfig<string, string
   // Validate initial state
   if (!(initial in states)) {
     throw new Error(`[Pyreon] machine: initial state '${initial}' is not defined in states`)
+  }
+
+  // Validate every transition target. A non-existent / typo'd target would
+  // otherwise silently `current.set(...)` into a state the machine has no
+  // config for, leaving it PERMANENTLY STUCK — `matches(...)` false for every
+  // real state, `nextEvents()` empty, every subsequent `send()` a no-op — with
+  // no error and no warning. This is the same failure class `initial` is
+  // already guarded against, and (unlike TS) it also covers JS consumers.
+  for (const stateName of Object.keys(states) as TState[]) {
+    const sc = states[stateName]
+    const targets: TState[] = []
+    if (sc.on) {
+      for (const tr of Object.values(sc.on) as (TransitionConfig<TState> | undefined)[]) {
+        if (tr === undefined) continue
+        targets.push(typeof tr === 'string' ? tr : tr.target)
+      }
+    }
+    if (sc.always) {
+      const list = Array.isArray(sc.always) ? sc.always : [sc.always]
+      for (const tr of list) targets.push(typeof tr === 'string' ? tr : tr.target)
+    }
+    for (const target of targets) {
+      if (!(target in states)) {
+        throw new Error(
+          `[Pyreon] machine: transition target '${target}' (from state '${stateName}') is not defined in states`,
+        )
+      }
+    }
   }
 
   const current = signal<TState>(initial)
@@ -157,8 +185,16 @@ export function createMachine<const TConfig extends MachineConfig<string, string
     if (target === null) return current.peek()
 
     const machineEvent: MachineEvent<TEvent> = { type: event, payload }
-    doTransition(current.peek(), target, machineEvent)
-    runAlways(machineEvent)
+    // Batch the transition + eventless ('always') cascade so a reactive reader
+    // (effect/computed subscribing to `machine()`) settles on the FINAL state
+    // and never observes a transient `always` step — the contract the manifest
+    // documents ("a transient state is never observed by reactive readers").
+    // Batch defers only signal-subscriber notifications; the per-step
+    // onEnter/onExit/onTransition imperative callbacks still fire per step.
+    batch(() => {
+      doTransition(current.peek(), target, machineEvent)
+      runAlways(machineEvent)
+    })
     // The settled state after the event + any eventless ('always') cascade.
     return current.peek()
   }
@@ -185,9 +221,22 @@ export function createMachine<const TConfig extends MachineConfig<string, string
 
   machine.isFinal = (): boolean => states[current()]?.final === true
 
+  /**
+   * Reset to the initial state and re-run its eventless (`always`) cascade.
+   *
+   * NOTE (deliberate): `reset()` sets the state DIRECTLY — it does NOT fire
+   * `onExit(currentState)` or `onEnter(initial)` (only the subsequent `always`
+   * cascade fires listeners). So a resource acquired in `onEnter` and released
+   * in `onExit` (e.g. the "start a timer on enter, clear it on exit" pattern)
+   * is NOT torn down by `reset()`; clean it up explicitly before resetting.
+   */
   machine.reset = (): void => {
-    current.set(initial)
-    runAlways(INIT_EVENT)
+    // Batched for the same reason as `send` — a reactive reader settles on the
+    // final state, never a transient `always` step.
+    batch(() => {
+      current.set(initial)
+      runAlways(INIT_EVENT)
+    })
   }
 
   machine.onEnter = (state: TState, callback: EnterCallback<TEvent>): (() => void) => {
@@ -235,7 +284,11 @@ export function createMachine<const TConfig extends MachineConfig<string, string
 
   // Settle the initial state's eventless ('always') transitions at creation —
   // no listeners exist yet, so this only resolves the reported initial state.
-  runAlways(INIT_EVENT)
+  // Batched so a reader created between machine construction and its first read
+  // never observes a transient initial `always` step.
+  batch(() => {
+    runAlways(INIT_EVENT)
+  })
 
   return machine as Machine<TState, TEvent>
 }
