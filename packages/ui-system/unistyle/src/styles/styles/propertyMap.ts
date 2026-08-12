@@ -36,7 +36,14 @@ export type PropertyDescriptor =
   | { kind: 'convert_fallback'; css: string; keys: (keyof InnerTheme)[] }
   | { kind: 'edge'; property: EdgeProperty; keys: EdgeKeys }
   | { kind: 'border_radius'; keys: BorderRadiusKeys }
-  | { kind: 'special'; id: string }
+  // A special is indexed by its `id` (which doubles as its trigger theme key
+  // for most specials). `keys` lists ANY ADDITIONAL theme key its
+  // `processSpecial` branch reads — every such key MUST appear here, or the
+  // fast-path index misses it and the special is silently dropped whenever it
+  // is paired with any non-special property (fragments.length > 0 skips the
+  // fallback full-scan). `animation` reads `keyframe` on top of `animation`,
+  // so it declares `keys: ['keyframe']`.
+  | { kind: 'special'; id: string; keys?: readonly (keyof InnerTheme)[] }
 
 const propertyMap: PropertyDescriptor[] = [
   // SPECIAL: fullScreen
@@ -351,7 +358,10 @@ const propertyMap: PropertyDescriptor[] = [
   { kind: 'simple', css: 'outline-width', key: 'outlineWidth' },
 
   // ANIMATIONS
-  { kind: 'special', id: 'animation' },
+  // Reads BOTH `keyframe` and `animation` (processSpecial: `[t.keyframe,
+  // t.animation]`). `id` indexes `animation`; `keys` indexes `keyframe` —
+  // without it, `{ keyframe: 'spin', color: 'red' }` dropped the animation.
+  { kind: 'special', id: 'animation', keys: ['keyframe'] },
   { kind: 'simple', css: 'animation-name', key: 'animationName' },
   { kind: 'simple', css: 'animation-duration', key: 'animationDuration' },
   { kind: 'simple', css: 'animation-timing-function', key: 'animationTimingFunction' },
