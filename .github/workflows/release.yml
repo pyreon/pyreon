@@ -96,10 +96,54 @@ jobs:
         with:
           egress-policy: audit
 
+      # `secrets.RELEASE_PAT || secrets.GITHUB_TOKEN` falls back when the PAT is
+      # ABSENT — an unset secret is the empty string, which is falsy. It does
+      # NOT fall back when the PAT is present but EXPIRED or REVOKED: that value
+      # is non-empty, so `||` takes it, checkout hands it to git, and the very
+      # first `git fetch` dies with
+      #
+      #   fatal: could not read Username for 'https://github.com'
+      #
+      # which names neither the secret nor the reason. The whole job then fails
+      # at step 2, before `bun install` — so the healer that runs `if: always()`
+      # to repair a broken release chain never runs either, because there is no
+      # checkout for it to run from.
+      #
+      # That is not hypothetical. Every Release run in the visible history
+      # failed this way — no successful run at all — which is also why the
+      # `chore: version packages` PR went stale and started conflicting:
+      # changesets/action never got far enough to regenerate it.
+      #
+      # So the PAT is PROBED before it is trusted. An expired one degrades to
+      # GITHUB_TOKEN with a loud warning instead of taking the pipeline down:
+      # the PAT exists only so pushed tags TRIGGER downstream workflows
+      # (GITHUB_TOKEN-pushed refs deliberately do not), and `heal-release-chain`
+      # already dispatches `release-native.yml` explicitly for exactly that gap.
+      # A release that publishes and needs one healed dispatch beats a release
+      # that never starts.
+      - name: Select a usable checkout token
+        id: token
+        env:
+          RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
+        run: |
+          if [ -z "${RELEASE_PAT:-}" ]; then
+            echo "No RELEASE_PAT configured — using GITHUB_TOKEN."
+            echo "use-pat=false" >> "$GITHUB_OUTPUT"
+          elif curl -sf -o /dev/null -m 20 \
+              -H "Authorization: Bearer $RELEASE_PAT" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              https://api.github.com/repos/${{ github.repository }}; then
+            echo "RELEASE_PAT accepted."
+            echo "use-pat=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning title=RELEASE_PAT rejected::RELEASE_PAT is set but the GitHub API refused it (expired, revoked, or missing repo scope). Falling back to GITHUB_TOKEN so the release still runs. Tags pushed with GITHUB_TOKEN do not trigger workflows, so release-native.yml will be started by heal-release-chain instead. Rotate the secret."
+            echo "use-pat=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-          token: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
+          token: ${{ steps.token.outputs.use-pat == 'true' && secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -182,7 +226,12 @@ jobs:
           # opened with it have a blank CI status until someone pushes a
           # follow-up commit. Fallback to `GITHUB_TOKEN` keeps the workflow
           # functional without PAT setup. See CONTRIBUTING.md → Releases.
-          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
+          #
+          # Gated on the PROBE, not on presence: a `secrets.X || secrets.Y`
+          # here would hand an expired PAT to the action, which then fails to
+          # push the Version PR branch — the same class the checkout step
+          # documents, one step later and harder to read.
+          GITHUB_TOKEN: ${{ steps.token.outputs.use-pat == 'true' && secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
 
       # The changesets/action's built-in `createGithubReleases: true`
       # iterates per-package — slow for a 55-package monorepo and observed
