@@ -162,6 +162,20 @@ public final class PyreonRouter {
     /// segments directly from `currentPath`.
     public var params: [String: String] = [:]
 
+    /// Parsed search parameters for the committed path — `/search?q=cat&page=2`
+    /// → `["q": "cat", "page": "2"]`.
+    ///
+    /// This file's header has advertised `query` since the C1 scaffold, and
+    /// nothing implemented it: a path carrying `?…` was fed to `matchPath`
+    /// whole, so `/users/42?tab=a` captured `id == "42?tab=a"` and a static
+    /// route stopped matching altogether. Every deep link with a query string
+    /// — an OAuth callback, a shared link — hit that.
+    ///
+    /// Updated in the SAME step as `params` so the two always describe one
+    /// navigation, which is the atomicity `updateParamsFromPath` already
+    /// promises for `params` + `path`.
+    public var query: [String: String] = [:]
+
     /// Route table — declaration-order list of `RouteRecord` patterns.
     /// `push`/`replace` walk this list and pick the FIRST match;
     /// declaration order IS precedence. `RouterView` renders the matched
@@ -393,6 +407,10 @@ public final class PyreonRouter {
     /// child params + ...). For flat single-entry chains this matches
     /// the pre-A4.5 behavior.
     private func updateParamsFromPath(_ committed: String) {
+        // Parsed FIRST and unconditionally: a path that matches no route still
+        // has a valid query, and clearing it on a 404 would lose the very
+        // parameters a not-found page usually needs.
+        query = Self.parseQuery(Self.splitPathAndQuery(committed).query)
         guard let chain = resolveChainIn(routes, committed) else {
             params = [:]
             return
@@ -723,9 +741,13 @@ public final class PyreonRouter {
     ///     by the path (`/users/:id?` matches both `/users` and `/users/7`)
     ///   - non-splat / non-optional patterns require an exact segment count
     public static func matchPath(_ path: String, _ pattern: String) -> [String: String]? {
+        // Strip `?query` / `#fragment` before matching — they are not path
+        // segments. Without this, `/users/42?tab=a` matched `:id` against
+        // "42?tab=a" and a static route did not match at all.
+        let pathOnly = Self.splitPathAndQuery(path).path
         // Filter empty subsequences → leading/trailing slashes ignored,
         // matching the web router's `.split('/').filter(Boolean)`.
-        let pathParts = path.split(separator: "/").map(String.init)
+        let pathParts = pathOnly.split(separator: "/").map(String.init)
         let patternParts = pattern.split(separator: "/").map(String.init)
         var params: [String: String] = [:]
         for (i, patternSeg) in patternParts.enumerated() {
@@ -761,4 +783,64 @@ public final class PyreonRouter {
         guard pathParts.count <= patternParts.count else { return nil }
         return params
     }
+
+    // ─── Search parameters ──────────────────────────────────────────────
+
+    /// Split a committed path into its path and raw query, dropping any
+    /// `#fragment`. Pure and static so `matchPath` (also static) can use it.
+    public static func splitPathAndQuery(_ full: String) -> (path: String, query: String) {
+        // The fragment goes first: `/a?b=1#frag` must not leave `1#frag`.
+        let noFragment = full.split(separator: "#", maxSplits: 1).first.map(String.init) ?? full
+        guard let q = noFragment.firstIndex(of: "?") else { return (noFragment, "") }
+        return (String(noFragment[noFragment.startIndex..<q]),
+                String(noFragment[noFragment.index(after: q)...]))
+    }
+
+    /// Parse `a=1&b=two&flag` into a dictionary. A bare key maps to "",
+    /// matching `URLSearchParams`; a repeated key keeps the LAST value, which
+    /// is what the web `get()` returns.
+    public static func parseQuery(_ raw: String) -> [String: String] {
+        var out: [String: String] = [:]
+        for pair in raw.split(separator: "&") where !pair.isEmpty {
+            let parts = pair.split(separator: "=", maxSplits: 1).map(String.init)
+            guard let key = parts.first, !key.isEmpty else { continue }
+            let value = parts.count > 1 ? parts[1] : ""
+            out[Self.percentDecode(key)] = Self.percentDecode(value)
+        }
+        return out
+    }
+
+    /// Serialize back to `a=1&b=two`, sorted so the emitted URL is stable
+    /// (an unstable order would churn history entries on every write).
+    public static func serializeQuery(_ q: [String: String]) -> String {
+        q.keys.sorted()
+            .map { "\(Self.percentEncode($0))=\(Self.percentEncode(q[$0] ?? ""))" }
+            .joined(separator: "&")
+    }
+
+    private static func percentDecode(_ s: String) -> String {
+        s.replacingOccurrences(of: "+", with: " ").removingPercentEncoding ?? s
+    }
+
+    private static func percentEncode(_ s: String) -> String {
+        var allowed = CharacterSet.alphanumerics
+        allowed.insert(charactersIn: "-._~")
+        return s.addingPercentEncoding(withAllowedCharacters: allowed) ?? s
+    }
+
+    /// Set (or remove, with `nil`) one search parameter and rewrite the
+    /// committed URL in place. `replace` semantics, not `push`: changing a
+    /// filter should not add a back-stack entry per keystroke, which mirrors
+    /// `useUrlState`'s default on the web.
+    public func setQueryParam(_ key: String, _ value: String?) {
+        var next = query
+        if let value { next[key] = value } else { next.removeValue(forKey: key) }
+        guard next != query else { return }
+        query = next
+        guard let top = path.last else { return }
+        let base = Self.splitPathAndQuery(top).path
+        let serialized = Self.serializeQuery(next)
+        path[path.count - 1] = serialized.isEmpty ? base : "\(base)?\(serialized)"
+    }
+
 }

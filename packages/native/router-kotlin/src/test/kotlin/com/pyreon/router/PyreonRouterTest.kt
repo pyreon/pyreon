@@ -941,5 +941,63 @@ fun main() {
         )
     }
 
-    println("[verify-kotlin] ✓ PyreonRouter smoke ${69} test(s) passed")
+
+    // Search parameters — the 1:1 mirror of PyreonRouterQueryTests on the Swift
+    // side. `query` was advertised in this file's header since the C1 scaffold
+    // and never implemented, so a path carrying `?...` went into matchPath
+    // whole: `/users/42?tab=a` captured id == "42?tab=a" and a static route
+    // stopped matching. Every deep link with a query string hit that.
+    runTest("matchPath ignores ?query and #fragment") {
+        expectEq(PyreonRouter.matchPath("/users/42?tab=a", "/users/:id")?.get("id"), "42", "query stripped")
+        expectEq(PyreonRouter.matchPath("/users/42#top", "/users/:id")?.get("id"), "42", "fragment stripped")
+        expectEq(PyreonRouter.matchPath("/users/42?a=1#top", "/users/:id")?.get("id"), "42", "both stripped")
+        expectEq(PyreonRouter.matchPath("/settings?tab=profile", "/settings") != null, true, "static route still matches")
+    }
+
+    runTest("parseQuery matches URLSearchParams semantics") {
+        expectEq(PyreonRouter.parseQuery("q=cat&page=2")["q"], "cat", "first pair")
+        expectEq(PyreonRouter.parseQuery("q=cat&page=2")["page"], "2", "second pair")
+        expectEq(PyreonRouter.parseQuery("flag")["flag"], "", "bare key is empty-valued")
+        expectEq(PyreonRouter.parseQuery("a=1&a=2")["a"], "2", "last value wins")
+        expectEq(PyreonRouter.parseQuery("").isEmpty(), true, "empty query")
+        expectEq(PyreonRouter.parseQuery("q=two+words")["q"], "two words", "plus decodes to space")
+        expectEq(PyreonRouter.parseQuery("q=a%26b")["q"], "a&b", "percent decodes")
+    }
+
+    runTest("serializeQuery is sorted and stable") {
+        expectEq(PyreonRouter.serializeQuery(mapOf("b" to "2", "a" to "1")), "a=1&b=2", "sorted")
+        expectEq(PyreonRouter.serializeQuery(mapOf("q" to "a&b")), "q=a%26b", "encoded")
+        expectEq(PyreonRouter.serializeQuery(emptyMap()), "", "empty")
+    }
+
+    runTest("query tracks navigation and clears on leaving") {
+        val router = PyreonRouter()
+        router.push("/search?q=cat&page=2")
+        expectEq(router.query.value["q"], "cat", "q parsed")
+        expectEq(router.query.value["page"], "2", "page parsed")
+        router.push("/about")
+        expectEq(router.query.value.isEmpty(), true, "cleared on navigate away")
+    }
+
+    runTest("setQueryParam rewrites top of stack in place") {
+        val router = PyreonRouter()
+        router.push("/search?q=cat")
+        val depth = router.path.value.size
+        router.setQueryParam("page", "2")
+        expectEq(router.query.value["page"], "2", "param set")
+        expectEq(router.currentPath, "/search?page=2&q=cat", "url rewritten, sorted")
+        expectEq(router.path.value.size, depth, "replace semantics — no back entry")
+        router.setQueryParam("q", null)
+        expectEq(router.query.value["q"], null, "param removed")
+        expectEq(router.currentPath, "/search?page=2", "url rewritten after removal")
+    }
+
+    runTest("query survives an unmatched path") {
+        val router = PyreonRouter(routes = listOf(RouteRecord("/known") {}))
+        router.push("/unknown?ref=email")
+        expectEq(router.query.value["ref"], "email", "404 pages need their query too")
+        expectEq(router.params.value.isEmpty(), true, "no params on a miss")
+    }
+
+    println("[verify-kotlin] ✓ PyreonRouter smoke ${75} test(s) passed")
 }

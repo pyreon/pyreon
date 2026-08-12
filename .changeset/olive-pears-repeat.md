@@ -1,5 +1,7 @@
 ---
 '@pyreon/native-compiler': minor
+'@pyreon/native-router-swift': minor
+'@pyreon/native-router-kotlin': minor
 '@pyreon/validate': minor
 '@pyreon/validation': minor
 '@pyreon/toast': minor
@@ -64,3 +66,22 @@ surfaces stay web, and still warn.
 The recognizer gates on the IMPORT, not the bare name: `zodSchema(...)` is a
 distinctive wrapper but a lone `s` is not, and claiming it would silently
 rewrite a user's own binding.
+
+
+## Native router: implement the `query` it has always advertised
+
+`PyreonRouter`'s header has listed `query` (typed search params) since the C1
+scaffold on BOTH platforms, and neither implemented it. Worse than missing: a
+path carrying `?…` was handed to `matchPath` whole, so `/users/42?tab=a`
+captured `id == "42?tab=a"` and a static route stopped matching altogether.
+Every deep link with a query string — an OAuth callback, a shared link — hit
+that, on iOS and Android alike.
+
+Both routers now parse the query alongside `params`, in the same step, so the
+two always describe one navigation. New surface, identical on each side:
+`query`, `setQueryParam(key, value)` (replace semantics — changing a filter must
+not add a back-stack entry per keystroke), plus `splitPathAndQuery` /
+`parseQuery` / `serializeQuery`. `parseQuery` follows `URLSearchParams`: a bare
+key is present-with-empty-value, a repeated key keeps the last. `serializeQuery`
+sorts, so the rewritten URL is stable. The query survives an unmatched path — a
+404 page usually needs the parameters it was called with.
