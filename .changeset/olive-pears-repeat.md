@@ -1,5 +1,6 @@
 ---
 '@pyreon/native-compiler': minor
+'@pyreon/validate': minor
 '@pyreon/validation': minor
 '@pyreon/toast': minor
 '@pyreon/query': minor
@@ -41,3 +42,25 @@ Two supporting changes:
 query's said native fetching is `useFetch/PyreonFetch` although `PyreonQuery`
 shipped and `useQuery` is lowered, and validation's said per-validator lowering
 was "not shipped" although the Gap-4 schema forms emit native validators.
+
+## Lower `@pyreon/validate`'s `s` DSL to native validators
+
+A top-level `const X = s.object({ … })` declaration now emits a Swift `Codable`
+struct and a Kotlin `data class`, each with `parse` / `safeParse` and real
+constraint enforcement — from the same source, on both targets. Before this,
+`@pyreon/validate` had no native story at all: a native app could not validate
+data, and the schema emitted verbatim.
+
+It reuses the existing Gap-4 schema pipeline (recognizer → IR → per-target
+emit) rather than adding a second one. The only structural difference from
+zod / valibot / arktype is that `s.object({ … })` arrives with no wrapper call —
+it already IS a Standard Schema — so the shared walker's `schemaFn` became
+nullable instead of being copied.
+
+Scope, stated plainly: the DECLARATION form lowers. Inline uses
+(`s.string().parse(x)`), the JIT, JSON-schema export and the v1/mini compat
+surfaces stay web, and still warn.
+
+The recognizer gates on the IMPORT, not the bare name: `zodSchema(...)` is a
+distinctive wrapper but a lone `s` is not, and claiming it would silently
+rewrite a user's own binding.
