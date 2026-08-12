@@ -1,3 +1,4 @@
+import { effect } from '../effect'
 import { signal } from '../signal'
 import { watch } from '../watch'
 
@@ -58,6 +59,44 @@ describe('watch', () => {
 
     s.set(3)
     expect(callCount).toBe(1) // no more calls
+  })
+
+  test('per-run cleanup runs when the OWNING scope disposes (not only on stop/re-run)', () => {
+    const active = signal(true)
+    let cleaned = 0
+
+    // watch is set up INSIDE an owning effect — exactly as it is inside a
+    // component setup — so its internal effect becomes an INNER effect of
+    // `owner`. The watch disposer is NOT captured; teardown is driven purely
+    // by scope disposal (the shape kinetic's useAnimationEnd uses: it discards
+    // the disposer and relies on the component scope unmounting).
+    const owner = effect(() => {
+      watch(
+        () => active(),
+        (isActive) => {
+          if (!isActive) return
+          return () => {
+            cleaned++
+          }
+        },
+        { immediate: true },
+      )
+    })
+
+    // immediate + active === true → the callback ran and registered a per-run
+    // cleanup that has NOT fired yet.
+    expect(cleaned).toBe(0)
+
+    // Disposing the owning scope must run the pending per-run cleanup. Before
+    // the fix the cleanup lived in a closure the effect never owned, so scope
+    // disposal orphaned it — kinetic left a 5s setTimeout + transitionend
+    // listeners pinning a detached subtree.
+    owner.dispose()
+    expect(cleaned).toBe(1)
+
+    // Idempotent: disposing again does not re-run the (already-run) cleanup.
+    owner.dispose()
+    expect(cleaned).toBe(1)
   })
 
   test('cleanup function is called before each re-run', () => {

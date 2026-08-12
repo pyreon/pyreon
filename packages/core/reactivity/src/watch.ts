@@ -1,4 +1,4 @@
-import { effect } from './effect'
+import { effect, onCleanup } from './effect'
 
 export interface WatchOptions {
   /** If true, call the callback immediately with the current value on setup. Default: false. */
@@ -33,7 +33,6 @@ export function watch<T>(
 ): () => void {
   let oldVal: T | undefined
   let isFirst = true
-  let cleanupFn: (() => void) | undefined
 
   const e = effect(() => {
     const newVal = source()
@@ -43,26 +42,25 @@ export function watch<T>(
       oldVal = newVal
       if (opts.immediate) {
         const result = callback(newVal, undefined)
-        if (typeof result === 'function') cleanupFn = result
+        // Register the per-run cleanup on the EFFECT (via onCleanup) rather
+        // than a closure var. The effect's runCleanup fires it before each
+        // re-run AND on dispose — so when the OWNING SCOPE disposes the effect
+        // (component unmount), the cleanup runs. Previously the cleanup lived
+        // in a closure that only ran on re-run or via the returned stop(), so
+        // an unmount mid-cycle ORPHANED it — a `watch` whose callback added a
+        // listener / set a timer leaked it for the effect's would-be lifetime
+        // (e.g. kinetic's useAnimationEnd left a 5s setTimeout + transitionend
+        // listeners pinning a detached subtree). See anti-patterns "watch's
+        // per-run cleanup orphaned on scope disposal".
+        if (typeof result === 'function') onCleanup(result)
       }
       return
     }
 
-    if (cleanupFn) {
-      cleanupFn()
-      cleanupFn = undefined
-    }
-
     const result = callback(newVal, oldVal)
-    if (typeof result === 'function') cleanupFn = result
+    if (typeof result === 'function') onCleanup(result)
     oldVal = newVal
   })
 
-  return () => {
-    e.dispose()
-    if (cleanupFn) {
-      cleanupFn()
-      cleanupFn = undefined
-    }
-  }
+  return () => e.dispose()
 }
