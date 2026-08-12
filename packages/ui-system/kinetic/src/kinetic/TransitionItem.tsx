@@ -55,7 +55,7 @@ const applyLeave = (el: HTMLElement, config: ClassTransitionProps & StyleTransit
   addClasses(el, config.leave)
   addClasses(el, config.leaveFrom)
   if (config.leaveStyle) Object.assign(el.style, config.leaveStyle)
-  if (config.leaveTransition) setTransition(el, config.leaveTransition)
+  if (config.leaveTransition) setTransition(el, config.leaveTransition, 'leave')
 
   return nextFrame(() => {
     removeClasses(el, config.leaveFrom)

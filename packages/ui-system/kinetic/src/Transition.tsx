@@ -77,7 +77,7 @@ const applyLeave = (
   addClasses(el, leave)
   addClasses(el, leaveFrom)
   if (leaveStyle) Object.assign(el.style, leaveStyle)
-  if (leaveTransition) setTransition(el, leaveTransition)
+  if (leaveTransition) setTransition(el, leaveTransition, 'leave')
 
   return nextFrame(() => {
     removeClasses(el, leaveFrom)

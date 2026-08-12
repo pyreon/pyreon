@@ -94,6 +94,14 @@ export const nextFrame = (callback: () => void): (() => void) => {
 
 /** Stable custom property carrying a kinetic-controlled transition-delay. */
 export const KINETIC_DELAY_VAR = '--kinetic-delay'
+/**
+ * Reversed LEAVE-phase delay, set by the stagger renderers when
+ * `reverseLeave` is on so the leave order can differ from the enter order
+ * (last-entered leaves first). `setTransition(el, value, 'leave')` prefers it;
+ * non-`reverseLeave` staggers set it equal to `--kinetic-delay`, so the two
+ * phases stay identical and behaviour is unchanged for them.
+ */
+export const KINETIC_LEAVE_DELAY_VAR = '--kinetic-leave-delay'
 
 /**
  * Assigns the `transition` shorthand WITHOUT clobbering a per-element
@@ -115,8 +123,18 @@ export const KINETIC_DELAY_VAR = '--kinetic-delay'
  * staggers keep their delay. A plain inline `transition-delay` (e.g.
  * user-set) is honoured as a first-cycle fallback.
  */
-export const setTransition = (el: HTMLElement, value: string): void => {
-  const staggerDelay = el.style.getPropertyValue(KINETIC_DELAY_VAR)
+export const setTransition = (
+  el: HTMLElement,
+  value: string,
+  phase: 'enter' | 'leave' = 'enter',
+): void => {
+  // On the LEAVE phase, prefer the reversed `--kinetic-leave-delay` (set by the
+  // stagger renderers under `reverseLeave`) so the last-entered item can leave
+  // first. Non-reverseLeave staggers set it equal to `--kinetic-delay`, so this
+  // is a no-op for them; a plain (non-stagger) Transition sets neither var and
+  // falls through to the user's inline transition-delay — all unchanged.
+  const phaseDelay = phase === 'leave' ? el.style.getPropertyValue(KINETIC_LEAVE_DELAY_VAR) : ''
+  const staggerDelay = phaseDelay || el.style.getPropertyValue(KINETIC_DELAY_VAR)
   const inlineDelay = el.style.transitionDelay
   el.style.transition = value
   const delay = staggerDelay || inlineDelay
