@@ -80,7 +80,7 @@ export const RangeSlider: ComponentFn<RangeSliderProps> = (props) => {
   const [own, rest] = splitProps(props, ['children'])
 
   if (typeof own.children === 'function') {
-    return h(RangeSliderBase as never, { ...rest, children: own.children }) as unknown as VNodeChild
+    return h(RangeSliderBase as never, { ...rest, children: own.children })
   }
 
   return h(RangeSliderBase as never, {
@@ -114,7 +114,7 @@ export const RangeSlider: ComponentFn<RangeSliderProps> = (props) => {
         ),
       )
     },
-  }) as unknown as VNodeChild
+  })
 }
 
 export default RangeSlider

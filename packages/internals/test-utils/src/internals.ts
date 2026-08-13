@@ -56,7 +56,7 @@ export function callInternal<TKey extends string, TReturn>(
   const fn = (obj as unknown as Record<TKey, (...args: unknown[]) => TReturn>)[method]
   if (typeof fn !== 'function') {
     throw new Error(
-      `callInternal: ${method} is not a function on the given object`,
+      `[Pyreon] callInternal: ${method} is not a function on the given object`,
     )
   }
   return fn.apply(obj, args)

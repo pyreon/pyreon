@@ -1284,7 +1284,7 @@ export function Index<T>(props: {
     const items = list()
     return items.map((item, i) => props.children(() => item, i))
   })
-  return (() => mapped()) as unknown as VNodeChild
+  return (() => mapped())
 }
 
 // ─── createUniqueId ─────────────────────────────────────────────────────────

@@ -209,7 +209,7 @@ export function activateServerIslandElement(el: HTMLElement, base = ''): void {
     headers: { Accept: 'text/html' },
   })
     .then(async (res) => {
-      if (!res.ok) throw new Error(`fragment ${name}: HTTP ${res.status}`)
+      if (!res.ok) throw new Error(`[Pyreon] fragment ${name}: HTTP ${res.status}`)
       const html = await res.text()
       if (!el.isConnected) return // route torn down mid-flight
       // Same-origin, name-allowlisted, server-rendered markup — the same

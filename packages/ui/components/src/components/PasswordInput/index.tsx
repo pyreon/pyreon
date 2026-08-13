@@ -1,5 +1,5 @@
 /** @jsxImportSource @pyreon/core */
-import type { ComponentFn, VNodeChild } from '@pyreon/core'
+import type { ComponentFn } from '@pyreon/core'
 import { h, splitProps, useControllableState } from '@pyreon/core'
 import { el } from '../../factory'
 import Input from '../Input'
@@ -83,9 +83,9 @@ export const PasswordInput: ComponentFn<PasswordInputProps> = (props) => {
         'data-password-toggle': 'true',
       },
       // Simple glyphs; consumers replace via children later if we add a slot.
-      (() => (visible() ? '🙈' : '👁')) as unknown as VNodeChild,
+      (() => (visible() ? '🙈' : '👁')),
     ),
-  ) as unknown as VNodeChild
+  )
 }
 
 export default PasswordInput

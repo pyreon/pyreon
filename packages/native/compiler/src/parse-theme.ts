@@ -84,13 +84,13 @@ export function parseTheme(source: string, filename = 'theme.ts'): ParseThemeRes
   if (parsed.errors.length > 0) {
     const first = parsed.errors[0]
     throw new Error(
-      `[parse-theme] failed to parse ${filename}: ${first?.message ?? 'unknown parse error'}`,
+      `[Pyreon] [parse-theme] failed to parse ${filename}: ${first?.message ?? 'unknown parse error'}`,
     )
   }
   const themeObject = findThemeObject(parsed.program)
   if (!themeObject) {
     throw new Error(
-      `[parse-theme] no theme object found in ${filename}. Expected ` +
+      `[Pyreon] [parse-theme] no theme object found in ${filename}. Expected ` +
         `\`const theme = { ... }\` or \`export default { ... }\`.`,
     )
   }

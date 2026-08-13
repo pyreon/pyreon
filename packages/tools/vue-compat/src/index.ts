@@ -211,7 +211,7 @@ export function computed<T>(
       },
       set value(v: T) {
         if (!setter) {
-          throw new Error('Cannot set value of a computed ref — computed refs are readonly')
+          throw new Error('[Pyreon] Cannot set value of a computed ref — computed refs are readonly')
         }
         setter(v)
         scheduleRerender()
@@ -232,7 +232,7 @@ export function computed<T>(
     },
     set value(v: T) {
       if (!setter) {
-        throw new Error('Cannot set value of a computed ref — computed refs are readonly')
+        throw new Error('[Pyreon] Cannot set value of a computed ref — computed refs are readonly')
       }
       setter(v)
     },
@@ -340,10 +340,10 @@ function _createShallowReadonlyProxy<T extends object>(obj: T): Readonly<T> {
     },
     set(_target, key) {
       if (key === V_IS_READONLY || key === V_RAW) return true
-      throw new Error(`Cannot set property "${String(key)}" on a readonly object`)
+      throw new Error(`[Pyreon] Cannot set property "${String(key)}" on a readonly object`)
     },
     deleteProperty(_target, key) {
-      throw new Error(`Cannot delete property "${String(key)}" from a readonly object`)
+      throw new Error(`[Pyreon] Cannot delete property "${String(key)}" from a readonly object`)
     },
   })
   return proxy as Readonly<T>
@@ -364,10 +364,10 @@ function _createReadonlyProxy<T extends object>(obj: T): Readonly<T> {
     set(_target, key) {
       // Internal symbols used for identification are allowed
       if (key === V_IS_READONLY || key === V_RAW) return true
-      throw new Error(`Cannot set property "${String(key)}" on a readonly object`)
+      throw new Error(`[Pyreon] Cannot set property "${String(key)}" on a readonly object`)
     },
     deleteProperty(_target, key) {
-      throw new Error(`Cannot delete property "${String(key)}" from a readonly object`)
+      throw new Error(`[Pyreon] Cannot delete property "${String(key)}" from a readonly object`)
     },
   })
   return proxy as Readonly<T>
@@ -1086,7 +1086,7 @@ export function createApp(component: ComponentFn, props?: Props): App {
     mount(el: string | Element): () => void {
       const container = typeof el === 'string' ? document.querySelector(el) : el
       if (!container) {
-        throw new Error(`Cannot find mount target: ${el}`)
+        throw new Error(`[Pyreon] Cannot find mount target: ${el}`)
       }
       // Push app-level provisions before mounting AND track each pushed
       // frame so the returned unmount callback can remove them by IDENTITY.

@@ -57,7 +57,7 @@
         "exemptPaths": [
           "packages/core/runtime-dom/",
           "packages/fundamentals/hooks/",
-        "packages/fundamentals/hotkeys/",
+          "packages/fundamentals/hotkeys/",
           "packages/fundamentals/storage/",
           "packages/core/router/",
           "packages/tools/devtools/",
@@ -65,7 +65,17 @@
           "packages/ui-system/elements/src/Overlay/",
           "packages/fundamentals/http/",
           "packages/tools/atlas/src/verify/",
-          "packages/internals/test-utils/src/happy-dom-hashchange-guard.ts"
+          "packages/internals/test-utils/src/happy-dom-hashchange-guard.ts",
+          "packages/core/runtime-server/",
+          "packages/core/server/",
+          "packages/ui-system/kinetic/",
+          "packages/ui-system/ui-core/",
+          "packages/fundamentals/dnd/",
+          "packages/fundamentals/url-state/",
+          "packages/fundamentals/code/",
+          "packages/fundamentals/query/",
+          "packages/zero/zero/",
+          "packages/zero/zero-content/"
         ]
       }
     ],
@@ -75,8 +85,16 @@
         "exemptPaths": [
           "packages/core/runtime-dom/",
           "packages/fundamentals/hooks/",
-        "packages/fundamentals/hotkeys/",
-          "packages/core/router/"
+          "packages/fundamentals/hotkeys/",
+          "packages/core/router/",
+          "packages/core/primitives/",
+          "packages/fundamentals/form/",
+          "packages/fundamentals/query/",
+          "packages/fundamentals/storage/",
+          "packages/ui-system/elements/",
+          "packages/ui-system/kinetic/",
+          "packages/zero/zero/",
+          "packages/zero/zero-content/"
         ]
       }
     ],
@@ -85,7 +103,7 @@
       {
         "exemptPaths": [
           "packages/fundamentals/hooks/",
-        "packages/fundamentals/hotkeys/",
+          "packages/fundamentals/hotkeys/",
           "packages/fundamentals/rx/",
           "__tests__/",
           ".test."
@@ -133,7 +151,10 @@
     "pyreon/no-bare-signal-in-jsx": [
       "info",
       {
-        "exemptPaths": ["__tests__/", ".test."]
+        "exemptPaths": [
+          "__tests__/",
+          ".test."
+        ]
       }
     ],
     "pyreon/no-module-signal-in-server-package": [
@@ -156,6 +177,17 @@
           "packages/ui-system/elements/src/Portal/component.tsx",
           "packages/ui-system/styler/src/sheet.ts",
           "packages/internals/test-utils/src/happy-dom-hashchange-guard.ts"
+        ]
+      }
+    ],
+    "pyreon/no-dom-in-setup": [
+      "warn",
+      {
+        "exemptPaths": [
+          "packages/tools/devtools/",
+          "packages/tools/vue-compat/",
+          "packages/ui-system/styler/",
+          "packages/zero/zero-content/"
         ]
       }
     ]
