@@ -1920,11 +1920,14 @@ function emitSwiftComponent(c: ComponentIR): string {
   // `pyreonSizeClass` to derive the "compact"/"regular" string. Optional
   // because the environment value is `UserInterfaceSizeClass?` (nil on
   // platforms/contexts without a class → treated as compact).
-  if (_usesSizeClass) {
-    lines.push(
-      `  @Environment(\\.horizontalSizeClass) private var pyreonSizeClass: UserInterfaceSizeClass?`,
-    )
-  }
+  // The slot is RESERVED rather than filled here, because a responsive
+  // `style={{ x: [compact, regular] }}` also lowers to a size-class
+  // conditional — and that is only discovered while the BODY is emitted,
+  // which happens further down this same array. Splicing at the end lets the
+  // real lowering be the single source of truth for whether the injection is
+  // needed; a second "does this component use responsive styles?" scanner
+  // here would be a parallel implementation free to drift from it.
+  const sizeClassSlot = lines.length
   for (const d of c.decls) {
     // Phase 5b: value consts are body-local `let`s (a stored `let` property
     // can't reference @State at init), emitted just below — skip here.
@@ -2285,6 +2288,16 @@ function emitSwiftComponent(c: ComponentIR): string {
   }
   lines.push(`  }`)
   lines.push(`}`)
+  // Fill the reserved slot now that the body has been lowered — a responsive
+  // style anywhere in it sets `_usesSizeClass`, and the property has to be
+  // declared before the body that references it.
+  if (_usesSizeClass) {
+    lines.splice(
+      sizeClassSlot,
+      0,
+      `  @Environment(\\.horizontalSizeClass) private var pyreonSizeClass: UserInterfaceSizeClass?`,
+    )
+  }
   _activePropsParamName = undefined
   _signalEnumTypes = new Map()
   _signalNames = new Set()
@@ -2451,6 +2464,7 @@ function syncedInitialSwift(
   if (scalar === 'bool') return value ? 'true' : 'false'
   return String(value)
 }
+
 
 function emitSwiftDecl(
   d: DeclIR,
@@ -6954,7 +6968,7 @@ function emitSwiftLayoutModifiers(
     (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'style',
   )
   if (styleAttr !== undefined) {
-    const { modifiers, warnings } = styleToNativeModifiers(
+    const { modifiers, warnings, needsSizeClass } = styleToNativeModifiers(
       styleAttr.value,
       'swift',
       e.tag,
@@ -6962,6 +6976,10 @@ function emitSwiftLayoutModifiers(
     )
     parts.push(...modifiers)
     for (const w of warnings) _emitWarnings.push(w)
+    // A responsive array lowered to a size-class conditional, so the View
+    // needs the @Environment(\.horizontalSizeClass) injection — the same
+    // one useSizeClass() uses.
+    if (needsSizeClass === true) _usesSizeClass = true
   }
   // E3.1 — `data-testid` becomes SwiftUI's `.accessibilityIdentifier()`
   // so the same string the web e2e selects on (`getByTestId`) is also
