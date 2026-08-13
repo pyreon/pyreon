@@ -49,6 +49,7 @@ import {
 } from './infer-type'
 import { safeIdent, swiftIdent } from './identifier-safety'
 import { resolveRocketstyleUseSite } from './rocketstyle-native'
+import { clampExpr } from './pure-state'
 import type { AttrsComponentIR } from './attrs-native'
 import { elementToStack } from './elements-native'
 import { coolgridToStack, colToStack, colHasExplicitSize, colSizeLiteral, DEFAULT_COLUMNS } from './coolgrid-native'
@@ -742,6 +743,15 @@ export function emitSwift(
   // Gap 4 v2 follow-up: track model instance names → modelId so use-site
   // member access (`<instance>.<field>`) emits as PyreonModel_<id>.shared.<field>.
   _modelInstances = new Map(models.map((m) => [m.instanceName, m.modelId]))
+  _pureStateSwift = new Map()
+  for (const c of components) {
+    for (const d of c.decls ?? []) {
+      if (d.kind === 'pure-state') {
+        _pureStateSwift.set(d.name, d.bounds ? { hook: d.hook, bounds: d.bounds } : { hook: d.hook })
+        _pureStateInitialSwift.set(d.name, d.initial)
+      }
+    }
+  }
   // State fields + views are READ (`counter.count()` on web, since a state
   // field is a signal); actions are CALLED. The two registries are what let
   // the call-site rewrite tell them apart.
@@ -819,6 +829,7 @@ export function emitSwift(
   _structDefs = []
   _storeMethodNames = new Map()
   _modelInstances = new Map()
+  _pureStateSwift = new Map()
   _modelReadNames = new Map()
   _modelMethodNames = new Map()
   _needsSwiftKeepAliveWrapper = false
@@ -840,6 +851,10 @@ let _structDefs: StructIR[] = []
 
 /** Map of model instance name → modelId (e.g. `counter` → `"counter"`). */
 let _modelInstances: Map<string, string> = new Map()
+/** `useToggle`/`useCounter` bindings — their members rewrite at use sites. */
+let _pureStateSwift: Map<string, { hook: 'useToggle' | 'useCounter'; bounds?: { min?: number; max?: number } }> = new Map()
+/** Initial values, so `reset()` restores exactly what the web's does. */
+let _pureStateInitialSwift: Map<string, number | boolean> = new Map()
 /** Set while emitting a model view/action body — the factory's `self`
  * param name. Distinct from `_activePropsParamName` (which also carries it,
  * for the member-expression rewrite) so the signal-READ rewrite below can
@@ -2446,6 +2461,13 @@ function emitSwiftDecl(
   // Phase 4: `const can = usePermissions([...])` → an @State PyreonPermissions
   // seeded with the literal grant keys. Reads are method calls
   // (`can.can("x")`), so no field-read rewrite — plain method emit on Swift.
+  // `useToggle` / `useCounter` — a plain @State field. The mutators are
+  // rewritten at their use sites (see the call case), so there is no runtime
+  // and no wrapper type.
+  if (d.kind === 'pure-state') {
+    const t = d.hook === 'useToggle' ? 'Bool' : 'Int'
+    return `@State private var ${swiftIdent(d.name)}: ${t} = ${String(d.initial)}`
+  }
   if (d.kind === 'permissions') {
     const seed = d.grants.length
       ? `[${d.grants.map((g) => JSON.stringify(g)).join(', ')}]`
@@ -3512,6 +3534,35 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         if (_modelMethodNames.get(instance)?.has(e.callee.property) === true) {
           const args = e.args.map((a) => emitSwiftExpr(a, indent)).join(', ')
           return `PyreonModel_${modelId}.shared.${member}(${args})`
+        }
+      }
+      // useToggle / useCounter member surface. The state field IS the
+      // value, so a read drops its parens; each mutator becomes the
+      // arithmetic it stands for, with useCounter's literal clamp baked in
+      // — a runtime would buy nothing here and a helper would hide the
+      // clamp from the emitted output.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _pureStateSwift.has(e.callee.object.name)
+      ) {
+        const binding = e.callee.object.name
+        const info = _pureStateSwift.get(binding)!
+        const field = swiftIdent(binding)
+        const m = e.callee.property
+        const arg = e.args.length > 0 ? emitSwiftExpr(e.args[0]!, indent) : undefined
+        const clamp = (x: string): string => clampExpr(x, info.bounds, 'min', 'max')
+        if (info.hook === 'useToggle') {
+          if (m === 'value') return field
+          if (m === 'toggle') return `${field}.toggle()`
+          if (m === 'setTrue') return `${field} = true`
+          if (m === 'setFalse') return `${field} = false`
+        } else {
+          if (m === 'count') return field
+          if (m === 'inc') return `${field} = ${clamp(`${field} + ${arg ?? '1'}`)}`
+          if (m === 'dec') return `${field} = ${clamp(`${field} - ${arg ?? '1'}`)}`
+          if (m === 'set') return `${field} = ${clamp(arg ?? '0')}`
+          if (m === 'reset') return `${field} = ${clamp(String(_pureStateInitialSwift.get(binding) ?? 0))}`
         }
       }
       // `parseInt(s)` / `parseFloat(s)` / `Number(s)` → Swift `Int(s) ?? 0`

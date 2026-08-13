@@ -1062,6 +1062,9 @@ export const NATIVE_LOWERED_HOOKS: ReadonlySet<string> = new Set([
   'useHaptics', 'useImagePicker', 'useLinking', 'useLoaderData', 'useMap',
   'useNativeModule', 'useNavigate', 'useNotifications', 'useOnline',
   'useParams', 'usePayments', 'usePermissions', 'usePush', 'useQuery',
+  // Pure state — no platform dependency, so no runtime; see the
+  // `pure-state` DeclIR.
+  'useToggle', 'useCounter',
   'useUrlState',
   'useSecureStorage',
   'useShare', 'useSizeClass', 'useStorage', 'useWebSocket',
@@ -5383,6 +5386,66 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // `const { copy, copied } = useClipboard()` is a documented
   // follow-up — needs the per-key rewrite that `params-destructure`
   // uses).
+  // `useToggle(initial)` / `useCounter(initial, { min, max })` — pure state
+  // containers with NO platform dependency: a signal plus a few mutators.
+  // They needed no runtime, only a lowering, and without one the call
+  // emitted verbatim and failed the native build.
+  if (calleeName === 'useToggle' || calleeName === 'useCounter') {
+    const firstArg = init.arguments?.[0] as AnyNode | undefined
+    const initialNode = firstArg ? unwrapTypeLayers(firstArg) : undefined
+    if (calleeName === 'useToggle') {
+      // Default `false`, per the web signature.
+      let initial = false
+      if (initialNode !== undefined) {
+        if (initialNode.type !== 'Literal' || typeof initialNode.value !== 'boolean') {
+          ctx.warnings.push(
+            `useToggle() \`${name}\`: the initial value must be a boolean literal to bake into the native state — this one is not, so the declaration is NOT lowered.`,
+          )
+          return null
+        }
+        initial = initialNode.value as boolean
+      }
+      return { kind: 'pure-state', name, hook: 'useToggle', initial }
+    }
+    let initial = 0
+    if (initialNode !== undefined) {
+      if (initialNode.type !== 'Literal' || typeof initialNode.value !== 'number') {
+        ctx.warnings.push(
+          `useCounter() \`${name}\`: the initial value must be a numeric literal to bake into the native state — this one is not, so the declaration is NOT lowered.`,
+        )
+        return null
+      }
+      initial = initialNode.value as number
+    }
+    // The clamp is baked into every mutator at the use site, so it has to be
+    // literal. A computed bound would silently stop clamping on device.
+    const bounds: { min?: number; max?: number } = {}
+    const optsNode = init.arguments?.[1] as AnyNode | undefined
+    const opts = optsNode ? unwrapTypeLayers(optsNode) : undefined
+    if (opts !== undefined) {
+      if (opts.type !== 'ObjectExpression') {
+        ctx.warnings.push(
+          `useCounter() \`${name}\`: the options argument must be a literal { min, max } object — this one is not, so the declaration is NOT lowered.`,
+        )
+        return null
+      }
+      for (const prop of (opts.properties as AnyNode[] | undefined) ?? []) {
+        if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
+        const key = prop.key?.type === 'Identifier' ? (prop.key.name as string) : undefined
+        const val = unwrapTypeLayers(prop.value as AnyNode | undefined)
+        if ((key !== 'min' && key !== 'max') || val?.type !== 'Literal' || typeof val.value !== 'number') {
+          ctx.warnings.push(
+            `useCounter() \`${name}\`: option \`${key ?? '?'}\` is not a numeric literal, so the clamp cannot be baked into the native mutators and the declaration is NOT lowered.`,
+          )
+          return null
+        }
+        bounds[key] = val.value as number
+      }
+    }
+    const decl: DeclIR = { kind: 'pure-state', name, hook: 'useCounter', initial }
+    if (bounds.min !== undefined || bounds.max !== undefined) decl.bounds = bounds
+    return decl
+  }
   if (calleeName === 'useClipboard') {
     return { kind: 'clipboard', name }
   }

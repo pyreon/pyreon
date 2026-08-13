@@ -42,6 +42,7 @@ import {
   widenFloatLocals,
   widenFloatSignals,
 } from './infer-type'
+import { clampExpr } from './pure-state'
 import type { InferenceCtx } from './infer-type'
 import { kotlinIdent, safeIdent } from './identifier-safety'
 import { resolveRocketstyleUseSite } from './rocketstyle-native'
@@ -434,6 +435,16 @@ export function emitKotlin(
   )
   // Gap 4 v2 follow-up: model instance → modelId for use-site rewriting.
   _modelInstancesKotlin = new Map(models.map((m) => [m.instanceName, m.modelId]))
+  _pureStateKotlin = new Map()
+  _pureStateInitialKotlin = new Map()
+  for (const c of components) {
+    for (const d of c.decls ?? []) {
+      if (d.kind === 'pure-state') {
+        _pureStateKotlin.set(d.name, d.bounds ? { hook: d.hook, bounds: d.bounds } : { hook: d.hook })
+        _pureStateInitialKotlin.set(d.name, d.initial)
+      }
+    }
+  }
   // Mirror of the Swift registries: state fields + views are READ (a state
   // field is a signal on web, so the read is a call); actions are CALLED.
   _modelReadNamesKotlin = new Map(
@@ -540,6 +551,10 @@ let _storeMethodNamesKotlin: Map<string, Set<string>> = new Map()
 
 /** Map of model instance name → modelId for Kotlin use-site rewriting. */
 let _modelInstancesKotlin: Map<string, string> = new Map()
+/** `useToggle`/`useCounter` bindings — their members rewrite at use sites. */
+let _pureStateKotlin: Map<string, { hook: 'useToggle' | 'useCounter'; bounds?: { min?: number; max?: number } }> = new Map()
+/** Initial values, so `reset()` restores exactly what the web's does. */
+let _pureStateInitialKotlin: Map<string, number | boolean> = new Map()
 /** Mirror of the Swift flag — set while emitting a model view/action body. */
 let _activeModelSelfParamKotlin: string | undefined
 /** Per-instance model STATE-FIELD + VIEW names — reads drop their parens. */
@@ -1946,6 +1961,11 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // Phase 4: `const can = usePermissions([...])` → a remembered
   // PyreonPermissions seeded with the literal grant keys. Reads are method
   // calls (`can.can("x")`) — no `.value` field-read rewrite needed.
+  // Mirror of the Swift pure-state emit: a plain mutableStateOf field, with
+  // the mutators rewritten at their use sites.
+  if (d.kind === 'pure-state') {
+    return `var ${kotlinIdent(d.name)} by remember { mutableStateOf(${String(d.initial)}) }`
+  }
   if (d.kind === 'permissions') {
     const seed = d.grants.length
       ? `setOf(${d.grants.map((g) => JSON.stringify(g)).join(', ')})`
@@ -3003,6 +3023,34 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         if (_modelMethodNamesKotlin.get(instance)?.has(e.callee.property) === true) {
           const args = e.args.map((a) => emitKotlinExpr(a, indent)).join(', ')
           return `PyreonModel_${modelId}.${member}(${args})`
+        }
+      }
+      // useToggle / useCounter member surface (mirror of Swift). The state
+      // field IS the value, so a read drops its parens; each mutator becomes
+      // the arithmetic it stands for, with useCounter's literal clamp baked
+      // in identically to the Swift side.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _pureStateKotlin.has(e.callee.object.name)
+      ) {
+        const binding = e.callee.object.name
+        const info = _pureStateKotlin.get(binding)!
+        const field = kotlinIdent(binding)
+        const m = e.callee.property
+        const arg = e.args.length > 0 ? emitKotlinExpr(e.args[0]!, indent) : undefined
+        const clamp = (x: string): string => clampExpr(x, info.bounds, 'minOf', 'maxOf')
+        if (info.hook === 'useToggle') {
+          if (m === 'value') return field
+          if (m === 'toggle') return `${field} = !${field}`
+          if (m === 'setTrue') return `${field} = true`
+          if (m === 'setFalse') return `${field} = false`
+        } else {
+          if (m === 'count') return field
+          if (m === 'inc') return `${field} = ${clamp(`${field} + ${arg ?? '1'}`)}`
+          if (m === 'dec') return `${field} = ${clamp(`${field} - ${arg ?? '1'}`)}`
+          if (m === 'set') return `${field} = ${clamp(arg ?? '0')}`
+          if (m === 'reset') return `${field} = ${clamp(String(_pureStateInitialKotlin.get(binding) ?? 0))}`
         }
       }
       // `parseInt(s)` / `parseFloat(s)` / `Number(s)` → Kotlin
