@@ -26,6 +26,7 @@
           "packages/tools/testing/",
           "packages/internals/perf-harness/",
           "packages/internals/test-utils/",
+          "webview-entry.",
           "__tests__/",
           ".test."
         ]
@@ -155,7 +156,16 @@
           "packages/ui-system/elements/src/Overlay/positioning.ts",
           "packages/ui-system/elements/src/Portal/component.tsx",
           "packages/ui-system/styler/src/sheet.ts",
-          "packages/internals/test-utils/src/happy-dom-hashchange-guard.ts"
+          "packages/internals/test-utils/src/happy-dom-hashchange-guard.ts",
+          "webview-entry."
+        ]
+      }
+    ],
+    "pyreon/no-dom-in-setup": [
+      "warn",
+      {
+        "exemptPaths": [
+          "webview-entry."
         ]
       }
     ]
