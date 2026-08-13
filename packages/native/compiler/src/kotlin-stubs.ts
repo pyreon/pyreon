@@ -1228,6 +1228,31 @@ class PyreonMachine(initial: String, val transitions: Map<String, Map<String, St
   operator fun invoke(): String = state
 }
 
+// @pyreon/sync — CRDT doc + synced-signal facade. Mirrors the real
+// PyreonCrdt.kt / PyreonSyncedSignal.kt SURFACE.
+sealed class PyreonScalar {
+  data class Str(val v: String) : PyreonScalar()
+  data class Num(val v: Double) : PyreonScalar()
+  data class Bool(val v: Boolean) : PyreonScalar()
+}
+class PyreonCrdtDoc(val actor: String) {
+  fun get(map: String, key: String): PyreonScalar? = null
+  fun set(map: String, key: String, value: PyreonScalar) {}
+  fun observe(map: String, cb: (Set<String>) -> Unit): () -> Unit = {}
+}
+const val PYREON_SYNCED_DEFAULT_MAP = "pyreon"
+class PyreonSyncedSignal<T>(
+  doc: PyreonCrdtDoc,
+  key: String,
+  initial: T,
+  map: String = PYREON_SYNCED_DEFAULT_MAP,
+) {
+  private var _value: T = initial
+  val value: T get() = _value
+  operator fun invoke(): T = _value
+  fun set(v: T) { _value = v }
+}
+
 // PyreonPermissions — mirror of @pyreon/native-runtime-kotlin's
 // PyreonPermissions.kt surface the emit touches: callable shape
 // (operator invoke), not / cannot / all / any. Added with the

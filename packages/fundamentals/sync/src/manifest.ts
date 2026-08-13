@@ -17,7 +17,9 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      'Yjs CRDT engine + IndexedDB/WebSocket transports; the engine-neutral core is portable but no native runtime exists',
+      'the Yjs engine + IndexedDB/WebSocket transports stay web; the engine-neutral PyreonCrdt core + `syncedSignal` lower to a native runtime, cross-device transport tracked',
+    nativeFrontend:
+      'PyreonSyncedSignal — `syncedSignal({ doc, key, initial })` over a shared PyreonCrdtDoc (scalar String/Double/Bool, local-first create-if-missing, remote-op reactivity)',
   },
   features: [
     'syncedSignal / syncedStore — bind a Signal to a CRDT map entry; a synced signal is indistinguishable from a normal signal to the compiler and every effect',
