@@ -88,6 +88,11 @@ const USAGES: ReadonlyArray<readonly [string, string, string]> = [
     'const c = useCounter(1, { min: 0, max: 10 }); const f = () => { c.inc(2) }',
   ],
   ['usePush', '@pyreon/hooks', 'const p = usePush()'],
+  // Statement-position, so the "decl" here is the call itself — what this
+  // gate proves for them is that the emitted .task / LaunchedEffect body
+  // type-checks against the stubs.
+  ['useInterval', '@pyreon/hooks', 'useInterval(() => { const x = 1 }, 1000)'],
+  ['useTimeout', '@pyreon/hooks', 'useTimeout(() => { const x = 1 }, 500)'],
   [
     'useDebouncedCallback',
     '@pyreon/hooks',

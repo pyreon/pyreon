@@ -1460,7 +1460,9 @@ function emitKotlinComponent(c: ComponentIR): string {
   _databaseNames = new Set()
   _fieldArrayNamesKotlin = new Set()
   _fieldArrayItemParamsKotlin = []
-  const declTexts = c.decls.filter((d) => d.kind !== 'on-mount').map((d) => emitKotlinDecl(d, ctx))
+  const declTexts = c.decls
+    .filter((d) => d.kind !== 'on-mount' && d.kind !== 'tick')
+    .map((d) => emitKotlinDecl(d, ctx))
   // Pass 2: walk props — formats prop annotations AND ALSO discovers
   // synthesized types from PROP annotations. This pass must run BEFORE
   // emitting synth-class declarations: a prop like
@@ -1539,6 +1541,25 @@ function emitKotlinComponent(c: ComponentIR): string {
   // runs off the main thread; decode goes through kotlinx-serialization.
   // onMount bodies → LaunchedEffect(Unit) (Compose's run-once-on-mount
   // hook — keyed by the stable Unit, not cancelled by recomposition).
+  // Mirror of the Swift .task: LaunchedEffect(Unit) is cancelled when the
+  // composable leaves composition, which IS the web hooks' onUnmount.
+  for (const d of c.decls) {
+    if (d.kind !== 'tick') continue
+    const savedTick = seedHandlerLocals(d.body, _kotlinExprInferCtx)
+    const body = d.body.map((st) => `      ${emitKotlinStatement(st, 6, ctx)}`).join('\n')
+    _kotlinExprInferCtx.locals = savedTick
+    lines.push(`  LaunchedEffect(Unit) {`)
+    if (d.mode === 'interval') {
+      lines.push(`    while (true) {`)
+      lines.push(`      delay(${d.delayMs}L)`)
+      lines.push(body)
+      lines.push(`    }`)
+    } else {
+      lines.push(`    delay(${d.delayMs}L)`)
+      lines.push(body)
+    }
+    lines.push(`  }`)
+  }
   for (const d of c.decls) {
     if (d.kind !== 'on-mount') continue
     const saved = seedHandlerLocals(d.body, _kotlinExprInferCtx)
@@ -1717,7 +1738,7 @@ let _fieldArrayItemParamsKotlin: string[] = []
 
 function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // on-mount emits at the harness level (LaunchedEffect) — defensive narrow.
-  if (d.kind === 'on-mount') return ''
+  if (d.kind === 'on-mount' || d.kind === 'tick') return ''
   if (d.kind === 'rate-limited') {
     const cls = d.mode === 'debounce' ? 'PyreonDebounced' : 'PyreonThrottled'
     const p0 = d.fn.params[0]

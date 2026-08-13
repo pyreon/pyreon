@@ -405,6 +405,16 @@ export type DeclIR =
   /** `useBluetooth()` — discovery-only BLE (PyreonBluetooth). */
   | { kind: 'bluetooth'; name: string }
   /**
+   * `useInterval(cb, ms)` / `useTimeout(cb, ms)` at STATEMENT position.
+   *
+   * Both are pure timing over a callback — no platform capability, just a
+   * clock both targets have. They lower to the idiom that already carries
+   * each target's auto-cancellation (`.task` on SwiftUI, `LaunchedEffect` on
+   * Compose), which is what reproduces the web hooks' `onUnmount` cleanup
+   * without a runtime or a stored handle.
+   */
+  | { kind: 'tick'; mode: 'interval' | 'timeout'; delayMs: number; body: StatementIR[] }
+  /**
    * M3.1 — haptic feedback via `const h = useHaptics()` from
    * `@pyreon/hooks`. Emits the PyreonHaptics fire-and-forget wrapper:
    *   Swift  → @State private var h = PyreonHaptics()

@@ -135,6 +135,10 @@ function sourceMapHeader(target: TargetLanguage, originalPath: string): string {
  */
 export function conditionalKotlinImports(emitted: string): string {
   const imports: string[] = []
+  // `delay` is emitted by the useInterval / useTimeout lowering. Unqualified
+  // (the stub file is a single default-package unit and cannot declare
+  // `package kotlinx.coroutines`), so the real build needs the import.
+  if (/\bdelay\(/.test(emitted)) imports.push('import kotlinx.coroutines.delay')
   if (emitted.includes('withContext(')) imports.push('import kotlinx.coroutines.withContext')
   if (emitted.includes('Dispatchers.')) imports.push('import kotlinx.coroutines.Dispatchers')
   // M4.5: an `async () => { await … }` event handler emits
