@@ -65,6 +65,11 @@ const USAGES: ReadonlyArray<readonly [string, string, string]> = [
   ['useUrlState', '@pyreon/url-state', "const q = useUrlState('q', 'all'); const go = () => { q.set('b') }"],
   ['usePayments', '@pyreon/hooks', 'const p = usePayments()'],
   ['usePermissions', '@pyreon/hooks', 'const p = usePermissions()'],
+  [
+    'useBluetooth',
+    '@pyreon/hooks',
+    'const bt = useBluetooth(); const go = () => { bt.scan() }; const n = bt.scanning()',
+  ],
   // Pure state — no runtime, so what this gate proves for them is that the
   // use-site rewrite (reads drop parens, mutators become arithmetic) still
   // type-checks against the stubs.

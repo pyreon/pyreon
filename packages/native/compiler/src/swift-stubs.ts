@@ -86,6 +86,28 @@ public struct AnyStubView: View { public init() {}; public typealias Body = Neve
 // ---- Environment / enums ----
 public enum ColorScheme { case light, dark }
 public enum UserInterfaceSizeClass { case compact, regular }
+// PyreonBluetooth + the app-supplied CoreBluetooth scanner the emit names.
+public struct PyreonBluetoothDevice { public let id: String; public let name: String }
+public protocol BluetoothScanner: AnyObject {
+  var isAvailable: Bool { get }
+  func startScan(onDevice: @escaping (PyreonBluetoothDevice) -> Void, onError: @escaping (String) -> Void)
+  func stopScan()
+}
+public final class CoreBluetoothScanner: BluetoothScanner {
+  public init() {}
+  public var isAvailable: Bool { false }
+  public func startScan(onDevice: @escaping (PyreonBluetoothDevice) -> Void, onError: @escaping (String) -> Void) {}
+  public func stopScan() {}
+}
+public final class PyreonBluetooth {
+  public init(scanner: BluetoothScanner) {}
+  public var scanning: Bool { false }
+  public var devices: [PyreonBluetoothDevice] { [] }
+  public var error: String { "" }
+  public var available: Bool { false }
+  public func scan() {}
+  public func stopScan() {}
+}
 public struct EnvironmentValues {
   public var colorScheme: ColorScheme = .light
   public var horizontalSizeClass: UserInterfaceSizeClass? = nil

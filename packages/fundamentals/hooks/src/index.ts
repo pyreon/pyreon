@@ -1,3 +1,4 @@
+import { useBluetooth } from './useBluetooth'
 import { name as __pkgName, version as __pkgVersion } from '../package.json' with { type: 'json' }
 import { registerSingleton } from '@pyreon/reactivity'
 
@@ -11,6 +12,8 @@ export type { BreakpointMap } from './useBreakpoint'
 export { useBreakpoint } from './useBreakpoint'
 export { useClickOutside } from './useClickOutside'
 export type { UseClipboardResult } from './useClipboard'
+export { useBluetooth }
+export type { BluetoothDevice, UseBluetoothResult } from './useBluetooth'
 export { useClipboard } from './useClipboard'
 export type {
   HapticImpactStyle,

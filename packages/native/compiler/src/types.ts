@@ -382,6 +382,8 @@ export type DeclIR =
    * `params-destructure` uses.
    */
   | { kind: 'clipboard'; name: string }
+  /** `useBluetooth()` — discovery-only BLE (PyreonBluetooth). */
+  | { kind: 'bluetooth'; name: string }
   /**
    * M3.1 — haptic feedback via `const h = useHaptics()` from
    * `@pyreon/hooks`. Emits the PyreonHaptics fire-and-forget wrapper:

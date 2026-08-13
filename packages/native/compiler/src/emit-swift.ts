@@ -744,8 +744,10 @@ export function emitSwift(
   // member access (`<instance>.<field>`) emits as PyreonModel_<id>.shared.<field>.
   _modelInstances = new Map(models.map((m) => [m.instanceName, m.modelId]))
   _pureStateSwift = new Map()
+  _bluetoothSwift = new Set()
   for (const c of components) {
     for (const d of c.decls ?? []) {
+      if (d.kind === 'bluetooth') _bluetoothSwift.add(d.name)
       if (d.kind === 'pure-state') {
         _pureStateSwift.set(d.name, d.bounds ? { hook: d.hook, bounds: d.bounds } : { hook: d.hook })
         _pureStateInitialSwift.set(d.name, d.initial)
@@ -853,6 +855,8 @@ let _structDefs: StructIR[] = []
 let _modelInstances: Map<string, string> = new Map()
 /** `useToggle`/`useCounter` bindings — their members rewrite at use sites. */
 let _pureStateSwift: Map<string, { hook: 'useToggle' | 'useCounter'; bounds?: { min?: number; max?: number } }> = new Map()
+/** `useBluetooth()` bindings — its reactive reads drop their parens. */
+let _bluetoothSwift: Set<string> = new Set()
 /** Initial values, so `reset()` restores exactly what the web's does. */
 let _pureStateInitialSwift: Map<string, number | boolean> = new Map()
 /** Set while emitting a model view/action body — the factory's `self`
@@ -2464,6 +2468,12 @@ function emitSwiftDecl(
   // `useToggle` / `useCounter` — a plain @State field. The mutators are
   // rewritten at their use sites (see the call case), so there is no runtime
   // and no wrapper type.
+  // `useBluetooth()` → the discovery container. The scanner is injected so
+  // the runtime's logic stays testable without a radio; the app supplies the
+  // CoreBluetooth one.
+  if (d.kind === 'bluetooth') {
+    return `@State private var ${swiftIdent(d.name)} = PyreonBluetooth(scanner: CoreBluetoothScanner())`
+  }
   if (d.kind === 'pure-state') {
     const t = d.hook === 'useToggle' ? 'Bool' : 'Int'
     return `@State private var ${swiftIdent(d.name)}: ${t} = ${String(d.initial)}`
@@ -3535,6 +3545,19 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           const args = e.args.map((a) => emitSwiftExpr(a, indent)).join(', ')
           return `PyreonModel_${modelId}.shared.${member}(${args})`
         }
+      }
+      // useBluetooth's reactive reads. On the web they are accessors
+      // (`bt.scanning()`); on Swift the same members are stored properties,
+      // so the read drops its parens — otherwise the web-correct spelling
+      // calls a Bool. Same inversion `model()`'s state fields had.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _bluetoothSwift.has(e.callee.object.name) &&
+        e.args.length === 0 &&
+        ['scanning', 'devices', 'error', 'available'].includes(e.callee.property)
+      ) {
+        return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
       }
       // useToggle / useCounter member surface. The state field IS the
       // value, so a read drops its parens; each mutator becomes the

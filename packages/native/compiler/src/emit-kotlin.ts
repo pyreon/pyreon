@@ -436,9 +436,11 @@ export function emitKotlin(
   // Gap 4 v2 follow-up: model instance → modelId for use-site rewriting.
   _modelInstancesKotlin = new Map(models.map((m) => [m.instanceName, m.modelId]))
   _pureStateKotlin = new Map()
+  _bluetoothKotlin = new Set()
   _pureStateInitialKotlin = new Map()
   for (const c of components) {
     for (const d of c.decls ?? []) {
+      if (d.kind === 'bluetooth') _bluetoothKotlin.add(d.name)
       if (d.kind === 'pure-state') {
         _pureStateKotlin.set(d.name, d.bounds ? { hook: d.hook, bounds: d.bounds } : { hook: d.hook })
         _pureStateInitialKotlin.set(d.name, d.initial)
@@ -553,6 +555,8 @@ let _storeMethodNamesKotlin: Map<string, Set<string>> = new Map()
 let _modelInstancesKotlin: Map<string, string> = new Map()
 /** `useToggle`/`useCounter` bindings — their members rewrite at use sites. */
 let _pureStateKotlin: Map<string, { hook: 'useToggle' | 'useCounter'; bounds?: { min?: number; max?: number } }> = new Map()
+/** `useBluetooth()` bindings — its reactive reads become `.value`. */
+let _bluetoothKotlin: Set<string> = new Set()
 /** Initial values, so `reset()` restores exactly what the web's does. */
 let _pureStateInitialKotlin: Map<string, number | boolean> = new Map()
 /** Mirror of the Swift flag — set while emitting a model view/action body. */
@@ -1963,6 +1967,14 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // calls (`can.can("x")`) — no `.value` field-read rewrite needed.
   // Mirror of the Swift pure-state emit: a plain mutableStateOf field, with
   // the mutators rewritten at their use sites.
+  // Mirror of the Swift bluetooth emit.
+  if (d.kind === 'bluetooth') {
+    const id = kotlinIdent(d.name)
+    return [
+      `val ${id}Ctx = LocalContext.current`,
+      `val ${id} = remember { PyreonBluetooth(AndroidBluetoothScanner(${id}Ctx)) }`,
+    ].join('\n  ')
+  }
   if (d.kind === 'pure-state') {
     return `var ${kotlinIdent(d.name)} by remember { mutableStateOf(${String(d.initial)}) }`
   }
@@ -3024,6 +3036,19 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           const args = e.args.map((a) => emitKotlinExpr(a, indent)).join(', ')
           return `PyreonModel_${modelId}.${member}(${args})`
         }
+      }
+      // useBluetooth's reactive reads — MutableState on Compose, so the
+      // web's accessor spelling becomes `.value`. `available` is a plain
+      // getter and takes neither parens nor `.value`.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _bluetoothKotlin.has(e.callee.object.name) &&
+        e.args.length === 0 &&
+        ['scanning', 'devices', 'error', 'available'].includes(e.callee.property)
+      ) {
+        const base = `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
+        return e.callee.property === 'available' ? base : `${base}.value`
       }
       // useToggle / useCounter member surface (mirror of Swift). The state
       // field IS the value, so a read drops its parens; each mutator becomes

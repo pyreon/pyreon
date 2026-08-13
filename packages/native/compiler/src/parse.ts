@@ -1064,7 +1064,7 @@ export const NATIVE_LOWERED_HOOKS: ReadonlySet<string> = new Set([
   'useParams', 'usePayments', 'usePermissions', 'usePush', 'useQuery',
   // Pure state — no platform dependency, so no runtime; see the
   // `pure-state` DeclIR.
-  'useToggle', 'useCounter',
+  'useToggle', 'useCounter', 'useBluetooth',
   'useUrlState',
   'useSecureStorage',
   'useShare', 'useSizeClass', 'useStorage', 'useWebSocket',
@@ -5445,6 +5445,12 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     const decl: DeclIR = { kind: 'pure-state', name, hook: 'useCounter', initial }
     if (bounds.min !== undefined || bounds.max !== undefined) decl.bounds = bounds
     return decl
+  }
+  // `useBluetooth()` from @pyreon/hooks → PyreonBluetooth. Discovery only
+  // (scan / stopScan / devices / scanning / error / available); GATT stays
+  // platform-specific by design.
+  if (calleeName === 'useBluetooth') {
+    return { kind: 'bluetooth', name }
   }
   if (calleeName === 'useClipboard') {
     return { kind: 'clipboard', name }
