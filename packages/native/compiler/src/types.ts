@@ -382,6 +382,26 @@ export type DeclIR =
    * `params-destructure` uses.
    */
   | { kind: 'clipboard'; name: string }
+  /**
+   * `useDebouncedCallback(fn, ms)` / `useThrottledCallback(fn, ms)`.
+   *
+   * Unlike `useDebouncedValue`, these return a CALLABLE carrying
+   * `.cancel()` / `.flush()`, so there is a handle a caller reaches — which
+   * is why they need the PyreonRateLimit runtime rather than a `.task(id:)`.
+   *
+   * Single-argument by design: the web hooks are variadic, but a variadic
+   * native port needs a boxed args tuple whose type the emit cannot know.
+   * More than one parameter declines by name rather than silently dropping
+   * the rest.
+   */
+  | {
+      kind: 'rate-limited'
+      name: string
+      mode: 'debounce' | 'throttle'
+      delayMs: number
+      /** The wrapped callback, emitted as the runtime's action closure. */
+      fn: Extract<DeclIR, { kind: 'function' }>
+    }
   /** `useBluetooth()` — discovery-only BLE (PyreonBluetooth). */
   | { kind: 'bluetooth'; name: string }
   /**

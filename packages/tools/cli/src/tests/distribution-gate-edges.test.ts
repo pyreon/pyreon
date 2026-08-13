@@ -60,6 +60,56 @@ describe('distribution gate — findPackages edge cases', () => {
   })
 })
 
+describe('distribution gate — Rule 5: co-located native ports must ship', () => {
+  let tmp: string
+  beforeEach(() => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cli-dist-native-'))
+  })
+  afterEach(() => {
+    fs.rmSync(tmp, { recursive: true, force: true })
+  })
+
+  const writePkg = (files: string[]): void => {
+    fs.mkdirSync(path.join(tmp, 'packages/fundamentals/sync'), { recursive: true })
+    fs.writeFileSync(
+      path.join(tmp, 'packages/fundamentals/sync/package.json'),
+      JSON.stringify({
+        name: '@pyreon/sync',
+        version: '0.1.0',
+        sideEffects: false,
+        files,
+        pyreon: { native: { swift: 'native/swift', kotlin: 'native/kotlin' } },
+      }),
+    )
+  }
+
+  it('flags a pyreon.native package whose files array omits the native dirs', async () => {
+    writePkg(['lib', 'src', 'README.md', 'LICENSE'])
+    const result = await runDistributionGate({ cwd: tmp, skipPackProbe: true })
+    const shipping = result.findings.filter(
+      (f) => f.code === 'distribution/native-source-not-shipped',
+    )
+    expect(shipping).toHaveLength(2) // swift + kotlin
+    expect(shipping[0]?.severity).toBe('error')
+  })
+
+  it('does NOT flag when the native dirs are in files', async () => {
+    writePkg(['lib', 'src', 'README.md', 'LICENSE', 'native/swift', 'native/kotlin'])
+    const result = await runDistributionGate({ cwd: tmp, skipPackProbe: true })
+    expect(
+      result.findings.some((f) => f.code === 'distribution/native-source-not-shipped'),
+    ).toBe(false)
+  })
+
+  it('accepts a parent dir in files (`native` covers `native/swift`)', async () => {
+    writePkg(['lib', 'native'])
+    const result = await runDistributionGate({ cwd: tmp, skipPackProbe: true })
+    expect(
+      result.findings.some((f) => f.code === 'distribution/native-source-not-shipped'),
+    ).toBe(false)
+  })
+})
+
 describe('_repositoryUrl — reads the url from both npm repository shapes', () => {
   it('reads the bare-string form', () => {
     expect(_repositoryUrl('git+https://github.com/x/y.git')).toBe(

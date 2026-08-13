@@ -170,6 +170,30 @@ export interface DistributionGateOptions {
  * const result = await runDistributionGate({ cwd: process.cwd() })
  * if (result.findings.length > 0) process.exit(1)
  */
+/**
+ * The package-relative native source directories a package declares via
+ * `pyreon.native` (`{ swift, kotlin }`). Each field is a dir string, an array
+ * of dir strings, or an object carrying a `dir` (the native-runtime shape) —
+ * mirrors `@pyreon/native-cli`'s `swiftDecls` / `kotlinDecls` normalization.
+ */
+const nativeSourceDirs = (pj: unknown): string[] => {
+  const native = (pj as { pyreon?: { native?: unknown } }).pyreon?.native
+  if (!native || typeof native !== 'object') return []
+  const dirs: string[] = []
+  for (const field of ['swift', 'kotlin'] as const) {
+    const raw = (native as Record<string, unknown>)[field]
+    if (raw === undefined) continue
+    const entries = Array.isArray(raw) ? raw : [raw]
+    for (const e of entries) {
+      if (typeof e === 'string') dirs.push(e)
+      else if (e && typeof e === 'object' && typeof (e as { dir?: unknown }).dir === 'string') {
+        dirs.push((e as { dir: string }).dir)
+      }
+    }
+  }
+  return dirs
+}
+
 export const runDistributionGate = async (
   opts: DistributionGateOptions,
 ): Promise<GateResult> => {
@@ -254,6 +278,37 @@ export const runDistributionGate = async (
           },
           fix: 'Remove `"!lib/**/*.map"` from the `files` array',
         })
+      }
+    }
+
+    // Rule 5: a co-located native package (declares `pyreon.native`) must ship
+    // its native source dirs in `files` — else its Swift/Kotlin ports build and
+    // pass the co-source gate but never reach an installed app (PMTC emits code
+    // referencing a `PyreonX` type whose source isn't in `node_modules`).
+    // `@pyreon/sync` shipped its `PyreonCrdt` engine exactly this way: declared
+    // via `pyreon.native`, compiled by the gate, yet absent from `files`.
+    if (Array.isArray(p.pj.files)) {
+      const files = p.pj.files as string[]
+      for (const dir of nativeSourceDirs(p.pj)) {
+        const dn = dir.replace(/\/+$/, '')
+        const shipped = files.some((f) => {
+          const fn = String(f).replace(/\/+$/, '')
+          return fn === dn || dn.startsWith(fn + '/')
+        })
+        if (!shipped) {
+          findings.push({
+            category: 'architecture',
+            severity: 'error',
+            code: 'distribution/native-source-not-shipped',
+            gate: 'distribution',
+            message: `${p.name} declares native sources via \`pyreon.native\` but its \`files\` array does not ship \`${dir}\`. Co-located Swift/Kotlin ports must be published, or a native app installing ${p.name} cannot resolve them — the port compiles in-repo (co-source gate) but is absent from the npm tarball.`,
+            location: {
+              path: join(p.dir, 'package.json'),
+              relPath: relative(opts.cwd, join(p.dir, 'package.json')),
+            },
+            fix: `Add "${dir}" to the \`files\` array in ${p.name}'s package.json`,
+          })
+        }
       }
     }
   }

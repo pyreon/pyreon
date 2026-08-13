@@ -116,6 +116,28 @@ public protocol EnvironmentKey {
   associatedtype Value
   static var defaultValue: Value { get }
 }
+public protocol PyreonScheduler: AnyObject {
+  func schedule(after milliseconds: Int, _ work: @escaping () -> Void) -> Int
+  func cancel(_ token: Int)
+}
+public final class TaskScheduler: PyreonScheduler {
+  public init() {}
+  public func schedule(after milliseconds: Int, _ work: @escaping () -> Void) -> Int { 0 }
+  public func cancel(_ token: Int) {}
+}
+public final class PyreonDebounced<A> {
+  public var action: (A) -> Void = { _ in }
+  public init(delayMs: Int, scheduler: PyreonScheduler = TaskScheduler(), action: @escaping (A) -> Void = { _ in }) {}
+  public func callAsFunction(_ arg: A) {}
+  public func cancel() {}
+  public func flush() {}
+}
+public final class PyreonThrottled<A> {
+  public var action: (A) -> Void = { _ in }
+  public init(waitMs: Int, scheduler: PyreonScheduler = TaskScheduler(), action: @escaping (A) -> Void = { _ in }) {}
+  public func callAsFunction(_ arg: A) {}
+  public func cancel() {}
+}
 public struct EnvironmentValues {
   public subscript<K: EnvironmentKey>(key: K.Type) -> K.Value {
     get { K.defaultValue }

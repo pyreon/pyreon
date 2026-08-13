@@ -1083,6 +1083,7 @@ export const NATIVE_LOWERED_HOOKS: ReadonlySet<string> = new Set([
   'useShare', 'useSizeClass', 'useStorage', 'useWebSocket',
   'useSessionStorage', 'useMemoryStorage',
   'useDebouncedValue',
+  'useDebouncedCallback', 'useThrottledCallback',
 ])
 
 /**
@@ -5557,6 +5558,42 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       type: inferTypeFromInitial(source),
       delayMs: delayNode.value as number,
     }
+  }
+  // `useDebouncedCallback(fn, ms)` / `useThrottledCallback(fn, ms)` — see
+  // the DeclIR comment for why these need a runtime.
+  if (calleeName === 'useDebouncedCallback' || calleeName === 'useThrottledCallback') {
+    const mode = calleeName === 'useDebouncedCallback' ? 'debounce' : 'throttle'
+    const cb = unwrapTypeLayers(init.arguments?.[0] as AnyNode | undefined)
+    const delayNode = unwrapTypeLayers(init.arguments?.[1] as AnyNode | undefined)
+    if (cb?.type !== 'ArrowFunctionExpression' && cb?.type !== 'FunctionExpression') {
+      ctx.warnings.push(
+        `${calleeName}() \`${name}\`: the callback must be an inline function to lower natively — this one is not, so the declaration is NOT lowered.`,
+      )
+      return null
+    }
+    if (delayNode?.type !== 'Literal' || typeof delayNode.value !== 'number') {
+      ctx.warnings.push(
+        `${calleeName}() \`${name}\`: the delay must be a numeric literal to bake into the native schedule — this one is not, so the declaration is NOT lowered.`,
+      )
+      return null
+    }
+    const params = (cb.params as AnyNode[] | undefined) ?? []
+    if (params.length > 1) {
+      // Silently dropping the extra arguments would produce a callback that
+      // runs with the wrong data rather than one that visibly does not run.
+      ctx.warnings.push(
+        `${calleeName}() \`${name}\`: the native runtime carries ONE argument and this callback takes ${params.length}, so the declaration is NOT lowered. Pass a single value (an object literal if you need several).`,
+      )
+      return null
+    }
+    const fn = tryFunctionDecl(name, cb, ctx)
+    if (fn?.kind !== 'function') {
+      ctx.warnings.push(
+        `${calleeName}() \`${name}\`: could not parse the callback, so the declaration is NOT lowered.`,
+      )
+      return null
+    }
+    return { kind: 'rate-limited', name, mode, delayMs: delayNode.value as number, fn }
   }
   if (calleeName === 'useClipboard') {
     return { kind: 'clipboard', name }
