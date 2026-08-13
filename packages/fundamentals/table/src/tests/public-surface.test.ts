@@ -68,6 +68,7 @@ describe('@pyreon/table — public surface', () => {
         "createGroupedRowModel",
         "createPaginatedRowModel",
         "createSortedRowModel",
+        "createTableState",
         "filterFn_arrHas",
         "filterFn_arrIncludes",
         "filterFn_arrIncludesAll",

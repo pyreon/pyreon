@@ -28,6 +28,25 @@ struct PyreonPermissionsTests {
         check(!perms.can("users.edit"), "wildcard is namespace-scoped")
         check(!perms.can("postsX"), "wildcard is segment-prefix, not substring")
 
+        // The case the old "segment-scoped" comment claimed but no
+        // assertion covered — and where the bug lived. `.*` is ONE
+        // segment; a bare prefix match also granted every nested
+        // namespace, so the same source granted more on device than in
+        // the browser. Measured against the web resolver, not assumed.
+        check(!perms.can("posts.comments.edit"), ".* does NOT reach a nested namespace")
+        check(!perms.can("posts"), ".* does not grant its own prefix")
+
+        // `.**` is the recursive form, most-specific ancestor first.
+        // Previously unrecognised entirely, so it granted nothing.
+        perms = PyreonPermissions(["posts.**"])
+        check(perms.can("posts.edit"), ".** covers one segment")
+        check(perms.can("posts.comments.edit"), ".** covers any depth")
+        check(!perms.can("users.edit"), ".** stays inside its prefix")
+
+        // `*` grants everything — also previously unrecognised.
+        perms = PyreonPermissions(["*"])
+        check(perms.can("anything.deep.key"), "* grants any key at any depth")
+
         // not() = web-parity inverse
         perms = PyreonPermissions(["posts.edit"])
         check(perms.not("posts.delete"), "not() true for denied")

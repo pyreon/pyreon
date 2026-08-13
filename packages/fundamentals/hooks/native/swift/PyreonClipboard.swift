@@ -56,6 +56,13 @@ public final class PyreonClipboard {
     /// "Copied!" feedback in the UI without manual timer wiring.
     public private(set) var copied: Bool = false
 
+    /// The last successfully-copied text, or `""`.
+    ///
+    /// The web hook has exposed this since inception (`text: () => string`);
+    /// neither native runtime did, so a component reading it compiled on the
+    /// web and failed here with "has no member 'text'".
+    public private(set) var text: String = ""
+
     private var resetTask: _Concurrency.Task<Void, Never>?
 
     public init() {}
@@ -92,6 +99,7 @@ public final class PyreonClipboard {
         NSPasteboard.general.setString(text, forType: .string)
         #endif
         copied = true
+        self.text = text
         resetTask?.cancel()
         resetTask = _Concurrency.Task { [weak self] in
             try? await _Concurrency.Task.sleep(nanoseconds: 2_000_000_000)

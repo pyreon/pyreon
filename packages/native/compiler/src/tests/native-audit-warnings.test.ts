@@ -372,7 +372,13 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
         { target: 'swift' },
       )
       expect(result.code).toContain('@State private var __pyHook0 = PyreonClipboard()')
-      expect(result.code).toContain('__pyHook0.copied()')
+      // The invariant — the destructure routes reads through the single
+      // container binding — is unchanged. The parens are gone because
+      // `copied` is a stored property natively while the web exposes it as
+      // an accessor; calling it failed with "cannot call value of
+      // non-function type 'Bool'".
+      expect(result.code).toContain('__pyHook0.copied')
+      expect(result.code).not.toContain('__pyHook0.copied()')
       expect(
         result.warnings.some(
           (w) => w.includes('useClipboard') && w.includes('destructure'),
@@ -406,7 +412,13 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
         { target: 'kotlin' },
       )
       expect(result.code).toContain('remember { PyreonClipboard(')
-      expect(result.code).toContain('__pyHook0.copied()')
+      // The invariant — the destructure routes reads through the single
+      // container binding — is unchanged. The parens are gone because
+      // `copied` is a stored property natively while the web exposes it as
+      // an accessor; calling it failed with "cannot call value of
+      // non-function type 'Bool'".
+      expect(result.code).toContain('__pyHook0.copied')
+      expect(result.code).not.toContain('__pyHook0.copied()')
       expect(
         result.warnings.some(
           (w) => w.includes('useClipboard') && w.includes('destructure'),

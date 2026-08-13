@@ -103,9 +103,10 @@ describe('gen-docs — table snapshot', () => {
 
   it('renders to MCP api-reference entries', () => {
     const record = renderApiReferenceEntries(manifest)
-    expect(Object.keys(record).length).toBe(3)
+    expect(Object.keys(record).length).toBe(4)
     expect(record['table/useTable']).toBeDefined()
     expect(record['table/flexRender']).toBeDefined()
     expect(record['table/flexRenderCell']).toBeDefined()
+    expect(record['table/createTableState']).toBeDefined()
   })
 })

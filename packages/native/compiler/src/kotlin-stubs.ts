@@ -995,6 +995,7 @@ class PyreonShare(context: Context) {
 }
 class PyreonClipboard(context: Context, scope: CoroutineScope) {
   val copied: Boolean get() = false
+  val text: String get() = ""
   fun copy(text: String) {}
   fun reset() {}
 }
@@ -1002,6 +1003,7 @@ class PyreonClipboard(context: Context, scope: CoroutineScope) {
 // M3.5: authenticate is a suspend fun — awaited inside pyreonAsyncScope.launch { }.
 class PyreonBiometrics {
   suspend fun authenticate(reason: String): Boolean = false
+  fun isAvailable(): Boolean = false
 }
 
 // M3.4 / M3.8: the picker containers + the androidx.activity ActivityResult
@@ -1247,6 +1249,12 @@ class PyreonBluetooth(scanner: BluetoothScanner) {
   fun scan() {}
   fun stopScan() {}
 }
+// Mirrors PyreonPermissions.kt's CompositionLocal. A bare \`usePermissions()\`
+// reads the provider through this; a stub without it rejects a correct emit.
+class ProvidableCompositionLocal<T>(val default: T) { val current: T get() = default }
+fun <T> compositionLocalOf(f: () -> T): ProvidableCompositionLocal<T> = ProvidableCompositionLocal(f())
+infix fun <T> ProvidableCompositionLocal<T>.provides(v: T): Pair<ProvidableCompositionLocal<T>, T> = Pair(this, v)
+fun CompositionLocalProvider(vararg pairs: Pair<*, *>, content: @Composable () -> Unit) { content() }
 class PyreonPermissions(granted: Set<String> = emptySet()) {
   val granted: MutableState<Set<String>> = mutableStateOf(granted)
   fun can(key: String): Boolean {

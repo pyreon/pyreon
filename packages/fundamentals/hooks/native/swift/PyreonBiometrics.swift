@@ -32,6 +32,28 @@ public struct PyreonBiometrics {
     /// Uses the biometrics-ONLY policy (`.deviceOwnerAuthenticationWithBiometrics`)
     /// rather than the passcode-fallback one, so an unenrolled simulator fails
     /// deterministically instead of surfacing a passcode UI.
+    /// Whether a platform biometric authenticator is present and enrolled.
+    ///
+    /// The web hook has exposed this since inception (`isAvailable: () =>
+    /// boolean`, feature-detecting `PublicKeyCredential`); neither native
+    /// runtime did, so a component gating its UI on it compiled on the web
+    /// and failed here with "has no member 'isAvailable'".
+    ///
+    /// `canEvaluatePolicy` is the honest answer rather than a hardcoded
+    /// `true`: a device with no sensor, or one where the user has not
+    /// enrolled, reports false — which is exactly what the caller is asking.
+    public func isAvailable() -> Bool {
+        #if canImport(LocalAuthentication)
+        var error: NSError?
+        return LAContext().canEvaluatePolicy(
+            .deviceOwnerAuthenticationWithBiometrics,
+            error: &error,
+        )
+        #else
+        return false
+        #endif
+    }
+
     public func authenticate(_ reason: String) async -> Bool {
         #if canImport(LocalAuthentication)
         let context = LAContext()
