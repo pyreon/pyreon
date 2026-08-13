@@ -224,6 +224,10 @@ let _signalNames: Set<string> = new Set()
  * (parens dropped) and from function `addTodo()` (parens preserved).
  */
 let _machineNames: Set<string> = new Set()
+/** `syncedSignal(...)` bindings — read `x()` (callAsFunction), write `x.set(v)`
+ *  (a real method), so BOTH the signal-read paren-drop AND the `.set()`→`=`
+ *  rewrite must skip them (they are facade objects, not bare @State values). */
+let _syncedSignalNames: Set<string> = new Set()
 /** Per-component: `useOnline()` decl names. A web `useOnline()` returns an
  *  ACCESSOR (`() => boolean`), so shared code reads it as `net()`; on native
  *  the accessor call lowers to the `net.isOnline` read on the PyreonNetworkStatus
@@ -1665,6 +1669,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // Gap 4 PR-2: track machine names so `m()` keeps parens (Swift
   // callAsFunction).
   _machineNames = new Set()
+  _syncedSignalNames = new Set()
   _netStatusNames = new Set()
   _appStateNames = new Set()
   _crashNames = new Set()
@@ -1713,6 +1718,7 @@ function emitSwiftComponent(c: ComponentIR): string {
     // Keep machine names OUT of _signalNames (parens preserved) and
     // OUT of _functionNames (it's a property, not a free function).
     if (d.kind === 'machine') _machineNames.add(d.name)
+    if (d.kind === 'synced-signal') _syncedSignalNames.add(d.name)
     if (d.kind === 'network-status') _netStatusNames.add(d.name)
     if (d.kind === 'app-state') _appStateNames.add(d.name)
     if (d.kind === 'crash-reporter') _crashNames.add(d.name)
@@ -1868,6 +1874,46 @@ function emitSwiftComponent(c: ComponentIR): string {
     // on the stable-identity host) — no stored property.
     if (d.kind === 'on-mount') continue
     lines.push(`  ${emitSwiftDecl(d, inferCtx, synth)}`)
+  }
+  // `@pyreon/sync` — a doc + its synced signals are declared as TYPED @State
+  // above; seed them in a generated init() (a synced signal's @State
+  // initializer references the doc, which a plain @State cannot do). Props are
+  // threaded as init params (reproducing SwiftUI's memberwise init) so the
+  // component can still take props. Docs are created + seeded before signals so
+  // each signal can reference its doc's local.
+  const syncDecls = c.decls.filter(
+    (d) => d.kind === 'crdt-doc' || d.kind === 'synced-signal',
+  )
+  if (syncDecls.length > 0 && !isLayout) {
+    const params = c.props
+      .map((p) =>
+        typeIsOptional(p.type)
+          ? `${swiftIdent(p.name)}: ${swiftType(p.type, synth, p.name)} = nil`
+          : `${swiftIdent(p.name)}: ${swiftType(p.type, synth, p.name)}`,
+      )
+      .join(', ')
+    lines.push(`  init(${params}) {`)
+    for (const p of c.props) {
+      lines.push(`    self.${swiftIdent(p.name)} = ${swiftIdent(p.name)}`)
+    }
+    for (const d of syncDecls) {
+      if (d.kind === 'crdt-doc') {
+        const actor =
+          d.actorLiteral !== undefined ? JSON.stringify(d.actorLiteral) : 'UUID().uuidString'
+        lines.push(`    let ${swiftIdent(d.name)} = PyreonCrdtDoc(actor: ${actor})`)
+        lines.push(`    _${swiftIdent(d.name)} = State(initialValue: ${swiftIdent(d.name)})`)
+      }
+    }
+    for (const d of syncDecls) {
+      if (d.kind === 'synced-signal') {
+        const mapArg = d.map !== undefined ? `map: ${JSON.stringify(d.map)}, ` : ''
+        const initial = syncedInitialSwift(d.scalarType, d.initialValue)
+        lines.push(
+          `    _${swiftIdent(d.name)} = State(initialValue: PyreonSyncedSignal(doc: ${swiftIdent(d.docBinding)}, ${mapArg}key: ${JSON.stringify(d.key)}, initial: ${initial}))`,
+        )
+      }
+    }
+    lines.push(`  }`)
   }
   lines.push(`  var body: some View {`)
   // Phase 5b: plain value consts as body-local `let`s at the top of the
@@ -2226,6 +2272,21 @@ function inlineValueConstsInStmts(stmts: StatementIR[]): StatementIR[] {
     }
   }
   return stmts.map(mapStmt)
+}
+
+/** Swift type for a synced signal's scalar (`number` → `Double`). */
+function syncedSignalSwiftType(scalar: 'string' | 'double' | 'bool'): string {
+  return scalar === 'string' ? 'String' : scalar === 'double' ? 'Double' : 'Bool'
+}
+
+/** Swift literal for a synced signal's initial scalar value. */
+function syncedInitialSwift(
+  scalar: 'string' | 'double' | 'bool',
+  value: string | number | boolean,
+): string {
+  if (scalar === 'string') return JSON.stringify(String(value))
+  if (scalar === 'bool') return value ? 'true' : 'false'
+  return String(value)
 }
 
 function emitSwiftDecl(
@@ -2607,6 +2668,16 @@ function emitSwiftDecl(
     // Empty outer transitions map → `[:]` for the same reason.
     const transLit = transEntries === '' ? '[:]' : `[${transEntries}]`
     return `@State private var ${swiftIdent(d.name)} = PyreonMachine(initial: ${JSON.stringify(d.initial)}, transitions: ${transLit})`
+  }
+  // `@pyreon/sync` — the doc + each synced signal are declared as TYPED @State
+  // with NO inline initializer; they're seeded in the component's generated
+  // `init()` (emitSwiftComponent), because a synced signal's initializer must
+  // reference the doc and one @State cannot reference another at property init.
+  if (d.kind === 'crdt-doc') {
+    return `@State private var ${swiftIdent(d.name)}: PyreonCrdtDoc`
+  }
+  if (d.kind === 'synced-signal') {
+    return `@State private var ${swiftIdent(d.name)}: PyreonSyncedSignal<${syncedSignalSwiftType(d.scalarType)}>`
   }
   // Phase 4 follow-up: `const scheme = useColorScheme()` → a computed
   // property reading the View's @Environment(\.colorScheme) injection
@@ -3879,7 +3950,10 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         // A useUrlState binding is NOT a signal: it is a get-only computed
         // property wrapping the router, so rewriting `q.set(v)` to `q = v`
         // produces "cannot assign to property". Its `set` is a real method.
-        !(e.callee.object.kind === 'identifier' && _urlStateNames.has(e.callee.object.name))
+        !(e.callee.object.kind === 'identifier' && _urlStateNames.has(e.callee.object.name)) &&
+        // A syncedSignal binding is a PyreonSyncedSignal facade whose `set` is a
+        // real method (writes one CRDT op) — `x = v` would assign the facade.
+        !(e.callee.object.kind === 'identifier' && _syncedSignalNames.has(e.callee.object.name))
       ) {
         const target = emitSwiftExpr(e.callee.object, indent)
         // Look up whether the target signal is enum-typed (e.g.
@@ -3924,6 +3998,11 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         // Gap 4 PR-2: PyreonMachine names need parens preserved so
         // `m()` invokes `callAsFunction()` and reads the current state.
         if (_machineNames.has(e.callee.name)) {
+          return `${swiftIdent(e.callee.name)}()`
+        }
+        // A syncedSignal `title()` invokes the facade's `callAsFunction()` to
+        // read the current value (parens preserved, like a machine read).
+        if (_syncedSignalNames.has(e.callee.name)) {
           return `${swiftIdent(e.callee.name)}()`
         }
         // `useOnline()` returns a web ACCESSOR (`() => boolean`), so shared code

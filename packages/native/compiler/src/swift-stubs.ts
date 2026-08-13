@@ -110,6 +110,10 @@ public struct EnvironmentValues {
 // ---- State / Binding ----
 @propertyWrapper public struct State<Value> {
   public init(wrappedValue: Value) {}
+  // Real SwiftUI's State also has this label; the sync lowering seeds @State in
+  // a generated init() via _x = State(initialValue: v). A stub missing it
+  // MANUFACTURES a failure exactly as a superset stub masks one.
+  public init(initialValue value: Value) {}
   public var wrappedValue: Value { get { fatalError() } nonmutating set {} }
   public var projectedValue: Binding<Value> { fatalError() }
 }
@@ -451,6 +455,47 @@ public struct PyreonMachine {
   public func callAsFunction() -> String { "" }
   public func send(_ event: String) {}
   public func matches(_ state: String) -> Bool { false }
+}
+// @pyreon/sync — CRDT doc + synced-signal facade. Mirrors the real
+// PyreonCrdt.swift / PyreonSyncedSignal.swift SURFACE (not a superset); the
+// stub omits @available so the emitted View compiles on any deployment target.
+public enum PyreonScalar: Equatable {
+  case string(String)
+  case int(Int)
+  case double(Double)
+  case bool(Bool)
+  case null
+}
+public final class PyreonCrdtDoc {
+  public init(actor: String) {}
+  public func get(_ map: String, _ key: String) -> PyreonScalar? { nil }
+  public func set(_ map: String, _ key: String, _ value: PyreonScalar) {}
+  public func observe(_ map: String, _ cb: @escaping (Set<String>) -> Void) -> () -> Void { {} }
+}
+public protocol PyreonScalarConvertible: Equatable {
+  init?(pyreonScalar: PyreonScalar)
+  var pyreonScalar: PyreonScalar { get }
+}
+extension String: PyreonScalarConvertible {
+  public init?(pyreonScalar: PyreonScalar) { nil }
+  public var pyreonScalar: PyreonScalar { .string(self) }
+}
+extension Double: PyreonScalarConvertible {
+  public init?(pyreonScalar: PyreonScalar) { nil }
+  public var pyreonScalar: PyreonScalar { .double(self) }
+}
+extension Bool: PyreonScalarConvertible {
+  public init?(pyreonScalar: PyreonScalar) { nil }
+  public var pyreonScalar: PyreonScalar { .bool(self) }
+}
+public let PYREON_SYNCED_DEFAULT_MAP = "pyreon"
+public final class PyreonSyncedSignal<T: PyreonScalarConvertible> {
+  public private(set) var value: T
+  public init(doc: PyreonCrdtDoc, map: String = PYREON_SYNCED_DEFAULT_MAP, key: String, initial: T) {
+    self.value = initial
+  }
+  public func callAsFunction() -> T { value }
+  public func set(_ v: T) {}
 }
 public struct PyreonI18n {
   // fallbackLocale is OPTIONAL and DEFAULTED in the real PyreonI18n. The stub

@@ -251,6 +251,10 @@ let _zeroArgHelperNames: Set<string> = new Set()
  * (the current state String).
  */
 let _machineNames: Set<string> = new Set()
+/** `syncedSignal(...)` bindings — read `x()` (Kotlin `invoke`), write `x.set(v)`
+ *  (a real method). Both the read paren-drop AND the `.set()`→`=` rewrite skip
+ *  them (they are PyreonSyncedSignal facade objects, not bare state values). */
+let _syncedSignalNames: Set<string> = new Set()
 /** Per-component: i18n instance names — `i18n.t(key, {…})` lowers the
  *  object-literal values arg to a map at this call shape. Mirror of
  *  emit-swift's `_i18nNames`. */
@@ -1322,6 +1326,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _functionNames = new Set(_helperFnNames)
   _zeroArgFnNames = new Set(_zeroArgHelperNames)
   _machineNames = new Set()
+  _syncedSignalNames = new Set()
   _i18nNamesKotlin = new Set()
   _fetchNames = new Set()
   _formNames = new Set()
@@ -1359,6 +1364,7 @@ function emitKotlinComponent(c: ComponentIR): string {
     // `m()` keeps parens for `operator fun invoke()`) AND OUT of
     // _functionNames (it's a property, not a free fn).
     if (d.kind === 'machine') _machineNames.add(d.name)
+    if (d.kind === 'synced-signal') _syncedSignalNames.add(d.name)
     if (d.kind === 'i18n') _i18nNamesKotlin.add(d.name)
     // C4: `const router = createRouter(...)` is a remembered router
     // instance — name reads bare (no parens) like a signal. Add to
@@ -1646,6 +1652,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _functionNames = new Set()
   _urlStateNames = new Set()
   _machineNames = new Set()
+  _syncedSignalNames = new Set()
   _i18nNamesKotlin = new Set()
   _fetchNames = new Set()
   _formNames = new Set()
@@ -1697,6 +1704,17 @@ let _databaseNames: Set<string> = new Set()
 // stack (nested Fors restore correctly).
 let _fieldArrayNamesKotlin: Set<string> = new Set()
 let _fieldArrayItemParamsKotlin: string[] = []
+
+/** Kotlin literal for a synced signal's initial scalar value (`number` → Double). */
+function syncedInitialKotlin(
+  scalar: 'string' | 'double' | 'bool',
+  value: string | number | boolean,
+): string {
+  if (scalar === 'string') return JSON.stringify(String(value))
+  if (scalar === 'bool') return value ? 'true' : 'false'
+  // A Double literal so `PyreonSyncedSignal<Double>` is inferred (JS number).
+  return Number.isInteger(value as number) ? `${value}.0` : String(value)
+}
 
 function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // on-mount emits at the harness level (LaunchedEffect) — defensive narrow.
@@ -2156,6 +2174,22 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       .join(', ')
     const transLit = entries === '' ? 'mapOf()' : `mapOf(${entries})`
     return `val ${kotlinIdent(d.name)} = remember { PyreonMachine(initial = ${JSON.stringify(d.initial)}, transitions = ${transLit}) }`
+  }
+  // `@pyreon/sync` — `remember { }` blocks run sequentially in composition, so
+  // (unlike Swift's @State) the doc and its signals can reference each other
+  // directly; no synthesized init needed. `title()` / `title.set(v)` flow
+  // through unchanged (the facade defines `invoke` / `set`).
+  if (d.kind === 'crdt-doc') {
+    const actor =
+      d.actorLiteral !== undefined
+        ? JSON.stringify(d.actorLiteral)
+        : 'java.util.UUID.randomUUID().toString()'
+    return `val ${kotlinIdent(d.name)} = remember { PyreonCrdtDoc(${actor}) }`
+  }
+  if (d.kind === 'synced-signal') {
+    const initial = syncedInitialKotlin(d.scalarType, d.initialValue)
+    const mapArg = d.map !== undefined ? `, ${JSON.stringify(d.map)}` : ''
+    return `val ${kotlinIdent(d.name)} = remember { PyreonSyncedSignal(${kotlinIdent(d.docBinding)}, ${JSON.stringify(d.key)}, ${initial}${mapArg}) }`
   }
   // Phase 4 follow-up: `const scheme = useColorScheme()` →
   // `val ${name} = if (isSystemInDarkTheme()) "dark" else "light"`.
@@ -3202,7 +3236,8 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         // A useUrlState binding is NOT a signal: `q.set(v)` is a real method
         // on PyreonUrlState, so rewriting it to `q = v` fails with
         // "val cannot be reassigned". The Swift emit carries the same guard.
-        !(e.callee.object.kind === 'identifier' && _urlStateNames.has(e.callee.object.name))
+        !(e.callee.object.kind === 'identifier' && _urlStateNames.has(e.callee.object.name)) &&
+        !(e.callee.object.kind === 'identifier' && _syncedSignalNames.has(e.callee.object.name))
       ) {
         const target = emitKotlinExpr(e.callee.object, indent)
         // Enum-aware: when the target signal is enum-typed, set the
@@ -3235,6 +3270,9 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         // Gap 4 PR-2: PyreonMachine — `m()` invokes
         // `operator fun invoke()` to read the current state.
         if (_machineNames.has(e.callee.name)) {
+          return `${kotlinIdent(e.callee.name)}()`
+        }
+        if (_syncedSignalNames.has(e.callee.name)) {
           return `${kotlinIdent(e.callee.name)}()`
         }
         // `useOnline()` returns a web ACCESSOR (`() => boolean`), so shared code
