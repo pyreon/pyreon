@@ -1,4 +1,4 @@
-import { type Signal, onCleanup, signal } from '@pyreon/reactivity'
+import { type Signal, batch, onCleanup, signal } from '@pyreon/reactivity'
 import { Awareness, removeAwarenessStates } from 'y-protocols/awareness'
 import type { YjsCrdtDoc } from './yjs-adapter'
 
@@ -139,9 +139,15 @@ export function syncedAwareness<T extends object>(
   // the UI recomputes only when presence really changed.
   const onChange = () => {
     const snap = snapshot()
-    states.set(snap)
-    others.set(snap.filter((p) => !p.isLocal))
-    local.set(readLocal())
+    // Batched: `states` / `others` / `local` are three views of ONE presence
+    // change. Unbatched, a cursor-overlay effect reading two of them re-ran
+    // mid-update and rendered a torn frame — peers from the new snapshot
+    // beside a stale local.
+    batch(() => {
+      states.set(snap)
+      others.set(snap.filter((p) => !p.isLocal))
+      local.set(readLocal())
+    })
   }
   aw.on('change', onChange)
 

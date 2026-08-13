@@ -11,7 +11,13 @@
         "exemptPaths": [
           "packages/fundamentals/flow/src/components/",
           "packages/fundamentals/code/src/components/",
-          "packages/fundamentals/rich-text/src/components/"
+          "packages/fundamentals/rich-text/src/components/",
+          "packages/fundamentals/flow/src/components/flow-component.tsx",
+          "packages/fundamentals/code/src/components/diff-editor.tsx",
+          "packages/ui-system/kinetic/src/TransitionGroup.tsx",
+          "packages/ui-system/kinetic/src/kinetic/StaggerRenderer.tsx",
+          "packages/ui-system/kinetic/src/kinetic/CollapseRenderer.tsx",
+          "packages/ui-system/kinetic/src/kinetic/GroupRenderer.tsx"
         ]
       }
     ],

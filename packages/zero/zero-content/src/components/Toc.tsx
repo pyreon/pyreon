@@ -123,7 +123,7 @@ export function Toc(props: TocProps): VNodeChild {
         <ul class="pyreon-toc__list">
           {() =>
             filtered().map((h) => (
-              <li class={`pyreon-toc__item pyreon-toc__item--l${h.level}`}>
+              <li class={cx(['pyreon-toc__item', `pyreon-toc__item--l${h.level}`])}>
                 <a
                   href={`#${h.slug}`}
                   class={() =>

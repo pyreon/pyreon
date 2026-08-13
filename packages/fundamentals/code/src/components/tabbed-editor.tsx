@@ -1,3 +1,4 @@
+import { cx } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
 import type { TabbedEditorProps } from '../types'
 import { CodeEditor } from './code-editor'
@@ -21,18 +22,20 @@ import { CodeEditor } from './code-editor'
  * ```
  */
 export function TabbedEditor(props: TabbedEditorProps): VNodeChild {
-  const { instance } = props
-
-  const containerStyle = `display: flex; flex-direction: column; width: 100%; height: 100%; ${props.style ?? ''}`
+  // Components run once, so the style string below captured `props.style` at
+  // setup — `<TabbedEditor style={h()} />` never resized. It is an accessor now,
+  // which the compiler binds reactively.
+  const containerStyle = (): string =>
+    `display: flex; flex-direction: column; width: 100%; height: 100%; ${props.style ?? ''}`
 
   const tabBarStyle =
     'display: flex; overflow-x: auto; background: #f1f5f9; border-bottom: 1px solid #e2e8f0; min-height: 34px; flex-shrink: 0;'
 
   return (
-    <div class={`pyreon-tabbed-editor ${props.class ?? ''}`} style={containerStyle}>
+    <div class={cx(['pyreon-tabbed-editor', props.class])} style={containerStyle()}>
       {() => {
-        const tabs = instance.tabs()
-        const activeId = instance.activeTabId()
+        const tabs = props.instance.tabs()
+        const activeId = props.instance.activeTabId()
 
         return (
           <div class="pyreon-tabbed-editor-tabs" style={tabBarStyle}>
@@ -46,9 +49,9 @@ export function TabbedEditor(props: TabbedEditorProps): VNodeChild {
                 <button
                   type="button"
                   key={id}
-                  class={`pyreon-tab ${isActive ? 'active' : ''} ${tab.modified ? 'modified' : ''}`}
+                  class={cx(['pyreon-tab', { active: isActive, modified: tab.modified }])}
                   style={tabStyle}
-                  onClick={() => instance.switchTab(id)}
+                  onClick={() => props.instance.switchTab(id)}
                 >
                   <span>{tab.name}</span>
                   {tab.modified && (
@@ -63,7 +66,7 @@ export function TabbedEditor(props: TabbedEditorProps): VNodeChild {
                       title="Close"
                       onClick={(e: MouseEvent) => {
                         e.stopPropagation()
-                        instance.closeTab(id)
+                        props.instance.closeTab(id)
                       }}
                     >
                       ×
@@ -76,7 +79,7 @@ export function TabbedEditor(props: TabbedEditorProps): VNodeChild {
         )
       }}
       <div style="flex: 1; min-height: 0;">
-        <CodeEditor instance={instance.editor} />
+        <CodeEditor instance={props.instance.editor} />
       </div>
     </div>
   )

@@ -1,4 +1,4 @@
-import { For, isClient, provide, type VNodeChild } from '@pyreon/core'
+import { For, isClient, provide, type VNodeChild, cx } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import {
   collectEdgeMarkers,
@@ -1251,7 +1251,7 @@ export function Flow(props: FlowComponentProps): VNodeChild {
   return (
     <div
       ref={containerRef}
-      class={`pyreon-flow ${props.class ?? ''}`}
+      class={cx(['pyreon-flow', props.class])}
       style={containerStyle}
       tabIndex={0}
       role="group"

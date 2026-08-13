@@ -84,6 +84,15 @@ let nonSignalSetReceivers = new Set<string>()
 
 /** Is this `.set()` call on a KNOWN non-signal collection receiver? */
 function isNonSignalSetCall(node: any): boolean {
+  // ARITY first, because it generalises past receiver tracking. A signal write
+  // is `sig.set(value)` — exactly one argument. Every keyed-collection setter
+  // takes two: `map.set(k, v)`, `headers.set(name, value)`,
+  // `params.set(name, value)`. The receiver-name list below only catches a
+  // local bound to `new Map()`, so it missed MEMBER receivers entirely —
+  // `ctx.headers.set(...)` in zero's server middleware counted as three
+  // "unbatched signal updates" in code with no signals at all.
+  if (Array.isArray(node?.arguments) && node.arguments.length >= 2) return true
+
   const obj = node?.callee?.object
   // `m.set(...)` where `m = new Map()`.
   if (obj?.type === 'Identifier' && nonSignalSetReceivers.has(obj.name)) return true

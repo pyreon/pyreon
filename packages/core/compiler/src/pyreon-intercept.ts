@@ -947,6 +947,16 @@ function detectStaticReturnNullConditional(
   ctx: DetectContext,
   node: ts.ArrowFunction | ts.FunctionDeclaration | ts.FunctionExpression,
 ): void {
+  // Gated on a tracked binding in the condition, exactly like the sibling
+  // `detectStaticEarlyReturnConditional`. Without this the detector fired on
+  // EVERY top-level `if (cond) return null`, including shapes where the claim
+  // in its own message ("reading a signal inside cond will not re-trigger") is
+  // impossible: `if (typeof document === 'undefined') return null` is an SSR
+  // environment guard, and `if (!instance) return null` guards a reference
+  // resolved once from props/context. Neither can ever re-evaluate, so telling
+  // the author to wrap them in a reactive accessor was wrong advice — and a
+  // rule that is wrong on correct code teaches people to ignore it.
+  if (ctx.signalBindings.size === 0 && ctx.hookBindings.size === 0) return
   // Only component-shaped functions (must render JSX AND be named with
   // PascalCase) — see isComponentShapedFunction for why the name check
   // matters: it filters out the reactive-accessor-as-fix pattern.
@@ -958,7 +968,11 @@ function detectStaticReturnNullConditional(
   for (const stmt of body.statements) {
     if (!ts.isIfStatement(stmt)) continue
     if (!returnsNullStatement(stmt.thenStatement)) continue
-    // Found `if (cond) return null` at top-level component body scope.
+    const readsTracked =
+      findSignalReadInCondition(stmt.expression, ctx.signalBindings) ??
+      findSignalReadInCondition(stmt.expression, ctx.hookBindings)
+    if (!readsTracked) continue
+    // Found `if (<signal read>) return null` at top-level component body scope.
     pushDiag(
       ctx,
       stmt,

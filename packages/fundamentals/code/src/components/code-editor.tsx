@@ -1,3 +1,4 @@
+import { cx } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
 import type { CodeEditorProps, EditorInstance } from '../types'
 
@@ -16,13 +17,14 @@ import type { CodeEditorProps, EditorInstance } from '../types'
  * ```
  */
 export function CodeEditor(props: CodeEditorProps): VNodeChild {
-  const { instance } = props
+  // Read through `props`: components run once, so destructuring would pin this
+  // to the first instance if a caller ever swapped it.
 
   const containerRef = (el: Element | null) => {
     if (!el) return
 
     // Mount the editor into the container
-    const mountable = instance as EditorInstance & {
+    const mountable = props.instance as EditorInstance & {
       _mount?: (parent: HTMLElement) => Promise<void>
     }
     if (mountable._mount) {
@@ -33,6 +35,6 @@ export function CodeEditor(props: CodeEditorProps): VNodeChild {
   const baseStyle = `width: 100%; height: 100%; overflow: hidden; ${props.style ?? ''}`
 
   return (
-    <div ref={containerRef} class={`pyreon-code-editor ${props.class ?? ''}`} style={baseStyle} />
+    <div ref={containerRef} class={cx(['pyreon-code-editor', props.class])} style={baseStyle} />
   )
 }

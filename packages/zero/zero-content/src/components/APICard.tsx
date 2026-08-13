@@ -71,7 +71,7 @@ export function APICard(props: APICardProps): VNodeChild {
         </h3>
         {props.stability && (
           <span
-            class={`pyreon-apicard__stability pyreon-apicard__stability--${props.stability}`}
+            class={cx(['pyreon-apicard__stability', `pyreon-apicard__stability--${props.stability}`])}
           >
             {props.stability}
           </span>

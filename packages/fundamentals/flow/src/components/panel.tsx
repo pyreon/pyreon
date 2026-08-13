@@ -1,3 +1,4 @@
+import { cx } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
 import type { PanelProps } from '../types'
 
@@ -31,7 +32,7 @@ export function Panel(props: PanelProps): VNodeChild {
   }
 
   return (
-    <div class={`pyreon-flow-panel ${props.class ?? ''}`} style={baseStyle}>
+    <div class={cx(['pyreon-flow-panel', props.class])} style={baseStyle}>
       {props.children}
     </div>
   )

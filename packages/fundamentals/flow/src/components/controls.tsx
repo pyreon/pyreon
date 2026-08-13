@@ -93,19 +93,20 @@ const LockIcon = () => (
  * ```
  */
 export function Controls(props: ControlsProps & { instance?: FlowInstance }): VNodeChild {
-  const {
-    showZoomIn = true,
-    showZoomOut = true,
-    showFitView = true,
-    showLock = false,
-    position = 'bottom-left',
-  } = props
-
   // Resolve the instance from an explicit prop, else the <Flow> context.
   const instance = props.instance ?? useContext(FlowContext)
   if (!instance) return null
 
-  const baseStyle = `position: absolute; ${positionStyles[position] ?? positionStyles['bottom-left']} display: flex; flex-direction: column; gap: 2px; z-index: 5; background: var(--pyreon-flow-panel-bg, #fff); border: 1px solid var(--pyreon-flow-panel-border, #ddd); border-radius: 6px; padding: 2px; box-shadow: 0 1px 4px var(--pyreon-flow-panel-shadow, rgba(0,0,0,0.08));`
+  // Read INSIDE the accessor below, not at component scope: components run once,
+  // so a body-scope destructure froze `position` and the `show*` toggles at
+  // setup — `<Controls position={corner()} />` stayed where it first rendered
+  // and a toggled button never appeared or disappeared.
+  const baseStyle = (): string =>
+    `position: absolute; ${positionStyles[props.position ?? 'bottom-left'] ?? positionStyles['bottom-left']} display: flex; flex-direction: column; gap: 2px; z-index: 5; background: var(--pyreon-flow-panel-bg, #fff); border: 1px solid var(--pyreon-flow-panel-border, #ddd); border-radius: 6px; padding: 2px; box-shadow: 0 1px 4px var(--pyreon-flow-panel-shadow, rgba(0,0,0,0.08));`
+  const showZoomIn = (): boolean => props.showZoomIn ?? true
+  const showZoomOut = (): boolean => props.showZoomOut ?? true
+  const showFitView = (): boolean => props.showFitView ?? true
+  const showLock = (): boolean => props.showLock ?? false
   const btnStyle =
     'width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border: none; background: transparent; border-radius: 4px; cursor: pointer; color: var(--pyreon-flow-control-color, #555); padding: 0;'
 
@@ -113,19 +114,19 @@ export function Controls(props: ControlsProps & { instance?: FlowInstance }): VN
     const zoomPercent = Math.round(instance.zoom() * 100)
 
     return (
-      <div class="pyreon-flow-controls" style={baseStyle}>
+      <div class="pyreon-flow-controls" style={baseStyle()}>
         {/* Static `display: contents` wrapper isolates the dynamic conditional
             buttons so their mount (which removes their placeholders) can't
             shift the element-ref walk the compiler uses for the trailing
             reactive zoom-% <div>. contents keeps them flex items of the
             controls column. */}
         <div style="display: contents;">
-        {showZoomIn && (
+        {showZoomIn() && (
           <button type="button" style={btnStyle} title="Zoom in" onClick={() => instance.zoomIn()}>
             <ZoomInIcon />
           </button>
         )}
-        {showZoomOut && (
+        {showZoomOut() && (
           <button
             type="button"
             style={btnStyle}
@@ -135,7 +136,7 @@ export function Controls(props: ControlsProps & { instance?: FlowInstance }): VN
             <ZoomOutIcon />
           </button>
         )}
-        {showFitView && (
+        {showFitView() && (
           <button
             type="button"
             style={btnStyle}
@@ -145,7 +146,7 @@ export function Controls(props: ControlsProps & { instance?: FlowInstance }): VN
             <FitViewIcon />
           </button>
         )}
-        {showLock && (
+        {showLock() && (
           <button
             type="button"
             style={btnStyle}
