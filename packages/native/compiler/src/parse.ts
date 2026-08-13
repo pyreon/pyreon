@@ -178,7 +178,36 @@ interface ParseCtx {
    * declared. See theme-native.ts.
    */
   theme: ThemeTable
+  /**
+   * `@pyreon/http` client bindings: `const api = createHttp({ baseUrl })`
+   * → `api` → the baseUrl string literal. Collected in a pre-pass so an
+   * endpoint call in a component body parsed EARLIER in the file still
+   * resolves a client declared later. A non-literal baseUrl stores the
+   * `HTTP_NONLITERAL_BASEURL` sentinel so `resolveEndpointUrl` can warn
+   * ("needs a literal baseUrl") rather than silently mis-lowering.
+   */
+  httpClientBaseUrls: Map<string, string>
+  /**
+   * `@pyreon/http` endpoint bindings: `const getUser = api.endpoint('GET
+   * /users/:id', { … })` → `getUser` → its method / path template / owning
+   * client / `:param` names. A same-file, compile-time-templated endpoint
+   * call (`useFetch<T>(getUser({ params: { id: '1' } }))`) resolves to a
+   * concrete URL literal + method via `resolveEndpointUrl`, then feeds the
+   * EXISTING `kind: 'fetch'` path unchanged — no new emit/IR/stub.
+   */
+  endpointDefs: Map<
+    string,
+    { method: string; pathTemplate: string; clientName: string; paramNames: string[] }
+  >
 }
+
+/**
+ * Sentinel baseUrl for a `createHttp({ baseUrl: <non-literal> })` client — the
+ * client is recorded (so its endpoints still register) but any endpoint call
+ * against it must stay web, and `resolveEndpointUrl` names why. The NUL prefix
+ * can never collide with a real baseUrl string.
+ */
+const HTTP_NONLITERAL_BASEURL = '\0__pyreon_nonliteral_baseurl__'
 
 export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult {
   const ctx: ParseCtx = {
@@ -199,6 +228,8 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     hookDestructureCounter: 0,
     helperFns: [],
     theme: DEFAULT_THEME,
+    httpClientBaseUrls: new Map(),
+    endpointDefs: new Map(),
   }
   const ast = parseSync(filename, source, { sourceType: 'module', lang: 'tsx' })
   // Pre-pass: collect every `const <name> = defineStore(...)` hook name
@@ -228,6 +259,13 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   collectValidateSchemaNames(ast.program.body as AnyNode[], ctx)
   collectRxImportedNames(ast.program.body as AnyNode[], ctx)
   collectSizedMapNames(ast.program.body as AnyNode[], ctx)
+  // Pre-pass: collect `@pyreon/http` client + endpoint declarations so an
+  // endpoint call (`useFetch<T>(getUser({ params: { id: '1' } }))`) resolves
+  // to a concrete URL + method regardless of where the client/endpoint is
+  // declared relative to the component. Clients first (endpoints gate on a
+  // known client). Both no-op on any file without the shapes.
+  collectHttpClients(ast.program.body as AnyNode[], ctx)
+  collectEndpointDefs(ast.program.body as AnyNode[], ctx)
   // A `<PermissionsProvider>` anywhere in the file means a bare
   // `usePermissions()` has somewhere to read from. Checked against the source
   // because the warn pass runs before the JSX walk — the same ordering that
@@ -401,6 +439,12 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     // the arrow-const declaration form. Routes it to `helperFns` so the shared
     // helper emission + return-inference + Int×Double coercion all apply.
     if (tryHelperFnFromArrowConst(node, ctx)) continue
+    // A `const api = createHttp({ … })` / `const getUser = api.endpoint(…)` is
+    // @pyreon/http metadata consumed by the endpoint-resolution pre-pass — it
+    // has no native runtime. Skip it so it doesn't fall through to the
+    // module-decl catch-all + emit an unresolved `let api = createHttp(…)`
+    // binding that fails the native build (the same treatment defineTheme gets).
+    if (isHttpMetadataNode(node, ctx)) continue
     // Phase 2 follow-up: module-level mutable / immutable bindings.
     // `let nextId = 1`, `const APP_VERSION = '1.0.0'` etc. Closes the
     // TodoMVC `nextId undefined` typecheck blocker by emitting these
@@ -887,7 +931,6 @@ const WEB_ONLY_PACKAGES: ReadonlySet<string> = new Set([
   '@pyreon/flow',
   '@pyreon/head',
   '@pyreon/hotkeys',
-  '@pyreon/http',
   '@pyreon/kinetic',
   '@pyreon/kinetic-presets',
   '@pyreon/lint',
@@ -1034,6 +1077,200 @@ function collectSizedMapNames(body: AnyNode[], ctx: ParseCtx): void {
       }
     }
   }
+}
+
+/** Walk `ExportNamedDeclaration → VariableDeclaration` OR a bare
+ * `VariableDeclaration`, yielding the declarators. Shared by the http
+ * collectors. */
+function topLevelDeclarators(node: AnyNode): AnyNode[] {
+  const varDecl =
+    node.type === 'ExportNamedDeclaration' && node.declaration?.type === 'VariableDeclaration'
+      ? node.declaration
+      : node.type === 'VariableDeclaration'
+        ? node
+        : undefined
+  return (varDecl?.declarations as AnyNode[] | undefined) ?? []
+}
+
+/** Read the value node of a non-computed property `<name>` off an
+ * ObjectExpression, or undefined. */
+function readObjectProp(obj: AnyNode | undefined, name: string): AnyNode | undefined {
+  if (obj?.type !== 'ObjectExpression') return undefined
+  for (const prop of (obj.properties as AnyNode[] | undefined) ?? []) {
+    if (prop.type !== 'Property' || prop.computed) continue
+    const key =
+      prop.key?.type === 'Identifier'
+        ? prop.key.name
+        : typeof prop.key?.value === 'string'
+          ? prop.key.value
+          : undefined
+    if (key === name) return prop.value as AnyNode | undefined
+  }
+  return undefined
+}
+
+/** Collect every string/number/boolean-literal property of an ObjectExpression
+ * into a `name → String(value)` record. Non-literal values are dropped (the
+ * caller decides whether a missing key is fatal). */
+function readLiteralEntries(obj: AnyNode | undefined): Record<string, string> {
+  const out: Record<string, string> = {}
+  if (obj?.type !== 'ObjectExpression') return out
+  for (const prop of (obj.properties as AnyNode[] | undefined) ?? []) {
+    if (prop.type !== 'Property' || prop.computed) continue
+    const key =
+      prop.key?.type === 'Identifier'
+        ? prop.key.name
+        : typeof prop.key?.value === 'string'
+          ? prop.key.value
+          : undefined
+    if (typeof key !== 'string') continue
+    const v = prop.value as AnyNode | undefined
+    const val = v?.value
+    if (
+      (v?.type === 'Literal' ||
+        v?.type === 'StringLiteral' ||
+        v?.type === 'NumericLiteral' ||
+        v?.type === 'BooleanLiteral') &&
+      (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean')
+    ) {
+      out[key] = String(val)
+    }
+  }
+  return out
+}
+
+/**
+ * Pre-pass: read every top-level `const <name> = createHttp({ baseUrl })` into
+ * `ctx.httpClientBaseUrls`. Missing baseUrl → `''`; a non-literal baseUrl →
+ * the HTTP_NONLITERAL_BASEURL sentinel (so the client's endpoints still
+ * register but their calls stay web, and `resolveEndpointUrl` names why).
+ * Matched by callee name — `createHttp` is a distinctive @pyreon/http export
+ * and the metadata declaration emits nothing regardless.
+ */
+function collectHttpClients(body: AnyNode[], ctx: ParseCtx): void {
+  for (const node of body) {
+    for (const decl of topLevelDeclarators(node)) {
+      const name = decl.id?.name as string | undefined
+      const init = decl.init as AnyNode | undefined
+      if (!name || init?.type !== 'CallExpression') continue
+      if (init.callee?.type !== 'Identifier' || init.callee.name !== 'createHttp') continue
+      const cfg = init.arguments?.[0] as AnyNode | undefined
+      let baseUrl = ''
+      const v = readObjectProp(cfg, 'baseUrl')
+      if (v !== undefined) {
+        baseUrl =
+          (v.type === 'Literal' || v.type === 'StringLiteral') && typeof v.value === 'string'
+            ? v.value
+            : HTTP_NONLITERAL_BASEURL
+      }
+      ctx.httpClientBaseUrls.set(name, baseUrl)
+    }
+  }
+}
+
+/**
+ * Pre-pass: read every top-level `const <name> = <client>.endpoint('<METHOD>
+ * /path/:x', <opts>?)` — where `<client>` is a known createHttp client — into
+ * `ctx.endpointDefs`. Splits the spec on the FIRST space (method + path),
+ * uppercases the method, and extracts `:param` names (`:name.json` → `name`).
+ */
+function collectEndpointDefs(body: AnyNode[], ctx: ParseCtx): void {
+  for (const node of body) {
+    for (const decl of topLevelDeclarators(node)) {
+      const name = decl.id?.name as string | undefined
+      const init = decl.init as AnyNode | undefined
+      if (!name || init?.type !== 'CallExpression') continue
+      const callee = init.callee as AnyNode | undefined
+      if (callee?.type !== 'MemberExpression' || callee.computed) continue
+      if (callee.object?.type !== 'Identifier' || !ctx.httpClientBaseUrls.has(callee.object.name)) {
+        continue
+      }
+      if (callee.property?.type !== 'Identifier' || callee.property.name !== 'endpoint') continue
+      const specArg = init.arguments?.[0] as AnyNode | undefined
+      if (
+        !specArg ||
+        (specArg.type !== 'Literal' && specArg.type !== 'StringLiteral') ||
+        typeof specArg.value !== 'string'
+      ) {
+        continue
+      }
+      const raw = specArg.value.trim()
+      const sp = raw.indexOf(' ')
+      if (sp < 0) continue // needs "<METHOD> <path>"
+      const method = raw.slice(0, sp).toUpperCase()
+      const pathTemplate = raw.slice(sp + 1).trim()
+      const paramNames: string[] = []
+      const re = /:([A-Za-z_][A-Za-z0-9_]*)/g
+      let m: RegExpExecArray | null
+      while ((m = re.exec(pathTemplate)) !== null) {
+        if (m[1]) paramNames.push(m[1])
+      }
+      ctx.endpointDefs.set(name, {
+        method,
+        pathTemplate,
+        clientName: callee.object.name as string,
+        paramNames,
+      })
+    }
+  }
+}
+
+/**
+ * Resolve a same-file, compile-time-templated endpoint call —
+ * `getUser({ params: { id: '1' }, query?: { … } })` — to a concrete
+ * `{ url, method }`, or `null` (with a warning) when it can't be lowered:
+ * an unknown endpoint (null, no warning — not our shape), a non-literal
+ * client baseUrl, or a missing / non-literal `:param`. The result feeds the
+ * EXISTING `kind: 'fetch'` path unchanged — no new emit / IR / stub.
+ */
+function resolveEndpointUrl(
+  callNode: AnyNode,
+  ctx: ParseCtx,
+): { url: string; method: string } | null {
+  if (callNode.callee?.type !== 'Identifier') return null
+  const endpointName = callNode.callee.name as string
+  const def = ctx.endpointDefs.get(endpointName)
+  if (!def) return null
+  const baseUrl = ctx.httpClientBaseUrls.get(def.clientName)
+  if (baseUrl === undefined || baseUrl === HTTP_NONLITERAL_BASEURL) {
+    ctx.warnings.push(
+      `endpoint ${endpointName}: native lowering needs a LITERAL baseUrl on client ${def.clientName} (\`createHttp({ baseUrl: '/api' })\`) — a computed baseUrl can't be baked into the URL at compile time, so this call stays web.`,
+    )
+    return null
+  }
+  const arg = callNode.arguments?.[0] as AnyNode | undefined
+  const params = readLiteralEntries(readObjectProp(arg, 'params'))
+  let path = def.pathTemplate
+  for (const p of def.paramNames) {
+    const value = params[p]
+    if (value === undefined) {
+      ctx.warnings.push(
+        `endpoint ${endpointName}: native lowering needs literal params; \`${p}\` is missing or not a string/number literal (a reactive value like \`id()\` can't be baked into the URL at compile time) — this call stays web.`,
+      )
+      return null
+    }
+    path = path.replace(new RegExp(`:${p}(?![A-Za-z0-9_])`, 'g'), value)
+  }
+  let url = baseUrl + path
+  const queryEntries = readLiteralEntries(readObjectProp(arg, 'query'))
+  const pairs = Object.entries(queryEntries).map(([k, v]) => `${k}=${v}`)
+  if (pairs.length > 0) url += (url.includes('?') ? '&' : '?') + pairs.join('&')
+  return { url, method: def.method }
+}
+
+/**
+ * True when EVERY declarator of a top-level node is an @pyreon/http client or
+ * endpoint binding (recorded by the pre-pass collectors). Those are metadata
+ * only — they emit nothing — so the main loop skips them before the
+ * module-decl catch-all mis-emits them as bindings.
+ */
+function isHttpMetadataNode(node: AnyNode, ctx: ParseCtx): boolean {
+  const decls = topLevelDeclarators(node)
+  if (decls.length === 0) return false
+  return decls.every((d) => {
+    const n = d.id?.name as string | undefined
+    return typeof n === 'string' && (ctx.httpClientBaseUrls.has(n) || ctx.endpointDefs.has(n))
+  })
 }
 
 function collectToastNames(body: AnyNode[], ctx: ParseCtx): void {
@@ -1359,9 +1596,15 @@ const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
   [
     '@pyreon/http',
     {
-      // Same: endpoint and createClient both fail both targets.
+      // `createHttp` LOWERS as part of the endpoint→useFetch resolution: a
+      // same-file `const api = createHttp({ baseUrl })` + `const getUser =
+      // api.endpoint('GET /users/:id')` let `useFetch<T>(getUser({ params }))`
+      // resolve to a concrete URL + method (metadata only — createHttp emits
+      // nothing). The remaining transport surface (a bare `endpoint(...)`
+      // import, `.query()` fetcher form, reactive params) still fails native.
+      supported: new Set(['createHttp']),
       advice:
-        'the transport is web-only — `useFetch<T>(url)` lowers to PyreonFetch on both native targets and auto-starts on mount',
+        'a same-file `const api = createHttp({ baseUrl })` + `const e = api.endpoint(\'GET /users/:id\')` DOES lower — `useFetch<T>(e({ params: { id: \'1\' } }))` resolves to a native fetch of the templated URL via PyreonFetch. What stays web: reactive params, a computed baseUrl, and the `.query()` fetcher form',
     },
   ],
 ])
@@ -3809,6 +4052,8 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     hookDestructureCounter: 0,
     helperFns: [],
     theme: DEFAULT_THEME,
+    httpClientBaseUrls: new Map(),
+    endpointDefs: new Map(),
   }
   for (const node of body) {
     let alias: AnyNode | null = null
@@ -5224,23 +5469,43 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (calleeName === 'useFetch') {
     const type = parseGenericTypeArg(init, ctx)
     const urlArg = init.arguments?.[0]
+    // @pyreon/http endpoint DSL — `useFetch<T>(getUser({ params: { id: '1' } }))`.
+    // A same-file, compile-time-templated endpoint call resolves to a concrete
+    // URL literal + HTTP method, then feeds the EXISTING fetch path below
+    // exactly as if the author had written `useFetch<T>('/api/users/1',
+    // { method: 'GET' })`. Reactive params / a non-literal client baseUrl bail
+    // (warning pushed inside resolveEndpointUrl) and the call stays web.
+    let resolvedUrl: string | undefined
+    let endpointMethod: string | undefined
     if (
-      !urlArg ||
-      (urlArg.type !== 'Literal' && urlArg.type !== 'StringLiteral') ||
-      typeof urlArg.value !== 'string'
+      urlArg?.type === 'CallExpression' &&
+      urlArg.callee?.type === 'Identifier' &&
+      ctx.endpointDefs.has(urlArg.callee.name as string)
+    ) {
+      const resolved = resolveEndpointUrl(urlArg, ctx)
+      if (!resolved) return null // warning already pushed; stays web
+      resolvedUrl = resolved.url
+      endpointMethod = resolved.method
+    }
+    if (
+      resolvedUrl === undefined &&
+      (!urlArg ||
+        (urlArg.type !== 'Literal' && urlArg.type !== 'StringLiteral') ||
+        typeof urlArg.value !== 'string')
     ) {
       ctx.warnings.push(
         `Declaration ${name}: useFetch url argument must be a string literal; got ${urlArg?.type ?? 'nothing'}.`,
       )
       return null
     }
+    const url = resolvedUrl ?? (urlArg.value as string)
     // No generic -> TypeIR `unknown` -> Swift emits `decode(Any.self, ...)`,
     // which does NOT compile: `Any` cannot conform to Decodable. Kotlin is
     // unaffected, so this is a Swift-only silent break, and the device-proven
     // examples all use the typed form -- which is why nothing caught it.
     if (type.kind === 'unknown') {
       ctx.warnings.push(
-        `Declaration ${name}: useFetch without a response type lowers to decode(Any.self, ...) on Swift, which does NOT compile - Any cannot conform to Decodable. Give it the shape you expect: useFetch<Response>('${urlArg.value}') with a type/interface declared alongside the component. Kotlin compiles either way, so this breaks iOS only.`,
+        `Declaration ${name}: useFetch without a response type lowers to decode(Any.self, ...) on Swift, which does NOT compile - Any cannot conform to Decodable. Give it the shape you expect: useFetch<Response>('${url}') with a type/interface declared alongside the component. Kotlin compiles either way, so this breaks iOS only.`,
       )
     }
     // The request init — `useFetch<T>(url, { method, headers, body })`.
@@ -5254,6 +5519,9 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     // missing feature.
     const initArg = init.arguments?.[1]
     const req: { method?: string; headers?: Record<string, string>; body?: string } = {}
+    // An endpoint's verb is the DEFAULT method; an explicit `{ method }` in the
+    // second arg still wins (the init loop below overwrites `req.method`).
+    if (endpointMethod) req.method = endpointMethod
     if (initArg) {
       if (initArg.type !== 'ObjectExpression') {
         ctx.warnings.push(
@@ -5333,7 +5601,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       }
     }
 
-    return { kind: 'fetch', name, type, url: urlArg.value, ...req }
+    return { kind: 'fetch', name, type, url, ...req }
   }
   // `useQuery<T>(() => ({ queryKey, queryFn, staleTime }))` from @pyreon/query
   // — useFetch + a keyed cache. v1 (conservative, same literal-only rule as
@@ -5354,6 +5622,19 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     if (!optsFn || optsFn.type !== 'ArrowFunctionExpression') {
       ctx.warnings.push(
         `Declaration ${name}: useQuery expects an options function \`() => ({ queryKey, queryFn, staleTime })\`; got ${optsFn?.type ?? 'nothing'}. The @pyreon/query hooks take options as a FUNCTION so queryKey can read signals.`,
+      )
+      return null
+    }
+    // The @pyreon/http endpoint `.query()` fetcher form —
+    // `useQuery(() => getUser.query({ params: { … } }))` — is NOT lowered in
+    // v1 (the useQuery emit expects a literal `queryKey` + inline `fetch`
+    // queryFn). Detect it explicitly so the diagnostic names the real shape
+    // and the actionable fix, instead of the generic "must return an object
+    // literal" below.
+    const endpointQuery = endpointQueryCallInArrow(optsFn, ctx)
+    if (endpointQuery) {
+      ctx.warnings.push(
+        `Declaration ${name}: the endpoint \`.query()\` fetcher form (\`useQuery(() => ${endpointQuery}.query({ … }))\`) is not lowered to native in v1 — it stays web. Use \`useFetch<T>(${endpointQuery}({ params: { … } }))\` for a native fetch, or the inline \`useQuery(() => ({ queryKey: [...], queryFn: () => fetch('<url>') }))\` form.`,
       )
       return null
     }
@@ -5943,6 +6224,42 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
  * `() => ({ … })` and the block form `() => { return { … } }`. Returns
  * undefined for anything else (so the caller warns + bails).
  */
+/**
+ * If an options arrow directly returns `<endpoint>.query(...)` on a known
+ * @pyreon/http endpoint, return the endpoint name; else undefined. Handles the
+ * concise (`() => e.query(…)`) and block-return (`() => { return e.query(…) }`)
+ * arrow shapes. Used to give the useQuery `.query()` fetcher form a specific
+ * "stays web" diagnostic rather than the generic object-literal one.
+ */
+function endpointQueryCallInArrow(arrow: AnyNode, ctx: ParseCtx): string | undefined {
+  const body = arrow?.body as AnyNode | undefined
+  let expr: AnyNode | undefined
+  if (body?.type === 'CallExpression') expr = body
+  else if (body?.type === 'ParenthesizedExpression') expr = body.expression as AnyNode | undefined
+  else if (body?.type === 'BlockStatement') {
+    for (const st of (body.body as AnyNode[] | undefined) ?? []) {
+      if (st.type === 'ReturnStatement') {
+        const a = st.argument as AnyNode | undefined
+        expr = a?.type === 'ParenthesizedExpression' ? (a.expression as AnyNode | undefined) : a
+        break
+      }
+    }
+  }
+  if (expr?.type !== 'CallExpression') return undefined
+  const callee = expr.callee as AnyNode | undefined
+  if (
+    callee?.type === 'MemberExpression' &&
+    !callee.computed &&
+    callee.object?.type === 'Identifier' &&
+    ctx.endpointDefs.has(callee.object.name as string) &&
+    callee.property?.type === 'Identifier' &&
+    callee.property.name === 'query'
+  ) {
+    return callee.object.name as string
+  }
+  return undefined
+}
+
 function arrowReturnedObject(arrow: AnyNode): AnyNode | undefined {
   const body = arrow?.body
   if (!body) return undefined
