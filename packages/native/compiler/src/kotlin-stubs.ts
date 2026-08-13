@@ -55,10 +55,14 @@
 export const KOTLIN_COMPOSE_STUBS = `// Auto-generated Compose stubs for Pyreon native-compiler validation.
 // DO NOT EDIT — sourced from @pyreon/native-compiler/src/kotlin-stubs.ts.
 
-// kotlinx-coroutines delay, emitted by the timing lowerings. Declared here
-// rather than under its real package because this stub file is a single
-// default-package unit; the real build resolves it via a conditional import
-// (see native/cli's conditionalKotlinImports).
+// kotlinx-coroutines delay, emitted by the timing lowerings (useInterval /
+// useTimeout). Declared here rather than under its real package because this
+// stub file is a single default-package unit; the real build resolves it via
+// a conditional import (see native/cli's conditionalKotlinImports).
+//
+// The suspend modifier is retained because the real delay suspends and the
+// emitted call sites sit inside a LaunchedEffect body — a non-suspend stub
+// would let a non-suspend call site through.
 suspend fun delay(timeMillis: Long) {}
 
 @Target(
@@ -1222,6 +1226,31 @@ class PyreonMachine(initial: String, val transitions: Map<String, Map<String, St
   fun can(event: String): Boolean = transitions[state]?.containsKey(event) == true
   fun nextEvents(): List<String> = transitions[state]?.keys?.toList() ?: emptyList()
   operator fun invoke(): String = state
+}
+
+// @pyreon/sync — CRDT doc + synced-signal facade. Mirrors the real
+// PyreonCrdt.kt / PyreonSyncedSignal.kt SURFACE.
+sealed class PyreonScalar {
+  data class Str(val v: String) : PyreonScalar()
+  data class Num(val v: Double) : PyreonScalar()
+  data class Bool(val v: Boolean) : PyreonScalar()
+}
+class PyreonCrdtDoc(val actor: String) {
+  fun get(map: String, key: String): PyreonScalar? = null
+  fun set(map: String, key: String, value: PyreonScalar) {}
+  fun observe(map: String, cb: (Set<String>) -> Unit): () -> Unit = {}
+}
+const val PYREON_SYNCED_DEFAULT_MAP = "pyreon"
+class PyreonSyncedSignal<T>(
+  doc: PyreonCrdtDoc,
+  key: String,
+  initial: T,
+  map: String = PYREON_SYNCED_DEFAULT_MAP,
+) {
+  private var _value: T = initial
+  val value: T get() = _value
+  operator fun invoke(): T = _value
+  fun set(v: T) { _value = v }
 }
 
 // PyreonPermissions — mirror of @pyreon/native-runtime-kotlin's

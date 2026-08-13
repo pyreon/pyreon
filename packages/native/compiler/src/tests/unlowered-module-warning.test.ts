@@ -155,27 +155,22 @@ export function C(){ return (<Stack><Text>x</Text></Stack>) }`
   })
 })
 
-// @pyreon/sync and @pyreon/rich-text were MISSING from WEB_ONLY_PACKAGES and
-// failed both targets with no diagnostic — `syncedSignal(...)` and
-// `createRichTextEditor(...)` emitted verbatim and died with "cannot find ...
-// in scope", while @pyreon/table, listed right beside them, warned properly.
+// @pyreon/rich-text was MISSING from WEB_ONLY_PACKAGES and failed both targets
+// with no diagnostic — `createRichTextEditor(...)` emitted verbatim and died
+// with "cannot find ... in scope", while @pyreon/table, listed right beside it,
+// warned properly.
 //
-// Fixed in the EXISTING web-only mechanism rather than the module map above:
-// these are whole packages with no native runtime (Yjs + IndexedDB/WebSocket;
-// TipTap/ProseMirror), which is exactly what that set is for. Adding them to
-// the newer per-export map would have worked too and been the wrong home.
+// (`@pyreon/sync` used to be in this same list, for the same reason. It now
+// LOWERS — `syncedSignal({ doc, key, initial })` → a native PyreonSyncedSignal
+// over a shared PyreonCrdtDoc — so it left WEB_ONLY_PACKAGES and moved to the
+// manifest's `nativeFrontend`; see native-synced-signal.test.ts.)
 //
-// Worth recording how they were found: the first probe imported these symbols
-// WITHOUT CALLING them, so the emit stripped the unused import and reported
+// Worth recording how it was found: the first probe imported the symbol
+// WITHOUT CALLING it, so the emit stripped the unused import and reported
 // "OK both, 0 warnings" — a clean pass that proved nothing. A probe that does
 // not exercise the thing measures the stripper, not the feature.
 describe('web-only packages that were missing from the set', () => {
   for (const [label, src, symbol] of [
-    [
-      '@pyreon/sync',
-      `import { syncedSignal } from '@pyreon/sync'\nimport { Stack, Text } from '${P}'\nexport function C(){ const s = syncedSignal({ key: 'k', initial: 0 }); return (<Stack><Text>{s()}</Text></Stack>) }`,
-      '@pyreon/sync',
-    ],
     [
       '@pyreon/rich-text',
       `import { createRichTextEditor } from '@pyreon/rich-text'\nimport { Stack, Text } from '${P}'\nexport function C(){ const e = createRichTextEditor({ content: {} }); return (<Stack><Text>x</Text></Stack>) }`,

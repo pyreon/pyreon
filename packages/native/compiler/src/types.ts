@@ -420,6 +420,16 @@ export type DeclIR =
    */
   | { kind: 'debounced-value'; name: string; source: ExprIR; type: TypeIR; delayMs: number }
   /**
+   * `useInterval(cb, ms)` / `useTimeout(cb, ms)` at STATEMENT position.
+   *
+   * Both are pure timing over a callback — no platform capability, just a
+   * clock both targets have. They lower to the idiom that already carries
+   * each target's auto-cancellation (`.task` on SwiftUI, `LaunchedEffect` on
+   * Compose), which is what reproduces the web hooks' `onUnmount` cleanup
+   * without a runtime or a stored handle.
+   */
+  | { kind: 'tick'; mode: 'interval' | 'timeout'; delayMs: number; body: StatementIR[] }
+  /**
    * M3.1 — haptic feedback via `const h = useHaptics()` from
    * `@pyreon/hooks`. Emits the PyreonHaptics fire-and-forget wrapper:
    *   Swift  → @State private var h = PyreonHaptics()
@@ -694,6 +704,39 @@ export type DeclIR =
       name: string
       initial: string
       transitions: Record<string, Record<string, string>>
+    }
+  /**
+   * `const doc = new PyreonCrdtDoc(...)` from `@pyreon/sync`. The LWW-CRDT
+   * document a group of `syncedSignal`s shares. Emits:
+   *   Swift  → `@State private var doc: PyreonCrdtDoc` seeded in a generated
+   *            component `init()` (`_doc = State(initialValue: PyreonCrdtDoc(...))`)
+   *            because a synced signal's `@State` initializer must reference it,
+   *            and one `@State` cannot reference another at property init.
+   *   Kotlin → `val doc = remember { PyreonCrdtDoc(...) }`
+   * `actorLiteral` is a string-literal actor id if the user passed one; absent
+   * → a fresh UUID (matching web's `createActorId()`).
+   */
+  | {
+      kind: 'crdt-doc'
+      name: string
+      actorLiteral?: string
+    }
+  /**
+   * `const title = syncedSignal({ doc, key, initial })` from `@pyreon/sync`.
+   * Binds a `Signal<T>` to one scalar entry in a shared `PyreonCrdtDoc`. Emits
+   * `PyreonSyncedSignal<T>(doc: <docBinding>, key: "<key>", initial: <initial>)`;
+   * `title()` / `title.set(v)` flow through unchanged (the facade defines
+   * `callAsFunction` / `set`). Scalars only (`string`/`number`/`boolean`);
+   * `number` → `Double`. `docBinding` is the `doc` identifier's name.
+   */
+  | {
+      kind: 'synced-signal'
+      name: string
+      docBinding: string
+      map?: string
+      key: string
+      scalarType: 'string' | 'double' | 'bool'
+      initialValue: string | number | boolean
     }
 
 /**
