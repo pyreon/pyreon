@@ -1251,6 +1251,8 @@ class PyreonSyncedSignal<T>(
   val value: T get() = _value
   operator fun invoke(): T = _value
   fun set(v: T) { _value = v }
+  // Mirror of the runtime's dispose(); its absence rejected correct code.
+  fun dispose() {}
 }
 
 // PyreonPermissions — mirror of @pyreon/native-runtime-kotlin's
@@ -1318,6 +1320,12 @@ class PyreonPermissions(granted: Set<String> = emptySet()) {
   fun all(vararg keys: String): Boolean = keys.all { can(it) }
   fun any(vararg keys: String): Boolean = keys.any { can(it) }
   operator fun invoke(key: String): Boolean = can(key)
+  // The mutators the real runtime ships. Their absence rejected a correct
+  // \`perms.grant("x")\` - a stub NARROWER than the runtime fails working code,
+  // the inverse of the usual superset-stub masking failure.
+  fun set(keys: Set<String>) {}
+  fun grant(key: String) {}
+  fun revoke(key: String) {}
 }
 
 // PyreonNetworkStatus — mirror of @pyreon/native-runtime-kotlin's

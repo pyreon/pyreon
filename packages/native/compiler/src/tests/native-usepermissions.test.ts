@@ -91,4 +91,54 @@ describe('Phase 4 — usePermissions() native emit', () => {
     // `not.toContain('role')` assertion conflated the two.
     expect(out).toContain('let role = "admin"')
   })
+
+  // The mutators. This file's header has always documented `grant` / `revoke`
+  // / `set` as METHOD CALLS, but the emit did not honour `set`: the generic
+  // `signal.set(v)` -> `signal = v` lowering fired on any identifier receiver
+  // that was not in a hand-maintained exclusion list, so `p.set(...)` became
+  // an ASSIGNMENT to a non-assignable receiver. Both targets rejected it —
+  // Swift "cannot assign value of type 'Set<String>'", Kotlin "'val' cannot
+  // be reassigned". Correct code, invalid output.
+  describe('mutators stay method calls, not signal writes', () => {
+    const src = `
+      export function Gate() {
+        const p = usePermissions(['posts.*'])
+        const f = () => { p.grant('a'); p.revoke('b'); p.set(new Set(['c'])) }
+        return <Text>x</Text>
+      }
+      `
+
+    it('Swift: p.set(...) is a call, never `p = ...`', () => {
+      const out = transform(src, { target: 'swift' }).code
+      expect(out).toContain('p.set(')
+      expect(out).toContain('p.grant("a")')
+      expect(out).toContain('p.revoke("b")')
+      // The assignment shape the signal-write lowering used to produce.
+      expect(out).not.toMatch(/\bp = Set\(/)
+    })
+
+    it('Kotlin: p.set(...) is a call, never `p = ...`', () => {
+      const out = transform(src, { target: 'kotlin' }).code
+      expect(out).toContain('p.set(')
+      expect(out).toContain('p.grant("a")')
+      expect(out).toContain('p.revoke("b")')
+      expect(out).not.toMatch(/\bp = \(/)
+    })
+
+    it('a REAL signal still lowers `.set(v)` to an assignment', () => {
+      // The inversion must not cost the behaviour it is gating: a tracked
+      // signal declaration keeps the assignment lowering.
+      const out = transform(
+        `
+        export function Counter() {
+          const n = signal(0)
+          const f = () => { n.set(5) }
+          return <Text>x</Text>
+        }
+        `,
+        { target: 'swift' },
+      ).code
+      expect(out).toContain('n = 5')
+    })
+  })
 })

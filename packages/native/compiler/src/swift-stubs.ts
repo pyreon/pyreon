@@ -540,6 +540,9 @@ public final class PyreonSyncedSignal<T: PyreonScalarConvertible> {
   }
   public func callAsFunction() -> T { value }
   public func set(_ v: T) {}
+  // The runtime ships this and the stub did not, so a correct
+  // \`s.dispose()\` was rejected by the type gate.
+  public func dispose() {}
 }
 public struct PyreonI18n {
   // fallbackLocale is OPTIONAL and DEFAULTED in the real PyreonI18n. The stub
@@ -590,12 +593,24 @@ extension AppStorage where Value == Bool {
 // takes a Set - so it REJECTED the emit's correct \`PyreonPermissions()\`.
 // That is the inverse of the usual masking failure: a stub STRICTER than
 // reality fails correct code. Latent only because no fixture used the hook.
-public struct PyreonPermissions {
+// The real type is an @Observable FINAL CLASS, not a struct. That is not a
+// cosmetic difference: the emit binds it through @Environment (read-only), so
+// a struct cannot typecheck the mutators at all - \`p.grant("x")\` on a struct
+// needs \`mutating\`, which an @Environment binding cannot satisfy. The struct
+// stub therefore rejected correct code twice over: wrong kind AND five missing
+// members (can/cannot/set/grant/revoke, plus the granted property).
+public final class PyreonPermissions {
   public init(_ granted: Set<String> = []) {}
-  public func callAsFunction(_ perm: String) -> Bool { false } // used as \`can("x")\`
-  public func all(_ perms: String...) -> Bool { false }
-  public func any(_ perms: String...) -> Bool { false }
-  public func not(_ perm: String) -> Bool { false }
+  public private(set) var granted: Set<String> = []
+  public func can(_ key: String) -> Bool { false }
+  public func cannot(_ key: String) -> Bool { false }
+  public func not(_ key: String) -> Bool { false }
+  public func all(_ keys: String...) -> Bool { false }
+  public func any(_ keys: String...) -> Bool { false }
+  public func callAsFunction(_ key: String) -> Bool { false } // used as \`can("x")\`
+  public func set(_ keys: Set<String>) {}
+  public func grant(_ key: String) {}
+  public func revoke(_ key: String) {}
 }
 // PyreonNetworkStatus — mirror of @pyreon/native-runtime-swift's
 // PyreonNetworkStatus.swift surface the emit touches: the no-arg constructor
