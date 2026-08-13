@@ -105,6 +105,17 @@ interface ParseCtx {
    */
   validateSchemaNames: Set<string>
   /**
+   * Local names imported from `@pyreon/rx`, mapped to their ORIGINAL export
+   * name (so `import { map as project }` resolves).
+   *
+   * The STANDALONE transforms are source-first — `map(src, fn)` is
+   * structurally `rx.map(src, fn)` — but `map` / `filter` / `first` are names
+   * a user is overwhelmingly likely to have of their own, so the recognizer
+   * gates on the IMPORT and never on the bare name. Same rule
+   * `@pyreon/validate`'s `s` follows.
+   */
+  rxImportedNames: Map<string, string>
+  /**
    * True when the file declares at least one `const X = s.object({ … })` that
    * the Gap-4 schema emit will lower. Gates the `s` "no native lowering"
    * warning off — firing it on a declaration that compiles correctly on both
@@ -171,6 +182,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     storeAliases: new Map(),
     toastNames: new Set(),
     validateSchemaNames: new Set(),
+    rxImportedNames: new Map(),
     validateSchemaLowered: false,
     sizedMapNames: new Set(),
     validationSchemaLowered: false,
@@ -206,6 +218,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   // to PyreonToast. Handles renamed imports (`import { toast as notify }`).
   collectToastNames(ast.program.body as AnyNode[], ctx)
   collectValidateSchemaNames(ast.program.body as AnyNode[], ctx)
+  collectRxImportedNames(ast.program.body as AnyNode[], ctx)
   collectSizedMapNames(ast.program.body as AnyNode[], ctx)
   // Record the local name(s) bound to `announce` from @pyreon/a11y so parseExpr
   // can lower `announce(...)` to PyreonA11y. Handles renamed imports.
@@ -1155,6 +1168,30 @@ interface UnloweredModule {
   readonly unsupported?: ReadonlySet<string>
 }
 
+const RX_V1_METHODS = new Set([
+  'filter',
+  'map',
+  'reverse',
+  'count',
+  'sum',
+  'min',
+  'max',
+  'first',
+  'last',
+  'take',
+  'skip',
+  'takeWhile',
+  'dropWhile',
+  'find',
+  'some',
+  'every',
+  'unique',
+  'compact',
+  'flatten',
+  'reduce',
+  'average',
+])
+
 const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
   [
     '@pyreon/rx',
@@ -1164,9 +1201,15 @@ const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
       // standalone transforms do not. A package-wide warning here fired on `rx`
       // itself and broke the existing rx-lowering lock — caught by that suite,
       // which is exactly the over-warning failure a per-package list invites.
+      // The STANDALONE transforms lower too now. They are source-first
+      // (`map(src, fn)` is structurally `rx.map(src, fn)`), and rx's own
+      // manifest reaches for them 43 times against 5 for the namespace — so
+      // the documented, dominant idiom was the one emitting itself verbatim.
+      // `pipe` is deliberately NOT in the supported set; see
+      // tryRxPipeLowering for the measured reason.
       advice:
-        'the standalone transforms are web-only — use the NAMESPACE form (`import { rx } from \'@pyreon/rx\'` then `rx.map(...)`), which lowers on both targets, or compose with `computed()`',
-      supported: new Set(['rx']),
+        'this export has no native lowering yet. The standalone COLLECTION transforms DO lower (filter / map / take / unique / …, source-first) — chain those through consts, or compose with `computed()`',
+      supported: new Set(['rx', ...RX_V1_METHODS]),
     },
   ],
   [
@@ -3709,6 +3752,7 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     storeAliases: new Map(),
     toastNames: new Set(),
     validateSchemaNames: new Set(),
+    rxImportedNames: new Map(),
     validateSchemaLowered: false,
     sizedMapNames: new Set(),
     validationSchemaLowered: false,
@@ -5585,29 +5629,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
  *   - `sample` (RNG seeded per platform)
  *   - `chunk` (Swift needs stride-based slicing — verbose)
  */
-const RX_V1_METHODS = new Set([
-  'filter',
-  'map',
-  'reverse',
-  'count',
-  'sum',
-  'min',
-  'max',
-  'first',
-  'last',
-  'take',
-  'skip',
-  'takeWhile',
-  'dropWhile',
-  'find',
-  'some',
-  'every',
-  'unique',
-  'compact',
-  'flatten',
-  'reduce',
-  'average',
-])
 
 /**
  * RX — `@pyreon/rx` namespace lowering. See the long-form rationale at
@@ -5802,19 +5823,68 @@ function parseFetchInitObject(
   return req
 }
 
+/**
+ * Collect the local names imported from `@pyreon/rx`, mapped to their
+ * ORIGINAL export name. Only the standalone transforms belong here — the
+ * `rx` namespace object has its own recognizer.
+ */
+function collectRxImportedNames(body: AnyNode[], ctx: ParseCtx): void {
+  for (const node of body) {
+    if (node.type !== 'ImportDeclaration') continue
+    if (node.source?.value !== '@pyreon/rx') continue
+    for (const spec of (node.specifiers as AnyNode[] | undefined) ?? []) {
+      if (spec.type !== 'ImportSpecifier') continue
+      const imported = spec.imported?.name as string | undefined
+      const local = spec.local?.name as string | undefined
+      if (imported && local && imported !== 'rx') ctx.rxImportedNames.set(local, imported)
+    }
+  }
+}
+
+/**
+ * `pipe(source, f1, f2, …)` does NOT lower, and this is a measured answer
+ * rather than an untested guess.
+ *
+ * The natural emit is an immediately-applied closure per stage
+ * (`{ xs in … }(nums)`), which discards the parameter's type. Compiled
+ * against both real toolchains that fails on each — Swift with "value of
+ * type 'Any' has no member 'count'", Kotlin with "cannot infer type for type
+ * parameter 'T'". Inlining each stage by substituting its parameter would fix
+ * it and is the follow-up; emitting the closure form meanwhile would ship
+ * code that does not build.
+ *
+ * The collection transforms it composes DO lower, so the advice names a real
+ * alternative rather than an escape hatch.
+ */
+function tryRxPipeLowering(name: string, ctx: ParseCtx): DeclIR | null {
+  ctx.warnings.push(
+    `Declaration ${name}: pipe() has no native lowering — each stage would emit as an immediately-applied closure, which loses its parameter type and fails to compile on both targets. Chain the standalone transforms instead (const a = filter(src, p); const b = map(a, f)), which do lower, or keep the call behind a \`<Web>\` escape hatch.`,
+  )
+  return null
+}
+
 function tryRxNamespaceLowering(
   name: string,
   init: AnyNode,
   ctx: ParseCtx,
 ): DeclIR | null {
   const callee = init.callee as AnyNode | undefined
-  if (callee?.type !== 'MemberExpression') return null
-  const obj = callee.object as AnyNode | undefined
-  if (obj?.type !== 'Identifier' || (obj.name as string | undefined) !== 'rx') return null
-  const prop = callee.property as AnyNode | undefined
-  if (prop?.type !== 'Identifier') return null
-  const methodName = prop.name as string | undefined
+  let methodName: string | undefined
+  if (callee?.type === 'MemberExpression') {
+    const obj = callee.object as AnyNode | undefined
+    if (obj?.type !== 'Identifier' || (obj.name as string | undefined) !== 'rx') return null
+    const prop = callee.property as AnyNode | undefined
+    if (prop?.type !== 'Identifier') return null
+    methodName = prop.name as string | undefined
+  } else if (callee?.type === 'Identifier') {
+    // STANDALONE form, resolved through the IMPORT — never the bare name.
+    methodName = ctx.rxImportedNames.get(callee.name as string)
+    if (methodName === undefined) return null
+  } else {
+    return null
+  }
   if (!methodName) return null
+  if (methodName === 'pipe') return tryRxPipeLowering(name, ctx)
 
   const args = (init.arguments as AnyNode[] | undefined) ?? []
   const sourceArg = args[0]

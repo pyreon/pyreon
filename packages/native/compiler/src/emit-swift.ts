@@ -8427,12 +8427,27 @@ function emitSwiftRxCall(
       // a concrete Array<T> matching consumer expectations.
       return `Array(${src}.joined())`
     case 'unique':
-      // Requires T: Hashable. Array(Set(_:)) drops duplicates but does
-      // NOT preserve insertion order — Swift's stdlib has no
-      // order-preserving distinct() in Foundation. Matches rx.unique's
-      // "set of unique values" semantic; for ordered uniqueness the
-      // user can fall back to reduce.
-      return `Array(Set(${src}))`
+      // Order-preserving, because that is what rx does. The previous emit
+      // was `Array(Set(_:))`, whose comment claimed it matched rx's "set of
+      // unique values" semantic — measured, rx returns FIRST-occurrence
+      // order ([3,1,2,3,4] → [3,1,2,4]), and Kotlin's `distinct()` preserves
+      // it too. So Swift was the only one of the three that did not, and a
+      // `<For>` over unique(...) rendered in an arbitrary order on iOS and a
+      // stable one everywhere else.
+      //
+      // `reduce(into:)` is O(n²) against Set's O(n), which is the right
+      // trade for a UI list: the alternative is the wrong answer. It also
+      // needs only Equatable, where Set needed Hashable — strictly more
+      // permissive.
+      // `reduce(into: [])` would be the obvious spelling and does NOT
+      // typecheck — the empty seed leaves the accumulator ambiguous, so
+      // `contains` resolves to `contains(where:)` and swiftc asks for the
+      // missing label. This form needs no seed annotation.
+      //
+      // It reads `src` twice. That is safe here because a source is a pure
+      // computed-property read, and unique is O(n²) either way; the
+      // alternative was the wrong ORDER, which is not a trade.
+      return `${src}.enumerated().filter { ${src}.firstIndex(of: $0.element) == $0.offset }.map { $0.element }`
     // Bounded transforms — take / skip + their while variants. Swift's
     // `.prefix(_:)` and `.dropFirst(_:)` return ArraySlice; Array(...)
     // promotes to a concrete Array<T>.
