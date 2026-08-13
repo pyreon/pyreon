@@ -79,6 +79,12 @@ export type { EscapeHatchProps } from './types/escape-hatch'
 // (charts / flow / tables) inside a native shell.
 export { WebView } from './web/WebView'
 export type { WebViewProps } from './types/webview'
+// Guest-side glue for the WebView bridge — the reusable other half of the
+// WebView-host pattern. A web-only-rich component built as a self-contained
+// bundle runs `connectWebHost()` INSIDE the hosted page to read host-pushed
+// props (`data()`/`onData`) and send events back (`emit`) on every platform.
+export { connectWebHost, webHostDocument } from './web-host-bridge'
+export type { WebHostConnection, WebHostDocumentOptions } from './web-host-bridge'
 // User-defined native modules (Layer 4) — the FFI escape hatch. The
 // canonical primitives + built-in service hooks are a fixed set; this is
 // how an APP adds a platform capability the framework does not ship
