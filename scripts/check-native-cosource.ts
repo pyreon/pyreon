@@ -41,6 +41,12 @@ interface CoSourcePkg {
   // need the real Android SDK are omitted here — the device gate verifies them.
   // Omitted → whole-dir mode.
   kotlinServices?: Record<string, string[]>
+  // Files DELIBERATELY outside the stub harness because they import the real
+  // Android SDK (android.webkit, android.hardware, ...) — the device gate
+  // verifies those. Declared rather than inferred: an implicit omission and a
+  // forgotten one look identical, which is how PyreonWebView.kt went
+  // unverified without anyone choosing that.
+  kotlinSdkOnly?: string[]
 }
 
 function has(cmd: string): boolean {
@@ -84,6 +90,7 @@ function scanCoSourcePackages(): CoSourcePkg[] {
             swift?: string
             kotlin?: string
             kotlinServices?: Record<string, string[]>
+            kotlinSdkOnly?: string[]
           }
         }
       }
@@ -107,6 +114,7 @@ function scanCoSourcePackages(): CoSourcePkg[] {
         ...(kotlinDir && existsSync(kotlinDir) ? { kotlinDir } : {}),
         ...(existsSync(testsDir) ? { testsDir } : {}),
         ...(native.kotlinServices ? { kotlinServices: native.kotlinServices } : {}),
+        ...(native.kotlinSdkOnly ? { kotlinSdkOnly: native.kotlinSdkOnly } : {}),
       })
     }
   }
@@ -182,6 +190,31 @@ for (const pkg of pkgs) {
           ? join(baseRuntimeDir, f.slice('@base/'.length))
           : join(pkg.kotlinDir!, 'com', 'pyreon', 'runtime', f)
       const ktTests = pkg.testsDir ? filesUnder(pkg.testsDir, '.kt') : []
+
+      // COMPLETENESS, the direction this gate was missing. It already fails on
+      // a DECLARED file that does not exist; without the mirror, a file that
+      // exists but is declared NOWHERE is silently never verified — and a
+      // hand-maintained list beside a real directory drifts by construction.
+      // Every `.kt` must be in a group or in kotlinSdkOnly; neither is a pass.
+      const runtimeDir = join(pkg.kotlinDir!, 'com', 'pyreon', 'runtime')
+      const declared = new Set(
+        Object.values(pkg.kotlinServices)
+          .flat()
+          .filter((f) => !f.startsWith('@base/')),
+      )
+      for (const f of pkg.kotlinSdkOnly ?? []) declared.add(f)
+      const unlisted = filesUnder(runtimeDir, '.kt')
+        .map((f) => f.slice(runtimeDir.length + 1))
+        .filter((f) => !declared.has(f))
+        .sort()
+      if (unlisted.length > 0) {
+        failures++
+        console.error(
+          `  ✗ ${pkg.name} [kotlin]: ${unlisted.length} runtime file(s) are in no service group and not declared SDK-only, so nothing verifies them:\n    ${unlisted.join('\n    ')}\n` +
+            `    fix: add each to pyreon.native.kotlinServices (stub-verifiable) or pyreon.native.kotlinSdkOnly (imports the real Android SDK; the device gate covers it).`,
+        )
+      }
+
       for (const [svc, files] of Object.entries(pkg.kotlinServices)) {
         const abs = files.map(resolveGroupFile)
         const missing = abs.filter((f) => !existsSync(f))

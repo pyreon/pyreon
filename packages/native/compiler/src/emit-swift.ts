@@ -771,6 +771,7 @@ export function emitSwift(
   for (const c of components) {
     for (const d of c.decls ?? []) {
       if (d.kind === 'bluetooth') _bluetoothSwift.add(d.name)
+      if (d.kind === 'wake-lock') _wakeLockSwift.add(d.name)
       if (d.kind === 'clipboard') _clipboardSwift.add(d.name)
       if (d.kind === 'pure-state') {
         _pureStateSwift.set(d.name, d.bounds ? { hook: d.hook, bounds: d.bounds } : { hook: d.hook })
@@ -891,6 +892,8 @@ let _modelInstances: Map<string, string> = new Map()
 let _pureStateSwift: Map<string, { hook: 'useToggle' | 'useCounter'; bounds?: { min?: number; max?: number } }> = new Map()
 /** `useBluetooth()` bindings — its reactive reads drop their parens. */
 let _bluetoothSwift: Set<string> = new Set()
+/** `useWakeLock()` bindings — its reactive reads drop their parens. */
+let _wakeLockSwift: Set<string> = new Set()
 /** Initial values, so `reset()` restores exactly what the web's does. */
 let _pureStateInitialSwift: Map<string, number | boolean> = new Map()
 /**
@@ -2682,6 +2685,12 @@ function emitSwiftDecl(
   if (d.kind === 'bluetooth') {
     return `@State private var ${swiftIdent(d.name)} = PyreonBluetooth(scanner: CoreBluetoothScanner())`
   }
+  // `useWakeLock()` -> the idle-timer container. The controller is injected
+  // so the held/released machine stays testable without UIKit; the app
+  // supplies the real one.
+  if (d.kind === 'wake-lock') {
+    return `@State private var ${swiftIdent(d.name)} = PyreonWakeLock(controller: UIKitIdleTimer())`
+  }
   if (d.kind === 'pure-state') {
     const t = d.hook === 'useToggle' ? 'Bool' : 'Int'
     return `@State private var ${swiftIdent(d.name)}: ${t} = ${String(d.initial)}`
@@ -3778,6 +3787,17 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         _bluetoothSwift.has(e.callee.object.name) &&
         e.args.length === 0 &&
         ['scanning', 'devices', 'error', 'available'].includes(e.callee.property)
+      ) {
+        return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
+      }
+      // useWakeLock's reactive reads — same inversion: `w.active()` is
+      // web-correct and would CALL a Bool here, so the parens drop.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _wakeLockSwift.has(e.callee.object.name) &&
+        e.args.length === 0 &&
+        ['active', 'supported'].includes(e.callee.property)
       ) {
         return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
       }

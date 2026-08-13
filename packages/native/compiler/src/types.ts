@@ -404,6 +404,7 @@ export type DeclIR =
     }
   /** `useBluetooth()` — discovery-only BLE (PyreonBluetooth). */
   | { kind: 'bluetooth'; name: string }
+  | { kind: 'wake-lock'; name: string }
   /**
    * `useInterval(cb, ms)` / `useTimeout(cb, ms)` at STATEMENT position.
    *

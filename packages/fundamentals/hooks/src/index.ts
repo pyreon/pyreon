@@ -4,8 +4,8 @@ import { registerSingleton } from '@pyreon/reactivity'
 
 // Singleton sentinel — fail-loud detection of duplicate @pyreon/hooks
 // instances in the same heap. See @pyreon/reactivity/singleton-sentinel for
-// full rationale. Hardcoded version is acceptable here — it's a diagnostic
-// aid, not a load-bearing identity check.
+// full rationale. Name and version are DERIVED from package.json, so a
+// release bump can never leave this reporting a frozen version.
 registerSingleton(__pkgName, __pkgVersion, import.meta.url)
 
 export type { BreakpointMap } from './useBreakpoint'
@@ -15,6 +15,8 @@ export type { UseClipboardResult } from './useClipboard'
 export { useBluetooth }
 export type { BluetoothDevice, UseBluetoothResult } from './useBluetooth'
 export { useClipboard } from './useClipboard'
+export type { WakeLockControls } from './useWakeLock'
+export { useWakeLock } from './useWakeLock'
 export type {
   HapticImpactStyle,
   HapticNotificationType,

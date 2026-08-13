@@ -1076,7 +1076,7 @@ export const NATIVE_LOWERED_HOOKS: ReadonlySet<string> = new Set([
   'useParams', 'usePayments', 'usePermissions', 'usePush', 'useQuery',
   // Pure state — no platform dependency, so no runtime; see the
   // `pure-state` DeclIR.
-  'useToggle', 'useCounter', 'useBluetooth',
+  'useToggle', 'useCounter', 'useBluetooth', 'useWakeLock',
   'useUrlState',
   'useSecureStorage',
   'useShare', 'useSizeClass', 'useStorage', 'useWebSocket',
@@ -5609,6 +5609,15 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       type: inferTypeFromInitial(source),
       delayMs: delayNode.value as number,
     }
+  }
+  // `useWakeLock()` from @pyreon/hooks -> PyreonWakeLock. The WEB arm is the
+  // one carrying normalization here: a WakeLockSentinel is released on
+  // tab-hide and never reacquired, so the web hook re-acquires on
+  // visibilitychange to reach the behaviour the native flag already has.
+  // Nothing to transform at this layer -- reads are `active`/`supported`,
+  // and `request()`/`release()` pass through as member calls.
+  if (calleeName === 'useWakeLock') {
+    return { kind: 'wake-lock', name }
   }
   // `useDebouncedCallback(fn, ms)` / `useThrottledCallback(fn, ms)` — see
   // the DeclIR comment for why these need a runtime.

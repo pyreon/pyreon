@@ -108,6 +108,24 @@ public final class PyreonBluetooth {
   public func scan() {}
   public func stopScan() {}
 }
+
+// PyreonWakeLock + the app-supplied UIKit idle-timer controller the emit names.
+public protocol IdleTimerController: AnyObject {
+  var isSupported: Bool { get }
+  func setIdleTimerDisabled(_ disabled: Bool)
+}
+public final class UIKitIdleTimer: IdleTimerController {
+  public init() {}
+  public var isSupported: Bool { true }
+  public func setIdleTimerDisabled(_ disabled: Bool) {}
+}
+public final class PyreonWakeLock {
+  public init(controller: IdleTimerController) {}
+  public var active: Bool { false }
+  public var supported: Bool { false }
+  @discardableResult public func request() -> Bool { false }
+  public func release() {}
+}
 // EnvironmentKey — the emitted <PermissionsProvider> plumbing declares its
 // own key + EnvironmentValues extension inline (a co-located runtime should
 // not need SwiftUI's environment machinery), so the stub set has to model the
