@@ -3346,11 +3346,14 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         e.callee.kind === 'member' &&
         e.callee.property === 'set' &&
         e.args.length === 1 &&
-        // A useUrlState binding is NOT a signal: `q.set(v)` is a real method
-        // on PyreonUrlState, so rewriting it to `q = v` fails with
-        // "val cannot be reassigned". The Swift emit carries the same guard.
-        !(e.callee.object.kind === 'identifier' && _urlStateNames.has(e.callee.object.name)) &&
-        !(e.callee.object.kind === 'identifier' && _syncedSignalNames.has(e.callee.object.name))
+        // DENY-BY-DEFAULT for an identifier receiver — mirror of the Swift
+        // emit. Rewrite only when the name is a KNOWN signal/computed. The
+        // previous allow-by-default exclusion list was a silent-hole
+        // generator: every binding whose `set` is a REAL method had to be
+        // remembered, and a forgotten one emitted `x = v` against a `val`
+        // ("val cannot be reassigned"). Member-expression receivers keep the
+        // old behaviour — they are not tracked in _signalNames.
+        (e.callee.object.kind !== 'identifier' || _signalNames.has(e.callee.object.name))
       ) {
         const target = emitKotlinExpr(e.callee.object, indent)
         // Enum-aware: when the target signal is enum-typed, set the

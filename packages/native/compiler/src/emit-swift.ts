@@ -4132,13 +4132,20 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         e.callee.kind === 'member' &&
         e.callee.property === 'set' &&
         e.args.length === 1 &&
-        // A useUrlState binding is NOT a signal: it is a get-only computed
-        // property wrapping the router, so rewriting `q.set(v)` to `q = v`
-        // produces "cannot assign to property". Its `set` is a real method.
-        !(e.callee.object.kind === 'identifier' && _urlStateNames.has(e.callee.object.name)) &&
-        // A syncedSignal binding is a PyreonSyncedSignal facade whose `set` is a
-        // real method (writes one CRDT op) — `x = v` would assign the facade.
-        !(e.callee.object.kind === 'identifier' && _syncedSignalNames.has(e.callee.object.name))
+        // DENY-BY-DEFAULT for an identifier receiver: rewrite only when the
+        // name is a KNOWN signal/computed declaration. The previous shape was
+        // allow-by-default with an exclusion list, which is a silent-hole
+        // generator — every binding kind whose `set` is a REAL method has to be
+        // remembered, and a forgotten one emits `x = v` against a non-assignable
+        // receiver. Three had to be remembered (useUrlState, syncedSignal, and
+        // usePermissions, found only because a stub-parity sweep happened to
+        // compile `perms.set(...)`). Keying on _signalNames instead means the
+        // next one is correct without anyone noticing it exists.
+        //
+        // Member-expression receivers (`store.field.set(v)`) keep the old
+        // behaviour: they are not tracked in _signalNames, and narrowing them
+        // here would break working code rather than reveal a hole.
+        (e.callee.object.kind !== 'identifier' || _signalNames.has(e.callee.object.name))
       ) {
         const target = emitSwiftExpr(e.callee.object, indent)
         // Look up whether the target signal is enum-typed (e.g.

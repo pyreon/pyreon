@@ -499,11 +499,23 @@ public struct PyreonFilePicker { public init() {}; public func pick() async -> S
 // emit uses it) drives runtime reactivity; these only satisfy conformance.
 public protocol PyreonStoreProtocol: AnyObject {}
 public protocol PyreonModelProtocol: AnyObject {}
-public struct PyreonMachine {
-  public init(initial: String, transitions: [String: [String: String]]) {}
-  public func callAsFunction() -> String { "" }
+// Mirrors the real @Observable final class. The struct stub was missing
+// \`can\` / \`nextEvents\` / the \`state\` property / \`transitions\`, so a correct
+// \`m.can("GO")\` - a documented member of the web Machine interface, which
+// \`createMachine\` lowers to this type - failed the type gate on iOS while
+// compiling fine on Android, whose stub was already complete.
+public final class PyreonMachine {
+  public init(initial: String, transitions: [String: [String: String]]) {
+    self.state = initial
+    self.transitions = transitions
+  }
+  public private(set) var state: String
+  public let transitions: [String: [String: String]]
+  public func callAsFunction() -> String { state }
   public func send(_ event: String) {}
-  public func matches(_ state: String) -> Bool { false }
+  public func matches(_ s: String) -> Bool { false }
+  public func can(_ event: String) -> Bool { false }
+  public func nextEvents() -> [String] { [] }
 }
 // @pyreon/sync — CRDT doc + synced-signal facade. Mirrors the real
 // PyreonCrdt.swift / PyreonSyncedSignal.swift SURFACE (not a superset); the
@@ -545,6 +557,9 @@ public final class PyreonSyncedSignal<T: PyreonScalarConvertible> {
   }
   public func callAsFunction() -> T { value }
   public func set(_ v: T) {}
+  // The runtime ships this and the stub did not, so a correct
+  // \`s.dispose()\` was rejected by the type gate.
+  public func dispose() {}
 }
 public struct PyreonI18n {
   // fallbackLocale is OPTIONAL and DEFAULTED in the real PyreonI18n. The stub
@@ -595,12 +610,24 @@ extension AppStorage where Value == Bool {
 // takes a Set - so it REJECTED the emit's correct \`PyreonPermissions()\`.
 // That is the inverse of the usual masking failure: a stub STRICTER than
 // reality fails correct code. Latent only because no fixture used the hook.
-public struct PyreonPermissions {
+// The real type is an @Observable FINAL CLASS, not a struct. That is not a
+// cosmetic difference: the emit binds it through @Environment (read-only), so
+// a struct cannot typecheck the mutators at all - \`p.grant("x")\` on a struct
+// needs \`mutating\`, which an @Environment binding cannot satisfy. The struct
+// stub therefore rejected correct code twice over: wrong kind AND five missing
+// members (can/cannot/set/grant/revoke, plus the granted property).
+public final class PyreonPermissions {
   public init(_ granted: Set<String> = []) {}
-  public func callAsFunction(_ perm: String) -> Bool { false } // used as \`can("x")\`
-  public func all(_ perms: String...) -> Bool { false }
-  public func any(_ perms: String...) -> Bool { false }
-  public func not(_ perm: String) -> Bool { false }
+  public private(set) var granted: Set<String> = []
+  public func can(_ key: String) -> Bool { false }
+  public func cannot(_ key: String) -> Bool { false }
+  public func not(_ key: String) -> Bool { false }
+  public func all(_ keys: String...) -> Bool { false }
+  public func any(_ keys: String...) -> Bool { false }
+  public func callAsFunction(_ key: String) -> Bool { false } // used as \`can("x")\`
+  public func set(_ keys: Set<String>) {}
+  public func grant(_ key: String) {}
+  public func revoke(_ key: String) {}
 }
 // PyreonNetworkStatus — mirror of @pyreon/native-runtime-swift's
 // PyreonNetworkStatus.swift surface the emit touches: the no-arg constructor

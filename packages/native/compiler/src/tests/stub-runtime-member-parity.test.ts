@@ -57,49 +57,95 @@ const REPO = join(import.meta.dirname ?? __dirname, '..', '..', '..', '..', '..'
  * immediately, which is the drift that kept reaching CI one instance at a
  * time.
  */
-const KNOWN_NARROW: ReadonlySet<string> = new Set([
-  // Lifecycle/monitor internals — reachable in principle, not from any emit
-  // shape today.
-  'PyreonAppState.isMonitoring', 'PyreonAppState.update',
-  'PyreonCrashReporter.isMonitoring',
-  'PyreonNetworkStatus.isMonitoring', 'PyreonNetworkStatus.update',
-  // Delegate callbacks: invoked BY the platform, never by emitted code.
-  'PyreonGeolocation.authorize', 'PyreonGeolocation.fail',
-  'PyreonGeolocation.locationManager',
-  'PyreonGeolocation.locationManagerDidChangeAuthorization',
-  'PyreonGeolocation.update',
-  'PyreonPushNotifications.authorize', 'PyreonPushNotifications.fail',
-  'PyreonPushNotifications.notificationReceived',
-  'PyreonPushNotifications.tokenReceived',
-  'PyreonPayments.connect', 'PyreonPayments.productsLoaded',
-  'PyreonPayments.purchaseFailed', 'PyreonPayments.purchaseStarted',
-  'PyreonPayments.purchaseSucceeded', 'PyreonPayments.restored',
-  'PyreonWebSocket.closed', 'PyreonWebSocket.failed',
-  'PyreonWebSocket.opened', 'PyreonWebSocket.received',
-  // Reachable from user code and genuinely missing — the real backlog this
-  // gate exists to surface. Each is a `perms.grant(...)` / `machine.can(...)`
-  // an author can write today and have refused.
-  'PyreonPermissions.can', 'PyreonPermissions.cannot',
-  'PyreonPermissions.grant', 'PyreonPermissions.granted',
-  'PyreonPermissions.revoke', 'PyreonPermissions.set',
-  'PyreonMachine.can', 'PyreonMachine.nextEvents',
-  'PyreonMachine.state', 'PyreonMachine.transitions',
-  'PyreonI18n.fallbackLocale', 'PyreonI18n.locale', 'PyreonI18n.messages',
-  'PyreonQuery.queryKey', 'PyreonQuery.staleSeconds',
-  'PyreonToast.defaultDuration', 'PyreonToast.defaultDurationMillis',
-  'PyreonToast.maxToasts', 'PyreonToast.remove',
-  // Internals of the emit's own plumbing.
-  'PyreonHttp.buildURLRequest', 'PyreonHttp.install',
-  // Kotlin-side lifecycle + injection points, same reasoning as the Swift
-  // monitors above: real members, not reachable from an emit shape today.
-  'PyreonA11y.setAnnouncer',
-  'PyreonAppState.start', 'PyreonAppState.stop',
-  'PyreonNetworkStatus.start', 'PyreonNetworkStatus.stop',
-  'PyreonPushNotifications.start',
-  'PyreonFetch.load', 'PyreonQuery.load', 'PyreonWebSocket.connect',
-  // SwiftUI View conformance / UIKit-only members the stub set cannot model.
-  'PyreonWebView.body', 'PyreonWebView.makeUIView', 'PyreonWebView.updateUIView',
-])
+// PER-KIND, because an entry is a statement about ONE target's stub. One set
+// shared across both meant an entry could be stale on Swift while genuinely
+// narrow on Kotlin, and the staleness check below could not tell those apart
+// — so it silently excused the target where the member was already fine.
+const KNOWN_NARROW: Record<'swift' | 'kotlin', ReadonlySet<string>> = {
+  swift: new Set([
+    'PyreonA11y.setAnnouncer',
+    'PyreonAppState.isMonitoring',
+    'PyreonAppState.update',
+    'PyreonCrashReporter.isMonitoring',
+    'PyreonGeolocation.authorize',
+    'PyreonGeolocation.fail',
+    'PyreonGeolocation.locationManager',
+    'PyreonGeolocation.locationManagerDidChangeAuthorization',
+    'PyreonGeolocation.update',
+    'PyreonHttp.buildURLRequest',
+    'PyreonHttp.install',
+    'PyreonI18n.fallbackLocale',
+    'PyreonI18n.locale',
+    'PyreonI18n.messages',
+    'PyreonNetworkStatus.isMonitoring',
+    'PyreonNetworkStatus.update',
+    'PyreonPayments.connect',
+    'PyreonPayments.productsLoaded',
+    'PyreonPayments.purchaseFailed',
+    'PyreonPayments.purchaseStarted',
+    'PyreonPayments.purchaseSucceeded',
+    'PyreonPayments.restored',
+    'PyreonPushNotifications.authorize',
+    'PyreonPushNotifications.fail',
+    'PyreonPushNotifications.notificationReceived',
+    'PyreonPushNotifications.tokenReceived',
+    'PyreonQuery.queryKey',
+    'PyreonQuery.staleSeconds',
+    'PyreonToast.defaultDuration',
+    'PyreonToast.defaultDurationMillis',
+    'PyreonToast.maxToasts',
+    'PyreonToast.remove',
+    'PyreonWebSocket.closed',
+    'PyreonWebSocket.failed',
+    'PyreonWebSocket.opened',
+    'PyreonWebSocket.received',
+    'PyreonWebView.body',
+    'PyreonWebView.makeUIView',
+    'PyreonWebView.updateUIView',
+  ]),
+  kotlin: new Set([
+    'PyreonA11y.setAnnouncer',
+    'PyreonAppState.isMonitoring',
+    'PyreonAppState.start',
+    'PyreonAppState.stop',
+    'PyreonAppState.update',
+    'PyreonCrashReporter.isMonitoring',
+    'PyreonFetch.load',
+    'PyreonGeolocation.locationManager',
+    'PyreonGeolocation.locationManagerDidChangeAuthorization',
+    'PyreonHttp.buildURLRequest',
+    'PyreonHttp.install',
+    'PyreonI18n.fallbackLocale',
+    'PyreonI18n.messages',
+    'PyreonNetworkStatus.isMonitoring',
+    'PyreonNetworkStatus.start',
+    'PyreonNetworkStatus.stop',
+    'PyreonNetworkStatus.update',
+    'PyreonPayments.connect',
+    'PyreonPayments.productsLoaded',
+    'PyreonPayments.purchaseFailed',
+    'PyreonPayments.purchaseStarted',
+    'PyreonPayments.purchaseSucceeded',
+    'PyreonPayments.restored',
+    'PyreonPushNotifications.notificationReceived',
+    'PyreonPushNotifications.start',
+    'PyreonQuery.load',
+    'PyreonQuery.queryKey',
+    'PyreonQuery.staleSeconds',
+    'PyreonToast.defaultDuration',
+    'PyreonToast.defaultDurationMillis',
+    'PyreonToast.maxToasts',
+    'PyreonToast.remove',
+    'PyreonWebSocket.closed',
+    'PyreonWebSocket.connect',
+    'PyreonWebSocket.failed',
+    'PyreonWebSocket.opened',
+    'PyreonWebSocket.received',
+    'PyreonWebView.body',
+    'PyreonWebView.makeUIView',
+    'PyreonWebView.updateUIView',
+  ]),
+}
 
 /**
  * The body of `type` in `src`, or null when it is not declared there.
@@ -236,13 +282,42 @@ describe('every stubbed runtime type declares the members its runtime does', () 
         const real = kind === 'swift' ? swiftMembers(src, type) : kotlinMembers(src, type)
         for (const member of real) {
           if (stubbed.has(member)) continue
-          if (KNOWN_NARROW.has(`${type}.${member}`)) continue
+          if (KNOWN_NARROW[kind].has(`${type}.${member}`)) continue
           gaps.push(`${type}.${member}`)
         }
       }
       expect(
         gaps.sort(),
         `stub is NARROWER than the runtime — the type gate would reject correct code using: ${gaps.join(', ')}`,
+      ).toEqual([])
+    })
+
+    // THE OTHER DIRECTION. The check above only asks whether a runtime member
+    // is missing from the stub; nothing asked whether a KNOWN_NARROW entry is
+    // still narrow. A stale one is not merely noise — it is a permanent hole:
+    // if someone later removes that member from the stub, this gate stays
+    // green because the entry still excuses it. The same asymmetry the
+    // co-source gate had, in the gate written to catch asymmetries.
+    it(`${kind}: no KNOWN_NARROW entry is stale`, () => {
+      const stale: string[] = []
+      for (const type of runtimeTypeNames(kind)) {
+        const stubbed = stubMembersFor(STUBS[kind], type, kind)
+        if (stubbed === null) continue
+        const path = findNativeRuntime(REPO, type, kind)
+        if (path === null) continue
+        const src = readFileSync(path, 'utf8')
+        const real = kind === 'swift' ? swiftMembers(src, type) : kotlinMembers(src, type)
+        for (const entry of KNOWN_NARROW[kind]) {
+          const dot = entry.lastIndexOf('.')
+          if (entry.slice(0, dot) !== type) continue
+          const member = entry.slice(dot + 1)
+          // Stale iff the runtime still has it AND the stub now does too.
+          if (real.has(member) && stubbed.has(member)) stale.push(entry)
+        }
+      }
+      expect(
+        stale.sort(),
+        `KNOWN_NARROW.${kind} entries that are no longer narrow — the stub declares them now, so the entry only serves to excuse a future removal. Delete: ${stale.join(', ')}`,
       ).toEqual([])
     })
   }
