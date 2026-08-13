@@ -5247,7 +5247,21 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         return `(${emitSwiftExpr(omt.opt, indent)}?.${swiftIdent(omt.property)} ?? ${emitSwiftExpr(e.otherwise, indent)})`
       }
       const condStr = swiftCondition(e.cond, (x) => emitSwiftExpr(x, indent))
-      return `${condStr} ? ${emitSwiftExpr(e.then, indent)} : ${emitSwiftExpr(e.otherwise, indent)}`
+      let thenStr = emitSwiftExpr(e.then, indent)
+      let elseStr = emitSwiftExpr(e.otherwise, indent)
+      // Mixed Int×Double branches — Swift has no implicit Int→Double, so a
+      // NON-literal Int branch (`cond ? n : 2.5`, n: Int) fails against the
+      // Double the sibling forces, and the Double-typed annotation can't
+      // rescue it. Coerce the Int-typed branch when its sibling is Double
+      // (mirrors the binary `+ - *` coercion). Literal Int branches are
+      // already Double-compatible, but `Double(1)` is idempotent-safe.
+      {
+        const tf = numericFloatness(e.then)
+        const of = numericFloatness(e.otherwise)
+        if (tf === 'double' && of === 'int') elseStr = `Double(${elseStr})`
+        else if (tf === 'int' && of === 'double') thenStr = `Double(${thenStr})`
+      }
+      return `${condStr} ? ${thenStr} : ${elseStr}`
     }
     case 'update': {
       // `x++` / `x--` post-increment/decrement in expression position.

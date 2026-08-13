@@ -39,7 +39,11 @@
   },
   "peerDependencies": {
     "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^"
+    "@pyreon/reactivity": "workspace:^",
+    "docx": "^9.7.1",
+    "exceljs": "^4.4.0",
+    "pdfmake": "^0.3.9",
+    "pptxgenjs": "^4.0.1"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.11.1",
@@ -53,13 +57,21 @@
     "pdfmake": "^0.3.9",
     "pptxgenjs": "^4.0.1"
   },
-  "optionalDependencies": {
-    "docx": "^9.7.1",
-    "exceljs": "^4.4.0",
-    "pdfmake": "^0.3.9",
-    "pptxgenjs": "^4.0.1"
-  },
   "publishConfig": {
     "access": "public"
+  },
+  "peerDependenciesMeta": {
+    "docx": {
+      "optional": true
+    },
+    "exceljs": {
+      "optional": true
+    },
+    "pdfmake": {
+      "optional": true
+    },
+    "pptxgenjs": {
+      "optional": true
+    }
   }
 }
