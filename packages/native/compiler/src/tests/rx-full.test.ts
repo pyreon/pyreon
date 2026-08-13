@@ -101,8 +101,14 @@ describe('RX — full Strategy-A lowering (every v1 method)', () => {
 
   describe('rx.unique(s)', () => {
     const src = probe('rx.unique(xs)')
-    it('Swift: Array(Set(xs)) — requires Hashable', () => {
-      expect(emit(src, 'swift')).toContain('Array(Set(xs))')
+    // The invariant — unique dedupes on Swift — is unchanged. What changed
+    // is that it must ALSO preserve first-occurrence order: `Array(Set(_:))`
+    // is UNORDERED, while rx and Kotlin's distinct() both keep the first
+    // occurrence, so iOS was the only target rendering an arbitrary order.
+    it('Swift: order-preserving, not an unordered Set', () => {
+      const out = emit(src, 'swift')
+      expect(out).toContain('firstIndex(of:')
+      expect(out).not.toContain('Array(Set(xs))')
     })
     it('Kotlin: xs.distinct()', () => {
       expect(emit(src, 'kotlin')).toContain('xs.distinct()')
