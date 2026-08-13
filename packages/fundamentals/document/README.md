@@ -10,6 +10,19 @@ A platform-agnostic document tree (18 primitives) plus a renderer registry that 
 bun add @pyreon/document @pyreon/core @pyreon/reactivity
 ```
 
+Every **text** format (HTML, Markdown, SVG, text, email, chat, JSON) works from that install alone.
+
+The four **binary** formats need their backing library, declared here as an OPTIONAL PEER so you install only what you emit:
+
+```bash
+bun add pdfmake   # render(node, 'pdf')
+bun add docx      # render(node, 'docx')
+bun add exceljs   # render(node, 'xlsx')
+bun add pptxgenjs # render(node, 'pptx')
+```
+
+Each renderer imports its library lazily and throws a named error naming the install command if it is absent, so an app that never emits XLSX carries neither exceljs's weight nor its CVE surface.
+
 ## Quick start — JSX form
 
 ```tsx

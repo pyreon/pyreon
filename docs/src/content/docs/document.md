@@ -31,7 +31,18 @@ yarn add @pyreon/document
 
 :::
 
-The vendored renderer libraries (pdfmake, docx, exceljs, pptxgenjs) ship inside the package, so this single install covers every format — no peer dependencies to add per format.
+Every **text** format (HTML, Markdown, SVG, plain text, email, chat, JSON) works from that single install — they are built in, with no extra dependency.
+
+The four **binary** formats are backed by third-party libraries, declared as OPTIONAL PEER dependencies so you install only the ones you actually emit:
+
+```bash
+bun add pdfmake   # for render(node, 'pdf')
+bun add docx      # for render(node, 'docx')
+bun add exceljs   # for render(node, 'xlsx')
+bun add pptxgenjs # for render(node, 'pptx')
+```
+
+Each renderer imports its library lazily and throws a named, actionable error if it is missing (`[@pyreon/document] PDF renderer requires "pdfmake" package. Install it: bun add pdfmake`), so an app that never emits PDF never pays for pdfmake — in install weight or in that library's CVE surface.
 
 ## Why One Template, Many Formats?
 
