@@ -587,6 +587,7 @@ public final class PyreonTableState<T> {
   public private(set) var sortColumn: String?
   public private(set) var sortDirection: PyreonSortDirection = .asc
   public private(set) var filterValue: String = ""
+  public private(set) var selected: [String] = []
 }
 public struct PyreonI18n {
   // fallbackLocale is OPTIONAL and DEFAULTED in the real PyreonI18n. The stub

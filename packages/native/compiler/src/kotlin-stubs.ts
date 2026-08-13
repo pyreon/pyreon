@@ -1285,6 +1285,7 @@ class PyreonTableState<T>(
   val sortColumn: String? get() = null
   val sortDirection: String get() = "asc"
   val filterValue: String get() = ""
+  val selected: List<String> get() = emptyList()
 }
 
 // PyreonPermissions — mirror of @pyreon/native-runtime-kotlin's
