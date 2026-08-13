@@ -435,6 +435,10 @@ export function emitKotlin(
   )
   // Gap 4 v2 follow-up: model instance → modelId for use-site rewriting.
   _modelInstancesKotlin = new Map(models.map((m) => [m.instanceName, m.modelId]))
+  _clipboardKotlin = new Set()
+  for (const c of components) {
+    for (const d of c.decls ?? []) if (d.kind === 'clipboard') _clipboardKotlin.add(d.name)
+  }
   // Mirror of the Swift registries: state fields + views are READ (a state
   // field is a signal on web, so the read is a call); actions are CALLED.
   _modelReadNamesKotlin = new Map(
@@ -522,6 +526,7 @@ export function emitKotlin(
   _storeHooksKotlin = new Map()
   _storeMethodNamesKotlin = new Map()
   _modelInstancesKotlin = new Map()
+  _clipboardKotlin = new Set()
   _modelReadNamesKotlin = new Map()
   _modelMethodNamesKotlin = new Map()
   _usesPermissionsEnvKotlin = false
@@ -548,6 +553,8 @@ let _storeMethodNamesKotlin: Map<string, Set<string>> = new Map()
 
 /** Map of model instance name → modelId for Kotlin use-site rewriting. */
 let _modelInstancesKotlin: Map<string, string> = new Map()
+/** `useClipboard()` bindings — its reactive reads drop their parens. */
+let _clipboardKotlin: Set<string> = new Set()
 /** Mirror of the Swift flag — set while emitting a model view/action body. */
 let _activeModelSelfParamKotlin: string | undefined
 /** Per-instance model STATE-FIELD + VIEW names — reads drop their parens. */
@@ -3023,6 +3030,17 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           const args = e.args.map((a) => emitKotlinExpr(a, indent)).join(', ')
           return `PyreonModel_${modelId}.${member}(${args})`
         }
+      }
+      // Mirror of the Swift clipboard rewrite. Kotlin's `copied` is a
+      // `val … get()`, so the read is paren-less there too.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _clipboardKotlin.has(e.callee.object.name) &&
+        e.args.length === 0 &&
+        ['copied', 'text'].includes(e.callee.property)
+      ) {
+        return `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
       }
       // `parseInt(s)` / `parseFloat(s)` / `Number(s)` → Kotlin
       // `(s).toIntOrNull() ?: 0` / `(s).toDoubleOrNull() ?: 0.0`. JS returns

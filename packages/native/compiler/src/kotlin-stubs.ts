@@ -995,6 +995,7 @@ class PyreonShare(context: Context) {
 }
 class PyreonClipboard(context: Context, scope: CoroutineScope) {
   val copied: Boolean get() = false
+  val text: String get() = ""
   fun copy(text: String) {}
   fun reset() {}
 }
@@ -1002,6 +1003,7 @@ class PyreonClipboard(context: Context, scope: CoroutineScope) {
 // M3.5: authenticate is a suspend fun — awaited inside pyreonAsyncScope.launch { }.
 class PyreonBiometrics {
   suspend fun authenticate(reason: String): Boolean = false
+  fun isAvailable(): Boolean = false
 }
 
 // M3.4 / M3.8: the picker containers + the androidx.activity ActivityResult

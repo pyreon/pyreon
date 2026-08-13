@@ -760,6 +760,10 @@ export function emitSwift(
   // Gap 4 v2 follow-up: track model instance names → modelId so use-site
   // member access (`<instance>.<field>`) emits as PyreonModel_<id>.shared.<field>.
   _modelInstances = new Map(models.map((m) => [m.instanceName, m.modelId]))
+  _clipboardSwift = new Set()
+  for (const c of components) {
+    for (const d of c.decls ?? []) if (d.kind === 'clipboard') _clipboardSwift.add(d.name)
+  }
   // State fields + views are READ (`counter.count()` on web, since a state
   // field is a signal); actions are CALLED. The two registries are what let
   // the call-site rewrite tell them apart.
@@ -845,6 +849,7 @@ export function emitSwift(
   _structDefs = []
   _storeMethodNames = new Map()
   _modelInstances = new Map()
+  _clipboardSwift = new Set()
   _modelReadNames = new Map()
   _modelMethodNames = new Map()
   _usesPermissionsEnvSwift = false
@@ -867,6 +872,8 @@ let _structDefs: StructIR[] = []
 
 /** Map of model instance name → modelId (e.g. `counter` → `"counter"`). */
 let _modelInstances: Map<string, string> = new Map()
+/** `useClipboard()` bindings — its reactive reads drop their parens. */
+let _clipboardSwift: Set<string> = new Set()
 /** Set while emitting a model view/action body — the factory's `self`
  * param name. Distinct from `_activePropsParamName` (which also carries it,
  * for the member-expression rewrite) so the signal-READ rewrite below can
@@ -3546,6 +3553,21 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           const args = e.args.map((a) => emitSwiftExpr(a, indent)).join(', ')
           return `PyreonModel_${modelId}.shared.${member}(${args})`
         }
+      }
+      // useClipboard's reactive reads. On the web `copied` and `text` are
+      // ACCESSORS (`copied: () => boolean`, and the hook's own documented
+      // example is `{() => copied() ? …}`); on Swift the same members are
+      // stored properties, so the web-correct spelling failed with "cannot
+      // call value of non-function type 'Bool'". Same inversion model()'s
+      // state fields and useBluetooth's reads had.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _clipboardSwift.has(e.callee.object.name) &&
+        e.args.length === 0 &&
+        ['copied', 'text'].includes(e.callee.property)
+      ) {
+        return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
       }
       // `parseInt(s)` / `parseFloat(s)` / `Number(s)` → Swift `Int(s) ?? 0`
       // / `Double(s) ?? 0`. JS returns NaN on failure; the `?? 0` default

@@ -30,4 +30,21 @@ class PyreonBiometrics {
     suspend fun authenticate(reason: String): Boolean {
         return false
     }
+
+    /**
+     * Whether a platform biometric authenticator is present and enrolled.
+     *
+     * The web hook has exposed this since inception (`isAvailable: () =>
+     * boolean`); neither native runtime did, so a component gating its UI on
+     * it compiled on the web and failed here with "unresolved reference
+     * 'isAvailable'".
+     *
+     * Returns `false` for the same reason `authenticate` does: this is the
+     * v1 scaffold, and the real answer needs `androidx.biometric`'s
+     * BiometricManager.canAuthenticate — which arrives with the
+     * FragmentActivity injection the BiometricPrompt bridge also waits on.
+     * A hardcoded `true` here would be worse than the honest `false`: it
+     * would send a caller down a path that cannot authenticate.
+     */
+    fun isAvailable(): Boolean = false
 }

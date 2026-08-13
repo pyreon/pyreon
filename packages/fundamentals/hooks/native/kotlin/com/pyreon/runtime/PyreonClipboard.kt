@@ -65,7 +65,17 @@ class PyreonClipboard(
     private val scope: CoroutineScope,
 ) {
     private var _copied by mutableStateOf(false)
+    private var _text: String by mutableStateOf("")
     val copied: Boolean get() = _copied
+
+    /**
+     * The last successfully-copied text, or `""`.
+     *
+     * The web hook has exposed this since inception (`text: () => string`);
+     * neither native runtime did, so a component reading it compiled on the
+     * web and failed here with "unresolved reference 'text'".
+     */
+    val text: String get() = _text
 
     private var resetJob: Job? = null
 
@@ -73,6 +83,7 @@ class PyreonClipboard(
         val mgr = ContextCompat.getSystemService(context, ClipboardManager::class.java)
         mgr?.setPrimaryClip(ClipData.newPlainText("pyreon", text))
         _copied = true
+        _text = text
         resetJob?.cancel()
         resetJob = scope.launch {
             delay(2000)
