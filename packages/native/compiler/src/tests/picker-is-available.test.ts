@@ -109,9 +109,22 @@ describe('isAvailable exists in BOTH the runtimes and the stubs', () => {
     const here = import.meta.dirname ?? __dirname
     const swift = readFileSync(resolve(here, '..', 'swift-stubs.ts'), 'utf8')
     const kotlin = readFileSync(resolve(here, '..', 'kotlin-stubs.ts'), 'utf8')
-    // Two occurrences each — one per picker. A single match would mean only one
-    // of the two was updated, which is exactly how this bug shipped.
-    expect((swift.match(/public func isAvailable\(\) -> Bool/g) ?? []).length).toBe(2)
-    expect((kotlin.match(/fun isAvailable\(\): Boolean/g) ?? []).length).toBe(2)
+    // Per-TYPE, not a global count. The invariant is "BOTH pickers carry it"
+    // — a count of 2 was a proxy for that, and the proxy broke the moment an
+    // unrelated type (PyreonBiometrics) legitimately gained the same method.
+    // Asserting the members inside each picker's own stub block says what is
+    // actually meant and cannot be perturbed by a third type.
+    for (const [text, lang, sig] of [
+      [swift, 'swift-stubs.ts', 'public func isAvailable() -> Bool'],
+      [kotlin, 'kotlin-stubs.ts', 'fun isAvailable(): Boolean'],
+    ] as const) {
+      for (const type of ['PyreonImagePicker', 'PyreonFilePicker']) {
+        const at = text.indexOf(type)
+        expect(at, `${type} missing from ${lang}`).toBeGreaterThan(-1)
+        // The member must appear inside this type's own block — the next
+        // ~400 chars after its declaration — not merely somewhere in the file.
+        expect(text.slice(at, at + 400), `${type} in ${lang}`).toContain(sig)
+      }
+    }
   })
 })

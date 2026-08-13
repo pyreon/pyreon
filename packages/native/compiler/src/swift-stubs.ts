@@ -273,7 +273,16 @@ extension View {
 public enum ImageScale { case small, medium, large }
 
 // ---- PyreonRuntime ----
-public struct PyreonHaptics { public init() {}; public func impact(_ style: String) {} }
+// Mirrors PyreonHaptics.swift EXACTLY. The stub carried only impact, so
+// correct emits calling notification / selection were rejected by the type
+// gate — a stub NARROWER than reality fails working code, the mirror of the
+// superset-stub trap and just as costly.
+public struct PyreonHaptics {
+  public init() {}
+  public func impact(_ style: String) {}
+  public func notification(_ type: String) {}
+  public func selection() {}
+}
 // PyreonWebSocket + PyreonGeolocation — both were emit-referenced with NO
 // Swift stub, so a useWebSocket / useGeolocation app could not be type-checked
 // at all. Mirrored from the real runtime surfaces: every reactive field is
@@ -385,11 +394,31 @@ public final class PyreonClipboard {
   public func copy(_ text: String) {}
   public func reset() {}
 }
-public struct PyreonShare { public init() {}; public func url(_ u: String) {} }
+// Mirrors PyreonShare.swift EXACTLY — the stub carried only url, so
+// share.text(...), share.textUrl(...) and share.canShare() were all rejected
+// despite existing on the real runtime.
+public struct PyreonShare {
+  public init() {}
+  public func text(_ t: String) {}
+  public func url(_ u: String) {}
+  public func textUrl(_ t: String, _ u: String) {}
+  public func canShare() -> Bool { true }
+}
 public struct PyreonLinking { public init() {}; public func openUrl(_ u: String) {} }
-public struct PyreonNotifications { public init() {}; public func notify(_ title: String, _ body: String) {} }
+// Mirrors PyreonNotifications.swift EXACTLY — the stub carried only notify,
+// so requestPermission (which the real runtime has, and which the web hook
+// exposes for prompting ahead of time) was rejected by the type gate.
+public struct PyreonNotifications {
+  public init() {}
+  public func requestPermission() {}
+  public func notify(_ title: String, _ body: String) {}
+}
 // M3.5: authenticate is ASYNC — awaited inside a Task { … } (the M4.5 lowering).
-public struct PyreonBiometrics { public init() {}; public func authenticate(_ reason: String) async -> Bool { false } }
+public struct PyreonBiometrics {
+  public init() {}
+  public func authenticate(_ reason: String) async -> Bool { false }
+  public func isAvailable() -> Bool { false }
+}
 // M3.4 photo picker. Mirrors PyreonImagePicker.swift's surface EXACTLY: pick()
 // is async and returns an OPTIONAL String (nil = cancelled), so an emit that
 // forgot the optionality (e.g. comparing the result to a bare String) fails
