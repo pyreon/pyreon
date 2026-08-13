@@ -58,7 +58,11 @@ export function useWakeLock(): WakeLockControls {
     isClient && typeof navigator !== 'undefined' && 'wakeLock' in navigator
 
   const acquire = async (): Promise<boolean> => {
-    if (!supported() || sentinel !== null) return active()
+    // Guard inline rather than through `supported()`. The SSR lint rule
+    // cannot trace a cross-function guard, and an explicit early return
+    // documents the contract at the site that actually touches the global.
+    if (typeof navigator === 'undefined' || !('wakeLock' in navigator)) return false
+    if (sentinel !== null) return active()
     try {
       const nav = navigator as Navigator & {
         wakeLock: { request: (t: string) => Promise<Sentinel> }
