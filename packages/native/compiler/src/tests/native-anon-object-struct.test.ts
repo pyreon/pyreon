@@ -79,14 +79,18 @@ describe('untyped object-literal signals → synthesized struct (not Any)', () =
     expect(r.ok, r.error ?? '').toBe(true)
   })
 
-  it('nested / array-field objects bail to Any (documented, no regression)', () => {
+  it('nested object fields synthesize their own nested struct (was: bailed to Any)', () => {
     const nested = `import { Stack, Text } from '@pyreon/primitives'
 function App() {
   const p = signal({ pt: { x: 1, y: 2 } })
   return (<Stack><Text>x</Text></Stack>)
 }`
-    // nested object is NOT inferred to a struct — stays Any (not a half-fix)
+    // A nested object field now gets its own synthesized struct (Parent + field),
+    // not `Any` — see native-nested-anon-struct.test.ts for the full contract.
     const out = transform(nested, { target: 'swift' }).code
-    expect(out).toContain('var p: Any')
+    expect(out).toContain('struct AppP: Codable {')
+    expect(out).toContain('var pt: AppPPt')
+    expect(out).toContain('struct AppPPt: Codable {')
+    expect(out).not.toContain('var p: Any')
   })
 })

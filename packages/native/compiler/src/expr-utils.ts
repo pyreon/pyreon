@@ -120,22 +120,12 @@ export function synthLiteralStructName(
   if (fields.length === 0) return null
   const typed: { name: string; type: TypeIR }[] = []
   for (const f of fields) {
-    let t = scalarLiteralType(f.value)
-    if (t === null && inferField !== undefined) {
-      const inferred = inferField(f.value)
-      if (
-        inferred.kind === 'string' ||
-        inferred.kind === 'boolean' ||
-        inferred.kind === 'number'
-      ) {
-        t = inferred
-      }
-    }
+    const t = synthFieldType(f.value, structs, keys, inferField)
     if (t === null) return null
     typed.push({ name: f.name, type: t })
   }
   const shapeKey = typed
-    .map((f) => `${f.name}:${f.type.kind}${f.type.kind === 'number' && f.type.float ? '.f' : ''}`)
+    .map((f) => `${f.name}:${typeShapeKey(f.type)}`)
     .slice()
     .sort()
     .join(',')
@@ -145,6 +135,102 @@ export function synthLiteralStructName(
   structs.push({ name, fields: typed })
   keys.set(shapeKey, name)
   return name
+}
+
+/**
+ * A field value's synthesized struct-field TypeIR — the recursive core of
+ * `synthLiteralStructName`. A scalar literal / scalar-inferred expression maps
+ * to its scalar kind (the original flat behavior); a NESTED all-scalar object
+ * literal recurses to its OWN synthesized `__ObjN` struct and the field is
+ * typed `typeRef` to it; an array of nested objects (or of scalar literals)
+ * synthesizes the element type. Anything else (a function, a spread-bearing
+ * object, a mixed / un-inferable array, a bare identifier the ctx can't type)
+ * returns null → the CALLER keeps its tuple emit, unchanged (no regression).
+ */
+function synthFieldType(
+  value: ExprIR,
+  structs: StructIR[],
+  keys: Map<string, string>,
+  inferField?: (e: ExprIR) => TypeIR,
+): TypeIR | null {
+  const scalar = scalarLiteralType(value)
+  if (scalar !== null) return scalar
+  if (inferField !== undefined) {
+    const inferred = inferField(value)
+    if (
+      inferred.kind === 'string' ||
+      inferred.kind === 'boolean' ||
+      inferred.kind === 'number'
+    ) {
+      return inferred
+    }
+  }
+  // NESTED object literal → recurse into its own synthesized struct.
+  if (value.kind === 'object' && (value.spreads?.length ?? 0) === 0) {
+    const nested = synthLiteralStructName(value.fields, structs, keys, inferField)
+    return nested === null ? null : { kind: 'typeRef', name: nested, args: [] }
+  }
+  // Array literal → array of the (homogeneous) element type — nested objects
+  // (`[{ sub: {…} }]`) synthesize an element struct; scalar-literal elements
+  // give a scalar element.
+  if (value.kind === 'array') {
+    const el = synthArrayElementType(value.elements, structs, keys, inferField)
+    return el === null ? null : { kind: 'array', element: el }
+  }
+  return null
+}
+
+function synthArrayElementType(
+  elements: ExprIR[],
+  structs: StructIR[],
+  keys: Map<string, string>,
+  inferField?: (e: ExprIR) => TypeIR,
+): TypeIR | null {
+  if (elements.length === 0) return null
+  // Array of object literals → element struct (first-element shape convention;
+  // a mixed-shape array is out of scope and would emit divergent structs, so
+  // require EVERY element to be an object literal).
+  if (elements.every((e) => e.kind === 'object')) {
+    const first = elements[0] as Extract<ExprIR, { kind: 'object' }>
+    const nested = synthLiteralStructName(first.fields, structs, keys, inferField)
+    return nested === null ? null : { kind: 'typeRef', name: nested, args: [] }
+  }
+  // Array of scalar literals → scalar element (require homogeneous kind).
+  const firstScalar = scalarLiteralType(elements[0]!)
+  if (
+    firstScalar !== null &&
+    elements.every((e) => {
+      const s = scalarLiteralType(e)
+      return s !== null && s.kind === firstScalar.kind
+    })
+  ) {
+    return firstScalar
+  }
+  return null
+}
+
+/**
+ * Deterministic per-field shape token for `synthLiteralStructName`'s dedup key.
+ * A `typeRef` (a nested synthesized struct) carries the nested struct NAME —
+ * itself derived from the nested shape — so two different nested shapes under
+ * the same field name never collide on the lossy key (the collision the
+ * scalar-only key had). Recursive over arrays.
+ */
+function typeShapeKey(t: TypeIR): string {
+  switch (t.kind) {
+    case 'number':
+      return t.float === true ? 'number.f' : 'number'
+    case 'string':
+      return 'string'
+    case 'boolean':
+      return 'boolean'
+    case 'typeRef':
+      return `ref:${t.name}`
+    case 'array':
+      return `arr:${typeShapeKey(t.element)}`
+    default:
+      return t.kind
+  }
 }
 
 /**
