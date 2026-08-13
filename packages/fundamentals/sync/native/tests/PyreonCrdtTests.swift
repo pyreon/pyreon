@@ -55,6 +55,46 @@ struct PyreonCrdtTests {
         g.applyMessage("not json{")
         check(g.get("doc", "t") == .string("from-web"), "malformed ignored")
 
+        // 6. PyreonSyncedSignal — the Signal<T> facade over a shared doc.
+        if #available(iOS 17.0, macOS 14.0, *) {
+            let doc = PyreonCrdtDoc(actor: "sig")
+            let title = PyreonSyncedSignal<String>(doc: doc, key: "title", initial: "")
+            check(title() == "", "synced signal reads its initial when absent")
+            title.set("Roadmap")
+            check(title() == "Roadmap", "set updates the value")
+            check(doc.get(PYREON_SYNCED_DEFAULT_MAP, "title") == .string("Roadmap"), "set writes one CRDT op")
+
+            // A SECOND signal on the same doc+key sees the present value win
+            // (create-if-missing: the existing CRDT value, not `initial`).
+            let title2 = PyreonSyncedSignal<String>(doc: doc, key: "title", initial: "IGNORED")
+            check(title2() == "Roadmap", "a present key wins over a second signal's initial")
+
+            // Independent keys; a numeric (Double) signal.
+            let count = PyreonSyncedSignal<Double>(doc: doc, key: "count", initial: 0)
+            check(count() == 0, "numeric signal initial")
+            count.set(5)
+            check(count() == 5, "numeric set")
+            check(title() == "Roadmap", "sibling key unaffected")
+
+            // A boolean signal.
+            let done = PyreonSyncedSignal<Bool>(doc: doc, key: "done", initial: false)
+            done.set(true)
+            check(done(), "boolean set")
+
+            // 7. A REMOTE op updates the signal's value via the doc observer —
+            //    the CRDT-backed reactivity that makes a remote edit repaint the
+            //    UI with no diff. Peer B catches up, writes a newer op, A merges,
+            //    and A's signal flips (a higher clock wins the register).
+            let remote = PyreonCrdtDoc(actor: "b2")
+            remote.applyOps(doc.encodeState()) // catch up to A's clock
+            remote.set(PYREON_SYNCED_DEFAULT_MAP, "title", .string("from-remote")) // newer op
+            doc.applyOps(remote.encodeState())
+            check(title() == "from-remote", "a remote op updates the signal via the doc observer")
+
+            title.dispose() // idempotent; detaches the observer
+            title.dispose()
+        }
+
         print("[PyreonCrdtTests] all assertions passed")
     }
 }
