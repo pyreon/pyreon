@@ -35,3 +35,13 @@ was already complete — so `m.can("GO")`, a documented member of the web
 `Machine` interface that `createMachine` lowers to this type, compiled on
 Android and failed on iOS from the same source. Mirroring the Swift stub takes
 the ratchet four entries lower.
+
+**The gate I added last week had the same blind spot it exists to catch.** It
+asked whether a runtime member was missing from the stub, but never whether a
+`KNOWN_NARROW` entry was *still* narrow. A stale entry is not noise — it is a
+permanent hole, because it keeps excusing that member if someone later removes
+it from the stub. Fifteen were stale. The list is now **per-target**: sharing
+one set across Swift and Kotlin meant an entry could be stale on one and
+genuinely narrow on the other, which is precisely why nothing could tell them
+apart.
+
