@@ -317,6 +317,11 @@ extension View {
   // an emit that forgets \`await\` inside it fails here rather than on-device.
   public func foregroundColor(_ color: Color?) -> some View { self }
   public func task(priority: TaskPriority = .userInitiated, _ action: @escaping () async -> Void) -> some View { self }
+  // The id-keyed overload — SwiftUI cancels and RESTARTS the task when the
+  // id changes, which is what useDebouncedValue's lowering rides on. Without
+  // it the stub matched the un-keyed overload and reported "extra trailing
+  // closure", rejecting a correct emit.
+  public func task<T: Equatable>(id: T, priority: TaskPriority = .userInitiated, _ action: @escaping () async -> Void) -> some View { self }
   public func allowsHitTesting(_ enabled: Bool) -> some View { self }
   public func scaledToFit() -> some View { self }
   // scaledToFill was MISSING while its sibling scaledToFit was present, so the

@@ -1566,6 +1566,16 @@ function emitKotlinComponent(c: ComponentIR): string {
     }
     lines.push(`  }`)
   }
+  // LaunchedEffect(key) cancels the previous when the key changes — the
+  // Compose mirror of .task(id:), and the same restarting trailing edge.
+  for (const d of c.decls) {
+    if (d.kind !== 'debounced-value') continue
+    const src = emitKotlinExpr(d.source, 4)
+    lines.push(`  LaunchedEffect(${src}) {`)
+    lines.push(`    delay(${d.delayMs}L)`)
+    lines.push(`    ${kotlinIdent(d.name)} = ${src}`)
+    lines.push(`  }`)
+  }
   for (const d of c.decls) {
     if (d.kind !== 'on-mount') continue
     const saved = seedHandlerLocals(d.body, _kotlinExprInferCtx)
@@ -1757,6 +1767,9 @@ function syncedInitialKotlin(
 function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // on-mount emits at the harness level (LaunchedEffect) — defensive narrow.
   if (d.kind === 'on-mount' || d.kind === 'tick') return ''
+  if (d.kind === 'debounced-value') {
+    return `var ${kotlinIdent(d.name)} by remember { mutableStateOf(${emitKotlinExpr(d.source, 2)}) }`
+  }
   if (d.kind === 'rate-limited') {
     const cls = d.mode === 'debounce' ? 'PyreonDebounced' : 'PyreonThrottled'
     const p0 = d.fn.params[0]
