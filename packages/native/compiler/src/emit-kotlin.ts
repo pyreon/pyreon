@@ -4235,7 +4235,24 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         return `(${emitKotlinExpr(omt.opt, indent)}?.${kotlinIdent(omt.property)} ?: ${emitKotlinExpr(e.otherwise, indent)})`
       }
       const condStr = kotlinCondition(e.cond, (x) => emitKotlinExpr(x, indent))
-      return `if (${condStr}) ${emitKotlinExpr(e.then, indent)} else ${emitKotlinExpr(e.otherwise, indent)}`
+      let thenStr = emitKotlinExpr(e.then, indent)
+      let elseStr = emitKotlinExpr(e.otherwise, indent)
+      // Mixed Int/Double branches — Kotlin's `if`-expression does NOT
+      // auto-widen (unlike its arithmetic), so `if (b) 1 else 2.5` infers the
+      // `{Comparable<*> & Number}` LUB rather than Double. Coerce the Int
+      // branch `.toDouble()` when its sibling is Double so the whole
+      // expression is a genuine Double (parity with the Swift emit, which the
+      // shared inferType now annotates Double). Only fires when exactly one
+      // branch is a non-float number and the other is a float number.
+      {
+        const tt = inferType(e.then, _kotlinExprInferCtx)
+        const ot = inferType(e.otherwise, _kotlinExprInferCtx)
+        const tf = tt.kind === 'number' ? (tt.float === true ? 'double' : 'int') : 'other'
+        const of = ot.kind === 'number' ? (ot.float === true ? 'double' : 'int') : 'other'
+        if (tf === 'double' && of === 'int') elseStr = `(${elseStr}).toDouble()`
+        else if (tf === 'int' && of === 'double') thenStr = `(${thenStr}).toDouble()`
+      }
+      return `if (${condStr}) ${thenStr} else ${elseStr}`
     }
     case 'update':
       // `x++` / `x--` post-increment/decrement in expression position.

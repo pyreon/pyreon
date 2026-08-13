@@ -1905,7 +1905,20 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       // to unknown.
       const t = inferType(expr.then, ctx)
       const o = inferType(expr.otherwise, ctx)
-      if (t.kind === o.kind) return t
+      if (t.kind === o.kind) {
+        // Mixed Int/Double numeric branches — `cond ? 1 : 2.5` unifies to
+        // Double in JS (and Swift, which types both integer + float LITERAL
+        // branches to Double). Returning the `then` branch's floatness left
+        // `cond ? 1 : 2.5` typed Int, so the computed's Swift annotation was
+        // `Int` while the value was `Double` ("cannot convert return
+        // expression of type 'Double' to return type 'Int'"). A fractional
+        // branch anywhere makes the whole ternary Double. Strictly additive:
+        // all-integer branches stay `number` (float:false), unchanged.
+        if (t.kind === 'number' && o.kind === 'number') {
+          return { kind: 'number', float: t.float === true || o.float === true }
+        }
+        return t
+      }
       // Empty-array-literal branch unification — `cond ? [x] : []` (the
       // conditional filter-map idiom, esp. as a `.flatMap` body) and the
       // mirrored `cond ? [] : [x]`. A bare `[]` carries no element type so
