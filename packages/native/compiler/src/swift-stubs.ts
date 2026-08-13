@@ -380,6 +380,7 @@ public final class PyreonGeolocation {
 }
 public final class PyreonClipboard {
   public private(set) var copied: Bool = false
+  public private(set) var text: String = ""
   public init() {}
   public func copy(_ text: String) {}
   public func reset() {}

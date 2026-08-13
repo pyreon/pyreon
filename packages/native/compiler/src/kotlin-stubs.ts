@@ -995,6 +995,7 @@ class PyreonShare(context: Context) {
 }
 class PyreonClipboard(context: Context, scope: CoroutineScope) {
   val copied: Boolean get() = false
+  val text: String get() = ""
   fun copy(text: String) {}
   fun reset() {}
 }
