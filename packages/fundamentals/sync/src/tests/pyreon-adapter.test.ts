@@ -1,5 +1,11 @@
-import { describe, expect, it } from 'vitest'
-import { type PyreonCrdtOp, PyreonCrdtDoc } from '../crdt/pyreon-adapter'
+import { describe, expect, it, vi } from 'vitest'
+import {
+  createActorId,
+  type PyreonCrdtOp,
+  PyreonCrdtAdapter,
+  PyreonCrdtDoc,
+  pyreonAdapter,
+} from '../crdt/pyreon-adapter'
 import { REMOTE_ORIGIN } from '../crdt/types'
 
 // The pure-TS LWW engine that makes @pyreon/sync multiplatform 1:1: the SAME
@@ -117,5 +123,94 @@ describe('PyreonCrdtAdapter — LWW convergence (the multiplatform engine)', () 
     a.transact(() => a.getMap('m').set('k', 'v'))
     a.transact(() => a.getMap('m').set('k', 'v')) // same value → no delta
     expect(fires).toBe(1)
+  })
+})
+
+describe('public factories', () => {
+  it('pyreonAdapter() creates docs with a fresh actor; createDoc round-trips', () => {
+    const adapter = pyreonAdapter()
+    expect(adapter).toBeInstanceOf(PyreonCrdtAdapter)
+    const doc = adapter.createDoc()
+    doc.transact(() => doc.getMap('m').set('k', 'v'))
+    expect(doc.getMap('m').get('k')).toBe('v')
+  })
+
+  it('pyreonAdapter(actor) uses the given actor as the LWW tie-breaker', () => {
+    // Equal-clock concurrent write: higher actor wins deterministically.
+    const a = pyreonAdapter('a1').createDoc() as PyreonCrdtDoc
+    const b = pyreonAdapter('z9').createDoc() as PyreonCrdtDoc
+    a.transact(() => a.getMap('doc').set('t', 'from-A'))
+    b.transact(() => b.getMap('doc').set('t', 'from-B'))
+    connect(a, b) // reconnect → exchange state → converge on the deterministic winner
+    expect(a.getMap('doc').get('t')).toBe('from-B') // z9 > a1
+    expect(b.getMap('doc').get('t')).toBe('from-B')
+  })
+
+  it('createActorId returns a non-empty unique id', () => {
+    const id1 = createActorId()
+    const id2 = createActorId()
+    expect(id1).toBeTruthy()
+    expect(typeof id1).toBe('string')
+    expect(id1).not.toBe(id2)
+  })
+
+  it('createActorId falls back to a timestamp id when crypto.randomUUID is absent', () => {
+    vi.stubGlobal('crypto', {}) // no randomUUID → fallback branch
+    try {
+      expect(createActorId()).toMatch(/^a-/)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('a direct map.set() (no explicit transact) auto-wraps and still writes + fires', () => {
+    const a = new PyreonCrdtDoc('a1')
+    let fired = 0
+    a.getMap('m').observe(() => {
+      fired++
+    })
+    a.getMap('m').set('k', 'v') // depth 0 → _applyLocalWrite auto-wraps in a transact
+    expect(a.getMap('m').get('k')).toBe('v')
+    expect(fired).toBe(1)
+  })
+
+  it('applyOps is a no-op mid-local-transaction (defensive depth guard)', () => {
+    const a = new PyreonCrdtDoc('a1')
+    const b = new PyreonCrdtDoc('b1')
+    b.transact(() => b.getMap('m').set('k', 'peer'))
+    const remoteOps = b.encodeState()
+    // Inside a local transact, depth !== 0 → the remote merge is refused.
+    a.transact(() => {
+      a.getMap('m').set('local', 1)
+      a.applyOps(remoteOps, REMOTE_ORIGIN) // depth !== 0 → guarded → ignored
+    })
+    expect(a.getMap('m').get('k')).toBeUndefined() // remote op was NOT merged
+    expect(a.getMap('m').get('local')).toBe(1)
+  })
+
+  it('nested transact commits once at the outer boundary (inner depth !== 0)', () => {
+    const a = new PyreonCrdtDoc('a1')
+    let relays = 0
+    a._onOps(() => {
+      relays++
+    })
+    a.transact(() => {
+      a.getMap('m').set('a', 1)
+      a.transact(() => a.getMap('m').set('b', 2)) // nested → depth 2, no re-commit here
+    })
+    expect(a.getMap('m').get('a')).toBe(1)
+    expect(a.getMap('m').get('b')).toBe(2)
+    expect(relays).toBe(1) // ONE commit at the outer boundary, both writes in it
+  })
+
+  it('a destroyed doc ignores further transact/applyOps (no throw, no writes)', () => {
+    const a = new PyreonCrdtDoc('a1')
+    a.transact(() => a.getMap('m').set('k', 'v'))
+    a.destroy()
+    expect(() => a.transact(() => a.getMap('m').set('k2', 'v2'))).not.toThrow()
+    expect(() =>
+      a.applyOps([{ map: 'm', key: 'x', value: 1, clock: 9, actor: 'z' }], REMOTE_ORIGIN),
+    ).not.toThrow()
+    expect(a.getMap('m').get('k2')).toBeUndefined() // destroyed → guarded, nothing landed
   })
 })

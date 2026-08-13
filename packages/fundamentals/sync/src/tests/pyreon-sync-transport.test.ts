@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { PyreonCrdtDoc } from '../crdt/pyreon-adapter'
-import { type SyncChannel, connectPyreonSync } from '../crdt/pyreon-sync-transport'
+import { type SyncChannel, connectPyreonSync, webSocketChannel } from '../crdt/pyreon-sync-transport'
 import { syncedSignal } from '../synced-signal'
 
 // The pure-JS client transport that runs identically on web and in a native JS
@@ -142,5 +142,68 @@ describe('pyreon sync transport — wire-level convergence', () => {
 
     titleB.set('Shipped')
     expect(titleA()).toBe('Shipped') // and back
+  })
+})
+
+describe('webSocketChannel — WebSocket resolution', () => {
+  class FakeWS {
+    static last: FakeWS | undefined
+    onmessage: ((ev: { data?: unknown }) => void) | null = null
+    onopen: (() => void) | null = null
+    sent: string[] = []
+    closed = false
+    constructor(public url: string) {
+      FakeWS.last = this
+    }
+    send(d: string): void {
+      this.sent.push(d)
+    }
+    close(): void {
+      this.closed = true
+    }
+  }
+
+  it('builds a channel over an injected WebSocket impl and wires send/onMessage/onOpen/close', () => {
+    const ch = webSocketChannel('ws://relay', FakeWS as unknown as new (url: string) => object as never)
+    const ws = FakeWS.last!
+    let opened = false
+    const received: string[] = []
+    ch.onOpen(() => {
+      opened = true
+    })
+    ch.onMessage((m) => received.push(m))
+    ws.onopen?.() // socket connects
+    ws.onmessage?.({ data: 'hello' }) // inbound frame
+    ws.onmessage?.({ data: undefined }) // nullish data → coerced to '' (the ?? branch)
+    ch.send('frame')
+    ch.close()
+    expect(opened).toBe(true)
+    expect(received).toEqual(['hello', ''])
+    expect(ws.sent).toEqual(['frame'])
+    expect(ws.closed).toBe(true)
+  })
+
+  it('uses globalThis.WebSocket when no impl is injected', () => {
+    const g = globalThis as { WebSocket?: unknown }
+    const saved = g.WebSocket
+    try {
+      g.WebSocket = FakeWS
+      const ch = webSocketChannel('ws://global')
+      expect(FakeWS.last?.url).toBe('ws://global')
+      ch.close()
+    } finally {
+      if (saved === undefined) delete g.WebSocket
+      else g.WebSocket = saved
+    }
+  })
+
+  it('throws a clear [Pyreon] error when no WebSocket impl is available', () => {
+    const saved = (globalThis as { WebSocket?: unknown }).WebSocket
+    try {
+      delete (globalThis as { WebSocket?: unknown }).WebSocket
+      expect(() => webSocketChannel('ws://relay')).toThrow(/\[Pyreon\] sync: no WebSocket/)
+    } finally {
+      if (saved !== undefined) (globalThis as { WebSocket?: unknown }).WebSocket = saved
+    }
   })
 })

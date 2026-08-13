@@ -96,8 +96,11 @@ export function webSocketChannel(
   url: string,
   WebSocketImpl?: WebSocketCtor,
 ): SyncChannel {
-  const Ctor = (WebSocketImpl ??
-    (globalThis as { WebSocket?: WebSocketCtor }).WebSocket) as WebSocketCtor | undefined
+  // Prefer an injected impl; else the platform `WebSocket`, read behind a
+  // `typeof` guard so an environment without one (SSR / older Node) throws the
+  // clear error below instead of a bare ReferenceError.
+  const Ctor: WebSocketCtor | undefined =
+    WebSocketImpl ?? (typeof WebSocket !== 'undefined' ? (WebSocket as unknown as WebSocketCtor) : undefined)
   if (!Ctor) {
     throw new Error(
       '[Pyreon] sync: no WebSocket implementation. Pass `WebSocketImpl` (e.g. `ws` on older Node).',
