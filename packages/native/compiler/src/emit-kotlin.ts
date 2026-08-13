@@ -448,6 +448,7 @@ export function emitKotlin(
     for (const d of c.decls ?? []) {
       if (d.kind === 'bluetooth') _bluetoothKotlin.add(d.name)
       if (d.kind === 'wake-lock') _wakeLockKotlin.add(d.name)
+      if (d.kind === 'device-info') _deviceInfoKotlin.add(d.name)
       if (d.kind === 'clipboard') _clipboardKotlin.add(d.name)
       if (d.kind === 'pure-state') {
         _pureStateKotlin.set(d.name, d.bounds ? { hook: d.hook, bounds: d.bounds } : { hook: d.hook })
@@ -575,6 +576,8 @@ let _pureStateKotlin: Map<string, { hook: 'useToggle' | 'useCounter'; bounds?: {
 let _bluetoothKotlin: Set<string> = new Set()
 /** `useWakeLock()` bindings — `active` is MutableState, `supported` plain. */
 let _wakeLockKotlin: Set<string> = new Set()
+/** `useDeviceInfo()` bindings — all reads are plain getters (no `.value`). */
+let _deviceInfoKotlin: Set<string> = new Set()
 /** Initial values, so `reset()` restores exactly what the web's does. */
 let _pureStateInitialKotlin: Map<string, number | boolean> = new Map()
 /** `useClipboard()` bindings — its reactive reads become `.value`. */
@@ -2068,6 +2071,15 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       `val ${id} = remember { PyreonWakeLock(AndroidScreenKeeper(${id}Ctx)) }`,
     ].join('\n  ')
   }
+  // Mirror of Swift: the probe is injected so the shape is testable with no
+  // Android SDK; the app supplies the real one.
+  if (d.kind === 'device-info') {
+    const id = kotlinIdent(d.name)
+    return [
+      `val ${id}Ctx = LocalContext.current`,
+      `val ${id} = remember { PyreonDeviceInfo(AndroidDeviceProbe(${id}Ctx)) }`,
+    ].join('\n  ')
+  }
   if (d.kind === 'pure-state') {
     return `var ${kotlinIdent(d.name)} by remember { mutableStateOf(${String(d.initial)}) }`
   }
@@ -3173,6 +3185,17 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       ) {
         const base = `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
         return e.callee.property === 'supported' ? base : `${base}.value`
+      }
+      // useDeviceInfo — every read is a plain getter here, so parens drop
+      // and NONE of them take `.value` (unlike useWakeLock's `active`).
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _deviceInfoKotlin.has(e.callee.object.name) &&
+        e.args.length === 0 &&
+        ['platform', 'model', 'osVersion', 'isTouch', 'screen'].includes(e.callee.property)
+      ) {
+        return `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
       }
       // useToggle / useCounter member surface (mirror of Swift). The state
       // field IS the value, so a read drops its parens; each mutator becomes

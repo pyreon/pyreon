@@ -17,6 +17,8 @@ export type { BluetoothDevice, UseBluetoothResult } from './useBluetooth'
 export { useClipboard } from './useClipboard'
 export type { WakeLockControls } from './useWakeLock'
 export { useWakeLock } from './useWakeLock'
+export type { DeviceInfo, DevicePlatform, DeviceScreen } from './useDeviceInfo'
+export { useDeviceInfo } from './useDeviceInfo'
 export type {
   HapticImpactStyle,
   HapticNotificationType,

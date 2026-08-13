@@ -88,6 +88,11 @@ const USAGES: ReadonlyArray<readonly [string, string, string]> = [
     'const c = useCounter(1, { min: 0, max: 10 }); const f = () => { c.inc(2) }',
   ],
   [
+    'useDeviceInfo',
+    '@pyreon/hooks',
+    'const d = useDeviceInfo(); const p = d.platform(); const m = d.model(); const v = d.osVersion(); const t = d.isTouch(); const w = d.screen().width',
+  ],
+  [
     'useWakeLock',
     '@pyreon/hooks',
     'const w = useWakeLock(); const on = () => { w.request() }; const a = w.active(); const s = w.supported()',

@@ -119,6 +119,37 @@ public final class UIKitIdleTimer: IdleTimerController {
   public var isSupported: Bool { true }
   public func setIdleTimerDisabled(_ disabled: Bool) {}
 }
+// PyreonDeviceInfo + the app-supplied UIKit probe the emit names.
+public struct PyreonDeviceScreen {
+  public let width: Double
+  public let height: Double
+  public let scale: Double
+  public init(width: Double, height: Double, scale: Double) {
+    self.width = width; self.height = height; self.scale = scale
+  }
+}
+public protocol DeviceProbe: AnyObject {
+  var model: String { get }
+  var osVersion: String { get }
+  var isTouch: Bool { get }
+  var screen: PyreonDeviceScreen { get }
+}
+public final class UIKitDeviceProbe: DeviceProbe {
+  public init() {}
+  public var model: String { "" }
+  public var osVersion: String { "" }
+  public var isTouch: Bool { false }
+  public var screen: PyreonDeviceScreen { PyreonDeviceScreen(width: 0, height: 0, scale: 1) }
+}
+public final class PyreonDeviceInfo {
+  public init(probe: DeviceProbe) {}
+  public var platform: String { "ios" }
+  public var model: String { "" }
+  public var osVersion: String { "" }
+  public var isTouch: Bool { false }
+  public var screen: PyreonDeviceScreen { PyreonDeviceScreen(width: 0, height: 0, scale: 1) }
+}
+
 public final class PyreonWakeLock {
   public init(controller: IdleTimerController) {}
   public var active: Bool { false }
