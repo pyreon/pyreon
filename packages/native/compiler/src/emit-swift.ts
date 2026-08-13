@@ -49,6 +49,7 @@ import {
 } from './infer-type'
 import { safeIdent, swiftIdent } from './identifier-safety'
 import { resolveRocketstyleUseSite } from './rocketstyle-native'
+import { permissionsProviderSeed } from './permissions-provider'
 import type { AttrsComponentIR } from './attrs-native'
 import { elementToStack } from './elements-native'
 import { coolgridToStack, colToStack, colHasExplicitSize, colSizeLiteral, DEFAULT_COLUMNS } from './coolgrid-native'
@@ -632,6 +633,23 @@ export function _pushSwiftEmitWarning(msg: string): void {
  * `callAsFunction` is what preserves the web call shape: `q()` reads and
  * `q.set(v)` writes, so shared source does not fork per target.
  */
+const SWIFT_PERMISSIONS_ENV = `// Environment plumbing for <PermissionsProvider>. Emitted inline rather than
+// shipped in the co-located runtime for the same reason as PyreonUrlState:
+// it needs SwiftUI's environment machinery, and a runtime that pulls that in
+// stops being self-contained (and stops verifying against the compile gate's
+// stub set). An unprovided environment is an EMPTY set — a deny, which is the
+// safe default for an authorization check.
+private struct PyreonPermissionsKey: EnvironmentKey {
+    static let defaultValue = PyreonPermissions()
+}
+
+extension EnvironmentValues {
+    var pyreonPermissions: PyreonPermissions {
+        get { self[PyreonPermissionsKey.self] }
+        set { self[PyreonPermissionsKey.self] = newValue }
+    }
+}`
+
 const SWIFT_URL_STATE = `struct PyreonUrlState {
     // Optional because the environment router is: a component rendered outside
     // a RouterProvider must degrade to the default rather than crash, which is
@@ -784,6 +802,14 @@ export function emitSwift(
   if (components.some((c) => c.decls?.some((d) => d.kind === 'url-state'))) {
     parts.push(SWIFT_URL_STATE)
   }
+  // Any permissions use — a provider injecting, or a bare hook reading —
+  // needs the environment key in the emitted file.
+  if (
+    _usesPermissionsEnvSwift ||
+    components.some((c) => c.decls?.some((d) => d.kind === 'permissions' && d.grants.length === 0))
+  ) {
+    parts.push(SWIFT_PERMISSIONS_ENV)
+  }
   // Gap 4 v3.2 — recursively emit auxSchemas BEFORE their parent
   // schema so Swift can resolve type references top-down.
   const emitSchemaTree = (zs: ZodSchemaDefnIR): void => {
@@ -821,6 +847,7 @@ export function emitSwift(
   _modelInstances = new Map()
   _modelReadNames = new Map()
   _modelMethodNames = new Map()
+  _usesPermissionsEnvSwift = false
   _needsSwiftKeepAliveWrapper = false
   const warnings = [..._emitWarnings]
   _emitWarnings = []
@@ -850,6 +877,8 @@ let _activeModelSelfParam: string | undefined
 let _modelReadNames: Map<string, Set<string>> = new Map()
 /** Per-instance model ACTION names — calls keep their parens + args. */
 let _modelMethodNames: Map<string, Set<string>> = new Map()
+/** Set when a `<PermissionsProvider>` emits — the file needs the env key. */
+let _usesPermissionsEnvSwift = false
 
 /**
  * Emit a per-store @Observable singleton class:
@@ -2447,9 +2476,13 @@ function emitSwiftDecl(
   // seeded with the literal grant keys. Reads are method calls
   // (`can.can("x")`), so no field-read rewrite — plain method emit on Swift.
   if (d.kind === 'permissions') {
-    const seed = d.grants.length
-      ? `[${d.grants.map((g) => JSON.stringify(g)).join(', ')}]`
-      : ''
+    // A BARE `usePermissions()` is the web-correct call — the grants come
+    // from `<PermissionsProvider>`. Read them from the environment rather
+    // than constructing an empty set in which every check denies.
+    if (d.grants.length === 0) {
+      return `@Environment(\\.pyreonPermissions) private var ${swiftIdent(d.name)}`
+    }
+    const seed = `[${d.grants.map((g) => JSON.stringify(g)).join(', ')}]`
     return `@State private var ${swiftIdent(d.name)} = PyreonPermissions(${seed})`
   }
   // Phase 4: `const cb = useClipboard()` → an @State PyreonClipboard.
@@ -5198,6 +5231,7 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   if (tag === 'Field') return emitSwiftField(e, indent)
   if (tag === 'Toggle') return emitSwiftToggle(e, indent)
   if (tag === 'Link') return emitSwiftLink(e, indent)
+  if (tag === 'PermissionsProvider') return emitSwiftPermissionsProvider(e, indent)
   if (tag === 'RouterProvider') return emitSwiftRouterProvider(e, indent)
   if (tag === 'RouterView') return emitSwiftRouterView(e, indent)
   // 9 other canonical primitives (Layer, Scroll, Spacer, Heading,
@@ -7606,6 +7640,46 @@ function emitSwiftLink(
  * when routes can't be resolved — back-compat with C4 scaffold OR
  * apps that pass a router from outside the component scope.
  */
+/**
+ * `<PermissionsProvider permissions={{ … }}>` → the grants injected into the
+ * SwiftUI environment, where a bare `usePermissions()` reads them.
+ *
+ * Web `usePermissions()` takes no arguments — the grants come from this
+ * provider. Without the injection the correct web call had nowhere to read
+ * from and lowered to an empty set in which every check denied, silently.
+ *
+ * Only `true` entries are granted: the native set is grant-only, so a `false`
+ * value has nowhere to live. That is exact when the map has no wildcards, and
+ * the recognizer warns when it does — a `false` under a wildcard grant is a
+ * denial the native set cannot express.
+ */
+function emitSwiftPermissionsProvider(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  _usesPermissionsEnvSwift = true
+  const seed = permissionsProviderSeed(e)
+  if (seed === null) {
+    // The suppression of the blanket unlowered-module line is keyed on the
+    // TAG being present, so a provider that cannot be baked would otherwise
+    // go silent — worse than before the tag lowered at all. The emit is the
+    // authority on whether it lowered, so it reports.
+    _emitWarnings.push(
+      '<PermissionsProvider permissions={…}>: the permissions map is not a literal object of boolean values, so the grants cannot be baked into the native emit — the provider injects NOTHING and every check below it denies. Use a literal map, or seed at the call site with usePermissions(["posts.*"]).',
+    )
+    return emitSwiftGeneric(e, indent)
+  }
+  const pad = ' '.repeat(indent + 2)
+  const set = `PyreonPermissions([${seed.granted.map((g) => JSON.stringify(g)).join(', ')}])`
+  if (e.children.length === 0) {
+    return `EmptyView().environment(\\.pyreonPermissions, ${set})`
+  }
+  const content = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
+  // The modifier attaches to the GROUP, so every child sees the value —
+  // attaching it to the last child would scope it to that child alone.
+  return `Group {\n${content}\n${' '.repeat(indent)}}.environment(\\.pyreonPermissions, ${set})`
+}
+
 function emitSwiftRouterProvider(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   indent: number,

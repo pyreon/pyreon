@@ -33,16 +33,49 @@ import androidx.compose.runtime.mutableStateOf
  * Exposes `granted` as Compose `MutableState` (read `.value`).
  */
 public class PyreonPermissions(granted: Set<String> = emptySet()) {
-    /** Currently-granted permission keys (exact + `"x.*"` wildcards). */
+    /**
+     * Currently-granted permission keys — exact, plus the three wildcard
+     * forms `"x.*"` (one segment), `"x.**"` (any depth) and `"*"`.
+     */
     public val granted: MutableState<Set<String>> = mutableStateOf(granted)
 
     /**
-     * True when [key] is granted exactly, or matched by a granted
-     * `"<prefix>.*"` wildcard (`"posts.*"` matches `"posts.edit"`).
+     * Resolve [key] against the granted set, in the SAME order the web
+     * resolver uses: exact → one-segment wildcard → recursive wildcard
+     * (most-specific ancestor first) → global.
+     *
+     * The previous implementation matched any `"prefix.*"` entry with a
+     * bare `startsWith`, which made `.*` behave like the web's `.**`:
+     * granting `"posts.*"` also granted `"posts.comments.edit"`, a key
+     * the web DENIES. That is the wrong direction for a permission check
+     * — the same source granted more on device than in the browser. It
+     * also recognised neither `.**` nor `*`, so the two wildcards that
+     * SHOULD widen a grant were silently ignored.
      */
     public fun can(key: String): Boolean {
-        if (granted.value.contains(key)) return true
-        return granted.value.any { it.endsWith(".*") && key.startsWith(it.dropLast(1)) }
+        val keys = granted.value
+        // 1. Exact match.
+        if (keys.contains(key)) return true
+
+        val dot = key.lastIndexOf('.')
+        if (dot != -1) {
+            val parent = key.substring(0, dot)
+            // 2. One-segment wildcard — "posts.*" covers "posts.edit" but
+            //    NOT "posts.comments.edit".
+            if (keys.contains("$parent.*")) return true
+            // 3. Recursive wildcard, most-specific ancestor first:
+            //    "posts.admin.delete" tries "posts.admin.**" then "posts.**".
+            var ancestor = parent
+            while (true) {
+                if (keys.contains("$ancestor.**")) return true
+                val i = ancestor.lastIndexOf('.')
+                if (i == -1) break
+                ancestor = ancestor.substring(0, i)
+            }
+        }
+
+        // 4. Global wildcard — any key, any depth.
+        return keys.contains("*")
     }
 
     /** Inverse of [can]. */

@@ -86,7 +86,19 @@ public struct AnyStubView: View { public init() {}; public typealias Body = Neve
 // ---- Environment / enums ----
 public enum ColorScheme { case light, dark }
 public enum UserInterfaceSizeClass { case compact, regular }
+// EnvironmentKey — the emitted <PermissionsProvider> plumbing declares its
+// own key + EnvironmentValues extension inline (a co-located runtime should
+// not need SwiftUI's environment machinery), so the stub set has to model the
+// protocol the emit conforms to.
+public protocol EnvironmentKey {
+  associatedtype Value
+  static var defaultValue: Value { get }
+}
 public struct EnvironmentValues {
+  public subscript<K: EnvironmentKey>(key: K.Type) -> K.Value {
+    get { K.defaultValue }
+    set {}
+  }
   public var colorScheme: ColorScheme = .light
   public var horizontalSizeClass: UserInterfaceSizeClass? = nil
 }

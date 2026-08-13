@@ -17,6 +17,26 @@ fun testPermsWildcard() {
     check(p.can("posts.delete")) { "wildcard matches posts.delete" }
     check(!p.can("users.edit")) { "wildcard scoped to its prefix" }
     check(!p.can("postsX")) { "wildcard is segment-prefix, not substring" }
+    // The case the old "segment-scoped" comment claimed but no assertion
+    // covered — and where the bug lived. `.*` is ONE segment; a bare
+    // prefix match also granted every nested namespace, so the same
+    // source granted more on device than in the browser.
+    check(!p.can("posts.comments.edit")) { ".* does NOT reach a nested namespace" }
+    check(!p.can("posts")) { ".* does not grant its own prefix" }
+}
+
+/** `.**` is the recursive form — previously unrecognised, so it granted nothing. */
+fun testPermsRecursiveWildcard() {
+    val p = PyreonPermissions(setOf("posts.**"))
+    check(p.can("posts.edit")) { ".** covers one segment" }
+    check(p.can("posts.comments.edit")) { ".** covers any depth" }
+    check(!p.can("users.edit")) { ".** stays inside its prefix" }
+}
+
+/** `*` grants everything — also previously unrecognised. */
+fun testPermsGlobalWildcard() {
+    val p = PyreonPermissions(setOf("*"))
+    check(p.can("anything.deep.key")) { "* grants any key at any depth" }
 }
 
 fun testPermsNotParity() {
