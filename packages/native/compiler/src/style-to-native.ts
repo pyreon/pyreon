@@ -94,6 +94,8 @@ interface LoweredObject {
   radiusValue: number
   dropped: string[]
   dynamic: string[]
+  /** Mobile-first responsive arrays — unistyle's idiom, warned separately. */
+  responsive: string[]
   unparseable: string[]
   /** kotlin-only: `color` present (no Compose Modifier — warned). */
   kotlinColor: boolean
@@ -440,12 +442,17 @@ function lowerObject(fields: { name: string; value: ExprIR }[], target: Target):
   const dropped: string[] = []
   const dynamic: string[] = []
   const unparseable: string[] = []
+  const responsive: string[] = []
   let kotlinColor = false
   let marginWarn = false
 
   const lit = (f: { name: string; value: ExprIR }): string | number | undefined => {
     if (f.value.kind !== 'literal') {
-      dynamic.push(f.name)
+      // A mobile-first ARRAY is unistyle's core idiom, not an arbitrary
+      // dynamic value — the author DID write literals. Telling them to "use a
+      // literal" is wrong and unactionable, so it gets its own diagnostic.
+      if (f.value.kind === 'array') responsive.push(f.name)
+      else dynamic.push(f.name)
       return undefined
     }
     const v = f.value.value
@@ -643,7 +650,8 @@ function lowerObject(fields: { name: string; value: ExprIR }[], target: Target):
     }
   }
   return {
-    slots, box, border, frame, radiusValue, dropped, dynamic, unparseable, kotlinColor, marginWarn,
+    slots, box, border, frame, radiusValue, dropped, dynamic,
+    responsive, unparseable, kotlinColor, marginWarn,
   }
 }
 
@@ -818,6 +826,11 @@ function collectWarnings(lo: LoweredObject, tag: string): string[] {
   if (lo.kotlinColor) {
     w.push(
       `<${tag} style={{ color }}>: CSS \`color\` on a container has no Compose Modifier — set the color on the <Text> primitive (or via LocalContentColor) for Android. Lowered on iOS only.`,
+    )
+  }
+  if (lo.responsive.length > 0) {
+    w.push(
+      `<${tag} style={…}>: [${lo.responsive.join(', ')}] use a mobile-first RESPONSIVE ARRAY. Native has no media queries — iOS and Android resolve two size classes (compact / regular at 600dp), not N breakpoints, so an N-element array cannot be resolved losslessly and was dropped rather than guessed. Branch explicitly instead: \`const sc = useSizeClass()\` then \`style={sc() === 'regular' ? { … } : { … }}\` — a two-literal ternary DOES lower.`,
     )
   }
   if (lo.dynamic.length > 0) {
