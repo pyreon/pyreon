@@ -80,3 +80,50 @@ export function connectWebHost<T = unknown>(): WebHostConnection<T> {
     },
   }
 }
+
+/** Options for {@link webHostDocument}. */
+export interface WebHostDocumentOptions {
+  /**
+   * The bundled guest script — an IIFE that calls `connectWebHost()` and
+   * renders the web-only component into the mount root. Build your component
+   * (with esbuild/Vite) to a self-contained IIFE and pass it here.
+   */
+  script: string
+  /** Inline CSS for the hosted page (also inline any engine styles here). */
+  css?: string
+  /** The mount root element id the script renders into. Default `'root'`. */
+  rootId?: string
+  /** Optional page `<title>`. */
+  title?: string
+}
+
+/**
+ * Build the self-contained HTML page that a `<WebView html={…}>` hosts — the
+ * document shell for the guest side of the WebView-host pattern. Pairs with
+ * {@link connectWebHost}: bundle a web-only component to an IIFE that calls
+ * `connectWebHost()`, wrap it with `webHostDocument({ script })`, and pass the
+ * result as `<WebView html={…}>`. The SAME page runs in an `<iframe srcdoc>` on
+ * web and a WKWebView / Android WebView on native, so the panel is 1:1.
+ *
+ * Everything is inlined (no external `<script>`/`<link>`) so it works as
+ * `srcdoc` / `loadHTMLString` with no network and no CSP surprises.
+ *
+ * @example
+ * ```ts
+ * const html = webHostDocument({ script: BUNDLED_CHART_IIFE, css: chartCss })
+ * // <WebView html={html} data={metrics()} onMessage={(m) => selected.set(m)} />
+ * ```
+ */
+export function webHostDocument(options: WebHostDocumentOptions): string {
+  const root = options.rootId ?? 'root'
+  return (
+    '<!doctype html><html><head><meta charset="utf-8">' +
+    '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+    (options.title === undefined ? '' : `<title>${options.title}</title>`) +
+    (options.css === undefined ? '' : `<style>${options.css}</style>`) +
+    `</head><body style="margin:0">` +
+    `<div id="${root}"></div>` +
+    `<script>${options.script}</script>` +
+    '</body></html>'
+  )
+}

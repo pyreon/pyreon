@@ -6,7 +6,7 @@
 // two ends are pinned to one contract here.
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { connectWebHost } from '../web-host-bridge'
+import { connectWebHost, webHostDocument } from '../web-host-bridge'
 
 type HostWindow = typeof window & {
   __pyreonData?: unknown
@@ -61,5 +61,30 @@ describe('connectWebHost — guest end of the WebView bridge', () => {
 
   it('emit() is a safe no-op when the host has not defined pyreonPostMessage yet', () => {
     expect(() => connectWebHost().emit('x')).not.toThrow()
+  })
+})
+
+describe('webHostDocument — self-contained page shell for <WebView html>', () => {
+  it('builds a doctype page with the mount root + inlined script', () => {
+    const html = webHostDocument({ script: 'window.x=1' })
+    expect(html.startsWith('<!doctype html>')).toBe(true)
+    expect(html).toContain('<div id="root"></div>')
+    expect(html).toContain('<script>window.x=1</script>')
+  })
+
+  it('inlines css + custom rootId + title, omits absent optionals', () => {
+    const html = webHostDocument({ script: 's()', css: '.a{color:red}', rootId: 'app', title: 'Chart' })
+    expect(html).toContain('<style>.a{color:red}</style>')
+    expect(html).toContain('<div id="app"></div>')
+    expect(html).toContain('<title>Chart</title>')
+    const bare = webHostDocument({ script: 's()' })
+    expect(bare).not.toContain('<style>')
+    expect(bare).not.toContain('<title>')
+  })
+
+  it('is fully self-contained — no external script/link (WKWebView / srcdoc safe)', () => {
+    const html = webHostDocument({ script: 'x', css: 'y' })
+    expect(html).not.toMatch(/<script[^>]+src=/)
+    expect(html).not.toMatch(/<link/)
   })
 })

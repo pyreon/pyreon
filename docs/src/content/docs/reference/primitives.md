@@ -79,6 +79,7 @@ export function App() {
 | [`Modal`](#modal) | component | Modal/sheet. |
 | [`WebView`](#webview) | component | Host a web page/component natively (WKWebView on iOS, Android WebView; `<iframe srcdoc>` on web). |
 | [`connectWebHost`](#connectwebhost) | function | The guest-side glue for the `<WebView>` bridge — the reusable OTHER half of the WebView-host pattern. |
+| [`webHostDocument`](#webhostdocument) | function | Build the self-contained HTML page a `<WebView html={…}>` hosts — the document shell for the guest side of the WebView-h |
 | [`Web / NativeIOS / NativeAndroid`](#web-nativeios-nativeandroid) | component | The Layer-4 per-platform escape hatch — one source carries a platform-specific subtree and exactly ONE branch renders pe |
 | [`defineNativeModule / useNativeModule`](#definenativemodule-usenativemodule) | function | The Layer-4 FFI escape hatch — how an APP adds a platform capability the framework does not ship (Bluetooth, ARKit, a pa |
 | [`init / resetPrimitivesConfig`](#init-resetprimitivesconfig) | function | One-time app-boot configuration for `@pyreon/primitives`. |
@@ -487,7 +488,31 @@ bar.onclick = () => host.emit(String(bar.dataset.id))
 - Hand-rolling `window.__pyreonData` / `window.pyreonPostMessage` in the bundle instead of this helper — the two ends can silently drift and the panel stops updating.
 - Calling it in the HOST component (the one rendering `<WebView>`) — it runs in the GUEST bundle inside the WebView, not the host.
 
-**See also:** `WebView` · `Web / NativeIOS / NativeAndroid`
+**See also:** `WebView` · `webHostDocument` · `Web / NativeIOS / NativeAndroid`
+
+---
+
+### webHostDocument `function`
+
+```ts
+webHostDocument(options: { script: string; css?: string; rootId?: string; title?: string }) => string
+```
+
+Build the self-contained HTML page a `<WebView html={…}>` hosts — the document shell for the guest side of the WebView-host pattern. Pairs with `connectWebHost`: bundle a web-only component to an IIFE that calls `connectWebHost()`, wrap it with `webHostDocument({ script })`, pass the result as `<WebView html={…}>`. Everything is INLINED (no external `<script>`/`<link>`) so the same page works as `<iframe srcdoc>` on web and `loadHTMLString` on a WKWebView / Android WebView — truly 1:1, no network, no CSP surprises.
+
+**Example**
+
+```tsx
+const html = webHostDocument({ script: BUNDLED_CHART_IIFE, css: chartCss })
+// <WebView html={html} data={metrics()} onMessage={(m) => selected.set(m)} />
+```
+
+**Common mistakes**
+
+- Passing a module (import/export) as `script` — the guest page runs it as a plain inline `<script>`; build to a self-contained IIFE first.
+- Referencing an external asset (CDN font, remote image) — a WKWebView `loadHTMLString` page has no base URL; inline everything (data: URIs, `css`).
+
+**See also:** `connectWebHost` · `WebView`
 
 ---
 
