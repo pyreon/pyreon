@@ -148,6 +148,8 @@ public final class PyreonDeviceInfo {
   public var osVersion: String { "" }
   public var isTouch: Bool { false }
   public var screen: PyreonDeviceScreen { PyreonDeviceScreen(width: 0, height: 0, scale: 1) }
+}
+
 // PyreonSafeArea / PyreonScreenOrientation + the app-supplied probes the
 // emit names. Mirrors the runtimes exactly - a superset stub masks breakage,
 // a subset rejects correct code.

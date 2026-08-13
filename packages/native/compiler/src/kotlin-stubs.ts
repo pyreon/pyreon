@@ -1348,6 +1348,8 @@ class PyreonDeviceInfo(probe: DeviceProbe) {
   val osVersion: String get() = ""
   val isTouch: Boolean get() = false
   val screen: PyreonDeviceScreen get() = PyreonDeviceScreen(0.0, 0.0, 1.0)
+}
+
 // PyreonSafeArea / PyreonScreenOrientation + the app-supplied probes.
 data class PyreonSafeAreaInsets(val top: Double, val right: Double, val bottom: Double, val left: Double) {
   companion object { val zero = PyreonSafeAreaInsets(0.0, 0.0, 0.0, 0.0) }
