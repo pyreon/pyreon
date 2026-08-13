@@ -1161,9 +1161,19 @@ type Props = ExtractProps<typeof Iterator>
   'primitives/WebView': {
     signature: '(props: { html?: string; src?: string; data?: unknown; onMessage?: (message: string) => void }) => VNode',
     example: '<WebView html={CHART_HTML} data={metrics()} onMessage={(m) => selected.set(m)} />',
-    notes: 'Host a web page/component natively (WKWebView on iOS, Android WebView; `<iframe srcdoc>` on web). THE escape hatch for web-only packages (charts/flow/code/document) on native — they run inside the WebView. Bidirectional bridge: `data` is pushed in as `window.__pyreonData` (+ a `pyreondata` event, live, no reload); the page calls `window.pyreonPostMessage(payload)` → your `onMessage` closure. See also: Web.',
+    notes: 'Host a web page/component natively (WKWebView on iOS, Android WebView; `<iframe srcdoc>` on web). THE escape hatch for web-only packages (charts/flow/code/document) on native — they run inside the WebView. Bidirectional bridge: `data` is pushed in as `window.__pyreonData` (+ a `pyreondata` event, live, no reload); the page calls `window.pyreonPostMessage(payload)` → your `onMessage` closure. See also: Web, connectWebHost.',
     mistakes: `- Using it for core UI (nav/forms/lists) — pays WebView boot + bundle cost; use native primitives there. Reserve <WebView> for self-contained web-island panes (charts/editors/diagrams)
 - Expecting native look-and-feel — content renders as a web view, not native widgets`,
+  },
+
+  'primitives/connectWebHost': {
+    signature: 'connectWebHost<T>() => { data(): T | undefined; onData(cb: (data: T | undefined) => void): () => void; emit(message: string): void }',
+    example: `const host = connectWebHost<{ rows: number[] }>()
+host.onData((d) => renderChart(root, d?.rows ?? []))
+bar.onclick = () => host.emit(String(bar.dataset.id))`,
+    notes: 'The guest-side glue for the `<WebView>` bridge — the reusable OTHER half of the WebView-host pattern. A web-only-rich component (chart/flow/editor) built as a self-contained bundle runs `connectWebHost()` INSIDE the hosted page (an `<iframe srcdoc>` on web, a WKWebView on iOS, an Android WebView) to read host-pushed props (`data()` / `onData(cb)` fires on every `pyreondata` push) and send events back (`emit(msg)` → the host `onMessage`). Same code on every platform, so a webview-hosted panel is truly 1:1. Guest-only: every method is an inert no-op off-browser, so importing it can never crash a build. See also: WebView, Web / NativeIOS / NativeAndroid.',
+    mistakes: `- Hand-rolling \`window.__pyreonData\` / \`window.pyreonPostMessage\` in the bundle instead of this helper — the two ends can silently drift and the panel stops updating.
+- Calling it in the HOST component (the one rendering \`<WebView>\`) — it runs in the GUEST bundle inside the WebView, not the host.`,
   },
 
   'primitives/Web / NativeIOS / NativeAndroid': {
