@@ -31,7 +31,7 @@
   "@pyreon/lint": 512,
   "@pyreon/loom": 6144,
   "@pyreon/machine": 1150,
-  "@pyreon/mcp": 333824,
+  "@pyreon/mcp": 334336,
   "@pyreon/meta": 1536,
   "@pyreon/native-cli": 9984,
   "@pyreon/native-compiler": 124672,
