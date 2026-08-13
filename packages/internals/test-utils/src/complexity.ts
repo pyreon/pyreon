@@ -51,7 +51,9 @@ export interface ComplexityOptions {
   /**
    * Minimum milliseconds the small run must take before the ratio is trusted.
    * Below this, timer granularity dominates and the ratio is noise. The helper
-   * grows the base size until the run is measurable. Default 1.
+   * grows the base size until the run is measurable — but only while growing
+   * actually buys time; see the flat-in-n stop in {@link measureComplexity}.
+   * Default 1.
    */
   minMs?: number
   /** Shown in the failure message. */
@@ -86,6 +88,13 @@ export interface ComplexityResult {
  *
  * Pure measurement — no assertion. Use when a test wants to inspect the numbers
  * itself; otherwise prefer {@link expectSubQuadratic}.
+ *
+ * `run(n)` should not RETAIN what it allocates for a size: this helper may call
+ * it at several sizes while looking for a measurable base, so a cached fixture
+ * per n accumulates. The flat-in-n stop below bounds that in the case that
+ * actually occurs (a run whose cost does not rise cannot reach `minMs`, so the
+ * loop would otherwise run its whole budget), but freeing per-size fixtures is
+ * the caller's side of the contract.
  */
 export function measureComplexity(
   run: (n: number) => void,
@@ -103,11 +112,41 @@ export function measureComplexity(
   // 24 doublings takes n=1 past 16M, which is comfortably over 1ms for even a
   // trivial per-item body. A smaller budget silently gives up on cheap
   // operations and reports UNMEASURABLE for inputs that are merely small.
+  //
+  // …but that budget assumes cost RISES with n, and the most valuable callers
+  // here assert the opposite: "lookup cost is FLAT in tree size" is exactly the
+  // trie invariant `@pyreon/router`'s PR-S9 states. For such a run no amount of
+  // growth reaches `minMs`, so the loop runs all 24 doublings — and if `run`
+  // allocates O(n) that the caller retains (a route tree, a fixture cache), the
+  // helper built to REMOVE flaky timing turns into a 4GB OOM that kills the
+  // worker and takes the whole file's results with it. Observed on main: one
+  // test, 95 results silently missing, the router suite red.
+  //
+  // So: stop as soon as growth is demonstrably not buying time. An O(n) run is
+  // ~16x slower after four doublings; a flat one is ~1x. Compare against the
+  // measurement from `FLAT_LOOKBACK` doublings ago and require at least
+  // `FLAT_MIN_GROWTH`. The noise floor keeps the check from firing on the
+  // sub-granularity readings a genuinely cheap O(n) run starts with.
+  const FLAT_LOOKBACK = 4
+  const FLAT_MIN_GROWTH = 2
+  const FLAT_NOISE_FLOOR_MS = 0.05
   let n = baseN
   let baseMs = timeBest(run, n, samples)
+  const history = [baseMs]
+  let flatInN = false
   for (let i = 0; i < 24 && baseMs < minMs; i++) {
     n *= 2
     baseMs = timeBest(run, n, samples)
+    history.push(baseMs)
+    const earlier = history[history.length - 1 - FLAT_LOOKBACK]
+    if (
+      earlier !== undefined &&
+      baseMs >= FLAT_NOISE_FLOOR_MS &&
+      baseMs < earlier * FLAT_MIN_GROWTH
+    ) {
+      flatInN = true
+      break
+    }
   }
 
   const scaledN = n * scale
@@ -142,7 +181,12 @@ export function measureComplexity(
     `ratio ${ratio.toFixed(2)} (linear≈${scale}, quadratic≈${scale * scale}, ` +
     `bound ${maxRatio})` +
     (baseMs < minMs
-      ? ` [UNMEASURABLE: base run under ${minMs}ms even after growth — ratio not trustworthy]`
+      ? flatInN
+        ? ` [UNMEASURABLE: cost did NOT rise as n grew (stopped at n=${n}), so this run is FLAT in n ` +
+          `and no amount of growth reaches ${minMs}ms. Make the BASE measurable by doing more work per ` +
+          `call — more iterations inside run() — instead of relying on a larger n. Growth was stopped ` +
+          `early on purpose: a run that allocates O(n) would otherwise exhaust the heap here.]`
+        : ` [UNMEASURABLE: base run under ${minMs}ms even after growth — ratio not trustworthy]`
       : '')
 
   return { baseN: n, scaledN, baseMs, scaledMs, ratio, maxRatio, ok, detail }
