@@ -114,6 +114,37 @@ export function App() {
   })
 })
 
+describe('unique() preserves FIRST-occurrence order on both targets', () => {
+  // Swift emitted `Array(Set(_:))`, whose comment claimed it matched rx's
+  // "set of unique values" semantic. Measured, rx returns first-occurrence
+  // order ([3,1,2,3,4] → [3,1,2,4]) and Kotlin's distinct() preserves it —
+  // so Swift was the only one of the three that did not, and a <For> over
+  // unique(...) rendered in an arbitrary order on iOS alone.
+  const src = `import { unique } from '@pyreon/rx'
+import { signal } from '@pyreon/reactivity'
+import { Text } from '@pyreon/primitives'
+export function App() {
+  const nums = signal<number[]>([3, 1, 2, 3, 4])
+  const u = unique(nums)
+  return <Text>{u().length}</Text>
+}`
+
+  it('Swift no longer routes through an UNORDERED Set', () => {
+    const out = transform(src, { target: 'swift' }).code
+    expect(out).not.toContain('Array(Set(nums))')
+    expect(out).toContain('firstIndex(of:')
+  })
+
+  it('Kotlin keeps distinct(), which already preserved order', () => {
+    expect(transform(src, { target: 'kotlin' }).code).toContain('nums.distinct()')
+  })
+
+  it.skipIf(!isSwiftcAvailable())('the ordered form type-checks', () => {
+    const r = validateSwiftWithStubs(transform(src, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+})
+
 describe('the emitted transforms survive the real toolchains', () => {
   it.skipIf(!isSwiftcAvailable())('Swift type-checks against the stub', () => {
     const r = validateSwiftWithStubs(transform(APP, { target: 'swift' }).code)

@@ -27,3 +27,17 @@ emitted code that does not build. The transforms `pipe` composes DO lower, so
 the advice names a real alternative rather than an escape hatch.
 
 The emitted transforms are verified against real `swiftc` and `kotlinc`.
+
+## `unique()` returned an arbitrary order on iOS
+
+Swift emitted `Array(Set(_:))`, whose comment claimed it matched rx's "set of
+unique values" semantic. Measured, rx returns **first-occurrence order**
+(`[3,1,2,3,4]` → `[3,1,2,4]`), and Kotlin's `distinct()` preserves it — so
+Swift was the only one of the three that did not, and a `<For>` over
+`unique(...)` rendered in an arbitrary order on iOS and a stable one
+everywhere else.
+
+The obvious replacement (`reduce(into: [])`) does not typecheck: the empty
+seed leaves the accumulator ambiguous, so `contains` resolves to
+`contains(where:)`. The shipped form needs no seed annotation and was proven
+by executing it against the same input the web arm asserts.
