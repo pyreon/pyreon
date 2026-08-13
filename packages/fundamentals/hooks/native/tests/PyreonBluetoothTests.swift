@@ -33,6 +33,7 @@ struct PyreonBluetoothTests {
             // so its suite runs inside this guard rather than beside the
             // ungated ones below.
             PyreonWakeLockTests.runAll()
+            PyreonDeviceInfoTests.runAll()
         }
         print("[PyreonBluetoothTests] all assertions passed")
         // This directory's single @main also drives the sibling suites — see

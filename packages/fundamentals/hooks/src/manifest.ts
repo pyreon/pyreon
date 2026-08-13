@@ -14,9 +14,9 @@ export default defineManifest({
   name: '@pyreon/hooks',
   title: 'Signal-Based Hooks',
   tagline:
-    '58 signal-based hooks: state (useToggle/useCounter/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocusTrap/useFocusReturn/useInertOthers/useElementSize/useWindowResize/useWindowScroll/useScrollLock/useIntersection/useInfiniteScroll), responsive (useBreakpoint/useMediaQuery/useColorScheme/useSizeClass/useReducedMotion), timing (useDebouncedValue/useDebouncedCallback/useThrottledCallback/useInterval/useTimeout/useTimeAgo), interaction (useBluetooth/useWakeLock/useClipboard/useHaptics/useShare/useLinking/useNotifications/useBiometrics/useImagePicker/useFilePicker/useDialog/useKeyboard/useOnline/useAppState/useCrashReporter/useDocumentVisibility/useIdle), data (useFetch/useAuth/useDatabase/useGeolocation/useMap/useWebSocket/useSecureStorage/usePush/usePayments), composition (useMergedRef/useUpdateEffect/useIsomorphicLayoutEffect)',
+    '59 signal-based hooks: state (useToggle/useCounter/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocusTrap/useFocusReturn/useInertOthers/useElementSize/useWindowResize/useWindowScroll/useScrollLock/useIntersection/useInfiniteScroll), responsive (useBreakpoint/useMediaQuery/useColorScheme/useSizeClass/useReducedMotion), timing (useDebouncedValue/useDebouncedCallback/useThrottledCallback/useInterval/useTimeout/useTimeAgo), interaction (useBluetooth/useDeviceInfo/useWakeLock/useClipboard/useHaptics/useShare/useLinking/useNotifications/useBiometrics/useImagePicker/useFilePicker/useDialog/useKeyboard/useOnline/useAppState/useCrashReporter/useDocumentVisibility/useIdle), data (useFetch/useAuth/useDatabase/useGeolocation/useMap/useWebSocket/useSecureStorage/usePush/usePayments), composition (useMergedRef/useUpdateEffect/useIsomorphicLayoutEffect)',
   description:
-    'Signal-based hooks for Pyreon — 58 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.',
+    'Signal-based hooks for Pyreon — 59 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.',
   category: 'universal',
   multiplatform: {
     tier: 'service-backend',
@@ -100,7 +100,7 @@ const { position } = useWindowScroll()     // Signal<{ x, y }> scroll offset + s
 const visibility = useDocumentVisibility()  // Signal<'visible' | 'hidden'> — pause work when hidden
 const idle = useIdle(30_000)               // Signal<boolean> — true after 30s of no activity`,
   features: [
-    '58 signal-based hooks across 7 categories',
+    '59 signal-based hooks across 7 categories',
     'State: useToggle, useCounter, usePrevious, useLatest, useControllableState',
     'DOM: useEventListener, useClickOutside, useFocus, useHover, useFocusTrap, useFocusReturn, useInertOthers, useElementSize, useWindowResize, useWindowScroll, useScrollLock, useIntersection, useInfiniteScroll',
     'Responsive: useBreakpoint, useMediaQuery, useColorScheme, useSizeClass, useReducedMotion',
@@ -548,6 +548,25 @@ effect(() => { if (idle()) showAwayBanner() })`,
         'Returns an accessor — call `online()`.',
       ],
       seeAlso: ['useDocumentVisibility', 'useIdle'],
+    },
+    {
+      name: 'useDeviceInfo',
+      kind: 'hook',
+      signature:
+        'useDeviceInfo() => { platform: () => \'web\' | \'ios\' | \'android\'; model: () => string; osVersion: () => string; isTouch: () => boolean; screen: () => { width: number; height: number; scale: number } }',
+      summary:
+        'Describe the device — platform branching, real screen geometry, device context for analytics. `platform` needs no runtime on native: it is a COMPILE-TIME constant per target. `model` and `osVersion` are real on iOS/Android and deliberately EMPTY STRINGS on the web, because the browser cannot answer them reliably (navigator.platform is deprecated, UA Client Hints are Chromium-only, and UA parsing rots as browsers change their strings) — and these are the fields that end up in analytics and support tickets, where a plausible wrong answer costs more than a missing one. `screen` reads through on every access rather than caching, so a fold, rotation or Stage Manager resize is reflected instead of silently reporting the old geometry.',
+      example: `const device = useDeviceInfo()
+<Show when={() => device.platform() !== 'web'}>
+  <Text>{device.model()} · {device.osVersion()}</Text>
+</Show>`,
+      mistakes: [
+        'Expecting `model` / `osVersion` on the web — they are empty by design; branch on `platform()` first, or treat empty as unknown.',
+        'Parsing the User-Agent yourself to fill the gap — that is the failure mode this hook refuses to ship; it produces answers that look right and rot silently.',
+        'Caching `screen()` in a const at setup — it is a live read; a fold or rotation changes it.',
+        'Every member is an accessor — call them.',
+      ],
+      seeAlso: ['useSizeClass', 'useBreakpoint', 'useWakeLock'],
     },
     {
       name: 'useWakeLock',

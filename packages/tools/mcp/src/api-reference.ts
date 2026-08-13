@@ -4215,6 +4215,19 @@ effect(() => { if (idle()) showAwayBanner() })`,
 - Returns an accessor — call \`online()\`.`,
   },
 
+  'hooks/useDeviceInfo': {
+    signature: `useDeviceInfo() => { platform: () => 'web' | 'ios' | 'android'; model: () => string; osVersion: () => string; isTouch: () => boolean; screen: () => { width: number; height: number; scale: number } }`,
+    example: `const device = useDeviceInfo()
+<Show when={() => device.platform() !== 'web'}>
+  <Text>{device.model()} · {device.osVersion()}</Text>
+</Show>`,
+    notes: 'Describe the device — platform branching, real screen geometry, device context for analytics. `platform` needs no runtime on native: it is a COMPILE-TIME constant per target. `model` and `osVersion` are real on iOS/Android and deliberately EMPTY STRINGS on the web, because the browser cannot answer them reliably (navigator.platform is deprecated, UA Client Hints are Chromium-only, and UA parsing rots as browsers change their strings) — and these are the fields that end up in analytics and support tickets, where a plausible wrong answer costs more than a missing one. `screen` reads through on every access rather than caching, so a fold, rotation or Stage Manager resize is reflected instead of silently reporting the old geometry. See also: useSizeClass, useBreakpoint, useWakeLock.',
+    mistakes: `- Expecting \`model\` / \`osVersion\` on the web — they are empty by design; branch on \`platform()\` first, or treat empty as unknown.
+- Parsing the User-Agent yourself to fill the gap — that is the failure mode this hook refuses to ship; it produces answers that look right and rot silently.
+- Caching \`screen()\` in a const at setup — it is a live read; a fold or rotation changes it.
+- Every member is an accessor — call them.`,
+  },
+
   'hooks/useWakeLock': {
     signature: 'useWakeLock() => { active: () => boolean; supported: () => boolean; request: () => Promise<boolean>; release: () => Promise<void> }',
     example: `const wake = useWakeLock()

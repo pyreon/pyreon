@@ -1,17 +1,17 @@
 ---
 title: "Signal-Based Hooks — API Reference"
-description: "58 signal-based hooks: state (useToggle/useCounter/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocus"
+description: "59 signal-based hooks: state (useToggle/useCounter/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocus"
 ---
 
 # @pyreon/hooks — API Reference
 
 > **Generated** from `hooks`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [hooks](/docs/hooks).
 
-Signal-based hooks for Pyreon — 58 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.
+Signal-based hooks for Pyreon — 59 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.
 
 ## Features
 
-- 58 signal-based hooks across 7 categories
+- 59 signal-based hooks across 7 categories
 - State: useToggle, useCounter, usePrevious, useLatest, useControllableState
 - DOM: useEventListener, useClickOutside, useFocus, useHover, useFocusTrap, useFocusReturn, useInertOthers, useElementSize, useWindowResize, useWindowScroll, useScrollLock, useIntersection, useInfiniteScroll
 - Responsive: useBreakpoint, useMediaQuery, useColorScheme, useSizeClass, useReducedMotion
@@ -139,6 +139,7 @@ const idle = useIdle(30_000)               // Signal<boolean> — true after 30s
 | [`useSizeClass`](#usesizeclass) | hook | Reactive size-class accessor — `computed` over `(min-width: 600px)` (wraps `useMediaQuery`), mapping wide → `'regular'`, |
 | [`useReducedMotion`](#usereducedmotion) | hook | Reactive accessor for `(prefers-reduced-motion: reduce)` (a thin `useMediaQuery` wrapper). |
 | [`useOnline`](#useonline) | hook | Reactive network status accessor — seeded from `navigator.onLine` (or `true` on the server), updated by `online`/`offlin |
+| [`useDeviceInfo`](#usedeviceinfo) | hook | Describe the device — platform branching, real screen geometry, device context for analytics. |
 | [`useWakeLock`](#usewakelock) | hook | Keep the screen awake — video, navigation, recipe steps. |
 | [`useBluetooth`](#usebluetooth) | hook | Bluetooth DISCOVERY only, on all three targets — Web Bluetooth, CoreBluetooth, and the Android adapter. |
 | [`useIntersection`](#useintersection) | hook | IntersectionObserver as a signal. |
@@ -886,6 +887,34 @@ const online = useOnline()
 - Returns an accessor — call `online()`.
 
 **See also:** `useDocumentVisibility` · `useIdle`
+
+---
+
+### useDeviceInfo `hook`
+
+```ts
+useDeviceInfo() => { platform: () => 'web' | 'ios' | 'android'; model: () => string; osVersion: () => string; isTouch: () => boolean; screen: () => { width: number; height: number; scale: number } }
+```
+
+Describe the device — platform branching, real screen geometry, device context for analytics. `platform` needs no runtime on native: it is a COMPILE-TIME constant per target. `model` and `osVersion` are real on iOS/Android and deliberately EMPTY STRINGS on the web, because the browser cannot answer them reliably (navigator.platform is deprecated, UA Client Hints are Chromium-only, and UA parsing rots as browsers change their strings) — and these are the fields that end up in analytics and support tickets, where a plausible wrong answer costs more than a missing one. `screen` reads through on every access rather than caching, so a fold, rotation or Stage Manager resize is reflected instead of silently reporting the old geometry.
+
+**Example**
+
+```tsx
+const device = useDeviceInfo()
+<Show when={() => device.platform() !== 'web'}>
+  <Text>{device.model()} · {device.osVersion()}</Text>
+</Show>
+```
+
+**Common mistakes**
+
+- Expecting `model` / `osVersion` on the web — they are empty by design; branch on `platform()` first, or treat empty as unknown.
+- Parsing the User-Agent yourself to fill the gap — that is the failure mode this hook refuses to ship; it produces answers that look right and rot silently.
+- Caching `screen()` in a const at setup — it is a live read; a fold or rotation changes it.
+- Every member is an accessor — call them.
+
+**See also:** `useSizeClass` · `useBreakpoint` · `useWakeLock`
 
 ---
 

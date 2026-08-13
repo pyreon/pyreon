@@ -776,6 +776,7 @@ export function emitSwift(
     for (const d of c.decls ?? []) {
       if (d.kind === 'bluetooth') _bluetoothSwift.add(d.name)
       if (d.kind === 'wake-lock') _wakeLockSwift.add(d.name)
+      if (d.kind === 'device-info') _deviceInfoSwift.add(d.name)
       if (d.kind === 'clipboard') _clipboardSwift.add(d.name)
       if (d.kind === 'pure-state') {
         _pureStateSwift.set(d.name, d.bounds ? { hook: d.hook, bounds: d.bounds } : { hook: d.hook })
@@ -898,6 +899,8 @@ let _pureStateSwift: Map<string, { hook: 'useToggle' | 'useCounter'; bounds?: { 
 let _bluetoothSwift: Set<string> = new Set()
 /** `useWakeLock()` bindings — its reactive reads drop their parens. */
 let _wakeLockSwift: Set<string> = new Set()
+/** `useDeviceInfo()` bindings — its reads are properties, so parens drop. */
+let _deviceInfoSwift: Set<string> = new Set()
 /** Initial values, so `reset()` restores exactly what the web's does. */
 let _pureStateInitialSwift: Map<string, number | boolean> = new Map()
 /**
@@ -2741,6 +2744,11 @@ function emitSwiftDecl(
   if (d.kind === 'wake-lock') {
     return `@State private var ${swiftIdent(d.name)} = PyreonWakeLock(controller: UIKitIdleTimer())`
   }
+  // `useDeviceInfo()` -> the device description. The probe is injected so the
+  // shape stays testable without UIKit; the app supplies the real one.
+  if (d.kind === 'device-info') {
+    return `@State private var ${swiftIdent(d.name)} = PyreonDeviceInfo(probe: UIKitDeviceProbe())`
+  }
   if (d.kind === 'pure-state') {
     const t = d.hook === 'useToggle' ? 'Bool' : 'Int'
     return `@State private var ${swiftIdent(d.name)}: ${t} = ${String(d.initial)}`
@@ -3866,6 +3874,17 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         _wakeLockSwift.has(e.callee.object.name) &&
         e.args.length === 0 &&
         ['active', 'supported'].includes(e.callee.property)
+      ) {
+        return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
+      }
+      // useDeviceInfo's reads — properties on Swift, so the web-correct
+      // accessor spelling drops its parens.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _deviceInfoSwift.has(e.callee.object.name) &&
+        e.args.length === 0 &&
+        ['platform', 'model', 'osVersion', 'isTouch', 'screen'].includes(e.callee.property)
       ) {
         return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
       }

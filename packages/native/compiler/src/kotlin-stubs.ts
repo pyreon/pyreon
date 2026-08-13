@@ -1328,6 +1328,28 @@ class AndroidScreenKeeper(ctx: Any?) : ScreenKeeper {
   override val isSupported: Boolean = false
   override fun setKeepScreenOn(on: Boolean) {}
 }
+// PyreonDeviceInfo + the app-supplied probe the emit names.
+data class PyreonDeviceScreen(val width: Double, val height: Double, val scale: Double)
+interface DeviceProbe {
+  val model: String
+  val osVersion: String
+  val isTouch: Boolean
+  val screen: PyreonDeviceScreen
+}
+class AndroidDeviceProbe(ctx: Any?) : DeviceProbe {
+  override val model: String = ""
+  override val osVersion: String = ""
+  override val isTouch: Boolean = false
+  override val screen: PyreonDeviceScreen = PyreonDeviceScreen(0.0, 0.0, 1.0)
+}
+class PyreonDeviceInfo(probe: DeviceProbe) {
+  val platform: String get() = "android"
+  val model: String get() = ""
+  val osVersion: String get() = ""
+  val isTouch: Boolean get() = false
+  val screen: PyreonDeviceScreen get() = PyreonDeviceScreen(0.0, 0.0, 1.0)
+}
+
 class PyreonWakeLock(keeper: ScreenKeeper) {
   val active: MutableState<Boolean> = mutableStateOf(false)
   val supported: Boolean = false

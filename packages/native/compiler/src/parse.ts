@@ -1075,7 +1075,7 @@ export const NATIVE_LOWERED_HOOKS: ReadonlySet<string> = new Set([
   'useParams', 'usePayments', 'usePermissions', 'usePush', 'useQuery',
   // Pure state — no platform dependency, so no runtime; see the
   // `pure-state` DeclIR.
-  'useToggle', 'useCounter', 'useBluetooth', 'useWakeLock',
+  'useToggle', 'useCounter', 'useBluetooth', 'useWakeLock', 'useDeviceInfo',
   'useUrlState',
   'useSecureStorage',
   'useShare', 'useSizeClass', 'useStorage', 'useWebSocket',
@@ -5624,6 +5624,13 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // and `request()`/`release()` pass through as member calls.
   if (calleeName === 'useWakeLock') {
     return { kind: 'wake-lock', name }
+  }
+  // `useDeviceInfo()` from @pyreon/hooks -> PyreonDeviceInfo. `platform` is a
+  // COMPILE-TIME constant per target; `model` / `osVersion` are real here and
+  // deliberately empty on the web (no reliable browser API — a guess would be
+  // a plausible lie in analytics, which is where these fields get used).
+  if (calleeName === 'useDeviceInfo') {
+    return { kind: 'device-info', name }
   }
   // `useDebouncedCallback(fn, ms)` / `useThrottledCallback(fn, ms)` — see
   // the DeclIR comment for why these need a runtime.

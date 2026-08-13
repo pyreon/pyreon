@@ -141,6 +141,9 @@
         "PyreonWakeLock": [
           "PyreonWakeLock.kt"
         ],
+        "PyreonDeviceInfo": [
+          "PyreonDeviceInfo.kt"
+        ],
         "PyreonVideoPlayerAndroid": [
           "PyreonVideoPlayerAndroid.kt"
         ],
