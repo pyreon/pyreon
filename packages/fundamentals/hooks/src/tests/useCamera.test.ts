@@ -49,7 +49,7 @@ describe('useCamera', () => {
     vi.restoreAllMocks()
   })
 
-  it('never throws — cancel and unavailable are the same outcome to a caller', async () => {
+  it('RESOLVES rather than rejecting — a caller branches, never catches', async () => {
     const created: HTMLInputElement[] = []
     const realCreate = document.createElement.bind(document)
     vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
@@ -59,7 +59,17 @@ describe('useCamera', () => {
     })
     const pending = useCamera().capture()
     created[0]!.dispatchEvent(new Event('cancel'))
-    await expect(pending).resolves.not.toThrow
+
+    // Assert the SETTLE MODE explicitly: the contract is that this promise
+    // resolves, so a caller writes `if (uri !== null)` rather than a
+    // try/catch. `.rejects` would mean the contract had inverted.
+    let rejected = false
+    const uri = await pending.catch(() => {
+      rejected = true
+      return undefined
+    })
+    expect(rejected).toBe(false)
+    expect(uri).toBeNull()
     vi.restoreAllMocks()
   })
 })
