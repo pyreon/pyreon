@@ -89,6 +89,16 @@ const USAGES: ReadonlyArray<readonly [string, string, string]> = [
   ],
   ['usePush', '@pyreon/hooks', 'const p = usePush()'],
   [
+    'useDebouncedCallback',
+    '@pyreon/hooks',
+    'const dc = useDebouncedCallback((n: number) => { const x = n }, 300)',
+  ],
+  [
+    'useThrottledCallback',
+    '@pyreon/hooks',
+    'const tc = useThrottledCallback((n: number) => { const x = n }, 100)',
+  ],
+  [
     'useQuery',
     '@pyreon/query',
     'const q = useQuery<Resp>(() => ({ queryKey: ["k"], queryFn: () => fetch("/x"), staleTime: 0 }))',
