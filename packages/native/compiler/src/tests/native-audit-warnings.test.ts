@@ -1028,13 +1028,22 @@ describe('unlowered warnings carry the package-specific advice', () => {
     transform(`${src}\nexport function App() { return null }`, { target: 'swift' }).warnings
 
   it('names the real native pattern for @pyreon/table, not the DOM line', () => {
+    // `useTable` (TanStack) is the WEB render surface and still warns; the
+    // advice now also states that `createTableState` LOWERS to the native
+    // PyreonTableState engine (see native-table-state.test.ts).
     const warnings = warnFor(`import { useTable } from '@pyreon/table'`)
     // One warning, not two: the blanket line defers to the specific entry.
     expect(warnings).toHaveLength(1)
-    expect(warnings[0]).toContain('<For each={rows}>')
-    expect(warnings[0]).toContain('@pyreon/primitives')
+    expect(warnings[0]).toContain('createTableState')
+    expect(warnings[0]).toContain('<For')
+    expect(warnings[0]).toContain('primitives')
     // The false claim must be gone.
     expect(warnings[0]).not.toContain('renders via the DOM')
+  })
+
+  it('does NOT warn for the lowered createTableState', () => {
+    const warnings = warnFor(`import { createTableState } from '@pyreon/table'`)
+    expect(warnings).toHaveLength(0)
   })
 
   it('still falls back to the generic tail for a package with no entry', () => {
