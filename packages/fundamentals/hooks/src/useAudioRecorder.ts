@@ -79,7 +79,15 @@ export function useAudioRecorder(): AudioRecorderControls {
     error,
 
     start: async (): Promise<boolean> => {
-      if (!supported()) {
+      // Guard INLINE rather than through `supported()`. The SSR lint rule
+      // cannot trace a cross-function guard, and an explicit early return
+      // documents the contract at the site that touches the global. Same
+      // condition `supported()` evaluates, so behaviour is unchanged.
+      if (
+        typeof navigator === 'undefined' ||
+        navigator.mediaDevices?.getUserMedia === undefined ||
+        typeof MediaRecorder === 'undefined'
+      ) {
         error.set('Audio recording is not available on this platform')
         return false
       }
