@@ -210,7 +210,7 @@ export function S() {
     expect(swift(DYNAMIC).warnings.some((m) => m.includes('needs a LITERAL baseUrl'))).toBe(true)
   })
 
-  it('warns on the `.query()` fetcher form — not lowered in v1 (useQuery path scoped out)', () => {
+  it('lowers the `.query()` fetcher form to PyreonQuery (resolved url + method:url queryKey)', () => {
     const QUERY = `
 import { createHttp } from '@pyreon/http'
 import { useQuery } from '@pyreon/query'
@@ -223,10 +223,18 @@ export function S() {
   return <Stack><Text>{q.data()?.id ?? ''}</Text></Stack>
 }
 `
-    expect(
-      swift(QUERY).warnings.some(
-        (m) => m.includes('`.query()` fetcher form') && m.includes('stays web'),
-      ),
-    ).toBe(true)
+    const s = swift(QUERY)
+    const k = kotlin(QUERY)
+    // Resolves to the SAME PyreonQuery path a literal-key useQuery takes, no
+    // emit change — the endpoint just supplies the url + a `method:url` key.
+    expect(s.code).toContain('PyreonQuery<User>(queryKey: "GET:/api/users/1"')
+    expect(s.code).toContain('/api/users/1')
+    expect(k.code).toContain('PyreonQuery<User>')
+    expect(k.code).toContain('"GET:/api/users/1"')
+    expect(k.code).toContain('/api/users/1')
+    // No longer stays web.
+    expect(s.warnings.some((m) => m.includes('`.query()` fetcher form'))).toBe(false)
+    expect(validateSwiftWithStubs(s.code).ok, validateSwiftWithStubs(s.code).error).toBe(true)
+    expect(validateKotlin(k.code).ok, validateKotlin(k.code).error).toBe(true)
   })
 })

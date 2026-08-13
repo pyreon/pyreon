@@ -1228,7 +1228,26 @@ function resolveEndpointUrl(
   ctx: ParseCtx,
 ): { url: string; method: string } | null {
   if (callNode.callee?.type !== 'Identifier') return null
-  const endpointName = callNode.callee.name as string
+  return resolveEndpointParts(
+    callNode.callee.name as string,
+    callNode.arguments?.[0] as AnyNode | undefined,
+    ctx,
+  )
+}
+
+/**
+ * The endpoint-resolution core, shared by the direct call form
+ * (`getUser({ params })` → useFetch) and the `.query()` fetcher form
+ * (`getUser.query({ params })` → useQuery). Given the endpoint NAME and the
+ * args object node, substitutes literal `:params` into the templated URL and
+ * returns `{ url, method }`, or null (having pushed a specific warning) when
+ * the baseUrl is non-literal or a param is missing/reactive.
+ */
+function resolveEndpointParts(
+  endpointName: string,
+  arg: AnyNode | undefined,
+  ctx: ParseCtx,
+): { url: string; method: string } | null {
   const def = ctx.endpointDefs.get(endpointName)
   if (!def) return null
   const baseUrl = ctx.httpClientBaseUrls.get(def.clientName)
@@ -1238,7 +1257,6 @@ function resolveEndpointUrl(
     )
     return null
   }
-  const arg = callNode.arguments?.[0] as AnyNode | undefined
   const params = readLiteralEntries(readObjectProp(arg, 'params'))
   let path = def.pathTemplate
   for (const p of def.paramNames) {
@@ -1604,7 +1622,7 @@ const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
       // import, `.query()` fetcher form, reactive params) still fails native.
       supported: new Set(['createHttp']),
       advice:
-        'a same-file `const api = createHttp({ baseUrl })` + `const e = api.endpoint(\'GET /users/:id\')` DOES lower — `useFetch<T>(e({ params: { id: \'1\' } }))` resolves to a native fetch of the templated URL via PyreonFetch. What stays web: reactive params, a computed baseUrl, and the `.query()` fetcher form',
+        'a same-file `const api = createHttp({ baseUrl })` + `const e = api.endpoint(\'GET /users/:id\')` DOES lower — `useFetch<T>(e({ params: { id: \'1\' } }))` resolves to a native fetch of the templated URL via PyreonFetch, and `useQuery<T>(() => e.query({ params: { id: \'1\' } }))` lowers to PyreonQuery. What stays web: reactive params and a computed baseUrl',
     },
   ],
 ])
@@ -5633,10 +5651,30 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     // literal" below.
     const endpointQuery = endpointQueryCallInArrow(optsFn, ctx)
     if (endpointQuery) {
-      ctx.warnings.push(
-        `Declaration ${name}: the endpoint \`.query()\` fetcher form (\`useQuery(() => ${endpointQuery}.query({ … }))\`) is not lowered to native in v1 — it stays web. Use \`useFetch<T>(${endpointQuery}({ params: { … } }))\` for a native fetch, or the inline \`useQuery(() => ({ queryKey: [...], queryFn: () => fetch('<url>') }))\` form.`,
+      // The @pyreon/http endpoint `.query()` fetcher form —
+      // `useQuery<T>(() => getUser.query({ params: { … } }))` — resolves the
+      // endpoint to a concrete URL + method (same compile-time templating as
+      // `useFetch(getUser({ params }))`) and lowers to the SAME `kind: 'query'`
+      // PyreonQuery path, no emit change. The queryKey is `method:url` so the
+      // native cache keys distinctly per endpoint call. Reactive params / a
+      // computed baseUrl still stay web (resolveEndpointParts warns + bails).
+      const resolved = resolveEndpointParts(
+        endpointQuery.name,
+        endpointQuery.call.arguments?.[0] as AnyNode | undefined,
+        ctx,
       )
-      return null
+      if (!resolved) return null
+      const eqReq: { method?: string } = {}
+      if (resolved.method && resolved.method !== 'GET') eqReq.method = resolved.method
+      return {
+        kind: 'query',
+        name,
+        type,
+        url: resolved.url,
+        queryKey: `${resolved.method}:${resolved.url}`,
+        staleMillis: 0,
+        ...eqReq,
+      }
     }
     const optsObj = arrowReturnedObject(optsFn)
     if (!optsObj) {
@@ -6231,7 +6269,10 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
  * arrow shapes. Used to give the useQuery `.query()` fetcher form a specific
  * "stays web" diagnostic rather than the generic object-literal one.
  */
-function endpointQueryCallInArrow(arrow: AnyNode, ctx: ParseCtx): string | undefined {
+function endpointQueryCallInArrow(
+  arrow: AnyNode,
+  ctx: ParseCtx,
+): { name: string; call: AnyNode } | undefined {
   const body = arrow?.body as AnyNode | undefined
   let expr: AnyNode | undefined
   if (body?.type === 'CallExpression') expr = body
@@ -6255,7 +6296,7 @@ function endpointQueryCallInArrow(arrow: AnyNode, ctx: ParseCtx): string | undef
     callee.property?.type === 'Identifier' &&
     callee.property.name === 'query'
   ) {
-    return callee.object.name as string
+    return { name: callee.object.name as string, call: expr }
   }
   return undefined
 }
