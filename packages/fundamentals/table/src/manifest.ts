@@ -159,6 +159,23 @@ flexRenderCell(table, row.id, columnId)`,
       ],
       seeAlso: ['useTable', 'flexRender'],
     },
+    {
+      name: 'createTableState',
+      kind: 'function',
+      signature:
+        '<T>(options: { data: () => readonly T[]; columns?: TableColumn<T>[]; pageSize?: number; rowId?: (row: T, i: number) => string; filterFn?: (row: T, q: string, cols: TableColumn<T>[]) => boolean }) => TableState<T>',
+      summary:
+        'The dependency-free, MULTIPLATFORM-portable table-state core — the alternative to `useTable` (which binds `@tanstack/table-core` and is web-only-rich). Pure signal logic (no DOM, no TanStack), so the SAME source drives sort / filter / paginate / row-selection on web AND, via native Swift/Kotlin ports, on iOS/Android — you render `rows()` with native `<For>` (tables ARE native: SwiftUI List / Compose LazyColumn), no WebView. `data` is an ACCESSOR so a `signal()`/`computed()` source stays reactive; `rows()` re-derives filtered → sorted → paginated. `toggleSort` cycles none → asc → desc → none; the filter is case-insensitive across every column (override with `filterFn`); `pageSize: 0` disables pagination. A `createTableState`-only import tree-shakes TanStack out entirely.',
+      example: `const data = signal([{ id: 1, name: 'Ada' }, { id: 2, name: 'Linus' }])
+const table = createTableState({ data: () => data(), columns: [{ id: 'name' }], pageSize: 10, rowId: (r) => String(r.id) })
+table.toggleSort('name'); table.setFilter('li')
+// <For each={table.rows()} by={(r) => r.id}>{(r) => <Text>{r.name}</Text>}</For>`,
+      mistakes: [
+        'Passing `data` as a plain array instead of an accessor `() => data()` — the table then never re-derives when the source signal changes.',
+        'Reaching for it when you need grouping / faceting / column pinning / virtual sizing — those stay on the full `useTable` (TanStack) web path; this is the common 80% (sort/filter/paginate/select).',
+      ],
+      seeAlso: ['useTable'],
+    },
   ],
   gotchas: [
     'Options must be a FUNCTION `() => TableOptions<T>`, not a plain object. Signal reads inside the function are tracked reactively — changing any tracked signal re-syncs the table automatically.',
