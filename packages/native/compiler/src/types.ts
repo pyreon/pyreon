@@ -343,6 +343,25 @@ export type DeclIR =
    */
   | { kind: 'permissions'; name: string; grants: string[] }
   /**
+   * `useToggle(initial)` / `useCounter(initial, { min, max })` from
+   * `@pyreon/hooks` — pure state containers with no platform dependency at
+   * all (a signal plus a few mutators). They needed no runtime; what they
+   * needed was a lowering, and without one the call emitted verbatim.
+   *
+   * `bounds` carries `useCounter`'s literal clamp, baked into every mutator
+   * at the use site so the native arithmetic clamps exactly as the web's
+   * does.
+   */
+  | {
+      kind: 'pure-state'
+      name: string
+      hook: 'useToggle' | 'useCounter'
+      /** The state field's initial value. */
+      initial: boolean | number
+      /** useCounter's literal min/max, when given. */
+      bounds?: { min?: number; max?: number }
+    }
+  /**
    * Phase 4 — clipboard service via `const clipboard = useClipboard()`
    * from `@pyreon/hooks`. Emits the PyreonClipboard reactive wrapper
    * the runtime ports ship:
@@ -363,6 +382,8 @@ export type DeclIR =
    * `params-destructure` uses.
    */
   | { kind: 'clipboard'; name: string }
+  /** `useBluetooth()` — discovery-only BLE (PyreonBluetooth). */
+  | { kind: 'bluetooth'; name: string }
   /**
    * M3.1 — haptic feedback via `const h = useHaptics()` from
    * `@pyreon/hooks`. Emits the PyreonHaptics fire-and-forget wrapper:

@@ -1230,6 +1230,25 @@ class PyreonMachine(initial: String, val transitions: Map<String, Map<String, St
 // a different TYPE on the property. It therefore rejected the emit's correct
 // \`PyreonPermissions()\`. A stub stricter than reality fails correct code,
 // the inverse of the usual superset-masks problem.
+data class PyreonBluetoothDevice(val id: String, val name: String)
+interface BluetoothScanner {
+  val isAvailable: Boolean
+  fun startScan(onDevice: (PyreonBluetoothDevice) -> Unit, onError: (String) -> Unit)
+  fun stopScan()
+}
+class AndroidBluetoothScanner(ctx: Any?) : BluetoothScanner {
+  override val isAvailable: Boolean = false
+  override fun startScan(onDevice: (PyreonBluetoothDevice) -> Unit, onError: (String) -> Unit) {}
+  override fun stopScan() {}
+}
+class PyreonBluetooth(scanner: BluetoothScanner) {
+  val scanning: MutableState<Boolean> = mutableStateOf(false)
+  val devices: MutableState<List<PyreonBluetoothDevice>> = mutableStateOf(listOf())
+  val error: MutableState<String> = mutableStateOf("")
+  val available: Boolean = false
+  fun scan() {}
+  fun stopScan() {}
+}
 // Mirrors PyreonPermissions.kt's CompositionLocal. A bare \`usePermissions()\`
 // reads the provider through this; a stub without it rejects a correct emit.
 class ProvidableCompositionLocal<T>(val default: T) { val current: T get() = default }

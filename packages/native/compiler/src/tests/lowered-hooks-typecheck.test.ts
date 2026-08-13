@@ -70,6 +70,23 @@ const USAGES: ReadonlyArray<readonly [string, string, string]> = [
   // The seeded form is the one that produces a working container, which is
   // what the stub-fidelity check here is actually for.
   ['usePermissions', '@pyreon/hooks', "const p = usePermissions(['posts.*'])"],
+  // Process-scoped storage — plain state, no persistence.
+  ['useSessionStorage', '@pyreon/storage', "const s = useSessionStorage<string>('k', 'd')"],
+  ['useMemoryStorage', '@pyreon/storage', "const m = useMemoryStorage<string>('k', 'd')"],
+  [
+    'useBluetooth',
+    '@pyreon/hooks',
+    'const bt = useBluetooth(); const go = () => { bt.scan() }; const n = bt.scanning()',
+  ],
+  // Pure state — no runtime, so what this gate proves for them is that the
+  // use-site rewrite (reads drop parens, mutators become arithmetic) still
+  // type-checks against the stubs.
+  ['useToggle', '@pyreon/hooks', 'const t = useToggle(false); const f = () => { t.toggle() }'],
+  [
+    'useCounter',
+    '@pyreon/hooks',
+    'const c = useCounter(1, { min: 0, max: 10 }); const f = () => { c.inc(2) }',
+  ],
   ['usePush', '@pyreon/hooks', 'const p = usePush()'],
   [
     'useQuery',

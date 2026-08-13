@@ -1075,9 +1075,13 @@ export const NATIVE_LOWERED_HOOKS: ReadonlySet<string> = new Set([
   'useHaptics', 'useImagePicker', 'useLinking', 'useLoaderData', 'useMap',
   'useNativeModule', 'useNavigate', 'useNotifications', 'useOnline',
   'useParams', 'usePayments', 'usePermissions', 'usePush', 'useQuery',
+  // Pure state — no platform dependency, so no runtime; see the
+  // `pure-state` DeclIR.
+  'useToggle', 'useCounter', 'useBluetooth',
   'useUrlState',
   'useSecureStorage',
   'useShare', 'useSizeClass', 'useStorage', 'useWebSocket',
+  'useSessionStorage', 'useMemoryStorage',
 ])
 
 /**
@@ -1332,10 +1336,21 @@ const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
   [
     '@pyreon/storage',
     {
-      // `useStorage(key, initial)` DOES lower (@AppStorage / rememberPyreonStorage)
-      // and is skipped automatically by the non-hook filter; the factory does not.
+      // Three of the five backends lower. The two that do not are the two
+      // with no native analogue AT ALL, and saying which is which is the
+      // point — the generic line left an author guessing whether their
+      // backend was merely unimplemented or genuinely impossible.
+      //
+      //   useStorage        → @AppStorage / rememberPyreonStorage (persistent)
+      //   useSessionStorage → plain state (the process IS the session)
+      //   useMemoryStorage  → plain state (definitionally process-scoped)
+      //   useCookie         → no analogue: cookies are an HTTP/browser
+      //                       concept; a native app has no cookie jar its
+      //                       own UI reads from
+      //   useIndexedDB      → no analogue: use `useDatabase()`, which lowers
+      //                       to SQLite on both targets
       advice:
-        '`useStorage(key, initial)` DOES lower on both targets — use the hook rather than the factory',
+        '`useStorage(key, initial)` DOES lower on both targets (as do `useSessionStorage` and `useMemoryStorage`) — use a hook rather than the factory. `useCookie` and `useIndexedDB` have no native analogue at all: a native app has no cookie jar, and for structured local data `useDatabase()` lowers to SQLite on both targets',
     },
   ],
   [
@@ -4975,6 +4990,28 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     const type = hasGeneric ? generic : inferTypeFromInitial(initial)
     return { kind: 'signal', name, type, initial }
   }
+  // `useSessionStorage` / `useMemoryStorage` — process-scoped storage, so
+  // the honest native mapping is a plain state field with NO persistence.
+  //
+  // On the web, sessionStorage survives a reload and dies with the tab.
+  // Native has neither a tab nor a reload: the process IS the session, so
+  // in-memory state is the exact analogue rather than an approximation of
+  // one. `useMemoryStorage` is definitionally that on every platform.
+  //
+  // Emitting them as a `signal` decl WITHOUT a storageKey is what makes
+  // this correct: the same IR `useStorage` produces, minus the @AppStorage /
+  // rememberSaveable persistence that would wrongly outlive the process.
+  if (calleeName === 'useSessionStorage' || calleeName === 'useMemoryStorage') {
+    const initialArg = init.arguments?.[1]
+    const initial: ExprIR = initialArg
+      ? parseExpr(initialArg, ctx)
+      : { kind: 'literal', value: 0 }
+    const generic = parseGenericTypeArg(init, ctx)
+    const hasGeneric = ((init.typeArguments?.params as AnyNode[] | undefined)?.length ?? 0) > 0
+    const type = hasGeneric ? generic : inferTypeFromInitial(initial)
+    return { kind: 'signal', name, type, initial }
+  }
+
   // G5 — `useStorage<T>('key', default)` from `@pyreon/storage` is a
   // PERSISTENT signal. Same shape as `signal()` plus a storage-key
   // string. The emitter routes storage signals to platform-idiomatic
@@ -5425,6 +5462,72 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // `const { copy, copied } = useClipboard()` is a documented
   // follow-up — needs the per-key rewrite that `params-destructure`
   // uses).
+  // `useToggle(initial)` / `useCounter(initial, { min, max })` — pure state
+  // containers with NO platform dependency: a signal plus a few mutators.
+  // They needed no runtime, only a lowering, and without one the call
+  // emitted verbatim and failed the native build.
+  if (calleeName === 'useToggle' || calleeName === 'useCounter') {
+    const firstArg = init.arguments?.[0] as AnyNode | undefined
+    const initialNode = firstArg ? unwrapTypeLayers(firstArg) : undefined
+    if (calleeName === 'useToggle') {
+      // Default `false`, per the web signature.
+      let initial = false
+      if (initialNode !== undefined) {
+        if (initialNode.type !== 'Literal' || typeof initialNode.value !== 'boolean') {
+          ctx.warnings.push(
+            `useToggle() \`${name}\`: the initial value must be a boolean literal to bake into the native state — this one is not, so the declaration is NOT lowered.`,
+          )
+          return null
+        }
+        initial = initialNode.value as boolean
+      }
+      return { kind: 'pure-state', name, hook: 'useToggle', initial }
+    }
+    let initial = 0
+    if (initialNode !== undefined) {
+      if (initialNode.type !== 'Literal' || typeof initialNode.value !== 'number') {
+        ctx.warnings.push(
+          `useCounter() \`${name}\`: the initial value must be a numeric literal to bake into the native state — this one is not, so the declaration is NOT lowered.`,
+        )
+        return null
+      }
+      initial = initialNode.value as number
+    }
+    // The clamp is baked into every mutator at the use site, so it has to be
+    // literal. A computed bound would silently stop clamping on device.
+    const bounds: { min?: number; max?: number } = {}
+    const optsNode = init.arguments?.[1] as AnyNode | undefined
+    const opts = optsNode ? unwrapTypeLayers(optsNode) : undefined
+    if (opts !== undefined) {
+      if (opts.type !== 'ObjectExpression') {
+        ctx.warnings.push(
+          `useCounter() \`${name}\`: the options argument must be a literal { min, max } object — this one is not, so the declaration is NOT lowered.`,
+        )
+        return null
+      }
+      for (const prop of (opts.properties as AnyNode[] | undefined) ?? []) {
+        if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
+        const key = prop.key?.type === 'Identifier' ? (prop.key.name as string) : undefined
+        const val = unwrapTypeLayers(prop.value as AnyNode | undefined)
+        if ((key !== 'min' && key !== 'max') || val?.type !== 'Literal' || typeof val.value !== 'number') {
+          ctx.warnings.push(
+            `useCounter() \`${name}\`: option \`${key ?? '?'}\` is not a numeric literal, so the clamp cannot be baked into the native mutators and the declaration is NOT lowered.`,
+          )
+          return null
+        }
+        bounds[key] = val.value as number
+      }
+    }
+    const decl: DeclIR = { kind: 'pure-state', name, hook: 'useCounter', initial }
+    if (bounds.min !== undefined || bounds.max !== undefined) decl.bounds = bounds
+    return decl
+  }
+  // `useBluetooth()` from @pyreon/hooks → PyreonBluetooth. Discovery only
+  // (scan / stopScan / devices / scanning / error / available); GATT stays
+  // platform-specific by design.
+  if (calleeName === 'useBluetooth') {
+    return { kind: 'bluetooth', name }
+  }
   if (calleeName === 'useClipboard') {
     return { kind: 'clipboard', name }
   }

@@ -49,6 +49,7 @@ import {
 } from './infer-type'
 import { safeIdent, swiftIdent } from './identifier-safety'
 import { resolveRocketstyleUseSite } from './rocketstyle-native'
+import { clampExpr } from './pure-state'
 import { permissionsProviderSeed } from './permissions-provider'
 import type { AttrsComponentIR } from './attrs-native'
 import { elementToStack } from './elements-native'
@@ -760,9 +761,18 @@ export function emitSwift(
   // Gap 4 v2 follow-up: track model instance names → modelId so use-site
   // member access (`<instance>.<field>`) emits as PyreonModel_<id>.shared.<field>.
   _modelInstances = new Map(models.map((m) => [m.instanceName, m.modelId]))
+  _pureStateSwift = new Map()
+  _bluetoothSwift = new Set()
   _clipboardSwift = new Set()
   for (const c of components) {
-    for (const d of c.decls ?? []) if (d.kind === 'clipboard') _clipboardSwift.add(d.name)
+    for (const d of c.decls ?? []) {
+      if (d.kind === 'bluetooth') _bluetoothSwift.add(d.name)
+      if (d.kind === 'clipboard') _clipboardSwift.add(d.name)
+      if (d.kind === 'pure-state') {
+        _pureStateSwift.set(d.name, d.bounds ? { hook: d.hook, bounds: d.bounds } : { hook: d.hook })
+        _pureStateInitialSwift.set(d.name, d.initial)
+      }
+    }
   }
   // State fields + views are READ (`counter.count()` on web, since a state
   // field is a signal); actions are CALLED. The two registries are what let
@@ -849,6 +859,7 @@ export function emitSwift(
   _structDefs = []
   _storeMethodNames = new Map()
   _modelInstances = new Map()
+  _pureStateSwift = new Map()
   _clipboardSwift = new Set()
   _modelReadNames = new Map()
   _modelMethodNames = new Map()
@@ -872,6 +883,12 @@ let _structDefs: StructIR[] = []
 
 /** Map of model instance name → modelId (e.g. `counter` → `"counter"`). */
 let _modelInstances: Map<string, string> = new Map()
+/** `useToggle`/`useCounter` bindings — their members rewrite at use sites. */
+let _pureStateSwift: Map<string, { hook: 'useToggle' | 'useCounter'; bounds?: { min?: number; max?: number } }> = new Map()
+/** `useBluetooth()` bindings — its reactive reads drop their parens. */
+let _bluetoothSwift: Set<string> = new Set()
+/** Initial values, so `reset()` restores exactly what the web's does. */
+let _pureStateInitialSwift: Map<string, number | boolean> = new Map()
 /** `useClipboard()` bindings — its reactive reads drop their parens. */
 let _clipboardSwift: Set<string> = new Set()
 /** Set while emitting a model view/action body — the factory's `self`
@@ -2482,6 +2499,19 @@ function emitSwiftDecl(
   // Phase 4: `const can = usePermissions([...])` → an @State PyreonPermissions
   // seeded with the literal grant keys. Reads are method calls
   // (`can.can("x")`), so no field-read rewrite — plain method emit on Swift.
+  // `useToggle` / `useCounter` — a plain @State field. The mutators are
+  // rewritten at their use sites (see the call case), so there is no runtime
+  // and no wrapper type.
+  // `useBluetooth()` → the discovery container. The scanner is injected so
+  // the runtime's logic stays testable without a radio; the app supplies the
+  // CoreBluetooth one.
+  if (d.kind === 'bluetooth') {
+    return `@State private var ${swiftIdent(d.name)} = PyreonBluetooth(scanner: CoreBluetoothScanner())`
+  }
+  if (d.kind === 'pure-state') {
+    const t = d.hook === 'useToggle' ? 'Bool' : 'Int'
+    return `@State private var ${swiftIdent(d.name)}: ${t} = ${String(d.initial)}`
+  }
   if (d.kind === 'permissions') {
     // A BARE `usePermissions()` is the web-correct call — the grants come
     // from `<PermissionsProvider>`. Read them from the environment rather
@@ -3552,6 +3582,48 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         if (_modelMethodNames.get(instance)?.has(e.callee.property) === true) {
           const args = e.args.map((a) => emitSwiftExpr(a, indent)).join(', ')
           return `PyreonModel_${modelId}.shared.${member}(${args})`
+        }
+      }
+      // useBluetooth's reactive reads. On the web they are accessors
+      // (`bt.scanning()`); on Swift the same members are stored properties,
+      // so the read drops its parens — otherwise the web-correct spelling
+      // calls a Bool. Same inversion `model()`'s state fields had.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _bluetoothSwift.has(e.callee.object.name) &&
+        e.args.length === 0 &&
+        ['scanning', 'devices', 'error', 'available'].includes(e.callee.property)
+      ) {
+        return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
+      }
+      // useToggle / useCounter member surface. The state field IS the
+      // value, so a read drops its parens; each mutator becomes the
+      // arithmetic it stands for, with useCounter's literal clamp baked in
+      // — a runtime would buy nothing here and a helper would hide the
+      // clamp from the emitted output.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _pureStateSwift.has(e.callee.object.name)
+      ) {
+        const binding = e.callee.object.name
+        const info = _pureStateSwift.get(binding)!
+        const field = swiftIdent(binding)
+        const m = e.callee.property
+        const arg = e.args.length > 0 ? emitSwiftExpr(e.args[0]!, indent) : undefined
+        const clamp = (x: string): string => clampExpr(x, info.bounds, 'min', 'max')
+        if (info.hook === 'useToggle') {
+          if (m === 'value') return field
+          if (m === 'toggle') return `${field}.toggle()`
+          if (m === 'setTrue') return `${field} = true`
+          if (m === 'setFalse') return `${field} = false`
+        } else {
+          if (m === 'count') return field
+          if (m === 'inc') return `${field} = ${clamp(`${field} + ${arg ?? '1'}`)}`
+          if (m === 'dec') return `${field} = ${clamp(`${field} - ${arg ?? '1'}`)}`
+          if (m === 'set') return `${field} = ${clamp(arg ?? '0')}`
+          if (m === 'reset') return `${field} = ${clamp(String(_pureStateInitialSwift.get(binding) ?? 0))}`
         }
       }
       // useClipboard's reactive reads. On the web `copied` and `text` are

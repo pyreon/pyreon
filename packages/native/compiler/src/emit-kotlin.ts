@@ -42,6 +42,7 @@ import {
   widenFloatLocals,
   widenFloatSignals,
 } from './infer-type'
+import { clampExpr } from './pure-state'
 import { permissionsProviderSeed } from './permissions-provider'
 import type { InferenceCtx } from './infer-type'
 import { kotlinIdent, safeIdent } from './identifier-safety'
@@ -435,9 +436,19 @@ export function emitKotlin(
   )
   // Gap 4 v2 follow-up: model instance → modelId for use-site rewriting.
   _modelInstancesKotlin = new Map(models.map((m) => [m.instanceName, m.modelId]))
+  _pureStateKotlin = new Map()
+  _bluetoothKotlin = new Set()
+  _pureStateInitialKotlin = new Map()
   _clipboardKotlin = new Set()
   for (const c of components) {
-    for (const d of c.decls ?? []) if (d.kind === 'clipboard') _clipboardKotlin.add(d.name)
+    for (const d of c.decls ?? []) {
+      if (d.kind === 'bluetooth') _bluetoothKotlin.add(d.name)
+      if (d.kind === 'clipboard') _clipboardKotlin.add(d.name)
+      if (d.kind === 'pure-state') {
+        _pureStateKotlin.set(d.name, d.bounds ? { hook: d.hook, bounds: d.bounds } : { hook: d.hook })
+        _pureStateInitialKotlin.set(d.name, d.initial)
+      }
+    }
   }
   // Mirror of the Swift registries: state fields + views are READ (a state
   // field is a signal on web, so the read is a call); actions are CALLED.
@@ -553,7 +564,13 @@ let _storeMethodNamesKotlin: Map<string, Set<string>> = new Map()
 
 /** Map of model instance name → modelId for Kotlin use-site rewriting. */
 let _modelInstancesKotlin: Map<string, string> = new Map()
-/** `useClipboard()` bindings — its reactive reads drop their parens. */
+/** `useToggle`/`useCounter` bindings — their members rewrite at use sites. */
+let _pureStateKotlin: Map<string, { hook: 'useToggle' | 'useCounter'; bounds?: { min?: number; max?: number } }> = new Map()
+/** `useBluetooth()` bindings — its reactive reads become `.value`. */
+let _bluetoothKotlin: Set<string> = new Set()
+/** Initial values, so `reset()` restores exactly what the web's does. */
+let _pureStateInitialKotlin: Map<string, number | boolean> = new Map()
+/** `useClipboard()` bindings — its reactive reads become `.value`. */
 let _clipboardKotlin: Set<string> = new Set()
 /** Mirror of the Swift flag — set while emitting a model view/action body. */
 let _activeModelSelfParamKotlin: string | undefined
@@ -1969,6 +1986,19 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // Phase 4: `const can = usePermissions([...])` → a remembered
   // PyreonPermissions seeded with the literal grant keys. Reads are method
   // calls (`can.can("x")`) — no `.value` field-read rewrite needed.
+  // Mirror of the Swift pure-state emit: a plain mutableStateOf field, with
+  // the mutators rewritten at their use sites.
+  // Mirror of the Swift bluetooth emit.
+  if (d.kind === 'bluetooth') {
+    const id = kotlinIdent(d.name)
+    return [
+      `val ${id}Ctx = LocalContext.current`,
+      `val ${id} = remember { PyreonBluetooth(AndroidBluetoothScanner(${id}Ctx)) }`,
+    ].join('\n  ')
+  }
+  if (d.kind === 'pure-state') {
+    return `var ${kotlinIdent(d.name)} by remember { mutableStateOf(${String(d.initial)}) }`
+  }
   if (d.kind === 'permissions') {
     // Mirror of Swift: a BARE `usePermissions()` reads the provider's
     // CompositionLocal rather than constructing an empty set that denies.
@@ -3029,6 +3059,47 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         if (_modelMethodNamesKotlin.get(instance)?.has(e.callee.property) === true) {
           const args = e.args.map((a) => emitKotlinExpr(a, indent)).join(', ')
           return `PyreonModel_${modelId}.${member}(${args})`
+        }
+      }
+      // useBluetooth's reactive reads — MutableState on Compose, so the
+      // web's accessor spelling becomes `.value`. `available` is a plain
+      // getter and takes neither parens nor `.value`.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _bluetoothKotlin.has(e.callee.object.name) &&
+        e.args.length === 0 &&
+        ['scanning', 'devices', 'error', 'available'].includes(e.callee.property)
+      ) {
+        const base = `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
+        return e.callee.property === 'available' ? base : `${base}.value`
+      }
+      // useToggle / useCounter member surface (mirror of Swift). The state
+      // field IS the value, so a read drops its parens; each mutator becomes
+      // the arithmetic it stands for, with useCounter's literal clamp baked
+      // in identically to the Swift side.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _pureStateKotlin.has(e.callee.object.name)
+      ) {
+        const binding = e.callee.object.name
+        const info = _pureStateKotlin.get(binding)!
+        const field = kotlinIdent(binding)
+        const m = e.callee.property
+        const arg = e.args.length > 0 ? emitKotlinExpr(e.args[0]!, indent) : undefined
+        const clamp = (x: string): string => clampExpr(x, info.bounds, 'minOf', 'maxOf')
+        if (info.hook === 'useToggle') {
+          if (m === 'value') return field
+          if (m === 'toggle') return `${field} = !${field}`
+          if (m === 'setTrue') return `${field} = true`
+          if (m === 'setFalse') return `${field} = false`
+        } else {
+          if (m === 'count') return field
+          if (m === 'inc') return `${field} = ${clamp(`${field} + ${arg ?? '1'}`)}`
+          if (m === 'dec') return `${field} = ${clamp(`${field} - ${arg ?? '1'}`)}`
+          if (m === 'set') return `${field} = ${clamp(arg ?? '0')}`
+          if (m === 'reset') return `${field} = ${clamp(String(_pureStateInitialKotlin.get(binding) ?? 0))}`
         }
       }
       // Mirror of the Swift clipboard rewrite. Kotlin's `copied` is a
