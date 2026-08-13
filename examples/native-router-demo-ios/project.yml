@@ -53,6 +53,7 @@ targets:
       - path: ../../packages/fundamentals/permissions/native/swift
       - path: ../../packages/fundamentals/query/native/swift
       - path: ../../packages/fundamentals/storage/native/swift
+      - path: ../../packages/fundamentals/hooks/native/swift
         type: group
         # `optional: true` — `generated/` may not exist before the first
         # build (it's gitignored). xcodegen tolerates the missing dir;

@@ -73,6 +73,7 @@ targets:
         type: group
       - path: generated
       - path: ../../packages/fundamentals/storage/native/swift
+      - path: ../../packages/fundamentals/hooks/native/swift
       - path: ../../packages/fundamentals/form/native/swift
       - path: ../../packages/fundamentals/store/native/swift
       - path: ../../packages/fundamentals/state-tree/native/swift

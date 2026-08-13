@@ -35,16 +35,15 @@
 // badly would be worse than the gap. What must not happen meanwhile is the
 // list growing silently, which is what this locks.
 
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { nativeRuntimeExists } from './native-runtime-locations'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const COMPILER_SRC = join(HERE, '..')
 const REPO = join(COMPILER_SRC, '../../../..')
-const SWIFT_RUNTIME = join(REPO, 'packages/native/runtime-swift/Sources/PyreonRuntime')
-const KOTLIN_RUNTIME = join(REPO, 'packages/native/runtime-kotlin/src/main/kotlin/com/pyreon/runtime')
 
 /**
  * Types the emitters construct that have NO stub on the named platform.
@@ -94,9 +93,11 @@ export function emittedRuntimeTypes(sources: readonly string[]): string[] {
  * itself drift.
  */
 export function isFrameworkType(name: string): boolean {
+  // Resolves across the monolith AND every co-located native/ dir — a runtime
+  // relocated out of the monolith (co-location) is still a framework type, so
+  // it must stay in this coverage set rather than silently dropping out.
   return (
-    existsSync(join(SWIFT_RUNTIME, `${name}.swift`)) ||
-    existsSync(join(KOTLIN_RUNTIME, `${name}.kt`))
+    nativeRuntimeExists(REPO, name, 'swift') || nativeRuntimeExists(REPO, name, 'kotlin')
   )
 }
 

@@ -58,7 +58,7 @@ public struct PyreonFilePicker {
             return nil
         }
         return await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
-            Task { @MainActor in
+            _Concurrency.Task { @MainActor in
                 // `.item` is the broadest UTType — any file. A typed filter is a
                 // follow-up (the emit passes no argument today).
                 let picker = UIDocumentPickerViewController(forOpeningContentTypes: [UTType.item])

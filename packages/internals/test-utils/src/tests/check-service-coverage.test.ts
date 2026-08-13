@@ -63,7 +63,12 @@ describe('coveredServices', () => {
   it('reports exactly what the runner will execute', () => {
     // The gate and the runner read the SAME derivation, so they cannot
     // disagree — which is the failure the old package.json grep allowed.
-    const files = ['PyreonFetch.kt', 'PyreonAssets.kt', 'PyreonWebView.kt']
+    // PyreonAssets is EXEMPT (needs stubs the harness lacks) → excluded;
+    // PyreonFetch is verifiable → covered. (PyreonWebView used to appear here
+    // as a device-only EXEMPT example, but it co-located out of the monolith
+    // into @pyreon/hooks/native and was removed from EXEMPT by the ratchet, so
+    // it is no longer a monolith service.)
+    const files = ['PyreonFetch.kt', 'PyreonAssets.kt']
     expect([...coveredServices(files)]).toEqual(['PyreonFetch'])
   })
 })
