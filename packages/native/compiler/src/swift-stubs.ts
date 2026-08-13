@@ -148,6 +148,41 @@ public final class PyreonDeviceInfo {
   public var osVersion: String { "" }
   public var isTouch: Bool { false }
   public var screen: PyreonDeviceScreen { PyreonDeviceScreen(width: 0, height: 0, scale: 1) }
+// PyreonSafeArea / PyreonScreenOrientation + the app-supplied probes the
+// emit names. Mirrors the runtimes exactly - a superset stub masks breakage,
+// a subset rejects correct code.
+public struct PyreonSafeAreaInsets {
+  public let top: Double
+  public let right: Double
+  public let bottom: Double
+  public let left: Double
+  public init(top: Double, right: Double, bottom: Double, left: Double) {
+    self.top = top; self.right = right; self.bottom = bottom; self.left = left
+  }
+  public static let zero = PyreonSafeAreaInsets(top: 0, right: 0, bottom: 0, left: 0)
+}
+public protocol SafeAreaProbe: AnyObject { var insets: PyreonSafeAreaInsets { get } }
+public final class UIKitSafeAreaProbe: SafeAreaProbe {
+  public init() {}
+  public var insets: PyreonSafeAreaInsets { .zero }
+}
+public final class PyreonSafeArea {
+  public init(probe: SafeAreaProbe) {}
+  public var insets: PyreonSafeAreaInsets { .zero }
+}
+public protocol OrientationProbe: AnyObject {
+  var type: String { get }
+  var angle: Int { get }
+}
+public final class UIKitOrientationProbe: OrientationProbe {
+  public init() {}
+  public var type: String { "portrait" }
+  public var angle: Int { 0 }
+}
+public final class PyreonScreenOrientation {
+  public init(probe: OrientationProbe) {}
+  public var type: String { "portrait" }
+  public var angle: Int { 0 }
 }
 
 public final class PyreonWakeLock {

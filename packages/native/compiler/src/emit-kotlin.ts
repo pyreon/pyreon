@@ -451,6 +451,8 @@ export function emitKotlin(
       if (d.kind === 'bluetooth') _bluetoothKotlin.add(d.name)
       if (d.kind === 'wake-lock') _wakeLockKotlin.add(d.name)
       if (d.kind === 'device-info') _deviceInfoKotlin.add(d.name)
+      if (d.kind === 'safe-area') _safeAreaKotlin.add(d.name)
+      if (d.kind === 'screen-orientation') _orientationKotlin.add(d.name)
       if (d.kind === 'clipboard') _clipboardKotlin.add(d.name)
       if (d.kind === 'pure-state') {
         _pureStateKotlin.set(d.name, d.bounds ? { hook: d.hook, bounds: d.bounds } : { hook: d.hook })
@@ -580,6 +582,10 @@ let _bluetoothKotlin: Set<string> = new Set()
 let _wakeLockKotlin: Set<string> = new Set()
 /** `useDeviceInfo()` bindings — all reads are plain getters (no `.value`). */
 let _deviceInfoKotlin: Set<string> = new Set()
+/** `useSafeArea()` bindings — the sole accessor becomes `.insets`. */
+let _safeAreaKotlin: Set<string> = new Set()
+/** `useScreenOrientation()` bindings — reads are properties. */
+let _orientationKotlin: Set<string> = new Set()
 /** Initial values, so `reset()` restores exactly what the web's does. */
 let _pureStateInitialKotlin: Map<string, number | boolean> = new Map()
 /** `useClipboard()` bindings — its reactive reads become `.value`. */
@@ -2119,6 +2125,20 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       `val ${id} = remember { PyreonDeviceInfo(AndroidDeviceProbe(${id}Ctx)) }`,
     ].join('\n  ')
   }
+  if (d.kind === 'safe-area') {
+    const id = kotlinIdent(d.name)
+    return [
+      `val ${id}Ctx = LocalContext.current`,
+      `val ${id} = remember { PyreonSafeArea(AndroidSafeAreaProbe(${id}Ctx)) }`,
+    ].join('\n  ')
+  }
+  if (d.kind === 'screen-orientation') {
+    const id = kotlinIdent(d.name)
+    return [
+      `val ${id}Ctx = LocalContext.current`,
+      `val ${id} = remember { PyreonScreenOrientation(AndroidOrientationProbe(${id}Ctx)) }`,
+    ].join('\n  ')
+  }
   if (d.kind === 'pure-state') {
     return `var ${kotlinIdent(d.name)} by remember { mutableStateOf(${String(d.initial)}) }`
   }
@@ -3251,6 +3271,27 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         _deviceInfoKotlin.has(e.callee.object.name) &&
         e.args.length === 0 &&
         ['platform', 'model', 'osVersion', 'isTouch', 'screen'].includes(e.callee.property)
+      ) {
+        return `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
+      }
+      // useSafeArea returns a SINGLE accessor, so `s()` is a bare call on the
+      // binding itself rather than a member call. It becomes the runtime's
+      // `.insets` property, so `s().top` lowers to `s.insets.top`.
+      if (
+        e.callee.kind === 'identifier' &&
+        _safeAreaKotlin.has(e.callee.name) &&
+        e.args.length === 0
+      ) {
+        return `${kotlinIdent(e.callee.name)}.insets`
+      }
+      // useScreenOrientation's reads — properties on this target, so the
+      // web-correct accessor spelling drops its parens.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _orientationKotlin.has(e.callee.object.name) &&
+        e.args.length === 0 &&
+        ['type', 'angle'].includes(e.callee.property)
       ) {
         return `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
       }

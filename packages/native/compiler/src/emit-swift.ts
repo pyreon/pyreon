@@ -777,6 +777,8 @@ export function emitSwift(
       if (d.kind === 'bluetooth') _bluetoothSwift.add(d.name)
       if (d.kind === 'wake-lock') _wakeLockSwift.add(d.name)
       if (d.kind === 'device-info') _deviceInfoSwift.add(d.name)
+      if (d.kind === 'safe-area') _safeAreaSwift.add(d.name)
+      if (d.kind === 'screen-orientation') _orientationSwift.add(d.name)
       if (d.kind === 'clipboard') _clipboardSwift.add(d.name)
       if (d.kind === 'pure-state') {
         _pureStateSwift.set(d.name, d.bounds ? { hook: d.hook, bounds: d.bounds } : { hook: d.hook })
@@ -901,6 +903,10 @@ let _bluetoothSwift: Set<string> = new Set()
 let _wakeLockSwift: Set<string> = new Set()
 /** `useDeviceInfo()` bindings — its reads are properties, so parens drop. */
 let _deviceInfoSwift: Set<string> = new Set()
+/** `useSafeArea()` bindings — the sole accessor becomes `.insets`. */
+let _safeAreaSwift: Set<string> = new Set()
+/** `useScreenOrientation()` bindings — reads are properties. */
+let _orientationSwift: Set<string> = new Set()
 /** Initial values, so `reset()` restores exactly what the web's does. */
 let _pureStateInitialSwift: Map<string, number | boolean> = new Map()
 /**
@@ -2749,6 +2755,12 @@ function emitSwiftDecl(
   if (d.kind === 'device-info') {
     return `@State private var ${swiftIdent(d.name)} = PyreonDeviceInfo(probe: UIKitDeviceProbe())`
   }
+  if (d.kind === 'safe-area') {
+    return `@State private var ${swiftIdent(d.name)} = PyreonSafeArea(probe: UIKitSafeAreaProbe())`
+  }
+  if (d.kind === 'screen-orientation') {
+    return `@State private var ${swiftIdent(d.name)} = PyreonScreenOrientation(probe: UIKitOrientationProbe())`
+  }
   if (d.kind === 'pure-state') {
     const t = d.hook === 'useToggle' ? 'Bool' : 'Int'
     return `@State private var ${swiftIdent(d.name)}: ${t} = ${String(d.initial)}`
@@ -3885,6 +3897,27 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         _deviceInfoSwift.has(e.callee.object.name) &&
         e.args.length === 0 &&
         ['platform', 'model', 'osVersion', 'isTouch', 'screen'].includes(e.callee.property)
+      ) {
+        return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
+      }
+      // useSafeArea returns a SINGLE accessor, so `s()` is a bare call on the
+      // binding itself rather than a member call. It becomes the runtime's
+      // `.insets` property, so `s().top` lowers to `s.insets.top`.
+      if (
+        e.callee.kind === 'identifier' &&
+        _safeAreaSwift.has(e.callee.name) &&
+        e.args.length === 0
+      ) {
+        return `${swiftIdent(e.callee.name)}.insets`
+      }
+      // useScreenOrientation's reads — properties on this target, so the
+      // web-correct accessor spelling drops its parens.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _orientationSwift.has(e.callee.object.name) &&
+        e.args.length === 0 &&
+        ['type', 'angle'].includes(e.callee.property)
       ) {
         return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
       }
