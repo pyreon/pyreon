@@ -5,6 +5,8 @@
 import com.pyreon.runtime.PYREON_SYNCED_DEFAULT_MAP
 import com.pyreon.runtime.PyreonCrdtDoc
 import com.pyreon.runtime.PyreonScalar
+import com.pyreon.runtime.PyreonSyncChannel
+import com.pyreon.runtime.PyreonSyncTransport
 import com.pyreon.runtime.PyreonSyncedSignal
 
 private fun check(cond: Boolean, msg: String) {
@@ -83,5 +85,95 @@ fun main() {
     title.dispose() // idempotent
     title.dispose()
 
+    // 8. PyreonSyncTransport — the native equivalent of the web
+    //    `connectPyreonSync(doc, channel)`, proven device-free over an
+    //    in-memory relay.
+    syncTransportTests()
+
     println("[PyreonCrdtTest] all assertions passed")
+}
+
+/**
+ * An in-memory string-duplex the two transports share — the device-free proof.
+ * `send` counts + forwards to the peer (when live); `deliver` invokes the inbound
+ * handler directly (models a frame arriving); `fireOpen` invokes the stored open
+ * callback (models the channel becoming ready).
+ */
+private class TransportMemoryChannel : PyreonSyncChannel {
+    var peer: TransportMemoryChannel? = null
+    private var onMsg: ((String) -> Unit)? = null
+    private var onOpenCb: (() -> Unit)? = null
+    private var live = true
+    var sendCount = 0
+    override fun send(data: String) { sendCount++; if (live) peer?.deliver(data) }
+    fun deliver(data: String) { onMsg?.invoke(data) }
+    override fun onMessage(cb: (String) -> Unit) { onMsg = cb }
+    override fun onOpen(cb: () -> Unit) { onOpenCb = cb }
+    override fun close() { live = false }
+    fun fireOpen() { onOpenCb?.invoke() }
+}
+
+/** Called from `main()` (a second `main`/`*Test.kt` would break the co-source gate). */
+private fun syncTransportTests() {
+    // 1. Initial full-state on open: a pre-connect write reaches the peer.
+    val docA = PyreonCrdtDoc("a1")
+    val docB = PyreonCrdtDoc("z9") // distinct actorIds
+    docA.set("m", "k", PyreonScalar.Str("pre")) // offline — no transport yet
+    val chA = TransportMemoryChannel()
+    val chB = TransportMemoryChannel()
+    chA.peer = chB
+    chB.peer = chA
+    val tA = PyreonSyncTransport(docA, chA)
+    val tB = PyreonSyncTransport(docB, chB)
+    chA.fireOpen() // A → B: full state
+    chB.fireOpen() // B → A: full state
+    check(docB.get("m", "k") == PyreonScalar.Str("pre"), "pre-connect state reaches B on open")
+
+    // 2. Live convergence both directions.
+    docA.set("m", "live1", PyreonScalar.Str("v1"))
+    check(docB.get("m", "live1") == PyreonScalar.Str("v1"), "A→B live op")
+    docB.set("m", "live2", PyreonScalar.Str("v2"))
+    check(docA.get("m", "live2") == PyreonScalar.Str("v2"), "B→A live op")
+
+    // 3. Concurrent-offline convergence to the deterministic LWW winner
+    //    (both clock 1 → equal-clock tie broken by the higher actor).
+    val docC = PyreonCrdtDoc("a1")
+    val docD = PyreonCrdtDoc("z9")
+    docC.set("doc", "title", PyreonScalar.Str("from-C"))
+    docD.set("doc", "title", PyreonScalar.Str("from-D"))
+    val chC = TransportMemoryChannel()
+    val chD = TransportMemoryChannel()
+    chC.peer = chD
+    chD.peer = chC
+    val tC = PyreonSyncTransport(docC, chC)
+    val tD = PyreonSyncTransport(docD, chD)
+    chC.fireOpen()
+    chD.fireOpen()
+    check(docC.get("doc", "title") == PyreonScalar.Str("from-D"), "C converges to LWW winner from-D")
+    check(docD.get("doc", "title") == PyreonScalar.Str("from-D"), "D stays LWW winner from-D")
+
+    // 4. Loop-prevention LOCK: an applied remote op is NOT re-broadcast.
+    //    (Structural — applyMessage fires observers but emits no onLocalOps.)
+    chC.sendCount = 0
+    docD.set("doc", "note", PyreonScalar.Str("hi")) // D → C, C merges via applyMessage
+    check(docC.get("doc", "note") == PyreonScalar.Str("hi"), "remote op merged on C")
+    check(chC.sendCount == 0, "C did NOT echo the applied remote op")
+
+    // 5. dispose isolation: post-dispose local writes stop relaying, but the
+    //    SHARED doc survives (get still works).
+    tC.dispose()
+    docC.set("doc", "after", PyreonScalar.Str("afterval"))
+    check(docD.get("doc", "after") == null, "post-dispose write does not reach the peer")
+    check(docC.get("doc", "after") == PyreonScalar.Str("afterval"), "shared doc survives dispose")
+    tC.dispose() // idempotent — no crash
+
+    // 6. Malformed inbound is ignored (no throw, state uncorrupted).
+    val titleBefore = docD.get("doc", "title")
+    chD.deliver("not json{")
+    check(docD.get("doc", "title") == titleBefore, "malformed inbound ignored, state uncorrupted")
+
+    // Keep the connected-pair transports referenced; dispose to clean up.
+    tA.dispose()
+    tB.dispose()
+    tD.dispose()
 }
