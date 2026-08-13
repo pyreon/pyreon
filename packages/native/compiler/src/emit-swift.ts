@@ -229,6 +229,10 @@ let _machineNames: Set<string> = new Set()
  *  (a real method), so BOTH the signal-read paren-drop AND the `.set()`→`=`
  *  rewrite must skip them (they are facade objects, not bare @State values). */
 let _syncedSignalNames: Set<string> = new Set()
+/** `createTableState(...)` bindings. Its PROPERTY reads (`t.page()`→`t.page`,
+ *  sortColumn/sortDirection/filterValue) drop parens; its METHODS (rows/
+ *  toggleSort/setFilter/…) flow through unchanged. */
+let _tableNames: Set<string> = new Set()
 /** Per-component: `useOnline()` decl names. A web `useOnline()` returns an
  *  ACCESSOR (`() => boolean`), so shared code reads it as `net()`; on native
  *  the accessor call lowers to the `net.isOnline` read on the PyreonNetworkStatus
@@ -1698,6 +1702,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // callAsFunction).
   _machineNames = new Set()
   _syncedSignalNames = new Set()
+  _tableNames = new Set()
   _netStatusNames = new Set()
   _appStateNames = new Set()
   _crashNames = new Set()
@@ -1747,6 +1752,7 @@ function emitSwiftComponent(c: ComponentIR): string {
     // OUT of _functionNames (it's a property, not a free function).
     if (d.kind === 'machine') _machineNames.add(d.name)
     if (d.kind === 'synced-signal') _syncedSignalNames.add(d.name)
+    if (d.kind === 'table-state') _tableNames.add(d.name)
     if (d.kind === 'network-status') _netStatusNames.add(d.name)
     if (d.kind === 'app-state') _appStateNames.add(d.name)
     if (d.kind === 'crash-reporter') _crashNames.add(d.name)
@@ -1979,6 +1985,9 @@ function emitSwiftComponent(c: ComponentIR): string {
   // flips no longer touch the ZStack's identity. (Non-fetch components
   // keep the bare body — no `.task`, no restart hazard.)
   const _hasFetchDecl = c.decls.some((d) => d.kind === 'fetch' || d.kind === 'query')
+  // table-state decls wire their reactive data in `.onAppear` (below), which
+  // needs the same stable-identity host as fetch/onMount.
+  const _hasTableDecl = c.decls.some((d) => d.kind === 'table-state')
   // on-mount shares the stable-identity requirement: .onAppear on a
   // transparent Group is redistributed onto conditional branches and
   // RE-FIRES per flip — the same device-found class as .task.
@@ -2009,7 +2018,17 @@ function emitSwiftComponent(c: ComponentIR): string {
   // crash-reporter: same stable-host requirement — its onAppear-start on a
   // transparent Group would be redistributed onto conditional branches.
   const _hasCrashDecl = c.decls.some((d) => d.kind === 'crash-reporter')
-  if (_hasFetchDecl || _hasOnMount || _hasDebounced || _hasTick || _hasNetDecl || _hasPushDecl || _hasAppStateDecl || _hasCrashDecl) {
+  if (
+    _hasFetchDecl ||
+    _hasOnMount ||
+    _hasDebounced ||
+    _hasTick ||
+    _hasNetDecl ||
+    _hasPushDecl ||
+    _hasAppStateDecl ||
+    _hasCrashDecl ||
+    _hasTableDecl
+  ) {
     lines.push(`    ZStack {`)
     lines.push(`      ${emitSwiftReturnExpr(c.returnExpr, 6)}`)
     lines.push(`    }`)
@@ -2135,6 +2154,16 @@ function emitSwiftComponent(c: ComponentIR): string {
     const name = swiftIdent(d.name)
     lines.push(`      .onAppear { ${name}.start() }`)
     lines.push(`      .onDisappear { ${name}.stop() }`)
+  }
+  // table-state: wire the reactive data source in `.onAppear`, where the
+  // closure can capture the view's @State (a @State initializer cannot). The
+  // read happens during body evaluation via `table.rows()`, so SwiftUI tracks
+  // the source signal and a row change re-renders.
+  for (const d of c.decls) {
+    if (d.kind !== 'table-state') continue
+    lines.push(
+      `      .onAppear { ${swiftIdent(d.name)}.setData { ${emitSwiftExpr(d.dataBody, 8)} } }`,
+    )
   }
   // app-state: START the lifecycle observers. The runtime wired REAL
   // UIApplication notifications behind start() from inception — and no emit
@@ -2378,6 +2407,27 @@ function inlineValueConstsInStmts(stmts: StatementIR[]): StatementIR[] {
 /** Swift type for a synced signal's scalar (`number` → `Double`). */
 function syncedSignalSwiftType(scalar: 'string' | 'double' | 'bool'): string {
   return scalar === 'string' ? 'String' : scalar === 'double' ? 'Double' : 'Bool'
+}
+
+/** A PyreonCell expression for a table column, chosen by the field's type. */
+function swiftTableCell(fieldType: TypeIR | undefined, expr: string): string {
+  if (fieldType?.kind === 'string') return `.string(${expr})`
+  if (fieldType?.kind === 'number') return `.number(Double(${expr}))`
+  // Total fallback (bool/enum/unknown) — stringify so comparison stays defined.
+  return `.string("\\(${expr})")`
+}
+
+/** The row struct's fields, whether inline-object or a named (synthesized) struct. */
+function resolveSwiftStructFields(
+  elem: TypeIR,
+  synth: SwiftSynthCtx | undefined,
+): { name: string; type: TypeIR }[] {
+  if (elem.kind === 'object') return elem.fields
+  if (elem.kind === 'typeRef' && synth) {
+    const s = synth.structs.find((st) => st.name === elem.name)
+    if (s) return s.fields
+  }
+  return []
 }
 
 /** Swift literal for a synced signal's initial scalar value. */
@@ -2821,6 +2871,24 @@ function emitSwiftDecl(
   }
   if (d.kind === 'synced-signal') {
     return `@State private var ${swiftIdent(d.name)}: PyreonSyncedSignal<${syncedSignalSwiftType(d.scalarType)}>`
+  }
+  // `@pyreon/table` — a self-seeding @State PyreonTableState. The reactive data
+  // source is wired in `.onAppear` (emitSwiftComponent), so the initializer has
+  // no `self` reference and stays self-contained. Column accessors are codegen'd
+  // from the row struct's inferred field types.
+  if (d.kind === 'table-state') {
+    const dt = inferType(d.dataBody, inferCtx)
+    const elem: TypeIR = dt.kind === 'array' ? dt.element : { kind: 'unknown' }
+    const rowType = swiftType(elem, synth)
+    const fields = resolveSwiftStructFields(elem, synth)
+    const cols = d.columns
+      .map((c) => {
+        const f = fields.find((x) => x.name === c.id)
+        return `PyreonTableColumn(id: ${JSON.stringify(c.id)}, accessor: { ${swiftTableCell(f?.type, `$0.${swiftIdent(c.id)}`)} })`
+      })
+      .join(', ')
+    const pageArg = d.pageSize > 0 ? `, pageSize: ${d.pageSize}` : ''
+    return `@State private var ${swiftIdent(d.name)} = PyreonTableState<${rowType}>(columns: [${cols}]${pageArg})`
   }
   // Phase 4 follow-up: `const scheme = useColorScheme()` → a computed
   // property reading the View's @Environment(\.colorScheme) injection
@@ -3822,6 +3890,19 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         _clipboardSwift.has(e.callee.object.name) &&
         e.args.length === 0 &&
         ['copied', 'text'].includes(e.callee.property)
+      ) {
+        return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
+      }
+      // PyreonTableState PROPERTY reads: web `t.page()` / `t.sortColumn()` /
+      // `t.sortDirection()` / `t.filterValue()` are accessor calls, but on Swift
+      // these are stored properties — drop the parens. Its METHODS (rows /
+      // pageCount / toggleSort / setFilter / …) keep parens (flow through).
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _tableNames.has(e.callee.object.name) &&
+        e.args.length === 0 &&
+        ['page', 'sortColumn', 'sortDirection', 'filterValue'].includes(e.callee.property)
       ) {
         return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
       }

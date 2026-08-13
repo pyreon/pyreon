@@ -12,6 +12,7 @@
 // binding layers on top.
 
 import Foundation
+import Observation
 
 /// A sortable/filterable cell value — the typed analogue of the TS `unknown`.
 public enum PyreonCell: Equatable {
@@ -50,8 +51,15 @@ public struct PyreonTableColumn<T> {
 
 /// LWW-free, local table state: filter → sort → paginate over `[T]`, plus
 /// multi-row selection. Behaviour-identical to the TS `createTableState`.
+///
+/// `@Observable` so a SwiftUI view reading `rows()` re-renders when sort /
+/// filter / page / selection change (the mutating methods below). The data
+/// itself flows through the `data` closure, which reads a source the view also
+/// observes — so a row change re-renders too.
+@available(iOS 17.0, macOS 14.0, *)
+@Observable
 public final class PyreonTableState<T> {
-    private let dataProvider: () -> [T]
+    private var dataProvider: () -> [T]
     private let columns: [PyreonTableColumn<T>]
     private let pageSize: Int
     private let rowIdOf: (T, Int) -> String
@@ -64,18 +72,22 @@ public final class PyreonTableState<T> {
     public private(set) var selected: [String] = []
 
     public init(
-        data: @escaping () -> [T],
+        data: (() -> [T])? = nil,
         columns: [PyreonTableColumn<T>] = [],
         pageSize: Int = 0,
         rowId: ((T, Int) -> String)? = nil,
         filterFn: ((T, String, [PyreonTableColumn<T>]) -> Bool)? = nil
     ) {
-        self.dataProvider = data
+        self.dataProvider = data ?? { [] }
         self.columns = columns
         self.pageSize = pageSize
         self.rowIdOf = rowId ?? { _, index in String(index) }
         self.filterFn = filterFn ?? PyreonTableState.defaultFilter
     }
+
+    /// Wire the reactive data source AFTER init (SwiftUI `.onAppear`), so the
+    /// closure can capture the view's @State — a @State initializer cannot.
+    public func setData(_ data: @escaping () -> [T]) { self.dataProvider = data }
 
     // ── default filter: case-insensitive substring across every column ────────
     private static func defaultFilter(

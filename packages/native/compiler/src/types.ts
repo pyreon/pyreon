@@ -738,6 +738,28 @@ export type DeclIR =
       scalarType: 'string' | 'double' | 'bool'
       initialValue: string | number | boolean
     }
+  /**
+   * `const t = createTableState({ data, columns, pageSize })` from
+   * `@pyreon/table` — the dependency-free sort/filter/paginate/select engine.
+   * Lowers to the `@Observable` PyreonTableState port (#2828):
+   *   Swift  → `@State private var t = PyreonTableState<Row>(columns: […], pageSize: n)`
+   *            + `.onAppear { t.setData { <data> } }` (the data closure is wired
+   *            after init so it can capture the view's @State source signal).
+   *   Kotlin → `val t = remember { PyreonTableState<Row>({ <data> }, listOf(…), n) }`
+   * Column cell accessors (`{ .string($0.name) }`) are codegen'd at emit time
+   * from the row struct's inferred field types. `t.rows()`/`t.toggleSort(id)`/…
+   * flow through (methods); `t.page()`/`t.sortColumn()`/… drop parens (property
+   * reads). v1: scalar (string/number) columns with the default `row[id]`
+   * accessor; explicit accessors / rowId / filterFn are follow-ups.
+   */
+  | {
+      kind: 'table-state'
+      name: string
+      /** The `data: () => <body>` arrow body (the reactive row source). */
+      dataBody: ExprIR
+      pageSize: number
+      columns: { id: string }[]
+    }
 
 /**
  * Phase C5 — one route entry parsed from `createRouter({ routes: [...] })`.

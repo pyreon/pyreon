@@ -1,5 +1,7 @@
 package com.pyreon.runtime
 
+import androidx.compose.runtime.mutableStateOf
+
 // PyreonTableState — the Android-native port of @pyreon/table's dependency-free
 // `createTableState`. Same sort / filter / paginate / row-selection behaviour
 // as the TypeScript AND Swift engines, so a table author gets 1:1 results on
@@ -50,16 +52,23 @@ class PyreonTableState<T>(
     private val filterImpl: (T, String, List<PyreonTableColumn<T>>) -> Boolean =
         filterFn ?: ::defaultFilter
 
-    var sortColumn: String? = null
-        private set
-    var sortDirection: PyreonSortDirection = PyreonSortDirection.ASC
-        private set
-    var filterValue: String = ""
-        private set
-    var page: Int = 0
-        private set
-    var selected: List<String> = emptyList()
-        private set
+    // Compose-observable state (direct mutableStateOf backing, like PyreonMachine)
+    // so a mutation (toggleSort/setFilter/setPage/select) recomposes a reader.
+    private val _sortColumn = mutableStateOf<String?>(null)
+    val sortColumn: String?
+        get() = _sortColumn.value
+    private val _sortDirection = mutableStateOf(PyreonSortDirection.ASC)
+    val sortDirection: PyreonSortDirection
+        get() = _sortDirection.value
+    private val _filterValue = mutableStateOf("")
+    val filterValue: String
+        get() = _filterValue.value
+    private val _page = mutableStateOf(0)
+    val page: Int
+        get() = _page.value
+    private val _selected = mutableStateOf<List<String>>(emptyList())
+    val selected: List<String>
+        get() = _selected.value
 
     // ── default filter: case-insensitive substring across every column ────────
     private fun defaultFilter(row: T, query: String, cols: List<PyreonTableColumn<T>>): Boolean {
@@ -80,19 +89,19 @@ class PyreonTableState<T>(
     /** Cycle a column's sort: none → asc → desc → none. */
     fun toggleSort(columnId: String) {
         if (sortColumn != columnId) {
-            sortColumn = columnId
-            sortDirection = PyreonSortDirection.ASC
+            _sortColumn.value = columnId
+            _sortDirection.value = PyreonSortDirection.ASC
         } else if (sortDirection == PyreonSortDirection.ASC) {
-            sortDirection = PyreonSortDirection.DESC
+            _sortDirection.value = PyreonSortDirection.DESC
         } else {
-            sortColumn = null
+            _sortColumn.value = null
         }
     }
 
     // ── filtering ─────────────────────────────────────────────────────────────
     fun setFilter(query: String) {
-        filterValue = query
-        page = 0
+        _filterValue.value = query
+        _page.value = 0
     }
 
     // ── pagination ──────────────────────────────────────────────────────────────
@@ -105,16 +114,16 @@ class PyreonTableState<T>(
         val maxPage = pageCount() - 1
         return if (index < 0) 0 else if (index > maxPage) maxPage else index
     }
-    fun setPage(index: Int) { page = clampPage(index) }
-    fun nextPage() { page = clampPage(page + 1) }
-    fun prevPage() { page = clampPage(page - 1) }
+    fun setPage(index: Int) { _page.value = clampPage(index) }
+    fun nextPage() { _page.value = clampPage(page + 1) }
+    fun prevPage() { _page.value = clampPage(page - 1) }
 
     // ── selection ────────────────────────────────────────────────────────────────
     fun isSelected(id: String): Boolean = selected.contains(id)
     fun toggleSelected(id: String) {
-        selected = if (selected.contains(id)) selected.filter { it != id } else selected + id
+        _selected.value = if (selected.contains(id)) selected.filter { it != id } else selected + id
     }
-    fun clearSelection() { selected = emptyList() }
+    fun clearSelection() { _selected.value = emptyList() }
     fun selectedIds(): List<String> = selected
     fun rowId(row: T, index: Int): String = rowIdOf(row, index)
 

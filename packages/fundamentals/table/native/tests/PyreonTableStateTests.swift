@@ -10,6 +10,7 @@ struct Row {
     let age: Int
 }
 
+@available(iOS 17.0, macOS 14.0, *)
 @main
 struct PyreonTableStateTests {
     static func check(_ c: Bool, _ m: String) {

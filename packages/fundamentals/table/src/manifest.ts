@@ -10,7 +10,9 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      'headless table over web rendering patterns; PMTC has no lowering — native lists are `<For>` + primitives',
+      'the TanStack-backed `useTable` (row model / faceting / virtual sizing) stays web; the dependency-free `createTableState` engine lowers to the native PyreonTableState port, rendered with `<For>` + primitives',
+    nativeFrontend:
+      'PyreonTableState — `createTableState({ data, columns, pageSize })` (sort / filter / paginate / select over `<For each={t.rows()}>`); scalar columns with the default row[id] accessor',
   },
   longExample: `import {
   useTable, flexRender, flexRenderCell,

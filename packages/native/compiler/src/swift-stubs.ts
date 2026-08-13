@@ -561,6 +561,33 @@ public final class PyreonSyncedSignal<T: PyreonScalarConvertible> {
   // \`s.dispose()\` was rejected by the type gate.
   public func dispose() {}
 }
+// @pyreon/table — the PyreonTableState engine. Mirrors PyreonTableState.swift.
+public enum PyreonCell { case string(String); case number(Double); case none }
+public enum PyreonSortDirection { case asc, desc }
+public struct PyreonTableColumn<T> {
+  public init(id: String, accessor: @escaping (T) -> PyreonCell) {}
+}
+public final class PyreonTableState<T> {
+  public init(data: (() -> [T])? = nil, columns: [PyreonTableColumn<T>] = [], pageSize: Int = 0, rowId: ((T, Int) -> String)? = nil, filterFn: ((T, String, [PyreonTableColumn<T>]) -> Bool)? = nil) {}
+  public func setData(_ data: @escaping () -> [T]) {}
+  public func rows() -> [T] { [] }
+  public func pageCount() -> Int { 1 }
+  public func filteredCount() -> Int { 0 }
+  public func selectedIds() -> [String] { [] }
+  public func toggleSort(_ c: String) {}
+  public func setFilter(_ q: String) {}
+  public func setPage(_ i: Int) {}
+  public func nextPage() {}
+  public func prevPage() {}
+  public func isSelected(_ id: String) -> Bool { false }
+  public func toggleSelected(_ id: String) {}
+  public func clearSelection() {}
+  public func rowId(_ row: T, _ index: Int) -> String { "" }
+  public private(set) var page: Int = 0
+  public private(set) var sortColumn: String?
+  public private(set) var sortDirection: PyreonSortDirection = .asc
+  public private(set) var filterValue: String = ""
+}
 public struct PyreonI18n {
   // fallbackLocale is OPTIONAL and DEFAULTED in the real PyreonI18n. The stub
   // made it required, so \`createI18n({ locale, messages })\` — the two-argument
