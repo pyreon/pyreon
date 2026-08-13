@@ -1068,6 +1068,7 @@ export const NATIVE_LOWERED_HOOKS: ReadonlySet<string> = new Set([
   'useUrlState',
   'useSecureStorage',
   'useShare', 'useSizeClass', 'useStorage', 'useWebSocket',
+  'useSessionStorage', 'useMemoryStorage',
 ])
 
 /**
@@ -1317,10 +1318,21 @@ const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
   [
     '@pyreon/storage',
     {
-      // `useStorage(key, initial)` DOES lower (@AppStorage / rememberPyreonStorage)
-      // and is skipped automatically by the non-hook filter; the factory does not.
+      // Three of the five backends lower. The two that do not are the two
+      // with no native analogue AT ALL, and saying which is which is the
+      // point — the generic line left an author guessing whether their
+      // backend was merely unimplemented or genuinely impossible.
+      //
+      //   useStorage        → @AppStorage / rememberPyreonStorage (persistent)
+      //   useSessionStorage → plain state (the process IS the session)
+      //   useMemoryStorage  → plain state (definitionally process-scoped)
+      //   useCookie         → no analogue: cookies are an HTTP/browser
+      //                       concept; a native app has no cookie jar its
+      //                       own UI reads from
+      //   useIndexedDB      → no analogue: use `useDatabase()`, which lowers
+      //                       to SQLite on both targets
       advice:
-        '`useStorage(key, initial)` DOES lower on both targets — use the hook rather than the factory',
+        '`useStorage(key, initial)` DOES lower on both targets (as do `useSessionStorage` and `useMemoryStorage`) — use a hook rather than the factory. `useCookie` and `useIndexedDB` have no native analogue at all: a native app has no cookie jar, and for structured local data `useDatabase()` lowers to SQLite on both targets',
     },
   ],
   [
@@ -4948,6 +4960,28 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     const type = hasGeneric ? generic : inferTypeFromInitial(initial)
     return { kind: 'signal', name, type, initial }
   }
+  // `useSessionStorage` / `useMemoryStorage` — process-scoped storage, so
+  // the honest native mapping is a plain state field with NO persistence.
+  //
+  // On the web, sessionStorage survives a reload and dies with the tab.
+  // Native has neither a tab nor a reload: the process IS the session, so
+  // in-memory state is the exact analogue rather than an approximation of
+  // one. `useMemoryStorage` is definitionally that on every platform.
+  //
+  // Emitting them as a `signal` decl WITHOUT a storageKey is what makes
+  // this correct: the same IR `useStorage` produces, minus the @AppStorage /
+  // rememberSaveable persistence that would wrongly outlive the process.
+  if (calleeName === 'useSessionStorage' || calleeName === 'useMemoryStorage') {
+    const initialArg = init.arguments?.[1]
+    const initial: ExprIR = initialArg
+      ? parseExpr(initialArg, ctx)
+      : { kind: 'literal', value: 0 }
+    const generic = parseGenericTypeArg(init, ctx)
+    const hasGeneric = ((init.typeArguments?.params as AnyNode[] | undefined)?.length ?? 0) > 0
+    const type = hasGeneric ? generic : inferTypeFromInitial(initial)
+    return { kind: 'signal', name, type, initial }
+  }
+
   // G5 — `useStorage<T>('key', default)` from `@pyreon/storage` is a
   // PERSISTENT signal. Same shape as `signal()` plus a storage-key
   // string. The emitter routes storage signals to platform-idiomatic

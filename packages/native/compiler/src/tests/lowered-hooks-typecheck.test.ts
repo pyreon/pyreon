@@ -65,6 +65,9 @@ const USAGES: ReadonlyArray<readonly [string, string, string]> = [
   ['useUrlState', '@pyreon/url-state', "const q = useUrlState('q', 'all'); const go = () => { q.set('b') }"],
   ['usePayments', '@pyreon/hooks', 'const p = usePayments()'],
   ['usePermissions', '@pyreon/hooks', 'const p = usePermissions()'],
+  // Process-scoped storage — plain state, no persistence.
+  ['useSessionStorage', '@pyreon/storage', "const s = useSessionStorage<string>('k', 'd')"],
+  ['useMemoryStorage', '@pyreon/storage', "const m = useMemoryStorage<string>('k', 'd')"],
   [
     'useBluetooth',
     '@pyreon/hooks',
