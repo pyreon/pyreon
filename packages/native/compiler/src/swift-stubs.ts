@@ -237,6 +237,7 @@ extension View {
   // Pure pass-through modifiers (no load-bearing constraint — they carry faithful
   // ARGUMENT types so a wrong-typed arg is still caught, but always return some View).
   public func bold() -> some View { self }
+  public func tracking(_ tracking: Double) -> some View { self }
   public func frame(width: Double? = nil, height: Double? = nil) -> some View { self }
   public func frame(
     minWidth: Double? = nil,

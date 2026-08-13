@@ -217,9 +217,19 @@ export interface TextTypography {
    * build `color = if (cond) A else B` without re-parsing.
    */
   conditionalColor?: { cond: ExprIR; whenTrue: string; whenFalse: string }
+  /**
+   * Letter spacing in points/sp (an absolute value — `0.5` or `'0.5px'`). Maps
+   * cleanly 1:1: SwiftUI `.tracking(pt)` and Compose `letterSpacing = pt.sp`
+   * both add the same uniform spacing after each character (CSS `letter-spacing`
+   * semantics). Unlike `line-height` — a unitless multiplier on web but absolute
+   * on native — letter-spacing carries no such fork, so it round-trips exactly.
+   */
+  letterSpacing?: number
 }
 
-const TYPOGRAPHY_KEYS = new Set(['fontSize', 'fontWeight', 'color', 'textAlign', 'fontStyle'])
+const TYPOGRAPHY_KEYS = new Set([
+  'fontSize', 'fontWeight', 'color', 'textAlign', 'fontStyle', 'letterSpacing',
+])
 
 /** The literal `color` of an object-literal style branch, if it has one. */
 function literalColorOf(e: ExprIR): string | undefined {
@@ -281,7 +291,11 @@ export function extractTextTypography(
       else if (f.name === 'color' && typeof v === 'string') typo.color = v
       else if (f.name === 'textAlign' && typeof v === 'string') typo.textAlign = v
       else if (f.name === 'fontStyle' && typeof v === 'string') typo.fontStyle = v
-      else restFields.push(f)
+      else if (f.name === 'letterSpacing' && (typeof v === 'number' || typeof v === 'string')) {
+        const n = parseDimension(v)
+        if (n !== null) typo.letterSpacing = n
+        else restFields.push(f) // non-dimension (e.g. 'normal', a token) → drop+warn downstream
+      } else restFields.push(f)
     } else {
       restFields.push(f)
     }
@@ -315,6 +329,9 @@ export function swiftTextTypographyModifiers(typo: TextTypography): string {
     out += `.multilineTextAlignment(${SWIFT_ALIGN[typo.textAlign]})`
   }
   if (typo.fontStyle === 'italic') out += '.italic()'
+  // CSS `letter-spacing` → SwiftUI `.tracking(pt)` (uniform trailing spacing per
+  // character; iOS 16+, deployment target is 17). 1:1 with Compose's `letterSpacing`.
+  if (typo.letterSpacing !== undefined) out += `.tracking(${typo.letterSpacing})`
   return out
 }
 
@@ -355,6 +372,9 @@ export function kotlinTextTypographyArgs(
     args.push(`textAlign = ${KOTLIN_ALIGN[typo.textAlign]}`)
   }
   if (typo.fontStyle === 'italic') args.push('fontStyle = FontStyle.Italic')
+  // CSS `letter-spacing` → Compose `letterSpacing = pt.sp` — 1:1 with SwiftUI's
+  // `.tracking(pt)` (same absolute per-character spacing).
+  if (typo.letterSpacing !== undefined) args.push(`letterSpacing = ${typo.letterSpacing}.sp`)
   return args.length > 0 ? ', ' + args.join(', ') : ''
 }
 

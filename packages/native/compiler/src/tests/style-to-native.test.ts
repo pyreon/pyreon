@@ -53,6 +53,20 @@ describe('inline style → native modifiers (emit)', () => {
     expect(code.indexOf('.background(')).toBeLessThan(code.indexOf('.padding('))
   })
 
+  it('lowers letterSpacing 1:1 — Swift .tracking(), Compose letterSpacing in sp', () => {
+    // CSS `letter-spacing` is an absolute per-character spacing on BOTH targets,
+    // so it round-trips exactly (unlike line-height, a unitless multiplier on web).
+    expect(swift(`<Text style={{ letterSpacing: 0.5 }}>Hi</Text>`).code).toContain('.tracking(0.5)')
+    expect(kotlin(`<Text style={{ letterSpacing: 0.5 }}>Hi</Text>`).code).toContain(
+      'letterSpacing = 0.5.sp',
+    )
+    // The `'0.5px'` string form resolves identically on both targets.
+    expect(swift(`<Text style={{ letterSpacing: '0.5px' }}>Hi</Text>`).code).toContain('.tracking(0.5)')
+    expect(kotlin(`<Text style={{ letterSpacing: '0.5px' }}>Hi</Text>`).code).toContain(
+      'letterSpacing = 0.5.sp',
+    )
+  })
+
   it('collapses a horizontal-only padding to the axis form', () => {
     expect(swift(`<Stack style={{ paddingX: 12 }}><Text>x</Text></Stack>`).code).toContain(
       '.padding(.horizontal, 12)',
