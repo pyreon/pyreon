@@ -1,4 +1,4 @@
-import { onCleanup, signal } from '@pyreon/reactivity'
+import { batch, onCleanup, signal } from '@pyreon/reactivity'
 
 /** A device seen during a scan. */
 export interface BluetoothDevice {
@@ -67,9 +67,14 @@ export function useBluetooth(): UseBluetoothResult {
       error.set('Bluetooth is not available on this platform')
       return
     }
-    error.set('')
-    devices.set([])
-    scanning.set(true)
+    // One notification, not three — a consumer rendering the device list
+    // and the scanning label must not see a frame where the list is already
+    // cleared but the label still says idle.
+    batch(() => {
+      error.set('')
+      devices.set([])
+      scanning.set(true)
+    })
     try {
       const picked = (await nav?.bluetooth?.requestDevice({ acceptAllDevices: true })) as
         | { id?: string; name?: string }
