@@ -51,3 +51,18 @@ export { flexRender, flexRenderCell } from './flex-render'
 export { pyreonReactivity } from './reactivity'
 export type { UseTableOptions } from './use-table'
 export { useTable } from './use-table'
+
+// ─── Lightweight, dependency-free table-state core ──────────────────────────
+//
+// The MULTIPLATFORM-portable alternative to `useTable`: pure signal logic (no
+// DOM, no TanStack) for sort/filter/paginate/select, rendered with `<For>`
+// (tables ARE native). A `createTableState`-only import tree-shakes TanStack
+// out entirely (`sideEffects: false`). Native Swift/Kotlin ports run the same
+// contract (the sync playbook) — see `state.ts`.
+export { createTableState } from './state'
+export type {
+  SortDirection,
+  TableColumn,
+  TableState,
+  TableStateOptions,
+} from './state'
