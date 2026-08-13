@@ -87,6 +87,11 @@ const USAGES: ReadonlyArray<readonly [string, string, string]> = [
     '@pyreon/hooks',
     'const c = useCounter(1, { min: 0, max: 10 }); const f = () => { c.inc(2) }',
   ],
+  [
+    'useWakeLock',
+    '@pyreon/hooks',
+    'const w = useWakeLock(); const on = () => { w.request() }; const a = w.active(); const s = w.supported()',
+  ],
   ['usePush', '@pyreon/hooks', 'const p = usePush()'],
   [
     'useDebouncedValue',

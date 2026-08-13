@@ -27,7 +27,13 @@ struct PyreonBluetoothTests {
     static func check(_ c: Bool, _ m: String) { if !c { fatalError("PyreonBluetoothTests: \(m)") } }
 
     static func main() {
-        if #available(iOS 17.0, macOS 14.0, *) { run() }
+        if #available(iOS 17.0, macOS 14.0, *) {
+            run()
+            // PyreonWakeLock is @Observable and therefore availability-gated,
+            // so its suite runs inside this guard rather than beside the
+            // ungated ones below.
+            PyreonWakeLockTests.runAll()
+        }
         print("[PyreonBluetoothTests] all assertions passed")
         // This directory's single @main also drives the sibling suites — see
         // PyreonRateLimitTests for why they cannot own their own entry point.

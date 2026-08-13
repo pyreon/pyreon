@@ -15,14 +15,14 @@ import hooksManifest from '../manifest'
 
 describe('gen-docs — hooks snapshot', () => {
   it('renders @pyreon/hooks to its expected llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(hooksManifest)).toMatchInlineSnapshot(`"- @pyreon/hooks — 57 signal-based hooks: state (useToggle/useCounter/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocusTrap/useFocusReturn/useInertOthers/useElementSize/useWindowResize/useWindowScroll/useScrollLock/useIntersection/useInfiniteScroll), responsive (useBreakpoint/useMediaQuery/useColorScheme/useSizeClass/useReducedMotion), timing (useDebouncedValue/useDebouncedCallback/useThrottledCallback/useInterval/useTimeout/useTimeAgo), interaction (useBluetooth/useClipboard/useHaptics/useShare/useLinking/useNotifications/useBiometrics/useImagePicker/useFilePicker/useDialog/useKeyboard/useOnline/useAppState/useCrashReporter/useDocumentVisibility/useIdle), data (useFetch/useAuth/useDatabase/useGeolocation/useMap/useWebSocket/useSecureStorage/usePush/usePayments), composition (useMergedRef/useUpdateEffect/useIsomorphicLayoutEffect). \`useControllableState({ value, defaultValue, onChange })\` is the canonical controlled/uncontrolled pattern. Every primitive in \`@pyreon/ui-primitives\` uses it. Reimplementing the \`isControlled + signal + getter\` shape by hand was the #1 anti-pattern across primitives before the helper landed. Pass \`value\` as a FUNCTION (\`() => props.checked\`) so the controlled prop read tracks reactively; \`defaultValue\` is a PLAIN value captured once as the uncontrolled initial."`)
+    expect(renderLlmsTxtLine(hooksManifest)).toMatchInlineSnapshot(`"- @pyreon/hooks — 58 signal-based hooks: state (useToggle/useCounter/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocusTrap/useFocusReturn/useInertOthers/useElementSize/useWindowResize/useWindowScroll/useScrollLock/useIntersection/useInfiniteScroll), responsive (useBreakpoint/useMediaQuery/useColorScheme/useSizeClass/useReducedMotion), timing (useDebouncedValue/useDebouncedCallback/useThrottledCallback/useInterval/useTimeout/useTimeAgo), interaction (useBluetooth/useWakeLock/useClipboard/useHaptics/useShare/useLinking/useNotifications/useBiometrics/useImagePicker/useFilePicker/useDialog/useKeyboard/useOnline/useAppState/useCrashReporter/useDocumentVisibility/useIdle), data (useFetch/useAuth/useDatabase/useGeolocation/useMap/useWebSocket/useSecureStorage/usePush/usePayments), composition (useMergedRef/useUpdateEffect/useIsomorphicLayoutEffect). \`useControllableState({ value, defaultValue, onChange })\` is the canonical controlled/uncontrolled pattern. Every primitive in \`@pyreon/ui-primitives\` uses it. Reimplementing the \`isControlled + signal + getter\` shape by hand was the #1 anti-pattern across primitives before the helper landed. Pass \`value\` as a FUNCTION (\`() => props.checked\`) so the controlled prop read tracks reactively; \`defaultValue\` is a PLAIN value captured once as the uncontrolled initial."`)
   })
 
   it('renders @pyreon/hooks to its expected llms-full.txt section — full body snapshot', () => {
     expect(renderLlmsFullSection(hooksManifest)).toMatchInlineSnapshot(`
       "## @pyreon/hooks — Signal-Based Hooks
 
-      Signal-based hooks for Pyreon — 57 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers \`onUnmount\` for listeners/observers/timers), and signal-native: hooks return \`Signal<T>\` / \`Computed<T>\` accessors, never plain values, so consumers compose with \`effect\`/\`computed\` without re-bridging. \`useControllableState\` is the canonical controlled/uncontrolled pattern used by every \`@pyreon/ui-primitives\` component — never reimplement the \`isControlled + signal + getter\` shape by hand.
+      Signal-based hooks for Pyreon — 58 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers \`onUnmount\` for listeners/observers/timers), and signal-native: hooks return \`Signal<T>\` / \`Computed<T>\` accessors, never plain values, so consumers compose with \`effect\`/\`computed\` without re-bridging. \`useControllableState\` is the canonical controlled/uncontrolled pattern used by every \`@pyreon/ui-primitives\` component — never reimplement the \`isControlled + signal + getter\` shape by hand.
 
       \`\`\`typescript
       import {
@@ -118,8 +118,10 @@ describe('gen-docs — hooks snapshot', () => {
 
   it('renders @pyreon/hooks to MCP api-reference entries — one per api[] item', () => {
     const record = renderApiReferenceEntries(hooksManifest)
-    expect(Object.keys(record).length).toBe(47)
+    expect(Object.keys(record).length).toBe(49)
     expect(Object.keys(record)).toContain('hooks/useSecureStorage')
+    expect(Object.keys(record)).toContain('hooks/useWakeLock')
+    expect(Object.keys(record)).toContain('hooks/useBluetooth')
     // The 25 previously-undocumented hooks are now in api[].
     expect(Object.keys(record)).toContain('hooks/useToggle')
     expect(Object.keys(record)).toContain('hooks/useBiometrics')

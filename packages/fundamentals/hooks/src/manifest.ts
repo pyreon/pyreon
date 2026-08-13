@@ -14,9 +14,9 @@ export default defineManifest({
   name: '@pyreon/hooks',
   title: 'Signal-Based Hooks',
   tagline:
-    '57 signal-based hooks: state (useToggle/useCounter/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocusTrap/useFocusReturn/useInertOthers/useElementSize/useWindowResize/useWindowScroll/useScrollLock/useIntersection/useInfiniteScroll), responsive (useBreakpoint/useMediaQuery/useColorScheme/useSizeClass/useReducedMotion), timing (useDebouncedValue/useDebouncedCallback/useThrottledCallback/useInterval/useTimeout/useTimeAgo), interaction (useBluetooth/useClipboard/useHaptics/useShare/useLinking/useNotifications/useBiometrics/useImagePicker/useFilePicker/useDialog/useKeyboard/useOnline/useAppState/useCrashReporter/useDocumentVisibility/useIdle), data (useFetch/useAuth/useDatabase/useGeolocation/useMap/useWebSocket/useSecureStorage/usePush/usePayments), composition (useMergedRef/useUpdateEffect/useIsomorphicLayoutEffect)',
+    '58 signal-based hooks: state (useToggle/useCounter/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocusTrap/useFocusReturn/useInertOthers/useElementSize/useWindowResize/useWindowScroll/useScrollLock/useIntersection/useInfiniteScroll), responsive (useBreakpoint/useMediaQuery/useColorScheme/useSizeClass/useReducedMotion), timing (useDebouncedValue/useDebouncedCallback/useThrottledCallback/useInterval/useTimeout/useTimeAgo), interaction (useBluetooth/useWakeLock/useClipboard/useHaptics/useShare/useLinking/useNotifications/useBiometrics/useImagePicker/useFilePicker/useDialog/useKeyboard/useOnline/useAppState/useCrashReporter/useDocumentVisibility/useIdle), data (useFetch/useAuth/useDatabase/useGeolocation/useMap/useWebSocket/useSecureStorage/usePush/usePayments), composition (useMergedRef/useUpdateEffect/useIsomorphicLayoutEffect)',
   description:
-    'Signal-based hooks for Pyreon — 57 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.',
+    'Signal-based hooks for Pyreon — 58 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.',
   category: 'universal',
   multiplatform: {
     tier: 'service-backend',
@@ -100,7 +100,7 @@ const { position } = useWindowScroll()     // Signal<{ x, y }> scroll offset + s
 const visibility = useDocumentVisibility()  // Signal<'visible' | 'hidden'> — pause work when hidden
 const idle = useIdle(30_000)               // Signal<boolean> — true after 30s of no activity`,
   features: [
-    '57 signal-based hooks across 7 categories',
+    '58 signal-based hooks across 7 categories',
     'State: useToggle, useCounter, usePrevious, useLatest, useControllableState',
     'DOM: useEventListener, useClickOutside, useFocus, useHover, useFocusTrap, useFocusReturn, useInertOthers, useElementSize, useWindowResize, useWindowScroll, useScrollLock, useIntersection, useInfiniteScroll',
     'Responsive: useBreakpoint, useMediaQuery, useColorScheme, useSizeClass, useReducedMotion',
@@ -548,6 +548,41 @@ effect(() => { if (idle()) showAwayBanner() })`,
         'Returns an accessor — call `online()`.',
       ],
       seeAlso: ['useDocumentVisibility', 'useIdle'],
+    },
+    {
+      name: 'useWakeLock',
+      kind: 'hook',
+      signature: 'useWakeLock() => { active: () => boolean; supported: () => boolean; request: () => Promise<boolean>; release: () => Promise<void> }',
+      summary:
+        'Keep the screen awake — video, navigation, recipe steps. Lowers to `isIdleTimerDisabled` on iOS and `FLAG_KEEP_SCREEN_ON` on Android. The WEB arm carries a normalization the native ones do not need: a `WakeLockSentinel` is released by the browser whenever the document hides and is NOT reacquired, while the native flag survives backgrounding — so the hook listens for the sentinel\'s `release` event and re-acquires on `visibilitychange` unless the caller explicitly released. Without both halves the same call leaves the screen sleeping on web and lit on native.',
+      example: `const wake = useWakeLock()
+onMount(() => { void wake.request() })
+<Show when={() => wake.active()}><Badge>Screen stays on</Badge></Show>`,
+      mistakes: [
+        'Assuming a lock survives a tab switch by itself — on the web it does not; this hook re-acquires for you, but a hand-rolled `navigator.wakeLock.request` will silently stop holding.',
+        'Treating a rejected request as an error — low battery and background tabs both refuse, so `request()` resolves `false` rather than throwing.',
+        '`active` and `supported` are accessors — call them.',
+        'Holding a lock for the page rather than the view that needs it — the lock releases on scope disposal, so acquire it in the component that owns the awake-screen requirement.',
+      ],
+      seeAlso: ['useAppState', 'useDocumentVisibility'],
+    },
+    {
+      name: 'useBluetooth',
+      kind: 'hook',
+      signature: 'useBluetooth() => { available: () => boolean; scanning: () => boolean; devices: () => BluetoothDevice[]; error: () => string; scan: () => void; stopScan: () => void }',
+      summary:
+        'Bluetooth DISCOVERY only, on all three targets — Web Bluetooth, CoreBluetooth, and the Android adapter. GATT (connect / read / write a characteristic) is deliberately out of scope: it is where the three platforms stop resembling each other, and a surface that only half-crosses is worse than one that states what it covers. `devices` is FIRST-SEEN order deduped by id, asserted on every target rather than inherited from whatever the platform hands back.',
+      example: `const bt = useBluetooth()
+<Show when={() => bt.available()}>
+  <Button onClick={() => bt.scan()}>Scan</Button>
+  <For each={bt.devices()} by={(d) => d.id}>{(d) => <Text>{d.name}</Text>}</For>
+</Show>`,
+      mistakes: [
+        'Expecting a connect/read/write surface — this is discovery only; use `useNativeModule` for GATT, which is genuinely platform-shaped.',
+        'Calling `scan()` without checking `available()` — it sets `error` and returns rather than throwing, so a missing check reads as a silently empty list.',
+        'Assuming scanning stops on its own — BLE peripherals advertise continuously; call `stopScan()` or let scope disposal do it, or the radio stays on.',
+      ],
+      seeAlso: ['useNativeModule', 'usePermissions'],
     },
     {
       name: 'useIntersection',

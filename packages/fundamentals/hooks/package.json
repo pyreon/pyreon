@@ -138,6 +138,9 @@
         "PyreonShare": [
           "PyreonShare.kt"
         ],
+        "PyreonWakeLock": [
+          "PyreonWakeLock.kt"
+        ],
         "PyreonVideoPlayerAndroid": [
           "PyreonVideoPlayerAndroid.kt"
         ],
@@ -148,7 +151,10 @@
         "PyreonRateLimit": [
           "PyreonRateLimit.kt"
         ]
-      }
+      },
+      "kotlinSdkOnly": [
+        "PyreonWebView.kt"
+      ]
     }
   }
 }

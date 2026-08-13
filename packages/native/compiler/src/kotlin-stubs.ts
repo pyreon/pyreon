@@ -1286,6 +1286,21 @@ class PyreonBluetooth(scanner: BluetoothScanner) {
   fun scan() {}
   fun stopScan() {}
 }
+// PyreonWakeLock + the app-supplied screen keeper the emit names.
+interface ScreenKeeper {
+  val isSupported: Boolean
+  fun setKeepScreenOn(on: Boolean)
+}
+class AndroidScreenKeeper(ctx: Any?) : ScreenKeeper {
+  override val isSupported: Boolean = false
+  override fun setKeepScreenOn(on: Boolean) {}
+}
+class PyreonWakeLock(keeper: ScreenKeeper) {
+  val active: MutableState<Boolean> = mutableStateOf(false)
+  val supported: Boolean = false
+  fun request(): Boolean = false
+  fun release() {}
+}
 // Mirrors PyreonPermissions.kt's CompositionLocal. A bare \`usePermissions()\`
 // reads the provider through this; a stub without it rejects a correct emit.
 class ProvidableCompositionLocal<T>(val default: T) { val current: T get() = default }

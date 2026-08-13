@@ -4215,6 +4215,31 @@ effect(() => { if (idle()) showAwayBanner() })`,
 - Returns an accessor — call \`online()\`.`,
   },
 
+  'hooks/useWakeLock': {
+    signature: 'useWakeLock() => { active: () => boolean; supported: () => boolean; request: () => Promise<boolean>; release: () => Promise<void> }',
+    example: `const wake = useWakeLock()
+onMount(() => { void wake.request() })
+<Show when={() => wake.active()}><Badge>Screen stays on</Badge></Show>`,
+    notes: `Keep the screen awake — video, navigation, recipe steps. Lowers to \`isIdleTimerDisabled\` on iOS and \`FLAG_KEEP_SCREEN_ON\` on Android. The WEB arm carries a normalization the native ones do not need: a \`WakeLockSentinel\` is released by the browser whenever the document hides and is NOT reacquired, while the native flag survives backgrounding — so the hook listens for the sentinel's \`release\` event and re-acquires on \`visibilitychange\` unless the caller explicitly released. Without both halves the same call leaves the screen sleeping on web and lit on native. See also: useAppState, useDocumentVisibility.`,
+    mistakes: `- Assuming a lock survives a tab switch by itself — on the web it does not; this hook re-acquires for you, but a hand-rolled \`navigator.wakeLock.request\` will silently stop holding.
+- Treating a rejected request as an error — low battery and background tabs both refuse, so \`request()\` resolves \`false\` rather than throwing.
+- \`active\` and \`supported\` are accessors — call them.
+- Holding a lock for the page rather than the view that needs it — the lock releases on scope disposal, so acquire it in the component that owns the awake-screen requirement.`,
+  },
+
+  'hooks/useBluetooth': {
+    signature: 'useBluetooth() => { available: () => boolean; scanning: () => boolean; devices: () => BluetoothDevice[]; error: () => string; scan: () => void; stopScan: () => void }',
+    example: `const bt = useBluetooth()
+<Show when={() => bt.available()}>
+  <Button onClick={() => bt.scan()}>Scan</Button>
+  <For each={bt.devices()} by={(d) => d.id}>{(d) => <Text>{d.name}</Text>}</For>
+</Show>`,
+    notes: 'Bluetooth DISCOVERY only, on all three targets — Web Bluetooth, CoreBluetooth, and the Android adapter. GATT (connect / read / write a characteristic) is deliberately out of scope: it is where the three platforms stop resembling each other, and a surface that only half-crosses is worse than one that states what it covers. `devices` is FIRST-SEEN order deduped by id, asserted on every target rather than inherited from whatever the platform hands back. See also: useNativeModule, usePermissions.',
+    mistakes: `- Expecting a connect/read/write surface — this is discovery only; use \`useNativeModule\` for GATT, which is genuinely platform-shaped.
+- Calling \`scan()\` without checking \`available()\` — it sets \`error\` and returns rather than throwing, so a missing check reads as a silently empty list.
+- Assuming scanning stops on its own — BLE peripherals advertise continuously; call \`stopScan()\` or let scope disposal do it, or the radio stays on.`,
+  },
+
   'hooks/useIntersection': {
     signature: 'useIntersection(getEl: () => HTMLElement | null, options?: IntersectionObserverInit) => () => IntersectionObserverEntry | null',
     example: `let el!: HTMLElement
