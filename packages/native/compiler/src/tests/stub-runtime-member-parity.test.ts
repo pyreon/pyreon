@@ -79,8 +79,7 @@ const KNOWN_NARROW: ReadonlySet<string> = new Set([
   // Reachable from user code and genuinely missing — the real backlog this
   // gate exists to surface. Each is a `perms.grant(...)` / `machine.can(...)`
   // an author can write today and have refused.
-  'PyreonMachine.can', 'PyreonMachine.nextEvents',
-  'PyreonMachine.state', 'PyreonMachine.transitions',
+  
   'PyreonI18n.fallbackLocale', 'PyreonI18n.locale', 'PyreonI18n.messages',
   'PyreonQuery.queryKey', 'PyreonQuery.staleSeconds',
   'PyreonToast.defaultDuration', 'PyreonToast.defaultDurationMillis',

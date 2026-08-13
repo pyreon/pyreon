@@ -21,6 +21,12 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
+import {
+  isKotlincAvailable,
+  isSwiftcAvailable,
+  validateKotlin,
+  validateSwiftWithStubs,
+} from '../validate'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const FIXTURE = resolve(HERE, '..', 'fixtures', 'tier2-machine.tsx')
@@ -93,5 +99,47 @@ export function StateView() {
     const kotlin = transform(source, { target: 'kotlin' })
     expect(swift.code).toMatch(/m\(\)/)
     expect(kotlin.code).toMatch(/m\(\)/)
+  })
+})
+
+// The stub half. `createMachine` lowers with zero warnings, so every member
+// of the web Machine interface it exposes is REACHABLE and must typecheck
+// against the validation stubs. The Swift stub was a struct missing `can` /
+// `nextEvents` / `state` / `transitions` while the Kotlin one was already
+// complete — so `m.can("GO")` compiled on Android and failed on iOS from the
+// same source. A stub NARROWER than its runtime rejects working code, which
+// is the inverse of the usual superset-stub masking failure.
+describe('the full Machine surface typechecks against the stubs', () => {
+  const src = `
+    import { createMachine } from '@pyreon/machine'
+    import { Stack, Text } from '@pyreon/primitives'
+    export function C() {
+      const m = createMachine({
+        initial: 'idle',
+        states: { idle: { on: { GO: 'run' } }, run: { on: { STOP: 'idle' } } },
+      })
+      const s = m()
+      const ok = m.can('GO')
+      const hit = m.matches('idle')
+      const ns = m.nextEvents()
+      const f = () => { m.send('GO') }
+      return (<Stack><Text>{ok && hit ? s : 'n'}</Text></Stack>)
+    }
+    `
+
+  it('emits with no warnings on either target', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      expect(transform(src, { target }).warnings ?? [], target).toEqual([])
+    }
+  })
+
+  it.skipIf(!isSwiftcAvailable())('Swift type-checks', () => {
+    const res = validateSwiftWithStubs(transform(src, { target: 'swift' }).code)
+    expect(res.ok, res.error ?? '').toBe(true)
+  })
+
+  it.skipIf(!isKotlincAvailable())('Kotlin type-checks', () => {
+    const res = validateKotlin(transform(src, { target: 'kotlin' }).code)
+    expect(res.ok, res.error ?? '').toBe(true)
   })
 })

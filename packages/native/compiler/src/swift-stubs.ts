@@ -494,11 +494,23 @@ public struct PyreonFilePicker { public init() {}; public func pick() async -> S
 // emit uses it) drives runtime reactivity; these only satisfy conformance.
 public protocol PyreonStoreProtocol: AnyObject {}
 public protocol PyreonModelProtocol: AnyObject {}
-public struct PyreonMachine {
-  public init(initial: String, transitions: [String: [String: String]]) {}
-  public func callAsFunction() -> String { "" }
+// Mirrors the real @Observable final class. The struct stub was missing
+// \`can\` / \`nextEvents\` / the \`state\` property / \`transitions\`, so a correct
+// \`m.can("GO")\` - a documented member of the web Machine interface, which
+// \`createMachine\` lowers to this type - failed the type gate on iOS while
+// compiling fine on Android, whose stub was already complete.
+public final class PyreonMachine {
+  public init(initial: String, transitions: [String: [String: String]]) {
+    self.state = initial
+    self.transitions = transitions
+  }
+  public private(set) var state: String
+  public let transitions: [String: [String: String]]
+  public func callAsFunction() -> String { state }
   public func send(_ event: String) {}
-  public func matches(_ state: String) -> Bool { false }
+  public func matches(_ s: String) -> Bool { false }
+  public func can(_ event: String) -> Bool { false }
+  public func nextEvents() -> [String] { [] }
 }
 // @pyreon/sync — CRDT doc + synced-signal facade. Mirrors the real
 // PyreonCrdt.swift / PyreonSyncedSignal.swift SURFACE (not a superset); the

@@ -27,3 +27,11 @@ one is correct without anyone noticing it exists. Member-expression receivers
 `s.dispose()` was rejected. This had left the stub/runtime parity gate red on
 `main`; it is fixed by mirroring the runtime rather than widening the ratchet,
 which is now six entries shorter.
+
+**`PyreonMachine` was the same class of defect, on iOS only.** It is an
+`@Observable final class` at runtime but a `struct` in the Swift stub, missing
+`can` / `nextEvents` / the `state` property / `transitions`. The Kotlin stub
+was already complete — so `m.can("GO")`, a documented member of the web
+`Machine` interface that `createMachine` lowers to this type, compiled on
+Android and failed on iOS from the same source. Mirroring the Swift stub takes
+the ratchet four entries lower.
