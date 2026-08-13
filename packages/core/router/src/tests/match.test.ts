@@ -1058,7 +1058,15 @@ describe('resolveRoute — PR-S9 notFoundComponent trie', () => {
       return routes
     }
 
-    const LOOKUPS = 400
+    // Enough lookups that the BASE run clears `minMs` at the base tree size.
+    // This is load-bearing, not tuning: resolution cost is flat in tree size —
+    // the invariant this test exists to state — so the helper's "grow n until
+    // measurable" loop can never get there by enlarging the tree. It would
+    // instead keep doubling, and since `treeFor` RETAINS every tree it builds,
+    // the run exhausted a 4GB heap and killed the worker (taking all 95 results
+    // in this file with it). The helper now stops early and says so; the base
+    // has to be made measurable HERE, by doing more work per call.
+    const LOOKUPS = 4000
     const result = expectSubQuadratic(
       (n) => {
         const routes = treeFor(n)
