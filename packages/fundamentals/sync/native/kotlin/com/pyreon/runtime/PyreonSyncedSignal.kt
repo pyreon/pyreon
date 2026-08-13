@@ -14,9 +14,19 @@
 // signal). Multiple synced signals over the SAME `doc` share state, as on web.
 //
 // Scope (v1): scalar values only — `String` / `Double` / `Boolean` (JS numbers
-// are doubles). Create-if-missing matches web's local-first convention: an
-// ABSENT key is seeded with `initial`; a PRESENT key wins. Cross-DEVICE
-// transport (doc.onLocalOps ↔ a native WebSocket) is a tracked follow-up.
+// are doubles).
+//
+// Create-if-missing seeds a SEPARATE defaults map (web #2519): `initial` is
+// written into a companion `"<map>:defaults"` map, NEVER the real data map, and
+// reads resolve real → defaults → `initial`. Reads PREFER the real map, so a
+// default can never outrank real data no matter how an actor tie-break falls —
+// closing the "two fresh devices open, one types, the other's default wipes it"
+// clobber. Byte-for-byte the web design: same `:defaults` suffix, same precedence.
+//
+// Residual (inherent, same as web): two FRESH peers seeding an EMPTY room with
+// DIFFERENT `initial` values still tie-break — but among DEFAULTS only, so peers
+// CONVERGE on one default (harmless), they never diverge and a real value is never
+// lost to it.
 
 package com.pyreon.runtime
 
@@ -25,6 +35,14 @@ import androidx.compose.runtime.mutableStateOf
 
 /** The default map name, byte-identical to web's `DEFAULT_MAP`. */
 const val PYREON_SYNCED_DEFAULT_MAP = "pyreon"
+
+/**
+ * Suffix for the companion map that holds create-if-missing DEFAULTS —
+ * byte-identical to web's `DEFAULTS_SUFFIX`. Kept OUT of the data map so a default
+ * can never win an actor tie-break against real data (#2519); reads prefer the
+ * data map.
+ */
+const val PYREON_SYNCED_DEFAULTS_SUFFIX = ":defaults"
 
 /** Encode a supported scalar to the CRDT's `PyreonScalar`. */
 private fun anyToScalar(value: Any?): PyreonScalar = when (value) {
@@ -51,43 +69,62 @@ private fun <T> scalarToValue(scalar: PyreonScalar, sample: T): T? = when (sampl
 class PyreonSyncedSignal<T>(
     private val doc: PyreonCrdtDoc,
     private val key: String,
-    initial: T,
+    private val initial: T,
     private val map: String = PYREON_SYNCED_DEFAULT_MAP,
 ) {
+    /** The companion `"<map>:defaults"` map that holds create-if-missing seeds. */
+    private val defaultsMap: String = "$map$PYREON_SYNCED_DEFAULTS_SUFFIX"
     private val _value: MutableState<T>
     private val unsubscribe: () -> Unit
+    private val unsubscribeDefaults: () -> Unit
 
     /** The current value. Compose reads track it; writes go through [set]. */
     val value: T get() = _value.value
 
-    init {
-        // Local-first create-if-missing: a PRESENT key wins over `initial`.
-        val existing = doc.get(map, key)
-        val start = if (existing != null) scalarToValue(existing, initial) ?: initial else initial
-        _value = mutableStateOf(start)
-        if (existing == null) doc.set(map, key, anyToScalar(initial))
+    /** Real value if present, else a shared default, else the local `initial`. */
+    private fun resolve(): T {
+        doc.get(map, key)?.let { scalarToValue(it, initial)?.let { v -> return v } }
+        doc.get(defaultsMap, key)?.let { scalarToValue(it, initial)?.let { v -> return v } }
+        return initial
+    }
 
-        // A remote op (or another signal on this doc+key) updates `value`.
+    init {
+        _value = mutableStateOf(resolve())
+
+        // Observe the REAL map: any real write (local `set` or a remote op) updates `value`.
         unsubscribe = doc.observe(map) { changed ->
-            if (changed.contains(key)) {
-                val s = doc.get(map, key)
-                if (s != null) {
-                    val v = scalarToValue(s, initial)
-                    if (v != null) _value.value = v
-                }
-            }
+            if (changed.contains(key)) _value.value = resolve()
+        }
+
+        // Observe the DEFAULTS map: a peer's default reaches a peer that has none, but
+        // a real value already present WINS (real-map precedence) — skip when the real
+        // map holds the key so a late default never overwrites real data.
+        unsubscribeDefaults = doc.observe(defaultsMap) { changed ->
+            if (changed.contains(key) && !doc.has(map, key)) _value.value = resolve()
+        }
+
+        // Create-if-missing SEED — into the DEFAULTS map, never the real map (#2519),
+        // and only when the key is absent from BOTH.
+        if (!doc.has(map, key) && !doc.has(defaultsMap, key)) {
+            doc.set(defaultsMap, key, anyToScalar(initial))
         }
     }
 
     /** `signal()` — read the current value (Kotlin `invoke` for the web spelling). */
     operator fun invoke(): T = _value.value
 
-    /** `signal.set(v)` — write one CRDT op and update the local value. */
+    /**
+     * `signal.set(v)` — a user write is REAL data, so it goes to the REAL map (never
+     * the defaults map). Writes one CRDT op; the real-map observer echoes it back.
+     */
     fun set(v: T) {
         doc.set(map, key, anyToScalar(v))
         _value.value = v
     }
 
-    /** Detach the CRDT observer. Idempotent. Mirrors web `dispose()`. */
-    fun dispose() = unsubscribe()
+    /** Detach both CRDT observers. Idempotent. Mirrors web `dispose()`. */
+    fun dispose() {
+        unsubscribe()
+        unsubscribeDefaults()
+    }
 }

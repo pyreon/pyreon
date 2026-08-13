@@ -3,6 +3,7 @@
 // + LWW merge, so an Android peer converges with a web and an iOS peer.
 
 import com.pyreon.runtime.PYREON_SYNCED_DEFAULT_MAP
+import com.pyreon.runtime.PYREON_SYNCED_DEFAULTS_SUFFIX
 import com.pyreon.runtime.PyreonCrdtDoc
 import com.pyreon.runtime.PyreonScalar
 import com.pyreon.runtime.PyreonSyncChannel
@@ -90,6 +91,10 @@ fun main() {
     //    in-memory relay.
     syncTransportTests()
 
+    // 9. Create-if-missing DEFAULTS map (web #2519) — a default can never clobber
+    //    real data on an actor tie-break.
+    syncDefaultsTests()
+
     println("[PyreonCrdtTest] all assertions passed")
 }
 
@@ -176,4 +181,79 @@ private fun syncTransportTests() {
     tA.dispose()
     tB.dispose()
     tD.dispose()
+}
+
+/**
+ * The create-if-missing SEED lands in a SEPARATE `"<map>:defaults"` map (web
+ * #2519), so a fresh peer's default can never clobber real data — reads prefer the
+ * real map. Called from `main()`.
+ */
+private fun syncDefaultsTests() {
+    val defaultsMap = "$PYREON_SYNCED_DEFAULT_MAP$PYREON_SYNCED_DEFAULTS_SUFFIX"
+
+    // 1. CLOBBER-FIXED convergence. Two fresh docs (distinct actors) each seed their
+    //    OWN default OFFLINE — the fresh-peer race — then connect.
+    val docA = PyreonCrdtDoc("aaa")
+    val docB = PyreonCrdtDoc("zzz")
+    val sigA = PyreonSyncedSignal(docA, "title", "A-default")
+    val sigB = PyreonSyncedSignal(docB, "title", "B-default")
+    // The seeds live only in each doc's DEFAULTS map; the REAL map is empty.
+    check(docA.get(PYREON_SYNCED_DEFAULT_MAP, "title") == null, "seed did not touch A's real map")
+    check(docB.get(PYREON_SYNCED_DEFAULT_MAP, "title") == null, "seed did not touch B's real map")
+    check(docA.get(defaultsMap, "title") == PyreonScalar.Str("A-default"), "A seeded its defaults map")
+
+    // Connect + open → full-state exchange; the two concurrent defaults tie-break.
+    val chA = TransportMemoryChannel()
+    val chB = TransportMemoryChannel()
+    chA.peer = chB
+    chB.peer = chA
+    val tA = PyreonSyncTransport(docA, chA)
+    val tB = PyreonSyncTransport(docB, chB)
+    chA.fireOpen()
+    chB.fireOpen()
+
+    // Converge on ONE default (harmless tie among defaults), NOT diverge — and no
+    // default ever leaked into the real map.
+    check(sigA() == sigB(), "both signals converge on the same default")
+    check(sigA() == "A-default" || sigA() == "B-default", "the converged value is one of the defaults")
+    check(docA.get(defaultsMap, "title") == docB.get(defaultsMap, "title"), "defaults maps converged")
+    check(docA.get(PYREON_SYNCED_DEFAULT_MAP, "title") == null, "no default leaked into A's real map")
+    check(docB.get(PYREON_SYNCED_DEFAULT_MAP, "title") == null, "no default leaked into B's real map")
+
+    // A REAL write now OUTRANKS any default on BOTH peers — the #2519 guarantee.
+    sigA.set("real")
+    check(sigA() == "real", "A reads its real write")
+    check(sigB() == "real", "B converges to the real value — a default never outranks it")
+    check(docB.get(PYREON_SYNCED_DEFAULT_MAP, "title") == PyreonScalar.Str("real"), "real value in B's real map")
+
+    // 2. NO-TRANSPORT: the seed is immediate (into the defaults map); a later `set`
+    //    writes the real map, which the read then follows.
+    val solo = PyreonCrdtDoc("solo")
+    val s = PyreonSyncedSignal(solo, "k", "seed")
+    check(s() == "seed", "reads initial via the defaults resolve (no transport)")
+    check(solo.get(PYREON_SYNCED_DEFAULT_MAP, "k") == null, "initial seeded the defaults map, not the real map")
+    check(solo.get(defaultsMap, "k") == PyreonScalar.Str("seed"), "initial present in the defaults map")
+    s.set("v")
+    check(s() == "v", "read follows the real write")
+    check(solo.get(PYREON_SYNCED_DEFAULT_MAP, "k") == PyreonScalar.Str("v"), "set wrote the real map")
+
+    // 3. PRESENT-KEY-WINS: a pre-set REAL value beats `initial` (real precedence),
+    //    and no default is seeded when a real value already exists.
+    val pre = PyreonCrdtDoc("pre")
+    pre.set(PYREON_SYNCED_DEFAULT_MAP, "k", PyreonScalar.Str("present"))
+    val sPre = PyreonSyncedSignal(pre, "k", "IGNORED")
+    check(sPre() == "present", "a present real value wins over initial")
+    check(pre.get(defaultsMap, "k") == null, "no default seeded when a real value exists")
+
+    // 4. DISPOSE SAFETY: dispose before any observe fires → later writes are ignored,
+    //    no crash. dispose is idempotent.
+    val dd = PyreonCrdtDoc("disp")
+    val sd = PyreonSyncedSignal(dd, "k", "x")
+    sd.dispose()
+    sd.dispose() // idempotent
+    dd.set(PYREON_SYNCED_DEFAULT_MAP, "k", PyreonScalar.Str("after"))
+    check(sd() == "x", "a disposed signal ignores later writes, no crash")
+
+    tA.dispose()
+    tB.dispose()
 }
