@@ -10,7 +10,9 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      'universal web/node HTTP client (WHATWG fetch); PMTC has no lowering for createHttp — native networking is useFetch + the PyreonHttp runtime layer, convergence tracked',
+      'universal web/node HTTP client (WHATWG fetch); the transport (middleware, interceptors, streaming) stays web — native networking is the PyreonFetch/PyreonHttp runtime layer',
+    nativeFrontend:
+      "same-file endpoint calls resolve to PyreonFetch/PyreonQuery — `useFetch<T>(getUser({ params: { id: '1' } }))` lowers to a native fetch of the templated URL from `createHttp({ baseUrl })` + `api.endpoint('GET /users/:id')`, and `useQuery<T>(() => getUser.query({ params: { id: '1' } }))` lowers to a cached PyreonQuery (literal params only; reactive params and a computed baseUrl stay web)",
   },
   features: [
     'Onion middleware `(req, next) => res` — retry, auth-refresh and short-circuit are ordinary middleware, which axios interceptor arrays structurally cannot express',
