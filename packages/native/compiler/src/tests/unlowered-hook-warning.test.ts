@@ -3,7 +3,7 @@
 // The parser lowers 28 hooks. Anything else imported from a `@pyreon/*` package
 // and called as `useX()` fell through to the generic `const x = <call>` emit,
 // which reproduces the call VERBATIM — and there is no `useWatch` (or
-// `useToggle`, or `useElementSize`) in the Swift or Kotlin runtime.
+// `useHover`, or `useElementSize`) in the Swift or Kotlin runtime.
 //
 //   const value = useWatch('email')
 //   →  let value = useWatch("email")      // cannot find … in scope
@@ -51,9 +51,11 @@ describe('a Pyreon hook with no native lowering', () => {
     // The value is not "this is unsupported" — it is that the reader can match
     // the message to the compiler error they are about to see, or already saw.
     const w = warningsFor(
-      app(`import { useToggle } from '@pyreon/hooks'`, `const [on, toggle] = useToggle(false)`),
+      // `useToggle` used to be the example here; it LOWERS now (pure state,
+      // no platform dependency). `useHover` is genuinely DOM-bound.
+      app(`import { useHover } from '@pyreon/hooks'`, `const h = useHover()`),
     )
-    expect(w.some((x) => x.includes(`cannot find 'useToggle' in scope`))).toBe(true)
+    expect(w.some((x) => x.includes(`cannot find 'useHover' in scope`))).toBe(true)
   })
 
   it('offers a way out, not just a refusal', () => {
