@@ -385,6 +385,21 @@ export type DeclIR =
   /** `useBluetooth()` — discovery-only BLE (PyreonBluetooth). */
   | { kind: 'bluetooth'; name: string }
   /**
+   * `useDebouncedValue(() => expr, ms)` — a trailing-edge mirror of a source,
+   * seeded immediately.
+   *
+   * Measured on the web before this emit was written: the value is available
+   * at once (no first-delay gap), updates land only once the source goes
+   * quiet, a burst collapses to the LAST value, and the timer RESTARTS on
+   * each change rather than firing on a fixed cadence.
+   *
+   * That last property is what makes the lowering exact rather than
+   * approximate: `.task(id:)` and `LaunchedEffect(key)` both cancel and
+   * restart when their key changes, which IS a restarting trailing-edge
+   * debounce. No runtime and no stored timer handle.
+   */
+  | { kind: 'debounced-value'; name: string; source: ExprIR; type: TypeIR; delayMs: number }
+  /**
    * M3.1 — haptic feedback via `const h = useHaptics()` from
    * `@pyreon/hooks`. Emits the PyreonHaptics fire-and-forget wrapper:
    *   Swift  → @State private var h = PyreonHaptics()

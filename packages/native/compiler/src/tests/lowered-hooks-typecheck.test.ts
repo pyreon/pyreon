@@ -89,6 +89,11 @@ const USAGES: ReadonlyArray<readonly [string, string, string]> = [
   ],
   ['usePush', '@pyreon/hooks', 'const p = usePush()'],
   [
+    'useDebouncedValue',
+    '@pyreon/hooks',
+    "const q = signal(''); const dq = useDebouncedValue(() => q(), 300)",
+  ],
+  [
     'useQuery',
     '@pyreon/query',
     'const q = useQuery<Resp>(() => ({ queryKey: ["k"], queryFn: () => fetch("/x"), staleTime: 0 }))',

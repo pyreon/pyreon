@@ -1082,6 +1082,7 @@ export const NATIVE_LOWERED_HOOKS: ReadonlySet<string> = new Set([
   'useSecureStorage',
   'useShare', 'useSizeClass', 'useStorage', 'useWebSocket',
   'useSessionStorage', 'useMemoryStorage',
+  'useDebouncedValue',
 ])
 
 /**
@@ -5527,6 +5528,35 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // platform-specific by design.
   if (calleeName === 'useBluetooth') {
     return { kind: 'bluetooth', name }
+  }
+  // `useDebouncedValue(() => expr, ms)` — see the DeclIR comment for the
+  // measured contract this reproduces.
+  if (calleeName === 'useDebouncedValue') {
+    const getter = unwrapTypeLayers(init.arguments?.[0] as AnyNode | undefined)
+    const delayNode = unwrapTypeLayers(init.arguments?.[1] as AnyNode | undefined)
+    if (
+      (getter?.type !== 'ArrowFunctionExpression' && getter?.type !== 'FunctionExpression') ||
+      getter.body?.type === 'BlockStatement'
+    ) {
+      ctx.warnings.push(
+        `useDebouncedValue() \`${name}\`: the source must be an expression-body getter (\`() => expr\`) to lower natively — this one is not, so the declaration is NOT lowered.`,
+      )
+      return null
+    }
+    if (delayNode?.type !== 'Literal' || typeof delayNode.value !== 'number') {
+      ctx.warnings.push(
+        `useDebouncedValue() \`${name}\`: the delay must be a numeric literal to bake into the native schedule — this one is not, so the declaration is NOT lowered.`,
+      )
+      return null
+    }
+    const source = parseExpr(getter.body as AnyNode, ctx)
+    return {
+      kind: 'debounced-value',
+      name,
+      source,
+      type: inferTypeFromInitial(source),
+      delayMs: delayNode.value as number,
+    }
   }
   if (calleeName === 'useClipboard') {
     return { kind: 'clipboard', name }

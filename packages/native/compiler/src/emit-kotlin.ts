@@ -1539,6 +1539,16 @@ function emitKotlinComponent(c: ComponentIR): string {
   // runs off the main thread; decode goes through kotlinx-serialization.
   // onMount bodies → LaunchedEffect(Unit) (Compose's run-once-on-mount
   // hook — keyed by the stable Unit, not cancelled by recomposition).
+  // LaunchedEffect(key) cancels the previous when the key changes — the
+  // Compose mirror of .task(id:), and the same restarting trailing edge.
+  for (const d of c.decls) {
+    if (d.kind !== 'debounced-value') continue
+    const src = emitKotlinExpr(d.source, 4)
+    lines.push(`  LaunchedEffect(${src}) {`)
+    lines.push(`    delay(${d.delayMs}L)`)
+    lines.push(`    ${kotlinIdent(d.name)} = ${src}`)
+    lines.push(`  }`)
+  }
   for (const d of c.decls) {
     if (d.kind !== 'on-mount') continue
     const saved = seedHandlerLocals(d.body, _kotlinExprInferCtx)
@@ -1718,6 +1728,9 @@ let _fieldArrayItemParamsKotlin: string[] = []
 function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // on-mount emits at the harness level (LaunchedEffect) — defensive narrow.
   if (d.kind === 'on-mount') return ''
+  if (d.kind === 'debounced-value') {
+    return `var ${kotlinIdent(d.name)} by remember { mutableStateOf(${emitKotlinExpr(d.source, 2)}) }`
+  }
   // Phase 5b: a plain value const → a composable-body `val` (captures-once).
   if (d.kind === 'value') {
     return `val ${kotlinIdent(d.name)} = ${emitKotlinExpr(d.expr, 0)}`

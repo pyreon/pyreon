@@ -135,6 +135,7 @@ function sourceMapHeader(target: TargetLanguage, originalPath: string): string {
  */
 export function conditionalKotlinImports(emitted: string): string {
   const imports: string[] = []
+  if (/\bdelay\(/.test(emitted)) imports.push('import kotlinx.coroutines.delay')
   if (emitted.includes('withContext(')) imports.push('import kotlinx.coroutines.withContext')
   if (emitted.includes('Dispatchers.')) imports.push('import kotlinx.coroutines.Dispatchers')
   // M4.5: an `async () => { await … }` event handler emits

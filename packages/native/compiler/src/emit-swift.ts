@@ -889,6 +889,17 @@ let _pureStateSwift: Map<string, { hook: 'useToggle' | 'useCounter'; bounds?: { 
 let _bluetoothSwift: Set<string> = new Set()
 /** Initial values, so `reset()` restores exactly what the web's does. */
 let _pureStateInitialSwift: Map<string, number | boolean> = new Map()
+/**
+ * `useDebouncedValue` bindings → the SOURCE signal's own initial expression.
+ *
+ * The seed cannot be the source PROPERTY: a `@State` initializer runs before
+ * `self` exists, so `@State var d = query` is "cannot use instance member
+ * within property initializer". Seeding with the signal's initial gives the
+ * same value without touching self — and the immediate seed is a measured
+ * web contract, so falling back to a type default (and a delay-long gap on
+ * every mount) would be a visible divergence.
+ */
+let _debouncedSeedSwift: Map<string, string> = new Map()
 /** `useClipboard()` bindings — its reactive reads drop their parens. */
 let _clipboardSwift: Set<string> = new Set()
 /** Set while emitting a model view/action body — the factory's `self`
@@ -1831,6 +1842,19 @@ function emitSwiftComponent(c: ComponentIR): string {
   for (const d of c.decls) {
     if (d.kind === 'signal') swiftType(d.type, synth, d.name)
   }
+  // Resolve each debounced binding's seed from the SOURCE signal's own
+  // initial — see _debouncedSeedSwift for why the source property itself
+  // cannot be used.
+  _debouncedSeedSwift = new Map()
+  for (const d of c.decls) {
+    if (d.kind !== 'debounced-value') continue
+    if (d.source.kind !== 'call' || d.source.callee.kind !== 'identifier') continue
+    const sourceName = d.source.callee.name
+    const sig = c.decls.find((o) => o.kind === 'signal' && o.name === sourceName)
+    if (sig !== undefined && sig.kind === 'signal') {
+      _debouncedSeedSwift.set(d.name, emitSwiftExpr(sig.initial, 2))
+    }
+  }
   for (const s of synth.structs) {
     lines.push(emitSwiftStruct(s))
     lines.push('')
@@ -1913,6 +1937,9 @@ function emitSwiftComponent(c: ComponentIR): string {
   // transparent Group is redistributed onto conditional branches and
   // RE-FIRES per flip — the same device-found class as .task.
   const _hasOnMount = c.decls.some((d) => d.kind === 'on-mount')
+  // Same stable-host requirement as every other .task: on a transparent
+  // Group the modifier is redistributed onto the conditional branches.
+  const _hasDebounced = c.decls.some((d) => d.kind === 'debounced-value')
   // network-status needs the same stable host: its `.onAppear { net.start() }`
   // / `.onDisappear { net.stop() }` pair on a transparent Group would be
   // redistributed onto conditional branches — a branch flip would STOP the
@@ -1931,7 +1958,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // crash-reporter: same stable-host requirement — its onAppear-start on a
   // transparent Group would be redistributed onto conditional branches.
   const _hasCrashDecl = c.decls.some((d) => d.kind === 'crash-reporter')
-  if (_hasFetchDecl || _hasOnMount || _hasNetDecl || _hasPushDecl || _hasAppStateDecl || _hasCrashDecl) {
+  if (_hasFetchDecl || _hasOnMount || _hasDebounced || _hasNetDecl || _hasPushDecl || _hasAppStateDecl || _hasCrashDecl) {
     lines.push(`    ZStack {`)
     lines.push(`      ${emitSwiftReturnExpr(c.returnExpr, 6)}`)
     lines.push(`    }`)
@@ -1966,6 +1993,20 @@ function emitSwiftComponent(c: ComponentIR): string {
   // onMount bodies → .onAppear on the stable host (sync statements; the
   // async-on-mount hook stays .task/useFetch). Multiple onMount calls emit
   // in source order.
+  // `.task(id:)` cancels and RESTARTS when the id changes, which is exactly
+  // a restarting trailing-edge debounce — measured as the web contract
+  // before this was written. No stored timer handle, no runtime.
+  for (const d of c.decls) {
+    if (d.kind !== 'debounced-value') continue
+    const src = emitSwiftExpr(d.source, 8)
+    lines.push(`      .task(id: ${src}) {`)
+    lines.push(`        try? await _Concurrency.Task.sleep(nanoseconds: ${d.delayMs}_000_000)`)
+    // A cancelled sleep returns immediately, so the write has to be guarded
+    // or a superseded burst would publish an intermediate value.
+    lines.push(`        if _Concurrency.Task.isCancelled { return }`)
+    lines.push(`        ${swiftIdent(d.name)} = ${src}`)
+    lines.push(`      }`)
+  }
   for (const d of c.decls) {
     if (d.kind !== 'on-mount') continue
     const savedLocals = seedHandlerLocals(d.body, _exprInferCtx)
@@ -2253,6 +2294,19 @@ function emitSwiftDecl(
   // on-mount emits at the harness level (see emitSwiftComponent) — the
   // caller skips it; this defensive return keeps the union narrowed.
   if (d.kind === 'on-mount') return ''
+  // Seeded with the SOURCE, so the value is available immediately — the web
+  // hook has no first-delay gap and a field that rendered empty for the
+  // delay on every mount would be a visible divergence. The debounce itself
+  // is the .task(id:) appended after the body.
+  if (d.kind === 'debounced-value') {
+    // Inferred HERE rather than at parse time: the source is a signal read,
+    // and only the component's inference context knows that signal's type.
+    // Parse-time inference produced `Any`, which breaks every use site.
+    const t = inferType(d.source, inferCtx)
+    const anno = t.kind === 'unknown' ? swiftType(d.type) : swiftType(t)
+    const seed = _debouncedSeedSwift.get(d.name) ?? emitSwiftExpr(d.source, 2)
+    return `@State private var ${swiftIdent(d.name)}: ${anno} = ${seed}`
+  }
   // Phase 5b: a plain value const. Normally emitted as a body-local `let` by
   // emitSwiftComponent (a stored property can't reference @State at init);
   // this defensive case keeps the emit total if reached elsewhere.
