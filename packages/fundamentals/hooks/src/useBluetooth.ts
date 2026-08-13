@@ -1,4 +1,4 @@
-import { batch, onCleanup, signal } from '@pyreon/reactivity'
+import { batch, isClient, onCleanup, signal } from '@pyreon/reactivity'
 
 /** A device seen during a scan. */
 export interface BluetoothDevice {
@@ -56,10 +56,15 @@ export function useBluetooth(): UseBluetoothResult {
   const devices = signal<BluetoothDevice[]>([])
   const error = signal('')
 
-  const nav =
-    typeof navigator === 'undefined'
-      ? undefined
-      : (navigator as Navigator & { bluetooth?: { requestDevice: (o: unknown) => Promise<unknown> } })
+  // `isClient` from @pyreon/reactivity rather than a local typeof — it is
+  // the repo's canonical SSR guard, and the one `no-window-in-ssr`
+  // recognises. A hand-rolled ternary reads the same to a human and not to
+  // the rule, which is how this reached CI.
+  const nav = isClient
+    ? (navigator as Navigator & {
+        bluetooth?: { requestDevice: (o: unknown) => Promise<unknown> }
+      })
+    : undefined
   const available = signal(nav?.bluetooth !== undefined)
 
   const scan = async (): Promise<void> => {
