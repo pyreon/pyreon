@@ -34,7 +34,7 @@ export type {
 } from './types/shared'
 
 export type { InlineProps, LayerProps, ScrollProps, SpacerProps, StackProps } from './types/layout'
-export type { HeadingProps, IconProps, ImageProps, TextProps, VideoProps } from './types/content'
+export type { AudioProps, HeadingProps, IconProps, ImageProps, TextProps, VideoProps } from './types/content'
 export type { ButtonProps, LinkProps, PressProps } from './types/interaction'
 export type { FieldProps, ModalProps, ToggleProps } from './types/input'
 
@@ -60,6 +60,7 @@ export { Spacer } from './web/Spacer'
 export { Text } from './web/Text'
 export { Heading } from './web/Heading'
 export { Image } from './web/Image'
+export { Audio } from './web/Audio'
 export { Video } from './web/Video'
 export { Icon } from './web/Icon'
 export { Button } from './web/Button'

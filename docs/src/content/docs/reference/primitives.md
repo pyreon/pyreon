@@ -69,6 +69,7 @@ export function App() {
 | [`Text`](#text) | component | Inline text. |
 | [`Heading`](#heading) | component | Heading text. |
 | [`Image`](#image) | component | Image. |
+| [`Audio`](#audio) | component | Sound playback, and deliberately NON-VISUAL — the one place it does not mirror `<Video>`. |
 | [`Video`](#video) | component | Video playback. |
 | [`Icon`](#icon) | component | Icon by canonical name. |
 | [`Button`](#button) | component | Styled CTA. |
@@ -262,6 +263,30 @@ Image. Web `<img>`; iOS `Image`; Android `AsyncImage` (Coil). `src` + `alt` REQU
 - Omitting `alt` (required — a11y + it is the native contentDescription)
 
 **See also:** `Icon`
+
+---
+
+### Audio `component`
+
+```ts
+(props: { src: string; autoPlay?: boolean; loop?: boolean; muted?: boolean; volume?: number; onStatusChange?: (status: 'waiting'|'playing'|'paused') => void }) => VNode
+```
+
+Sound playback, and deliberately NON-VISUAL — the one place it does not mirror `<Video>`. Audio has no view on the native targets (`AVAudioPlayer` / Media3 are objects, not views), so there is no `controls` prop: the web's browser-styled bar has no cross-platform counterpart, and a prop that silently no-ops on two of three targets is the failure this family refuses (see `useScreenOrientation`, which omits `lock()` for the same reason). Build a transport from Pyreon primitives and drive it with these props. `onStatusChange` uses the SAME three-value vocabulary as `<Video>` (`waiting`/`playing`/`paused`). `volume` is CLAMPED to 0..1 rather than rejected, on all three arms and at emit time, so the generated native source is honest about what will actually play. The native host is a concrete zero-size view rather than `EmptyView`, because a modifier on `EmptyView` is silently inert.
+
+**Example**
+
+```tsx
+<Audio src="ping.mp3" autoPlay volume={0.4} onStatusChange={(s) => sound.set(s)} />
+```
+
+**Common mistakes**
+
+- Looking for `controls` — it is deliberately absent; compose a transport from primitives instead
+- Expecting unmuted autoplay on the web — browsers only permit MUTED autoplay; pair `autoPlay` with `muted`
+- Passing a volume outside 0..1 and expecting a throw — it is clamped, on every target
+
+**See also:** `Video`
 
 ---
 

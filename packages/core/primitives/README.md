@@ -2,7 +2,7 @@
 
 > Canonical multi-platform UI primitives — semantic vocabulary that compiles to DOM (web), SwiftUI (iOS), and Compose (Android). The Pyreon Multi-Target story.
 
-**Status:** experimental, and further along than this line used to say. All **17** primitives now have real web implementations, and PMTC emits them for iOS + Android. Per-capability native maturity (what is device-proven vs merely emitted) lives in the multiplatform tier table, not here — it moves per release and a copy in this file would go stale, which is exactly what happened to the sentence this replaced.
+**Status:** experimental, and further along than this line used to say. All **18** primitives now have real web implementations, and PMTC emits them for iOS + Android. Per-capability native maturity (what is device-proven vs merely emitted) lives in the multiplatform tier table, not here — it moves per release and a copy in this file would go stale, which is exactly what happened to the sentence this replaced.
 
 ## What this is
 
@@ -29,7 +29,7 @@ On the **web target** this compiles via `@pyreon/runtime-dom` to DOM (the implem
 
 ## The primitives
 
-All 17 have a real web implementation in `src/web/` — there is no
+All 18 have a real web implementation in `src/web/` — there is no
 type-definition-only tier any more.
 
 | Primitive | DOM shape | Notes |
@@ -61,7 +61,7 @@ cases a canonical primitive deliberately does not cover.
 2. **One canonical event name per concept.** `onPress` everywhere (not `onClick` on web + `action:` on iOS).
 3. **Tokens-first styling.** `padding={4}` / `gap="md"` resolve via theme. No raw pixels.
 4. **Pyreon idioms preserved.** Existing `<For>` / `<Show>` / `<Match>` control flow stays.
-5. **Minimal first; expand from real-world usage.** 17 primitives; more when demanded.
+5. **Minimal first; expand from real-world usage.** 18 primitives; more when demanded.
 
 ## Per-platform import resolution
 

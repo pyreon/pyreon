@@ -1099,6 +1099,15 @@ type Props = ExtractProps<typeof Iterator>
     mistakes: '- Omitting `alt` (required — a11y + it is the native contentDescription)',
   },
 
+  'primitives/Audio': {
+    signature: `(props: { src: string; autoPlay?: boolean; loop?: boolean; muted?: boolean; volume?: number; onStatusChange?: (status: 'waiting'|'playing'|'paused') => void }) => VNode`,
+    example: '<Audio src="ping.mp3" autoPlay volume={0.4} onStatusChange={(s) => sound.set(s)} />',
+    notes: `Sound playback, and deliberately NON-VISUAL — the one place it does not mirror \`<Video>\`. Audio has no view on the native targets (\`AVAudioPlayer\` / Media3 are objects, not views), so there is no \`controls\` prop: the web's browser-styled bar has no cross-platform counterpart, and a prop that silently no-ops on two of three targets is the failure this family refuses (see \`useScreenOrientation\`, which omits \`lock()\` for the same reason). Build a transport from Pyreon primitives and drive it with these props. \`onStatusChange\` uses the SAME three-value vocabulary as \`<Video>\` (\`waiting\`/\`playing\`/\`paused\`). \`volume\` is CLAMPED to 0..1 rather than rejected, on all three arms and at emit time, so the generated native source is honest about what will actually play. The native host is a concrete zero-size view rather than \`EmptyView\`, because a modifier on \`EmptyView\` is silently inert. See also: Video.`,
+    mistakes: `- Looking for \`controls\` — it is deliberately absent; compose a transport from primitives instead
+- Expecting unmuted autoplay on the web — browsers only permit MUTED autoplay; pair \`autoPlay\` with \`muted\`
+- Passing a volume outside 0..1 and expecting a throw — it is clamped, on every target`,
+  },
+
   'primitives/Video': {
     signature: `(props: { src: string; autoPlay?: boolean; loop?: boolean; muted?: boolean; controls?: boolean; width?: number|string; height?: number|string; onStatusChange?: (status: 'waiting'|'playing'|'paused') => void }) => VNode`,
     example: '<Video src="https://cdn.example.com/intro.mp4" autoPlay muted loop onStatusChange={(s) => playState.set(s)} />',
@@ -4228,24 +4237,52 @@ effect(() => { if (idle()) showAwayBanner() })`,
 - Every member is an accessor — call them.`,
   },
 
-  'hooks/useSafeArea': {
-    signature: 'useSafeArea() => () => { top: number; right: number; bottom: number; left: number }',
-    example: `const safe = useSafeArea()
-<Stack style={() => ({ paddingTop: \`\${safe().top}px\` })}>…</Stack>`,
-    notes: 'The safe-area insets of the current display — notch / Dynamic Island, home indicator, gesture bar, rounded corners. The one device fact a multiplatform app cannot work around at the app level: without it content draws under the notch, or every screen pads by a hard-coded guess that is wrong on the next device. Returns ONE accessor rather than four because the values move together on rotation and separate accessors invite a torn read. Sources: `env(safe-area-inset-*)` read off an inert probe element on the web (CSS environment variables are not exposed to script any other way — needs `viewport-fit=cover`, and reports zeros without it, which is correct rather than broken), `safeAreaInsets` on iOS, `WindowInsets` on Android. See also: useScreenOrientation, useDeviceInfo.',
-    mistakes: `- Destructuring at setup (\`const { top } = safe()\`) — that captures one frame; rotation changes it. Read inside the reactive scope.
-- Expecting non-zero values on the web without \`viewport-fit=cover\` in the viewport meta — zeros mean nothing is obscured.
-- Hard-coding notch padding instead — it is wrong on the next device, which is what this hook exists to stop.`,
+  'hooks/useSpeech': {
+    signature: 'useSpeech() => { supported: () => boolean; speaking: () => boolean; speak: (text: string) => Promise<boolean>; stop: () => void }',
+    example: `const speech = useSpeech()
+<Button onClick={() => speech.speak(article())}>Read aloud</Button>`,
+    notes: 'Speak text aloud — `speechSynthesis` on the web, `AVSpeechSynthesizer` on iOS, `TextToSpeech` on Android. CANCELS before each `speak()`: queueing is the platform default on all three, so without it a second press talks OVER the first instead of replacing it, and the assertion is identical across the three arms. Rate, pitch and voice selection are deliberately out of scope — the platforms disagree on their ranges and on how voices are identified, so one name would mean three different things, or a lowest-common-denominator useless on all three. Disposal cancels: speech outlives the DOM on every browser, so an in-flight utterance would talk over the next screen. See also: useAudioRecorder, a11y.',
+    mistakes: `- Expecting queued playback — each speak() replaces the last; queue it yourself if you want a playlist.
+- Looking for rate/pitch/voice — deliberately absent; they do not cross.
+- Empty text is a no-op returning false, not an empty utterance.`,
   },
 
-  'hooks/useScreenOrientation': {
-    signature: `useScreenOrientation() => { type: () => 'portrait' | 'landscape'; angle: () => number }`,
-    example: `const o = useScreenOrientation()
-<Show when={() => o.type() === 'landscape'}><WideLayout /></Show>`,
-    notes: 'Which way the display is oriented. READ-ONLY by design: locking does not cross — `screen.orientation.lock()` is Chromium-only and fullscreen-gated on the web, and on iOS orientation is an app-level declaration (`supportedInterfaceOrientations`) rather than something a view can request. A `lock()` that silently no-ops on two of three targets is worse than a surface that states what it covers. `type` is normalised to the part that is true everywhere; the primary/secondary distinction the web exposes lives in `angle` (0 / 90 / 180 / 270), so nothing is lost. See also: useSafeArea, useSizeClass, useDeviceInfo.',
-    mistakes: `- Looking for \`lock()\` — it is deliberately absent; declare supported orientations at the app level instead.
-- Treating \`angle\` as the orientation — a device can report 90 in either landscape direction; branch on \`type()\`.
-- Both members are accessors — call them.`,
+  'hooks/useDeviceMotion': {
+    signature: 'useDeviceMotion() => { supported: () => boolean; active: () => boolean; start: () => Promise<boolean>; stop: () => void; acceleration: () => { x: number; y: number; z: number }; rotation: () => { x: number; y: number; z: number } }',
+    example: `const motion = useDeviceMotion()
+<Button onClick={() => motion.start()}>Enable tilt</Button>
+<Show when={() => motion.active()}><Tilt v={motion.rotation()} /></Show>`,
+    notes: 'Device motion — shake gestures, tilt controls. Has an explicit `start()` rather than listening on mount, because an always-on hook would be wrong on ALL THREE targets: iOS Safari gates `DeviceMotionEvent` behind a permission prompt that only works from a user gesture, and both native targets want an explicit start/stop so the sensor is not draining battery for a screen nobody is looking at. `start()` resolves `false` on denial rather than throwing. On engines WITHOUT `requestPermission` (everything but iOS Safari) its absence is a GRANT, not a failure. See also: useScreenOrientation, useDeviceInfo.',
+    mistakes: `- Calling start() outside a user gesture on iOS Safari — the prompt throws; it is caught and resolves false.
+- Expecting updates without start() — deliberately opt-in, to keep the sensor off.
+- Forgetting stop() when the view is only hidden rather than unmounted.`,
+  },
+
+  'hooks/useCamera': {
+    signature: 'useCamera() => { capture: () => Promise<string | null>; isAvailable: () => boolean }',
+    example: `const cam = useCamera()
+const shoot = async () => {
+  const uri = await cam.capture()
+  if (uri !== null) photo.set(uri)
+}`,
+    notes: 'Take a photo with the device camera, through the SYSTEM capture UI on every target — `<input capture>` on the web, UIImagePickerController on iOS, an image-capture intent on Android. Mirrors `useImagePicker` exactly, since the two differ only in which system flow they open: `capture()` resolves a URI or `null`, and NEVER rejects — a cancel and an unavailable camera are the same outcome to a caller (no photo). Because the system UI owns the permission prompt, there is no permission plumbing to get subtly different per platform. A CUSTOM in-app viewfinder is deliberately out of scope: an AVCaptureSession layer, a CameraX PreviewView and a `<video>` element are not one thing wearing three hats — reach for `useNativeModule` there, the same escape hatch `useBluetooth` names for GATT. See also: useImagePicker, useFilePicker, usePermissions.',
+    mistakes: `- Expecting a live viewfinder — this opens the system capture UI; a bespoke preview is \`useNativeModule\` territory.
+- Wrapping capture() in try/catch expecting a throw on cancel — it resolves null.
+- Assuming the web arm opens a camera on desktop — \`capture\` is a mobile hint; desktop shows a file dialog.`,
+  },
+
+  'hooks/useAudioRecorder': {
+    signature: 'useAudioRecorder() => { supported: () => boolean; recording: () => boolean; start: () => Promise<boolean>; stop: () => Promise<string | null>; error: () => string }',
+    example: `const rec = useAudioRecorder()
+const done = async () => {
+  const url = await rec.stop()
+  if (url !== null) clip.set(url)
+}`,
+    notes: 'Record from the microphone — voice notes, voice messages, dictation. `start()` RESOLVES `false` on a denied permission rather than throwing: that is the single most likely outcome of the call and an ordinary branch in any UI that uses it, so callers get an `if`, not a `try` (the same contract `useWakeLock.request()` uses). `stop()` resolves a URL — an object URL on the web, a file URL on iOS/Android — because that is the one representation all three targets produce and every consumer can use; handing back a platform-shaped buffer would push the difference onto the caller. A zero-length capture resolves `null` rather than an empty URL. Disposal releases the microphone tracks, which is what turns the OS recording indicator off. See also: Audio, usePermissions.',
+    mistakes: `- Wrapping start() in try/catch expecting a throw on denial — it resolves false and sets error().
+- Assuming stop() always yields a URL — a zero-length capture is null.
+- Forgetting to revoke the object URL on the web when the clip is discarded.
+- Every member is an accessor — call them.`,
   },
 
   'hooks/useWakeLock': {

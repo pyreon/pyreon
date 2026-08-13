@@ -186,6 +186,134 @@ public final class PyreonScreenOrientation {
   public var type: String { "portrait" }
   public var angle: Int { 0 }
 }
+// PyreonAudioPlayer + the app-supplied AVFoundation engine the emit names.
+public protocol AudioEngine: AnyObject {
+  func load(url: URL, loop: Bool, muted: Bool, volume: Double)
+  func play()
+  func pause()
+  func stop()
+}
+public final class AVFoundationAudioEngine: AudioEngine {
+  public init() {}
+  public func load(url: URL, loop: Bool, muted: Bool, volume: Double) {}
+  public func play() {}
+  public func pause() {}
+  public func stop() {}
+}
+public enum PyreonAudioStatus: String {
+  case waiting
+  case playing
+  case paused
+}
+public final class PyreonAudioState {
+  public init(engine: AudioEngine) {}
+  public private(set) var status: PyreonAudioStatus = .waiting
+  public static func clampVolume(_ v: Double) -> Double { 0 }
+  public func start(url: URL, autoPlay: Bool, loop: Bool, muted: Bool, volume: Double) {}
+  public func play() {}
+  public func pause() {}
+  public func stop() {}
+}
+public struct PyreonAudioPlayer: View {
+  public init(
+    url: URL?,
+    autoPlay: Bool = false,
+    loop: Bool = false,
+    muted: Bool = false,
+    volume: Double = 1,
+    engine: AudioEngine,
+    onStatusChange: ((String) -> Void)? = nil
+  ) {}
+  public var body: some View { EmptyView() }
+}
+
+// PyreonAudioRecorder + the app-supplied engine the emit names.
+public protocol RecordingEngine: AnyObject {
+  var isAvailable: Bool { get }
+  func begin() -> Bool
+  func end() -> String?
+  func release()
+}
+public final class AVFoundationRecordingEngine: RecordingEngine {
+  public init() {}
+  public var isAvailable: Bool { false }
+  public func begin() -> Bool { false }
+  public func end() -> String? { nil }
+  public func release() {}
+}
+public final class PyreonAudioRecorder {
+  public init(engine: RecordingEngine) {}
+  public private(set) var recording: Bool = false
+  public private(set) var error: String = ""
+  public var supported: Bool { false }
+  @discardableResult public func start() -> Bool { false }
+  public func stop() -> String? { nil }
+}
+
+// PyreonCamera + the app-supplied presenter the emit names.
+public protocol CameraPresenter: AnyObject {
+  var isAvailable: Bool { get }
+  func present(_ completion: @escaping (String?) -> Void)
+}
+public final class UIKitCameraPresenter: CameraPresenter {
+  public init() {}
+  public var isAvailable: Bool { false }
+  public func present(_ completion: @escaping (String?) -> Void) {}
+}
+public final class PyreonCamera {
+  public init(presenter: CameraPresenter) {}
+  public func isAvailable() -> Bool { false }
+  public func capture() async -> String? { nil }
+}
+
+// PyreonSpeech + the app-supplied synthesiser the emit names.
+public protocol SpeechSynth: AnyObject {
+  var isAvailable: Bool { get }
+  func speak(_ text: String)
+  func cancel()
+}
+public final class AVSpeechSynth: SpeechSynth {
+  public init() {}
+  public var isAvailable: Bool { false }
+  public func speak(_ text: String) {}
+  public func cancel() {}
+}
+public final class PyreonSpeech {
+  public init(synth: SpeechSynth) {}
+  public private(set) var speaking: Bool = false
+  public var supported: Bool { false }
+  @discardableResult public func speak(_ text: String) -> Bool { false }
+  public func stop() {}
+}
+
+// PyreonDeviceMotion + the app-supplied sensor source the emit names.
+public struct PyreonVec3 {
+  public let x: Double
+  public let y: Double
+  public let z: Double
+  public init(x: Double, y: Double, z: Double) { self.x = x; self.y = y; self.z = z }
+  public static let zero = PyreonVec3(x: 0, y: 0, z: 0)
+}
+public protocol MotionSource: AnyObject {
+  var isAvailable: Bool { get }
+  func begin(_ onSample: @escaping (PyreonVec3, PyreonVec3) -> Void) -> Bool
+  func end()
+}
+public final class CoreMotionSource: MotionSource {
+  public init() {}
+  public var isAvailable: Bool { false }
+  public func begin(_ onSample: @escaping (PyreonVec3, PyreonVec3) -> Void) -> Bool { false }
+  public func end() {}
+}
+public final class PyreonDeviceMotion {
+  public init(source: MotionSource) {}
+  public private(set) var active: Bool = false
+  public private(set) var acceleration: PyreonVec3 = .zero
+  public private(set) var rotation: PyreonVec3 = .zero
+  public var supported: Bool { false }
+  @discardableResult public func start() -> Bool { false }
+  public func stop() {}
+}
 
 public final class PyreonWakeLock {
   public init(controller: IdleTimerController) {}

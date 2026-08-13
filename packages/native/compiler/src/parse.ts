@@ -1331,6 +1331,7 @@ export const NATIVE_LOWERED_HOOKS: ReadonlySet<string> = new Set([
   // Pure state — no platform dependency, so no runtime; see the
   // `pure-state` DeclIR.
   'useToggle', 'useCounter', 'useBluetooth', 'useWakeLock', 'useDeviceInfo', 'useSafeArea', 'useScreenOrientation',
+  'useDeviceMotion', 'useSpeech', 'useCamera', 'useAudioRecorder',
   'useUrlState',
   'useSecureStorage',
   'useShare', 'useSizeClass', 'useStorage', 'useWebSocket',
@@ -5962,6 +5963,31 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // declaration on iOS), so it is deliberately not in the surface.
   if (calleeName === 'useScreenOrientation') {
     return { kind: 'screen-orientation', name }
+  }
+  // `useDeviceMotion()` -> PyreonDeviceMotion. Explicit start/stop, because
+  // an always-on sensor drains battery for a screen nobody is looking at and
+  // iOS Safari gates the web equivalent behind a gesture-triggered prompt.
+  if (calleeName === 'useDeviceMotion') {
+    return { kind: 'device-motion', name }
+  }
+  // `useSpeech()` -> PyreonSpeech. Rate/pitch/voice are out of scope: the
+  // platforms disagree on ranges and voice identity, so one name would mean
+  // three different things.
+  if (calleeName === 'useSpeech') {
+    return { kind: 'speech', name }
+  }
+  // `useCamera()` -> PyreonCamera. Mirrors useImagePicker: the two differ
+  // only in which system flow they open, so `capture()` is async and
+  // collapses cancel + unavailable to null rather than throwing.
+  if (calleeName === 'useCamera') {
+    return { kind: 'camera', name }
+  }
+  // `useAudioRecorder()` -> PyreonAudioRecorder. `start()` returns a Bool
+  // rather than throwing (a denied mic permission is an ordinary branch) and
+  // `stop()` returns a URL string or nil — the one representation all three
+  // targets produce.
+  if (calleeName === 'useAudioRecorder') {
+    return { kind: 'audio-recorder', name }
   }
   // `useDebouncedCallback(fn, ms)` / `useThrottledCallback(fn, ms)` — see
   // the DeclIR comment for why these need a runtime.

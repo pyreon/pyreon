@@ -14,9 +14,9 @@ export default defineManifest({
   name: '@pyreon/hooks',
   title: 'Signal-Based Hooks',
   tagline:
-    '61 signal-based hooks: state (useToggle/useCounter/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocusTrap/useFocusReturn/useInertOthers/useElementSize/useWindowResize/useWindowScroll/useScrollLock/useIntersection/useInfiniteScroll), responsive (useBreakpoint/useMediaQuery/useColorScheme/useSizeClass/useReducedMotion), timing (useDebouncedValue/useDebouncedCallback/useThrottledCallback/useInterval/useTimeout/useTimeAgo), interaction (useBluetooth/useSafeArea/useScreenOrientation/useDeviceInfo/useWakeLock/useClipboard/useHaptics/useShare/useLinking/useNotifications/useBiometrics/useImagePicker/useFilePicker/useDialog/useKeyboard/useOnline/useAppState/useCrashReporter/useDocumentVisibility/useIdle), data (useFetch/useAuth/useDatabase/useGeolocation/useMap/useWebSocket/useSecureStorage/usePush/usePayments), composition (useMergedRef/useUpdateEffect/useIsomorphicLayoutEffect)',
+    '65 signal-based hooks: state (useToggle/useCounter/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocusTrap/useFocusReturn/useInertOthers/useElementSize/useWindowResize/useWindowScroll/useScrollLock/useIntersection/useInfiniteScroll), responsive (useBreakpoint/useMediaQuery/useColorScheme/useSizeClass/useReducedMotion), timing (useDebouncedValue/useDebouncedCallback/useThrottledCallback/useInterval/useTimeout/useTimeAgo), interaction (useBluetooth/useSafeArea/useScreenOrientation/useDeviceMotion/useSpeech/useDeviceInfo/useCamera/useAudioRecorder/useWakeLock/useClipboard/useHaptics/useShare/useLinking/useNotifications/useBiometrics/useImagePicker/useFilePicker/useDialog/useKeyboard/useOnline/useAppState/useCrashReporter/useDocumentVisibility/useIdle), data (useFetch/useAuth/useDatabase/useGeolocation/useMap/useWebSocket/useSecureStorage/usePush/usePayments), composition (useMergedRef/useUpdateEffect/useIsomorphicLayoutEffect)',
   description:
-    'Signal-based hooks for Pyreon — 61 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.',
+    'Signal-based hooks for Pyreon — 65 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.',
   category: 'universal',
   multiplatform: {
     tier: 'service-backend',
@@ -100,7 +100,7 @@ const { position } = useWindowScroll()     // Signal<{ x, y }> scroll offset + s
 const visibility = useDocumentVisibility()  // Signal<'visible' | 'hidden'> — pause work when hidden
 const idle = useIdle(30_000)               // Signal<boolean> — true after 30s of no activity`,
   features: [
-    '61 signal-based hooks across 7 categories',
+    '65 signal-based hooks across 7 categories',
     'State: useToggle, useCounter, usePrevious, useLatest, useControllableState',
     'DOM: useEventListener, useClickOutside, useFocus, useHover, useFocusTrap, useFocusReturn, useInertOthers, useElementSize, useWindowResize, useWindowScroll, useScrollLock, useIntersection, useInfiniteScroll',
     'Responsive: useBreakpoint, useMediaQuery, useColorScheme, useSizeClass, useReducedMotion',
@@ -584,6 +584,39 @@ effect(() => { if (idle()) showAwayBanner() })`,
       seeAlso: ['useScreenOrientation', 'useDeviceInfo'],
     },
     {
+      name: 'useSpeech',
+      kind: 'hook',
+      signature:
+        'useSpeech() => { supported: () => boolean; speaking: () => boolean; speak: (text: string) => Promise<boolean>; stop: () => void }',
+      summary:
+        'Speak text aloud — `speechSynthesis` on the web, `AVSpeechSynthesizer` on iOS, `TextToSpeech` on Android. CANCELS before each `speak()`: queueing is the platform default on all three, so without it a second press talks OVER the first instead of replacing it, and the assertion is identical across the three arms. Rate, pitch and voice selection are deliberately out of scope — the platforms disagree on their ranges and on how voices are identified, so one name would mean three different things, or a lowest-common-denominator useless on all three. Disposal cancels: speech outlives the DOM on every browser, so an in-flight utterance would talk over the next screen.',
+      example: `const speech = useSpeech()
+<Button onClick={() => speech.speak(article())}>Read aloud</Button>`,
+      mistakes: [
+        'Expecting queued playback — each speak() replaces the last; queue it yourself if you want a playlist.',
+        'Looking for rate/pitch/voice — deliberately absent; they do not cross.',
+        'Empty text is a no-op returning false, not an empty utterance.',
+      ],
+      seeAlso: ['useAudioRecorder', 'a11y'],
+    },
+    {
+      name: 'useDeviceMotion',
+      kind: 'hook',
+      signature:
+        'useDeviceMotion() => { supported: () => boolean; active: () => boolean; start: () => Promise<boolean>; stop: () => void; acceleration: () => { x: number; y: number; z: number }; rotation: () => { x: number; y: number; z: number } }',
+      summary:
+        'Device motion — shake gestures, tilt controls. Has an explicit `start()` rather than listening on mount, because an always-on hook would be wrong on ALL THREE targets: iOS Safari gates `DeviceMotionEvent` behind a permission prompt that only works from a user gesture, and both native targets want an explicit start/stop so the sensor is not draining battery for a screen nobody is looking at. `start()` resolves `false` on denial rather than throwing. On engines WITHOUT `requestPermission` (everything but iOS Safari) its absence is a GRANT, not a failure.',
+      example: `const motion = useDeviceMotion()
+<Button onClick={() => motion.start()}>Enable tilt</Button>
+<Show when={() => motion.active()}><Tilt v={motion.rotation()} /></Show>`,
+      mistakes: [
+        'Calling start() outside a user gesture on iOS Safari — the prompt throws; it is caught and resolves false.',
+        'Expecting updates without start() — deliberately opt-in, to keep the sensor off.',
+        'Forgetting stop() when the view is only hidden rather than unmounted.',
+      ],
+      seeAlso: ['useScreenOrientation', 'useDeviceInfo'],
+    },
+    {
       name: 'useScreenOrientation',
       kind: 'hook',
       signature: "useScreenOrientation() => { type: () => 'portrait' | 'landscape'; angle: () => number }",
@@ -597,6 +630,44 @@ effect(() => { if (idle()) showAwayBanner() })`,
         'Both members are accessors — call them.',
       ],
       seeAlso: ['useSafeArea', 'useSizeClass', 'useDeviceInfo'],
+    },
+    {
+      name: 'useCamera',
+      kind: 'hook',
+      signature: 'useCamera() => { capture: () => Promise<string | null>; isAvailable: () => boolean }',
+      summary:
+        "Take a photo with the device camera, through the SYSTEM capture UI on every target — `<input capture>` on the web, UIImagePickerController on iOS, an image-capture intent on Android. Mirrors `useImagePicker` exactly, since the two differ only in which system flow they open: `capture()` resolves a URI or `null`, and NEVER rejects — a cancel and an unavailable camera are the same outcome to a caller (no photo). Because the system UI owns the permission prompt, there is no permission plumbing to get subtly different per platform. A CUSTOM in-app viewfinder is deliberately out of scope: an AVCaptureSession layer, a CameraX PreviewView and a `<video>` element are not one thing wearing three hats — reach for `useNativeModule` there, the same escape hatch `useBluetooth` names for GATT.",
+      example: `const cam = useCamera()
+const shoot = async () => {
+  const uri = await cam.capture()
+  if (uri !== null) photo.set(uri)
+}`,
+      mistakes: [
+        'Expecting a live viewfinder — this opens the system capture UI; a bespoke preview is `useNativeModule` territory.',
+        'Wrapping capture() in try/catch expecting a throw on cancel — it resolves null.',
+        'Assuming the web arm opens a camera on desktop — `capture` is a mobile hint; desktop shows a file dialog.',
+      ],
+      seeAlso: ['useImagePicker', 'useFilePicker', 'usePermissions'],
+    },
+    {
+      name: 'useAudioRecorder',
+      kind: 'hook',
+      signature:
+        'useAudioRecorder() => { supported: () => boolean; recording: () => boolean; start: () => Promise<boolean>; stop: () => Promise<string | null>; error: () => string }',
+      summary:
+        'Record from the microphone — voice notes, voice messages, dictation. `start()` RESOLVES `false` on a denied permission rather than throwing: that is the single most likely outcome of the call and an ordinary branch in any UI that uses it, so callers get an `if`, not a `try` (the same contract `useWakeLock.request()` uses). `stop()` resolves a URL — an object URL on the web, a file URL on iOS/Android — because that is the one representation all three targets produce and every consumer can use; handing back a platform-shaped buffer would push the difference onto the caller. A zero-length capture resolves `null` rather than an empty URL. Disposal releases the microphone tracks, which is what turns the OS recording indicator off.',
+      example: `const rec = useAudioRecorder()
+const done = async () => {
+  const url = await rec.stop()
+  if (url !== null) clip.set(url)
+}`,
+      mistakes: [
+        'Wrapping start() in try/catch expecting a throw on denial — it resolves false and sets error().',
+        'Assuming stop() always yields a URL — a zero-length capture is null.',
+        'Forgetting to revoke the object URL on the web when the clip is discarded.',
+        'Every member is an accessor — call them.',
+      ],
+      seeAlso: ['Audio', 'usePermissions'],
     },
     {
       name: 'useWakeLock',

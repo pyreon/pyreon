@@ -103,6 +103,30 @@ const USAGES: ReadonlyArray<readonly [string, string, string]> = [
     'const o = useScreenOrientation(); const ty = o.type(); const an = o.angle()',
   ],
   [
+    'useAudioRecorder',
+    '@pyreon/hooks',
+    'const r = useAudioRecorder(); const go = () => { r.start() }; const on = r.recording(); const s = r.supported()',
+  ],
+  [
+    'useCamera',
+    '@pyreon/hooks',
+    // INLINE async handler, not a component-body `const go = async () => …`.
+    // That second shape lowers to a non-async `func` with `await` inside on
+    // BOTH targets — a PRE-EXISTING compiler gap, reproduced identically with
+    // useImagePicker, so it is not camera-specific and not fixed here.
+    'const cam = useCamera(); const ok = cam.isAvailable()',
+  ],
+  [
+    'useSpeech',
+    '@pyreon/hooks',
+    'const sp = useSpeech(); const go = () => { sp.speak("hi") }; const on = sp.speaking(); const ok = sp.supported()',
+  ],
+  [
+    'useDeviceMotion',
+    '@pyreon/hooks',
+    'const mo = useDeviceMotion(); const go = () => { mo.start() }; const on = mo.active(); const ax = mo.acceleration().x',
+  ],
+  [
     'useWakeLock',
     '@pyreon/hooks',
     'const w = useWakeLock(); const on = () => { w.request() }; const a = w.active(); const s = w.supported()',

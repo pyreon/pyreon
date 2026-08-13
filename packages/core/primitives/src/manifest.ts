@@ -157,6 +157,21 @@ export function App() {
       seeAlso: ['Icon'],
     },
     {
+      name: 'Audio',
+      kind: 'component',
+      signature:
+        "(props: { src: string; autoPlay?: boolean; loop?: boolean; muted?: boolean; volume?: number; onStatusChange?: (status: 'waiting'|'playing'|'paused') => void }) => VNode",
+      summary:
+        "Sound playback, and deliberately NON-VISUAL — the one place it does not mirror `<Video>`. Audio has no view on the native targets (`AVAudioPlayer` / Media3 are objects, not views), so there is no `controls` prop: the web's browser-styled bar has no cross-platform counterpart, and a prop that silently no-ops on two of three targets is the failure this family refuses (see `useScreenOrientation`, which omits `lock()` for the same reason). Build a transport from Pyreon primitives and drive it with these props. `onStatusChange` uses the SAME three-value vocabulary as `<Video>` (`waiting`/`playing`/`paused`). `volume` is CLAMPED to 0..1 rather than rejected, on all three arms and at emit time, so the generated native source is honest about what will actually play. The native host is a concrete zero-size view rather than `EmptyView`, because a modifier on `EmptyView` is silently inert.",
+      example: `<Audio src="ping.mp3" autoPlay volume={0.4} onStatusChange={(s) => sound.set(s)} />`,
+      mistakes: [
+        'Looking for `controls` — it is deliberately absent; compose a transport from primitives instead',
+        'Expecting unmuted autoplay on the web — browsers only permit MUTED autoplay; pair `autoPlay` with `muted`',
+        'Passing a volume outside 0..1 and expecting a throw — it is clamped, on every target',
+      ],
+      seeAlso: ['Video'],
+    },
+    {
       name: 'Video',
       kind: 'component',
       signature:
