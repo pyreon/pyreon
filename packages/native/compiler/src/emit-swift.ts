@@ -1883,7 +1883,7 @@ function emitSwiftComponent(c: ComponentIR): string {
     if (d.kind === 'value') continue
     // on-mount decls emit at the HARNESS level (.onAppear after the body,
     // on the stable-identity host) — no stored property.
-    if (d.kind === 'on-mount') continue
+    if (d.kind === 'on-mount' || d.kind === 'tick') continue
     lines.push(`  ${emitSwiftDecl(d, inferCtx, synth)}`)
   }
   lines.push(`  var body: some View {`)
@@ -1913,6 +1913,11 @@ function emitSwiftComponent(c: ComponentIR): string {
   // transparent Group is redistributed onto conditional branches and
   // RE-FIRES per flip — the same device-found class as .task.
   const _hasOnMount = c.decls.some((d) => d.kind === 'on-mount')
+  // A `.task` on a TRANSPARENT Group is redistributed onto the conditional
+  // branches inside it, so it is cancelled and restarted on every state
+  // flip — the device-found bug the fetch harness already guards against.
+  // Timers need the same stable host.
+  const _hasTick = c.decls.some((d) => d.kind === 'tick')
   // network-status needs the same stable host: its `.onAppear { net.start() }`
   // / `.onDisappear { net.stop() }` pair on a transparent Group would be
   // redistributed onto conditional branches — a branch flip would STOP the
@@ -1931,7 +1936,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // crash-reporter: same stable-host requirement — its onAppear-start on a
   // transparent Group would be redistributed onto conditional branches.
   const _hasCrashDecl = c.decls.some((d) => d.kind === 'crash-reporter')
-  if (_hasFetchDecl || _hasOnMount || _hasNetDecl || _hasPushDecl || _hasAppStateDecl || _hasCrashDecl) {
+  if (_hasFetchDecl || _hasOnMount || _hasTick || _hasNetDecl || _hasPushDecl || _hasAppStateDecl || _hasCrashDecl) {
     lines.push(`    ZStack {`)
     lines.push(`      ${emitSwiftReturnExpr(c.returnExpr, 6)}`)
     lines.push(`    }`)
@@ -1979,6 +1984,31 @@ function emitSwiftComponent(c: ComponentIR): string {
   // onMount bodies → .onAppear on the stable host (sync statements; the
   // async-on-mount hook stays .task/useFetch). Multiple onMount calls emit
   // in source order.
+  // useInterval / useTimeout → `.task`, which SwiftUI cancels when the view
+  // disappears. That cancellation IS the web hooks' onUnmount cleanup, so no
+  // handle has to be stored and no runtime is needed.
+  for (const d of c.decls) {
+    if (d.kind !== 'tick') continue
+    const savedTick = seedHandlerLocals(d.body, _exprInferCtx)
+    const body = d.body.map((st) => `          ${emitSwiftStatement(st, 10)}`).join('\n')
+    _exprInferCtx.locals = savedTick
+    const ns = `${d.delayMs}_000_000`
+    lines.push(`      .task {`)
+    if (d.mode === 'interval') {
+      // `!Task.isCancelled` rather than `while true`: a cancelled sleep
+      // returns immediately, so an unguarded loop would spin.
+      lines.push(`        while !_Concurrency.Task.isCancelled {`)
+      lines.push(`          try? await _Concurrency.Task.sleep(nanoseconds: ${ns})`)
+      lines.push(`          if _Concurrency.Task.isCancelled { break }`)
+      lines.push(body)
+      lines.push(`        }`)
+    } else {
+      lines.push(`        try? await _Concurrency.Task.sleep(nanoseconds: ${ns})`)
+      lines.push(`        if _Concurrency.Task.isCancelled { return }`)
+      lines.push(body)
+    }
+    lines.push(`      }`)
+  }
   for (const d of c.decls) {
     if (d.kind !== 'on-mount') continue
     const savedLocals = seedHandlerLocals(d.body, _exprInferCtx)
@@ -2265,7 +2295,9 @@ function emitSwiftDecl(
 ): string {
   // on-mount emits at the harness level (see emitSwiftComponent) — the
   // caller skips it; this defensive return keeps the union narrowed.
-  if (d.kind === 'on-mount') return ''
+  // Harness-level: emitted as a `.task` modifier after the body, not as a
+  // declaration.
+  if (d.kind === 'on-mount' || d.kind === 'tick') return ''
   // The runtime holds the cancellable handle and the latest-args slot, so
   // the binding is a plain @State instance the call sites reach through.
   if (d.kind === 'rate-limited') {

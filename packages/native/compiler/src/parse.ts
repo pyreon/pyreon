@@ -1083,6 +1083,8 @@ export const NATIVE_LOWERED_HOOKS: ReadonlySet<string> = new Set([
   'useShare', 'useSizeClass', 'useStorage', 'useWebSocket',
   'useSessionStorage', 'useMemoryStorage',
   'useDebouncedCallback', 'useThrottledCallback',
+  // Pure timing over a callback — lowered at STATEMENT position.
+  'useInterval', 'useTimeout',
 ])
 
 /**
@@ -4094,6 +4096,45 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
           return !isCleanupReturn
         })
         decls.push({ kind: 'on-mount', body: kept })
+      } else if (
+        call?.type === 'CallExpression' &&
+        call.callee?.type === 'Identifier' &&
+        (call.callee.name === 'useInterval' || call.callee.name === 'useTimeout')
+      ) {
+        // `useInterval(cb, ms)` / `useTimeout(cb, ms)` — pure timing over a
+        // callback, with no platform capability behind it. Both were dropped
+        // by the bare-statement arm below, so a ticking clock or a delayed
+        // action compiled clean and did NOTHING on device.
+        const mode = call.callee.name === 'useInterval' ? 'interval' : 'timeout'
+        const cb = call.arguments?.[0] as AnyNode | undefined
+        const delayNode = unwrapTypeLayers(call.arguments?.[1] as AnyNode | undefined)
+        if (
+          cb?.type !== 'ArrowFunctionExpression' &&
+          cb?.type !== 'FunctionExpression'
+        ) {
+          ctx.warnings.push(
+            `Component ${name}: ${call.callee.name}() needs an inline callback to lower natively — this one is not, so it was DROPPED and will not run on device.`,
+          )
+        } else if (delayNode?.type !== 'Literal' || typeof delayNode.value !== 'number') {
+          // A `null` delay means "paused" and a getter means "reactive
+          // interval"; neither can be baked into the emitted schedule, and
+          // silently treating a paused timer as a running one would be worse
+          // than declining.
+          ctx.warnings.push(
+            `Component ${name}: ${call.callee.name}() needs a literal millisecond delay to lower natively (a null/paused delay or a reactive getter cannot be baked into the native schedule), so it was DROPPED and will not run on device.`,
+          )
+        } else {
+          const cbBody =
+            cb.body?.type === 'BlockStatement'
+              ? parseStatementBlock(cb.body, ctx)
+              : [{ kind: 'expr' as const, expr: parseExpr(cb.body, ctx) }]
+          decls.push({
+            kind: 'tick',
+            mode,
+            delayMs: delayNode.value as number,
+            body: cbBody,
+          })
+        }
       } else if (call?.type === 'CallExpression') {
         // A bare CALL statement (`effect(...)`, a stray side-effecting
         // call) has no native lowering — dropped + NAMED warning, so the

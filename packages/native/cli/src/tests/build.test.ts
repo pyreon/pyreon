@@ -601,3 +601,21 @@ it('Kotlin conditional imports: <Transition duration/easing> fade specs pull the
   expect(plain).not.toContain('fadeIn')
   expect(plain).not.toContain('tween')
 })
+
+describe('conditional Kotlin imports — the useInterval / useTimeout lowering', () => {
+  // The emit calls `delay(...)` unqualified: the stub file is a single
+  // default-package unit and cannot declare `package kotlinx.coroutines`, so
+  // the real build is where the import has to come from. Without it the
+  // device build fails with "unresolved reference 'delay'" while the stub
+  // gate stays green — the validate-loop-vs-real-build gap.
+  it('adds the coroutines delay import when the emit schedules one', () => {
+    const imports = conditionalKotlinImports('LaunchedEffect(Unit) { delay(1000L) }')
+    expect(imports).toContain('import kotlinx.coroutines.delay')
+  })
+
+  it('does NOT add it when nothing schedules', () => {
+    expect(conditionalKotlinImports('Text(text = "hi")')).not.toContain(
+      'import kotlinx.coroutines.delay',
+    )
+  })
+})

@@ -55,6 +55,16 @@
 export const KOTLIN_COMPOSE_STUBS = `// Auto-generated Compose stubs for Pyreon native-compiler validation.
 // DO NOT EDIT — sourced from @pyreon/native-compiler/src/kotlin-stubs.ts.
 
+// kotlinx-coroutines delay, emitted by the useInterval / useTimeout
+// lowering. Declared here rather than under its real package because this
+// stub file is a single default-package unit; the real build resolves it via
+// a conditional import (see native/cli's conditionalKotlinImports).
+//
+// The suspend modifier is retained because the real delay suspends and the
+// emitted call sites sit inside a LaunchedEffect body — a non-suspend stub
+// would let a non-suspend call site through.
+suspend fun delay(timeMillis: Long) {}
+
 @Target(
   AnnotationTarget.FUNCTION,
   AnnotationTarget.TYPE,
