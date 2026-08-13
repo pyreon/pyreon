@@ -29,6 +29,9 @@ struct PyreonBluetoothTests {
     static func main() {
         if #available(iOS 17.0, macOS 14.0, *) { run() }
         print("[PyreonBluetoothTests] all assertions passed")
+        // This directory's single @main also drives the sibling suites — see
+        // PyreonRateLimitTests for why they cannot own their own entry point.
+        PyreonRateLimitTests.runAll()
     }
 
     @available(iOS 17.0, macOS 14.0, *)

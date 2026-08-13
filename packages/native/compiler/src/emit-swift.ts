@@ -1945,6 +1945,19 @@ function emitSwiftComponent(c: ComponentIR): string {
   // awaiting URLSession + decoding into the typed result.
   // Form-binding arc: attach env/instance-capturing onSubmit callbacks
   // post-init (see the form-decl emit's comment for why init can't).
+  // Rate limiters: attach the state-capturing action post-init, exactly as
+  // the form's onSubmit below.
+  for (const d of c.decls) {
+    if (d.kind !== 'rate-limited') continue
+    const p0 = d.fn.params[0]
+    const argName = p0 === undefined ? '_' : swiftIdent(p0.name)
+    const savedLocals = seedHandlerLocals(d.fn.body, _exprInferCtx)
+    const body = d.fn.body.map((st) => emitSwiftStatement(st, 8)).join('; ')
+    _exprInferCtx.locals = savedLocals
+    lines.push(`      .onAppear {`)
+    lines.push(`        ${swiftIdent(d.name)}.action = { ${argName} in ${body} }`)
+    lines.push(`      }`)
+  }
   for (const d of c.decls) {
     if (d.kind !== 'form' || d.onSubmit === undefined) continue
     const name = swiftIdent(d.name)
@@ -2253,6 +2266,20 @@ function emitSwiftDecl(
   // on-mount emits at the harness level (see emitSwiftComponent) — the
   // caller skips it; this defensive return keeps the union narrowed.
   if (d.kind === 'on-mount') return ''
+  // The runtime holds the cancellable handle and the latest-args slot, so
+  // the binding is a plain @State instance the call sites reach through.
+  if (d.kind === 'rate-limited') {
+    const cls = d.mode === 'debounce' ? 'PyreonDebounced' : 'PyreonThrottled'
+    const label = d.mode === 'debounce' ? 'delayMs' : 'waitMs'
+    const p0 = d.fn.params[0]
+    const argType = p0 === undefined ? 'Void' : swiftType(p0.type)
+    const argName = p0 === undefined ? '_' : swiftIdent(p0.name)
+    void argName
+    // The ACTION is attached in .onAppear, not here: a @State initializer
+    // runs before `self` exists, so a closure capturing sibling state is
+    // "cannot use instance member within property initializer".
+    return `@State private var ${swiftIdent(d.name)} = ${cls}<${argType}>(${label}: ${d.delayMs})`
+  }
   // Phase 5b: a plain value const. Normally emitted as a body-local `let` by
   // emitSwiftComponent (a stored property can't reference @State at init);
   // this defensive case keeps the emit total if reached elsewhere.

@@ -144,6 +144,9 @@
         "PyreonWebSocketOkHttp": [
           "PyreonWebSocket.kt",
           "PyreonWebSocketOkHttp.kt"
+        ],
+        "PyreonRateLimit": [
+          "PyreonRateLimit.kt"
         ]
       }
     }

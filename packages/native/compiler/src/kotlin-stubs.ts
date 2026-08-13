@@ -1255,6 +1255,23 @@ class ProvidableCompositionLocal<T>(val default: T) { val current: T get() = def
 fun <T> compositionLocalOf(f: () -> T): ProvidableCompositionLocal<T> = ProvidableCompositionLocal(f())
 infix fun <T> ProvidableCompositionLocal<T>.provides(v: T): Pair<ProvidableCompositionLocal<T>, T> = Pair(this, v)
 fun CompositionLocalProvider(vararg pairs: Pair<*, *>, content: @Composable () -> Unit) { content() }
+interface PyreonScheduler {
+  fun schedule(milliseconds: Int, work: () -> Unit): Int
+  fun cancel(token: Int)
+}
+class PyreonTaskScheduler : PyreonScheduler {
+  override fun schedule(milliseconds: Int, work: () -> Unit): Int = 0
+  override fun cancel(token: Int) {}
+}
+class PyreonDebounced<A>(delayMs: Int, scheduler: PyreonScheduler, action: (A) -> Unit) {
+  operator fun invoke(arg: A) {}
+  fun cancel() {}
+  fun flush() {}
+}
+class PyreonThrottled<A>(waitMs: Int, scheduler: PyreonScheduler, action: (A) -> Unit) {
+  operator fun invoke(arg: A) {}
+  fun cancel() {}
+}
 class PyreonPermissions(granted: Set<String> = emptySet()) {
   val granted: MutableState<Set<String>> = mutableStateOf(granted)
   fun can(key: String): Boolean {
