@@ -256,6 +256,8 @@ let _machineNames: Set<string> = new Set()
  *  (a real method). Both the read paren-drop AND the `.set()`→`=` rewrite skip
  *  them (they are PyreonSyncedSignal facade objects, not bare state values). */
 let _syncedSignalNames: Set<string> = new Set()
+/** `createTableState(...)` bindings — property reads drop parens; methods flow through. */
+let _tableNames: Set<string> = new Set()
 /** Per-component: i18n instance names — `i18n.t(key, {…})` lowers the
  *  object-literal values arg to a map at this call shape. Mirror of
  *  emit-swift's `_i18nNames`. */
@@ -1347,6 +1349,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _zeroArgFnNames = new Set(_zeroArgHelperNames)
   _machineNames = new Set()
   _syncedSignalNames = new Set()
+  _tableNames = new Set()
   _i18nNamesKotlin = new Set()
   _fetchNames = new Set()
   _formNames = new Set()
@@ -1385,6 +1388,7 @@ function emitKotlinComponent(c: ComponentIR): string {
     // _functionNames (it's a property, not a free fn).
     if (d.kind === 'machine') _machineNames.add(d.name)
     if (d.kind === 'synced-signal') _syncedSignalNames.add(d.name)
+    if (d.kind === 'table-state') _tableNames.add(d.name)
     if (d.kind === 'i18n') _i18nNamesKotlin.add(d.name)
     // C4: `const router = createRouter(...)` is a remembered router
     // instance — name reads bare (no parens) like a signal. Add to
@@ -1704,6 +1708,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _urlStateNames = new Set()
   _machineNames = new Set()
   _syncedSignalNames = new Set()
+  _tableNames = new Set()
   _i18nNamesKotlin = new Set()
   _fetchNames = new Set()
   _formNames = new Set()
@@ -1755,6 +1760,40 @@ let _databaseNames: Set<string> = new Set()
 // stack (nested Fors restore correctly).
 let _fieldArrayNamesKotlin: Set<string> = new Set()
 let _fieldArrayItemParamsKotlin: string[] = []
+
+/** A PyreonCell expression for a table column, chosen by the field's type. */
+function kotlinTableCell(fieldType: TypeIR | undefined, expr: string): string {
+  if (fieldType?.kind === 'string') return `PyreonCell.Str(${expr})`
+  if (fieldType?.kind === 'number') return `PyreonCell.Num((${expr}).toDouble())`
+  return `PyreonCell.Str("${'$'}{${expr}}")`
+}
+
+/** The row struct's Kotlin type name — a named typeRef, or the synthesized
+ *  struct whose fields match an inline object (matching what the data list
+ *  actually holds, e.g. `__Obj0`). */
+function resolveKotlinRowTypeName(elem: TypeIR): string {
+  if (elem.kind === 'typeRef') return elem.name
+  if (elem.kind === 'object') {
+    const names = new Set(elem.fields.map((f) => f.name))
+    const match = [..._synthExprStructs, ..._kotlinStructDefs].find(
+      (st) => st.fields.length === names.size && st.fields.every((f) => names.has(f.name)),
+    )
+    if (match) return match.name
+  }
+  return 'Any'
+}
+
+/** The row struct's fields, whether inline-object or a named struct. */
+function resolveKotlinStructFields(elem: TypeIR): { name: string; type: TypeIR }[] {
+  if (elem.kind === 'object') return elem.fields
+  if (elem.kind === 'typeRef') {
+    const s =
+      _kotlinStructDefs.find((st) => st.name === elem.name) ??
+      _synthExprStructs.find((st) => st.name === elem.name)
+    if (s) return s.fields
+  }
+  return []
+}
 
 /** Kotlin literal for a synced signal's initial scalar value (`number` → Double). */
 function syncedInitialKotlin(
@@ -2274,6 +2313,24 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     const initial = syncedInitialKotlin(d.scalarType, d.initialValue)
     const mapArg = d.map !== undefined ? `, ${JSON.stringify(d.map)}` : ''
     return `val ${kotlinIdent(d.name)} = remember { PyreonSyncedSignal(${kotlinIdent(d.docBinding)}, ${JSON.stringify(d.key)}, ${initial}${mapArg}) }`
+  }
+  // `@pyreon/table` — Compose's sequential `remember` lets the data lambda
+  // reference the row signal directly (no @State cross-ref like Swift), so it's
+  // passed in the constructor. Reading it inside `rows()` during composition
+  // tracks the signal → a row change recomposes.
+  if (d.kind === 'table-state') {
+    const dt = inferType(d.dataBody, _kotlinExprInferCtx)
+    const elem: TypeIR = dt.kind === 'array' ? dt.element : { kind: 'unknown' }
+    const rowType = resolveKotlinRowTypeName(elem)
+    const fields = resolveKotlinStructFields(elem)
+    const cols = d.columns
+      .map((c) => {
+        const f = fields.find((x) => x.name === c.id)
+        return `PyreonTableColumn(${JSON.stringify(c.id)}) { ${kotlinTableCell(f?.type, `it.${kotlinIdent(c.id)}`)} }`
+      })
+      .join(', ')
+    const pageArg = d.pageSize > 0 ? `, ${d.pageSize}` : ''
+    return `val ${kotlinIdent(d.name)} = remember { PyreonTableState<${rowType}>({ ${emitKotlinExpr(d.dataBody, 2)} }, listOf(${cols})${pageArg}) }`
   }
   // Phase 4 follow-up: `const scheme = useColorScheme()` →
   // `val ${name} = if (isSystemInDarkTheme()) "dark" else "light"`.
@@ -3210,6 +3267,16 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         _clipboardKotlin.has(e.callee.object.name) &&
         e.args.length === 0 &&
         ['copied', 'text'].includes(e.callee.property)
+      ) {
+        return `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
+      }
+      // PyreonTableState property reads drop parens (methods flow through).
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _tableNames.has(e.callee.object.name) &&
+        e.args.length === 0 &&
+        ['page', 'sortColumn', 'sortDirection', 'filterValue'].includes(e.callee.property)
       ) {
         return `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
       }

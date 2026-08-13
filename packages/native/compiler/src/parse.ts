@@ -897,7 +897,6 @@ const WEB_ONLY_PACKAGES: ReadonlySet<string> = new Set([
   '@pyreon/runtime-dom',
   '@pyreon/runtime-server',
   '@pyreon/server',
-  '@pyreon/table',
   '@pyreon/testing',
   '@pyreon/ui-components',
   '@pyreon/ui-primitives',
@@ -1245,7 +1244,8 @@ const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
       // ordinary logic an author can hold in signals today, so the fix is a
       // real one rather than "give up".
       advice:
-        "the row model is a WEB render surface (getRowModel/getVisibleCells/flexRender) with no native analogue — hold sort/filter state in plain signals and render rows with `<For each={rows}>` + `@pyreon/primitives`, which compiles to all three targets",
+        "`createTableState({ data, columns, pageSize })` LOWERS to the native PyreonTableState engine — render its `rows()` with `<For>` + primitives. The TanStack-backed `useTable` (getRowModel / getVisibleCells / flexRender) is the WEB render surface with no native analogue; keep it behind a `<Web>` branch",
+      supported: new Set(['createTableState']),
     },
   ],
   [
@@ -4746,6 +4746,12 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   const syncedSignalDecl = tryDeclFromSyncedSignal(node, ctx)
   if (syncedSignalDecl) return syncedSignalDecl
 
+  // `@pyreon/table` — `const t = createTableState({ data, columns, pageSize })`
+  // lowers to the @Observable PyreonTableState engine. Runs BEFORE the Tier-2
+  // silent-drop block so it is recognized as a real port.
+  const tableStateDecl = tryDeclFromCreateTableState(node, ctx)
+  if (tableStateDecl) return tableStateDecl
+
   // Tier-2 silent-drop diagnostics from #1444 (Gap 4 PR-1) — kept for
   // the remaining 3 callees. `createI18n` and `createMachine` were
   // REMOVED from the list because they now have full ports via
@@ -6426,6 +6432,89 @@ function tryDeclFromSyncedSignal(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     initialValue,
     ...(map !== undefined ? { map } : {}),
   }
+}
+
+/**
+ * `const t = createTableState({ data, columns, pageSize })` from `@pyreon/table`
+ * → a `table-state` decl. v1 lowers: `data: () => <expr>` (the reactive row
+ * source), `columns: [{ id }]` (string ids, default `row[id]` accessor), and an
+ * optional numeric `pageSize`. Anything outside that shape warns + silent-drops.
+ */
+function tryDeclFromCreateTableState(node: AnyNode, ctx: ParseCtx): DeclIR | null {
+  const init = node.init as AnyNode | undefined
+  if (init?.type !== 'CallExpression') return null
+  if ((init.callee?.name as string | undefined) !== 'createTableState') return null
+  if (node.id?.type !== 'Identifier') return null
+  const name = node.id.name as string
+  const configArg = unwrapTypeLayers((init.arguments as AnyNode[] | undefined)?.[0])
+  if (!configArg || configArg.type !== 'ObjectExpression') {
+    ctx.warnings.push(
+      `createTableState declaration \`${name}\`: argument must be an object literal { data, columns, pageSize } to lower natively. Falling back to silent-drop.`,
+    )
+    return null
+  }
+
+  let dataBody: ExprIR | undefined
+  let pageSize = 0
+  const columns: { id: string }[] = []
+  for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
+    if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
+    const keyNode = prop.key as AnyNode | undefined
+    const keyName =
+      keyNode?.type === 'Identifier'
+        ? (keyNode.name as string)
+        : keyNode?.type === 'Literal'
+          ? String(keyNode.value)
+          : undefined
+    if (!keyName) continue
+    const valueNode = unwrapTypeLayers(prop.value as AnyNode | undefined)
+    if (keyName === 'data') {
+      if (
+        (valueNode?.type === 'ArrowFunctionExpression' ||
+          valueNode?.type === 'FunctionExpression') &&
+        valueNode.body?.type !== 'BlockStatement'
+      ) {
+        dataBody = parseExpr(valueNode.body as AnyNode, ctx)
+      }
+    } else if (keyName === 'pageSize') {
+      if (valueNode?.type === 'Literal' && typeof valueNode.value === 'number') {
+        pageSize = valueNode.value
+      }
+    } else if (keyName === 'columns' && valueNode?.type === 'ArrayExpression') {
+      for (const el of (valueNode.elements as AnyNode[] | undefined) ?? []) {
+        const col = unwrapTypeLayers(el)
+        if (col?.type !== 'ObjectExpression') continue
+        for (const cp of (col.properties as AnyNode[] | undefined) ?? []) {
+          if (cp?.type !== 'Property' && cp?.type !== 'ObjectProperty') continue
+          const ck = cp.key as AnyNode | undefined
+          const ckName =
+            ck?.type === 'Identifier'
+              ? (ck.name as string)
+              : ck?.type === 'Literal'
+                ? String(ck.value)
+                : undefined
+          const cv = unwrapTypeLayers(cp.value as AnyNode | undefined)
+          if (ckName === 'id' && cv?.type === 'Literal' && typeof cv.value === 'string') {
+            columns.push({ id: cv.value })
+          }
+        }
+      }
+    }
+  }
+
+  if (!dataBody) {
+    ctx.warnings.push(
+      `createTableState declaration \`${name}\`: \`data\` must be an expression-body getter (\`() => rows\`) to lower natively. Falling back to silent-drop.`,
+    )
+    return null
+  }
+  if (columns.length === 0) {
+    ctx.warnings.push(
+      `createTableState declaration \`${name}\`: needs at least one \`columns: [{ id }]\` entry with a string id to lower natively (v1). Falling back to silent-drop.`,
+    )
+    return null
+  }
+  return { kind: 'table-state', name, dataBody, pageSize, columns }
 }
 
 /**
