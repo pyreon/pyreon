@@ -31,6 +31,8 @@
  * `@pyreon/hooks` (`warnIfInsecureContext`), which is what tells you that you
  * needed it in the first place.
  */
+import { isIP } from 'node:net'
+
 import type { Plugin } from 'vite'
 
 import { type Certificate, resolveCertificate } from './cert'
@@ -121,6 +123,15 @@ export function https(options: HttpsOptions = {}): Plugin {
     },
 
     configureServer(server) {
+      // Checked even when quiet: this is a misconfiguration, not decoration.
+      const unreachable = unreachableCertifiedIps(certificate?.hosts ?? [], server.config.server.host)
+      if (unreachable.length > 0) {
+        server.config.logger.warn(
+          `[Pyreon] https(): the certificate covers ${unreachable.join(', ')}, but the dev server is ` +
+            'bound to loopback, so nothing can reach those addresses.\n' +
+            '  Use https({ lan: true }) — it certifies your network address AND binds to it — or pass --host.',
+        )
+      }
       if (options.quiet === true) return
       const original = server.printUrls.bind(server)
       server.printUrls = () => {
@@ -141,6 +152,31 @@ export function https(options: HttpsOptions = {}): Plugin {
       }
     },
   }
+}
+
+/**
+ * Certified IP addresses the server cannot actually answer on.
+ *
+ * The footgun this closes: `https({ hosts: ['192.168.1.5'] })` without
+ * `lan: true` mints a certificate for an address the server never binds to, so
+ * the phone you were aiming at gets connection-refused — and nothing says why.
+ *
+ * Checked against the RESOLVED `server.host` rather than the plugin's own
+ * options, which is what makes it accurate: someone who passes `--host`
+ * themselves is correctly configured and must not be warned. Loopback is
+ * always excluded, and hostnames are excluded entirely — a `.localhost` name
+ * or a hosts-file entry legitimately points at 127.0.0.1.
+ */
+export function unreachableCertifiedIps(hosts: string[], resolvedHost: unknown): string[] {
+  // Any truthy host means the server is bound beyond loopback — `true`,
+  // '0.0.0.0', or a specific address.
+  if (resolvedHost !== false && resolvedHost !== undefined && resolvedHost !== '') return []
+  return hosts.filter((host) => {
+    const kind = isIP(host)
+    if (kind === 0) return false
+    if (kind === 4) return !host.startsWith('127.')
+    return host !== '::1' && host !== '0:0:0:0:0:0:0:1'
+  })
 }
 
 /**

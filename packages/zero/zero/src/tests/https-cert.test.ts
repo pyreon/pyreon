@@ -14,7 +14,7 @@ import { describe, expect, it } from 'vitest'
 
 import { createSelfSignedCert, dedupeHosts, ipv6ToBytes } from '../https/selfsign'
 import { hostsFileHint, isLinkLocal, isPrivateV4, lanAddresses, needsHostsFileEntry, resolveHosts } from '../https/hosts'
-import { bannerLines } from '../https'
+import { bannerLines, unreachableCertifiedIps } from '../https'
 import type { Certificate } from '../https/cert'
 
 /**
@@ -163,6 +163,32 @@ describe('host resolution', () => {
     expect(isPrivateV4('172.32.0.1')).toBe(false)
     expect(isPrivateV4('8.8.8.8')).toBe(false)
     expect(isPrivateV4('not.an.ip')).toBe(false)
+  })
+})
+
+describe('the unreachable-address warning', () => {
+  // Closes a footgun that was previously only DOCUMENTED: certifying a LAN
+  // address without `lan: true` produces a certificate for something the
+  // server never binds to, so the phone gets connection-refused with no clue.
+  it('names an IP the server cannot answer on', () => {
+    expect(unreachableCertifiedIps(['localhost', '127.0.0.1', '::1', '192.168.1.5'], false)).toEqual([
+      '192.168.1.5',
+    ])
+  })
+
+  it('says nothing when the server IS bound beyond loopback', () => {
+    // Someone who passed `--host` themselves is correctly configured. Warning
+    // them would be worse than silence — this is what keeps it trustworthy.
+    for (const host of [true, '0.0.0.0', '192.168.1.5']) {
+      expect(unreachableCertifiedIps(['192.168.1.5'], host)).toEqual([])
+    }
+  })
+
+  it('never flags loopback or a hostname', () => {
+    // A `.localhost` name or a hosts-file entry legitimately resolves to
+    // 127.0.0.1, which the server DOES answer on.
+    expect(unreachableCertifiedIps(['localhost', 'app.localhost', 'app.test'], false)).toEqual([])
+    expect(unreachableCertifiedIps(['127.0.0.1', '127.0.0.53', '::1'], false)).toEqual([])
   })
 })
 
