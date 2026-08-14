@@ -138,6 +138,21 @@
         "PyreonShare": [
           "PyreonShare.kt"
         ],
+        "PyreonAudioPlayer": [
+          "PyreonAudioPlayer.kt"
+        ],
+        "PyreonAudioRecorder": [
+          "PyreonAudioRecorder.kt"
+        ],
+        "PyreonCamera": [
+          "PyreonCamera.kt"
+        ],
+        "PyreonSpeech": [
+          "PyreonSpeech.kt"
+        ],
+        "PyreonDeviceMotion": [
+          "PyreonDeviceMotion.kt"
+        ],
         "PyreonWakeLock": [
           "PyreonWakeLock.kt"
         ],

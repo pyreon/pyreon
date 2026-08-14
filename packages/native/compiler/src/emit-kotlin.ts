@@ -453,6 +453,9 @@ export function emitKotlin(
       if (d.kind === 'device-info') _deviceInfoKotlin.add(d.name)
       if (d.kind === 'safe-area') _safeAreaKotlin.add(d.name)
       if (d.kind === 'screen-orientation') _orientationKotlin.add(d.name)
+      if (d.kind === 'device-motion') _motionKotlin.add(d.name)
+      if (d.kind === 'speech') _speechKotlin.add(d.name)
+      if (d.kind === 'audio-recorder') _recorderKotlin.add(d.name)
       if (d.kind === 'clipboard') _clipboardKotlin.add(d.name)
       if (d.kind === 'pure-state') {
         _pureStateKotlin.set(d.name, d.bounds ? { hook: d.hook, bounds: d.bounds } : { hook: d.hook })
@@ -586,6 +589,12 @@ let _deviceInfoKotlin: Set<string> = new Set()
 let _safeAreaKotlin: Set<string> = new Set()
 /** `useScreenOrientation()` bindings — reads are properties. */
 let _orientationKotlin: Set<string> = new Set()
+/** `useDeviceMotion()` bindings — reads drop parens. */
+let _motionKotlin: Set<string> = new Set()
+/** `useSpeech()` bindings — reads drop parens. */
+let _speechKotlin: Set<string> = new Set()
+/** `useAudioRecorder()` bindings — reads are properties/state. */
+let _recorderKotlin: Set<string> = new Set()
 /** Initial values, so `reset()` restores exactly what the web's does. */
 let _pureStateInitialKotlin: Map<string, number | boolean> = new Map()
 /** `useClipboard()` bindings — its reactive reads become `.value`. */
@@ -2109,6 +2118,27 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   }
   // Mirror of Swift: the keeper is injected so the state machine is
   // testable with no Android SDK; the app supplies the real one.
+  if (d.kind === 'audio-recorder') {
+    const id = kotlinIdent(d.name)
+    return [
+      `val ${id}Ctx = LocalContext.current`,
+      `val ${id} = remember { PyreonAudioRecorder(AndroidRecordingEngine(${id}Ctx)) }`,
+    ].join('\n  ')
+  }
+  if (d.kind === 'speech') {
+    const id = kotlinIdent(d.name)
+    return [
+      `val ${id}Ctx = LocalContext.current`,
+      `val ${id} = remember { PyreonSpeech(AndroidSpeechSynth(${id}Ctx)) }`,
+    ].join('\n  ')
+  }
+  if (d.kind === 'device-motion') {
+    const id = kotlinIdent(d.name)
+    return [
+      `val ${id}Ctx = LocalContext.current`,
+      `val ${id} = remember { PyreonDeviceMotion(AndroidMotionSource(${id}Ctx)) }`,
+    ].join('\n  ')
+  }
   if (d.kind === 'wake-lock') {
     const id = kotlinIdent(d.name)
     return [
@@ -2254,6 +2284,16 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // The assignment re-runs on recomposition, which is harmless:
   // rememberLauncherForActivityResult returns the SAME instance across
   // recompositions, so this re-assigns an identical reference.
+  // `useCamera()` -> PyreonCamera. Android needs the launcher assigned from
+  // the composition (same shape as the image picker); TakePicturePreview
+  // hands back a bitmap the runtime persists, so the callback feeds a URI.
+  if (d.kind === 'camera') {
+    const id = kotlinIdent(d.name)
+    return [
+      `val ${id} = remember { PyreonCamera() }`,
+      `${id}.launch = rememberCameraLauncher { uri -> ${id}.onResult(uri) }`,
+    ].join('\n  ')
+  }
   if (d.kind === 'image-picker') {
     const id = kotlinIdent(d.name)
     return [
@@ -3347,6 +3387,42 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         ['type', 'angle'].includes(e.callee.property)
       ) {
         return `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
+      }
+      // useDeviceMotion's reads — the accessor spelling drops its parens.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _motionKotlin.has(e.callee.object.name) &&
+        e.args.length === 0 &&
+        ['active', 'supported', 'acceleration', 'rotation'].includes(e.callee.property)
+      ) {
+        const base = `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
+        // `supported` is a plain getter; the rest are MutableState.
+        return e.callee.property === 'supported' ? base : `${base}.value`
+      }
+      // useSpeech's reads — the accessor spelling drops its parens.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _speechKotlin.has(e.callee.object.name) &&
+        e.args.length === 0 &&
+        ['speaking', 'supported'].includes(e.callee.property)
+      ) {
+        const base = `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
+        // `supported` is a plain getter; `speaking` is MutableState.
+        return e.callee.property === 'supported' ? base : `${base}.value`
+      }
+      // useAudioRecorder's reads — the accessor spelling drops its parens.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _recorderKotlin.has(e.callee.object.name) &&
+        e.args.length === 0 &&
+        ['recording', 'error', 'supported'].includes(e.callee.property)
+      ) {
+        const base = `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
+        // `supported` is a plain getter; recording/error are MutableState.
+        return e.callee.property === 'supported' ? base : `${base}.value`
       }
       // useToggle / useCounter member surface (mirror of Swift). The state
       // field IS the value, so a read drops its parens; each mutator becomes
@@ -4746,6 +4822,7 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if (tag === 'Icon') return emitKotlinIcon(e, indent)
   if (tag === 'Image') return emitKotlinImage(e, indent)
   if (tag === 'Video') return emitKotlinVideo(e, indent)
+  if (tag === 'Audio') return emitKotlinAudio(e, indent)
   if (tag === 'Modal') return emitKotlinModal(e, indent)
   if (tag === 'Press') return emitKotlinPress(e, indent)
   if (tag === 'Field') return emitKotlinField(e, indent)
@@ -6152,6 +6229,37 @@ function kotlinImageDim(
  * threads through the generic layout tail (the `<Link>`/`<Toggle>` lesson —
  * an early return drops `data-testid` and the element becomes unassertable).
  */
+/**
+ * Emit `<Audio …>` as `PyreonAudioPlayer(url = …)`. Mirror of
+ * emitKotlinVideo minus the size modifiers: audio has no view, so there is
+ * nothing to lay out.
+ */
+function emitKotlinAudio(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const src = readStaticAttrKotlin(e, 'src')
+  if (typeof src !== 'string') return emitKotlinGeneric(e, indent)
+  const args = [`url = ${JSON.stringify(src)}`]
+  if (readStaticAttrKotlin(e, 'autoPlay') === true) args.push('autoPlay = true')
+  if (readStaticAttrKotlin(e, 'loop') === true) args.push('loop = true')
+  if (readStaticAttrKotlin(e, 'muted') === true) args.push('muted = true')
+  const volume = readStaticAttrKotlin(e, 'volume')
+  if (typeof volume === 'number') {
+    // Clamped at emit time as well as in the runtime — see the Swift twin.
+    args.push(`volume = ${Math.min(1, Math.max(0, volume))}`)
+  }
+  args.push('engine = Media3AudioEngine(LocalContext.current)')
+  const statusAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> =>
+      a.kind === 'event' && a.name === 'statuschange',
+  )
+  if (statusAttr !== undefined) {
+    args.push(`onStatusChange = ${emitKotlinMessageHandler(statusAttr.handler)}`)
+  }
+  return `PyreonAudioPlayer(${args.join(', ')})`
+}
+
 function emitKotlinVideo(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   indent: number,

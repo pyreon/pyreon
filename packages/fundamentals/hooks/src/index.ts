@@ -23,6 +23,14 @@ export type { SafeAreaInsets } from './useSafeArea'
 export { useSafeArea } from './useSafeArea'
 export type { OrientationState, ScreenOrientation } from './useScreenOrientation'
 export { useScreenOrientation } from './useScreenOrientation'
+export type { DeviceMotionControls, Vec3 } from './useDeviceMotion'
+export { useDeviceMotion } from './useDeviceMotion'
+export type { SpeechControls } from './useSpeech'
+export { useSpeech } from './useSpeech'
+export type { UseCameraResult } from './useCamera'
+export { useCamera } from './useCamera'
+export type { AudioRecorderControls } from './useAudioRecorder'
+export { useAudioRecorder } from './useAudioRecorder'
 export type {
   HapticImpactStyle,
   HapticNotificationType,

@@ -1,5 +1,5 @@
 import { effect } from '@pyreon/reactivity'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useSafeArea } from '../useSafeArea'
 
 /**
@@ -36,6 +36,53 @@ describe('useSafeArea', () => {
       expect(typeof v[k]).toBe('number')
       expect(Number.isFinite(v[k])).toBe(true)
     }
+  })
+
+  it('UPDATES when the insets change — a rotation moves the notch', () => {
+    // The write path was untested: the hook read once at mount and nothing
+    // proved it ever reported a change. A safe area that never updates is
+    // exactly as broken as one that reads zero, and looks identical at rest.
+    const padding = { top: '0px', right: '0px', bottom: '0px', left: '0px' }
+    const real = globalThis.getComputedStyle.bind(globalThis)
+    vi.spyOn(globalThis, 'getComputedStyle').mockImplementation(((el: Element) => {
+      const base = real(el)
+      return new Proxy(base, {
+        get: (t, k) =>
+          k === 'paddingTop' ? padding.top
+          : k === 'paddingRight' ? padding.right
+          : k === 'paddingBottom' ? padding.bottom
+          : k === 'paddingLeft' ? padding.left
+          : Reflect.get(t, k),
+      })
+    }) as typeof globalThis.getComputedStyle)
+
+    const safe = mountHook()
+    expect(safe().top).toBe(0)
+
+    padding.top = '47px'
+    padding.bottom = '34px'
+    window.dispatchEvent(new Event('resize'))
+
+    expect(safe().top).toBe(47)
+    expect(safe().bottom).toBe(34)
+    vi.restoreAllMocks()
+  })
+
+  it('a resize that moved NO inset does not re-notify', () => {
+    // Resize fires continuously during a drag; an unconditional write would
+    // wake every consumer for a change that never happened.
+    const safe = mountHook()
+    let fires = 0
+    const e = effect(() => {
+      safe()
+      fires += 1
+    })
+    scopes.push(e)
+    const before = fires
+
+    window.dispatchEvent(new Event('resize'))
+    window.dispatchEvent(new Event('resize'))
+    expect(fires).toBe(before)
   })
 
   it('removes its probe element and listeners on scope disposal', () => {

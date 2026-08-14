@@ -76,6 +76,29 @@ export interface ImageProps extends HtmlPassthroughProps {
  * not v1: video draws on a surface layer the test harnesses cannot
  * capture, disclosed in the matrix).
  */
+/**
+ * `<Audio>` — sound playback.
+ *
+ * Deliberately NON-VISUAL, which is the one place it does not mirror
+ * `<Video>`. Audio has no view on the native targets: `AVAudioPlayer` and
+ * `MediaPlayer` are objects, not views. So there is no `controls` prop — the
+ * web's browser-styled control bar has no cross-platform counterpart, and a
+ * prop that silently no-ops on two of three targets is the failure this API
+ * family refuses (see `useScreenOrientation`, which omits `lock()` for the
+ * same reason). Build a transport from Pyreon primitives and drive it with
+ * these props.
+ */
+export interface AudioProps extends HtmlPassthroughProps {
+  src: string
+  /** Start playback on mount. Pair with `muted` where autoplay is gated. */
+  autoPlay?: boolean
+  loop?: boolean
+  muted?: boolean
+  /** 0..1. Out-of-range values are clamped rather than throwing. */
+  volume?: number
+  onStatusChange?: (status: 'waiting' | 'playing' | 'paused') => void
+}
+
 export interface VideoProps extends HtmlPassthroughProps {
   src: string
   /** Start playback on mount. Muted autoplay is the only reliably

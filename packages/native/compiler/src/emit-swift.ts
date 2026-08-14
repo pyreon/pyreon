@@ -779,6 +779,9 @@ export function emitSwift(
       if (d.kind === 'device-info') _deviceInfoSwift.add(d.name)
       if (d.kind === 'safe-area') _safeAreaSwift.add(d.name)
       if (d.kind === 'screen-orientation') _orientationSwift.add(d.name)
+      if (d.kind === 'device-motion') _motionSwift.add(d.name)
+      if (d.kind === 'speech') _speechSwift.add(d.name)
+      if (d.kind === 'audio-recorder') _recorderSwift.add(d.name)
       if (d.kind === 'clipboard') _clipboardSwift.add(d.name)
       if (d.kind === 'pure-state') {
         _pureStateSwift.set(d.name, d.bounds ? { hook: d.hook, bounds: d.bounds } : { hook: d.hook })
@@ -907,6 +910,12 @@ let _deviceInfoSwift: Set<string> = new Set()
 let _safeAreaSwift: Set<string> = new Set()
 /** `useScreenOrientation()` bindings — reads are properties. */
 let _orientationSwift: Set<string> = new Set()
+/** `useDeviceMotion()` bindings — reads drop parens. */
+let _motionSwift: Set<string> = new Set()
+/** `useSpeech()` bindings — reads drop parens. */
+let _speechSwift: Set<string> = new Set()
+/** `useAudioRecorder()` bindings — reads are properties/state. */
+let _recorderSwift: Set<string> = new Set()
 /** Initial values, so `reset()` restores exactly what the web's does. */
 let _pureStateInitialSwift: Map<string, number | boolean> = new Map()
 /**
@@ -2761,6 +2770,15 @@ function emitSwiftDecl(
   // `useWakeLock()` -> the idle-timer container. The controller is injected
   // so the held/released machine stays testable without UIKit; the app
   // supplies the real one.
+  if (d.kind === 'audio-recorder') {
+    return `@State private var ${swiftIdent(d.name)} = PyreonAudioRecorder(engine: AVFoundationRecordingEngine())`
+  }
+  if (d.kind === 'speech') {
+    return `@State private var ${swiftIdent(d.name)} = PyreonSpeech(synth: AVSpeechSynth())`
+  }
+  if (d.kind === 'device-motion') {
+    return `@State private var ${swiftIdent(d.name)} = PyreonDeviceMotion(source: CoreMotionSource())`
+  }
   if (d.kind === 'wake-lock') {
     return `@State private var ${swiftIdent(d.name)} = PyreonWakeLock(controller: UIKitIdleTimer())`
   }
@@ -2848,6 +2866,11 @@ function emitSwiftDecl(
   // handler — the M4.5 Task {} wrap). PHPickerViewController presents itself
   // from the key window, so — unlike Android — the iOS side needs no
   // launcher/Context plumbing at the call site.
+  // `useCamera()` -> PyreonCamera. Like PHPicker, UIImagePickerController
+  // presents from the key window, so no launcher plumbing at the call site.
+  if (d.kind === 'camera') {
+    return `@State private var ${swiftIdent(d.name)} = PyreonCamera(presenter: UIKitCameraPresenter())`
+  }
   if (d.kind === 'image-picker') {
     return `@State private var ${swiftIdent(d.name)} = PyreonImagePicker()`
   }
@@ -3982,6 +4005,36 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         _orientationSwift.has(e.callee.object.name) &&
         e.args.length === 0 &&
         ['type', 'angle'].includes(e.callee.property)
+      ) {
+        return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
+      }
+      // useDeviceMotion's reads — the accessor spelling drops its parens.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _motionSwift.has(e.callee.object.name) &&
+        e.args.length === 0 &&
+        ['active', 'supported', 'acceleration', 'rotation'].includes(e.callee.property)
+      ) {
+        return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
+      }
+      // useSpeech's reads — the accessor spelling drops its parens.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _speechSwift.has(e.callee.object.name) &&
+        e.args.length === 0 &&
+        ['speaking', 'supported'].includes(e.callee.property)
+      ) {
+        return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
+      }
+      // useAudioRecorder's reads — the accessor spelling drops its parens.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _recorderSwift.has(e.callee.object.name) &&
+        e.args.length === 0 &&
+        ['recording', 'error', 'supported'].includes(e.callee.property)
       ) {
         return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
       }
@@ -5771,6 +5824,7 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   if (tag === 'Icon') return emitSwiftIcon(e, indent)
   if (tag === 'Image') return emitSwiftImage(e, indent)
   if (tag === 'Video') return emitSwiftVideo(e, indent)
+  if (tag === 'Audio') return emitSwiftAudio(e, indent)
   if (tag === 'Modal') return emitSwiftModal(e, indent)
   if (tag === 'Press') return emitSwiftPress(e, indent)
   if (tag === 'Field') return emitSwiftField(e, indent)
@@ -7657,6 +7711,48 @@ function emitSwiftImage(
  * a special-case emitter that returns early drops `data-testid` and makes
  * the element structurally unassertable).
  */
+/**
+ * Emit `<Audio src autoPlay? loop? muted? volume? onStatusChange?>` as the
+ * runtime `PyreonAudioPlayer(url:…)`.
+ *
+ * Mirrors emitSwiftVideo, minus the frame: audio has NO view here, so there
+ * is nothing to size. The runtime's host is a concrete zero-size Color.clear
+ * rather than EmptyView, because a modifier on EmptyView is silently inert —
+ * the bug that shipped a Modal sheet which never presented.
+ */
+function emitSwiftAudio(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const src = readStaticAttr(e, 'src')
+  if (typeof src !== 'string') return emitSwiftGeneric(e, indent)
+  const args = [`url: URL(string: ${JSON.stringify(src)})`]
+  if (readStaticAttr(e, 'autoPlay') === true) args.push('autoPlay: true')
+  if (readStaticAttr(e, 'loop') === true) args.push('loop: true')
+  if (readStaticAttr(e, 'muted') === true) args.push('muted: true')
+  const volume = readStaticAttr(e, 'volume')
+  if (typeof volume === 'number') {
+    // Clamp at EMIT time as well as in the runtime: a literal out of range is
+    // knowable here, and baking the legal value keeps the emitted source
+    // honest about what will actually play.
+    args.push(`volume: ${Math.min(1, Math.max(0, volume))}`)
+  }
+  args.push('engine: AVFoundationAudioEngine()')
+  const statusAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> =>
+      a.kind === 'event' && a.name === 'statuschange',
+  )
+  if (statusAttr !== undefined) {
+    const body = stripSwiftClosureBody(emitSwiftAction(statusAttr.handler, indent + 2))
+    const param =
+      statusAttr.handler.kind === 'arrow' && statusAttr.handler.params.length > 0
+        ? swiftIdent(statusAttr.handler.params[0]!)
+        : '_'
+    args.push(`onStatusChange: { ${param} in ${body} }`)
+  }
+  return `PyreonAudioPlayer(${args.join(', ')})`
+}
+
 function emitSwiftVideo(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   indent: number,
