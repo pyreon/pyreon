@@ -10,9 +10,10 @@
  * The build is slow (a full Vite + SSG pass), so it runs ONCE for the whole
  * file and every spec reads its output.
  */
-import { existsSync, readFileSync, rmSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { appDir, NO_BUILD_DEPS } from '../build/static-site'
 
@@ -55,16 +56,47 @@ const CAN_BUILD = (() => {
   }
 })()
 
-describe.skipIf(!CAN_BUILD)('the emitted site', () => {
+const PKG_ROOT = resolve(__dirname, '..', '..')
+const BIN = join(PKG_ROOT, 'bin', 'loom.js')
+// The spawn resolves the BUILT `lib/`, not `src/` — an edit to
+// `src/build/static-site.ts` is invisible here until `bun scripts/bootstrap.ts`
+// runs. Bisect this file as: edit source → bootstrap → run.
+const BUILT = existsSync(join(PKG_ROOT, 'lib', 'cli.js'))
+
+describe.skipIf(!CAN_BUILD || !BUILT)('the emitted site', () => {
   let out: string
   let built = false
 
-  beforeAll(async () => {
-    const { buildStaticSite } = await import('../build/static-site')
-    const { buildReport } = await import('../core/report')
+  beforeAll(() => {
+    // SPAWNED, and the inherited environment is deliberately left ALONE.
+    //
+    // vitest sets `NODE_ENV=test`, which a child inherits, and Vite derives
+    // `isProduction` from NODE_ENV. So this spawn runs `loom build` under the
+    // exact hostile condition the build now defends against — which is the
+    // point: `buildStaticSite` forces NODE_ENV=production, and sanitising the
+    // env here would MASK a regression of that fix instead of catching it.
+    // The "is a PRODUCTION build" spec below is what reads the verdict.
+    //
+    // Spawning rather than importing matters for two reasons:
+    //
+    // 1. Memory. Before the build forced NODE_ENV, this suite peaked at
+    //    ~3.9 GB — just under node's ~4 GB old-space cap — so under `Coverage
+    //    (Full)` (4 packages in parallel) the worker died. vitest attributes a
+    //    dead worker to whichever spec was in flight, which is how this
+    //    surfaced as a `STACK_TRACE_ERROR` in `strip-equivalence`, the
+    //    longest-running spec in the package and entirely innocent. A child
+    //    process also hands its memory back on exit.
+    //
+    // 2. `loom build` is what a consumer runs. Calling `buildStaticSite`
+    //    directly skips the bin, the arg parsing and the built `lib/` — the
+    //    surface this repo has already shipped a total no-op through once
+    //    (`pyreon-lint` 0.43.0). See testing.md "Test the shipped ENTRY".
+    //
+    // Per the subprocess discipline: assert the EXIT CODE, never stdout. The
+    // real assertions read the emitted files off disk, which is deterministic.
     out = join(tmpdir(), `loom-site-test-${process.pid}`)
-    const report = buildReport(join(appDir(), '..', '..', '..', '..'))
-    await buildStaticSite({ report, outDir: out })
+    const repoRoot = join(appDir(), '..', '..', '..', '..')
+    execFileSync('node', [BIN, 'build', repoRoot, `--out=${out}`], { stdio: 'pipe' })
     built = true
   }, 240_000)
 
@@ -107,10 +139,42 @@ describe.skipIf(!CAN_BUILD)('the emitted site', () => {
     const html = readFileSync(join(out, 'cycles', 'index.html'), 'utf8')
     expect(html).not.toContain('/@loom/report.json')
   })
+
+  it('is a PRODUCTION build even though the spawn inherited NODE_ENV=test', () => {
+    // The regression lock for `buildStaticSite`'s NODE_ENV override, and the
+    // reason the spawn above does not sanitise its environment.
+    //
+    // `vite build` only sets NODE_ENV when it is UNSET, so a stray value from
+    // the caller's shell (vitest's `test` here, `development` for a real user)
+    // makes Vite build non-production and every
+    // `process.env.NODE_ENV !== 'production'` branch in Pyreon ships. Measured
+    // cost on this build: 3894 MB against 952 MB, which is what took the
+    // package over node's ~4 GB cap and killed the `Coverage (Full)` worker —
+    // and, worse, it meant every spec in this file asserted on a build no
+    // consumer ever gets.
+    //
+    // The observable is a core dev-only lifecycle warning: emitted in a
+    // non-production build, folded away in a production one.
+    const dir = join(out, 'assets')
+    const js = readdirSync(dir)
+      .filter((f) => f.endsWith('.js'))
+      .map((f) => readFileSync(join(dir, f), 'utf8'))
+      .join('')
+    // An empty corpus must not read as a pass.
+    expect(js.length).toBeGreaterThan(10_000)
+    expect(js).not.toContain('called outside component setup')
+  })
 })
 
 describe('the build guard', () => {
   it('vite IS resolvable here — the specs above are not silently skipped', () => {
     expect(CAN_BUILD).toBe(true)
+  })
+
+  it('the built lib IS present — the spawned build is not silently skipped', () => {
+    // Both halves of the skipIf get asserted, or a missing `lib/` would turn
+    // the whole emitted-site suite into a green no-op. Run
+    // `bun scripts/bootstrap.ts` if this fails.
+    expect(BUILT).toBe(true)
   })
 })

@@ -691,6 +691,23 @@ export function emitSwift(
   aliasImports: Map<string, string> = new Map(),
 ): { code: string; warnings: string[] } {
   _emitWarnings = []
+  // Per-FILE hook-binding-name sets. They are populated by the pre-pass
+  // below (which walks EVERY component at once), so they are file-scoped,
+  // not component-scoped — and nothing reset them. Two consequences: the
+  // sets grew unbounded across a build (Class C), and a binding name from
+  // one file stayed visible while the next was emitted. `_signalNames`
+  // resets per component and happens to take precedence in the shapes
+  // tested, which is why no wrong emit has been observed — but relying on
+  // that is relying on an accident.
+  _bluetoothSwift = new Set()
+  _clipboardSwift = new Set()
+  _deviceInfoSwift = new Set()
+  _motionSwift = new Set()
+  _orientationSwift = new Set()
+  _recorderSwift = new Set()
+  _safeAreaSwift = new Set()
+  _speechSwift = new Set()
+  _wakeLockSwift = new Set()
   _styledComponents = new Map(styledComponents.map((s) => [s.name, s]))
   _rocketstyleComponents = new Map(rocketstyleComponents.map((r) => [r.name, r]))
   _attrsComponents = new Map(attrsComponents.map((a) => [a.name, a]))

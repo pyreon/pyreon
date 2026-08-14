@@ -361,6 +361,23 @@ export function emitKotlin(
   aliasImports: Map<string, string> = new Map(),
 ): { code: string; warnings: string[] } {
   _emitWarnings = []
+  // Per-FILE hook-binding-name sets. They are populated by the pre-pass
+  // below (which walks EVERY component at once), so they are file-scoped,
+  // not component-scoped — and nothing reset them. Two consequences: the
+  // sets grew unbounded across a build (Class C), and a binding name from
+  // one file stayed visible while the next was emitted. `_signalNames`
+  // resets per component and happens to take precedence in the shapes
+  // tested, which is why no wrong emit has been observed — but relying on
+  // that is relying on an accident.
+  _bluetoothKotlin = new Set()
+  _clipboardKotlin = new Set()
+  _deviceInfoKotlin = new Set()
+  _motionKotlin = new Set()
+  _orientationKotlin = new Set()
+  _recorderKotlin = new Set()
+  _safeAreaKotlin = new Set()
+  _speechKotlin = new Set()
+  _wakeLockKotlin = new Set()
   _styledComponents = new Map(styledComponents.map((s) => [s.name, s]))
   _rocketstyleComponents = new Map(rocketstyleComponents.map((r) => [r.name, r]))
   _attrsComponents = new Map(attrsComponents.map((a) => [a.name, a]))
