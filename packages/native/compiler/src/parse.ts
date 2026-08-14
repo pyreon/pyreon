@@ -917,36 +917,40 @@ function tryModuleDeclsFromTopLevel(node: AnyNode, ctx: ParseCtx): ModuleDeclIR[
 // `multiplatform` declaration (tier === 'web-only' AND no `nativeFrontend`)
 // by `bun scripts/check-multiplatform-tier.ts --write-table`, which also
 // gates that this stays in sync. Edit the MANIFEST, not this list.
-const WEB_ONLY_PACKAGES: ReadonlySet<string> = new Set([
-  '@pyreon/atlas',
-  '@pyreon/charts',
-  '@pyreon/code',
-  '@pyreon/compiler',
-  '@pyreon/config',
-  '@pyreon/connector-document',
-  '@pyreon/dnd',
-  '@pyreon/document',
-  '@pyreon/document-primitives',
-  '@pyreon/feature',
-  '@pyreon/flow',
-  '@pyreon/head',
-  '@pyreon/hotkeys',
-  '@pyreon/kinetic',
-  '@pyreon/kinetic-presets',
-  '@pyreon/lint',
-  '@pyreon/loom',
-  '@pyreon/mcp',
-  '@pyreon/rich-text',
-  '@pyreon/runtime-dom',
-  '@pyreon/runtime-server',
-  '@pyreon/server',
-  '@pyreon/testing',
-  '@pyreon/ui-components',
-  '@pyreon/ui-primitives',
-  '@pyreon/unistyle',
-  '@pyreon/virtual',
-  '@pyreon/zero',
-  '@pyreon/zero-content',
+//
+// The value is the manifest's `rationale` — the per-package reason the
+// warning quotes, so one blanket line does not have to serve packages as
+// different as a linter, a `<head>` manager and an animation engine.
+const WEB_ONLY_PACKAGES: ReadonlyMap<string, string> = new Map([
+  ['@pyreon/atlas', "the component workbench — dev tooling that runs in a browser, not app runtime"],
+  ['@pyreon/charts', "wraps ECharts (browser canvas engine); consume on native via the `<WebView>` bridge subpath"],
+  ['@pyreon/code', "wraps CodeMirror 6 (DOM editor engine); consume on native via the `<WebView>` bridge subpath"],
+  ['@pyreon/compiler', "the web JSX compiler + build tooling itself; the native sibling is @pyreon/native-compiler — nothing here ships to an app runtime"],
+  ['@pyreon/config', "build-time config shape read by the tooling that assembles an app — never part of a rendered app on any target"],
+  ['@pyreon/connector-document', "bridges ui-components to @pyreon/document extraction — both ends are web/document engines"],
+  ['@pyreon/dnd', "wraps pragmatic-drag-and-drop (DOM events/pointers); native drag interactions are platform-gesture territory"],
+  ['@pyreon/document', "wraps pdfmake/docx/exceljs/pptxgenjs (browser/node document engines); no native lowering"],
+  ['@pyreon/document-primitives', "document-authoring primitives feeding the pdfmake/docx renderers"],
+  ['@pyreon/feature', "composite over query/form/store/validation — lowers only when every dependency does; tracked as a Tier-2 composite"],
+  ['@pyreon/flow', "wraps elkjs + SVG rendering (browser layout engine); consume on native via the `<WebView>` bridge subpath"],
+  ['@pyreon/head', "document `<head>` management — no equivalent surface exists on iOS/Android"],
+  ['@pyreon/hotkeys', "keyboard-shortcut layer over DOM KeyboardEvent; touch platforms have no hardware-shortcut surface"],
+  ['@pyreon/kinetic', "CSS-transition animation engine (classes + rAF over real CSSOM) — the `kinetic()` factory and its class/style machinery are web; its PRESET VOCABULARY (fade / scale-in / slide-up|down|left|right) does cross, via `<Transition name>`, which each target resolves to its own platform transition"],
+  ['@pyreon/kinetic-presets', "preset pack for the kinetic CSS engine"],
+  ['@pyreon/lint', "lint tooling — runs at dev time, not app runtime"],
+  ['@pyreon/loom', "the dependency observatory — dev tooling, not app runtime"],
+  ['@pyreon/mcp', "the MCP server — dev/AI tooling, not app runtime"],
+  ['@pyreon/rich-text', "wraps TipTap/ProseMirror (DOM editor); consume on native via the `<WebView>` bridge subpath"],
+  ['@pyreon/runtime-dom', "the DOM renderer — on native, PMTC emits SwiftUI/Compose instead of running a renderer"],
+  ['@pyreon/runtime-server', "server-side HTML rendering (SSR/streaming) — a web-platform concern with no native analogue"],
+  ['@pyreon/server', "SSR handler + islands for web deployments; native apps have no server-rendered HTML"],
+  ['@pyreon/testing', "the web testing kit (Testing-Library parity over the DOM renderer); native testing is XCUITest/Compose-test territory"],
+  ['@pyreon/ui-components', ""],
+  ['@pyreon/ui-primitives', ""],
+  ['@pyreon/unistyle', "responsive breakpoints + CSS-variable theming over real CSS; native theming is compile-time tokens + the 2-bucket size-class model"],
+  ['@pyreon/virtual', "DOM virtualization (scroll containers, measured rows); native lists are lazy by construction (LazyColumn/LazyVStack)"],
+  ['@pyreon/zero', "the web meta-framework (SSR/SSG/ISR, Vite, fs-router); native apps are built by PMTC + create-multiplatform, not zero"],
+  ['@pyreon/zero-content', "markdown/MDX content pipeline for zero's web rendering"],
 ])
 // <gen:web-only-packages:end>
 
@@ -976,8 +980,28 @@ function warnWebOnlyImports(body: AnyNode[], ctx: ParseCtx): void {
     // set above be derived from the tier without hand-tuning the overlap.
     if (WEB_ONLY_PACKAGES.has(pkg) && !UNLOWERED_PYREON_MODULES.has(pkg) && !seen.has(pkg)) {
       seen.add(pkg)
+      // The package's OWN manifest rationale, when it has one. A single
+      // blanket line cannot serve packages this different: a linter that
+      // never reaches a component, a `<head>` manager with no device
+      // analogue, and an animation engine whose preset vocabulary DOES
+      // cross. Quoting the reason makes the diagnostic specific, and it is
+      // generated from the manifest so it cannot drift from the tier table.
+      const why = WEB_ONLY_PACKAGES.get(pkg)
+      const reason =
+        why !== undefined && why !== ''
+          ? why
+          : 'it renders via the DOM / a browser-only library'
+      // Native-equivalent FIRST, WebView second: the escape hatch is the
+      // right answer for a genuine rendering engine, but it is the WRONG
+      // first suggestion for most of this set, and it used to be the only
+      // one offered.
       ctx.warnings.push(
-        `${pkg} is WEB-ONLY — it renders via the DOM / a browser-only library and has NO native (iOS/Android) emit, so PMTC can't compile it. On native, render it behind a \`<Web>\` escape hatch (web target only), or use a platform-native equivalent inside \`<NativeIOS>\` / \`<NativeAndroid>\`. The shared, multi-platform UI vocabulary lives in \`@pyreon/primitives\` (Stack / Text / Button / …) — those compile to all three targets.`,
+        // Joined with a COLON, not a dash: several rationales contain their
+        // own em-dash, and two in one sentence reads as a typo.
+        // The `WEB-ONLY` token is kept deliberately: it is the stable,
+        // greppable classifier callers and tests key on, and the specificity
+        // added here belongs AFTER it, not instead of it.
+        `${pkg} is WEB-ONLY, with NO native (iOS/Android) emit: ${reason}. On native, prefer the platform-native equivalent — the shared, multi-platform UI vocabulary lives in \`@pyreon/primitives\` (Stack / Text / Button / …), which compiles to all three targets. If the package IS the rendering engine you need, host the web implementation behind a \`<Web>\` escape hatch (web target only) or inside \`<NativeIOS>\` / \`<NativeAndroid>\`.`,
       )
     }
   }

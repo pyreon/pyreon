@@ -148,16 +148,46 @@ export function deriveWebOnlyPackages(rows: TierRow[]): string[] {
   return [...new Set([...derived, ...WEB_ONLY_NO_MANIFEST])].sort()
 }
 
-/** Render the generated region that replaces the hand-written Set literal. */
-export function renderWebOnlySet(names: string[]): string {
-  const lines = names.map((n) => `  '${n}',`)
+/**
+ * Pair each derived name with its manifest `rationale`, which is the ONE
+ * place the per-package truth is already written down (and already REQUIRED
+ * for web-only by this same gate).
+ *
+ * The compiler's blanket warning used to give identical advice for every
+ * package in the set — "render it behind a `<Web>` escape hatch" — which is
+ * wrong for most of them: `@pyreon/lint` is dev-time tooling that never
+ * reaches a component, `@pyreon/head` has no device analogue at all, and
+ * `@pyreon/kinetic`'s preset vocabulary genuinely DOES cross via
+ * `<Transition name>`, so that advice actively steers a user away from a
+ * working native path and into a WebView. Carrying the rationale through
+ * makes the diagnostic specific without a second hand-maintained list to rot.
+ *
+ * The two `WEB_ONLY_NO_MANIFEST` entries have no manifest to read, so they
+ * map to `''` and the warning falls back to its generic phrasing.
+ */
+export function deriveWebOnlyRationales(rows: TierRow[]): Array<[string, string]> {
+  const byName = new Map(rows.map((r) => [r.name, r.rationale ?? '']))
+  return deriveWebOnlyPackages(rows).map((n) => [n, byName.get(n) ?? ''])
+}
+
+/** Render the generated region that replaces the hand-written literal. */
+export function renderWebOnlySet(entries: Array<[string, string]>): string {
+  // A Map rather than a Set: `.has()` still answers membership exactly as
+  // before, and `.get()` hands the warning its per-package reason.
+  const lines = entries.map(
+    ([n, why]) => `  ['${n}', ${JSON.stringify(why)}],`,
+  )
   return [
     WEB_ONLY_START,
     '// GENERATED — do not edit by hand. Derived from every package manifest\'s',
     '// `multiplatform` declaration (tier === \'web-only\' AND no `nativeFrontend`)',
     '// by `bun scripts/check-multiplatform-tier.ts --write-table`, which also',
     '// gates that this stays in sync. Edit the MANIFEST, not this list.',
-    'const WEB_ONLY_PACKAGES: ReadonlySet<string> = new Set([',
+    '//',
+    '// The value is the manifest\'s `rationale` — the per-package reason the',
+    '// warning quotes, so one blanket line does not have to serve packages as',
+    '// different as a linter, a `<head>` manager and an animation engine.',
+    'const WEB_ONLY_PACKAGES: ReadonlyMap<string, string> = new Map([',
     ...lines,
     '])',
     WEB_ONLY_END,
@@ -296,7 +326,7 @@ async function main(): Promise<number> {
   const wStart = parseSrc.indexOf(WEB_ONLY_START)
   const wEnd = parseSrc.indexOf(WEB_ONLY_END)
   const derivedNames = deriveWebOnlyPackages(rows)
-  const renderedSet = renderWebOnlySet(derivedNames)
+  const renderedSet = renderWebOnlySet(deriveWebOnlyRationales(rows))
   // A manifest-bearing package must never be hand-listed — that would let the
   // hand list quietly outlive the derivation and re-open the rot.
   for (const name of WEB_ONLY_NO_MANIFEST) {
