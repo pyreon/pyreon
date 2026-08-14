@@ -1,17 +1,17 @@
 ---
 title: "Signal-Based Hooks — API Reference"
-description: "59 signal-based hooks: state (useToggle/useCounter/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocus"
+description: "61 signal-based hooks: state (useToggle/useCounter/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocus"
 ---
 
 # @pyreon/hooks — API Reference
 
 > **Generated** from `hooks`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [hooks](/docs/hooks).
 
-Signal-based hooks for Pyreon — 59 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.
+Signal-based hooks for Pyreon — 61 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.
 
 ## Features
 
-- 59 signal-based hooks across 7 categories
+- 61 signal-based hooks across 7 categories
 - State: useToggle, useCounter, usePrevious, useLatest, useControllableState
 - DOM: useEventListener, useClickOutside, useFocus, useHover, useFocusTrap, useFocusReturn, useInertOthers, useElementSize, useWindowResize, useWindowScroll, useScrollLock, useIntersection, useInfiniteScroll
 - Responsive: useBreakpoint, useMediaQuery, useColorScheme, useSizeClass, useReducedMotion
@@ -140,6 +140,8 @@ const idle = useIdle(30_000)               // Signal<boolean> — true after 30s
 | [`useReducedMotion`](#usereducedmotion) | hook | Reactive accessor for `(prefers-reduced-motion: reduce)` (a thin `useMediaQuery` wrapper). |
 | [`useOnline`](#useonline) | hook | Reactive network status accessor — seeded from `navigator.onLine` (or `true` on the server), updated by `online`/`offlin |
 | [`useDeviceInfo`](#usedeviceinfo) | hook | Describe the device — platform branching, real screen geometry, device context for analytics. |
+| [`useSafeArea`](#usesafearea) | hook | The safe-area insets of the current display — notch / Dynamic Island, home indicator, gesture bar, rounded corners. |
+| [`useScreenOrientation`](#usescreenorientation) | hook | Which way the display is oriented. |
 | [`useWakeLock`](#usewakelock) | hook | Keep the screen awake — video, navigation, recipe steps. |
 | [`useBluetooth`](#usebluetooth) | hook | Bluetooth DISCOVERY only, on all three targets — Web Bluetooth, CoreBluetooth, and the Android adapter. |
 | [`useIntersection`](#useintersection) | hook | IntersectionObserver as a signal. |
@@ -915,6 +917,56 @@ const device = useDeviceInfo()
 - Every member is an accessor — call them.
 
 **See also:** `useSizeClass` · `useBreakpoint` · `useWakeLock`
+
+---
+
+### useSafeArea `hook`
+
+```ts
+useSafeArea() => () => { top: number; right: number; bottom: number; left: number }
+```
+
+The safe-area insets of the current display — notch / Dynamic Island, home indicator, gesture bar, rounded corners. The one device fact a multiplatform app cannot work around at the app level: without it content draws under the notch, or every screen pads by a hard-coded guess that is wrong on the next device. Returns ONE accessor rather than four because the values move together on rotation and separate accessors invite a torn read. Sources: `env(safe-area-inset-*)` read off an inert probe element on the web (CSS environment variables are not exposed to script any other way — needs `viewport-fit=cover`, and reports zeros without it, which is correct rather than broken), `safeAreaInsets` on iOS, `WindowInsets` on Android.
+
+**Example**
+
+```tsx
+const safe = useSafeArea()
+<Stack style={() => ({ paddingTop: `${safe().top}px` })}>…</Stack>
+```
+
+**Common mistakes**
+
+- Destructuring at setup (`const { top } = safe()`) — that captures one frame; rotation changes it. Read inside the reactive scope.
+- Expecting non-zero values on the web without `viewport-fit=cover` in the viewport meta — zeros mean nothing is obscured.
+- Hard-coding notch padding instead — it is wrong on the next device, which is what this hook exists to stop.
+
+**See also:** `useScreenOrientation` · `useDeviceInfo`
+
+---
+
+### useScreenOrientation `hook`
+
+```ts
+useScreenOrientation() => { type: () => 'portrait' | 'landscape'; angle: () => number }
+```
+
+Which way the display is oriented. READ-ONLY by design: locking does not cross — `screen.orientation.lock()` is Chromium-only and fullscreen-gated on the web, and on iOS orientation is an app-level declaration (`supportedInterfaceOrientations`) rather than something a view can request. A `lock()` that silently no-ops on two of three targets is worse than a surface that states what it covers. `type` is normalised to the part that is true everywhere; the primary/secondary distinction the web exposes lives in `angle` (0 / 90 / 180 / 270), so nothing is lost.
+
+**Example**
+
+```tsx
+const o = useScreenOrientation()
+<Show when={() => o.type() === 'landscape'}><WideLayout /></Show>
+```
+
+**Common mistakes**
+
+- Looking for `lock()` — it is deliberately absent; declare supported orientations at the app level instead.
+- Treating `angle` as the orientation — a device can report 90 in either landscape direction; branch on `type()`.
+- Both members are accessors — call them.
+
+**See also:** `useSafeArea` · `useSizeClass` · `useDeviceInfo`
 
 ---
 

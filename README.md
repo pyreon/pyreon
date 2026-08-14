@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://github.com/pyreon/pyreon/actions/workflows/ci.yml"><img src="https://github.com/pyreon/pyreon/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22D3EE" alt="License: MIT" /></a>
-  <img src="https://img.shields.io/badge/row--list%20benchmark-leads%20or%20ties%20Solid%208%2F9-F4EFE6?labelColor=0A0A0E" alt="Row-list benchmark: leads or ties Solid on 8 of 9 ops" />
+  <img src="https://img.shields.io/badge/row--list%20benchmark-leads%20or%20ties%208%20of%209%20ops-F4EFE6?labelColor=0A0A0E" alt="Row-list benchmark: leads or ties on 8 of 9 ops" />
 </p>
 
 # Pyreon
@@ -18,7 +18,7 @@ A signal-based UI framework with fine-grained reactivity. No virtual DOM, no com
 - **No dependency arrays.** Signals track their own subscribers automatically.
 - **~6 kB gzip** for core + runtime-dom. Tree-shakeable — only what you use ships to the client.
 - **Full-stack.** SSR streaming, static site generation, island architecture, and client-side SPA — all from one framework.
-- **Top-tier performance.** Fastest of the frameworks measured on the synthetic row-list benchmark — create 1,000 rows in ~9ms (Vue 10ms, Solid 10.4ms, React 11.6ms), and **2.4–3× faster than React, Svelte and Preact** at 10,000 rows. Leads or ties every op except single-row remove, where Solid edges it. (Real Chromium, published deps; mid-pack on retained memory.)
+- **Top-tier performance.** Leads a synthetic row-list benchmark across an 8-framework field — create 1,000 rows in ~9ms (Vue 10ms, Solid 10.4ms, React 11.6ms), and **2.4–3× faster than React, Svelte and Preact** at 10,000 rows. Leads or ties every op except `clear rows`, where [Octane](https://octanejs.dev) — the nearest rival — edges it by one 100µs timer quantum. (Real Chromium, published deps; 2nd among frameworks on retained memory, 0.04MB behind Preact.)
 - **75 packages.** Forms, routing, state management, charts, drag & drop, i18n, multiplatform (SwiftUI + Compose), and more.
 - **Migration paths.** Drop-in compat layers for React, Vue, Solid, and Preact.
 
@@ -114,7 +114,7 @@ The `count()` call inside JSX is a reactive getter. Pyreon wraps it in an effect
 | [`@pyreon/feature`](packages/fundamentals/feature/) | Schema-driven CRUD — auto-generated queries, forms, tables, stores |
 | [`@pyreon/charts`](packages/fundamentals/charts/) | Reactive ECharts bridge with lazy loading |
 | [`@pyreon/storage`](packages/fundamentals/storage/) | Reactive storage — localStorage, sessionStorage, cookies, IndexedDB |
-| [`@pyreon/hooks`](packages/fundamentals/hooks/) | 59 hooks — useHover, useFocus, useBreakpoint, useClipboard, useHaptics, useShare, useLinking, useNotifications, useBiometrics, useImagePicker, useFilePicker, useDialog, useTimeAgo, etc. |
+| [`@pyreon/hooks`](packages/fundamentals/hooks/) | 61 hooks — useHover, useFocus, useBreakpoint, useClipboard, useHaptics, useShare, useLinking, useNotifications, useBiometrics, useImagePicker, useFilePicker, useDialog, useTimeAgo, etc. |
 | [`@pyreon/hotkeys`](packages/fundamentals/hotkeys/) | Keyboard shortcuts — scope-aware, modifier keys, conflict detection |
 | [`@pyreon/permissions`](packages/fundamentals/permissions/) | Reactive RBAC/ABAC — wildcards, predicates, feature flags |
 | [`@pyreon/machine`](packages/fundamentals/machine/) | Reactive state machines — type-safe transitions, guards |

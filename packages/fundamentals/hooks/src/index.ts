@@ -19,6 +19,10 @@ export type { WakeLockControls } from './useWakeLock'
 export { useWakeLock } from './useWakeLock'
 export type { DeviceInfo, DevicePlatform, DeviceScreen } from './useDeviceInfo'
 export { useDeviceInfo } from './useDeviceInfo'
+export type { SafeAreaInsets } from './useSafeArea'
+export { useSafeArea } from './useSafeArea'
+export type { OrientationState, ScreenOrientation } from './useScreenOrientation'
+export { useScreenOrientation } from './useScreenOrientation'
 export type {
   HapticImpactStyle,
   HapticNotificationType,
