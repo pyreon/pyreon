@@ -63,7 +63,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { unloweredLayoutPropWarning } from './unlowered-layout-props'
+import { unloweredPropWarning } from './unlowered-props'
 import type {
   AttrIR,
   ChildIR,
@@ -6095,6 +6095,12 @@ function emitSwiftText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
 }
 
 function emitSwiftButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  // `variant` reaches here and lowers to NOTHING on either target — see
+  // unlowered-props.ts. Warn rather than drop it silently.
+  {
+    const w = unloweredPropWarning('Button', 'variant', e.attrs.some((a) => a.kind === 'attr' && a.name === 'variant'))
+    if (w !== undefined) _emitWarnings.push(w)
+  }
   // <Button onClick={() => …}>Label</Button>  →  Button("Label") { … }
   // Phase B: also accept the canonical `onPress` event name (per
   // `@pyreon/primitives`). Either prop name resolves to the same
@@ -7159,7 +7165,7 @@ function emitSwiftStack(
   // Warn rather than drop silently — see unlowered-layout-props.ts for why
   // they are declared instead of half-implemented.
   for (const prop of ['justify', 'wrap'] as const) {
-    const w = unloweredLayoutPropWarning(
+    const w = unloweredPropWarning(
       isRow ? 'Inline' : 'Stack',
       prop,
       e.attrs.some((a) => a.kind === 'attr' && a.name === prop),
@@ -8141,6 +8147,12 @@ function emitSwiftLink(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   indent: number,
 ): string {
+  // `external` reaches here and lowers to NOTHING on either target — see
+  // unlowered-props.ts. Warn rather than drop it silently.
+  {
+    const w = unloweredPropWarning('Link', 'external', e.attrs.some((a) => a.kind === 'attr' && a.name === 'external'))
+    if (w !== undefined) _emitWarnings.push(w)
+  }
   const toAttr = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'attr' }> =>
       a.kind === 'attr' && a.name === 'to',

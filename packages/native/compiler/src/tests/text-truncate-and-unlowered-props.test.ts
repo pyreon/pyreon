@@ -25,7 +25,7 @@ import {
 } from '../validate'
 
 const app = (jsx: string) => `
-  import { Stack, Inline, Text } from '@pyreon/primitives'
+  import { Stack, Inline, Text, Link, Button } from '@pyreon/primitives'
   export function C() { return (${jsx}) }
 `
 
@@ -125,5 +125,55 @@ describe('layout props with no native lowering say so', () => {
   it('still emits a working stack — this warns, it does not refuse', () => {
     expect(code(`<Stack justify="between"><Text>x</Text></Stack>`, 'swift')).toContain('VStack')
     expect(code(`<Inline wrap><Text>x</Text></Inline>`, 'kotlin')).toContain('Row')
+  })
+})
+
+describe('interaction props with no native lowering say so', () => {
+  it('<Link external> warns — the link would route INTERNALLY instead', () => {
+    // The worst of this family: not a layout nicety but a link that silently
+    // does the wrong thing. Both PyreonLink runtimes call router.push(to)
+    // unconditionally, so an external URL is matched as an in-app route.
+    for (const target of ['swift', 'kotlin'] as const) {
+      const w = warnings(`<Link to="https://example.com" external>go</Link>`, target)
+      expect(w, target).toHaveLength(1)
+      expect(w[0]).toContain('external')
+      expect(w[0]).toContain('INTERNALLY')
+    }
+  })
+
+  it('an INTERNAL link stays silent', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      expect(warnings(`<Link to="/about">go</Link>`, target), target).toHaveLength(0)
+    }
+  })
+
+  it('<Button variant> warns — danger renders as primary', () => {
+    for (const v of ['secondary', 'ghost', 'danger']) {
+      for (const target of ['swift', 'kotlin'] as const) {
+        const w = warnings(`<Button variant="${v}" onPress={() => {}}>x</Button>`, target)
+        expect(w, `${v} on ${target}`).toHaveLength(1)
+        expect(w[0]).toContain('variant')
+      }
+    }
+  })
+
+  it('a Button with no variant stays silent', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      expect(warnings(`<Button onPress={() => {}}>x</Button>`, target), target).toHaveLength(0)
+    }
+  })
+
+  it('the interaction props that DO lower stay silent', () => {
+    // onLongPress and onSwipeLeft genuinely lower (LongPressGesture /
+    // combinedClickable, DragGesture / detectHorizontalDragGestures) — a
+    // grep for the prop name in the emitters wrongly suggested otherwise, so
+    // this pins the distinction.
+    for (const jsx of [
+      `<Button onPress={() => {}}>x</Button>`,
+      `<Link to="/x">go</Link>`,
+    ]) {
+      expect(warnings(jsx, 'swift'), jsx).toHaveLength(0)
+      expect(warnings(jsx, 'kotlin'), jsx).toHaveLength(0)
+    }
   })
 })

@@ -59,7 +59,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { unloweredLayoutPropWarning } from './unlowered-layout-props'
+import { unloweredPropWarning } from './unlowered-props'
 import type {
   AttrIR,
   ChildIR,
@@ -4941,6 +4941,12 @@ function sanitizeKotlinFontName(name: string): string {
 }
 
 function emitKotlinButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  // `variant` reaches here and lowers to NOTHING on either target — see
+  // unlowered-props.ts. Warn rather than drop it silently.
+  {
+    const w = unloweredPropWarning('Button', 'variant', e.attrs.some((a) => a.kind === 'attr' && a.name === 'variant'))
+    if (w !== undefined) _emitWarnings.push(w)
+  }
   // Phase B: accept canonical `onPress` AND legacy `onClick` event names
   // — same Compose Button shape (`onClick = ...`) either way. The
   // canonical name lets multi-platform PMTC source align across iOS +
@@ -5855,7 +5861,7 @@ function emitKotlinStack(
   // shipping only the Compose half would put the two platforms out of
   // agreement — see unlowered-layout-props.ts.
   for (const prop of ['justify', 'wrap'] as const) {
-    const w = unloweredLayoutPropWarning(
+    const w = unloweredPropWarning(
       isRow ? 'Inline' : 'Stack',
       prop,
       e.attrs.some((a) => a.kind === 'attr' && a.name === prop),
@@ -6834,6 +6840,12 @@ function emitKotlinLink(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   indent: number,
 ): string {
+  // `external` reaches here and lowers to NOTHING on either target — see
+  // unlowered-props.ts. Warn rather than drop it silently.
+  {
+    const w = unloweredPropWarning('Link', 'external', e.attrs.some((a) => a.kind === 'attr' && a.name === 'external'))
+    if (w !== undefined) _emitWarnings.push(w)
+  }
   const toAttr = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'attr' }> =>
       a.kind === 'attr' && a.name === 'to',
