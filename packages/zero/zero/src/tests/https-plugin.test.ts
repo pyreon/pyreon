@@ -9,7 +9,7 @@
  * before (#1395, where a plugin's `config()` return beat an inline `build()`
  * argument), so it is asserted rather than assumed.
  */
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -82,6 +82,32 @@ describe('https() on a real dev server', () => {
       // Binding every interface is a real exposure decision; without `lan` the
       // plugin must not make it for you.
       expect(server.config.server.host).toBe(false)
+    } finally {
+      await server.close()
+    }
+  }, 60_000)
+
+  it('covers `preview` too, which the docs promise and nothing else asserted', async () => {
+    // `vite preview` resolves its config with `command: 'serve'`, so the
+    // build-time early return does not skip it — worth pinning, because if
+    // that ever became `'build'` the preview server would silently fall back
+    // to plain HTTP while the documentation still claimed TLS.
+    const { preview } = await import('vite')
+    const root = makeRoot()
+    mkdirSync(join(root, 'dist'), { recursive: true })
+    writeFileSync(join(root, 'dist', 'index.html'), '<!doctype html><title>t</title>')
+
+    const server = await preview({
+      root,
+      configFile: false,
+      logLevel: 'silent',
+      plugins: [https({ selfSigned: true, quiet: true })],
+      preview: { port: 0 },
+    })
+    try {
+      expect(server.config.preview.https).toBeTruthy()
+      // The URL Vite prints is the user-visible promise.
+      expect(server.resolvedUrls?.local?.[0]).toMatch(/^https:/)
     } finally {
       await server.close()
     }
