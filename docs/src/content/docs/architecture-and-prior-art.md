@@ -59,13 +59,17 @@ every project.
 
 On the synthetic row-list benchmark (Chromium via Playwright), compiled
 Pyreon is the **fastest of the frameworks measured** — it leads or ties
-Solid on **8 of 9 ops (7 outright)** and runs **2.4–3× faster than React,
+Solid on **8 of 9 ops** and runs **2.4× faster than React and 3.1× than Preact,
 Svelte and Preact** at bulk-create (10k rows). Important caveats, kept
 verbatim with the project's internal record:
 
 - It is **not** "fastest on all benchmarks." This is the **synthetic
-  row-list suite** only; **Solid edges single-row `remove`** (the most
-  VDOM-neutral op), and Pyreon is **mid-pack on retained memory** (6th of 7).
+  row-list suite** only; **Octane takes `clear rows` outright** and ties
+  `replace` and `remove`. The "mid-pack on retained memory (6th of 7)" this
+  page used to state was **our own harness scoring us wrong** — it counted
+  not-yet-collected garbage as retained, penalising only the framework that
+  defers reclamation by an event-loop turn. Measured correctly, Pyreon is
+  **2nd among frameworks** (2026-08-14, 2.50 MB).
 - These are synthetic-benchmark numbers. **Real-app head-to-head
   measurements are still pending** — treat cross-framework performance
   claims accordingly.

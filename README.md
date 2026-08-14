@@ -18,7 +18,7 @@ A signal-based UI framework with fine-grained reactivity. No virtual DOM, no com
 - **No dependency arrays.** Signals track their own subscribers automatically.
 - **~6 kB gzip** for core + runtime-dom. Tree-shakeable — only what you use ships to the client.
 - **Full-stack.** SSR streaming, static site generation, island architecture, and client-side SPA — all from one framework.
-- **Top-tier performance.** Leads a synthetic row-list benchmark across an 8-framework field — create 1,000 rows in ~9ms (Vue 10ms, Solid 10.4ms, React 11.6ms), and **2.4–3× faster than React, Svelte and Preact** at 10,000 rows. Leads or ties every op except `clear rows`, where [Octane](https://octanejs.dev) — the nearest rival — edges it by one 100µs timer quantum. (Real Chromium, published deps; 2nd among frameworks on retained memory, 0.04MB behind Preact.)
+- **Top-tier performance.** Leads a synthetic row-list benchmark across an 8-framework field — create 1,000 rows in 8.3ms (Octane 8.5ms, Vue 8.5ms, Solid 9.2ms, React 10.4ms), and **2.4× faster than React and 3.1× than Preact** at 10,000 rows. Outright on 5 of 9 ops and tie-leader on 2 more; [Octane](https://octanejs.dev) — the nearest rival — takes `clear rows` and ties `replace`/`remove`. (Real Chromium, published deps, every competitor on its own documented fast path; 2nd among frameworks on retained memory, 0.03MB behind Preact.)
 - **75 packages.** Forms, routing, state management, charts, drag & drop, i18n, multiplatform (SwiftUI + Compose), and more.
 - **Migration paths.** Drop-in compat layers for React, Vue, Solid, and Preact.
 
