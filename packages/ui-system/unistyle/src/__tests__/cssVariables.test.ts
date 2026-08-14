@@ -284,7 +284,30 @@ describe('resolveCssVarReferences — ReDoS-safe (linear scan)', () => {
     return best
   }
 
-  it(
+  // V8 COVERAGE INSTRUMENTATION MAKES THIS UNMEASURABLE. The ratio is a
+  // statement about the ALGORITHM, and instrumentation adds a per-basic-block
+  // cost plus GC pressure that is NOT proportional to input size — so under
+  // `--coverage` the number measures the instrumenter, not the scan. Observed
+  // on main (run 31788903029, `Coverage (Full)`):
+  //
+  //   super-linear growth: 4x input took 11.9x the time
+  //   (tSmall=0.567ms @ 10000 spaces, tBig=6.753ms @ 40000 spaces)
+  //
+  // ...while the SAME spec is green in the Test cells and green locally under
+  // node + --coverage in isolation. Skipping under coverage keeps the gate
+  // where it can actually measure (the Test cell, which runs on every PR) and
+  // stops a meaningless number turning main red. Deleting it instead would
+  // drop the ReDoS guard entirely, which is the wrong trade.
+  // Set by scripts/check-coverage.ts when it spawns the instrumented run.
+  // vitest exposes no env var of its own for this, so the runner states it
+  // explicitly rather than the test guessing.
+  // This package narrows `process.env` to `{ NODE_ENV?: string }` on purpose —
+  // it polices bundler-agnostic dev gates in SHIPPED code. A test reading a
+  // CI-only flag is outside that concern, so widen it here rather than
+  // loosening the package-wide type.
+  const COVERAGE_RUN =
+    (process.env as unknown as Record<string, string | undefined>).PYREON_COVERAGE_RUN === '1'
+  it.skipIf(COVERAGE_RUN)(
     'the CodeQL-flagged pathological input resolves in linear time (N vs 4N growth ratio)',
     () => {
       const tSmall = minTimeMs(attackString(SPACES_SMALL))

@@ -368,13 +368,39 @@ export function extractVitestFailures(stdout: string): VitestFailure[] | null {
     for (const tr of doc.testResults) {
       for (const a of tr.assertionResults ?? []) {
         if (a.status !== 'failed') continue
-        const message = (a.failureMessages?.[0] ?? '').replace(/\s+/g, ' ').slice(0, 240)
+        const message = usefulFailureMessage(a.failureMessages?.[0], stdout)
         failures.push({ name: a.fullName ?? a.title ?? '(unnamed test)', message })
       }
     }
     return failures
   }
   return null
+}
+
+/**
+ * The assertion text for a failed spec — or the best available substitute.
+ *
+ * vitest's json reporter usually carries the real assertion in
+ * `failureMessages[0]`. Under the instrumented run it sometimes carries the
+ * sentinel `Error: STACK_TRACE_ERROR` plus a runner-internal stack instead:
+ * the error could not be serialised. Observed on main run 31788903029, where
+ * @pyreon/loom's failure reported exactly that and nothing else — a
+ * load-only failure whose ONE artifact is its message, reduced to a
+ * placeholder.
+ *
+ * When that happens, fall back to the first real assertion line in the
+ * child's human-readable output, which vitest still prints.
+ */
+export function usefulFailureMessage(raw: string | undefined, stdout: string): string {
+  const flat = (s: string): string => s.replace(/\s+/g, ' ').trim().slice(0, 240)
+  const isSentinel = (s: string): boolean =>
+    s.length === 0 || /^Error:\s*STACK_TRACE_ERROR\b/.test(s.trim())
+  if (raw !== undefined && !isSentinel(raw)) return flat(raw)
+  // `[\s\S]` rather than `.` so a multi-line assertion diff survives; the
+  // first match is the failing spec's, since vitest prints failures in order.
+  const m = stdout.match(/(AssertionError|TypeError|ReferenceError|Error):[\s\S]{0,400}/)
+  if (m) return `${flat(m[0])} [recovered from output — the json reporter returned STACK_TRACE_ERROR]`
+  return raw === undefined ? '' : flat(raw)
 }
 
 export function parseCoverageOutput(stdout: string): CoverageOutcome {
@@ -510,7 +536,21 @@ function runCoverage(
         '--coverage.reporter=text-summary',
         '--coverage.reportOnFailure',
       ],
-      { cwd: pkgDir, stdio: ['pipe', 'pipe', 'pipe'] },
+      {
+        cwd: pkgDir,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        // Tell the suite it is running UNDER coverage instrumentation. A
+        // handful of specs measure TIME (a growth ratio, a wall-clock
+        // ceiling); V8 coverage adds a per-basic-block cost plus GC pressure
+        // that is not proportional to input size, so under instrumentation
+        // those numbers describe the instrumenter rather than the code. They
+        // skip on this flag and still gate in the ordinary Test cell, which
+        // runs on every PR. Set here rather than sniffed inside the test:
+        // vitest exposes no env var for "coverage is on", so guessing one
+        // silently never skips (verified — neither VITEST_COVERAGE nor
+        // NODE_V8_COVERAGE is set by vitest).
+        env: { ...process.env, PYREON_COVERAGE_RUN: '1' },
+      },
     )
 
     let stdout = ''
