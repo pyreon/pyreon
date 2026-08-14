@@ -18,6 +18,8 @@
  *    a constant input, which fakes single-digit ns).
  *  - Median of the POOLED samples + bootstrap 95% CI; `🤝` marks a row whose
  *    competitor CI overlaps Pyreon's (tied within noise). A `sink` defeats DCE.
+ *  - `BENCH_GATE_ONLY=1` runs the correctness gate and exits 0 without timing —
+ *    use it to check correctness on a loaded machine, where timings are worthless.
  *
  *  FAIR-FRAMING / DISCLOSURE:
  *   - The COMPARABLE surface is the pure, framework-free parse (URL string →
@@ -40,6 +42,15 @@
  *     render tree + adapter, so it is OUT of scope here (covered by url-state's
  *     happy-dom + real-Chromium e2e tests instead). This bench is CPU-objective
  *     on the coercion core, not a full-stack URL-state race.
+ *   - CLOSURE PARITY: nuqs parsers return `T | null`, so every nuqs closure has
+ *     to spend a real `?? default` on the result. Pyreon's serializers return
+ *     `T`, so its closures previously carried only an `as` cast — which is
+ *     ERASED at runtime. On 5-20ns ops one nullish check is a measurable
+ *     fraction of the op, so the rows were partly comparing "one branch" to
+ *     "no branch". Both sides now carry the SAME `?? default`. Note the
+ *     direction: this ADDS work to Pyreon (the conservative choice) rather than
+ *     removing nuqs's real null handling — if it moves a ratio, it moves it
+ *     against us, which is the point.
  *   - AUTHOR-JUDGE: written + judged by the framework author. The ratio is the
  *     portable signal; ns are machine-dependent.
  */
@@ -127,7 +138,7 @@ const OPS: Record<string, { note?: string; make: () => Impl }> = {
     note: 'nuqs peer = parseAsInteger (use-case peer; a cheaper int-prefix scan — see header)',
     make: () => ({
       pyreon: (i) => {
-        sink += pyrNum.deserialize(NUM_STRINGS[i % NUM_STRINGS.length]!) as number
+        sink += (pyrNum.deserialize(NUM_STRINGS[i % NUM_STRINGS.length]!) as number | null) ?? 0
       },
       nuqs: (i) => {
         sink += (nqInt.parse(NUM_STRINGS[i % NUM_STRINGS.length]!) ?? 0) as number
@@ -138,7 +149,7 @@ const OPS: Record<string, { note?: string; make: () => Impl }> = {
     note: 'nuqs peer = parseAsFloat (the SEMANTICS-matched peer — both parse floats)',
     make: () => ({
       pyreon: (i) => {
-        sink += pyrNum.deserialize(NUM_STRINGS[i % NUM_STRINGS.length]!) as number
+        sink += (pyrNum.deserialize(NUM_STRINGS[i % NUM_STRINGS.length]!) as number | null) ?? 0
       },
       nuqs: (i) => {
         sink += (nqFloat.parse(NUM_STRINGS[i % NUM_STRINGS.length]!) ?? 0) as number
@@ -169,7 +180,7 @@ const OPS: Record<string, { note?: string; make: () => Impl }> = {
     note: 'both identity-decode the URL value',
     make: () => ({
       pyreon: (i) => {
-        sink += (pyrStr.deserialize(STR_VALUES[i % STR_VALUES.length]!) as string).length
+        sink += ((pyrStr.deserialize(STR_VALUES[i % STR_VALUES.length]!) as string | null) ?? '').length
       },
       nuqs: (i) => {
         sink += (nqStr.parse(STR_VALUES[i % STR_VALUES.length]!) ?? '').length
@@ -179,7 +190,7 @@ const OPS: Record<string, { note?: string; make: () => Impl }> = {
   'parse array (comma)': {
     make: () => ({
       pyreon: (i) => {
-        sink += (pyrArr.deserialize(ARR_STRINGS[i % ARR_STRINGS.length]!) as string[]).length
+        sink += ((pyrArr.deserialize(ARR_STRINGS[i % ARR_STRINGS.length]!) as string[] | null) ?? []).length
       },
       nuqs: (i) => {
         sink += (nqArr.parse(ARR_STRINGS[i % ARR_STRINGS.length]!) ?? []).length
@@ -201,7 +212,7 @@ const OPS: Record<string, { note?: string; make: () => Impl }> = {
     make: () => ({
       pyreon: (i) => {
         const raw = NUM_STRINGS[i % NUM_STRINGS.length]!
-        sink += pyrNum.serialize(pyrNum.deserialize(raw) as unknown as number).length
+        sink += pyrNum.serialize(((pyrNum.deserialize(raw) as number | null) ?? 0) as unknown as number).length
       },
       nuqs: (i) => {
         const raw = NUM_STRINGS[i % NUM_STRINGS.length]!
@@ -246,6 +257,7 @@ function assert(cond: boolean, msg: string): void {
   )
   console.log('✓ correctness gate passed — both libraries produce identical parse/serialize results\n')
 }
+if (process.env.BENCH_GATE_ONLY) process.exit(0)
 
 declare const Bun: {
   spawnSync: (cmd: string[], opts: { env: Record<string, string | undefined> }) => {

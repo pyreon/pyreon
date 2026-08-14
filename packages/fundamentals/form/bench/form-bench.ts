@@ -17,7 +17,13 @@
  * harness; the real wall-clock comparison is Tier B.)
  *
  * Methodology mirrors the repo's bench standards (see validate/bench):
- *  - NODE_ENV=production before any import.
+ *  - NODE_ENV=production before any import. NOTE: the `process.env.NODE_ENV`
+ *    assignment below CANNOT achieve that on its own — ES imports hoist, so
+ *    `@tanstack/form-core` and `../src/index` are both evaluated before it
+ *    runs. The load-bearing part is the SHELL: run this via `bun run bench`
+ *    (which sets NODE_ENV=production in the environment), not `bun
+ *    bench/form-bench.ts` directly, or BOTH libraries are measured with their
+ *    dev-mode instrumentation live.
  *  - Equivalent semantics: same field set, same value writes, same validator
  *    shape across both libraries.
  *  - Idiomatic per lib: Pyreon `useForm` + `setFieldValue` / `validate`;
@@ -26,7 +32,7 @@
  *  - Warmup to steady state, then timed batches; median ns/op + ops/sec +
  *    a relative multiplier vs the fastest.
  *
- * Run: bun bench/form-bench.ts
+ * Run: bun run bench   (sets NODE_ENV=production — see above)
  */
 process.env.NODE_ENV = 'production'
 

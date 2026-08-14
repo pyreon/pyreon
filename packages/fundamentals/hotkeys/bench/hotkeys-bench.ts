@@ -25,8 +25,19 @@
  *  - Competitors resolve to their real published builds (tinykeys / hotkeys-js /
  *    mousetrap), loaded under happy-dom for `window` / `document` / KeyboardEvent.
  *  - CORRECTNESS GATE asserts every library's captured handler fires on a HIT and
- *    stays silent on a MISS before any timing runs.
- *  - PER-OP PROCESS ISOLATION (each op measured in a fresh `bun` child).
+ *    stays silent on a MISS before any timing runs — for the 12-binding set AND
+ *    the 48-binding set. The 48-binding gate is load-bearing: `dispatch (miss,
+ *    48)` is a MISS op, so a library that silently registered 0 of the 48
+ *    bindings would post a fast "no match" number with nothing to scan. The gate
+ *    fires one HIT per modifier prefix, so all four prefixes must really be bound.
+ *  - PER-(OP × IMPL) PROCESS ISOLATION (each cell measured in a fresh `bun`
+ *    child, `bun <self> <op> <impl>`). Per-OP isolation is NOT enough: with all
+ *    four libraries measured inside one child, the library that runs LAST starts
+ *    after ~3 × (warmup + 11 × 20k) iterations of foreign allocation and JIT
+ *    tiering, and the loader order here put `pyreon` first and `mousetrap` last.
+ *    state-tree-bench.ts documents the same shape inflating a competitor ~10×.
+ *  - `BENCH_GATE_ONLY=1` runs the correctness gate and exits 0 without timing —
+ *    use it to check the gate on a loaded machine, where timings are worthless.
  *  - VARIED INPUTS — dispatch rotates through 12 distinct events — to defeat JSC
  *    loop-invariant hoisting on constant inputs.
  *  - A `sink` defeats dead-code elimination.
@@ -138,6 +149,14 @@ const MOD_PREFIXES = [
   { str: 'ctrl+alt', ev: { ctrl: true, alt: true } },
   { str: 'ctrl+shift', ev: { ctrl: true, shift: true } },
 ] as const
+
+// One HIT event per modifier prefix (all on the same letter `g`, which is in the
+// 12-letter set) — the 48-binding correctness gate fires each of these and
+// requires exactly one handler invocation, proving all four prefixes are really
+// registered before the MISS-op timing trusts a 48-entry registry.
+const MOD48_HIT_EVENTS = MOD_PREFIXES.map((m) =>
+  fakeEvent({ key: 'g', code: 'KeyG', keyCode: 71, ...m.ev }),
+)
 
 // ─── per-library driver (modules loaded ONCE, ops are sync) ──────────────────
 type Handler = (e: FakeKeyEvent) => void
@@ -353,15 +372,16 @@ const OPS: Record<string, string> = {
 }
 const OP_ORDER = Object.keys(OPS)
 
-// ─── child mode ──────────────────────────────────────────────────────────────
+// ─── child mode: `bun <file> <op> <impl>` → one cell, one library, one process ─
+// Only the requested library is LOADED here, so a cell never measures after
+// another library's module evaluation, allocation or JIT tiering.
 const childOp = process.argv[2]
+const childImpl = process.argv[3] as ImplName | undefined
 if (childOp) {
-  const out: Record<string, number> = {}
-  for (const name of IMPLS) {
-    const driver = await LOADERS[name]()
-    out[name] = measure(buildOp(childOp, driver))
-  }
-  process.stdout.write(JSON.stringify(out))
+  if (!OPS[childOp]) throw new Error(`unknown op: ${childOp}`)
+  if (!childImpl || !IMPLS.includes(childImpl)) throw new Error(`unknown impl: ${childImpl}`)
+  const driver = await LOADERS[childImpl]()
+  process.stdout.write(JSON.stringify({ ns: measure(buildOp(childOp, driver)) }))
   process.exit(0)
 }
 
@@ -372,6 +392,8 @@ function assert(cond: boolean, msg: string): void {
 {
   for (const name of IMPLS) {
     const driver = await LOADERS[name]()
+
+    // ── 12-binding set (the `dispatch (hit)` / `dispatch (miss)` rows) ───────
     const d = driver.mountDispatch()
     assert(d.handlers.length >= 1, `${name}: no keydown handler captured`)
     const before = d.hits.n
@@ -381,9 +403,35 @@ function assert(cond: boolean, msg: string): void {
     for (const h of d.handlers) h(MISS_EVENT)
     assert(d.hits.n === before2, `${name}: MISS (Ctrl+z) fired a handler`)
     d.teardown()
+
+    // ── 48-binding set (the `dispatch (miss, 48)` row) ──────────────────────
+    // `dispatch (miss, 48)` measures a MISS, so nothing in the timed loop can
+    // detect a library that failed to register some (or all) of the 48
+    // bindings — it would simply post a fast "nothing to match" number against
+    // rivals that really carry 48 entries. Fire one HIT per modifier prefix so
+    // every prefix must genuinely be bound before that row is trusted.
+    const d48 = driver.mountDispatch48()
+    assert(d48.handlers.length >= 1, `${name}: no keydown handler captured (48)`)
+    for (let p = 0; p < MOD_PREFIXES.length; p++) {
+      const prefix = MOD_PREFIXES[p]!.str
+      const ev = MOD48_HIT_EVENTS[p] as FakeKeyEvent
+      const b = d48.hits.n
+      for (const h of d48.handlers) h(ev)
+      assert(
+        d48.hits.n === b + 1,
+        `${name}: 48-set HIT (${prefix}+g) fired ${d48.hits.n - b}× — expected exactly 1 (binding missing or double-registered)`,
+      )
+    }
+    const b48miss = d48.hits.n
+    for (const h of d48.handlers) h(MISS_EVENT) // ctrl+z — unbound in the 48 set too
+    assert(d48.hits.n === b48miss, `${name}: 48-set MISS (Ctrl+z) fired a handler`)
+    d48.teardown()
   }
-  console.log('✓ correctness gate passed — every library fires on a hit, stays silent on a miss\n')
+  console.log(
+    '✓ correctness gate passed — every library fires on a hit (12-set AND all 4 prefixes of the 48-set), stays silent on a miss\n',
+  )
 }
+if (process.env.BENCH_GATE_ONLY) process.exit(0)
 
 declare const Bun: {
   spawnSync: (
@@ -396,21 +444,26 @@ interface Row {
   vals: Record<ImplName, number>
   note: string
 }
-const rows: Row[] = []
-for (const op of OP_ORDER) {
-  const proc = Bun.spawnSync(['bun', import.meta.path, op], {
+function runCell(op: string, impl: ImplName): number {
+  const proc = Bun.spawnSync(['bun', import.meta.path, op, impl], {
     env: { ...process.env, NODE_ENV: 'production' },
   })
   if (proc.exitCode !== 0) {
     process.stderr.write(new TextDecoder().decode(proc.stderr))
-    throw new Error(`child failed for op "${op}"`)
+    throw new Error(`child failed for cell "${op}" × ${impl}`)
   }
-  const r = JSON.parse(new TextDecoder().decode(proc.stdout)) as Record<ImplName, number>
-  rows.push({ op, vals: r, note: OPS[op] as string })
+  return (JSON.parse(new TextDecoder().decode(proc.stdout)) as { ns: number }).ns
+}
+
+const rows: Row[] = []
+for (const op of OP_ORDER) {
+  const vals = {} as Record<ImplName, number>
+  for (const impl of IMPLS) vals[impl] = runCell(op, impl)
+  rows.push({ op, vals, note: OPS[op] as string })
 }
 
 console.log(
-  `=== @pyreon/hotkeys vs tinykeys / hotkeys-js / mousetrap (${process.platform}/${process.arch}, NODE_ENV=production, per-op isolated, median ns/op) ===\n`,
+  `=== @pyreon/hotkeys vs tinykeys / hotkeys-js / mousetrap (${process.platform}/${process.arch}, NODE_ENV=production, per-(op×impl) isolated, median ns/op) ===\n`,
 )
 const pad = (s: string, n: number) => s.padEnd(n)
 const padL = (s: string, n: number) => s.padStart(n)
@@ -424,6 +477,6 @@ for (const r of rows) {
   )
 }
 console.log(
-  `\n(median 11×20k, each op in a fresh process. ns machine-dependent — the RATIO is the portable signal. Pyreon + hotkeys-js do MORE per event — a scope + input-focus filter — than tinykeys/mousetrap's bare match; see header for full fair-framing.)`,
+  `\n(median 11×20k, each (op × library) in its OWN fresh process — no library measures after another's heap/JIT debt. ns machine-dependent — the RATIO is the portable signal. Pyreon + hotkeys-js do MORE per event — a scope + input-focus filter — than tinykeys/mousetrap's bare match; see header for full fair-framing.)`,
 )
 if (sink === -1) console.log('') // defeat DCE

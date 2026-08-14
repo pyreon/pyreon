@@ -39,8 +39,8 @@
     "test:browser": "vitest run --config ./vitest.browser.config.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint .",
-    "bench": "bun bench/toast-bench.ts",
-    "bench:commit": "bun bench/toast-commit-bench.ts"
+    "bench": "NODE_ENV=production bun bench/toast-bench.ts",
+    "bench:commit": "NODE_ENV=production bun bench/toast-commit-bench.ts"
   },
   "peerDependencies": {
     "@pyreon/core": "workspace:^",

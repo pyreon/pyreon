@@ -504,6 +504,33 @@ describe('consumerPackagesTouched', () => {
       '@pyreon/router',
     ])
   })
+
+  // The message must use the SAME predicate as the decision. Pre-fix it applied
+  // only the owner-level checks, so a bench-only / test-only change reported the
+  // package as "consumer-affecting" in the failure text while
+  // `isConsumerAffectingFile` (which decides pass/fail) correctly excluded it.
+  it('excludes non-shipping paths, exactly like the pass/fail predicate', () => {
+    const files = [
+      'packages/core/router/bench/router-bench.ts',
+      'packages/core/router/src/tests/match.test.ts',
+      'packages/core/router/vitest.config.ts',
+      'packages/core/router/src/manifest.ts',
+    ]
+    for (const f of files) {
+      expect(isConsumerAffectingFile(f, PACKAGES, IGNORED, REPO)).toBe(false)
+    }
+    expect(consumerPackagesTouched(files, PACKAGES, IGNORED, REPO)).toEqual([])
+  })
+
+  it('names only the package whose SHIPPING file changed in a mixed bench/source list', () => {
+    const files = [
+      'packages/core/router/bench/router-bench.ts', // excluded
+      'packages/core/core/src/signal.ts', // the real trigger
+    ]
+    expect(consumerPackagesTouched(files, PACKAGES, IGNORED, REPO)).toEqual([
+      '@pyreon/core',
+    ])
+  })
 })
 
 // ─── isChangesetFile ────────────────────────────────────────────────────────
