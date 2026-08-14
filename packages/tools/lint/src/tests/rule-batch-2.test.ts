@@ -140,6 +140,32 @@ describe('pyreon/no-mismatch-risk (ssr)', () => {
     expect(find(r, 'pyreon/no-mismatch-risk').length).toBeGreaterThan(0)
   })
 
+  it('flags a risky call inside a FRAGMENT, not just an element', () => {
+    // The rule tracks JSX depth to know it is inside JSX, and fragments are a
+    // SEPARATE entry (`JSXFragment` / `JSXFragment:exit`) from elements. Only
+    // the element path was exercised, so the fragment counters — and every
+    // mismatch inside a `<>…</>` — were unverified.
+    const code = `function App() { return <>{Date.now()}</> }`
+    const r = lintFile(tsx, code, allRules, cfg())
+    expect(find(r, 'pyreon/no-mismatch-risk').length).toBeGreaterThan(0)
+  })
+
+  it('flags Math.random() and crypto.randomUUID(), not only Date.now()', () => {
+    // Three calls are detected; one was tested.
+    for (const call of ['Math.random()', 'crypto.randomUUID()']) {
+      const r = lintFile(tsx, `function App() { return <div>{${call}}</div> }`, allRules, cfg())
+      expect(find(r, 'pyreon/no-mismatch-risk').length, call).toBeGreaterThan(0)
+    }
+  })
+
+  it('stops flagging once JSX is exited', () => {
+    // Guards the `:exit` decrements: if depth never came back down, the first
+    // JSX in a file would make every later call look JSX-nested.
+    const code = `function App() { return <div>ok</div> }\nconst stamp = Date.now()`
+    const r = lintFile(tsx, code, allRules, cfg())
+    expect(find(r, 'pyreon/no-mismatch-risk').length).toBe(0)
+  })
+
   it('does NOT flag Date.now() not in JSX', () => {
     const code = `const stamp = Date.now()`
     const r = lintFile(ts, code, allRules, cfg())
