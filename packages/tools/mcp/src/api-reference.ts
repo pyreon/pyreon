@@ -4237,6 +4237,16 @@ effect(() => { if (idle()) showAwayBanner() })`,
 - Every member is an accessor — call them.`,
   },
 
+  'hooks/useSafeArea': {
+    signature: 'useSafeArea() => () => { top: number; right: number; bottom: number; left: number }',
+    example: `const safe = useSafeArea()
+<Stack style={() => ({ paddingTop: \`\${safe().top}px\` })}>…</Stack>`,
+    notes: 'The safe-area insets of the current display — notch / Dynamic Island, home indicator, gesture bar, rounded corners. The one device fact a multiplatform app cannot work around at the app level: without it content draws under the notch, or every screen pads by a hard-coded guess that is wrong on the next device. Returns ONE accessor rather than four because the values move together on rotation and separate accessors invite a torn read. Sources: `env(safe-area-inset-*)` read off an inert probe element on the web (CSS environment variables are not exposed to script any other way — needs `viewport-fit=cover`, and reports zeros without it, which is correct rather than broken), `safeAreaInsets` on iOS, `WindowInsets` on Android. See also: useScreenOrientation, useDeviceInfo.',
+    mistakes: `- Destructuring at setup (\`const { top } = safe()\`) — that captures one frame; rotation changes it. Read inside the reactive scope.
+- Expecting non-zero values on the web without \`viewport-fit=cover\` in the viewport meta — zeros mean nothing is obscured.
+- Hard-coding notch padding instead — it is wrong on the next device, which is what this hook exists to stop.`,
+  },
+
   'hooks/useSpeech': {
     signature: 'useSpeech() => { supported: () => boolean; speaking: () => boolean; speak: (text: string) => Promise<boolean>; stop: () => void }',
     example: `const speech = useSpeech()
@@ -4256,6 +4266,16 @@ effect(() => { if (idle()) showAwayBanner() })`,
     mistakes: `- Calling start() outside a user gesture on iOS Safari — the prompt throws; it is caught and resolves false.
 - Expecting updates without start() — deliberately opt-in, to keep the sensor off.
 - Forgetting stop() when the view is only hidden rather than unmounted.`,
+  },
+
+  'hooks/useScreenOrientation': {
+    signature: `useScreenOrientation() => { type: () => 'portrait' | 'landscape'; angle: () => number }`,
+    example: `const o = useScreenOrientation()
+<Show when={() => o.type() === 'landscape'}><WideLayout /></Show>`,
+    notes: 'Which way the display is oriented. READ-ONLY by design: locking does not cross — `screen.orientation.lock()` is Chromium-only and fullscreen-gated on the web, and on iOS orientation is an app-level declaration (`supportedInterfaceOrientations`) rather than something a view can request. A `lock()` that silently no-ops on two of three targets is worse than a surface that states what it covers. `type` is normalised to the part that is true everywhere; the primary/secondary distinction the web exposes lives in `angle` (0 / 90 / 180 / 270), so nothing is lost. See also: useSafeArea, useSizeClass, useDeviceInfo.',
+    mistakes: `- Looking for \`lock()\` — it is deliberately absent; declare supported orientations at the app level instead.
+- Treating \`angle\` as the orientation — a device can report 90 in either landscape direction; branch on \`type()\`.
+- Both members are accessors — call them.`,
   },
 
   'hooks/useCamera': {
