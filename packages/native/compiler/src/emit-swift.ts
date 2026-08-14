@@ -63,6 +63,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
+import { unknownTransitionPresetWarning } from './transition-presets'
 import { unloweredPropWarning } from './unlowered-props'
 import type {
   AttrIR,
@@ -6873,6 +6874,13 @@ function emitSwiftTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
     )
   }
   const nameRaw = readStaticAttr(e, 'name')
+  // A name with no native translation still falls back to a fade — the right
+  // behaviour — but SAY SO. The web runs the author's CSS and the device
+  // fades, and a fade that played leaves no symptom to investigate.
+  const nameWarning = unknownTransitionPresetWarning(
+    typeof nameRaw === 'string' ? nameRaw : undefined,
+  )
+  if (nameWarning !== undefined) _emitWarnings.push(nameWarning)
   const swiftTransition = swiftTransitionForName(
     typeof nameRaw === 'string' ? nameRaw : undefined,
   )
