@@ -95,6 +95,40 @@ interface Counts {
   domWrites: number
 }
 
+/** The FIRST rendered row's id — one selector, used identically by every harness
+ *  so the two adapters are interrogated the same way (react previously read
+ *  `tbody.children[0]`, pyreon a descendant query; a structural difference there
+ *  makes the two "checks" incomparable). */
+function firstRowId(container: HTMLElement): string | null {
+  return container.querySelector('tbody [data-rowid]')?.getAttribute('data-rowid') ?? null
+}
+
+/**
+ * The sort op's correctness gate.
+ *
+ * `sort` is where this bench's headline claim lives, and it is the op most able
+ * to fake a win: an adapter whose sort silently NO-OPS emits ~zero DOM writes
+ * and ~zero cell units and reads as decisive. Asserting only "rows exist" (the
+ * previous check) passes for a completely unsorted table, so it could never
+ * catch that. Assert the ORDER actually changed to the ONE expected value.
+ *
+ * `makeData` sets `c0 = String(n - i).padStart(7, '0')` and `getRowId` is the
+ * row's `id` (= its original index `i`). So ascending on `c0` puts the SMALLEST
+ * c0 first — `n - i === 1`, i.e. `i === n - 1` — and the table starts at id 0.
+ */
+function assertSorted(who: string, container: HTMLElement, before: string | null, n: number): void {
+  const after = firstRowId(container)
+  if (after == null) throw new Error(`[${who}] sort produced no rows`)
+  if (before !== '0') throw new Error(`[${who}] pre-sort first row was ${before}, expected 0`)
+  const want = String(n - 1)
+  if (after !== want) {
+    throw new Error(
+      `[${who}] sort did not reorder: first row is ${after}, expected ${want} (before=${before}) — ` +
+        `a no-op sort would post near-zero DOM writes and read as a win`,
+    )
+  }
+}
+
 function observe(root: Node): { flush: () => number } {
   const obs = new MutationObserver(() => {})
   obs.observe(root, { characterData: true, childList: true, subtree: true })
@@ -206,9 +240,9 @@ async function reactHarness(
     const other = container.querySelector(`[data-rowid="0"]`)?.children[0]?.textContent
     if (other !== baseC0Row0) throw new Error(`[react] unchanged cell corrupted: ${other}`)
   } else {
+    const before = firstRowId(container)
     flushSync(() => tableRef!.getColumn('c0')!.toggleSorting(false))
-    const first = container.querySelector('tbody')?.children[0]?.getAttribute('data-rowid')
-    if (first == null) throw new Error('[react] sort produced no rows')
+    assertSorted(`react ${memoized ? 'memo' : 'naive'}`, container, before, n)
   }
 
   const domWrites = mo.flush()
@@ -304,9 +338,9 @@ async function pyreonHarness(
     const other = container.querySelector(`[data-rowid="0"]`)?.children[0]?.textContent
     if (other !== baseC0Row0) throw new Error(`[pyreon ${mode}] unchanged cell corrupted: ${other}`)
   } else {
+    const before = firstRowId(container)
     tableAccessor.getColumn('c0').toggleSorting(false)
-    const first = container.querySelector('tbody [data-rowid]')?.getAttribute('data-rowid')
-    if (first == null) throw new Error('[pyreon] sort produced no rows')
+    assertSorted(`pyreon ${mode}`, container, before, n)
   }
 
   const domWrites = mo.flush()

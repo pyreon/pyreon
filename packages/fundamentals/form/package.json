@@ -42,7 +42,9 @@
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "lint": "oxlint ."
+    "lint": "oxlint .",
+    "bench": "NODE_ENV=production bun bench/form-bench.ts",
+    "bench:rerender": "NODE_ENV=production bun bench/form-rerender-bench.ts"
   },
   "peerDependencies": {
     "@pyreon/core": "workspace:^",

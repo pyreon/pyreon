@@ -20,12 +20,14 @@
  *    validates the snapshot against the model type); plain `@pyreon/state-tree`
  *    does NOT. Those ops are not pure apples-to-apples — flagged in the table.
  *  - Median ns/op over warmup + N runs; a `sink` defeats DCE.
+ *  - `BENCH_GATE_ONLY=1` runs the correctness gate and exits 0 without timing —
+ *    use it to check correctness on a loaded machine, where timings are worthless.
  */
 process.env.NODE_ENV = 'production'
 
 import { effect } from '@pyreon/reactivity'
 import { s as v } from '@pyreon/validate'
-import { reaction } from 'mobx'
+import { autorun } from 'mobx'
 import {
   applyPatch as mstApplyPatch,
   applySnapshot as mstApplySnapshot,
@@ -195,19 +197,18 @@ const OPS: Record<string, { note?: string; make: () => Impl }> = {
     },
   },
   'reactive write→observer': {
+    note: 'MobX peer = `autorun` (1:1 with Pyreon `effect`: one closure, eager first run, re-runs on dep change). `reaction` is NOT the peer — two closures + a comparer per notify, i.e. machinery the Pyreon side does not have.',
     make: () => {
       const pt = PyrTodo.create(INITIAL)
       const mt = MstTodo.create(INITIAL)
+      // Identical observer BODIES on both sides so the row measures the
+      // write→notify path, not a difference in what the observer does.
       effect(() => {
-        pt.done()
-        sink++
+        sink += pt.done() ? 1 : 0
       })
-      reaction(
-        () => mt.done,
-        () => {
-          sink++
-        },
-      )
+      autorun(() => {
+        sink += mt.done ? 1 : 0
+      })
       return { pyreon: () => pt.toggle(), mst: () => mt.toggle() }
     },
   },
@@ -243,24 +244,34 @@ function assert(cond: boolean, msg: string): void {
   mstApplyPatch(mt, { op: 'replace', path: '/done', value: true })
   applyPatch(pt, { op: 'replace', path: '/done', value: true })
   assert(mt.done === pt.done() && pt.done() === true, 'applyPatch')
+  // `autorun` is the 1:1 peer of Pyreon's `effect`: both run EAGERLY once at
+  // creation and again on each dependency change, so an identical write must
+  // produce an identical fire count. (The old gate used `reaction`, which does
+  // NOT run eagerly — hence its `=== 1` where Pyreon had `=== 2`. That count
+  // asymmetry was the visible tip of the primitive mismatch this row now fixes.)
   let mF = 0
   let pF = 0
-  const dM = reaction(
-    () => mt.done,
-    () => mF++,
-  )
+  let mLast = false
+  let pLast = false
+  const dM = autorun(() => {
+    mLast = mt.done
+    mF++
+  })
   const dP = effect(() => {
-    pt.done()
+    pLast = pt.done()
     pF++
   })
   mt.toggle()
   pt.toggle()
-  assert(mF === 1, `mobx reaction fire (${mF})`)
-  assert(pF === 2, `pyreon effect fire (${pF})`)
+  assert(mF === 2, `mobx autorun fire (${mF}) — expected 1 eager + 1 on change`)
+  assert(pF === 2, `pyreon effect fire (${pF}) — expected 1 eager + 1 on change`)
+  assert(mF === pF, `observer fire counts diverge (mobx ${mF} vs pyreon ${pF})`)
+  assert(mLast === pLast, `observers saw different values (mobx ${mLast} vs pyreon ${pLast})`)
   dM()
   dP.dispose()
   console.log('✓ correctness gate passed — both libraries agree on every op\n')
 }
+if (process.env.BENCH_GATE_ONLY) process.exit(0)
 
 declare const Bun: { spawnSync: (cmd: string[], opts: { env: Record<string, string | undefined> }) => { stdout: Uint8Array; exitCode: number } }
 interface Row {

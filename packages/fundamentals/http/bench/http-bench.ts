@@ -30,6 +30,8 @@
  *  - NO forced GC (JSC re-tier noise). Warmup + pooled small runs across
  *    ${BENCH_REPEATS:-3} spawns; median + 95% bootstrap CI + 🤝 tie marker.
  *  - A `sink` defeats DCE.
+ *  - `BENCH_GATE_ONLY=1` runs the correctness gate and exits 0 without timing —
+ *    use it to check correctness on a loaded machine, where timings are worthless.
  *
  * HONEST FRAMING (don't cherry-pick):
  *  - This is a CPU-objective micro-bench of wrapper overhead. In the
@@ -176,6 +178,14 @@ interface OpSpec {
   note?: string
   make: () => Impl
   iters?: number
+  /**
+   * Libraries that CANNOT express this row's feature. Their cell is printed
+   * `n/a` and never measured. Running their plain no-feature call instead and
+   * printing a ratio would be a fabricated comparison: the number would look
+   * like "redaxios is faster at timeouts" when redaxios did no timeout work at
+   * all. `n/a` is the honest cell — a missing feature is not a fast feature.
+   */
+  na?: readonly ImplName[]
 }
 
 const OPS: Record<string, OpSpec> = {
@@ -294,7 +304,8 @@ const OPS: Record<string, OpSpec> = {
     },
   },
   'GET with 5s timeout': {
-    note: 'composed cancel signal + timer per request — libs without timeout support marked n/a via floor value',
+    note: 'composed cancel signal + timer per request. redaxios = n/a: no first-class per-client timeout over fetch, so there is nothing comparable to measure (it previously ran a PLAIN GET here, doing none of the work this row exists to measure, while still printing a ratio).',
+    na: ['redaxios'],
     make: () => {
       const pyreonT = createHttp({ baseUrl: BASE, timeout: 5_000 })
       const kyT = ky.create({ prefixUrl: BASE, timeout: 5_000, retry: 0 })
@@ -323,12 +334,11 @@ const OPS: Record<string, OpSpec> = {
           const d = await ofetchT<{ id: number }>('/users/1')
           sink += d.id
         },
-        // redaxios/axios(fetch adapter without signal wiring) have no
-        // first-class per-client timeout over fetch — run their plain GET so
-        // the cell is comparable-but-disclosed rather than fabricated.
+        // redaxios has no first-class per-client timeout over fetch. Marked
+        // `na` above so this cell is never measured; the body throws so it can
+        // never be silently re-enabled as a plain GET masquerading as a timeout.
         redaxios: async () => {
-          const r = await redaxios.get(`${BASE}/users/1`)
-          sink += (r.data as { id: number }).id
+          throw new Error('n/a — redaxios has no per-client timeout over fetch')
         },
         axios: async () => {
           const r = await axiosDefault.get<{ id: number }>(`${BASE}/users/1`, {
@@ -342,7 +352,7 @@ const OPS: Record<string, OpSpec> = {
     },
   },
   'create configured client': {
-    note: 'factory cost — baseUrl + 1 header + defaults folding',
+    note: 'factory cost — baseUrl + 1 header + defaults folding. EVERY lib gets the SAME `x-app` header (redaxios/axios previously got baseURL only, skipping the header-merge this row exists to measure).',
     iters: 2_000,
     make: () => ({
       pyreon: async () => {
@@ -358,11 +368,15 @@ const OPS: Record<string, OpSpec> = {
         sink += typeof c === 'function' ? 1 : 0
       },
       redaxios: async () => {
-        const c = redaxios.create({ baseURL: BASE })
+        const c = redaxios.create({ baseURL: BASE, headers: { 'x-app': 'bench' } })
         sink += typeof c.get === 'function' ? 1 : 0
       },
       axios: async () => {
-        const c = axiosDefault.create({ baseURL: BASE, adapter: 'fetch' })
+        const c = axiosDefault.create({
+          baseURL: BASE,
+          headers: { 'x-app': 'bench' },
+          adapter: 'fetch',
+        })
         sink += typeof c.get === 'function' ? 1 : 0
       },
       bare: async () => {
@@ -371,7 +385,8 @@ const OPS: Record<string, OpSpec> = {
     }),
   },
   'GET through 2 middleware/hooks': {
-    note: 'composition machinery — pyreon middleware vs ky hooks vs ofetch interceptors vs axios interceptors; redaxios has none (plain GET, disclosed); bare = hand-inlined equivalent',
+    note: 'composition machinery — pyreon middleware vs ky hooks vs ofetch interceptors vs axios interceptors. redaxios = n/a: it has no interceptor/hook layer at all, so it ran a PLAIN GET here — zero composition work, yet a printed ratio. bare = hand-inlined equivalent.',
+    na: ['redaxios'],
     make: () => {
       const pyreonM = createHttp({
         baseUrl: BASE,
@@ -425,9 +440,10 @@ const OPS: Record<string, OpSpec> = {
           const d = await ofetchM<{ id: number }>('/users/1')
           sink += d.id
         },
+        // Marked `na` above — redaxios has no interceptor layer. Throws so it
+        // can never be silently re-enabled as a plain GET with a printed ratio.
         redaxios: async () => {
-          const r = await redaxios.get(`${BASE}/users/1`)
-          sink += (r.data as { id: number }).id
+          throw new Error('n/a — redaxios has no request/response interceptors')
         },
         axios: async () => {
           const r = await axiosM.get<{ id: number }>('/users/1')
@@ -452,6 +468,11 @@ if (childOp) {
   const spec = OPS[childOp]
   if (!spec) throw new Error(`unknown op: ${childOp}`)
   if (!childImpl || !IMPLS.includes(childImpl)) throw new Error(`unknown impl: ${childImpl}`)
+  // Defense in depth: the orchestrator already skips `na` cells. If one is ever
+  // requested directly, fail loudly rather than measure a substitute call.
+  if (spec.na?.includes(childImpl)) {
+    throw new Error(`op "${childOp}" is n/a for ${childImpl} — it cannot express this feature`)
+  }
   const impl = spec.make()
   const opts: Parameters<typeof measureSamplesAsync>[1] = {}
   if (spec.iters !== undefined) opts.iters = spec.iters
@@ -527,6 +548,7 @@ async function capture(fn: () => Promise<void>): Promise<Captured> {
 
   console.log('✓ correctness gate passed — decode/POST/query agree across all libs\n')
 }
+if (process.env.BENCH_GATE_ONLY) process.exit(0)
 
 interface Cell {
   med: number
@@ -534,7 +556,8 @@ interface Cell {
 }
 interface Row {
   op: string
-  cells: Record<ImplName, Cell>
+  /** `null` = the library cannot express this row's feature (see `OpSpec.na`). */
+  cells: Record<ImplName, Cell | null>
   note?: string
 }
 
@@ -555,8 +578,9 @@ function runCell(op: string, impl: ImplName): Cell {
 
 const rows: Row[] = []
 for (const op of OP_ORDER) {
-  const cells = {} as Record<ImplName, Cell>
-  for (const impl of IMPLS) cells[impl] = runCell(op, impl)
+  const na = OPS[op]?.na ?? []
+  const cells = {} as Record<ImplName, Cell | null>
+  for (const impl of IMPLS) cells[impl] = na.includes(impl) ? null : runCell(op, impl)
   const row: Row = { op, cells }
   const note = OPS[op]?.note
   if (note !== undefined) row.note = note
@@ -572,20 +596,24 @@ console.log(
   `${pad('op', 34)} ${padL('pyreon', 8)} ${padL('ky', 8)} ${padL('ofetch', 8)} ${padL('redaxios', 9)} ${padL('axios', 8)} ${padL('bare', 8)}   verdicts (competitor ÷ pyreon)`,
 )
 console.log('─'.repeat(150))
+const num = (c: Cell | null, w: number) => padL(c === null ? 'n/a' : c.med.toFixed(0), w)
 for (const r of rows) {
   const p = r.cells.pyreon
+  if (p === null) throw new Error(`pyreon cannot be n/a (op "${r.op}")`)
   const verdict = (name: ImplName) => {
     const cell = r.cells[name]
+    // A library that cannot express the feature gets `n/a`, never a ratio.
+    if (cell === null) return `${name}=n/a`
     const ratio = cell.med / p.med
     const tie = overlaps(p.ci, cell.ci)
     const base = ratio >= 1 ? `${ratio.toFixed(2)}x` : `${ratio.toFixed(2)}x⚠`
     return `${name}=${tie ? `🤝${base}` : base}`
   }
   console.log(
-    `${pad(r.op, 34)} ${padL(p.med.toFixed(0), 8)} ${padL(r.cells.ky.med.toFixed(0), 8)} ${padL(r.cells.ofetch.med.toFixed(0), 8)} ${padL(r.cells.redaxios.med.toFixed(0), 9)} ${padL(r.cells.axios.med.toFixed(0), 8)} ${padL(r.cells.bare.med.toFixed(0), 8)}   ${(['ky', 'ofetch', 'redaxios', 'axios'] as const).map(verdict).join(' ')}`,
+    `${pad(r.op, 34)} ${padL(p.med.toFixed(0), 8)} ${num(r.cells.ky, 8)} ${num(r.cells.ofetch, 8)} ${num(r.cells.redaxios, 9)} ${num(r.cells.axios, 8)} ${num(r.cells.bare, 8)}   ${(['ky', 'ofetch', 'redaxios', 'axios'] as const).map(verdict).join(' ')}`,
   )
   if (r.note) console.log(`  └ ${r.note}`)
 }
 console.log(
-  `\n(ratios = competitor ÷ pyreon; >1 ⇒ pyreon faster, ⚠ ⇒ pyreon slower; 🤝 = CI95 overlap (tie). bare = no-feature floor, not a competitor. Pooled median of 31 runs × ${CELL_REPEATS} fresh processes per cell; no forced GC; ns machine-dependent — ratios are the portable signal.)`,
+  `\n(ratios = competitor ÷ pyreon; >1 ⇒ pyreon faster, ⚠ ⇒ pyreon slower; 🤝 = CI95 overlap (tie); n/a = the library cannot express that row's feature and is NOT measured — a missing feature is not a fast feature. bare = no-feature floor, not a competitor. Pooled median of 31 runs × ${CELL_REPEATS} fresh processes per cell; no forced GC; ns machine-dependent — ratios are the portable signal.)`,
 )
