@@ -24,6 +24,7 @@
  * interstitial, and we say so.
  */
 import { execFileSync } from 'node:child_process'
+import { X509Certificate } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -178,9 +179,13 @@ function writeCache(dir: string, cert: Certificate): void {
  */
 export function expiryOf(pem: string): Date | null {
   try {
-    // Imported lazily: `node:crypto`'s X509Certificate is the only thing here
-    // that is version-sensitive, and a parse failure must degrade, not throw.
-    const { X509Certificate } = require('node:crypto') as typeof import('node:crypto')
+    // Statically imported, NOT `require`d. This package is `type: module`, so
+    // `require` is undefined under Node — the call threw, the catch below
+    // swallowed it, and every certificate got the 24-hour fallback expiry
+    // instead of its real 825 days. The visible symptom would have been the
+    // browser interstitial returning EVERY DAY as the cache silently reissued.
+    // Bun defines `require` in ESM as a convenience, so the whole test suite
+    // passed while the shipped path was broken.
     const parsed = new X509Certificate(pem)
     const date = new Date(parsed.validTo)
     return Number.isNaN(date.getTime()) ? null : date

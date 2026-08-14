@@ -171,6 +171,33 @@ describe('mkcert delegation', () => {
   })
 })
 
+describe('ESM discipline', () => {
+  it('uses no `require()` — this package is type: module, where it is undefined', async () => {
+    // A behavioural test CANNOT catch this: bun defines `require` in ESM as a
+    // convenience, so the entire suite passes while the shipped path is broken
+    // under Node. It shipped once already — `expiryOf` did
+    // `require('node:crypto')`, threw a ReferenceError under Node, was
+    // swallowed by its own catch, and every certificate silently got a
+    // 24-hour fallback expiry instead of 825 days. The user-visible symptom
+    // would have been the browser interstitial returning EVERY DAY.
+    //
+    // So the check is static, which is runtime-independent and precise.
+    const { readdirSync, readFileSync } = await import('node:fs')
+    const { fileURLToPath } = await import('node:url')
+    const dir = fileURLToPath(new URL('../https/', import.meta.url))
+    const offenders: string[] = []
+    for (const file of readdirSync(dir).filter((f) => f.endsWith('.ts'))) {
+      const source = readFileSync(join(dir, file), 'utf8')
+      // Ignore the word inside comments and strings; match a real call.
+      for (const line of source.split('\n')) {
+        if (line.trimStart().startsWith('*') || line.trimStart().startsWith('//')) continue
+        if (/\brequire\s*\(/.test(line)) offenders.push(`${file}: ${line.trim()}`)
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+})
+
 describe('lanAddresses', () => {
   it('returns entries shaped for the banner, best candidate first', () => {
     // Cannot assert specific addresses — they are whatever this machine has —

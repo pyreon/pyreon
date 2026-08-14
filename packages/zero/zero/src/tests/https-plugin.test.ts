@@ -9,7 +9,7 @@
  * before (#1395, where a plugin's `config()` return beat an inline `build()`
  * argument), so it is asserted rather than assumed.
  */
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -142,7 +142,6 @@ describe('certificate resolution', () => {
   it('keeps the private key owner-only', () => {
     const root = makeRoot()
     resolveCertificate({ hosts: ['localhost'], root, preferSelfSigned: true })
-    const { statSync } = require('node:fs') as typeof import('node:fs')
     const mode = statSync(join(root, 'node_modules', '.pyreon-https', 'key.pem')).mode & 0o777
     expect(mode).toBe(0o600)
   })
