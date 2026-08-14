@@ -91,34 +91,58 @@ export async function buildStaticSite(options: BuildOptions): Promise<string> {
   const reportJson = JSON.stringify(options.report)
   const brand = options.brand ?? 'loom'
 
-  await build({
-    root,
-    configFile: false,
-    logLevel: 'warn',
-    ...(options.base ? { base: options.base } : {}),
-    plugins: [
-      // zero's SSG cannot reuse this plugin INSTANCE in its nested SSR build
-      // (a second `configResolved` would rewrite captured output paths), so it
-      // constructs a fresh one and carries the transform options across —
-      // `compat` / `ssrTemplate` / `islands` / `jsxAutoImport` / the validator
-      // options. It deliberately withholds the ones that would mis-steer a
-      // nested build (`ssr.entry` would replace the synthetic entry). See
-      // `@pyreon/zero`'s `inner-pyreon-options.ts` for the per-option split.
-      pyreon({ devErrorPrinter: false }),
-      zero({ mode: 'ssg' }),
-      {
-        name: 'loom:report',
-        resolveId(id: string) {
-          return id === REPORT_ID ? RESOLVED_REPORT_ID : undefined
+  // `vite build` sets NODE_ENV=production only when it is UNSET (`||=`), so any
+  // stray value in the caller's environment — `development` in a dev shell,
+  // `test` under any test runner — silently yields a NON-production site:
+  // Vite derives `isProduction` from NODE_ENV (NOT from `mode`, which is why
+  // passing `mode: 'production'` does not help), so every
+  // `process.env.NODE_ENV !== 'production'` branch in Pyreon survives into the
+  // emitted bundle. Measured on this build: 3894 MB peak and dev-only
+  // lifecycle warnings shipped to users, against 952 MB and none.
+  //
+  // Vite's `||=` is correct for a general-purpose command, where a user may
+  // set `NODE_ENV=staging` to steer their own config. Nothing here can: the
+  // build runs `configFile: false`, so no user config is loaded and nothing
+  // legitimate reads the value. `loom build` emits a deployable site and has
+  // no dev variant, so the value is forced — and restored, because this is a
+  // library function and mutating a caller's environment is not ours to keep.
+  const prevNodeEnv = process.env.NODE_ENV
+  process.env.NODE_ENV = 'production'
+  try {
+    await build({
+      root,
+      configFile: false,
+      logLevel: 'warn',
+      ...(options.base ? { base: options.base } : {}),
+      plugins: [
+        // zero's SSG cannot reuse this plugin INSTANCE in its nested SSR build
+        // (a second `configResolved` would rewrite captured output paths), so
+        // it constructs a fresh one and carries the transform options across —
+        // `compat` / `ssrTemplate` / `islands` / `jsxAutoImport` / the
+        // validator options. It deliberately withholds the ones that would
+        // mis-steer a nested build (`ssr.entry` would replace the synthetic
+        // entry). See `@pyreon/zero`'s `inner-pyreon-options.ts` for the split.
+        pyreon({ devErrorPrinter: false }),
+        zero({ mode: 'ssg' }),
+        {
+          name: 'loom:report',
+          resolveId(id: string) {
+            return id === REPORT_ID ? RESOLVED_REPORT_ID : undefined
+          },
+          load(id: string) {
+            if (id !== RESOLVED_REPORT_ID) return undefined
+            return `export default ${reportJson}\nexport const brand = ${JSON.stringify(brand)}\n`
+          },
         },
-        load(id: string) {
-          if (id !== RESOLVED_REPORT_ID) return undefined
-          return `export default ${reportJson}\nexport const brand = ${JSON.stringify(brand)}\n`
-        },
-      },
-    ],
-    build: { outDir, emptyOutDir: true },
-  })
+      ],
+      build: { outDir, emptyOutDir: true },
+    })
+  } finally {
+    // Restore, including the "was unset" case — leaving NODE_ENV=production
+    // behind would change how the CALLER's later code behaves.
+    if (prevNodeEnv === undefined) delete process.env.NODE_ENV
+    else process.env.NODE_ENV = prevNodeEnv
+  }
 
   return outDir
 }
