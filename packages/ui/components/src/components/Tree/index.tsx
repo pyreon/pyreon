@@ -144,7 +144,7 @@ export const Tree: ComponentFn<TreeProps> = (props) => {
   // through the STYLED chain so the consumer's `treeProps()` container still
   // receives the Tree theme class (the pre-conversion contract).
   if (typeof own.children === 'function') {
-    return h(StyledTreeBase as never, { ...rest, children: own.children }) as unknown as VNodeChild
+    return h(StyledTreeBase as never, { ...rest, children: own.children })
   }
 
   return h(TreeBase as never, {
@@ -182,7 +182,7 @@ export const Tree: ComponentFn<TreeProps> = (props) => {
           },
         }),
       ),
-  }) as unknown as VNodeChild
+  })
 }
 
 export default Tree

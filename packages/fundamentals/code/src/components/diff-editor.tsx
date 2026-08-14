@@ -3,7 +3,7 @@ import { getOriginalDoc, MergeView, originalDocChangeEffect, unifiedMergeView } 
 import { ChangeSet, EditorState, type Extension } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import type { VNodeChild } from '@pyreon/core'
-import { onUnmount } from '@pyreon/core'
+import { onUnmount, cx } from '@pyreon/core'
 import type { Signal } from '@pyreon/reactivity'
 import { watch } from '@pyreon/reactivity'
 import { loadLanguage } from '../languages'
@@ -182,6 +182,6 @@ export function DiffEditor(props: DiffEditorProps): VNodeChild {
   const baseStyle = `width: 100%; height: 100%; overflow: hidden; ${props.style ?? ''}`
 
   return (
-    <div ref={containerRef} class={`pyreon-diff-editor ${props.class ?? ''}`} style={baseStyle} />
+    <div ref={containerRef} class={cx(['pyreon-diff-editor', props.class])} style={baseStyle} />
   )
 }

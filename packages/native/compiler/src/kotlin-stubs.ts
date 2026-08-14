@@ -148,15 +148,17 @@ object LocalContext {
 
 // Text — style/color args added for Heading emit (P2.2). Defaults keep
 // the bare Text(text = "...") call sites (from Text emit) valid.
+enum class TextOverflow { Clip, Ellipsis, Visible }
 @Composable
 @Suppress("UNUSED_PARAMETER")
-fun Text(text: String, style: TextStyle = TextStyle(), color: Color? = null, fontSize: TextUnit = TextUnit(0f), fontWeight: FontWeight? = null, fontStyle: FontStyle? = null, textAlign: TextAlign? = null, fontFamily: FontFamily? = null, letterSpacing: TextUnit = TextUnit(0f), modifier: Modifier = Modifier) {}
+fun Text(text: String, style: TextStyle = TextStyle(), color: Color? = null, fontSize: TextUnit = TextUnit(0f), fontWeight: FontWeight? = null, fontStyle: FontStyle? = null, textAlign: TextAlign? = null, fontFamily: FontFamily? = null, letterSpacing: TextUnit = TextUnit(0f), maxLines: Int = Int.MAX_VALUE, overflow: TextOverflow = TextOverflow.Clip, modifier: Modifier = Modifier) {}
 
 @Composable
 fun Button(
   onClick: () -> Unit,
   modifier: Modifier = Modifier,
   enabled: Boolean = true,
+  colors: ButtonColorsStub = ButtonColorsStub(),
   content: @Composable () -> Unit,
 ) {
   content()
@@ -568,7 +570,25 @@ fun Spacer(modifier: Modifier = Modifier) {}
 // gradle assembleDebug of a Heading app.
 // (No backticks in this comment — it lives inside a template literal.)
 class TextStyle
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun OutlinedButton(onClick: () -> Unit, enabled: Boolean = true, modifier: Modifier = Modifier, colors: ButtonColorsStub = ButtonColorsStub(), content: @Composable () -> Unit) {}
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun TextButton(onClick: () -> Unit, enabled: Boolean = true, modifier: Modifier = Modifier, colors: ButtonColorsStub = ButtonColorsStub(), content: @Composable () -> Unit) {}
+class ButtonColorsStub
+object ButtonDefaults {
+  fun buttonColors(backgroundColor: Color = Color(0), contentColor: Color = Color(0)): ButtonColorsStub = ButtonColorsStub()
+}
+
 object MaterialTheme {
+  object colors {
+    val primary: Color = Color(0)
+    val secondary: Color = Color(0)
+    val background: Color = Color(0)
+    val surface: Color = Color(0)
+    val error: Color = Color(0)
+  }
   object typography {
     val h1: TextStyle = TextStyle()
     val h2: TextStyle = TextStyle()
@@ -1372,6 +1392,113 @@ class AndroidOrientationProbe(ctx: Any?) : OrientationProbe {
 class PyreonScreenOrientation(probe: OrientationProbe) {
   val type: String get() = "portrait"
   val angle: Int get() = 0
+}
+// PyreonAudioPlayer + the app-supplied Media3 engine the emit names.
+interface AudioEngine {
+  fun load(url: String, loop: Boolean, muted: Boolean, volume: Double)
+  fun play()
+  fun pause()
+  fun stop()
+}
+class Media3AudioEngine(ctx: Any?) : AudioEngine {
+  override fun load(url: String, loop: Boolean, muted: Boolean, volume: Double) {}
+  override fun play() {}
+  override fun pause() {}
+  override fun stop() {}
+}
+enum class PyreonAudioStatus(val value: String) {
+  WAITING("waiting"), PLAYING("playing"), PAUSED("paused")
+}
+class PyreonAudioState(engine: AudioEngine) {
+  val status: PyreonAudioStatus = PyreonAudioStatus.WAITING
+  companion object { fun clampVolume(v: Double): Double = 0.0 }
+  fun start(url: String, autoPlay: Boolean, loop: Boolean, muted: Boolean, volume: Double) {}
+  fun play() {}
+  fun pause() {}
+  fun stop() {}
+}
+@Composable
+fun PyreonAudioPlayer(
+  url: String,
+  autoPlay: Boolean = false,
+  loop: Boolean = false,
+  muted: Boolean = false,
+  volume: Double = 1.0,
+  engine: AudioEngine,
+  onStatusChange: ((String) -> Unit)? = null,
+) {}
+
+// PyreonAudioRecorder + the app-supplied engine the emit names.
+interface RecordingEngine {
+  val isAvailable: Boolean
+  fun begin(): Boolean
+  fun end(): String?
+  fun release()
+}
+class AndroidRecordingEngine(ctx: Any?) : RecordingEngine {
+  override val isAvailable: Boolean = false
+  override fun begin(): Boolean = false
+  override fun end(): String? = null
+  override fun release() {}
+}
+class PyreonAudioRecorder(engine: RecordingEngine) {
+  val recording: MutableState<Boolean> = mutableStateOf(false)
+  val error: MutableState<String> = mutableStateOf("")
+  val supported: Boolean = false
+  fun start(): Boolean = false
+  fun stop(): String? = null
+}
+
+// PyreonCamera + the composition-side launcher helper the emit names.
+class PyreonCamera {
+  var launch: (() -> Unit)? = null
+  var available: Boolean = true
+  fun isAvailable(): Boolean = false
+  suspend fun capture(): String? = null
+  fun onResult(uri: String?) {}
+}
+@Composable
+fun rememberCameraLauncher(onResult: (String?) -> Unit): () -> Unit = {}
+
+// PyreonSpeech + the app-supplied synthesiser the emit names.
+interface SpeechSynth {
+  val isAvailable: Boolean
+  fun speak(text: String)
+  fun cancel()
+}
+class AndroidSpeechSynth(ctx: Any?) : SpeechSynth {
+  override val isAvailable: Boolean = false
+  override fun speak(text: String) {}
+  override fun cancel() {}
+}
+class PyreonSpeech(synth: SpeechSynth) {
+  val speaking: MutableState<Boolean> = mutableStateOf(false)
+  val supported: Boolean = false
+  fun speak(text: String): Boolean = false
+  fun stop() {}
+}
+
+// PyreonDeviceMotion + the app-supplied sensor source the emit names.
+data class PyreonVec3(val x: Double, val y: Double, val z: Double) {
+  companion object { val zero = PyreonVec3(0.0, 0.0, 0.0) }
+}
+interface MotionSource {
+  val isAvailable: Boolean
+  fun begin(onSample: (PyreonVec3, PyreonVec3) -> Unit): Boolean
+  fun end()
+}
+class AndroidMotionSource(ctx: Any?) : MotionSource {
+  override val isAvailable: Boolean = false
+  override fun begin(onSample: (PyreonVec3, PyreonVec3) -> Unit): Boolean = false
+  override fun end() {}
+}
+class PyreonDeviceMotion(source: MotionSource) {
+  val active: MutableState<Boolean> = mutableStateOf(false)
+  val acceleration: MutableState<PyreonVec3> = mutableStateOf(PyreonVec3.zero)
+  val rotation: MutableState<PyreonVec3> = mutableStateOf(PyreonVec3.zero)
+  val supported: Boolean = false
+  fun start(): Boolean = false
+  fun stop() {}
 }
 
 class PyreonWakeLock(keeper: ScreenKeeper) {

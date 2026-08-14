@@ -1,3 +1,4 @@
+import { cx } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
 import type { FlowInstance } from '../types'
 
@@ -172,7 +173,7 @@ export function NodeResizer(props: NodeResizerProps): VNodeChild {
         return (
           <div
             key={dir}
-            class={`pyreon-flow-resizer pyreon-flow-resizer-${dir}`}
+            class={cx(['pyreon-flow-resizer', `pyreon-flow-resizer-${dir}`])}
             style={`${baseStyle} ${directionPosition(dir, handleSize)} cursor: ${directionCursors[dir]};`}
             onPointerDown={handler.onPointerDown}
             onPointerMove={handler.onPointerMove}

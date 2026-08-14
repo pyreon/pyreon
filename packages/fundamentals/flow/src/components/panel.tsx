@@ -1,3 +1,4 @@
+import { cx } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
 import type { PanelProps } from '../types'
 
@@ -21,13 +22,18 @@ const positionStyles: Record<string, string> = {
  * ```
  */
 export function Panel(props: PanelProps): VNodeChild {
-  const { position = 'top-left', style = '', children } = props
-  const posStyle = positionStyles[position] ?? positionStyles['top-left']
-  const baseStyle = `position: absolute; ${posStyle} z-index: 5; ${style}`
+  // Components run ONCE: destructuring `position`/`style` captured them at setup,
+  // so `<Panel position={corner()} />` stayed wherever it first rendered. The
+  // style attribute is an accessor now, which the compiler binds reactively.
+  const baseStyle = (): string => {
+    const posStyle =
+      positionStyles[props.position ?? 'top-left'] ?? positionStyles['top-left']
+    return `position: absolute; ${posStyle} z-index: 5; ${props.style ?? ''}`
+  }
 
   return (
-    <div class={`pyreon-flow-panel ${props.class ?? ''}`} style={baseStyle}>
-      {children}
+    <div class={cx(['pyreon-flow-panel', props.class])} style={baseStyle}>
+      {props.children}
     </div>
   )
 }

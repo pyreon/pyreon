@@ -64,6 +64,7 @@ import {
   resolveRouteTarget,
 } from './route-ir-helpers'
 import { unknownTransitionPresetWarning } from './transition-presets'
+import { unloweredPropWarning } from './unlowered-props'
 import type {
   AttrIR,
   ChildIR,
@@ -780,6 +781,9 @@ export function emitSwift(
       if (d.kind === 'device-info') _deviceInfoSwift.add(d.name)
       if (d.kind === 'safe-area') _safeAreaSwift.add(d.name)
       if (d.kind === 'screen-orientation') _orientationSwift.add(d.name)
+      if (d.kind === 'device-motion') _motionSwift.add(d.name)
+      if (d.kind === 'speech') _speechSwift.add(d.name)
+      if (d.kind === 'audio-recorder') _recorderSwift.add(d.name)
       if (d.kind === 'clipboard') _clipboardSwift.add(d.name)
       if (d.kind === 'pure-state') {
         _pureStateSwift.set(d.name, d.bounds ? { hook: d.hook, bounds: d.bounds } : { hook: d.hook })
@@ -908,6 +912,12 @@ let _deviceInfoSwift: Set<string> = new Set()
 let _safeAreaSwift: Set<string> = new Set()
 /** `useScreenOrientation()` bindings — reads are properties. */
 let _orientationSwift: Set<string> = new Set()
+/** `useDeviceMotion()` bindings — reads drop parens. */
+let _motionSwift: Set<string> = new Set()
+/** `useSpeech()` bindings — reads drop parens. */
+let _speechSwift: Set<string> = new Set()
+/** `useAudioRecorder()` bindings — reads are properties/state. */
+let _recorderSwift: Set<string> = new Set()
 /** Initial values, so `reset()` restores exactly what the web's does. */
 let _pureStateInitialSwift: Map<string, number | boolean> = new Map()
 /**
@@ -1921,11 +1931,14 @@ function emitSwiftComponent(c: ComponentIR): string {
   // `pyreonSizeClass` to derive the "compact"/"regular" string. Optional
   // because the environment value is `UserInterfaceSizeClass?` (nil on
   // platforms/contexts without a class → treated as compact).
-  if (_usesSizeClass) {
-    lines.push(
-      `  @Environment(\\.horizontalSizeClass) private var pyreonSizeClass: UserInterfaceSizeClass?`,
-    )
-  }
+  // The slot is RESERVED rather than filled here, because a responsive
+  // `style={{ x: [compact, regular] }}` also lowers to a size-class
+  // conditional — and that is only discovered while the BODY is emitted,
+  // which happens further down this same array. Splicing at the end lets the
+  // real lowering be the single source of truth for whether the injection is
+  // needed; a second "does this component use responsive styles?" scanner
+  // here would be a parallel implementation free to drift from it.
+  const sizeClassSlot = lines.length
   for (const d of c.decls) {
     // Phase 5b: value consts are body-local `let`s (a stored `let` property
     // can't reference @State at init), emitted just below — skip here.
@@ -2286,6 +2299,16 @@ function emitSwiftComponent(c: ComponentIR): string {
   }
   lines.push(`  }`)
   lines.push(`}`)
+  // Fill the reserved slot now that the body has been lowered — a responsive
+  // style anywhere in it sets `_usesSizeClass`, and the property has to be
+  // declared before the body that references it.
+  if (_usesSizeClass) {
+    lines.splice(
+      sizeClassSlot,
+      0,
+      `  @Environment(\\.horizontalSizeClass) private var pyreonSizeClass: UserInterfaceSizeClass?`,
+    )
+  }
   _activePropsParamName = undefined
   _signalEnumTypes = new Map()
   _signalNames = new Set()
@@ -2452,6 +2475,7 @@ function syncedInitialSwift(
   if (scalar === 'bool') return value ? 'true' : 'false'
   return String(value)
 }
+
 
 function emitSwiftDecl(
   d: DeclIR,
@@ -2748,6 +2772,15 @@ function emitSwiftDecl(
   // `useWakeLock()` -> the idle-timer container. The controller is injected
   // so the held/released machine stays testable without UIKit; the app
   // supplies the real one.
+  if (d.kind === 'audio-recorder') {
+    return `@State private var ${swiftIdent(d.name)} = PyreonAudioRecorder(engine: AVFoundationRecordingEngine())`
+  }
+  if (d.kind === 'speech') {
+    return `@State private var ${swiftIdent(d.name)} = PyreonSpeech(synth: AVSpeechSynth())`
+  }
+  if (d.kind === 'device-motion') {
+    return `@State private var ${swiftIdent(d.name)} = PyreonDeviceMotion(source: CoreMotionSource())`
+  }
   if (d.kind === 'wake-lock') {
     return `@State private var ${swiftIdent(d.name)} = PyreonWakeLock(controller: UIKitIdleTimer())`
   }
@@ -2835,6 +2868,11 @@ function emitSwiftDecl(
   // handler — the M4.5 Task {} wrap). PHPickerViewController presents itself
   // from the key window, so — unlike Android — the iOS side needs no
   // launcher/Context plumbing at the call site.
+  // `useCamera()` -> PyreonCamera. Like PHPicker, UIImagePickerController
+  // presents from the key window, so no launcher plumbing at the call site.
+  if (d.kind === 'camera') {
+    return `@State private var ${swiftIdent(d.name)} = PyreonCamera(presenter: UIKitCameraPresenter())`
+  }
   if (d.kind === 'image-picker') {
     return `@State private var ${swiftIdent(d.name)} = PyreonImagePicker()`
   }
@@ -3969,6 +4007,36 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         _orientationSwift.has(e.callee.object.name) &&
         e.args.length === 0 &&
         ['type', 'angle'].includes(e.callee.property)
+      ) {
+        return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
+      }
+      // useDeviceMotion's reads — the accessor spelling drops its parens.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _motionSwift.has(e.callee.object.name) &&
+        e.args.length === 0 &&
+        ['active', 'supported', 'acceleration', 'rotation'].includes(e.callee.property)
+      ) {
+        return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
+      }
+      // useSpeech's reads — the accessor spelling drops its parens.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _speechSwift.has(e.callee.object.name) &&
+        e.args.length === 0 &&
+        ['speaking', 'supported'].includes(e.callee.property)
+      ) {
+        return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
+      }
+      // useAudioRecorder's reads — the accessor spelling drops its parens.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _recorderSwift.has(e.callee.object.name) &&
+        e.args.length === 0 &&
+        ['recording', 'error', 'supported'].includes(e.callee.property)
       ) {
         return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
       }
@@ -5185,6 +5253,27 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       if (e.op === '**') {
         return `pow(Double(${bl}), Double(${br}))`
       }
+      // JS `+` where EITHER operand is a string is string CONCATENATION —
+      // the non-string operand is coerced to text (`"n=" + 5 === "n=5"`).
+      // Swift has NO implicit String↔Int/Double/Bool conversion, so
+      // `"n=" + count` (String + Int) is a hard type error. When the `+` is
+      // genuinely a concat (one side infers `string`), coerce each CONCRETE
+      // non-string operand via `String(...)` — Int/Double/Bool all conform to
+      // LosslessStringConvertible, so `String(5)` / `String(true)` are sound.
+      // A purely numeric `+` (neither side a string) never enters here and
+      // falls through to the Int×Double arithmetic handling below unchanged;
+      // a `string + unknown` leaves the unknown operand alone (best-effort).
+      if (
+        e.op === '+' &&
+        (inferType(e.left, _activeInferCtx).kind === 'string' ||
+          inferType(e.right, _activeInferCtx).kind === 'string')
+      ) {
+        const coerce = (sub: ExprIR, emitted: string): string => {
+          const k = inferType(sub, _activeInferCtx).kind
+          return k === 'number' || k === 'boolean' ? `String(${emitted})` : emitted
+        }
+        return `${coerce(e.left, bl)} + ${coerce(e.right, br)}`
+      }
       // Mixed Int×Double — Swift has no implicit Int→Double conversion, so
       // `count() * 0.5` (Int signal × fractional literal) is a type error.
       // Coerce the INT side to Double when EXACTLY one operand is Double.
@@ -5737,6 +5826,7 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   if (tag === 'Icon') return emitSwiftIcon(e, indent)
   if (tag === 'Image') return emitSwiftImage(e, indent)
   if (tag === 'Video') return emitSwiftVideo(e, indent)
+  if (tag === 'Audio') return emitSwiftAudio(e, indent)
   if (tag === 'Modal') return emitSwiftModal(e, indent)
   if (tag === 'Press') return emitSwiftPress(e, indent)
   if (tag === 'Field') return emitSwiftField(e, indent)
@@ -6018,6 +6108,14 @@ function emitSwiftText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   // passed and only the tag-querying Android smoke caught it.
   const font = readStaticAttr(e, 'font')
   let result = emitSwiftTextCore(e, indent)
+  // `truncate` — a documented prop on the canonical Text that produced NO
+  // emit at all, on either target, with no warning. A label that should
+  // ellipsize instead wrapped to as many lines as it needed, silently
+  // reflowing the surrounding layout. `.lineLimit(1)` alone would clip
+  // rather than ellipsize, so the truncation mode is part of the contract.
+  if (readStaticAttr(e, 'truncate') === true) {
+    result += `.lineLimit(1).truncationMode(.tail)`
+  }
   if (typeof font === 'string') {
     // Custom font → .font(.custom("<PostScriptName>", size: 17)). The
     // PostScript name (not the canonical/filename) is what Font.custom
@@ -6085,9 +6183,54 @@ function emitSwiftButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   // scope while label-based queries (`app.buttons["Continue"]`) worked,
   // which is why router-demo's label-querying smoke passed and the
   // tasks identifier-querying smoke failed.
+  // `variant` — the visual role. SwiftUI expresses all four through
+  // buttonStyle (+ a tint for danger), so this lowers rather than warns.
+  // `danger` matters most: without it a destructive button was
+  // indistinguishable from a confirm button, and the visual difference IS
+  // the safeguard.
+  result = `${result}${swiftButtonVariantModifier(e)}`
   const layoutModifiers = emitSwiftLayoutModifiers(e)
   result = layoutModifiers ? `${result}${layoutModifiers}` : result
   return disabledModifier ? `${result}\n${' '.repeat(indent)}  ${disabledModifier}` : result
+}
+
+/**
+ * `<Button variant>` → SwiftUI buttonStyle. Absent (or `primary`, the
+ * documented default) emits nothing, so every existing app's output is
+ * byte-identical.
+ *
+ * A DYNAMIC variant is deliberately not resolved here: it would need a
+ * conditional over two different opaque `some View` styles, which swiftc
+ * rejects for the same reason the adaptive Stack/Inline ternary does. It
+ * warns instead of silently picking one.
+ */
+function swiftButtonVariantModifier(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const attr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'variant',
+  )
+  if (attr === undefined) return ''
+  const v = readStaticAttr(e, 'variant')
+  if (typeof v !== 'string') {
+    _emitWarnings.push(
+      `<Button variant>: only a static literal lowers (primary | secondary | ghost | danger) — a dynamic value would need a conditional over two different opaque button styles, which swiftc rejects. The button falls back to the default style.`,
+    )
+    return ''
+  }
+  switch (v) {
+    case 'primary':
+      return ''
+    case 'secondary':
+      return '.buttonStyle(.bordered)'
+    case 'ghost':
+      return '.buttonStyle(.plain)'
+    case 'danger':
+      return '.buttonStyle(.borderedProminent).tint(.red)'
+    default:
+      _emitWarnings.push(
+        `<Button variant=${JSON.stringify(v)}>: not one of primary | secondary | ghost | danger — the button falls back to the default style.`,
+      )
+      return ''
+  }
 }
 
 /**
@@ -7012,7 +7155,7 @@ function emitSwiftLayoutModifiers(
     (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'style',
   )
   if (styleAttr !== undefined) {
-    const { modifiers, warnings } = styleToNativeModifiers(
+    const { modifiers, warnings, needsSizeClass } = styleToNativeModifiers(
       styleAttr.value,
       'swift',
       e.tag,
@@ -7020,6 +7163,10 @@ function emitSwiftLayoutModifiers(
     )
     parts.push(...modifiers)
     for (const w of warnings) _emitWarnings.push(w)
+    // A responsive array lowered to a size-class conditional, so the View
+    // needs the @Environment(\.horizontalSizeClass) injection — the same
+    // one useSizeClass() uses.
+    if (needsSizeClass === true) _usesSizeClass = true
   }
   // E3.1 — `data-testid` becomes SwiftUI's `.accessibilityIdentifier()`
   // so the same string the web e2e selects on (`getByTestId`) is also
@@ -7114,6 +7261,17 @@ function emitSwiftStack(
   )
   if (align !== undefined) {
     initArgs.push(`alignment: ${align}`)
+  }
+  // `justify` / `wrap` reach here and lower to NOTHING on either target.
+  // Warn rather than drop silently — see unlowered-layout-props.ts for why
+  // they are declared instead of half-implemented.
+  for (const prop of ['justify', 'wrap'] as const) {
+    const w = unloweredPropWarning(
+      isRow ? 'Inline' : 'Stack',
+      prop,
+      e.attrs.some((a) => a.kind === 'attr' && a.name === prop),
+    )
+    if (w !== undefined) _emitWarnings.push(w)
   }
   const gap = swiftStylingValue(e, 'gap', resolveSpace)
   if (gap !== undefined) {
@@ -7626,6 +7784,48 @@ function emitSwiftImage(
  * a special-case emitter that returns early drops `data-testid` and makes
  * the element structurally unassertable).
  */
+/**
+ * Emit `<Audio src autoPlay? loop? muted? volume? onStatusChange?>` as the
+ * runtime `PyreonAudioPlayer(url:…)`.
+ *
+ * Mirrors emitSwiftVideo, minus the frame: audio has NO view here, so there
+ * is nothing to size. The runtime's host is a concrete zero-size Color.clear
+ * rather than EmptyView, because a modifier on EmptyView is silently inert —
+ * the bug that shipped a Modal sheet which never presented.
+ */
+function emitSwiftAudio(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const src = readStaticAttr(e, 'src')
+  if (typeof src !== 'string') return emitSwiftGeneric(e, indent)
+  const args = [`url: URL(string: ${JSON.stringify(src)})`]
+  if (readStaticAttr(e, 'autoPlay') === true) args.push('autoPlay: true')
+  if (readStaticAttr(e, 'loop') === true) args.push('loop: true')
+  if (readStaticAttr(e, 'muted') === true) args.push('muted: true')
+  const volume = readStaticAttr(e, 'volume')
+  if (typeof volume === 'number') {
+    // Clamp at EMIT time as well as in the runtime: a literal out of range is
+    // knowable here, and baking the legal value keeps the emitted source
+    // honest about what will actually play.
+    args.push(`volume: ${Math.min(1, Math.max(0, volume))}`)
+  }
+  args.push('engine: AVFoundationAudioEngine()')
+  const statusAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> =>
+      a.kind === 'event' && a.name === 'statuschange',
+  )
+  if (statusAttr !== undefined) {
+    const body = stripSwiftClosureBody(emitSwiftAction(statusAttr.handler, indent + 2))
+    const param =
+      statusAttr.handler.kind === 'arrow' && statusAttr.handler.params.length > 0
+        ? swiftIdent(statusAttr.handler.params[0]!)
+        : '_'
+    args.push(`onStatusChange: { ${param} in ${body} }`)
+  }
+  return `PyreonAudioPlayer(${args.join(', ')})`
+}
+
 function emitSwiftVideo(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   indent: number,
@@ -8090,6 +8290,12 @@ function emitSwiftLink(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   indent: number,
 ): string {
+  // `external` reaches here and lowers to NOTHING on either target — see
+  // unlowered-props.ts. Warn rather than drop it silently.
+  {
+    const w = unloweredPropWarning('Link', 'external', e.attrs.some((a) => a.kind === 'attr' && a.name === 'external'))
+    if (w !== undefined) _emitWarnings.push(w)
+  }
   const toAttr = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'attr' }> =>
       a.kind === 'attr' && a.name === 'to',

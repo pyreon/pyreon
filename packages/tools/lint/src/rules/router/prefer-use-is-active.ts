@@ -1,5 +1,6 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan } from '../../utils/ast'
+import { isPathExempt } from '../../utils/exempt-paths'
 
 export const preferUseIsActive: Rule = {
   meta: {
@@ -9,8 +10,13 @@ export const preferUseIsActive: Rule = {
       'Suggest useIsActive() instead of `location.pathname === "/foo"` or `route.path === "/foo"` patterns.',
     severity: 'info',
     fixable: false,
+    // `useIsActive()` needs a component + router context, so build-time and
+    // server-side path handling cannot adopt it.
+    schema: { exemptPaths: 'string[]' },
   },
   create(context) {
+    if (isPathExempt(context)) return {}
+
     const callbacks: VisitorCallbacks = {
       BinaryExpression(node: any) {
         if (node.operator !== '===' && node.operator !== '==') return

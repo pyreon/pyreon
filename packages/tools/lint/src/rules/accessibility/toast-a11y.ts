@@ -1,5 +1,6 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan, hasJSXAttribute } from '../../utils/ast'
+import { isPathExempt } from '../../utils/exempt-paths'
 
 export const toastA11y: Rule = {
   meta: {
@@ -8,8 +9,16 @@ export const toastA11y: Rule = {
     description: 'Warn when toast-like components are missing role or aria-live attributes.',
     severity: 'warn',
     fixable: false,
+    // The rule inspects the CALL SITE, so a toast row that owns its own ARIA in
+    // its DEFINITION (computing `role` from severity, say) still reports here.
+    // Resolving that needs the parent chain, and oxc's visitor passes none — so
+    // a toast IMPLEMENTATION opts out by path rather than by a silently-inert
+    // parent walk. See `.claude/rules/anti-patterns.md` → oxc visitor parent.
+    schema: { exemptPaths: 'string[]' },
   },
   create(context) {
+    if (isPathExempt(context)) return {}
+
     const callbacks: VisitorCallbacks = {
       JSXOpeningElement(node: any) {
         const name = node.name

@@ -1,3 +1,4 @@
+import { cx } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
 import type { HandleProps } from '../types'
 
@@ -54,7 +55,7 @@ export function Handle(props: HandleProps): VNodeChild {
 
   return (
     <div
-      class={`pyreon-flow-handle pyreon-flow-handle-${props.type} ${props.class ?? ''}`}
+      class={cx(['pyreon-flow-handle', `pyreon-flow-handle-${props.type}`, props.class])}
       style={baseStyle}
       data-handletype={props.type}
       data-handleid={props.id ?? props.type}

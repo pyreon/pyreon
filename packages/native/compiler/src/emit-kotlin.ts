@@ -60,6 +60,7 @@ import {
   resolveRouteTarget,
 } from './route-ir-helpers'
 import { unknownTransitionPresetWarning } from './transition-presets'
+import { unloweredPropWarning } from './unlowered-props'
 import type {
   AttrIR,
   ChildIR,
@@ -454,6 +455,9 @@ export function emitKotlin(
       if (d.kind === 'device-info') _deviceInfoKotlin.add(d.name)
       if (d.kind === 'safe-area') _safeAreaKotlin.add(d.name)
       if (d.kind === 'screen-orientation') _orientationKotlin.add(d.name)
+      if (d.kind === 'device-motion') _motionKotlin.add(d.name)
+      if (d.kind === 'speech') _speechKotlin.add(d.name)
+      if (d.kind === 'audio-recorder') _recorderKotlin.add(d.name)
       if (d.kind === 'clipboard') _clipboardKotlin.add(d.name)
       if (d.kind === 'pure-state') {
         _pureStateKotlin.set(d.name, d.bounds ? { hook: d.hook, bounds: d.bounds } : { hook: d.hook })
@@ -587,6 +591,12 @@ let _deviceInfoKotlin: Set<string> = new Set()
 let _safeAreaKotlin: Set<string> = new Set()
 /** `useScreenOrientation()` bindings — reads are properties. */
 let _orientationKotlin: Set<string> = new Set()
+/** `useDeviceMotion()` bindings — reads drop parens. */
+let _motionKotlin: Set<string> = new Set()
+/** `useSpeech()` bindings — reads drop parens. */
+let _speechKotlin: Set<string> = new Set()
+/** `useAudioRecorder()` bindings — reads are properties/state. */
+let _recorderKotlin: Set<string> = new Set()
 /** Initial values, so `reset()` restores exactly what the web's does. */
 let _pureStateInitialKotlin: Map<string, number | boolean> = new Map()
 /** `useClipboard()` bindings — its reactive reads become `.value`. */
@@ -2110,6 +2120,27 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   }
   // Mirror of Swift: the keeper is injected so the state machine is
   // testable with no Android SDK; the app supplies the real one.
+  if (d.kind === 'audio-recorder') {
+    const id = kotlinIdent(d.name)
+    return [
+      `val ${id}Ctx = LocalContext.current`,
+      `val ${id} = remember { PyreonAudioRecorder(AndroidRecordingEngine(${id}Ctx)) }`,
+    ].join('\n  ')
+  }
+  if (d.kind === 'speech') {
+    const id = kotlinIdent(d.name)
+    return [
+      `val ${id}Ctx = LocalContext.current`,
+      `val ${id} = remember { PyreonSpeech(AndroidSpeechSynth(${id}Ctx)) }`,
+    ].join('\n  ')
+  }
+  if (d.kind === 'device-motion') {
+    const id = kotlinIdent(d.name)
+    return [
+      `val ${id}Ctx = LocalContext.current`,
+      `val ${id} = remember { PyreonDeviceMotion(AndroidMotionSource(${id}Ctx)) }`,
+    ].join('\n  ')
+  }
   if (d.kind === 'wake-lock') {
     const id = kotlinIdent(d.name)
     return [
@@ -2255,6 +2286,16 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // The assignment re-runs on recomposition, which is harmless:
   // rememberLauncherForActivityResult returns the SAME instance across
   // recompositions, so this re-assigns an identical reference.
+  // `useCamera()` -> PyreonCamera. Android needs the launcher assigned from
+  // the composition (same shape as the image picker); TakePicturePreview
+  // hands back a bitmap the runtime persists, so the callback feeds a URI.
+  if (d.kind === 'camera') {
+    const id = kotlinIdent(d.name)
+    return [
+      `val ${id} = remember { PyreonCamera() }`,
+      `${id}.launch = rememberCameraLauncher { uri -> ${id}.onResult(uri) }`,
+    ].join('\n  ')
+  }
   if (d.kind === 'image-picker') {
     const id = kotlinIdent(d.name)
     return [
@@ -3349,6 +3390,42 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       ) {
         return `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
       }
+      // useDeviceMotion's reads — the accessor spelling drops its parens.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _motionKotlin.has(e.callee.object.name) &&
+        e.args.length === 0 &&
+        ['active', 'supported', 'acceleration', 'rotation'].includes(e.callee.property)
+      ) {
+        const base = `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
+        // `supported` is a plain getter; the rest are MutableState.
+        return e.callee.property === 'supported' ? base : `${base}.value`
+      }
+      // useSpeech's reads — the accessor spelling drops its parens.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _speechKotlin.has(e.callee.object.name) &&
+        e.args.length === 0 &&
+        ['speaking', 'supported'].includes(e.callee.property)
+      ) {
+        const base = `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
+        // `supported` is a plain getter; `speaking` is MutableState.
+        return e.callee.property === 'supported' ? base : `${base}.value`
+      }
+      // useAudioRecorder's reads — the accessor spelling drops its parens.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _recorderKotlin.has(e.callee.object.name) &&
+        e.args.length === 0 &&
+        ['recording', 'error', 'supported'].includes(e.callee.property)
+      ) {
+        const base = `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
+        // `supported` is a plain getter; recording/error are MutableState.
+        return e.callee.property === 'supported' ? base : `${base}.value`
+      }
       // useToggle / useCounter member surface (mirror of Swift). The state
       // field IS the value, so a read drops its parens; each mutator becomes
       // the arithmetic it stands for, with useCounter's literal clamp baked
@@ -4212,6 +4289,25 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       if (e.op === '**') {
         return `Math.pow((${bl}).toDouble(), (${br}).toDouble())`
       }
+      // JS `+` where EITHER operand is a string is string CONCATENATION.
+      // Kotlin's `String.plus(Any?)` coerces a RIGHT-hand non-string
+      // (`"n=" + 5` works), but a non-string on the LEFT (`5 + "items"`,
+      // `Int.plus(String)`) has no candidate and is a hard type error. Coerce
+      // each CONCRETE non-string operand with `.toString()` so the concat is
+      // correct regardless of operand order (harmless String+String when the
+      // right is already coerced); a purely numeric `+` never enters here and
+      // falls through unchanged, and `string + unknown` leaves the unknown be.
+      if (
+        e.op === '+' &&
+        (inferType(e.left, _kotlinExprInferCtx).kind === 'string' ||
+          inferType(e.right, _kotlinExprInferCtx).kind === 'string')
+      ) {
+        const coerce = (sub: ExprIR, emitted: string): string => {
+          const k = inferType(sub, _kotlinExprInferCtx).kind
+          return k === 'number' || k === 'boolean' ? `(${emitted}).toString()` : emitted
+        }
+        return `${coerce(e.left, bl)} + ${coerce(e.right, br)}`
+      }
       // Bitwise ops — Kotlin has NO bitwise symbols; they're INFIX
       // FUNCTIONS on Int (`a and b`, `a shl 1`, …). Infix functions bind
       // looser than arithmetic, so a compound operand is parenthesized to
@@ -4728,6 +4824,7 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if (tag === 'Icon') return emitKotlinIcon(e, indent)
   if (tag === 'Image') return emitKotlinImage(e, indent)
   if (tag === 'Video') return emitKotlinVideo(e, indent)
+  if (tag === 'Audio') return emitKotlinAudio(e, indent)
   if (tag === 'Modal') return emitKotlinModal(e, indent)
   if (tag === 'Press') return emitKotlinPress(e, indent)
   if (tag === 'Field') return emitKotlinField(e, indent)
@@ -4850,6 +4947,12 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   }
   const mod = emitKotlinLayoutModifier(eForMod)
   const modArg = mod === '' ? '' : `, modifier = ${mod}`
+  // `truncate` — see the Swift mirror. Compose needs BOTH: `maxLines` alone
+  // clips mid-glyph, `overflow` alone has no line bound to overflow past.
+  const truncArgs =
+    readStaticAttrKotlin(e, 'truncate') === true
+      ? `, maxLines = 1, overflow = TextOverflow.Ellipsis`
+      : ''
   // Custom font → fontFamily = pyreonFont("<resource-name>") — a
   // runtime res/font lookup (PyreonAssets.kt), so no PostScript map is
   // needed on Android (Compose loads the font file directly).
@@ -4858,9 +4961,9 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
     typeof font === 'string'
       ? `, fontFamily = pyreonFont(${JSON.stringify(sanitizeKotlinFontName(font))})`
       : ''
-  if (e.children.length === 0) return `Text(text = ""${typoArgs}${fontArg}${modArg})`
+  if (e.children.length === 0) return `Text(text = ""${typoArgs}${fontArg}${truncArgs}${modArg})`
   if (e.children.length === 1 && e.children[0]!.kind === 'text') {
-    return `Text(text = ${JSON.stringify(e.children[0]!.value)}${typoArgs}${fontArg}${modArg})`
+    return `Text(text = ${JSON.stringify(e.children[0]!.value)}${typoArgs}${fontArg}${truncArgs}${modArg})`
   }
   const parts: string[] = []
   for (const c of e.children) {
@@ -4885,7 +4988,7 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
       parts.push(kotlinInterpSegment(childExpr, indent))
     }
   }
-  return `Text(text = "${parts.join('')}"${typoArgs}${fontArg}${modArg})`
+  return `Text(text = "${parts.join('')}"${typoArgs}${fontArg}${truncArgs}${modArg})`
 }
 
 /**
@@ -4941,13 +5044,64 @@ function emitKotlinButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
     ...(enabledArg ? [enabledArg] : []),
     ...(modifier ? [`modifier = ${modifier}`] : []),
   ]
+  // `variant` — the visual role. Compose expresses it by swapping the
+  // COMPOSABLE (Button / OutlinedButton / TextButton) rather than by a
+  // modifier, so it changes the callee, not the arg list. `danger` keeps
+  // Button and overrides its container colour.
+  //
+  // Material 2 spellings throughout (`backgroundColor`, `MaterialTheme.colors`)
+  // — the emit's base is androidx.compose.material.*, and the M3 names are
+  // exactly the trap that shipped once with <Heading> typography.
+  const variant = kotlinButtonVariant(e)
+  if (variant.colorsArg !== '') args.push(variant.colorsArg)
   const buttonArgs = args.join(', ')
   const pad = ' '.repeat(indent + 2)
   if (labelText !== null) {
-    return `Button(${buttonArgs}) {\n${pad}Text(${JSON.stringify(labelText)})\n${' '.repeat(indent)}}`
+    return `${variant.composable}(${buttonArgs}) {\n${pad}Text(${JSON.stringify(labelText)})\n${' '.repeat(indent)}}`
   }
   const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
-  return `Button(${buttonArgs}) {\n${contentLines}\n${' '.repeat(indent)}}`
+  return `${variant.composable}(${buttonArgs}) {\n${contentLines}\n${' '.repeat(indent)}}`
+}
+
+/**
+ * `<Button variant>` → the Material 2 composable that expresses that role.
+ * Absent (or `primary`, the documented default) keeps the plain `Button`, so
+ * every existing app's output is byte-identical.
+ */
+function kotlinButtonVariant(e: Extract<ExprIR, { kind: 'jsx-element' }>): {
+  composable: string
+  colorsArg: string
+} {
+  const plain = { composable: 'Button', colorsArg: '' }
+  const attr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'variant',
+  )
+  if (attr === undefined) return plain
+  const v = readStaticAttrKotlin(e, 'variant')
+  if (typeof v !== 'string') {
+    _emitWarnings.push(
+      `<Button variant>: only a static literal lowers (primary | secondary | ghost | danger) — the variant selects a different composable, which a runtime value cannot. The button falls back to the default style.`,
+    )
+    return plain
+  }
+  switch (v) {
+    case 'primary':
+      return plain
+    case 'secondary':
+      return { composable: 'OutlinedButton', colorsArg: '' }
+    case 'ghost':
+      return { composable: 'TextButton', colorsArg: '' }
+    case 'danger':
+      return {
+        composable: 'Button',
+        colorsArg: 'colors = ButtonDefaults.buttonColors(backgroundColor = MaterialTheme.colors.error)',
+      }
+    default:
+      _emitWarnings.push(
+        `<Button variant=${JSON.stringify(v)}>: not one of primary | secondary | ghost | danger — the button falls back to the default style.`,
+      )
+      return plain
+  }
 }
 
 /**
@@ -5742,6 +5896,9 @@ function emitKotlinLayoutModifier(
     (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'style',
   )
   if (styleAttr !== undefined) {
+    // No `needsSizeClass` here: Compose reads `LocalConfiguration.current`
+    // inline at the use site, so unlike SwiftUI there is no property to
+    // declare and nothing for the caller to hoist.
     const { modifiers, warnings } = styleToNativeModifiers(
       styleAttr.value,
       'kotlin',
@@ -5827,6 +5984,18 @@ function emitKotlinStack(
   const composable = isRow ? 'Row' : 'Column'
 
   const initArgs: string[] = []
+  // `justify` / `wrap` reach here and lower to NOTHING on either target.
+  // Compose COULD express justify on its own (Arrangement.SpaceBetween), but
+  // shipping only the Compose half would put the two platforms out of
+  // agreement — see unlowered-layout-props.ts.
+  for (const prop of ['justify', 'wrap'] as const) {
+    const w = unloweredPropWarning(
+      isRow ? 'Inline' : 'Stack',
+      prop,
+      e.attrs.some((a) => a.kind === 'attr' && a.name === prop),
+    )
+    if (w !== undefined) _emitWarnings.push(w)
+  }
   // gap → arrangement
   const gap = kotlinStylingValue(e, 'gap', resolveSpace)
   if (gap !== undefined) {
@@ -6136,6 +6305,37 @@ function kotlinImageDim(
  * threads through the generic layout tail (the `<Link>`/`<Toggle>` lesson —
  * an early return drops `data-testid` and the element becomes unassertable).
  */
+/**
+ * Emit `<Audio …>` as `PyreonAudioPlayer(url = …)`. Mirror of
+ * emitKotlinVideo minus the size modifiers: audio has no view, so there is
+ * nothing to lay out.
+ */
+function emitKotlinAudio(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const src = readStaticAttrKotlin(e, 'src')
+  if (typeof src !== 'string') return emitKotlinGeneric(e, indent)
+  const args = [`url = ${JSON.stringify(src)}`]
+  if (readStaticAttrKotlin(e, 'autoPlay') === true) args.push('autoPlay = true')
+  if (readStaticAttrKotlin(e, 'loop') === true) args.push('loop = true')
+  if (readStaticAttrKotlin(e, 'muted') === true) args.push('muted = true')
+  const volume = readStaticAttrKotlin(e, 'volume')
+  if (typeof volume === 'number') {
+    // Clamped at emit time as well as in the runtime — see the Swift twin.
+    args.push(`volume = ${Math.min(1, Math.max(0, volume))}`)
+  }
+  args.push('engine = Media3AudioEngine(LocalContext.current)')
+  const statusAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> =>
+      a.kind === 'event' && a.name === 'statuschange',
+  )
+  if (statusAttr !== undefined) {
+    args.push(`onStatusChange = ${emitKotlinMessageHandler(statusAttr.handler)}`)
+  }
+  return `PyreonAudioPlayer(${args.join(', ')})`
+}
+
 function emitKotlinVideo(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   indent: number,
@@ -6799,6 +6999,12 @@ function emitKotlinLink(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   indent: number,
 ): string {
+  // `external` reaches here and lowers to NOTHING on either target — see
+  // unlowered-props.ts. Warn rather than drop it silently.
+  {
+    const w = unloweredPropWarning('Link', 'external', e.attrs.some((a) => a.kind === 'attr' && a.name === 'external'))
+    if (w !== undefined) _emitWarnings.push(w)
+  }
   const toAttr = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'attr' }> =>
       a.kind === 'attr' && a.name === 'to',

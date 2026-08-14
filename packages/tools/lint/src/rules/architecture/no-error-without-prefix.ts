@@ -12,7 +12,12 @@ import { getNearestPackageName } from '../../utils/project-deps'
  * messages down to the generic token.
  */
 function hasFrameworkPrefix(message: string): boolean {
-  return message.startsWith('[Pyreon]') || message.startsWith('[@pyreon/')
+  // `[Pyreon Router] …` / `[Pyreon ISR] …` are the same scoped convention with a
+  // space instead of a slash, and the repo uses them deliberately. They satisfy
+  // the stated purpose exactly — identified AND package-named — so requiring the
+  // literal `[Pyreon]` would force `[Pyreon] [Pyreon Router] …`, which is worse
+  // for the reader than what it replaces.
+  return /^\[(Pyreon[\]\s]|@pyreon\/)/.test(message)
 }
 
 export const noErrorWithoutPrefix: Rule = {

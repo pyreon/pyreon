@@ -19,11 +19,13 @@ import type { RichTextProps } from '../types'
  * ```
  */
 export function RichText(props: RichTextProps): VNodeChild {
-  const { instance } = props
+  // Read through `props` rather than destructuring: the editor instance is a
+  // stable reference today, but capturing it at setup would silently pin the
+  // component to the first one if a caller ever swaps it.
 
   const containerRef = (el: Element | null): void => {
     if (!el) return
-    void instance._mount(el as HTMLElement)
+    void props.instance._mount(el as HTMLElement)
   }
 
   return (

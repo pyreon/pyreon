@@ -105,7 +105,7 @@ export async function findManifests(repoRoot: string): Promise<LoadedManifest[]>
         default?: PackageManifest
       }
       if (!mod.default) {
-        throw new Error(`[gen-docs] ${path} has no default export`)
+        throw new Error(`[Pyreon] [gen-docs] ${path} has no default export`)
       }
       return { path, manifest: mod.default } satisfies LoadedManifest
     }),

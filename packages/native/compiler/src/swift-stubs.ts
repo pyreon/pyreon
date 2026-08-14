@@ -186,6 +186,134 @@ public final class PyreonScreenOrientation {
   public var type: String { "portrait" }
   public var angle: Int { 0 }
 }
+// PyreonAudioPlayer + the app-supplied AVFoundation engine the emit names.
+public protocol AudioEngine: AnyObject {
+  func load(url: URL, loop: Bool, muted: Bool, volume: Double)
+  func play()
+  func pause()
+  func stop()
+}
+public final class AVFoundationAudioEngine: AudioEngine {
+  public init() {}
+  public func load(url: URL, loop: Bool, muted: Bool, volume: Double) {}
+  public func play() {}
+  public func pause() {}
+  public func stop() {}
+}
+public enum PyreonAudioStatus: String {
+  case waiting
+  case playing
+  case paused
+}
+public final class PyreonAudioState {
+  public init(engine: AudioEngine) {}
+  public private(set) var status: PyreonAudioStatus = .waiting
+  public static func clampVolume(_ v: Double) -> Double { 0 }
+  public func start(url: URL, autoPlay: Bool, loop: Bool, muted: Bool, volume: Double) {}
+  public func play() {}
+  public func pause() {}
+  public func stop() {}
+}
+public struct PyreonAudioPlayer: View {
+  public init(
+    url: URL?,
+    autoPlay: Bool = false,
+    loop: Bool = false,
+    muted: Bool = false,
+    volume: Double = 1,
+    engine: AudioEngine,
+    onStatusChange: ((String) -> Void)? = nil
+  ) {}
+  public var body: some View { EmptyView() }
+}
+
+// PyreonAudioRecorder + the app-supplied engine the emit names.
+public protocol RecordingEngine: AnyObject {
+  var isAvailable: Bool { get }
+  func begin() -> Bool
+  func end() -> String?
+  func release()
+}
+public final class AVFoundationRecordingEngine: RecordingEngine {
+  public init() {}
+  public var isAvailable: Bool { false }
+  public func begin() -> Bool { false }
+  public func end() -> String? { nil }
+  public func release() {}
+}
+public final class PyreonAudioRecorder {
+  public init(engine: RecordingEngine) {}
+  public private(set) var recording: Bool = false
+  public private(set) var error: String = ""
+  public var supported: Bool { false }
+  @discardableResult public func start() -> Bool { false }
+  public func stop() -> String? { nil }
+}
+
+// PyreonCamera + the app-supplied presenter the emit names.
+public protocol CameraPresenter: AnyObject {
+  var isAvailable: Bool { get }
+  func present(_ completion: @escaping (String?) -> Void)
+}
+public final class UIKitCameraPresenter: CameraPresenter {
+  public init() {}
+  public var isAvailable: Bool { false }
+  public func present(_ completion: @escaping (String?) -> Void) {}
+}
+public final class PyreonCamera {
+  public init(presenter: CameraPresenter) {}
+  public func isAvailable() -> Bool { false }
+  public func capture() async -> String? { nil }
+}
+
+// PyreonSpeech + the app-supplied synthesiser the emit names.
+public protocol SpeechSynth: AnyObject {
+  var isAvailable: Bool { get }
+  func speak(_ text: String)
+  func cancel()
+}
+public final class AVSpeechSynth: SpeechSynth {
+  public init() {}
+  public var isAvailable: Bool { false }
+  public func speak(_ text: String) {}
+  public func cancel() {}
+}
+public final class PyreonSpeech {
+  public init(synth: SpeechSynth) {}
+  public private(set) var speaking: Bool = false
+  public var supported: Bool { false }
+  @discardableResult public func speak(_ text: String) -> Bool { false }
+  public func stop() {}
+}
+
+// PyreonDeviceMotion + the app-supplied sensor source the emit names.
+public struct PyreonVec3 {
+  public let x: Double
+  public let y: Double
+  public let z: Double
+  public init(x: Double, y: Double, z: Double) { self.x = x; self.y = y; self.z = z }
+  public static let zero = PyreonVec3(x: 0, y: 0, z: 0)
+}
+public protocol MotionSource: AnyObject {
+  var isAvailable: Bool { get }
+  func begin(_ onSample: @escaping (PyreonVec3, PyreonVec3) -> Void) -> Bool
+  func end()
+}
+public final class CoreMotionSource: MotionSource {
+  public init() {}
+  public var isAvailable: Bool { false }
+  public func begin(_ onSample: @escaping (PyreonVec3, PyreonVec3) -> Void) -> Bool { false }
+  public func end() {}
+}
+public final class PyreonDeviceMotion {
+  public init(source: MotionSource) {}
+  public private(set) var active: Bool = false
+  public private(set) var acceleration: PyreonVec3 = .zero
+  public private(set) var rotation: PyreonVec3 = .zero
+  public var supported: Bool { false }
+  @discardableResult public func start() -> Bool { false }
+  public func stop() {}
+}
 
 public final class PyreonWakeLock {
   public init(controller: IdleTimerController) {}
@@ -350,16 +478,26 @@ public struct DragGesture: Gesture {
   public func onEnded(_ action: @escaping (Value) -> Void) -> DragGesture { self }
 }
 public struct CGSize { public var width: Double = 0; public var height: Double = 0 }
-public struct PrimitiveButtonStyleStub { public static let plain = PrimitiveButtonStyleStub() }
+// Mirrors the real SwiftUI button styles the variant emit can produce.
+// Listing exactly these (not an open struct) keeps a wrong style name a
+// compile error here rather than a device surprise.
+public struct PrimitiveButtonStyleStub {
+  public static let plain = PrimitiveButtonStyleStub()
+  public static let bordered = PrimitiveButtonStyleStub()
+  public static let borderedProminent = PrimitiveButtonStyleStub()
+  public static let automatic = PrimitiveButtonStyleStub()
+}
 public enum AccessibilityChildBehavior { case contain, combine, ignore }
 
 // ---- View modifiers ----
+public enum TextTruncationMode { case head, tail, middle }
 extension View {
   // CRUX — the EXACT SwiftUI generic constraint. \`value: Any\` would MASK the
   // \`.animation(_:value:)\`-needs-Equatable class (the M2.8 incident). Do not loosen.
   public func animation<V: Equatable>(_ animation: Animation?, value: V) -> some View { self }
   public func transition(_ t: AnyTransition) -> some View { self }
   public func buttonStyle(_ style: PrimitiveButtonStyleStub) -> some View { self }
+  public func tint(_ color: Color?) -> some View { self }
   public func accessibilityIdentifier(_ id: String) -> some View { self }
   public func accessibilityLabel(_ label: String) -> some View { self }
   public func accessibilityElement(children: AccessibilityChildBehavior) -> some View { self }
@@ -368,6 +506,12 @@ extension View {
   public func onSubmit(_ action: @escaping () -> Void) -> some View { self }
   public func font(_ font: Font?) -> some View { self }
   public func opacity(_ opacity: Double) -> some View { self }
+  // A <Text truncate> emits .lineLimit(1).truncationMode(.tail). Both are
+  // View extensions in real SwiftUI; the stub simply lacked them, which
+  // made a CORRECT emit fail the gate -- a stub NARROWER than the runtime
+  // manufactures a bug, exactly as a wider one hides one.
+  public func lineLimit(_ number: Int?) -> some View { self }
+  public func truncationMode(_ mode: TextTruncationMode) -> some View { self }
   public func padding() -> some View { self }
   public func padding(_ length: Double) -> some View { self }
   public func sheet<C: View>(isPresented: Binding<Bool>, @ViewBuilder content: () -> C) -> some View { self }
@@ -1089,6 +1233,10 @@ public struct Color: View {
   public static let black = Color(red: 0, green: 0, blue: 0)
   public static let white = Color(red: 1, green: 1, blue: 1)
   public static let clear = Color(red: 0, green: 0, blue: 0, opacity: 0)
+  // The standard SwiftUI colour set the danger variant reaches for.
+  public static let red = Color(red: 1, green: 0, blue: 0)
+  public static let green = Color(red: 0, green: 1, blue: 0)
+  public static let blue = Color(red: 0, green: 0, blue: 1)
   public static let primary = Color(red: 0, green: 0, blue: 0)
   public static let secondary = Color(red: 0.5, green: 0.5, blue: 0.5)
 }

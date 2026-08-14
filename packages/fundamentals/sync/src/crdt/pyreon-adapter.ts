@@ -284,10 +284,32 @@ export class PyreonCrdtAdapter implements CrdtAdapter {
  *  share an id, so generate once per doc/session and persist it if you want a
  *  stable device identity. */
 export function createActorId(): string {
-  const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto
+  const c = (globalThis as {
+    crypto?: { randomUUID?: () => string; getRandomValues?: (a: Uint8Array) => Uint8Array }
+  }).crypto
   if (c?.randomUUID) return c.randomUUID()
-  return `a-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`
+
+  // `getRandomValues` is far more widely available than `randomUUID` (which
+  // needs a secure context), so prefer real entropy before the last resort.
+  if (c?.getRandomValues) {
+    const b = c.getRandomValues(new Uint8Array(16))
+    let hex = ''
+    for (const byte of b) hex += byte.toString(16).padStart(2, '0')
+    return `a-${hex}`
+  }
+
+  // Last resort. `Date.now()` repeats within a millisecond and `Math.random()`
+  // alone is a birthday-collision risk, so mix in a per-process monotonic
+  // counter: two ids from THIS process can never collide by construction, and
+  // the random field only has to separate distinct processes.
+  const n = _actorSeq++
+  const r1 = Math.floor(Math.random() * 0xffffffff).toString(36)
+  const r2 = Math.floor(Math.random() * 0xffffffff).toString(36)
+  return `a-${Date.now().toString(36)}-${n.toString(36)}-${r1}${r2}`
 }
+
+/** Monotonic within this process — see the last-resort branch of `createActorId`. */
+let _actorSeq = 0
 
 /**
  * Convenience factory for the pure-TS LWW engine. Generates a fresh actor id if

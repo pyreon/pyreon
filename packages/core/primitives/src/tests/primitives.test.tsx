@@ -37,6 +37,7 @@ import {
   Stack,
   Text,
   Toggle,
+  Audio,
   Video,
   Web,
   WebView,
@@ -278,6 +279,46 @@ describe('<Heading> happy-dom unit', () => {
   it('resets default heading margin to 0', () => {
     const { container, unmount } = mountTest(h(Heading, null, 'x'))
     expect((container.firstElementChild as HTMLHeadingElement).style.margin).toBe('0px')
+    unmount()
+  })
+})
+
+describe('<Audio> happy-dom unit', () => {
+  it('renders an <audio> with the same src dispatch as <Video>', () => {
+    const { container, unmount } = mountTest(h(Audio, { src: '/ping.mp3' }))
+    const el = container.firstElementChild as HTMLAudioElement
+    expect(el.tagName).toBe('AUDIO')
+    expect(el.getAttribute('src')).toBe('/ping.mp3')
+    unmount()
+  })
+
+  it('a BARE src name resolves to the bundled asset path', () => {
+    const { container, unmount } = mountTest(h(Audio, { src: 'ping.mp3' }))
+    expect((container.firstElementChild as HTMLAudioElement).getAttribute('src')).toBe(
+      '/assets/ping.mp3',
+    )
+    unmount()
+  })
+
+  it('exposes NO controls prop — it does not cross', () => {
+    // Audio has no view on the native targets (AVAudioPlayer / MediaPlayer
+    // are objects, not views), so a browser control bar has no counterpart
+    // there. A prop that silently no-ops on two of three targets is the
+    // failure this family refuses — same call useScreenOrientation makes by
+    // omitting lock(). Build a transport from primitives instead.
+    const { container, unmount } = mountTest(h(Audio, { src: 'ping.mp3' }))
+    expect((container.firstElementChild as HTMLAudioElement).hasAttribute('controls')).toBe(
+      false,
+    )
+    unmount()
+  })
+
+  it('clamps volume rather than throwing', () => {
+    // Out of range is a caller slip; refusing to play is a worse answer than
+    // the nearest legal level. All three arms clamp identically, and the emit
+    // bakes the clamped literal so the generated source is honest too.
+    const { container, unmount } = mountTest(h(Audio, { src: 'a.mp3', volume: 1.7 }))
+    expect((container.firstElementChild as HTMLAudioElement).volume).toBe(1)
     unmount()
   })
 })

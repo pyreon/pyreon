@@ -56,6 +56,15 @@ export interface NativeAuditResult {
 
 // Packages that cannot be native-rendered (hard DOM/canvas/vendor deps).
 // Importing one in a multiplatform component file is a native-build hazard.
+//
+// SOURCE OF TRUTH: each package's `manifest.ts` declares
+// `multiplatform: { tier }`. This list must contain exactly the packages whose
+// tier is `web-only` — `native-audit-web-only-drift.test.ts` asserts that, because
+// this list silently went stale once: elements/styler/rocketstyle/coolgrid gained
+// native frontends and moved to tier `shared` (the native compiler carries
+// `emit-rocketstyle.ts`, `parse-rocketstyle.ts`, `attrs-native.ts` for them), but
+// stayed listed here — so the audit reported the tri-target examples that exist to
+// PROVE ui-system on native as native-build hazards.
 const WEB_ONLY_PACKAGES = new Set<string>([
   '@pyreon/charts',
   '@pyreon/flow',
@@ -67,10 +76,6 @@ const WEB_ONLY_PACKAGES = new Set<string>([
   '@pyreon/table',
   '@pyreon/virtual',
   '@pyreon/hotkeys',
-  '@pyreon/elements',
-  '@pyreon/styler',
-  '@pyreon/rocketstyle',
-  '@pyreon/coolgrid',
   '@pyreon/kinetic',
   '@pyreon/ui-components',
   '@pyreon/connector-document',

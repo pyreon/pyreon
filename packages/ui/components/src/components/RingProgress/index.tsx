@@ -89,7 +89,7 @@ export const RingProgress: ComponentFn<RingProgressProps> = (props) => {
     own.children
       ? h('div', { style: 'position:absolute;text-align:center' }, own.children)
       : null,
-  ) as unknown as VNodeChild
+  )
 }
 
 export default RingProgress

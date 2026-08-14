@@ -81,7 +81,7 @@ export async function buildStaticSite(options: BuildOptions): Promise<string> {
     build = ((await import('vite')) as unknown as { build: typeof build }).build
     const p = (await import('@pyreon/vite-plugin')) as unknown as { default?: typeof pyreon }
     const z = (await import('@pyreon/zero/server')) as unknown as { default?: typeof zero }
-    if (typeof p.default !== 'function' || typeof z.default !== 'function') throw new Error('no factory')
+    if (typeof p.default !== 'function' || typeof z.default !== 'function') throw new Error('[Pyreon] no factory')
     pyreon = p.default
     zero = z.default
   } catch {

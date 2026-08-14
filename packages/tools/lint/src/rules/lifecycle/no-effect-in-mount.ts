@@ -1,5 +1,6 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan, isCallTo } from '../../utils/ast'
+import { isPathExempt } from '../../utils/exempt-paths'
 
 export const noEffectInMount: Rule = {
   meta: {
@@ -9,8 +10,12 @@ export const noEffectInMount: Rule = {
       'Inform when effect() is created inside onMount — effects are typically created at setup time.',
     severity: 'info',
     fixable: false,
+    // An effect that READS a post-mount ref must be created inside `onMount`.
+    schema: { exemptPaths: 'string[]' },
   },
   create(context) {
+    if (isPathExempt(context)) return {}
+
     let mountDepth = 0
     const callbacks: VisitorCallbacks = {
       CallExpression(node: any) {

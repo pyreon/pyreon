@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   createActorId,
   type PyreonCrdtOp,
@@ -212,5 +212,80 @@ describe('public factories', () => {
       a.applyOps([{ map: 'm', key: 'x', value: 1, clock: 9, actor: 'z' }], REMOTE_ORIGIN),
     ).not.toThrow()
     expect(a.getMap('m').get('k2')).toBeUndefined() // destroyed → guarded, nothing landed
+  })
+})
+
+describe('createActorId — collision resistance (regression)', () => {
+  const realCrypto = globalThis.crypto
+
+  afterEach(() => {
+    Object.defineProperty(globalThis, 'crypto', {
+      value: realCrypto,
+      configurable: true,
+      writable: true,
+    })
+  })
+
+  /** Force the LAST-RESORT branch: no randomUUID, no getRandomValues. */
+  function useLastResortBranch() {
+    Object.defineProperty(globalThis, 'crypto', {
+      value: {},
+      configurable: true,
+      writable: true,
+    })
+  }
+
+  it('never repeats within a process, even with Date.now() frozen', () => {
+    // The pre-fix form was `a-${Date.now()}-${Math.random()}`. Freezing the
+    // clock leaves ONLY Math.random() separating ids — the exact birthday
+    // collision the catalog names. The monotonic counter makes it impossible.
+    useLastResortBranch()
+    const spy = vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000)
+    try {
+      const ids = new Set<string>()
+      for (let i = 0; i < 10_000; i++) ids.add(createActorId())
+      expect(ids.size).toBe(10_000)
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('still never repeats when Math.random() is degenerate', () => {
+    // A hostile/broken Math.random is survivable because the counter alone
+    // separates same-process ids — random only has to separate PROCESSES.
+    useLastResortBranch()
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000)
+    const rnd = vi.spyOn(Math, 'random').mockReturnValue(0.5)
+    try {
+      const ids = new Set<string>()
+      for (let i = 0; i < 1000; i++) ids.add(createActorId())
+      expect(ids.size).toBe(1000)
+    } finally {
+      now.mockRestore()
+      rnd.mockRestore()
+    }
+  })
+
+  it('prefers crypto.randomUUID when available', () => {
+    Object.defineProperty(globalThis, 'crypto', {
+      value: { randomUUID: () => 'uuid-from-crypto' },
+      configurable: true,
+      writable: true,
+    })
+    expect(createActorId()).toBe('uuid-from-crypto')
+  })
+
+  it('uses getRandomValues when randomUUID is absent (non-secure context)', () => {
+    Object.defineProperty(globalThis, 'crypto', {
+      value: {
+        getRandomValues: (a: Uint8Array) => {
+          a.fill(0xab)
+          return a
+        },
+      },
+      configurable: true,
+      writable: true,
+    })
+    expect(createActorId()).toBe(`a-${'ab'.repeat(16)}`)
   })
 })

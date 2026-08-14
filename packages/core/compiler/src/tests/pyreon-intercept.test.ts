@@ -600,8 +600,9 @@ describe('detectPyreonPatterns', () => {
   describe('static-return-null-conditional', () => {
     it('flags `if (cond) return null` at the top of a component body', () => {
       const code = `
-        function TabPanel({ id }) {
-          if (!isActive(id)) return null
+        const isActive = signal(false)
+        function TabPanel() {
+          if (!isActive()) return null
           return <div class="panel">content</div>
         }
       `
@@ -614,6 +615,7 @@ describe('detectPyreonPatterns', () => {
 
     it('flags the block-form `if (cond) { return null }` too', () => {
       const code = `
+        const isOpen = signal(false)
         function Modal() {
           if (!isOpen()) {
             return null
@@ -625,6 +627,34 @@ describe('detectPyreonPatterns', () => {
       expect(
         diags.filter((d) => d.code === 'static-return-null-conditional'),
       ).toHaveLength(1)
+    })
+
+    it('does NOT flag an SSR environment guard', () => {
+      // `typeof document === 'undefined'` can never re-evaluate, so the rule's
+      // own advice ("wrap it in a reactive accessor") was wrong here. This is
+      // the shape that made the detector fire on correct framework code.
+      const code = `
+        const count = signal(0)
+        function Toaster() {
+          if (typeof document === 'undefined') return null
+          return <div>{count()}</div>
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'static-return-null-conditional')).toEqual([])
+    })
+
+    it('does NOT flag a guard on a reference resolved once from props/context', () => {
+      const code = `
+        const count = signal(0)
+        function MiniMap(props) {
+          const instance = props.instance ?? useContext(FlowContext)
+          if (!instance) return null
+          return <div>{count()}</div>
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'static-return-null-conditional')).toEqual([])
     })
 
     it('does NOT flag non-component functions returning null', () => {
@@ -656,6 +686,8 @@ describe('detectPyreonPatterns', () => {
 
     it('only flags ONCE per component body even when chained', () => {
       const code = `
+        const a = signal(false)
+        const b = signal(false)
         function MultiGuard() {
           if (!a()) return null
           if (!b()) return null

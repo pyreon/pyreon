@@ -95,7 +95,7 @@ const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number)
 export function mount(root: VNodeChild, container: Element): () => void {
   if (process.env.NODE_ENV !== 'production' && container == null) {
     throw new Error(
-      '[pyreon] mount() called with a null/undefined container. Make sure the element exists in the DOM, e.g. document.getElementById("app")',
+      '[Pyreon] [pyreon] mount() called with a null/undefined container. Make sure the element exists in the DOM, e.g. document.getElementById("app")',
     )
   }
   if (process.env.NODE_ENV !== 'production') {

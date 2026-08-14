@@ -197,7 +197,7 @@ export const Combobox: ComponentFn<ComboboxProps> = (props) => {
   // Escape hatch: a consumer render-prop replaces the built-in markup — the
   // exact pre-conversion component (styled chain, all props verbatim).
   if (typeof own.children === 'function') {
-    return h(ComboboxStyled as never, props) as unknown as VNodeChild
+    return h(ComboboxStyled as never, props)
   }
 
   return h(ComboboxBase as never, {
@@ -245,7 +245,7 @@ export const Combobox: ComponentFn<ComboboxProps> = (props) => {
               )
             : null,
       ),
-  }) as unknown as VNodeChild
+  })
 }
 
 export default Combobox

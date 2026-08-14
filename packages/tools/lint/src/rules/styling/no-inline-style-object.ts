@@ -1,5 +1,6 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan } from '../../utils/ast'
+import { isPathExempt } from '../../utils/exempt-paths'
 
 export const noInlineStyleObject: Rule = {
   meta: {
@@ -8,8 +9,13 @@ export const noInlineStyleObject: Rule = {
     description: 'Warn against inline style objects in JSX — prefer styled() or css``.',
     severity: 'warn',
     fixable: false,
+    // An animation library computes style per frame/stage, which `styled()` and
+    // `css` (both static) cannot express.
+    schema: { exemptPaths: 'string[]' },
   },
   create(context) {
+    if (isPathExempt(context)) return {}
+
     const callbacks: VisitorCallbacks = {
       JSXAttribute(node: any) {
         if (node.name?.type !== 'JSXIdentifier' || node.name.name !== 'style') return

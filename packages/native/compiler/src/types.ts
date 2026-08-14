@@ -408,6 +408,10 @@ export type DeclIR =
   | { kind: 'device-info'; name: string }
   | { kind: 'safe-area'; name: string }
   | { kind: 'screen-orientation'; name: string }
+  | { kind: 'device-motion'; name: string }
+  | { kind: 'speech'; name: string }
+  | { kind: 'camera'; name: string }
+  | { kind: 'audio-recorder'; name: string }
   /**
    * `useInterval(cb, ms)` / `useTimeout(cb, ms)` at STATEMENT position.
    *

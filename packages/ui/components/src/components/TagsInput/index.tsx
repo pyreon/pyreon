@@ -98,7 +98,7 @@ export const TagsInput: ComponentFn<TagsInputProps> = (props) => {
   const [own, rest] = splitProps(props, ['children'])
 
   if (typeof own.children === 'function') {
-    return h(TagsInputBase as never, { ...rest, children: own.children }) as unknown as VNodeChild
+    return h(TagsInputBase as never, { ...rest, children: own.children })
   }
 
   return h(TagsInputBase as never, {
@@ -123,7 +123,7 @@ export const TagsInput: ComponentFn<TagsInputProps> = (props) => {
             ),
         h(TagField as never, s.inputProps()),
       ),
-  }) as unknown as VNodeChild
+  })
 }
 
 export default TagsInput

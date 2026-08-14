@@ -917,36 +917,40 @@ function tryModuleDeclsFromTopLevel(node: AnyNode, ctx: ParseCtx): ModuleDeclIR[
 // `multiplatform` declaration (tier === 'web-only' AND no `nativeFrontend`)
 // by `bun scripts/check-multiplatform-tier.ts --write-table`, which also
 // gates that this stays in sync. Edit the MANIFEST, not this list.
-const WEB_ONLY_PACKAGES: ReadonlySet<string> = new Set([
-  '@pyreon/atlas',
-  '@pyreon/charts',
-  '@pyreon/code',
-  '@pyreon/compiler',
-  '@pyreon/config',
-  '@pyreon/connector-document',
-  '@pyreon/dnd',
-  '@pyreon/document',
-  '@pyreon/document-primitives',
-  '@pyreon/feature',
-  '@pyreon/flow',
-  '@pyreon/head',
-  '@pyreon/hotkeys',
-  '@pyreon/kinetic',
-  '@pyreon/kinetic-presets',
-  '@pyreon/lint',
-  '@pyreon/loom',
-  '@pyreon/mcp',
-  '@pyreon/rich-text',
-  '@pyreon/runtime-dom',
-  '@pyreon/runtime-server',
-  '@pyreon/server',
-  '@pyreon/testing',
-  '@pyreon/ui-components',
-  '@pyreon/ui-primitives',
-  '@pyreon/unistyle',
-  '@pyreon/virtual',
-  '@pyreon/zero',
-  '@pyreon/zero-content',
+//
+// The value is the manifest's `rationale` — the per-package reason the
+// warning quotes, so one blanket line does not have to serve packages as
+// different as a linter, a `<head>` manager and an animation engine.
+const WEB_ONLY_PACKAGES: ReadonlyMap<string, string> = new Map([
+  ['@pyreon/atlas', "the component workbench — dev tooling that runs in a browser, not app runtime"],
+  ['@pyreon/charts', "wraps ECharts (browser canvas engine); consume on native via the `<WebView>` bridge subpath"],
+  ['@pyreon/code', "wraps CodeMirror 6 (DOM editor engine); consume on native via the `<WebView>` bridge subpath"],
+  ['@pyreon/compiler', "the web JSX compiler + build tooling itself; the native sibling is @pyreon/native-compiler — nothing here ships to an app runtime"],
+  ['@pyreon/config', "build-time config shape read by the tooling that assembles an app — never part of a rendered app on any target"],
+  ['@pyreon/connector-document', "bridges ui-components to @pyreon/document extraction — both ends are web/document engines"],
+  ['@pyreon/dnd', "wraps pragmatic-drag-and-drop (DOM events/pointers); native drag interactions are platform-gesture territory"],
+  ['@pyreon/document', "wraps pdfmake/docx/exceljs/pptxgenjs (browser/node document engines); no native lowering"],
+  ['@pyreon/document-primitives', "document-authoring primitives feeding the pdfmake/docx renderers"],
+  ['@pyreon/feature', "composite over query/form/store/validation — lowers only when every dependency does; tracked as a Tier-2 composite"],
+  ['@pyreon/flow', "wraps elkjs + SVG rendering (browser layout engine); consume on native via the `<WebView>` bridge subpath"],
+  ['@pyreon/head', "document `<head>` management — no equivalent surface exists on iOS/Android"],
+  ['@pyreon/hotkeys', "keyboard-shortcut layer over DOM KeyboardEvent; touch platforms have no hardware-shortcut surface"],
+  ['@pyreon/kinetic', "CSS-transition animation engine (classes + rAF over real CSSOM) — the `kinetic()` factory and its class/style machinery are web; its PRESET VOCABULARY (fade / scale-in / slide-up|down|left|right) does cross, via `<Transition name>`, which each target resolves to its own platform transition"],
+  ['@pyreon/kinetic-presets', "preset pack for the kinetic CSS engine"],
+  ['@pyreon/lint', "lint tooling — runs at dev time, not app runtime"],
+  ['@pyreon/loom', "the dependency observatory — dev tooling, not app runtime"],
+  ['@pyreon/mcp', "the MCP server — dev/AI tooling, not app runtime"],
+  ['@pyreon/rich-text', "wraps TipTap/ProseMirror (DOM editor); consume on native via the `<WebView>` bridge subpath"],
+  ['@pyreon/runtime-dom', "the DOM renderer — on native, PMTC emits SwiftUI/Compose instead of running a renderer"],
+  ['@pyreon/runtime-server', "server-side HTML rendering (SSR/streaming) — a web-platform concern with no native analogue"],
+  ['@pyreon/server', "SSR handler + islands for web deployments; native apps have no server-rendered HTML"],
+  ['@pyreon/testing', "the web testing kit (Testing-Library parity over the DOM renderer); native testing is XCUITest/Compose-test territory"],
+  ['@pyreon/ui-components', ""],
+  ['@pyreon/ui-primitives', ""],
+  ['@pyreon/unistyle', "responsive breakpoints + CSS-variable theming over real CSS; native theming is compile-time tokens + the 2-bucket size-class model"],
+  ['@pyreon/virtual', "DOM virtualization (scroll containers, measured rows); native lists are lazy by construction (LazyColumn/LazyVStack)"],
+  ['@pyreon/zero', "the web meta-framework (SSR/SSG/ISR, Vite, fs-router); native apps are built by PMTC + create-multiplatform, not zero"],
+  ['@pyreon/zero-content', "markdown/MDX content pipeline for zero's web rendering"],
 ])
 // <gen:web-only-packages:end>
 
@@ -976,8 +980,28 @@ function warnWebOnlyImports(body: AnyNode[], ctx: ParseCtx): void {
     // set above be derived from the tier without hand-tuning the overlap.
     if (WEB_ONLY_PACKAGES.has(pkg) && !UNLOWERED_PYREON_MODULES.has(pkg) && !seen.has(pkg)) {
       seen.add(pkg)
+      // The package's OWN manifest rationale, when it has one. A single
+      // blanket line cannot serve packages this different: a linter that
+      // never reaches a component, a `<head>` manager with no device
+      // analogue, and an animation engine whose preset vocabulary DOES
+      // cross. Quoting the reason makes the diagnostic specific, and it is
+      // generated from the manifest so it cannot drift from the tier table.
+      const why = WEB_ONLY_PACKAGES.get(pkg)
+      const reason =
+        why !== undefined && why !== ''
+          ? why
+          : 'it renders via the DOM / a browser-only library'
+      // Native-equivalent FIRST, WebView second: the escape hatch is the
+      // right answer for a genuine rendering engine, but it is the WRONG
+      // first suggestion for most of this set, and it used to be the only
+      // one offered.
       ctx.warnings.push(
-        `${pkg} is WEB-ONLY — it renders via the DOM / a browser-only library and has NO native (iOS/Android) emit, so PMTC can't compile it. On native, render it behind a \`<Web>\` escape hatch (web target only), or use a platform-native equivalent inside \`<NativeIOS>\` / \`<NativeAndroid>\`. The shared, multi-platform UI vocabulary lives in \`@pyreon/primitives\` (Stack / Text / Button / …) — those compile to all three targets.`,
+        // Joined with a COLON, not a dash: several rationales contain their
+        // own em-dash, and two in one sentence reads as a typo.
+        // The `WEB-ONLY` token is kept deliberately: it is the stable,
+        // greppable classifier callers and tests key on, and the specificity
+        // added here belongs AFTER it, not instead of it.
+        `${pkg} is WEB-ONLY, with NO native (iOS/Android) emit: ${reason}. On native, prefer the platform-native equivalent — the shared, multi-platform UI vocabulary lives in \`@pyreon/primitives\` (Stack / Text / Button / …), which compiles to all three targets. If the package IS the rendering engine you need, host the web implementation behind a \`<Web>\` escape hatch (web target only) or inside \`<NativeIOS>\` / \`<NativeAndroid>\`.`,
       )
     }
   }
@@ -1331,6 +1355,7 @@ export const NATIVE_LOWERED_HOOKS: ReadonlySet<string> = new Set([
   // Pure state — no platform dependency, so no runtime; see the
   // `pure-state` DeclIR.
   'useToggle', 'useCounter', 'useBluetooth', 'useWakeLock', 'useDeviceInfo', 'useSafeArea', 'useScreenOrientation',
+  'useDeviceMotion', 'useSpeech', 'useCamera', 'useAudioRecorder',
   'useUrlState',
   'useSecureStorage',
   'useShare', 'useSizeClass', 'useStorage', 'useWebSocket',
@@ -3451,6 +3476,27 @@ function inferTypeFromInitial(initial: ExprIR): TypeIR {
         return { kind: 'array', element: elemType }
       }
     }
+  }
+  // `new Map<K, V>()` / `new Set<T>()` / `new Set(seedArr)` → the collection
+  // TypeIR. Without this the signal's declared type degraded to `Any`
+  // (`@State private var seen: Any = Set<String>()`), so `inferType(seen())`
+  // returned `Any` and NONE of the already-wired Map/Set lowerings fired —
+  // `.size`/`.has`/`.get`/`.add`/`.delete` passed through verbatim and failed
+  // swiftc/kotlinc. The `new-collection` ExprIR already carries the element
+  // types (from the NewExpression parser); build the matching TypeIR so the
+  // signal annotation and its downstream reads agree on one native collection
+  // type. Mirrors `inferType`'s own `new-collection` case in infer-type.ts.
+  if (initial.kind === 'new-collection') {
+    if (initial.collection === 'map') {
+      return { kind: 'map', key: initial.keyType!, value: initial.valueType! }
+    }
+    if (initial.elementType !== undefined) {
+      return { kind: 'set', element: initial.elementType }
+    }
+    // `new Set(seedArr)` — recover the element type from the seed array.
+    const seedT = initial.seed !== undefined ? inferTypeFromInitial(initial.seed) : { kind: 'unknown' as const }
+    if (seedT.kind === 'array') return { kind: 'set', element: seedT.element }
+    return { kind: 'unknown' }
   }
   // FLAT object literal → an object TypeIR. The emit synthesizes a struct from
   // the shape and annotates the signal with it (instead of `Any`, which can't
@@ -5979,6 +6025,31 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // declaration on iOS), so it is deliberately not in the surface.
   if (calleeName === 'useScreenOrientation') {
     return { kind: 'screen-orientation', name }
+  }
+  // `useDeviceMotion()` -> PyreonDeviceMotion. Explicit start/stop, because
+  // an always-on sensor drains battery for a screen nobody is looking at and
+  // iOS Safari gates the web equivalent behind a gesture-triggered prompt.
+  if (calleeName === 'useDeviceMotion') {
+    return { kind: 'device-motion', name }
+  }
+  // `useSpeech()` -> PyreonSpeech. Rate/pitch/voice are out of scope: the
+  // platforms disagree on ranges and voice identity, so one name would mean
+  // three different things.
+  if (calleeName === 'useSpeech') {
+    return { kind: 'speech', name }
+  }
+  // `useCamera()` -> PyreonCamera. Mirrors useImagePicker: the two differ
+  // only in which system flow they open, so `capture()` is async and
+  // collapses cancel + unavailable to null rather than throwing.
+  if (calleeName === 'useCamera') {
+    return { kind: 'camera', name }
+  }
+  // `useAudioRecorder()` -> PyreonAudioRecorder. `start()` returns a Bool
+  // rather than throwing (a denied mic permission is an ordinary branch) and
+  // `stop()` returns a URL string or nil — the one representation all three
+  // targets produce.
+  if (calleeName === 'useAudioRecorder') {
+    return { kind: 'audio-recorder', name }
   }
   // `useDebouncedCallback(fn, ms)` / `useThrottledCallback(fn, ms)` — see
   // the DeclIR comment for why these need a runtime.
@@ -8684,28 +8755,66 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
           }
         }
       }
+      // v1 scope: only SCALAR (number/string/boolean) element/key/value types
+      // lower to native collections. A non-scalar element (`Set<{x:number}>`, a
+      // `typeRef`, a nested array/union) has no `Hashable`/native-key guarantee
+      // — Swift `Set<CData>` is a hard `does not conform to Hashable` type error
+      // — so those WARN + fall through (never a silent mis-emit). Map VALUE is
+      // held to the same scalar bar for v1 (nested struct values are a
+      // follow-up); Map KEY must be scalar to be a native dictionary key.
+      const isNativeScalarType = (t: TypeIR): boolean =>
+        t.kind === 'number' || t.kind === 'string' || t.kind === 'boolean'
       if (calleeName === 'Map' && (node.arguments?.length ?? 0) === 0 && typeArgs.length === 2) {
-        return {
-          kind: 'new-collection',
-          collection: 'map',
-          keyType: parseTypeAnnotation(typeArgs[0]!, ctx),
-          valueType: parseTypeAnnotation(typeArgs[1]!, ctx),
+        const keyType = parseTypeAnnotation(typeArgs[0]!, ctx)
+        const valueType = parseTypeAnnotation(typeArgs[1]!, ctx)
+        if (!isNativeScalarType(keyType) || !isNativeScalarType(valueType)) {
+          return unsupportedExpr(
+            ctx,
+            node,
+            `\`new Map<...>()\` with a non-scalar key or value type`,
+            'only scalar (number/string/boolean) keys and values lower to a native dictionary in v1 — model richer maps behind a `<Web>` escape hatch, or use a scalar-keyed struct array.',
+          )
         }
+        return { kind: 'new-collection', collection: 'map', keyType, valueType }
+      }
+      if (calleeName === 'Map' && (node.arguments?.length ?? 0) === 1) {
+        // Seeded `new Map([[k, v], …])` — the entry-array lowering (native dict
+        // literal + type inference from entries) is a bounded follow-up; for v1
+        // warn rather than mis-emit. Construct empty + populate via `.set()`.
+        return unsupportedExpr(
+          ctx,
+          node,
+          `seeded \`new Map([...])\``,
+          'v1 lowers only `new Map<K, V>()` (empty, scalar K/V) — construct empty and populate with `.set(k, v)`, or keep the seeded map behind a `<Web>` escape hatch.',
+        )
       }
       if (calleeName === 'Set') {
         if ((node.arguments?.length ?? 0) === 0 && typeArgs.length === 1) {
-          return {
-            kind: 'new-collection',
-            collection: 'set',
-            elementType: parseTypeAnnotation(typeArgs[0]!, ctx),
+          const elementType = parseTypeAnnotation(typeArgs[0]!, ctx)
+          if (!isNativeScalarType(elementType)) {
+            return unsupportedExpr(
+              ctx,
+              node,
+              `\`new Set<...>()\` with a non-scalar element type`,
+              'only scalar (number/string/boolean) elements lower to a native set in v1 — a non-scalar element has no Hashable guarantee. Model it behind a `<Web>` escape hatch, or key a struct array by a scalar id.',
+            )
           }
+          return { kind: 'new-collection', collection: 'set', elementType }
         }
         if ((node.arguments?.length ?? 0) === 1) {
-          return {
-            kind: 'new-collection',
-            collection: 'set',
-            seed: parseExpr(node.arguments[0], ctx),
+          const seed = parseExpr(node.arguments[0], ctx)
+          // Seed must be a scalar-element array to lower — a non-scalar seed
+          // hits the same Hashable wall as an annotated non-scalar element.
+          const seedElem = inferTypeFromInitial(seed)
+          if (seedElem.kind === 'array' && !isNativeScalarType(seedElem.element)) {
+            return unsupportedExpr(
+              ctx,
+              node,
+              `\`new Set([...])\` seeded with non-scalar elements`,
+              'only scalar (number/string/boolean) elements lower to a native set in v1. Model it behind a `<Web>` escape hatch, or key a struct array by a scalar id.',
+            )
           }
+          return { kind: 'new-collection', collection: 'set', seed }
         }
       }
       if (calleeName === 'Map' || calleeName === 'Set') {

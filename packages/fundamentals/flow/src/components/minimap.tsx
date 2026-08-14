@@ -24,20 +24,27 @@ import { FlowContext } from './flow-context'
  * ```
  */
 export function MiniMap(props: MiniMapProps & { instance?: FlowInstance }): VNodeChild {
-  const {
-    width = 200,
-    height = 150,
-    nodeColor = 'var(--pyreon-flow-minimap-node, #e2e8f0)',
-    maskColor = 'var(--pyreon-flow-minimap-mask, rgba(0, 0, 0, 0.08))',
-  } = props
-
   // Resolve the instance from an explicit prop, else the <Flow> context.
   const instance = props.instance ?? useContext(FlowContext)
   if (!instance) return null
 
-  const containerStyle = `position: absolute; bottom: 10px; right: 10px; width: ${width}px; height: ${height}px; border: 1px solid var(--pyreon-flow-panel-border, #ddd); background: var(--pyreon-flow-panel-bg, #fff); border-radius: 4px; overflow: hidden; z-index: 5; cursor: pointer;`
-
   return () => {
+    // Destructured INSIDE the accessor, not at component scope. Components run
+    // once, so a body-scope destructure captured these at setup and a
+    // signal-driven `width`/`nodeColor` never took effect. The accessor re-runs,
+    // so reading props here makes them live — and every use below keeps working
+    // unchanged, which is why this is the right seam rather than renaming the
+    // bindings (`nodeColor` is `string | ((node) => string)`, so per-use
+    // accessor calls would not typecheck).
+    const {
+      width = 200,
+      height = 150,
+      nodeColor = 'var(--pyreon-flow-minimap-node, #e2e8f0)',
+      maskColor = 'var(--pyreon-flow-minimap-mask, rgba(0, 0, 0, 0.08))',
+    } = props
+
+    const containerStyle = `position: absolute; bottom: 10px; right: 10px; width: ${width}px; height: ${height}px; border: 1px solid var(--pyreon-flow-panel-border, #ddd); background: var(--pyreon-flow-panel-bg, #fff); border-radius: 4px; overflow: hidden; z-index: 5; cursor: pointer;`
+
     const nodes = instance.nodes()
     if (nodes.length === 0) return <div class="pyreon-flow-minimap" style={containerStyle} />
 

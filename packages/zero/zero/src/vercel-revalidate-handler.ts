@@ -138,7 +138,7 @@ export function vercelRevalidateHandler(
         const parsed = JSON.parse(fileContent) as RevalidateManifest
         if (typeof parsed?.revalidate !== 'object' || parsed.revalidate === null) {
           throw new Error(
-            `Malformed revalidate manifest at ${manifestPath}: missing or non-object \`revalidate\` field`,
+            `[Pyreon] Malformed revalidate manifest at ${manifestPath}: missing or non-object \`revalidate\` field`,
           )
         }
         cache = { manifest: parsed }
