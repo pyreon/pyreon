@@ -5755,6 +5755,9 @@ function emitKotlinLayoutModifier(
     (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'style',
   )
   if (styleAttr !== undefined) {
+    // No `needsSizeClass` here: Compose reads `LocalConfiguration.current`
+    // inline at the use site, so unlike SwiftUI there is no property to
+    // declare and nothing for the caller to hoist.
     const { modifiers, warnings } = styleToNativeModifiers(
       styleAttr.value,
       'kotlin',
