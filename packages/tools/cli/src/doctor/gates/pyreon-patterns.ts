@@ -67,6 +67,11 @@ const LINT_OWNED_CODES = new Set<string>([
 /** Codes kept here but needing the framework-layer exemptions of a lint rule. */
 const DETECTOR_RULE_COUNTERPART: Record<string, string> = {
   'raw-remove-event-listener': 'pyreon/no-raw-addeventlistener',
+  // Same reasoning as above: the detector cannot tell a captured VALUE from a
+  // captured ACCESSOR or stable reference, so it needs the lint rule's
+  // file-level exemptions. `pyreon/no-props-destructure` is the counterpart.
+  'props-destructured': 'pyreon/no-props-destructure',
+  'props-destructured-body': 'pyreon/no-props-destructure',
 }
 
 /** Build code → exemptPaths[] from the project's lint config (empty on any failure). */

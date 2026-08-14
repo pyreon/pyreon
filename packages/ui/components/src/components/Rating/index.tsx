@@ -65,7 +65,7 @@ export const Rating: ComponentFn<RatingProps> = (props) => {
 
   // Escape hatch: a consumer render-prop replaces the built-in markup.
   if (typeof own.children === 'function') {
-    return h(RatingBase as never, { ...rest, children: own.children }) as unknown as VNodeChild
+    return h(RatingBase as never, { ...rest, children: own.children })
   }
 
   return h(RatingBase as never, {
@@ -81,7 +81,7 @@ export const Rating: ComponentFn<RatingProps> = (props) => {
           h(RatingStar as never, s.getStarProps(i + 1), '★'),
         ),
       ),
-  }) as unknown as VNodeChild
+  })
 }
 
 export default Rating

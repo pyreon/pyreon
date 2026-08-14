@@ -83,7 +83,7 @@ export function CompatMatrix(props: CompatMatrixProps): VNodeChild {
                 )
                 return (
                   <td
-                    class={`pyreon-compatmatrix__cell pyreon-compatmatrix__cell--${cell.status}`}
+                    class={cx(['pyreon-compatmatrix__cell', `pyreon-compatmatrix__cell--${cell.status}`])}
                     data-status={cell.status}
                     aria-label={cell.status}
                   >

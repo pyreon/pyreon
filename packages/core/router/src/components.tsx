@@ -261,6 +261,10 @@ const RouterView: ComponentFn<RouterViewProps> = (props) => {
     return renderLazyRoute(router, rec, rec.component as LazyComponent)
   }
 
+  // The double cast IS load-bearing here: `child` is `VNodeChild | null` and
+  // no `h()` overload accepts that union in rest position, so removing it is a
+  // TS2769. The `as-unknown-as-vnodechild` detector's premise ("JSX.Element is
+  // already assignable") holds for a JSX.Element, not for this nullable union.
   return h('div', { 'data-pyreon-router-view': true }, child as unknown as VNodeChild)
 }
 
@@ -764,7 +768,7 @@ function PendingLoader(props: {
     // ready
     const data = router._loaderData.get(record)
     return h(LoaderDataProvider, { data, children: h(Comp, routeProps) })
-  }) as unknown as VNodeChild
+  })
 }
 
 /**

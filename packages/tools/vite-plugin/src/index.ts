@@ -1557,14 +1557,14 @@ export async function writeLpihCacheFile(path: string, body: string): Promise<vo
   try {
     parsed = JSON.parse(body)
   } catch {
-    throw new Error('LPIH bridge: payload is not valid JSON')
+    throw new Error('[Pyreon] LPIH bridge: payload is not valid JSON')
   }
   if (
     parsed === null ||
     typeof parsed !== 'object' ||
     !Array.isArray((parsed as { fires?: unknown }).fires)
   ) {
-    throw new Error('LPIH bridge: payload is missing `fires` array')
+    throw new Error('[Pyreon] LPIH bridge: payload is missing `fires` array')
   }
   const fs = await import('node:fs/promises')
   const pid = typeof process !== 'undefined' && 'pid' in process ? process.pid : 0

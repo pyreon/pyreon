@@ -1,6 +1,7 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan, isCallTo } from '../../utils/ast'
 import { extractImportInfo } from '../../utils/imports'
+import { isPathExempt } from '../../utils/exempt-paths'
 
 export const preferFieldArray: Rule = {
   meta: {
@@ -9,8 +10,13 @@ export const preferFieldArray: Rule = {
     description: 'Suggest useFieldArray() instead of signal([]) in files that import @pyreon/form.',
     severity: 'info',
     fixable: false,
+    // `signal([])` in a file that also contains form code is not necessarily a
+    // form array field — store state reports here too.
+    schema: { exemptPaths: 'string[]' },
   },
   create(context) {
+    if (isPathExempt(context)) return {}
+
     let importsForm = false
 
     const callbacks: VisitorCallbacks = {

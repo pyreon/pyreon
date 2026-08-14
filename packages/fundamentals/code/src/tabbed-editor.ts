@@ -1,4 +1,4 @@
-import { computed, signal } from '@pyreon/reactivity'
+import { batch, computed, signal } from '@pyreon/reactivity'
 import { createEditor } from './editor'
 import type { EditorLanguage, Tab, TabbedEditorConfig, TabbedEditorInstance } from './types'
 
@@ -110,16 +110,19 @@ export function createTabbedEditor(config: TabbedEditorConfig = {}): TabbedEdito
     // Save current tab content
     saveCurrentTab()
 
-    // Switch
-    activeTabId.set(id)
-
     // Restore target tab content
     const cached = contentCache.get(id)
     /* v8 ignore next — the cache is populated for every tab at
        construction + openTab; switchTab is only called with valid
        ids, so `cached === undefined` is structurally unreachable. */
-    editor.value.set(cached ?? tab.value)
-    editor.language.set((tab.language ?? 'plain') as EditorLanguage)
+    // Batched: the active id, the buffer and the language are ONE tab switch.
+    // Unbatched, an effect reading `activeTabId()` and `editor.value()` ran
+    // between the writes and saw the NEW tab id beside the OLD buffer.
+    batch(() => {
+      activeTabId.set(id)
+      editor.value.set(cached ?? tab.value)
+      editor.language.set((tab.language ?? 'plain') as EditorLanguage)
+    })
   }
 
   function openTab(tab: Tab): void {

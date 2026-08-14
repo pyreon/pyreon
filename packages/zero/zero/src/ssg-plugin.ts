@@ -416,7 +416,7 @@ export function expandUrlPattern(pattern: string, params: Record<string, string>
       const value = params[name]
       if (value === undefined || value === '') {
         throw new Error(
-          `[zero:ssg] getStaticPaths for "${pattern}" returned params without "${name}"`,
+          `[Pyreon] [zero:ssg] getStaticPaths for "${pattern}" returned params without "${name}"`,
         )
       }
       // Path-escape guard. The value is substituted verbatim into the
@@ -433,7 +433,7 @@ export function expandUrlPattern(pattern: string, params: Record<string, string>
         segs.some((s) => s === '.' || s === '..')
       ) {
         throw new Error(
-          `[zero:ssg] getStaticPaths for "${pattern}" produced an unsafe "${name}" value ` +
+          `[Pyreon] [zero:ssg] getStaticPaths for "${pattern}" produced an unsafe "${name}" value ` +
             `(${JSON.stringify(value)}): a ${isCatchAll ? 'catch-all' : 'dynamic'} segment ` +
             `must not contain path-traversal ("." / "..")${isCatchAll ? '' : ' or "/"'}.`,
         )
@@ -540,13 +540,13 @@ async function autoDetectStaticPaths(
       const result = await enumerator()
       if (!Array.isArray(result)) {
         throw new Error(
-          `getStaticPaths for "${path}" must return an array, got ${typeof result}`,
+          `[Pyreon] getStaticPaths for "${path}" must return an array, got ${typeof result}`,
         )
       }
       for (const entry of result) {
         if (!entry || typeof entry !== 'object' || !entry.params) {
           throw new Error(
-            `getStaticPaths for "${path}" returned an entry without "params"`,
+            `[Pyreon] getStaticPaths for "${path}" returned an entry without "params"`,
           )
         }
         out.push(expandUrlPattern(path, entry.params))
@@ -780,7 +780,7 @@ async function writeRouteOutputs(
   const targets = selectSsgTargets(distDir, path, format)
   for (const target of targets) {
     if (!isInsideDist(distDir, target)) {
-      errors.push({ path, error: new Error(`Path traversal detected: "${path}"`) })
+      errors.push({ path, error: new Error(`[Pyreon] Path traversal detected: "${path}"`) })
       return false
     }
   }
@@ -1581,7 +1581,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
             renderPath(p),
             new Promise<never>((_, reject) => {
               timeoutId = setTimeout(
-                () => reject(new Error(`Prerender timeout for "${p}" (30s)`)),
+                () => reject(new Error(`[Pyreon] Prerender timeout for "${p}" (30s)`)),
                 30_000,
               )
             }),
@@ -1761,7 +1761,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
           })
           const filePath = resolveOutputPath(distDir, p)
           if (!isInsideDist(distDir, filePath)) {
-            errors.push({ path: p, error: new Error(`Path traversal detected: "${p}"`) })
+            errors.push({ path: p, error: new Error(`[Pyreon] Path traversal detected: "${p}"`) })
             continue
           }
           await mkdirOnce(dirname(filePath))
@@ -1932,7 +1932,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
                   () =>
                     reject(
                       new Error(
-                        `Prerender timeout for ${locale == null ? '404' : `${locale}/404`} (30s)`,
+                        `[Pyreon] Prerender timeout for ${locale == null ? '404' : `${locale}/404`} (30s)`,
                       ),
                     ),
                   30_000,

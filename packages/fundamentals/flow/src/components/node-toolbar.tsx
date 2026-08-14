@@ -1,3 +1,4 @@
+import { cx } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
 
 export interface NodeToolbarProps {
@@ -71,7 +72,7 @@ export function NodeToolbar(props: NodeToolbarProps): VNodeChild {
       typeof props.selected === 'function' ? props.selected() : (props.selected ?? false)
     if (showOnSelect && !isSelected) return null
     return (
-      <div class={`pyreon-flow-node-toolbar ${props.class ?? ''}`} style={baseStyle}>
+      <div class={cx(['pyreon-flow-node-toolbar', props.class])} style={baseStyle}>
         {props.children}
       </div>
     )

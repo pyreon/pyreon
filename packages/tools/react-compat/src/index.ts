@@ -35,7 +35,7 @@ import { getCurrentCtx, getHookIndex } from './jsx-runtime'
 
 function requireCtx() {
   const ctx = getCurrentCtx()
-  if (!ctx) throw new Error('Hook called outside of a component render')
+  if (!ctx) throw new Error('[Pyreon] Hook called outside of a component render')
   return ctx
 }
 

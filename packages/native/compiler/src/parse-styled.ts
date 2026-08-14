@@ -68,7 +68,7 @@ export function parseStyled(source: string, filename = 'styled.tsx'): ParseStyle
   if (parsed.errors.length > 0) {
     const first = parsed.errors[0]
     throw new Error(
-      `[parse-styled] failed to parse ${filename}: ${first?.message ?? 'unknown parse error'}`,
+      `[Pyreon] [parse-styled] failed to parse ${filename}: ${first?.message ?? 'unknown parse error'}`,
     )
   }
   const styles: StyleIR[] = []

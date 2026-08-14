@@ -1,5 +1,5 @@
 import { onUnmount } from '@pyreon/core'
-import { effect, signal, untrack } from '@pyreon/reactivity'
+import { batch, effect, signal, untrack } from '@pyreon/reactivity'
 import type { EChartsOption } from 'echarts'
 import { ensureModules, ensureModulesSync, getCoreSync } from './loader'
 import type { ChartTheme, UseChartConfig, UseChartResult } from './types'
@@ -126,10 +126,18 @@ export function useChart<TOption extends EChartsOption = EChartsOption>(
     // separate init-time setOption would be a redundant SECOND full
     // apply on every mount (measured 2 setOption calls vs 1). The
     // effect runs synchronously inside this `.set`, so the chart is
-    // fully configured before `onInit` fires.
-    instance.set(chart)
-    loading.set(false)
-    error.set(null)
+    // fully configured before `onInit` fires — the batch below flushes at its
+    // closing brace, so that ordering is unchanged.
+    //
+    // Batched because these three are ONE state transition: unbatched, a
+    // subscriber reading two of them saw a torn frame (`instance` published
+    // while `loading` was still true) — the "chart is ready but still showing
+    // a spinner" flicker.
+    batch(() => {
+      instance.set(chart)
+      loading.set(false)
+      error.set(null)
+    })
 
     config?.onInit?.(chart)
   }

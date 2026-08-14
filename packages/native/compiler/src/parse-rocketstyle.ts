@@ -93,7 +93,7 @@ export function parseRocketstyle(
   if (parsed.errors.length > 0) {
     const first = parsed.errors[0]
     throw new Error(
-      `[parse-rocketstyle] failed to parse ${filename}: ${first?.message ?? 'unknown parse error'}`,
+      `[Pyreon] [parse-rocketstyle] failed to parse ${filename}: ${first?.message ?? 'unknown parse error'}`,
     )
   }
   const rocketstyles: RocketstyleIR[] = []

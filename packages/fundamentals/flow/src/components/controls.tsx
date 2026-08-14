@@ -93,6 +93,25 @@ const LockIcon = () => (
  * ```
  */
 export function Controls(props: ControlsProps & { instance?: FlowInstance }): VNodeChild {
+  // KNOWN LIMITATION — do not "fix" this destructure without a real-Chromium
+  // e2e run. Components run once, so `position` and the `show*` toggles are
+  // captured at setup and a signal-driven `<Controls position={corner()} />`
+  // will not move. `pyreon/props-destructured-body` flags it, correctly.
+  //
+  // BOTH obvious fixes BREAK the buttons outright — the zoom click stops
+  // reaching `zoomIn()` and the control is silently dead:
+  //   1. accessor helpers called in the JSX (`{showZoomIn() && …}`) — changes
+  //      the conditionals' compiled shape;
+  //   2. reading `props.*` inside the render accessor below — the accessor is a
+  //      MOUNT accessor (it reads `instance.zoom()`), so subscribing it to the
+  //      props re-runs it and REMOUNTS the buttons out from under the pointer
+  //      sequence. See anti-patterns → "A reactive MOUNT accessor that reads
+  //      position/layout-derived signals as VALUES remounts its whole subtree".
+  //
+  // A correct fix keeps the mount accessor reading ONLY `zoom` and binds
+  // position/visibility as reactive props on non-remounting inner nodes. Until
+  // then the frozen props are the lesser bug. Gate:
+  // `e2e/app-showcase-flow.spec.ts` "clicking the Controls zoom-in button zooms".
   const {
     showZoomIn = true,
     showZoomOut = true,

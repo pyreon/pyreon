@@ -1,4 +1,4 @@
-import { isClient, onCleanup, signal, type Signal } from '@pyreon/reactivity'
+import { batch, isClient, onCleanup, signal, type Signal } from '@pyreon/reactivity'
 
 /**
  * The request options `useFetch` accepts.
@@ -88,9 +88,14 @@ export function useFetch<T>(url: string, init?: UseFetchInit): UseFetchResult<T>
       })
       .then((json) => {
         if (current.signal.aborted) return
-        data.set(json)
-        error.set(undefined)
-        isPending.set(false)
+        // Batched: three writes land in one flush, so a consumer reading
+        // `data()` and `isPending()` in the same effect sees the settled pair
+        // instead of an intermediate "data arrived but still pending" state.
+        batch(() => {
+          data.set(json)
+          error.set(undefined)
+          isPending.set(false)
+        })
       })
       .catch((err: unknown) => {
         if (current.signal.aborted) return

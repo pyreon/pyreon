@@ -10,8 +10,16 @@ import { getSpan } from '../../utils/ast'
  */
 function findRaceWithTimeoutCalls(root: any): any[] {
   const matches: any[] = []
-  function walk(node: any): void {
+  function walk(node: any, depth = 0): void {
     if (!node || typeof node !== 'object') return
+
+    // Do NOT descend into a NESTED try — it owns its own finally requirement
+    // and the visitor reaches it separately. The header already claimed this,
+    // but the walk descended anyway, so an OUTER try/catch wrapping a correctly
+    // guarded inner try/finally was reported as leaking. That is the shape in
+    // runtime-server's Suspense timeout and ssg-plugin's prerender timeout —
+    // both hoist the id and clear it in `finally`, both were flagged.
+    if (depth > 0 && node.type === 'TryStatement') return
 
     if (
       node.type === 'CallExpression'
@@ -43,9 +51,9 @@ function findRaceWithTimeoutCalls(root: any): any[] {
       if (key === 'parent' || key === 'loc' || key === 'range') continue
       const child = node[key]
       if (Array.isArray(child)) {
-        for (const c of child) walk(c)
+        for (const c of child) walk(c, depth + 1)
       } else if (child && typeof child === 'object' && typeof child.type === 'string') {
-        walk(child)
+        walk(child, depth + 1)
       }
     }
   }

@@ -1,6 +1,7 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getJSXAttribute, getSpan } from '../../utils/ast'
 import { extractImportInfo } from '../../utils/imports'
+import { isPathExempt } from '../../utils/exempt-paths'
 
 const EXTERNAL_PREFIXES = ['http://', 'https://', 'mailto:', 'tel:']
 
@@ -12,8 +13,13 @@ export const noHrefNavigation: Rule = {
       'Warn when `<a href>` is used in files that import @pyreon/router — use `<Link>` instead.',
     severity: 'warn',
     fixable: false,
+    // The rule cannot tell a CONSUMER of `<Link>` from its IMPLEMENTATION — the
+    // file that renders the underlying `<a href>` reports here too.
+    schema: { exemptPaths: 'string[]' },
   },
   create(context) {
+    if (isPathExempt(context)) return {}
+
     let importsRouter = false
 
     const callbacks: VisitorCallbacks = {
