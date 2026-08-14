@@ -4941,12 +4941,6 @@ function sanitizeKotlinFontName(name: string): string {
 }
 
 function emitKotlinButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
-  // `variant` reaches here and lowers to NOTHING on either target — see
-  // unlowered-props.ts. Warn rather than drop it silently.
-  {
-    const w = unloweredPropWarning('Button', 'variant', e.attrs.some((a) => a.kind === 'attr' && a.name === 'variant'))
-    if (w !== undefined) _emitWarnings.push(w)
-  }
   // Phase B: accept canonical `onPress` AND legacy `onClick` event names
   // — same Compose Button shape (`onClick = ...`) either way. The
   // canonical name lets multi-platform PMTC source align across iOS +
@@ -4972,13 +4966,64 @@ function emitKotlinButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
     ...(enabledArg ? [enabledArg] : []),
     ...(modifier ? [`modifier = ${modifier}`] : []),
   ]
+  // `variant` — the visual role. Compose expresses it by swapping the
+  // COMPOSABLE (Button / OutlinedButton / TextButton) rather than by a
+  // modifier, so it changes the callee, not the arg list. `danger` keeps
+  // Button and overrides its container colour.
+  //
+  // Material 2 spellings throughout (`backgroundColor`, `MaterialTheme.colors`)
+  // — the emit's base is androidx.compose.material.*, and the M3 names are
+  // exactly the trap that shipped once with <Heading> typography.
+  const variant = kotlinButtonVariant(e)
+  if (variant.colorsArg !== '') args.push(variant.colorsArg)
   const buttonArgs = args.join(', ')
   const pad = ' '.repeat(indent + 2)
   if (labelText !== null) {
-    return `Button(${buttonArgs}) {\n${pad}Text(${JSON.stringify(labelText)})\n${' '.repeat(indent)}}`
+    return `${variant.composable}(${buttonArgs}) {\n${pad}Text(${JSON.stringify(labelText)})\n${' '.repeat(indent)}}`
   }
   const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
-  return `Button(${buttonArgs}) {\n${contentLines}\n${' '.repeat(indent)}}`
+  return `${variant.composable}(${buttonArgs}) {\n${contentLines}\n${' '.repeat(indent)}}`
+}
+
+/**
+ * `<Button variant>` → the Material 2 composable that expresses that role.
+ * Absent (or `primary`, the documented default) keeps the plain `Button`, so
+ * every existing app's output is byte-identical.
+ */
+function kotlinButtonVariant(e: Extract<ExprIR, { kind: 'jsx-element' }>): {
+  composable: string
+  colorsArg: string
+} {
+  const plain = { composable: 'Button', colorsArg: '' }
+  const attr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'variant',
+  )
+  if (attr === undefined) return plain
+  const v = readStaticAttrKotlin(e, 'variant')
+  if (typeof v !== 'string') {
+    _emitWarnings.push(
+      `<Button variant>: only a static literal lowers (primary | secondary | ghost | danger) — the variant selects a different composable, which a runtime value cannot. The button falls back to the default style.`,
+    )
+    return plain
+  }
+  switch (v) {
+    case 'primary':
+      return plain
+    case 'secondary':
+      return { composable: 'OutlinedButton', colorsArg: '' }
+    case 'ghost':
+      return { composable: 'TextButton', colorsArg: '' }
+    case 'danger':
+      return {
+        composable: 'Button',
+        colorsArg: 'colors = ButtonDefaults.buttonColors(backgroundColor = MaterialTheme.colors.error)',
+      }
+    default:
+      _emitWarnings.push(
+        `<Button variant=${JSON.stringify(v)}>: not one of primary | secondary | ghost | danger — the button falls back to the default style.`,
+      )
+      return plain
+  }
 }
 
 /**

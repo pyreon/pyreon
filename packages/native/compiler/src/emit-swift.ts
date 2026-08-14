@@ -6095,12 +6095,6 @@ function emitSwiftText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
 }
 
 function emitSwiftButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
-  // `variant` reaches here and lowers to NOTHING on either target — see
-  // unlowered-props.ts. Warn rather than drop it silently.
-  {
-    const w = unloweredPropWarning('Button', 'variant', e.attrs.some((a) => a.kind === 'attr' && a.name === 'variant'))
-    if (w !== undefined) _emitWarnings.push(w)
-  }
   // <Button onClick={() => …}>Label</Button>  →  Button("Label") { … }
   // Phase B: also accept the canonical `onPress` event name (per
   // `@pyreon/primitives`). Either prop name resolves to the same
@@ -6134,9 +6128,54 @@ function emitSwiftButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   // scope while label-based queries (`app.buttons["Continue"]`) worked,
   // which is why router-demo's label-querying smoke passed and the
   // tasks identifier-querying smoke failed.
+  // `variant` — the visual role. SwiftUI expresses all four through
+  // buttonStyle (+ a tint for danger), so this lowers rather than warns.
+  // `danger` matters most: without it a destructive button was
+  // indistinguishable from a confirm button, and the visual difference IS
+  // the safeguard.
+  result = `${result}${swiftButtonVariantModifier(e)}`
   const layoutModifiers = emitSwiftLayoutModifiers(e)
   result = layoutModifiers ? `${result}${layoutModifiers}` : result
   return disabledModifier ? `${result}\n${' '.repeat(indent)}  ${disabledModifier}` : result
+}
+
+/**
+ * `<Button variant>` → SwiftUI buttonStyle. Absent (or `primary`, the
+ * documented default) emits nothing, so every existing app's output is
+ * byte-identical.
+ *
+ * A DYNAMIC variant is deliberately not resolved here: it would need a
+ * conditional over two different opaque `some View` styles, which swiftc
+ * rejects for the same reason the adaptive Stack/Inline ternary does. It
+ * warns instead of silently picking one.
+ */
+function swiftButtonVariantModifier(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const attr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'variant',
+  )
+  if (attr === undefined) return ''
+  const v = readStaticAttr(e, 'variant')
+  if (typeof v !== 'string') {
+    _emitWarnings.push(
+      `<Button variant>: only a static literal lowers (primary | secondary | ghost | danger) — a dynamic value would need a conditional over two different opaque button styles, which swiftc rejects. The button falls back to the default style.`,
+    )
+    return ''
+  }
+  switch (v) {
+    case 'primary':
+      return ''
+    case 'secondary':
+      return '.buttonStyle(.bordered)'
+    case 'ghost':
+      return '.buttonStyle(.plain)'
+    case 'danger':
+      return '.buttonStyle(.borderedProminent).tint(.red)'
+    default:
+      _emitWarnings.push(
+        `<Button variant=${JSON.stringify(v)}>: not one of primary | secondary | ghost | danger — the button falls back to the default style.`,
+      )
+      return ''
+  }
 }
 
 /**

@@ -24,7 +24,7 @@
  * A warning is the honest interim: the author learns the prop is inert on
  * device instead of discovering it from a screenshot.
  */
-export type UnloweredProp = 'justify' | 'wrap' | 'external' | 'variant'
+export type UnloweredProp = 'justify' | 'wrap' | 'external'
 
 const ADVICE: Record<UnloweredProp, string> = {
   justify:
@@ -38,11 +38,6 @@ const ADVICE: Record<UnloweredProp, string> = {
     'handing it to the browser. Both PyreonLink runtimes call `router.push(to)` unconditionally. Until the ' +
     'runtimes take an external flag, open the URL yourself with `useLinking().openUrl(url)`, which lowers on ' +
     'both targets',
-  variant:
-    'the button renders in its DEFAULT style on both targets, so a `ghost` or `danger` button is ' +
-    'indistinguishable from a primary one — which matters most for `danger`, where the visual difference IS ' +
-    'the safeguard. Until it lowers, style the button explicitly (a `styled(Button)` with theme tokens lowers ' +
-    'on both), or branch in `<NativeIOS>` / `<NativeAndroid>`',
   wrap: 'Compose has `FlowRow`; SwiftUI has no wrapping stack and needs a custom `Layout`. Until both ' +
     'targets can agree, wrap the row yourself (a `<For>` over pre-chunked rows lowers on both), or use ' +
     'an explicit `<NativeIOS>` / `<NativeAndroid>` branch',

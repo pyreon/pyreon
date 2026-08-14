@@ -158,6 +158,7 @@ fun Button(
   onClick: () -> Unit,
   modifier: Modifier = Modifier,
   enabled: Boolean = true,
+  colors: ButtonColorsStub = ButtonColorsStub(),
   content: @Composable () -> Unit,
 ) {
   content()
@@ -569,7 +570,25 @@ fun Spacer(modifier: Modifier = Modifier) {}
 // gradle assembleDebug of a Heading app.
 // (No backticks in this comment — it lives inside a template literal.)
 class TextStyle
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun OutlinedButton(onClick: () -> Unit, enabled: Boolean = true, modifier: Modifier = Modifier, colors: ButtonColorsStub = ButtonColorsStub(), content: @Composable () -> Unit) {}
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun TextButton(onClick: () -> Unit, enabled: Boolean = true, modifier: Modifier = Modifier, colors: ButtonColorsStub = ButtonColorsStub(), content: @Composable () -> Unit) {}
+class ButtonColorsStub
+object ButtonDefaults {
+  fun buttonColors(backgroundColor: Color = Color(0), contentColor: Color = Color(0)): ButtonColorsStub = ButtonColorsStub()
+}
+
 object MaterialTheme {
+  object colors {
+    val primary: Color = Color(0)
+    val secondary: Color = Color(0)
+    val background: Color = Color(0)
+    val surface: Color = Color(0)
+    val error: Color = Color(0)
+  }
   object typography {
     val h1: TextStyle = TextStyle()
     val h2: TextStyle = TextStyle()
