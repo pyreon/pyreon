@@ -16,7 +16,11 @@
 // carries the ratio.
 
 import { describe, expect, it } from 'vitest'
-import { extractVitestFailures, parseCoverageOutput } from '../../../../../scripts/check-coverage'
+import {
+  extractVitestFailures,
+  parseCoverageOutput,
+  usefulFailureMessage,
+} from '../../../../../scripts/check-coverage'
 
 const summary = (stmts: string, branches = '90% ( 9/10 )', funcs = '90% ( 9/10 )', lines = '90% ( 9/10 )') =>
   [
@@ -127,6 +131,26 @@ describe('extractVitestFailures', () => {
     expect(extractVitestFailures(blob([{ fullName: 'ok', status: 'passed' }]))).toEqual([])
   })
 
+  it('WIRING: a sentinel message in the blob is recovered from the surrounding output', () => {
+    // The specs above prove `usefulFailureMessage` works; this proves it is
+    // actually CALLED by the extractor. Without it, a failing spec on main
+    // reports `Error: STACK_TRACE_ERROR` and nothing else — which is what
+    // happened to @pyreon/loom on run 31788903029.
+    const out = extractVitestFailures(
+      `AssertionError: expected [ 'pkg/a.ts: mismatch' ] to deeply equal []\n` +
+        blob([
+          {
+            fullName: 'strip agrees on every source file',
+            status: 'failed',
+            failureMessages: ['Error: STACK_TRACE_ERROR at task (/x/@vitest/runner/dist/c.js:1:2)'],
+          },
+        ]),
+    )
+    expect(out).toHaveLength(1)
+    expect(out?.[0]?.message).toContain('to deeply equal')
+    expect(out?.[0]?.message).not.toMatch(/^Error: STACK_TRACE_ERROR/)
+  })
+
   it('returns null when no json-reporter blob is present (crash before reporting)', () => {
     expect(extractVitestFailures('Error: Coverage APIs are not supported\n')).toBeNull()
   })
@@ -144,5 +168,48 @@ describe('extractVitestFailures', () => {
       blob([{ fullName: 'big', status: 'failed', failureMessages: ['x'.repeat(1000)] }]),
     )
     expect(out?.[0]?.message).toHaveLength(240)
+  })
+})
+
+// A load-only CI failure has exactly ONE artifact: its message. vitest's json
+// reporter normally carries the assertion in `failureMessages[0]`, but under
+// the instrumented run it sometimes carries the sentinel
+// `Error: STACK_TRACE_ERROR` plus a runner-internal stack — the error could
+// not be serialised. Observed on main run 31788903029, where @pyreon/loom's
+// failure reported exactly that and nothing else, leaving a main-branch
+// failure that could not be diagnosed from its own report.
+describe('usefulFailureMessage', () => {
+  it('passes a real assertion straight through', () => {
+    const m = usefulFailureMessage('AssertionError: expected 1 to be 2', 'irrelevant output')
+    expect(m).toBe('AssertionError: expected 1 to be 2')
+    expect(m).not.toContain('recovered')
+  })
+
+  it('recovers the assertion from stdout when the json message is the sentinel', () => {
+    const m = usefulFailureMessage(
+      'Error: STACK_TRACE_ERROR at task (/x/@vitest/runner/dist/chunk.js:1784:27)',
+      "some noise\nAssertionError: expected [ 'a.ts: why' ] to deeply equal []\nmore noise",
+    )
+    expect(m).toContain('to deeply equal')
+    // Say WHERE it came from — a recovered message is weaker evidence than a
+    // reported one, and the reader should know which they are holding.
+    expect(m).toContain('recovered from output')
+  })
+
+  it('recovers when the json message is missing entirely', () => {
+    expect(usefulFailureMessage('', 'TypeError: x is not a function')).toContain('TypeError')
+  })
+
+  it('does not invent a message when neither source has one', () => {
+    expect(usefulFailureMessage('', 'no errors here, all green')).toBe('')
+  })
+
+  it('keeps a MULTI-LINE assertion diff, which is where the detail lives', () => {
+    const m = usefulFailureMessage(
+      'Error: STACK_TRACE_ERROR',
+      'AssertionError: expected\n  - one\n  + two\n    at foo.ts:1',
+    )
+    expect(m).toContain('one')
+    expect(m).toContain('two')
   })
 })
