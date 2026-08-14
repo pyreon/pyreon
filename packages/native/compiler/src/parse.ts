@@ -3453,6 +3453,27 @@ function inferTypeFromInitial(initial: ExprIR): TypeIR {
       }
     }
   }
+  // `new Map<K, V>()` / `new Set<T>()` / `new Set(seedArr)` → the collection
+  // TypeIR. Without this the signal's declared type degraded to `Any`
+  // (`@State private var seen: Any = Set<String>()`), so `inferType(seen())`
+  // returned `Any` and NONE of the already-wired Map/Set lowerings fired —
+  // `.size`/`.has`/`.get`/`.add`/`.delete` passed through verbatim and failed
+  // swiftc/kotlinc. The `new-collection` ExprIR already carries the element
+  // types (from the NewExpression parser); build the matching TypeIR so the
+  // signal annotation and its downstream reads agree on one native collection
+  // type. Mirrors `inferType`'s own `new-collection` case in infer-type.ts.
+  if (initial.kind === 'new-collection') {
+    if (initial.collection === 'map') {
+      return { kind: 'map', key: initial.keyType!, value: initial.valueType! }
+    }
+    if (initial.elementType !== undefined) {
+      return { kind: 'set', element: initial.elementType }
+    }
+    // `new Set(seedArr)` — recover the element type from the seed array.
+    const seedT = initial.seed !== undefined ? inferTypeFromInitial(initial.seed) : { kind: 'unknown' as const }
+    if (seedT.kind === 'array') return { kind: 'set', element: seedT.element }
+    return { kind: 'unknown' }
+  }
   // FLAT object literal → an object TypeIR. The emit synthesizes a struct from
   // the shape and annotates the signal with it (instead of `Any`, which can't
   // be a typed value downstream). Paired with the emit-side
@@ -3490,12 +3511,29 @@ function inferFlatObjectType(
   const fields: { name: string; type: TypeIR }[] = []
   for (const f of obj.fields) {
     const ft = inferTypeFromInitial(f.value)
-    if (ft.kind !== 'number' && ft.kind !== 'string' && ft.kind !== 'boolean') {
-      return null
-    }
+    // A field is synthesizable when it is a scalar (the original flat case),
+    // a NESTED all-scalar object (recursion — `inferTypeFromInitial` routes
+    // `{…}` back here), or an ARRAY whose leaves are scalar/object. Anything
+    // that degraded to `unknown` (a spread, a function, a mixed array, a
+    // bare identifier) bails the whole object → the signal stays `Any`
+    // (unchanged, no regression).
+    if (!isSynthesizableFieldType(ft)) return null
     fields.push({ name: f.name, type: ft })
   }
   return { kind: 'object', fields }
+}
+
+/**
+ * Can this inferred field TypeIR be synthesized into a nested struct? Scalars,
+ * nested object records, and arrays whose (recursive) element is scalar/object.
+ * Rejects `unknown` / `map` / `set` / `union` / `function` / `typeRef` — those
+ * are outside the all-scalar-leaf synthesis contract and keep the object `Any`.
+ */
+function isSynthesizableFieldType(t: TypeIR): boolean {
+  if (t.kind === 'number' || t.kind === 'string' || t.kind === 'boolean') return true
+  if (t.kind === 'object') return true
+  if (t.kind === 'array') return isSynthesizableFieldType(t.element)
+  return false
 }
 
 /**
@@ -8693,28 +8731,66 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
           }
         }
       }
+      // v1 scope: only SCALAR (number/string/boolean) element/key/value types
+      // lower to native collections. A non-scalar element (`Set<{x:number}>`, a
+      // `typeRef`, a nested array/union) has no `Hashable`/native-key guarantee
+      // — Swift `Set<CData>` is a hard `does not conform to Hashable` type error
+      // — so those WARN + fall through (never a silent mis-emit). Map VALUE is
+      // held to the same scalar bar for v1 (nested struct values are a
+      // follow-up); Map KEY must be scalar to be a native dictionary key.
+      const isNativeScalarType = (t: TypeIR): boolean =>
+        t.kind === 'number' || t.kind === 'string' || t.kind === 'boolean'
       if (calleeName === 'Map' && (node.arguments?.length ?? 0) === 0 && typeArgs.length === 2) {
-        return {
-          kind: 'new-collection',
-          collection: 'map',
-          keyType: parseTypeAnnotation(typeArgs[0]!, ctx),
-          valueType: parseTypeAnnotation(typeArgs[1]!, ctx),
+        const keyType = parseTypeAnnotation(typeArgs[0]!, ctx)
+        const valueType = parseTypeAnnotation(typeArgs[1]!, ctx)
+        if (!isNativeScalarType(keyType) || !isNativeScalarType(valueType)) {
+          return unsupportedExpr(
+            ctx,
+            node,
+            `\`new Map<...>()\` with a non-scalar key or value type`,
+            'only scalar (number/string/boolean) keys and values lower to a native dictionary in v1 — model richer maps behind a `<Web>` escape hatch, or use a scalar-keyed struct array.',
+          )
         }
+        return { kind: 'new-collection', collection: 'map', keyType, valueType }
+      }
+      if (calleeName === 'Map' && (node.arguments?.length ?? 0) === 1) {
+        // Seeded `new Map([[k, v], …])` — the entry-array lowering (native dict
+        // literal + type inference from entries) is a bounded follow-up; for v1
+        // warn rather than mis-emit. Construct empty + populate via `.set()`.
+        return unsupportedExpr(
+          ctx,
+          node,
+          `seeded \`new Map([...])\``,
+          'v1 lowers only `new Map<K, V>()` (empty, scalar K/V) — construct empty and populate with `.set(k, v)`, or keep the seeded map behind a `<Web>` escape hatch.',
+        )
       }
       if (calleeName === 'Set') {
         if ((node.arguments?.length ?? 0) === 0 && typeArgs.length === 1) {
-          return {
-            kind: 'new-collection',
-            collection: 'set',
-            elementType: parseTypeAnnotation(typeArgs[0]!, ctx),
+          const elementType = parseTypeAnnotation(typeArgs[0]!, ctx)
+          if (!isNativeScalarType(elementType)) {
+            return unsupportedExpr(
+              ctx,
+              node,
+              `\`new Set<...>()\` with a non-scalar element type`,
+              'only scalar (number/string/boolean) elements lower to a native set in v1 — a non-scalar element has no Hashable guarantee. Model it behind a `<Web>` escape hatch, or key a struct array by a scalar id.',
+            )
           }
+          return { kind: 'new-collection', collection: 'set', elementType }
         }
         if ((node.arguments?.length ?? 0) === 1) {
-          return {
-            kind: 'new-collection',
-            collection: 'set',
-            seed: parseExpr(node.arguments[0], ctx),
+          const seed = parseExpr(node.arguments[0], ctx)
+          // Seed must be a scalar-element array to lower — a non-scalar seed
+          // hits the same Hashable wall as an annotated non-scalar element.
+          const seedElem = inferTypeFromInitial(seed)
+          if (seedElem.kind === 'array' && !isNativeScalarType(seedElem.element)) {
+            return unsupportedExpr(
+              ctx,
+              node,
+              `\`new Set([...])\` seeded with non-scalar elements`,
+              'only scalar (number/string/boolean) elements lower to a native set in v1. Model it behind a `<Web>` escape hatch, or key a struct array by a scalar id.',
+            )
           }
+          return { kind: 'new-collection', collection: 'set', seed }
         }
       }
       if (calleeName === 'Map' || calleeName === 'Set') {

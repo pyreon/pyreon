@@ -3346,6 +3346,66 @@ function synthesizeSwiftTypeName(componentName: string, declName?: string): stri
   return componentName + stripped.charAt(0).toUpperCase() + stripped.slice(1)
 }
 
+/**
+ * Register a synthesized struct for an object TypeIR (the type-path twin of
+ * the value-path `synthLiteralStructName`) — push it into `synth.structs`,
+ * map its field-shape key → name in `_structFieldsToName` (so the object-
+ * literal VALUE emit reuses the SAME name), THEN recurse into every NESTED
+ * object / array-of-object field so those nested shapes are synthesized and
+ * registered too. `emitSwiftStruct` renders each field type via a no-synth
+ * `swiftType`, which resolves a nested object type through `_structFieldsToName`
+ * (populated here) — so a nested field emits its struct NAME, not a degraded
+ * `(…)` tuple / `Any`. Swift resolves type names across the whole file, so the
+ * inner-after-outer declaration order is fine.
+ */
+function registerSwiftSynthStruct(
+  t: Extract<TypeIR, { kind: 'object' }>,
+  synth: SwiftSynthCtx,
+  name: string,
+  key: string,
+): void {
+  if (!_structFieldsToName.has(key)) _structFieldsToName.set(key, name)
+  if (!synth.structs.some((s) => s.name === name)) {
+    synth.structs.push({ name, fields: t.fields })
+  }
+  for (const f of t.fields) registerNestedSwiftStruct(f.type, synth, name, f.name)
+}
+
+/** Recurse a struct field's TypeIR, synthesizing a NESTED object struct
+ *  (`Profile` + `meta` → `ProfileMeta`, array-of-object element singularized)
+ *  when its shape isn't already registered. */
+function registerNestedSwiftStruct(
+  ft: TypeIR,
+  synth: SwiftSynthCtx,
+  parentName: string,
+  fieldName: string,
+): void {
+  const suffix = fieldName.charAt(0).toUpperCase() + fieldName.slice(1)
+  let inner: Extract<TypeIR, { kind: 'object' }> | undefined
+  let base: string | undefined
+  if (ft.kind === 'object') {
+    inner = ft
+    base = parentName + suffix
+  } else if (ft.kind === 'array' && ft.element.kind === 'object') {
+    inner = ft.element
+    const singular = suffix.endsWith('s') ? suffix.slice(0, -1) : suffix
+    base = parentName + singular
+  }
+  if (inner === undefined || base === undefined) return
+  const key = inner.fields.map((f) => f.name).sort().join(',')
+  if (_structFieldsToName.has(key)) return // shape already synthesized — reuse
+  registerSwiftSynthStruct(inner, synth, uniqueSwiftStructName(synth, base), key)
+}
+
+/** A struct name not already taken in `synth.structs` (append a counter on
+ *  the rare path-name collision between two distinct nested shapes). */
+function uniqueSwiftStructName(synth: SwiftSynthCtx, base: string): string {
+  if (!synth.structs.some((s) => s.name === base)) return base
+  let i = 2
+  while (synth.structs.some((s) => s.name === `${base}${i}`)) i++
+  return `${base}${i}`
+}
+
 export function swiftType(t: TypeIR, synth?: SwiftSynthCtx, declName?: string): string {
   switch (t.kind) {
     case 'number':
@@ -3372,17 +3432,7 @@ export function swiftType(t: TypeIR, synth?: SwiftSynthCtx, declName?: string): 
       if (declared !== undefined) return declared
       if (synth !== undefined) {
         const name = synthesizeSwiftTypeName(synth.componentName, declName)
-        if (!synth.structs.some((s) => s.name === name)) {
-          synth.structs.push({ name, fields: t.fields })
-        }
-        // Register THIS synthesized name under the field-shape key so the
-        // VALUE path (object-literal emit, which looks up `_structFieldsToName`
-        // by the same field-names key) reuses it instead of synthesizing a
-        // DIVERGENT `__ObjN`. @State emits the type annotation BEFORE the
-        // value, so this is populated in time — without it, an untyped
-        // `signal({ x: 1 })` emitted `var o: AppO = __Obj0(...)` (annotation
-        // ≠ value struct) and failed swiftc.
-        if (!_structFieldsToName.has(key)) _structFieldsToName.set(key, name)
+        registerSwiftSynthStruct(t, synth, name, key)
         return name
       }
       // No synthesis context (legacy positions). A single-field labeled
@@ -5186,6 +5236,27 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // matches JS, where `**` yields a Number).
       if (e.op === '**') {
         return `pow(Double(${bl}), Double(${br}))`
+      }
+      // JS `+` where EITHER operand is a string is string CONCATENATION —
+      // the non-string operand is coerced to text (`"n=" + 5 === "n=5"`).
+      // Swift has NO implicit String↔Int/Double/Bool conversion, so
+      // `"n=" + count` (String + Int) is a hard type error. When the `+` is
+      // genuinely a concat (one side infers `string`), coerce each CONCRETE
+      // non-string operand via `String(...)` — Int/Double/Bool all conform to
+      // LosslessStringConvertible, so `String(5)` / `String(true)` are sound.
+      // A purely numeric `+` (neither side a string) never enters here and
+      // falls through to the Int×Double arithmetic handling below unchanged;
+      // a `string + unknown` leaves the unknown operand alone (best-effort).
+      if (
+        e.op === '+' &&
+        (inferType(e.left, _activeInferCtx).kind === 'string' ||
+          inferType(e.right, _activeInferCtx).kind === 'string')
+      ) {
+        const coerce = (sub: ExprIR, emitted: string): string => {
+          const k = inferType(sub, _activeInferCtx).kind
+          return k === 'number' || k === 'boolean' ? `String(${emitted})` : emitted
+        }
+        return `${coerce(e.left, bl)} + ${coerce(e.right, br)}`
       }
       // Mixed Int×Double — Swift has no implicit Int→Double conversion, so
       // `count() * 0.5` (Int signal × fractional literal) is a type error.

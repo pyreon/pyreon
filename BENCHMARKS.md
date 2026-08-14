@@ -5,6 +5,8 @@
 
 **How to read:** every head-to-head passes a correctness gate (all libraries agree before timing), runs each competitor's *idiomatic* API, and reports the median over warmup + N runs. **Absolute ns/ms are machine-dependent — the ratios are the portable signal.** 22 benchmarks below; 3 did not produce data (accounted for in §6).
 
+> **This is a dated snapshot (2026-07-01), and three of its verdicts have since been superseded.** The row-list section predates [Octane](https://octanejs.dev) joining as the 8th framework, so its "6 of 9 outright" tally is against a 7-framework field and the op Pyreon now trails is `clear rows` (to Octane, by one 100µs timer quantum) rather than `remove`. The `@pyreon/head` figures (4.9–6.4×) came from a harness later found to flatter Pyreon; the fair rebuild measures 1.3–2.1×. And "Preact's signals-core leads every row" predates the 2026-07 batch-queue work. Numbers not called out here were not re-measured for this note — the current per-op record lives in `.claude/skills/pyreon-benchmarks/SKILL.md`, which is the authoritative copy.
+
 ---
 
 ## 1. DOM row-list suite — `bench:fair` (real Chromium, vs 6 frameworks + Vanilla)
