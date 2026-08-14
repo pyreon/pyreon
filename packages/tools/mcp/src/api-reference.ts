@@ -7674,6 +7674,7 @@ plugins: [
 - Using \`hosts: ['app.test']\` and expecting it to resolve. Only \`*.localhost\` resolves to loopback natively; anything else needs an \`/etc/hosts\` line, which the plugin PRINTS and deliberately never writes
 - Expecting a warning-free certificate out of the box. Without \`mkcert -install\`, the certificate is self-signed and the browser shows a one-time interstitial — that is the honest default, because the alternative is installing a root CA on your machine
 - Certifying a LAN address without \`lan: true\` (e.g. via \`hosts\`) — the certificate then covers an address the server never binds to, so nothing can reach it. \`lan: true\` does both halves
+- Forgetting that \`lan: true\` EXPOSES the dev server to everyone on the network (same as Vite \`--host\`) — including source and any client-exposed env values. That is the point of the option, but be deliberate about it on a network you do not control
 - Expecting HTTP/2. Vite dev has not served h2 since v3; this gives TLS over HTTP/1.1`,
   },
 

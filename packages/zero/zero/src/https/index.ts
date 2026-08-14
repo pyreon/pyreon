@@ -54,6 +54,12 @@ export interface HttpsOptions {
    * Certify this machine's LAN addresses and bind the server to them, so a
    * phone on the same network can connect over TLS. This is the reason to
    * reach for the plugin at all.
+   *
+   * Note what it implies: binding to your network interfaces makes the dev
+   * server — and anything it serves, including source and env values exposed
+   * to the client — reachable by **anyone else on that network**. That is the
+   * same exposure as Vite's `--host`, and it is the point of the option, but
+   * it is worth knowing before enabling it on a network you do not control.
    */
   lan?: boolean
   /** Bring your own certificate. Both required together; nothing is generated. */
