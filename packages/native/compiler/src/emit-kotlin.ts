@@ -59,6 +59,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
+import { unknownTransitionPresetWarning } from './transition-presets'
 import type {
   AttrIR,
   ChildIR,
@@ -5463,6 +5464,11 @@ function emitKotlinTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, inden
   const body = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
   const nameRaw = readStaticAttrKotlin(e, 'name')
   const transitionName = typeof nameRaw === 'string' ? nameRaw : undefined
+  // Warn HERE, once, rather than inside `kotlinTransitionForName` — that
+  // helper is called twice on the asymmetric path (enter spec and exit spec),
+  // which would double-report the same name.
+  const nameWarning = unknownTransitionPresetWarning(transitionName)
+  if (nameWarning !== undefined) _emitWarnings.push(nameWarning)
   if (duration === undefined && easing === undefined && !asymmetric) {
     // No animation config AND no name → the byte-identical default shape that
     // has shipped since M2.7. A name opts into an explicit enter/exit pair.
