@@ -10,10 +10,21 @@ function mountHook() {
   return r
 }
 
+/** The utterances handed to `speechSynthesis.speak`, so a test can fire their
+ *  lifecycle callbacks the way a real engine does. */
+const spoken: Array<{ onend: (() => void) | null; onerror: (() => void) | null }> = []
+
 function installSynth() {
   const calls: string[] = []
+  spoken.length = 0
   Object.defineProperty(globalThis, 'speechSynthesis', {
-    value: { speak: (u: { text: string }) => calls.push(`speak:${u.text}`), cancel: () => calls.push('cancel') },
+    value: {
+      speak: (u: { text: string }) => {
+        calls.push(`speak:${u.text}`)
+        spoken.push(u as unknown as (typeof spoken)[number])
+      },
+      cancel: () => calls.push('cancel'),
+    },
     configurable: true,
   })
   Object.defineProperty(globalThis, 'SpeechSynthesisUtterance', {
@@ -55,6 +66,29 @@ describe('useSpeech', () => {
     const calls = installSynth()
     await expect(mountHook().speak('')).resolves.toBe(false)
     expect(calls).toEqual([])
+  })
+
+  it('speaking() returns to false when the utterance ENDS on its own', async () => {
+    // Nothing tested this, so a UI bound to `speaking()` would have shown a
+    // "now reading" indicator that never switched off once the text finished
+    // — the failure is silent and only visible after speech completes.
+    installSynth()
+    const s = mountHook()
+    await s.speak('an article')
+    expect(s.speaking()).toBe(true)
+
+    spoken[0]!.onend?.()
+    expect(s.speaking()).toBe(false)
+  })
+
+  it('speaking() returns to false when the utterance ERRORS', async () => {
+    // Same stuck-indicator failure, via the path that is far more likely in
+    // the field: an interrupted or unsupported voice.
+    installSynth()
+    const s = mountHook()
+    await s.speak('an article')
+    spoken[0]!.onerror?.()
+    expect(s.speaking()).toBe(false)
   })
 
   it('stops speaking on scope disposal', async () => {

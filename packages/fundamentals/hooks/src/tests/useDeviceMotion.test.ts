@@ -60,6 +60,84 @@ describe('useDeviceMotion', () => {
     await expect(mountHook().start()).resolves.toBe(false)
   })
 
+  it('REPORTS motion — the readings reach the signals', async () => {
+    // Previously nothing invoked the listener, so the hook could have been
+    // wired to the wrong event fields (or nothing at all) and every spec
+    // would still have passed: they only covered permission outcomes.
+    installDME()
+    const m = mountHook()
+    await m.start()
+
+    const e = new Event('devicemotion') as DeviceMotionEvent
+    Object.defineProperty(e, 'accelerationIncludingGravity', {
+      value: { x: 1, y: 2, z: 3 },
+    })
+    // Rotation deliberately maps beta→x, gamma→y, alpha→z: the spec's names
+    // are axis-rotations, and this mapping is what makes the two vectors read
+    // in the same frame. A transposition here would be invisible without it.
+    Object.defineProperty(e, 'rotationRate', { value: { alpha: 10, beta: 20, gamma: 30 } })
+    window.dispatchEvent(e)
+
+    expect(m.acceleration()).toEqual({ x: 1, y: 2, z: 3 })
+    expect(m.rotation()).toEqual({ x: 20, y: 30, z: 10 })
+  })
+
+  it('a partial reading fills the missing axes with 0, never null', async () => {
+    // Real devices omit axes they cannot measure. Passing null through would
+    // break any arithmetic a consumer does on the vector.
+    installDME()
+    const m = mountHook()
+    await m.start()
+
+    const e = new Event('devicemotion') as DeviceMotionEvent
+    Object.defineProperty(e, 'accelerationIncludingGravity', {
+      value: { x: null, y: 5, z: null },
+    })
+    window.dispatchEvent(e)
+    expect(m.acceleration()).toEqual({ x: 0, y: 5, z: 0 })
+  })
+
+  it('a partial ROTATION fills the missing axes with 0 too', async () => {
+    // The symmetric half of the acceleration case. Both vectors are built by
+    // separate expressions, so covering one proves nothing about the other.
+    installDME()
+    const m = mountHook()
+    await m.start()
+
+    const e = new Event('devicemotion') as DeviceMotionEvent
+    Object.defineProperty(e, 'rotationRate', { value: { alpha: null, beta: 4, gamma: null } })
+    window.dispatchEvent(e)
+    expect(m.rotation()).toEqual({ x: 4, y: 0, z: 0 })
+  })
+
+  it('an event carrying NO motion data leaves the last reading intact', async () => {
+    // Some engines fire the event with null payloads between real samples.
+    // Zeroing on those would make a reading flicker to origin and back.
+    installDME()
+    const m = mountHook()
+    await m.start()
+
+    const good = new Event('devicemotion') as DeviceMotionEvent
+    Object.defineProperty(good, 'accelerationIncludingGravity', { value: { x: 9, y: 9, z: 9 } })
+    window.dispatchEvent(good)
+
+    window.dispatchEvent(new Event('devicemotion'))
+    expect(m.acceleration()).toEqual({ x: 9, y: 9, z: 9 })
+  })
+
+  it('stop() detaches the listener — readings stop arriving', async () => {
+    installDME()
+    const m = mountHook()
+    await m.start()
+    m.stop()
+    expect(m.active()).toBe(false)
+
+    const e = new Event('devicemotion') as DeviceMotionEvent
+    Object.defineProperty(e, 'accelerationIncludingGravity', { value: { x: 7, y: 7, z: 7 } })
+    window.dispatchEvent(e)
+    expect(m.acceleration()).toEqual({ x: 0, y: 0, z: 0 })
+  })
+
   it('stops listening on scope disposal', async () => {
     installDME()
     const remove = vi.spyOn(window, 'removeEventListener')

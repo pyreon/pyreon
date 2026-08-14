@@ -25,6 +25,32 @@ function fakeStream() {
   }
 }
 
+/**
+ * A MediaRecorder faithful enough to drive the whole record→stop→URL cycle:
+ * it hands chunks to `ondataavailable` and fires `onstop` the way a real one
+ * does. Without this the hook's PRIMARY path — stopping and getting audio
+ * back — has no coverage at all.
+ */
+function installRecorder(chunkSizes: number[] = [4]) {
+  const { stops, stream } = fakeStream()
+  stub(globalThis.navigator, 'mediaDevices', { getUserMedia: async () => stream })
+  class FakeRecorder {
+    ondataavailable: ((e: { data: Blob }) => void) | null = null
+    onstop: (() => void) | null = null
+    mimeType = 'audio/webm'
+    start() {
+      for (const size of chunkSizes) {
+        this.ondataavailable?.({ data: new Blob([new Uint8Array(size)]) })
+      }
+    }
+    stop() {
+      this.onstop?.()
+    }
+  }
+  stub(globalThis, 'MediaRecorder', FakeRecorder)
+  return { stops }
+}
+
 describe('useAudioRecorder', () => {
   afterEach(() => {
     for (const s of scopes.splice(0)) s.dispose()
@@ -64,6 +90,59 @@ describe('useAudioRecorder', () => {
     const r = mountHook()
     // An object URL that plays nothing is harder to debug than an absence.
     await expect(r.stop()).resolves.toBeNull()
+  })
+
+  it('records, then stop() hands back a URL for the captured audio', async () => {
+    // The hook's whole point, and previously uncovered: every existing spec
+    // exercised a REFUSAL (unsupported / denied / idle), so the success path
+    // that produces audio was never executed.
+    installRecorder([4, 6])
+    const url = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:clip-1')
+    const r = mountHook()
+
+    await expect(r.start()).resolves.toBe(true)
+    expect(r.recording()).toBe(true)
+    expect(r.error()).toBe('')
+
+    await expect(r.stop()).resolves.toBe('blob:clip-1')
+    expect(r.recording()).toBe(false)
+    // Both chunks must reach the blob — dropping one would silently truncate
+    // the recording.
+    const blob = url.mock.calls[0]![0] as Blob
+    expect(blob.size).toBe(10)
+    expect(blob.type).toBe('audio/webm')
+  })
+
+  it('releases the microphone after a completed recording, not just on dispose', async () => {
+    // A stream that outlives its recording leaves the OS mic indicator on
+    // with nothing listening — the privacy-visible form of a leak.
+    const { stops } = installRecorder()
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:clip')
+    const r = mountHook()
+    await r.start()
+    await r.stop()
+    expect(stops.length).toBeGreaterThan(0)
+  })
+
+  it('a recording that captured NOTHING resolves null, not an empty URL', async () => {
+    // Zero-size chunks are dropped, so the blob is empty. An object URL that
+    // plays nothing is harder to debug than an explicit absence.
+    installRecorder([0])
+    const url = vi.spyOn(URL, 'createObjectURL')
+    const r = mountHook()
+    await r.start()
+    await expect(r.stop()).resolves.toBeNull()
+    expect(url).not.toHaveBeenCalled()
+  })
+
+  it('start() twice does not open a second stream', async () => {
+    installRecorder()
+    const r = mountHook()
+    await r.start()
+    // Already recording: the second call is a no-op that reports success,
+    // rather than replacing the in-flight recorder and losing the audio.
+    await expect(r.start()).resolves.toBe(true)
+    expect(r.recording()).toBe(true)
   })
 
   it('releases the microphone tracks on scope disposal', async () => {
