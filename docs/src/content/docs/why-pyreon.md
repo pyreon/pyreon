@@ -50,7 +50,7 @@ The honest read:
 - **Coverage, not just speed.** Octane's own suite runs 15 scenarios; this one meaningfully covers about 4. There is no cross-framework measurement here for hydration, streaming SSR, portals, deep context propagation, effect-heavy lists, or async waterfalls. Anything outside keyed row-list DOM work is simply unmeasured, not won.
 - **This is a synthetic benchmark.** It's 1,000–10,000 rows of contrived data — exactly the shape fine-grained signals are best at. There is no op here where a VDOM might win (deep prop-diffing through large trees, concurrent rendering under input pressure). **A real-app head-to-head does not exist yet.** Until it does, "fastest" stops at this suite's evidence and does not extrapolate to your app.
 
-So: genuinely fast where it counts for most UIs, honestly mid-pack on memory, and not yet proven on real-world app shapes.
+So: genuinely fast where it counts for most UIs, 2nd among frameworks on memory, and not yet proven on real-world app shapes.
 
 ## Full-stack, not just a renderer
 
@@ -70,7 +70,7 @@ Pyreon ships `llms.txt`, `llms-full.txt`, and a real [MCP server](/docs/mcp) (`g
 ## When *not* to choose Pyreon
 
 - **You need a large, battle-tested ecosystem today.** React/Vue/Svelte/Solid have years of components, hiring pools, and corporate backing. Pyreon's ecosystem is young. Its compat layers (`@pyreon/react-compat` et al.) let you bring some existing code, but they're a migration aid, not a replacement for an ecosystem.
-- **Memory is your tightest constraint** (very large client-held lists). Virtualize, or measure first — Pyreon is mid-pack here.
+- **Memory is your tightest constraint** (very large client-held lists). Virtualize, or measure first. Pyreon measures 2nd among frameworks on retained heap, but it uniquely defers ~0.67 MB of reclamation by one event-loop turn — released in any real app, yet it means a snapshot taken at the wrong instant reads higher than the settled figure.
 - **You need the proof before the promise.** The real-app benchmark and an independent upstream submission don't exist yet. If "trust, but verify" means you need third-party verification, it isn't here yet — and we'd rather tell you that than pretend.
 
 ## How it compares, in one table
@@ -82,7 +82,7 @@ Pyreon ships `llms.txt`, `llms-full.txt`, and a real [MCP server](/docs/mcp) (`g
 | Full-stack meta-framework | built-in (zero) | SolidStart | Next/Remix | Nuxt | SvelteKit |
 | AI-native docs (llms + MCP) | yes | no | no | no | no |
 | Synthetic bench (this suite) | leads | co-leads | mid | mid | mid |
-| Retained memory | mid-pack | low | low | high | low |
+| Retained memory | low | low | low | high | low |
 | Ecosystem maturity | young | growing | huge | huge | large |
 
 Pick the framework whose trade-offs match your project. For a lot of apps that's still React or Vue, and that's a fine answer. Pyreon is built for the cases where fine-grained reactivity, an integrated full-stack story, and AI-native tooling matter more than ecosystem size — and it tries to be honest about the rest.

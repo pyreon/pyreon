@@ -406,6 +406,8 @@ export type DeclIR =
   | { kind: 'bluetooth'; name: string }
   | { kind: 'wake-lock'; name: string }
   | { kind: 'device-info'; name: string }
+  | { kind: 'safe-area'; name: string }
+  | { kind: 'screen-orientation'; name: string }
   /**
    * `useInterval(cb, ms)` / `useTimeout(cb, ms)` at STATEMENT position.
    *

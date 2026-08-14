@@ -1330,7 +1330,7 @@ export const NATIVE_LOWERED_HOOKS: ReadonlySet<string> = new Set([
   'useParams', 'usePayments', 'usePermissions', 'usePush', 'useQuery',
   // Pure state — no platform dependency, so no runtime; see the
   // `pure-state` DeclIR.
-  'useToggle', 'useCounter', 'useBluetooth', 'useWakeLock', 'useDeviceInfo',
+  'useToggle', 'useCounter', 'useBluetooth', 'useWakeLock', 'useDeviceInfo', 'useSafeArea', 'useScreenOrientation',
   'useUrlState',
   'useSecureStorage',
   'useShare', 'useSizeClass', 'useStorage', 'useWebSocket',
@@ -3489,12 +3489,29 @@ function inferFlatObjectType(
   const fields: { name: string; type: TypeIR }[] = []
   for (const f of obj.fields) {
     const ft = inferTypeFromInitial(f.value)
-    if (ft.kind !== 'number' && ft.kind !== 'string' && ft.kind !== 'boolean') {
-      return null
-    }
+    // A field is synthesizable when it is a scalar (the original flat case),
+    // a NESTED all-scalar object (recursion — `inferTypeFromInitial` routes
+    // `{…}` back here), or an ARRAY whose leaves are scalar/object. Anything
+    // that degraded to `unknown` (a spread, a function, a mixed array, a
+    // bare identifier) bails the whole object → the signal stays `Any`
+    // (unchanged, no regression).
+    if (!isSynthesizableFieldType(ft)) return null
     fields.push({ name: f.name, type: ft })
   }
   return { kind: 'object', fields }
+}
+
+/**
+ * Can this inferred field TypeIR be synthesized into a nested struct? Scalars,
+ * nested object records, and arrays whose (recursive) element is scalar/object.
+ * Rejects `unknown` / `map` / `set` / `union` / `function` / `typeRef` — those
+ * are outside the all-scalar-leaf synthesis contract and keep the object `Any`.
+ */
+function isSynthesizableFieldType(t: TypeIR): boolean {
+  if (t.kind === 'number' || t.kind === 'string' || t.kind === 'boolean') return true
+  if (t.kind === 'object') return true
+  if (t.kind === 'array') return isSynthesizableFieldType(t.element)
+  return false
 }
 
 /**
@@ -5950,6 +5967,18 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // a plausible lie in analytics, which is where these fields get used).
   if (calleeName === 'useDeviceInfo') {
     return { kind: 'device-info', name }
+  }
+  // `useSafeArea()` -> PyreonSafeArea. ONE accessor rather than four: the
+  // values move together on rotation, and separate accessors invite a torn
+  // pair. Reads are `s().top` on the web; the emit drops the call.
+  if (calleeName === 'useSafeArea') {
+    return { kind: 'safe-area', name }
+  }
+  // `useScreenOrientation()` -> PyreonScreenOrientation. READ-ONLY: locking
+  // does not cross (Chromium-only + fullscreen on the web; an app-level
+  // declaration on iOS), so it is deliberately not in the surface.
+  if (calleeName === 'useScreenOrientation') {
+    return { kind: 'screen-orientation', name }
   }
   // `useDebouncedCallback(fn, ms)` / `useThrottledCallback(fn, ms)` — see
   // the DeclIR comment for why these need a runtime.

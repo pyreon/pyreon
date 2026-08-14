@@ -777,6 +777,8 @@ export function emitSwift(
       if (d.kind === 'bluetooth') _bluetoothSwift.add(d.name)
       if (d.kind === 'wake-lock') _wakeLockSwift.add(d.name)
       if (d.kind === 'device-info') _deviceInfoSwift.add(d.name)
+      if (d.kind === 'safe-area') _safeAreaSwift.add(d.name)
+      if (d.kind === 'screen-orientation') _orientationSwift.add(d.name)
       if (d.kind === 'clipboard') _clipboardSwift.add(d.name)
       if (d.kind === 'pure-state') {
         _pureStateSwift.set(d.name, d.bounds ? { hook: d.hook, bounds: d.bounds } : { hook: d.hook })
@@ -901,6 +903,10 @@ let _bluetoothSwift: Set<string> = new Set()
 let _wakeLockSwift: Set<string> = new Set()
 /** `useDeviceInfo()` bindings — its reads are properties, so parens drop. */
 let _deviceInfoSwift: Set<string> = new Set()
+/** `useSafeArea()` bindings — the sole accessor becomes `.insets`. */
+let _safeAreaSwift: Set<string> = new Set()
+/** `useScreenOrientation()` bindings — reads are properties. */
+let _orientationSwift: Set<string> = new Set()
 /** Initial values, so `reset()` restores exactly what the web's does. */
 let _pureStateInitialSwift: Map<string, number | boolean> = new Map()
 /**
@@ -2749,6 +2755,12 @@ function emitSwiftDecl(
   if (d.kind === 'device-info') {
     return `@State private var ${swiftIdent(d.name)} = PyreonDeviceInfo(probe: UIKitDeviceProbe())`
   }
+  if (d.kind === 'safe-area') {
+    return `@State private var ${swiftIdent(d.name)} = PyreonSafeArea(probe: UIKitSafeAreaProbe())`
+  }
+  if (d.kind === 'screen-orientation') {
+    return `@State private var ${swiftIdent(d.name)} = PyreonScreenOrientation(probe: UIKitOrientationProbe())`
+  }
   if (d.kind === 'pure-state') {
     const t = d.hook === 'useToggle' ? 'Bool' : 'Int'
     return `@State private var ${swiftIdent(d.name)}: ${t} = ${String(d.initial)}`
@@ -3311,6 +3323,66 @@ function synthesizeSwiftTypeName(componentName: string, declName?: string): stri
   return componentName + stripped.charAt(0).toUpperCase() + stripped.slice(1)
 }
 
+/**
+ * Register a synthesized struct for an object TypeIR (the type-path twin of
+ * the value-path `synthLiteralStructName`) — push it into `synth.structs`,
+ * map its field-shape key → name in `_structFieldsToName` (so the object-
+ * literal VALUE emit reuses the SAME name), THEN recurse into every NESTED
+ * object / array-of-object field so those nested shapes are synthesized and
+ * registered too. `emitSwiftStruct` renders each field type via a no-synth
+ * `swiftType`, which resolves a nested object type through `_structFieldsToName`
+ * (populated here) — so a nested field emits its struct NAME, not a degraded
+ * `(…)` tuple / `Any`. Swift resolves type names across the whole file, so the
+ * inner-after-outer declaration order is fine.
+ */
+function registerSwiftSynthStruct(
+  t: Extract<TypeIR, { kind: 'object' }>,
+  synth: SwiftSynthCtx,
+  name: string,
+  key: string,
+): void {
+  if (!_structFieldsToName.has(key)) _structFieldsToName.set(key, name)
+  if (!synth.structs.some((s) => s.name === name)) {
+    synth.structs.push({ name, fields: t.fields })
+  }
+  for (const f of t.fields) registerNestedSwiftStruct(f.type, synth, name, f.name)
+}
+
+/** Recurse a struct field's TypeIR, synthesizing a NESTED object struct
+ *  (`Profile` + `meta` → `ProfileMeta`, array-of-object element singularized)
+ *  when its shape isn't already registered. */
+function registerNestedSwiftStruct(
+  ft: TypeIR,
+  synth: SwiftSynthCtx,
+  parentName: string,
+  fieldName: string,
+): void {
+  const suffix = fieldName.charAt(0).toUpperCase() + fieldName.slice(1)
+  let inner: Extract<TypeIR, { kind: 'object' }> | undefined
+  let base: string | undefined
+  if (ft.kind === 'object') {
+    inner = ft
+    base = parentName + suffix
+  } else if (ft.kind === 'array' && ft.element.kind === 'object') {
+    inner = ft.element
+    const singular = suffix.endsWith('s') ? suffix.slice(0, -1) : suffix
+    base = parentName + singular
+  }
+  if (inner === undefined || base === undefined) return
+  const key = inner.fields.map((f) => f.name).sort().join(',')
+  if (_structFieldsToName.has(key)) return // shape already synthesized — reuse
+  registerSwiftSynthStruct(inner, synth, uniqueSwiftStructName(synth, base), key)
+}
+
+/** A struct name not already taken in `synth.structs` (append a counter on
+ *  the rare path-name collision between two distinct nested shapes). */
+function uniqueSwiftStructName(synth: SwiftSynthCtx, base: string): string {
+  if (!synth.structs.some((s) => s.name === base)) return base
+  let i = 2
+  while (synth.structs.some((s) => s.name === `${base}${i}`)) i++
+  return `${base}${i}`
+}
+
 export function swiftType(t: TypeIR, synth?: SwiftSynthCtx, declName?: string): string {
   switch (t.kind) {
     case 'number':
@@ -3337,17 +3409,7 @@ export function swiftType(t: TypeIR, synth?: SwiftSynthCtx, declName?: string): 
       if (declared !== undefined) return declared
       if (synth !== undefined) {
         const name = synthesizeSwiftTypeName(synth.componentName, declName)
-        if (!synth.structs.some((s) => s.name === name)) {
-          synth.structs.push({ name, fields: t.fields })
-        }
-        // Register THIS synthesized name under the field-shape key so the
-        // VALUE path (object-literal emit, which looks up `_structFieldsToName`
-        // by the same field-names key) reuses it instead of synthesizing a
-        // DIVERGENT `__ObjN`. @State emits the type annotation BEFORE the
-        // value, so this is populated in time — without it, an untyped
-        // `signal({ x: 1 })` emitted `var o: AppO = __Obj0(...)` (annotation
-        // ≠ value struct) and failed swiftc.
-        if (!_structFieldsToName.has(key)) _structFieldsToName.set(key, name)
+        registerSwiftSynthStruct(t, synth, name, key)
         return name
       }
       // No synthesis context (legacy positions). A single-field labeled
@@ -3885,6 +3947,27 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         _deviceInfoSwift.has(e.callee.object.name) &&
         e.args.length === 0 &&
         ['platform', 'model', 'osVersion', 'isTouch', 'screen'].includes(e.callee.property)
+      ) {
+        return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
+      }
+      // useSafeArea returns a SINGLE accessor, so `s()` is a bare call on the
+      // binding itself rather than a member call. It becomes the runtime's
+      // `.insets` property, so `s().top` lowers to `s.insets.top`.
+      if (
+        e.callee.kind === 'identifier' &&
+        _safeAreaSwift.has(e.callee.name) &&
+        e.args.length === 0
+      ) {
+        return `${swiftIdent(e.callee.name)}.insets`
+      }
+      // useScreenOrientation's reads — properties on this target, so the
+      // web-correct accessor spelling drops its parens.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _orientationSwift.has(e.callee.object.name) &&
+        e.args.length === 0 &&
+        ['type', 'angle'].includes(e.callee.property)
       ) {
         return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
       }

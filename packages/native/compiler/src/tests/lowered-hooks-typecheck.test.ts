@@ -93,6 +93,16 @@ const USAGES: ReadonlyArray<readonly [string, string, string]> = [
     'const d = useDeviceInfo(); const p = d.platform(); const m = d.model(); const v = d.osVersion(); const t = d.isTouch(); const w = d.screen().width',
   ],
   [
+    'useSafeArea',
+    '@pyreon/hooks',
+    'const sa = useSafeArea(); const t = sa().top; const b = sa().bottom',
+  ],
+  [
+    'useScreenOrientation',
+    '@pyreon/hooks',
+    'const o = useScreenOrientation(); const ty = o.type(); const an = o.angle()',
+  ],
+  [
     'useWakeLock',
     '@pyreon/hooks',
     'const w = useWakeLock(); const on = () => { w.request() }; const a = w.active(); const s = w.supported()',

@@ -1,7 +1,7 @@
 # Pyreon Framework — Complete AI Reference
 
 > Signal-based UI framework for TypeScript. SSR, SSG, islands, SPA.
-> Standard JSX + TypeScript. Top-tier performance on the synthetic row-list benchmark — fastest of the frameworks measured, leads or ties Solid on 8 of 9 ops (Solid edges single-row remove), and 2.4–3× faster than React/Svelte/Preact at 10k rows. Mid-pack on retained memory.
+> Standard JSX + TypeScript. Top-tier performance on the synthetic row-list benchmark — leads an 8-framework field, leading or tying 8 of 9 ops (Octane, the nearest rival, edges clear-rows by one 100µs timer quantum), and 2.4–3× faster than React/Svelte/Preact at 10k rows. 2nd among frameworks on retained memory.
 > All packages under @pyreon/* scope.
 
 ## Package Map
@@ -1785,7 +1785,7 @@ const secret = useEncrypted('api-key', '')
 
 ## @pyreon/hooks — Signal-Based Hooks
 
-Signal-based hooks for Pyreon — 59 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.
+Signal-based hooks for Pyreon — 61 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.
 
 ```typescript
 import {

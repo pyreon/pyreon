@@ -451,6 +451,8 @@ export function emitKotlin(
       if (d.kind === 'bluetooth') _bluetoothKotlin.add(d.name)
       if (d.kind === 'wake-lock') _wakeLockKotlin.add(d.name)
       if (d.kind === 'device-info') _deviceInfoKotlin.add(d.name)
+      if (d.kind === 'safe-area') _safeAreaKotlin.add(d.name)
+      if (d.kind === 'screen-orientation') _orientationKotlin.add(d.name)
       if (d.kind === 'clipboard') _clipboardKotlin.add(d.name)
       if (d.kind === 'pure-state') {
         _pureStateKotlin.set(d.name, d.bounds ? { hook: d.hook, bounds: d.bounds } : { hook: d.hook })
@@ -580,6 +582,10 @@ let _bluetoothKotlin: Set<string> = new Set()
 let _wakeLockKotlin: Set<string> = new Set()
 /** `useDeviceInfo()` bindings — all reads are plain getters (no `.value`). */
 let _deviceInfoKotlin: Set<string> = new Set()
+/** `useSafeArea()` bindings — the sole accessor becomes `.insets`. */
+let _safeAreaKotlin: Set<string> = new Set()
+/** `useScreenOrientation()` bindings — reads are properties. */
+let _orientationKotlin: Set<string> = new Set()
 /** Initial values, so `reset()` restores exactly what the web's does. */
 let _pureStateInitialKotlin: Map<string, number | boolean> = new Map()
 /** `useClipboard()` bindings — its reactive reads become `.value`. */
@@ -2119,6 +2125,20 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       `val ${id} = remember { PyreonDeviceInfo(AndroidDeviceProbe(${id}Ctx)) }`,
     ].join('\n  ')
   }
+  if (d.kind === 'safe-area') {
+    const id = kotlinIdent(d.name)
+    return [
+      `val ${id}Ctx = LocalContext.current`,
+      `val ${id} = remember { PyreonSafeArea(AndroidSafeAreaProbe(${id}Ctx)) }`,
+    ].join('\n  ')
+  }
+  if (d.kind === 'screen-orientation') {
+    const id = kotlinIdent(d.name)
+    return [
+      `val ${id}Ctx = LocalContext.current`,
+      `val ${id} = remember { PyreonScreenOrientation(AndroidOrientationProbe(${id}Ctx)) }`,
+    ].join('\n  ')
+  }
   if (d.kind === 'pure-state') {
     return `var ${kotlinIdent(d.name)} by remember { mutableStateOf(${String(d.initial)}) }`
   }
@@ -2701,13 +2721,13 @@ export function kotlinType(t: TypeIR, ctx?: KotlinCtx, signalName?: string): str
       // Anonymous object types are synthesized as named data classes per
       // component. Class name derives from the component + signal name:
       // `Sum` + `items` → `SumItem`. Idempotent across decls in the same
-      // component (same shape ⇒ same name).
+      // component (same shape ⇒ same name). NESTED object / array-of-object
+      // fields recurse into their OWN data class (`Profile` + `meta` →
+      // `ProfileMeta`) and the field is rewritten to a typeRef — without the
+      // rewrite `emitKotlinDataClass` renders the nested object as `Any`,
+      // which is NOT `@Serializable` and breaks a real Android build.
       if (!ctx) return 'Any'
-      const fields = t.fields
-      const name = synthesizeDataClassName(ctx.componentName, signalName)
-      const existing = ctx.synthesizedDataClasses.find((s) => s.name === name)
-      if (!existing) ctx.synthesizedDataClasses.push({ name, fields })
-      return name
+      return registerKotlinSynthClass(t, ctx, synthesizeDataClassName(ctx.componentName, signalName))
     }
     case 'null':
     case 'undefined':
@@ -2779,6 +2799,59 @@ function synthesizeDataClassName(componentName: string, signalName?: string): st
   if (!signalName) return `${componentName}Data`
   const stripped = signalName.endsWith('s') ? signalName.slice(0, -1) : signalName
   return componentName + stripped.charAt(0).toUpperCase() + stripped.slice(1)
+}
+
+/**
+ * Register a data class for an object TypeIR under `name`, recursing into any
+ * NESTED object / array-of-object field so those become their OWN data classes
+ * (`Profile` + `meta` → `ProfileMeta`) and the field is rewritten to a typeRef.
+ * `emitKotlinDataClass` renders field types with NO ctx, so a nested object
+ * left un-rewritten degrades to `Any` (not `@Serializable`); the rewrite keeps
+ * the whole nested tree serialization-safe. Returns `name`.
+ */
+function registerKotlinSynthClass(
+  t: Extract<TypeIR, { kind: 'object' }>,
+  ctx: KotlinCtx,
+  name: string,
+): string {
+  if (ctx.synthesizedDataClasses.some((s) => s.name === name)) return name
+  // Reserve the name BEFORE recursing so a nested field can't re-derive it.
+  const entry: { name: string; fields: { name: string; type: TypeIR }[] } = { name, fields: [] }
+  ctx.synthesizedDataClasses.push(entry)
+  entry.fields = t.fields.map((f) => ({
+    name: f.name,
+    type: resolveKotlinSynthFieldType(f.type, ctx, name, f.name),
+  }))
+  return name
+}
+
+/** Rewrite a data-class field's TypeIR: a nested object → typeRef to its own
+ *  synthesized data class; an array-of-object → array of that typeRef. */
+function resolveKotlinSynthFieldType(
+  ft: TypeIR,
+  ctx: KotlinCtx,
+  parentName: string,
+  fieldName: string,
+): TypeIR {
+  const suffix = fieldName.charAt(0).toUpperCase() + fieldName.slice(1)
+  if (ft.kind === 'object') {
+    const nested = registerKotlinSynthClass(ft, ctx, uniqueKotlinClassName(ctx, parentName + suffix))
+    return { kind: 'typeRef', name: nested, args: [] }
+  }
+  if (ft.kind === 'array' && ft.element.kind === 'object') {
+    const singular = suffix.endsWith('s') ? suffix.slice(0, -1) : suffix
+    const nested = registerKotlinSynthClass(ft.element, ctx, uniqueKotlinClassName(ctx, parentName + singular))
+    return { kind: 'array', element: { kind: 'typeRef', name: nested, args: [] } }
+  }
+  return ft
+}
+
+/** A data class name not already taken (counter suffix on a rare collision). */
+function uniqueKotlinClassName(ctx: KotlinCtx, base: string): string {
+  if (!ctx.synthesizedDataClasses.some((s) => s.name === base)) return base
+  let i = 2
+  while (ctx.synthesizedDataClasses.some((s) => s.name === `${base}${i}`)) i++
+  return `${base}${i}`
 }
 
 /**
@@ -3251,6 +3324,27 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         _deviceInfoKotlin.has(e.callee.object.name) &&
         e.args.length === 0 &&
         ['platform', 'model', 'osVersion', 'isTouch', 'screen'].includes(e.callee.property)
+      ) {
+        return `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
+      }
+      // useSafeArea returns a SINGLE accessor, so `s()` is a bare call on the
+      // binding itself rather than a member call. It becomes the runtime's
+      // `.insets` property, so `s().top` lowers to `s.insets.top`.
+      if (
+        e.callee.kind === 'identifier' &&
+        _safeAreaKotlin.has(e.callee.name) &&
+        e.args.length === 0
+      ) {
+        return `${kotlinIdent(e.callee.name)}.insets`
+      }
+      // useScreenOrientation's reads — properties on this target, so the
+      // web-correct accessor spelling drops its parens.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _orientationKotlin.has(e.callee.object.name) &&
+        e.args.length === 0 &&
+        ['type', 'angle'].includes(e.callee.property)
       ) {
         return `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
       }
