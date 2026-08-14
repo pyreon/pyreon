@@ -248,6 +248,30 @@ Because the module name is emitted verbatim as a native type name and PMTC resol
 | `<Scroll axis?>` | `overflow:auto` | `ScrollView` | `Column(verticalScroll)` |
 | `<Spacer />` | `flex:1` | `Spacer()` | `Spacer(weight=1)` |
 
+#### `<For>` inside `<Stack>` behaves differently per target
+
+A `<For>` lowers to Compose's `LazyColumn`, which scrolls on its own axis and
+renders lazily. Inside `<Scroll>` that is exactly right and the targets agree —
+SwiftUI gets `ScrollView { LazyVStack { ForEach } }`, Compose gets a bare
+`LazyColumn` (the wrapper is dropped there deliberately: nesting a lazy list
+inside `Column(Modifier.verticalScroll())` throws at measure time).
+
+Inside a plain `<Stack>` they diverge:
+
+| | Emit | Behaviour |
+|---|---|---|
+| iOS | `VStack { ForEach }` | fixed, eager |
+| Android | `Column { LazyColumn { items } }` | scrolls, lazy |
+
+For a short list this is not observable — a `LazyColumn` shorter than its
+viewport does not scroll. It becomes visible with a long one: Android scrolls
+where iOS clips, and iOS materialises every row where Android does not.
+
+**Use `<Scroll>` when the list should scroll.** That is the primitive both
+targets agree on. `<Stack>` is a layout box, not a scroller, and the compiler
+does not warn here on purpose: the shape is ordinary and usually harmless, and
+a warning on every list would be noise.
+
 ### Content
 
 | Primitive | Web | iOS | Android |

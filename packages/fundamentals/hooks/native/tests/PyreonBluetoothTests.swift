@@ -34,6 +34,7 @@ struct PyreonBluetoothTests {
             // ungated ones below.
             PyreonWakeLockTests.runAll()
             PyreonDeviceInfoTests.runAll()
+            PyreonSafeAreaTests.runAll()
         }
         print("[PyreonBluetoothTests] all assertions passed")
         // This directory's single @main also drives the sibling suites — see

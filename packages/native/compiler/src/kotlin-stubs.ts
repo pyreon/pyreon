@@ -1350,6 +1350,30 @@ class PyreonDeviceInfo(probe: DeviceProbe) {
   val screen: PyreonDeviceScreen get() = PyreonDeviceScreen(0.0, 0.0, 1.0)
 }
 
+// PyreonSafeArea / PyreonScreenOrientation + the app-supplied probes.
+data class PyreonSafeAreaInsets(val top: Double, val right: Double, val bottom: Double, val left: Double) {
+  companion object { val zero = PyreonSafeAreaInsets(0.0, 0.0, 0.0, 0.0) }
+}
+interface SafeAreaProbe { val insets: PyreonSafeAreaInsets }
+class AndroidSafeAreaProbe(ctx: Any?) : SafeAreaProbe {
+  override val insets: PyreonSafeAreaInsets = PyreonSafeAreaInsets.zero
+}
+class PyreonSafeArea(probe: SafeAreaProbe) {
+  val insets: PyreonSafeAreaInsets get() = PyreonSafeAreaInsets.zero
+}
+interface OrientationProbe {
+  val type: String
+  val angle: Int
+}
+class AndroidOrientationProbe(ctx: Any?) : OrientationProbe {
+  override val type: String = "portrait"
+  override val angle: Int = 0
+}
+class PyreonScreenOrientation(probe: OrientationProbe) {
+  val type: String get() = "portrait"
+  val angle: Int get() = 0
+}
+
 class PyreonWakeLock(keeper: ScreenKeeper) {
   val active: MutableState<Boolean> = mutableStateOf(false)
   val supported: Boolean = false
