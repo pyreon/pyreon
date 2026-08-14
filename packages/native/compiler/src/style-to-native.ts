@@ -49,6 +49,9 @@ export interface StyleLowerResult {
   modifiers: string[]
   /** User-visible warnings for dropped / dynamic / unparseable declarations. */
   warnings: string[]
+  /** A TWO-element responsive array lowered to a size-class conditional, so
+   *  the caller must inject the size-class read. Set only when used. */
+  needsSizeClass?: boolean
 }
 
 // A simple (non-padding) slot's native form: `wrap(value)` is the full modifier;
@@ -59,18 +62,25 @@ interface SlotValue {
   value: string
 }
 
+/** A side value: a literal number, or a native EXPRESSION string already
+ *  parenthesised for interpolation (a responsive array lowered to a
+ *  size-class conditional). Equality comparisons below work for both — two
+ *  identical expressions compare equal, which is what the shorthand
+ *  collapsing needs. */
+type SideValue = number | string
+
 interface PadBox {
-  top?: number
-  right?: number
-  bottom?: number
-  left?: number
+  top?: SideValue
+  right?: SideValue
+  bottom?: SideValue
+  left?: SideValue
 }
 
 /** A resolved border (uniform). `color`/`width` come from `borderWidth` +
  *  `borderColor` or the `border` shorthand; the shape's corner radius is the
  *  element's `borderRadius` (0 when absent). */
 interface BorderSpec {
-  width?: number
+  width?: SideValue
   /** native Color literal */
   color?: string
   /** a non-solid border-style was requested (approximated as solid + warned). */
@@ -79,10 +89,10 @@ interface BorderSpec {
 
 /** min/max width/height → one combined frame (Swift) / widthIn+heightIn (Compose). */
 interface FrameConstraints {
-  minW?: number
-  maxW?: number
-  minH?: number
-  maxH?: number
+  minW?: SideValue
+  maxW?: SideValue
+  minH?: SideValue
+  maxH?: SideValue
 }
 
 interface LoweredObject {
@@ -91,7 +101,7 @@ interface LoweredObject {
   border: BorderSpec
   frame: FrameConstraints
   /** the `borderRadius` value (for the border shape), 0 when absent. */
-  radiusValue: number
+  radiusValue: SideValue
   dropped: string[]
   dynamic: string[]
   /** Mobile-first responsive arrays — unistyle's idiom, warned separately. */
@@ -101,6 +111,8 @@ interface LoweredObject {
   kotlinColor: boolean
   /** `margin*` present — no native equivalent, warned. */
   marginWarn: boolean
+  /** a responsive array lowered to a size-class conditional */
+  needsSizeClass: boolean
 }
 
 // Web-only declarations that are a correct NO-OP on a native touch target —
@@ -438,7 +450,8 @@ function lowerObject(fields: { name: string; value: ExprIR }[], target: Target):
   const box: PadBox = {}
   const border: BorderSpec = {}
   const frame: FrameConstraints = {}
-  let radiusValue = 0
+  let radiusValue: SideValue = 0
+  let needsSizeClass = false
   const dropped: string[] = []
   const dynamic: string[] = []
   const unparseable: string[] = []
@@ -458,7 +471,37 @@ function lowerObject(fields: { name: string; value: ExprIR }[], target: Target):
     const v = f.value.value
     return typeof v === 'string' || typeof v === 'number' ? v : undefined
   }
-  const dim = (f: { name: string; value: ExprIR }): number | undefined => {
+  /**
+   * A mobile-first responsive array with EXACTLY TWO entries lowers to a
+   * size-class conditional: `[compact, regular]`.
+   *
+   * Two is the only length that maps losslessly. Native resolves two size
+   * classes (the 600dp boundary `useSizeClass` already uses), not N
+   * breakpoints — a three-element array's middle band spans BOTH classes, so
+   * collapsing it would silently pick a wrong value for part of its range.
+   * Longer arrays therefore keep the refusal + diagnostic.
+   */
+  const responsiveDim = (f: { name: string; value: ExprIR }): string | undefined => {
+    if (f.value.kind !== 'array' || f.value.elements.length !== 2) return undefined
+    const parts: number[] = []
+    for (const el of f.value.elements) {
+      if (el.kind !== 'literal') return undefined
+      const n = parseDimension(el.value as string | number)
+      if (n === null) return undefined
+      parts.push(n)
+    }
+    const [compact, regular] = parts as [number, number]
+    needsSizeClass = true
+    // Parenthesised so it interpolates safely everywhere the formatters put a
+    // number — including Kotlin's `${v}.dp` suffix.
+    return target === 'swift'
+      ? `(pyreonSizeClass == .regular ? ${regular} : ${compact})`
+      : `(if (LocalConfiguration.current.screenWidthDp >= 600) ${regular} else ${compact})`
+  }
+
+  const dim = (f: { name: string; value: ExprIR }): SideValue | undefined => {
+    const resp = responsiveDim(f)
+    if (resp !== undefined) return resp
     const raw = lit(f)
     if (raw === undefined) return undefined
     const n = parseDimension(raw)
@@ -474,6 +517,17 @@ function lowerObject(fields: { name: string; value: ExprIR }[], target: Target):
     if (STRIP.has(name)) continue
     switch (name) {
       case 'padding': {
+        // A responsive `padding: [a, b]` is uniform on all four sides per
+        // size class, so it fills the box directly — the shorthand expander
+        // works on CSS strings and cannot carry an expression.
+        const resp = responsiveDim(field)
+        if (resp !== undefined) {
+          box.top = resp
+          box.right = resp
+          box.bottom = resp
+          box.left = resp
+          break
+        }
         const raw = lit(field)
         if (raw === undefined) break
         const b = expandBoxShorthand(raw)
@@ -652,6 +706,7 @@ function lowerObject(fields: { name: string; value: ExprIR }[], target: Target):
   return {
     slots, box, border, frame, radiusValue, dropped, dynamic,
     responsive, unparseable, kotlinColor, marginWarn,
+    needsSizeClass,
   }
 }
 
@@ -740,7 +795,7 @@ function parseBorderShorthand(
  * Returns undefined when width or color is missing (an incomplete border can't
  * render — the caller warns).
  */
-function emitBorder(border: BorderSpec, radius: number, target: Target): string | undefined {
+function emitBorder(border: BorderSpec, radius: SideValue, target: Target): string | undefined {
   if (border.width === undefined || border.color === undefined) return undefined
   const w = border.width
   const c = border.color
@@ -793,7 +848,7 @@ function emitPadding(box: PadBox, target: Target): string | undefined {
 }
 
 /** A box that is a single, all-four-sides-equal value → that value, else null. */
-function boxAllSides(box: PadBox): number | null {
+function boxAllSides(box: PadBox): SideValue | null {
   const { top, right, bottom, left } = box
   return top !== undefined && top === right && top === bottom && top === left ? top : null
 }
@@ -876,7 +931,7 @@ export function styleToNativeModifiers(
         `<${tag} style={…}>: a {...spread} inside an inline style is not lowered to native (dropped); only its explicit literal properties are.`,
       )
     }
-    return { modifiers: emitStatic(lo, target), warnings }
+    return { modifiers: emitStatic(lo, target), warnings, needsSizeClass: lo.needsSizeClass }
   }
 
   // DYNAMIC — `style={cond ? {A} : {B}}`
