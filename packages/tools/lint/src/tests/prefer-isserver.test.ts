@@ -93,6 +93,28 @@ describe('pyreon/prefer-isserver (ssr, recommended, warn)', () => {
     expect(ids(r)).not.toContain(RID)
   })
 
+  it('fires for the LOOSE equality operators too', () => {
+    // `envCheckKind` accepts `==` / `!=` alongside `===` / `!==`, and its own
+    // comment promises "both equality operators" — but only the strict pair
+    // was exercised, so half that contract was unverified.
+    for (const src of [
+      `const isBrowser = typeof window != 'undefined'\nexport { isBrowser }`,
+      `const isServer = typeof document == 'undefined'\nexport { isServer }`,
+    ]) {
+      expect(ids(lintIn(dir, src, 'A.ts')), src).toContain(RID)
+    }
+  })
+
+  it('fires with the typeof on EITHER side, for both operators', () => {
+    // The operand order is the other half of the same promise.
+    for (const src of [
+      `const isServer = 'undefined' === typeof document\nexport { isServer }`,
+      `const isBrowser = 'undefined' != typeof window\nexport { isBrowser }`,
+    ]) {
+      expect(ids(lintIn(dir, src, 'A.ts')), src).toContain(RID)
+    }
+  })
+
   it('does NOT fire in test files', () => {
     const r = lintIn(
       dir,

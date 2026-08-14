@@ -163,6 +163,21 @@ describe('Reactivity edge bails', () => {
     expect(find(result, 'pyreon/no-context-destructure').length).toBe(0)
   })
 
+  it('no-effect-assignment flags a CONCISE arrow body, not just a block', () => {
+    // `effect(() => x.update(...))` — no braces. The rule handles this as a
+    // separate branch from the block-bodied form, and only the block form was
+    // exercised, so the shape an author is most likely to write for a
+    // one-liner went unchecked.
+    const result = lintFile(
+      fp,
+      `import { effect } from '@pyreon/reactivity'
+       const X = () => { effect(() => total.update((n) => n + 1)); return null }`,
+      allRules,
+      defaultConfig(),
+    )
+    expect(find(result, 'pyreon/no-effect-assignment').length).toBeGreaterThan(0)
+  })
+
   it('no-effect-assignment handles effect() without assignment inside', () => {
     const result = lintFile(
       fp,
