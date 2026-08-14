@@ -37,9 +37,12 @@ export function lanAddresses(): LanAddress[] {
       if (addr.internal) continue
       const family = normalizeFamily(addr.family)
       if (family === null) continue
-      // A link-local IPv4 (169.254/16) means DHCP failed — it is never the
-      // address someone else can reach you on.
-      if (family === 'IPv4' && addr.address.startsWith('169.254.')) continue
+      // Link-local is never the address someone else reaches you on, in
+      // either family. IPv4 169.254/16 means DHCP failed; IPv6 fe80::/10 is
+      // not even usable without a zone index, and a machine typically has one
+      // per interface — a real laptop produced EIGHT, which is certificate
+      // noise at best and makes the SAN list unreadable at worst.
+      if (isLinkLocal(addr.address, family)) continue
       found.push({ address: addr.address, iface, family })
     }
   }
@@ -64,6 +67,17 @@ function score(addr: LanAddress): number {
   // Common physical names across macOS/Linux/Windows.
   if (/^(en|eth|wl|wlan|Wi-?Fi|Ethernet)/i.test(addr.iface)) n += 20
   return n
+}
+
+/**
+ * Link-local in either family: IPv4 `169.254/16`, IPv6 `fe80::/10`.
+ *
+ * The v6 range is the first ten bits `1111111010`, so the second byte's top
+ * two bits must be `10` — that is `fe80` through `febf`, not just `fe80`.
+ */
+export function isLinkLocal(address: string, family: 'IPv4' | 'IPv6'): boolean {
+  if (family === 'IPv4') return address.startsWith('169.254.')
+  return /^fe[89ab][0-9a-f]:/i.test(address)
 }
 
 export function isPrivateV4(address: string): boolean {

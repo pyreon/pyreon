@@ -13,7 +13,7 @@ import { connect } from 'node:tls'
 import { describe, expect, it } from 'vitest'
 
 import { createSelfSignedCert, dedupeHosts, ipv6ToBytes } from '../https/selfsign'
-import { hostsFileHint, isPrivateV4, needsHostsFileEntry, resolveHosts } from '../https/hosts'
+import { hostsFileHint, isLinkLocal, isPrivateV4, lanAddresses, needsHostsFileEntry, resolveHosts } from '../https/hosts'
 import { bannerLines } from '../https'
 import type { Certificate } from '../https/cert'
 
@@ -131,6 +131,29 @@ describe('host resolution', () => {
     // The nudge toward the zero-friction option is the useful half.
     expect(hint).toContain('.localhost')
     expect(hostsFileHint(['localhost', 'app.localhost'])).toBeNull()
+  })
+
+  it('excludes link-local in BOTH families, not just IPv4', () => {
+    // Found by running a real dev server: a laptop produced eight `fe80::`
+    // addresses, all of which landed in the certificate. Link-local is never
+    // reachable from another device (v6 needs a zone index at all), so it is
+    // pure noise — and the v4 half was already filtered, so this was an
+    // asymmetry rather than a considered choice.
+    expect(isLinkLocal('169.254.1.1', 'IPv4')).toBe(true)
+    expect(isLinkLocal('192.168.1.5', 'IPv4')).toBe(false)
+    expect(isLinkLocal('fe80::1', 'IPv6')).toBe(true)
+    // The range is fe80::/10 — the whole fe80-febf block, not only fe80.
+    expect(isLinkLocal('feb0::1', 'IPv6')).toBe(true)
+    expect(isLinkLocal('FE80:0:0:0:484:C64C:DA08:C964', 'IPv6')).toBe(true)
+    // A unique-local (fc00::/7) or global address IS routable — keep it.
+    expect(isLinkLocal('fd00::1', 'IPv6')).toBe(false)
+    expect(isLinkLocal('2001:db8::1', 'IPv6')).toBe(false)
+  })
+
+  it('never returns a link-local address from the real interface list', () => {
+    for (const addr of lanAddresses()) {
+      expect(isLinkLocal(addr.address, addr.family)).toBe(false)
+    }
   })
 
   it('classifies private IPv4 ranges', () => {
