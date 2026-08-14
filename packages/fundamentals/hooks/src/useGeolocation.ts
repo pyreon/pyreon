@@ -40,6 +40,8 @@
 
 import { batch, onCleanup, signal } from '@pyreon/reactivity'
 
+import { warnIfInsecureContext } from './secure-context'
+
 /** Options for {@link useGeolocation}. Mirrors `PositionOptions`. */
 export interface UseGeolocationOptions {
   /** Request the best available accuracy (costs battery). Default `false`. */
@@ -135,9 +137,12 @@ export function useGeolocation(options: UseGeolocationOptions = {}): UseGeolocat
   const start = (): void => {
     if (watchId !== undefined) return
     if (typeof navigator === 'undefined' || navigator.geolocation === undefined) {
-      // No navigator (SSR) or no Geolocation API (rare, non-secure origin).
-      // Surface it rather than silently never producing a fix — the native
-      // targets report a permission failure the same way.
+      // No navigator (SSR) or no Geolocation API. The comment here used to
+      // call the non-secure origin "rare" — it is not: it is EVERY time the
+      // app is opened on a phone over the LAN, which is the only place
+      // geolocation can be tested properly. `warnIfInsecureContext` names that
+      // cause when it is provably the one, and stays quiet otherwise.
+      warnIfInsecureContext('useGeolocation')
       error.set('[Pyreon] useGeolocation: Geolocation is unavailable in this environment')
       return
     }

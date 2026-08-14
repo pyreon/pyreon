@@ -115,3 +115,15 @@ export {
 // `i18n-routing-als` chunk + "node:async_hooks externalized" warning in consumer
 // client builds. See `i18n-routing-plugin.ts`.
 export { i18nRouting } from "./i18n-routing-plugin";
+
+// `https()` — TLS for the dev server. Server-only for the same reason as the
+// plugin above: it reaches for `node:crypto`, `node:child_process` and
+// `node:os`, none of which belong anywhere a client bundle can see.
+export type { Certificate, CertTier, HttpsOptions, LanAddress } from "./https";
+export {
+  createSelfSignedCert,
+  hostsFileHint,
+  https,
+  lanAddresses,
+  needsHostsFileEntry,
+} from "./https";

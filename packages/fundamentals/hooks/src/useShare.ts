@@ -14,6 +14,8 @@
 // Web Share API is absent on desktop Safari / older browsers — native
 // always returns true).
 
+import { warnIfInsecureContext } from './secure-context'
+
 export interface UseShareResult {
   /** Share plain text. */
   text: (text: string) => void
@@ -26,7 +28,10 @@ export interface UseShareResult {
 }
 
 function webShare(data: ShareData): void {
-  if (typeof navigator === 'undefined' || typeof navigator.share !== 'function') return
+  if (typeof navigator === 'undefined' || typeof navigator.share !== 'function') {
+    warnIfInsecureContext('useShare')
+    return
+  }
   // navigator.share returns a Promise that rejects if the user cancels the
   // share sheet — a cancel is not an error, so swallow it.
   void navigator.share(data).catch(() => {})

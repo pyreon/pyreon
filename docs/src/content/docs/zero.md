@@ -1373,6 +1373,7 @@ Note on the `revalidate` name: `isr.revalidate` is the RUNTIME stale-while-reval
 | `aiPlugin`       | `@pyreon/zero/ai`          | Generates `llms.txt`, JSON-LD inference, AI manifest  |
 | `iconsPlugin`    | `@pyreon/zero/server`      | Scan an icon dir → typed `<Icon name>` set            |
 | `i18nRouting`    | `@pyreon/zero/server`      | Request-time locale detection middleware              |
+| `https`          | `@pyreon/zero/server`      | TLS for the dev server; see below                     |
 
 ```ts
 import { faviconPlugin } from '@pyreon/zero/favicon'
@@ -1381,6 +1382,111 @@ import { ogImagePlugin } from '@pyreon/zero/og-image'
 faviconPlugin({ source: './icon.svg', locales: { de: { source: './icon-de.svg' } } })
 ogImagePlugin({ templates: { default: './og-template.tsx' }, locales: { en: { title: 'My App' } } })
 ```
+
+## HTTPS in Development
+
+```ts
+import { https } from '@pyreon/zero/server'
+
+export default defineConfig({
+  plugins: [
+    zero(),
+    https({ lan: true }),
+  ],
+})
+```
+
+### Why you would want it
+
+**Not for localhost.** `http://localhost` is already a *secure context*, so the
+browser APIs that require one work there without any of this.
+
+It exists for **real devices**. A phone reaches your dev server at
+`http://192.168.1.24:3000`, and that is *not* a secure context — so every hook
+the browser gates behind one is unavailable:
+
+`useCamera` · `useGeolocation` · `useDeviceMotion` · `useAudioRecorder` ·
+`useSpeech` · `useBluetooth` · `useClipboard` · `useNotifications` · `usePush` ·
+`useShare` · `useWakeLock` — plus service workers and `crypto.subtle`.
+
+Those are exactly the hooks that can only be tested on a phone: a laptop has no
+accelerometer, and its webcam is not the camera you care about. So without
+HTTPS, the hooks that most need device testing are the ones that cannot be
+device-tested.
+
+They also fail *silently*. On an insecure origin the browser does not throw —
+it simply does not define the API, so the hook reports "unsupported" with
+nothing to diagnose. Pyreon dev builds detect this and tell you:
+
+```text
+[Pyreon] useGeolocation needs a secure context, and http://192.168.1.24:3000 is not one.
+  Serve the dev server over HTTPS:
+      import { https } from '@pyreon/zero/server'
+      plugins: [zero(), https({ lan: true })]
+```
+
+### Options
+
+| Option       | Effect                                                                    |
+| ------------ | ------------------------------------------------------------------------- |
+| `lan`        | Certify this machine's network address **and bind to it**, for devices     |
+| `hosts`      | Extra names to certify, e.g. `['app.localhost']`                           |
+| `cert` / `key` | Bring your own certificate (both required together)                     |
+| `selfSigned` | Skip mkcert detection; always self-sign                                    |
+| `quiet`      | Suppress the banner (the certificate still applies)                        |
+
+`lan: true` does both halves deliberately. Certifying a LAN address while the
+server stays bound to loopback would produce a certificate for an address
+nothing can reach.
+
+:::caution[`lan: true` exposes your dev server]
+Binding to your network interfaces makes the dev server — and everything it
+serves, including source and any env values exposed to the client — reachable
+by **anyone else on that network**. This is the same exposure as Vite's
+`--host`, and it is the point of the option; just be deliberate about it on a
+network you do not control (a café, a conference, a shared office).
+:::
+
+### Where the certificate comes from
+
+Three tiers, in order:
+
+1. **Yours** — `{ cert, key }`, used verbatim.
+2. **mkcert** — if `mkcert` is installed *and* `mkcert -install` has been run,
+   the certificate is issued by your local CA and there is **no browser
+   warning**. Nothing is installed by Pyreon; it just uses what is already
+   trusted.
+3. **Self-signed** — generated with zero dependencies. Works immediately; the
+   browser shows a one-time interstitial you click through.
+
+**Pyreon never installs a certificate authority.** A local CA private key can
+mint a valid certificate for *any* domain, so whoever can read that file can
+intercept traffic to any site — not just localhost. Trusting one is a real,
+lasting change to your machine's security posture, and that is your decision to
+make deliberately (`mkcert -install`), not a side effect of adding a plugin.
+
+### Custom domains
+
+Prefer a `*.localhost` name — it resolves to loopback natively, with no
+hosts-file entry:
+
+```ts
+https({ hosts: ['app.localhost', 'api.localhost'] })
+```
+
+Anything else (`.test`, a real domain) needs a hosts-file line. The plugin
+**prints** the exact lines and never writes them — editing `/etc/hosts` needs
+root, is global to the machine, and a stale entry left behind by a tool you
+have since removed is genuinely unpleasant to debug.
+
+### Limits
+
+- **HTTP/1.1 only.** Vite's dev server has not served HTTP/2 since v3, so this
+  gives you TLS, not h2.
+- **Dev and preview only.** The plugin is inert during `build` — production TLS
+  is your host's or reverse proxy's job.
+- The certificate is cached under `node_modules/.pyreon-https` and reissued
+  automatically when the host list changes or expiry approaches.
 
 ## i18n
 
