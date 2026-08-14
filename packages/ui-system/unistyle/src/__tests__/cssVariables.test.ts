@@ -301,7 +301,13 @@ describe('resolveCssVarReferences — ReDoS-safe (linear scan)', () => {
   // Set by scripts/check-coverage.ts when it spawns the instrumented run.
   // vitest exposes no env var of its own for this, so the runner states it
   // explicitly rather than the test guessing.
-  it.skipIf(process.env.PYREON_COVERAGE_RUN === '1')(
+  // This package narrows `process.env` to `{ NODE_ENV?: string }` on purpose —
+  // it polices bundler-agnostic dev gates in SHIPPED code. A test reading a
+  // CI-only flag is outside that concern, so widen it here rather than
+  // loosening the package-wide type.
+  const COVERAGE_RUN =
+    (process.env as unknown as Record<string, string | undefined>).PYREON_COVERAGE_RUN === '1'
+  it.skipIf(COVERAGE_RUN)(
     'the CodeQL-flagged pathological input resolves in linear time (N vs 4N growth ratio)',
     () => {
       const tSmall = minTimeMs(attackString(SPACES_SMALL))
