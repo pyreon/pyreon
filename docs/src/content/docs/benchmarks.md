@@ -55,9 +55,23 @@ outright**, ties Solid on `select`, and Solid edges it on `remove` (7.20 vs
 7.30ms). The only measurable cost vs hand-written vanilla JS is bulk-create
 (~6–7% — per-row signal allocation plus the keyed-`<For>` map).
 
-**Retained memory** (post-suite, post-GC): Vanilla 2.12 · Preact 2.22 ·
-**Pyreon 2.26** · Solid 2.29 · Svelte 2.46 · React 2.61 · Vue 3.48 MB —
-3rd of 7, 2nd among frameworks, 0.04MB behind Preact (a tie), ahead of Solid.
+**This table predates [Octane](https://octanejs.dev) joining the suite as the
+8th framework.** On the 8-framework field Octane is the nearest rival, and the
+op Pyreon is behind on is `clear rows` (one 100µs timer quantum), not `remove`
+— which the contiguous-removal fast path since took to won-or-tied. Per-op
+tie-vs-outright shuffles with machine noise, so treat it as a band rather than
+a fixed scoreboard; the current per-op record lives in
+`.claude/skills/pyreon-benchmarks/SKILL.md`.
+
+**Retained memory** (post-suite, post-GC; 2026-08-04 full field, identical
+ordering in 4 of 4 runs): Vanilla 2.34 · Preact 2.44 · **Pyreon 2.48** ·
+Solid 2.53 · Octane 2.56 · Svelte 2.68 · React 2.83 · Vue 3.70 MB —
+3rd of 9, 2nd among frameworks, 0.04MB behind Preact (a tie), ahead of Solid.
+
+These absolutes sit ~0.2MB uniformly above the 2026-07 baseline this page
+previously quoted (Pyreon 2.26 · Preact 2.22). That is a Chromium/run-baseline
+shift affecting every entrant, not a Pyreon regression — the ordering and the
+0.04MB Preact gap are identical in both eras.
 
 This page said the opposite until 2026-07-17 ("~2.90MB, mid-pack, the one
 dimension Pyreon does *not* lead"), and **our own benchmark was the reason**.
