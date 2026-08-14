@@ -5184,6 +5184,27 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       if (e.op === '**') {
         return `pow(Double(${bl}), Double(${br}))`
       }
+      // JS `+` where EITHER operand is a string is string CONCATENATION —
+      // the non-string operand is coerced to text (`"n=" + 5 === "n=5"`).
+      // Swift has NO implicit String↔Int/Double/Bool conversion, so
+      // `"n=" + count` (String + Int) is a hard type error. When the `+` is
+      // genuinely a concat (one side infers `string`), coerce each CONCRETE
+      // non-string operand via `String(...)` — Int/Double/Bool all conform to
+      // LosslessStringConvertible, so `String(5)` / `String(true)` are sound.
+      // A purely numeric `+` (neither side a string) never enters here and
+      // falls through to the Int×Double arithmetic handling below unchanged;
+      // a `string + unknown` leaves the unknown operand alone (best-effort).
+      if (
+        e.op === '+' &&
+        (inferType(e.left, _activeInferCtx).kind === 'string' ||
+          inferType(e.right, _activeInferCtx).kind === 'string')
+      ) {
+        const coerce = (sub: ExprIR, emitted: string): string => {
+          const k = inferType(sub, _activeInferCtx).kind
+          return k === 'number' || k === 'boolean' ? `String(${emitted})` : emitted
+        }
+        return `${coerce(e.left, bl)} + ${coerce(e.right, br)}`
+      }
       // Mixed Int×Double — Swift has no implicit Int→Double conversion, so
       // `count() * 0.5` (Int signal × fractional literal) is a type error.
       // Coerce the INT side to Double when EXACTLY one operand is Double.

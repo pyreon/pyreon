@@ -4211,6 +4211,25 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       if (e.op === '**') {
         return `Math.pow((${bl}).toDouble(), (${br}).toDouble())`
       }
+      // JS `+` where EITHER operand is a string is string CONCATENATION.
+      // Kotlin's `String.plus(Any?)` coerces a RIGHT-hand non-string
+      // (`"n=" + 5` works), but a non-string on the LEFT (`5 + "items"`,
+      // `Int.plus(String)`) has no candidate and is a hard type error. Coerce
+      // each CONCRETE non-string operand with `.toString()` so the concat is
+      // correct regardless of operand order (harmless String+String when the
+      // right is already coerced); a purely numeric `+` never enters here and
+      // falls through unchanged, and `string + unknown` leaves the unknown be.
+      if (
+        e.op === '+' &&
+        (inferType(e.left, _kotlinExprInferCtx).kind === 'string' ||
+          inferType(e.right, _kotlinExprInferCtx).kind === 'string')
+      ) {
+        const coerce = (sub: ExprIR, emitted: string): string => {
+          const k = inferType(sub, _kotlinExprInferCtx).kind
+          return k === 'number' || k === 'boolean' ? `(${emitted}).toString()` : emitted
+        }
+        return `${coerce(e.left, bl)} + ${coerce(e.right, br)}`
+      }
       // Bitwise ops — Kotlin has NO bitwise symbols; they're INFIX
       // FUNCTIONS on Int (`a and b`, `a shl 1`, …). Infix functions bind
       // looser than arithmetic, so a compound operand is parenthesized to
