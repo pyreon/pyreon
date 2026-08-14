@@ -402,6 +402,30 @@ plugins: [pyreon(), zero({ i18n: { locales, defaultLocale } }), i18nRouting({ lo
       seeAlso: ['zero', 'I18nRoutingConfig', 'createLocaleContext'],
     },
     {
+      name: 'https',
+      kind: 'function',
+      signature:
+        'function https(options?: HttpsOptions): Plugin // server-only; dev + preview',
+      summary:
+        "Serves the dev server over TLS. NOT for localhost — `http://localhost` is already a secure context, so the gated browser APIs work there without it. It exists for REAL DEVICES: a phone reaches the dev server at `http://192.168.1.24:3000`, which is NOT a secure context, so `useCamera`, `useGeolocation`, `useDeviceMotion`, `useAudioRecorder`, `useBluetooth`, `useClipboard`, `usePush`, `useShare`, `useWakeLock` and service workers are all unavailable — silently, because the browser just doesn't define the API. `lan: true` certifies this machine's network address AND binds the server to it. Certificates come from three tiers in order: `{ cert, key }` if given; a local `mkcert` CA if one is installed (warning-free); otherwise a self-signed certificate generated with zero dependencies, which works immediately behind a one-time browser interstitial. Pyreon never installs a certificate authority itself — a local CA key can mint a certificate for ANY domain, so trusting one is the user's decision, not a plugin's.",
+      example: `import { https } from '@pyreon/zero/server'
+
+plugins: [
+  zero(),
+  https({ lan: true }),                 // test sensor hooks on a real phone
+  // https({ hosts: ['app.localhost'] }),  // custom domain, no hosts-file entry needed
+  // https({ cert: './dev.pem', key: './dev-key.pem' }),  // bring your own
+]`,
+      mistakes: [
+        'Reaching for it to fix localhost — `http://localhost` is ALREADY a secure context. If an API is missing there, the browser genuinely does not implement it and TLS will not help',
+        'Using `hosts: [\'app.test\']` and expecting it to resolve. Only `*.localhost` resolves to loopback natively; anything else needs an `/etc/hosts` line, which the plugin PRINTS and deliberately never writes',
+        'Expecting a warning-free certificate out of the box. Without `mkcert -install`, the certificate is self-signed and the browser shows a one-time interstitial — that is the honest default, because the alternative is installing a root CA on your machine',
+        'Certifying a LAN address without `lan: true` (e.g. via `hosts`) — the certificate then covers an address the server never binds to, so nothing can reach it. `lan: true` does both halves',
+        'Expecting HTTP/2. Vite dev has not served h2 since v3; this gives TLS over HTTP/1.1',
+      ],
+      seeAlso: ['zero', 'HttpsOptions', 'lanAddresses'],
+    },
+    {
       name: 'validateEnv',
       kind: 'function',
       signature:

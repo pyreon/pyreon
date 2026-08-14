@@ -1,5 +1,7 @@
 import { isClient, onCleanup, signal } from '@pyreon/reactivity'
 
+import { warnIfInsecureContext } from './secure-context'
+
 /**
  * The slice of `WakeLockSentinel` this hook uses. `addEventListener` is
  * optional so an older engine that predates the event still works — it just
@@ -61,7 +63,10 @@ export function useWakeLock(): WakeLockControls {
     // Guard inline rather than through `supported()`. The SSR lint rule
     // cannot trace a cross-function guard, and an explicit early return
     // documents the contract at the site that actually touches the global.
-    if (typeof navigator === 'undefined' || !('wakeLock' in navigator)) return false
+    if (typeof navigator === 'undefined' || !('wakeLock' in navigator)) {
+      warnIfInsecureContext('useWakeLock')
+      return false
+    }
     if (sentinel !== null) return active()
     try {
       const nav = navigator as Navigator & {

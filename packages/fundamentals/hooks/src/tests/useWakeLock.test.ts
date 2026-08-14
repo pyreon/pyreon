@@ -94,6 +94,17 @@ describe('useWakeLock', () => {
     expect(w.active()).toBe(false)
   })
 
+  it('request() on an unsupported platform is a quiet false, not a throw', async () => {
+    // The bail is also where the secure-context diagnostic fires: an insecure
+    // origin is one of the two ways `wakeLock` goes missing, and it is the one
+    // the user can fix. Reaching this path without a working lock must stay a
+    // plain `false` — a hook that threw here would take down a component whose
+    // only sin is running on a browser that lacks the API.
+    const w = mountHook()
+    await expect(w.request()).resolves.toBe(false)
+    expect(w.active()).toBe(false)
+  })
+
   it('acquires and releases', async () => {
     const { request } = installWakeLock()
     const w = mountHook()
