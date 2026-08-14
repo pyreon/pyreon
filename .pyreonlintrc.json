@@ -112,7 +112,8 @@
           "packages/fundamentals/hotkeys/",
           "packages/fundamentals/rx/",
           "__tests__/",
-          ".test."
+          ".test.",
+          "packages/zero/zero/src/theme.tsx"
         ]
       }
     ],
@@ -194,6 +195,63 @@
           "packages/tools/vue-compat/",
           "packages/ui-system/styler/",
           "packages/zero/zero-content/"
+        ]
+      }
+    ],
+    "pyreon/toast-a11y": [
+      "warn",
+      {
+        "exemptPaths": [
+          "packages/fundamentals/toast/"
+        ]
+      }
+    ],
+    "pyreon/dangerously-set-inner-html": [
+      "warn",
+      {
+        "exemptPaths": [
+          "packages/zero/zero-content/src/components/CodeBlock.tsx"
+        ]
+      }
+    ],
+    "pyreon/no-href-navigation": [
+      "warn",
+      {
+        "exemptPaths": [
+          "packages/zero/zero/src/link.tsx"
+        ]
+      }
+    ],
+    "pyreon/no-inline-style-object": [
+      "warn",
+      {
+        "exemptPaths": [
+          "packages/ui-system/kinetic/"
+        ]
+      }
+    ],
+    "pyreon/prefer-use-is-active": [
+      "info",
+      {
+        "exemptPaths": [
+          "packages/native/compiler/",
+          "packages/zero/zero/src/entry-server.ts"
+        ]
+      }
+    ],
+    "pyreon/no-effect-in-mount": [
+      "info",
+      {
+        "exemptPaths": [
+          "packages/core/runtime-dom/src/keep-alive.ts"
+        ]
+      }
+    ],
+    "pyreon/prefer-field-array": [
+      "info",
+      {
+        "exemptPaths": [
+          "packages/fundamentals/feature/src/define-feature.ts"
         ]
       }
     ]

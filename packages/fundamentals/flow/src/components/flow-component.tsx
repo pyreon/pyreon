@@ -1,5 +1,5 @@
 import { For, isClient, provide, type VNodeChild, cx } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { batch, signal } from '@pyreon/reactivity'
 import {
   collectEdgeMarkers,
   DEFAULT_MARKER_END,
@@ -1029,71 +1029,80 @@ export function Flow(props: FlowComponentProps): VNodeChild {
     const conn = connectionState.peek()
     const sel = selectionBox.peek()
 
-    if (sel.active) {
-      // Select all nodes within the selection rectangle
-      const minX = Math.min(sel.startX, sel.currentX)
-      const minY = Math.min(sel.startY, sel.currentY)
-      const maxX = Math.max(sel.startX, sel.currentX)
-      const maxY = Math.max(sel.startY, sel.currentY)
+    // One pointerup is ONE state transition, so it gets one notify cycle. The
+    // three branches below are sequential (a drag can end while a connection is
+    // in flight), and the rubber-band branch is the expensive one: it calls
+    // `clearSelection()` plus `selectNode()` once PER hit node, so an unbatched
+    // band over 100 nodes fired 100+ cycles and re-rendered the canvas each
+    // time. The early `return` inside the branch exits the callback normally —
+    // `batch` still commits.
+    batch(() => {
+      if (sel.active) {
+        // Select all nodes within the selection rectangle
+        const minX = Math.min(sel.startX, sel.currentX)
+        const minY = Math.min(sel.startY, sel.currentY)
+        const maxX = Math.max(sel.startX, sel.currentX)
+        const maxY = Math.max(sel.startY, sel.currentY)
 
-      instance.clearSelection()
-      const measured = instance.measurements.peek()
-      for (const node of instance.nodes.peek()) {
-        // Effective box — a rubber-band selection must hit-test the node's
-        // REAL rendered rect, not the 150×40 phantom.
-        const { width: w, height: h } = getEffectiveDimensions(node, measured.get(node.id))
-        const nx = node.position.x
-        const ny = node.position.y
-        // Node is within box if any part overlaps
-        if (nx + w > minX && nx < maxX && ny + h > minY && ny < maxY) {
-          instance.selectNode(node.id, true)
-        }
-      }
-
-      selectionBox.set({ ...emptySelectionBox })
-      return
-    }
-
-    if (drag.active) {
-      const node = instance.getNode(drag.nodeId)
-      if (node) instance._emit.nodeDragEnd(node)
-      dragState.set({ ...emptyDrag })
-      helperLines.set({ x: null, y: null })
-    }
-
-    if (conn.active) {
-      // Connection draw set pointer capture on the .pyreon-flow container, so
-      // `e.target` is the CAPTURING container — NOT the element under the
-      // cursor. Hit-test the real drop target by cursor position instead.
-      const dropEl = isClient ? document.elementFromPoint(e.clientX, e.clientY) : null
-      const handle = dropEl?.closest('.pyreon-flow-handle') ?? null
-      if (handle) {
-        const targetNodeId = handle.closest('.pyreon-flow-node')?.getAttribute('data-nodeid') ?? ''
-        const targetHandleId = handle.getAttribute('data-handleid') ?? 'target'
-
-        if (targetNodeId && targetNodeId !== conn.sourceNodeId) {
-          const connection: Connection = {
-            source: conn.sourceNodeId,
-            target: targetNodeId,
-            sourceHandle: conn.sourceHandleId,
-            targetHandle: targetHandleId,
-          }
-
-          if (instance.isValidConnection(connection)) {
-            instance.addEdge({
-              source: connection.source,
-              target: connection.target,
-              ...(connection.sourceHandle != null ? { sourceHandle: connection.sourceHandle } : {}),
-              ...(connection.targetHandle != null ? { targetHandle: connection.targetHandle } : {}),
-            })
+        instance.clearSelection()
+        const measured = instance.measurements.peek()
+        for (const node of instance.nodes.peek()) {
+          // Effective box — a rubber-band selection must hit-test the node's
+          // REAL rendered rect, not the 150×40 phantom.
+          const { width: w, height: h } = getEffectiveDimensions(node, measured.get(node.id))
+          const nx = node.position.x
+          const ny = node.position.y
+          // Node is within box if any part overlaps
+          if (nx + w > minX && nx < maxX && ny + h > minY && ny < maxY) {
+            instance.selectNode(node.id, true)
           }
         }
+
+        selectionBox.set({ ...emptySelectionBox })
+        return
       }
 
-      connectionState.set({ ...emptyConnection })
-    }
+      if (drag.active) {
+        const node = instance.getNode(drag.nodeId)
+        if (node) instance._emit.nodeDragEnd(node)
+        dragState.set({ ...emptyDrag })
+        helperLines.set({ x: null, y: null })
+      }
 
-    isPanning = false
+      if (conn.active) {
+        // Connection draw set pointer capture on the .pyreon-flow container, so
+        // `e.target` is the CAPTURING container — NOT the element under the
+        // cursor. Hit-test the real drop target by cursor position instead.
+        const dropEl = isClient ? document.elementFromPoint(e.clientX, e.clientY) : null
+        const handle = dropEl?.closest('.pyreon-flow-handle') ?? null
+        if (handle) {
+          const targetNodeId = handle.closest('.pyreon-flow-node')?.getAttribute('data-nodeid') ?? ''
+          const targetHandleId = handle.getAttribute('data-handleid') ?? 'target'
+
+          if (targetNodeId && targetNodeId !== conn.sourceNodeId) {
+            const connection: Connection = {
+              source: conn.sourceNodeId,
+              target: targetNodeId,
+              sourceHandle: conn.sourceHandleId,
+              targetHandle: targetHandleId,
+            }
+
+            if (instance.isValidConnection(connection)) {
+              instance.addEdge({
+                source: connection.source,
+                target: connection.target,
+                ...(connection.sourceHandle != null ? { sourceHandle: connection.sourceHandle } : {}),
+                ...(connection.targetHandle != null ? { targetHandle: connection.targetHandle } : {}),
+              })
+            }
+          }
+        }
+
+        connectionState.set({ ...emptyConnection })
+      }
+
+      isPanning = false
+    })
   }
 
   // ── Keyboard ───────────────────────────────────────────────────────────
