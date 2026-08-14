@@ -328,6 +328,15 @@ export function isBenchPath(file: string): boolean {
  * touched (one entry per package whose published source actually
  * changed). Used in the log line so failure messages name what
  * triggered the gate.
+ *
+ * MUST use the SAME predicate as the decision (`isConsumerAffectingFile`).
+ * It previously applied only the owner-level checks (published / not ignored)
+ * and skipped the per-file exclusions — test paths, `bench/`, manifests,
+ * vitest configs — so the failure message named packages that had NOT
+ * triggered the gate. A bench-only change to six packages plus a `scripts`
+ * edit in a seventh reported all seven, sending the author to look for a
+ * consumer-visible change in six packages that had none. A diagnostic that
+ * disagrees with the decision it explains is worse than no diagnostic.
  */
 export function consumerPackagesTouched(
   files: string[],
@@ -337,10 +346,9 @@ export function consumerPackagesTouched(
 ): string[] {
   const hits = new Set<string>()
   for (const file of files) {
+    if (!isConsumerAffectingFile(file, packages, ignoredNames, repoRoot)) continue
     const owner = findOwningPackage(file, packages, repoRoot)
     if (!owner) continue
-    if (owner.private) continue
-    if (ignoredNames.has(owner.name)) continue
     hits.add(owner.name)
   }
   return [...hits].sort()
