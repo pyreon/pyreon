@@ -59,6 +59,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
+import { unloweredLayoutPropWarning } from './unlowered-layout-props'
 import type {
   AttrIR,
   ChildIR,
@@ -4868,6 +4869,12 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   }
   const mod = emitKotlinLayoutModifier(eForMod)
   const modArg = mod === '' ? '' : `, modifier = ${mod}`
+  // `truncate` — see the Swift mirror. Compose needs BOTH: `maxLines` alone
+  // clips mid-glyph, `overflow` alone has no line bound to overflow past.
+  const truncArgs =
+    readStaticAttrKotlin(e, 'truncate') === true
+      ? `, maxLines = 1, overflow = TextOverflow.Ellipsis`
+      : ''
   // Custom font → fontFamily = pyreonFont("<resource-name>") — a
   // runtime res/font lookup (PyreonAssets.kt), so no PostScript map is
   // needed on Android (Compose loads the font file directly).
@@ -4876,9 +4883,9 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
     typeof font === 'string'
       ? `, fontFamily = pyreonFont(${JSON.stringify(sanitizeKotlinFontName(font))})`
       : ''
-  if (e.children.length === 0) return `Text(text = ""${typoArgs}${fontArg}${modArg})`
+  if (e.children.length === 0) return `Text(text = ""${typoArgs}${fontArg}${truncArgs}${modArg})`
   if (e.children.length === 1 && e.children[0]!.kind === 'text') {
-    return `Text(text = ${JSON.stringify(e.children[0]!.value)}${typoArgs}${fontArg}${modArg})`
+    return `Text(text = ${JSON.stringify(e.children[0]!.value)}${typoArgs}${fontArg}${truncArgs}${modArg})`
   }
   const parts: string[] = []
   for (const c of e.children) {
@@ -4903,7 +4910,7 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
       parts.push(kotlinInterpSegment(childExpr, indent))
     }
   }
-  return `Text(text = "${parts.join('')}"${typoArgs}${fontArg}${modArg})`
+  return `Text(text = "${parts.join('')}"${typoArgs}${fontArg}${truncArgs}${modArg})`
 }
 
 /**
@@ -5840,6 +5847,18 @@ function emitKotlinStack(
   const composable = isRow ? 'Row' : 'Column'
 
   const initArgs: string[] = []
+  // `justify` / `wrap` reach here and lower to NOTHING on either target.
+  // Compose COULD express justify on its own (Arrangement.SpaceBetween), but
+  // shipping only the Compose half would put the two platforms out of
+  // agreement — see unlowered-layout-props.ts.
+  for (const prop of ['justify', 'wrap'] as const) {
+    const w = unloweredLayoutPropWarning(
+      isRow ? 'Inline' : 'Stack',
+      prop,
+      e.attrs.some((a) => a.kind === 'attr' && a.name === prop),
+    )
+    if (w !== undefined) _emitWarnings.push(w)
+  }
   // gap → arrangement
   const gap = kotlinStylingValue(e, 'gap', resolveSpace)
   if (gap !== undefined) {

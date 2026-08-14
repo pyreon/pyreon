@@ -158,6 +158,14 @@ export function conditionalKotlinImports(emitted: string): string {
   if (emitted.includes('ContentScale.')) {
     imports.push('import androidx.compose.ui.layout.ContentScale')
   }
+  // `<Text truncate>` emits `overflow = TextOverflow.Ellipsis`. Same
+  // single-package star-import trap: TextOverflow lives in
+  // androidx.compose.ui.text.style, which `androidx.compose.ui.*` does NOT
+  // reach. The validate loop concatenates its stubs into one unit and so
+  // resolves it either way — only the real gradle build needs this line.
+  if (emitted.includes('TextOverflow.')) {
+    imports.push('import androidx.compose.ui.text.style.TextOverflow')
+  }
   // Color / RoundedCornerShape (PR-1.3 device-found): the emit produces
   // `Color(0xFF…)` (any `color=` prop, e.g. an Icon tint) and
   // `RoundedCornerShape(…)` (a `radius` prop), but neither lives in a

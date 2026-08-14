@@ -63,6 +63,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
+import { unloweredLayoutPropWarning } from './unlowered-layout-props'
 import type {
   AttrIR,
   ChildIR,
@@ -6038,6 +6039,14 @@ function emitSwiftText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   // passed and only the tag-querying Android smoke caught it.
   const font = readStaticAttr(e, 'font')
   let result = emitSwiftTextCore(e, indent)
+  // `truncate` — a documented prop on the canonical Text that produced NO
+  // emit at all, on either target, with no warning. A label that should
+  // ellipsize instead wrapped to as many lines as it needed, silently
+  // reflowing the surrounding layout. `.lineLimit(1)` alone would clip
+  // rather than ellipsize, so the truncation mode is part of the contract.
+  if (readStaticAttr(e, 'truncate') === true) {
+    result += `.lineLimit(1).truncationMode(.tail)`
+  }
   if (typeof font === 'string') {
     // Custom font → .font(.custom("<PostScriptName>", size: 17)). The
     // PostScript name (not the canonical/filename) is what Font.custom
@@ -7127,6 +7136,17 @@ function emitSwiftStack(
   )
   if (align !== undefined) {
     initArgs.push(`alignment: ${align}`)
+  }
+  // `justify` / `wrap` reach here and lower to NOTHING on either target.
+  // Warn rather than drop silently — see unlowered-layout-props.ts for why
+  // they are declared instead of half-implemented.
+  for (const prop of ['justify', 'wrap'] as const) {
+    const w = unloweredLayoutPropWarning(
+      isRow ? 'Inline' : 'Stack',
+      prop,
+      e.attrs.some((a) => a.kind === 'attr' && a.name === prop),
+    )
+    if (w !== undefined) _emitWarnings.push(w)
   }
   const gap = swiftStylingValue(e, 'gap', resolveSpace)
   if (gap !== undefined) {

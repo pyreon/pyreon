@@ -148,9 +148,10 @@ object LocalContext {
 
 // Text — style/color args added for Heading emit (P2.2). Defaults keep
 // the bare Text(text = "...") call sites (from Text emit) valid.
+enum class TextOverflow { Clip, Ellipsis, Visible }
 @Composable
 @Suppress("UNUSED_PARAMETER")
-fun Text(text: String, style: TextStyle = TextStyle(), color: Color? = null, fontSize: TextUnit = TextUnit(0f), fontWeight: FontWeight? = null, fontStyle: FontStyle? = null, textAlign: TextAlign? = null, fontFamily: FontFamily? = null, letterSpacing: TextUnit = TextUnit(0f), modifier: Modifier = Modifier) {}
+fun Text(text: String, style: TextStyle = TextStyle(), color: Color? = null, fontSize: TextUnit = TextUnit(0f), fontWeight: FontWeight? = null, fontStyle: FontStyle? = null, textAlign: TextAlign? = null, fontFamily: FontFamily? = null, letterSpacing: TextUnit = TextUnit(0f), maxLines: Int = Int.MAX_VALUE, overflow: TextOverflow = TextOverflow.Clip, modifier: Modifier = Modifier) {}
 
 @Composable
 fun Button(

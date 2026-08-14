@@ -354,6 +354,7 @@ public struct PrimitiveButtonStyleStub { public static let plain = PrimitiveButt
 public enum AccessibilityChildBehavior { case contain, combine, ignore }
 
 // ---- View modifiers ----
+public enum TextTruncationMode { case head, tail, middle }
 extension View {
   // CRUX — the EXACT SwiftUI generic constraint. \`value: Any\` would MASK the
   // \`.animation(_:value:)\`-needs-Equatable class (the M2.8 incident). Do not loosen.
@@ -368,6 +369,12 @@ extension View {
   public func onSubmit(_ action: @escaping () -> Void) -> some View { self }
   public func font(_ font: Font?) -> some View { self }
   public func opacity(_ opacity: Double) -> some View { self }
+  // A <Text truncate> emits .lineLimit(1).truncationMode(.tail). Both are
+  // View extensions in real SwiftUI; the stub simply lacked them, which
+  // made a CORRECT emit fail the gate -- a stub NARROWER than the runtime
+  // manufactures a bug, exactly as a wider one hides one.
+  public func lineLimit(_ number: Int?) -> some View { self }
+  public func truncationMode(_ mode: TextTruncationMode) -> some View { self }
   public func padding() -> some View { self }
   public func padding(_ length: Double) -> some View { self }
   public func sheet<C: View>(isPresented: Binding<Bool>, @ViewBuilder content: () -> C) -> some View { self }
