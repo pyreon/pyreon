@@ -113,6 +113,56 @@ describe('https() on a real dev server', () => {
     }
   }, 60_000)
 
+  it('warns when a certified address is unreachable, and stays quiet when it is not', async () => {
+    // The pure predicate has its own specs; this pins the WIRING, which is the
+    // half that silently does nothing if the hook is wrong. Both directions
+    // matter: a warning that also fires on a correct setup is noise, and noise
+    // is how a real warning gets ignored.
+    const root = makeRoot()
+    const warned: string[] = []
+    const logger = {
+      info: () => {},
+      warn: (msg: string) => warned.push(msg),
+      warnOnce: () => {},
+      error: () => {},
+      clearScreen: () => {},
+      hasErrorLogged: () => false,
+      hasWarned: false,
+    }
+
+    const misconfigured = await createServer({
+      root,
+      configFile: false,
+      logLevel: 'info',
+      customLogger: logger,
+      plugins: [https({ hosts: ['192.168.99.99'], selfSigned: true, quiet: true })],
+      server: { port: 0, host: false },
+    })
+    try {
+      await misconfigured.listen()
+    } finally {
+      await misconfigured.close()
+    }
+    expect(warned.join('\n')).toContain('192.168.99.99')
+    expect(warned.join('\n')).toContain('lan: true')
+
+    warned.length = 0
+    const correct = await createServer({
+      root,
+      configFile: false,
+      logLevel: 'info',
+      customLogger: logger,
+      plugins: [https({ lan: true, selfSigned: true, quiet: true })],
+      server: { port: 0, host: false },
+    })
+    try {
+      await correct.listen()
+    } finally {
+      await correct.close()
+    }
+    expect(warned).toEqual([])
+  }, 60_000)
+
   it('does nothing during a build — a certificate in CI is pure waste', () => {
     const plugin = https({ selfSigned: true })
     const config = plugin.config as (c: object, e: { command: string; mode: string }) => unknown
