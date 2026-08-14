@@ -22,6 +22,18 @@ export default defineNodeConfig({
     // on every invocation (gate name: `loom-scan`), which is stronger coverage
     // than a unit test of the same three lines.
     'src/cli/run-scan-gate.ts',
+    // The static-site build. It is EXERCISED — `static-site.test.ts` spawns
+    // the real `loom build` bin and asserts on the emitted files, which is
+    // stronger than line coverage — but the build now runs in a CHILD PROCESS,
+    // where v8's instrumenter cannot see it. It was moved out of process
+    // because an in-process Vite+SSG pass inherits vitest's `NODE_ENV=test`,
+    // builds non-production, and peaked at ~3.9 GB, which killed the
+    // `Coverage (Full)` worker under parallel load.
+    //
+    // `appDir` and `NO_BUILD_DEPS` in the same file still have real in-process
+    // specs; they are excluded along with it rather than split into a second
+    // module purely to satisfy the instrumenter.
+    'src/build/static-site.ts',
     'src/ui/bases.tsx',
     'src/ui/chrome.ts',
     'src/ui/kit.ts',
