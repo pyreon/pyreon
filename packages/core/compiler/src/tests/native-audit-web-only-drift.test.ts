@@ -16,8 +16,8 @@ const REPO_ROOT = join(import.meta.dirname, '..', '..', '..', '..', '..')
 function listedWebOnly(): string[] {
   const src = readFileSync(join(REPO_ROOT, 'packages/core/compiler/src/native-audit.ts'), 'utf8')
   const block = /const WEB_ONLY_PACKAGES = new Set<string>\(\[(.*?)\]\)/s.exec(src)
-  expect(block, 'WEB_ONLY_PACKAGES block not found').toBeTruthy()
-  return [...block![1].matchAll(/'(@pyreon\/[a-z-]+)'/g)].map((m) => m[1]!)
+  if (!block?.[1]) throw new Error('WEB_ONLY_PACKAGES block not found in native-audit.ts')
+  return [...block[1].matchAll(/'(@pyreon\/[a-z-]+)'/g)].map((m) => m[1]!)
 }
 
 function declaredTier(pkg: string): string | null {

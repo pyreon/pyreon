@@ -29,6 +29,29 @@ interface ErrorPattern {
 
 const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // The residual footgun left by this PR's captured-once prop fixes. Those
+    // components now read through `props`, but the CLASS is still writable by
+    // hand: a body-scope destructure freezes the value at setup because
+    // components run ONCE. It surfaces as "the prop changed and nothing moved"
+    // — no exception at all — so the only reliable trigger string is the
+    // reactivity-lens / detector wording a user pastes in when they finally
+    // ask why.
+    //
+    // Keyed on the diagnostic text rather than a thrown message, for the same
+    // reason as the <textarea value> entry above: a silent wrong render never
+    // produces an exception to match on.
+    pattern: /props?[- ]destructured|destructur\w* props|prop (?:is |value )?(?:frozen|stale|never updates)/i,
+    diagnose: () => ({
+      cause:
+        'A component body destructured `props` — `const { gap } = props`. Pyreon components run ONCE, so that reads the value a single time at setup and pins it. A later `gap={zoom()}` never reaches the DOM, and nothing throws.',
+      fix: 'Read through `props` at the use site, or `splitProps(props, [...])` when you need a group. If the component BRANCHES on a prop (returning different trees), the branch must live inside a returned reactive accessor too — otherwise it stays pinned to whichever branch rendered first.',
+      fixCode:
+        '// frozen — captured once at setup\nconst { gap = 20 } = props\n\n// live — re-read whenever the accessor re-runs\nconst gapOf = () => props.gap ?? 20\nreturn () => <rect width={String(gapOf())} />',
+      related:
+        'Destructuring an ACCESSOR prop (`show: () => boolean`) or a stable instance/config reference is safe — the capture is the function or the reference, not a resolved value.',
+    }),
+  },
+  {
     // The residual footgun left by the <textarea value> SSR fix. `value` now
     // serializes correctly, but the React habit `defaultValue` still emits a
     // nonsense `default-value=""` attribute and a BLANK control -- silently,
