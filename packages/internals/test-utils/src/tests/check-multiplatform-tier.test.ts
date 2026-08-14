@@ -130,10 +130,16 @@ describe('the real-repo contract the gate holds', () => {
       'utf8',
     )
     const setMatch = parseSource.match(
-      /const WEB_ONLY_PACKAGES: ReadonlySet<string> = new Set\(\[([\s\S]*?)\]\)/,
+      /const WEB_ONLY_PACKAGES: ReadonlyMap<string, string> = new Map\(\[([\s\S]*?)\n\]\)/,
     )
     expect(setMatch, 'WEB_ONLY_PACKAGES not found in parse.ts').toBeTruthy()
-    const compilerWebOnly = [...setMatch![1]!.matchAll(/'(@pyreon\/[a-z-]+)'/g)].map((m) => m[1]!)
+    // Anchor on the ENTRY-OPENING bracket, not a bare quoted name: each entry
+    // now carries the manifest rationale as its value, and a rationale is free
+    // to mention another package by name. Matching `'@pyreon/x'` anywhere
+    // would silently absorb such a mention as a phantom set member.
+    const compilerWebOnly = [...setMatch![1]!.matchAll(/\['(@pyreon\/[a-z-]+)',/g)].map(
+      (m) => m[1]!,
+    )
     expect(compilerWebOnly.length).toBeGreaterThan(10)
 
     const manifests = await findManifests(REPO)
