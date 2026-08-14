@@ -67,7 +67,7 @@ describe('<Text truncate> lowers on both targets', () => {
 
   it.skipIf(!isSwiftcAvailable())('the emitted Swift compiles', () => {
     const r = validateSwiftWithStubs(code(`<Text truncate>a long label</Text>`, 'swift'))
-    expect(r.ok, r.errors?.join('\n')).toBe(true)
+    expect(r.ok, r.error).toBe(true)
   })
 
   it.skipIf(!isKotlincAvailable())('the emitted Kotlin compiles', () => {
@@ -75,7 +75,7 @@ describe('<Text truncate> lowers on both targets', () => {
     // androidx.compose.ui.text.style surface, so a wrong constant would fail
     // here rather than on a device.
     const r = validateKotlin(code(`<Text truncate>a long label</Text>`, 'kotlin'))
-    expect(r.ok, r.errors?.join('\n')).toBe(true)
+    expect(r.ok, r.error).toBe(true)
   })
 })
 
