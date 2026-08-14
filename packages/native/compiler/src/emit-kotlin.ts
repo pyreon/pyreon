@@ -59,6 +59,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
+import { unloweredPropWarning } from './unlowered-props'
 import type {
   AttrIR,
   ChildIR,
@@ -4945,6 +4946,12 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   }
   const mod = emitKotlinLayoutModifier(eForMod)
   const modArg = mod === '' ? '' : `, modifier = ${mod}`
+  // `truncate` — see the Swift mirror. Compose needs BOTH: `maxLines` alone
+  // clips mid-glyph, `overflow` alone has no line bound to overflow past.
+  const truncArgs =
+    readStaticAttrKotlin(e, 'truncate') === true
+      ? `, maxLines = 1, overflow = TextOverflow.Ellipsis`
+      : ''
   // Custom font → fontFamily = pyreonFont("<resource-name>") — a
   // runtime res/font lookup (PyreonAssets.kt), so no PostScript map is
   // needed on Android (Compose loads the font file directly).
@@ -4953,9 +4960,9 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
     typeof font === 'string'
       ? `, fontFamily = pyreonFont(${JSON.stringify(sanitizeKotlinFontName(font))})`
       : ''
-  if (e.children.length === 0) return `Text(text = ""${typoArgs}${fontArg}${modArg})`
+  if (e.children.length === 0) return `Text(text = ""${typoArgs}${fontArg}${truncArgs}${modArg})`
   if (e.children.length === 1 && e.children[0]!.kind === 'text') {
-    return `Text(text = ${JSON.stringify(e.children[0]!.value)}${typoArgs}${fontArg}${modArg})`
+    return `Text(text = ${JSON.stringify(e.children[0]!.value)}${typoArgs}${fontArg}${truncArgs}${modArg})`
   }
   const parts: string[] = []
   for (const c of e.children) {
@@ -4980,7 +4987,7 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
       parts.push(kotlinInterpSegment(childExpr, indent))
     }
   }
-  return `Text(text = "${parts.join('')}"${typoArgs}${fontArg}${modArg})`
+  return `Text(text = "${parts.join('')}"${typoArgs}${fontArg}${truncArgs}${modArg})`
 }
 
 /**
@@ -5036,13 +5043,64 @@ function emitKotlinButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
     ...(enabledArg ? [enabledArg] : []),
     ...(modifier ? [`modifier = ${modifier}`] : []),
   ]
+  // `variant` — the visual role. Compose expresses it by swapping the
+  // COMPOSABLE (Button / OutlinedButton / TextButton) rather than by a
+  // modifier, so it changes the callee, not the arg list. `danger` keeps
+  // Button and overrides its container colour.
+  //
+  // Material 2 spellings throughout (`backgroundColor`, `MaterialTheme.colors`)
+  // — the emit's base is androidx.compose.material.*, and the M3 names are
+  // exactly the trap that shipped once with <Heading> typography.
+  const variant = kotlinButtonVariant(e)
+  if (variant.colorsArg !== '') args.push(variant.colorsArg)
   const buttonArgs = args.join(', ')
   const pad = ' '.repeat(indent + 2)
   if (labelText !== null) {
-    return `Button(${buttonArgs}) {\n${pad}Text(${JSON.stringify(labelText)})\n${' '.repeat(indent)}}`
+    return `${variant.composable}(${buttonArgs}) {\n${pad}Text(${JSON.stringify(labelText)})\n${' '.repeat(indent)}}`
   }
   const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
-  return `Button(${buttonArgs}) {\n${contentLines}\n${' '.repeat(indent)}}`
+  return `${variant.composable}(${buttonArgs}) {\n${contentLines}\n${' '.repeat(indent)}}`
+}
+
+/**
+ * `<Button variant>` → the Material 2 composable that expresses that role.
+ * Absent (or `primary`, the documented default) keeps the plain `Button`, so
+ * every existing app's output is byte-identical.
+ */
+function kotlinButtonVariant(e: Extract<ExprIR, { kind: 'jsx-element' }>): {
+  composable: string
+  colorsArg: string
+} {
+  const plain = { composable: 'Button', colorsArg: '' }
+  const attr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'variant',
+  )
+  if (attr === undefined) return plain
+  const v = readStaticAttrKotlin(e, 'variant')
+  if (typeof v !== 'string') {
+    _emitWarnings.push(
+      `<Button variant>: only a static literal lowers (primary | secondary | ghost | danger) — the variant selects a different composable, which a runtime value cannot. The button falls back to the default style.`,
+    )
+    return plain
+  }
+  switch (v) {
+    case 'primary':
+      return plain
+    case 'secondary':
+      return { composable: 'OutlinedButton', colorsArg: '' }
+    case 'ghost':
+      return { composable: 'TextButton', colorsArg: '' }
+    case 'danger':
+      return {
+        composable: 'Button',
+        colorsArg: 'colors = ButtonDefaults.buttonColors(backgroundColor = MaterialTheme.colors.error)',
+      }
+    default:
+      _emitWarnings.push(
+        `<Button variant=${JSON.stringify(v)}>: not one of primary | secondary | ghost | danger — the button falls back to the default style.`,
+      )
+      return plain
+  }
 }
 
 /**
@@ -5920,6 +5978,18 @@ function emitKotlinStack(
   const composable = isRow ? 'Row' : 'Column'
 
   const initArgs: string[] = []
+  // `justify` / `wrap` reach here and lower to NOTHING on either target.
+  // Compose COULD express justify on its own (Arrangement.SpaceBetween), but
+  // shipping only the Compose half would put the two platforms out of
+  // agreement — see unlowered-layout-props.ts.
+  for (const prop of ['justify', 'wrap'] as const) {
+    const w = unloweredPropWarning(
+      isRow ? 'Inline' : 'Stack',
+      prop,
+      e.attrs.some((a) => a.kind === 'attr' && a.name === prop),
+    )
+    if (w !== undefined) _emitWarnings.push(w)
+  }
   // gap → arrangement
   const gap = kotlinStylingValue(e, 'gap', resolveSpace)
   if (gap !== undefined) {
@@ -6923,6 +6993,12 @@ function emitKotlinLink(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   indent: number,
 ): string {
+  // `external` reaches here and lowers to NOTHING on either target — see
+  // unlowered-props.ts. Warn rather than drop it silently.
+  {
+    const w = unloweredPropWarning('Link', 'external', e.attrs.some((a) => a.kind === 'attr' && a.name === 'external'))
+    if (w !== undefined) _emitWarnings.push(w)
+  }
   const toAttr = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'attr' }> =>
       a.kind === 'attr' && a.name === 'to',

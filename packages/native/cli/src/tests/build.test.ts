@@ -297,6 +297,24 @@ describe('@pyreon/native-cli build', () => {
     expect(plain).not.toContain('text.input.VisualTransformation')
   })
 
+  it('Kotlin conditional imports: TextOverflow pulls its text.style import', () => {
+    // `<Text truncate>` emits `overflow = TextOverflow.Ellipsis`. TextOverflow
+    // lives in androidx.compose.ui.text.style, which the unconditional
+    // `androidx.compose.ui.*` star import does NOT reach (Kotlin star imports
+    // are single-package). The validate loop concatenates its stubs into one
+    // compilation unit and resolves it either way, so ONLY the real gradle
+    // build can catch a missing import — which is why this is asserted here
+    // rather than left to the emit tests.
+    const withTrunc = conditionalKotlinImports(
+      'Text(text = "x", maxLines = 1, overflow = TextOverflow.Ellipsis)',
+    )
+    expect(withTrunc).toContain('import androidx.compose.ui.text.style.TextOverflow')
+
+    // A plain Text pulls nothing — a dead import is its own (smaller) defect.
+    const plain = conditionalKotlinImports('Text(text = "x")')
+    expect(plain).not.toContain('TextOverflow')
+  })
+
   it('Kotlin conditional imports: Color() / RoundedCornerShape() pull their graphics imports', () => {
     // Device-found (icon arc): `color=` props emit `Color(0xFF…)` and
     // `radius` props emit `RoundedCornerShape(…)`, but neither is in a

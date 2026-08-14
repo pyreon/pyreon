@@ -478,16 +478,26 @@ public struct DragGesture: Gesture {
   public func onEnded(_ action: @escaping (Value) -> Void) -> DragGesture { self }
 }
 public struct CGSize { public var width: Double = 0; public var height: Double = 0 }
-public struct PrimitiveButtonStyleStub { public static let plain = PrimitiveButtonStyleStub() }
+// Mirrors the real SwiftUI button styles the variant emit can produce.
+// Listing exactly these (not an open struct) keeps a wrong style name a
+// compile error here rather than a device surprise.
+public struct PrimitiveButtonStyleStub {
+  public static let plain = PrimitiveButtonStyleStub()
+  public static let bordered = PrimitiveButtonStyleStub()
+  public static let borderedProminent = PrimitiveButtonStyleStub()
+  public static let automatic = PrimitiveButtonStyleStub()
+}
 public enum AccessibilityChildBehavior { case contain, combine, ignore }
 
 // ---- View modifiers ----
+public enum TextTruncationMode { case head, tail, middle }
 extension View {
   // CRUX — the EXACT SwiftUI generic constraint. \`value: Any\` would MASK the
   // \`.animation(_:value:)\`-needs-Equatable class (the M2.8 incident). Do not loosen.
   public func animation<V: Equatable>(_ animation: Animation?, value: V) -> some View { self }
   public func transition(_ t: AnyTransition) -> some View { self }
   public func buttonStyle(_ style: PrimitiveButtonStyleStub) -> some View { self }
+  public func tint(_ color: Color?) -> some View { self }
   public func accessibilityIdentifier(_ id: String) -> some View { self }
   public func accessibilityLabel(_ label: String) -> some View { self }
   public func accessibilityElement(children: AccessibilityChildBehavior) -> some View { self }
@@ -496,6 +506,12 @@ extension View {
   public func onSubmit(_ action: @escaping () -> Void) -> some View { self }
   public func font(_ font: Font?) -> some View { self }
   public func opacity(_ opacity: Double) -> some View { self }
+  // A <Text truncate> emits .lineLimit(1).truncationMode(.tail). Both are
+  // View extensions in real SwiftUI; the stub simply lacked them, which
+  // made a CORRECT emit fail the gate -- a stub NARROWER than the runtime
+  // manufactures a bug, exactly as a wider one hides one.
+  public func lineLimit(_ number: Int?) -> some View { self }
+  public func truncationMode(_ mode: TextTruncationMode) -> some View { self }
   public func padding() -> some View { self }
   public func padding(_ length: Double) -> some View { self }
   public func sheet<C: View>(isPresented: Binding<Bool>, @ViewBuilder content: () -> C) -> some View { self }
@@ -1217,6 +1233,10 @@ public struct Color: View {
   public static let black = Color(red: 0, green: 0, blue: 0)
   public static let white = Color(red: 1, green: 1, blue: 1)
   public static let clear = Color(red: 0, green: 0, blue: 0, opacity: 0)
+  // The standard SwiftUI colour set the danger variant reaches for.
+  public static let red = Color(red: 1, green: 0, blue: 0)
+  public static let green = Color(red: 0, green: 1, blue: 0)
+  public static let blue = Color(red: 0, green: 0, blue: 1)
   public static let primary = Color(red: 0, green: 0, blue: 0)
   public static let secondary = Color(red: 0.5, green: 0.5, blue: 0.5)
 }

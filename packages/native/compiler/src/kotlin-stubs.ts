@@ -148,15 +148,17 @@ object LocalContext {
 
 // Text — style/color args added for Heading emit (P2.2). Defaults keep
 // the bare Text(text = "...") call sites (from Text emit) valid.
+enum class TextOverflow { Clip, Ellipsis, Visible }
 @Composable
 @Suppress("UNUSED_PARAMETER")
-fun Text(text: String, style: TextStyle = TextStyle(), color: Color? = null, fontSize: TextUnit = TextUnit(0f), fontWeight: FontWeight? = null, fontStyle: FontStyle? = null, textAlign: TextAlign? = null, fontFamily: FontFamily? = null, letterSpacing: TextUnit = TextUnit(0f), modifier: Modifier = Modifier) {}
+fun Text(text: String, style: TextStyle = TextStyle(), color: Color? = null, fontSize: TextUnit = TextUnit(0f), fontWeight: FontWeight? = null, fontStyle: FontStyle? = null, textAlign: TextAlign? = null, fontFamily: FontFamily? = null, letterSpacing: TextUnit = TextUnit(0f), maxLines: Int = Int.MAX_VALUE, overflow: TextOverflow = TextOverflow.Clip, modifier: Modifier = Modifier) {}
 
 @Composable
 fun Button(
   onClick: () -> Unit,
   modifier: Modifier = Modifier,
   enabled: Boolean = true,
+  colors: ButtonColorsStub = ButtonColorsStub(),
   content: @Composable () -> Unit,
 ) {
   content()
@@ -568,7 +570,25 @@ fun Spacer(modifier: Modifier = Modifier) {}
 // gradle assembleDebug of a Heading app.
 // (No backticks in this comment — it lives inside a template literal.)
 class TextStyle
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun OutlinedButton(onClick: () -> Unit, enabled: Boolean = true, modifier: Modifier = Modifier, colors: ButtonColorsStub = ButtonColorsStub(), content: @Composable () -> Unit) {}
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun TextButton(onClick: () -> Unit, enabled: Boolean = true, modifier: Modifier = Modifier, colors: ButtonColorsStub = ButtonColorsStub(), content: @Composable () -> Unit) {}
+class ButtonColorsStub
+object ButtonDefaults {
+  fun buttonColors(backgroundColor: Color = Color(0), contentColor: Color = Color(0)): ButtonColorsStub = ButtonColorsStub()
+}
+
 object MaterialTheme {
+  object colors {
+    val primary: Color = Color(0)
+    val secondary: Color = Color(0)
+    val background: Color = Color(0)
+    val surface: Color = Color(0)
+    val error: Color = Color(0)
+  }
   object typography {
     val h1: TextStyle = TextStyle()
     val h2: TextStyle = TextStyle()

@@ -63,6 +63,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
+import { unloweredPropWarning } from './unlowered-props'
 import type {
   AttrIR,
   ChildIR,
@@ -6106,6 +6107,14 @@ function emitSwiftText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   // passed and only the tag-querying Android smoke caught it.
   const font = readStaticAttr(e, 'font')
   let result = emitSwiftTextCore(e, indent)
+  // `truncate` — a documented prop on the canonical Text that produced NO
+  // emit at all, on either target, with no warning. A label that should
+  // ellipsize instead wrapped to as many lines as it needed, silently
+  // reflowing the surrounding layout. `.lineLimit(1)` alone would clip
+  // rather than ellipsize, so the truncation mode is part of the contract.
+  if (readStaticAttr(e, 'truncate') === true) {
+    result += `.lineLimit(1).truncationMode(.tail)`
+  }
   if (typeof font === 'string') {
     // Custom font → .font(.custom("<PostScriptName>", size: 17)). The
     // PostScript name (not the canonical/filename) is what Font.custom
@@ -6173,9 +6182,54 @@ function emitSwiftButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   // scope while label-based queries (`app.buttons["Continue"]`) worked,
   // which is why router-demo's label-querying smoke passed and the
   // tasks identifier-querying smoke failed.
+  // `variant` — the visual role. SwiftUI expresses all four through
+  // buttonStyle (+ a tint for danger), so this lowers rather than warns.
+  // `danger` matters most: without it a destructive button was
+  // indistinguishable from a confirm button, and the visual difference IS
+  // the safeguard.
+  result = `${result}${swiftButtonVariantModifier(e)}`
   const layoutModifiers = emitSwiftLayoutModifiers(e)
   result = layoutModifiers ? `${result}${layoutModifiers}` : result
   return disabledModifier ? `${result}\n${' '.repeat(indent)}  ${disabledModifier}` : result
+}
+
+/**
+ * `<Button variant>` → SwiftUI buttonStyle. Absent (or `primary`, the
+ * documented default) emits nothing, so every existing app's output is
+ * byte-identical.
+ *
+ * A DYNAMIC variant is deliberately not resolved here: it would need a
+ * conditional over two different opaque `some View` styles, which swiftc
+ * rejects for the same reason the adaptive Stack/Inline ternary does. It
+ * warns instead of silently picking one.
+ */
+function swiftButtonVariantModifier(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const attr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'variant',
+  )
+  if (attr === undefined) return ''
+  const v = readStaticAttr(e, 'variant')
+  if (typeof v !== 'string') {
+    _emitWarnings.push(
+      `<Button variant>: only a static literal lowers (primary | secondary | ghost | danger) — a dynamic value would need a conditional over two different opaque button styles, which swiftc rejects. The button falls back to the default style.`,
+    )
+    return ''
+  }
+  switch (v) {
+    case 'primary':
+      return ''
+    case 'secondary':
+      return '.buttonStyle(.bordered)'
+    case 'ghost':
+      return '.buttonStyle(.plain)'
+    case 'danger':
+      return '.buttonStyle(.borderedProminent).tint(.red)'
+    default:
+      _emitWarnings.push(
+        `<Button variant=${JSON.stringify(v)}>: not one of primary | secondary | ghost | danger — the button falls back to the default style.`,
+      )
+      return ''
+  }
 }
 
 /**
@@ -7200,6 +7254,17 @@ function emitSwiftStack(
   if (align !== undefined) {
     initArgs.push(`alignment: ${align}`)
   }
+  // `justify` / `wrap` reach here and lower to NOTHING on either target.
+  // Warn rather than drop silently — see unlowered-layout-props.ts for why
+  // they are declared instead of half-implemented.
+  for (const prop of ['justify', 'wrap'] as const) {
+    const w = unloweredPropWarning(
+      isRow ? 'Inline' : 'Stack',
+      prop,
+      e.attrs.some((a) => a.kind === 'attr' && a.name === prop),
+    )
+    if (w !== undefined) _emitWarnings.push(w)
+  }
   const gap = swiftStylingValue(e, 'gap', resolveSpace)
   if (gap !== undefined) {
     initArgs.push(`spacing: ${gap}`)
@@ -8217,6 +8282,12 @@ function emitSwiftLink(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   indent: number,
 ): string {
+  // `external` reaches here and lowers to NOTHING on either target — see
+  // unlowered-props.ts. Warn rather than drop it silently.
+  {
+    const w = unloweredPropWarning('Link', 'external', e.attrs.some((a) => a.kind === 'attr' && a.name === 'external'))
+    if (w !== undefined) _emitWarnings.push(w)
+  }
   const toAttr = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'attr' }> =>
       a.kind === 'attr' && a.name === 'to',
