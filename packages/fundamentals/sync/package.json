@@ -81,7 +81,17 @@
   "pyreon": {
     "native": {
       "swift": "native/swift",
-      "kotlin": "native/kotlin"
+      "kotlin": "native/kotlin",
+      "kotlinServices": {
+        "PyreonCrdt": [
+          "PyreonCrdt.kt",
+          "PyreonSyncedSignal.kt",
+          "PyreonSyncTransport.kt"
+        ]
+      },
+      "kotlinSdkOnly": [
+        "PyreonSyncWebSocketChannelAndroid.kt"
+      ]
     }
   }
 }

@@ -3489,12 +3489,29 @@ function inferFlatObjectType(
   const fields: { name: string; type: TypeIR }[] = []
   for (const f of obj.fields) {
     const ft = inferTypeFromInitial(f.value)
-    if (ft.kind !== 'number' && ft.kind !== 'string' && ft.kind !== 'boolean') {
-      return null
-    }
+    // A field is synthesizable when it is a scalar (the original flat case),
+    // a NESTED all-scalar object (recursion — `inferTypeFromInitial` routes
+    // `{…}` back here), or an ARRAY whose leaves are scalar/object. Anything
+    // that degraded to `unknown` (a spread, a function, a mixed array, a
+    // bare identifier) bails the whole object → the signal stays `Any`
+    // (unchanged, no regression).
+    if (!isSynthesizableFieldType(ft)) return null
     fields.push({ name: f.name, type: ft })
   }
   return { kind: 'object', fields }
+}
+
+/**
+ * Can this inferred field TypeIR be synthesized into a nested struct? Scalars,
+ * nested object records, and arrays whose (recursive) element is scalar/object.
+ * Rejects `unknown` / `map` / `set` / `union` / `function` / `typeRef` — those
+ * are outside the all-scalar-leaf synthesis contract and keep the object `Any`.
+ */
+function isSynthesizableFieldType(t: TypeIR): boolean {
+  if (t.kind === 'number' || t.kind === 'string' || t.kind === 'boolean') return true
+  if (t.kind === 'object') return true
+  if (t.kind === 'array') return isSynthesizableFieldType(t.element)
+  return false
 }
 
 /**
