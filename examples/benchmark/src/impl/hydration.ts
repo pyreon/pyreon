@@ -28,6 +28,7 @@ import { signal, createSelector } from '@pyreon/reactivity'
 import { PyreonCompiledApp } from './hydration-pyreon-compiled'
 import * as React from 'react'
 import * as ReactDOMClient from 'react-dom/client'
+import { flushSync } from 'react-dom'
 import { hydrate as preactHydrate, render as preactRender } from 'preact'
 import { createSSRApp } from 'vue'
 import type { BenchSuite } from '../runner'
@@ -84,17 +85,24 @@ const makeTargets = (fixtures: {
   {
     name: 'React 19',
     html: fixtures.html.react!,
-    async hydrate(container) {
+    hydrate(container) {
       function App() {
         const [selected, set] = React.useState<number | null>(null)
         return reactApp(rows, selected, set)
       }
-      const root = ReactDOMClient.hydrateRoot(container, React.createElement(App))
-      // React hydration commits on its own lane — wait for it (same
-      // rAF→setTimeout convention as impl/react.ts's commit wait).
-      await new Promise<void>((res) =>
-        requestAnimationFrame(() => setTimeout(res, 0)),
-      )
+      // `flushSync` forces the hydration render to COMMIT synchronously —
+      // the same convention impl/react.ts documents for the DOM suite. The
+      // previous shape awaited `requestAnimationFrame → setTimeout(0)` INSIDE
+      // the timed region, folding a full animation frame of browser
+      // scheduling latency into React's number while Pyreon/Preact/Vue
+      // returned synchronously — the exact artifact the DOM suite removed.
+      // The adoption + interactivity gates (verify) still referee that the
+      // commit really happened: a non-committed hydration fails the click
+      // gate loudly rather than posting a fast number.
+      let root!: ReactDOMClient.Root
+      flushSync(() => {
+        root = ReactDOMClient.hydrateRoot(container, React.createElement(App))
+      })
       return () => root.unmount()
     },
   },

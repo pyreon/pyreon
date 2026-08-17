@@ -81,12 +81,16 @@ export interface BenchOptions {
   reset?: () => void | Promise<void>
   /**
    * Verify the DOM after EACH iteration. Called with the container.
-   * Throw to fail the iteration. Use `expectRows(container, N)` for the
-   * common case. Without verification, frameworks that fail to commit
-   * a render before the bench timer ends produce deceptively-fast
-   * numbers — the whole point of the fair-bench methodology.
+   * Throw (or return a rejecting Promise) to fail the iteration. Use
+   * `expectRows(container, N)` for the common case. Without verification,
+   * frameworks that fail to commit a render before the bench timer ends
+   * produce deceptively-fast numbers — the whole point of the fair-bench
+   * methodology. Async verifiers are AWAITED (outside the timed region):
+   * an unawaited rejection would otherwise vanish as an unhandled-promise
+   * console line that never fails the run — a framework whose handlers
+   * never attach would still post a number.
    */
-  verify?: (container: HTMLElement) => void
+  verify?: (container: HTMLElement) => void | Promise<void>
   /**
    * Per-framework commit-boundary hook. Called INSIDE the timed region,
    * AFTER the user's `fn()` returns but BEFORE `getBoundingClientRect()`
@@ -153,7 +157,7 @@ export async function bench(
     const elapsed = performance.now() - t0
     warmupSamples.push(elapsed)
     warmupUsed++
-    if (options.verify) options.verify(suite.container)
+    if (options.verify) await options.verify(suite.container)
     forceGc()
     await tick()
     // Check stabilisation only after we have enough samples.
@@ -180,7 +184,7 @@ export async function bench(
     suite.container.getBoundingClientRect()
     const elapsed = performance.now() - t0
     samples.push(elapsed)
-    if (options.verify) options.verify(suite.container)
+    if (options.verify) await options.verify(suite.container)
     // Yield to browser between runs (not measured — runs outside the t0/elapsed region)
     await tick()
   }

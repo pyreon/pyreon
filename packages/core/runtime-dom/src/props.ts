@@ -221,28 +221,42 @@ export function applySelectValueProp(el: Element, props: Props): Cleanup | null 
  * - anything else → static attribute / DOM property
  */
 /**
+ * `onPointerDown` -> `pointerdown`. Multi-word DOM event names are
+ * all-lowercase, so lowercase the WHOLE name, not just the first letter — that
+ * bug silently dropped delegation for every multi-word event, attaching
+ * `addEventListener('pointerDown', …)` which never fires. Shared by
+ * `applyEventProp` and `makeEventBinder` so the two can't drift.
+ */
+function eventNameOf(key: string): string {
+  return (key[2]?.toLowerCase() + key.slice(3)).toLowerCase()
+}
+
+/**
+ * `undefined`/`null` are legitimate — the conditional handler pattern
+ * `<button onClick={cond ? handler : undefined}>`. Warn only for
+ * actually-wrong types (strings, numbers, objects), which indicate a real
+ * caller bug such as `onClick={someSignal()}` returning a value. Shared by
+ * `applyEventProp` and `makeEventBinder`.
+ */
+function warnNonFunctionHandler(key: string, value: unknown): void {
+  if (process.env.NODE_ENV !== 'production' && value != null) {
+    console.warn(
+      `[Pyreon] Event handler "${key}" received a non-function value (${typeof value}). ` +
+        `Expected a function. Did you mean ${key}={() => ...}?`,
+    )
+  }
+}
+
+/**
  * Bind an event handler (onClick → "click") with batching + delegation support.
  */
 function applyEventProp(el: Element, key: string, value: unknown): Cleanup | null {
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.applyEvent')
   if (typeof value !== 'function') {
-    // `undefined`/`null` are legitimate — the conditional handler pattern
-    // `<button onClick={cond ? handler : undefined}>`. Warn only for
-    // actually-wrong types (strings, numbers, objects), which indicate a real
-    // caller bug such as `onClick={someSignal()}` returning a value.
-    if (process.env.NODE_ENV !== 'production' && value != null) {
-      console.warn(
-        `[Pyreon] Event handler "${key}" received a non-function value (${typeof value}). ` +
-          `Expected a function. Did you mean ${key}={() => ...}?`,
-      )
-    }
+    warnNonFunctionHandler(key, value)
     return null
   }
-  // `onPointerDown` -> `pointerdown`. Multi-word DOM event names are
-  // all-lowercase, so lowercase the WHOLE name, not just the first letter — that
-  // bug silently dropped delegation for every multi-word event, attaching
-  // `addEventListener('pointerDown', …)` which never fires.
-  const eventName = (key[2]?.toLowerCase() + key.slice(3)).toLowerCase()
+  const eventName = eventNameOf(key)
   const handler = value as EventListener
 
   if (DELEGATED_EVENTS.has(eventName)) {
@@ -256,6 +270,54 @@ function applyEventProp(el: Element, key: string, value: unknown): Cleanup | nul
   const batched: EventListener = (e) => batch(() => handler(e))
   el.addEventListener(eventName, batched)
   return () => el.removeEventListener(eventName, batched)
+}
+
+/**
+ * Precompiled event binder for a FIXED `onXxx` key — the plan-specialization
+ * companion to `applyEventProp`. Returns `null` when `key` is not an event
+ * prop (the caller then classifies it as a non-event op).
+ *
+ * `applyEventProp` re-derives the event name (two string allocations) and
+ * re-probes the delegation set on EVERY call; a hydration row plan applies the
+ * SAME key to N structurally-identical rows, so the binder hoists that
+ * derivation to plan-build time and leaves a monomorphic per-row body that is
+ * byte-equivalent to `applyEventProp`'s post-normalization tail: same
+ * delegated-expando slot, same `batch()` wrapping, same non-function warning
+ * (via the shared `warnNonFunctionHandler` / `eventNameOf` helpers), same
+ * cleanup shape. Locked by the equivalence specs in
+ * `tests/make-event-binder.test.tsx`.
+ */
+export function makeEventBinder(
+  key: string,
+): ((el: Element, value: unknown) => Cleanup | null) | null {
+  if (!EVENT_RE.test(key)) return null
+  const eventName = eventNameOf(key)
+  if (DELEGATED_EVENTS.has(eventName)) {
+    const prop = delegatedPropName(eventName)
+    return (el, value) => {
+      if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.applyEvent')
+      if (typeof value !== 'function') {
+        warnNonFunctionHandler(key, value)
+        return null
+      }
+      const handler = value as EventListener
+      ;(el as unknown as Record<string, unknown>)[prop] = (e: Event) => batch(() => handler(e))
+      return () => {
+        ;(el as unknown as Record<string, unknown>)[prop] = undefined
+      }
+    }
+  }
+  return (el, value) => {
+    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.applyEvent')
+    if (typeof value !== 'function') {
+      warnNonFunctionHandler(key, value)
+      return null
+    }
+    const handler = value as EventListener
+    const batched: EventListener = (e) => batch(() => handler(e))
+    el.addEventListener(eventName, batched)
+    return () => el.removeEventListener(eventName, batched)
+  }
 }
 
 /**
