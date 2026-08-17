@@ -213,6 +213,38 @@ if (__url.searchParams.get('profileClear') === '1') {
     setupClearProfile(makeContainer())
     setStatus('profileClear ready')
   })()
+} else if (__url.searchParams.get('mode') === 'scenarios') {
+  // Coverage-expansion scenarios (dbmon, deep tree) — one framework per fresh
+  // page, driven by `bench-scenarios.ts`. Lazy-imported so the DOM suite's
+  // bundle is unaffected.
+  void (async () => {
+    const { findScenario } = await import('./impl/scenarios')
+    const scenarioId = __url.searchParams.get('scenario') ?? ''
+    const scenario = findScenario(scenarioId)
+    if (!scenario) {
+      setStatus(`Unknown scenario: ${scenarioId}`)
+      return
+    }
+    if (!__frameworkParam || !scenario.frameworks.includes(__frameworkParam)) {
+      setStatus(
+        `Unknown framework for ${scenarioId}: ${__frameworkParam}. Valid: ${scenario.frameworks.join(', ')}`,
+      )
+      return
+    }
+    setStatus(`Running ${scenarioId}: ${__frameworkParam}…`)
+    const container = makeContainer()
+    try {
+      const suite = await scenario.run(__frameworkParam, container)
+      buildTable([suite])
+      ;(globalThis as { __benchResults?: BenchSuite[] }).__benchResults = [suite]
+      setStatus('Done ✓')
+    } catch (err) {
+      console.error(`scenario ${scenarioId}/${__frameworkParam} failed:`, err)
+      setStatus(`FAILED: ${String(err)}`)
+    } finally {
+      removeContainer(container)
+    }
+  })()
 } else if (__url.searchParams.get('mode') === 'hydration') {
   void (async () => {
     const { runHydration, HYDRATION_FRAMEWORKS } = await import('./impl/hydration')
