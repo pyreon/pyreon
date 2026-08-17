@@ -1,0 +1,133 @@
+/**
+ * CPU-profile the `clear rows` (and optionally replace/create) op in REAL
+ * Chromium via CDP, with SUBTREE attribution: the profiling page
+ * (`?profileClear=1`, see src/impl/profile-clear.tsx) drives named functions
+ * (`__clearOnly` / `__createOnly` / `__replaceOnly`), and this script sums
+ * self-time ONLY under those frames — so the create work interleaved between
+ * clears cannot pollute the clear attribution.
+ *
+ * Also derives an unquantized per-op mean: (samples under frame × sampling
+ * interval) / iterations — immune to performance.now()'s 100µs clamp.
+ *
+ *   bun run build && bun bench-clearprofile.ts [iterations] [rows]
+ */
+import { spawn } from 'node:child_process'
+import { chromium } from 'playwright'
+
+const ITER = Number(process.argv[2] ?? 300)
+const ROWS = Number(process.argv[3] ?? 1000)
+const INTERVAL_US = 10
+
+const preview = spawn('bunx', ['vite', 'preview', '--port', '4181', '--strictPort'], {
+  cwd: import.meta.dir,
+  stdio: 'ignore',
+})
+await new Promise((r) => setTimeout(r, 2500))
+
+const browser = await chromium.launch({
+  args: ['--js-flags=--expose-gc', '--enable-precise-memory-info'],
+})
+try {
+  const page = await browser.newPage()
+  page.on('pageerror', (e) => console.error('[pageerror]', e.message))
+  const cdp = await page.context().newCDPSession(page)
+
+  await page.goto('http://localhost:4181/?profileClear=1')
+  await page.waitForFunction(() => '__clearBench' in globalThis, undefined, { timeout: 30_000 })
+
+  // Warmup: JIT-stabilize both paths, verify DOM correctness both arms.
+  const warm = await page.evaluate((rows) => {
+    const b = (globalThis as never as { __clearBench: Record<string, (n?: number) => unknown> })
+      .__clearBench
+    b.create!(rows)
+    const afterCreate = b.rowCount!()
+    b.clear!()
+    const afterClear = b.rowCount!()
+    for (let i = 0; i < 30; i++) {
+      b.create!(rows)
+      b.clear!()
+    }
+    return { afterCreate, afterClear }
+  }, ROWS)
+  if (warm.afterCreate !== ROWS || warm.afterClear !== 0) {
+    throw new Error(`state check failed: ${JSON.stringify(warm)} (expected ${ROWS}/0)`)
+  }
+
+  await cdp.send('Profiler.enable')
+  await cdp.send('Profiler.setSamplingInterval', { interval: INTERVAL_US })
+  await cdp.send('Profiler.start')
+
+  await page.evaluate(
+    ({ iter, rows }) => {
+      const b = (globalThis as never as { __clearBench: Record<string, (n?: number) => void> })
+        .__clearBench
+      for (let i = 0; i < iter; i++) {
+        b.create!(rows)
+        b.clear!()
+      }
+    },
+    { iter: ITER, rows: ROWS },
+  )
+
+  const { profile } = await cdp.send('Profiler.stop')
+
+  type PNode = {
+    id: number
+    callFrame: { functionName: string; url: string; lineNumber: number }
+    hitCount?: number
+    children?: number[]
+  }
+  const nodes = profile.nodes as PNode[]
+  const byId = new Map(nodes.map((n) => [n.id, n]))
+
+  const subtreeReport = (rootName: string, iterations: number) => {
+    // Collect all nodes in the subtree(s) rooted at frames named rootName.
+    const inSubtree = new Set<number>()
+    const stack: number[] = []
+    for (const n of nodes) if (n.callFrame.functionName === rootName) stack.push(n.id)
+    while (stack.length) {
+      const id = stack.pop()!
+      if (inSubtree.has(id)) continue
+      inSubtree.add(id)
+      for (const c of byId.get(id)?.children ?? []) stack.push(c)
+    }
+    let total = 0
+    const byFn = new Map<string, number>()
+    for (const id of inSubtree) {
+      const n = byId.get(id)!
+      const hits = n.hitCount ?? 0
+      if (!hits) continue
+      total += hits
+      const url = n.callFrame.url.split('/').pop() ?? ''
+      const key = `${n.callFrame.functionName || '(anonymous)'} @${url}:${n.callFrame.lineNumber}`
+      byFn.set(key, (byFn.get(key) ?? 0) + hits)
+    }
+    const meanUs = (total * INTERVAL_US) / iterations
+    console.log(
+      `\n=== ${rootName} — ${total} samples · derived mean ${meanUs.toFixed(1)}µs/op over ${iterations} iterations ===`,
+    )
+    for (const [key, hits] of [...byFn.entries()].sort((a, b) => b[1] - a[1]).slice(0, 25)) {
+      const pct = ((hits / Math.max(total, 1)) * 100).toFixed(1)
+      const us = ((hits * INTERVAL_US) / iterations).toFixed(1)
+      console.log(`${pct.padStart(5)}%  ${us.padStart(7)}µs/op  ${key}`)
+    }
+    return meanUs
+  }
+
+  subtreeReport('__clearOnly', ITER)
+  subtreeReport('__createOnly', ITER)
+
+  // GC attribution across the whole profile (GC frames are not parented under
+  // the driver frames — report separately so the subtree means are read
+  // honestly as "JS-only").
+  const gcHits = nodes
+    .filter((n) => n.callFrame.functionName === '(garbage collector)')
+    .reduce((s, n) => s + (n.hitCount ?? 0), 0)
+  const totalHits = nodes.reduce((s, n) => s + (n.hitCount ?? 0), 0)
+  console.log(
+    `\n(garbage collector): ${gcHits} samples = ${((gcHits / Math.max(totalHits, 1)) * 100).toFixed(1)}% of whole profile (${totalHits} samples) — NOT attributed per-op`,
+  )
+} finally {
+  await browser.close()
+  preview.kill()
+}

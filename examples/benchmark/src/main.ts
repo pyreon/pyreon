@@ -205,7 +205,15 @@ runBtn.addEventListener('click', () => {
 //                       the DOM suite's bundle is unaffected.
 const __url = new URL(window.location.href)
 const __frameworkParam = __url.searchParams.get('framework')
-if (__url.searchParams.get('mode') === 'hydration') {
+if (__url.searchParams.get('profileClear') === '1') {
+  // CPU-profiling target for bench-clearprofile.ts — mounts the Pyreon bench
+  // markup and exposes __clearBench drivers; never runs the timed suite.
+  void (async () => {
+    const { setupClearProfile } = await import('./impl/profile-clear')
+    setupClearProfile(makeContainer())
+    setStatus('profileClear ready')
+  })()
+} else if (__url.searchParams.get('mode') === 'hydration') {
   void (async () => {
     const { runHydration, HYDRATION_FRAMEWORKS } = await import('./impl/hydration')
     if (!__frameworkParam || !HYDRATION_FRAMEWORKS.includes(__frameworkParam)) {
