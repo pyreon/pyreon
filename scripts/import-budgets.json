@@ -1,13 +1,13 @@
 {
-  "@pyreon/reactivity::signals": 3863,
+  "@pyreon/reactivity::signals": 3362,
   "@pyreon/runtime-dom::mount": 7810,
-  "@pyreon/runtime-dom::mount+hydrate": 12220,
+  "@pyreon/runtime-dom::mount+hydrate": 12968,
   "@pyreon/router::basic": 3866,
   "@pyreon/elements::portal": 2752,
   "@pyreon/elements::element": 4442,
   "@pyreon/styler::useTheme": 1183,
   "@pyreon/styler::css": 1588,
-  "@pyreon/core::jsx": 1001,
-  "@pyreon/hooks::useEventListener": 640,
-  "@pyreon/hooks::useAuth": 752
+  "@pyreon/core::jsx": 664,
+  "@pyreon/hooks::useEventListener": 614,
+  "@pyreon/hooks::useAuth": 731
 }
