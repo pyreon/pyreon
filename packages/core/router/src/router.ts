@@ -1099,7 +1099,22 @@ export function createRouter<TNames extends string = string>(
       // middleware data is per-navigation). See useMiddlewareData.
       router._committedMiddlewareData = to._middlewareData ?? {}
       currentPath.set(path)
-      syncBrowserUrl(path, replace)
+      // A BROWSER-initiated traversal (popstate/hashchange) has already moved
+      // the URL — the browser owns it, and this commit is only catching the app
+      // up. Writing it back is redundant in the happy path and actively WRONG
+      // when a newer traversal has since moved the history: the write lands on
+      // whatever entry is current NOW, stamping this navigation's URL onto it.
+      //
+      // That is how a rapid double-Back lost an entry. Back #1 starts an async
+      // navigate; Back #2 fires while it is still in flight and is dropped by
+      // the same-path guard (it compares against a `currentPath` that #1 has
+      // not yet updated); #1 then commits and replaceState's ITS url over the
+      // entry the browser had already moved to. Net effect: the second Back
+      // silently undone.
+      //
+      // Cancellation is the only case where the router legitimately writes a
+      // browser-initiated URL, and `handleBrowserNav` owns that path.
+      if (!fromBrowser) syncBrowserUrl(path, replace)
 
       if (isClient && to.meta.title) {
         document.title = to.meta.title
