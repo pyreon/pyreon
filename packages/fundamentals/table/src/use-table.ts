@@ -172,7 +172,7 @@ export function useTable<TFeatures extends TableFeatures, TData extends RowData>
     // what keeps its cell lists honest on that change).
     const columns =
       columnSignature(table.options.columns) +
-      `${String((table.options as { groupedColumnMode?: unknown }).groupedColumnMode ?? '')}`
+      `\u0001${String((table.options as { groupedColumnMode?: unknown }).groupedColumnMode ?? '')}`
 
     const currentIds = rows.map((r) => r.id)
     const nextOriginals = new Map<string, unknown>()
