@@ -423,7 +423,12 @@ Renders one of pending / error / empty / data from any async-shaped source, repl
 **Example**
 
 ```tsx
-<Async of={todos} empty="No todos yet.">
+import type { AsyncLike } from '@pyreon/core'
+
+// any source with these four accessors — e.g. a useQuery() result
+declare const todos: AsyncLike<{ id: number; title: string }[]>
+
+<Async of={todos} empty="No todos yet." error={(e) => <p>{String(e)}</p>}>
   {(rows) => <ul>{rows.map((r) => <li>{r.title}</li>)}</ul>}
 </Async>
 ```
