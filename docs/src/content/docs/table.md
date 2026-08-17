@@ -246,6 +246,7 @@ import {
   useTable,
   flexRender,
   flexRenderCell,
+  visibleCells,
   createColumnHelper,
   tableFeatures,
   rowSortingFeature,
