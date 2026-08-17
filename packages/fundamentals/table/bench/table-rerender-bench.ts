@@ -34,16 +34,23 @@
  *   - pyreon keyed-For   : keyed `<For>` + `flexRenderCell` reactive cells — the
  *                          recommended fine-grained pattern.
  *
- * HONEST READ (don't cherry-pick): @pyreon/table's cell bindings all subscribe
- * to ONE table signal, so a single-cell change RE-RUNS every cell accessor
- * (N×M cell units) — the same coarse granularity as react naive, and MORE cell
- * units than react memoized-row (M). BUT every Pyreon cell unit is a cheap
- * closure (navigate + flexRender + Object.is), no VDOM/reconciler/fiber, and
- * DOM WRITES stay at 1 (the Object.is gate). So the count table shows where
- * Pyreon does more JS work; the companion wall-clock bench (`bench:table:wall`)
- * shows whether that cheaper per-unit cost + no-VDOM makes it competitive. The
- * clean Pyreon wins are MOUNT, FULL-REPLACE and SORT/REORDER (keyed DOM moves),
- * not the targeted single-cell change at large N.
+ * HONEST READ (don't cherry-pick): with the per-row signal bridge (`useTable`
+ * + `flexRenderCell`), a SINGLE-CELL edit re-runs ONLY the changed row's cells
+ * — measured 6 cell units / 1 DOM write at BOTH N=100 and N=1000, the same
+ * counts as react memoized-row but with zero `React.memo` boilerplate and no
+ * memo comparator to keep correct, and N-INDEPENDENT. (Before the bridge this
+ * was the N×M coarse loss this header used to document.) The remaining honest
+ * LOSS is SORT: a sort toggle re-orders the row model, the adapter treats any
+ * structure/order change as a bump-every-row event, so all cells re-run
+ * (600/6000 units) where react memoized-row re-renders 0 (rows keep their
+ * `original` identity and only move). That coarseness is DELIBERATE, not an
+ * oversight: a cell that reads table STATE (selection, sort) inside
+ * `flexRenderCell` runs untracked and relies on that bump to stay correct —
+ * the same cell under `React.memo` on `original` identity silently FREEZES.
+ * It is the price of correct-by-default with no user memo comparator; the
+ * contract is locked by fine-grained-cell.test.tsx and the manifest. Sort DOM
+ * writes are identical both sides (keyed moves). pyreon-naive-map is shown
+ * only as the anti-pattern warning. Wall-clock: see `bench:table:wall`.
  *
  * Run: bun bench/table-rerender-bench.ts   (or `bun run bench:table`)
  */
@@ -262,7 +269,7 @@ async function pyreonHarness(
   const { signal } = await import('@pyreon/reactivity')
   const { mount } = await import('@pyreon/runtime-dom')
   const {
-    useTable, flexRender, flexRenderCell,
+    useTable, flexRender, flexRenderCell, visibleCells,
     tableFeatures, rowSortingFeature, columnVisibilityFeature,
     createSortedRowModel, sortFns,
   } = await import('../src/index')
@@ -305,12 +312,16 @@ async function pyreonHarness(
         ),
       ))
     }
-    // RECOMMENDED: keyed <For> + fine-grained reactive cells.
+    // RECOMMENDED: keyed <For> + fine-grained reactive cells. The cells-list
+    // accessor is `visibleCells` (fine-grained, per-row signal + geometry
+    // slices), NOT the tracked `row.getVisibleCells()` — the tracked form
+    // subscribes every row to the options atom and re-runs all N row loops on
+    // every data edit (the O(N)-per-edit overhead this bench used to carry).
     return h('table', {}, h('tbody', {}, () =>
       h(For, { each: () => table.getRowModel().rows, by: (r: any) => r.id }, (row: any) => {
         const rowId = row.id
         return h('tr', { 'data-rowid': rowId },
-          h(For, { each: () => row.getVisibleCells(), by: (c: any) => c.id }, (cell: any) => {
+          h(For, { each: () => visibleCells(table, rowId), by: (c: any) => c.id }, (cell: any) => {
             const colId = cell.column.id
             return h('td', {}, () => {
               cellUnits++

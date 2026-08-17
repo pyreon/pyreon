@@ -163,7 +163,16 @@ export function useTable<TFeatures extends TableFeatures, TData extends RowData>
     // `columns: [...]` literal inside the options function — comparing
     // references there reports "columns changed" on every data edit and
     // coarse-invalidates the whole table, destroying fine-grained updates.
-    const columns = columnSignature(table.options.columns)
+    //
+    // `groupedColumnMode` is part of the signature because it changes the LEAF
+    // COLUMN list (`getAllLeafColumns` reads it) without touching `columns` or
+    // the row ids — the one options-level input to a row's visible cell list
+    // that neither the row model nor the column signature would otherwise
+    // cover (`visibleCells` subscribes to the per-row signal, so this bump is
+    // what keeps its cell lists honest on that change).
+    const columns =
+      columnSignature(table.options.columns) +
+      `${String((table.options as { groupedColumnMode?: unknown }).groupedColumnMode ?? '')}`
 
     const currentIds = rows.map((r) => r.id)
     const nextOriginals = new Map<string, unknown>()

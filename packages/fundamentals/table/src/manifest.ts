@@ -15,7 +15,7 @@ export default defineManifest({
       'PyreonTableState — `createTableState({ data, columns, pageSize })` (sort / filter / paginate / select over `<For each={t.rows()}>`); scalar columns with the default row[id] accessor',
   },
   longExample: `import {
-  useTable, flexRender, flexRenderCell,
+  useTable, flexRender, flexRenderCell, visibleCells,
   tableFeatures, rowSortingFeature, createSortedRowModel, sortFn_alphanumeric,
   type ColumnDef,
 } from '@pyreon/table'
@@ -71,7 +71,7 @@ const table = useTable(() => ({
     <For each={() => table.getRowModel().rows} by={(r) => r.id}>
       {(row) => (
         <tr>
-          <For each={() => row.getVisibleCells()} by={(c) => c.id}>
+          <For each={() => visibleCells(table, row.id)} by={(c) => c.id}>
             {/* flexRenderCell(table, …) inside an accessor = fine-grained:
                 a single-cell edit patches ONLY this cell. Plain
                 flexRender(cell…, cell.getContext()) FREEZES on a value change
@@ -162,6 +162,28 @@ flexRenderCell(table, row.id, columnId)`,
       seeAlso: ['useTable', 'flexRender'],
     },
     {
+      name: 'visibleCells',
+      kind: 'function',
+      signature:
+        '<TFeatures extends TableFeatures, TData extends RowData>(table: Table<TFeatures, TData>, rowId: string) => Cell[]',
+      summary:
+        "Fine-grained visible-cells accessor for a row — the cells-LIST companion to `flexRenderCell`, for the inner `<For>` of a keyed table body: `<For each={() => visibleCells(table, row.id)} by={(c) => c.id}>`. The naive `each={() => row.getVisibleCells()}` leaves a TRACKED table-core read in every row's scope (its memo deps read `table.options`, which changes on EVERY options sync — data edits included), so a single-cell edit re-ran every row's cells-list accessor: measured 1000 re-runs at N=1000 where 1 is correct, ~3× the wall-clock of a memoized react-table update. `visibleCells` subscribes to the row's own signal plus the column-geometry state slices (visibility, order, pinning, grouping) and looks the cells up UNTRACKED from the CURRENT row model — never a captured stale `row` — so a data edit reaches exactly the edited rows' loops while a real visibility/order/pinning change still re-reconciles every row's cell list. Falls back to tracked (coarse but correct) reads for a table built directly with `constructTable` (no bridge). Returns an empty array when the row is not in the current model.",
+      example: `<For each={() => table.getRowModel().rows} by={(r) => r.id}>
+  {(row) => (
+    <tr>
+      <For each={() => visibleCells(table, row.id)} by={(c) => c.id}>
+        {(cell) => <td>{() => flexRenderCell(table, row.id, cell.column.id)}</td>}
+      </For>
+    </tr>
+  )}
+</For>`,
+      mistakes: [
+        'Using `each={() => row.getVisibleCells()}` on the captured `row` instead — it works, but subscribes every row to the options atom, so every data edit re-runs ALL N cells-list accessors (the O(N)-per-edit overhead that made single-cell updates ~3× slower than memoized react-table at N=1000)',
+        'Calling it OUTSIDE a reactive scope — like any accessor it must be read where tracking is live (a `<For each>` accessor, an effect) or it never re-runs',
+      ],
+      seeAlso: ['flexRenderCell', 'useTable'],
+    },
+    {
       name: 'createTableState',
       kind: 'function',
       signature:
@@ -191,7 +213,7 @@ table.toggleSort('name'); table.setFilter('li')
     },
     {
       label: 'Fine-grained cells',
-      note: 'For live/editable tables, render cells with `flexRenderCell(table, row.id, cell.column.id)` inside an accessor. An in-place data edit then re-runs ONLY the changed rows\' cell bindings (per-row signals) and patches ONE cell — no memo boilerplate, matching a hand-optimized react-table. A table-STATE change (sort/filter/selection/column visibility) re-runs all cells (coarse, correct-by-default for state-reading cells).',
+      note: 'For live/editable tables, render cells with `flexRenderCell(table, row.id, cell.column.id)` inside an accessor, and drive the inner cells loop with `visibleCells(table, row.id)` — NOT the captured `row.getVisibleCells()`, whose tracked memo-dep reads subscribe every row to the options atom (a data edit then re-runs ALL N cells-list accessors; measured ~3× a memoized react-table update at N=1000). With both, an in-place data edit re-runs ONLY the changed rows\' bindings and patches ONE cell — no memo boilerplate, matching (and on wall-clock beating) a hand-optimized react-table. A table-STATE change (sort/filter/selection/column visibility) re-runs all cells (coarse, correct-by-default for state-reading cells).',
     },
     {
       label: 'reorder-on-data-edit limitation',

@@ -5693,6 +5693,22 @@ flexRenderCell(table, row.id, columnId)`,
 - Passing a table built directly with \`constructTable\` instead of one from \`useTable\` — it renders correctly but has no per-row bridge, so it subscribes coarsely (every cell re-runs on any change)`,
   },
 
+  'table/visibleCells': {
+    signature: '<TFeatures extends TableFeatures, TData extends RowData>(table: Table<TFeatures, TData>, rowId: string) => Cell[]',
+    example: `<For each={() => table.getRowModel().rows} by={(r) => r.id}>
+  {(row) => (
+    <tr>
+      <For each={() => visibleCells(table, row.id)} by={(c) => c.id}>
+        {(cell) => <td>{() => flexRenderCell(table, row.id, cell.column.id)}</td>}
+      </For>
+    </tr>
+  )}
+</For>`,
+    notes: `Fine-grained visible-cells accessor for a row — the cells-LIST companion to \`flexRenderCell\`, for the inner \`<For>\` of a keyed table body: \`<For each={() => visibleCells(table, row.id)} by={(c) => c.id}>\`. The naive \`each={() => row.getVisibleCells()}\` leaves a TRACKED table-core read in every row's scope (its memo deps read \`table.options\`, which changes on EVERY options sync — data edits included), so a single-cell edit re-ran every row's cells-list accessor: measured 1000 re-runs at N=1000 where 1 is correct, ~3× the wall-clock of a memoized react-table update. \`visibleCells\` subscribes to the row's own signal plus the column-geometry state slices (visibility, order, pinning, grouping) and looks the cells up UNTRACKED from the CURRENT row model — never a captured stale \`row\` — so a data edit reaches exactly the edited rows' loops while a real visibility/order/pinning change still re-reconciles every row's cell list. Falls back to tracked (coarse but correct) reads for a table built directly with \`constructTable\` (no bridge). Returns an empty array when the row is not in the current model. See also: flexRenderCell, useTable.`,
+    mistakes: `- Using \`each={() => row.getVisibleCells()}\` on the captured \`row\` instead — it works, but subscribes every row to the options atom, so every data edit re-runs ALL N cells-list accessors (the O(N)-per-edit overhead that made single-cell updates ~3× slower than memoized react-table at N=1000)
+- Calling it OUTSIDE a reactive scope — like any accessor it must be read where tracking is live (a \`<For each>\` accessor, an effect) or it never re-runs`,
+  },
+
   'table/createTableState': {
     signature: '<T>(options: { data: () => readonly T[]; columns?: TableColumn<T>[]; pageSize?: number; rowId?: (row: T, i: number) => string; filterFn?: (row: T, q: string, cols: TableColumn<T>[]) => boolean }) => TableState<T>',
     example: `const data = signal([{ id: 1, name: 'Ada' }, { id: 2, name: 'Linus' }])

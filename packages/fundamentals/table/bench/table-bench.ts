@@ -228,7 +228,7 @@ const App = () => {
             const rowId = row.id
             return (
               <tr data-rowid={rowId}>
-                <For each={() => row.getVisibleCells()} by={(c) => c.id}>
+                <For each={() => visibleCells(table, rowId)} by={(c) => c.id}>
                   {(cell) => {
                     const colId = cell.column.id
                     return <td>{() => String(flexRenderCell(table, rowId, colId))}</td>
@@ -252,7 +252,7 @@ async function pyreonSamples(n: number, scenario: Scenario, useCompiled: boolean
   const rd = await import('@pyreon/runtime-dom')
   const { mount } = rd
   const {
-    useTable, flexRenderCell,
+    useTable, flexRenderCell, visibleCells,
     tableFeatures, rowSortingFeature, columnVisibilityFeature,
     createSortedRowModel, sortFns,
   } = await import('../src/index')
@@ -317,6 +317,7 @@ async function pyreonSamples(n: number, scenario: Scenario, useCompiled: boolean
       For,
       useTable,
       flexRenderCell,
+      visibleCells,
       pyreonFeatures,
       data,
       columnDefs,
@@ -337,7 +338,7 @@ async function pyreonSamples(n: number, scenario: Scenario, useCompiled: boolean
         h(For, { each: () => table.getRowModel().rows, by: (r: any) => r.id }, (row: any) => {
           const rowId = row.id
           return h('tr', { 'data-rowid': rowId },
-            h(For, { each: () => row.getVisibleCells(), by: (c: any) => c.id }, (cell: any) => {
+            h(For, { each: () => visibleCells(table, rowId), by: (c: any) => c.id }, (cell: any) => {
               const colId = cell.column.id
               return h('td', {}, () => String(flexRenderCell(table, rowId, colId)))
             }),

@@ -18,7 +18,7 @@ describe('gen-docs — table snapshot', () => {
 
       \`\`\`typescript
       import {
-        useTable, flexRender, flexRenderCell,
+        useTable, flexRender, flexRenderCell, visibleCells,
         tableFeatures, rowSortingFeature, createSortedRowModel, sortFn_alphanumeric,
         type ColumnDef,
       } from '@pyreon/table'
@@ -74,7 +74,7 @@ describe('gen-docs — table snapshot', () => {
           <For each={() => table.getRowModel().rows} by={(r) => r.id}>
             {(row) => (
               <tr>
-                <For each={() => row.getVisibleCells()} by={(c) => c.id}>
+                <For each={() => visibleCells(table, row.id)} by={(c) => c.id}>
                   {/* flexRenderCell(table, …) inside an accessor = fine-grained:
                       a single-cell edit patches ONLY this cell. Plain
                       flexRender(cell…, cell.getContext()) FREEZES on a value change
@@ -94,7 +94,7 @@ describe('gen-docs — table snapshot', () => {
       >
       > **Computed return**: useTable returns the Table INSTANCE (v9), not a Computed — there is no \`table()\` call. Its state lives in Pyreon signals, so reading it inside a reactive scope subscribes: \`<For each={() => table.getRowModel().rows}>\` makes the list reactive. The v8 accessor form was only ever a workaround for v8 having no reactivity seam.
       >
-      > **Fine-grained cells**: For live/editable tables, render cells with \`flexRenderCell(table, row.id, cell.column.id)\` inside an accessor. An in-place data edit then re-runs ONLY the changed rows' cell bindings (per-row signals) and patches ONE cell — no memo boilerplate, matching a hand-optimized react-table. A table-STATE change (sort/filter/selection/column visibility) re-runs all cells (coarse, correct-by-default for state-reading cells).
+      > **Fine-grained cells**: For live/editable tables, render cells with \`flexRenderCell(table, row.id, cell.column.id)\` inside an accessor, and drive the inner cells loop with \`visibleCells(table, row.id)\` — NOT the captured \`row.getVisibleCells()\`, whose tracked memo-dep reads subscribe every row to the options atom (a data edit then re-runs ALL N cells-list accessors; measured ~3× a memoized react-table update at N=1000). With both, an in-place data edit re-runs ONLY the changed rows' bindings and patches ONE cell — no memo boilerplate, matching (and on wall-clock beating) a hand-optimized react-table. A table-STATE change (sort/filter/selection/column visibility) re-runs all cells (coarse, correct-by-default for state-reading cells).
       >
       > **reorder-on-data-edit limitation**: A DATA edit that changes the SORT ORDER (editing the column you are sorted BY) updates every cell to the correct value but does NOT re-position the keyed rows until the next structure/state change — a pre-existing base-adapter limitation of the sorted-row-model + <For> interaction (it affects plain \`flexRender\` cells too, not just \`flexRenderCell\`). Re-ordering via the sort controls (\`toggleSorting\`/\`setSorting\`) works normally. Workaround: re-apply sorting after such an edit, or sort by a column you do not edit in place.
       "
@@ -103,10 +103,11 @@ describe('gen-docs — table snapshot', () => {
 
   it('renders to MCP api-reference entries', () => {
     const record = renderApiReferenceEntries(manifest)
-    expect(Object.keys(record).length).toBe(4)
+    expect(Object.keys(record).length).toBe(5)
     expect(record['table/useTable']).toBeDefined()
     expect(record['table/flexRender']).toBeDefined()
     expect(record['table/flexRenderCell']).toBeDefined()
+    expect(record['table/visibleCells']).toBeDefined()
     expect(record['table/createTableState']).toBeDefined()
   })
 })

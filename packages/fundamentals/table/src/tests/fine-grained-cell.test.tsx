@@ -14,7 +14,7 @@ import { effect, signal, untrack } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
 import { describe, expect, it } from 'vitest'
 import { constructTable } from '@tanstack/table-core'
-import { flexRenderCell, pyreonReactivity, useTable } from '../index'
+import { flexRenderCell, pyreonReactivity, useTable, visibleCells } from '../index'
 import { allFeatures } from './fixtures'
 
 const flush = async () => {
@@ -451,3 +451,170 @@ describe('flexRenderCell — fine-grained invalidation', () => {
     t.unmount()
   })
 })
+
+/** Mount a table whose cells-LIST accessor is `visibleCells` (the recommended
+ *  fine-grained inner loop) and count BOTH the cells-list accessor runs and the
+ *  cell-accessor runs, so the per-edit invalidation shape is fully asserted. */
+function mountVisibleCellsTable(data: ReturnType<typeof signal<Row[]>>) {
+  const cellRuns: number[] = [0]
+  const listRuns: number[] = [0]
+  const el = document.createElement('div')
+  document.body.appendChild(el)
+  let tableAccessor!: any
+  const App = () => {
+    const table = useTable(() => ({
+      data: data(),
+      columns: cols,
+      features: allFeatures,
+      getRowId: (r: Row) => String(r.id),
+    }))
+    tableAccessor = table
+    return h('table', {}, h('tbody', {}, () =>
+      hFor({ each: () => table.getRowModel().rows, by: (r: any) => r.id }, (row: any) => {
+        const rowId = row.id
+        return h('tr', { 'data-rowid': rowId },
+          hFor({
+            each: () => {
+              listRuns[0]!++
+              return visibleCells(table, rowId)
+            },
+            by: (c: any) => c.id,
+          }, (cell: any) => {
+            const colId = cell.column.id
+            return h('td', { class: `col-${colId}`, 'data-col': colId }, () => {
+              cellRuns[0]!++
+              return String(flexRenderCell(table, rowId, colId))
+            })
+          }),
+        )
+      }),
+    ))
+  }
+  const dispose = mount(hAny(App), el)
+  return {
+    el,
+    table: () => tableAccessor,
+    cellRuns,
+    listRuns,
+    cellText: (rowId: number, colId: string) =>
+      el.querySelector(`[data-rowid="${rowId}"] .col-${colId}`)?.textContent,
+    unmount: () => {
+      if (typeof dispose === 'function') dispose()
+      el.remove()
+    },
+  }
+}
+
+describe('visibleCells — fine-grained cells-list invalidation', () => {
+  it('a single-cell edit re-runs the cells-list accessor of ONLY the edited row', async () => {
+    // The tracked `row.getVisibleCells()` inner loop subscribes every row to
+    // the options atom (its memo deps read `table.options`), so a data edit
+    // re-ran ALL N cells-list accessors — measured 1000 re-runs at N=1000
+    // where 1 is correct, the dominant wall-clock cost of a single-cell edit.
+    // `visibleCells` subscribes to the row's own signal + the column-geometry
+    // slices instead, so the edit reaches exactly one row's loop.
+    const data = signal(makeData(10))
+    const t = mountVisibleCellsTable(data)
+    t.listRuns[0] = 0
+    t.cellRuns[0] = 0
+    data.set(editCell(data(), 4, 'a', 'EDITED'))
+    await flush()
+    expect(t.cellText(4, 'a')).toBe('EDITED')
+    expect(t.cellText(0, 'a')).toBe('a0')
+    // ONE cells-list re-run (the edited row), not 10.
+    expect(t.listRuns[0]).toBe(1)
+    // Only the edited row's TWO cells re-ran.
+    expect(t.cellRuns[0]).toBe(2)
+    t.unmount()
+  })
+
+  it('a column-visibility toggle re-reconciles the cell LIST (geometry-slice subscription)', async () => {
+    const data = signal(makeData(3))
+    const t = mountVisibleCellsTable(data)
+    expect(t.el.querySelectorAll('[data-rowid="0"] td')).toHaveLength(2)
+    t.table().getColumn('b').toggleVisibility(false)
+    await flush()
+    // The hidden column's <td> is gone from every row…
+    expect(t.el.querySelectorAll('[data-rowid="0"] td')).toHaveLength(1)
+    expect(t.el.querySelectorAll('[data-rowid="2"] td')).toHaveLength(1)
+    // …and toggling back restores it with live content.
+    t.table().getColumn('b').toggleVisibility(true)
+    await flush()
+    expect(t.el.querySelectorAll('[data-rowid="0"] td')).toHaveLength(2)
+    expect(t.cellText(0, 'b')).toBe('b0')
+    t.unmount()
+  })
+
+  it('a SORT still re-runs all cells (the coarse-but-correct state contract is unchanged)', async () => {
+    const data = signal([
+      { id: 0, a: 'z', b: 'b0' },
+      { id: 1, a: 'm', b: 'b1' },
+      { id: 2, a: 'a', b: 'b2' },
+    ])
+    const t = mountVisibleCellsTable(data)
+    t.cellRuns[0] = 0
+    t.table().getColumn('a').toggleSorting(false)
+    await flush()
+    expect(t.cellRuns[0]).toBe(6) // 3×2 — bump-every-row on a structure change
+    const firstRow = t.el.querySelector('tbody [data-rowid]')
+    expect(firstRow?.querySelector('.col-a')?.textContent).toBe('a')
+    t.unmount()
+  })
+
+  it('falls back to tracked (coarse but correct) reads for a table with no bridge', async () => {
+    const data = signal(makeData(2))
+    const el = document.createElement('div')
+    document.body.appendChild(el)
+    const App = () => {
+      const bare = constructTable({
+        features: { coreReactivityFeature: pyreonReactivity(), ...allFeatures },
+        data: data(),
+        columns: cols,
+        getRowId: (r: Row) => String(r.id),
+      } as never) as any
+      effect(() => {
+        const d = data()
+        untrack(() => bare.setOptions((prev: any) => ({ ...prev, data: d })))
+      })
+      return h('table', {}, h('tbody', {}, () =>
+        hFor({ each: () => bare.getRowModel().rows, by: (r: any) => r.id }, (row: any) => {
+          const rowId = row.id
+          return h('tr', { 'data-rowid': rowId },
+            hFor({ each: () => visibleCells(bare, rowId), by: (c: any) => c.id }, (cell: any) =>
+              h('td', { class: `col-${cell.column.id}` }, () => String(flexRenderCell(bare, rowId, cell.column.id))),
+            ),
+          )
+        }),
+      ))
+    }
+    const dispose = mount(hAny(App), el)
+    expect(el.querySelector('[data-rowid="1"] .col-a')?.textContent).toBe('a1')
+    data.set(editCell(data(), 1, 'a', 'COARSE'))
+    await flush()
+    expect(el.querySelector('[data-rowid="1"] .col-a')?.textContent).toBe('COARSE')
+    if (typeof dispose === 'function') dispose()
+    el.remove()
+  })
+
+  it('a missing row yields an EMPTY list, never a throw', async () => {
+    const data = signal(makeData(2))
+    const el = document.createElement('div')
+    document.body.appendChild(el)
+    let out: unknown[] = ['sentinel']
+    const App = () => {
+      const t = useTable(() => ({
+        data: data(),
+        columns: cols,
+        features: allFeatures,
+        getRowId: (r: Row) => String(r.id),
+      }))
+      out = visibleCells(t, '999')
+      return h('div', {})
+    }
+    const dispose = mount(hAny(App), el)
+    expect(out).toEqual([])
+    if (typeof dispose === 'function') dispose()
+    el.remove()
+  })
+})
+

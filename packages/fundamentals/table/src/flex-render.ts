@@ -1,6 +1,6 @@
 import type { VNodeChild, VNodeChildAtom } from '@pyreon/core'
 import { untrack } from '@pyreon/reactivity'
-import type { RowData, Table, TableFeatures } from '@tanstack/table-core'
+import type { Cell, RowData, Table, TableFeatures } from '@tanstack/table-core'
 import { _getRowSignalBridge } from './use-table'
 
 /** Resolved renderable content — deliberately NOT the full `VNodeChild`.
@@ -110,13 +110,84 @@ function renderCell<TFeatures extends TableFeatures, TData extends RowData>(
   rowId: string,
   columnId: string,
 ): RenderedChild {
-  const row = table.getRowModel().rowsById[rowId]
-  if (row == null) return null
-  type Cells = ReturnType<Table<TFeatures, TData>['getRowModel']>['rows'][number]['getAllCells']
-  const withVisible = row as { getVisibleCells?: Cells }
-  const cells =
-    typeof withVisible.getVisibleCells === 'function' ? withVisible.getVisibleCells() : row.getAllCells()
+  const cells = lookupVisibleCells(table, rowId)
   const cell = cells.find((c) => c.column.id === columnId)
   if (cell == null) return null
   return flexRender(cell.column.columnDef.cell, cell.getContext())
+}
+
+/** The current visible cells of a row, looked up FRESH from the row model (the
+ *  captured `row` object goes stale the moment the model rebuilds). Returns an
+ *  empty array when the row is not in the current model. */
+function lookupVisibleCells<TFeatures extends TableFeatures, TData extends RowData>(
+  table: Table<TFeatures, TData>,
+  rowId: string,
+): VisibleCells<TFeatures, TData> {
+  const row = table.getRowModel().rowsById[rowId]
+  if (row == null) return []
+  const withVisible = row as { getVisibleCells?: () => VisibleCells<TFeatures, TData> }
+  return typeof withVisible.getVisibleCells === 'function' ? withVisible.getVisibleCells() : row.getAllCells()
+}
+
+type VisibleCells<TFeatures extends TableFeatures, TData extends RowData> = Cell<
+  TFeatures,
+  TData,
+  unknown
+>[]
+
+/** The column-GEOMETRY state slices — the only table state that can change a
+ *  row's visible cell LIST without flowing through the row model (structure) or
+ *  the `columns` option (both of which bump the per-row signals). Read tracked
+ *  so `visibleCells` re-runs on a real visibility/order/pinning/grouping
+ *  change; each read is a no-op when the feature is not registered. These
+ *  subscriptions stay QUIET on data edits because the adapter's derived atoms
+ *  are value-gated (`Object.is` reference parity — see reactivity.ts). */
+function trackColumnGeometry(table: object): void {
+  const atoms = (table as { atoms?: Record<string, { get(): unknown } | undefined> }).atoms
+  if (!atoms) return
+  atoms['columnVisibility']?.get()
+  atoms['columnOrder']?.get()
+  atoms['columnPinning']?.get()
+  atoms['grouping']?.get()
+}
+
+/**
+ * Fine-grained visible-cells accessor for a row — the cells-LIST companion to
+ * `flexRenderCell`.
+ *
+ * The naive inner loop `each={() => row.getVisibleCells()}` leaves a TRACKED
+ * table-core read in every row's scope: `getVisibleCells`' memo deps read
+ * `table.options` (through `getAllCells` → `getAllLeafColumns`), and the
+ * options atom changes on EVERY options sync — data edits included. So a
+ * single-cell edit re-ran every row's cells-list accessor (measured: 1000
+ * re-runs at N=1000 where 1 is correct — the dominant cost of the whole
+ * update). `visibleCells` subscribes fine-grained instead: the row's own
+ * signal (covers structure + `columns`-option changes via the `useTable`
+ * bridge) plus the column-geometry state slices (visibility, order, pinning,
+ * grouping), and runs the actual lookup UNTRACKED against the CURRENT row
+ * model — never a captured stale `row`.
+ *
+ * A table built directly with `constructTable` has no bridge; the lookup then
+ * stays tracked (coarse but correct), mirroring `flexRenderCell`'s fallback.
+ *
+ * @example
+ * <For each={() => table.getRowModel().rows} by={(r) => r.id}>
+ *   {(row) => (
+ *     <tr>
+ *       <For each={() => visibleCells(table, row.id)} by={(c) => c.id}>
+ *         {(cell) => <td>{() => flexRenderCell(table, row.id, cell.column.id)}</td>}
+ *       </For>
+ *     </tr>
+ *   )}
+ * </For>
+ */
+export function visibleCells<TFeatures extends TableFeatures, TData extends RowData>(
+  table: Table<TFeatures, TData>,
+  rowId: string,
+): VisibleCells<TFeatures, TData> {
+  const bridge = _getRowSignalBridge(table)
+  if (!bridge) return lookupVisibleCells(table, rowId)
+  bridge.rowSignal(rowId)()
+  trackColumnGeometry(table)
+  return untrack(() => lookupVisibleCells(table, rowId))
 }

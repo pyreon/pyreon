@@ -23,7 +23,7 @@ A full, end-to-end usage of the package:
 
 ```tsx
 import {
-  useTable, flexRender, flexRenderCell,
+  useTable, flexRender, flexRenderCell, visibleCells,
   tableFeatures, rowSortingFeature, createSortedRowModel, sortFn_alphanumeric,
   type ColumnDef,
 } from '@pyreon/table'
@@ -79,7 +79,7 @@ const table = useTable(() => ({
     <For each={() => table.getRowModel().rows} by={(r) => r.id}>
       {(row) => (
         <tr>
-          <For each={() => row.getVisibleCells()} by={(c) => c.id}>
+          <For each={() => visibleCells(table, row.id)} by={(c) => c.id}>
             {/* flexRenderCell(table, …) inside an accessor = fine-grained:
                 a single-cell edit patches ONLY this cell. Plain
                 flexRender(cell…, cell.getContext()) FREEZES on a value change
@@ -100,6 +100,7 @@ const table = useTable(() => ({
 | [`useTable`](#usetable) | hook | Create a reactive TanStack Table v9 instance. |
 | [`flexRender`](#flexrender) | function | Render a TanStack Table column definition template (header, cell, or footer). |
 | [`flexRenderCell`](#flexrendercell) | function | Fine-grained per-cell renderer for live cell values. |
+| [`visibleCells`](#visiblecells) | function | Fine-grained visible-cells accessor for a row — the cells-LIST companion to `flexRenderCell`, for the inner `<For>` of a |
 | [`createTableState`](#createtablestate) | function | The dependency-free, MULTIPLATFORM-portable table-state core — the alternative to `useTable` (which binds `@tanstack/tab |
 
 ## API
@@ -202,6 +203,37 @@ flexRenderCell(table, row.id, columnId)
 
 ---
 
+### visibleCells `function`
+
+```ts
+<TFeatures extends TableFeatures, TData extends RowData>(table: Table<TFeatures, TData>, rowId: string) => Cell[]
+```
+
+Fine-grained visible-cells accessor for a row — the cells-LIST companion to `flexRenderCell`, for the inner `<For>` of a keyed table body: `<For each={() => visibleCells(table, row.id)} by={(c) => c.id}>`. The naive `each={() => row.getVisibleCells()}` leaves a TRACKED table-core read in every row's scope (its memo deps read `table.options`, which changes on EVERY options sync — data edits included), so a single-cell edit re-ran every row's cells-list accessor: measured 1000 re-runs at N=1000 where 1 is correct, ~3× the wall-clock of a memoized react-table update. `visibleCells` subscribes to the row's own signal plus the column-geometry state slices (visibility, order, pinning, grouping) and looks the cells up UNTRACKED from the CURRENT row model — never a captured stale `row` — so a data edit reaches exactly the edited rows' loops while a real visibility/order/pinning change still re-reconciles every row's cell list. Falls back to tracked (coarse but correct) reads for a table built directly with `constructTable` (no bridge). Returns an empty array when the row is not in the current model.
+
+**Example**
+
+```tsx
+<For each={() => table.getRowModel().rows} by={(r) => r.id}>
+  {(row) => (
+    <tr>
+      <For each={() => visibleCells(table, row.id)} by={(c) => c.id}>
+        {(cell) => <td>{() => flexRenderCell(table, row.id, cell.column.id)}</td>}
+      </For>
+    </tr>
+  )}
+</For>
+```
+
+**Common mistakes**
+
+- Using `each={() => row.getVisibleCells()}` on the captured `row` instead — it works, but subscribes every row to the options atom, so every data edit re-runs ALL N cells-list accessors (the O(N)-per-edit overhead that made single-cell updates ~3× slower than memoized react-table at N=1000)
+- Calling it OUTSIDE a reactive scope — like any accessor it must be read where tracking is live (a `<For each>` accessor, an effect) or it never re-runs
+
+**See also:** `flexRenderCell` · `useTable`
+
+---
+
 ### createTableState `function`
 
 ```ts
@@ -236,6 +268,6 @@ table.toggleSort('name'); table.setFilter('li')
 
 > **Computed return:** useTable returns the Table INSTANCE (v9), not a Computed — there is no `table()` call. Its state lives in Pyreon signals, so reading it inside a reactive scope subscribes: `<For each={() => table.getRowModel().rows}>` makes the list reactive. The v8 accessor form was only ever a workaround for v8 having no reactivity seam.
 
-> **Fine-grained cells:** For live/editable tables, render cells with `flexRenderCell(table, row.id, cell.column.id)` inside an accessor. An in-place data edit then re-runs ONLY the changed rows' cell bindings (per-row signals) and patches ONE cell — no memo boilerplate, matching a hand-optimized react-table. A table-STATE change (sort/filter/selection/column visibility) re-runs all cells (coarse, correct-by-default for state-reading cells).
+> **Fine-grained cells:** For live/editable tables, render cells with `flexRenderCell(table, row.id, cell.column.id)` inside an accessor, and drive the inner cells loop with `visibleCells(table, row.id)` — NOT the captured `row.getVisibleCells()`, whose tracked memo-dep reads subscribe every row to the options atom (a data edit then re-runs ALL N cells-list accessors; measured ~3× a memoized react-table update at N=1000). With both, an in-place data edit re-runs ONLY the changed rows' bindings and patches ONE cell — no memo boilerplate, matching (and on wall-clock beating) a hand-optimized react-table. A table-STATE change (sort/filter/selection/column visibility) re-runs all cells (coarse, correct-by-default for state-reading cells).
 
 > **reorder-on-data-edit limitation:** A DATA edit that changes the SORT ORDER (editing the column you are sorted BY) updates every cell to the correct value but does NOT re-position the keyed rows until the next structure/state change — a pre-existing base-adapter limitation of the sorted-row-model + &lt;For&gt; interaction (it affects plain `flexRender` cells too, not just `flexRenderCell`). Re-ordering via the sort controls (`toggleSorting`/`setSorting`) works normally. Workaround: re-apply sorting after such an edit, or sort by a column you do not edit in place.

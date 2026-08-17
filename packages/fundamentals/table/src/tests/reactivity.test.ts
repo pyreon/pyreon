@@ -109,6 +109,41 @@ describe('pyreonReactivity — readonly atom', () => {
     expect(next).toHaveBeenCalledWith(20)
   })
 
+  it('WITHOUT `compare`, defaults to Object.is — an IDENTICAL recomputed value does not notify (reference parity)', () => {
+    // TanStack Store's reference `createAtom` defaults `compare` to `Object.is`
+    // and does not propagate an equal update. Core RELIES on this: its
+    // per-slice `table.atoms[key]` atoms are created with NO compare while
+    // their fn reads `table.options` — which changes on EVERY options write,
+    // data edits included — and returns the (unchanged) slice value. Under
+    // Pyreon's bare `computed` (unconditional notify) every data edit
+    // re-notified every state-slice subscriber: at N=1000 that was 1000
+    // spurious per-row cells-list re-runs per single-cell edit, the dominant
+    // cost of the whole update (~0.7ms of ~0.95ms measured).
+    const dep = signal(0)
+    const stable = { vis: true }
+    const atom = pyreonReactivity().createReadonlyAtom(() => {
+      dep() // a dependency that changes...
+      return stable // ...while the derived VALUE stays identical
+    })
+    const next = vi.fn()
+    atom.subscribe(next)
+
+    dep.set(1) // dep changed, value identical — must stay quiet
+    dep.set(2)
+    expect(next).not.toHaveBeenCalled()
+  })
+
+  it('WITHOUT `compare`, a writable atom drops an Object.is-equal write (reference parity)', () => {
+    const bindings = pyreonReactivity()
+    const atom = bindings.createWritableAtom('same')
+    const next = vi.fn()
+    atom.subscribe(next)
+    atom.set('same') // Object.is-equal — reference bindings drop this
+    expect(next).not.toHaveBeenCalled()
+    atom.set('changed')
+    expect(next).toHaveBeenCalledWith('changed')
+  })
+
   it('with `compare`, does NOT notify when the recomputed value is equal', () => {
     const src = signal({ n: 1 })
     const atom = pyreonReactivity().createReadonlyAtom(() => ({ n: src().n }), {

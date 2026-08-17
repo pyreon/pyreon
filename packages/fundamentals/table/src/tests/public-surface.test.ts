@@ -118,6 +118,7 @@ describe('@pyreon/table — public surface', () => {
         "tableFeatures",
         "tableOptions",
         "useTable",
+        "visibleCells",
       ]
     `)
   })

@@ -22,7 +22,12 @@ import type { TableAtomOptions, TableReactivityBindings } from '@tanstack/table-
 /** Pyreon signal -> writable `Atom`, honoring the atom's `compare` option. */
 function writableAtom<T>(initialValue: T, options?: TableAtomOptions<T>): Atom<T> {
   const sig = signal<T>(initialValue)
-  const compare = options?.compare
+  // Value-gated propagation is the seam's REFERENCE semantic: TanStack Store's
+  // `createAtom` defaults `compare` to `Object.is` and does not propagate when
+  // the new value is equal (`_update` returns false). Mapping "no compare" to
+  // an always-notify write diverges from that reference — an equal re-write
+  // would fan out to every subscriber for nothing.
+  const compare = options?.compare ?? Object.is
   return {
     get: () => sig(),
     // Pyreon's `signal` has no `equals` hook (only `computed` does), so the
@@ -31,7 +36,7 @@ function writableAtom<T>(initialValue: T, options?: TableAtomOptions<T>): Atom<T
     set: ((next: T | ((prev: T) => T)) => {
       const prev = sig.peek()
       const value = typeof next === 'function' ? (next as (p: T) => T)(prev) : next
-      if (compare?.(prev, value)) return
+      if (compare(prev, value)) return
       sig.set(value)
     }) as Atom<T>['set'],
     subscribe: ((observer: unknown) => {
@@ -44,10 +49,18 @@ function writableAtom<T>(initialValue: T, options?: TableAtomOptions<T>): Atom<T
 
 /** Pyreon computed -> `ReadonlyAtom`. */
 function readonlyAtom<T>(fn: () => T, options?: TableAtomOptions<T>): ReadonlyAtom<T> {
-  const compare = options?.compare
-  // `equals` makes the computed eager + notify-on-change-only, which is
-  // exactly the atom `compare` contract.
-  const c = compare ? computed(fn, { equals: compare }) : computed(fn)
+  // `equals` makes the computed notify-on-change-only, which is exactly the
+  // atom `compare` contract — and the DEFAULT must be `Object.is`, not
+  // "notify unconditionally": TanStack Store's reference `createAtom` defaults
+  // `compare` to `Object.is`, so a derived atom whose recomputed value is
+  // IDENTICAL does not propagate. Pyreon's bare `computed` notifies on every
+  // dependency change, and core creates its per-slice `table.atoms[key]`
+  // WITHOUT a compare while their fn reads `table.options` — which changes on
+  // EVERY options write, data edits included. Under unconditional notify each
+  // data edit therefore re-notified every state-slice subscriber with an
+  // unchanged value (measured: N per-row cell-list accessors re-ran per
+  // single-cell edit). `Object.is` restores reference-binding parity.
+  const c = computed(fn, { equals: options?.compare ?? Object.is })
   return {
     get: () => c(),
     subscribe: ((observer: unknown) => {
