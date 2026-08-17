@@ -390,7 +390,19 @@ export function mountKeyedList(
         cache.clear()
         curPos.clear()
         currentKeyOrder = []
-        clearBetween(startMarker, tailMarker)
+        if (liveParent.firstChild === startMarker && liveParent.lastChild === tailMarker) {
+          // Owns-parent bulk clear — the keyed-array sibling of mountFor's
+          // handleFastClear fast branch (same proof, same counter). NOTE the
+          // entry cleanups above may already have detached their own DOM
+          // (mountVNode cleanups remove their elements) — replaceChildren then
+          // clears only the leftovers (anchors) in one native call, still
+          // fewer ops than the per-node clearBetween walk.
+          ;(liveParent as Element).replaceChildren(startMarker, tailMarker)
+          if (process.env.NODE_ENV !== 'production')
+            _countSink.__pyreon_count__?.('runtime.mountFor.clearFast')
+        } else {
+          clearBetween(startMarker, tailMarker)
+        }
         return
       }
 
@@ -829,21 +841,32 @@ export function mountFor<T>(
     cache = new Map()
     cleanupCount = 0
 
-    const parentParent = liveParent.parentNode
-    const canSwap =
-      parentParent && liveParent.firstChild === startMarker && liveParent.lastChild === tailMarker
+    // For owns EVERY child of liveParent (markers are first+last) ⟺ wiping the
+    // parent's children wipes exactly this For's block.
+    const ownsParent =
+      liveParent.firstChild === startMarker && liveParent.lastChild === tailMarker
 
     const frag = document.createDocumentFragment()
     for (let i = 0; i < n; i++) {
       renderInto(items[i] as T, newKeys[i] as string | number, i, frag, null)
     }
 
-    if (canSwap) {
-      const fresh = liveParent.cloneNode(false)
-      fresh.appendChild(startMarker)
-      fresh.appendChild(frag)
-      fresh.appendChild(tailMarker)
-      parentParent.replaceChild(fresh, liveParent)
+    if (ownsParent) {
+      // ONE native remove-all + re-insert, IN PLACE. This deliberately replaced
+      // a cloneNode(false) + replaceChild parent SWAP that was ~20µs/1000-rows
+      // FASTER on-CPU (Chromium 2026-08-17, interleaved A/B profiles: swap
+      // ~60µs vs replaceChildren ~80µs total clear — the swap never unlinks the
+      // children individually) but DISCARDED the parent element's identity,
+      // silently dropping the parent's expando-delegated handlers (`__ev_*`),
+      // refs, observers, and direct listeners (cloneNode copies none of those)
+      // — e.g. `<ul onClick={…}><For …/></ul>` lost its click handler on the
+      // first clear/full-replace. Correctness > performance: the identity-
+      // preserving primitive wins, and the fair-bench median is unmoved (the
+      // delta sits inside the 100µs timer quantum). Locked by
+      // for-clear-replace-fast.test.tsx (parent-identity + counter specs).
+      ;(liveParent as Element).replaceChildren(startMarker, frag, tailMarker)
+      if (process.env.NODE_ENV !== 'production')
+        _countSink.__pyreon_count__?.('runtime.mountFor.replaceFast')
     } else {
       clearBetween(startMarker, tailMarker)
       liveParent.insertBefore(frag, tailMarker)
@@ -1070,12 +1093,15 @@ export function mountFor<T>(
         }
       }
     }
-    const pp = liveParent.parentNode
-    if (pp && liveParent.firstChild === startMarker && liveParent.lastChild === tailMarker) {
-      const fresh = liveParent.cloneNode(false)
-      fresh.appendChild(startMarker)
-      fresh.appendChild(tailMarker)
-      pp.replaceChild(fresh, liveParent)
+    if (liveParent.firstChild === startMarker && liveParent.lastChild === tailMarker) {
+      // For owns every child → ONE native remove-all + marker re-insert, IN
+      // PLACE. See handleReplaceAll's ownsParent comment for the full measured
+      // trade: the previous cloneNode+replaceChild swap was ~20µs/1000-rows
+      // faster on-CPU but replaced the parent element, dropping its
+      // expandos/refs/listeners — a silent correctness bug this branch fixes.
+      ;(liveParent as Element).replaceChildren(startMarker, tailMarker)
+      if (process.env.NODE_ENV !== 'production')
+        _countSink.__pyreon_count__?.('runtime.mountFor.clearFast')
     } else {
       clearBetween(startMarker, tailMarker)
     }

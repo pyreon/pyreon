@@ -8,10 +8,17 @@ import { defineConfig } from 'vite'
 // rollup input (same plugins/minifier for every framework = fair comparison).
 const bundleEntry = process.env.BENCH_BUNDLE_ENTRY
 
+// bench-clearprofile.ts: BENCH_PROFILE=1 disables minification so CPU-profile
+// callFrames keep their source function names (attribution only — V8 does not
+// care about identifier length; never use this build for TIMED numbers).
+const profileBuild = process.env.BENCH_PROFILE === '1'
+
 export default defineConfig({
   ...(bundleEntry
     ? { build: { rollupOptions: { input: bundleEntry } } }
-    : {}),
+    : profileBuild
+      ? { build: { minify: false } }
+      : {}),
   plugins: [
     pyreon(),
     // Octane — the compiled-React framework (`.tsrx`). `requireDirective: true`
