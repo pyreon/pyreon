@@ -125,7 +125,7 @@
     "@babel/core": "^8.0.1",
     "@babel/plugin-transform-react-jsx": "^8.0.1",
     "@changesets/changelog-github": "^0.7.0",
-    "@changesets/cli": "^2.31.1",
+    "@changesets/cli": "^3.0.0",
     "@emotion/css": "^11.13.5",
     "@playwright/test": "1.62.1",
     "@preact/signals-core": "^1.14.4",
