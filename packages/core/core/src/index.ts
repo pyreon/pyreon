@@ -80,8 +80,8 @@ export {
   removeUndefinedProps,
   splitProps,
 } from './props'
-export type { Ref, RefCallback, RefProp } from './ref'
-export { createRef } from './ref'
+export type { ElementRef, Ref, RefCallback, RefProp } from './ref'
+export { createRef, elementRef } from './ref'
 export type { Directive, DirectiveEntry } from './directive'
 export { use } from './directive'
 export type { AsyncLike, AsyncProps } from './async'
