@@ -787,6 +787,40 @@ const getMode = useContext(ModeCtx)    // reactive: returns () => T`,
 - \`<Show when={signal}>\` (bare reference) — relies on the compiler's signal auto-call to rewrite to \`when={signal()}\`. Works defensively but use \`when={() => signal()}\` for explicit accessor semantics across the entire reactive lifecycle.`,
   },
 
+  'core/Async': {
+    signature: '<Async of={source} pending={…} error={(e) => …} empty={…}>{(data) => …}</Async>',
+    example: `import type { AsyncLike } from '@pyreon/core'
+
+// any source with these four accessors — e.g. a useQuery() result
+declare const todos: AsyncLike<{ id: number; title: string }[]>
+
+<Async of={todos} empty="No todos yet." error={(e) => <p>{String(e)}</p>}>
+  {(rows) => <ul>{rows.map((r) => <li>{r.title}</li>)}</ul>}
+</Async>`,
+    notes: 'Renders one of pending / error / empty / data from any async-shaped source, replacing the hand-written guard chain at a data boundary. The `of` prop is STRUCTURAL, not a dependency: anything exposing `isPending` / `isError` / `error` / `data` accessors satisfies `AsyncLike<T>`, so `@pyreon/query` results, `@pyreon/http` resources and hand-rolled sources all work without `@pyreon/core` importing any of them. Returns a reactive accessor (the same shape `Show` uses), so every branch re-evaluates on source change. `empty` covers BOTH null/undefined data and an empty array — but only when you pass it: an empty array with no `empty` prop is handed to `children` instead, so a list that renders its own empty state keeps working rather than silently vanishing. See also: Show, Switch, ErrorBoundary, Suspense.',
+    mistakes: `- Expecting \`<ErrorBoundary>\` to catch the source error — it CANNOT. Only a throw during the initial mount is caught; a reactive re-run throws outside its reach, which is exactly the common case (a request that fails after mount). That is why \`<Async>\` has no rethrowing default: pass \`error={(e) => …}\` or nothing renders.
+- Omitting \`error\` and assuming the failure is visible — it renders nothing and warns ONCE in development. In production it is silent.
+- Passing \`empty\` and expecting it for a non-empty falsy value — \`0\` and \`""\` are DATA and reach \`children\`. Only null/undefined and an empty array are empty.
+- Reaching for \`<Async>\` to catch a THROWN error — it reads an error off the source, it does not trap exceptions. \`<ErrorBoundary>\` is still the tool for a component that throws at mount.
+- Assuming \`pending\` defaults to a spinner or text — it defaults to rendering nothing, deliberately, so the framework never injects English into your UI.`,
+  },
+
+  'core/use': {
+    signature: 'use<T extends Element>(...directives: DirectiveEntry<T>[]): RefCallback<T>',
+    example: `const clickOutside = (cb: () => void): Directive => (el) => {
+  const h = (e: Event) => { if (!el.contains(e.target as Node)) cb() }
+  document.addEventListener('mousedown', h)
+  return () => document.removeEventListener('mousedown', h)
+}
+
+<div ref={use(autoFocus, clickOutside(close), hotkey({ Escape: close }))} />`,
+    notes: 'Composes element behaviours into a single ref. A `Directive` is a plain `(el) => cleanup | void` function, so attaching N behaviours costs one attribute instead of a ref declaration, N hook calls and a ref attach. Nothing here is special-cased by the compiler or the renderer — `use()` returns an ordinary `RefCallback`, which the runtime already invokes with the element on mount and `null` on unmount. Cleanups run in REVERSE attach order (LIFO), so a directive whose setup depends on an earlier one tears down first. Falsy entries are skipped, so a directive can be applied conditionally inline. Behaviour bundles are plain arrays: `use(...dialogBehaviours, autoFocus)`. See also: createRef, Ref.',
+    mistakes: `- Returning a cleanup from a directive and expecting it on EVERY render — it runs on unmount (or before a re-attach), not per reactive update. A directive attaches once per element.
+- Passing \`use(...)\` to something other than \`ref\` — it is a ref callback, not a prop object; it does not spread.
+- Assuming a second attach stacks behaviours — a re-attach without an intervening detach tears the previous registration down FIRST, so listeners cannot pile up (leak class D).
+- Writing a directive that captures a value at attach time and expecting it to track — a directive receives the element, not a reactive scope. Read a signal inside the event handler, or pass an accessor.`,
+  },
+
   'core/Switch': {
     signature: '<Switch fallback={default}>{Match children}</Switch>',
     example: `<Switch fallback={<p>Unknown status</p>}>
