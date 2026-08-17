@@ -157,6 +157,12 @@ Such an effect can legitimately re-run more than once per user change (different
 
 ---
 
+### Implementing a seam's atom WITHOUT matching the reference bindings' DEFAULT compare — "no compare" means `Object.is`, not "notify unconditionally".
+
+TanStack Store's reference `createAtom` (the semantics table-core is written against) defaults `compare` to `Object.is` and does NOT propagate an equal update. Mapping "no compare" to a bare Pyreon `computed` (which notifies on every dep change) silently diverged: core creates its per-slice `table.atoms[key]` with NO compare while their fn reads `table.options` — invalidated by EVERY options write, data edits included — so each data edit re-notified every slice subscriber with an UNCHANGED value. Combined with a tracked per-row core read (`each={() => row.getVisibleCells()}` — its memo deps read `table.options` too), a single-cell edit re-ran all N per-row cells-list accessors (measured 1000-of-1 at N=1000, making the edit 3.0× slower than memoized react-table while the CELL-unit counts showed parity — a class the deterministic count bench structurally cannot see; only wall-clock + a re-run counter on the LOOP, not the cell, caught it). Fixes: `equals: compare ?? Object.is` in both atom kinds (reference parity), and a fine-grained cells-list accessor (`visibleCells`) that subscribes to the row signal + the column-geometry slices and untracks the lookup. **Rule: when implementing a pluggable-reactivity seam, read the REFERENCE bindings' defaults (compare, laziness, scheduling) and match them — the library is written against those semantics, and a divergence surfaces not as an error but as N× spurious re-runs.** Bisect-locked in `table/src/tests/reactivity.test.ts` (Object.is parity) + `fine-grained-cell.test.tsx` (the 1000-of-1 count).
+
+---
+
 ### Adopting the seam DELETES hand-rolled machinery — check what becomes dead.
 
 The v8 adapter's version counter, whole-`TableState` structural diff (`sameTableState`/`sliceEqual`), and `onStateChange` interception all existed solely because v8 had no seam; v9 made them obsolete (372 → ~250 lines with MORE capability). When a dependency grows a reactivity seam, the migration is an opportunity to delete, not just to rename.

@@ -47,7 +47,7 @@ export type * from '@tanstack/table-core'
 
 // ─── Pyreon adapter ─────────────────────────────────────────────────────────
 
-export { flexRender, flexRenderCell } from './flex-render'
+export { flexRender, flexRenderCell, visibleCells } from './flex-render'
 export { pyreonReactivity } from './reactivity'
 export type { UseTableOptions } from './use-table'
 export { useTable } from './use-table'

@@ -246,6 +246,7 @@ import {
   useTable,
   flexRender,
   flexRenderCell,
+  visibleCells,
   createColumnHelper,
   tableFeatures,
   rowSortingFeature,
@@ -312,7 +313,7 @@ const PeopleTable = defineComponent(() => {
         <For each={() => table.getRowModel().rows} by={(r) => r.id}>
           {(row) => (
             <tr>
-              <For each={() => row.getVisibleCells()} by={(c) => c.id}>
+              <For each={() => visibleCells(table, row.id)} by={(c) => c.id}>
                 {/* Fine-grained: `flexRenderCell` inside an accessor so a
                     single-cell edit patches ONLY this cell — no re-render of
                     the row or table, no memoization boilerplate. */}
@@ -458,7 +459,7 @@ boilerplate.
 <For each={() => table.getRowModel().rows} by={(r) => r.id}>
   {(row) => (
     <tr>
-      <For each={() => row.getVisibleCells()} by={(c) => c.id}>
+      <For each={() => visibleCells(table, row.id)} by={(c) => c.id}>
         {(cell) => <td>{() => flexRenderCell(table, row.id, cell.column.id)}</td>}
       </For>
     </tr>
@@ -466,8 +467,17 @@ boilerplate.
 </For>
 ```
 
-Two rules make it fine-grained:
+Three rules make it fine-grained:
 
+- **Use `visibleCells(table, row.id)` for the inner cells loop, not `row.getVisibleCells()`.**
+  The captured `row`'s `getVisibleCells()` is a *tracked* table-core read whose memo deps read
+  `table.options` — and the options atom changes on **every** options sync, data edits
+  included. With it, a single-cell edit re-runs every row's cells-list accessor (measured:
+  1000 re-runs at N=1000 where 1 is correct — enough to make the edit ~3× slower than a
+  memoized react-table). `visibleCells` subscribes to the row's own signal plus the
+  column-geometry state slices (visibility, order, pinning, grouping) and looks the cells up
+  untracked from the *current* row model, so the edit reaches exactly the edited rows' loops
+  while a real visibility/order/pinning change still re-reconciles every row's cell list.
 - **Pass a table from `useTable`.** That table carries a per-row signal bridge, so each cell
   subscribes to only its own row's signal (the adapter tracks which rows' `original` data
   changed). A table built directly with `constructTable` has no bridge — it still renders
@@ -693,7 +703,7 @@ re-navigates to the **live** cell from the current row model on every read. Plac
 an accessor:
 
 ```tsx
-<For each={() => row.getVisibleCells()} by={(c) => c.id}>
+<For each={() => visibleCells(table, row.id)} by={(c) => c.id}>
   {(cell) => <td>{() => flexRenderCell(table, row.id, cell.column.id)}</td>}
 </For>
 ```
@@ -1840,7 +1850,7 @@ const ProductTable = defineComponent(() => {
           <For each={() => table.getRowModel().rows} by={(r) => r.id}>
             {(row) => (
               <tr>
-                <For each={() => row.getVisibleCells()} by={(c) => c.id}>
+                <For each={() => visibleCells(table, row.id)} by={(c) => c.id}>
                   {(cell) => <td>{() => flexRenderCell(table, row.id, cell.column.id)}</td>}
                 </For>
               </tr>
@@ -2245,7 +2255,7 @@ const EmployeeTable = defineComponent(() => {
             <For each={() => table.getRowModel().rows} by={(r) => r.id}>
               {(row) => (
                 <tr style={{ borderBottom: '1px solid #e0e0e0' }}>
-                  <For each={() => row.getVisibleCells()} by={(c) => c.id}>
+                  <For each={() => visibleCells(table, row.id)} by={(c) => c.id}>
                     {(cell) => (
                       <td style={{ padding: '8px 12px' }}>
                         {() => flexRenderCell(table, row.id, cell.column.id)}
