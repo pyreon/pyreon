@@ -1156,6 +1156,33 @@ const style = \`width: \${itemWidth}%\`   // -> "width: () => 100 / count()%"
         'Sibling shape: a bare accessor as an `if`/ternary condition outside JSX (`if (!has) return null` where `has = useHasAnyItem()`) — a function is always truthy, so the branch is pinned; call it (`if (!has())`). Flagged by `accessor-uncalled-in-condition`.',
     }),
   },
+  {
+    // elementRef()'s `.current` is a getter-only compatibility view — the
+    // value is SET by calling the ref (that is what the runtime does at
+    // mount/unmount). Code migrated from createRef() (where `.current` is a
+    // writable data property) that assigns `el.current = node` by hand throws
+    // this exact TypeError in strict mode (ESM is always strict).
+    pattern: /Cannot set property current of .+ which has only a getter/i,
+    diagnose: () => ({
+      cause:
+        'An `elementRef()` value had `.current` assigned directly — `el.current = node`. `elementRef` is a CALLABLE ref (the runtime sets it by invoking `el(node)` on mount and `el(null)` on unmount), and its `.current` is a read-only getter kept only so reads written against `createRef` keep working. Assigning it throws because the value has no setter.',
+      fix: 'Set by CALLING the ref: `el(node)` (and `el(null)` to clear). In JSX just pass it as the ref — `<div ref={el}>` — and the runtime does both halves. If you genuinely need a manually-assignable container with a writable `.current`, use `createRef()` instead; `elementRef` is for the read-side dual shape (`() => T | null`) the element-consuming hooks take.',
+      fixCode: `// WRONG — .current on elementRef is a read-only getter
+const el = elementRef<HTMLDivElement>()
+el.current = node          // TypeError: Cannot set property current
+
+// RIGHT — a callable ref is SET by calling it
+el(node)                   // set
+el(null)                   // clear (what unmount passes)
+<div ref={el} />           // the runtime calls it for you
+
+// Or, for a hand-assigned container, use createRef():
+const box = createRef<HTMLDivElement>()
+box.current = node         // writable by design`,
+      related:
+        'Reading before mount returns `null` — `el()` at component-body scope runs at setup, before the element exists. Read inside `onMount`/an effect, or pass `el` itself to hooks that take `() => HTMLElement | null` (`useElementSize(el)`, `useClickOutside(el)`, …).',
+    }),
+  },
 ]
 
 /** Diagnose an error message and return structured fix information */
