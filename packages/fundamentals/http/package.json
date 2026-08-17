@@ -91,7 +91,7 @@
     "@vitest/browser-playwright": "^4.1.10",
     "arktype": "^2.2.3",
     "axios": "^1.13.2",
-    "ky": "^1.14.0",
+    "ky": "^2.0.2",
     "ofetch": "^1.4.1",
     "redaxios": "^0.5.1",
     "valibot": "^1.4.1",
