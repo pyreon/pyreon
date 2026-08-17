@@ -69,37 +69,7 @@ export function mountChild(
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.mountChild')
   // Reactive accessor — function that reads signals
   if (typeof child === 'function') {
-    const sample = runUntracked(() => (child as () => VNodeChild | VNodeChild[])())
-    if (isKeyedArray(sample)) {
-      const prevDepth = _elementDepth
-      _elementDepth = 0
-      const cleanup = mountKeyedList(child as () => VNode[], parent, anchor, (v, p, a) =>
-        mountChild(v, p, a),
-      )
-      _elementDepth = prevDepth
-      return cleanup
-    }
-    // Text fast path: reactive string/number/boolean — update text.data in place.
-    // POLYMORPHIC: the accessor may later return a VNode
-    // (`() => loading() ? 'Loading…' : <Table/>`), so the binding upgrades to a
-    // full subtree mount on the first non-text value (and back). An unconditional
-    // `text.data = String(v)` rendered "[object Object]" for the VNode arm.
-    if (typeof sample === 'string' || typeof sample === 'number' || typeof sample === 'boolean') {
-      const text = document.createTextNode(sample === false ? '' : String(sample))
-      parent.insertBefore(text, anchor)
-      const dispose = bindPolymorphicText(child as () => VNodeChild, text, parent)
-      if (_elementDepth > 0) return dispose
-      return () => {
-        dispose()
-        const p = text.parentNode
-        if (p && p.nodeType !== 11 /* DocumentFragment — FW-3 */) p.removeChild(text)
-      }
-    }
-    const prevDepth = _elementDepth
-    _elementDepth = 0
-    const cleanup = mountReactive(child as () => VNodeChild, parent, anchor, mountChild)
-    _elementDepth = prevDepth
-    return cleanup
+    return mountAccessorChild(child as () => VNodeChild | VNodeChild[], parent, anchor)
   }
 
   // Array of children (e.g. from .map())
@@ -832,6 +802,127 @@ export function bindPolymorphicText(
   return () => {
     dispose()
     core.dispose()
+  }
+}
+
+/**
+ * Mount a reactive accessor child with a SINGLE accessor invocation for the
+ * dominant textish shape.
+ *
+ * Historically `mountChild` ran every function child TWICE at mount: an
+ * untracked classification sample (keyed array / textish / general), then the
+ * chosen machinery's own tracked first run re-invoked the accessor — user
+ * code — a second time (~12k invocations for 6k reactive cells in the table
+ * bench). The sample's VALUE could never be reused by the tracked run: the
+ * tracked run's invocation is what ESTABLISHES the subscriptions, so skipping
+ * it would leave the binding subscribed to nothing. The fix inverts the order
+ * instead — classification happens INSIDE the tracked first run of the
+ * binding's effect, so the classification call IS the subscription-
+ * establishing call:
+ *
+ * - TEXTISH initial (string/number/boolean — the per-cell/per-label shape):
+ *   this renderEffect IS the binding — exactly `bindPolymorphicText`'s shape
+ *   (same renderEffect discipline: re-run errors propagate, no onUpdate
+ *   notify; same swap core; same context-owner capture) → ONE invocation at
+ *   mount, and the reads performed by the classification call are byte-for-
+ *   byte the reads the old machinery's first run tracked.
+ * - KEYED-ARRAY / GENERAL initial: hand off to mountKeyedList /
+ *   mountReactive UNCHANGED — they own effect()-grade semantics
+ *   (ErrorBoundary routing, onUpdate notify, the re-entrant generation
+ *   guard, inner-effect/onCleanup windows) that a renderEffect-flavored
+ *   dispatcher cannot replicate — then dispose this dispatcher so its
+ *   first-run subscriptions are dropped. Those structural branches keep the
+ *   historical 2-invocations-at-mount shape (few per page, and their
+ *   accessors are typically a single conditional read, not a cell formatter).
+ *
+ * Classification stays PINNED at the first run's value, exactly as the old
+ * untracked sample pinned it — a textish-first accessor that later yields a
+ * VNode upgrades via the poly core (never re-classifies to the keyed
+ * reconciler), byte-identical to the previous behavior.
+ */
+const FIRST_RUN_OK = Symbol('pyreon.firstRunOk')
+function mountAccessorChild(
+  child: () => VNodeChild | VNodeChild[],
+  parent: Node,
+  anchor: Node | null,
+): Cleanup {
+  const depthAtEntry = _elementDepth
+  const ownerAtSetup = getContextOwner()
+  let core: PolyTextCore | null = null
+  let text: Text | null = null
+  let handoff: Cleanup | null = null
+  let firstRunError: unknown = FIRST_RUN_OK
+  const disposeEffect = renderEffect(() => {
+    if (core !== null) {
+      core.apply((child as () => VNodeChild)())
+      return
+    }
+    // First (tracked) run — classify once. The try exists ONLY so a throwing
+    // accessor doesn't leak the partial subscriptions collected before the
+    // throw: the error is re-thrown below AFTER this dispatcher is disposed,
+    // preserving the old sample's propagate-synchronously-out-of-mountChild
+    // behavior. Re-runs take the `core !== null` path above with NO catch —
+    // renderEffect re-run errors propagate, exactly as before.
+    try {
+      const v = child()
+      // Text fast path: reactive string/number/boolean — update text.data in
+      // place. POLYMORPHIC: the accessor may later return a VNode
+      // (`() => loading() ? 'Loading…' : <Table/>`), so the binding upgrades
+      // to a full subtree mount on the first non-text value (and back). An
+      // unconditional `text.data = String(v)` rendered "[object Object]" for
+      // the VNode arm.
+      if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+        text = document.createTextNode(v === false ? '' : String(v))
+        parent.insertBefore(text, anchor)
+        core = createPolyTextCore(text, parent, ownerAtSetup)
+        return
+      }
+      // Structural shape — hand off to the effect()-grade machinery.
+      // Constructed UNTRACKED (the machinery was historically built outside
+      // any tracking frame; its own effect establishes the real
+      // subscriptions) at depth 0 (reactive-boundary child cleanups must be
+      // real removers).
+      const prevDepth = _elementDepth
+      _elementDepth = 0
+      try {
+        runUntracked(() => {
+          handoff = isKeyedArray(v)
+            ? mountKeyedList(child as () => VNode[], parent, anchor, (vn, p, a) =>
+                mountChild(vn, p, a),
+              )
+            : mountReactive(child as () => VNodeChild, parent, anchor, mountChild)
+        })
+      } finally {
+        _elementDepth = prevDepth
+      }
+    } catch (err) {
+      firstRunError = err
+    }
+  })
+  if (firstRunError !== FIRST_RUN_OK) {
+    disposeEffect()
+    throw firstRunError
+  }
+  if (handoff !== null) {
+    // Drop the dispatcher's first-run subscriptions — the machinery's own
+    // effect owns the binding from here.
+    disposeEffect()
+    return handoff
+  }
+  // Textish — this dispatcher IS the binding (bindPolymorphicText's shape).
+  if (depthAtEntry > 0) {
+    return () => {
+      disposeEffect()
+      core?.dispose()
+    }
+  }
+  return () => {
+    disposeEffect()
+    core?.dispose()
+    if (text !== null) {
+      const p = text.parentNode
+      if (p && p.nodeType !== 11 /* DocumentFragment — FW-3 */) p.removeChild(text)
+    }
   }
 }
 

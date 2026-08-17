@@ -208,6 +208,15 @@ async function reactSamples(
 //    VNode path). Kept for transparency: earlier versions of this bench ONLY
 //    measured this variant and flagged the "~2× mount" loss against themselves
 //    — a disclosed SELF-handicap, since no compiled app pays the h() mount tax.
+//    RESOLVED (the double-run-at-mount finding this note used to track):
+//    mountChild's untracked classification sample used to re-invoke every
+//    reactive accessor child a second time via the binding machinery's tracked
+//    first run (~12k invocations for 6k cells). runtime-dom's
+//    `mountAccessorChild` now classifies INSIDE the tracked first run, so
+//    textish cell accessors run ONCE at mount — measured on THIS bench's
+//    pyreon-h mount-1k: 57.4-60.1ms → 52.8-53.9ms (~10%) across 3 interleaved
+//    A/B rounds. Structural (keyed-array / VNode) accessors keep the
+//    documented 2-invocation handoff (see mount.ts:mountAccessorChild).
 //
 // The compiled variant's JSX source mirrors the h() fixture 1:1 (same For/by
 // keys, same per-cell flexRenderCell accessor, same data-rowid attr).
