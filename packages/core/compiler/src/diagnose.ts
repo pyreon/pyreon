@@ -29,6 +29,23 @@ interface ErrorPattern {
 
 const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // The error surface `<Async>` introduces. `of` is a STRUCTURAL contract
+    // (isPending / isError / error / data accessors), so the two ways to get
+    // it wrong both land here: passing nothing, or passing the wrong thing —
+    // most often the DATA rather than the source (`of={q.data()}`), or a
+    // resource whose accessors are named differently. Reading `.isPending` off
+    // undefined throws before anything renders, so the trigger is reliable.
+    pattern: /Cannot read (?:property |properties of )['"]?(?:undefined|null)['"]?\s*\(reading ['"](isPending|isError)['"]\)/,
+    diagnose: (m) => ({
+      cause: `<Async> read \`${m[1]}\` off an \`of\` that is undefined or null. \`of\` takes the async SOURCE — an object with isPending/isError/error/data accessors — not the resolved data.`,
+      fix: 'Pass the query/resource itself to `of`; the child function receives the data.',
+      fixCode: `<Async of={todos.data()}>…</Async>  // wrong — no accessors on data
+<Async of={todos}>{(rows) => …}</Async>  // right`,
+      related:
+        '@pyreon/query results and @pyreon/http resources satisfy AsyncLike already; a hand-rolled source must expose all four as functions.',
+    }),
+  },
+  {
     // The residual footgun left by this PR's captured-once prop fixes. Those
     // components now read through `props`, but the CLASS is still writable by
     // hand: a body-scope destructure freezes the value at setup because

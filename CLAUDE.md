@@ -79,7 +79,7 @@ broken launcher as working.
 | Package | Description |
 | --- | --- |
 | `@pyreon/reactivity` | signal, computed, effect, onCleanup, batch, createSelector, createStore, untrack, wrapSignal, isServer/isClient, inference type helpers (`SignalValue`/`ComputedValue`/`MaybeAccessor`/`AccessorReturn`, type-only) |
-| `@pyreon/core` | VNode, h(), Fragment, lifecycle, context, JSX runtime, Suspense, ErrorBoundary, lazy(), Dynamic, cx(), splitProps, mergeProps, createUniqueId |
+| `@pyreon/core` | VNode, h(), Fragment, lifecycle, context, JSX runtime, Suspense, ErrorBoundary, lazy(), Dynamic, cx(), splitProps, mergeProps, createUniqueId, `<Async>` (pending/error/empty/data over a STRUCTURAL `AsyncLike` — no `@pyreon/query` dep; NO rethrow default because ErrorBoundary can't catch a reactive re-run; an empty array with no `empty` prop goes to `children`), `use()` (directive composer → a plain `RefCallback`; LIFO cleanup, falsy entries skipped, re-attach tears down first) |
 | `@pyreon/runtime-dom` | DOM renderer, mount, hydrateRoot, Transition, TransitionGroup, KeepAlive, SVG/MathML namespace, custom elements |
 | `@pyreon/compiler` | JSX transform: Rust native (napi-rs, 3.7-8.9x faster) + JS fallback. `shouldWrap`, static hoisting, `_bind`, pure calls, spread templates. Reactivity-Lens sidecar (`analyzeReactivity`). Owns the SHARED zero fs-route convention (`@pyreon/compiler/fs-route-convention` — zero's fs-router/api-routes re-export it, identity-locked) + island-name derivation |
 | `@pyreon/runtime-server` | renderToString, renderToStream, Suspense 30s timeout, XSS-safe templates, For key markers |
