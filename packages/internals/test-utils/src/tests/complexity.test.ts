@@ -19,8 +19,27 @@ function quadratic(n: number): number {
   return acc
 }
 
+
+// These specs assert a measured wall-clock RATIO, which makes them
+// micro-benchmarks — and this repo's bench discipline is explicit that timing
+// measurements must not run concurrently. They do run concurrently here: the
+// package's 55 test files share a parallel runner, so a scheduler steal landing
+// on one size and not the other skews the ratio.
+//
+// Observed three distinct failures from this one file, none of them real:
+//   - quadratic ratio compressed below the bound (min-of-2 was too few samples)
+//   - `baseMs >= minMs` violated (0.939 vs 1) — see the growth spec for why
+//     the implementation does not actually guarantee that
+//   - a genuinely LINEAR run measured ratio 33.05 against a bound of 24
+//
+// A bounded retry is the proportionate answer: contention does not reproduce
+// across three attempts, while a real complexity regression fails all three.
+// It is NOT a way to paper over a wrong assertion — the growth spec's bad
+// assertion was fixed outright rather than retried into submission.
+const TIMING_RETRIES = 2
+
 describe('measureComplexity', () => {
-  it('reports a ratio near the scale factor for a linear function', () => {
+  it('reports a ratio near the scale factor for a linear function', { retry: TIMING_RETRIES }, () => {
     const r = measureComplexity((n) => void linear(n), 200_000, { scale: 8, samples: 3 })
     expect(r.baseMs).toBeGreaterThan(0)
     // Linear ⇒ ~8x. Allow a wide band: this must not itself be flaky.
@@ -28,19 +47,34 @@ describe('measureComplexity', () => {
     expect(r.ok).toBe(true)
   })
 
-  it('reports a ratio far above the scale factor for a quadratic function', () => {
-    const r = measureComplexity((n) => void quadratic(n), 400, { scale: 8, samples: 2 })
+  it('reports a ratio far above the scale factor for a quadratic function', { retry: TIMING_RETRIES }, () => {
+    // `samples: 2` gave min-of-2, which is not enough stabilization for the
+    // helper's own test under full-suite saturation: a scheduler steal landing
+    // on the base run compresses the ratio below the bound and reds a PR that
+    // changed nothing. The helper's default is 5; use it.
+    const r = measureComplexity((n) => void quadratic(n), 400, { scale: 8, samples: 5 })
     // Quadratic ⇒ ~64x. Assert well clear of the linear expectation rather
     // than near 64, so the test states the DISTINCTION, not a magic number.
     expect(r.ratio).toBeGreaterThan(24)
     expect(r.ok).toBe(false)
   })
 
-  it('grows the base size until the run is measurable', () => {
+  it('grows the base size until the run is measurable', { retry: TIMING_RETRIES }, () => {
     // A trivially fast op at n=1 would time as 0ms and make the ratio 0/0.
-    const r = measureComplexity((n) => void linear(n), 1, { minMs: 1, samples: 1 })
+    //
+    // `samples: 1` meant a single unstabilized reading drove the growth loop.
+    // And this asserted `baseMs >= minMs`, which the implementation does NOT
+    // guarantee — TWO paths exit with it lower:
+    //   1. the flat-in-n break, which only requires baseMs >= 0.05ms, and
+    //      which noise can trigger on a genuinely growing run;
+    //   2. the maxRatio retry, which reassigns `baseMs = baseRetry` from a
+    //      fresh measurement that can land under minMs.
+    // Asserting it made this spec fail under load while the helper was
+    // behaving exactly as designed. The real contract is that the loop GREW
+    // the input and produced a usable, non-zero measurement.
+    const r = measureComplexity((n) => void linear(n), 1, { minMs: 1, samples: 3 })
     expect(r.baseN).toBeGreaterThan(1)
-    expect(r.baseMs).toBeGreaterThanOrEqual(1)
+    expect(r.baseMs).toBeGreaterThan(0)
   })
 
   it('marks an unmeasurable run instead of silently passing', () => {
@@ -108,13 +142,13 @@ describe('measureComplexity', () => {
 })
 
 describe('expectSubQuadratic', () => {
-  it('passes a linear function', () => {
+  it('passes a linear function', { retry: TIMING_RETRIES }, () => {
     expect(() =>
       expectSubQuadratic((n) => void linear(n), 200_000, { label: 'linear', samples: 3 }),
     ).not.toThrow()
   })
 
-  it('throws on a quadratic function, naming the observed curve', () => {
+  it('throws on a quadratic function, naming the observed curve', { retry: TIMING_RETRIES }, () => {
     let message = ''
     try {
       expectSubQuadratic((n) => void quadratic(n), 400, { label: 'quadratic', samples: 2 })
