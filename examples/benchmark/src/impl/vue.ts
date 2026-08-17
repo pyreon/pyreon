@@ -2,7 +2,7 @@
  * Vue 3 benchmark — reactive refs + template rendering via h().
  * No JSX transform needed — uses Vue's h() directly.
  */
-import { createApp, defineComponent, h, nextTick, ref } from 'vue'
+import { createApp, defineComponent, h, nextTick, ref, shallowRef, triggerRef } from 'vue'
 import type { BenchSuite, Row } from '../runner'
 import { bench, buildRows, expectRows, expectRowsWithSelected, resetRng } from '../runner'
 
@@ -10,7 +10,13 @@ export async function runVue(container: HTMLElement): Promise<BenchSuite> {
   resetRng()
   const suite: BenchSuite = { framework: 'Vue 3', container, results: [] }
 
-  const rows = ref<Row[]>([])
+  // shallowRef, not ref: Vue's own performance guide ("Reduce Reactivity
+  // Overhead for Large Immutable Structures") prescribes it for a list that is
+  // REPLACED rather than mutated field-by-field, which is exactly this workload
+  // — no row object is ever mutated in place (partial-update rebuilds them).
+  // Deep `ref` would allocate a Proxy per row on every build, a tax Pyreon and
+  // Solid do not pay, inflating our published create-10k and append multipliers.
+  const rows = shallowRef<Row[]>([])
   const selectedId = ref<number | null>(null)
 
   const App = defineComponent({
@@ -136,6 +142,7 @@ export async function runVue(container: HTMLElement): Promise<BenchSuite> {
       // The instrumented splice forwards to the raw target array, so
       // `currentRows` stays in sync without reassignment.
       rows.value.splice(500, 1)
+      triggerRef(rows) // shallowRef: in-place mutation needs an explicit trigger
       await nextTick()
     },
     {
@@ -189,6 +196,7 @@ export async function runVue(container: HTMLElement): Promise<BenchSuite> {
       // 10,000. The instrumented push forwards to the raw target array,
       // so `currentRows` stays in sync without reassignment.
       rows.value.push(...buildRows(1_000))
+      triggerRef(rows) // shallowRef: in-place mutation needs an explicit trigger
       await nextTick()
     },
     {

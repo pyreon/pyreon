@@ -11,12 +11,12 @@
   reconciliation matching Pyreon/Solid/Vue's keyed list contract).
 -->
 <script lang="ts">
-  import { state } from './bench-state.svelte'
+  import { getRows, state } from './bench-state.svelte'
 </script>
 
 <table>
   <tbody>
-    {#each state.rows as row (row.id)}
+    {#each getRows() as row (row.id)}
       <tr class={row.id === state.selectedId ? 'selected' : ''}>
         <td>{row.id}</td>
         <td>{row.label}</td>

@@ -16,7 +16,7 @@ import { mount, unmount, flushSync } from 'svelte'
 import type { BenchSuite, Row } from '../runner'
 import { bench, buildRows, expectRows, expectRowsWithSelected, resetRng } from '../runner'
 import Bench from './Bench.svelte'
-import { state, type SvelteRow } from './bench-state.svelte'
+import { setRawRows, state, type SvelteRow } from './bench-state.svelte'
 
 // flushSync applies Svelte's queued effects (DOM updates) SYNCHRONOUSLY —
 // the DOM is committed when it returns, so no extra macrotask wait is needed
@@ -34,14 +34,14 @@ export async function runSvelte(container: HTMLElement): Promise<BenchSuite> {
   const app = mount(Bench, { target: container })
 
   // Reset state in case the harness reused the module between runs.
-  state.rows = []
+  setRawRows([])
   state.selectedId = null
   await commit()
 
   let currentRows: SvelteRow[] = []
 
   const setRows = async (rows: SvelteRow[]) => {
-    state.rows = rows
+    setRawRows(rows)
     await commit()
   }
 
@@ -53,8 +53,10 @@ export async function runSvelte(container: HTMLElement): Promise<BenchSuite> {
   // Adapt the runner's Row type (id + label) to Svelte's. Identical
   // shape — just keeps the type system honest about the per-framework
   // type parameter.
-  const toSvelteRows = (rows: Row[]): SvelteRow[] =>
-    rows.map((r) => ({ id: r.id, label: r.label }))
+  // Identity: SvelteRow and Row are structurally identical ({id,label}), so the
+  // former .map() allocated a second 10,000-object array INSIDE the timed
+  // region for a pure type-level formality — a tax no other framework paid.
+  const toSvelteRows = (rows: Row[]): SvelteRow[] => rows
 
   await bench(
     'create 1,000 rows',
