@@ -37,15 +37,12 @@ const ERROR_PATTERNS: ErrorPattern[] = [
     // undefined throws before anything renders, so the trigger is reliable.
     pattern: /Cannot read (?:property |properties of )['"]?(?:undefined|null)['"]?\s*\(reading ['"](isPending|isError)['"]\)/,
     diagnose: (m) => ({
-      cause: `<Async> read \`${m[1]}\` off a source that is undefined or null. Its \`of\` prop must be the async SOURCE itself — an object exposing isPending / isError / error / data accessors — not the resolved data and not a bare promise.`,
-      fix: 'Pass the query/resource object to `of`, and render the data through the child function.',
-      fixCode: `// wrong — passes the DATA, so there are no accessors to read
-<Async of={todos.data()}>{(rows) => …}</Async>
-
-// right — passes the SOURCE; the child receives the data
-<Async of={todos}>{(rows) => …}</Async>`,
+      cause: `<Async> read \`${m[1]}\` off an \`of\` that is undefined or null. \`of\` takes the async SOURCE — an object with isPending/isError/error/data accessors — not the resolved data.`,
+      fix: 'Pass the query/resource itself to `of`; the child function receives the data.',
+      fixCode: `<Async of={todos.data()}>…</Async>  // wrong — no accessors on data
+<Async of={todos}>{(rows) => …}</Async>  // right`,
       related:
-        'Any object with isPending/isError/error/data accessors satisfies AsyncLike — @pyreon/query results and @pyreon/http resources already do. A hand-rolled source must expose all four as FUNCTIONS.',
+        '@pyreon/query results and @pyreon/http resources satisfy AsyncLike already; a hand-rolled source must expose all four as functions.',
     }),
   },
   {
