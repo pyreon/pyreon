@@ -35,6 +35,24 @@ interface Box {
 const DEFAULT_NODE_SPACING = 20
 const DEFAULT_LAYER_SPACING = 40
 
+/**
+ * Pack a 2D grid cell into ONE integer key.
+ *
+ * Both the force pass and the overlap relaxation bin nodes into a uniform
+ * grid every iteration. Keying that by `\`${cx},${cy}\`` builds and hashes a
+ * throwaway string per node per pass, which measurably dominated both.
+ * `CELL_HALF` recentres so negative coordinates stay non-negative.
+ */
+const CELL_HALF = 1 << 15
+const CELL_SPAN = CELL_HALF * 2
+
+function cellKeyExact(cx: number, cy: number): number {
+  return (cx + CELL_HALF) * CELL_SPAN + (cy + CELL_HALF)
+}
+function cellKey(x: number, y: number): number {
+  return cellKeyExact(Math.floor(x), Math.floor(y))
+}
+
 /** Deterministic pseudo-random — force/stress must not vary between runs. */
 function makeRandom(seed = 0x2f6e2b1): () => number {
   let s = seed >>> 0
@@ -466,32 +484,42 @@ function forceLayout(
     dy.fill(0)
 
     // Bin into a uniform grid, then repel within the 3x3 neighbourhood.
-    const buckets = new Map<string, number[]>()
+    // Numeric cell keys, not `\`${cx},${cy}\``. Building a string per node per
+    // iteration and hashing it dominated the pass — 60 iterations x 1000 nodes
+    // is 60k throwaway strings. A single integer key hashes far cheaper.
+    const buckets = new Map<number, number[]>()
     for (let i = 0; i < n; i++) {
-      const key = `${Math.floor(px[i]! / cell)},${Math.floor(py[i]! / cell)}`
+      const key = cellKey(px[i]! / cell, py[i]! / cell)
       const b = buckets.get(key)
       if (b) b.push(i)
       else buckets.set(key, [i])
     }
+    const partners: number[] = []
     for (const [key, bucket] of buckets) {
-      const [cx, cy] = key.split(',').map(Number) as [number, number]
-      const near: number[] = []
-      for (let ox = -1; ox <= 1; ox++)
+      const cx = Math.floor(key / CELL_SPAN) - CELL_HALF
+      const cy = (key % CELL_SPAN) - CELL_HALF
+      partners.length = 0
+      // Collect without a spread: `push(...other)` allocates an argument list
+      // per neighbouring cell, and there are nine of them per bucket.
+      outer: for (let ox = -1; ox <= 1; ox++)
         for (let oy = -1; oy <= 1; oy++) {
-          const other = buckets.get(`${cx + ox},${cy + oy}`)
-          if (other) near.push(...other)
+          const other = buckets.get(cellKeyExact(cx + ox, cy + oy))
+          if (!other) continue
+          for (const v of other) {
+            partners.push(v)
+            if (partners.length >= MAX_PARTNERS) break outer
+          }
         }
-      const partners = near.length > MAX_PARTNERS ? near.slice(0, MAX_PARTNERS) : near
       for (const i of bucket)
         for (const j of partners) {
           if (i === j) continue
           let ux = px[i]! - px[j]!
           let uy = py[i]! - py[j]!
-          let d = Math.hypot(ux, uy)
+          let d = Math.sqrt(ux * ux + uy * uy)
           if (d < 0.01) {
             ux = (rnd() - 0.5) * 0.1
             uy = (rnd() - 0.5) * 0.1
-            d = Math.hypot(ux, uy) || 0.01
+            d = Math.sqrt(ux * ux + uy * uy) || 0.01
           }
           const rep = (k * k) / d
           dx[i] = dx[i]! + (ux / d) * rep
@@ -502,7 +530,7 @@ function forceLayout(
     for (const [a, b] of links) {
       const ux = px[a]! - px[b]!
       const uy = py[a]! - py[b]!
-      const d = Math.hypot(ux, uy) || 0.01
+      const d = Math.sqrt(ux * ux + uy * uy) || 0.01
       const att = (d * d) / k
       dx[a] = dx[a]! - (ux / d) * att
       dy[a] = dy[a]! - (uy / d) * att
@@ -511,7 +539,7 @@ function forceLayout(
     }
 
     for (let i = 0; i < n; i++) {
-      const mag = Math.hypot(dx[i]!, dy[i]!) || 1
+      const mag = Math.sqrt(dx[i]! * dx[i]! + dy[i]! * dy[i]!) || 1
       px[i] = px[i]! + (dx[i]! / mag) * Math.min(mag, temp)
       py[i] = py[i]! + (dy[i]! / mag) * Math.min(mag, temp)
     }
@@ -605,6 +633,13 @@ function stressLayout(
   for (const row of rows) for (const d of row) if (d !== Infinity) diameter = Math.max(diameter, d)
   for (const row of rows) for (let i = 0; i < n; i++) if (row[i] === Infinity) row[i] = diameter + 1
 
+  // Flatten the per-pivot rows into ONE contiguous buffer. The inner loop walks
+  // pivots for a fixed node, so an array-of-arrays costs a pointer hop and a
+  // cache miss per pivot; a single Float64Array keeps the row contiguous.
+  const p = pivots.length
+  const flat = new Float64Array(p * n)
+  for (let pi = 0; pi < p; pi++) flat.set(rows[pi]!, pi * n)
+
   const rnd = makeRandom(0x51f3a7)
   const radius = unit * Math.sqrt(n)
   const xs = new Float64Array(n)
@@ -621,13 +656,13 @@ function stressLayout(
       let nx = 0
       let ny = 0
       let wsum = 0
-      for (let pi = 0; pi < pivots.length; pi++) {
+      for (let pi = 0; pi < p; pi++) {
         const j = pivots[pi]!
         if (i === j) continue
-        const target = rows[pi]![i]! * unit
+        const target = flat[pi * n + i]! * unit
         if (target <= 0) continue
         const w = 1 / (target * target)
-        const d = Math.hypot(xs[i]! - xs[j]!, ys[i]! - ys[j]!) || 0.01
+        const d = Math.sqrt((xs[i]! - xs[j]!) ** 2 + (ys[i]! - ys[j]!) ** 2) || 0.01
         nx += w * (xs[j]! + (target * (xs[i]! - xs[j]!)) / d)
         ny += w * (ys[j]! + (target * (ys[i]! - ys[j]!)) / d)
         wsum += w
@@ -783,29 +818,31 @@ function relaxOverlaps(
   boxes: Box[],
   pos: Map<string, { x: number; y: number }>,
   spacing: number,
-  passes = 12,
+  passes = 10,
 ): void {
   const box = new Map(boxes.map((b) => [b.id, b]))
   const cell = Math.max(1, Math.max(...boxes.map((b) => Math.max(b.w, b.h))) + spacing)
 
   for (let pass = 0; pass < passes; pass++) {
-    const buckets = new Map<string, string[]>()
+    const buckets = new Map<number, string[]>()
     for (const b of boxes) {
       const p = pos.get(b.id)!
-      const key = `${Math.floor(p.x / cell)},${Math.floor(p.y / cell)}`
+      const key = cellKey(p.x / cell, p.y / cell)
       const list = buckets.get(key)
       if (list) list.push(b.id)
       else buckets.set(key, [b.id])
     }
 
     let moved = false
+    const near: string[] = []
     for (const [key, bucket] of buckets) {
-      const [cx, cy] = key.split(',').map(Number) as [number, number]
-      const near: string[] = []
+      const cx = Math.floor(key / CELL_SPAN) - CELL_HALF
+      const cy = (key % CELL_SPAN) - CELL_HALF
+      near.length = 0
       for (let ox = -1; ox <= 1; ox++)
         for (let oy = -1; oy <= 1; oy++) {
-          const other = buckets.get(`${cx + ox},${cy + oy}`)
-          if (other) near.push(...other)
+          const other = buckets.get(cellKeyExact(cx + ox, cy + oy))
+          if (other) for (const v of other) near.push(v)
         }
       for (const id of bucket)
         for (const otherId of near) {

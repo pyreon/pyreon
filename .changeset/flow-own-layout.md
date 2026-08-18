@@ -18,4 +18,16 @@ The engine is **lazy-loaded**, exactly as elkjs was — an app that renders a fl
 
 Crossings: we WIN clearly on force (0/1/8 against ELK's 34/19/135) and match on chains, trees and cycles. We LOSE on `layered` for a 20-node DAG (8 against 0), on `tree` for a 40-node DAG (56 vs 16), and on `radial` (145 vs 67). ELK's layered pipeline uses Brandes–Köpf coordinate assignment and a full layer sweep; this uses a median heuristic with transposition, so expect comparable structure and more crossings when graphs get dense.
 
-**Performance at 1000 nodes**, after fixing three quadratic hot paths found by measurement rather than review: layered 2618ms → 10ms, force 53441ms → 450ms, stress 8312ms → 883ms. Every algorithm now completes in well under a second, locked by a test at each size.
+**Performance at 1000 nodes** (median of 7 warm runs), after fixing three quadratic hot paths plus a round of allocation work — numeric grid keys instead of `\`${cx},${cy}\`` strings, no argument-list spreads, a flattened pivot-distance buffer, `sqrt` over `hypot`:
+
+| | before | after |
+|---|---|---|
+| layered | 2,618ms | **5ms** |
+| force | 53,441ms | **72ms** |
+| stress | 8,312ms | **56ms** |
+| radial | — | **5ms** |
+| tree / box / rectpacking | — | **≤1ms** |
+
+Quality is byte-identical before and after the optimisation work — same crossing counts on every graph, still zero overlaps — so the speedups are behaviour-preserving.
+
+**Verified through the render path too**, in real Chromium: five specs mount a `<Flow>`, run each algorithm, and read `getBoundingClientRect()` from the DOM rather than the returned numbers — no visual overlap, children below parents, `RIGHT` laying out across the screen, and a tall node genuinely pushing the next layer down (proving measured boxes reach the engine). Bisect-verified: an all-zeros layout fails four of the five.
