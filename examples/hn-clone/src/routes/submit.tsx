@@ -91,26 +91,18 @@ export default function SubmitPage() {
 
       <form onSubmit={(e: Event) => form.handleSubmit(e)} class="submit-form">
         <div class="form-row">
-          <label for="title">{() => t('submit.title')}</label>
+          <label {...form.labelProps('title')}>{t('submit.title')}</label>
           <input
-            id="title"
             type="text"
-            value={() => fields.title.value()}
-            onInput={(e) =>
-              fields.title.setValue((e.currentTarget as HTMLInputElement).value)
-            }
-            onBlur={() => fields.title.setTouched()}
-            class={() =>
-              fields.title.touched() && fields.title.error() ? 'field-invalid' : ''
-            }
+            {...form.register('title')}
+            class={() => (fields.title.touched() && fields.title.error() ? 'field-invalid' : '')}
           />
-          <div class="field-error">
+          <div class="field-error" {...form.errorProps('title')}>
             {() => {
-              // Read both signals unconditionally so the effect subscribes to
-              // BOTH on first render. A ternary `touched ? error() : ''`
-              // would short-circuit on touched=false and never subscribe to
-              // `error`, so the field-error would not re-render when the
-              // validator finally writes an error after a submit click.
+              // Read BOTH signals unconditionally so the effect subscribes to
+              // each on first render. `touched ? error() : ''` would
+              // short-circuit while untouched and never subscribe to `error`,
+              // so a validator writing after a submit click would not repaint.
               const touched = fields.title.touched()
               const err = fields.title.error()
               return touched ? err ?? '' : ''
@@ -119,22 +111,19 @@ export default function SubmitPage() {
         </div>
 
         <div class="form-row">
-          <label for="url">{() => t('submit.url')}</label>
+          <label {...form.labelProps('url')}>{t('submit.url')}</label>
           <input
-            id="url"
             type="url"
             placeholder="https://"
-            value={() => fields.url.value() ?? ''}
-            onInput={(e) =>
-              fields.url.setValue((e.currentTarget as HTMLInputElement).value)
-            }
-            onBlur={() => fields.url.setTouched()}
-            class={() =>
-              fields.url.touched() && fields.url.error() ? 'field-invalid' : ''
-            }
+            {...form.register('url')}
+            class={() => (fields.url.touched() && fields.url.error() ? 'field-invalid' : '')}
           />
-          <div class="field-error">
+          <div class="field-error" {...form.errorProps('url')}>
             {() => {
+              // Read BOTH signals unconditionally so the effect subscribes to
+              // each on first render. `touched ? error() : ''` would
+              // short-circuit while untouched and never subscribe to `error`,
+              // so a validator writing after a submit click would not repaint.
               const touched = fields.url.touched()
               const err = fields.url.error()
               return touched ? err ?? '' : ''
@@ -143,21 +132,18 @@ export default function SubmitPage() {
         </div>
 
         <div class="form-row">
-          <label for="text">{() => t('submit.text')}</label>
+          <label {...form.labelProps('text')}>{t('submit.text')}</label>
           <textarea
-            id="text"
             rows={6}
-            value={() => fields.text.value() ?? ''}
-            onInput={(e) =>
-              fields.text.setValue((e.currentTarget as HTMLTextAreaElement).value)
-            }
-            onBlur={() => fields.text.setTouched()}
-            class={() =>
-              fields.text.touched() && fields.text.error() ? 'field-invalid' : ''
-            }
+            {...form.register('text')}
+            class={() => (fields.text.touched() && fields.text.error() ? 'field-invalid' : '')}
           />
-          <div class="field-error">
+          <div class="field-error" {...form.errorProps('text')}>
             {() => {
+              // Read BOTH signals unconditionally so the effect subscribes to
+              // each on first render. `touched ? error() : ''` would
+              // short-circuit while untouched and never subscribe to `error`,
+              // so a validator writing after a submit click would not repaint.
               const touched = fields.text.touched()
               const err = fields.text.error()
               return touched ? err ?? '' : ''
