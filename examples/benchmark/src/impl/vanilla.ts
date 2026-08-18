@@ -5,7 +5,7 @@
  * the same approach a skilled developer would use without a framework.
  * Full rebuild is only used for create/replace/clear where it's necessary.
  */
-import type { BenchSuite, Row } from '../runner'
+import type { BenchSuite, NumericText, Row } from '../runner'
 import {
   BATCH_K_CLEAR,
   BATCH_K_SELECT,
@@ -42,7 +42,8 @@ export async function runVanilla(container: HTMLElement): Promise<BenchSuite> {
       const tr = document.createElement('tr')
       const td1 = document.createElement('td')
       const td2 = document.createElement('td')
-      td1.textContent = String(row.id)
+      // raw number — see runner.ts "Row-id rendering rule"
+      ;(td1 as unknown as NumericText).textContent = row.id
       td2.textContent = row.label
       tr.appendChild(td1)
       tr.appendChild(td2)
@@ -234,7 +235,8 @@ export async function runVanilla(container: HTMLElement): Promise<BenchSuite> {
         const tr = document.createElement('tr')
         const td1 = document.createElement('td')
         const td2 = document.createElement('td')
-        td1.textContent = String(row.id)
+        // raw number — see runner.ts "Row-id rendering rule"
+      ;(td1 as unknown as NumericText).textContent = row.id
         td2.textContent = row.label
         tr.appendChild(td1)
         tr.appendChild(td2)

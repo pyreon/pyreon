@@ -566,6 +566,56 @@ export interface Row {
   label: string
 }
 
+/**
+ * ## Row-id rendering rule — every impl hands the framework the RAW number
+ *
+ * An impl must NOT stringify `row.id` itself. It passes the number to the
+ * framework's own text-binding API and lets that framework render it. The
+ * impl performs no presentation work on the framework's behalf; whatever a
+ * framework does internally is that framework's own measured property.
+ *
+ * ### Why this is load-bearing, not style
+ *
+ * Any JS-side Number→String of many DISTINCT integers grows a V8 engine
+ * cache (the Number→String / `smi_string_cache`) that is held from the GC
+ * root set and never shrinks. It therefore lands in
+ * `performance.memory.usedJSHeapSize` and is reported by this suite's
+ * retained-heap metric — as if it were the framework's own retention.
+ *
+ * Measured in Chromium (200,000 distinct integers, 3 passes, byte-identical
+ * each pass, same GC-settle recipe `bench-fair.ts` uses):
+ *
+ * | assignment shape        | retained vs control |
+ * | ----------------------- | ------------------- |
+ * | `node.data = i`         | −0.8 KB             |
+ * | `el.textContent = i`    | −2.8 KB             |
+ * | `String(i)`             | **+62.2 KB**        |
+ * | `i + ''`                | **+62.2 KB**        |
+ * | `i.toString()`          | **+62.3 KB**        |
+ *
+ * Assigning the NUMBER lets the WebIDL binding coerce it outside JS, so the
+ * cache never grows. All three JS shapes cost the same ~62 KB.
+ *
+ * Before this rule, five impls (Pyreon, Solid, Vanilla, Vue, Octane) called
+ * `String(row.id)` while three (React, Preact, Svelte) passed the number —
+ * so ~62 KB of engine cache was charged to five entries and not the other
+ * three, purely from how the bench was written. That is a harness artifact,
+ * not a framework difference, and it distorted the retained-heap ranking.
+ *
+ * ### Consequence to keep in mind when reading results
+ *
+ * Normalising the INPUT does not make every framework equal downstream: a
+ * framework whose own text path stringifies in JS (Vue's `toDisplayString`,
+ * Svelte's `set_text` doing `value + ''`) still grows the cache. That is a
+ * real, honestly-attributable property of the framework — not something the
+ * benchmark should hide, and not something it should manufacture either.
+ *
+ * `NumericText` exists only so an impl can express "assign the raw number"
+ * against DOM typings that declare `textContent: string | null`. It is a
+ * type-level view; there is no runtime cost and no wrapper call.
+ */
+export type NumericText = { textContent: number }
+
 let _nextId = 1
 
 // ─── Seeded RNG (mulberry32) ─────────────────────────────────────────────────

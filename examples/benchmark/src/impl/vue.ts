@@ -33,7 +33,8 @@ export async function runVue(container: HTMLElement): Promise<BenchSuite> {
                   key: row.id,
                   class: { selected: row.id === selectedId.value },
                 },
-                [h('td', null, String(row.id)), h('td', null, row.label)],
+                // raw number — see runner.ts "Row-id rendering rule"
+                [h('td', null, row.id), h('td', null, row.label)],
               ),
             ),
           ),

@@ -40,7 +40,8 @@ export async function runPyreon(container: HTMLElement): Promise<BenchSuite> {
         <For each={rows} by={(row: ReactiveRow) => row.id}>
           {(row: ReactiveRow) => (
             <tr class={() => (isSelected(row.id) ? 'selected' : '')}>
-              <td>{String(row.id)}</td>
+              {/* raw number — see runner.ts "Row-id rendering rule" */}
+              <td>{row.id}</td>
               <td>{() => row.label()}</td>
             </tr>
           )}
