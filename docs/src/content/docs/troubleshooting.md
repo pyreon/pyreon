@@ -5,7 +5,7 @@ description: "Common Pyreon mistakes and their fixes, grouped by area — the er
 
 # Troubleshooting
 
-Common mistakes and anti-patterns across Pyreon, grouped by area, each with its fix. Distilled from the framework's own anti-pattern catalog (258 entries) — the same source MCP `get_anti_patterns` serves to AI agents. Many are caught automatically by [`@pyreon/lint`](/docs/lint), `pyreon doctor`, or MCP `validate`; the detector code is noted on each entry that has one.
+Common mistakes and anti-patterns across Pyreon, grouped by area, each with its fix. Distilled from the framework's own anti-pattern catalog (261 entries) — the same source MCP `get_anti_patterns` serves to AI agents. Many are caught automatically by [`@pyreon/lint`](/docs/lint), `pyreon doctor`, or MCP `validate`; the detector code is noted on each entry that has one.
 
 ## Categories
 
@@ -16,9 +16,9 @@ Common mistakes and anti-patterns across Pyreon, grouped by area, each with its 
 - **[Islands Mistakes](/docs/troubleshooting/islands)** — 11 entries
 - **[SSR-rendering Mistakes](/docs/troubleshooting/ssr)** — 8 entries
 - **[SSG / e2e Test-Server Mistakes](/docs/troubleshooting/ssg)** — 16 entries
-- **[Testing Mistakes](/docs/troubleshooting/testing)** — 12 entries
+- **[Testing Mistakes](/docs/troubleshooting/testing)** — 14 entries
 - **[Lifecycle & Cleanup Mistakes](/docs/troubleshooting/lifecycle)** — 26 entries
-- **[Build Pipeline Mistakes](/docs/troubleshooting/build)** — 33 entries
+- **[Build Pipeline Mistakes](/docs/troubleshooting/build)** — 34 entries
 - **[CI / Build Gate Mistakes](/docs/troubleshooting/ci)** — 10 entries
 - **[Best-Practice Mistakes (opt-in `@pyreon/lint` rules)](/docs/troubleshooting/best-practices)** — 10 entries
 - **[Library API-Shape Mistakes](/docs/troubleshooting/library-api)** — 6 entries
