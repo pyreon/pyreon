@@ -310,3 +310,53 @@ describe('Phase D2 — JSX auto-import for canonical primitives', () => {
     expect(out).toMatch(/import\s*\{[^}]*\bText\b[^}]*\}\s*from\s*'@pyreon\/primitives'/)
   })
 })
+
+
+// ─── String / template masking ──────────────────────────────────────────────
+//
+// `_maskCommentsAndStrings` masked ONLY comments, despite its name and its
+// call-site comment both claiming strings too. So a primitive name written in
+// ANY string — a diagnostic message, a doc example, a template literal — read
+// as real JSX usage and injected an import for a package the file's own
+// package may not depend on, breaking the build.
+//
+// Found for real: an error message in `@pyreon/feature` reading
+// `[Pyreon] <Field name="${…}">` injected `import { Field } from
+// '@pyreon/primitives'` and failed SEVEN CI checks with
+// `Rolldown failed to resolve import "@pyreon/primitives"`.
+describe('auto-import ignores primitive names inside strings', () => {
+  const cases: Array<[string, string]> = [
+    ['double-quoted string', 'const s = "<Text foo>"'],
+    ['single-quoted string', "const s = '<Text foo>'"],
+    ['template literal', 'const s = `<Text foo>`'],
+    ['template with an interpolation', 'const s = `<Text name="${x}">`'],
+    ['nested template', 'const s = `a${`<Text b>`}c`'],
+  ]
+  for (const [name, src] of cases) {
+    it(`does not inject for a name in a ${name}`, async () => {
+      const out = await runTransform(pyreonPlugin(), src)
+      expect(out).not.toContain('@pyreon/primitives')
+    })
+  }
+
+  it('STILL injects for real usage that follows a string', async () => {
+    const src = 'const s = "just text"\nexport const V = () => <Text>hi</Text>'
+    const out = await runTransform(pyreonPlugin(), src)
+    expect(out).toContain("import { Text } from '@pyreon/primitives'")
+  })
+
+  it('STILL injects when a nested template precedes real usage', async () => {
+    const src = 'const s = `a${`b`}c`\nexport const V = () => <Text>hi</Text>'
+    const out = await runTransform(pyreonPlugin(), src)
+    expect(out).toContain('@pyreon/primitives')
+  })
+
+  it('an apostrophe in a comment does not blind the scanner to later usage', async () => {
+    // Comments are masked first, so a comment apostrophe can never open a
+    // string. A stray quote in real CODE must not swallow the rest of the file
+    // either — which is why an unterminated string stops at the newline.
+    const src = "// don't\nexport const V = () => <Text>hi</Text>"
+    const out = await runTransform(pyreonPlugin(), src)
+    expect(out).toContain('@pyreon/primitives')
+  })
+})
