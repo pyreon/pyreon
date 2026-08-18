@@ -5863,6 +5863,22 @@ isReference('users')                       // false — a bare string is not a r
 - Confusing isReference() with Zod's own type guards — isReference checks ONLY for the Pyreon reference marker, not for arbitrary Zod schemas.`,
   },
 
+  'feature/Table': {
+    signature: '<Feature.Table of={t} cell={{ status: (ctx) => … }} />',
+    example: `const t = Posts.useTable(rows)
+
+<Posts.Table
+  of={t}
+  empty="No posts yet."
+  cell={{ status: ({ value }) => <Badge tone={value}>{value}</Badge> }}
+/>`,
+    notes: 'Render the table `useTable()` already computes — thead, tbody, sorting handlers and the sort indicator. Owns two traps an app author should never have to meet: a `<th>` carries a `key`, so the keyed reconciler REUSES the node on a state change and never re-runs its body, which freezes a sort indicator read bare (it must sit inside an accessor); and `getVisibleCells()` comes from `columnVisibilityFeature`, which `featureTableFeatures` does not register, so `getAllCells()` is the correct call and reaching for the other silently renders nothing. Per-COLUMN cell overrides keyed by column id, for the same reason `Field` is per-field — a generated table is excellent until one column needs a badge, a link or a formatted date. Each override receives `{ value, row }`, so it can render from the whole record rather than just the cell. See also: useTable, Field.',
+    mistakes: `- Reading a sort indicator OUTSIDE an accessor when hand-rolling this — the \`<th>\` is reused by key and the arrow freezes at its first value. \`Table\` handles it; the trap is why it exists.
+- Expecting \`getVisibleCells()\` to work — \`featureTableFeatures\` does not register \`columnVisibilityFeature\`, so it is unavailable and \`getAllCells()\` is correct.
+- Passing \`useTable({ data })\` — data is the FIRST positional argument (\`useTable(rows, options?)\`), options are second.
+- Expecting \`empty\` to render when rows exist but are filtered away to nothing — it renders whenever the row model is empty, filtered or not, which is usually what you want but is not "no data on the server".`,
+  },
+
   'feature/extractFields': {
     signature: 'extractFields(schema: unknown) => FieldInfo[]',
     example: `import { extractFields } from '@pyreon/feature'
