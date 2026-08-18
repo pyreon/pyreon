@@ -1,7 +1,7 @@
 # Pyreon Framework
 
 > Signal-based UI framework for TypeScript. SSR, SSG, islands, SPA. Standard JSX + TypeScript.
-> Top-tier performance on the synthetic row-list benchmark — leads an 8-framework field, outright on 5 of 9 ops and tie-leader on 2 more (Octane, the nearest rival, takes clear-rows and ties replace/remove), and 2.4× faster than React / 3.1× than Preact at 10k rows. 2nd among frameworks on retained memory.
+> Fast on the synthetic row-list benchmark, honestly reported: three benchmark-harness bugs that flattered Pyreon have been found and corrected (pending merge), including one that inflated a published Pyreon-vs-Solid partial-update lead from ~2.1× to a false ~4.9× (retracted). Corrected standing — statistically tied with Octane on create-1k/replace/partial-update/remove; wins bulk-create and append outright, both WIDENED by the fixes (~2.6× faster than React / ~3.3× than Preact at 10k rows; append ~1.14–1.20×); Octane wins clear-rows. Retained memory is a 3-way tie with Preact for 3rd of 8, not a win. See /docs/benchmarks.
 
 ## Signals (reactivity)
 

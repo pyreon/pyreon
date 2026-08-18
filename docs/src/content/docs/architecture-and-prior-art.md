@@ -57,19 +57,55 @@ every project.
 
 ## Performance, stated honestly
 
+**Retracted and corrected 2026-08-18, twice — this section previously
+overstated Pyreon's lead because our own benchmark harness had three bugs,
+all of which flattered Pyreon:** it rendered Octane's row id as
+`{String(row.id)}` (its own idiomatic form passes the raw number), which
+disabled a compiler fast path and made Octane look slower than it is; it let
+five implementations' `String(row.id)` calls inflate a shared V8 engine
+cache that the retained-heap metric charged to the framework; and the bench
+fixture used `table-layout: auto`, which forced Chromium to re-measure the
+whole table's column widths whenever an op widened a cell — this caused
+`append`'s erratic timing and separately inflated the published Pyreon-vs-Solid
+`partial update` lead by more than 2×. None was a Pyreon regression —
+Pyreon's own numbers are unchanged or slightly better throughout. The fixes
+are staged as open PRs (#2893, #2894, #2895, #2897, #2899, #2901, #2903 —
+#2896 is unrelated to this suite) and have not merged as of this writing.
+
 On the synthetic row-list benchmark (Chromium via Playwright), compiled
-Pyreon is the **fastest of the frameworks measured** — it leads or ties
-Solid on **8 of 9 ops** and runs **2.4× faster than React and 3.1× than Preact,
-Svelte and Preact** at bulk-create (10k rows). Important caveats, kept
-verbatim with the project's internal record:
+Pyreon is **competitive with the fastest frameworks measured**, with one
+clear win that WIDENED after the table-layout fix rather than narrowing: it
+runs **~2.6× faster than React and ~3.3× than Preact** at bulk-create
+(10,000 rows), up from ~2.4×/~3.1×. It also takes a second outright win at
+`append`, which similarly widened to **~1.14–1.20×** (was ~1.04× before the
+table-layout root cause was found and fixed). Elsewhere it is mostly a
+**statistical tie with [Octane](https://octanejs.dev)**, the nearest rival —
+plausible ties on `create 1,000`, `replace`, `partial update`, and `remove`;
+Octane wins `clear rows` outright (~1.45×, unaffected by the layout fix);
+and `select row` has no honest multiplier to publish (both frameworks sit at
+the edge of what real-Chromium timing can resolve). **A retraction that
+matters on its own: the previously-published `partial update` lead over
+Solid (~4.9×) was itself a table-layout artifact — the corrected figure is
+~2.1×**, still a real lead, less than half the size claimed. The `create
+1,000`/`replace` tie is itself a browser-layout-bound measurement, not just
+a CI overlap — a profiling pass found layout is ~86% of that op and
+statistically identical between arms, so the instrument structurally cannot
+separate the frameworks there; the only reproducible signal is a small
+JS-only Pyreon cost (~+28%) invisible in wall clock (see `docs/benchmarks`
+for the full split). Important caveats, kept verbatim with the project's
+internal record:
 
 - It is **not** "fastest on all benchmarks." This is the **synthetic
-  row-list suite** only; **Octane takes `clear rows` outright** and ties
-  `replace` and `remove`. The "mid-pack on retained memory (6th of 7)" this
-  page used to state was **our own harness scoring us wrong** — it counted
-  not-yet-collected garbage as retained, penalising only the framework that
-  defers reclamation by an event-loop turn. Measured correctly, Pyreon is
-  **2nd among frameworks** (2026-08-14, 2.50 MB).
+  row-list suite** only, and on it Pyreon wins two ops outright
+  (bulk-create, append) rather than most of the field — and the append
+  number carries its own caveat: even after the table-layout fix it is
+  ~90% layout cost, and the honest claim is end-to-end append cost
+  including the layout it causes, not a claim about the reconciler alone.
+  The "mid-pack on retained memory (6th of 7)" this page used to state was **our
+  own harness scoring us wrong** in one direction, and "2nd among frameworks"
+  — the correction this page then carried — was **our own harness scoring us
+  wrong again, in the same direction**. Measured correctly, Pyreon is **3rd
+  of 8 and tied with Preact** (2.50 MB) — a tie, not a ranking.
 - These are synthetic-benchmark numbers. **Real-app head-to-head
   measurements are still pending** — treat cross-framework performance
   claims accordingly.
