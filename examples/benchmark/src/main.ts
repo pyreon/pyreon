@@ -296,6 +296,27 @@ if (__url.searchParams.get('profileClear') === '1') {
       removeContainer(container)
     }
   })()
+} else if (__url.searchParams.get('mode') === 'apppage') {
+  void (async () => {
+    const { runAppPage, APPPAGE_FRAMEWORKS } = await import('./impl/apppage')
+    if (!__frameworkParam || !APPPAGE_FRAMEWORKS.includes(__frameworkParam)) {
+      setStatus(`Unknown apppage framework: ${__frameworkParam}. Valid: ${APPPAGE_FRAMEWORKS.join(', ')}`)
+      return
+    }
+    setStatus(`Running app-page hydration: ${__frameworkParam}…`)
+    const container = makeContainer()
+    try {
+      const suite = await runAppPage(__frameworkParam, container)
+      buildTable([suite])
+      ;(globalThis as { __benchResults?: BenchSuite[] }).__benchResults = [suite]
+      setStatus('Done ✓')
+    } catch (err) {
+      console.error(`apppage ${__frameworkParam} failed:`, err)
+      setStatus(`FAILED: ${String(err)}`)
+    } finally {
+      removeContainer(container)
+    }
+  })()
 } else if (__frameworkParam) {
   const entry = ALL_FRAMEWORKS.find((f) => f.name === __frameworkParam)
   if (entry) {
