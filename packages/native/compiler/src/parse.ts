@@ -224,6 +224,22 @@ interface ParseCtx {
       declUnlowerable: string[]
     }
   >
+  /**
+   * Schemas SYNTHESIZED from inline `s.object({ … }).safeParse(x)` expressions
+   * encountered while parsing component bodies. Merged into the top-level
+   * `zodSchemas` after the main pass, so the emit renders each as a struct with
+   * the web-faithful `safeParseResult`. See `parseExpr`'s `schema-validate`
+   * interception + `tryInlineValidateSafeParse`.
+   */
+  inlineSchemas: ZodSchemaDefnIR[]
+  /**
+   * Dedup for inline schemas keyed by the source text of the `s.object({ … })`
+   * node — two byte-identical inline schemas share ONE synthesized struct.
+   */
+  inlineSchemaByShape: Map<string, string>
+  /** Monotonic counter for synthesized inline-schema binding names
+   * (`Inline0`, `Inline1`, …) → struct `PyreonZodSchema_Inline0`. */
+  inlineSchemaCounter: number
 }
 
 /**
@@ -256,6 +272,9 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     theme: DEFAULT_THEME,
     httpClientBaseUrls: new Map(),
     endpointDefs: new Map(),
+    inlineSchemas: [],
+    inlineSchemaByShape: new Map(),
+    inlineSchemaCounter: 0,
   }
   const ast = parseSync(filename, source, { sourceType: 'module', lang: 'tsx' })
   // Pre-pass: collect every `const <name> = defineStore(...)` hook name
@@ -523,6 +542,12 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   // built (a helper param/return can reference a declared struct). A body whose
   // type still can't be determined is warned + dropped (never a broken emit).
   refineHelperReturns(ctx.helperFns, structs, ctx.warnings)
+
+  // Standalone-validation: emit any schema SYNTHESIZED from an inline
+  // `s.object({ … }).safeParse(x)` expression (collected in `parseExpr`)
+  // as a top-level struct alongside the named ones. Appended, so a
+  // top-level `const X = s.object(...)` still emits first.
+  for (const inline of ctx.inlineSchemas) zodSchemas.push(inline)
 
   return {
     components,
@@ -1109,6 +1134,73 @@ function collectValidateSchemaNames(body: AnyNode[], ctx: ParseCtx): void {
       }
     }
   }
+  // Standalone-validation: an INLINE `s.object({ … }).safeParse(x)` anywhere in
+  // the tree (inside a computed / component body) ALSO lowers, so the blanket
+  // `s` warning must be suppressed for it too. The warn pass runs before the
+  // body loop that performs the lowering, so — as above — the question is
+  // answered syntactically via a deep walk here rather than by a result.
+  if (astContainsInlineValidateSafeParse(body as unknown as AnyNode, ctx.validateSchemaNames)) {
+    ctx.validateSchemaLowered = true
+  }
+}
+
+/**
+ * Standalone-validation: deep-walk `node` for an inline
+ * `<s>.object(...).safeParse(...)` chain where `<s>` is a local name bound to
+ * `@pyreon/validate`'s `s` namespace. Used ONLY by the warn-suppression
+ * pre-scan (`collectValidateSchemaNames`), which runs before the body parse
+ * that actually performs the lowering — so it decides suppression
+ * syntactically. Structural, allocation-free walk over own object/array
+ * properties.
+ */
+function astContainsInlineValidateSafeParse(node: AnyNode, sNames: Set<string>): boolean {
+  if (node === null || typeof node !== 'object') return false
+  if (Array.isArray(node)) {
+    for (const child of node as unknown as AnyNode[]) {
+      if (astContainsInlineValidateSafeParse(child, sNames)) return true
+    }
+    return false
+  }
+  if (isInlineValidateSafeParseCall(node, sNames)) return true
+  for (const key in node) {
+    if (key === 'type' || key === 'start' || key === 'end') continue
+    const child = (node as Record<string, unknown>)[key] as AnyNode | undefined
+    if (child && typeof child === 'object' && astContainsInlineValidateSafeParse(child, sNames)) {
+      return true
+    }
+  }
+  return false
+}
+
+/**
+ * True when `node` is a `<s>.object({ … }).safeParse(ARG)` CallExpression:
+ * a call whose callee is `<schema>.safeParse` and whose `<schema>` is a
+ * `<s>.object(<ObjectExpression>)` call with `s` bound to `@pyreon/validate`.
+ */
+function isInlineValidateSafeParseCall(node: AnyNode, sNames: Set<string>): boolean {
+  if (node.type !== 'CallExpression') return false
+  const callee = node.callee as AnyNode | undefined
+  if (callee?.type !== 'MemberExpression' || callee.computed) return false
+  if (callee.property?.type !== 'Identifier' || callee.property.name !== 'safeParse') return false
+  const schemaCall = callee.object as AnyNode | undefined
+  if (schemaCall?.type !== 'CallExpression') return false
+  const schemaCallee = schemaCall.callee as AnyNode | undefined
+  if (schemaCallee?.type !== 'MemberExpression' || schemaCallee.computed) return false
+  if (
+    schemaCallee.object?.type !== 'Identifier' ||
+    !sNames.has(schemaCallee.object.name as string)
+  ) {
+    return false
+  }
+  if (schemaCallee.property?.type !== 'Identifier' || schemaCallee.property.name !== 'object') {
+    return false
+  }
+  // v1 lowers a LITERAL object shape only (same as the named `s.object({ … })`
+  // path). An `s.object(someVar)` form stays web (warned) rather than being
+  // suppressed here and then failing to lower.
+  const shapeArg = (schemaCall.arguments as AnyNode[] | undefined)?.[0]
+  if (!shapeArg || shapeArg.type !== 'ObjectExpression') return false
+  return true
 }
 
 /** Record the local name(s) bound to `SizedMap` from `@pyreon/sized-map`.
@@ -3071,6 +3163,67 @@ function tryPyreonValidateSchemaDefnFromTopLevel(
   return null
 }
 
+/**
+ * Standalone-validation: lower an inline
+ * `s.object({ … }).safeParse(ARG)` CallExpression to a `schema-validate`
+ * ExprIR. Synthesizes (+ dedups) the schema struct, hoisting it into
+ * `ctx.inlineSchemas` so the emit renders it with the web-faithful
+ * `safeParseResult`; a wrapping `.success` / `.data` member access composes
+ * over the returned node. Returns null when `node` isn't the recognized chain
+ * (falls through to the generic call path). Reuses the Gap-4 field walker
+ * (`parseNestedObjectShape`) — so scalar objects, nested objects, arrays and
+ * constraint chains all lower, exactly as the top-level `const X = s.object(…)`
+ * form does.
+ */
+function tryInlineValidateSafeParse(node: AnyNode, ctx: ParseCtx): ExprIR | null {
+  if (!isInlineValidateSafeParseCall(node, ctx.validateSchemaNames)) return null
+  const callee = node.callee as AnyNode
+  const schemaCall = callee.object as AnyNode
+  const schemaCallee = schemaCall.callee as AnyNode
+  const sName = schemaCallee.object.name as string
+
+  // Dedup by the exact source text of the `s.object({ … })` node — two
+  // byte-identical inline schemas share one synthesized struct.
+  const start = schemaCall.start as number | undefined
+  const shapeEnd = schemaCall.end as number | undefined
+  const shapeKey =
+    typeof start === 'number' && typeof shapeEnd === 'number'
+      ? ctx.source.slice(start, shapeEnd)
+      : `__inline_${ctx.inlineSchemaCounter}`
+
+  let schemaName = ctx.inlineSchemaByShape.get(shapeKey)
+  if (schemaName === undefined) {
+    schemaName = `Inline${ctx.inlineSchemaCounter++}`
+    // Reuse the top-level walker on a SYNTHETIC `const <name> = s.object({ … })`
+    // declaration (schemaFn=null, the wrapper-less shape) — the exact same code
+    // path the named `const X = s.object(…)` form takes, so scalar objects,
+    // nested objects, arrays and constraint chains all lower identically.
+    const synthDecl: AnyNode = {
+      type: 'VariableDeclaration',
+      declarations: [
+        {
+          type: 'VariableDeclarator',
+          id: { type: 'Identifier', name: schemaName },
+          init: schemaCall,
+        },
+      ],
+    }
+    const schema = tryNamespacedSchemaDefnFromTopLevel(synthDecl, ctx, null, sName, sName)
+    // The walker returns null only when the object shape has NO recognized
+    // fields — an empty `s.object({})` validates anything, so a zero-field
+    // struct is the faithful lowering (never a broken emit).
+    const built: ZodSchemaDefnIR = schema ?? { bindingName: schemaName, fields: [] }
+    built.inline = true
+    built.emitSafeParseResult = true
+    ctx.inlineSchemas.push(built)
+    ctx.inlineSchemaByShape.set(shapeKey, schemaName)
+  }
+
+  const argNode = (node.arguments as AnyNode[] | undefined)?.[0]
+  const arg: ExprIR = argNode ? parseExpr(argNode, ctx) : { kind: 'object', fields: [] }
+  return { kind: 'schema-validate', schemaName, arg }
+}
+
 function tryZodSchemaDefnFromTopLevel(
   node: AnyNode,
   ctx: ParseCtx,
@@ -4634,6 +4787,9 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     theme: DEFAULT_THEME,
     httpClientBaseUrls: new Map(),
     endpointDefs: new Map(),
+    inlineSchemas: [],
+    inlineSchemaByShape: new Map(),
+    inlineSchemaCounter: 0,
   }
   for (const node of body) {
     let alias: AnyNode | null = null
@@ -9070,6 +9226,15 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
             ? 'JSON.parse throws on malformed input, which needs a native error model (try/throw lowering) — a tracked follow-up. Decode typed API responses via useFetch<T> instead.'
             : 'no native lowering for this shape yet — a serialization bridge is a tracked follow-up.',
         )
+      }
+      // Standalone `@pyreon/validate` schema validation:
+      // `s.object({ … }).safeParse(x)` → `schema-validate` ExprIR. The schema
+      // struct is synthesized + hoisted; a wrapping `.success` / `.data` member
+      // access composes over the returned node. Fires ONLY when `s` was
+      // imported from `@pyreon/validate` (guards a user's own `s` binding).
+      if (ctx.validateSchemaNames.size > 0) {
+        const sv = tryInlineValidateSafeParse(node, ctx)
+        if (sv) return sv
       }
       // Imperative `@pyreon/toast` call → `toast-call` ExprIR (→ PyreonToast).
       // `toast("x")` (info) or a preset `toast.success("x")` / `.error` /
