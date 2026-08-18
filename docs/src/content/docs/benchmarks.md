@@ -68,21 +68,22 @@ low-level entry measured statistically identical and was removed).
 | Remove row | 6.43 | 🤝 6.58 | 🤝 6.58 | 6.80 | 6.67 | 7.22 | 6.85 | 7.09 |
 | Clear rows | 85µs | 165µs | **115µs** | 235µs | 450µs | 285µs | 645µs | 760µs |
 | Create 10,000 | 82.45 | **88.91** | 90.37 | 91.95 | 105.70 | 103.91 | 215.06 | 274.19 |
-| Append 1k→10k | void — not reported (see below) | | | | | | | |
+| Append 1k→10k | bimodal — no ratio (see below) | **18.89–19.02ms** | 19.69–19.81ms | 76.2 | 20.5 | 26.4 | 22.1 | 22.5 |
 
 (ms unless noted; `🤝` = statistical CI95-overlap tie; **bold** = outright
 leader on that row. Median of 100 pooled samples, load 1.58–2.81 — the
 quietest window measured to date.)
 
-**Corrected tally: Pyreon wins 1 op outright (`create 10,000`), statistically
-ties Octane on 6 (`create 1,000`, `replace`, `partial update`, `swap`,
-`remove`, `select row`), loses 1 (`clear rows`, a real 1.43× gap — 165µs vs
-115µs, CI-disjoint, not a timer-quantum artifact), and 1 op (`append`) is
-**void** — not reported as a win, loss, or tie.** That is a genuine walk-back
-from the previous "7 of 9 outright" claim: most of this suite is now a
-statistical tie between two frameworks, not a Pyreon lead. The only
-measurable cost vs hand-written vanilla JS remains bulk-create (~6–7% —
-per-row signal allocation plus the keyed-`<For>` map).
+**Corrected tally: Pyreon wins 2 ops outright (`create 10,000`, `append`),
+statistically ties Octane on 6 (`create 1,000`, `replace`, `partial update`,
+`swap`, `remove`, `select row`), and loses 1 (`clear rows`, a real 1.43× gap
+— 165µs vs 115µs, CI-disjoint, not a timer-quantum artifact).** That is a
+genuine walk-back from the previous "7 of 9 outright" claim: most of this
+suite is now a statistical tie between two frameworks, not a Pyreon sweep —
+but it is now two real wins, not one. The only measurable cost vs
+hand-written vanilla JS is bulk-create (~6–7% — per-row signal allocation
+plus the keyed-`<For>` map) and, computed from fast-mode-only samples (never
+a raw ratio — see below), append (+3.8% to +4.9%).
 
 **`select row` has no published multiplier.** Corrected timing at
 100/1,000/10,000 rows: Pyreon 1.03/0.96/0.69µs vs Octane 1.37/1.53/1.15µs,
@@ -92,13 +93,40 @@ multiplier. Both frameworks sit at the edge of what real-Chromium timing can
 resolve; we publish "Pyreon is at the floor, Octane measurably but slightly
 above it," never a precise ratio, and never `0µs` again.
 
-**`append` is void, not a win.** It previously read "OUTRIGHT Pyreon,
-22.40ms." The harness fix that resolved `select`/`clear rows` timing also
-found `append`'s timed batches were bimodal — the reported median depended on
-which mode won the sample pool. The best estimate with the contaminating
-batches disabled is Pyreon ≈20.10ms vs Octane ≈20.11ms, a tie — but that is
-not yet a trustworthy number either, so this section reports nothing for
-`append` until the harness fix lands and is re-verified.
+**`append` is re-adjudicated OUTRIGHT PYREON, not void.** It previously read
+"OUTRIGHT Pyreon, 22.40ms," which turned out to be measured on a contaminated,
+bimodal harness and was briefly retracted to "unmeasured" while under
+investigation. Two independent corrected `--repeat 5` runs (100 pooled
+samples/op, load stamped 1.79→2.80, `crossOriginIsolated=true` verified, a
+genuine 5.0µs timer quantum, Octane un-handicapped) resolve it: Pyreon
+**18.89–19.02ms vs Octane 19.69–19.81ms — a narrow but real, CI95-disjoint
+~1.04× win**, confirmed twice per run — once on the all-samples median, once
+on the fast-mode cluster with slow-mode samples excluded entirely — same
+verdict all four ways. Runner-up field: Solid 20.5ms · React 22.1ms ·
+Preact 22.5ms · Svelte 26.4ms · Vue 76.2ms.
+
+Three constraints travel with this number and must not be dropped when it is
+quoted elsewhere: **(1)** do NOT publish a vs-Vanilla append ratio — Vanilla's
+own median straddles the same two timing modes (35–60% slow-mode share
+across three runs, swinging between ~18.8ms and ~48.7ms), so a naive ratio at
+the 60%-slow run reads 0.39–0.46× (nonsensically implying frameworks are
+faster than hand-written DOM); the only valid cost-over-Vanilla figure is the
+fast-mode-only **+3.8% to +4.9%** quoted above. **(2)** the ~38% coefficient
+of variation on this cell is disclosed bimodality, not measurement jitter — a
+~10% slow-mode tail inflates CV/CI95 for every framework's append cell, not
+just Pyreon's; say so whenever quoting it. **(3)** 1.04× is real and
+CI-disjoint, but narrow — treat it as a narrow win on this synthetic
+keyed-row-list suite under the standing author-judge limit, not as a general
+performance claim.
+
+A **bimodality guard** now exists precisely so a contaminated cell like the
+original append figure can't reach these numbers unnoticed again (open PR,
+not yet merged): it computes `capture = median / fastModeCentre` per cell and
+fails the run when it crosses a calibrated threshold, naming the offending
+op. It exists because every prior gate checked a cell's own internal
+consistency but nothing checked whether one op's slow-mode tail was leaking
+into its *neighbours* — which is exactly how the append corruption went
+unnoticed until a human plausibility check caught it.
 
 Per-op tie-vs-outright still shuffles with machine noise even on the
 corrected field, so treat it as a band rather than a fixed scoreboard; the

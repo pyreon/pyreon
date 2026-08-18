@@ -71,22 +71,27 @@ not merged as of this writing.
 On the synthetic row-list benchmark (Chromium via Playwright), compiled
 Pyreon is **competitive with the fastest frameworks measured**, with one
 clear, unaffected win: it runs **2.4× faster than React and 3.1× than
-Preact** at bulk-create (10,000 rows). Elsewhere it is mostly a **statistical
-tie with [Octane](https://octanejs.dev)**, the nearest rival — corrected
-verdicts are ties on `create 1,000`, `replace`, `partial update`, `swap`, and
-`remove`; Octane wins `clear rows` outright (a real, resolved 1.43×); and
-`select row` has no honest multiplier to publish (both frameworks sit at the
-edge of what real-Chromium timing can resolve). Important caveats, kept
-verbatim with the project's internal record:
+Preact** at bulk-create (10,000 rows). It also takes a second, narrower
+outright win at `append` (~1.04×, re-adjudicated 2026-08-18 after an initial
+bimodal-timing false start — see below). Elsewhere it is mostly a
+**statistical tie with [Octane](https://octanejs.dev)**, the nearest rival —
+corrected verdicts are ties on `create 1,000`, `replace`, `partial update`,
+`swap`, and `remove`; Octane wins `clear rows` outright (a real, resolved
+1.43×); and `select row` has no honest multiplier to publish (both
+frameworks sit at the edge of what real-Chromium timing can resolve).
+Important caveats, kept verbatim with the project's internal record:
 
 - It is **not** "fastest on all benchmarks." This is the **synthetic
-  row-list suite** only, and on it Pyreon wins exactly one op outright
-  (bulk-create) rather than most of the field. The "mid-pack on retained
-  memory (6th of 7)" this page used to state was **our own harness scoring us
-  wrong** in one direction, and "2nd among frameworks" — the correction this
-  page then carried — was **our own harness scoring us wrong again, in the
-  same direction**. Measured correctly, Pyreon is **3rd of 8 and tied with
-  Preact** (2.50 MB) — a tie, not a ranking.
+  row-list suite** only, and on it Pyreon wins two ops outright
+  (bulk-create, append) rather than most of the field — and the append
+  number carries its own caveat: it is measured on a bimodal cell (never
+  quote it against Vanilla, whose own median straddles both modes; the
+  honest cost-over-Vanilla figure is a fast-mode-only +3.8–4.9%). The
+  "mid-pack on retained memory (6th of 7)" this page used to state was **our
+  own harness scoring us wrong** in one direction, and "2nd among frameworks"
+  — the correction this page then carried — was **our own harness scoring us
+  wrong again, in the same direction**. Measured correctly, Pyreon is **3rd
+  of 8 and tied with Preact** (2.50 MB) — a tie, not a ranking.
 - These are synthetic-benchmark numbers. **Real-app head-to-head
   measurements are still pending** — treat cross-framework performance
   claims accordingly.

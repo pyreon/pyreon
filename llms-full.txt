@@ -1,7 +1,7 @@
 # Pyreon Framework — Complete AI Reference
 
 > Signal-based UI framework for TypeScript. SSR, SSG, islands, SPA.
-> Standard JSX + TypeScript. Fast on the synthetic row-list benchmark, honestly reported: a benchmark-harness bug that handicapped Octane (the nearest rival) has been found and corrected (pending merge). Corrected standing — statistically tied with Octane on create-1k/replace/partial-update/swap/remove; wins bulk-create outright (2.4× faster than React / 3.1× than Preact at 10k rows); Octane wins clear-rows. Retained memory is a 3-way tie with Preact for 3rd of 8, not a win. See /docs/benchmarks.
+> Standard JSX + TypeScript. Fast on the synthetic row-list benchmark, honestly reported: a benchmark-harness bug that handicapped Octane (the nearest rival) has been found and corrected (pending merge). Corrected standing — statistically tied with Octane on create-1k/replace/partial-update/swap/remove; wins bulk-create and append outright (2.4× faster than React / 3.1× than Preact at 10k rows; append a narrow re-adjudicated ~1.04×); Octane wins clear-rows. Retained memory is a 3-way tie with Preact for 3rd of 8, not a win. See /docs/benchmarks.
 > All packages under @pyreon/* scope.
 
 ## Package Map
