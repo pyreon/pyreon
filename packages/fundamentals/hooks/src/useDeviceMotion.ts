@@ -48,7 +48,11 @@ export function useDeviceMotion(): DeviceMotionControls {
   const acceleration = signal<Vec3>(ZERO)
   const rotation = signal<Vec3>(ZERO)
 
-  const supported = () => isClient && typeof DeviceMotionEvent !== 'undefined'
+  const supported = () => {
+    const ok = isClient && typeof DeviceMotionEvent !== 'undefined'
+    if (!ok) warnIfInsecureContext('useDeviceMotion')
+    return ok
+  }
 
   const onMotion = (e: DeviceMotionEvent) => {
     const a = e.accelerationIncludingGravity

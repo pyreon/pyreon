@@ -57,11 +57,15 @@ export function useAudioRecorder(): AudioRecorderControls {
   let stream: MediaStream | null = null
   let chunks: Blob[] = []
 
-  const supported = () =>
-    isClient &&
-    typeof navigator !== 'undefined' &&
-    navigator.mediaDevices?.getUserMedia !== undefined &&
-    typeof MediaRecorder !== 'undefined'
+  const supported = () => {
+    const ok =
+      isClient &&
+      typeof navigator !== 'undefined' &&
+      navigator.mediaDevices?.getUserMedia !== undefined &&
+      typeof MediaRecorder !== 'undefined'
+    if (!ok) warnIfInsecureContext('useAudioRecorder')
+    return ok
+  }
 
   const teardown = () => {
     // Releasing the tracks is what turns the OS recording indicator off. A

@@ -56,8 +56,11 @@ export function useWakeLock(): WakeLockControls {
   let wanted = false
   let sentinel: Sentinel | null = null
 
-  const supported = () =>
-    isClient && typeof navigator !== 'undefined' && 'wakeLock' in navigator
+  const supported = () => {
+    const ok = isClient && typeof navigator !== 'undefined' && 'wakeLock' in navigator
+    if (!ok) warnIfInsecureContext('useWakeLock')
+    return ok
+  }
 
   const acquire = async (): Promise<boolean> => {
     // Guard inline rather than through `supported()`. The SSR lint rule

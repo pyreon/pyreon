@@ -114,7 +114,11 @@ export function useBluetooth(): UseBluetoothResult {
   })
 
   return {
-    available: () => available(),
+    available: () => {
+      const ok = available()
+      if (!ok) warnIfInsecureContext('useBluetooth')
+      return ok
+    },
     scanning: () => scanning(),
     devices: () => devices(),
     error: () => error(),
