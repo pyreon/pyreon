@@ -523,7 +523,7 @@ the machine-checked contract.
 
 | Package | Why |
 | --- | --- |
-| `@pyreon/runtime-dom` | the DOM renderer — on native, PMTC emits SwiftUI/Compose instead of running a renderer |
+| `@pyreon/runtime-dom` | the DOM renderer — on native, PMTC emits SwiftUI/Compose instead of running a renderer; `<Transition>` / `<TransitionGroup>` DO cross, but import them from `@pyreon/primitives` (this package is web-only, so importing them from here warns) |
 | `@pyreon/server` | SSR handler + islands for web deployments; native apps have no server-rendered HTML |
 | `@pyreon/runtime-server` | server-side HTML rendering (SSR/streaming) — a web-platform concern with no native analogue |
 | `@pyreon/head` | document `<head>` management — no equivalent surface exists on iOS/Android |
@@ -555,7 +555,7 @@ the machine-checked contract.
 | `@pyreon/kinetic-presets` | preset pack for the kinetic CSS engine |
 | `@pyreon/connector-document` | bridges ui-components to @pyreon/document extraction — both ends are web/document engines |
 | `@pyreon/document-primitives` | document-authoring primitives feeding the pdfmake/docx renderers |
-| `@pyreon/kinetic` | CSS-transition animation engine (classes + rAF over real CSSOM) — the `kinetic()` factory and its class/style machinery are web; its PRESET VOCABULARY (fade / scale-in / slide-up|down|left|right) does cross, via `<Transition name>`, which each target resolves to its own platform transition |
+| `@pyreon/kinetic` | CSS-transition animation engine (classes + rAF over real CSSOM) — the `kinetic()` factory and its class/style machinery are web; its PRESET VOCABULARY (fade / scale-in / slide-up|down|left|right) does cross, via `<Transition name>` imported from `@pyreon/primitives` (NOT from here and NOT from `@pyreon/runtime-dom` — both are web-only), which each target resolves to its own platform transition |
 | `@pyreon/unistyle` | responsive breakpoints + CSS-variable theming over real CSS; native theming is compile-time tokens + the 2-bucket size-class model |
 | `@pyreon/zero-content` | markdown/MDX content pipeline for zero's web rendering |
 | `@pyreon/zero` | the web meta-framework (SSR/SSG/ISR, Vite, fs-router); native apps are built by PMTC + create-multiplatform, not zero |

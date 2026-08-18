@@ -1201,6 +1201,25 @@ type Props = ExtractProps<typeof Iterator>
     mistakes: '- Forgetting `onClose` — needed so the platform dismiss gesture updates your signal',
   },
 
+  'primitives/Transition': {
+    signature: `(props: { show: boolean | (() => boolean); name?: 'fade' | 'scale-in' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right'; duration?: number; easing?: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out'; enterDuration?: number; leaveDuration?: number; enterEasing?: TransitionEasing; leaveEasing?: TransitionEasing; children }) => VNode`,
+    example: '<Transition name="slide-up" show={isOpen()} enterDuration={200} leaveDuration={400}><Panel /></Transition>',
+    notes: 'The MULTIPLATFORM animation vocabulary — animate a subtree in and out of view. Web renders a wrapper div driven by real CSS transitions; iOS emits `ZStack { if show { … .transition(…) } }.animation(…, value: show)`; Android emits `AnimatedVisibility(visible = show, enter =, exit =)`. `name` picks a preset every target translates natively (camelCase AND kebab-case both accepted — `slideUp` === `slide-up`), and direction is the direction of TRAVEL, so a slide-up rises INTO place from below. `duration`/`easing` are symmetric; `enterDuration`/`leaveDuration`/`enterEasing`/`leaveEasing` override one side and fall back to the symmetric value, which is how "quick in, slow out" is spelled. Import it from HERE, not from `@pyreon/runtime-dom` — that package is web-only and warns on native. See also: TransitionGroup.',
+    mistakes: `- Importing \`Transition\` from \`@pyreon/runtime-dom\` — it lowers fine, but the package is WEB-ONLY so PMTC warns; \`@pyreon/primitives\` is the import that resolves on all three targets
+- Passing a non-literal \`duration\` (a signal read, a computed value) — the native emitters require a static number of milliseconds and warn + fall back to the default otherwise
+- Expecting the children to UNMOUNT on web when \`show\` is false — the wrapper goes \`display:none\` and keeps them mounted, so an animation wrapper never gates content out of SSR (it also contributes no flex \`gap\` while hidden)
+- Expecting an enter animation on the FIRST render — mounting with \`show\` already true paints at rest, matching \`AnimatedVisibility(visible = true)\` and SwiftUI \`.animation(_:value:)\`
+- Reaching for a custom \`name\` — the preset set is closed on purpose; an unlisted name has no native translation and falls back to a fade`,
+  },
+
+  'primitives/TransitionGroup': {
+    signature: '(props: { children }) => VNode',
+    example: '<TransitionGroup><For each={rows()} by={(r) => r.id}>{(r) => <Text>{r.label}</Text>}</For></TransitionGroup>',
+    notes: 'A container that animates its own SIZE as rows enter and leave the keyed list inside it. Web measures the content with `ResizeObserver` and transitions the outer height; iOS emits `VStack { … }.animation(.default, value: <list>.count)`; Android emits `Column(modifier = Modifier.animateContentSize())`. Children-only by design — neither native emitter reads any other attribute, so a `duration`/`easing` prop here would be web-only decoration on a primitive whose whole purpose is parity. Wrap a `<For>` in it. See also: Transition.',
+    mistakes: `- Expecting per-ROW enter/leave animation — this animates the CONTAINER; wrap an individual row in \`<Transition>\` for that
+- Relying on it in a no-JS / server-rendered snapshot — the height is only ever driven from a measurement, so SSR output has no inline height and lays out at the content's natural size`,
+  },
+
   'primitives/WebView': {
     signature: '(props: { html?: string; src?: string; data?: unknown; onMessage?: (message: string) => void }) => VNode',
     example: '<WebView html={CHART_HTML} data={metrics()} onMessage={(m) => selected.set(m)} />',

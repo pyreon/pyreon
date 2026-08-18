@@ -16,6 +16,7 @@ The multiplatform UI vocabulary for Pyreon. ONE canonical name per concept (`<St
 - Tokens-first styling (`padding={4}`, `gap="md"`) resolves through the theme per target
 - PMTC compiles your component SOURCE in a narrow declarative TS subset — NOT npm libraries
 - `<WebView>` hosts a web-only component (charts/flow/editor) natively with a bidirectional data bridge
+- `<Transition>` / `<TransitionGroup>` — the animation vocabulary, lowered to SwiftUI `.transition(…)` and Compose `AnimatedVisibility` (import from HERE; `@pyreon/runtime-dom` is web-only)
 - `<Web>` / `<NativeIOS>` / `<NativeAndroid>` escape hatches for genuinely per-platform UI
 - `useNativeModule` FFI — add a platform capability the framework does not ship (Bluetooth, ARKit, a vendor SDK) as an app-level Swift/Kotlin class, no framework PR
 - No responsive props or animations in v1 — responsive web uses `@pyreon/elements` directly
@@ -78,6 +79,8 @@ export function App() {
 | [`Field`](#field) | component | Text input. |
 | [`Toggle`](#toggle) | component | Boolean switch/checkbox. |
 | [`Modal`](#modal) | component | Modal/sheet. |
+| [`Transition`](#transition) | component | The MULTIPLATFORM animation vocabulary — animate a subtree in and out of view. |
+| [`TransitionGroup`](#transitiongroup) | component | A container that animates its own SIZE as rows enter and leave the keyed list inside it. |
 | [`WebView`](#webview) | component | Host a web page/component natively (WKWebView on iOS, Android WebView; `<iframe srcdoc>` on web). |
 | [`connectWebHost`](#connectwebhost) | function | The guest-side glue for the `<WebView>` bridge — the reusable OTHER half of the WebView-host pattern. |
 | [`webHostDocument`](#webhostdocument) | function | Build the self-contained HTML page a `<WebView html={…}>` hosts — the document shell for the guest side of the WebView-h |
@@ -466,6 +469,55 @@ Modal/sheet. Web overlay; iOS `.sheet(isPresented:)`; Android `Dialog(onDismissR
 - Forgetting `onClose` — needed so the platform dismiss gesture updates your signal
 
 **See also:** `Layer`
+
+---
+
+### Transition `component`
+
+```ts
+(props: { show: boolean | (() => boolean); name?: 'fade' | 'scale-in' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right'; duration?: number; easing?: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out'; enterDuration?: number; leaveDuration?: number; enterEasing?: TransitionEasing; leaveEasing?: TransitionEasing; children }) => VNode
+```
+
+The MULTIPLATFORM animation vocabulary — animate a subtree in and out of view. Web renders a wrapper div driven by real CSS transitions; iOS emits `ZStack { if show { … .transition(…) } }.animation(…, value: show)`; Android emits `AnimatedVisibility(visible = show, enter =, exit =)`. `name` picks a preset every target translates natively (camelCase AND kebab-case both accepted — `slideUp` === `slide-up`), and direction is the direction of TRAVEL, so a slide-up rises INTO place from below. `duration`/`easing` are symmetric; `enterDuration`/`leaveDuration`/`enterEasing`/`leaveEasing` override one side and fall back to the symmetric value, which is how "quick in, slow out" is spelled. Import it from HERE, not from `@pyreon/runtime-dom` — that package is web-only and warns on native.
+
+**Example**
+
+```tsx
+<Transition name="slide-up" show={isOpen()} enterDuration={200} leaveDuration={400}><Panel /></Transition>
+```
+
+**Common mistakes**
+
+- Importing `Transition` from `@pyreon/runtime-dom` — it lowers fine, but the package is WEB-ONLY so PMTC warns; `@pyreon/primitives` is the import that resolves on all three targets
+- Passing a non-literal `duration` (a signal read, a computed value) — the native emitters require a static number of milliseconds and warn + fall back to the default otherwise
+- Expecting the children to UNMOUNT on web when `show` is false — the wrapper goes `display:none` and keeps them mounted, so an animation wrapper never gates content out of SSR (it also contributes no flex `gap` while hidden)
+- Expecting an enter animation on the FIRST render — mounting with `show` already true paints at rest, matching `AnimatedVisibility(visible = true)` and SwiftUI `.animation(_:value:)`
+- Reaching for a custom `name` — the preset set is closed on purpose; an unlisted name has no native translation and falls back to a fade
+
+**See also:** `TransitionGroup`
+
+---
+
+### TransitionGroup `component`
+
+```ts
+(props: { children }) => VNode
+```
+
+A container that animates its own SIZE as rows enter and leave the keyed list inside it. Web measures the content with `ResizeObserver` and transitions the outer height; iOS emits `VStack { … }.animation(.default, value: <list>.count)`; Android emits `Column(modifier = Modifier.animateContentSize())`. Children-only by design — neither native emitter reads any other attribute, so a `duration`/`easing` prop here would be web-only decoration on a primitive whose whole purpose is parity. Wrap a `<For>` in it.
+
+**Example**
+
+```tsx
+<TransitionGroup><For each={rows()} by={(r) => r.id}>{(r) => <Text>{r.label}</Text>}</For></TransitionGroup>
+```
+
+**Common mistakes**
+
+- Expecting per-ROW enter/leave animation — this animates the CONTAINER; wrap an individual row in `<Transition>` for that
+- Relying on it in a no-JS / server-rendered snapshot — the height is only ever driven from a measurement, so SSR output has no inline height and lays out at the content's natural size
+
+**See also:** `Transition`
 
 ---
 

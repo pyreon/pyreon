@@ -37,6 +37,12 @@ export type { InlineProps, LayerProps, ScrollProps, SpacerProps, StackProps } fr
 export type { AudioProps, HeadingProps, IconProps, ImageProps, TextProps, VideoProps } from './types/content'
 export type { ButtonProps, LinkProps, PressProps } from './types/interaction'
 export type { FieldProps, ModalProps, ToggleProps } from './types/input'
+export type {
+  TransitionEasing,
+  TransitionGroupProps,
+  TransitionPreset,
+  TransitionProps,
+} from './types/animation'
 
 // ===== Runtime config — one-time app-boot hook (rocketstyle-style) =====
 //
@@ -69,6 +75,14 @@ export { Link } from './web/Link'
 export { Field } from './web/Field'
 export { Toggle } from './web/Toggle'
 export { Modal } from './web/Modal'
+// Animation vocabulary — the ONE import path where `<Transition name>` /
+// `<TransitionGroup>` resolve on every target. PMTC has lowered both to
+// real platform animation since M2.7/M2.8 (SwiftUI `.transition(…)` +
+// `.animation(_:value:)`, Compose `AnimatedVisibility`), but the only
+// runtime export lived in `@pyreon/runtime-dom` — which PMTC correctly
+// flags WEB-ONLY. Importing them from here works on web AND native.
+export { Transition } from './web/Transition'
+export { TransitionGroup } from './web/TransitionGroup'
 // Escape-hatch primitives (Layer 4) — per-platform branch selection. On
 // web, `<Web>` renders its children and `<NativeIOS>`/`<NativeAndroid>`
 // render nothing; PMTC mirrors this per native target (iOS renders the
