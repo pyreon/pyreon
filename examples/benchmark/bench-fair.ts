@@ -478,20 +478,59 @@ async function main(): Promise<void> {
   execSync('bun run build', { cwd: HERE, stdio: 'inherit' })
 
   console.log(`[bench-fair] starting preview on :${PORT}`)
-  const preview: ChildProcess = spawn('bun', ['x', 'vite', 'preview', '--port', String(PORT)], {
-    cwd: HERE,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
+  // `--strictPort` is a MEASUREMENT-INTEGRITY flag, not a convenience.
+  //
+  // Without it, vite silently drifts to the next free port when `PORT` is
+  // held — and the readiness check below matches `Local:` on ANY port, so the
+  // drift satisfies it. The driver then keeps probing `PORT`, which is still
+  // being served by WHOEVER holds it: a stale preview from an earlier run, or
+  // a parallel worktree's build. The run completes, reports clean numbers, and
+  // has measured someone else's bundle. This was hit live during the 2026-08
+  // campaign by a parallel session holding 4178.
+  //
+  // With the flag, vite EXITS instead of drifting, and the `exit` handler
+  // below turns that into a loud failure. Same class as — and complementary
+  // to — the cross-origin-isolation preflight further down: both exist because
+  // this suite's dominant failure mode is measuring the wrong thing while
+  // reporting confidently.
+  const preview: ChildProcess = spawn(
+    'bun',
+    ['x', 'vite', 'preview', '--port', String(PORT), '--strictPort'],
+    { cwd: HERE, stdio: ['ignore', 'pipe', 'pipe'] },
+  )
 
   await new Promise<void>((res, rej) => {
     const timeout = setTimeout(() => rej(new Error('preview server start timeout')), 10_000)
     preview.stdout?.on('data', (chunk: Buffer) => {
-      if (chunk.toString().includes('Local:')) {
-        clearTimeout(timeout)
-        res()
+      const text = chunk.toString()
+      if (!text.includes('Local:')) return
+      clearTimeout(timeout)
+      // Belt-and-braces: assert the announced port IS the one we will probe.
+      // `--strictPort` should make a mismatch impossible, but a readiness check
+      // that cannot tell which server answered is what allowed the drift to go
+      // unnoticed in the first place — so verify rather than assume.
+      if (!text.includes(`:${PORT}`)) {
+        rej(
+          new Error(
+            `[bench-fair] preview announced a different port than :${PORT} — refusing to ` +
+              `measure, because the server on :${PORT} would be someone else's build. ` +
+              `Announced: ${text.trim()}`,
+          ),
+        )
+        return
       }
+      res()
     })
-    preview.on('exit', (code) => rej(new Error(`preview exited with code ${code}`)))
+    preview.on('exit', (code) =>
+      rej(
+        new Error(
+          `preview exited with code ${code}. With --strictPort this usually means :${PORT} ` +
+            `is already held (a stale preview, or a parallel worktree). Free it — do NOT ` +
+            `switch ports and re-run, since the holder may be serving a different build: ` +
+            `lsof -ti tcp:${PORT} | xargs kill -9`,
+        ),
+      ),
+    )
   })
 
   // `--expose-gc` lets `runner.ts` call `globalThis.gc()` between
