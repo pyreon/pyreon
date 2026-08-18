@@ -1,5 +1,6 @@
 {
   "name": "pyreon",
+  "license": "MIT",
   "private": true,
   "workspaces": [
     "packages/*/*",

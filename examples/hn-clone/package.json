@@ -1,6 +1,7 @@
 {
   "name": "@pyreon/example-hn-clone",
   "version": "0.50.1",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "scripts": {

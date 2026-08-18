@@ -1,6 +1,7 @@
 {
   "name": "@pyreon/example-ui-showcase",
   "version": "0.50.0",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "scripts": {
