@@ -1156,6 +1156,7 @@ export function transformJSX_JS(
   let needsSsrNodeImport = false
   let needsSsrForKeyedImport = false
   let needsEscImport = false
+  let needsEscSoleImport = false
   let needsSsrAttrImport = false
   let needsSsrAttrGenImport = false
   let needsSsrAttrUrlImport = false
@@ -1994,7 +1995,7 @@ export function transformJSX_JS(
    * to the general wrapped-hole delegation (still byte-identical, just not
    * item-fast).
    */
-  function ssrTryMap(buf: SsrBuf, expr: N): boolean {
+  function ssrTryMap(buf: SsrBuf, expr: N, sole: boolean): boolean {
     if (expr.type !== 'CallExpression') return false
     const callee = expr.callee
     if (!callee || callee.type !== 'MemberExpression' || callee.computed) return false
@@ -2023,9 +2024,11 @@ export function transformJSX_JS(
     // list is at least as common in SSR as `<For>`).
     const fusedItem = buildSsrForItemBody(itemBuf, paramText)
     const itemBody = fusedItem ?? ssrCallText(itemBuf, 'mapitem')
-    ssrEmitStatic(buf, '<!--$-->')
+    // A SOLE `.map` child needs no markers — the element's tag boundary is the
+    // extent (h() wraps the call, so `renderElement` elides it there too).
+    if (!sole) ssrEmitStatic(buf, '<!--$-->')
     ssrEmitHole(buf, `_ssrChildren(${recv}.map((${paramText}) => ${itemBody}))`)
-    ssrEmitStatic(buf, '<!--/$-->')
+    if (!sole) ssrEmitStatic(buf, '<!--/$-->')
     needsSsrChildrenImport = true
     return true
   }
@@ -2037,19 +2040,61 @@ export function transformJSX_JS(
     needsEscImport = true
   }
 
+  /** Emit a SOLE expression child as `_escSole(expr)` — `_esc` minus the
+   * accessor range markers, matching `renderElement`'s sole-child elision. */
+  function emitEscSoleHole(buf: SsrBuf, exprText: string): void {
+    ssrEmitHole(buf, `_escSole(${exprText})`)
+    needsEscSoleImport = true
+  }
+
+  /**
+   * The element's ONE meaningful child, or null. "Meaningful" is exactly what
+   * the h() emission keeps (`classifyJsxChild`): whitespace-only JSXText and
+   * empty `{}` / `{/* … *\/}` containers are dropped, so neither can make an
+   * otherwise-sole accessor non-sole. Deriving it from the SAME rule is what
+   * keeps the `_ssr` bytes equal to `renderNode(<el>)` — the h() path decides
+   * elision from `vnode.children.length === 1`, which is this list's length.
+   */
+  function ssrSoleChild(el: N): N | null {
+    let only: N | null = null
+    for (const c of jsxChildren(el)) {
+      if (c.type === 'JSXText') {
+        if (!cleanJsxText((c.value ?? c.raw ?? '') as string)) continue
+      } else if (c.type === 'JSXExpressionContainer') {
+        const e = c.expression
+        if (!e || e.type === 'JSXEmptyExpression') continue
+      }
+      if (only !== null) return null
+      only = c
+    }
+    return only
+  }
+
   /** Serialize one expression child. Returns false to bail the element. */
-  function ssrSerializeExprChild(buf: SsrBuf, child: N, mode: SsrMode): boolean {
+  function ssrSerializeExprChild(buf: SsrBuf, child: N, mode: SsrMode, sole: boolean): boolean {
     const raw = child.expression
     if (!raw || raw.type === 'JSXEmptyExpression') return true // {} / {/* */} → nothing
     const expr = unwrapTypeLayers(raw)
     // mapitem mode: every expression child is a PLAIN VALUE child (the compiler
-    // never recursed into the map callback) → `_esc(expr)`, no markers.
+    // never recursed into the map callback) → no markers baked. The SOLE rule
+    // still applies: the value can BE a function at runtime (`{r.render}`), and
+    // h() would then elide that accessor's markers because it is the item
+    // element's only child — so `_esc` (which adds them) would diverge.
     if (mode === 'mapitem') {
-      emitEscHole(buf, sliceExpr(expr))
+      if (sole) emitEscSoleHole(buf, sliceExpr(expr))
+      else emitEscHole(buf, sliceExpr(expr))
       return true
     }
     // recursed mode: matches handleJsxExpression's wrap decision.
-    if (ssrTryMap(buf, expr)) return true
+    if (ssrTryMap(buf, expr, sole)) return true
+    // SOLE child of this element → no markers on EITHER side, whatever the
+    // expression's static shape; `_escSole` decides from the runtime value
+    // kind, which is the only thing that determines whether `_esc` would have
+    // added them. See `soleAccessorChild` in @pyreon/runtime-server.
+    if (sole) {
+      emitEscSoleHole(buf, sliceExpr(expr))
+      return true
+    }
     if (shouldWrap(expr)) {
       // The h() path wraps a dynamic child in `() => expr` → renderNode adds
       // `<!--$-->…<!--/$-->` markers. Bake the markers into the statics + emit
@@ -2130,7 +2175,7 @@ export function transformJSX_JS(
   }
 
   /** Serialize one child (text / element / expression). Returns false to bail. */
-  function ssrSerializeChild(buf: SsrBuf, child: N, mode: SsrMode): boolean {
+  function ssrSerializeChild(buf: SsrBuf, child: N, mode: SsrMode, sole: boolean): boolean {
     if (child.type === 'JSXText') {
       const cleaned = cleanJsxText(child.value ?? child.raw ?? '')
       // Entity-safety bail: oxc keeps HTML entities (`&amp;`) LITERAL in
@@ -2159,7 +2204,8 @@ export function transformJSX_JS(
       }
       return ssrSerializeElement(buf, child, mode)
     }
-    if (child.type === 'JSXExpressionContainer') return ssrSerializeExprChild(buf, child, mode)
+    if (child.type === 'JSXExpressionContainer')
+      return ssrSerializeExprChild(buf, child, mode, sole)
     // JSXFragment / JSXSpreadChild → bail.
     return false
   }
@@ -2202,8 +2248,9 @@ export function transformJSX_JS(
     // A self-closing non-void tag (`<div />`) has no children to walk; it
     // still gets its closing tag, matching the h() path's `<div></div>`.
     if (!selfClosing) {
+      const sole = ssrSoleChild(el)
       for (const child of jsxChildren(el)) {
-        if (!ssrSerializeChild(buf, child, mode)) return false
+        if (!ssrSerializeChild(buf, child, mode, child === sole)) return false
       }
     }
     ssrEmitStatic(buf, `</${tag}>`)
@@ -3536,6 +3583,7 @@ export function transformJSX_JS(
     if (needsSsrNodeImport) ssrImports.push('_ssrNode', '_ssrDeferred')
     if (needsSsrForKeyedImport) ssrImports.push('_ssrForKeyed')
     if (needsEscImport) ssrImports.push('_esc')
+    if (needsEscSoleImport) ssrImports.push('_escSole')
     if (needsSsrAttrImport) ssrImports.push('_ssrAttr')
     if (needsSsrAttrGenImport) ssrImports.push('_ssrAttrGen')
     if (needsSsrAttrUrlImport) ssrImports.push('_ssrAttrUrl')

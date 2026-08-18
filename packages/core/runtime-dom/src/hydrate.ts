@@ -154,6 +154,70 @@ function insertMarker(parent: Node, domNode: ChildNode | null, text: string): Co
   return marker
 }
 
+/**
+ * The hydration twin of runtime-server's `soleAccessorChild` — an element's
+ * ONLY child, when it is a reactive accessor, is SSR-emitted WITHOUT
+ * `<!--$-->…<!--/$-->` markers because the element's tag boundary already
+ * delimits its extent. Decided from the STATIC vnode shape so both sides agree
+ * by construction; see the runtime-server definition for the full rationale.
+ */
+function soleAccessorChild(children: VNodeChild[] | undefined): (() => VNodeChild) | null {
+  return children !== undefined && children.length === 1 && typeof children[0] === 'function'
+    ? (children[0] as () => VNodeChild)
+    : null
+}
+
+/**
+ * Hydrate an element's SOLE accessor child, whose extent is the element's
+ * entire child list (no markers — see `soleAccessorChild`).
+ *
+ * Structurally this is the marker path with `[el.firstChild, el.lastChild]`
+ * substituted for `[<!--$-->, <!--/$-->]`, so the two arms mirror
+ * `hydrateReactiveChild`'s exactly: a single text child with a text-ish
+ * initial ADOPTS in place (the dominant case, no remount), everything else —
+ * empty, multi-node, or a VNode subtree — mounts the live binding at a marker
+ * and drops the SSR content.
+ */
+function hydrateSoleAccessorChild(
+  child: () => VNodeChild,
+  el: Element,
+  path: string,
+): Cleanup {
+  const initial = runUntracked(child)
+  const first = el.firstChild
+
+  // Adopt: exactly one text child, text-ish initial. Deliberately NOT gated on
+  // a value match — a genuine server/client divergence still adopts the SAME
+  // node and the binding writes the client value on its first run, so recovery
+  // is in place rather than a double mount (mirrors the marker path).
+  if (
+    (typeof initial === 'string' || typeof initial === 'number' || typeof initial === 'boolean') &&
+    first !== null &&
+    first.nodeType === Node.TEXT_NODE &&
+    first.nextSibling === null
+  ) {
+    const bound = first as Text
+    if (bound.data !== String(initial)) {
+      warnHydrationMismatch('text', String(initial), bound.data, `${path} > reactive`)
+    }
+    return bindPolymorphicText(child, bound, el)
+  }
+
+  // General case — mount the live binding BEFORE the SSR content, then drop
+  // that content. An empty/null initial does NOT imply a text binding (the
+  // accessor can yield a VNode on a later flip), so only `mountReactive` is
+  // correct here.
+  const marker = insertMarker(el, first, 'pyreon')
+  const cleanup = mountReactive(child, el, marker, mountChild)
+  let cur: ChildNode | null = first
+  while (cur) {
+    const nx: ChildNode | null = cur.nextSibling
+    cur.remove()
+    cur = nx
+  }
+  return cleanup
+}
+
 /** Hydrate a reactive accessor (function child). */
 function hydrateReactiveChild(
   child: () => VNodeChild,
@@ -676,11 +740,20 @@ function hydrateElement(
     const isSelect = vnode.type === 'select'
     const propCleanup = applyProps(el, vnode.props, isSelect ? 'value' : undefined)
 
-    // Hydrate children. Fast path: an ELEMENT first-child is always "real"
-    // (firstReal returns it untouched) — skip the scan for the dominant case.
-    const fc = el.firstChild as ChildNode | null
-    const firstChild = fc !== null && fc.nodeType === 1 ? fc : firstReal(fc)
-    const [childCleanup] = hydrateChildren(vnode.children ?? [], firstChild, el, null, elPath)
+    // Hydrate children. A SOLE accessor child owns the element's whole child
+    // list (SSR elided its markers — see `soleAccessorChild`), so it bypasses
+    // the cursor walk entirely. Otherwise: fast path — an ELEMENT first-child
+    // is always "real" (firstReal returns it untouched), skipping the scan for
+    // the dominant case.
+    const sole = soleAccessorChild(vnode.children)
+    let childCleanup: Cleanup
+    if (sole) {
+      childCleanup = hydrateSoleAccessorChild(sole, el, elPath)
+    } else {
+      const fc = el.firstChild as ChildNode | null
+      const firstChild = fc !== null && fc.nodeType === 1 ? fc : firstReal(fc)
+      ;[childCleanup] = hydrateChildren(vnode.children ?? [], firstChild, el, null, elPath)
+    }
 
     // The cleanup slots are statically known (props / children / select-value /
     // ref) — compose the disposer over locals instead of allocating + pushing a

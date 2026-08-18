@@ -1100,11 +1100,33 @@ rows.set(filtered50)        // shrink — removed rows are now GC-eligible`,
     diagnose: () => ({
       cause:
         'On `@pyreon/runtime-dom` / `@pyreon/runtime-server` versions before the SSR↔hydration parity release, hydration had cursor/extent bugs: a `<For>` duplicated its list (fresh rows mounted while the SSR rows stayed), adjacent text-producing children (merged into one node by the HTML parser) misaligned the sibling cursor, a reactive accessor with a multi-root initial removed only ONE node before re-mounting, and a reactive text accessor that later yielded a VNode rendered `[object Object]`.',
-      fix: 'Upgrade `@pyreon/runtime-dom` + `@pyreon/runtime-server` together. The SSR renderer now wraps reactive-accessor children in `<!--$-->…<!--/$-->` hydration range markers and hydration consumes them (plus the `<!--pyreon-for-->` block) as a unit; a shared `bindPolymorphicText` upgrades a text binding to a subtree mount when the value stops being text. No app code change needed. NOTE: reactive-accessor children now carry `<!--$-->` comment markers in SSR output — update any snapshot/string assertions on SSR HTML for dynamic content to account for them.',
+      fix: 'Upgrade `@pyreon/runtime-dom` + `@pyreon/runtime-server` together. The SSR renderer now wraps reactive-accessor children in `<!--$-->…<!--/$-->` hydration range markers and hydration consumes them (plus the `<!--pyreon-for-->` block) as a unit; a shared `bindPolymorphicText` upgrades a text binding to a subtree mount when the value stops being text. No app code change needed. NOTE: reactive-accessor children carry `<!--$-->` comment markers in SSR output UNLESS the accessor is its element\u2019s only child (there the tag boundary supplies the extent and the markers are elided) — update any snapshot/string assertions on SSR HTML for dynamic content to account for both shapes.',
       fixCode: `// All correct after upgrade — no code change:
 <ul><For each={rows} by={r => r.id}>{r => <li>{r.name}</li>}</For></ul>  // no dup on hydrate
 <div>{count()}{' items'}</div>                                            // adjacent text OK
 {() => loading() ? 'Loading…' : <Table/>}                                 // text→VNode OK`,
+    }),
+  },
+  {
+    // Sole-child accessor marker elision (2026-08): the residual footgun is a
+    // SPLIT upgrade. `@pyreon/runtime-server` decides whether to emit the
+    // `<!--$-->` pair and `@pyreon/runtime-dom` decides whether to expect it;
+    // upgrading one without the other makes them disagree about every
+    // sole-child slot, which surfaces as hydration mismatches or text bound to
+    // the wrong node — never as a build error, since neither package imports
+    // the other's decision.
+    pattern:
+      /hydrat.*mismatch.*(text|accessor)|(text|accessor).*hydrat.*mismatch|sole.?child.*(marker|hydrat)|marker.*(missing|absent).*hydrat/i,
+    diagnose: () => ({
+      cause:
+        "`@pyreon/runtime-server` and `@pyreon/runtime-dom` disagree about hydration range markers. An accessor that is its element's ONLY child is SSR-emitted WITHOUT `<!--$-->…<!--/$-->` (the tag boundary already delimits its extent); a renderer and a hydrator from different releases take opposite views of that slot, so hydration looks for a marker pair that was never emitted — or steps over one it did not expect — and the binding lands on the wrong node.",
+      fix: 'Upgrade `@pyreon/runtime-server` and `@pyreon/runtime-dom` to the SAME version — they ship as one fixed changeset group, and the marker contract is shared state between them, not a public API either one can version independently. No app code change. If you assert on SSR HTML strings, note a sole-child dynamic slot now emits its value bare (`<a>text</a>`), while an accessor WITH siblings still emits `<a><!--$-->text<!--/$-->…</a>`.',
+      fixCode: `// Same version for BOTH — the marker contract is shared state:
+//   "@pyreon/runtime-server": "0.x.y"
+//   "@pyreon/runtime-dom":    "0.x.y"
+
+<a>{() => label()}</a>          // sole child  → SSR: <a>L1</a>          (elided)
+<a>{() => label()} tail</a>     // has sibling → SSR: <a><!--$-->L1<!--/$--> tail</a>`,
     }),
   },
   {

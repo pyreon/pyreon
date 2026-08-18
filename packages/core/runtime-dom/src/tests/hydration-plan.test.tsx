@@ -143,16 +143,54 @@ describe('replayRowPlan — verifies the row before touching it', () => {
     cleanup?.()
   })
 
-  it('BAILS when a reactive text child lacks its SSR marker pair', () => {
-    // The accessor binding adopts the text INSIDE <!--$-->…<!--/$-->. Without
-    // the markers there is no bounded region to bind, and guessing would bind
-    // the wrong node.
+  it('ADOPTS a SOLE accessor child from its bare text (markers elided)', () => {
+    // An accessor that is its element's ONLY child is SSR-emitted without
+    // range markers — the `<span>` tag boundary already delimits the extent
+    // (see `soleAccessorChild` in @pyreon/runtime-server). So the bare-text
+    // shape is the CORRECT server output for this row, and it adopts.
     const label = signal('a')
     const row = () => h('li', null, h('span', null, () => label()))
     const plan = buildRowPlan(row())
     expect(plan).not.toBeNull()
     const first = ssrRow('<li><span>a</span></li>')
-    expect(replayRowPlan(plan!, row(), first)).toBeNull()
+    const cleanup = replayRowPlan(plan!, row(), first)
+    expect(cleanup).not.toBeNull()
+    // The binding landed on the adopted node: a signal write patches in place.
+    label.set('b')
+    expect((first as Element).querySelector('span')!.textContent).toBe('b')
+    cleanup!()
+  })
+
+  it('BAILS when a SOLE accessor slot is not a lone text node', () => {
+    // This is the invariant the marker triplet used to enforce and that the
+    // elided form must still state: the slot must BE a text node. A row whose
+    // accessor rendered nothing (no node) or a VNode (an element) diverges
+    // from the recorded shape, and binding it would write `.data` on the wrong
+    // node — so it bails to the interpretive walk.
+    const label = signal('a')
+    const row = () => h('li', null, h('span', null, () => label()))
+    const plan = buildRowPlan(row())
+    expect(plan).not.toBeNull()
+    expect(replayRowPlan(plan!, row(), ssrRow('<li><span></span></li>'))).toBeNull()
+    expect(replayRowPlan(plan!, row(), ssrRow('<li><span><b>a</b></span></li>'))).toBeNull()
+    expect(replayRowPlan(plan!, row(), ssrRow('<li><span>a<i>x</i></span></li>'))).toBeNull()
+  })
+
+  it('BAILS when a NON-sole reactive text child lacks its SSR marker pair', () => {
+    // An accessor with siblings keeps its markers — there the tag boundary
+    // does NOT delimit it, so without the pair there is no bounded region and
+    // guessing would bind the wrong node.
+    const label = signal('a')
+    const row = () => h('li', null, h('span', null, () => label(), h('b', null, 'x')))
+    const plan = buildRowPlan(row())
+    expect(plan).not.toBeNull()
+    // Marked (correct) SSR for this shape adopts…
+    const marked = ssrRow('<li><span><!--$-->a<!--/$--><b>x</b></span></li>')
+    const ok = replayRowPlan(plan!, row(), marked)
+    expect(ok).not.toBeNull()
+    ok!()
+    // …while the same bytes WITHOUT the pair have no bounded region → bail.
+    expect(replayRowPlan(plan!, row(), ssrRow('<li><span>a<b>x</b></span></li>'))).toBeNull()
   })
 })
 
@@ -181,6 +219,26 @@ describe('tplAdoptVerify — template adoption for the compiled _tpl path', () =
   it('adopts a target whose structure matches the template', () => {
     const html = '<p class="x">hi</p>'
     expect(tplAdoptVerify(tplOf(html), html, targetOf(html))).toBe(true)
+  })
+
+  it('re-proves an ELIDED sole-text slot on every REPLAYED row', () => {
+    // A compiled dynamic sole-child slot bakes a ' ' placeholder in the
+    // template, and SSR emits the rendered text bare (markers elided). Row 1
+    // takes the full verify; rows 2..N take the positional replay, which no
+    // longer has a marker triplet to check — so the invariant "this slot is a
+    // lone text node" must be stated there, or the compiled bind's
+    // `.firstChild` ref lands on null (value rendered empty) or an element
+    // (value rendered a VNode) and writes `.data` on the wrong node.
+    const html = '<a class="c"> </a>'
+    const tpl = tplOf(html)
+    // Row 1 — full verify + plan build.
+    expect(tplAdoptVerify(tpl, html, targetOf('<a class="c">L1</a>'))).toBe(true)
+    // Rows 2..N — positional replay against that plan.
+    expect(tplAdoptVerify(tpl, html, targetOf('<a class="c">L2</a>'))).toBe(true)
+    // …and the divergent rows BAIL rather than replay unverified.
+    expect(tplAdoptVerify(tpl, html, targetOf('<a class="c"></a>'))).toBe(false)
+    expect(tplAdoptVerify(tpl, html, targetOf('<a class="c"><b>L</b></a>'))).toBe(false)
+    expect(tplAdoptVerify(tpl, html, targetOf('<a class="c">L<i>x</i></a>'))).toBe(false)
   })
 
   it('reuses the cached plan on the SECOND call — the rows 2..N path', () => {

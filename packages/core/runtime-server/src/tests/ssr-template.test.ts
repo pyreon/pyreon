@@ -13,7 +13,7 @@ import { createContext, h, provide, useContext } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 // eslint-disable-next-line import/no-unresolved
 import {
-  _esc,
+  _esc, _escSole,
   _ssr,
   _ssrAttr,
   _ssrDeferred,
@@ -105,12 +105,15 @@ describe('_ssr — byte-identical to h() path', () => {
     expect(fast).toBe('<div class="x" id="y" role="note">z</div>')
   })
 
-  test('wrapped dynamic text hole gets baked <!--$--> markers', async () => {
+  test('SOLE dynamic text hole — markers ELIDED, _escSole', async () => {
+    // The element's tag boundary already delimits a sole accessor's extent, so
+    // neither side emits markers (see `soleAccessorChild`). The `<p>a {x} b</p>`
+    // case below is the non-sole twin, where they are still required.
     const name = signal('Ada')
-    const fast = await renderToString(ssrRoot(_ssr(['<div><!--$-->', '<!--/$--></div>'], _esc(name()))))
+    const fast = await renderToString(ssrRoot(_ssr(['<div>', '</div>'], _escSole(name))))
     const slow = await renderToString(h('div', null, () => name()))
     expect(fast).toBe(slow)
-    expect(fast).toBe('<div><!--$-->Ada<!--/$--></div>')
+    expect(fast).toBe('<div>Ada</div>')
   })
 
   test('mapitem text hole — no markers, escaped', async () => {
@@ -155,8 +158,8 @@ describe('_ssrChildren — .map fast path byte-identity', () => {
     const fast = await renderToString(
       ssrRoot(
         _ssr(
-          ['<ul><!--$-->', '<!--/$--></ul>'],
-          _ssrChildren(rows.map((r) => _ssr(['<li class="row">', '</li>'], _esc(r.name)))),
+          ['<ul>', '</ul>'],
+          _ssrChildren(rows.map((r) => _ssr(['<li class="row">', '</li>'], _escSole(r.name)))),
         ),
       ),
     )
@@ -165,7 +168,7 @@ describe('_ssrChildren — .map fast path byte-identity', () => {
     )
     expect(fast).toBe(slow)
     expect(fast).toBe(
-      '<ul><!--$--><li class="row">Alice</li><li class="row">Bob</li><!--/$--></ul>',
+      '<ul><li class="row">Alice</li><li class="row">Bob</li></ul>',
     )
   })
 
@@ -175,24 +178,24 @@ describe('_ssrChildren — .map fast path byte-identity', () => {
     const fast = await renderToString(
       ssrRoot(
         _ssr(
-          ['<ul><!--$-->', '<!--/$--></ul>'],
-          _ssrChildren(rows.map((r) => _ssrItem(['<li>', '</li>'], _esc(r.name)))),
+          ['<ul>', '</ul>'],
+          _ssrChildren(rows.map((r) => _ssrItem(['<li>', '</li>'], _escSole(r.name)))),
         ),
       ),
     )
     const slow = await renderToString(h('ul', null, () => rows.map((r) => h('li', null, r.name))))
     expect(fast).toBe(slow)
-    expect(fast).toBe('<ul><!--$--><li>Ada &amp; Bob</li><li>&lt;x&gt;</li><!--/$--></ul>')
+    expect(fast).toBe('<ul><li>Ada &amp; Bob</li><li>&lt;x&gt;</li></ul>')
   })
 
   test('empty list is byte-identical', async () => {
     const rows: { name: string }[] = []
     const fast = await renderToString(
-      ssrRoot(_ssr(['<ul><!--$-->', '<!--/$--></ul>'], _ssrChildren(rows.map((r) => _ssr(['<li>', '</li>'], _esc(r.name)))))),
+      ssrRoot(_ssr(['<ul>', '</ul>'], _ssrChildren(rows.map((r) => _ssr(['<li>', '</li>'], _escSole(r.name)))))),
     )
     const slow = await renderToString(h('ul', null, () => rows.map((r) => h('li', null, r.name))))
     expect(fast).toBe(slow)
-    expect(fast).toBe('<ul><!--$--><!--/$--></ul>')
+    expect(fast).toBe('<ul></ul>')
   })
 })
 

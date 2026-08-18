@@ -537,6 +537,7 @@ struct Ctx<'a> {
     needs_ssr_node_import: bool,
     needs_ssr_for_keyed_import: bool,
     needs_esc_import: bool,
+    needs_esc_sole_import: bool,
     needs_ssr_attr_import: bool,
     needs_ssr_attr_gen_import: bool,
     needs_ssr_attr_url_import: bool,
@@ -698,6 +699,7 @@ impl<'a> Ctx<'a> {
             needs_ssr_node_import: false,
             needs_ssr_for_keyed_import: false,
             needs_esc_import: false,
+            needs_esc_sole_import: false,
             needs_ssr_attr_import: false,
             needs_ssr_attr_gen_import: false,
             needs_ssr_attr_url_import: false,
@@ -910,6 +912,9 @@ impl<'a> Ctx<'a> {
             }
             if self.needs_esc_import {
                 ssr_imports.push("_esc");
+            }
+            if self.needs_esc_sole_import {
+                ssr_imports.push("_escSole");
             }
             if self.needs_ssr_attr_import {
                 ssr_imports.push("_ssrAttr");
@@ -5159,6 +5164,41 @@ fn emit_esc_hole(buf: &mut SsrBuf, expr_text: String, ctx: &mut Ctx) {
     ctx.needs_esc_import = true;
 }
 
+/// Emit a SOLE expression child as `_escSole(expr)` — `_esc` minus the accessor
+/// range markers, matching `renderElement`'s sole-child elision. Mirrors JS
+/// `emitEscSoleHole`.
+fn emit_esc_sole_hole(buf: &mut SsrBuf, expr_text: String, ctx: &mut Ctx) {
+    buf.emit_hole(format!("_escSole({})", expr_text));
+    ctx.needs_esc_sole_import = true;
+}
+
+/// The element's ONE meaningful child index, or None. "Meaningful" is exactly
+/// what the h() emission keeps: whitespace-only JSXText and empty `{}` /
+/// `{/* … */}` containers are dropped. Mirrors JS `ssrSoleChild`.
+fn ssr_sole_child(el: &JSXElement) -> Option<usize> {
+    let mut only: Option<usize> = None;
+    for (i, c) in el.children.iter().enumerate() {
+        match c {
+            JSXChild::Text(t) => {
+                if clean_jsx_text(t.value.as_str()).is_empty() {
+                    continue;
+                }
+            }
+            JSXChild::ExpressionContainer(c) => {
+                if matches!(c.expression, JSXExpression::EmptyExpression(_)) {
+                    continue;
+                }
+            }
+            _ => {}
+        }
+        if only.is_some() {
+            return None;
+        }
+        only = Some(i);
+    }
+    only
+}
+
 /// Emit a dynamic attribute — generic → `_ssrAttrGen`, URL → `_ssrAttrUrl`,
 /// everything else → `_ssrAttr`. Mirrors JS `emitSsrAttr`.
 fn emit_ssr_attr(buf: &mut SsrBuf, tag: &str, name: &str, value_text: String, ctx: &mut Ctx) {
@@ -5358,7 +5398,7 @@ fn ssr_serialize_attr(
 
 /// `.map(item => <eligibleEl>)` fast path (recursed mode only). Mirrors JS
 /// `ssrTryMap`. Returns false to fall back to the general wrapped-hole path.
-fn ssr_try_map(buf: &mut SsrBuf, expr: &Expression, ctx: &mut Ctx) -> bool {
+fn ssr_try_map(buf: &mut SsrBuf, expr: &Expression, sole: bool, ctx: &mut Ctx) -> bool {
     let call = match expr {
         Expression::CallExpression(c) => c,
         _ => return false,
@@ -5417,12 +5457,18 @@ fn ssr_try_map(buf: &mut SsrBuf, expr: &Expression, ctx: &mut Ctx) -> bool {
     // body — fuse it exactly like a `<For>` row. Mirrors the JS backend.
     let item_body = build_ssr_for_item_body(&item_buf, &param_text, ctx)
         .unwrap_or_else(|| ssr_call_text(&item_buf, SsrMode::MapItem, ctx));
-    buf.emit_static("<!--$-->");
+    // A SOLE `.map` child needs no markers — the element's tag boundary is the
+    // extent (h() wraps the call, so `renderElement` elides it there too).
+    if !sole {
+        buf.emit_static("<!--$-->");
+    }
     buf.emit_hole(format!(
         "_ssrChildren({}.map(({}) => {}))",
         recv, param_text, item_body
     ));
-    buf.emit_static("<!--/$-->");
+    if !sole {
+        buf.emit_static("<!--/$-->");
+    }
     ctx.needs_ssr_children_import = true;
     true
 }
@@ -5433,6 +5479,7 @@ fn ssr_serialize_expr_child(
     buf: &mut SsrBuf,
     container: &JSXExpressionContainer,
     mode: SsrMode,
+    sole: bool,
     ctx: &mut Ctx,
 ) -> bool {
     let raw = match &container.expression {
@@ -5443,14 +5490,28 @@ fn ssr_serialize_expr_child(
         },
     };
     let expr = unwrap_type_layers(raw);
-    // mapitem mode: every expression child is a PLAIN VALUE child → `_esc`, no markers.
+    // mapitem mode: every expression child is a PLAIN VALUE child → no markers
+    // baked. The SOLE rule still applies: the value can BE a function at
+    // runtime (`{r.render}`), and h() elides that accessor's markers because it
+    // is the item element's only child — so `_esc` would diverge.
     if mode == SsrMode::MapItem {
         let t = slice_expr(expr, ctx);
-        emit_esc_hole(buf, t, ctx);
+        if sole {
+            emit_esc_sole_hole(buf, t, ctx);
+        } else {
+            emit_esc_hole(buf, t, ctx);
+        }
         return true;
     }
     // recursed mode: matches handleJsxExpression's wrap decision.
-    if ssr_try_map(buf, expr, ctx) {
+    if ssr_try_map(buf, expr, sole, ctx) {
+        return true;
+    }
+    // SOLE child of this element → no markers on EITHER side, whatever the
+    // expression's static shape; `_escSole` decides from the runtime value kind.
+    if sole {
+        let t = slice_expr(expr, ctx);
+        emit_esc_sole_hole(buf, t, ctx);
         return true;
     }
     if should_wrap(expr, ctx) {
@@ -5599,7 +5660,13 @@ fn ssr_component_child_eligible(el: &JSXElement) -> bool {
     true
 }
 
-fn ssr_serialize_child(buf: &mut SsrBuf, child: &JSXChild, mode: SsrMode, ctx: &mut Ctx) -> bool {
+fn ssr_serialize_child(
+    buf: &mut SsrBuf,
+    child: &JSXChild,
+    mode: SsrMode,
+    sole: bool,
+    ctx: &mut Ctx,
+) -> bool {
     match child {
         JSXChild::Text(t) => {
             let cleaned = clean_jsx_text(t.value.as_str());
@@ -5634,7 +5701,7 @@ fn ssr_serialize_child(buf: &mut SsrBuf, child: &JSXChild, mode: SsrMode, ctx: &
             }
             ssr_serialize_element(buf, el, mode, ctx)
         }
-        JSXChild::ExpressionContainer(c) => ssr_serialize_expr_child(buf, c, mode, ctx),
+        JSXChild::ExpressionContainer(c) => ssr_serialize_expr_child(buf, c, mode, sole, ctx),
         // JSXFragment / JSXSpreadChild → bail.
         _ => false,
     }
@@ -5689,8 +5756,9 @@ fn ssr_serialize_element(buf: &mut SsrBuf, el: &JSXElement, mode: SsrMode, ctx: 
     // A self-closing non-void tag (`<div />`) has no children to walk; it still
     // gets its closing tag, matching the h() path's `<div></div>`.
     if !self_closing {
-        for child in &el.children {
-            if !ssr_serialize_child(buf, child, mode, ctx) {
+        let sole = ssr_sole_child(el);
+        for (i, child) in el.children.iter().enumerate() {
+            if !ssr_serialize_child(buf, child, mode, sole == Some(i), ctx) {
                 return false;
             }
         }

@@ -72,10 +72,17 @@ interface ElementStep {
 }
 
 interface ReactiveTextStep {
-  kind: 1 // bind accessor to the SSR text inside <!--$-->text<!--/$-->
-  /** Path to the PARENT element; markerIndex is the <!--$--> child index. */
+  kind: 1 // bind accessor to the SSR text (inside <!--$-->…<!--/$-->, or bare)
+  /** Path to the PARENT element. */
   domPath: number[]
+  /** Marked form: child index of `<!--$-->`. ELIDED form: index of the text. */
   markerIndex: number
+  /**
+   * 1 when SSR elided this accessor's range markers because it is the
+   * element's SOLE child (see `soleAccessorChild` in @pyreon/runtime-server):
+   * the slot is ONE bare text node, not a 3-node range.
+   */
+  elided: number
 }
 
 type PlanStep = ElementStep | ReactiveTextStep
@@ -235,16 +242,20 @@ function walkPlan(vnode: VNode, domPath: number[], plan: RowPlan): boolean {
       continue
     }
     if (typeof child === 'function') {
-      // Reactive accessor child → SSR emits <!--$-->text<!--/$--> (3 nodes).
+      // Reactive accessor child → SSR emits <!--$-->text<!--/$--> (3 nodes),
+      // EXCEPT as an element's sole child, where the tag boundary supplies the
+      // extent and SSR emits the bare text alone (1 node).
       if (prevWasText) return false
       plan.sigKinds.push(K_FN)
+      const elided = children.length === 1 ? 1 : 0
       plan.steps.push({
         kind: 1,
         domPath,
         markerIndex: domIdx,
+        elided,
       })
       prevWasText = false
-      domIdx += 3
+      domIdx += elided ? 1 : 3
       continue
     }
     if (isElementVNode(child)) {
@@ -429,6 +440,16 @@ export function replayRowPlan(plan: RowPlan, rowVNode: VNodeChild, first: ChildN
       if (el.tagName.toLowerCase() !== step.tag) return null
       els[s] = el
       texts[s] = null
+    } else if (step.elided) {
+      // Elided sole-child slot: the markers that used to prove this position
+      // holds a TEXT node are gone, so state the invariant directly. A row
+      // whose accessor rendered empty (no node) or a VNode (an element)
+      // diverges from the recorded shape and bails to the interpretive walk —
+      // the same outcome the triplet check produced for those rows.
+      const text = el.childNodes[step.markerIndex]
+      if (!text || text.nodeType !== 3 || text.nextSibling !== null) return null
+      els[s] = el
+      texts[s] = text as Text
     } else {
       const open = el.childNodes[step.markerIndex]
       const text = el.childNodes[step.markerIndex + 1]
@@ -589,6 +610,15 @@ function templateSignature(tpl: HTMLTemplateElement, html: string): TplSig | nul
 interface AdoptMatch {
   removals: Text[] | null
   triplets: { open: Comment; text: Text | null; close: Comment }[] | null
+  /**
+   * Elements whose ONLY child is the text of an ELIDED sole-child accessor
+   * slot (the template baked a ' ' placeholder there, recorded as `null`).
+   * The marker triplet used to prove per row that such a slot holds a TEXT
+   * node; with the markers gone that guard must be stated explicitly, or a row
+   * whose accessor rendered empty / a VNode would replay unverified and the
+   * compiled bind's `.firstChild` ref would land on null or an element.
+   */
+  soles: Element[] | null
 }
 
 /**
@@ -609,6 +639,9 @@ interface TripletSpot {
 interface AdoptPlan {
   sig: TplSig
   tripletSpots: TripletSpot[]
+  /** Element paths whose sole child must still be a lone text node (see
+   *  `AdoptMatch.soles`). */
+  soleTextSpots: number[][]
   /** domPaths of elements whose EXTRA bare texts get removed (template 0, >1 texts). */
   removalSpots: number[][]
 }
@@ -651,7 +684,9 @@ function buildAdoptPlan(root: Element, sig: TplSig, match: AdoptMatch): AdoptPla
   if (match.removals) {
     for (const r of match.removals) removalSpots.push(pathOf(r.parentElement as Element))
   }
-  return { sig, tripletSpots, removalSpots }
+  const soleTextSpots: number[][] = []
+  if (match.soles) for (const el of match.soles) soleTextSpots.push(pathOf(el))
+  return { sig, tripletSpots, soleTextSpots, removalSpots }
 }
 
 /**
@@ -684,6 +719,16 @@ function replayAdoptPlan(root: Element, plan: AdoptPlan): boolean {
       ;(n as Comment).remove()
     } else return false
   }
+  // Elided sole-child slots: the cheapest statement of the invariant the
+  // triplet check used to carry — this element's only child is a text node.
+  const soles = plan.soleTextSpots
+  for (let s = 0; s < soles.length; s++) {
+    const spot = soles[s] as number[]
+    const parent = elByPath(root, spot, spot.length)
+    if (!parent) return false
+    const t = parent.firstChild
+    if (t === null || t.nodeType !== 3 || t.nextSibling !== null) return false
+  }
   const removals = plan.removalSpots
   for (let s = 0; s < removals.length; s++) {
     const spot = removals[s] as number[]
@@ -706,6 +751,7 @@ function replayAdoptPlan(root: Element, plan: AdoptPlan): boolean {
 function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | null {
   let removals: Text[] | null = null
   let triplets: { open: Comment; text: Text | null; close: Comment }[] | null = null
+  let soles: Element[] | null = null
   const tags = expected.tags
   const wantCounts = expected.counts
   const total = tags.length
@@ -784,6 +830,19 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
         if (bare.length > 1) (removals ??= []).push(...bare)
       } else return false
     } else if (!sawTriplet && bare !== null) {
+      // An elided sole-child accessor slot: the template baked a ' ' here
+      // (recorded `null` = dynamic) and the SSR element carries exactly that
+      // one text node. Record it so every REPLAYED row re-proves it — the
+      // static-text case below needs no such guard, since nothing binds it.
+      if (
+        wantTexts === 1 &&
+        bare.length === 1 &&
+        (expected.texts[at] as (string | null)[])[0] === null &&
+        el.firstChild === bare[0] &&
+        (bare[0] as Text).nextSibling === null
+      ) {
+        ;(soles ??= []).push(el)
+      }
       // Static-text half of the skeleton gate (see the attribute gate above).
       // Only meaningful with no triplets, where bare texts align 1:1 with the
       // template's; `null` entries are baked dynamic slots and are skipped.
@@ -802,7 +861,7 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
   }
   if (!walk(root)) return null
   if (idx !== total) return null
-  return { removals, triplets }
+  return { removals, triplets, soles }
 }
 
 /** All checks passed — strip markers, ensuring one text node per slot. */
