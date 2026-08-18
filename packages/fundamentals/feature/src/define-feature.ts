@@ -13,6 +13,7 @@ import { batch, signal } from '@pyreon/reactivity'
 import { defineStore } from '@pyreon/store'
 import type { ColumnDef, SortingState } from '@pyreon/table'
 import { useTable as _useTable } from '@pyreon/table'
+import { createTableComponent } from './table-render'
 import { isStandardSchema, standardSchemaToValidator, zodSchema } from '@pyreon/validation'
 import { defaultInitialValues, extractFields } from './schema'
 import { type FeatureTableFeatures, featureTableFeatures } from './table-features'
@@ -278,6 +279,10 @@ export function defineFeature<TValues extends Record<string, unknown>>(
     schema,
     fields,
     queryKey,
+
+    // ─── Table renderer ──────────────────────────────────────────────
+
+    Table: createTableComponent<TValues>(),
 
     // ─── Store ───────────────────────────────────────────────────────
 

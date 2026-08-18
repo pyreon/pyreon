@@ -3,7 +3,9 @@ import type { QueryKey, UseMutationResult, UseQueryResult } from '@pyreon/query'
 import type { Signal } from '@pyreon/reactivity'
 import type { StoreApi } from '@pyreon/store'
 import type { SortingState, Table } from '@pyreon/table'
+import type { VNodeChild } from '@pyreon/core'
 import type { FieldInfo } from './schema'
+import type { TableProps } from './table-render'
 import type { FeatureTableFeatures } from './table-features'
 
 /**
@@ -136,6 +138,12 @@ export interface Feature<TValues extends Record<string, unknown>> {
   schema: unknown
   /** Introspected field information from the schema. */
   fields: FieldInfo[]
+
+  /**
+   * Render the table `useTable()` computes — thead, tbody, sorting handlers and
+   * the sort indicator. Per-COLUMN cell overrides keyed by column id.
+   */
+  Table: (props: TableProps<TValues>) => VNodeChild
 
   /** Fetch a paginated/filtered list. */
   useList: (options?: ListOptions) => UseQueryResult<TValues[], unknown>
