@@ -5,9 +5,9 @@
  * The LAN half is the reason this plugin is worth having. `http://localhost`
  * is already a secure context, so on your own machine the gated APIs work
  * without any of this. A phone reaches the dev server at
- * `http://192.168.1.24:3000`, which is NOT a secure context — so `useCamera`,
- * `useGeolocation`, `useDeviceMotion`, service workers and the rest are all
- * unavailable exactly where they most need testing.
+ * `http://192.168.1.24:3000`, which is NOT a secure context — so
+ * `useGeolocation`, `useDeviceMotion`, `useAudioRecorder`, service workers and
+ * the rest are all unavailable exactly where they most need testing.
  */
 import { networkInterfaces } from 'node:os'
 

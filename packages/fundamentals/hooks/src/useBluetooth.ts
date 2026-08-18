@@ -1,5 +1,7 @@
 import { batch, isClient, onCleanup, signal } from '@pyreon/reactivity'
 
+import { warnIfInsecureContext } from './secure-context'
+
 /** A device seen during a scan. */
 export interface BluetoothDevice {
   /** Stable per-session identifier — the platform's device id. */
@@ -69,6 +71,7 @@ export function useBluetooth(): UseBluetoothResult {
 
   const scan = async (): Promise<void> => {
     if (!available.peek()) {
+      warnIfInsecureContext('useBluetooth')
       error.set('Bluetooth is not available on this platform')
       return
     }
