@@ -43,8 +43,34 @@ const WORKSPACE_ROOTS: Array<{ dir: string; depth: number }> = [
 
 export interface LicenseFinding {
   path: string
-  kind: 'missing-file' | 'drifted-file' | 'missing-field' | 'wrong-field'
+  kind: 'missing-file' | 'drifted-file' | 'missing-field' | 'wrong-field' | 'copyleft-dep'
   detail: string
+}
+
+/**
+ * Copyleft families, split by how much they actually constrain a consumer.
+ *
+ * WEAK is file-level: it reaches modifications to the covered files, not code
+ * that merely depends on them. Those are allowed, but must be disclosed in
+ * THIRD-PARTY-NOTICES.md so a reader deciding whether they can ship Pyreon does
+ * not have to discover them.
+ *
+ * STRONG reaches the whole combined work. Adopting one would change what Pyreon
+ * can be used for, so it fails outright rather than being disclosable.
+ */
+const WEAK_COPYLEFT = /\b(MPL|EPL|CDDL|OSL|CPAL|EUPL)\b/i
+const STRONG_COPYLEFT = /\b(A?GPL|LGPL|SSPL|BUSL|Commons Clause)\b/i
+
+/** Decide what a dependency licence means for an MIT project. Pure. */
+export function classifyDependencyLicense(
+  license: string,
+): 'permissive' | 'weak-copyleft' | 'strong-copyleft' {
+  // A dual licence with a permissive OR copyleft option is taken at its
+  // permissive/weakest half — `elkjs` is "EPL-2.0 OR GPL-3.0-or-later", and
+  // Pyreon takes EPL. Checking WEAK first is what encodes that choice.
+  if (WEAK_COPYLEFT.test(license)) return 'weak-copyleft'
+  if (STRONG_COPYLEFT.test(license)) return 'strong-copyleft'
+  return 'permissive'
 }
 
 /** Compare a workspace against the canonical licence. Pure — no I/O policy. */
@@ -118,6 +144,127 @@ export function withLicenseField(raw: string): string {
   return raw.replace(line, `${line}${sep}\n  "license": "MIT",`).replace(',,\n  "license"', ',\n  "license"')
 }
 
+
+/** Index the isolated bun store: dependency name -> installed package.json paths. */
+function indexInstalled(): Map<string, string[]> {
+  const out = new Map<string, string[]>()
+  const store = join(REPO_ROOT, 'node_modules', '.bun')
+  const push = (name: string, p: string): void => {
+    const cur = out.get(name)
+    if (cur) cur.push(p)
+    else out.set(name, [p])
+  }
+  let entries: string[]
+  try {
+    entries = readdirSync(store)
+  } catch {
+    return out
+  }
+  for (const e of entries) {
+    const inner = join(store, e, 'node_modules')
+    let scopes: string[]
+    try {
+      scopes = readdirSync(inner)
+    } catch {
+      continue
+    }
+    for (const scope of scopes) {
+      if (scope.startsWith('@')) {
+        let pkgs: string[]
+        try {
+          pkgs = readdirSync(join(inner, scope))
+        } catch {
+          continue
+        }
+        for (const pkg of pkgs) {
+          const p = join(inner, scope, pkg, 'package.json')
+          if (existsSync(p)) push(`${scope}/${pkg}`, p)
+        }
+      } else {
+        const p = join(inner, scope, 'package.json')
+        if (existsSync(p)) push(scope, p)
+      }
+    }
+  }
+  return out
+}
+
+/** Read a dependency's declared licence from any installed copy. */
+function installedLicense(name: string, index: Map<string, string[]>): string | null {
+  for (const p of index.get(name) ?? []) {
+    try {
+      const d = JSON.parse(readFileSync(p, 'utf8')) as {
+        license?: unknown
+        licenses?: Array<{ type?: string }>
+      }
+      const l = typeof d.license === 'string' ? d.license : (d.license as { type?: string })?.type
+      if (l) return l
+      const first = d.licenses?.[0]?.type
+      if (first) return first
+    } catch {
+      continue
+    }
+  }
+  return null
+}
+
+/**
+ * Scan every RUNTIME dependency of every PUBLISHED package.
+ *
+ * Skipped silently when the store is absent (a checkout without `bun install`)
+ * — an empty scan must not read as a pass, so it reports that it skipped.
+ */
+function auditDependencies(disclosed: Set<string>): LicenseFinding[] {
+  const index = indexInstalled()
+  if (index.size === 0) {
+    console.log('[check-license-coverage] · dependency scan skipped — no installed store')
+    return []
+  }
+  const seen = new Set<string>()
+  const findings: LicenseFinding[] = []
+  for (const pj of workspaces()) {
+    if (!pj.includes(`${'packages'}/`)) continue
+    let d: { private?: boolean; dependencies?: Record<string, string>; name?: string }
+    try {
+      d = JSON.parse(readFileSync(pj, 'utf8')) as typeof d
+    } catch {
+      continue
+    }
+    if (d.private) continue
+    for (const dep of Object.keys(d.dependencies ?? {})) {
+      if (dep.startsWith('@pyreon/') || seen.has(dep)) continue
+      seen.add(dep)
+      const lic = installedLicense(dep, index)
+      if (!lic) continue
+      const cls = classifyDependencyLicense(lic)
+      if (cls === 'strong-copyleft') {
+        findings.push({
+          path: dep,
+          kind: 'copyleft-dep',
+          detail: `${lic} — STRONG copyleft reaches the whole combined work. It cannot simply be disclosed; adopting it changes what Pyreon can be used for.`,
+        })
+      } else if (cls === 'weak-copyleft' && !disclosed.has(dep)) {
+        findings.push({
+          path: dep,
+          kind: 'copyleft-dep',
+          detail: `${lic} — weak copyleft, allowed but UNDISCLOSED. Add it to THIRD-PARTY-NOTICES.md.`,
+        })
+      }
+    }
+  }
+  return findings
+}
+
+/** Dependency names already disclosed in the notices file. */
+function disclosedDependencies(): Set<string> {
+  const p = join(REPO_ROOT, 'THIRD-PARTY-NOTICES.md')
+  if (!existsSync(p)) return new Set()
+  const text = readFileSync(p, 'utf8')
+  const out = new Set<string>()
+  for (const m of text.matchAll(/`([@a-z0-9._/-]+)`/gi)) out.add(m[1]!)
+  return out
+}
+
 function main(argv: string[]): number {
   const fix = argv.includes('--fix')
   const canonical = readFileSync(CANON, 'utf8')
@@ -151,6 +298,8 @@ function main(argv: string[]): number {
     findings.push(...found)
   }
 
+  findings.push(...auditDependencies(disclosedDependencies()))
+
   if (findings.length > 0) {
     console.error(`[check-license-coverage] ✗ ${findings.length} issue(s):`)
     for (const f of findings) {
@@ -163,7 +312,10 @@ function main(argv: string[]): number {
   }
 
   const n = workspaces().length
-  console.log(`[check-license-coverage] ✓ ${n} workspace(s) carry the root LICENSE + an MIT field`)
+  console.log(
+    `[check-license-coverage] ✓ ${n} workspace(s) carry the root LICENSE + an MIT field; ` +
+      'no undisclosed copyleft dependency',
+  )
   return 0
 }
 

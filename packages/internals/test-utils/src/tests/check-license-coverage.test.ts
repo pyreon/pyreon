@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { auditWorkspace, withLicenseField } from '../../../../../scripts/check-license-coverage'
+import {
+  auditWorkspace,
+  classifyDependencyLicense,
+  withLicenseField,
+} from '../../../../../scripts/check-license-coverage'
 
 const CANON = 'MIT License\n\nCopyright (c) 2025-present Vit Bokisch\n'
 const PKG = (extra = '"license": "MIT",') =>
@@ -56,5 +60,34 @@ describe('withLicenseField', () => {
 
   it('never produces a double comma', () => {
     expect(withLicenseField(PKG(''))).not.toContain(',,')
+  })
+})
+
+describe('classifyDependencyLicense', () => {
+  it('treats the permissive families as permissive', () => {
+    for (const l of ['MIT', 'Apache-2.0', 'ISC', 'BSD-3-Clause', '0BSD'])
+      expect(classifyDependencyLicense(l)).toBe('permissive')
+  })
+
+  it('classifies FILE-level copyleft as weak — allowed, but disclosable', () => {
+    for (const l of ['MPL-2.0', 'EPL-2.0', 'CDDL-1.0', 'EUPL-1.2'])
+      expect(classifyDependencyLicense(l)).toBe('weak-copyleft')
+  })
+
+  it('classifies whole-work copyleft as strong — not merely disclosable', () => {
+    for (const l of ['GPL-3.0', 'AGPL-3.0-only', 'LGPL-2.1', 'SSPL-1.0', 'BUSL-1.1'])
+      expect(classifyDependencyLicense(l)).toBe('strong-copyleft')
+  })
+
+  it('takes the WEAKER half of a dual licence — the elkjs case', () => {
+    // `elkjs` ships "EPL-2.0 OR GPL-3.0-or-later". Pyreon takes EPL, so this
+    // must not be reported as strong copyleft merely because GPL appears in
+    // the string — checking weak FIRST is what encodes that choice.
+    expect(classifyDependencyLicense('EPL-2.0 OR GPL-3.0-or-later')).toBe('weak-copyleft')
+  })
+
+  it('does not let a GPL-only dependency hide behind an OR', () => {
+    expect(classifyDependencyLicense('GPL-3.0-or-later')).toBe('strong-copyleft')
+    expect(classifyDependencyLicense('AGPL-3.0 OR Commercial')).toBe('strong-copyleft')
   })
 })
