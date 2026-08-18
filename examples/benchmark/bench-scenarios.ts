@@ -42,6 +42,21 @@ const ONLY_SCENARIO = (() => {
 })()
 const PORT = 4181
 
+/**
+ * `--only A,B,C` restricts the arm set for a FOCUSED replication run.
+ *
+ * Fewer arms means a shorter run and a lower machine load while it happens —
+ * this suite launches one Chromium per arm per pass, so a 10-arm run drives
+ * the load average up by its own tail. Narrowing does NOT change per-arm
+ * methodology: arms are still interleaved and reshuffled per pass, so the
+ * comparison stays like-for-like. Publishable numbers still come from the
+ * full set.
+ */
+const NARROW = (() => {
+  const i = argv.indexOf('--only')
+  return i >= 0 ? argv[i + 1]!.split(',').map((s) => s.trim()) : undefined
+})()
+
 // Kept in sync with src/impl/scenarios.ts. Duplicated rather than imported
 // because this driver runs in bun with no bundler and the impl module pulls in
 // every framework's browser entry.
@@ -63,7 +78,9 @@ const SCENARIOS: { id: string; label: string; frameworks: string[] }[] = [
       'SolidJS',
       'SolidJS (eager props)',
       'Svelte 5',
-    ],
+      'Pyreon (tpl slot)',
+      'Pyreon (tpl append)',
+    ].filter((f) => (NARROW ? NARROW.includes(f) : true)),
   },
 ]
 
@@ -74,7 +91,13 @@ const SCENARIOS: { id: string; label: string; frameworks: string[] }[] = [
  *    compiler does NOT emit (verified against babel-preset-solid). Ranking
  *    against it would reintroduce the very handicap this arm exists to expose.
  */
-const NON_RANKING = new Set(['Vanilla JS', 'SolidJS (eager props)'])
+const NON_RANKING = new Set([
+  'Vanilla JS',
+  'SolidJS (eager props)',
+  // Hand-written compiler-output-level probes, not a shipped code path.
+  'Pyreon (tpl slot)',
+  'Pyreon (tpl append)',
+])
 
 interface SuiteResult {
   framework: string

@@ -78,6 +78,7 @@ import type { BenchSuite } from '../runner'
 import { bench } from '../runner'
 import DeepTree from './DeepTree.svelte'
 import { PyreonDeepTree } from './scenario-tree-pyreon'
+import { PyreonDeepTreeTpl } from './scenario-tree-pyreon-tpl'
 import {
   CONTEXT_VALUES,
   TREE_DEPTH,
@@ -135,6 +136,26 @@ function vanillaTarget(): TreeTarget {
 }
 
 // ─── Pyreon ──────────────────────────────────────────────────────────────────
+
+/**
+ * Diagnostic arm: same component semantics, but the BRANCH element is emitted
+ * as a template clone instead of `jsxs('div', …)` → `h()` → `mountElement`.
+ * Sizes the compiler lead before the compiler work is justified.
+ */
+function pyreonTplTarget(mode: 'slot' | 'append'): TreeTarget {
+  const value = signal('')
+  return {
+    mount(host) {
+      return pyreonMount(
+        ph(PyreonDeepTreeTpl as never, { depth: TREE_DEPTH, value: () => value(), mode }),
+        host,
+      )
+    },
+    setValue(v) {
+      value.set(v)
+    },
+  }
+}
 
 function pyreonTarget(): TreeTarget {
   const value = signal('')
@@ -479,6 +500,11 @@ export const TREE_FRAMEWORKS = [
   // Published beside it so the getter-prop tax is visible as a shared cost.
   'SolidJS (eager props)',
   'Svelte 5',
+  // Diagnostic only: hand-written at compiler-output level, to size the
+  // "templatize an element with COMPONENT children" lead before building it.
+  // See scenario-tree-pyreon-tpl.ts.
+  'Pyreon (tpl slot)',
+  'Pyreon (tpl append)',
 ] as const
 
 export async function runTree(frameworkName: string, container: HTMLElement): Promise<BenchSuite> {
@@ -491,6 +517,12 @@ export async function runTree(frameworkName: string, container: HTMLElement): Pr
       break
     case 'Pyreon':
       target = pyreonTarget()
+      break
+    case 'Pyreon (tpl slot)':
+      target = pyreonTplTarget('slot')
+      break
+    case 'Pyreon (tpl append)':
+      target = pyreonTplTarget('append')
       break
     case 'React 19':
       target = reactTarget()
