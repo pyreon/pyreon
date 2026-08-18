@@ -233,6 +233,19 @@ export interface PyreonPluginOptions {
   ssrTemplate?: boolean
 
   /**
+   * Absorb COMPONENT children into the enclosing `_tpl()` template instead of
+   * bailing the element to `h()` (client emit only). Default **false**.
+   *
+   * Worth a measured 12.6% of the 2,047-component deep-tree mount, but it
+   * converts the part of the tree that still ADOPTS at hydration into one that
+   * is rebuilt — a `_tpl` result is swapped, and newly templatizing an app's
+   * skeleton means nothing below it hydrates. **Only enable it for a client
+   * bundle that never calls `hydrateRoot`** (a pure CSR app). See the compiler
+   * option's docs for the full contract.
+   */
+  templatizeComponentChildren?: boolean
+
+  /**
    * Opt-in compile-time validator emission for `@pyreon/validate`. When `true`,
    * production builds append `X._attachCompiledVerdict(…)` to every module-level
    * `const X = s.<schema>` whose IR is fully emittable, so the runtime `X.is(v)`
@@ -711,6 +724,7 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
   // So dev keeps the normal mount; we surface that ONCE so an opted-in
   // consumer running `vite dev` isn't left wondering why nothing collapsed.
   let warnedDevCollapse = false
+  let warnedTplComponentChildren = false
   let projectRoot = ''
 
   // ── Cross-module signal export registry ─────────────────────────────────
@@ -1265,9 +1279,26 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
         }
       }
 
+      // `templatizeComponentChildren` has no native (Rust) mirror yet, and the
+      // compiler forces its JS backend while the option is on — 3.7-8.9x slower
+      // per file, across the whole build. Say so once rather than let a build
+      // silently get slower.
+      if (options?.templatizeComponentChildren === true && !warnedTplComponentChildren) {
+        warnedTplComponentChildren = true
+        this.warn(
+          '[Pyreon] `templatizeComponentChildren` is on: the compiler falls back to its JS ' +
+            'backend (no native mirror yet), so this build is slower to compile. It also ' +
+            'disables compiled-template hydration adoption for every element it newly ' +
+            'templatizes — only use it for a client bundle that never calls hydrateRoot().',
+        )
+      }
+
       const result = transformJSX(sourceForJsx, id, {
         ssr: isSsr,
         ...(ssrTemplate ? { ssrTemplate: true } : {}),
+        ...(options?.templatizeComponentChildren === true
+          ? { templatizeComponentChildren: true }
+          : {}),
         knownSignals,
         ...(collapseRocketstyle ? { collapseRocketstyle } : {}),
       })

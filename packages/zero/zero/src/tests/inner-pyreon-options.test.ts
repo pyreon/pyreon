@@ -57,6 +57,7 @@ describe('the disposition covers every option', () => {
         'optimizeValidators',
         'ssr',
         'ssrTemplate',
+        'templatizeComponentChildren',
       ].sort(),
     )
   })
