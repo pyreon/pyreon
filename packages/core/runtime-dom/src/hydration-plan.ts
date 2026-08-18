@@ -506,6 +506,19 @@ export function replayRowPlan(plan: RowPlan, rowVNode: VNodeChild, first: ChildN
 interface TplSig {
   tags: string[]
   counts: number[]
+  /**
+   * Per element (tree order), the template's STATIC attributes — the ones
+   * baked into the template HTML. Dynamic props are bound by the compiled
+   * `bind` and are absent here, so this is a SUBSET check against the SSR
+   * element, never an equality one.
+   */
+  attrs: [string, string][][]
+  /**
+   * Per element (tree order), the contents of its BARE text children. A
+   * compiled dynamic text slot is baked as a single space, which is recorded
+   * as `null` (== "do not compare"); genuine static text is recorded verbatim.
+   */
+  texts: (string | null)[][]
 }
 const _tplSignature = new WeakMap<HTMLTemplateElement, TplSig | null>()
 
@@ -525,6 +538,8 @@ function templateSignature(tpl: HTMLTemplateElement, html: string): TplSig | nul
   }
   const tags: string[] = []
   const counts: number[] = []
+  const attrList: [string, string][][] = []
+  const textList: (string | null)[][] = []
   const walk = (el: Element) => {
     // tag + textChildCount — the count gates BIND-SLOT alignment: a template
     // text slot (dynamic or static) must have a counterpart text node in the
@@ -532,15 +547,30 @@ function templateSignature(tpl: HTMLTemplateElement, html: string): TplSig | nul
     // null/wrong-node (e.g. an UNMARKED empty dynamic slot in compiled-SSR
     // output). Element-only walks keep it marker-comment-immune.
     let texts = 0
+    const ownTexts: (string | null)[] = []
     for (let n = el.firstChild; n; n = n.nextSibling) {
-      if (n.nodeType === 3) texts++
+      if (n.nodeType === 3) {
+        texts++
+        // A compiled dynamic text slot is baked as a single space; its SSR
+        // counterpart carries the rendered value, so it must NOT be compared.
+        const d = (n as Text).data
+        ownTexts.push(d === ' ' ? null : d)
+      }
     }
     tags.push(el.tagName)
     counts.push(texts)
+    const ownAttrs: [string, string][] = []
+    const a = el.attributes
+    for (let i = 0; i < a.length; i++) {
+      const at = a[i] as Attr
+      ownAttrs.push([at.name, at.value])
+    }
+    attrList.push(ownAttrs)
+    textList.push(ownTexts)
     for (let c = el.firstElementChild; c; c = c.nextElementSibling) walk(c)
   }
   walk(root)
-  sig = { tags, counts }
+  sig = { tags, counts, attrs: attrList, texts: textList }
   _tplSignature.set(tpl, sig)
   return sig
 }
@@ -683,8 +713,24 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
   const walk = (el: Element): boolean => {
     const at = idx++
     if (at >= total || tags[at] !== el.tagName) return false
+    // STATIC-SKELETON GATE. Adoption is only sound when the template's static
+    // skeleton is byte-equal to the target's, because the one-shot slot is
+    // consumed by whichever `_tpl` runs FIRST inside the armed window — which
+    // for an h()-rooted component is an inner template, not the root. Under
+    // this gate a "wrong" consumer can only ever adopt a node byte-identical
+    // to the one it would have cloned, so mis-consumption is harmless: it
+    // costs an adoption, never correctness. Dynamic props are bound by the
+    // compiled `bind` and are absent from the template, hence SUBSET.
+    const wantAttrs = expected.attrs[at] as [string, string][]
+    for (let i = 0; i < wantAttrs.length; i++) {
+      const pair = wantAttrs[i] as [string, string]
+      if (el.getAttribute(pair[0]) !== pair[1]) return false
+    }
     let texts = 0
     let bare: Text[] | null = null
+    // `$`-marked slots interleave with bare texts, so their presence breaks the
+    // 1:1 alignment the static-text comparison below relies on.
+    let sawTriplet = false
     // Single pass over children: count texts, validate + collect `$` triplets
     // inline (adjacency rules from collectDollarTriplets), gather bare texts.
     let n: ChildNode | null = el.firstChild
@@ -700,6 +746,7 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
           if (a.nodeType === 8 && (a as Comment).data === '/$') {
             const after = a.nextSibling
             if (after && after.nodeType === 3) return false
+            sawTriplet = true
             ;(triplets ??= []).push({ open: n as Comment, text: null, close: a as Comment })
             n = a.nextSibling
             continue
@@ -709,6 +756,7 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
           if (!b || b.nodeType !== 8 || (b as Comment).data !== '/$') return false
           const after = b.nextSibling
           if (after && after.nodeType === 3) return false
+          sawTriplet = true
           ;(triplets ??= []).push({ open: n as Comment, text: a as Text, close: b as Comment })
           n = b.nextSibling
           continue
@@ -735,6 +783,17 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
       if (wantTexts === 0 && bare) {
         if (bare.length > 1) (removals ??= []).push(...bare)
       } else return false
+    } else if (!sawTriplet && bare !== null) {
+      // Static-text half of the skeleton gate (see the attribute gate above).
+      // Only meaningful with no triplets, where bare texts align 1:1 with the
+      // template's; `null` entries are baked dynamic slots and are skipped.
+      const wantText = expected.texts[at] as (string | null)[]
+      if (bare.length === wantText.length) {
+        for (let i = 0; i < bare.length; i++) {
+          const w = wantText[i]
+          if (w !== null && (bare[i] as Text).data !== w) return false
+        }
+      }
     }
     for (let c = el.firstElementChild; c; c = c.nextElementSibling) {
       if (!walk(c)) return false

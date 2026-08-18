@@ -619,6 +619,17 @@ function hydrateChild(
   if ((child as unknown as { __isNative?: boolean })?.__isNative === true) {
     const native = child as unknown as { __isNative: true; el: Node; cleanup?: () => void }
     const next = domNode ? nextReal(domNode) : null
+    if (native.el === domNode) {
+      // ADOPTED — `_tpl` bound against this very node (target armed by
+      // hydrateComponent). It is already in place; replacing it with itself
+      // would detach + reattach, destroying focus/selection for nothing.
+      const adoptedCleanup = () => {
+        native.cleanup?.()
+        const p = native.el.parentNode
+        if (p && p.nodeType !== 11) p.removeChild(native.el)
+      }
+      return [adoptedCleanup, next]
+    }
     if (domNode && domNode.parentNode) {
       domNode.parentNode.replaceChild(native.el, domNode)
     } else {
@@ -784,9 +795,20 @@ function hydrateComponent(
   const mergedProps = makeReactiveProps(rawProps as Record<string, unknown>)
 
   let result: ReturnType<typeof runWithHooks>
+  // Compiled-template ADOPTION (general case). A component whose body is a
+  // static DOM subtree returns a `_tpl()` NativeItem; without a target armed,
+  // `_tpl` CLONES and the NativeItem branch of `hydrateChild` then REPLACES the
+  // server DOM — discarding it, which is the opposite of hydrating. Arm the
+  // one-shot target with this component's SSR cursor so a root `_tpl` binds
+  // against the existing nodes instead. `_tpl` clears the slot on ANY outcome
+  // and the verifier is all-or-nothing BEFORE mutation, so a non-matching
+  // template simply falls through to the clone (previous behaviour).
+  const adoptTarget = domNode !== null && domNode.nodeType === 1 ? (domNode as Element) : null
+  if (adoptTarget !== null) _setTplAdoptTarget(adoptTarget)
   try {
     result = runWithHooks(vnode.type as ComponentFn, mergedProps)
   } catch (err) {
+    if (adoptTarget !== null) _setTplAdoptTarget(null)
     setCurrentScope(null)
     setContextOwner(prevOwner)
     scope.stop()
@@ -802,6 +824,9 @@ function hydrateComponent(
     dispatchToErrorBoundary(err)
     return [noop, domNode]
   }
+  // Disarm unconditionally: a component that produced no root `_tpl` must not
+  // leave a live target for an unrelated later call.
+  if (adoptTarget !== null) _setTplAdoptTarget(null)
   setCurrentScope(null)
 
   const { vnode: output, hooks } = result
