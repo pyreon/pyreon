@@ -15,14 +15,19 @@
  *
  *   BENCH_PROFILE=1 bun run build && bun bench-clearprofile.ts [iterations] [rows]
  */
+import { readFileSync, readdirSync } from 'node:fs'
 import { spawn } from 'node:child_process'
 import { chromium } from 'playwright'
 
 const ITER = Number(process.argv[2] ?? 300)
 const ROWS = Number(process.argv[3] ?? 1000)
 const INTERVAL_US = 10
+// Overridable so two worktrees can profile CONCURRENTLY. `--strictPort` means a
+// taken port makes THIS preview exit rather than drift, and the served-bundle
+// check below then refuses to report — see the guard for why both are needed.
+const PORT = process.env.CP_PORT ?? '4181'
 
-const preview = spawn('bunx', ['vite', 'preview', '--port', '4181', '--strictPort'], {
+const preview = spawn('bunx', ['vite', 'preview', '--port', PORT, '--strictPort'], {
   cwd: import.meta.dir,
   stdio: 'ignore',
 })
@@ -36,7 +41,42 @@ try {
   page.on('pageerror', (e) => console.error('[pageerror]', e.message))
   const cdp = await page.context().newCDPSession(page)
 
-  await page.goto('http://localhost:4181/?profileClear=1')
+  // MEASUREMENT INTEGRITY — the same class of guard as `bench-fair`'s
+  // `--strictPort` note, and it fired for real: a parallel worktree holding
+  // this port made our `--strictPort` preview exit, and the script then
+  // profiled THAT worktree's bundle while reporting confidently. `--strictPort`
+  // alone cannot catch it, because the failure is "someone else answers", not
+  // "nobody answers". So compare what the server returns against what we just
+  // built on disk, and refuse to report on a mismatch.
+  {
+    const dir = `${import.meta.dir}/dist/assets`
+    const js = readdirSync(dir).filter((f) => f.endsWith('.js'))
+    if (js.length === 0) throw new Error(`[clearprofile] no built assets in ${dir} — run the build first`)
+    // The largest chunk is the framework bundle: the most sensitive probe, and
+    // the one whose contents a stale server would actually differ on.
+    const probe = js.sort(
+      (a, b) => readFileSync(`${dir}/${b}`).length - readFileSync(`${dir}/${a}`).length,
+    )[0] as string
+    const onDisk = readFileSync(`${dir}/${probe}`, 'utf8')
+    const served = await fetch(`http://localhost:${PORT}/assets/${probe}`)
+      .then((r) => (r.ok ? r.text() : null))
+      .catch(() => null)
+    if (served === null) {
+      throw new Error(
+        `[clearprofile] cannot fetch /assets/${probe} on :${PORT} — the preview did not bind ` +
+          `(port already held?). Set CP_PORT to a free port.`,
+      )
+    }
+    if (served !== onDisk) {
+      throw new Error(
+        `[clearprofile] the server on :${PORT} is serving a DIFFERENT bundle than ${probe} on ` +
+          `disk — another worktree owns this port. Refusing to measure. Set CP_PORT.`,
+      )
+    }
+    console.log(`[clearprofile] served bundle == on-disk ${probe} on :${PORT}`)
+  }
+
+  await page.goto(`http://localhost:${PORT}/?profileClear=1`)
   await page.waitForFunction(() => '__clearBench' in globalThis, undefined, { timeout: 30_000 })
 
   // Warmup: JIT-stabilize both paths, verify DOM correctness both arms.
