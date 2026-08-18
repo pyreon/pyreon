@@ -844,9 +844,15 @@ function renderChildList(children: readonly VNodeChild[], start: number, acc: st
  *
  * Mirrored by `soleAccessorChild` in `@pyreon/runtime-dom`'s hydrate.ts and by
  * the `_escSole` emit in both compiler backends. All four must agree byte-for-
- * byte or hydration misaligns.
+ * byte or hydration misaligns. The twin is DUPLICATED rather than shared
+ * because runtime-dom does not depend on runtime-server (both sit on core);
+ * drift between them is what the 20,000-seed parity fuzz exists to catch, since
+ * it renders with this copy and hydrates with the other.
+ *
+ * Deliberately NOT exported — it is a contract between these four call sites,
+ * not public API.
  */
-export function soleAccessorChild(
+function soleAccessorChild(
   children: readonly VNodeChild[] | undefined,
 ): (() => VNodeChild) | null {
   return children !== undefined && children.length === 1 && typeof children[0] === 'function'
