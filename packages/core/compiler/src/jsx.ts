@@ -3653,7 +3653,7 @@ export function transformJSX_JS(
     function tryDirectSignalRef(
       exprNode: N,
       allowBareSignal = false,
-    ): { ref: string; isMember: boolean } | null {
+    ): { ref: string; isMember: boolean; receiver: string | null } | null {
       let inner = exprNode
       if (inner.type === 'ArrowFunctionExpression' && inner.body?.type !== 'BlockStatement') {
         inner = inner.body
@@ -3676,14 +3676,15 @@ export function transformJSX_JS(
       // `<div>{name}</div>` shape); promoting THAT to `_bindText` is a
       // larger, separately-measured change, not this fix.
       if (allowBareSignal && inner.type === 'Identifier' && isActiveSignal(inner.name)) {
-        return { ref: inner.name, isMember: false }
+        return { ref: inner.name, isMember: false, receiver: null }
       }
       if (inner.type !== 'CallExpression') return null
       if ((inner.arguments?.length ?? 0) > 0) return null
       const callee = inner.callee
       if (!callee) return null
       // Bare identifier — the existing fast path. Caller emits 2-arg form.
-      if (callee.type === 'Identifier') return { ref: sliceExpr(callee), isMember: false }
+      if (callee.type === 'Identifier')
+        return { ref: sliceExpr(callee), isMember: false, receiver: null }
       // MemberExpression chain — widening. Walk the chain, bail on any
       // computed access. Root identifier must NOT be a tracked active
       // signal (would imply a method call on a signal, e.g. `count.peek()`).
@@ -3696,7 +3697,19 @@ export function transformJSX_JS(
         }
         if (cur.type !== 'Identifier') return null
         if (isActiveSignal(cur.name)) return null
-        return { ref: sliceExpr(callee), isMember: true }
+        // Depth-1 chain (`row.label()`): the RECEIVER is a plain identifier
+        // already in scope, so the emitter can hand the runtime `row` instead of
+        // minting a `() => row.label()` thunk the fast path throws away. Reading
+        // a local binding twice is free and side-effect-free, so this is a pure
+        // allocation win with no semantic delta.
+        //
+        // DEEPER chains (`row.data.name()`) deliberately keep the thunk: their
+        // receiver (`row.data`) is itself a property read, and evaluating it a
+        // second time at the call site would double-fire a getter. Rarer shape,
+        // not worth the semantic risk.
+        const receiver =
+          callee.object?.type === 'Identifier' ? sliceExpr(callee.object) : null
+        return { ref: sliceExpr(callee), isMember: true, receiver }
       }
       return null
     }
@@ -3950,7 +3963,15 @@ export function transformJSX_JS(
                 : DOM_PROPS.has(htmlAttrName)
                   ? `(v) => { ${varName}.${htmlAttrName} = v }`
                   : ((needsSetAttr = true), `(v) => _setAttr(${varName}, "${htmlAttrName}", v)`)
-        const callerArg = directRef.isMember ? `, () => ${directRef.ref}()` : ''
+        // Receiver (depth-1 member) costs no allocation and goes in its OWN
+        // 4th slot: a receiver can itself be callable (`Date.now()` passes
+        // `Date`), so sharing slot 3 with the thunk would be ambiguous at
+        // runtime. Deeper chains keep the slot-3 thunk. See tryDirectSignalRef.
+        const callerArg = directRef.receiver
+          ? `, undefined, ${directRef.receiver}`
+          : directRef.isMember
+            ? `, () => ${directRef.ref}()`
+            : ''
         bindLines.push(`const ${d} = _bindDirect(${directRef.ref}, ${updater}${callerArg})`)
         return
       }
@@ -4173,7 +4194,15 @@ export function transformJSX_JS(
       if (directRef) {
         needsBindTextImport = true
         const d = nextDisp()
-        const callerArg = directRef.isMember ? `, () => ${directRef.ref}()` : ''
+        // Receiver (depth-1 member) costs no allocation and goes in its OWN
+        // 4th slot: a receiver can itself be callable (`Date.now()` passes
+        // `Date`), so sharing slot 3 with the thunk would be ambiguous at
+        // runtime. Deeper chains keep the slot-3 thunk. See tryDirectSignalRef.
+        const callerArg = directRef.receiver
+          ? `, undefined, ${directRef.receiver}`
+          : directRef.isMember
+            ? `, () => ${directRef.ref}()`
+            : ''
         bindLines.push(`const ${d} = _bindText(${directRef.ref}, ${tVar}${callerArg})`)
         return needsPlaceholder ? '<!>' : ' '
       }

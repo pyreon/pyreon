@@ -204,7 +204,8 @@ _tpl("<div class=\\"box\\"> </div>", (__root) => {
     {
       name: '_bindText',
       kind: 'function',
-      signature: '_bindText(source: Signal-like, node: Text, caller?: () => unknown): () => void',
+      signature:
+        '_bindText(source: Signal-like, node: Text, caller?: () => unknown, receiver?: object): () => void',
       summary:
         'Compiler-internal: bind a SIGNAL (anything carrying `._v` + `.direct`) to a text node via `TextNode.data` assignment, returning a dispose function. The fast path BYPASSES the effect system entirely — it subscribes via the signal\'s `.direct()` single-subscriber slot (no Set, no deps array, no tracking-stack push); `renderEffect` is only the fallback for bare callables. Writes the initial value synchronously at bind time (which is why the baked `" "` template placeholder never renders). Each text node gets its own independent binding for fine-grained reactivity.',
       example: `// Compiler output for <div>{count()}</div>:
@@ -216,7 +217,7 @@ _tpl("<div> </div>", (__root) => {
       mistakes: [
         "COMPILER-EMITTED — don't hand-write `_bindText`; write JSX `{signal()}` or `{row.label()}` and let the compiler emit it (bare identifiers AND non-computed member chains qualify; computed access like `row[k]()` stays on the general path)",
         "The `source` MUST expose `._v` (read DIRECTLY for the initial value, not via a call) — a custom signal-wrapper that forwards `.direct`/`.peek` but NOT `_v` binds `''` and never updates (the `storage-signal-v-forwarding` bug class); build wrappers with `wrapSignal(base, { set })`, which forwards `_v` by construction",
-        "Hand-writing a member-chain bind without the `caller` arg loses `this` — for `{row.label()}` the compiler emits `_bindText(row.label, node, () => row.label())`; the 3rd arg is what preserves `this` on the slow path (a detached `obj.method` alone would lose it)",
+        "Hand-writing a member-chain bind without the receiver/caller argument loses `this` — for `{row.label()}` the compiler emits `_bindText(row.label, node, undefined, row)`, passing the RECEIVER in slot 4 so the slow path can `.call()` it (a detached `obj.method` alone would lose `this`). The FAST path never reads it, which is why the receiver is passed instead of a `() => row.label()` thunk that would be allocated per row and discarded. The receiver has its OWN slot because a receiver can itself be callable, so one shared slot could not be disambiguated from a thunk. Deeper chains (`row.data.name()`) keep the slot-3 thunk, since re-evaluating their receiver could double-fire a getter.",
         "A signal whose VALUE later becomes a VNode / VNode[] UPGRADES the binding to a subtree mount at the text node's position (the polymorphic upgrade); plain string/number values stay on the `.data` fast path",
       ],
       seeAlso: ['_tpl', '_bindDirect'],

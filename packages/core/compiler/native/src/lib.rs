@@ -6580,12 +6580,17 @@ fn static_attr_to_html(expr: &Expression, html_attr_name: &str, tag: &str) -> Op
 /// for the `_bindText` / `_bindDirect` fast path. Mirrors the JS path's
 /// `tryDirectSignalRef`. See that function's JSDoc for the accepted shapes
 /// and `is_member` semantics. `is_member: true` tells the emitter to pass an
-/// explicit `caller` 3rd arg so the runtime's slow path preserves `this`.
+/// explicit 3rd arg so the runtime's slow path preserves `this`.
+///
+/// The third tuple slot is the RECEIVER: `Some(obj)` for a depth-1 member chain
+/// (`row.label()` -> `row`), which the emitter passes verbatim instead of
+/// minting a `() => row.label()` thunk the fast path discards. `None` keeps the
+/// legacy thunk. Mirrors the JS twin exactly.
 fn try_direct_signal_ref(
     expr: &Expression,
     allow_bare_signal: bool,
     ctx: &mut Ctx,
-) -> Option<(String, bool)> {
+) -> Option<(String, bool, Option<String>)> {
     let mut inner = expr;
     // Unwrap concise arrow: () => signal()
     if let Expression::ArrowFunctionExpression(arrow) = inner {
@@ -6608,7 +6613,7 @@ fn try_direct_signal_ref(
     if allow_bare_signal {
         if let Expression::Identifier(id) = inner {
             if is_active_signal(id.name.as_str(), ctx) {
-                return Some((id.name.to_string(), false));
+                return Some((id.name.to_string(), false, None));
             }
         }
     }
@@ -6624,11 +6629,11 @@ fn try_direct_signal_ref(
             // does NOT auto-call it (f is not a signal), so the nullary-call
             // accessor stays a function reference — exactly `_bindText((<resolved>))`.
             if ctx.prop_derived_vars.contains_key(id.name.as_str()) {
-                return Some((slice_expr(&call.callee, ctx), false));
+                return Some((slice_expr(&call.callee, ctx), false, None));
             }
             // Use raw slice — NOT slice_expr — to avoid auto-calling the callee.
             // _bindText needs the signal FUNCTION reference, not its called value.
-            return Some((slice_span(call.callee.span(), ctx), false));
+            return Some((slice_span(call.callee.span(), ctx), false, None));
         }
         // Non-computed MemberExpression chain: row.label(), data.user.name().
         // Walk the chain, bail on any computed access. Root identifier must
@@ -6648,7 +6653,21 @@ fn try_direct_signal_ref(
                 if is_active_signal(id.name.as_str(), ctx) {
                     return None;
                 }
-                return Some((slice_span(call.callee.span(), ctx), true));
+                // Depth-1 chain (`row.label()`): the receiver is a plain
+                // identifier already in scope, so hand the runtime `row` rather
+                // than a per-row thunk the fast path throws away. Deeper chains
+                // (`row.data.name()`) keep the thunk — re-evaluating their
+                // receiver would double-fire a getter. Mirrors the JS twin.
+                let receiver = match &call.callee {
+                    Expression::StaticMemberExpression(m) => match &m.object {
+                        Expression::Identifier(obj) => {
+                            Some(slice_span(obj.span(), ctx))
+                        }
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                return Some((slice_span(call.callee.span(), ctx), true, receiver));
             }
             return None;
         }
@@ -6776,7 +6795,7 @@ fn emit_dynamic_attr(
     // attr path opts into bare-signal direct binding (class={active}); the text
     // call site below does NOT (allow_bare_signal=false).
     let direct_ref = try_direct_signal_ref(expr_node, true, ctx);
-    if let Some((signal_name, is_member)) = direct_ref {
+    if let Some((signal_name, is_member, receiver)) = direct_ref {
         tb.needs_bind_direct = true;
         let d = tb.next_disp();
         let updater = if html_attr_name == "class" {
@@ -6795,7 +6814,12 @@ fn emit_dynamic_attr(
             tb.needs_set_attr = true;
             format!("(v) => _setAttr({}, \"{}\", v)", var_name, html_attr_name)
         };
-        let caller_arg = if is_member {
+        // Receiver goes in its OWN 4th slot: a receiver can itself be callable
+        // (`Date.now()` passes `Date`), so sharing slot 3 with the thunk would
+        // be ambiguous at runtime. Mirrors the JS twin.
+        let caller_arg = if let Some(recv) = receiver {
+            format!(", undefined, {}", recv)
+        } else if is_member {
             format!(", () => {}()", signal_name)
         } else {
             String::new()
@@ -6993,10 +7017,15 @@ fn emit_reactive_text_child(
     }
     // text-child path keeps existing bare-signal emission (allow_bare_signal=false).
     let direct_ref = try_direct_signal_ref(expr_node, false, ctx);
-    if let Some((signal_name, is_member)) = direct_ref {
+    if let Some((signal_name, is_member, receiver)) = direct_ref {
         tb.needs_bind_text = true;
         let d = tb.next_disp();
-        let caller_arg = if is_member {
+        // Receiver goes in its OWN 4th slot: a receiver can itself be callable
+        // (`Date.now()` passes `Date`), so sharing slot 3 with the thunk would
+        // be ambiguous at runtime. Mirrors the JS twin.
+        let caller_arg = if let Some(recv) = receiver {
+            format!(", undefined, {}", recv)
+        } else if is_member {
             format!(", () => {}()", signal_name)
         } else {
             String::new()

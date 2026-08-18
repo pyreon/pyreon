@@ -457,19 +457,24 @@ describe('JSX transform — edge cases', () => {
 
   test('emits _bindText with safe `caller` 3rd arg for member-expression callees', () => {
     // Member-expression callee uses _bindText fast path (matches the
-    // signal-like shape, e.g. `row.label()`). The 3-arg form passes an
-    // explicit caller closure that the runtime's slow path uses to
-    // preserve `this` when source turns out to be a method.
+    // signal-like shape, e.g. `row.label()`). The 3-arg form passes the
+    // RECEIVER, which the runtime's slow path uses to preserve `this` when
+    // source turns out to be a method. Depth-1 chains pass the receiver
+    // identifier directly — no per-instance thunk the fast path would discard.
     const result = t('<div><p>{value.toLocaleString()}</p></div>')
     expect(result).toContain('_bindText(value.toLocaleString,')
-    expect(result).toContain(', () => value.toLocaleString())')
+    expect(result).toContain(', undefined, value)')
+    expect(result).not.toContain('() => value.toLocaleString()')
   })
 
   test('member-expression _bindText: For-row idiom row.label() emits fast path with caller', () => {
     // Canonical For-row idiom — matches hand-tuned pyreon-tpl.ts bench template.
     const result = t('const a = () => <div>{row.label()}</div>')
     expect(result).toContain('_bindText(row.label,')
-    expect(result).toContain(', () => row.label())')
+    // Slot 4, so a CALLABLE receiver can't be mistaken for a thunk.
+    expect(result).toContain(', undefined, row)')
+    // The whole point: no per-row closure the fast path throws away.
+    expect(result).not.toContain('() => row.label()')
   })
 
   test('member-expression _bindText: nested chain data.user.name() emits fast path', () => {
@@ -483,7 +488,8 @@ describe('JSX transform — edge cases', () => {
     // bindings (self-closing elements take a different shorter path).
     const result = t('const a = () => <div class={row.cls()}>x</div>')
     expect(result).toContain('_bindDirect(row.cls,')
-    expect(result).toContain(', () => row.cls())')
+    expect(result).toContain(', undefined, row)')
+    expect(result).not.toContain('() => row.cls()')
   })
 
   test('bare-identifier _bindText: regression — count() emits 2-arg form (no caller)', () => {
@@ -850,10 +856,12 @@ describe('JSX transform — template emission', () => {
     // (textContent = ... assigned ONCE at row mount; no _bind chain). Matches
     // the hand-tuned reference template in examples/benchmark/src/impl/pyreon-tpl.ts.
     expect(result).toContain('_setChild(__e0, String(row.id))')
-    // row.label() — member-expression call still goes through _bind here in
-    // isolation (a separate PR widens member-expr to _bindText). Verify the
-    // expression survives in the emitted code.
-    expect(result).toContain('row.label()')
+    // row.label() — member-expression call takes the _bindText fast path.
+    // Invariant: the label binding survives in the emitted code and reaches
+    // the row's text node. The 3rd arg is the RECEIVER (`row`), not a
+    // per-row `() => row.label()` thunk the fast path would discard.
+    expect(result).toContain('_bindText(row.label,')
+    expect(result).toContain(', undefined, row)')
   })
 
   test('PURE_COERCIONS: String(row.id) routes to static textContent (no _bind)', () => {

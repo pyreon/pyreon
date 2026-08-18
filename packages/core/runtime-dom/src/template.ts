@@ -196,14 +196,52 @@ function _warnTextCoercion(v: unknown, node: Text): void {
  *
  * @param source - A signal (anything with `._v` and `.direct`)
  * @param node - The Text node to update
- * @param caller - Optional explicit caller for the slow path. Compiler emits
- *   this for MemberExpression callees like `row.label()` so the slow path
- *   preserves `this` if `source` turns out to be a method. Fast path ignores it.
+ * @param caller - Optional slow-path receiver/caller. Compiler emits this for
+ *   MemberExpression callees like `row.label()` so the slow path preserves
+ *   `this` if `source` turns out to be a method. Fast path ignores it — see
+ *   {@link resolveSlowCaller} for the two accepted shapes.
  */
+/**
+ * Resolve the slow-path invoker for a compiler-emitted member-chain binding.
+ *
+ * Runs ONLY when `source` turned out NOT to be a signal/computed (no `.direct`)
+ * — i.e. a plain zero-arg method like `{d.toLocaleDateString()}`, where calling
+ * the already-detached `source` would lose `this`. The `.direct` fast paths in
+ * `_bindText` / `_bindDirect` return before reaching this.
+ *
+ * Two shapes reach here, in SEPARATE positional slots:
+ *   - `receiver` (slot 4, depth-1 member chains): the object the member was
+ *     read from. Costs NO allocation at the call site — the emitter passes an
+ *     identifier already in scope (`row`), rather than minting a
+ *     `() => row.label()` thunk per row that the fast path then discards.
+ *   - `caller` (slot 3, deeper chains + any older compiler's output): a thunk,
+ *     invoked as-is.
+ *
+ * The slots are separate BECAUSE A RECEIVER CAN ITSELF BE CALLABLE, so
+ * `typeof x === 'function'` cannot tell the two apart. `{Date.now()}` is the
+ * everyday proof: `Date` is a function, so a single shared slot would read the
+ * receiver as a thunk and evaluate `Date()` — rendering a date string where the
+ * source asked for a timestamp. Keeping them apart also means an older
+ * compiler's slot-3 thunk still works unchanged.
+ *
+ * The closure built for the receiver case is allocated once per BINDING on the
+ * slow path only — never on the fast path, and never per fire.
+ */
+function resolveSlowCaller(
+  source: unknown,
+  caller: (() => unknown) | undefined,
+  receiver: object | undefined,
+): () => unknown {
+  if (receiver !== undefined) return () => (source as (this: unknown) => unknown).call(receiver)
+  if (caller !== undefined) return caller
+  return source as () => unknown
+}
+
 export function _bindText(
   source: { _v?: unknown; direct?: (fn: () => void) => () => void },
   node: Text,
   caller?: () => unknown,
+  receiver?: object,
 ): () => void {
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.bindText')
   // Captured for the upgrade path: components mounted by a LATER upgrade run
@@ -260,11 +298,12 @@ export function _bindText(
     if (disposer === null) disposer = source.direct(textUpdate)
     return () => disposer!()
   }
-  // Fallback: bare callable. Use the compiler-provided caller when present (it
-  // preserves `this` for member-expression sources). The renderEffect keeps
-  // tracking `fn`'s reads across the upgrade — after the first VNode-shaped value
-  // every re-run routes through the swap core, whose child mounts are untracked.
-  const fn = caller ?? (source as unknown as () => unknown)
+  // Fallback: bare callable. Use the compiler-provided receiver/caller when
+  // present (it preserves `this` for member-expression sources). The
+  // renderEffect keeps tracking `fn`'s reads across the upgrade — after the
+  // first VNode-shaped value every re-run routes through the swap core, whose
+  // child mounts are untracked.
+  const fn = resolveSlowCaller(source, caller, receiver)
   let core: PolyTextCore | null = null
   const disposeEffect = renderEffect(() => {
     const v = fn()
@@ -309,14 +348,17 @@ export function _bindText(
  *
  * @param source - A signal (anything with `._v` and `.direct`)
  * @param updater - Function that reads `source._v` and applies the DOM update
- * @param caller - Optional explicit caller for the slow path. Compiler emits
- *   this for MemberExpression callees like `row.label()` so the slow path
- *   preserves `this` if `source` turns out to be a method. Fast path ignores it.
+ * @param caller - Optional slow-path thunk (deeper member chains, and any
+ *   older compiler's output). Fast path ignores it.
+ * @param receiver - Optional slow-path receiver for a depth-1 member chain,
+ *   kept in a SEPARATE slot from `caller` because a receiver can itself be
+ *   callable (`Date`). Fast path ignores it — see {@link resolveSlowCaller}.
  */
 export function _bindDirect(
   source: { _v?: unknown; direct?: (fn: () => void) => () => void },
   updater: (value: unknown) => void,
   caller?: () => unknown,
+  receiver?: object,
 ): () => void {
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.bindDirect')
   // Fast path: source has .direct() (signal or computed)
@@ -324,9 +366,10 @@ export function _bindDirect(
     updater(source._v)
     return source.direct(() => updater(source._v))
   }
-  // Fallback: bare callable. Use caller if compiler provided one (preserves
-  // `this` for member-expression sources); otherwise call source directly.
-  const fn = caller ?? (source as unknown as () => unknown)
+  // Fallback: bare callable. Use the compiler-provided receiver/caller if there
+  // is one (preserves `this` for member-expression sources); otherwise call
+  // source directly.
+  const fn = resolveSlowCaller(source, caller, receiver)
   return renderEffect(() => updater(fn()))
 }
 
