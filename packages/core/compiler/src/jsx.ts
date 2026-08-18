@@ -4800,7 +4800,6 @@ export function transformJSX_JS(
         // and any nested `_tpl`. That cost 6 of 26 `ui-showcase-regression`
         // specs when this emit sliced. The hole is walked by `tryTemplateEmit`
         // and spliced back in by the bracketed replacement.
-        needsMountComponentImport = true
         const d = nextDisp()
         const vnode = registerHole(child.node)
         // `needsPlaceholder` is declared below (expression path); for a
@@ -4816,6 +4815,7 @@ export function transformJSX_JS(
         }
         // Nothing static in this element — append in source order, which needs
         // no placeholder comment at all.
+        needsMountComponentImport = true
         bindLines.push(`const ${d} = _mountChild(${vnode}, ${parentRef}, null)`)
         return ''
       }
