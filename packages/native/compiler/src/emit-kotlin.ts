@@ -4545,6 +4545,13 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // Mirror of the Swift emit. `val` is fine on Kotlin (the reference is
       // final; contents mutate through it).
       if (e.collection === 'map') {
+        // Seeded `new Map([[k,v],…])` → `mutableMapOf(k to v, …)`.
+        if (e.entries && e.entries.length > 0) {
+          const body = e.entries
+            .map(([k, v]) => `${emitKotlinExpr(k, indent)} to ${emitKotlinExpr(v, indent)}`)
+            .join(', ')
+          return `mutableMapOf(${body})`
+        }
         return `mutableMapOf<${kotlinType(e.keyType!)}, ${kotlinType(e.valueType!)}>()`
       }
       if (e.seed !== undefined) return `(${emitKotlinExpr(e.seed, indent)}).toMutableSet()`
