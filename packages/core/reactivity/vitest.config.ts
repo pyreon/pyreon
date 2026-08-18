@@ -40,7 +40,11 @@ export default defineNodeConfig({
       // read survives past 20,000 while the (reverted) recursive cascade still
       // overflows well under 10,000. One flag, additive headroom only — no
       // behavioral change for the other suites.
-      execArgv: ['--stack-size=4000'],
+      // --expose-gc makes `globalThis.gc` available in the fork workers, which
+      // `createSelector-key-reclamation.test.ts` needs: the only way to prove a
+      // cache actually RELEASED a key (rather than merely stopped growing) is a
+      // WeakRef that survives a real collection.
+      execArgv: ['--stack-size=4000', '--expose-gc'],
     },
   },
 })
