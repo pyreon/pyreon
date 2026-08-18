@@ -5489,8 +5489,8 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     // config. Captures IDENTIFIER REFS only (conservative shape);
     // inline arrow bodies are dropped here, same as per-route
     // beforeEnter bails non-arrow-expression shapes.
-    const beforeEach = tryExtractGuardRefArray(init.arguments?.[0], 'beforeEach')
-    const afterEach = tryExtractGuardRefArray(init.arguments?.[0], 'afterEach')
+    const beforeEach = tryExtractGuardRefArray(init.arguments?.[0], 'beforeEach', ctx.warnings)
+    const afterEach = tryExtractGuardRefArray(init.arguments?.[0], 'afterEach', ctx.warnings)
     const decl: DeclIR = { kind: 'router', name }
     if (routes !== null) decl.routes = routes
     if (beforeEach.length > 0) decl.beforeEach = beforeEach
@@ -7203,7 +7203,11 @@ function tryExtractRoutes(arg: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | 
  * because they'd need closure-emit + capture machinery the per-route
  * boolean-guard shape doesn't carry into this PR.
  */
-function tryExtractGuardRefArray(arg: AnyNode | undefined, key: string): string[] {
+function tryExtractGuardRefArray(
+  arg: AnyNode | undefined,
+  key: string,
+  warnings?: string[],
+): string[] {
   if (!arg || arg.type !== 'ObjectExpression') return []
   const props = arg.properties as AnyNode[] | undefined
   if (!props) return []
@@ -7220,9 +7224,30 @@ function tryExtractGuardRefArray(arg: AnyNode | undefined, key: string): string[
   for (const el of (value.elements as AnyNode[] | undefined) ?? []) {
     if (el?.type === 'Identifier' && typeof el.name === 'string') {
       out.push(el.name as string)
+      continue
     }
-    // Non-identifier elements (arrow expressions, member access, etc.)
-    // are silently dropped — closure-emit is a documented follow-up.
+    // A non-identifier element (inline arrow, member access) is NOT lowered:
+    // closure-emit + capture machinery is a tracked follow-up. But dropping it
+    // SILENTLY is the wrong failure mode — an inline `beforeEach: [(to) =>
+    // isAuthed()]` would leave the navigation ungated on native with no signal,
+    // a security foot-gun. Warn by name so the author extracts it to a named
+    // function (`beforeEach: [authGuard]`, which DOES lower) instead of shipping
+    // an unguarded route. This upholds the compiler's invariant: outside the
+    // lowered subset the failure mode is a named warning, never a silent drop.
+    if (warnings && el) {
+      const shape =
+        el.type === 'ArrowFunctionExpression' || el.type === 'FunctionExpression'
+          ? 'an inline function'
+          : el.type === 'MemberExpression'
+            ? 'a member expression'
+            : `a ${String(el.type)}`
+      warnings.push(
+        `[pyreon-native] router \`${key}\`: ${shape} guard is not lowered to native — ` +
+          `global router guards accept a NAMED function reference (\`${key}: [authGuard]\`). ` +
+          `An inline guard is dropped, so the navigation is NOT gated on iOS/Android. ` +
+          `Extract it to a named function. (Closure-emit is a tracked follow-up.)`,
+      )
+    }
   }
   return out
 }
