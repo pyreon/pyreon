@@ -29,6 +29,39 @@ interface ErrorPattern {
 
 const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // The residual footgun left by the nested-setup-frame fix. That fix removed
+    // the FRAMEWORK cause of this warning (a child component mounting mid-setup
+    // — which the compiler does whenever `_tpl`'s bind fn calls `_mountSlot` —
+    // used to close the parent's frame, so the parent's own later hooks were
+    // dropped and blamed on the user). What remains is the genuine user error
+    // the warning was always meant to name, and it is worth teaching because
+    // the failure is SILENT: the hook simply never runs, and the component
+    // renders fine.
+    //
+    // Keyed on the warning text rather than a thrown message — nothing throws.
+    pattern: /(onMount|onUnmount|onUpdate|onErrorCaptured)\(\) called outside component setup/,
+    diagnose: (m) => ({
+      cause: `\`${m[1]}()\` ran when no component setup frame was open, so the callback was DROPPED — it will never fire. Lifecycle hooks register into the frame that is open while a component's body is executing, and that body runs exactly once, synchronously.`,
+      fix: 'Call the hook synchronously in the component body — not inside an effect, an event handler, a `.then()`, a `setTimeout`, or after an `await`. To do work when a dependency changes, register the hook at setup and put the reactive read inside it.',
+      fixCode: `// dropped — the await closed the setup frame
+async function Panel() {
+  const data = await load()
+  onMount(() => start(data))
+}
+
+// registered — hook at setup, async work inside it
+function Panel() {
+  onMount(() => {
+    let cancelled = false
+    load().then((d) => { if (!cancelled) start(d) })
+    return () => { cancelled = true }
+  })
+}`,
+      related:
+        'A child component mounting partway through a parent\'s setup no longer triggers this — the frame is restored rather than reset (see anti-patterns "set-then-NULLED instead of saved-then-RESTORED"). If you see it from a plain synchronous body, the call really is outside setup.',
+    }),
+  },
+  {
     // The error surface `<Async>` introduces. `of` is a STRUCTURAL contract
     // (isPending / isError / error / data accessors), so the two ways to get
     // it wrong both land here: passing nothing, or passing the wrong thing —
