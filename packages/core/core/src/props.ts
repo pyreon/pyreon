@@ -264,38 +264,44 @@ export function _wrapSpread(
 export function makeReactiveProps(
   raw: Record<string, unknown>,
 ): Record<string, unknown> {
-  // Fast path: scan for any REACTIVE_PROP-branded function first.
-  // If none found, return raw immediately — no object allocation, no property copying.
-  // This saves ~90 object allocations + ~450 property copies per page load
-  // for components with all-static props (buttons, icons, layout, etc.).
+  // SINGLE pass, copy-on-first-reactive-prop.
+  //
+  // All-static components (the majority — buttons, icons, layout) are unchanged:
+  // one scan, then `raw` itself is returned with no result object and no
+  // property copying. That is the property the previous scan-first shape existed
+  // to guarantee and it is preserved exactly.
+  //
+  // What the second pass cost was borne entirely by components that DO carry a
+  // reactive prop — i.e. every component under a compiler-wrapped
+  // `foo={props.x}` — which used to have every key read twice. Now the copy
+  // starts at the first reactive prop, the static keys scanned before it are
+  // backfilled, and the rest are copied as the same pass continues.
   const keys = Object.keys(raw)
-  let hasAny = false
-  for (let i = 0; i < keys.length; i++) {
-    const val = raw[keys[i]!]
-    if (typeof val === 'function' && (val as any)[REACTIVE_PROP]) {
-      hasAny = true
-      break
-    }
-  }
-  if (!hasAny) return raw
-
-  // At least one reactive prop exists — build the getter-backed object.
-  const result: Record<string, unknown> = {}
+  let result: Record<string, unknown> | null = null
   for (let i = 0; i < keys.length; i++) {
     const key = keys[i]!
     const val = raw[key]
     if (typeof val === 'function' && (val as any)[REACTIVE_PROP]) {
+      if (result === null) {
+        result = {}
+        // Backfill the static keys already scanned. Same value-copy the
+        // second pass performed for them before.
+        for (let j = 0; j < i; j++) {
+          const k = keys[j]!
+          result[k] = raw[k]
+        }
+      }
       Object.defineProperty(result, key, {
         get: val as () => unknown,
         enumerable: true,
         configurable: true,
       })
-    } else {
+    } else if (result !== null) {
       result[key] = val
     }
   }
 
-  return result
+  return result ?? raw
 }
 
 // ─── Unique ID ───────────────────────────────────────────────────────────────

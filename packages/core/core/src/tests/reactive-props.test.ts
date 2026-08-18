@@ -70,6 +70,33 @@ describe('makeReactiveProps', () => {
     const result = makeReactiveProps(raw)
     expect(result).toBe(raw)
   })
+
+  it('copies STATIC props that appear AFTER the first reactive one', () => {
+    // The single-pass shape starts copying at the first reactive prop and
+    // backfills the keys before it. A bug in either half silently DROPS a
+    // static prop, which is invisible until a component reads it.
+    const raw = { before: 1, live: _rp(() => 'x'), after: 2 }
+    const result = makeReactiveProps(raw)
+    expect(result.before).toBe(1)
+    expect(result.after).toBe(2)
+    expect(result.live).toBe('x')
+    expect(Object.keys(result)).toEqual(['before', 'live', 'after'])
+  })
+
+  it('gives every call its OWN getter', () => {
+    // Guards against "optimising" this path by hoisting a shared descriptor
+    // or result object out of the function: each call must keep its own
+    // thunk, or a later call would retro-actively rewrite an earlier props
+    // object. (A shared module-level descriptor was tried and dropped — it
+    // saved one small allocation but needed module-level mutable state and a
+    // cast around `exactOptionalPropertyTypes`.)
+    const first = makeReactiveProps({ v: _rp(() => 'A') })
+    const second = makeReactiveProps({ v: _rp(() => 'B') })
+    expect(first.v).toBe('A')
+    expect(second.v).toBe('B')
+    // And re-reading the first is still 'A' after the second call ran.
+    expect(first.v).toBe('A')
+  })
 })
 
 describe('_rp', () => {
