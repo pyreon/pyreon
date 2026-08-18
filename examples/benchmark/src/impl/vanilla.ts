@@ -6,7 +6,17 @@
  * Full rebuild is only used for create/replace/clear where it's necessary.
  */
 import type { BenchSuite, Row } from '../runner'
-import { bench, buildRows, expectRows, expectRowsWithSelected, resetRng, tick } from '../runner'
+import {
+  BATCH_K_CLEAR,
+  BATCH_K_SELECT,
+  bench,
+  buildRows,
+  expectRows,
+  expectRowsWithSelected,
+  resetRng,
+  selectedProbe,
+  tick,
+} from '../runner'
 
 export async function runVanilla(container: HTMLElement): Promise<BenchSuite> {
   resetRng()
@@ -116,6 +126,29 @@ export async function runVanilla(container: HTMLElement): Promise<BenchSuite> {
     },
   )
 
+  // Clock-independent twin of 'select row'. One cycle = deselect + select.
+  await bench(
+    'select row (batch cycle)',
+    suite,
+    async () => {
+      if (selectedTr) selectedTr.className = ''
+      selectedTr = trElements[500] as HTMLElement
+      selectedTr.className = 'selected'
+    },
+    {
+      reset: () => {
+        if (selectedTr) {
+          selectedTr.className = ''
+          selectedTr = null
+        }
+      },
+      batchK: BATCH_K_SELECT,
+      batchProbe: selectedProbe(500),
+      batchExpect: 1,
+      batchPreExpect: 0,
+    },
+  )
+
   await bench(
     'swap rows',
     suite,
@@ -174,6 +207,23 @@ export async function runVanilla(container: HTMLElement): Promise<BenchSuite> {
         renderAll(buildRows(1_000))
       },
       verify: expectRows(0),
+    },
+  )
+
+  // Clock-independent twin of 'clear rows'. Cycle = build-1000 + clear-1000.
+  await bench(
+    'clear rows (batch cycle)',
+    suite,
+    async () => {
+      renderAll([])
+    },
+    {
+      reset: () => {
+        renderAll(buildRows(1_000))
+      },
+      batchK: BATCH_K_CLEAR,
+      batchExpect: 0,
+      batchPreExpect: 1_000,
     },
   )
 

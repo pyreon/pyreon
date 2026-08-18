@@ -22,7 +22,16 @@
  */
 import { createRoot, flushSync, useEffect, useState } from 'octane'
 import type { BenchSuite, Row } from '../runner'
-import { bench, buildRows, expectRows, expectRowsWithSelected, resetRng } from '../runner'
+import {
+  BATCH_K_CLEAR,
+  BATCH_K_SELECT,
+  bench,
+  buildRows,
+  expectRows,
+  expectRowsWithSelected,
+  resetRng,
+  selectedProbe,
+} from '../runner'
 
 interface Setters {
   setRows: (rows: Row[]) => void
@@ -135,6 +144,24 @@ export async function runOctane(container: HTMLElement): Promise<BenchSuite> {
     },
   )
 
+  // Clock-independent twin of 'select row'. One cycle = deselect + select.
+  await bench(
+    'select row (batch cycle)',
+    suite,
+    async () => {
+      await setSelected(currentRows[Math.floor(currentRows.length / 2)]?.id ?? null)
+    },
+    {
+      reset: async () => {
+        await setSelected(null)
+      },
+      batchK: BATCH_K_SELECT,
+      batchProbe: selectedProbe(500),
+      batchExpect: 1,
+      batchPreExpect: 0,
+    },
+  )
+
   await bench(
     'swap rows',
     suite,
@@ -182,6 +209,24 @@ export async function runOctane(container: HTMLElement): Promise<BenchSuite> {
         await setRows(buildRows(1_000))
       },
       verify: expectRows(0),
+    },
+  )
+
+  // Clock-independent twin of 'clear rows'. Cycle = build-1000 + clear-1000.
+  await bench(
+    'clear rows (batch cycle)',
+    suite,
+    async () => {
+      currentRows = []
+      await setRows([])
+    },
+    {
+      reset: async () => {
+        await setRows(buildRows(1_000))
+      },
+      batchK: BATCH_K_CLEAR,
+      batchExpect: 0,
+      batchPreExpect: 1_000,
     },
   )
 

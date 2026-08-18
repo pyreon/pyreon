@@ -13,7 +13,44 @@ const bundleEntry = process.env.BENCH_BUNDLE_ENTRY
 // care about identifier length; never use this build for TIMED numbers).
 const profileBuild = process.env.BENCH_PROFILE === '1'
 
+/**
+ * Cross-origin isolation headers — LOAD-BEARING for sub-millisecond ops.
+ *
+ * Chromium clamps `performance.now()` to **100µs** in a non-isolated page
+ * (a Spectre mitigation). Several row-list ops cost ~100-200µs, i.e. ONE OR
+ * TWO TICKS — at that scale the harness measures which side of a tick
+ * boundary the op landed on, not the framework. The tell is a zero-width
+ * CI95 sitting next to a large CV: a bootstrap CI over samples that are all
+ * the same quantized value reports certainty precisely because it cannot see
+ * the spread it quantized away.
+ *
+ * With COOP `same-origin` + COEP `require-corp` the page becomes
+ * `crossOriginIsolated` and Chromium raises the resolution to **5µs** — 20×
+ * finer, which puts a 100µs op at ~5% quantization instead of ~100%.
+ * Measured on this repo's Playwright Chromium (see `bench-fair.ts`
+ * `measureClockQuantum`, which re-verifies it at runtime rather than
+ * trusting this comment).
+ *
+ * `require-corp` is safe here because the built benchmark is entirely
+ * same-origin — there is no cross-origin subresource to block.
+ *
+ * `BENCH_NO_ISOLATION=1` serves the page WITHOUT the headers. That exists for
+ * ONE purpose: the control experiment. Isolation changes Chromium's process
+ * allocation, so "it cannot affect execution speed" is an assumption until an
+ * op far above BOTH clamps (create-1k ~8ms, create-10k ~87ms) is shown to
+ * agree in the two modes. Never use it for reported sub-ms numbers.
+ */
+const ISOLATION_HEADERS =
+  process.env.BENCH_NO_ISOLATION === '1'
+    ? {}
+    : {
+        'Cross-Origin-Opener-Policy': 'same-origin',
+        'Cross-Origin-Embedder-Policy': 'require-corp',
+      }
+
 export default defineConfig({
+  server: { headers: ISOLATION_HEADERS },
+  preview: { headers: ISOLATION_HEADERS },
   ...(bundleEntry
     ? { build: { rollupOptions: { input: bundleEntry } } }
     : profileBuild

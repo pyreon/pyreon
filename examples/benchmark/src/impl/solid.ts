@@ -15,7 +15,17 @@
 import { createComponent, createRenderEffect, createSelector, createSignal, For } from 'solid-js'
 import { insert, render, template } from 'solid-js/web'
 import type { BenchSuite } from '../runner'
-import { bench, buildRowsWith, expectRows, expectRowsWithSelected, resetRng, tick } from '../runner'
+import {
+  BATCH_K_CLEAR,
+  BATCH_K_SELECT,
+  bench,
+  buildRowsWith,
+  expectRows,
+  expectRowsWithSelected,
+  resetRng,
+  selectedProbe,
+  tick,
+} from '../runner'
 
 type SolidRow = { id: number; label: () => string; setLabel: (s: string) => void }
 
@@ -146,6 +156,25 @@ export async function runSolid(container: HTMLElement): Promise<BenchSuite> {
     },
   )
 
+  // Clock-independent twin of 'select row'. One cycle = deselect + select.
+  await bench(
+    'select row (batch cycle)',
+    suite,
+    async () => {
+      const r = rows()
+      setSelected(r[Math.floor(r.length / 2)]?.id ?? null)
+    },
+    {
+      reset: () => {
+        setSelected(null)
+      },
+      batchK: BATCH_K_SELECT,
+      batchProbe: selectedProbe(500),
+      batchExpect: 1,
+      batchPreExpect: 0,
+    },
+  )
+
   await bench(
     'swap rows',
     suite,
@@ -197,6 +226,23 @@ export async function runSolid(container: HTMLElement): Promise<BenchSuite> {
         setRows(mkRows(1_000))
       },
       verify: expectRows(0),
+    },
+  )
+
+  // Clock-independent twin of 'clear rows'. Cycle = build-1000 + clear-1000.
+  await bench(
+    'clear rows (batch cycle)',
+    suite,
+    async () => {
+      setRows([])
+    },
+    {
+      reset: () => {
+        setRows(mkRows(1_000))
+      },
+      batchK: BATCH_K_CLEAR,
+      batchExpect: 0,
+      batchPreExpect: 1_000,
     },
   )
 

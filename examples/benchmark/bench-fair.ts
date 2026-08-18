@@ -324,6 +324,52 @@ interface FrameworkRun {
   retainedHeapBytes: number | null
 }
 
+/**
+ * Measure the ACTUAL `performance.now()` granularity in the served page, and
+ * report whether the page reached cross-origin isolation.
+ *
+ * Method: spin-read the clock and keep the smallest strictly-positive delta
+ * between consecutive reads. That delta IS the quantum — no assumption about
+ * what Chromium's policy is supposed to be. Measuring rather than trusting
+ * matters because the isolation depends on response headers surviving the
+ * dev/preview server, a proxy, and the browser's own policy checks; any one
+ * of those failing degrades the clock silently.
+ *
+ * This is a property of the CLOCK, not of throughput, so it is valid to run
+ * on a loaded machine — a busy box changes how long the spin takes, not how
+ * finely the timer ticks.
+ */
+async function measureClockQuantum(
+  browser: Awaited<ReturnType<typeof chromium.launch>>,
+  baseUrl: string,
+): Promise<{ isolated: boolean; quantumMs: number }> {
+  const ctx = await browser.newContext()
+  const page = await ctx.newPage()
+  try {
+    await page.goto(baseUrl, { waitUntil: 'load' })
+    return await page.evaluate(() => {
+      let smallest = Number.POSITIVE_INFINITY
+      let prev = performance.now()
+      const end = prev + 150
+      while (performance.now() < end) {
+        const t = performance.now()
+        if (t > prev) {
+          const d = t - prev
+          if (d < smallest) smallest = d
+          prev = t
+        }
+      }
+      return {
+        isolated:
+          (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated === true,
+        quantumMs: Number.isFinite(smallest) ? smallest : Number.POSITIVE_INFINITY,
+      }
+    })
+  } finally {
+    await ctx.close()
+  }
+}
+
 async function runOneFramework(
   framework: string,
   baseUrl: string,
@@ -350,7 +396,14 @@ async function runOneFramework(
   }
 
   try {
-    const url = `${baseUrl}/?framework=${encodeURIComponent(framework)}`
+    // `BENCH_BATCH_K` forwards to the page's `?batchK=` override so the batch
+    // instrument's K-independence can be swept without a rebuild.
+    const kClear = process.env.BENCH_BATCH_K_CLEAR
+    const kSelect = process.env.BENCH_BATCH_K_SELECT
+    const url =
+      `${baseUrl}/?framework=${encodeURIComponent(framework)}` +
+      (kClear ? `&batchKClear=${encodeURIComponent(kClear)}` : '') +
+      (kSelect ? `&batchKSelect=${encodeURIComponent(kSelect)}` : '')
     await page.goto(url, { waitUntil: 'load' })
 
     await page.waitForFunction(
@@ -455,6 +508,33 @@ async function main(): Promise<void> {
   const chromiumVersion = browser.version()
 
   const baseUrl = `http://localhost:${PORT}`
+
+  // ─── Timer-resolution preflight ────────────────────────────────────────
+  // Sub-millisecond ops are only meaningful if the clock can resolve them.
+  // This ABORTS rather than warns: a silently-unisolated run measures at
+  // 100µs while every downstream table implies 5µs precision, which is
+  // exactly the harness artifact this preflight exists to prevent.
+  const clock = await measureClockQuantum(browser, baseUrl)
+  console.log(
+    `[bench-fair] timer: crossOriginIsolated=${clock.isolated} · ` +
+      `measured quantum ${(clock.quantumMs * 1000).toFixed(1)}µs`,
+  )
+  if (process.env.BENCH_NO_ISOLATION === '1') {
+    console.log(
+      '[bench-fair] BENCH_NO_ISOLATION=1 — CONTROL RUN. Sub-millisecond ops are ' +
+        'quantized to 100µs and must NOT be reported; only ops ≫1ms are valid here.',
+    )
+  } else if (!clock.isolated || clock.quantumMs > 0.02) {
+    preview.kill('SIGTERM')
+    await browser.close()
+    throw new Error(
+      `[bench-fair] timer resolution too coarse to measure sub-millisecond ops: ` +
+        `crossOriginIsolated=${clock.isolated}, quantum=${(clock.quantumMs * 1000).toFixed(1)}µs ` +
+        `(need isolation + ≤20µs). Chromium clamps performance.now() to 100µs unless the page is ` +
+        `cross-origin isolated — check the COOP/COEP headers in vite.config.ts are being served.`,
+    )
+  }
+
   if (args.throttle && args.throttle > 1) {
     console.log(`[bench-fair] CPU throttling enabled — rate ${args.throttle}×`)
   }

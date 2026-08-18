@@ -11,7 +11,17 @@ import { For } from '@pyreon/core'
 import { createSelector, signal } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
 import type { BenchSuite } from '../runner'
-import { bench, buildRowsWith, expectRows, expectRowsWithSelected, resetRng, tick } from '../runner'
+import {
+  BATCH_K_CLEAR,
+  BATCH_K_SELECT,
+  bench,
+  buildRowsWith,
+  expectRows,
+  expectRowsWithSelected,
+  resetRng,
+  selectedProbe,
+  tick,
+} from '../runner'
 
 export async function runPyreon(container: HTMLElement): Promise<BenchSuite> {
   resetRng()
@@ -108,6 +118,24 @@ export async function runPyreon(container: HTMLElement): Promise<BenchSuite> {
     },
   )
 
+  // Clock-independent twin of 'select row'. One cycle = deselect + select =
+  // TWO selection changes; divide the reported number by 2 for a single change.
+  await bench(
+    'select row (batch cycle)',
+    suite,
+    async () => {
+      const r = rows()
+      selectedId.set(r[Math.floor(r.length / 2)]?.id ?? null)
+    },
+    {
+      reset: () => selectedId.set(null),
+      batchK: BATCH_K_SELECT,
+      batchProbe: selectedProbe(500),
+      batchExpect: 1,
+      batchPreExpect: 0,
+    },
+  )
+
   await bench(
     'swap rows',
     suite,
@@ -153,6 +181,23 @@ export async function runPyreon(container: HTMLElement): Promise<BenchSuite> {
       // not an already-empty one (median was 0µs without this)
       reset: () => rows.set(mkRows(1_000)),
       verify: expectRows(0),
+    },
+  )
+
+  // Clock-independent twin of 'clear rows'. One cycle = build-1000 + clear-1000
+  // (the rebuild MUST be inside the region — you cannot clear twice without it).
+  // Subtract the measured 'create 1,000 rows' to recover the clear alone.
+  await bench(
+    'clear rows (batch cycle)',
+    suite,
+    async () => {
+      rows.set([])
+    },
+    {
+      reset: () => rows.set(mkRows(1_000)),
+      batchK: BATCH_K_CLEAR,
+      batchExpect: 0,
+      batchPreExpect: 1_000,
     },
   )
 
