@@ -24,13 +24,14 @@
  *   - check-advisory-comment-steps (advisory PR-comment step that can turn a check red)
  *   - check-lint-ratchet    (oxlint warn-finding count grew above baseline)
  *   - check-multiplatform-tier (published pkg without a declared multiplatform story)
+ *   - check-native-coverage (an app-runtime pkg that should cross to native regressed)
  *   - check-pyreon-lint-ratchet (@pyreon/lint advisory-finding count over framework src grew above baseline)
  *   - gen-docs --check      (manifest edited but generated files stale)
  *   - check-generated-fresh (the OTHER half of the pair: `anti-patterns.md` /
  *                            manifest edits leave the docs-site reference,
  *                            troubleshooting and examples pages stale)
  *
- * 34 gates, ~4-8s warm on an unloaded machine. The point is: catch ALL the
+ * 35 gates, ~4-8s warm on an unloaded machine. The point is: catch ALL the
  * cheap-to-detect failures locally with ONE command before pushing.
  *
  * That number is worth keeping honest, because it is what decides whether
@@ -70,6 +71,11 @@ const GATES: Gate[] = [
   { name: 'lint', cmd: 'bun run lint' },
   { name: 'check-lint-ratchet', cmd: 'bun scripts/check-lint-ratchet.ts' },
   { name: 'check-multiplatform-tier', cmd: 'bun scripts/check-multiplatform-tier.ts' },
+  // The finish-line ratchet: every app-runtime/feature-building package that
+  // SHOULD cross to native either lowers clean through PMTC or ships a native
+  // runtime — regressions (a snippet that starts warning, a co-source that
+  // vanished) fail here. Runs the real compiler over ~22 snippets (~1-2s).
+  { name: 'check-native-coverage', cmd: 'bun scripts/check-native-coverage.ts' },
   { name: 'check-pyreon-lint-ratchet', cmd: 'bun scripts/check-pyreon-lint-ratchet.ts' },
   // App-side line count across the reference apps — the framework's "write
   // less code" claim, ratcheted so it cannot quietly drift the wrong way.
