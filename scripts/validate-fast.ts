@@ -68,6 +68,9 @@ const GATES: Gate[] = [
   { name: 'check-lint-ratchet', cmd: 'bun scripts/check-lint-ratchet.ts' },
   { name: 'check-multiplatform-tier', cmd: 'bun scripts/check-multiplatform-tier.ts' },
   { name: 'check-pyreon-lint-ratchet', cmd: 'bun scripts/check-pyreon-lint-ratchet.ts' },
+  // App-side line count across the reference apps — the framework's "write
+  // less code" claim, ratcheted so it cannot quietly drift the wrong way.
+  { name: 'check-app-loc', cmd: 'bun scripts/check-app-loc.ts' },
   { name: 'gen-docs --check', cmd: 'bun run gen-docs --check' },
   { name: 'check-doc-claims', cmd: 'bun scripts/check-doc-claims.ts' },
   // The multiplatform capability matrix's headline must equal its own table's

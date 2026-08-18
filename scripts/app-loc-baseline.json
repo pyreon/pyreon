@@ -1,0 +1,21 @@
+{
+  "total": 4228,
+  "apps": {
+    "hn-clone": {
+      "code": 2410,
+      "files": 29
+    },
+    "kanban": {
+      "code": 561,
+      "files": 7
+    },
+    "chat": {
+      "code": 559,
+      "files": 10
+    },
+    "collab-board": {
+      "code": 698,
+      "files": 14
+    }
+  }
+}
