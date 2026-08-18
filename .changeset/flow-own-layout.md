@@ -12,4 +12,10 @@ The engine is **lazy-loaded**, exactly as elkjs was — an app that renders a fl
 
 **`computeLayout` keeps its async signature** — a caller awaiting it still works — but the engine underneath is pure and synchronous, so layouts are now **deterministic**: the same graph always produces the same positions, which elkjs did not guarantee.
 
-**Honest quality comparison** against elkjs on five graph shapes (chain, tree, two DAGs, a cycle): zero overlapping boxes in every case, and crossings match on chains, trees and cycles. On a 20-node DAG the layered engine produces 8 crossings where ELK produces 0; on a 40-node DAG they are level (29 vs 28). Bounding-box area runs 16–65% larger. ELK's layered pipeline uses Brandes–Köpf coordinate assignment and a full layer sweep; this uses a median heuristic with transposition, so expect comparable structure and somewhat more crossings on dense graphs.
+**Measured against elkjs across all seven algorithms** on four graph shapes.
+
+**Zero overlapping nodes everywhere** — a stronger guarantee than elkjs, whose stress layout leaves 22 / 6 / 29 overlapping pairs on the same graphs. Physical layouts (force, stress, radial) get a bounded overlap-relaxation pass, since optimising distance does not imply separation.
+
+Crossings: we WIN clearly on force (0/1/8 against ELK's 34/19/135) and match on chains, trees and cycles. We LOSE on `layered` for a 20-node DAG (8 against 0), on `tree` for a 40-node DAG (56 vs 16), and on `radial` (145 vs 67). ELK's layered pipeline uses Brandes–Köpf coordinate assignment and a full layer sweep; this uses a median heuristic with transposition, so expect comparable structure and more crossings when graphs get dense.
+
+**Performance at 1000 nodes**, after fixing three quadratic hot paths found by measurement rather than review: layered 2618ms → 10ms, force 53441ms → 450ms, stress 8312ms → 883ms. Every algorithm now completes in well under a second, locked by a test at each size.

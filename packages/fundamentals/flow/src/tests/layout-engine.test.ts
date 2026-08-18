@@ -197,3 +197,39 @@ describe('box / rectpacking', () => {
     expect(at(p, 'tall').x).toBeLessThanOrEqual(at(p, 'short').x)
   })
 })
+
+describe('scale — the engine must not freeze the tab', () => {
+  // Measured before optimisation, at n=1000: layered 2618ms, force 53441ms,
+  // stress 8312ms. All three were quadratic in a hot loop. These lock the
+  // fixes — a reintroduced O(n^2) would blow the budget by an order of
+  // magnitude, not squeak past it, so a generous bound is still a real guard.
+  const dag = (n: number) => {
+    const nodes = Array.from({ length: n }, (_, i) => node(`d${i}`))
+    const edges: FlowEdge[] = []
+    for (let i = 1; i < n; i++) edges.push({ source: `d${Math.floor((i - 1) / 3)}`, target: `d${i}` })
+    return { nodes, edges }
+  }
+
+  for (const algo of ALL) {
+    it(`${algo}: lays out 1000 nodes without freezing the tab`, () => {
+      const g = dag(1000)
+      const t0 = performance.now()
+      const p = runLayout(g.nodes, g.edges, algo)
+      const ms = performance.now() - t0
+      expect(p).toHaveLength(1000)
+      expect(ms).toBeLessThan(2000)
+    })
+  }
+
+  it('layered keeps 1000 nodes non-overlapping, not just fast', () => {
+    const g = dag(1000)
+    expect(overlappingPairs(runLayout(g.nodes, g.edges, 'layered'))).toEqual([])
+  })
+
+  it('radial ring radii stay monotonic, so rings cannot land on each other', () => {
+    // A wide inner ring once landed at a larger radius than the ring outside
+    // it — caught on a 40-node DAG by the elkjs comparison, not by eye.
+    const g = dag(60)
+    expect(overlappingPairs(runLayout(g.nodes, g.edges, 'radial'))).toEqual([])
+  })
+})
