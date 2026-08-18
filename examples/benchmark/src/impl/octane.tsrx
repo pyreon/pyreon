@@ -9,10 +9,45 @@
  *
  *   - the keyed list is the compiler's `@for (… ; key …)` block rather than
  *     `rows.map()` + a `key` prop;
- *   - no `memo()` wrapper on the row. React needs `memo` or selecting one row
- *     re-renders all 1,000; Octane compiles the row to fine-grained updates,
- *     so a manual memo is not the idiomatic thing a user would write. This is
- *     Octane's model working as designed, not a handicap applied to React.
+ *   - no `memo()` wrapper on the row. VERIFIED, not assumed: `memo` is real in
+ *     Octane and does bail a child body inside `@for`, but here it is 3.8x
+ *     SLOWER (~97µs vs ~25µs per selection) — the per-row props-object
+ *     allocation plus `shallowEqualProps` costs more than the child body it
+ *     skips, because the item body still runs for every row regardless. So
+ *     omitting it is Octane's model working as designed, not a handicap
+ *     applied to React.
+ *
+ * The id cell is `{row.id}`, NOT `{String(row.id)}` — the shape `react.ts` uses,
+ * and load-bearing. Octane classifies a `@for` body as DEP-PURE only when it
+ * contains no render-time call; a `String(...)` there drops the emitted
+ * `forBlock` flags from 30 to 26, clearing bit 2 (`depEligible`) and sending
+ * every surviving row through the full `renderBlock` path instead of the
+ * lighter direct item-body call. That one wrapper cost ~2.9x on select and also
+ * taxed three other ops (real Chromium, `bench-fair --frameworks Octane`, same
+ * machine, before -> after: select 100µs -> under the 100µs clamp; swap 1.10ms
+ * -> 700µs; partial update 900µs -> 700µs; replace 10.50ms -> 9.50ms; create/
+ * remove/clear/create-10k/append unchanged within noise). The rendered DOM is
+ * byte-identical either way. If you touch this cell, re-read the emitted flags
+ * before trusting any ratio: `compile(src, f, { mode: 'client' })` from
+ * `octane/compiler`.
+ *
+ * Per-selection µs above are median-of-3 at 1,000 rows on an UNCLAMPED clock
+ * (node + happy-dom), used because the corrected value falls under Chromium's
+ * 100µs `performance.now()` clamp; the browser figures are from bench-fair.
+ *
+ * Selection is O(n) in Octane by architecture, and that is the honest framing
+ * for any published multiplier: a `useState` write dirties the whole component,
+ * so every item body re-evaluates (DOM writes stay minimal — 2 — via per-binding
+ * `_prev` diffs). Cost is linear at ~0.09µs/row (12µs at 100 rows, 76µs at
+ * 1,000, 906µs at 10,000), so a ratio against an O(1) selector is a function of
+ * LIST LENGTH, not a fixed property of either framework — quote the row count
+ * with any such multiplier. Octane ships no `createSelector` equivalent (its
+ * public API is React's, and its `useState` third tuple member is a
+ * transition-rebase getter, not a subscription — verified: reading it still
+ * re-runs all 1,000 bodies). The only O(1) route is `useSyncExternalStore` plus
+ * a hand-written keyed store (~5.8µs here), a generic React-model escape hatch
+ * that `react.ts` and `preact.ts` do not use either — so declining it is
+ * uniform, not a handicap.
  *
  * Setters are published out through `useEffect` (fires post-commit) via a
  * Promise, exactly as `react.ts` does — the value is unknown at bundle time so
@@ -41,7 +76,7 @@ export function App(props: { onMounted: (setters: Setters) => void }) @{
     <tbody>
       @for (const row of rows; key row.id) {
         <tr class={row.id === selectedId ? 'selected' : ''}>
-          <td>{String(row.id)}</td>
+          <td>{row.id}</td>
           <td>{row.label}</td>
         </tr>
       }
