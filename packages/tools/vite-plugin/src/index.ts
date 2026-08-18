@@ -2218,7 +2218,19 @@ function autoImportCanonicalPrimitives(
   // The mask preserves positions (replaces with spaces) so existing-
   // import detection later in this function still aligns with the
   // original source for the splice.
-  const masked = _maskCommentsAndStrings(code)
+  // TWO masks, deliberately, because the two consumers want opposite things.
+  //
+  // USAGE scanning must not see a primitive name written inside a string — a
+  // diagnostic message containing `<Field name="…">` is not JSX usage, and
+  // treating it as such injects an import for a package the file's own package
+  // may not depend on, which breaks the build.
+  //
+  // IMPORT detection and the splice must still see module SPECIFIERS, which
+  // are strings. Masking them blinds `_collectImportedNames` and the
+  // extend-existing-import path, so the pass re-injects names the file already
+  // imports and emits a duplicate import line.
+  const maskedForUsage = _maskCommentsAndStrings(code)
+  const masked = _maskComments(code)
 
   // Build alternation matching all configured names — single regex pass.
   const allNames = Array.from(nameToSource.keys())
@@ -2226,7 +2238,7 @@ function autoImportCanonicalPrimitives(
   const jsxTagRe = new RegExp(`<(${nameAlt})(?=[\\s/>])`, 'g')
   const used = new Set<string>()
   let m: RegExpExecArray | null
-  while ((m = jsxTagRe.exec(masked)) !== null) {
+  while ((m = jsxTagRe.exec(maskedForUsage)) !== null) {
     used.add(m[1]!)
   }
   if (used.size === 0) return code
@@ -2356,36 +2368,142 @@ function autoImportCanonicalPrimitives(
  *   - line comments  `// ... newline`
  *   - block comments `/* ... *​/`
  */
-export function _maskCommentsAndStrings(code: string): string {
+function _maskSource(code: string, maskStrings: boolean): string {
   const out: string[] = new Array(code.length)
   let i = 0
   const n = code.length
+
+  /** Blank out [from, to) while preserving newlines so positions still align. */
+  const blank = (from: number, to: number): void => {
+    for (let j = from; j < to; j++) out[j] = code[j] === '\n' ? '\n' : ' '
+  }
+
   while (i < n) {
     const c = code[i] ?? ''
     const c2 = code[i + 1] ?? ''
+
     // Block comment
     if (c === '/' && c2 === '*') {
       const end = code.indexOf('*/', i + 2)
       const stop = end < 0 ? n : end + 2
-      for (let j = i; j < stop; j++) out[j] = code[j] === '\n' ? '\n' : ' '
+      blank(i, stop)
       i = stop
       continue
     }
+
     // Line comment
     if (c === '/' && c2 === '/') {
       let j = i
-      while (j < n && code[j] !== '\n') {
-        out[j] = ' '
-        j++
-      }
+      while (j < n && code[j] !== '\n') j++
+      blank(i, j)
       i = j
       continue
     }
+
+    // Quoted string. A JS string cannot span a raw newline, so an unterminated
+    // one stops at the line end rather than swallowing the rest of the file —
+    // an apostrophe in a comment the masker already removed cannot reach here,
+    // but a stray quote in real code must not blind the scanner to everything
+    // after it.
+    if (maskStrings && (c === '"' || c === "'")) {
+      let j = i + 1
+      while (j < n) {
+        const ch = code[j]
+        if (ch === '\\') {
+          j += 2
+          continue
+        }
+        if (ch === c || ch === '\n') break
+        j++
+      }
+      const stop = Math.min(j + 1, n)
+      blank(i, stop)
+      i = stop
+      continue
+    }
+
+    // Template literal. The whole literal is masked, INTERPOLATIONS INCLUDED.
+    //
+    // Masking `${…}` too means a JSX tag written inside an interpolation stops
+    // triggering the auto-import — a false NEGATIVE, where the author adds an
+    // explicit import. The alternative bias is a false POSITIVE, which injects
+    // an import for a package the file's own package may not depend on and
+    // BREAKS THE BUILD. An injecting transform must bias toward not injecting,
+    // so the cheap failure is the correct one.
+    //
+    // Nested templates inside an interpolation are tracked by depth so the
+    // closing backtick found is the real one.
+    if (maskStrings && c === '`') {
+      let j = i + 1
+      let depth = 0
+      while (j < n) {
+        const ch = code[j]
+        if (ch === '\\') {
+          j += 2
+          continue
+        }
+        if (ch === '$' && code[j + 1] === '{') {
+          depth++
+          j += 2
+          continue
+        }
+        if (ch === '}' && depth > 0) {
+          depth--
+          j++
+          continue
+        }
+        if (ch === '`') {
+          if (depth === 0) break
+          // A nested template inside an interpolation — skip it wholesale.
+          let k = j + 1
+          while (k < n) {
+            if (code[k] === '\\') {
+              k += 2
+              continue
+            }
+            if (code[k] === '`') break
+            k++
+          }
+          j = k + 1
+          continue
+        }
+        j++
+      }
+      const stop = Math.min(j + 1, n)
+      blank(i, stop)
+      i = stop
+      continue
+    }
+
     out[i] = c
     i++
   }
   return out.join('')
 }
+
+
+/**
+ * Mask comments AND string / template literals.
+ *
+ * Used for JSX-USAGE scanning: a primitive name inside a diagnostic message or
+ * a doc example is not usage, and treating it as such injects an import for a
+ * package the file may not depend on — which breaks the build.
+ */
+export function _maskCommentsAndStrings(code: string): string {
+  return _maskSource(code, true)
+}
+
+/**
+ * Mask ONLY comments, preserving strings.
+ *
+ * Used where module SPECIFIERS must stay readable — import detection and the
+ * extend-existing-import splice. Masking those blinds both, and the pass emits
+ * a duplicate import line instead of extending the existing one.
+ */
+export function _maskComments(code: string): string {
+  return _maskSource(code, false)
+}
+
 
 /** Collect every name imported via `import { ... }` / `import X` / `import * as X`. */
 export function _collectImportedNames(code: string): Set<string> {
