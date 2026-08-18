@@ -239,6 +239,62 @@ in the same batch AND one gates display of the other.
 > users don't burn the same 15 minutes of "the signal IS set, why isn't
 > the DOM updating".
 
+## Where Hooks May Be Called — The Setup-Frame Rule
+
+React forbids conditional hooks because it dispatches by call index: the Nth
+`useState` in a render must be the same Nth on the next render, so an `if` that
+skips one shifts every hook after it.
+
+**Pyreon has no index.** Components run ONCE, so a hook is an ordinary function
+call subject to ordinary control flow. The rule is not "hooks at the top level";
+it is:
+
+> A hook must run in the **setup frame** — the component's synchronous body —
+> because that is where the owner is active.
+
+Conditionals and loops are inside that frame. An event handler, a `setTimeout`,
+or an `await` continuation is not.
+
+```tsx
+function Panel(props: { mode: 'a' | 'b'; count: number }) {
+  // ✓ conditional hooks — legal
+  if (props.mode === 'a') {
+    const draft = signal('')
+    onMount(() => console.log('mounted a', draft()))
+    provide(ModeCtx, 'from-a')     // ✓ conditional provide — legal
+  } else {
+    provide(ModeCtx, 'from-b')
+  }
+
+  // ✓ hooks in a loop — legal
+  const cells = []
+  for (let i = 0; i < props.count; i++) cells.push(signal(i))
+
+  return <div>{cells.length}</div>
+}
+```
+
+What is NOT legal is calling a hook after the frame has unwound:
+
+```tsx
+function Bad() {
+  // ✗ runs on click, long after setup — there is no owner to attach to
+  const onClick = () => onMount(() => {})
+
+  // ✗ runs after an await — the frame is gone
+  onMount(async () => {
+    await load()
+    provide(Ctx, 'too late')
+  })
+}
+```
+
+**Why this matters beyond novelty:** it means data-driven UI does not need a
+configuration DSL. You can call a hook once per field of a schema you only
+discover at runtime — `fields.map((f) => form.register(f.name))` — which a
+call-index framework cannot express, and which is why schema-driven form
+libraries elsewhere route everything through a config object instead.
+
 ## Quick Reference
 
 | Expression | Reactive? | Why |
@@ -256,6 +312,7 @@ in the same batch AND one gates display of the other.
 | `<Show when={() => x()}>` | ✓ | Explicit accessor |
 | `<For each={items} by={...}>` | ✓ | Keyed reactive list |
 | `items().map(...)` | ✗ | Use `<For>` instead |
+| `if (x) { const s = signal(0) }` | n/a | Legal — components run once (see Setup-Frame Rule) |
 
 ## Common Mistakes
 
