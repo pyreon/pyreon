@@ -75,6 +75,7 @@ import * as os from 'node:os'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium, type Page } from 'playwright'
+import { auditCells, formatGuardReport } from './bimodality-guard'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PORT = 4178
@@ -573,6 +574,11 @@ async function main(): Promise<void> {
         `cross-origin isolated — check the COOP/COEP headers in vite.config.ts are being served.`,
     )
   }
+  // The bimodality guard scales its thresholds by the clock's granularity, so
+  // it MUST use the MEASURED quantum, not an assumed one: the same page reads
+  // 100µs under Chromium's default clamp and 5µs when cross-origin isolated,
+  // and the wrong value moves every quantum-scaled threshold by 20x.
+  const quantumMs = clock.quantumMs
 
   if (args.throttle && args.throttle > 1) {
     console.log(`[bench-fair] CPU throttling enabled — rate ${args.throttle}×`)
@@ -642,6 +648,26 @@ async function main(): Promise<void> {
   // JSON dump, baseline diff columns) to the canonical column order.
   const suites = canonicalizeSuites(pooled)
 
+  // ─── Bimodality guard ──────────────────────────────────────────────────
+  // Every other correctness check in this harness validates WITHIN an op (did
+  // the DOM reach the expected state?). None of them can see an op that was
+  // perturbed by its NEIGHBOURS — which is how a run published
+  // `outright React 19` on append with Vanilla at 48.72ms, caught only by a
+  // human noticing that hand-written DOM cannot lose 2.2× to React at
+  // appending. Runs BEFORE the tables so a reader meets the failure before the
+  // verdict it invalidates.
+  const guard = auditCells(
+    suites.flatMap((s) =>
+      s.results.map((r) => ({
+        op: r.name,
+        framework: s.framework,
+        samples: r.samples ?? [],
+      })),
+    ),
+    quantumMs,
+  )
+  for (const line of formatGuardReport(guard, quantumMs)) console.log(line)
+
   printMachineStamp(chromiumVersion)
   printMarkdownTable(suites)
   printRetainedHeapTable(suites, heapByFramework)
@@ -678,6 +704,53 @@ async function main(): Promise<void> {
     }
     const baseline = JSON.parse(readFileSync(args.baseline, 'utf-8')) as { suites: SuiteResult[] }
     printDiffTable(baseline.suites, suites)
+  }
+
+  // Non-zero exit is the enforcement; the tables above are left intact so the
+  // failure can be diagnosed from the same output. Repeated here because the
+  // guard's own report scrolls off the top of a full run.
+  if (guard.emptyAudit || guard.failures.length > 0) {
+    console.error('')
+    console.error(
+      guard.emptyAudit
+        ? '[bench-fair] BIMODALITY GUARD: nothing measurable — an empty audit is not a pass.'
+        : `[bench-fair] BIMODALITY GUARD FAILED on ${guard.failures.length} cell(s): ` +
+          `${guard.failures.map((f) => `${f.op}/${f.framework}`).join(', ')}. ` +
+          'These medians are artifact modes, not measurements — do not publish them.',
+    )
+    process.exit(1)
+  }
+}
+
+/**
+ * Spin-read `performance.now()` and take the smallest non-zero delta — that IS
+ * the clock's granularity. A property of the clock, so it is valid to probe on
+ * a loaded machine.
+ */
+async function measureClockQuantum(
+  browser: Awaited<ReturnType<typeof chromium.launch>>,
+  baseUrl: string,
+): Promise<number> {
+  const ctx = await browser.newContext()
+  const page = await ctx.newPage()
+  try {
+    await page.goto(baseUrl, { waitUntil: 'load' })
+    return await page.evaluate(() => {
+      let smallest = Number.POSITIVE_INFINITY
+      let prev = performance.now()
+      const end = prev + 150
+      while (performance.now() < end) {
+        const t = performance.now()
+        if (t > prev) {
+          if (t - prev < smallest) smallest = t - prev
+          prev = t
+        }
+      }
+      // Fall back to Chromium's default clamp if the spin read nothing.
+      return Number.isFinite(smallest) ? smallest : 0.1
+    })
+  } finally {
+    await ctx.close()
   }
 }
 
