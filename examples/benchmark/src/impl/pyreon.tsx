@@ -184,23 +184,6 @@ export async function runPyreon(container: HTMLElement): Promise<BenchSuite> {
     },
   )
 
-  // Clock-independent twin of 'clear rows'. One cycle = build-1000 + clear-1000
-  // (the rebuild MUST be inside the region — you cannot clear twice without it).
-  // Subtract the measured 'create 1,000 rows' to recover the clear alone.
-  await bench(
-    'clear rows (batch cycle)',
-    suite,
-    async () => {
-      rows.set([])
-    },
-    {
-      reset: () => rows.set(mkRows(1_000)),
-      batchK: BATCH_K_CLEAR,
-      batchExpect: 0,
-      batchPreExpect: 1_000,
-    },
-  )
-
   rows.set(mkRows(1_000))
   await tick()
 
@@ -227,6 +210,31 @@ export async function runPyreon(container: HTMLElement): Promise<BenchSuite> {
         if (current.length > 10_000) rows.set(current.slice(0, 10_000))
       },
       verify: expectRows(11_000),
+    },
+  )
+
+  // ── clear-rows batch instrument — DELIBERATELY LAST ──────────────────────
+  // This block builds and destroys ~600k rows (K cycles x samples), which is
+  // orders of magnitude more DOM churn than any ordinary op. Sited mid-suite it
+  // CONTAMINATED the following `append` measurement: samples went bimodal
+  // (~18ms vs ~55ms) and only the FREQUENCY of the fast mode differed, so the
+  // median was decided by which mode won rather than by the op's cost —
+  // Vanilla's append read 46ms against a true ~17ms. Bisected with the K
+  // switches: the CLEAR batch causes it, the select batch does not, and a
+  // forced JS `gc()` settle does NOT fix it (the backlog is Blink-side, not JS
+  // heap). Running it last makes the contamination structurally impossible.
+  // Do not move it back above another timed op.
+  await bench(
+    'clear rows (batch cycle)',
+    suite,
+    async () => {
+      rows.set([])
+    },
+    {
+      reset: () => rows.set(mkRows(1_000)),
+      batchK: BATCH_K_CLEAR,
+      batchExpect: 0,
+      batchPreExpect: 1_000,
     },
   )
 

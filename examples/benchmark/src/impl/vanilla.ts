@@ -210,23 +210,6 @@ export async function runVanilla(container: HTMLElement): Promise<BenchSuite> {
     },
   )
 
-  // Clock-independent twin of 'clear rows'. Cycle = build-1000 + clear-1000.
-  await bench(
-    'clear rows (batch cycle)',
-    suite,
-    async () => {
-      renderAll([])
-    },
-    {
-      reset: () => {
-        renderAll(buildRows(1_000))
-      },
-      batchK: BATCH_K_CLEAR,
-      batchExpect: 0,
-      batchPreExpect: 1_000,
-    },
-  )
-
   // Re-create for the big test
   renderAll(buildRows(1_000))
   await tick()
@@ -273,6 +256,33 @@ export async function runVanilla(container: HTMLElement): Promise<BenchSuite> {
         }
       },
       verify: expectRows(11_000),
+    },
+  )
+
+  // ── clear-rows batch instrument — DELIBERATELY LAST ──────────────────────
+  // This block builds and destroys ~600k rows (K cycles x samples), which is
+  // orders of magnitude more DOM churn than any ordinary op. Sited mid-suite it
+  // CONTAMINATED the following `append` measurement: samples went bimodal
+  // (~18ms vs ~55ms) and only the FREQUENCY of the fast mode differed, so the
+  // median was decided by which mode won rather than by the op's cost —
+  // Vanilla's append read 46ms against a true ~17ms. Bisected with the K
+  // switches: the CLEAR batch causes it, the select batch does not, and a
+  // forced JS `gc()` settle does NOT fix it (the backlog is Blink-side, not JS
+  // heap). Running it last makes the contamination structurally impossible.
+  // Do not move it back above another timed op.
+  await bench(
+    'clear rows (batch cycle)',
+    suite,
+    async () => {
+      renderAll([])
+    },
+    {
+      reset: () => {
+        renderAll(buildRows(1_000))
+      },
+      batchK: BATCH_K_CLEAR,
+      batchExpect: 0,
+      batchPreExpect: 1_000,
     },
   )
 

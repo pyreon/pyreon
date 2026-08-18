@@ -345,6 +345,40 @@ async function batchSample(
 }
 
 /**
+ * Drain the JS-heap collection backlog a batch bench leaves behind.
+ *
+ * GC-then-YIELD-until-stable, the same recipe `bench-fair.ts` uses for the
+ * retained-heap metric: a synchronous `gc()` does not settle a heap, because
+ * some reclamation only completes on a LATER event-loop turn.
+ *
+ * HONEST SCOPE — this is hygiene, NOT the fix for cross-op contamination.
+ * It was tried as that fix and MEASURABLY FAILED: with the `clear` batch still
+ * sited mid-suite, Vanilla's following `append` stayed at 50.3ms against a true
+ * ~17ms (4/20 samples in the fast mode) even with this settle in place. The
+ * backlog that biases the next op is Blink-side (DOM/layout engine state from
+ * ~600k row create/destroy cycles), which a JS `gc()` cannot touch. The actual
+ * fix is ORDERING — the clear batch now runs last in every impl. Kept because
+ * draining the JS heap before returning is still correct, but do not rely on it
+ * to isolate a churn-heavy bench from its neighbours.
+ */
+async function settleHeap(): Promise<void> {
+  const g = globalThis as { gc?: () => void }
+  if (!g.gc) return
+  const perf = performance as Performance & { memory?: { usedJSHeapSize?: number } }
+  const used = () => perf.memory?.usedJSHeapSize ?? null
+  const STABLE_DELTA = 16 * 1024
+  let prev = Number.POSITIVE_INFINITY
+  for (let i = 0; i < 12; i++) {
+    g.gc()
+    await new Promise((r) => setTimeout(r, 50))
+    const cur = used()
+    if (cur === null) return
+    if (prev - cur >= 0 && prev - cur < STABLE_DELTA) return
+    prev = cur
+  }
+}
+
+/**
  * Batched variant of `bench`. Same warmup/RUNS/statistics shape, except each
  * "sample" is a K-cycle region mean rather than one timed op, so the reported
  * median/CI95 are per-cycle costs that do not depend on clock resolution.
@@ -368,6 +402,8 @@ async function benchBatched(
     samples.push(await batchSample(suite, fn, options, K))
     await tick()
   }
+
+  await settleHeap()
 
   const sorted = [...samples].sort((a, b) => a - b)
   const mean = samples.reduce((s, x) => s + x, 0) / samples.length
