@@ -12,9 +12,11 @@ import {
   summarize,
   validateRegistry,
   WARN_ALLOWLIST,
+  webviewHostProblems,
   type EntryResult,
   type RegistryEntry,
   type SnippetOutcome,
+  type WebviewHostCheck,
 } from '../../../../../scripts/check-native-coverage'
 
 const zeroWarn = (name: string): SnippetOutcome => ({ name, warnings: 0, messages: [] })
@@ -109,6 +111,74 @@ describe('classifyEntry — web-first', () => {
   })
 })
 
+describe('classifyEntry — webview-host', () => {
+  const entry: RegistryEntry = {
+    name: '@x/charts',
+    mechanism: 'webview-host',
+    rationale: 'hosts ECharts in a native WebView',
+    webviewHost: { hostHtmlExport: 'buildChartHostHtml', componentExport: 'ChartWebView' },
+  }
+  const ok: WebviewHostCheck = {
+    exportDeclared: true,
+    moduleExists: true,
+    hostHtmlExported: true,
+    componentExported: true,
+    testExists: true,
+    testFiles: ['src/tests/webview.test.ts'],
+  }
+
+  it('crosses when the whole ./webview contract holds', () => {
+    const r = classifyEntry(entry, undefined, undefined, ok)
+    expect(r.status).toBe('crosses')
+    expect(r.detail).toContain('native <WebView>')
+  })
+
+  it('carries the honesty caveat in its detail — the count can never read as native rendering', () => {
+    const r = classifyEntry(entry, undefined, undefined, ok)
+    expect(r.detail).toContain('NOT a native view')
+  })
+
+  // A webview-host entry CLAIMS a shipping crossing path, so each missing piece
+  // is a REGRESSION (a hard failure), never a tracked gap. That asymmetry vs
+  // web-first is the whole point of the mechanism earning its place.
+  it.each([
+    ['the subpath export vanished', { exportDeclared: false }, 'no "./webview" export'],
+    ['the module vanished', { moduleExists: false }, 'does not exist on disk'],
+    ['the host-page builder vanished', { hostHtmlExported: false }, 'buildChartHostHtml'],
+    ['the host component vanished', { componentExported: false }, 'ChartWebView'],
+    ['no test covers it', { testExists: false }, 'no test file'],
+  ])('is a REGRESSION when %s', (_label, broken, expected) => {
+    const r = classifyEntry(entry, undefined, undefined, { ...ok, ...broken })
+    expect(r.status).toBe('regression')
+    expect(r.detail).toContain(expected)
+  })
+
+  it('is a REGRESSION when the contract was never measured at all', () => {
+    // An unmeasurable claim must FAIL, never silently pass — the empty-input
+    // hole the doctor gates were fixed for.
+    expect(classifyEntry(entry, undefined, undefined, undefined).status).toBe('regression')
+  })
+
+  it('is a REGRESSION when the entry declares no contract to verify', () => {
+    const noContract: RegistryEntry = {
+      name: '@x/charts',
+      mechanism: 'webview-host',
+      rationale: 'r',
+    }
+    expect(classifyEntry(noContract, undefined, undefined, ok).status).toBe('regression')
+  })
+
+  it('reports EVERY broken part at once, not just the first', () => {
+    const problems = webviewHostProblems(entry, {
+      ...ok,
+      hostHtmlExported: false,
+      componentExported: false,
+      testExists: false,
+    })
+    expect(problems).toHaveLength(3)
+  })
+})
+
 describe('summarize', () => {
   it('counts crossings, gaps and regressions and lists them', () => {
     const results: EntryResult[] = [
@@ -151,6 +221,36 @@ describe('validateRegistry — invariants', () => {
     expect(errs.some((e) => e.includes('snippet'))).toBe(true)
   })
 
+  it('flags a webview-host entry with no webviewHost contract (its crossing proof)', () => {
+    const errs = validateRegistry([{ name: '@x/a', mechanism: 'webview-host', rationale: 'r' }])
+    expect(errs.some((e) => e.includes('webviewHost contract'))).toBe(true)
+  })
+
+  it('flags a webview-host entry that wrongly requires native co-source', () => {
+    const errs = validateRegistry([
+      {
+        name: '@x/a',
+        mechanism: 'webview-host',
+        rationale: 'r',
+        requiresCoSource: true,
+        webviewHost: { hostHtmlExport: 'b', componentExport: 'C' },
+      },
+    ])
+    expect(errs.some((e) => e.includes('no native co-source'))).toBe(true)
+  })
+
+  it('flags a NON-webview-host entry that carries a webviewHost contract', () => {
+    const errs = validateRegistry([
+      {
+        name: '@x/a',
+        mechanism: 'web-first',
+        rationale: 'r',
+        webviewHost: { hostHtmlExport: 'b', componentExport: 'C' },
+      },
+    ])
+    expect(errs.some((e) => e.includes('only a webview-host entry'))).toBe(true)
+  })
+
   it('flags a duplicate registry entry', () => {
     const errs = validateRegistry([
       { name: '@x/a', mechanism: 'pmtc-lowers', rationale: 'r', snippet: 's' },
@@ -173,6 +273,24 @@ describe('the real REGISTRY', () => {
     for (const e of REGISTRY) {
       if (e.mechanism === 'native-container') expect(e.requiresCoSource).toBe(true)
       if (e.mechanism === 'web-first') expect(e.requiresCoSource).toBeUndefined()
+    }
+  })
+
+  it('every webview-host entry names BOTH host exports to verify', () => {
+    const hosted = REGISTRY.filter((e) => e.mechanism === 'webview-host')
+    expect(hosted.length).toBeGreaterThan(0)
+    for (const e of hosted) {
+      expect(e.webviewHost?.hostHtmlExport, e.name).toBeTruthy()
+      expect(e.webviewHost?.componentExport, e.name).toBeTruthy()
+    }
+  })
+
+  it('every webview-host rationale states the evidence RUNG — including what is NOT proven', () => {
+    // The rationale is the human-readable truth a reader trusts. A hosted
+    // package is real-Chromium proven and NOT device-proven; a rationale that
+    // omits the second half overstates the crossing.
+    for (const e of REGISTRY.filter((x) => x.mechanism === 'webview-host')) {
+      expect(e.rationale, e.name).toContain('NOT device-proven')
     }
   })
 })

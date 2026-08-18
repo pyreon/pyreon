@@ -27,6 +27,16 @@
  *                         non-empty. Several ALSO carry a `pmtc-lowers` snippet
  *                         (store/query/i18n/…), tested as a bonus — belt and
  *                         braces: the runtime ships AND the authoring lowers.
+ *   - `webview-host`    — its engine is a WEB engine (ECharts, ProseMirror,
+ *                         CodeMirror, an elk/SVG layout) that cannot be
+ *                         reimplemented as a native view, so the package ships a
+ *                         `./webview` subpath that runs the SAME web bundle
+ *                         inside a native `<WebView>` (WKWebView / Android
+ *                         WebView / `<iframe srcdoc>` on web), with a
+ *                         bidirectional data bridge. Proven by asserting the
+ *                         subpath is DECLARED, the module EXISTS, it exports the
+ *                         documented host API, and a test covers it — see
+ *                         `WEBVIEW_HOST_CAVEATS` for what this does NOT buy.
  *   - `web-first`       — a rich widget or web-coupled API whose native-frontend
  *                         arc is still OPEN. Tracked as a known gap, not a hard
  *                         failure. Where a canonical snippet exists it is
@@ -59,7 +69,29 @@ import { join, resolve } from 'node:path'
 // vitest (node) in test-utils. Resolve from this file's URL instead.
 const REPO = resolve(new URL('..', import.meta.url).pathname)
 
-export type Mechanism = 'pmtc-lowers' | 'native-container' | 'web-first'
+export type Mechanism = 'pmtc-lowers' | 'native-container' | 'web-first' | 'webview-host'
+
+/**
+ * What a `webview-host` entry does NOT buy. Printed with the report so the
+ * coverage number can never be read as "natively rendered".
+ *
+ * Hosting means the SAME web bundle runs inside a native shell. That IS one
+ * codebase on every target and it ships — but it is not a native view, and the
+ * differences are real:
+ *
+ *   - a WebView costs process/startup time the native view tree does not;
+ *   - every prop/event crosses a JSON bridge, so interaction is not at native
+ *     latency and large payloads are serialized per update;
+ *   - the hosted content is opaque to native gestures and to the platform
+ *     accessibility tree (VoiceOver/TalkBack see a web document, and the
+ *     `AccessibilityProps` vocabulary stops at the WebView boundary);
+ *   - the host page must be BUNDLED with the app (or fetched, which App Store
+ *     4.2 / Play policy discourage), so the engine's bytes ship per app.
+ */
+export const WEBVIEW_HOST_CAVEATS =
+  'the SAME web bundle inside a native shell — real, shipping, one codebase; ' +
+  'NOT a native view: WebView startup cost, JSON-bridge latency, no native ' +
+  'gesture/accessibility integration for hosted content, host page must be bundled'
 
 export interface RegistryEntry {
   /** `@pyreon/<name>` — the published package. */
@@ -80,6 +112,21 @@ export interface RegistryEntry {
    * exist and be non-empty. Set on every `native-container` entry.
    */
   requiresCoSource?: boolean
+  /**
+   * The `./webview` host contract to VERIFY. Set on every `webview-host` entry.
+   *
+   * The export names are NAMED here rather than derived from the package name,
+   * because they are pattern-identical but not mechanically derivable
+   * (`@pyreon/charts` → `buildChartHostHtml`, SINGULAR; `@pyreon/rich-text` →
+   * `buildRichTextHostHtml`, PascalCase). A derivation rule would either be
+   * wrong for those two or so loose it verified nothing.
+   */
+  webviewHost?: {
+    /** the host-page builder, e.g. `buildChartHostHtml` */
+    hostHtmlExport: string
+    /** the host component, e.g. `ChartWebView` */
+    componentExport: string
+  }
 }
 
 /**
@@ -416,26 +463,49 @@ export function C() {
   return (<Stack><Text>hk</Text></Stack>)
 }`,
   },
+  // ── webview-host: the web ENGINE runs inside a native <WebView> ──────────
+  // These four cannot be reimplemented as native views (ECharts is a canvas
+  // engine, ProseMirror/CodeMirror are DOM editors, flow is an elk/SVG layout),
+  // so they cross by HOSTING: `./webview` builds a self-contained page that runs
+  // in WKWebView / Android WebView / an `<iframe srcdoc>` on web, with the
+  // bidirectional bridge (`data` → `window.__pyreonData` + a `pyreondata`
+  // event; `window.pyreonPostMessage` → `onMessage`).
+  //
+  // Evidence rung, stated per entry rather than implied — the host BRIDGE is
+  // proven in real Chromium against the REAL engine (`src/webview.browser.test.tsx`),
+  // and the native `<WebView>` host is emit + stub-typecheck proven (PMTC lowers
+  // it on both targets; `examples/native-viz` emits 24 `PyreonWebView` calls,
+  // 0 warnings). NO device test hosts a WebView on either platform — see the
+  // `not device-proven` note each rationale carries.
   {
     name: '@pyreon/charts',
-    mechanism: 'web-first',
-    rationale: 'rich SVG/canvas charting widget; native charting frontend arc still open.',
+    mechanism: 'webview-host',
+    rationale:
+      'ECharts is a canvas engine with no native equivalent, so it crosses by HOSTING the same web chart in a native <WebView> (@pyreon/charts/webview). Bridge proven in real Chromium against real ECharts; native host is emit + stub-typecheck proven, NOT device-proven.',
+    webviewHost: { hostHtmlExport: 'buildChartHostHtml', componentExport: 'ChartWebView' },
   },
   {
     name: '@pyreon/code',
-    mechanism: 'web-first',
-    rationale: 'CodeMirror-backed code editor; native editor frontend arc still open.',
+    mechanism: 'webview-host',
+    rationale:
+      'CodeMirror 6 is a DOM editor with no native equivalent, so it crosses by HOSTING the same editor in a native <WebView> (@pyreon/code/webview). Bridge proven in real Chromium against real CodeMirror; native host is emit + stub-typecheck proven, NOT device-proven.',
+    webviewHost: { hostHtmlExport: 'buildCodeHostHtml', componentExport: 'CodeWebView' },
   },
   {
     name: '@pyreon/flow',
-    mechanism: 'web-first',
-    rationale: 'node-graph/diagram canvas widget; native frontend arc still open.',
+    mechanism: 'webview-host',
+    rationale:
+      'the node-graph is an elk/SVG layout with no native equivalent, so it crosses by HOSTING the same diagram in a native <WebView> (@pyreon/flow/webview — self-contained, no CDN). Bridge + real SVG render proven in real Chromium; native host is emit + stub-typecheck proven, NOT device-proven.',
+    webviewHost: { hostHtmlExport: 'buildFlowHostHtml', componentExport: 'FlowWebView' },
   },
   {
     name: '@pyreon/rich-text',
-    mechanism: 'web-first',
-    rationale: 'ProseMirror-backed WYSIWYG editor; native editor frontend arc still open.',
+    mechanism: 'webview-host',
+    rationale:
+      'TipTap/ProseMirror is a DOM editor with no native equivalent, so it crosses by HOSTING the same WYSIWYG in a native <WebView> (@pyreon/rich-text/webview). Bridge proven in real Chromium against real TipTap; native host is emit + stub-typecheck proven, NOT device-proven.',
+    webviewHost: { hostHtmlExport: 'buildRichTextHostHtml', componentExport: 'RichTextWebView' },
   },
+
   {
     name: '@pyreon/dnd',
     mechanism: 'web-first',
@@ -467,6 +537,56 @@ export interface SnippetOutcome {
   messages: string[]
 }
 
+/**
+ * The measured state of a `webview-host` entry's `./webview` contract. Every
+ * field is an OBSERVATION (from package.json / the module source / the test
+ * tree), so the verdict below is pure and unit-testable.
+ */
+export interface WebviewHostCheck {
+  /** `package.json` `exports` declares a `./webview` subpath */
+  exportDeclared: boolean
+  /** the file that subpath resolves to exists on disk */
+  moduleExists: boolean
+  /** the module source exports the named host-page builder */
+  hostHtmlExported: boolean
+  /** the module source exports the named host component */
+  componentExported: boolean
+  /** at least one test file covers the webview module */
+  testExists: boolean
+  /** the test files found, for the report */
+  testFiles: string[]
+}
+
+/**
+ * Verify a `webview-host` entry against its measured contract. PURE.
+ *
+ * Returns the list of PROBLEMS — empty means the mechanism is really there.
+ * Any non-empty result FAILS the gate: a `webview-host` entry claims a shipping
+ * crossing path, so a missing export or a vanished subpath is a regression, not
+ * a gap. (That asymmetry is the point — `web-first` is allowed to be absent;
+ * `webview-host` is a claim that must hold.)
+ */
+export function webviewHostProblems(
+  entry: RegistryEntry,
+  check: WebviewHostCheck | undefined,
+): string[] {
+  const spec = entry.webviewHost
+  if (!spec) return ['webview-host entry carries no webviewHost contract to verify']
+  if (!check) return ['webview-host contract was never measured (package not found?)']
+
+  const problems: string[] = []
+  if (!check.exportDeclared) problems.push('package.json declares no "./webview" export')
+  if (!check.moduleExists) problems.push('the "./webview" module does not exist on disk')
+  if (!check.hostHtmlExported) {
+    problems.push(`the webview module does not export \`${spec.hostHtmlExport}\` (the host-page builder)`)
+  }
+  if (!check.componentExported) {
+    problems.push(`the webview module does not export \`${spec.componentExport}\` (the host component)`)
+  }
+  if (!check.testExists) problems.push('no test file covers the webview module')
+  return problems
+}
+
 export interface EntryResult {
   name: string
   mechanism: Mechanism
@@ -483,13 +603,26 @@ export interface EntryResult {
  * @param snippet outcome of transforming entry.snippet (undefined if none)
  * @param coSourcePresent whether the co-source dirs exist + are non-empty
  *                   (undefined if the entry does not require co-source)
+ * @param webviewHost measured `./webview` contract (undefined unless the entry
+ *                   is `webview-host`)
  */
 export function classifyEntry(
   entry: RegistryEntry,
   snippet: SnippetOutcome | undefined,
   coSourcePresent: boolean | undefined,
+  webviewHost?: WebviewHostCheck | undefined,
 ): EntryResult {
   const base = { name: entry.name, mechanism: entry.mechanism }
+
+  if (entry.mechanism === 'webview-host') {
+    const problems = webviewHostProblems(entry, webviewHost)
+    if (problems.length > 0) return { ...base, status: 'regression', detail: problems.join('; ') }
+    return {
+      ...base,
+      status: 'crosses',
+      detail: `hosts its web engine in a native <WebView> via ./webview (${WEBVIEW_HOST_CAVEATS})`,
+    }
+  }
 
   if (entry.mechanism === 'web-first') {
     // A web-first snippet is EXPECTED to warn; a drop to 0 is progress, not a
@@ -573,6 +706,19 @@ export function validateRegistry(registry: RegistryEntry[]): string[] {
     if (e.mechanism === 'pmtc-lowers' && !e.snippet) {
       errs.push(`${e.name}: pmtc-lowers must carry a snippet (the crossing proof)`)
     }
+    if (e.mechanism === 'webview-host') {
+      if (!e.webviewHost) {
+        errs.push(`${e.name}: webview-host must carry a webviewHost contract (the crossing proof)`)
+      } else {
+        if (!e.webviewHost.hostHtmlExport) errs.push(`${e.name}: webviewHost needs a hostHtmlExport`)
+        if (!e.webviewHost.componentExport) errs.push(`${e.name}: webviewHost needs a componentExport`)
+      }
+      if (e.requiresCoSource) {
+        errs.push(`${e.name}: webview-host hosts a WEB bundle — it ships no native co-source`)
+      }
+    } else if (e.webviewHost) {
+      errs.push(`${e.name}: only a webview-host entry may carry a webviewHost contract`)
+    }
   }
   for (const name of Object.keys(WARN_ALLOWLIST)) {
     if (!seen.has(name)) errs.push(`WARN_ALLOWLIST names ${name}, which is not in the registry`)
@@ -586,6 +732,8 @@ interface PkgLoc {
   name: string
   dir: string
   native?: { swift?: string; kotlin?: string }
+  /** the raw `exports` map, for the `./webview` subpath check */
+  exports?: Record<string, unknown>
 }
 
 /** Map every published package name → its dir + pyreon.native field. */
@@ -604,7 +752,11 @@ function scanPackages(repoRoot: string): Map<string, PkgLoc> {
       const dir = join(catDir, pkg)
       const pj = join(dir, 'package.json')
       if (!existsSync(pj)) continue
-      let m: { name?: string; pyreon?: { native?: { swift?: string; kotlin?: string } } }
+      let m: {
+        name?: string
+        pyreon?: { native?: { swift?: string; kotlin?: string } }
+        exports?: Record<string, unknown>
+      }
       try {
         m = JSON.parse(readFileSync(pj, 'utf8'))
       } catch {
@@ -613,6 +765,7 @@ function scanPackages(repoRoot: string): Map<string, PkgLoc> {
       if (typeof m.name !== 'string') continue
       const loc: PkgLoc = { name: m.name, dir }
       if (m.pyreon?.native) loc.native = m.pyreon.native
+      if (m.exports && typeof m.exports === 'object') loc.exports = m.exports
       out.set(m.name, loc)
     }
   }
@@ -633,6 +786,107 @@ function dirHasSource(dir: string): boolean {
   }
   walk(dir)
   return found
+}
+
+/**
+ * MEASURE a package's `./webview` contract against what the registry claims.
+ *
+ * Deliberately reads the SOURCE the export points at (the `bun` condition, i.e.
+ * `src/webview.ts`) rather than a built `lib/`: this gate runs in `validate-fast`
+ * before any bootstrap, so keying on `lib/` would make the check a function of
+ * whether someone had built recently rather than of the source — the documented
+ * "a spawn-based test reads lib/" trap in reverse.
+ */
+function measureWebviewHost(
+  loc: PkgLoc | undefined,
+  spec: NonNullable<RegistryEntry['webviewHost']>,
+): WebviewHostCheck | undefined {
+  if (!loc) return undefined
+
+  const sub = loc.exports?.['./webview'] as Record<string, string> | string | undefined
+  const exportDeclared = sub !== undefined
+  // Prefer the `bun` condition (source); fall back to any string target so a
+  // future exports shape does not silently read as "not declared".
+  const target =
+    typeof sub === 'string'
+      ? sub
+      : (sub?.bun ?? sub?.import ?? sub?.default ?? sub?.types)
+
+  let moduleExists = false
+  let source = ''
+  if (typeof target === 'string' && target.length > 0) {
+    const file = join(loc.dir, target)
+    try {
+      source = readFileSync(file, 'utf8')
+      moduleExists = true
+    } catch {
+      moduleExists = false
+    }
+  }
+
+  const tests = findWebviewTests(join(loc.dir, 'src'))
+  return {
+    exportDeclared,
+    moduleExists,
+    hostHtmlExported: moduleExports(source, spec.hostHtmlExport),
+    componentExported: moduleExports(source, spec.componentExport),
+    testExists: tests.length > 0,
+    testFiles: tests,
+  }
+}
+
+/**
+ * Does `source` export `name`? Matches the declaration forms this repo uses —
+ * `export function X`, `export const X`, `export class X`, and the re-export
+ * list `export { X }` / `export { Y as X }`. Word-boundary anchored, so
+ * `buildChartHostHtmlOptions` never satisfies `buildChartHostHtml`.
+ */
+function moduleExports(source: string, name: string): boolean {
+  if (source.length === 0 || name.length === 0) return false
+  const n = name.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`)
+  const decl = new RegExp(String.raw`^\s*export\s+(?:async\s+)?(?:function|const|let|var|class)\s+${n}\b`, 'm')
+  if (decl.test(source)) return true
+  // `export { a, b as X }` — scan each brace group for the exported NAME
+  // (the half after `as`, or the bare identifier).
+  for (const m of source.matchAll(/export\s*\{([^}]*)\}/g)) {
+    for (const part of (m[1] ?? '').split(',')) {
+      const seg = part.trim()
+      if (seg.length === 0) continue
+      const asIdx = seg.search(/\bas\b/)
+      const exported = asIdx === -1 ? seg : seg.slice(asIdx + 2).trim()
+      if (exported.replace(/^type\s+/, '').trim() === name) return true
+    }
+  }
+  return false
+}
+
+/** Every test file under `src` whose name mentions webview. */
+function findWebviewTests(srcDir: string): string[] {
+  const found: string[] = []
+  const walk = (d: string): void => {
+    let entries: string[]
+    try {
+      entries = readdirSync(d)
+    } catch {
+      return
+    }
+    for (const e of entries) {
+      const p = join(d, e)
+      let isDir = false
+      try {
+        isDir = statSync(p).isDirectory()
+      } catch {
+        continue
+      }
+      if (isDir) {
+        walk(p)
+      } else if (/webview/i.test(e) && /\.(test|spec)\.[cm]?[jt]sx?$/.test(e)) {
+        found.push(p)
+      }
+    }
+  }
+  walk(srcDir)
+  return found.sort()
 }
 
 /** Both co-source dirs (swift + kotlin) present + non-empty. */
@@ -688,6 +942,8 @@ async function main(): Promise<number> {
 
   const results: EntryResult[] = []
   const notices: string[] = []
+  /** measured `./webview` contracts, so the report can SHOW the evidence */
+  const webviewChecks = new Map<string, WebviewHostCheck>()
 
   for (const entry of REGISTRY) {
     // Run the snippet through both targets (if present).
@@ -704,7 +960,11 @@ async function main(): Promise<number> {
     }
 
     const coOk = entry.requiresCoSource ? coSourceOk(packages.get(entry.name)) : undefined
-    const res = classifyEntry(entry, outcome, coOk)
+    const webview = entry.webviewHost
+      ? measureWebviewHost(packages.get(entry.name), entry.webviewHost)
+      : undefined
+    if (webview) webviewChecks.set(entry.name, webview)
+    const res = classifyEntry(entry, outcome, coOk, webview)
     results.push(res)
 
     if (res.mechanism === 'web-first' && outcome && outcome.warnings === 0) {
@@ -730,11 +990,26 @@ async function main(): Promise<number> {
   for (const r of byMech('pmtc-lowers')) console.log(line(r))
   console.log('\nnative-container (ships co-located native runtime):')
   for (const r of byMech('native-container')) console.log(line(r))
+  const hosted = byMech('webview-host')
+  if (hosted.length > 0) {
+    console.log('\nwebview-host (the SAME web bundle inside a native <WebView>):')
+    for (const r of hosted) {
+      // Show the EVIDENCE, not just the verdict — the whole point of the
+      // mechanism is that it is verified rather than asserted.
+      const n = webviewChecks.get(r.name)?.testFiles.length ?? 0
+      const evidence = r.status === 'crosses' ? `./webview verified · ${n} test file(s)` : r.detail
+      console.log(`  ${r.status === 'crosses' ? '✓' : '✗'} ${r.name.padEnd(24)} ${evidence}`)
+    }
+    console.log(`  ⚠ ${WEBVIEW_HOST_CAVEATS}.`)
+  }
   console.log('\nweb-first (native-frontend arc still open):')
   for (const r of byMech('web-first')) console.log(line(r))
 
+  const hostedCrossing = hosted.filter((r) => r.status === 'crosses').length
+  const hostedNote =
+    hostedCrossing > 0 ? ` (${hostedCrossing} of them by WEBVIEW-HOSTING, not native rendering)` : ''
   console.log(
-    `\n${summary.crossing}/${summary.total} app-runtime packages cross; ${summary.gaps} open gap(s).`,
+    `\n${summary.crossing}/${summary.total} app-runtime packages cross${hostedNote}; ${summary.gaps} open gap(s).`,
   )
   if (summary.openGaps.length > 0) {
     console.log('Open gaps:')
