@@ -54,6 +54,9 @@ function Greeting() {
   return <p class={() => cls()}>hi</p>
 }`,
       related: 'https://pyreon.dev/docs/troubleshooting/ssr',
+    }),
+  },
+  {
     // The residual footgun left by lazy component children. That change moved a
     // compiled template in COMPONENT-CHILD position from an eager `jsx()`
     // argument to a thunk the component runs when it READS `props.children` —
