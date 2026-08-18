@@ -29,6 +29,34 @@ interface ErrorPattern {
 
 const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // The residual footgun left by compiled-template hydration ADOPTION.
+    // Hydration now binds a component's root `_tpl` against the SERVER nodes
+    // instead of cloning, which is what makes typed input, focus and scroll
+    // survive. Adoption is gated on the template's static skeleton matching
+    // the server's, so a server/client divergence in a STATIC attribute or a
+    // STATIC text now costs the adoption as well as producing this warning —
+    // the subtree is rebuilt and anything living on those nodes is discarded.
+    // Worth teaching because the second half is SILENT: the page still looks
+    // right, and only the state the user had already put into it is gone.
+    pattern: /Hydration mismatch \((tag|text)\): expected (.+?), got (.+?) at /,
+    diagnose: (m) => ({
+      cause: `The server rendered ${m[3]} where the client expected ${m[2]}, so hydration could not claim that node. Beyond the mismatch itself, a divergence in static markup inside a compiled template also blocks ADOPTION: the subtree is rebuilt from the client template, so text typed into an uncontrolled input before the bundle booted, focus, scroll position, and any listener attached outside Pyreon are lost with the old nodes.`,
+      fix: 'Make the first client render byte-identical to the server render. The usual causes are branching on something that differs across the boundary — `typeof window`, `Date.now()`, `Math.random()`, `localStorage`, or a locale/timezone-dependent format. Compute the value once and pass it through, or move the browser-only branch into `onMount` so it runs AFTER hydration has claimed the DOM.',
+      fixCode: `// diverges — the server has no window, so the markup differs
+function Greeting() {
+  return <p class={typeof window === 'undefined' ? 'ssr' : 'csr'}>hi</p>
+}
+
+// stable — same markup on both sides; the browser-only bit lands after hydration
+function Greeting() {
+  const cls = signal('ssr')
+  onMount(() => cls.set('csr'))
+  return <p class={() => cls()}>hi</p>
+}`,
+      related: 'https://pyreon.dev/docs/troubleshooting/ssr',
+    }),
+  },
+  {
     // The residual footgun left by the nested-setup-frame fix. That fix removed
     // the FRAMEWORK cause of this warning (a child component mounting mid-setup
     // — which the compiler does whenever `_tpl`'s bind fn calls `_mountSlot` —
