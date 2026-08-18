@@ -3515,6 +3515,55 @@ function inferTypeFromInitial(initial: ExprIR): TypeIR {
 }
 
 /**
+ * Resolve `useUrlState(key, DEFAULT)`'s second argument into the native
+ * initializer text plus the value type the emit builds a codec for.
+ *
+ * The int-vs-double split is `inferTypeFromInitial`'s rule, deliberately —
+ * every other PMTC lowering reads an integer literal as Int and a fractional
+ * one as Double, and a url-state binding that alone produced `1.0` where its
+ * sibling `useStorage('page', 1)` produced `1` would be the anomaly. It also
+ * keeps interpolation honest: `` `Page ${page()}` `` renders "Page 1" on web
+ * and on both targets.
+ *
+ * A missing default stays the empty string — unchanged from before this
+ * function existed. (The web would carry `undefined` through its `default:`
+ * serializer arm; native has no null-valued binding to represent that, and
+ * narrowing the gap is not what this change is for.)
+ *
+ * Returns null for anything not a scalar literal — arrays, objects,
+ * identifiers, template strings. The caller warns and leaves the call to the
+ * web.
+ */
+function resolveUrlStateDefault(
+  defNode: AnyNode | undefined,
+): { defaultValue: string; valueType: 'string' | 'int' | 'double' | 'boolean' } | null {
+  if (defNode === undefined) return { defaultValue: '""', valueType: 'string' }
+  // `useUrlState('offset', -1)` parses as a unary wrapping the literal, the
+  // same shape `inferTypeFromInitial` unwraps for `signal(-5)`.
+  let node = defNode
+  let sign = ''
+  if (node.type === 'UnaryExpression' && (node.operator === '-' || node.operator === '+')) {
+    const inner = node.argument as AnyNode | undefined
+    if (inner?.type !== 'Literal' || typeof inner.value !== 'number') return null
+    // A leading `+` is identity in both target languages but reads as an
+    // operator; drop it and keep only a real negation.
+    if (node.operator === '-') sign = '-'
+    node = inner
+  }
+  if (node.type !== 'Literal') return null
+  const v = node.value
+  if (typeof v === 'string') return { defaultValue: JSON.stringify(v), valueType: 'string' }
+  if (typeof v === 'boolean') return { defaultValue: String(v), valueType: 'boolean' }
+  if (typeof v === 'number') {
+    if (!Number.isFinite(v)) return null
+    return Number.isInteger(v)
+      ? { defaultValue: `${sign}${v}`, valueType: 'int' }
+      : { defaultValue: `${sign}${v}`, valueType: 'double' }
+  }
+  return null
+}
+
+/**
  * Infer a FLAT-SCALAR object literal's TypeIR — every field must be a scalar
  * (number/string/boolean). A spread, an empty object, or any non-scalar field
  * (a nested object, OR an array field) returns null (the caller degrades to
@@ -5509,12 +5558,10 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     const keyNode = args[0]
     const defNode = args[1]
     if (keyNode?.type !== 'Literal' || typeof keyNode.value !== 'string') return null
-    // v1 is string-valued. A number/boolean default would need the web's
-    // pluggable serializer baked in; coercing silently would be worse than
-    // leaving it to the unlowered-hook warning.
-    if (defNode !== undefined && (defNode.type !== 'Literal' || typeof defNode.value !== 'string')) {
+    const resolved = resolveUrlStateDefault(defNode)
+    if (resolved === null) {
       ctx.warnings.push(
-        `const ${name} = useUrlState(${JSON.stringify(keyNode.value)}, …) lowers only with a STRING default in v1 — a typed serializer is not baked into the native emit yet. Use a string and parse it, or keep the call behind a \`<Web>\` escape hatch.`,
+        `const ${name} = useUrlState(${JSON.stringify(keyNode.value)}, …) lowers with a STRING, NUMBER or BOOLEAN default — an array or object default infers a comma-join / JSON codec on the web, and there is no native type to decode into at this call site. Use a scalar and parse it, or keep the call behind a \`<Web>\` escape hatch.`,
       )
       return null
     }
@@ -5522,7 +5569,8 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       kind: 'url-state',
       name,
       key: keyNode.value,
-      defaultValue: defNode?.type === 'Literal' ? String(defNode.value) : '',
+      defaultValue: resolved.defaultValue,
+      valueType: resolved.valueType,
     }
   }
   if (calleeName === 'useParams') {
