@@ -26,8 +26,11 @@
  *   - check-multiplatform-tier (published pkg without a declared multiplatform story)
  *   - check-pyreon-lint-ratchet (@pyreon/lint advisory-finding count over framework src grew above baseline)
  *   - gen-docs --check      (manifest edited but generated files stale)
+ *   - check-generated-fresh (the OTHER half of the pair: `anti-patterns.md` /
+ *                            manifest edits leave the docs-site reference,
+ *                            troubleshooting and examples pages stale)
  *
- * 30 gates, ~4-8s warm on an unloaded machine. The point is: catch ALL the
+ * 34 gates, ~4-8s warm on an unloaded machine. The point is: catch ALL the
  * cheap-to-detect failures locally with ONE command before pushing.
  *
  * That number is worth keeping honest, because it is what decides whether
@@ -76,6 +79,13 @@ const GATES: Gate[] = [
   // terms; an example without either is code people copy with none.
   { name: 'check-license-coverage', cmd: 'bun scripts/check-license-coverage.ts' },
   { name: 'gen-docs --check', cmd: 'bun run gen-docs --check' },
+  // The OTHER half of the generator pair. `gen-docs` regenerates llms/api-reference;
+  // `gen-all.ts` regenerates the docs-site reference/troubleshooting/examples pages
+  // from `anti-patterns.md` and the manifests. Running only the first leaves the
+  // second stale, which is exactly what the `Docs Generated Fresh` CI job catches —
+  // and it caught it FOUR times in one day, each costing a CI round trip, because
+  // validate-fast checked one half and not the other. 0.3s.
+  { name: 'check-generated-fresh', cmd: 'bun docs/scripts/check-generated-fresh.ts' },
   { name: 'check-doc-claims', cmd: 'bun scripts/check-doc-claims.ts' },
   // The multiplatform capability matrix's headline must equal its own table's
   // Σ(weight × fraction) — the page once carried three disagreeing self-ratings.
