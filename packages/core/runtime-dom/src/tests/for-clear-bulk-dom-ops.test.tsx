@@ -196,7 +196,7 @@ const N = 200
 
 describe('mountFor — a clear/replace of n compiled rows costs O(1) DOM removals', () => {
   it('CLEAR: one bulk call, and it is the call that does the work', () => {
-    const { rows, ul, cleanup } = mountCompiledFor(N)
+    const { rows, ul } = mountCompiledFor(N)
     expect(ul.querySelectorAll('li.row')).toHaveLength(N)
 
     const ops = recordRemovals(() => rows.set([]))
@@ -206,13 +206,13 @@ describe('mountFor — a clear/replace of n compiled rows costs O(1) DOM removal
   })
 
   it('CLEAR: Pyreon itself fires ZERO removeChild — the cost stays O(1), not O(n)', () => {
-    const { rows, cleanup } = mountCompiledFor(N)
+    const { rows } = mountCompiledFor(N)
     const ops = recordRemovals(() => rows.set([]))
     expect(ops.ownRemovals).toBe(0)
   })
 
   it('CLEAR: every row is still torn down (O(1) DOM ops must not mean skipped cleanups)', () => {
-    const { rows, cleanup } = mountCompiledFor(N)
+    const { rows } = mountCompiledFor(N)
     const before = counts['runtime.cleanup'] ?? 0
     rows.set([])
     expect((counts['runtime.cleanup'] ?? 0) - before).toBe(N)
@@ -220,7 +220,7 @@ describe('mountFor — a clear/replace of n compiled rows costs O(1) DOM removal
   })
 
   it('REPLACE (no surviving key): one bulk call over the old rows, zero live removeChild', () => {
-    const { rows, ul, cleanup, mk } = mountCompiledFor(N)
+    const { rows, ul, mk } = mountCompiledFor(N)
     const ops = recordRemovals(() => {
       rows.set(Array.from({ length: N }, (_, i) => mk(10_000 + i)))
     })
