@@ -105,9 +105,14 @@ function buildTable(suites: BenchSuite[]) {
 
 // ─── Isolated containers ──────────────────────────────────────────────────────
 
-function makeContainer(): HTMLElement {
+function makeContainer(className?: string): HTMLElement {
   const el = document.createElement('div')
   el.style.cssText = 'position:absolute;left:-9999px;top:0;width:800px;visibility:hidden'
+  // `bench-fixture` opts the row-list table into DETERMINISTIC (fixed) table
+  // layout — see the rationale block in index.html. Only the row-list suite
+  // passes it; the scenario/hydration fixtures keep the browser default so
+  // their existing baselines stay comparable.
+  if (className) el.className = className
   document.body.appendChild(el)
   return el
 }
@@ -144,7 +149,7 @@ async function runSelected(frameworks: typeof ALL_FRAMEWORKS | { name: string; r
 
   for (const { name, run } of frameworks) {
     setStatus(`Running ${name}…`)
-    const container = makeContainer()
+    const container = makeContainer('bench-fixture')
     try {
       const suite = await run(container)
       suites.push(suite)

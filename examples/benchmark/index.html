@@ -7,6 +7,32 @@
     <style>
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0 }
 
+      /*
+       * Row-list fixture: DETERMINISTIC table layout.
+       *
+       * `table-layout: auto` (the CSS default) derives every column's width from
+       * the widest cell in the WHOLE table, so appending rows whose content is
+       * wider than anything already present invalidates the column widths and
+       * forces Chromium to re-measure all 11,000 rows. Whether that fires depends
+       * on the random label content and on how much the table has already seen —
+       * i.e. on benchmark HISTORY — which made `append 1,000 to 10,000 rows`
+       * BIMODAL: ~18ms when layout stayed incremental, ~50ms when it did not.
+       * The mode mix differed per framework and per run, so the reported median
+       * was decided by which mode happened to dominate.
+       *
+       * Measured decomposition of one `append` sample (Pyreon, 20 samples):
+       *   framework work  1.16-1.59ms   (steady — NOT the variable)
+       *   layout flush    17.5ms OR 50ms (the entire bimodality)
+       *
+       * `table-layout: fixed` takes column widths from the first row only, so an
+       * append can never invalidate them and layout stays incremental: 20/20
+       * samples unimodal. This is browser layout policy — it does not touch any
+       * framework's work, and it is applied identically to all eight.
+       *
+       * Scoped to `.bench-fixture` so the on-page results table is unaffected.
+       */
+      .bench-fixture table { table-layout: fixed; width: 100% }
+
       :root {
         --bg: #0f0f11;
         --surface: #1a1a1f;
