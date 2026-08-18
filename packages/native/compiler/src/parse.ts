@@ -205,7 +205,24 @@ interface ParseCtx {
    */
   endpointDefs: Map<
     string,
-    { method: string; pathTemplate: string; clientName: string; paramNames: string[] }
+    {
+      method: string
+      pathTemplate: string
+      clientName: string
+      paramNames: string[]
+      /**
+       * Literal `headers` from the endpoint DECLARATION's second argument
+       * (`api.endpoint('POST /users', { headers: { … } })`). The web treats
+       * these as the DEFAULT (`args?.headers ?? options.headers`), so a
+       * per-call `headers` replaces them wholesale. Empty when absent.
+       */
+      declHeaders: Record<string, string>
+      /**
+       * Declaration options that cannot be lowered, warned at CALL time (not
+       * declaration time) so an endpoint used only on web stays silent.
+       */
+      declUnlowerable: string[]
+    }
   >
 }
 
@@ -1172,6 +1189,233 @@ function readLiteralEntries(obj: AnyNode | undefined): Record<string, string> {
   return out
 }
 
+/** The literal value of a string/number/boolean literal node, else undefined. */
+function literalScalar(v: AnyNode | undefined): string | number | boolean | undefined {
+  const val = v?.value
+  if (
+    (v?.type === 'Literal' ||
+      v?.type === 'StringLiteral' ||
+      v?.type === 'NumericLiteral' ||
+      v?.type === 'BooleanLiteral') &&
+    (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean')
+  ) {
+    return val
+  }
+  return undefined
+}
+
+/** The non-computed property name of an object-literal `Property`, else undefined. */
+function propName(prop: AnyNode): string | undefined {
+  if (prop.type !== 'Property' || prop.computed) return undefined
+  return prop.key?.type === 'Identifier'
+    ? (prop.key.name as string)
+    : typeof prop.key?.value === 'string'
+      ? prop.key.value
+      : undefined
+}
+
+/**
+ * Encode a `:param` value for a URL PATH segment.
+ *
+ * This is deliberately the SAME platform primitive the web runtime calls
+ * (`@pyreon/http`'s `applyPathParams` → `encodeURIComponent`), not an
+ * approximation of it. The two sides must agree byte-for-byte, because one
+ * source file produces both URLs: a hand-rolled encoder here would make
+ * `getUser({ params: { id: 'a b' } })` request `/users/a%20b` on the web and
+ * something else on iOS/Android, silently. Encoding at COMPILE time is free —
+ * the native path only ever substitutes LITERALS — so the emitted URL is a
+ * fully-encoded constant.
+ *
+ * Un-encoded substitution was not merely cosmetic: a value containing `#`
+ * truncated the URL at the fragment, and `?` / `&` injected query structure
+ * into a path segment.
+ */
+const encodePathParam = (value: string): string => encodeURIComponent(value)
+
+/**
+ * Serialize literal query entries EXACTLY as the web's `buildQuery` does — by
+ * running the SAME `URLSearchParams` it runs.
+ *
+ * POSITION MATTERS, which is why this cannot share an encoder with
+ * {@link encodePathParam}: `URLSearchParams` is
+ * application/x-www-form-urlencoded, so a space becomes `+` and `'` becomes
+ * `%27`, whereas the same characters in a path segment are `%20` and a literal
+ * `'`. One encoder for both positions is wrong in both.
+ */
+function buildQueryString(entries: readonly (readonly [string, string])[]): string {
+  if (entries.length === 0) return ''
+  const search = new URLSearchParams()
+  for (const [k, v] of entries) search.append(k, v)
+  const out = search.toString()
+  return out ? `?${out}` : ''
+}
+
+/**
+ * Read an endpoint call's `query` object into ORDERED key/value pairs.
+ *
+ * Ordered PAIRS rather than a record because the web repeats a key per array
+ * entry (`{ tag: ['a','b'] }` → `?tag=a&tag=b`). `undefined` / `null` entries
+ * are dropped, matching `buildQuery`. Anything else that cannot be read as a
+ * literal is reported through `onUnlowerable` rather than dropped — a query
+ * parameter that silently disappears from the native request is a data bug,
+ * not a missing feature.
+ */
+function readQueryEntries(
+  obj: AnyNode | undefined,
+  onUnlowerable: (key: string) => void,
+): Array<[string, string]> {
+  const out: Array<[string, string]> = []
+  if (obj === undefined) return out
+  if (obj.type !== 'ObjectExpression') {
+    onUnlowerable('query')
+    return out
+  }
+  for (const prop of (obj.properties as AnyNode[] | undefined) ?? []) {
+    if (prop.type === 'SpreadElement') {
+      onUnlowerable('query (spread)')
+      continue
+    }
+    const key = propName(prop)
+    if (key === undefined) continue
+    const v = prop.value as AnyNode | undefined
+    // The web DROPS nullish entries rather than serializing "undefined".
+    if (isNullishLiteral(v)) continue
+    if (v?.type === 'ArrayExpression') {
+      for (const el of (v.elements as AnyNode[] | undefined) ?? []) {
+        if (isNullishLiteral(el)) continue
+        const item = literalScalar(el)
+        if (item === undefined) {
+          onUnlowerable(key)
+          continue
+        }
+        out.push([key, String(item)])
+      }
+      continue
+    }
+    const scalar = literalScalar(v)
+    if (scalar === undefined) {
+      onUnlowerable(key)
+      continue
+    }
+    out.push([key, String(scalar)])
+  }
+  return out
+}
+
+/** True for `null`, `undefined`, or an absent node — the entries the web drops. */
+function isNullishLiteral(v: AnyNode | undefined): boolean {
+  if (v === undefined || v === null) return true
+  if (v.type === 'NullLiteral') return true
+  if ((v.type === 'Literal' || v.type === 'NullLiteral') && v.value === null) return true
+  return v.type === 'Identifier' && v.name === 'undefined'
+}
+
+/**
+ * Read a literal `headers` object into string pairs, naming anything that
+ * cannot lower instead of dropping it.
+ */
+function readLiteralHeaders(
+  obj: AnyNode | undefined,
+  onUnlowerable: (what: string) => void,
+): Record<string, string> {
+  const out: Record<string, string> = {}
+  if (obj === undefined) return out
+  if (obj.type !== 'ObjectExpression') {
+    onUnlowerable('headers')
+    return out
+  }
+  for (const prop of (obj.properties as AnyNode[] | undefined) ?? []) {
+    if (prop.type === 'SpreadElement') {
+      onUnlowerable('headers (spread)')
+      continue
+    }
+    const key = propName(prop)
+    if (key === undefined) continue
+    const value = literalScalar(prop.value as AnyNode | undefined)
+    if (typeof value !== 'string') {
+      onUnlowerable(`headers.${key}`)
+      continue
+    }
+    out[key] = value
+  }
+  return out
+}
+
+/**
+ * Evaluate a JSON-shaped literal AST node to its runtime value.
+ *
+ * Returns a WRAPPER (`{ value }`) rather than the value itself so a literal
+ * `null` / `false` / `0` is distinguishable from "not a literal".
+ */
+function readJsonLiteral(node: AnyNode | undefined): { value: unknown } | undefined {
+  if (node === undefined) return undefined
+  if (node.type === 'NullLiteral' || ((node.type === 'Literal') && node.value === null)) {
+    return { value: null }
+  }
+  const scalar = literalScalar(node)
+  if (scalar !== undefined) return { value: scalar }
+  // `-1` parses as a unary expression, not a numeric literal.
+  if (node.type === 'UnaryExpression' && (node.operator === '-' || node.operator === '+')) {
+    const inner = literalScalar(node.argument as AnyNode | undefined)
+    if (typeof inner === 'number') return { value: node.operator === '-' ? -inner : inner }
+    return undefined
+  }
+  if (node.type === 'ArrayExpression') {
+    const items: unknown[] = []
+    for (const el of (node.elements as AnyNode[] | undefined) ?? []) {
+      const read = readJsonLiteral(el)
+      if (read === undefined) return undefined
+      items.push(read.value)
+    }
+    return { value: items }
+  }
+  if (node.type === 'ObjectExpression') {
+    const obj: Record<string, unknown> = {}
+    for (const prop of (node.properties as AnyNode[] | undefined) ?? []) {
+      const key = propName(prop)
+      if (key === undefined) return undefined
+      const read = readJsonLiteral(prop.value as AnyNode | undefined)
+      if (read === undefined) return undefined
+      obj[key] = read.value
+    }
+    return { value: obj }
+  }
+  return undefined
+}
+
+/**
+ * Endpoint CALL-SITE options that lower to native. Every other key on the call
+ * object is reported — see {@link ENDPOINT_UNLOWERABLE_ARGS}.
+ */
+const ENDPOINT_LOWERED_ARGS: ReadonlySet<string> = new Set(['params', 'query', 'json', 'headers'])
+
+/**
+ * Endpoint call-site options with NO native lowering, and why.
+ *
+ * Enumerating them — rather than warning generically — is what closes the
+ * class: `EndpointArgs` has a fixed shape, so every key is either lowered above
+ * or named here, and an option added to the DSL later falls through to the
+ * generic arm in `resolveEndpointParts` instead of vanishing. `json` and
+ * `headers` were in exactly that position: read by nobody, dropped in silence,
+ * so `createUser({ json })` issued a POST with no body on both targets.
+ */
+const ENDPOINT_UNLOWERABLE_ARGS: ReadonlyMap<string, string> = new Map([
+  ['signal', 'an AbortSignal has no analogue in the emitted fetch harness, which runs to completion'],
+  ['timeout', 'PyreonHttpRequest carries no timeout field'],
+  ['meta', 'per-call metadata is read by client middleware, which does not lower'],
+])
+
+/**
+ * Endpoint DECLARATION options with no native lowering.
+ *
+ * `response` is deliberately absent: the native path decodes into the typed
+ * struct the generic argument names (Swift `Decodable`, kotlinx), so a response
+ * schema IS honoured structurally — a mismatched payload rejects on both sides.
+ */
+const ENDPOINT_UNLOWERABLE_OPTIONS: ReadonlyMap<string, string> = new Map([
+  ['timeout', 'PyreonHttpRequest carries no timeout field'],
+])
+
 /**
  * Pre-pass: read every top-level `const <name> = createHttp({ baseUrl })` into
  * `ctx.httpClientBaseUrls`. Missing baseUrl → `''`; a non-literal baseUrl →
@@ -1238,11 +1482,40 @@ function collectEndpointDefs(body: AnyNode[], ctx: ParseCtx): void {
       while ((m = re.exec(pathTemplate)) !== null) {
         if (m[1]) paramNames.push(m[1])
       }
+      // The DECLARATION's second argument — `{ response, headers, timeout,
+      // throwHttpErrors }`. Nothing read it before, so a `headers` declared
+      // once on the endpoint was dropped from every native request in silence.
+      const declUnlowerable: string[] = []
+      const optsArg = init.arguments?.[1] as AnyNode | undefined
+      const declHeaders = readLiteralHeaders(readObjectProp(optsArg, 'headers'), (what) =>
+        declUnlowerable.push(what),
+      )
+      if (optsArg !== undefined && optsArg.type !== 'ObjectExpression') {
+        declUnlowerable.push('options (not an object literal)')
+      }
+      for (const prop of (optsArg?.properties as AnyNode[] | undefined) ?? []) {
+        if (prop.type === 'SpreadElement') {
+          declUnlowerable.push('options (spread)')
+          continue
+        }
+        const key = propName(prop)
+        if (key === undefined || key === 'headers' || key === 'response') continue
+        if (key === 'throwHttpErrors') {
+          // The native harness ALWAYS rejects a non-2xx, so `true` matches it
+          // exactly and only an opt-OUT is unhonourable.
+          if (literalScalar(prop.value as AnyNode | undefined) !== true) declUnlowerable.push(key)
+          continue
+        }
+        declUnlowerable.push(key)
+      }
+
       ctx.endpointDefs.set(name, {
         method,
         pathTemplate,
         clientName: callee.object.name as string,
         paramNames,
+        declHeaders,
+        declUnlowerable,
       })
     }
   }
@@ -1256,10 +1529,7 @@ function collectEndpointDefs(body: AnyNode[], ctx: ParseCtx): void {
  * client baseUrl, or a missing / non-literal `:param`. The result feeds the
  * EXISTING `kind: 'fetch'` path unchanged — no new emit / IR / stub.
  */
-function resolveEndpointUrl(
-  callNode: AnyNode,
-  ctx: ParseCtx,
-): { url: string; method: string } | null {
+function resolveEndpointUrl(callNode: AnyNode, ctx: ParseCtx): ResolvedEndpoint | null {
   if (callNode.callee?.type !== 'Identifier') return null
   return resolveEndpointParts(
     callNode.callee.name as string,
@@ -1269,18 +1539,33 @@ function resolveEndpointUrl(
 }
 
 /**
+ * What an endpoint call lowers to. `headers` / `body` feed the SAME fields the
+ * `useFetch<T>(url, { headers, body })` form already fills, so both the `fetch`
+ * and `query` emits carry them with no emit / IR / stub change.
+ */
+interface ResolvedEndpoint {
+  url: string
+  method: string
+  headers?: Record<string, string>
+  body?: string
+}
+
+/**
  * The endpoint-resolution core, shared by the direct call form
  * (`getUser({ params })` → useFetch) and the `.query()` fetcher form
  * (`getUser.query({ params })` → useQuery). Given the endpoint NAME and the
- * args object node, substitutes literal `:params` into the templated URL and
- * returns `{ url, method }`, or null (having pushed a specific warning) when
- * the baseUrl is non-literal or a param is missing/reactive.
+ * args object node, it substitutes ENCODED literal `:params` into the templated
+ * URL, appends the serialized query, lowers a literal `json` body + `headers`,
+ * and returns {@link ResolvedEndpoint} — or null (having pushed a specific
+ * warning) when the baseUrl is non-literal or a param is missing/reactive.
+ *
+ * Every option it cannot honour is NAMED in a warning rather than dropped.
  */
 function resolveEndpointParts(
   endpointName: string,
   arg: AnyNode | undefined,
   ctx: ParseCtx,
-): { url: string; method: string } | null {
+): ResolvedEndpoint | null {
   const def = ctx.endpointDefs.get(endpointName)
   if (!def) return null
   const baseUrl = ctx.httpClientBaseUrls.get(def.clientName)
@@ -1290,23 +1575,106 @@ function resolveEndpointParts(
     )
     return null
   }
+  const warn = (message: string): void => {
+    ctx.warnings.push(`endpoint ${endpointName}: ${message}`)
+  }
+
+  // --- path params -------------------------------------------------------
   const params = readLiteralEntries(readObjectProp(arg, 'params'))
   let path = def.pathTemplate
   for (const p of def.paramNames) {
     const value = params[p]
     if (value === undefined) {
-      ctx.warnings.push(
-        `endpoint ${endpointName}: native lowering needs literal params; \`${p}\` is missing or not a string/number literal (a reactive value like \`id()\` can't be baked into the URL at compile time) — this call stays web.`,
+      warn(
+        `native lowering needs literal params; \`${p}\` is missing or not a string/number literal (a reactive value like \`id()\` can't be baked into the URL at compile time) — this call stays web.`,
       )
       return null
     }
-    path = path.replace(new RegExp(`:${p}(?![A-Za-z0-9_])`, 'g'), value)
+    const encoded = encodePathParam(value)
+    // A FUNCTION replacement, never a string one: `String.replace` interprets
+    // `$&` / `$'` / `` $` `` / `$$` inside a STRING replacement, so a value
+    // containing them would splice the match (or the text around it) back into
+    // the URL — `id: "$&"` produced `/users/:id` verbatim. The web's
+    // `applyPathParams` uses a function replacement for the same reason.
+    path = path.replace(new RegExp(`:${p}(?![A-Za-z0-9_])`, 'g'), () => encoded)
   }
   let url = baseUrl + path
-  const queryEntries = readLiteralEntries(readObjectProp(arg, 'query'))
-  const pairs = Object.entries(queryEntries).map(([k, v]) => `${k}=${v}`)
-  if (pairs.length > 0) url += (url.includes('?') ? '&' : '?') + pairs.join('&')
-  return { url, method: def.method }
+
+  // --- query -------------------------------------------------------------
+  const queryEntries = readQueryEntries(readObjectProp(arg, 'query'), (key) => {
+    warn(
+      `query parameter \`${key}\` is not a string/number/boolean literal (or an array of them), so it cannot be baked into the compile-time URL — it is OMITTED on iOS and Android.`,
+    )
+  })
+  const qs = buildQueryString(queryEntries)
+  // Mirrors the web's `buildUrl`: a path template that already carries a `?`
+  // takes `&`, and the leading `?` is stripped from the serialized query.
+  if (qs) url += url.includes('?') ? `&${qs.slice(1)}` : qs
+
+  // --- headers -----------------------------------------------------------
+  // A per-call `headers` REPLACES the declaration's, mirroring the web's
+  // `args?.headers ?? options.headers`.
+  const callHeadersNode = readObjectProp(arg, 'headers')
+  let headers: Record<string, string> =
+    callHeadersNode === undefined
+      ? { ...def.declHeaders }
+      : readLiteralHeaders(callHeadersNode, (what) => {
+          warn(
+            `\`${what}\` is not a string literal, so it cannot be baked into the native request — it is OMITTED on iOS and Android.`,
+          )
+        })
+
+  // --- json body ---------------------------------------------------------
+  const jsonNode = readObjectProp(arg, 'json')
+  let body: string | undefined
+  if (jsonNode !== undefined && !isNullishLiteral(jsonNode)) {
+    const literal = readJsonLiteral(jsonNode)
+    if (literal === undefined) {
+      warn(
+        'the `json` body must be a literal (object / array / string / number / boolean / null) to be baked into the native request; the request is sent with NO body on iOS and Android.',
+      )
+    } else {
+      body = JSON.stringify(literal.value)
+      // The web sets `content-type: application/json` unless the caller already
+      // declared one. `Headers` matches case-insensitively and lowercases the
+      // name it stores, so mirror both halves.
+      if (!Object.keys(headers).some((k) => k.toLowerCase() === 'content-type')) {
+        headers = { ...headers, 'content-type': 'application/json' }
+      }
+    }
+  }
+
+  // --- everything else ---------------------------------------------------
+  // Any option the call site carries that is NOT lowered above gets NAMED. This
+  // is the arm that makes the class closed rather than a list of instances: a
+  // future `EndpointArgs` field lands here instead of disappearing.
+  if (arg !== undefined && arg.type !== 'ObjectExpression') {
+    warn('the call argument is not an object literal, so no option on it lowers — this call stays web.')
+    return null
+  }
+  for (const prop of (arg?.properties as AnyNode[] | undefined) ?? []) {
+    if (prop.type === 'SpreadElement') {
+      warn(
+        'a spread in the call arguments cannot be read at compile time, so any option it carries is IGNORED on iOS and Android — pass the options literally.',
+      )
+      continue
+    }
+    const key = propName(prop)
+    if (key === undefined || ENDPOINT_LOWERED_ARGS.has(key)) continue
+    warn(
+      `option \`${key}\` has no native equivalent and is IGNORED on iOS and Android (${ENDPOINT_UNLOWERABLE_ARGS.get(key) ?? 'not part of the lowered endpoint surface'}).`,
+    )
+  }
+  for (const key of def.declUnlowerable) {
+    warn(
+      `the endpoint declaration's \`${key}\` has no native equivalent and is IGNORED on iOS and Android (${ENDPOINT_UNLOWERABLE_OPTIONS.get(key) ?? 'not part of the lowered endpoint surface'}).`,
+    )
+  }
+
+  const extras: { headers?: Record<string, string>; body?: string } = {}
+  if (Object.keys(headers).length > 0) extras.headers = headers
+  if (body !== undefined) extras.body = body
+  return { url, method: def.method, ...extras }
 }
 
 /**
@@ -5693,7 +6061,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     // { method: 'GET' })`. Reactive params / a non-literal client baseUrl bail
     // (warning pushed inside resolveEndpointUrl) and the call stays web.
     let resolvedUrl: string | undefined
-    let endpointMethod: string | undefined
+    let resolvedEndpoint: ResolvedEndpoint | undefined
     if (
       urlArg?.type === 'CallExpression' &&
       urlArg.callee?.type === 'Identifier' &&
@@ -5702,7 +6070,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       const resolved = resolveEndpointUrl(urlArg, ctx)
       if (!resolved) return null // warning already pushed; stays web
       resolvedUrl = resolved.url
-      endpointMethod = resolved.method
+      resolvedEndpoint = resolved
     }
     if (
       resolvedUrl === undefined &&
@@ -5736,9 +6104,11 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     // missing feature.
     const initArg = init.arguments?.[1]
     const req: { method?: string; headers?: Record<string, string>; body?: string } = {}
-    // An endpoint's verb is the DEFAULT method; an explicit `{ method }` in the
-    // second arg still wins (the init loop below overwrites `req.method`).
-    if (endpointMethod) req.method = endpointMethod
+    // An endpoint's verb / headers / json body are the DEFAULTS; an explicit
+    // second arg still wins (the init loop below overwrites each field).
+    if (resolvedEndpoint?.method) req.method = resolvedEndpoint.method
+    if (resolvedEndpoint?.headers) req.headers = resolvedEndpoint.headers
+    if (resolvedEndpoint?.body !== undefined) req.body = resolvedEndpoint.body
     if (initArg) {
       if (initArg.type !== 'ObjectExpression') {
         ctx.warnings.push(
@@ -5863,8 +6233,10 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
         ctx,
       )
       if (!resolved) return null
-      const eqReq: { method?: string } = {}
+      const eqReq: { method?: string; headers?: Record<string, string>; body?: string } = {}
       if (resolved.method && resolved.method !== 'GET') eqReq.method = resolved.method
+      if (resolved.headers) eqReq.headers = resolved.headers
+      if (resolved.body !== undefined) eqReq.body = resolved.body
       return {
         kind: 'query',
         name,
