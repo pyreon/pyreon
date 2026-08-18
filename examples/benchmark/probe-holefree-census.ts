@@ -29,7 +29,7 @@
  *
  *                              declaration-weighted   instances per template
  *                              (share of elements)    hole-free   bound
- *   docs landing page               34.9%               1.1        4.6
+ *   docs landing page              ~34% (band)           1.1        4.6
  *   docs /docs/router                0.6%               1.0       17.8
  *   app-page hydration bench         0.0%               —       2996.0
  *
