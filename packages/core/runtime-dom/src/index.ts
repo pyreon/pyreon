@@ -44,6 +44,10 @@ export {
   applyPropsWithRef as _applyProps,
   bindSpread as _bindSpread,
   applyStyleProp as _setStyle,
+  // `<input>`/`<textarea>` `value`: property assignment plus a first-time
+  // `defaultValue` reflection, so a client-mounted form resets like a hydrated
+  // one. Emitted by the compiler for those two tags only.
+  applyValueProp as _setValue,
   sanitizeHtml,
   setSanitizer,
 } from './props'

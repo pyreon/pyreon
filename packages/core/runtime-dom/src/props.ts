@@ -580,6 +580,71 @@ export function applyAttrProp(el: Element, key: string, value: unknown): void {
   el.setAttribute(key, String(value))
 }
 
+/**
+ * Marks an element whose `defaultValue` has already been established, so the
+ * reflection below runs exactly ONCE per element. A Symbol rather than a string
+ * expando so it can never collide with a user prop name (`key in el` walks
+ * string keys), and an own property rather than a module-level Map so it dies
+ * with the element — a registry keyed by DOM node is leak class C.
+ */
+const DEFAULT_VALUE_INIT = Symbol('pyreon.defaultValueInit')
+
+/**
+ * Apply `value` to a form control, establishing `defaultValue` on the FIRST
+ * application only. Exported as `_setValue` for the compiler's template fast
+ * path so the compiled and `h()` paths cannot diverge on this attribute class
+ * — the same extraction as `applyClassProp`→`_setClass`,
+ * `applyStyleProp`→`_setStyle` and `applyAttrProp`→`_setAttr`.
+ *
+ * WHY the default has to be established at all: SSR serializes `value` as a
+ * content ATTRIBUTE (it must — before JS arrives the box has to show text), and
+ * that attribute IS the reset target, because `input.defaultValue` reflects it.
+ * A client mount only ever set the PROPERTY, and a property assignment never
+ * creates the attribute — so `form.reset()` CLEARED a field that a hydrated
+ * page restored. Same form, same markup, different behaviour depending on
+ * whether the user landed on the page or navigated to it. Reflecting the
+ * default also makes the client's serialized DOM byte-match the server's, which
+ * is what lets the SSR↔hydration parity fuzzer compare these shapes at all.
+ *
+ * WHY only the first application, rather than alongside every write: a
+ * controlled input writes its signal from `onInput`, so the binding re-runs on
+ * every keystroke. Moving `defaultValue` with it would drag the reset target
+ * along with the typing and quietly turn `form.reset()` into a no-op. React
+ * draws the line in exactly the same place — `initInput` seeds `defaultValue`
+ * from the initial value, `updateInput` only ever follows an explicit
+ * `defaultValue` prop.
+ *
+ * Scoped to `input`/`textarea`, the only elements with a `defaultValue`.
+ * `select` (whose default lives in `<option selected>`) and media `muted` are
+ * deliberately NOT normalized here — React, Preact and Solid all diverge
+ * identically on both, so matching them is the industry-normal behaviour.
+ */
+export function applyValueProp(el: Element, value: unknown): void {
+  const node = el as HTMLInputElement
+  // The live property is authoritative and always assigned — that is the whole
+  // reason `value` is a DOM_PROP rather than an attribute (a stale typed value
+  // must be resettable by a signal write).
+  node.value = value as string
+
+  const tag = el.tagName
+  if (tag !== 'INPUT' && tag !== 'TEXTAREA') return
+
+  const seen = el as unknown as Record<symbol, unknown>
+  if (seen[DEFAULT_VALUE_INIT]) return
+  seen[DEFAULT_VALUE_INIT] = true
+
+  // A nullish value serializes to NO attribute on the server, so the client must
+  // not invent `value=""` here — that would be a fresh hydration mismatch. The
+  // element keeps the empty default it was born with.
+  if (value == null) return
+
+  // Read the property back rather than re-coercing `value`: `node.value` has
+  // already been through the IDL's own ToString (and `[LegacyNullToEmptyString]`),
+  // so assigning it verbatim makes the default EXACTLY the live value with no
+  // second coercion that could drift from the first.
+  node.defaultValue = node.value
+}
+
 function setStaticProp(el: Element, key: string, value: unknown): void {
   // Block javascript:/data: URI injection in URL-bearing attributes.
   if (
@@ -646,6 +711,17 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
   // Matches React/Vue/Solid.
   if (key.startsWith('data-') || key.startsWith('aria-')) {
     el.setAttribute(key, String(value))
+    return
+  }
+
+  // `value` on a form control: property assignment PLUS a first-time
+  // `defaultValue` reflection, so `form.reset()` behaves the same on a
+  // client-mounted page as on a hydrated one. See `applyValueProp`. Placed
+  // after the nullish/boolean branches so those keep their existing attribute
+  // semantics, and scoped to the two tags that own a `defaultValue` — every
+  // other element keeps the generic (try/catch-guarded) property path below.
+  if (key === 'value' && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
+    applyValueProp(el, value)
     return
   }
 
