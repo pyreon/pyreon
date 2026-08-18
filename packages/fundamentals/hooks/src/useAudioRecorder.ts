@@ -1,5 +1,7 @@
 import { isClient, onCleanup, signal } from '@pyreon/reactivity'
 
+import { warnIfInsecureContext } from './secure-context'
+
 export type AudioRecorderControls = {
   /** True when the platform can record at all. */
   supported: () => boolean
@@ -88,6 +90,7 @@ export function useAudioRecorder(): AudioRecorderControls {
         navigator.mediaDevices?.getUserMedia === undefined ||
         typeof MediaRecorder === 'undefined'
       ) {
+        warnIfInsecureContext('useAudioRecorder')
         error.set('Audio recording is not available on this platform')
         return false
       }

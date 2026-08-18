@@ -1405,9 +1405,14 @@ It exists for **real devices**. A phone reaches your dev server at
 `http://192.168.1.24:3000`, and that is *not* a secure context — so every hook
 the browser gates behind one is unavailable:
 
-`useCamera` · `useGeolocation` · `useDeviceMotion` · `useAudioRecorder` ·
-`useSpeech` · `useBluetooth` · `useClipboard` · `useNotifications` · `usePush` ·
-`useShare` · `useWakeLock` — plus service workers and `crypto.subtle`.
+`useGeolocation` · `useDeviceMotion` · `useAudioRecorder` · `useBluetooth` ·
+`useClipboard` · `useNotifications` · `useShare` · `useWakeLock` — plus service
+workers and `crypto.subtle`.
+
+Not every sensor hook is gated, and the distinction matters: `useCamera` uses an
+`<input type="file" capture>` picker that works over plain HTTP, `useSpeech`
+uses `speechSynthesis` (only SpeechRecognition is gated), and `usePush` is
+host-driven — the app owns the PushManager flow. Those three work without TLS.
 
 Those are exactly the hooks that can only be tested on a phone: a laptop has no
 accelerometer, and its webcam is not the camera you care about. So without

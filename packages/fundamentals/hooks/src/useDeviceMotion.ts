@@ -1,5 +1,7 @@
 import { isClient, onCleanup, signal } from '@pyreon/reactivity'
 
+import { warnIfInsecureContext } from './secure-context'
+
 /** Three-axis reading. Units are m/s² for acceleration, deg/s for rotation. */
 export type Vec3 = { x: number; y: number; z: number }
 
@@ -75,7 +77,10 @@ export function useDeviceMotion(): DeviceMotionControls {
     stop,
 
     start: async (): Promise<boolean> => {
-      if (!supported()) return false
+      if (!supported()) {
+        warnIfInsecureContext('useDeviceMotion')
+        return false
+      }
       if (active()) return true
       const DME = DeviceMotionEvent as unknown as {
         requestPermission?: () => Promise<'granted' | 'denied'>

@@ -20,6 +20,8 @@
 
 import { isClient } from '@pyreon/reactivity'
 
+import { warnIfInsecureContext } from './secure-context'
+
 export interface UseNotificationsResult {
   /** Request notification permission ahead of time. */
   requestPermission: () => void
@@ -48,7 +50,10 @@ export function useNotifications(): UseNotificationsResult {
   const available = (): boolean => isClient && typeof Notification !== 'undefined'
   return {
     requestPermission: () => {
-      if (!available()) return
+      if (!available()) {
+        warnIfInsecureContext('useNotifications')
+        return
+      }
       void Notification.requestPermission()
     },
     notify: (title, body) => {

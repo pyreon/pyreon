@@ -1,5 +1,7 @@
 import { batch, onCleanup, signal } from '@pyreon/reactivity'
 
+import { warnIfInsecureContext } from './secure-context'
+
 export interface UseClipboardResult {
   /** Copy text to clipboard. Returns true on success. */
   copy: (text: string) => Promise<boolean>
@@ -30,7 +32,10 @@ export function useClipboard(options?: { timeout?: number }): UseClipboardResult
   let timer: ReturnType<typeof setTimeout> | undefined
 
   const copy = async (value: string): Promise<boolean> => {
-    if (typeof navigator === 'undefined') return false
+    if (typeof navigator === 'undefined' || navigator.clipboard === undefined) {
+      warnIfInsecureContext('useClipboard')
+      return false
+    }
     try {
       await navigator.clipboard.writeText(value)
       // Batch the two synchronous writes so subscribers reading both

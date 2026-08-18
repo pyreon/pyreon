@@ -18,9 +18,9 @@
  *
  * It exists because a real device reaches your dev server over the LAN, and
  * `http://192.168.1.24:3000` is NOT a secure context. Pyreon ships a dozen
- * hooks that browsers gate behind one — `useCamera`, `useGeolocation`,
- * `useDeviceMotion`, `useAudioRecorder`, `useSpeech`, `useBluetooth`,
- * `useClipboard`, `useNotifications`, `usePush`, `useShare`, `useWakeLock` —
+ * hooks that browsers gate behind one — `useGeolocation`,
+ * `useDeviceMotion`, `useAudioRecorder`, `useBluetooth`,
+ * `useClipboard`, `useNotifications`, `useShare`, `useWakeLock` —
  * and every one of them can only be tested meaningfully on a phone. A laptop
  * has no accelerometer. So the hooks that most need device testing are exactly
  * the ones that cannot be device-tested over plain HTTP.

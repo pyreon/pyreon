@@ -1,10 +1,14 @@
 /**
  * Why did that browser API come back `undefined`?
  *
- * A dozen hooks in this package wrap APIs the browser gates behind a SECURE
- * CONTEXT — `useCamera`, `useGeolocation`, `useDeviceMotion`,
- * `useAudioRecorder`, `useSpeech`, `useBluetooth`, `useClipboard`,
- * `useNotifications`, `usePush`, `useShare`, `useWakeLock`. On an insecure
+ * Eight hooks in this package wrap APIs the browser gates behind a SECURE
+ * CONTEXT — `useGeolocation`, `useDeviceMotion`, `useAudioRecorder`,
+ * `useBluetooth`, `useClipboard`, `useNotifications`, `useShare`,
+ * `useWakeLock`. NOT `useCamera` (an `<input type="file" capture>` picker,
+ * which works over plain HTTP), NOT `useSpeech` (`speechSynthesis` is not
+ * gated — only SpeechRecognition is), and NOT `usePush` (host-driven; the app
+ * owns the PushManager flow). `secure-context-coverage.test.ts` keeps that
+ * distinction honest in both directions. On an insecure
  * origin the browser does not throw and does not warn: it simply does not
  * define the API. So the hook reports `supported() === false` and the
  * developer is left with "geolocation doesn't work", no error, nothing to
