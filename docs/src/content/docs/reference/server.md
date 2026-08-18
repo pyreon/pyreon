@@ -125,7 +125,7 @@ export default createHandler({
 renderPage(App: ComponentFn, router: RenderablePageRouter, path: string, options?: RenderPageOptions): Promise<RenderPageResult>
 ```
 
-The ONE string-mode page-render pipeline — preload (lazy components + loaders, with `redirect()` catching) → render with head collection → CSS-in-JS style collect → loader-data inline script → HTTP status (404 via the router's `notFoundComponent` chain). Shared by `createHandler`, zero's SSG prerender entry, and zero's dev SSR middleware so per-page concerns can never drift between them again. Returns discriminated parts (`kind: "html" | "redirect" | "unmatched"`) for the caller to compose into its own template; template injection and streaming stay caller-specific by design. The router MUST be a per-request instance created AT `path` — `preload` warms caches but does not navigate.
+The ONE string-mode page-render pipeline — preload (lazy components + loaders, with `redirect()` catching) → render with head collection → CSS-in-JS style collect → loader-data inline script → HTTP status (404 via the router's `notFoundComponent` chain). Shared by `createHandler`, zero's SSG prerender entry, and zero's dev SSR middleware so per-page concerns can never drift between them again. Returns discriminated parts (`kind: "html" | "redirect" | "unmatched"`) for the caller to compose into its own template; template injection and streaming stay caller-specific by design. The router MUST be a per-request instance created AT `path` — `preload` warms caches but does not navigate. **`collectStyles` is OPTIONAL and defaults to the CSS-in-JS collector registered on `globalThis.__PYREON_STYLER_COLLECT__`** (set by `@pyreon/styler`'s singleton on SSR init), so a page never ships class names whose CSS was left behind — pass one explicitly only to override the engine or add reset semantics.
 
 **Example**
 
@@ -146,6 +146,7 @@ if (result.kind === "html") compose(template, result)
 - Expecting `kind: "unmatched"` without setting `bailOnUnmatched: true` — by default an empty match renders through (the notFoundComponent chain is the framework's 404 story)
 - Wrapping the call in your own `runWithRequestContext` AND providing locals separately — pass `locals` in options; renderPage opens the request context itself
 - Composing `loaderScript` into the template twice (it is already a complete `<script>` tag, not bare JSON)
+- Passing a `collectStyles` that RESETS the sheet on a long-lived SSR server — @pyreon/styler inserts most rules once at module-eval, so a reset leaves every later page style-less; the default collector deliberately does not reset
 
 **See also:** `createHandler` · `useRequestLocals`
 
