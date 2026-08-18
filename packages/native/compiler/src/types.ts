@@ -220,10 +220,36 @@ export type DeclIR =
       name: string
       /** The decoded result type `T` (from the generic arg). */
       type: TypeIR
-      /** The literal fetch URL extracted from `queryFn`'s `fetch(...)` call. */
-      url: string
+      /** The literal fetch URL extracted from `queryFn`'s `fetch(...)` call.
+       *  Absent when `urlExpr` (a templated URL) or `valueExpr` (a non-fetch
+       *  queryFn) is present instead. */
+      url?: string
+      /**
+       * A RUNTIME fetch URL from a template-literal `fetch(\`/users/${id}\`)`.
+       * A `template` ExprIR the emit renders as native string interpolation
+       * INSIDE the async harness (where `self`/params are in scope). Mutually
+       * exclusive with `url` (a literal URL) and `valueExpr` (no fetch).
+       */
+      urlExpr?: ExprIR
+      /**
+       * A non-fetch `queryFn` (`() => <expr>` / `async () => <expr>`) that
+       * returns the value directly — the emit computes `<expr>` in the harness
+       * and `resolve`s it, no URLSession/decode. Mutually exclusive with
+       * `url`/`urlExpr`.
+       */
+      valueExpr?: ExprIR
       /** The cache key — the `queryKey` array's literals colon-joined. */
       queryKey: string
+      /**
+       * A RUNTIME cache key built from a `queryKey` array whose parts include
+       * non-literal expressions (`["user", userId]`, `["k", id()]`) — a
+       * `template` ExprIR the emit interpolates. When present, the query takes
+       * the runtime-key harness: constructed KEYLESS (SwiftUI's `@State`
+       * default can't reference other properties) and re-keyed at task time
+       * via `setKey`, with the harness KEYED on the string so a key change
+       * (new prop / signal) re-fetches — matching the web's reactive queryKey.
+       */
+      queryKeyExpr?: ExprIR
       /** `staleTime` in milliseconds (Swift converts to seconds). 0 = always
        *  revalidate, but serve the stale value instantly. */
       staleMillis: number

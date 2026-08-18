@@ -90,18 +90,21 @@ describe('useQuery() emit', () => {
     expect(r.code).toContain('${q.error.value}')
   })
 
-  it('warns + does not lower a non-literal queryKey (reactive key is a follow-up)', () => {
+  it('warns + does not lower when queryKey is NOT an array', () => {
+    // A runtime-key array (`['todo', id()]`) DOES lower now (see the dynamic
+    // suite); the bail is reserved for a genuinely unsupported shape — a
+    // queryKey that isn't an array literal at all.
     const src = `
 import { Text } from '@pyreon/primitives'
 import { useQuery } from '@pyreon/query'
 interface Todo { id: number }
-export function P({ id }: { id: () => number }) {
-  const q = useQuery<Todo>(() => ({ queryKey: ['todo', id()], queryFn: () => fetch('/x'), staleTime: 0 }))
+export function P({ keys }: { keys: string[] }) {
+  const q = useQuery<Todo>(() => ({ queryKey: keys, queryFn: () => fetch('/x'), staleTime: 0 }))
   return <Text>{q.data}</Text>
 }
 `
     const r = transform(src, { target: 'swift' })
-    expect(r.warnings.some((w) => /queryKey must be an array of string\/number literals/.test(w))).toBe(true)
+    expect(r.warnings.some((w) => /queryKey must be an ARRAY/.test(w))).toBe(true)
     // Bailed → no PyreonQuery emitted.
     expect(r.code).not.toContain('PyreonQuery<')
   })

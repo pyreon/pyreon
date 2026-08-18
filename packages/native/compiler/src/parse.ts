@@ -5747,7 +5747,11 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       return null
     }
     let queryKey: string | undefined
+    let queryKeyExpr: ExprIR | undefined
     let url: string | undefined
+    let urlExpr: ExprIR | undefined
+    let valueExpr: ExprIR | undefined
+    let queryFnSeen = false
     let staleMillis = 0
     const req: { method?: string; headers?: Record<string, string>; body?: string } = {}
     for (const prop of (optsObj.properties as AnyNode[] | undefined) ?? []) {
@@ -5760,26 +5764,43 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
             : undefined
       if (!key) continue
       if (key === 'queryKey') {
-        const k = tryQueryKeyString(prop.value)
+        // A `queryKey` array whose parts are ALL string/number literals bakes
+        // a constant cache key (`['todo', 1]` → `"todo:1"`, the v1 path). A
+        // part that reads a signal / prop / member (`['user', userId]`,
+        // `['k', id()]`) builds a RUNTIME string the emit re-keys at task time
+        // (see the DeclIR `queryKeyExpr` note for why this can't sit in the
+        // SwiftUI `@State` default). Anything that isn't an array bails.
+        const k = tryQueryKeyParts(prop.value, ctx)
         if (k === undefined) {
           ctx.warnings.push(
-            `Declaration ${name}: useQuery queryKey must be an array of string/number literals to lower to native (v1); got a non-literal. A reactive key (\`['todo', id()]\`) is a tracked follow-up.`,
+            `Declaration ${name}: useQuery queryKey must be an ARRAY of string/number literals or expressions (\`['todo', id()]\`) to lower to native; got ${(prop.value as AnyNode | undefined)?.type ?? 'nothing'}.`,
           )
           return null
         }
-        queryKey = k
+        queryKey = k.literal
+        queryKeyExpr = k.expr
       } else if (key === 'queryFn') {
+        queryFnSeen = true
         const f = tryQueryFnFetch(prop.value)
-        if (f === undefined) {
-          ctx.warnings.push(
-            `Declaration ${name}: useQuery queryFn must be an inline \`() => fetch('<url-literal>')\` to lower to native (v1); a function reference or a non-literal fetch URL is a tracked follow-up.`,
-          )
-          return null
+        if (f !== undefined) {
+          if (f.url !== undefined) url = f.url
+          else if (f.urlNode !== undefined) urlExpr = parseExpr(f.urlNode, ctx)
+          // An inline `fetch(url, { method, headers, body })` routes through
+          // PyreonHttp (mirroring useFetch); a bare `fetch(url)` stays a GET.
+          if (f.init) Object.assign(req, parseFetchInitObject(f.init, name, ctx))
+        } else {
+          // Not a recognized inline fetch — try a DIRECT-VALUE queryFn
+          // (`() => <expr>` / `async () => <expr>` with no fetch, no await):
+          // the emit computes `<expr>` in the harness and resolves it.
+          const v = tryQueryFnValue(prop.value)
+          if (v === undefined) {
+            ctx.warnings.push(
+              `Declaration ${name}: useQuery queryFn must be an inline \`() => fetch('<url>')\` (literal OR template URL) or a \`() => <expr>\` returning the decoded value directly; a function reference, a \`fetch(<non-url>)\`, or an \`await\`/multi-statement body is a tracked follow-up.`,
+            )
+            return null
+          }
+          valueExpr = parseExpr(v, ctx)
         }
-        url = f.url
-        // An inline `fetch(url, { method, headers, body })` routes through
-        // PyreonHttp (mirroring useFetch); a bare `fetch(url)` stays a GET.
-        if (f.init) Object.assign(req, parseFetchInitObject(f.init, name, ctx))
       } else if (key === 'staleTime') {
         const v = prop.value as AnyNode | undefined
         if ((v?.type === 'Literal' || v?.type === 'NumericLiteral') && typeof v.value === 'number') {
@@ -5791,13 +5812,36 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
         }
       }
     }
-    if (queryKey === undefined || url === undefined) {
+    if (queryKey === undefined) {
       ctx.warnings.push(
-        `Declaration ${name}: useQuery needs both a literal queryKey and an inline fetch queryFn to lower to native (v1).`,
+        `Declaration ${name}: useQuery needs a queryKey to lower to native.`,
       )
       return null
     }
-    return { kind: 'query', name, type, url, queryKey, staleMillis, ...req }
+    // Exactly one of the three queryFn forms must have resolved: a literal URL
+    // (`url`), a templated/runtime URL (`urlExpr`), or a direct-value fetcher
+    // (`valueExpr`). `queryFnSeen` distinguishes "no queryFn at all" from
+    // "queryFn present but unlowerable" (which already warned above).
+    if (url === undefined && urlExpr === undefined && valueExpr === undefined) {
+      if (!queryFnSeen) {
+        ctx.warnings.push(
+          `Declaration ${name}: useQuery needs a queryFn to lower to native.`,
+        )
+      }
+      return null
+    }
+    return {
+      kind: 'query',
+      name,
+      type,
+      queryKey,
+      staleMillis,
+      ...(url !== undefined ? { url } : {}),
+      ...(urlExpr !== undefined ? { urlExpr } : {}),
+      ...(valueExpr !== undefined ? { valueExpr } : {}),
+      ...(queryKeyExpr !== undefined ? { queryKeyExpr } : {}),
+      ...req,
+    }
   }
   // Phase 4.2 — `useForm({ initialValues })` from @pyreon/form. The config
   // arg is optional; when present we capture the string-keyed literal
@@ -6426,39 +6470,72 @@ function arrowReturnedObject(arrow: AnyNode): AnyNode | undefined {
 }
 
 /**
- * Colon-join a `queryKey` array of string/number literals into the native
- * cache key. `['todos', 5]` → `"todos:5"`. Returns undefined if the node is
- * not an array of literals (v1 rejects reactive/computed keys).
+ * Resolve a `queryKey` array into the native cache key. Returns:
+ *   `{ literal }`       — every element is a string/number literal
+ *                         (`['todos', 5]` → `"todos:5"`), the baked-constant path.
+ *   `{ literal, expr }` — at least one element is a non-literal expression
+ *                         (`['user', userId]`, `['k', id()]`): `expr` is a
+ *                         `template` ExprIR that colon-joins the parts as a
+ *                         RUNTIME string (literals in the quasis, expressions
+ *                         interpolated), and `literal` carries the literal-only
+ *                         join as an inert fallback for the IR's required
+ *                         `queryKey` field (the emit reads `expr` on this path).
+ * Returns undefined when the node is not an array, is empty, or holds a spread.
  */
-function tryQueryKeyString(node: AnyNode): string | undefined {
+function tryQueryKeyParts(
+  node: AnyNode,
+  ctx: ParseCtx,
+): { literal: string; expr?: ExprIR } | undefined {
   if (!node || node.type !== 'ArrayExpression') return undefined
-  const parts: string[] = []
-  for (const el of (node.elements as AnyNode[] | undefined) ?? []) {
-    if (!el) return undefined
-    const isLit = el.type === 'Literal' || el.type === 'StringLiteral' || el.type === 'NumericLiteral'
-    if (!isLit || (typeof el.value !== 'string' && typeof el.value !== 'number')) return undefined
-    parts.push(String(el.value))
+  const els = (node.elements as AnyNode[] | undefined) ?? []
+  if (els.length === 0) return undefined
+  const quasis: string[] = ['']
+  const exprs: ExprIR[] = []
+  const literalParts: string[] = []
+  let hasExpr = false
+  for (let i = 0; i < els.length; i++) {
+    const el = els[i]
+    if (!el || el.type === 'SpreadElement') return undefined
+    const sep = i === 0 ? '' : ':'
+    const isLit =
+      el.type === 'Literal' || el.type === 'StringLiteral' || el.type === 'NumericLiteral'
+    if (isLit && (typeof el.value === 'string' || typeof el.value === 'number')) {
+      quasis[quasis.length - 1] += sep + String(el.value)
+      literalParts.push(String(el.value))
+    } else {
+      hasExpr = true
+      quasis[quasis.length - 1] += sep
+      exprs.push(parseExpr(el, ctx))
+      quasis.push('')
+    }
   }
-  if (parts.length === 0) return undefined
-  return parts.join(':')
+  const literal = literalParts.join(':')
+  return hasExpr ? { literal, expr: { kind: 'template', quasis, exprs } } : { literal }
 }
 
 /**
- * Extract the literal URL + optional init object from an inline
+ * Extract the URL + optional init object from an inline
  * `queryFn: () => fetch('<url>', { method, headers, body })` (also
  * `() => fetch('<url>').then(r => r.json())`, or a block body returning one).
- * Walks the arrow's body for the first `fetch(<string-literal>, init?)` call.
- * Returns `{ url, init }` (init = the second-argument AST node, if any), or
- * undefined for a function reference or a non-literal fetch URL (v1 follow-up).
+ * Walks the arrow's body for the first `fetch(<url>, init?)` call. Returns:
+ *   `{ url, init }`     — a STRING-LITERAL URL (baked verbatim).
+ *   `{ urlNode, init }` — a TEMPLATE / identifier / member URL
+ *                         (`\`/users/${id}\``, `endpoint`, `props.url`), emitted
+ *                         as native string interpolation in the async harness.
+ * Returns undefined for a function reference, a `fetch(<call-expression>)` URL
+ * that can't be safely baked, or a non-fetch body (the caller then tries the
+ * direct-value form).
  */
-function tryQueryFnFetch(node: AnyNode): { url: string; init?: AnyNode } | undefined {
+function tryQueryFnFetch(
+  node: AnyNode,
+): { url?: string; urlNode?: AnyNode; init?: AnyNode } | undefined {
   if (
     !node ||
     (node.type !== 'ArrowFunctionExpression' && node.type !== 'FunctionExpression')
   ) {
     return undefined
   }
-  let found: { url: string; init?: AnyNode } | undefined
+  let found: { url?: string; urlNode?: AnyNode; init?: AnyNode } | undefined
   const visit = (n: AnyNode): void => {
     if (found || !n || typeof n !== 'object') return
     if (
@@ -6467,11 +6544,21 @@ function tryQueryFnFetch(node: AnyNode): { url: string; init?: AnyNode } | undef
       n.callee.name === 'fetch'
     ) {
       const arg = n.arguments?.[0]
+      const init = n.arguments?.[1]
       if (
         (arg?.type === 'Literal' || arg?.type === 'StringLiteral') &&
         typeof arg.value === 'string'
       ) {
-        found = { url: arg.value, init: n.arguments?.[1] }
+        found = { url: arg.value, init }
+        return
+      }
+      if (
+        arg &&
+        (arg.type === 'TemplateLiteral' ||
+          arg.type === 'Identifier' ||
+          arg.type === 'MemberExpression')
+      ) {
+        found = { urlNode: arg, init }
         return
       }
     }
@@ -6489,6 +6576,65 @@ function tryQueryFnFetch(node: AnyNode): { url: string; init?: AnyNode } | undef
   }
   visit(node.body)
   return found
+}
+
+/**
+ * A DIRECT-VALUE `queryFn` — `() => <expr>` / `async () => <expr>`, or a block
+ * body that is a single `return <expr>`, whose returned expression performs NO
+ * `fetch` and NO `await`. Returns the returned-expression AST node (the emit
+ * computes it in the harness and `resolve`s it directly, no URLSession/decode),
+ * or undefined for a fetch body, an await, a multi-statement block, or a
+ * function reference.
+ */
+function tryQueryFnValue(node: AnyNode): AnyNode | undefined {
+  if (
+    !node ||
+    (node.type !== 'ArrowFunctionExpression' && node.type !== 'FunctionExpression')
+  ) {
+    return undefined
+  }
+  let expr: AnyNode | undefined
+  const body = node.body as AnyNode | undefined
+  if (body?.type === 'BlockStatement') {
+    const stmts = (body.body as AnyNode[] | undefined) ?? []
+    const only = stmts[0]
+    if (stmts.length !== 1 || only?.type !== 'ReturnStatement' || !only.argument) {
+      return undefined
+    }
+    expr = only.argument as AnyNode
+  } else {
+    expr = body
+  }
+  if (!expr) return undefined
+  let disallowed = false
+  const visit = (n: AnyNode): void => {
+    if (disallowed || !n || typeof n !== 'object') return
+    if (n.type === 'AwaitExpression') {
+      disallowed = true
+      return
+    }
+    if (
+      n.type === 'CallExpression' &&
+      n.callee?.type === 'Identifier' &&
+      n.callee.name === 'fetch'
+    ) {
+      disallowed = true
+      return
+    }
+    for (const key of Object.keys(n)) {
+      if (key === 'type' || key === 'loc' || key === 'range' || key === 'start' || key === 'end') {
+        continue
+      }
+      const child = (n as Record<string, AnyNode>)[key]
+      if (Array.isArray(child)) {
+        for (const c of child) visit(c)
+      } else if (child && typeof child === 'object') {
+        visit(child)
+      }
+    }
+  }
+  visit(expr)
+  return disallowed ? undefined : expr
 }
 
 /**

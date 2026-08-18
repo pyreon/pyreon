@@ -1106,8 +1106,10 @@ public final class PyreonQuery<T> {
   public private(set) var error: Error?
   public private(set) var isPending: Bool = false
   public private(set) var isFetching: Bool = false
+  public private(set) var queryKey: String = ""
   public var isStale: Bool { true }
   public init(queryKey: String, staleSeconds: TimeInterval = 0, cache: PyreonQueryCache = .shared) {}
+  public func setKey(_ key: String) {}
   public func begin() {}
   public func resolve(_ value: T) {}
   public func reject(_ failure: Error) {}
