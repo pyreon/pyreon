@@ -49,6 +49,53 @@ export function buildComponentConstMap(decls: DeclIR[]): Map<string, string | nu
  * infix functions bind looser than arithmetic). A simple atom (identifier /
  * literal / call / member / index / paren) never needs extra parens.
  */
+/**
+ * What a `ref={…}` attribute means to the SORTABLE lowering, if anything.
+ *
+ * `@pyreon/dnd`'s `useSortable` returns REF CALLBACKS the web author attaches
+ * to DOM nodes (`ref={s.containerRef}` / `ref={s.itemRef(item.id)}`). On
+ * native there are no DOM refs, but those two attributes are exactly the
+ * places the drag behaviour belongs — so the SAME source lowers to a view
+ * modifier on each target instead of being dropped.
+ *
+ * Defined here rather than in either emitter because both must agree on the
+ * shape byte-for-byte; a per-emitter re-derivation is how the two backends
+ * drift (the auto-call reachability class).
+ *
+ * Returns `null` for every other `ref` value, so an unrelated ref keeps the
+ * existing behaviour (silently ignored on native) rather than mis-lowering.
+ */
+export type SortableRefBinding =
+  | { kind: 'container'; state: string }
+  | { kind: 'item'; state: string; key: ExprIR }
+
+export function classifySortableRef(
+  value: ExprIR,
+  sortableNames: ReadonlySet<string>,
+): SortableRefBinding | null {
+  // `ref={s.containerRef}` — a bare member read.
+  if (
+    value.kind === 'member' &&
+    value.property === 'containerRef' &&
+    value.object.kind === 'identifier' &&
+    sortableNames.has(value.object.name)
+  ) {
+    return { kind: 'container', state: value.object.name }
+  }
+  // `ref={s.itemRef(key)}` — a one-argument call on the member.
+  if (
+    value.kind === 'call' &&
+    value.callee.kind === 'member' &&
+    value.callee.property === 'itemRef' &&
+    value.callee.object.kind === 'identifier' &&
+    sortableNames.has(value.callee.object.name) &&
+    value.args.length === 1
+  ) {
+    return { kind: 'item', state: value.callee.object.name, key: value.args[0] as ExprIR }
+  }
+  return null
+}
+
 export function isCompoundExpr(e: ExprIR): boolean {
   return (
     e.kind === 'binary' ||

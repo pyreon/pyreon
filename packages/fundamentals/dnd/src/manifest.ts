@@ -11,7 +11,9 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      'wraps pragmatic-drag-and-drop (DOM events/pointers); native drag interactions are platform-gesture territory',
+      '`useSortable` now lowers to the native PyreonSortableState engine (list reorder, the highest-value case); the element-getter hooks (useDraggable/useDroppable), the page-global useDragMonitor and the OS-file useFileDrop stay web — they are pdnd/DOM-shaped, not gesture-shaped',
+    nativeFrontend:
+      'PyreonSortableState — `useSortable` list reorder, via SwiftUI .draggable/.dropDestination and Compose long-press drag',
   },
   longExample: `import { signal } from '@pyreon/reactivity'
 import { For } from '@pyreon/core'

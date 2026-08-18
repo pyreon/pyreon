@@ -928,7 +928,6 @@ const WEB_ONLY_PACKAGES: ReadonlyMap<string, string> = new Map([
   ['@pyreon/compiler', "the web JSX compiler + build tooling itself; the native sibling is @pyreon/native-compiler — nothing here ships to an app runtime"],
   ['@pyreon/config', "build-time config shape read by the tooling that assembles an app — never part of a rendered app on any target"],
   ['@pyreon/connector-document', "bridges ui-components to @pyreon/document extraction — both ends are web/document engines"],
-  ['@pyreon/dnd', "wraps pragmatic-drag-and-drop (DOM events/pointers); native drag interactions are platform-gesture territory"],
   ['@pyreon/document', "wraps pdfmake/docx/exceljs/pptxgenjs (browser/node document engines); no native lowering"],
   ['@pyreon/document-primitives', "document-authoring primitives feeding the pdfmake/docx renderers"],
   ['@pyreon/feature', "composite over query/form/store/validation — lowers only when every dependency does; tracked as a Tier-2 composite"],
@@ -1364,6 +1363,10 @@ export const NATIVE_LOWERED_HOOKS: ReadonlySet<string> = new Set([
   'useDebouncedCallback', 'useThrottledCallback',
   // Pure timing over a callback — lowered at STATEMENT position.
   'useInterval', 'useTimeout',
+  // `@pyreon/dnd` — list reorder only. The element-getter hooks
+  // (useDraggable/useDroppable), the page-global useDragMonitor and the
+  // OS-file useFileDrop deliberately stay OUT, so they keep warning by name.
+  'useSortable',
 ])
 
 /**
@@ -1509,6 +1512,24 @@ const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
       advice:
         'this export has no native lowering yet. The standalone COLLECTION transforms DO lower (filter / map / take / unique / …, source-first) — chain those through consts, or compose with `computed()`',
       supported: new Set(['rx', ...RX_V1_METHODS]),
+    },
+  ],
+  [
+    '@pyreon/dnd',
+    {
+      // `useSortable` lowers (PyreonSortableState); the rest do not, and the
+      // reasons differ per hook rather than per package — so name the one that
+      // crosses instead of letting the blanket "web-only" line imply none do.
+      //
+      // useDraggable/useDroppable take `element: () => HTMLElement | null` —
+      // an imperative DOM-registration shape with no declarative analogue on
+      // either target. useDragMonitor is a page-global drag bus neither
+      // SwiftUI nor Compose exposes. useFileDrop is an OS-level file drag
+      // between apps (iPad multitasking / Android multi-window), a different
+      // model entirely.
+      advice:
+        '`useSortable({ items, by, onReorder })` DOES lower — it emits the native PyreonSortableState engine, and `ref={s.containerRef}` / `ref={s.itemRef(key)}` become SwiftUI .draggable/.dropDestination + Compose long-press drag modifiers. The element-getter hooks (useDraggable/useDroppable) are imperative DOM registration, useDragMonitor is a page-global drag bus, and useFileDrop is OS-level file DnD — none of the three has a native analogue',
+      supported: new Set(['useSortable']),
     },
   ],
   [
@@ -5127,6 +5148,12 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   const tableStateDecl = tryDeclFromCreateTableState(node, ctx)
   if (tableStateDecl) return tableStateDecl
 
+  // `@pyreon/dnd` — `const s = useSortable({ items, by, onReorder })` lowers to
+  // the PyreonSortableState engine. Same placement rationale as the table
+  // state above: recognized as a real port before the silent-drop block.
+  const sortableDecl = tryDeclFromUseSortable(node, ctx)
+  if (sortableDecl) return sortableDecl
+
   // Tier-2 silent-drop diagnostics from #1444 (Gap 4 PR-1) — kept for
   // the remaining 3 callees. `createI18n` and `createMachine` were
   // REMOVED from the list because they now have full ports via
@@ -7174,6 +7201,129 @@ function tryDeclFromCreateTableState(node: AnyNode, ctx: ParseCtx): DeclIR | nul
     return null
   }
   return { kind: 'table-state', name, dataBody, pageSize, columns }
+}
+
+/**
+ * `const s = useSortable({ items, by, onReorder, axis? })` from `@pyreon/dnd`
+ * → a `sortable` decl (the native PyreonSortableState engine).
+ *
+ * v1 lowers the four load-bearing options. Options that would silently do
+ * NOTHING natively — `groupId` / `onCrossListDrop` / `onCrossListReceive`
+ * (cross-list boards) and `label` (screen-reader announcement text) — WARN by
+ * name rather than being dropped without a word, because a board that quietly
+ * stops accepting cross-list drops on device is the worst possible failure.
+ */
+function tryDeclFromUseSortable(node: AnyNode, ctx: ParseCtx): DeclIR | null {
+  const init = node.init as AnyNode | undefined
+  if (init?.type !== 'CallExpression') return null
+  if ((init.callee?.name as string | undefined) !== 'useSortable') return null
+  if (node.id?.type !== 'Identifier') return null
+  const name = node.id.name as string
+  const configArg = unwrapTypeLayers((init.arguments as AnyNode[] | undefined)?.[0])
+  if (!configArg || configArg.type !== 'ObjectExpression') {
+    ctx.warnings.push(
+      `useSortable declaration \`${name}\`: argument must be an object literal { items, by, onReorder } to lower natively. Falling back to silent-drop.`,
+    )
+    return null
+  }
+
+  let itemsBody: ExprIR | undefined
+  let keyParam: string | undefined
+  let keyBody: ExprIR | undefined
+  let reorderParam: string | undefined
+  let reorderBody: StatementIR[] | undefined
+  let axis: 'vertical' | 'horizontal' = 'vertical'
+
+  for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
+    if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
+    const keyNode = prop.key as AnyNode | undefined
+    const keyName =
+      keyNode?.type === 'Identifier'
+        ? (keyNode.name as string)
+        : keyNode?.type === 'Literal'
+          ? String(keyNode.value)
+          : undefined
+    if (!keyName) continue
+    const valueNode = unwrapTypeLayers(prop.value as AnyNode | undefined)
+
+    if (keyName === 'items') {
+      // `items: () => rows()` — an expression-body getter, same contract as
+      // createTableState's `data`.
+      if (
+        (valueNode?.type === 'ArrowFunctionExpression' ||
+          valueNode?.type === 'FunctionExpression') &&
+        valueNode.body?.type !== 'BlockStatement'
+      ) {
+        itemsBody = parseExpr(valueNode.body as AnyNode, ctx)
+      }
+    } else if (keyName === 'by') {
+      if (
+        valueNode?.type === 'ArrowFunctionExpression' &&
+        (valueNode.params as AnyNode[] | undefined)?.length === 1 &&
+        valueNode.body?.type !== 'BlockStatement'
+      ) {
+        const p = ((valueNode.params as AnyNode[])[0] as AnyNode | undefined)?.name as
+          | string
+          | undefined
+        if (p !== undefined) {
+          keyParam = p
+          keyBody = parseExpr(valueNode.body as AnyNode, ctx)
+        }
+      }
+    } else if (keyName === 'onReorder') {
+      // A VOID callback, so an expression body must lower to a bare expression
+      // statement — NOT `tryFunctionDecl`, whose `return <expr>` is invalid
+      // inside a Kotlin lambda (`return` there targets the enclosing function,
+      // and an assignment is not an expression). Same shape `useInterval` uses.
+      if (valueNode?.type === 'ArrowFunctionExpression') {
+        const p = ((valueNode.params as AnyNode[] | undefined)?.[0] as AnyNode | undefined)?.name as
+          | string
+          | undefined
+        reorderParam = p ?? 'next'
+        reorderBody =
+          valueNode.body?.type === 'BlockStatement'
+            ? parseStatementBlock(valueNode.body as AnyNode, ctx)
+            : [{ kind: 'expr' as const, expr: parseExpr(valueNode.body as AnyNode, ctx) }]
+      }
+    } else if (keyName === 'axis') {
+      if (valueNode?.type === 'Literal' && valueNode.value === 'horizontal') {
+        axis = 'horizontal'
+      }
+    } else if (
+      keyName === 'groupId' ||
+      keyName === 'onCrossListDrop' ||
+      keyName === 'onCrossListReceive'
+    ) {
+      ctx.warnings.push(
+        `useSortable declaration \`${name}\`: \`${keyName}\` (cross-list boards) has NO native lowering — the native engine reorders WITHIN one list only, so a drag between two lists will not fire on iOS/Android. Keep a cross-list board behind a \`<Web>\` escape hatch, or model the move explicitly (remove from one signal, insert into the other).`,
+      )
+    } else if (keyName === 'label') {
+      ctx.warnings.push(
+        `useSortable declaration \`${name}\`: \`label\` (screen-reader announcement text) is not used natively — VoiceOver/TalkBack announce the item's own accessibility label instead. Set \`accessibilityLabel\` on the row for a native-friendly announcement.`,
+      )
+    }
+  }
+
+  if (!itemsBody) {
+    ctx.warnings.push(
+      `useSortable declaration \`${name}\`: \`items\` must be an expression-body getter (\`() => rows()\`) to lower natively. Falling back to silent-drop.`,
+    )
+    return null
+  }
+  if (keyParam === undefined || !keyBody) {
+    ctx.warnings.push(
+      `useSortable declaration \`${name}\`: \`by\` must be a single-param expression-body arrow (\`(item) => item.id\`) to lower natively. Falling back to silent-drop.`,
+    )
+    return null
+  }
+  if (reorderParam === undefined || !reorderBody) {
+    ctx.warnings.push(
+      `useSortable declaration \`${name}\`: \`onReorder\` must be an arrow function (\`(next) => items.set(next)\`) to lower natively. Falling back to silent-drop.`,
+    )
+    return null
+  }
+
+  return { kind: 'sortable', name, itemsBody, keyParam, keyBody, reorderParam, reorderBody, axis }
 }
 
 /**
