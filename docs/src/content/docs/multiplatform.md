@@ -1382,6 +1382,37 @@ named host component, and that a test covers it. Any one of those going
 missing FAILS the gate (a `webview-host` entry claims a shipping crossing
 path, so it is a regression, not a tracked gap).
 
+### `partial` — a declared subset that really lowers
+
+Three packages are `web-only` at the TIER level while their own manifests
+declare a `multiplatform.nativeFrontend`: a named subset that genuinely
+lowers. Filing them as plain gaps understated them, so the gate counts
+them apart, and each one's snippet exercises exactly the documented form
+and is asserted to emit **zero** warnings on both targets:
+
+| Package | what actually crosses |
+| --- | --- |
+| `@pyreon/http` | same-file endpoint calls — `createHttp({ baseUrl })` + `api.endpoint('GET /users/:id')` resolve through `useFetch`/`useQuery` to native PyreonFetch/PyreonQuery (literal params only; reactive params and a computed baseUrl stay web) |
+| `@pyreon/validation` | the declaration form — a top-level `zodSchema(z.object({…}))` emits native field validators (the adapters, inline `.parse()` and the async path stay web) |
+| `@pyreon/url-state` | `useUrlState(key, 'default')` with a **string** default, bound to the native router's query |
+
+A `partial` entry must ALSO be declared in the package's own manifest —
+the gate fails one whose manifest carries no `nativeFrontend`, so the
+mechanism cannot become a way to launder a gap into a crossing.
+
+**Why this needed a structural fix, not just three edits.** `transform()`
+never resolves imports, so a snippet naming a symbol that does not exist
+still "runs" — and because an unknown symbol warns *"has NO native
+lowering"*, it produces a warning **indistinguishable from a genuine
+gap**. Three registry entries shipped on fictional snippets
+(`createHttpClient`, which is really `createHttp`; `object`/`string`/
+`number`, which are `@pyreon/validate`'s builders, not validation's;
+`useHotkeys`, which is really `useHotkey`), and two of the three were
+misclassified as a result. Every snippet's `@pyreon/*` named imports are
+now checked against the package's real exports, and a phantom symbol
+fails the gate loudly — for every mechanism, `web-first` included, which
+is the one where a bogus warning otherwise looks like proof.
+
 ## DX surfaces on native (honest scope)
 
 The "one source" promise extends to **WRITING** the source, not just

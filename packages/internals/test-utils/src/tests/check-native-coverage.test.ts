@@ -8,8 +8,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   classifyEntry,
+  pyreonImportsOf,
   REGISTRY,
   summarize,
+  unknownImportedSymbols,
   validateRegistry,
   WARN_ALLOWLIST,
   webviewHostProblems,
@@ -179,6 +181,89 @@ describe('classifyEntry — webview-host', () => {
   })
 })
 
+describe('snippet import validation — the phantom-gap guard', () => {
+  // transform() never resolves imports, so a snippet naming a symbol the
+  // package does not export still "runs" — and since an unknown symbol warns
+  // "has NO native lowering", it manufactures a gap that reads as proven.
+  // Three registry entries shipped exactly that way.
+  it('extracts named imports per @pyreon package, unwrapping `as` and `type`', () => {
+    const imports = pyreonImportsOf(`import { createHttp, type HttpClient } from '@pyreon/http'
+import { Stack as S, Text } from '@pyreon/primitives'
+import { z } from 'zod'`)
+    expect(imports.get('@pyreon/http')).toEqual(['createHttp', 'HttpClient'])
+    // `Stack as S` — the IMPORTED name is what must exist upstream.
+    expect(imports.get('@pyreon/primitives')).toEqual(['Stack', 'Text'])
+    expect(imports.has('zod')).toBe(false) // not ours, not our business
+  })
+
+  it('flags a symbol the package does not export', () => {
+    const bad = unknownImportedSymbols(
+      new Map([['@pyreon/http', ['createHttpClient']]]),
+      new Map([['@pyreon/http', new Set(['createHttp'])]]),
+    )
+    expect(bad).toEqual(['createHttpClient (not exported by @pyreon/http)'])
+  })
+
+  it('says NOTHING when the package could not be resolved — an unverifiable check must not fail honest code', () => {
+    expect(unknownImportedSymbols(new Map([['@pyreon/x', ['anything']]]), new Map())).toEqual([])
+    expect(
+      unknownImportedSymbols(new Map([['@pyreon/x', ['a']]]), new Map([['@pyreon/x', new Set()]])),
+    ).toEqual([])
+  })
+
+  it('makes a fictional snippet a REGRESSION for EVERY mechanism — including web-first', () => {
+    // The web-first case is the dangerous one: warnings are EXPECTED there, so
+    // a fictional symbol is otherwise indistinguishable from a proven gap.
+    const fictional: SnippetOutcome = {
+      name: '@x/a',
+      warnings: 2,
+      messages: ['X has no native lowering'],
+      unknownSymbols: ['nope (not exported by @x/a)'],
+    }
+    for (const mechanism of ['pmtc-lowers', 'web-first', 'partial'] as const) {
+      const r = classifyEntry(
+        { name: '@x/a', mechanism, rationale: 'r', snippet: 's' },
+        fictional,
+        undefined,
+      )
+      expect(r.status, mechanism).toBe('regression')
+      expect(r.detail, mechanism).toContain('does not export')
+    }
+  })
+})
+
+describe('classifyEntry — partial', () => {
+  const entry: RegistryEntry = {
+    name: '@x/http',
+    mechanism: 'partial',
+    rationale: 'endpoint calls lower',
+    snippet: 's',
+  }
+  const declared = 'same-file endpoint calls resolve to PyreonFetch'
+
+  it('crosses when the documented form emits ZERO warnings AND the manifest declares it', () => {
+    const r = classifyEntry(entry, zeroWarn('@x/http'), undefined, undefined, declared)
+    expect(r.status).toBe('crosses')
+    expect(r.detail).toContain('PARTIAL')
+    // The report must name WHAT crosses, or "partial" is just a nicer "gap".
+    expect(r.detail).toContain(declared)
+  })
+
+  it('is a REGRESSION when the manifest declares no nativeFrontend', () => {
+    // Prevents `partial` becoming a way to launder a gap: the claim has to be
+    // in the package's OWN manifest, not only in this registry.
+    const r = classifyEntry(entry, zeroWarn('@x/http'), undefined, undefined, undefined)
+    expect(r.status).toBe('regression')
+    expect(r.detail).toContain('nativeFrontend')
+  })
+
+  it('is a REGRESSION when the documented form still warns', () => {
+    const r = classifyEntry(entry, warns('@x/http', 2), undefined, undefined, declared)
+    expect(r.status).toBe('regression')
+    expect(r.detail).toContain('warning')
+  })
+})
+
 describe('summarize', () => {
   it('counts crossings, gaps and regressions and lists them', () => {
     const results: EntryResult[] = [
@@ -282,6 +367,24 @@ describe('the real REGISTRY', () => {
     for (const e of hosted) {
       expect(e.webviewHost?.hostHtmlExport, e.name).toBeTruthy()
       expect(e.webviewHost?.componentExport, e.name).toBeTruthy()
+    }
+  })
+
+  it('every partial entry carries a snippet exercising its documented native form', () => {
+    const partials = REGISTRY.filter((e) => e.mechanism === 'partial')
+    expect(partials.length).toBeGreaterThan(0)
+    for (const e of partials) expect(e.snippet, e.name).toBeTruthy()
+  })
+
+  it('no snippet imports a @pyreon symbol from the entry it is not about', () => {
+    // Cheap structural guard on the registry itself: a snippet must import from
+    // its OWN package (that is what it claims to prove). Sibling imports are
+    // fine and expected (primitives, reactivity), but the subject must appear.
+    for (const e of REGISTRY) {
+      if (!e.snippet) continue
+      const imported = pyreonImportsOf(e.snippet)
+      if (!imported.has(e.name)) continue // composite/primitive-only snippets
+      expect(imported.get(e.name)?.length, e.name).toBeGreaterThan(0)
     }
   })
 

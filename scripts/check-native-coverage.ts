@@ -37,12 +37,32 @@
  *                         subpath is DECLARED, the module EXISTS, it exports the
  *                         documented host API, and a test covers it — see
  *                         `WEBVIEW_HOST_CAVEATS` for what this does NOT buy.
+ *   - `partial`         — the package is `web-only` at the TIER level, but its
+ *                         manifest declares a `nativeFrontend`: a named SUBSET
+ *                         that really does lower (http's endpoint calls,
+ *                         validation's `zodSchema(…)` declaration form,
+ *                         url-state's string-default `useUrlState`). Proven by
+ *                         transforming that documented form and asserting ZERO
+ *                         warnings, AND by requiring the manifest to declare the
+ *                         `nativeFrontend` the entry claims. Collapsing this into
+ *                         `web-first` understates it; calling it a full crossing
+ *                         overstates it — so it is counted and reported apart.
  *   - `web-first`       — a rich widget or web-coupled API whose native-frontend
- *                         arc is still OPEN. Tracked as a known gap, not a hard
- *                         failure. Where a canonical snippet exists it is
- *                         transformed and asserted to STILL warn, so the day it
- *                         lowers clean the gate prompts a reclassification (the
- *                         ratchet's forward direction).
+ *                         arc is still OPEN, with NO `nativeFrontend` in its
+ *                         manifest. Tracked as a known gap, not a hard failure.
+ *                         Where a canonical snippet exists it is transformed and
+ *                         asserted to STILL warn, so the day it lowers clean the
+ *                         gate prompts a reclassification (the ratchet's forward
+ *                         direction).
+ *
+ * ## Every snippet's IMPORTS are checked against the package's real exports
+ *
+ * `transform(...)` never resolves imports, so a snippet naming a symbol that
+ * does not exist still "runs" — and because an unknown symbol warns "has NO
+ * native lowering", it manufactures a gap indistinguishable from a real one.
+ * Two entries shipped exactly that way. Every snippet's `@pyreon/*` named
+ * imports are now verified against the package's actual exports, and a phantom
+ * symbol FAILS the gate loudly.
  *
  * ## What fails the gate (a REGRESSION)
  *
@@ -69,7 +89,12 @@ import { join, resolve } from 'node:path'
 // vitest (node) in test-utils. Resolve from this file's URL instead.
 const REPO = resolve(new URL('..', import.meta.url).pathname)
 
-export type Mechanism = 'pmtc-lowers' | 'native-container' | 'web-first' | 'webview-host'
+export type Mechanism =
+  | 'pmtc-lowers'
+  | 'native-container'
+  | 'webview-host'
+  | 'partial'
+  | 'web-first'
 
 /**
  * What a `webview-host` entry does NOT buy. Printed with the report so the
@@ -413,35 +438,51 @@ export function C() {
   },
 
   // ── web-first: rich widget / web-coupled API, native-frontend arc OPEN ──
+  // ── partial: `web-only` TIER, but the manifest declares a nativeFrontend ──
+  // These are NOT gaps. Each package's own manifest names a SUBSET that lowers,
+  // and the snippet below exercises exactly that documented form and is asserted
+  // to emit ZERO warnings. They were filed `web-first` on the strength of
+  // snippets that imported symbols the packages DO NOT EXPORT
+  // (`createHttpClient`, `object`/`string`/`number`) — fictional code that warns
+  // for the wrong reason and reads as a proven gap. The import check above is
+  // what makes that unrepeatable.
   {
     name: '@pyreon/http',
-    mechanism: 'web-first',
+    mechanism: 'partial',
     rationale:
-      'createHttpClient() wrapper does not lower yet; the underlying fetch() reuses hooks’ PyreonFetch runtime (arc open).',
-    snippet: `import { createHttpClient } from '@pyreon/http'
+      'the CLIENT (middleware, interceptors, streaming) stays web, but same-file endpoint calls DO lower: createHttp({ baseUrl }) + api.endpoint(…) resolve through useFetch/useQuery to native PyreonFetch/PyreonQuery. Verified zero-warning on both targets; literal params only.',
+    snippet: `import { createHttp } from '@pyreon/http'
+import { useFetch } from '@pyreon/hooks'
 import { Stack, Text } from '@pyreon/primitives'
-const api = createHttpClient({ baseURL: 'https://api.example.com' })
-export function C() { return (<Stack><Text>ok</Text></Stack>) }`,
+interface User { id: number; name: string }
+const api = createHttp({ baseUrl: 'https://api.example.com' })
+const getUser = api.endpoint('GET /users/:id')
+export function C() {
+  const req = useFetch<User>(getUser({ params: { id: '1' } }))
+  return (<Stack><Text>{req.data}</Text></Stack>)
+}`,
   },
   {
     name: '@pyreon/validation',
-    mechanism: 'web-first',
+    mechanism: 'partial',
     rationale:
-      'the Standard-Schema builders (object/string/number) do not lower; the sibling @pyreon/validate DOES (arc open).',
-    snippet: `import { object, string, number } from '@pyreon/validation'
+      'the zod/valibot/arktype ADAPTERS stay web, but the declarative form DOES lower: a top-level zodSchema(z.object({…})) emits native field validators. Verified zero-warning on both targets; the runtime surface around it (inline .parse(), async validate) stays web.',
+    snippet: `import { z } from 'zod'
+import { zodSchema } from '@pyreon/validation'
 import { Stack, Text } from '@pyreon/primitives'
-const schema = object({ name: string(), age: number() })
+const Signup = zodSchema(z.object({ name: z.string(), age: z.number() }))
 export function C() { return (<Stack><Text>ok</Text></Stack>) }`,
   },
   {
     name: '@pyreon/url-state',
-    mechanism: 'web-first',
-    rationale: 'useUrlState() is coupled to the URL/history web platform; only a string-default flat form lowers (arc open).',
+    mechanism: 'partial',
+    rationale:
+      "history entries, popstate and the pluggable serializers stay web, but useUrlState(key, 'default') with a STRING default DOES lower, bound to the native router's query. Verified zero-warning on both targets (a typed/number default still warns on this branch — #2943 widens that).",
     snippet: `import { useUrlState } from '@pyreon/url-state'
 import { Stack, Text } from '@pyreon/primitives'
 export function C() {
-  const [page] = useUrlState('page', 1)
-  return (<Stack><Text>{page()}</Text></Stack>)
+  const q = useUrlState('q', 'all')
+  return (<Stack><Text>{q()}</Text></Stack>)
 }`,
   },
   {
@@ -455,11 +496,14 @@ export function C() { return (<Stack><Text>feature</Text></Stack>) }`,
   {
     name: '@pyreon/hotkeys',
     mechanism: 'web-first',
+    // The CLASSIFICATION here was always right (the manifest declares no
+    // nativeFrontend — this is honestly web-only); only the snippet was
+    // fictional. The real export is `useHotkey`, SINGULAR, and it still warns.
     rationale: 'keyboard-shortcut binding has no native analogue on touch platforms (arc open).',
-    snippet: `import { useHotkeys } from '@pyreon/hotkeys'
+    snippet: `import { useHotkey } from '@pyreon/hotkeys'
 import { Stack, Text } from '@pyreon/primitives'
 export function C() {
-  useHotkeys('mod+s', () => {})
+  useHotkey('mod+s', () => {})
   return (<Stack><Text>hk</Text></Stack>)
 }`,
   },
@@ -535,6 +579,12 @@ export interface SnippetOutcome {
   warnings: number
   /** the warning strings (deduped), for the report */
   messages: string[]
+  /**
+   * `@pyreon/*` symbols the snippet imports that the package does NOT export.
+   * Non-empty means the snippet is FICTIONAL and its warning count is
+   * meaningless — see the header note on why that reads as a real gap.
+   */
+  unknownSymbols?: string[]
 }
 
 /**
@@ -605,14 +655,49 @@ export interface EntryResult {
  *                   (undefined if the entry does not require co-source)
  * @param webviewHost measured `./webview` contract (undefined unless the entry
  *                   is `webview-host`)
+ * @param nativeFrontend the `multiplatform.nativeFrontend` the package's OWN
+ *                   manifest declares (undefined when it declares none) — the
+ *                   evidence a `partial` entry is measured against
  */
 export function classifyEntry(
   entry: RegistryEntry,
   snippet: SnippetOutcome | undefined,
   coSourcePresent: boolean | undefined,
   webviewHost?: WebviewHostCheck | undefined,
+  nativeFrontend?: string | undefined,
 ): EntryResult {
   const base = { name: entry.name, mechanism: entry.mechanism }
+
+  // A snippet naming a symbol its package does not export proves NOTHING —
+  // it warns for the wrong reason. Fail before any mechanism is judged.
+  if (snippet && snippet.unknownSymbols && snippet.unknownSymbols.length > 0) {
+    return {
+      ...base,
+      status: 'regression',
+      detail: `snippet imports symbols the package does not export: ${snippet.unknownSymbols.join(', ')} — the snippet proves nothing (transform never resolves imports, so an unknown symbol warns "no native lowering" and manufactures a phantom gap)`,
+    }
+  }
+
+  if (entry.mechanism === 'partial') {
+    const problems: string[] = []
+    if (!nativeFrontend) {
+      problems.push(
+        "the package's manifest declares no `multiplatform.nativeFrontend` — a partial crossing must be declared there, not only here",
+      )
+    }
+    if (!snippet) problems.push('no snippet exercising the documented native form')
+    else if (snippet.warnings > 0 && !(entry.name in WARN_ALLOWLIST)) {
+      problems.push(
+        `the documented native form emits ${snippet.warnings} warning(s): ${snippet.messages[0] ?? ''}`,
+      )
+    }
+    if (problems.length > 0) return { ...base, status: 'regression', detail: problems.join('; ') }
+    return {
+      ...base,
+      status: 'crosses',
+      detail: `PARTIAL — only the declared subset lowers: ${nativeFrontend}`,
+    }
+  }
 
   if (entry.mechanism === 'webview-host') {
     const problems = webviewHostProblems(entry, webviewHost)
@@ -705,6 +790,14 @@ export function validateRegistry(registry: RegistryEntry[]): string[] {
     }
     if (e.mechanism === 'pmtc-lowers' && !e.snippet) {
       errs.push(`${e.name}: pmtc-lowers must carry a snippet (the crossing proof)`)
+    }
+    if (e.mechanism === 'partial') {
+      if (!e.snippet) {
+        errs.push(`${e.name}: partial must carry a snippet exercising the documented native form`)
+      }
+      if (e.requiresCoSource) {
+        errs.push(`${e.name}: partial is a lowering subset — it ships no native co-source`)
+      }
     }
     if (e.mechanism === 'webview-host') {
       if (!e.webviewHost) {
@@ -860,6 +953,120 @@ function moduleExports(source: string, name: string): boolean {
   return false
 }
 
+/**
+ * Every name a module EXPORTS, following `export … from` / `export *` through
+ * relative re-exports. Static — no dynamic import, so a browser-only package
+ * cannot blow the gate up by being imported in node.
+ *
+ * This exists because `transform(...)` NEVER RESOLVES IMPORTS: a snippet that
+ * names a symbol the package does not export still "runs", and — since an
+ * unknown symbol warns "has NO native lowering" — it produces a warning that
+ * looks exactly like a genuine gap. Two entries shipped that way (`@pyreon/http`
+ * importing `createHttpClient`, which does not exist — the real export is
+ * `createHttp`; `@pyreon/validation` importing `object`/`string`/`number`, which
+ * are `@pyreon/validate`'s builders). Both packages CROSS with their real API.
+ * A registry that cannot tell a real gap from a typo manufactures phantom ones.
+ */
+function collectExportedNames(entryFile: string, seen = new Set<string>()): Set<string> {
+  const names = new Set<string>()
+  if (seen.has(entryFile)) return names
+  seen.add(entryFile)
+
+  let source: string
+  try {
+    source = readFileSync(entryFile, 'utf8')
+  } catch {
+    return names
+  }
+
+  // `export function X` / `export const X` / `export class X` / `export type X` …
+  for (const m of source.matchAll(
+    /^\s*export\s+(?:declare\s+)?(?:async\s+)?(?:function|const|let|var|class|interface|type|enum)\s+([A-Za-z_$][\w$]*)/gm,
+  )) {
+    if (m[1]) names.add(m[1])
+  }
+
+  // `export { a, b as c }` (with or without a `from`) — the EXPORTED half.
+  for (const m of source.matchAll(/export\s*\{([^}]*)\}/g)) {
+    for (const part of (m[1] ?? '').split(',')) {
+      const seg = part.trim()
+      if (seg.length === 0) continue
+      const asIdx = seg.search(/\bas\b/)
+      const exported = (asIdx === -1 ? seg : seg.slice(asIdx + 2)).trim()
+      const clean = exported.replace(/^type\s+/, '').trim()
+      if (/^[A-Za-z_$][\w$]*$/.test(clean)) names.add(clean)
+    }
+  }
+
+  // `export * from './x'` — recurse (the only form that hides names entirely).
+  for (const m of source.matchAll(/export\s+\*\s+from\s+['"]([^'"]+)['"]/g)) {
+    const rel = m[1]
+    if (!rel || !rel.startsWith('.')) continue
+    const resolved = resolveRelativeModule(entryFile, rel)
+    if (resolved) for (const n of collectExportedNames(resolved, seen)) names.add(n)
+  }
+
+  return names
+}
+
+/** Resolve a relative specifier against a file, trying the usual extensions. */
+function resolveRelativeModule(fromFile: string, rel: string): string | undefined {
+  const base = join(fromFile, '..', rel)
+  for (const cand of [
+    base,
+    `${base}.ts`,
+    `${base}.tsx`,
+    join(base, 'index.ts'),
+    join(base, 'index.tsx'),
+  ]) {
+    try {
+      if (statSync(cand).isFile()) return cand
+    } catch {
+      /* keep trying */
+    }
+  }
+  return undefined
+}
+
+/** The named imports a snippet pulls from each `@pyreon/*` package. */
+export function pyreonImportsOf(snippet: string): Map<string, string[]> {
+  const out = new Map<string, string[]>()
+  for (const m of snippet.matchAll(/import\s*\{([^}]*)\}\s*from\s*['"](@pyreon\/[^'"]+)['"]/g)) {
+    const pkg = m[2]
+    if (!pkg) continue
+    const names: string[] = []
+    for (const part of (m[1] ?? '').split(',')) {
+      const seg = part.trim().replace(/^type\s+/, '')
+      // `a as b` — the IMPORTED name is the half before `as`.
+      const imported = seg.split(/\s+as\s+/)[0]?.trim() ?? ''
+      if (/^[A-Za-z_$][\w$]*$/.test(imported)) names.push(imported)
+    }
+    out.set(pkg, [...(out.get(pkg) ?? []), ...names])
+  }
+  return out
+}
+
+/**
+ * Names a snippet imports from a workspace `@pyreon/*` package that the package
+ * does NOT export. PURE given the resolved export sets.
+ *
+ * Subpath imports (`@pyreon/x/sub`) and packages absent from the workspace are
+ * SKIPPED rather than guessed at — a check that cannot see the truth must say
+ * nothing, not fail honest code.
+ */
+export function unknownImportedSymbols(
+  imports: Map<string, string[]>,
+  exportsByPkg: Map<string, Set<string>>,
+): string[] {
+  const bad: string[] = []
+  for (const [pkg, names] of imports) {
+    const known = exportsByPkg.get(pkg)
+    if (!known || known.size === 0) continue
+    for (const n of names) if (!known.has(n)) bad.push(`${n} (not exported by ${pkg})`)
+  }
+  return bad
+}
+
 /** Every test file under `src` whose name mentions webview. */
 function findWebviewTests(srcDir: string): string[] {
   const found: string[] = []
@@ -923,9 +1130,15 @@ async function main(): Promise<number> {
   const manifests = await findManifests(REPO)
   const registered = new Set(REGISTRY.map((e) => e.name))
   const missing: string[] = []
+  /** package → its manifest's declared `multiplatform.nativeFrontend` */
+  const nativeFrontendByPkg = new Map<string, string>()
   for (const m of manifests) {
-    const mp = (m.manifest as { multiplatform?: { tier?: unknown } }).multiplatform
+    const mp = (m.manifest as { multiplatform?: { tier?: unknown; nativeFrontend?: unknown } })
+      .multiplatform
     const tier = mp?.tier
+    if (typeof mp?.nativeFrontend === 'string' && mp.nativeFrontend.length > 0) {
+      nativeFrontendByPkg.set(m.manifest.name, mp.nativeFrontend)
+    }
     if ((tier === 'shared' || tier === 'service-backend') && !registered.has(m.manifest.name)) {
       missing.push(`${m.manifest.name} (tier '${tier}')`)
     }
@@ -956,7 +1169,19 @@ async function main(): Promise<number> {
         count += r.warnings.length
         for (const w of r.warnings) if (!msgs.includes(w)) msgs.push(w)
       }
-      outcome = { name: entry.name, warnings: count, messages: msgs }
+      // Verify the snippet is REAL before trusting its warning count.
+      const imports = pyreonImportsOf(entry.snippet)
+      const exportsByPkg = new Map<string, Set<string>>()
+      for (const pkg of imports.keys()) {
+        const loc = packages.get(pkg)
+        if (loc) exportsByPkg.set(pkg, collectExportedNames(join(loc.dir, 'src', 'index.ts')))
+      }
+      outcome = {
+        name: entry.name,
+        warnings: count,
+        messages: msgs,
+        unknownSymbols: unknownImportedSymbols(imports, exportsByPkg),
+      }
     }
 
     const coOk = entry.requiresCoSource ? coSourceOk(packages.get(entry.name)) : undefined
@@ -964,7 +1189,13 @@ async function main(): Promise<number> {
       ? measureWebviewHost(packages.get(entry.name), entry.webviewHost)
       : undefined
     if (webview) webviewChecks.set(entry.name, webview)
-    const res = classifyEntry(entry, outcome, coOk, webview)
+    const res = classifyEntry(
+      entry,
+      outcome,
+      coOk,
+      webview,
+      nativeFrontendByPkg.get(entry.name),
+    )
     results.push(res)
 
     if (res.mechanism === 'web-first' && outcome && outcome.warnings === 0) {
@@ -1002,14 +1233,22 @@ async function main(): Promise<number> {
     }
     console.log(`  ⚠ ${WEBVIEW_HOST_CAVEATS}.`)
   }
-  console.log('\nweb-first (native-frontend arc still open):')
+  const partials = byMech('partial')
+  if (partials.length > 0) {
+    console.log('\npartial (web-only TIER, but a declared nativeFrontend subset DOES lower):')
+    for (const r of partials) console.log(line(r))
+  }
+  console.log('\nweb-first (no nativeFrontend declared — the arc is genuinely open):')
   for (const r of byMech('web-first')) console.log(line(r))
 
   const hostedCrossing = hosted.filter((r) => r.status === 'crosses').length
-  const hostedNote =
-    hostedCrossing > 0 ? ` (${hostedCrossing} of them by WEBVIEW-HOSTING, not native rendering)` : ''
+  const partialCrossing = partials.filter((r) => r.status === 'crosses').length
+  const notes: string[] = []
+  if (hostedCrossing > 0) notes.push(`${hostedCrossing} by WEBVIEW-HOSTING, not native rendering`)
+  if (partialCrossing > 0) notes.push(`${partialCrossing} PARTIALLY, only their declared subset`)
+  const note = notes.length > 0 ? ` (${notes.join('; ')})` : ''
   console.log(
-    `\n${summary.crossing}/${summary.total} app-runtime packages cross${hostedNote}; ${summary.gaps} open gap(s).`,
+    `\n${summary.crossing}/${summary.total} app-runtime packages cross${note}; ${summary.gaps} open gap(s).`,
   )
   if (summary.openGaps.length > 0) {
     console.log('Open gaps:')
