@@ -79,6 +79,22 @@ function Panel() {
     }),
   },
   {
+    // The residual footgun this PR's fix leaves behind. Removing the redundant
+    // per-traversal write lowers the router's own history traffic, but an APP
+    // that writes history on every keystroke still trips the browser's rate
+    // limit — Firefox and Safari throw, Chrome warns and drops the write.
+    pattern: /(?:Too many calls to Location or History APIs|more than 100 times per 10 seconds|Throttling navigation)/i,
+    diagnose: () => ({
+      cause:
+        'The browser rate-limits history writes (~100 per 10s). Something is calling pushState/replaceState per keystroke or per animation frame — most often a URL-synced signal bound directly to an input.',
+      fix: 'Debounce the URL write, and use replace (not push) for transient state so each keystroke does not add a history entry the user must Back through.',
+      fixCode: `const q = useUrlState('q', '', { replace: true })
+const debounced = useDebouncedValue(q, 300)  // write the URL from this`,
+      related:
+        'The router itself no longer writes the URL for a browser-initiated traversal (the browser already owns it), so remaining throttle hits come from app-level writes.',
+    }),
+  },
+  {
     // The residual footgun left by this PR's captured-once prop fixes. Those
     // components now read through `props`, but the CLASS is still writable by
     // hand: a body-scope destructure freezes the value at setup because

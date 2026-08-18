@@ -205,4 +205,60 @@ describe('popstate routes through the navigation pipeline', () => {
     expect(loaderRuns).toBe(1)
     router.destroy()
   })
+  // ─── The double-Back URL clobber ────────────────────────────────────────
+  //
+  // A BROWSER-initiated traversal has already moved the URL — the browser owns
+  // it. Pre-fix `commitNavigation` still ran `syncBrowserUrl(path, replace)`
+  // for it, which is redundant in the happy path and WRONG once a newer
+  // traversal has moved the history: the write lands on whatever entry is
+  // current NOW, stamping the older navigation's URL onto it.
+  //
+  // Observed as a rapid double-Back losing an entry (real Chromium,
+  // e2e/fundamentals/new-demos.spec.ts:79) — but that e2e only reproduces
+  // under load, because it needs Back #2 to fire while Back #1's async
+  // navigate is still in flight. These specs lock the MECHANISM instead, which
+  // is deterministic: does a browser-initiated commit write the URL at all?
+  it('does NOT write the URL for a browser-initiated traversal (the browser owns it)', async () => {
+    const routes: RouteRecord[] = [
+      { path: '/', component: Noop },
+      { path: '/a', component: Noop },
+      { path: '/b', component: Noop },
+    ]
+    window.history.replaceState(null, '', '/')
+    const router = createRouter({ routes, mode: 'history' })
+    await router.push('/a')
+
+    // Move the URL the way a browser does, THEN start spying — so the spy sees
+    // only what the router itself writes in response to the event.
+    window.history.replaceState(null, '', '/b')
+    const replaceSpy = vi.spyOn(window.history, 'replaceState')
+    const pushSpy = vi.spyOn(window.history, 'pushState')
+    window.dispatchEvent(new PopStateEvent('popstate'))
+    await flush(20)
+
+    expect(router.currentRoute().path).toBe('/b') // the pipeline DID run
+    expect(replaceSpy).not.toHaveBeenCalled() // …but wrote nothing
+    expect(pushSpy).not.toHaveBeenCalled()
+
+    replaceSpy.mockRestore()
+    pushSpy.mockRestore()
+    router.destroy()
+  })
+
+  it('still writes the URL for an APP-initiated replace (the guard is not over-broad)', async () => {
+    const routes: RouteRecord[] = [
+      { path: '/', component: Noop },
+      { path: '/a', component: Noop },
+    ]
+    window.history.replaceState(null, '', '/')
+    const router = createRouter({ routes, mode: 'history' })
+
+    const replaceSpy = vi.spyOn(window.history, 'replaceState')
+    await router.replace('/a')
+
+    expect(replaceSpy).toHaveBeenCalled() // the app asked, so the router writes
+    replaceSpy.mockRestore()
+    router.destroy()
+  })
+
 })
