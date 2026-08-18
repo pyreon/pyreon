@@ -312,7 +312,14 @@ function hydrateReactiveChild(
       const rangeFirst = domNode.nextSibling
       if (rangeFirst !== null && rangeFirst !== end) {
         let hydrated = false
-        const open = domNode
+        // A STABLE start boundary for the adopted region. The `$` open marker
+        // cannot serve: it is removed below, and leaving it would let a later
+        // `_mountSlot` mistake it for a live slot. A neutral marker also keeps
+        // the cleanup honest when the adopted subtree's OWN reactivity adds
+        // nodes after the walk — the range is re-read at teardown rather than
+        // frozen as a node list captured during hydration.
+        const startMarker = document.createComment('pyreon')
+        parent.insertBefore(startMarker, domNode)
         // `end` is the anchor: mountReactive inserts its own marker just before
         // it, so the boundary lands after the adopted content and no extra
         // marker of ours is needed.
@@ -330,16 +337,40 @@ function hydrateReactiveChild(
           // exactly this — an adopted text node stayed put after the accessor
           // flipped to an element, 5/300 seeds diverging post-flip.)
           //
-          // Capture the LIVE adopted range — everything the walk claimed or
-          // repaired, between the still-present open marker and mountReactive's
-          // anchor — and remove it alongside the dispose.
-          const claimed: ChildNode[] = []
-          for (let c = open.nextSibling; c && c !== a; c = c.nextSibling) claimed.push(c)
+          // Clear the LIVE range at teardown (start marker → mountReactive's
+          // anchor), not a list frozen now: the adopted subtree's own bindings
+          // may add or drop top-level nodes while it is mounted.
           return () => {
             disposeBindings()
-            for (let i = 0; i < claimed.length; i++) (claimed[i] as ChildNode).remove()
+            let c = startMarker.nextSibling
+            while (c && c !== a) {
+              const nx: ChildNode | null = c.nextSibling
+              c.remove()
+              c = nx
+            }
           }
         })
+        // The accessor's initial value may be null/false, in which case
+        // mountReactive never called the mount fn — the server range is then
+        // stale content the client would not have produced, and leaving the
+        // adoption armed would run it against those dead nodes on the FIRST
+        // flip. Drop the range and mark the adoption spent.
+        if (!hydrated) {
+          hydrated = true
+          // Stop at mountReactive's OWN marker, which it inserted immediately
+          // before the anchor — walking to `end` instead deletes that marker,
+          // detaching the boundary so the binding can never render again. Every
+          // null-initial accessor (`{err() && <span/>}`, a toast list, a
+          // conditional row) is that shape, which is why it fails loudly and
+          // everywhere rather than subtly.
+          const boundary = end.previousSibling
+          let c = startMarker.nextSibling
+          while (c && c !== boundary && c !== end) {
+            const nx: ChildNode | null = c.nextSibling
+            if (c !== domNode) c.remove()
+            c = nx
+          }
+        }
         domNode.remove()
         end.remove()
         return [cleanup, after ? firstReal(after) : null]

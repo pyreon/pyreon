@@ -287,6 +287,40 @@ describe('map-composed adoption — state, reactivity and safety', () => {
     dispose()
   })
 
+  it('keeps the boundary ALIVE when the client initial value is null', async () => {
+    // The server rendered content into the range, but the client accessor is
+    // null on its first run, so `mountReactive` never calls the mount fn and the
+    // adoption must be spent + the stale range dropped. The clearing walk has to
+    // stop at mountReactive's OWN marker (inserted immediately before the
+    // anchor) — walking to the close marker instead deletes it, detaching the
+    // boundary so the binding can never render again. That is silent in unit
+    // tests of the initial DOM and catastrophic in a real app: every
+    // null-initial accessor (`{err() && <span/>}`, a toast row, a conditional
+    // list) is this shape, which is why it took the main e2e from 141/0 to
+    // 66/141 rather than failing subtly.
+    const show = signal(true)
+    const SRC = `const App = () => <div class="w">{show() ? ITEMS.map((i) => <Card item={i} />) : null}</div>`
+    const html = await renderToString(
+      h(build(SRC, { ...G, show }, true) as never, null) as never,
+    )
+    const host = document.createElement('div')
+    host.innerHTML = html
+    document.body.appendChild(host)
+    expect(host.querySelectorAll('article')).toHaveLength(ITEMS.length)
+
+    // Diverge: the client boots with the accessor already false.
+    show.set(false)
+    const dispose = hydrateRoot(host, h(build(SRC, { ...G, show }, false) as never, null))
+    expect(host.querySelectorAll('article')).toHaveLength(0)
+
+    // The binding must still be live in BOTH directions.
+    show.set(true)
+    expect(host.querySelectorAll('article')).toHaveLength(ITEMS.length)
+    show.set(false)
+    expect(host.querySelectorAll('article')).toHaveLength(0)
+    dispose()
+  })
+
   it('does NOT let a local slot template STEAL the root SSR node', async () => {
     // #2918's hazard, now for slot-bearing templates: arguments evaluate before
     // the call, so a template built in an earlier statement reaches the armed
