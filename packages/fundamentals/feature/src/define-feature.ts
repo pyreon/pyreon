@@ -1,6 +1,7 @@
 import { onUnmount } from '@pyreon/core'
 import type { SchemaValidateFn } from '@pyreon/form'
 import { useForm as _useForm } from '@pyreon/form'
+import { createFieldComponent } from './field'
 import type { QueryKey } from '@pyreon/query'
 import { useMutation as _useMutation, useQuery as _useQuery, useQueryClient } from '@pyreon/query'
 import {
@@ -396,6 +397,10 @@ export function defineFeature<TValues extends Record<string, unknown>>(
         },
       })
     },
+
+    // ─── Field (schema-driven per-field renderer) ───────────────────
+
+    Field: createFieldComponent<TValues>(fields),
 
     // ─── Form ───────────────────────────────────────────────────────
 

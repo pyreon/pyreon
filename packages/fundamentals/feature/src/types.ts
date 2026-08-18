@@ -4,6 +4,7 @@ import type { Signal } from '@pyreon/reactivity'
 import type { StoreApi } from '@pyreon/store'
 import type { SortingState, Table } from '@pyreon/table'
 import type { VNodeChild } from '@pyreon/core'
+import type { FieldProps } from './field'
 import type { FieldInfo } from './schema'
 import type { TableProps } from './table-render'
 import type { FeatureTableFeatures } from './table-features'
@@ -144,6 +145,14 @@ export interface Feature<TValues extends Record<string, unknown>> {
    * the sort indicator. Per-COLUMN cell overrides keyed by column id.
    */
   Table: (props: TableProps<TValues>) => VNodeChild
+
+  /**
+   * Render one schema field — label, typed control, and error — using the
+   * form's own `register`/`labelProps`/`errorProps`. Per-field on purpose: the
+   * author keeps their layout and can replace a single field with hand-written
+   * markup without abandoning the abstraction.
+   */
+  Field: (props: FieldProps<TValues>) => VNodeChild
 
   /** Fetch a paginated/filtered list. */
   useList: (options?: ListOptions) => UseQueryResult<TValues[], unknown>
