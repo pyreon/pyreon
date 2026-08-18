@@ -10,7 +10,12 @@ import { transform } from '../index'
 // labels (`case "busy":` / `"busy" ->`) — a swiftc type error / kotlinc
 // incompatible-types error. (3) `JSON.parse`/`JSON.stringify` emitted
 // VERBATIM (`JSON` doesn't exist natively — unresolved reference, no
-// warning) — now a NAMED warning. (4) a destructured callback param
+// warning). Both were first made NAMED warnings; `JSON.stringify` has
+// since been LOWERED to real native serialization (Swift JSONEncoder /
+// Kotlin Json.encodeToString), while `JSON.parse` still warns (it throws,
+// which needs a native error model). The half of this find that is
+// permanent either way — a bare unresolved `JSON.` NEVER reaches native
+// code — is still asserted below. (4) a destructured callback param
 // (`([k, v]) => k`) emitted a closure over UNBOUND names — now a NAMED
 // warning (+ the tuple-type warning names the object-type fix).
 
@@ -122,8 +127,8 @@ describe('switch over an ENUM subject maps case labels to enum members', () => {
   })
 })
 
-describe('JSON.parse / JSON.stringify fail loudly (were verbatim + unresolved)', () => {
-  it('stringify warns by name and never emits a bare JSON reference', () => {
+describe('JSON.stringify lowers / JSON.parse warns (both were verbatim + unresolved)', () => {
+  it('stringify LOWERS to native serialization and never emits a bare JSON reference', () => {
     const src = `
 import { signal, computed } from '@pyreon/reactivity'
 import { Stack, Text } from '@pyreon/primitives'
@@ -133,9 +138,24 @@ export function App() {
   const dump = computed(() => JSON.stringify(todos()))
   return <Stack gap="sm"><Text>{dump()}</Text></Stack>
 }`
-    const out = transform(src, { target: 'swift' })
-    expect((out.warnings ?? []).some((w) => w.includes('JSON.stringify'))).toBe(true)
-    expect(out.code).not.toContain('JSON.stringify')
+    const sw = transform(src, { target: 'swift' })
+    const kt = transform(src, { target: 'kotlin' })
+
+    // CHANGED HALF: this shape used to warn by name and drop to "". It now
+    // lowers, because the emitted structs are Codable / @Serializable.
+    expect((sw.warnings ?? []).some((w) => w.includes('JSON.stringify'))).toBe(false)
+    expect((kt.warnings ?? []).some((w) => w.includes('JSON.stringify'))).toBe(false)
+    expect(sw.code).toContain('JSONEncoder().encode(todos)')
+    expect(kt.code).toContain('Json.encodeToString(todos)')
+
+    // UNCHANGED HALF — the invariant this sweep exists to protect: a bare,
+    // unresolved `JSON.` member access must NEVER reach native code, on
+    // EITHER target. Neither `JSONEncoder(` (Swift) nor `Json.` (Kotlin,
+    // different casing) matches `JSON.`, so this stays precise.
+    for (const out of [sw, kt]) {
+      expect(out.code).not.toContain('JSON.stringify')
+      expect(out.code).not.toContain('JSON.')
+    }
   })
 
   it('parse warns by name too', () => {
