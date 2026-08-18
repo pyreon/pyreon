@@ -158,6 +158,15 @@ const USAGES: ReadonlyArray<readonly [string, string, string]> = [
     'const q = useQuery<Resp>(() => ({ queryKey: ["k"], queryFn: () => fetch("/x"), staleTime: 0 }))',
   ],
   ['useShare', '@pyreon/hooks', 'const s = useShare()'],
+  // The FULL contract on purpose: a partial one (missing `by` or `onReorder`)
+  // deliberately warns and stays web, so type-checking that shape would prove
+  // the opposite of what this suite is for.
+  [
+    'useSortable',
+    '@pyreon/dnd',
+    'const rows = signal<Resp[]>([]); const s = useSortable({ items: () => rows(), ' +
+      'by: (r: Resp) => r.text, onReorder: (next: Resp[]) => rows.set(next) })',
+  ],
   ['useSizeClass', '@pyreon/hooks', 'const s = useSizeClass()'],
   ['useStorage', '@pyreon/hooks', 'const s = useStorage("k", "")'],
   ['useWebSocket', '@pyreon/hooks', 'const w = useWebSocket("wss://x.dev")'],
