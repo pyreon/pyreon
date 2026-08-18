@@ -154,7 +154,7 @@ const initial = isClient ? navigator.onLine : true`,
           name: 'options',
           type: '{ equals?: (a: T, b: T) => boolean }',
           optional: true,
-          description: 'Custom equality to skip downstream updates on structurally-equal values (default `Object.is`).',
+          description: 'Custom equality gate. WITHOUT it a computed notifies downstream on every dependency change, even when the recomputed value is identical — there is NO default equality check (unlike a signal, which does gate on `Object.is`). Pass `equals` to suppress those updates.',
         },
       ],
       returns: {
@@ -162,7 +162,7 @@ const initial = isClient ? navigator.onLine : true`,
         description: 'A read-only callable — call to read the memoized value; recomputes lazily only when a dependency changes.',
       },
       summary:
-        'Create a memoized derived value. Dependencies auto-tracked on each evaluation — no dependency array needed (unlike React `useMemo`). Only recomputes when a tracked signal actually changes. Custom `equals` function prevents downstream effects from firing on structurally-equal updates (default: `Object.is`).',
+        'Create a memoized derived value. Dependencies auto-tracked on each evaluation — no dependency array needed (unlike React `useMemo`). Only recomputes when a tracked signal actually changes. By DEFAULT a computed notifies downstream on every dependency change, even when the recomputed value is unchanged — there is no implicit equality check (a signal gates on `Object.is`; a computed does not). Pass `equals` to gate on value, which is what stops an effect re-running on an identical result.',
       example: `const count = signal(0)
 const doubled = computed(() => count() * 2)
 doubled()  // 0
@@ -173,6 +173,7 @@ doubled()  // 10`,
         'Using `computed()` for side effects — use `effect()` instead; computed is for pure derivation',
         'Expecting `computed()` to re-run when a `.peek()`-read signal changes — `.peek()` bypasses tracking',
         'Expecting eager evaluation — the default computed is LAZY: a dependency change only marks it dirty; the derivation runs on the next read. Pass `options.equals` for the eager variant that re-evaluates on notification and gates downstream updates',
+        'Assuming `computed()` de-duplicates identical results — it does NOT. A signal write gates on `Object.is`, so `set(same)` is a no-op; a COMPUTED has no such gate, and every dependency change notifies downstream even when the derived value is byte-identical. `computed(() => items().length)` re-runs its effects on every item mutation that leaves the length alone. Pass `{ equals }` (`Object.is` if that is what you meant) to gate on value',
         'Reasoning about memory from stale branches — a re-evaluated computed drops subscriptions to sources it no longer reads (exact dep list per evaluation), so `dispose()` fully unsubscribes even after conditional-branch flips',
       ],
       seeAlso: ['signal', 'effect'],
