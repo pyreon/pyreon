@@ -26,7 +26,8 @@ export function setupClearProfile(container: HTMLElement): void {
         <For each={rows} by={(row: ReactiveRow) => row.id}>
           {(row: ReactiveRow) => (
             <tr class={() => (isSelected(row.id) ? 'selected' : '')}>
-              <td>{String(row.id)}</td>
+              {/* raw number — mirrors impl/pyreon.tsx exactly */}
+              <td>{row.id}</td>
               <td>{() => row.label()}</td>
             </tr>
           )}

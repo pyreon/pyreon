@@ -14,7 +14,7 @@
  */
 import { createComponent, createRenderEffect, createSelector, createSignal, For } from 'solid-js'
 import { insert, render, template } from 'solid-js/web'
-import type { BenchSuite } from '../runner'
+import type { BenchSuite, NumericText } from '../runner'
 import {
   BATCH_K_CLEAR,
   BATCH_K_SELECT,
@@ -70,7 +70,8 @@ export async function runSolid(container: HTMLElement): Promise<BenchSuite> {
             const el = _tmpl$() as HTMLElement
             const td1 = el.children[0] as HTMLElement
             const td2 = el.children[1] as HTMLElement
-            td1.textContent = String(row.id)
+            // raw number — see runner.ts "Row-id rendering rule"
+            ;(td1 as unknown as NumericText).textContent = row.id
             // Idiomatic Solid: insert() is exactly what Solid's JSX compiler
             // emits for `<td>{row.label()}</td>` — a reactively-updated text
             // node, the fair equivalent of Pyreon's _bindText. The previous
