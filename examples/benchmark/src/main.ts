@@ -231,8 +231,17 @@ if (__url.searchParams.get('profileClear') === '1') {
   // __createBench drivers for both; never runs the timed suite.
   void (async () => {
     const { setupCreateProfile } = await import('./impl/profile-create')
-    setupCreateProfile(makeContainer(), makeContainer())
+    setupCreateProfile(makeContainer(), makeContainer(), makeContainer())
     setStatus('profileCreate ready')
+  })()
+} else if (__url.searchParams.get('profileTree') === '1') {
+  // CPU-profiling target for bench-treeprofile.ts — mounts the deep-tree
+  // scenario's Pyreon, Solid and Vanilla arms side by side, exposing
+  // __treeBench drivers for all three; never runs the timed suite.
+  void (async () => {
+    const { setupTreeProfile } = await import('./impl/profile-tree')
+    setupTreeProfile(makeContainer(), makeContainer(), makeContainer())
+    setStatus('profileTree ready')
   })()
 } else if (__url.searchParams.get('mode') === 'scenarios') {
   // Coverage-expansion scenarios (dbmon, deep tree) — one framework per fresh

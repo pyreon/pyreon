@@ -53,7 +53,7 @@ export function App() {
     expect(code).toContain('__root, __p0)')
     expect(code).not.toContain('_mountSlot(() => (banner() ? <b>on</b> : <span>off</span>), __root, __root.firstChild)')
     // The static sibling's ref walk is evaluated BEFORE the slot mounts.
-    expect(idx(code, 'const __e0 = __root.firstChild.nextSibling;')).toBeLessThan(
+    expect(idx(code, 'const __e0 = __p0.nextSibling;')).toBeLessThan(
       idx(code, '_mountSlot('),
     )
     expect(idx(code, 'const __p0 = ')).toBeLessThan(idx(code, '_mountSlot('))
@@ -72,7 +72,7 @@ export function App() {
 `
     const { code } = transformJSX_JS(src, 'test.tsx')
     const p0 = idx(code, 'const __p0 = __root.firstChild;')
-    const p1 = idx(code, 'const __p1 = __root.firstChild.nextSibling;')
+    const p1 = idx(code, 'const __p1 = __p0.nextSibling;')
     const firstSlot = idx(code, '_mountSlot(')
     // Both placeholders resolved against the PRISTINE clone, before either
     // slot mutates the child list.
@@ -81,8 +81,10 @@ export function App() {
     // Each slot consumes its own hoisted const.
     expect(code).toContain('__root, __p0)')
     expect(code).toContain('__root, __p1)')
-    // The second slot's arg must NOT be an inline (stale) walk.
+    // The second slot's arg must NOT be an inline (stale) walk — in either
+    // spelling, since phase-1 captures now chain off one another.
     expect(code).not.toContain('__root, __root.firstChild.nextSibling)')
+    expect(code).not.toContain('__root, __p0.nextSibling)')
   })
 
   it('falsy STATIC conditional before an attr-bearing sibling: sibling ref hoisted above _mountSlot', () => {
@@ -96,7 +98,7 @@ export function App() {
     // Static slot value is passed bare; its placeholder is a hoisted const.
     idx(code, 'const __p0 = __root.firstChild;')
     idx(code, '_mountSlot(show && ')
-    expect(idx(code, 'const __e0 = __root.firstChild.nextSibling;')).toBeLessThan(
+    expect(idx(code, 'const __e0 = __p0.nextSibling;')).toBeLessThan(
       idx(code, '_mountSlot('),
     )
     // The computed `id={"a" + "b"}` binds on the hoisted `__e0` ref via the
@@ -115,7 +117,7 @@ export function App() {
 `
     const { code } = transformJSX_JS(src, 'test.tsx')
     const slot = idx(code, '_mountSlot(')
-    expect(idx(code, 'const __e0 = __root.firstChild.nextSibling;')).toBeLessThan(slot)
+    expect(idx(code, 'const __e0 = __p0.nextSibling;')).toBeLessThan(slot)
     expect(idx(code, 'const __t1 = __e0.firstChild;')).toBeLessThan(slot)
     idx(code, 'const __d1 = _bindText(zoom, __t1);')
   })
@@ -133,7 +135,7 @@ export function App() {
     const slot = idx(code, '_mountSlot(')
     // The reactive-text child's replaceChild target walk is captured in
     // phase 1 (against the pristine clone), not inlined after the slot ran.
-    const p1 = idx(code, 'const __p1 = __root.firstChild.nextSibling.nextSibling;')
+    const p1 = idx(code, 'const __p1 = __p0.nextSibling.nextSibling;')
     expect(p1).toBeLessThan(slot)
     idx(code, '.replaceChild(__t0, __p1);')
     expect(code).not.toContain('replaceChild(__t0, __root.firstChild')
@@ -150,7 +152,7 @@ export function App() {
 `
     const { code } = transformJSX_JS(src, 'test.tsx')
     const slot = idx(code, '_mountSlot(')
-    const p1 = idx(code, 'const __p1 = __root.firstChild.nextSibling.nextSibling;')
+    const p1 = idx(code, 'const __p1 = __p0.nextSibling.nextSibling;')
     expect(p1).toBeLessThan(slot)
     idx(code, '_setChildAt(__root, __p1, title);')
   })

@@ -42,7 +42,11 @@ import { buildRows, buildRowsWith, resetRng } from '../runner'
 
 type ReactiveRow = { id: number; label: ReturnType<typeof signal<string>> }
 
-export function setupCreateProfile(pyreonHost: HTMLElement, vanillaHost: HTMLElement): void {
+export function setupCreateProfile(
+  pyreonHost: HTMLElement,
+  vanillaHost: HTMLElement,
+  wideHost: HTMLElement,
+): void {
   resetRng()
 
   // ─── Pyreon arm — byte-for-byte the markup impl/pyreon.tsx benches ────────
@@ -128,7 +132,65 @@ export function setupCreateProfile(pyreonHost: HTMLElement, vanillaHost: HTMLEle
     vanillaRenderAll([])
   }
 
+  // ─── Wide-row arm — 8 referenced cells ───────────────────────────────────
+  //
+  // The krausest-style row has TWO cells, which is the narrowest shape a table
+  // benchmark can have and is NOT what a real app renders. The compiler's
+  // per-child ref walks are quadratic in the number of REFERENCED children, so
+  // a 2-cell row is precisely the width at which that cost is invisible — one
+  // redundant pointer read per row. This arm exists so the sibling-ref chaining
+  // change is measured on a shape where it can actually matter, instead of
+  // being judged by the one shape that structurally cannot show it.
+  //
+  // Eight cells, every one bound to its own per-row signal, mirroring how the
+  // narrow arm binds `label`. Same `<For>` + keyed reconciler, same build
+  // helper — only the width differs.
+  type WideRow = { id: number; cells: ReturnType<typeof signal<string>>[] }
+
+  const wideRows = signal<WideRow[]>([])
+
+  mount(
+    <table>
+      <tbody>
+        <For each={wideRows} by={(row: WideRow) => row.id}>
+          {(row: WideRow) => (
+            <tr>
+              <td>{() => row.cells[0]!()}</td>
+              <td>{() => row.cells[1]!()}</td>
+              <td>{() => row.cells[2]!()}</td>
+              <td>{() => row.cells[3]!()}</td>
+              <td>{() => row.cells[4]!()}</td>
+              <td>{() => row.cells[5]!()}</td>
+              <td>{() => row.cells[6]!()}</td>
+              <td>{() => row.cells[7]!()}</td>
+            </tr>
+          )}
+        </For>
+      </tbody>
+    </table>,
+    wideHost,
+  )
+
+  const mkWideRows = (n: number) =>
+    buildRowsWith<WideRow>(n, (id, label) => ({
+      id,
+      cells: Array.from({ length: 8 }, (_, c) => signal(`${label} ${c}`)),
+    }))
+
+  function __pyreonWideCreate(n: number): void {
+    wideRows.set(mkWideRows(n))
+  }
+  function __pyreonWideClear(): void {
+    wideRows.set([])
+  }
+
   ;(globalThis as Record<string, unknown>).__createBench = {
+    wide: {
+      create: __pyreonWideCreate,
+      clear: __pyreonWideClear,
+      rowCount: () => wideHost.querySelectorAll('tr').length,
+      cellCount: () => wideHost.querySelectorAll('td').length,
+    },
     pyreon: {
       build: __pyreonBuild,
       commit: __pyreonCommit,

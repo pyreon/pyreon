@@ -5968,6 +5968,13 @@ struct TemplateBuilder {
     var_idx: u32,
     disp_idx: u32,
     placeholder_idx: u32,
+    /// Ref var / accessor string -> its fully-expanded walk from `__root`.
+    /// Mirrors `jsx.ts:canonicalOf` — see the long note there for why the walk
+    /// memoization needs two maps.
+    canonical_of: FxHashMap<String, String>,
+    /// Fully-expanded walk -> the phase-1 const that already holds that node.
+    /// Mirrors `jsx.ts:capturedRefs`.
+    captured_refs: FxHashMap<String, String>,
     needs_bind_text: bool,
     needs_bind_direct: bool,
     needs_apply_props: bool,
@@ -5993,6 +6000,8 @@ impl TemplateBuilder {
             var_idx: 0,
             disp_idx: 0,
             placeholder_idx: 0,
+            canonical_of: FxHashMap::default(),
+            captured_refs: FxHashMap::default(),
             needs_bind_text: false,
             needs_bind_direct: false,
             needs_apply_props: false,
@@ -6034,19 +6043,65 @@ impl TemplateBuilder {
         name
     }
 
+    /// Resolve a `parent_ref` (var name, chained string, or raw walk) to its
+    /// full walk. Mirrors `jsx.ts:canonicalBase`.
+    fn canonical_base(&self, parent_ref: &str) -> String {
+        self.canonical_of
+            .get(parent_ref)
+            .cloned()
+            .unwrap_or_else(|| parent_ref.to_string())
+    }
+
+    /// Strength-reduce a fully-expanded walk onto the longest prefix a phase-1
+    /// const already holds. Returns `(expr, sibling_hops)` — hops counted AFTER
+    /// shortening, which is what the indexed-getter cutoff is measured against.
+    /// Mirrors `jsx.ts:chainFromCaptured`.
+    fn chain_from_captured(&self, canonical: &str) -> (String, usize) {
+        if let Some(exact) = self.captured_refs.get(canonical) {
+            return (exact.clone(), 0);
+        }
+        // Walk prefixes longest-first, splitting on '.' from the right.
+        let mut dot = canonical.rfind('.');
+        while let Some(d) = dot {
+            if d == 0 {
+                break;
+            }
+            if let Some(held) = self.captured_refs.get(&canonical[..d]) {
+                let suffix = &canonical[d..];
+                return (format!("{}{}", held, suffix), count_sibling_hops(suffix));
+            }
+            dot = canonical[..d].rfind('.');
+        }
+        (canonical.to_string(), count_sibling_hops(canonical))
+    }
+
+    /// Emit a phase-1 capture: `const <var> = <expr>`, and record that the var
+    /// now holds `canonical` so later walks can chain from it. `expr` is passed
+    /// in rather than re-derived — `child_node_accessor` is the single place
+    /// that decides which shortening wins. Mirrors `jsx.ts:captureRef`.
+    fn capture_ref(&mut self, var_name: String, expr: &str, canonical: String) -> String {
+        self.ref_lines.push(format!("const {} = {}", var_name, expr));
+        self.canonical_of.insert(var_name.clone(), canonical.clone());
+        self.captured_refs.entry(canonical).or_insert_with(|| var_name.clone());
+        var_name
+    }
+
     /// Capture a placeholder/replace-target walk as a phase-1 const so the
     /// walk resolves against the pristine clone (before any `_mountSlot`
     /// mutated the child list). Returns the const name for the phase-2 op.
     /// Mirrors `jsx.ts:hoistPlaceholderRef`.
     fn hoist_placeholder_ref(&mut self, parent_ref: &str, child_node_idx: usize) -> String {
+        let expr = child_node_accessor_tb(self, parent_ref, child_node_idx, true);
+        let canonical = self.canonical_base(&expr);
         let p = self.next_placeholder_var();
-        self.ref_lines.push(format!(
-            "const {} = {}",
-            p,
-            child_node_accessor(parent_ref, child_node_idx, true)
-        ));
-        p
+        self.capture_ref(p, &expr, canonical)
     }
+}
+
+/// Count `.nextSibling` / `.nextElementSibling` steps in a walk expression.
+/// Mirrors `jsx.ts:countSiblingHops`.
+fn count_sibling_hops(walk: &str) -> usize {
+    walk.matches(".next").count()
 }
 
 enum FlatChild<'a> {
@@ -6170,8 +6225,8 @@ fn resolve_element_var(
     if has_dynamic {
         let v = tb.next_var();
         // Pristine-clone capture — phase 1 (see TemplateBuilder header).
-        tb.ref_lines.push(format!("const {} = {}", v, accessor));
-        v
+        let canonical = tb.canonical_base(accessor);
+        tb.capture_ref(v, accessor, canonical)
     } else {
         accessor.to_string()
     }
@@ -7012,8 +7067,11 @@ fn emit_reactive_text_child(
             .push(format!("{}.replaceChild({}, {})", parent_ref, t_var, p_var));
     } else {
         // Pristine-clone capture — phase 1 (see TemplateBuilder header).
-        tb.ref_lines
-            .push(format!("const {} = {}.firstChild", t_var, var_name));
+        // Sole-text child, so the canonical walk is child 0 of `var_name` — no
+        // sibling hops, so the indexed-getter cutoff can never apply here.
+        let canonical = canonical_walk(&tb.canonical_base(var_name), 0, true);
+        let (expr, _) = tb.chain_from_captured(&canonical);
+        tb.capture_ref(t_var.clone(), &expr, canonical);
     }
     // text-child path keeps existing bare-signal emission (allow_bare_signal=false).
     let direct_ref = try_direct_signal_ref(expr_node, false, ctx);
@@ -7104,22 +7162,51 @@ fn emit_static_text_child(
 // firstElementChild/nextElementSibling; childNodes[] (node list) maps to
 // firstChild/nextSibling. Falls back to indexed past 8 hops. MUST stay byte-for-
 // byte identical to jsx.ts:childNodeAccessor (native-equivalence tests enforce).
-fn child_node_accessor(parent_ref: &str, idx: usize, mixed: bool) -> String {
-    if idx > 8 {
-        return if mixed {
-            format!("{}.childNodes[{}]", parent_ref, idx)
-        } else {
-            format!("{}.children[{}]", parent_ref, idx)
-        };
-    }
+/// The fully-expanded pointer walk to child `idx` of `base` — the stable
+/// IDENTITY of that node, used as the memo key regardless of which shorter
+/// expression is ultimately emitted for it. `base` must already be canonical.
+/// Mirrors `jsx.ts:canonicalWalk`.
+fn canonical_walk(base: &str, idx: usize, mixed: bool) -> String {
     let first = if mixed { "firstChild" } else { "firstElementChild" };
     let next = if mixed { "nextSibling" } else { "nextElementSibling" };
-    let mut s = format!("{}.{}", parent_ref, first);
+    let mut s = format!("{}.{}", base, first);
     for _ in 0..idx {
         s.push('.');
         s.push_str(next);
     }
     s
+}
+
+/// Build the shortest expression for child `idx` of `parent_ref`, chaining off
+/// an already-captured phase-1 const when one is closer than the parent.
+/// Mirrors `jsx.ts:childNodeAccessor` — see the long note there for why this is
+/// safe (every chained expression is emitted into phase 1, before any mutation).
+fn child_node_accessor_tb(
+    tb: &mut TemplateBuilder,
+    parent_ref: &str,
+    idx: usize,
+    mixed: bool,
+) -> String {
+    let base = tb.canonical_base(parent_ref);
+    let canonical = canonical_walk(&base, idx, mixed);
+    let (expr, hops) = tb.chain_from_captured(&canonical);
+    if hops > 8 {
+        // The live HTMLCollection/NodeList indexed getter is measurably slower
+        // than direct pointer reads (~3.8% on create-heavy mounts; SolidJS emits
+        // the walk form for the same reason) — but past 8 hops the chained reads
+        // outweigh the getter overhead.
+        let indexed = if mixed {
+            format!("{}.childNodes[{}]", parent_ref, idx)
+        } else {
+            format!("{}.children[{}]", parent_ref, idx)
+        };
+        tb.canonical_of.insert(indexed.clone(), canonical);
+        return indexed;
+    }
+    if expr != canonical {
+        tb.canonical_of.insert(expr.clone(), canonical);
+    }
+    expr
 }
 
 fn process_one_child(
@@ -7136,9 +7223,9 @@ fn process_one_child(
         FlatChild::Text(text) => Some(escape_html_text(text)),
         FlatChild::Element(el, elem_idx) => {
             let child_accessor = if use_mixed {
-                child_node_accessor(parent_ref, child_node_idx, true)
+                child_node_accessor_tb(tb, parent_ref, child_node_idx, true)
             } else {
-                child_node_accessor(parent_ref, *elem_idx, false)
+                child_node_accessor_tb(tb, parent_ref, *elem_idx, false)
             };
             process_element(el, &child_accessor, tb, ctx)
         }
