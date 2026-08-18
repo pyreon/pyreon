@@ -886,12 +886,15 @@ class PyreonFetch<T> {
 // (\`data\`/\`error\`/\`isPending\`/\`isFetching\` — the emit reads \`.value\`),
 // an \`isStale\` getter the emit's LaunchedEffect guards on, and a ctor taking
 // \`queryKey\` + defaulted \`staleMillis\`. Signatures track the runtime exactly.
-class PyreonQuery<T>(val queryKey: String, val staleMillis: Long = 0) {
+class PyreonQuery<T>(queryKey: String, val staleMillis: Long = 0) {
+  var queryKey: String = queryKey
+    private set
   val data: MutableState<T?> = mutableStateOf(null)
   val error: MutableState<Throwable?> = mutableStateOf(null)
   val isPending: MutableState<Boolean> = mutableStateOf(false)
   val isFetching: MutableState<Boolean> = mutableStateOf(false)
   val isStale: Boolean get() = true
+  fun setKey(key: String) {}
   fun begin() {}
   fun resolve(value: T) {}
   fun reject(e: Throwable) {}

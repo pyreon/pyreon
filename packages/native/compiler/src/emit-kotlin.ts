@@ -1677,40 +1677,60 @@ function emitKotlinComponent(c: ComponentIR): string {
   for (const d of c.decls) {
     if (d.kind !== 'query') continue
     const name = kotlinIdent(d.name)
-    lines.push(`  LaunchedEffect(Unit) {`)
+    // Runtime queries key the `LaunchedEffect` on the computed key string, so a
+    // key change (new prop/signal) re-keys the cache (`setKey`) + re-runs the
+    // fetch — matching the web's reactive queryKey. Static queries use `Unit`.
+    const runtimeQuery =
+      d.queryKeyExpr !== undefined || d.urlExpr !== undefined || d.valueExpr !== undefined
+    if (runtimeQuery) {
+      const keyExpr =
+        d.queryKeyExpr !== undefined ? emitKotlinExpr(d.queryKeyExpr, 0) : JSON.stringify(d.queryKey)
+      lines.push(`  LaunchedEffect(${keyExpr}) {`)
+      lines.push(`    ${name}.setKey(${keyExpr})`)
+    } else {
+      lines.push(`  LaunchedEffect(Unit) {`)
+    }
     lines.push(`    if (${name}.isStale) {`)
     lines.push(`      ${name}.begin()`)
-    lines.push(`      try {`)
-    if (d.method || d.headers || d.body) {
-      // Mirrors the Swift PyreonHttp branch: a request with a VERB, headers, or
-      // a body goes through PyreonHttp (readText() can express none of them).
-      const parts = [
-        `method = PyreonHttpMethod.${(d.method ?? 'GET').toUpperCase()}`,
-        `url = ${JSON.stringify(d.url)}`,
-      ]
-      if (d.headers) {
-        const pairs = Object.entries(d.headers)
-          .map(([k, v]) => `${JSON.stringify(k)} to ${JSON.stringify(v)}`)
-          .join(', ')
-        parts.push(`headers = mapOf(${pairs})`)
-      }
-      if (d.body !== undefined) parts.push(`body = ${JSON.stringify(d.body)}`)
-      lines.push(`        val __response = withContext(Dispatchers.IO) {`)
-      lines.push(`          PyreonHttp.send(PyreonHttpRequest(${parts.join(', ')}))`)
-      lines.push(`        }`)
-      lines.push(`        if (!__response.isOk) throw PyreonHttpError.BadStatus(__response.status)`)
-      lines.push(
-        `        ${name}.resolve(PyreonFetchJson.decodeFromString<${kotlinType(d.type, ctx)}>(__response.body))`,
-      )
+    if (d.valueExpr !== undefined) {
+      // A DIRECT-VALUE queryFn (`() => <expr>`): resolve the computed value.
+      // No network, no decode, no throwing call — so no try/catch.
+      lines.push(`      ${name}.resolve(${emitKotlinExpr(d.valueExpr, 0)})`)
     } else {
-      lines.push(
-        `        val body = withContext(Dispatchers.IO) { java.net.URL(${JSON.stringify(d.url)}).readText() }`,
-      )
-      lines.push(
-        `        ${name}.resolve(PyreonFetchJson.decodeFromString<${kotlinType(d.type, ctx)}>(body))`,
-      )
+      const kotlinUrl =
+        d.urlExpr !== undefined ? emitKotlinExpr(d.urlExpr, 0) : JSON.stringify(d.url)
+      lines.push(`      try {`)
+      if (d.method || d.headers || d.body) {
+        // Mirrors the Swift PyreonHttp branch: a request with a VERB, headers, or
+        // a body goes through PyreonHttp (readText() can express none of them).
+        const parts = [
+          `method = PyreonHttpMethod.${(d.method ?? 'GET').toUpperCase()}`,
+          `url = ${kotlinUrl}`,
+        ]
+        if (d.headers) {
+          const pairs = Object.entries(d.headers)
+            .map(([k, v]) => `${JSON.stringify(k)} to ${JSON.stringify(v)}`)
+            .join(', ')
+          parts.push(`headers = mapOf(${pairs})`)
+        }
+        if (d.body !== undefined) parts.push(`body = ${JSON.stringify(d.body)}`)
+        lines.push(`        val __response = withContext(Dispatchers.IO) {`)
+        lines.push(`          PyreonHttp.send(PyreonHttpRequest(${parts.join(', ')}))`)
+        lines.push(`        }`)
+        lines.push(`        if (!__response.isOk) throw PyreonHttpError.BadStatus(__response.status)`)
+        lines.push(
+          `        ${name}.resolve(PyreonFetchJson.decodeFromString<${kotlinType(d.type, ctx)}>(__response.body))`,
+        )
+      } else {
+        lines.push(
+          `        val body = withContext(Dispatchers.IO) { java.net.URL(${kotlinUrl}).readText() }`,
+        )
+        lines.push(
+          `        ${name}.resolve(PyreonFetchJson.decodeFromString<${kotlinType(d.type, ctx)}>(body))`,
+        )
+      }
+      lines.push(`      } catch (e: Throwable) { ${name}.reject(e) }`)
     }
-    lines.push(`      } catch (e: Throwable) { ${name}.reject(e) }`)
     lines.push(`    }`)
     lines.push(`  }`)
   }
@@ -1980,7 +2000,14 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // remembered PyreonQuery<T> seeded with the cache key + staleMillis. The
   // LaunchedEffect harness (isStale-guarded) is emitted by emitKotlinComponent.
   if (d.kind === 'query') {
-    return `val ${kotlinIdent(d.name)} = remember { PyreonQuery<${kotlinType(d.type, ctx)}>(queryKey = ${JSON.stringify(d.queryKey)}, staleMillis = ${d.staleMillis}L) }`
+    // A runtime-key / templated-URL / direct-value query constructs KEYLESS to
+    // mirror the Swift @State constraint; the real key is applied in the
+    // LaunchedEffect harness via setKey (symmetric emit across both targets).
+    const key =
+      d.queryKeyExpr !== undefined || d.urlExpr !== undefined || d.valueExpr !== undefined
+        ? '""'
+        : JSON.stringify(d.queryKey)
+    return `val ${kotlinIdent(d.name)} = remember { PyreonQuery<${kotlinType(d.type, ctx)}>(queryKey = ${key}, staleMillis = ${d.staleMillis}L) }`
   }
   // Phase 4.2: `const form = useForm({ initialValues })` → a remembered
   // PyreonForm seeded with the literal defaults. No harness (pure state).

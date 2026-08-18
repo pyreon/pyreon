@@ -2279,38 +2279,59 @@ function emitSwiftComponent(c: ComponentIR): string {
   for (const d of c.decls) {
     if (d.kind !== 'query') continue
     const name = swiftIdent(d.name)
-    lines.push(`      .task {`)
+    // Runtime queries (a key/URL built from a prop/signal, or a direct-value
+    // fetcher) key the harness on the computed key string via `.task(id:)`, so
+    // a key change re-keys the cache (`setKey`) + re-runs the fetch — matching
+    // the web's reactive queryKey. Static literal queries keep `.task {}`.
+    const runtimeQuery =
+      d.queryKeyExpr !== undefined || d.urlExpr !== undefined || d.valueExpr !== undefined
+    if (runtimeQuery) {
+      const keyExpr =
+        d.queryKeyExpr !== undefined ? emitSwiftExpr(d.queryKeyExpr, 0) : JSON.stringify(d.queryKey)
+      lines.push(`      .task(id: ${keyExpr}) {`)
+      lines.push(`        ${name}.setKey(${keyExpr})`)
+    } else {
+      lines.push(`      .task {`)
+    }
     lines.push(`        if ${name}.isStale {`)
     lines.push(`          ${name}.begin()`)
-    lines.push(`          do {`)
-    if (d.method || d.headers || d.body) {
-      // A request with a VERB, headers, or a body routes through PyreonHttp —
-      // exactly like useFetch's method/headers path.
-      const method = (d.method ?? 'GET').toLowerCase()
-      const parts = [`method: .${method}`, `url: ${JSON.stringify(d.url)}`]
-      if (d.headers) {
-        const pairs = Object.entries(d.headers)
-          .map(([k, v]) => `${JSON.stringify(k)}: ${JSON.stringify(v)}`)
-          .join(', ')
-        parts.push(`headers: [${pairs}]`)
-      }
-      if (d.body !== undefined) parts.push(`body: Data(${JSON.stringify(d.body)}.utf8)`)
-      lines.push(`            let __response = try await PyreonHttp.send(`)
-      lines.push(`              PyreonHttpRequest(${parts.join(', ')})`)
-      lines.push(`            )`)
-      lines.push(`            guard __response.isOK else {`)
-      lines.push(`              throw PyreonHttpError.badStatus(__response.status)`)
-      lines.push(`            }`)
-      lines.push(`            ${name}.resolve(try __response.decode(${swiftType(d.type)}.self))`)
+    if (d.valueExpr !== undefined) {
+      // A DIRECT-VALUE queryFn (`() => <expr>`): resolve the computed value.
+      // No network, no decode, no throwing call — so no `do`/`catch`.
+      lines.push(`          ${name}.resolve(${emitSwiftExpr(d.valueExpr, 0)})`)
     } else {
-      lines.push(
-        `            let (bytes, _) = try await URLSession.shared.data(from: URL(string: ${JSON.stringify(d.url)})!)`,
-      )
-      lines.push(
-        `            ${name}.resolve(try JSONDecoder().decode(${swiftType(d.type)}.self, from: bytes))`,
-      )
+      const swiftUrl =
+        d.urlExpr !== undefined ? emitSwiftExpr(d.urlExpr, 0) : JSON.stringify(d.url)
+      lines.push(`          do {`)
+      if (d.method || d.headers || d.body) {
+        // A request with a VERB, headers, or a body routes through PyreonHttp —
+        // exactly like useFetch's method/headers path.
+        const method = (d.method ?? 'GET').toLowerCase()
+        const parts = [`method: .${method}`, `url: ${swiftUrl}`]
+        if (d.headers) {
+          const pairs = Object.entries(d.headers)
+            .map(([k, v]) => `${JSON.stringify(k)}: ${JSON.stringify(v)}`)
+            .join(', ')
+          parts.push(`headers: [${pairs}]`)
+        }
+        if (d.body !== undefined) parts.push(`body: Data(${JSON.stringify(d.body)}.utf8)`)
+        lines.push(`            let __response = try await PyreonHttp.send(`)
+        lines.push(`              PyreonHttpRequest(${parts.join(', ')})`)
+        lines.push(`            )`)
+        lines.push(`            guard __response.isOK else {`)
+        lines.push(`              throw PyreonHttpError.badStatus(__response.status)`)
+        lines.push(`            }`)
+        lines.push(`            ${name}.resolve(try __response.decode(${swiftType(d.type)}.self))`)
+      } else {
+        lines.push(
+          `            let (bytes, _) = try await URLSession.shared.data(from: URL(string: ${swiftUrl})!)`,
+        )
+        lines.push(
+          `            ${name}.resolve(try JSONDecoder().decode(${swiftType(d.type)}.self, from: bytes))`,
+        )
+      }
+      lines.push(`          } catch { ${name}.reject(error) }`)
     }
-    lines.push(`          } catch { ${name}.reject(error) }`)
     lines.push(`        }`)
     lines.push(`      }`)
   }
@@ -2653,7 +2674,14 @@ function emitSwiftDecl(
   // ms → seconds). The isStale-guarded `.task` harness is appended on the body.
   if (d.kind === 'query') {
     const staleSeconds = d.staleMillis / 1000
-    return `@State private var ${swiftIdent(d.name)} = PyreonQuery<${swiftType(d.type)}>(queryKey: ${JSON.stringify(d.queryKey)}, staleSeconds: ${staleSeconds})`
+    // A runtime-key / templated-URL / direct-value query constructs KEYLESS:
+    // SwiftUI's @State default can't reference other properties (props/signals),
+    // so the real key is computed + applied in the `.task` harness via setKey.
+    const key =
+      d.queryKeyExpr !== undefined || d.urlExpr !== undefined || d.valueExpr !== undefined
+        ? '""'
+        : JSON.stringify(d.queryKey)
+    return `@State private var ${swiftIdent(d.name)} = PyreonQuery<${swiftType(d.type)}>(queryKey: ${key}, staleSeconds: ${staleSeconds})`
   }
   // Phase 4.2: `const form = useForm({ initialValues })` → an @State
   // PyreonForm container seeded with the literal string defaults. Unlike

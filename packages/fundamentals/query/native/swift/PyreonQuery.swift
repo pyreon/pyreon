@@ -94,7 +94,7 @@ public final class PyreonQuery<T> {
     /// True whenever a fetch is in flight, foreground or background.
     public private(set) var isFetching: Bool = false
 
-    @ObservationIgnored public let queryKey: String
+    @ObservationIgnored public private(set) var queryKey: String
     @ObservationIgnored public let staleSeconds: TimeInterval
     @ObservationIgnored private var lastFetcher: (() throws -> T)?
     @ObservationIgnored private let cache: PyreonQueryCache
@@ -111,6 +111,21 @@ public final class PyreonQuery<T> {
         if let hit = cache.lookup(queryKey, as: T.self) {
             data = hit.value
         }
+    }
+
+    /// Re-point this query at a RUNTIME-computed cache key (a `queryKey` built
+    /// from a prop / route-param / signal). The compiler-emitted
+    /// `.task(id: key)` calls this before the staleness check, so a key change
+    /// (a new prop/signal value) re-keys the cache lookup + write. Idempotent
+    /// when the key is unchanged; on a change, re-hydrates `data` from the
+    /// shared cache for the NEW key (a hit paints without a refetch; a miss
+    /// clears the stale value so `isPending` is honest). Constructed keyless
+    /// (`queryKey: ""`) because SwiftUI's `@State` default can't reference the
+    /// component's other properties.
+    public func setKey(_ key: String) {
+        guard key != queryKey else { return }
+        queryKey = key
+        data = cache.lookup(key, as: T.self)?.value
     }
 
     /// Whether a fetch is needed right now: no cached value, or the cached

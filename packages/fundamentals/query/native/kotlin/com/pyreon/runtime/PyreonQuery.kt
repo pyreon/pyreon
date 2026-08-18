@@ -67,11 +67,17 @@ public object PyreonQueryCache {
 }
 
 public class PyreonQuery<T>(
-    public val queryKey: String,
+    queryKey: String,
     /** How long a cached value is served WITHOUT a refetch (millis; default 0
      *  = always revalidate, but serve the stale value instantly). */
     public val staleMillis: Long = 0,
 ) {
+    /** The cache key. A RUNTIME-keyed query (built from a prop/signal) is
+     *  constructed keyless and re-pointed via [setKey] from the compiler's
+     *  `LaunchedEffect(key)` harness. */
+    public var queryKey: String = queryKey
+        private set
+
     public val data: MutableState<T?> = mutableStateOf(null)
     public val error: MutableState<Throwable?> = mutableStateOf(null)
 
@@ -88,6 +94,19 @@ public class PyreonQuery<T>(
         // Hydrate synchronously from the shared cache so a second screen
         // reading the same key paints immediately.
         PyreonQueryCache.lookup<T>(queryKey)?.let { data.value = it.first }
+    }
+
+    /** Re-point this query at a RUNTIME-computed cache key (a queryKey built
+     *  from a prop/route-param/signal). The compiler-emitted
+     *  `LaunchedEffect(key)` calls this before the staleness check, so a key
+     *  change re-keys the cache lookup + write. Idempotent when unchanged; on a
+     *  change, re-hydrates `data` from the shared cache for the NEW key (a hit
+     *  paints without a refetch; a miss clears the stale value). Constructed
+     *  keyless to mirror the SwiftUI `@State`-default constraint. */
+    public fun setKey(key: String) {
+        if (key == queryKey) return
+        queryKey = key
+        data.value = PyreonQueryCache.lookup<T>(key)?.first
     }
 
     /** No cached value, or the cached value is older than staleMillis. The
