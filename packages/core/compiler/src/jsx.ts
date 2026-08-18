@@ -83,6 +83,7 @@ type NativeTransformFn = (
   reactivityLens: boolean,
   collapse?: NativeCollapseConfig,
   ssrTemplate?: boolean,
+  templatizeComponentChildren?: boolean,
 ) => TransformResult
 const nativeBinding = loadNativeBinding(import.meta.url)
 const nativeTransformJsx: NativeTransformFn | null = nativeBinding
@@ -989,16 +990,12 @@ export function transformJSX(
   // The compile-to-string SSR fast path (`ssrTemplate`) is ALSO implemented
   // byte-identically in the native backend (threaded as the 7th arg + locked by
   // native-equivalence / fuzz-equivalence), so it no longer forces the JS path.
+  // `templatizeComponentChildren` is ALSO implemented byte-identically in the
+  // native backend (threaded as the 8th arg + locked by native-equivalence /
+  // fuzz-equivalence), so it no longer forces the JS path either.
   // Per-call try/catch: if the native binary panics on an edge case (bad UTF-8,
   // unexpected AST shape), fall back gracefully instead of crashing the dev server.
-  // `templatizeComponentChildren` has no native (Rust) counterpart yet, and the
-  // napi call is POSITIONAL — passing it would be silently dropped, so the
-  // native backend would emit the un-templatized shape while the JS backend
-  // emitted the new one. That is a byte-divergence the equivalence oracle would
-  // catch, but it would ALSO make a bisect of this feature pass against a
-  // "reverted" build (transformJSX prefers the binary). Force the JS path while
-  // the option is on so the two can never disagree.
-  if (nativeTransformJsx && options.templatizeComponentChildren !== true) {
+  if (nativeTransformJsx) {
     try {
       return nativeTransformJsx(
         code,
@@ -1008,6 +1005,7 @@ export function transformJSX(
         options.reactivityLens === true,
         options.collapseRocketstyle ? toNativeCollapse(options.collapseRocketstyle) : undefined,
         options.ssrTemplate === true,
+        options.templatizeComponentChildren === true,
       )
     } catch {
       // Native transform failed — fall through to JS implementation

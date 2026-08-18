@@ -1279,17 +1279,16 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
         }
       }
 
-      // `templatizeComponentChildren` has no native (Rust) mirror yet, and the
-      // compiler forces its JS backend while the option is on — 3.7-8.9x slower
-      // per file, across the whole build. Say so once rather than let a build
-      // silently get slower.
+      // `templatizeComponentChildren` now has a byte-identical native (Rust)
+      // mirror, so it no longer forces the compiler's JS backend and costs
+      // nothing extra to compile. The HYDRATION caveat is unchanged and is the
+      // reason the option is still default-off, so it is still said once.
       if (options?.templatizeComponentChildren === true && !warnedTplComponentChildren) {
         warnedTplComponentChildren = true
         this.warn(
-          '[Pyreon] `templatizeComponentChildren` is on: the compiler falls back to its JS ' +
-            'backend (no native mirror yet), so this build is slower to compile. It also ' +
-            'disables compiled-template hydration adoption for every element it newly ' +
-            'templatizes — only use it for a client bundle that never calls hydrateRoot().',
+          '[Pyreon] `templatizeComponentChildren` is on: it disables compiled-template ' +
+            'hydration adoption for every element it newly templatizes — only use it for a ' +
+            'client bundle that never calls hydrateRoot().',
         )
       }
 

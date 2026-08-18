@@ -225,6 +225,14 @@ fn is_lower_case(s: &str) -> bool {
         .map_or(false, |b| b.is_ascii_lowercase())
 }
 
+/// Sentinel marking a PRESERVED HOLE inside a generated template body — the
+/// source range of an absorbed COMPONENT child, spliced back out by
+/// `try_template_emit` so the walk can transform that child in place. A NUL can
+/// never occur in the generated body. Mirrors the JS backend's
+/// `HOLE_SENTINEL` (built there with `fromCharCode` for the same reason a
+/// literal NUL is avoided here: it breaks grep, formatters and diff tooling).
+const HOLE_SENTINEL: char = '\u{0}';
+
 fn escape_html_attr(s: &str) -> String {
     s.replace('&', "&amp;").replace('"', "&quot;")
 }
@@ -488,6 +496,11 @@ struct Ctx<'a> {
     /// `ssr` is ALSO true (mutually exclusive with the `_tpl` DOM path). Mirrors
     /// the JS backend's `ssrTemplate = ssr && options.ssrTemplate === true`.
     ssr_template: bool,
+    /// Absorb COMPONENT children into the enclosing `_tpl()` instead of bailing
+    /// the element to `h()` (`options.templatizeComponentChildren`). Client emit
+    /// only — mirrors the JS backend's
+    /// `tplComponentChildren = !ssr && options.templatizeComponentChildren === true`.
+    templatize_component_children: bool,
 
     replacements: Vec<Replacement>,
     warnings: Vec<CompilerWarning>,
@@ -511,6 +524,9 @@ struct Ctx<'a> {
     needs_apply_props_import: bool,
     needs_bind_spread_import: bool,
     needs_mount_slot_import: bool,
+    /// `_mountChild` — the APPEND form of an absorbed COMPONENT child
+    /// (`templatize_component_children`), used when nothing static follows it.
+    needs_mount_child_import: bool,
 
     // Compile-to-string SSR fast path helpers (`@pyreon/runtime-server`).
     // Mutually exclusive with the `_tpl` DOM path (that only fires for
@@ -553,6 +569,21 @@ struct Ctx<'a> {
     /// Only meaningful children reach `try_template_emit`, so a bool is enough —
     /// if one fires under this flag, it IS the sole child.
     parent_component_has_sole_child: bool,
+
+    /// Would a compiled template emitted in the CURRENT position have its
+    /// `bind` run as an EAGERLY-evaluated argument of a component call — i.e.
+    /// before that component's own body (and its `provide()`) has run?
+    ///
+    /// This is the Rust encoding of the JS backend's
+    /// `templateMountIsEagerlyOrdered`, which reads the node's immediate AST
+    /// parent. oxc's walk carries no parent pointers, so the predicate is
+    /// pushed DOWN instead: every site that already saves/restores
+    /// `parent_is_jsx` sets this alongside it, so the two can't drift.
+    ///
+    /// Only consulted when `templatize_component_children` is on: a template
+    /// that merely CONSTRUCTS DOM is harmless wherever it sits; one that MOUNTS
+    /// components is ordered against the enclosing component's setup.
+    parent_eager_mount: bool,
 
     /// Whether the expression currently being walked is the DIRECT child
     /// render-callback of a JSX element (`<For>{(row) => …}</For>`,
@@ -651,6 +682,7 @@ impl<'a> Ctx<'a> {
         program: &'a Program<'a>,
         ssr: bool,
         ssr_template: bool,
+        templatize_component_children: bool,
         collect_lens: bool,
         collapse: Option<CollapseConfig>,
     ) -> Self {
@@ -659,6 +691,7 @@ impl<'a> Ctx<'a> {
             program,
             collapse,
             ssr_template,
+            templatize_component_children,
             needs_ssr_import: false,
             needs_ssr_children_import: false,
             needs_ssr_item_import: false,
@@ -697,6 +730,7 @@ impl<'a> Ctx<'a> {
             needs_apply_props_import: false,
             needs_bind_spread_import: false,
             needs_mount_slot_import: false,
+            needs_mount_child_import: false,
             props_names: FxHashSet::default(),
             prop_derived_vars: FxHashMap::default(),
             resolved_cache: FxHashMap::default(),
@@ -707,6 +741,7 @@ impl<'a> Ctx<'a> {
             parent_is_jsx: false,
             parent_is_component_jsx_element: false,
             parent_component_has_sole_child: false,
+            parent_eager_mount: false,
             in_jsx_child_callback: false,
             in_callback_argument: false,
             signal_vars: FxHashSet::default(),
@@ -818,6 +853,9 @@ impl<'a> Ctx<'a> {
             }
             if self.needs_mount_slot_import {
                 imports.push("_mountSlot");
+            }
+            if self.needs_mount_child_import {
+                imports.push("_mountChild");
             }
             if self.needs_bind_poly_import {
                 imports.push("bindPolymorphicText");
@@ -3770,6 +3808,7 @@ pub fn transform_jsx(
     reactivity_lens: Option<bool>,
     collapse: Option<CollapseConfig>,
     ssr_template: Option<bool>,
+    templatize_component_children: Option<bool>,
 ) -> TransformResult {
     let source_type = SourceType::from_path(&filename)
         .unwrap_or_default()
@@ -3794,7 +3833,20 @@ pub fn transform_jsx(
     // `ssrTemplate` only takes effect under SSR (mutually exclusive with the
     // client `_tpl` DOM path). Mirrors the JS gate `ssr && options.ssrTemplate === true`.
     let ssr_template = ssr && ssr_template == Some(true);
-    let mut ctx = Ctx::new(&code, &ret.program, ssr, ssr_template, collect_lens, collapse);
+    // Client emit only — the SSR paths render components through `renderNode`
+    // already, so there is nothing to absorb there (and `_ssr`'s preserved-hole
+    // machinery has its own component-child bail). Mirrors the JS gate
+    // `!ssr && options.templatizeComponentChildren === true`.
+    let templatize_component_children = !ssr && templatize_component_children == Some(true);
+    let mut ctx = Ctx::new(
+        &code,
+        &ret.program,
+        ssr,
+        ssr_template,
+        templatize_component_children,
+        collect_lens,
+        collapse,
+    );
 
     // Seed signal_vars from known_signals (cross-module imports resolved by Vite plugin)
     if let Some(signals) = known_signals {
@@ -4059,11 +4111,16 @@ fn walk_expression(expr: &Expression, ctx: &mut Ctx) {
         }
         Expression::JSXFragment(frag) => {
             let old = ctx.parent_is_jsx;
+            let old_eager = ctx.parent_eager_mount;
             ctx.parent_is_jsx = true;
+            // A fragment parent is ALWAYS eager: its children are collected into
+            // the array a `jsx(Fragment, …)` / component call receives.
+            ctx.parent_eager_mount = true;
             for child in &frag.children {
                 walk_jsx_child(child, ctx);
             }
             ctx.parent_is_jsx = old;
+            ctx.parent_eager_mount = old_eager;
         }
         Expression::ArrowFunctionExpression(arrow) => {
             // Consume the JSX-child-callback flag: a `<For>{(row) => …}</For>`
@@ -4081,7 +4138,13 @@ fn walk_expression(expr: &Expression, ctx: &mut Ctx) {
                 maybe_register_component_props_arrow(arrow, ctx);
             }
             let old = ctx.parent_is_jsx;
+            let old_eager = ctx.parent_eager_mount;
             ctx.parent_is_jsx = false;
+            // An arrow BODY is a new statement/expression context: a JSX element
+            // there has an arbitrary AST parent (return statement, declarator),
+            // never a component's argument list. Mirrors the JS predicate
+            // returning false for any non-JSX parent.
+            ctx.parent_eager_mount = false;
             // Track signal name shadowing for scope awareness
             let shadows = if !ctx.signal_vars.is_empty() {
                 let s = find_shadowing_names_arrow(arrow, ctx);
@@ -4097,6 +4160,7 @@ fn walk_expression(expr: &Expression, ctx: &mut Ctx) {
             for name in &shadows { ctx.shadowed_signals.remove(name); }
             for name in &jsx_fn_shadows { ctx.shadowed_jsx_fns.remove(name); }
             ctx.parent_is_jsx = old;
+            ctx.parent_eager_mount = old_eager;
         }
         Expression::FunctionExpression(func) => {
             // Function-EXPRESSION components (`const C = function (props) { … }`)
@@ -4114,7 +4178,10 @@ fn walk_expression(expr: &Expression, ctx: &mut Ctx) {
                 maybe_register_component_props_fn(func, ctx);
             }
             let old = ctx.parent_is_jsx;
+            let old_eager = ctx.parent_eager_mount;
             ctx.parent_is_jsx = false;
+            // See the arrow arm — a function BODY is a fresh statement context.
+            ctx.parent_eager_mount = false;
             let shadows = if !ctx.signal_vars.is_empty() {
                 let s = find_shadowing_names(func, ctx);
                 for name in &s { ctx.shadowed_signals.insert(name.clone()); }
@@ -4133,6 +4200,7 @@ fn walk_expression(expr: &Expression, ctx: &mut Ctx) {
             for name in &shadows { ctx.shadowed_signals.remove(name); }
             for name in &jsx_fn_shadows { ctx.shadowed_jsx_fns.remove(name); }
             ctx.parent_is_jsx = old;
+            ctx.parent_eager_mount = old_eager;
         }
         Expression::CallExpression(call) => {
             walk_expression(&call.callee, ctx);
@@ -4312,15 +4380,20 @@ fn walk_jsx_child(child: &JSXChild, ctx: &mut Ctx) {
             // the wrap path (matches JS-backend equivalence).
             let old_component = ctx.parent_is_component_jsx_element;
             let old_sole_child = ctx.parent_component_has_sole_child;
+            let old_eager = ctx.parent_eager_mount;
             ctx.parent_is_jsx = true;
             ctx.parent_is_component_jsx_element = false;
             ctx.parent_component_has_sole_child = false;
+            // A fragment parent is ALWAYS eager — `_lc` deferral is sole-child
+            // only, and a fragment's children are collected into an array.
+            ctx.parent_eager_mount = true;
             for child in &frag.children {
                 walk_jsx_child(child, ctx);
             }
             ctx.parent_is_jsx = old;
             ctx.parent_is_component_jsx_element = old_component;
             ctx.parent_component_has_sole_child = old_sole_child;
+            ctx.parent_eager_mount = old_eager;
         }
         JSXChild::ExpressionContainer(container) => {
             handle_jsx_expression_child(container, ctx);
@@ -4384,15 +4457,32 @@ fn handle_jsx_element(el: &JSXElement, ctx: &mut Ctx) {
     let old_parent_is_jsx = ctx.parent_is_jsx;
     let old_parent_is_component = ctx.parent_is_component_jsx_element;
     let old_sole_child = ctx.parent_component_has_sole_child;
+    let old_eager = ctx.parent_eager_mount;
     ctx.parent_is_jsx = true;
     ctx.parent_is_component_jsx_element = is_component;
     ctx.parent_component_has_sole_child = is_component && meaningful_child_count(el) == 1;
+    // Ordering for a template emitted as a DIRECT child of THIS element —
+    // the Rust encoding of the JS `templateMountIsEagerlyOrdered`:
+    //   • member/namespaced tag (`<Ctx.Provider>`, `jsx_tag_name` == "") — those
+    //     parents ARE components and are NEVER `_lc`-wrapped (the compiler
+    //     classifies no member tag as a component anywhere), so always eager;
+    //   • component tag — eager UNLESS this child is the SOLE meaningful one,
+    //     which #2916 wraps in `_lc(() => …)` (forced after `provide()`);
+    //   • DOM tag — never eager, the enclosing element is built inline.
+    ctx.parent_eager_mount = if tag.is_empty() {
+        true
+    } else if is_component {
+        !ctx.parent_component_has_sole_child
+    } else {
+        false
+    };
     for child in &el.children {
         walk_jsx_child(child, ctx);
     }
     ctx.parent_is_jsx = old_parent_is_jsx;
     ctx.parent_is_component_jsx_element = old_parent_is_component;
     ctx.parent_component_has_sole_child = old_sole_child;
+    ctx.parent_eager_mount = old_eager;
 }
 
 fn check_for_warnings(el: &JSXElement, ctx: &mut Ctx) {
@@ -4457,9 +4547,16 @@ fn handle_jsx_attribute(
             // Reset parent_is_jsx — we're inside an attribute value `prop={<Elem/>}`,
             // not a JSX child, so templates shouldn't get brace-wrapped.
             let old = ctx.parent_is_jsx;
+            let old_eager = ctx.parent_eager_mount;
             ctx.parent_is_jsx = false;
+            // The element's IMMEDIATE AST parent here is the attribute's
+            // JSXExpressionContainer, which the JS predicate reports as eager —
+            // an attribute value is evaluated when the `jsx(Comp, …)` props
+            // object is built, i.e. before the component body runs.
+            ctx.parent_eager_mount = true;
             walk_expression(expr, ctx);
             ctx.parent_is_jsx = old;
+            ctx.parent_eager_mount = old_eager;
             return;
         }
 
@@ -4610,7 +4707,15 @@ fn handle_jsx_expression_child(container: &JSXExpressionContainer, ctx: &mut Ctx
     // Otherwise just recurse — but reset parent_is_jsx since we're already
     // inside a JSX expression container `{...}`.
     let old = ctx.parent_is_jsx;
+    let old_eager = ctx.parent_eager_mount;
     ctx.parent_is_jsx = false;
+    // The container is the IMMEDIATE AST parent only when its expression IS the
+    // element (`{<div/>}`) — the JS predicate reports that position eager. For
+    // anything deeper (`{cond ? <div/> : null}`, `{f(<div/>)}`, `{xs.map(…)}`)
+    // the element's parent is that inner expression node, which the JS
+    // predicate reports as NOT eager.
+    ctx.parent_eager_mount =
+        matches!(expr, Expression::JSXElement(_) | Expression::JSXFragment(_));
     // Flag a DIRECT arrow/function child as a render callback so its first
     // parameter is not registered as reactive component props — see the
     // `in_jsx_child_callback` field doc.
@@ -4623,6 +4728,7 @@ fn handle_jsx_expression_child(container: &JSXExpressionContainer, ctx: &mut Ctx
     walk_expression(expr, ctx);
     ctx.in_jsx_child_callback = old_cb;
     ctx.parent_is_jsx = old;
+    ctx.parent_eager_mount = old_eager;
 }
 
 fn maybe_hoist_expr(expr: &Expression, ctx: &mut Ctx) -> Option<String> {
@@ -5746,10 +5852,46 @@ fn find_jsx_element_by_span<'a>(
         return Some(el);
     }
     for child in &el.children {
-        if let JSXChild::Element(c) = child {
-            if let Some(found) = find_jsx_element_by_span(c, start, end) {
-                return Some(found);
+        match child {
+            JSXChild::Element(c) => {
+                if let Some(found) = find_jsx_element_by_span(c, start, end) {
+                    return Some(found);
+                }
             }
+            // Fragments are transparent to `flatten_children`, so an absorbed
+            // component child can sit under one at any depth
+            // (`<div><><Comp/></></div>`). Without this arm the lookup returns
+            // None and the preserved child is never re-walked — it would keep
+            // its source text verbatim, which is the SLICE bug by another route.
+            JSXChild::Fragment(frag) => {
+                if let Some(found) = find_jsx_element_by_span_in(&frag.children, start, end) {
+                    return Some(found);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn find_jsx_element_by_span_in<'a>(
+    children: &'a [JSXChild<'a>],
+    start: u32,
+    end: u32,
+) -> Option<&'a JSXElement<'a>> {
+    for child in children {
+        match child {
+            JSXChild::Element(c) => {
+                if let Some(found) = find_jsx_element_by_span(c, start, end) {
+                    return Some(found);
+                }
+            }
+            JSXChild::Fragment(frag) => {
+                if let Some(found) = find_jsx_element_by_span_in(&frag.children, start, end) {
+                    return Some(found);
+                }
+            }
+            _ => {}
         }
     }
     None
@@ -5904,19 +6046,76 @@ fn try_template_emit(el: &JSXElement, ctx: &mut Ctx) -> bool {
     if is_self_closing(el) {
         return false;
     }
-    let elem_count = template_element_count(el, true);
+    // Ordering gate — see `Ctx::parent_eager_mount`. Only templates that MOUNT
+    // something are ordered against a component's setup, so a purely static
+    // template is unaffected and keeps emitting everywhere it did. Mirrors the
+    // JS backend's `tplComponentChildren && templateAbsorbsComponent(node) &&
+    // templateMountIsEagerlyOrdered(node)`.
+    if ctx.templatize_component_children
+        && ctx.parent_eager_mount
+        && template_absorbs_component(&el.children)
+    {
+        return false;
+    }
+    let elem_count = template_element_count(el, true, ctx.templatize_component_children);
     if elem_count < 1 {
         return false;
     }
-    let tpl_call = match build_template_call(el, ctx) {
+    let mut holes: Vec<Span> = Vec::new();
+    let tpl_call = match build_template_call(el, ctx, &mut holes) {
         Some(s) => s,
         None => return false,
     };
     let start = el.span().start;
     let end = el.span().end;
-    let text = brace_template_child(tpl_call, ctx);
-    ctx.add_replacement(start, end, text);
+    let braced = brace_template_child(tpl_call, ctx);
     ctx.needs_tpl_import = true;
+
+    if holes.is_empty() {
+        ctx.add_replacement(start, end, braced);
+        return true;
+    }
+
+    // ── BRACKETED emission (absorbed COMPONENT children are PRESERVED source) ─
+    //
+    // The same preserved-hole shape `try_ssr_template_emit` uses. An absorbed
+    // COMPONENT child keeps its OWN source range, so the recursive
+    // `handle_jsx_element` calls below still transform it in place: `_rp` on its
+    // props, `_lc` on its own sole child, nested `_tpl`. Emitting SLICED text
+    // instead silently froze every signal-driven prop under a templatized
+    // skeleton (6/26 on `ui-showcase-regression` on the JS side), because a
+    // slice is taken before those transformations exist and the walk never
+    // revisits the subtree.
+    let parts: Vec<&str> = braced.split(HOLE_SENTINEL).collect();
+    // parts = [seg0, idx0, seg1, idx1, …, segN] — odd entries are hole indices.
+    let mut cursor = start;
+    let mut i = 1;
+    while i < parts.len() {
+        let idx: usize = match parts[i].parse() {
+            Ok(n) => n,
+            Err(_) => return false,
+        };
+        let hole = match holes.get(idx) {
+            Some(h) => *h,
+            None => return false,
+        };
+        // Holes must be in source order for the bracketing to be well-formed.
+        if hole.start < cursor {
+            return false;
+        }
+        ctx.add_replacement(cursor, hole.start, parts[i - 1].to_string());
+        cursor = hole.end;
+        i += 2;
+    }
+    ctx.add_replacement(cursor, end, parts[parts.len() - 1].to_string());
+
+    // Walk each preserved child so it receives the transformations the
+    // template's own replacement no longer covers.
+    for hole in &holes {
+        if let Some(child) = find_jsx_element_by_span(el, hole.start, hole.end) {
+            handle_jsx_element(child, ctx);
+        }
+    }
     true
 }
 
@@ -5941,7 +6140,68 @@ fn has_bail_attr(el: &JSXElement, is_root: bool) -> bool {
     false
 }
 
-fn template_element_count(el: &JSXElement, is_root: bool) -> i32 {
+/// Mirrors the JS backend's `isComponentTag` EXACTLY — "first character is not
+/// equal to its own lowercase". Deliberately NOT `!is_lower_case(tag)`: that
+/// asks "is the first byte an ASCII lowercase letter", which classifies a
+/// `_`-prefixed tag (`<_Foo/>`) as a component while JS classifies it as a DOM
+/// element. Reusing it here would introduce a byte-divergence the equivalence
+/// oracle would then have to chase.
+fn is_component_tag(tag: &str) -> bool {
+    match tag.chars().next() {
+        None => false,
+        Some(c) => {
+            let mut lower = c.to_lowercase();
+            !(lower.next() == Some(c) && lower.next().is_none())
+        }
+    }
+}
+
+/// A JSX child this template may ABSORB as a mounted component
+/// (`templatize_component_children`) rather than bail on. Mirrors the JS
+/// backend's `isAbsorbableComponentChild`.
+///
+/// Deliberately NOT name-filtered: `<For>` / `<Show>` are ordinary components
+/// here. Excluding control-flow by name would only paper over the shapes the
+/// repo happens to gate and leave the general one.
+fn is_absorbable_component_child(el: &JSXElement) -> bool {
+    match &el.opening_element.name {
+        // A member / namespaced tag (`<Ctx.Provider/>`, `<svg:a/>`) is never a
+        // DOM element — `jsx_tag_name` reports "" for it, so the uppercase test
+        // alone would misread it as "not a component".
+        JSXElementName::Identifier(id) => is_component_tag(id.name.as_str()),
+        JSXElementName::IdentifierReference(id) => is_component_tag(id.name.as_str()),
+        _ => true,
+    }
+}
+
+/// Does this element tree absorb any COMPONENT child into its template?
+/// Mirrors `flatten_children`'s recursion EXACTLY, fragments included and at any
+/// depth: a one-level fragment scan would report "absorbs nothing" for
+/// `<div><><><Comp/></></></div>` while the emit happily absorbed it — the
+/// ordering gate would then be skipped for a shape that needs it.
+fn template_absorbs_component(children: &[JSXChild]) -> bool {
+    for child in children {
+        match child {
+            JSXChild::Element(el) => {
+                if is_absorbable_component_child(el) {
+                    return true;
+                }
+                if !is_self_closing(el) && template_absorbs_component(&el.children) {
+                    return true;
+                }
+            }
+            JSXChild::Fragment(frag) => {
+                if template_absorbs_component(&frag.children) {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
+fn template_element_count(el: &JSXElement, is_root: bool, tpl_components: bool) -> i32 {
     let tag = jsx_tag_name(el);
     if tag.is_empty() || !is_lower_case(tag) {
         return -1;
@@ -5954,7 +6214,7 @@ fn template_element_count(el: &JSXElement, is_root: bool) -> i32 {
     }
     let mut count = 1;
     for child in &el.children {
-        let c = count_child_for_template(child);
+        let c = count_child_for_template(child, tpl_components);
         if c == -1 {
             return -1;
         }
@@ -5963,10 +6223,18 @@ fn template_element_count(el: &JSXElement, is_root: bool) -> i32 {
     count
 }
 
-fn count_child_for_template(child: &JSXChild) -> i32 {
+fn count_child_for_template(child: &JSXChild, tpl_components: bool) -> i32 {
     match child {
         JSXChild::Text(_) => 0,
-        JSXChild::Element(el) => template_element_count(el, false),
+        JSXChild::Element(el) => {
+            // A COMPONENT child no longer bails the whole element: it is mounted
+            // into the clone by the bind, contributing no baked elements of its
+            // own. Mirrors `countChildForTemplate` in the JS backend.
+            if tpl_components && is_absorbable_component_child(el) {
+                return 0;
+            }
+            template_element_count(el, false, tpl_components)
+        }
         JSXChild::ExpressionContainer(c) => match &c.expression {
             JSXExpression::EmptyExpression(_) => 0,
             _ => {
@@ -5986,15 +6254,15 @@ fn count_child_for_template(child: &JSXChild) -> i32 {
                 }
             }
         },
-        JSXChild::Fragment(frag) => template_fragment_count(frag),
+        JSXChild::Fragment(frag) => template_fragment_count(frag, tpl_components),
         _ => -1,
     }
 }
 
-fn template_fragment_count(frag: &JSXFragment) -> i32 {
+fn template_fragment_count(frag: &JSXFragment, tpl_components: bool) -> i32 {
     let mut count = 0;
     for child in &frag.children {
-        let c = count_child_for_template(child);
+        let c = count_child_for_template(child, tpl_components);
         if c == -1 {
             return -1;
         }
@@ -6037,6 +6305,7 @@ struct TemplateBuilder {
     needs_apply_props: bool,
     needs_bind_spread: bool,
     needs_mount_slot: bool,
+    needs_mount_child: bool,
     needs_bind: bool,
     needs_bind_poly: bool,
     needs_set_child: bool,
@@ -6045,6 +6314,12 @@ struct TemplateBuilder {
     needs_set_style: bool,
     needs_set_class: bool,
     needs_set_attr: bool,
+    /// Preserved holes — absorbed COMPONENT children whose source range must
+    /// survive into the output so the walk can transform them in place. Each is
+    /// represented in the generated body by a `HOLE_SENTINEL`-delimited index
+    /// that `try_template_emit` splits on; NUL can't occur in the source text
+    /// the body is built from. Mirrors `jsx.ts:holeNodes` / `registerHole`.
+    hole_spans: Vec<Span>,
 }
 
 impl TemplateBuilder {
@@ -6064,6 +6339,7 @@ impl TemplateBuilder {
             needs_apply_props: false,
             needs_bind_spread: false,
             needs_mount_slot: false,
+            needs_mount_child: false,
             needs_bind: false,
             needs_bind_poly: false,
             needs_set_child: false,
@@ -6072,7 +6348,16 @@ impl TemplateBuilder {
             needs_set_style: false,
             needs_set_class: false,
             needs_set_attr: false,
+            hole_spans: Vec::new(),
         }
+    }
+
+    /// Register an absorbed COMPONENT child's source range as a preserved hole
+    /// and return its sentinel marker for the generated body.
+    /// Mirrors `jsx.ts:registerHole`.
+    fn register_hole(&mut self, span: Span) -> String {
+        self.hole_spans.push(span);
+        format!("{}{}{}", HOLE_SENTINEL, self.hole_spans.len() - 1, HOLE_SENTINEL)
     }
 
     fn next_var(&mut self) -> String {
@@ -6165,9 +6450,18 @@ enum FlatChild<'a> {
     Text(String),
     Element(&'a JSXElement<'a>, usize), // node + elemIdx
     Expression(&'a Expression<'a>),
+    /// A COMPONENT child absorbed into this template
+    /// (`templatize_component_children`). Contributes NO static HTML when
+    /// nothing static follows it — it is appended into the clone — and a `<!>`
+    /// placeholder otherwise.
+    Component(&'a JSXElement<'a>),
 }
 
-fn build_template_call(el: &JSXElement, ctx: &mut Ctx) -> Option<String> {
+fn build_template_call(
+    el: &JSXElement,
+    ctx: &mut Ctx,
+    holes_out: &mut Vec<Span>,
+) -> Option<String> {
     let mut tb = TemplateBuilder::new();
     let html = process_element(el, "__root", &mut tb, ctx)?;
 
@@ -6198,6 +6492,9 @@ fn build_template_call(el: &JSXElement, ctx: &mut Ctx) -> Option<String> {
     if tb.needs_mount_slot {
         ctx.needs_mount_slot_import = true;
     }
+    if tb.needs_mount_child {
+        ctx.needs_mount_child_import = true;
+    }
     if tb.needs_bind_poly {
         ctx.needs_bind_poly_import = true;
     }
@@ -6221,6 +6518,8 @@ fn build_template_call(el: &JSXElement, ctx: &mut Ctx) -> Option<String> {
     if tb.needs_bind {
         ctx.needs_bind_import = true;
     }
+
+    holes_out.extend(tb.hole_spans.iter().copied());
 
     if tb.ref_lines.is_empty() && tb.bind_lines.is_empty() && tb.disposer_names.is_empty() {
         return Some(format!("_tpl(\"{}\", () => null)", escaped));
@@ -6346,7 +6645,7 @@ fn attr_is_dynamic(attr: &JSXAttributeItem, tag: &str) -> bool {
     }
 }
 
-fn element_has_dynamic(el: &JSXElement) -> bool {
+fn element_has_dynamic(el: &JSXElement, tpl_components: bool) -> bool {
     let tag = jsx_tag_name(el);
     if el
         .opening_element
@@ -6358,7 +6657,18 @@ fn element_has_dynamic(el: &JSXElement) -> bool {
     }
     if !is_self_closing(el) {
         return el.children.iter().any(|c| match c {
-            JSXChild::ExpressionContainer(ec) => !matches!(ec.expression, JSXExpression::EmptyExpression(_)),
+            JSXChild::ExpressionContainer(ec) => {
+                !matches!(ec.expression, JSXExpression::EmptyExpression(_))
+            }
+            // PZ-08: an absorbed component child emits a phase-2 `_mountChild` /
+            // `_mountSlot` line, so this element's own ref MUST be a phase-1
+            // const. Without this the walk was inlined into the phase-2 line and
+            // evaluated AFTER a preceding `_mountSlot` had removed its `<!>`
+            // placeholder — the component mounted inside the previous sibling,
+            // or into the `<!--pyreon-->` marker where it vanished silently.
+            JSXChild::Element(child) => {
+                tpl_components && is_absorbable_component_child(child)
+            }
             _ => false,
         });
     }
@@ -6375,7 +6685,7 @@ fn process_element(
     if tag.is_empty() {
         return None;
     }
-    let has_dyn = element_has_dynamic(el);
+    let has_dyn = element_has_dynamic(el, ctx.templatize_component_children);
     let var_name = resolve_element_var(accessor, has_dyn, tb);
     // Bind lines deferred past this element's children lines (today only
     // `<select value>` — see process_attrs). Appended AFTER process_children
@@ -7036,13 +7346,17 @@ fn attr_initializer_to_html(
 
 // ─── Template children processing ────────────────────────────────────────────
 
-fn flatten_children<'a>(children: &'a [JSXChild<'a>]) -> Vec<FlatChild<'a>> {
+fn flatten_children<'a>(
+    children: &'a [JSXChild<'a>],
+    tpl_components: bool,
+) -> Vec<FlatChild<'a>> {
     let mut flat: Vec<FlatChild<'a>> = Vec::new();
     let mut elem_idx = 0usize;
     fn add_children<'a>(
         kids: &'a [JSXChild<'a>],
         flat: &mut Vec<FlatChild<'a>>,
         elem_idx: &mut usize,
+        tpl_components: bool,
     ) {
         for child in kids {
             match child {
@@ -7053,8 +7367,15 @@ fn flatten_children<'a>(children: &'a [JSXChild<'a>]) -> Vec<FlatChild<'a>> {
                     }
                 }
                 JSXChild::Element(el) => {
-                    flat.push(FlatChild::Element(el, *elem_idx));
-                    *elem_idx += 1;
+                    // A component child is MOUNTED into the clone, not baked —
+                    // so it does not consume an element index (the ref walks
+                    // address baked elements).
+                    if tpl_components && is_absorbable_component_child(el) {
+                        flat.push(FlatChild::Component(el));
+                    } else {
+                        flat.push(FlatChild::Element(el, *elem_idx));
+                        *elem_idx += 1;
+                    }
                 }
                 JSXChild::ExpressionContainer(c) => {
                     if let Some(expr) = jsx_expr_as_expression(&c.expression) {
@@ -7062,13 +7383,13 @@ fn flatten_children<'a>(children: &'a [JSXChild<'a>]) -> Vec<FlatChild<'a>> {
                     }
                 }
                 JSXChild::Fragment(frag) => {
-                    add_children(&frag.children, flat, elem_idx);
+                    add_children(&frag.children, flat, elem_idx, tpl_components);
                 }
                 _ => {}
             }
         }
     }
-    add_children(children, &mut flat, &mut elem_idx);
+    add_children(children, &mut flat, &mut elem_idx, tpl_components);
     flat
 }
 
@@ -7092,7 +7413,16 @@ fn analyze_children(flat: &[FlatChild]) -> (bool, bool) {
         .iter()
         .filter(|c| matches!(c, FlatChild::Expression(_)))
         .count();
-    let present = (has_elem as u8) + (has_text as u8) + ((expr_count > 0) as u8);
+    // An absorbed component child counts toward MIXED (its append must not jump
+    // over static content that follows it) but NOT toward multi-expr: several
+    // component children with nothing static between them append in source
+    // order, which is already the right order. That distinction is the whole
+    // win — the `<!>` placeholder variant of this feature measured 4.24ms
+    // against the append variant's 3.94ms, because 2,046 placeholder comments
+    // get cloned and then removed.
+    let has_component = flat.iter().any(|c| matches!(c, FlatChild::Component(_)));
+    let present =
+        (has_elem as u8) + (has_text as u8) + ((expr_count > 0) as u8) + (has_component as u8);
     (present > 1, expr_count > 1)
 }
 
@@ -7278,6 +7608,38 @@ fn process_one_child(
 ) -> Option<String> {
     match child {
         FlatChild::Text(text) => Some(escape_html_text(text)),
+        FlatChild::Component(comp) => {
+            // The component's own source range is PRESERVED as a hole rather
+            // than sliced. Slicing would emit the raw text and silently drop
+            // every transformation the walk applies inside it — `_rp` wrapping
+            // on its props (so a signal-driven prop freezes), `_lc` on its own
+            // sole child, and any nested `_tpl`. That cost 6 of 26
+            // `ui-showcase-regression` specs when the JS emit sliced. The hole
+            // is walked by `try_template_emit` and spliced back in by the
+            // bracketed replacement.
+            let d = tb.next_disp();
+            let vnode = tb.register_hole(comp.span());
+            // For a component only MIXED matters — `use_multi_expr` counts
+            // text-merging expression children, and any component alongside
+            // them already forces `use_mixed`.
+            if use_mixed {
+                // Something static follows (or could): mount AT the placeholder.
+                tb.needs_mount_slot = true;
+                let placeholder = tb.hoist_placeholder_ref(parent_ref, child_node_idx);
+                tb.bind_lines.push(format!(
+                    "const {} = _mountSlot({}, {}, {})",
+                    d, vnode, parent_ref, placeholder
+                ));
+                Some("<!>".to_string())
+            } else {
+                // Nothing static in this element — append in source order, which
+                // needs no placeholder comment at all.
+                tb.needs_mount_child = true;
+                tb.bind_lines
+                    .push(format!("const {} = _mountChild({}, {}, null)", d, vnode, parent_ref));
+                Some(String::new())
+            }
+        }
         FlatChild::Element(el, elem_idx) => {
             let child_accessor = if use_mixed {
                 child_node_accessor_tb(tb, parent_ref, child_node_idx, true)
@@ -7401,7 +7763,7 @@ fn process_children(
     tb: &mut TemplateBuilder,
     ctx: &mut Ctx,
 ) -> Option<String> {
-    let flat = flatten_children(&el.children);
+    let flat = flatten_children(&el.children, ctx.templatize_component_children);
     let (use_mixed, use_multi_expr) = analyze_children(&flat);
     let parent_ref = if accessor == "__root" {
         "__root"

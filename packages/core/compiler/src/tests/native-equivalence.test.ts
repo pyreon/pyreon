@@ -17,6 +17,7 @@ let nativeTransform:
       reactivityLens?: boolean,
       collapse?: unknown,
       ssrTemplate?: boolean,
+      templatizeComponentChildren?: boolean,
     ) => {
       code: string
       usesTemplates?: boolean | null
@@ -59,6 +60,24 @@ function compareSsr(input: string) {
 function compareSsrTemplate(input: string) {
   const js = transformJSX_JS(input, 'test.tsx', { ssr: true, ssrTemplate: true })
   const rs = nativeTransform!(input, 'test.tsx', true, null, false, undefined, true)
+  expect(rs.code).toBe(js.code)
+}
+
+// `templatizeComponentChildren` parity — absorbing COMPONENT children into the
+// enclosing `_tpl()`. The native backend must emit the SAME template + mount
+// lines the JS oracle does; this was the blocker that kept the option JS-only.
+function compareTplComponents(input: string) {
+  const js = transformJSX_JS(input, 'test.tsx', { templatizeComponentChildren: true })
+  const rs = nativeTransform!(input, 'test.tsx', false, null, false, undefined, false, true)
+  expect(rs.code).toBe(js.code)
+}
+
+function compareTplComponentsWithSignals(input: string, knownSignals: string[]) {
+  const js = transformJSX_JS(input, 'test.tsx', {
+    knownSignals,
+    templatizeComponentChildren: true,
+  })
+  const rs = nativeTransform!(input, 'test.tsx', false, knownSignals, false, undefined, false, true)
   expect(rs.code).toBe(js.code)
 }
 
@@ -2252,4 +2271,97 @@ describeNative('lazy component children (_lc) — parity', () => {
     compareSsrTemplate('const A = () => <Provider><div class="k"><Consumer /></div></Provider>'))
   test('ssrTemplate — multiple children stay eager', () =>
     compareSsrTemplate('const A = () => <Provider><div>{a()}</div><div>{b()}</div></Provider>'))
+})
+
+// ─── `templatizeComponentChildren` parity ────────────────────────────────────
+//
+// The hand corpus for the option that absorbs COMPONENT children into the
+// enclosing `_tpl()`. This was the blocker that kept the option JS-only: the
+// napi call is POSITIONAL, so before the 8th arg existed the native backend
+// silently emitted the un-templatized shape.
+//
+// A hand corpus locks KNOWN shapes; the combinatoric space between them is the
+// `client-tpl-components` mode in `fuzz-equivalence.test.ts`. Both are required
+// — this file names the shapes a reader needs to see, the fuzzer covers the
+// products of them nobody enumerated.
+describeNative('templatizeComponentChildren parity', () => {
+  // ── The emit itself ──
+  test('append form — sibling component children, no placeholder', () =>
+    compareTplComponents('const A = () => <div class="branch"><Node /><Node /></div>'))
+  test('append form — a single component child', () =>
+    compareTplComponents('const A = () => <div class="k"><Leaf /></div>'))
+  test('mixed form — static element AFTER the component', () =>
+    compareTplComponents('const A = () => <div><Leaf /><span>x</span></div>'))
+  test('mixed form — static element BEFORE the component', () =>
+    compareTplComponents('const A = () => <div><span>x</span><Leaf /></div>'))
+  test('mixed form — text alongside a component', () =>
+    compareTplComponents('const A = () => <div>hi <Leaf /></div>'))
+  test('mixed form — expression alongside a component', () =>
+    compareTplComponents('const A = () => <div><Leaf />{x()}</div>'))
+  test('multi-hole source ordering', () =>
+    compareTplComponents('const A = () => <div class="b"><Alpha /><Beta /><Gamma /></div>'))
+  test('multi-hole with static between them', () =>
+    compareTplComponents('const A = () => <div class="b"><Alpha /><i>s</i><Beta /></div>'))
+  test('a component child nested under a baked element', () =>
+    compareTplComponents('const A = () => <div class="o"><section><Leaf /></section></div>'))
+  test('a component child with its own children', () =>
+    compareTplComponents('const A = () => <div class="b"><Card><p>hi</p></Card></div>'))
+  test('a MEMBER-tag component child is absorbable', () =>
+    compareTplComponents('const A = () => <div class="b"><Ctx.Provider /></div>'))
+  test('an absorbed <For>', () =>
+    compareTplComponents(
+      'const A = () => <div class="b"><For each={xs} by={r => r.id}>{(r) => <p>{r.id}</p>}</For></div>',
+    ))
+  test('a component child under a bare fragment', () =>
+    compareTplComponents('const A = () => <div class="b"><><Leaf /></></div>'))
+  test('a component child under NESTED fragments', () =>
+    compareTplComponents('const A = () => <div class="b"><><><Leaf /></></></div>'))
+
+  // ── Preservation: the hole must be WALKED, not sliced ──
+  test('preserved hole keeps _rp on the absorbed component props', () =>
+    compareTplComponents('function C(props) { return <div class="b"><Leaf title={props.t} /></div> }'))
+  test('preserved hole keeps the signal auto-call', () =>
+    compareTplComponentsWithSignals('const A = () => <div class="b"><Leaf n={s} /></div>', ['s']))
+  test('preserved hole keeps a NESTED _tpl (and its own _lc)', () =>
+    compareTplComponents('const A = () => <div class="b"><Card><div><b>x</b></div></Card></div>'))
+
+  // ── The ordering gate: every eager-argument position BAILS ──
+  test('gate — a component parent with MULTIPLE children stays eager', () =>
+    compareTplComponents('const A = () => <Provider><div class="k"><Leaf /></div><p>x</p></Provider>'))
+  test('gate — a component parent with a SOLE child is exempt (_lc)', () =>
+    compareTplComponents('const A = () => <Provider><div class="k"><Leaf /></div></Provider>'))
+  test('gate — a MEMBER-tag parent is always eager', () =>
+    compareTplComponents('const A = () => <Ctx.Provider><div class="k"><Leaf /></div></Ctx.Provider>'))
+  test('gate — a FRAGMENT parent is always eager', () =>
+    compareTplComponents('const A = () => <><div class="k"><Leaf /></div></>'))
+  test('gate — a DOM parent never defers', () =>
+    compareTplComponents('const A = () => <main><div class="k"><Leaf /></div></main>'))
+  test('gate — an expression-container parent is eager', () =>
+    compareTplComponents('const A = () => <Comp>{<div class="k"><Leaf /></div>}</Comp>'))
+  test('gate — an attribute-value JSX parent is eager', () =>
+    compareTplComponents('const A = () => <Comp slot={<div class="k"><Leaf /></div>} />'))
+  test('gate — a map callback is NOT eager', () =>
+    compareTplComponents('const A = () => <Comp>{xs.map(x => <div class="k"><Leaf /></div>)}</Comp>'))
+  test('gate — a ternary branch is NOT eager', () =>
+    compareTplComponents('const A = () => <Comp>{c ? <div class="k"><Leaf /></div> : null}</Comp>'))
+  test('gate — absorbing through NESTED fragments still bails under a component', () =>
+    compareTplComponents('const A = () => <Provider><div><><><Leaf /></></></div><p>x</p></Provider>'))
+  test('gate — a purely STATIC template under an eager parent still emits', () =>
+    compareTplComponents('const A = () => <Provider><div class="k"><b>x</b></div><p>y</p></Provider>'))
+
+  // ── Scope: the option is client-only and additive ──
+  test('SSR is unaffected by the option', () => {
+    const src = 'const A = () => <div class="b"><Leaf /></div>'
+    const js = transformJSX_JS(src, 'test.tsx', { ssr: true, templatizeComponentChildren: true })
+    const rs = nativeTransform!(src, 'test.tsx', true, null, false, undefined, false, true)
+    expect(rs.code).toBe(js.code)
+    // …and identical to the same source compiled with the option OFF.
+    expect(rs.code).toBe(transformJSX_JS(src, 'test.tsx', { ssr: true }).code)
+  })
+  test('self-closing roots are untouched', () =>
+    compareTplComponents('const A = () => <div class="b" />'))
+  test('the deep-tree shape (the measured win)', () =>
+    compareTplComponents(
+      'const Node = (props) => <div class="branch"><Node d={props.d} /><Node d={props.d} /></div>',
+    ))
 })

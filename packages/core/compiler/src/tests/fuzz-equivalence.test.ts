@@ -38,6 +38,7 @@ let nativeTransform:
       reactivityLens?: boolean,
       collapse?: unknown,
       ssrTemplate?: boolean,
+      templatizeComponentChildren?: boolean,
     ) => { code: string })
   | null = null
 try {
@@ -153,7 +154,32 @@ function genChild(c: Ctx): string {
     return `{[1,2,3].map((${param}) => ${body})}`
   }
   if (r < 0.55) return `{<><span>a</span><span>b</span></>}`
+  // `templatizeComponentChildren`: a BARE fragment child. The absorb scan has
+  // to mirror `flattenChildren`'s fragment recursion at any depth, and a hole
+  // can sit under one — so the emitter, the ordering gate AND the re-walk
+  // lookup all have to agree about fragment transparency.
+  if (r < 0.58) return `<>${genComponentChild(c)}${c.rnd() < 0.5 ? genChild(c) : ''}</>`
+  if (r < 0.62) return `<><>${genComponentChild(c)}</></>`
   return genElement({ ...c, depth: c.depth + 1 })
+}
+
+/**
+ * A COMPONENT in JSX-child position — the shape
+ * `templatizeComponentChildren` absorbs. Covers the four spellings its gate
+ * discriminates: self-closing (the deep-tree shape), with children, and both
+ * again under a MEMBER tag (`<Ns.Comp/>`), which `jsxTagName` reports as `''`
+ * and an uppercase test would misread as a DOM element.
+ */
+function genComponentChild(c: Ctx): string {
+  const r = c.rnd()
+  const n = c.idc.n++ % 3
+  if (r < 0.4) return `<Comp${n}${genAttrs(c)} />`
+  if (r < 0.6) return `<Comp${n}${genAttrs(c)}>{${genExpr(c)}}</Comp${n}>`
+  if (r < 0.75) return `<Ns.Comp${n}${genAttrs(c)} />`
+  if (r < 0.85) return `<Ns.Comp${n}${genAttrs(c)}>{${genExpr(c)}}</Ns.Comp${n}>`
+  // A component whose own child is an ELEMENT — exercises the preserved hole
+  // being re-walked (the child must still get its own `_tpl` / `_lc`).
+  return `<Comp${n}${genAttrs(c)}><span>{${genExpr(c)}}</span></Comp${n}>`
 }
 
 function genElement(c: Ctx): string {
@@ -161,6 +187,18 @@ function genElement(c: Ctx): string {
   if (r < 0.08) return `<${pick(c.rnd, VOIDS)}${genAttrs(c)} />`
   if (r < 0.16)
     return `<Comp${c.idc.n++ % 3}${genAttrs(c)}>{${genExpr(c)}}</Comp${(c.idc.n - 1) % 3}>`
+  // Component children of a DOM element — one, two or three in a row, which is
+  // what discriminates the APPEND form (`_mountChild`, no placeholder) from the
+  // MIXED form (`_mountSlot` + `<!>`) and pins multi-hole source ordering.
+  if (r < 0.24 && c.depth <= 4) {
+    const tag0 = pick(c.rnd, TAGS)
+    const k = 1 + Math.floor(c.rnd() * 3)
+    const kids: string[] = []
+    for (let i = 0; i < k; i++) kids.push(genComponentChild({ ...c, depth: c.depth + 1 }))
+    // Interleave static content half the time so `useMixed` fires.
+    if (c.rnd() < 0.5) kids.splice(Math.floor(c.rnd() * (kids.length + 1)), 0, genChild(c))
+    return `<${tag0}${genAttrs(c)}>${kids.join('')}</${tag0}>`
+  }
   const tag = pick(c.rnd, TAGS)
   const nChildren = 1 + Math.floor(c.rnd() * 3)
   const children: string[] = []
@@ -210,16 +248,31 @@ function genComponent(seed: number): string {
 }
 
 // ─── The gate ───────────────────────────────────────────────────────────────
-const SEEDS = 300 // ~1.2s locally; every seed is reproducible by number
+// ~1.6s locally at 300; every seed is reproducible by number. Raise for a
+// discovery campaign with `PYREON_FUZZ_SEEDS=10000 bunx vitest run …` — the
+// committed value is the CI budget, not the number this was proven at.
+const SEEDS = Number(process.env.PYREON_FUZZ_SEEDS) || 300
 
 // Three compilation modes exercised per seed: client (`ssr:false`), SSR h()
 // (`ssr:true`), and SSR compile-to-string (`ssr:true, ssrTemplate:true`). The
 // third exercises the native `_ssr` emit across the whole grammar — the
 // combinatoric oracle for the native-parity landing.
-const MODES: { label: string; ssr: boolean; ssrTemplate: boolean }[] = [
+const MODES: {
+  label: string
+  ssr: boolean
+  ssrTemplate: boolean
+  templatizeComponentChildren?: boolean
+}[] = [
   { label: 'client', ssr: false, ssrTemplate: false },
   { label: 'ssr', ssr: true, ssrTemplate: false },
   { label: 'ssr-template', ssr: true, ssrTemplate: true },
+  // Client emit with COMPONENT children absorbed into the enclosing `_tpl`
+  // (`templatizeComponentChildren`). This is the combinatoric oracle for that
+  // option's native parity: a hand corpus can only lock the shapes someone
+  // thought of, and this feature's whole surface is a POSITIONAL gate over
+  // parent kinds × child kinds, which is exactly where the space between the
+  // known shapes lives.
+  { label: 'client-tpl-components', ssr: false, ssrTemplate: false, templatizeComponentChildren: true },
 ]
 
 describeNative('seeded differential fuzz — JS ≡ Rust, client + SSR', () => {
@@ -228,9 +281,22 @@ describeNative('seeded differential fuzz — JS ≡ Rust, client + SSR', () => {
     let firstDivergence = ''
     for (let seed = 1; seed <= SEEDS; seed++) {
       const src = genComponent(seed)
-      for (const { label, ssr, ssrTemplate } of MODES) {
-        const js = transformJSX_JS(src, 'fuzz.tsx', { ssr, ssrTemplate }).code
-        const rs = nativeTransform!(src, 'fuzz.tsx', ssr, null, false, undefined, ssrTemplate).code
+      for (const { label, ssr, ssrTemplate, templatizeComponentChildren: tcc } of MODES) {
+        const js = transformJSX_JS(src, 'fuzz.tsx', {
+          ssr,
+          ssrTemplate,
+          templatizeComponentChildren: tcc === true,
+        }).code
+        const rs = nativeTransform!(
+          src,
+          'fuzz.tsx',
+          ssr,
+          null,
+          false,
+          undefined,
+          ssrTemplate,
+          tcc === true,
+        ).code
         if (js !== rs) {
           failures.push(`seed=${seed} mode=${label}`)
           if (!firstDivergence) {
@@ -249,5 +315,31 @@ describeNative('seeded differential fuzz — JS ≡ Rust, client + SSR', () => {
       }
     }
     expect(failures, `divergent seeds: ${failures.join(', ')}${firstDivergence}`).toEqual([])
+  })
+
+  // A differential mode that never changes the output is a mode that proves
+  // nothing — it would pass byte-identically against a backend where the option
+  // was never implemented at all. This pins that the `client-tpl-components`
+  // arm is ALIVE across the grammar, and in BOTH of its emit shapes: the append
+  // form (`_mountChild`, no placeholder comment — where the measured win comes
+  // from) and the mixed form (`_mountSlot` + `<!>`). Thresholds are ~⅓ below the
+  // observed values so ordinary grammar drift doesn't red it, while a mode that
+  // silently went dead does.
+  test(`the ${MODES[3]!.label} mode actually changes the emit`, () => {
+    let differs = 0
+    let appendForm = 0
+    let mixedForm = 0
+    for (let seed = 1; seed <= SEEDS; seed++) {
+      const src = genComponent(seed)
+      const off = transformJSX_JS(src, 'fuzz.tsx', {}).code
+      const on = transformJSX_JS(src, 'fuzz.tsx', { templatizeComponentChildren: true }).code
+      if (off !== on) differs++
+      if (on.includes('_mountChild(')) appendForm++
+      if (on.includes('_mountSlot(') && !off.includes('_mountSlot(')) mixedForm++
+    }
+    // Observed at SEEDS=300: differs≈37%, append≈16%, mixed≈19%.
+    expect(differs, 'option had no effect on any seed').toBeGreaterThan(SEEDS * 0.2)
+    expect(appendForm, 'append form never emitted').toBeGreaterThan(SEEDS * 0.08)
+    expect(mixedForm, 'placeholder form never emitted').toBeGreaterThan(SEEDS * 0.08)
   })
 })

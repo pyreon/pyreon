@@ -73,12 +73,14 @@ export const INNER_PYREON_OPTION_DISPOSITION: Record<
    *  the user's server entry, replacing zero's synthetic one. A plugin's
    *  `config()` return beats the inline `build({ … })` arg, so this does not
    *  merely add an entry: it takes over the sub-build. */
-  /** CLIENT emit only — the compiler ignores it under `ssr: true`, so the inner
-   *  SSR sub-build gets nothing from it. Forwarding would be strictly worse
-   *  than useless: while the option is on the compiler falls back to its JS
-   *  backend (no native mirror yet), so the sub-build would pay the 3.7-8.9x
-   *  slower transform across every file for zero effect. Same reasoning as
-   *  `collapse`, which is also a client-only build-time transform. */
+  /** CLIENT emit only — the compiler ignores it under `ssr: true` (both
+   *  backends gate on `!ssr`), so the inner SSR sub-build gets nothing from it
+   *  and forwarding it would be a no-op that still has to be reasoned about at
+   *  every read. Same reasoning as `collapse`, which is also a client-only
+   *  build-time transform. (This entry previously ALSO cited the compiler
+   *  falling back to its JS backend while the option was on — that is no longer
+   *  true; the option has a byte-identical native mirror and costs nothing
+   *  extra to compile. The client-only argument is the one that still holds.) */
   templatizeComponentChildren: 'drop',
   ssr: 'drop',
   /** DROP — collapse is CLIENT-graph-only by design (gated `isBuild && !isSsr`
