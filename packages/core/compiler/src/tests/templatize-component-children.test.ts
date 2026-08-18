@@ -13,10 +13,14 @@
  * file the new branch set is dead weight in the coverage report even though it
  * is thoroughly tested one package over.
  *
- * NOTE every spec here passes the option, which is also what forces the JS
- * backend (`transformJSX` prefers the native binary, and the option has no
- * native mirror yet). That is deliberate: it is the only configuration in which
- * these branches run at all.
+ * NOTE these specs call `transformJSX`, which PREFERS the native binary — so
+ * once the native mirror landed they assert the RUST emit, not the JS one. That
+ * is deliberate and worth keeping: the JS branches are covered by the same
+ * assertions running through `transformJSX_JS` in the equivalence oracle
+ * (`native-equivalence.test.ts` compares the two backends byte-for-byte on this
+ * option), so a divergence reds there while THIS file pins the shipped shape.
+ * Before the mirror existed the option forced the JS backend, which is why this
+ * header used to say the opposite.
  */
 import { describe, expect, it } from 'vitest'
 import { transformJSX } from '../index'
