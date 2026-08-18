@@ -93,6 +93,8 @@ The measurable wall-clock cost vs hand-written Vanilla is bulk-create
 signal, see below) and append (**+4.1% to +5.7%**, now publishable — see
 below for why that changed).
 
+**A correction about `clear rows`, not to the number but to the reasoning behind it.** We previously explained the loss as "the price of fine-grained subscriptions" and treated the investigation as closed. A follow-up CPU profile found that explanation was wrong by more than an order of magnitude: tearing down Pyreon's per-row signal binding costs under 1µs per 1,000 rows; the real cost is a duplicate per-key lookup table that a fix (open, not yet merged) removes, narrowing the loss from ~1.47× to ~1.15× without closing it — Octane's advantage on this one op is architectural (it registers no per-row subscriptions at all), not a missing optimization on our side. The figure above (~1.45×) is what `main` measures today.
+
 **`partial update` — the correction that matters most: our published ~4.9×
 lead over Solid was inflated more than 2× by the table-layout bug, and is
 retracted as explicitly as the Octane/retained-heap artifacts.** `partial
