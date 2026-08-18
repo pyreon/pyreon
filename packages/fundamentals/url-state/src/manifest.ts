@@ -13,7 +13,7 @@ export default defineManifest({
     rationale:
       "the address bar is the web's own surface — history entries, `popstate`, `batchUrlUpdates` and the pluggable serializers stay web; on native the equivalent is the router's search parameters",
     nativeFrontend:
-      "`useUrlState(key, 'default')` with a STRING default, bound to the native router's query (PyreonRouter.query / setQueryParam)",
+      "`useUrlState(key, default)` with a STRING, NUMBER or BOOLEAN default, bound to the native router's query (PyreonRouter.query / setQueryParam); the codec mirrors the web's `inferSerializer` (JS `ToNumber` for numbers, exact `'true'` match for booleans), and an integer default lowers to Int while a fractional one lowers to Double. Array and object defaults, a non-literal default or key, and the `clearOnDefault` / `debounce` / custom-serializer options stay web",
   },
   longExample: `import { useUrlState, setUrlRouter } from '@pyreon/url-state'
 import { signal } from '@pyreon/reactivity'

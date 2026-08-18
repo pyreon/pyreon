@@ -12,6 +12,12 @@
 
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
+import {
+  isKotlincAvailable,
+  isSwiftcAvailable,
+  validateKotlin,
+  validateSwiftWithStubs,
+} from '../validate'
 
 const SRC = `import { useUrlState } from '@pyreon/url-state'
 import { Stack, Text } from '@pyreon/primitives'
@@ -48,15 +54,34 @@ describe('useUrlState lowering', () => {
     expect(transform(SRC, { target: 'kotlin' }).warnings).toHaveLength(0)
   })
 
-  // v1 is string-valued. Coercing a number silently would be worse than
-  // leaving it to the unlowered-hook diagnostic, so it declines WITH a reason.
-  it('declines a non-string default rather than coercing it', () => {
+  // This spec used to assert `useUrlState('page', 1)` was DECLINED, which was
+  // the v1 limit rather than the invariant. The invariant it was protecting —
+  // never silently coerce a default the emit has no codec for — is what is
+  // asserted here, now against the shapes that genuinely have none: the web
+  // infers a comma-join for an array and a JSON codec for an object, and there
+  // is no native type to decode either INTO at this call site.
+  it('declines an array or object default rather than coercing it', () => {
+    for (const def of ['[]', "['a']", '{}', '{ a: 1 }']) {
+      const src = `import { useUrlState } from '@pyreon/url-state'
+import { Stack } from '@pyreon/primitives'
+export function C() { const p = useUrlState('tags', ${def}); return (<Stack />) }`
+      const { code, warnings } = transform(src, { target: 'swift' })
+      expect(code, def).not.toContain('PyreonUrlState')
+      expect(
+        warnings.some((w) => w.includes('STRING, NUMBER or BOOLEAN default')),
+        def,
+      ).toBe(true)
+    }
+  })
+
+  // A non-literal default cannot be baked in either — same rule as the key.
+  it('declines a non-literal default', () => {
     const src = `import { useUrlState } from '@pyreon/url-state'
 import { Stack } from '@pyreon/primitives'
-export function C() { const p = useUrlState('page', 1); return (<Stack />) }`
+export function C() { const d = 'x'; const p = useUrlState('q', d); return (<Stack />) }`
     const { code, warnings } = transform(src, { target: 'swift' })
-    expect(code).not.toContain('PyreonUrlState(')
-    expect(warnings.some((w) => w.includes('STRING default'))).toBe(true)
+    expect(code).not.toContain('PyreonUrlState')
+    expect(warnings.some((w) => w.includes('STRING, NUMBER or BOOLEAN default'))).toBe(true)
   })
 
   // A dynamic key cannot be baked into the emit — the same conservative rule
@@ -74,6 +99,145 @@ export function C() { const k = 'q'; const v = useUrlState(k, ''); return (<Stac
 import { Stack, Text } from '@pyreon/primitives'
 export function C() { const a = useUrlState('a', ''); const b = useUrlState('b', ''); return (<Stack><Text>{a()}{b()}</Text></Stack>) }`
     const { code } = transform(src, { target: 'swift' })
-    expect(code.split('struct PyreonUrlState').length - 1).toBe(1)
+    // `split('struct PyreonUrlState')` would also match PyreonUrlStateInt et
+    // al, so anchor on the declaration's own opening brace.
+    expect(code.split('struct PyreonUrlState {').length - 1).toBe(1)
+  })
+})
+
+// ─── Typed defaults ─────────────────────────────────────────────────────────
+//
+// A URL carries text, so a non-string binding needs a codec. The web infers
+// one from the DEFAULT's type (`inferSerializer`, url-state/src/serializers.ts),
+// and these emits mirror it — including the parts that are easy to get subtly
+// wrong: `+raw` is JS ToNumber (not either target's own string→number init),
+// and the boolean decode is `raw === 'true'`, not a truthiness check.
+//
+// int-vs-double follows `inferTypeFromInitial`, the same rule every other PMTC
+// lowering uses, so `useUrlState('page', 1)` is Int on both targets and
+// `` `Page ${page()}` `` renders "Page 1" rather than "Page 1.0".
+
+const TYPED_SRC = `import { useUrlState } from '@pyreon/url-state'
+import { Stack, Text } from '@pyreon/primitives'
+export function C() {
+  const page = useUrlState('page', 1)
+  const zoom = useUrlState('zoom', 1.5)
+  const open = useUrlState('open', false)
+  const bump = () => { page.set(page() + 1); zoom.set(2.5); open.set(true) }
+  return (<Stack><Text>{\`\${page()} \${zoom()} \${open()}\`}</Text></Stack>)
+}`
+
+describe('useUrlState typed defaults', () => {
+  it('lowers number and boolean defaults without warning (Swift)', () => {
+    const { code, warnings } = transform(TYPED_SRC, { target: 'swift' })
+    expect(warnings).toHaveLength(0)
+    expect(code).toContain(
+      'PyreonUrlStateInt(router: pyreonRouter, key: "page", defaultValue: 1)',
+    )
+    expect(code).toContain(
+      'PyreonUrlStateDouble(router: pyreonRouter, key: "zoom", defaultValue: 1.5)',
+    )
+    expect(code).toContain(
+      'PyreonUrlStateBool(router: pyreonRouter, key: "open", defaultValue: false)',
+    )
+  })
+
+  it('lowers number and boolean defaults without warning (Kotlin)', () => {
+    const { code, warnings } = transform(TYPED_SRC, { target: 'kotlin' })
+    expect(warnings).toHaveLength(0)
+    expect(code).toContain('PyreonUrlStateInt(useRouter(), "page", 1)')
+    expect(code).toContain('PyreonUrlStateDouble(useRouter(), "zoom", 1.5)')
+    expect(code).toContain('PyreonUrlStateBool(useRouter(), "open", false)')
+  })
+
+  // An integer literal is Int, a fractional one Double — the repo-wide
+  // `inferTypeFromInitial` rule. A url-state binding that alone produced a
+  // Double for `1` would be the anomaly, and would print "1.0" in an
+  // interpolation where the web prints "1".
+  it('splits Int from Double on the default literal, not on the type name', () => {
+    const swift = transform(TYPED_SRC, { target: 'swift' }).code
+    expect(swift).toContain('let defaultValue: Int')
+    expect(swift).toContain('let defaultValue: Double')
+  })
+
+  // A negated literal parses as a unary WRAPPING the literal — the shape
+  // `inferTypeFromInitial` already unwraps for `signal(-5)`.
+  it('accepts a negated numeric default', () => {
+    const src = `import { useUrlState } from '@pyreon/url-state'
+import { Stack, Text } from '@pyreon/primitives'
+export function C() { const o = useUrlState('o', -3); return (<Stack><Text>{\`\${o()}\`}</Text></Stack>) }`
+    expect(transform(src, { target: 'swift' }).code).toContain(
+      'PyreonUrlStateInt(router: pyreonRouter, key: "o", defaultValue: -3)',
+    )
+    expect(transform(src, { target: 'kotlin' }).code).toContain(
+      'PyreonUrlStateInt(useRouter(), "o", -3)',
+    )
+  })
+
+  // `set` must round-trip through the web's `String(v)`, which prints a whole
+  // number WITHOUT a trailing `.0`. Both targets' own toString would emit
+  // "1.0" and produce `?zoom=1.0` where the web writes `?zoom=1`.
+  it('serializes a whole Double without a trailing .0 on both targets', () => {
+    expect(transform(TYPED_SRC, { target: 'swift' }).code).toContain('String(Int(value))')
+    expect(transform(TYPED_SRC, { target: 'kotlin' }).code).toContain('value.toLong().toString()')
+  })
+
+  // The web's boolean decode is `raw === 'true'` — "1"/"TRUE" are false. A
+  // permissive check would diverge on a hand-written link.
+  it('decodes a boolean by exact "true" match, not truthiness', () => {
+    expect(transform(TYPED_SRC, { target: 'swift' }).code).toContain('return raw == "true"')
+    expect(transform(TYPED_SRC, { target: 'kotlin' }).code).toContain('return raw == "true"')
+  })
+
+  // Only the helpers actually bound are emitted, so a string-only file is
+  // byte-identical to what it produced before typed defaults existed.
+  it('emits only the helpers a file actually binds', () => {
+    const stringOnly = transform(SRC, { target: 'swift' }).code
+    expect(stringOnly).toContain('struct PyreonUrlState {')
+    expect(stringOnly).not.toContain('PyreonUrlStateInt')
+    expect(stringOnly).not.toContain('pyreonUrlNumber')
+
+    // ... and a number-only file does not drag in the string helper.
+    const numOnly = `import { useUrlState } from '@pyreon/url-state'
+import { Stack, Text } from '@pyreon/primitives'
+export function C() { const n = useUrlState('n', 0); return (<Stack><Text>{\`\${n()}\`}</Text></Stack>) }`
+    const code = transform(numOnly, { target: 'swift' }).code
+    expect(code).not.toContain('struct PyreonUrlState {')
+    expect(code).toContain('struct PyreonUrlStateInt')
+    expect(code).toContain('pyreonUrlNumber')
+  })
+
+  // Swift's Int is 64-bit and Kotlin's is 32-bit, so a range guard written
+  // per-target would ACCEPT ?page=3000000000 on iOS and fall back to the
+  // default on Android — one shared source, two answers. Both are pinned to
+  // the narrower (32-bit) bound so the accepted set is identical.
+  it('accepts the same integer range on both targets', () => {
+    expect(transform(TYPED_SRC, { target: 'swift' }).code).toContain(
+      'n >= -2147483648, n <= 2147483647',
+    )
+    const kotlin = transform(TYPED_SRC, { target: 'kotlin' }).code
+    expect(kotlin).toContain('n < Int.MIN_VALUE.toDouble() || n > Int.MAX_VALUE.toDouble()')
+  })
+
+  // The number helper is shared by Int and Double — emitted once, not twice.
+  it('emits the ToNumber helper exactly once when both numeric forms are bound', () => {
+    const swift = transform(TYPED_SRC, { target: 'swift' }).code
+    expect(swift.split('func pyreonUrlNumber').length - 1).toBe(1)
+    const kotlin = transform(TYPED_SRC, { target: 'kotlin' }).code
+    expect(kotlin.split('fun pyreonUrlNumber').length - 1).toBe(1)
+  })
+
+  // R3 — the emit is TYPECHECKED by the real toolchains, not just asserted as
+  // a string. This is what catches an emit that reads plausibly and does not
+  // compile (a wrong `Math.floor` receiver, an Int/Double mismatch, a Swift
+  // `for … where` that needs a `return`).
+  it.skipIf(!isSwiftcAvailable())('typechecks against swiftc (Swift)', () => {
+    const r = validateSwiftWithStubs(transform(TYPED_SRC, { target: 'swift' }).code)
+    expect(r.ok, r.error).toBe(true)
+  })
+
+  it.skipIf(!isKotlincAvailable())('compiles against kotlinc (Kotlin)', () => {
+    const r = validateKotlin(transform(TYPED_SRC, { target: 'kotlin' }).code)
+    expect(r.ok, r.error).toBe(true)
   })
 })

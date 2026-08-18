@@ -673,6 +673,134 @@ const SWIFT_URL_STATE = `struct PyreonUrlState {
     func clear() { router?.setQueryParam(key, nil) }
 }`
 
+/**
+ * JS `ToNumber(String)`, reproduced.
+ *
+ * A URL carries text, so a number-valued `useUrlState` has to decode it — and
+ * the web decodes with `+raw` (`inferSerializer`, url-state/src/serializers.ts),
+ * whose grammar is NOT what either target's own string→number initializer
+ * accepts. Handing the raw string to `Double(_:)` / `toDoubleOrNull()` would
+ * diverge on exactly the inputs this feature exists for (a pasted deep link):
+ *
+ *   ""        JS 0          Swift nil      Kotlin null
+ *   "  42  "  JS 42         Swift nil      Kotlin null
+ *   "0b101"   JS 5          Swift nil      Kotlin null
+ *   "inf"     JS NaN        Swift infinity Kotlin null
+ *   "1.5f"    JS NaN        Swift nil      Kotlin 1.5
+ *   "NaN"     JS NaN        Swift nan      Kotlin nan
+ *
+ * So the grammar is checked here instead, identically on both targets: trim,
+ * empty → 0, the three `Infinity` spellings, the 0x/0o/0b radix prefixes, then
+ * a charset guard that rejects every letter except the exponent `e`/`E` before
+ * deferring to the native parse. That last guard is what excludes `inf`,
+ * `NaN` and Kotlin's `f`/`d` literal suffixes in one rule.
+ *
+ * Unparseable → the declared default, which is what the web does for NaN.
+ */
+const SWIFT_URL_NUMBER = `private func pyreonUrlNumber(_ raw: String, _ fallback: Double) -> Double {
+    let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    if t.isEmpty { return 0 }
+    if t == "Infinity" || t == "+Infinity" { return .infinity }
+    if t == "-Infinity" { return -.infinity }
+    if t.count > 2, t.hasPrefix("0") {
+        let radix: Int?
+        switch t[t.index(t.startIndex, offsetBy: 1)] {
+        case "x", "X": radix = 16
+        case "o", "O": radix = 8
+        case "b", "B": radix = 2
+        default: radix = nil
+        }
+        if let r = radix {
+            guard let v = UInt64(String(t.dropFirst(2)), radix: r) else { return fallback }
+            return Double(v)
+        }
+    }
+    // Only the decimal grammar's own characters. Rejects "inf"/"NaN"/"1_0"
+    // and any suffix form, all of which JS reads as NaN.
+    for ch in t where !("0"..."9" ~= ch || ch == "+" || ch == "-" || ch == "." || ch == "e" || ch == "E") {
+        return fallback
+    }
+    guard let v = Double(t), !v.isNaN else { return fallback }
+    return v
+}`
+
+/**
+ * Value type → emitted helper. A total `Record` rather than a lookup with a
+ * fallback: adding a `valueType` without an emitter is then a compile error,
+ * not a silent default to the string helper.
+ */
+const SWIFT_URL_STATE_TYPES: Record<
+  Extract<DeclIR, { kind: 'url-state' }>['valueType'],
+  string
+> = {
+  string: 'PyreonUrlState',
+  int: 'PyreonUrlStateInt',
+  double: 'PyreonUrlStateDouble',
+  boolean: 'PyreonUrlStateBool',
+}
+
+/** Int-valued search parameter. See `SWIFT_URL_NUMBER` for the decode. */
+const SWIFT_URL_STATE_INT = `struct PyreonUrlStateInt {
+    let router: PyreonRouter?
+    let key: String
+    let defaultValue: Int
+    func callAsFunction() -> Int {
+        guard let raw = router?.query[key] else { return defaultValue }
+        let n = pyreonUrlNumber(raw, Double(defaultValue))
+        // A binding declared with an integer default is Int on both targets
+        // (the repo-wide inferTypeFromInitial rule), so a fractional or
+        // out-of-range value has no representation — fall back to the default,
+        // the same answer the web gives for a value it cannot read.
+        //
+        // The bound is Kotlin's 32-bit Int, not Swift's 64-bit one, so both
+        // targets accept the same set: one shared source must not read
+        // ?page=3000000000 as a number on iOS and the default on Android.
+        guard n.rounded() == n, n >= -2147483648, n <= 2147483647 else { return defaultValue }
+        return Int(n)
+    }
+    func set(_ value: Int) { router?.setQueryParam(key, String(value)) }
+    func clear() { router?.setQueryParam(key, nil) }
+}`
+
+/**
+ * Double-valued search parameter. `set` mirrors JS `String(v)`, which prints
+ * a whole Double WITHOUT a trailing `.0` — Swift's own `String(1.0)` gives
+ * "1.0", so the round-trip would not match the web's `?zoom=1`.
+ */
+const SWIFT_URL_STATE_DOUBLE = `struct PyreonUrlStateDouble {
+    let router: PyreonRouter?
+    let key: String
+    let defaultValue: Double
+    func callAsFunction() -> Double {
+        guard let raw = router?.query[key] else { return defaultValue }
+        return pyreonUrlNumber(raw, defaultValue)
+    }
+    func set(_ value: Double) {
+        let s = value.rounded() == value && value.magnitude < 1e15
+            ? String(Int(value))
+            : String(value)
+        router?.setQueryParam(key, s)
+    }
+    func clear() { router?.setQueryParam(key, nil) }
+}`
+
+/**
+ * Bool-valued search parameter. The web's decode is `raw === 'true'` — every
+ * other string, `"1"` and `"TRUE"` included, is false — so this is one
+ * comparison, not a permissive truthiness check.
+ */
+const SWIFT_URL_STATE_BOOL = `struct PyreonUrlStateBool {
+    let router: PyreonRouter?
+    let key: String
+    let defaultValue: Bool
+    func callAsFunction() -> Bool {
+        guard let raw = router?.query[key] else { return defaultValue }
+        return raw == "true"
+    }
+    func set(_ value: Bool) { router?.setQueryParam(key, value ? "true" : "false") }
+    func clear() { router?.setQueryParam(key, nil) }
+}`
+
 export function emitSwift(
   components: ComponentIR[],
   enums: EnumIR[] = [],
@@ -846,9 +974,20 @@ export function emitSwift(
   // Emit the shared PyreonSchemaError enum BEFORE the schemas if
   // any are present (the per-schema .parse() / .safeParse() refer to it).
   if (zodSchemas.length > 0) parts.push(SWIFT_SCHEMA_ERROR)
-  // Emit the PyreonUrlState helper once, if any component binds a search param.
-  if (components.some((c) => c.decls?.some((d) => d.kind === 'url-state'))) {
-    parts.push(SWIFT_URL_STATE)
+  // Emit each PyreonUrlState* helper once, and only the ones actually bound —
+  // a string-only file emits byte-identically to before the typed variants
+  // existed. The number helper is shared by the Int and Double forms.
+  {
+    const urlStateTypes = new Set(
+      components.flatMap(
+        (c) => c.decls?.filter((d) => d.kind === 'url-state').map((d) => d.valueType) ?? [],
+      ),
+    )
+    if (urlStateTypes.has('string')) parts.push(SWIFT_URL_STATE)
+    if (urlStateTypes.has('int') || urlStateTypes.has('double')) parts.push(SWIFT_URL_NUMBER)
+    if (urlStateTypes.has('int')) parts.push(SWIFT_URL_STATE_INT)
+    if (urlStateTypes.has('double')) parts.push(SWIFT_URL_STATE_DOUBLE)
+    if (urlStateTypes.has('boolean')) parts.push(SWIFT_URL_STATE_BOOL)
   }
   // Any permissions use — a provider injecting, or a bare hook reading —
   // needs the environment key in the emitted file.
@@ -2633,7 +2772,10 @@ function emitSwiftDecl(
   // return types are per the runtime's signature ((String) -> Void
   // for navigate, [String: String] for params).
   if (d.kind === 'url-state') {
-    return `private var ${swiftIdent(d.name)}: PyreonUrlState { PyreonUrlState(router: pyreonRouter, key: ${JSON.stringify(d.key)}, defaultValue: ${JSON.stringify(d.defaultValue)}) }`
+    // `defaultValue` arrives as target syntax (quoted for a string, bare for a
+    // number or bool), so it is interpolated, not re-stringified.
+    const helper = SWIFT_URL_STATE_TYPES[d.valueType]
+    return `private var ${swiftIdent(d.name)}: ${helper} { ${helper}(router: pyreonRouter, key: ${JSON.stringify(d.key)}, defaultValue: ${d.defaultValue}) }`
   }
   if (d.kind === 'router-hook') {
     const fn = d.hook === 'navigate' ? 'useNavigate' : 'useParams'

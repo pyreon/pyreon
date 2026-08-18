@@ -528,9 +528,20 @@ export function emitKotlin(
   // Emit the shared PyreonSchemaError sealed class once if any
   // schemas are present.
   if (zodSchemas.length > 0) parts.push(KOTLIN_SCHEMA_ERROR)
-  // Emit the PyreonUrlState helper once, if any component binds a search param.
-  if (components.some((c) => c.decls?.some((d) => d.kind === 'url-state'))) {
-    parts.push(KOTLIN_URL_STATE)
+  // Emit each PyreonUrlState* helper once, and only the ones actually bound —
+  // a string-only file emits byte-identically to before the typed variants
+  // existed. The number helper is shared by the Int and Double forms.
+  {
+    const urlStateTypes = new Set(
+      components.flatMap(
+        (c) => c.decls?.filter((d) => d.kind === 'url-state').map((d) => d.valueType) ?? [],
+      ),
+    )
+    if (urlStateTypes.has('string')) parts.push(KOTLIN_URL_STATE)
+    if (urlStateTypes.has('int') || urlStateTypes.has('double')) parts.push(KOTLIN_URL_NUMBER)
+    if (urlStateTypes.has('int')) parts.push(KOTLIN_URL_STATE_INT)
+    if (urlStateTypes.has('double')) parts.push(KOTLIN_URL_STATE_DOUBLE)
+    if (urlStateTypes.has('boolean')) parts.push(KOTLIN_URL_STATE_BOOL)
   }
   if (
     _usesPermissionsEnvKotlin ||
@@ -1250,6 +1261,109 @@ const KOTLIN_URL_STATE = `class PyreonUrlState(
     fun set(value: String) { router.setQueryParam(key, value) }
     fun clear() { router.setQueryParam(key, null) }
 }`
+
+/**
+ * JS `ToNumber(String)` — the Kotlin twin of `SWIFT_URL_NUMBER`. Same grammar,
+ * same order of checks, so both targets decode a pasted URL identically. See
+ * the Swift constant for the divergence table that motivates it.
+ */
+const KOTLIN_URL_NUMBER = `private fun pyreonUrlNumber(raw: String, fallback: Double): Double {
+    val t = raw.trim()
+    if (t.isEmpty()) return 0.0
+    if (t == "Infinity" || t == "+Infinity") return Double.POSITIVE_INFINITY
+    if (t == "-Infinity") return Double.NEGATIVE_INFINITY
+    if (t.length > 2 && t[0] == '0') {
+        val radix = when (t[1]) {
+            'x', 'X' -> 16
+            'o', 'O' -> 8
+            'b', 'B' -> 2
+            else -> 0
+        }
+        if (radix != 0) {
+            val v = t.substring(2).toLongOrNull(radix) ?: return fallback
+            return v.toDouble()
+        }
+    }
+    // Only the decimal grammar's own characters. Rejects "inf"/"NaN"/"1_0" and
+    // Kotlin's own "1.5f"/"1.5d" suffix forms, all of which JS reads as NaN.
+    for (ch in t) {
+        if (!(ch in '0'..'9' || ch == '+' || ch == '-' || ch == '.' || ch == 'e' || ch == 'E')) return fallback
+    }
+    val v = t.toDoubleOrNull() ?: return fallback
+    return if (v.isNaN()) fallback else v
+}`
+
+/** Int-valued search parameter. See `KOTLIN_URL_NUMBER` for the decode. */
+const KOTLIN_URL_STATE_INT = `class PyreonUrlStateInt(
+    private val router: PyreonRouter,
+    private val key: String,
+    private val defaultValue: Int,
+) {
+    operator fun invoke(): Int {
+        val raw = router.query.value[key] ?: return defaultValue
+        val n = pyreonUrlNumber(raw, defaultValue.toDouble())
+        // An integer-defaulted binding is Int on both targets, so a fractional
+        // or out-of-range value has no representation — fall back to the
+        // default, the same answer the web gives for a value it cannot read.
+        if (n != Math.floor(n) || n < Int.MIN_VALUE.toDouble() || n > Int.MAX_VALUE.toDouble()) return defaultValue
+        return n.toInt()
+    }
+    fun set(value: Int) { router.setQueryParam(key, value.toString()) }
+    fun clear() { router.setQueryParam(key, null) }
+}`
+
+/**
+ * Double-valued search parameter. `set` mirrors JS `String(v)`, which prints a
+ * whole Double WITHOUT a trailing `.0` — Kotlin's own `toString()` gives
+ * "1.0", so the round-trip would not match the web's `?zoom=1`.
+ */
+const KOTLIN_URL_STATE_DOUBLE = `class PyreonUrlStateDouble(
+    private val router: PyreonRouter,
+    private val key: String,
+    private val defaultValue: Double,
+) {
+    operator fun invoke(): Double {
+        val raw = router.query.value[key] ?: return defaultValue
+        return pyreonUrlNumber(raw, defaultValue)
+    }
+    fun set(value: Double) {
+        val s = if (value == Math.floor(value) && Math.abs(value) < 1e15) value.toLong().toString() else value.toString()
+        router.setQueryParam(key, s)
+    }
+    fun clear() { router.setQueryParam(key, null) }
+}`
+
+/**
+ * Bool-valued search parameter. The web's decode is `raw === 'true'` — every
+ * other string, `"1"` and `"TRUE"` included, is false.
+ */
+const KOTLIN_URL_STATE_BOOL = `class PyreonUrlStateBool(
+    private val router: PyreonRouter,
+    private val key: String,
+    private val defaultValue: Boolean,
+) {
+    operator fun invoke(): Boolean {
+        val raw = router.query.value[key] ?: return defaultValue
+        return raw == "true"
+    }
+    fun set(value: Boolean) { router.setQueryParam(key, if (value) "true" else "false") }
+    fun clear() { router.setQueryParam(key, null) }
+}`
+
+/**
+ * Value type → emitted helper. A total `Record` rather than a lookup with a
+ * fallback: adding a `valueType` without an emitter is then a compile error,
+ * not a silent default to the string helper.
+ */
+const KOTLIN_URL_STATE_TYPES: Record<
+  Extract<DeclIR, { kind: 'url-state' }>['valueType'],
+  string
+> = {
+  string: 'PyreonUrlState',
+  int: 'PyreonUrlStateInt',
+  double: 'PyreonUrlStateDouble',
+  boolean: 'PyreonUrlStateBool',
+}
 
 const KOTLIN_SCHEMA_ERROR = `sealed class PyreonSchemaError(message: String) : Exception(message) {
     data class MissingOrWrongType(val field: String, val expected: String) :
@@ -2449,7 +2563,10 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // explicit router arg needed (unlike Swift). `useParams()` follows
   // the same shape.
   if (d.kind === 'url-state') {
-    return `val ${kotlinIdent(d.name)} = PyreonUrlState(useRouter(), ${JSON.stringify(d.key)}, ${JSON.stringify(d.defaultValue)})`
+    // `defaultValue` arrives as target syntax (quoted for a string, bare for a
+    // number or bool), so it is interpolated, not re-stringified.
+    const helper = KOTLIN_URL_STATE_TYPES[d.valueType]
+    return `val ${kotlinIdent(d.name)} = ${helper}(useRouter(), ${JSON.stringify(d.key)}, ${d.defaultValue})`
   }
   if (d.kind === 'router-hook') {
     const fn = d.hook === 'navigate' ? 'useNavigate' : 'useParams'
