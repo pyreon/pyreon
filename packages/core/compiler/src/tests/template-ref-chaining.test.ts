@@ -102,4 +102,58 @@ describe('template sibling-ref chaining — O(K) walks, not O(K²)', () => {
     expect(code).toContain('const __t1 = __e0.firstChild;')
     expect(siblingHops(code)).toBe(0)
   })
+
+  // The invariant chaining LEANS ON, asserted directly rather than inferred.
+  //
+  // Chaining is only sound because every walk is evaluated in phase 1, against
+  // the pristine clone. If a walk ever appeared in phase 2 it could now be
+  // rooted at a `__pN` placeholder that `_mountSlot` had already REMOVED —
+  // resolving to null where the old parent-rooted walk still found the node.
+  // The dangerous shape is an element the compiler binds without treating as
+  // "dynamic": `<select value="b">` defers a `.value` assignment past its
+  // children, so if `elementHasDynamic` ever stopped covering it, the deferred
+  // line would carry a live walk. A corpus check catches that class for every
+  // shape at once, where a hand-written spec per shape would not.
+  it('never emits a live walk in the MUTATION half — every walk is a phase-1 capture', () => {
+    const corpus = [
+      '<div>{cond && <em>x</em>}<select value="b"><option value="b">b</option></select></div>',
+      '<div>{cond && <em>x</em>}<select value={v()}><option value="b">b</option></select></div>',
+      '<div><span>s</span><select value="b"><option value="b">b</option></select></div>',
+      '<div>{cond && <em>x</em>}<b>{a()}</b><i>{b()}</i></div>',
+      '<div>{p()}{q()}<b onClick={h}>x</b></div>',
+      '<div><span>hi {a()} there</span><b>{c()}</b></div>',
+      '<tr><td>{a()}</td><td>{b()}</td><td>{c()}</td><td>{d()}</td></tr>',
+      '<div><section><span>{a()}</span></section>{cond && <em>y</em>}<footer>{c()}</footer></div>',
+      '<div>{cond && <em>x</em>}{other && <i>y</i>}<p ref={r}>t</p></div>',
+      '<ul><li style={s}>{a()}</li><li class={k}>{b()}</li></ul>',
+    ]
+    const WALK =
+      /\.(?:firstChild|firstElementChild|nextSibling|nextElementSibling|childNodes\[|children\[)/
+    // Anything that TOUCHES the DOM rather than merely reading a position.
+    // `_mountSlot` and `replaceChild` are the two that change sibling counts;
+    // the rest are included so the boundary is the first mutation of ANY kind
+    // rather than only the two that happen to be dangerous today.
+    const MUTATION =
+      /_mountSlot\(|\.replaceChild\(|_setChild|_setChildAt|_bind|_applyProps|_bindSpread|_set(?:Class|Style|Attr)\(|\.value = |addEventListener/
+    for (const src of corpus) {
+      const code = t(src)
+      // Drop the injected import line: it NAMES the runtime helpers
+      // (`_bindDirect`, `_mountSlot`, …) so it matches MUTATION while being
+      // nothing of the kind, and it sits above every capture — leaving it in
+      // puts the boundary at line 0 and flags the entire template.
+      const lines = code
+        .split('\n')
+        .map((l) => l.trim())
+        .filter((l) => !l.startsWith('import '))
+      const firstMutation = lines.findIndex((l) => MUTATION.test(l))
+      expect(firstMutation, `corpus entry emits no mutation at all: ${src}`).toBeGreaterThan(-1)
+      for (let i = firstMutation; i < lines.length; i++) {
+        expect(
+          WALK.test(lines[i]!),
+          `live DOM walk at or after the first mutation.\n\nsource: ${src}\n` +
+            `offending line: ${lines[i]}\n\nfull emit:\n${code}`,
+        ).toBe(false)
+      }
+    }
+  })
 })

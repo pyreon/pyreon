@@ -3496,10 +3496,17 @@ export function transformJSX_JS(
     // its own full walk down as its children's `parentRef`. Chaining each walk
     // onto the nearest node a phase-1 const ALREADY holds makes it O(K).
     //
-    // Measured ceiling (isolated, 10,000 rows, `examples/benchmark/probe-refwalk.ts`):
-    // 2 referenced children 20µs · 4 children 335µs · 8 children 1.95ms. So it is
-    // below the noise floor on the krausest-style 2-cell row and a real win on
-    // the wide rows a real app renders.
+    // Measured, per 10,000 rows, against a FRESH CLONE per row — the cost model
+    // `_tpl` actually has (`examples/benchmark/probe-refwalk.ts`; the same probe's
+    // reused-warm-element table reports roughly a third of this and is the wrong
+    // predictor, see anti-patterns "A ceiling probe that reuses ONE warm object"):
+    // 2 referenced children 225µs · 4 children 735µs · 8 children 3.31ms.
+    //
+    // End-to-end on a production build, JS half only, 2,000 rows x 8 cells:
+    // 4,435 -> 4,032 ns/row (-9.1%, `examples/benchmark/bench-refchain.ts`). On the
+    // krausest-style 2-cell row it is a TIE — the ~22µs/1,000-rows saving there is
+    // several times below the create-split harness's own drift, so no narrow-row
+    // claim is made. This is a win for the wide rows a real app renders.
     //
     // SAFETY. Chaining is applied ONLY to strings emitted into `refLines`
     // (phase 1), never to an accessor passed through to `bindLines`. Every
