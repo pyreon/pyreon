@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://github.com/pyreon/pyreon/actions/workflows/ci.yml"><img src="https://github.com/pyreon/pyreon/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22D3EE" alt="License: MIT" /></a>
-  <img src="https://img.shields.io/badge/row--list%20benchmark-leads%20or%20ties%208%20of%209%20ops-F4EFE6?labelColor=0A0A0E" alt="Row-list benchmark: leads or ties on 8 of 9 ops" />
+  <img src="https://img.shields.io/badge/row--list%20benchmark-mostly%20ties%20Octane%2C%20wins%20create--10k-F4EFE6?labelColor=0A0A0E" alt="Row-list benchmark: statistically tied with Octane on most ops, wins create-10k outright" />
 </p>
 
 # Pyreon
@@ -18,7 +18,7 @@ A signal-based UI framework with fine-grained reactivity. No virtual DOM, no com
 - **No dependency arrays.** Signals track their own subscribers automatically.
 - **~6 kB gzip** for core + runtime-dom. Tree-shakeable — only what you use ships to the client.
 - **Full-stack.** SSR streaming, static site generation, island architecture, and client-side SPA — all from one framework.
-- **Top-tier performance.** Leads a synthetic row-list benchmark across an 8-framework field — create 1,000 rows in 8.3ms (Octane 8.5ms, Vue 8.5ms, Solid 9.2ms, React 10.4ms), and **2.4× faster than React and 3.1× than Preact** at 10,000 rows. Outright on 5 of 9 ops and tie-leader on 2 more; [Octane](https://octanejs.dev) — the nearest rival — takes `clear rows` and ties `replace`/`remove`. (Real Chromium, published deps, every competitor on its own documented fast path; 2nd among frameworks on retained memory, 0.03MB behind Preact.)
+- **Fast, and we retracted the parts of our own benchmark that overstated it.** A synthetic row-list benchmark across an 8-framework field found our harness had handicapped [Octane](https://octanejs.dev) — the nearest rival — with a `String()` wrapper that disabled its compiler fast path, and separately let a V8 engine artifact inflate the retained-memory numbers for five implementations. Corrected (pending merge — see [benchmarks](https://pyreon.dev/docs/benchmarks)): Pyreon **wins bulk-create outright** — 10,000 rows in 88.9ms vs Octane 90.4ms, and **2.4× faster than React and 3.1× than Preact** at that size — and is **statistically tied with Octane** on create-1k, replace, partial-update, swap, and remove. Octane, in turn, **wins `clear rows`** (a real, resolved 1.43×, not a timer artifact). `select row` is at the floor of what real-Chromium timing can resolve for both. (Real Chromium, published deps, every competitor on its own documented fast path; retained memory is a 3-way tie with Preact for 3rd of 8, not a win.)
 - **75 packages.** Forms, routing, state management, charts, drag & drop, i18n, multiplatform (SwiftUI + Compose), and more.
 - **Migration paths.** Drop-in compat layers for React, Vue, Solid, and Preact.
 
