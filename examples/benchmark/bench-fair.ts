@@ -722,29 +722,6 @@ async function main(): Promise<void> {
   }
 }
 
-/**
- * Spin-read `performance.now()` and take the smallest non-zero delta — that IS
- * the clock's granularity. A property of the clock, so it is valid to probe on
- * a loaded machine.
- */
-async function measureClockQuantum(
-  browser: Awaited<ReturnType<typeof chromium.launch>>,
-  baseUrl: string,
-): Promise<number> {
-  const ctx = await browser.newContext()
-  const page = await ctx.newPage()
-  try {
-    await page.goto(baseUrl, { waitUntil: 'load' })
-    return await page.evaluate(() => {
-      let smallest = Number.POSITIVE_INFINITY
-      let prev = performance.now()
-      const end = prev + 150
-      while (performance.now() < end) {
-        const t = performance.now()
-        if (t > prev) {
-          if (t - prev < smallest) smallest = t - prev
-          prev = t
-        }
       }
       // Fall back to Chromium's default clamp if the spin read nothing.
       return Number.isFinite(smallest) ? smallest : 0.1
