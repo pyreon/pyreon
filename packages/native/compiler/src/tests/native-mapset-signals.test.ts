@@ -19,7 +19,9 @@
 //  - Set<scalar>, Map<scalar, scalar> (scalar = number/string/boolean).
 //  - READ surface: `.size`→`.count`(Swift)/`.size`(Kotlin), `.has`→`.contains`
 //    /`.containsKey`/`[k] != nil`, `.get`→`map[k]` (Optional).
-//  - Construction: `new Set<T>()`, `new Set([scalars])`, `new Map<K,V>()`.
+//  - Construction: `new Set<T>()`, `new Set([scalars])`, `new Map<K,V>()`,
+//    and seeded `new Map([[k, v], …])` with literal SCALAR pairs (→ a native
+//    dict literal; see native-seeded-map.test.ts for that lowering's own gate).
 //  - Mutations `.add`/`.delete`/`.set`/`.clear` TYPE-CHECK (pre-existing
 //    emitter wiring) — reactive on Swift (@State value mutation). On Kotlin
 //    in-place content mutation of a `mutableStateOf(mutableSetOf())` is not
@@ -27,8 +29,9 @@
 //    the reactive path there (documented follow-up).
 //  - WARNS (never a silent mis-emit): non-scalar element/key/value types
 //    (`Set<{...}>`, `Map<string, {...}>` — a non-scalar Swift Set element is a
-//    hard `does not conform to Hashable` error), and seeded `new Map([...])`
-//    (the entry-array lowering is a follow-up).
+//    hard `does not conform to Hashable` error), and any seeded
+//    `new Map([...])` shape that is NOT a literal array of scalar pairs
+//    (a computed pair array, a non-pair element, a non-scalar key/value).
 
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
@@ -139,13 +142,29 @@ function App() {
     ).toBe(true)
   })
 
-  it('WARNS on a seeded `new Map([...])` (entry-array lowering is a follow-up)', () => {
+  it('LOWERS a seeded `new Map([...])` to a TYPED native dict (never `Any`)', () => {
     const src = `import { Stack, Text } from '@pyreon/primitives'
 function App() {
   const m = signal(new Map<string, number>([["a", 1]]))
   return (<Stack><Text>{String(m().size)}</Text></Stack>)
 }`
-    const r = transform(src, { target: 'swift' })
-    expect((r.warnings ?? []).some((w) => w.includes('seeded `new Map'))).toBe(true)
+    const sw = transform(src, { target: 'swift' })
+    const kt = transform(src, { target: 'kotlin' })
+
+    // CHANGED HALF: this shape used to warn rather than mis-emit. It now
+    // lowers to a real dict literal on both targets.
+    expect((sw.warnings ?? []).some((w) => w.includes('seeded `new Map'))).toBe(false)
+    expect((kt.warnings ?? []).some((w) => w.includes('seeded `new Map'))).toBe(false)
+    expect(sw.code).toContain('[String: Int] = ["a": 1]')
+    expect(kt.code).toContain('mutableMapOf("a" to 1)')
+
+    // UNCHANGED HALF — the invariant THIS suite exists to protect: the signal's
+    // declared type resolves to a native collection and never degrades to `Any`
+    // (which is what silently broke every `.size`/`.has`/`.get` lowering), and
+    // no bare JS `Map` constructor survives into native code.
+    for (const out of [sw, kt]) {
+      expect(out.code).not.toContain('new Map')
+      expect(out.code).not.toMatch(/\bm\s*:\s*Any\b/)
+    }
   })
 })
