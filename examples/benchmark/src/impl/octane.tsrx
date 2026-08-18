@@ -38,10 +38,11 @@
  * Selection is O(n) in Octane by architecture, and that is the honest framing
  * for any published multiplier: a `useState` write dirties the whole component,
  * so every item body re-evaluates (DOM writes stay minimal — 2 — via per-binding
- * `_prev` diffs). Cost is linear at ~0.09µs/row (12µs at 100 rows, 76µs at
- * 1,000, 906µs at 10,000), so a ratio against an O(1) selector is a function of
- * LIST LENGTH, not a fixed property of either framework — quote the row count
- * with any such multiplier. Octane ships no `createSelector` equivalent (its
+ * `_prev` diffs). Cost is linear at ~0.024µs/row in the shape below (3.5µs at
+ * 100 rows, 22µs at 1,000, 243µs at 10,000 — it was ~0.09µs/row before the
+ * `String(...)` removal above), so a ratio against an O(1) selector is a
+ * function of LIST LENGTH, not a fixed property of either framework — quote the
+ * row count with any such multiplier. Octane ships no `createSelector` equivalent (its
  * public API is React's, and its `useState` third tuple member is a
  * transition-rebase getter, not a subscription — verified: reading it still
  * re-runs all 1,000 bodies). The only O(1) route is `useSyncExternalStore` plus
