@@ -215,7 +215,14 @@ if (__url.searchParams.get('profileClear') === '1') {
   // markup and exposes __clearBench drivers; never runs the timed suite.
   void (async () => {
     const { setupClearProfile } = await import('./impl/profile-clear')
-    setupClearProfile(makeContainer())
+    // `bench-fixture` for the same reason `runSelected` passes it (see the
+    // rationale block in index.html): `table-layout: auto` re-measures the whole
+    // table whenever a mutation can widen a column, which made row-list ops
+    // BIMODAL. The profiling targets mount the same row markup and are measured
+    // the same way, so they need the same deterministic layout — without it the
+    // instruments built to explain the fair bench run under a layout mode the
+    // fair bench no longer uses.
+    setupClearProfile(makeContainer('bench-fixture'))
     setStatus('profileClear ready')
   })()
 } else if (__url.searchParams.get('profileCreate') === '1') {
