@@ -545,7 +545,7 @@ the machine-checked contract.
 | `@pyreon/sync` | the Yjs engine + IndexedDB/WebSocket transports stay web; the engine-neutral PyreonCrdt core + `syncedSignal` lower to a native runtime, cross-device transport tracked |
 | `@pyreon/query` | wraps TanStack Query (a JS runtime cache), so the full client — QueryClient config, devtools, infinite/suspense queries — stays web; `useQuery` itself lowers to the PyreonQuery runtime |
 | `@pyreon/validation` | Standard Schema adapters (zod/valibot/arktype are JS libraries), so the adapters themselves stay web; the declarative schema FORMS lower to native validators (Gap-4 v1) |
-| `@pyreon/flow` | wraps elkjs + SVG rendering (browser layout engine); consume on native via the `<WebView>` bridge subpath |
+| `@pyreon/flow` | SVG rendering (the layout engine itself is pure and platform-free); consume on native via the `<WebView>` bridge subpath |
 | `@pyreon/lint` | lint tooling — runs at dev time, not app runtime |
 | `@pyreon/config` | build-time config shape read by the tooling that assembles an app — never part of a rendered app on any target |
 | `@pyreon/mcp` | the MCP server — dev/AI tooling, not app runtime |

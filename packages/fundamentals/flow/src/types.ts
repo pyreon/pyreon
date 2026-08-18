@@ -430,7 +430,7 @@ export interface FlowInstance<TData = Record<string, unknown>> {
 
   // ── Layout ───────────────────────────────────────────────────────────────
 
-  /** Apply auto-layout using elkjs */
+  /** Apply auto-layout */
   layout: (algorithm?: LayoutAlgorithm, options?: LayoutOptions) => Promise<void>
 
   // ── Batch ────────────────────────────────────────────────────────────────
@@ -646,7 +646,7 @@ export interface LayoutOptions {
   /**
    * Layout direction — default: `'DOWN'`.
    *
-   * **Applies to**: `layered`, `tree`. Maps to ELK's `elk.direction`
+   * **Applies to**: `layered`, `tree`. Sets the main axis
    * option. The other algorithms (`force`, `stress`, `radial`, `box`,
    * `rectpacking`) compute positions geometrically rather than along
    * a directed flow, so they **silently ignore** this option.
@@ -656,14 +656,14 @@ export interface LayoutOptions {
   direction?: 'UP' | 'DOWN' | 'LEFT' | 'RIGHT'
   /**
    * Spacing between nodes — default: 50. **Applies to all
-   * algorithms.** Maps to ELK's `elk.spacing.nodeNode`, which is a
+   * algorithms.** Minimum gap between neighbouring nodes, which is a
    * generic spacing option respected by every algorithm in the suite.
    */
   nodeSpacing?: number
   /**
    * Spacing between layers — default: 80.
    *
-   * **Applies to**: `layered` only. Maps to ELK's
+   * **Applies to**: `layered` only. Gap between layers —
    * `elk.layered.spacing.nodeNodeBetweenLayers` which is namespaced
    * under the layered algorithm. The other algorithms (including
    * `tree`, which uses its own `elk.mrtree.spacing.nodeNode`) have no
@@ -673,7 +673,7 @@ export interface LayoutOptions {
   /**
    * Edge routing — default: `'orthogonal'`.
    *
-   * **Applies to**: `layered` only. Maps to ELK's `elk.edgeRouting`,
+   * **Applies to**: `layered` only. Gap between layers — `elk.edgeRouting`,
    * which is consumed by the layered pipeline's edge router. The
    * other algorithms route edges as straight segments regardless of
    * this value.

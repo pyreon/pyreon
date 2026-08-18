@@ -5163,7 +5163,7 @@ await flow.layout('layered', { direction: 'RIGHT', nodeSpacing: 50, layerSpacing
 // LayoutOptions applicability: direction / layerSpacing / edgeRouting apply to layered/tree only;
 // force/stress/radial/box/rectpacking silently ignore them. nodeSpacing applies to all algorithms.
 const json = flow.toJSON(); flow.fromJSON(json)       // round-trip serialization`,
-    notes: 'Create a reactive flow instance. Generic over node data shape — `createFlow<MyData>(...)` returns `FlowInstance<MyData>` so `node.data.kind` narrows correctly without an `[key: string]: unknown` index signature on consumer types. Defaults to `Record<string, unknown>` when no generic is supplied. The returned instance owns signal-native nodes / edges and exposes CRUD, selection, viewport (zoom / pan / fitView), and auto-layout via lazy-loaded elkjs (first `.layout()` call fetches a ~1.4MB chunk). Pan / zoom uses pointer events + CSS transforms — no D3. See also: useFlow, FlowInstance, Flow.',
+    notes: 'Create a reactive flow instance. Generic over node data shape — `createFlow<MyData>(...)` returns `FlowInstance<MyData>` so `node.data.kind` narrows correctly without an `[key: string]: unknown` index signature on consumer types. Defaults to `Record<string, unknown>` when no generic is supplied. The returned instance owns signal-native nodes / edges and exposes CRUD, selection, viewport (zoom / pan / fitView), and auto-layout from the built-in engine (pure, synchronous, deterministic — no chunk to fetch). Pan / zoom uses pointer events + CSS transforms — no D3. See also: useFlow, FlowInstance, Flow.',
     mistakes: `- Forgetting to declare \`@pyreon/runtime-dom\` in consumer app deps — flow's JSX emits \`_tpl()\` which needs runtime-dom imports
 - Reading \`NodeComponentProps.data\` / \`.selected\` / \`.dragging\` as plain values — all three are REACTIVE ACCESSORS: \`props.data()\`, \`props.selected()\`, \`props.dragging()\`
 - Calling \`props.data()\` OUTSIDE a reactive scope — captures the value once at component setup, defeating the per-node reactivity. Read it inside JSX expression thunks, \`effect\`, or \`computed\`
@@ -5346,8 +5346,8 @@ const MyEdge = (props) => {
 
 const positioned = await computeLayout(flow.nodes(), flow.edges(), 'layered', { direction: 'DOWN' })
 for (const { id, position } of positioned) flow.updateNode(id, { position })`,
-    notes: 'Auto-layout via a lazy-loaded `elkjs` (cached singleton — zero bundle cost until first call). Runs the ELK `algorithm` (default `layered`) over the graph and returns a NEW array of `{ id, position }` pairs (positions only). Async. See also: createFlow, useFlow.',
-    mistakes: `- Forgetting to \`await\` it — \`computeLayout\` is ASYNC (it lazy-loads elkjs).
+    notes: 'Auto-layout from the built-in engine. Runs `algorithm` (default `layered`) over the graph and returns a NEW array of `{ id, position }` pairs (positions only). The engine is PURE and synchronous — the same graph always produces the same positions — but the function stays `async` because that is the published signature, and it leaves room to move heavy layouts to a worker later without another breaking change. See also: createFlow, useFlow.',
+    mistakes: `- Forgetting to \`await\` it — \`computeLayout\` returns a Promise even though the engine underneath is synchronous.
 - Expecting it to move your nodes — it does NOT mutate \`nodes\`; it returns only \`{ id, position }\` pairs (no width/height/data). Map the positions back onto your node objects (e.g. via \`updateNode\`).
 - Passing \`direction\` / \`layerSpacing\` / \`edgeRouting\` to a non-\`layered\` algorithm — those apply only to \`layered\` (and \`direction\` to \`tree\`); ELK silently ignores them (a dev-mode warning fires).`,
   },

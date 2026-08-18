@@ -1,34 +1,11 @@
-import { DEFAULT_NODE_HEIGHT, DEFAULT_NODE_WIDTH } from './edges'
 import type { FlowEdge, FlowNode, LayoutAlgorithm, LayoutOptions } from './types'
-
-// ─── ELK algorithm mapping ───────────────────────────────────────────────────
-
-const ELK_ALGORITHMS: Record<LayoutAlgorithm, string> = {
-  layered: 'org.eclipse.elk.layered',
-  force: 'org.eclipse.elk.force',
-  stress: 'org.eclipse.elk.stress',
-  tree: 'org.eclipse.elk.mrtree',
-  radial: 'org.eclipse.elk.radial',
-  box: 'org.eclipse.elk.box',
-  rectpacking: 'org.eclipse.elk.rectpacking',
-}
-
-const ELK_DIRECTIONS: Record<string, string> = {
-  UP: 'UP',
-  DOWN: 'DOWN',
-  LEFT: 'LEFT',
-  RIGHT: 'RIGHT',
-}
 
 // ─── Algorithm-specific option applicability ─────────────────────────────────
 //
-// ELK options are namespaced under specific algorithms — passing
-// `elk.direction` to a force layout, for example, has zero effect.
-// The truth table below was verified empirically by running each
-// algorithm twice with two different values for the option and
-// checking whether the resulting node positions differ. The probe
-// script lives in the PR description for the catalog item that
-// added this table.
+// Not every option applies to every algorithm — `direction` means nothing to
+// a force layout, for example. The truth table below was verified empirically
+// by running each algorithm twice with two different values for the option and
+// checking whether the resulting node positions differ.
 //
 // Used by `warnIgnoredOptions` (dev mode only) to surface "you set
 // this and it did nothing" mistakes that would otherwise be silent.
@@ -94,113 +71,18 @@ function warnIgnoredOptions(algorithm: LayoutAlgorithm, options: LayoutOptions):
   }
 }
 
-// ─── Lazy-loaded ELK instance ────────────────────────────────────────────────
-
-let elkInstance: any = null
-let elkPromise: Promise<any> | null = null
-
-async function getELK(): Promise<any> {
-  if (elkInstance) return elkInstance
-  if (elkPromise) return elkPromise
-
-  elkPromise = import('elkjs/lib/elk.bundled.js').then((mod) => {
-    /* v8 ignore next — `|| mod` interop fallback: the ESM build always exposes
-       `mod.default`, so the right arm is defensive against a CJS-shaped module. */
-    const ELK = mod.default || mod
-    elkInstance = new ELK()
-    return elkInstance
-  })
-
-  return elkPromise
-}
-
-// ─── Convert flow graph to ELK format ────────────────────────────────────────
-
-interface ElkNode {
-  id: string
-  width: number
-  height: number
-}
-
-interface ElkEdge {
-  id: string
-  sources: string[]
-  targets: string[]
-}
-
-interface ElkGraph {
-  id: string
-  layoutOptions: Record<string, string>
-  children: ElkNode[]
-  edges: ElkEdge[]
-}
-
-interface ElkResult {
-  children: Array<{ id: string; x: number; y: number }>
-}
-
-function toElkGraph<TData>(
-  nodes: FlowNode<TData>[],
-  edges: FlowEdge[],
-  algorithm: LayoutAlgorithm,
-  options: LayoutOptions,
-): ElkGraph {
-  const layoutOptions: Record<string, string> = {
-    'elk.algorithm': ELK_ALGORITHMS[algorithm] ?? ELK_ALGORITHMS.layered,
-  }
-
-  if (options.direction) {
-    layoutOptions['elk.direction'] = ELK_DIRECTIONS[options.direction] ?? 'DOWN'
-  }
-
-  if (options.nodeSpacing !== undefined) {
-    layoutOptions['elk.spacing.nodeNode'] = String(options.nodeSpacing)
-  }
-
-  if (options.layerSpacing !== undefined) {
-    layoutOptions['elk.layered.spacing.nodeNodeBetweenLayers'] = String(options.layerSpacing)
-  }
-
-  if (options.edgeRouting) {
-    const routingMap: Record<string, string> = {
-      orthogonal: 'ORTHOGONAL',
-      splines: 'SPLINES',
-      polyline: 'POLYLINE',
-    }
-    layoutOptions['elk.edgeRouting'] = routingMap[options.edgeRouting] ?? 'ORTHOGONAL'
-  }
-
-  return {
-    id: 'root',
-    layoutOptions,
-    // `flow.layout()` pre-resolves each node's EFFECTIVE box (explicit →
-    // measured DOM size → default) onto `node.width`/`height` before calling
-    // this, so ELK lays out real rendered sizes. Direct `computeLayout` callers
-    // get explicit-or-default (no DOM access here).
-    children: nodes.map((node) => ({
-      id: node.id,
-      width: node.width ?? DEFAULT_NODE_WIDTH,
-      height: node.height ?? DEFAULT_NODE_HEIGHT,
-    })),
-    edges: edges.map((edge, i) => ({
-      id: edge.id ?? `e-${i}`,
-      sources: [edge.source],
-      targets: [edge.target],
-    })),
-  }
-}
-
 // ─── Public API ──────────────────────────────────────────────────────────────
 
 /**
- * Compute a layout for the given nodes and edges using elkjs.
+ * Compute a layout for the given nodes and edges using Pyreon's own engine.
  * Returns an array of { id, position } for each node.
  *
- * elkjs is lazy-loaded — zero bundle cost until this function is called.
+ * Runs Pyreon's own layout engine — no external layout dependency, and the
+ * result is deterministic: the same graph always produces the same positions.
  *
  * **Algorithm-specific options**: not every option in `LayoutOptions`
  * applies to every algorithm. `direction` and `layerSpacing` are
- * namespaced under ELK's layered/tree pipelines and are silently
+ * meaningful only to the layered/tree pipelines and are silently
  * ignored by `force`, `stress`, `radial`, `box`, and `rectpacking`.
  * See the JSDoc on each `LayoutOptions` field for the exact
  * applicability rules.
@@ -222,14 +104,13 @@ export async function computeLayout<TData = Record<string, unknown>>(
   options: LayoutOptions = {},
 ): Promise<Array<{ id: string; position: { x: number; y: number } }>> {
   warnIgnoredOptions(algorithm, options)
-  const elk = await getELK()
-  const graph = toElkGraph(nodes, edges, algorithm, options)
-  const result: ElkResult = await elk.layout(graph)
-
-  /* v8 ignore next 4 — defensive `??` fallbacks: elk always returns a `children`
-     array with `x`/`y` set on each laid-out node, so the empty/0 arms never run. */
-  return (result.children ?? []).map((child) => ({
-    id: child.id,
-    position: { x: child.x ?? 0, y: child.y ?? 0 },
-  }))
+  // Loaded on demand, exactly as elkjs was: an app that renders a flow but
+  // never calls `.layout()` should not pay for the algorithms. The difference
+  // is the size of what gets fetched — a ~2 KB chunk instead of ~1.4 MB.
+  //
+  // The engine itself is PURE and SYNCHRONOUS; only the import is async. That
+  // is also why the published `async` signature is worth keeping even though
+  // the work no longer needs it.
+  const { runLayout } = await import('./layout-engine')
+  return runLayout(nodes, edges, algorithm, options)
 }

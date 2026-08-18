@@ -1649,7 +1649,7 @@ await doc.toNotion()    // Notion blocks
 
 ## @pyreon/flow — Flow Diagrams
 
-Reactive flow diagrams for Pyreon. Signal-native nodes and edges, pan/zoom via pointer events + CSS transforms, auto-layout via lazy-loaded elkjs. No D3 dependency. Each node mounts exactly once across the lifetime of the graph; drags and selection patches are O(1) via per-node reactive accessors, so a 60fps drag in a 1000-node graph stays cheap.
+Reactive flow diagrams for Pyreon. Signal-native nodes and edges, pan/zoom via pointer events + CSS transforms, auto-layout from a built-in engine — no elkjs, no D3, no layout dependency at all, and deterministic (the same graph always yields the same positions). Each node mounts exactly once across the lifetime of the graph; drags and selection patches are O(1) via per-node reactive accessors, so a 60fps drag in a 1000-node graph stays cheap.
 
 ```typescript
 import { createFlow, useFlow, Flow, Background, Controls, MiniMap, Handle, Position, type NodeComponentProps } from '@pyreon/flow'
@@ -1672,7 +1672,7 @@ const flow = createFlow<WorkflowData>({
 
 flow.addNode({ id: '3', type: 'custom', position: { x: 100, y: 200 }, data: { kind: 'transform', label: 'New' } })
 flow.addEdge({ source: '1', target: '3' })
-await flow.layout('layered', { direction: 'RIGHT', nodeSpacing: 50, layerSpacing: 100 })  // lazy-loaded elkjs
+await flow.layout('layered', { direction: 'RIGHT', nodeSpacing: 50, layerSpacing: 100 })
 // `direction`/`layerSpacing`/`edgeRouting` apply to layered/tree only —
 // `force`/`stress`/`radial`/`box`/`rectpacking` silently ignore them.
 // `nodeSpacing` is the only LayoutOptions field respected by every algorithm.
