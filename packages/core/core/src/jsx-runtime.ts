@@ -39,6 +39,27 @@ export function jsx(
   // literal allocation). This is the 99% case — only framework wrappers
   // (rocketstyle attrs HOC, Wrapper, styled) and direct signal props
   // produce getter-shaped descriptors.
+  //
+  // ZERO-COPY path, checked FIRST: when the element has no `children` and no
+  // `key`, both paths below reduce to "hand `props` through unchanged" — the
+  // value-copy branch copies every data property, and the descriptor branch
+  // re-defines every descriptor. Neither adds or removes a key, so the copy is
+  // pure overhead and the ORIGINAL object is exactly what they would produce.
+  // Passing it straight to `h()` skips `Object.getOwnPropertyDescriptors`
+  // (which allocates one descriptor object PER KEY, plus the container) and the
+  // rest-spread, and it preserves getter-shaped reactive props by construction
+  // because nothing is ever read.
+  //
+  // Covers the dominant childless shapes: `<Comp prop={x} />`, `<img src=… />`,
+  // `<input value=… />`, `<Icon name=… />`. Elements WITH children still take
+  // the paths below, where `children` genuinely has to move between `props` and
+  // the VNode's child list depending on component-vs-element.
+  //
+  // `'children' in props` is a prototype-chain check, which is what we want:
+  // a `children` inherited from a props object's prototype must still be
+  // treated as present rather than silently dropped.
+  if (key == null && !('children' in props)) return h(type, props)
+
   const descriptors = Object.getOwnPropertyDescriptors(props)
   let hasGetter = false
   for (const k in descriptors) {
