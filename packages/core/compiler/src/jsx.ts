@@ -1085,6 +1085,7 @@ export function transformJSX_JS(
   let hoistIdx = 0
   let needsTplImport = false
   let needsRpImport = false
+  let needsLcImport = false
   let needsWrapSpreadImport = false
   let needsBindTextImportGlobal = false
   let needsBindDirectImportGlobal = false
@@ -1411,6 +1412,56 @@ export function transformJSX_JS(
     }
   }
 
+  // ── Lazy component children ───────────────────────────────────────────────
+
+  /**
+   * Is `node` the SOLE meaningful JSX child of a COMPONENT parent?
+   *
+   * A compiled template call — `_tpl(html, bind)` on the client, `_ssr([…], …)`
+   * on the server — is an ARGUMENT of the `jsx(Comp, { children: … })` call that
+   * receives it, so it runs BEFORE the component's own body. That is fine while a
+   * template only CONSTRUCTS DOM, and wrong the moment it does anything ordered
+   * against the component's setup: the bindings it creates snapshot the active
+   * context owner at construction, so `<Provider><div>{useCtx()}</div></Provider>`
+   * read the DEFAULT value instead of the provided one, on the client AND under
+   * `ssrTemplate` (plain SSR, which never templatizes, was correct — so the two
+   * also disagreed). Deferring the call to the moment the component READS
+   * `props.children` puts it after `provide()`, where it belongs.
+   *
+   * SOLE meaningful child only, deliberately. With one child, `props.children` is
+   * one value and `_lc`'s getter hands back exactly that value — every structural
+   * consumer is untouched. With several, `props.children` is an ARRAY, and making
+   * it lazy means either an array of thunks (which every structural consumer would
+   * then have to unwrap — the documented breakage class) or a new runtime branch
+   * that resolves such arrays. That is a genuine contract change, not a shape, so
+   * it is left out and recorded rather than half-done. Multi-child parents keep
+   * today's eager behaviour exactly.
+   *
+   * "Meaningful" uses the same JSX whitespace elision the `<For>` holder check
+   * uses: a JSXText child that `cleanJsxText` reduces to nothing is not a child.
+   */
+  function isSoleComponentChild(node: N): boolean {
+    const parent = findParent(node)
+    if (!parent || parent.type !== 'JSXElement') return false
+    if (!isComponentTag(jsxTagName(parent))) return false
+    const kids = jsxChildren(parent).filter(
+      (c: N) => !(c.type === 'JSXText' && !cleanJsxText(c.value ?? c.raw ?? '')),
+    )
+    return kids.length === 1 && kids[0] === node
+  }
+
+  /**
+   * Brace a compiled-template call for its JSX-child position, making it LAZY
+   * when it is a component's sole child. Shared by the client `_tpl` emit and
+   * the SSR `_ssr` emit so the two can never disagree about which shapes defer.
+   */
+  function braceTemplateChild(call: string, node: N, needsBraces: boolean): string {
+    if (!needsBraces) return call
+    if (!isSoleComponentChild(node)) return `{${call}}`
+    needsLcImport = true
+    return `{_lc(() => ${call})}`
+  }
+
   // ── Template emit ─────────────────────────────────────────────────────────
 
   function tryTemplateEmit(node: N): boolean {
@@ -1424,7 +1475,7 @@ export function transformJSX_JS(
     const end = node.end as number
     const parent = findParent(node)
     const needsBraces = parent && (parent.type === 'JSXElement' || parent.type === 'JSXFragment')
-    replacements.push({ start, end, text: needsBraces ? `{${tplCall}}` : tplCall })
+    replacements.push({ start, end, text: braceTemplateChild(tplCall, node, !!needsBraces) })
     needsTplImport = true
     return true
   }
@@ -2140,7 +2191,7 @@ export function transformJSX_JS(
     const preserved = buf.holeSrc.filter((h): h is NonNullable<(typeof buf.holeSrc)[number]> => h !== null)
     if (preserved.length === 0) {
       const call = ssrCallText(buf, 'recursed')
-      replacements.push({ start, end, text: needsBraces ? `{${call}}` : call })
+      replacements.push({ start, end, text: braceTemplateChild(call, node, !!needsBraces) })
       needsSsrImport = true
       return true
     }
@@ -2178,7 +2229,17 @@ export function transformJSX_JS(
 
     const firstIdx = indexOfHole(preserved[0]!)
     let prefix = `_ssrDeferred(() => _ssr([${staticsArr}]${generatedUpTo(firstIdx)}, _ssrNode(`
-    if (needsBraces) prefix = `{${prefix}`
+    // Bracketed emission: the closing edit adds the matching `)}`/`}` — so the
+    // lazy wrap has to be spelled out here rather than routed through
+    // `braceTemplateChild`, which owns a whole self-contained call.
+    if (needsBraces) {
+      if (isSoleComponentChild(node)) {
+        needsLcImport = true
+        prefix = `{_lc(() => ${prefix}`
+      } else {
+        prefix = `{${prefix}`
+      }
+    }
     replacements.push({ start, end: preserved[0]!.start, text: prefix })
     hole = firstIdx + 1
 
@@ -2194,7 +2255,7 @@ export function transformJSX_JS(
 
     // Two closers for the call + one for the `_ssrDeferred(() => …)` wrap.
     let suffix = `)${generatedUpTo(buf.holes.length)}))`
-    if (needsBraces) suffix = `${suffix}}`
+    if (needsBraces) suffix = isSoleComponentChild(node) ? `${suffix})}` : `${suffix}}`
     replacements.push({ start: preserved[preserved.length - 1]!.end, end, text: suffix })
 
     // The preserved subtrees are NOT covered by any replacement above, so they
@@ -3323,12 +3384,13 @@ export function transformJSX_JS(
     preamble = `import { ${ssrImports.join(', ')} } from "@pyreon/runtime-server";\n` + preamble
   }
 
-  if (needsRpImport || needsWrapSpreadImport || needsCxImportGlobal) {
+  if (needsRpImport || needsLcImport || needsWrapSpreadImport || needsCxImportGlobal) {
     const coreImports: string[] = []
     // Alias to an internal name — `cx` is a PUBLIC export users import
     // directly (e.g. a hand-written component that also uses `class={…}`),
     // so injecting a bare `cx` import would collide ("already declared").
     if (needsCxImportGlobal) coreImports.push('cx as _cx')
+    if (needsLcImport) coreImports.push('_lc')
     if (needsRpImport) coreImports.push('_rp')
     if (needsWrapSpreadImport) coreImports.push('_wrapSpread')
     preamble = `import { ${coreImports.join(', ')} } from "@pyreon/core";\n` + preamble

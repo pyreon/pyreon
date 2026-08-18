@@ -2212,3 +2212,44 @@ describeNative('ssrTemplate — a JSX-bearing prop-derived const is not inlined 
         "return <svg><g>{axis}</g><g>{edges}</g></svg>}",
     ))
 })
+
+describeNative('lazy component children (_lc) — parity', () => {
+  // A compiled template that is a component's SOLE child is emitted as
+  // `{_lc(() => _tpl(…))}` so it is built when the component READS
+  // `props.children`, not when the `jsx(Comp, …)` argument is evaluated. The
+  // TRIGGER — component parent, sole child after JSX whitespace elision — is
+  // exactly the kind of walk-state predicate the two backends compute
+  // independently (JS via `findParent`, Rust via a descent flag), so every
+  // boundary of it needs a parity case or the backends can silently disagree
+  // about which shapes defer.
+  test('sole element child of a component is lazy', () =>
+    compare('const A = () => <Provider theme={t}><div class="x"><span>{v()}</span></div></Provider>'))
+  test('indented sole child (whitespace elided) is lazy', () =>
+    compare('const A = () => (\n  <Provider>\n    <div><b>x</b></div>\n  </Provider>\n)'))
+  test('nested inside an element parent', () =>
+    compare('const A = () => <div><Provider><section><h1>t</h1></section></Provider></div>'))
+  test('MULTIPLE children stay eager', () =>
+    compare('const A = () => <Provider><div>{a()}</div><div>{b()}</div></Provider>'))
+  test('a meaningful TEXT sibling keeps it eager', () =>
+    compare('const A = () => <Provider> text <div><b>x</b></div></Provider>'))
+  test('a FRAGMENT between component and template keeps it eager', () =>
+    compare('const A = () => <Provider><><div><b>x</b></div></></Provider>'))
+  test('a member-expression tag is not treated as a component (pre-existing boundary)', () =>
+    compare('const A = () => <Provider.Sub><div><b>x</b></div></Provider.Sub>'))
+  test('a DOM-element parent never defers', () =>
+    compare('const A = () => <section><div><b>x</b></div></section>'))
+  test('a render-prop child is never a template call', () =>
+    compare('const A = () => <For each={xs} by={r => r.id}>{(row) => <li><b>{row.n}</b></li>}</For>'))
+  test('component child of a component (no template) is unchanged', () =>
+    compare('const A = () => <Provider><Child /></Provider>'))
+
+  // The SSR string template has the identical shape and the identical bug, and
+  // TWO emission paths: a self-contained call, and a BRACKETED emission whose
+  // closing edit has to grow the matching `)` for the wrap.
+  test('ssrTemplate — sole child, self-contained call', () =>
+    compareSsrTemplate('const A = () => <Provider><div class="k">{readCtx()}</div></Provider>'))
+  test('ssrTemplate — sole child, BRACKETED emission (preserved component hole)', () =>
+    compareSsrTemplate('const A = () => <Provider><div class="k"><Consumer /></div></Provider>'))
+  test('ssrTemplate — multiple children stay eager', () =>
+    compareSsrTemplate('const A = () => <Provider><div>{a()}</div><div>{b()}</div></Provider>'))
+})

@@ -1,4 +1,5 @@
 // Prop utilities for component authoring.
+import { untrack } from '@pyreon/reactivity'
 
 /**
  * Split props into two groups: keys you want and the rest.
@@ -189,6 +190,58 @@ export const PROPS_SIGNAL = Symbol.for('pyreon.propsSignal')
 export function _rp<T>(fn: () => T): () => T {
   ;(fn as any)[REACTIVE_PROP] = true
   return fn
+}
+
+/**
+ * Wrap a COMPONENT's sole JSX child so it is built when the component READS
+ * `props.children` — not when the JSX call expression is evaluated.
+ *
+ * Why this exists: `<Provider>{_tpl(html, bind)}</Provider>` lowers to
+ * `jsx(Provider, { children: _tpl(html, bind) })`. The `_tpl(…)` call is an
+ * ARGUMENT, so it runs BEFORE `Provider`'s body — before its `provide()`, and
+ * before its `EffectScope` exists. Every binding the template creates therefore
+ * captures the WRONG context owner (`renderEffect` snapshots the active owner at
+ * construction), so a context read inside a provider's own element child resolved
+ * to the DEFAULT value. The SSR string template (`_ssr(…)`) has the identical
+ * shape and the identical bug.
+ *
+ * The fix is Solid's: a component's children are a lazy getter, not an eager
+ * value. `_lc` brands its thunk with {@link REACTIVE_PROP}, so the existing
+ * {@link makeReactiveProps} step in mount / hydrate / SSR converts it into a
+ * property getter with no changes of its own — and because the getter returns
+ * the VALUE, every structural children consumer (`Switch`'s branch scan, kinetic's
+ * `resolveChildren`, `Iterator`, the `*-compat` `Children.*` helpers, render-prop
+ * primitives) sees exactly what it saw before. That transparency is the whole
+ * reason the laziness rides a getter rather than a bare accessor: a bare accessor
+ * would hand every one of those consumers a function.
+ *
+ * Two contract points the emit depends on:
+ *
+ * - **Memoized.** A component may read `props.children` any number of times
+ *   (`Show` reads it inside an accessor; `Element` reads it through a slot
+ *   resolver). Reading twice must not build the subtree twice, and reading zero
+ *   times must not leave a half-built subtree behind — an unread thunk builds
+ *   nothing at all, which also retires the orphaned-binding leak the eager form
+ *   had whenever a component dropped its children.
+ * - **Untracked.** The eager call site ran outside any tracking frame. A getter
+ *   can be read from inside one (`@pyreon/elements`' Wrapper reads `own.children`
+ *   in a reactive accessor), so the thunk runs under `untrack` to keep the
+ *   pre-existing subscription shape exactly.
+ *
+ * Emitted by the compiler — not meant for hand-written code.
+ */
+export function _lc<T>(fn: () => T): () => T {
+  let cached: T
+  let built = false
+  const thunk = (): T => {
+    if (!built) {
+      built = true
+      cached = untrack(fn)
+    }
+    return cached
+  }
+  ;(thunk as unknown as Record<symbol, boolean>)[REACTIVE_PROP] = true
+  return thunk
 }
 
 /**

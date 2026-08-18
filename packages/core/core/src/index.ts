@@ -71,6 +71,7 @@ export { mapArray } from './map-array'
 export type { PortalProps } from './portal'
 export { Portal, PortalSymbol } from './portal'
 export {
+  _lc,
   _rp,
   _wrapSpread,
   createUniqueId,
