@@ -13,6 +13,7 @@
     "lint": "oxlint .",
     "bench:ssr": "bun bench-ssr.ts",
     "bench:hydration": "bun bench-hydration.ts",
+    "bench:apppage": "bun bench-apppage.ts",
     "bench:scenarios": "bun bench-scenarios.ts"
   },
   "dependencies": {
