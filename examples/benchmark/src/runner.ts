@@ -430,6 +430,27 @@ async function benchBatched(
   return result
 }
 
+/**
+ * Run `fn` RUNS times and report the median with a bootstrap CI.
+ *
+ * READ THIS BEFORE INTERPRETING A "create N rows" NUMBER. `bench()` does not
+ * reset state between runs unless the caller passes `options.reset`, and the
+ * `create` ops do not pass one — so only the FIRST of the 20 timed runs starts
+ * from an empty list. The other 19 hand the framework N brand-new rows while N
+ * live ones are still mounted (`buildRows`/`buildRowsWith` mint ids from a
+ * monotonic counter, so no key is ever reused).
+ *
+ * For an unkeyed arm like `impl/vanilla.ts` that is the same work either way —
+ * `innerHTML = ''` then rebuild. For a KEYED arm it is not: the reconciler sees
+ * zero surviving keys and takes its replace path, so the median of "create N
+ * rows" is dominated by teardown+remount, not by a first mount. That is why
+ * `create` and `replace all` report nearly the same figure for the keyed
+ * frameworks — they are measuring nearly the same thing.
+ *
+ * This is not a bug (replacing a list is a real operation worth timing), but a
+ * reader who takes "create" to mean "first paint of a fresh list" will
+ * mis-attribute the cost. `bench-createsplit.ts` measures the two separately.
+ */
 export async function bench(
   name: string,
   suite: BenchSuite,

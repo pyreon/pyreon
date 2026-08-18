@@ -9,7 +9,11 @@
  * Also derives an unquantized per-op mean: (samples under frame × sampling
  * interval) / iterations — immune to performance.now()'s 100µs clamp.
  *
- *   bun run build && bun bench-clearprofile.ts [iterations] [rows]
+ * The build MUST preserve function names, because the attribution keys on them —
+ * a plain `bun run build` minifies and the script then reports `0.0µs` for every
+ * driver instead of failing. It now refuses to report in that state.
+ *
+ *   BENCH_PROFILE=1 bun run build && bun bench-clearprofile.ts [iterations] [rows]
  */
 import { spawn } from 'node:child_process'
 import { chromium } from 'playwright'
@@ -112,6 +116,21 @@ try {
       console.log(`${pct.padStart(5)}%  ${us.padStart(7)}µs/op  ${key}`)
     }
     return meanUs
+  }
+
+  // A subtree walk keys on `functionName`, so a MINIFIED build attributes
+  // nothing and every driver reports a confident `0.0µs` — the instrument
+  // reading as an impossibly fast result rather than as broken. That is what
+  // the documented `bun run build` (which minifies) produced. Refuse to report
+  // instead: an empty attribution is a failure, never a pass.
+  const driverNames = ['__clearOnly', '__createOnly', '__replaceOnly']
+  if (!nodes.some((n) => driverNames.includes(n.callFrame.functionName))) {
+    throw new Error(
+      `[clearprofile] not one driver frame appears in a ` +
+        `${nodes.reduce((s, n) => s + (n.hitCount ?? 0), 0)}-sample profile — the build is ` +
+        `minified, so subtree attribution is keying on names that no longer exist. ` +
+        `Rebuild with name preservation: BENCH_PROFILE=1 bun run build`,
+    )
   }
 
   subtreeReport('__clearOnly', ITER)

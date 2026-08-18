@@ -218,6 +218,15 @@ if (__url.searchParams.get('profileClear') === '1') {
     setupClearProfile(makeContainer())
     setStatus('profileClear ready')
   })()
+} else if (__url.searchParams.get('profileCreate') === '1') {
+  // CPU-profiling target for bench-createprofile.ts — mounts the Pyreon bench
+  // markup AND a hand-written Vanilla builder side by side, exposing
+  // __createBench drivers for both; never runs the timed suite.
+  void (async () => {
+    const { setupCreateProfile } = await import('./impl/profile-create')
+    setupCreateProfile(makeContainer(), makeContainer())
+    setStatus('profileCreate ready')
+  })()
 } else if (__url.searchParams.get('mode') === 'scenarios') {
   // Coverage-expansion scenarios (dbmon, deep tree) — one framework per fresh
   // page, driven by `bench-scenarios.ts`. Lazy-imported so the DOM suite's
