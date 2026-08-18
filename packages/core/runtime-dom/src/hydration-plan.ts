@@ -34,6 +34,8 @@ import { applyClassProp, applyProp, applyProps, applyStyleProp, makeEventBinder 
 
 type Cleanup = () => void
 
+const _planCountSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
+
 // Prop-op kinds — precompiled per-key dispatch, classified ONCE at plan build
 // so per-row replay does zero key classification (no EVENT_RE test, no
 // applyStaticProp key-dispatch chain). Every op body routes through the SAME
@@ -836,29 +838,45 @@ export function tplAdoptVerify(
   tpl: HTMLTemplateElement,
   html: string,
   target: Element,
+  // Defaults to the SAFE path on purpose: a caller that forgets the flag gets
+  // the full skeleton verify, never the unverified replay.
+  allowPlanReplay = false,
 ): boolean {
+  // The plan fast path is OPT-IN, and the opt-in means "successive targets are
+  // structurally identical" — which only `<For>` rows can promise. The plan is
+  // cached per TEMPLATE and `_tplCache` is keyed by HTML string and is
+  // process-global, so two unrelated components that compile to the same
+  // template share one plan. When replay ran unconditionally, the second one
+  // skipped `matchDomAgainstTemplate` entirely — and for a static template
+  // `replayAdoptPlan` has no spots to check, so it returned true for ANY
+  // same-tag target, silently handing a local template a byte-different server
+  // node. That is precisely the theft the static-skeleton gate exists to stop.
   let plan: AdoptPlan | null | undefined
-  if (tpl === _lastVerifyTpl) {
-    plan = _lastVerifyPlan
-  } else {
-    plan = _tplAdoptPlan.get(tpl)
-    if (plan !== undefined) {
-      _lastVerifyTpl = tpl
-      _lastVerifyPlan = plan
+  if (allowPlanReplay) {
+    if (tpl === _lastVerifyTpl) {
+      plan = _lastVerifyPlan
+    } else {
+      plan = _tplAdoptPlan.get(tpl)
+      if (plan !== undefined) {
+        _lastVerifyTpl = tpl
+        _lastVerifyPlan = plan
+      }
     }
-  }
-  // Rows 2..N: spot-replay against the recorded plan. `sig.tags[0]` IS the
-  // template root's tagName (templateSignature records the root first), so
-  // this gate is the same tag gate the full path runs below.
-  if (plan && target.tagName === (plan.sig.tags[0] as string) && replayAdoptPlan(target, plan)) {
-    return true
+    // Rows 2..N: spot-replay against the recorded plan. `sig.tags[0]` IS the
+    // template root's tagName (templateSignature records the root first), so
+    // this gate is the same tag gate the full path runs below.
+    if (plan && target.tagName === (plan.sig.tags[0] as string) && replayAdoptPlan(target, plan)) {
+      if (process.env.NODE_ENV !== 'production')
+        _planCountSink.__pyreon_count__?.('runtime.tpl.adoptPlanReplay')
+      return true
+    }
   }
   const troot = tpl.content.firstElementChild
   if (!troot || target.tagName !== troot.tagName) return false
   const sig = templateSignature(tpl, html)
   const match = sig !== null ? matchDomAgainstTemplate(target, sig) : null
   if (match === null) return false
-  if (plan === undefined) {
+  if (allowPlanReplay && plan === undefined) {
     const built = buildAdoptPlan(target, sig as TplSig, match)
     _tplAdoptPlan.set(tpl, built)
     _lastVerifyTpl = tpl

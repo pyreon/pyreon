@@ -238,6 +238,94 @@ describe('component-root compiled-template hydration adoption', () => {
     dispose()
   })
 
+  it('does NOT steal via a CACHED PLAN — the fast path must not skip the gate', async () => {
+    // The verifier keeps a per-template AdoptPlan and can spot-replay it
+    // instead of re-walking the skeleton. That is sound only for `<For>` rows
+    // (one renderItem ⇒ rows 2..N are structurally identical). The plan is
+    // keyed by the TEMPLATE and `_tplCache` is keyed by the HTML string and is
+    // process-global, so two unrelated components sharing a template shared a
+    // plan — and for a STATIC template `replayAdoptPlan` has no triplet or
+    // removal spots to check, so it returned true for ANY same-tag target.
+    //
+    // Effect before the fix, at DEFAULT settings with no option involved: the
+    // local `other` template adopted the server's `<div class="root">` and came
+    // back carrying `class="root"` and the server's text. The page still looked
+    // right (the root cloned afterwards), so the damage was confined to the
+    // detached node the app holds a reference to — silent by construction.
+    //
+    // Plan replay is now opt-in and only the `<For>` row loop opts in.
+    const warm = await ssrInto(h('div', { class: 'other' }, 'X'))
+    hydrateRoot(warm, h(compileApp(`const App = () => <div class="other">X</div>`) as never, null))()
+    expect(tplAdopted()).toBe(1) // a plan is now cached for that template
+
+    const captured: { el?: Element } = {}
+    const host = await ssrInto(h('div', { class: 'root' }, 'ROOTVAL'))
+    const App = compileApp(
+      `const App = () => { const other = <div class="other">X</div>; capture(other); return <div class="root">ROOTVAL</div> }`,
+      {
+        capture: (n: { el: Element }) => {
+          captured.el = n.el
+        },
+      },
+    )
+    const dispose = hydrateRoot(host, h(App as never, null))
+
+    expect(captured.el?.getAttribute('class')).toBe('other')
+    expect(captured.el?.textContent).toBe('X')
+    expect(captured.el).not.toBe(host.firstElementChild)
+    expect(host.innerHTML).toBe('<div class="root">ROOTVAL</div>')
+    dispose()
+  })
+
+  it('<For> rows DO use the plan fast path — the opt-in is still wired', async () => {
+    // The counterpart to the theft spec above. Making plan replay opt-in risks
+    // the opposite silent failure: drop the `true` at the `<For>` arming site
+    // and every row falls back to a full skeleton walk. The list still hydrates
+    // correctly, so no behavioural test would notice — only this counter does.
+    // Row 1 BUILDS the plan, rows 2..N replay it, hence 2 fires for 3 rows.
+    const items = [
+      { id: 1, n: 'a' },
+      { id: 2, n: 'b' },
+      { id: 3, n: 'c' },
+    ]
+    const host = await ssrInto(
+      h(
+        'ul',
+        { class: 'l' },
+        h(For as never, {
+          each: () => items,
+          by: (i: { id: number }) => i.id,
+          children: (it: { n: string }) => h('li', { class: 'r' }, () => it.n),
+        } as never),
+      ),
+    )
+    const before = [...host.querySelectorAll('li')]
+    expect(before).toHaveLength(3)
+
+    const App = compileApp(
+      `const App = () => <ul class="l"><For each={() => items} by={(i) => i.id}>{(it) => <li class="r">{() => it.n}</li>}</For></ul>`,
+      { items },
+    )
+    const dispose = hydrateRoot(host, h(App as never, null))
+
+    const after = new Set(host.querySelectorAll('li'))
+    expect(before.filter((n) => after.has(n))).toHaveLength(3) // rows adopted
+    expect(counts['runtime.tpl.adoptPlanReplay'] ?? 0).toBe(2)
+    dispose()
+  })
+
+  it('component-root adoption does NOT use the plan fast path', async () => {
+    // The scoping half: an arbitrary component root must always run the full
+    // static-skeleton verify, which is what makes a wrong consumer harmless.
+    const host = await ssrInto(h('div', { class: 'leaf' }, 'hello'))
+    const App = compileApp(`const App = () => <div class="leaf">hello</div>`)
+    const dispose = hydrateRoot(host, h(App as never, null))
+
+    expect(tplAdopted()).toBe(1) // it DID adopt…
+    expect(counts['runtime.tpl.adoptPlanReplay'] ?? 0).toBe(0) // …via full verify
+    dispose()
+  })
+
   it('does NOT adopt when a static ATTRIBUTE diverges from the server node', async () => {
     // Server says class="v1"; the client template says class="v2". Adopting
     // would silently keep the server's stale attribute, so this must clone.

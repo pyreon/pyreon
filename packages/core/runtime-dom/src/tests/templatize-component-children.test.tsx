@@ -219,12 +219,20 @@ describe('templatizeComponentChildren — ordering gate (the #2914 blocker)', ()
 
 describe('templatizeComponentChildren — the hydration cost, pinned', () => {
   // This is the reason the option is DEFAULT OFF, recorded as an executable
-  // measurement rather than a claim. A `_tpl` result is SWAPPED at hydration
-  // ("there is no true `_tpl` hydration mode yet" — hydrate.ts), so every
-  // element this option newly templatizes stops adopting its SSR DOM, and so
-  // does everything below it. Flipping the default requires compiled-template
-  // hydration adoption for the general case; until then this spec fails the
-  // moment someone flips it, with the number attached.
+  // measurement rather than a claim. Every element this option newly
+  // templatizes stops adopting its SSR DOM, and so does everything below it.
+  //
+  // The MECHANISM is a mount hole, not the swap this comment used to describe:
+  // component-root templates DO adopt now, but the verifier rejects a template
+  // whose element tree is a strict subset of the server's, which is exactly
+  // what an absorbed component leaves behind. The full three-part account —
+  // including the disproof of the earlier "eager argument, no cursor to arm"
+  // diagnosis, and the proof that relaxing the verifier alone DUPLICATES the
+  // server content — lives in `hydrate-template-hole-limit.test.tsx`.
+  //
+  // These two specs stay here so the cost is pinned in the OPTION's own
+  // coverage; they fail the moment someone flips the default, with the number
+  // attached.
   const LAYOUT = `
 const Leaf = () => <span class="t">leaf</span>
 const Mid = () => <section class="mid"><Leaf /></section>
@@ -241,12 +249,13 @@ const App = () => <div class="app"><main class="m"><Mid /></main></div>`
     return [after.filter((n) => before.includes(n)).length, before.length]
   }
 
-  it('OFF: the skeleton ADOPTS its SSR nodes', () => {
-    // 4 of 4 since #2918 taught hydration to ADOPT compiled templates instead
-    // of discarding them. This spec pinned 3/4 when it was written, because
-    // back then `<span.t>` — a compiled template — swapped like every other
-    // template did. That is the number the OFF arm must hold: if it ever
-    // returns to 3/4, component-root adoption has regressed.
+  it('OFF: the skeleton ADOPTS its SSR nodes (all four)', () => {
+    // 4 of 4. This was 3 of 4 when the option landed — the leaf `<span.t>`
+    // template swapped, because at that point only `<For>` armed the one-shot
+    // `_tpl` adopt target. Component-root adoption arms it for every component,
+    // so the leaf template now adopts too. Neutering that arming in
+    // `hydrateComponent` returns this to [3, 4], which is how the number is
+    // attributable rather than merely observed.
     expect(retention({})).toEqual([4, 4])
   })
 

@@ -187,10 +187,52 @@ describe('tplAdoptVerify — template adoption for the compiled _tpl path', () =
     // The first call builds and caches a plan against the template; every
     // later row is meant to replay it rather than re-derive the signature.
     // Both calls must agree, or rows would hydrate inconsistently.
-    const html = '<p class="x">hi</p>'
-    const tpl = tplOf(html)
-    expect(tplAdoptVerify(tpl, html, targetOf(html))).toBe(true)
-    expect(tplAdoptVerify(tpl, html, targetOf(html))).toBe(true)
+    //
+    // The `true` is load-bearing: plan replay is OPT-IN (only the `<For>` row
+    // loop opts in), and without it this spec would take the full-verify path
+    // twice, still return true, and silently stop testing the path it is named
+    // for. The counter assertion pins that — one replay on the second call.
+    const g = globalThis as {
+      __pyreon_count__?: ((name: string, n?: number) => void) | undefined
+    }
+    const prev = g.__pyreon_count__
+    let replays = 0
+    g.__pyreon_count__ = (name) => {
+      if (name === 'runtime.tpl.adoptPlanReplay') replays++
+    }
+    try {
+      const html = '<p class="x">hi</p>'
+      const tpl = tplOf(html)
+      expect(tplAdoptVerify(tpl, html, targetOf(html), true)).toBe(true)
+      expect(replays).toBe(0) // first call BUILDS the plan
+      expect(tplAdoptVerify(tpl, html, targetOf(html), true)).toBe(true)
+      expect(replays).toBe(1) // second call REPLAYS it
+    } finally {
+      g.__pyreon_count__ = prev
+    }
+  })
+
+  it('does NOT replay the cached plan when the caller has not opted in', () => {
+    // The scoping half. Same template, same two calls, no opt-in: both must
+    // still verify correctly, and the fast path must not fire — that is what
+    // keeps an unrelated component from adopting a byte-different server node.
+    const g = globalThis as {
+      __pyreon_count__?: ((name: string, n?: number) => void) | undefined
+    }
+    const prev = g.__pyreon_count__
+    let replays = 0
+    g.__pyreon_count__ = (name) => {
+      if (name === 'runtime.tpl.adoptPlanReplay') replays++
+    }
+    try {
+      const html = '<p class="x">hi</p>'
+      const tpl = tplOf(html)
+      expect(tplAdoptVerify(tpl, html, targetOf(html))).toBe(true)
+      expect(tplAdoptVerify(tpl, html, targetOf(html))).toBe(true)
+      expect(replays).toBe(0)
+    } finally {
+      g.__pyreon_count__ = prev
+    }
   })
 
   it('normalizes an SSR <!--$-->…<!--/$--> triplet out of the adopted target', () => {
