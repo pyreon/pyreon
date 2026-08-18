@@ -76,6 +76,9 @@ const browser = await chromium.launch({
 
 try {
   const pooled = new Map<string, number[]>()
+  const pooledWalk = new Map<string, number[]>()
+  const pooledState = new Map<string, number[]>()
+  const retention = new Map<string, string>()
   for (let pass = 1; pass <= REPEAT; pass++) {
     // Per-pass order shuffle (deterministic per pass index).
     const order = [...FRAMEWORKS]
@@ -110,6 +113,24 @@ try {
           pooled.set(key, [...(pooled.get(key) ?? []), ...r.samples])
         }
       }
+      // Walk/layout split (see impl/hydration.ts): the timed region is
+      // `hydrate()` + a forced layout flush, and on a 1000-row table the flush
+      // dominates. Pool the hydrate half so the report can separate the
+      // framework's WALK from the browser's LAYOUT of the SSR DOM.
+      const walk = (await page.evaluate(
+        () => (globalThis as { __hydrationWalk?: Record<string, number[]> }).__hydrationWalk ?? {},
+      )) as Record<string, number[]>
+      for (const [k, xs] of Object.entries(walk)) {
+        pooledWalk.set(k, [...(pooledWalk.get(k) ?? []), ...xs])
+      }
+      const st = (await page.evaluate(
+        () => (globalThis as { __hydrationState?: number[] }).__hydrationState ?? [],
+      )) as number[]
+      if (st.length > 0) pooledState.set(fw, [...(pooledState.get(fw) ?? []), ...st])
+      const ret = (await page.evaluate(
+        () => (globalThis as { __hydrationRetention?: Record<string, string> }).__hydrationRetention ?? {},
+      )) as Record<string, string>
+      for (const [k, v] of Object.entries(ret)) retention.set(k, v)
       await page.close()
     }
   }
@@ -127,6 +148,54 @@ try {
     console.log(
       `  ${r.fw.padEnd(10)} ${fmt(r.med).padStart(9)}  [${fmt(r.ci[0])}–${fmt(r.ci[1])}]  n=${r.n}  ${marker}`,
     )
+  }
+
+  if (retention.size > 0) {
+    console.log('\n  node RETENTION (pre-hydration <tr> still connected after hydrate)')
+    for (const r of rows) {
+      const v = retention.get(r.fw)
+      if (v) console.log(`  ${r.fw.padEnd(10)} ${v}`)
+    }
+  }
+
+  // WALK vs LAYOUT. The headline above times `hydrate()` + a forced layout
+  // flush. On this page shape the flush is ~5ms of ~6ms and is browser-internal
+  // work sized by the SSR DOM — every framework pays it, and it is NOT the
+  // hydration walk. Reporting only the headline invites reading a layout-bound
+  // number as a framework verdict, so print the decomposition.
+  if (pooledWalk.size > 0) {
+    console.log('\n  decomposition — framework WALK vs browser LAYOUT flush')
+    console.log('  ' + '─'.repeat(72))
+    for (const r of rows) {
+      const w = pooledWalk.get(r.fw)
+      if (!w || w.length === 0) continue
+      const wm = median(w)
+      const wci = ci95(w)
+      const st = pooledState.get(r.fw)
+      const stm = st && st.length > 0 ? median(st) : 0
+      console.log(
+        `  ${r.fw.padEnd(10)} walk ${fmt(wm).padStart(9)} [${fmt(wci[0])}–${fmt(wci[1])}]` +
+          `   layout ≈${fmt(r.med - wm).padStart(8)}   (walk = ${((wm / r.med) * 100).toFixed(0)}% of total)` +
+          (stm > 0 ? `   [of walk: ${fmt(stm)} is app-state construction, not hydration]` : ''),
+      )
+    }
+    const wrows = rows
+      .map((r) => ({ fw: r.fw, w: pooledWalk.get(r.fw) }))
+      .filter((x): x is { fw: string; w: number[] } => !!x.w && x.w.length > 0)
+      .map((x) => ({ fw: x.fw, med: median(x.w), ci: ci95(x.w) }))
+      .sort((a, b) => a.med - b.med)
+    const wbest = wrows[0]
+    if (wbest) {
+      console.log(`\n  WALK-only ranking (the framework-attributable half):`)
+      for (const r of wrows) {
+        const tied = r !== wbest && r.ci[0] <= wbest.ci[1] && wbest.ci[0] <= r.ci[1]
+        const marker =
+          r === wbest ? '🥇' : tied ? '🤝' : `${(r.med / wbest.med).toFixed(2)}× slower`
+        console.log(
+          `  ${r.fw.padEnd(10)} ${fmt(r.med).padStart(9)}  [${fmt(r.ci[0])}–${fmt(r.ci[1])}]  ${marker}`,
+        )
+      }
+    }
   }
 } finally {
   await browser.close()
