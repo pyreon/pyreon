@@ -81,7 +81,10 @@ runs **~2.6× faster than React and ~3.3× than Preact** at bulk-create
 table-layout root cause was found and fixed). Elsewhere it is mostly a
 **statistical tie with [Octane](https://octanejs.dev)**, the nearest rival —
 plausible ties on `create 1,000`, `replace`, `partial update`, and `remove`;
-Octane wins `clear rows` outright (~1.45×, unaffected by the layout fix);
+Octane wins `clear rows` outright (~1.45× on `main` today, unaffected by
+the layout fix — a real, architectural gap, since Octane registers no
+per-row subscriptions at all; a separate open fix narrows it to ~1.15×
+without closing it — see [benchmarks](/docs/benchmarks));
 and `select row` has no honest multiplier to publish (both frameworks sit at
 the edge of what real-Chromium timing can resolve). **A retraction that
 matters on its own: the previously-published `partial update` lead over
