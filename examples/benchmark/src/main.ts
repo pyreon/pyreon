@@ -234,6 +234,23 @@ if (__url.searchParams.get('profileClear') === '1') {
     setupCreateProfile(makeContainer(), makeContainer(), makeContainer())
     setStatus('profileCreate ready')
   })()
+} else if (__url.searchParams.get('profileDecomp') === '1') {
+  // Create-path DECOMPOSITION target for bench-createdecomp.ts — mounts the
+  // vanilla → For+static → +label-bind → +selector ladder side by side,
+  // exposing __decompBench build/commit/create drivers for each rung.
+  // `bench-fixture` for the same deterministic-layout reason runSelected passes
+  // it: without it `table-layout: auto` re-measures on every mutation and the
+  // arms go bimodal. Never runs the timed suite.
+  void (async () => {
+    const { setupDecompProfile } = await import('./impl/profile-decomp')
+    setupDecompProfile({
+      vanilla: makeContainer('bench-fixture'),
+      l1: makeContainer('bench-fixture'),
+      l2: makeContainer('bench-fixture'),
+      l3: makeContainer('bench-fixture'),
+    })
+    setStatus('profileDecomp ready')
+  })()
 } else if (__url.searchParams.get('profileTree') === '1') {
   // CPU-profiling target for bench-treeprofile.ts — mounts the deep-tree
   // scenario's Pyreon, Solid and Vanilla arms side by side, exposing
