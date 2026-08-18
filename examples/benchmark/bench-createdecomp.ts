@@ -28,7 +28,27 @@ const SAMPLES = Number(process.argv[2] ?? 40)
 const ROWS = Number(process.argv[3] ?? 10_000)
 const PORT = 4187
 
-console.log(`[decomp] load BEFORE: ${(await Bun.$`uptime`.text()).trim()}`)
+/**
+ * Refuse to measure on a loaded box.
+ *
+ * This repo has retracted claims taken under load before, and a number produced
+ * here is only useful if it can be trusted — so the guard is a hard abort
+ * rather than a warning that a tired reader scrolls past. `PYREON_BENCH_MAX_LOAD`
+ * raises it for a deliberate adverse-conditions run (separation measured under
+ * load is the conservative direction; a WIN measured under load is not).
+ */
+const MAX_LOAD = Number(process.env.PYREON_BENCH_MAX_LOAD ?? 8)
+const loadBefore = (await Bun.$`uptime`.text()).trim()
+const load1 = Number(loadBefore.replace(/.*load averages?: */, '').split(/\s+/)[0])
+console.log(`[decomp] load BEFORE: ${loadBefore}`)
+if (Number.isFinite(load1) && load1 > MAX_LOAD) {
+  console.error(
+    `[decomp] ABORT: 1-minute load ${load1.toFixed(2)} exceeds ${MAX_LOAD}. ` +
+      `Numbers taken here are not publishable. Wait for the box, or set ` +
+      `PYREON_BENCH_MAX_LOAD to override deliberately.`,
+  )
+  process.exit(1)
+}
 
 const preview = spawn('bunx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], {
   cwd: import.meta.dir,
@@ -380,11 +400,19 @@ try {
 
     const totalCreateGap = g(`l3/create/${mode}`).js - g(`vanilla/create/${mode}`).js
     const commitGap = g(`l3/commit/${mode}`).js - g(`vanilla/commit/${mode}`).js
-    const explained = commitGap + buildDelta
+    // The model must reconcile against what the BOARD pays, and the board's
+    // vanilla arm builds via `Array.from` — so the build term here is
+    // signal-rows minus Array.from-rows, not the helper-held-constant signal
+    // cost reported above. Using the clean signal number here would leave the
+    // helper difference unaccounted and make the check look worse than it is.
+    const buildDeltaAsBenched = g('bv/l3Signal').js - g('bv/vanillaArrayFrom').js
+    const explained = commitGap + buildDeltaAsBenched
     console.log(`\n-- totals --`)
     console.log(`create JS gap (L3 - vanilla): ${withCI(totalCreateGap, `vanilla->l3/create/${mode}`)}`)
     console.log(`  of which commit: ${f(commitGap)} (${perRow(commitGap)}/row)`)
-    console.log(`  of which build:  ${f(buildDelta)} (${perRow(buildDelta)}/row)`)
+    console.log(
+      `  of which build:  ${f(buildDeltaAsBenched)} (${perRow(buildDeltaAsBenched)}/row)  [as benched: signal-rows vs Array.from-rows]`,
+    )
     console.log(
       `  sum ${f(explained)} vs measured ${f(totalCreateGap)} ` +
         `(${(((explained - totalCreateGap) / totalCreateGap) * 100).toFixed(1)}% off)`,
@@ -411,7 +439,17 @@ try {
   console.log(`  helper difference      = ${withCI(bvAf - bvLoop, 'helper')}`)
   console.log(`    ^ Array.from vs preallocated loop; on the board this FAVOURS Pyreon`)
 
-  console.log(`\n[decomp] load AFTER: ${(await Bun.$`uptime`.text()).trim()}`)
+  // Stamp the load AFTER as well: a run that started quiet and ended loaded had
+  // a competitor for most of its samples, and the median hides that.
+  const loadAfter = (await Bun.$`uptime`.text()).trim()
+  console.log(`\n[decomp] load BEFORE: ${loadBefore}`)
+  console.log(`[decomp] load AFTER:  ${loadAfter}`)
+  const loadEnd = Number(loadAfter.replace(/.*load averages?: */, '').split(/\s+/)[0])
+  if (Number.isFinite(loadEnd) && loadEnd > MAX_LOAD)
+    console.error(
+      `[decomp] WARNING: load rose to ${loadEnd.toFixed(2)} during the run — ` +
+        `treat these numbers as contaminated.`,
+    )
 } finally {
   await browser.close()
   preview.kill()
