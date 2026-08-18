@@ -19,7 +19,7 @@
 import { transformSync } from 'esbuild'
 import { transformJSX_JS } from '@pyreon/compiler'
 import type { VNode } from '@pyreon/core'
-import { For, Fragment, createContext, h, provide, useContext } from '@pyreon/core'
+import { For, Fragment, _lc, createContext, h, provide, useContext } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { _esc, _ssr, _ssrAttr, _ssrAttrGen, _ssrAttrUrl, _ssrChildren, _ssrForKeyed, _ssrDeferred, _ssrItem, _ssrNode, renderToString } from '@pyreon/runtime-server'
 import { disableHydrationWarnings, hydrateRoot, mount, onHydrationMismatch } from '../index'
@@ -50,8 +50,8 @@ function evalSsr(src: string, deps: Record<string, unknown> = {}): unknown {
     jsxFragment: 'Fragment',
   }).code
   // Every differential source names its renderable binding `Node`.
-  const depNames = ['_ssr', '_ssrChildren', '_ssrItem', '_ssrForKeyed', '_esc', '_ssrAttr', '_ssrAttrGen', '_ssrAttrUrl', '_ssrNode', '_ssrDeferred', 'signal', 'For', 'h', 'Fragment', ...Object.keys(deps)]
-  const depValues = [_ssr, _ssrChildren, _ssrItem, _ssrForKeyed, _esc, _ssrAttr, _ssrAttrGen, _ssrAttrUrl, _ssrNode, _ssrDeferred, signal, For, h, Fragment, ...Object.values(deps)]
+  const depNames = ['_ssr', '_ssrChildren', '_ssrItem', '_ssrForKeyed', '_esc', '_ssrAttr', '_ssrAttrGen', '_ssrAttrUrl', '_ssrNode', '_ssrDeferred', '_lc', 'signal', 'For', 'h', 'Fragment', ...Object.keys(deps)]
+  const depValues = [_ssr, _ssrChildren, _ssrItem, _ssrForKeyed, _esc, _ssrAttr, _ssrAttrGen, _ssrAttrUrl, _ssrNode, _ssrDeferred, _lc, signal, For, h, Fragment, ...Object.values(deps)]
   // eslint-disable-next-line no-new-func
   const fn = new Function(...depNames, `${lowered}\nreturn Node`)
   return fn(...depValues)

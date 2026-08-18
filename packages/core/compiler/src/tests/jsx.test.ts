@@ -737,8 +737,39 @@ describe('JSX transform — template emission', () => {
     // <Comp> is a component, so outer element is not templateized
     // but <span><em> inside it has 2 elements
     const result = t('<Comp><span><em>text</em></span></Comp>')
-    // The inner span+em gets templateized inside the component children
+    // The invariant this test protects: the templatized child is emitted as a
+    // JSX expression container, so it is a legal child position. As the SOLE
+    // child of a COMPONENT it is additionally made lazy (`_lc`) so the template
+    // is built when the component reads `props.children` rather than when the
+    // `jsx(Comp, …)` argument is evaluated — see `isSoleComponentChild`.
+    expect(result).toContain('{_lc(() => _tpl(')
+    expect(result).toContain('))}')
+  })
+
+  test('a templatized child of a FRAGMENT parent stays eager (bare braces)', () => {
+    // Laziness is scoped to COMPONENT parents — nothing else has a body that
+    // runs after its children, so there is no ordering to fix and the emit must
+    // stay byte-identical to before.
+    const result = t('<><span><em>a</em></span></>')
     expect(result).toContain('{_tpl(')
+    expect(result).not.toContain('_lc(')
+  })
+
+  test('a FRAGMENT between the component and the template stays eager', () => {
+    // A fragment breaks the "direct parent is a component" relationship — the
+    // same boundary both backends already apply to the expression-child wrap.
+    const result = t('<Comp><><span><em>a</em></span></></Comp>')
+    expect(result).toContain('{_tpl(')
+    expect(result).not.toContain('_lc(')
+  })
+
+  test('a component with MULTIPLE children stays eager', () => {
+    // Documented residual: with >1 child `props.children` is an ARRAY, and making
+    // it lazy would mean an array of thunks every structural consumer would have
+    // to unwrap. Left eager rather than half-done.
+    const result = t('<Comp><span><em>a</em></span><i><b>b</b></i></Comp>')
+    expect(result).toContain('{_tpl(')
+    expect(result).not.toContain('_lc(')
   })
 
   test('handles self-closing void elements in template', () => {

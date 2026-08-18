@@ -496,6 +496,7 @@ struct Ctx<'a> {
 
     needs_tpl_import: bool,
     needs_rp_import: bool,
+    needs_lc_import: bool,
     needs_wrap_spread_import: bool,
     needs_cx_import: bool,
     needs_set_style_import: bool,
@@ -544,6 +545,14 @@ struct Ctx<'a> {
     /// `handleJsxExpression(node, parentJsx)` for the rationale + bisect
     /// reference (`packages/core/compiler/src/tests/component-child-no-wrap.test.ts`).
     parent_is_component_jsx_element: bool,
+    /// The COMPONENT parent currently being descended into has exactly ONE
+    /// meaningful JSX child (JSX whitespace elision applied). Mirrors the JS
+    /// backend's `isSoleComponentChild`: a compiled template call in that
+    /// position becomes `_lc(() => …)` so it is built when the component READS
+    /// `props.children`, not when the `jsx(Comp, …)` argument is evaluated.
+    /// Only meaningful children reach `try_template_emit`, so a bool is enough —
+    /// if one fires under this flag, it IS the sole child.
+    parent_component_has_sole_child: bool,
 
     /// Whether the expression currently being walked is the DIRECT child
     /// render-callback of a JSX element (`<For>{(row) => …}</For>`,
@@ -673,6 +682,7 @@ impl<'a> Ctx<'a> {
             hoist_idx: 0,
             needs_tpl_import: false,
             needs_rp_import: false,
+            needs_lc_import: false,
             needs_wrap_spread_import: false,
             needs_cx_import: false,
             needs_set_style_import: false,
@@ -696,6 +706,7 @@ impl<'a> Ctx<'a> {
             callback_depth: 0,
             parent_is_jsx: false,
             parent_is_component_jsx_element: false,
+            parent_component_has_sole_child: false,
             in_jsx_child_callback: false,
             in_callback_argument: false,
             signal_vars: FxHashSet::default(),
@@ -878,12 +889,19 @@ impl<'a> Ctx<'a> {
             );
         }
 
-        if self.needs_rp_import || self.needs_wrap_spread_import || self.needs_cx_import {
+        if self.needs_rp_import
+            || self.needs_lc_import
+            || self.needs_wrap_spread_import
+            || self.needs_cx_import
+        {
             let mut core_imports: Vec<&str> = Vec::new();
             // Alias to an internal name — `cx` is a public export users import
             // directly, so a bare injected `cx` import collides.
             if self.needs_cx_import {
                 core_imports.push("cx as _cx");
+            }
+            if self.needs_lc_import {
+                core_imports.push("_lc");
             }
             if self.needs_rp_import {
                 core_imports.push("_rp");
@@ -4293,13 +4311,16 @@ fn walk_jsx_child(child: &JSXChild, ctx: &mut Ctx) {
             // a `{x}` inside `<Comp><>{x}</></Comp>` still goes through
             // the wrap path (matches JS-backend equivalence).
             let old_component = ctx.parent_is_component_jsx_element;
+            let old_sole_child = ctx.parent_component_has_sole_child;
             ctx.parent_is_jsx = true;
             ctx.parent_is_component_jsx_element = false;
+            ctx.parent_component_has_sole_child = false;
             for child in &frag.children {
                 walk_jsx_child(child, ctx);
             }
             ctx.parent_is_jsx = old;
             ctx.parent_is_component_jsx_element = old_component;
+            ctx.parent_component_has_sole_child = old_sole_child;
         }
         JSXChild::ExpressionContainer(container) => {
             handle_jsx_expression_child(container, ctx);
@@ -4362,13 +4383,16 @@ fn handle_jsx_element(el: &JSXElement, ctx: &mut Ctx) {
     // Process children
     let old_parent_is_jsx = ctx.parent_is_jsx;
     let old_parent_is_component = ctx.parent_is_component_jsx_element;
+    let old_sole_child = ctx.parent_component_has_sole_child;
     ctx.parent_is_jsx = true;
     ctx.parent_is_component_jsx_element = is_component;
+    ctx.parent_component_has_sole_child = is_component && meaningful_child_count(el) == 1;
     for child in &el.children {
         walk_jsx_child(child, ctx);
     }
     ctx.parent_is_jsx = old_parent_is_jsx;
     ctx.parent_is_component_jsx_element = old_parent_is_component;
+    ctx.parent_component_has_sole_child = old_sole_child;
 }
 
 fn check_for_warnings(el: &JSXElement, ctx: &mut Ctx) {
@@ -5755,11 +5779,7 @@ fn try_ssr_template_emit(el: &JSXElement, ctx: &mut Ctx) -> bool {
 
     if preserved.is_empty() {
         let call = ssr_call_text(&buf, SsrMode::Recursed, ctx);
-        let text = if needs_braces {
-            format!("{{{}}}", call)
-        } else {
-            call
-        };
+        let text = brace_template_child(call, ctx);
         ctx.add_replacement(start, end, text);
         ctx.needs_ssr_import = true;
         return true;
@@ -5800,8 +5820,18 @@ fn try_ssr_template_emit(el: &JSXElement, ctx: &mut Ctx) -> bool {
         statics_arr,
         generated_up_to(first_idx, &mut hole, &buf)
     );
+    // Bracketed emission: the closing edit adds the matching `)}`/`}` — so the
+    // lazy wrap is spelled out here rather than routed through
+    // `brace_template_child`, which owns a whole self-contained call.
+    let lazy_child =
+        needs_braces && ctx.parent_is_component_jsx_element && ctx.parent_component_has_sole_child;
     if needs_braces {
-        prefix = format!("{{{}", prefix);
+        if lazy_child {
+            ctx.needs_lc_import = true;
+            prefix = format!("{{_lc(() => {}", prefix);
+        } else {
+            prefix = format!("{{{}", prefix);
+        }
     }
     ctx.add_replacement(start, first_span.0, prefix);
     hole = first_idx + 1;
@@ -5816,7 +5846,11 @@ fn try_ssr_template_emit(el: &JSXElement, ctx: &mut Ctx) -> bool {
     // Two closers for the call + one for the `_ssrDeferred(() => …)` wrap.
     let mut suffix = format!("){}))", generated_up_to(buf.holes.len(), &mut hole, &buf));
     if needs_braces {
-        suffix = format!("{}}}", suffix);
+        suffix = if lazy_child {
+            format!("{})}}", suffix)
+        } else {
+            format!("{}}}", suffix)
+        };
     }
     ctx.add_replacement(preserved[preserved.len() - 1].1 .1, end, suffix);
 
@@ -5835,6 +5869,34 @@ fn try_ssr_template_emit(el: &JSXElement, ctx: &mut Ctx) -> bool {
 
 // ─── Template emit ───────────────────────────────────────────────────────────
 
+/// Count of children that survive JSX whitespace elision — the same rule the
+/// `<For>` holder check uses (`clean_jsx_text` reducing a JSXText to nothing
+/// means it is not a child).
+fn meaningful_child_count(el: &JSXElement) -> usize {
+    el.children
+        .iter()
+        .filter(|c| match c {
+            JSXChild::Text(t) => !clean_jsx_text(t.value.as_str()).is_empty(),
+            _ => true,
+        })
+        .count()
+}
+
+/// Brace a compiled-template call for its JSX-child position, making it LAZY
+/// when it is a component's SOLE child. Mirrors the JS backend's
+/// `braceTemplateChild` — see its doc comment for why the laziness is needed and
+/// why it stops at the sole-child case.
+fn brace_template_child(call: String, ctx: &mut Ctx) -> String {
+    if !ctx.parent_is_jsx {
+        return call;
+    }
+    if !(ctx.parent_is_component_jsx_element && ctx.parent_component_has_sole_child) {
+        return format!("{{{}}}", call);
+    }
+    ctx.needs_lc_import = true;
+    format!("{{_lc(() => {})}}", call)
+}
+
 fn try_template_emit(el: &JSXElement, ctx: &mut Ctx) -> bool {
     if ctx.ssr {
         return false;
@@ -5852,12 +5914,7 @@ fn try_template_emit(el: &JSXElement, ctx: &mut Ctx) -> bool {
     };
     let start = el.span().start;
     let end = el.span().end;
-    let needs_braces = ctx.parent_is_jsx;
-    let text = if needs_braces {
-        format!("{{{}}}", tpl_call)
-    } else {
-        tpl_call
-    };
+    let text = brace_template_child(tpl_call, ctx);
     ctx.add_replacement(start, end, text);
     ctx.needs_tpl_import = true;
     true
