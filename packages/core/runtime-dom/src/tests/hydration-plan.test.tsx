@@ -235,8 +235,16 @@ describe('tplAdoptVerify — template adoption for the compiled _tpl path', () =
     expect(tplAdoptVerify(tpl, html, targetOf('<a class="c">L1</a>'))).toBe(true)
     // Rows 2..N — positional replay against that plan.
     expect(tplAdoptVerify(tpl, html, targetOf('<a class="c">L2</a>'))).toBe(true)
-    // …and the divergent rows BAIL rather than replay unverified.
-    expect(tplAdoptVerify(tpl, html, targetOf('<a class="c"></a>'))).toBe(false)
+    // An EMPTY slot (the accessor rendered '') is NOT a divergence — SSR
+    // legitimately emits no node there. The verifier materializes the text
+    // node the compiled bind writes into, exactly as the marker path did for
+    // an empty `<!--$--><!--/$-->` range, so an often-empty column keeps
+    // adopting instead of dropping every such row to the interpretive walk.
+    const empty = targetOf('<a class="c"></a>')
+    expect(tplAdoptVerify(tpl, html, empty)).toBe(true)
+    expect(empty.firstChild?.nodeType).toBe(3)
+    expect(empty.firstChild?.nodeValue).toBe('')
+    // …and the genuinely divergent rows still BAIL rather than replay unverified.
     expect(tplAdoptVerify(tpl, html, targetOf('<a class="c"><b>L</b></a>'))).toBe(false)
     expect(tplAdoptVerify(tpl, html, targetOf('<a class="c">L<i>x</i></a>'))).toBe(false)
   })

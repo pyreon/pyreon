@@ -619,6 +619,15 @@ interface AdoptMatch {
    * compiled bind's `.firstChild` ref would land on null or an element.
    */
   soles: Element[] | null
+  /**
+   * Elements whose ELIDED sole-child slot rendered EMPTY, so SSR emitted no
+   * node at all where the template baked its ' ' placeholder. The compiled
+   * bind's `.firstChild` ref needs a text node to exist, so one is inserted —
+   * exactly what the marker path did for an empty `<!--$--><!--/$-->` range.
+   * Without this an often-empty column would drop every such row out of
+   * adoption and onto the interpretive walk.
+   */
+  emptySlots: Element[] | null
 }
 
 /**
@@ -726,6 +735,11 @@ function replayAdoptPlan(root: Element, plan: AdoptPlan): boolean {
     const spot = soles[s] as number[]
     const parent = elByPath(root, spot, spot.length)
     if (!parent) return false
+    // An EMPTY slot on this row returns false like any other spot miss: the
+    // caller falls through to the full verify, which MATERIALIZES the text
+    // node and adopts (see `AdoptMatch.emptySlots`). Handling it inline here
+    // would be faster but is not correctness-bearing — the full verify is —
+    // and a branch no test can distinguish is a branch that should not ship.
     const t = parent.firstChild
     if (t === null || t.nodeType !== 3 || t.nextSibling !== null) return false
   }
@@ -752,6 +766,7 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
   let removals: Text[] | null = null
   let triplets: { open: Comment; text: Text | null; close: Comment }[] | null = null
   let soles: Element[] | null = null
+  let emptySlots: Element[] | null = null
   const tags = expected.tags
   const wantCounts = expected.counts
   const total = tags.length
@@ -828,6 +843,19 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
       // divergence: bail.
       if (wantTexts === 0 && bare) {
         if (bare.length > 1) (removals ??= []).push(...bare)
+      } else if (
+        // An elided sole-child slot whose accessor rendered EMPTY: the template
+        // wants one DYNAMIC text here and the element has no children at all.
+        // Materialize the node the compiled bind will write into (deferred to
+        // the caller — this walk stays side-effect-free until every check has
+        // passed) instead of bailing the row.
+        wantTexts === 1 &&
+        texts === 0 &&
+        el.firstChild === null &&
+        (expected.texts[at] as (string | null)[])[0] === null
+      ) {
+        ;(emptySlots ??= []).push(el)
+        ;(soles ??= []).push(el)
       } else return false
     } else if (!sawTriplet && bare !== null) {
       // An elided sole-child accessor slot: the template baked a ' ' here
@@ -861,7 +889,7 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
   }
   if (!walk(root)) return null
   if (idx !== total) return null
-  return { removals, triplets, soles }
+  return { removals, triplets, soles, emptySlots }
 }
 
 /** All checks passed — strip markers, ensuring one text node per slot. */
@@ -924,6 +952,9 @@ export function tplAdoptVerify(
     _lastVerifyPlan = built
   }
   if (match.removals) for (const t of match.removals) t.remove()
+  if (match.emptySlots) {
+    for (const el of match.emptySlots) el.appendChild(document.createTextNode(''))
+  }
   if (match.triplets) normalizeDollarTriplets(match.triplets)
   return true
 }
