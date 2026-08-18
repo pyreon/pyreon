@@ -31,7 +31,7 @@ parent, fragment, expression container) bails to `h()`.
 
 **Why it stays off by default:** a `_tpl` result is SWAPPED at hydration, so
 every element this newly templatizes stops adopting its SSR DOM — and so does
-everything below it. Measured on a 3-level layout, node retention 3/4 → 0/4.
+everything below it. Measured on a 3-level layout, node retention 4/4 → 0/4 (it pinned 3/4 when written; #2918 then taught hydration to ADOPT compiled templates, so the OFF arm now keeps all four).
 Only enable it for a client bundle that never calls `hydrateRoot()`. The plugin
 warns once when it is on, because it also forces the compiler's JS backend (no
 native mirror yet).

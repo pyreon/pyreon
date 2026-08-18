@@ -241,10 +241,13 @@ const App = () => <div class="app"><main class="m"><Mid /></main></div>`
     return [after.filter((n) => before.includes(n)).length, before.length]
   }
 
-  it('OFF: the skeleton ADOPTS its SSR nodes (only the leaf template swaps)', () => {
-    // 3 of 4: <div.app>, <main.m>, <section.mid> are reused; <span.t> is a
-    // compiled template, and templates already swap today.
-    expect(retention({})).toEqual([3, 4])
+  it('OFF: the skeleton ADOPTS its SSR nodes', () => {
+    // 4 of 4 since #2918 taught hydration to ADOPT compiled templates instead
+    // of discarding them. This spec pinned 3/4 when it was written, because
+    // back then `<span.t>` — a compiled template — swapped like every other
+    // template did. That is the number the OFF arm must hold: if it ever
+    // returns to 3/4, component-root adoption has regressed.
+    expect(retention({})).toEqual([4, 4])
   })
 
   it('ON: the skeleton is templatized, so NOTHING below it is adopted', () => {
