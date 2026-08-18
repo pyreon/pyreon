@@ -3489,24 +3489,100 @@ export function transformJSX_JS(
       return `__p${placeholderIdx++}`
     }
 
+    // ── Phase-1 walk memoization (sibling-ref chaining) ───────────────────────
+    // `childNodeAccessor` builds every child ref as an INDEPENDENT walk from its
+    // parent, so K referenced children cost 1+2+…+K DOM property reads where K
+    // would do — and nesting compounds it, because a non-dynamic element passes
+    // its own full walk down as its children's `parentRef`. Chaining each walk
+    // onto the nearest node a phase-1 const ALREADY holds makes it O(K).
+    //
+    // Measured ceiling (isolated, 10,000 rows, `examples/benchmark/probe-refwalk.ts`):
+    // 2 referenced children 20µs · 4 children 335µs · 8 children 1.95ms. So it is
+    // below the noise floor on the krausest-style 2-cell row and a real win on
+    // the wide rows a real app renders.
+    //
+    // SAFETY. Chaining is applied ONLY to strings emitted into `refLines`
+    // (phase 1), never to an accessor passed through to `bindLines`. Every
+    // phase-1 const is captured from the PRISTINE clone before any phase-2
+    // mutation runs (see `buildTemplateCall`'s header), so `__e0.nextElementSibling`
+    // and `__root.firstElementChild.nextElementSibling` are the same node by
+    // construction. Leaving the pass-through case alone keeps every phase-2
+    // expression byte-identical to before this change.
+    //
+    // Two maps rather than one because a walk has two identities: `canonicalOf`
+    // answers "what is the full walk this name stands for?" (so a chained or
+    // var-rooted parentRef still composes a stable key), and `capturedRefs`
+    // answers "does a const already hold that walk?".
+    /** Ref var / accessor string -> its fully-expanded walk from `__root`. */
+    const canonicalOf = new Map<string, string>()
+    /** Fully-expanded walk -> the phase-1 const that already holds that node. */
+    const capturedRefs = new Map<string, string>()
+
+    /** Resolve a `parentRef` (var name, chained string, or raw walk) to its full walk. */
+    function canonicalBase(parentRef: string): string {
+      return canonicalOf.get(parentRef) ?? parentRef
+    }
+
+    /**
+     * Strength-reduce a fully-expanded walk onto the longest prefix a phase-1
+     * const already holds. Returns the walk unchanged when nothing matches.
+     *
+     * `hops` is the number of SIBLING steps left in the shortened expression —
+     * what the `idx > 8` indexed-getter cutoff is measured against. Descent
+     * (`firstChild`/`firstElementChild`) is inherent and is not counted.
+     */
+    function chainFromCaptured(canonical: string): { expr: string; hops: number } {
+      const exact = capturedRefs.get(canonical)
+      if (exact !== undefined) return { expr: exact, hops: 0 }
+      for (
+        let dot = canonical.lastIndexOf('.');
+        dot > 0;
+        dot = canonical.lastIndexOf('.', dot - 1)
+      ) {
+        const held = capturedRefs.get(canonical.slice(0, dot))
+        if (held !== undefined) {
+          const suffix = canonical.slice(dot)
+          return { expr: held + suffix, hops: countSiblingHops(suffix) }
+        }
+      }
+      return { expr: canonical, hops: countSiblingHops(canonical) }
+    }
+
+    /** Count `.nextSibling` / `.nextElementSibling` steps in a walk expression. */
+    function countSiblingHops(walk: string): number {
+      let n = 0
+      for (let i = walk.indexOf('.next'); i !== -1; i = walk.indexOf('.next', i + 1)) n++
+      return n
+    }
+
+    /**
+     * Emit a phase-1 capture: `const <var> = <expr>`, and record that the var now
+     * holds `canonical` so later walks can chain from it.
+     *
+     * `expr` is passed in rather than re-derived here: `childNodeAccessor` is the
+     * single place that decides which shortening wins (chain vs indexed getter),
+     * and re-deriving it would silently drop that decision.
+     */
+    function captureRef(varName: string, expr: string, canonical: string): string {
+      refLines.push(`const ${varName} = ${expr}`)
+      canonicalOf.set(varName, canonical)
+      if (!capturedRefs.has(canonical)) capturedRefs.set(canonical, varName)
+      return varName
+    }
+
     /**
      * Capture a placeholder/replace-target walk as a phase-1 const so the
      * walk resolves against the pristine clone (before any `_mountSlot`
      * mutated the child list). Returns the const name for the phase-2 op.
      */
     function hoistPlaceholderRef(parentRef: string, childNodeIdx: number): string {
-      const p = nextPlaceholderVar()
-      refLines.push(`const ${p} = ${childNodeAccessor(parentRef, childNodeIdx, true)}`)
-      return p
+      const expr = childNodeAccessor(parentRef, childNodeIdx, true)
+      return captureRef(nextPlaceholderVar(), expr, canonicalBase(expr))
     }
 
     function resolveElementVar(accessor: string, hasDynamic: boolean): string {
       if (accessor === '__root') return '__root'
-      if (hasDynamic) {
-        const v = nextVar()
-        refLines.push(`const ${v} = ${accessor}`)
-        return v
-      }
+      if (hasDynamic) return captureRef(nextVar(), accessor, canonicalBase(accessor))
       return accessor
     }
 
@@ -4188,7 +4264,10 @@ export function transformJSX_JS(
         bindLines.push(`${parentRef}.replaceChild(${tVar}, ${pVar})`)
       } else {
         // Pristine-clone capture — phase 1 (see buildTemplateCall header).
-        refLines.push(`const ${tVar} = ${varName}.firstChild`)
+        // Sole-text child, so the canonical walk is child 0 of `varName` — no
+        // sibling hops, so the indexed-getter cutoff can never apply here.
+        const canonical = canonicalWalk(canonicalBase(varName), 0, true)
+        captureRef(tVar, chainFromCaptured(canonical).expr, canonical)
       }
       const directRef = tryDirectSignalRef(exprNode)
       if (directRef) {
@@ -4392,15 +4471,46 @@ export function transformJSX_JS(
     // text) maps to `firstElementChild`/`nextElementSibling`; `childNodes[]`
     // (node list) maps to `firstChild`/`nextSibling`. Falls back to the indexed
     // form past 8 hops, where the chained reads outweigh the getter overhead.
-    function childNodeAccessor(parentRef: string, idx: number, mixed: boolean): string {
-      if (idx > 8) {
-        return mixed ? `${parentRef}.childNodes[${idx}]` : `${parentRef}.children[${idx}]`
-      }
+    /**
+     * The fully-expanded pointer walk to child `idx` of `base` — the stable
+     * IDENTITY of that node, used as the memo key regardless of which shorter
+     * expression is ultimately emitted for it. `base` must already be canonical
+     * (run it through `canonicalBase` first).
+     */
+    function canonicalWalk(base: string, idx: number, mixed: boolean): string {
       const first = mixed ? 'firstChild' : 'firstElementChild'
       const next = mixed ? 'nextSibling' : 'nextElementSibling'
-      let s = `${parentRef}.${first}`
+      let s = `${base}.${first}`
       for (let i = 0; i < idx; i++) s += `.${next}`
       return s
+    }
+
+    function childNodeAccessor(parentRef: string, idx: number, mixed: boolean): string {
+      const canonical = canonicalWalk(canonicalBase(parentRef), idx, mixed)
+      // Chaining off an already-captured node is what makes a K-child template
+      // O(K) instead of O(K²) — but it does NOT override the indexed-getter
+      // cutoff, it just gets measured against it. `hops` is the count AFTER
+      // shortening, so a chain that lands within 8 sibling steps wins even at a
+      // large `idx` (index 9 reached in one hop from a captured index 8), while
+      // a chain that would still need a long walk falls through to `children[]`
+      // exactly as before.
+      const { expr, hops } = chainFromCaptured(canonical)
+      if (hops > 8) {
+        // The live HTMLCollection/NodeList indexed getter is measurably slower
+        // than direct pointer reads (~3.8% on create-heavy mounts; SolidJS emits
+        // the walk form for the same reason) — but past 8 hops the chained reads
+        // outweigh the getter overhead.
+        const indexed = mixed
+          ? `${parentRef}.childNodes[${idx}]`
+          : `${parentRef}.children[${idx}]`
+        canonicalOf.set(indexed, canonical)
+        return indexed
+      }
+      // Record what this (possibly shortened) expression stands for, so a caller
+      // that turns it into a const (`resolveElementVar`) still keys on the
+      // canonical walk rather than on the shortened text.
+      if (expr !== canonical) canonicalOf.set(expr, canonical)
+      return expr
     }
 
     function processOneChild(

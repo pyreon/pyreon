@@ -707,9 +707,12 @@ describe('JSX transform — template emission', () => {
 
   test('uses element children indexing for nested access', () => {
     const result = t('<div><span>{a()}</span><em>{b()}</em></div>')
-    // Can't have two expression children in same parent, but each is in its own element
-    expect(result).toContain('__root.firstElementChild')
-    expect(result).toContain('__root.firstElementChild.nextElementSibling')
+    // Can't have two expression children in same parent, but each is in its own
+    // element. The second child is reached by ONE sibling step off the first's
+    // captured ref rather than a fresh walk from the parent (see
+    // `childNodeAccessor` — chaining makes a K-child template O(K), not O(K^2)).
+    expect(result).toContain('const __e0 = __root.firstElementChild;')
+    expect(result).toContain('const __e2 = __e0.nextElementSibling;')
   })
 
   test('handles deeply nested element paths', () => {
@@ -921,9 +924,10 @@ describe('JSX transform — template emission', () => {
     // Both are single-signal → _bindText
     expect(result).toContain('_bindText(a,')
     expect(result).toContain('_bindText(b,')
-    // Each expression gets its own placeholder and childNodes access
-    expect(result).toContain('firstChild')
-    expect(result).toContain('firstChild.nextSibling')
+    // Each expression gets its own placeholder, the second reached by one
+    // sibling step off the first's captured ref.
+    expect(result).toContain('const __p0 = __e0.firstChild;')
+    expect(result).toContain('const __p1 = __p0.nextSibling;')
   })
 
   test('handles mixed text + element + expression children', () => {
@@ -1098,8 +1102,8 @@ describe('JSX transform — template emission', () => {
   test('static expression with multi-expression context uses placeholder', () => {
     const result = t('<div><span>{label}{other}</span></div>')
     expect(result).toContain('_tpl(')
-    expect(result).toContain('firstChild')
-    expect(result).toContain('firstChild.nextSibling')
+    expect(result).toContain('const __p0 = __e0.firstChild;')
+    expect(result).toContain('const __p1 = __p0.nextSibling;')
   })
 })
 
