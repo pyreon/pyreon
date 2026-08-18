@@ -101,3 +101,69 @@ export function App() { return <Stack><Text>x</Text></Stack> }
     }
   })
 })
+
+// ─── The import warning must agree with the emit ─────────────────────────────
+//
+// `withField` LOWERS at top level — the specs above lock the struct it emits.
+// But `warnUnloweredPyreonModules` runs BEFORE the top-level recognizer, and
+// `withField` was missing from the suppression list its siblings (`s`, the
+// @pyreon/validation adapters, PermissionsProvider) are all on. So importing
+// it printed "has NO native lowering … the native build fails with 'cannot
+// find withField in scope'" directly above the `PyreonFieldMeta_*` struct the
+// same compile had just produced — telling the author a working API was
+// unusable and pointing them at a `<Web>` escape hatch they do not need.
+//
+// Same class as the toast entry in the anti-pattern catalog, and the exact
+// direction native-audit-warnings.test.ts calls "the more damaging one".
+
+const BLANKET = 'has NO native lowering'
+
+describe('@pyreon/validate withField — the import warning tracks the emit', () => {
+  it('does NOT claim withField is unlowered when it lowers', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(SRC, { target })
+      expect(r.code, target).toContain('PyreonFieldMeta_emailField')
+      expect(
+        r.warnings.filter((w) => w.includes('withField') && w.includes(BLANKET)),
+        target,
+      ).toHaveLength(0)
+    }
+  })
+
+  // The suppression is conditional, not a blanket exemption: when nothing
+  // lowers, `withField` IS reproduced verbatim and the warning is accurate.
+  it('still warns when no top-level withField lowers', () => {
+    const cases = [
+      // meta is an identifier, not a literal object
+      `const meta = { label: 'N' }\nexport const f = withField({}, meta)`,
+      // literal object, but no string-valued entries
+      `export const f = withField({}, { rows: 3 })`,
+      // imported but never declared at top level at all
+      ``,
+    ]
+    for (const decl of cases) {
+      const src = `import { withField } from '@pyreon/validate'\n${decl}\n`
+      const r = transform(src, { target: 'swift' })
+      expect(
+        r.warnings.some((w) => w.includes('withField') && w.includes(BLANKET)),
+        decl,
+      ).toBe(true)
+    }
+  })
+
+  // Suppressing the blanket line must not swallow the PRECISE, per-declaration
+  // diagnostic — an author with one good and one bad declaration still needs
+  // to be told which one was dropped, and why.
+  it('keeps the per-declaration diagnostic for a sibling that does not lower', () => {
+    const src = `import { withField } from '@pyreon/validate'
+export const a = withField({}, { label: 'A' })
+export const b = withField({}, { rows: 3 })
+`
+    const r = transform(src, { target: 'swift' })
+    expect(r.code).toContain('PyreonFieldMeta_a')
+    expect(r.warnings.filter((w) => w.includes(BLANKET) && w.includes('withField'))).toHaveLength(0)
+    expect(
+      r.warnings.some((w) => w.includes('`b`') && w.includes('no recognized meta fields')),
+    ).toBe(true)
+  })
+})

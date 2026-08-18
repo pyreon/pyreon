@@ -123,6 +123,14 @@ interface ParseCtx {
    * direction: it tells the author a working API is unusable.
    */
   validateSchemaLowered: boolean
+  /**
+   * A top-level `const X = withField(schema, { … })` is in the shape that
+   * lowers to a `PyreonFieldMeta_X` struct, so the blanket unlowered-module
+   * warning must not claim `withField` "has NO native lowering" directly
+   * above the struct it emits. Set by a syntactic pre-pass because the
+   * warning runs before the recognizer does.
+   */
+  fieldMetaLowered: boolean
   /** A top-level `zodSchema(...)`/`valibotSchema(...)`/`arktypeSchema(...)`
    * declaration lowered to a native struct, so the blanket unlowered-module
    * warning must not claim the opposite directly above that struct. */
@@ -220,6 +228,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     validateSchemaNames: new Set(),
     rxImportedNames: new Map(),
     validateSchemaLowered: false,
+    fieldMetaLowered: false,
     sizedMapNames: new Set(),
     validationSchemaLowered: false,
     hasPermissionsProvider: false,
@@ -257,6 +266,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   // to PyreonToast. Handles renamed imports (`import { toast as notify }`).
   collectToastNames(ast.program.body as AnyNode[], ctx)
   collectValidateSchemaNames(ast.program.body as AnyNode[], ctx)
+  collectFieldMetaLowered(ast.program.body as AnyNode[], ctx)
   collectRxImportedNames(ast.program.body as AnyNode[], ctx)
   collectSizedMapNames(ast.program.body as AnyNode[], ctx)
   // Pre-pass: collect `@pyreon/http` client + endpoint declarations so an
@@ -1697,6 +1707,11 @@ function warnUnloweredPyreonModules(body: AnyNode[], ctx: ParseCtx): void {
       // `s.object({ … })` schema declaration (Gap-4 emit). Other uses do not,
       // so the warning stays for them.
       if (src === '@pyreon/validate' && imported === 's' && ctx.validateSchemaLowered) continue
+      // Same shape for `withField`: a top-level `const X = withField(schema,
+      // { label: '…' })` emits a `PyreonFieldMeta_X` struct + its binding, so
+      // the blanket line was printed directly above a struct that does exist
+      // — and sent the author to a `<Web>` escape hatch they do not need.
+      if (src === '@pyreon/validate' && imported === 'withField' && ctx.fieldMetaLowered) continue
       // Same shape for @pyreon/validation's adapters: a top-level
       // `const X = zodSchema(z.object({ … }))` emits a real native struct
       // with parse/safeParse, so the blanket "has NO native lowering"
@@ -2375,10 +2390,39 @@ function tryModelDefnFromTopLevel(
  *   - parseReactive / formatErrors / watchValid / getMeta runtime
  *   - Non-string meta values (booleans, i18n key objects)
  */
-function tryFieldMetaDefnFromTopLevel(
-  node: AnyNode,
-  ctx: ParseCtx,
-): FieldMetaDefnIR | null {
+/**
+ * Pre-pass twin of `tryFieldMetaDefnFromTopLevel`, deciding ONLY "does some
+ * top-level `withField` here lower?" — via the same two helpers the recognizer
+ * uses, so the two cannot disagree.
+ *
+ * Deliberately silent: the recognizer itself already warns, by name and with
+ * the reason, for a `withField` that is shaped right but unlowerable (a
+ * non-literal meta object, or no string-valued entries). Warning here too
+ * would double-report.
+ */
+function collectFieldMetaLowered(body: AnyNode[], ctx: ParseCtx): void {
+  for (const node of body) {
+    const shape = withFieldDeclShape(node)
+    if (!shape) continue
+    const { metaArg } = shape
+    if (!metaArg || metaArg.type !== 'ObjectExpression') continue
+    if (extractLiteralFieldMeta(metaArg).length === 0) continue
+    ctx.fieldMetaLowered = true
+    return
+  }
+}
+
+/**
+ * The STRUCTURAL half of the `withField` recognizer: is this top-level node a
+ * single-declarator `const X = withField(…)`?
+ *
+ * Split out so the import-warning pre-pass and the recognizer decide with the
+ * SAME code. They run at different times — `warnUnloweredPyreonModules` fires
+ * before the top-level loop — so the pre-pass cannot simply ask whether the
+ * recognizer succeeded, and a hand-copied predicate would be free to drift
+ * from it (the two-deciders-must-agree class).
+ */
+function withFieldDeclShape(node: AnyNode): { bindingName: string; metaArg: AnyNode | undefined } | null {
   let varDecl: AnyNode | null = null
   if (
     node.type === 'ExportNamedDeclaration' &&
@@ -2394,23 +2438,20 @@ function tryFieldMetaDefnFromTopLevel(
   const declarator = declarators[0]
   if (!declarator) return null
   if (declarator.id?.type !== 'Identifier') return null
-  const bindingName = declarator.id.name as string
-
   const init = declarator.init as AnyNode | undefined
   if (init?.type !== 'CallExpression') return null
   if (init.callee?.type !== 'Identifier') return null
   if ((init.callee.name as string) !== 'withField') return null
-
   const args = (init.arguments as AnyNode[] | undefined) ?? []
   // withField(schema, meta) — second argument is the literal meta.
-  const metaArg = args[1]
-  if (!metaArg || metaArg.type !== 'ObjectExpression') {
-    ctx.warnings.push(
-      `withField declaration \`${bindingName}\`: second argument must be a literal meta object — v1 emit needs the literal shape. Falling back to silent-drop.`,
-    )
-    return null
-  }
+  return { bindingName: declarator.id.name as string, metaArg: args[1] }
+}
 
+/**
+ * The VALUE half: the string-literal entries of a `withField` meta object.
+ * Shared with the pre-pass for the same reason as `withFieldDeclShape`.
+ */
+function extractLiteralFieldMeta(metaArg: AnyNode): FieldMetaDefnIR['meta'] {
   const meta: FieldMetaDefnIR['meta'] = []
   for (const prop of (metaArg.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
@@ -2431,6 +2472,25 @@ function tryFieldMetaDefnFromTopLevel(
       // not the meta map; richer meta types are a follow-up).
     }
   }
+  return meta
+}
+
+function tryFieldMetaDefnFromTopLevel(
+  node: AnyNode,
+  ctx: ParseCtx,
+): FieldMetaDefnIR | null {
+  const shape = withFieldDeclShape(node)
+  if (!shape) return null
+  const { bindingName, metaArg } = shape
+
+  if (!metaArg || metaArg.type !== 'ObjectExpression') {
+    ctx.warnings.push(
+      `withField declaration \`${bindingName}\`: second argument must be a literal meta object — v1 emit needs the literal shape. Falling back to silent-drop.`,
+    )
+    return null
+  }
+
+  const meta = extractLiteralFieldMeta(metaArg)
 
   if (meta.length === 0) {
     ctx.warnings.push(
@@ -4125,6 +4185,7 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     validateSchemaNames: new Set(),
     rxImportedNames: new Map(),
     validateSchemaLowered: false,
+    fieldMetaLowered: false,
     sizedMapNames: new Set(),
     validationSchemaLowered: false,
     hasPermissionsProvider: false,
