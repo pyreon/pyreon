@@ -232,7 +232,11 @@ try {
   // FRESH is a true first mount into an empty list. REPLACE is what the suite's
   // "create" op measures on 19 of its 20 runs (no reset between runs).
   const fresh = table('FRESH create (mount into empty)', out.pyreon, out.vanilla)
-  const repl = table('REPLACE (1,000 live keyed rows -> 1,000 new)', out.pyreonReplace, out.vanillaReplace)
+  const repl = table(
+    'REPLACE (1,000 live keyed rows -> 1,000 new)',
+    out.pyreonReplace,
+    out.vanillaReplace,
+  )
 
   console.log(`\n${'='.repeat(70)}`)
   console.log('WHAT THIS SAYS')
@@ -244,7 +248,9 @@ try {
   // "3799% JS / -3699% layout"). Report the two deltas, and only offer the split
   // when it is defensible.
   const dFreshTotal = fresh.dJs + fresh.dLayout
-  console.log(`  fresh   : JS ${f(fresh.dJs)} · layout ${f(fresh.dLayout)} · total ${f(dFreshTotal)}`)
+  console.log(
+    `  fresh   : JS ${f(fresh.dJs)} · layout ${f(fresh.dLayout)} · total ${f(dFreshTotal)}`,
+  )
   if (Math.abs(dFreshTotal) > 2 * Math.abs(fresh.dLayout)) {
     console.log(
       `            -> ${((fresh.dJs / dFreshTotal) * 100) | 0}% of the gap is JS (addressable)`,
@@ -258,9 +264,23 @@ try {
   // Vanilla rebuilds identically either way (`innerHTML=''` + rebuild), so its
   // fresh->replace delta is the harness's own noise floor; Pyreon's is keyed
   // teardown. Reporting both keeps the reader from crediting noise as teardown.
+  //
+  // DO NOT read this row as "teardown scales badly". Comparing THIS number at
+  // one row count against a differently-derived one at another row count is
+  // what produced a bogus "teardown is ~43x from 1k to 10k" reading; a proper
+  // sweep (bench-teardown-curve.ts) measures a log-log exponent of 0.94-1.07,
+  // i.e. LINEAR, with the clear residual flat at ~25-150 ns/row. It also
+  // showed the split is inverted from the intuition: at 1,000 rows the replace
+  // gap is ~79% MOUNT and ~21% teardown, so teardown is not the lever.
   const pTear = out.pyreonReplace.js - out.pyreon.js
   const vTear = out.vanillaReplace.js - out.vanilla.js
-  console.log(`  keyed teardown (JS, replace - fresh): Pyreon ${f(pTear)} · Vanilla ${f(vTear)} (noise floor)`)
+  console.log(
+    `  keyed teardown (JS, replace - fresh): Pyreon ${f(pTear)} · Vanilla ${f(vTear)} (noise floor)`,
+  )
+  console.log(
+    '  note: teardown is LINEAR (exponent 0.94-1.07, bench-teardown-curve.ts); ' +
+      'the replace gap at 1k rows is ~79% mount / ~21% teardown.',
+  )
   console.log(`  JS gap to Vanilla: fresh ${f(fresh.dJs)} -> replace ${f(repl.dJs)}`)
 } finally {
   await browser.close()
