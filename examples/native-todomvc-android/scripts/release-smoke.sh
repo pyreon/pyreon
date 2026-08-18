@@ -32,10 +32,19 @@
 #   1. delete $DUMP before every attempt, so a stale file can never be read;
 #   2. treat the known race strings in the command's own output as a failure;
 #   3. require a plausible `<hierarchy>` document before believing the tree;
-#   4. remember whether ANY valid tree was ever obtained, so the failure
-#      message says which of the two things went wrong (the "message IS the
-#      artifact" rule) instead of leaving the next reader to guess.
+#   4. require the tree to belong to OUR package — a valid hierarchy owned by
+#      a system dialog is a verdict about someone else's window;
+#   5. remember which of those was reached, so the failure message says which
+#      of the three things went wrong (the "message IS the artifact" rule)
+#      instead of leaving the next reader to guess.
 # Fail-closed throughout: no valid tree means FAIL, never a silent pass.
+#
+# Step 4 was added after the first fix shipped and CI immediately produced the
+# case it missed: our app topResumedActivity, no FATAL, and every dump
+# returning a package="android" dialog. Well-formed, markerless, and about
+# another window entirely — which the harness read as "the app rendered without
+# the marker" and blamed on R8. Structural validity was the wrong question a
+# second time; ownership is the right one.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -64,6 +73,15 @@ DUMP=/sdcard/pyreon-smoke.xml
 # Distinguishes "the harness never produced a tree" (environment) from "the
 # app rendered a tree without the marker" (a real regression).
 GOT_TREE=0
+# A well-formed <hierarchy> is NOT necessarily OUR hierarchy. On a contended
+# emulator a system dialog ("System UI isn't responding", a Play-services
+# prompt, or uiautomator's own crash dialog) can own the window being dumped:
+# that tree is perfectly valid, belongs to package="android", and contains no
+# marker — so judging by well-formedness alone blames the app for a window it
+# does not own. That is the same mistake as trusting the exit code, one level
+# up. Require the tree to actually CONTAIN our package before believing it is
+# a verdict about our app.
+GOT_APP_TREE=0
 # The loop deletes $DUMP each pass, so the on-device file is gone by the time
 # the diagnostics run — keep the last VALID tree in hand for the report.
 LAST_TREE=""
@@ -93,6 +111,15 @@ for _ in $(seq 1 20); do
 
   GOT_TREE=1
   LAST_TREE=$xml
+
+  # A tree from someone else's window says nothing about us — keep polling
+  # until our own window is the one being dumped.
+  if ! printf '%s' "$xml" | grep -q "package=\"$PKG\""; then
+    sleep 3
+    continue
+  fi
+  GOT_APP_TREE=1
+
   if printf '%s' "$xml" | grep -q "remaining"; then
     echo "[release-smoke] ok: untouched release APK launched and rendered ('remaining' in the accessibility tree)."
     adb shell am force-stop "$PKG" || true
@@ -105,9 +132,12 @@ done
 # artifact" rule): the app's own crash + which activity is actually on top +
 # the last tree — so a real regression is told apart from this harness race
 # without another CI round trip.
-if [ "$GOT_TREE" -eq 1 ]; then
-  echo "[release-smoke] FAIL: '$PKG' rendered, but 'remaining' was absent from a VALID accessibility tree after 20 polls."
-  echo "[release-smoke] A valid tree was read, so this is an APP-SIDE verdict — suspect a real R8/runtime regression, not the harness."
+if [ "$GOT_APP_TREE" -eq 1 ]; then
+  echo "[release-smoke] FAIL: '$PKG' rendered, but 'remaining' was absent from ITS OWN accessibility tree after 20 polls."
+  echo "[release-smoke] The tree belongs to $PKG, so this is an APP-SIDE verdict — suspect a real R8/runtime regression, not the harness."
+elif [ "$GOT_TREE" -eq 1 ]; then
+  echo "[release-smoke] FAIL: every valid tree belonged to ANOTHER window (a system dialog owned the screen) — $PKG's own window was never dumped."
+  echo "[release-smoke] No tree of ours was ever read, so this says NOTHING about the app: it is an emulator/harness failure. Re-run."
 else
   echo "[release-smoke] FAIL: never obtained a valid accessibility tree in 20 polls — every dump lost the UiAutomation race."
   echo "[release-smoke] No tree was ever read, so this says NOTHING about the app: it is an emulator/harness failure. Re-run."

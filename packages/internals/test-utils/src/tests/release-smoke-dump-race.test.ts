@@ -25,16 +25,30 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = resolve(HERE, '../../../../..')
 const SCRIPT = join(REPO_ROOT, 'examples/native-todomvc-android/scripts/release-smoke.sh')
 
+const PKG = 'com.pyreon.PyreonTodoMVC'
+
 /** A tree the marker-check should accept as a genuine render. */
 const TREE_WITH_MARKER =
   `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0">` +
-  `<node index="0" class="android.widget.FrameLayout" text="">` +
-  `<node index="1" class="android.widget.TextView" text="2 remaining" />` +
-  `<node index="2" class="android.widget.TextView" text="Pyreon TodoMVC" />` +
+  `<node index="0" class="android.widget.FrameLayout" package="${PKG}" text="">` +
+  `<node index="1" class="android.widget.TextView" package="${PKG}" text="2 remaining" />` +
+  `<node index="2" class="android.widget.TextView" package="${PKG}" text="Pyreon TodoMVC" />` +
   `</node></hierarchy>`
 
 /** Same shape, app rendered, marker genuinely absent — a real regression. */
 const TREE_WITHOUT_MARKER = TREE_WITH_MARKER.replace('2 remaining', 'Pyreon')
+
+/**
+ * A perfectly VALID hierarchy that belongs to someone else — the system dialog
+ * shape observed on a contended CI emulator (package="android", dialog-sized
+ * bounds, our app still topResumedActivity and not crashed). Believing this one
+ * blames the app for a window it does not own.
+ */
+const TREE_FOREIGN_WINDOW =
+  `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0">` +
+  `<node index="0" class="android.widget.FrameLayout" package="android" text="" bounds="[28,979][1052,1485]">` +
+  `<node index="1" class="android.widget.TextView" package="android" text="System UI isn't responding" />` +
+  `</node></hierarchy>`
 
 interface RunResult {
   status: number
@@ -48,7 +62,7 @@ interface RunResult {
  *   while a stale dump file with the marker already sits on "device";
  *   `rendered` / `blank` = dumps succeed and write the given tree.
  */
-function runSmoke(mode: 'race' | 'rendered' | 'blank'): RunResult {
+function runSmoke(mode: 'race' | 'rendered' | 'blank' | 'dialog'): RunResult {
   const dir = mkdtempSync(join(tmpdir(), 'pyreon-smoke-'))
   mkdirSync(join(dir, 'scripts'), { recursive: true })
   mkdirSync(join(dir, 'app/build/outputs/apk/release'), { recursive: true })
@@ -63,7 +77,12 @@ function runSmoke(mode: 'race' | 'rendered' | 'blank'): RunResult {
   const state = join(dir, 'device-dump.xml')
   if (mode === 'race') writeFileSync(state, TREE_WITH_MARKER)
 
-  const tree = mode === 'rendered' ? TREE_WITH_MARKER : TREE_WITHOUT_MARKER
+  const tree =
+    mode === 'rendered'
+      ? TREE_WITH_MARKER
+      : mode === 'dialog'
+        ? TREE_FOREIGN_WINDOW
+        : TREE_WITHOUT_MARKER
   const adb = `#!/usr/bin/env bash
 # Fake adb. Only the calls the smoke script makes are modelled.
 STATE=${JSON.stringify(state)}
@@ -129,6 +148,17 @@ describe('Android release-smoke — the uiautomator race must not be decidable b
     expect(r.out).toContain('APP-SIDE verdict')
     // and it must report the tree it actually read, not "(none)"
     expect(r.out).toContain('<hierarchy')
+  })
+
+  it("a VALID tree owned by ANOTHER window is not an app verdict — it's the harness", () => {
+    // Observed for real on CI: our app was topResumedActivity with no FATAL,
+    // yet every dump returned a package="android" system dialog. Well-formed,
+    // markerless, and about someone else entirely.
+    const r = runSmoke('dialog')
+    expect(r.status, r.out).not.toBe(0)
+    expect(r.out).toContain('belonged to ANOTHER window')
+    expect(r.out).toContain('says NOTHING about the app')
+    expect(r.out).not.toContain('APP-SIDE verdict')
   })
 
   it('a VALID tree containing the marker PASSES', () => {
