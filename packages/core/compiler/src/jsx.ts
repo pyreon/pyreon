@@ -223,6 +223,34 @@ export interface TransformOptions {
   ssrTemplate?: boolean
 
   /**
+   * Absorb COMPONENT children into the enclosing `_tpl()` template instead of
+   * bailing the whole element to `h()` (opt-in; client emit only).
+   *
+   * `<div class="branch"><Node/><Node/></div>` bails today — one component
+   * child makes `templateElementCount` return −1 for the element and every
+   * ancestor, so an app's whole composition skeleton lowers to `h()` +
+   * `mountElement`. With this on, the element's static skeleton bakes into the
+   * template HTML and each component child is mounted into the clone
+   * (`_mountChild` when nothing static follows it, `_mountSlot` + a `<!>`
+   * placeholder otherwise) — byte-for-byte the shape Solid's compiler emits.
+   *
+   * **Default OFF, and it must stay off until compiled-template hydration
+   * adoption lands.** A `_tpl` result is SWAPPED at hydration
+   * (`hydrate.ts`: *"there is no true `_tpl` hydration mode yet"*), so newly
+   * templatizing the skeleton converts the one part of the tree that still
+   * ADOPTS into one that rebuilds — measured on a 3-level SSR layout, node
+   * retention 3/4 → 0/4, and `<For>`-row adoption is defeated with it. That is
+   * a hydration regression, not a mount win, for every SSR/SSG app. Turn this
+   * on only for a client bundle that never calls `hydrateRoot`.
+   *
+   * Ordering is safe by construction: the emit BAILS on any element whose
+   * template call would be an eagerly-evaluated component argument (see
+   * `templateMountIsEagerlyOrdered`), because a bind that mounts components
+   * must not run before the enclosing component's `provide()`.
+   */
+  templatizeComponentChildren?: boolean
+
+  /**
    * Known signal variable names from resolved imports.
    * The Vite plugin maintains a cross-module signal export registry and
    * passes imported signal names here so the compiler can auto-call them
@@ -356,6 +384,16 @@ function forEachChild(node: N, cb: (child: N) => void): void {
 }
 
 // ─── JSX element helpers ────────────────────────────────────────────────────
+
+/**
+ * Sentinel marking a PRESERVED HOLE inside a generated template body — the
+ * source range of an absorbed COMPONENT child, spliced back out by
+ * `tryTemplateEmit` so the walk can transform that child in place. A NUL can
+ * never occur in the generated body, and building it with `fromCharCode`
+ * keeps the byte out of this file (a literal NUL breaks grep, formatters and
+ * diff tooling).
+ */
+const HOLE_SENTINEL = String.fromCharCode(0)
 
 function jsxTagName(node: N): string {
   const opening = node.openingElement
@@ -953,7 +991,14 @@ export function transformJSX(
   // native-equivalence / fuzz-equivalence), so it no longer forces the JS path.
   // Per-call try/catch: if the native binary panics on an edge case (bad UTF-8,
   // unexpected AST shape), fall back gracefully instead of crashing the dev server.
-  if (nativeTransformJsx) {
+  // `templatizeComponentChildren` has no native (Rust) counterpart yet, and the
+  // napi call is POSITIONAL — passing it would be silently dropped, so the
+  // native backend would emit the un-templatized shape while the JS backend
+  // emitted the new one. That is a byte-divergence the equivalence oracle would
+  // catch, but it would ALSO make a bisect of this feature pass against a
+  // "reverted" build (transformJSX prefers the binary). Force the JS path while
+  // the option is on so the two can never disagree.
+  if (nativeTransformJsx && options.templatizeComponentChildren !== true) {
     try {
       return nativeTransformJsx(
         code,
@@ -996,6 +1041,10 @@ export function transformJSX_JS(
 ): TransformResult {
   const ssr = options.ssr === true
   const ssrTemplate = ssr && options.ssrTemplate === true
+  // Client emit only — the SSR paths render components through `renderNode`
+  // already, so there is nothing to absorb there (and `_ssr`'s preserved-hole
+  // machinery has its own component-child bail).
+  const tplComponentChildren = !ssr && options.templatizeComponentChildren === true
 
   let program: N
   try {
@@ -1096,6 +1145,7 @@ export function transformJSX_JS(
   let needsApplyPropsImportGlobal = false
   let needsBindSpreadImportGlobal = false
   let needsMountSlotImportGlobal = false
+  let needsMountComponentImportGlobal = false
   let needsCxImportGlobal = false
   let needsSetStyleImportGlobal = false
   let needsSetClassImportGlobal = false
@@ -1464,19 +1514,108 @@ export function transformJSX_JS(
 
   // ── Template emit ─────────────────────────────────────────────────────────
 
+  /**
+   * Would this template call be evaluated as an EAGER argument of a component
+   * call — i.e. before that component's own body has run?
+   *
+   * `_tpl(html, bind)` runs `bind` when the CALL EXPRESSION evaluates. While a
+   * bind only CONSTRUCTS DOM that is harmless wherever it sits. Once it MOUNTS
+   * components (`templatizeComponentChildren`) it becomes ordered against the
+   * enclosing component's setup: in `<Provider>{_tpl(…)}</Provider>` the
+   * argument runs before `Provider`'s `provide()`, so every binding the bind
+   * creates snapshots the pre-provide context owner and reads defaults. That is
+   * the shape that took `ui-showcase-regression` to 4/26 in #2914.
+   *
+   * A component's SOLE meaningful child is exempt because #2916 wraps it in
+   * `_lc(() => …)`, a memoized untracked thunk the component's own
+   * `props.children` read forces — after `provide()`. Everything else BAILS to
+   * `h()`, which is today's (correct) behaviour.
+   */
+  function templateMountIsEagerlyOrdered(node: N): boolean {
+    const parent = findParent(node)
+    if (!parent) return false
+    if (parent.type === 'JSXFragment') return true
+    if (parent.type === 'JSXExpressionContainer') return true
+    if (parent.type !== 'JSXElement') return false
+    const tag = jsxTagName(parent)
+    // `jsxTagName` reports '' for a member/namespaced tag (`<Ctx.Provider>`),
+    // which `isComponentTag` would then read as "not a component". Those parents
+    // ARE components and are NEVER `_lc`-wrapped (the compiler classifies no
+    // member tag as a component anywhere), so they are always eager.
+    if (tag === '') return true
+    if (!isComponentTag(tag)) return false
+    return !isSoleComponentChild(node)
+  }
+
+  /** Does this element tree absorb any COMPONENT child into its template? */
+  function templateAbsorbsComponent(node: N): boolean {
+    if (node.type === 'JSXElement' && isSelfClosing(node)) return false
+    // Mirrors `flattenChildren`'s recursion EXACTLY, fragments included and at
+    // any depth. A one-level fragment scan would report "absorbs nothing" for
+    // `<div><><><Comp/></></></div>` while the emit happily absorbed it — the
+    // gate would then be skipped for a shape that needs it.
+    for (const child of jsxChildren(node)) {
+      if (child.type === 'JSXElement') {
+        if (isAbsorbableComponentChild(child)) return true
+        if (templateAbsorbsComponent(child)) return true
+      } else if (child.type === 'JSXFragment' && templateAbsorbsComponent(child)) {
+        return true
+      }
+    }
+    return false
+  }
+
   function tryTemplateEmit(node: N): boolean {
     if (ssr) return false
     if (isSelfClosing(node)) return false
+    // Ordering gate — see `templateMountIsEagerlyOrdered`. Only templates that
+    // MOUNT something are ordered against a component's setup, so a purely
+    // static template is unaffected and keeps emitting everywhere it did.
+    if (
+      tplComponentChildren &&
+      templateAbsorbsComponent(node) &&
+      templateMountIsEagerlyOrdered(node)
+    )
+      return false
     const elemCount = templateElementCount(node, true)
     if (elemCount < 1) return false
-    const tplCall = buildTemplateCall(node)
+    const holes: N[] = []
+    const tplCall = buildTemplateCall(node, holes)
     if (!tplCall) return false
     const start = node.start as number
     const end = node.end as number
     const parent = findParent(node)
     const needsBraces = parent && (parent.type === 'JSXElement' || parent.type === 'JSXFragment')
-    replacements.push({ start, end, text: braceTemplateChild(tplCall, node, !!needsBraces) })
+    const braced = braceTemplateChild(tplCall, node, !!needsBraces)
     needsTplImport = true
+
+    if (holes.length === 0) {
+      replacements.push({ start, end, text: braced })
+      return true
+    }
+
+    // BRACKETED emission — the same preserved-hole shape the `_ssrDeferred`
+    // path uses. An absorbed COMPONENT child keeps its OWN source range, so the
+    // walk still transforms it in place: `_rp` on its props, `_lc` on its own
+    // sole child, nested `_tpl`. Emitting sliced text instead silently froze
+    // every signal-driven prop under a templatized skeleton (6/26 on
+    // `ui-showcase-regression`), because a slice is taken before those
+    // transformations exist and the walk never revisits the subtree.
+    const parts = braced.split(HOLE_SENTINEL)
+    // parts = [seg0, idx0, seg1, idx1, …, segN] — odd entries are hole indices.
+    let cursor = start
+    for (let i = 1; i < parts.length; i += 2) {
+      const hole = holes[Number(parts[i])]
+      // Holes must be in source order for the bracketing to be well-formed.
+      if (!hole || (hole.start as number) < cursor) return false
+      replacements.push({ start: cursor, end: hole.start as number, text: parts[i - 1] as string })
+      cursor = hole.end as number
+    }
+    replacements.push({ start: cursor, end, text: parts[parts.length - 1] as string })
+
+    // Walk each preserved child so it receives the transformations the
+    // template's own replacement no longer covers.
+    for (const hole of holes) walkNode(hole)
     return true
   }
 
@@ -2438,6 +2577,26 @@ export function transformJSX_JS(
   }
 
   /**
+   * A JSX child this template may ABSORB as a mounted component
+   * (`templatizeComponentChildren`) rather than bail on.
+   *
+   * Deliberately NOT name-filtered: `<For>` / `<Show>` are ordinary components
+   * here. Excluding control-flow by name would only paper over the shapes the
+   * repo happens to gate and leave the general one — the hydration caveat that
+   * governs this option applies to every component child uniformly.
+   */
+  function isAbsorbableComponentChild(child: N): boolean {
+    if (child.type !== 'JSXElement') return false
+    const name = child.openingElement?.name
+    if (!name) return false
+    // A member / namespaced tag (`<Ctx.Provider/>`, `<svg:a/>`) is never a DOM
+    // element — `jsxTagName` reports '' for it, so the uppercase test alone
+    // would misread it as "not a component".
+    if (name.type !== 'JSXIdentifier') return true
+    return isComponentTag(name.name)
+  }
+
+  /**
    * Stable reference — an expression whose value is a bare property read.
    * Bare Identifier (`children`) or a non-computed MemberExpression chain
    * (`obj.x.y`) terminating in an Identifier or `this`. These are the
@@ -3355,6 +3514,7 @@ export function transformJSX_JS(
     if (needsApplyPropsImportGlobal) runtimeDomImports.push('_applyProps')
     if (needsBindSpreadImportGlobal) runtimeDomImports.push('_bindSpread')
     if (needsMountSlotImportGlobal) runtimeDomImports.push('_mountSlot')
+    if (needsMountComponentImportGlobal) runtimeDomImports.push('_mountChild')
     if (needsBindPolyImportGlobal) runtimeDomImports.push('bindPolymorphicText')
     if (needsSetChildImportGlobal) runtimeDomImports.push('_setChild')
     if (needsSetChildAtImportGlobal) runtimeDomImports.push('_setChildAt')
@@ -3458,7 +3618,12 @@ export function transformJSX_JS(
 
   function countChildForTemplate(child: N): number {
     if (child.type === 'JSXText') return 0
-    if (child.type === 'JSXElement') return templateElementCount(child)
+    if (child.type === 'JSXElement') {
+      // A COMPONENT child no longer bails the whole element: it is mounted into
+      // the clone by the bind, contributing no baked elements of its own.
+      if (tplComponentChildren && isAbsorbableComponentChild(child)) return 0
+      return templateElementCount(child)
+    }
     if (child.type === 'JSXExpressionContainer') {
       const expr = child.expression
       if (!expr || expr.type === 'JSXEmptyExpression') return 0
@@ -3503,7 +3668,7 @@ export function transformJSX_JS(
     return count
   }
 
-  function buildTemplateCall(node: N): string | null {
+  function buildTemplateCall(node: N, holesOut?: N[]): string | null {
     // Two-phase emission (PZ-08 fix). `refLines` (phase 1) holds every
     // PRISTINE-CLONE node capture: element ref walks (`const __eN = …`),
     // sole-text captures (`const __tN = X.firstChild`), and hoisted
@@ -3522,6 +3687,15 @@ export function transformJSX_JS(
     const refLines: string[] = []
     const bindLines: string[] = []
     const disposerNames: string[] = []
+    // Preserved holes — absorbed COMPONENT children whose source range must
+    // survive into the output so the walk can transform it in place. Each is
+    // represented in the generated body by a sentinel that `tryTemplateEmit`
+    // splits on; NUL can't occur in the source text the body is built from.
+    const holeNodes: N[] = []
+    function registerHole(node: N): string {
+      holeNodes.push(node)
+      return `${HOLE_SENTINEL}${holeNodes.length - 1}${HOLE_SENTINEL}`
+    }
     let varIdx = 0
     let dispIdx = 0
     let placeholderIdx = 0
@@ -3531,6 +3705,7 @@ export function transformJSX_JS(
     let needsApplyPropsImport = false
     let needsBindSpreadImport = false
     let needsMountSlotImport = false
+    let needsMountComponentImport = false
     let needsCxImport = false
     let needsSetStyle = false
     let needsSetClass = false
@@ -4432,6 +4607,10 @@ export function transformJSX_JS(
       | { kind: 'text'; text: string }
       | { kind: 'element'; node: N; elemIdx: number }
       | { kind: 'expression'; expression: N }
+      // A COMPONENT child absorbed into this template (`templatizeComponentChildren`).
+      // Contributes NO static HTML when nothing static follows it — it is
+      // appended into the clone — and a `<!>` placeholder otherwise.
+      | { kind: 'component'; node: N }
 
     function classifyJsxChild(
       child: N,
@@ -4446,6 +4625,12 @@ export function transformJSX_JS(
         return
       }
       if (child.type === 'JSXElement') {
+        // A component child is MOUNTED into the clone, not baked — so it does
+        // not consume an element index (the ref walks address baked elements).
+        if (tplComponentChildren && isAbsorbableComponentChild(child)) {
+          out.push({ kind: 'component', node: child })
+          return
+        }
         out.push({ kind: 'element', node: child, elemIdx: elemIdxRef.value++ })
         return
       }
@@ -4475,6 +4660,14 @@ export function transformJSX_JS(
       const hasElem = flatChildren.some((c) => c.kind === 'element')
       const hasText = flatChildren.some((c) => c.kind === 'text')
       const exprCount = flatChildren.filter((c) => c.kind === 'expression').length
+      // An absorbed component child counts toward MIXED (its append must not
+      // jump over static content that follows it) but NOT toward multi-expr:
+      // several component children with nothing static between them append in
+      // source order, which is already the right order. That distinction is the
+      // whole win — the `<!>` placeholder variant of this feature measured
+      // 4.24ms against the append variant's 3.94ms, because 2,046 placeholder
+      // comments get cloned and then removed.
+      const hasComponent = flatChildren.some((c) => c.kind === 'component')
       // `useMixed` triggers placeholder-based positional mounting (each
       // dynamic child gets a `<!>` comment slot in the template that
       // `replaceChild`-replaces at mount). It must fire whenever ≥2 of
@@ -4483,7 +4676,8 @@ export function transformJSX_JS(
       // template content, breaking source-order rendering for shapes
       // like `<p>foo {x()} bar</p>` (rendered "foo  barX" instead of
       // "foo X bar"). Discovered by Phase B2's whitespace tests.
-      const present = (hasElem ? 1 : 0) + (hasText ? 1 : 0) + (exprCount > 0 ? 1 : 0)
+      const present =
+        (hasElem ? 1 : 0) + (hasText ? 1 : 0) + (exprCount > 0 ? 1 : 0) + (hasComponent ? 1 : 0)
       return { useMixed: present > 1, useMultiExpr: exprCount > 1 }
     }
 
@@ -4525,9 +4719,16 @@ export function transformJSX_JS(
       if (!isSelfClosing(node)) {
         return jsxChildren(node).some(
           (c: N) =>
-            c.type === 'JSXExpressionContainer' &&
-            c.expression &&
-            c.expression.type !== 'JSXEmptyExpression',
+            (c.type === 'JSXExpressionContainer' &&
+              c.expression &&
+              c.expression.type !== 'JSXEmptyExpression') ||
+            // PZ-08: an absorbed component child emits a phase-2 `_mountChild` /
+            // `_mountSlot` line, so this element's own ref MUST be a phase-1
+            // const. Without this the walk was inlined into the phase-2 line and
+            // evaluated AFTER a preceding `_mountSlot` had removed its `<!>`
+            // placeholder — the component mounted inside the previous sibling,
+            // or into the `<!--pyreon-->` marker where it vanished silently.
+            (tplComponentChildren && isAbsorbableComponentChild(c)),
         )
       }
       return false
@@ -4591,6 +4792,33 @@ export function transformJSX_JS(
       childNodeIdx: number,
     ): string | null {
       if (child.kind === 'text') return escapeHtmlText(child.text)
+      if (child.kind === 'component') {
+        // The component's own source range is PRESERVED as a hole rather than
+        // sliced. Slicing would emit the raw text and silently drop every
+        // transformation the walk applies inside it — `_rp` wrapping on its
+        // props (so a signal-driven prop freezes), `_lc` on its own sole child,
+        // and any nested `_tpl`. That cost 6 of 26 `ui-showcase-regression`
+        // specs when this emit sliced. The hole is walked by `tryTemplateEmit`
+        // and spliced back in by the bracketed replacement.
+        needsMountComponentImport = true
+        const d = nextDisp()
+        const vnode = registerHole(child.node)
+        // `needsPlaceholder` is declared below (expression path); for a
+        // component only MIXED matters — `useMultiExpr` counts text-merging
+        // expression children, and any component alongside them already forces
+        // `useMixed`.
+        if (useMixed) {
+          // Something static follows (or could): mount AT the placeholder.
+          needsMountSlotImport = true
+          const placeholder = hoistPlaceholderRef(parentRef, childNodeIdx)
+          bindLines.push(`const ${d} = _mountSlot(${vnode}, ${parentRef}, ${placeholder})`)
+          return '<!>'
+        }
+        // Nothing static in this element — append in source order, which needs
+        // no placeholder comment at all.
+        bindLines.push(`const ${d} = _mountChild(${vnode}, ${parentRef}, null)`)
+        return ''
+      }
       if (child.kind === 'element') {
         const childAccessor = useMixed
           ? childNodeAccessor(parentRef, childNodeIdx, true)
@@ -4736,6 +4964,7 @@ export function transformJSX_JS(
     if (needsApplyPropsImport) needsApplyPropsImportGlobal = true
     if (needsBindSpreadImport) needsBindSpreadImportGlobal = true
     if (needsMountSlotImport) needsMountSlotImportGlobal = true
+    if (needsMountComponentImport) needsMountComponentImportGlobal = true
     if (needsCxImport) needsCxImportGlobal = true
     if (needsSetStyle) needsSetStyleImportGlobal = true
     if (needsSetClass) needsSetClassImportGlobal = true
@@ -4749,6 +4978,8 @@ export function transformJSX_JS(
       const combinedBody = reactiveBindExprs.join('; ')
       bindLines.push(`const ${combinedName} = _bind(() => { ${combinedBody} })`)
     }
+
+    if (holesOut) holesOut.push(...holeNodes)
 
     if (refLines.length === 0 && bindLines.length === 0 && disposerNames.length === 0) {
       return `_tpl("${escaped}", () => null)`

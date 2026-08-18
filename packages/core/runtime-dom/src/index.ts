@@ -24,7 +24,11 @@ export {
 } from './hydration-debug'
 export type { KeepAliveProps } from './keep-alive'
 export { KeepAlive } from './keep-alive'
-export { bindPolymorphicText, mountChild } from './mount'
+// `_mountChild` is the compiler-facing alias (same underscore convention as
+// `_setAttr` / `_setStyle` / `_applyProps`): the template emit appends an
+// absorbed COMPONENT child with it when no static content follows, which is
+// what lets that child skip the `<!>` placeholder `_mountSlot` needs.
+export { bindPolymorphicText, mountChild, mountChild as _mountChild } from './mount'
 export type { SanitizeFn } from './props'
 export {
   applyAttrProp as _setAttr,
