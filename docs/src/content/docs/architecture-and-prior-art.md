@@ -78,8 +78,14 @@ bimodal-timing false start — see below). Elsewhere it is mostly a
 corrected verdicts are ties on `create 1,000`, `replace`, `partial update`,
 `swap`, and `remove`; Octane wins `clear rows` outright (a real, resolved
 1.43×); and `select row` has no honest multiplier to publish (both
-frameworks sit at the edge of what real-Chromium timing can resolve).
-Important caveats, kept verbatim with the project's internal record:
+frameworks sit at the edge of what real-Chromium timing can resolve). The
+`create 1,000`/`replace` tie is itself a browser-layout-bound measurement,
+not just a CI overlap — a 2026-08-18 profiling pass found layout is ~86% of
+that op and statistically identical between arms, so the instrument
+structurally cannot separate the frameworks there; the only reproducible
+signal is a small JS-only Pyreon cost (~+28%) invisible in wall clock (see
+`docs/benchmarks` for the full split). Important caveats, kept verbatim with
+the project's internal record:
 
 - It is **not** "fastest on all benchmarks." This is the **synthetic
   row-list suite** only, and on it Pyreon wins two ops outright

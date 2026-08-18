@@ -80,10 +80,13 @@ statistically ties Octane on 6 (`create 1,000`, `replace`, `partial update`,
 — 165µs vs 115µs, CI-disjoint, not a timer-quantum artifact).** That is a
 genuine walk-back from the previous "7 of 9 outright" claim: most of this
 suite is now a statistical tie between two frameworks, not a Pyreon sweep —
-but it is now two real wins, not one. The only measurable cost vs
+but it is now two real wins, not one. The measurable wall-clock cost vs
 hand-written vanilla JS is bulk-create (~6–7% — per-row signal allocation
 plus the keyed-`<For>` map) and, computed from fast-mode-only samples (never
-a raw ratio — see below), append (+3.8% to +4.9%).
+a raw ratio — see below), append (+3.8% to +4.9%); **the create/create-10k
+figures are real but layout-dominated, not a clean JS-cost signal — see
+below for the JS-only ~+28% term that is invisible in this wall-clock
+number.**
 
 **`select row` has no published multiplier.** Corrected timing at
 100/1,000/10,000 rows: Pyreon 1.03/0.96/0.69µs vs Octane 1.37/1.53/1.15µs,
@@ -92,6 +95,43 @@ length — this refutes an earlier claim that treated it as O(n) with a large
 multiplier. Both frameworks sit at the edge of what real-Chromium timing can
 resolve; we publish "Pyreon is at the floor, Octane measurably but slightly
 above it," never a precise ratio, and never `0µs` again.
+
+**`Create 1,000` and `replace` are, 19 times out of 20, literally the same operation — and their tie is browser-bound, not a coincidence.** A 2026-08-18 profiling pass split `bench()`'s timed region (which times the framework's `fn()` PLUS a forced `getBoundingClientRect()` layout flush, in the SAME window) into JS and layout, on a production build:
+
+| | JS | layout | total |
+| --- | ---: | ---: | ---: |
+| Pyreon | 1.13ms | 7.12ms | 8.24ms |
+| Vanilla | 810µs | 7.26ms | 8.07ms |
+| Δ | +317µs | −145µs | +172µs |
+
+Layout is ~86% of `create 1,000` and **statistically identical between
+Pyreon and Vanilla** — layout Δ across three reproductions (−58µs, −278µs,
+−145µs) is noise around zero, LARGER than the entire framework JS gap. The
+honest statement about the `create 1,000`/`replace` ties is therefore not
+merely "within CI" — **this op is browser-layout-bound and the instrument
+structurally cannot separate the frameworks there.** The only real,
+tightly-reproducing signal is the JS term alone (Δ +318µs/+285µs/+317µs
+across three runs): a genuine ~+28% Pyreon-vs-Vanilla cost on the JS
+term that is **invisible in wall clock**, swamped by ~7ms of layout neither
+framework controls. This is not a win claim, and not a loss claim — it's a
+statement about what this instrument can and cannot see; do not quote a
+wall-clock create/replace percentage as a framework cost without this
+caveat. Separately: the suite has no `reset` between runs and row ids come
+from a monotonic counter, so of the 20 timed runs per op only the FIRST
+mounts into an empty list — the other 19 hand the reconciler N brand-new
+keys against N rows STILL LIVE, which is structurally a replace. That's why
+`create` (8.41ms) and `replace` (8.31ms) report nearly identical medians —
+for 19 of 20 sampled runs they are, literally, the same operation. State
+this plainly: a reader of "Create 1,000: 8.41ms" reasonably assumes a fresh
+empty-DOM mount, and for the vast majority of sampled runs that assumption
+is wrong.
+
+A profiling driver used for the JS/layout split above initially printed
+`0.0µs` for every sample — its attribution keyed on `Function.name`, which a
+minified production build strips, so every lookup silently missed and fell
+back to a plausible-looking zero. Same class as this repo's "gate that could
+not fail" entries: it now refuses to report an empty attribution instead of
+printing one.
 
 **`append` is re-adjudicated OUTRIGHT PYREON, not void.** It previously read
 "OUTRIGHT Pyreon, 22.40ms," which turned out to be measured on a contaminated,
