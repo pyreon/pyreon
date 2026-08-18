@@ -464,6 +464,40 @@ function mountComponent(
   // through both `runWithHooks` (so `provide()` writes onto it) and `mountChild`
   // (so children chain to it), restored on every exit path. Kept SEPARATE from
   // `setCurrentScope` (effect tracking) so the two concerns don't interfere.
+  //
+  // The per-component `EffectScope` allocation below is NOT an optimization
+  // target — measured + rejected (2026-08). Making it LAZY (allocate on first
+  // use, so the ~50% of components that register no effect, computed, template
+  // binding, cleanup or context never pay for one) is the obvious idea and it
+  // does not pay:
+  //
+  //  - CEILING. Adding a SECOND `EffectScope` and a second `LifecycleHooks` per
+  //    component — the correctness-preserving way to price them, since removing
+  //    them breaks disposal and would bias the run by leaking across iterations
+  //    — cost +0.59% on the 2,047-component deep-tree mount. In the same
+  //    interleaved session the `context → 1,024 consumers` op, which mounts
+  //    nothing and cannot be affected, moved ±2%. The allocations are below the
+  //    benchmark's own resolution.
+  //  - COST. A safe lazy design cannot be free. `getCurrentScope()` and
+  //    `getContextOwner()` would each need a materialize branch, and those run
+  //    far more often than once per component (every effect, computed, binding,
+  //    context read, deferred-boundary capture and effect snapshot-capture).
+  //    Per component it also needs two flags, a materialized slot, and
+  //    save/restore of three values — which cannot be packed into a frame object
+  //    without re-introducing exactly the allocation being removed. The same
+  //    bookkeeping applied to the (simpler) hooks object measured net zero.
+  //  - RISK. Every registration path would have to be routed through one
+  //    materializer or a disposable is silently dropped. `onScopeDispose` reads
+  //    the module variable directly rather than through `getCurrentScope()`, and
+  //    `EffectScope.runInScope` / `setCurrentScope` would each need to clear the
+  //    pending flag or `@pyreon/store`'s scope shielding silently re-parents its
+  //    computeds onto the component. `getCurrentScope()` is also public and is
+  //    what `@pyreon/solid-compat` returns from `getOwner()`.
+  //
+  // So: a leak-class risk surface across a public API, for a win that is not
+  // measurable. Re-open only with a measurement that clears ±2% on this
+  // benchmark. Companion note at the hooks allocation in `@pyreon/core`'s
+  // `runWithHooks`.
   const prevOwner = getContextOwner()
   const scope = effectScope()
   scope._parent = prevOwner
