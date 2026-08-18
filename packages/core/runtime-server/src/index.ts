@@ -587,18 +587,19 @@ async function streamElementNode(vnode: VNode, enqueue: (s: string) => void): Pr
       const frame = tag === 'select' ? makeSelectFrame(props) : null
       // Sole-child accessor: stream its VALUE directly, no range markers — the
       // string path's twin, and byte-identical to it. See `soleAccessorChild`.
+      // Spelled out per branch rather than through a shared closure: this runs
+      // once per streamed element, and the `<select>` frame was the only case
+      // that allocated one before.
       const sole = soleAccessorChild(vnode.children)
-      const streamInner = async () => {
-        if (sole) {
-          await streamNode(sole(), enqueue)
-          return
-        }
-        for (const child of vnode.children) await streamNode(child, enqueue)
-      }
       if (frame) {
-        await _selectValueAls.run(frame, streamInner)
+        await _selectValueAls.run(frame, async () => {
+          if (sole) await streamNode(sole(), enqueue)
+          else for (const child of vnode.children) await streamNode(child, enqueue)
+        })
+      } else if (sole) {
+        await streamNode(sole(), enqueue)
       } else {
-        await streamInner()
+        for (const child of vnode.children) await streamNode(child, enqueue)
       }
     }
   }
