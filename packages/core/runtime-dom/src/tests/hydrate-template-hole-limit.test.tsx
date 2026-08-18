@@ -16,29 +16,36 @@
  * templatized component root, and adoption fires — as long as the hole is
  * empty. What blocks it is the hole's CONTENT, not the arming.
  *
- * Closing this needs THREE things, each pinned by a spec here:
+ * Closing it needed THREE things, each still pinned by a spec here:
  *
  *  1. The adopt verifier must SKIP the DOM range belonging to a hole.
- *     `matchDomAgainstTemplate` walks every DOM element child against a flat
- *     template tag list, so hole content reads as "extra elements" and the
- *     match is rejected  → `componentHoleBlocksAdoption`.
+ *     `matchDomAgainstTemplate` walked every DOM element child against a flat
+ *     template tag list, so hole content read as "extra elements" and the match
+ *     was rejected. CLOSED: the compiler DECLARES the element it leaves empty
+ *     (`data-pyreon-hole`, stripped at parse time) and the verifier skips that
+ *     element's children.
  *  2. The compiled bind must HYDRATE the hole rather than MOUNT it. Relaxing
  *     (1) alone is not merely insufficient, it is a correctness bug: the bind
- *     appends a second copy beside the server's → `relaxingTheGateDuplicates`.
- *  3. SSR must DELIMIT a component's output so the client can find that range
- *     at all. A dynamic slot already emits `<!--$-->…<!--/$-->`; a component
- *     emits nothing → `ssrMarksSlotsButNotComponents`.
+ *     appends a second copy beside the server's. CLOSED by threading a per-hole
+ *     cursor through `_mountChild`. Still pinned by
+ *     `relaxingTheGateDuplicates`, which stubs the verifier permissive and
+ *     shows the duplication that results with NO hole handoff — i.e. that the
+ *     hole path, not a loosened gate, is what makes (1) safe.
+ *  3. The hole's server range must be DELIMITED. SSR emits no marker around a
+ *     component's output and STILL DOES NOT — `ssrMarksSlotsButNotComponents`
+ *     asserts that unchanged. It is not needed: a hole is always TRAILING (the
+ *     compiler routes any component child with static content after it through
+ *     a `<!>` placeholder, and `templateSignature` refuses every template
+ *     containing one), so the element's own tag boundary supplies the extent —
+ *     the same argument that makes a sole-child accessor's markers elidable.
+ *     Whatever the bind does not claim is swept, which is exactly the empty
+ *     element a clone would have produced.
  *
- * Ordering note for whoever picks this up: (3) is already satisfied for the
- * `_mountSlot` shape, so the dynamic-slot hole is strictly closer to solvable
- * than the absorbed-component one.
- *
- * NOTE the limit is NOT introduced by `templatizeComponentChildren` — it holds
- * at DEFAULT settings for any template with a dynamic child
- * (`dynamicSlotHoleBlocksAdoptionAtDefaults`). The option widens the set of
- * templates that hit it from "templates with dynamic children" to "templates
- * with component children", which in a component-tree app is nearly all of
- * them. That is the honest statement of the cost.
+ * What is NOT closed: the DYNAMIC-SLOT hole (`<!>` + `_mountSlot`), which is a
+ * pre-existing limit at DEFAULT settings for any template with a dynamic child
+ * (`dynamicSlotHoleBlocksAdoptionAtDefaults`). That one has its SSR range
+ * markers already but its template carries a `<!>` comment placeholder, which
+ * `templateSignature` refuses outright — a different fix, in a different place.
  */
 import { transformJSX } from '@pyreon/compiler'
 import { For, Fragment, _lc, h } from '@pyreon/core'
@@ -188,20 +195,47 @@ describe('compiled-template hydration adoption — the mount-hole limit', () => 
     expect([r.retained, r.total]).toEqual([4, 4])
   })
 
-  it('ON: a component hole blocks adoption — nothing below it is kept (0/4)', async () => {
-    // The template is `<div class="app"><main class="m"></main></div>`; the
-    // absorbed `<Mid />` leaves `<main>` empty. The SSR DOM has a real
-    // `<section class="mid">` there, which the verifier reads as an extra
-    // element, so the match is rejected and the subtree is cloned + swapped.
+  it('ON: a component hole now ADOPTS, all the way down (4/4)', async () => {
+    // Was [0, 4] with 0 adopts. The template is
+    // `<div class="app"><main class="m" data-pyreon-hole></main></div>`: the
+    // absorbed `<Mid />` leaves `<main>` empty, and the compiler DECLARES that
+    // emptiness. The verifier skips `<main>`'s server range instead of reading
+    // `<section class="mid">` as an extra element, and the bind's `_mountChild`
+    // hydrates that range — which recursively arms `<section>` and then the
+    // leaf `<span>`, so all three templates adopt.
     const r = await hydrateAndMeasure(layoutSsrTree(), LAYOUT, ON)
     expect(r.ssrHtml).toBe(LAYOUT_HTML)
-    expect([r.retained, r.total]).toEqual([0, 4])
-    expect(r.adopts).toBe(0)
+    expect([r.retained, r.total]).toEqual([4, 4])
+    expect(r.adopts).toBe(3)
   })
 
-  it('ON: the rendered result is still CORRECT — a cost, not a bug', async () => {
+  it('ON: the rendered result is CORRECT — adoption did not duplicate it', async () => {
     const r = await hydrateAndMeasure(layoutSsrTree(), LAYOUT, ON)
     expect(r.html).toBe(LAYOUT_HTML)
+  })
+
+  it('ON matches OFF node-for-node — the option no longer costs retention', async () => {
+    // The comparison the option's cost was always about, stated directly:
+    // whatever the un-templatized page keeps, the templatized one keeps too.
+    const off = await hydrateAndMeasure(layoutSsrTree(), LAYOUT, {})
+    const on = await hydrateAndMeasure(layoutSsrTree(), LAYOUT, ON)
+    expect([on.retained, on.total]).toEqual([off.retained, off.total])
+  })
+
+  it('the hole marker never reaches the DOM', async () => {
+    // It exists only inside the compiled template STRING; `_tpl` strips it from
+    // the cached template before any clone or signature walk. Asserted on both
+    // the adopting page and a fresh clone of the same template.
+    const r = await hydrateAndMeasure(layoutSsrTree(), LAYOUT, ON)
+    expect(r.html).not.toContain('data-pyreon-hole')
+    expect(transformJSX(LAYOUT, 'test.tsx', ON as never).code).toContain('data-pyreon-hole')
+
+    const csr = document.createElement('div')
+    document.body.appendChild(csr)
+    const item = compileApp(LAYOUT, ON)() as { el: HTMLElement }
+    csr.appendChild(item.el)
+    expect(csr.innerHTML).toBe(LAYOUT_HTML)
+    expect(csr.innerHTML).not.toContain('data-pyreon-hole')
   })
 
   it('ON: an EMPTY hole DOES adopt — the cursor reaches a templatized root', async () => {
@@ -221,6 +255,138 @@ const App = () => <div class="app"><main class="m"><Mid /></main></div>`
     expect(r.ssrHtml).toBe('<div class="app"><main class="m"></main></div>')
     expect([r.retained, r.total]).toEqual([2, 2])
     expect(r.adopts).toBe(1)
+  })
+
+  it('a hole whose component NESTS a hole does not strand its siblings', async () => {
+    // Guards the SAVE/RESTORE of the hole-cursor frame. Holes nest: the first
+    // hole's component hydrates into its OWN template, whose bind installs its
+    // OWN cursor map. An exit that cleared the module slot to `null` instead of
+    // restoring the caller's would leave the SECOND `_mountChild` on the plain
+    // mount path — appending a duplicate beside the server's copy. One hole is
+    // not enough to catch that; the sibling AFTER the nested one is.
+    const src = `
+const Deep = () => <em class="d">d</em>
+const A = () => <i class="a"><Deep /></i>
+const B = () => <b class="b">b</b>
+const App = () => <div class="app"><A /><B /></div>`
+    const ssr = h(
+      (() =>
+        h(
+          'div',
+          { class: 'app' },
+          h('i', { class: 'a' }, h('em', { class: 'd' }, 'd')),
+          h('b', { class: 'b' }, 'b'),
+        )) as never,
+      null,
+    )
+    const r = await hydrateAndMeasure(ssr, src, ON)
+    expect(r.ssrHtml).toBe(
+      '<div class="app"><i class="a"><em class="d">d</em></i><b class="b">b</b></div>',
+    )
+    expect(r.html).toBe(r.ssrHtml)
+    expect([r.retained, r.total]).toEqual([4, 4])
+  })
+
+  it('sweeps server content the client render did not claim', async () => {
+    // The server sent one more child than the client renders. Without the
+    // sweep the surplus stays in the adopted element — visible stale content
+    // that a clone-and-swap would never have produced.
+    const src = `
+const A = () => <i class="a">a</i>
+const App = () => <div class="app"><A /></div>`
+    const ssr = h(
+      (() => h('div', { class: 'app' }, h('i', { class: 'a' }, 'a'), h('b', null, 'extra'))) as never,
+      null,
+    )
+    const r = await hydrateAndMeasure(ssr, src, ON)
+    expect(r.ssrHtml).toBe('<div class="app"><i class="a">a</i><b>extra</b></div>')
+    expect(r.html).toBe('<div class="app"><i class="a">a</i></div>')
+  })
+
+  it('a hole the bind never fills is swept to the clone-equivalent empty element', async () => {
+    // The mis-declared-hole safety property, stated as a test. `<App />` here
+    // has NO component child at all once the server's is gone, so nothing
+    // mounts into the hole — and the correct client DOM for an element the
+    // template leaves empty is an EMPTY element. The sweep is what makes a
+    // wrong declaration cost an adoption instead of correctness, so it is
+    // asserted directly rather than left as an argument.
+    const host = document.createElement('div')
+    host.innerHTML = '<div class="app"><i>stale</i></div>'
+    document.body.appendChild(host)
+    const target = host.firstElementChild as Element
+    const Empty = () => _tpl('<div class="app" data-pyreon-hole></div>', () => null)
+    hydrateRoot(host, h(Empty as never, null))
+    expect(target.outerHTML).toBe('<div class="app"></div>')
+  })
+
+  it('a <For> absorbed into a hole hydrates its rows normally', async () => {
+    // The option absorbs control-flow components too — deliberately, since
+    // excluding them by NAME would paper over the gated case and leave the
+    // general one. So `<For>` is a shape the hole path newly has to carry: the
+    // cursor it hands `hydrateChild` lands on the list's `<!--pyreon-for-->`
+    // marker, and the row-adoption machinery takes it from there.
+    const src = `
+const App = () => <ul class="l"><For each={["a","b"]} by={(x) => x}>{(x) => <li>{() => x}</li>}</For></ul>`
+    const tree = h(
+      (() =>
+        h(
+          'ul',
+          { class: 'l' },
+          h(For as never, { each: ['a', 'b'], by: (x: string) => x } as never, ((x: string) =>
+            h('li', null, () => x)) as never),
+        )) as never,
+      null,
+    )
+    const off = await hydrateAndMeasure(tree, src, {})
+    const on = await hydrateAndMeasure(tree, src, ON)
+    expect(on.html).toBe(off.html)
+    expect([on.retained, on.total]).toEqual([off.retained, off.total])
+    // The `<ul>` template itself adopts on top of the rows, so ON adopts MORE.
+    expect(on.adopts).toBeGreaterThan(off.adopts)
+  })
+
+  it('RESIDUAL: a component with a STATIC sibling still costs retention (3/4 → 0/4)', async () => {
+    // The honest limit of this fix, measured rather than described.
+    //
+    // A hole is only marker-free because it is TRAILING. Put anything static
+    // beside the component and the compiler stops appending: `useMixed` fires,
+    // the child gets a `<!>` placeholder and a `_mountSlot`, and
+    // `templateSignature` refuses EVERY template containing a `<!` — so the
+    // whole subtree is cloned and swapped.
+    //
+    // With the option OFF that source never becomes one template at all (a
+    // component child bails it to `h()`), and ordinary element hydration keeps
+    // 3 of 4 nodes. So for this shape the option still trades retention for
+    // mount speed, exactly as it did before this fix — the fix closes the
+    // ALL-COMPONENT-children shape (the deep component tree), not the mixed one.
+    //
+    // This is the same dynamic-slot hole as
+    // `dynamicSlotHoleBlocksAdoptionAtDefaults` below, reached through a
+    // component instead of an expression. Closing it is a different change:
+    // the `<!>` placeholder has to become adoptable, and SSR already delimits
+    // that range, so nothing new needs marking — but the verifier would have to
+    // learn a comment-placeholder-bearing template, which it refuses outright
+    // today. That is the residual, and it is why the default stays OFF.
+    const MIXED = `
+const Mid = () => <section class="mid">m</section>
+const App = () => <div class="app"><main class="m"><span class="s">s</span><Mid /></main></div>`
+    const tree = () => {
+      const M = () => h('section', { class: 'mid' }, 'm')
+      const A = () =>
+        h(
+          'div',
+          { class: 'app' },
+          h('main', { class: 'm' }, h('span', { class: 's' }, 's'), h(M as never, null)),
+        )
+      return h(A as never, null)
+    }
+    const off = await hydrateAndMeasure(tree(), MIXED, {})
+    const on = await hydrateAndMeasure(tree(), MIXED, ON)
+    expect([off.retained, off.total]).toEqual([3, 4])
+    expect([on.retained, on.total]).toEqual([0, 4])
+    // Both render the same page — a retention cost, not a correctness one.
+    expect(on.html).toBe(off.html)
+    expect(transformJSX(MIXED, 'test.tsx', ON as never).code).toContain('_mountSlot')
   })
 
   it('the limit PRE-EXISTS at default settings for a dynamic-slot hole', async () => {
@@ -282,20 +448,24 @@ const App = () => <div class="a"><span class="s">s</span>{() => [1, 2].map((n) =
 
   it('the permissive verifier above did NOT leak into later templates', async () => {
     // Guards the restore in the previous spec. The verifier is module-level
-    // state; if the permissive one survived, this hole would adopt and the page
-    // would come back with the server's `<section class="mid">` PLUS a client
-    // copy — so this asserts both the count and the resulting HTML.
+    // state; if the permissive one survived, this page would adopt WITHOUT the
+    // hole handoff — `_tplPendingHoles` stays null under a stub verifier — and
+    // come back with the server's `<section class="mid">` PLUS a client copy.
+    // Asserting the HTML is what catches that; the adopt count only proves the
+    // genuine verifier ran.
     const r = await hydrateAndMeasure(layoutSsrTree(), LAYOUT, ON)
     expect(r.html).toBe(LAYOUT_HTML)
-    expect(r.adopts).toBe(0)
+    expect(r.adopts).toBe(3)
   })
 
-  it('SSR delimits a dynamic slot but NOT a component — requirement (3)', async () => {
-    // A hole can only be hydrated if its DOM range is findable. The framework's
-    // rule for an ambiguous-extent construct is to emit a range marker, and the
-    // dynamic slot does. A component's output does not, so the absorbed-
-    // component hole has no range to hand a hydrator even once (1) and (2) are
-    // solved — which is why it is the FURTHER of the two from being closed.
+  it('SSR still delimits a dynamic slot but NOT a component — requirement (3)', async () => {
+    // Unchanged, deliberately: closing the hole added ZERO bytes to SSR output.
+    // The framework's rule is to emit a range marker for an AMBIGUOUS extent,
+    // and a trailing hole's extent is not ambiguous — it runs to the end of its
+    // parent element. This spec is the guard on that: if a component's output
+    // ever gains markers, the hole path's "skip to the end" would be reading a
+    // range someone else now owns, and the cost would land on every hydrated
+    // page (see the marker-cost decomposition in examples/benchmark).
     const Leaf = () => h('span', { class: 't' }, 'leaf')
     const Mid = () => h('section', { class: 'mid' }, h(Leaf as never, null))
     const WithComponent = () => h('main', { class: 'm' }, h(Mid as never, null))

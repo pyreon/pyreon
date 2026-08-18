@@ -6743,6 +6743,12 @@ fn element_has_dynamic(el: &JSXElement, tpl_components: bool) -> bool {
     false
 }
 
+/// Mirrors the JS backend's `TPL_HOLE_ATTR` — the mount-hole declaration baked
+/// onto a template element whose children are all absorbed COMPONENT children.
+/// Byte-for-byte identity with `jsx.ts` is asserted by the native-equivalence
+/// suite, which compares the two backends' full emit.
+const TPL_HOLE_ATTR_SUFFIX: &str = " data-pyreon-hole";
+
 fn process_element(
     el: &JSXElement,
     accessor: &str,
@@ -6761,11 +6767,25 @@ fn process_element(
     // Mirrors jsx.ts:processElement.
     let mut deferred_lines: Vec<String> = Vec::new();
     let html_attrs = process_attrs(el, &var_name, tag, &mut deferred_lines, tb, ctx);
-    let mut html = format!("<{}{}>", tag, html_attrs);
+    // Children are processed BEFORE the opening tag is assembled, because
+    // whether this element is a mount hole is only known once its children are
+    // classified. Bind-line ORDER is unaffected — `process_attrs` has already
+    // run — and building the string later is a pure operation. Mirrors
+    // jsx.ts:processElement.
+    let mut child_html = String::new();
+    let mut is_hole = false;
     if !is_self_closing(el) {
-        let child_html = process_children(el, &var_name, accessor, tb, ctx)?;
-        html.push_str(&child_html);
+        let (ch, hole) = process_children(el, &var_name, accessor, tb, ctx)?;
+        child_html = ch;
+        is_hole = hole;
     }
+    let mut html = format!(
+        "<{}{}{}>{}",
+        tag,
+        html_attrs,
+        if is_hole { TPL_HOLE_ATTR_SUFFIX } else { "" },
+        child_html
+    );
     tb.bind_lines.append(&mut deferred_lines);
     if !is_void_element(tag) {
         html.push_str(&format!("</{}>", tag));
@@ -7830,7 +7850,7 @@ fn process_children(
     accessor: &str,
     tb: &mut TemplateBuilder,
     ctx: &mut Ctx,
-) -> Option<String> {
+) -> Option<(String, bool)> {
     let flat = flatten_children(&el.children, ctx.templatize_component_children);
     let (use_mixed, use_multi_expr) = analyze_children(&flat);
     let parent_ref = if accessor == "__root" {
@@ -7854,7 +7874,15 @@ fn process_children(
         html.push_str(&child_html);
         child_node_idx += 1;
     }
-    Some(html)
+    // MOUNT HOLE — mirrors jsx.ts:processChildren. Every child is an absorbed
+    // COMPONENT taking the append path, so the element is emitted EMPTY and
+    // filled at mount by trailing `_mountChild` calls; declaring it lets
+    // hydration adopt the element instead of rejecting its server range as
+    // extra elements.
+    let is_hole = !use_mixed
+        && !flat.is_empty()
+        && flat.iter().all(|c| matches!(c, FlatChild::Component(_)));
+    Some((html, is_hole))
 }
 
 // ─── Component props detection ──────────────────────────────────────────────

@@ -37,7 +37,7 @@ const CTX = `const Leaf = () => <span class="leaf">x</span>\n`
 describe('absorbing component children', () => {
   it('appends an all-component child list with no placeholder comment', () => {
     const code = emit(`const App = () => <div class="branch"><Node /><Node /></div>`)
-    expect(code).toContain('_tpl("<div class=\\"branch\\"></div>"')
+    expect(code).toContain('_tpl("<div class=\\"branch\\" data-pyreon-hole></div>"')
     expect(code).toContain('_mountChild(<Node />, __root, null)')
     expect(code).not.toContain('_mountSlot')
     expect(code).not.toContain('<!>')
@@ -69,7 +69,7 @@ describe('absorbing component children', () => {
 
   it('bakes a static skeleton and mounts into a PHASE-1 ref (PZ-08)', () => {
     const code = emit(`const App = () => <div class="app"><main class="m"><Mid /></main></div>`)
-    expect(code).toContain('_tpl("<div class=\\"app\\"><main class=\\"m\\"></main></div>"')
+    expect(code).toContain('_tpl("<div class=\\"app\\"><main class=\\"m\\" data-pyreon-hole></main></div>"')
     expect(code).toContain('const __e0 = __root.firstElementChild')
     expect(code).toContain('_mountChild(<Mid />, __e0, null)')
   })
@@ -84,7 +84,7 @@ describe('absorbing component children', () => {
     // Excluding <For>/<Show> by name would paper over the shapes the repo
     // happens to gate and leave the general one open.
     const code = emit(`const App = () => <div class="a"><For each={xs} by={k}>{r => <b/>}</For></div>`)
-    expect(code).toContain('_tpl("<div class=\\"a\\"></div>"')
+    expect(code).toContain('_tpl("<div class=\\"a\\" data-pyreon-hole></div>"')
     expect(code).toContain('_mountChild(<For')
   })
 
@@ -133,7 +133,7 @@ describe('ordering gate — eager-argument positions BAIL to h()', () => {
   // MOUNTS components is ordered against the enclosing component's setup.
   it('sole child of a component is _lc-deferred, so it may templatize', () => {
     const code = emit(`${CTX}const App = () => <Provider><div class="k"><Leaf /></div></Provider>`)
-    expect(code).toContain('_lc(() => _tpl("<div class=\\"k\\"></div>"')
+    expect(code).toContain('_lc(() => _tpl("<div class=\\"k\\" data-pyreon-hole></div>"')
   })
 
   it('BAILS on a multi-child component parent', () => {

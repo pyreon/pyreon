@@ -488,6 +488,126 @@ export function _setTplAdoptVerifier(v: TplAdoptVerifier): void {
   _tplAdoptVerifier = v
 }
 
+// ─── MOUNT HOLES ─────────────────────────────────────────────────────────────
+// A template element whose children are ALL absorbed COMPONENT children
+// (`templatizeComponentChildren`) is emitted EMPTY and filled by trailing
+// `_mountChild(vnode, el, null)` calls in source order. Its SSR counterpart
+// holds the components' real output, which the adopt verifier would otherwise
+// read as "extra elements" and reject — the whole reason the option is off.
+//
+// The compiler DECLARES such an element by baking `data-pyreon-hole` onto it,
+// so the relaxation is explicit and CLOSED: only a declared hole skips its DOM
+// range, and every other empty-in-the-template element keeps today's exact
+// behaviour. That matters because `_setChild` and a spread `innerHTML` also
+// target an empty template element and do NOT hydrate — a blanket "any empty
+// element may have extra children" rule would duplicate or discard their
+// content.
+//
+// The attribute never reaches user DOM: it is stripped from the cached
+// template's content ONCE, at parse time, before any clone or signature walk.
+// The stripped elements are remembered by IDENTITY (not by index — the
+// positional variant is the repo's most-repeated bug class), so the runtime
+// can never attribute a hole to the wrong element.
+const HOLE_ATTR = 'data-pyreon-hole'
+const _tplHoleEls = new WeakSet<Element>()
+
+/** Is this template-content element a compiler-declared mount hole? */
+export function _isTplHoleEl(el: Element): boolean {
+  return _tplHoleEls.has(el)
+}
+
+/** Strip + record the hole markers on a freshly parsed template. */
+function stripHoleMarkers(content: DocumentFragment): void {
+  const marked = content.querySelectorAll(`[${HOLE_ATTR}]`)
+  for (let i = 0; i < marked.length; i++) {
+    const el = marked[i] as Element
+    el.removeAttribute(HOLE_ATTR)
+    _tplHoleEls.add(el)
+  }
+}
+
+/**
+ * Per-hole DOM cursors for the adopting bind currently running, keyed by the
+ * TARGET (server) element. Populated by the verifier — which is the only thing
+ * that knows a hole verified — and consumed by `_mountChild`.
+ *
+ * Module-level frame state: SAVED and RESTORED around each adopting bind, never
+ * reset to a constant. Holes nest by construction (a hole's component hydrates
+ * into its own template, whose bind has its own holes), and a nested `_tpl`
+ * that cleared this to `null` on exit would silently strand the outer frame's
+ * remaining holes on the plain mount path — appending a second copy beside the
+ * server's.
+ */
+let _tplHoleCursors: Map<Element, ChildNode | null> | null = null
+
+/** Verifier → `_tpl` handoff for the match it just approved (one-shot). */
+let _tplPendingHoles: Map<Element, ChildNode | null> | null = null
+export function _setTplHoleCursors(m: Map<Element, ChildNode | null> | null): void {
+  _tplPendingHoles = m
+}
+
+/**
+ * Hydrator seam — registered by `hydrateRoot` (never at module load, so CSR
+ * bundles tree-shake all of hydrate.ts). Consumes `cursor` and returns
+ * `[cleanup, nextCursor]`, exactly `hydrateChild`'s contract.
+ */
+export type TplHoleHydrator = (
+  child: VNodeChild | VNodeChild[],
+  parent: Node,
+  cursor: ChildNode | null,
+) => [() => void, ChildNode | null]
+let _tplHoleHydrator: TplHoleHydrator | null = null
+export function _setTplHoleHydrator(h: TplHoleHydrator): void {
+  _tplHoleHydrator = h
+}
+
+/**
+ * Compiler-emitted append of an absorbed COMPONENT child.
+ *
+ * Plain mount everywhere except inside an ADOPTING bind whose verifier
+ * declared `parent` a mount hole — there the child HYDRATES the server nodes
+ * from the hole's cursor instead of mounting a second copy beside them.
+ * Requirement (2) of the mount-hole limit: relaxing the verifier alone
+ * duplicates the page.
+ */
+export function _mountChild(
+  child: VNodeChild | VNodeChild[],
+  parent: Node,
+  anchor: Node | null = null,
+): () => void {
+  if (_tplHoleCursors !== null && anchor === null && _tplHoleHydrator !== null) {
+    const holes = _tplHoleCursors
+    const el = parent as Element
+    if (holes.has(el)) {
+      const [cleanup, next] = _tplHoleHydrator(child, parent, holes.get(el) as ChildNode | null)
+      holes.set(el, next)
+      return cleanup
+    }
+  }
+  return mountChild(child, parent, anchor)
+}
+
+/**
+ * Drop whatever the server sent that this render did not claim.
+ *
+ * A hole whose bind consumed every node leaves the cursor at `null` and this
+ * removes nothing. A hole the bind never touched still holds its start cursor,
+ * so the whole range goes — which is not a repair but the CORRECT result: the
+ * template element is empty, so an element with no children is precisely what
+ * the clone-and-swap path would have produced. That is what keeps a
+ * mis-declared hole costing an adoption rather than correctness.
+ */
+function sweepHoles(holes: Map<Element, ChildNode | null>): void {
+  for (const cursor of holes.values()) {
+    let n: ChildNode | null = cursor
+    while (n !== null) {
+      const nx: ChildNode | null = n.nextSibling
+      n.remove()
+      n = nx
+    }
+  }
+}
+
 export function _tpl(html: string, bind: (el: HTMLElement) => (() => void) | null): NativeItem {
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.tpl')
   let tpl = _tplCache.get(html)
@@ -508,6 +628,12 @@ export function _tpl(html: string, bind: (el: HTMLElement) => (() => void) | nul
     } else {
       tpl.innerHTML = html
     }
+    // Strip the compiler's mount-hole declarations BEFORE the template is
+    // reachable by any clone or signature walk, so the attribute is invisible
+    // to user DOM. Guarded by a string test: a build without
+    // `templatizeComponentChildren` never contains one and pays a single
+    // `includes` per newly parsed template.
+    if (html.includes(HOLE_ATTR)) stripHoleMarkers(tpl.content)
     // SizedMap.set() handles FIFO eviction internally — drops the
     // oldest entry once we hit the cap.
     _tplCache.set(html, tpl)
@@ -525,17 +651,43 @@ export function _tpl(html: string, bind: (el: HTMLElement) => (() => void) | nul
     const allowPlan = _tplAdoptAllowPlan
     _tplAdoptTarget = null // one-shot, cleared on ANY outcome
     _tplAdoptAllowPlan = false
+    _tplPendingHoles = null
     if (_tplAdoptVerifier !== null && _tplAdoptVerifier(tpl, html, target, allowPlan)) {
-      const cleanup = bind(target as HTMLElement)
-      _tplAdoptConsumed = true
-      if (process.env.NODE_ENV !== 'production')
-        _countSink.__pyreon_count__?.('runtime.tpl.adopt')
-      return { __isNative: true, el: target as HTMLElement, cleanup }
+      const holes = _tplPendingHoles
+      _tplPendingHoles = null
+      // Belt-and-braces: a verified hole is only safe if something will
+      // HYDRATE it. Both hooks are registered together, so this cannot fire —
+      // and if it ever does, declining the adoption is the cheap failure.
+      if (holes === null || _tplHoleHydrator !== null) {
+        // Frame state: SAVE the enclosing bind's holes, install ours, RESTORE
+        // on every exit — never reset to a constant. Holes NEST (a hole's
+        // component hydrates into its own template, whose bind has its own
+        // holes), and an exit that cleared this would strand the outer frame's
+        // remaining holes on the plain mount path.
+        const prevHoles = _tplHoleCursors
+        _tplHoleCursors = holes
+        let cleanup: (() => void) | null
+        try {
+          cleanup = bind(target as HTMLElement)
+          if (holes !== null) sweepHoles(holes)
+        } finally {
+          _tplHoleCursors = prevHoles
+        }
+        _tplAdoptConsumed = true
+        if (process.env.NODE_ENV !== 'production')
+          _countSink.__pyreon_count__?.('runtime.tpl.adopt')
+        return { __isNative: true, el: target as HTMLElement, cleanup }
+      }
     }
   }
   // (adoption falls through to a normal clone on any verification bail)
   const el = tpl.content.firstElementChild?.cloneNode(true) as HTMLElement
   const cleanup = bind(el)
+  // A CLONE is not a consumption. Stated on this exit too so `_tplAdoptDidConsume()`
+  // describes THIS call rather than whichever nested `_tpl` ran last inside
+  // `bind` — the reading the `<For>` row loop makes. Skipped entirely when no
+  // verifier is registered, so a CSR-only bundle's hot path is unchanged.
+  if (_tplAdoptVerifier !== null) _tplAdoptConsumed = false
   return { __isNative: true, el, cleanup }
 }
 

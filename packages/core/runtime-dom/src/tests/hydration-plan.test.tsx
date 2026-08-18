@@ -16,6 +16,8 @@ import { describe, expect, it } from 'vitest'
 import { For, Fragment, h, Show } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { buildRowPlan, replayRowPlan, tplAdoptVerify } from '../hydration-plan'
+import { hydrateRoot } from '../hydrate'
+import { _setTplAdoptTarget, _tpl, _tplAdoptDidConsume } from '../template'
 
 /** A row shape the plan supports: element root, element + text children. */
 const supportedRow = () =>
@@ -298,6 +300,60 @@ describe('tplAdoptVerify — template adoption for the compiled _tpl path', () =
       expect(replays).toBe(0)
     } finally {
       g.__pyreon_count__ = prev
+    }
+  })
+
+  it('REFUSES plan replay for a template with a declared mount hole', () => {
+    // A plan records `$`-triplet and text-removal spots — NOT hole cursors. A
+    // replayed row would therefore hand the compiled bind no cursor, and
+    // `_mountChild` would append a second copy of the component beside the
+    // server's. `<For>` rows CAN carry a hole (a renderItem that renders a
+    // component child), so this is reachable, not theoretical.
+    //
+    // Guarding the other direction too: dropping the refusal has no behavioural
+    // symptom in a shape-only test, so the assertion is the COUNTER — a hole
+    // template must never replay, however many times it is verified.
+    const g = globalThis as {
+      __pyreon_count__?: ((name: string, n?: number) => void) | undefined
+    }
+    const prev = g.__pyreon_count__
+    let replays = 0
+    g.__pyreon_count__ = (name) => {
+      if (name === 'runtime.tpl.adoptPlanReplay') replays++
+    }
+    // Driven through `_tpl` rather than `tplAdoptVerify` directly, because the
+    // marker is stripped and registered when the TEMPLATE is parsed — a
+    // hand-built `<template>` never goes through that, so it would carry
+    // `data-pyreon-hole` as an ordinary static attribute and bail on the
+    // attribute gate instead (the safe direction, but not the path under test).
+    const scratch = document.createElement('div')
+    scratch.innerHTML = '<i>x</i>'
+    document.body.appendChild(scratch)
+    hydrateRoot(scratch, h('i', null, 'x'))() // registers the verifier + hydrator
+    try {
+      const hole = '<ul class="l" data-pyreon-hole></ul>'
+      // Two structurally identical targets — exactly the rows-2..N case the
+      // fast path exists for, so a missing refusal WOULD replay on the second.
+      for (const row of ['<ul class="l"><li>a</li></ul>', '<ul class="l"><li>b</li></ul>']) {
+        _setTplAdoptTarget(targetOf(row), true)
+        _tpl(hole, () => null)
+        expect(_tplAdoptDidConsume()).toBe(true)
+      }
+      expect(replays).toBe(0)
+
+      // The plain (non-hole) sibling still replays, so the refusal is scoped to
+      // holes rather than having disabled the fast path outright.
+      const plain = '<ul class="l"></ul>'
+      for (let i = 0; i < 2; i++) {
+        _setTplAdoptTarget(targetOf(plain), true)
+        _tpl(plain, () => null)
+        expect(_tplAdoptDidConsume()).toBe(true)
+      }
+      expect(replays).toBe(1)
+    } finally {
+      g.__pyreon_count__ = prev
+      _setTplAdoptTarget(null)
+      scratch.remove()
     }
   })
 

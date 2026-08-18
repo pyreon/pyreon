@@ -13,7 +13,13 @@ export type {
   ReactivitySpan,
   TransformResult,
 } from './jsx'
-export { transformJSX, transformJSX_JS, rocketstyleCollapseKey, scanCollapsibleSites } from './jsx'
+export {
+  transformJSX,
+  transformJSX_JS,
+  rocketstyleCollapseKey,
+  scanCollapsibleSites,
+  TPL_HOLE_ATTR,
+} from './jsx'
 export type { CollapsibleSite, StaticChild, StaticChildNode } from './jsx'
 export type {
   AnalyzeReactivityResult,

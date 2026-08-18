@@ -40,7 +40,12 @@ import { bindPolymorphicText, mountChild } from './mount'
 import { buildRowPlan, replayRowPlan, tplAdoptVerify } from './hydration-plan'
 import type { RowPlan } from './hydration-plan'
 import { _setPendingForAdoption, mountReactive } from './nodes'
-import { _setTplAdoptTarget, _setTplAdoptVerifier, _tplAdoptDidConsume } from './template'
+import {
+  _setTplAdoptTarget,
+  _setTplAdoptVerifier,
+  _setTplHoleHydrator,
+  _tplAdoptDidConsume,
+} from './template'
 import { applyProps, applySelectValueProp } from './props'
 
 type Cleanup = () => void
@@ -527,6 +532,7 @@ function hydrateVNode(
             // Register the compiled-template verifier (idempotent; also set by
             // hydrateRoot — kept here for direct-adoption robustness).
             _setTplAdoptVerifier(tplAdoptVerify)
+  _setTplHoleHydrator(hydrateMountHole)
             for (let i = 0; i < rowCount; i++) {
               const rowMarker = rowMarkers[i] as Comment
               const rowFirst = rowFirsts[i] as ChildNode
@@ -605,6 +611,27 @@ function hydrateVNode(
   }
 
   return [noop, domNode]
+}
+
+/**
+ * Hydrate one absorbed COMPONENT child of a compiled template's mount hole,
+ * from the hole's running cursor. Registered into `_tpl` as a seam (never
+ * imported by it) so a CSR-only bundle still tree-shakes every byte of this
+ * module.
+ *
+ * The cursor is normalized exactly as `hydrateElement` normalizes an element's
+ * first child, so a hole and an ordinary element agree on what "the next real
+ * node" is. Like `hydrateElement`, whitespace/comments SKIPPED here stay in the
+ * DOM rather than being removed — `renderToString` never emits them between
+ * elements, so the case does not arise from Pyreon's own SSR output.
+ */
+function hydrateMountHole(
+  child: VNodeChild | VNodeChild[],
+  parent: Node,
+  cursor: ChildNode | null,
+): [Cleanup, ChildNode | null] {
+  const start = cursor !== null && cursor.nodeType === 1 ? cursor : firstReal(cursor)
+  return hydrateChild(child, start, parent, null)
 }
 
 function hydrateChild(
@@ -1050,6 +1077,7 @@ export function hydrateRoot(container: Element, vnode: VNodeChild): () => void {
   // (idempotent, CALL-time — a module-load call would pin the verify/plan
   // machinery into CSR bundles that tree-shake hydrateRoot).
   _setTplAdoptVerifier(tplAdoptVerify)
+  _setTplHoleHydrator(hydrateMountHole)
   // Install the devtools hook on hydration too, not just `mount()` — otherwise
   // the reactive dev overlay (Ctrl+Shift+R) + `__PYREON_DEVTOOLS__` silently
   // don't exist in SSR/hydrated apps, which is most real Pyreon apps. Idempotent
