@@ -27,7 +27,17 @@
 import { For } from '@pyreon/core'
 import { createSelector, signal } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
-import type { NumericText, Row } from '../runner'
+import type { Row } from '../runner'
+
+/**
+ * Assign the raw number and let the WebIDL binding coerce it, instead of
+ * stringifying in JS — a JS-side Number->String of many DISTINCT integers
+ * grows a V8 engine cache that is held from the GC root set and lands in
+ * usedJSHeapSize. Declared locally so this profiling entry does not depend
+ * on an unmerged PR; the shared `NumericText` in runner.ts is the same
+ * shape and this can collapse onto it once that lands.
+ */
+type NumericText = { textContent: number }
 import { buildRows, buildRowsWith, resetRng } from '../runner'
 
 type ReactiveRow = { id: number; label: ReturnType<typeof signal<string>> }
