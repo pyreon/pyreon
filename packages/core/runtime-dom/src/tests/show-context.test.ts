@@ -5,6 +5,42 @@ import { describe, expect, it } from 'vitest'
 
 const TestCtx = createContext('default')
 
+/**
+ * Poll until `cond()` holds, then return — or fail naming the observed state.
+ *
+ * These specs drive MULTI-LAYER reactive mounts (`Outer` mounts `Middle`
+ * mounts `Inner`), each gated behind its own `setTimeout`. A flat
+ * `await sleep(100)` is a wall-clock budget sized against ONE deadline while
+ * the test awaits SEVERAL: under a starved event loop the chained timers fire
+ * late, the last layer never mounts, and the assertion reads `undefined` with
+ * nothing said about why.
+ *
+ * Observed 2026-08 in a full-suite run at load 247, while the SAME suite
+ * passed at load 573 — so this is a race, not a load threshold, and every
+ * spec here shared the shape. `describe` is a thunk so the passing path (a
+ * poll every 5ms) pays nothing, and it is wrapped so a throwing snapshot
+ * cannot replace a diagnosable timeout with an opaque one.
+ */
+async function waitUntil(
+  cond: () => boolean,
+  describe: () => string,
+  budgetMs = 2000,
+): Promise<void> {
+  const deadline = Date.now() + budgetMs
+  while (Date.now() < deadline) {
+    if (cond()) return
+    await new Promise((r) => setTimeout(r, 5))
+  }
+  let observed = '<describe() threw>'
+  try {
+    observed = describe()
+  } catch {
+    /* keep the placeholder — a broken snapshot must not hide the timeout */
+  }
+  throw new Error(`waitUntil: timed out after ${budgetMs}ms — observed: ${observed}`)
+}
+
+
 describe('context inheritance through reactive boundaries', () => {
   it('child inside reactive accessor inherits parent context', async () => {
     let childValue: string | undefined
@@ -23,7 +59,7 @@ describe('context inheritance through reactive boundaries', () => {
 
     const container = document.createElement('div')
     mount(h(Parent, null), container)
-    await new Promise((r) => setTimeout(r, 50))
+    await waitUntil(() => childValue !== undefined, () => `childValue=${String(childValue)}`)
     expect(childValue).toBe('from-parent')
   })
 
@@ -50,7 +86,7 @@ describe('context inheritance through reactive boundaries', () => {
 
     const container = document.createElement('div')
     mount(h(Outer, null), container)
-    await new Promise((r) => setTimeout(r, 100))
+    await waitUntil(() => innerValue !== undefined, () => `innerValue=${String(innerValue)}`)
     expect(innerValue).toBe('outer-value')
   })
 
@@ -84,7 +120,10 @@ describe('context inheritance through reactive boundaries', () => {
 
     const container = document.createElement('div')
     mount(h(App, null), container)
-    await new Promise((r) => setTimeout(r, 50))
+    await waitUntil(
+      () => childAValue !== undefined && childBValue !== undefined,
+      () => `childAValue=${String(childAValue)} childBValue=${String(childBValue)}`,
+    )
 
     expect(childAValue).toBe('A')
     expect(childBValue).toBe('B')
@@ -113,7 +152,13 @@ describe('context inheritance through reactive boundaries', () => {
 
     const container = document.createElement('div')
     mount(h(Parent, null), container)
-    await new Promise((r) => setTimeout(r, 100))
+    // Wait for the SECOND mount, not the first: `childValue` is already set by
+    // the initial mount, so a `childValue !== undefined` condition returns
+    // before the hide/show cycle has run and `mountCount` is still 1.
+    await waitUntil(
+      () => mountCount >= 2,
+      () => `mountCount=${mountCount} childValue=${String(childValue)}`,
+    )
 
     expect(childValue).toBe('persistent')
     expect(mountCount).toBe(2) // mounted twice (initial + re-show)
@@ -142,7 +187,10 @@ describe('context inheritance through reactive boundaries', () => {
 
     expect(container.textContent).toBe('light')
 
-    await new Promise((r) => setTimeout(r, 50))
+    await waitUntil(
+      () => container.textContent === 'dark',
+      () => `textContent=${JSON.stringify(container.textContent)}`,
+    )
     expect(container.textContent).toBe('dark')
     // Component setup ran once — JSX expression re-evaluated reactively
     expect(renderCount).toBe(1)
@@ -169,7 +217,7 @@ describe('context inheritance through reactive boundaries', () => {
 
     const container = document.createElement('div')
     mount(h(Parent, null), container)
-    await new Promise((r) => setTimeout(r, 50))
+    await waitUntil(() => collected.length === 3, () => `collected=${JSON.stringify(collected)}`)
 
     expect(collected.length).toBe(3)
     expect(collected.every((v) => v === 'parent-provided')).toBe(true)
@@ -244,7 +292,7 @@ describe('context inheritance through reactive boundaries', () => {
 
     const container = document.createElement('div')
     mount(h(App, null), container)
-    await new Promise((r) => setTimeout(r, 20))
+    await waitUntil(() => lastSeen !== undefined, () => `lastSeen=${String(lastSeen)}`)
     expect(lastSeen).toBe('provider-value')
     const initialRunCount = runCount
 
@@ -255,7 +303,10 @@ describe('context inheritance through reactive boundaries', () => {
     // against a stack that no longer contains the provider — and
     // `lastSeen` becomes `'default'`.
     trigger.set(1)
-    await new Promise((r) => setTimeout(r, 20))
+    await waitUntil(
+      () => runCount > initialRunCount,
+      () => `runCount=${runCount} initialRunCount=${initialRunCount} lastSeen=${String(lastSeen)}`,
+    )
     expect(lastSeen).toBe('provider-value')
     // Sanity: the re-run actually happened. Otherwise the test could
     // pass for the wrong reason (e.g. if the trigger subscription wasn't
