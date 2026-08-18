@@ -71,6 +71,7 @@ type Spec =
   | { k: 'frag'; children: Spec[] }
   | { k: 'comp'; child: Spec; rsig: number }
   | { k: 'nullchild' }
+  | { k: 'formctl'; ctl: 'input' | 'textarea' | 'select'; value: string; checked: boolean; opts: string[]; variant: boolean }
 
 interface AttrSpec {
   name: string
@@ -152,6 +153,27 @@ function genSpec(r: () => number, depth: number, sigs: SigSpec[], phrasing = fal
     return { k: 'void', tag: phrasing ? pick(r, VOIDS_PHRASING) : pick(r, VOIDS_FLOW), attrs }
   }
   if (roll < 0.72) return { k: 'nullchild' }
+  if (roll < 0.8) {
+    // Value-bearing form controls. The generator emitted none of these before,
+    // which is exactly why the attribute/property parity class below was
+    // invisible to this gate. All three are PHRASING content, so they are valid
+    // in every parent this grammar produces.
+    const ctl = pick(r, ['input', 'textarea', 'select'] as const)
+    const VALUES = ['', 'a b', '<&>"', '0', 'témû', 'v1']
+    const opts = ['v1', 'v2', 'v3']
+    return {
+      k: 'formctl',
+      ctl,
+      // A select's value sometimes matches an option and sometimes does not —
+      // the non-matching case is the one that leaves NOTHING marked selected.
+      value: ctl === 'select' ? pick(r, [...opts, 'nomatch']) : pick(r, VALUES),
+      checked: r() < 0.5,
+      opts,
+      // `variant` picks the ARMED shape (a control WITHOUT a masked value prop)
+      // so those stay compared byte-for-byte — see KNOWN_ATTR_PARITY_DIVERGENCES.
+      variant: r() < 0.35,
+    }
+  }
   const attrs: AttrSpec[] = []
   if (r() < 0.4) attrs.push({ name: 'class', v: 'c' + Math.floor(r() * 5) })
   const tag = phrasing ? pick(r, PHRASING_TAGS) : pick(r, [...FLOW_TAGS, ...PHRASING_TAGS, 'p', 'h2'])
@@ -211,6 +233,32 @@ function toVNode(spec: Spec, S: SigInst[]): unknown {
         h('div', { class: 'comp' }, () => props.label(), props.children as never)
       return h(Comp, { label: () => String(S[spec.rsig]!()) }, toVNode(spec.child, S) as never)
     }
+    case 'formctl': {
+      // `variant` = the ARMED shape: a control carrying NO value prop, so it is
+      // never masked and any future attr/prop parity break on these tags is a
+      // hard failure. `checked` / `selected` are armed in BOTH shapes (they
+      // agree on this h() path — see the reach caveat on the mask).
+      if (spec.variant) {
+        if (spec.ctl === 'input') return h('input', { checked: spec.checked })
+        if (spec.ctl === 'textarea') return h('textarea', null)
+        return h(
+          'select',
+          null,
+          ...spec.opts.map((o, i) => h('option', { value: o, selected: i === 1 && spec.checked }, o) as never),
+        )
+      }
+      // The MASKED shape: `data-pv` marks exactly the element whose value prop
+      // is a known divergence, so the mask cannot reach any other element.
+      if (spec.ctl === 'input') {
+        return h('input', { 'data-pv': '', value: spec.value, checked: spec.checked })
+      }
+      if (spec.ctl === 'textarea') return h('textarea', { 'data-pv': '', value: spec.value })
+      return h(
+        'select',
+        { 'data-pv': '', value: spec.value },
+        ...spec.opts.map((o) => h('option', { value: o }, o) as never),
+      )
+    }
   }
 }
 
@@ -229,6 +277,72 @@ function flip(specs: SigSpec[], S: SigInst[]): void {
 }
 
 const stripComments = (html: string) => html.replace(/<!--[\s\S]*?-->/g, '')
+
+/**
+ * Attribute/property parity divergences this gate deliberately does NOT assert.
+ *
+ * Each entry is a `tag.prop` whose IDL property does NOT REFLECT to a content
+ * attribute (measured in Chromium, not assumed): SSR can only serialize an
+ * ATTRIBUTE, while the client mount sets the PROPERTY, so the two paths produce
+ * the same observable control state from different markup and a DOM-TEXT oracle
+ * reports a divergence. Whether the client should ALSO write the content
+ * attribute is a separate open design question — this set exists so that
+ * question stays open WITHOUT leaving the whole class ungenerated (which is why
+ * it was invisible here until now).
+ *
+ * Deleting an entry re-arms that exact shape. Everything NOT listed stays
+ * armed — including `input.checked` and `option.selected`, which agree on this
+ * generator's path (see the reach caveat below).
+ *
+ * REACH CAVEAT — this generator builds trees with `h()` (`toVNode`), never
+ * through `transformJSX`, so it covers the RUNTIME path ONLY. `checked` /
+ * `selected` / `indeterminate` diverge only on the COMPILED path, where the
+ * compiler's `DOM_PROPS` routes them to a property assignment while
+ * `applyStaticProp`'s boolean branch (props.ts) sets the ATTRIBUTE — and that
+ * boolean branch fires BEFORE the `key in el` property routing. They are
+ * generated and left UNMASKED here, armed against a runtime-path regression,
+ * but a companion COMPILED-path gate is still owed; `compiler-integration.test.tsx`
+ * is the precedent for that shape.
+ */
+export const KNOWN_ATTR_PARITY_DIVERGENCES: ReadonlySet<string> = new Set([
+  'input.value',
+  'textarea.value',
+  'select.value',
+])
+
+/**
+ * Neutralize exactly the divergences named above, and nothing else.
+ *
+ * Scoped by the `data-pv` marker the generator puts on precisely the elements it
+ * gave a listed value prop, so an element that merely happens to carry `value`
+ * or `selected` for another reason is still compared byte-for-byte.
+ */
+const ATTRS_AFTER_PV_INPUT = /<input data-pv=""((?: [a-zA-Z-]+="[^"]*")*)>/g
+const VALUE_ATTR = / value="[^"]*"/
+
+function maskKnownDivergences(html: string): string {
+  let out = html
+  if (KNOWN_ATTR_PARITY_DIVERGENCES.has('input.value')) {
+    // SSR serializes `value="x"`; the client sets the non-reflecting property.
+    // The attribute scan must be QUOTE-aware, not `[^>]*` — a serialized value
+    // can legitimately contain `>` (`<&>"` -> `value="<&amp;>&quot;"`), which
+    // truncates a naive tag match and silently stops masking.
+    out = out.replace(ATTRS_AFTER_PV_INPUT, (_m, attrs: string) => `<input data-pv=""${attrs.replace(VALUE_ATTR, '')}>`)
+  }
+  if (KNOWN_ATTR_PARITY_DIVERGENCES.has('textarea.value')) {
+    // SSR serializes the value as TEXT CONTENT; the client sets the property.
+    out = out.replace(/<textarea data-pv=""([^>]*)>[\s\S]*?<\/textarea>/g, '<textarea data-pv=""$1></textarea>')
+  }
+  if (KNOWN_ATTR_PARITY_DIVERGENCES.has('select.value')) {
+    // SSR marks the matching `<option selected>`; the client sets the property
+    // post-children (applySelectValueProp). Scoped to the marked select's block.
+    out = out.replace(/<select data-pv=""[\s\S]*?<\/select>/g, (block) => block.replace(/ selected=""/g, ''))
+  }
+  return out
+}
+
+/** The single comparison surface for O2 / O3 / O5. */
+const cmp = (html: string) => maskKnownDivergences(stripComments(html))
 
 describe('SSR ↔ hydration parity fuzz', () => {
   // CI runs 300 (the gate's standing budget). A marker-scheme change must be
@@ -274,12 +388,12 @@ describe('SSR ↔ hydration parity fuzz', () => {
 
       if (mismatches.length > 0) failures.push(`seed=${seed} O1: ${mismatches[0]}`)
       else if (cA.firstElementChild !== rootBefore) failures.push(`seed=${seed} O4: root remounted`)
-      if (stripComments(cA.innerHTML) !== stripComments(cB.innerHTML)) {
+      if (cmp(cA.innerHTML) !== cmp(cB.innerHTML)) {
         failures.push(`seed=${seed} O2 divergence`)
       } else {
         flip(sigSpecs, SA)
         flip(sigSpecs, SB)
-        if (stripComments(cA.innerHTML) !== stripComments(cB.innerHTML)) {
+        if (cmp(cA.innerHTML) !== cmp(cB.innerHTML)) {
           failures.push(`seed=${seed} O3 post-flip divergence`)
         } else {
           // O5 — absolute ground truth: fresh signals, flipped BEFORE
@@ -290,7 +404,7 @@ describe('SSR ↔ hydration parity fuzz', () => {
           const cC = document.createElement('div')
           document.body.appendChild(cC)
           const cleanupC = mount(toVNode(spec, SC) as never, cC)
-          if (stripComments(cA.innerHTML) !== stripComments(cC.innerHTML)) {
+          if (cmp(cA.innerHTML) !== cmp(cC.innerHTML)) {
             failures.push(`seed=${seed} O5 ground-truth divergence`)
           }
           cleanupC()
@@ -306,6 +420,114 @@ describe('SSR ↔ hydration parity fuzz', () => {
     }
 
     expect(failures, failures.join('\n')).toEqual([])
+  })
+})
+
+describe('grammar non-vacuity', () => {
+  // A generator arm that stops firing turns this gate green by generating
+  // NOTHING, which is how the whole value-bearing-control class stayed
+  // invisible here in the first place. Count the shapes and assert a floor, so
+  // "the arm produces no controls" fails loudly instead of passing quietly.
+  const walk = (spec: Spec, hit: (key: string) => void): void => {
+    switch (spec.k) {
+      case 'formctl':
+        if (spec.variant) {
+          if (spec.ctl === 'input') hit('armed input.checked')
+          else if (spec.ctl === 'select') hit('armed option.selected')
+          else hit('armed textarea (no value)')
+        } else {
+          hit(`${spec.ctl}.value`)
+          if (spec.ctl === 'input') hit('input.checked')
+          if (spec.ctl === 'select') hit('option.selected (via select.value)')
+        }
+        return
+      case 'el':
+      case 'frag':
+      case 'rattr-el':
+        for (const c of spec.children) walk(c, hit)
+        return
+      case 'show':
+        walk(spec.child, hit)
+        if (spec.fallback) walk(spec.fallback, hit)
+        return
+      case 'ternary':
+        walk(spec.a, hit)
+        walk(spec.b, hit)
+        return
+      case 'comp':
+        walk(spec.child, hit)
+        return
+      default:
+        return
+    }
+  }
+
+  it('the divergence mask does not over-reach', () => {
+    // The mask is the one place this gate deliberately stops asserting, so its
+    // BLAST RADIUS is itself a contract: it may only touch elements the
+    // generator marked with `data-pv`, and only the three named props.
+    const untouched = [
+      // an UNMARKED input keeps its value attribute
+      '<input value="x">',
+      // `checked` is armed, on marked and unmarked elements alike
+      '<input data-pv="" checked="">',
+      '<input checked="">',
+      // an UNMARKED select keeps its selected option
+      '<select><option value="a" selected="">a</option></select>',
+      // an unmarked textarea keeps its content
+      '<textarea>body</textarea>',
+    ]
+    for (const html of untouched) {
+      expect(maskKnownDivergences(html), `mask must not alter ${html}`).toBe(html)
+    }
+
+    // ...and it MUST neutralize the three named surfaces on marked elements.
+    expect(maskKnownDivergences('<input data-pv="" value="x" checked="">')).toBe(
+      '<input data-pv="" checked="">',
+    )
+    // A serialized value containing `>` is the case a naive `[^>]*` tag scan
+    // silently fails to mask.
+    expect(maskKnownDivergences('<input data-pv="" value="<&amp;>&quot;">')).toBe('<input data-pv="">')
+    expect(maskKnownDivergences('<textarea data-pv="">body</textarea>')).toBe('<textarea data-pv=""></textarea>')
+    expect(
+      maskKnownDivergences('<select data-pv=""><option value="a" selected="">a</option></select>'),
+    ).toBe('<select data-pv=""><option value="a">a</option></select>')
+  })
+
+  it('value-bearing form controls appear in a meaningful share of seeds', () => {
+    const CENSUS_SEEDS = 5000
+    const counts = new Map<string, number>()
+    let seedsWithControl = 0
+    for (let seed = 1; seed <= CENSUS_SEEDS; seed++) {
+      const r = mulberry32(seed)
+      const sigSpecs: SigSpec[] = []
+      const spec: Spec = {
+        k: 'el',
+        tag: 'main',
+        attrs: [],
+        children: [genSpec(r, 0, sigSpecs), genSpec(r, 0, sigSpecs)],
+      }
+      let n = 0
+      walk(spec, (key) => {
+        counts.set(key, (counts.get(key) ?? 0) + 1)
+        n++
+      })
+      if (n > 0) seedsWithControl++
+    }
+    const total = [...counts.values()].reduce((a, b) => a + b, 0)
+    const summary = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}=${v}`).join(' · ')
+    const share = seedsWithControl / CENSUS_SEEDS
+
+    // Floors, not exact counts: the grammar may legitimately be extended, but it
+    // must never silently stop producing these shapes.
+    expect(
+      share,
+      `only ${(share * 100).toFixed(1)}% of seeds carry a form control (${total} total: ${summary})`,
+    ).toBeGreaterThan(0.2)
+    // Every masked surface AND every armed surface must actually be generated.
+    for (const key of ['input.value', 'textarea.value', 'select.value', 'input.checked', 'armed option.selected']) {
+      expect(counts.get(key) ?? 0, `grammar generated no ${key}`).toBeGreaterThan(0)
+    }
   })
 })
 
