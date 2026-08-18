@@ -1,5 +1,6 @@
 {
   "name": "@pyreon/example-kanban",
+  "license": "MIT",
   "version": "0.50.1",
   "private": true,
   "type": "module",

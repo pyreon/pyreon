@@ -71,6 +71,10 @@ const GATES: Gate[] = [
   // App-side line count across the reference apps — the framework's "write
   // less code" claim, ratcheted so it cannot quietly drift the wrong way.
   { name: 'check-app-loc', cmd: 'bun scripts/check-app-loc.ts' },
+  // IP: every workspace carries the root LICENSE byte-for-byte and declares
+  // "license": "MIT". A published package without either ships with no stated
+  // terms; an example without either is code people copy with none.
+  { name: 'check-license-coverage', cmd: 'bun scripts/check-license-coverage.ts' },
   { name: 'gen-docs --check', cmd: 'bun run gen-docs --check' },
   { name: 'check-doc-claims', cmd: 'bun scripts/check-doc-claims.ts' },
   // The multiplatform capability matrix's headline must equal its own table's
