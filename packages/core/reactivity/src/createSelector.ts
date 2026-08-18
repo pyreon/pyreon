@@ -28,6 +28,15 @@ function notifyBucket(bucket: Set<() => void>): void {
  */
 const SWEEP_FLOOR = 512
 
+/**
+ * Per-key bucket for the `.subscribe()` channel. Holding the updater behind a
+ * mutable field is what lets a disposer unsubscribe WITHOUT a map lookup —
+ * see the `boundSubs` declaration for why that is load-bearing.
+ */
+interface BoundHolder {
+  fn: ((matches: boolean) => void) | Set<(matches: boolean) => void> | null
+}
+
 /** Selector predicate with `dispose()` + `subscribe()` methods. */
 export interface Selector<T> {
   (value: T): boolean
@@ -51,8 +60,10 @@ export interface Selector<T> {
    * then again only when the selection actually crosses this key.
    *
    * Per-row cost in the dominant one-subscriber-per-key shape is one `Map.set`
-   * of the bare updater plus one dispose closure — a Set is allocated only when
-   * a SECOND subscriber binds the same key.
+   * of a small holder plus one dispose closure — a Set is allocated only when a
+   * SECOND subscriber binds the same key. UNSUBSCRIBING touches no map at all
+   * (the disposer clears one field on its holder), which is what keeps tearing
+   * down an N-row list off the hashed-delete path.
    *
    * Named `subscribe` rather than `bind` to avoid colliding with
    * `Function.prototype.bind` on callable shapes.
@@ -116,16 +127,78 @@ export function createSelector<T>(source: () => T): Selector<T> {
   // instead of an empty re-run closing over `current` and `value`.
   //
   // Inline-first-subscriber storage (the signal `_d1` trick): the DOMINANT shape
-  // is <For> rows where every key has EXACTLY ONE subscriber, so storing a bare
-  // function avoids one Set allocation per row. Promote to a Set only when a
-  // SECOND subscriber arrives for the same key.
-  const boundSubs = new Map<T, ((matches: boolean) => void) | Set<(matches: boolean) => void>>()
+  // is <For> rows where every key has EXACTLY ONE subscriber, so `holder.fn`
+  // stores a bare function; it promotes to a Set only when a SECOND subscriber
+  // arrives for the same key.
+  //
+  // The value is a HOLDER rather than the updater itself so that UNSUBSCRIBING
+  // TOUCHES NO MAP AT ALL — the disposer closes over its holder and clears one
+  // field. That matters because the dominant caller is a `<For>` row, and
+  // clearing an N-row list ran N × (`Map.get` + `Map.delete`); measured in real
+  // Chromium on the 1000-row krausest shape that was the single largest
+  // non-DOM item in `clear rows` (11.1µs in its own frame plus most of a
+  // 12.7µs frame V8 had inlined it into, against 0.9µs for tearing down the
+  // per-row signal binding). A holder field write is ~1ns, and when the last
+  // live key goes the whole map is dropped in ONE `clear()` — so a full-list
+  // teardown costs N cheap writes plus one O(1) map op instead of N hashed
+  // deletes. The identity guard survives unchanged: a stale disposer sees
+  // `holder.fn !== updater` after a re-subscribe and correctly no-ops, which a
+  // bare `Map.delete(value)` could not do without reading the bucket back.
+  let boundSubs = new Map<T, BoundHolder>()
+  // Holders whose `fn` is still live. Reaching 0 means every bound key is dead,
+  // which is the whole-list-teardown case worth special-casing.
+  let liveBound = 0
+  // Holders left behind with `fn === null` (partial teardown). They retain
+  // nothing but themselves, and `sweepBound` rebuilds the map once they
+  // outnumber the live ones — amortised, so repeated add/remove churn that
+  // never reaches 0 live cannot grow the map without bound.
+  let deadBound = 0
   let current: T
   let initialized = false
   let disposed = false
   // Reclamation state for `subs` — see `sweep()`.
   let notifying = false
   let sweepAt = SWEEP_FLOOR
+
+  /**
+   * Drop dead holders by REBUILDING from the live ones — O(live), where
+   * deleting them individually would be O(dead) hashed deletes, i.e. exactly
+   * the cost this design exists to avoid.
+   */
+  const sweepBound = (): void => {
+    const next = new Map<T, BoundHolder>()
+    for (const [key, holder] of boundSubs) if (holder.fn !== null) next.set(key, holder)
+    boundSubs = next
+    deadBound = 0
+  }
+
+  /**
+   * A holder just went dead.
+   *
+   * This runs once per unsubscribe and is therefore the hot path of a list
+   * teardown — it deliberately does NO reclamation work beyond the O(1)
+   * whole-map drop. Reclaiming here instead cost 10.3µs of a 1000-row clear in
+   * a real-Chromium profile: a teardown burst walks its live count down
+   * THROUGH every sweep threshold on its way to zero, so a `dead > live`
+   * trigger rebuilds the map two or three times before the final row proves
+   * the rebuilds were pointless. Dead holders only become a problem when the
+   * map GROWS, so `subscribe` reclaims instead — the same insertion-time
+   * amortisation `sweep()` uses for `subs`.
+   */
+  const releaseBound = (): void => {
+    deadBound++
+    // `<= 0` rather than `=== 0`, at identical cost: `selector.dispose()` zeroes
+    // the counts while rows may still hold un-run disposers, and a component
+    // that disposes its selector before its `<For>` tears down is an ordinary
+    // unmount order. Those late disposers would otherwise drive the count
+    // negative and it would never return to 0.
+    if (--liveBound <= 0) {
+      // Whole-list teardown: one map op instead of N hashed deletes.
+      boundSubs.clear()
+      deadBound = 0
+      liveBound = 0
+    }
+  }
 
   const sourceEffect = effect(() => {
     const next = source()
@@ -153,8 +226,10 @@ export function createSelector<T>(source: () => T): Selector<T> {
     }
     // Bound updaters — pass the resolved boolean directly so the user
     // updater can run with zero closure overhead per fire.
-    const oldBoundBucket = boundSubs.get(old)
-    const newBoundBucket = boundSubs.get(next)
+    // One extra field deref per SELECTION CHANGE (not per key, not per row) —
+    // the holder indirection is paid exactly twice here.
+    const oldBoundBucket = boundSubs.get(old)?.fn
+    const newBoundBucket = boundSubs.get(next)?.fn
     if (oldBoundBucket) {
       if (typeof oldBoundBucket === 'function') oldBoundBucket(false)
       else for (const fn of oldBoundBucket) fn(false)
@@ -208,13 +283,16 @@ export function createSelector<T>(source: () => T): Selector<T> {
     sourceEffect.dispose()
     subs.clear()
     boundSubs.clear()
+    liveBound = 0
+    deadBound = 0
   }
 
   // Effect-free per-key binding (perf hot path) — hooks `updater` DIRECTLY into
   // a per-key bound bucket; the source effect calls it with the resolved boolean.
   // Per `.subscribe` call, in the dominant one-subscriber-per-key shape: one
-  // `Map.set` of the BARE updater (no Set) plus one dispose closure — zero
-  // effects, zero deps arrays, zero tracking-frame pushes.
+  // `Map.set` of a holder (no Set) plus one dispose closure — zero effects, zero
+  // deps arrays, zero tracking-frame pushes. The matching unsubscribe is one
+  // field write and no map operation.
   selector.subscribe = (value: T, updater: (matches: boolean) => void): (() => void) => {
     if (disposed) {
       // Selector is disposed — call updater once with the stale-last value,
@@ -225,35 +303,54 @@ export function createSelector<T>(source: () => T): Selector<T> {
         /* no-op */
       }
     }
-    const existing = boundSubs.get(value)
-    if (existing === undefined) {
+    let holder = boundSubs.get(value)
+    if (holder === undefined) {
+      // NEW key — the only place the map can grow, so (as with `subs`) the
+      // only place that needs to consider reclaiming. Never sweeps
+      // mid-notification: the source effect holds bucket references across its
+      // two `boundSubs.get` calls and must not have the map swapped underneath.
+      if (!notifying && deadBound >= SWEEP_FLOOR && deadBound > liveBound) sweepBound()
       // First subscriber for this key — store the bare updater (no Set).
-      boundSubs.set(value, updater)
-    } else if (typeof existing === 'function') {
-      // Second subscriber — promote to a Set holding both.
+      holder = { fn: updater }
+      boundSubs.set(value, holder)
+      liveBound++
+    } else if (holder.fn === null) {
+      // Reviving a holder left dead by an earlier unsubscribe — it is still in
+      // the map, so no map write is needed, only the accounting.
+      holder.fn = updater
+      liveBound++
+      deadBound--
+    } else if (typeof holder.fn === 'function') {
+      // Second subscriber — promote to a Set holding both. The holder stays
+      // live, so the live/dead counts are unchanged.
       const promoted = new Set<(matches: boolean) => void>()
-      promoted.add(existing)
+      promoted.add(holder.fn)
       promoted.add(updater)
-      boundSubs.set(value, promoted)
+      holder.fn = promoted
     } else {
-      existing.add(updater)
+      holder.fn.add(updater)
     }
     // Initial inline call — consumer expects the updater to run synchronously
     // with the current state, same shape as `_bindDirect` / `_bindText`.
     updater(Object.is(current, value))
+    const h = holder
     return () => {
-      const bucket = boundSubs.get(value)
+      // NO map lookup: the holder is closed over. `h.fn === updater` is the
+      // same identity guard the old `boundSubs.get(value) === updater` gave —
+      // a second call, or a call after this key was re-subscribed by someone
+      // else, matches nothing and correctly no-ops.
+      const bucket = h.fn
       if (bucket === updater) {
-        // Sole inline subscriber — drop the key entirely (also prevents
-        // unbounded Map growth across create/clear cycles with fresh keys).
-        boundSubs.delete(value)
-      } else if (bucket instanceof Set) {
+        h.fn = null
+        releaseBound()
+      } else if (bucket !== null && typeof bucket !== 'function') {
         bucket.delete(updater)
         // Last subscriber of a promoted key left — drop the now-empty Set so
-        // the key doesn't linger in `boundSubs` (same unbounded-growth guard the
-        // inline branch applies; without this, a key that ever had ≥2 bound
-        // subscribers leaked an empty Set for the selector's lifetime).
-        if (bucket.size === 0) boundSubs.delete(value)
+        // the holder stops retaining it and the key becomes sweepable.
+        if (bucket.size === 0) {
+          h.fn = null
+          releaseBound()
+        }
       }
     }
   }
