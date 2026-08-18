@@ -29,27 +29,32 @@ is staged in-repo at `contrib/krausest/pyreon-keyed/`.
 
 ## Flagship: keyed row-list DOM benchmark
 
-> **2026-08-18 retraction.** The table and verdicts this section published
-> through 2026-08-17 were partly wrong, and every error flattered Pyreon. We
-> found our own harness had (1) handicapped [Octane](https://octanejs.dev) —
-> the nearest rival — by rendering its row id as `{String(row.id)}` where its
-> own idiomatic form (and the `react.ts` reference it ports) passes the raw
-> number; that wrapper dropped Octane's compiler `forBlock` eligibility flags
-> from 30 to 26 and routed every row through its slow path, and (2) let five
+> **2026-08-18 retraction, updated same day after a SECOND root cause was
+> found.** The table and verdicts this section published through 2026-08-17
+> were partly wrong, and every error flattered Pyreon. Two rounds of harness
+> bugs, all in our own code: (1) our harness had handicapped
+> [Octane](https://octanejs.dev) — the nearest rival — by rendering its row
+> id as `{String(row.id)}` where its own idiomatic form passes the raw
+> number, disabling a compiler fast path, and separately let five
 > implementations' `String(row.id)` calls inflate a shared V8 engine cache
-> (`smi_string_cache`) that our retained-heap metric then charged to the
-> framework. **This is not a Pyreon regression** — Pyreon's own medians are
-> flat-to-better than the retracted run (e.g. `swap` 900µs → 860µs). What
-> changed is that the competitor stopped being handicapped. The fixes are
-> staged as open pull requests
+> that our retained-heap metric charged to the framework; (2) the bench
+> fixture used `table-layout: auto`, so any op that widens a table cell
+> forced Chromium to re-measure every row's column widths — this is what
+> actually caused `append`'s bimodal timing, and it separately inflated our
+> published Pyreon-vs-Solid `partial update` lead by more than 2×. **This is
+> not a Pyreon regression** — every fix removes something that was inflating
+> or destabilizing a number, never something that was making Pyreon look
+> artificially slow. The fixes are staged as open pull requests
 > ([#2893](https://github.com/pyreon/pyreon/pull/2893),
 > [#2894](https://github.com/pyreon/pyreon/pull/2894),
 > [#2895](https://github.com/pyreon/pyreon/pull/2895),
-> [#2896](https://github.com/pyreon/pyreon/pull/2896),
 > [#2897](https://github.com/pyreon/pyreon/pull/2897),
-> [#2899](https://github.com/pyreon/pyreon/pull/2899)) and had **not merged**
-> as of this writing — the corrected table below is the destination once they
-> land, not yet the state of `main`.
+> [#2899](https://github.com/pyreon/pyreon/pull/2899),
+> [#2901](https://github.com/pyreon/pyreon/pull/2901),
+> [#2903](https://github.com/pyreon/pyreon/pull/2903)) and had **not merged**
+> as of this writing — the table below is the destination once they land,
+> not yet the state of `main`. (#2896 is unrelated to this suite — it only
+> touches the deep-component-tree scenario.)
 
 A krausest-style row-list suite in real Chromium (Playwright), production
 `vite build` per framework, forced GC between iterations, 100 pooled samples
@@ -60,35 +65,50 @@ low-level entry measured statistically identical and was removed).
 
 | Benchmark | Vanilla | Pyreon | Octane | Vue 3 | Solid | Svelte 5 | React 19 | Preact |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Create 1,000 | 7.83 | 🤝 8.41 | 🤝 8.45 | 8.48 | 9.16 | 9.23 | 10.46 | 12.12 |
-| Replace 1,000 | 7.82 | 🤝 8.31 | 🤝 8.33 | 8.47 | 9.03 | 9.11 | 10.39 | 12.05 |
-| Partial update | 780µs | 🤝 825µs | 🤝 850µs | 1.16 | 3.98 | 1.41 | 1.02 | 1.14 |
+| Create 1,000 | 7.47 | 🤝 8.01 | 🤝 7.95 | 8.06 | 8.82 | 8.97 | 10.23 | 11.83 |
+| Replace 1,000 | 7.45 | 🤝 7.92 | 🤝 7.84 | 8.03 | 8.60 | 8.86 | 9.98 | 11.75 |
+| Partial update | 720µs | 🤝 650µs | 🤝 700µs | 1.03 | 1.39 | 1.25 | 890µs | 1.01 |
 | Select row | — | at floor (no ratio) | at floor (no ratio) | — | — | — | — | — |
-| Swap rows | 830µs | 🤝 860µs | 🤝 870µs | 1.23 | 🤝 905µs | 1.58 | 6.55 | 1.08 |
-| Remove row | 6.43 | 🤝 6.58 | 🤝 6.58 | 6.80 | 6.67 | 7.22 | 6.85 | 7.09 |
-| Clear rows | 85µs | 165µs | **115µs** | 235µs | 450µs | 285µs | 645µs | 760µs |
-| Create 10,000 | 82.45 | **88.91** | 90.37 | 91.95 | 105.70 | 103.91 | 215.06 | 274.19 |
-| Append 1k→10k | bimodal — no ratio (see below) | **18.89–19.02ms** | 19.69–19.81ms | 76.2 | 20.5 | 26.4 | 22.1 | 22.5 |
+| Swap rows | 690µs | 760µs | 850µs | 1.06 | 890µs | 1.39 | 6.10 | 1.00 |
+| Remove row | 6.14 | 🤝 6.24 | 🤝 6.26 | 6.47 | 6.26 | 7.02 | 6.60 | 6.74 |
+| Clear rows | 90µs | 160µs | **110µs** | 230µs | 440µs | 280µs | 1.05 | 740µs |
+| Create 10,000 | 75.25 | **80.28** | 83.40 | 87.70 | 98.30 | 95.90 | 209.60 | 266.70 |
+| Append 1k→10k | 13.68 | **14.24ms** | 16.27ms | 70.98 | 16.17 | 21.22 | 17.75 | 18.09 |
 
 (ms unless noted; `🤝` = statistical CI95-overlap tie; **bold** = outright
-leader on that row. Median of 100 pooled samples, load 1.58–2.81 — the
-quietest window measured to date.)
+leader on that row. Median of 100 pooled samples, on the `table-layout:
+fixed` board — see the retraction above. `swap` and `clear rows` are shown
+without a tie marker because this handoff's board doesn't carry fresh CI
+bounds for every cell; treat any cell without `🤝` or **bold** as pending
+re-verification, not adjudicated.)
 
-**Corrected tally: Pyreon wins 2 ops outright (`create 10,000`, `append`),
-statistically ties Octane on 6 (`create 1,000`, `replace`, `partial update`,
-`swap`, `remove`, `select row`), and loses 1 (`clear rows`, a real 1.43× gap
-— 165µs vs 115µs, CI-disjoint, not a timer-quantum artifact).** That is a
-genuine walk-back from the previous "7 of 9 outright" claim: most of this
-suite is now a statistical tie between two frameworks, not a Pyreon sweep —
-but it is now two real wins, not one. The measurable wall-clock cost vs
-hand-written vanilla JS is bulk-create (~6–7% — per-row signal allocation
-plus the keyed-`<For>` map) and, computed from fast-mode-only samples (never
-a raw ratio — see below), append (+3.8% to +4.9%); **the create/create-10k
-figures are real but layout-dominated, not a clean JS-cost signal — see
-below for the JS-only ~+28% term that is invisible in this wall-clock
-number.**
+**Tally on this board: Pyreon wins 2 ops outright (`create 10,000`,
+`append` — both WIDENED by the table-layout fix, not narrowed), a plausible
+tie-cluster (`create 1,000`, `replace`, `partial update`, `remove`,
+`select row`), and loses 1 (`clear rows`, ~1.45×, unaffected by the layout
+fix since it doesn't widen any cell).** `swap`'s gap also widened and may no
+longer be a tie, but is unconfirmed without CI — do not publish it as a win.
+The measurable wall-clock cost vs hand-written Vanilla is bulk-create
+(~7.2%/~6.7% at create-1k/create-10k — layout-dominated, not a clean JS-cost
+signal, see below) and append (**+4.1% to +5.7%**, now publishable — see
+below for why that changed).
 
-**`select row` has no published multiplier.** Corrected timing at
+**`partial update` — the correction that matters most: our published ~4.9×
+lead over Solid was inflated more than 2× by the table-layout bug, and is
+retracted as explicitly as the Octane/retained-heap artifacts.** `partial
+update` appends `" !!!"` to a cell's text on every 10th row — widening that
+cell forced `table-layout: auto` to re-measure column widths across the
+WHOLE table, penalizing Solid disproportionately: Solid drops **4.03ms →
+1.39ms (−66%)** on the fix, while every other framework drops only 15–24%.
+**The record has published "Solid ~3.90–3.98ms, ~4.9× Pyreon lead" — that
+number is wrong. The corrected margin is Pyreon 650µs vs Solid 1.39ms,
+~2.1×.** Do not repeat the retracted 4.9× figure anywhere. The lead is
+still real, just less than half of what was claimed — Solid's effect-based
+`insert` is genuinely slower than Pyreon's `_bindText` direct-subscriber
+path, at ~2.1×, not ~4.9×.
+
+**`select row` has no published multiplier.** Unaffected by the
+table-layout fix (this op doesn't widen any cell). Timing at
 100/1,000/10,000 rows: Pyreon 1.03/0.96/0.69µs vs Octane 1.37/1.53/1.15µs,
 against a harness floor of 0.47–0.65µs. Octane is roughly flat across list
 length — this refutes an earlier claim that treated it as O(n) with a large
@@ -96,7 +116,7 @@ multiplier. Both frameworks sit at the edge of what real-Chromium timing can
 resolve; we publish "Pyreon is at the floor, Octane measurably but slightly
 above it," never a precise ratio, and never `0µs` again.
 
-**`Create 1,000` and `replace` are, 19 times out of 20, literally the same operation — and their tie is browser-bound, not a coincidence.** A 2026-08-18 profiling pass split `bench()`'s timed region (which times the framework's `fn()` PLUS a forced `getBoundingClientRect()` layout flush, in the SAME window) into JS and layout, on a production build:
+**`Create 1,000` and `replace` are, 19 times out of 20, literally the same operation — and their tie is browser-bound, not a coincidence.** A profiling pass (measured pre-`table-layout` fix; the qualitative finding is unaffected, since it concerns the `getBoundingClientRect()` flush every `create`/`replace` op pays regardless of table-layout mode) split `bench()`'s timed region (which times the framework's `fn()` PLUS that forced layout flush, in the SAME window) into JS and layout, on a production build:
 
 | | JS | layout | total |
 | --- | ---: | ---: | ---: |
@@ -120,11 +140,11 @@ caveat. Separately: the suite has no `reset` between runs and row ids come
 from a monotonic counter, so of the 20 timed runs per op only the FIRST
 mounts into an empty list — the other 19 hand the reconciler N brand-new
 keys against N rows STILL LIVE, which is structurally a replace. That's why
-`create` (8.41ms) and `replace` (8.31ms) report nearly identical medians —
-for 19 of 20 sampled runs they are, literally, the same operation. State
-this plainly: a reader of "Create 1,000: 8.41ms" reasonably assumes a fresh
-empty-DOM mount, and for the vast majority of sampled runs that assumption
-is wrong.
+`create` and `replace` report nearly identical medians on both the old and
+the fixed-layout boards — for 19 of 20 sampled runs they are, literally, the
+same operation. State this plainly: a reader of "Create 1,000: 8.01ms"
+reasonably assumes a fresh empty-DOM mount, and for the vast majority of
+sampled runs that assumption is wrong.
 
 A profiling driver used for the JS/layout split above initially printed
 `0.0µs` for every sample — its attribution keyed on `Function.name`, which a
@@ -133,40 +153,55 @@ back to a plausible-looking zero. Same class as this repo's "gate that could
 not fail" entries: it now refuses to report an empty attribution instead of
 printing one.
 
-**`append` is re-adjudicated OUTRIGHT PYREON, not void.** It previously read
-"OUTRIGHT Pyreon, 22.40ms," which turned out to be measured on a contaminated,
-bimodal harness and was briefly retracted to "unmeasured" while under
-investigation. Two independent corrected `--repeat 5` runs (100 pooled
-samples/op, load stamped 1.79→2.80, `crossOriginIsolated=true` verified, a
-genuine 5.0µs timer quantum, Octane un-handicapped) resolve it: Pyreon
-**18.89–19.02ms vs Octane 19.69–19.81ms — a narrow but real, CI95-disjoint
-~1.04× win**, confirmed twice per run — once on the all-samples median, once
-on the fast-mode cluster with slow-mode samples excluded entirely — same
-verdict all four ways. Runner-up field: Solid 20.5ms · React 22.1ms ·
-Preact 22.5ms · Svelte 26.4ms · Vue 76.2ms.
+**`append` is OUTRIGHT PYREON, and the margin WIDENED — this supersedes the
+"~1.04×, no vs-Vanilla ratio" figures reported earlier in this campaign.**
+`append` previously read "OUTRIGHT Pyreon, 22.40ms," which turned out to be
+measured on a bimodal-timing harness and was briefly retracted to
+"unmeasured" while under investigation. **The bimodality's root cause is now
+identified: `table-layout: auto` forced a full-table column re-measure on
+every append (~93% of the op's time), and whether the expensive path fired
+depended on random label content and benchmark history** — which is exactly
+why the mode mix differed per framework and per run. Fixed to `table-layout:
+fixed`, scoped to `.bench-fixture`, identical for all eight impls (PR
+#2903). Two independent corrected runs on the fixed board both land Pyreon
+**OUTRIGHT and CI95-disjoint**, at **1.14–1.20×** (run 1: 14.24ms vs Octane
+16.27ms = 1.14×; run 2: 14.11ms vs Octane 16.95ms = 1.20×) — WIDER than the
+previously-reported 1.04×, because a large shared additive layout constant
+left both sides once the table stopped re-measuring on every append.
 
-Three constraints travel with this number and must not be dropped when it is
-quoted elsewhere: **(1)** do NOT publish a vs-Vanilla append ratio — Vanilla's
-own median straddles the same two timing modes (35–60% slow-mode share
-across three runs, swinging between ~18.8ms and ~48.7ms), so a naive ratio at
-the 60%-slow run reads 0.39–0.46× (nonsensically implying frameworks are
-faster than hand-written DOM); the only valid cost-over-Vanilla figure is the
-fast-mode-only **+3.8% to +4.9%** quoted above. **(2)** the ~38% coefficient
-of variation on this cell is disclosed bimodality, not measurement jitter — a
-~10% slow-mode tail inflates CV/CI95 for every framework's append cell, not
-just Pyreon's; say so whenever quoting it. **(3)** 1.04× is real and
-CI-disjoint, but narrow — treat it as a narrow win on this synthetic
-keyed-row-list suite under the standing author-judge limit, not as a general
-performance claim.
+The bimodality guard (#2901) now passes CLEAN across the whole board: **7
+bimodal cells → 0**, every framework 100/100 fast-mode samples, CV 29–43% →
+**3–7%**. Because Vanilla's own median no longer straddles two timing modes,
+**a vs-Vanilla ratio is now honest and published**: Pyreon **+4.1% (run 1) /
++5.7% (run 2)** over hand-written Vanilla — the earlier instruction on this
+page to never publish this ratio is superseded specifically because the
+bimodality that made it dishonest is now fixed at the root.
 
-A **bimodality guard** now exists precisely so a contaminated cell like the
-original append figure can't reach these numbers unnoticed again (open PR,
-not yet merged): it computes `capture = median / fastModeCentre` per cell and
-fails the run when it crosses a calibrated threshold, naming the offending
-op. It exists because every prior gate checked a cell's own internal
-consistency but nothing checked whether one op's slow-mode tail was leaking
-into its *neighbours* — which is exactly how the append corruption went
-unnoticed until a human plausibility check caught it.
+Three caveats travel with the append figure and must be encoded wherever
+it's quoted, not just attached once: **(1)** even fixed, `append` is **~90%
+layout** (Pyreon's own JS is 1.48ms of a 14.47ms total) and all eight
+implementations emit **byte-identical DOM** (3 elements + 2 text nodes per
+appended row, verified) — the defensible claim is *end-to-end append cost
+including the layout it causes*, **not** "Pyreon's reconciler is 1.14×
+faster." **(2)** the fixture is now **less representative of real apps**,
+which commonly DO use auto-layout tables and pay this cost — `table-layout:
+fixed` is the right trade for a *comparison* specifically because
+auto-layout's cost is random-data-triggered and destabilizing, not a stable
+framework signal — state the trade-off, don't hide it. **(3)** these are
+pending numbers (see the retraction note above) — do not present this as
+settled until the PRs land.
+
+**A refuted diagnosis, worth recording as a lesson.** Before the
+`table-layout` root cause was found, append's bimodality was attributed to
+residue from the preceding `create 10,000` op, with fresh-fixture,
+fresh-page, or benchmark-reordering proposed as fixes. Measurement refuted
+the theory: append run with no preceding op at all is 54.53ms and 60/60
+SLOW; with only `create 10,000` before it, 21.11ms and ~50/50; with the
+full suite before it, 20.15ms and 90% FAST. **More preceding work produced
+MORE fast samples — the opposite of what a residue theory predicts.** Any
+of the proposed fixes would have shipped looking principled and made the
+benchmark worse. Measure a causal theory before fixing the harness on its
+strength alone.
 
 Per-op tie-vs-outright still shuffles with machine noise even on the
 corrected field, so treat it as a band rather than a fixed scoreboard; the
