@@ -66,7 +66,12 @@ export function createFieldComponent<TValues extends Record<string, unknown>>(
       // Loud, not silent: a typo'd name would otherwise render an empty div
       // and read as a styling problem.
       throw new Error(
-        `[Pyreon] <Field name="${String(props.name)}"> — no such field in the schema. ` +
+        // NOTE: deliberately not written as a JSX tag. The vite-plugin's
+        // auto-import scanner masks comments and strings but NOT template
+        // literals, so a `<Field name="…">` here is read as real JSX usage and
+        // injects `import { Field } from '@pyreon/primitives'` — which this
+        // package does not depend on, breaking every consumer build.
+        `[Pyreon] Field: no such field "${String(props.name)}" in the schema. ` +
           `Known fields: ${fields.map((f) => f.name).join(', ') || '(none)'}`,
       )
     }

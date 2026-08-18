@@ -154,7 +154,7 @@ describe('feature.Field', () => {
     })
     spy.mockRestore()
     const msg = seen.join('\n')
-    expect(msg).toContain('no such field in the schema')
+    expect(msg).toContain('no such field')
     expect(msg).toContain('ttile')
     expect(msg).toContain('title') // lists the real ones so the fix is obvious
   })
