@@ -2368,7 +2368,7 @@ function autoImportCanonicalPrimitives(
  *   - line comments  `// ... newline`
  *   - block comments `/* ... *​/`
  */
-export function _maskCommentsAndStrings(code: string): string {
+function _maskSource(code: string, maskStrings: boolean): string {
   const out: string[] = new Array(code.length)
   let i = 0
   const n = code.length
@@ -2405,7 +2405,7 @@ export function _maskCommentsAndStrings(code: string): string {
     // an apostrophe in a comment the masker already removed cannot reach here,
     // but a stray quote in real code must not blind the scanner to everything
     // after it.
-    if (c === '"' || c === "'") {
+    if (maskStrings && (c === '"' || c === "'")) {
       let j = i + 1
       while (j < n) {
         const ch = code[j]
@@ -2433,7 +2433,7 @@ export function _maskCommentsAndStrings(code: string): string {
     //
     // Nested templates inside an interpolation are tracked by depth so the
     // closing backtick found is the real one.
-    if (c === '`') {
+    if (maskStrings && c === '`') {
       let j = i + 1
       let depth = 0
       while (j < n) {
@@ -2481,41 +2481,29 @@ export function _maskCommentsAndStrings(code: string): string {
   return out.join('')
 }
 
+
+/**
+ * Mask comments AND string / template literals.
+ *
+ * Used for JSX-USAGE scanning: a primitive name inside a diagnostic message or
+ * a doc example is not usage, and treating it as such injects an import for a
+ * package the file may not depend on — which breaks the build.
+ */
+export function _maskCommentsAndStrings(code: string): string {
+  return _maskSource(code, true)
+}
+
 /**
  * Mask ONLY comments, preserving strings.
  *
- * Used where module SPECIFIERS still have to be readable — import detection and
- * the extend-existing-import splice. See `_maskCommentsAndStrings` for the
- * variant that also removes strings, used for JSX-usage scanning.
+ * Used where module SPECIFIERS must stay readable — import detection and the
+ * extend-existing-import splice. Masking those blinds both, and the pass emits
+ * a duplicate import line instead of extending the existing one.
  */
 export function _maskComments(code: string): string {
-  const out: string[] = new Array(code.length)
-  let i = 0
-  const n = code.length
-  while (i < n) {
-    const c = code[i] ?? ''
-    const c2 = code[i + 1] ?? ''
-    if (c === '/' && c2 === '*') {
-      const end = code.indexOf('*/', i + 2)
-      const stop = end < 0 ? n : end + 2
-      for (let j = i; j < stop; j++) out[j] = code[j] === '\n' ? '\n' : ' '
-      i = stop
-      continue
-    }
-    if (c === '/' && c2 === '/') {
-      let j = i
-      while (j < n && code[j] !== '\n') {
-        out[j] = ' '
-        j++
-      }
-      i = j
-      continue
-    }
-    out[i] = c
-    i++
-  }
-  return out.join('')
+  return _maskSource(code, false)
 }
+
 
 /** Collect every name imported via `import { ... }` / `import X` / `import * as X`. */
 export function _collectImportedNames(code: string): Set<string> {

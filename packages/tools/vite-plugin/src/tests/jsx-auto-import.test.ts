@@ -351,6 +351,26 @@ describe('auto-import ignores primitive names inside strings', () => {
     expect(out).toContain('@pyreon/primitives')
   })
 
+  it('handles an escaped backtick inside a nested template', async () => {
+    // The nested-template skip has its own escape handling: without it, the
+    // escaped backtick would be read as the nested literal's terminator and
+    // the scan would resynchronise on the wrong character.
+    const src = 'const s = `a${`b\\`c`}d`\nexport const V = () => <Text>hi</Text>'
+    const out = await runTransform(pyreonPlugin(), src)
+    expect(out).toContain('@pyreon/primitives')
+  })
+
+  it('an escaped quote does not end a string early', async () => {
+    const src = 'const s = "a\\"<Text b>"\nexport const V = () => <Stack/>'
+    const out = await runTransform(pyreonPlugin(), src)
+    // `Text` lives entirely inside the string, so only `<Stack/>` is real
+    // usage. Assert on the INJECTED IMPORT LINE — the source itself still
+    // contains the word `Text`, so a whole-output check proves nothing.
+    const importLine = out.split('\n').find((l) => l.includes('@pyreon/primitives')) ?? ''
+    expect(importLine).toContain('Stack')
+    expect(importLine).not.toContain('Text')
+  })
+
   it('an apostrophe in a comment does not blind the scanner to later usage', async () => {
     // Comments are masked first, so a comment apostrophe can never open a
     // string. A stray quote in real CODE must not swallow the rest of the file
