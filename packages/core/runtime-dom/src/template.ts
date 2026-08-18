@@ -1018,11 +1018,37 @@ export function _tplCacheSize(): number {
  *  is exactly that case. */
 const SLOT_NOOP = (): void => {}
 
+/** Hydration hook — registered by hydrateRoot (never at module load, so CSR
+ * bundles tree-shake it exactly like the `_tpl` adopt verifier). */
+export type SlotHydrator = (
+  children: VNodeChild | VNodeChild[],
+  parent: Node,
+  open: Comment,
+) => () => void
+let _slotHydrator: SlotHydrator | null = null
+export function _setSlotHydrator(h: SlotHydrator): void {
+  _slotHydrator = h
+}
+
 export function _mountSlot(
   children: VNodeChild | VNodeChild[],
   parent: Node,
   placeholder: Node,
 ): () => void {
+  // ADOPTED CONTAINER. When `_tpl` bound against the SSR node instead of a
+  // clone, this placeholder is not the template's inert `<!>` comment but the
+  // live `<!--$-->` marker opening the range that already holds this slot's
+  // server-rendered content. Mounting here would build a second copy and strand
+  // the first. Hand it to hydration, which walks the value against those nodes.
+  // A clone's placeholder has empty comment data, so the two can never be
+  // confused.
+  if (
+    _slotHydrator !== null &&
+    placeholder.nodeType === 8 &&
+    (placeholder as Comment).data === '$'
+  ) {
+    return _slotHydrator(children, parent, placeholder as Comment)
+  }
   if (children == null || children === false || children === true) {
     parent.removeChild(placeholder)
     return SLOT_NOOP

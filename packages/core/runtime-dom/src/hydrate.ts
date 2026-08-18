@@ -41,6 +41,7 @@ import { buildRowPlan, replayRowPlan, tplAdoptVerify } from './hydration-plan'
 import type { RowPlan } from './hydration-plan'
 import { _setPendingForAdoption, mountReactive } from './nodes'
 import {
+  _setSlotHydrator,
   _setTplAdoptTarget,
   _setTplAdoptVerifier,
   _setTplHoleHydrator,
@@ -291,6 +292,59 @@ function hydrateReactiveChild(
       // so only `mountReactive` handles the general case correctly. (A first cut
       // bound a text node here; the parity fuzzer's post-flip oracle caught
       // 217/3000 divergences, VNodes stringified into the text node.)
+
+      // MULTI-ROOT ADOPTION. A non-empty range holds real server nodes, and
+      // mounting fresh + deleting them is the same discard `_tpl` adoption
+      // exists to stop: it destroys node identity, and with it typed input,
+      // focus, scroll and any listener non-Pyreon code attached. The binding
+      // must still be LIVE (a later flip re-renders), so the adoption goes
+      // through `mountReactive` exactly as before — only its FIRST mount is
+      // swapped for a hydrating one, which walks the accessor's initial value
+      // against the nodes already in the range.
+      //
+      // The marker anchors AFTER the range (before `/$`), so re-renders insert
+      // at the right position and the first hydration walk has a terminator.
+      // Only the two markers are removed; the content stays put.
+      //
+      // Any structural divergence inside the walk is handled by the same
+      // recovery `hydrateChild` uses everywhere (warn + repair in place), so a
+      // mismatch degrades to the pre-existing correctness, never past it.
+      const rangeFirst = domNode.nextSibling
+      if (rangeFirst !== null && rangeFirst !== end) {
+        let hydrated = false
+        const open = domNode
+        // `end` is the anchor: mountReactive inserts its own marker just before
+        // it, so the boundary lands after the adopted content and no extra
+        // marker of ours is needed.
+        const cleanup = mountReactive(child, parent, end, (value, p, a) => {
+          if (hydrated) return mountChild(value, p, a)
+          hydrated = true
+          // `rangeFirst` may itself be a comment the walk should skip.
+          const cursor = rangeFirst.nodeType === 1 ? rangeFirst : firstReal(rangeFirst)
+          const disposeBindings = hydrateChild(value, cursor, p, a, `${path} > reactive`)[0]
+          // CONTRACT BRIDGE. `hydrateChild`'s cleanups DISPOSE bindings; they do
+          // not remove the nodes, because hydrateRoot tears the whole container
+          // down. `mountReactive` needs the opposite: its per-run cleanup is what
+          // clears the previous render before the next one mounts, so anything
+          // left behind survives every future flip. (The parity fuzzer caught
+          // exactly this — an adopted text node stayed put after the accessor
+          // flipped to an element, 5/300 seeds diverging post-flip.)
+          //
+          // Capture the LIVE adopted range — everything the walk claimed or
+          // repaired, between the still-present open marker and mountReactive's
+          // anchor — and remove it alongside the dispose.
+          const claimed: ChildNode[] = []
+          for (let c = open.nextSibling; c && c !== a; c = c.nextSibling) claimed.push(c)
+          return () => {
+            disposeBindings()
+            for (let i = 0; i < claimed.length; i++) (claimed[i] as ChildNode).remove()
+          }
+        })
+        domNode.remove()
+        end.remove()
+        return [cleanup, after ? firstReal(after) : null]
+      }
+
       // General case — mount the live binding at the range position, then remove
       // the SSR range, markers included.
       const marker = insertMarker(parent, domNode, 'pyreon')
@@ -640,6 +694,57 @@ function hydrateMountHole(
   // stale nodes. When the cursor is null there is nothing left to precede and
   // the anchor is `null` again, which is the append the caller wants.
   return hydrateChild(child, start, parent, start)
+}
+
+/**
+ * Hydrate a compiled `_mountSlot` against the SSR range its adopted container
+ * already holds (see `_mountSlot`). `open` is the live `<!--$-->` marker the
+ * compiled placeholder ref resolved to.
+ *
+ * The ACCESSOR case — what the compiler emits for `{items.map(…)}` and every
+ * other dynamic slot — is handed straight to `hydrateChild`, because a `$`
+ * cursor is precisely the shape `hydrateReactiveChild` already decodes: it
+ * finds the matching close depth-aware, adopts the range, and drops both
+ * markers. A non-accessor value (a literal array) has no reactive boundary to
+ * install, so it is walked against the range directly and the markers removed
+ * here.
+ */
+function hydrateMountSlot(
+  children: VNodeChild | VNodeChild[],
+  parent: Node,
+  open: Comment,
+): Cleanup {
+  if (typeof children === 'function') {
+    return hydrateChild(children, open, parent, null, 'slot')[0]
+  }
+  // Locate the range end (depth-aware — accessor ranges nest).
+  let close: ChildNode | null = null
+  let depth = 0
+  for (let n: ChildNode | null = open.nextSibling; n; n = n.nextSibling) {
+    if (n.nodeType !== 8) continue
+    const d = (n as Comment).data
+    if (d === '$') depth++
+    else if (d === '/$') {
+      if (depth === 0) {
+        close = n
+        break
+      }
+      depth--
+    }
+  }
+  if (close === null) {
+    // No range to adopt (shouldn't reach here — the verifier only admits a
+    // container whose slot range is well-formed). Fall back to mounting.
+    const cleanup = mountChild(children, parent, open)
+    open.remove()
+    return cleanup
+  }
+  const first = open.nextSibling
+  const cursor = first === close ? null : first!.nodeType === 1 ? first : firstReal(first)
+  const [cleanup] = hydrateChild(children, cursor, parent, close, 'slot')
+  open.remove()
+  close.remove()
+  return cleanup
 }
 
 function hydrateChild(
@@ -1086,6 +1191,7 @@ export function hydrateRoot(container: Element, vnode: VNodeChild): () => void {
   // machinery into CSR bundles that tree-shake hydrateRoot).
   _setTplAdoptVerifier(tplAdoptVerify)
   _setTplHoleHydrator(hydrateMountHole)
+  _setSlotHydrator(hydrateMountSlot)
   // Install the devtools hook on hydration too, not just `mount()` — otherwise
   // the reactive dev overlay (Ctrl+Shift+R) + `__PYREON_DEVTOOLS__` silently
   // don't exist in SSR/hydrated apps, which is most real Pyreon apps. Idempotent
