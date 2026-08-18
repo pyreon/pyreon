@@ -544,19 +544,27 @@ interface TplSig {
    */
   texts: (string | null)[][]
   /**
-   * Per element (tree order), 1 when the compiler DECLARED this element a
-   * mount hole — an element left empty in the template whose children are all
-   * absorbed COMPONENT children, appended by trailing `_mountChild` calls
-   * (`templatizeComponentChildren`). Its SSR counterpart holds those
-   * components' real output, so the match must skip that range instead of
-   * reading it as extra elements.
+   * Per element (tree order), `-1` when this element is not a mount hole, else
+   * the number of BAKED children the template gives it before the hole starts.
+   *
+   * A mount hole is an element the compiler DECLARED as ending short: its
+   * trailing children are absorbed COMPONENT children, appended by
+   * `_mountChild` calls (`templatizeComponentChildren`). Its SSR counterpart
+   * holds those components' real output, so the match must skip that range
+   * instead of reading it as extra elements.
+   *
+   * The count is read off the TEMPLATE element (`el.children.length`), not sent
+   * by the compiler — there is no number crossing the boundary and therefore
+   * none to keep in sync. `0` is the all-components case; `k > 0` is the mixed
+   * one, where `k` real elements are matched first and the hole is what remains
+   * up to the closing tag.
    *
    * Declared, not inferred: `_setChild` and a spread `innerHTML` also fill an
    * empty template element and do NOT hydrate, so a blanket "an empty element
    * may have extra children" rule would duplicate or discard their content.
    */
-  holes: Uint8Array | null
-  /** Number of 1s in `holes` — 0 lets every hole-aware branch short-circuit. */
+  holes: Int32Array | null
+  /** Number of declared holes — 0 lets every hole-aware branch short-circuit. */
   holeCount: number
 }
 const _tplSignature = new WeakMap<HTMLTemplateElement, TplSig | null>()
@@ -608,14 +616,15 @@ function templateSignature(tpl: HTMLTemplateElement, html: string): TplSig | nul
     }
     attrList.push(ownAttrs)
     textList.push(ownTexts)
-    // A declared hole must be genuinely EMPTY in the template — no element
-    // children (its whole child range belongs to the bind) and no text
-    // children (their 1:1 alignment with the SSR side is what the text half of
-    // the skeleton gate relies on). Re-checked here rather than trusted, so a
-    // compiler that ever marks the wrong element costs an adoption instead of
-    // correctness.
-    const isHole = _isTplHoleEl(el) && texts === 0 && el.firstElementChild === null
-    holeFlags.push(isHole ? 1 : 0)
+    // A declared hole must carry NO text children of its own: the 1:1 text
+    // alignment with the SSR side is what the text half of the skeleton gate
+    // relies on, and a hole's server range has texts the template has no
+    // counterpart for. Element children ARE allowed and are the mixed shape —
+    // they are matched normally and the hole is what follows them. Re-checked
+    // here rather than trusted, so a compiler that ever marks the wrong element
+    // costs an adoption instead of correctness.
+    const isHole = _isTplHoleEl(el) && texts === 0
+    holeFlags.push(isHole ? el.children.length : -1)
     if (isHole) holeCount++
     for (let c = el.firstElementChild; c; c = c.nextElementSibling) walk(c)
   }
@@ -625,7 +634,7 @@ function templateSignature(tpl: HTMLTemplateElement, html: string): TplSig | nul
     counts,
     attrs: attrList,
     texts: textList,
-    holes: holeCount > 0 ? Uint8Array.from(holeFlags) : null,
+    holes: holeCount > 0 ? Int32Array.from(holeFlags) : null,
     holeCount,
   }
   _tplSignature.set(tpl, sig)
@@ -833,21 +842,35 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
       const pair = wantAttrs[i] as [string, string]
       if (el.getAttribute(pair[0]) !== pair[1]) return false
     }
-    // MOUNT HOLE. The template leaves this element empty for trailing
-    // `_mountChild` calls to fill, so its ENTIRE server child range is the
-    // hole's content: not extra elements to reject, not texts to align, and
-    // not a subtree to descend into (the template has no counterpart for any
-    // of it). Record the range start and stop here — requirement (1).
+    // MOUNT HOLE. The template ends short here: after `k` baked children, the
+    // rest of this element's server range is the hole's content — not extra
+    // elements to reject, not texts to align, and not a subtree to descend into
+    // (the template has no counterpart for any of it). Match the `k`, then
+    // record where the hole starts and stop.
     //
     // No SSR range marker is involved, and none is needed: the element's own
     // tag boundary supplies the extent, exactly as it does for a sole-child
-    // accessor. Skipping to the end is only sound because a hole is always
-    // TRAILING — the compiler routes any component child with static content
-    // after it through a `<!>` placeholder instead, and `templateSignature`
-    // refuses every template containing one.
-    if (holeFlags !== null && holeFlags[at] === 1) {
-      ;(holes ??= new Map()).set(el, el.firstChild)
-      return true
+    // accessor. That holds only because a hole is always TRAILING — the
+    // compiler bails every shape with baked content AFTER a component to `h()`
+    // rather than emitting one (`absorbsComponentChildren`).
+    //
+    // The prefix must be exactly those `k` ELEMENTS and nothing else: a stray
+    // text or comment before the hole means the server and the template
+    // disagree about where the hole begins, and guessing is how a cursor walks
+    // into content it does not own. `k === 0` is the all-components case and
+    // reduces to `el.firstChild`, the shape this started as.
+    if (holeFlags !== null) {
+      const k = holeFlags[at] as number
+      if (k >= 0) {
+        let n: ChildNode | null = el.firstChild
+        for (let i = 0; i < k; i++) {
+          if (n === null || n.nodeType !== 1) return false
+          if (!walk(n as Element)) return false
+          n = n.nextSibling
+        }
+        ;(holes ??= new Map()).set(el, n)
+        return true
+      }
     }
     let texts = 0
     let bare: Text[] | null = null

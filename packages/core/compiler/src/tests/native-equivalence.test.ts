@@ -2290,17 +2290,27 @@ describeNative('templatizeComponentChildren parity', () => {
     compareTplComponents('const A = () => <div class="branch"><Node /><Node /></div>'))
   test('append form — a single component child', () =>
     compareTplComponents('const A = () => <div class="k"><Leaf /></div>'))
-  test('mixed form — static element AFTER the component', () =>
-    compareTplComponents('const A = () => <div><Leaf /><span>x</span></div>'))
-  test('mixed form — static element BEFORE the component', () =>
+  // A static element BEFORE the component is the TRAILING-hole shape: it
+  // absorbs, baking the sibling and appending the component after it. Every
+  // other arrangement bails to `h()` — the hole would no longer run to the
+  // element's own closing tag, so its extent would need a marker.
+  test('append form — static element BEFORE the component (trailing hole)', () =>
     compareTplComponents('const A = () => <div><span>x</span><Leaf /></div>'))
-  test('mixed form — text alongside a component', () =>
+  test('append form — SEVERAL static elements before the component', () =>
+    compareTplComponents('const A = () => <div><h2>t</h2><h3>u</h3><Leaf /></div>'))
+  test('append form — static prefix then SEVERAL components', () =>
+    compareTplComponents('const A = () => <div><h2>t</h2><Alpha /><Beta /></div>'))
+  test('append form — a trailing run reached through a fragment', () =>
+    compareTplComponents('const A = () => <div><h2>t</h2><><Alpha /><Beta /></></div>'))
+  test('bail — static element AFTER the component', () =>
+    compareTplComponents('const A = () => <div><Leaf /><span>x</span></div>'))
+  test('bail — text BEFORE a component', () =>
     compareTplComponents('const A = () => <div>hi <Leaf /></div>'))
-  test('mixed form — expression alongside a component', () =>
+  test('bail — expression alongside a component', () =>
     compareTplComponents('const A = () => <div><Leaf />{x()}</div>'))
   test('multi-hole source ordering', () =>
     compareTplComponents('const A = () => <div class="b"><Alpha /><Beta /><Gamma /></div>'))
-  test('multi-hole with static between them', () =>
+  test('bail — multi-hole with static between them', () =>
     compareTplComponents('const A = () => <div class="b"><Alpha /><i>s</i><Beta /></div>'))
   test('a component child nested under a baked element', () =>
     compareTplComponents('const A = () => <div class="o"><section><Leaf /></section></div>'))

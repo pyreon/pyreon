@@ -243,18 +243,26 @@ export interface TransformOptions {
    * child makes `templateElementCount` return −1 for the element and every
    * ancestor, so an app's whole composition skeleton lowers to `h()` +
    * `mountElement`. With this on, the element's static skeleton bakes into the
-   * template HTML and each component child is mounted into the clone
-   * (`_mountChild` when nothing static follows it, `_mountSlot` + a `<!>`
-   * placeholder otherwise) — byte-for-byte the shape Solid's compiler emits.
+   * template HTML and each component child is APPENDED into the clone
+   * (`_mountChild`) — byte-for-byte the shape Solid's compiler emits.
    *
-   * **Default OFF, and it must stay off until compiled-template hydration
-   * adoption lands.** A `_tpl` result is SWAPPED at hydration
-   * (`hydrate.ts`: *"there is no true `_tpl` hydration mode yet"*), so newly
-   * templatizing the skeleton converts the one part of the tree that still
-   * ADOPTS into one that rebuilds — measured on a 3-level SSR layout, node
-   * retention 3/4 → 0/4, and `<For>`-row adoption is defeated with it. That is
-   * a hydration regression, not a mount win, for every SSR/SSG app. Turn this
-   * on only for a client bundle that never calls `hydrateRoot`.
+   * **Absorbs exactly `[element*][component+]`**: at least one component, every
+   * component in one contiguous TRAILING run, and nothing but baked ELEMENTS
+   * before it. Every other arrangement BAILS the element to `h()`, byte-
+   * identically to this option being off.
+   *
+   * That restriction is what makes it safe rather than a trade. A hole is
+   * marker-free because it runs to the element's own closing tag, so hydration
+   * can adopt it (`data-pyreon-hole`; see runtime-dom `template.ts`) — 3/4 → 4/4
+   * node retention on a 3-level SSR layout, with no SSR bytes added. Static
+   * content AFTER a component would need a real extent marker, so rather than
+   * emit a `<!>` + `_mountSlot` placeholder — correct, but a template containing
+   * a comment is refused by the adopt verifier, which cost more retention than
+   * the absorb bought — those shapes are simply not absorbed.
+   *
+   * Default OFF here and ON in `@pyreon/vite-plugin`, the same split
+   * `ssrTemplate` uses: the emit injects an `import { _mountChild }`, so a bare
+   * compiler consumer opts in.
    *
    * Ordering is safe by construction: the emit BAILS on any element whose
    * template call would be an eagerly-evaluated component argument (see
@@ -1071,6 +1079,28 @@ export function transformJSX_JS(
 
   type Replacement = { start: number; end: number; text: string }
   const replacements: Replacement[] = []
+  /**
+   * Nodes whose emitted text is RELOCATED into a call-argument position — the
+   * preserved holes of a `_tpl` bracketed emission (`_mountChild(<Comp/>, …)`).
+   *
+   * Every "does this replacement need JSX braces?" decision in this file reads
+   * the AST PARENT, which for such a node is still the enclosing JSXElement and
+   * so answers YES. That was right while a component child was emitted where it
+   * was written; it is wrong once the template pass moves it into an argument,
+   * where `{expr}` is not an expression at all. The mismatch produced
+   * `_mountChild({__rsCollapse(…)}, __root, null)` — a syntax error, and only
+   * for a source that used BOTH `templatizeComponentChildren` and
+   * `collapseRocketstyle`, which is why it surfaced when the first defaulted on.
+   *
+   * Populated before the holes are walked, so any pass that rewrites a node
+   * inside one can consult it.
+   */
+  const argPositionNodes = new Set<N>()
+  /** Braces are for a JSX child slot; a relocated hole is not in one. */
+  const bracesForParent = (node: N, parent: N | null | undefined): boolean =>
+    !argPositionNodes.has(node) &&
+    !!parent &&
+    (parent.type === 'JSXElement' || parent.type === 'JSXFragment')
   const warnings: CompilerWarning[] = []
 
   function warn(node: N, message: string, warnCode: CompilerWarning['code']): void {
@@ -1226,7 +1256,7 @@ export function transformJSX_JS(
     const start = node.start as number
     const end = node.end as number
     const parent = findParent(node)
-    const needsBraces = parent && (parent.type === 'JSXElement' || parent.type === 'JSXFragment')
+    const needsBraces = bracesForParent(node, parent)
     replacements.push({ start, end, text: needsBraces ? `{${call}}` : call })
     needsCollapse = true
     if (!collapseRuleKeys.has(site.ruleKey)) {
@@ -1274,7 +1304,7 @@ export function transformJSX_JS(
     const start = node.start as number
     const end = node.end as number
     const parent = findParent(node)
-    const needsBraces = parent && (parent.type === 'JSXElement' || parent.type === 'JSXFragment')
+    const needsBraces = bracesForParent(node, parent)
     replacements.push({ start, end, text: needsBraces ? `{${call}}` : call })
     needsCollapse = true
     needsCollapseH = true
@@ -1390,7 +1420,7 @@ export function transformJSX_JS(
     const start = node.start as number
     const end = node.end as number
     const parent = findParent(node)
-    const needsBraces = parent && (parent.type === 'JSXElement' || parent.type === 'JSXFragment')
+    const needsBraces = bracesForParent(node, parent)
     replacements.push({ start, end, text: needsBraces ? `{${call}}` : call })
     // Union BOTH value's rule bundles into the per-module injection.
     // De-dupe by ruleKey (the FNV-1a hash from the resolver) so two
@@ -1430,7 +1460,7 @@ export function transformJSX_JS(
     const start = node.start as number
     const end = node.end as number
     const parent = findParent(node)
-    const needsBraces = parent && (parent.type === 'JSXElement' || parent.type === 'JSXFragment')
+    const needsBraces = bracesForParent(node, parent)
     replacements.push({ start, end, text: needsBraces ? `{${call}}` : call })
     needsCollapse = true
     if (!collapseRuleKeys.has(site.ruleKey)) {
@@ -1626,7 +1656,10 @@ export function transformJSX_JS(
     replacements.push({ start: cursor, end, text: parts[parts.length - 1] as string })
 
     // Walk each preserved child so it receives the transformations the
-    // template's own replacement no longer covers.
+    // template's own replacement no longer covers. Mark them FIRST: a pass that
+    // rewrites one of these nodes wholesale (rocketstyle collapse) must know the
+    // text is headed for an argument, not a JSX child slot.
+    for (const hole of holes) argPositionNodes.add(hole)
     for (const hole of holes) walkNode(hole)
     return true
   }
@@ -3676,12 +3709,68 @@ export function transformJSX_JS(
     return false
   }
 
-  function countChildForTemplate(child: N): number {
+  /**
+   * Does this child list absorb its COMPONENT children into the enclosing
+   * template?
+   *
+   * The absorbable shape is `[element*][component+]`: at least one component,
+   * every component in one contiguous TRAILING run, and nothing but baked
+   * ELEMENTS before it. That is exactly the set whose components can be
+   * appended (`_mountChild(vnode, el, null)`) in source order — appending puts
+   * them after all baked content, which is where source order already wants
+   * them.
+   *
+   * Any other shape BAILS the whole element to `h()`, which is what the option
+   * did with `templatizeComponentChildren` off. The alternative — the `<!>` +
+   * `_mountSlot` placeholder variant this replaces — rendered correctly but
+   * emitted a template containing a comment, and `templateSignature` refuses
+   * every one of those, so the subtree cloned and swapped instead of hydrating.
+   * That made the mixed shape measurably WORSE with the option on (3 of 4 nodes
+   * retained → 0 of 4), which is the reason the option shipped opt-in. Bailing
+   * costs those shapes a template; absorbing them cost the page its nodes.
+   *
+   * Mirrors `classifyJsxChild`'s classification exactly, including its fragment
+   * recursion and its skipping of whitespace-only text and empty expression
+   * containers. Both the prescan and the emit call THIS function on THIS input,
+   * so the two cannot drift.
+   */
+  function absorbsComponentChildren(children: N[]): boolean {
+    // 'element' | 'component' | 'other' — 'other' is text/expression, which is
+    // anything that occupies a position the append would have to jump over.
+    const kinds: string[] = []
+    const collect = (kids: N[]): void => {
+      for (const child of kids) {
+        if (child.type === 'JSXText') {
+          if (cleanJsxText(child.value ?? child.raw ?? '')) kinds.push('other')
+        } else if (child.type === 'JSXElement') {
+          kinds.push(isAbsorbableComponentChild(child) ? 'component' : 'element')
+        } else if (child.type === 'JSXExpressionContainer') {
+          const expr = child.expression
+          if (expr && expr.type !== 'JSXEmptyExpression') kinds.push('other')
+        } else if (child.type === 'JSXFragment') {
+          collect(jsxChildren(child))
+        }
+      }
+    }
+    collect(children)
+    const first = kinds.indexOf('component')
+    if (first === -1) return false
+    // Nothing but baked elements before the run …
+    for (let i = 0; i < first; i++) if (kinds[i] !== 'element') return false
+    // … and nothing but components from it to the end.
+    for (let i = first; i < kinds.length; i++) if (kinds[i] !== 'component') return false
+    return true
+  }
+
+  function countChildForTemplate(child: N, absorbComponents: boolean): number {
     if (child.type === 'JSXText') return 0
     if (child.type === 'JSXElement') {
       // A COMPONENT child no longer bails the whole element: it is mounted into
       // the clone by the bind, contributing no baked elements of its own.
-      if (tplComponentChildren && isAbsorbableComponentChild(child)) return 0
+      // `absorbComponents` is the ENCLOSING ELEMENT's verdict, not this child's
+      // — absorption is a property of the whole child list (see
+      // `absorbsComponentChildren`), so it cannot be decided per child.
+      if (absorbComponents && isAbsorbableComponentChild(child)) return 0
       return templateElementCount(child)
     }
     if (child.type === 'JSXExpressionContainer') {
@@ -3700,7 +3789,7 @@ export function transformJSX_JS(
       // jsx runtime. (Previously this whole branch returned -1 → bail.)
       return 0
     }
-    if (child.type === 'JSXFragment') return templateFragmentCount(child)
+    if (child.type === 'JSXFragment') return templateFragmentCount(child, absorbComponents)
     return -1
   }
 
@@ -3710,18 +3799,25 @@ export function transformJSX_JS(
     if (hasBailAttr(node, isRoot)) return -1
     if (isSelfClosing(node)) return 1
     let count = 1
+    // Decided ONCE per element and threaded down, including through fragment
+    // children — a fragment flattens into its enclosing element's child list,
+    // so the enclosing element's verdict is the one that governs it. The emit
+    // re-derives this from the same predicate over the same flattened list and
+    // bails if it disagrees, so a prescan/emit drift costs a template rather
+    // than correctness (the repo's documented misaligned-prescan bug class).
+    const absorb = tplComponentChildren && absorbsComponentChildren(jsxChildren(node))
     for (const child of jsxChildren(node)) {
-      const c = countChildForTemplate(child)
+      const c = countChildForTemplate(child, absorb)
       if (c === -1) return -1
       count += c
     }
     return count
   }
 
-  function templateFragmentCount(frag: N): number {
+  function templateFragmentCount(frag: N, absorbComponents: boolean): number {
     let count = 0
     for (const child of jsxChildren(frag)) {
-      const c = countChildForTemplate(child)
+      const c = countChildForTemplate(child, absorbComponents)
       if (c === -1) return -1
       count += c
     }
@@ -4737,14 +4833,15 @@ export function transformJSX_JS(
       const hasElem = flatChildren.some((c) => c.kind === 'element')
       const hasText = flatChildren.some((c) => c.kind === 'text')
       const exprCount = flatChildren.filter((c) => c.kind === 'expression').length
-      // An absorbed component child counts toward MIXED (its append must not
-      // jump over static content that follows it) but NOT toward multi-expr:
-      // several component children with nothing static between them append in
-      // source order, which is already the right order. That distinction is the
-      // whole win — the `<!>` placeholder variant of this feature measured
-      // 4.24ms against the append variant's 3.94ms, because 2,046 placeholder
-      // comments get cloned and then removed.
-      const hasComponent = flatChildren.some((c) => c.kind === 'component')
+      // A component child does NOT count toward MIXED, because it can no longer
+      // be in a position where it would have to: `processChildren` bails the
+      // whole element unless the components form a TRAILING run preceded only
+      // by baked elements (`absorbsComponentChildren`), and in that shape
+      // appending in source order already lands every component after all baked
+      // content. That is also the whole win — the `<!>` placeholder variant
+      // measured 4.24ms against the append variant's 3.94ms, because 2,046
+      // placeholder comments get cloned and then removed, AND it emitted a
+      // template containing a comment, which hydration refuses to adopt.
       // `useMixed` triggers placeholder-based positional mounting (each
       // dynamic child gets a `<!>` comment slot in the template that
       // `replaceChild`-replaces at mount). It must fire whenever ≥2 of
@@ -4753,8 +4850,7 @@ export function transformJSX_JS(
       // template content, breaking source-order rendering for shapes
       // like `<p>foo {x()} bar</p>` (rendered "foo  barX" instead of
       // "foo X bar"). Discovered by Phase B2's whitespace tests.
-      const present =
-        (hasElem ? 1 : 0) + (hasText ? 1 : 0) + (exprCount > 0 ? 1 : 0) + (hasComponent ? 1 : 0)
+      const present = (hasElem ? 1 : 0) + (hasText ? 1 : 0) + (exprCount > 0 ? 1 : 0)
       return { useMixed: present > 1, useMultiExpr: exprCount > 1 }
     }
 
@@ -4905,19 +5001,13 @@ export function transformJSX_JS(
         // and spliced back in by the bracketed replacement.
         const d = nextDisp()
         const vnode = registerHole(child.node)
-        // `needsPlaceholder` is declared below (expression path); for a
-        // component only MIXED matters — `useMultiExpr` counts text-merging
-        // expression children, and any component alongside them already forces
-        // `useMixed`.
-        if (useMixed) {
-          // Something static follows (or could): mount AT the placeholder.
-          needsMountSlotImport = true
-          const placeholder = hoistPlaceholderRef(parentRef, childNodeIdx)
-          bindLines.push(`const ${d} = _mountSlot(${vnode}, ${parentRef}, ${placeholder})`)
-          return '<!>'
-        }
-        // Nothing static in this element — append in source order, which needs
-        // no placeholder comment at all.
+        // Always the APPEND path. A component only reaches here in the
+        // `[element*][component+]` shape (`processChildren` bails every other
+        // one), where nothing baked follows it — so appending in source order
+        // is already the right position and no placeholder comment is needed.
+        // The `<!>` + `_mountSlot` variant this replaces was correct but
+        // unadoptable: a template containing a comment is refused by
+        // `templateSignature`, so the subtree cloned and swapped.
         needsMountComponentImport = true
         bindLines.push(`const ${d} = _mountChild(${vnode}, ${parentRef}, null)`)
         return ''
@@ -5023,6 +5113,11 @@ export function transformJSX_JS(
       accessor: string,
     ): { html: string; isHole: boolean } | null {
       const flatChildren = flattenChildren(jsxChildren(el))
+      const hasComponent = flatChildren.some((c) => c.kind === 'component')
+      // Re-derived from the SAME predicate on the SAME input the prescan used,
+      // so this can only fire if the two ever disagree — in which case bailing
+      // is the safe outcome, not the emit of a shape the prescan did not price.
+      if (hasComponent && !absorbsComponentChildren(jsxChildren(el))) return null
       const { useMixed, useMultiExpr } = analyzeChildren(flatChildren)
       const parentRef = accessor === '__root' ? '__root' : varName
       let html = ''
@@ -5040,18 +5135,24 @@ export function transformJSX_JS(
         html += childHtml
         childNodeIdx++
       }
-      // MOUNT HOLE. Every child is an absorbed COMPONENT taking the append
-      // path, so this element is emitted EMPTY and filled at mount by trailing
-      // `_mountChild` calls. Declaring that lets hydration adopt the element:
-      // its SSR counterpart holds the components' real output, which the adopt
-      // verifier would otherwise read as extra elements and reject. See
-      // runtime-dom `template.ts` (MOUNT HOLES) for the consuming half.
+      // MOUNT HOLE. This element's TRAILING children are absorbed COMPONENTs
+      // taking the append path, so the template ends short and the rest is
+      // filled at mount by `_mountChild` calls. Declaring that lets hydration
+      // adopt the element: its SSR counterpart holds the components' real
+      // output, which the adopt verifier would otherwise read as extra elements
+      // and reject. See runtime-dom `template.ts` (MOUNT HOLES) for the
+      // consuming half.
+      //
+      // The hole needs NO extent marker and adds NO SSR bytes, because it is
+      // always TRAILING: everything from the last baked child to the element's
+      // own closing tag belongs to it. How many baked children precede it is
+      // not stated here either — the runtime reads it off the template element
+      // itself (`el.children.length`), so there is no count to keep in sync.
       //
       // Stated per ELEMENT and carried ON that element rather than as an index
       // or a path, so the declaration can never be attributed to a different
       // element than the one it was computed for.
-      const isHole =
-        !useMixed && flatChildren.length > 0 && flatChildren.every((c) => c.kind === 'component')
+      const isHole = !useMixed && hasComponent
       return { html, isHole }
     }
 

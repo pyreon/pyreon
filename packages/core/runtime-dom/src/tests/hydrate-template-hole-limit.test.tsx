@@ -375,28 +375,23 @@ const App = () => <ul class="l"><For each={["a","b"]} by={(x) => x}>{(x) => <li>
     expect(on.adopts).toBeGreaterThan(off.adopts)
   })
 
-  it('RESIDUAL: a component with a STATIC sibling still costs retention (3/4 → 0/4)', async () => {
-    // The honest limit of this fix, measured rather than described.
+  it('a component with a STATIC sibling BEFORE it adopts in full (3/4 OFF → 4/4 ON)', async () => {
+    // This shape used to be the honest limit of the mount-hole fix, measured at
+    // 3/4 OFF → 0/4 ON. It is now the best case: 3/4 OFF → 4/4 ON.
     //
-    // A hole is only marker-free because it is TRAILING. Put anything static
-    // beside the component and the compiler stops appending: `useMixed` fires,
-    // the child gets a `<!>` placeholder and a `_mountSlot`, and
-    // `templateSignature` refuses EVERY template containing a `<!` — so the
-    // whole subtree is cloned and swapped.
+    // A hole is marker-free because it is TRAILING, and putting static content
+    // BEFORE a component does not change that — everything from the last baked
+    // child to the element's own closing tag still belongs to the hole. So the
+    // compiler keeps appending (`_mountChild`, no `<!>`), bakes the static
+    // sibling into the template, and declares the hole; the verifier matches the
+    // baked children first and starts the hole cursor after them. No SSR byte
+    // moved to make that work.
     //
-    // With the option OFF that source never becomes one template at all (a
-    // component child bails it to `h()`), and ordinary element hydration keeps
-    // 3 of 4 nodes. So for this shape the option still trades retention for
-    // mount speed, exactly as it did before this fix — the fix closes the
-    // ALL-COMPONENT-children shape (the deep component tree), not the mixed one.
-    //
-    // This is the same dynamic-slot hole as
-    // `dynamicSlotHoleBlocksAdoptionAtDefaults` below, reached through a
-    // component instead of an expression. Closing it is a different change:
-    // the `<!>` placeholder has to become adoptable, and SSR already delimits
-    // that range, so nothing new needs marking — but the verifier would have to
-    // learn a comment-placeholder-bearing template, which it refuses outright
-    // today. That is the residual, and it is why the default stays OFF.
+    // What is NOT covered is static content AFTER a component, where the extent
+    // genuinely would need a marker. Those shapes bail to `h()` instead — see
+    // the `<!>`-free spec below — so they behave exactly as they do with the
+    // option off, which is what lets the option default ON without regressing
+    // anything.
     const MIXED = `
 const Mid = () => <section class="mid">m</section>
 const App = () => <div class="app"><main class="m"><span class="s">s</span><Mid /></main></div>`
@@ -413,10 +408,107 @@ const App = () => <div class="app"><main class="m"><span class="s">s</span><Mid 
     const off = await hydrateAndMeasure(tree(), MIXED, {})
     const on = await hydrateAndMeasure(tree(), MIXED, ON)
     expect([off.retained, off.total]).toEqual([3, 4])
-    expect([on.retained, on.total]).toEqual([0, 4])
-    // Both render the same page — a retention cost, not a correctness one.
+    expect([on.retained, on.total]).toEqual([4, 4])
+    // Both render the same page — the retention is a gain, not a divergence.
     expect(on.html).toBe(off.html)
-    expect(transformJSX(MIXED, 'test.tsx', ON as never).code).toContain('_mountSlot')
+    // The append path, and a hole declared on the element that ends short.
+    const code = transformJSX(MIXED, 'test.tsx', ON as never).code
+    expect(code).not.toContain('_mountSlot')
+    expect(code).toContain('<main class=\\"m\\" data-pyreon-hole><span class=\\"s\\">s</span></main>')
+  })
+
+  it('static content AFTER a component BAILS to h() rather than emitting a hole', async () => {
+    // The other half of the trailing rule, and the reason the option is safe to
+    // default on. Here the extent really would need a marker, so the compiler
+    // declines to templatize the element at all — byte-identical to the option
+    // being off, which is the one outcome that cannot regress anything.
+    const AFTER = `
+const Mid = () => <section class="mid">m</section>
+const App = () => <div class="app"><main class="m"><Mid /><span class="s">s</span></main></div>`
+    const tree = () => {
+      const M = () => h('section', { class: 'mid' }, 'm')
+      const A = () =>
+        h(
+          'div',
+          { class: 'app' },
+          h('main', { class: 'm' }, h(M as never, null), h('span', { class: 's' }, 's')),
+        )
+      return h(A as never, null)
+    }
+    const off = await hydrateAndMeasure(tree(), AFTER, {})
+    const on = await hydrateAndMeasure(tree(), AFTER, ON)
+    expect(on.html).toBe(off.html)
+    expect([on.retained, on.total]).toEqual([off.retained, off.total])
+    // Same emit both ways — the option is a no-op for this shape.
+    expect(transformJSX(AFTER, 'test.tsx', ON as never).code).toBe(
+      transformJSX(AFTER, 'test.tsx', {} as never).code,
+    )
+  })
+
+  // ── the never-worse gate ───────────────────────────────────────────────────
+  // The default flip rests on one claim: turning the option ON cannot make any
+  // shape hydrate worse than leaving it OFF. Individual specs pin the shapes we
+  // thought of; this walks the combinatoric space between them.
+  //
+  // Each seed builds one child list over {static element, component, text} and
+  // renders it two ways — the compiled emit with the option ON and with it OFF —
+  // over the same server HTML, then asserts the two invariants that licence the
+  // default: the page is IDENTICAL, and retention never DROPS. A shape the
+  // compiler declines to absorb scores equal (it emits the OFF code verbatim);
+  // a shape it absorbs scores higher.
+  it('300 seeded child lists: ON renders identically and never retains less', async () => {
+    const rand = (seed: number) => {
+      let x = seed + 0x9e3779b9
+      return () => {
+        x ^= x << 13
+        x ^= x >>> 17
+        x ^= x << 5
+        return ((x >>> 0) % 1000) / 1000
+      }
+    }
+    const failures: string[] = []
+    for (let seed = 1; seed <= 300; seed++) {
+      const r = rand(seed)
+      const n = 1 + Math.floor(r() * 4)
+      // 0 = static element, 1 = component, 2 = text.
+      const kinds = Array.from({ length: n }, () => Math.floor(r() * 3))
+      // At least one component, or the option has nothing to decide about.
+      if (!kinds.includes(1)) kinds[Math.floor(r() * n)] = 1
+
+      const defs: string[] = []
+      const jsxKids: string[] = []
+      const hKids: unknown[] = []
+      kinds.forEach((k, i) => {
+        if (k === 0) {
+          jsxKids.push(`<span class="s${i}">s${i}</span>`)
+          hKids.push(h('span', { class: `s${i}` }, `s${i}`))
+        } else if (k === 1) {
+          defs.push(`const C${i} = () => <section class="c${i}">c${i}</section>`)
+          jsxKids.push(`<C${i} />`)
+          const C = () => h('section', { class: `c${i}` }, `c${i}`)
+          hKids.push(h(C as never, null))
+        } else {
+          jsxKids.push(`t${i}`)
+          hKids.push(`t${i}`)
+        }
+      })
+      const src = `${defs.join('\n')}
+const App = () => <div class="app"><main class="m">${jsxKids.join('')}</main></div>`
+      const tree = () =>
+        h('div', { class: 'app' }, h('main', { class: 'm' }, ...(hKids as never[])))
+
+      const off = await hydrateAndMeasure(tree(), src, {})
+      const on = await hydrateAndMeasure(tree(), src, ON)
+      if (on.html !== off.html) {
+        failures.push(`seed=${seed} [${kinds.join(',')}] DOM diverged\n  off=${off.html}\n  on =${on.html}`)
+      } else if (on.retained < off.retained) {
+        failures.push(
+          `seed=${seed} [${kinds.join(',')}] retention REGRESSED ${off.retained}/${off.total} → ${on.retained}/${on.total}`,
+        )
+      }
+      if (failures.length >= 3) break
+    }
+    expect(failures, failures.join('\n')).toEqual([])
   })
 
   it('the limit PRE-EXISTS at default settings for a dynamic-slot hole', async () => {
