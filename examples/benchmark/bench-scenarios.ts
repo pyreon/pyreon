@@ -8,6 +8,17 @@
  *          has no structural advantage (nothing can be skipped).
  *   tree   deep component tree: 2,047-instance mount, and context propagation
  *          to 1,024 consumers through 1,023 non-consuming interior nodes.
+ *   effects effect-heavy list: 500 components each owning one side-effecting
+ *          subscription. Times the breadth of dispatch and the TEARDOWN of all
+ *          500 subscriptions — the cost this suite's own record blames for the
+ *          single row-list op Pyreon loses, never previously measured directly.
+ *          A single-row update is NOT timed: it is ~1µs against a ~750µs forced
+ *          layout, so the floor equalled the ceiling; the question it asked is
+ *          answered by a subscription-COUNT gate instead.
+ *   memo   memoization wall: a derived value that frequently evaluates to the
+ *          same result, with 300 consumers behind it. The complement of dbmon —
+ *          dbmon removes a signal graph's advantage by making everything
+ *          change, this one asks what happens when nothing meaningfully does.
  *
  * Protocol is the repo standard (mirrors bench-fair.ts / bench-hydration.ts):
  *  - production `vite build`, real Chromium, `--expose-gc`;
@@ -17,16 +28,20 @@
  *    reshuffled per pass;
  *  - median + 95% bootstrap CI, and a `🤝` marker whenever a framework's CI
  *    overlaps the leader's — an overlap is a TIE, not a loss;
- *  - per-iteration DOM verification in-page: dbmon reads back cell text AND
- *    threshold class on three rows; the tree checks all 1,024 leaves. A
- *    framework that silently no-ops fails the run instead of posting a fast
- *    number.
+ *  - per-iteration verification in-page, asserting the EFFECT the op claims:
+ *    dbmon reads back cell text AND threshold class on three rows; the tree
+ *    checks all 1,024 leaves; `effects` reads back the SUBSCRIPTIONS' OWN
+ *    output (a DOM check cannot see an unflushed effect, because an effect need
+ *    not touch the DOM); `memo` uses a composite source+derived probe so a
+ *    cycle whose write never landed and a cycle whose wall leaked are both
+ *    caught. A framework that silently no-ops fails the run instead of posting
+ *    a fast number.
  *
  * AUTHOR-JUDGE CAVEAT: written and judged by the Pyreon authors, like the rest
  * of this suite. Ratios are the portable signal; absolute ms are machine- and
  * load-dependent. Stamp `uptime` and discard anything measured above load ~8.
  *
- * Run: bun bench-scenarios.ts [--repeat N] [--scenario dbmon|tree]
+ * Run: bun bench-scenarios.ts [--repeat N] [--scenario dbmon|tree|effects|memo]
  */
 import { execSync, spawn } from 'node:child_process'
 import { chromium } from 'playwright'
@@ -80,6 +95,33 @@ const SCENARIOS: { id: string; label: string; frameworks: string[] }[] = [
       'Svelte 5',
       'Pyreon (tpl slot)',
       'Pyreon (tpl append)',
+    ].filter((f) => (NARROW ? NARROW.includes(f) : true)),
+  },
+  {
+    id: 'effects',
+    label: 'effect-heavy list — 500 subscriptions: dispatch, targeting, teardown',
+    frameworks: [
+      'Vanilla JS',
+      'Pyreon',
+      'React 19',
+      'Preact',
+      'Vue 3',
+      'SolidJS',
+      'Svelte 5',
+    ].filter((f) => (NARROW ? NARROW.includes(f) : true)),
+  },
+  {
+    id: 'memo',
+    label: 'memoization wall — blocked vs passthrough derived update (300 consumers)',
+    frameworks: [
+      'Vanilla JS',
+      'Pyreon',
+      'Pyreon (bare computed)',
+      'React 19',
+      'Preact',
+      'Vue 3',
+      'SolidJS',
+      'Svelte 5',
     ].filter((f) => (NARROW ? NARROW.includes(f) : true)),
   },
 ]

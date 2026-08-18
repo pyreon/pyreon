@@ -7,6 +7,8 @@
  */
 import type { BenchSuite } from '../runner'
 import { DBMON_FRAMEWORKS, runDbmon } from './scenario-dbmon'
+import { EFFECTS_FRAMEWORKS, runEffects } from './scenario-effects'
+import { MEMO_FRAMEWORKS, runMemo } from './scenario-memo'
 import { runTree, TREE_FRAMEWORKS } from './scenario-tree'
 
 export interface ScenarioDef {
@@ -28,6 +30,18 @@ export const SCENARIOS: ScenarioDef[] = [
     label: 'deep tree — component mount + context propagation',
     frameworks: TREE_FRAMEWORKS,
     run: runTree,
+  },
+  {
+    id: 'effects',
+    label: 'effect-heavy list — subscription dispatch, targeting and teardown',
+    frameworks: EFFECTS_FRAMEWORKS,
+    run: runEffects,
+  },
+  {
+    id: 'memo',
+    label: 'memoization wall — blocked vs passthrough derived update',
+    frameworks: MEMO_FRAMEWORKS,
+    run: runMemo,
   },
 ]
 
