@@ -4771,23 +4771,49 @@ export function transformJSX_JS(
       return !isStatic(expr)
     }
 
+    /**
+     * Does this element's FLATTENED child list contain an absorbed COMPONENT?
+     *
+     * Mirrors `flattenChildren`'s fragment recursion at any depth, and — like
+     * it — does NOT descend into nested ELEMENTS, which own their own refs.
+     * The direct-children-only version of this check disagreed with the emit
+     * for a fragment-wrapped child: the element got no phase-1 ref, so its
+     * `_mountChild` received a parent walked in phase 2, after a preceding
+     * `_setChildAt`/`_mountSlot` had already removed the node that walk starts
+     * from — i.e. `null`.
+     */
+    function absorbsComponentChild(node: N): boolean {
+      for (const c of jsxChildren(node)) {
+        if (c.type === 'JSXElement') {
+          if (isAbsorbableComponentChild(c)) return true
+        } else if (c.type === 'JSXFragment' && absorbsComponentChild(c)) {
+          return true
+        }
+      }
+      return false
+    }
+
     function elementHasDynamic(node: N): boolean {
       const nodeTag = jsxTagName(node)
       if (jsxAttrs(node).some((a: N) => attrIsDynamic(a, nodeTag))) return true
       if (!isSelfClosing(node)) {
-        return jsxChildren(node).some(
-          (c: N) =>
-            (c.type === 'JSXExpressionContainer' &&
+        if (
+          jsxChildren(node).some(
+            (c: N) =>
+              c.type === 'JSXExpressionContainer' &&
               c.expression &&
-              c.expression.type !== 'JSXEmptyExpression') ||
-            // PZ-08: an absorbed component child emits a phase-2 `_mountChild` /
-            // `_mountSlot` line, so this element's own ref MUST be a phase-1
-            // const. Without this the walk was inlined into the phase-2 line and
-            // evaluated AFTER a preceding `_mountSlot` had removed its `<!>`
-            // placeholder — the component mounted inside the previous sibling,
-            // or into the `<!--pyreon-->` marker where it vanished silently.
-            (tplComponentChildren && isAbsorbableComponentChild(c)),
-        )
+              c.expression.type !== 'JSXEmptyExpression',
+          )
+        ) {
+          return true
+        }
+        // PZ-08: an absorbed component child emits a phase-2 `_mountChild` /
+        // `_mountSlot` line, so this element's own ref MUST be a phase-1
+        // const. Without this the walk was inlined into the phase-2 line and
+        // evaluated AFTER a preceding `_mountSlot` had removed its `<!>`
+        // placeholder — the component mounted inside the previous sibling,
+        // or into the `<!--pyreon-->` marker where it vanished silently.
+        if (tplComponentChildren && absorbsComponentChild(node)) return true
       }
       return false
     }

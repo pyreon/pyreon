@@ -631,7 +631,15 @@ function hydrateMountHole(
   cursor: ChildNode | null,
 ): [Cleanup, ChildNode | null] {
   const start = cursor !== null && cursor.nodeType === 1 ? cursor : firstReal(cursor)
-  return hydrateChild(child, start, parent, null)
+  // The cursor doubles as the ANCHOR. Every recovery path in `hydrateChild`
+  // (tag mismatch, text mismatch, a NativeItem with no counterpart) inserts at
+  // the anchor, and with `null` that means APPEND — past the unclaimed server
+  // content, which `sweepHoles` then deletes along with it, so a mismatch
+  // inside a hole would render nothing at all. Anchoring on the cursor puts the
+  // recovery BEFORE the content it replaces, so the sweep removes only the
+  // stale nodes. When the cursor is null there is nothing left to precede and
+  // the anchor is `null` again, which is the append the caller wants.
+  return hydrateChild(child, start, parent, start)
 }
 
 function hydrateChild(

@@ -509,6 +509,15 @@ export function _setTplAdoptVerifier(v: TplAdoptVerifier): void {
 // positional variant is the repo's most-repeated bug class), so the runtime
 // can never attribute a hole to the wrong element.
 const HOLE_ATTR = 'data-pyreon-hole'
+// Module-level registry, so the three questions, answered:
+//  (1) EVICTION — weak keys, held only by `_tplCache`'s template content, which
+//      is itself a SizedMap capped at 1024 with FIFO eviction.
+//  (2) CLEANUP CONTRACT — none needed; nothing here is a strong reference.
+//  (3) EXERCISED — every hole-adoption spec goes through add + lookup.
+// The catalogued hazard for a weak collection is its BACKING TABLE, which never
+// shrinks after growth: here it takes one entry per distinct TEMPLATE ELEMENT
+// that declares a hole, bounded by the app's template count, not by workload —
+// unlike the per-ROW registry that grew a 32768-slot table on a 10k list.
 const _tplHoleEls = new WeakSet<Element>()
 
 /** Is this template-content element a compiler-declared mount hole? */

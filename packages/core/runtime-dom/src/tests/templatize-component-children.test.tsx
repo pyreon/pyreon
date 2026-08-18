@@ -290,6 +290,13 @@ describe('templatizeComponentChildren — rendered DOM is identical to h()', () 
     // inlined ref walk runs after a preceding `_mountSlot` removed its `<!>`.
     ['slot before a nested-component element', `<div class="a"><Leaf /><span>S</span><section><Leaf /></section></div>`],
     ['text + slot before a nested-component element', `<div class="a">t<Leaf /><section><Leaf /></section></div>`],
+    // The same PZ-08 shape reached through a FRAGMENT. `flattenChildren`
+    // recurses into fragments at any depth but the phase-1-ref scan did not, so
+    // this element got no `__eN` const and its `_mountChild` received a parent
+    // walked in phase 2 — after `_setChildAt` had already detached the node that
+    // walk starts from.
+    ['fragment-wrapped component after a slot', `<div class="a">{() => 't'}<section><><Leaf /></></section></div>`],
+    ['doubly-nested fragment-wrapped component after a slot', `<div class="a">{() => 't'}<section><><><Leaf /></></></section></div>`],
     ['component + reactive text', `<div class="a">{() => 'x'}<Leaf /></div>`],
     // Control-flow components are absorbed like any other — deliberately NOT
     // name-filtered (excluding them by name would paper over the shapes the

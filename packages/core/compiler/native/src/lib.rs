@@ -6724,23 +6724,37 @@ fn element_has_dynamic(el: &JSXElement, tpl_components: bool) -> bool {
         return true;
     }
     if !is_self_closing(el) {
-        return el.children.iter().any(|c| match c {
+        if el.children.iter().any(|c| match c {
             JSXChild::ExpressionContainer(ec) => {
                 !matches!(ec.expression, JSXExpression::EmptyExpression(_))
             }
-            // PZ-08: an absorbed component child emits a phase-2 `_mountChild` /
-            // `_mountSlot` line, so this element's own ref MUST be a phase-1
-            // const. Without this the walk was inlined into the phase-2 line and
-            // evaluated AFTER a preceding `_mountSlot` had removed its `<!>`
-            // placeholder — the component mounted inside the previous sibling,
-            // or into the `<!--pyreon-->` marker where it vanished silently.
-            JSXChild::Element(child) => {
-                tpl_components && is_absorbable_component_child(child)
-            }
             _ => false,
-        });
+        }) {
+            return true;
+        }
+        // PZ-08: an absorbed component child emits a phase-2 `_mountChild` /
+        // `_mountSlot` line, so this element's own ref MUST be a phase-1
+        // const. Without this the walk was inlined into the phase-2 line and
+        // evaluated AFTER a preceding `_mountSlot` had removed its `<!>`
+        // placeholder — the component mounted inside the previous sibling,
+        // or into the `<!--pyreon-->` marker where it vanished silently.
+        if tpl_components && absorbs_component_child(&el.children) {
+            return true;
+        }
     }
     false
+}
+
+/// Does this FLATTENED child list contain an absorbed COMPONENT? Mirrors
+/// `flatten_children`'s fragment recursion at any depth and, like it, does NOT
+/// descend into nested ELEMENTS (they own their own refs). Mirrors the JS
+/// backend's `absorbsComponentChild`.
+fn absorbs_component_child(children: &[JSXChild]) -> bool {
+    children.iter().any(|c| match c {
+        JSXChild::Element(child) => is_absorbable_component_child(child),
+        JSXChild::Fragment(frag) => absorbs_component_child(&frag.children),
+        _ => false,
+    })
 }
 
 /// Mirrors the JS backend's `TPL_HOLE_ATTR` — the mount-hole declaration baked

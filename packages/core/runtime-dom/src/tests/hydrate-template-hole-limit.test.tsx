@@ -319,6 +319,36 @@ const App = () => <div class="app"><A /></div>`
     expect(target.outerHTML).toBe('<div class="app"></div>')
   })
 
+  it('a hole child that MISMATCHES the server RECOVERS instead of vanishing', () => {
+    // The hole's cursor doubles as the ANCHOR, and this is why. `hydrateElement`
+    // recovers from a tag mismatch with `mountChild(vnode, parent, anchor)`, and
+    // a `null` anchor means APPEND — past the unclaimed server content, which
+    // the sweep then deletes along with the recovery, so the page renders
+    // NOTHING. Anchoring on the cursor puts the recovery before the content it
+    // replaces.
+    //
+    // Hand-written in the shape the compiler emits, because reaching this branch
+    // needs the hole's child to be a PLAIN element vnode: a compiled component
+    // returns a `_tpl` NativeItem, which `hydrateChild` recovers via
+    // `replaceChild` and never consults the anchor at all. (The first version of
+    // this spec used a compiled component and passed against the broken state.)
+    const host = document.createElement('div')
+    host.innerHTML = '<div class="app"><i class="m">m</i></div>'
+    document.body.appendChild(host)
+    const App = () =>
+      _tpl('<div class="app" data-pyreon-hole></div>', (root) =>
+        _mountChild(h('b', { class: 'm' }, 'm'), root, null),
+      )
+    const realWarn = console.warn
+    console.warn = () => {} // a tag mismatch legitimately warns
+    try {
+      hydrateRoot(host, h(App as never, null))
+    } finally {
+      console.warn = realWarn
+    }
+    expect(host.innerHTML).toBe('<div class="app"><b class="m">m</b></div>')
+  })
+
   it('a <For> absorbed into a hole hydrates its rows normally', async () => {
     // The option absorbs control-flow components too — deliberately, since
     // excluding them by NAME would paper over the gated case and leave the
