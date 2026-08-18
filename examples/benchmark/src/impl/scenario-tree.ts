@@ -358,8 +358,37 @@ function vueTarget(): TreeTarget {
 // vite-plugin-solid, the constraint `impl/solid.ts` already documents.
 // `createComponent` is what Solid's compiler emits per component instance, so
 // each node here is a real Solid component with its own owner.
+//
+// ## Child props are GETTERS, because that is what Solid actually emits
+//
+// The first version of this scenario passed `{ depth: props.depth - 1 }` — a
+// plain, eagerly-evaluated object — and that was a measurable handicap AGAINST
+// Pyreon: it skipped a cost Solid's real output pays, making Pyreon's
+// deep-tree mount look worse than like-for-like.
+//
+// Verified rather than assumed. Compiling the equivalent source through the
+// INSTALLED `babel-preset-solid@1.9.12` (`generate: 'dom'`) emits:
+//
+//     _$insert(_el$2, _$createComponent(SolidNode, {
+//       get depth() {
+//         return props.depth - 1;
+//       }
+//     }), null);
+//
+// So the faithful arm defines an accessor per child, re-reading the parent's
+// props on access. This is the same justification standard PR #2878 used for
+// Vue's `shallowRef` and Svelte's `$state.raw`: put the rival on the path its
+// own toolchain produces, then measure.
+//
+// The eager form is KEPT as a separate, clearly-labelled diagnostic arm — not
+// as the headline number — because the delta between the two is the honest way
+// to show that getter-prop cost is a SHARED architectural tax rather than a
+// Pyreon-specific one.
 
 const SolidCtx = solidCreateContext<() => string>(() => '')
+
+/** false = compiler-faithful getter props; true = the eager-object diagnostic. */
+let solidEagerProps = false
 
 function SolidNode(props: { depth: number }): Node {
   if (props.depth <= 1) {
@@ -371,16 +400,28 @@ function SolidNode(props: { depth: number }): Node {
   }
   const div = document.createElement('div')
   div.className = 'branch'
-  div.appendChild(createComponent(SolidNode, { depth: props.depth - 1 }) as Node)
-  div.appendChild(createComponent(SolidNode, { depth: props.depth - 1 }) as Node)
+  // Two separate props objects, one per child — exactly as the compiler emits.
+  for (let i = 0; i < 2; i++) {
+    const childProps = solidEagerProps
+      ? { depth: props.depth - 1 }
+      : {
+          get depth() {
+            return props.depth - 1
+          },
+        }
+    div.appendChild(createComponent(SolidNode, childProps) as Node)
+  }
   return div
 }
 
-function solidTarget(): TreeTarget {
+function solidTarget(eagerProps: boolean): TreeTarget {
   const [value, setValue] = createSignal('')
 
   return {
     mount(host) {
+      // Set immediately before the synchronous mount walk, so the whole tree is
+      // built in one mode. `solidRender` builds the tree before returning.
+      solidEagerProps = eagerProps
       return solidRender(
         () =>
           createComponent(SolidCtx.Provider, {
@@ -432,7 +473,11 @@ export const TREE_FRAMEWORKS = [
   'React 19',
   'Preact',
   'Vue 3',
+  // Compiler-faithful (getter child props) — this is the RANKING entry.
   'SolidJS',
+  // Diagnostic only: the eager-object form Solid's compiler does NOT emit.
+  // Published beside it so the getter-prop tax is visible as a shared cost.
+  'SolidJS (eager props)',
   'Svelte 5',
 ] as const
 
@@ -457,7 +502,10 @@ export async function runTree(frameworkName: string, container: HTMLElement): Pr
       target = vueTarget()
       break
     case 'SolidJS':
-      target = solidTarget()
+      target = solidTarget(false)
+      break
+    case 'SolidJS (eager props)':
+      target = solidTarget(true)
       break
     case 'Svelte 5':
       target = svelteTarget()
