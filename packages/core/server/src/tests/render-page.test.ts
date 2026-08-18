@@ -184,6 +184,80 @@ describe('renderPage — styles + locals + routeModules', () => {
     }
   })
 
+  // Regression lock: `collectStyles` was OPT-IN, and only ONE of renderPage's
+  // three consumers passed it (zero's SSG entry). The production handler and
+  // zero's dev SSR middleware both shipped HTML carrying styler class names
+  // with no `<style>` tag — correct DOM after hydration, unstyled first paint.
+  // The default now comes from the `globalThis.__PYREON_STYLER_COLLECT__` seam
+  // @pyreon/styler registers on SSR init (the string-mode twin of the
+  // `__PYREON_STYLER_FLUSH__` hook streaming already used), so no caller can
+  // forget it.
+  describe('styler collection defaults to the globalThis seam', () => {
+    const KEY = '__PYREON_STYLER_COLLECT__'
+    type Seam = { __PYREON_STYLER_COLLECT__?: (nonce?: string) => string }
+    let saved: ((nonce?: string) => string) | undefined
+
+    beforeEach(() => {
+      saved = (globalThis as Seam)[KEY]
+    })
+    afterEach(() => {
+      if (saved) (globalThis as Seam)[KEY] = saved
+      else delete (globalThis as Seam)[KEY]
+    })
+
+    test('a registered collector is used when no explicit collectStyles is passed', async () => {
+      ;(globalThis as Seam)[KEY] = () => '<style data-pyreon-styler="">.pyr-a{color:red}</style>'
+      const router = makeRouter([{ path: '/', component: Page }], '/')
+      const result = await renderPage(() => h(RouterView, null), router as never, '/')
+      expect(result.kind).toBe('html')
+      if (result.kind !== 'html') return
+      expect(result.head).toContain('.pyr-a{color:red}')
+    })
+
+    test('an explicit collectStyles still wins over the seam', async () => {
+      ;(globalThis as Seam)[KEY] = () => '<style data-pyreon-styler="">.from-seam{color:red}</style>'
+      const router = makeRouter([{ path: '/', component: Page }], '/')
+      const result = await renderPage(() => h(RouterView, null), router as never, '/', {
+        collectStyles: () => '<style data-x="1">.explicit{color:blue}</style>',
+      })
+      expect(result.kind).toBe('html')
+      if (result.kind !== 'html') return
+      expect(result.head).toContain('.explicit{color:blue}')
+      expect(result.head).not.toContain('.from-seam')
+    })
+
+    test('the seam receives the per-request CSP nonce', async () => {
+      let seen: string | undefined | 'unset' = 'unset'
+      ;(globalThis as Seam)[KEY] = (nonce) => {
+        seen = nonce
+        return `<style nonce="${nonce ?? ''}">.pyr-a{color:red}</style>`
+      }
+      const router = makeRouter([{ path: '/', component: Page }], '/')
+      const result = await renderPage(() => h(RouterView, null), router as never, '/', {
+        locals: { cspNonce: 'n0nce' },
+      })
+      expect(seen).toBe('n0nce')
+      expect(result.kind).toBe('html')
+      if (result.kind === 'html') expect(result.head).toContain('nonce="n0nce"')
+    })
+
+    test('no registered collector → no style tag (styler-less apps unchanged)', async () => {
+      delete (globalThis as Seam)[KEY]
+      const router = makeRouter([{ path: '/', component: Page }], '/')
+      const result = await renderPage(() => h(RouterView, null), router as never, '/')
+      expect(result.kind).toBe('html')
+      if (result.kind === 'html') expect(result.head).not.toContain('<style')
+    })
+
+    test('an empty tag from the seam is still skipped', async () => {
+      ;(globalThis as Seam)[KEY] = () => '<style data-pyreon-styler=""></style>'
+      const router = makeRouter([{ path: '/', component: Page }], '/')
+      const result = await renderPage(() => h(RouterView, null), router as never, '/')
+      expect(result.kind).toBe('html')
+      if (result.kind === 'html') expect(result.head).not.toContain('<style')
+    })
+  })
+
   test('locals are readable via useRequestLocals during the render', async () => {
     const LocalsReader: ComponentFn = () => {
       const locals = useRequestLocals() as { nonce?: string }

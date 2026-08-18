@@ -815,3 +815,67 @@ test.describe('ui-showcase — rocketstyle reactive prop preservation', () => {
     await expect(btn).toHaveAttribute('title', 'count: 3')
   })
 })
+
+// ─── SSR ships CSS for the classes it emits ────────────────────────────────
+
+test.describe('ui-showcase — SSR styler CSS emission', () => {
+  // The bug: `renderPage`'s `collectStyles` hook was OPT-IN, and of its three
+  // consumers only zero's SSG entry ever passed one. So zero's dev SSR
+  // middleware and its production `createServer` both shipped HTML carrying
+  // styler class names (`pyr-1abc23`) with NO styler `<style>` tag at all —
+  // measured here before the fix: 23 classes, 0 rules, on every route.
+  //
+  // It survived because a SECOND bug hid it: hydration threw the server DOM
+  // away and rebuilt it, so the unstyled first paint was never visible —
+  // users saw nothing for ~300ms instead of seeing it wrong. Fixing hydration
+  // adoption exposes it, which is the lesson: a defect masked by another
+  // defect has no symptom until the mask is removed.
+  //
+  // Assert on the RAW HTTP response (`request.get`, no JS) — a hydrated-DOM
+  // assertion re-emits the CSS client-side and false-passes, exactly like the
+  // SSR empty-page gap that asserted layout chrome instead of page content.
+  const ROUTES = ['/', '/button', '/card', '/alert', '/badge']
+
+  for (const route of ROUTES) {
+    test(`every styler class in SSR HTML of ${route} has a matching CSS rule`, async ({
+      request,
+    }) => {
+      const res = await request.get(route)
+      expect(res.status()).toBe(200)
+      const html = await res.text()
+
+      const classes = new Set<string>()
+      for (const m of html.matchAll(/class="([^"]*)"/g)) {
+        for (const c of m[1]!.split(/\s+/)) if (c.startsWith('pyr-')) classes.add(c)
+      }
+      // Guard against a vacuous pass: this app is styler-driven, so an SSR
+      // response with no styler classes means the render broke, not that the
+      // invariant holds.
+      expect(classes.size).toBeGreaterThan(0)
+
+      const selectors = new Set<string>()
+      for (const m of html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)) {
+        for (const s of m[1]!.matchAll(/\.(pyr-[A-Za-z0-9_-]+)/g)) selectors.add(s[1]!)
+      }
+
+      const missing = [...classes].filter((c) => !selectors.has(c)).sort()
+      expect(
+        missing,
+        `${missing.length}/${classes.size} styler classes on ${route} have no CSS rule in the SSR HTML`,
+      ).toEqual([])
+    })
+  }
+
+  test('the SSR styler tag carries real declarations, not just selectors', async ({ request }) => {
+    // A tag whose selectors all resolve but whose bodies are empty would pass
+    // the invariant above while still painting unstyled.
+    const html = await (await request.get('/button')).text()
+    const tag = /<style data-pyreon-styler[^>]*>([\s\S]*?)<\/style>/.exec(html)
+    expect(tag, 'no <style data-pyreon-styler> tag in the SSR response').not.toBeNull()
+    const css = tag![1]!
+    expect(css).toContain('background-color')
+    // `@layer elements, rocketstyle;` must precede the layered rules or the
+    // cascade falls back to source order once the browser parses it.
+    expect(css.indexOf('@layer elements, rocketstyle;')).toBe(0)
+  })
+})

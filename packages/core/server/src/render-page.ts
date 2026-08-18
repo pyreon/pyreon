@@ -193,7 +193,22 @@ export async function renderPage(
     // cascade orders correctly against user-added <style>/<link> tags. An
     // empty tag (`...></style>`) is skipped — no styler in use. The nonce is
     // forwarded so the styler's `<style>` carries it too.
-    const styleTag = options.collectStyles ? options.collectStyles(cspNonce) : ''
+    // An explicit `collectStyles` always wins (SSG passes one; a consumer may
+    // want reset semantics or a different engine). Otherwise fall back to the
+    // CSS-in-JS collector registered on `globalThis` — @pyreon/styler's
+    // singleton sets `__PYREON_STYLER_COLLECT__` on SSR module init, the same
+    // dependency-free seam the streaming pipeline reads
+    // `__PYREON_STYLER_FLUSH__` through. Without this default, every caller
+    // that forgot to wire `collectStyles` shipped class names with no CSS
+    // (zero's dev SSR middleware and its production `createServer` both did),
+    // and the failure was silent: the page hydrates to the correct DOM, so
+    // only first paint is wrong. No styler loaded → no global → `''`, exactly
+    // as before.
+    const collectStyles =
+      options.collectStyles
+      ?? (globalThis as { __PYREON_STYLER_COLLECT__?: (nonce?: string) => string })
+        .__PYREON_STYLER_COLLECT__
+    const styleTag = collectStyles ? collectStyles(cspNonce) : ''
     const styleIsEmpty = !styleTag || styleTag.indexOf('></style>') !== -1
     const finalHead = styleIsEmpty ? head : `${styleTag}\n${head}`
 

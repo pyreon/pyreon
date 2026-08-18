@@ -304,6 +304,25 @@ export class StyleSheet {
       ;(
         globalThis as { __PYREON_STYLER_FLUSH__?: () => string }
       ).__PYREON_STYLER_FLUSH__ = () => this.flushSSRPending()
+      // Non-streaming (string-mode) SSR twin of the flush hook above.
+      //
+      // `renderPage` (@pyreon/server) is the ONE choke point every string-mode
+      // SSR render passes through — the production `createHandler`, zero's dev
+      // SSR middleware, and zero's SSG prerender entry all call it. Only the
+      // SSG entry ever passed `collectStyles`, so the other two shipped HTML
+      // carrying styler class names with NO `<style>` tag at all: correct final
+      // DOM, unstyled first paint. Registering the collector here lets
+      // renderPage default to it, so a consumer cannot forget to wire it —
+      // which is what the per-call-site approach could not guarantee.
+      //
+      // Deliberately NOT used by the streaming pipeline: that path drives the
+      // buffer through `flushSSRPending()`'s watermark and emits per-boundary
+      // tags. The two are independent (`getStyleTag()` never moves
+      // `ssrFlushedIdx`), so a mixed process — a streaming app with an `isr`
+      // route forced to string mode — stays correct on both paths.
+      ;(
+        globalThis as { __PYREON_STYLER_COLLECT__?: (nonce?: string) => string }
+      ).__PYREON_STYLER_COLLECT__ = (nonce?: string) => this.getStyleTag(nonce)
     }
   }
 
