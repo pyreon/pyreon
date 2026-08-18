@@ -54,9 +54,27 @@ const SCENARIOS: { id: string; label: string; frameworks: string[] }[] = [
   {
     id: 'tree',
     label: 'deep tree — 2,047-component mount + context → 1,024 consumers',
-    frameworks: ['Vanilla JS', 'Pyreon', 'React 19', 'Preact', 'Vue 3', 'SolidJS', 'Svelte 5'],
+    frameworks: [
+      'Vanilla JS',
+      'Pyreon',
+      'React 19',
+      'Preact',
+      'Vue 3',
+      'SolidJS',
+      'SolidJS (eager props)',
+      'Svelte 5',
+    ],
   },
 ]
+
+/**
+ * Entries excluded from "best FRAMEWORK" ranking.
+ *  - Vanilla is the raw-DOM floor, not a competitor.
+ *  - `SolidJS (eager props)` is a diagnostic arm using a prop shape Solid's
+ *    compiler does NOT emit (verified against babel-preset-solid). Ranking
+ *    against it would reintroduce the very handicap this arm exists to expose.
+ */
+const NON_RANKING = new Set(['Vanilla JS', 'SolidJS (eager props)'])
 
 interface SuiteResult {
   framework: string
@@ -185,20 +203,23 @@ try {
         .sort((a, b) => a.med - b.med)
       if (rows.length === 0) continue
       const best = rows[0] as (typeof rows)[number]
-      // Rank against the best FRAMEWORK, not Vanilla — Vanilla is the floor,
-      // and calling it "the winner" every time hides the framework race.
-      const bestFw = rows.find((r) => r.fw !== 'Vanilla JS') ?? best
+      // Rank against the best RANKING framework — Vanilla is the floor and the
+      // eager-props arm is a diagnostic; calling either "the winner" would
+      // misreport the framework race.
+      const bestFw = rows.find((r) => !NON_RANKING.has(r.fw)) ?? best
       for (const r of rows) {
         const tiedWithLeader =
           r !== bestFw && r.ci[0] <= bestFw.ci[1] && bestFw.ci[0] <= r.ci[1]
         const marker =
           r.fw === 'Vanilla JS'
             ? '(floor)'
-            : r === bestFw
-              ? '🥇'
-              : tiedWithLeader
-                ? '🤝 tie'
-                : `${(r.med / bestFw.med).toFixed(2)}× slower`
+            : r.fw === 'SolidJS (eager props)'
+              ? `(diagnostic — ${(r.med / bestFw.med).toFixed(2)}× vs SolidJS)`
+              : r === bestFw
+                ? '🥇'
+                : tiedWithLeader
+                  ? '🤝 tie'
+                  : `${(r.med / bestFw.med).toFixed(2)}× slower`
         console.log(
           `  ${r.fw.padEnd(11)} ${fmt(r.med).padStart(9)}  [${fmt(r.ci[0])}–${fmt(r.ci[1])}]  n=${String(r.n).padStart(3)}  ${marker}`,
         )
