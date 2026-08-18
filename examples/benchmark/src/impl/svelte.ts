@@ -15,6 +15,7 @@
 import { mount, unmount, flushSync } from 'svelte'
 import type { BenchSuite, Row } from '../runner'
 import { bench, buildRows, expectRows, expectRowsWithSelected, resetRng } from '../runner'
+import type { AppHandle } from '../startup/app-handle'
 import Bench from './Bench.svelte'
 import { setRawRows, state, type SvelteRow } from './bench-state.svelte'
 
@@ -25,10 +26,18 @@ function commit(): void {
   flushSync()
 }
 
-export async function runSvelte(container: HTMLElement): Promise<BenchSuite> {
-  resetRng()
-  const suite: BenchSuite = { framework: 'Svelte 5', container, results: [] }
+interface SvelteApp extends AppHandle {
+  setRows: (rows: SvelteRow[]) => Promise<void>
+  setSelected: (id: number | null) => Promise<void>
+}
 
+/**
+ * Mount the app — the SINGLE model shared by the op bench (`runSvelte`) and
+ * the startup/memory benches. See `src/startup/app-handle.ts` for why.
+ * Routing both through here is what keeps the `$state.raw` correction in
+ * `bench-state.svelte.ts` applying to the memory numbers too.
+ */
+export async function mountSvelte(container: HTMLElement): Promise<SvelteApp> {
   // Mount the compiled component. `mount()` is Svelte 5's idiomatic
   // entry point (replaces Svelte 4's `new Component({ target })`).
   const app = mount(Bench, { target: container })
@@ -37,8 +46,6 @@ export async function runSvelte(container: HTMLElement): Promise<BenchSuite> {
   setRawRows([])
   state.selectedId = null
   await commit()
-
-  let currentRows: SvelteRow[] = []
 
   const setRows = async (rows: SvelteRow[]) => {
     setRawRows(rows)
@@ -49,6 +56,47 @@ export async function runSvelte(container: HTMLElement): Promise<BenchSuite> {
     state.selectedId = id
     await commit()
   }
+
+  // Mirrors the `currentRows` the op bench keeps — `$state.raw` is replaced
+  // wholesale, so the caller holds the list it last set.
+  let handleRows: SvelteRow[] = []
+
+  return {
+    setRows,
+    setSelected,
+    unmount: () => {
+      void unmount(app)
+    },
+    create: async (n) => {
+      handleRows = buildRows(n)
+      await setRows(handleRows)
+    },
+    // Immutable row rebuild — the same path 'partial update (every 10th)'
+    // times. `$state.raw` is replaced wholesale rather than mutated per row;
+    // that per-framework difference is documented and deliberate.
+    update: async () => {
+      const updated = [...handleRows]
+      for (let i = 0; i < updated.length; i += 10) {
+        const row = updated[i]
+        if (row) updated[i] = { ...row, label: `${row.label} !!!` }
+      }
+      handleRows = updated
+      await setRows(handleRows)
+    },
+    clear: async () => {
+      handleRows = []
+      await setRows(handleRows)
+    },
+  }
+}
+
+export async function runSvelte(container: HTMLElement): Promise<BenchSuite> {
+  resetRng()
+  const suite: BenchSuite = { framework: 'Svelte 5', container, results: [] }
+
+  const { setRows, setSelected, unmount: unmountApp } = await mountSvelte(container)
+
+  let currentRows: SvelteRow[] = []
 
   // Adapt the runner's Row type (id + label) to Svelte's. Identical
   // shape — just keeps the type system honest about the per-framework
@@ -213,7 +261,7 @@ export async function runSvelte(container: HTMLElement): Promise<BenchSuite> {
   )
 
   await setRows([])
-  unmount(app)
+  unmountApp()
 
   return suite
 }

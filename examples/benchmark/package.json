@@ -14,7 +14,9 @@
     "bench:ssr": "bun bench-ssr.ts",
     "bench:hydration": "bun bench-hydration.ts",
     "bench:apppage": "bun bench-apppage.ts",
-    "bench:scenarios": "bun bench-scenarios.ts"
+    "bench:scenarios": "bun bench-scenarios.ts",
+    "bench:startup": "bun bench-startup.ts",
+    "bench:memory": "bun bench-memory.ts"
   },
   "dependencies": {
     "@pyreon/core": "workspace:*",
@@ -32,6 +34,7 @@
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.11.1",
+    "@octanejs/vite-plugin": "0.1.37",
     "@pyreon/compiler": "workspace:*",
     "@pyreon/runtime-server": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
@@ -40,10 +43,11 @@
     "@types/node": "^26.1.1",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
+    "chrome-launcher": "^1.2.1",
     "esbuild": "^0.28.1",
+    "lighthouse": "^13.4.1",
     "playwright": "^1.62.1",
     "typescript": "^6.0.3",
-    "vite": "^8.2.1",
-    "@octanejs/vite-plugin": "0.1.37"
+    "vite": "^8.2.1"
   }
 }

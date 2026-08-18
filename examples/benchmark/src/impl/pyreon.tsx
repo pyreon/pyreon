@@ -22,12 +22,21 @@ import {
   selectedProbe,
   tick,
 } from '../runner'
+import type { AppHandle } from '../startup/app-handle'
 
-export async function runPyreon(container: HTMLElement): Promise<BenchSuite> {
-  resetRng()
-  const suite: BenchSuite = { framework: 'Pyreon', container, results: [] }
+type ReactiveRow = { id: number; label: ReturnType<typeof signal<string>> }
 
-  type ReactiveRow = { id: number; label: ReturnType<typeof signal<string>> }
+interface PyreonApp extends AppHandle {
+  rows: ReturnType<typeof signal<ReactiveRow[]>>
+  selectedId: ReturnType<typeof signal<number | null>>
+  mkRows: (n: number) => ReactiveRow[]
+}
+
+/**
+ * Mount the app — the SINGLE model shared by the op bench (`runPyreon`) and
+ * the startup/memory benches. See `src/startup/app-handle.ts` for why.
+ */
+export function mountPyreon(container: HTMLElement): PyreonApp {
   const rows = signal<ReactiveRow[]>([])
   const selectedId = signal<number | null>(null)
 
@@ -53,6 +62,33 @@ export async function runPyreon(container: HTMLElement): Promise<BenchSuite> {
 
   const mkRows = (n: number) =>
     buildRowsWith<ReactiveRow>(n, (id, label) => ({ id, label: signal(label) }))
+
+  return {
+    rows,
+    selectedId,
+    mkRows,
+    unmount,
+    create: async (n) => {
+      rows.set(mkRows(n))
+    },
+    // Per-row signal write — the same path 'partial update (every 10th)' times.
+    update: async () => {
+      const current = rows()
+      for (let i = 0; i < current.length; i += 10) {
+        current[i]?.label.update((l) => `${l} !!!`)
+      }
+    },
+    clear: async () => {
+      rows.set([])
+    },
+  }
+}
+
+export async function runPyreon(container: HTMLElement): Promise<BenchSuite> {
+  resetRng()
+  const suite: BenchSuite = { framework: 'Pyreon', container, results: [] }
+
+  const { rows, selectedId, mkRows, unmount } = mountPyreon(container)
 
   await bench(
     'create 1,000 rows',

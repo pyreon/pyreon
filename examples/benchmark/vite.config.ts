@@ -13,6 +13,23 @@ const bundleEntry = process.env.BENCH_BUNDLE_ENTRY
 // care about identifier length; never use this build for TIMED numbers).
 const profileBuild = process.env.BENCH_PROFILE === '1'
 
+// bench-startup.ts / bench-memory.ts: one ISOLATED build per framework whose
+// entry MOUNTS that framework's app (src/startup/entry-<slug>.ts).
+//
+// Distinct from BENCH_BUNDLE_ENTRY above, and the difference is the point:
+// bench-bundle's entry only holds a keep-REFERENCE so the code survives
+// tree-shaking but never runs, which is the right shape for "what does this
+// framework cost on the wire". Startup metrics are parse + compile + EVALUATE,
+// so their entry has to actually execute — a non-executing entry would report
+// a bootup time of roughly zero for everyone. The two numbers are reconciled
+// in `bench-startup.ts`'s output.
+//
+// Filenames are pinned (no content hash) so the hand-written index.html can
+// reference `./entry.js` without a manifest lookup, and `base: './'` keeps the
+// emitted chunk imports relative so each build can be served from its own
+// subdirectory of one shared preview server.
+const startupEntry = process.env.BENCH_STARTUP_ENTRY
+
 /**
  * Cross-origin isolation headers — LOAD-BEARING for sub-millisecond ops.
  *
@@ -51,11 +68,25 @@ const ISOLATION_HEADERS =
 export default defineConfig({
   server: { headers: ISOLATION_HEADERS },
   preview: { headers: ISOLATION_HEADERS },
-  ...(bundleEntry
-    ? { build: { rollupOptions: { input: bundleEntry } } }
-    : profileBuild
-      ? { build: { minify: false } }
-      : {}),
+  ...(startupEntry
+    ? {
+        base: './',
+        build: {
+          rollupOptions: {
+            input: startupEntry,
+            output: {
+              entryFileNames: 'entry.js',
+              chunkFileNames: 'chunk-[hash].js',
+              assetFileNames: 'asset-[hash][extname]',
+            },
+          },
+        },
+      }
+    : bundleEntry
+      ? { build: { rollupOptions: { input: bundleEntry } } }
+      : profileBuild
+        ? { build: { minify: false } }
+        : {}),
   plugins: [
     pyreon(),
     // Octane — the compiled-React framework (`.tsrx`). `requireDirective: true`

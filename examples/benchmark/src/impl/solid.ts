@@ -26,6 +26,7 @@ import {
   selectedProbe,
   tick,
 } from '../runner'
+import type { AppHandle } from '../startup/app-handle'
 
 type SolidRow = { id: number; label: () => string; setLabel: (s: string) => void }
 
@@ -39,10 +40,18 @@ function mkRows(n: number): SolidRow[] {
 // Pre-compiled template — same as what Solid's JSX compiler emits
 const _tmpl$ = template('<tr><td></td><td></td></tr>')
 
-export async function runSolid(container: HTMLElement): Promise<BenchSuite> {
-  resetRng()
-  const suite: BenchSuite = { framework: 'SolidJS', container, results: [] }
+interface SolidApp extends AppHandle {
+  rows: () => SolidRow[]
+  setRows: (rows: SolidRow[]) => void
+  selectedId: () => number | null
+  setSelected: (id: number | null) => void
+}
 
+/**
+ * Mount the app — the SINGLE model shared by the op bench (`runSolid`) and
+ * the startup/memory benches. See `src/startup/app-handle.ts` for why.
+ */
+export function mountSolid(container: HTMLElement): SolidApp {
   const [rows, setRows] = createSignal<SolidRow[]>([])
   const [selectedId, setSelected] = createSignal<number | null>(null)
 
@@ -90,6 +99,34 @@ export async function runSolid(container: HTMLElement): Promise<BenchSuite> {
 
     return table
   }, container)
+
+  return {
+    rows,
+    setRows,
+    selectedId,
+    setSelected,
+    unmount: dispose,
+    create: async (n) => {
+      setRows(mkRows(n))
+    },
+    // Per-row signal write — the same path 'partial update (every 10th)' times.
+    update: async () => {
+      const cur = rows()
+      for (let i = 0; i < cur.length; i += 10) {
+        cur[i]?.setLabel(`${cur[i]?.label() ?? ''} !!!`)
+      }
+    },
+    clear: async () => {
+      setRows([])
+    },
+  }
+}
+
+export async function runSolid(container: HTMLElement): Promise<BenchSuite> {
+  resetRng()
+  const suite: BenchSuite = { framework: 'SolidJS', container, results: [] }
+
+  const { rows, setRows, setSelected, unmount: dispose } = mountSolid(container)
 
   await bench(
     'create 1,000 rows',

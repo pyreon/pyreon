@@ -11,6 +11,7 @@ import * as ReactDOM from 'react-dom/client'
 import { flushSync } from 'react-dom'
 import type { BenchSuite, Row } from '../runner'
 import { bench, buildRows, expectRows, expectRowsWithSelected, resetRng } from '../runner'
+import type { AppHandle } from '../startup/app-handle'
 
 const { createElement: r, useState, useEffect, memo } = React
 
@@ -48,9 +49,21 @@ function App({ onMounted }: { onMounted: (setters: Setters) => void }) {
   )
 }
 
-export async function runReact(container: HTMLElement): Promise<BenchSuite> {
-  resetRng()
-  const suite: BenchSuite = { framework: 'React 19', container, results: [] }
+interface ReactApp extends AppHandle {
+  setRows: (rows: Row[]) => Promise<void>
+  setSelected: (id: number | null) => Promise<void>
+  root: ReturnType<typeof ReactDOM.createRoot>
+}
+
+/**
+ * Mount the app — the SINGLE model shared by the op bench (`runReact`) and
+ * the startup/memory benches. See `src/startup/app-handle.ts` for why.
+ *
+ * Resolves only once React has COMMITTED (the setters are published from a
+ * post-commit `useEffect`), so a caller that awaits this is guaranteed the
+ * mount is done — load-bearing for `21_ready-memory`.
+ */
+export async function mountReact(container: HTMLElement): Promise<ReactApp> {
   const root = ReactDOM.createRoot(container)
 
   // Capture setters via Promise — value is unknown at bundle time, so Rollup cannot
@@ -72,6 +85,45 @@ export async function runReact(container: HTMLElement): Promise<BenchSuite> {
   const setSelected = async (id: number | null) => {
     flushSync(() => reactSetSelected(id))
   }
+
+  // Mirrors the `currentRows` the op bench keeps — the `useState` model has no
+  // readable store, so the caller must hold the list it last set.
+  let handleRows: Row[] = []
+
+  return {
+    setRows,
+    setSelected,
+    root,
+    unmount: () => root.unmount(),
+    create: async (n) => {
+      handleRows = buildRows(n)
+      await setRows(handleRows)
+    },
+    // Immutable row rebuild — the same path 'partial update (every 10th)'
+    // times. The `useState`-model entries rebuild rows rather than writing a
+    // per-row signal; that per-framework difference is documented and
+    // deliberate (see SKILL.md), not normalised away here.
+    update: async () => {
+      const updated = [...handleRows]
+      for (let i = 0; i < updated.length; i += 10) {
+        const row = updated[i]
+        if (row) updated[i] = { ...row, label: `${row.label} !!!` }
+      }
+      handleRows = updated
+      await setRows(handleRows)
+    },
+    clear: async () => {
+      handleRows = []
+      await setRows(handleRows)
+    },
+  }
+}
+
+export async function runReact(container: HTMLElement): Promise<BenchSuite> {
+  resetRng()
+  const suite: BenchSuite = { framework: 'React 19', container, results: [] }
+
+  const { setRows, setSelected, root } = await mountReact(container)
 
   let currentRows: Row[] = []
 

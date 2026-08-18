@@ -8,6 +8,7 @@ import { memo } from 'preact/compat'
 import { useEffect, useState } from 'preact/hooks'
 import type { BenchSuite, Row } from '../runner'
 import { bench, buildRows, expectRows, expectRowsWithSelected, resetRng } from '../runner'
+import type { AppHandle } from '../startup/app-handle'
 
 /** Preact batches hook updates on a microtask — wait exactly that, no rAF. */
 function afterCommit(): Promise<void> {
@@ -47,10 +48,20 @@ function App({ onMounted }: { onMounted: (setters: Setters) => void }) {
   )
 }
 
-export async function runPreact(container: HTMLElement): Promise<BenchSuite> {
-  resetRng()
-  const suite: BenchSuite = { framework: 'Preact', container, results: [] }
+interface PreactApp extends AppHandle {
+  setRows: (rows: Row[]) => Promise<void>
+  setSelected: (id: number | null) => Promise<void>
+}
 
+/**
+ * Mount the app — the SINGLE model shared by the op bench (`runPreact`) and
+ * the startup/memory benches. See `src/startup/app-handle.ts` for why.
+ *
+ * Resolves only once Preact has COMMITTED (the setters are published from a
+ * post-commit `useEffect`), so a caller that awaits this is guaranteed the
+ * mount is done — load-bearing for `21_ready-memory`.
+ */
+export async function mountPreact(container: HTMLElement): Promise<PreactApp> {
   let resolveSetters!: (s: Setters) => void
   const settersPromise = new Promise<Setters>((res) => {
     resolveSetters = res
@@ -67,6 +78,44 @@ export async function runPreact(container: HTMLElement): Promise<BenchSuite> {
     preactSetSelected(id)
     await afterCommit()
   }
+
+  // Mirrors the `currentRows` the op bench keeps — the `useState` model has no
+  // readable store, so the caller must hold the list it last set.
+  let handleRows: Row[] = []
+
+  return {
+    setRows,
+    setSelected,
+    unmount: () => render(null, container),
+    create: async (n) => {
+      handleRows = buildRows(n)
+      await setRows(handleRows)
+    },
+    // Immutable row rebuild — the same path 'partial update (every 10th)'
+    // times. The `useState`-model entries rebuild rows rather than writing a
+    // per-row signal; that per-framework difference is documented and
+    // deliberate (see SKILL.md), not normalised away here.
+    update: async () => {
+      const updated = [...handleRows]
+      for (let i = 0; i < updated.length; i += 10) {
+        const row = updated[i]
+        if (row) updated[i] = { ...row, label: `${row.label} !!!` }
+      }
+      handleRows = updated
+      await setRows(handleRows)
+    },
+    clear: async () => {
+      handleRows = []
+      await setRows(handleRows)
+    },
+  }
+}
+
+export async function runPreact(container: HTMLElement): Promise<BenchSuite> {
+  resetRng()
+  const suite: BenchSuite = { framework: 'Preact', container, results: [] }
+
+  const { setRows, setSelected } = await mountPreact(container)
 
   let currentRows: Row[] = []
 

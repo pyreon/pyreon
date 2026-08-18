@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pyreon benchmark — startup/memory page</title>
+    <!--
+      DELIBERATELY MINIMAL. This page exists to be measured, so anything in it
+      that is not the framework is noise charged to the framework.
+
+      No stylesheet: krausest excludes /css from its size metrics
+      ("all implementation files (excluding /css and http headers)"), and a
+      stylesheet would also add a render-blocking request to first-paint. The
+      one rule below is inline and is the SAME `table-layout: fixed` the op
+      bench's fixture uses — see index.html for why (auto layout re-measures
+      every row on append and made that op bimodal). It is applied identically
+      to all eight frameworks.
+
+      No buttons: krausest's own page drives the app by clicking #run/#clear,
+      but this harness is driven from Playwright through the `AppHandle`
+      published on `globalThis` by the entry. That is strictly closer to what
+      the op bench measures (the framework's own state write, not a click
+      handler + event dispatch) and it is identical across frameworks.
+    -->
+    <style>
+      table { table-layout: fixed; width: 100% }
+    </style>
+  </head>
+  <body>
+    <!--
+      STATIC PAINT ANCHOR — load-bearing, and it costs one metric its meaning.
+
+      At "ready" the app is a MOUNTED BUT EMPTY table, which paints nothing.
+      Lighthouse aborts the entire run with `NO_FCP` ("The page did not paint
+      any content") when that happens, taking `bootup-time` and
+      `mainthread-work-breakdown` down with it — so without something visible
+      there are no startup metrics at all.
+
+      krausest does not need this because its page's button row is rendered by
+      the framework, so its FCP is framework-gated. Ours is not: this line is
+      in the HTML, so it paints as soon as the document parses, before any
+      framework script evaluates.
+
+      CONSEQUENCES, stated so nobody quotes the wrong number:
+        - `bootup-time` and `mainthread-work-breakdown` are UNAFFECTED. They
+          measure script parse/compile/evaluate and main-thread task time; this
+          element contributes an identical, negligible amount to all eight.
+        - `first-paint` and `interactive` ARE affected and are NOT comparable
+          to krausest's. Ours measure when the DOCUMENT paints, not when the
+          FRAMEWORK paints. They are reported flagged, never as a ranking.
+        - It is byte-identical across all eight builds, so it cancels from
+          every cross-framework delta.
+    -->
+    <p id="paint-anchor">benchmark fixture</p>
+    <div id="app"></div>
+    <script type="module" src="./entry.js"></script>
+  </body>
+</html>

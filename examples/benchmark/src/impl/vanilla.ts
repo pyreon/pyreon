@@ -17,6 +17,97 @@ import {
   selectedProbe,
   tick,
 } from '../runner'
+import type { AppHandle } from '../startup/app-handle'
+
+interface VanillaRefs {
+  tbody: HTMLElement
+  trElements: HTMLElement[]
+  labelTds: HTMLElement[]
+}
+
+/**
+ * Build the whole table into `container`, replacing its contents.
+ *
+ * Shared by `runVanilla`'s `renderAll` and `mountVanilla` so the ROW
+ * CONSTRUCTION LOOP — the part with actual content — exists exactly once.
+ * Both benches therefore measure the same hand-written DOM baseline, and a
+ * future edit cannot improve one and leave the other behind.
+ *
+ * Deliberately returns a refs object rather than writing into closure
+ * variables: this keeps the extraction to ONE call and ONE object allocation
+ * per `renderAll` (which runs once per timed create/replace/clear run), NOT
+ * per row. Against an ~8ms create-1k that is unmeasurable — and the
+ * alternative shapes were worse. Passing a mutable refs object down and
+ * reading `refs.rows[i]` inside the ops would have added a property load per
+ * element access in the timed loops, and duplicating the loop would have put
+ * the baseline's definition in two places.
+ */
+function buildTable(container: HTMLElement, rows: Row[]): VanillaRefs {
+  container.innerHTML = ''
+  const table = document.createElement('table')
+  const tbody = document.createElement('tbody')
+  const trElements: HTMLElement[] = new Array(rows.length)
+  const labelTds: HTMLElement[] = new Array(rows.length)
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i] as Row
+    const tr = document.createElement('tr')
+    const td1 = document.createElement('td')
+    const td2 = document.createElement('td')
+    // raw number — see runner.ts "Row-id rendering rule"
+    ;(td1 as unknown as NumericText).textContent = row.id
+    td2.textContent = row.label
+    tr.appendChild(td1)
+    tr.appendChild(td2)
+    tbody.appendChild(tr)
+    trElements[i] = tr
+    labelTds[i] = td2
+  }
+
+  table.appendChild(tbody)
+  container.appendChild(table)
+  return { tbody, trElements, labelTds }
+}
+
+/**
+ * Mount the app — the model shared with the op bench (`runVanilla`) through
+ * `buildTable`. See `src/startup/app-handle.ts` for why this seam exists.
+ *
+ * NOTE this is the one impl whose `run…` does NOT call its `mount…`. The
+ * vanilla ops mutate five closure variables in place (`rows`, `trElements`,
+ * `labelTds`, `selectedTr`, `tbody`), so routing them through a handle would
+ * have meant reading them off an object INSIDE the timed loops. This is the
+ * no-framework baseline every "cost vs Vanilla" percentage is measured
+ * against, so it does not get extra indirection to serve a different bench.
+ * The shared part is `buildTable`; what is not shared is only the bookkeeping
+ * around it.
+ */
+export function mountVanilla(container: HTMLElement): AppHandle {
+  let rows: Row[] = []
+  let refs: VanillaRefs = buildTable(container, rows)
+
+  return {
+    unmount: () => {
+      container.innerHTML = ''
+    },
+    create: async (n) => {
+      rows = buildRows(n)
+      refs = buildTable(container, rows)
+    },
+    // Targeted DOM write — the same path 'partial update (every 10th)' times.
+    update: async () => {
+      for (let i = 0; i < rows.length; i += 10) {
+        const row = rows[i] as Row
+        row.label = `${row.label} !!!`
+        ;(refs.labelTds[i] as HTMLElement).textContent = row.label
+      }
+    },
+    clear: async () => {
+      rows = []
+      refs = buildTable(container, rows)
+    },
+  }
+}
 
 export async function runVanilla(container: HTMLElement): Promise<BenchSuite> {
   resetRng()
@@ -30,30 +121,11 @@ export async function runVanilla(container: HTMLElement): Promise<BenchSuite> {
 
   function renderAll(newRows: Row[]) {
     rows = newRows
-    container.innerHTML = ''
-    const table = document.createElement('table')
-    tbody = document.createElement('tbody')
-    trElements = new Array(rows.length)
-    labelTds = new Array(rows.length)
+    const refs = buildTable(container, rows)
+    tbody = refs.tbody
+    trElements = refs.trElements
+    labelTds = refs.labelTds
     selectedTr = null
-
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i] as Row
-      const tr = document.createElement('tr')
-      const td1 = document.createElement('td')
-      const td2 = document.createElement('td')
-      // raw number — see runner.ts "Row-id rendering rule"
-      ;(td1 as unknown as NumericText).textContent = row.id
-      td2.textContent = row.label
-      tr.appendChild(td1)
-      tr.appendChild(td2)
-      tbody.appendChild(tr)
-      trElements[i] = tr
-      labelTds[i] = td2
-    }
-
-    table.appendChild(tbody)
-    container.appendChild(table)
   }
 
   await bench(

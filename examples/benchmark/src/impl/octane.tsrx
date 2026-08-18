@@ -68,6 +68,7 @@ import {
   resetRng,
   selectedProbe,
 } from '../runner'
+import type { AppHandle } from '../startup/app-handle'
 
 interface Setters {
   setRows: (rows: Row[]) => void
@@ -94,9 +95,21 @@ export function App(props: { onMounted: (setters: Setters) => void }) @{
   </table>
 }
 
-export async function runOctane(container: HTMLElement): Promise<BenchSuite> {
-  resetRng()
-  const suite: BenchSuite = { framework: 'Octane', container, results: [] }
+interface OctaneApp extends AppHandle {
+  setRows: (rows: Row[]) => Promise<void>
+  setSelected: (id: number | null) => Promise<void>
+  root: ReturnType<typeof createRoot>
+}
+
+/**
+ * Mount the app — the SINGLE model shared by the op bench (`runOctane`) and
+ * the startup/memory benches. See `src/startup/app-handle.ts` for why.
+ *
+ * Resolves only once Octane has COMMITTED (the setters are published from a
+ * post-commit `useEffect`), so a caller that awaits this is guaranteed the
+ * mount is done — load-bearing for `21_ready-memory`.
+ */
+export async function mountOctane(container: HTMLElement): Promise<OctaneApp> {
   const root = createRoot(container)
 
   let resolveSetters!: (setters: Setters) => void
@@ -114,6 +127,45 @@ export async function runOctane(container: HTMLElement): Promise<BenchSuite> {
   const setSelected = async (id: number | null) => {
     flushSync(() => octaneSetSelected(id))
   }
+
+  // Mirrors the `currentRows` the op bench keeps — the `useState` model has no
+  // readable store, so the caller must hold the list it last set.
+  let handleRows: Row[] = []
+
+  return {
+    setRows,
+    setSelected,
+    root,
+    unmount: () => root.unmount(),
+    create: async (n) => {
+      handleRows = buildRows(n)
+      await setRows(handleRows)
+    },
+    // Immutable row rebuild — the same path 'partial update (every 10th)'
+    // times. The `useState`-model entries rebuild rows rather than writing a
+    // per-row signal; that per-framework difference is documented and
+    // deliberate (see SKILL.md), not normalised away here.
+    update: async () => {
+      const updated = [...handleRows]
+      for (let i = 0; i < updated.length; i += 10) {
+        const row = updated[i]
+        if (row) updated[i] = { ...row, label: `${row.label} !!!` }
+      }
+      handleRows = updated
+      await setRows(handleRows)
+    },
+    clear: async () => {
+      handleRows = []
+      await setRows(handleRows)
+    },
+  }
+}
+
+export async function runOctane(container: HTMLElement): Promise<BenchSuite> {
+  resetRng()
+  const suite: BenchSuite = { framework: 'Octane', container, results: [] }
+
+  const { setRows, setSelected, root } = await mountOctane(container)
 
   let currentRows: Row[] = []
 

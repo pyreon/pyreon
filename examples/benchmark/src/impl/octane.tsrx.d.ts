@@ -17,6 +17,18 @@
  * `expectRowsWithSelected`), so a broken Octane impl fails loudly rather than
  * producing deceptively-fast numbers.
  */
-import type { BenchSuite } from '../runner'
+import type { BenchSuite, Row } from '../runner'
+import type { AppHandle } from '../startup/app-handle'
 
 export declare function runOctane(container: HTMLElement): Promise<BenchSuite>
+
+/**
+ * The mount seam shared with the startup/memory benches — see
+ * `src/startup/app-handle.ts`. Resolves only after Octane has COMMITTED.
+ */
+export declare function mountOctane(container: HTMLElement): Promise<
+  AppHandle & {
+    setRows: (rows: Row[]) => Promise<void>
+    setSelected: (id: number | null) => Promise<void>
+  }
+>

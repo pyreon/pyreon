@@ -3,13 +3,24 @@
  * No JSX transform needed — uses Vue's h() directly.
  */
 import { createApp, defineComponent, h, nextTick, ref, shallowRef, triggerRef } from 'vue'
+import type { Ref, ShallowRef } from 'vue'
 import type { BenchSuite, Row } from '../runner'
 import { bench, buildRows, expectRows, expectRowsWithSelected, resetRng } from '../runner'
+import type { AppHandle } from '../startup/app-handle'
 
-export async function runVue(container: HTMLElement): Promise<BenchSuite> {
-  resetRng()
-  const suite: BenchSuite = { framework: 'Vue 3', container, results: [] }
+interface VueApp extends AppHandle {
+  rows: ShallowRef<Row[]>
+  selectedId: Ref<number | null>
+  app: ReturnType<typeof createApp>
+}
 
+/**
+ * Mount the app — the SINGLE model shared by the op bench (`runVue`) and the
+ * startup/memory benches. See `src/startup/app-handle.ts` for why. Routing
+ * both through here is what keeps the `shallowRef` correction below applying
+ * to the memory numbers as well as the op numbers.
+ */
+export async function mountVue(container: HTMLElement): Promise<VueApp> {
   // shallowRef, not ref: Vue's own performance guide ("Reduce Reactivity
   // Overhead for Large Immutable Structures") prescribes it for a list that is
   // REPLACED rather than mutated field-by-field, which is exactly this workload
@@ -45,6 +56,41 @@ export async function runVue(container: HTMLElement): Promise<BenchSuite> {
   const app = createApp(App)
   app.mount(container)
   await nextTick()
+
+  return {
+    rows,
+    selectedId,
+    app,
+    unmount: () => app.unmount(),
+    create: async (n) => {
+      rows.value = buildRows(n)
+      await nextTick()
+    },
+    // Immutable row rebuild — the same path 'partial update (every 10th)'
+    // times. The `useState`-model entries rebuild rows rather than writing a
+    // per-row signal; that per-framework difference is documented and
+    // deliberate (see SKILL.md), not normalised away here.
+    update: async () => {
+      const updated = [...rows.value]
+      for (let i = 0; i < updated.length; i += 10) {
+        const row = updated[i]
+        if (row) updated[i] = { ...row, label: `${row.label} !!!` }
+      }
+      rows.value = updated
+      await nextTick()
+    },
+    clear: async () => {
+      rows.value = []
+      await nextTick()
+    },
+  }
+}
+
+export async function runVue(container: HTMLElement): Promise<BenchSuite> {
+  resetRng()
+  const suite: BenchSuite = { framework: 'Vue 3', container, results: [] }
+
+  const { rows, selectedId, app } = await mountVue(container)
 
   let currentRows: Row[] = []
 

@@ -2,3 +2,4 @@ public/hydration-fixtures.json
 src/bundle-entries/
 dist-bundle/
 public/apppage-fixtures.json
+dist-startup/
