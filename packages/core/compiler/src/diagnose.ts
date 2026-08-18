@@ -94,43 +94,6 @@ function Greeting() {
     }),
   },
   {
-    // The residual footgun left by lazy component children. That change moved a
-    // compiled template in COMPONENT-CHILD position from an eager `jsx()`
-    // argument to a thunk the component runs when it READS `props.children` —
-    // which is what put a provider's own element child AFTER its `provide()`.
-    // The deferral covers the SOLE-child case; with several children
-    // `props.children` is an array and the emit stays eager, so the original
-    // ordering (and this symptom) survives there. Also survives when a fragment
-    // sits between the component and the element, and for a member-expression
-    // tag, which the compiler does not classify as a component anywhere.
-    //
-    // Keyed on the shape a missed context read actually produces: a theme /
-    // store / client pulled from context is undefined, so the first property
-    // read off it throws. `base` is `@pyreon/rocketstyle` reading an unprovided
-    // PyreonUI theme — the exact message the ui-showcase regression produced.
-    pattern:
-      /Cannot read (?:property |properties of )['"]?undefined['"]?\s*\(reading ['"](base|theme|palette)['"]\)/,
-    diagnose: (m) => ({
-      cause: `Something read \`${m[1]}\` off a context value that resolved to its DEFAULT (undefined) — the read happened BEFORE the provider above it called \`provide()\`. A compiled template that is a component's child is deferred so this cannot happen, but only when it is that component's SOLE child; with two or more children, with a fragment in between, or under a member-expression tag (\`<Ctx.Provider>\`), the template is still built as an eager argument and runs first.`,
-      fix: 'Give the provider exactly ONE element child (wrap siblings in that one element), or move the context read into a child COMPONENT — a component mounts through the mount pipeline, which always runs after its provider.',
-      fixCode: `// eager: two children, so each template is built before provide() runs
-<PyreonUI theme={t}>
-  <Header />
-  <main class={themed()}>…</main>
-</PyreonUI>
-
-// deferred: ONE child, built when PyreonUI reads props.children
-<PyreonUI theme={t}>
-  <div class="shell">
-    <Header />
-    <main class={themed()}>…</main>
-  </div>
-</PyreonUI>`,
-      related:
-        'See anti-patterns "A compiled template in COMPONENT-CHILD position runs before the component\'s own body". Reading context inside a child component is always safe; the ordering only bites a binding compiled into the provider\'s own element child.',
-    }),
-  },
-  {
     // The residual footgun left by the nested-setup-frame fix. That fix removed
     // the FRAMEWORK cause of this warning (a child component mounting mid-setup
     // — which the compiler does whenever `_tpl`'s bind fn calls `_mountSlot` —
