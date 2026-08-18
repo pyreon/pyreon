@@ -123,10 +123,13 @@ export type DeclIR =
        * fan-out after the path commits.
        *
        * Conservative shape: identifier refs only. Inline arrow bodies
-       * (`beforeEach: [(p) => isAuthed()]`) are silently dropped from
-       * the array (would need the arrow-emit + closure-capture machinery
-       * that per-route boolean guards already use). Closure form is a
-       * documented follow-up.
+       * (`beforeEach: [(p) => isAuthed()]`) are NOT lowered (they'd need
+       * the arrow-emit + closure-capture machinery that per-route boolean
+       * guards already use — closure form is a documented follow-up) — but
+       * they are no longer dropped SILENTLY: a non-identifier element emits
+       * a named warning pointing at the named-function fix, because an
+       * inline guard that vanishes would leave the navigation ungated with
+       * no signal (a security foot-gun).
        *
        * Undefined when the config has no such field OR all entries
        * were dropped (back-compat).

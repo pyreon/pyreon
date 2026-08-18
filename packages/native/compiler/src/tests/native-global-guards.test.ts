@@ -18,8 +18,10 @@
 //            } }`
 //
 // Conservative parse: only IDENTIFIER REFS captured. Inline arrow
-// bodies (`beforeEach: [(p) => isAuthed()]`) are silently dropped
-// — they'd need closure-emit + capture machinery not in this PR.
+// bodies (`beforeEach: [(p) => isAuthed()]`) are NOT lowered (closure-
+// emit + capture machinery is a follow-up) but now WARN by name rather
+// than dropping silently — a vanished guard would leave the route
+// ungated on native, a security foot-gun.
 
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
@@ -126,8 +128,8 @@ describe('Round-2 follow-up — global beforeEach / afterEach guards on createRo
   })
 
   describe('parser — conservative shape', () => {
-    it('inline arrow bodies in beforeEach are silently dropped (closure-emit out of scope)', () => {
-      const out = transform(
+    it('inline arrow bodies in beforeEach are NOT lowered but WARN by name (not a silent drop)', () => {
+      const res = transform(
         `
         function HomePage() { return <Text>x</Text> }
         function App() {
@@ -136,10 +138,33 @@ describe('Round-2 follow-up — global beforeEach / afterEach guards on createRo
         }
         `,
         { target: 'swift' },
-      ).code
-      // No guards captured → falls back to bare init.
-      expect(out).toContain('@State private var router = PyreonRouter()')
-      expect(out).not.toContain('beforeEachGuards.append')
+      )
+      // Emit still drops it (closure-emit is a follow-up) → bare init.
+      expect(res.code).toContain('@State private var router = PyreonRouter()')
+      expect(res.code).not.toContain('beforeEachGuards.append')
+      // …but it is no longer SILENT: a named warning points at the fix. A
+      // dropped inline guard would leave the route ungated on native — a
+      // security foot-gun — so the failure mode must be visible.
+      const warn = res.warnings.find((w) => w.includes('router `beforeEach`'))
+      expect(warn, 'expected a named warning for the dropped inline guard').toBeTruthy()
+      expect(warn).toContain('inline function')
+      expect(warn).toContain('NOT gated')
+    })
+
+    it('a NAMED-function beforeEach guard lowers with no warning (control)', () => {
+      const res = transform(
+        `
+        function authGuard(p) { return true }
+        function HomePage() { return <Text>x</Text> }
+        function App() {
+          const router = createRouter({ routes: [{ path: '/', component: HomePage }], beforeEach: [authGuard] })
+          return <RouterProvider router={router}><HomePage/></RouterProvider>
+        }
+        `,
+        { target: 'swift' },
+      )
+      expect(res.code).toContain('beforeEachGuards.append(authGuard)')
+      expect(res.warnings.some((w) => w.includes('router `beforeEach`'))).toBe(false)
     })
 
     it('non-array beforeEach value is silently dropped', () => {
