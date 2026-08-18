@@ -192,6 +192,28 @@ isReference('users')                       // false — a bare string is not a r
       seeAlso: ['useTable', 'Field'],
     },
     {
+      name: 'Field',
+      kind: 'component',
+      signature: '<Feature.Field form={form} name="title" />',
+      summary:
+        "Render ONE schema field — label, typed control and error — from the feature's own `fields`. The control type is derived from the schema (string → text, number → number, boolean → checkbox, enum → select with its values), the required marker from the field's optionality, and the wiring from the form's `register` / `labelProps` / `errorProps`, so the label↔control association and the error's `role=\"alert\"` come for free. Deliberately PER-FIELD rather than a whole-form renderer: a generated form is excellent until a designer wants one field different, at which point an all-or-nothing component is worse than the markup it replaced. Every derived value has an override prop (`label`, `type`, `options`, `placeholder`, `class`, `inputClass`), and a field you do not want generated is simply written by hand next to the ones you do.",
+      example: `const form = Posts.useForm()
+
+<form onSubmit={(e) => form.handleSubmit(e)}>
+  <Posts.Field form={form} name="title" />
+  <Posts.Field form={form} name="status" />
+  <Posts.Field form={form} name="views" label="View count" />
+  <button type="submit">Save</button>
+</form>`,
+      mistakes: [
+        'Expecting an email/url input from a `z.string().email()` — duck-typed introspection cannot see the refinement, so it renders `type="text"`. Pass `type="email"` explicitly; the component will NOT guess from the field NAME (which would mistype a field called `emailVerified`).',
+        'Typo in `name` — it THROWS naming the unknown field and listing the real ones, rather than rendering an empty row that reads as a styling problem. Pyreon routes a setup throw to the error handler, so look in the console rather than expecting `mount` to reject.',
+        'Reaching for it to render a whole form — there is no `<AutoForm>` yet, and per-field is the point. Map over `feature.fields` yourself if you want every field.',
+        'Passing a plain `useForm()` from `@pyreon/form` — `Field` is bound to the FEATURE\'s schema fields, so it must receive the form from `feature.useForm()`.',
+      ],
+      seeAlso: ['useForm', 'extractFields'],
+    },
+    {
       name: 'extractFields',
       kind: 'function',
       signature: 'extractFields(schema: unknown) => FieldInfo[]',
