@@ -361,8 +361,7 @@ async function measureClockQuantum(
         }
       }
       return {
-        isolated:
-          (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated === true,
+        isolated: (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated === true,
         quantumMs: Number.isFinite(smallest) ? smallest : Number.POSITIVE_INFINITY,
       }
     })
@@ -583,9 +582,7 @@ async function main(): Promise<void> {
   if (args.throttle && args.throttle > 1) {
     console.log(`[bench-fair] CPU throttling enabled — rate ${args.throttle}×`)
   }
-  console.log(
-    `[bench-fair] running ${args.frameworks.length} framework(s) — each in a fresh page…`,
-  )
+  console.log(`[bench-fair] running ${args.frameworks.length} framework(s) — each in a fresh page…`)
   if (args.repeat > 1) {
     console.log(
       `[bench-fair] --repeat ${args.repeat} → pooling ${args.repeat * 20} samples per test for tighter CI95`,
@@ -682,7 +679,7 @@ async function main(): Promise<void> {
       methodology: {
         warmupMin: 5,
         warmupMax: 15,
-        stabilizeTolerance: 0.10,
+        stabilizeTolerance: 0.1,
         runs: 20,
         bootstrapResamples: 1000,
         pageIsolation: 'per-framework',
@@ -715,19 +712,10 @@ async function main(): Promise<void> {
       guard.emptyAudit
         ? '[bench-fair] BIMODALITY GUARD: nothing measurable — an empty audit is not a pass.'
         : `[bench-fair] BIMODALITY GUARD FAILED on ${guard.failures.length} cell(s): ` +
-          `${guard.failures.map((f) => `${f.op}/${f.framework}`).join(', ')}. ` +
-          'These medians are artifact modes, not measurements — do not publish them.',
+            `${guard.failures.map((f) => `${f.op}/${f.framework}`).join(', ')}. ` +
+            'These medians are artifact modes, not measurements — do not publish them.',
     )
     process.exit(1)
-  }
-}
-
-      }
-      // Fall back to Chromium's default clamp if the spin read nothing.
-      return Number.isFinite(smallest) ? smallest : 0.1
-    })
-  } finally {
-    await ctx.close()
   }
 }
 
@@ -789,7 +777,10 @@ function printMarkdownTable(suites: SuiteResult[]): void {
     // to the leader itself. That reads as "rival is infinitely slower"
     // when the truth is only "our own number is too small to time".
     const cells = medians.map((m) =>
-      pad(Number.isFinite(m) && best >= RESOLUTION_FLOOR_MS ? `${(m / best).toFixed(2)}×` : '—', FCOL),
+      pad(
+        Number.isFinite(m) && best >= RESOLUTION_FLOOR_MS ? `${(m / best).toFixed(2)}×` : '—',
+        FCOL,
+      ),
     )
     console.log(`${t.padEnd(28)}${cells.join('')}`)
   }
@@ -931,9 +922,7 @@ function printRetainedHeapTable(
   )
   console.log('─'.repeat(60))
   for (const s of suites) {
-    const samples = (heapByFramework.get(s.framework) ?? []).filter(
-      (v): v is number => v !== null,
-    )
+    const samples = (heapByFramework.get(s.framework) ?? []).filter((v): v is number => v !== null)
     const m = medianOf(samples)
     const cell = m === null ? '—' : (m / (1024 * 1024)).toFixed(2)
     console.log(`${s.framework.padEnd(28)}${pad(cell, 10)}`)
@@ -950,8 +939,9 @@ function printDiffTable(baseline: SuiteResult[], current: SuiteResult[]): void {
   for (const t of tests) {
     const cells = current.map((s) => {
       const cur = s.results.find((x) => x.name === t)?.median
-      const base = baseline.find((b) => b.framework === s.framework)?.results.find((x) => x.name === t)
-        ?.median
+      const base = baseline
+        .find((b) => b.framework === s.framework)
+        ?.results.find((x) => x.name === t)?.median
       if (cur === undefined || base === undefined) return pad('—', COLW)
       // Same sub-resolution guard as the slowdown tables: a baseline median
       // of 0 would otherwise render `✗ Infinity×` and read as a catastrophic
