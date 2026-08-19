@@ -29,6 +29,10 @@ const routerStub = {
   // startClient uses this when present (W13 from #960) to preserve query
   // strings on SPA cold-start without double-prepending the base prefix.
   _currentPath: currentPathMock,
+  // The SSR path pre-resolves the matched chain before mounting. Without
+  // this the stub throws and `startClient` never mounts at all — which is
+  // how the missing guard for an absent `preload` was found.
+  preload: vi.fn(() => Promise.resolve()),
 }
 const hydrateLoaderDataMock = vi.fn()
 
@@ -130,6 +134,14 @@ describe('startClient — hydration barrier', () => {
 
     startClient({ routes: [route] })
 
-    expect(container.hasAttribute('data-pyreon-hydrated')).toBe(true)
+    // AWAITED, not asserted synchronously. On the SSR path the mount is gated
+    // behind route pre-resolution (`router.preload(...).then(hydrateOrMount)`),
+    // so the flag lands a microtask later — which is precisely the window this
+    // flag exists to let callers wait out. Asserting it synchronously would be
+    // asserting that hydration is synchronous, which is the opposite of the
+    // contract.
+    await vi.waitFor(() => {
+      expect(container.hasAttribute('data-pyreon-hydrated')).toBe(true)
+    })
   })
 })
