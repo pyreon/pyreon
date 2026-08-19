@@ -151,17 +151,55 @@ try {
   const out = await page.evaluate(
     async ({ samples, passes, rowCounts }) => {
       /**
+       * Row CONTENT generator — the same 25x11x13 word pools and large monotonic
+       * ids `runner.ts:buildRowsWith` feeds the Pyreon arm.
+       *
+       * LOAD-BEARING, not cosmetic. This control used to render `String(i)` and
+       * the CONSTANT string 'lorem ipsum dolor' on every row, while the Pyreon
+       * arm it is compared against renders 3,575 distinct generated labels and
+       * large monotonic ids. A constant text run is the best case for Chromium's
+       * text-shaping/word caches, so the control laid out ~15ms cheaper at
+       * 10,000 rows for reasons that have nothing to do with either framework —
+       * ~88% of the layout delta this harness reported. Measured in isolation by
+       * `probe-labelcontent.ts` (structure held byte-identical, content the only
+       * variable): label const->varied +12.89ms, id small->big +3.79ms,
+       * combined +15.11ms [95% CI 14.05..16.15] at 10,000 rows.
+       *
+       * Content must MATCH the arm under comparison, or the layout row compares
+       * two different quantities — the same error class this harness was built
+       * to correct.
+       */
+      const makeContent = () => {
+        const ADJECTIVES = ['pretty','large','big','small','tall','short','long','handsome','plain','quaint','clean','elegant','easy','angry','crazy','helpful','mushy','odd','unsightly','adorable','important','inexpensive','cheap','expensive','fancy']
+        const COLOURS = ['red','yellow','blue','green','pink','brown','purple','brown','white','black','orange']
+        const NOUNS = ['table','chair','house','bbq','desk','car','pony','cookie','sandwich','burger','pizza','mouse','keyboard']
+        let seed = 0x2f6e2b1
+        const rng = () => {
+          seed = (seed * 1103515245 + 12345) & 0x7fffffff
+          return seed / 0x7fffffff
+        }
+        const pick = (a: string[]): string => a[Math.floor(rng() * a.length)] as string
+        let nextId = 1_000_000
+        return {
+          id: () => String(nextId++),
+          label: () => `${pick(ADJECTIVES)} ${pick(COLOURS)} ${pick(NOUNS)}`,
+        }
+      }
+
+      /**
        * Hand-written Vanilla control, mirroring `impl/vanilla.ts:renderAll` (whose
        * `clear` is `renderAll([])`, i.e. `innerHTML = ''` + an empty table). It is
        * the control for everything the BROWSER charges to remove n nodes; only the
        * residual over it is attributable to Pyreon. `bench-fixture` gives it the
-       * same deterministic `table-layout: fixed` the profiling host now uses.
+       * same deterministic `table-layout: fixed` the profiling host now uses, and
+       * `makeContent` gives it the same row TEXT — see the note there.
        */
       const makeVanilla = (): Driver => {
         const host = document.createElement('div')
         host.className = 'bench-fixture'
         host.style.cssText = 'position:absolute;left:-9999px;top:0;width:800px;visibility:hidden'
         document.body.appendChild(host)
+        const content = makeContent()
         const renderAll = (n: number) => {
           host.innerHTML = ''
           const table = document.createElement('table')
@@ -170,8 +208,8 @@ try {
             const tr = document.createElement('tr')
             const td1 = document.createElement('td')
             const td2 = document.createElement('td')
-            td1.textContent = String(i)
-            td2.textContent = 'lorem ipsum dolor'
+            td1.textContent = content.id()
+            td2.textContent = content.label()
             tr.appendChild(td1)
             tr.appendChild(td2)
             tbody.appendChild(tr)
@@ -285,18 +323,37 @@ try {
   if (DRIFT) {
     const drift = await page.evaluate(
       async ({ n, cycles }) => {
+        /** Same row-content generator as the main path — see its note there. */
+        const makeDomContent = () => {
+          const ADJECTIVES = ['pretty','large','big','small','tall','short','long','handsome','plain','quaint','clean','elegant','easy','angry','crazy','helpful','mushy','odd','unsightly','adorable','important','inexpensive','cheap','expensive','fancy']
+          const COLOURS = ['red','yellow','blue','green','pink','brown','purple','brown','white','black','orange']
+          const NOUNS = ['table','chair','house','bbq','desk','car','pony','cookie','sandwich','burger','pizza','mouse','keyboard']
+          let seed = 0x2f6e2b1
+          const rng = () => {
+            seed = (seed * 1103515245 + 12345) & 0x7fffffff
+            return seed / 0x7fffffff
+          }
+          const pick = (a: string[]): string => a[Math.floor(rng() * a.length)] as string
+          let nextId = 1_000_000
+          return {
+            id: () => String(nextId++),
+            label: () => `${pick(ADJECTIVES)} ${pick(COLOURS)} ${pick(NOUNS)}`,
+          }
+        }
         /**
          * Hand-written Vanilla control, mirroring `impl/vanilla.ts:renderAll` (whose
          * `clear` is `renderAll([])`, i.e. `innerHTML = ''` + an empty table). It is
          * the control for everything the BROWSER charges to remove n nodes; only the
          * residual over it is attributable to Pyreon. `bench-fixture` gives it the
-         * same deterministic `table-layout: fixed` the profiling host now uses.
+         * same deterministic `table-layout: fixed` the profiling host now uses, and
+         * `makeDomContent` gives it the same row TEXT.
          */
         const makeVanilla = (): Driver => {
           const host = document.createElement('div')
           host.className = 'bench-fixture'
           host.style.cssText = 'position:absolute;left:-9999px;top:0;width:800px;visibility:hidden'
           document.body.appendChild(host)
+          const content = makeDomContent()
           const renderAll = (count: number) => {
             host.innerHTML = ''
             const table = document.createElement('table')
@@ -305,8 +362,8 @@ try {
               const tr = document.createElement('tr')
               const td1 = document.createElement('td')
               const td2 = document.createElement('td')
-              td1.textContent = String(i)
-              td2.textContent = 'lorem ipsum dolor'
+              td1.textContent = content.id()
+              td2.textContent = content.label()
               tr.appendChild(td1)
               tr.appendChild(td2)
               tbody.appendChild(tr)
@@ -387,6 +444,29 @@ try {
       const tick = () => new Promise((r) => setTimeout(r, 0))
       const host = document.createElement('div')
       document.body.appendChild(host)
+      /**
+       * Same row-content generator as the main path. Both shape builders below
+       * always used the SAME constant text as each other, so this pair was never
+       * confounded BETWEEN its arms — but constant text is unrepresentative of
+       * the op it stands in for, so it is generated here too.
+       */
+      const makeDomContent = () => {
+        const ADJECTIVES = ['pretty','large','big','small','tall','short','long','handsome','plain','quaint','clean','elegant','easy','angry','crazy','helpful','mushy','odd','unsightly','adorable','important','inexpensive','cheap','expensive','fancy']
+        const COLOURS = ['red','yellow','blue','green','pink','brown','purple','brown','white','black','orange']
+        const NOUNS = ['table','chair','house','bbq','desk','car','pony','cookie','sandwich','burger','pizza','mouse','keyboard']
+        let seed = 0x2f6e2b1
+        const rng = () => {
+          seed = (seed * 1103515245 + 12345) & 0x7fffffff
+          return seed / 0x7fffffff
+        }
+        const pick = (a: string[]): string => a[Math.floor(rng() * a.length)] as string
+        let nextId = 1_000_000
+        return {
+          id: () => String(nextId++),
+          label: () => `${pick(ADJECTIVES)} ${pick(COLOURS)} ${pick(NOUNS)}`,
+        }
+      }
+      const domContent = makeDomContent()
       // Replicate the two arms' ACTUAL shapes, not a same-shape A/B:
       //   pyreonShape  — tbody.replaceChildren(marker, marker), n+2 children
       //   vanillaShape — host.innerHTML = '' with ONE child (the table)
@@ -401,8 +481,8 @@ try {
           const tr = document.createElement('tr')
           const a = document.createElement('td')
           const c = document.createElement('td')
-          a.textContent = String(i)
-          c.textContent = 'lorem ipsum dolor'
+          a.textContent = domContent.id()
+          c.textContent = domContent.label()
           tr.appendChild(a)
           tr.appendChild(c)
           tb.appendChild(tr)
@@ -420,8 +500,8 @@ try {
           const tr = document.createElement('tr')
           const a = document.createElement('td')
           const c = document.createElement('td')
-          a.textContent = String(i)
-          c.textContent = 'lorem ipsum dolor'
+          a.textContent = domContent.id()
+          c.textContent = domContent.label()
           tr.appendChild(a)
           tr.appendChild(c)
           tb.appendChild(tr)
