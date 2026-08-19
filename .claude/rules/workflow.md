@@ -107,6 +107,63 @@ not a gate failure.
 
 **Two of the entries above share one root cause worth naming on its own: a fix applied to ONE call site is folklore, not a fix.** The Keychain/signing problem was solved correctly on the router-demo step, with a good comment — and four other steps kept the broken flag until a new test happened to touch them. The lesson is not "be more careful": it is that a correction which cannot be stated as a repo-wide invariant, and enforced as one, will be re-discovered by whoever writes the next test. When you fix a CI trap, ask what invariant it implies, apply it everywhere the invariant holds, and gate it — otherwise the second instance is already written and just has not run yet.
 
+## Restacking a PR after its parent merges — four traps, all silent
+
+A night of unwinding an 8-deep merge cascade (2026-08) produced these. Every
+one of them REPORTS SUCCESS while destroying something.
+
+**1. A clean rebase and a working feature are different questions.** This came
+apart FOUR times in one session. A rebase answers "does this merge?"; it says
+nothing about "does this still do what the PR claims?". After ANY history
+rewrite, bootstrap and run *the PR's own specs* — not the repo's, its own.
+Instances: a `.map()` adoption PR whose three core specs failed while the
+rebase was clean; a hydration PR whose two identity specs failed the same way;
+a semantic union that typechecked and broke the feature.
+
+**2. `git checkout --ours <file>` takes the ENTIRE file, not the conflicted
+hunk.** The conflict was one constant; the checkout also reverted the PR's
+removal of two entries from a known-divergence allowlist — i.e. it silently
+re-masked the exact shapes the PR fixes. The fix would have shipped beside a
+fuzz configured to ignore it, all green. Resolve the HUNK (edit the markers)
+or re-apply the file's other changes afterwards; then diff against the
+pre-rebase commit to prove nothing else moved.
+
+**3. `gh run rerun` replays the ORIGINAL event payload.** A label added after a
+check ran is invisible to a re-run — `HAS_SKIP_LABEL: false` even though the
+label is on the PR. Only a NEW push produces an event carrying it. Same family
+as the `skip-changeset` trap already documented; this is its `gh` sibling.
+
+**4. A gate that fails because it could not EXECUTE is not a gate that fails
+because your change is wrong.** In a fresh worktree with no `node_modules`,
+`check-generated-fresh` exits 1 with `Cannot find module '@pyreon/manifest'` —
+a generator failure, not drift. Read the OUTPUT, not just the exit code, before
+"fixing" nonexistent staleness. (Its inverse also bit: `bun run gen-docs
+>/dev/null 2>&1` swallowed the same failure and nearly committed a manifest
+edit with none of its generated surfaces updated.)
+
+**The recipe that made the cascade mechanical.** When a parent merges (squashed,
+so its commits no longer match by patch-id):
+
+1. Identify the BOUNDARY commit — the last one belonging to the merged parent.
+2. `git rebase --onto <corrected parent> <boundary> <branch>` so ONLY the PR's
+   own work replays. A plain `rebase origin/main` re-applies the parent's
+   commits on top of content already there — that is the squash-replay trap.
+3. Bootstrap, then run the PR's own specs (trap 1).
+4. Verify the diff SHRANK by roughly the parent's size, and that the PR's own
+   contribution is still present.
+
+Restack in dependency order, not PR order: a child rebased onto its corrected
+parent inherits the parent's conflict resolutions and often replays with ZERO
+conflicts.
+
+**A per-backend bisect that passes is a claim about your CORPUS, not your code.**
+Reverting only the Rust brace guard left all five specs green — at top level
+`parent_is_jsx` is already false, so the corpus only ever exercised the JS half.
+It took constructing the specific shape to show native diverging. Pair this with
+the known stale-binary trap, which cuts BOTH ways: an un-rebuilt `.node` produces
+false PASSES in a bisect *and* false FAILURES in an equivalence fuzz (a
+cross-backend fuzz went red purely because the binary predated both changes).
+
 When CI fails on a gate not in this list, ADD IT here in the same PR.
 The list is the institutional memory; missing entries mean the trap
 will repeat.
