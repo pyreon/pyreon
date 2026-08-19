@@ -19,6 +19,35 @@
  * and compared against the end-to-end V→L3 gap. A model that does not add up is
  * reported as not adding up.
  *
+ * ── Why a WALL-CLOCK instrument, when a CPU profile already exists ──────────
+ *
+ * Because the two disagree by ~6x, and the sampling one is the one that got
+ * quoted as a timing result. Three in-repo facts, all first-party:
+ *
+ *   1. `bench-createsplit.ts` (wall clock, production build) measures
+ *      create-1,000 Pyreon JS at 1.13ms vs Vanilla 810us.
+ *   2. The same instrument at 10,000 rows: JS 10.69ms vs 7.17ms (delta 3.52ms),
+ *      layout 75.11ms vs 74.07ms — i.e. ~77% of the create-10k gap is JS
+ *      (recorded in PR #2902's commit body).
+ *   3. The path is LINEAR — `bench-teardown-curve.ts` measures a log-log
+ *      exponent of 0.94–1.07 (quoted at the bottom of `bench-createsplit.ts`).
+ *
+ * (1) and (3) predict ~10.7ms of JS at 10k, which is exactly what (2) measures.
+ * A CDP subtree profile of the same op reports Pyreon's "whole JS commit" at
+ * 1,230.7us — which would require the path to be SUBLINEAR by ~9x (10x the rows
+ * for 9% more JS) and is refuted by the very table it sits beside. That figure
+ * is a SAMPLING attribution total, and `bench-createprofile.ts`'s own docstring
+ * says so: "treat it as attribution, not as a timing result — the fair bench is
+ * the timing authority." A 10us sampler cannot see most of the self-time in a
+ * ~1ms region, so it undercounts; it is fine for RELATIVE structure ("cloneNode
+ * is ~18% of framework JS") and wrong as an absolute budget.
+ *
+ * The practical consequence is not academic: the op IS layout-dominated in
+ * absolute terms (~75ms of layout that BOTH arms pay), but the GAP to Vanilla
+ * is mostly framework JS. Those two facts read very differently when deciding
+ * whether the create path is worth any further effort, which is why this
+ * instrument reports JS and layout separately and prices each rung.
+ *
  *   bun run build && bun bench-createdecomp.ts [samples] [rows]
  */
 import { spawn } from 'node:child_process'
