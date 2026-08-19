@@ -541,7 +541,7 @@ the machine-checked contract.
 | `@pyreon/virtual` | DOM virtualization (scroll containers, measured rows); native lists are lazy by construction (LazyColumn/LazyVStack) |
 | `@pyreon/rich-text` | wraps TipTap/ProseMirror (DOM editor); consume on native via the `<WebView>` bridge subpath |
 | `@pyreon/a11y` | mostly DOM/ARIA utilities (the native element a11y story is the AccessibilityProps vocabulary on @pyreon/primitives); `announce(...)` now lowers to the native PyreonA11y runtime |
-| `@pyreon/feature` | composite over query/form/store/validation — lowers only when every dependency does; tracked as a Tier-2 composite |
+| `@pyreon/feature` | CRUD composite over query/form/store/validation. The RUNTIME half stays web — the generated hooks (useList / useById / useCreate / useUpdate / useDelete / useSearch), the network fetcher, and validator/form integration all lower only when every dependency does. The DECLARATION half already crosses (see nativeFrontend) |
 | `@pyreon/sync` | the Yjs engine + IndexedDB/WebSocket transports stay web; the engine-neutral PyreonCrdt core + `syncedSignal` lower to a native runtime, cross-device transport tracked |
 | `@pyreon/query` | wraps TanStack Query (a JS runtime cache), so the full client — QueryClient config, devtools, infinite/suspense queries — stays web; `useQuery` itself lowers to the PyreonQuery runtime |
 | `@pyreon/validation` | Standard Schema adapters (zod/valibot/arktype are JS libraries), so the adapters themselves stay web; the declarative schema FORMS lower to native validators (Gap-4 v1) |

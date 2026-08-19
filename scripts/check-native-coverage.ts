@@ -487,11 +487,16 @@ export function C() {
   },
   {
     name: '@pyreon/feature',
-    mechanism: 'web-first',
-    rationale: 'CRUD-feature composite (form + query + table) has no native emit yet — crosses once its parts do (arc open).',
+    mechanism: 'partial',
+    rationale:
+      'CRUD composite. The RUNTIME half stays web — generated hooks (useList / useById / useCreate / useUpdate / useDelete / useSearch), the network fetcher and validator/form integration lower only when every dependency does. The DECLARATION half crosses today: the literal field-type map emits a Codable struct + a module-scope const with `name` and `initialValues` on both targets. A Zod / Valibot / ArkType schema is not introspected and warns by name.',
     snippet: `import { defineFeature } from '@pyreon/feature'
 import { Stack, Text } from '@pyreon/primitives'
-export function C() { return (<Stack><Text>feature</Text></Stack>) }`,
+const Todo = defineFeature({
+  name: 'todo',
+  schema: { id: 'string', title: 'string', done: 'boolean' },
+})
+export function C() { return (<Stack><Text>ok</Text></Stack>) }`,
   },
   {
     name: '@pyreon/hotkeys',
