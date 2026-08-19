@@ -447,11 +447,27 @@ function isSvgRooted(html: string): boolean {
 // it — _tpl carries only this slot and a nullable hook check.
 let _tplAdoptTarget: Element | null = null
 let _tplAdoptConsumed = false
+let _tplAdoptAllowPlan = false
 
-/** Set/clear the one-shot adoption target (For hydration adoption only). */
-export function _setTplAdoptTarget(el: Element | null): void {
+/**
+ * Set/clear the one-shot adoption target.
+ *
+ * `allowPlanReplay` opts into the verifier's cached-plan FAST PATH, which
+ * spot-checks a recorded plan instead of re-walking the skeleton. That is only
+ * sound when the caller guarantees successive targets are structurally
+ * IDENTICAL — true for `<For>` rows (one `renderItem`, rows 2..N by
+ * construction), false for anything else. It defaults OFF: the plan cache is
+ * keyed by the TEMPLATE, and `_tplCache` is keyed by the HTML string and is
+ * process-global, so two unrelated components that compile to the same
+ * template share a plan. With replay unconditional, the second one skipped the
+ * static-skeleton gate entirely and could adopt a byte-DIFFERENT server node —
+ * reproduced as a local `<div class="other">` coming back as the server's
+ * `<div class="root">`.
+ */
+export function _setTplAdoptTarget(el: Element | null, allowPlanReplay = false): void {
   _tplAdoptTarget = el
   _tplAdoptConsumed = false
+  _tplAdoptAllowPlan = allowPlanReplay
 }
 
 /** Did the last _tpl call adopt the target (vs clone)? */
@@ -465,6 +481,7 @@ export type TplAdoptVerifier = (
   tpl: HTMLTemplateElement,
   html: string,
   target: Element,
+  allowPlanReplay?: boolean,
 ) => boolean
 let _tplAdoptVerifier: TplAdoptVerifier | null = null
 export function _setTplAdoptVerifier(v: TplAdoptVerifier): void {
@@ -505,8 +522,10 @@ export function _tpl(html: string, bind: (el: HTMLElement) => (() => void) | nul
   // The verifier is registered by hydrateRoot — null in CSR-only bundles.
   if (_tplAdoptTarget !== null) {
     const target = _tplAdoptTarget
+    const allowPlan = _tplAdoptAllowPlan
     _tplAdoptTarget = null // one-shot, cleared on ANY outcome
-    if (_tplAdoptVerifier !== null && _tplAdoptVerifier(tpl, html, target)) {
+    _tplAdoptAllowPlan = false
+    if (_tplAdoptVerifier !== null && _tplAdoptVerifier(tpl, html, target, allowPlan)) {
       const cleanup = bind(target as HTMLElement)
       _tplAdoptConsumed = true
       if (process.env.NODE_ENV !== 'production')

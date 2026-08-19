@@ -535,7 +535,12 @@ function hydrateVNode(
               // COMPILED rows: arm the one-shot _tpl target BEFORE renderItem —
               // the _tpl call inside binds against the SSR row when the
               // structure verifies. h()-rows ignore it; cleared either way.
-              if (rowFirst.nodeType === 1) _setTplAdoptTarget(rowFirst as Element)
+              // `true` = opt into the verifier's cached-plan fast path. Sound
+              // HERE and only here: every row comes from the same `renderItem`,
+              // so rows 2..N are structurally identical to row 1 by
+              // construction. Component-root adoption cannot promise that and
+              // therefore always runs the full skeleton verify.
+              if (rowFirst.nodeType === 1) _setTplAdoptTarget(rowFirst as Element, true)
               const rowVNode = renderItem(items[i])
               const tplAdopted = _tplAdoptDidConsume()
               _setTplAdoptTarget(null) // defensive clear
