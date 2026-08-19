@@ -112,9 +112,15 @@ for _ in $(seq 1 20); do
   GOT_TREE=1
   LAST_TREE=$xml
 
-  # A tree from someone else's window says nothing about us — keep polling
-  # until our own window is the one being dumped.
+  # A tree from someone else's window says nothing about us. Waiting it out is
+  # honest but still red, and on a loaded CI emulator these dialogs ("System UI
+  # isn't responding", ANR prompts from unrelated system processes) are common
+  # enough to have blocked four unrelated PRs in one night. Our app is already
+  # topResumedActivity underneath, so dismiss the overlay and re-poll: BACK is
+  # only ever sent while a FOREIGN window owns the screen, never to our own, so
+  # it cannot navigate the app under test.
   if ! printf '%s' "$xml" | grep -q "package=\"$PKG\""; then
+    adb shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || true
     sleep 3
     continue
   fi
