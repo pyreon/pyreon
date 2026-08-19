@@ -480,22 +480,29 @@ describe('grammar non-vacuity', () => {
       '<select><option value="a" selected="">a</option></select>',
       // an unmarked textarea keeps its content
       '<textarea>body</textarea>',
+      // RE-ARMED by this PR: the client now establishes `defaultValue` on first
+      // application, so hydrated and client-mounted DOM agree on `value` and
+      // these shapes are compared byte-for-byte again — even when MARKED.
+      '<input data-pv="" value="x">',
+      '<textarea data-pv="">body</textarea>',
     ]
     for (const html of untouched) {
       expect(maskKnownDivergences(html), `mask must not alter ${html}`).toBe(html)
     }
 
-    // ...and it MUST neutralize the three named surfaces on marked elements.
-    expect(maskKnownDivergences('<input data-pv="" value="x" checked="">')).toBe(
-      '<input data-pv="" checked="">',
-    )
-    // A serialized value containing `>` is the case a naive `[^>]*` tag scan
-    // silently fails to mask.
-    expect(maskKnownDivergences('<input data-pv="" value="<&amp;>&quot;">')).toBe('<input data-pv="">')
-    expect(maskKnownDivergences('<textarea data-pv="">body</textarea>')).toBe('<textarea data-pv=""></textarea>')
+    // ...and it MUST still neutralize the ONE surface that remains named.
+    // `select.value` manifests as `<option selected>` and diverges identically
+    // in React, Preact and Solid, so it stays masked as industry-normal.
     expect(
       maskKnownDivergences('<select data-pv=""><option value="a" selected="">a</option></select>'),
     ).toBe('<select data-pv=""><option value="a">a</option></select>')
+
+    // The `>`-in-value case is kept as a NEGATIVE now: a naive `[^>]*` tag scan
+    // would still mangle it, and with input.value re-armed the mask must leave
+    // it entirely alone rather than half-strip it.
+    expect(maskKnownDivergences('<input data-pv="" value="<&amp;>&quot;">')).toBe(
+      '<input data-pv="" value="<&amp;>&quot;">',
+    )
   })
 
   it('value-bearing form controls appear in a meaningful share of seeds', () => {
