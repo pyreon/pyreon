@@ -128,6 +128,29 @@ jobs:
             echo "RELEASE_PAT not configured — fix PR skipped; regenerate manually" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
+
+          # PRESENCE is not VALIDITY. An expired or revoked PAT is a non-empty
+          # string, so the guard above waves it through, and the failure lands
+          # much later as an opaque `git push` death:
+          #   remote: Invalid username or token.
+          #   fatal: Authentication failed  ->  exit 128
+          # naming neither the secret nor the reason. That is exactly what
+          # happened on 2026-08-19: the guard computed the regen correctly
+          # ("1 file changed"), could not push it, opened nothing, and main
+          # stayed stale — reddening `Fast Gates` on every open PR while the
+          # self-heal that exists to prevent that looked merely "failing".
+          #
+          # release.yml already probes this secret before trusting it; the
+          # same rule applies here. A secret documented as OPTIONAL must not be
+          # consumed where an INVALID value is fatal.
+          if ! curl -sf -o /dev/null -m 20 \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${{ github.repository }}"; then
+            echo "::warning title=RELEASE_PAT rejected::RELEASE_PAT is set but the GitHub API refused it (expired, revoked, or missing repo scope), so the auto-regen fix PR cannot be pushed. The guard still fails loudly below, and main is STALE until someone heals it: run 'bun run gen-docs && bun docs/scripts/gen-all.ts' on main and commit. Rotate the secret to restore the self-heal."
+            echo "RELEASE_PAT rejected by the API — fix PR skipped; regenerate manually and rotate the secret" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
