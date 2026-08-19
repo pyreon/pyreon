@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { waitForHydration } from '../hydration-barrier'
 
 /**
  * Real form-INTERACTION e2e for the FormDemo (`@pyreon/form` useForm +
@@ -28,6 +29,7 @@ test.describe('FormDemo interaction — @pyreon/form', () => {
 
   test('post-failed-submit: typing into a field clears its error LIVE (the moved effect logic)', async ({ page }) => {
     await page.goto('/form')
+    await waitForHydration(page)
     // Submit with everything empty → handleSubmit validates ALL fields,
     // marks them touched, submitCount → 1.
     await page.getByRole('button', { name: 'Register' }).click()
@@ -51,6 +53,7 @@ test.describe('FormDemo interaction — @pyreon/form', () => {
 
   test('isDirty badge flips on edit and resets with Reset', async ({ page }) => {
     await page.goto('/form')
+    await waitForHydration(page)
     await expect(page.locator('.badge', { hasText: 'Pristine' })).toBeVisible()
     await page.locator(NAME).fill('Ada')
     await expect(page.locator('.badge', { hasText: 'Dirty' })).toBeVisible()
@@ -62,6 +65,7 @@ test.describe('FormDemo interaction — @pyreon/form', () => {
 
   test('valid input submits end-to-end (onSubmit fires, Submitted Data renders)', async ({ page }) => {
     await page.goto('/form')
+    await waitForHydration(page)
     await page.locator(NAME).fill('Ada')
     await page.locator(EMAIL).fill('ada@example.com')
     await page.locator(PASSWORD).fill('password123')
@@ -76,6 +80,7 @@ test.describe('FormDemo interaction — @pyreon/form', () => {
 
   test('Clear Errors removes shown errors without changing values', async ({ page }) => {
     await page.goto('/form')
+    await waitForHydration(page)
     await page.getByRole('button', { name: 'Register' }).click()
     await expect(page.getByText('Name is required')).toBeVisible()
     await page.getByRole('button', { name: 'Clear Errors' }).click()
