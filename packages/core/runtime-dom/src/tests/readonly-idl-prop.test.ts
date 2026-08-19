@@ -88,7 +88,18 @@ describe('read-only IDL accessors do not crash the property branch', () => {
     const input = document.createElement('input')
     applyProp(input, 'value', 'v')
     expect(input.value).toBe('v')
-    expect(input.hasAttribute('value')).toBe(false) // property, not attribute
+    // `value` on an input ALSO establishes the reset default on its first
+    // application (applyValueProp), so a `value` attribute is now present. That
+    // attribute is the DEFAULT — it is not evidence the write was demoted to
+    // setAttribute, which is what this test actually guards. The pair below is
+    // a strictly stronger proof of the property write than the old
+    // `hasAttribute(...) === false` was: a bare setAttribute would leave
+    // `.value` frozen at 'v' on the second write, and it would drag the default
+    // along with it.
+    expect(input.defaultValue).toBe('v')
+    applyProp(input, 'value', 'second')
+    expect(input.value).toBe('second')
+    expect(input.defaultValue).toBe('v')
 
     applyProp(input, 'placeholder', 'p')
     expect(input.placeholder).toBe('p')

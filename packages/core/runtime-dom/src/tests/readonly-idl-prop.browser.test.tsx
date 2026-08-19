@@ -48,10 +48,21 @@ describe('read-only IDL accessors in real Chromium', () => {
       h('input', { value: 'v', placeholder: 'p', 'data-testid': 'w' }),
     )
     const input = container.querySelector<HTMLInputElement>('[data-testid="w"]')!
-    // `value` is non-reflecting: proving the PROPERTY was written (and no
-    // `value` attribute appeared) is what shows the guard did not over-reach.
+    // Proving the PROPERTY was written is what shows the guard did not
+    // over-reach and demote `value` to an attribute-only write.
     expect(input.value).toBe('v')
-    expect(input.hasAttribute('value')).toBe(false)
     expect(input.placeholder).toBe('p')
+    // A `value` attribute IS now present — but as the reset DEFAULT that
+    // `applyValueProp` establishes once, not as evidence of a demoted write.
+    // The distinction is observable: setting the content attribute alone can
+    // no longer change the live value once the control is dirty, so a
+    // still-tracking `.value` after a user edit proves the property path.
+    expect(input.defaultValue).toBe('v')
+    input.focus()
+    document.execCommand('selectAll', false, undefined)
+    document.execCommand('insertText', false, 'typed')
+    expect(input.value).toBe('typed')
+    input.setAttribute('value', 'attribute-only')
+    expect(input.value).toBe('typed') // attribute writes cannot reach a dirty control
   })
 })

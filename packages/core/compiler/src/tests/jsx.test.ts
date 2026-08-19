@@ -2637,10 +2637,15 @@ describe('JSX transform — template reactive style _bindDirect path', () => {
 // checkboxes (presence of the attribute means checked, regardless of
 // value). Fix: emit property assignment for known DOM properties.
 describe('JSX transform — DOM properties use property assignment', () => {
-  test('reactive value on input emits property assignment, not setAttribute', () => {
+  test('reactive value on input routes through _setValue, not setAttribute', () => {
     const result = t('<div><input value={() => input()} /></div>')
-    // Should be `el.value = v`, not `setAttribute("value", ...)`
-    expect(result).toContain('.value = v')
+    // The INVARIANT this test has always protected: a reactive `value` binding
+    // must reach the live DOM PROPERTY. Resetting only the attribute leaves
+    // stale typed text visible in the field. `_setValue` assigns the property
+    // first (and additionally establishes `defaultValue` once, so a
+    // client-mounted form resets like a hydrated one) — so the invariant holds,
+    // via the runtime normalizer instead of an inlined assignment.
+    expect(result).toContain('_setValue(__e0, v)')
     expect(result).not.toContain('setAttribute("value"')
   })
 
@@ -2650,11 +2655,40 @@ describe('JSX transform — DOM properties use property assignment', () => {
     expect(result).not.toContain('setAttribute("checked"')
   })
 
-  test('static-call value on input emits property assignment', () => {
+  test('static-call value on input routes through _setValue', () => {
     // Non-signal-direct dynamic expression goes through reactiveBindExprs
     const result = t('<div><input value={x.y} /></div>')
-    expect(result).toContain('.value = x.y')
+    expect(result).toContain('_setValue(__e0, x.y)')
     expect(result).not.toContain('setAttribute("value"')
+  })
+
+  test('value on a NON-input element keeps the plain property assignment', () => {
+    // `_setValue` is scoped by TAG: only input/textarea own a `defaultValue`.
+    // Everything else that has a `value` property must be untouched by the
+    // reflection — and must not pay for a runtime helper import either.
+    for (const [tag, code] of [
+      ['progress', '<div><progress value={pct()} /></div>'],
+      ['option', '<div><option value={v()}>x</option></div>'],
+    ] as const) {
+      const result = t(code)
+      expect(result, tag).toContain('.value = v')
+      expect(result, tag).not.toContain('_setValue')
+    }
+  })
+
+  test('textarea value routes through _setValue too', () => {
+    // A textarea's default lives in its TEXT CONTENT rather than an attribute,
+    // but it is the same reset-target class and the same helper handles both.
+    const result = t('<div><textarea value={text()} /></div>')
+    expect(result).toContain('_setValue(__e0, v)')
+  })
+
+  test('a static literal input value still BAKES into the template HTML', () => {
+    // The baked attribute already IS the reset target, so this shape never had
+    // the bug and must not regress into a runtime call.
+    const result = t('<div><input value="hello" /></div>')
+    expect(result).toContain('<input value=\\"hello\\">')
+    expect(result).not.toContain('_setValue')
   })
 
   test('selected on option emits property assignment', () => {

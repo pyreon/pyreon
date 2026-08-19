@@ -1160,6 +1160,7 @@ export function transformJSX_JS(
   let needsSetStyleImportGlobal = false
   let needsSetClassImportGlobal = false
   let needsSetAttrImportGlobal = false
+  let needsSetValueImportGlobal = false
   // Compile-to-string SSR fast path (`options.ssrTemplate`): which
   // `@pyreon/runtime-server` helpers this module used.
   let needsSsrImport = false
@@ -3578,6 +3579,7 @@ export function transformJSX_JS(
     if (needsSetStyleImportGlobal) runtimeDomImports.push('_setStyle')
     if (needsSetClassImportGlobal) runtimeDomImports.push('_setClass')
     if (needsSetAttrImportGlobal) runtimeDomImports.push('_setAttr')
+    if (needsSetValueImportGlobal) runtimeDomImports.push('_setValue')
     const reactivityImports = needsBindImportGlobal
       ? `\nimport { _bind } from "@pyreon/reactivity";`
       : ''
@@ -3768,6 +3770,7 @@ export function transformJSX_JS(
     let needsSetStyle = false
     let needsSetClass = false
     let needsSetAttr = false
+    let needsSetValue = false
 
     function nextVar(): string {
       return `__e${varIdx++}`
@@ -4255,7 +4258,7 @@ export function transformJSX_JS(
       return { expr: sliceExpr(exprNode), isReactive: isDynamic(exprNode) }
     }
 
-    function attrSetter(htmlAttrName: string, varName: string, expr: string): string {
+    function attrSetter(htmlAttrName: string, varName: string, expr: string, tag: string): string {
       // class/style mirror the runtime `applyProp` value-normalization
       // (packages/core/runtime-dom/src/props.ts): a string passes through,
       // but an array/object class goes through `cx()` and an object style is
@@ -4293,6 +4296,18 @@ export function transformJSX_JS(
         // block) vanishes the moment the client re-renders the template.
         return `{ const _h = (${expr}); ${varName}.innerHTML = _h != null && _h.__html != null ? _h.__html : "" }`
       }
+      // `<input>`/`<textarea>` `value`: delegate to the runtime `_setValue`
+      // (= applyValueProp), which assigns the property AND establishes
+      // `defaultValue` on the first application. A bare `el.value = v` sets only
+      // the property, and a property assignment never creates the `value`
+      // ATTRIBUTE that `form.reset()` restores from — so a client-mounted form
+      // cleared fields a hydrated one restored. Scoped by TAG: every other
+      // element that owns a `value` property (`<progress>`, `<option>`,
+      // `<select>`, custom elements) keeps the plain property assignment.
+      if (htmlAttrName === 'value' && (tag === 'input' || tag === 'textarea')) {
+        needsSetValue = true
+        return `_setValue(${varName}, ${expr})`
+      }
       if (DOM_PROPS.has(htmlAttrName)) return `${varName}.${htmlAttrName} = ${expr}`
       // Generic attribute — delegate to the runtime `_setAttr` (= applyAttrProp)
       // so a compiled DYNAMIC attribute normalizes identically to the h() path
@@ -4311,10 +4326,11 @@ export function transformJSX_JS(
       exprNode: N,
       htmlAttrName: string,
       varName: string,
+      tag: string,
     ): void {
       const { expr, isReactive } = unwrapAccessor(exprNode)
       if (!isReactive) {
-        bindLines.push(attrSetter(htmlAttrName, varName, expr))
+        bindLines.push(attrSetter(htmlAttrName, varName, expr, tag))
         return
       }
       lens(
@@ -4338,9 +4354,11 @@ export function transformJSX_JS(
               ? ((needsSetStyle = true), `(v) => _setStyle(${varName}, v)`)
               : htmlAttrName === 'dangerouslySetInnerHTML'
                 ? `(v) => { ${varName}.innerHTML = v != null && v.__html != null ? v.__html : "" }`
-                : DOM_PROPS.has(htmlAttrName)
-                  ? `(v) => { ${varName}.${htmlAttrName} = v }`
-                  : ((needsSetAttr = true), `(v) => _setAttr(${varName}, "${htmlAttrName}", v)`)
+                : htmlAttrName === 'value' && (tag === 'input' || tag === 'textarea')
+                  ? ((needsSetValue = true), `(v) => _setValue(${varName}, v)`)
+                  : DOM_PROPS.has(htmlAttrName)
+                    ? `(v) => { ${varName}.${htmlAttrName} = v }`
+                    : ((needsSetAttr = true), `(v) => _setAttr(${varName}, "${htmlAttrName}", v)`)
         // Receiver (depth-1 member) costs no allocation and goes in its OWN
         // 4th slot: a receiver can itself be callable (`Date.now()` passes
         // `Date`), so sharing slot 3 with the thunk would be ambiguous at
@@ -4366,13 +4384,14 @@ export function transformJSX_JS(
           htmlAttrName,
           varName,
           `(m ? ${selTernary.consequent} : ${selTernary.alternate})`,
+          tag,
         )
         bindLines.push(
           `const ${d} = ${selTernary.selectorRef}.subscribe(${selTernary.keyExpr}, (m) => { ${setterBody} })`,
         )
         return
       }
-      reactiveBindExprs.push(attrSetter(htmlAttrName, varName, expr))
+      reactiveBindExprs.push(attrSetter(htmlAttrName, varName, expr, tag))
     }
 
     function emitAttrExpression(
@@ -4406,7 +4425,7 @@ export function transformJSX_JS(
       }
       // A dynamic object style (`style={{ color: theme() }}`) falls through to
       // emitDynamicAttr → the object-aware attrSetter → reactive `_bind`.
-      emitDynamicAttr(sliceExpr(exprNode), exprNode, htmlAttrName, varName)
+      emitDynamicAttr(sliceExpr(exprNode), exprNode, htmlAttrName, varName, tag)
       return ''
     }
 
@@ -4442,7 +4461,7 @@ export function transformJSX_JS(
         // control-safe, independent of the JSX quote style) — the same
         // `.value` the bake path reads.
         if (tag === 'select' && htmlAttrName === 'value') {
-          bindLines.push(attrSetter(htmlAttrName, varName, escapeJsString(attr.value.value)))
+          bindLines.push(attrSetter(htmlAttrName, varName, escapeJsString(attr.value.value), tag))
           return ''
         }
         return ` ${htmlAttrName}="${escapeHtmlAttr(attr.value.value)}"`
@@ -5076,6 +5095,7 @@ export function transformJSX_JS(
     if (needsSetStyle) needsSetStyleImportGlobal = true
     if (needsSetClass) needsSetClassImportGlobal = true
     if (needsSetAttr) needsSetAttrImportGlobal = true
+    if (needsSetValue) needsSetValueImportGlobal = true
 
     const escaped = html.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
 

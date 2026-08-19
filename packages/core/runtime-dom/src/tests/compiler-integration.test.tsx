@@ -16,6 +16,7 @@ import {
   _setAttr,
   _setClass,
   _setStyle,
+  _setValue,
   bindPolymorphicText,
   mount,
   mountChild,
@@ -41,6 +42,7 @@ const RUNTIME_DEPS = {
   _setStyle,
   _setClass,
   _setAttr,
+  _setValue,
   _rp,
   _cx: cx,
   h,
@@ -898,5 +900,49 @@ describe('compiler integration — universal VNode[] child mounting', () => {
     expect(span.textContent).toBe('one')
     name.set('two')
     expect(span.textContent).toBe('two')
+  })
+})
+
+// ── `<input value>` reset default through the COMPILED path ────────────────
+// The compiler emit tests assert strings; this runs the real transform through
+// a real mount, which is the only thing that proves `_setValue` is wired end to
+// end (imported, called, and reaching the DOM). happy-dom models `defaultValue`
+// reflection and `form.reset()` faithfully — verified against Chromium before
+// relying on it here — while the DIRTY-value-flag half of the contract stays in
+// `input-default-value.browser.test.tsx`, where a real browser can set it.
+describe('compiled <input value> establishes the reset default', () => {
+  it('a reactive value binding sets the property AND the first-time default', () => {
+    const text = signal('hello')
+    const { container } = compileAndMount('<form><input value={text()} /></form>', { text })
+    const form = container.querySelector('form')!
+    const input = container.querySelector('input')!
+
+    expect(input.value).toBe('hello')
+    expect(input.defaultValue).toBe('hello')
+
+    // A later signal write moves the live value but must NOT move the default —
+    // a controlled input writes its signal from onInput, so dragging the
+    // default along would quietly make form.reset() a no-op.
+    text.set('changed')
+    expect(input.value).toBe('changed')
+    expect(input.defaultValue).toBe('hello')
+
+    form.reset()
+    expect(input.value).toBe('hello')
+  })
+
+  it('a compiled textarea gets its default too (it lives in text content)', () => {
+    const text = signal('body')
+    const { container } = compileAndMount('<div><textarea value={text()} /></div>', { text })
+    const ta = container.querySelector('textarea')!
+    expect(ta.value).toBe('body')
+    expect(ta.defaultValue).toBe('body')
+  })
+
+  it('a compiled non-input `value` keeps the plain property assignment', () => {
+    const pct = signal(0.25)
+    const { code, container } = compileAndMount('<div><progress value={pct()} max={1} /></div>', { pct })
+    expect(code).not.toContain('_setValue')
+    expect(container.querySelector('progress')!.value).toBe(0.25)
   })
 })

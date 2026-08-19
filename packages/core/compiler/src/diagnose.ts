@@ -1348,6 +1348,34 @@ box.current = node         // writable by design`,
         'The inverse trap is worth knowing too: whether a DOM property is safe to assign is decided by measured REFLECTION, not by the name. `value` is non-reflecting on `input`/`textarea`/`select` but reflects on `option`/`button`/`progress`/`meter`/`li`/`data`/`param`/`output`.',
     }),
   },
+  {
+    // The typed-value siblings of `value`. These throw only for input TYPES
+    // that do not support them, so the same line works on one field and fails
+    // on another — and the framework's writability guard SWALLOWS the throw
+    // when the value arrives as a JSX prop, falling back to an attribute. So
+    // the two paths present differently: direct assignment throws this message,
+    // while `<input valueAsNumber={n}>` silently writes a dead attribute and
+    // leaves the field empty. Both are the same underlying mistake.
+    pattern:
+      /Failed to set the '(valueAs\w+)' property on 'HTMLInputElement': This input element does not support (\w+) values/,
+    diagnose: (m) => ({
+      cause: `\`${m[1]}\` is only defined for input TYPES that carry a ${String(m[2]).toLowerCase()} value — \`number\`/\`range\` for \`valueAsNumber\`, and the date-like types (\`date\`, \`month\`, \`week\`, \`time\`, \`datetime-local\`) for \`valueAsDate\`. On any other type, including the default \`text\`, the setter rejects the write. A common way to land here is setting the value BEFORE the \`type\` prop has been applied, so the element is still \`text\` at the moment of assignment.`,
+      fix: `Set \`type\` first, then the typed value — or skip the typed accessor entirely and assign the plain \`value\` as a string, which every input type accepts. Note that assigning through JSX will NOT throw: the runtime's property-writability guard catches it and writes an attribute instead, so a mistyped field shows up as a silently EMPTY input rather than an error.`,
+      fixCode: `// throws — the element is still type="text" when valueAsNumber is set
+<input ref={(el) => { el.valueAsNumber = 42 }} type="number" />
+
+// correct — set the type first, then the typed value
+<input
+  type="number"
+  ref={(el) => { el.type = 'number'; el.valueAsNumber = 42 }}
+/>
+
+// simplest — the string form works for every input type
+<input type="number" value={String(n())} />`,
+      related:
+        'Plain `value` on an `input`/`textarea` also establishes the reset default on its FIRST application, so `form.reset()` restores what the field mounted with. Later changes deliberately do not move that default — a controlled input rewrites its signal on every keystroke, and dragging the default along would make reset a no-op.',
+    }),
+  },
 ]
 
 /** Diagnose an error message and return structured fix information */

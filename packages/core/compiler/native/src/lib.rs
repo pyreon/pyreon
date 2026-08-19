@@ -515,6 +515,7 @@ struct Ctx<'a> {
     needs_set_style_import: bool,
     needs_set_class_import: bool,
     needs_set_attr_import: bool,
+    needs_set_value_import: bool,
     needs_bind_text_import: bool,
     needs_bind_direct_import: bool,
     needs_bind_import: bool,
@@ -723,6 +724,7 @@ impl<'a> Ctx<'a> {
             needs_set_style_import: false,
             needs_set_class_import: false,
             needs_set_attr_import: false,
+            needs_set_value_import: false,
             needs_bind_text_import: false,
             needs_bind_direct_import: false,
             needs_bind_import: false,
@@ -876,6 +878,9 @@ impl<'a> Ctx<'a> {
             }
             if self.needs_set_attr_import {
                 imports.push("_setAttr");
+            }
+            if self.needs_set_value_import {
+                imports.push("_setValue");
             }
             let reactivity = if self.needs_bind_import {
                 "\nimport { _bind } from \"@pyreon/reactivity\";"
@@ -6382,6 +6387,7 @@ struct TemplateBuilder {
     needs_set_style: bool,
     needs_set_class: bool,
     needs_set_attr: bool,
+    needs_set_value: bool,
     /// Preserved holes — absorbed COMPONENT children whose source range must
     /// survive into the output so the walk can transform them in place. Each is
     /// represented in the generated body by a `HOLE_SENTINEL`-delimited index
@@ -6416,6 +6422,7 @@ impl TemplateBuilder {
             needs_set_style: false,
             needs_set_class: false,
             needs_set_attr: false,
+            needs_set_value: false,
             hole_spans: Vec::new(),
         }
     }
@@ -6547,6 +6554,9 @@ fn build_template_call(
     }
     if tb.needs_set_class {
         ctx.needs_set_class_import = true;
+    }
+    if tb.needs_set_value {
+        ctx.needs_set_value_import = true;
     }
     if tb.needs_set_attr {
         ctx.needs_set_attr_import = true;
@@ -7245,7 +7255,13 @@ fn is_dom_prop(name: &str) -> bool {
     )
 }
 
-fn attr_setter(html_attr_name: &str, var_name: &str, expr: &str, tb: &mut TemplateBuilder) -> String {
+fn attr_setter(
+    html_attr_name: &str,
+    var_name: &str,
+    expr: &str,
+    tag: &str,
+    tb: &mut TemplateBuilder,
+) -> String {
     // class/style mirror the runtime `applyProp` value-normalization
     // (packages/core/runtime-dom/src/props.ts): a string passes through, an
     // array/object class goes through `cx()`, and an object style is applied
@@ -7270,6 +7286,17 @@ fn attr_setter(html_attr_name: &str, var_name: &str, expr: &str, tb: &mut Templa
             "{{ const _h = ({}); {}.innerHTML = _h != null && _h.__html != null ? _h.__html : \"\" }}",
             expr, var_name
         )
+    } else if html_attr_name == "value" && (tag == "input" || tag == "textarea") {
+        // `<input>`/`<textarea>` `value`: delegate to the runtime `_setValue`
+        // (= applyValueProp), which assigns the property AND establishes
+        // `defaultValue` on the first application. A bare `el.value = v` sets
+        // only the property, and a property assignment never creates the
+        // `value` ATTRIBUTE that `form.reset()` restores from. Scoped by TAG so
+        // every other element owning a `value` property (`<progress>`,
+        // `<option>`, `<select>`, custom elements) keeps the plain property
+        // assignment. Mirrors the JS backend's attrSetter (jsx.ts).
+        tb.needs_set_value = true;
+        format!("_setValue({}, {})", var_name, expr)
     } else if is_dom_prop(html_attr_name) {
         format!("{}.{} = {}", var_name, html_attr_name, expr)
     } else {
@@ -7288,6 +7315,7 @@ fn emit_dynamic_attr(
     expr_node: &Expression,
     html_attr_name: &str,
     var_name: &str,
+    tag: &str,
     tb: &mut TemplateBuilder,
     ctx: &mut Ctx,
 ) {
@@ -7302,7 +7330,7 @@ fn emit_dynamic_attr(
     }
     let (expr_text, is_reactive) = unwrap_accessor(expr_node, ctx);
     if !is_reactive {
-        let line = attr_setter(html_attr_name, var_name, &expr_text, tb);
+        let line = attr_setter(html_attr_name, var_name, &expr_text, tag, tb);
         tb.bind_lines.push(line);
         return;
     }
@@ -7332,6 +7360,9 @@ fn emit_dynamic_attr(
                 "(v) => {{ {}.innerHTML = v != null && v.__html != null ? v.__html : \"\" }}",
                 var_name
             )
+        } else if html_attr_name == "value" && (tag == "input" || tag == "textarea") {
+            tb.needs_set_value = true;
+            format!("(v) => _setValue({}, v)", var_name)
         } else if is_dom_prop(html_attr_name) {
             format!("(v) => {{ {}.{} = v }}", var_name, html_attr_name)
         } else {
@@ -7363,14 +7394,14 @@ fn emit_dynamic_attr(
     if let Some(sel) = try_direct_selector_ternary(expr_node, ctx) {
         let d = tb.next_disp();
         let setter_expr = format!("(m ? {} : {})", sel.consequent, sel.alternate);
-        let setter_body = attr_setter(html_attr_name, var_name, &setter_expr, tb);
+        let setter_body = attr_setter(html_attr_name, var_name, &setter_expr, tag, tb);
         tb.bind_lines.push(format!(
             "const {} = {}.subscribe({}, (m) => {{ {} }})",
             d, sel.selector_ref, sel.key_expr, setter_body
         ));
         return;
     }
-    let line = attr_setter(html_attr_name, var_name, &expr_text, tb);
+    let line = attr_setter(html_attr_name, var_name, &expr_text, tag, tb);
     tb.reactive_bind_exprs.push(line);
 }
 
@@ -7407,7 +7438,7 @@ fn emit_attr_expression(
             }
         }
     }
-    emit_dynamic_attr(expr_node, html_attr_name, var_name, tb, ctx);
+    emit_dynamic_attr(expr_node, html_attr_name, var_name, tag, tb, ctx);
     String::new()
 }
 
@@ -7430,7 +7461,7 @@ fn attr_initializer_to_html(
             // double-quoted JS literal (quote/backslash/control-safe,
             // independent of the JSX quote style). Mirrors jsx.ts.
             if tag == "select" && html_attr_name == "value" {
-                let line = attr_setter(html_attr_name, var_name, &escape_js_string(&s.value), tb);
+                let line = attr_setter(html_attr_name, var_name, &escape_js_string(&s.value), tag, tb);
                 tb.bind_lines.push(line);
                 return String::new();
             }
