@@ -105,7 +105,23 @@ const ALL_FRAMEWORKS = [
  * never generalised. Adding an 8th framework is what finally printed it.
  * One constant, applied at every ratio and verdict site.
  */
-const RESOLUTION_FLOOR_MS = 0.1
+/**
+ * How many measured clock quanta a median must span before a RATIO computed
+ * from it is worth printing. One tick is the original intent — below that the
+ * number is the clock, not the framework.
+ *
+ * The VALUE must come from `measureClockQuantum`, never a literal. This file
+ * already says so at the call site ("it MUST use the MEASURED quantum, not an
+ * assumed one ... the wrong value moves every quantum-scaled threshold by
+ * 20x") — and then gated every ratio and verdict on a hardcoded `0.1` anyway.
+ * That constant assumed Chromium's NON-isolated 100µs clamp, but this page
+ * sets COOP/COEP (see `vite.config.ts`) and measures a real **5µs** quantum,
+ * so the floor was 20x too coarse and silently printed `—` for readings the
+ * suite is entitled to make. `select row` is the op it hid: both Pyreon and
+ * Octane sit under 100µs there, so the board reported an unrankable tie where
+ * a finer look finds a constant, CI-disjoint separation.
+ */
+const RESOLUTION_FLOOR_QUANTA = 1
 
 interface BenchResult {
   name: string
@@ -666,7 +682,7 @@ async function main(): Promise<void> {
   for (const line of formatGuardReport(guard, quantumMs)) console.log(line)
 
   printMachineStamp(chromiumVersion)
-  printMarkdownTable(suites)
+  printMarkdownTable(suites, quantumMs)
   printRetainedHeapTable(suites, heapByFramework)
 
   // Optional JSON dump for diff / archival.
@@ -736,7 +752,9 @@ function fmtCell(r: BenchResult): string {
   return `${fmtMs(r.median)} [${fmtMs(r.ci95[0])}–${fmtMs(r.ci95[1])}] cv${(r.cv * 100).toFixed(0)}%`
 }
 
-function printMarkdownTable(suites: SuiteResult[]): void {
+function printMarkdownTable(suites: SuiteResult[], quantumMs: number): void {
+  // Derived, never assumed — see RESOLUTION_FLOOR_QUANTA.
+  const floorMs = RESOLUTION_FLOOR_QUANTA * quantumMs
   const tests = suites[0]?.results.map((r) => r.name) ?? []
   if (tests.length === 0) {
     console.error('[bench-fair] suite has no tests')
@@ -778,7 +796,7 @@ function printMarkdownTable(suites: SuiteResult[]): void {
     // when the truth is only "our own number is too small to time".
     const cells = medians.map((m) =>
       pad(
-        Number.isFinite(m) && best >= RESOLUTION_FLOOR_MS ? `${(m / best).toFixed(2)}×` : '—',
+        Number.isFinite(m) && best >= floorMs ? `${(m / best).toFixed(2)}×` : '—',
         FCOL,
       ),
     )
@@ -803,7 +821,7 @@ function printMarkdownTable(suites: SuiteResult[]): void {
         const m = s.results.find((x) => x.name === t)?.median
         if (m === undefined) return pad('—', FCOL)
         // Below performance.now() resolution → can't make a ratio.
-        if (vanillaMedian < RESOLUTION_FLOOR_MS) return pad('—', FCOL)
+        if (vanillaMedian < floorMs) return pad('—', FCOL)
         return pad(`${(m / vanillaMedian).toFixed(2)}×`, FCOL)
       })
       console.log(`${t.padEnd(28)}${cells.join('')}`)
@@ -867,11 +885,11 @@ function printMarkdownTable(suites: SuiteResult[]): void {
     // indistinguishable from zero, so declaring an "outright" winner would
     // be an artifact of float noise — not a result. Report the floor
     // instead and name everyone who reached it.
-    if (leader.median < RESOLUTION_FLOOR_MS) {
-      const atFloor = rows.filter((r) => r.median < RESOLUTION_FLOOR_MS).map((r) => r.framework)
+    if (leader.median < floorMs) {
+      const atFloor = rows.filter((r) => r.median < floorMs).map((r) => r.framework)
       const above = rows.length - atFloor.length
       console.log(
-        `  ${t.padEnd(28)} ⏱ too fast to time (<${RESOLUTION_FLOOR_MS}ms) — no ratio; at floor: ${atFloor.join(' = ')}` +
+        `  ${t.padEnd(28)} ⏱ too fast to time (<${floorMs}ms) — no ratio; at floor: ${atFloor.join(' = ')}` +
           (above > 0 ? ` (${above} above floor — see absolute medians)` : ''),
       )
       continue
@@ -946,7 +964,7 @@ function printDiffTable(baseline: SuiteResult[], current: SuiteResult[]): void {
       // Same sub-resolution guard as the slowdown tables: a baseline median
       // of 0 would otherwise render `✗ Infinity×` and read as a catastrophic
       // regression when nothing was measurable in the first place.
-      if (base < RESOLUTION_FLOOR_MS) return pad('—', COLW)
+      if (base < floorMs) return pad('—', COLW)
       const ratio = cur / base
       const sign = ratio < 1 ? '✓' : ratio > 1.05 ? '✗' : '·'
       return pad(`${sign} ${ratio.toFixed(2)}×`, COLW)
