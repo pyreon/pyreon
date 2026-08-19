@@ -87,6 +87,32 @@ describe('_ssrAttrGen / _ssrAttrUrl — lean, byte-identical to renderProp', () 
     const img = 'data:image/png;base64,iVBORw0KGgo='
     expect(_ssrAttrUrl('img', 'src', img)).toBe(_ssrAttr('img', 'src', img))
   })
+
+  // FUNCTION values were missing from the matrices above, which is the ONLY
+  // reason the divergence shipped: the oracle and the shape were both right.
+  // `renderProp` resolves a callable (mirroring the client's `applyAttrProp`),
+  // but the lean helpers are selected by the attribute NAME while the branch
+  // that fires depends on the VALUE'S TYPE — so the name-based selection can
+  // never rule it out, and both helpers stringified the closure SOURCE into the
+  // attribute (`d="() =&gt; …"`) instead. Visible in the SSR HTML and a
+  // guaranteed hydration mismatch.
+  test('_ssrAttrGen resolves a FUNCTION value (accessor), matching _ssrAttr', () => {
+    for (const v of [() => 'M0 0', () => 5, () => '', () => null, () => undefined, () => false, () => true]) {
+      expect(_ssrAttrGen('d', v)).toBe(_ssrAttr('path', 'd', v))
+    }
+    expect(_ssrAttrGen('d', () => 'M0 0')).toBe(' d="M0 0"')
+    // Nested accessors unwrap to the same depth as renderProp's recursion.
+    expect(_ssrAttrGen('title', () => () => 'x')).toBe(_ssrAttr('div', 'title', () => () => 'x'))
+  })
+  test('_ssrAttrUrl resolves a FUNCTION value BEFORE the url-guard', () => {
+    for (const v of [() => '/ok', () => 'javascript:x', () => null, () => false, () => true]) {
+      expect(_ssrAttrUrl('a', 'href', v)).toBe(_ssrAttr('a', 'href', v))
+    }
+    expect(_ssrAttrUrl('a', 'href', () => '/ok')).toBe(' href="/ok"')
+    // The guard only inspects STRINGS, so resolving after it would have let an
+    // accessor-returned `javascript:` url through as a stringified function.
+    expect(_ssrAttrUrl('a', 'href', () => 'javascript:alert(1)')).toBe('')
+  })
 })
 
 describe('_ssr — byte-identical to h() path', () => {

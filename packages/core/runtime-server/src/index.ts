@@ -1190,6 +1190,17 @@ export function _ssrAttr(tag: string, name: string, value: unknown): string {
  * `_ssrAttr` purely from the (statically-known) attribute NAME.
  */
 export function _ssrAttrGen(name: string, value: unknown): string {
+  // `renderProp`'s function branch, which the byte-identity claim above depends
+  // on. The lean path is selected from the attribute NAME alone, but whether
+  // `renderProp` resolves depends on the VALUE'S TYPE — so the name-based
+  // selection can never rule this branch out and the helper has to carry it. A
+  // BARE IDENTIFIER holding an accessor (`d={geometry}` where `geometry` came
+  // from a prop or a `const`) reaches the hole as a raw function the compiler
+  // cannot prove callable; without this, `String(fn)` wrote the closure SOURCE
+  // into the attribute (`d="() =&gt; geometry()?.path ?? &quot;&quot;"`) while
+  // the h() path rendered the resolved value — a visible SSR bug AND a
+  // guaranteed hydration mismatch, since the client's `applyAttrProp` resolves.
+  if (typeof value === 'function') return _ssrAttrGen(name, (value as () => unknown)())
   if (value == null || value === false) return ''
   if (value === true) return ` ${name}`
   return ` ${name}="${escapeHtml(String(value))}"`
@@ -1204,6 +1215,11 @@ export function _ssrAttrGen(name: string, value: unknown): string {
  * names (camelCase / other names still take `_ssrAttr`).
  */
 export function _ssrAttrUrl(tag: string, name: string, value: unknown): string {
+  // See `_ssrAttrGen` — same missing branch, same reason. Resolving BEFORE the
+  // url-guard is load-bearing: the guard only inspects strings, so an accessor
+  // returning `javascript:…` would otherwise sail past it as a function and be
+  // stringified into an href.
+  if (typeof value === 'function') return _ssrAttrUrl(tag, name, (value as () => unknown)())
   if (value == null || value === false) return ''
   if (value === true) return ` ${name}`
   if (typeof value === 'string' && isUnsafeUrl(value) && !isSafeImageDataUri(tag, name, value)) {

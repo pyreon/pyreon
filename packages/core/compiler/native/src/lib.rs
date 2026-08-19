@@ -5325,6 +5325,19 @@ fn ssr_serialize_attr(
     if name == "innerHTML" || name == "dangerouslySetInnerHTML" {
         return false;
     }
+    // `<textarea value>` is the other half of the PZ-09 concern that bails
+    // `select`/`option` in `ssr_serialize_element`: <textarea> has NO `value`
+    // CONTENT attribute — the value IS the element's text content, which
+    // `renderProp` skips and `textareaValue` emits as the child. Serializing it
+    // here produced a dead `value="…"` attribute AND an EMPTY textarea, so
+    // every server-rendered prefilled textarea came back blank (the exact bug
+    // the h() path's skip fixed) plus a hydration mismatch. The fast path
+    // cannot move an attribute into child position mid-stream — and the lean
+    // `_ssrAttrGen` is not even given the tag — so bail to the h() path, which
+    // already handles it. Mirrors JS `ssrSerializeAttr`.
+    if tag == "textarea" && name == "value" {
+        return false;
+    }
     let is_aria = name.as_bytes().first() == Some(&97) && name.starts_with("aria-");
     let has_upper = name.bytes().any(|b| b.is_ascii_uppercase());
 
