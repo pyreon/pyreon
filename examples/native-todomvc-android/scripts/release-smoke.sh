@@ -119,8 +119,16 @@ for _ in $(seq 1 20); do
   # topResumedActivity underneath, so dismiss the overlay and re-poll: BACK is
   # only ever sent while a FOREIGN window owns the screen, never to our own, so
   # it cannot navigate the app under test.
+  #
+  # BACK alone is not enough, and CI proved it: an ANR / "isn't responding"
+  # dialog is not always back-dismissable, and one sat through all 20 polls on
+  # three consecutive runs of the same PR. So ALSO re-raise our own activity —
+  # `am start` on an already-running task brings it to the front rather than
+  # restarting it, which works regardless of which dialog is up and needs no
+  # guess about its buttons.
   if ! printf '%s' "$xml" | grep -q "package=\"$PKG\""; then
     adb shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || true
+    adb shell am start -n "$PKG/com.pyreon.MainActivity" >/dev/null 2>&1 || true
     sleep 3
     continue
   fi
@@ -152,8 +160,15 @@ echo "--- topResumedActivity (is OUR app actually foreground?) ---"
 adb shell dumpsys activity activities 2>/dev/null | grep -iE "topResumedActivity|ResumedActivity" | head -2 || true
 echo "--- FATAL from our package (a REAL R8/runtime crash would name $PKG) ---"
 adb logcat -d 2>/dev/null | grep -iE "FATAL EXCEPTION|$PKG|E AndroidRuntime" | tail -20 || true
-echo "--- last VALID accessibility dump (head) ---"
+# The VISIBLE TEXT first, then the raw head. A dialog's identity lives in its
+# labels, and those sit deep in the tree — well past the 1500-char prefix, which
+# is all `android.widget.FrameLayout` boilerplate. Three runs were diagnosed as
+# "some system dialog" purely because the one line that would have named it was
+# truncated away.
+echo "--- text in the last VALID tree (names the window that owned the screen) ---"
 if [ -n "$LAST_TREE" ]; then
+  printf '%s' "$LAST_TREE" | grep -oE 'text="[^"]+"' | sort -u | head -20
+  echo "--- raw head ---"
   printf '%s' "$LAST_TREE" | head -c 1500
   echo
 else
