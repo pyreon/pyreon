@@ -251,6 +251,17 @@ if (__url.searchParams.get('profileClear') === '1') {
     })
     setStatus('profileDecomp ready')
   })()
+} else if (__url.searchParams.get('profileDispose') === '1') {
+  // CPU-profiling target for bench-disposeprofile.ts — mounts the
+  // subscription-teardown ABLATION LADDER (7 arms, one host each) and exposes
+  // __disposeBench drivers; never runs the timed suite.
+  void (async () => {
+    const { setupDisposeProfile } = await import('./impl/profile-dispose')
+    const hosts: Record<string, HTMLElement> = {}
+    for (const arm of ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I']) hosts[arm] = makeContainer()
+    setupDisposeProfile(hosts)
+    setStatus('profileDispose ready')
+  })()
 } else if (__url.searchParams.get('profileTree') === '1') {
   // CPU-profiling target for bench-treeprofile.ts — mounts the deep-tree
   // scenario's Pyreon, Solid and Vanilla arms side by side, exposing
