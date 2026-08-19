@@ -72,9 +72,7 @@ export function startClient(options: StartClientOptions) {
   // missing the constant in a real Vite build is impossible because the
   // plugin's `config()` hook always declares it via `define`.
   const base =
-    typeof __ZERO_BASE__ !== 'undefined' && __ZERO_BASE__ !== '/'
-      ? __ZERO_BASE__
-      : undefined
+    typeof __ZERO_BASE__ !== 'undefined' && __ZERO_BASE__ !== '/' ? __ZERO_BASE__ : undefined
 
   const { App, router } = createApp({
     routes: options.routes,
@@ -87,12 +85,9 @@ export function startClient(options: StartClientOptions) {
   // If the server embedded loader data, hydrate it BEFORE mounting so the
   // initial render sees the same data the SSR pass produced. This avoids
   // hydration mismatches and eliminates the flash-of-fallback.
-  const ssrLoaderData = (window as unknown as Record<string, unknown>)
-    .__PYREON_LOADER_DATA__
+  const ssrLoaderData = (window as unknown as Record<string, unknown>).__PYREON_LOADER_DATA__
   const hasSSRLoaderData =
-    ssrLoaderData !== undefined &&
-    typeof ssrLoaderData === 'object' &&
-    ssrLoaderData !== null
+    ssrLoaderData !== undefined && typeof ssrLoaderData === 'object' && ssrLoaderData !== null
   if (hasSSRLoaderData) {
     // `router` is the public Router<> type; hydrateLoaderData uses the
     // internal RouterInstance shape. The cast is safe because they're
@@ -107,7 +102,9 @@ export function startClient(options: StartClientOptions) {
   // @pyreon/store on import; undefined (one null check) when the app uses no
   // stores. This is what makes cross-island shared state hydrate ONCE.
   const hydrateStores = (
-    globalThis as { __PYREON_HYDRATE_STORES__?: (d: Record<string, Record<string, unknown>>) => void }
+    globalThis as {
+      __PYREON_HYDRATE_STORES__?: (d: Record<string, Record<string, unknown>>) => void
+    }
   ).__PYREON_HYDRATE_STORES__
   if (hydrateStores) {
     const ssrStoreState = (window as unknown as Record<string, unknown>).__PYREON_STORE_STATE__
@@ -236,14 +233,33 @@ export function startClient(options: StartClientOptions) {
     //
     // A rejection must NOT leave the app dead: fall through and hydrate anyway,
     // which reproduces exactly the pre-change behaviour for that route.
-    router.preload(currentPath, undefined, { skipLoaders: true }).then(hydrateOrMount, (err) => {
-      // @ts-ignore — `import.meta.env.DEV` is provided by Vite/Rolldown at build time
-      if (import.meta.env?.DEV === true) {
-        // oxlint-disable-next-line no-console
-        console.warn('[Pyreon] Route pre-resolution failed; hydrating anyway:', currentPath, err)
-      }
+    //
+    // An ABSENT `preload` is the stronger version of that same case and was
+    // unhandled: calling it would throw synchronously out of `startClient`, so
+    // the app never mounts at all — strictly worse than the rejection this
+    // block already defends against. Guarded the way `_currentPath` is guarded
+    // a few lines above, for the same reason: the router is reached through a
+    // structural type here, so its shape is an assumption rather than a
+    // guarantee.
+    const preload = (router as unknown as { preload?: typeof router.preload }).preload
+    if (typeof preload !== 'function') {
       hydrateOrMount()
-    })
+    } else {
+      preload
+        .call(router, currentPath, undefined, { skipLoaders: true })
+        .then(hydrateOrMount, (err) => {
+          // @ts-ignore — `import.meta.env.DEV` is provided by Vite/Rolldown at build time
+          if (import.meta.env?.DEV === true) {
+            // oxlint-disable-next-line no-console
+            console.warn(
+              '[Pyreon] Route pre-resolution failed; hydrating anyway:',
+              currentPath,
+              err,
+            )
+          }
+          hydrateOrMount()
+        })
+    }
   } else {
     hydrateOrMount()
   }
@@ -252,7 +268,6 @@ export function startClient(options: StartClientOptions) {
     disposed = true
     innerCleanup?.()
   }
-
 
   return cleanup
 }
