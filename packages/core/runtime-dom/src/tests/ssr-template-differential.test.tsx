@@ -525,6 +525,82 @@ const cases: DiffCase[] = [
   },
 ]
 
+/**
+ * A FUNCTION-valued attribute (a bare identifier holding an accessor —
+ * `d={geometry}` where `geometry` came from a prop, a `const`, or a helper).
+ *
+ * The compiler picks the lean `_ssrAttrGen` / `_ssrAttrUrl` from the attribute
+ * NAME alone, but whether `renderProp` resolves depends on the VALUE'S TYPE —
+ * so a name-based selection can never rule the function branch out. Both lean
+ * helpers documented themselves as "byte-identical to renderProp" while
+ * omitting it, and `String(fn)` wrote the closure SOURCE into the attribute
+ * (`d="() =&gt; geometry()?.path ?? &quot;&quot;"`). Visible in the SSR HTML,
+ * and a guaranteed hydration mismatch, since the client's `applyAttrProp`
+ * resolves. `_ssrAttr` (class/style/aria/camelCase → renderProp verbatim) was
+ * never affected, which is why the shape hid: the common attrs were fine and
+ * only the lean subset — `d`, `id`, `title`, `role`, `data-*`, `href`, `src` —
+ * broke.
+ */
+describe('SSR fast path — accessor-valued attributes resolve (not stringified)', () => {
+  const accessorCases: [string, string, Record<string, unknown>][] = [
+    // Lean generic helper (`_ssrAttrGen`) — the reported shape.
+    ['generic (d)', `const Node = <path d={g} />`, { g: () => 'M0 0 L1 1' }],
+    ['generic (title)', `const Node = <span title={g} />`, { g: () => 'hi' }],
+    ['generic (data-*)', `const Node = <div data-x={g} />`, { g: () => 'v' }],
+    // Lean URL helper (`_ssrAttrUrl`) — resolution must run BEFORE the
+    // url-guard, which only inspects strings.
+    ['url (href)', `const Node = <a href={g} />`, { g: () => '/x' }],
+    ['url (src)', `const Node = <img src={g} />`, { g: () => '/a.png' }],
+    // An accessor returning an UNSAFE url must still be stripped: resolving
+    // after the guard would have let it through as a stringified function.
+    ['url (href) — accessor returning javascript:', `const Node = <a href={g} />`, { g: () => 'javascript:alert(1)' }],
+    // Absent/boolean results keep renderProp's omit + presence semantics.
+    ['generic — accessor returning undefined omits', `const Node = <div title={g} />`, { g: () => undefined }],
+    ['generic — accessor returning false omits', `const Node = <div hidden={g} />`, { g: () => false }],
+    ['generic — accessor returning true is bare', `const Node = <div hidden={g} />`, { g: () => true }],
+    // `_ssrAttr` (renderProp verbatim) was already correct — locked so the
+    // three helpers can never drift apart again.
+    ['class (already correct)', `const Node = <div class={g} />`, { g: () => ['a', 'b'] }],
+    ['style (already correct)', `const Node = <div style={g} />`, { g: () => ({ color: 'red' }) }],
+    ['aria (already correct)', `const Node = <div aria-disabled={g} />`, { g: () => 'true' }],
+  ]
+  for (const [name, src, deps] of accessorCases) {
+    test(`${name} — compiled matches h()`, async () => {
+      // The ROOT must actually take the fast path, or this asserts nothing.
+      expect(compiledRootUsesSsr(src.replace('Node', 'N'))).toBe(true)
+      const fast = await renderToString(evalSsr(src, deps) as VNode)
+      const tag = /<(\w+)/.exec(src)![1]!
+      const attr = /\s([\w-]+)=\{g\}/.exec(src)![1]!
+      const slow = await renderToString(h(tag, { [attr]: deps.g }))
+      expect(fast).toBe(slow)
+      // Guard the specific regression: never the function's SOURCE TEXT.
+      expect(fast).not.toContain('=&gt;')
+    })
+  }
+})
+
+/**
+ * `<textarea value>` — the bail above is the mechanism; this is the DAMAGE it
+ * prevents, asserted on the rendered bytes so a regression names the symptom
+ * rather than just "expected true to be false".
+ */
+describe('SSR fast path — a prefilled <textarea> renders its value as CONTENT', () => {
+  const shapes: [string, string, Record<string, unknown>][] = [
+    ['dynamic value', `const Node = <textarea value={v} />`, { v: 'draft text' }],
+    ['accessor value', `const Node = <textarea value={v} />`, { v: () => 'draft text' }],
+    ['static value', `const Node = <textarea value="draft text" />`, {}],
+    ['nested in an eligible parent', `const Node = <div class="f"><textarea value={v} /></div>`, { v: 'draft text' }],
+  ]
+  for (const [name, src, deps] of shapes) {
+    test(name, async () => {
+      const html = await renderToString(evalSsr(src, deps) as VNode)
+      // The value IS the text content; there is no `value` CONTENT attribute.
+      expect(html).toContain('>draft text</textarea>')
+      expect(html).not.toContain('value=')
+    })
+  }
+})
+
 describe('SSR fast path — byte-identical to h() (compiled → eval → render)', () => {
   for (const c of cases) {
     test(c.name, async () => {
@@ -621,6 +697,16 @@ describe('SSR fast path — conservative bail catalogue (stays on h())', () => {
     // and non-void <div/> against the h() path, so the conservatism had no
     // remaining justification and the entry moved to the eligible list.
     ['select element', `const N = <select value="b"><option>a</option></select>`],
+    // `<textarea value>` is the other half of the PZ-09 concern that bails
+    // `select`. <textarea> has NO `value` CONTENT attribute — the value IS the
+    // text content — so `renderProp` skips it and `textareaValue` emits it as
+    // the child. The fast path serialized it as an attribute instead, giving a
+    // dead `value="…"` AND an EMPTY textarea: every server-rendered prefilled
+    // textarea came back blank (blank with JS off, and a hydration mismatch).
+    // Both the static and the dynamic spelling must bail — the static one took
+    // the compile-time bake arm, which no runtime helper guards.
+    ['textarea value (dynamic)', `const N = <textarea value={v} />`],
+    ['textarea value (static)', `const N = <textarea value="draft" />`],
     ['innerHTML content prop', `const N = <div innerHTML={'<x>'}></div>`],
     ['dangerouslySetInnerHTML content prop', `const N = <div dangerouslySetInnerHTML={{ __html: '<x>' }}></div>`],
     ['& in baked JSXText (entity divergence)', `const N = <p>Tom &amp; Jerry</p>`],

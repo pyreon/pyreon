@@ -1898,6 +1898,19 @@ export function transformJSX_JS(
     if (EVENT_RE.test(name)) return true
     // innerHTML / dangerouslySetInnerHTML are INNER CONTENT, not attrs → bail.
     if (name === 'innerHTML' || name === 'dangerouslySetInnerHTML') return false
+    // `<textarea value>` is the other half of the PZ-09 concern that bails
+    // `select`/`option` in `ssrSerializeElement`: <textarea> has NO `value`
+    // CONTENT attribute — the value IS the element's text content, which
+    // `renderProp` skips and `textareaValue` emits as the child. Serializing it
+    // here produced a dead `value="…"` attribute AND an EMPTY textarea, so
+    // every server-rendered prefilled textarea came back blank (the exact bug
+    // the h() path's skip fixed) plus a hydration mismatch. The fast path
+    // cannot move an attribute into child position mid-stream — and the lean
+    // `_ssrAttrGen` is not even given the tag — so bail to the h() path, which
+    // already handles it. Placed here rather than at the element level so it
+    // costs nothing for a `<textarea>` without a `value`, and it covers the
+    // static-bake arm as well as the runtime helper.
+    if (tag === 'textarea' && name === 'value') return false
     const isAria = name.charCodeAt(0) === 97 /* a */ && name.startsWith('aria-')
     // `toAttrName` maps camelCase/SVG/renamed names via a runtime table we don't
     // replicate at BAKE time — so an uppercase-named attr can only go through
