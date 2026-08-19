@@ -129,6 +129,28 @@ export function startClient(options: StartClientOptions) {
   )
   const cleanup = hasSSRContent ? hydrateRoot(container, vnode) : mount(vnode, container)
 
+  // ── Hydration barrier ──────────────────────────────────────────────────────
+  // Announce that the client has taken ownership of `container`, so a test (or
+  // any consumer) can wait for INTERACTIVITY rather than for pixels.
+  //
+  // Those are not the same thing, and today they only look the same by accident.
+  // `RouterView` renders its route through a reactive accessor and every
+  // fs-router route is `lazy()`, so the accessor's first render deletes the
+  // server range and the page goes blank until the chunk lands. Nothing
+  // clickable exists in the meantime, so anything a locator matched was
+  // necessarily already hydrated — an accidental synchronization barrier.
+  //
+  // That accident disappears the moment hydration ADOPTS the server DOM instead
+  // of rebuilding it (the direction this framework is moving). Then a locator
+  // matches a fully-rendered, visible, DEAD control and clicks it before any
+  // handler is attached — the click is swallowed and the assertion fails with
+  // "element(s) not found" on the post-click state. Measured on that shape: the
+  // window is ~48ms locally and unbounded on a cold transform or slow network.
+  //
+  // Set AFTER the mount/hydrate call returns, so its presence means handlers
+  // are attached, not merely that markup arrived.
+  if (container instanceof HTMLElement) container.dataset.pyreonHydrated = ''
+
 
   // ── Loader run (SPA cold-start path) ───────────────────────────────────────
   // If we had no SSR loader data AND no SSR content, this is a true SPA
