@@ -1,17 +1,22 @@
 import { effect } from './effect'
-import { trackSubscriber } from './tracking'
+import { type SubscriberHost, trackSubscriber } from './tracking'
 
 /**
  * Notify a subscriber bucket without snapshot allocation.
  * Caps iteration at the original size to avoid infinite loops from
  * re-inserted entries (same pattern as notifySubscribers in tracking.ts).
  */
-function notifyBucket(bucket: Set<() => void>): void {
-  if (bucket.size === 0) return
-  if (bucket.size === 1) {
-    ;(bucket.values().next().value as () => void)()
+function notifyBucket(host: SubscriberHost): void {
+  // Inline slot first — the dominant shape (one effect watching one key), and
+  // the read is a plain field rather than a materialised Set iterator. Captured
+  // locally, so a subscriber that promotes the tier mid-call is unaffected.
+  const s1 = host._s1
+  if (s1 !== null) {
+    s1()
     return
   }
+  const bucket = host._s
+  if (bucket === null || bucket.size === 0) return
   const originalSize = bucket.size
   let i = 0
   for (const fn of bucket) {
@@ -121,7 +126,7 @@ export function createSelector<T>(source: () => T): Selector<T> {
   // used to split across a `subs` (value → Set) and a `hosts` (value → {_s})
   // map — they were always the same bucket behind two entries, so every key
   // paid two Map entries to store one relationship.
-  const subs = new Map<T, { _s: Set<() => void> | null }>()
+  const subs = new Map<T, SubscriberHost>()
   // Bound updaters (from `selector.subscribe`) — kept SEPARATE from the effect
   // bucket so the source effect can call them with the resolved boolean directly
   // instead of an empty re-run closing over `current` and `value`.
@@ -212,8 +217,8 @@ export function createSelector<T>(source: () => T): Selector<T> {
     current = next
     // Only notify the two affected buckets — O(1) regardless of list size.
     // Iteration-capped loop avoids [...bucket] snapshot allocation.
-    const oldBucket = subs.get(old)?._s
-    const newBucket = subs.get(next)?._s
+    const oldBucket = subs.get(old)
+    const newBucket = subs.get(next)
     // A sweep must not run while these buckets are being notified — a
     // subscriber re-reading the selector mid-notify would otherwise be able to
     // drop and re-create the very key being delivered.
@@ -255,7 +260,7 @@ export function createSelector<T>(source: () => T): Selector<T> {
    */
   const sweep = (): void => {
     for (const [key, host] of subs) {
-      if (host._s === null || host._s.size === 0) subs.delete(key)
+      if (host._s1 === null && (host._s === null || host._s.size === 0)) subs.delete(key)
     }
     // Amortize: the next sweep waits until the live set could have doubled, so
     // total sweep work stays O(1) per key inserted.
@@ -269,7 +274,7 @@ export function createSelector<T>(source: () => T): Selector<T> {
         // NEW key — the only place the map can grow, so the only place that
         // needs to consider reclaiming. Never sweeps mid-notification.
         if (subs.size >= sweepAt && !notifying) sweep()
-        host = { _s: null }
+        host = { _s1: null, _s: null }
         subs.set(value, host)
       }
       trackSubscriber(host)

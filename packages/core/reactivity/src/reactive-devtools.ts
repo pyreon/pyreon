@@ -136,6 +136,20 @@ export const LPIH_RATE_TAU_MS = 1000
 
 // ── Internal node record ─────────────────────────────────────────────────
 
+/**
+ * Structural shape of a tracking-subscriber host (signal read fn / computed).
+ * Declared locally rather than imported from `./tracking` on purpose: this
+ * module is deliberately import-free so the prod dev-block guard can be dropped
+ * at PARSE time without pinning any other module's symbols.
+ *
+ * Two tiers — see `SubscriberHost` in `./tracking`. `_s1` holds the SOLE
+ * subscriber (the common case) and `_s` only exists after promotion to >=2.
+ */
+interface SubscriberHostLike {
+  _s1: (() => void) | null
+  _s: Set<() => void> | null
+}
+
 interface NodeRec {
   id: number
   kind: ReactiveNodeKind
@@ -143,7 +157,7 @@ interface NodeRec {
   /** Weak handle to the read fn (signal/computed) — never pins the node. */
   ref: WeakRef<object>
   /** Weak handle to the subscriber-set host (signal read fn / computed host). */
-  hostRef: WeakRef<{ _s: Set<() => void> | null }> | null
+  hostRef: WeakRef<SubscriberHostLike> | null
   fires: number
   lastFire: number | null
   /**
@@ -410,7 +424,7 @@ function parseStackLine(line: string): SourceLocation | undefined {
 export function _rdRegister(
   node: object,
   kind: ReactiveNodeKind,
-  host: { _s: Set<() => void> | null } | null,
+  host: SubscriberHostLike | null,
   sub: object | null,
   label: string | undefined,
   loc?: SourceLocation | DeferredLocation,
@@ -539,7 +553,13 @@ export function getReactiveGraph(): ReactiveGraph {
       const node = rec.ref.deref()
       if (!node) continue
       const host = rec.hostRef?.deref() ?? null
+      // Two-tier tracking storage: the sole subscriber lives in the `_s1`
+      // inline slot and never reaches `_s`, so BOTH tiers must be walked or a
+      // single-subscriber source (the overwhelmingly common shape) would report
+      // zero subscribers and contribute no edges.
+      const s1 = host?._s1 ?? null
       const subs = host?._s ?? null
+      const subCount = (s1 !== null ? 1 : 0) + (subs?.size ?? 0)
       // `preview()` is total (its own try/catch returns '[unstringifiable]'),
       // and `_v` on our registered nodes is a plain property (signal) or a
       // getter that never throws (computed's getter routes errors through
@@ -556,11 +576,15 @@ export function getReactiveGraph(): ReactiveGraph {
         kind: rec.kind,
         name: rec.name,
         value: valueStr,
-        subscribers: subs?.size ?? 0,
+        subscribers: subCount,
         fires: rec.fires,
         lastFire: rec.lastFire,
         ...(resolvedLoc ? { loc: resolvedLoc } : {}),
       })
+      if (s1 !== null) {
+        const to = resolveSubId(s1)
+        if (to !== undefined) edges.push({ from: rec.id, to })
+      }
       if (subs) {
         for (const cb of subs) {
           const to = resolveSubId(cb)

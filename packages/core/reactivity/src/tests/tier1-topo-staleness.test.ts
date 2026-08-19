@@ -304,8 +304,9 @@ describe('tier-1 topo-staleness ({ equals } computeds)', () => {
     // Mutate the raw value WITHOUT notification, then dispatch the subscriber
     // set manually, outside any batch window — the raw-external-caller shape.
     ;(s as unknown as { _v: number })._v = 5
-    const subs = (s as unknown as { _s: Set<() => void> })._s
-    for (const sub of [...subs]) sub()
+    const host = s as unknown as { _s1: (() => void) | null; _s: Set<() => void> | null }
+    const subs = [...(host._s1 !== null ? [host._s1] : []), ...(host._s ?? [])]
+    for (const sub of subs) sub()
 
     expect(e()).toBe(10)
     expect(seen).toBe(10)

@@ -186,7 +186,11 @@ describe('single-node drag fan-out (per-id computeds)', () => {
     mountCounted(flow)
 
     const subs = () =>
-      accessInternal<{ _s: Set<unknown> | null }>(flow.measurements)._s?.size ?? 0
+      (() => {
+        // Two-tier tracking storage — count the inline slot too.
+        const h = accessInternal<{ _s1: unknown; _s: Set<unknown> | null }>(flow.measurements)
+        return (h._s1 != null ? 1 : 0) + (h._s?.size ?? 0)
+      })()
     const before = subs()
     expect(before).toBeGreaterThanOrEqual(3) // one geometry computed per edge
 

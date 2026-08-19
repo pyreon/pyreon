@@ -39,6 +39,7 @@ import {
   Switch,
 } from '@pyreon/core'
 import {
+  _hasSubscribers,
   type EffectScope,
   effectScope,
   getCurrentScope,
@@ -915,20 +916,13 @@ export function createStore<T extends object>(
   function sweepUnusedSignals(): void {
     if (signals.size < STORE_SIGNAL_SWEEP_THRESHOLD) return
     for (const [path, sig] of signals) {
-      // `signal._d` (Set) is allocated lazily ONLY on the 2nd direct
-      // subscribe — the first subscriber lives in the inline-slot
-      // `_d1` field (perf: avoids per-row Set allocation for the
-      // dominant 1-subscriber case). Check BOTH tiers to correctly
-      // detect a signal with any live direct binding.
-      const sigInternal = sig as unknown as {
-        _s: Set<unknown> | null
-        _d: Set<unknown> | null
-        _d1: (() => void) | null
-      }
-      const hasSubscribers = sigInternal._s && sigInternal._s.size > 0
-      const hasDirect =
-        sigInternal._d1 !== null || (sigInternal._d && sigInternal._d.size > 0)
-      if (!hasSubscribers && !hasDirect) {
+      // BOTH subscriber channels are two-tier — the first subscriber
+      // lives in an inline slot (`_s1` tracking / `_d1` direct) and only
+      // a second promotes to a Set. Reading the Sets alone reports
+      // "unused" for the dominant single-subscriber shape and evicts a
+      // LIVE signal, so the tier-aware check is owned by
+      // `@pyreon/reactivity` rather than re-derived here.
+      if (!_hasSubscribers(sig)) {
         // Leak-class C diagnostic — emit per evicted signal entry.
         // A high count after a stable workload = the store has a
         // dynamic key space (dictionaries, pagination, logs) and

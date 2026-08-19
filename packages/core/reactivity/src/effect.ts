@@ -2,9 +2,11 @@ import { _captureCallerLocation, _rdRecordFire, _rdRegister } from './reactive-d
 import { getCurrentScope } from './scope'
 import {
   getInnerEffectCollector,
+  removeSubscriber,
   runCollect,
   runVerify,
   setInnerEffectCollector,
+  type SubscriberHost,
 } from './tracking'
 
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
@@ -127,12 +129,12 @@ export function setErrorHandler(fn: (err: unknown) => void): void {
 }
 
 /** Remove an effect from all dependency subscriber sets (local deps array). */
-function cleanupLocalDeps(deps: Set<() => void>[], fn: () => void): void {
+function cleanupLocalDeps(deps: SubscriberHost[], fn: () => void): void {
   if (deps.length === 1) {
-    ;(deps[0] as Set<() => void>).delete(fn)
+    removeSubscriber(deps[0] as SubscriberHost, fn)
     deps.length = 0
   } else if (deps.length > 1) {
-    for (let i = 0; i < deps.length; i++) (deps[i] as Set<() => void>).delete(fn)
+    for (let i = 0; i < deps.length; i++) removeSubscriber(deps[i] as SubscriberHost, fn)
     deps.length = 0
   }
 }
@@ -169,7 +171,7 @@ export function effect(
   let isFirstRun = true
   let cleanup: (() => void) | undefined
   // Local deps array — avoids WeakMap overhead (like renderEffect)
-  const deps: Set<() => void>[] = []
+  const deps: SubscriberHost[] = []
 
   let cleanups: (() => void)[] | undefined
   // Inner effects created during this effect's body — disposed on outer re-run
@@ -320,7 +322,7 @@ export function effect(
  * - Signal reads hit `if (activeEffect)` null check → instant return
  */
 export function _bind(fn: () => void): () => void {
-  const deps: Set<() => void>[] = []
+  const deps: SubscriberHost[] = []
   let disposed = false
 
   // Capture the snapshot AND the hook reference at SETUP, so re-runs dispatch
@@ -357,7 +359,7 @@ export function _bind(fn: () => void): () => void {
   const dispose = () => {
     if (disposed) return
     disposed = true
-    for (const s of deps) s.delete(run)
+    for (const h of deps) removeSubscriber(h, run)
     deps.length = 0
   }
 
@@ -391,7 +393,7 @@ export function renderEffect(fn: () => void): () => void {
     }
   }
 
-  const deps: Set<() => void>[] = []
+  const deps: SubscriberHost[] = []
   let disposed = false
   let isFirstRun = true
 
@@ -430,9 +432,9 @@ export function renderEffect(fn: () => void): () => void {
     if (disposed) return
     disposed = true
     if (deps.length === 1) {
-      ;(deps[0] as Set<() => void>).delete(run)
+      removeSubscriber(deps[0] as SubscriberHost, run)
     } else {
-      for (const s of deps) s.delete(run)
+      for (const h of deps) removeSubscriber(h, run)
     }
     deps.length = 0
   }
