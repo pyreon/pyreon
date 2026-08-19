@@ -6,7 +6,7 @@
  * promotion, idempotent re-add (the `divergeVerify` prefix repair), removal
  * from either tier, and the store's suspend/resume window.
  */
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { computed } from '../computed'
 import { effect } from '../effect'
 import { createSelector } from '../createSelector'
