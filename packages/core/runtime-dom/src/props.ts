@@ -650,8 +650,46 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
   }
 
   if (key in el) {
-    ;(el as unknown as Record<string, unknown>)[key] = value
-    return
+    // `key in el` answers "does this property EXIST?", but the assignment below
+    // needs the stronger "is it WRITABLE?" — and `in` is true for a getter-only
+    // IDL accessor (`input.list` / `input.form` / `select.options` /
+    // `table.rows` / `video.buffered` / `input.labels` / `input.validity`).
+    // Framework code is ESM, hence STRICT MODE, so assigning to one THROWS
+    // rather than silently no-opping, taking the whole mount down. `list` is an
+    // advertised JSX prop, so `<input list="dl">` — ordinary documented API —
+    // crashed with "Cannot set property list ... which has only a getter".
+    //
+    // The catch falls back to the attribute, which is the CORRECT destination
+    // for the reachable cases rather than mere crash-avoidance: `list` and
+    // `form` ARE content attributes whose IDL properties are read-only precisely
+    // because they return the RESOLVED element. Matches React and Preact, both
+    // of which set the attribute here; Preact's shipped `dist/preact.js` uses
+    // this exact shape (`l in n) try{n[l]=…}catch(n){}` falling through to
+    // `setAttribute`).
+    //
+    // try/catch rather than a descriptor/writability probe because the probe is
+    // not affordable on this hot path: measured in Chromium over 200k
+    // assignments, try/catch costs 0.96-1.01x of a bare assign (V8's
+    // zero-cost-on-success exceptions), while a prototype-chain
+    // `getOwnPropertyDescriptor` walk costs 1.70-3.23x and even a
+    // WeakMap-cached walk costs 1.18-1.36x AND would add a module-level cache.
+    // A hardcoded name list was rejected outright: it silently rots the moment
+    // the DOM grows another read-only accessor (the "gate input list is a
+    // silent-hole generator" class).
+    //
+    // Accepted trade-off: this also swallows a genuine SETTER exception (e.g.
+    // `input.valueAsNumber = 5` on a text input throws DOMException) and writes
+    // an attribute instead. That is strictly better than the status quo, which
+    // was to take down the entire mount, and it leaves the value visible in the
+    // DOM. Deliberately silent — no dev warning — because for `list`/`form` the
+    // fallback is the right answer, so warning would cry wolf on correct code.
+    try {
+      ;(el as unknown as Record<string, unknown>)[key] = value
+      return
+    } catch {
+      el.setAttribute(key, String(value))
+      return
+    }
   }
 
   // Custom elements: set as property (element may not be upgraded yet,

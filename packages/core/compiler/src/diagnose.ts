@@ -1319,6 +1319,35 @@ box.current = node         // writable by design`,
         'Reading before mount returns `null` — `el()` at component-body scope runs at setup, before the element exists. Read inside `onMount`/an effect, or pass `el` itself to hooks that take `() => HTMLElement | null` (`useElementSize(el)`, `useClickOutside(el)`, …).',
     }),
   },
+  {
+    // The residual footgun left by the read-only IDL guard. `setStaticProp`
+    // routed to a property assignment on `key in el` — an EXISTENCE test, where
+    // the assignment needs WRITABILITY. `in` is true for a getter-only IDL
+    // accessor, and framework code is ESM (strict mode), so the assignment threw
+    // and took the whole mount down. `<input list="dl">` — an advertised JSX
+    // prop — crashed.
+    //
+    // Kept in the catalog because it is still reachable two ways: on any version
+    // before the fix (the message is verbatim what a user pastes into a search),
+    // and TODAY from user code that assigns a read-only DOM property directly in
+    // a ref callback or an effect, which the framework guard never sees.
+    pattern: /Cannot set property (\w+) of #<(\w+)> which has only a getter/,
+    diagnose: (m) => ({
+      cause: `\`${m[1]}\` is a READ-ONLY IDL accessor on \`${m[2]}\` — it exists on the element, so an \`in\` check passes, but it has no setter. ES modules run in strict mode, so assigning to it THROWS rather than silently no-opping, which takes down whatever was mounting at the time. The DOM has a family of these: \`input.list\`, \`input.form\`, \`input.labels\`, \`input.validity\`, \`select.options\`, \`form.elements\`, \`table.rows\`, \`video.buffered\` — each returns a RESOLVED element or live collection, which is exactly why it is not writable.`,
+      fix: `Set the ATTRIBUTE instead of the property. For \`list\` and \`form\` that is the correct destination anyway: the content attribute holds an id, and the read-only property resolves it to the element. In JSX, \`<input list="dl">\` now does the right thing automatically — \`applyStaticProp\` falls back to \`setAttribute\` when the property assignment throws. If you are assigning directly in a ref callback or an effect, call \`el.setAttribute(name, value)\` yourself; the framework guard only covers props it applies.`,
+      fixCode: `// throws — \`list\` resolves the <datalist>, so it has no setter
+<input ref={(el) => { el.list = 'suggestions' }} />
+
+// correct — the content attribute holds the ID the property resolves
+<input ref={(el) => { el.setAttribute('list', 'suggestions') }} />
+
+// or just let JSX do it (guarded since the read-only IDL fix)
+<input list="suggestions" />
+<datalist id="suggestions"><option value="a" /></datalist>`,
+      related:
+        'The inverse trap is worth knowing too: whether a DOM property is safe to assign is decided by measured REFLECTION, not by the name. `value` is non-reflecting on `input`/`textarea`/`select` but reflects on `option`/`button`/`progress`/`meter`/`li`/`data`/`param`/`output`.',
+    }),
+  },
 ]
 
 /** Diagnose an error message and return structured fix information */
