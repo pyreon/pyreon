@@ -75,11 +75,17 @@ describe('api-reference', () => {
 
     it('createFlow notes carry the load-bearing architectural claims', () => {
       // Spot-checks that MCP consumers see the signal-native /
-      // elkjs / no-D3 framing — the stuff that makes flow's API
+      // layout-engine / no-D3 framing — the stuff that makes flow's API
       // understandable without opening source. A regression here
       // means the manifest summary lost density.
+      //
+      // This asserted `elkjs` until flow replaced it with its own engine.
+      // The INVARIANT is unchanged — the notes must still state where layout
+      // comes from — so only the claim moved, from naming a third-party
+      // dependency to naming the built-in one. Asserting `elkjs` now would
+      // be asserting something false.
       const createFlow = API_REFERENCE['flow/createFlow']
-      expect(createFlow?.notes).toContain('elkjs')
+      expect(createFlow?.notes).toContain('built-in engine')
       expect(createFlow?.notes).toContain('no D3')
       expect(createFlow?.notes).toContain('signal-native')
     })
