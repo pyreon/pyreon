@@ -61,7 +61,7 @@ function readKeyevents(path: string): string[] {
 interface RunResult {
   status: number
   out: string
-  /** Every `adb shell input keyevent …` the script sent, in order. */
+  /** Every `adb shell input keyevent …` / `adb shell am …` the script sent. */
   keyevents: string[]
 }
 
@@ -107,6 +107,7 @@ if [ "$1" = "shell" ]; then
     rm)   [ "$MODE" = "race" ] || rm -f "$STATE"; exit 0 ;;
     cat)  cat "$STATE" 2>/dev/null; exit 0 ;;
     input) shift; echo "$*" >> "$KEYLOG"; exit 0 ;;
+    am) shift; echo "am $*" >> "$KEYLOG"; exit 0 ;;
     uiautomator)
       if [ "$MODE" = "race" ]; then
         # The documented failure: it TELLS you on stdout and still exits 0.
@@ -202,12 +203,34 @@ describe('Android release-smoke — the uiautomator race must not be decidable b
     expect(r.keyevents).toContain('keyevent KEYCODE_BACK')
   })
 
+  it('RE-RAISES our activity when a foreign window owns the screen', () => {
+    // BACK alone is not enough: an ANR / "isn't responding" dialog is not
+    // always back-dismissable, and one survived all 20 polls on three
+    // consecutive runs. `am start` on a running task brings it forward without
+    // restarting it, and needs no guess about which dialog is up or where its
+    // buttons are.
+    // COUNT, not presence: the script's own launch is already an `am start`,
+    // so `some(...)` passes with the re-raise removed — a spec that cannot
+    // fail. A re-raise means strictly more than that one launch.
+    const raises = (m: 'dialog' | 'rendered') =>
+      runSmoke(m).keyevents.filter((k) => k.startsWith('am start')).length
+    expect(raises('dialog')).toBeGreaterThan(1)
+    expect(raises('rendered')).toBe(1) // launch only — never re-raised over our own window
+  })
+
   it('NEVER sends BACK while our own window is on screen', () => {
     // The safety property: BACK is a navigation key. Sending it to the app
     // under test could dismiss the very screen being asserted, so it must fire
     // only while a FOREIGN window owns the display.
-    expect(runSmoke('rendered').keyevents).toEqual([])
-    expect(runSmoke('blank').keyevents).toEqual([])
+    //
+    // Asserted on BACK specifically, not on an empty log — the script's own
+    // launch is an `am start`, so "sent nothing at all" was never the real
+    // invariant, and saying so made this spec fail the moment the stub began
+    // recording `am` too.
+    const back = (m: 'rendered' | 'blank') =>
+      runSmoke(m).keyevents.filter((k) => k.includes('KEYCODE_BACK'))
+    expect(back('rendered')).toEqual([])
+    expect(back('blank')).toEqual([])
   })
 
   it('a VALID tree containing the marker PASSES', () => {
