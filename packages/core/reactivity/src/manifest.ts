@@ -22,7 +22,7 @@ count.set(5)         // write
 count.update(n => n + 1)  // derive
 count.peek()         // read WITHOUT subscribing
 
-// computed<T>() — auto-tracked, memoized
+// computed<T>() — auto-tracked; caches its value, notifies unconditionally (see equals)
 const doubled = computed(() => count() * 2)
 
 // effect() — re-runs when dependencies change
@@ -53,7 +53,7 @@ effect(() => {
 })`,
   features: [
     'signal<T>() — callable function with .set(), .update(), .trigger()',
-    'computed<T>() — auto-tracked memoized derivation',
+    'computed<T>() — auto-tracked derivation; caches its value, but notifies downstream on every dependency change unless you pass `equals`',
     'effect() / renderEffect() — side-effects with auto-tracking',
     'batch() / nextTick() — write-grouping + flush awaiter',
     'onCleanup() — register cleanup inside effects',
@@ -159,10 +159,10 @@ const initial = isClient ? navigator.onLine : true`,
       ],
       returns: {
         type: 'Computed<T>',
-        description: 'A read-only callable — call to read the memoized value; recomputes lazily only when a dependency changes.',
+        description: 'A read-only callable — call to read the cached value; recomputes lazily only when a dependency changes. Caching is about RECOMPUTATION, not propagation: without `equals` it still notifies downstream even when the recomputed value is identical.',
       },
       summary:
-        'Create a memoized derived value. Dependencies auto-tracked on each evaluation — no dependency array needed (unlike React `useMemo`). Only recomputes when a tracked signal actually changes. By DEFAULT a computed notifies downstream on every dependency change, even when the recomputed value is unchanged — there is no implicit equality check (a signal gates on `Object.is`; a computed does not). Pass `equals` to gate on value, which is what stops an effect re-running on an identical result.',
+        'Create a derived value that caches its result and recomputes lazily. Dependencies auto-tracked on each evaluation — no dependency array needed (unlike React `useMemo`). Only recomputes when a tracked signal actually changes. By DEFAULT a computed notifies downstream on every dependency change, even when the recomputed value is unchanged — there is no implicit equality check (a signal gates on `Object.is`; a computed does not). This is the one place Pyreon diverges from Solid `createMemo` / Vue + Preact `computed`, which all gate on equality by default; if you are porting from those, an unchanged result does NOT stop propagation here. Pass `equals` to gate on value, which is what stops an effect re-running on an identical result.',
       example: `const count = signal(0)
 const doubled = computed(() => count() * 2)
 doubled()  // 0

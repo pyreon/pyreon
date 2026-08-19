@@ -68,7 +68,7 @@ const doubled = computed(() => count() * 2)
 doubled()  // 0
 count.set(5)
 doubled()  // 10`,
-    notes: 'Create a memoized derived value. Dependencies auto-tracked on each evaluation — no dependency array needed (unlike React `useMemo`). Only recomputes when a tracked signal actually changes. By DEFAULT a computed notifies downstream on every dependency change, even when the recomputed value is unchanged — there is no implicit equality check (a signal gates on `Object.is`; a computed does not). Pass `equals` to gate on value, which is what stops an effect re-running on an identical result. See also: signal, effect.',
+    notes: 'Create a derived value that caches its result and recomputes lazily. Dependencies auto-tracked on each evaluation — no dependency array needed (unlike React `useMemo`). Only recomputes when a tracked signal actually changes. By DEFAULT a computed notifies downstream on every dependency change, even when the recomputed value is unchanged — there is no implicit equality check (a signal gates on `Object.is`; a computed does not). This is the one place Pyreon diverges from Solid `createMemo` / Vue + Preact `computed`, which all gate on equality by default; if you are porting from those, an unchanged result does NOT stop propagation here. Pass `equals` to gate on value, which is what stops an effect re-running on an identical result. See also: signal, effect.',
     mistakes: `- \`computed(() => count)\` — must CALL the signal: \`computed(() => count())\`
 - Using \`computed()\` for side effects — use \`effect()\` instead; computed is for pure derivation
 - Expecting \`computed()\` to re-run when a \`.peek()\`-read signal changes — \`.peek()\` bypasses tracking
