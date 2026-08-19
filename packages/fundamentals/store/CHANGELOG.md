@@ -1,5 +1,38 @@
 # @pyreon/store
 
+## 0.52.0
+
+### Minor Changes
+
+- Co-locate native runtimes into their own packages. (ed6518a)
+
+  The Swift/Kotlin runtimes for form, store, state-tree, machine, i18n, permissions,
+  and query move out of the `@pyreon/native-runtime-*` monolith into each package's
+  `native/{swift,kotlin}/` (declared via the `pyreon.native` package.json field,
+  aggregated by `pyreon-native wire`). Framework-base runtimes (reactivity/styling/JSON
+  helpers) stay in the monolith. A new `scripts/check-native-cosource.ts` gate compiles
+  and smoke-runs every co-located `.swift`/`.kt` against the stub harness so a relocated
+  runtime can't rot silently. No API change — this is a source-location move.
+
+### Patch Changes
+
+- Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration). (1d74edc)
+- Eight README examples are now typechecked in CI. (e0e0dc0)
+
+  `check-doc-examples` only ever looked at `docs/src/content/docs/**`; package READMEs carry ~550 `ts`/`tsx` blocks and nothing verified any of them. The gate now walks package READMEs too, and each of these packages has one verified-clean example opted in with the `// @check` marker.
+
+  Each was compiled before being marked, not marked and then debugged. No content changed — the marker is a comment inside the fence.
+
+- fix(store): a NESTED `patch()` (an effect calling `patch()` during an outer `patch()`) now merges into the outermost patch's SINGLE notification, instead of emitting its own and closing the shared window mid-outer (adb5897)
+
+  The subscribed `patch()` fast path detaches each field's change-detector, writes, re-attaches, and drains in a `batch()` — a user effect fired by that drain can call `patch()` again. The inner patch's own `finally` cleared `patchInProgress` (mid-outer) and emitted a SECOND `'patch'` notification, so one logical mutation surfaced as two events; worse, the prematurely-cleared flag meant a later re-entrant DIRECT write's event was silently buffered-and-dropped.
+
+  A `patchDepth` nesting counter (both the object-form and functional-form paths) makes only the OUTERMOST patch close the window, merge the buffered nested events, and emit once — decremented FIRST in the `finally` (before the emit) so a throwing subscriber can't wedge the depth or the flag. Bisect-verified; full `@pyreon/store` suite (213) green.
+
+- Updated dependencies:
+  - @pyreon/validation@0.52.0
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes

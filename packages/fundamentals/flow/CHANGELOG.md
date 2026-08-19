@@ -1,5 +1,99 @@
 # @pyreon/flow
 
+## 0.52.0
+
+### Minor Changes
+
+- Replace `elkjs` with a built-in layout engine — one fewer dependency, and the only copyleft one in the tree. (e30515b)
+
+  `elkjs` is a GWT-compiled port of the Eclipse Layout Kernel: ~1.4 MB of generated JavaScript under EPL-2.0, fetched at first `.layout()` call, to produce — in the end — one `{ x, y }` per node. Everything else it computed (edge sections, ports, hierarchy) was discarded by the caller.
+
+  All seven algorithms are now implemented directly: `layered` (Sugiyama — cycle breaking, longest-path layering, median-heuristic ordering with adjacent transposition), `tree`, `force` (Fruchterman–Reingold), `stress` (majorisation over BFS distances), `radial`, `box` and `rectpacking`.
+
+  The engine is **lazy-loaded**, exactly as elkjs was — an app that renders a flow but never calls `.layout()` pays nothing. What changes is the size of what gets fetched: a ~2 KB chunk instead of ~1.4 MB. `@pyreon/flow`'s main entry is unchanged.
+
+  **`computeLayout` keeps its async signature** — a caller awaiting it still works — but the engine underneath is pure and synchronous, so layouts are now **deterministic**: the same graph always produces the same positions, which elkjs did not guarantee.
+
+  **Measured against elkjs across all seven algorithms** on four graph shapes.
+
+  **Zero overlapping nodes everywhere** — a stronger guarantee than elkjs, whose stress layout leaves 22 / 6 / 29 overlapping pairs on the same graphs. Physical layouts (force, stress, radial) get a bounded overlap-relaxation pass, since optimising distance does not imply separation.
+
+  Crossings: we WIN clearly on force (0/1/8 against ELK's 34/19/135) and match on chains, trees and cycles. We LOSE on `layered` for a 20-node DAG (8 against 0), on `tree` for a 40-node DAG (56 vs 16), and on `radial` (145 vs 67). ELK's layered pipeline uses Brandes–Köpf coordinate assignment and a full layer sweep; this uses a median heuristic with transposition, so expect comparable structure and more crossings when graphs get dense.
+
+  **Performance at 1000 nodes** (median of 7 warm runs), after fixing three quadratic hot paths plus a round of allocation work — numeric grid keys instead of `\`${cx},${cy}\``strings, no argument-list spreads, a flattened pivot-distance buffer,`sqrt`over`hypot`:
+
+  |                          | before   | after    |
+  | ------------------------ | -------- | -------- |
+  | layered                  | 2,618ms  | **5ms**  |
+  | force                    | 53,441ms | **72ms** |
+  | stress                   | 8,312ms  | **56ms** |
+  | radial                   | —        | **5ms**  |
+  | tree / box / rectpacking | —        | **≤1ms** |
+
+  Quality is byte-identical before and after the optimisation work — same crossing counts on every graph, still zero overlaps — so the speedups are behaviour-preserving.
+
+  **Verified through the render path too**, in real Chromium: five specs mount a `<Flow>`, run each algorithm, and read `getBoundingClientRect()` from the DOM rather than the returned numbers — no visual overlap, children below parents, `RIGHT` laying out across the screen, and a tall node genuinely pushing the next layer down (proving measured boxes reach the engine). Bisect-verified: an all-zeros layout fails four of the five.
+
+### Patch Changes
+
+- Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration). (1d74edc)
+- Single-node drag no longer fans out to every node and edge. A drag frame writes the whole `nodes()` array, and the shared `nodeMap`/`edgeMap` computeds notify unconditionally — so every node's class/style/data thunk re-ran and every edge recomputed its full geometry on every pointermove, even when untouched (O(N + E) per frame). Per-node/per-edge thunks now subscribe through per-id `computed(() => nodeMap().get(id), { equals: Object.is })` gates (every write path preserves untouched objects' identity), and edge geometry is memoized per edge with the two per-ENDPOINT node computeds as its deps — a single-node drag frame re-runs only the moved node's thunks plus its touching edges' geometry: O(1 + deg). Measured at 300 nodes / 300 edges: ~6.7–8.7 ms/frame → ~0.26 ms/frame (~25–33×), with unmoved-node and unmoved-edge thunk re-runs going from 299 + 298 per frame to 0. The per-id computeds are instance-cached, created detached from the mounting component's scope (an instance outlives any one `<Flow>` mount), swept when their id leaves the graph, and disposed with the instance. (56c87ab)
+- Pan/zoom no longer remounts the entire graph. The viewport div was rendered by a reactive child accessor that read `viewport()` at its top — so every wheel tick, pan pointermove, and `animateViewport` frame tore down and re-created every node div (plus its ResizeObserver) and every edge path. The viewport div is now mounted statically with only its `style` string reactive: pan/zoom is one transform write per frame. Measured (happy-dom, 300 nodes/299 edges, 100 viewport writes): ~68ms/write → ~0.014ms/write, and zero element creations per write (was the whole subtree). Element identity across pan/zoom is now locked by bisect-verified regression tests; real-Chromium flow suites and the app-showcase e2e (wheel-zoom spec compiled through the real vite-plugin) pass unchanged. (19234c2)
+- Ship the MIT LICENSE file in the package tarball (8aeffe0)
+
+  These eight published packages were missing a `LICENSE` file. The repo's
+  own rule has always been that every package carries one ("Every package
+  MUST have `LICENSE` (MIT) and `README.md` — no exceptions"), but nothing
+  enforced it, so the gap went unnoticed.
+
+  No runtime change. It matters anyway: consumers, vendoring tools and
+  licence scanners read the file from the tarball, and its absence makes an
+  MIT-licensed package look unlicensed at the point where that question is
+  actually asked. A gate now keeps every workspace covered.
+
+- Three reactivity/correctness fixes found by running `pyreon doctor` against the (02cae6a)
+  framework itself, plus the rule-option support that made the remaining reports
+  resolvable.
+
+  - **`useChart` published a torn frame.** `instance.set(chart)`, `loading.set(false)`
+    and `error.set(null)` ran unbatched, so a subscriber reading two of them saw
+    the chart instance published while `loading` was still `true` — the "chart is
+    ready but still showing a spinner" flicker. Batched into one notify cycle; the
+    batch flushes before `onInit`, so the documented "fully configured before
+    `onInit` fires" invariant is unchanged.
+
+  - **Flow's `handlePointerUp` fired one notify cycle per selected node.** Its
+    three branches (rubber-band / drag-end / connection-drop) are sequential and
+    can co-occur, and the rubber-band branch calls `clearSelection()` plus
+    `selectNode()` once per hit node — so a band over 100 nodes fired 100+ cycles
+    and re-rendered the canvas each time. One pointerup is now one transition.
+
+  - **`createActorId`'s fallback could collide.** The doc comment states two live
+    peers must not share an id, but the non-`crypto.randomUUID` path was
+    `Date.now()` + `Math.random()`, which repeats within a millisecond and is a
+    birthday risk besides. It now prefers `crypto.getRandomValues` (far more widely
+    available than `randomUUID`, which requires a secure context) and its last
+    resort mixes in a per-process monotonic counter, so two ids from one process
+    can never collide by construction and the random field only has to separate
+    processes.
+
+  - **`exemptPaths` on six rules that documented the convention but never read it.**
+    `toast-a11y`, `no-href-navigation`, `no-inline-style-object`,
+    `prefer-use-is-active`, `no-effect-in-mount` and `prefer-field-array` all
+    inspect a call site, so the file that _implements_ the thing being recommended
+    reports against itself — `link.tsx` renders the `<a href>` that `<Link>`
+    wraps, and the toast row computes `role` from severity in its definition
+    rather than at the `<ToastItem>` call site. Resolving that in-rule needs the
+    parent chain, which oxc's visitor does not provide, so these now honour the
+    documented `exemptPaths` option instead. Each still fires normally everywhere
+    else.
+
+- Updated dependencies:
+  - @pyreon/core@0.52.0
+  - @pyreon/reactivity@0.52.0
+  - @pyreon/primitives@0.52.0
+  - @pyreon/runtime-dom@0.52.0
+
 ## 0.51.0
 
 ### Minor Changes

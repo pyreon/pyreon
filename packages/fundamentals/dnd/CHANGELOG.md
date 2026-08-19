@@ -1,5 +1,39 @@
 # @pyreon/dnd
 
+## 0.52.0
+
+### Minor Changes
+
+- `useSortable` lowers to a native reorder engine — list drag-and-drop crosses to iOS and Android (71c4409)
+
+  `@pyreon/dnd` wraps pragmatic-drag-and-drop, which is DOM pointer machinery, so
+  the package as a whole stays web. But list REORDER — the highest-value case, and
+  the one users actually reach for on a phone — is gesture-shaped rather than
+  DOM-shaped, and both platforms have first-class support for it.
+
+  `useSortable({ items, by, onReorder })` now lowers to a co-located
+  `PyreonSortableState<T>` engine on both targets: SwiftUI `.draggable` /
+  `.dropDestination`, Compose long-press drag. The engine ships as co-located
+  Swift and Kotlin source under `packages/fundamentals/dnd/native/`, verified by
+  the co-source gate.
+
+  The rest of the surface is honest about staying web: `useDraggable` /
+  `useDroppable` are element-getter hooks, `useDragMonitor` is page-global, and
+  `useFileDrop` is an OS file-picker concept. Each still warns BY NAME rather than
+  emitting a call that does not exist natively.
+
+  The lowering requires the full contract — `items`, a single-param `by`
+  (`(item) => item.id`), and an arrow `onReorder`. Anything else warns naming the
+  exact prop and the exact shape it needs, instead of silently degrading.
+
+### Patch Changes
+
+- Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration). (1d74edc)
+- Updated dependencies:
+  - @pyreon/core@0.52.0
+  - @pyreon/reactivity@0.52.0
+  - @pyreon/a11y@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes

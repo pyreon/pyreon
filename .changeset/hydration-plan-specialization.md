@@ -1,5 +1,0 @@
----
-'@pyreon/runtime-dom': patch
----
-
-Hydration row-plan prop-level specialization + row-shape signature. `replayRowPlan` now applies props through per-key ops compiled once at plan build (a monomorphic event binder with the name normalization + delegation branch hoisted out of the per-row path, direct class/style sinks, full `applyProp` for everything else) instead of per-row per-key dispatch. Every row's vnode is verified against a shape signature (tags, ordered prop-key sequences, child kinds/counts) before anything is bound — closing a silent-drop hole where a row whose shape diverged from row 0 (a conditional `onClick`, an extra child, a per-item `ref`) was adopted with row 0's bindings only: dead click handlers and unfired refs with zero warnings. A row-root `ref` is now wired on the replay path (previously never fired for adopted rows). The keyed-`<For>` SSR block parse uses parallel arrays and alloc-free key comparison, and the compiled-template adoption verifier caches the last template's plan and uses indexed loops per row.

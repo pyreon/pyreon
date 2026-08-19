@@ -1,5 +1,32 @@
 # @pyreon/unistyle
 
+## 0.52.0
+
+### Patch Changes
+
+- Skip the ReDoS growth-ratio spec under coverage instrumentation (79c1bf1)
+
+  The spec times the same attack at N and 4N and asserts the ratio stays
+  linear-ish. V8 coverage adds a per-basic-block cost plus GC pressure that is
+  NOT proportional to input size, so under `--coverage` the ratio describes the
+  instrumenter rather than the scan — it read 11.9x on main while green in the
+  Test cells and green locally under coverage in isolation.
+
+  It now skips when `scripts/check-coverage.ts` sets `PYREON_COVERAGE_RUN`, and
+  still gates on every PR through the ordinary Test cell.
+
+- fix(unistyle): stop silently dropping the `animation`/`keyframe` declaration when `keyframe` is paired with any other style property (968781e)
+
+  The `animation` special-key descriptor reads two trigger keys — `keyframe` and `animation` — but the fast-path index only registered the special under its `id` (`animation`). A theme that set `keyframe` (a keyframe-name-only animation) alongside any non-special property, e.g. `{ keyframe: 'spin', color: 'red' }`, resolved `color`, saw `fragments.length > 0`, skipped the fallback full-scan, and never emitted the animation — rendering `color: red;` alone. The single-key `{ keyframe: 'spin' }` shape worked only because the fallback scan caught it.
+
+  Special descriptors now carry an optional `keys` list of every additional trigger key their `processSpecial` branch reads (`animation` declares `keys: ['keyframe']`), which the index builder registers alongside `id`. This is a recurrence of the earlier "index-builder skipping a discriminated-union branch" class — the previous `d.id` fix covered specials whose trigger key equals their id, but not one that reads a second, differently-named key.
+
+- Updated dependencies:
+  - @pyreon/core@0.52.0
+  - @pyreon/reactivity@0.52.0
+  - @pyreon/styler@0.52.0
+  - @pyreon/ui-core@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes

@@ -1,5 +1,176 @@
 # @pyreon/atlas
 
+## 0.52.0
+
+### Minor Changes
+
+- Add `bundleCostPlugin` — what importing each component costs a consumer, minified + gzipped. (879ff89)
+
+  **Opt-in, not in the recommended bundle.** Each measurement is a real bundler run: on a 108-component library that is 108 builds against a scan that is otherwise ~2s. A metric that multiplies scan time by an order of magnitude has to be asked for, not inflicted — and it reports a number rather than a bug, so paying for it on runs nobody reads buys nothing.
+
+  **What the number means.** Workspace packages and bare dependencies are external, exactly as the repo-wide budget gate measures them, so this is "the bytes this component's own source contributes" — not the page weight of rendering it. A component rendering through half of `@pyreon/elements` measures small, because that cost belongs to elements and is counted there. Charging every component for the same shared runtime would make the numbers useless for the only thing they are good for: comparing components against each other.
+
+  **A `decorate` hook, not a `verify` check.** There is no threshold at which a component's size is WRONG, so making it a check would force a pass/fail on a measurement and the only honest verdict would be a permanent `pass` — the false-green shape the verdict model exists to avoid.
+
+  **Needs Bun.** `Bun.build` is the only bundler it uses, so `bun atlas scan` measures and `npx atlas scan` (node) does not. Rather than fail quietly it SAYS so, once per run, through `onUnavailable` — an opt-in capability that silently produces nothing is the same false-quiet as a gate that scans zero files and reports a clean pass. Adding esbuild as a dependency would fix it at the cost of real install weight on every Atlas user for a metric most never read; reusing the project's own Vite (already an optional peer, already loaded by the module loader) is the better door and belongs in its own change.
+
+  Unmeasurable is ABSENT, never `0` — a zero would read as "free", the most misleading number available.
+
+- **Verify findings are structured — catalog `version: 2`.** (ebeb330)
+
+  A finding was a prose sentence. An agent handed `"hydrateRoot threw: Cannot read properties of undefined"` could say what was wrong and never say what KIND of wrong it was — the only thing to branch on was a string free to be reworded in any release.
+
+  Every finding is now `{ code, message, fix? }`:
+
+  ```
+  ✗ button--empty
+      a11y [missing-accessible-name]: missing accessible name: "label" is empty
+        → Give "label" a non-empty value, or an aria-label if the text is decorative.
+  ```
+
+  - **`code`** is a stable identifier for the CLASS of failure — `mount-threw`, `hydrate-threw`, `hydrated-dom-differs`, `reactive-nodes-retained`, `missing-accessible-name`, and one for every reason a check did not run (`browser-only`, `no-dom`, `no-gc-hook`, `no-ssr-renderer`, `not-run`, `nothing-to-check`). Permanent once shipped: a reworded message is a patch, a renamed code is a breaking change.
+  - **`fix`** names the one concrete thing to change, and travels WITH the finding rather than in a lookup table a consumer has to know to consult — so the agent guide, the MCP tools and `atlas verify --json` all carry the actionable half without a second call. Absent when no single next step exists, rather than invented.
+
+  **Fixes a silent drop the change exposed.** Both the catalog renderer and the MCP surface collected findings from a hand-written list of five check names. `ssrParity` was added as a sixth and neither list learned about it — so a hydration failure was recorded in the catalog, marked the scenario failed, and then vanished from the agent guide, the llms text and the MCP tools: the surfaces an AI assistant actually reads. Both now derive from the verdict itself, which cannot go stale. `CHECK_KEYS` moved from `plugins/registry` down to `core/types`, beside the type it enumerates, so `core` can use it without importing upward.
+
+  **`@pyreon/mcp` refuses a stale catalog** rather than rendering blanks. At v1 findings were strings; reading one with v2 code yields `undefined` for every finding, so a component's failures display as empty — silently wrong, to a reader that cannot tell a blank is anomalous. The loader now checks the version and names the fix (`re-run atlas scan`).
+
+- Surface reactive-graph health in the Reactivity panel — orphan signals, accidental fan-out, deep derived chains. (d569b80)
+
+  `describeReactiveGraph` already derives three behavioural smells from the live graph; nothing showed them. The panel now does, most-actionable first, with each row saying what the smell COSTS rather than what it is ("one write drives many subscribers — the accidental-repaint shape", not "high-fanout: many subscribers").
+
+  Orphan signals sort first because they are the only kind that is usually a BUG rather than a cost: from the graph, state nothing reads is indistinguishable from a read that was SEVERED, and the severed case is the "UI silently never updates" class.
+
+  **Scoped to the component, which is the whole correctness of it.** The workbench and the preview share one reactivity instance — that is why this can be a client-side panel at all — so an unscoped read describes Atlas's own chrome (sidebar signals, theme, search box) as the component's smells. That would be worse than showing nothing: confidently wrong, about someone else's code, with no way for the reader to tell. A baseline is taken before the component mounts and only later nodes count; edges need both ends in scope. Bisect-verified — unscoped, the fixture's "chrome" orphan is reported as the component's.
+
+  Shown whenever a graph exists rather than gated on pressing Record: a smell is a property of the graph, not of a session, so requiring a recording to see an orphan would hide the one finding that is usually real.
+
+  **Deliberately rows, not a diagram.** #2517 §3 asked for the graph drawn via `@pyreon/flow`. The diagnostic value is the insights; a diagram of a healthy graph is a picture of nothing wrong at several times the cost, and on a real component the node count makes it unreadable exactly when it matters. The diagram stays a separate question rather than a hidden prerequisite.
+
+- **Atlas honours the target project's `resolve.alias`, and one broken component no longer takes down the workbench** (#2744). (1676b6a)
+
+  Atlas creates its Vite contexts with `configFile: false` — deliberately, since the project's config carries plugins Atlas must not double-apply (it already runs the real `@pyreon/vite-plugin`). But that also discarded `resolve.alias`, so an app whose components import through its own `~/components/…` alias failed to load every one of them.
+
+  `resolve.alias` is now extracted from the project's vite config and applied to all three Vite contexts — the dev server, the static build, and **the scan's module loader**. The scan matters as much as the workbench: without it, an aliased component is silently absent from the catalog rather than visibly broken.
+
+  Only `resolve.alias` is taken — never plugins, and deliberately not `resolve.conditions` (Atlas resolves workspace packages through the `bun` condition on purpose, and inheriting the app's would break every `@pyreon/*` import). A config that cannot be loaded warns and degrades to no aliases rather than refusing to start.
+
+  `atlas.config.ts` gains an `alias` key as the explicit escape hatch. Entries declared there win — Vite matches in order and these are placed first.
+
+  **Separately: a component that fails to load is now one broken card, not a dead workbench.** The generated catalog module used static `import * as __modN from '…'` per component; a static import cannot be caught, so a single unresolvable import failed the whole module and nothing rendered. Each component is now imported individually through a caught dynamic import, and the render path's existing error-card branch — previously unreachable for this failure — surfaces the module's own message (`Cannot find module '~/shared/tokens'`) instead of a generic "could not load".
+
+- **`--check` — the ratchet. `atlas scan` and `atlas verify` can now answer "did I help?", not just "how is it now?".** (ebeb330)
+
+  Absolute counts (`14 verified, 1 failing`) answer the second question and cannot answer the first — which is the one anyone iterating actually has, and the only signal an agent can use to decide whether to keep a change or back it out. A single number is not a reward signal; a delta is.
+
+  `--check` compares the run against the **committed** `atlas-catalog.json` and exits non-zero on a regression:
+
+  ```
+  atlas --check: REGRESSED — 2 check(s) started failing
+    ✗ button--empty — now failing: interaction
+  ```
+
+  **A check that STOPS RUNNING counts as a regression.** This is the case absolute counts structurally cannot catch, because losing coverage makes the numbers improve. Delete a wrapper from `atlas.config.ts` and every mount-dependent check drops to `skip`:
+
+  ```
+  atlas: discovered 1 component(s), 2 scenario(s) — 0 verified, 0 failing, 2 unverified.
+  atlas --check: REGRESSED — 4 check(s) stopped running
+    ✗ button--empty — no longer checked: interaction, leak
+      (coverage lost — the failure did not go away, the check did)
+  ```
+
+  `2 failing` became `0 failing` and the catalog reads as fixed. Losing coverage is the one way to "fix" a red catalog that must never read as green.
+
+  Three deliberate behaviours: `--check` never writes the catalog (a ratchet that overwrites its own baseline compares a run against itself and can never report a regression again); a missing or unreadable baseline is exit 0 with a note, never a failure (making the first `--check` run red for everybody is how a ratchet gets disabled on day one); and a new or removed scenario is not a regression (adding a component with a failing edge case is new information, deleting one is a legitimate edit).
+
+  The diff is per CHECK rather than per scenario — "still failing" and "failing for a different reason" are different events — and iterates `CHECK_KEYS`, so a seventh check is ratcheted the day it lands.
+
+- Add `routerPlugin` — route state as a scenario axis for components that ask the router questions. (efa2fac)
+
+  **Sized honestly.** A component calling `useRouter()`/`useParams()` does not crash in the workbench today: Atlas already detects a missing provider and reports that the fix is an `atlas.config.ts` wrapper. So this removes hand-written boilerplate, and adds the thing a wrapper cannot give you — `/users/1` and `/users/999` as SEPARATE verified scenarios, each with its own verdict, snapshot and URL.
+
+  The URL is carried as scenario METADATA, not as an arg. In `args` it would render as a control the component does not have and let a user "edit" something with no effect.
+
+  `installRouter` builds the router from the module the loader resolved, never Atlas's own copy — `useRouter()` resolves against module-level state inside a particular copy of `@pyreon/router`, so a router made from the wrong one is invisible to the component and reports "no router" while one demonstrably exists. It clears the active router on dispose, because that state outlives the scan and would otherwise answer for whatever runs next, including a check meant to observe a component WITHOUT one.
+
+  With no URLs configured the plugin is the identity function, so it costs nothing until it is given something to vary.
+
+- Add the SSR-parity verify check — does each scenario survive `renderToString` + hydrate? (073b3ae)
+
+  A hydration mismatch is the framework's own first-class bug class: the SSR↔hydration differential fuzz found six shipped instances, every one a cursor misalignment where the server's HTML and the client's expectation disagreed about how many DOM nodes a construct occupies. None of Atlas's other checks could see it — `interaction` mounts on the client and never renders on a server, and `snapshot` photographs one render, so a build that is consistently wrong photographs consistently. Every scenario a catalog already has now becomes a parity test at zero authoring cost.
+
+  **Two oracles, because one is not enough.** The runtime's own mismatch channel must report nothing, AND the hydrated DOM must equal a fresh client mount. The second exists because the first can agree on broken — an SSR pass and a hydrate pass reaching the same wrong DOM produce zero mismatches, and only an independently-built third instance reveals it.
+
+  `VerifyVerdict` gains a sixth check, `ssrParity`. Consumers reading the catalog's verdict shape see one more field; `verify-browser` carries the node-side verdict through rather than recomputing it.
+
+  **Honest limits, stated in the source rather than discovered later.** The check is BLIND to `typeof window` branching: both renders happen in one process with DOM globals installed so components can mount at all, so the "server" pass sees a browser too and the two sides agree. What it does catch is non-deterministic renders (`Math.random()`, `Date.now()`, per-render ids), components that throw only under `renderToString`, and the framework's own cursor-misalignment class. It skips with a reason when `@pyreon/runtime-server` is not installed, since a component library with no SSR story is a legitimate project.
+
+  Verified end to end, not just unit-tested: against the 43-scenario workshop catalog it reports 43 passes, and perturbing a real component to render non-deterministically moves the scan to 39 verified / 4 failing with a source-anchored finding (`text at root > button > reactive: expected 12, DOM had 11`).
+
+- **Store panel — the writes an interaction made, steppable** (Atlas roadmap §9, the last open item on #2517). (1676b6a)
+
+  `@pyreon/store` publishes a mutation stream: every write announces its store, whether it was a `patch` or a direct set, and the per-key old/new values. Storybook has no equivalent, because React state changes are private to the component that owns them — there is nothing to subscribe to.
+
+  Press Record, interact with the preview, then step back through the writes. Stepping back shows the store **as it was**, not a recomputation. The panel also flags keys written more than once in a single interaction — a loop or a chain of dependent writes, worth seeing and not automatically wrong.
+
+  Recording is explicit rather than always-on, matching the Perf panel: `addStorePlugin` attaches to every store created afterwards, so a session-long subscription would pay for every write whether anyone is looking or not.
+
+  `@pyreon/store` is an **optional** peer — a project that uses no stores sees a panel that says so, not an error.
+
+- **`atlas verify <Component>` — the write → verify → fix loop, and a scan that says WHICH check failed.** (019d5d1)
+
+  A scan reported `41 verified, 2 failing`. That counts _scenarios_, and it withholds the finding: six checks run per scenario, and the one that failed is the whole content of the message. Answering "which check?" meant opening `atlas-catalog.json` and walking it by hand.
+
+  - **Every run now prints a per-check tally** — `checks: a11y 18/20 ✗ · interaction 43/43 · ssrParity 43/43 · leak 43/43` — plus `not run:` lines naming the checks that were unavailable and why. This is not cosmetic: on a package where `@pyreon/runtime-server` does not resolve, the scan reports **1090 of 1090 scenarios verified** having run two of the six checks. True, and completely misleading without the tally.
+  - **A failing scan now prints the failing CHECK and its findings**, not a bare list of scenario ids. Capped at 20 rows on a whole-catalog scan, and the cap reports itself.
+  - **New `atlas verify [Component] [--cwd <dir>] [--json]`.** Discovery still walks the project — a component's file is not known until it does — but decoration and verification run only for the match. Measured on `@pyreon/ui-components` (108 components, 1090 scenarios): 1.35s full scan against 0.90s scoped to one component's 60 scenarios; the verify work drops ~18× while discovery dominates the residual, so it is a focus tool first and a speed tool second. Failing scenarios print uncapped. `--json` emits the report as data for an agent to branch on.
+
+  Three refusals in `atlas verify` are deliberate. It **never writes `atlas-catalog.json`** — a one-component catalog would replace the real one and silently break the agent guide, the MCP tools and `atlas check` for everything else. An **unmatched name exits non-zero** with suggestions, because filtering to nothing otherwise reports "0 scenarios, 0 failing", which reads as a pass. And a run where **nothing could be verified exits non-zero** too: zero failures is not a pass when zero checks ran.
+
+  **Load errors are classified instead of blanket-blamed.** `virtual:zero/routes` is a module a build plugin synthesises; the import is correct and unresolvable only because Atlas does not run that plugin. Every scan of every zero app printed "fix the import and re-run" for it. Those are now reported separately, as "nothing to fix" — while still stating that a component defined in such a file would be absent, which is the half that remains true. A genuinely broken import keeps the loud, actionable message.
+
+  **Fixes a pre-existing arg-parsing bug**: `--cwd` was missing from the value-flag set, so any command reading a positional alongside it took the _path_ as that positional. `atlas check Button --cwd ./ui` parsed `./ui` as the component's args JSON and reported "could not parse the args" for a command line that is entirely correct.
+
+  `CHECK_KEYS` and `CheckKey` are now exported from the plugin registry as the single owner of the check list, so a seventh check cannot be merged into verdicts while going uncounted in the report.
+
+  `pyreon atlas --help` lists the new `verify` subcommand (`@pyreon/cli` passes every argument through, so the command itself already worked — the help text was the gap).
+
+### Patch Changes
+
+- Diagnosability round from an upstream report. `atlas scan`'s dual-instance refusal now prints the TWO resolved framework copies (path + version, extracted from the caught sentinel error's own `A:`/`B:` lines) — the summary alone said "align the versions" while withholding where the second copy lives, sending the reader into node_modules archaeology for a fact the error already carried. A message shape with no `A:`/`B:` lines degrades to the summary standing alone. Plus: `@pyreon/validate` and `@pyreon/validation` READMEs each open with an explicit not-to-be-confused cross-reference (near-identical names, different jobs — validator-you-use vs stack-wide contract/adapters — a documented conflation trap). (443a646)
+- Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration). (1d74edc)
+- Two new lint rules for validated upstream-shipped bug shapes (97 → 99 rules): (47ef812)
+
+  - `pyreon/no-signal-read-in-attrs-callback` (styling, warn, dep-gated on `@pyreon/rocketstyle`): rocketstyle `.attrs()` callbacks run ONCE at setup, so a zero-arg call of a same-file signal/computed binding inside the callback captures a dead value that never updates (the ui-collapse-that-never-collapsed shape). Silent on `props.*`/`theme.*` reads, calls with args, the `.attrs({...})` object form, and handlers defined inside the callback; silent entirely in projects without `@pyreon/rocketstyle`.
+
+  - `pyreon/no-guard-only-signal-reads-in-effect` (reactivity, info): flags an `effect()` whose EVERY reactive read (tracked signal call or `props.X` read) sits behind a conditional whose own test is provably non-reactive (`if (ref.current) { chart.setOption(props.option) }`, incl. the early-return spelling) — the first run can short-circuit before any read, so the effect subscribes to nothing and never re-runs. Zero-FP construction: any unconditional proven OR possible read (an unclassifiable zero-arg call like `chart.instance()`), a reactive guard test, both-branch reads, loop-body reads, nested-callback reads, and switch/catch shapes all suppress the report.
+
+  `@pyreon/atlas`: the workbench preview's `dir`-applying effect now reads the `dir()` signal before the element guard — the previous shape subscribed only when the guard was truthy on the first run (it was in practice, since the effect is created after the element is captured, but the shape was fragile and is exactly what the new rule flags).
+
+- Eight README examples are now typechecked in CI. (e0e0dc0)
+
+  `check-doc-examples` only ever looked at `docs/src/content/docs/**`; package READMEs carry ~550 `ts`/`tsx` blocks and nothing verified any of them. The gate now walks package READMEs too, and each of these packages has one verified-clean example opted in with the `// @check` marker.
+
+  Each was compiled before being marked, not marked and then debugged. No content changed — the marker is a comment inside the fence.
+
+- Updated dependencies:
+  - @pyreon/compiler@0.52.0
+  - @pyreon/core@0.52.0
+  - @pyreon/reactivity@0.52.0
+  - @pyreon/unistyle@0.52.0
+  - @pyreon/hooks@0.52.0
+  - @pyreon/runtime-dom@0.52.0
+  - @pyreon/code@0.52.0
+  - @pyreon/feature@0.52.0
+  - @pyreon/permissions@0.52.0
+  - @pyreon/store@0.52.0
+  - @pyreon/vite-plugin@0.52.0
+  - @pyreon/rocketstyle@0.52.0
+  - @pyreon/styler@0.52.0
+  - @pyreon/elements@0.52.0
+  - @pyreon/ui-core@0.52.0
+  - @pyreon/config@0.52.0
+
 ## 0.51.0
 
 ### Minor Changes

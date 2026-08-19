@@ -1,5 +1,116 @@
 # @pyreon/primitives
 
+## 0.52.0
+
+### Minor Changes
+
+- Add `<Audio>` — sound playback on web, iOS and Android. (1612ed1)
+
+  Mirrors `<Video>` in shape: same `src` dispatch (a bare name is a bundled
+  asset), the same three-value `onStatusChange` vocabulary
+  (`waiting`/`playing`/`paused`), and a declarative prop surface rather than a
+  player-controller hook.
+
+  **It is deliberately NON-VISUAL, which is the one place it does not mirror
+  `<Video>`.** Audio has no view on the native targets — `AVAudioPlayer` and
+  Media3 are objects, not views — so there is no `controls` prop. The web's
+  browser-styled control bar has no cross-platform counterpart, and a prop that
+  silently no-ops on two of three targets is the failure this API family
+  refuses; `useScreenOrientation` omits `lock()` for exactly the same reason.
+  Compose a transport from Pyreon primitives and drive it with these props.
+
+  `volume` is **clamped** to 0..1 rather than rejected — on all three arms, and
+  at emit time too, so `volume={1.7}` bakes as `1` and the generated native
+  source is honest about what will actually play. An out-of-range value is a
+  caller slip, and refusing to play is a worse answer than the nearest legal
+  level.
+
+  The native host is a concrete zero-size view rather than `EmptyView`: a
+  modifier attached to `EmptyView` is silently inert, which is how a `<Modal>`
+  sheet once shipped that never presented. The playback engine is injected on
+  both targets, so the status machine and the clamp are testable with no
+  AVFoundation, no Android SDK and no device.
+
+  Adds `useAudioRecorder` alongside it — the input half of the same concept.
+  `start()` resolves `false` on a denied microphone permission rather than
+  throwing: that is the most likely outcome of the call and an ordinary branch
+  in any UI that uses it, so callers get an `if` rather than a `try`, matching
+  `useWakeLock.request()`. `stop()` resolves a URL — an object URL on the web,
+  a file URL natively — because that is the one representation all three targets
+  produce and every consumer can use; a zero-length capture resolves `null`
+  rather than an empty URL that plays nothing. Disposal releases the microphone
+  tracks, which is what turns the OS recording indicator off.
+
+  And `useCamera` — take a photo through the SYSTEM capture UI on every target.
+  It mirrors `useImagePicker` exactly, because the two differ only in which
+  system flow they open: `capture()` resolves a URI or `null` and never
+  rejects, since a cancel and an unavailable camera are the same outcome to a
+  caller. The system UI owns the permission prompt, so there is no permission
+  plumbing to get subtly different per platform.
+
+  A CUSTOM in-app viewfinder is deliberately out of scope. An AVCaptureSession
+  layer, a CameraX PreviewView and a `<video>` element are not one thing
+  wearing three hats, and a surface that only half-crosses is worse than one
+  that says what it covers — `useNativeModule` is the escape hatch there, as it
+  is for Bluetooth GATT.
+
+  Plus `useSpeech` and `useDeviceMotion`, the last two Tier-1 crossers.
+
+  `useSpeech` CANCELS before each `speak()` — queueing is the platform default
+  on all three, so without it a second press talks over the first instead of
+  replacing it. Rate, pitch and voice are deliberately out of scope: the
+  platforms disagree on ranges and on how voices are identified, so one name
+  would mean three different things.
+
+  `useDeviceMotion` has an explicit `start()` rather than listening on mount,
+  because an always-on hook would be wrong on all three targets: iOS Safari
+  gates the event behind a gesture-triggered prompt, and both native targets
+  want start/stop so the sensor is not draining battery for a screen nobody is
+  looking at. Where `requestPermission` does not exist (everything but iOS
+  Safari) its ABSENCE is a grant, not a failure.
+
+- Add `connectWebHost()` — the reusable guest-side glue for the `<WebView>` bridge, the other half of the WebView-host pattern that lets web-only-rich packages (charts / flow / rich-text / code / document) run 1:1 on iOS/Android by hosting the same web bundle inside a native WebView. A bundle calls `connectWebHost()` to read host-pushed props (`data()` / `onData`, fired on every `pyreondata` push) and send events back (`emit` → the host `onMessage`) — identical code on web, iOS, and Android, so it replaces the hand-rolled `window.__pyreonData` / `window.pyreonPostMessage` wiring with one tested implementation. (b9c82f6)
+- Ship `<Transition>` / `<TransitionGroup>` from `@pyreon/primitives` — the animation vocabulary now has an import path that resolves on every target (5a83e86)
+
+  PMTC has lowered `<Transition>` and `<TransitionGroup>` to real platform
+  animation since M2.7/M2.8 — SwiftUI `.transition(…)` + `.animation(_:value:)`,
+  Compose `AnimatedVisibility(enter =, exit =)` — with preset mapping, asymmetric
+  enter/leave timing and device proof. But `@pyreon/primitives` exported neither
+  name, and the only runtime export lived in `@pyreon/runtime-dom`, which the
+  compiler correctly flags web-only. So the one import that worked on web warned
+  on native, and the import native accepted did not exist: a fully built
+  capability with no reachable door.
+
+  `@pyreon/primitives` now exports both, with a self-contained web
+  implementation built on `h()` + `renderEffect` alone (no `@pyreon/runtime-dom`
+  dependency — the package keeps its two peer deps, which is what lets it be the
+  multiplatform vocabulary).
+
+  The prop contract mirrors the native emitters exactly: `show`, `name`
+  (`fade` / `scale-in` / `slide-up|down|left|right`, camelCase and kebab-case
+  both accepted), `duration`, `easing`, and the asymmetric
+  `enterDuration` / `leaveDuration` / `enterEasing` / `leaveEasing` overrides that
+  fall back to the symmetric value. Direction is the direction of travel, so a
+  slide-up rises into place from below — matching `.move(edge: .bottom)` and
+  `slideInVertically { it }`.
+
+  On web the hidden state is `display:none` on the wrapper rather than an unmount,
+  so an animation wrapper never gates its children out of SSR and a hidden
+  `<Transition>` contributes no flex `gap`. Only transition LONGHANDS are ever
+  assigned, so a consumer's own `transition-delay` survives.
+
+  The native emit is unchanged and asserted byte-identical to the bare-tag form.
+  The web-only warnings for `@pyreon/kinetic` and `@pyreon/runtime-dom` now name
+  `@pyreon/primitives` as the import that actually crosses, instead of naming a
+  tag whose only import was broken.
+
+### Patch Changes
+
+- Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration). (1d74edc)
+- Updated dependencies:
+  - @pyreon/core@0.52.0
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Minor Changes

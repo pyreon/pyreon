@@ -1,5 +1,54 @@
 # @pyreon/cli
 
+## 0.52.0
+
+### Minor Changes
+
+- **`atlas verify <Component>` — the write → verify → fix loop, and a scan that says WHICH check failed.** (019d5d1)
+
+  A scan reported `41 verified, 2 failing`. That counts _scenarios_, and it withholds the finding: six checks run per scenario, and the one that failed is the whole content of the message. Answering "which check?" meant opening `atlas-catalog.json` and walking it by hand.
+
+  - **Every run now prints a per-check tally** — `checks: a11y 18/20 ✗ · interaction 43/43 · ssrParity 43/43 · leak 43/43` — plus `not run:` lines naming the checks that were unavailable and why. This is not cosmetic: on a package where `@pyreon/runtime-server` does not resolve, the scan reports **1090 of 1090 scenarios verified** having run two of the six checks. True, and completely misleading without the tally.
+  - **A failing scan now prints the failing CHECK and its findings**, not a bare list of scenario ids. Capped at 20 rows on a whole-catalog scan, and the cap reports itself.
+  - **New `atlas verify [Component] [--cwd <dir>] [--json]`.** Discovery still walks the project — a component's file is not known until it does — but decoration and verification run only for the match. Measured on `@pyreon/ui-components` (108 components, 1090 scenarios): 1.35s full scan against 0.90s scoped to one component's 60 scenarios; the verify work drops ~18× while discovery dominates the residual, so it is a focus tool first and a speed tool second. Failing scenarios print uncapped. `--json` emits the report as data for an agent to branch on.
+
+  Three refusals in `atlas verify` are deliberate. It **never writes `atlas-catalog.json`** — a one-component catalog would replace the real one and silently break the agent guide, the MCP tools and `atlas check` for everything else. An **unmatched name exits non-zero** with suggestions, because filtering to nothing otherwise reports "0 scenarios, 0 failing", which reads as a pass. And a run where **nothing could be verified exits non-zero** too: zero failures is not a pass when zero checks ran.
+
+  **Load errors are classified instead of blanket-blamed.** `virtual:zero/routes` is a module a build plugin synthesises; the import is correct and unresolvable only because Atlas does not run that plugin. Every scan of every zero app printed "fix the import and re-run" for it. Those are now reported separately, as "nothing to fix" — while still stating that a component defined in such a file would be absent, which is the half that remains true. A genuinely broken import keeps the loud, actionable message.
+
+  **Fixes a pre-existing arg-parsing bug**: `--cwd` was missing from the value-flag set, so any command reading a positional alongside it took the _path_ as that positional. `atlas check Button --cwd ./ui` parsed `./ui` as the component's args JSON and reported "could not parse the args" for a command line that is entirely correct.
+
+  `CHECK_KEYS` and `CheckKey` are now exported from the plugin registry as the single owner of the check list, so a seventh check cannot be merged into verdicts while going uncounted in the report.
+
+  `pyreon atlas --help` lists the new `verify` subcommand (`@pyreon/cli` passes every argument through, so the command itself already worked — the help text was the gap).
+
+- **`get_api` now answers for `@pyreon/a11y` and `@pyreon/rich-text`.** Both had manifests and ZERO api-reference entries, so an agent asking about them got nothing — 53 packages were served, not 56. A manifest is the docs pipeline's INPUT; an api-reference entry is what an agent can retrieve, and nothing connected the two. Adding their marker pairs generates 7 and 3 symbols respectively from the manifests they already had. (c000667)
+
+  `check-mcp-docs` now gates that: a package with a manifest that `get_api` cannot answer for is a failure, with the marker-pair fix printed. It checks reachable KEYS rather than markers, because a package may legitimately be served by hand-written entries (`@pyreon/i18n` is) and demanding a marker would force a migration the pipeline makes optional.
+
+  **`check-doc-claims` gained 7 claim sites (23 → 30)**, covering counts that had rotted precisely because nothing watched them: the MCP tool count (CLAUDE.md said 18, actual 19), manifest coverage ("52 of 65 published packages", actual 56 of 75), the manifest-exempt count (13, actual 19 — the six `native-*` packages joined the list), and three claims in `@pyreon/primitives`' README.
+
+- Ship co-located native ports, and gate that they always do. (2e12add)
+
+  - **`@pyreon/table`**: its `PyreonTableState` Swift/Kotlin ports (added in #2828)
+    were declared via `pyreon.native` and compiled by the co-source gate, but the
+    package's `files` array did not include `native/swift` / `native/kotlin` — so
+    the ports never reached the published tarball. A native app installing
+    `@pyreon/table` could not resolve them. Added the two `files` entries.
+
+  - **`@pyreon/cli`** (`runDistributionGate`, i.e. `pyreon doctor` + the
+    `check-distribution` CI gate): a new rule, `distribution/native-source-not-
+shipped`, fails any package that declares `pyreon.native` but omits the
+    declared native source dirs from `files`. This is the class of bug above —
+    a co-located port that builds in-repo but is absent from npm. It surfaced two
+    real instances (`@pyreon/sync`, `@pyreon/table`), both fixed here.
+
+### Patch Changes
+
+- Updated dependencies:
+  - @pyreon/compiler@0.52.0
+  - @pyreon/lint@0.52.0
+
 ## 0.51.0
 
 ### Minor Changes

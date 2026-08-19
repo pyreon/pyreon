@@ -1,5 +1,176 @@
 # @pyreon/reactivity
 
+## 0.52.0
+
+### Minor Changes
+
+- Two-tier TRACKING-subscriber storage — an `_s1` inline slot mirroring the `_d1` idiom already used for direct updaters. (cf50c79)
+
+  A census of the row-list and computed-chain workloads found the tracking-subscriber count is exactly **1 in 100% of measured cases**, so the `_s` Set — and its hashed add/delete — was pure overhead there. The first tracking subscriber now lives in a plain field and only a SECOND one promotes to a Set (no demotion; a Set that shrinks back to one entry stays a Set).
+
+  Measured in real Chromium/V8, two independent 15-pass round-robin runs, page-isolated per arm, load 4.25–6.87 (median, CI95, arm verified from the loaded module before each sample):
+
+  | region                                      | baseline    | tier        | ratio                        |
+  | ------------------------------------------- | ----------- | ----------- | ---------------------------- |
+  | dispose 50k tracked effects                 | 2.500ms     | 1.400ms     | **1.79× CI-disjoint**        |
+  | 50k writes through a 20-deep computed chain | 41.6–42.5ms | 35.6–35.7ms | **1.17–1.19× CI-disjoint**   |
+  | 20k batches × 10 writes                     | 8.8–8.9ms   | 7.7–8.0ms   | **1.10–1.16× CI-disjoint**   |
+  | 300k writes, 1 tracked subscriber           | 7.0ms       | 6.4–6.5ms   | **1.08–1.09× CI-disjoint**   |
+  | 5k writes × 50 subscribers (Set path)       | 8.1–8.2ms   | 8.2–8.3ms   | tie (unchanged, as intended) |
+
+  The notify win comes from deleting a real allocation: reaching a sole subscriber used to require `_s.values().next().value`, materialising a Set iterator plus an iterator-result object **on every write**. `propagateLazyDirty`'s fused chain walk now hops via the inline slot for the same reason.
+
+  `deps` records the HOST rather than the host's subscriber Set (there is no Set to record while a source has one subscriber). That also makes verify-mode dep reuse strictly more stable: the `_suspendSoleSubscriber` container swap used to change `host._s`'s identity and spuriously diverge every effect tracking that signal.
+
+  Also fixes a latent liveness bug in `@pyreon/solid-compat`'s `createStore` sweep, which tested `_s` alone and so reported "unused" for the dominant single-subscriber shape — evicting a LIVE signal, after which writes to that path stopped re-running its effect. The tier-aware check is now owned by `@pyreon/reactivity` as `_hasSubscribers()` (covering `_s1`/`_s`/`_d1`/`_d`) so consumers cannot re-derive it and miss a tier.
+
+  This is a JS-only saving. It is **below the resolution floor of the row-list DOM benchmark**: `clear rows` is timer-quantised at 100µs (the suite reports it "too fast to time"), while the subscriber-teardown saving for a 1,000-row clear is ~22µs. No end-to-end row-list win is claimed.
+
+- `computed(fn)` now gates on value by default, without giving up laziness (f2194d5)
+
+  A computed whose recomputed value is `Object.is`-equal to its previous value no
+  longer notifies downstream. This matches Solid's `createMemo`, Vue's `computed`
+  and Svelte's `$derived`, and closes the one place Pyreon diverged from every
+  peer: an effect re-running on an identical derived value.
+
+  Crucially this does NOT make computeds eager. The dirty cascade stays flag-only
+  until it reaches a RUNNER (an effect notify, a raw listener, a `direct()`
+  updater), at which point the computed immediately above books a tier-1 refresh
+  whose gate decides whether that runner fires. So a computed with no live
+  consumer still evaluates zero times across any number of dependency writes,
+  while one behind N consumers evaluates once and runs none of them on a blocked
+  write. The evaluation is not extra work — the runner was going to pull that
+  value during the drain anyway.
+
+  An explicit `{ equals }` keeps its existing eager semantics deliberately: it is
+  a statement about WHERE the gate belongs, typically a cheap identity-preserving
+  lookup placed above a consumer that rebuilds a fresh object and so could never
+  gate on its own. Nothing about explicit-`equals` behaviour changes.
+
+  BREAKING for anyone relying on a computed notifying on every dependency change
+  regardless of value. A derivation that returns a fresh object or array each run
+  is unaffected (a new reference is never `Object.is`-equal). A derivation
+  returning a scalar that repeats will now stop propagating — which is the intent.
+
+### Patch Changes
+
+- Correct the `computed({ equals })` docs — there is no default equality check (57b94ed)
+
+  The manifest told users `equals` "defaults to `Object.is`". It does not.
+  `computed.ts` reads `options?.equals ? computedWithEquals(fn, …) : <plain
+computed>`, so WITHOUT `equals` a computed notifies downstream on every
+  dependency change even when the recomputed value is byte-identical.
+
+  The asymmetry is the part nobody expects: a SIGNAL write does gate on
+  `Object.is` (`set(same)` is a no-op), so it is reasonable to assume a computed
+  does too. It does not, and the claim propagated to the MCP api-reference and
+  the generated reference page — i.e. to AI assistants writing Pyreon code.
+
+  This is a performance claim, not a wording nit. `computed(() => items().length)`
+  re-runs its effects on every item mutation that leaves the length alone. A
+  memoization-wall benchmark measured the gated form at the Vanilla floor (12µs)
+  and the BARE form users actually write at 46µs — last in the field, behind
+  every competitor. The docs were describing the fast path while handing out the
+  slow one.
+
+  Corrected in the manifest (the single source), with a `mistakes` entry so the
+  footgun surfaces in `get_api` rather than only in prose, and regenerated into
+  both derived surfaces. No runtime change.
+
+- Stop calling `computed` "memoized" without saying what that does and does not cover (1c70f68)
+
+  `computed` caches its value and recomputes lazily — but it does NOT gate
+  propagation on equality. Without `equals` it notifies downstream on every
+  dependency change, even when the recomputed value is identical. That is the one
+  place Pyreon diverges from Solid `createMemo` and Vue/Preact `computed`, which
+  all memoize by default.
+
+  The prose said so. Four summary lines did not, and those are the ones people
+  read first: the `llms.txt`/`llms-full.txt` one-liner that AI assistants consume,
+  the header comment in the usage example, the API table row, and the return-value
+  description. All four said "memoized" unqualified — the exact word that means
+  "gates on equality" in every peer framework, aimed squarely at the audience most
+  likely to be porting from one.
+
+  No behaviour change. The divergence is now stated where a reader meets it,
+  including an explicit note for anyone porting from Solid/Vue/Preact.
+
+- Document that `{ equals }` trades laziness for gating, and gate `useFieldArray().length` (cc455e8)
+
+  `computed(fn, { equals })` does not simply add an equality check — it switches
+  the computed from LAZY to EAGER, because gating requires knowing the new value
+  at notification time. With a live subscriber that is free (it would have
+  evaluated anyway). Without one, a computed that was never evaluated now
+  evaluates on every dependency change.
+
+  That inverts the obvious advice. Gating `computed(() => walkEntireDocument(doc()))`
+  buys a suppressed notification and pays a full document walk on every keystroke
+  whenever nothing is subscribed. The rule is now stated where a reader meets the
+  option: gate CHEAP bodies (`n > 0`, `arr.length`, `x !== undefined`), leave
+  expensive ones lazy.
+
+  `useFieldArray().length` was exactly the cheap case the docs already used as
+  their example of what to gate, un-gated in our own code. `items` changes
+  identity on every move/swap while the count does not, so four reorders sent
+  five notifications where one was correct.
+
+- `createSelector().subscribe()` — unsubscribe without touching the map (ea4e50a)
+
+  The `.subscribe()` channel is the compiler-emitted fast path for a `<For>` row's
+  reactive class, so its dispose path runs once per row on every list teardown. It
+  was `boundSubs.get(value)` + `boundSubs.delete(value)`: two hashed map operations
+  per row.
+
+  The map value is now a holder the disposer closes over, so unsubscribing writes
+  one field and touches no map, and the last unsubscribe drops the whole map in one
+  `clear()`. Dead holders are reclaimed on insertion, matching the amortisation the
+  tracked channel already used.
+
+  Measured on the 1000-row krausest shape in real Chromium: `clear rows` 140µs →
+  125µs (framework overhead over vanilla 60µs → 35µs), with the JS-side clear path
+  78.7µs → 60.7µs. Costs one small object per live subscribed key (148.8 → 180.8
+  B/key), fully reclaimed on teardown. No API change.
+
+- `createSelector` now RECLAIMS per-key state, so a selector over a list whose ids never repeat no longer grows without bound. (9593fbc)
+
+  The selector keeps a per-key subscriber bucket so a selection change can notify only the two affected keys instead of every subscriber. That bucket was created on first access and never removed: disposing the subscriber emptied the bucket's `Set` but left the key, the empty `Set` and the host object in the internal maps for the selector's lifetime. For a bounded key space (tabs, a radio group) this is invisible. For UNBOUNDED-cardinality churn — infinite scroll, a chat log, a paginated table whose row ids never repeat — it accumulated one bucket per row ever rendered, and with OBJECT keys it pinned the user's own objects too. Measured on V8: **257.9 bytes retained per unique key** (24.6 MB after 100,000 keys had been queried and every subscriber disposed).
+
+  Two changes, both invisible to callers:
+
+  - The `subs` (value → Set) and `hosts` (value → `{_s}`) maps are merged into one. They always stored the same relationship, so every key paid two Map entries to record one fact. The bucket's `Set` is now allocated lazily by `trackSubscriber`, so a read outside any tracking scope allocates nothing at all.
+  - A key whose bucket has no subscribers left is dropped by an amortized sweep on the next key insertion. A bucket with no subscribers holds no state — the current selection lives outside the map — so a swept key that is queried again simply gets a fresh bucket, which makes the sweep semantically invisible. Steady-state memory is now proportional to the keys currently SUBSCRIBED rather than to every key the selector has ever been asked about: the same 100,000-key workload retains **3.1 bytes per key** (0.29 MB), an 84× reduction.
+
+  The sweep can never drop a live subscription: it deletes only buckets that are empty, and it never runs while a selection change is being delivered. `dispose()` still releases everything at once and is still worth calling when a selector outlives its list.
+
+- fix(reactivity): `watch` now runs its per-run cleanup on OWNING-SCOPE disposal, not only on stop/re-run (127e5d6)
+
+  `watch(source, cb)` stored the cleanup returned by its callback in a closure the internal effect never owned, so the effect's `runCleanup` (which fires on re-run AND on `dispose()`) never saw it — the cleanup ran only at the next re-run or when the caller invoked the returned `stop()`. A consumer that discards `stop()` and relies on its owning component scope disposing the effect (the dominant shape) therefore orphaned the cleanup whenever the scope died between re-runs.
+
+  Real-world impact: `@pyreon/kinetic`'s `useAnimationEnd` (Transition/Collapse/TransitionItem) added `transitionend`/`animationend` listeners plus a `setTimeout(done, timeout)` (default 5000ms) in the callback and discarded the disposer, so unmounting a component mid-enter-animation left the 5s timer and both listeners pinning the detached subtree and the disposed component's signals until the timer self-fired. Every `watch` consumer that returns a cleanup shared the same latent orphan.
+
+  Fix: register the per-run cleanup on the effect via `onCleanup` instead of a closure, so the effect owns it and scope disposal runs it. Behaviour is otherwise preserved — cleanup still runs before each re-run and on `stop()`. Verified across the full reactivity suite (749/749) and every `watch` consumer (kinetic, form, hooks, validate, ui-primitives).
+
+- `why()` no longer breaks on a cyclic signal value (c7feb0b)
+
+  `why()` interpolated `JSON.stringify(e.prev)` directly, which throws on a cyclic
+  structure. Cyclic values in signals are ordinary — a DOM node, a store with a
+  back-reference, a Yjs doc, any class instance with a parent pointer.
+
+  Three failures compounded, and the third is the one that matters:
+
+  1. the throw landed inside the signal-write path;
+  2. the framework's trace guard caught it and printed _"signal trace listener
+     threw — listener is buggy"_, blaming the user's listener when the buggy
+     listener was `why()` itself;
+  3. the log entry was never recorded, so `why()` concluded **"No signal updates
+     detected"** — a debugging tool reporting that nothing happened at exactly the
+     moment something did, which sends the reader off to look somewhere else.
+
+  It now uses `preview()` from `reactive-trace.ts`, which was already cycle-safe
+  and whose own comment names this hazard ("Avoid full JSON.stringify — it can be
+  huge or throw on cycles / BigInt / getters"). The lesson had been learned in one
+  file and not applied in its sibling.
+
 ## 0.51.0
 
 ### Patch Changes

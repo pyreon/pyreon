@@ -1,5 +1,45 @@
 # @pyreon/machine
 
+## 0.52.0
+
+### Minor Changes
+
+- Co-locate native runtimes into their own packages. (ed6518a)
+
+  The Swift/Kotlin runtimes for form, store, state-tree, machine, i18n, permissions,
+  and query move out of the `@pyreon/native-runtime-*` monolith into each package's
+  `native/{swift,kotlin}/` (declared via the `pyreon.native` package.json field,
+  aggregated by `pyreon-native wire`). Framework-base runtimes (reactivity/styling/JSON
+  helpers) stay in the monolith. A new `scripts/check-native-cosource.ts` gate compiles
+  and smoke-runs every co-located `.swift`/`.kt` against the stub harness so a relocated
+  runtime can't rot silently. No API change — this is a source-location move.
+
+### Patch Changes
+
+- Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration). (1d74edc)
+- Ship the MIT LICENSE file in the package tarball (8aeffe0)
+
+  These eight published packages were missing a `LICENSE` file. The repo's
+  own rule has always been that every package carries one ("Every package
+  MUST have `LICENSE` (MIT) and `README.md` — no exceptions"), but nothing
+  enforced it, so the gap went unnoticed.
+
+  No runtime change. It matters anyway: consumers, vendoring tools and
+  licence scanners read the file from the tarball, and its absence makes an
+  MIT-licensed package look unlicensed at the point where that question is
+  actually asked. A gate now keeps every workspace covered.
+
+- fix(machine): reject non-existent transition targets at construction; batch the `always` cascade so reactive readers never see a transient state (faf933f)
+
+  - **A non-existent / typo'd transition target used to silently corrupt the machine.** `resolveTransition`/`resolveAlways` returned the target without checking it exists, so `send('GO')` into a typo'd `'lodaing'` set the state there — `matches(...)` false for every real state, `nextEvents()` empty, every subsequent `send()` a no-op — permanently stuck, with no error (TS doesn't F-bound targets to `keyof states`, so it compiles clean; JS consumers have no protection at all). Every `on` / `always` / guarded target is now validated at `createMachine(...)` and throws like an invalid `initial` does.
+  - **The `send`/`reset`/creation `always` cascade wasn't batched**, so a reactive reader (`effect`/`computed` on `machine()`) re-ran once per intermediate `always` step and observed the transient state — contradicting the manifest's documented "a transient state is never observed by reactive readers". The mutation + cascade are now wrapped in `batch()`; a subscriber settles on the final state, while the per-step `onEnter`/`onExit`/`onTransition` imperative callbacks still fire per step.
+  - **Documented a `reset()` gotcha** (JSDoc): `reset()` sets the state directly and deliberately does NOT fire `onExit(current)` / `onEnter(initial)`, so a resource acquired in `onEnter` and released in `onExit` (the "timer on enter, clear on exit" pattern) is not torn down by `reset()` — clean it up explicitly first. (Behavior unchanged — an existing test locks this contract.)
+
+  Bisect-verified (target-validation throws; effect never observes the transient). Full `@pyreon/machine` suite (132) green.
+
+- Updated dependencies:
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes

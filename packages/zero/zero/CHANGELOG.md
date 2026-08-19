@@ -1,5 +1,151 @@
 # @pyreon/zero
 
+## 0.52.0
+
+### Minor Changes
+
+- `startClient` marks the container `data-pyreon-hydrated` once handlers are attached (88e7dff)
+
+  Visible and interactive are not the same thing, and until now nothing let a
+  caller tell them apart. `startClient` now sets `data-pyreon-hydrated` on the
+  container AFTER mount/hydrate returns, so its presence means event handlers are
+  attached — not merely that markup arrived.
+
+  This exists because the difference is currently masked by an accident.
+  `RouterView` renders its route through a reactive accessor and every fs-router
+  route is `lazy()`, so the accessor's first render deletes the server range: the
+  page blanks and refills when the chunk lands. Nothing clickable exists in
+  between, so anything a test could match was necessarily already hydrated.
+
+  That accident disappears the moment hydration ADOPTS the server DOM instead of
+  rebuilding it — the direction the framework is moving. A caller then sees a
+  fully-rendered, visible, DEAD control and interacts with it before any handler
+  exists. Measured on that shape: a ~48ms window locally, unbounded on a cold
+  transform or a slow network.
+
+- zero's nested SSR/SSG build now inherits the user's `pyreon()` transform options (bdee35d)
+
+  `mode: 'ssg' | 'ssr' | 'isr'` runs a nested Vite build over the same source. It
+  cannot forward the outer `pyreon` plugin instance — a second `configResolved`
+  rewrites captured output paths — so it constructs a fresh one, and that call was
+  a bare `pyreon()`. Every transform option applied to the client graph and
+  silently did not apply to the SSR graph.
+
+  `ssrTemplate` was the sharpest case: it shapes only the SSR emit, so the SSR pass
+  is the one place it does anything, and the one place it was dropped.
+  `pyreon({ ssrTemplate: false })` in an SSG app was a no-op — `@pyreon/loom`'s
+  static-site build hit this and carried a comment saying so.
+
+  The plugin now publishes its options on its Vite `api` field
+  (`PyreonPluginApi`), and zero carries the transform-shaping subset across:
+  `compat`, `ssrTemplate`, `islands`, `jsxAutoImport`, `compileValidators`,
+  `optimizeValidators`.
+
+  Deliberately withheld, because forwarding them would mis-steer the sub-build:
+  `ssr.entry` (its `config()` return sets `build.rollupOptions.input`, which beats
+  the inline `build({ … })` argument — it would compile the user's server entry
+  instead of the synthetic one zero wrote), `collapse` (client-graph-only, and it
+  spawns its own nested build), and `lpih` / `devErrorPrinter` (dev-server-only).
+
+  The split is typed as a total `Record` over `keyof Required<PyreonPluginOptions>`,
+  so a newly added option is a typecheck error until it is classified rather than
+  silently inheriting the wrong default.
+
+- New `https()` plugin — HTTPS for the dev server, so secure-context browser APIs can be tested on a real device. (2cf6f2a)
+
+  ```ts
+  import { https } from "@pyreon/zero/server";
+  plugins: [zero(), https({ lan: true })];
+  ```
+
+  **Not for localhost.** `http://localhost` is already a secure context. It exists because a phone reaches your dev server at `http://192.168.1.24:3000`, which is not — so `useCamera`, `useGeolocation`, `useDeviceMotion`, `useAudioRecorder`, `useSpeech`, `useBluetooth`, `useClipboard`, `useNotifications`, `usePush`, `useShare`, `useWakeLock`, service workers and `crypto.subtle` are all unavailable exactly where they most need testing. A laptop has no accelerometer.
+
+  `lan: true` certifies this machine's network address **and** binds the server to it; certifying an address the server never binds to would produce a certificate nothing can reach.
+
+  Certificates come from three tiers: `{ cert, key }` if supplied; a local `mkcert` CA if one is already installed and trusted (no browser warning); otherwise a self-signed certificate generated with zero dependencies, which works immediately behind a one-time interstitial. **Pyreon never installs a certificate authority** — a local CA key can mint a valid certificate for any domain, so trusting one is a deliberate user action (`mkcert -install`), not a side effect of adding a plugin. Custom hosts are supported; `*.localhost` resolves natively, and anything else has its `/etc/hosts` lines printed rather than written.
+
+  Dev and preview only, HTTP/1.1 (Vite's dev server has not offered HTTP/2 since v3). The certificate is cached under `node_modules/.pyreon-https` and reissued when the host list changes or expiry approaches.
+
+  `@pyreon/hooks` gains the matching diagnostic: hooks that need a secure context now explain why they are unavailable instead of silently reporting "unsupported". It fires only when `isSecureContext` is actually `false`, so it never blames TLS for an API the browser genuinely does not implement.
+
+### Patch Changes
+
+- Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration). (1d74edc)
+- Wire the secure-context diagnostic into every gated hook, and correct which hooks are gated. (f904416)
+
+  `https()` shipped with the diagnostic wired into three hooks — `useGeolocation`, `useShare`, `useWakeLock` — while the docs and changeset said "hooks that need a secure context now explain why they are unavailable", which reads as all of them. Five were silent: `useDeviceMotion`, `useAudioRecorder`, `useBluetooth`, `useClipboard`, `useNotifications`. All eight now report the cause.
+
+  The list itself was also wrong in the other direction. Three hooks were described as secure-context-gated and are not: `useCamera` uses an `<input type="file" capture>` picker, which works over plain HTTP; `useSpeech` uses `speechSynthesis`, which is not gated (only SpeechRecognition is); and `usePush` is host-driven, with the app owning the PushManager flow. Warning for those would send someone to configure TLS for a problem TLS cannot fix, so they are deliberately excluded.
+
+  A new static test (`secure-context-coverage.test.ts`) asserts the coverage in both directions: every hook that accesses a gated API must call `warnIfInsecureContext` with its own name, and the check is keyed on the API ACCESS rather than a hook-name list, so a mention in a comment does not count. It has to be static — the diagnostic fires only when `isSecureContext === false`, and a happy-dom suite is always a secure context, so no behavioural test can distinguish a wired hook from an unwired one.
+
+- The build summary now reports how many pages actually prerendered, and says so loudly when some did not. (7255d9f)
+
+  It used to derive the count by walking `dist` for `.html` files. That is wrong in exactly the case that matters: when a route fails to prerender, its untouched client shell is still on disk, so it counts as a rendered page. A build that rendered four of five printed `○ 5 prerendered pages` and exited 0, while one of those "pages" was a 356-byte empty shell — the failure existed only in a `console.error` scrolled off above and in `dist/_pyreon-ssg-errors.json`, which nothing reads.
+
+  The prerender pass now hands its real numbers to the summary, which reports the rendered count and, on failure, a line naming how many failed, where the errors are recorded, and the consequence — those URLs serve an empty page.
+
+  Continuing past a failed path is unchanged and deliberate: one bad route should not kill a thousand-page build, which is what `ssg.onPathError` and the errors artifact are for. Reporting it as a success was never part of that bargain.
+
+- perf(compiler): mirror `templatizeComponentChildren` into the native (Rust) backend (37902b5)
+
+  `templatizeComponentChildren` shipped opt-in and, while it was on, FORCED the
+  compiler's JS backend — deliberately, so the two backends could not disagree and
+  a bisect of the feature could not pass against a "reverted" build. That made
+  enabling the option cost a ~10x slower transform for the whole build.
+
+  The native backend now emits the same bytes, so the force is gone.
+
+  **Parity.** 1,183 real `.tsx` files across the repo compile byte-identically at
+  the default (3,549 comparisons, 0 differences — and the same harness reports 209
+  differences with the option on, so it discriminates). The seeded differential
+  fuzz gains a fourth mode, `client-tpl-components`, proven at **20,000 seeds x 4
+  modes** with the grammar extended to the shapes this feature's gate
+  discriminates: self-closing component children, member/namespaced tags
+  (`<Ns.Comp/>`, which `jsxTagName` reports as `''`), bare and nested fragment
+  children, and runs of 1-3 component siblings with and without interleaved static
+  content. `native-equivalence.test.ts` gains a 29-case hand corpus for the shapes
+  a reader needs to see named.
+
+  The fuzz mode also asserts it is ALIVE — that the option changes the emit for a
+  real fraction of seeds, in BOTH shapes (append `_mountChild` and placeholder
+  `_mountSlot`). A differential mode that never changes the output would pass
+  byte-identically against a backend where the option was never implemented.
+
+  **Transform cost.** 173 real `.tsx` files (333 KiB), 9 interleaved passes,
+  median: native 3.2ms off / 3.8ms on; JS 34.5ms off / 37.4ms on. So the forced-JS
+  path cost **9.7x** with the option on, and that is what is removed. The option
+  itself costs native ~1.22x, because elements that used to bail early now take
+  the real template path — small in absolute terms and honest about doing more
+  work.
+
+  **The runtime win survives, by construction rather than by re-measurement.**
+  Building `examples/benchmark` with the option on produces a byte-identical
+  bundle from both backends (`sha256 9400e813…` from each; the JS arm verified to
+  really be JS by its ~10x slower transform). Re-measured anyway on the native
+  build: the 2,047-component deep-tree mount goes **4.57ms → 3.90ms (−14.7%)**,
+  CIs strictly disjoint, controls within 2.3%. `ui-showcase-regression` is **26/26
+  with the option ON** — verified live by the dev server's own output showing real
+  `<Title>`/`<Paragraph>` component children absorbed into the parent `_tpl` and
+  mounted through phase-1 refs.
+
+  **Still default OFF.** This removes one of the two blockers `#2914` named. The
+  other is unchanged and independent: a `_tpl` result is SWAPPED at hydration, so
+  every element this newly templatizes stops adopting its SSR DOM. The plugin's
+  one-time warning keeps that half and drops the now-false JS-backend half.
+
+- Updated dependencies:
+  - @pyreon/compiler@0.52.0
+  - @pyreon/core@0.52.0
+  - @pyreon/reactivity@0.52.0
+  - @pyreon/head@0.52.0
+  - @pyreon/router@0.52.0
+  - @pyreon/runtime-dom@0.52.0
+  - @pyreon/vite-plugin@0.52.0
+  - @pyreon/sized-map@0.52.0
+  - @pyreon/server@0.52.0
+  - @pyreon/runtime-server@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes

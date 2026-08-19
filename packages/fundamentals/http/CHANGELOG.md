@@ -1,5 +1,23 @@
 # @pyreon/http
 
+## 0.52.0
+
+### Minor Changes
+
+- PMTC now lowers `@pyreon/http`'s endpoint DSL onto the existing PyreonFetch machinery: a same-file `const api = createHttp({ baseUrl })` + `const getUser = api.endpoint('GET /users/:id')` lets `useFetch<T>(getUser({ params: { id: '1' } }))` resolve at compile time to a concrete templated URL + method, emitting identically to `useFetch<T>('/api/users/1', { method: 'GET' })` on both targets. Literal params only — reactive params, a computed baseUrl, and the `.query()` fetcher form warn and stay web. No new emit/IR/stub; `createHttp`/`.endpoint` are metadata and emit nothing. `@pyreon/http`'s manifest declares the `nativeFrontend` (partial crossing). (d873013)
+
+### Patch Changes
+
+- Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration). (1d74edc)
+- Per-request hot path made ~37% faster (measured — the new `bench:http` head-to-head vs ky/ofetch/redaxios/axios now shows fastest-or-tied on every row; the headline `GET → decoded JSON` flipped from an outright loss to ofetch into a 1.4× win): (0f18357)
+
+  - Static header sources are folded once (lazily, at first request) and cloned per request via one native `new Headers(folded)` instead of re-merging every source through intermediate `Headers` allocations (~360ns/request). Sources from the first function source onward stay dynamic, so accessor headers (rotating tokens) still re-evaluate per request and later sources still override earlier keys. Behavior note: mutating a plain static headers OBJECT after client creation is no longer picked up by later requests — that was never the documented dynamic mechanism; use the function-source form (`headers: () => ({...})`), which is unchanged.
+  - `HttpResponsePromise` is now a prototype-based thenable class instead of `Object.assign`ing decoders onto the live promise (a measured ~260ns/request shape-transition penalty). `await`, `.then`/`.catch`/`.finally` chaining, and `Promise.all` behave identically; the one observable difference is `p instanceof Promise` → `false` (never part of the documented contract — the contract is the `HttpResponsePromise` interface, and `.then()` still returns a real native promise).
+  - The no-signal/no-timeout request path reuses one frozen linked-signal constant, and the no-meta case allocates a bare `{}` instead of double-spreading empty objects.
+
+- Updated dependencies:
+  - @pyreon/validation@0.52.0
+
 ## 0.51.0
 
 ### Minor Changes

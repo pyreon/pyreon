@@ -1,5 +1,17 @@
 # @pyreon/document-primitives
 
+## 0.52.0
+
+### Patch Changes
+
+- Updated dependencies:
+  - @pyreon/core@0.52.0
+  - @pyreon/unistyle@0.52.0
+  - @pyreon/document@0.52.0
+  - @pyreon/rocketstyle@0.52.0
+  - @pyreon/connector-document@0.52.0
+  - @pyreon/elements@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes

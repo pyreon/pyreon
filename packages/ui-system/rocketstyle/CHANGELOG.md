@@ -1,5 +1,20 @@
 # @pyreon/rocketstyle
 
+## 0.52.0
+
+### Patch Changes
+
+- fix(rocketstyle): use a named optional param in the `Rocketstyle` type instead of a destructuring pattern (1e6c0f2)
+
+  The `Rocketstyle` function type declared its optional config as a destructuring pattern (`({ dimensions, useBooleans }?: {...})`). Binding-pattern names in a function type are documentary, but destructuring an OPTIONAL param makes some TypeScript builds report `Property 'dimensions' does not exist on type '{...} | undefined'` when this source is type-checked cross-package (e.g. `@pyreon/loom` importing rocketstyle) — which surfaces only when a rocketstyle dependency changes forces a re-typecheck. The runtime implementation already destructures with defaults, so this is a type-only, behaviour-preserving change (the param is now a named `config?`).
+
+- Updated dependencies:
+  - @pyreon/core@0.52.0
+  - @pyreon/reactivity@0.52.0
+  - @pyreon/sized-map@0.52.0
+  - @pyreon/styler@0.52.0
+  - @pyreon/ui-core@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes

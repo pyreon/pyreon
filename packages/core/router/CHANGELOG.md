@@ -1,5 +1,25 @@
 # @pyreon/router
 
+## 0.52.0
+
+### Patch Changes
+
+- Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration). (1d74edc)
+- Test-infrastructure only — no runtime or consumer-facing behavior change. The happy-dom spec-parity `hashchange`-echo guard (happy-dom fires a deferred synthetic `hashchange` for hash-changing `history.pushState`/`replaceState`; real browsers never do) was extracted from `@pyreon/router`'s test setup into the shared internal `@pyreon/test-utils` and installed in every suite that drives a real router in happy-dom: router (unchanged behavior), a11y (fixes a load-dependent CI flake where a stale echo made the route announcer fire for a traversal the test never made, plus a deterministic regression spec), and testing's own suite (internal devDep on the private `@pyreon/test-utils`; the shipped `/vitest` setup module is unchanged). (a6e9c1a)
+- Fix a rapid double-Back silently losing a history entry. (80e2ce2)
+
+  A BROWSER-initiated traversal (popstate/hashchange) has already moved the URL — the browser owns it, and the router's commit is only catching the app up. `commitNavigation` nonetheless ran `syncBrowserUrl(path, replace)` for it, which is redundant in the happy path and actively wrong once a newer traversal has moved the history: the write lands on whatever entry is current NOW, stamping the older navigation's URL onto it.
+
+  The observable failure is pressing Back twice quickly. Back #1 starts an async navigate; Back #2 fires while it is still in flight and is dropped by the same-path guard (which compares against a `currentPath` that #1 has not yet updated); #1 then commits and `replaceState`s its URL over the entry the browser had already moved to. The second Back is silently undone.
+
+  A browser-initiated commit now writes nothing. Cancellation remains the one case where the router legitimately rewrites a browser-initiated URL, and `handleBrowserNav` already owns that path.
+
+- Updated dependencies:
+  - @pyreon/core@0.52.0
+  - @pyreon/reactivity@0.52.0
+  - @pyreon/runtime-dom@0.52.0
+  - @pyreon/sized-map@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes

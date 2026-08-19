@@ -1,5 +1,78 @@
 # @pyreon/loom
 
+## 0.52.0
+
+### Minor Changes
+
+- `loom build` prerenders the observatory to a standalone static site — one page per view, deployable to any static host or openable from disk. (6288cb8)
+
+  The observatory is now a `@pyreon/zero` app, so the five views are real fs-routes (`/`, `/matrix`, `/cycles`, `/impact`, `/manifests`) instead of a `view` signal. Until now there was no way to send someone a link to the cycles view; now every view has a URL, its own prerendered page, and its own chunk. The view tabs render as real links when the host supplies `hrefFor`, and `mountObservatory` is unchanged — both new `<Observatory>` props are optional and default to today's behaviour.
+
+  `@pyreon/zero`, `head`, `router`, `runtime-server` and `server` join `vite` and `@pyreon/vite-plugin` as OPTIONAL peers: the app root has to resolve zero's own graph (bun's isolated layout does not expose it transitively), but `loom scan` — the CI gate and the command most people run — still needs none of them, and `loom build` names the whole set when they are absent.
+
+### Patch Changes
+
+- Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration). (1d74edc)
+- zero's nested SSR/SSG build now inherits the user's `pyreon()` transform options (bdee35d)
+
+  `mode: 'ssg' | 'ssr' | 'isr'` runs a nested Vite build over the same source. It
+  cannot forward the outer `pyreon` plugin instance — a second `configResolved`
+  rewrites captured output paths — so it constructs a fresh one, and that call was
+  a bare `pyreon()`. Every transform option applied to the client graph and
+  silently did not apply to the SSR graph.
+
+  `ssrTemplate` was the sharpest case: it shapes only the SSR emit, so the SSR pass
+  is the one place it does anything, and the one place it was dropped.
+  `pyreon({ ssrTemplate: false })` in an SSG app was a no-op — `@pyreon/loom`'s
+  static-site build hit this and carried a comment saying so.
+
+  The plugin now publishes its options on its Vite `api` field
+  (`PyreonPluginApi`), and zero carries the transform-shaping subset across:
+  `compat`, `ssrTemplate`, `islands`, `jsxAutoImport`, `compileValidators`,
+  `optimizeValidators`.
+
+  Deliberately withheld, because forwarding them would mis-steer the sub-build:
+  `ssr.entry` (its `config()` return sets `build.rollupOptions.input`, which beats
+  the inline `build({ … })` argument — it would compile the user's server entry
+  instead of the synthetic one zero wrote), `collapse` (client-graph-only, and it
+  spawns its own nested build), and `lpih` / `devErrorPrinter` (dev-server-only).
+
+  The split is typed as a total `Record` over `keyof Required<PyreonPluginOptions>`,
+  so a newly added option is a typecheck error until it is classified rather than
+  silently inheriting the wrong default.
+
+- `loom build` now forces `NODE_ENV=production` for the build (restoring the caller's value afterwards), so a stray value in the environment can no longer produce a non-production site. (9ea3bc0)
+
+  `vite build` sets `NODE_ENV` only when it is UNSET, and Vite derives `isProduction` from that variable — not from `mode`, so passing `mode: 'production'` does not help. Any caller with `NODE_ENV` already set (`development` in a dev shell, `test` under any test runner) therefore got a site with every `process.env.NODE_ENV !== 'production'` branch in Pyreon still in the bundle: dev-only lifecycle warnings shipped to users, and 3894 MB of build memory against 952 MB.
+
+  Vite's behaviour is right for a general-purpose command, where `NODE_ENV=staging` may steer a user's own config. Nothing here can — the build runs `configFile: false`, so no user config is loaded and nothing legitimate reads the value, and `loom build` has no dev variant.
+
+  This also fixes an intermittent `Coverage (Full)` failure on main: the suite's in-process build inherited vitest's `NODE_ENV=test` and peaked just under node's ~4 GB old-space cap, so the worker died and vitest attributed it to whichever spec was in flight — reported as a failure in `strip-equivalence`, which was innocent. The build now runs as a spawned subprocess (exercising the shipped bin and built `lib/`), and a new spec asserts the emitted bundle is production even though the spawn inherits `NODE_ENV=test`.
+
+- Eight README examples are now typechecked in CI. (e0e0dc0)
+
+  `check-doc-examples` only ever looked at `docs/src/content/docs/**`; package READMEs carry ~550 `ts`/`tsx` blocks and nothing verified any of them. The gate now walks package READMEs too, and each of these packages has one verified-clean example opted in with the `// @check` marker.
+
+  Each was compiled before being marked, not marked and then debugged. No content changed — the marker is a comment inside the fence.
+
+- Updated dependencies:
+  - @pyreon/core@0.52.0
+  - @pyreon/reactivity@0.52.0
+  - @pyreon/unistyle@0.52.0
+  - @pyreon/hooks@0.52.0
+  - @pyreon/head@0.52.0
+  - @pyreon/router@0.52.0
+  - @pyreon/runtime-dom@0.52.0
+  - @pyreon/vite-plugin@0.52.0
+  - @pyreon/zero@0.52.0
+  - @pyreon/server@0.52.0
+  - @pyreon/rocketstyle@0.52.0
+  - @pyreon/runtime-server@0.52.0
+  - @pyreon/styler@0.52.0
+  - @pyreon/elements@0.52.0
+  - @pyreon/ui-core@0.52.0
+  - @pyreon/config@0.52.0
+
 ## 0.51.0
 
 ### Minor Changes

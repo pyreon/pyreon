@@ -1,5 +1,191 @@
 # @pyreon/vite-plugin
 
+## 0.52.0
+
+### Minor Changes
+
+- zero's nested SSR/SSG build now inherits the user's `pyreon()` transform options (bdee35d)
+
+  `mode: 'ssg' | 'ssr' | 'isr'` runs a nested Vite build over the same source. It
+  cannot forward the outer `pyreon` plugin instance — a second `configResolved`
+  rewrites captured output paths — so it constructs a fresh one, and that call was
+  a bare `pyreon()`. Every transform option applied to the client graph and
+  silently did not apply to the SSR graph.
+
+  `ssrTemplate` was the sharpest case: it shapes only the SSR emit, so the SSR pass
+  is the one place it does anything, and the one place it was dropped.
+  `pyreon({ ssrTemplate: false })` in an SSG app was a no-op — `@pyreon/loom`'s
+  static-site build hit this and carried a comment saying so.
+
+  The plugin now publishes its options on its Vite `api` field
+  (`PyreonPluginApi`), and zero carries the transform-shaping subset across:
+  `compat`, `ssrTemplate`, `islands`, `jsxAutoImport`, `compileValidators`,
+  `optimizeValidators`.
+
+  Deliberately withheld, because forwarding them would mis-steer the sub-build:
+  `ssr.entry` (its `config()` return sets `build.rollupOptions.input`, which beats
+  the inline `build({ … })` argument — it would compile the user's server entry
+  instead of the synthetic one zero wrote), `collapse` (client-graph-only, and it
+  spawns its own nested build), and `lpih` / `devErrorPrinter` (dev-server-only).
+
+  The split is typed as a total `Record` over `keyof Required<PyreonPluginOptions>`,
+  so a newly added option is a typecheck error until it is classified rather than
+  silently inheriting the wrong default.
+
+- Templatize COMPONENT children by default — the mixed shape now hydrates too (f8ee02a)
+
+  `templatizeComponentChildren` absorbs a component child into the enclosing
+  `_tpl()` template instead of bailing the whole element to `h()`. It is worth a
+  measured −13.0% on the 2,047-component deep-tree mount (41% of the gap to
+  Solid), and it has been opt-in because it cost hydration retention. It now
+  **defaults ON** in `@pyreon/vite-plugin`. The compiler primitive stays opt-in,
+  the same split `ssrTemplate` uses, because the emit injects an import.
+
+  Two things changed to make that safe.
+
+  **The mount hole no longer has to be the element's whole content.** A hole is
+  marker-free because it is TRAILING — the element's own closing tag supplies its
+  extent — and that never required the element to be EMPTY, only for the hole to
+  come last. So an element with static children followed by components is now
+  declared a hole that starts after them: the compiler bakes the static prefix as
+  usual, and the verifier matches those children first and starts the hole cursor
+  after them. How many there are is read off the template itself, so no count
+  crosses the compiler/runtime boundary to drift, and the all-components case is
+  the same code path with a count of zero. The shape this closes measured 3 of 4
+  nodes retained with the option OFF and 0 of 4 with it ON; it now retains 4 of 4.
+
+  **Shapes that cannot adopt are no longer absorbed at all.** The emitter takes
+  exactly `[element*][component+]` and bails everything else to `h()`, which is
+  byte-identically what it emits with the option off. The `<!>` + `_mountSlot`
+  form for components is gone: it rendered correctly, but produced a template
+  containing a comment, which the adopt verifier refuses — so it cost more
+  retention than the absorb bought. The result is that the option changes an emit
+  exactly when it absorbs, and there is no shape it makes worse.
+
+  Also fixes a latent interaction between this option and `collapseRocketstyle`.
+  Both rewrite the same node; collapse decided whether to wrap its call in JSX
+  braces from the node's AST parent, which is still a JSX element even after the
+  template pass has relocated that node's text into a call argument. The result
+  was `_mountChild({__rsCollapse(…)}, …)` — not parseable JavaScript. It needed
+  both features at once, so it was unreachable while this one was opt-in.
+
+  Set `templatizeComponentChildren: false` to restore the previous emit.
+
+- Add `templatizeComponentChildren` — absorb COMPONENT children into the enclosing (b689ffd)
+  `_tpl()` template instead of bailing the whole element to `h()`. **Opt-in,
+  default off.**
+
+  The template emitter bails on a component child, so one `<Node/>` makes
+  `templateElementCount` return −1 for that element and every ancestor — an app's
+  whole composition skeleton lowers to `h()` + `mountElement`. With the option on,
+  the skeleton bakes into the template HTML and each component child is mounted
+  into the clone: `_mountChild` appended when nothing static follows it (no
+  placeholder comment), `_mountSlot` + a `<!>` placeholder otherwise.
+
+  Measured on the 2,047-component deep-tree mount — production builds, real
+  Chromium, three interleaved passes, arms verified by grepping the built bundle
+  for the baked `<div class="branch"></div>` template before reading any number:
+  **4.53ms → 3.94ms (−13.0%)**, with Vanilla/Solid/React/Vue/Svelte as in-run
+  controls all moving ≤2% except two noisier arms at ≤5.5%. The gap to SolidJS
+  closes 1.31ms → 0.77ms, i.e. **41% of the remaining deep-tree deficit**;
+  standing 1.41× → 1.24×.
+
+  Ordering is safe by construction. A `_tpl` bind runs when the CALL EXPRESSION
+  evaluates, so a bind that MOUNTS COMPONENTS is ordered against the enclosing
+  component's setup. A component's sole child is `_lc`-deferred, and every other
+  eager-argument position (multi-child component parent, member/namespaced tag
+  parent, fragment, expression container) bails to `h()`.
+
+  **Why it stays off by default:** a `_tpl` result is SWAPPED at hydration, so
+  every element this newly templatizes stops adopting its SSR DOM — and so does
+  everything below it. Measured on a 3-level layout, node retention 4/4 → 0/4 (it pinned 3/4 when written; #2918 then taught hydration to ADOPT compiled templates, so the OFF arm now keeps all four).
+  Only enable it for a client bundle that never calls `hydrateRoot()`. The plugin
+  warns once when it is on, because it also forces the compiler's JS backend (no
+  native mirror yet).
+
+### Patch Changes
+
+- Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration). (1d74edc)
+- Stop the JSX auto-import injecting for a primitive name written inside a string. (71fbf23)
+
+  `_maskCommentsAndStrings` masked only COMMENTS, despite its name and its call-site comment both claiming strings too. So a canonical primitive name appearing in any string — a diagnostic message, a doc example, a template literal — was read as real JSX usage, and the pass injected `import { … } from '@pyreon/primitives'` into a file whose package may not depend on it. That is a build break, not a warning: Rolldown fails to resolve the import.
+
+  Found for real in `@pyreon/feature`, whose `Field` error message read `` `[Pyreon] <Field name="${…}">` `` — seven CI checks failed with `Rolldown failed to resolve import "@pyreon/primitives"`.
+
+  Strings, template literals (including interpolations and nested templates) and comments are now all masked for usage scanning. Template interpolations are masked wholesale, so a JSX tag written inside `${…}` no longer triggers the auto-import — a false negative where the author adds an explicit import, chosen deliberately over the false positive that breaks the build.
+
+  Import DETECTION keeps a comments-only mask, since module specifiers are strings: masking them blinded the already-imported check and the extend-existing-import splice, which emitted a duplicate import line.
+
+- Hydration now ADOPTS a compiled template's mount holes, closing the blocker that kept `templatizeComponentChildren` opt-in for its main shape (fc0d636)
+
+  A compiled template whose children are all absorbed COMPONENT children is emitted EMPTY and filled at mount by trailing `_mountChild` calls. Its server counterpart holds those components' real output, which the adoption verifier read as "extra elements" — so the whole subtree was cloned and swapped instead of hydrated, and everything below it with it. On a 3-level layout that measured **0 of 4 nodes retained**; the same page with the option off retained 4 of 4.
+
+  It now retains **4 of 4**, with three adoptions.
+
+  Three things had to be right, and doing only the first is a correctness bug rather than a partial win:
+
+  1. **The verifier skips a hole's DOM range.** The compiler DECLARES the element it leaves empty (`data-pyreon-hole`, baked into the template string and stripped by `_tpl` at parse time, so it never reaches user DOM). Declared rather than inferred: `_setChild` and a spread `innerHTML` also fill an empty template element and do not hydrate, so a blanket "an empty element may have extra children" rule would duplicate or discard their content.
+  2. **The compiled bind hydrates that range instead of mounting into it.** `_mountChild` threads a per-hole cursor when it runs inside an adopting bind, so a component absorbed into a hole hydrates the server's copy — which recursively arms its own template, and so on down. Relaxing (1) alone leaves the bind appending a second copy beside the server's.
+  3. **The range is delimited without any SSR change.** A hole is always trailing — the compiler routes a component child with static content after it through a `<!>` placeholder instead, and no template containing one is adoptable — so the parent element's own tag boundary supplies the extent. SSR emits exactly the same bytes it did before; a per-component range marker would have taxed every hydrated page.
+
+  Whatever the bind does not claim is swept, which is precisely the empty element a clone would have produced. A mis-declared hole therefore costs an adoption, never correctness.
+
+  Both compiler backends emit the declaration byte-identically (locked by the cross-backend equivalence suite and a 5,000-seed fuzz). Plan replay is refused for a hole-bearing template, because a plan records marker spots but not hole cursors.
+
+  **Still opt-in.** The residual is the MIXED shape — a component with a static sibling — which compiles to `<!>` + `_mountSlot` and measures 3/4 retained with the option off against 0/4 with it on. That is the pre-existing dynamic-slot limit reached through a component; its server range markers already exist, and closing it needs a verifier that can adopt a comment-placeholder-bearing template.
+
+- perf(compiler): mirror `templatizeComponentChildren` into the native (Rust) backend (37902b5)
+
+  `templatizeComponentChildren` shipped opt-in and, while it was on, FORCED the
+  compiler's JS backend — deliberately, so the two backends could not disagree and
+  a bisect of the feature could not pass against a "reverted" build. That made
+  enabling the option cost a ~10x slower transform for the whole build.
+
+  The native backend now emits the same bytes, so the force is gone.
+
+  **Parity.** 1,183 real `.tsx` files across the repo compile byte-identically at
+  the default (3,549 comparisons, 0 differences — and the same harness reports 209
+  differences with the option on, so it discriminates). The seeded differential
+  fuzz gains a fourth mode, `client-tpl-components`, proven at **20,000 seeds x 4
+  modes** with the grammar extended to the shapes this feature's gate
+  discriminates: self-closing component children, member/namespaced tags
+  (`<Ns.Comp/>`, which `jsxTagName` reports as `''`), bare and nested fragment
+  children, and runs of 1-3 component siblings with and without interleaved static
+  content. `native-equivalence.test.ts` gains a 29-case hand corpus for the shapes
+  a reader needs to see named.
+
+  The fuzz mode also asserts it is ALIVE — that the option changes the emit for a
+  real fraction of seeds, in BOTH shapes (append `_mountChild` and placeholder
+  `_mountSlot`). A differential mode that never changes the output would pass
+  byte-identically against a backend where the option was never implemented.
+
+  **Transform cost.** 173 real `.tsx` files (333 KiB), 9 interleaved passes,
+  median: native 3.2ms off / 3.8ms on; JS 34.5ms off / 37.4ms on. So the forced-JS
+  path cost **9.7x** with the option on, and that is what is removed. The option
+  itself costs native ~1.22x, because elements that used to bail early now take
+  the real template path — small in absolute terms and honest about doing more
+  work.
+
+  **The runtime win survives, by construction rather than by re-measurement.**
+  Building `examples/benchmark` with the option on produces a byte-identical
+  bundle from both backends (`sha256 9400e813…` from each; the JS arm verified to
+  really be JS by its ~10x slower transform). Re-measured anyway on the native
+  build: the 2,047-component deep-tree mount goes **4.57ms → 3.90ms (−14.7%)**,
+  CIs strictly disjoint, controls within 2.3%. `ui-showcase-regression` is **26/26
+  with the option ON** — verified live by the dev server's own output showing real
+  `<Title>`/`<Paragraph>` component children absorbed into the parent `_tpl` and
+  mounted through phase-1 refs.
+
+  **Still default OFF.** This removes one of the two blockers `#2914` named. The
+  other is unchanged and independent: a `_tpl` result is SWAPPED at hydration, so
+  every element this newly templatizes stops adopting its SSR DOM. The plugin's
+  one-time warning keeps that half and drops the now-false JS-backend half.
+
+- Updated dependencies:
+  - @pyreon/compiler@0.52.0
+  - @pyreon/reactivity@0.52.0
+  - @pyreon/runtime-dom@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes

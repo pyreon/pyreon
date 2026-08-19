@@ -1,5 +1,111 @@
 # @pyreon/lint
 
+## 0.52.0
+
+### Minor Changes
+
+- Two new lint rules for validated upstream-shipped bug shapes (97 → 99 rules): (47ef812)
+
+  - `pyreon/no-signal-read-in-attrs-callback` (styling, warn, dep-gated on `@pyreon/rocketstyle`): rocketstyle `.attrs()` callbacks run ONCE at setup, so a zero-arg call of a same-file signal/computed binding inside the callback captures a dead value that never updates (the ui-collapse-that-never-collapsed shape). Silent on `props.*`/`theme.*` reads, calls with args, the `.attrs({...})` object form, and handlers defined inside the callback; silent entirely in projects without `@pyreon/rocketstyle`.
+
+  - `pyreon/no-guard-only-signal-reads-in-effect` (reactivity, info): flags an `effect()` whose EVERY reactive read (tracked signal call or `props.X` read) sits behind a conditional whose own test is provably non-reactive (`if (ref.current) { chart.setOption(props.option) }`, incl. the early-return spelling) — the first run can short-circuit before any read, so the effect subscribes to nothing and never re-runs. Zero-FP construction: any unconditional proven OR possible read (an unclassifiable zero-arg call like `chart.instance()`), a reactive guard test, both-branch reads, loop-body reads, nested-callback reads, and switch/catch shapes all suppress the report.
+
+  `@pyreon/atlas`: the workbench preview's `dir`-applying effect now reads the `dir()` signal before the element guard — the previous shape subscribed only when the guard was truthy on the first run (it was in practice, since the effect is created after the element is captured, but the shape was fragile and is exactly what the new rule flags).
+
+### Patch Changes
+
+- Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration). (1d74edc)
+- `pyreon/no-error-without-prefix` now accepts the scoped `[Pyreon <scope>]` form. (02cae6a)
+
+  The rule recognised `[Pyreon]` and `[@pyreon/<pkg>]` but not `[Pyreon Router]` /
+  `[Pyreon ISR]` / `[Pyreon manifest]` — the same convention with a space instead of a
+  slash, which this repo uses deliberately. Those messages already satisfy the rule's
+  stated purpose exactly (identified AND package-named), so requiring the literal token
+  would have forced `[Pyreon] [Pyreon Router] …`, which is worse for the reader than
+  what it replaces.
+
+  Every remaining finding of this rule in the repo was one of those false positives.
+
+- Three detector/rule precision fixes, each found by running the analyzers against (02cae6a)
+  the framework itself and reading what they flagged.
+
+  - `static-return-null-conditional` had NO signal gate, unlike its documented
+    sibling `static-early-return-conditional`. It fired on every top-level
+    `if (cond) return null`, including `if (typeof document === 'undefined')` —
+    an SSR guard that can never re-evaluate — and told the author to wrap it in a
+    reactive accessor. Now gated on a tracked binding in the condition, matching
+    the sibling and the message's own claim.
+  - `pyreon/no-unbatched-updates` counted any `.set()` as a signal write. A signal
+    write is single-argument; `map.set(k, v)`, `headers.set(k, v)` and
+    `params.set(k, v)` are not. Server middleware calling `ctx.headers.set(...)`
+    five times was reported as unbatched signal updates in code containing no
+    signals. Arity now rules those out, which also generalises past the existing
+    receiver-name tracking (that only caught locals bound to `new Map()`).
+  - `native-audit`'s `WEB_ONLY_PACKAGES` had gone stale: elements / styler /
+    rocketstyle / coolgrid gained native frontends and declare
+    `multiplatform: { tier: 'shared' }`, and the native compiler carries
+    `emit-rocketstyle.ts` / `parse-rocketstyle.ts` / `attrs-native.ts` for them —
+    but they stayed listed, so the tri-target examples that exist to PROVE
+    ui-system on native were reported as native-build hazards. A new drift test
+    asserts the list mirrors the manifest tiers, because a hand-maintained mirror
+    without one is a convention rather than a guard.
+
+  Also widens `pyreon/no-error-without-prefix` to accept the scoped
+  `[Pyreon <scope>]` form (`[Pyreon Router]`, `[Pyreon ISR]`), which the rule's own
+  comment already says is acceptable.
+
+- `pyreon/no-bare-signal-in-jsx` no longer fires on a call that passes arguments. (c467178)
+
+  A signal read is zero-arg by construction (`sig()`), so `{formatDefault(value)}` can
+  never be the shape this rule is about. It previously flagged such calls and then told
+  the reader, in the finding itself, that a non-signal pure function should be ignored —
+  a finding that asks to be disregarded is worse than none, because it teaches people to
+  skim past the whole rule's output.
+
+  This removes the false-positive class rather than any single instance. The rule's
+  behaviour on genuine zero-arg signal reads is unchanged.
+
+- Three reactivity/correctness fixes found by running `pyreon doctor` against the (02cae6a)
+  framework itself, plus the rule-option support that made the remaining reports
+  resolvable.
+
+  - **`useChart` published a torn frame.** `instance.set(chart)`, `loading.set(false)`
+    and `error.set(null)` ran unbatched, so a subscriber reading two of them saw
+    the chart instance published while `loading` was still `true` — the "chart is
+    ready but still showing a spinner" flicker. Batched into one notify cycle; the
+    batch flushes before `onInit`, so the documented "fully configured before
+    `onInit` fires" invariant is unchanged.
+
+  - **Flow's `handlePointerUp` fired one notify cycle per selected node.** Its
+    three branches (rubber-band / drag-end / connection-drop) are sequential and
+    can co-occur, and the rubber-band branch calls `clearSelection()` plus
+    `selectNode()` once per hit node — so a band over 100 nodes fired 100+ cycles
+    and re-rendered the canvas each time. One pointerup is now one transition.
+
+  - **`createActorId`'s fallback could collide.** The doc comment states two live
+    peers must not share an id, but the non-`crypto.randomUUID` path was
+    `Date.now()` + `Math.random()`, which repeats within a millisecond and is a
+    birthday risk besides. It now prefers `crypto.getRandomValues` (far more widely
+    available than `randomUUID`, which requires a secure context) and its last
+    resort mixes in a per-process monotonic counter, so two ids from one process
+    can never collide by construction and the random field only has to separate
+    processes.
+
+  - **`exemptPaths` on six rules that documented the convention but never read it.**
+    `toast-a11y`, `no-href-navigation`, `no-inline-style-object`,
+    `prefer-use-is-active`, `no-effect-in-mount` and `prefer-field-array` all
+    inspect a call site, so the file that _implements_ the thing being recommended
+    reports against itself — `link.tsx` renders the `<a href>` that `<Link>`
+    wraps, and the toast row computes `role` from severity in its definition
+    rather than at the `<ToastItem>` call site. Resolving that in-rule needs the
+    parent chain, which oxc's visitor does not provide, so these now honour the
+    documented `exemptPaths` option instead. Each still fires normally everywhere
+    else.
+
+- Updated dependencies:
+  - @pyreon/compiler@0.52.0
+  - @pyreon/sized-map@0.52.0
+
 ## 0.51.0
 
 ### Minor Changes
