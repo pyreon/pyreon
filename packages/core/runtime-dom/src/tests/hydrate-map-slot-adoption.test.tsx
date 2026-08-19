@@ -171,6 +171,36 @@ describe('map-composed hydration adoption — node retention census', () => {
     dispose()
   })
 
+  it('an h()-lowered SOLE accessor child adopts its region too (was 1/N)', async () => {
+    // The OTHER consumer of the same marker elision. runtime-server drops the
+    // `<!--$-->` pair for a sole accessor child, and `hydrateSoleAccessorChild`
+    // is the h()-side twin that reads it — but it MOUNTED FRESH and deleted the
+    // server nodes, so this shape retained only the container. Same elision,
+    // same class, and invisible to the `.map()` specs above because those lower
+    // through `_tpl` + `_mountSlot` instead.
+    const items = signal([{ id: 1, t: 'a' }, { id: 2, t: 'b' }, { id: 3, t: 'c' }])
+    const App = () => h('div', { class: 'l' }, () => items().map((i) => h('p', null, i.t)))
+
+    const html = await renderToString(h(App as never, null) as never)
+    expect(html).not.toContain('<!--$-->') // the elision this spec is about
+    const host = document.createElement('div')
+    host.innerHTML = html
+    document.body.appendChild(host)
+    const before = snapshot(host)
+    expect(before).toHaveLength(7) // div + 3 × (p + text)
+
+    const dispose = hydrateRoot(host, h(App as never, null))
+    expect(retained(before, host)).toBe(7)
+
+    // …and the adopted region is LIVE in both directions.
+    items.set([...items(), { id: 4, t: 'd' }])
+    expect(host.querySelectorAll('p')).toHaveLength(4)
+    items.set([])
+    expect(host.querySelectorAll('p')).toHaveLength(0)
+    expect(host.querySelector('.l')?.textContent).toBe('')
+    dispose()
+  })
+
   it('a slot with a STATIC SIBLING BEFORE it adopts (walk stops at the marker)', async () => {
     const { host, before, dispose } = await ssrThenHydrate(
       `const App = () => <div class="list"><h2>Title</h2>{ITEMS.map((i) => <Card item={i} />)}</div>`,

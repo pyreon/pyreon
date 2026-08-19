@@ -531,6 +531,15 @@ interface TplSig {
   tags: string[]
   counts: number[]
   /**
+   * Per element (tree order), whether its `<!>` mount-slot placeholder is the
+   * element's SOLE child. That is the one shape whose SSR counterpart carries
+   * NO `<!--$-->` range, because runtime-server elides the markers for a sole
+   * accessor child (`soleAccessorChild` there) — the element's own tag boundary
+   * already delimits the extent. Distinct from `slots`, which only says the
+   * placeholder is LAST.
+   */
+  soleSlots: boolean[]
+  /**
    * Per element (tree order), the template's STATIC attributes — the ones
    * baked into the template HTML. Dynamic props are bound by the compiled
    * `bind` and are absent here, so this is a SUBSET check against the SSR
@@ -599,6 +608,7 @@ function templateSignature(tpl: HTMLTemplateElement): TplSig | null {
   const holeFlags: number[] = []
   let holeCount = 0
   const slotList: boolean[] = []
+  const soleSlotList: boolean[] = []
   // MOUNT-SLOT ALIGNMENT GATE. A `<!>` placeholder is one node in the clone but
   // an arbitrary run of nodes in the SSR DOM, so every compiled ref walk that
   // would have to step PAST it (`__p1 = __root.firstChild.nextSibling` for a
@@ -617,6 +627,7 @@ function templateSignature(tpl: HTMLTemplateElement): TplSig | null {
     // output). Element-only walks keep it marker-comment-immune.
     let texts = 0
     let slotAtEnd = false
+    let soleSlot = false
     const ownTexts: (string | null)[] = []
     for (let n = el.firstChild; n; n = n.nextSibling) {
       if (n.nodeType === 3) {
@@ -634,11 +645,15 @@ function templateSignature(tpl: HTMLTemplateElement): TplSig | null {
           return
         }
         slotAtEnd = true
+        // SOLE child — no static siblings at all. This is what tells the verify
+        // walk to expect an SSR element whose markers were elided.
+        soleSlot = n === el.firstChild
       }
     }
     tags.push(el.tagName)
     counts.push(texts)
     slotList.push(slotAtEnd)
+    soleSlotList.push(soleSlot)
     const ownAttrs: [string, string][] = []
     const a = el.attributes
     for (let i = 0; i < a.length; i++) {
@@ -687,6 +702,7 @@ function templateSignature(tpl: HTMLTemplateElement): TplSig | null {
     attrs: attrList,
     texts: textList,
     slots: slotList,
+    soleSlots: soleSlotList,
     holes: holeCount > 0 ? Int32Array.from(holeFlags) : null,
     holeCount,
   }
@@ -915,6 +931,20 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
       const pair = wantAttrs[i] as [string, string]
       if (el.getAttribute(pair[0]) !== pair[1]) return false
     }
+    // TWO RELAXATIONS, DISJOINT BY AN EXPLICIT CONJUNCT. Both say "this
+    // element's remaining server child range belongs to a later claimer, so stop
+    // verifying here": a HOLE hands its range to trailing `_mountChild` calls, a
+    // SOLE SLOT hands its range to `_mountSlot`. Firing both on one element would
+    // hand the same nodes to two claimers — duplicate DOM.
+    //
+    // They cannot, but the reason CHANGED with the mixed shape. It used to be
+    // structural: a hole was recorded only for an element with no text, no
+    // element child and no `<!>`, so a slot-bearing element could not be one. A
+    // hole may now carry `k` baked element children, so emptiness no longer
+    // separates them — `templateSignature` instead excludes a slot-bearing
+    // element from being a hole outright (`!slotAtEnd`). Order below is
+    // presentational, not semantic.
+
     // MOUNT HOLE. The template ends short here: after `k` baked children, the
     // rest of this element's server range is the hole's content — not extra
     // elements to reject, not texts to align, and not a subtree to descend into
@@ -944,6 +974,29 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
         ;(holes ??= new Map()).set(el, n)
         return true
       }
+    }
+    // MARKER-LESS SOLE MOUNT-SLOT. runtime-server elides the `<!--$-->` pair when
+    // an element's SOLE child is a reactive accessor (`soleAccessorChild` there),
+    // because the tag boundary already delimits the extent. That elision was
+    // designed against the `h()` pair — SSR render and `hydrateSoleAccessorChild`
+    // — and this compiled-template path is a further consumer of the same shape
+    // that never joined the agreement, so a sole `.map()` child reached the gate
+    // below looking for a range SSR never emitted and bailed the whole container.
+    //
+    // When the template says the slot is SOLE, the element's ENTIRE child list is
+    // slot content: there is no static skeleton left to compare and nothing to
+    // descend into. The one thing still worth distinguishing is whether SSR
+    // actually elided — a sole slot whose vnode child was an ARRAY rather than an
+    // accessor still gets its markers — so fall through to the marked path when
+    // the range really is there.
+    if (expected.soleSlots[at] === true) {
+      const f = el.firstChild
+      const marked =
+        f !== null &&
+        f.nodeType === 8 &&
+        (f as Comment).data === '$' &&
+        matchingCloseIsLastChild(f as Comment, el)
+      if (!marked) return true
     }
     let texts = 0
     let bare: Text[] | null = null

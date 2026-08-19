@@ -1018,12 +1018,25 @@ export function _tplCacheSize(): number {
  *  is exactly that case. */
 const SLOT_NOOP = (): void => {}
 
+/** The live `<!--$-->` opening an SSR-emitted accessor range. */
+const isRangeOpen = (n: Node): boolean => n.nodeType === 8 && (n as Comment).data === '$'
+
+/** The template's own inert `<!>` — an EMPTY comment, which is what a cloned
+ * (non-adopted) template hands `_mountSlot`. `null` is not one: an adopted
+ * sole slot whose SSR content was empty passes `null`. */
+const isCloneSlotPlaceholder = (n: Node | null): boolean =>
+  n != null && n.nodeType === 8 && (n as Comment).data === ''
+
 /** Hydration hook — registered by hydrateRoot (never at module load, so CSR
- * bundles tree-shake it exactly like the `_tpl` adopt verifier). */
+ * bundles tree-shake it exactly like the `_tpl` adopt verifier).
+ *
+ * `open === null` means a MARKER-LESS range: the slot was its element's SOLE
+ * child, so SSR elided the `<!--$-->` pair and the extent is the parent's whole
+ * child list. See `_mountSlot`. */
 export type SlotHydrator = (
   children: VNodeChild | VNodeChild[],
   parent: Node,
-  open: Comment,
+  open: Comment | null,
 ) => () => void
 let _slotHydrator: SlotHydrator | null = null
 export function _setSlotHydrator(h: SlotHydrator): void {
@@ -1042,12 +1055,34 @@ export function _mountSlot(
   // the first. Hand it to hydration, which walks the value against those nodes.
   // A clone's placeholder has empty comment data, so the two can never be
   // confused.
+  if (_slotHydrator !== null && placeholder != null && isRangeOpen(placeholder)) {
+    return _slotHydrator(children, parent, placeholder as Comment)
+  }
+  // ADOPTED CONTAINER, MARKER-LESS RANGE. runtime-server ELIDES the `<!--$-->`
+  // pair when the accessor is its element's SOLE child, because the tag boundary
+  // already delimits the extent (see `soleAccessorChild` there). That elision was
+  // designed against the `h()` pair — SSR render and `hydrateSoleAccessorChild` —
+  // and this compiled `_tpl` + `_mountSlot` path is a THIRD consumer of the same
+  // shape, which never joined the agreement. So a sole `.map()` child arrived
+  // here looking for a range SSR never emitted.
+  //
+  // Discriminating the three states the placeholder can be in:
+  //   - clone (no adoption)      -> the template's inert `<!>`, an EMPTY comment
+  //   - adopted, marked range    -> the live `<!--$-->`, handled above
+  //   - adopted, marker-less     -> the first SSR-rendered node, or `null` when
+  //                                 the slot rendered nothing
+  // The `placeholder === parent.firstChild` conjunct is what makes the last case
+  // provably SOLE rather than merely last: adoption already gates every `<!>` to
+  // be its parent's last child, and a last-but-not-sole slot has a preceding
+  // sibling, so its compiled ref walks past `firstChild` and cannot match. A
+  // sole slot's ref is exactly `__root.firstChild` — including the empty case,
+  // where both sides are `null`.
   if (
     _slotHydrator !== null &&
-    placeholder.nodeType === 8 &&
-    (placeholder as Comment).data === '$'
+    placeholder === (parent as ParentNode).firstChild &&
+    !isCloneSlotPlaceholder(placeholder)
   ) {
-    return _slotHydrator(children, parent, placeholder as Comment)
+    return _slotHydrator(children, parent, null)
   }
   if (children == null || children === false || children === true) {
     parent.removeChild(placeholder)

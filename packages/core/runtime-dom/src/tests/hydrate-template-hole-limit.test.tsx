@@ -511,23 +511,40 @@ const App = () => <div class="app"><main class="m">${jsxKids.join('')}</main></d
     expect(failures, failures.join('\n')).toEqual([])
   })
 
-  it('the limit PRE-EXISTS at default settings for a dynamic-slot hole', async () => {
-    // No option involved. A `<!>` placeholder + `_mountSlot` is the same hole
-    // shape, so a template with a dynamic child does not adopt today either.
-    // The option does not create this limit — it widens who hits it.
+  it('a dynamic-slot template adopts, and does so INDEPENDENTLY of the option', async () => {
+    // Was `the limit PRE-EXISTS at default settings for a dynamic-slot hole`,
+    // asserting `adopts === 0 / retained === 0`. That recorded the state of the
+    // world when a `<!>`-bearing template could never adopt at all
+    // (`templateSignature` bailed on `html.includes('<!')`), and its POINT was
+    // an attribution one: the dynamic-slot limit is not created by
+    // `templatizeComponentChildren`, which merely widens who hits it.
+    //
+    // The mount-slot adoption work removed that blanket bail, so the shape now
+    // ADOPTS. The attribution invariant is the half worth keeping and is still
+    // true — the option does not govern this shape — so it is asserted directly
+    // (off vs on) instead of via a zero that no longer holds.
     const src = `
 const App = () => <div class="a"><span class="s">s</span>{() => [1, 2].map((n) => <b>{() => String(n)}</b>)}</div>`
-    const ssr = h(
-      (() =>
-        h('div', { class: 'a' }, h('span', { class: 's' }, 's'), () =>
-          [1, 2].map((n) => h('b', null, String(n))),
-        )) as never,
-      null,
-    )
-    const r = await hydrateAndMeasure(ssr, src, {})
-    expect(r.ssrHtml).toContain('<!--$-->')
-    expect(r.adopts).toBe(0)
-    expect(r.retained).toBe(0)
+    const tree = () =>
+      h(
+        (() =>
+          h('div', { class: 'a' }, h('span', { class: 's' }, 's'), () =>
+            [1, 2].map((n) => h('b', null, String(n))),
+          )) as never,
+        null,
+      )
+    const off = await hydrateAndMeasure(tree(), src, {})
+    expect(off.ssrHtml).toContain('<!--$-->')
+    expect(off.adopts).toBe(1)
+    expect(off.retained).toBe(off.total)
+
+    // The option is not what decides this shape: identical adoption, identical
+    // retention, identical page. `adopts` is a per-TEST cumulative counter, so
+    // the second run's contribution is the delta.
+    const on = await hydrateAndMeasure(tree(), src, ON)
+    expect(on.adopts - off.adopts).toBe(off.adopts)
+    expect(on.retained).toBe(off.retained)
+    expect(on.html).toBe(off.html)
   })
 
   it('relaxing the verifier DUPLICATES the server content — the gate is load-bearing', () => {
