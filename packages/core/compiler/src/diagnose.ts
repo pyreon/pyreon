@@ -29,6 +29,42 @@ interface ErrorPattern {
 
 const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // The residual footgun created by defaulting `templatizeComponentChildren`
+    // ON. The emit INJECTS `import { _mountChild } from "@pyreon/runtime-dom"`
+    // into app source whenever an element absorbs a component child — which is
+    // now the common case rather than an opt-in one. So an app that upgrades
+    // `@pyreon/vite-plugin` without upgrading `@pyreon/runtime-dom` in step
+    // stops building (or stops booting) where before the mismatch was
+    // unreachable unless it had turned the option on deliberately.
+    //
+    // Worth teaching because the message names a symbol the user never wrote,
+    // in a file they did not edit, and nothing in it points at a version skew —
+    // the natural reading is "the compiler emitted something broken".
+    //
+    // Keyed on both spellings the skew produces: the bundler's missing-export
+    // error, and the runtime TypeError when a stale copy is resolved instead.
+    pattern:
+      /(?:does not provide an export named|no exported member|is not a function|is not defined)[^\n]*?['"`]?_mountChild['"`]?|_mountChild[^\n]*?(?:is not a function|is not defined)/,
+    diagnose: () => ({
+      cause:
+        '`_mountChild` is emitted by the compiler when an element absorbs a COMPONENT child into its template (`templatizeComponentChildren`, default ON since 0.52). It is exported by `@pyreon/runtime-dom`, so this means the resolved `@pyreon/runtime-dom` predates the option being defaulted on — a version skew between it and `@pyreon/vite-plugin`, not a bad emit. Before 0.52 the option was opt-in, so only a project that had enabled it deliberately could reach this.',
+      fix: 'Align the `@pyreon/*` versions — they ship as one fixed release group and are meant to move together. `pyreon info` reports the skew and `pyreon upgrade` aligns it. If you must stay on the older runtime for now, turn the emit off in the plugin instead of pinning around it.',
+      fixCode: `// check first — this prints the mismatched versions
+// $ pyreon info
+
+// align them (preferred)
+// $ pyreon upgrade
+
+// or, to stay on an older @pyreon/runtime-dom for now:
+// vite.config.ts
+export default defineConfig({
+  plugins: [pyreon({ templatizeComponentChildren: false })],
+})`,
+      related:
+        'See anti-patterns "Absorbing COMPONENT children into a template". The option absorbs `[element*][component+]` and bails every other shape to `h()`, so turning it off costs mount speed on component-heavy trees but changes no behaviour.',
+    }),
+  },
+  {
     // The residual footgun left by compiled-template hydration ADOPTION.
     // Hydration now binds a component's root `_tpl` against the SERVER nodes
     // instead of cloning, which is what makes typed input, focus and scroll
@@ -1346,6 +1382,39 @@ box.current = node         // writable by design`,
 <datalist id="suggestions"><option value="a" /></datalist>`,
       related:
         'The inverse trap is worth knowing too: whether a DOM property is safe to assign is decided by measured REFLECTION, not by the name. `value` is non-reflecting on `input`/`textarea`/`select` but reflects on `option`/`button`/`progress`/`meter`/`li`/`data`/`param`/`output`.',
+    }),
+  },
+  {
+    // The residual footgun left by defaulting `templatizeComponentChildren` ON.
+    // Two compiler passes rewrite the same node: the template pass relocates a
+    // component child's text into a CALL ARGUMENT, while `collapseRocketstyle`
+    // decided whether to wrap its replacement in JSX braces by looking at the
+    // node's AST parent — which is STILL a JSX element after the relocation.
+    // So collapse emitted braces into an argument position:
+    //
+    //   _mountChild({__rsCollapse(...)}, ...)   <- not parseable JavaScript
+    //
+    // Unreachable while templatization was opt-in; the moment the default
+    // flipped, any app using BOTH passes failed to build. Kept in the catalog
+    // because the message a user actually sees is a bundler PARSE error naming
+    // a file they did not write that way, with no hint that two transforms
+    // collided.
+    pattern: /(Unexpected token|Expected .*? but found|Parse error|Transform failed).*(__rsCollapse|_mountChild\(\{)/s,
+    diagnose: () => ({
+      cause:
+        'Two compiler passes rewrote the same node and disagreed about syntax position. `templatizeComponentChildren` moves a component child into a call argument; `collapseRocketstyle` then decided to wrap its replacement in JSX braces because the AST PARENT was still a JSX element — producing `_mountChild({__rsCollapse(…)}, …)`, which is not valid JavaScript. Both passes are individually correct; the emit is only broken where they overlap, which is why it stayed invisible while templatization was opt-in.',
+      fix: 'Upgrade `@pyreon/compiler` and `@pyreon/vite-plugin` — collapse now decides braces from the EMIT position rather than the AST parent, in both the JS and native backends. If you cannot upgrade yet, disable either pass to break the overlap: `pyreon({ templatizeComponentChildren: false })` or `pyreon({ collapseRocketstyle: false })`. Disabling templatization is the cheaper loss — it costs an optimization, while collapse affects rendered output.',
+      fixCode: `// vite.config.ts — temporary workaround on an affected version
+export default defineConfig({
+  plugins: [
+    pyreon({
+      // Either flag alone breaks the overlap; prefer this one.
+      templatizeComponentChildren: false,
+    }),
+  ],
+})`,
+      related:
+        'The general shape is worth remembering: when two transforms rewrite the same node, a decision made from the AST PARENT is only valid if no earlier pass can relocate that node. Ask what the node position will be at EMIT time, not what it was at parse time.',
     }),
   },
   {

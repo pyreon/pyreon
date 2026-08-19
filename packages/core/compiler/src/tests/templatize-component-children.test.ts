@@ -53,18 +53,42 @@ describe('absorbing component children', () => {
     expect(emit(`const App = () => <div class="a"><b>x</b></div>`)).not.toContain('_mountChild')
   })
 
-  it('uses a <!> placeholder when static content FOLLOWS the component', () => {
-    const code = emit(`const App = () => <div class="c"><Comp /><span>S</span></div>`)
-    expect(code).toContain('<!>')
-    expect(code).toContain('_mountSlot(<Comp />')
+  it('BAILS to h() when static content FOLLOWS the component', () => {
+    // A hole is marker-free only because it runs to the element's own closing
+    // tag. Static content after a component would need a real extent marker, so
+    // rather than emit a `<!>` placeholder — correct, but a template containing
+    // a comment is refused by hydration's verifier, which cost this shape more
+    // retention than the absorb bought — the element bails to `h()` exactly as
+    // it does with the option off.
+    const src = `const App = () => <div class="c"><Comp /><span>S</span></div>`
+    const code = emit(src)
+    expect(code).not.toContain('_mountSlot(<Comp />')
     expect(code).not.toContain('_mountChild')
+    expect(code).not.toContain('data-pyreon-hole')
+    // The definition of "bails": byte-identical to the option being off.
+    expect(code).toBe(emit(src, {}))
   })
 
-  it('appends when the component is LAST after static content', () => {
+  it('appends when the component is LAST after static content, and declares a hole', () => {
     const code = emit(`const App = () => <div class="c"><h2>T</h2><Comp /></div>`)
-    // Mixed children still need positional placeholders — a bare append would
-    // be correct here, but `useMixed` is what keeps the general case honest.
-    expect(code).toContain('_mountSlot')
+    // The static sibling bakes; the component appends after it. The hole starts
+    // where the template ends and runs to `</div>`, so it still needs no marker.
+    expect(code).toContain('_tpl("<div class=\\"c\\" data-pyreon-hole><h2>T</h2></div>"')
+    expect(code).toContain('_mountChild(<Comp />, __root, null)')
+    expect(code).not.toContain('_mountSlot')
+    expect(code).not.toContain('<!>')
+  })
+
+  it('BAILS when a component is interleaved between static children', () => {
+    const src = `const App = () => <div class="c"><A /><span>S</span><B /></div>`
+    expect(emit(src)).toBe(emit(src, {}))
+  })
+
+  it('BAILS when TEXT precedes the component (the prefix must be elements)', () => {
+    // Text before the hole would have to align 1:1 with the server's, which is
+    // the alignment the hole deliberately stops checking.
+    const src = `const App = () => <div class="c">hi<Comp /></div>`
+    expect(emit(src)).toBe(emit(src, {}))
   })
 
   it('bakes a static skeleton and mounts into a PHASE-1 ref (PZ-08)', () => {
@@ -122,9 +146,12 @@ describe('preserved holes — what survives into the emitted child', () => {
     expect(code.indexOf('<A x=')).toBeLessThan(code.indexOf('<B y='))
   })
 
-  it('walks a hole reached through the placeholder (_mountSlot) path too', () => {
-    const code = emit(`const N = (props) => <div class="b"><A x={props.a} /><span>S</span></div>`)
-    expect(code).toContain('_mountSlot(<A x={_rp(() => props.a)} />')
+  it('walks a hole that follows a BAKED static sibling', () => {
+    // The hole's own source range is walked wherever it sits in the child list,
+    // not only when it is the first child — a slice would emit the child's text
+    // as it stood before the walk and silently drop the `_rp` wrapping.
+    const code = emit(`const N = (props) => <div class="b"><span>S</span><A x={props.a} /></div>`)
+    expect(code).toContain('_mountChild(<A x={_rp(() => props.a)} />')
   })
 })
 

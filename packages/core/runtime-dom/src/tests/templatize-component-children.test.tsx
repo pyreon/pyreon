@@ -119,10 +119,23 @@ describe('templatizeComponentChildren — emit shape', () => {
     expect(code).not.toContain('_mountSlot')
   })
 
-  it('uses a placeholder when static content FOLLOWS the component child', () => {
-    const code = emit(`const App = () => <div class="c"><Comp /><span>S</span></div>`)
-    expect(code).toContain('<!>')
-    expect(code).toContain('_mountSlot')
+  it('BAILS to h() when static content FOLLOWS the component child', () => {
+    // The placeholder form this used to assert produced a template containing a
+    // comment, which hydration's verifier refuses — so the shape cost more
+    // retention than the absorb bought. It now bails to `h()`, which is exactly
+    // what the option does when off.
+    const src = `const App = () => <div class="c"><Comp /><span>S</span></div>`
+    const code = emit(src)
+    expect(code).not.toContain('_mountSlot')
+    expect(code).not.toContain('data-pyreon-hole')
+    expect(code).toBe(transformJSX(src, 'test.tsx', {} as never).code)
+  })
+
+  it('appends after a BAKED static sibling and declares a trailing hole', () => {
+    const code = emit(`const App = () => <div class="c"><span>S</span><Comp /></div>`)
+    expect(code).toContain('_tpl("<div class=\\"c\\" data-pyreon-hole><span>S</span></div>"')
+    expect(code).toContain('_mountChild(<Comp />, __root, null)')
+    expect(code).not.toContain('<!>')
   })
 
   it('bakes a static skeleton around a nested component child', () => {

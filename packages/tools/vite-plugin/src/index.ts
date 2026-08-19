@@ -234,14 +234,17 @@ export interface PyreonPluginOptions {
 
   /**
    * Absorb COMPONENT children into the enclosing `_tpl()` template instead of
-   * bailing the element to `h()` (client emit only). Default **false**.
+   * bailing the element to `h()` (client emit only). Default **true**.
    *
-   * Worth a measured 12.6% of the 2,047-component deep-tree mount, but it
-   * converts the part of the tree that still ADOPTS at hydration into one that
-   * is rebuilt — a `_tpl` result is swapped, and newly templatizing an app's
-   * skeleton means nothing below it hydrates. **Only enable it for a client
-   * bundle that never calls `hydrateRoot`** (a pure CSR app). See the compiler
-   * option's docs for the full contract.
+   * Worth a measured 12.6% of the 2,047-component deep-tree mount. It used to
+   * default off because it traded hydration retention for that: a templatized
+   * element was rebuilt rather than adopted, so nothing below it hydrated.
+   * Both halves of that are now closed — an absorbed element adopts its server
+   * DOM (mount-hole adoption), and the shapes that cannot adopt are no longer
+   * absorbed at all: the compiler only absorbs `[element*][component+]`, where
+   * the hole runs to the element's own closing tag, and bails everything else
+   * to `h()` exactly as this option being off would. Set it to `false` to
+   * restore the pre-0.52 emit.
    */
   templatizeComponentChildren?: boolean
 
@@ -724,7 +727,6 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
   // So dev keeps the normal mount; we surface that ONCE so an opted-in
   // consumer running `vite dev` isn't left wondering why nothing collapsed.
   let warnedDevCollapse = false
-  let warnedTplComponentChildren = false
   let projectRoot = ''
 
   // ── Cross-module signal export registry ─────────────────────────────────
@@ -1279,31 +1281,22 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
         }
       }
 
-      // `templatizeComponentChildren` now has a byte-identical native (Rust)
-      // mirror, so it no longer forces the compiler's JS backend and costs
-      // nothing extra to compile. The HYDRATION caveat has NARROWED — an
-      // element whose children are all components adopts its server DOM again
-      // (mount-hole adoption) — but it has not gone: a component with a static
-      // sibling still compiles to a `<!>` placeholder, and no template
-      // containing one is adoptable. That residual is why the option is still
-      // default-off, so it is still said once, with the shape named.
-      if (options?.templatizeComponentChildren === true && !warnedTplComponentChildren) {
-        warnedTplComponentChildren = true
-        this.warn(
-          '[Pyreon] `templatizeComponentChildren` is on. An element whose children are ALL ' +
-            'components still adopts its server DOM when hydrating; one that MIXES a component ' +
-            'with static content does not, and neither does anything below it. Prefer it for a ' +
-            'client bundle that never calls hydrateRoot(), or for a component tree with no ' +
-            'mixed static/component parents.',
-        )
-      }
+      // `templatizeComponentChildren` DEFAULTS ON. The two reasons it did not
+      // are both closed: it has a byte-identical native (Rust) mirror, so it no
+      // longer forces the JS backend, and it no longer costs hydration
+      // retention. The second is what took the longest — an absorbed element
+      // now adopts its server DOM (mount-hole adoption), and the shapes that
+      // cannot adopt are no longer absorbed: the compiler takes only
+      // `[element*][component+]`, whose hole runs to the element's own closing
+      // tag, and bails every other shape to `h()`, which is byte-identically
+      // what this option being off emits. So there is no shape it makes worse,
+      // and nothing to warn about — an explicit `false` is a silent opt-out.
+      const templatizeComponentChildren = options?.templatizeComponentChildren !== false
 
       const result = transformJSX(sourceForJsx, id, {
         ssr: isSsr,
         ...(ssrTemplate ? { ssrTemplate: true } : {}),
-        ...(options?.templatizeComponentChildren === true
-          ? { templatizeComponentChildren: true }
-          : {}),
+        ...(templatizeComponentChildren ? { templatizeComponentChildren: true } : {}),
         knownSignals,
         ...(collapseRocketstyle ? { collapseRocketstyle } : {}),
       })

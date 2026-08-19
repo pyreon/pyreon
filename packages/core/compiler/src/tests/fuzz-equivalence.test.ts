@@ -334,18 +334,35 @@ describeNative('seeded differential fuzz — JS ≡ Rust, client + SSR', () => {
   test(`the ${MODES[3]!.label} mode actually changes the emit`, () => {
     let differs = 0
     let appendForm = 0
-    let mixedForm = 0
+    let componentSlotForm = 0
+    // A component hole is emitted as its own JSX (`_mountSlot(<Comp />, …)`), so
+    // an uppercase tag right after the paren is the placeholder form and nothing
+    // else — an expression hole is `_mountSlot(expr` or `_mountSlot(() =>`.
+    const COMPONENT_SLOT = /_mountSlot\(<[A-Z]/
     for (let seed = 1; seed <= SEEDS; seed++) {
       const src = genComponent(seed)
       const off = transformJSX_JS(src, 'fuzz.tsx', {}).code
       const on = transformJSX_JS(src, 'fuzz.tsx', { templatizeComponentChildren: true }).code
       if (off !== on) differs++
       if (on.includes('_mountChild(')) appendForm++
-      if (on.includes('_mountSlot(') && !off.includes('_mountSlot(')) mixedForm++
+      if (COMPONENT_SLOT.test(on)) componentSlotForm++
     }
-    // Observed at SEEDS=300: differs≈37%, append≈16%, mixed≈19%.
-    expect(differs, 'option had no effect on any seed').toBeGreaterThan(SEEDS * 0.2)
-    expect(appendForm, 'append form never emitted').toBeGreaterThan(SEEDS * 0.08)
-    expect(mixedForm, 'placeholder form never emitted').toBeGreaterThan(SEEDS * 0.08)
+    // Measured at SEEDS=5000: differs=890 (17.8%), append=890, componentSlot=0.
+    // The floor is well under the observed rate so ordinary grammar drift does
+    // not red it, while a mode that went dead does. It was 0.2 when the option
+    // also emitted a placeholder form; declining those shapes instead of
+    // absorbing them is what moved the rate, and 890/5000 is the honest figure.
+    expect(differs, 'option had no effect on any seed').toBeGreaterThan(SEEDS * 0.1)
+    // Not a coincidence, and the sharpest statement of what the option now does:
+    // it changes the emit EXACTLY when it absorbs. Every shape it declines bails
+    // to `h()`, which is byte-identical to the option being off.
+    expect(appendForm, 'the option changed an emit without absorbing').toBe(differs)
+    // A component NEVER goes through a `<!>` placeholder any more: the shapes
+    // that used to (static content after a component) bail the whole element to
+    // `h()` instead, because a placeholder-bearing template cannot be adopted by
+    // hydration and so cost more retention than the absorb ever bought. This
+    // counted ~19% of seeds before that change, so it is a live assertion over
+    // the grammar, not a vacuous zero.
+    expect(componentSlotForm, 'component placeholder form must no longer exist').toBe(0)
   })
 })

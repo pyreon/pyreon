@@ -6184,11 +6184,24 @@ fn try_template_emit(el: &JSXElement, ctx: &mut Ctx) -> bool {
 
     // Walk each preserved child so it receives the transformations the
     // template's own replacement no longer covers.
+    //
+    // `parent_is_jsx` is FALSE for the duration: a hole's text is relocated into
+    // a call argument (`_mountChild(<Comp/>, …)`), not left in the JSX child slot
+    // it was written in. Every "does this replacement need braces?" decision
+    // reads this flag, and answering YES here emitted
+    // `_mountChild({__rsCollapse(…)}, __root, null)` — a syntax error, and only
+    // for a source using BOTH `templatizeComponentChildren` and
+    // `collapseRocketstyle`, which is why it surfaced when the first defaulted
+    // on. SAVED and RESTORED rather than reset to a constant: holes nest, and the
+    // walk below sets the flag TRUE again for the hole's own children.
+    let old_parent_is_jsx = ctx.parent_is_jsx;
+    ctx.parent_is_jsx = false;
     for hole in &holes {
         if let Some(child) = find_jsx_element_by_span(el, hole.start, hole.end) {
             handle_jsx_element(child, ctx);
         }
     }
+    ctx.parent_is_jsx = old_parent_is_jsx;
     true
 }
 
@@ -6274,6 +6287,45 @@ fn template_absorbs_component(children: &[JSXChild]) -> bool {
     false
 }
 
+/// Does this child list absorb its COMPONENT children into the enclosing
+/// template? Mirrors `absorbsComponentChildren` in the JS backend.
+///
+/// The absorbable shape is `[element*][component+]`: at least one component,
+/// every component in one contiguous TRAILING run, and nothing but baked
+/// ELEMENTS before it — exactly the set whose components can be appended in
+/// source order. Every other shape bails the element to `h()`; see the JS
+/// backend for why the `<!>` placeholder alternative cost the page its nodes.
+fn absorbs_component_children(children: &[JSXChild]) -> bool {
+    // 0 = element, 1 = component, 2 = other (text / expression).
+    let mut kinds: Vec<u8> = Vec::new();
+    fn collect(kids: &[JSXChild], kinds: &mut Vec<u8>) {
+        for child in kids {
+            match child {
+                JSXChild::Text(text) => {
+                    if !clean_jsx_text(text.value.as_str()).is_empty() {
+                        kinds.push(2);
+                    }
+                }
+                JSXChild::Element(el) => {
+                    kinds.push(if is_absorbable_component_child(el) { 1 } else { 0 });
+                }
+                JSXChild::ExpressionContainer(c) => {
+                    if jsx_expr_as_expression(&c.expression).is_some() {
+                        kinds.push(2);
+                    }
+                }
+                JSXChild::Fragment(frag) => collect(&frag.children, kinds),
+                _ => {}
+            }
+        }
+    }
+    collect(children, &mut kinds);
+    let Some(first) = kinds.iter().position(|k| *k == 1) else {
+        return false;
+    };
+    kinds[..first].iter().all(|k| *k == 0) && kinds[first..].iter().all(|k| *k == 1)
+}
+
 fn template_element_count(el: &JSXElement, is_root: bool, tpl_components: bool) -> i32 {
     let tag = jsx_tag_name(el);
     if tag.is_empty() || !is_lower_case(tag) {
@@ -6286,8 +6338,11 @@ fn template_element_count(el: &JSXElement, is_root: bool, tpl_components: bool) 
         return 1;
     }
     let mut count = 1;
+    // Decided ONCE per element and threaded down, including through fragment
+    // children — a fragment flattens into its enclosing element's child list.
+    let absorb = tpl_components && absorbs_component_children(&el.children);
     for child in &el.children {
-        let c = count_child_for_template(child, tpl_components);
+        let c = count_child_for_template(child, absorb, tpl_components);
         if c == -1 {
             return -1;
         }
@@ -6296,14 +6351,22 @@ fn template_element_count(el: &JSXElement, is_root: bool, tpl_components: bool) 
     count
 }
 
-fn count_child_for_template(child: &JSXChild, tpl_components: bool) -> i32 {
+/// `absorb_components` is the ENCLOSING ELEMENT's absorb verdict; `tpl_components`
+/// is the OPTION, which a nested element needs in order to compute its own. They
+/// are not interchangeable — passing the verdict down as the option would let one
+/// element's child list decide its grandchildren's.
+fn count_child_for_template(
+    child: &JSXChild,
+    absorb_components: bool,
+    tpl_components: bool,
+) -> i32 {
     match child {
         JSXChild::Text(_) => 0,
         JSXChild::Element(el) => {
             // A COMPONENT child no longer bails the whole element: it is mounted
             // into the clone by the bind, contributing no baked elements of its
             // own. Mirrors `countChildForTemplate` in the JS backend.
-            if tpl_components && is_absorbable_component_child(el) {
+            if absorb_components && is_absorbable_component_child(el) {
                 return 0;
             }
             template_element_count(el, false, tpl_components)
@@ -6327,15 +6390,21 @@ fn count_child_for_template(child: &JSXChild, tpl_components: bool) -> i32 {
                 }
             }
         },
-        JSXChild::Fragment(frag) => template_fragment_count(frag, tpl_components),
+        JSXChild::Fragment(frag) => {
+            template_fragment_count(frag, absorb_components, tpl_components)
+        }
         _ => -1,
     }
 }
 
-fn template_fragment_count(frag: &JSXFragment, tpl_components: bool) -> i32 {
+fn template_fragment_count(
+    frag: &JSXFragment,
+    absorb_components: bool,
+    tpl_components: bool,
+) -> i32 {
     let mut count = 0;
     for child in &frag.children {
-        let c = count_child_for_template(child, tpl_components);
+        let c = count_child_for_template(child, absorb_components, tpl_components);
         if c == -1 {
             return -1;
         }
@@ -7546,16 +7615,16 @@ fn analyze_children(flat: &[FlatChild]) -> (bool, bool) {
         .iter()
         .filter(|c| matches!(c, FlatChild::Expression(_)))
         .count();
-    // An absorbed component child counts toward MIXED (its append must not jump
-    // over static content that follows it) but NOT toward multi-expr: several
-    // component children with nothing static between them append in source
-    // order, which is already the right order. That distinction is the whole
-    // win — the `<!>` placeholder variant of this feature measured 4.24ms
+    // A component child does NOT count toward MIXED, because it can no longer be
+    // in a position where it would have to: `process_children` bails the whole
+    // element unless the components form a TRAILING run preceded only by baked
+    // elements (`absorbs_component_children`), and in that shape appending in
+    // source order already lands every component after all baked content. That
+    // is also the whole win — the `<!>` placeholder variant measured 4.24ms
     // against the append variant's 3.94ms, because 2,046 placeholder comments
-    // get cloned and then removed.
-    let has_component = flat.iter().any(|c| matches!(c, FlatChild::Component(_)));
-    let present =
-        (has_elem as u8) + (has_text as u8) + ((expr_count > 0) as u8) + (has_component as u8);
+    // get cloned and then removed, AND it emitted a template containing a
+    // comment, which hydration refuses to adopt.
+    let present = (has_elem as u8) + (has_text as u8) + ((expr_count > 0) as u8);
     (present > 1, expr_count > 1)
 }
 
@@ -7752,26 +7821,17 @@ fn process_one_child(
             // bracketed replacement.
             let d = tb.next_disp();
             let vnode = tb.register_hole(comp.span());
-            // For a component only MIXED matters — `use_multi_expr` counts
-            // text-merging expression children, and any component alongside
-            // them already forces `use_mixed`.
-            if use_mixed {
-                // Something static follows (or could): mount AT the placeholder.
-                tb.needs_mount_slot = true;
-                let placeholder = tb.hoist_placeholder_ref(parent_ref, child_node_idx);
-                tb.bind_lines.push(format!(
-                    "const {} = _mountSlot({}, {}, {})",
-                    d, vnode, parent_ref, placeholder
-                ));
-                Some("<!>".to_string())
-            } else {
-                // Nothing static in this element — append in source order, which
-                // needs no placeholder comment at all.
-                tb.needs_mount_child = true;
-                tb.bind_lines
-                    .push(format!("const {} = _mountChild({}, {}, null)", d, vnode, parent_ref));
-                Some(String::new())
-            }
+            // Always the APPEND path. A component only reaches here in the
+            // `[element*][component+]` shape (`process_children` bails every
+            // other one), where nothing baked follows it — so appending in
+            // source order is already the right position and no placeholder
+            // comment is needed. The `<!>` + `_mountSlot` variant this replaces
+            // was correct but unadoptable: a template containing a comment is
+            // refused by `templateSignature`, so the subtree cloned and swapped.
+            tb.needs_mount_child = true;
+            tb.bind_lines
+                .push(format!("const {} = _mountChild({}, {}, null)", d, vnode, parent_ref));
+            Some(String::new())
         }
         FlatChild::Element(el, elem_idx) => {
             let child_accessor = if use_mixed {
@@ -7897,6 +7957,13 @@ fn process_children(
     ctx: &mut Ctx,
 ) -> Option<(String, bool)> {
     let flat = flatten_children(&el.children, ctx.templatize_component_children);
+    let has_component = flat.iter().any(|c| matches!(c, FlatChild::Component(_)));
+    // Re-derived from the SAME predicate on the SAME input the prescan used, so
+    // this can only fire if the two ever disagree — in which case bailing is the
+    // safe outcome, not the emit of a shape the prescan did not price.
+    if has_component && !absorbs_component_children(&el.children) {
+        return None;
+    }
     let (use_mixed, use_multi_expr) = analyze_children(&flat);
     let parent_ref = if accessor == "__root" {
         "__root"
@@ -7919,14 +7986,15 @@ fn process_children(
         html.push_str(&child_html);
         child_node_idx += 1;
     }
-    // MOUNT HOLE — mirrors jsx.ts:processChildren. Every child is an absorbed
-    // COMPONENT taking the append path, so the element is emitted EMPTY and
-    // filled at mount by trailing `_mountChild` calls; declaring it lets
-    // hydration adopt the element instead of rejecting its server range as
-    // extra elements.
-    let is_hole = !use_mixed
-        && !flat.is_empty()
-        && flat.iter().all(|c| matches!(c, FlatChild::Component(_)));
+    // MOUNT HOLE — mirrors jsx.ts:processChildren. This element's TRAILING
+    // children are absorbed COMPONENTs taking the append path, so the template
+    // ends short and the rest is filled at mount by `_mountChild` calls;
+    // declaring it lets hydration adopt the element instead of rejecting its
+    // server range as extra elements. The hole needs no extent marker and adds
+    // no SSR bytes — it always runs to the element's own closing tag — and the
+    // count of baked children before it is read off the template by the runtime
+    // rather than stated here.
+    let is_hole = !use_mixed && has_component;
     Some((html, is_hole))
 }
 
