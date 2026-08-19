@@ -1376,6 +1376,43 @@ box.current = node         // writable by design`,
         'Plain `value` on an `input`/`textarea` also establishes the reset default on its FIRST application, so `form.reset()` restores what the field mounted with. Later changes deliberately do not move that default — a controlled input rewrites its signal on every keystroke, and dragging the default along would make reset a no-op.',
     }),
   },
+  {
+    // Not a thrown message — the SYMPTOM STRING a user pastes in, which is how
+    // this one is found (same convention as the hydration-duplication entry
+    // above). Two shapes of the SAME root cause: the compile-to-string SSR
+    // path's lean `_ssrAttrGen`/`_ssrAttrUrl` helpers are selected from the
+    // attribute NAME, and they used to omit the branches of `renderProp` that
+    // a name cannot decide — the FUNCTION branch (value-type) and the
+    // `<textarea value>` skip (tag, which `_ssrAttrGen` is not even given).
+    //
+    // Kept in the catalog because it stays reachable on any version before the
+    // fix, and because both symptoms are silent: nothing throws, the page just
+    // renders wrong, so there is no stack trace to search on.
+    pattern:
+      /=["']?\(\s*\)\s*=(?:&gt;|>)|["'(]\(\s*\)\s*=(?:&gt;|>)[^"']*["']\s*(?:\/?>|\sdata-)|textarea[^\n]{0,60}(?:blank|empty)[^\n]{0,40}(?:ssr|server|hydrat|prefill)/i,
+    diagnose: () => ({
+      cause:
+        "A compiled SSR attribute rendered its value's SOURCE TEXT instead of the value (`d=\"() =&gt; geometry()?.path\"`), or a prefilled `<textarea>` server-rendered empty with a dead `value=\"…\"` attribute. Both come from the compile-to-string SSR fast path (`ssrTemplate`, on by default): it routes an attribute to a LEAN helper chosen from the attribute NAME, and those helpers omitted two branches the name cannot decide. Whether the value must be RESOLVED depends on its TYPE — a bare identifier holding an accessor (`d={geometry}`, where the compiler only auto-wraps syntactically-visible functions) arrives as a raw function and gets stringified. And `<textarea>` has no `value` content attribute at all — the value IS the text content — but the lean helper is not passed the tag, so that skip could not fire. Either way the client disagrees, so hydration mismatches too.",
+      fix: "Upgrade — both are fixed at the SSR seam: the lean helpers now resolve a callable before serializing (and before the url-guard), and `<textarea value>` bails to the `h()` path, which emits the value as the element's text content. To confirm you are on a fixed build, server-render `<path d={someAccessor} />` and check the HTML holds the RESOLVED value. If you cannot upgrade, call the accessor at the JSX site (`d={geometry()}`) so a value — not a function — reaches the attribute, and set a textarea's initial text as its child instead of `value`. NOTE the fix makes attribute accessors RUN during SSR: one that touches `window`/`document`, or a signal only populated on the client, now throws at render where it previously stringified silently — guard it with `isServer` or move the read into `onMount`.",
+      fixCode: `// Renders the closure SOURCE on affected versions — a bare identifier
+// holding an accessor is not auto-wrapped, so a function reaches the attr.
+const geometry = () => props.shape
+<path d={geometry} />        // d="() =&gt; geometry()?.path ?? &quot;&quot;"
+
+// Portable: call it, so a VALUE reaches the attribute.
+<path d={geometry()} />
+
+// <textarea> has NO \`value\` content attribute — the value IS the content.
+<textarea value={draft} />   // dead attribute + EMPTY textarea (affected)
+<textarea>{draft}</textarea> // the value as a child — correct everywhere
+
+// After the fix an attribute accessor RUNS on the server. Guard client-only
+// reads, or the render throws where it used to silently stringify.
+<div data-w={() => (isServer ? '' : String(window.innerWidth))} />`,
+      related:
+        'Same class as the client-side twin: the compiled template `attrSetter` emitting a raw `setAttribute` instead of the runtime `applyAttrProp`, which rendered `aria-disabled="undefined"` on the nullish branch. The general rule for both: a fast path selected by ONE dimension of a value must still carry every branch of the path it claims byte-identity with that the dimension cannot exclude — and a lean variant that is not even given the input a branch needs must not be selected for that input.',
+    }),
+  },
 ]
 
 /** Diagnose an error message and return structured fix information */
