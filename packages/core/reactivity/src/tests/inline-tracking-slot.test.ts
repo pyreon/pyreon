@@ -88,7 +88,7 @@ describe('two-tier tracking subscribers — notification', () => {
   it('notifies through the inline slot (1 subscriber)', () => {
     const s = signal(0)
     const seen: number[] = []
-    const d = effect(() => seen.push(s()))
+    const d = effect(() => { seen.push(s()) })
     s.set(1)
     s.set(2)
     expect(seen).toEqual([0, 1, 2])
@@ -101,8 +101,8 @@ describe('two-tier tracking subscribers — notification', () => {
     const s = signal(0)
     const a: number[] = []
     const b: number[] = []
-    const da = effect(() => a.push(s()))
-    const db = effect(() => b.push(s()))
+    const da = effect(() => { a.push(s()) })
+    const db = effect(() => { b.push(s()) })
     s.set(1)
     expect(a).toEqual([0, 1])
     expect(b).toEqual([0, 1])
@@ -256,7 +256,7 @@ describe('createSelector buckets use the tier', () => {
     const cur = signal(1)
     const sel = createSelector(cur)
     const seen: boolean[] = []
-    const d = effect(() => seen.push(sel(2)))
+    const d = effect(() => { seen.push(sel(2)) })
     cur.set(2)
     cur.set(3)
     expect(seen).toEqual([false, true, false])
