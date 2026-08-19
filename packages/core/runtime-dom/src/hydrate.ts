@@ -541,88 +541,95 @@ function hydrateVNode(
     // returned a null cursor. True keyed ADOPTION via the <!--k:KEY--> markers is
     // a perf follow-up.
     if (domNode?.nodeType === Node.COMMENT_NODE && (domNode as Comment).data === 'pyreon-for') {
-      // Find the matching end marker, depth-aware (nested <For> blocks).
+      // ONE depth-aware pass finds the matching end marker AND parses the
+      // block's TOP-LEVEL rows off the <!--k:KEY--> markers (a nested <For>'s
+      // k: markers belong to ITS block, not this one). Every row needs ≥1 real
+      // DOM node; an empty row makes the parse bail (parseOk = false) → swap
+      // semantics inside mountFor.
+      //
+      // This used to be TWO end-to-end scans of the same sibling chain (find
+      // `end`, then re-walk to collect markers) plus a per-row `.nextSibling`
+      // for the row's first node and a per-row `.previousSibling` for its last
+      // — 6 sibling-getter reads per row on a 1000-row table. Fused, it is 2:
+      // the scan already holds `next` (which IS the just-opened row's first
+      // node) and `prev` (which IS the closing row's last node), so both
+      // per-row lookups are reads of values already in hand, not new DOM
+      // traversals. Measured on a 1000-row keyed table: 6000 → 2000.
+      //
+      // PARALLEL arrays instead of per-row {key,marker,first,last} objects, and
+      // the marker data kept RAW ('k:' prefix retained) — a 1000-row block
+      // previously allocated 1000 row objects + 1000 `.slice(2)` key strings
+      // before a single row was verified; the raw form compares alloc-free via
+      // `startsWith(keyStr, 2)` in the verify loop below.
       let end: ChildNode | null = null
-      let depth = 0
-      let n: ChildNode | null = domNode.nextSibling
-      while (n) {
-        if (n.nodeType === Node.COMMENT_NODE) {
-          const d = (n as Comment).data
-          if (d === 'pyreon-for') depth++
-          else if (d === '/pyreon-for') {
-            if (depth === 0) {
-              end = n
-              break
-            }
-            depth--
-          }
-        }
-        n = n.nextSibling
-      }
-      if (end) {
-        const after = end.nextSibling
-        // Parse the block's TOP-LEVEL rows off the <!--k:KEY--> markers
-        // (depth-aware — a nested <For>'s k: markers belong to ITS block, not
-        // this one). Every row needs ≥1 real DOM node; an empty row makes the
-        // parse bail (parseOk = false) → swap semantics inside mountFor.
-        // PARALLEL arrays instead of per-row {key,marker,first,last} objects,
-        // and the marker data kept RAW ('k:' prefix retained) — a 1000-row
-        // block previously allocated 1000 row objects + 1000 `.slice(2)` key
-        // strings before a single row was verified; the raw form compares
-        // alloc-free via `startsWith(keyStr, 2)` in the verify loop below.
-        let parseOk = true
-        const rowKeysRaw: string[] = []
-        const rowMarkers: Comment[] = []
-        const rowFirsts: ChildNode[] = []
-        const rowLasts: ChildNode[] = []
-        {
-          // Local-tracked open-row state (no per-row intermediate object /
-          // closure — this loop visits every top-level block node once).
-          let rowDepth = 0
-          let cur: ChildNode | null = domNode.nextSibling
-          let openKey = ''
-          let openMarker: Comment | null = null
-          let openFirst: ChildNode | null = null
-          while (cur && cur !== end) {
-            if (cur.nodeType === 8 /* comment */) {
-              const d = (cur as Comment).data
-              if (
-                rowDepth === 0 &&
-                d.charCodeAt(0) === 107 /* k */ &&
-                d.charCodeAt(1) === 58 /* : */
-              ) {
-                if (openMarker) {
-                  const last = cur.previousSibling
-                  if (!openFirst || !last || openFirst === cur) {
-                    parseOk = false // empty row — no adoptable range
-                    break
-                  }
+      let parseOk = true
+      const rowKeysRaw: string[] = []
+      const rowMarkers: Comment[] = []
+      const rowFirsts: ChildNode[] = []
+      const rowLasts: ChildNode[] = []
+      {
+        let depth = 0
+        let cur: ChildNode | null = domNode.nextSibling
+        // `prev` mirrors `cur.previousSibling` — the scan is a pure read, so
+        // nothing can mutate the chain underneath it.
+        let prev: ChildNode | null = null
+        let openKey = ''
+        let openMarker: Comment | null = null
+        let openFirst: ChildNode | null = null
+        while (cur) {
+          const next: ChildNode | null = cur.nextSibling
+          if (cur.nodeType === 8 /* comment */) {
+            const d = (cur as Comment).data
+            if (d === '/pyreon-for') {
+              if (depth === 0) {
+                end = cur
+                break
+              }
+              depth--
+            } else if (d === 'pyreon-for') depth++
+            else if (
+              // `parseOk` short-circuits the row bookkeeping once the parse has
+              // failed, but the scan MUST continue: `end` is what decides
+              // whether this is an adoptable block at all, and a bail before
+              // finding it would drop the whole <For> onto the legacy path.
+              parseOk &&
+              depth === 0 &&
+              d.charCodeAt(0) === 107 /* k */ &&
+              d.charCodeAt(1) === 58 /* : */
+            ) {
+              if (openMarker) {
+                if (!openFirst || !prev || openFirst === cur) {
+                  parseOk = false // empty row — no adoptable range
+                } else {
                   rowKeysRaw.push(openKey)
                   rowMarkers.push(openMarker)
                   rowFirsts.push(openFirst)
-                  rowLasts.push(last)
+                  rowLasts.push(prev)
                 }
-                openKey = d
-                openMarker = cur as Comment
-                openFirst = cur.nextSibling
-              } else if (d === 'pyreon-for') rowDepth++
-              else if (d === '/pyreon-for') rowDepth--
-            }
-            cur = cur.nextSibling
-          }
-          if (parseOk && openMarker) {
-            const last = end.previousSibling
-            if (!openFirst || !last || openFirst === end) parseOk = false
-            else {
-              rowKeysRaw.push(openKey)
-              rowMarkers.push(openMarker)
-              rowFirsts.push(openFirst)
-              rowLasts.push(last)
+              }
+              openKey = d
+              openMarker = cur as Comment
+              openFirst = next
             }
           }
-          // Content before the first k: marker (shouldn't exist) → not adoptable.
-          if (parseOk && rowKeysRaw.length === 0 && domNode.nextSibling !== end) parseOk = false
+          prev = cur
+          cur = next
         }
+        if (end && parseOk && openMarker) {
+          // `prev` is the node before `end` — the final row's last node.
+          if (!openFirst || !prev || openFirst === end) parseOk = false
+          else {
+            rowKeysRaw.push(openKey)
+            rowMarkers.push(openMarker)
+            rowFirsts.push(openFirst)
+            rowLasts.push(prev)
+          }
+        }
+        // Content before the first k: marker (shouldn't exist) → not adoptable.
+        if (end && parseOk && rowKeysRaw.length === 0 && domNode.nextSibling !== end) parseOk = false
+      }
+      if (end) {
+        const after = end.nextSibling
 
         // Hand the parsed block to mountFor via the one-shot slot. mountFor
         // adopts on a 1:1 key match (hydrating each row's vnode against its
