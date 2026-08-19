@@ -32,17 +32,38 @@
  * `octane/compiler`.
  *
  * Per-selection µs above are median-of-3 at 1,000 rows on an UNCLAMPED clock
- * (node + happy-dom), used because the corrected value falls under Chromium's
- * 100µs `performance.now()` clamp; the browser figures are from bench-fair.
+ * (node + happy-dom). The stated reason for using node here was that the
+ * browser value "falls under Chromium's 100µs `performance.now()` clamp" —
+ * that reason is WRONG: this page sets COOP/COEP (`vite.config.ts`), so it is
+ * cross-origin isolated and the real quantum is **5µs**. There was never a
+ * need to leave the browser.
  *
- * Selection is O(n) in Octane by architecture, and that is the honest framing
- * for any published multiplier: a `useState` write dirties the whole component,
- * so every item body re-evaluates (DOM writes stay minimal — 2 — via per-binding
- * `_prev` diffs). Cost is linear at ~0.024µs/row in the shape below (3.5µs at
- * 100 rows, 22µs at 1,000, 243µs at 10,000 — it was ~0.09µs/row before the
- * `String(...)` removal above), so a ratio against an O(1) selector is a
- * function of LIST LENGTH, not a fixed property of either framework — quote the
- * row count with any such multiplier. Octane ships no `createSelector` equivalent (its
+ * CORRECTED — the paragraph here used to read "selection is O(n) in Octane by
+ * architecture ... linear at ~0.024µs/row (3.5µs at 100 rows, 22µs at 1,000,
+ * 243µs at 10,000), so a ratio against an O(1) selector is a function of LIST
+ * LENGTH". **That does not hold in a browser, and the architectural conclusion
+ * drawn from it was wrong.** Measured in Chromium across 100 → 20,000 rows
+ * (`bench-crossover.ts`), Octane's selection is FLAT at ~740ns — slope
+ * 0.000 ns/row, R² 0.06. 0.024µs/row would put 10k near 240µs; it is nowhere
+ * near that.
+ *
+ * The reasoning about the MECHANISM stands: a `useState` write does dirty the
+ * whole component and every item body does re-evaluate (DOM writes stay
+ * minimal — 2 — via per-binding `_prev` diffs). What does not follow is that
+ * the re-evaluation is expensive enough to show up as list-length scaling; in
+ * a real engine it does not. A ratio against Pyreon's O(1) selector is
+ * therefore a CONSTANT (~1.55×, CI-disjoint at every size), not a function of
+ * row count — do not qualify it by list length.
+ *
+ * The framework in this suite that IS O(n) here is SolidJS, verified at source
+ * rather than inferred: `solid-js@1.9.14/dist/solid.js:426` iterates every
+ * subscribed key per change (`for (const [key, val] of subs.entries())`).
+ * Slope 5.503 ns/row, R² 0.992.
+ *
+ * Standing lesson, since this comment misled a published claim: a figure taken
+ * in node + happy-dom may not survive a real engine, and an ARCHITECTURAL
+ * conclusion must never be drawn from one. Measure the target environment, or
+ * say the shape is unknown. Octane ships no `createSelector` equivalent (its
  * public API is React's, and its `useState` third tuple member is a
  * transition-rebase getter, not a subscription — verified: reading it still
  * re-runs all 1,000 bodies). The only O(1) route is `useSyncExternalStore` plus
