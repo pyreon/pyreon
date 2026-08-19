@@ -12,7 +12,7 @@ Standalone reactive primitives — no DOM, no JSX, no framework dependency. Sign
 ## Features
 
 - signal&lt;T&gt;() — callable function with .set(), .update(), .trigger()
-- computed&lt;T&gt;() — auto-tracked memoized derivation
+- computed&lt;T&gt;() — auto-tracked derivation; caches its value, but notifies downstream on every dependency change unless you pass `equals`
 - effect() / renderEffect() — side-effects with auto-tracking
 - batch() / nextTick() — write-grouping + flush awaiter
 - onCleanup() — register cleanup inside effects
@@ -41,7 +41,7 @@ count.set(5)         // write
 count.update(n => n + 1)  // derive
 count.peek()         // read WITHOUT subscribing
 
-// computed<T>() — auto-tracked, memoized
+// computed<T>() — auto-tracked; caches its value, notifies unconditionally (see equals)
 const doubled = computed(() => count() * 2)
 
 // effect() — re-runs when dependencies change
@@ -79,7 +79,7 @@ effect(() => {
 | [`signal`](#signal) | function | Create a reactive signal. |
 | [`isServer`](#isserver) | constant | Canonical runtime environment flag — `true` when there is no DOM (`typeof document === 'undefined'`), i.e. |
 | [`isClient`](#isclient) | constant | Inverse of `isServer` — `true` on a browser main thread where a DOM is available (`typeof document !== 'undefined'`). |
-| [`computed`](#computed) | function | Create a memoized derived value. |
+| [`computed`](#computed) | function | Create a derived value that caches its result and recomputes lazily. |
 | [`effect`](#effect) | function | Run a side effect that auto-tracks signal dependencies and re-runs when they change. |
 | [`renderEffect`](#rendereffect) | function | DOM-specific effect with a lighter dependency tracking path — uses a local array for deps instead of the full `EffectSco |
 | [`batch`](#batch) | function | Group multiple signal writes so subscribers fire only once — after the batch completes. |
@@ -222,7 +222,7 @@ const initial = isClient ? navigator.onLine : true
 <T>(fn: () => T, options?: { equals?: (a: T, b: T) => boolean }) => Computed<T>
 ```
 
-Create a memoized derived value. Dependencies auto-tracked on each evaluation — no dependency array needed (unlike React `useMemo`). Only recomputes when a tracked signal actually changes. By DEFAULT a computed notifies downstream on every dependency change, even when the recomputed value is unchanged — there is no implicit equality check (a signal gates on `Object.is`; a computed does not). Pass `equals` to gate on value, which is what stops an effect re-running on an identical result.
+Create a derived value that caches its result and recomputes lazily. Dependencies auto-tracked on each evaluation — no dependency array needed (unlike React `useMemo`). Only recomputes when a tracked signal actually changes. By DEFAULT a computed notifies downstream on every dependency change, even when the recomputed value is unchanged — there is no implicit equality check (a signal gates on `Object.is`; a computed does not). This is the one place Pyreon diverges from Solid `createMemo` / Vue + Preact `computed`, which all gate on equality by default; if you are porting from those, an unchanged result does NOT stop propagation here. Pass `equals` to gate on value, which is what stops an effect re-running on an identical result.
 
 **Parameters**
 
@@ -231,7 +231,7 @@ Create a memoized derived value. Dependencies auto-tracked on each evaluation �
 | `fn` | `() => T` | Derivation — reads other signals/computeds; dependencies are auto-tracked on each run. |
 | `options?` | `{ equals?: (a: T, b: T) => boolean }` | Custom equality gate. WITHOUT it a computed notifies downstream on every dependency change, even when the recomputed value is identical — there is NO default equality check (unlike a signal, which does gate on `Object.is`). Pass `equals` to suppress those updates. |
 
-**Returns** `Computed<T>` — A read-only callable — call to read the memoized value; recomputes lazily only when a dependency changes.
+**Returns** `Computed<T>` — A read-only callable — call to read the cached value; recomputes lazily only when a dependency changes. Caching is about RECOMPUTATION, not propagation: without `equals` it still notifies downstream even when the recomputed value is identical.
 
 **Example**
 

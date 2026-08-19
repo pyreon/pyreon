@@ -26,7 +26,7 @@ describe('gen-docs — reactivity snapshot', () => {
       count.update(n => n + 1)  // derive
       count.peek()         // read WITHOUT subscribing
 
-      // computed<T>() — auto-tracked, memoized
+      // computed<T>() — auto-tracked; caches its value, notifies unconditionally (see equals)
       const doubled = computed(() => count() * 2)
 
       // effect() — re-runs when dependencies change
