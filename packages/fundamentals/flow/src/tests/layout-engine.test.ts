@@ -233,3 +233,59 @@ describe('scale — the engine must not freeze the tab', () => {
     expect(overlappingPairs(runLayout(g.nodes, g.edges, 'radial'))).toEqual([])
   })
 })
+
+describe('layout-engine — defensive branches', () => {
+  it('force layout separates nodes that start exactly coincident', () => {
+    // Every node at the SAME position makes the repulsion distance 0, so the
+    // force term divides by zero unless the engine jitters them apart first.
+    // Without that branch the positions come back NaN and the diagram renders
+    // nothing — silently, since NaN propagates rather than throwing.
+    const nodes: FlowNode[] = ['a', 'b', 'c', 'd'].map((id) => ({
+      id,
+      position: { x: 0, y: 0 },
+      width: W,
+      height: H,
+      data: {},
+    }))
+    const edges: FlowEdge[] = [
+      { id: 'e1', source: 'a', target: 'b' },
+      { id: 'e2', source: 'c', target: 'd' },
+    ]
+
+    const out = runLayout(nodes, edges, 'force')
+
+    expect(out).toHaveLength(4)
+    for (const n of out) {
+      expect(Number.isFinite(n.position.x)).toBe(true)
+      expect(Number.isFinite(n.position.y)).toBe(true)
+    }
+    // And it is deterministic despite the jitter — the engine seeds its own RNG.
+    expect(runLayout(nodes, edges, 'force')).toEqual(out)
+  })
+
+  it('stress layout copes with a graph whose farthest node is already a pivot', () => {
+    // Pivot selection picks the farthest node each round; on small or highly
+    // symmetric graphs that repeats a pivot, and the engine must fall back to
+    // any unused index rather than looping or duplicating.
+    const nodes: FlowNode[] = ['a', 'b', 'c'].map((id) => ({
+      id,
+      position: { x: 0, y: 0 },
+      width: W,
+      height: H,
+      data: {},
+    }))
+    const edges: FlowEdge[] = [
+      { id: 'e1', source: 'a', target: 'b' },
+      { id: 'e2', source: 'b', target: 'c' },
+      { id: 'e3', source: 'c', target: 'a' },
+    ]
+
+    const out = runLayout(nodes, edges, 'stress')
+
+    expect(out).toHaveLength(3)
+    for (const n of out) {
+      expect(Number.isFinite(n.position.x)).toBe(true)
+      expect(Number.isFinite(n.position.y)).toBe(true)
+    }
+  })
+})
