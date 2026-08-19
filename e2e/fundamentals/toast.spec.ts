@@ -36,8 +36,15 @@ test('different variants render with their type class', async ({ page }) => {
 test('clicking the × dismiss button removes the toast (Portal delegated click)', async ({
   page,
 }) => {
-  await page.getByTestId('toast-plain').click()
-  const toast = page.locator('.pyreon-toast').filter({ hasText: 'Plain toast' })
+  // A `duration: 0` toast, NOT the plain one. What this test is about is the
+  // delegated click reaching a Portal'd button; the 4s default auto-dismiss is
+  // an unrelated variable it was accidentally racing. Alone the click landed
+  // comfortably inside the window, under full-suite load it did not, and the
+  // toast tore itself down mid-click — a failure on the `.click()` that reads
+  // like the delegation broke. Removing the timer makes the assertion measure
+  // only what it names.
+  await page.getByTestId('toast-sticky').click()
+  const toast = page.locator('.pyreon-toast').filter({ hasText: 'Sticky toast' })
   await expect(toast).toBeVisible()
   await toast.getByRole('button', { name: 'Dismiss' }).click()
   await expect(toast).toHaveCount(0)
