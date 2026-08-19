@@ -531,7 +531,7 @@ the machine-checked contract.
 | `@pyreon/validate` | pure-logic schema DSL; the runtime engine (JIT, JSON-schema export, async refinements, the v1/mini compat surfaces) stays web, and inline uses like `s.string().parse(x)` do not lower |
 | `@pyreon/dnd` | `useSortable` now lowers to the native PyreonSortableState engine (list reorder, the highest-value case); the element-getter hooks (useDraggable/useDroppable), the page-global useDragMonitor and the OS-file useFileDrop stay web — they are pdnd/DOM-shaped, not gesture-shaped |
 | `@pyreon/toast` | the core `toast(...)` + `<Toaster>` now lower to the native PyreonToast runtime (v1); the rich surface (toast.promise/update, options, animation) stays web |
-| `@pyreon/hotkeys` | keyboard-shortcut layer over DOM KeyboardEvent; touch platforms have no hardware-shortcut surface |
+| `@pyreon/hotkeys` | keyboard-shortcut layer over DOM KeyboardEvent. No native lowering is implemented yet — which is an unbuilt lowering, NOT a platform limitation: both targets expose a hardware-shortcut surface (SwiftUI `.keyboardShortcut` for control-bound and `.onKeyPress` for view-level, Compose `Modifier.onPreviewKeyEvent`), and iPads, Chromebooks, DeX and tablet keyboards all reach them |
 | `@pyreon/code` | wraps CodeMirror 6 (DOM editor engine); consume on native via the `<WebView>` bridge subpath |
 | `@pyreon/charts` | wraps ECharts (browser canvas engine); consume on native via the `<WebView>` bridge subpath |
 | `@pyreon/document` | wraps pdfmake/docx/exceljs/pptxgenjs (browser/node document engines); no native lowering |
