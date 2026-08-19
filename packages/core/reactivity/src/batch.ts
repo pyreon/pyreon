@@ -73,9 +73,10 @@ const MAX_PASSES = 32
 // Fused-cascade back-ref: `_markRecompute` stamps a LAZY computed's read fn onto
 // its notify as `_c`, letting `propagateLazyDirty` walk a single-subscriber chain
 // ITERATIVELY over plain fields instead of paying a WeakSet lookup + closure call
-// + re-entry per hop. An `{ equals }` notify does MORE than dirty-marking (it
-// books a tier-1 refresh) so it is deliberately NOT stamped; the walk routes
-// `_c`-less subscribers through `enqueuePendingNotification`.
+// + re-entry per hop. An EAGER (`{ equals }`) notify does MORE than dirty-marking
+// (it books a tier-1 refresh unconditionally, so the gate sits at its OWN node)
+// so it is deliberately NOT stamped; the walk routes `_c`-less recomputes through
+// their own closure and treats a `_c`-less NON-recompute as a genuine runner.
 // Structural interface — batch.ts must not import computed.ts (layer order).
 /** Anything that carries two-tier tracking-subscriber storage (signal or computed). */
 interface LazySource {
@@ -118,9 +119,17 @@ export function _markRecompute(fn: () => void, target?: LazyTarget): void {
 export function _markLazyAndPropagate(c: LazyTarget): void {
   if (c._disposed || c._dirty) return
   c._dirty = true
-  if (c._d1) enqueuePendingNotification(c._d1)
-  else if (c._d) for (const f of c._d) enqueuePendingNotification(f)
-  if (c._s1 !== null || c._s !== null) propagateLazyDirty(c)
+  // A DIRECT updater (`_bindText` / `_bindDirect`) is a RUNNER: it fires and
+  // writes the DOM. Under value gating we must not fire it before knowing the
+  // value actually changed, so book the tier-1 refresh instead and let the
+  // gate decide. `dispatchEagerChange` re-enqueues the updaters on a real change.
+  if (c._d1 !== null || c._d !== null) {
+    enqueueEagerRefresh(c as unknown as () => void)
+    return
+  }
+  // `c` is BOTH the storage host to walk and the gate owner: a runner found
+  // below it must gate HERE rather than be enqueued.
+  if (c._s1 !== null || c._s !== null) propagateLazyDirty(c, c)
 }
 
 /**
@@ -348,15 +357,30 @@ const MAX_CASCADE_RECURSION = 500
  * `isBatching()` invariant holds. A notify recompute is dirty-mark-only, so
  * processing one cannot mutate any `_s` mid-walk.
  */
-export function propagateLazyDirty(host: LazySource): void {
+export function propagateLazyDirty(host: LazySource, owner: LazyTarget | null = null): void {
+  // `owner` — the computed whose GATE governs this level, or null when the caller
+  // has ALREADY established that a real value change occurred. It tracks `host`
+  // from the first hop onward but is NOT interchangeable with it at entry:
+  // `dispatchEagerChange` passes a computed that has just gated and decided to
+  // propagate, whose `_dirty` is already cleared — gating there would book a
+  // refresh that no-ops and the update would be lost. So the two callers differ
+  // exactly in this argument.
+  //
+  // When set, reaching a RUNNER (effect / raw listener) means "someone downstream
+  // will actually execute", which is precisely the condition under which the
+  // owner must be value-gated: book its tier-1 refresh instead of enqueueing the
+  // runner. The owner advances with the walk, so the gate lands on the DEEPEST
+  // computed that still sits above a runner.
+  //
+
   // Fused single-subscriber walk — the deep-chain shape resolves here as a plain
   // LOOP over the lazy computed's fields via `notify._c`, replacing per hop a
   // [WeakSet.has + closure call + re-entry] with plain field ops. Iterative, so
   // it consumes zero JS stack at any chain length.
   //
-  // The inlined body MUST stay in lock-step with `computedLazy`'s recompute:
-  // disposed/already-dirty -> stop; mark dirty; DEFER direct subscribers to the
-  // drain (glitch-freedom); continue into the computed's own subscribers.
+  // The inlined body MUST stay in lock-step with `_markLazyAndPropagate`:
+  // disposed/already-dirty -> stop; mark dirty; a direct subscriber forces the
+  // gated refresh; continue into the computed's own subscribers.
   //
   // The chain hop reads the `_s1` INLINE SLOT — the shape a linear
   // signal->computed->computed chain always has — so a hop costs a field read
@@ -380,27 +404,54 @@ export function propagateLazyDirty(host: LazySource): void {
     }
     const c = sub._c
     if (c === undefined) {
-      // An `{ equals }` notify, an effect, or a raw listener — route normally.
+      // No back-ref: either an EAGER (`{ equals }`) computed notify — which gates
+      // at its own node and must run — or a genuine RUNNER. `_recomputes` is the
+      // discriminator, the SAME lookup `enqueuePendingNotification` would have
+      // made, hoisted so the runner branch can gate the owner instead of
+      // enqueueing blindly.
+      if (_recomputes.has(sub)) {
+        sub()
+        return
+      }
+      if (owner !== null) {
+        enqueueEagerRefresh(owner as unknown as () => void)
+        return
+      }
       enqueuePendingNotification(sub)
       return
     }
     if (c._disposed || c._dirty) return
     c._dirty = true
-    if (c._d1) enqueuePendingNotification(c._d1)
-    else if (c._d) for (const f of c._d) enqueuePendingNotification(f)
+    if (c._d1 !== null || c._d !== null) {
+      enqueueEagerRefresh(c as unknown as () => void)
+      return
+    }
+    // From here on host and owner are the same node — the loop top handles the
+    // no-subscriber exit, so there is no `_s === null` check to carry.
     host = c
+    owner = c
   }
   // Fan-out (>=2 subscribers). Read the module counter into a local ONCE and bump
   // it once per LEVEL, not per subscriber. Computed notifies propagate the dirty
   // flag (inline while shallow, else deferred to the stack); everything else
   // enqueues into the two-tier flush.
+  // A runner sighted behind a gating owner ends the fan-out walk: the owner's
+  // tier-1 refresh re-cascades the WHOLE subscriber set on a real change, so
+  // subscribers left unvisited here are dirtied then; and when the value is
+  // unchanged they correctly stay clean. Subscribers visited BEFORE the runner
+  // are spuriously dirty on an unchanged value — harmless (they re-derive to the
+  // same value on their next pull, and their own gate stops any propagation).
+  let gated = false
   const depth = _cascadeDepth
   if (depth >= MAX_CASCADE_RECURSION) {
     // Too deep — defer every lazy branch to the explicit stack; each re-enters
     // at depth 0 and recurses another full window.
     for (const sub of subs) {
       if (_recomputes.has(sub)) _lazyDirtyStack.push(sub)
-      else enqueuePendingNotification(sub)
+      else if (owner !== null) {
+        gated = true
+        break
+      } else enqueuePendingNotification(sub)
     }
   } else {
     _cascadeDepth = depth + 1
@@ -411,10 +462,14 @@ export function propagateLazyDirty(host: LazySource): void {
         const c = (sub as LazyNotify)._c
         if (c !== undefined) _markLazyAndPropagate(c)
         else sub()
+      } else if (owner !== null) {
+        gated = true
+        break
       } else enqueuePendingNotification(sub)
     }
     _cascadeDepth = depth
   }
+  if (gated) enqueueEagerRefresh(owner as unknown as () => void)
   // Drive the deferred stack ONLY from the outermost frame — a re-entrant call
   // from within the drain leaves its pushes for the active loop.
   if (depth === 0 && _lazyDirtyStack.length > 0 && !_lazyDirtyDraining) {
