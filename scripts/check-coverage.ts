@@ -165,6 +165,16 @@ interface FloorExemption {
 }
 const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
   // ── Statements + branches < floor ───────────────────────────────────
+  '@pyreon/flow': {
+    currentStatements: 98,
+    currentBranches: 90,
+    reason:
+      'Node-graph canvas. Statements are ABOVE the 95 floor (98.49 measured); only branches sit under it, and the shortfall is ONE file: ' +
+      '`layout-engine.ts` at 75.63% branches, the in-house engine that replaced elkjs in #2933 (the tree\'s last copyleft dependency). ' +
+      'Its algorithmic fallbacks — cycle-breaking, ranking, ordering — carry many branches the current tests do not drive. Every other ' +
+      'file in the package is at 99%+ branches, so this is one bounded, nameable gap rather than a thin package. Raising it means ' +
+      'exercising the layout algorithm directly, which is real work and tracked separately.',
+  },
   '@pyreon/compiler': {
     currentStatements: 91,
     currentBranches: 85,
