@@ -1382,6 +1382,9 @@ box.current = node         // writable by design`,
 <datalist id="suggestions"><option value="a" /></datalist>`,
       related:
         'The inverse trap is worth knowing too: whether a DOM property is safe to assign is decided by measured REFLECTION, not by the name. `value` is non-reflecting on `input`/`textarea`/`select` but reflects on `option`/`button`/`progress`/`meter`/`li`/`data`/`param`/`output`.',
+    }),
+  },
+  {
     // The residual footgun left by defaulting `templatizeComponentChildren` ON.
     // Two compiler passes rewrite the same node: the template pass relocates a
     // component child's text into a CALL ARGUMENT, while `collapseRocketstyle`
