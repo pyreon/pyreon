@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
 
+import { waitForHydration } from './hydration-barrier'
+
 /**
  * `@pyreon/flow` feature-matrix e2e — drives the `/flow-features` route in
  * examples/app-showcase, where every flow feature is a `data-testid` control
@@ -22,6 +24,10 @@ test.describe('app-showcase /flow-features', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto(URL, { waitUntil: 'domcontentloaded' })
     await page.locator('[data-nodeid]').first().waitFor()
+    // Server markup is enough for the locator above; every spec here then
+    // selects a node and asserts on the reactive response, which needs the
+    // client to own the page first.
+    await waitForHydration(page)
   })
 
   test('seed renders + MiniMap & Controls inject via <Flow> context', async ({ page }) => {

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { waitForHydration } from '../hydration-barrier'
 
 /**
  * Functional smoke for the 8 demos added to fundamentals-playground in
@@ -23,6 +24,7 @@ test.describe('Rx demo — pipe + filter + aggregations', () => {
 
   test('min-price slider re-derives aboveMin reactively', async ({ page }) => {
     await page.goto('/rx')
+    await waitForHydration(page)
     // Default minPrice=0 → all items.
     const above = page.locator('[data-testid=rx-above-min]')
     await expect(above).toContainText('Bread')
@@ -35,6 +37,7 @@ test.describe('Rx demo — pipe + filter + aggregations', () => {
 test.describe('Toast demo — imperative variants + promise helper', () => {
   test('clicking success spawns a polite (role=status) toast', async ({ page }) => {
     await page.goto('/toast')
+    await waitForHydration(page)
     await page.locator('[data-testid=toast-success]').click()
     // Type-aware a11y: success/info are polite (`role=status`); only
     // error/warning are assertive (`role=alert`). A success toast must NOT
@@ -44,6 +47,7 @@ test.describe('Toast demo — imperative variants + promise helper', () => {
 
   test('dismiss-all removes every toast', async ({ page }) => {
     await page.goto('/toast')
+    await waitForHydration(page)
     await page.locator('[data-testid=toast-bulk]').click()
     await expect(page.locator('.pyreon-toast')).toHaveCount(5)
     await page.locator('[data-testid=toast-dismiss-all]').click()
@@ -55,6 +59,7 @@ test.describe('Toast demo — imperative variants + promise helper', () => {
 test.describe('URL-State demo — params round-trip', () => {
   test('next button increments page and updates URL', async ({ page }) => {
     await page.goto('/url-state')
+    await waitForHydration(page)
     await page.locator('[data-testid=url-state-next]').click()
     await expect(page).toHaveURL(/page=2/)
     await expect(page.locator('[data-testid=url-state-page]')).toContainText('page 2')
@@ -62,6 +67,7 @@ test.describe('URL-State demo — params round-trip', () => {
 
   test('typing in q field syncs to URL query param', async ({ page }) => {
     await page.goto('/url-state')
+    await waitForHydration(page)
     await page.locator('[data-testid=url-state-q]').fill('hello')
     // useUrlState debounces a tick; wait for the URL to settle.
     await expect(page).toHaveURL(/q=hello/, { timeout: 2000 })
@@ -69,6 +75,7 @@ test.describe('URL-State demo — params round-trip', () => {
 
   test('reset clears all params', async ({ page }) => {
     await page.goto('/url-state?page=5&q=foo')
+    await waitForHydration(page)
     await page.locator('[data-testid=url-state-reset]').click()
     // After reset, none of the cleared keys remain (default values
     // serialize to empty / removed).
@@ -78,6 +85,7 @@ test.describe('URL-State demo — params round-trip', () => {
 
   test('browser Back/Forward drives popstate re-read (real Chromium)', async ({ page }) => {
     await page.goto('/url-state')
+    await waitForHydration(page)
     const pushNext = page.locator('[data-testid=url-state-push-next]')
     const snapshot = page.locator('[data-testid=url-state-pushpage]')
 
@@ -109,6 +117,7 @@ test.describe('URL-State demo — params round-trip', () => {
 test.describe('Hooks demo — useToggle + useClipboard', () => {
   test('toggle button flips boolean state', async ({ page }) => {
     await page.goto('/hooks')
+    await waitForHydration(page)
     await expect(page.locator('[data-testid=hooks-toggle-state]')).toHaveText('closed')
     await page.locator('[data-testid=hooks-toggle-btn]').click()
     await expect(page.locator('[data-testid=hooks-toggle-state]')).toHaveText('OPEN')
@@ -116,6 +125,7 @@ test.describe('Hooks demo — useToggle + useClipboard', () => {
 
   test('typing into debounced input updates live + debounced', async ({ page }) => {
     await page.goto('/hooks')
+    await waitForHydration(page)
     await page.locator('[data-testid=hooks-debounce-input]').fill('abc')
     // Live updates immediately
     await expect(page.locator('[data-testid=hooks-live]')).toHaveText('abc')
@@ -129,6 +139,7 @@ test.describe('Hooks demo — useToggle + useClipboard', () => {
 test.describe('Validate demo — Standard Schema + parseReactive', () => {
   test('valid inputs flip status to VALID', async ({ page }) => {
     await page.goto('/validate')
+    await waitForHydration(page)
     await expect(page.locator('[data-testid=validate-status]')).toHaveText('INVALID')
     await page.locator('[data-testid=validate-username]').fill('alice')
     await page.locator('[data-testid=validate-age]').fill('25')
@@ -138,6 +149,7 @@ test.describe('Validate demo — Standard Schema + parseReactive', () => {
 
   test('short username surfaces inline error', async ({ page }) => {
     await page.goto('/validate')
+    await waitForHydration(page)
     await page.locator('[data-testid=validate-username]').fill('a')
     await expect(page.locator('[data-testid=validate-username-err]')).toContainText(
       'at least 3',
@@ -231,6 +243,7 @@ test.describe('DnD demo — useSortable reorder', () => {
 
   test('reset restores the seed order after a reorder', async ({ page }) => {
     await page.goto('/dnd', { waitUntil: 'domcontentloaded' })
+    await waitForHydration(page)
     await page
       .locator('[data-testid=dnd-list] li[aria-roledescription="sortable item"]')
       .first()
@@ -308,6 +321,7 @@ test.describe('Flow demo — reactive graph + add/fit', () => {
 
   test('add-node button increments count', async ({ page }) => {
     await page.goto('/flow')
+    await waitForHydration(page)
     await page.locator('[data-testid=flow-add]').click()
     await expect(page.locator('[data-testid=flow-node-count]')).toHaveText('5')
     await page.locator('[data-testid=flow-add]').click()
@@ -316,6 +330,7 @@ test.describe('Flow demo — reactive graph + add/fit', () => {
 
   test('fit view does not crash + zoom updates', async ({ page }) => {
     await page.goto('/flow')
+    await waitForHydration(page)
     await page.locator('[data-testid=flow-fit]').click()
     // After fit, zoom is some percentage — assert format only.
     await expect(page.locator('[data-testid=flow-zoom]')).toContainText('%')
@@ -343,6 +358,7 @@ test.describe('Feature demo — schema-driven CRUD over a mock fetcher', () => {
 
   test('useCreate adds a task (list grows 3 → 4)', async ({ page }) => {
     await page.goto('/feature')
+    await waitForHydration(page)
     await expect(page.locator('[data-testid^=feature-task-]')).toHaveCount(3, {
       timeout: 5000,
     })
@@ -358,6 +374,7 @@ test.describe('Feature demo — schema-driven CRUD over a mock fetcher', () => {
 
   test('useDelete removes a task (list shrinks 3 → 2)', async ({ page }) => {
     await page.goto('/feature')
+    await waitForHydration(page)
     await expect(page.locator('[data-testid^=feature-task-]')).toHaveCount(3, {
       timeout: 5000,
     })
@@ -370,6 +387,7 @@ test.describe('Feature demo — schema-driven CRUD over a mock fetcher', () => {
 
   test('useUpdate toggles a task done state via PUT', async ({ page }) => {
     await page.goto('/feature')
+    await waitForHydration(page)
     const checkbox = page.locator(
       '[data-testid=feature-task-2] input[type=checkbox]',
     )
@@ -380,6 +398,7 @@ test.describe('Feature demo — schema-driven CRUD over a mock fetcher', () => {
 
   test('useSearch filters by title reactively', async ({ page }) => {
     await page.goto('/feature')
+    await waitForHydration(page)
     await expect(page.locator('[data-testid^=feature-task-]')).toHaveCount(3, {
       timeout: 5000,
     })

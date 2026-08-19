@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
 
+import { waitForHydration } from './hydration-barrier'
+
 /**
  * `@pyreon/flow` real-app e2e — render, selection, node drag, wheel pan.
  *
@@ -26,6 +28,10 @@ test.describe('app-showcase /flow', () => {
     await page.goto(FLOW_URL, { waitUntil: 'domcontentloaded' })
     // Wait for the flow canvas to mount (4 nodes from the seed).
     await page.locator('[data-nodeid]').first().waitFor()
+    // ...and then for the client to OWN it. The nodes above are server
+    // markup; every spec here selects a node and clicks it, and a click
+    // against un-hydrated markup is swallowed silently.
+    await waitForHydration(page)
   })
 
   test('MiniMap + Controls overlays render (resolve instance from <Flow> context)', async ({ page }) => {

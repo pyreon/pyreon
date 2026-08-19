@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
 
+import { waitForHydration } from './hydration-barrier'
+
 /**
  * `@pyreon/virtual` real-app e2e — locks in that the dashboard's
  * `CustomersVirtualList` (1,024 customers) virtualizes correctly in a
@@ -23,6 +25,11 @@ test.describe('app-showcase /dashboard — @pyreon/virtual customers list', () =
     page,
   }) => {
     await page.goto('/dashboard', { waitUntil: 'domcontentloaded' })
+    // The tab switch below is a real click; it is swallowed if the client
+    // has not taken ownership yet, and the failure then surfaces as "zero
+    // rows mounted" — which reads as the virtualizer bug this spec exists
+    // to catch, not as a timing problem.
+    await waitForHydration(page)
 
     // Switch to the Customers tab — this is the late mount of the
     // virtualized list (Orders is the default tab).
@@ -51,6 +58,10 @@ test.describe('app-showcase /chat — @pyreon/virtual message list', () => {
     // scroll element must be captured via `ref` (not `innerRef`, which
     // a `styled()` component silently drops) or NO message rows mount.
     await page.goto('/chat', { waitUntil: 'domcontentloaded' })
+    // No click here, but the scroll-element `ref` that the virtualizer
+    // measures only fires on mount — so rows exist only once the client
+    // owns the page.
+    await waitForHydration(page)
     // Message rows position via `--row-y` (the styled virtualization
     // pattern). At least one must mount, bounded (virtualized window).
     const rows = page.locator('[style*="--row-y"]')
