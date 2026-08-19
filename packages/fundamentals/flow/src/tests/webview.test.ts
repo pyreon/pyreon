@@ -59,3 +59,48 @@ describe('<FlowWebView>', () => {
     expect(onSelect).toHaveBeenCalledWith({ id: 'x' })
   })
 })
+
+describe('webview — coverage of the defensive and forwarding paths', () => {
+  it('num() substitutes 0 for a non-finite dimension rather than emitting NaN', () => {
+    // The emitted string is executed as JS inside the host page, so a NaN or
+    // Infinity reaching `var NODE_W = …` would produce a diagram that lays out
+    // to nothing — silently, with no parse error to trace it by.
+    const nan = buildFlowHostHtml({ nodeWidth: Number.NaN, nodeHeight: Number.NaN })
+    expect(nan).toContain('var NODE_W = 0, NODE_H = 0;')
+    expect(nan).not.toContain('NaN')
+
+    const inf = buildFlowHostHtml({
+      nodeWidth: Number.POSITIVE_INFINITY,
+      nodeHeight: Number.NEGATIVE_INFINITY,
+    })
+    expect(inf).toContain('var NODE_W = 0, NODE_H = 0;')
+  })
+
+  it('FlowWebView forwards every optional style prop into the built host HTML', () => {
+    // Each of these is an `if (props.X !== undefined)` line. A dropped one is
+    // invisible: the diagram still renders, just ignoring that prop.
+    const vnode = FlowWebView({
+      graph: { nodes: [], edges: [] },
+      nodeWidth: 111,
+      nodeHeight: 222,
+      nodeFill: '#abcdef',
+      nodeStroke: '#123456',
+      labelColor: '#fedcba',
+      edgeColor: '#654321',
+    })
+
+    const html = (vnode.props as { html: string }).html
+    expect(html).toContain('var NODE_W = 111, NODE_H = 222;')
+    for (const c of ['#abcdef', '#123456', '#fedcba', '#654321']) {
+      expect(html).toContain(c)
+    }
+  })
+
+  it('an explicit `html` prop wins over the built default', () => {
+    const vnode = FlowWebView({
+      graph: { nodes: [], edges: [] },
+      html: '<!doctype html><p>mine</p>',
+    })
+    expect((vnode.props as { html: string }).html).toBe('<!doctype html><p>mine</p>')
+  })
+})
