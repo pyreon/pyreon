@@ -34,7 +34,34 @@
  * `data-rocketstyle` / `data-pyr-element` attributes only.
  */
 
+import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
+
+/**
+ * Wait until the client has taken ownership of the app — NOT merely until
+ * markup is visible.
+ *
+ * Those differ, and every spec below that clicks something depends on the
+ * difference. `RouterView` renders its route through a reactive accessor and
+ * every fs-router route is `lazy()`, so today the accessor's first render
+ * deletes the server range: the page blanks and refills when the chunk lands.
+ * Nothing clickable exists in between, which means any node a locator matched
+ * was necessarily already hydrated. These specs have been relying on that
+ * accident, not asserting it.
+ *
+ * The accident evaporates as soon as hydration ADOPTS the server DOM rather
+ * than rebuilding it — which is the direction the framework is moving, and
+ * which measurably breaks these specs when it lands. A locator then matches a
+ * fully-rendered, visible, DEAD control, the click is swallowed, and the
+ * failure reads `element(s) not found` against the post-click state — a
+ * hydration-timing bug wearing the costume of a reactivity bug.
+ *
+ * `startClient` sets `data-pyreon-hydrated` on the container AFTER
+ * mount/hydrate returns, so its presence means handlers are attached.
+ */
+async function waitForHydration(page: Page): Promise<void> {
+  await page.locator('[data-pyreon-hydrated]').first().waitFor({ state: 'attached' })
+}
 
 // ─── Page renders + nav works ──────────────────────────────────────────────
 
@@ -58,6 +85,7 @@ test.describe('ui-showcase — page renders', () => {
 
   test('client-side nav to /button works without full reload', async ({ page }) => {
     await page.goto('/')
+    await waitForHydration(page)
     const navStart = await page.evaluate(() => performance.now())
 
     await page.locator('a[href="/button"]').first().click()
@@ -88,6 +116,7 @@ test.describe('ui-showcase — rocketstyle Button interaction', () => {
 
   test('interactive Button click increments via signal — full real-h() flow', async ({ page }) => {
     await page.goto('/button')
+    await waitForHydration(page)
     // The interactive section has "Clicked: 0" text on the button
     const clicked = page.getByRole('button', { name: /Clicked: 0/ })
     await expect(clicked).toBeVisible()
@@ -202,6 +231,7 @@ test.describe('ui-showcase — SSR + hydration', () => {
 
   test('hydration completes — interactive Button works after page load', async ({ page }) => {
     await page.goto('/button')
+    await waitForHydration(page)
     // If hydration didn't complete properly, the click handler never fires
     // (server-rendered HTML, no event listener attached). This test
     // exercises the FULL hydration path: page goto → wait → click → assert.
@@ -342,6 +372,7 @@ test.describe('ui-showcase — hydration mismatch telemetry hook', () => {
     })
 
     await page.goto('/button')
+    await waitForHydration(page)
     expect(intercepted).toBe(true) // sanity: our route handler ran + mutated
 
     // Wait for hydration to fully run.
@@ -591,6 +622,7 @@ test.describe('ui-showcase — rocketstyle reactivity', () => {
     page,
   }) => {
     await page.goto('/button')
+    await waitForHydration(page)
     const counter = page.getByRole('button', { name: /^Clicked: \d+$/ })
     await expect(counter).toBeVisible()
     await expect(counter).toHaveText('Clicked: 0')
@@ -618,6 +650,7 @@ test.describe('ui-showcase — rocketstyle reactivity', () => {
     page,
   }) => {
     await page.goto('/button')
+    await waitForHydration(page)
     const counter = page.getByRole('button', { name: /^Clicked: \d+$/ })
     const reset = page.getByRole('button', { name: /^Reset$/ })
 
@@ -700,6 +733,7 @@ test.describe('ui-showcase — runtime mode prop change', () => {
 
   test('toggling the mode signal updates ModeProbe text reactively', async ({ page }) => {
     await page.goto('/test/reactive-providers')
+    await waitForHydration(page)
 
     const probe = page.locator('[data-test-mode-probe="swappable"]')
     await expect(probe).toBeVisible()
@@ -803,6 +837,7 @@ test.describe('ui-showcase — rocketstyle reactive prop preservation', () => {
     // with a signal-derived string. Clicking the button flips the signal;
     // the title attribute must update reactively.
     await page.goto('/button')
+    await waitForHydration(page)
     const btn = page.locator('[data-testid="reactive-prop-button"]')
     await expect(btn).toBeVisible()
     await expect(btn).toHaveAttribute('title', 'count: 0')
