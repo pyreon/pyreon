@@ -111,6 +111,11 @@ export function useField(
     )
   }
 
+  // NOT gated with `{ equals }`, despite looking like the ideal candidate (a
+  // boolean over a churning string). Measured: `form.validate()` CLEARS the
+  // error before re-setting it, so the boolean genuinely flips true→false→true
+  // per validation — 8 notifications over 4 attempts either way. There is
+  // nothing for an equality gate to suppress here.
   const hasError = computed(() => fieldState.error() !== undefined)
   const showError = computed(() => fieldState.touched() && hasError())
 

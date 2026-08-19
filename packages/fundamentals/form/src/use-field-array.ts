@@ -50,7 +50,10 @@ export function useFieldArray<T>(initial: T[] = []): UseFieldArrayResult<T> {
   })
 
   const items = signal<FieldArrayItem<T>[]>(initial.map(makeItem))
-  const length = computed(() => items().length)
+  // Gated: `items` changes identity on every move/swap/edit while the COUNT is
+  // unchanged, and a bare computed notifies on each one. The body is a property
+  // read, so the laziness `equals` costs us here is worth nothing.
+  const length = computed(() => items().length, { equals: Object.is })
 
   return {
     items,

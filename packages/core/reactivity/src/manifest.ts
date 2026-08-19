@@ -154,7 +154,7 @@ const initial = isClient ? navigator.onLine : true`,
           name: 'options',
           type: '{ equals?: (a: T, b: T) => boolean }',
           optional: true,
-          description: 'Custom equality gate. WITHOUT it a computed notifies downstream on every dependency change, even when the recomputed value is identical — there is NO default equality check (unlike a signal, which does gate on `Object.is`). Pass `equals` to suppress those updates.',
+          description: 'Custom equality gate. WITHOUT it a computed notifies downstream on every dependency change, even when the recomputed value is identical — there is NO default equality check (unlike a signal, which does gate on `Object.is`). Pass `equals` to suppress those updates. NOTE the trade: `equals` also switches the computed from LAZY to EAGER, because gating requires knowing the new value at notification time. With a live subscriber that costs nothing (it would have evaluated anyway), but a computed that is read imperatively and never subscribed goes from ZERO evaluations to one per dependency change. So gate computeds with a CHEAP body (`n > 0`, `arr.length`, `x !== undefined`) and leave expensive ones alone — gating `computed(() => walkEntireDocument(doc()))` buys a suppressed notification and pays a full walk on every keystroke.',
         },
       ],
       returns: {

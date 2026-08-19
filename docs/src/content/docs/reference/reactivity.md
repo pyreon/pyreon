@@ -229,7 +229,7 @@ Create a memoized derived value. Dependencies auto-tracked on each evaluation �
 | Parameter | Type | Description |
 | --- | --- | --- |
 | `fn` | `() => T` | Derivation — reads other signals/computeds; dependencies are auto-tracked on each run. |
-| `options?` | `{ equals?: (a: T, b: T) => boolean }` | Custom equality gate. WITHOUT it a computed notifies downstream on every dependency change, even when the recomputed value is identical — there is NO default equality check (unlike a signal, which does gate on `Object.is`). Pass `equals` to suppress those updates. |
+| `options?` | `{ equals?: (a: T, b: T) => boolean }` | Custom equality gate. WITHOUT it a computed notifies downstream on every dependency change, even when the recomputed value is identical — there is NO default equality check (unlike a signal, which does gate on `Object.is`). Pass `equals` to suppress those updates. NOTE the trade: `equals` also switches the computed from LAZY to EAGER, because gating requires knowing the new value at notification time. With a live subscriber that costs nothing (it would have evaluated anyway), but a computed that is read imperatively and never subscribed goes from ZERO evaluations to one per dependency change. So gate computeds with a CHEAP body (`n > 0`, `arr.length`, `x !== undefined`) and leave expensive ones alone — gating `computed(() => walkEntireDocument(doc()))` buys a suppressed notification and pays a full walk on every keystroke. |
 
 **Returns** `Computed<T>` — A read-only callable — call to read the memoized value; recomputes lazily only when a dependency changes.
 
