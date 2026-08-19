@@ -681,15 +681,15 @@ jobs:
           # packages/native/ across three runners (see test-cell's timeout
           # comment); their affected-args mirror the cell exactly so the
           # decide verdict and the cell's own filter can never disagree
-          # (same script, same base, deterministic). `native-compiler-{1,2}`
+          # (same script, same base, deterministic). `native-compiler-{1,2,3}`
           # resolve the SAME package and differ only by vitest `--shard`.
           TC_ALL='["core","fundamentals","internals","native","tools","ui","ui-system","zero","examples"]'
-          TEST_ALL='["core","fundamentals","internals","native-compiler-1","native-compiler-2","native-rest","tools","ui","ui-system","zero"]'
-          # The three native TEST cells must never share a runner: each keys a
+          TEST_ALL='["core","fundamentals","internals","native-compiler-1","native-compiler-2","native-compiler-3","native-rest","tools","ui","ui-system","zero"]'
+          # The four native TEST cells must never share a runner: each keys a
           # compile-verdict cache on its own category and the three derive
           # DISJOINT verdict sets, so merging them would make the key ambiguous
           # and silently turn every lookup into a miss.
-          NATIVE_ISO='native-compiler-1,native-compiler-2,native-rest'
+          NATIVE_ISO='native-compiler-1,native-compiler-2,native-compiler-3,native-rest'
           emit() { # emit <prefix> <json>
             echo "$1=$2" >> "$GITHUB_OUTPUT"
             if [ "$2" = "[]" ]; then echo "$1-has=false" >> "$GITHUB_OUTPUT"; else echo "$1-has=true" >> "$GITHUB_OUTPUT"; fi
@@ -753,6 +753,7 @@ jobs:
             "internals:--category=internals" \
             "native-compiler-1:--category=native/compiler" \
             "native-compiler-2:--category=native/compiler" \
+            "native-compiler-3:--category=native/compiler" \
             "native-rest:--category=native --exclude=native/compiler" \
             "tools:--category=tools" "ui:--category=ui" \
             "ui-system:--category=ui-system" "zero:--category=zero")
@@ -967,17 +968,24 @@ jobs:
     # The fix is more runners, not a bigger cap — the previous note's own
     # conclusion ("the remaining lever is spawn reduction, NOT a cap tweak")
     # still holds, and raising 25 -> 35 would just rebuild the same cliff one
-    # feature arc later. `native-compiler` is therefore SHARDED across two
-    # runners via vitest `--shard=1/2` / `2/2`, which splits the package's
-    # test FILES into disjoint halves whose union is every file. That halves
-    # the critical path (~1500s+ -> ~750s/cell, back to ~50% headroom) while
-    # changing NOTHING about what is validated — every test still runs, on
-    # some runner, exactly once. Spawn reduction (batch/cache `swiftc -parse`
-    # / `kotlinc`) remains the real long-term lever; sharding buys the room to
-    # do it deliberately instead of under a red gate.
+    # feature arc later. `native-compiler` is therefore SHARDED via vitest
+    # `--shard=i/N`, which splits the package's test FILES into disjoint
+    # groups whose union is every file — changing NOTHING about what is
+    # validated: every test still runs, on some runner, exactly once. Spawn
+    # reduction (batch/cache `swiftc -parse` / `kotlinc`) remains the real
+    # long-term lever; sharding buys the room to do it deliberately instead
+    # of under a red gate.
     #
-    # If a shard starts creeping toward the cap again, add `native-compiler-3`
-    # and bump the `--shard=i/N` denominators — do NOT raise the cap.
+    # 2026-08-19: the 2-way split ran out. `native-compiler-1` was CANCELLED
+    # at 25m16s against the 25-minute cap — not a failure, a ceiling — and
+    # the fail-closed aggregator turns `cancelled` into a red `Test`, so it
+    # presents as a broken PR rather than an over-budget cell. Split three
+    # ways (304 test files). The native lowering arcs keep adding REAL
+    # swiftc/kotlinc specs, which is exactly the growth this cap is meant to
+    # absorb, so expect to need a 4th eventually.
+    #
+    # If a shard starts creeping toward the cap again, add the NEXT cell and
+    # bump the `--shard=i/N` denominators — do NOT raise the cap.
     #
     # Non-native cells are vitest-only and keep the tight 10-minute cap so a
     # genuine hang there still fails fast.
@@ -987,7 +995,7 @@ jobs:
       matrix:
         # Dynamic (see typecheck-cell): only affected categories spawn;
         # `|| full-list` fallback keeps a `changes` failure fail-closed.
-        include: ${{ fromJSON(needs.changes.outputs.test-matrix || '[{"name":"native-compiler-1","members":"native-compiler-1"},{"name":"native-compiler-2","members":"native-compiler-2"},{"name":"native-rest","members":"native-rest"},{"name":"batch-a","members":"core fundamentals internals"},{"name":"batch-b","members":"tools ui ui-system zero"}]') }}
+        include: ${{ fromJSON(needs.changes.outputs.test-matrix || '[{"name":"native-compiler-1","members":"native-compiler-1"},{"name":"native-compiler-2","members":"native-compiler-2"},{"name":"native-compiler-3","members":"native-compiler-3"},{"name":"native-rest","members":"native-rest"},{"name":"batch-a","members":"core fundamentals internals"},{"name":"batch-b","members":"tools ui ui-system zero"}]') }}
     steps:
       # Pin Node — vitest's `#!/usr/bin/env node` shebang means tests
       # run under whatever Node is on PATH. Without this, ubuntu-latest's
@@ -1064,20 +1072,25 @@ jobs:
           # complement is derived, never enumerated, so a new native package is
           # always covered by exactly one of them.
           case "$category" in
-            # Both compiler shards resolve the SAME package; they differ only
+            # All compiler shards resolve the SAME package; they differ only
             # by vitest `--shard`, which splits the package's test FILES into
-            # two disjoint halves whose union is every file (verified: 8 files
-            # /162 tests -> 4/86 + 4/76). Sharding is applied at `vitest run`;
-            # `vitest list` ignores it, so never probe the split with `list`.
+            # disjoint groups whose union is every file. Sharding is applied
+            # at `vitest run`; `vitest list` ignores it, so never probe the
+            # split with `list`.
             native-compiler-1)
               AFFECTED_ARGS="--category=native/compiler"
               FULL_FILTER="--filter=./packages/native/compiler"
-              SHARD_ARGS="--shard=1/2"
+              SHARD_ARGS="--shard=1/3"
               ;;
             native-compiler-2)
               AFFECTED_ARGS="--category=native/compiler"
               FULL_FILTER="--filter=./packages/native/compiler"
-              SHARD_ARGS="--shard=2/2"
+              SHARD_ARGS="--shard=2/3"
+              ;;
+            native-compiler-3)
+              AFFECTED_ARGS="--category=native/compiler"
+              FULL_FILTER="--filter=./packages/native/compiler"
+              SHARD_ARGS="--shard=3/3"
               ;;
             native-rest)
               AFFECTED_ARGS="--category=native --exclude=native/compiler"
