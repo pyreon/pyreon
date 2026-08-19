@@ -224,13 +224,25 @@ jobs:
     # Skip the ~210s lib/ build when NOTHING is affected — a pure-prose docs PR
     # (CLAUDE.md, a README). Gated on `affected` (NOT `code`): a doc-INPUT change
     # (anti-patterns.md → @pyreon/mcp) is code=false but affected=true, and
-    # test-cell then needs lib/, so bootstrap must run. Every lib/ consumer
-    # (test-cell, build, verify-modes, budgets, distribution, browser/rust,
-    # e2e, scaffold) is gated on `affected`/`code` or its own decide, so nothing
-    # downstream needs lib/ when this skips. Fail-closed: also runs if `changes`
-    # itself failed.
+    # test-cell then needs lib/, so bootstrap must run.
+    #
+    # ALSO gated on `e2e-has`, and that half is load-bearing. The rest of this
+    # comment used to claim every lib/ consumer is gated on `affected`/`code`
+    # "or its own decide, so nothing downstream needs lib/ when this skips" —
+    # which is exactly WRONG for e2e: e2e is gated on its own decide, and that
+    # decide can say RUN while `affected` says nothing.
+    #
+    # `e2e-affected.ts` treats any `e2e/` change as a trigger, but a change to
+    # `e2e/**` alone touches no workspace, so `affected.ts` returns false. Then
+    # bootstrap skips, the e2e matrix (needs: bootstrap) skips, and the
+    # fail-closed aggregator errors on the decide-says-run/suite-skipped
+    # contradiction — making a PR that only fixes e2e SPECS structurally
+    # un-mergeable (#2978). Same class as the scripts-json disagreement
+    # documented in `affected.ts`, a different shape.
+    #
+    # Fail-closed: also runs if `changes` itself failed.
     needs: [install, changes]
-    if: ${{ (success() && needs.changes.outputs.affected == 'true') || (failure() && needs.changes.result != 'success') }}
+    if: ${{ (success() && (needs.changes.outputs.affected == 'true' || needs.changes.outputs.e2e-has == 'true')) || (failure() && needs.changes.result != 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
