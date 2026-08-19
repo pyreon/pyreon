@@ -1131,6 +1131,13 @@ export type ExprIR =
       valueType?: TypeIR
       elementType?: TypeIR
       seed?: ExprIR
+      /**
+       * Seeded `new Map([[k, v], …])` — scalar key/value pair entries. When
+       * present the emit produces a native dict literal (`[k: v]` / `mutableMapOf(k to v)`)
+       * instead of the empty constructor. `keyType`/`valueType` are inferred
+       * from the first entry.
+       */
+      entries?: [ExprIR, ExprIR][]
     }
   /**
    * `new SizedMap<K, V>({ maxEntries, lru })` from `@pyreon/sized-map` — a

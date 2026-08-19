@@ -8997,14 +8997,41 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
         return { kind: 'new-collection', collection: 'map', keyType, valueType }
       }
       if (calleeName === 'Map' && (node.arguments?.length ?? 0) === 1) {
-        // Seeded `new Map([[k, v], …])` — the entry-array lowering (native dict
-        // literal + type inference from entries) is a bounded follow-up; for v1
-        // warn rather than mis-emit. Construct empty + populate via `.set()`.
+        // Seeded `new Map([[k, v], …])` → a native dict literal. The arg must be
+        // an array of 2-element `[key, value]` pairs; key AND value must be
+        // scalar (a native dictionary key needs Hashable, and value is held to
+        // the same scalar bar as the empty form for v1). Any other shape (a
+        // computed pair array, a non-pair element, a non-scalar key/value)
+        // stays the named warning — never a mis-emit.
+        const seedArg = node.arguments[0] as AnyNode
+        const pairNodes =
+          seedArg?.type === 'ArrayExpression'
+            ? ((seedArg.elements as AnyNode[] | undefined) ?? [])
+            : null
+        const entries: [ExprIR, ExprIR][] = []
+        let shapeOk = pairNodes !== null && pairNodes.length > 0
+        if (shapeOk && pairNodes) {
+          for (const p of pairNodes) {
+            const els = p?.type === 'ArrayExpression' ? (p.elements as AnyNode[]) : null
+            if (!els || els.length !== 2 || !els[0] || !els[1]) {
+              shapeOk = false
+              break
+            }
+            entries.push([parseExpr(els[0], ctx), parseExpr(els[1], ctx)])
+          }
+        }
+        if (shapeOk && entries.length > 0) {
+          const keyType = inferTypeFromInitial(entries[0]![0])
+          const valueType = inferTypeFromInitial(entries[0]![1])
+          if (isNativeScalarType(keyType) && isNativeScalarType(valueType)) {
+            return { kind: 'new-collection', collection: 'map', keyType, valueType, entries }
+          }
+        }
         return unsupportedExpr(
           ctx,
           node,
           `seeded \`new Map([...])\``,
-          'v1 lowers only `new Map<K, V>()` (empty, scalar K/V) — construct empty and populate with `.set(k, v)`, or keep the seeded map behind a `<Web>` escape hatch.',
+          'v1 lowers `new Map([[k, v], …])` with a literal array of SCALAR key/value pairs — other shapes: construct empty and populate with `.set(k, v)`, or keep the seeded map behind a `<Web>` escape hatch.',
         )
       }
       if (calleeName === 'Set') {

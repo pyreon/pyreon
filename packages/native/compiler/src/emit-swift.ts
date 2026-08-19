@@ -5684,6 +5684,13 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // the statement emit (collections force `var` — subscript-assign and
       // insert are mutating).
       if (e.collection === 'map') {
+        // Seeded `new Map([[k,v],…])` → a dict literal `[k: v, …]`.
+        if (e.entries && e.entries.length > 0) {
+          const body = e.entries
+            .map(([k, v]) => `${emitSwiftExpr(k, indent)}: ${emitSwiftExpr(v, indent)}`)
+            .join(', ')
+          return `[${body}]`
+        }
         return `[${swiftType(e.keyType!)}: ${swiftType(e.valueType!)}]()`
       }
       if (e.seed !== undefined) return `Set(${emitSwiftExpr(e.seed, indent)})`

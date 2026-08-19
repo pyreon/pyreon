@@ -286,7 +286,12 @@ export function isReReadableExpr(expr: ExprIR): boolean {
 export function exprReferencesIdent(expr: ExprIR, name: string): boolean {
   switch (expr.kind) {
     case 'new-collection':
-      return expr.seed !== undefined ? exprReferencesIdent(expr.seed, name) : false
+      if (expr.seed !== undefined) return exprReferencesIdent(expr.seed, name)
+      return (
+        expr.entries?.some(
+          ([k, v]) => exprReferencesIdent(k, name) || exprReferencesIdent(v, name),
+        ) ?? false
+      )
     // A SizedMap constructor carries only literal options (cap + flag), so it
     // can never reference an identifier, be hoisted around one, or need a
     // param rewrite. Enumerated rather than left to a default so the
@@ -395,10 +400,22 @@ export function substituteIdentifier(
     case 'new-sized-map':
       return expr
     case 'new-collection': {
-      if (expr.seed === undefined) return expr
-      const seed = substituteIdentifier(expr.seed, name, replacement)
-      if (seed === null) return null // bail-propagation, like every other case
-      return { ...expr, seed }
+      if (expr.seed !== undefined) {
+        const seed = substituteIdentifier(expr.seed, name, replacement)
+        if (seed === null) return null // bail-propagation, like every other case
+        return { ...expr, seed }
+      }
+      if (expr.entries !== undefined) {
+        const entries: [ExprIR, ExprIR][] = []
+        for (const [k, v] of expr.entries) {
+          const nk = substituteIdentifier(k, name, replacement)
+          const nv = substituteIdentifier(v, name, replacement)
+          if (nk === null || nv === null) return null
+          entries.push([nk, nv])
+        }
+        return { ...expr, entries }
+      }
+      return expr
     }
     case 'literal':
       return expr
@@ -618,7 +635,11 @@ function walkLowerParams(
   const rec = (e: ExprIR): ExprIR => walkLowerParams(e, ctxName, flags)
   switch (expr.kind) {
     case 'new-collection':
-      return expr.seed !== undefined ? { ...expr, seed: rec(expr.seed) } : expr
+      if (expr.seed !== undefined) return { ...expr, seed: rec(expr.seed) }
+      if (expr.entries !== undefined) {
+        return { ...expr, entries: expr.entries.map(([k, v]): [ExprIR, ExprIR] => [rec(k), rec(v)]) }
+      }
+      return expr
     case 'new-sized-map':
       return expr
     case 'literal':
