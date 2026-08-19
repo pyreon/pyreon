@@ -129,6 +129,16 @@ export const DBMON_TICKS: DbSample[][] = (() => {
  * posting a fast number. Checks the count cell AND a query cell's text AND its
  * class on rows 0, 37 and 99 — text-only would miss a framework that updates
  * text but not the threshold class.
+ *
+ * It ALSO asserts the row's total cell count and its static `dbname` text.
+ * Neither is touched by a tick, so it would be easy to argue they do not need
+ * checking — that argument is exactly backwards. An arm that never renders the
+ * name, or renders one fewer `<td>`, does strictly LESS DOM work than its
+ * rivals on every mount and would post a faster number for a structurally
+ * unfair reason. The name is also the one value the re-rendering arms
+ * (React/Preact/Vue/Svelte/Octane) genuinely re-read from `DB_NAMES[i]` each
+ * tick while the retained-node arms (Vanilla/Solid/Pyreon) set it once, so it
+ * is the single most load-bearing thing to pin down across models.
  */
 export function verifyDbmon(container: HTMLElement, tick: DbSample[]): void {
   const rows = container.querySelectorAll('tbody > tr')
@@ -138,6 +148,21 @@ export function verifyDbmon(container: HTMLElement, tick: DbSample[]): void {
   for (const i of [0, 37, DB_COUNT - 1]) {
     const row = rows[i] as HTMLElement
     const sample = tick[i] as DbSample
+
+    // Structural equivalence: 1 name + 1 count + QUERY_SLOTS query cells.
+    const allCells = row.querySelectorAll('td')
+    if (allCells.length !== QUERY_SLOTS + 2) {
+      throw new Error(
+        `[dbmon] row ${i}: expected ${QUERY_SLOTS + 2} <td> cells, got ${allCells.length} — this arm does not render the same DOM as the others`,
+      )
+    }
+    const nameEl = row.querySelector('td.dbname')
+    if (nameEl?.textContent !== DB_NAMES[i]) {
+      throw new Error(
+        `[dbmon] row ${i} dbname: expected "${DB_NAMES[i]}", got "${nameEl?.textContent}"`,
+      )
+    }
+
     const countEl = row.querySelector('.query-count > span')
     if (countEl?.textContent !== String(sample.queryCount)) {
       throw new Error(

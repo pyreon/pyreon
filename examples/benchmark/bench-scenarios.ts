@@ -79,7 +79,18 @@ const SCENARIOS: { id: string; label: string; frameworks: string[] }[] = [
   {
     id: 'dbmon',
     label: 'dbmon — sustained wide update (100 rows × 6 cells, all changing)',
-    frameworks: ['Vanilla JS', 'Pyreon', 'React 19', 'Preact', 'Vue 3', 'SolidJS', 'Svelte 5'],
+    frameworks: [
+      'Vanilla JS',
+      'Pyreon',
+      'Octane',
+      'React 19',
+      'Preact',
+      'Vue 3',
+      'Vue 3 (template)',
+      'SolidJS',
+      'SolidJS (per-attr effects)',
+      'Svelte 5',
+    ].filter((f) => (NARROW ? NARROW.includes(f) : true)),
   },
   {
     id: 'tree',
@@ -136,6 +147,10 @@ const SCENARIOS: { id: string; label: string; frameworks: string[] }[] = [
 const NON_RANKING = new Set([
   'Vanilla JS',
   'SolidJS (eager props)',
+  // Diagnostic twin of the dbmon Solid arm: the per-attribute effect shape
+  // Solid's compiler does NOT emit (it groups a row's attributes into one
+  // effect). Published so the emit-faithfulness correction is auditable.
+  'SolidJS (per-attr effects)',
   // Hand-written compiler-output-level probes, not a shipped code path.
   'Pyreon (tpl slot)',
   'Pyreon (tpl append)',
@@ -164,6 +179,24 @@ function ci95(xs: number[]): [number, number] {
   }
   meds.sort((a, b) => a - b)
   return [meds[Math.floor(0.025 * meds.length)] as number, meds[Math.floor(0.975 * meds.length)] as number]
+}
+
+/**
+ * Coefficient of variation (stddev / mean), as a percent.
+ *
+ * Reported alongside the CI because they answer different questions: the CI
+ * says how well-pinned the MEDIAN is, while the CV says how disperse the
+ * underlying samples are. A tight CI over quantized or bimodal samples can look
+ * authoritative while hiding real spread — that combination (narrow CI, high
+ * CV) is the documented tell for a clock-quantization artifact, so publishing
+ * only the CI would conceal exactly the failure mode worth catching.
+ */
+function cv(xs: number[]): number {
+  if (xs.length < 2) return 0
+  const mean = xs.reduce((a, b) => a + b, 0) / xs.length
+  if (mean === 0) return 0
+  const variance = xs.reduce((a, b) => a + (b - mean) ** 2, 0) / (xs.length - 1)
+  return (Math.sqrt(variance) / mean) * 100
 }
 
 function fmt(ms: number): string {
@@ -262,7 +295,13 @@ try {
       const rows = scenario.frameworks
         .map((fw) => {
           const samples = pooled.get(`${scenario.id}\u0000${op}\u0000${fw}`) ?? []
-          return { fw, med: median(samples), ci: ci95(samples), n: samples.length }
+          return {
+            fw,
+            med: median(samples),
+            ci: ci95(samples),
+            n: samples.length,
+            cv: cv(samples),
+          }
         })
         .filter((r) => r.n > 0)
         .sort((a, b) => a.med - b.med)
@@ -286,7 +325,7 @@ try {
                   ? '🤝 tie'
                   : `${(r.med / bestFw.med).toFixed(2)}× slower`
         console.log(
-          `  ${r.fw.padEnd(11)} ${fmt(r.med).padStart(9)}  [${fmt(r.ci[0])}–${fmt(r.ci[1])}]  n=${String(r.n).padStart(3)}  ${marker}`,
+          `  ${r.fw.padEnd(28)} ${fmt(r.med).padStart(9)}  [${fmt(r.ci[0])}–${fmt(r.ci[1])}]  n=${String(r.n).padStart(3)}  CV=${r.cv.toFixed(1).padStart(4)}%  ${marker}`,
         )
       }
     }
