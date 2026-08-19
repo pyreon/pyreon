@@ -193,6 +193,14 @@ const SUITES: Suite[] = [
     ],
   },
   {
+    // `https()` in a real browser. The node-side suites prove the certificate
+    // parses and Vite applies it; only a browser can say whether the page is a
+    // secure context and the gated APIs are consequently DEFINED.
+    name: 'https-dev',
+    script: 'test:e2e:https-dev',
+    triggers: ['packages/zero/zero/src/https', 'e2e/https-dev', 'e2e/fixtures/https-dev'],
+  },
+  {
     name: 'ssg-subpath',
     script: 'test:e2e:ssg-subpath',
     triggers: [...ROUTER_CORE, 'examples/ssr-showcase/', 'e2e/ssg-subpath'],

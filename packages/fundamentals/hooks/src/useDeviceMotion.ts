@@ -48,7 +48,11 @@ export function useDeviceMotion(): DeviceMotionControls {
   const acceleration = signal<Vec3>(ZERO)
   const rotation = signal<Vec3>(ZERO)
 
-  const supported = () => isClient && typeof DeviceMotionEvent !== 'undefined'
+  const supported = () => {
+    const ok = isClient && typeof DeviceMotionEvent !== 'undefined'
+    if (!ok) warnIfInsecureContext('useDeviceMotion')
+    return ok
+  }
 
   const onMotion = (e: DeviceMotionEvent) => {
     const a = e.accelerationIncludingGravity
@@ -77,6 +81,11 @@ export function useDeviceMotion(): DeviceMotionControls {
     stop,
 
     start: async (): Promise<boolean> => {
+      // Explicit, mirroring `stop()`. `supported()` already returns false on
+      // the server, but it is now a BLOCK body, so neither a reader nor the
+      // SSR lint can see the guard through the call — and this method touches
+      // `window` directly further down.
+      if (!isClient) return false
       if (!supported()) {
         warnIfInsecureContext('useDeviceMotion')
         return false

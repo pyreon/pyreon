@@ -66,6 +66,7 @@
     "test:e2e:ssr-node": "bunx playwright test --config=e2e-configs/ssr-node.config.ts",
     "test:e2e:isr-node": "bunx playwright test --config=e2e-configs/isr-node.config.ts",
     "test:e2e:ssg-subpath": "bunx playwright test --config=e2e-configs/ssg-subpath.config.ts",
+    "test:e2e:https-dev": "bunx playwright test --config=e2e-configs/https-dev.config.ts",
     "test:e2e:ssg-i18n": "bunx playwright test --config=e2e-configs/ssg-i18n.config.ts",
     "test:e2e:ssg-i18n-prefix": "bunx playwright test --config=e2e-configs/ssg-i18n-prefix.config.ts",
     "test:e2e:zero-islands": "bunx playwright test --config=e2e-configs/zero-islands.config.ts",
