@@ -145,7 +145,25 @@ function vanillaTarget(sink: EffectSink): EffectsTarget {
 
 function pyreonTarget(sink: EffectSink): EffectsTarget {
   const sigs = Array.from({ length: EFFECT_ROWS }, () => signal(-1))
-  const rows = sigs.map((s) => ({ value: () => s() }))
+  // Pass the SIGNAL, not a `() => s()` wrapper around it. A Pyreon signal already
+  // satisfies this scenario's shared `{ value: () => number }` contract, and the
+  // wrapper strips a runtime capability: `_bindText` takes its O(1) direct-updater
+  // tier only when the source exposes `.direct` (i.e. is a signal or a computed),
+  // and falls back to a fully-tracked `renderEffect` — one extra hashed
+  // `Set.delete` per row at teardown — for an opaque callable. The Solid arm below
+  // reaches into its own `sigs` and passes the raw accessor undegraded, so the
+  // wrapper was an asymmetry working against Pyreon only. Root-caused in #2956.
+  //
+  // DISCLOSURE for anyone reading the resulting numbers: the arms are now
+  // symmetric in INPUT but NOT in MECHANISM. Solid's `insert(el, accessor)`
+  // always creates a render effect — it has no non-tracked binding tier — and its
+  // teardown is an array swap-remove, where Pyreon's tracked teardown is
+  // Set-based. Pyreon's text binding therefore does strictly less work here, by
+  // design rather than by rigging; that difference belongs in the comparison, but
+  // it should be stated rather than left for a reader to assume equivalent
+  // machinery. This also moves `update all`, not just `dispose`: one subscriber
+  // shifts from the tracking channel to the direct one.
+  const rows = sigs.map((s) => ({ value: s }))
 
   return {
     mount(host) {
