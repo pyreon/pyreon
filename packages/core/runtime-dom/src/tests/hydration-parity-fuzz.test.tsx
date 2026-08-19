@@ -305,8 +305,12 @@ const stripComments = (html: string) => html.replace(/<!--[\s\S]*?-->/g, '')
  * is the precedent for that shape.
  */
 export const KNOWN_ATTR_PARITY_DIVERGENCES: ReadonlySet<string> = new Set([
-  'input.value',
-  'textarea.value',
+  // `input.value` and `textarea.value` were REMOVED here by this PR: the client
+  // now establishes `defaultValue` on first application, so hydrated and
+  // client-mounted DOM agree on the attribute and those shapes are re-armed.
+  // `select.value` stays — it manifests as `<option selected>` and diverges in
+  // React, Preact and Solid identically, so it is industry-normal rather than
+  // ours to fix.
   'select.value',
 ])
 
