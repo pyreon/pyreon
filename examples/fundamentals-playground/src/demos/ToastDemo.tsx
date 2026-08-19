@@ -39,6 +39,20 @@ export function ToastDemo() {
           <button onClick={() => toast('Plain toast')} data-testid="toast-plain">
             plain
           </button>
+          {/*
+            `duration: 0` disables auto-dismiss, so this toast waits for a
+            click instead of a timer. The dismiss e2e uses it: with the 4s
+            default, that test races the timeout — fast enough when run alone,
+            and not under full-suite load, which made it fail about one run in
+            three while measuring the timer rather than the delegated click it
+            is actually about.
+          */}
+          <button
+            onClick={() => toast('Sticky toast', { duration: 0 })}
+            data-testid="toast-sticky"
+          >
+            sticky (no auto-dismiss)
+          </button>
         </div>
       </div>
 
