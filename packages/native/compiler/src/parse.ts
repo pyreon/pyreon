@@ -985,7 +985,7 @@ const WEB_ONLY_PACKAGES: ReadonlyMap<string, string> = new Map([
   ['@pyreon/feature', "composite over query/form/store/validation — lowers only when every dependency does; tracked as a Tier-2 composite"],
   ['@pyreon/flow', "SVG rendering (the layout engine itself is pure and platform-free); consume on native via the `<WebView>` bridge subpath"],
   ['@pyreon/head', "document `<head>` management — no equivalent surface exists on iOS/Android"],
-  ['@pyreon/hotkeys', "keyboard-shortcut layer over DOM KeyboardEvent; touch platforms have no hardware-shortcut surface"],
+  ['@pyreon/hotkeys', "keyboard-shortcut layer over DOM KeyboardEvent. No native lowering is implemented yet — which is an unbuilt lowering, NOT a platform limitation: both targets expose a hardware-shortcut surface (SwiftUI `.keyboardShortcut` for control-bound and `.onKeyPress` for view-level, Compose `Modifier.onPreviewKeyEvent`), and iPads, Chromebooks, DeX and tablet keyboards all reach them"],
   ['@pyreon/kinetic', "CSS-transition animation engine (classes + rAF over real CSSOM) — the `kinetic()` factory and its class/style machinery are web; its PRESET VOCABULARY (fade / scale-in / slide-up|down|left|right) does cross, via `<Transition name>` imported from `@pyreon/primitives` (NOT from here and NOT from `@pyreon/runtime-dom` — both are web-only), which each target resolves to its own platform transition"],
   ['@pyreon/kinetic-presets', "preset pack for the kinetic CSS engine"],
   ['@pyreon/lint', "lint tooling — runs at dev time, not app runtime"],
