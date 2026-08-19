@@ -552,8 +552,21 @@ export function C() {
 
   {
     name: '@pyreon/dnd',
-    mechanism: 'web-first',
-    rationale: 'pointer-driven drag-and-drop; native gesture frontend arc still open.',
+    mechanism: 'partial',
+    rationale:
+      'the pdnd/DOM-shaped surface stays web (useDraggable / useDroppable are element-getter hooks, useDragMonitor is page-global, useFileDrop is an OS file picker — each still warns BY NAME). List REORDER is gesture-shaped rather than DOM-shaped, and it lowers: useSortable becomes a co-located PyreonSortableState engine on both targets. The full contract is required — items, a single-param `by`, and an arrow `onReorder`; a partial one warns naming the exact prop.',
+    snippet: `import { useSortable } from '@pyreon/dnd'
+import { Stack, Text } from '@pyreon/primitives'
+interface Row { id: string; label: string }
+export function C() {
+  const items = signal<Row[]>([])
+  const s = useSortable({
+    items: () => items(),
+    by: (item: Row) => item.id,
+    onReorder: (next: Row[]) => items.set(next),
+  })
+  return (<Stack><Text>x</Text></Stack>)
+}`,
   },
   {
     name: '@pyreon/kinetic',
@@ -710,6 +723,20 @@ export function classifyEntry(
   }
 
   if (entry.mechanism === 'web-first') {
+    // The `partial` branch above rejects an entry whose manifest declares no
+    // `nativeFrontend`. This is the OTHER direction, and it is the one that
+    // actually drifted: `@pyreon/dnd` shipped `useSortable` lowering to a
+    // native reorder engine and declared the `nativeFrontend` to say so, while
+    // this registry still called it `web-first` — so the gate under-reported a
+    // package that had already crossed. Checking one direction only means the
+    // list can always fall behind reality on the other.
+    if (nativeFrontend) {
+      return {
+        ...base,
+        status: 'regression',
+        detail: `classified web-first, but the package's manifest declares a \`multiplatform.nativeFrontend\` (${nativeFrontend}) — a declared partial crossing must be registered as \`partial\`, with a snippet exercising it, or the gate under-reports`,
+      }
+    }
     // A web-first snippet is EXPECTED to warn; a drop to 0 is progress, not a
     // failure — surfaced as a gap with a reclassification hint.
     if (snippet && snippet.warnings === 0) {
