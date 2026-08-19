@@ -1,5 +1,50 @@
 # @pyreon/storage
 
+## 0.52.0
+
+### Minor Changes
+
+- Co-locate the @pyreon/storage native runtime. (dfdb7f4)
+
+  Moves the storage-specific Swift/Kotlin runtimes (PyreonStorage,
+  PyreonSecureStorage + the Android impls) out of the monolith into
+  `@pyreon/storage/native/{swift,kotlin}`. `PyreonStorageBackends.kt` — the
+  shared persistence primitive (backend interface / registry / file backend /
+  codec, also used by PyreonCrashReporter) — deliberately STAYS in the base
+  monolith runtime; the co-located storage group references it via a new
+  `@base/<File>.kt` companion in the co-source gate.
+
+  Gate work (reusable for future batches): `verify-kotlin --files=<set>`
+  (per-service-group compile) + a companion-suppression filter that drops the
+  monolith companion append while keeping explicitly-listed `@base/` files;
+  `check-native-cosource` grows a `pyreon.native.kotlinServices` map (each group
+  compiles under one `--service` stub bundle) and a `@base/` prefix for
+  framework-base companions. The `PyreonSecureStorageAndroid` stub service now
+  also writes the compose-ui LocalContext stub so the whole storage graph
+  verifies as one group.
+
+  The six example apps whose shared source uses `useStorage`/`useSecureStorage`
+  (finance, router-demo, todomvc × android+ios) gain the co-located storage
+  source roots. No public API change — a native-source relocation.
+
+### Patch Changes
+
+- Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration). (1d74edc)
+- Ship the MIT LICENSE file in the package tarball (8aeffe0)
+
+  These eight published packages were missing a `LICENSE` file. The repo's
+  own rule has always been that every package carries one ("Every package
+  MUST have `LICENSE` (MIT) and `README.md` — no exceptions"), but nothing
+  enforced it, so the gap went unnoticed.
+
+  No runtime change. It matters anyway: consumers, vendoring tools and
+  licence scanners read the file from the tarball, and its absence makes an
+  MIT-licensed package look unlicensed at the point where that question is
+  actually asked. A gate now keeps every workspace covered.
+
+- Updated dependencies:
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes

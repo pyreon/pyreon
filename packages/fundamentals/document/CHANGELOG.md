@@ -1,5 +1,42 @@
 # @pyreon/document
 
+## 0.52.0
+
+### Minor Changes
+
+- **The four binary-format libraries are now OPTIONAL PEER dependencies instead of `optionalDependencies`.** `optionalDependencies` reads as "optional" and is not — every package manager installs them by default (the field means "tolerate an install failure", which is why `@pyreon/compiler` uses it correctly for platform binaries). So every consumer of `@pyreon/document` was force-fed pdfmake + docx + exceljs + pptxgenjs whether or not they ever emitted a binary format, carrying both their install weight and their CVE surface — two live advisories reached consumers this way (exceljs → a vulnerable `uuid`, pptxgenjs → a vulnerable `image-size`). (afd139e)
+
+  The renderers were always written for peer semantics: each one `await import()`s its library and throws a named, actionable error when it is missing. This aligns the manifest with the code.
+
+  **Action required if you emit a binary format**: install its library alongside `@pyreon/document` — `bun add pdfmake` (PDF), `docx` (DOCX), `exceljs` (XLSX), `pptxgenjs` (PPTX). Every text format (HTML, Markdown, SVG, text, email, chat, JSON/JSONL, CSV) is built in and needs nothing extra. A missing library fails with the install command in the message rather than silently.
+
+### Patch Changes
+
+- Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration). (1d74edc)
+- Render hot-path performance pass + a code-block double-escape fix. (ebb0b3d)
+
+  - **Fix: code blocks no longer double-escape in the html and email renderers.** Both wrapped `renderChildren(...)` — which already escapes string children — in a second outer escape, so `<Code>a < b && c</Code>` emitted `a &amp;lt; b &amp;amp;&amp;amp; c` and the entities rendered literally. Code content is now escaped exactly once (regression-locked through the public `render()` API, bisect-verified).
+  - **Perf: `escapeXml` is now single-pass** — a `NEEDS_ESCAPE_RE` fast path returns clean strings untouched (the dominant case), and dirty strings take one charCode scan with lazy slicing instead of the previous 4 chained `.replace()` passes. The entity set is unchanged (`& < > "` — no `&#39;`); output is byte-identical (differential-tested against the old implementation).
+  - **Perf: `''`-joined `.map().join('')` child concatenation replaced with `acc +=` loops** in `getTextContent` and the html/email/markdown/text/telegram/whatsapp/slack renderers (V8 cons-strings beat join at every measured size). Separator joins are untouched.
+
+  Measured on the repo's `bench:document` (median-of-7): escape-heavy formats gain the most — LARGE report email ~6×, html ~5×, svg ~3×, google-chat ~2.6× docs/sec; most other formats move within noise.
+
+- Ship the MIT LICENSE file in the package tarball (8aeffe0)
+
+  These eight published packages were missing a `LICENSE` file. The repo's
+  own rule has always been that every package carries one ("Every package
+  MUST have `LICENSE` (MIT) and `README.md` — no exceptions"), but nothing
+  enforced it, so the gap went unnoticed.
+
+  No runtime change. It matters anyway: consumers, vendoring tools and
+  licence scanners read the file from the tarball, and its absence makes an
+  MIT-licensed package look unlicensed at the point where that question is
+  actually asked. A gate now keeps every workspace covered.
+
+- Updated dependencies:
+  - @pyreon/core@0.52.0
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes

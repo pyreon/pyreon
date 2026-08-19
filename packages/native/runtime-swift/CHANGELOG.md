@@ -1,5 +1,129 @@
 # @pyreon/native-runtime-swift
 
+## 0.52.0
+
+### Minor Changes
+
+- Add `useCrashReporter()` — cross-platform crash capture, persistence, and rehydration. Captures uncaught errors (web `window.onerror`/`unhandledrejection`, iOS `NSSetUncaughtExceptionHandler`, Android `Thread.setDefaultUncaughtExceptionHandler` chaining to the previous handler), persists the report (localStorage / Application Support / app files dir), and rehydrates the previous session's report on the next launch — the credential-free half of crash reporting. The vendor transport (Sentry, a custom endpoint) is app-wired via `setCrashTransport` / `PyreonCrashTransportRegistry`, so the framework never fakes an upload. `useCrashReporter()` lowers to both native targets (SwiftUI + Compose); the Android factory self-installs a file-backed backend so the report survives the crash it reports. Signal crashes (iOS) and NDK crashes (Android) are disclosed out of v1 scope. (c4c2d52)
+- Co-locate the @pyreon/hooks native runtimes (Batch 3). (84e7444)
+
+  Moves 21 hook service runtimes (AppState, Auth, Biometrics, Clipboard,
+  CrashReporter, Database, Fetch, FilePicker, Geolocation, Haptics, ImagePicker,
+  Linking, MapState, NetworkStatus, Notifications, Payments, PushNotifications,
+  Share, VideoPlayer, WebSocket, WebView + their Android/OkHttp variants — 28
+  Kotlin, 21 Swift files) out of the monolith into @pyreon/hooks/native, using the
+  per-service-group gate from the storage batch: 20 kotlinServices groups (each
+  under its own --service stub bundle; the 6 hooks with base dependencies —
+  Auth→PyreonHttp, CrashReporter→StorageBackends+Json, Database/Fetch/WebView→Json,
+  Geolocation→StorageBackends — reference the retained monolith primitives via
+  @base/ companions). WebView's Kotlin is device-only (android.webkit was never
+  stub-covered in the monolith).
+
+  The monolith now holds ONLY the framework-base runtimes (Reactivity, Tokens,
+  ViewModifier, Json, Assets, Http/OkHttp, StorageBackends). All 10 native example
+  apps gain the @pyreon/hooks/native source root.
+
+  Follow-up: the monolith's Swift hook-logic tests are removed here (the Kotlin
+  tests moved with their runtimes and run in the co-source gate; the Swift side is
+  typecheck + device-verified) — relocating them as co-located @main programs is a
+  tracked follow-up.
+
+- Co-locate native runtimes into their own packages. (ed6518a)
+
+  The Swift/Kotlin runtimes for form, store, state-tree, machine, i18n, permissions,
+  and query move out of the `@pyreon/native-runtime-*` monolith into each package's
+  `native/{swift,kotlin}/` (declared via the `pyreon.native` package.json field,
+  aggregated by `pyreon-native wire`). Framework-base runtimes (reactivity/styling/JSON
+  helpers) stay in the monolith. A new `scripts/check-native-cosource.ts` gate compiles
+  and smoke-runs every co-located `.swift`/`.kt` against the stub harness so a relocated
+  runtime can't rot silently. No API change — this is a source-location move.
+
+- Co-locate the @pyreon/storage native runtime. (dfdb7f4)
+
+  Moves the storage-specific Swift/Kotlin runtimes (PyreonStorage,
+  PyreonSecureStorage + the Android impls) out of the monolith into
+  `@pyreon/storage/native/{swift,kotlin}`. `PyreonStorageBackends.kt` — the
+  shared persistence primitive (backend interface / registry / file backend /
+  codec, also used by PyreonCrashReporter) — deliberately STAYS in the base
+  monolith runtime; the co-located storage group references it via a new
+  `@base/<File>.kt` companion in the co-source gate.
+
+  Gate work (reusable for future batches): `verify-kotlin --files=<set>`
+  (per-service-group compile) + a companion-suppression filter that drops the
+  monolith companion append while keeping explicitly-listed `@base/` files;
+  `check-native-cosource` grows a `pyreon.native.kotlinServices` map (each group
+  compiles under one `--service` stub bundle) and a `@base/` prefix for
+  framework-base companions. The `PyreonSecureStorageAndroid` stub service now
+  also writes the compose-ui LocalContext stub so the whole storage graph
+  verifies as one group.
+
+  The six example apps whose shared source uses `useStorage`/`useSecureStorage`
+  (finance, router-demo, todomvc × android+ios) gain the co-located storage
+  source roots. No public API change — a native-source relocation.
+
+### Patch Changes
+
+- `@pyreon/a11y`'s `announce(...)` works on iOS + Android, and its native runtime is **co-located in the package** (`@pyreon/a11y/native/{swift,kotlin}/`) — the per-package architecture, not the monolithic `@pyreon/native-runtime-*`. (02c2bd9)
+
+  **Runtime (co-located) — `PyreonA11y`:**
+
+  - Swift: `announce(_:assertive:)` posts a VoiceOver announcement (`UIAccessibility.post(.announcement)`), raising the iOS 17+ speech priority when `assertive`.
+  - Kotlin: `announce(message, assertive)` routes to a registered announcer (`PyreonA11y.setAnnouncer { rootView.announceForAccessibility(it) }`), the "Android needs a host" seam — a safe no-op before wiring.
+
+  Ships in `@pyreon/a11y/native/`, declared via the `pyreon.native` field, so `pyreon-native wire` aggregates it from the installed package. The co-source verify gate (`scripts/check-native-cosource.ts`, wired into native-validate CI) compiles + smoke-runs it against the stub harness — the Kotlin announcer seam is asserted, the Swift wrapper typechecks.
+
+  **Lowering:** `announce("m")` → `PyreonA11y.announce("m", assertive: false)`; `announce("m", { politeness: 'assertive' })` → `assertive: true`. Message is any expression; a renamed import (`announce as say`) is handled. A new `announce-call` ExprIR kind is threaded through `parse` (gated on the `@pyreon/a11y` import) + both emits + the `expr-utils` walkers + `infer-type`.
+
+  The **DOM-based helpers stay web-only** — `VisuallyHidden` / `LiveRegion` / `SkipLink` / `createA11yId` still warn (per-export, `announce` excepted).
+
+  Proven R2 (emit) + R3 (typecheck vs the compiler's `PyreonA11y` stubs on swiftc + kotlinc); `native-a11y.test.ts` 7 cases + the co-source gate. Full native-compiler suite 2818 pass (fixing two tests that had encoded the old "announce warns" behavior). No device proof yet; `politeness` isn't distinguished on Android.
+
+- Add the `repository` field npm provenance requires. All six packages were (2b5be05)
+  rejected from the 0.51.0 release with a 422 (`"repository.url" is "",
+expected to match "https://github.com/pyreon/pyreon"`) — `--provenance`
+  publishing validates the field against the OIDC attestation, so its absence
+  is a publish blocker, not cosmetic metadata.
+- Native-source resolve-and-scan toolchain — the monorepo Gap-1 fix, and the keystone for per-package native co-location. (ff73c97)
+
+  The scaffold hard-coded the native runtime location into the app build (iOS `project.yml` `packages:` and Android Gradle `srcDir` both pointed at a fixed `../node_modules/@pyreon/native-runtime-*` path). npm/yarn HOISTING and pnpm's symlinked store both break that: in a monorepo the runtime is usually installed at the workspace root, not the app's local `node_modules`, so the fixed path dangles and the build cannot find the runtime sources.
+
+  `@pyreon/native-cli` gains a `wire` command and a resolver:
+
+  - `resolveNativeSources(appDir)` walks the app's declared `@pyreon/*` deps and resolves each one's install location by walking `node_modules` upward — the same algorithm Node's resolver uses, so it is hoisting- and pnpm-symlink-safe.
+  - Each package declares its native sources via a `pyreon.native` field in `package.json`, or the zero-config default dirs `native/swift/` and `native/kotlin/`. The four base runtime/router packages now declare the field pointing at their existing `Sources/PyreonRuntime` / `Sources/PyreonRouter` / `src/main/kotlin` layout, so they resolve through the SAME convention as a co-located feature package — no name-based special-casing. This is what makes per-package native co-location possible: a feature package can ship `native/{swift,kotlin}/` and it aggregates into the app build with zero config, and a third-party package opts in by declaring the field.
+  - `pyreon-native wire [--app=<dir>] [--android-out=<file>] [--json]` emits the resolved build wiring: the Gradle srcDirs list (base runtime/router + every co-located feature `native/kotlin/`, deduped, absolute), the iOS SwiftPM package paths (resolved absolute), and the co-located Swift target sources grouped by module. A DECLARED-but-missing native dir is surfaced as a broken declaration (exit 2).
+
+  Scaffolded Android apps now resolve their Kotlin source roots through this: `scripts/build-android.sh` runs `pyreon-native wire --android-out=android/app/pyreon-native.srcdirs` after the emit (before Gradle configures), and `build.gradle.kts` prefers that resolved list, falling back to the legacy fixed `node_modules` paths for a flat layout. Existing flat apps are unaffected; monorepo apps now build.
+
+  iOS co-location target wiring (compiling co-located feature `native/swift/` into the runtime target) is a follow-up that pairs with relocating the first feature runtime; the base Swift packages already resolve through `wire` today.
+
+- `@pyreon/toast` works on iOS + Android — and its native runtime is **co-located in the package** (`@pyreon/toast/native/{swift,kotlin}/`), the per-package architecture rather than the monolithic `@pyreon/native-runtime-*`. This is the first package to prove that model end-to-end. (5fc3b9f)
+
+  **Runtime (co-located) — `PyreonToast`** (Swift `@Observable` singleton / Kotlin `object`): a process-global observable queue (add/dismiss/remove/clear), newest-last, distinct monotonic ids, a bounded stack (drops the oldest past `maxToasts`), and an auto-dismiss timer. It ships in `@pyreon/toast/native/`, declared via the package.json `pyreon.native` field, so `pyreon-native wire` aggregates it into a native app build straight from the installed package — no monolith, native tree-shakes to what you import, and a third-party package can follow the same convention.
+
+  **Co-source verify gate** (`scripts/check-native-cosource.ts`, wired into the native-validate CI job): scans every package's `pyreon.native` sources and compiles + smoke-runs them against the stub harness (Kotlin via `verify-kotlin --source`, which gained a path override; Swift via `swiftc -parse-as-library` + run), so a co-located `.swift`/`.kt` can't rot silently now that it lives outside `@pyreon/native-runtime-*`'s own `src/`. Toast's queue behavior is unit-tested this way on both toolchains.
+
+  **Lowering:**
+
+  - `toast("msg")` → `PyreonToast.shared.add("msg", type: "info")` (Swift) / `PyreonToast.add("msg", "info")` (Kotlin). The message is any expression; a renamed import (`toast as notify`) is handled; a literal `{ duration }` (ms → the auto-dismiss; `0` = persistent) lowers.
+  - Preset methods `toast.success/error/warning/info/loading("msg")` select the type.
+  - `<Toaster />` → a native overlay iterating the reactive queue.
+
+  A new `toast-call` ExprIR kind is threaded through `parse` (gated on the `@pyreon/toast` import) + both emits + the `expr-utils` walkers + `infer-type`. Proven R2 (emit) + R3 (typecheck vs the compiler's `PyreonToast` stubs on swiftc + kotlinc); `native-toast.test.ts` 7 cases + the co-source gate.
+
+  **v1 scope (disclosed):** message + preset type + literal `duration` lower; the other options (`onDismiss`/`description`/`icon`/`action`) are dropped, and `toast.promise()` / `toast.update()` aren't lowered. `<Toaster />` is a minimal message stack (positioning/styling/animation are a follow-up). No device (Simulator/Emulator) proof yet — the runtime is unit-tested by the co-source gate and the emit is stub-typechecked.
+
+- PyreonQuery — the native cached data-fetching runtime, the core of `useQuery` on iOS and Android. (9d40d85)
+
+  The delta over `PyreonFetch` is exactly what a query library adds over a bare fetch: a **keyed cache with stale-while-revalidate**, so the same `queryKey` shared across screens serves instantly and refetches in the background.
+
+  - `PyreonQueryCache` — a process-global cache shared across every `PyreonQuery` instance (two screens reading `["todos"]` hit the same entry). `invalidate(key)` + `clearAll()`. Swift: `@unchecked Sendable` + `NSLock`; Kotlin: `synchronized` `HashMap`.
+  - `PyreonQuery<T>` (`@Observable` / Compose `MutableState`) with the web `useQuery` result contract: `data` (nil until first success), `error` (last failure, nil on success), `isPending` (true only when there is NO data yet AND a fetch runs — a background refresh does NOT flip it, so shown data never blanks), `isFetching` (any in-flight fetch), `refetch()`. `begin`/`resolve`/`reject` mirror `PyreonFetch`, so it drives from the compiler-emitted async harness; `resolve` writes through to the cache. Coroutine-free — the network call is injected — so it stays dependency-light and synchronously unit-testable with a stub fetcher.
+
+  Both runtimes build + pass their unit tests (Swift `swift test`: 4 PyreonQuery cases; Kotlin `verify-kotlin --service=PyreonQuery`: typecheck + smoke) and join the per-service verify + service-coverage gates.
+
+  Deferred (disclosed): mutations, infinite queries, prefetch, cross-instance invalidation, retries/backoff, persistence, and bounded cache eviction. The `useQuery` **compiler lowering** (emitting `PyreonQuery` from `useQuery(() => ({ queryKey, queryFn, staleTime }))`) is a tracked follow-up; until it lands, `useQuery` still warns as unsupported on native — this PR ships the runtime it targets.
+
 ## 0.51.0
 
 ### Minor Changes

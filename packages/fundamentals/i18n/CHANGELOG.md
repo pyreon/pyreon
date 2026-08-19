@@ -1,5 +1,43 @@
 # @pyreon/i18n
 
+## 0.52.0
+
+### Minor Changes
+
+- Co-locate native runtimes into their own packages. (ed6518a)
+
+  The Swift/Kotlin runtimes for form, store, state-tree, machine, i18n, permissions,
+  and query move out of the `@pyreon/native-runtime-*` monolith into each package's
+  `native/{swift,kotlin}/` (declared via the `pyreon.native` package.json field,
+  aggregated by `pyreon-native wire`). Framework-base runtimes (reactivity/styling/JSON
+  helpers) stay in the monolith. A new `scripts/check-native-cosource.ts` gate compiles
+  and smoke-runs every co-located `.swift`/`.kt` against the stub harness so a relocated
+  runtime can't rot silently. No API change — this is a source-location move.
+
+### Patch Changes
+
+- Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration). (1d74edc)
+- fix(i18n): an active-locale plural form beats a fallback-only more-specific form (1eb2ba7)
+
+  Key resolution tried `currentLocale` then `fallbackLocale` PER candidate, so a more-specific form present only in the fallback locale (e.g. `items_zero` in `en`) beat a less-specific form present in the ACTIVE locale (e.g. `items_other` in `de`) — a German user could see the English "No items" at count 0 instead of German "0 Elemente". Resolution now exhausts ALL candidates in the active locale before consulting the fallback (i18next's order). A key entirely missing from the active locale still falls back. Bisect-verified.
+
+- fix(i18n): `<Trans>` re-renders on locale change; interpolation ignores inherited prototype members (f0aa2b7)
+
+  - **`<Trans>` was frozen at first render.** It ran its body once and returned the resolved value, so `i18n.locale.set(...)` never updated it — while every `{() => t(...)}` binding in the app did. `<Trans>` (the documented rich-JSX translation API) now returns an ACCESSOR, so the rendered DOM tracks the active locale. The context read (`useI18n()`) stays at setup (owner frame); only the `t()` resolution moved into the accessor.
+  - **Interpolation read inherited `Object.prototype` members.** The missing-param guard was `value === undefined`, but `values['toString']`/`['constructor']`/`['__proto__']` are all non-undefined inherited members — so `t('Hi {{toString}}', {...})` rendered the function source instead of leaving `{{toString}}` literal. The guard is now an own-property check (`Object.hasOwn`), consistent with the reserved-key check elsewhere; a real own key that shadows a prototype member still interpolates.
+
+  Both bisect-verified (real-DOM mount + `locale.set` for `<Trans>`; `{{toString}}`/`{{constructor}}` literal for interpolation). Full `@pyreon/i18n` suite (227) green.
+
+- Eight README examples are now typechecked in CI. (e0e0dc0)
+
+  `check-doc-examples` only ever looked at `docs/src/content/docs/**`; package READMEs carry ~550 `ts`/`tsx` blocks and nothing verified any of them. The gate now walks package READMEs too, and each of these packages has one verified-clean example opted in with the `// @check` marker.
+
+  Each was compiled before being marked, not marked and then debugged. No content changed — the marker is a comment inside the fence.
+
+- Updated dependencies:
+  - @pyreon/core@0.52.0
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes

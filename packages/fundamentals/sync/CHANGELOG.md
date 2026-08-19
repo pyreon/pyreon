@@ -1,5 +1,120 @@
 # @pyreon/sync
 
+## 0.52.0
+
+### Minor Changes
+
+- Native `PyreonSyncedSignal` (iOS + Android) now writes create-if-missing seeds into a separate `"<map>:defaults"` map, mirroring web #2519. Reads resolve real map → defaults map → `initial`, so a fresh peer's default can never clobber real data on an actor tie-break. Residual (same as web): two fresh peers seeding an empty room with different defaults still tie-break, but among defaults only — peers converge (harmless), they never diverge and a real value is never lost. (f882cba)
+- Add a native sync transport (`PyreonSyncTransport` on iOS + Android) — the native equivalent of the web `connectPyreonSync(doc, channel)`, wiring a `PyreonCrdtDoc` to a peer over a string-duplex `PyreonSyncChannel` for real-time cross-device collaboration. (f882cba)
+- Add real WebSocket channels for native cross-device CRDT sync: `PyreonSyncWebSocketChannel` (Swift, URLSessionWebSocketTask) and its Android OkHttp twin, both implementing `PyreonSyncChannel` so `PyreonSyncTransport` can converge two devices over a live socket relay. (6d09d13)
+- Lower `@pyreon/sync`'s `syncedSignal` to native (iOS + Android). (7ee508e)
+
+  `const doc = new PyreonCrdtDoc()` + `const title = syncedSignal({ doc, key, initial })`
+  in shared `.tsx` now compile to a native `PyreonSyncedSignal` over a shared
+  `PyreonCrdtDoc` — scalar `string`/`number`/`boolean`, `title()` read + `title.set(v)`
+  write flowing 1:1 to the facade.
+
+  - **Swift**: the doc + signals are typed `@State` seeded in a GENERATED component
+    `init()` (`_title = State(initialValue: PyreonSyncedSignal(doc: doc, …))`),
+    because a synced signal's `@State` initializer references the doc and one
+    `@State` cannot reference another at property init. Props thread through the
+    init as parameters, so a component can still take props.
+  - **Kotlin**: sequential `remember { }` blocks (no init needed).
+
+  `@pyreon/sync` leaves `WEB_ONLY_PACKAGES` and declares a `nativeFrontend` (the
+  Yjs engine + IndexedDB/WebSocket transports stay web; cross-device transport is
+  tracked). Verified end-to-end: the emit type-checks against the real SwiftUI SDK
+
+  - the real facade on macOS, and against the Swift/Kotlin validate stubs.
+
+- Ship `@pyreon/sync`'s native ports, and add the `PyreonSyncedSignal` facade. (2e12add)
+
+  Two things:
+
+  - **Fix: the native CRDT port was built but never published.** Every other
+    co-located package lists `native/swift` + `native/kotlin` in its `files`
+    array; `@pyreon/sync` did not, so its `PyreonCrdt` port (the LWW-CRDT engine)
+    shipped to npm missing — a native app installing `@pyreon/sync` could not
+    find it. Added the two entries so the ports actually reach a scaffolded
+    iOS/Android app (the `pyreon.native` field was already declared).
+
+  - **New: `PyreonSyncedSignal`** — the native `Signal<T>` facade over a shared
+    `PyreonCrdtDoc`, the iOS/Android counterpart to `syncedSignal({ doc, key,
+initial })`. Scalar values (`String` / `Double` / `Bool`), local-first
+    create-if-missing, and CRDT-backed reactivity: a remote op applied to the doc
+    updates the signal's value through the doc observer (so a remote edit repaints
+    the UI with no diff). Behaviourally byte-aligned across web/iOS/Android and
+    verified by the co-source gate (compiled + run).
+
+  The compiler lowering that emits this from a plain `syncedSignal()` call in
+  shared `.tsx`, and the cross-device WebSocket transport bridge, are the tracked
+  follow-ups.
+
+- feat(sync): multiplatform LWW CRDT — dependency-free JS engine + transport + native iOS/Android ports (wire-compatible, converging) (83ec20c)
+
+  The foundation for 1:1 multiplatform sync. A pure last-writer-wins CRDT engine implementing the engine-neutral `CrdtAdapter` seam, with **no `yjs`** — shipped as THREE wire-compatible engines that converge with each other:
+
+  - **Web/JS** (`pyreonAdapter`) + a pure-JS client transport (`connectPyreonSync`, JSON ops over any string duplex) + a `NativeSyncHost` bridge contract. `syncedSignal` runs over it end-to-end.
+  - **iOS** (`PyreonCrdt.swift`) and **Android** (`PyreonCrdt.kt`) native ports — same `{ ops: [{ map, key, value, clock, actor }] }` wire format, same deterministic LWW merge (higher Lamport clock wins; equal clock → higher actor id), hand-written JSON codec (compiles against the minimal native stubs).
+
+  All three converge: concurrent-offline writes resolve to the same winner on every peer, higher-clock-wins, order/duplicate-insensitive, no echo. Verified end to end — JS suite (bisect-covered specs) + the native co-source gate compiles and RUNS the Swift + Kotlin convergence tests (including decoding a web-format message). Scope matches the v1 seam: flat key → scalar registers; rich `Y.Text`/`Y.Array` stay on `@pyreon/sync/yjs`.
+
+  PMTC compiles UI + signals, not engine logic, so a CRDT engine can't cross by source compilation — hence real native ports behind the seam (the `PyreonWebSocket`/`PyreonHttp` pattern), giving an iOS/Android/web peer 1:1 convergence over one protocol. Remaining: the reactive UI binding (`@Observable`/`mutableStateOf`) + `PyreonWebSocket` transport wiring + a device convergence test.
+
+- refactor(sync): `ws` is now an OPTIONAL peer dependency — the client path is dependency-free (d9c0267)
+
+  `ws` was a hard runtime dependency, but it is used ONLY by the server-only relay (`@pyreon/sync/server`, `WebSocketServer`). The **client** sync transport (`connectViaWebSocket`) already uses `globalThis.WebSocket` (browsers + Node 21+) with an injectable `WebSocketImpl`, and `useWebSocket` already lowers to the native `PyreonWebSocket` on iOS/Android — so a client consumer never needs `ws`. Making it an optional peer means the client (and native) dependency graph is `@pyreon/*` + platform WebSocket only, with no external `ws` install.
+
+  **Action for `@pyreon/sync/server` (relay) users**: add `ws` to your own dependencies. Client-only / native users need no change. (`ws` remains in `@pyreon/sync`'s devDependencies for its own relay tests.)
+
+### Patch Changes
+
+- Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration). (1d74edc)
+- Three reactivity/correctness fixes found by running `pyreon doctor` against the (02cae6a)
+  framework itself, plus the rule-option support that made the remaining reports
+  resolvable.
+
+  - **`useChart` published a torn frame.** `instance.set(chart)`, `loading.set(false)`
+    and `error.set(null)` ran unbatched, so a subscriber reading two of them saw
+    the chart instance published while `loading` was still `true` — the "chart is
+    ready but still showing a spinner" flicker. Batched into one notify cycle; the
+    batch flushes before `onInit`, so the documented "fully configured before
+    `onInit` fires" invariant is unchanged.
+
+  - **Flow's `handlePointerUp` fired one notify cycle per selected node.** Its
+    three branches (rubber-band / drag-end / connection-drop) are sequential and
+    can co-occur, and the rubber-band branch calls `clearSelection()` plus
+    `selectNode()` once per hit node — so a band over 100 nodes fired 100+ cycles
+    and re-rendered the canvas each time. One pointerup is now one transition.
+
+  - **`createActorId`'s fallback could collide.** The doc comment states two live
+    peers must not share an id, but the non-`crypto.randomUUID` path was
+    `Date.now()` + `Math.random()`, which repeats within a millisecond and is a
+    birthday risk besides. It now prefers `crypto.getRandomValues` (far more widely
+    available than `randomUUID`, which requires a secure context) and its last
+    resort mixes in a per-process monotonic counter, so two ids from one process
+    can never collide by construction and the random field only has to separate
+    processes.
+
+  - **`exemptPaths` on six rules that documented the convention but never read it.**
+    `toast-a11y`, `no-href-navigation`, `no-inline-style-object`,
+    `prefer-use-is-active`, `no-effect-in-mount` and `prefer-field-array` all
+    inspect a call site, so the file that _implements_ the thing being recommended
+    reports against itself — `link.tsx` renders the `<a href>` that `<Link>`
+    wraps, and the toast row computes `role` from severity in its definition
+    rather than at the `<ToastItem>` call site. Resolving that in-rule needs the
+    parent chain, which oxc's visitor does not provide, so these now honour the
+    documented `exemptPaths` option instead. Each still fires normally everywhere
+    else.
+
+- Two hot-path optimizations, each locked by new bench cells in `scripts/bench/core/sync.ts`: (43304b6)
+
+  - `syncedText.set` no longer re-materializes the whole document (`ytext.toString()`, an O(docLen) tree walk + allocation) to compute `prev` on every keystroke — it reads the base signal's mirror (`base.peek()`), which the Y.Text observer already materialized at the last transaction end. Guarded: falls back to `toString()` inside an outer `doc.transact` (observers deferred), during the observer/cleanup phase (a sibling observer may run before ours), and after `dispose()` (observer detached) — the three windows where the mirror premise does not hold, each locked by a premise test.
+  - The WebSocket transport's inbound handler now decodes + applies already-binary frames (ArrayBuffer / Node Buffer — every frame in practice, since the transport sets `binaryType = 'arraybuffer'`) synchronously via the new `toBytesSync` fast path, removing a promise allocation + microtask hop per remote op; Blob / fragmented frames keep the async normalization.
+
+- Updated dependencies:
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes

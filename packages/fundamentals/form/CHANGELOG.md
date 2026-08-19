@@ -1,5 +1,61 @@
 # @pyreon/form
 
+## 0.52.0
+
+### Minor Changes
+
+- Co-locate native runtimes into their own packages. (ed6518a)
+
+  The Swift/Kotlin runtimes for form, store, state-tree, machine, i18n, permissions,
+  and query move out of the `@pyreon/native-runtime-*` monolith into each package's
+  `native/{swift,kotlin}/` (declared via the `pyreon.native` package.json field,
+  aggregated by `pyreon-native wire`). Framework-base runtimes (reactivity/styling/JSON
+  helpers) stay in the monolith. A new `scripts/check-native-cosource.ts` gate compiles
+  and smoke-runs every co-located `.swift`/`.kt` against the stub harness so a relocated
+  runtime can't rot silently. No API change — this is a source-location move.
+
+### Patch Changes
+
+- Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration). (1d74edc)
+- Document that `{ equals }` trades laziness for gating, and gate `useFieldArray().length` (cc455e8)
+
+  `computed(fn, { equals })` does not simply add an equality check — it switches
+  the computed from LAZY to EAGER, because gating requires knowing the new value
+  at notification time. With a live subscriber that is free (it would have
+  evaluated anyway). Without one, a computed that was never evaluated now
+  evaluates on every dependency change.
+
+  That inverts the obvious advice. Gating `computed(() => walkEntireDocument(doc()))`
+  buys a suppressed notification and pays a full document walk on every keystroke
+  whenever nothing is subscribed. The rule is now stated where a reader meets the
+  option: gate CHEAP bodies (`n > 0`, `arr.length`, `x !== undefined`), leave
+  expensive ones lazy.
+
+  `useFieldArray().length` was exactly the cheap case the docs already used as
+  their example of what to gate, un-gated in our own code. `items` changes
+  identity on every move/swap while the count does not, so four reorders sent
+  five notifications where one was correct.
+
+- fix(form): run the schema on value-change paths for schema-only fields (not just on blur) (8665c92)
+
+  A schema-only field (no per-field validator) only ran the form `schema` from the blur (`setTouched`) and `trigger()` paths. Every value-change-driven validation instead called `validateField`, which for a validator-less field just clears the error and never consults the schema. Two consequences:
+
+  - `validateOn: 'change'` never surfaced schema errors on a schema-only form.
+  - Severe: after a failed submit (`submitCount > 0`, in any mode including blur), typing a still-invalid value blind-cleared the field error and flipped `isValid` to `true` while the schema still rejected — re-enabling submit and letting invalid data through until the next `handleSubmit`.
+
+  Fix: on the value-change paths (`setValue` change/post-submit branch and change-mode initial validation), a schema-only field now re-runs `runSchemaForField` — exactly as the blur path and `trigger()` already do. Fields with a per-field validator keep `validateField` (validator precedence). Bisect-verified.
+
+- Eight README examples are now typechecked in CI. (e0e0dc0)
+
+  `check-doc-examples` only ever looked at `docs/src/content/docs/**`; package READMEs carry ~550 `ts`/`tsx` blocks and nothing verified any of them. The gate now walks package READMEs too, and each of these packages has one verified-clean example opted in with the `// @check` marker.
+
+  Each was compiled before being marked, not marked and then debugged. No content changed — the marker is a comment inside the fence.
+
+- Updated dependencies:
+  - @pyreon/core@0.52.0
+  - @pyreon/validation@0.52.0
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes

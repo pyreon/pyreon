@@ -1,5 +1,79 @@
 # @pyreon/table
 
+## 0.52.0
+
+### Minor Changes
+
+- Ship co-located native ports, and gate that they always do. (2e12add)
+
+  - **`@pyreon/table`**: its `PyreonTableState` Swift/Kotlin ports (added in #2828)
+    were declared via `pyreon.native` and compiled by the co-source gate, but the
+    package's `files` array did not include `native/swift` / `native/kotlin` — so
+    the ports never reached the published tarball. A native app installing
+    `@pyreon/table` could not resolve them. Added the two `files` entries.
+
+  - **`@pyreon/cli`** (`runDistributionGate`, i.e. `pyreon doctor` + the
+    `check-distribution` CI gate): a new rule, `distribution/native-source-not-
+shipped`, fails any package that declares `pyreon.native` but omits the
+    declared native source dirs from `files`. This is the class of bug above —
+    a co-located port that builds in-repo but is absent from npm. It surfaced two
+    real instances (`@pyreon/sync`, `@pyreon/table`), both fixed here.
+
+- Lower `@pyreon/table`'s `createTableState` to native (iOS + Android). (2eb6540)
+
+  `const t = createTableState({ data: () => rows(), columns: [{ id }], pageSize })`
+  in shared `.tsx` now compiles to the `@Observable` PyreonTableState engine —
+  sort / filter / paginate / select, rendered with `<For each={t.rows()}>` +
+  `@pyreon/primitives`.
+
+  - **Column cell accessors are codegen'd** from the row struct's inferred field
+    types: a `String` field → `.string($0.name)`, a number → `.number(Double($0.age))`.
+  - **Swift** wires the reactive data source in `.onAppear` (`t.setData { rows }`),
+    because a `@State` initializer can't capture the source signal; the table
+    itself is a self-seeding `@State`. **Kotlin** passes it in the constructor
+    (sequential `remember`).
+  - Use-sites: `t.rows()`/`t.toggleSort(id)`/`t.setFilter(q)`/… flow through as
+    methods; `t.page()`/`t.sortColumn()`/… drop parens (property reads).
+  - The `PyreonTableState` port is now `@Observable` (Swift) / `mutableStateOf`-
+    backed (Kotlin) so sort/filter/page mutations recompose.
+  - `@pyreon/table` declares a `nativeFrontend` and leaves WEB_ONLY_PACKAGES; the
+    TanStack-backed `useTable` (row model / faceting / virtual sizing) stays web.
+
+  Verified: the actual emit type-checks against the real SwiftUI SDK + the real
+  port on macOS, and both targets validate against the compiler stubs. v1: scalar
+  columns with the default `row[id]` accessor; explicit accessors / rowId /
+  filterFn are follow-ups.
+
+- Add `createTableState` — a dependency-free, reactive table-state core, plus co-located native Swift/Kotlin ports (`PyreonTableState`): the multiplatform-portable alternative to `useTable` (which binds `@tanstack/table-core` and is web-only-rich). (58c0fc4)
+
+  Pure signal logic for sort / filter / paginate / row-selection, so the same behaviour runs on web AND — via the native ports — on iOS/Android, where you render `rows()` with native `<For>` (tables ARE native: SwiftUI `List` / Compose `LazyColumn`), no WebView. `data` is an accessor so a signal source stays reactive; `rows()` re-derives filtered → sorted → paginated; `toggleSort` cycles none → asc → desc → none; the filter is case-insensitive across every column (override with `filterFn`); selection is keyed by `rowId`. A `createTableState`-only import tree-shakes TanStack out entirely (`sideEffects: false`).
+
+  The native ports are behaviour-identical to the TS engine (same sort/filter/paginate/select results) and are compile-and-run verified by the co-source gate (`swiftc` + `kotlinc` compile the runtime and run the assertion tests).
+
+- Fine-grained cells-list accessor `visibleCells(table, rowId)` + value-gated atom propagation (TanStack Store reference parity). (2b11ae1)
+
+  Two changes that together make a single-cell edit genuinely fine-grained end-to-end:
+
+  - **`visibleCells(table, rowId)`** (new export) — the cells-LIST companion to `flexRenderCell`, for the inner `<For>` of a keyed table body. The previously documented `each={() => row.getVisibleCells()}` leaves a TRACKED table-core read in every row's scope (its memo deps read `table.options`, which changes on every options sync — data edits included), so a single-cell edit re-ran every row's cells-list accessor: measured 1000 re-runs at N=1000 where 1 is correct, making the edit ~3× slower than a memoized react-table. `visibleCells` subscribes to the row's own signal plus the column-geometry state slices (visibility, order, pinning, grouping) and looks the cells up untracked from the CURRENT row model. Re-measured: update-1cell is now ~1.3× FASTER than a hand-memoized react-table at N=100 and N=1000 (10-25× vs naive).
+  - **Atom bindings default `compare` to `Object.is`** — TanStack Store's reference `createAtom` does not propagate an equal update; Pyreon's bare `computed` notifies unconditionally on dependency change. Core creates its per-slice `table.atoms[key]` with no compare while their fn reads `table.options`, so every data edit re-notified every state-slice subscriber with an unchanged value. Value-gating restores reference-binding parity.
+  - The structural column signature now includes `groupedColumnMode` (it changes the leaf-column list without touching `columns` or row ids), so that change correctly bumps the per-row signals.
+
+  The sort-toggle contract is unchanged and deliberate: a structure/order change still re-runs all cells (coarse-but-correct for state-reading cells — the case `React.memo` on `original` identity silently freezes).
+
+### Patch Changes
+
+- Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration). (1d74edc)
+- TanStack Table 9.0.0 → 9.1.2 (+ @tanstack/store 0.11.1). The Pyreon (111ac7e)
+  reactivity bindings pass unchanged — 9.1's one seam addition, the optional
+  `commit` hook, is a render-phase-adapter API (`publishExternalState`'s
+  staged-options path) that a fine-grained adapter deliberately does not
+  implement: options are a real atom here (`createOptionsStore: true`), so
+  derived atoms subscribe reactively and there is no out-of-band invalidation
+  to signal. Rationale documented at the seam.
+- Updated dependencies:
+  - @pyreon/core@0.52.0
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Minor Changes

@@ -1,5 +1,26 @@
 # @pyreon/zero-content
 
+## 0.52.0
+
+### Patch Changes
+
+- Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration). (1d74edc)
+- Fixed three README examples that imported symbols which do not exist. (b0761a2)
+
+  - **`@pyreon/native-router-swift` / `-kotlin`** taught `import { RouterProvider, RouterView, Link, useNavigate } from '@pyreon/router'`. `Link` has never existed — the export is `RouterLink`. Both blocks also used `createRouter` without importing it.
+  - **`@pyreon/server`** taught `import { pyreon } from '@pyreon/vite-plugin'`, which is a **default** export. Every other README in the repo had it right.
+  - **`@pyreon/zero-content`** taught `import { registerExamples } from '@pyreon/zero/client'` — it lives in `@pyreon/zero-content`, and the block imported it from both, aliasing the real one to dodge a clash with the import that does not exist.
+
+  None was reachable by an existing gate (native packages are manifest-exempt; none of the blocks was opted into `check-doc-examples`). A new `check-readme-imports` gate now compiles every `@pyreon/*` symbol a package README tells you to import — 603 symbols across 119 packages — and fails on `TS2305`/`TS2724`/`TS2614`.
+
+- Updated dependencies:
+  - @pyreon/core@0.52.0
+  - @pyreon/reactivity@0.52.0
+  - @pyreon/head@0.52.0
+  - @pyreon/router@0.52.0
+  - @pyreon/runtime-dom@0.52.0
+  - @pyreon/zero@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes

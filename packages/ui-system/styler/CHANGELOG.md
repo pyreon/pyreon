@@ -1,5 +1,56 @@
 # @pyreon/styler
 
+## 0.52.0
+
+### Minor Changes
+
+- fix(ssr): ship the styler CSS for the class names SSR emits (9dafed7)
+
+  Server-rendered HTML carried styler class names (`pyr-1abc23`) with **no
+  `<style>` tag at all** on two of the three SSR paths: `@pyreon/zero`'s dev SSR
+  middleware and its production `createServer`. Measured on `examples/ui-showcase`
+  before the fix: 23 of 23 styler classes on `/button` had zero matching CSS
+  rules, on every route. The page hydrated to the correct DOM, so only the FIRST
+  PAINT was wrong — every SSR page flashed unstyled.
+
+  The cause was that `renderPage`'s `collectStyles` hook is opt-in, and of its
+  three consumers only zero's SSG prerender entry ever passed one. SSG had been
+  fixed for exactly this bug ("prerendered HTML carried styler-generated class
+  names … but had ZERO `<style>` tags in the head"), and the sibling call sites
+  were left behind — a fix applied to one call site rather than to the class.
+
+  `renderPage` now defaults `collectStyles` to a `globalThis.__PYREON_STYLER_COLLECT__`
+  collector that `@pyreon/styler`'s singleton registers on SSR init — the
+  string-mode twin of the `__PYREON_STYLER_FLUSH__` seam the streaming pipeline
+  already used, so there is still no `@pyreon/server` → `@pyreon/styler`
+  dependency. Fixing the one choke point covers all three consumers plus any bare
+  `@pyreon/server` user, so no caller can forget it again.
+
+  Unchanged: an explicit `collectStyles` still wins (SSG is byte-identical);
+  apps without styler get no global and no `<style>`; the streaming path keeps
+  its per-boundary watermarked flush, which `getStyleTag()` never disturbs.
+
+  Why it survived this long: a second bug hid it. Hydration was discarding the
+  server DOM and rebuilding it, so users saw _nothing_ for ~300ms rather than
+  seeing the content unstyled. The mask made the defect symptomless — it only
+  becomes visible once hydration correctly adopts the server DOM.
+
+### Patch Changes
+
+- fix(styler): preserve reactive props through `filterProps`, and never lose the streaming-SSR `@layer` ordering statement (57f0480)
+
+  Two correctness fixes surfaced by a styler audit:
+
+  - **`filterProps` value-copied** (`filtered[key] = props[key]`), firing a getter-shaped reactive `_rp` prop (what the compiler emits for `<X title={sig()} />`) at copy time and freezing it — silently killing reactivity for any consumer using this public helper to forward props. It now descriptor-copies (mirrors the internal `buildProps.copyDescriptor`), which is also what the manifest documents it as doing. Static props are unaffected.
+
+  - **Streaming SSR `@layer` ordering** (`flushSSRPending`) emitted the `@layer elements, rocketstyle;` order statement only on the FIRST flush of a stream. A stream whose opening Suspense boundary flushed only keyframes/global CSS (neither is a layered rule) emitted it nowhere, and if a later boundary carried the first layered rule its cascade fell to stream first-appearance order — risking an `elements`-beats-`rocketstyle` inversion. The statement is now deferred (via a persistent per-stream flag) to the first flush that actually carries a layered rule, so it precedes that rule. A configured custom `layer` still decides upfront (unchanged).
+
+  Both bisect-verified; full `@pyreon/styler` suite (607) green.
+
+- Updated dependencies:
+  - @pyreon/core@0.52.0
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Minor Changes

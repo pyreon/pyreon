@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/native-router-swift",
-  "version": "0.51.0",
-  "description": "PRIVATE / EXPERIMENTAL \u2014 SwiftPM package implementing @pyreon/router's API surface (RouterProvider / RouterView / Link / useNavigate / useParams) on top of SwiftUI's NavigationStack. Phase C1 of the PMTC multiplatform router story.",
+  "version": "0.52.0",
+  "description": "PRIVATE / EXPERIMENTAL — SwiftPM package implementing @pyreon/router's API surface (RouterProvider / RouterView / Link / useNavigate / useParams) on top of SwiftUI's NavigationStack. Phase C1 of the PMTC multiplatform router story.",
   "license": "MIT",
   "repository": {
     "type": "git",

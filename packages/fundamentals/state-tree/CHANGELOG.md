@@ -1,5 +1,86 @@
 # @pyreon/state-tree
 
+## 0.52.0
+
+### Minor Changes
+
+- Co-locate native runtimes into their own packages. (ed6518a)
+
+  The Swift/Kotlin runtimes for form, store, state-tree, machine, i18n, permissions,
+  and query move out of the `@pyreon/native-runtime-*` monolith into each package's
+  `native/{swift,kotlin}/` (declared via the `pyreon.native` package.json field,
+  aggregated by `pyreon-native wire`). Framework-base runtimes (reactivity/styling/JSON
+  helpers) stay in the monolith. A new `scripts/check-native-cosource.ts` gate compiles
+  and smoke-runs every co-located `.swift`/`.kt` against the stub harness so a relocated
+  runtime can't rot silently. No API change — this is a source-location move.
+
+### Patch Changes
+
+- Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration). (1d74edc)
+- fix(state-tree): array/object-held model children now propagate mutations to the parent's `onPatch`/`onSnapshot` and are torn down by `destroy` (e5653df)
+
+  The headline composition pattern — `state: { todos: Todo[] }` — reached the tree via the parent-tracking scan, which set only the child's parent pointer. Field-nested children (`state: { child: Todo }`) were additionally wired for upward patch propagation and added to the parent's teardown set; array/object children were not. So a mutation INSIDE a child (`self.todos()[0].toggle()`) silently:
+
+  - never fired the parent's `onPatch`,
+  - never fired the parent's `onSnapshot` — so a `onSnapshot`-driven persist/sync went **stale**,
+  - and was never torn down by `destroy(parent)` — a `beforeDestroy` timer/listener on an array child leaked.
+
+  Array/object model children are now wired for upward propagation the same way field-nested children are (patch path prefixed with the field key). Because the parent-tracking scan runs on every `.set`, the wiring is disposed and re-created per re-`.set` — with the previous set's propagation listeners disposed and its children removed from the teardown set first — so a persisting child never accumulates listeners (Class-D guard) and `destroy` never tears down instances no longer in the tree. Field-nested children are untouched (no double-wire). Bisect-verified (all manifestations fail with the wiring neutralized while the field-nested path stays green), including a listener-pile-up leak guard.
+
+- Lower `model().views().actions()` — `@pyreon/state-tree` was 1:1-inverted on native (8ab41a7)
+
+  The source that compiled natively was the source that is wrong on web, and the
+  canonical web source did not compile. Two halves, each independently broken.
+
+  **The chain.** The web API is a builder — `model({ state }).views(f).actions(f)
+.create()`. The recognizer matched only the bare `model({ state }).create()`,
+  so every model with an action — that is, every model that can change — fell
+  through to a verbatim emit:
+
+  ```swift
+  private let cart = model((state: __Obj0(count: 0)))
+    .actions({ `self` in (__Obj1(increment: "")) }).create()
+  ```
+
+  `model` exists on neither target, and the action became a `String` field.
+  Zero warnings on either target, so the failure surfaced as `cannot find 'model'
+in scope` / `unresolved reference 'model'` inside generated code, naming
+  nothing about what was unsupported. A model with no actions cannot mutate its
+  own state, so the one shape that did lower was the shape a real model never has.
+
+  **The read.** A model's state field is a signal, so the web read is
+  `cart.total()`. That emitted `…shared.total()` — calling an `Int`. The only
+  form that compiled was `cart.total`, which on web renders the accessor function
+  rather than its value. The emit already lowered the _write_
+  (`cart.total.set(1)` → `total = 1`): it knew the field was a signal when
+  written and forgot when read.
+
+  Views now emit as computed properties (Swift `var doubled: Int { total * 2 }`,
+  Kotlin `val doubled get() = total * 2`), actions as methods, and member bodies
+  address state through the factory's `self` the same way a component body
+  addresses its props param. This mirrors `defineStore`, which had already solved
+  every hard part — the model recognizer simply stopped at state.
+
+  Two smaller fixes ride along, both consequences of the state seed having been
+  stored as a raw literal plus a three-value type tag rather than the `TypeIR` /
+  `ExprIR` the store uses: a fractional seed (`{ total: 2.5 }`) emitted
+  `var total: Int = 2.5`, and an unsupported builder step now declines by name
+  instead of falling through to the verbatim emit.
+
+  Still deferred, and still declining loudly: `.asHook()`,
+  `.create(initialOverride)`, the two-step `const M = model(...); M.create()`
+  form, `getSnapshot` / `onPatch`, and nested field-models. The emitted model is
+  a singleton, so multiple instances of one definition remain out of scope — the
+  two-step form is the only way to reach them, and it declines.
+
+  The web arm that measures the semantics the emit mirrors lives in
+  `@pyreon/state-tree`'s `native-parity.test.ts`; the native specs compile
+  through real `swiftc` and `kotlinc`.
+
+- Updated dependencies:
+  - @pyreon/validation@0.52.0
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes
