@@ -989,7 +989,11 @@ describe('web-only package warnings are derived from the manifests', () => {
   // lowering to the router's query in the same branch. It moved to the
   // nativeFrontend group below — which is the derivation working: declaring
   // partial crossing removed it from the blanket set with no edit here.
-  for (const pkg of ['@pyreon/head', '@pyreon/hotkeys', '@pyreon/feature']) {
+  // `@pyreon/feature` moved the same way, for a sharper reason: its emit had
+  // ALREADY shipped (a literal `schema` map lowers to a Codable struct), so
+  // this spec was asserting a warning the compiler had no business emitting.
+  // The manifest was the stale surface, not the derivation.
+  for (const pkg of ['@pyreon/head', '@pyreon/hotkeys']) {
     it(`warns for ${pkg}, which the hand-written list silently omitted`, () => {
       expect(warnFor(pkg).some((w) => w.includes(pkg) && w.includes('WEB-ONLY'))).toBe(true)
     })
@@ -998,7 +1002,13 @@ describe('web-only package warnings are derived from the manifests', () => {
   // A package that lowers PART of its surface declares `nativeFrontend` and
   // must NOT be blanket-warned — that is the "stale entry" failure, and it is
   // the more damaging direction: it tells the user a shipped API is unusable.
-  for (const pkg of ['@pyreon/toast', '@pyreon/a11y', '@pyreon/query', '@pyreon/url-state']) {
+  for (const pkg of [
+    '@pyreon/toast',
+    '@pyreon/a11y',
+    '@pyreon/query',
+    '@pyreon/url-state',
+    '@pyreon/feature',
+  ]) {
     it(`does NOT blanket-warn for ${pkg}, whose core lowers (nativeFrontend)`, () => {
       expect(warnFor(pkg).some((w) => w.includes('WEB-ONLY'))).toBe(false)
     })

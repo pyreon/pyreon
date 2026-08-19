@@ -10,7 +10,9 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      'composite over query/form/store/validation — lowers only when every dependency does; tracked as a Tier-2 composite',
+      'CRUD composite over query/form/store/validation. The RUNTIME half stays web — the generated hooks (useList / useById / useCreate / useUpdate / useDelete / useSearch), the network fetcher, and validator/form integration all lower only when every dependency does. The DECLARATION half already crosses (see nativeFrontend)',
+    nativeFrontend:
+      "`defineFeature({ name, schema })` with the LITERAL field-type map (`schema: { id: 'string', done: 'boolean' }`) — emits a Codable struct plus a module-scope const carrying `name` + `initialValues` on both targets. A runtime schema (Zod / Valibot / ArkType) is NOT introspected and warns by name",
   },
   longExample: `import { defineFeature } from '@pyreon/feature'
 import { signal } from '@pyreon/reactivity'
