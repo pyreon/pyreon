@@ -1548,16 +1548,15 @@ describe('singleton-sentinel — silentDepth negative guard (lines 255, 276)', (
   })
 })
 
-// ─── computed.ts — eager equals-based computed (computedWithEquals) ─────────
+// ─── computed.ts — the throwing-body catch path, both gate arms ─────────────
 
-describe('computed — custom equals throwing in body (computedWithEquals catch path)', () => {
-  test('eager computed with custom equals throwing in body routes through _errorHandler', () => {
+describe('computed — custom equals throwing in body (gated-refresh catch path)', () => {
+  test('a throwing body routes through _errorHandler on the REFRESH when a runner is subscribed', () => {
     const errors: unknown[] = []
     setErrorHandler((err) => errors.push(err))
 
     try {
       const src = signal(0)
-      // computed with custom equals — uses computedWithEquals path
       const c = computed(
         () => {
           if (src() === 1) throw new Error('eager-boom')
@@ -1566,15 +1565,51 @@ describe('computed — custom equals throwing in body (computedWithEquals catch 
         { equals: (a, b) => a === b },
       )
 
-      // Initial read works.
-      expect(c()).toBe(0)
+      // A subscribed effect makes `c` HOT, so the write books a tier-1 refresh
+      // and the throwing eval happens during the drain, not on the next read.
+      const eff = effect(() => {
+        c()
+      })
 
-      // Trigger recompute that throws.
       src.set(1)
 
       expect(errors.some((e) => (e as Error).message === 'eager-boom')).toBe(true)
+      eff.dispose()
     } finally {
       // Reset handler back to default (setErrorHandler returns void)
+      setErrorHandler(() => {})
+    }
+  })
+
+  test('a DEFAULT-gated computed with no subscriber stays lazy — the throw routes on the next READ', () => {
+    const errors: unknown[] = []
+    setErrorHandler((err) => errors.push(err))
+
+    try {
+      const src = signal(0)
+      let evals = 0
+      // No `equals` → the default gate, which stays lazy until a runner appears.
+      const c = computed(() => {
+        evals++
+        if (src() === 1) throw new Error('lazy-boom')
+        return src() * 2
+      })
+
+      expect(c()).toBe(0)
+      expect(evals).toBe(1)
+
+      // Nobody is listening: the write must NOT evaluate the body. This is the
+      // laziness that `{ equals }` used to forfeit — gating no longer costs it.
+      src.set(1)
+      expect(evals).toBe(1)
+      expect(errors).toEqual([])
+
+      // The pull is what evaluates, and the throw still routes to the handler
+      // (the previous value is retained rather than propagated).
+      expect(c()).toBe(0)
+      expect(evals).toBe(2)
+      expect(errors.some((e) => (e as Error).message === 'lazy-boom')).toBe(true)
+    } finally {
       setErrorHandler(() => {})
     }
   })
