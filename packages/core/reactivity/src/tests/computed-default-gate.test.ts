@@ -335,7 +335,16 @@ describe('computed — the gate holds the documented propagation invariants', ()
 
   test('NaN is gated (Object.is semantics, not ===)', () => {
     const n = signal(0)
-    const c = computed(() => n() / 0 - n() / 0) // NaN for every n
+    const c = computed(() => {
+      // Depend on `n` — the point of the test is that the computed RE-EVALUATES
+      // on every write and still gates, because `Object.is(NaN, NaN)` is true
+      // where `NaN === NaN` is false. Written as an explicit read plus a literal
+      // rather than `n() / 0 - n() / 0`: that produced NaN for every `n` too,
+      // but as a self-subtraction it reads as a mistake and CodeQL flags it as
+      // identical operands. Same semantics, stated outright.
+      n()
+      return Number.NaN
+    })
 
     let runs = 0
     const eff = effect(() => {
