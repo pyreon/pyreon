@@ -664,6 +664,7 @@ interface AdoptMatch {
    * adoption and onto the interpretive walk.
    */
   emptySlots: Element[] | null
+  /**
    * Declared mount holes that verified, each mapped to the START of its server
    * range. Handed to `_tpl`, which threads them through the compiled bind's
    * `_mountChild` calls so the components HYDRATE that range instead of
@@ -950,8 +951,7 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
   }
   if (!walk(root)) return null
   if (idx !== total) return null
-  return { removals, triplets, soles, emptySlots }
-  return { removals, triplets, holes }
+  return { removals, triplets, soles, emptySlots, holes }
 }
 
 /** All checks passed — strip markers, ensuring one text node per slot. */
