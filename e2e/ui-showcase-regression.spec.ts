@@ -723,6 +723,20 @@ test.describe('ui-showcase — runtime mode prop change', () => {
 
   test('mode prop change patches ModeProbe in place (no remount)', async ({ page }) => {
     await page.goto('/test/reactive-providers')
+    // The ONLY spec in this describe block that lacked the barrier, because it
+    // was the one spec still passing when the others were fixed — and it passed
+    // for the same wrong reason they failed: with clicks swallowed pre-hydration
+    // the toggle never fired, so nothing could remount.
+    //
+    // Without this wait the marker is stamped on a node hydration then DISCARDS,
+    // and the failure reads as a remount. It is not one — a marker stamped after
+    // hydration survives all four toggles, so the contract this spec names holds.
+    // The node is lost DURING hydration: `templateSignature` refuses adoption for
+    // any `_tpl` containing a `<!>` slot and the template is replaced wholesale,
+    // which with component-child templatization costs the whole page its server
+    // DOM (measured: 1 of 118 elements retained). That refusal is pre-existing on
+    // main and is removed by #2955.
+    await waitForHydration(page)
 
     const probe = page.locator('[data-test-mode-probe="swappable"]')
     await expect(probe).toBeVisible()
