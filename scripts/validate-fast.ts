@@ -114,6 +114,11 @@ const GATES: Gate[] = [
   // every prop name the prose cites actually exists.
   { name: 'check-prose-props', cmd: 'bun scripts/check-prose-props.ts' },
   { name: 'check-native-runtime-parity', cmd: 'bun scripts/check-native-runtime-parity.ts' },
+  // Every native lifecycle container (reactive start()/connect()) is either
+  // auto-started by BOTH emits or explicitly registered MANUAL. Catches the
+  // "never-wired class": a container whose start() nobody calls ships frozen
+  // at its initial value (useOnline true / usePush / useAppState all did).
+  { name: 'check-native-lifecycle-wiring', cmd: 'bun scripts/check-native-lifecycle-wiring.ts' },
   // Co-located native runtimes (@pyreon/<pkg>/native/{swift,kotlin}) left the
   // monolith's own test chains — this compiles + smoke-runs them against the
   // stub harness. Skips gracefully when kotlinc/swiftc are absent (CI Fast
