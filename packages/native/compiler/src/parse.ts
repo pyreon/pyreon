@@ -932,7 +932,7 @@ const WEB_ONLY_PACKAGES: ReadonlyMap<string, string> = new Map([
   ['@pyreon/document', "wraps pdfmake/docx/exceljs/pptxgenjs (browser/node document engines); no native lowering"],
   ['@pyreon/document-primitives', "document-authoring primitives feeding the pdfmake/docx renderers"],
   ['@pyreon/feature', "composite over query/form/store/validation — lowers only when every dependency does; tracked as a Tier-2 composite"],
-  ['@pyreon/flow', "wraps elkjs + SVG rendering (browser layout engine); consume on native via the `<WebView>` bridge subpath"],
+  ['@pyreon/flow', "SVG rendering (the layout engine itself is pure and platform-free); consume on native via the `<WebView>` bridge subpath"],
   ['@pyreon/head', "document `<head>` management — no equivalent surface exists on iOS/Android"],
   ['@pyreon/hotkeys', "keyboard-shortcut layer over DOM KeyboardEvent; touch platforms have no hardware-shortcut surface"],
   ['@pyreon/kinetic', "CSS-transition animation engine (classes + rAF over real CSSOM) — the `kinetic()` factory and its class/style machinery are web; its PRESET VOCABULARY (fade / scale-in / slide-up|down|left|right) does cross, via `<Transition name>` imported from `@pyreon/primitives` (NOT from here and NOT from `@pyreon/runtime-dom` — both are web-only), which each target resolves to its own platform transition"],

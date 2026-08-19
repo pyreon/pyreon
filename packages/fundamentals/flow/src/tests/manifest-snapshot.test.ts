@@ -16,7 +16,7 @@ import flowManifest from '../manifest'
 describe('gen-docs — flow snapshot', () => {
   it('renders @pyreon/flow to its expected llms.txt bullet', () => {
     expect(renderLlmsTxtLine(flowManifest)).toMatchInlineSnapshot(
-      `"- @pyreon/flow — Reactive flow diagrams — signal-native nodes, edges, pan/zoom, auto-layout via elkjs (peer: @pyreon/runtime-dom). LayoutOptions.direction / layerSpacing / edgeRouting apply to layered/tree only — force/stress/radial/box/rectpacking silently ignore them. nodeSpacing is the only field respected by every algorithm. Dev-mode console.warn fires when an option is set on an algorithm that ignores it."`,
+      `"- @pyreon/flow — Reactive flow diagrams — signal-native nodes, edges, pan/zoom, auto-layout with its own engine (no layout dependency) (peer: @pyreon/runtime-dom). LayoutOptions.direction / layerSpacing / edgeRouting apply to layered/tree only — force/stress/radial/box/rectpacking silently ignore them. nodeSpacing is the only field respected by every algorithm. Dev-mode console.warn fires when an option is set on an algorithm that ignores it."`,
     )
   })
 
@@ -31,7 +31,7 @@ describe('gen-docs — flow snapshot', () => {
     expect(renderLlmsFullSection(flowManifest)).toMatchInlineSnapshot(`
       "## @pyreon/flow — Flow Diagrams
 
-      Reactive flow diagrams for Pyreon. Signal-native nodes and edges, pan/zoom via pointer events + CSS transforms, auto-layout via lazy-loaded elkjs. No D3 dependency. Each node mounts exactly once across the lifetime of the graph; drags and selection patches are O(1) via per-node reactive accessors, so a 60fps drag in a 1000-node graph stays cheap.
+      Reactive flow diagrams for Pyreon. Signal-native nodes and edges, pan/zoom via pointer events + CSS transforms, auto-layout from a built-in engine — no elkjs, no D3, no layout dependency at all, and deterministic (the same graph always yields the same positions). Each node mounts exactly once across the lifetime of the graph; drags and selection patches are O(1) via per-node reactive accessors, so a 60fps drag in a 1000-node graph stays cheap.
 
       \`\`\`typescript
       import { createFlow, useFlow, Flow, Background, Controls, MiniMap, Handle, Position, type NodeComponentProps } from '@pyreon/flow'
@@ -54,7 +54,7 @@ describe('gen-docs — flow snapshot', () => {
 
       flow.addNode({ id: '3', type: 'custom', position: { x: 100, y: 200 }, data: { kind: 'transform', label: 'New' } })
       flow.addEdge({ source: '1', target: '3' })
-      await flow.layout('layered', { direction: 'RIGHT', nodeSpacing: 50, layerSpacing: 100 })  // lazy-loaded elkjs
+      await flow.layout('layered', { direction: 'RIGHT', nodeSpacing: 50, layerSpacing: 100 })
       // \`direction\`/\`layerSpacing\`/\`edgeRouting\` apply to layered/tree only —
       // \`force\`/\`stress\`/\`radial\`/\`box\`/\`rectpacking\` silently ignore them.
       // \`nodeSpacing\` is the only LayoutOptions field respected by every algorithm.
@@ -142,7 +142,10 @@ describe('gen-docs — flow snapshot', () => {
     // Spot-check the highest-density entry — createFlow is the
     // flagship API and carries the largest mistakes list.
     expect(record['flow/createFlow']!.mistakes?.split('\n').length).toBe(13)
-    expect(record['flow/createFlow']!.notes).toContain('elkjs')
+    // The layout engine is Pyreon's own — assert the property that actually
+    // matters to a consumer (no external layout dependency), not the name of a
+    // package that is no longer there.
+    expect(record['flow/createFlow']!.notes).toContain('built-in engine')
     expect(record['flow/createFlow']!.notes).toContain('no D3')
   })
 })
