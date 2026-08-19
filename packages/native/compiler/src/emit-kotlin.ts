@@ -3153,6 +3153,13 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
     case 'announce-call':
       // Imperative @pyreon/a11y announce → PyreonA11y (the registered announcer).
       return `PyreonA11y.announce(${emitKotlinExpr(e.message, indent)}, ${e.assertive})`
+    case 'json-stringify':
+      // `JSON.stringify(x)` → kotlinx-serialization. The value is @Serializable
+      // (emitted structs) or a serializable builtin; `Json.encodeToString`
+      // resolves the serializer via the reified type. The real device build
+      // needs `import kotlinx.serialization.encodeToString` (added by the CLI's
+      // conditionalKotlinImports); the kotlinc stub fakes it as a Json member.
+      return `Json.encodeToString(${emitKotlinExpr(e.arg, indent)})`
     case 'call': {
       // Field-array accessor unwrap: zero-arg `items()`/`length()` on a
       // PyreonFieldArray decl (and `value()` on a For-item param over its

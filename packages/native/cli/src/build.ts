@@ -148,6 +148,14 @@ export function conditionalKotlinImports(emitted: string): string {
   // CoroutineScope, outside any star-import — same class as withContext.
   if (emitted.includes('.launch {')) imports.push('import kotlinx.coroutines.launch')
   if (emitted.includes('Json.')) imports.push('import kotlinx.serialization.json.Json')
+  // `Json.encodeToString(x)` is a reified EXTENSION on StringFormat — it needs
+  // its own import on the real device build (the kotlinc stub fakes it as a
+  // Json member, so the validate gate passes WITHOUT this, the classic
+  // stub-masks-a-missing-import trap). `.encodeToString(` also covers a bare
+  // `x.encodeToString()` if the emit ever produces one.
+  if (emitted.includes('.encodeToString(')) {
+    imports.push('import kotlinx.serialization.encodeToString')
+  }
   // Bundled-image emit (asset-pipeline arc): the Image composable +
   // painterResource + ContentScale live outside the unconditional
   // star-import set (Kotlin star imports are single-package).

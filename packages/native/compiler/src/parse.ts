@@ -8467,11 +8467,25 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
         node.callee.object.name === 'JSON' &&
         (node.callee.property?.name === 'parse' || node.callee.property?.name === 'stringify')
       ) {
+        // `JSON.stringify(x)` LOWERS — the SAFE half. The arg is Encodable on
+        // both targets (emitted structs are Codable / @Serializable, and
+        // scalars/arrays conform too), so Swift `JSONEncoder().encode` /
+        // Kotlin `Json.encodeToString` serialize it. A pretty-print 2nd arg
+        // (`JSON.stringify(x, null, 2)`) is ignored in v1 (compact only).
+        const argNodes = node.arguments as AnyNode[] | undefined
+        if (node.callee.property?.name === 'stringify' && argNodes && argNodes.length >= 1) {
+          return { kind: 'json-stringify', arg: parseExpr(argNodes[0], ctx) }
+        }
+        // `JSON.parse` still warns: it THROWS on malformed input, which needs a
+        // native error model (`try`/`throw` lowering) that PMTC does not carry
+        // yet — a tracked follow-up. A no-arg `JSON.stringify()` also falls here.
         return unsupportedExpr(
           ctx,
           node,
           `\`JSON.${node.callee.property.name}\``,
-          'no native lowering yet — keep data in typed signals/structs (fetch decode is handled by useFetch<T>); a serialization bridge is a tracked follow-up.',
+          node.callee.property?.name === 'parse'
+            ? 'JSON.parse throws on malformed input, which needs a native error model (try/throw lowering) — a tracked follow-up. Decode typed API responses via useFetch<T> instead.'
+            : 'no native lowering for this shape yet — a serialization bridge is a tracked follow-up.',
         )
       }
       // Imperative `@pyreon/toast` call → `toast-call` ExprIR (→ PyreonToast).

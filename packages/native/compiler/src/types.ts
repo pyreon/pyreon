@@ -1078,6 +1078,13 @@ export type ExprIR =
    */
   | { kind: 'toast-call'; message: ExprIR; toastType: string; durationMillis?: number }
   /**
+   * `JSON.stringify(x)` → a native serialization of an Encodable/@Serializable
+   * value. Swift `String(data: try! JSONEncoder().encode(x), …)`, Kotlin
+   * `Json.encodeToString(x)`. Only the SAFE half lowers: `JSON.parse` throws,
+   * which needs a native error model (a tracked follow-up), so it still warns.
+   */
+  | { kind: 'json-stringify'; arg: ExprIR }
+  /**
    * An imperative `@pyreon/a11y` `announce("msg", { politeness })` call.
    * Lowers to `PyreonA11y.announce(message, assertive:)` — a VoiceOver
    * announcement (Swift) / registered-announcer call (Kotlin). `assertive` is

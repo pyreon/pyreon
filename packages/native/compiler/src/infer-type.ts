@@ -1853,6 +1853,9 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
     case 'await':
       // M4.5: `await X` has the type of the awaited value X.
       return inferType(expr.expr, ctx)
+    case 'json-stringify':
+      // `JSON.stringify(x)` serializes to a String on both targets.
+      return { kind: 'string' }
     case 'toast-call':
       // An imperative toast is used as a statement, not a value; its native
       // emit (PyreonToast.add) returns the id String but that's rarely bound.

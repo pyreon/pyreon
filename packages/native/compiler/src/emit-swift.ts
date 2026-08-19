@@ -3819,6 +3819,12 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
     case 'announce-call':
       // Imperative @pyreon/a11y announce → PyreonA11y (a VoiceOver announcement).
       return `PyreonA11y.announce(${emitSwiftExpr(e.message, indent)}, assertive: ${e.assertive})`
+    case 'json-stringify':
+      // `JSON.stringify(x)` → serialize an Encodable value. `try!` is safe: a
+      // Codable value never throws on encode (only a non-conforming type would,
+      // which the type checker rejects first). Falls back to "" if UTF-8 decode
+      // somehow fails (it cannot for JSONEncoder output) so the type stays String.
+      return `(String(data: try! JSONEncoder().encode(${emitSwiftExpr(e.arg, indent)}), encoding: .utf8) ?? "")`
     case 'call': {
       // `Object.keys(<object-typed expr>)` → static `[String]` of the
       // struct field names. A synthesized struct's keys are statically
