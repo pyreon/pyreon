@@ -52,6 +52,16 @@ name: Native Compiler Validation
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+  # Runs on main EXIST TO PUBLISH THE SHARED VERDICT CACHE. GitHub scopes a
+  # cache created on a PR ref to that PR alone; only DEFAULT-BRANCH caches are
+  # readable by every branch. Without a main run, the `restore-keys` fallback
+  # below has nothing to fall back TO, so every PR started cold — measured:
+  # `Cache not found for input keys: native-validate-Linux-swift6.0-...`, on a
+  # PR whose base already had hundreds of identical verdicts. The comment on
+  # that step has always said "a PR branch can read caches from its base, so
+  # PRs inherit main's"; this trigger is what finally makes that TRUE.
+  push:
+    branches: [main]
   workflow_dispatch:
   schedule:
     # 05:23 UTC — offset from existing nightly workflows so runners
@@ -126,8 +136,24 @@ jobs:
     # identical input cannot distinguish a real regression from a slow runner —
     # it trains everyone to re-run past it, which is how a gate dies.
     #
-    # Budget = worst measured success (34.6m) + ~40% runner-variance headroom.
-    timeout-minutes: 50
+    # Budget = worst measured success + ~40% runner-variance headroom.
+    #
+    # 2026-08-19: re-derived. The 34.6m the 50m figure came from is long stale —
+    # the last two uncached runs to actually FINISH took 42m17s and 47m46s, so
+    # the budget had 2-8 minutes of headroom, not 40%. It has since been crossed
+    # and the job now hits the cap and reports `cancelled`, which blocks PRs
+    # while reading like neither a pass nor a failure.
+    #
+    # The SCHEDULE run is uncached BY DESIGN (a cache hit would mask the
+    # compiler-drift this gate exists to catch), so the cap must exceed a full
+    # COLD run or the nightly can never pass by construction — and it has not:
+    # cancelled on 4 of the last 6 nights, i.e. the drift gate has been dead for
+    # most of a week. Same formula, current measurement: 47.8m x 1.4 ~= 67 -> 70.
+    #
+    # PR runs should now land far under this, because they inherit main's warm
+    # cache (see the `push:` trigger). If a WARM run ever approaches this cap,
+    # that is real growth to shard — not a number to raise again.
+    timeout-minutes: 70
     permissions:
       contents: read
     steps:
