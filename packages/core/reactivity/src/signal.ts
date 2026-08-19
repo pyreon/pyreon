@@ -2,7 +2,7 @@ import { closeInlineBatch, enqueuePendingNotification, isBatching, openInlineBat
 import { _notifyTraceListeners, isTracing } from './debug'
 import { _captureCallerLocation, _rdRecordFire, _rdRegister } from './reactive-devtools'
 import { _recordSignalWrite } from './reactive-trace'
-import { notifySubscribers, trackSubscriber } from './tracking'
+import { addSubscriber, notifySubscribers, removeSubscriber, trackSubscriber } from './tracking'
 
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
@@ -91,7 +91,9 @@ interface SignalFn<T> {
   (): T
   /** @internal current value */
   _v: T
-  /** @internal subscriber set (lazily allocated by trackSubscriber) */
+  /** @internal sole tracking subscriber — inline slot (see `SubscriberHost`) */
+  _s1: (() => void) | null
+  /** @internal tracking subscriber Set — allocated on PROMOTION from `_s1` */
   _s: Set<() => void> | null
   /** @internal direct updater single-subscriber fast slot — first subscriber lives here */
   _d1: (() => void) | null
@@ -153,13 +155,15 @@ function _set(this: SignalFn<unknown>, newValue: unknown) {
   // the whole batch window is skipped. Dominant shape for write-only signals.
   const _d1 = this._d1
   const _d = this._d
+  const _s1 = this._s1
   const _s = this._s
-  if (_d1 === null && _d === null && _s === null) return
+  if (_d1 === null && _d === null && _s1 === null && _s === null) return
   // Short-circuit when already inside a batch so we don't wrap redundantly.
   if (isBatching()) {
     if (_d1) enqueuePendingNotification(_d1)
     else if (_d) notifyDirect(_d)
-    if (_s) notifySubscribers(_s)
+    if (_s1) enqueuePendingNotification(_s1)
+    else if (_s) notifySubscribers(_s)
   } else {
     // INLINE batch window — no `batch(closure)` allocation, and the
     // notifications THIS write owns dispatch DIRECTLY instead of round-tripping
@@ -177,14 +181,13 @@ function _set(this: SignalFn<unknown>, newValue: unknown) {
       if (_d1) {
         _d1()
       } else if (_d) notifyDirect(_d)
-      if (_s) {
-        if (_s.size === 1) {
-          const sub = _s.values().next().value as () => void
-          sub()
-        } else {
-          notifySubscribers(_s)
-        }
-      }
+      // `_s1` replaces the former `_s.size === 1` special case, which had to
+      // materialise a Set iterator (`_s.values().next().value`) on every write
+      // to reach the sole subscriber — two throwaway objects on the hottest
+      // path. The inline slot is a plain field read.
+      if (_s1) {
+        _s1()
+      } else if (_s) notifySubscribers(_s)
     } finally {
       closeInlineBatch()
     }
@@ -203,26 +206,23 @@ function _trigger(this: SignalFn<unknown>) {
   // a call would tax the hottest write path for a rare escape hatch's benefit.
   const _d1 = this._d1
   const _d = this._d
+  const _s1 = this._s1
   const _s = this._s
-  if (_d1 === null && _d === null && _s === null) return
+  if (_d1 === null && _d === null && _s1 === null && _s === null) return
   if (isBatching()) {
     if (_d1) enqueuePendingNotification(_d1)
     else if (_d) notifyDirect(_d)
-    if (_s) notifySubscribers(_s)
+    if (_s1) enqueuePendingNotification(_s1)
+    else if (_s) notifySubscribers(_s)
   } else {
     openInlineBatch()
     try {
       if (_d1) {
         _d1()
       } else if (_d) notifyDirect(_d)
-      if (_s) {
-        if (_s.size === 1) {
-          const sub = _s.values().next().value as () => void
-          sub()
-        } else {
-          notifySubscribers(_s)
-        }
-      }
+      if (_s1) {
+        _s1()
+      } else if (_s) notifySubscribers(_s)
     } finally {
       closeInlineBatch()
     }
@@ -230,10 +230,43 @@ function _trigger(this: SignalFn<unknown>) {
 }
 
 function _subscribe(this: SignalFn<unknown>, listener: () => void): () => void {
-  if (!this._s) this._s = new Set()
-  this._s.add(listener)
-  return () => this._s?.delete(listener)
+  addSubscriber(this, listener)
+  const self = this
+  // Promotion-aware disposer (mirrors `_directFn`): a 2nd subscriber may have
+  // migrated `listener` out of the inline slot into `_s` before this runs.
+  return () => removeSubscriber(self, listener)
 }
+
+/**
+ * @internal Does `sig` still have ANY live subscriber — tracking (`_s1`/`_s`)
+ * or direct (`_d1`/`_d`)?
+ *
+ * Both channels are TWO-TIER: the first subscriber lives in an inline slot
+ * (`_s1` / `_d1`) and only a second one promotes to a Set. A presence check
+ * that reads the Set alone therefore reports "unused" for the overwhelmingly
+ * common single-subscriber shape — the exact false-negative that would make a
+ * reclamation sweep evict LIVE signals.
+ *
+ * Exported so consumers doing liveness sweeps (`@pyreon/solid-compat`'s
+ * `createStore`) cannot re-derive the check and miss a tier as the storage
+ * evolves.
+ */
+export function _hasSubscribers<T>(sig: Signal<T> | (() => T)): boolean {
+  const s = sig as unknown as SignalFn<T>
+  return (
+    s._s1 != null ||
+    (s._s != null && s._s.size > 0) ||
+    s._d1 != null ||
+    (s._d != null && s._d.size > 0)
+  )
+}
+
+/**
+ * @internal Opaque token handed back by {@link _suspendSoleSubscriber} and
+ * returned verbatim to {@link _resumeSoleSubscriber}. Callers must treat it as
+ * opaque and only test it for `null`.
+ */
+export type SoleSubscriberToken = (() => void) | Set<() => void>
 
 /**
  * @internal Temporarily remove a `subscribe()`-registered `listener` from `sig`
@@ -247,13 +280,12 @@ function _subscribe(this: SignalFn<unknown>, listener: () => void): () => void {
  * `listener` isn't subscribed; resume is idempotent.
  */
 export function _suspendSubscriber<T>(sig: Signal<T>, listener: () => void): void {
-  ;(sig as unknown as SignalFn<T>)._s?.delete(listener)
+  removeSubscriber(sig as unknown as SignalFn<T>, listener)
 }
 
 /** @internal Restore a listener removed by {@link _suspendSubscriber}. */
 export function _resumeSubscriber<T>(sig: Signal<T>, listener: () => void): void {
-  const s = sig as unknown as SignalFn<T>
-  ;(s._s ??= new Set()).add(listener)
+  addSubscriber(sig as unknown as SignalFn<T>, listener)
 }
 
 /**
@@ -266,41 +298,58 @@ export function _resumeSubscriber<T>(sig: Signal<T>, listener: () => void): void
  * Returns `null` when `_s` is absent or holds >1 subscriber — the caller MUST
  * then fall back to `_suspendSubscriber`.
  *
- * **PRECONDITION (caller-guaranteed, not verified):** when `_s.size === 1` the
- * sole element must BE the caller's listener. Verifying identity would need the
+ * **PRECONDITION (caller-guaranteed, not verified):** the sole subscriber must
+ * BE the caller's listener. Verifying identity in the Set shape would need the
  * exact `Set.has` hash op this path exists to avoid. The store's invariant
  * provides it; callers without such an invariant must use `_suspendSubscriber`.
  *
- * Identity contract: the SAME Set object is restored on resume (unless a
- * newcomer subscribed during the window), so verify-mode dep reuse and
- * `subscribe()` disposers are unaffected.
+ * Two shapes, because tracking storage is two-tier:
+ *  - `_s1` occupied (the dominant shape) — the token IS the detached listener.
+ *  - `_s` Set of exactly 1 (a promoted Set that later shrank; there is no
+ *    demotion) — the token is the detached Set, as before.
+ *
+ * The former "same Set object restored" identity contract is no longer
+ * load-bearing: `deps` records HOSTS rather than Sets, so verify-mode dep reuse
+ * cannot observe a container swap, and `subscribe()` disposers now remove via
+ * the host instead of capturing a Set.
  */
-export function _suspendSoleSubscriber<T>(sig: Signal<T>): Set<() => void> | null {
-  const s = (sig as unknown as SignalFn<T>)._s
-  if (s === null || s.size !== 1) return null
-  ;(sig as unknown as SignalFn<T>)._s = null
-  return s
+export function _suspendSoleSubscriber<T>(sig: Signal<T>): SoleSubscriberToken | null {
+  const s = sig as unknown as SignalFn<T>
+  const s1 = s._s1
+  if (s1 !== null) {
+    // Invariant `_s1 !== null => _s === null` makes this the whole story.
+    s._s1 = null
+    return s1
+  }
+  const set = s._s
+  if (set === null || set.size !== 1) return null
+  s._s = null
+  return set
 }
 
 /**
  * @internal Pair of {@link _suspendSoleSubscriber}. Restores the detached
- * Set by field swap. If a NEW listener subscribed during the suspension
- * window (`_subscribe` lazily created a fresh Set), the caller's `listener`
- * is folded into that live Set instead — same end state (and same insertion
- * order: listener re-added after the newcomer) as `_resumeSubscriber` would
- * produce, and the newcomer's subscription is never clobbered.
+ * subscriber. If a NEW subscriber arrived during the suspension window, the
+ * caller's `listener` is folded in alongside it rather than clobbering it —
+ * same end state (and same insertion order: listener re-added after the
+ * newcomer) as `_resumeSubscriber` would produce.
  */
 export function _resumeSoleSubscriber<T>(
   sig: Signal<T>,
-  saved: Set<() => void>,
+  saved: SoleSubscriberToken,
   listener: () => void,
 ): void {
   const s = sig as unknown as SignalFn<T>
-  const cur = s._s
-  if (cur === null) {
+  if (typeof saved === 'function') {
+    // Inline-slot shape — `addSubscriber` restores it to the free slot, or
+    // promotes if a newcomer took it during the window.
+    addSubscriber(s, saved)
+    return
+  }
+  if (s._s1 === null && s._s === null) {
     s._s = saved
   } else {
-    cur.add(listener)
+    addSubscriber(s, listener)
   }
 }
 
@@ -369,7 +418,7 @@ function _debug(this: SignalFn<unknown>): SignalDebugInfo<unknown> {
   return {
     name: this.label,
     value: this._v,
-    subscriberCount: this._s?.size ?? 0,
+    subscriberCount: (this._s1 !== null ? 1 : 0) + (this._s?.size ?? 0),
   }
 }
 
@@ -438,6 +487,7 @@ export function signal<T>(initialValue: T, options?: SignalOptions): Signal<T> {
   // All signals share SignalProto → monomorphic call sites for method dispatch.
   Object.setPrototypeOf(read, SignalProto)
   read._v = initialValue
+  read._s1 = null
   read._s = null
   read._d1 = null
   read._d = null

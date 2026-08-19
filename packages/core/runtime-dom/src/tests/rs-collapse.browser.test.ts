@@ -337,10 +337,17 @@ describe('_rsCollapse — single-class fast path (cssVariables mode)', () => {
     expect(btn.className).toBe('same-cls')
 
     // ZERO subscribers on the mode signal — the binding was never created.
-    const internals = isDark as unknown as { _d1: unknown; _d: Set<unknown> | null; _s: Set<unknown> | null }
+    const internals = isDark as unknown as {
+      _d1: unknown
+      _d: Set<unknown> | null
+      _s1: unknown
+      _s: Set<unknown> | null
+    }
     expect(internals._d1 ?? null).toBeNull()
     expect(internals._d?.size ?? 0).toBe(0)
-    expect(internals._s?.size ?? 0).toBe(0)
+    // Tracking subscribers are two-tier — the sole one lives in `_s1`, so a
+    // Set-only assertion would pass while a live subscriber remained.
+    expect((internals._s1 != null ? 1 : 0) + (internals._s?.size ?? 0)).toBe(0)
 
     // flipping the mode is a no-op for the class (the cascade handles
     // visuals in var mode) — and crucially throws nothing

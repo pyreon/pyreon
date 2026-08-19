@@ -11,7 +11,13 @@ import {
 import { _errorHandler } from './effect'
 import { _captureCallerLocation, _rdRecordFire, _rdRegister } from './reactive-devtools'
 import { getCurrentScope } from './scope'
-import { runCollect, runVerify, trackSubscriber } from './tracking'
+import {
+  removeSubscriber,
+  runCollect,
+  runVerify,
+  type SubscriberHost,
+  trackSubscriber,
+} from './tracking'
 
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
@@ -67,6 +73,8 @@ interface ComputedFn<T> {
    * read fn (was a separate `host` object), so `trackSubscriber(read)` works
    * exactly like `signal`. Eliminates one object allocation per computed.
    */
+  _s1: (() => void) | null
+  /** @internal tracking subscriber Set — allocated on PROMOTION from `_s1` */
   _s: Set<() => void> | null
   /** @internal single direct-updater inline slot — mirrors `signal._d1` */
   _d1: (() => void) | null
@@ -121,15 +129,15 @@ const ComputedProto = {
 Object.setPrototypeOf(ComputedProto, Function.prototype)
 
 /** Remove a computed from all dependency subscriber sets (local deps array). */
-function cleanupLocalDeps(deps: Set<() => void>[], fn: () => void): void {
-  for (let i = 0; i < deps.length; i++) (deps[i] as Set<() => void>).delete(fn)
+function cleanupLocalDeps(deps: SubscriberHost[], fn: () => void): void {
+  for (let i = 0; i < deps.length; i++) removeSubscriber(deps[i] as SubscriberHost, fn)
   deps.length = 0
 }
 
 /** The dispatch half of {@link propagateEagerChange} — factored out so its
  * subscriber/direct branch sides exist ONCE, shared by both window arms. */
 function dispatchEagerChange(read: ComputedFn<unknown>): void {
-  if (read._s) propagateLazyDirty(read._s)
+  if (read._s1 !== null || read._s !== null) propagateLazyDirty(read)
   if (read._d1) enqueuePendingNotification(read._d1)
   else if (read._d) for (const f of read._d) enqueuePendingNotification(f)
 }
@@ -192,14 +200,14 @@ function computedLazy<T>(
   injectedLoc?: { file: string; line: number; col: number },
 ): Computed<T> {
   let tracked = false
-  const deps: Set<() => void>[] = []
+  const deps: SubscriberHost[] = []
   // `tracked`/`deps` are touched only by the per-instance `read`/`dispose`
   // closures, so they stay closure-captured. `recompute` is forward-declared for
   // the `read` body; `read` is never invoked before it is wired.
   let recompute: () => void
 
   const read = (() => {
-    trackSubscriber(read as unknown as { _s: Set<() => void> | null })
+    trackSubscriber(read as unknown as SubscriberHost)
     if (read._dirty) {
       if (process.env.NODE_ENV !== 'production') {
         _countSink.__pyreon_count__?.('reactivity.computedRecompute')
@@ -229,6 +237,7 @@ function computedLazy<T>(
   read._value = undefined as T
   read._dirty = true
   read._disposed = false
+  read._s1 = null
   read._s = null
   read._d1 = null
   read._d = null
@@ -263,7 +272,7 @@ function computedLazy<T>(
     _rdRegister(
       read,
       'derived',
-      read as unknown as { _s: Set<() => void> | null },
+      read as unknown as SubscriberHost,
       recompute,
       undefined,
       injectedLoc ?? _captureCallerLocation(2),
@@ -300,11 +309,11 @@ function computedWithEquals<T>(
   // `initialized`, `tracked`, and `deps` are touched only by per-instance closures.
   let initialized = false
   let tracked = false
-  const deps: Set<() => void>[] = []
+  const deps: SubscriberHost[] = []
   let recompute: () => void
 
   const read = (() => {
-    trackSubscriber(read as unknown as { _s: Set<() => void> | null })
+    trackSubscriber(read as unknown as SubscriberHost)
     if (read._dirty) {
       if (process.env.NODE_ENV !== 'production') {
         _countSink.__pyreon_count__?.('reactivity.computedRecompute')
@@ -345,6 +354,7 @@ function computedWithEquals<T>(
   read._value = undefined as T
   read._dirty = true
   read._disposed = false
+  read._s1 = null
   read._s = null
   read._d1 = null
   read._d = null
@@ -380,7 +390,7 @@ function computedWithEquals<T>(
     _rdRegister(
       read,
       'derived',
-      read as unknown as { _s: Set<() => void> | null },
+      read as unknown as SubscriberHost,
       recompute,
       undefined,
       injectedLoc ?? _captureCallerLocation(2),

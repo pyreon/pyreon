@@ -88,6 +88,7 @@ export {
   setCurrentScope,
 } from './scope'
 export {
+  _hasSubscribers,
   _resumeSoleSubscriber,
   _resumeSubscriber,
   _suspendSoleSubscriber,
@@ -96,6 +97,7 @@ export {
   type Signal,
   type SignalDebugInfo,
   type SignalOptions,
+  type SoleSubscriberToken,
   signal,
 } from './signal'
 export { type WrapSignalOptions, wrapSignal } from './wrap-signal'

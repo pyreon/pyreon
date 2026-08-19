@@ -173,3 +173,42 @@ describe('createStore — subscriber-aware signal eviction (#733 Class C shape)'
     dispose?.dispose()
   })
 })
+
+describe('createStore sweep — tier-aware liveness (the inline-slot hole)', () => {
+  it('REGRESSION: a signal whose ONLY subscriber is a tracked effect survives the sweep', async () => {
+    const { effect } = await import('@pyreon/reactivity')
+    const items: Record<string, number> = {}
+    for (let i = 0; i < 300; i++) items[`k${i}`] = i
+
+    const [store, setStore] = createStore({ items })
+
+    let observed = -1
+    let runs = 0
+    const dispose = effect(() => {
+      runs++
+      observed = (store.items as Record<string, number>).k0 ?? -1
+    })
+    expect(observed).toBe(0)
+
+    // Cache pressure so the map crosses STORE_SIGNAL_SWEEP_THRESHOLD.
+    for (let i = 1; i < 300; i++) void (store.items as Record<string, number>)[`k${i}`]
+
+    // A write fires the sweep. The k0 leaf signal's ONLY subscriber is the
+    // effect above, which — under two-tier tracking storage — lives in the
+    // `_s1` INLINE SLOT, not in the `_s` Set. A Set-only liveness check
+    // reports "unused" and evicts it.
+    setStore('items', { ...items, kNew: 999 })
+
+    // The load-bearing assertion is a LEAF write. Writing the PARENT path
+    // re-notifies through the `items` signal and so re-runs the effect even
+    // when k0 was wrongly evicted — which is why asserting on a parent write
+    // passes against the bug.
+    const runsBefore = runs
+    setStore('items', 'k0', 77)
+
+    expect(runs).toBeGreaterThan(runsBefore)
+    expect(observed).toBe(77)
+
+    dispose?.dispose()
+  })
+})

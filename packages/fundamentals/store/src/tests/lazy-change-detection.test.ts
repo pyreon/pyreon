@@ -13,7 +13,9 @@ import { defineStore } from '../index'
  */
 // Reach the internal `_s` (subscriber set) to assert subscription state.
 function subCount(sig: unknown): number {
-  const s = (sig as { _s?: Set<unknown> | null })._s
+  const h = sig as { _s1?: unknown; _s?: Set<unknown> | null }
+  if (h._s1 != null) return 1
+  const s = h._s
   return s ? s.size : 0
 }
 

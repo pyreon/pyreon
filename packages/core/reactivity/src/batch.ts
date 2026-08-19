@@ -77,10 +77,14 @@ const MAX_PASSES = 32
 // books a tier-1 refresh) so it is deliberately NOT stamped; the walk routes
 // `_c`-less subscribers through `enqueuePendingNotification`.
 // Structural interface — batch.ts must not import computed.ts (layer order).
-interface LazyTarget {
+/** Anything that carries two-tier tracking-subscriber storage (signal or computed). */
+interface LazySource {
+  _s1: (() => void) | null
+  _s: Set<() => void> | null
+}
+interface LazyTarget extends LazySource {
   _dirty: boolean
   _disposed: boolean
-  _s: Set<() => void> | null
   _d1: (() => void) | null
   _d: Set<() => void> | null
 }
@@ -116,7 +120,7 @@ export function _markLazyAndPropagate(c: LazyTarget): void {
   c._dirty = true
   if (c._d1) enqueuePendingNotification(c._d1)
   else if (c._d) for (const f of c._d) enqueuePendingNotification(f)
-  if (c._s !== null) propagateLazyDirty(c._s)
+  if (c._s1 !== null || c._s !== null) propagateLazyDirty(c)
 }
 
 /**
@@ -344,7 +348,7 @@ const MAX_CASCADE_RECURSION = 500
  * `isBatching()` invariant holds. A notify recompute is dirty-mark-only, so
  * processing one cannot mutate any `_s` mid-walk.
  */
-export function propagateLazyDirty(subs: Set<() => void>): void {
+export function propagateLazyDirty(host: LazySource): void {
   // Fused single-subscriber walk — the deep-chain shape resolves here as a plain
   // LOOP over the lazy computed's fields via `notify._c`, replacing per hop a
   // [WeakSet.has + closure call + re-entry] with plain field ops. Iterative, so
@@ -353,8 +357,27 @@ export function propagateLazyDirty(subs: Set<() => void>): void {
   // The inlined body MUST stay in lock-step with `computedLazy`'s recompute:
   // disposed/already-dirty -> stop; mark dirty; DEFER direct subscribers to the
   // drain (glitch-freedom); continue into the computed's own subscribers.
-  while (subs.size === 1) {
-    const sub = subs.values().next().value as LazyNotify
+  //
+  // The chain hop reads the `_s1` INLINE SLOT — the shape a linear
+  // signal->computed->computed chain always has — so a hop costs a field read
+  // rather than materialising a Set iterator (`_s.values().next()`) per level.
+  let subs: Set<() => void>
+  for (;;) {
+    const s1 = host._s1
+    let sub: LazyNotify
+    if (s1 !== null) {
+      sub = s1 as LazyNotify
+    } else {
+      const s = host._s
+      if (s === null) return
+      if (s.size !== 1) {
+        subs = s
+        break
+      }
+      // A promoted Set that later shrank back to one entry (there is no
+      // demotion) — same body, iterator cost paid only in this rarer shape.
+      sub = s.values().next().value as LazyNotify
+    }
     const c = sub._c
     if (c === undefined) {
       // An `{ equals }` notify, an effect, or a raw listener — route normally.
@@ -365,8 +388,7 @@ export function propagateLazyDirty(subs: Set<() => void>): void {
     c._dirty = true
     if (c._d1) enqueuePendingNotification(c._d1)
     else if (c._d) for (const f of c._d) enqueuePendingNotification(f)
-    if (c._s === null) return
-    subs = c._s
+    host = c
   }
   // Fan-out (>=2 subscribers). Read the module counter into a local ONCE and bump
   // it once per LEVEL, not per subscriber. Computed notifies propagate the dirty

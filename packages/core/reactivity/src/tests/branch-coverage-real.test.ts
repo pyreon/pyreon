@@ -165,7 +165,12 @@ describe('batch — MAX_PASSES bailout (lines 102-131)', () => {
     })
 
     // After initial mount, find the subscribed run callback on s._s and tag it.
-    const internalS = s as unknown as { _s: Set<() => void> | null }
+    const internalS = s as unknown as {
+      _s1: (() => void) | null
+      _s: Set<() => void> | null
+    }
+    // Two-tier tracking storage — the sole subscriber lives in `_s1`.
+    if (internalS._s1) (internalS._s1 as { _label?: string })._label = 'my-loop-effect'
     if (internalS._s) {
       for (const sub of internalS._s) {
         ;(sub as { _label?: string })._label = 'my-loop-effect'
@@ -1125,7 +1130,10 @@ describe('reactive-devtools — getFireSummaries collision branches', () => {
   test('getReactiveGraph: host with null _s skips edge emission (line 561 FALSE arm)', async () => {
     // Register a node with a host that has _s = null (no subscribers).
     const node = (() => {}) as object
-    const host: { _s: Set<() => void> | null } = { _s: null }
+    const host: { _s1: (() => void) | null; _s: Set<() => void> | null } = {
+      _s1: null,
+      _s: null,
+    }
     _rdRegister(node, 'signal', host, null, 'host-null-subs', undefined)
 
     // No throw — the if-subs branch falls through correctly.

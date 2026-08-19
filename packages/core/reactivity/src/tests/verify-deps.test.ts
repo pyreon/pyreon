@@ -33,9 +33,15 @@ import { signal } from '../signal'
 
 // Internal shape for white-box subscriber assertions.
 interface HostInternals {
+  _s1: (() => void) | null
   _s: Set<() => void> | null
 }
-const subCount = (s: unknown): number => ((s as HostInternals)._s?.size ?? 0)
+// Tracking storage is TWO-TIER: the sole subscriber lives in the `_s1` inline
+// slot and only a second one promotes to the `_s` Set. Count both.
+const subCount = (s: unknown): number => {
+  const h = s as HostInternals
+  return (h._s1 != null ? 1 : 0) + (h._s?.size ?? 0)
+}
 
 describe('verify-mode dep reuse — effects', () => {
   it('steady state: same deps re-fire across many re-runs', () => {
