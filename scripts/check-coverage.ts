@@ -66,6 +66,35 @@ const DEFAULT_THRESHOLD = 95
 const MINIMUM_FLOOR = 95
 const MINIMUM_BRANCH_FLOOR = 95
 const CONCURRENCY = 4
+
+/**
+ * Packages whose suites spawn NESTED VITE BUILDS, run one at a time.
+ *
+ * The `PACKAGE_TIMEOUT_MS` comment below suspected 4-way concurrency as the
+ * reason `@pyreon/zero` / `@pyreon/mcp` / `@pyreon/vite-plugin` were absent
+ * from every CI coverage table, and said so was "not proven here". It is
+ * proven now, and the mechanism is memory, not wall clock:
+ *
+ *   CI  ->  "@pyreon/zero: 20 test(s) FAILED", first named spec reported as
+ *           `Error: STACK_TRACE_ERROR` with NO assertion text
+ *   local, same commit, after a bootstrap
+ *       ->  Tests 1787 passed | 2 skipped (1789), exit 0
+ *
+ * `STACK_TRACE_ERROR` with no assertion is an OOM'd worker, and vitest blames
+ * whichever spec was in flight — which is why the reported name (`dev 404 —
+ * mode: 'ssg'`) is a red herring, and why twenty "failures" arrive at once:
+ * assertions do not fail in blocks of twenty, a worker dies once and takes its
+ * whole file with it.
+ *
+ * These suites boot real Vite SSR builds — the heaviest thing in this repo —
+ * and V8 coverage instrumentation sits on top of that. Four of them beside
+ * three other packages is what exhausts the runner.
+ *
+ * Serial, not excluded: the point of this gate is that a package IS measured.
+ * Dropping them would recreate the hole the timeout comment describes, where a
+ * threshold silently stops being enforced.
+ */
+const SERIAL_PACKAGES = new Set(['@pyreon/zero', '@pyreon/mcp', '@pyreon/vite-plugin'])
 /**
  * Per-package wall-clock ceiling.
  *
@@ -730,8 +759,23 @@ async function runWithConcurrency(
     }
   }
 
-  const workers = Array.from({ length: Math.min(CONCURRENCY, packages.length) }, () => worker())
+  // Nested-build packages run AFTER the pool drains, one at a time — see
+  // SERIAL_PACKAGES. Partitioning the queue rather than lowering CONCURRENCY
+  // globally keeps the other ~67 packages at full parallelism, so the gate's
+  // wall clock barely moves while the memory peak drops to one heavy suite.
+  const serial = queue.filter((p) => SERIAL_PACKAGES.has(p.name))
+  const parallel = queue.filter((p) => !SERIAL_PACKAGES.has(p.name))
+  queue.length = 0
+  queue.push(...parallel)
+
+  const workers = Array.from({ length: Math.min(CONCURRENCY, queue.length) }, () => worker())
   await Promise.all(workers)
+
+  if (serial.length > 0) {
+    console.log(`\n  (${serial.length} nested-build package(s) run serially — see SERIAL_PACKAGES)`)
+    queue.push(...serial)
+    await worker()
+  }
 
   return { results, problems, staleDeclarations }
 }
