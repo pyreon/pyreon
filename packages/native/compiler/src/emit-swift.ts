@@ -977,6 +977,9 @@ export function emitSwift(
   // Emit the shared PyreonSchemaError enum BEFORE the schemas if
   // any are present (the per-schema .parse() / .safeParse() refer to it).
   if (zodSchemas.length > 0) parts.push(SWIFT_SCHEMA_ERROR)
+  // Standalone-validation: the web-faithful result shape, once, when any
+  // schema was validated inline (`s.object({ … }).safeParse(x)`).
+  if (zodSchemas.some((zs) => zs.emitSafeParseResult)) parts.push(SWIFT_PARSE_RESULT)
   // Emit each PyreonUrlState* helper once, and only the ones actually bound —
   // a string-only file emits byte-identically to before the typed variants
   // existed. The number helper is shared by the Int and Double forms.
@@ -1701,9 +1704,30 @@ function emitSwiftZodSchema(zs: ZodSchemaDefnIR): string {
   lines.push(`        catch let e as PyreonSchemaError { return .failure(e) }`)
   lines.push(`        catch { return .failure(.unknown) }`)
   lines.push(`    }`)
+  // Standalone-validation: the web-faithful result shape. `s.object({ … })
+  // .safeParse(x)` returns `{ success, data }` on the web, but Swift's `Result`
+  // carries no `.success` Bool — so an inline-validated schema also gets a
+  // `safeParseResult` returning `PyreonParseResult<Self>` (success + data).
+  if (zs.emitSafeParseResult) {
+    lines.push(``)
+    lines.push(
+      `    static func safeParseResult(_ input: [String: Any]) -> PyreonParseResult<Self> {`,
+    )
+    lines.push(`        switch safeParse(input) {`)
+    lines.push(`        case .success(let v): return PyreonParseResult(success: true, data: v)`)
+    lines.push(`        case .failure: return PyreonParseResult(success: false, data: nil)`)
+    lines.push(`        }`)
+    lines.push(`    }`)
+  }
   lines.push(`}`)
-  lines.push(``)
-  lines.push(`let ${zs.bindingName} = PyreonZodSchema_${zs.bindingName}()`)
+  // An INLINE schema (synthesized from `s.object({ … }).safeParse(x)`) is
+  // referenced only through its static `safeParseResult` — it needs no
+  // module-scope instance binding (which exists so a top-level schema NAME
+  // resolves as a value).
+  if (!zs.inline) {
+    lines.push(``)
+    lines.push(`let ${zs.bindingName} = PyreonZodSchema_${zs.bindingName}()`)
+  }
   return lines.join('\n')
 }
 
@@ -1715,6 +1739,16 @@ const SWIFT_SCHEMA_ERROR = `enum PyreonSchemaError: Error {
     case missingOrWrongType(field: String, expected: String)
     case constraintViolation(field: String, rule: String)
     case unknown
+}`
+
+/**
+ * Standalone-validation: the web-faithful `{ success, data }` result shape
+ * that `s.object({ … }).safeParse(x)` returns. Emitted once per file when any
+ * schema has `emitSafeParseResult`. Mirrors the Kotlin `PyreonParseResult`.
+ */
+const SWIFT_PARSE_RESULT = `struct PyreonParseResult<T> {
+    let success: Bool
+    let data: T?
 }`
 
 /**
@@ -3828,6 +3862,31 @@ function emitSwiftIndexedClosure(
   }
 }
 
+/**
+ * Standalone-validation: emit an ExprIR as a DYNAMIC Swift value for a
+ * `safeParse` argument — an object literal becomes a `[String: Any]`
+ * dictionary (NOT a synthesized struct), an array becomes a native array with
+ * dynamic elements, and any other expression is emitted verbatim (it must
+ * already be `[String: Any]`-typed). Recurses so nested objects/arrays lower
+ * to nested dictionaries. This is what keeps `s.object(…).safeParse({ n: 1 })`
+ * validating a runtime map the way the web `safeParse(unknown)` does.
+ */
+function emitSwiftDynamicValue(e: ExprIR, indent: number): string {
+  if (e.kind === 'object' && (!e.spreads || e.spreads.length === 0)) {
+    if (e.fields.length === 0) return `[String: Any]()`
+    const entries = e.fields
+      .map((f) => `${JSON.stringify(f.name)}: ${emitSwiftDynamicValue(f.value, indent)}`)
+      .join(', ')
+    return `[${entries}] as [String: Any]`
+  }
+  if (e.kind === 'array') {
+    if (e.elements.length === 0) return `[Any]()`
+    const elems = e.elements.map((el) => emitSwiftDynamicValue(el, indent)).join(', ')
+    return `[${elems}]`
+  }
+  return emitSwiftExpr(e, indent)
+}
+
 function emitSwiftExpr(e: ExprIR, indent: number): string {
   switch (e.kind) {
     case 'literal':
@@ -3872,6 +3931,14 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
     case 'announce-call':
       // Imperative @pyreon/a11y announce → PyreonA11y (a VoiceOver announcement).
       return `PyreonA11y.announce(${emitSwiftExpr(e.message, indent)}, assertive: ${e.assertive})`
+    case 'schema-validate': {
+      // Standalone `@pyreon/validate` `s.object({ … }).safeParse(x)` →
+      // `PyreonZodSchema_<name>.safeParseResult(<x-as-dictionary>)`, which
+      // returns `PyreonParseResult<Self>` — a wrapping `.success` / `.data`
+      // member access composes over this. The argument is emitted as a
+      // dynamic `[String: Any]` dictionary (never a synthesized struct).
+      return `PyreonZodSchema_${e.schemaName}.safeParseResult(${emitSwiftDynamicValue(e.arg, indent)})`
+    }
     case 'json-stringify':
       // `JSON.stringify(x)` → serialize an Encodable value. `try!` is safe: a
       // Codable value never throws on encode (only a non-conforming type would,

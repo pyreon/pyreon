@@ -399,6 +399,10 @@ export function exprReferencesIdent(expr: ExprIR, name: string): boolean {
     case 'toast-call':
     case 'announce-call':
       return exprReferencesIdent(expr.message, name)
+    case 'schema-validate':
+      // The schema is compile-time constant; only its validated ARG can
+      // reference a free identifier.
+      return exprReferencesIdent(expr.arg, name)
     case 'spread':
       return exprReferencesIdent(expr.argument, name)
     case 'jsx-element':
@@ -599,6 +603,13 @@ export function substituteIdentifier(
       if (inner === null) return null
       return { ...expr, expr: inner }
     }
+    case 'schema-validate': {
+      // Only the validated ARG has a substitutable child; the schema is a
+      // synthesized compile-time constant.
+      const arg = substituteIdentifier(expr.arg, name, replacement)
+      if (arg === null) return null
+      return { ...expr, arg }
+    }
     case 'spread': {
       const argument = substituteIdentifier(expr.argument, name, replacement)
       if (argument === null) return null
@@ -752,6 +763,8 @@ function walkLowerParams(
     case 'toast-call':
     case 'announce-call':
       return { ...expr, message: rec(expr.message) }
+    case 'schema-validate':
+      return { ...expr, arg: rec(expr.arg) }
     case 'spread':
       return { ...expr, argument: rec(expr.argument) }
     case 'jsx-element':

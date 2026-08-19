@@ -531,6 +531,9 @@ export function emitKotlin(
   // Emit the shared PyreonSchemaError sealed class once if any
   // schemas are present.
   if (zodSchemas.length > 0) parts.push(KOTLIN_SCHEMA_ERROR)
+  // Standalone-validation: the web-faithful result shape, once, when any
+  // schema was validated inline (`s.object({ … }).safeParse(x)`).
+  if (zodSchemas.some((zs) => zs.emitSafeParseResult)) parts.push(KOTLIN_PARSE_RESULT)
   // Emit each PyreonUrlState* helper once, and only the ones actually bound —
   // a string-only file emits byte-identically to before the typed variants
   // existed. The number helper is shared by the Int and Double forms.
@@ -1226,10 +1229,29 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
   lines.push(`                Result.failure(e)`)
   lines.push(`            }`)
   lines.push(`        }`)
+  // Standalone-validation: the web-faithful `{ success, data }` result.
+  // Kotlin's `Result` carries no `.success` Bool, so an inline-validated
+  // schema also gets `safeParseResult` → `PyreonParseResult<T>`.
+  if (zs.emitSafeParseResult) {
+    lines.push(``)
+    lines.push(
+      `        fun safeParseResult(input: Map<String, Any?>): PyreonParseResult<PyreonZodSchema_${zs.bindingName}> {`,
+    )
+    lines.push(`            return try {`)
+    lines.push(`                PyreonParseResult(true, parse(input))`)
+    lines.push(`            } catch (e: PyreonSchemaError) {`)
+    lines.push(`                PyreonParseResult(false, null)`)
+    lines.push(`            }`)
+    lines.push(`        }`)
+  }
   lines.push(`    }`)
   lines.push(`}`)
-  lines.push(``)
-  lines.push(`val ${zs.bindingName} = PyreonZodSchema_${zs.bindingName}()`)
+  // An INLINE schema is referenced only through its static `safeParseResult`,
+  // so it needs no module-scope instance binding.
+  if (!zs.inline) {
+    lines.push(``)
+    lines.push(`val ${zs.bindingName} = PyreonZodSchema_${zs.bindingName}()`)
+  }
   return lines.join('\n')
 }
 
@@ -1374,6 +1396,13 @@ const KOTLIN_SCHEMA_ERROR = `sealed class PyreonSchemaError(message: String) : E
     data class ConstraintViolation(val field: String, val rule: String) :
         PyreonSchemaError("Field '$field' violated constraint '$rule'")
 }`
+
+/**
+ * Standalone-validation: the web-faithful `{ success, data }` result shape
+ * `s.object({ … }).safeParse(x)` returns. Emitted once per file when any
+ * schema has `emitSafeParseResult`. Mirrors the Swift `PyreonParseResult`.
+ */
+const KOTLIN_PARSE_RESULT = `data class PyreonParseResult<T>(val success: Boolean, val data: T?)`
 
 /** Emit a Kotlin `enum class X { a, b, c }`. */
 function emitKotlinEnum(e: EnumIR): string {
@@ -3165,6 +3194,30 @@ function emitKotlinPlainCallback(arg: ExprIR, indent: number, label: string): st
   return `{ ${head}${emitKotlinIndexedBody(arg, indent, label)}}`
 }
 
+/**
+ * Standalone-validation: emit an ExprIR as a DYNAMIC Kotlin value for a
+ * `safeParse` argument — an object literal becomes a `mapOf(...)`
+ * `Map<String, Any?>` (NOT a data class), an array becomes `listOf(...)` with
+ * dynamic elements, and any other expression is emitted verbatim (it must
+ * already be map-typed). Recurses so nested objects/arrays lower to nested
+ * maps. Mirrors `emitSwiftDynamicValue`.
+ */
+function emitKotlinDynamicValue(e: ExprIR, indent: number): string {
+  if (e.kind === 'object' && (!e.spreads || e.spreads.length === 0)) {
+    if (e.fields.length === 0) return `mapOf<String, Any?>()`
+    const entries = e.fields
+      .map((f) => `${JSON.stringify(f.name)} to ${emitKotlinDynamicValue(f.value, indent)}`)
+      .join(', ')
+    return `mapOf<String, Any?>(${entries})`
+  }
+  if (e.kind === 'array') {
+    if (e.elements.length === 0) return `listOf<Any?>()`
+    const elems = e.elements.map((el) => emitKotlinDynamicValue(el, indent)).join(', ')
+    return `listOf<Any?>(${elems})`
+  }
+  return emitKotlinExpr(e, indent)
+}
+
 function emitKotlinExpr(e: ExprIR, indent: number): string {
   switch (e.kind) {
     case 'literal':
@@ -3207,6 +3260,13 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
     case 'announce-call':
       // Imperative @pyreon/a11y announce → PyreonA11y (the registered announcer).
       return `PyreonA11y.announce(${emitKotlinExpr(e.message, indent)}, ${e.assertive})`
+    case 'schema-validate': {
+      // Standalone `@pyreon/validate` `s.object({ … }).safeParse(x)` →
+      // `PyreonZodSchema_<name>.safeParseResult(<x-as-map>)`, returning
+      // `PyreonParseResult<T>` — a wrapping `.success` / `.data` composes over
+      // it. The argument lowers to a `Map<String, Any?>` (never a data class).
+      return `PyreonZodSchema_${e.schemaName}.safeParseResult(${emitKotlinDynamicValue(e.arg, indent)})`
+    }
     case 'json-stringify':
       // `JSON.stringify(x)` → kotlinx-serialization. The value is @Serializable
       // (emitted structs) or a serializable builtin; `Json.encodeToString`

@@ -1,0 +1,6 @@
+---
+'@pyreon/native-compiler': minor
+'@pyreon/validate': patch
+---
+
+PMTC now lowers STANDALONE `@pyreon/validate` schema validation. Before, only a top-level `const X = s.object({ … })` declaration lowered (the `@pyreon/form` path); an inline `s.object({ n: s.number() }).safeParse(x).success` — the shape real feature code writes to validate data — warned and emitted `s.object(...)` verbatim ("cannot find 's' in scope"). Now the inline schema is synthesized into a `PyreonZodSchema_Inline<N>` struct (reusing the Gap-4 field walker, so scalar objects, nested objects, arrays and constraint chains all lower), and `.safeParse(x)` lowers to a web-faithful `safeParseResult(<x-as-dictionary>)` returning `PyreonParseResult { success, data }` — so a wrapping `.success` / `.data` composes. The argument becomes a native dictionary (`[String: Any]` / `Map<String, Any?>`), so validation checks a runtime map the way the web `safeParse(unknown)` does; identical inline schemas dedup to one struct. Only a LITERAL `s.object({ … })` shape lowers — `s.object(someVar)`, inline `.parse(x)` (throwing), and a user's own `s` binding stay web (warned, never a silent broken emit). Verified end-to-end against real swiftc 6.x + kotlinc 2.x.

@@ -1098,6 +1098,18 @@ export type ExprIR =
    */
   | { kind: 'call'; callee: ExprIR; args: ExprIR[]; optional?: boolean }
   /**
+   * A standalone `@pyreon/validate` schema validation — the inline chain
+   * `s.object({ … }).safeParse(ARG)`. `schemaName` is the SYNTHESIZED schema's
+   * binding (its struct is `PyreonZodSchema_<schemaName>`, pushed into
+   * `zodSchemas` with `inline`+`emitSafeParseResult` set); `arg` is the value
+   * being validated. Lowers to `PyreonZodSchema_<schemaName>.safeParseResult(
+   * <arg-as-dictionary>)`, whose result carries `.success` (Bool) + `.data`
+   * (optional) — so a wrapping `.success` / `.data` member access composes
+   * naturally. An object-literal `arg` is emitted as a native dictionary
+   * (`[String: Any]` / `Map<String, Any?>`), NOT a synthesized struct.
+   */
+  | { kind: 'schema-validate'; schemaName: string; arg: ExprIR }
+  /**
    * An imperative `@pyreon/toast` call — `toast("msg")` or a preset
    * `toast.success("msg")` / `.error` / `.warning` / `.info` / `.loading`.
    * Lowers to `PyreonToast.shared.add(message, type:)` (Swift) /
@@ -1683,6 +1695,24 @@ export interface ZodSchemaDefnIR {
       caseName: string
     }[]
   }
+  /**
+   * Standalone-validation follow-up — this schema was SYNTHESIZED from an
+   * inline `s.object({ … }).safeParse(x)` expression rather than a top-level
+   * `const X = s.object({ … })` declaration. The emitter suppresses the
+   * trailing instance binding (`let <bindingName> = …` / the Kotlin val),
+   * which only exists so a top-level schema name resolves as a value; an
+   * inline schema is referenced solely through its static `safeParseResult`.
+   */
+  inline?: boolean
+  /**
+   * Standalone-validation follow-up — emit the web-faithful
+   * `safeParseResult(_ input:) -> PyreonParseResult<Self>` static method on
+   * this schema (in addition to the `Result`-returning `safeParse`). The
+   * `.safeParse(x).success` / `.data` shape shared source writes lowers to a
+   * call on it, because Swift's `Result` / Kotlin's `Result` carry no
+   * `.success` Bool. Only inline-validated schemas set this.
+   */
+  emitSafeParseResult?: boolean
 }
 
 export interface ParseResult {
