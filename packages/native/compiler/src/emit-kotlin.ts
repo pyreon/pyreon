@@ -19,6 +19,7 @@ import {
   substituteIdentifier,
   synthLiteralStructName,
   classifyDynamicStylingAttr,
+  classifySortableRef,
   exprHasOptionalLink,
 } from './expr-utils'
 import {
@@ -260,6 +261,8 @@ let _machineNames: Set<string> = new Set()
 let _syncedSignalNames: Set<string> = new Set()
 /** `createTableState(...)` bindings — property reads drop parens; methods flow through. */
 let _tableNames: Set<string> = new Set()
+/** `useSortable` binding names — the `ref={s.itemRef(k)}` lowering keys on these. */
+let _sortableNames: Set<string> = new Set()
 /** Per-component: i18n instance names — `i18n.t(key, {…})` lowers the
  *  object-literal values arg to a map at this call shape. Mirror of
  *  emit-swift's `_i18nNames`. */
@@ -1501,6 +1504,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _machineNames = new Set()
   _syncedSignalNames = new Set()
   _tableNames = new Set()
+  _sortableNames = new Set()
   _i18nNamesKotlin = new Set()
   _fetchNames = new Set()
   _formNames = new Set()
@@ -1540,6 +1544,7 @@ function emitKotlinComponent(c: ComponentIR): string {
     if (d.kind === 'machine') _machineNames.add(d.name)
     if (d.kind === 'synced-signal') _syncedSignalNames.add(d.name)
     if (d.kind === 'table-state') _tableNames.add(d.name)
+    if (d.kind === 'sortable') _sortableNames.add(d.name)
     if (d.kind === 'i18n') _i18nNamesKotlin.add(d.name)
     // C4: `const router = createRouter(...)` is a remembered router
     // instance — name reads bare (no parens) like a signal. Add to
@@ -1697,6 +1702,25 @@ function emitKotlinComponent(c: ComponentIR): string {
     }
     lines.push(`  ${name}.onSubmit = { ${kotlinIdent(d.onSubmit.param)} ->`)
     lines.push(bodyLines)
+    lines.push(`  }`)
+  }
+  // sortable: wire the item source + key extractor + reorder sink. Bound in
+  // the composable body (not inside `remember`) for the same reason the form's
+  // onSubmit is: the closures reference the component's OWN state, which is
+  // not in scope inside the state object's own initializer. The captured
+  // `items` is a `by remember { mutableStateOf }` delegate, so the closure
+  // reads the LIVE value on every call rather than a first-composition
+  // snapshot. The key is coerced to String — the native engine keys on String
+  // while the web `by` returns `string | number`.
+  for (const d of c.decls) {
+    if (d.kind !== 'sortable') continue
+    const name = kotlinIdent(d.name)
+    const p = kotlinIdent(d.keyParam)
+    const key = kotlinSortKeyExpr(d)
+    const next = kotlinIdent(d.reorderParam)
+    const body = d.reorderBody.map((st) => `    ${emitKotlinStatement(st, 4, ctx)}`).join('\n')
+    lines.push(`  ${name}.bind({ ${emitKotlinExpr(d.itemsBody, 2)} }, { ${p} -> ${key} }) { ${next} ->`)
+    lines.push(body)
     lines.push(`  }`)
   }
   // Phase 4: a `LaunchedEffect(Unit)` per useFetch decl runs the fetch on
@@ -1880,6 +1904,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _machineNames = new Set()
   _syncedSignalNames = new Set()
   _tableNames = new Set()
+  _sortableNames = new Set()
   _i18nNamesKotlin = new Set()
   _fetchNames = new Set()
   _formNames = new Set()
@@ -1932,6 +1957,17 @@ let _databaseNames: Set<string> = new Set()
 let _fieldArrayNamesKotlin: Set<string> = new Set()
 let _fieldArrayItemParamsKotlin: string[] = []
 
+/**
+ * The `by` key expression for a sortable, coerced to `String` — the Kotlin
+ * mirror of `swiftSortKeyExpr`. The web `by` returns `string | number`; the
+ * native engine keys on String so both targets agree on one key type.
+ */
+function kotlinSortKeyExpr(d: Extract<DeclIR, { kind: 'sortable' }>): string {
+  const emitted = emitKotlinExpr(d.keyBody, 2)
+  const t = inferType(d.keyBody, _kotlinExprInferCtx)
+  return t.kind === 'string' ? emitted : `(${emitted}).toString()`
+}
+
 /** A PyreonCell expression for a table column, chosen by the field's type. */
 function kotlinTableCell(fieldType: TypeIR | undefined, expr: string): string {
   if (fieldType?.kind === 'string') return `PyreonCell.Str(${expr})`
@@ -1951,6 +1987,13 @@ function resolveKotlinRowTypeName(elem: TypeIR): string {
     )
     if (match) return match.name
   }
+  // SCALAR rows. A table always has object rows (columns read fields), so this
+  // never mattered there — but a sortable over `string[]` / `number[]` is an
+  // ordinary shape, and `Any` would make the emitted generic uselessly wide
+  // (a `List<Any>` does not assign to a `List<String>` sink).
+  if (elem.kind === 'string') return 'String'
+  if (elem.kind === 'number') return 'Int'
+  if (elem.kind === 'boolean') return 'Boolean'
   return 'Any'
 }
 
@@ -2563,6 +2606,17 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       .join(', ')
     const pageArg = d.pageSize > 0 ? `, ${d.pageSize}` : ''
     return `val ${kotlinIdent(d.name)} = remember { PyreonTableState<${rowType}>({ ${emitKotlinExpr(d.dataBody, 2)} }, listOf(${cols})${pageArg}) }`
+  }
+  // `@pyreon/dnd` — the PyreonSortableState engine. `remember` keeps ONE
+  // instance across recompositions (the drag state lives in it); the reactive
+  // item source + reorder sink are wired by a `bind` call emitted into the
+  // composable body, mirroring how the form's onSubmit is assigned post-decl.
+  if (d.kind === 'sortable') {
+    const it = inferType(d.itemsBody, _kotlinExprInferCtx)
+    const elem: TypeIR = it.kind === 'array' ? it.element : { kind: 'unknown' }
+    const rowType = resolveKotlinRowTypeName(elem)
+    const axisArg = d.axis === 'horizontal' ? 'PyreonSortAxis.HORIZONTAL' : ''
+    return `val ${kotlinIdent(d.name)} = remember { PyreonSortableState<${rowType}>(${axisArg}) }`
   }
   // Phase 4 follow-up: `const scheme = useColorScheme()` →
   // `val ${name} = if (isSystemInDarkTheme()) "dark" else "light"`.
@@ -6129,8 +6183,33 @@ function emitKotlinLayoutModifier(
   if (readStaticAttrKotlin(e, 'accessibilityHidden') === true) {
     parts.push('.clearAndSetSemantics { }')
   }
+  // `@pyreon/dnd` — `ref={s.containerRef}` / `ref={s.itemRef(key)}` become the
+  // sortable Modifier extensions. Emitted LAST for the same reason as Swift:
+  // the long-press drag wraps the element's own padding/background.
+  const sortableRef = kotlinSortableRef(e)
+  if (sortableRef !== undefined) parts.push(sortableRef)
   if (parts.length === 0) return ''
   return `Modifier${parts.join('')}`
+}
+
+/**
+ * The sortable Modifier extension for this element's `ref` attr, if it binds
+ * one. Mirror of `swiftSortableRef`; both route through the SHARED
+ * `classifySortableRef` so the two backends cannot disagree on the shape.
+ */
+function kotlinSortableRef(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+): string | undefined {
+  const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'ref')
+  if (attr === undefined || attr.kind !== 'attr') return undefined
+  const binding = classifySortableRef(attr.value, _sortableNames)
+  if (binding === null) return undefined
+  const state = kotlinIdent(binding.state)
+  if (binding.kind === 'container') return `.pyreonSortableContainer(${state})`
+  const keyExpr = emitKotlinExpr(binding.key, 0)
+  const t = inferType(binding.key, _kotlinExprInferCtx)
+  const key = t.kind === 'string' ? keyExpr : `(${keyExpr}).toString()`
+  return `.pyreonSortableItem(${state}, ${key})`
 }
 
 /**

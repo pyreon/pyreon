@@ -815,6 +815,34 @@ export type DeclIR =
       pageSize: number
       columns: { id: string }[]
     }
+  /**
+   * `const s = useSortable({ items, by, onReorder, axis? })` from
+   * `@pyreon/dnd` → the native PyreonSortableState engine.
+   *
+   * The web hook returns REFS the author attaches to DOM nodes; on native the
+   * same `ref={s.itemRef(key)}` / `ref={s.containerRef}` attributes lower to
+   * view modifiers, so one source drives both. The reorder ARITHMETIC is
+   * shared (a verbatim port of `performReorder`), while the gesture is each
+   * platform's own — SwiftUI `.draggable`/`.dropDestination`, Compose
+   * long-press drag.
+   *
+   * v1 lowers the four load-bearing options. `groupId` /
+   * `onCrossListDrop` / `onCrossListReceive` (cross-list boards) and `label`
+   * (screen-reader text) warn by name rather than dropping silently.
+   */
+  | {
+      kind: 'sortable'
+      name: string
+      /** The `items: () => <body>` arrow body (the reactive row source). */
+      itemsBody: ExprIR
+      /** The `by: (item) => <body>` key extractor. */
+      keyParam: string
+      keyBody: ExprIR
+      /** The `onReorder: (next) => …` commit sink. */
+      reorderParam: string
+      reorderBody: StatementIR[]
+      axis: 'vertical' | 'horizontal'
+    }
 
 /**
  * Phase C5 — one route entry parsed from `createRouter({ routes: [...] })`.

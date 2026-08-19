@@ -38,7 +38,13 @@ describe('the web-only warning carries the package’s own reason', () => {
     ['@pyreon/virtual', 'useVirtualizer', 'native lists are lazy by construction'],
     ['@pyreon/head', 'useHead', 'no equivalent surface exists on iOS/Android'],
     ['@pyreon/lint', 'lintFile', 'runs at dev time, not app runtime'],
-    ['@pyreon/dnd', 'useDraggable', 'platform-gesture territory'],
+    // `@pyreon/dnd` is deliberately NOT here any more: `useSortable` lowers to
+    // the native PyreonSortableState engine, so the package declares a
+    // `nativeFrontend` and is no longer in the blanket web-only set. Its
+    // still-web members (useDraggable / useDroppable / useDragMonitor /
+    // useFileDrop) warn per-HOOK by name instead, which is strictly more
+    // actionable than a package-wide sentence — asserted in
+    // `native-sortable.test.ts`, so dropping the row loses no coverage.
   ])('%s explains itself', (pkg, sym, phrase) => {
     expect(webOnlyWarn(pkg, sym)).toContain(phrase)
   })

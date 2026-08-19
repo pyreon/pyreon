@@ -23,6 +23,7 @@ import {
   substituteIdentifier,
   synthLiteralStructName,
   classifyDynamicStylingAttr,
+  classifySortableRef,
   exprHasOptionalLink,
 } from './expr-utils'
 import {
@@ -235,6 +236,8 @@ let _syncedSignalNames: Set<string> = new Set()
  *  sortColumn/sortDirection/filterValue) drop parens; its METHODS (rows/
  *  toggleSort/setFilter/…) flow through unchanged. */
 let _tableNames: Set<string> = new Set()
+/** `useSortable` binding names — the `ref={s.itemRef(k)}` lowering keys on these. */
+let _sortableNames: Set<string> = new Set()
 /** Per-component: `useOnline()` decl names. A web `useOnline()` returns an
  *  ACCESSOR (`() => boolean`), so shared code reads it as `net()`; on native
  *  the accessor call lowers to the `net.isOnline` read on the PyreonNetworkStatus
@@ -1882,6 +1885,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   _machineNames = new Set()
   _syncedSignalNames = new Set()
   _tableNames = new Set()
+  _sortableNames = new Set()
   _netStatusNames = new Set()
   _appStateNames = new Set()
   _crashNames = new Set()
@@ -1932,6 +1936,7 @@ function emitSwiftComponent(c: ComponentIR): string {
     if (d.kind === 'machine') _machineNames.add(d.name)
     if (d.kind === 'synced-signal') _syncedSignalNames.add(d.name)
     if (d.kind === 'table-state') _tableNames.add(d.name)
+    if (d.kind === 'sortable') _sortableNames.add(d.name)
     if (d.kind === 'network-status') _netStatusNames.add(d.name)
     if (d.kind === 'app-state') _appStateNames.add(d.name)
     if (d.kind === 'crash-reporter') _crashNames.add(d.name)
@@ -2347,6 +2352,27 @@ function emitSwiftComponent(c: ComponentIR): string {
       `      .onAppear { ${swiftIdent(d.name)}.setData { ${emitSwiftExpr(d.dataBody, 8)} } }`,
     )
   }
+  // sortable: wire the item source + key extractor + reorder sink, same
+  // `.onAppear` rationale as table-state (a @State initializer cannot capture
+  // the view's own @State). The key is coerced to String because the native
+  // engine keys on String while the web `by` returns `string | number`.
+  for (const d of c.decls) {
+    if (d.kind !== 'sortable') continue
+    const name = swiftIdent(d.name)
+    const p = swiftIdent(d.keyParam)
+    const key = swiftSortKeyExpr(d)
+    const next = swiftIdent(d.reorderParam)
+    const body = d.reorderBody.map((st) => `          ${emitSwiftStatement(st, 10)}`).join('\n')
+    lines.push(`      .onAppear {`)
+    lines.push(`        ${name}.bind(`)
+    lines.push(`          items: { ${emitSwiftExpr(d.itemsBody, 10)} },`)
+    lines.push(`          by: { ${p} in ${key} },`)
+    lines.push(`          onReorder: { ${next} in`)
+    lines.push(body)
+    lines.push(`          }`)
+    lines.push(`        )`)
+    lines.push(`      }`)
+  }
   // app-state: START the lifecycle observers. The runtime wired REAL
   // UIApplication notifications behind start() from inception — and no emit
   // ever called it, so useAppState() was frozen at its initial "active"
@@ -2620,6 +2646,22 @@ function inlineValueConstsInStmts(stmts: StatementIR[]): StatementIR[] {
 /** Swift type for a synced signal's scalar (`number` → `Double`). */
 function syncedSignalSwiftType(scalar: 'string' | 'double' | 'bool'): string {
   return scalar === 'string' ? 'String' : scalar === 'double' ? 'Double' : 'Bool'
+}
+
+/**
+ * The `by` key expression for a sortable, coerced to `String`.
+ *
+ * The web `by` returns `string | number` (both are valid `<For by>` keys), but
+ * the native engine keys on `String` so one drag payload type serves every row
+ * type — `String` already conforms to `Transferable`, which is what lets a
+ * consumer's row type stay conformance-free. A string-typed key passes through
+ * unchanged; anything else is interpolated (total, and identical to the
+ * `String(describing:)` result for the scalar keys this accepts).
+ */
+function swiftSortKeyExpr(d: Extract<DeclIR, { kind: 'sortable' }>): string {
+  const emitted = emitSwiftExpr(d.keyBody, 10)
+  const t = inferType(d.keyBody, _activeInferCtx)
+  return t.kind === 'string' ? emitted : `"\\(${emitted})"`
 }
 
 /** A PyreonCell expression for a table column, chosen by the field's type. */
@@ -3144,6 +3186,17 @@ function emitSwiftDecl(
       .join(', ')
     const pageArg = d.pageSize > 0 ? `, pageSize: ${d.pageSize}` : ''
     return `@State private var ${swiftIdent(d.name)} = PyreonTableState<${rowType}>(columns: [${cols}]${pageArg})`
+  }
+  // (see swiftSortKeyExpr below for the `by` key coercion)
+  // `@pyreon/dnd` — a self-seeding @State PyreonSortableState. Same shape as
+  // the table above: the reactive item source + reorder sink are wired in
+  // `.onAppear` (emitSwiftComponent) so the initializer captures no `self`.
+  if (d.kind === 'sortable') {
+    const it = inferType(d.itemsBody, inferCtx)
+    const elem: TypeIR = it.kind === 'array' ? it.element : { kind: 'unknown' }
+    const rowType = swiftType(elem, synth)
+    const axisArg = d.axis === 'horizontal' ? 'axis: .horizontal' : ''
+    return `@State private var ${swiftIdent(d.name)} = PyreonSortableState<${rowType}>(${axisArg})`
   }
   // Phase 4 follow-up: `const scheme = useColorScheme()` → a computed
   // property reading the View's @Environment(\.colorScheme) injection
@@ -7422,7 +7475,33 @@ function emitSwiftLayoutModifiers(
   if (swiftTrait !== null) {
     parts.push(`.accessibilityAddTraits(${swiftTrait})`)
   }
+  // `@pyreon/dnd` — `ref={s.containerRef}` / `ref={s.itemRef(key)}` become the
+  // sortable view modifiers. Emitted LAST so the drag wrapper sits outside the
+  // element's own padding/background, which is what an author writing the
+  // SwiftUI by hand would do (the lifted row carries its styling with it).
+  const sortableRef = swiftSortableRef(e)
+  if (sortableRef !== undefined) parts.push(sortableRef)
   return parts.join('')
+}
+
+/**
+ * The sortable modifier for this element's `ref` attr, if it binds one.
+ * `null`-returning by construction for every other ref value, so an unrelated
+ * `ref` keeps its existing native behaviour (ignored) rather than mis-lowering.
+ */
+function swiftSortableRef(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+): string | undefined {
+  const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'ref')
+  if (attr === undefined || attr.kind !== 'attr') return undefined
+  const binding = classifySortableRef(attr.value, _sortableNames)
+  if (binding === null) return undefined
+  const state = swiftIdent(binding.state)
+  if (binding.kind === 'container') return `.pyreonSortableContainer(${state})`
+  const keyExpr = emitSwiftExpr(binding.key, 0)
+  const t = inferType(binding.key, _activeInferCtx)
+  const key = t.kind === 'string' ? keyExpr : `"\\(${keyExpr})"`
+  return `.pyreonSortableItem(${state}, key: ${key})`
 }
 
 /**
