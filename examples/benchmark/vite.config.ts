@@ -1,7 +1,46 @@
+import { compile as compileVueTemplate } from '@vue/compiler-dom'
 import { octane } from '@octanejs/vite-plugin'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import pyreon from '@pyreon/vite-plugin'
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
+import { DBMON_VUE_TEMPLATE } from './src/impl/dbmon-vue-template'
+
+/**
+ * Precompiles the dbmon Vue template exactly the way an SFC is compiled:
+ * at BUILD time, in Node, with `prefixIdentifiers` on.
+ *
+ * This exists because the two easier routes both measure something other than
+ * Vue. Handing a `template:` string to `vue/dist/vue.esm-bundler.js` invokes
+ * the RUNTIME compiler, which emits `with (_ctx) { … }` — a V8 deoptimization
+ * barrier no SFC ever produces, and measurably slower than the hand-written
+ * `h()` arm it is supposed to represent. Calling `compile()` in the browser
+ * with `prefixIdentifiers: true` instead throws Vue compiler error 48, because
+ * identifier prefixing needs `@babel/parser`, which the browser build omits.
+ *
+ * Compiling here sidesteps both: `mode: 'module'` emits the same
+ * `import { … } from "vue"` + `export function render(…)` pair an SFC does,
+ * the browser bundle carries no compiler at all, and no compilation happens
+ * inside a timed region.
+ */
+function dbmonVueTemplatePlugin(): Plugin {
+  const VIRTUAL = 'virtual:dbmon-vue-render'
+  const RESOLVED = `\0${VIRTUAL}`
+  return {
+    name: 'dbmon-vue-template',
+    resolveId(id) {
+      return id === VIRTUAL ? RESOLVED : undefined
+    },
+    load(id) {
+      if (id !== RESOLVED) return undefined
+      const { code } = compileVueTemplate(DBMON_VUE_TEMPLATE, {
+        mode: 'module',
+        prefixIdentifiers: true,
+        hoistStatic: true,
+      })
+      return code
+    },
+  }
+}
 
 // bench-bundle.ts: per-framework isolated production builds — the driver sets
 // BENCH_BUNDLE_ENTRY to a keep-reference entry file and this config swaps the
@@ -57,6 +96,7 @@ export default defineConfig({
       ? { build: { minify: false } }
       : {}),
   plugins: [
+    dbmonVueTemplatePlugin(),
     pyreon(),
     // Octane — the compiled-React framework (`.tsrx`). `requireDirective: true`
     // is LOAD-BEARING, not a preference: with the default `false`, Octane's
