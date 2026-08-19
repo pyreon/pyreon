@@ -48,6 +48,31 @@ cd "$REPO_ROOT" || exit 1
 
 TIMEOUT_SEC="${PYREON_PRE_PUSH_TIMEOUT_SEC:-300}"
 
+# validate-fast gets its OWN budget, and it must not be the 300s default.
+#
+# Two reasons, both measured 2026-08 on a loaded machine:
+#
+#   1. The gate wall is NOT the advertised "~2-5s". That figure is a warm,
+#      idle box. Measured on this repo: 148s at load ~20, 211s at load 333,
+#      and 496s at load 443 — the last one is 1.65x the default budget, so
+#      the FIRST step of the wall gets killed before a single test runs.
+#
+#   2. The full-workspace auto-raise below CANNOT protect it. That raise keys
+#      on $FILTER, which is computed ~30 lines AFTER this step has already
+#      run — so the one scenario it was written for (a root-file change, which
+#      is exactly when the machine is busiest) is the one scenario where
+#      validate-fast is still on 300s.
+#
+# The failure mode is what makes this worth fixing rather than documenting:
+# a killed step prints "fast gates failed — fix the failure(s) above", which
+# reads as YOUR GATES ARE BROKEN. Nothing says the clock ran out, so the
+# rational response is to bypass the hook — which is how a wall stops being
+# run at all.
+#
+# An explicit PYREON_PRE_PUSH_TIMEOUT_SEC still wins outright; this only
+# raises the DEFAULT, and only for this step.
+VF_TIMEOUT_SEC="${PYREON_PRE_PUSH_TIMEOUT_SEC:-900}"
+
 echo "[pyreon pre-push] running local validation (lint + typecheck + tests)"
 echo "[pyreon pre-push] per-step timeout: ${TIMEOUT_SEC}s. bypass with PYREON_SKIP_PRE_PUSH=1 or git push --no-verify"
 echo
@@ -78,9 +103,13 @@ fi
 # Spawn the command in background, poll for completion, kill if exceeded.
 # Returns 0 on success, 1 on command failure, 124 on timeout (matching
 # coreutils `timeout`'s convention).
-run_with_timeout() {
-  step_name="$1"
-  shift
+# `run_with_timeout_secs` takes the budget EXPLICITLY; `run_with_timeout`
+# delegates to it with the shared per-step default, so there is exactly one
+# implementation and a per-step budget cannot drift from the generic path.
+run_with_timeout_secs() {
+  budget_sec="$1"
+  step_name="$2"
+  shift 2
   cmd="$*"
 
   # Run in background so we can time it
@@ -89,9 +118,12 @@ run_with_timeout() {
   start=$(date +%s)
   while kill -0 "$cmd_pid" 2>/dev/null; do
     now=$(date +%s)
-    if [ $((now - start)) -ge "$TIMEOUT_SEC" ]; then
+    if [ $((now - start)) -ge "$budget_sec" ]; then
       echo
-      echo "[pyreon pre-push] ❌ $step_name exceeded ${TIMEOUT_SEC}s — killing."
+      echo "[pyreon pre-push] ❌ $step_name exceeded ${budget_sec}s — killing."
+      echo "[pyreon pre-push]    This is a CLOCK failure, not a gate failure — the step did not"
+      echo "[pyreon pre-push]    report a problem, it ran out of time. Raise the budget with"
+      echo "[pyreon pre-push]    PYREON_PRE_PUSH_TIMEOUT_SEC=1800 git push before assuming a bug."
       echo "[pyreon pre-push]    Common cause: orphaned vitest processes from a prior worktree."
       echo "[pyreon pre-push]    Try: pkill -f 'vitest run' && git push"
       echo "[pyreon pre-push]    Or:  PYREON_SKIP_PRE_PUSH=1 git push  (one-off bypass)"
@@ -108,6 +140,12 @@ run_with_timeout() {
   return $?
 }
 
+run_with_timeout() {
+  step_name="$1"
+  shift
+  run_with_timeout_secs "$TIMEOUT_SEC" "$step_name" "$@"
+}
+
 # ── 1. Fast gates (lint + 9 cheap doc/dist/budget/manifest gates) ───
 # Replaces the standalone lint step. `validate-fast` runs lint AND every
 # gate that has previously tripped freshly-pushed PRs on CI:
@@ -115,10 +153,12 @@ run_with_timeout() {
 #   check-distribution, check-release-readiness, check-manifest-depth,
 #   check-client-bundle-node-imports, check-shared-source-deps,
 #   check-mcp-docs, gen-docs --check.
-# Total runtime: ~2-5s. Catches the failure modes that the bare
-# lint+typecheck+test triple historically missed.
+# Catches the failure modes that the bare lint+typecheck+test triple
+# historically missed. Runtime is ~2-5s warm and idle, but scales hard with
+# machine load (measured 148s / 211s / 496s at load 20 / 333 / 443) — hence
+# VF_TIMEOUT_SEC above rather than the shared per-step default.
 echo "[1/3] fast gates (lint + doc/dist/budget/manifest)"
-run_with_timeout "validate-fast" "bun run validate-fast"
+run_with_timeout_secs "$VF_TIMEOUT_SEC" "validate-fast" "bun run validate-fast"
 VF_RC=$?
 if [ $VF_RC -eq 124 ]; then
   exit 1
