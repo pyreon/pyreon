@@ -324,6 +324,39 @@ if (__url.searchParams.get('profileClear') === '1') {
       removeContainer(container)
     }
   })()
+} else if (__url.searchParams.get('mode') === 'crossover') {
+  // ROW-COUNT SWEEP (`?mode=crossover&framework=X&rows=N`). Additive: it shares
+  // `runner.ts` and touches none of the nine published ops, so no baseline
+  // moves. Lazy-imported so the main suite's bundle is unaffected. See
+  // `impl/crossover-shared.ts` for the hypothesis and the instrument design.
+  void (async () => {
+    const { runCrossover, CROSSOVER_FRAMEWORK_NAMES } = await import('./impl/crossover')
+    if (!__frameworkParam || !CROSSOVER_FRAMEWORK_NAMES.includes(__frameworkParam)) {
+      setStatus(
+        `Unknown crossover framework: ${__frameworkParam}. Valid: ${CROSSOVER_FRAMEWORK_NAMES.join(', ')}`,
+      )
+      return
+    }
+    const rowsParam = __url.searchParams.get('rows') ?? '1000'
+    setStatus(`Running crossover: ${__frameworkParam} @ ${rowsParam} rows…`)
+    // `bench-fixture` for the same deterministic-layout reason `runSelected`
+    // passes it: `table-layout: auto` re-measures the whole table whenever a
+    // mutation can widen a column, which makes row-list ops BIMODAL. This suite
+    // sweeps row count, so a layout mode whose cost scales with content width
+    // would be indistinguishable from the architectural slope being measured.
+    const container = makeContainer('bench-fixture')
+    try {
+      const suite = await runCrossover(__frameworkParam, container)
+      buildTable([suite])
+      ;(globalThis as { __benchResults?: BenchSuite[] }).__benchResults = [suite]
+      setStatus('Done ✓')
+    } catch (err) {
+      console.error(`crossover ${__frameworkParam} failed:`, err)
+      setStatus(`FAILED: ${String(err)}`)
+    } finally {
+      removeContainer(container)
+    }
+  })()
 } else if (__url.searchParams.get('mode') === 'apppage') {
   void (async () => {
     const { runAppPage, APPPAGE_FRAMEWORKS } = await import('./impl/apppage')
