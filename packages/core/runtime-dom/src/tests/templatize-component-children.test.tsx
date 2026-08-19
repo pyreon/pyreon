@@ -111,7 +111,7 @@ const Provider = (props) => { provide(Ctx, () => 'PROVIDED'); return props.child
 describe('templatizeComponentChildren — emit shape', () => {
   it('absorbs an all-component child list as APPENDS, with no placeholder comments', () => {
     const code = emit(`const App = () => <div class="branch"><Node /><Node /></div>`)
-    expect(code).toContain('_tpl("<div class=\\"branch\\"></div>"')
+    expect(code).toContain('_tpl("<div class=\\"branch\\" data-pyreon-hole></div>"')
     expect(code).toContain('_mountChild(<Node />, __root, null)')
     // The placeholder variant of this feature measured 4.26ms against the
     // append variant's 3.93ms — 2,046 comment nodes cloned and then removed.
@@ -127,7 +127,7 @@ describe('templatizeComponentChildren — emit shape', () => {
 
   it('bakes a static skeleton around a nested component child', () => {
     const code = emit(`const App = () => <div class="app"><main class="m"><Mid /></main></div>`)
-    expect(code).toContain('_tpl("<div class=\\"app\\"><main class=\\"m\\"></main></div>"')
+    expect(code).toContain('_tpl("<div class=\\"app\\"><main class=\\"m\\" data-pyreon-hole></main></div>"')
     // PZ-08: the parent ref must be a phase-1 const, not an inlined walk.
     expect(code).toContain('const __e0 = __root.firstElementChild')
     expect(code).toContain('_mountChild(<Mid />, __e0, null)')
@@ -141,7 +141,7 @@ describe('templatizeComponentChildren — emit shape', () => {
   it('PRESERVES _rp wrapping on an absorbed component child’s props', () => {
     const src = `const N = (props) => <div class="branch"><Node depth={props.depth - 1} /></div>`
     const code = transformJSX(src, 'test.tsx', ON).code
-    expect(code).toContain('_tpl("<div class=\\"branch\\"></div>"')
+    expect(code).toContain('_tpl("<div class=\\"branch\\" data-pyreon-hole></div>"')
     // Without the hole this reads `<Node depth={props.depth - 1} />` — a value
     // captured once, so the prop never updates again.
     expect(code).toContain('_mountChild(<Node depth={_rp(() => props.depth - 1)} />')
@@ -180,21 +180,21 @@ describe('templatizeComponentChildren — ordering gate (the #2914 blocker)', ()
     expect(render(src, ON)).toContain('PROVIDED')
     expect(render(src, ON)).toBe(render(src, {}))
     // Not templatized at all — this is today's h() behaviour, unchanged.
-    expect(emit(src)).not.toContain('_tpl("<div class=\\"k\\">')
+    expect(emit(src)).not.toContain('_tpl("<div class=\\"k\\"')
   })
 
   it('BAILS on a member/namespaced tag parent (never _lc-wrapped)', () => {
     // `jsxTagName` reports '' for `<Ctx.Provider>`, which the uppercase test
     // would read as "not a component" — the gate must not be fooled.
     const src = `const App = () => <Ns.Provider><div class="k"><Leaf /></div></Ns.Provider>`
-    expect(emit(src)).not.toContain('_tpl("<div class=\\"k\\">')
+    expect(emit(src)).not.toContain('_tpl("<div class=\\"k\\"')
   })
 
   it('BAILS inside an expression container and a fragment child position', () => {
     expect(emit(`const App = () => <Provider>{<div class="k"><Leaf /></div>}</Provider>`)).not
-      .toContain('_tpl("<div class=\\"k\\">')
+      .toContain('_tpl("<div class=\\"k\\"')
     expect(emit(`const App = () => <Provider><><div class="k"><Leaf /></div></></Provider>`)).not
-      .toContain('_tpl("<div class=\\"k\\">')
+      .toContain('_tpl("<div class=\\"k\\"')
   })
 
   it('BAILS when the component sits inside NESTED fragments in an eager position', () => {
@@ -203,7 +203,7 @@ describe('templatizeComponentChildren — ordering gate (the #2914 blocker)', ()
     // while the emit absorbed it anyway — gate skipped for a shape needing it.
     const src = `${CTX}\nconst App = () => <Provider><div class="k"><><><Leaf /></></></div><i /></Provider>`
     expect(render(src, ON)).toContain('PROVIDED')
-    expect(emit(src)).not.toContain('_tpl("<div class=\\"k\\">')
+    expect(emit(src)).not.toContain('_tpl("<div class=\\"k\\"')
   })
 
   it('a purely STATIC template is unaffected by the gate everywhere', () => {
@@ -217,22 +217,22 @@ describe('templatizeComponentChildren — ordering gate (the #2914 blocker)', ()
   })
 })
 
-describe('templatizeComponentChildren — the hydration cost, pinned', () => {
-  // This is the reason the option is DEFAULT OFF, recorded as an executable
-  // measurement rather than a claim. Every element this option newly
-  // templatizes stops adopting its SSR DOM, and so does everything below it.
+describe('templatizeComponentChildren — hydration adoption, pinned', () => {
+  // This block used to pin the option's hydration COST — the reason it was
+  // default-off. The cost was real and is now GONE for the absorbed-component
+  // shape: the compiler declares the element it leaves empty a MOUNT HOLE, the
+  // adopt verifier skips that element's server range instead of reading it as
+  // extra elements, and the compiled bind HYDRATES the range instead of
+  // mounting a second copy beside it.
   //
-  // The MECHANISM is a mount hole, not the swap this comment used to describe:
-  // component-root templates DO adopt now, but the verifier rejects a template
-  // whose element tree is a strict subset of the server's, which is exactly
-  // what an absorbed component leaves behind. The full three-part account —
-  // including the disproof of the earlier "eager argument, no cursor to arm"
-  // diagnosis, and the proof that relaxing the verifier alone DUPLICATES the
-  // server content — lives in `hydrate-template-hole-limit.test.tsx`.
-  //
-  // These two specs stay here so the cost is pinned in the OPTION's own
-  // coverage; they fail the moment someone flips the default, with the number
-  // attached.
+  // The numbers below are the same measurement, re-pointed at the corrected
+  // truth: ON now retains everything OFF retains. The invariant the block
+  // protects is unchanged — that the option's hydration behaviour is an
+  // executable measurement rather than a claim — so the specs are kept and the
+  // assertions moved, not deleted. The full account, including the disproof of
+  // the earlier "eager argument, no cursor to arm" diagnosis and the proof that
+  // relaxing the verifier ALONE duplicates the server content, lives in
+  // `hydrate-template-hole-limit.test.tsx`.
   const LAYOUT = `
 const Leaf = () => <span class="t">leaf</span>
 const Mid = () => <section class="mid"><Leaf /></section>
@@ -259,11 +259,14 @@ const App = () => <div class="app"><main class="m"><Mid /></main></div>`
     expect(retention({})).toEqual([4, 4])
   })
 
-  it('ON: the skeleton is templatized, so NOTHING below it is adopted', () => {
-    expect(retention(ON)).toEqual([0, 4])
+  it('ON: the mount hole adopts too — parity with OFF', () => {
+    // Was [0, 4] while the hole blocked adoption. Reverting the compiler's
+    // hole declaration returns it to [0, 4]; reverting only the verifier's
+    // hole branch does the same, which is how each half is attributable.
+    expect(retention(ON)).toEqual([4, 4])
   })
 
-  it('ON: the rendered result is still correct — this is a cost, not a bug', () => {
+  it('ON: the rendered result is correct — adoption did not duplicate it', () => {
     retention(ON)
     expect((document.getElementById('root') as HTMLElement).innerHTML).toBe(
       '<div class="app"><main class="m"><section class="mid">' +
@@ -287,6 +290,13 @@ describe('templatizeComponentChildren — rendered DOM is identical to h()', () 
     // inlined ref walk runs after a preceding `_mountSlot` removed its `<!>`.
     ['slot before a nested-component element', `<div class="a"><Leaf /><span>S</span><section><Leaf /></section></div>`],
     ['text + slot before a nested-component element', `<div class="a">t<Leaf /><section><Leaf /></section></div>`],
+    // The same PZ-08 shape reached through a FRAGMENT. `flattenChildren`
+    // recurses into fragments at any depth but the phase-1-ref scan did not, so
+    // this element got no `__eN` const and its `_mountChild` received a parent
+    // walked in phase 2 — after `_setChildAt` had already detached the node that
+    // walk starts from.
+    ['fragment-wrapped component after a slot', `<div class="a">{() => 't'}<section><><Leaf /></></section></div>`],
+    ['doubly-nested fragment-wrapped component after a slot', `<div class="a">{() => 't'}<section><><><Leaf /></></></section></div>`],
     ['component + reactive text', `<div class="a">{() => 'x'}<Leaf /></div>`],
     // Control-flow components are absorbed like any other — deliberately NOT
     // name-filtered (excluding them by name would paper over the shapes the

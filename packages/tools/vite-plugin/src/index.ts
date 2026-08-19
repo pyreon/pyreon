@@ -1281,14 +1281,20 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
 
       // `templatizeComponentChildren` now has a byte-identical native (Rust)
       // mirror, so it no longer forces the compiler's JS backend and costs
-      // nothing extra to compile. The HYDRATION caveat is unchanged and is the
-      // reason the option is still default-off, so it is still said once.
+      // nothing extra to compile. The HYDRATION caveat has NARROWED — an
+      // element whose children are all components adopts its server DOM again
+      // (mount-hole adoption) — but it has not gone: a component with a static
+      // sibling still compiles to a `<!>` placeholder, and no template
+      // containing one is adoptable. That residual is why the option is still
+      // default-off, so it is still said once, with the shape named.
       if (options?.templatizeComponentChildren === true && !warnedTplComponentChildren) {
         warnedTplComponentChildren = true
         this.warn(
-          '[Pyreon] `templatizeComponentChildren` is on: it disables compiled-template ' +
-            'hydration adoption for every element it newly templatizes — only use it for a ' +
-            'client bundle that never calls hydrateRoot().',
+          '[Pyreon] `templatizeComponentChildren` is on. An element whose children are ALL ' +
+            'components still adopts its server DOM when hydrating; one that MIXES a component ' +
+            'with static content does not, and neither does anything below it. Prefer it for a ' +
+            'client bundle that never calls hydrateRoot(), or for a component tree with no ' +
+            'mixed static/component parents.',
         )
       }
 

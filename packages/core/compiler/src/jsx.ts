@@ -170,6 +170,18 @@ export interface TransformResult {
 const SKIP_PROPS = new Set(['key', 'ref'])
 // Event handler pattern: onClick, onInput, onMouseEnter, …
 const EVENT_RE = /^on[A-Z]/
+/**
+ * Marks a template element as a MOUNT HOLE — emitted empty, filled at mount by
+ * trailing `_mountChild` calls for its absorbed COMPONENT children
+ * (`templatizeComponentChildren`). Hydration reads it to skip the element's
+ * server range instead of rejecting it as extra elements.
+ *
+ * `_tpl` strips it from the cached template before any clone, so it never
+ * reaches user DOM. Exported so the runtime's stripper can be locked against
+ * this spelling by a test rather than by a comment — the two live in packages
+ * that cannot import each other.
+ */
+export const TPL_HOLE_ATTR = 'data-pyreon-hole'
 // Events delegated to the container — must match runtime DELEGATED_EVENTS set
 const DELEGATED_EVENTS = new Set([
   'click',
@@ -4759,23 +4771,49 @@ export function transformJSX_JS(
       return !isStatic(expr)
     }
 
+    /**
+     * Does this element's FLATTENED child list contain an absorbed COMPONENT?
+     *
+     * Mirrors `flattenChildren`'s fragment recursion at any depth, and — like
+     * it — does NOT descend into nested ELEMENTS, which own their own refs.
+     * The direct-children-only version of this check disagreed with the emit
+     * for a fragment-wrapped child: the element got no phase-1 ref, so its
+     * `_mountChild` received a parent walked in phase 2, after a preceding
+     * `_setChildAt`/`_mountSlot` had already removed the node that walk starts
+     * from — i.e. `null`.
+     */
+    function absorbsComponentChild(node: N): boolean {
+      for (const c of jsxChildren(node)) {
+        if (c.type === 'JSXElement') {
+          if (isAbsorbableComponentChild(c)) return true
+        } else if (c.type === 'JSXFragment' && absorbsComponentChild(c)) {
+          return true
+        }
+      }
+      return false
+    }
+
     function elementHasDynamic(node: N): boolean {
       const nodeTag = jsxTagName(node)
       if (jsxAttrs(node).some((a: N) => attrIsDynamic(a, nodeTag))) return true
       if (!isSelfClosing(node)) {
-        return jsxChildren(node).some(
-          (c: N) =>
-            (c.type === 'JSXExpressionContainer' &&
+        if (
+          jsxChildren(node).some(
+            (c: N) =>
+              c.type === 'JSXExpressionContainer' &&
               c.expression &&
-              c.expression.type !== 'JSXEmptyExpression') ||
-            // PZ-08: an absorbed component child emits a phase-2 `_mountChild` /
-            // `_mountSlot` line, so this element's own ref MUST be a phase-1
-            // const. Without this the walk was inlined into the phase-2 line and
-            // evaluated AFTER a preceding `_mountSlot` had removed its `<!>`
-            // placeholder — the component mounted inside the previous sibling,
-            // or into the `<!--pyreon-->` marker where it vanished silently.
-            (tplComponentChildren && isAbsorbableComponentChild(c)),
-        )
+              c.expression.type !== 'JSXEmptyExpression',
+          )
+        ) {
+          return true
+        }
+        // PZ-08: an absorbed component child emits a phase-2 `_mountChild` /
+        // `_mountSlot` line, so this element's own ref MUST be a phase-1
+        // const. Without this the walk was inlined into the phase-2 line and
+        // evaluated AFTER a preceding `_mountSlot` had removed its `<!>`
+        // placeholder — the component mounted inside the previous sibling,
+        // or into the `<!--pyreon-->` marker where it vanished silently.
+        if (tplComponentChildren && absorbsComponentChild(node)) return true
       }
       return false
     }
@@ -4960,7 +4998,11 @@ export function transformJSX_JS(
       return emitStaticTextChild(expr, varName, parentRef, childNodeIdx, needsPlaceholder)
     }
 
-    function processChildren(el: N, varName: string, accessor: string): string | null {
+    function processChildren(
+      el: N,
+      varName: string,
+      accessor: string,
+    ): { html: string; isHole: boolean } | null {
       const flatChildren = flattenChildren(jsxChildren(el))
       const { useMixed, useMultiExpr } = analyzeChildren(flatChildren)
       const parentRef = accessor === '__root' ? '__root' : varName
@@ -4979,7 +5021,19 @@ export function transformJSX_JS(
         html += childHtml
         childNodeIdx++
       }
-      return html
+      // MOUNT HOLE. Every child is an absorbed COMPONENT taking the append
+      // path, so this element is emitted EMPTY and filled at mount by trailing
+      // `_mountChild` calls. Declaring that lets hydration adopt the element:
+      // its SSR counterpart holds the components' real output, which the adopt
+      // verifier would otherwise read as extra elements and reject. See
+      // runtime-dom `template.ts` (MOUNT HOLES) for the consuming half.
+      //
+      // Stated per ELEMENT and carried ON that element rather than as an index
+      // or a path, so the declaration can never be attributed to a different
+      // element than the one it was computed for.
+      const isHole =
+        !useMixed && flatChildren.length > 0 && flatChildren.every((c) => c.kind === 'component')
+      return { html, isHole }
     }
 
     function processElement(el: N, accessor: string): string | null {
@@ -4991,12 +5045,19 @@ export function transformJSX_JS(
       // so a `_mountSlot`-mounted option list exists before `el.value` runs.
       const deferredLines: string[] = []
       const htmlAttrs = processAttrs(el, varName, tag, deferredLines)
-      let html = `<${tag}${htmlAttrs}>`
+      // Children are processed BEFORE the opening tag is assembled, because
+      // whether this element is a mount hole is only known once its children
+      // are classified. Bind-line ORDER is unaffected — `processAttrs` has
+      // already run — and building a string later is a pure operation.
+      let childHtml = ''
+      let isHole = false
       if (!isSelfClosing(el)) {
-        const childHtml = processChildren(el, varName, accessor)
-        if (childHtml === null) return null
-        html += childHtml
+        const res = processChildren(el, varName, accessor)
+        if (res === null) return null
+        childHtml = res.html
+        isHole = res.isHole
       }
+      let html = `<${tag}${htmlAttrs}${isHole ? ` ${TPL_HOLE_ATTR}` : ''}>${childHtml}`
       if (deferredLines.length > 0) bindLines.push(...deferredLines)
       if (!VOID_ELEMENTS.has(tag)) html += `</${tag}>`
       return html

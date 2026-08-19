@@ -24,11 +24,14 @@ export {
 } from './hydration-debug'
 export type { KeepAliveProps } from './keep-alive'
 export { KeepAlive } from './keep-alive'
-// `_mountChild` is the compiler-facing alias (same underscore convention as
+// `_mountChild` is the compiler-facing entry (same underscore convention as
 // `_setAttr` / `_setStyle` / `_applyProps`): the template emit appends an
 // absorbed COMPONENT child with it when no static content follows, which is
-// what lets that child skip the `<!>` placeholder `_mountSlot` needs.
-export { bindPolymorphicText, mountChild, mountChild as _mountChild } from './mount'
+// what lets that child skip the `<!>` placeholder `_mountSlot` needs. It is a
+// thin wrapper over `mountChild` rather than an alias, because inside an
+// ADOPTING bind the same call must HYDRATE the server's copy of that component
+// instead of mounting a second one — see `template.ts`'s MOUNT HOLES section.
+export { bindPolymorphicText, mountChild } from './mount'
 export type { SanitizeFn } from './props'
 export {
   applyAttrProp as _setAttr,
@@ -47,6 +50,7 @@ export {
 export {
   _bindDirect,
   _bindText,
+  _mountChild,
   _mountSlot,
   _setChild,
   _setChildAt,

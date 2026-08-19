@@ -31,6 +31,7 @@ import type { VNode, VNodeChild } from '@pyreon/core'
 import { renderEffect } from '@pyreon/reactivity'
 import { bindPolymorphicText } from './mount'
 import { applyClassProp, applyProp, applyProps, applyStyleProp, makeEventBinder } from './props'
+import { _isTplHoleEl, _setTplHoleCursors } from './template'
 
 type Cleanup = () => void
 
@@ -542,6 +543,21 @@ interface TplSig {
    * as `null` (== "do not compare"); genuine static text is recorded verbatim.
    */
   texts: (string | null)[][]
+  /**
+   * Per element (tree order), 1 when the compiler DECLARED this element a
+   * mount hole — an element left empty in the template whose children are all
+   * absorbed COMPONENT children, appended by trailing `_mountChild` calls
+   * (`templatizeComponentChildren`). Its SSR counterpart holds those
+   * components' real output, so the match must skip that range instead of
+   * reading it as extra elements.
+   *
+   * Declared, not inferred: `_setChild` and a spread `innerHTML` also fill an
+   * empty template element and do NOT hydrate, so a blanket "an empty element
+   * may have extra children" rule would duplicate or discard their content.
+   */
+  holes: Uint8Array | null
+  /** Number of 1s in `holes` — 0 lets every hole-aware branch short-circuit. */
+  holeCount: number
 }
 const _tplSignature = new WeakMap<HTMLTemplateElement, TplSig | null>()
 
@@ -563,6 +579,8 @@ function templateSignature(tpl: HTMLTemplateElement, html: string): TplSig | nul
   const counts: number[] = []
   const attrList: [string, string][][] = []
   const textList: (string | null)[][] = []
+  const holeFlags: number[] = []
+  let holeCount = 0
   const walk = (el: Element) => {
     // tag + textChildCount — the count gates BIND-SLOT alignment: a template
     // text slot (dynamic or static) must have a counterpart text node in the
@@ -590,10 +608,26 @@ function templateSignature(tpl: HTMLTemplateElement, html: string): TplSig | nul
     }
     attrList.push(ownAttrs)
     textList.push(ownTexts)
+    // A declared hole must be genuinely EMPTY in the template — no element
+    // children (its whole child range belongs to the bind) and no text
+    // children (their 1:1 alignment with the SSR side is what the text half of
+    // the skeleton gate relies on). Re-checked here rather than trusted, so a
+    // compiler that ever marks the wrong element costs an adoption instead of
+    // correctness.
+    const isHole = _isTplHoleEl(el) && texts === 0 && el.firstElementChild === null
+    holeFlags.push(isHole ? 1 : 0)
+    if (isHole) holeCount++
     for (let c = el.firstElementChild; c; c = c.nextElementSibling) walk(c)
   }
   walk(root)
-  sig = { tags, counts, attrs: attrList, texts: textList }
+  sig = {
+    tags,
+    counts,
+    attrs: attrList,
+    texts: textList,
+    holes: holeCount > 0 ? Uint8Array.from(holeFlags) : null,
+    holeCount,
+  }
   _tplSignature.set(tpl, sig)
   return sig
 }
@@ -630,6 +664,14 @@ interface AdoptMatch {
    * adoption and onto the interpretive walk.
    */
   emptySlots: Element[] | null
+  /**
+   * Declared mount holes that verified, each mapped to the START of its server
+   * range. Handed to `_tpl`, which threads them through the compiled bind's
+   * `_mountChild` calls so the components HYDRATE that range instead of
+   * appending a second copy beside it, then sweeps whatever the bind did not
+   * claim.
+   */
+  holes: Map<Element, ChildNode | null> | null
 }
 
 /**
@@ -769,8 +811,10 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
   let triplets: { open: Comment; text: Text | null; close: Comment }[] | null = null
   let soles: Element[] | null = null
   let emptySlots: Element[] | null = null
+  let holes: Map<Element, ChildNode | null> | null = null
   const tags = expected.tags
   const wantCounts = expected.counts
+  const holeFlags = expected.holes
   const total = tags.length
   let idx = 0
   const walk = (el: Element): boolean => {
@@ -788,6 +832,22 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
     for (let i = 0; i < wantAttrs.length; i++) {
       const pair = wantAttrs[i] as [string, string]
       if (el.getAttribute(pair[0]) !== pair[1]) return false
+    }
+    // MOUNT HOLE. The template leaves this element empty for trailing
+    // `_mountChild` calls to fill, so its ENTIRE server child range is the
+    // hole's content: not extra elements to reject, not texts to align, and
+    // not a subtree to descend into (the template has no counterpart for any
+    // of it). Record the range start and stop here — requirement (1).
+    //
+    // No SSR range marker is involved, and none is needed: the element's own
+    // tag boundary supplies the extent, exactly as it does for a sole-child
+    // accessor. Skipping to the end is only sound because a hole is always
+    // TRAILING — the compiler routes any component child with static content
+    // after it through a `<!>` placeholder instead, and `templateSignature`
+    // refuses every template containing one.
+    if (holeFlags !== null && holeFlags[at] === 1) {
+      ;(holes ??= new Map()).set(el, el.firstChild)
+      return true
     }
     let texts = 0
     let bare: Text[] | null = null
@@ -891,7 +951,7 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
   }
   if (!walk(root)) return null
   if (idx !== total) return null
-  return { removals, triplets, soles, emptySlots }
+  return { removals, triplets, soles, emptySlots, holes }
 }
 
 /** All checks passed — strip markers, ensuring one text node per slot. */
@@ -939,6 +999,13 @@ export function tplAdoptVerify(
   // same-tag target, silently handing a local template a byte-different server
   // node. That is precisely the theft the static-skeleton gate exists to stop.
   let plan: AdoptPlan | null | undefined
+  // A template with declared mount HOLES never takes the plan fast path. The
+  // plan records triplet + removal spots, not hole cursors, so a replayed row
+  // would hand the compiled bind no cursor and `_mountChild` would append a
+  // second copy beside the server's. Refusing costs `<For>` rows whose
+  // renderItem absorbs a component the dispatch-free replay; a silent
+  // duplication would cost the page.
+  if (allowPlanReplay && templateSignature(tpl, html)?.holeCount) allowPlanReplay = false
   if (allowPlanReplay) {
     if (tpl === _lastVerifyTpl) {
       plan = _lastVerifyPlan
@@ -974,5 +1041,8 @@ export function tplAdoptVerify(
     for (const el of match.emptySlots) el.appendChild(document.createTextNode(''))
   }
   if (match.triplets) normalizeDollarTriplets(match.triplets)
+  // Hand the verified holes to `_tpl` (one-shot; it clears the slot before
+  // every verify, so a bail can never leave a stale map behind).
+  if (match.holes !== null) _setTplHoleCursors(match.holes)
   return true
 }
