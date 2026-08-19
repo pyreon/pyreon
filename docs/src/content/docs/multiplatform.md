@@ -1321,6 +1321,98 @@ cross-origin remote `src` can't be reached from the parent frame (the
 native targets reach remote content via `evaluateJavaScript` / the script
 handler).
 
+### The `/webview` subpaths — web engines that cross by HOSTING
+
+Four packages wrap a web engine that has no native equivalent and cannot
+be reimplemented as a native view: `@pyreon/charts` (ECharts, a canvas
+engine), `@pyreon/code` (CodeMirror 6, a DOM editor), `@pyreon/rich-text`
+(TipTap/ProseMirror, a DOM editor), and `@pyreon/flow` (an elk/SVG
+layout). Rather than leave them web-only, each ships a **`./webview`
+subpath** that builds a self-contained host page and runs the SAME web
+bundle inside the `<WebView>` documented above:
+
+| Package | host-page builder | host component |
+| --- | --- | --- |
+| `@pyreon/charts/webview` | `buildChartHostHtml()` | `<ChartWebView option onSelect>` |
+| `@pyreon/code/webview` | `buildCodeHostHtml()` | `<CodeWebView state onChange>` |
+| `@pyreon/flow/webview` | `buildFlowHostHtml()` | `<FlowWebView graph onSelect>` |
+| `@pyreon/rich-text/webview` | `buildRichTextHostHtml()` | `<RichTextWebView state onChange>` |
+
+`examples/native-viz` is the breadth proof — ONE `src/VizApp.tsx`
+compiles to web + iOS + Android hosting 24 surfaces (21 ECharts chart
+types, a flow diagram, a real CodeMirror editor, a real TipTap WYSIWYG),
+emitting 24 `PyreonWebView` calls with **0 warnings on both targets**.
+
+**This is one codebase on every target, and it ships. It is NOT a
+natively-rendered chart**, and the difference is worth stating plainly
+before you reach for it:
+
+- a WebView costs **process/startup time** a native view tree does not;
+- every prop and event crosses a **JSON bridge**, so interaction is not
+  at native latency and large payloads are re-serialized per update;
+- the hosted content is **opaque to native gestures and to the platform
+  accessibility tree** — VoiceOver/TalkBack see a web document, and the
+  `AccessibilityProps` vocabulary stops at the WebView boundary;
+- the **host page must be bundled** with the app (see the `web/` staging
+  step above), so the engine's bytes ship per app rather than being
+  provided by the platform.
+
+**Evidence rung — what is actually proven.** The host bridge is proven
+end-to-end in **real Chromium** against the **real engine** for each
+package (`src/webview.browser.test.tsx`: real ECharts renders a canvas
+and a signal update re-renders on the SAME instance without a reload; a
+real `view.dispatch` in CodeMirror and a real `execCommand` edit in
+TipTap each drive `onChange` while a native push does *not* echo back;
+flow renders real bezier `<path>`s and a real click reports the node id).
+The **native** host is proven at the emit + stub-typecheck rung only —
+PMTC lowers `<WebView html/src/data onMessage>` to `PyreonWebView` on
+both targets and the emitted code type-checks against the SwiftUI/Compose
+stubs. **No device test hosts a WebView on either platform**, so "the
+WKWebView/Android WebView actually paints and bridges on a real device"
+rides the same nightly device rung as the rest of the native surface —
+it is not CI-proven today. Note also that the web-side `<WebView>` is an
+`<iframe srcdoc>`: it speaks the identical protocol, which is what makes
+the Chromium proof meaningful, but it is not the native host itself.
+
+The `check-native-coverage` gate files these four under a **`webview-host`**
+mechanism and verifies the claim rather than asserting it — per package it
+requires that `package.json` declares the `./webview` export, that the
+module exists, that it exports both the named host-page builder and the
+named host component, and that a test covers it. Any one of those going
+missing FAILS the gate (a `webview-host` entry claims a shipping crossing
+path, so it is a regression, not a tracked gap).
+
+### `partial` — a declared subset that really lowers
+
+Three packages are `web-only` at the TIER level while their own manifests
+declare a `multiplatform.nativeFrontend`: a named subset that genuinely
+lowers. Filing them as plain gaps understated them, so the gate counts
+them apart, and each one's snippet exercises exactly the documented form
+and is asserted to emit **zero** warnings on both targets:
+
+| Package | what actually crosses |
+| --- | --- |
+| `@pyreon/http` | same-file endpoint calls — `createHttp({ baseUrl })` + `api.endpoint('GET /users/:id')` resolve through `useFetch`/`useQuery` to native PyreonFetch/PyreonQuery (literal params only; reactive params and a computed baseUrl stay web) |
+| `@pyreon/validation` | the declaration form — a top-level `zodSchema(z.object({…}))` emits native field validators (the adapters, inline `.parse()` and the async path stay web) |
+| `@pyreon/url-state` | `useUrlState(key, 'default')` with a **string** default, bound to the native router's query |
+
+A `partial` entry must ALSO be declared in the package's own manifest —
+the gate fails one whose manifest carries no `nativeFrontend`, so the
+mechanism cannot become a way to launder a gap into a crossing.
+
+**Why this needed a structural fix, not just three edits.** `transform()`
+never resolves imports, so a snippet naming a symbol that does not exist
+still "runs" — and because an unknown symbol warns *"has NO native
+lowering"*, it produces a warning **indistinguishable from a genuine
+gap**. Three registry entries shipped on fictional snippets
+(`createHttpClient`, which is really `createHttp`; `object`/`string`/
+`number`, which are `@pyreon/validate`'s builders, not validation's;
+`useHotkeys`, which is really `useHotkey`), and two of the three were
+misclassified as a result. Every snippet's `@pyreon/*` named imports are
+now checked against the package's real exports, and a phantom symbol
+fails the gate loudly — for every mechanism, `web-first` included, which
+is the one where a bogus warning otherwise looks like proof.
+
 ## DX surfaces on native (honest scope)
 
 The "one source" promise extends to **WRITING** the source, not just
