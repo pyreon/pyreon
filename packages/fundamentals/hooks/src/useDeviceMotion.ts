@@ -81,6 +81,11 @@ export function useDeviceMotion(): DeviceMotionControls {
     stop,
 
     start: async (): Promise<boolean> => {
+      // Explicit, mirroring `stop()`. `supported()` already returns false on
+      // the server, but it is now a BLOCK body, so neither a reader nor the
+      // SSR lint can see the guard through the call — and this method touches
+      // `window` directly further down.
+      if (!isClient) return false
       if (!supported()) {
         warnIfInsecureContext('useDeviceMotion')
         return false
