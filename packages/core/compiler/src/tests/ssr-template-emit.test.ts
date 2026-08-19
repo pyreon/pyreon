@@ -38,9 +38,17 @@ describe('ssrTemplate — emission shapes', () => {
     )
   })
 
-  test('dynamic prop text child: baked <!--$--> markers + _esc', () => {
+  test('SOLE dynamic text child: NO markers, _escSole', () => {
+    // INVARIANT (unchanged): a wrapped dynamic child is byte-identical to what
+    // the h() path renders for it. What changed is the h() path itself — a
+    // SOLE accessor child is emitted without `<!--$-->…<!--/$-->` because the
+    // element's tag boundary already delimits its extent (see
+    // `soleAccessorChild` in @pyreon/runtime-server). `_escSole` is `_esc`
+    // minus those markers. The marker-bearing shape is asserted by the
+    // non-sole sibling test directly below, which is where markers still
+    // carry information.
     const out = ssrFast(`function C(props) { return <div>{props.x}</div> }`)
-    expect(out).toContain('return _ssr(["<div><!--$-->", "<!--/$--></div>"], _esc(props.x))')
+    expect(out).toContain('return _ssr(["<div>", "</div>"], _escSole(props.x))')
   })
 
   test('mixed static text + wrapped hole preserves order (markers baked)', () => {
@@ -48,18 +56,21 @@ describe('ssrTemplate — emission shapes', () => {
     expect(out).toContain('_ssr(["<p>a <!--$-->", "<!--/$--> b</p>"], _esc(props.x))')
   })
 
-  test('.map fast path: markers + _ssrChildren, items are plain strings', () => {
-    // INVARIANT: a `.map` child gets the <!--$-->…<!--/$--> markers baked into
-    // the parent statics + ONE `_ssrChildren` hole, and each item produces a
-    // PLAIN STRING (no per-item RawHtml wrap for `_ssrChildren` to unwrap).
+  test('.map fast path: ONE _ssrChildren hole, items are plain strings', () => {
+    // INVARIANT: a `.map` child gets ONE `_ssrChildren` hole and each item
+    // produces a PLAIN STRING (no per-item RawHtml wrap to unwrap). The
+    // parent's markers are elided here because the `.map` is the `<ul>`'s SOLE
+    // child; a `.map` among siblings still bakes them.
     // The item BODY is the fused concat (see the fused-body specs below); it
     // still returns a plain string, and still falls back to `_ssrItem`.
     const out = ssrFast(`const L = (rows) => <ul>{rows.map(r => <li class="row">{r.name}</li>)}</ul>`)
-    expect(out).toContain('_ssr(["<ul><!--$-->", "<!--/$--></ul>"], _ssrChildren(rows.map((r) => {')
+    expect(out).toContain('_ssr(["<ul>", "</ul>"], _ssrChildren(rows.map((r) => {')
     expect(out).toContain(
-      '{ const _h0 = _esc(r.name); return typeof _h0 === "string" ? "<li class=\\"row\\">" + _h0 + "</li>" : _ssrItem(["<li class=\\"row\\">", "</li>"], _h0) }',
+      '{ const _h0 = _escSole(r.name); return typeof _h0 === "string" ? "<li class=\\"row\\">" + _h0 + "</li>" : _ssrItem(["<li class=\\"row\\">", "</li>"], _h0) }',
     )
-    expect(out).toContain('import { _ssr, _ssrChildren, _ssrItem, _esc } from "@pyreon/runtime-server"')
+    expect(out).toContain(
+      'import { _ssr, _ssrChildren, _ssrItem, _escSole } from "@pyreon/runtime-server"',
+    )
   })
 
   test('nested elements inline into the parent statics', () => {
@@ -90,7 +101,7 @@ describe('ssrTemplate — dynamic attributes via _ssrAttr (renderProp verbatim)'
     // `_ssrAttrGen`. `href={"/i/" + r.id}` is a string-concat starting with `/`
     // → provably a safe string → BAKED (` href="` + `_esc(...)` + `"`).
     expect(out).toContain(
-      '_ssr(["<div class=\\"row\\"", "><a href=\\"", "\\"><!--$-->", "<!--/$--></a></div>"], _ssrAttrGen("data-id", r.id), _esc("/i/" + r.id), _esc(r.label))',
+      '_ssr(["<div class=\\"row\\"", "><a href=\\"", "\\">", "</a></div>"], _ssrAttrGen("data-id", r.id), _esc("/i/" + r.id), _escSole(r.label))',
     )
   })
 
@@ -302,7 +313,7 @@ describe('ssrTemplate — fused keyed <For> (_ssrForKeyed)', () => {
       const out = ssrFast(FOR_SRC)
       // Temps preserve the call's left-to-right hole evaluation order.
       expect(out).toContain(
-        '{ const _h0 = _ssrAttrGen("data-id", r.id), _h1 = _esc(r.id), _h2 = _ssrAttr("span", "class", r.id % 2 === 0 ? \'a\' : \'b\'), _h3 = _esc(\'$\' + r.price);',
+        '{ const _h0 = _ssrAttrGen("data-id", r.id), _h1 = _escSole(r.id), _h2 = _ssrAttr("span", "class", r.id % 2 === 0 ? \'a\' : \'b\'), _h3 = _escSole(\'$\' + r.price);',
       )
       // Statics are ordinary quoted literals (NOT a template literal) so the
       // emit reuses the existing static quoting — no second escaping path.

@@ -52,8 +52,11 @@ describe('SSR — a JSX-bearing prop-derived const is referenced, not inlined', 
   })
 
   it('references the consts by name in the holes', () => {
-    expect(out).toContain('_esc(axis)')
-    expect(out).toContain('_esc(edges)')
+    // The invariant is REFERENCE-not-inline. Each const is its `<g>`'s sole
+    // child, so the hole helper is `_escSole` (markers elided — see
+    // `soleAccessorChild` in @pyreon/runtime-server); the name is what matters.
+    expect(out).toContain('_escSole(axis)')
+    expect(out).toContain('_escSole(edges)')
   })
 
   it('does not leak one callback\'s bindings into the other\'s hole', () => {

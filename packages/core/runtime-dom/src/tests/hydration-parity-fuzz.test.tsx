@@ -231,9 +231,18 @@ function flip(specs: SigSpec[], S: SigInst[]): void {
 const stripComments = (html: string) => html.replace(/<!--[\s\S]*?-->/g, '')
 
 describe('SSR ↔ hydration parity fuzz', () => {
-  const SEEDS = 300
+  // CI runs 300 (the gate's standing budget). A marker-scheme change must be
+  // proven at a far higher count before it ships — the value-conditional
+  // scheme that regressed here failed 83 of 5000 seeds, a rate a 300-seed run
+  // can miss entirely. Override with PYREON_FUZZ_SEEDS=5000.
+  const SEEDS = Math.max(1, Number((process.env as Record<string, string | undefined>).PYREON_FUZZ_SEEDS) || 300)
 
-  it(`${SEEDS} seeded trees hold all four oracles`, async () => {
+  // The wall-clock backstop must EXCEED the work, and the work is linear in
+  // SEEDS (~1.7ms/seed on a loaded machine). Deriving it from the same
+  // constant keeps an override from dying on vitest's 20s default and being
+  // misread as an oracle failure — which is exactly what a 20000-seed run did.
+  const TIMEOUT_MS = Math.max(20_000, SEEDS * 12)
+  it(`${SEEDS} seeded trees hold all four oracles`, { timeout: TIMEOUT_MS }, async () => {
     disableHydrationWarnings()
     const failures: string[] = []
 

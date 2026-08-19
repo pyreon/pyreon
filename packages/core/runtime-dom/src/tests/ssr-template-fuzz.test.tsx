@@ -18,7 +18,7 @@ import type { VNode, VNodeChild } from '@pyreon/core'
 import { h } from '@pyreon/core'
 import type { Signal } from '@pyreon/reactivity'
 import { signal } from '@pyreon/reactivity'
-import { _esc, _ssr, _ssrAttr, _ssrAttrGen, _ssrAttrUrl, _ssrChildren, _ssrItem, renderToString } from '@pyreon/runtime-server'
+import { _esc, _escSole, _ssr, _ssrAttr, _ssrAttrGen, _ssrAttrUrl, _ssrChildren, _ssrItem, renderToString } from '@pyreon/runtime-server'
 
 function mulberry32(seed: number) {
   let a = seed >>> 0
@@ -193,6 +193,7 @@ function evalFast(src: string, ctx: FuzzCtx): VNode {
     '_ssrChildren',
     '_ssrItem',
     '_esc',
+    '_escSole',
     '_ssrAttr',
     '_ssrAttrGen',
     '_ssrAttrUrl',
@@ -203,10 +204,11 @@ function evalFast(src: string, ctx: FuzzCtx): VNode {
     'a1',
     `${body}\nreturn Node`,
   )
-  return fn(_ssr, _ssrChildren, _ssrItem, _esc, _ssrAttr, _ssrAttrGen, _ssrAttrUrl, ctx.data, ctx.sigs.s0, ctx.sigs.s1, ctx.arrs.a0, ctx.arrs.a1)
+  return fn(_ssr, _ssrChildren, _ssrItem, _esc, _escSole, _ssrAttr, _ssrAttrGen, _ssrAttrUrl, ctx.data, ctx.sigs.s0, ctx.sigs.s1, ctx.arrs.a0, ctx.arrs.a1)
 }
 
-const SEEDS = 250
+// Override with PYREON_FUZZ_SEEDS=5000 when the SSR emit shape changes.
+const SEEDS = Math.max(1, Number((process.env as Record<string, string | undefined>).PYREON_FUZZ_SEEDS) || 250)
 
 describe('SSR fast path — render-fuzz byte-identity', () => {
   test(`${SEEDS} seeded eligible trees render byte-identically to h()`, async () => {

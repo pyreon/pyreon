@@ -523,9 +523,9 @@ describe('hydration integration — `_rp`-wrapped component props (regression)',
     const html = await renderToString(
       h(Link, { to: _rp(() => '/about') as unknown as string }),
     )
-    // Reactive-accessor children are wrapped in `<!--$-->…<!--/$-->` range
-    // markers by the SSR renderer (hydration extent — see renderNode).
-    expect(html).toBe('<a href="#/about" id="lnk"><!--$-->/about<!--/$--></a>')
+    // A reactive-accessor child that is its element's SOLE child needs no
+    // range markers — the `<a>` boundary delimits it (see `soleAccessorChild`).
+    expect(html).toBe('<a href="#/about" id="lnk">/about</a>')
     expect(html).not.toContain('=>')
 
     const el = container()

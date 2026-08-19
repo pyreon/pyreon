@@ -585,10 +585,19 @@ async function streamElementNode(vnode: VNode, enqueue: (s: string) => void): Pr
       enqueue(taValue)
     } else {
       const frame = tag === 'select' ? makeSelectFrame(props) : null
+      // Sole-child accessor: stream its VALUE directly, no range markers — the
+      // string path's twin, and byte-identical to it. See `soleAccessorChild`.
+      // Spelled out per branch rather than through a shared closure: this runs
+      // once per streamed element, and the `<select>` frame was the only case
+      // that allocated one before.
+      const sole = soleAccessorChild(vnode.children)
       if (frame) {
         await _selectValueAls.run(frame, async () => {
-          for (const child of vnode.children) await streamNode(child, enqueue)
+          if (sole) await streamNode(sole(), enqueue)
+          else for (const child of vnode.children) await streamNode(child, enqueue)
         })
+      } else if (sole) {
+        await streamNode(sole(), enqueue)
       } else {
         for (const child of vnode.children) await streamNode(child, enqueue)
       }
@@ -812,6 +821,44 @@ function renderChildList(children: readonly VNodeChild[], start: number, acc: st
     }
   }
   return acc
+}
+
+/**
+ * SOLE-CHILD ACCESSOR ELISION — the one construct whose extent needs no markers.
+ *
+ * `renderNode` wraps every accessor's output in `<!--$-->…<!--/$-->` because an
+ * accessor's DOM extent is runtime-unknowable (zero nodes, one, or many). When
+ * the accessor is an element's ONLY child that ambiguity does not exist: the
+ * element's own tag boundary already delimits the extent — everything between
+ * `<a>` and `</a>` IS the slot, whether that is nothing, one text node, or a
+ * whole subtree. So the markers carry no information and are elided.
+ *
+ * This is decided from the STATIC vnode shape (`children.length === 1 &&
+ * typeof children[0] === 'function'`), identically on the server and during
+ * hydration — NOT from the rendered VALUE. That distinction is the whole
+ * safety argument: a value-conditional scheme regressed 83/5000 parity-fuzz
+ * seeds because a marked range adjacent to an unmarked one reintroduced cursor
+ * gaps. Markers must be UNIFORM PER CONSTRUCT, and "sole child of an element"
+ * is a construct. Every other accessor position — a sibling among many, a
+ * fragment child, an array entry, a component's root — keeps its markers,
+ * because there the boundary genuinely is unknowable.
+ *
+ * Mirrored by `soleAccessorChild` in `@pyreon/runtime-dom`'s hydrate.ts and by
+ * the `_escSole` emit in both compiler backends. All four must agree byte-for-
+ * byte or hydration misaligns. The twin is DUPLICATED rather than shared
+ * because runtime-dom does not depend on runtime-server (both sit on core);
+ * drift between them is what the 20,000-seed parity fuzz exists to catch, since
+ * it renders with this copy and hydrates with the other.
+ *
+ * Deliberately NOT exported — it is a contract between these four call sites,
+ * not public API.
+ */
+function soleAccessorChild(
+  children: readonly VNodeChild[] | undefined,
+): (() => VNodeChild) | null {
+  return children !== undefined && children.length === 1 && typeof children[0] === 'function'
+    ? (children[0] as () => VNodeChild)
+    : null
 }
 
 function renderNode(node: VNodeChild | (() => VNodeChild)): MaybeAsync {
@@ -1049,9 +1096,13 @@ function renderElement(vnode: VNode): MaybeAsync {
       return `${html}</${tag}>`
     }
     const frame = tag === 'select' ? makeSelectFrame(props) : null
-    const inner = frame
-      ? _selectValueAls.run(frame, () => renderChildList(vnode.children, 0, ''))
-      : renderChildList(vnode.children, 0, '')
+    // Sole-child accessor: render its VALUE directly — the tag boundary is the
+    // extent, so no range markers. See `soleAccessorChild`.
+    const sole = soleAccessorChild(vnode.children)
+    const renderInner = sole
+      ? () => renderNode(sole())
+      : () => renderChildList(vnode.children, 0, '')
+    const inner = frame ? _selectValueAls.run(frame, renderInner) : renderInner()
     if (typeof inner !== 'string') {
       const open = html
       return inner.then((s) => `${open}${s}</${tag}>`)
@@ -1086,6 +1137,30 @@ export function _esc(v: unknown): MaybeAsync {
   if (typeof v === 'number') return String(v)
   if (v == null || v === false) return ''
   if (v === true) return 'true'
+  return renderNode(v as VNodeChild)
+}
+
+/**
+ * `_esc` for a hole that is its element's SOLE child — byte-identical except
+ * that a FUNCTION value renders WITHOUT `<!--$-->…<!--/$-->` range markers,
+ * matching `renderElement`'s sole-child elision (see `soleAccessorChild`).
+ *
+ * The compiler emits this for every sole expression child, whatever the
+ * expression's static shape, because the value's KIND is what decides whether
+ * `_esc` would have added markers: `{() => sig()}` reaches the hole AS a
+ * function (the h() path passes it through verbatim), while `{sig()}` is
+ * wrapped by the compiler and so arrives as a plain value. Both must produce
+ * the elided bytes, and only a runtime `typeof` check covers both — plus the
+ * case the compiler cannot see at all, a plain identifier that happens to hold
+ * a function.
+ */
+export function _escSole(v: unknown): MaybeAsync {
+  if (typeof v === 'string') return escapeHtml(v)
+  if (typeof v === 'number') return String(v)
+  if (v == null || v === false) return ''
+  if (v === true) return 'true'
+  // The one divergence from `_esc`: unwrap the accessor WITHOUT markers.
+  if (typeof v === 'function') return renderNode((v as () => VNodeChild)())
   return renderNode(v as VNodeChild)
 }
 

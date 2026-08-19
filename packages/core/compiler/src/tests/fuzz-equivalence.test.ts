@@ -250,8 +250,14 @@ function genComponent(seed: number): string {
 // ─── The gate ───────────────────────────────────────────────────────────────
 // ~1.6s locally at 300; every seed is reproducible by number. Raise for a
 // discovery campaign with `PYREON_FUZZ_SEEDS=10000 bunx vitest run …` — the
-// committed value is the CI budget, not the number this was proven at.
-const SEEDS = Number(process.env.PYREON_FUZZ_SEEDS) || 300
+// committed value is the CI budget, not the number this was proven at. A
+// change to the SSR emit shape should be proven far above that budget before
+// it ships.
+//
+// `Math.max(1, …)` is load-bearing: PYREON_FUZZ_SEEDS=0 (or any non-numeric
+// value) would otherwise yield a zero-seed run that PASSES having proven
+// nothing — a gate that cannot fail is worse than no gate.
+const SEEDS = Math.max(1, Number(process.env.PYREON_FUZZ_SEEDS) || 300)
 
 // Three compilation modes exercised per seed: client (`ssr:false`), SSR h()
 // (`ssr:true`), and SSR compile-to-string (`ssr:true, ssrTemplate:true`). The

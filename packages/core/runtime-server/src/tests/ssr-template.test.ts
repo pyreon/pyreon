@@ -8,12 +8,12 @@
  * stringified holes — `_esc` for text, `_ssrAttr` for dynamic attrs, baked
  * `<!--$-->` markers) and the hand-written h() oracle, and asserts equality.
  */
-import type { ComponentFn, VNode } from '@pyreon/core'
+import type { ComponentFn, VNode, VNodeChild } from '@pyreon/core'
 import { createContext, h, provide, useContext } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 // eslint-disable-next-line import/no-unresolved
 import {
-  _esc,
+  _esc, _escSole,
   _ssr,
   _ssrAttr,
   _ssrDeferred,
@@ -105,12 +105,113 @@ describe('_ssr — byte-identical to h() path', () => {
     expect(fast).toBe('<div class="x" id="y" role="note">z</div>')
   })
 
-  test('wrapped dynamic text hole gets baked <!--$--> markers', async () => {
+  test('SOLE dynamic text hole — markers ELIDED, _escSole', async () => {
+    // The element's tag boundary already delimits a sole accessor's extent, so
+    // neither side emits markers (see `soleAccessorChild`). The `<p>a {x} b</p>`
+    // case below is the non-sole twin, where they are still required.
     const name = signal('Ada')
-    const fast = await renderToString(ssrRoot(_ssr(['<div><!--$-->', '<!--/$--></div>'], _esc(name()))))
+    const fast = await renderToString(ssrRoot(_ssr(['<div>', '</div>'], _escSole(name))))
     const slow = await renderToString(h('div', null, () => name()))
     expect(fast).toBe(slow)
-    expect(fast).toBe('<div><!--$-->Ada<!--/$--></div>')
+    expect(fast).toBe('<div>Ada</div>')
+  })
+
+  test('STREAMED accessor children match the string path — sole elides, non-sole marks', async () => {
+    // The streaming engine walks a SEPARATE code path from renderToString, and
+    // marker elision had to be mirrored into it. Neither the sole-accessor arm
+    // nor `streamNode`'s marker arm had a streaming spec, so both read as dead
+    // code while the string path was fully exercised — the exact place a
+    // stream/string marker divergence would hide (it would surface as a
+    // hydration mismatch only for users on renderToStream).
+    const collect = async (v: unknown): Promise<string> => {
+      const reader = (renderToStream(v as VNode) as ReadableStream<string>).getReader()
+      let out = ''
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        out += typeof value === 'string' ? value : new TextDecoder().decode(value)
+      }
+      return out
+    }
+
+    const name = signal('Ada')
+
+    // SOLE accessor child: the tag boundary delimits it, so NO markers.
+    const soleStream = await collect(h('div', null, () => name()))
+    const soleString = await renderToString(h('div', null, () => name()))
+    expect(soleStream).toBe(soleString)
+    expect(soleStream).toBe('<div>Ada</div>')
+
+    // NON-sole accessor: markers are still required to delimit the hole.
+    const mixedStream = await collect(h('p', null, 'a ', () => name(), ' b'))
+    const mixedString = await renderToString(h('p', null, 'a ', () => name(), ' b'))
+    expect(mixedStream).toBe(mixedString)
+    expect(mixedStream).toContain('<!--$-->')
+  })
+
+  test('STREAMED <select> with a sole accessor still marks the matching option', async () => {
+    // `<select>` runs its children inside an AsyncLocalStorage frame so options
+    // can see the selected value; the sole-accessor arm inside that frame is a
+    // distinct branch from both the non-sole frame arm and the frameless sole
+    // arm. Streaming it is the only way to reach it.
+    const collect = async (v: unknown): Promise<string> => {
+      const reader = (renderToStream(v as VNode) as ReadableStream<string>).getReader()
+      let out = ''
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        out += typeof value === 'string' ? value : new TextDecoder().decode(value)
+      }
+      return out
+    }
+
+    const opts = () => [h('option', { value: 'a' }, 'A'), h('option', { value: 'b' }, 'B')]
+    const streamed = await collect(h('select', { value: 'b' }, opts))
+    const stringed = await renderToString(h('select', { value: 'b' }, opts))
+    expect(streamed).toBe(stringed)
+    // The SSR contract for <select> is a marked <option>, never a value attr.
+    expect(streamed).not.toContain('<select value=')
+    expect(streamed).toContain('selected')
+  })
+
+  test('_escSole — every value arm matches the h() sole-accessor path', async () => {
+    // `_escSole`'s string and function arms are exercised by the template specs
+    // above; its number / nullish / boolean / VNode arms were reached ONLY by
+    // the seeded parity fuzz, which lives in @pyreon/runtime-dom. Coverage is
+    // per-package, so those arms read as dead code here — and a hole in the
+    // elision helper is exactly where a marker-parity bug would hide.
+    //
+    // Each case asserts PARITY with the h() path rather than literal bytes:
+    // the invariant is that eliding markers cannot change what a sole
+    // accessor serializes to, whatever it yields.
+    const cases: { label: string; v: unknown; child: VNodeChild }[] = [
+      { label: 'number', v: 42, child: () => 42 },
+      { label: 'number zero', v: 0, child: () => 0 },
+      { label: 'null', v: null, child: () => null },
+      { label: 'undefined', v: undefined, child: () => undefined },
+      { label: 'false', v: false, child: () => false },
+      { label: 'true', v: true, child: () => true },
+      { label: 'vnode', v: h('em', null, 'hi'), child: () => h('em', null, 'hi') },
+      { label: 'vnode array', v: [h('i', null, 'a'), h('b', null, 'c')], child: () => [h('i', null, 'a'), h('b', null, 'c')] },
+    ]
+
+    for (const c of cases) {
+      const fast = await renderToString(ssrRoot(_ssr(['<div>', '</div>'], _escSole(c.v))))
+      const slow = await renderToString(h('div', null, c.child))
+      expect(fast, `${c.label}: fast/slow parity`).toBe(slow)
+      // And no markers on either side — that is the whole point of _escSole.
+      expect(fast, `${c.label}: no range markers`).not.toContain('<!--$-->')
+    }
+  })
+
+  test('_escSole — escapes a VALUE-arm string exactly like the h() path', async () => {
+    // The string arm IS covered elsewhere, but not with hostile input; a helper
+    // that elides markers must not also elide escaping.
+    const hostile = `<script>&"'`
+    const fast = await renderToString(ssrRoot(_ssr(['<div>', '</div>'], _escSole(hostile))))
+    const slow = await renderToString(h('div', null, () => hostile))
+    expect(fast).toBe(slow)
+    expect(fast).not.toContain('<script>')
   })
 
   test('mapitem text hole — no markers, escaped', async () => {
@@ -155,8 +256,8 @@ describe('_ssrChildren — .map fast path byte-identity', () => {
     const fast = await renderToString(
       ssrRoot(
         _ssr(
-          ['<ul><!--$-->', '<!--/$--></ul>'],
-          _ssrChildren(rows.map((r) => _ssr(['<li class="row">', '</li>'], _esc(r.name)))),
+          ['<ul>', '</ul>'],
+          _ssrChildren(rows.map((r) => _ssr(['<li class="row">', '</li>'], _escSole(r.name)))),
         ),
       ),
     )
@@ -165,7 +266,7 @@ describe('_ssrChildren — .map fast path byte-identity', () => {
     )
     expect(fast).toBe(slow)
     expect(fast).toBe(
-      '<ul><!--$--><li class="row">Alice</li><li class="row">Bob</li><!--/$--></ul>',
+      '<ul><li class="row">Alice</li><li class="row">Bob</li></ul>',
     )
   })
 
@@ -175,24 +276,24 @@ describe('_ssrChildren — .map fast path byte-identity', () => {
     const fast = await renderToString(
       ssrRoot(
         _ssr(
-          ['<ul><!--$-->', '<!--/$--></ul>'],
-          _ssrChildren(rows.map((r) => _ssrItem(['<li>', '</li>'], _esc(r.name)))),
+          ['<ul>', '</ul>'],
+          _ssrChildren(rows.map((r) => _ssrItem(['<li>', '</li>'], _escSole(r.name)))),
         ),
       ),
     )
     const slow = await renderToString(h('ul', null, () => rows.map((r) => h('li', null, r.name))))
     expect(fast).toBe(slow)
-    expect(fast).toBe('<ul><!--$--><li>Ada &amp; Bob</li><li>&lt;x&gt;</li><!--/$--></ul>')
+    expect(fast).toBe('<ul><li>Ada &amp; Bob</li><li>&lt;x&gt;</li></ul>')
   })
 
   test('empty list is byte-identical', async () => {
     const rows: { name: string }[] = []
     const fast = await renderToString(
-      ssrRoot(_ssr(['<ul><!--$-->', '<!--/$--></ul>'], _ssrChildren(rows.map((r) => _ssr(['<li>', '</li>'], _esc(r.name)))))),
+      ssrRoot(_ssr(['<ul>', '</ul>'], _ssrChildren(rows.map((r) => _ssr(['<li>', '</li>'], _escSole(r.name)))))),
     )
     const slow = await renderToString(h('ul', null, () => rows.map((r) => h('li', null, r.name))))
     expect(fast).toBe(slow)
-    expect(fast).toBe('<ul><!--$--><!--/$--></ul>')
+    expect(fast).toBe('<ul></ul>')
   })
 })
 

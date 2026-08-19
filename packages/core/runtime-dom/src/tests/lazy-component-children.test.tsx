@@ -66,6 +66,10 @@ const SSR_DEPS: Record<string, unknown> = {
   _lc,
   _ssr: (RuntimeServer as Record<string, unknown>)._ssr,
   _esc: (RuntimeServer as Record<string, unknown>)._esc,
+  // A component's SOLE element child is exactly the shape whose SSR hole the
+  // compiler emits as `_escSole` (markers elided — the tag boundary supplies
+  // the extent), so the eval harness must carry it alongside `_esc`.
+  _escSole: (RuntimeServer as Record<string, unknown>)._escSole,
   _ssrNode: (RuntimeServer as Record<string, unknown>)._ssrNode,
   _ssrChildren: (RuntimeServer as Record<string, unknown>)._ssrChildren,
   _ssrDeferred: (RuntimeServer as Record<string, unknown>)._ssrDeferred,

@@ -254,7 +254,11 @@ export async function createCollapseResolver(projectRoot: string): Promise<Colla
         h(Provider, { theme: themeVal, mode }, h(Component, input.props, ...childArgs))
       // The SSR renderer wraps reactive-accessor children in
       // `<!--$-->…<!--/$-->` hydration range markers (the extent contract
-      // for hydrateReactiveChild). A collapse bake is a STATIC cloneNode
+      // for hydrateReactiveChild) — except where the accessor is its
+      // element's SOLE child, which needs none (the tag boundary supplies
+      // the extent; see `soleAccessorChild`). Stripping stays unconditional:
+      // it must handle the marked shapes, and is a no-op on the elided ones.
+      // A collapse bake is a STATIC cloneNode
       // template that is never range-hydrated — the markers would be dead
       // comment nodes cloned into EVERY mount — so strip them from the
       // captured HTML. Only the accessor markers are stripped; the
