@@ -547,6 +547,49 @@ const App = () => <div class="a"><span class="s">s</span>{() => [1, 2].map((n) =
     expect(on.html).toBe(off.html)
   })
 
+  it('a HOLE and a SLOT in one template stay disjoint — neither duplicates', async () => {
+    // The shape that only became reachable when mount-slot adoption removed
+    // `templateSignature`'s blanket `html.includes('<!')` bail. Before that, a
+    // template carrying a `<!>` never adopted at all, so a hole could never
+    // co-occur with one — which is exactly what the hole relaxation's original
+    // soundness note leaned on ("`templateSignature` refuses every template
+    // containing one").
+    //
+    // Both relaxations say "this element's whole server child range belongs to
+    // a later claimer, stop verifying here". If they ever fired on the SAME
+    // element the range would be handed to `_mountChild` AND `_mountSlot` —
+    // duplicate DOM. They cannot: a hole is recorded only for an element with
+    // no text, no element child and no `<!>`. This locks that they compose on
+    // one template without either claim leaking into the other.
+    const src = `
+const Mid = () => <em class="mid">m</em>
+const App = () => <div class="a"><section class="h"><Mid /></section>{() => [1, 2].map((n) => <b>{() => String(n)}</b>)}</div>`
+    const tree = () => {
+      const Mid = () => h('em', { class: 'mid' }, 'm')
+      return h(
+        (() =>
+          h(
+            'div',
+            { class: 'a' },
+            h('section', { class: 'h' }, h(Mid as never, null)),
+            () => [1, 2].map((n) => h('b', null, String(n))),
+          )) as never,
+        null,
+      )
+    }
+    const r = await hydrateAndMeasure(tree(), src, ON)
+    // The server sent both regions.
+    expect(r.ssrHtml).toContain('<em class="mid">m</em>')
+    expect(r.ssrHtml).toContain('<!--$-->')
+    // Exactly one of each — no second copy from either claimer. This is the
+    // assertion that would fail if the two relaxations overlapped.
+    expect(r.html.match(/<em/g)).toHaveLength(1)
+    expect(r.html.match(/<b>/g)).toHaveLength(2)
+    expect(r.html.match(/<section/g)).toHaveLength(1)
+    // …and the page still renders the same content it was sent.
+    expect(r.html).toContain('<em class="mid">m</em>')
+  })
+
   it('relaxing the verifier DUPLICATES the server content — the gate is load-bearing', () => {
     // Requirement (2). Teaching the verifier to tolerate a hole is not merely
     // insufficient; on its own it is a correctness bug, because the compiled

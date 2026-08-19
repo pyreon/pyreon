@@ -670,7 +670,15 @@ function templateSignature(tpl: HTMLTemplateElement): TplSig | null {
     // here rather than trusted, so a compiler that ever marks the wrong element
     // costs an adoption instead of correctness.
     //
-    // The `!slotAtEnd` conjunct is what keeps the TWO relaxations disjoint. A
+    // The `!slotAtEnd` conjunct is DEFENSIVE and not currently reachable: the
+    // compiler never marks a slot-bearing element as a hole, so removing it
+    // leaves every spec green. It is kept because it converts the disjointness
+    // below from an assumption about the compiler into a structural property of
+    // this function — the same reason the `texts === 0` / `firstElementChild`
+    // re-checks exist beside it rather than trusting the marker. Anything that
+    // makes the shape reachable then costs an adoption, not correctness.
+    //
+    // It keeps the TWO relaxations disjoint. A
     // hole skips its element's server range so trailing `_mountChild` calls can
     // hydrate it; a sole slot skips the same range so `_mountSlot` can. Both
     // firing on one element would hand the same nodes to two different claimers
