@@ -511,23 +511,83 @@ const App = () => <div class="app"><main class="m">${jsxKids.join('')}</main></d
     expect(failures, failures.join('\n')).toEqual([])
   })
 
-  it('the limit PRE-EXISTS at default settings for a dynamic-slot hole', async () => {
-    // No option involved. A `<!>` placeholder + `_mountSlot` is the same hole
-    // shape, so a template with a dynamic child does not adopt today either.
-    // The option does not create this limit — it widens who hits it.
+  it('a dynamic-slot template adopts, and does so INDEPENDENTLY of the option', async () => {
+    // Was `the limit PRE-EXISTS at default settings for a dynamic-slot hole`,
+    // asserting `adopts === 0 / retained === 0`. That recorded the state of the
+    // world when a `<!>`-bearing template could never adopt at all
+    // (`templateSignature` bailed on `html.includes('<!')`), and its POINT was
+    // an attribution one: the dynamic-slot limit is not created by
+    // `templatizeComponentChildren`, which merely widens who hits it.
+    //
+    // The mount-slot adoption work removed that blanket bail, so the shape now
+    // ADOPTS. The attribution invariant is the half worth keeping and is still
+    // true — the option does not govern this shape — so it is asserted directly
+    // (off vs on) instead of via a zero that no longer holds.
     const src = `
 const App = () => <div class="a"><span class="s">s</span>{() => [1, 2].map((n) => <b>{() => String(n)}</b>)}</div>`
-    const ssr = h(
-      (() =>
-        h('div', { class: 'a' }, h('span', { class: 's' }, 's'), () =>
-          [1, 2].map((n) => h('b', null, String(n))),
-        )) as never,
-      null,
-    )
-    const r = await hydrateAndMeasure(ssr, src, {})
+    const tree = () =>
+      h(
+        (() =>
+          h('div', { class: 'a' }, h('span', { class: 's' }, 's'), () =>
+            [1, 2].map((n) => h('b', null, String(n))),
+          )) as never,
+        null,
+      )
+    const off = await hydrateAndMeasure(tree(), src, {})
+    expect(off.ssrHtml).toContain('<!--$-->')
+    expect(off.adopts).toBe(1)
+    expect(off.retained).toBe(off.total)
+
+    // The option is not what decides this shape: identical adoption, identical
+    // retention, identical page. `adopts` is a per-TEST cumulative counter, so
+    // the second run's contribution is the delta.
+    const on = await hydrateAndMeasure(tree(), src, ON)
+    expect(on.adopts - off.adopts).toBe(off.adopts)
+    expect(on.retained).toBe(off.retained)
+    expect(on.html).toBe(off.html)
+  })
+
+  it('a HOLE and a SLOT in one template stay disjoint — neither duplicates', async () => {
+    // The shape that only became reachable when mount-slot adoption removed
+    // `templateSignature`'s blanket `html.includes('<!')` bail. Before that, a
+    // template carrying a `<!>` never adopted at all, so a hole could never
+    // co-occur with one — which is exactly what the hole relaxation's original
+    // soundness note leaned on ("`templateSignature` refuses every template
+    // containing one").
+    //
+    // Both relaxations say "this element's whole server child range belongs to
+    // a later claimer, stop verifying here". If they ever fired on the SAME
+    // element the range would be handed to `_mountChild` AND `_mountSlot` —
+    // duplicate DOM. They cannot: a hole is recorded only for an element with
+    // no text, no element child and no `<!>`. This locks that they compose on
+    // one template without either claim leaking into the other.
+    const src = `
+const Mid = () => <em class="mid">m</em>
+const App = () => <div class="a"><section class="h"><Mid /></section>{() => [1, 2].map((n) => <b>{() => String(n)}</b>)}</div>`
+    const tree = () => {
+      const Mid = () => h('em', { class: 'mid' }, 'm')
+      return h(
+        (() =>
+          h(
+            'div',
+            { class: 'a' },
+            h('section', { class: 'h' }, h(Mid as never, null)),
+            () => [1, 2].map((n) => h('b', null, String(n))),
+          )) as never,
+        null,
+      )
+    }
+    const r = await hydrateAndMeasure(tree(), src, ON)
+    // The server sent both regions.
+    expect(r.ssrHtml).toContain('<em class="mid">m</em>')
     expect(r.ssrHtml).toContain('<!--$-->')
-    expect(r.adopts).toBe(0)
-    expect(r.retained).toBe(0)
+    // Exactly one of each — no second copy from either claimer. This is the
+    // assertion that would fail if the two relaxations overlapped.
+    expect(r.html.match(/<em/g)).toHaveLength(1)
+    expect(r.html.match(/<b>/g)).toHaveLength(2)
+    expect(r.html.match(/<section/g)).toHaveLength(1)
+    // …and the page still renders the same content it was sent.
+    expect(r.html).toContain('<em class="mid">m</em>')
   })
 
   it('relaxing the verifier DUPLICATES the server content — the gate is load-bearing', () => {

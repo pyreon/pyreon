@@ -531,6 +531,15 @@ interface TplSig {
   tags: string[]
   counts: number[]
   /**
+   * Per element (tree order), whether its `<!>` mount-slot placeholder is the
+   * element's SOLE child. That is the one shape whose SSR counterpart carries
+   * NO `<!--$-->` range, because runtime-server elides the markers for a sole
+   * accessor child (`soleAccessorChild` there) — the element's own tag boundary
+   * already delimits the extent. Distinct from `slots`, which only says the
+   * placeholder is LAST.
+   */
+  soleSlots: boolean[]
+  /**
    * Per element (tree order), the template's STATIC attributes — the ones
    * baked into the template HTML. Dynamic props are bound by the compiled
    * `bind` and are absent here, so this is a SUBSET check against the SSR
@@ -543,6 +552,21 @@ interface TplSig {
    * as `null` (== "do not compare"); genuine static text is recorded verbatim.
    */
   texts: (string | null)[][]
+  /**
+   * Per element (tree order), whether the template ends that element with a
+   * `<!>` MOUNT-SLOT placeholder. Its SSR counterpart is a `<!--$-->…<!--/$-->`
+   * range holding the rendered slot content, which is adopted rather than
+   * cloned-over. Only a LAST-child slot is ever recorded (see the alignment
+   * gate in templateSignature).
+   *
+   * DISJOINT from `holes`, but by an EXPLICIT conjunct rather than by shape.
+   * The original argument was "a hole is emitted EMPTY, and an empty element
+   * has no `<!>` child" — the mixed shape retired that, since a hole may now
+   * carry baked element children. `templateSignature` therefore excludes a
+   * slot-bearing element from being a hole outright (`!slotAtEnd`), which is
+   * what keeps the two relaxations from claiming the same range.
+   */
+  slots: boolean[]
   /**
    * Per element (tree order), `-1` when this element is not a mount hole, else
    * the number of BAKED children the template gives it before the hole starts.
@@ -569,15 +593,9 @@ interface TplSig {
 }
 const _tplSignature = new WeakMap<HTMLTemplateElement, TplSig | null>()
 
-function templateSignature(tpl: HTMLTemplateElement, html: string): TplSig | null {
+function templateSignature(tpl: HTMLTemplateElement): TplSig | null {
   let sig = _tplSignature.get(tpl)
   if (sig !== undefined) return sig
-  // Templates with comment placeholders (`<!>` dynamic slots / mountSlot
-  // machinery) have clone-time structure the SSR DOM does not — never adopt.
-  if (html.includes('<!')) {
-    _tplSignature.set(tpl, null)
-    return null
-  }
   const root = tpl.content.firstElementChild
   if (!root || root.nextElementSibling) {
     _tplSignature.set(tpl, null)
@@ -589,6 +607,18 @@ function templateSignature(tpl: HTMLTemplateElement, html: string): TplSig | nul
   const textList: (string | null)[][] = []
   const holeFlags: number[] = []
   let holeCount = 0
+  const slotList: boolean[] = []
+  const soleSlotList: boolean[] = []
+  // MOUNT-SLOT ALIGNMENT GATE. A `<!>` placeholder is one node in the clone but
+  // an arbitrary run of nodes in the SSR DOM, so every compiled ref walk that
+  // would have to step PAST it (`__p1 = __root.firstChild.nextSibling` for a
+  // second slot; a ref for a static sibling that follows one) lands on slot
+  // CONTENT instead of the node it names — silent misbinding of exactly the
+  // ref-hoist class. A slot that is its parent's LAST child cannot be crossed:
+  // nothing static follows it, and its content is confined inside that parent,
+  // so walks outside are untouched. Anything else bails to the clone, which is
+  // the pre-existing behaviour for every slot-bearing template.
+  let bail = false
   const walk = (el: Element) => {
     // tag + textChildCount — the count gates BIND-SLOT alignment: a template
     // text slot (dynamic or static) must have a counterpart text node in the
@@ -596,6 +626,8 @@ function templateSignature(tpl: HTMLTemplateElement, html: string): TplSig | nul
     // null/wrong-node (e.g. an UNMARKED empty dynamic slot in compiled-SSR
     // output). Element-only walks keep it marker-comment-immune.
     let texts = 0
+    let slotAtEnd = false
+    let soleSlot = false
     const ownTexts: (string | null)[] = []
     for (let n = el.firstChild; n; n = n.nextSibling) {
       if (n.nodeType === 3) {
@@ -604,10 +636,24 @@ function templateSignature(tpl: HTMLTemplateElement, html: string): TplSig | nul
         // counterpart carries the rendered value, so it must NOT be compared.
         const d = (n as Text).data
         ownTexts.push(d === ' ' ? null : d)
+      } else if (n.nodeType === 8) {
+        // `<!>` mount-slot placeholder. Adoptable only as the last child (see
+        // the alignment gate above); any other comment in a compiled template
+        // is not a shape this verifier models.
+        if (n.nextSibling !== null || (n as Comment).data !== '') {
+          bail = true
+          return
+        }
+        slotAtEnd = true
+        // SOLE child — no static siblings at all. This is what tells the verify
+        // walk to expect an SSR element whose markers were elided.
+        soleSlot = n === el.firstChild
       }
     }
     tags.push(el.tagName)
     counts.push(texts)
+    slotList.push(slotAtEnd)
+    soleSlotList.push(soleSlot)
     const ownAttrs: [string, string][] = []
     const a = el.attributes
     for (let i = 0; i < a.length; i++) {
@@ -623,17 +669,48 @@ function templateSignature(tpl: HTMLTemplateElement, html: string): TplSig | nul
     // they are matched normally and the hole is what follows them. Re-checked
     // here rather than trusted, so a compiler that ever marks the wrong element
     // costs an adoption instead of correctness.
-    const isHole = _isTplHoleEl(el) && texts === 0
+    //
+    // The `!slotAtEnd` conjunct is DEFENSIVE and not currently reachable: the
+    // compiler never marks a slot-bearing element as a hole, so removing it
+    // leaves every spec green. It is kept because it converts the disjointness
+    // below from an assumption about the compiler into a structural property of
+    // this function — the same reason the `texts === 0` / `firstElementChild`
+    // re-checks exist beside it rather than trusting the marker. Anything that
+    // makes the shape reachable then costs an adoption, not correctness.
+    //
+    // It keeps the TWO relaxations disjoint. A
+    // hole skips its element's server range so trailing `_mountChild` calls can
+    // hydrate it; a sole slot skips the same range so `_mountSlot` can. Both
+    // firing on one element would hand the same nodes to two different claimers
+    // — the duplicate-DOM failure this whole area exists to prevent. A `<!>` is
+    // a COMMENT, so the text/element checks do NOT exclude it: without this
+    // conjunct the disjointness would rest on the compiler never marking a
+    // slot-bearing element, which is an assumption, not a guarantee.
+    //
+    // NOTE the earlier form of this also required `el.firstElementChild === null`,
+    // and the slot half justified disjointness by "a hole is emitted EMPTY". The
+    // mixed shape retired that: a hole may now carry baked element children, so
+    // emptiness no longer separates the two and `!slotAtEnd` is doing the work
+    // ALONE. A slot-bearing element simply loses the hole relaxation and takes
+    // the slot path, which is the correctness-over-adoption trade already made
+    // above.
+    const isHole = _isTplHoleEl(el) && texts === 0 && !slotAtEnd
     holeFlags.push(isHole ? el.children.length : -1)
     if (isHole) holeCount++
-    for (let c = el.firstElementChild; c; c = c.nextElementSibling) walk(c)
+    for (let c = el.firstElementChild; c && !bail; c = c.nextElementSibling) walk(c)
   }
   walk(root)
+  if (bail) {
+    _tplSignature.set(tpl, null)
+    return null
+  }
   sig = {
     tags,
     counts,
     attrs: attrList,
     texts: textList,
+    slots: slotList,
+    soleSlots: soleSlotList,
     holes: holeCount > 0 ? Int32Array.from(holeFlags) : null,
     holeCount,
   }
@@ -815,6 +892,26 @@ function replayAdoptPlan(root: Element, plan: AdoptPlan): boolean {
   return true
 }
 
+/**
+ * Depth-aware scan from a `<!--$-->` open marker to its matching `<!--/$-->`,
+ * answering only "is that close this element's LAST child?" — the structural
+ * test that identifies a MOUNT-SLOT range. Accessor ranges nest, so the depth
+ * counter is required; a nested range's close must not be mistaken for ours.
+ */
+function matchingCloseIsLastChild(open: Comment, el: Element): boolean {
+  let depth = 0
+  for (let n: ChildNode | null = open.nextSibling; n; n = n.nextSibling) {
+    if (n.nodeType !== 8) continue
+    const d = (n as Comment).data
+    if (d === '$') depth++
+    else if (d === '/$') {
+      if (depth === 0) return n === el.lastChild
+      depth--
+    }
+  }
+  return false
+}
+
 function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | null {
   let removals: Text[] | null = null
   let triplets: { open: Comment; text: Text | null; close: Comment }[] | null = null
@@ -842,6 +939,20 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
       const pair = wantAttrs[i] as [string, string]
       if (el.getAttribute(pair[0]) !== pair[1]) return false
     }
+    // TWO RELAXATIONS, DISJOINT BY AN EXPLICIT CONJUNCT. Both say "this
+    // element's remaining server child range belongs to a later claimer, so stop
+    // verifying here": a HOLE hands its range to trailing `_mountChild` calls, a
+    // SOLE SLOT hands its range to `_mountSlot`. Firing both on one element would
+    // hand the same nodes to two claimers — duplicate DOM.
+    //
+    // They cannot, but the reason CHANGED with the mixed shape. It used to be
+    // structural: a hole was recorded only for an element with no text, no
+    // element child and no `<!>`, so a slot-bearing element could not be one. A
+    // hole may now carry `k` baked element children, so emptiness no longer
+    // separates them — `templateSignature` instead excludes a slot-bearing
+    // element from being a hole outright (`!slotAtEnd`). Order below is
+    // presentational, not semantic.
+
     // MOUNT HOLE. The template ends short here: after `k` baked children, the
     // rest of this element's server range is the hole's content — not extra
     // elements to reject, not texts to align, and not a subtree to descend into
@@ -872,11 +983,39 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
         return true
       }
     }
+    // MARKER-LESS SOLE MOUNT-SLOT. runtime-server elides the `<!--$-->` pair when
+    // an element's SOLE child is a reactive accessor (`soleAccessorChild` there),
+    // because the tag boundary already delimits the extent. That elision was
+    // designed against the `h()` pair — SSR render and `hydrateSoleAccessorChild`
+    // — and this compiled-template path is a further consumer of the same shape
+    // that never joined the agreement, so a sole `.map()` child reached the gate
+    // below looking for a range SSR never emitted and bailed the whole container.
+    //
+    // When the template says the slot is SOLE, the element's ENTIRE child list is
+    // slot content: there is no static skeleton left to compare and nothing to
+    // descend into. The one thing still worth distinguishing is whether SSR
+    // actually elided — a sole slot whose vnode child was an ARRAY rather than an
+    // accessor still gets its markers — so fall through to the marked path when
+    // the range really is there.
+    if (expected.soleSlots[at] === true) {
+      const f = el.firstChild
+      const marked =
+        f !== null &&
+        f.nodeType === 8 &&
+        (f as Comment).data === '$' &&
+        matchingCloseIsLastChild(f as Comment, el)
+      if (!marked) return true
+    }
     let texts = 0
     let bare: Text[] | null = null
     // `$`-marked slots interleave with bare texts, so their presence breaks the
     // 1:1 alignment the static-text comparison below relies on.
     let sawTriplet = false
+    // The MOUNT-SLOT region's open marker, once identified (see below). Element
+    // descent stops here: everything after it is slot CONTENT, which belongs to
+    // the slot's own hydration, not to this template's skeleton.
+    let slotOpen: Comment | null = null
+    const wantSlot = expected.slots[at] === true
     // Single pass over children: count texts, validate + collect `$` triplets
     // inline (adjacency rules from collectDollarTriplets), gather bare texts.
     let n: ChildNode | null = el.firstChild
@@ -884,6 +1023,18 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
       if (n.nodeType === 8) {
         const d = (n as Comment).data
         if (d === '$') {
+          // MOUNT SLOT. The template ends this element with a `<!>` placeholder,
+          // and its SSR counterpart is the range whose close marker is this
+          // element's LAST child. Matching on that — rather than on "the range
+          // holds elements" — keeps it distinct from a reactive-TEXT triplet
+          // that merely happens to sit last, and makes the whole thing a
+          // structural equality check rather than a heuristic. The markers stay
+          // in the DOM: the open one IS the placeholder the compiled bind
+          // resolves to, and `_mountSlot` consumes both.
+          if (wantSlot && slotOpen === null && matchingCloseIsLastChild(n as Comment, el)) {
+            slotOpen = n as Comment
+            break
+          }
           texts++
           const prev = n.previousSibling
           if (prev && prev.nodeType === 3) return false // adjacent-text seam
@@ -917,6 +1068,11 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
       }
       n = n.nextSibling
     }
+    // The template ends this element with a slot but the target has no matching
+    // range — a structural divergence, not something to paper over: the bind
+    // would resolve its placeholder ref to a real SSR node and `_mountSlot`
+    // would delete it.
+    if (wantSlot && slotOpen === null) return false
     const wantTexts = wantCounts[at] as number
     if (texts !== wantTexts) {
       // Template expects NO texts here → the bind manages this element's
@@ -967,8 +1123,17 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
         }
       }
     }
-    for (let c = el.firstElementChild; c; c = c.nextElementSibling) {
-      if (!walk(c)) return false
+    // Descend into STATIC element children only. With a slot present, those are
+    // exactly the elements before its open marker — anything after is rendered
+    // slot content, which this template's signature says nothing about.
+    if (slotOpen !== null) {
+      for (let c: ChildNode | null = el.firstChild; c && c !== slotOpen; c = c.nextSibling) {
+        if (c.nodeType === 1 && !walk(c as Element)) return false
+      }
+    } else {
+      for (let c = el.firstElementChild; c; c = c.nextElementSibling) {
+        if (!walk(c)) return false
+      }
     }
     return true
   }
@@ -1028,7 +1193,7 @@ export function tplAdoptVerify(
   // second copy beside the server's. Refusing costs `<For>` rows whose
   // renderItem absorbs a component the dispatch-free replay; a silent
   // duplication would cost the page.
-  if (allowPlanReplay && templateSignature(tpl, html)?.holeCount) allowPlanReplay = false
+  if (allowPlanReplay && templateSignature(tpl)?.holeCount) allowPlanReplay = false
   if (allowPlanReplay) {
     if (tpl === _lastVerifyTpl) {
       plan = _lastVerifyPlan
@@ -1050,11 +1215,19 @@ export function tplAdoptVerify(
   }
   const troot = tpl.content.firstElementChild
   if (!troot || target.tagName !== troot.tagName) return false
-  const sig = templateSignature(tpl, html)
+  const sig = templateSignature(tpl)
   const match = sig !== null ? matchDomAgainstTemplate(target, sig) : null
   if (match === null) return false
   if (allowPlanReplay && plan === undefined) {
-    const built = buildAdoptPlan(target, sig as TplSig, match)
+    // TWO restrictions compose here. #2925 gates replay behind
+    // `allowPlanReplay`; separately, a slot-bearing template is a CONTAINER —
+    // one per hydration, not one per row — so the replay plan buys nothing,
+    // and its positional spot-checks are recorded against child indices that
+    // rendered slot content shifts. Cache a null plan so every such target
+    // takes the full verify.
+    const built = (sig as TplSig).slots.includes(true)
+      ? null
+      : buildAdoptPlan(target, sig as TplSig, match)
     _tplAdoptPlan.set(tpl, built)
     _lastVerifyTpl = tpl
     _lastVerifyPlan = built

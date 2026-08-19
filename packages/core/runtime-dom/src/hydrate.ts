@@ -41,6 +41,7 @@ import { buildRowPlan, replayRowPlan, tplAdoptVerify } from './hydration-plan'
 import type { RowPlan } from './hydration-plan'
 import { _setPendingForAdoption, mountReactive } from './nodes'
 import {
+  _setSlotHydrator,
   _setTplAdoptTarget,
   _setTplAdoptVerifier,
   _setTplHoleHydrator,
@@ -208,17 +209,128 @@ function hydrateSoleAccessorChild(
     return bindPolymorphicText(child, bound, el)
   }
 
-  // General case — mount the live binding BEFORE the SSR content, then drop
-  // that content. An empty/null initial does NOT imply a text binding (the
-  // accessor can yield a VNode on a later flip), so only `mountReactive` is
-  // correct here.
-  const marker = insertMarker(el, first, 'pyreon')
-  const cleanup = mountReactive(child, el, marker, mountChild)
-  let cur: ChildNode | null = first
-  while (cur) {
-    const nx: ChildNode | null = cur.nextSibling
-    cur.remove()
-    cur = nx
+  // General case — multi-node, or a VNode subtree. The element's own tag
+  // boundary is the region, so ADOPT it exactly as the marked path adopts a
+  // `<!--$-->` range: same core, same removal contract, with a synthesized close
+  // standing in for the marker SSR elided. (This path used to mount fresh and
+  // delete the server nodes, retaining 1/N — the container only. That is the
+  // same discard `_tpl` adoption exists to stop, and it reached here because the
+  // elision has TWO consumers and only the marked one had learned to adopt.)
+  //
+  // An empty/null initial does NOT imply a text binding — the accessor can yield
+  // a VNode on a later flip — so `mountReactive` remains the only correct
+  // boundary either way.
+  if (first !== null) {
+    const end = document.createComment('pyreon')
+    el.appendChild(end)
+    const cleanup = adoptReactiveRange(child, el, first, end, path)
+    end.remove()
+    return cleanup
+  }
+  // SSR rendered nothing into the element — no region to adopt.
+  return mountReactive(child, el, null, mountChild)
+}
+
+/**
+ * MULTI-ROOT ADOPTION — the one place an already-rendered region becomes a LIVE
+ * reactive boundary without discarding the nodes.
+ *
+ * Mounting fresh and deleting the server nodes is the same discard `_tpl`
+ * adoption exists to stop: it destroys node identity, and with it typed input,
+ * focus, scroll and any listener non-Pyreon code attached. The binding must
+ * still be live (a later flip re-renders), so the adoption goes through
+ * `mountReactive` exactly as a cold mount would — only its FIRST mount is
+ * swapped for a hydrating one, which walks the accessor's initial value against
+ * the nodes already present.
+ *
+ * `end` is a real node terminating the region, and doubles as `mountReactive`'s
+ * anchor so the boundary lands AFTER the adopted content and the first walk has
+ * a terminator. The CALLER removes it, together with whatever opened the region.
+ * Three callers reach this with the same shape:
+ *
+ *   - marked (`hydrateReactiveChild`) — `[<!--$-->.nextSibling, <!--/$-->]`, the
+ *     range SSR emitted for an accessor child.
+ *   - MARKER-LESS, compiled (`hydrateMountSlot`) — `[parent.firstChild, <synth>]`
+ *   - MARKER-LESS, h() (`hydrateSoleAccessorChild`) — `[el.firstChild, <synth>]`
+ *
+ * The two marker-less callers exist because runtime-server ELIDES the marker
+ * pair when the accessor is its element's sole child (`soleAccessorChild` there)
+ * and the tag boundary already delimits the extent. That elision is decided from
+ * the STATIC vnode shape, so it holds only where every consumer reads that shape
+ * the same way — and the compiled `_tpl` + `_mountSlot` path is a consumer that
+ * never joined the agreement. Synthesizing the close is what lets both run this
+ * adoption rather than a parallel one. See `_mountSlot`.
+ *
+ * Any structural divergence inside the walk is handled by the same recovery
+ * `hydrateChild` uses everywhere (warn + repair in place), so a mismatch
+ * degrades to the pre-existing correctness, never past it.
+ */
+function adoptReactiveRange(
+  child: () => VNodeChild,
+  parent: Node,
+  rangeFirst: ChildNode,
+  end: ChildNode,
+  path: string,
+): Cleanup {
+  let hydrated = false
+  // A STABLE start boundary for the adopted region. Neither node delimiting the
+  // region can serve: the caller removes both, and leaving a `$` open would let
+  // a later `_mountSlot` mistake it for a live slot. A neutral marker also keeps
+  // the cleanup honest when the adopted subtree's OWN reactivity adds nodes
+  // after the walk — the range is re-read at teardown rather than frozen as a
+  // node list captured during hydration.
+  //
+  // It goes immediately before the CONTENT, not before the opening marker, so
+  // the teardown walks below start on real content and never have to special-
+  // case a marker the caller is about to remove anyway.
+  const startMarker = document.createComment('pyreon')
+  parent.insertBefore(startMarker, rangeFirst)
+  const cleanup = mountReactive(child, parent, end, (value, p, a) => {
+    if (hydrated) return mountChild(value, p, a)
+    hydrated = true
+    // `rangeFirst` may itself be a comment the walk should skip.
+    const cursor = rangeFirst.nodeType === 1 ? rangeFirst : firstReal(rangeFirst)
+    const disposeBindings = hydrateChild(value, cursor, p, a, `${path} > reactive`)[0]
+    // CONTRACT BRIDGE. `hydrateChild`'s cleanups DISPOSE bindings; they do not
+    // remove the nodes, because hydrateRoot tears the whole container down.
+    // `mountReactive` needs the opposite: its per-run cleanup is what clears the
+    // previous render before the next one mounts, so anything left behind
+    // survives every future flip. (The parity fuzzer caught exactly this — an
+    // adopted text node stayed put after the accessor flipped to an element,
+    // 5/300 seeds diverging post-flip.)
+    //
+    // Clear the LIVE range at teardown (start marker → mountReactive's anchor),
+    // not a list frozen now: the adopted subtree's own bindings may add or drop
+    // top-level nodes while it is mounted.
+    return () => {
+      disposeBindings()
+      let c = startMarker.nextSibling
+      while (c && c !== a) {
+        const nx: ChildNode | null = c.nextSibling
+        c.remove()
+        c = nx
+      }
+    }
+  })
+  // The accessor's initial value may be null/false, in which case mountReactive
+  // never called the mount fn — the server region is then stale content the
+  // client would not have produced, and leaving the adoption armed would run it
+  // against those dead nodes on the FIRST flip. Drop the region and mark the
+  // adoption spent.
+  if (!hydrated) {
+    hydrated = true
+    // Stop at mountReactive's OWN marker, which it inserted immediately before
+    // the anchor — walking to `end` instead deletes that marker, detaching the
+    // boundary so the binding can never render again. Every null-initial
+    // accessor (`{err() && <span/>}`, a toast list, a conditional row) is that
+    // shape, which is why it fails loudly and everywhere rather than subtly.
+    const boundary = end.previousSibling
+    let c = startMarker.nextSibling
+    while (c && c !== boundary && c !== end) {
+      const nx: ChildNode | null = c.nextSibling
+      c.remove()
+      c = nx
+    }
   }
   return cleanup
 }
@@ -291,6 +403,31 @@ function hydrateReactiveChild(
       // so only `mountReactive` handles the general case correctly. (A first cut
       // bound a text node here; the parity fuzzer's post-flip oracle caught
       // 217/3000 divergences, VNodes stringified into the text node.)
+
+      // MULTI-ROOT ADOPTION. A non-empty range holds real server nodes, and
+      // mounting fresh + deleting them is the same discard `_tpl` adoption
+      // exists to stop: it destroys node identity, and with it typed input,
+      // focus, scroll and any listener non-Pyreon code attached. The binding
+      // must still be LIVE (a later flip re-renders), so the adoption goes
+      // through `mountReactive` exactly as before — only its FIRST mount is
+      // swapped for a hydrating one, which walks the accessor's initial value
+      // against the nodes already in the range.
+      //
+      // The marker anchors AFTER the range (before `/$`), so re-renders insert
+      // at the right position and the first hydration walk has a terminator.
+      // Only the two markers are removed; the content stays put.
+      //
+      // Any structural divergence inside the walk is handled by the same
+      // recovery `hydrateChild` uses everywhere (warn + repair in place), so a
+      // mismatch degrades to the pre-existing correctness, never past it.
+      const rangeFirst = domNode.nextSibling
+      if (rangeFirst !== null && rangeFirst !== end) {
+        const cleanup = adoptReactiveRange(child, parent, rangeFirst, end, path)
+        domNode.remove()
+        end.remove()
+        return [cleanup, after ? firstReal(after) : null]
+      }
+
       // General case — mount the live binding at the range position, then remove
       // the SSR range, markers included.
       const marker = insertMarker(parent, domNode, 'pyreon')
@@ -640,6 +777,85 @@ function hydrateMountHole(
   // stale nodes. When the cursor is null there is nothing left to precede and
   // the anchor is `null` again, which is the append the caller wants.
   return hydrateChild(child, start, parent, start)
+}
+
+/**
+ * Hydrate a compiled `_mountSlot` against the SSR range its adopted container
+ * already holds (see `_mountSlot`). `open` is the live `<!--$-->` marker the
+ * compiled placeholder ref resolved to.
+ *
+ * The ACCESSOR case — what the compiler emits for `{items.map(…)}` and every
+ * other dynamic slot — is handed straight to `hydrateChild`, because a `$`
+ * cursor is precisely the shape `hydrateReactiveChild` already decodes: it
+ * finds the matching close depth-aware, adopts the range, and drops both
+ * markers. A non-accessor value (a literal array) has no reactive boundary to
+ * install, so it is walked against the range directly and the markers removed
+ * here.
+ */
+function hydrateMountSlot(
+  children: VNodeChild | VNodeChild[],
+  parent: Node,
+  open: Comment | null,
+): Cleanup {
+  // MARKER-LESS REGION — the slot was its element's SOLE child, so
+  // runtime-server elided the `<!--$-->` pair and the extent is the parent's
+  // entire child list. See `_mountSlot` for why a `null` open provably means
+  // SOLE rather than merely last.
+  if (open === null) {
+    const first = parent.firstChild
+    if (typeof children === 'function') {
+      // SSR rendered nothing into the slot, so there is no region to adopt —
+      // install the boundary a cold mount would have built, at the end of the
+      // (empty) child list.
+      if (first === null) return mountReactive(children as () => VNodeChild, parent, null, mountChild)
+      // Synthesize the close SSR elided so the shared adoption core runs on
+      // exactly the shape it gets for a marked range — including the removal
+      // contract, which a direct `hydrateChild` call does NOT carry: its
+      // cleanups dispose bindings only, so the server nodes would survive every
+      // future flip and the region would DUPLICATE on the first re-render.
+      const end = document.createComment('pyreon')
+      parent.appendChild(end)
+      const cleanup = adoptReactiveRange(children as () => VNodeChild, parent, first, end, 'slot')
+      end.remove()
+      return cleanup
+    }
+    // A literal (non-accessor) value installs no reactive boundary, so it is
+    // walked against the region directly — there is no later render whose
+    // cleanup would have to remove these nodes.
+    const cursor = first === null ? null : first.nodeType === 1 ? first : firstReal(first)
+    return hydrateChild(children, cursor, parent, null, 'slot')[0]
+  }
+  if (typeof children === 'function') {
+    return hydrateChild(children, open, parent, null, 'slot')[0]
+  }
+  // Locate the range end (depth-aware — accessor ranges nest).
+  let close: ChildNode | null = null
+  let depth = 0
+  for (let n: ChildNode | null = open.nextSibling; n; n = n.nextSibling) {
+    if (n.nodeType !== 8) continue
+    const d = (n as Comment).data
+    if (d === '$') depth++
+    else if (d === '/$') {
+      if (depth === 0) {
+        close = n
+        break
+      }
+      depth--
+    }
+  }
+  if (close === null) {
+    // No range to adopt (shouldn't reach here — the verifier only admits a
+    // container whose slot range is well-formed). Fall back to mounting.
+    const cleanup = mountChild(children, parent, open)
+    open.remove()
+    return cleanup
+  }
+  const first = open.nextSibling
+  const cursor = first === close ? null : first!.nodeType === 1 ? first : firstReal(first)
+  const [cleanup] = hydrateChild(children, cursor, parent, close, 'slot')
+  open.remove()
+  close.remove()
+  return cleanup
 }
 
 function hydrateChild(
@@ -1086,6 +1302,7 @@ export function hydrateRoot(container: Element, vnode: VNodeChild): () => void {
   // machinery into CSR bundles that tree-shake hydrateRoot).
   _setTplAdoptVerifier(tplAdoptVerify)
   _setTplHoleHydrator(hydrateMountHole)
+  _setSlotHydrator(hydrateMountSlot)
   // Install the devtools hook on hydration too, not just `mount()` — otherwise
   // the reactive dev overlay (Ctrl+Shift+R) + `__PYREON_DEVTOOLS__` silently
   // don't exist in SSR/hydrated apps, which is most real Pyreon apps. Idempotent
