@@ -34,34 +34,9 @@
  * `data-rocketstyle` / `data-pyr-element` attributes only.
  */
 
-import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 
-/**
- * Wait until the client has taken ownership of the app — NOT merely until
- * markup is visible.
- *
- * Those differ, and every spec below that clicks something depends on the
- * difference. `RouterView` renders its route through a reactive accessor and
- * every fs-router route is `lazy()`, so today the accessor's first render
- * deletes the server range: the page blanks and refills when the chunk lands.
- * Nothing clickable exists in between, which means any node a locator matched
- * was necessarily already hydrated. These specs have been relying on that
- * accident, not asserting it.
- *
- * The accident evaporates as soon as hydration ADOPTS the server DOM rather
- * than rebuilding it — which is the direction the framework is moving, and
- * which measurably breaks these specs when it lands. A locator then matches a
- * fully-rendered, visible, DEAD control, the click is swallowed, and the
- * failure reads `element(s) not found` against the post-click state — a
- * hydration-timing bug wearing the costume of a reactivity bug.
- *
- * `startClient` sets `data-pyreon-hydrated` on the container AFTER
- * mount/hydrate returns, so its presence means handlers are attached.
- */
-async function waitForHydration(page: Page): Promise<void> {
-  await page.locator('[data-pyreon-hydrated]').first().waitFor({ state: 'attached' })
-}
+import { waitForHydration } from './hydration-barrier'
 
 // ─── Page renders + nav works ──────────────────────────────────────────────
 
