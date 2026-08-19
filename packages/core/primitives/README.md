@@ -2,7 +2,7 @@
 
 > Canonical multi-platform UI primitives — semantic vocabulary that compiles to DOM (web), SwiftUI (iOS), and Compose (Android). The Pyreon Multi-Target story.
 
-**Status:** experimental, and further along than this line used to say. All **18** primitives now have real web implementations, and PMTC emits them for iOS + Android. Per-capability native maturity (what is device-proven vs merely emitted) lives in the multiplatform tier table, not here — it moves per release and a copy in this file would go stale, which is exactly what happened to the sentence this replaced.
+**Status:** experimental, and further along than this line used to say. All **20** primitives now have real web implementations, and PMTC emits them for iOS + Android (18 canonical UI primitives plus the two animation wrappers, `<Transition>` / `<TransitionGroup>`). Per-capability native maturity (what is device-proven vs merely emitted) lives in the multiplatform tier table, not here — it moves per release and a copy in this file would go stale, which is exactly what happened to the sentence this replaced.
 
 ## What this is
 
@@ -29,8 +29,10 @@ On the **web target** this compiles via `@pyreon/runtime-dom` to DOM (the implem
 
 ## The primitives
 
-All 18 have a real web implementation in `src/web/` — there is no
-type-definition-only tier any more.
+All 20 have a real web implementation in `src/web/` — there is no
+type-definition-only tier any more. Eighteen are the canonical UI
+vocabulary listed below; the other two are `<Transition>` and
+`<TransitionGroup>` (see [Animation](#animation)).
 
 | Primitive | DOM shape | Notes |
 |-----------|-----------|-------|
@@ -55,13 +57,44 @@ type-definition-only tier any more.
 Plus the escape hatches — `<Web>` / `<NativeIOS>` / `<NativeAndroid>` — for the
 cases a canonical primitive deliberately does not cover.
 
+## Animation
+
+| Wrapper | DOM shape | iOS | Android |
+|---------|-----------|-----|---------|
+| `<Transition>` | `<div>` + CSS transition longhands | `.transition(…)` + `.animation(_:value:)` | `AnimatedVisibility(enter =, exit =)` |
+| `<TransitionGroup>` | `<div>` + measured height transition | `.animation(.default, value: list.count)` | `Modifier.animateContentSize()` |
+
+```tsx
+import { Transition } from '@pyreon/primitives'
+
+<Transition name="slide-up" show={isOpen()} enterDuration={200} leaveDuration={400}>
+  <Panel />
+</Transition>
+```
+
+`name` picks a preset every target translates natively — `fade`, `scale-in`,
+`slide-up`, `slide-down`, `slide-left`, `slide-right` (camelCase spellings
+accepted too). Direction is the direction of **travel**, so a `slide-up` rises
+*into* place from below. `duration` / `easing` are symmetric;
+`enterDuration` / `leaveDuration` / `enterEasing` / `leaveEasing` override one
+side and fall back to the symmetric value.
+
+Import them from **here**, not from `@pyreon/runtime-dom`: that package is
+web-only, so PMTC warns on it even though the tag itself lowers fine.
+
+Two web behaviours worth knowing. The hidden state is `display:none` on the
+wrapper rather than an unmount, so an animation wrapper never gates its children
+out of SSR and a hidden `<Transition>` contributes no flex `gap`. And only
+transition *longhands* are ever assigned, so a consumer's own
+`transition-delay` survives.
+
 ## Design principles
 
 1. **Semantic names, not platform names.** `<Stack>` not `<View>` / `<VStack>` / `<div>`. Name describes intent.
 2. **One canonical event name per concept.** `onPress` everywhere (not `onClick` on web + `action:` on iOS).
 3. **Tokens-first styling.** `padding={4}` / `gap="md"` resolve via theme. No raw pixels.
 4. **Pyreon idioms preserved.** Existing `<For>` / `<Show>` / `<Match>` control flow stays.
-5. **Minimal first; expand from real-world usage.** 18 primitives; more when demanded.
+5. **Minimal first; expand from real-world usage.** 20 primitives; more when demanded.
 
 ## Per-platform import resolution
 
