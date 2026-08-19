@@ -105,6 +105,26 @@ export function isScriptFile(path: string): boolean {
   return path.startsWith('scripts/') && /\.(ts|tsx|js|mjs|cjs|json)$/.test(path)
 }
 
+/**
+ * A Playwright spec or its helpers under `e2e/`.
+ *
+ * The SAME invariant the comment above states for `scripts/**`, on a shape it
+ * did not cover. `e2e-affected.ts` lists `e2e/` as run-all-suites, and no
+ * workspace OWNS `e2e/`, so before this an e2e-only change computed
+ * `affected = ∅` → Bootstrap skipped → the e2e matrix (`needs: bootstrap`)
+ * skipped → the fail-closed E2E aggregator errored with
+ * `e2e-suite=skipped` — making a PR that touches ONLY e2e specs structurally
+ * un-mergeable. Found the hard way by exactly such a PR.
+ *
+ * The lesson the `scripts/**` note already draws, now with a second instance:
+ * when you teach one decider a path shape, grep the other. A disagreement is
+ * not a soft failure — the aggregator is fail-closed by design, which is
+ * correct, so the fix always belongs in the CLASSIFIERS.
+ */
+export function isE2eFile(path: string): boolean {
+  return path.startsWith('e2e/') && /\.(ts|tsx|js|mjs|cjs)$/.test(path)
+}
+
 /** The package whose tests cover `scripts/**` (affected target for script edits). */
 export const SCRIPT_TEST_PACKAGE = '@pyreon/test-utils'
 
@@ -386,7 +406,13 @@ export function computeAffectedFlags(opts: {
   for (const path of changed) {
     const ws = findOwningWorkspace(path, workspaces, root)
     if (ws) seeds.add(ws.name)
-    else if (hasScriptTestPkg && isScriptFile(path)) leafSeeds.add(SCRIPT_TEST_PACKAGE)
+    else if (hasScriptTestPkg && (isScriptFile(path) || isE2eFile(path))) {
+      // `e2e/**` rides the same leaf seed as `scripts/**`: the point is not
+      // that test-utils' tests cover the specs (they do not) — it is that
+      // `affected` must be NON-EMPTY so Bootstrap runs and the e2e matrix is
+      // reachable. A leaf keeps it off the full 60-package run.
+      leafSeeds.add(SCRIPT_TEST_PACKAGE)
+    }
     // A doc-INPUT file (`.claude/rules/anti-patterns.md`, `docs/patterns/**`)
     // must run the package that PARSES it. ADDITIVE, NOT a fallback: an
     // `else`-only branch would miss `docs/patterns/**`, which is already OWNED

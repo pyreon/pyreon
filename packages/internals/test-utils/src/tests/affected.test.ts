@@ -5,6 +5,7 @@ import {
   filterByCategory,
   isDocsOnlyChange,
   isRootFile,
+  isE2eFile,
   isScriptFile,
   transitiveDependents,
   type Workspace,
@@ -709,5 +710,60 @@ describe('computeAffectedFlags', () => {
     const flags = out.split(' ')
     const sorted = [...flags].sort()
     expect(flags).toEqual(sorted)
+  })
+})
+
+describe('isE2eFile — must AGREE with e2e-affected on e2e/**', () => {
+  // Same invariant as the scripts/** block above, on the shape it did not
+  // cover. `e2e-affected.ts` lists `e2e/` as run-all-suites and no workspace
+  // OWNS `e2e/`, so without this classifier an e2e-only change computes
+  // affected = ∅ -> Bootstrap skips -> the e2e matrix skips -> the fail-closed
+  // aggregator errors with `e2e-suite=skipped`, and the PR cannot merge.
+  it('claims specs and helpers under e2e/', () => {
+    expect(isE2eFile('e2e/hydration-barrier.ts')).toBe(true)
+    expect(isE2eFile('e2e/ui-showcase-regression.spec.ts')).toBe(true)
+    expect(isE2eFile('e2e/fundamentals/new-demos.spec.ts')).toBe(true)
+    expect(isE2eFile('e2e/cpa-app-compat.shared.ts')).toBe(true)
+  })
+
+  it('does not claim paths outside e2e/, or non-code files inside it', () => {
+    expect(isE2eFile('e2e-configs/ui-regression.config.ts')).toBe(false)
+    expect(isE2eFile('packages/core/router/src/index.ts')).toBe(false)
+    expect(isE2eFile('scripts/affected.ts')).toBe(false)
+    // Screenshots / fixtures do not change what runs.
+    expect(isE2eFile('e2e/snapshots/button.png')).toBe(false)
+    expect(isE2eFile('e2e/README.md')).toBe(false)
+  })
+})
+
+describe('an e2e-only change must produce a NON-EMPTY affected set', () => {
+  // This is the load-bearing half. Testing `isE2eFile` in isolation passes even
+  // when the classifier is not WIRED into the seeding loop — verified by
+  // bisect. What keeps a PR mergeable is that `computeAffectedFlags` returns
+  // something, because an empty result skips Bootstrap, which skips the e2e
+  // matrix, which trips the fail-closed aggregator (`e2e-suite=skipped`).
+  const WS_TU: Workspace[] = [
+    ...WS,
+    { name: '@pyreon/test-utils', dir: `${ROOT}/packages/internals/test-utils`, deps: [] },
+  ]
+
+  it('seeds the script-test package so Bootstrap runs', () => {
+    const flags = computeAffectedFlags({
+      changed: ['e2e/hydration-barrier.ts', 'e2e/fundamentals/new-demos.spec.ts'],
+      workspaces: WS_TU,
+      root: ROOT,
+    })
+    expect(flags).not.toBe('')
+    expect(flags).toContain('@pyreon/test-utils')
+  })
+
+  it('stays a LEAF — an e2e edit must not escalate to the full workspace run', () => {
+    expect(
+      computeAffectedFlags({
+        changed: ['e2e/ui-showcase-regression.spec.ts'],
+        workspaces: WS_TU,
+        root: ROOT,
+      }),
+    ).not.toBe('--filter=*')
   })
 })
