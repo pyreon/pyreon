@@ -74,9 +74,16 @@ export default defineConfig({
     // the subtree is rebuilt and anything living on those nodes is discarded.
     // Worth teaching because the second half is SILENT: the page still looks
     // right, and only the state the user had already put into it is gone.
+    //
+    // The blast radius GREW when adoption was extended past compiled templates
+    // to `.map()`-composed and multi-root dynamic regions. Those used to be
+    // rebuilt unconditionally, so a divergence inside one cost nothing extra —
+    // there was no adoption to lose. Now there is, which means a list rendered
+    // with `.map()` carries the same "mismatch also discards your DOM state"
+    // consequence that only compiled templates used to.
     pattern: /Hydration mismatch \((tag|text)\): expected (.+?), got (.+?) at /,
     diagnose: (m) => ({
-      cause: `The server rendered ${m[3]} where the client expected ${m[2]}, so hydration could not claim that node. Beyond the mismatch itself, a divergence in static markup inside a compiled template also blocks ADOPTION: the subtree is rebuilt from the client template, so text typed into an uncontrolled input before the bundle booted, focus, scroll position, and any listener attached outside Pyreon are lost with the old nodes.`,
+      cause: `The server rendered ${m[3]} where the client expected ${m[2]}, so hydration could not claim that node. Beyond the mismatch itself, a divergence in static markup also blocks ADOPTION — for a compiled template, and equally for a \`.map()\`-composed or multi-root dynamic region: the subtree is rebuilt from the client render, so text typed into an uncontrolled input before the bundle booted, focus, scroll position, and any listener attached outside Pyreon are lost with the old nodes.`,
       fix: 'Make the first client render byte-identical to the server render. The usual causes are branching on something that differs across the boundary — `typeof window`, `Date.now()`, `Math.random()`, `localStorage`, or a locale/timezone-dependent format. Compute the value once and pass it through, or move the browser-only branch into `onMount` so it runs AFTER hydration has claimed the DOM.',
       fixCode: `// diverges — the server has no window, so the markup differs
 function Greeting() {
