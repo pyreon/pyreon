@@ -7,7 +7,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-napi = { version = "2", features = ["napi9"] }
+napi = { version = "3", features = ["napi9"] }
 napi-derive = "2"
 oxc_parser = "0.147"
 oxc_allocator = "0.147"
