@@ -26,8 +26,10 @@
     "@pyreon/a11y": "workspace:*",
     "@pyreon/hooks": "workspace:*",
     "@pyreon/i18n": "workspace:*",
+    "@pyreon/permissions": "workspace:*",
     "@pyreon/query": "workspace:*",
     "@pyreon/rx": "workspace:*",
+    "@pyreon/sized-map": "workspace:*",
     "@pyreon/state-tree": "workspace:*",
     "@pyreon/toast": "workspace:*",
     "@pyreon/url-state": "workspace:*"

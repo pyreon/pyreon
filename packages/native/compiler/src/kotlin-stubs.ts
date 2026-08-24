@@ -500,6 +500,22 @@ class KeyEvent(
   val isMetaPressed: Boolean = false,
 )
 
+// PyreonSizedMap — mirrors packages/core/sized-map/native/kotlin/.../PyreonSizedMap.kt.
+// The Swift stub gained this earlier; the Kotlin one never did, so a snippet
+// using SizedMap compiled on one target and not the other. Signature copied
+// from the shipped class: maxEntries required, lru defaulted.
+class PyreonSizedMap<K, V>(maxEntries: Int, private val lru: Boolean = false) {
+  val size: Int get() = 0
+  fun get(key: K): V? = null
+  fun set(key: K, value: V) {}
+  fun delete(key: K): Boolean = false
+  fun has(key: K): Boolean = false
+  fun clear() {}
+  fun keys(): List<K> = emptyList()
+  fun values(): List<V> = emptyList()
+  fun entries(): List<Pair<K, V>> = emptyList()
+}
+
 object Modifier {
   @Suppress("UNUSED_PARAMETER")
   fun padding(all: Dp): Modifier = this
