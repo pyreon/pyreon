@@ -668,9 +668,13 @@ export function C() {
   },
   {
     name: '@pyreon/kinetic',
-    mechanism: 'web-first',
+    mechanism: 'partial',
     rationale:
-      'CSS-transition animation engine; the preset vocabulary partially crosses via <Transition name>, full frontend arc open.',
+      'the CSS class/style engine is web; a `.preset()` chain lowers through the same <Transition> path the primitive uses, with a synthesized mount flag driving the enter. A preset-less chain degrades to a plain container and warns by name.',
+    snippet: `import { kinetic } from '@pyreon/kinetic'
+import { Stack, Text } from '@pyreon/primitives'
+const Box = kinetic('div').preset('fade')
+export function C() { return (<Stack><Box><Text>hi</Text></Box></Stack>) }`,
   },
 ]
 

@@ -11,7 +11,9 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      'CSS-transition animation engine (classes + rAF over real CSSOM) — the `kinetic()` factory and its class/style machinery are web; its PRESET VOCABULARY (fade / scale-in / slide-up|down|left|right) does cross, via `<Transition name>` imported from `@pyreon/primitives` (NOT from here and NOT from `@pyreon/runtime-dom` — both are web-only), which each target resolves to its own platform transition',
+      'CSS-transition animation engine (classes + rAF over real CSSOM). The CLASS/style machinery is web; the PRESET vocabulary crosses — see nativeFrontend',
+    nativeFrontend:
+      "`kinetic(tag).preset(...)` with a known preset (fade / scale-in / slide-up|down|left|right) — the preset names an animation both targets know, so the box lowers through the same `<Transition>` path the primitive uses, with a synthesized mount flag driving the ENTER (a constant `show` compiles and never animates). A chain with NO `.preset()` has no animation vocabulary to carry, degrades to a plain container and warns by name. `<Transition name>` from `@pyreon/primitives` remains the portable spelling",
   },
   peerDeps: ['@pyreon/core', '@pyreon/reactivity', '@pyreon/runtime-dom'],
   longExample: `import { kinetic, fade, slideUp } from '@pyreon/kinetic'
