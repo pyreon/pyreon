@@ -504,7 +504,15 @@ export function C() { return (<Stack><Text>ok</Text></Stack>) }`,
     // The CLASSIFICATION here was always right (the manifest declares no
     // nativeFrontend — this is honestly web-only); only the snippet was
     // fictional. The real export is `useHotkey`, SINGULAR, and it still warns.
-    rationale: 'keyboard-shortcut binding has no native analogue on touch platforms (arc open).',
+    // The classification is right (no nativeFrontend is declared), but the
+    // REASON given here was false and has been corrected in the manifest: both
+    // targets DO have a shortcut surface (SwiftUI `.keyboardShortcut` /
+    // `.onKeyPress`, Compose `onPreviewKeyEvent`, all reachable from iPads,
+    // Chromebooks and DeX). What is missing is the lowering, not the platform.
+    // Leaving the old wording here would have re-seeded the claim the manifest
+    // just stopped making.
+    rationale:
+      'no lowering is implemented yet — an unbuilt arc, NOT a platform limit: both targets expose a hardware-shortcut surface (arc open).',
     snippet: `import { useHotkey } from '@pyreon/hotkeys'
 import { Stack, Text } from '@pyreon/primitives'
 export function C() {
