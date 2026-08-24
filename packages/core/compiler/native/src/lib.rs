@@ -1196,14 +1196,12 @@ fn try_direct_selector_ternary(
     ctx: &mut Ctx,
 ) -> Option<SelectorTernary> {
     // Unwrap a leading arrow function expression body (`() => sel(k) ? a : b`).
-    // oxc represents `(x) => expr` with `arrow.expression == true` and the
+    // oxc represents `(x) => expr` with the expression hanging off `body`
     // body's single statement wrapping the expression.
     let mut inner: &Expression = expr_node;
     if let Expression::ArrowFunctionExpression(arrow) = expr_node {
-        if arrow.expression {
-            if let Some(Statement::ExpressionStatement(stmt)) = arrow.body.statements.first() {
-                inner = &stmt.expression;
-            }
+        if let Some(e) = arrow.get_expression() {
+            inner = e;
         }
     }
     while let Expression::ParenthesizedExpression(p) = inner {
@@ -1267,10 +1265,8 @@ fn try_direct_signal_method_call(
 ) -> Option<SignalMethodCall> {
     let mut inner: &Expression = expr_node;
     if let Expression::ArrowFunctionExpression(arrow) = expr_node {
-        if arrow.expression {
-            if let Some(Statement::ExpressionStatement(stmt)) = arrow.body.statements.first() {
-                inner = &stmt.expression;
-            }
+        if let Some(e) = arrow.get_expression() {
+            inner = e;
         }
     }
     while let Expression::ParenthesizedExpression(p) = inner {
@@ -1450,7 +1446,7 @@ fn find_shadowing_names_arrow(node: &ArrowFunctionExpression, ctx: &Ctx) -> Vec<
             _ => {}
         }
     }
-    for stmt in &node.body.statements {
+    for stmt in node.get_function_body().map_or(&[][..], |b| &b.statements) {
         if let Statement::VariableDeclaration(decl) = stmt {
             for declarator in &decl.declarations {
                 if let BindingPattern::BindingIdentifier(id) = &declarator.id {
@@ -1546,7 +1542,9 @@ fn arrow_returns_jsx(arrow: &ArrowFunctionExpression) -> bool {
     if let Some(expr) = arrow.get_expression() {
         return returns_jsx_value(expr);
     }
-    arrow.body.statements.iter().any(stmt_has_jsx_return)
+    arrow
+        .get_function_body()
+        .is_some_and(|b| b.statements.iter().any(stmt_has_jsx_return))
 }
 
 /// Is this declarator init (parens-unwrapped) a JSX-returning fn value?
@@ -1717,7 +1715,7 @@ fn find_shadowing_jsx_fn_names_arrow(node: &ArrowFunctionExpression, ctx: &Ctx) 
             _ => {}
         }
     }
-    for stmt in &node.body.statements {
+    for stmt in node.get_function_body().map_or(&[][..], |b| &b.statements) {
         if let Statement::VariableDeclaration(decl) = stmt {
             for declarator in &decl.declarations {
                 if let BindingPattern::BindingIdentifier(id) = &declarator.id {
@@ -2054,15 +2052,22 @@ fn expr_children_any_accesses_props(expr: &Expression, ctx: &Ctx) -> bool {
 /// shadowed name resolves to nothing → emit is unchanged → still correct). JS's
 /// `accessesProps` ignores local shadowing the same way.
 fn fn_body_accesses_props(expr: &Expression, ctx: &Ctx) -> bool {
-    let body = match expr {
-        Expression::ArrowFunctionExpression(a) => &a.body,
+    let stmts = match expr {
+        Expression::ArrowFunctionExpression(a) => match a.get_expression() {
+            // Concise `(p) => p.x`. Under oxc 0.126 this arrived as a synthetic
+            // ExpressionStatement and flowed through `stmt_accesses_props`; 0.147
+            // exposes the expression directly, so check it here or every concise
+            // arrow silently stops counting as a props access.
+            Some(e) => return accesses_props(e, ctx),
+            None => a.get_function_body().map_or(&[][..], |b| &b.statements),
+        },
         Expression::FunctionExpression(f) => match &f.body {
-            Some(b) => b,
+            Some(b) => &b.statements[..],
             None => return false,
         },
         _ => return false,
     };
-    body.statements.iter().any(|s| stmt_accesses_props(s, ctx))
+    stmts.iter().any(|s| stmt_accesses_props(s, ctx))
 }
 
 /// Statement-level companion to `fn_body_accesses_props` — mirrors the shape of
@@ -2275,7 +2280,7 @@ fn find_init_in_expression<'a>(
 ) -> Option<&'a Expression<'a>> {
     match expr {
         Expression::ArrowFunctionExpression(arrow) => {
-            for s in &arrow.body.statements {
+            for s in arrow.get_function_body().map_or(&[][..], |b| &b.statements) {
                 if let Some(e) = find_init_in_statement(s, target) {
                     return Some(e);
                 }
@@ -2413,9 +2418,9 @@ fn find_init_in_statement<'a>(stmt: &'a Statement<'a>, target: Span) -> Option<&
             }
             None
         }
-        Statement::ExportNamedDeclaration(exp) => {
-            if let Some(decl) = &exp.declaration {
-                match decl {
+        Statement::ExportDeclaration(exp) => {
+            {
+                match &exp.declaration {
                     Declaration::VariableDeclaration(vd) => {
                         for d in &vd.declarations {
                             if let Some(init) = &d.init {
@@ -3049,7 +3054,11 @@ fn collect_prop_derived_idents(
             if let Some(e) = arrow.get_expression() {
                 collect_prop_derived_idents(e, &filtered, out);
             } else {
-                collect_pd_in_body(&arrow.body.statements, &filtered, out);
+                collect_pd_in_body(
+                    arrow.get_function_body().map_or(&[][..], |b| &b.statements),
+                    &filtered,
+                    out,
+                );
             }
         }
         Expression::FunctionExpression(func) => {
@@ -3291,7 +3300,11 @@ fn collect_signal_idents(
                 collect_signal_idents(&ap.right, ctx, out, range_start, range_end, shadows);
             }
         }
-        for stmt in &arrow.body.statements {
+        if let Some(e) = arrow.get_expression() {
+            // Concise body — 0.126's synthetic ExpressionStatement recursed here.
+            collect_signal_idents(e, ctx, out, range_start, range_end, shadows);
+        }
+        for stmt in arrow.get_function_body().map_or(&[][..], |b| &b.statements) {
             collect_signal_idents_stmt(stmt, ctx, out, range_start, range_end, shadows);
         }
         shadows.truncate(mark);
@@ -4052,9 +4065,9 @@ fn walk_statement(stmt: &Statement, ctx: &mut Ctx) {
                 }
             }
         }
-        Statement::ExportNamedDeclaration(exp) => {
-            if let Some(decl) = &exp.declaration {
-                match decl {
+        Statement::ExportDeclaration(exp) => {
+            {
+                match &exp.declaration {
                     Declaration::VariableDeclaration(vd) => {
                         collect_prop_derived(vd, ctx);
                         for declarator in &vd.declarations {
@@ -4370,7 +4383,14 @@ fn walk_expression(expr: &Expression, ctx: &mut Ctx) {
 }
 
 fn walk_arrow_body(arrow: &ArrowFunctionExpression, ctx: &mut Ctx) {
-    for stmt in &arrow.body.statements {
+    // A concise `() => expr` has no statements under oxc 0.147. Under 0.126 it
+    // carried a synthetic ExpressionStatement that `walk_statement` forwarded to
+    // `walk_expression`, so forward it here or the body goes unwalked entirely.
+    if let Some(e) = arrow.get_expression() {
+        walk_expression(e, ctx);
+        return;
+    }
+    for stmt in arrow.get_function_body().map_or(&[][..], |b| &b.statements) {
         walk_statement(stmt, ctx);
     }
 }
@@ -5435,13 +5455,9 @@ fn ssr_try_map(buf: &mut SsrBuf, expr: &Expression, sole: bool, ctx: &mut Ctx) -
         Some(Expression::ArrowFunctionExpression(a)) => a,
         _ => return false,
     };
-    // Only concise arrows (block body → bail). oxc: `expression == true` = concise.
-    if !cb.expression {
+    // Only concise arrows (block body → bail): `get_expression()` is Some.
+    let Some(body_expr) = cb.get_expression() else {
         return false;
-    }
-    let body_expr = match cb.body.statements.first() {
-        Some(Statement::ExpressionStatement(stmt)) => &stmt.expression,
-        _ => return false,
     };
     let body = unwrap_type_layers(body_expr);
     let body_el = match body {
@@ -5613,12 +5629,8 @@ fn ssr_try_for_keyed(buf: &mut SsrBuf, el: &JSXElement, ctx: &mut Ctx) -> bool {
         Some(Expression::ArrowFunctionExpression(a)) => a,
         _ => return false,
     };
-    if !cb.expression {
+    let Some(body_expr) = cb.get_expression() else {
         return false; // block body → bail (concise arrows only)
-    }
-    let body_expr = match cb.body.statements.first() {
-        Some(Statement::ExpressionStatement(stmt)) => &stmt.expression,
-        _ => return false,
     };
     let body_el = match unwrap_type_layers(body_expr) {
         Expression::JSXElement(el) => el,
@@ -8096,7 +8108,7 @@ fn arrow_contains_jsx(arrow: &ArrowFunctionExpression) -> bool {
     if let Some(expr) = arrow.get_expression() {
         return expr_contains_jsx(expr);
     }
-    body_contains_jsx(&arrow.body)
+    arrow.get_function_body().is_some_and(body_contains_jsx)
 }
 
 // ─── Prop-derived variable collection ────────────────────────────────────────
@@ -8227,15 +8239,20 @@ fn collect_prop_derived(decl: &VariableDeclaration, ctx: &mut Ctx) {
 /// so a prop-derived ref at any depth inside the body registers the const, exactly
 /// as JS does (the precise shadow-aware substitution happens later in the inliner).
 fn fn_body_any_expr<F: Fn(&Expression) -> bool>(expr: &Expression, check: &F) -> bool {
-    let body = match expr {
-        Expression::ArrowFunctionExpression(a) => &a.body,
+    let stmts = match expr {
+        Expression::ArrowFunctionExpression(a) => match a.get_expression() {
+            // Concise arrow — see `fn_body_accesses_props` for why this arm is
+            // load-bearing rather than a convenience.
+            Some(e) => return check(e),
+            None => a.get_function_body().map_or(&[][..], |b| &b.statements),
+        },
         Expression::FunctionExpression(f) => match &f.body {
-            Some(b) => b,
+            Some(b) => &b.statements[..],
             None => return false,
         },
         _ => return false,
     };
-    body.statements.iter().any(|s| stmt_any_expr(s, check))
+    stmts.iter().any(|s| stmt_any_expr(s, check))
 }
 
 fn stmt_any_expr<F: Fn(&Expression) -> bool>(stmt: &Statement, check: &F) -> bool {
