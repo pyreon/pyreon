@@ -89,6 +89,33 @@ import { join, resolve } from 'node:path'
 // vitest (node) in test-utils. Resolve from this file's URL instead.
 const REPO = resolve(new URL('..', import.meta.url).pathname)
 
+/**
+ * Packages whose registry snippet transforms WITHOUT warnings but whose emitted
+ * native code does NOT compile.
+ *
+ * This list exists because the gate historically judged a package by transform
+ * warnings alone and never compiled anything — so a warning-free uncompilable
+ * emit read as "crosses". Compiling all 31 snippets on real swiftc found nine
+ * failures, every one of them invisible to the old gate.
+ *
+ * It is a RATCHET, exactly like `lint-baseline.json`: an entry here is a known
+ * debt, and the gate FAILS if a listed package starts compiling (remove it) or
+ * if an unlisted one stops (fix it). It can only shrink. Never add an entry to
+ * silence a NEW failure — that is the one move that makes this list worthless.
+ *
+ * The shared shape of every entry below is a VERBATIM PASSTHROUGH: the emitter
+ * did not recognise a factory call, so the TS name was reproduced into Swift
+ * where no such symbol exists. Each runtime DOES ship the real type
+ * (`PyreonMachine`, `PyreonI18n`, `PyreonSyncedSignal`, …), so these are
+ * unbuilt lowerings rather than platform limits.
+ */
+export const KNOWN_UNCOMPILABLE: ReadonlyMap<string, string> = new Map([
+  // EMPTY, and that is the point. Every entry this list started with turned out
+  // to be a wrong registry snippet or a stub narrower than the shipped runtime,
+  // not a package that cannot cross. Add an entry only for a package whose emit
+  // genuinely does not build, with the reason — never to silence a new failure.
+])
+
 export type Mechanism =
   | 'pmtc-lowers'
   | 'native-container'
@@ -237,10 +264,16 @@ export function C() { return (<Box><Text>hi</Text></Box>) }`,
     name: '@pyreon/rocketstyle',
     mechanism: 'pmtc-lowers',
     rationale: 'rocketstyle(Element).theme()/.attrs() dimensions lower to native styled components.',
+    // The registry used `rocketstyle(Element)` — a call form that does not exist in
+    // the RUNTIME either (init.ts is curried: `rocketstyle()({name, component})`),
+    // so `readCurriedPrimitive` bailed BEFORE its own warning and the module-decl
+    // catch-all emitted the chain verbatim. Verified: this shape lowers with zero
+    // warnings to VStack / Column(Modifier.background(...).padding(...)).
     snippet: `import { rocketstyle } from '@pyreon/rocketstyle'
-import { Element } from '@pyreon/elements'
-const Btn = rocketstyle(Element).theme(() => ({ backgroundColor: 'blue' })).attrs({ tag: 'button' })
-export function C() { return (<Btn>go</Btn>) }`,
+import { Stack, Text } from '@pyreon/primitives'
+const Btn = rocketstyle()({ name: 'Btn', component: Stack })
+  .theme(() => ({ backgroundColor: '#6b7280', padding: 8 }))
+export function C() { return (<Btn><Text>hi</Text></Btn>) }`,
   },
   {
     name: '@pyreon/elements',
@@ -254,11 +287,14 @@ export function C() { return (<Element gap={2}><Text>a</Text><Text>b</Text></Ele
     name: '@pyreon/attrs',
     mechanism: 'pmtc-lowers',
     rationale: 'attrs(Component)(defaults) HOC lowers via the wrapped native component.',
+    // Same class as rocketstyle above: `attrs(Element)({…})` skips the options object
+    // the runtime takes (`attrs({ name, component })`), so the walk bailed at a
+    // CallExpression callee and never reached its own bare-form warning. Verified:
+    // this shape lowers to VStack(spacing:) / Arrangement.spacedBy.
     snippet: `import { attrs } from '@pyreon/attrs'
-import { Element } from '@pyreon/elements'
-import { Text } from '@pyreon/primitives'
-const Box = attrs(Element)({ gap: 2 })
-export function C() { return (<Box><Text>x</Text></Box>) }`,
+import { Stack, Text } from '@pyreon/primitives'
+const Box = attrs({ name: 'Box', component: Stack }).attrs({ gap: 2 })
+export function C() { return (<Box><Text>hi</Text></Box>) }`,
   },
   {
     name: '@pyreon/coolgrid',
@@ -318,30 +354,49 @@ export function C() {
     mechanism: 'native-container',
     rationale: 'model(id, shape) lowers to a native observable model over the state-tree runtime.',
     requiresCoSource: true,
+    // `model('user', {…})` is a phantom API — there is no two-argument overload on
+    // web either; every real overload takes a single `{ state }` / `{ schema }`
+    // config and the chain must end in `.create()`. This one is module-scope by
+    // design (the mirror of the three above).
     snippet: `import { model } from '@pyreon/state-tree'
 import { Stack, Text } from '@pyreon/primitives'
-const useUser = model('user', { name: 'Ada', age: 36 })
-export function C() { return (<Stack><Text>{useUser().name()}</Text></Stack>) }`,
+const user = model({ state: { name: 'Ada', age: 36 } }).create()
+export function C() { return (<Stack><Text>{user.name()}</Text></Stack>) }`,
   },
   {
     name: '@pyreon/machine',
     mechanism: 'native-container',
     rationale: 'createMachine(config) lowers to a native state machine over the machine runtime.',
     requiresCoSource: true,
+    // createMachine lowers only INSIDE a component body (it emits `remember {}` /
+    // an @State) — the recognizer lives in the component-body statement walk and
+    // is structurally unreachable at module scope, where the catch-all printed it
+    // verbatim with no warning. The old snippet also mis-nested the second state
+    // (`on: { off: … }` instead of `on: { on: … }`), so that transition would have
+    // vanished even once scoped right.
     snippet: `import { createMachine } from '@pyreon/machine'
 import { Stack, Text, Button } from '@pyreon/primitives'
-const useToggle = createMachine({ initial: 'off', states: { off: { on: { TOGGLE: 'on' } }, on: { off: { TOGGLE: 'off' } } } })
-export function C() { return (<Stack><Text>{useToggle().state()}</Text><Button onPress={() => useToggle().send('TOGGLE')}>t</Button></Stack>) }`,
+export function C() {
+  const toggle = createMachine({
+    initial: 'off',
+    states: { off: { on: { TOGGLE: 'on' } }, on: { on: { TOGGLE: 'off' } } },
+  })
+  return (<Stack><Text>{toggle()}</Text><Button onPress={() => toggle.send('TOGGLE')}>t</Button></Stack>)
+}`,
   },
   {
     name: '@pyreon/i18n',
     mechanism: 'native-container',
     rationale: 'createI18n({ locale, messages }) lowers to a native PyreonI18n container with baked dictionaries.',
     requiresCoSource: true,
+    // Same scope rule as machine: the API in the old snippet was correct, only its
+    // placement was wrong.
     snippet: `import { createI18n } from '@pyreon/i18n'
 import { Stack, Text } from '@pyreon/primitives'
-const i18n = createI18n({ locale: 'en', messages: { en: { hello: 'Hello' }, de: { hello: 'Hallo' } } })
-export function C() { return (<Stack><Text>{i18n.t('hello')}</Text></Stack>) }`,
+export function C() {
+  const i18n = createI18n({ locale: 'en', messages: { en: { hello: 'Hello' }, de: { hello: 'Hallo' } } })
+  return (<Stack><Text>{i18n.t('hello')}</Text></Stack>)
+}`,
   },
   {
     name: '@pyreon/query',
@@ -385,10 +440,16 @@ export function C() {
     mechanism: 'native-container',
     rationale: 'syncedSignal({ key, initial }) lowers to a native CRDT-backed signal over the sync runtime.',
     requiresCoSource: true,
-    snippet: `import { syncedSignal } from '@pyreon/sync'
-import { Stack, Text } from '@pyreon/primitives'
-const count = syncedSignal({ key: 'count', initial: 0 })
-export function C() { return (<Stack><Text>{count()}</Text></Stack>) }`,
+    // The old snippet omitted `doc`, which is invalid on the WEB too — syncedSignal
+    // destructures it and calls `doc.getMap(...)`, so it would throw on undefined.
+    // A phantom call form, not a native limitation.
+    snippet: `import { syncedSignal, PyreonCrdtDoc } from '@pyreon/sync'
+import { Stack, Text, Button } from '@pyreon/primitives'
+export function C() {
+  const doc = new PyreonCrdtDoc('peer-1')
+  const count = syncedSignal({ doc, key: 'count', initial: 0 })
+  return (<Stack><Text>{count()}</Text><Button onPress={() => count.set(count() + 1)}>inc</Button></Stack>)
+}`,
   },
   {
     name: '@pyreon/hooks',
@@ -1093,6 +1154,43 @@ function resolveRelativeModule(fromFile: string, rel: string): string | undefine
 }
 
 /** The named imports a snippet pulls from each `@pyreon/*` package. */
+/**
+ * Symbols the snippet imported that reappear in the EMIT as a free-function
+ * call — i.e. the emitter did not recognise them and reproduced the TypeScript
+ * name verbatim into Swift/Kotlin, where no such function exists.
+ *
+ * This is the cheapest possible detector for the single most common way a
+ * package silently fails to cross, and it needs NO toolchain, so it runs on
+ * every `validate-fast` rather than only where swiftc lives. Every instance
+ * found so far — `createMachine(...)`, `createI18n(...)`, `syncedSignal(...)`,
+ * `model(...)`, `rocketstyle(...)`, `attrs(...)`, `RouterLink(...)` — produced
+ * ZERO transform warnings, which is exactly why a warning-count gate was blind
+ * to all of them.
+ *
+ * Two deliberate narrowings keep it free of false positives:
+ *
+ *   - `@pyreon/primitives` symbols are exempt. `Text` and `Button` are BOTH the
+ *     TS import and the real SwiftUI type, so a correct emit contains `Text(`.
+ *   - Only FREE calls count. A member call is how a correct lowering usually
+ *     looks (`toast('x')` → `PyreonToast.shared.add(...)`, `announce('x')` →
+ *     `PyreonA11y.announce(...)`), so `.announce(` must not trip it.
+ */
+export function verbatimSymbolsIn(
+  emitted: string,
+  imports: ReadonlyMap<string, string[]>,
+): string[] {
+  const hits: string[] = []
+  for (const [pkg, names] of imports) {
+    if (pkg === '@pyreon/primitives') continue
+    for (const name of names) {
+      // (^|non-member, non-word) NAME ( — a free call, never `.NAME(`.
+      const re = new RegExp(`(^|[^.\\w])${name}\\s*\\(`, 'm')
+      if (re.test(emitted) && !hits.includes(name)) hits.push(name)
+    }
+  }
+  return hits
+}
+
 export function pyreonImportsOf(snippet: string): Map<string, string[]> {
   const out = new Map<string, string[]>()
   for (const m of snippet.matchAll(/import\s*\{([^}]*)\}\s*from\s*['"](@pyreon\/[^'"]+)['"]/g)) {
@@ -1161,6 +1259,39 @@ function findWebviewTests(srcDir: string): string[] {
 }
 
 /** Both co-source dirs (swift + kotlin) present + non-empty. */
+/**
+ * Is `name` a type the package's own native co-source DECLARES?
+ *
+ * Some symbols are deliberately spelled identically on all three platforms —
+ * `PyreonCrdtDoc` is a TS class AND `public final class PyreonCrdtDoc` in Swift
+ * AND `class PyreonCrdtDoc` in Kotlin — so seeing `PyreonCrdtDoc(...)` in the
+ * emit is the lowering WORKING, not a passthrough.
+ *
+ * Checked against the shipped source rather than by a name convention (e.g.
+ * "starts with Pyreon"): a convention would also wave through a genuinely
+ * unlowered symbol that happens to be named that way, and this file has already
+ * been wrong once today by matching a name instead of a declaration.
+ */
+function coSourceDeclares(loc: PkgLoc | undefined, name: string): boolean {
+  if (!loc?.native) return false
+  const re = new RegExp(`\\b(class|struct|object|enum|actor|protocol)\\s+${name}\\b`)
+  for (const rel of [loc.native.swift, loc.native.kotlin]) {
+    if (typeof rel !== 'string') continue
+    const dir = join(loc.dir, rel)
+    if (!existsSync(dir)) continue
+    const stack = [dir]
+    while (stack.length > 0) {
+      const cur = stack.pop() as string
+      for (const ent of readdirSync(cur, { withFileTypes: true })) {
+        const full = join(cur, ent.name)
+        if (ent.isDirectory()) stack.push(full)
+        else if (/\.(swift|kt)$/.test(ent.name) && re.test(readFileSync(full, 'utf8'))) return true
+      }
+    }
+  }
+  return false
+}
+
 function coSourceOk(loc: PkgLoc | undefined): boolean {
   if (!loc || !loc.native) return false
   const { swift, kotlin } = loc.native
@@ -1183,6 +1314,25 @@ async function main(): Promise<number> {
   // Dynamic import so the pure logic (imported by vitest) never eagerly loads
   // the compiler's parse/emit graph.
   const { transform } = await import('../packages/native/compiler/src/index')
+  // Compiling is OPT-IN: swiftc is ~250ms and kotlinc ~2.5s per snippet, which
+  // is fine in the native CI job and far too slow for validate-fast. The CI
+  // job that already owns the toolchains sets PYREON_COVERAGE_COMPILE=1.
+  const compileEnabled = process.env.PYREON_COVERAGE_COMPILE === '1'
+  // REAL SwiftUI, not the minimal stubs. The stub validator is the right tool
+  // inside the compiler's own suite, but it is a SUBSET of SwiftUI — it has no
+  // `.background` View modifier, so every emit that sets a colour fails against
+  // it. Control experiment: the known-good `styled(Stack)` tagged-template path
+  // emits a byte-identical line and fails the stubs the same way, while both
+  // typecheck against the real SDK. Using stubs here would have manufactured
+  // false "does not compile" verdicts for correct emits — the subset-stub trap,
+  // which is exactly the failure mode a coverage gate must not have.
+  const { isSwiftcAvailable, validateSwiftWithStubs } = compileEnabled
+    ? await import('../packages/native/compiler/src/validate')
+    : { isSwiftcAvailable: () => false, validateSwiftWithStubs: () => ({ ok: true }) }
+  const canCompile = compileEnabled && isSwiftcAvailable()
+  if (compileEnabled && !canCompile) {
+    console.log('[check-native-coverage] PYREON_COVERAGE_COMPILE=1 but the SwiftUI SDK is unavailable (macOS only) — compile pass SKIPPED.')
+  }
   const packages = scanPackages(REPO)
 
   // Completeness ratchet: every `shared`/`service-backend` package DEFINITIVELY
@@ -1228,10 +1378,29 @@ async function main(): Promise<number> {
     if (entry.snippet) {
       const msgs: string[] = []
       let count = 0
+      const verbatim: string[] = []
+      const snippetImports = pyreonImportsOf(entry.snippet)
       for (const target of ['swift', 'kotlin'] as const) {
         const r = transform(entry.snippet, { target })
         count += r.warnings.length
         for (const w of r.warnings) if (!msgs.includes(w)) msgs.push(w)
+        // A verbatim TS symbol in the emit is a silent non-crossing: the
+        // frontend declined without warning and the module-decl catch-all
+        // printed the call. Counted as a warning so it flows through the
+        // existing classification instead of needing a parallel status.
+        for (const sym of verbatimSymbolsIn(r.code, snippetImports)) {
+          if (verbatim.includes(sym)) continue
+          // A symbol the package's own native source declares is a SHARED name,
+          // not a passthrough — the emit naming it is the lowering working.
+          if (coSourceDeclares(packages.get(entry.name), sym)) continue
+          verbatim.push(sym)
+          count += 1
+          msgs.push(
+            `${sym}() is reproduced VERBATIM in the ${target} emit — the frontend did not ` +
+              `recognise this call shape and declined silently, so the emitted code names a ` +
+              `function that exists on neither target.`,
+          )
+        }
       }
       // Verify the snippet is REAL before trusting its warning count.
       const imports = pyreonImportsOf(entry.snippet)
@@ -1260,6 +1429,35 @@ async function main(): Promise<number> {
       webview,
       nativeFrontendByPkg.get(entry.name),
     )
+    // Compile the emitted Swift. A snippet can transform with ZERO warnings and
+    // still not build — which is how seven packages shipped a verbatim TS
+    // factory call into Swift unnoticed. Only run it for entries that HAVE a
+    // snippet and are otherwise judged crossing; a package already failing on
+    // warnings does not need a second verdict.
+    if (canCompile && entry.snippet && res.status === 'crosses') {
+      const swift = transform(entry.snippet, { target: 'swift' })
+      const v = validateSwiftWithStubs(swift.code) as { ok: boolean; error?: string }
+      const known = KNOWN_UNCOMPILABLE.get(entry.name)
+      if (!v.ok && known === undefined) {
+        // NOT in the ratchet: a package that used to compile has stopped, or a
+        // new snippet never did. Either way this is the failure the gate exists
+        // for, and adding it to the list instead of fixing it defeats the list.
+        res.status = 'regression'
+        const first = String(v.error ?? '')
+          .split('\n')
+          .find((l) => l.includes('error:'))
+        res.detail = `emit does NOT compile on swiftc: ${first?.replace(/^.*error: /, '').trim() ?? 'unknown error'}`
+      } else if (v.ok && known !== undefined) {
+        // The ratchet may only shrink. A listed package that now compiles must
+        // be REMOVED, or the list rots into a permanent excuse — the same way a
+        // lint baseline does when counts are allowed to drift upward.
+        res.status = 'regression'
+        res.detail = `now COMPILES — remove it from KNOWN_UNCOMPILABLE (recorded reason: ${known})`
+      } else if (!v.ok) {
+        notices.push(`${entry.name}: known-uncompilable — ${known}`)
+      }
+    }
+
     results.push(res)
 
     if (res.mechanism === 'web-first' && outcome && outcome.warnings === 0) {
