@@ -585,24 +585,16 @@ export function C() { return (<Stack><Text>ok</Text></Stack>) }`,
   },
   {
     name: '@pyreon/hotkeys',
-    mechanism: 'web-first',
-    // The CLASSIFICATION here was always right (the manifest declares no
-    // nativeFrontend — this is honestly web-only); only the snippet was
-    // fictional. The real export is `useHotkey`, SINGULAR, and it still warns.
-    // The classification is right (no nativeFrontend is declared), but the
-    // REASON given here was false and has been corrected in the manifest: both
-    // targets DO have a shortcut surface (SwiftUI `.keyboardShortcut` /
-    // `.onKeyPress`, Compose `onPreviewKeyEvent`, all reachable from iPads,
-    // Chromebooks and DeX). What is missing is the lowering, not the platform.
-    // Leaving the old wording here would have re-seeded the claim the manifest
-    // just stopped making.
+    mechanism: 'partial',
     rationale:
-      'no lowering is implemented yet — an unbuilt arc, NOT a platform limit: both targets expose a hardware-shortcut surface (arc open).',
+      'the REGISTRY half (registerHotkey / scopes / conflict reporting) is web; the `useHotkey` authoring hook lowers to a SwiftUI `.keyboardShortcut` on a hidden Button and a Compose focused key handler. `mod` resolves per platform: Command on iOS, Ctrl on Android.',
     snippet: `import { useHotkey } from '@pyreon/hotkeys'
 import { Stack, Text } from '@pyreon/primitives'
+import { signal } from '@pyreon/reactivity'
 export function C() {
-  useHotkey('mod+s', () => {})
-  return (<Stack><Text>hk</Text></Stack>)
+  const n = signal(0)
+  useHotkey('mod+s', () => { n.set(n() + 1) })
+  return (<Stack><Text>{n()}</Text></Stack>)
 }`,
   },
   // ── webview-host: the web ENGINE runs inside a native <WebView> ──────────

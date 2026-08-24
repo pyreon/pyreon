@@ -54,6 +54,9 @@ const USAGES: ReadonlyArray<readonly [string, string, string]> = [
   ['useFieldArray', '@pyreon/form', "const tags = useFieldArray(['a']); const add = () => { tags.append('b') }"],
   ['useGeolocation', '@pyreon/hooks', 'const g = useGeolocation()'],
   ['useHaptics', '@pyreon/hooks', 'const h = useHaptics()'],
+  // A statement, not a binding: useHotkey returns nothing and registers a
+  // shortcut, so the fixture has to call it for the lowering to be exercised.
+  ['useHotkey', '@pyreon/hotkeys', "useHotkey('mod+s', () => {})"],
   ['useImagePicker', '@pyreon/hooks', 'const i = useImagePicker()'],
   ['useLinking', '@pyreon/hooks', 'const l = useLinking()'],
   ['useMap', '@pyreon/hooks', 'const m = useMap()'],

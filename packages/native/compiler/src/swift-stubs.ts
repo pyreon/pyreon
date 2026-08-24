@@ -520,6 +520,11 @@ extension View {
   // runtime does is how a broken emit slips through — the same trap the
   // lineLimit note above records, in the opposite direction.
   public func background<V: View>(_ background: V) -> some View { self }
+  // useHotkey -> .keyboardShortcut on a hidden Button. Mirrors SwiftUI's real
+  // signature including the modifiers-defaults-to-command DEFAULT: the emit always
+  // passes modifiers explicitly (even an empty set), so the default is never
+  // exercised, but a stub that omits it would accept less than the runtime.
+  public func keyboardShortcut(_ key: KeyEquivalent, modifiers: EventModifiers = .command) -> some View { self }
   public func padding() -> some View { self }
   public func padding(_ length: Double) -> some View { self }
   public func sheet<C: View>(isPresented: Binding<Bool>, @ViewBuilder content: () -> C) -> some View { self }
@@ -1283,6 +1288,40 @@ public final class PyreonSizedMap<Key: Hashable, Value> {
   public func keys() -> [Key] { [] }
   public func values() -> [Value] { [] }
   public func entries() -> [(Key, Value)] { [] }
+}
+
+// KeyEquivalent / EventModifiers — the two types a keyboard shortcut needs.
+// The named members are exactly those SwiftUI declares; an emit asking for one
+// it does not have (e.g. 'insert') must FAIL the gate rather than compile
+// against a stub that invented it.
+public struct KeyEquivalent {
+  public init(_ character: Character) {}
+  // Placeholder characters: the stub exists to TYPE-check a shortcut binding,
+  // and nothing ever compares these values. Real control-character escapes
+  // would have to survive a TS template literal into Swift source, which is a
+  // needless way to break the file.
+  public static let escape = KeyEquivalent("a")
+  public static let \`return\` = KeyEquivalent("b")
+  public static let delete = KeyEquivalent("c")
+  public static let tab = KeyEquivalent("d")
+  public static let space = KeyEquivalent("e")
+  public static let upArrow = KeyEquivalent("f")
+  public static let downArrow = KeyEquivalent("g")
+  public static let leftArrow = KeyEquivalent("h")
+  public static let rightArrow = KeyEquivalent("i")
+  public static let home = KeyEquivalent("j")
+  public static let end = KeyEquivalent("k")
+  public static let pageUp = KeyEquivalent("l")
+  public static let pageDown = KeyEquivalent("m")
+}
+
+public struct EventModifiers: OptionSet {
+  public let rawValue: Int
+  public init(rawValue: Int) { self.rawValue = rawValue }
+  public static let command = EventModifiers(rawValue: 1)
+  public static let control = EventModifiers(rawValue: 2)
+  public static let shift = EventModifiers(rawValue: 4)
+  public static let option = EventModifiers(rawValue: 8)
 }
 
 public struct Color: View {

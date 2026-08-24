@@ -458,6 +458,48 @@ class PointerInputScope {
 // from warning about unused stub params — they're load-bearing for
 // the public type-check surface, not for the (no-op) runtime.
 
+// Keyboard-shortcut surface for useHotkey. Narrow on purpose: only the members
+// the emit produces. A Key constant the emit can ask for but Compose does not
+// define must FAIL here rather than resolve against an invented stub.
+class FocusRequester {
+  fun requestFocus() {}
+}
+
+enum class KeyEventType { KeyDown, KeyUp, Unknown }
+
+class Key private constructor(val id: Int) {
+  companion object {
+    val A = Key(1); val B = Key(2); val C = Key(3); val D = Key(4); val E = Key(5)
+    val F = Key(6); val G = Key(7); val H = Key(8); val I = Key(9); val J = Key(10)
+    val K = Key(11); val L = Key(12); val M = Key(13); val N = Key(14); val O = Key(15)
+    val P = Key(16); val Q = Key(17); val R = Key(18); val S = Key(19); val T = Key(20)
+    val U = Key(21); val V = Key(22); val W = Key(23); val X = Key(24); val Y = Key(25)
+    val Z = Key(26)
+    val Zero = Key(30); val One = Key(31); val Two = Key(32); val Three = Key(33)
+    val Four = Key(34); val Five = Key(35); val Six = Key(36); val Seven = Key(37)
+    val Eight = Key(38); val Nine = Key(39)
+    val Escape = Key(40); val Enter = Key(41); val Delete = Key(42); val Tab = Key(43)
+    val Spacebar = Key(44)
+    val DirectionUp = Key(45); val DirectionDown = Key(46)
+    val DirectionLeft = Key(47); val DirectionRight = Key(48)
+    // Every constant here was verified to resolve against the REAL
+    // androidx.compose 1.7.5 artifact; Key.Space and a bogus name were checked
+    // in the same loop and both failed, so the stub is narrow enough to reject
+    // a wrong mapping rather than absorb it.
+    val MoveHome = Key(49); val MoveEnd = Key(50)
+    val PageUp = Key(51); val PageDown = Key(52)
+  }
+}
+
+class KeyEvent(
+  val key: Key,
+  val type: KeyEventType,
+  val isCtrlPressed: Boolean = false,
+  val isShiftPressed: Boolean = false,
+  val isAltPressed: Boolean = false,
+  val isMetaPressed: Boolean = false,
+)
+
 object Modifier {
   @Suppress("UNUSED_PARAMETER")
   fun padding(all: Dp): Modifier = this
@@ -473,6 +515,15 @@ object Modifier {
   fun border(border: BorderStroke, shape: Shape): Modifier = this
   @Suppress("UNUSED_PARAMETER")
   fun clickable(onClick: () -> Unit): Modifier = this
+  // useHotkey — Compose delivers key events only to a FOCUSED node, so the
+  // lowering needs all three of these together. Real Compose spells them
+  // Modifier.focusRequester(FocusRequester) / .focusable() /
+  // .onPreviewKeyEvent((KeyEvent) -> Boolean).
+  @Suppress("UNUSED_PARAMETER")
+  fun focusRequester(focusRequester: FocusRequester): Modifier = this
+  fun focusable(): Modifier = this
+  @Suppress("UNUSED_PARAMETER")
+  fun onPreviewKeyEvent(onPreviewKeyEvent: (KeyEvent) -> Boolean): Modifier = this
   // E3.1 — testTag for data-testid passthrough. Real Compose ships
   // it from androidx.compose.ui.platform; same call shape.
   @Suppress("UNUSED_PARAMETER")

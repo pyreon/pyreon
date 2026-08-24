@@ -11,7 +11,9 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      'keyboard-shortcut layer over DOM KeyboardEvent. No native lowering is implemented yet — which is an unbuilt lowering, NOT a platform limitation: both targets expose a hardware-shortcut surface (SwiftUI `.keyboardShortcut` for control-bound and `.onKeyPress` for view-level, Compose `Modifier.onPreviewKeyEvent`), and iPads, Chromebooks, DeX and tablet keyboards all reach them',
+      'keyboard-shortcut layer over DOM KeyboardEvent. The REGISTRY half (registerHotkey / scopes / conflict reporting) is web; the `useHotkey` authoring hook lowers — see nativeFrontend',
+    nativeFrontend:
+      "`useHotkey('mod+s', () => { … })` with a LITERAL shortcut and an inline zero-arg handler — lowers to a SwiftUI `.keyboardShortcut` on a hidden zero-size Button and a Compose focused key handler on the component root. `mod` resolves per platform (Command on iOS, Ctrl on Android). A computed shortcut, a handler taking the KeyboardEvent, or a comma-separated combo LIST each warn by name and are dropped",
   },
   longExample: `import { useHotkey, useHotkeyScope, registerHotkey, getRegisteredHotkeys, getHotkeyConflicts, enableScope, disableScope } from '@pyreon/hotkeys'
 

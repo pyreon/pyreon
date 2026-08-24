@@ -360,6 +360,16 @@ export type DeclIR =
    */
   | { kind: 'on-mount'; body: StatementIR[] }
   /**
+   * `useHotkey('mod+s', () => { … })` in a component body.
+   *
+   * Lowers to a real keyboard shortcut on both targets — SwiftUI binds it to a
+   * hidden zero-size Button (`.keyboardShortcut` attaches to a CONTROL, and the
+   * button's action IS the handler), Compose to a focused key handler on the
+   * component root. `combo.modifiers` keeps `mod` symbolic because it resolves
+   * differently per platform: Command on iOS, Ctrl on Android.
+   */
+  | { kind: 'hotkey'; combo: HotkeyComboIR; body: StatementIR[] }
+  /**
    * Phase 3 — destructured router params via `const { id } = useParams()` (or
    * `const { id: userId } = useParams<{ id: string }>()`). The web-idiomatic
    * destructure shape; emits one local binding per field, each reading the
@@ -1834,4 +1844,18 @@ export interface TransformResult {
   code: string
   /** Diagnostic messages from the IR construction. */
   warnings: string[]
+}
+
+/**
+ * A modifier in a parsed hotkey combo. `mod` is preserved rather than resolved:
+ * the platform decides (Command on iOS, Ctrl on Android), and only the emitter
+ * knows which platform it is.
+ */
+export type HotkeyModifier = 'mod' | 'control' | 'shift' | 'alt' | 'meta'
+
+export interface HotkeyComboIR {
+  /** Normalised, lower-cased base key (`'s'`, `'escape'`, `'arrowup'`, `','`). */
+  key: string
+  /** Sorted, so two spellings of one combo emit identically. */
+  modifiers: HotkeyModifier[]
 }
