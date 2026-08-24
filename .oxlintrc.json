@@ -66,9 +66,23 @@
         "maxArgs": 2
       }
     ],
-    "vitest/no-standalone-expect": "error"
+    "vitest/no-standalone-expect": "error",
+    "no-irregular-whitespace": [
+      "error",
+      {
+        "skipComments": true
+      }
+    ]
   },
   "overrides": [
+    {
+      "files": [
+        "packages/tools/devtools/src/page-hook.ts"
+      ],
+      "rules": {
+        "no-eval": "off"
+      }
+    },
     {
       "files": [
         "**/*.test.ts",

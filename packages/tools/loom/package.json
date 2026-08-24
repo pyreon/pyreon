@@ -74,7 +74,7 @@
     "@pyreon/vite-plugin": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@pyreon/zero": "workspace:*",
-    "vite": "^8.2.1"
+    "vite": "^8.2.2"
   },
   "dependencies": {
     "@pyreon/config": "workspace:*",

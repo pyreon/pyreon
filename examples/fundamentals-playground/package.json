@@ -43,8 +43,8 @@
     "@pyreon/validation": "workspace:*",
     "@pyreon/virtual": "workspace:*",
     "@pyreon/zero": "workspace:*",
-    "@tanstack/query-core": "^5.101.4",
-    "@tanstack/virtual-core": "^3.17.7",
+    "@tanstack/query-core": "^5.102.2",
+    "@tanstack/virtual-core": "^3.17.8",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -52,10 +52,10 @@
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vite-plugin": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitus-labs/tools-vitest": "^2.5.0",
-    "happy-dom": "^20.11.1",
+    "@vitus-labs/tools-vitest": "^2.6.3",
+    "happy-dom": "^20.11.6",
     "typescript": "^6.0.3",
-    "vite": "^8.2.1",
-    "vitest": "^4.1.10"
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
   }
 }

@@ -54,7 +54,7 @@
     "bench:validation": "NODE_ENV=production bun bench/validation-bench.ts"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.11.1",
+    "@happy-dom/global-registrator": "^20.11.6",
     "@pyreon/core": "workspace:^",
     "@pyreon/form": "workspace:^",
     "@pyreon/manifest": "workspace:*",
@@ -64,7 +64,7 @@
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "arktype": "^2.2.3",
-    "valibot": "^1.4.1",
+    "valibot": "^1.4.2",
     "zod": "^4.4.3"
   },
   "publishConfig": {

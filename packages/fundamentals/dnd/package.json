@@ -44,18 +44,18 @@
   },
   "dependencies": {
     "@atlaskit/pragmatic-drag-and-drop": "^2.0.2",
-    "@atlaskit/pragmatic-drag-and-drop-auto-scroll": "^3.0.0",
-    "@atlaskit/pragmatic-drag-and-drop-hitbox": "^2.0.0",
+    "@atlaskit/pragmatic-drag-and-drop-auto-scroll": "^3.1.0",
+    "@atlaskit/pragmatic-drag-and-drop-hitbox": "^2.1.0",
     "@pyreon/a11y": "workspace:^"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.11.1",
+    "@happy-dom/global-registrator": "^20.11.6",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/typescript": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitest/browser-playwright": "^4.1.10"
+    "@vitest/browser-playwright": "^4.1.11"
   },
   "publishConfig": {
     "access": "public"

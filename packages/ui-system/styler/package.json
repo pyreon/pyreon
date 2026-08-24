@@ -52,8 +52,8 @@
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/typescript": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitest/browser-playwright": "^4.1.10",
-    "@vitus-labs/tools-rolldown": "^2.5.0"
+    "@vitest/browser-playwright": "^4.1.11",
+    "@vitus-labs/tools-rolldown": "^2.6.3"
   },
   "engines": {
     "node": ">= 22"

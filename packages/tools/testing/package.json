@@ -150,9 +150,9 @@
     "@pyreon/typescript": "workspace:^",
     "@pyreon/ui-core": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "@testing-library/jest-dom": "^7.0.0",
-    "@vitest/browser-playwright": "^4.1.10",
-    "@vitus-labs/tools-rolldown": "^2.5.0"
+    "@testing-library/jest-dom": "^7.0.1",
+    "@vitest/browser-playwright": "^4.1.11",
+    "@vitus-labs/tools-rolldown": "^2.6.3"
   },
   "engines": {
     "node": ">= 22"

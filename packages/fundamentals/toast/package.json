@@ -48,16 +48,16 @@
     "@pyreon/runtime-dom": "workspace:^"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.11.1",
+    "@happy-dom/global-registrator": "^20.11.6",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitest/browser-playwright": "^4.1.10",
+    "@vitest/browser-playwright": "^4.1.11",
     "@vitus-labs/tools-lint": "^2.6.3",
-    "react": "^19.2.7",
-    "react-dom": "^19.2.7",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "react-hot-toast": "^2.6.0",
-    "sonner": "^2.0.7"
+    "sonner": "^2.0.8"
   },
   "publishConfig": {
     "access": "public"

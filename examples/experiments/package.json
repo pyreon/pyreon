@@ -31,10 +31,10 @@
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vite-plugin": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitest/browser-playwright": "^4.1.10",
-    "oxc-parser": "^0.144.0",
+    "@vitest/browser-playwright": "^4.1.11",
+    "oxc-parser": "^0.147.0",
     "playwright": "^1.62.1",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   }
 }

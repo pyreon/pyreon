@@ -59,20 +59,20 @@
   "dependencies": {
     "@pyreon/head": "workspace:^",
     "@pyreon/router": "workspace:^",
-    "esbuild": "^0.28.1",
-    "fast-glob": "^3.3.2",
+    "esbuild": "^0.28.2",
+    "fast-glob": "^3.3.3",
     "gray-matter": "^4.0.3",
     "mdast-util-to-string": "^4.0.0",
-    "minisearch": "^7.1.0",
+    "minisearch": "^7.2.0",
     "remark-directive": "^4.0.0",
     "remark-frontmatter": "^5.0.0",
-    "remark-gfm": "^4.0.0",
-    "remark-mdx": "^3.1.0",
+    "remark-gfm": "^4.0.1",
+    "remark-mdx": "^3.1.1",
     "remark-parse": "^11.0.0",
-    "shiki": "^4.4.2",
+    "shiki": "^4.4.3",
     "unified": "^11.0.5",
-    "unist-util-visit": "^5.0.0",
-    "vite": "^8.2.1"
+    "unist-util-visit": "^5.1.0",
+    "vite": "^8.2.2"
   },
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
@@ -80,8 +80,8 @@
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@types/mdast": "^4.0.4",
-    "@vitest/browser-playwright": "^4.1.10",
-    "mdast-util-directive": "^3.0.0",
+    "@vitest/browser-playwright": "^4.1.11",
+    "mdast-util-directive": "^3.1.0",
     "mdast-util-mdx-jsx": "^3.2.0"
   },
   "publishConfig": {

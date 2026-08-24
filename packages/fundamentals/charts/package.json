@@ -65,12 +65,12 @@
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitest/browser-playwright": "^4.1.10",
+    "@vitest/browser-playwright": "^4.1.11",
     "echarts": "^6.1.0",
-    "echarts-for-react": "^3.0.2",
-    "happy-dom": "^20.11.1",
-    "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "echarts-for-react": "^3.0.6",
+    "happy-dom": "^20.11.6",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
   },
   "publishConfig": {
     "access": "public"
