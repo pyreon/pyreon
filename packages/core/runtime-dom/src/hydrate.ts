@@ -39,7 +39,7 @@ import { warnHydrationMismatch } from './hydration-debug'
 import { bindPolymorphicText, mountChild } from './mount'
 import { buildRowPlan, replayRowPlan, tplAdoptVerify } from './hydration-plan'
 import type { RowPlan } from './hydration-plan'
-import { _setPendingForAdoption, mountReactive } from './nodes'
+import { _setPendingForAdoption, mountKeyedList, mountReactive } from './nodes'
 import {
   _setSlotHydrator,
   _setTplAdoptTarget,
@@ -244,6 +244,48 @@ function hydrateSoleAccessorChild(
 }
 
 /**
+ * Does this accessor value need KEYED reconciliation on later renders?
+ *
+ * Adoption is a ONE-SHOT: `adoptReactiveRange` walks the server nodes for the
+ * first render and hands every later render to `mountChild`. For a single
+ * subtree that is fine — the second render replaces the first, which is what
+ * `mountReactive` does anyway.
+ *
+ * For a KEYED ARRAY it is wrong, and the reason is precise. `mountReactive`
+ * re-runs its accessor whenever anything the accessor READS changes — and a
+ * row template that spells `data-active={activeId() === id}` reads that signal
+ * while the array is being built. On a normal mount the re-run lands in
+ * `mountKeyedList`, which matches by key and REUSES the existing elements, so
+ * a row's `ref` never re-fires. After adoption there is no key cache: the walk
+ * never populated one, so the next render mounts a fresh list and the adoption
+ * cleanup tears down every adopted row.
+ *
+ * The rows are recreated, and anything registered against row IDENTITY dies
+ * with them. Found via `@pyreon/dnd`: dragging a `useSortable` row sets
+ * `activeId`, every row was unmounted and remounted mid-drag, each row's
+ * pragmatic-drag-and-drop registration was disposed, the in-flight drag lost
+ * its drop targets, `overId` stayed null, `performReorder` bailed on its guard
+ * and `onReorder` never fired. The list silently refused to reorder, with no
+ * error anywhere.
+ *
+ * So a keyed array declines adoption and mounts fresh — one server-DOM
+ * discard, in the one shape where adopting costs more than it saves.
+ * Everything else (a route component, a single subtree, an unkeyed `.map()`)
+ * still adopts, which is what this PR is for.
+ *
+ * The complete fix is to build the keyed map during the adopting walk so keyed
+ * rows can be adopted AND reconciled. That is a larger change to
+ * `mountKeyedList`'s entry contract; this is the correct subset of it.
+ */
+function needsKeyedReconcile(value: unknown): boolean {
+  if (!Array.isArray(value)) return false
+  for (const v of value) {
+    if (v !== null && typeof v === 'object' && (v as { key?: unknown }).key != null) return true
+  }
+  return false
+}
+
+/**
  * MULTI-ROOT ADOPTION — the one place an already-rendered region becomes a LIVE
  * reactive boundary without discarding the nodes.
  *
@@ -310,6 +352,32 @@ function adoptReactiveRange(
   // It goes immediately before the CONTENT, not before the opening marker, so
   // the teardown walks below start on real content and never have to special-
   // case a marker the caller is about to remove anyway.
+  // Keyed arrays decline adoption — see `needsKeyedReconcile`. Snapshot the
+  // server nodes FIRST: `mountReactive` inserts its marker and content into
+  // this same parent, so a "remove until end" sweep afterwards would delete
+  // what was just mounted.
+  if (needsKeyedReconcile(runUntracked(child))) {
+    // Hand off to the KEYED reconciler, not to `mountReactive` + `mountChild`.
+    // `mountChild`'s own accessor dispatcher makes exactly this choice
+    // (`mount.ts`, `isKeyedArray(v) ? mountKeyedList(...) : mountReactive(...)`)
+    // and it only reaches the keyed branch when handed the ACCESSOR. Calling
+    // `mountReactive(child, ..., mountChild)` here takes the OTHER branch, so
+    // the rows mount with no per-key cache and every later render rebuilds
+    // them — which is the bug this gate exists to avoid, reintroduced one line
+    // lower down.
+    //
+    // Snapshot the server nodes FIRST: the mount inserts its marker and content
+    // into this same parent, so sweeping "until end" afterwards would delete
+    // what was just mounted.
+    const stale: ChildNode[] = []
+    for (let n: ChildNode | null = rangeFirst; n && n !== end; n = n.nextSibling) stale.push(n)
+    const keyed = mountKeyedList(child as () => VNode[], parent, end, (vn, p, a) =>
+      mountChild(vn, p, a),
+    )
+    for (const n of stale) n.remove()
+    return keyed
+  }
+
   const startMarker = document.createComment('pyreon')
   parent.insertBefore(startMarker, rangeFirst)
   const cleanup = mountReactive(child, parent, end, (value, p, a) => {
