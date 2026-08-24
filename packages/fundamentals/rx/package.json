@@ -43,8 +43,8 @@
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/typescript": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
-    "rxjs": "^7.8.1",
-    "solid-js": "^1.9.14"
+    "rxjs": "^7.8.2",
+    "solid-js": "^1.9.15"
   },
   "publishConfig": {
     "access": "public"

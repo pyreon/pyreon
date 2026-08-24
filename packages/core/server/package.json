@@ -59,8 +59,8 @@
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitest/browser": "^4.1.10",
-    "@vitest/browser-playwright": "^4.1.10"
+    "@vitest/browser": "^4.1.11",
+    "@vitest/browser-playwright": "^4.1.11"
   },
   "publishConfig": {
     "access": "public"

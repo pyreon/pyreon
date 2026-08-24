@@ -27,13 +27,13 @@
     "build": "vl_rolldown_build"
   },
   "dependencies": {
-    "oxc-parser": "^0.144.0"
+    "oxc-parser": "^0.147.0"
   },
   "devDependencies": {
     "@pyreon/http": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   },
   "main": "./lib/index.js",
   "module": "./lib/index.js",

@@ -67,13 +67,13 @@
     "@pyreon/runtime-server": "workspace:^"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.11.1",
+    "@happy-dom/global-registrator": "^20.11.6",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitest/browser-playwright": "^4.1.10"
+    "@vitest/browser-playwright": "^4.1.11"
   },
   "publishConfig": {
     "access": "public"

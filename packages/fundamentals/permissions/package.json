@@ -46,7 +46,7 @@
   },
   "devDependencies": {
     "@casl/ability": "^7.0.1",
-    "@happy-dom/global-registrator": "^20.11.1",
+    "@happy-dom/global-registrator": "^20.11.6",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",

@@ -27,6 +27,73 @@ updates:
       # Don't update workspace packages (handled by changesets)
       - dependency-name: '@pyreon/*'
 
+  # Rust — the native JSX compiler backend (napi-rs). NOT covered before, and
+  # the gap showed: its `oxc_*` crates sat 21 minors behind the JS backend's
+  # `oxc-parser`, which is the exact dual-backend skew the equivalence suite
+  # exists to police.
+  - package-ecosystem: 'cargo'
+    directory: '/packages/core/compiler/native'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+    open-pull-requests-limit: 3
+    labels:
+      - 'dependencies'
+    commit-message:
+      prefix: 'chore(deps)'
+
+  # Gradle — the Android example apps. NOT covered before: their Compose BOM
+  # had drifted ~2 years while every npm dep stayed current.
+  - package-ecosystem: 'gradle'
+    directories:
+      # Root build files carry the PLUGIN versions (AGP, Kotlin, compose);
+      # `app/` carries the androidx/kotlinx dependencies. Both are listed
+      # explicitly rather than relying on multi-module traversal — a directory
+      # Dependabot cannot resolve is a silent no-op, which is how the Compose
+      # BOM drifted ~2 years unnoticed in the first place.
+      - '/examples/native-counter-android'
+      - '/examples/native-counter-android/app'
+      - '/examples/native-todomvc-android'
+      - '/examples/native-todomvc-android/app'
+      - '/examples/native-tasks-android'
+      - '/examples/native-tasks-android/app'
+      - '/examples/native-finance-android'
+      - '/examples/native-finance-android/app'
+      - '/examples/native-router-demo-android'
+      - '/examples/native-router-demo-android/app'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+    open-pull-requests-limit: 5
+    labels:
+      - 'dependencies'
+      - 'android'
+    commit-message:
+      prefix: 'chore(deps)'
+    groups:
+      androidx:
+        patterns:
+          - 'androidx.*'
+      kotlin:
+        patterns:
+          - 'org.jetbrains.kotlin*'
+
+  # Docker — the scaffolded deploy images. NOT covered before: the node base
+  # image was pinned to 22 while CI and the docs had moved to 24.
+  - package-ecosystem: 'docker'
+    directories:
+      - '/examples/hn-clone'
+      - '/packages/zero/create-zero/templates/_shared/_adapters/node'
+      - '/packages/zero/create-zero/templates/_shared/_adapters/bun'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+    open-pull-requests-limit: 3
+    labels:
+      - 'dependencies'
+    commit-message:
+      prefix: 'chore(deps)'
+
   # GitHub Actions
   - package-ecosystem: 'github-actions'
     directory: '/'

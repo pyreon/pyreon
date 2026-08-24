@@ -42,11 +42,11 @@
     "@pyreon/reactivity": "workspace:^",
     "docx": "^9.7.1",
     "exceljs": "^4.4.0",
-    "pdfmake": "^0.3.9",
+    "pdfmake": "^0.3.11",
     "pptxgenjs": "^4.0.1"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.11.1",
+    "@happy-dom/global-registrator": "^20.11.6",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
@@ -54,7 +54,7 @@
     "@vitus-labs/tools-lint": "^2.6.3",
     "docx": "^9.7.1",
     "exceljs": "^4.4.0",
-    "pdfmake": "^0.3.9",
+    "pdfmake": "^0.3.11",
     "pptxgenjs": "^4.0.1"
   },
   "publishConfig": {
