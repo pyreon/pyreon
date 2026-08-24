@@ -47,6 +47,9 @@
 // - **Store computeds/methods in the setup body** — store v1 lowers
 //   signals; derived state lives in component-level `computed` for now.
 
+import { useQuery } from '@pyreon/query'
+import { model } from '@pyreon/state-tree'
+import { filter as filter_rx, map } from '@pyreon/rx'
 import { createI18n } from '@pyreon/i18n'
 import { toast } from '@pyreon/toast'
 import { announce } from '@pyreon/a11y'
@@ -406,6 +409,11 @@ function StatsPage() {
   )
 }
 
+// state-tree lowers at MODULE scope only — the mirror of createI18n, which
+// lowers only inside a component. Both were snippet-proven; neither had ever
+// run in an app.
+const prefs = model({ state: { compact: false, pageSize: 20 } }).create()
+
 // ── Toolkit screen ──
 //
 // EXISTS TO BE DEVICE-PROVEN, not to be pretty.
@@ -430,6 +438,16 @@ function ToolkitScreen() {
   })
   // Filter lives in the URL on web; on native the router's query backs it.
   const filter = useUrlState('filter', 'all')
+  // rx: a derived chain over a signal, which lowers to chained computeds.
+  const nums = signal<number[]>([1, 2, 3, 4])
+  const evens = filter_rx(nums, (x: number) => x % 2 === 0)
+  const doubled = map(evens, (x: number) => x * 2)
+  // query: the same shape the registry verifies, so the gate and this app move
+  // together.
+  const q = useQuery<string>(() => ({
+    queryKey: ['toolkit', 'greeting'],
+    queryFn: () => fetch('https://example.com/greeting').then((r) => r.text()),
+  }))
   return (
     <Stack gap={3} padding={4} data-testid="toolkit-page">
       <Text data-testid="toolkit-title">{i18n.t('title')}</Text>
@@ -448,6 +466,9 @@ function ToolkitScreen() {
       <Button onPress={() => filter.set('done')} data-testid="toolkit-filter-done">
         Only done
       </Button>
+      <Text data-testid="toolkit-pagesize">{String(prefs.pageSize())}</Text>
+      <Text data-testid="toolkit-evens">{String(doubled().length)}</Text>
+      <Text data-testid="toolkit-query">{q.data}</Text>
       <Button onPress={() => navigate('/tasks')} data-testid="toolkit-back">
         Back to tasks
       </Button>
