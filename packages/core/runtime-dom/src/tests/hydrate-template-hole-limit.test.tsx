@@ -375,9 +375,14 @@ const App = () => <ul class="l"><For each={["a","b"]} by={(x) => x}>{(x) => <li>
     expect(on.adopts).toBeGreaterThan(off.adopts)
   })
 
-  it('a component with a STATIC sibling BEFORE it adopts in full (3/4 OFF → 4/4 ON)', async () => {
+  it('a component with a STATIC sibling BEFORE it adopts in full (4/4 both ways)', async () => {
     // This shape used to be the honest limit of the mount-hole fix, measured at
-    // 3/4 OFF → 0/4 ON. It is now the best case: 3/4 OFF → 4/4 ON.
+    // 3/4 OFF → 0/4 ON, then 3/4 OFF → 4/4 ON. Deferred `_tpl` builds during
+    // hydration closed the OFF gap too: the component-output `_tpl` that used
+    // to clone (its build ran before the walk reached its cursor) now defers
+    // and adopts at its real cursor, so OFF retains 4/4 as well. The load-
+    // bearing invariants are unchanged: ON never retains LESS than OFF, and
+    // both render the same page.
     //
     // A hole is marker-free because it is TRAILING, and putting static content
     // BEFORE a component does not change that — everything from the last baked
@@ -407,7 +412,7 @@ const App = () => <div class="app"><main class="m"><span class="s">s</span><Mid 
     }
     const off = await hydrateAndMeasure(tree(), MIXED, {})
     const on = await hydrateAndMeasure(tree(), MIXED, ON)
-    expect([off.retained, off.total]).toEqual([3, 4])
+    expect([off.retained, off.total]).toEqual([4, 4])
     expect([on.retained, on.total]).toEqual([4, 4])
     // Both render the same page — the retention is a gain, not a divergence.
     expect(on.html).toBe(off.html)
