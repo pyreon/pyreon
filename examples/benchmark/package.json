@@ -28,13 +28,13 @@
     "solid-js": "^1.9.14",
     "svelte": "^5.56.8",
     "vue": "^3.5.41",
-    "octane": "0.1.37",
+    "octane": "0.1.42",
     "preact-render-to-string": "^6.6.1",
     "@vue/server-renderer": "^3.5.41"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.11.1",
-    "@octanejs/vite-plugin": "0.1.37",
+    "@octanejs/vite-plugin": "0.1.42",
     "@pyreon/compiler": "workspace:*",
     "@pyreon/runtime-server": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
@@ -45,7 +45,7 @@
     "@types/react-dom": "^19.2.4",
     "@vue/compiler-dom": "^3.5.41",
     "esbuild": "^0.28.1",
-    "oxc-parser": "^0.144.0",
+    "oxc-parser": "^0.146.0",
     "playwright": "^1.62.1",
     "typescript": "^6.0.3",
     "vite": "^8.2.1"

@@ -27,7 +27,7 @@
     "build": "vl_rolldown_build"
   },
   "dependencies": {
-    "oxc-parser": "^0.144.0"
+    "oxc-parser": "^0.146.0"
   },
   "devDependencies": {
     "@pyreon/http": "workspace:^",
