@@ -422,6 +422,12 @@ export function C() {
     rationale:
       'ships the PyreonToast native runtime; the useToast() authoring lowering is a documented open refinement.',
     requiresCoSource: true,
+    // Verified: lowers to `PyreonToast.shared.add(...)` / `PyreonToast.add(...)`.
+    snippet: `import { toast } from '@pyreon/toast'
+import { Stack, Button } from '@pyreon/primitives'
+export function C() {
+  return (<Stack><Button onPress={() => toast('saved')}>go</Button></Stack>)
+}`,
   },
   {
     name: '@pyreon/a11y',
@@ -429,12 +435,23 @@ export function C() {
     rationale:
       'ships the native accessibility runtime; component-level helpers (VisuallyHidden) do not lower — a11y crosses via native accessibility modifiers.',
     requiresCoSource: true,
+    // Verified: lowers to `PyreonA11y.announce(...)` on both targets.
+    snippet: `import { announce } from '@pyreon/a11y'
+import { Stack, Button } from '@pyreon/primitives'
+export function C() {
+  return (<Stack><Button onPress={() => announce('saved')}>go</Button></Stack>)
+}`,
   },
   {
     name: '@pyreon/sized-map',
     mechanism: 'native-container',
     rationale: 'ships a co-located native bounded-map runtime used by the data packages.',
     requiresCoSource: true,
+    // Verified: lowers to `PyreonSizedMap<..>(maxEntries:)`. The option is `maxEntries`; a `maxSize` typo warns by name rather than silently emitting.
+    snippet: `import { SizedMap } from '@pyreon/sized-map'
+import { Stack, Text } from '@pyreon/primitives'
+const cache = new SizedMap<string, number>({ maxEntries: 10 })
+export function C() { return (<Stack><Text>{cache.size}</Text></Stack>) }`,
   },
 
   // ── web-first: rich widget / web-coupled API, native-frontend arc OPEN ──
