@@ -87,7 +87,7 @@ dependencies {
     // `useFetch(url, { method })` — the HTTP layer had NO Android edge at all
     // until it was written). Every app compiling the runtime srcDir needs the
     // dep whether or not it uses either (the srcDir compiles all sources).
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp:5.5.0")
     // media3 — PyreonVideoPlayerAndroid.kt (in the runtime-kotlin srcDir
     // above) imports androidx.media3.* for the <Video> primitive. Same deal
     // as okhttp: every app compiling the srcDir needs the artifacts, video
