@@ -81,7 +81,7 @@ dependencies {
     // okhttp3 — the default websocket transport backing the TS-side
     // ws.connect(). Every app compiling the runtime srcDir needs the dep,
     // websockets used or not (the srcDir compiles all runtime sources).
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp:5.5.0")
     // media3 — PyreonVideoPlayerAndroid.kt (in the runtime-kotlin srcDir
     // above) imports androidx.media3.* for the <Video> primitive. Same deal
     // as okhttp: every app compiling the srcDir needs the artifacts, video
