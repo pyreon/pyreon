@@ -52,6 +52,9 @@ import { model } from '@pyreon/state-tree'
 import { filter as filter_rx, map } from '@pyreon/rx'
 import { SizedMap } from '@pyreon/sized-map'
 import { usePermissions } from '@pyreon/permissions'
+import { createHttp } from '@pyreon/http'
+import { syncedSignal, PyreonCrdtDoc } from '@pyreon/sync'
+import { useSortable } from '@pyreon/dnd'
 import { createI18n } from '@pyreon/i18n'
 import { toast } from '@pyreon/toast'
 import { announce } from '@pyreon/a11y'
@@ -416,6 +419,13 @@ function StatsPage() {
 // run in an app.
 const prefs = model({ state: { compact: false, pageSize: 20 } }).create()
 
+// @pyreon/http is metadata: createHttp + endpoint declarations live at module
+// scope and are consumed by the endpoint-resolution pre-pass, then driven by
+// useFetch inside a component.
+interface TaskDto { id: string; title: string }
+const api = createHttp({ baseUrl: 'https://example.com' })
+const getTask = api.endpoint('GET /tasks/:id')
+
 // Module scope, which is where SizedMap lowers.
 //
 // @pyreon/validate and @pyreon/feature were here and are deliberately NOT:
@@ -451,6 +461,22 @@ function ToolkitScreen() {
   // Filter lives in the URL on web; on native the router's query backs it.
   const filter = useUrlState('filter', 'all')
   const perms = usePermissions(['tasks.write'])
+  // sync: a CRDT-backed counter. `doc` must be a binding — syncedSignal reads
+  // it, and omitting it is invalid on the web too.
+  const doc = new PyreonCrdtDoc('peer-1')
+  const synced = syncedSignal({ doc, key: 'toolkitCount', initial: 0 })
+  // http: the endpoint declared above, driven through useFetch.
+  // TYPED: an untyped useFetch lowers to `decode(Any.self, …)` on Swift, which
+  // does not round-trip — the compiler says so by name.
+  const taskReq = useFetch<TaskDto>(getTask({ params: { id: '1' } }))
+  // dnd: reorder over the same signal the rx chain reads. `activeKey` is the
+  // drag state the native runtime exposes (the TS-side items array is input,
+  // not a readable member of PyreonSortableState).
+  const sortable = useSortable({
+    items: () => nums(),
+    by: (n: number) => String(n),
+    onReorder: (next: number[]) => nums.set(next),
+  })
   // rx: a derived chain over a signal, which lowers to chained computeds.
   const nums = signal<number[]>([1, 2, 3, 4])
   const evens = filter_rx(nums, (x: number) => x % 2 === 0)
@@ -484,6 +510,9 @@ function ToolkitScreen() {
       <Text data-testid="toolkit-query">{q.data}</Text>
       <Text data-testid="toolkit-cache">{String(seen.size)}</Text>
       <Text data-testid="toolkit-perm">{String(perms.can('tasks.write'))}</Text>
+      <Text data-testid="toolkit-synced">{String(synced())}</Text>
+      <Text data-testid="toolkit-http">{taskReq.data}</Text>
+      <Text data-testid="toolkit-sortable">{sortable.activeKey ?? 'idle'}</Text>
       <Button onPress={() => navigate('/tasks')} data-testid="toolkit-back">
         Back to tasks
       </Button>

@@ -24,13 +24,16 @@
   },
   "dependencies": {
     "@pyreon/a11y": "workspace:*",
+    "@pyreon/dnd": "workspace:*",
     "@pyreon/hooks": "workspace:*",
+    "@pyreon/http": "workspace:*",
     "@pyreon/i18n": "workspace:*",
     "@pyreon/permissions": "workspace:*",
     "@pyreon/query": "workspace:*",
     "@pyreon/rx": "workspace:*",
     "@pyreon/sized-map": "workspace:*",
     "@pyreon/state-tree": "workspace:*",
+    "@pyreon/sync": "workspace:*",
     "@pyreon/toast": "workspace:*",
     "@pyreon/url-state": "workspace:*"
   }

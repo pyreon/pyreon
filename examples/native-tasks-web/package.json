@@ -16,8 +16,10 @@
   "dependencies": {
     "@pyreon/a11y": "workspace:*",
     "@pyreon/core": "workspace:*",
+    "@pyreon/dnd": "workspace:*",
     "@pyreon/form": "workspace:*",
     "@pyreon/hooks": "workspace:*",
+    "@pyreon/http": "workspace:*",
     "@pyreon/i18n": "workspace:*",
     "@pyreon/permissions": "workspace:*",
     "@pyreon/primitives": "workspace:*",
@@ -29,6 +31,7 @@
     "@pyreon/sized-map": "workspace:*",
     "@pyreon/state-tree": "workspace:*",
     "@pyreon/store": "workspace:*",
+    "@pyreon/sync": "workspace:*",
     "@pyreon/toast": "workspace:*",
     "@pyreon/url-state": "workspace:*"
   },
