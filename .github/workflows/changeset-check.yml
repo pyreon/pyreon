@@ -56,4 +56,5 @@ jobs:
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           HAS_SKIP_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'skip-changeset') }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: bun scripts/check-changeset-required.ts

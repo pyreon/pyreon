@@ -373,6 +373,7 @@ export function isChangesetFile(file: string): boolean {
 export type GateResult =
   | { kind: 'skip-no-consumer-files' }
   | { kind: 'skip-label' }
+  | { kind: 'skip-dependabot-manifest'; touched: string[] }
   | { kind: 'ok-changeset-activity'; activity: string[] }
   | { kind: 'fail-no-changeset'; touched: string[] }
 
@@ -382,6 +383,31 @@ export interface GateInputs {
   ignoredNames: Set<string>
   repoRoot: string
   hasSkipLabel: boolean
+  /** PR author login, e.g. `dependabot[bot]`. Absent for local runs. */
+  prAuthor?: string | undefined
+}
+
+/**
+ * `dependabot[bot]` is the login GitHub Actions reports for Dependabot PRs.
+ * Matched case-insensitively and exactly — a human account merely containing
+ * "dependabot" must not inherit the carve-out.
+ *
+ * @internal exported for unit testing
+ */
+export function isDependabot(author: string | undefined): boolean {
+  return (author ?? '').toLowerCase() === 'dependabot[bot]'
+}
+
+/**
+ * A bare `package.json` at any depth — the only file Dependabot edits. Anything
+ * else (source, a template tree, a lockfile-adjacent script) is NOT covered by
+ * the Dependabot carve-out.
+ *
+ * @internal exported for unit testing
+ */
+export function isManifestOnlyPath(file: string): boolean {
+  const norm = file.split('\\').join('/')
+  return norm.slice(norm.lastIndexOf('/') + 1) === 'package.json'
 }
 
 export function evaluateGate(inp: GateInputs): GateResult {
@@ -395,6 +421,27 @@ export function evaluateGate(inp: GateInputs): GateResult {
 
   if (inp.hasSkipLabel) {
     return { kind: 'skip-label' }
+  }
+
+  // Dependabot CANNOT author a changeset. Before this carve-out every
+  // Dependabot PR touching a published package's manifest failed here — which
+  // is every interesting one — so they were permanently red and got closed
+  // rather than merged. That is the actual reason this repo's dependency
+  // updates stopped landing; the drift was a GATE problem, not a policy one.
+  //
+  // Scoped deliberately: it applies ONLY when every consumer-affecting file is
+  // a `package.json`. If Dependabot ever touches real source (it does not
+  // today), the gate still fires.
+  if (isDependabot(inp.prAuthor) && consumerFiles.every(isManifestOnlyPath)) {
+    return {
+      kind: 'skip-dependabot-manifest',
+      touched: consumerPackagesTouched(
+        consumerFiles,
+        inp.packages,
+        inp.ignoredNames,
+        inp.repoRoot,
+      ),
+    }
   }
 
   const activity = inp.files.filter(isChangesetFile)
@@ -465,12 +512,20 @@ function main(): void {
     ignoredNames,
     repoRoot,
     hasSkipLabel: HAS_SKIP_LABEL,
+    prAuthor: process.env['PR_AUTHOR'],
   })
 
   switch (result.kind) {
     case 'skip-no-consumer-files':
       console.log(
         '[check-changeset-required] PR does not touch any published package source — changeset not required.',
+      )
+      process.exit(0)
+      break
+
+    case 'skip-dependabot-manifest':
+      console.log(
+        `[check-changeset-required] Dependabot manifest-only PR (${result.touched.join(', ')}) — changeset not required (Dependabot cannot author one).`,
       )
       process.exit(0)
       break
