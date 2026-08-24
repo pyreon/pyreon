@@ -475,6 +475,12 @@ test.describe('ui-showcase — pseudo-state CSS rules', () => {
     page,
   }) => {
     await page.goto('/button')
+    // The client swaps compiled-template regions in place at hydration
+    // (no _tpl adoption yet). A hover/focus taken BEFORE that swap lands
+    // on a node hydration is about to replace — the stationary mouse then
+    // never re-applies :hover to the replacement (Linux headless). Gate on
+    // hydration so the interaction targets the final node.
+    await waitForHydration(page)
     const primary = page.getByRole('button', { name: /^Primary$/ })
     await expect(primary).toBeVisible()
 
@@ -506,6 +512,12 @@ test.describe('ui-showcase — pseudo-state CSS rules', () => {
 
   test('focus on Primary button changes computed style via keyboard tab', async ({ page }) => {
     await page.goto('/button')
+    // The client swaps compiled-template regions in place at hydration
+    // (no _tpl adoption yet). A hover/focus taken BEFORE that swap lands
+    // on a node hydration is about to replace — the stationary mouse then
+    // never re-applies :hover to the replacement (Linux headless). Gate on
+    // hydration so the interaction targets the final node.
+    await waitForHydration(page)
     const primary = page.getByRole('button', { name: /^Primary$/ })
     await expect(primary).toBeVisible()
 
@@ -539,6 +551,12 @@ test.describe('ui-showcase — responsive useMediaQuery', () => {
     // Mobile: <= 768px
     await page.setViewportSize({ width: 500, height: 800 })
     await page.goto('/hooks/responsive')
+    // The client swaps compiled-template regions in place at hydration
+    // (no _tpl adoption yet). A hover/focus taken BEFORE that swap lands
+    // on a node hydration is about to replace — the stationary mouse then
+    // never re-applies :hover to the replacement (Linux headless). Gate on
+    // hydration so the interaction targets the final node.
+    await waitForHydration(page)
     // Wait for hydration so signals are reactive.
     await expect(page.locator('text=useMediaQuery(query)').first()).toBeVisible()
 
@@ -723,6 +741,20 @@ test.describe('ui-showcase — runtime mode prop change', () => {
 
   test('mode prop change patches ModeProbe in place (no remount)', async ({ page }) => {
     await page.goto('/test/reactive-providers')
+    // The ONLY spec in this describe block that lacked the barrier, because it
+    // was the one spec still passing when the others were fixed — and it passed
+    // for the same wrong reason they failed: with clicks swallowed pre-hydration
+    // the toggle never fired, so nothing could remount.
+    //
+    // Without this wait the marker is stamped on a node hydration then DISCARDS,
+    // and the failure reads as a remount. It is not one — a marker stamped after
+    // hydration survives all four toggles, so the contract this spec names holds.
+    // The node is lost DURING hydration: `templateSignature` refuses adoption for
+    // any `_tpl` containing a `<!>` slot and the template is replaced wholesale,
+    // which with component-child templatization costs the whole page its server
+    // DOM (measured: 1 of 118 elements retained). That refusal is pre-existing on
+    // main and is removed by #2955.
+    await waitForHydration(page)
 
     const probe = page.locator('[data-test-mode-probe="swappable"]')
     await expect(probe).toBeVisible()

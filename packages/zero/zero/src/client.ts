@@ -72,9 +72,7 @@ export function startClient(options: StartClientOptions) {
   // missing the constant in a real Vite build is impossible because the
   // plugin's `config()` hook always declares it via `define`.
   const base =
-    typeof __ZERO_BASE__ !== 'undefined' && __ZERO_BASE__ !== '/'
-      ? __ZERO_BASE__
-      : undefined
+    typeof __ZERO_BASE__ !== 'undefined' && __ZERO_BASE__ !== '/' ? __ZERO_BASE__ : undefined
 
   const { App, router } = createApp({
     routes: options.routes,
@@ -87,12 +85,9 @@ export function startClient(options: StartClientOptions) {
   // If the server embedded loader data, hydrate it BEFORE mounting so the
   // initial render sees the same data the SSR pass produced. This avoids
   // hydration mismatches and eliminates the flash-of-fallback.
-  const ssrLoaderData = (window as unknown as Record<string, unknown>)
-    .__PYREON_LOADER_DATA__
+  const ssrLoaderData = (window as unknown as Record<string, unknown>).__PYREON_LOADER_DATA__
   const hasSSRLoaderData =
-    ssrLoaderData !== undefined &&
-    typeof ssrLoaderData === 'object' &&
-    ssrLoaderData !== null
+    ssrLoaderData !== undefined && typeof ssrLoaderData === 'object' && ssrLoaderData !== null
   if (hasSSRLoaderData) {
     // `router` is the public Router<> type; hydrateLoaderData uses the
     // internal RouterInstance shape. The cast is safe because they're
@@ -107,7 +102,9 @@ export function startClient(options: StartClientOptions) {
   // @pyreon/store on import; undefined (one null check) when the app uses no
   // stores. This is what makes cross-island shared state hydrate ONCE.
   const hydrateStores = (
-    globalThis as { __PYREON_HYDRATE_STORES__?: (d: Record<string, Record<string, unknown>>) => void }
+    globalThis as {
+      __PYREON_HYDRATE_STORES__?: (d: Record<string, Record<string, unknown>>) => void
+    }
   ).__PYREON_HYDRATE_STORES__
   if (hydrateStores) {
     const ssrStoreState = (window as unknown as Record<string, unknown>).__PYREON_STORE_STATE__
@@ -127,65 +124,45 @@ export function startClient(options: StartClientOptions) {
   const hasSSRContent = Array.from(container.childNodes).some(
     (n) => n.nodeType === 1 || (n.nodeType === 3 && n.textContent!.trim().length > 0),
   )
-  const cleanup = hasSSRContent ? hydrateRoot(container, vnode) : mount(vnode, container)
 
-  // ── Hydration barrier ──────────────────────────────────────────────────────
-  // Announce that the client has taken ownership of `container`, so a test (or
-  // any consumer) can wait for INTERACTIVITY rather than for pixels.
+  // The base-stripped pathname + search the router considers current. Shared by
+  // the route pre-resolution below AND the SPA cold-start loader run.
   //
-  // Those are not the same thing, and today they only look the same by accident.
-  // `RouterView` renders its route through a reactive accessor and every
-  // fs-router route is `lazy()`, so the accessor's first render deletes the
-  // server range and the page goes blank until the chunk lands. Nothing
-  // clickable exists in the meantime, so anything a locator matched was
-  // necessarily already hydrated — an accidental synchronization barrier.
+  // PATH + query string + hash — `router.currentRoute().path` is JUST the
+  // pathname (search/hash stripped by `resolveRoute`). Passing only the
+  // pathname makes `router.replace` write the bare URL via
+  // `history.replaceState`, silently dropping query params present on the
+  // initial-load URL. Any `useUrlState` / `useTypedSearchParams` consumer
+  // reading `window.location.search` later sees an empty string and falls back
+  // to defaults — direct-link sharing of `/search?q=react` was structurally
+  // broken on cold-start (W13 from #942 follow-up audit).
   //
-  // That accident disappears the moment hydration ADOPTS the server DOM instead
-  // of rebuilding it (the direction this framework is moving). Then a locator
-  // matches a fully-rendered, visible, DEAD control and clicks it before any
-  // handler is attached — the click is swallowed and the assertion fails with
-  // "element(s) not found" on the post-click state. Measured on that shape: the
-  // window is ~48ms locally and unbounded on a cold transform or slow network.
-  //
-  // Set AFTER the mount/hydrate call returns, so its presence means handlers
-  // are attached, not merely that markup arrived.
-  if (container instanceof HTMLElement) container.dataset.pyreonHydrated = ''
-
+  // We use the router's internal `_currentPath` signal because it already holds
+  // the BASE-STRIPPED pathname + search assembled by `getInitialLocation()`.
+  // Reading `window.location.pathname` directly would include the base prefix
+  // (e.g. `/blog/` for a subpath deploy), which `router.replace` then
+  // re-prepends inside `syncBrowserUrl` — producing a double-prefix URL like
+  // `/blog//blog/about`. Using `_currentPath` keeps base handling centralised
+  // in the router.
+  const internalCurrentPath = (router as unknown as { _currentPath?: () => string })._currentPath
+  const currentPath =
+    typeof internalCurrentPath === 'function' ? internalCurrentPath() : router.currentRoute().path
 
   // ── Loader run (SPA cold-start path) ───────────────────────────────────────
-  // If we had no SSR loader data AND no SSR content, this is a true SPA
-  // cold start. Trigger the router's loader pipeline for the current route
-  // via `replace()` with the same path — doesn't change the URL, just kicks
-  // off the loader batch. Guards, middleware, and redirects run too, which
-  // matches what any other route navigation would do.
+  // If we had no SSR loader data AND no SSR content, this is a true SPA cold
+  // start. Trigger the router's loader pipeline for the current route via
+  // `replace()` with the same path — doesn't change the URL, just kicks off the
+  // loader batch. Guards, middleware, and redirects run too, which matches what
+  // any other route navigation would do.
   //
-  // If we DID have SSR content but NO loader data — that's an unusual case
-  // (SSR disabled for this route but loader defined). Run loaders anyway so
-  // the client catches up.
-  if (!hasSSRLoaderData) {
-    // PATH + query string + hash — `router.currentRoute().path` is JUST
-    // the pathname (search/hash stripped by `resolveRoute`). Passing
-    // only the pathname makes `router.replace` write the bare URL via
-    // `history.replaceState`, silently dropping query params present on
-    // the initial-load URL. Any `useUrlState` / `useTypedSearchParams`
-    // consumer reading `window.location.search` later sees an empty
-    // string and falls back to defaults — direct-link sharing of
-    // `/search?q=react` was structurally broken on cold-start (W13 from
-    // #942 follow-up audit).
-    //
-    // We use the router's internal `_currentPath` signal because it
-    // already holds the BASE-STRIPPED pathname + search assembled by
-    // `getInitialLocation()`. Reading `window.location.pathname`
-    // directly would include the base prefix (e.g. `/blog/` for a
-    // subpath deploy), which `router.replace` then re-prepends inside
-    // `syncBrowserUrl` — producing a double-prefix URL like
-    // `/blog//blog/about`. Using `_currentPath` keeps the base handling
-    // centralised in the router.
-    const internalCurrentPath = (router as unknown as { _currentPath?: () => string })._currentPath
-    const currentPath =
-      typeof internalCurrentPath === 'function'
-        ? internalCurrentPath()
-        : router.currentRoute().path
+  // If we DID have SSR content but NO loader data — that's an unusual case (SSR
+  // disabled for this route but loader defined). Run loaders anyway so the
+  // client catches up.
+  //
+  // Runs immediately AFTER the mount/hydrate, exactly as before — it is invoked
+  // from `hydrateOrMount` so that ordering survives the pre-resolution await.
+  const runInitialLoadersIfNeeded = (): void => {
+    if (hasSSRLoaderData) return
     router.replace(currentPath).catch((err: unknown) => {
       // Loader failures are already reported via the route's error handling
       // pipeline. We swallow the promise rejection here to prevent unhandled
@@ -194,13 +171,102 @@ export function startClient(options: StartClientOptions) {
       // @ts-ignore — `import.meta.env.DEV` is provided by Vite/Rolldown at build time
       if (import.meta.env?.DEV === true) {
         // oxlint-disable-next-line no-console
-        console.warn(
-          '[Pyreon] Initial loader run failed for route:',
-          currentPath,
-          err,
-        )
+        console.warn('[Pyreon] Initial loader run failed for route:', currentPath, err)
       }
     })
+  }
+
+  let disposed = false
+  let innerCleanup: (() => void) | null = null
+
+  const hydrateOrMount = (): void => {
+    // `startClient`'s returned cleanup may be called before pre-resolution
+    // settles; do not mount into a container the caller has abandoned.
+    if (disposed) return
+    innerCleanup = hasSSRContent ? hydrateRoot(container, vnode) : mount(vnode, container)
+    runInitialLoadersIfNeeded()
+
+    // ── Hydration barrier ────────────────────────────────────────────────────
+    // Announce that the client has taken ownership of `container`, so a caller
+    // can wait for INTERACTIVITY rather than for pixels.
+    //
+    // This lives INSIDE `hydrateOrMount`, not at the old call site, and that
+    // placement is the whole point of it here. Before the pre-resolution above,
+    // hydration ran synchronously and the lazy route's first render DELETED the
+    // server range — the page blanked and refilled when the chunk landed.
+    // Nothing clickable existed in between, so anything a caller could reach was
+    // necessarily already hydrated. That was an accidental barrier, and this
+    // change removes it by keeping the server DOM.
+    //
+    // So between `startClient()` returning and this line, the page is now
+    // fully rendered, visible, and DEAD: a click lands on a control with no
+    // handler and is swallowed. Measured at ~48ms locally, unbounded on a cold
+    // transform or slow network. Set AFTER mount/hydrate returns, so presence
+    // means handlers are attached rather than that markup arrived.
+    if (container instanceof HTMLElement) container.dataset.pyreonHydrated = ''
+  }
+
+  if (hasSSRContent) {
+    // ── Route pre-resolution (hydration path only) ───────────────────────────
+    // fs-router emits every route as `lazy()`, so at this point NONE of the
+    // matched components are in the router's cache. `RouterView` renders its
+    // route through a REACTIVE CHILD, so that child's first render would be the
+    // lazy fallback — `null` for a route without a `loadingComponent`. Hydration
+    // compares that against the server's fully-rendered subtree, finds nothing
+    // to adopt, and rebuilds the whole page. Measured on the docs production
+    // build before this: 10 of 11,514 `<body>` nodes retained (0.1%).
+    //
+    // Resolving the matched chain FIRST makes the initial render the REAL
+    // component, so hydration adopts the server's nodes — which is the entire
+    // point of hydrating: node identity (focus, typed input, scroll position,
+    // listeners attached by non-Pyreon code) survives, and the client skips DOM
+    // construction the server already paid for.
+    //
+    // `skipLoaders` because loader data was already seeded from
+    // `__PYREON_LOADER_DATA__` above; this step is purely about code.
+    //
+    // Cost: the route chunks are emitted with `<link rel="modulepreload">` by
+    // the SSG/SSR build, so this normally resolves from cache. While it does,
+    // the server's DOM stays visible and untouched — strictly better than the
+    // previous behaviour, which blanked the route immediately on hydrate and
+    // refilled it only once the chunk landed.
+    //
+    // A rejection must NOT leave the app dead: fall through and hydrate anyway,
+    // which reproduces exactly the pre-change behaviour for that route.
+    //
+    // An ABSENT `preload` is the stronger version of that same case and was
+    // unhandled: calling it would throw synchronously out of `startClient`, so
+    // the app never mounts at all — strictly worse than the rejection this
+    // block already defends against. Guarded the way `_currentPath` is guarded
+    // a few lines above, for the same reason: the router is reached through a
+    // structural type here, so its shape is an assumption rather than a
+    // guarantee.
+    const preload = (router as unknown as { preload?: typeof router.preload }).preload
+    if (typeof preload !== 'function') {
+      hydrateOrMount()
+    } else {
+      preload
+        .call(router, currentPath, undefined, { skipLoaders: true })
+        .then(hydrateOrMount, (err) => {
+          // @ts-ignore — `import.meta.env.DEV` is provided by Vite/Rolldown at build time
+          if (import.meta.env?.DEV === true) {
+            // oxlint-disable-next-line no-console
+            console.warn(
+              '[Pyreon] Route pre-resolution failed; hydrating anyway:',
+              currentPath,
+              err,
+            )
+          }
+          hydrateOrMount()
+        })
+    }
+  } else {
+    hydrateOrMount()
+  }
+
+  const cleanup = (): void => {
+    disposed = true
+    innerCleanup?.()
   }
 
   return cleanup

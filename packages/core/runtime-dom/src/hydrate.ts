@@ -39,7 +39,7 @@ import { warnHydrationMismatch } from './hydration-debug'
 import { bindPolymorphicText, mountChild } from './mount'
 import { buildRowPlan, replayRowPlan, tplAdoptVerify } from './hydration-plan'
 import type { RowPlan } from './hydration-plan'
-import { _setPendingForAdoption, mountReactive } from './nodes'
+import { _setPendingForAdoption, mountKeyedList, mountReactive } from './nodes'
 import {
   _setSlotHydrator,
   _setTplAdoptTarget,
@@ -206,6 +206,18 @@ function hydrateSoleAccessorChild(
     if (bound.data !== String(initial)) {
       warnHydrationMismatch('text', String(initial), bound.data, `${path} > reactive`)
     }
+    // The BARE binder is correct here, and this is the one hydrate site where
+    // it is. `bindOwnedText` exists because a node adopted into a live parent
+    // must be removed by its own cleanup — but that is only true when nothing
+    // ELSE removes it. This node is `el`'s SOLE child, and this cleanup is
+    // reachable only as `hydrateElement`'s `childCleanup`, whose composed
+    // disposer ends in `el.remove()`. The parent goes as a unit, exactly the
+    // `_elementDepth > 0` case in `mountChild`'s dispatcher and the same call
+    // `hydration-plan.ts` makes for a row descendant.
+    //
+    // TRIPWIRE: that invariant is `hydrateElement`'s `el.remove()`. If element
+    // teardown ever stops removing its own node (a detach-and-reuse cache, say),
+    // this must become `bindOwnedText` — and the general case below already is.
     return bindPolymorphicText(child, bound, el)
   }
 
@@ -229,6 +241,48 @@ function hydrateSoleAccessorChild(
   }
   // SSR rendered nothing into the element — no region to adopt.
   return mountReactive(child, el, null, mountChild)
+}
+
+/**
+ * Does this accessor value need KEYED reconciliation on later renders?
+ *
+ * Adoption is a ONE-SHOT: `adoptReactiveRange` walks the server nodes for the
+ * first render and hands every later render to `mountChild`. For a single
+ * subtree that is fine — the second render replaces the first, which is what
+ * `mountReactive` does anyway.
+ *
+ * For a KEYED ARRAY it is wrong, and the reason is precise. `mountReactive`
+ * re-runs its accessor whenever anything the accessor READS changes — and a
+ * row template that spells `data-active={activeId() === id}` reads that signal
+ * while the array is being built. On a normal mount the re-run lands in
+ * `mountKeyedList`, which matches by key and REUSES the existing elements, so
+ * a row's `ref` never re-fires. After adoption there is no key cache: the walk
+ * never populated one, so the next render mounts a fresh list and the adoption
+ * cleanup tears down every adopted row.
+ *
+ * The rows are recreated, and anything registered against row IDENTITY dies
+ * with them. Found via `@pyreon/dnd`: dragging a `useSortable` row sets
+ * `activeId`, every row was unmounted and remounted mid-drag, each row's
+ * pragmatic-drag-and-drop registration was disposed, the in-flight drag lost
+ * its drop targets, `overId` stayed null, `performReorder` bailed on its guard
+ * and `onReorder` never fired. The list silently refused to reorder, with no
+ * error anywhere.
+ *
+ * So a keyed array declines adoption and mounts fresh — one server-DOM
+ * discard, in the one shape where adopting costs more than it saves.
+ * Everything else (a route component, a single subtree, an unkeyed `.map()`)
+ * still adopts, which is what this PR is for.
+ *
+ * The complete fix is to build the keyed map during the adopting walk so keyed
+ * rows can be adopted AND reconciled. That is a larger change to
+ * `mountKeyedList`'s entry contract; this is the correct subset of it.
+ */
+function needsKeyedReconcile(value: unknown): boolean {
+  if (!Array.isArray(value)) return false
+  for (const v of value) {
+    if (v !== null && typeof v === 'object' && (v as { key?: unknown }).key != null) return true
+  }
+  return false
 }
 
 /**
@@ -264,6 +318,21 @@ function hydrateSoleAccessorChild(
  * Any structural divergence inside the walk is handled by the same recovery
  * `hydrateChild` uses everywhere (warn + repair in place), so a mismatch
  * degrades to the pre-existing correctness, never past it.
+ *
+ * CONSEQUENCE FOR HOSTS WHOSE FIRST RENDER IS A PLACEHOLDER. The client's first
+ * render remains the source of truth: if it produces nothing, the server range
+ * is dropped, because an accessor that rendered on the server and not on the
+ * client is a genuine divergence and converging on the client is what every
+ * other branch of this walker does. So a `lazy()` route whose chunk has not
+ * landed still gets the old rebuild — at that instant the client really does
+ * render nothing. Such a host must resolve its component BEFORE hydrating;
+ * `@pyreon/zero`'s `startClient` calls `router.preload(...)` for exactly this
+ * reason.
+ *
+ * A "keep the range and adopt when content appears later" variant was
+ * considered and rejected: it cannot distinguish "not ready yet" from "renders
+ * nothing", so it would leave stale server DOM standing forever for the latter,
+ * and no oracle in the parity fuzz can catch that.
  */
 function adoptReactiveRange(
   child: () => VNodeChild,
@@ -283,6 +352,32 @@ function adoptReactiveRange(
   // It goes immediately before the CONTENT, not before the opening marker, so
   // the teardown walks below start on real content and never have to special-
   // case a marker the caller is about to remove anyway.
+  // Keyed arrays decline adoption — see `needsKeyedReconcile`. Snapshot the
+  // server nodes FIRST: `mountReactive` inserts its marker and content into
+  // this same parent, so a "remove until end" sweep afterwards would delete
+  // what was just mounted.
+  if (needsKeyedReconcile(runUntracked(child))) {
+    // Hand off to the KEYED reconciler, not to `mountReactive` + `mountChild`.
+    // `mountChild`'s own accessor dispatcher makes exactly this choice
+    // (`mount.ts`, `isKeyedArray(v) ? mountKeyedList(...) : mountReactive(...)`)
+    // and it only reaches the keyed branch when handed the ACCESSOR. Calling
+    // `mountReactive(child, ..., mountChild)` here takes the OTHER branch, so
+    // the rows mount with no per-key cache and every later render rebuilds
+    // them — which is the bug this gate exists to avoid, reintroduced one line
+    // lower down.
+    //
+    // Snapshot the server nodes FIRST: the mount inserts its marker and content
+    // into this same parent, so sweeping "until end" afterwards would delete
+    // what was just mounted.
+    const stale: ChildNode[] = []
+    for (let n: ChildNode | null = rangeFirst; n && n !== end; n = n.nextSibling) stale.push(n)
+    const keyed = mountKeyedList(child as () => VNode[], parent, end, (vn, p, a) =>
+      mountChild(vn, p, a),
+    )
+    for (const n of stale) n.remove()
+    return keyed
+  }
+
   const startMarker = document.createComment('pyreon')
   parent.insertBefore(startMarker, rangeFirst)
   const cleanup = mountReactive(child, parent, end, (value, p, a) => {
@@ -333,6 +428,37 @@ function adoptReactiveRange(
     }
   }
   return cleanup
+}
+
+/**
+ * Bind a reactive text node that hydration OWNS, with a real remover.
+ *
+ * Every text node hydration binds — adopted from the server, or created at the
+ * cursor to recover a divergence — sits in an ALREADY-LIVE parent, so the
+ * binding owns it and its cleanup must actually remove it. That is the same
+ * contract `mountChild`'s dispatcher applies at `_elementDepth === 0`; only a
+ * node inside a freshly-built element that is removed as a unit may skip it.
+ *
+ * `bindPolymorphicText` alone does NOT remove: its swap core removes the marker
+ * and subtree in `sub` mode, but in `text` mode it disposes the effect and
+ * leaves the node. That was invisible while every reactive accessor re-mounted
+ * over a full range swap — the parent nuked the whole range regardless — and
+ * became observable the moment accessors began adopting their range instead:
+ * a NESTED accessor's adopted text survived its parent's re-emission, leaving
+ * `x<b>…</b>` where a client mount produced `<b>…</b>`. Caught by the parity
+ * fuzzer's O3 post-flip oracle (seeds 12/16/23/25/55).
+ *
+ * When the core has already upgraded to `sub` mode the node is detached, so the
+ * removal is a no-op — the core owns the subtree.
+ */
+function bindOwnedText(child: () => VNodeChild, text: Text, parentNode: Node): Cleanup {
+  const dispose = bindPolymorphicText(child, text, parentNode)
+  return () => {
+    dispose()
+    const p = text.parentNode
+    // Skip a DocumentFragment parent (nodeType 11) — mirrors the dispatcher.
+    if (p && p.nodeType !== 11) p.removeChild(text)
+  }
 }
 
 /** Hydrate a reactive accessor (function child). */
@@ -392,13 +518,13 @@ function hydrateReactiveChild(
         // Polymorphic binding: the accessor may later yield a VNode
         // (`() => loading() ? 'Loading…' : <Table/>`) — the shared helper
         // upgrades the adopted text node to a subtree mount when it does.
-        const dispose = bindPolymorphicText(child, bound, parent)
+        const dispose = bindOwnedText(child, bound, parent)
         domNode.remove()
         end.remove()
         return [dispose, after ? firstReal(after) : null]
       }
       // An EMPTY range (initial rendered nothing) or a multi-node range falls
-      // through to the general swap below. An empty/null initial does NOT imply a
+      // through to the general case below. An empty/null initial does NOT imply a
       // text binding — the accessor can produce a VNode subtree on a later flip —
       // so only `mountReactive` handles the general case correctly. (A first cut
       // bound a text node here; the parity fuzzer's post-flip oracle caught
@@ -438,6 +564,8 @@ function hydrateReactiveChild(
         cur.remove()
         cur = nx
       }
+      domNode.remove()
+      end.remove()
       return [cleanup, after ? firstReal(after) : null]
     }
   }
@@ -487,7 +615,7 @@ function hydrateReactiveText(
   if (expected === '') {
     const tn = document.createTextNode('')
     parent.insertBefore(tn, domNode ?? anchor)
-    const dispose = bindPolymorphicText(child as () => VNodeChild, tn, parent)
+    const dispose = bindOwnedText(child as () => VNodeChild, tn, parent)
     return [dispose, domNode]
   }
 
@@ -508,14 +636,14 @@ function hydrateReactiveText(
       next = domNode
     }
     const bound = textNode
-    const dispose = bindPolymorphicText(child as () => VNodeChild, bound, parent)
+    const dispose = bindOwnedText(child as () => VNodeChild, bound, parent)
     return [dispose, next]
   }
   warnHydrationMismatch('text', 'TextNode', domNode?.nodeType ?? 'null', `${path} > reactive`)
   // Recover AT THE CURSOR so sibling order survives.
   const tn = document.createTextNode(expected)
   parent.insertBefore(tn, domNode ?? anchor)
-  const dispose = bindPolymorphicText(child as () => VNodeChild, tn, parent)
+  const dispose = bindOwnedText(child as () => VNodeChild, tn, parent)
   return [dispose, domNode]
 }
 
