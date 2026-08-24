@@ -6,7 +6,7 @@ plugins {
     id("com.android.application")
     kotlin("android")
     kotlin("plugin.serialization")
-    id("org.jetbrains.kotlin.plugin.compose") version "2.0.21"
+    id("org.jetbrains.kotlin.plugin.compose") version "2.4.10"
 }
 
 android {
@@ -68,7 +68,7 @@ dependencies {
     implementation("androidx.compose.runtime:runtime-saveable")
     // Deps required by the runtime-kotlin srcDir sources + M2 material
     // for the emit header's `import androidx.compose.material.*`.
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
     // PyreonWebSocketOkHttp.kt (in the runtime-kotlin srcDir above) imports
     // okhttp3 — the default websocket transport backing the TS-side
     // ws.connect(). Every app compiling the runtime srcDir needs the dep,
@@ -86,7 +86,7 @@ dependencies {
     // Remote <Image src="http…"> → Coil's AsyncImage.
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("androidx.core:core-ktx:1.13.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("androidx.compose.material:material")
 
     // The BOM pins versions PER CONFIGURATION — the implementation-
