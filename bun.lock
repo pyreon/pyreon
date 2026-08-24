@@ -648,7 +648,7 @@
         "@pyreon/virtual": "workspace:*",
         "@pyreon/zero": "workspace:*",
         "@tanstack/query-core": "^5.102.2",
-        "@tanstack/virtual-core": "^3.17.8",
+        "@tanstack/virtual-core": "^3.17.7",
         "zod": "^4.4.3",
       },
       "devDependencies": {
@@ -704,7 +704,7 @@
         "@pyreon/virtual": "workspace:*",
         "@pyreon/zero": "workspace:*",
         "@tanstack/query-core": "^5.102.2",
-        "@tanstack/virtual-core": "^3.17.8",
+        "@tanstack/virtual-core": "^3.17.7",
         "zod": "^4.4.3",
       },
       "devDependencies": {
@@ -2018,7 +2018,7 @@
       "name": "@pyreon/virtual",
       "version": "0.51.0",
       "dependencies": {
-        "@tanstack/virtual-core": "^3.17.8",
+        "@tanstack/virtual-core": "^3.17.7",
       },
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.11.6",
@@ -2027,7 +2027,7 @@
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
-        "@tanstack/react-virtual": "3.14.10",
+        "@tanstack/react-virtual": "3.14.9",
         "@vitest/browser-playwright": "^4.1.11",
         "react": "^19.2.8",
         "react-dom": "^19.2.8",
@@ -2991,7 +2991,7 @@
     "@codemirror/view": "6.43.9",
     "@playwright/test": "1.62.1",
     "@tanstack/query-core": "5.102.2",
-    "@tanstack/virtual-core": "3.17.8",
+    "@tanstack/virtual-core": "3.17.4",
     "dompurify": "^3.4.14",
     "playwright": "1.62.1",
     "sigstore": "^5.0.0",
@@ -4103,7 +4103,7 @@
 
     "@tanstack/react-table": ["@tanstack/react-table@9.1.2", "", { "dependencies": { "@tanstack/react-store": "^0.11.0", "@tanstack/table-core": "9.1.2" }, "peerDependencies": { "react": ">=18" } }, "sha512-YQPZFJ1nIi/bjjwsPZVouABgahDcl7Gdm33CdTStUJBn0DjEVJ2uhSTVmIoWt9MVKdQziXGAsXipSzy949Hygg=="],
 
-    "@tanstack/react-virtual": ["@tanstack/react-virtual@3.14.10", "", { "dependencies": { "@tanstack/virtual-core": "3.17.8" }, "peerDependencies": { "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0", "react-dom": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-SRyoUbdFMRHuYXMijV5H4ZarQWpXkj3iANq8OFre+pybeVap8ZJjZ3Nz9bVjx4d8PfobVUQUdKyyyHYk3E+djw=="],
+    "@tanstack/react-virtual": ["@tanstack/react-virtual@3.14.9", "", { "dependencies": { "@tanstack/virtual-core": "3.17.7" }, "peerDependencies": { "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0", "react-dom": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-qZyr0FZDP8rDC4WBhsryIZmAd9bveJvFGUJJtskWaew6/0dTRS6wZxnR6VQ5bY2KwL3LjerrHqQLk3a0GKcPXQ=="],
 
     "@tanstack/router-core": ["@tanstack/router-core@1.171.27", "", { "dependencies": { "@tanstack/history": "1.162.1", "cookie-es": "^3.0.0", "seroval": "^1.6.2", "seroval-plugins": "^1.6.2" } }, "sha512-wDwSLvoLwIaNcnx9UNcN9Mb7Y8QwCYq1U1RQZwyN186gnkIoIYI2SOxy8VqH1vFigbkHkk4FmwMAQlghPgDK2g=="],
 
@@ -4111,7 +4111,7 @@
 
     "@tanstack/table-core": ["@tanstack/table-core@9.1.2", "", { "dependencies": { "@tanstack/store": "^0.11.0" } }, "sha512-ONpWQeass1sfg80CWF1NSwQ8r3GiqxA2lT/EdqIcrDEPZ0Z+0mM94eQoFYLPN0Kztzj8TQVb2+PrSZSItqA61g=="],
 
-    "@tanstack/virtual-core": ["@tanstack/virtual-core@3.17.8", "", {}, "sha512-BfEvehNpOT75r5Ksc5xW6NZuXujTfb7nlSEyVu4XHG3gdxNg1KqXruWbDewXOUaUYIo4oRbSfkjIajz4MAT8tA=="],
+    "@tanstack/virtual-core": ["@tanstack/virtual-core@3.17.4", "", {}, "sha512-nGm5KteqxasUdThLc2izl6dHUqLv0LQj7Nuyo5gYalTPf/U8a9ermvsl7reT+6ioBW1l8WfpP/mcU338nLXpqw=="],
 
     "@testing-library/dom": ["@testing-library/dom@10.4.1", "", { "dependencies": { "@babel/code-frame": "^7.10.4", "@babel/runtime": "^7.12.5", "@types/aria-query": "^5.0.1", "aria-query": "5.3.0", "dom-accessibility-api": "^0.5.9", "lz-string": "^1.5.0", "picocolors": "1.1.1", "pretty-format": "^27.0.2" } }, "sha512-o4PXJQidqJl82ckFaXUeoAW+XysPLauYI43Abki5hABd853iMhitooc6znOnczgbTYmEP6U6/y1ZyKAIsvMKGg=="],
 
