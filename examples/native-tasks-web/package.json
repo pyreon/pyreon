@@ -20,9 +20,12 @@
     "@pyreon/hooks": "workspace:*",
     "@pyreon/i18n": "workspace:*",
     "@pyreon/primitives": "workspace:*",
+    "@pyreon/query": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
     "@pyreon/router": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
+    "@pyreon/rx": "workspace:*",
+    "@pyreon/state-tree": "workspace:*",
     "@pyreon/store": "workspace:*",
     "@pyreon/toast": "workspace:*",
     "@pyreon/url-state": "workspace:*"
