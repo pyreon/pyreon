@@ -221,9 +221,16 @@ export function C() {
     name: '@pyreon/styler',
     mechanism: 'pmtc-lowers',
     rationale: 'styled() style objects lower to native view modifiers.',
+    // The CALL form `styled('div', {…})` is NOT the lowering shape: the parser
+    // requires the TAGGED TEMPLATE over a canonical primitive, and the call
+    // form fell through BEFORE the existing non-canonical warning — so this
+    // snippet emitted `styled("div", …)` verbatim (uncompilable Swift) with
+    // zero warnings, and the gate passed it because the gate only counts
+    // warnings and never compiles. Verified: this shape emits `VStack` and
+    // typechecks on real swiftc.
     snippet: `import { styled } from '@pyreon/styler'
-import { Text } from '@pyreon/primitives'
-const Box = styled('div', { padding: 8, backgroundColor: 'red' })
+import { Stack, Text } from '@pyreon/primitives'
+const Box = styled(Stack)\`padding: 8px;\`
 export function C() { return (<Box><Text>hi</Text></Box>) }`,
   },
   {
