@@ -91,6 +91,21 @@ interface ParseCtx {
    * `PyreonToast`. Empty unless the file imports `toast`.
    */
   toastNames: Set<string>
+  /**
+   * Module bindings created by the `kinetic()` factory (`const Box =
+   * kinetic('div').preset('fade')`). The factory is a WEB CSS-class engine with
+   * no native analogue, so the binding must not reach the emit: a verbatim
+   * `private let Box = kinetic("div")…` references a function that exists on
+   * neither target and fails the native build. Same treatment as
+   * `createHttp()` metadata and `defineTheme()`.
+   *
+   * The name is kept (not just skipped) because unlike those two this binding
+   * is USED AS A JSX TAG, so `<Box>` must lower to something — a plain
+   * container, which is what the animation degrades to.
+   */
+  kineticFactoryNames: Set<string>
+  /** Local names bound to the `kinetic` import (supports `as` renaming). */
+  kineticImportNames: Set<string>
   /** Local name(s) bound to `SizedMap` imported from `@pyreon/sized-map`. */
   sizedMapNames: Set<string>
   /**
@@ -258,6 +273,8 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     objectTypeAliases: new Map(),
     storeAliases: new Map(),
     toastNames: new Set(),
+    kineticFactoryNames: new Set(),
+    kineticImportNames: new Set(),
     validateSchemaNames: new Set(),
     rxImportedNames: new Map(),
     validateSchemaLowered: false,
@@ -301,6 +318,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   // from @pyreon/toast, so parseExpr can lower `toast(...)` / `toast.success(...)`
   // to PyreonToast. Handles renamed imports (`import { toast as notify }`).
   collectToastNames(ast.program.body as AnyNode[], ctx)
+  collectKineticFactoryNames(ast.program.body as AnyNode[], ctx)
   collectValidateSchemaNames(ast.program.body as AnyNode[], ctx)
   collectFieldMetaLowered(ast.program.body as AnyNode[], ctx)
   collectRxImportedNames(ast.program.body as AnyNode[], ctx)
@@ -491,6 +509,13 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     // module-decl catch-all + emit an unresolved `let api = createHttp(…)`
     // binding that fails the native build (the same treatment defineTheme gets).
     if (isHttpMetadataNode(node, ctx)) continue
+    // A `const Box = kinetic('div').preset('fade')` is a WEB animation-engine
+    // binding. Skipped for the same reason as `createHttp` above: emitting it
+    // verbatim produces `private let Box = kinetic("div")…`, a call to a
+    // function that exists on neither target, so the whole native build fails.
+    // The pre-pass has already recorded the name and warned; `<Box>` lowers to
+    // a plain container.
+    if (isKineticFactoryNode(node, ctx)) continue
     // Phase 2 follow-up: module-level mutable / immutable bindings.
     // `let nextId = 1`, `const APP_VERSION = '1.0.0'` etc. Closes the
     // TodoMVC `nextId undefined` typecheck blocker by emitting these
@@ -1781,6 +1806,85 @@ function isHttpMetadataNode(node: AnyNode, ctx: ParseCtx): boolean {
     const n = d.id?.name as string | undefined
     return typeof n === 'string' && (ctx.httpClientBaseUrls.has(n) || ctx.endpointDefs.has(n))
   })
+}
+
+/**
+ * Collect `kinetic()` factory bindings in a PRE-PASS, before any component body
+ * is parsed.
+ *
+ * A pre-pass rather than a check inside the top-level loop, because the JSX tag
+ * rewrite has to be in place no matter where the component sits relative to the
+ * `const` in source order. TS forces the const first for a value reference, but
+ * a hoisted `function` component can legally appear above it, and getting the
+ * order wrong here would emit an unresolved tag for exactly one file layout —
+ * the kind of bug that reproduces on nobody's machine.
+ */
+function isKineticFactoryNode(node: AnyNode, ctx: ParseCtx): boolean {
+  const decls = topLevelDeclarators(node)
+  if (decls.length === 0) return false
+  return decls.every((d) => {
+    const n = d.id?.name as string | undefined
+    return typeof n === 'string' && ctx.kineticFactoryNames.has(n)
+  })
+}
+
+function collectKineticFactoryNames(body: AnyNode[], ctx: ParseCtx): void {
+  for (const node of body) {
+    if (node.type !== 'ImportDeclaration') continue
+    if (node.source?.value !== '@pyreon/kinetic') continue
+    for (const spec of (node.specifiers as AnyNode[] | undefined) ?? []) {
+      if (spec.type === 'ImportSpecifier' && spec.imported?.name === 'kinetic') {
+        const local = spec.local?.name
+        if (typeof local === 'string') ctx.kineticImportNames.add(local)
+      }
+    }
+  }
+  if (ctx.kineticImportNames.size === 0) return
+  for (const node of body) {
+    for (const d of topLevelDeclarators(node)) {
+      const name = d.id?.name as string | undefined
+      const init = d.init as AnyNode | undefined
+      if (typeof name !== 'string' || !init) continue
+      if (!basesOnKineticCall(init, ctx)) continue
+      ctx.kineticFactoryNames.add(name)
+      ctx.warnings.push(
+        `\`${name}\` is built by the \`kinetic()\` factory, which does not lower to native: it ` +
+          `drives animation through CSS classes and rAF over a real CSSOM, and neither target has ` +
+          `one. \`<${name}>\` renders as a plain container on iOS/Android — the layout and ` +
+          `children are preserved, the animation is dropped. For an animation that DOES cross, use ` +
+          `\`<Transition show name="fade">\` from \`@pyreon/primitives\`, whose preset vocabulary ` +
+          `lowers to SwiftUI \`.transition\`/\`.animation\` and Compose \`AnimatedVisibility\`.`,
+      )
+    }
+  }
+}
+
+/**
+ * Does this expression chain BOTTOM OUT in a call to the `kinetic` import?
+ *
+ * The factory is a builder — `kinetic('div').preset('fade').duration(200)` — so
+ * the callee is a member chain of arbitrary depth and only its base identifies
+ * it. Matching the outermost callee instead would recognise a bare
+ * `kinetic('div')` and miss every chained form, which is the shape everyone
+ * actually writes.
+ */
+function basesOnKineticCall(expr: AnyNode, ctx: ParseCtx): boolean {
+  let cur: AnyNode | undefined = expr
+  while (cur) {
+    if (cur.type === 'CallExpression') {
+      const callee = cur.callee as AnyNode | undefined
+      const name = callee?.name as string | undefined
+      if (typeof name === 'string') return ctx.kineticImportNames.has(name)
+      cur = callee
+      continue
+    }
+    if (cur.type === 'MemberExpression') {
+      cur = cur.object as AnyNode | undefined
+      continue
+    }
+    return false
+  }
+  return false
 }
 
 function collectToastNames(body: AnyNode[], ctx: ParseCtx): void {
@@ -4772,6 +4876,11 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     objectTypeAliases: new Map(),
     storeAliases: new Map(),
     toastNames: new Set(),
+    // Scratch ctx: deliberately isolated from the main pass (see the doc
+    // comment above) and it never parses a JSX tag, so empty sets are correct
+    // here rather than sharing the parent's.
+    kineticFactoryNames: new Set(),
+    kineticImportNames: new Set(),
     validateSchemaNames: new Set(),
     rxImportedNames: new Map(),
     validateSchemaLowered: false,
@@ -9908,6 +10017,14 @@ function parseJsxElement(node: AnyNode, ctx: ParseCtx): ExprIR {
     warnIfHookInsideRenderCallback(tag, node.children as AnyNode[] | undefined, ctx)
   }
 
+  // `<Box>` where Box came from `kinetic()` — the binding was skipped, so the
+  // tag would otherwise emit as an unresolved `Box { … }`. Rewriting to the
+  // canonical container HERE, rather than in each emitter, means both targets
+  // pick it up through their existing Stack handling (VStack / Column) with no
+  // emitter change and no third place to keep in sync.
+  if (ctx.kineticFactoryNames.has(tag)) {
+    return { kind: 'jsx-element', tag: 'Stack', attrs, children }
+  }
   return { kind: 'jsx-element', tag, attrs, children }
 }
 

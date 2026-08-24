@@ -6151,7 +6151,14 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   if (tag === 'Press') return emitSwiftPress(e, indent)
   if (tag === 'Field') return emitSwiftField(e, indent)
   if (tag === 'Toggle') return emitSwiftToggle(e, indent)
-  if (tag === 'Link') return emitSwiftLink(e, indent)
+  // `<RouterLink>` from @pyreon/router is the SAME concept as `<Link>` and
+  // carries the same `to` prop, but it had no dispatch entry — so it fell
+  // through to the unknown-tag path and emitted `RouterLink(to:)` verbatim, a
+  // type that exists on neither target. Zero warnings, and the coverage gate
+  // called the package crossing because the gate only counts warnings; it
+  // never compiled the emit. Same class as the kinetic factory, reached by a
+  // different route (a missing mapping rather than a missing decline).
+  if (tag === 'Link' || tag === 'RouterLink') return emitSwiftLink(e, indent)
   if (tag === 'PermissionsProvider') return emitSwiftPermissionsProvider(e, indent)
   if (tag === 'RouterProvider') return emitSwiftRouterProvider(e, indent)
   if (tag === 'RouterView') return emitSwiftRouterView(e, indent)

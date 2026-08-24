@@ -221,9 +221,16 @@ export function C() {
     name: '@pyreon/styler',
     mechanism: 'pmtc-lowers',
     rationale: 'styled() style objects lower to native view modifiers.',
+    // The CALL form `styled('div', {…})` is NOT the lowering shape: the parser
+    // requires the TAGGED TEMPLATE over a canonical primitive, and the call
+    // form fell through BEFORE the existing non-canonical warning — so this
+    // snippet emitted `styled("div", …)` verbatim (uncompilable Swift) with
+    // zero warnings, and the gate passed it because the gate only counts
+    // warnings and never compiles. Verified: this shape emits `VStack` and
+    // typechecks on real swiftc.
     snippet: `import { styled } from '@pyreon/styler'
-import { Text } from '@pyreon/primitives'
-const Box = styled('div', { padding: 8, backgroundColor: 'red' })
+import { Stack, Text } from '@pyreon/primitives'
+const Box = styled(Stack)\`padding: 8px;\`
 export function C() { return (<Box><Text>hi</Text></Box>) }`,
   },
   {
@@ -422,6 +429,12 @@ export function C() {
     rationale:
       'ships the PyreonToast native runtime; the useToast() authoring lowering is a documented open refinement.',
     requiresCoSource: true,
+    // Verified: lowers to `PyreonToast.shared.add(...)` / `PyreonToast.add(...)`.
+    snippet: `import { toast } from '@pyreon/toast'
+import { Stack, Button } from '@pyreon/primitives'
+export function C() {
+  return (<Stack><Button onPress={() => toast('saved')}>go</Button></Stack>)
+}`,
   },
   {
     name: '@pyreon/a11y',
@@ -429,12 +442,23 @@ export function C() {
     rationale:
       'ships the native accessibility runtime; component-level helpers (VisuallyHidden) do not lower — a11y crosses via native accessibility modifiers.',
     requiresCoSource: true,
+    // Verified: lowers to `PyreonA11y.announce(...)` on both targets.
+    snippet: `import { announce } from '@pyreon/a11y'
+import { Stack, Button } from '@pyreon/primitives'
+export function C() {
+  return (<Stack><Button onPress={() => announce('saved')}>go</Button></Stack>)
+}`,
   },
   {
     name: '@pyreon/sized-map',
     mechanism: 'native-container',
     rationale: 'ships a co-located native bounded-map runtime used by the data packages.',
     requiresCoSource: true,
+    // Verified: lowers to `PyreonSizedMap<..>(maxEntries:)`. The option is `maxEntries`; a `maxSize` typo warns by name rather than silently emitting.
+    snippet: `import { SizedMap } from '@pyreon/sized-map'
+import { Stack, Text } from '@pyreon/primitives'
+const cache = new SizedMap<string, number>({ maxEntries: 10 })
+export function C() { return (<Stack><Text>{cache.size}</Text></Stack>) }`,
   },
 
   // ── web-first: rich widget / web-coupled API, native-frontend arc OPEN ──
@@ -504,7 +528,15 @@ export function C() { return (<Stack><Text>ok</Text></Stack>) }`,
     // The CLASSIFICATION here was always right (the manifest declares no
     // nativeFrontend — this is honestly web-only); only the snippet was
     // fictional. The real export is `useHotkey`, SINGULAR, and it still warns.
-    rationale: 'keyboard-shortcut binding has no native analogue on touch platforms (arc open).',
+    // The classification is right (no nativeFrontend is declared), but the
+    // REASON given here was false and has been corrected in the manifest: both
+    // targets DO have a shortcut surface (SwiftUI `.keyboardShortcut` /
+    // `.onKeyPress`, Compose `onPreviewKeyEvent`, all reachable from iPads,
+    // Chromebooks and DeX). What is missing is the lowering, not the platform.
+    // Leaving the old wording here would have re-seeded the claim the manifest
+    // just stopped making.
+    rationale:
+      'no lowering is implemented yet — an unbuilt arc, NOT a platform limit: both targets expose a hardware-shortcut surface (arc open).',
     snippet: `import { useHotkey } from '@pyreon/hotkeys'
 import { Stack, Text } from '@pyreon/primitives'
 export function C() {
@@ -1275,9 +1307,33 @@ async function main(): Promise<number> {
 
   const hostedCrossing = hosted.filter((r) => r.status === 'crosses').length
   const partialCrossing = partials.filter((r) => r.status === 'crosses').length
+  // A `native-container` package proves it ships a native runtime. Ten of them
+  // ALSO carry a lowering snippet, so their authoring API is proven too. The
+  // rest are co-source ONLY: the runtime ships, but writing the package's
+  // primary API in SHARED source does not lower — `useToast()` / `useTable()`
+  // reproduce verbatim and fail the native build (with a precise warning
+  // saying so, which is the deliberate choice: a behavioural hook must not
+  // silently degrade to a no-op the way a presentational container can).
+  //
+  // That distinction was disclosed per-entry and in this file's header, but NOT
+  // in the summary line — which is the line that gets quoted. Two of three
+  // mechanisms were qualified there and the largest one was not, so a reader
+  // reasonably took the remainder as unqualified full crossings. Derived from
+  // the registry rather than a hardcoded count, so adding a snippet to one of
+  // them moves this number without anyone remembering to.
+  const coSourceOnly = byMech('native-container').filter(
+    (r) =>
+      r.status === 'crosses' &&
+      REGISTRY.find((e) => e.name === r.name)?.snippet === undefined,
+  ).length
   const notes: string[] = []
   if (hostedCrossing > 0) notes.push(`${hostedCrossing} by WEBVIEW-HOSTING, not native rendering`)
   if (partialCrossing > 0) notes.push(`${partialCrossing} PARTIALLY, only their declared subset`)
+  if (coSourceOnly > 0) {
+    notes.push(
+      `${coSourceOnly} by SHIPPING A NATIVE RUNTIME whose shared-TS authoring API does not lower`,
+    )
+  }
   const note = notes.length > 0 ? ` (${notes.join('; ')})` : ''
   console.log(
     `\n${summary.crossing}/${summary.total} app-runtime packages cross${note}; ${summary.gaps} open gap(s).`,
