@@ -13,7 +13,7 @@
  * work around.
  */
 import { execFileSync } from 'node:child_process'
-import { join, resolve } from 'node:path'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 const GUARD = resolve(
