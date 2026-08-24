@@ -488,6 +488,27 @@ export function _setTplAdoptVerifier(v: TplAdoptVerifier): void {
   _tplAdoptVerifier = v
 }
 
+// ─── Hydration-active window ─────────────────────────────────────────────────
+// True for the duration of `hydrateRoot`'s SYNCHRONOUS walk (save/restored
+// around it — never reset to a constant, hydration roots nest via islands).
+// While active, `_tpl` DEFERS its build (see `_tpl` below) so each compiled
+// template region adopts at ITS OWN DOM cursor when `hydrateChild` reaches it,
+// instead of the first `_tpl` in an h()-argument evaluation window consuming
+// the one-shot arm meant for the component root.
+//
+// Deliberately NOT derived from `_tplAdoptVerifier !== null`: the verifier
+// stays registered after hydration completes, and keying deferral on it would
+// defer every post-hydration client render too.
+let _hydrationActive = false
+
+/** Set the hydration-active flag; returns the PREVIOUS value so callers can
+ *  save/restore (frame discipline — hydration roots can nest via islands). */
+export function _setHydrationActive(v: boolean): boolean {
+  const prev = _hydrationActive
+  _hydrationActive = v
+  return prev
+}
+
 // ─── MOUNT HOLES ─────────────────────────────────────────────────────────────
 // A template element whose children are ALL absorbed COMPONENT children
 // (`templatizeComponentChildren`) is emitted EMPTY and filled by trailing
@@ -653,6 +674,45 @@ export function _tpl(html: string, bind: (el: HTMLElement) => (() => void) | nul
   // early template before a rarely-used later one, but only once the cache is
   // full; no realistic app approaches 1024 distinct templates, and the worst
   // case is a one-time re-parse.
+  // ─── Hydration: DEFERRED build ──────────────────────────────────────────
+  // During `hydrateRoot`'s synchronous walk, building here is premature:
+  // h()-argument evaluation reaches a child `_tpl` BEFORE the walk knows which
+  // server node it corresponds to, so an eager build could only (a) consume the
+  // one-shot arm meant for the component root — failing its tag gate and
+  // cloning, with the bind then mounting the whole subtree into the detached
+  // clone (the measured 95%-of-a-page retention loss), or (b) run un-armed and
+  // clone. Instead, return a LAZY NativeItem: `hydrateChild`'s walk calls
+  // `__adoptAt(cursor)` when the item meets its REAL DOM cursor, and only then
+  // does the build run — armed with the right node. The one eager exception is
+  // a live arm whose root tag MATCHES: that is the historical component-root /
+  // `<For>`-row path (plan replay included) and stays byte-identical. A live
+  // arm whose tag MISMATCHES is left UNTOUCHED — it belongs to an element this
+  // call is a descendant/sibling of, and consuming it here is exactly the
+  // theft deferral exists to stop.
+  // One comparison decides: DEFER unless a live arm's tag MATCHES this
+  // template's root (the historical eager path). `null?.tagName` is undefined,
+  // so "no arm" and "arm mismatch" both defer; a rootless template compares
+  // undefined === undefined and builds eagerly, which fails exactly where the
+  // CSR path always has.
+  if (_hydrationActive && _tplAdoptTarget?.tagName !== tpl.content.firstElementChild?.tagName) {
+    return deferTpl(tpl, html, bind)
+  }
+  return buildTpl(tpl, html, bind)
+}
+
+/**
+ * The build half of `_tpl` — armed-adoption attempt + clone fallback.
+ * Extracted verbatim so the hydration path can DEFER it (run it later, at the
+ * item's real DOM cursor) while CSR and the eager armed path keep today's
+ * behavior byte-identically. Adoption is detectable by the caller as
+ * `result.el === target` (an adopted build returns the live server node; a
+ * clone is a detached fresh element).
+ */
+function buildTpl(
+  tpl: HTMLTemplateElement,
+  html: string,
+  bind: (el: HTMLElement) => (() => void) | null,
+): NativeItem {
   // Hydration adoption: bind against the verified SSR row instead of cloning.
   // The verifier is registered by hydrateRoot — null in CSR-only bundles.
   if (_tplAdoptTarget !== null) {
@@ -698,6 +758,76 @@ export function _tpl(html: string, bind: (el: HTMLElement) => (() => void) | nul
   // verifier is registered, so a CSR-only bundle's hot path is unchanged.
   if (_tplAdoptVerifier !== null) _tplAdoptConsumed = false
   return { __isNative: true, el, cleanup }
+}
+
+/**
+ * A `_tpl` NativeItem whose build is LAZY — created only while
+ * `_hydrationActive` (see `_tpl`). Three ways it materializes:
+ *
+ *  • `__adoptAt(domNode)` — `hydrateChild`'s NativeItem branch calls this when
+ *    the item meets its real DOM cursor: arm `domNode`, build (the verifier
+ *    decides adopt-vs-clone), restore the arm frame. Returns whether adoption
+ *    consumed the node (`el === domNode`).
+ *  • a bare `.el` read — user/framework code inspecting the item before the
+ *    walk reaches it (or a fresh `mountChild` during hydration): builds with
+ *    whatever is armed AT THAT MOMENT — for the known paths nothing is, so
+ *    this is today's clone.
+ *  • `cleanup()` with the item never built — a no-op: nothing was constructed,
+ *    so there is nothing to tear down.
+ */
+export interface DeferredNativeItem {
+  readonly __isNative: true
+  readonly __deferred: true
+  readonly el: HTMLElement
+  cleanup: () => void
+  __adoptAt(domNode: Element): boolean
+}
+
+function deferTpl(
+  tpl: HTMLTemplateElement,
+  html: string,
+  bind: (el: HTMLElement) => (() => void) | null,
+): NativeItem {
+  let built: NativeItem | null = null
+  const ensureBuilt = (): NativeItem => (built ??= buildTpl(tpl, html, bind))
+  const item: DeferredNativeItem = {
+    __isNative: true,
+    __deferred: true,
+    get el() {
+      return ensureBuilt().el
+    },
+    cleanup: () => {
+      // Never built ⇒ nothing to tear down. `built.cleanup` may itself be
+      // null (a bind with no disposers) — same optional-call as every other
+      // NativeItem consumer.
+      built?.cleanup?.()
+    },
+    __adoptAt(domNode: Element): boolean {
+      if (built !== null) return false
+      // Frame discipline: SAVE the entire arm frame, install ours, RESTORE on
+      // every exit — never reset to a constant. `__adoptAt` runs mid-walk;
+      // nested adoption windows exist (the build's bind hydrates holes, whose
+      // components arm their own targets), and a caller may hold a live arm
+      // across this call.
+      const prevTarget = _tplAdoptTarget
+      const prevAllow = _tplAdoptAllowPlan
+      const prevConsumed = _tplAdoptConsumed
+      const prevPending = _tplPendingHoles
+      _tplAdoptTarget = domNode
+      _tplAdoptAllowPlan = false
+      _tplPendingHoles = null
+      try {
+        built = buildTpl(tpl, html, bind)
+      } finally {
+        _tplAdoptTarget = prevTarget
+        _tplAdoptAllowPlan = prevAllow
+        _tplAdoptConsumed = prevConsumed
+        _tplPendingHoles = prevPending
+      }
+      return built.el === domNode
+    },
+  }
+  return item as unknown as NativeItem
 }
 
 /**
