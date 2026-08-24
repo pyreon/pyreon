@@ -4876,6 +4876,11 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     objectTypeAliases: new Map(),
     storeAliases: new Map(),
     toastNames: new Set(),
+    // Scratch ctx: deliberately isolated from the main pass (see the doc
+    // comment above) and it never parses a JSX tag, so empty sets are correct
+    // here rather than sharing the parent's.
+    kineticFactoryNames: new Set(),
+    kineticImportNames: new Set(),
     validateSchemaNames: new Set(),
     rxImportedNames: new Map(),
     validateSchemaLowered: false,
