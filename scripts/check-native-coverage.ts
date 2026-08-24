@@ -1283,9 +1283,33 @@ async function main(): Promise<number> {
 
   const hostedCrossing = hosted.filter((r) => r.status === 'crosses').length
   const partialCrossing = partials.filter((r) => r.status === 'crosses').length
+  // A `native-container` package proves it ships a native runtime. Ten of them
+  // ALSO carry a lowering snippet, so their authoring API is proven too. The
+  // rest are co-source ONLY: the runtime ships, but writing the package's
+  // primary API in SHARED source does not lower — `useToast()` / `useTable()`
+  // reproduce verbatim and fail the native build (with a precise warning
+  // saying so, which is the deliberate choice: a behavioural hook must not
+  // silently degrade to a no-op the way a presentational container can).
+  //
+  // That distinction was disclosed per-entry and in this file's header, but NOT
+  // in the summary line — which is the line that gets quoted. Two of three
+  // mechanisms were qualified there and the largest one was not, so a reader
+  // reasonably took the remainder as unqualified full crossings. Derived from
+  // the registry rather than a hardcoded count, so adding a snippet to one of
+  // them moves this number without anyone remembering to.
+  const coSourceOnly = byMech('native-container').filter(
+    (r) =>
+      r.status === 'crosses' &&
+      REGISTRY.find((e) => e.name === r.name)?.snippet === undefined,
+  ).length
   const notes: string[] = []
   if (hostedCrossing > 0) notes.push(`${hostedCrossing} by WEBVIEW-HOSTING, not native rendering`)
   if (partialCrossing > 0) notes.push(`${partialCrossing} PARTIALLY, only their declared subset`)
+  if (coSourceOnly > 0) {
+    notes.push(
+      `${coSourceOnly} by SHIPPING A NATIVE RUNTIME whose shared-TS authoring API does not lower`,
+    )
+  }
   const note = notes.length > 0 ? ` (${notes.join('; ')})` : ''
   console.log(
     `\n${summary.crossing}/${summary.total} app-runtime packages cross${note}; ${summary.gaps} open gap(s).`,
