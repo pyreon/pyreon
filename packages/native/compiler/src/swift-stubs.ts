@@ -512,6 +512,14 @@ extension View {
   // manufactures a bug, exactly as a wider one hides one.
   public func lineLimit(_ number: Int?) -> some View { self }
   public func truncationMode(_ mode: TextTruncationMode) -> some View { self }
+  // .background(Color(...)) — emitted for any themed backgroundColor
+  // (rocketstyle/attrs/styler all reach it). Mirrors SwiftUI's VIEW overload,
+  // \`background<V: View>(_:alignment:)\`, which is what a \`Color\` argument
+  // binds to since Color is itself a View. Deliberately WITHOUT the alignment
+  // parameter: no emit passes one, and a stub that accepts more than the
+  // runtime does is how a broken emit slips through — the same trap the
+  // lineLimit note above records, in the opposite direction.
+  public func background<V: View>(_ background: V) -> some View { self }
   public func padding() -> some View { self }
   public func padding(_ length: Double) -> some View { self }
   public func sheet<C: View>(isPresented: Binding<Bool>, @ViewBuilder content: () -> C) -> some View { self }
@@ -1260,6 +1268,23 @@ public struct Font {
 // is the subset-stub failure mode: a stub NARROWER than the real API
 // manufactures failures on valid source, the mirror image of a superset stub
 // masking real breakage.
+// PyreonSizedMap — mirrors packages/core/sized-map/native/swift/PyreonSizedMap.swift.
+// Signature copied from the shipped class, not approximated: maxEntries is
+// required and lru defaults, which is what makes a snippet passing only
+// maxEntries compile while a maxSize typo still fails.
+public final class PyreonSizedMap<Key: Hashable, Value> {
+  public init(maxEntries: Int, lru: Bool = false) {}
+  public var size: Int { 0 }
+  public func get(_ key: Key) -> Value? { nil }
+  public func set(_ key: Key, _ value: Value) {}
+  public func has(_ key: Key) -> Bool { false }
+  @discardableResult public func delete(_ key: Key) -> Bool { false }
+  public func clear() {}
+  public func keys() -> [Key] { [] }
+  public func values() -> [Value] { [] }
+  public func entries() -> [(Key, Value)] { [] }
+}
+
 public struct Color: View {
   // RGBColorSpace + the colour-space-first initialiser: the style/token lowering
   // emits \`Color(.sRGB, red:green:blue:opacity:)\`, which is a DIFFERENT

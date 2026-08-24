@@ -913,6 +913,33 @@ function tryModuleDeclsFromTopLevel(node: AnyNode, ctx: ParseCtx): ModuleDeclIR[
         continue
       }
     }
+    // SCOPE-AWARE DECLINE. `createMachine` / `createI18n` / `syncedSignal` are
+    // recognised only by the COMPONENT-BODY statement walk — they lower to
+    // `remember {}` / an `@State`, which have no meaning at file scope, so the
+    // recognizers are structurally unreachable here. Before this, such a
+    // declaration fell straight through to the emit below and printed the call
+    // VERBATIM into Swift/Kotlin with ZERO diagnostics: the native build failed
+    // naming a function the user never wrote in that language.
+    //
+    // The shape is right and only the placement is wrong, so say exactly that.
+    // A generic "unsupported" would send someone hunting for a missing feature
+    // that is in fact already implemented one scope down.
+    if (init.type === 'CallExpression') {
+      const scopedName = init.callee?.name as string | undefined
+      if (
+        scopedName === 'createMachine' ||
+        scopedName === 'createI18n' ||
+        scopedName === 'syncedSignal'
+      ) {
+        ctx.warnings.push(
+          `${scopedName}() lowers to native only INSIDE a component body — it becomes a ` +
+            `\`remember {}\` / \`@State\`, which has no meaning at module scope. \`${name}\` is ` +
+            `declared at file scope, so the call is reproduced VERBATIM in the emit and the ` +
+            `native build will fail on it. Move the declaration into the component that uses it.`,
+        )
+        continue
+      }
+    }
     // Type annotation when present; otherwise unknown.
     const annotation = declarator.id?.typeAnnotation?.typeAnnotation as AnyNode | undefined
     const type: TypeIR = annotation ? parseTypeAnnotation(annotation, ctx) : { kind: 'unknown' }

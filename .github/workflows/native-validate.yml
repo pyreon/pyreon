@@ -454,3 +454,14 @@ jobs:
         # real-SDK `swiftc -typecheck` blocks run (they SKIP on ubuntu). Kotlin
         # blocks skip (no kotlinc); the ubuntu `validate` job covers Kotlin.
         run: bun run --filter='@pyreon/native-compiler' test
+
+      - name: Native coverage — COMPILE every registry snippet
+        # The coverage gate normally judges a package by transform WARNINGS and
+        # never compiles, so a warning-free uncompilable emit read as "crosses".
+        # That is how `<RouterLink>` shipped emitting a type no runtime defines.
+        # This step turns the claim into "the emitted Swift builds".
+        #
+        # It runs HERE and not in validate-fast because swiftc costs ~250ms per
+        # snippet — nothing on a CI job that already owns the toolchain, and too
+        # much for a gate people run before every push.
+        run: PYREON_COVERAGE_COMPILE=1 bun scripts/check-native-coverage.ts
