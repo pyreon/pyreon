@@ -47,6 +47,10 @@
 // - **Store computeds/methods in the setup body** — store v1 lowers
 //   signals; derived state lives in component-level `computed` for now.
 
+import { createI18n } from '@pyreon/i18n'
+import { toast } from '@pyreon/toast'
+import { announce } from '@pyreon/a11y'
+import { useUrlState } from '@pyreon/url-state'
 import { signal, computed } from '@pyreon/reactivity'
 import { useForm } from '@pyreon/form'
 import { useFetch } from '@pyreon/hooks'
@@ -402,6 +406,55 @@ function StatsPage() {
   )
 }
 
+// ── Toolkit screen ──
+//
+// EXISTS TO BE DEVICE-PROVEN, not to be pretty.
+//
+// A package whose registry snippet transforms and compiles is proven at SNIPPET
+// level. That is genuinely weaker than running: the two worst native bugs found
+// so far — a `.task` re-firing forever on an unstable host, and a Compose Row
+// clipping its last child off-screen — both compiled perfectly and were only
+// caught on a device. Of the packages that cross, 14 were exercised by a gated
+// app and 22 were not; this screen starts closing that.
+//
+// Every call below uses the shape the coverage registry verifies, so a change
+// that breaks one breaks both this app and the gate.
+
+function ToolkitScreen() {
+  const navigate = useNavigate()
+  // createI18n lowers only INSIDE a component body — it becomes a `remember {}`
+  // / an @State, which has no meaning at file scope.
+  const i18n = createI18n({
+    locale: 'en',
+    messages: { en: { title: 'Toolkit', saved: 'Saved' }, de: { title: 'Werkzeuge', saved: 'Gespeichert' } },
+  })
+  // Filter lives in the URL on web; on native the router's query backs it.
+  const filter = useUrlState('filter', 'all')
+  return (
+    <Stack gap={3} padding={4} data-testid="toolkit-page">
+      <Text data-testid="toolkit-title">{i18n.t('title')}</Text>
+      <Text data-testid="toolkit-filter">{filter()}</Text>
+      <Button
+        onPress={() => {
+          // toast + announce are the two feedback channels a real app uses on
+          // every mutation, and both lower to their native runtimes.
+          toast(i18n.t('saved'))
+          announce(i18n.t('saved'))
+        }}
+        data-testid="toolkit-save"
+      >
+        Save
+      </Button>
+      <Button onPress={() => filter.set('done')} data-testid="toolkit-filter-done">
+        Only done
+      </Button>
+      <Button onPress={() => navigate('/tasks')} data-testid="toolkit-back">
+        Back to tasks
+      </Button>
+    </Stack>
+  )
+}
+
 // ── App root ──
 
 export function TasksApp() {
@@ -436,6 +489,11 @@ export function TasksApp() {
       {
         path: '/vocab',
         component: VocabScreen,
+        beforeEnter: () => useApp().store.isAuthed(),
+      },
+      {
+        path: '/toolkit',
+        component: ToolkitScreen,
         beforeEnter: () => useApp().store.isAuthed(),
       },
       {
