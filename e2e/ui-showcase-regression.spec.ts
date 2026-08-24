@@ -475,6 +475,12 @@ test.describe('ui-showcase — pseudo-state CSS rules', () => {
     page,
   }) => {
     await page.goto('/button')
+    // The client swaps compiled-template regions in place at hydration
+    // (no _tpl adoption yet). A hover/focus taken BEFORE that swap lands
+    // on a node hydration is about to replace — the stationary mouse then
+    // never re-applies :hover to the replacement (Linux headless). Gate on
+    // hydration so the interaction targets the final node.
+    await waitForHydration(page)
     const primary = page.getByRole('button', { name: /^Primary$/ })
     await expect(primary).toBeVisible()
 
@@ -506,6 +512,12 @@ test.describe('ui-showcase — pseudo-state CSS rules', () => {
 
   test('focus on Primary button changes computed style via keyboard tab', async ({ page }) => {
     await page.goto('/button')
+    // The client swaps compiled-template regions in place at hydration
+    // (no _tpl adoption yet). A hover/focus taken BEFORE that swap lands
+    // on a node hydration is about to replace — the stationary mouse then
+    // never re-applies :hover to the replacement (Linux headless). Gate on
+    // hydration so the interaction targets the final node.
+    await waitForHydration(page)
     const primary = page.getByRole('button', { name: /^Primary$/ })
     await expect(primary).toBeVisible()
 
@@ -539,6 +551,12 @@ test.describe('ui-showcase — responsive useMediaQuery', () => {
     // Mobile: <= 768px
     await page.setViewportSize({ width: 500, height: 800 })
     await page.goto('/hooks/responsive')
+    // The client swaps compiled-template regions in place at hydration
+    // (no _tpl adoption yet). A hover/focus taken BEFORE that swap lands
+    // on a node hydration is about to replace — the stationary mouse then
+    // never re-applies :hover to the replacement (Linux headless). Gate on
+    // hydration so the interaction targets the final node.
+    await waitForHydration(page)
     // Wait for hydration so signals are reactive.
     await expect(page.locator('text=useMediaQuery(query)').first()).toBeVisible()
 
