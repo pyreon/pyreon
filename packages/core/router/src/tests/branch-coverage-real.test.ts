@@ -137,8 +137,10 @@ describe('stringifyLoaderData — circular detection', () => {
 
   it('escapes </script> in output (SSR-safe)', () => {
     const out = stringifyLoaderData({ '/x': { content: '<script>alert(1)</script>' } })
+    // `<` neutralised to `\\u003C` (supersedes the old `</`-only escape).
     expect(out).not.toContain('</script>')
-    expect(out).toContain('<\\/script>')
+    expect(out).not.toContain('<script>')
+    expect(out).toContain('\\u003C')
   })
 
   it('strips function values silently', () => {

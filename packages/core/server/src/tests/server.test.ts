@@ -59,8 +59,26 @@ describe('HTML template', () => {
 
   test('buildScripts escapes </script> in JSON', () => {
     const scripts = buildScripts('/entry.js', { html: '</script><script>alert(1)' })
+    // The injected boundary must not appear; `<` is neutralised to `\\u003C`.
     expect(scripts).not.toContain('</script><script>')
-    expect(scripts).toContain('<\\/script>')
+    expect(scripts).toContain('\\u003C')
+  })
+
+  test('buildScripts neutralises the <!--<script> script-data bypass', () => {
+    // Escaping only `</` let `<!--<script>` (script-data-double-escaped state,
+    // no slash in either token) corrupt the inline-script boundary. The
+    // ISOLATED inline data blob — everything between `__PYREON_LOADER_DATA__=`
+    // and the first `</script>` that closes it — must carry NONE of the three
+    // dangerous raw sequences.
+    const scripts = buildScripts('/entry.js', { html: '<!--<script>alert(1)//' })
+    const inline = scripts.slice(
+      scripts.indexOf('__PYREON_LOADER_DATA__='),
+      scripts.indexOf('</script>'),
+    )
+    expect(inline).not.toContain('<!--')
+    expect(inline).not.toContain('<script')
+    expect(inline).not.toContain('</script')
+    expect(inline).toContain('\\u003C')
   })
 
   test('buildScripts omits inline data when no loaders', () => {
@@ -1271,7 +1289,7 @@ describe('buildScriptsFast', () => {
     const tag = buildClientEntryTag('/app.js')
     const result = buildScriptsFast(tag, { html: '</script>' })
     expect(result).not.toContain('</script><')
-    expect(result).toContain('<\\/script>')
+    expect(result).toContain('\\u003C')
   })
 })
 
