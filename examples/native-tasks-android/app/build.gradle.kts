@@ -54,6 +54,15 @@ android {
                 srcDir("../../../packages/fundamentals/query/native/kotlin")
                 srcDir("../../../packages/fundamentals/storage/native/kotlin")
                 srcDir("../../../packages/fundamentals/hooks/native/kotlin")
+                // Added with the ToolkitScreen. The stub gate knows these types
+                // and the real Gradle build does not until their co-source is
+                // on the source set — which is exactly the gap a stub cannot
+                // see, and why the device gate caught it and nothing else did.
+                srcDir("../../../packages/core/sized-map/native/kotlin")
+                srcDir("../../../packages/fundamentals/sync/native/kotlin")
+                srcDir("../../../packages/fundamentals/toast/native/kotlin")
+                srcDir("../../../packages/fundamentals/a11y/native/kotlin")
+                srcDir("../../../packages/fundamentals/dnd/native/kotlin")
             }
         }
     }

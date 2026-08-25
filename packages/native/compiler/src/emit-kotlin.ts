@@ -2785,8 +2785,15 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   if (d.kind === 'url-state') {
     // `defaultValue` arrives as target syntax (quoted for a string, bare for a
     // number or bool), so it is interpolated, not re-stringified.
+    //
+    // The router comes from `LocalPyreonRouter.current`, NOT a `useRouter()`
+    // call: router-kotlin ships useNavigate / useParams / useLoaderData and no
+    // useRouter at all. The emit called one anyway and the STUB declared it, so
+    // every stub-level check passed while a real `gradle assembleDebug` failed
+    // with `Unresolved reference 'useRouter'` -- a superset stub masking a real
+    // emit bug, which is the exact failure mode a stub is supposed to prevent.
     const helper = KOTLIN_URL_STATE_TYPES[d.valueType]
-    return `val ${kotlinIdent(d.name)} = ${helper}(useRouter(), ${JSON.stringify(d.key)}, ${d.defaultValue})`
+    return `val ${kotlinIdent(d.name)} = ${helper}(LocalPyreonRouter.current, ${JSON.stringify(d.key)}, ${d.defaultValue})`
   }
   if (d.kind === 'router-hook') {
     const fn = d.hook === 'navigate' ? 'useNavigate' : 'useParams'
