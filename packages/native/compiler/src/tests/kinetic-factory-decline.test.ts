@@ -31,7 +31,7 @@ import {
 const SRC = `
 import { kinetic } from '@pyreon/kinetic'
 import { Stack, Text } from '@pyreon/primitives'
-const Box = kinetic('div').preset('fade')
+const Box = kinetic('div')
 export function App() {
   return (<Stack><Box><Text>hi</Text></Box></Stack>)
 }
@@ -41,7 +41,7 @@ export function App() {
 const CHAINED_SRC = `
 import { kinetic as k } from '@pyreon/kinetic'
 import { Stack, Text } from '@pyreon/primitives'
-const Fancy = k('section').preset('slide-up').duration(200)
+const Fancy = k('section').duration(200)
 export function App() {
   return (<Stack><Fancy><Text>hi</Text></Fancy></Stack>)
 }

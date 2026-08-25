@@ -103,9 +103,22 @@ interface ParseCtx {
    * is USED AS A JSX TAG, so `<Box>` must lower to something — a plain
    * container, which is what the animation degrades to.
    */
-  kineticFactoryNames: Set<string>
+  /**
+   * Kinetic factory bindings, mapped to the `.preset('x')` in their chain (or
+   * undefined when the chain declares none). The preset is what makes the
+   * lowering possible: it names an animation both targets already know, via the
+   * same table `<Transition name>` uses.
+   */
+  kineticFactoryNames: Map<string, string | undefined>
   /** Local names bound to the `kinetic` import (supports `as` renaming). */
   kineticImportNames: Set<string>
+  /**
+   * Set while parsing a component whose tree used a PRESET-bearing kinetic
+   * binding, so the component gets one synthesized mount flag. One per
+   * component, not per binding: every kinetic box in a component enters on the
+   * same mount, so they can share the flag.
+   */
+  kineticMountPending: boolean
   /** Local name(s) bound to `SizedMap` imported from `@pyreon/sized-map`. */
   sizedMapNames: Set<string>
   /**
@@ -273,8 +286,9 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     objectTypeAliases: new Map(),
     storeAliases: new Map(),
     toastNames: new Set(),
-    kineticFactoryNames: new Set(),
+    kineticFactoryNames: new Map(),
     kineticImportNames: new Set(),
+    kineticMountPending: false,
     validateSchemaNames: new Set(),
     rxImportedNames: new Map(),
     validateSchemaLowered: false,
@@ -1037,7 +1051,6 @@ const WEB_ONLY_PACKAGES: ReadonlyMap<string, string> = new Map([
   ['@pyreon/flow', "SVG rendering (the layout engine itself is pure and platform-free); consume on native via the `<WebView>` bridge subpath"],
   ['@pyreon/head', "document `<head>` management — no equivalent surface exists on iOS/Android"],
   ['@pyreon/hotkeys', "keyboard-shortcut layer over DOM KeyboardEvent. No native lowering is implemented yet — which is an unbuilt lowering, NOT a platform limitation: both targets expose a hardware-shortcut surface (SwiftUI `.keyboardShortcut` for control-bound and `.onKeyPress` for view-level, Compose `Modifier.onPreviewKeyEvent`), and iPads, Chromebooks, DeX and tablet keyboards all reach them"],
-  ['@pyreon/kinetic', "CSS-transition animation engine (classes + rAF over real CSSOM) — the `kinetic()` factory and its class/style machinery are web; its PRESET VOCABULARY (fade / scale-in / slide-up|down|left|right) does cross, via `<Transition name>` imported from `@pyreon/primitives` (NOT from here and NOT from `@pyreon/runtime-dom` — both are web-only), which each target resolves to its own platform transition"],
   ['@pyreon/kinetic-presets', "preset pack for the kinetic CSS engine"],
   ['@pyreon/lint', "lint tooling — runs at dev time, not app runtime"],
   ['@pyreon/loom', "the dependency observatory — dev tooling, not app runtime"],
@@ -1873,7 +1886,9 @@ function collectKineticFactoryNames(body: AnyNode[], ctx: ParseCtx): void {
       const init = d.init as AnyNode | undefined
       if (typeof name !== 'string' || !init) continue
       if (!basesOnKineticCall(init, ctx)) continue
-      ctx.kineticFactoryNames.add(name)
+      const preset = presetOfKineticChain(init)
+      ctx.kineticFactoryNames.set(name, preset)
+      if (preset !== undefined) continue // a preset LOWERS — see the tag rewrite
       ctx.warnings.push(
         `\`${name}\` is built by the \`kinetic()\` factory, which does not lower to native: it ` +
           `drives animation through CSS classes and rAF over a real CSSOM, and neither target has ` +
@@ -1895,6 +1910,39 @@ function collectKineticFactoryNames(body: AnyNode[], ctx: ParseCtx): void {
  * `kinetic('div')` and miss every chained form, which is the shape everyone
  * actually writes.
  */
+/**
+ * The `.preset('fade')` argument in a kinetic builder chain, if any.
+ *
+ * Walks the whole chain rather than only the outermost call, because
+ * `.preset()` is rarely last (`kinetic('div').preset('fade').duration(200)`).
+ */
+/** Shared by the rewrite and the synthesis; internal, so `__`-prefixed. */
+const KINETIC_MOUNT_FLAG = '__kineticIn'
+
+function presetOfKineticChain(expr: AnyNode): string | undefined {
+  let cur: AnyNode | undefined = expr
+  while (cur) {
+    if (cur.type === 'CallExpression') {
+      const callee = cur.callee as AnyNode | undefined
+      if (
+        callee?.type === 'MemberExpression' &&
+        (callee.property?.name as string | undefined) === 'preset'
+      ) {
+        const arg = (cur.arguments as AnyNode[] | undefined)?.[0]
+        if (arg?.type === 'Literal' && typeof arg.value === 'string') return arg.value as string
+      }
+      cur = callee
+      continue
+    }
+    if (cur.type === 'MemberExpression') {
+      cur = cur.object as AnyNode | undefined
+      continue
+    }
+    return undefined
+  }
+  return undefined
+}
+
 function basesOnKineticCall(expr: AnyNode, ctx: ParseCtx): boolean {
   let cur: AnyNode | undefined = expr
   while (cur) {
@@ -4906,8 +4954,9 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     // Scratch ctx: deliberately isolated from the main pass (see the doc
     // comment above) and it never parses a JSX tag, so empty sets are correct
     // here rather than sharing the parent's.
-    kineticFactoryNames: new Set(),
+    kineticFactoryNames: new Map(),
     kineticImportNames: new Set(),
+    kineticMountPending: false,
     validateSchemaNames: new Set(),
     rxImportedNames: new Map(),
     validateSchemaLowered: false,
@@ -5408,6 +5457,30 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
   // deferred dropped-control-flow warnings.
   for (const w of droppedStmtWarnings) ctx.warnings.push(w)
 
+  if (ctx.kineticMountPending) {
+    // Synthesized, not hand-written: a signal that starts false and an on-mount
+    // that flips it. Both reuse paths already proven — the on-mount harness
+    // even carries the SwiftUI stable-identity host that a `.task`/`.onAppear`
+    // needs, so the enter fires once instead of thrashing per recomposition.
+    decls.unshift({
+      kind: 'signal',
+      name: KINETIC_MOUNT_FLAG,
+      type: { kind: 'boolean' },
+      initial: { kind: 'literal', value: false },
+    })
+    decls.push({
+      kind: 'on-mount',
+      body: [
+        {
+          kind: 'assign',
+          target: { kind: 'identifier', name: KINETIC_MOUNT_FLAG },
+          op: '=',
+          value: { kind: 'literal', value: true },
+        },
+      ],
+    })
+    ctx.kineticMountPending = false
+  }
   return { name, props, propsParamName, decls, returnExpr }
 }
 
@@ -10050,7 +10123,29 @@ function parseJsxElement(node: AnyNode, ctx: ParseCtx): ExprIR {
   // pick it up through their existing Stack handling (VStack / Column) with no
   // emitter change and no third place to keep in sync.
   if (ctx.kineticFactoryNames.has(tag)) {
-    return { kind: 'jsx-element', tag: 'Stack', attrs, children }
+    const preset = ctx.kineticFactoryNames.get(tag)
+    if (preset === undefined) {
+      // No `.preset()` in the chain — there is no animation vocabulary to carry
+      // across, so this degrades to the plain container as before.
+      return { kind: 'jsx-element', tag: 'Stack', attrs, children }
+    }
+    // A preset NAMES an animation both targets already know, so the box lowers
+    // to the same `<Transition>` path the primitive uses — presets, durations
+    // and both emitters, all already verified. What it needs that a primitive
+    // does not is a TRIGGER: `<Transition show={true}>` compiles and never
+    // animates (`.animation(value: true)` watches a constant), so the enter has
+    // to be driven by a flag that FLIPS on mount.
+    ctx.kineticMountPending = true
+    return {
+      kind: 'jsx-element',
+      tag: 'Transition',
+      attrs: [
+        { kind: 'attr', name: 'show', value: { kind: 'identifier', name: KINETIC_MOUNT_FLAG } },
+        { kind: 'attr', name: 'name', value: { kind: 'literal', value: preset } },
+        ...attrs,
+      ],
+      children,
+    }
   }
   return { kind: 'jsx-element', tag, attrs, children }
 }

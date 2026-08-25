@@ -113,16 +113,34 @@ describe('<Transition> imported from @pyreon/primitives', () => {
   // told authors its preset vocabulary crosses "via `<Transition name>`"
   // without naming an import that resolves on native — and the only one
   // that existed was `@pyreon/runtime-dom`, which is itself web-only.
-  it('the @pyreon/kinetic rationale names the import path that actually crosses', () => {
+  it('still points at the portable spelling when a kinetic chain cannot lower', () => {
+    // This used to assert a blanket "@pyreon/kinetic is WEB-ONLY" warning. The
+    // package now declares a nativeFrontend — a `.preset()` chain LOWERS — so
+    // that warning is gone and asserting it would demand a diagnostic about a
+    // shipped capability.
+    //
+    // The invariant it protected is the one that matters and still holds:
+    // whenever a chain CANNOT cross, the message names the portable spelling
+    // rather than leaving the author to guess. It just moved from a blanket
+    // package warning onto the path that actually declines — a chain with no
+    // preset, which has no animation vocabulary to carry across.
     const src = `import { kinetic } from '@pyreon/kinetic'
 import { Stack, Text } from '@pyreon/primitives'
-export function C() { return (<Stack><Text>x</Text></Stack>) }`
+const Box = kinetic('div')
+export function C() { return (<Stack><Box><Text>x</Text></Box></Stack>) }`
     const warnings = transform(src, { target: 'swift' }).warnings
-    const kineticWarning = warnings.filter((w) => w.includes('@pyreon/kinetic is WEB-ONLY'))
-    expect(kineticWarning.length).toBe(1)
-    expect(kineticWarning[0]).toContain(
-      'via `<Transition name>` imported from `@pyreon/primitives`',
-    )
+    const decline = warnings.filter((w) => w.includes('`Box`'))
+    expect(decline.length).toBe(1)
+    expect(decline[0]).toContain('<Transition show name="fade">')
+    expect(decline[0]).toContain('@pyreon/primitives')
+  })
+
+  it('does NOT blanket-warn for a kinetic chain that DOES lower', () => {
+    const src = `import { kinetic } from '@pyreon/kinetic'
+import { Stack, Text } from '@pyreon/primitives'
+const Box = kinetic('div').preset('fade')
+export function C() { return (<Stack><Box><Text>x</Text></Box></Stack>) }`
+    expect(transform(src, { target: 'swift' }).warnings).toEqual([])
   })
 
   it.runIf(isSwiftcAvailable())('type-checks against the Swift stubs', () => {
