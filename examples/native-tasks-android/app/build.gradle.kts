@@ -52,7 +52,6 @@ android {
                 srcDir("../../../packages/fundamentals/i18n/native/kotlin")
                 srcDir("../../../packages/fundamentals/permissions/native/kotlin")
                 srcDir("../../../packages/fundamentals/query/native/kotlin")
-                srcDir("../../../packages/fundamentals/storage/native/kotlin")
                 srcDir("../../../packages/fundamentals/hooks/native/kotlin")
                 // Added with the ToolkitScreen. The stub gate knows these types
                 // and the real Gradle build does not until their co-source is
