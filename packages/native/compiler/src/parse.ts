@@ -1051,7 +1051,6 @@ const WEB_ONLY_PACKAGES: ReadonlyMap<string, string> = new Map([
   ['@pyreon/document-primitives', "document-authoring primitives feeding the pdfmake/docx renderers"],
   ['@pyreon/flow', "SVG rendering (the layout engine itself is pure and platform-free); consume on native via the `<WebView>` bridge subpath"],
   ['@pyreon/head', "document `<head>` management — no equivalent surface exists on iOS/Android"],
-  ['@pyreon/hotkeys', "keyboard-shortcut layer over DOM KeyboardEvent. No native lowering is implemented yet — which is an unbuilt lowering, NOT a platform limitation: both targets expose a hardware-shortcut surface (SwiftUI `.keyboardShortcut` for control-bound and `.onKeyPress` for view-level, Compose `Modifier.onPreviewKeyEvent`), and iPads, Chromebooks, DeX and tablet keyboards all reach them"],
   ['@pyreon/kinetic-presets', "preset pack for the kinetic CSS engine"],
   ['@pyreon/lint', "lint tooling — runs at dev time, not app runtime"],
   ['@pyreon/loom', "the dependency observatory — dev tooling, not app runtime"],
