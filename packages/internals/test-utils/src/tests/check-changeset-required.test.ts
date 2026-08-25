@@ -5,6 +5,8 @@ import {
   consumerPackagesTouched,
   discoverPackages,
   evaluateGate,
+  isDependabot,
+  isManifestOnlyPath,
   findOwningPackage,
   isChangesetFile,
   isConsumerAffectingFile,
@@ -818,5 +820,65 @@ describe('real-repo smoke (the actual Pyreon monorepo)', () => {
     })
 
     expect(result.kind).toBe('skip-no-consumer-files')
+  })
+})
+
+/**
+ * Dependabot carve-out.
+ *
+ * WHY: Dependabot cannot author a changeset, so before this every Dependabot PR
+ * touching a published package's manifest failed the gate — i.e. every
+ * interesting one. Measured 2026-08-24: 5 of 7 open Dependabot PRs were red on
+ * `Changeset` alone. They were closed rather than merged, which is why the
+ * repo's dependency updates stopped landing at all.
+ */
+describe('evaluateGate — Dependabot manifest-only carve-out', () => {
+  const base = {
+    packages: PACKAGES,
+    ignoredNames: IGNORED,
+    repoRoot: REPO,
+    hasSkipLabel: false,
+  }
+
+  it('lets a Dependabot manifest-only PR through', () => {
+    const r = evaluateGate({
+      ...base,
+      files: ['packages/core/router/package.json'],
+      prAuthor: 'dependabot[bot]',
+    })
+    expect(r.kind).toBe('skip-dependabot-manifest')
+  })
+
+  it('STILL fails the same PR for a human author — the carve-out is not a hole', () => {
+    const r = evaluateGate({
+      ...base,
+      files: ['packages/core/router/package.json'],
+      prAuthor: 'vitbokisch',
+    })
+    expect(r.kind).toBe('fail-no-changeset')
+  })
+
+  it('STILL fails Dependabot if it touches real source, not just a manifest', () => {
+    const r = evaluateGate({
+      ...base,
+      files: ['packages/core/router/package.json', 'packages/core/router/src/router.ts'],
+      prAuthor: 'dependabot[bot]',
+    })
+    expect(r.kind).toBe('fail-no-changeset')
+  })
+
+  it('does not match a human login that merely contains "dependabot"', () => {
+    expect(isDependabot('not-dependabot[bot]')).toBe(false)
+    expect(isDependabot('dependabot')).toBe(false)
+    expect(isDependabot('dependabot[bot]')).toBe(true)
+    expect(isDependabot('Dependabot[Bot]')).toBe(true)
+    expect(isDependabot(undefined)).toBe(false)
+  })
+
+  it('classifies manifest paths at any depth, and nothing else', () => {
+    expect(isManifestOnlyPath('package.json')).toBe(true)
+    expect(isManifestOnlyPath('packages/core/router/package.json')).toBe(true)
+    expect(isManifestOnlyPath('packages/core/router/src/package.json.ts')).toBe(false)
+    expect(isManifestOnlyPath('packages/core/router/src/index.ts')).toBe(false)
   })
 })
