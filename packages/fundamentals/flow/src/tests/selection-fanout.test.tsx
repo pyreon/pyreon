@@ -104,6 +104,26 @@ describe('selection fan-out (P6)', () => {
     flow.dispose()
   })
 
+  it('per-id selection cache survives remove + re-add of the same id (sweep lifecycle)', () => {
+    // The per-id selected computeds are swept with the nodeMap rebuild when
+    // an id leaves the graph (the _nodeById lifecycle). A re-added id must
+    // get a FRESH, live computed — a stale disposed entry would freeze
+    // isNodeSelected for that id forever.
+    const flow = makeFlow()
+    const { cleanup } = mountReactive(h(Flow, { instance: flow }))
+    cleanups.push(cleanup)
+    flow.selectNode('n2')
+    expect(flow.isNodeSelected('n2')).toBe(true)
+    flow.removeNode('n2') // also deselects
+    flow.nodeMap() // sweep point — the rebuild disposes n2's cached computeds
+    expect(flow.isNodeSelected('n2')).toBe(false)
+    flow.addNode({ id: 'n2', position: { x: 1, y: 1 }, data: {} })
+    expect(flow.isNodeSelected('n2')).toBe(false)
+    flow.selectNode('n2')
+    expect(flow.isNodeSelected('n2')).toBe(true)
+    flow.dispose()
+  })
+
   it('isNodeSelected / isEdgeSelected answer reactively and O(1)', () => {
     const flow = createFlow({
       nodes: [
