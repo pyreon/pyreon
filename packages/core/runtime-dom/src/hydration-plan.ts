@@ -30,8 +30,8 @@
 import type { VNode, VNodeChild } from '@pyreon/core'
 import { renderEffect } from '@pyreon/reactivity'
 import { bindPolymorphicText } from './mount'
-import { applyClassProp, applyProp, applyProps, applyStyleProp, makeEventBinder } from './props'
-import { _isTplHoleEl, _setTplHoleCursors } from './template'
+import { _markAdoptedHtmlEl, applyClassProp, applyProp, applyProps, applyStyleProp, makeEventBinder } from './props'
+import { _isTplHoleEl, _isTplHtmlEl, _setTplHoleCursors } from './template'
 
 type Cleanup = () => void
 
@@ -590,6 +590,20 @@ interface TplSig {
   holes: Int32Array | null
   /** Number of declared holes — 0 lets every hole-aware branch short-circuit. */
   holeCount: number
+  /**
+   * Per element (tree order), whether the compiler declared a
+   * `dangerouslySetInnerHTML` binding on it (`data-pyreon-html`). Such an
+   * element accepts ANY server children — they are the parse of the binding's
+   * `__html`, owned wholly by the bind's `_setHtml` line, which skips its
+   * first (adopting) write. Recorded only for an element the template leaves
+   * COMPLETELY empty (no child nodes at all — re-checked here rather than
+   * trusted, like the hole re-checks), so it is structurally disjoint from
+   * both relaxations above: a hole has absorbed component children, a slot has
+   * a `<!>` child, and both would give the element a child.
+   */
+  htmlEls: boolean[] | null
+  /** Number of declared innerHTML elements — 0 short-circuits the branch. */
+  htmlCount: number
 }
 const _tplSignature = new WeakMap<HTMLTemplateElement, TplSig | null>()
 
@@ -607,6 +621,8 @@ function templateSignature(tpl: HTMLTemplateElement): TplSig | null {
   const textList: (string | null)[][] = []
   const holeFlags: number[] = []
   let holeCount = 0
+  const htmlFlags: boolean[] = []
+  let htmlCount = 0
   const slotList: boolean[] = []
   const soleSlotList: boolean[] = []
   // MOUNT-SLOT ALIGNMENT GATE. A `<!>` placeholder is one node in the clone but
@@ -697,6 +713,14 @@ function templateSignature(tpl: HTMLTemplateElement): TplSig | null {
     const isHole = _isTplHoleEl(el) && texts === 0 && !slotAtEnd
     holeFlags.push(isHole ? el.children.length : -1)
     if (isHole) holeCount++
+    // A declared innerHTML element must be COMPLETELY empty in the template
+    // (the compiler emits it that way — the payload arrives via the bind's
+    // `_setHtml`). `firstChild === null` covers texts, elements, AND the `<!>`
+    // slot comment in one check, which is what keeps this disjoint from the
+    // hole/slot relaxations by structure rather than by trusting the marker.
+    const isHtml = _isTplHtmlEl(el) && el.firstChild === null && !isHole
+    htmlFlags.push(isHtml)
+    if (isHtml) htmlCount++
     for (let c = el.firstElementChild; c && !bail; c = c.nextElementSibling) walk(c)
   }
   walk(root)
@@ -713,6 +737,8 @@ function templateSignature(tpl: HTMLTemplateElement): TplSig | null {
     soleSlots: soleSlotList,
     holes: holeCount > 0 ? Int32Array.from(holeFlags) : null,
     holeCount,
+    htmlEls: htmlCount > 0 ? htmlFlags : null,
+    htmlCount,
   }
   _tplSignature.set(tpl, sig)
   return sig
@@ -758,6 +784,14 @@ interface AdoptMatch {
    * claim.
    */
   holes: Map<Element, ChildNode | null> | null
+  /**
+   * Declared innerHTML elements that verified. After the whole match passes,
+   * each is marked in the `_setHtml` adoption registry so the compiled bind's
+   * FIRST write to it is skipped — the server children are already the parse
+   * of the payload. Collected during the (side-effect-free) walk, marked only
+   * by `tplAdoptVerify` once every check has passed.
+   */
+  htmlEls: Element[] | null
 }
 
 /**
@@ -918,6 +952,8 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
   let soles: Element[] | null = null
   let emptySlots: Element[] | null = null
   let holes: Map<Element, ChildNode | null> | null = null
+  let htmlEls: Element[] | null = null
+  const htmlFlags = expected.htmlEls
   const tags = expected.tags
   const wantCounts = expected.counts
   const holeFlags = expected.holes
@@ -938,6 +974,19 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
     for (let i = 0; i < wantAttrs.length; i++) {
       const pair = wantAttrs[i] as [string, string]
       if (el.getAttribute(pair[0]) !== pair[1]) return false
+    }
+    // DECLARED innerHTML ELEMENT. The template leaves it empty and the bind's
+    // `_setHtml` owns its content wholly, so its server children — the parse
+    // of the SSR-rendered `__html` — are accepted AS-IS: nothing to count,
+    // nothing to descend into, nothing to sweep. No string comparison against
+    // the client payload either (innerHTML serialization round-trips differ —
+    // entity encoding, attribute quoting — so equality would false-negative;
+    // React trusts the server DOM wholesale during hydration, and so do we).
+    // Disjoint from the hole/slot relaxations by construction: signature
+    // records `htmlEls` only for a template element with NO children at all.
+    if (htmlFlags !== null && htmlFlags[at] === true) {
+      ;(htmlEls ??= []).push(el)
+      return true
     }
     // TWO RELAXATIONS, DISJOINT BY AN EXPLICIT CONJUNCT. Both say "this
     // element's remaining server child range belongs to a later claimer, so stop
@@ -1139,7 +1188,7 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
   }
   if (!walk(root)) return null
   if (idx !== total) return null
-  return { removals, triplets, soles, emptySlots, holes }
+  return { removals, triplets, soles, emptySlots, holes, htmlEls }
 }
 
 /** All checks passed — strip markers, ensuring one text node per slot. */
@@ -1194,6 +1243,12 @@ export function tplAdoptVerify(
   // renderItem absorbs a component the dispatch-free replay; a silent
   // duplication would cost the page.
   if (allowPlanReplay && templateSignature(tpl)?.holeCount) allowPlanReplay = false
+  // Nor does a template with declared innerHTML elements: the replay records
+  // triplet/removal spots, not innerHTML marks, so a replayed row's bind would
+  // find no mark and re-assign `innerHTML` — re-parsing the very children the
+  // adoption kept. Refusing costs such rows the dispatch-free replay (the full
+  // verify still adopts them); a silent re-parse would cost the retention.
+  if (allowPlanReplay && templateSignature(tpl)?.htmlCount) allowPlanReplay = false
   if (allowPlanReplay) {
     if (tpl === _lastVerifyTpl) {
       plan = _lastVerifyPlan
@@ -1237,6 +1292,13 @@ export function tplAdoptVerify(
     for (const el of match.emptySlots) el.appendChild(document.createTextNode(''))
   }
   if (match.triplets) normalizeDollarTriplets(match.triplets)
+  // Declared innerHTML elements: mark each so the bind's first `_setHtml`
+  // write — which runs synchronously inside the adoption's `bind(target)` —
+  // trusts the server children instead of re-parsing `__html`. Marked only
+  // here, after EVERY check passed: a bail leaves no mark behind.
+  if (match.htmlEls !== null) {
+    for (const el of match.htmlEls) _markAdoptedHtmlEl(el)
+  }
   // Hand the verified holes to `_tpl` (one-shot; it clears the slot before
   // every verify, so a bail can never leave a stale map behind).
   if (match.holes !== null) _setTplHoleCursors(match.holes)

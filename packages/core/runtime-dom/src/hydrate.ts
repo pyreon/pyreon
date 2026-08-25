@@ -49,7 +49,7 @@ import {
   _tplAdoptDidConsume,
 } from './template'
 import type { DeferredNativeItem } from './template'
-import { applyProps, applySelectValueProp } from './props'
+import { _markAdoptedHtmlEl, applyProps, applySelectValueProp } from './props'
 
 type Cleanup = () => void
 const noop: Cleanup = () => {
@@ -1151,7 +1151,24 @@ function hydrateElement(
     // SSR DOM. `<select value>` is deferred until after children hydrate (PZ-09):
     // a child hydration mismatch can re-mount the options, so applying value
     // after `hydrateChildren` guarantees the assignment sees the FINAL list.
+    //
+    // `dangerouslySetInnerHTML` (the other hydration-special prop, PZ-09's
+    // sibling): the server children ARE the parse of `__html`, so the first
+    // write must be SKIPPED, not deferred — mark the element and let the
+    // shared sink (`applyDangerousHtml`) consume the mark. A plain `skipKey`
+    // cannot express this: the getter/accessor form still needs its
+    // `renderEffect` to RUN (to subscribe) — only its first application may
+    // skip; later runs write normally. Guarded on empty vnode children: the
+    // children-alongside-innerHTML shape is broken either way and keeps
+    // today's behavior. The vnode child walk below leaves the server children
+    // untouched (empty children ⇒ no cursor walk, no sweep).
     const isSelect = vnode.type === 'select'
+    if (
+      'dangerouslySetInnerHTML' in vnode.props &&
+      (vnode.children === undefined || vnode.children.length === 0)
+    ) {
+      _markAdoptedHtmlEl(el)
+    }
     const propCleanup = applyProps(el, vnode.props, isSelect ? 'value' : undefined)
 
     // Hydrate children. A SOLE accessor child owns the element's whole child

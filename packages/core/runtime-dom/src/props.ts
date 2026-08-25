@@ -350,6 +350,57 @@ export function _bindEvent(el: Element, key: string, handler: unknown): Cleanup 
  * set as literal text. The structural fix (one reactive-wrap, then
  * dispatch) eliminates the entire bug class.
  */
+// ─── dangerouslySetInnerHTML hydration adoption ─────────────────────────────
+// During hydration, the server-rendered children of an element carrying
+// `dangerouslySetInnerHTML` ARE the parse of `__html` — re-assigning
+// `el.innerHTML` would only replace byte-identical DOM with freshly parsed
+// nodes, destroying identity (focus, selection, third-party listeners) and
+// re-doing work the server already paid for. React's semantics exactly: during
+// hydration the prop's server DOM is TRUSTED wholesale, with NO string
+// comparison — innerHTML serialization round-trips differ (entity encoding,
+// attribute quoting), so an equality check would false-negative on identical
+// content; React compares nothing, and neither do we. A client `__html` that
+// GENUINELY differs from the server's shows the server content until the first
+// reactive update — React's trade, accepted deliberately.
+//
+// The registry answers the three module-level-collection questions:
+//  (1) EVICTION — weak keys, consumed (deleted) by the very next
+//      `applyDangerousHtml` call on the element, which the marking paths
+//      guarantee runs synchronously in the same hydration pass (the compiled
+//      bind's `_setHtml` line / `applyProps`' dsi branch). Steady state: empty.
+//  (2) CLEANUP CONTRACT — delete-on-consume by identity; a mark orphaned by a
+//      bind that threw pins nothing (WeakSet).
+//  (3) EXERCISED — every adoption spec in
+//      `tests/innerhtml-hydration-adoption.test.tsx` goes through mark+consume.
+// Backing-table high-water (the catalogued WeakSet hazard) is bounded by the
+// page's innerHTML-element count (~dozens), not per-row workload.
+const _adoptedHtmlEls = new WeakSet<Element>()
+
+/** Hydration paths mark an element whose server children are the parse of its
+ *  `dangerouslySetInnerHTML` payload; the next write to it is skipped once. */
+export function _markAdoptedHtmlEl(el: Element): void {
+  _adoptedHtmlEls.add(el)
+}
+
+/**
+ * Single sink for `dangerouslySetInnerHTML` (raw — developer owns
+ * sanitization, same as React). Exported to the compiler as `_setHtml`, so the
+ * compiled template path and the h()/spread path normalize identically AND
+ * share the hydration-adoption skip: the FIRST application to a marked
+ * (adopted) element trusts the server DOM and writes nothing; every later
+ * application — a reactive re-run, a post-hydration flip, all of CSR — assigns
+ * as before.
+ */
+export function applyDangerousHtml(el: Element, value: unknown): void {
+  if (_adoptedHtmlEls.has(el)) {
+    // Hydration adoption: the server children ARE the parse of __html.
+    _adoptedHtmlEls.delete(el)
+    return
+  }
+  const v = value as { __html: string } | null | undefined
+  ;(el as HTMLElement).innerHTML = v?.__html ?? ''
+}
+
 function applyStaticProp(el: Element, key: string, value: unknown): void {
   if (process.env.NODE_ENV !== 'production' && typeof value === 'function') {
     // Defensive: function values must be unwrapped via `renderEffect` before
@@ -378,8 +429,7 @@ function applyStaticProp(el: Element, key: string, value: unknown): void {
   // (same as React). The name itself is the warning — React doesn't log,
   // neither should we.
   if (key === 'dangerouslySetInnerHTML') {
-    const v = value as { __html: string } | null | undefined
-    ;(el as HTMLElement).innerHTML = v?.__html ?? ''
+    applyDangerousHtml(el, value)
     return
   }
 
