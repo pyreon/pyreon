@@ -48,6 +48,46 @@ describe('flow node components (round-2 bug fixes)', () => {
     unmount()
   })
 
+  it('MiniMap patches in place across viewport writes (real compiler, P4)', async () => {
+    // The happy-dom twin (minimap-patch-in-place.test.tsx) runs through the
+    // auto-JSX h() runtime; THIS config compiles minimap.tsx through the real
+    // @pyreon/vite-plugin transform, so the accessor-attr template emission
+    // (`x={() => …}` on svg <rect>) is exercised on the shipped path.
+    const flow = createFlow({
+      nodes: [
+        { id: 'a', position: { x: 10, y: 10 }, data: {}, width: 100, height: 40 },
+        { id: 'b', position: { x: 300, y: 200 }, data: {}, width: 100, height: 40 },
+      ],
+      edges: [],
+    })
+    const { container, unmount } = mountInBrowser(
+      h(Flow, { instance: flow }, h(MiniMap, {})),
+    )
+    flow.containerSize.set({ width: 800, height: 600 })
+    await flush()
+
+    const svg = container.querySelector('.pyreon-flow-minimap svg')!
+    const vpRect = container.querySelector('.pyreon-flow-minimap-viewport')!
+    const nodeRects = [...container.querySelectorAll('.pyreon-flow-minimap g rect')]
+    expect(nodeRects).toHaveLength(2)
+    // Real SVG namespace — a string-templated rect parsed in the HTML
+    // namespace would be an inert HTMLUnknownElement (the _tpl SVG trap).
+    expect(nodeRects[0] instanceof SVGRectElement).toBe(true)
+    expect(vpRect.namespaceURI).toBe('http://www.w3.org/2000/svg')
+
+    const xBefore = vpRect.getAttribute('x')
+    for (let i = 1; i <= 10; i++) {
+      flow.viewport.set({ x: i * 9, y: i * 4, zoom: 1 + i * 0.02 })
+    }
+    await flush()
+
+    expect(container.querySelector('.pyreon-flow-minimap svg')).toBe(svg)
+    expect(container.querySelector('.pyreon-flow-minimap-viewport')).toBe(vpRect)
+    expect([...container.querySelectorAll('.pyreon-flow-minimap g rect')]).toEqual(nodeRects)
+    expect(vpRect.getAttribute('x')).not.toBe(xBefore)
+    unmount()
+  })
+
   it('the flow canvas is a labeled focusable region (role=group + default aria-label)', async () => {
     const flow = createFlow({ nodes: [], edges: [] })
     const { container, unmount } = mountInBrowser(h(Flow, { instance: flow }))
