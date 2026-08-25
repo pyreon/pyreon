@@ -28,6 +28,7 @@
     "@pyreon/hooks": "workspace:*",
     "@pyreon/http": "workspace:*",
     "@pyreon/i18n": "workspace:*",
+    "@pyreon/kinetic": "workspace:*",
     "@pyreon/permissions": "workspace:*",
     "@pyreon/query": "workspace:*",
     "@pyreon/rx": "workspace:*",
