@@ -5,6 +5,7 @@ import {
   extractAgp,
   extractPinnedGradle,
   minGradleFor,
+  usesKotlinOptionsDsl,
 } from '../../../../../scripts/check-agp-gradle-lockstep'
 
 /**
@@ -65,5 +66,34 @@ describe('extraction', () => {
   it('reads GRADLE_VERSION out of the workflow', () => {
     expect(extractPinnedGradle("          GRADLE_VERSION: '8.14.5'\n")).toBe('8.14.5')
     expect(extractPinnedGradle('no pin here')).toBeNull()
+  })
+})
+
+/**
+ * The `kotlinOptions` half. Kotlin 2.4 made it a hard error, and it surfaced
+ * only AFTER the Gradle pin was fixed — a second ~6-minute round trip on the
+ * same PR, which is precisely what this catches in a second.
+ */
+describe('usesKotlinOptionsDsl', () => {
+  it('detects a real configuration block', () => {
+    expect(usesKotlinOptionsDsl('android {\n    kotlinOptions {\n        jvmTarget = "17"\n    }\n}')).toBe(true)
+    expect(usesKotlinOptionsDsl('    kotlinOptions{')).toBe(true)
+  })
+
+  it('does NOT trip on the word inside a comment', () => {
+    // The repo keeps an explanatory comment naming `kotlinOptions` right next
+    // to the replacement block. A naive substring check would fail every file
+    // that documents the migration — i.e. punish the fix.
+    const s = `// Kotlin 2.4 turned the \`kotlinOptions\` DSL into a hard ERROR
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
+}`
+    expect(usesKotlinOptionsDsl(s)).toBe(false)
+  })
+
+  it('does not match a bare mention with no brace', () => {
+    expect(usesKotlinOptionsDsl('val x = "kotlinOptions"')).toBe(false)
   })
 })

@@ -21,6 +21,13 @@
  * The mapping below is AGP's published "minimum Gradle version" table. Add a
  * row when adopting a newer AGP; an AGP with no row is a hard failure rather
  * than a silent pass, because guessing the minimum is how this breaks.
+ *
+ * It also rejects the `kotlinOptions` DSL, for the same reason in a different
+ * file. Kotlin 2.4 turned it from a deprecation into a hard ERROR — "Using
+ * 'jvmTarget: String' is an error. Please migrate to the compilerOptions DSL"
+ * — and that surfaced only after the Gradle pin was fixed, i.e. as a SECOND
+ * ~6-minute round trip on the same PR. Both checks exist so a toolchain bump
+ * costs one second instead of one job.
  */
 import { readFileSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -56,6 +63,20 @@ export function extractAgp(source: string): string | null {
   return /id\("com\.android\.application"\)\s+version\s+"([0-9.]+)"/.exec(source)?.[1] ?? null
 }
 
+/**
+ * A real `kotlinOptions { ... }` configuration block. Deliberately anchored to
+ * the opening brace so the word appearing in a COMMENT (including the one this
+ * repo now keeps next to the replacement) does not trip the gate.
+ *
+ * @internal exported for unit testing
+ */
+export function usesKotlinOptionsDsl(source: string): boolean {
+  return source
+    .split('\n')
+    .filter((l) => !l.trim().startsWith('//'))
+    .some((l) => /\bkotlinOptions\s*\{/.test(l))
+}
+
 export function extractPinnedGradle(workflow: string): string | null {
   return /GRADLE_VERSION:\s*'([0-9.]+)'/.exec(workflow)?.[1] ?? null
 }
@@ -79,6 +100,7 @@ function main(): number {
   }
 
   const problems: string[] = []
+  let sawGradleMismatch = false
   for (const app of apps) {
     const f = join(examplesDir, app, 'build.gradle.kts')
     let src: string
@@ -91,25 +113,48 @@ function main(): number {
     if (!agp) continue
     const min = minGradleFor(agp)
     if (min === null) {
+      sawGradleMismatch = true
       problems.push(
         `  ${app}: AGP ${agp} has no row in AGP_MIN_GRADLE — add its published minimum Gradle version.`,
       )
       continue
     }
     if (cmpVersions(pinned, min) < 0) {
+      sawGradleMismatch = true
       problems.push(
         `  ${app}: AGP ${agp} needs Gradle >= ${min}, but native-device.yml pins ${pinned}.`,
       )
     }
   }
 
+  for (const app of apps) {
+    const f = join(examplesDir, app, 'app', 'build.gradle.kts')
+    let src: string
+    try {
+      src = readFileSync(f, 'utf8')
+    } catch {
+      continue
+    }
+    if (usesKotlinOptionsDsl(src)) {
+      problems.push(
+        `  ${app}/app: uses the \`kotlinOptions\` DSL, which is a hard ERROR on Kotlin 2.4+. Use \`kotlin { compilerOptions { jvmTarget = ... } }\` OUTSIDE the android block.`,
+      )
+    }
+  }
+
   if (problems.length > 0) {
-    console.error('[check-agp-gradle-lockstep] ✗ AGP and the pinned Gradle disagree:')
+    console.error('[check-agp-gradle-lockstep] ✗ android build config is out of step:')
     console.error(problems.join('\n'))
-    console.error('')
-    console.error("Fix: raise GRADLE_VERSION (and GRADLE_SHA256, from")
-    console.error('services.gradle.org/distributions/gradle-<V>-bin.zip.sha256) in')
-    console.error('.github/workflows/native-device.yml.')
+    // Only print the Gradle remedy when a Gradle mismatch is actually among the
+    // problems — each `kotlinOptions` line already carries its own fix, and
+    // pointing someone at GRADLE_VERSION for a DSL error sends them to the
+    // wrong file.
+    if (sawGradleMismatch) {
+      console.error('')
+      console.error('Fix: raise GRADLE_VERSION (and GRADLE_SHA256, from')
+      console.error('services.gradle.org/distributions/gradle-<V>-bin.zip.sha256) in')
+      console.error('.github/workflows/native-device.yml.')
+    }
     return 1
   }
 

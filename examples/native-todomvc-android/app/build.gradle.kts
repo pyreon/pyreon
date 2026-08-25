@@ -46,10 +46,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
     // ── Release lane (Release & distribution matrix row) ──
     //
     // A release build that cannot be SIGNED cannot be INSTALLED, so an
@@ -217,4 +213,17 @@ tasks.register<Exec>("pyreonCompile") {
 
 tasks.named("preBuild") {
     dependsOn("pyreonCompile")
+}
+
+// Kotlin 2.4 turned the `kotlinOptions` DSL into a hard ERROR, not a
+// deprecation: "Using 'jvmTarget: String' is an error. Please migrate to the
+// compilerOptions DSL." (https://kotl.in/u1r8ln)
+//
+// This replaces it. It sits OUTSIDE `android { }` deliberately — it configures
+// the Kotlin extension, not AGP. The enum is fully qualified so the file needs
+// no top-of-script `import`, which in a .kts must precede even `plugins { }`.
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
 }
