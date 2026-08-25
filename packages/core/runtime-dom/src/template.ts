@@ -546,15 +546,43 @@ export function _isTplHoleEl(el: Element): boolean {
   return _tplHoleEls.has(el)
 }
 
-/** Strip + record the hole markers on a freshly parsed template. */
-function stripHoleMarkers(content: DocumentFragment): void {
-  const marked = content.querySelectorAll(`[${HOLE_ATTR}]`)
+/** Strip + record a compiler declaration attribute on a freshly parsed
+ *  template (shared by the hole + innerHTML markers below). */
+function stripMarkers(content: DocumentFragment, attr: string, into: WeakSet<Element>): void {
+  const marked = content.querySelectorAll(`[${attr}]`)
   for (let i = 0; i < marked.length; i++) {
     const el = marked[i] as Element
-    el.removeAttribute(HOLE_ATTR)
-    _tplHoleEls.add(el)
+    el.removeAttribute(attr)
+    into.add(el)
   }
 }
+
+// ─── dangerouslySetInnerHTML DECLARATIONS ────────────────────────────────────
+// A template element carrying a `dangerouslySetInnerHTML` binding is emitted
+// EMPTY (the payload is applied by the bind's `_setHtml` line), so it is
+// indistinguishable in the parsed template from a genuinely-empty element —
+// and its SSR counterpart is FULL (the server rendered `__html` as inner
+// content). The adopt verifier would read those children as extra elements and
+// reject, cloning the whole template: the exact rebuild this declaration
+// exists to prevent (measured: 9,111 of a docs page's 9,511 rebuilt body nodes
+// were Shiki output under such elements).
+//
+// Same mechanism as HOLE_ATTR, same reasoning: the compiler DECLARES the
+// element by baking `data-pyreon-html` onto it, so the verifier's relaxation
+// ("this element accepts ANY server children — the binding owns them") is
+// explicit and CLOSED. A blanket "empty template element accepts children"
+// rule is rejected above for holes and rejected here for the same reason.
+// The attribute is stripped at parse time, before any clone or signature walk,
+// and elements are remembered by IDENTITY. Registry lifecycle mirrors
+// `_tplHoleEls` (weak keys held by `_tplCache`'s capped SizedMap).
+const HTML_ATTR = 'data-pyreon-html'
+const _tplHtmlEls = new WeakSet<Element>()
+
+/** Is this template-content element a compiler-declared innerHTML element? */
+export function _isTplHtmlEl(el: Element): boolean {
+  return _tplHtmlEls.has(el)
+}
+
 
 /**
  * Per-hole DOM cursors for the adopting bind currently running, keyed by the
@@ -663,7 +691,12 @@ export function _tpl(html: string, bind: (el: HTMLElement) => (() => void) | nul
     // to user DOM. Guarded by a string test: a build without
     // `templatizeComponentChildren` never contains one and pays a single
     // `includes` per newly parsed template.
-    if (html.includes(HOLE_ATTR)) stripHoleMarkers(tpl.content)
+    if (html.includes(HOLE_ATTR)) stripMarkers(tpl.content, HOLE_ATTR, _tplHoleEls)
+    // Same guard for the dangerouslySetInnerHTML declarations. NOTE the two
+    // `includes` probes cannot confuse each other: HOLE_ATTR is baked as a
+    // bare valueless attribute and HTML_ATTR likewise, and neither string is
+    // a substring of the other ("data-pyreon-hole" vs "data-pyreon-html").
+    if (html.includes(HTML_ATTR)) stripMarkers(tpl.content, HTML_ATTR, _tplHtmlEls)
     // SizedMap.set() handles FIFO eviction internally — drops the
     // oldest entry once we hit the cap.
     _tplCache.set(html, tpl)

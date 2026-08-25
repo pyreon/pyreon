@@ -48,6 +48,11 @@ export {
   // `defaultValue` reflection, so a client-mounted form resets like a hydrated
   // one. Emitted by the compiler for those two tags only.
   applyValueProp as _setValue,
+  // `dangerouslySetInnerHTML`: raw innerHTML assignment (developer owns
+  // sanitization — same as React) with the hydration-adoption first-write
+  // skip. Emitted by the compiler for every dangerouslySetInnerHTML binding
+  // so the template path and the h() path share one sink.
+  applyDangerousHtml as _setHtml,
   sanitizeHtml,
   setSanitizer,
 } from './props'
