@@ -1675,6 +1675,9 @@
     "packages/fundamentals/hooks": {
       "name": "@pyreon/hooks",
       "version": "0.51.0",
+      "dependencies": {
+        "@pyreon/storage": "workspace:*",
+      },
       "devDependencies": {
         "@pyreon/manifest": "workspace:*",
         "@pyreon/runtime-dom": "workspace:^",
