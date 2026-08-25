@@ -56,6 +56,7 @@ import { createHttp } from '@pyreon/http'
 import { syncedSignal, PyreonCrdtDoc } from '@pyreon/sync'
 import { useSortable } from '@pyreon/dnd'
 import { PyreonUI } from '@pyreon/ui-core'
+import { createTableState } from '@pyreon/table'
 import { kinetic } from '@pyreon/kinetic'
 import { createI18n } from '@pyreon/i18n'
 import { toast } from '@pyreon/toast'
@@ -425,6 +426,7 @@ const prefs = model({ state: { compact: false, pageSize: 20 } }).create()
 // scope and are consumed by the endpoint-resolution pre-pass, then driven by
 // useFetch inside a component.
 interface TaskDto { id: string; title: string }
+interface TableRow { id: string; label: string }
 const api = createHttp({ baseUrl: 'https://example.com' })
 const getTask = api.endpoint('GET /tasks/:id')
 
@@ -468,6 +470,15 @@ function ToolkitScreen() {
   // Filter lives in the URL on web; on native the router's query backs it.
   const filter = useUrlState('filter', 'all')
   const perms = usePermissions(['tasks.write'])
+  // table: `createTableState` is the dependency-free half that lowers to the
+  // native PyreonTableState engine. `useTable` (the TanStack row model) stays
+  // web — this is the documented crossing surface, not a workaround.
+  const tableRows = signal<TableRow[]>([{ id: '1', label: 'Ada' }])
+  const table = createTableState({
+    data: () => tableRows(),
+    columns: [{ id: 'label', accessor: (r: TableRow) => r.label }],
+    pageSize: 10,
+  })
   // sync: a CRDT-backed counter. `doc` must be a binding — syncedSignal reads
   // it, and omitting it is invalid on the web too.
   const doc = new PyreonCrdtDoc('peer-1')
@@ -519,6 +530,7 @@ function ToolkitScreen() {
       <Text data-testid="toolkit-cache">{String(seen.size)}</Text>
       <Text data-testid="toolkit-perm">{String(perms.can('tasks.write'))}</Text>
       <Text data-testid="toolkit-synced">{String(synced())}</Text>
+      <Text data-testid="toolkit-tablepages">{String(table.pageCount())}</Text>
       <Text data-testid="toolkit-http">{taskReq.data}</Text>
       <Text data-testid="toolkit-sortable">{sortable.activeKey ?? 'idle'}</Text>
       <FadeIn>
