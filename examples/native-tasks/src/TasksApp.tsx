@@ -55,6 +55,7 @@ import { usePermissions } from '@pyreon/permissions'
 import { createHttp } from '@pyreon/http'
 import { syncedSignal, PyreonCrdtDoc } from '@pyreon/sync'
 import { useSortable } from '@pyreon/dnd'
+import { PyreonUI } from '@pyreon/ui-core'
 import { createI18n } from '@pyreon/i18n'
 import { toast } from '@pyreon/toast'
 import { announce } from '@pyreon/a11y'
@@ -488,6 +489,7 @@ function ToolkitScreen() {
     queryFn: () => fetch('https://example.com/greeting').then((r) => r.text()),
   }))
   return (
+    <PyreonUI>
     <Stack gap={3} padding={4} data-testid="toolkit-page">
       <Text data-testid="toolkit-title">{i18n.t('title')}</Text>
       <Text data-testid="toolkit-filter">{filter()}</Text>
@@ -517,6 +519,7 @@ function ToolkitScreen() {
         Back to tasks
       </Button>
     </Stack>
+    </PyreonUI>
   )
 }
 
