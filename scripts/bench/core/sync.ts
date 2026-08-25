@@ -83,7 +83,11 @@ process.env.NODE_ENV = 'production'
 import { applyAwarenessUpdate, Awareness, encodeAwarenessUpdate } from 'y-protocols/awareness'
 import * as Y from 'yjs'
 import { effect } from '../../../packages/core/reactivity/src/index'
-import { syncedSignal } from '../../../packages/fundamentals/sync/src/index'
+import {
+  REMOTE_ORIGIN,
+  syncedSignal,
+  syncedStore,
+} from '../../../packages/fundamentals/sync/src/index'
 // Relative-to-`src` imports (not `@pyreon/sync`) are the established
 // `scripts/bench/` convention — they bench the CURRENT SOURCE with no `lib/`
 // build step, and the package name resolves to built `lib/` at bun runtime
@@ -465,6 +469,55 @@ async function benchInboundFrame(): Promise<BenchResult[]> {
 }
 
 // ── Remote op → signal propagation (signature path, BOUNDED) ──────────────────
+// ── syncedStore dispatcher (2026-08 pass) ───────────────────────────────────
+// A syncedStore of N fields used to install 2N engine observers (one raw
+// `map.observe` + one `defaults.observe` PER FIELD), each invoked at every
+// committed transaction just to `changedKeys.has(key)`-filter. The per-(doc,
+// map) dispatcher (`crdt/map-dispatch.ts`) makes that 1 observer per map with
+// O(changed keys) routing. COUNTS are the structural claim (asserted here and
+// in `synced-store-dispatcher.test.ts`); the wall rows quantify the per-write
+// dispatch cost at N=20 — local set and remote-origin apply take the SAME
+// observer path (the update-loop invariant), measured separately anyway so an
+// origin-sensitive regression would show as a split.
+function benchStoreDispatch(): { results: BenchResult[]; countsLine: string } {
+  const N = 20
+  const doc = createYjsDoc()
+  const initial: Record<string, number> = {}
+  for (let i = 0; i < N; i++) initial[`f${i}`] = i
+  const store = syncedStore(initial, { doc })
+
+  // Correctness gate for THIS cell: the write must be observable through the
+  // signal AND land in the backing map (bench the path, not error-swallowing).
+  store.f10!.set(-1)
+  const map = doc.getMap('pyreon')
+  if (store.f10!() !== -1 || map.get('f10') !== -1) {
+    throw new Error('store-dispatch gate: write did not round-trip (signal/map)')
+  }
+
+  // Engine-side observer count on the REAL Yjs handler list — the N→1 fact.
+  const yObs = (name: string): number =>
+    (doc.yDoc.getMap(name) as unknown as { _eH: { l: unknown[] } })._eH.l.length
+  const countsLine =
+    `  observers @ ${N} fields: data map ${yObs('pyreon')}, defaults map ` +
+    `${yObs('pyreon:defaults')} (raw per-field wiring installs ${N} each = ${2 * N} total)`
+
+  let i = 0
+  const results: BenchResult[] = []
+  results.push(
+    bench(`local set→dispatch→signal (${N}-field store)`, () => {
+      store.f10!.set(i++)
+    }),
+  )
+  results.push(
+    bench(`remote-origin apply→dispatch→signal (${N}-field)`, () => {
+      doc.transact(() => map.set('f10', i++), REMOTE_ORIGIN)
+    }),
+  )
+  store.dispose()
+  doc.destroy()
+  return { results, countsLine }
+}
+
 // A syncedSignal observer write IS just `base.set(map.get(key))`. We measure
 // that propagation against a FRESH doc per micro-batch so the Yjs history can't
 // grow unboundedly and skew steady-state cost (a CRDT doc grows with every
@@ -661,11 +714,11 @@ function correctnessGate(): void {
 
 // Optional section filter for A/B iteration on ONE cell without paying the
 // whole suite: `bun scripts/bench/core/sync.ts --only=text,frame`. Sections:
-// awareness | presence | list | text | frame | remote. Default: all.
+// awareness | presence | list | text | frame | store | remote. Default: all.
 // Unknown tokens are REFUSED loudly — a typo (`--only=frames`) would otherwise
 // silently select NOTHING and exit green, the documented empty-input-set class
 // ("a gate must fail loudly when its input set is EMPTY").
-const SECTIONS: readonly string[] = ['awareness', 'presence', 'list', 'text', 'frame', 'remote']
+const SECTIONS: readonly string[] = ['awareness', 'presence', 'list', 'text', 'frame', 'store', 'remote']
 const onlyArg = process.argv.find((a) => a.startsWith('--only='))
 const only = onlyArg ? new Set(onlyArg.slice('--only='.length).split(',')) : null
 if (only !== null) {
@@ -691,6 +744,11 @@ if (wants('presence')) printWrapperTax(benchPresenceWrapperTax())
 if (wants('list')) printSection('syncedList rebuild (per change)', benchSyncedList())
 if (wants('text')) printSection('syncedText .set (per-keystroke ns)', benchSyncedTextKeystroke())
 if (wants('frame')) printSection('WS inbound frame (per-frame ns)', await benchInboundFrame())
+if (wants('store')) {
+  const { results, countsLine } = benchStoreDispatch()
+  printSection('syncedStore dispatcher (per-write ns)', results)
+  console.log(countsLine)
+}
 if (wants('remote')) {
   printSection('Remote op → signal (signature path, per-write ns)', benchRemoteOp())
 }
