@@ -63,6 +63,7 @@ android {
                 srcDir("../../../packages/fundamentals/toast/native/kotlin")
                 srcDir("../../../packages/fundamentals/a11y/native/kotlin")
                 srcDir("../../../packages/fundamentals/dnd/native/kotlin")
+                srcDir("../../../packages/fundamentals/table/native/kotlin")
             }
         }
     }

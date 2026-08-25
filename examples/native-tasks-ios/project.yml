@@ -55,6 +55,7 @@ targets:
       - path: ../../packages/fundamentals/toast/native/swift
       - path: ../../packages/fundamentals/a11y/native/swift
       - path: ../../packages/fundamentals/dnd/native/swift
+      - path: ../../packages/fundamentals/table/native/swift
         type: group
         optional: true
 

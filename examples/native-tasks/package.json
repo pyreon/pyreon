@@ -35,6 +35,7 @@
     "@pyreon/sized-map": "workspace:*",
     "@pyreon/state-tree": "workspace:*",
     "@pyreon/sync": "workspace:*",
+    "@pyreon/table": "workspace:*",
     "@pyreon/toast": "workspace:*",
     "@pyreon/ui-core": "workspace:*",
     "@pyreon/url-state": "workspace:*"
