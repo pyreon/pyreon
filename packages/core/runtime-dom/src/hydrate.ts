@@ -41,12 +41,14 @@ import { buildRowPlan, replayRowPlan, tplAdoptVerify } from './hydration-plan'
 import type { RowPlan } from './hydration-plan'
 import { _setPendingForAdoption, mountKeyedList, mountReactive } from './nodes'
 import {
+  _setHydrationActive,
   _setSlotHydrator,
   _setTplAdoptTarget,
   _setTplAdoptVerifier,
   _setTplHoleHydrator,
   _tplAdoptDidConsume,
 } from './template'
+import type { DeferredNativeItem } from './template'
 import { applyProps, applySelectValueProp } from './props'
 
 type Cleanup = () => void
@@ -662,12 +664,15 @@ function hydrateVNode(
   if (vnode.type === ForSymbol) {
     // SSR emits a fully-bounded block for a <For>:
     //   <!--pyreon-for-->  <!--k:KEY-->row…  xN  <!--/pyreon-for-->
-    // Correctness-first swap (matching the _tpl/__isNative precedent): mount the
-    // fresh keyed list before the block, remove the SSR block, and hand back the
-    // node AFTER it as the sibling cursor. Pre-fix this mounted fresh rows but
-    // LEFT the SSR rows in place (every hydrated <For> duplicated its list) and
-    // returned a null cursor. True keyed ADOPTION via the <!--k:KEY--> markers is
-    // a perf follow-up.
+    // Keyed ADOPTION is implemented: the block below parses the <!--k:KEY-->
+    // markers, verifies every key against the client items (all-or-nothing),
+    // and hands mountFor a `hydrateExisting` that arms each SSR row for
+    // compiled-`_tpl` adoption (plan replay for rows 2..N) or walks h()-rows
+    // interpretively. Any verification failure falls back to swap semantics
+    // (mount fresh rows, remove the SSR block) — same final DOM, no
+    // duplication. Pre-adoption this ALWAYS swapped; before that it mounted
+    // fresh rows while LEAVING the SSR rows (every hydrated <For> duplicated
+    // its list).
     if (domNode?.nodeType === Node.COMMENT_NODE && (domNode as Comment).data === 'pyreon-for') {
       // ONE depth-aware pass finds the matching end marker AND parses the
       // block's TOP-LEVEL rows off the <!--k:KEY--> markers (a nested <For>'s
@@ -1065,14 +1070,29 @@ function hydrateChild(
     return [() => tn.remove(), domNode]
   }
 
-  // NativeItem — output of the compiler's `_tpl()` fast path. The client builds a
-  // fresh subtree in memory (cloned + reactively bound); there is no true `_tpl`
-  // hydration mode yet that would adopt existing nodes and rebind in place. Swap
-  // the SSR subtree for the freshly-mounted one — same final DOM, no duplication,
-  // reactivity intact. Correctness-first; adopting hydration is a compiler-side
-  // follow-up.
+  // NativeItem — output of the compiler's `_tpl()` fast path. `_tpl` HAS a true
+  // hydration mode: armed with a target and approved by the verifier, its bind
+  // runs against the LIVE server node (adoption). During the hydration walk
+  // `_tpl` additionally DEFERS its build (template.ts): the item arrives here
+  // lazy, and `__adoptAt` arms THIS cursor — the server node the item actually
+  // corresponds to — before building. That is what lets every compiled region
+  // in an h() children array adopt at its own position instead of the first
+  // `_tpl` in the evaluation window consuming the component root's one-shot
+  // arm. A build that cannot adopt (verify bail, non-element cursor, multi-root
+  // template) produces a clone, and the swap below keeps the final DOM correct.
   if ((child as unknown as { __isNative?: boolean })?.__isNative === true) {
-    const native = child as unknown as { __isNative: true; el: Node; cleanup?: () => void }
+    const native = child as unknown as {
+      __isNative: true
+      el: Node
+      cleanup?: () => void
+    } & Partial<Pick<DeferredNativeItem, '__deferred' | '__adoptAt'>>
+    if (native.__deferred === true && domNode !== null && domNode.nodeType === 1) {
+      // Deferred `_tpl` meeting its real cursor: adopt HERE. On success
+      // `native.el` IS `domNode` and the adopted arm below keeps it in place;
+      // on a verify bail the build produced a clone and the swap arm below
+      // replaces the server node — the historical fallback.
+      native.__adoptAt!(domNode as Element)
+    }
     const next = domNode ? nextReal(domNode) : null
     if (native.el === domNode) {
       // ADOPTED — `_tpl` bound against this very node (target armed by
@@ -1085,6 +1105,9 @@ function hydrateChild(
       }
       return [adoptedCleanup, next]
     }
+    // Swap fallback. For a deferred item whose cursor was not an element (or
+    // whose adoption bailed), reading `native.el` here is what triggers the
+    // lazy clone build — today's eager behavior, just moved to first use.
     if (domNode && domNode.parentNode) {
       domNode.parentNode.replaceChild(native.el, domNode)
     } else {
@@ -1259,14 +1282,15 @@ function hydrateComponent(
   const mergedProps = makeReactiveProps(rawProps as Record<string, unknown>)
 
   let result: ReturnType<typeof runWithHooks>
-  // Compiled-template ADOPTION (general case). A component whose body is a
-  // static DOM subtree returns a `_tpl()` NativeItem; without a target armed,
-  // `_tpl` CLONES and the NativeItem branch of `hydrateChild` then REPLACES the
-  // server DOM — discarding it, which is the opposite of hydrating. Arm the
-  // one-shot target with this component's SSR cursor so a root `_tpl` binds
-  // against the existing nodes instead. `_tpl` clears the slot on ANY outcome
-  // and the verifier is all-or-nothing BEFORE mutation, so a non-matching
-  // template simply falls through to the clone (previous behaviour).
+  // Compiled-template ADOPTION (component-root fast path). A component whose
+  // body is a static DOM subtree returns a `_tpl()` NativeItem. Arm the
+  // one-shot target with this component's SSR cursor so a root `_tpl` whose
+  // tag MATCHES binds against the existing nodes eagerly (the historical
+  // path). A `_tpl` whose tag does NOT match — a child evaluated as an h()
+  // argument before the root exists — leaves the arm untouched and DEFERS
+  // (template.ts): it adopts later, at its own cursor, when `hydrateChild`'s
+  // walk reaches it. The verifier is all-or-nothing BEFORE mutation, so a
+  // non-matching template still falls through to the clone.
   const adoptTarget = domNode !== null && domNode.nodeType === 1 ? (domNode as Element) : null
   if (adoptTarget !== null) _setTplAdoptTarget(adoptTarget)
   try {
@@ -1445,6 +1469,17 @@ export function hydrateRoot(container: Element, vnode: VNodeChild): () => void {
   if (process.env.NODE_ENV !== 'production') installDevTools()
   setupDelegation(container)
   const firstChild = firstReal(container.firstChild as ChildNode | null)
-  const [cleanup] = hydrateChild(vnode, firstChild, container, null)
-  return cleanup
+  // Hydration-active window: `_tpl` defers its build inside it so compiled
+  // regions adopt at their real cursor (see template.ts). Save/RESTORE — never
+  // reset to a constant — hydration roots nest (an island hydrating inside a
+  // walk, a test hydrating from a mount effect). Scoped to the SYNCHRONOUS
+  // walk only: async-component continuations run after this frame and keep
+  // the eager (armed-or-clone) behavior.
+  const prevHydrationActive = _setHydrationActive(true)
+  try {
+    const [cleanup] = hydrateChild(vnode, firstChild, container, null)
+    return cleanup
+  } finally {
+    _setHydrationActive(prevHydrationActive)
+  }
 }
