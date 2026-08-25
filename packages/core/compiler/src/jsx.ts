@@ -182,6 +182,19 @@ const EVENT_RE = /^on[A-Z]/
  * that cannot import each other.
  */
 export const TPL_HOLE_ATTR = 'data-pyreon-hole'
+/**
+ * Declares a template element carrying a `dangerouslySetInnerHTML` binding.
+ * The element is emitted EMPTY (the payload arrives via the bind's `_setHtml`
+ * line) while its SSR counterpart is FULL — the server renders `__html` as
+ * inner content — so without a declaration the hydration adopt verifier reads
+ * those children as extra elements and rejects the whole template. Stripped by
+ * the runtime at template-parse time, before any clone; never reaches user
+ * DOM. See runtime-dom `template.ts` (dangerouslySetInnerHTML DECLARATIONS)
+ * for the consuming half. Emitted only for an element whose template body is
+ * empty (no baked children, not a mount hole), mirroring the runtime's
+ * defensive re-check.
+ */
+export const TPL_HTML_ATTR = 'data-pyreon-html'
 // Events delegated to the container — must match runtime DELEGATED_EVENTS set
 const DELEGATED_EVENTS = new Set([
   'click',
@@ -1191,6 +1204,7 @@ export function transformJSX_JS(
   let needsSetClassImportGlobal = false
   let needsSetAttrImportGlobal = false
   let needsSetValueImportGlobal = false
+  let needsSetHtmlImportGlobal = false
   // Compile-to-string SSR fast path (`options.ssrTemplate`): which
   // `@pyreon/runtime-server` helpers this module used.
   let needsSsrImport = false
@@ -3626,6 +3640,7 @@ export function transformJSX_JS(
     if (needsSetClassImportGlobal) runtimeDomImports.push('_setClass')
     if (needsSetAttrImportGlobal) runtimeDomImports.push('_setAttr')
     if (needsSetValueImportGlobal) runtimeDomImports.push('_setValue')
+    if (needsSetHtmlImportGlobal) runtimeDomImports.push('_setHtml')
     const reactivityImports = needsBindImportGlobal
       ? `\nimport { _bind } from "@pyreon/reactivity";`
       : ''
@@ -3880,6 +3895,7 @@ export function transformJSX_JS(
     let needsSetClass = false
     let needsSetAttr = false
     let needsSetValue = false
+    let needsSetHtml = false
 
     function nextVar(): string {
       return `__e${varIdx++}`
@@ -4398,12 +4414,17 @@ export function transformJSX_JS(
         return `_setStyle(${varName}, ${expr})`
       }
       if (htmlAttrName === 'dangerouslySetInnerHTML') {
-        // Mirror runtime applyStaticProp: set innerHTML from the `{ __html }`
-        // payload (raw — developer owns sanitization, same as React). A generic
-        // setAttribute here stringifies the object to "[object Object]" and
-        // leaves the element EMPTY — so an SSR'd `<pre>` (e.g. a Shiki code
-        // block) vanishes the moment the client re-renders the template.
-        return `{ const _h = (${expr}); ${varName}.innerHTML = _h != null && _h.__html != null ? _h.__html : "" }`
+        // Delegate to the runtime `_setHtml` (= applyDangerousHtml) so a
+        // compiled dangerouslySetInnerHTML binding normalizes identically to
+        // the h() path (raw `{ __html }` extraction — developer owns
+        // sanitization, same as React) AND shares its hydration-adoption
+        // skip: during hydration the server children are already the parse of
+        // `__html`, and the first (adopting) write is trusted rather than
+        // re-parsed. The previous inline `innerHTML = _h.__html` assignment
+        // re-parsed byte-identical Shiki HTML on every hydration — 9,111 of a
+        // docs page's 9,511 rebuilt body nodes. Mirrors `_setClass`/`_setStyle`.
+        needsSetHtml = true
+        return `_setHtml(${varName}, ${expr})`
       }
       // `<input>`/`<textarea>` `value`: delegate to the runtime `_setValue`
       // (= applyValueProp), which assigns the property AND establishes
@@ -4462,7 +4483,7 @@ export function transformJSX_JS(
             : htmlAttrName === 'style'
               ? ((needsSetStyle = true), `(v) => _setStyle(${varName}, v)`)
               : htmlAttrName === 'dangerouslySetInnerHTML'
-                ? `(v) => { ${varName}.innerHTML = v != null && v.__html != null ? v.__html : "" }`
+                ? ((needsSetHtml = true), `(v) => _setHtml(${varName}, v)`)
                 : htmlAttrName === 'value' && (tag === 'input' || tag === 'textarea')
                   ? ((needsSetValue = true), `(v) => _setValue(${varName}, v)`)
                   : DOM_PROPS.has(htmlAttrName)
@@ -5190,7 +5211,19 @@ export function transformJSX_JS(
         childHtml = res.html
         isHole = res.isHole
       }
-      let html = `<${tag}${htmlAttrs}${isHole ? ` ${TPL_HOLE_ATTR}` : ''}>${childHtml}`
+      // dangerouslySetInnerHTML declaration (see TPL_HTML_ATTR). Baked only
+      // when the template gives this element NO body of its own: a baked
+      // child or a mount hole means the element's content is owned by
+      // something else and mixing the two claims is the broken shape the
+      // runtime's defensive re-check refuses anyway.
+      const hasDsi = jsxAttrs(el).some(
+        (a) =>
+          a.type === 'JSXAttribute' &&
+          a.name?.type === 'JSXIdentifier' &&
+          a.name.name === 'dangerouslySetInnerHTML',
+      )
+      const isHtmlEl = hasDsi && childHtml === '' && !isHole
+      let html = `<${tag}${htmlAttrs}${isHole ? ` ${TPL_HOLE_ATTR}` : ''}${isHtmlEl ? ` ${TPL_HTML_ATTR}` : ''}>${childHtml}`
       if (deferredLines.length > 0) bindLines.push(...deferredLines)
       if (!VOID_ELEMENTS.has(tag)) html += `</${tag}>`
       return html
@@ -5210,6 +5243,7 @@ export function transformJSX_JS(
     if (needsSetClass) needsSetClassImportGlobal = true
     if (needsSetAttr) needsSetAttrImportGlobal = true
     if (needsSetValue) needsSetValueImportGlobal = true
+    if (needsSetHtml) needsSetHtmlImportGlobal = true
 
     const escaped = html.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
 

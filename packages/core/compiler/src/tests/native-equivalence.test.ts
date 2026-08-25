@@ -152,6 +152,17 @@ describeNative('Native vs JS equivalence — class/style binding fidelity', () =
     compare(
       `${sig}export const X = () => <div class="cb"><div dangerouslySetInnerHTML={t} /></div>`,
     ))
+  // Both halves of the data-pyreon-html declaration: the empty element gets it
+  // (adoption-eligible), the children-bearing one does NOT (the marker is baked
+  // only for a template-empty element) — locked in BOTH backends byte-identically.
+  test('dangerouslySetInnerHTML static-object payload (declaration baked)', () =>
+    compare(
+      `export const X = () => <div class="cb"><div dangerouslySetInnerHTML={{ __html: '<b>x</b>' }} /></div>`,
+    ))
+  test('dangerouslySetInnerHTML with children (declaration suppressed)', () =>
+    compare(
+      `export const X = (props) => <div class="cb"><div dangerouslySetInnerHTML={props.html}><span>kid</span></div></div>`,
+    ))
   // style — object-aware form (object → Object.assign, string → cssText)
   test('style object literal (reactive)', () => compare(`${sig}export const X = () => <div style={{ color: t() }}>y</div>`))
   test('style object thunk (reactive)', () => compare(`${sig}export const X = () => <div style={() => ({ color: t() })}>y</div>`))

@@ -3410,3 +3410,57 @@ describe('bare-signal attribute → _bindDirect (consistency fix)', () => {
     expect(code).not.toContain('_bindText(name')
   })
 })
+
+// ── dangerouslySetInnerHTML → _setHtml + template declaration (regression) ──
+// The template path used to INLINE `el.innerHTML = _h.__html` — correct for
+// CSR but structurally unable to participate in hydration adoption: the
+// server children (the parse of `__html`) were re-parsed on every load
+// (measured: 9,111 of a docs page's 9,511 rebuilt body nodes were Shiki
+// output under such elements). The binding now routes through the runtime
+// `_setHtml` (= applyDangerousHtml — the `_setClass`/`_setStyle` rule), whose
+// first write to a verifier-marked element TRUSTS the server DOM, and the
+// element is DECLARED in the template HTML via `data-pyreon-html` (the
+// `data-pyreon-hole` mechanism) so the adopt verifier accepts its server
+// children instead of bailing the whole template.
+describe('JSX transform — dangerouslySetInnerHTML routes through _setHtml', () => {
+  test('forwarded prop: _setHtml call + data-pyreon-html declaration + import', () => {
+    const result = t(
+      'export const X = (props) => <div class="cb"><div class="pre" dangerouslySetInnerHTML={props.html} /></div>',
+    )
+    expect(result).toContain('_setHtml(__e0, props.html)')
+    expect(result).toContain('<div class=\\"pre\\" data-pyreon-html></div>')
+    expect(result).toMatch(/import \{[^}]*_setHtml[^}]*\} from "@pyreon\/runtime-dom"/)
+    // The old inline assignment must be gone.
+    expect(result).not.toContain('.innerHTML =')
+  })
+
+  test('direct signal ref: _bindDirect updater delegates to _setHtml', () => {
+    const result = t(
+      "const s = signal({ __html: 'x' }); export const X = () => <div class=\"cb\"><div dangerouslySetInnerHTML={s} /></div>",
+    )
+    expect(result).toContain('(v) => _setHtml(__e0, v)')
+    expect(result).toContain('data-pyreon-html')
+    expect(result).not.toContain('.innerHTML =')
+  })
+
+  test('static object literal still routes through _setHtml (one sink, both arms)', () => {
+    const result = t(
+      "export const X = () => <div class=\"cb\"><div dangerouslySetInnerHTML={{ __html: '<b>x</b>' }} /></div>",
+    )
+    expect(result).toContain('_setHtml(__e0,')
+    expect(result).toContain('data-pyreon-html')
+  })
+
+  test('an element with CHILDREN alongside dangerouslySetInnerHTML gets NO declaration', () => {
+    // The children-alongside-innerHTML shape is broken either way (the write
+    // wipes them); the declaration is baked only for a template-empty element,
+    // mirroring the runtime verifier's defensive re-check — a declared element
+    // whose template body is non-empty must never hand its server range to the
+    // binding AND to the baked children.
+    const result = t(
+      'export const X = (props) => <div class="cb"><div dangerouslySetInnerHTML={props.html}><span>kid</span></div></div>',
+    )
+    expect(result).toContain('_setHtml(')
+    expect(result).not.toContain('data-pyreon-html')
+  })
+})

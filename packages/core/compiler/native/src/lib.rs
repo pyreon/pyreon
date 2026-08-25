@@ -516,6 +516,7 @@ struct Ctx<'a> {
     needs_set_class_import: bool,
     needs_set_attr_import: bool,
     needs_set_value_import: bool,
+    needs_set_html_import: bool,
     needs_bind_text_import: bool,
     needs_bind_direct_import: bool,
     needs_bind_import: bool,
@@ -725,6 +726,7 @@ impl<'a> Ctx<'a> {
             needs_set_class_import: false,
             needs_set_attr_import: false,
             needs_set_value_import: false,
+            needs_set_html_import: false,
             needs_bind_text_import: false,
             needs_bind_direct_import: false,
             needs_bind_import: false,
@@ -881,6 +883,9 @@ impl<'a> Ctx<'a> {
             }
             if self.needs_set_value_import {
                 imports.push("_setValue");
+            }
+            if self.needs_set_html_import {
+                imports.push("_setHtml");
             }
             let reactivity = if self.needs_bind_import {
                 "\nimport { _bind } from \"@pyreon/reactivity\";"
@@ -6482,6 +6487,7 @@ struct TemplateBuilder {
     needs_set_class: bool,
     needs_set_attr: bool,
     needs_set_value: bool,
+    needs_set_html: bool,
     /// Preserved holes — absorbed COMPONENT children whose source range must
     /// survive into the output so the walk can transform them in place. Each is
     /// represented in the generated body by a `HOLE_SENTINEL`-delimited index
@@ -6517,6 +6523,7 @@ impl TemplateBuilder {
             needs_set_class: false,
             needs_set_attr: false,
             needs_set_value: false,
+            needs_set_html: false,
             hole_spans: Vec::new(),
         }
     }
@@ -6651,6 +6658,9 @@ fn build_template_call(
     }
     if tb.needs_set_value {
         ctx.needs_set_value_import = true;
+    }
+    if tb.needs_set_html {
+        ctx.needs_set_html_import = true;
     }
     if tb.needs_set_attr {
         ctx.needs_set_attr_import = true;
@@ -6867,6 +6877,27 @@ fn absorbs_component_child(children: &[JSXChild]) -> bool {
 /// suite, which compares the two backends' full emit.
 const TPL_HOLE_ATTR_SUFFIX: &str = " data-pyreon-hole";
 
+/// Mirrors the JS backend's `TPL_HTML_ATTR` — declares a template element
+/// carrying a `dangerouslySetInnerHTML` binding (emitted EMPTY; the payload
+/// arrives via the bind's `_setHtml` line, while the SSR counterpart is FULL),
+/// so the hydration adopt verifier accepts its server children instead of
+/// reading them as extra elements. Stripped by the runtime at template-parse
+/// time. Byte-for-byte identity with `jsx.ts` is asserted by the
+/// native-equivalence suite.
+const TPL_HTML_ATTR_SUFFIX: &str = " data-pyreon-html";
+
+/// Does this element carry a plain `dangerouslySetInnerHTML` JSX attribute?
+fn has_dangerous_html_attr(el: &JSXElement) -> bool {
+    el.opening_element.attributes.iter().any(|attr| {
+        if let JSXAttributeItem::Attribute(a) = attr {
+            if let JSXAttributeName::Identifier(id) = &a.name {
+                return id.name == "dangerouslySetInnerHTML";
+            }
+        }
+        false
+    })
+}
+
 fn process_element(
     el: &JSXElement,
     accessor: &str,
@@ -6897,11 +6928,16 @@ fn process_element(
         child_html = ch;
         is_hole = hole;
     }
+    // dangerouslySetInnerHTML declaration (see TPL_HTML_ATTR_SUFFIX). Baked
+    // only when the template gives this element NO body of its own — mirrors
+    // jsx.ts:processElement's `isHtmlEl` guard.
+    let is_html_el = has_dangerous_html_attr(el) && child_html.is_empty() && !is_hole;
     let mut html = format!(
-        "<{}{}{}>{}",
+        "<{}{}{}{}>{}",
         tag,
         html_attrs,
         if is_hole { TPL_HOLE_ATTR_SUFFIX } else { "" },
+        if is_html_el { TPL_HTML_ATTR_SUFFIX } else { "" },
         child_html
     );
     tb.bind_lines.append(&mut deferred_lines);
@@ -7373,13 +7409,13 @@ fn attr_setter(
         // backend's attrSetter. The caller sets `tb.needs_set_style`.
         format!("_setStyle({}, {})", var_name, expr)
     } else if html_attr_name == "dangerouslySetInnerHTML" {
-        // Mirror runtime applyStaticProp: set innerHTML from the `{ __html }`
-        // payload (raw). A generic setAttribute stringifies the object to
-        // "[object Object]" and leaves the element EMPTY — see the JS backend.
-        format!(
-            "{{ const _h = ({}); {}.innerHTML = _h != null && _h.__html != null ? _h.__html : \"\" }}",
-            expr, var_name
-        )
+        // Delegate to runtime `_setHtml` (= applyDangerousHtml) — raw
+        // `{ __html }` extraction (developer owns sanitization, same as React)
+        // shared with the h() path, plus the hydration-adoption first-write
+        // skip (the server children are already the parse of `__html`).
+        // Mirrors the JS backend's attrSetter (jsx.ts).
+        tb.needs_set_html = true;
+        format!("_setHtml({}, {})", var_name, expr)
     } else if html_attr_name == "value" && (tag == "input" || tag == "textarea") {
         // `<input>`/`<textarea>` `value`: delegate to the runtime `_setValue`
         // (= applyValueProp), which assigns the property AND establishes
@@ -7450,10 +7486,8 @@ fn emit_dynamic_attr(
         } else if html_attr_name == "style" {
             format!("(v) => _setStyle({}, v)", var_name)
         } else if html_attr_name == "dangerouslySetInnerHTML" {
-            format!(
-                "(v) => {{ {}.innerHTML = v != null && v.__html != null ? v.__html : \"\" }}",
-                var_name
-            )
+            tb.needs_set_html = true;
+            format!("(v) => _setHtml({}, v)", var_name)
         } else if html_attr_name == "value" && (tag == "input" || tag == "textarea") {
             tb.needs_set_value = true;
             format!("(v) => _setValue({}, v)", var_name)
