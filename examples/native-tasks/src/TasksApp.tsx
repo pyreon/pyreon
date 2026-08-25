@@ -56,6 +56,7 @@ import { createHttp } from '@pyreon/http'
 import { syncedSignal, PyreonCrdtDoc } from '@pyreon/sync'
 import { useSortable } from '@pyreon/dnd'
 import { PyreonUI } from '@pyreon/ui-core'
+import { kinetic } from '@pyreon/kinetic'
 import { createI18n } from '@pyreon/i18n'
 import { toast } from '@pyreon/toast'
 import { announce } from '@pyreon/a11y'
@@ -427,6 +428,11 @@ interface TaskDto { id: string; title: string }
 const api = createHttp({ baseUrl: 'https://example.com' })
 const getTask = api.endpoint('GET /tasks/:id')
 
+// kinetic: a preset chain lowers to a real mount animation — the preset names
+// an animation both targets know, and the enter is driven by a synthesized
+// mount flag (a constant `show` compiles and never animates).
+const FadeIn = kinetic('div').preset('fade')
+
 // Module scope, which is where SizedMap lowers.
 //
 // @pyreon/validate and @pyreon/feature were here and are deliberately NOT:
@@ -515,6 +521,9 @@ function ToolkitScreen() {
       <Text data-testid="toolkit-synced">{String(synced())}</Text>
       <Text data-testid="toolkit-http">{taskReq.data}</Text>
       <Text data-testid="toolkit-sortable">{sortable.activeKey ?? 'idle'}</Text>
+      <FadeIn>
+        <Text data-testid="toolkit-fade">animated</Text>
+      </FadeIn>
       <Button onPress={() => navigate('/tasks')} data-testid="toolkit-back">
         Back to tasks
       </Button>
