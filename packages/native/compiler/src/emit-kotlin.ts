@@ -1279,13 +1279,13 @@ const KOTLIN_PERMISSIONS_ENV = `// CompositionLocal for <PermissionsProvider> â€
 private val LocalPyreonPermissions = compositionLocalOf { PyreonPermissions() }`
 
 const KOTLIN_URL_STATE = `class PyreonUrlState(
-    private val router: PyreonRouter,
+    private val router: PyreonRouter?,
     private val key: String,
     private val defaultValue: String,
 ) {
-    operator fun invoke(): String = router.query.value[key] ?: defaultValue
-    fun set(value: String) { router.setQueryParam(key, value) }
-    fun clear() { router.setQueryParam(key, null) }
+    operator fun invoke(): String = router?.query?.value?.get(key) ?: defaultValue
+    fun set(value: String) { router?.setQueryParam(key, value) }
+    fun clear() { router?.setQueryParam(key, null) }
 }`
 
 /**
@@ -1321,12 +1321,12 @@ const KOTLIN_URL_NUMBER = `private fun pyreonUrlNumber(raw: String, fallback: Do
 
 /** Int-valued search parameter. See `KOTLIN_URL_NUMBER` for the decode. */
 const KOTLIN_URL_STATE_INT = `class PyreonUrlStateInt(
-    private val router: PyreonRouter,
+    private val router: PyreonRouter?,
     private val key: String,
     private val defaultValue: Int,
 ) {
     operator fun invoke(): Int {
-        val raw = router.query.value[key] ?: return defaultValue
+        val raw = router?.query?.value?.get(key) ?: return defaultValue
         val n = pyreonUrlNumber(raw, defaultValue.toDouble())
         // An integer-defaulted binding is Int on both targets, so a fractional
         // or out-of-range value has no representation â€” fall back to the
@@ -1334,8 +1334,8 @@ const KOTLIN_URL_STATE_INT = `class PyreonUrlStateInt(
         if (n != Math.floor(n) || n < Int.MIN_VALUE.toDouble() || n > Int.MAX_VALUE.toDouble()) return defaultValue
         return n.toInt()
     }
-    fun set(value: Int) { router.setQueryParam(key, value.toString()) }
-    fun clear() { router.setQueryParam(key, null) }
+    fun set(value: Int) { router?.setQueryParam(key, value.toString()) }
+    fun clear() { router?.setQueryParam(key, null) }
 }`
 
 /**
@@ -1344,19 +1344,19 @@ const KOTLIN_URL_STATE_INT = `class PyreonUrlStateInt(
  * "1.0", so the round-trip would not match the web's `?zoom=1`.
  */
 const KOTLIN_URL_STATE_DOUBLE = `class PyreonUrlStateDouble(
-    private val router: PyreonRouter,
+    private val router: PyreonRouter?,
     private val key: String,
     private val defaultValue: Double,
 ) {
     operator fun invoke(): Double {
-        val raw = router.query.value[key] ?: return defaultValue
+        val raw = router?.query?.value?.get(key) ?: return defaultValue
         return pyreonUrlNumber(raw, defaultValue)
     }
     fun set(value: Double) {
         val s = if (value == Math.floor(value) && Math.abs(value) < 1e15) value.toLong().toString() else value.toString()
-        router.setQueryParam(key, s)
+        router?.setQueryParam(key, s)
     }
-    fun clear() { router.setQueryParam(key, null) }
+    fun clear() { router?.setQueryParam(key, null) }
 }`
 
 /**
@@ -1364,16 +1364,16 @@ const KOTLIN_URL_STATE_DOUBLE = `class PyreonUrlStateDouble(
  * other string, `"1"` and `"TRUE"` included, is false.
  */
 const KOTLIN_URL_STATE_BOOL = `class PyreonUrlStateBool(
-    private val router: PyreonRouter,
+    private val router: PyreonRouter?,
     private val key: String,
     private val defaultValue: Boolean,
 ) {
     operator fun invoke(): Boolean {
-        val raw = router.query.value[key] ?: return defaultValue
+        val raw = router?.query?.value?.get(key) ?: return defaultValue
         return raw == "true"
     }
-    fun set(value: Boolean) { router.setQueryParam(key, if (value) "true" else "false") }
-    fun clear() { router.setQueryParam(key, null) }
+    fun set(value: Boolean) { router?.setQueryParam(key, if (value) "true" else "false") }
+    fun clear() { router?.setQueryParam(key, null) }
 }`
 
 /**
