@@ -348,6 +348,15 @@ describe('createISRHandler', () => {
       })
       const handler = createISRHandler(inner, {
         revalidate: 0,
+        // PR-S6: `revalidateRequest` is documented to pair with an explicit
+        // `cacheKey` (an auth-gated entry re-rendered against the triggering
+        // user's cookies is the exact hazard it exists to scope). Under the
+        // fail-safe default a credentialed request is not cached at all, so
+        // this test now supplies the cookie-varying cacheKey the feature is
+        // designed for — the invariant under test (revalidateRequest REPLACES
+        // the background request) is unchanged.
+        cacheKey: (req) =>
+          `${new URL(req.url).pathname}::${req.headers.get('cookie')?.match(/session=([^;]+)/)?.[1] ?? 'anon'}`,
         revalidateRequest: (req) =>
           // Strip cookies — revalidate as anonymous.
           new Request(req.url, { method: 'GET' }),
@@ -1102,6 +1111,213 @@ describe('PR-S4: responseFilter — final-say override', () => {
     expect(r1.headers.get('x-isr-cache')).toBe('MISS')
     expect(r2.headers.get('x-isr-cache')).toBe('HIT')
     expect(inner).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ─── PR-S6: fail-safe default — request-credential-aware cacheability ──────
+//
+// Bug: PR-S4's isCacheable keyed only on RESPONSE signals (Set-Cookie /
+// Cache-Control: private / Vary / Authorization header). A loader that READS
+// the request's Cookie / Authorization and renders per-user HTML but returns a
+// plain `200 text/html` (no Set-Cookie, no Vary) was judged cacheable and
+// stored under the URL-only default key → Alice's personalized page served to
+// the next anonymous visitor. The framework's own redirect() auth-gate loader
+// example (router/src/redirect.ts) produces exactly this cacheable-personalized
+// shape.
+//
+// Fix (fail-safe default): under the default / 'path-only' key, a request that
+// ARRIVED with Cookie or Authorization is NOT cacheable UNLESS the response
+// opts in with `Cache-Control: public`. Both directions must hold: a genuinely
+// public page (no request credentials) must STILL cache — that's ISR's point.
+//
+// Bisect-verify: revert the `reqHasCredentials && !isExplicitlyPublic` guard in
+// isr.ts:isCacheable → test (a) fails (Alice's HTML served to anon).
+describe('PR-S6: request-credential-aware fail-safe default', () => {
+  // A loader that reads the request cookie and renders per-user HTML, but
+  // returns a plain 200 text/html with NO Set-Cookie / Vary (the invisible
+  // hazard shape).
+  function personalizedHandler() {
+    return vi.fn(async (req: Request) => {
+      const user = req.headers.get('cookie')?.match(/session=([^;]+)/)?.[1]
+        ?? (req.headers.get('authorization') ? 'bearer-user' : 'anon')
+      return new Response(`<html>Welcome ${user}</html>`, {
+        headers: { 'content-type': 'text/html' },
+      })
+    })
+  }
+
+  it('(a) request WITH Cookie + plain-200 personalized render → NOT cached; anon does not receive the credentialed HTML', async () => {
+    const inner = personalizedHandler()
+    const handler = createISRHandler(inner, { revalidate: 60 })
+
+    // Alice's authed request renders per-user HTML.
+    const alice = await handler(
+      new Request('http://x/dashboard', { headers: { cookie: 'session=alice' } }),
+    )
+    expect(await alice.text()).toBe('<html>Welcome alice</html>')
+    // Fail-safe: refused caching → BYPASS, never stored under the URL key.
+    expect(alice.headers.get('x-isr-cache')).toBe('BYPASS')
+
+    // A subsequent ANON request must NOT be served Alice's cached HTML —
+    // it re-renders fresh (as anon), proving nothing leaked into the store.
+    const anon = await handler(new Request('http://x/dashboard'))
+    const anonBody = await anon.text()
+    expect(anonBody).toBe('<html>Welcome anon</html>')
+    expect(anonBody).not.toContain('alice')
+    // The anon render (no credentials) IS cacheable — MISS then stored.
+    expect(anon.headers.get('x-isr-cache')).toBe('MISS')
+    expect(inner).toHaveBeenCalledTimes(2)
+  })
+
+  it('(a2) request with Authorization header + plain-200 render → NOT cached', async () => {
+    const inner = personalizedHandler()
+    const handler = createISRHandler(inner, { revalidate: 60 })
+
+    const authed = await handler(
+      new Request('http://x/dashboard', { headers: { authorization: 'Bearer tok' } }),
+    )
+    expect(authed.headers.get('x-isr-cache')).toBe('BYPASS')
+
+    // Second identical authed request: still BYPASS (never entered the store).
+    const authed2 = await handler(
+      new Request('http://x/dashboard', { headers: { authorization: 'Bearer tok' } }),
+    )
+    expect(authed2.headers.get('x-isr-cache')).toBe('BYPASS')
+    expect(inner).toHaveBeenCalledTimes(2)
+  })
+
+  it('(b) public request (no Cookie/Authorization) → cached and served from cache on the second hit (ISR still works)', async () => {
+    const inner = mockHandler('<html>public blog post</html>')
+    const handler = createISRHandler(inner, { revalidate: 60 })
+
+    const r1 = await handler(new Request('http://x/blog/hello'))
+    expect(r1.headers.get('x-isr-cache')).toBe('MISS')
+
+    const r2 = await handler(new Request('http://x/blog/hello'))
+    expect(r2.headers.get('x-isr-cache')).toBe('HIT')
+    expect(await r2.text()).toBe('<html>public blog post</html>')
+    expect(inner).toHaveBeenCalledTimes(1)
+  })
+
+  it('(c) explicit cacheKey FUNCTION is honored verbatim even with cookies (developer took ownership)', async () => {
+    const inner = personalizedHandler()
+    const handler = createISRHandler(inner, {
+      revalidate: 60,
+      cacheKey: (req) =>
+        `${new URL(req.url).pathname}::${req.headers.get('cookie')?.match(/session=([^;]+)/)?.[1] ?? 'anon'}`,
+    })
+
+    // Alice caches under her own key.
+    const a1 = await handler(
+      new Request('http://x/dashboard', { headers: { cookie: 'session=alice' } }),
+    )
+    expect(a1.headers.get('x-isr-cache')).toBe('MISS')
+    const a2 = await handler(
+      new Request('http://x/dashboard', { headers: { cookie: 'session=alice' } }),
+    )
+    expect(a2.headers.get('x-isr-cache')).toBe('HIT')
+    expect(await a2.text()).toBe('<html>Welcome alice</html>')
+
+    // Bob gets his own key — a fresh render, never Alice's entry.
+    const b1 = await handler(
+      new Request('http://x/dashboard', { headers: { cookie: 'session=bob' } }),
+    )
+    expect(b1.headers.get('x-isr-cache')).toBe('MISS')
+    expect(await b1.text()).toBe('<html>Welcome bob</html>')
+    expect(inner).toHaveBeenCalledTimes(2)
+  })
+
+  it('(d) Cache-Control: public opt-in with cookies → cached (the escape hatch)', async () => {
+    // Response explicitly marks itself public — the developer affirms this
+    // render is the same for everyone, so a credentialed request is allowed
+    // to seed the shared cache.
+    const inner = vi.fn(
+      async () =>
+        new Response('<html>shared public</html>', {
+          headers: { 'content-type': 'text/html', 'cache-control': 'public, max-age=3600' },
+        }),
+    )
+    const handler = createISRHandler(inner, { revalidate: 60 })
+
+    const r1 = await handler(
+      new Request('http://x/promo', { headers: { cookie: 'session=alice' } }),
+    )
+    expect(r1.headers.get('x-isr-cache')).toBe('MISS')
+
+    const r2 = await handler(new Request('http://x/promo'))
+    expect(r2.headers.get('x-isr-cache')).toBe('HIT')
+    expect(inner).toHaveBeenCalledTimes(1)
+  })
+
+  it('amplifier closed: a stale ANON entry is NOT poisoned by a credentialed background revalidation', async () => {
+    // Anon request seeds the cache; it goes immediately stale; a later
+    // credentialed request serves the (public, anon) stale copy AND triggers
+    // a background revalidation carrying the credentialed cookies. That
+    // re-render is per-user, so isCacheable(finalRes, originalReq) must refuse
+    // to store it — the anon entry stays anon.
+    const inner = personalizedHandler()
+    const handler = createISRHandler(inner, { revalidate: 0 /* immediately stale */ })
+
+    // Seed with an anon (cacheable) entry.
+    const seed = await handler(new Request('http://x/feed'))
+    expect(seed.headers.get('x-isr-cache')).toBe('MISS')
+    expect(await seed.text()).toBe('<html>Welcome anon</html>')
+
+    // Let a real millisecond elapse so the entry reads as stale (revalidate:0
+    // means age must be strictly > 0 to be STALE, not merely == 0).
+    await new Promise((r) => setTimeout(r, 5))
+
+    // Credentialed request: serves the stale ANON copy, kicks off a
+    // background revalidation with Alice's cookie.
+    const staleServe = await handler(
+      new Request('http://x/feed', { headers: { cookie: 'session=alice' } }),
+    )
+    expect(staleServe.headers.get('x-isr-cache')).toBe('STALE')
+    expect(await staleServe.text()).toBe('<html>Welcome anon</html>')
+
+    // Let the background revalidation settle.
+    await new Promise((r) => setTimeout(r, 20))
+
+    // The next anon request must still see the ANON content — the credentialed
+    // revalidation must NOT have written 'Welcome alice' under the shared key.
+    const after = await handler(new Request('http://x/feed'))
+    const afterBody = await after.text()
+    expect(afterBody).not.toContain('alice')
+  })
+
+  it('production: the credential-refusal warning fires ONCE even in production', async () => {
+    const prev = process.env.NODE_ENV
+    process.env.NODE_ENV = 'production'
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const inner = personalizedHandler()
+      const handler = createISRHandler(inner, { revalidate: 60 })
+
+      await handler(new Request('http://x/a', { headers: { cookie: 'session=alice' } }))
+      await handler(new Request('http://x/b', { headers: { cookie: 'session=bob' } }))
+
+      const refusalWarns = warnSpy.mock.calls.filter((args) =>
+        String(args[0]).includes('refusing to cache it'),
+      )
+      // Fires in production (not gated to dev) AND deduped per-handler → once.
+      expect(refusalWarns.length).toBe(1)
+    } finally {
+      warnSpy.mockRestore()
+      process.env.NODE_ENV = prev
+    }
+  })
+
+  it("'path-only' shorthand is NOT a custom key — still refuses a credentialed request", async () => {
+    const inner = personalizedHandler()
+    const handler = createISRHandler(inner, { revalidate: 60, cacheKey: 'path-only' })
+
+    const authed = await handler(
+      new Request('http://x/dashboard', { headers: { cookie: 'session=alice' } }),
+    )
+    expect(authed.headers.get('x-isr-cache')).toBe('BYPASS')
+    // A public request under path-only still caches (ISR intact).
+    const anon = await handler(new Request('http://x/dashboard'))
+    expect(anon.headers.get('x-isr-cache')).toBe('MISS')
   })
 })
 
