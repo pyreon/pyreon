@@ -104,14 +104,21 @@ export interface ISRConfig {
    * user's content. The new default is safe for query-varied content;
    * see the two trade-offs below for tuning.
    *
-   * **⚠️ Auth-gated incompatibility — still applies.** The default
-   * does NOT include cookies / Authorization headers. A loader that
-   * reads `request.headers.get('cookie')` to gate auth will render
-   * ONCE with the first user's cookie, then serve that HTML to every
-   * subsequent user (matched only by URL). To use ISR with personalized
-   * / auth-gated pages, supply a `cacheKey` that varies on the auth
-   * identifier (session cookie, user-id header, etc.), OR don't use
-   * ISR for such routes — use SSR instead.
+   * **Auth-gated safety — fail-safe by default (v0.31).** The default
+   * key does NOT include cookies / Authorization. To stop a loader that
+   * reads `request.headers.get('cookie')` from caching one user's HTML
+   * under the URL alone, the default is now request-credential-aware:
+   * when NO `cacheKey` is configured, a request that ARRIVED with a
+   * `Cookie` or `Authorization` header is **not cached** unless the
+   * response explicitly opts in with `Cache-Control: public`. So a
+   * personalized page renders per request (uncached) instead of leaking
+   * across users. To CACHE a personalized page, supply a `cacheKey` that
+   * varies on the auth identifier (session cookie, user-id header, etc.).
+   * To cache a page that IS the same for every credentialed visitor, mark
+   * the response `Cache-Control: public`. A truly-public page (no request
+   * credentials) caches normally with no changes. Fires a one-per-handler
+   * warning (dev AND production) the first time a credentialed request is
+   * refused, so the misconfiguration is visible where a CMS/webhook runs.
    *
    * **⚠️ High-cardinality query params.** Analytics tokens (`utm_*`,
    * `fbclid`, `gclid`, `mc_eid`) cause cache explosion under the new
