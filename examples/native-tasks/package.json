@@ -35,6 +35,7 @@
     "@pyreon/state-tree": "workspace:*",
     "@pyreon/sync": "workspace:*",
     "@pyreon/toast": "workspace:*",
+    "@pyreon/ui-core": "workspace:*",
     "@pyreon/url-state": "workspace:*"
   }
 }

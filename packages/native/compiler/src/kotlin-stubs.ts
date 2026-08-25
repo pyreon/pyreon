@@ -906,8 +906,14 @@ fun useParams(): Map<String, String> = emptyMap()
 // useUrlState lowers to a PyreonUrlState over the active router, so the
 // emit needs a router accessor here too. Same defensive-default shape as
 // the two above.
-@Composable
-fun useRouter(): PyreonRouter = PyreonRouter()
+class PyreonCompositionLocal<T>(private val value: T) {
+  val current: T get() = value
+}
+
+// NO useRouter() here, deliberately: router-kotlin does not ship one, and a
+// stub that declared it hid a real emit bug until a device build failed. The
+// router is reached through the CompositionLocal, exactly as the runtime does.
+val LocalPyreonRouter = PyreonCompositionLocal(PyreonRouter())
 
 @Composable
 inline fun <reified T : Any> useLoaderData(): T? = null

@@ -37,7 +37,14 @@ describe('useUrlState lowering', () => {
   it('binds the parameter through the router (Kotlin)', () => {
     const { code } = transform(SRC, { target: 'kotlin' })
     expect(code).toContain('class PyreonUrlState')
-    expect(code).toContain('PyreonUrlState(useRouter(), "q", "all")')
+    // Was `useRouter()`. router-kotlin ships useNavigate / useParams /
+    // useLoaderData and NO useRouter, so that emit could not build -- but the
+    // Kotlin STUB declared one, so this assertion and every stub-level check
+    // passed while a real `gradle assembleDebug` failed with
+    // `Unresolved reference 'useRouter'`. The invariant is unchanged (the
+    // parameter binds through the router); only the accessor is corrected to
+    // the CompositionLocal the runtime actually exposes.
+    expect(code).toContain('PyreonUrlState(LocalPyreonRouter.current, "q", "all")')
     expect(code).toContain('router.setQueryParam(key, value)')
   })
 
@@ -145,9 +152,9 @@ describe('useUrlState typed defaults', () => {
   it('lowers number and boolean defaults without warning (Kotlin)', () => {
     const { code, warnings } = transform(TYPED_SRC, { target: 'kotlin' })
     expect(warnings).toHaveLength(0)
-    expect(code).toContain('PyreonUrlStateInt(useRouter(), "page", 1)')
-    expect(code).toContain('PyreonUrlStateDouble(useRouter(), "zoom", 1.5)')
-    expect(code).toContain('PyreonUrlStateBool(useRouter(), "open", false)')
+    expect(code).toContain('PyreonUrlStateInt(LocalPyreonRouter.current, "page", 1)')
+    expect(code).toContain('PyreonUrlStateDouble(LocalPyreonRouter.current, "zoom", 1.5)')
+    expect(code).toContain('PyreonUrlStateBool(LocalPyreonRouter.current, "open", false)')
   })
 
   // An integer literal is Int, a fractional one Double — the repo-wide
@@ -170,7 +177,7 @@ export function C() { const o = useUrlState('o', -3); return (<Stack><Text>{\`\$
       'PyreonUrlStateInt(router: pyreonRouter, key: "o", defaultValue: -3)',
     )
     expect(transform(src, { target: 'kotlin' }).code).toContain(
-      'PyreonUrlStateInt(useRouter(), "o", -3)',
+      'PyreonUrlStateInt(LocalPyreonRouter.current, "o", -3)',
     )
   })
 
