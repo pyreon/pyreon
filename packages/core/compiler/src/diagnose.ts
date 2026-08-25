@@ -29,6 +29,21 @@ interface ErrorPattern {
 
 const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // The sanitized `innerHTML` prop fails LOUD during SSR/SSG/stream: its
+    // allowlist sanitizer is DOM-based (DOMParser) and cannot run in Node, so
+    // the server refuses to emit the value raw (that would be an XSS that fires
+    // at initial parse, before hydration re-sanitizes). Teaching it because the
+    // message names a prop the developer DID write, at render time, and the
+    // remedy (switch to dangerouslySetInnerHTML with a server-safe sanitizer,
+    // or render client-only) is not obvious from the throw alone.
+    pattern: /sanitized ['"`]?innerHTML['"`]? prop cannot be sanitized during SSR/,
+    diagnose: () => ({
+      cause:
+        "Pyreon's `innerHTML` prop is the SANITIZED innerHTML path — the client sanitizes it in the browser via a DOM-based allowlist sanitizer. That sanitizer cannot run in Node, so the SSR / SSG / streaming renderers refuse to emit the value: emitting attacker-controlled markup raw would execute at initial HTML parse, before hydration could clean it (a stored/reflected XSS). The server fails loud rather than ship a silent XSS.",
+      fix: 'If the HTML is UNTRUSTED, render this element in a client-only island / SPA route so `innerHTML` is sanitized in the browser. If you own the sanitization (trusted markup, or you run your own server-safe sanitizer such as DOMPurify+jsdom or sanitize-html), use `dangerouslySetInnerHTML={{ __html }}` — it is raw by design and emits verbatim on the server.',
+    }),
+  },
+  {
     // The residual footgun created by defaulting `templatizeComponentChildren`
     // ON. The emit INJECTS `import { _mountChild } from "@pyreon/runtime-dom"`
     // into app source whenever an element absorbs a component child — which is
