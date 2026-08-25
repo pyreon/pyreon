@@ -134,16 +134,15 @@ describe('renderToString — reactive props (signal snapshots)', () => {
   })
 })
 
-// Regression: `innerHTML` and `dangerouslySetInnerHTML` were rendered as
-// literal HTML attributes (`<span innerHTML="...">`) in the open tag instead
-// of as element INNER content. That produced wasted bytes, a hydration
-// mismatch, AND (with the client-side innerHTML bug) the literal closure
-// text was visible before hydration replaced it with the real SVG.
+// The sanitized `innerHTML` prop is DOM-based and cannot run in Node, so its
+// SSR/stream twins FAIL LOUD (see the XSS regression suite) rather than emit
+// raw markup that would execute at initial parse. `dangerouslySetInnerHTML` is
+// raw by design and still renders as inner CONTENT (not a literal attribute).
 describe('renderToString — innerHTML / dangerouslySetInnerHTML inner-content rendering', () => {
-  test('innerHTML renders as inner content, not as an attribute', async () => {
-    const html = await renderToString(h('span', { innerHTML: '<em>x</em>' }))
-    expect(html).toBe('<span><em>x</em></span>')
-    expect(html).not.toContain('innerHTML=')
+  test('non-empty innerHTML THROWS during SSR (cannot sanitize server-side)', async () => {
+    await expect(renderToString(h('span', { innerHTML: '<em>x</em>' }))).rejects.toThrow(
+      /sanitized `innerHTML` prop cannot be sanitized during SSR/,
+    )
   })
 
   test('dangerouslySetInnerHTML renders as inner content, not as an attribute', async () => {
@@ -152,12 +151,14 @@ describe('renderToString — innerHTML / dangerouslySetInnerHTML inner-content r
     expect(html).not.toContain('dangerouslySetInnerHTML=')
   })
 
-  test('reactive innerHTML accessor is called at render time', async () => {
+  test('reactive innerHTML accessor is invoked (not stringified) but still THROWS', async () => {
+    // The accessor IS called (no stringified closure leaks), then the non-empty
+    // result trips the fail-loud guard — the payload never reaches output.
+    let called = false
     const icon = signal('<svg>moon</svg>')
-    const html = await renderToString(h('span', { innerHTML: () => icon() }))
-    expect(html).toBe('<span><svg>moon</svg></span>')
-    // The literal closure text must NOT appear.
-    expect(html).not.toContain('=>')
+    const html = renderToString(h('span', { innerHTML: () => { called = true; return icon() } }))
+    await expect(html).rejects.toThrow(/cannot be sanitized during SSR/)
+    expect(called).toBe(true)
   })
 
   test('reactive dangerouslySetInnerHTML accessor is called at render time', async () => {
