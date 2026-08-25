@@ -14,6 +14,7 @@ import { FlowContext } from './flow-context'
 import type {
   Connection,
   EdgeGeometry,
+  SnapSession,
   EdgeMarker,
   EdgeMarkerSpec,
   FlowEdge,
@@ -328,7 +329,7 @@ function EdgeLayer(props: {
           }
 
           let isSelected: () => boolean = () =>
-            edgeId ? instance.selectedEdges().includes(edgeId) : false
+            edgeId ? instance.isEdgeSelected(edgeId) : false
           // oxlint-enable prefer-const
 
           // Custom edge renderer — mount once with accessor props.
@@ -455,6 +456,31 @@ function NodeLayer(props: {
 }): VNodeChild {
   const { instance, nodeTypes, draggingNodeId, onNodePointerDown, onHandlePointerDown } = props
 
+  // ONE ResizeObserver shared by ALL node wrappers (P8) — it used to be one
+  // observer PER node (N observer objects at N nodes, measured 301
+  // constructions at 300 nodes incl. the container's). A single observer with
+  // an element → measure-fn registry is the platform-intended shape: the
+  // browser coalesces all resized targets into one callback batch. Lifecycle:
+  // `observe` on node mount, `unobserve` + registry delete on the ref-null
+  // unmount call — when the layer unmounts, every node's ref(null) empties the
+  // registry and the observer (0 targets) is dropped with this closure.
+  let sharedResizeObserver: ResizeObserver | null = null
+  const measureCallbacks = new Map<Element, () => void>()
+  const observeNode = (el: Element, measure: () => void): void => {
+    if (typeof ResizeObserver !== 'function') return
+    measureCallbacks.set(el, measure)
+    if (!sharedResizeObserver) {
+      sharedResizeObserver = new ResizeObserver((entries) => {
+        for (const entry of entries) measureCallbacks.get(entry.target)?.()
+      })
+    }
+    sharedResizeObserver.observe(el)
+  }
+  const unobserveNode = (el: Element): void => {
+    measureCallbacks.delete(el)
+    sharedResizeObserver?.unobserve(el)
+  }
+
   // <For> keys nodes by id and runs the children function exactly
   // ONCE per id — never re-mounts existing nodes when the underlying
   // signal updates with a new array (which happens on every position
@@ -496,7 +522,10 @@ function NodeLayer(props: {
           return instance._nodeById(id)() ?? initialNode
         }
 
-        const isSelected = (): boolean => instance.selectedNodes().includes(id)
+        // O(1) Set membership per read (P6). The old
+        // `selectedNodes().includes(id)` was an O(N) array scan per thunk —
+        // every selection change re-ran N thunks × O(N) scans = O(N²).
+        const isSelected = (): boolean => instance.isNodeSelected(id)
         const isDragging = (): boolean => draggingNodeId() === id
 
         const NodeComponent =
@@ -508,11 +537,11 @@ function NodeLayer(props: {
         // `null` when the wrapper is removed). Client-only by construction —
         // happy-dom/SSR report offsetWidth 0, so the guard skips and edge
         // geometry falls back to explicit-or-default (unit tests unaffected).
-        let nodeResizeObserver: ResizeObserver | null = null
+        let observedEl: Element | null = null
         const measureRef = (el: Element | null): void => {
-          if (nodeResizeObserver) {
-            nodeResizeObserver.disconnect()
-            nodeResizeObserver = null
+          if (observedEl) {
+            unobserveNode(observedEl)
+            observedEl = null
           }
           if (!el) {
             instance._clearNodeMeasurement(id)
@@ -558,10 +587,8 @@ function NodeLayer(props: {
             instance._setNodeMeasurement(id, w, h, handles)
           }
           measure()
-          if (typeof ResizeObserver === 'function') {
-            nodeResizeObserver = new ResizeObserver(measure)
-            nodeResizeObserver.observe(el)
-          }
+          observedEl = el
+          observeNode(el, measure)
         }
 
         return (
@@ -779,6 +806,25 @@ export function Flow(props: FlowComponentProps): VNodeChild {
 
   const draggingNodeId = () => (dragState().active ? dragState().nodeId : '')
 
+  // Per-drag snap session (P5): candidate guide lines precomputed ONCE at
+  // pointerdown (instance._createSnapSession) instead of getSnapLines'
+  // O(N)-scan-with-N-allocations on EVERY pointermove. Null while no drag is
+  // active or when object snapping is off; the move handler falls back to
+  // getSnapLines if the session couldn't be created (drag node missing —
+  // defensive, unreachable from a real pointerdown).
+  let snapSession: SnapSession | null = null
+
+  // Container-rect cache for pointer gestures (P8): the rubber-band and
+  // connection-draw move handlers converted screen → flow coordinates with a
+  // fresh `getBoundingClientRect()` per pointermove (a forced-layout read).
+  // The rect is captured once at gesture start, dropped at pointerup, and
+  // invalidated when the container ResizeObserver reports a size change (the
+  // only container-geometry tracking the component has). A mid-gesture page
+  // SCROLL is not tracked — but the canvas wheel handler preventDefaults and a
+  // pointer-captured gesture doesn't scroll the page, and the cache lives only
+  // for the duration of one gesture.
+  let gestureRect: DOMRect | null = null
+
   // ── Node dragging ──────────────────────────────────────────────────────
 
   const handleNodePointerDown = (e: PointerEvent, node: FlowNode) => {
@@ -802,6 +848,14 @@ export function Flow(props: FlowComponentProps): VNodeChild {
 
     // Save undo state before drag
     instance.pushHistory()
+
+    // Precompute snap candidates for this drag (all dragged nodes excluded —
+    // a co-dragged node moves rigidly with the pointer, so it is not a
+    // meaningful snap target; see flow.ts createSnapSession).
+    snapSession =
+      instance.config.snapToObjects !== false
+        ? instance._createSnapSession(node.id, new Set(startPositions.keys()))
+        : null
 
     dragState.set({
       active: true,
@@ -855,7 +909,10 @@ export function Flow(props: FlowComponentProps): VNodeChild {
     })
 
     const container = (e.target as HTMLElement).closest('.pyreon-flow') as HTMLElement
-    if (container) container.setPointerCapture(e.pointerId)
+    if (container) {
+      container.setPointerCapture(e.pointerId)
+      gestureRect = container.getBoundingClientRect()
+    }
   }
 
   // ── Zoom ───────────────────────────────────────────────────────────────
@@ -915,6 +972,7 @@ export function Flow(props: FlowComponentProps): VNodeChild {
     if (e.shiftKey && instance.config.multiSelect !== false) {
       const container = e.currentTarget as HTMLElement
       const rect = container.getBoundingClientRect()
+      gestureRect = rect
       const vp = instance.viewport.peek()
       const flowX = (e.clientX - rect.left - vp.x) / vp.zoom
       const flowY = (e.clientY - rect.top - vp.y) / vp.zoom
@@ -950,7 +1008,7 @@ export function Flow(props: FlowComponentProps): VNodeChild {
 
     if (sel.active) {
       const container = e.currentTarget as HTMLElement
-      const rect = container.getBoundingClientRect()
+      const rect = (gestureRect ??= container.getBoundingClientRect())
       const vp = instance.viewport.peek()
       const flowX = (e.clientX - rect.left - vp.x) / vp.zoom
       const flowY = (e.clientY - rect.top - vp.y) / vp.zoom
@@ -976,31 +1034,49 @@ export function Flow(props: FlowComponentProps): VNodeChild {
       // raw position with no guide lines.
       let actualDx = dx
       let actualDy = dy
+      let snap: { x: number | null; y: number | null } | null = null
       if (instance.config.snapToObjects !== false) {
-        const snap = instance.getSnapLines(drag.nodeId, rawPos)
-        helperLines.set({ x: snap.x, y: snap.y })
-        actualDx = snap.snappedPosition.x - primaryStart.x
-        actualDy = snap.snappedPosition.y - primaryStart.y
+        // Session path (P5): precomputed candidates, zero per-node work.
+        // getSnapLines fallback covers the defensive session-null case only.
+        const result = snapSession
+          ? snapSession.move(rawPos)
+          : instance.getSnapLines(drag.nodeId, rawPos)
+        snap = result
+        actualDx = result.snappedPosition.x - primaryStart.x
+        actualDy = result.snappedPosition.y - primaryStart.y
       }
 
-      // Update all dragged nodes from their starting positions
-      instance.nodes.update((nds) =>
-        nds.map((n) => {
-          const start = drag.startPositions.get(n.id)
-          if (!start) return n
-          return {
-            ...n,
-            position: { x: start.x + actualDx, y: start.y + actualDy },
+      // ONE reactive drain per frame (P8): helper lines + node positions used
+      // to be two unbatched writes = two flushes, and the helper-line write
+      // fired even when the guide values hadn't changed (a fresh object per
+      // frame always notifies). The guide write is value-gated — while
+      // snapped to the same guide, consecutive frames write nothing.
+      batch(() => {
+        if (snap) {
+          const prev = helperLines.peek()
+          if (prev.x !== snap.x || prev.y !== snap.y) {
+            helperLines.set({ x: snap.x, y: snap.y })
           }
-        }),
-      )
+        }
+        // Update all dragged nodes from their starting positions
+        instance.nodes.update((nds) =>
+          nds.map((n) => {
+            const start = drag.startPositions.get(n.id)
+            if (!start) return n
+            return {
+              ...n,
+              position: { x: start.x + actualDx, y: start.y + actualDy },
+            }
+          }),
+        )
+      })
       return
     }
 
     if (conn.active) {
       // Connection drawing — convert screen to flow coordinates
       const container = e.currentTarget as HTMLElement
-      const rect = container.getBoundingClientRect()
+      const rect = (gestureRect ??= container.getBoundingClientRect())
       const vp = instance.viewport.peek()
       const flowX = (e.clientX - rect.left - vp.x) / vp.zoom
       const flowY = (e.clientY - rect.top - vp.y) / vp.zoom
@@ -1044,8 +1120,8 @@ export function Flow(props: FlowComponentProps): VNodeChild {
         const maxX = Math.max(sel.startX, sel.currentX)
         const maxY = Math.max(sel.startY, sel.currentY)
 
-        instance.clearSelection()
         const measured = instance.measurements.peek()
+        const hitIds: string[] = []
         for (const node of instance.nodes.peek()) {
           // Effective box — a rubber-band selection must hit-test the node's
           // REAL rendered rect, not the 150×40 phantom.
@@ -1054,9 +1130,15 @@ export function Flow(props: FlowComponentProps): VNodeChild {
           const ny = node.position.y
           // Node is within box if any part overlaps
           if (nx + w > minX && nx < maxX && ny + h > minY && ny < maxY) {
-            instance.selectNode(node.id, true)
+            hitIds.push(node.id)
           }
         }
+        // ONE Set write for the whole band (P6) — the old shape was
+        // `clearSelection()` + an additive `selectNode` per hit, each copying
+        // the growing Set: O(K²) for a K-node band. `selectNodes` replaces
+        // the node selection and clears the edge selection — the same net
+        // state.
+        instance.selectNodes(hitIds)
 
         selectionBox.set({ ...emptySelectionBox })
         return
@@ -1066,7 +1148,11 @@ export function Flow(props: FlowComponentProps): VNodeChild {
         const node = instance.getNode(drag.nodeId)
         if (node) instance._emit.nodeDragEnd(node)
         dragState.set({ ...emptyDrag })
-        helperLines.set({ x: null, y: null })
+        snapSession = null
+        const lines = helperLines.peek()
+        if (lines.x !== null || lines.y !== null) {
+          helperLines.set({ x: null, y: null })
+        }
       }
 
       if (conn.active) {
@@ -1102,6 +1188,7 @@ export function Flow(props: FlowComponentProps): VNodeChild {
       }
 
       isPanning = false
+      gestureRect = null
     })
   }
 
@@ -1233,6 +1320,7 @@ export function Flow(props: FlowComponentProps): VNodeChild {
       // render effect). A detached container has no meaningful size — skip.
       if (!el.isConnected) return
       const rect = el.getBoundingClientRect()
+      gestureRect = null
       instance.containerSize.set({
         width: rect.width,
         height: rect.height,
@@ -1311,50 +1399,58 @@ export function Flow(props: FlowComponentProps): VNodeChild {
               connectionState={() => connectionState()}
               {...(edgeTypes != null ? { edgeTypes } : {})}
             />
-            {() => {
-              const sel = selectionBox()
-              if (!sel.active) return null
-              const x = Math.min(sel.startX, sel.currentX)
-              const y = Math.min(sel.startY, sel.currentY)
-              const w = Math.abs(sel.currentX - sel.startX)
-              const h = Math.abs(sel.currentY - sel.startY)
-              return (
-                <div
-                  class="pyreon-flow-selection-box"
-                  style={`position: absolute; left: ${x}px; top: ${y}px; width: ${w}px; height: ${h}px; border: 1px dashed var(--pyreon-flow-accent, #3b82f6); background: var(--pyreon-flow-accent-bg, rgba(59, 130, 246, 0.08)); pointer-events: none; z-index: 10;`}
-                />
-              )
-            }}
-            {() => {
-              const lines = helperLines()
-              if (!lines.x && !lines.y) return null
-              return (
-                <svg
-                  role="img"
-                  aria-label="helper lines"
-                  style="position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; z-index: 5;"
-                >
-                  {lines.x !== null && (
-                    <line
-                      x1={String(lines.x)}
-                      y1="-10000"
-                      x2={String(lines.x)}
-                      y2="10000"
-                      style="stroke: var(--pyreon-flow-accent, #3b82f6); stroke-width: 0.5; stroke-dasharray: 4,4;"
-                    />
-                  )}
-                  {lines.y !== null && (
-                    <line
-                      x1="-10000"
-                      y1={String(lines.y)}
-                      x2="10000"
-                      y2={String(lines.y)}
-                      style="stroke: var(--pyreon-flow-accent, #3b82f6); stroke-width: 0.5; stroke-dasharray: 4,4;"
-                    />
-                  )}
-                </svg>
-              )
-            }}
+            {/* Selection box + helper lines are mounted STATICALLY and only
+                their style/coordinate thunks are reactive (the P0 viewport-div
+                shape). They used to be reactive child ACCESSORS returning the
+                whole element — so every rubber-band pointermove re-created the
+                selection-box div and every snap-guide change re-created the
+                helper-line svg, per frame, mid-gesture. Hidden via
+                `display: none` while inactive. */}
+            <div
+              class="pyreon-flow-selection-box"
+              style={() => {
+                const sel = selectionBox()
+                if (!sel.active) return 'display: none;'
+                const x = Math.min(sel.startX, sel.currentX)
+                const y = Math.min(sel.startY, sel.currentY)
+                const w = Math.abs(sel.currentX - sel.startX)
+                const h = Math.abs(sel.currentY - sel.startY)
+                return `position: absolute; left: ${x}px; top: ${y}px; width: ${w}px; height: ${h}px; border: 1px dashed var(--pyreon-flow-accent, #3b82f6); background: var(--pyreon-flow-accent-bg, rgba(59, 130, 246, 0.08)); pointer-events: none; z-index: 10;`
+              }}
+            />
+            <svg
+              role="img"
+              aria-label="helper lines"
+              class="pyreon-flow-helper-lines"
+              style={() => {
+                const lines = helperLines()
+                if (lines.x === null && lines.y === null) return 'display: none;'
+                return 'position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; z-index: 5;'
+              }}
+            >
+              <line
+                x1={() => String(helperLines().x ?? 0)}
+                y1="-10000"
+                x2={() => String(helperLines().x ?? 0)}
+                y2="10000"
+                style={() =>
+                  helperLines().x === null
+                    ? 'display: none;'
+                    : 'stroke: var(--pyreon-flow-accent, #3b82f6); stroke-width: 0.5; stroke-dasharray: 4,4;'
+                }
+              />
+              <line
+                x1="-10000"
+                y1={() => String(helperLines().y ?? 0)}
+                x2="10000"
+                y2={() => String(helperLines().y ?? 0)}
+                style={() =>
+                  helperLines().y === null
+                    ? 'display: none;'
+                    : 'stroke: var(--pyreon-flow-accent, #3b82f6); stroke-width: 0.5; stroke-dasharray: 4,4;'
+                }
+              />
+            </svg>
             <NodeLayer
               instance={instance}
               nodeTypes={nodeTypes}
