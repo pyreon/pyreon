@@ -467,14 +467,15 @@ function NodeLayer(props: {
   let sharedResizeObserver: ResizeObserver | null = null
   const measureCallbacks = new Map<Element, () => void>()
   const observeNode = (el: Element, measure: () => void): void => {
-    if (typeof ResizeObserver !== 'function') return
-    measureCallbacks.set(el, measure)
-    if (!sharedResizeObserver) {
-      sharedResizeObserver = new ResizeObserver((entries) => {
-        for (const entry of entries) measureCallbacks.get(entry.target)?.()
-      })
+    if (typeof ResizeObserver === 'function') {
+      measureCallbacks.set(el, measure)
+      if (!sharedResizeObserver) {
+        sharedResizeObserver = new ResizeObserver((entries) => {
+          for (const entry of entries) measureCallbacks.get(entry.target)?.()
+        })
+      }
+      sharedResizeObserver.observe(el)
     }
-    sharedResizeObserver.observe(el)
   }
   const unobserveNode = (el: Element): void => {
     measureCallbacks.delete(el)
