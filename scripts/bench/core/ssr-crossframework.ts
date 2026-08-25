@@ -662,7 +662,7 @@ function evalPyreonFast(src: string, file: string): Record<string, (arg: never) 
   // the gap was in the harness evaluating it. So scan for every framework
   // helper the code actually references and resolve each one, failing with the
   // NAME of anything unresolvable instead of a bare ReferenceError at call time.
-  const referenced = new Set(lowered.match(/\b(?:_ssr[A-Za-z]*|_esc|_rp)\b/g) ?? [])
+  const referenced = new Set(lowered.match(/\b(?:_ssr[A-Za-z]*|_esc[A-Za-z]*|_rp)\b/g) ?? [])
   const names = ['h', ...[...referenced].sort()]
   // TOP-LEVEL declarations only (anchored with ^ + the m flag). An unanchored
   // scan also picks up bindings inside nested scopes — the compiler's fused
