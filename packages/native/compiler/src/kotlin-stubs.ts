@@ -907,7 +907,13 @@ fun useParams(): Map<String, String> = emptyMap()
 // emit needs a router accessor here too. Same defensive-default shape as
 // the two above.
 class PyreonCompositionLocal<T>(private val value: T) {
-  val current: T get() = value
+  // NULLABLE, like the real CompositionLocal: router-kotlin's own hooks read
+  // LocalPyreonRouter.current and then safe-call it. The first version of this
+  // stub typed it non-null, which let an emit assuming a non-null router
+  // compile here and fail a real gradle build with an actual-type-is-nullable
+  // mismatch. A stub is only worth having if it is at least as strict as the
+  // runtime.
+  val current: T? get() = value
 }
 
 // NO useRouter() here, deliberately: router-kotlin does not ship one, and a
