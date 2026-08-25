@@ -94,6 +94,7 @@ export type {
   NodeMeasurement,
   PanelProps,
   Rect,
+  SnapSession,
   Viewport,
   XYPosition,
 } from './types'

@@ -102,16 +102,16 @@ export function Controls(props: ControlsProps & { instance?: FlowInstance }): VN
   // reaching `zoomIn()` and the control is silently dead:
   //   1. accessor helpers called in the JSX (`{showZoomIn() && …}`) — changes
   //      the conditionals' compiled shape;
-  //   2. reading `props.*` inside the render accessor below — the accessor is a
-  //      MOUNT accessor (it reads `instance.zoom()`), so subscribing it to the
+  //   2. reading `props.*` inside the render accessor below — that would turn
+  //      the run-once accessor into a MOUNT accessor: subscribing it to the
   //      props re-runs it and REMOUNTS the buttons out from under the pointer
   //      sequence. See anti-patterns → "A reactive MOUNT accessor that reads
   //      position/layout-derived signals as VALUES remounts its whole subtree".
   //
-  // A correct fix keeps the mount accessor reading ONLY `zoom` and binds
-  // position/visibility as reactive props on non-remounting inner nodes. Until
-  // then the frozen props are the lesser bug. Gate:
-  // `e2e/app-showcase-flow.spec.ts` "clicking the Controls zoom-in button zooms".
+  // A correct fix binds position/visibility as reactive props on
+  // non-remounting inner nodes. Until then the frozen props are the lesser
+  // bug. Gate: `e2e/app-showcase-flow.spec.ts` "clicking the Controls zoom-in
+  // button zooms".
   const {
     showZoomIn = true,
     showZoomOut = true,
@@ -128,9 +128,13 @@ export function Controls(props: ControlsProps & { instance?: FlowInstance }): VN
   const btnStyle =
     'width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border: none; background: transparent; border-radius: 4px; cursor: pointer; color: var(--pyreon-flow-control-color, #555); padding: 0;'
 
+  // The returned accessor reads NO signals, so the controls mount ONCE — the
+  // zoom % lives in the inner text thunk below. It used to read
+  // `instance.zoom()` here, which made this a MOUNT accessor: every REAL zoom
+  // change re-mounted all four buttons (pan stopped remounting when the
+  // reactivity default value gate landed — the zoom computed compares equal —
+  // but wheel-zoom still re-created the buttons per tick, under the pointer).
   return () => {
-    const zoomPercent = Math.round(instance.zoom() * 100)
-
     return (
       <div class="pyreon-flow-controls" style={baseStyle}>
         {/* Static `display: contents` wrapper isolates the dynamic conditional
@@ -182,7 +186,7 @@ export function Controls(props: ControlsProps & { instance?: FlowInstance }): VN
           style="font-size: 10px; text-align: center; color: var(--pyreon-flow-control-muted, #999); padding: 2px 0; user-select: none;"
           title="Current zoom level"
         >
-          {() => `${zoomPercent}%`}
+          {() => `${Math.round(instance.zoom() * 100)}%`}
         </div>
       </div>
     )

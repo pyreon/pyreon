@@ -324,6 +324,21 @@ export interface FlowConfig<TData = Record<string, unknown>> {
   onlyRenderVisibleElements?: boolean
 }
 
+// ─── Snap session ────────────────────────────────────────────────────────────
+
+/**
+ * A per-drag object-snapping session (see `FlowInstance._createSnapSession`).
+ * Candidate guide lines are precomputed at drag start; `move` resolves the
+ * snap lines + snapped position for the drag's current raw position.
+ */
+export interface SnapSession {
+  move: (position: XYPosition) => {
+    x: number | null
+    y: number | null
+    snappedPosition: XYPosition
+  }
+}
+
 // ─── Flow instance ───────────────────────────────────────────────────────────
 
 export interface FlowInstance<TData = Record<string, unknown>> {
@@ -404,6 +419,21 @@ export interface FlowInstance<TData = Record<string, unknown>> {
   selectNode: (id: string, additive?: boolean) => void
   /** Deselect a node */
   deselectNode: (id: string) => void
+  /**
+   * Select many nodes in ONE state write. `additive: false` (default)
+   * replaces the node selection and clears the edge selection — the same net
+   * state as `clearSelection()` + one additive `selectNode` per id, without
+   * the per-id Set copy (which made a K-node rubber-band commit O(K²)).
+   */
+  selectNodes: (ids: Iterable<string>, additive?: boolean) => void
+  /**
+   * Reactive O(1) selection membership — tracks the selection signal when
+   * called from a reactive scope (a JSX thunk, `effect()`, `computed()`).
+   * Prefer this over `selectedNodes().includes(id)` (an O(N) scan per call).
+   */
+  isNodeSelected: (id: string) => boolean
+  /** Reactive O(1) edge-selection membership — see {@link FlowInstance.isNodeSelected}. */
+  isEdgeSelected: (id: string) => boolean
   /** Select an edge */
   selectEdge: (id: string, additive?: boolean) => void
   /** Clear all selection */
@@ -493,6 +523,19 @@ export interface FlowInstance<TData = Record<string, unknown>> {
     position: XYPosition,
     threshold?: number,
   ) => { x: number | null; y: number | null; snappedPosition: XYPosition }
+  /**
+   * @internal — drag-session snap precompute. Flattens every snap candidate
+   * (non-dragged nodes' centers/edges) into primitive arrays ONCE at
+   * dragStart so each pointermove's `move()` is a tight numeric scan with no
+   * per-node allocations (getSnapLines re-scans + re-allocates per call).
+   * `excludeIds` removes the co-dragged nodes of a multi-drag from the
+   * candidate set. Returns null when the drag node doesn't exist.
+   */
+  _createSnapSession: (
+    dragNodeId: string,
+    excludeIds?: ReadonlySet<string>,
+    threshold?: number,
+  ) => SnapSession | null
 
   // ── Sub-flows / Groups ───────────────────────────────────────────────────
 

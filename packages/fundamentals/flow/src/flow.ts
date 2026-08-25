@@ -16,6 +16,7 @@ import type {
   MeasuredHandle,
   NodeChange,
   NodeMeasurement,
+  SnapSession,
   XYPosition,
 } from './types'
 
@@ -124,6 +125,23 @@ export function createFlow<TData = Record<string, unknown>>(
   const selectedNodes = computed(() => [...selectedNodeIds()])
   const selectedEdges = computed(() => [...selectedEdgeIds()])
 
+  // O(1), per-id-GATED reactive selection membership. The per-node / per-edge
+  // `isSelected` thunks in flow-component.tsx read these instead of
+  // `selectedNodes().includes(id)` — an O(N) array scan per thunk, which made
+  // every selection change O(N²) across N mounted nodes. The Set-`has` read
+  // alone was not enough: the selection Set is ONE signal, so a bare `has`
+  // still re-ran all N nodes' class/style thunks (and their style WRITES) on
+  // every selection change. Routing the read through a per-id
+  // `computed(() => set.has(id), { equals: Object.is })` — the same gate shape
+  // as `_nodeById` below — re-notifies ONLY the ids whose membership actually
+  // flipped: a selection click re-runs O(changed) thunks, not O(N). (Measured
+  // at 300 mounted nodes: ~10ms and ~37k array-`includes` calls per selection
+  // change before; sub-ms after.) Cache lifecycle mirrors `nodeByIdCache`
+  // (defined below): lazily created, swept when the id leaves the graph,
+  // disposed in `dispose()`.
+  const isNodeSelected = (id: string): boolean => _nodeSelected(id)()
+  const isEdgeSelected = (id: string): boolean => _edgeSelected(id)()
+
   // Identity lookup maps — O(1) node/edge access by id. Rebuilt ONCE per
   // nodes()/edges() change instead of an O(N) `.find()` per accessor call.
   // The imperative geometry consumers (and the virtualization filters) read
@@ -137,6 +155,7 @@ export function createFlow<TData = Record<string, unknown>>(
     const m = new Map<string, FlowNode<TData>>()
     for (const n of nodes()) m.set(n.id, n)
     sweepCache(nodeByIdCache, m)
+    sweepCache(nodeSelectedCache, m)
     return m
   })
   const edgeMap = computed(() => {
@@ -144,6 +163,7 @@ export function createFlow<TData = Record<string, unknown>>(
     for (const e of edges()) m.set(e.id ?? '', e)
     sweepCache(edgeByIdCache, m)
     sweepCache(edgeGeometryCache, m)
+    sweepCache(edgeSelectedCache, m)
     return m
   })
 
@@ -172,6 +192,8 @@ export function createFlow<TData = Record<string, unknown>>(
   const nodeByIdCache = new Map<string, Computed<FlowNode<TData> | undefined>>()
   const edgeByIdCache = new Map<string, Computed<FlowEdge | undefined>>()
   const edgeGeometryCache = new Map<string, Computed<EdgeGeometry | null>>()
+  const nodeSelectedCache = new Map<string, Computed<boolean>>()
+  const edgeSelectedCache = new Map<string, Computed<boolean>>()
 
   // Create a cache-owned computed DETACHED from the current EffectScope.
   // `computed()` registers its dispose on `getCurrentScope()` — correct for
@@ -233,6 +255,35 @@ export function createFlow<TData = Record<string, unknown>>(
     if (!c) {
       c = detachedComputed(() => computed(() => edgeMap().get(id), { equals: Object.is }))
       edgeByIdCache.set(id, c)
+    }
+    return c
+  }
+
+  // Per-id selection-membership computeds — the selection twin of
+  // `_nodeById`/`_edgeById`. `{ equals: Object.is }` on the boolean means a
+  // selection write re-notifies ONLY the ids whose membership flipped; the
+  // eager refresh per write is one O(1) `Set.has` per live id. Same detached
+  // creation + sweep + dispose lifecycle as the caches above. An id that is
+  // not (or no longer) a node still answers correctly — its entry is created
+  // on demand and swept on the next nodeMap/edgeMap rebuild once absent.
+  const _nodeSelected = (id: string): Computed<boolean> => {
+    let c = nodeSelectedCache.get(id)
+    if (!c) {
+      c = detachedComputed(() =>
+        computed(() => selectedNodeIds().has(id), { equals: Object.is }),
+      )
+      nodeSelectedCache.set(id, c)
+    }
+    return c
+  }
+
+  const _edgeSelected = (id: string): Computed<boolean> => {
+    let c = edgeSelectedCache.get(id)
+    if (!c) {
+      c = detachedComputed(() =>
+        computed(() => selectedEdgeIds().has(id), { equals: Object.is }),
+      )
+      edgeSelectedCache.set(id, c)
     }
     return c
   }
@@ -422,6 +473,23 @@ export function createFlow<TData = Record<string, unknown>>(
       const next = new Set(set)
       next.delete(id)
       return next
+    })
+  }
+
+  // Bulk selection — ONE Set build + ONE notify for K ids. The rubber-band
+  // commit used to do `clearSelection()` + `selectNode(id, true)` per hit
+  // node; each additive `selectNode` copies the whole Set, so a K-node band
+  // was O(K²) copies (measured: ~3s for a 300-node band at 300 mounted
+  // nodes). Non-additive selection replaces the node set and clears the edge
+  // set — the same net state the clearSelection + additive loop produced.
+  function selectNodes(ids: Iterable<string>, additive = false): void {
+    batch(() => {
+      selectedNodeIds.update((set) => {
+        const next = additive ? new Set(set) : new Set<string>()
+        for (const id of ids) next.add(id)
+        return next
+      })
+      if (!additive) selectedEdgeIds.set(new Set())
     })
   }
 
@@ -761,11 +829,28 @@ export function createFlow<TData = Record<string, unknown>>(
   const redoStack: Array<{ nodes: FlowNode<TData>[]; edges: FlowEdge[] }> = []
   const maxHistory = 50
 
+  // History snapshots are SHALLOW array copies, not `structuredClone`. Every
+  // write path in this package is immutable by discipline — drag / updateNode /
+  // layout / collision resolution replace CHANGED node/edge objects via spread
+  // and rebuild arrays via map/filter (the same invariant the per-id
+  // `{ equals: Object.is }` computeds depend on for change detection) — so an
+  // object captured in a snapshot can never be mutated afterwards by this
+  // package. Deep-cloning the whole graph ran INSIDE pointerdown (pushHistory
+  // is the first thing a node grab does): ~1.1ms per grab at 1000 nodes
+  // (measured), i.e. visible grab jank — and `structuredClone` additionally
+  // THREW `DataCloneError` on any non-cloneable `data` value (a function-valued
+  // callback in node data broke undo entirely). A consumer that mutates
+  // node/edge objects IN PLACE is outside the update discipline — such
+  // mutations already don't render (the equality gates never see them), and
+  // undo could not meaningfully restore them before either (the pre-mutation
+  // deep copy predated the mutation only by accident of timing).
+  const historySnapshot = (): { nodes: FlowNode<TData>[]; edges: FlowEdge[] } => ({
+    nodes: [...nodes.peek()],
+    edges: [...edges.peek()],
+  })
+
   function pushHistory(): void {
-    undoStack.push({
-      nodes: structuredClone(nodes.peek()),
-      edges: structuredClone(edges.peek()),
-    })
+    undoStack.push(historySnapshot())
     if (undoStack.length > maxHistory) undoStack.shift()
     redoStack.length = 0
   }
@@ -774,10 +859,7 @@ export function createFlow<TData = Record<string, unknown>>(
     const prev = undoStack.pop()
     if (!prev) return
 
-    redoStack.push({
-      nodes: structuredClone(nodes.peek()),
-      edges: structuredClone(edges.peek()),
-    })
+    redoStack.push(historySnapshot())
 
     batch(() => {
       nodes.set(prev.nodes)
@@ -790,10 +872,7 @@ export function createFlow<TData = Record<string, unknown>>(
     const next = redoStack.pop()
     if (!next) return
 
-    undoStack.push({
-      nodes: structuredClone(nodes.peek()),
-      edges: structuredClone(edges.peek()),
-    })
+    undoStack.push(historySnapshot())
 
     batch(() => {
       nodes.set(next.nodes)
@@ -881,6 +960,85 @@ export function createFlow<TData = Record<string, unknown>>(
     }
 
     return { x: snapX, y: snapY, snappedPosition: { x: snappedX, y: snappedY } }
+  }
+
+  // Drag-session snap precompute. `getSnapLines` re-scans EVERY node on every
+  // call — an O(N) `getNode` find plus N `nodeDims` calls (each allocating a
+  // Dimensions object and probing the measurements map) — and the drag handler
+  // calls it once PER POINTERMOVE with object snapping ON by default. During a
+  // drag the candidate geometry is FROZEN: only the dragged nodes move, and
+  // they are excluded from the candidate set. So the session flattens every
+  // snap candidate into primitive arrays ONCE at dragStart; each `move` is
+  // then a tight numeric scan with zero per-node allocations and zero map
+  // probes. Each stored candidate is the guide-line coordinate plus its kind
+  // (center / leading edge / trailing edge); the per-move check
+  // |position - target| < threshold is an algebraic rearrangement of
+  // getSnapLines' center/left/right checks (target = line − w/2, line, line − w
+  // respectively), so a single-node session is result-identical to
+  // getSnapLines, including the last-match-wins overwrite order.
+  //
+  // For a MULTI-node drag the caller passes the co-dragged ids as `excludeIds`
+  // so they are not candidates. getSnapLines excluded only the primary node —
+  // but a co-dragged node moves rigidly WITH the pointer, so "snapping" against
+  // it compared a near-constant offset and produced oscillating snap feedback;
+  // excluding the whole dragged set is the correct semantic (React Flow's
+  // helper lines do the same).
+  //
+  // The drag node's own dims are re-resolved per move (an O(1) measurements
+  // probe) so a measurement landing mid-drag still takes effect, exactly as it
+  // did through getSnapLines' per-call `nodeDims(dragNode)`.
+  function createSnapSession(
+    dragNodeId: string,
+    excludeIds?: ReadonlySet<string>,
+    threshold = 5,
+  ): SnapSession | null {
+    const dragNode = getNode(dragNodeId)
+    if (!dragNode) return null
+
+    // kind: 0 = center, 1 = leading edge (left/top), 2 = trailing edge
+    const xLines: number[] = []
+    const xKinds: number[] = []
+    const yLines: number[] = []
+    const yKinds: number[] = []
+    for (const node of nodes.peek()) {
+      if (node.id === dragNodeId || excludeIds?.has(node.id)) continue
+      const { width: nw, height: nh } = nodeDims(node)
+      xLines.push(node.position.x + nw / 2, node.position.x, node.position.x + nw)
+      xKinds.push(0, 1, 2)
+      yLines.push(node.position.y + nh / 2, node.position.y, node.position.y + nh)
+      yKinds.push(0, 1, 2)
+    }
+
+    const move = (
+      position: XYPosition,
+    ): { x: number | null; y: number | null; snappedPosition: XYPosition } => {
+      const { width: w, height: h } = nodeDims(dragNode)
+      let snapX: number | null = null
+      let snapY: number | null = null
+      let snappedX = position.x
+      let snappedY = position.y
+      for (let i = 0; i < xLines.length; i++) {
+        const line = xLines[i]!
+        const kind = xKinds[i]!
+        const target = kind === 0 ? line - w / 2 : kind === 1 ? line : line - w
+        if (Math.abs(position.x - target) < threshold) {
+          snapX = line
+          snappedX = target
+        }
+      }
+      for (let i = 0; i < yLines.length; i++) {
+        const line = yLines[i]!
+        const kind = yKinds[i]!
+        const target = kind === 0 ? line - h / 2 : kind === 1 ? line : line - h
+        if (Math.abs(position.y - target) < threshold) {
+          snapY = line
+          snappedY = target
+        }
+      }
+      return { x: snapX, y: snapY, snappedPosition: { x: snappedX, y: snappedY } }
+    }
+
+    return { move }
   }
 
   // ── Sub-flows / Groups ──────────────────────────────────────────────────
@@ -1254,6 +1412,10 @@ export function createFlow<TData = Record<string, unknown>>(
     edgeByIdCache.clear()
     for (const c of nodeByIdCache.values()) disposeCached(c as Computed<unknown>)
     nodeByIdCache.clear()
+    for (const c of nodeSelectedCache.values()) disposeCached(c as Computed<unknown>)
+    nodeSelectedCache.clear()
+    for (const c of edgeSelectedCache.values()) disposeCached(c as Computed<unknown>)
+    edgeSelectedCache.clear()
   }
 
   // ── Initial fitView ──────────────────────────────────────────────────────
@@ -1348,6 +1510,9 @@ export function createFlow<TData = Record<string, unknown>>(
     isValidConnection,
     selectNode,
     deselectNode,
+    selectNodes,
+    isNodeSelected,
+    isEdgeSelected,
     selectEdge,
     clearSelection,
     selectAll,
@@ -1397,6 +1562,7 @@ export function createFlow<TData = Record<string, unknown>>(
     redo,
     moveSelectedNodes,
     getSnapLines,
+    _createSnapSession: createSnapSession,
     getChildNodes,
     getAbsolutePosition,
     addEdgeWaypoint,
