@@ -56,7 +56,7 @@
   "@pyreon/storybook": 256,
   "@pyreon/styler": 7168,
   "@pyreon/svelte-compat": 2816,
-  "@pyreon/sync": 2816,
+  "@pyreon/sync": 3072,
   "@pyreon/table": 3328,
   "@pyreon/testing": 5120,
   "@pyreon/toast": 3072,
