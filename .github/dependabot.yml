@@ -41,6 +41,10 @@ updates:
       - 'dependencies'
     commit-message:
       prefix: 'chore(deps)'
+    groups:
+      cargo:
+        patterns:
+          - '*'
 
   # Gradle — the Android example apps. NOT covered before: their Compose BOM
   # had drifted ~2 years while every npm dep stayed current.
@@ -71,12 +75,17 @@ updates:
     commit-message:
       prefix: 'chore(deps)'
     groups:
-      androidx:
+      # ONE group matching everything. Anything Dependabot cannot place in a
+      # group gets its own PR PER DIRECTORY, and this ecosystem lists ten of
+      # them — the first run after grouping only `androxid.*` and
+      # `org.jetbrains.kotlin*` produced 10 okhttp PRs, 5 `android` and 5
+      # `plugin.serialization`, because none of those three match either
+      # pattern (Dependabot names Kotlin PLUGIN ids bare, without the
+      # `org.jetbrains.kotlin` prefix). A catch-all collapses the ecosystem to
+      # a single PR across all directories.
+      gradle:
         patterns:
-          - 'androidx.*'
-      kotlin:
-        patterns:
-          - 'org.jetbrains.kotlin*'
+          - '*'
 
   # Docker — the scaffolded deploy images. NOT covered before: the node base
   # image was pinned to 22 while CI and the docs had moved to 24.
@@ -93,6 +102,10 @@ updates:
       - 'dependencies'
     commit-message:
       prefix: 'chore(deps)'
+    groups:
+      docker:
+        patterns:
+          - '*'
 
   # GitHub Actions
   - package-ecosystem: 'github-actions'
@@ -106,3 +119,9 @@ updates:
       - 'ci'
     commit-message:
       prefix: 'chore(ci)'
+    groups:
+      # Ungrouped, every action gets its own PR — the 2026-08-17 and 08-24 runs
+      # each opened three separate codeql-action bumps for the same SHA.
+      actions:
+        patterns:
+          - '*'
