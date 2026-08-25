@@ -13,7 +13,7 @@ plugins {
     id("com.android.application")
     kotlin("android")
     kotlin("plugin.serialization")
-    id("org.jetbrains.kotlin.plugin.compose") version "2.0.21"
+    id("org.jetbrains.kotlin.plugin.compose") version "2.4.10"
 }
 
 android {
@@ -80,14 +80,14 @@ dependencies {
     implementation("androidx.compose.runtime:runtime-saveable")
     // Deps required by the runtime-kotlin srcDir sources + M2 material
     // for the emit header's `import androidx.compose.material.*`.
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
     // TWO runtime sources in the runtime-kotlin srcDir import okhttp3:
     // PyreonWebSocketOkHttp.kt (the default transport behind the TS-side
     // ws.connect()) and PyreonHttpOkHttp.kt (the executor behind a
     // `useFetch(url, { method })` — the HTTP layer had NO Android edge at all
     // until it was written). Every app compiling the runtime srcDir needs the
     // dep whether or not it uses either (the srcDir compiles all sources).
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp:5.5.0")
     // media3 — PyreonVideoPlayerAndroid.kt (in the runtime-kotlin srcDir
     // above) imports androidx.media3.* for the <Video> primitive. Same deal
     // as okhttp: every app compiling the srcDir needs the artifacts, video
@@ -101,7 +101,7 @@ dependencies {
     // the stub-masked-symbol class).
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("androidx.core:core-ktx:1.13.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("androidx.compose.material:material")
 
     // Instrumented-test deps. Same as the other Android examples.

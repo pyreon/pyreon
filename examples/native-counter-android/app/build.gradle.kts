@@ -10,7 +10,7 @@ plugins {
     id("com.android.application")
     kotlin("android")
     kotlin("plugin.serialization")
-    id("org.jetbrains.kotlin.plugin.compose") version "2.0.21"
+    id("org.jetbrains.kotlin.plugin.compose") version "2.4.10"
 }
 
 android {
@@ -76,12 +76,12 @@ dependencies {
     // uses kotlinx.serialization; PyreonPermissions uses ContextCompat;
     // PyreonFetch/NetworkStatus use coroutines) + M2 material for the
     // emit header's `import androidx.compose.material.*`.
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
     // PyreonWebSocketOkHttp.kt (in the runtime-kotlin srcDir above) imports
     // okhttp3 — the default websocket transport backing the TS-side
     // ws.connect(). Every app compiling the runtime srcDir needs the dep,
     // websockets used or not (the srcDir compiles all runtime sources).
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp:5.5.0")
     // media3 — PyreonVideoPlayerAndroid.kt (in the runtime-kotlin srcDir
     // above) imports androidx.media3.* for the <Video> primitive. Same deal
     // as okhttp: every app compiling the srcDir needs the artifacts, video
@@ -89,7 +89,7 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.4.1")
     implementation("androidx.media3:media3-ui:1.4.1")
     implementation("androidx.core:core-ktx:1.13.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("androidx.compose.material:material")
 
     // Instrumented-test deps. Same shape as native-todomvc-android.
