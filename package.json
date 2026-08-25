@@ -105,6 +105,7 @@
     "check-ci-job-timeouts": "bun scripts/check-ci-job-timeouts.ts",
     "check-cache-key-sync": "bun scripts/check-cache-key-sync.ts",
     "check-shared-source-deps": "bun scripts/check-shared-source-deps.ts",
+    "check-agp-gradle-lockstep": "bun scripts/check-agp-gradle-lockstep.ts",
     "check-distribution": "bun scripts/check-distribution.ts",
     "check-export-entries": "bun scripts/check-export-entries.ts",
     "check-doc-claims": "bun scripts/check-doc-claims.ts",
