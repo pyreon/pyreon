@@ -1093,7 +1093,21 @@ function warnWebOnlyImports(body: AnyNode[], ctx: ParseCtx): void {
     // (`zodSchema(...)` from @pyreon/validation), the blanket line is simply
     // WRONG. The finer mechanism wins; deferring to it here is what lets the
     // set above be derived from the tier without hand-tuning the overlap.
-    if (WEB_ONLY_PACKAGES.has(pkg) && !UNLOWERED_PYREON_MODULES.has(pkg) && !seen.has(pkg)) {
+    // The `/webview` SUBPATH is the documented native bridge for a web-engine
+    // package (ECharts, ProseMirror, CodeMirror, an elk/SVG layout): the same
+    // web bundle runs inside a WKWebView / Android WebView. Since `pkg` is
+    // normalised to the package ROOT, importing it hit the blanket warning --
+    // which then told the user to "consume on native via the `<WebView>` bridge
+    // subpath", i.e. to do the thing they had just done. A warning that fires
+    // on its own recommended fix trains people to ignore it.
+    const isWebviewBridgeImport =
+      src.startsWith('@pyreon/') && src.slice('@pyreon/'.length).split('/')[1] === 'webview'
+    if (
+      WEB_ONLY_PACKAGES.has(pkg) &&
+      !UNLOWERED_PYREON_MODULES.has(pkg) &&
+      !seen.has(pkg) &&
+      !isWebviewBridgeImport
+    ) {
       seen.add(pkg)
       // The package's OWN manifest rationale, when it has one. A single
       // blanket line cannot serve packages this different: a linter that
