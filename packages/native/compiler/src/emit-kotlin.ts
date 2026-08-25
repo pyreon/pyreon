@@ -82,6 +82,7 @@ import type {
   ZodFieldConstraints,
   ZodFieldType,
   ZodSchemaDefnIR,
+  HotkeyModifier,
 } from './types'
 
 // Mirror of emit-swift.ts's enum-state machinery. See that file's
@@ -1516,6 +1517,63 @@ let _kotlinStoreDefs: StoreDefnIR[] = []
 // to `Any`. Set once at the top of the emit entrypoint.
 let _kotlinStructDefs: StructIR[] = []
 
+
+/**
+ * Compose `Key` constant for a parsed hotkey base key.
+ *
+ * `null` for a key Compose does not name, so the caller warns instead of
+ * emitting an identifier that will not resolve.
+ */
+function kotlinKeyConstant(key: string): string | null {
+  const named: Readonly<Record<string, string>> = {
+    escape: 'Key.Escape',
+    enter: 'Key.Enter',
+    delete: 'Key.Delete',
+    tab: 'Key.Tab',
+    ' ': 'Key.Spacebar',
+    arrowup: 'Key.DirectionUp',
+    arrowdown: 'Key.DirectionDown',
+    arrowleft: 'Key.DirectionLeft',
+    arrowright: 'Key.DirectionRight',
+    // Verified against the real androidx.compose 1.7.5 artifact by compilation,
+    // with negative controls (Key.Space and a bogus name both fail to resolve).
+    // NOTE `Key.Home` also exists but is the Android HOME BUTTON, not caret
+    // navigation — MoveHome/MoveEnd are the text-navigation pair, and there is
+    // no `Key.End` at all.
+    home: 'Key.MoveHome',
+    end: 'Key.MoveEnd',
+    pageup: 'Key.PageUp',
+    pagedown: 'Key.PageDown',
+  }
+  const hit = named[key]
+  if (hit !== undefined) return hit
+  if (key.length === 1) {
+    if (key >= 'a' && key <= 'z') return `Key.${key.toUpperCase()}`
+    const digits = ['Zero', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine']
+    if (key >= '0' && key <= '9') return `Key.${digits[Number(key)]}`
+  }
+  return null
+}
+
+/**
+ * Modifier predicate for a combo. `mod` resolves to Ctrl on Android — the
+ * platform half of the IR, mirroring Command on iOS.
+ *
+ * Modifiers NOT in the combo are asserted ABSENT. Without that, 'ctrl+s' would
+ * also fire on 'ctrl+shift+s', so two shortcuts differing only by Shift would
+ * both trigger — the kind of bug that looks like a duplicate handler.
+ */
+function kotlinModifierPredicate(mods: readonly HotkeyModifier[]): string {
+  const want = new Set<string>()
+  for (const m of mods) {
+    if (m === 'mod' || m === 'control' || m === 'meta') want.add('isCtrlPressed')
+    else if (m === 'shift') want.add('isShiftPressed')
+    else if (m === 'alt') want.add('isAltPressed')
+  }
+  const all = ['isCtrlPressed', 'isShiftPressed', 'isAltPressed']
+  return all.map((f) => (want.has(f) ? `e.${f}` : `!e.${f}`)).join(' && ')
+}
+
 function emitKotlinComponent(c: ComponentIR): string {
   // Component-scope const literals → static-attr resolution (mirror of Swift).
   _componentConstMapKotlin = buildComponentConstMap(c.decls)
@@ -1659,7 +1717,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _fieldArrayNamesKotlin = new Set()
   _fieldArrayItemParamsKotlin = []
   const declTexts = c.decls
-    .filter((d) => d.kind !== 'on-mount' && d.kind !== 'tick')
+    .filter((d) => d.kind !== 'on-mount' && d.kind !== 'tick' && d.kind !== 'hotkey')
     .map((d) => emitKotlinDecl(d, ctx))
   // Pass 2: walk props — formats prop annotations AND ALSO discovers
   // synthesized types from PROP annotations. This pass must run BEFORE
@@ -1912,7 +1970,53 @@ function emitKotlinComponent(c: ComponentIR): string {
   // statement (valid-but-pointless in Kotlin; the Swift sibling `nil` was a hard
   // error — see emit-swift.ts:emitSwiftReturnExpr).
   if (!(c.returnExpr.kind === 'literal' && c.returnExpr.value == null)) {
-    lines.push(`  ${emitKotlinExpr(c.returnExpr, 2)}`)
+    // useHotkey -> a focused key handler wrapping the component root.
+    //
+    // Compose delivers key events only to a FOCUSED node, so unlike SwiftUI
+    // (where a shortcut binds to a control) the root must be made focusable and
+    // must actually take focus — hence the FocusRequester plus a LaunchedEffect
+    // to request it. A Modifier alone would compile and never fire.
+    const hotkeys = c.decls.filter((d) => d.kind === 'hotkey')
+    const usable = hotkeys.filter((d) => {
+      if (d.kind !== 'hotkey') return false
+      if (kotlinKeyConstant(d.combo.key) !== null) return true
+      _emitWarnings.push(
+        `useHotkey: '${d.combo.key}' has no Compose Key constant — the hotkey is DROPPED on Android.`,
+      )
+      return false
+    })
+    if (usable.length === 0) {
+      lines.push(`  ${emitKotlinExpr(c.returnExpr, 2)}`)
+    } else {
+      const branches = usable
+        .map((d) => {
+          if (d.kind !== 'hotkey') return ''
+          const body = d.body.map((st) => `        ${emitKotlinStatement(st, 8, ctx)}`).join('\n')
+          return [
+            `      if (e.key == ${kotlinKeyConstant(d.combo.key)} && ${kotlinModifierPredicate(d.combo.modifiers)}) {`,
+            body,
+            `        return@onPreviewKeyEvent true`,
+            `      }`,
+          ].join('\n')
+        })
+        .join('\n')
+      lines.push(`  val __hkFocus = remember { FocusRequester() }`)
+      lines.push(`  LaunchedEffect(Unit) { __hkFocus.requestFocus() }`)
+      lines.push(`  Box(`)
+      lines.push(`    modifier = Modifier`)
+      lines.push(`      .focusRequester(__hkFocus)`)
+      lines.push(`      .focusable()`)
+      lines.push(`      .onPreviewKeyEvent { e ->`)
+      // KeyDown only: Compose reports Up as well, and acting on both fires
+      // every handler twice per keystroke.
+      lines.push(`        if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false`)
+      lines.push(branches)
+      lines.push(`        false`)
+      lines.push(`      }`)
+      lines.push(`  ) {`)
+      lines.push(`    ${emitKotlinExpr(c.returnExpr, 4)}`)
+      lines.push(`  }`)
+    }
   }
   _emittingLayoutComponentKotlin = false
   // M4.5: an `async () => { await … }` handler emitted
@@ -2051,7 +2155,7 @@ function syncedInitialKotlin(
 
 function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // on-mount emits at the harness level (LaunchedEffect) — defensive narrow.
-  if (d.kind === 'on-mount' || d.kind === 'tick') return ''
+  if (d.kind === 'on-mount' || d.kind === 'tick' || d.kind === 'hotkey') return ''
   if (d.kind === 'debounced-value') {
     return `var ${kotlinIdent(d.name)} by remember { mutableStateOf(${emitKotlinExpr(d.source, 2)}) }`
   }

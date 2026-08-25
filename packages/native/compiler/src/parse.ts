@@ -6,6 +6,7 @@
 
 import { parseSync } from 'oxc-parser'
 import { buildInferenceCtx, inferReturnType, inferType, type InferenceCtx } from './infer-type'
+import { parseHotkeyCombo } from './hotkey-combo'
 import type {
   AttrIR,
   ChildIR,
@@ -1050,7 +1051,6 @@ const WEB_ONLY_PACKAGES: ReadonlyMap<string, string> = new Map([
   ['@pyreon/document-primitives', "document-authoring primitives feeding the pdfmake/docx renderers"],
   ['@pyreon/flow', "SVG rendering (the layout engine itself is pure and platform-free); consume on native via the `<WebView>` bridge subpath"],
   ['@pyreon/head', "document `<head>` management — no equivalent surface exists on iOS/Android"],
-  ['@pyreon/hotkeys', "keyboard-shortcut layer over DOM KeyboardEvent. No native lowering is implemented yet — which is an unbuilt lowering, NOT a platform limitation: both targets expose a hardware-shortcut surface (SwiftUI `.keyboardShortcut` for control-bound and `.onKeyPress` for view-level, Compose `Modifier.onPreviewKeyEvent`), and iPads, Chromebooks, DeX and tablet keyboards all reach them"],
   ['@pyreon/kinetic-presets', "preset pack for the kinetic CSS engine"],
   ['@pyreon/lint', "lint tooling — runs at dev time, not app runtime"],
   ['@pyreon/loom', "the dependency observatory — dev tooling, not app runtime"],
@@ -1996,7 +1996,7 @@ export const NATIVE_LOWERED_HOOKS: ReadonlySet<string> = new Set([
   'useAppState', 'useAuth', 'useBiometrics', 'useClipboard', 'useColorScheme',
   'useCrashReporter',
   'useDatabase', 'useFetch', 'useFieldArray', 'useFilePicker', 'useForm', 'useGeolocation',
-  'useHaptics', 'useImagePicker', 'useLinking', 'useLoaderData', 'useMap',
+  'useHaptics', 'useHotkey', 'useImagePicker', 'useLinking', 'useLoaderData', 'useMap',
   'useNativeModule', 'useNavigate', 'useNotifications', 'useOnline',
   'useParams', 'usePayments', 'usePermissions', 'usePush', 'useQuery',
   // Pure state — no platform dependency, so no runtime; see the
@@ -5261,6 +5261,54 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
           return !isCleanupReturn
         })
         decls.push({ kind: 'on-mount', body: kept })
+      } else if (
+        call?.type === 'CallExpression' &&
+        call.callee?.type === 'Identifier' &&
+        call.callee.name === 'useHotkey'
+      ) {
+        // useHotkey('mod+s', () => { … }) — a real keyboard shortcut on both
+        // targets. iPads with keyboards, Chromebooks, DeX and keyboard-equipped
+        // tablets all reach one, so the old "touch platforms have no
+        // hardware-shortcut surface" rationale was never true.
+        const shortcutNode = unwrapTypeLayers(call.arguments?.[0] as AnyNode | undefined)
+        const cb = call.arguments?.[1] as AnyNode | undefined
+        if (shortcutNode?.type !== 'Literal' || typeof shortcutNode.value !== 'string') {
+          // A computed shortcut cannot be baked into a native binding: SwiftUI
+          // takes a KeyEquivalent at view-construction and Compose compares
+          // against a Key constant. Same literal rule as animation duration.
+          ctx.warnings.push(
+            `Component ${name}: useHotkey() needs a LITERAL shortcut string — a computed one cannot be baked into a native key binding. The hotkey is DROPPED on iOS/Android.`,
+          )
+        } else if (
+          cb?.type !== 'ArrowFunctionExpression' &&
+          cb?.type !== 'FunctionExpression'
+        ) {
+          ctx.warnings.push(
+            `Component ${name}: useHotkey('${shortcutNode.value}', …) needs an inline handler function; a reference cannot be lowered. The hotkey is DROPPED on iOS/Android.`,
+          )
+        } else {
+          const parsed = parseHotkeyCombo(shortcutNode.value as string)
+          if (!parsed.ok) {
+            ctx.warnings.push(
+              `Component ${name}: useHotkey('${shortcutNode.value}') — ${parsed.reason}. The hotkey is DROPPED on iOS/Android.`,
+            )
+          } else {
+            // The web handler takes a KeyboardEvent; native has no such object,
+            // so a handler that USES its parameter would be silently wrong.
+            // Refuse it by name rather than emit a binding that ignores it.
+            if ((cb.params as AnyNode[] | undefined)?.length) {
+              ctx.warnings.push(
+                `Component ${name}: useHotkey('${shortcutNode.value}') handler takes a KeyboardEvent parameter, which has no native equivalent — drop the parameter, or keep the event-dependent logic behind a <Web> escape hatch. The hotkey is DROPPED on iOS/Android.`,
+              )
+            } else {
+              const handlerBody =
+                cb.body?.type === 'BlockStatement'
+                  ? parseStatementBlock(cb.body, ctx)
+                  : [{ kind: 'expr' as const, expr: parseExpr(cb.body, ctx) }]
+              decls.push({ kind: 'hotkey', combo: parsed.combo, body: handlerBody })
+            }
+          }
+        }
       } else if (
         call?.type === 'CallExpression' &&
         call.callee?.type === 'Identifier' &&

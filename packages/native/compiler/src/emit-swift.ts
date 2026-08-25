@@ -86,6 +86,7 @@ import type {
   ZodFieldConstraints,
   ZodFieldType,
   ZodSchemaDefnIR,
+  HotkeyModifier,
 } from './types'
 
 // String-literal-union enums recognised by the parser. Built at the
@@ -2140,7 +2141,7 @@ function emitSwiftComponent(c: ComponentIR): string {
     if (d.kind === 'value') continue
     // on-mount decls emit at the HARNESS level (.onAppear after the body,
     // on the stable-identity host) — no stored property.
-    if (d.kind === 'on-mount' || d.kind === 'tick') continue
+    if (d.kind === 'on-mount' || d.kind === 'tick' || d.kind === 'hotkey') continue
     lines.push(`  ${emitSwiftDecl(d, inferCtx, synth)}`)
   }
   // `@pyreon/sync` — a doc + its synced signals are declared as TYPED @State
@@ -2344,6 +2345,37 @@ function emitSwiftComponent(c: ComponentIR): string {
     lines.push(`      .onAppear {`)
     lines.push(bodyLines)
     lines.push(`      }`)
+  }
+  // useHotkey → a hidden shortcut Button in `.background`.
+  //
+  // `.keyboardShortcut` attaches to a CONTROL, not to an arbitrary view: the
+  // shortcut fires that control's action, so the Button's action IS the
+  // handler. `.background` is what puts a control in the hierarchy from a
+  // modifier position, and the zero frame plus zero opacity keep it from
+  // affecting layout or being seen.
+  //
+  // (`.onKeyPress` would attach to any view but is iOS 17+ and has no modifier
+  // overload, so it cannot express `mod+s` at all.)
+  for (const d of c.decls) {
+    if (d.kind !== 'hotkey') continue
+    const keyEq = swiftKeyEquivalent(d.combo.key)
+    if (keyEq === null) {
+      _emitWarnings.push(
+        `useHotkey: '${d.combo.key}' has no SwiftUI KeyEquivalent — the hotkey is DROPPED on iOS.`,
+      )
+      continue
+    }
+    const savedLocals = seedHandlerLocals(d.body, _exprInferCtx)
+    const bodyLines = d.body.map((st) => `          ${emitSwiftStatement(st, 10)}`).join('\n')
+    _exprInferCtx.locals = savedLocals
+    lines.push(`      .background(`)
+    lines.push(`        Button("") {`)
+    lines.push(bodyLines)
+    lines.push(`        }`)
+    lines.push(`        .keyboardShortcut(${keyEq}, modifiers: ${swiftEventModifiers(d.combo.modifiers)})`)
+    lines.push(`        .frame(width: 0, height: 0)`)
+    lines.push(`        .opacity(0)`)
+    lines.push(`      )`)
   }
   // network-status: START the live monitor. The runtime shipped a real
   // NWPathMonitor behind `start()` from inception — and nothing ever called
@@ -2730,6 +2762,55 @@ function syncedInitialSwift(
 }
 
 
+
+/**
+ * SwiftUI `KeyEquivalent` for a parsed hotkey base key.
+ *
+ * Named keys have STATIC members (`.escape`, `.upArrow`); everything else is a
+ * character literal. Returning `null` for a key with no SwiftUI spelling lets
+ * the caller warn by name instead of emitting something that will not compile.
+ */
+function swiftKeyEquivalent(key: string): string | null {
+  const named: Readonly<Record<string, string>> = {
+    escape: '.escape',
+    enter: '.return',
+    delete: '.delete',
+    tab: '.tab',
+    ' ': '.space',
+    arrowup: '.upArrow',
+    arrowdown: '.downArrow',
+    arrowleft: '.leftArrow',
+    arrowright: '.rightArrow',
+    home: '.home',
+    end: '.end',
+    pageup: '.pageUp',
+    pagedown: '.pageDown',
+  }
+  const hit = named[key]
+  if (hit !== undefined) return hit
+  // Single printable character → a KeyEquivalent literal. Anything longer is a
+  // named key SwiftUI does not model (e.g. 'f13', 'insert').
+  if (key.length !== 1) return null
+  return `KeyEquivalent(${JSON.stringify(key)})`
+}
+
+/** `mod` resolves to Command on Apple platforms — the platform half of the IR. */
+function swiftEventModifiers(mods: readonly HotkeyModifier[]): string {
+  const map: Readonly<Record<HotkeyModifier, string>> = {
+    mod: '.command',
+    meta: '.command',
+    control: '.control',
+    shift: '.shift',
+    alt: '.option',
+  }
+  const out: string[] = []
+  for (const m of mods) {
+    const v = map[m]
+    if (!out.includes(v)) out.push(v)
+  }
+  return `[${out.join(', ')}]`
+}
+
 function emitSwiftDecl(
   d: DeclIR,
   inferCtx: ReturnType<typeof buildInferenceCtx>,
@@ -2739,7 +2820,10 @@ function emitSwiftDecl(
   // caller skips it; this defensive return keeps the union narrowed.
   // Harness-level: emitted as a `.task` modifier after the body, not as a
   // declaration.
-  if (d.kind === 'on-mount' || d.kind === 'tick') return ''
+  // `hotkey` joins them — it becomes a hidden shortcut Button in `.background`,
+  // and it carries a `body` like a computed does, so without this narrow it
+  // reaches the `if (d.body !== undefined)` branch below and is treated as one.
+  if (d.kind === 'on-mount' || d.kind === 'tick' || d.kind === 'hotkey') return ''
   // Seeded with the SOURCE, so the value is available immediately — the web
   // hook has no first-delay gap and a field that rendered empty for the
   // delay on every mount would be a visible divergence. The debounce itself

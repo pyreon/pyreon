@@ -139,6 +139,28 @@ export function conditionalKotlinImports(emitted: string): string {
   // (the stub file is a single default-package unit and cannot declare
   // `package kotlinx.coroutines`), so the real build needs the import.
   if (/\bdelay\(/.test(emitted)) imports.push('import kotlinx.coroutines.delay')
+  // useHotkey. Three separate packages, none covered by the unconditional star
+  // imports (Kotlin star imports are single-package, and only
+  // androidx.compose.foundation.{layout,lazy,text}.* are unconditional — not
+  // `foundation` itself). Verified against the real androidx artifacts:
+  // `androidx.compose.ui.input.key.*` alone covers Key, KeyEventType, both
+  // Modifier extensions AND the KeyEvent extension PROPERTIES, which are
+  // extensions rather than members and so need the import to resolve.
+  //
+  // Matched on `[({]` because the emit uses the TRAILING-LAMBDA form
+  // `.onPreviewKeyEvent { … }`. A predicate keyed on `.onPreviewKeyEvent(`
+  // would miss every real emit — the documented `.clickable` trap, which cost
+  // a device build once already.
+  if (/\.onPreviewKeyEvent\s*[({]/.test(emitted)) {
+    imports.push('import androidx.compose.ui.input.key.*')
+  }
+  if (/\.focusRequester\s*[({]/.test(emitted) || emitted.includes('FocusRequester(')) {
+    imports.push('import androidx.compose.ui.focus.FocusRequester')
+    imports.push('import androidx.compose.ui.focus.focusRequester')
+  }
+  if (/\.focusable\s*[({]/.test(emitted)) {
+    imports.push('import androidx.compose.foundation.focusable')
+  }
   if (emitted.includes('withContext(')) imports.push('import kotlinx.coroutines.withContext')
   if (emitted.includes('Dispatchers.')) imports.push('import kotlinx.coroutines.Dispatchers')
   // M4.5: an `async () => { await … }` event handler emits

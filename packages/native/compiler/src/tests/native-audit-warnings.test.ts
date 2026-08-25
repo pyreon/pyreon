@@ -993,7 +993,11 @@ describe('web-only package warnings are derived from the manifests', () => {
   // ALREADY shipped (a literal `schema` map lowers to a Codable struct), so
   // this spec was asserting a warning the compiler had no business emitting.
   // The manifest was the stale surface, not the derivation.
-  for (const pkg of ['@pyreon/head', '@pyreon/hotkeys']) {
+  // `@pyreon/hotkeys` left this list the same way url-state and feature did —
+  // by gaining a real lowering. `useHotkey` now emits a SwiftUI
+  // `.keyboardShortcut` and a Compose focused key handler, so demanding a
+  // blanket warning here would assert against a shipped capability.
+  for (const pkg of ['@pyreon/head']) {
     it(`warns for ${pkg}, which the hand-written list silently omitted`, () => {
       expect(warnFor(pkg).some((w) => w.includes(pkg) && w.includes('WEB-ONLY'))).toBe(true)
     })
@@ -1008,6 +1012,7 @@ describe('web-only package warnings are derived from the manifests', () => {
     '@pyreon/query',
     '@pyreon/url-state',
     '@pyreon/feature',
+    '@pyreon/hotkeys',
   ]) {
     it(`does NOT blanket-warn for ${pkg}, whose core lowers (nativeFrontend)`, () => {
       expect(warnFor(pkg).some((w) => w.includes('WEB-ONLY'))).toBe(false)
