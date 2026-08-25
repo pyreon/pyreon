@@ -72,8 +72,15 @@ public final class PyreonToast {
         }
         let ttl = duration ?? defaultDuration
         if ttl > 0 {
-            Task { @MainActor [weak self] in
-                try? await Task.sleep(nanoseconds: UInt64(ttl * 1_000_000_000))
+            // `_Concurrency.Task`, not a bare `Task`: this file is compiled INTO
+            // the app target, so an app with its own `Task` model shadows the
+            // concurrency type and the bare name resolves to the user's struct
+            // (`argument type '_' does not conform to expected type 'any
+            // Decoder'`). A tasks app is exactly the app that has one. The
+            // emitter already qualifies this for the same reason; the shipped
+            // runtime did not, and nothing compiled it until now.
+            _Concurrency.Task { @MainActor [weak self] in
+                try? await _Concurrency.Task.sleep(nanoseconds: UInt64(ttl * 1_000_000_000))
                 self?.remove(id)
             }
         }

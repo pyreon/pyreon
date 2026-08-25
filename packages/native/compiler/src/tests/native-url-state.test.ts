@@ -45,7 +45,7 @@ describe('useUrlState lowering', () => {
     // parameter binds through the router); only the accessor is corrected to
     // the CompositionLocal the runtime actually exposes.
     expect(code).toContain('PyreonUrlState(LocalPyreonRouter.current, "q", "all")')
-    expect(code).toContain('router.setQueryParam(key, value)')
+    expect(code).toContain('router?.setQueryParam(key, value)')
   })
 
   // The call shape is what keeps shared source shared: `q()` reads on the web,
