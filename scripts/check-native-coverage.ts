@@ -483,6 +483,24 @@ export function C() {
     rationale:
       'ships the PyreonTable native runtime; the useTable() authoring lowering is a documented open refinement.',
     requiresCoSource: true,
+    // Its manifest has declared a nativeFrontend for `createTableState` all
+    // along; the registry just never carried a snippet, so the gate could not
+    // see it and the package read as native-runtime-only. Verified: zero
+    // warnings on both targets, emits PyreonTableState<Row>, compiles on real
+    // swiftc and kotlinc. `useTable` (the TanStack row model) is still web.
+    snippet: `import { createTableState } from '@pyreon/table'
+import { Stack, Text } from '@pyreon/primitives'
+import { signal } from '@pyreon/reactivity'
+interface Row { id: string; name: string }
+export function C() {
+  const rows = signal<Row[]>([{ id: '1', name: 'Ada' }])
+  const table = createTableState({
+    data: () => rows(),
+    columns: [{ id: 'name', accessor: (r: Row) => r.name }],
+    pageSize: 10,
+  })
+  return (<Stack><Text>{String(table.pageCount())}</Text></Stack>)
+}`,
   },
   {
     name: '@pyreon/toast',
@@ -855,6 +873,23 @@ export function classifyEntry(
 
   if (problems.length > 0) {
     return { ...base, status: 'regression', detail: problems.join('; ') }
+  }
+
+  // A DECLARED frontend must be a PROVEN one. `@pyreon/table` had declared a
+  // `nativeFrontend` for `createTableState` all along and its registry entry
+  // carried no snippet, so the gate reported "native runtime ships" and the
+  // package read as native-runtime-only for months. The reverse-direction check
+  // added earlier only covers `web-first`, so a `native-container` entry could
+  // still drift this way — the same one-directional blind spot, one mechanism
+  // over.
+  if (nativeFrontend && !snippet) {
+    return {
+      ...base,
+      status: 'regression',
+      detail:
+        `the manifest declares a \`multiplatform.nativeFrontend\` (${nativeFrontend.slice(0, 60)}…) ` +
+        `but this entry has no snippet, so nothing proves it — add one exercising that form`,
+    }
   }
 
   const how =
