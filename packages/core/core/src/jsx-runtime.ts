@@ -686,22 +686,28 @@ export interface SvgAttributes extends PyreonHTMLAttributes<SVGElement> {
   'clip-rule'?: 'nonzero' | 'evenodd' | undefined
   'clip-path'?: string | undefined
   d?: string | (() => string) | undefined
-  cx?: string | number | undefined
-  cy?: string | number | undefined
-  r?: string | number | undefined
-  rx?: string | number | undefined
-  ry?: string | number | undefined
-  x?: string | number | undefined
-  y?: string | number | undefined
-  x1?: string | number | undefined
-  y1?: string | number | undefined
-  x2?: string | number | undefined
-  y2?: string | number | undefined
-  width?: string | number | undefined
-  height?: string | number | undefined
+  // Geometry attrs accept the reactive accessor form, like `fill` / `stroke` /
+  // `d` / `transform` above — a patched-in-place SVG (minimap rects, helper
+  // lines, an animated indicator) binds these per frame, and the accessor
+  // variant is the canonical reactive-attribute shape (`x={() => …}`). See
+  // anti-patterns → "`as never` casts on accessor-form JSX attribute values":
+  // the fix for a missing variant is HERE, never a cast at the call site.
+  cx?: string | number | (() => string | number) | undefined
+  cy?: string | number | (() => string | number) | undefined
+  r?: string | number | (() => string | number) | undefined
+  rx?: string | number | (() => string | number) | undefined
+  ry?: string | number | (() => string | number) | undefined
+  x?: string | number | (() => string | number) | undefined
+  y?: string | number | (() => string | number) | undefined
+  x1?: string | number | (() => string | number) | undefined
+  y1?: string | number | (() => string | number) | undefined
+  x2?: string | number | (() => string | number) | undefined
+  y2?: string | number | (() => string | number) | undefined
+  width?: string | number | (() => string | number) | undefined
+  height?: string | number | (() => string | number) | undefined
   transform?: string | (() => string) | undefined
   opacity?: string | number | (() => string | number) | undefined
-  points?: string | undefined
+  points?: string | (() => string) | undefined
   'font-size'?: string | number | undefined
   'text-anchor'?: 'start' | 'middle' | 'end' | undefined
   'dominant-baseline'?: string | undefined
