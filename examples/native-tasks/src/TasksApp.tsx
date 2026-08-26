@@ -59,7 +59,7 @@ import { PyreonUI } from '@pyreon/ui-core'
 import { createTableState } from '@pyreon/table'
 import { kinetic } from '@pyreon/kinetic'
 import { createI18n } from '@pyreon/i18n'
-import { toast } from '@pyreon/toast'
+import { Toaster, toast } from '@pyreon/toast'
 import { announce } from '@pyreon/a11y'
 import { useUrlState } from '@pyreon/url-state'
 import { signal, computed } from '@pyreon/reactivity'
@@ -626,6 +626,11 @@ export function TasksApp() {
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router}>
         <RouterView />
+        {/* `toast()` writes to a store; SOMETHING has to render it. Without a
+            <Toaster> the call silently does nothing on the web, while the
+            native targets show it — so a package that looked exercised was
+            only half-proven. PMTC lowers this tag on both targets. */}
+        <Toaster />
       </RouterProvider>
     </QueryClientProvider>
   )

@@ -73,6 +73,18 @@ test.describe('native-tasks-web — the shared source renders on the third targe
     // kinetic: the preset-animated container mounts its children.
     await expect(page.getByTestId('toolkit-fade')).toBeVisible()
 
+    // toast + a11y: the two feedback channels a real mutation uses. Both were
+    // CALLED by this screen and asserted by nothing, which is how the app
+    // shipped with no <Toaster> mounted — `toast()` wrote to its store and
+    // nothing rendered, on web only. Clicking the button is what proves it.
+    await page.getByTestId('toolkit-save').click()
+    // Scope each assertion to the DOM its OWN package owns. A plain
+    // `getByText('Saved')` passes with no <Toaster> at all, because announce()'s
+    // live region carries the same string — the two channels have to be
+    // distinguished or one of them is unproven (bisect caught exactly that).
+    await expect(page.locator('.pyreon-toast__message', { hasText: 'Saved' })).toBeVisible()
+    await expect(page.locator('[aria-live]').filter({ hasText: 'Saved' })).toHaveCount(1)
+
     // The screen drives `useFetch` against a real absolute URL (the same
     // endpoint the native targets hit), so in a sandbox it fails on CORS or DNS
     // and @pyreon/http rejects. That rejection is the app's, not a framework
