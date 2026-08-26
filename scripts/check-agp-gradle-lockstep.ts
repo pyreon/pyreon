@@ -32,6 +32,24 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
+/**
+ * AGP major.minor -> the highest `compileSdk` it supports. AGP refuses a higher
+ * one at build time ("the maximum recommended compile SDK version for Android
+ * Gradle plugin 8.13.2 is 36"), and an androidx artifact above that ceiling
+ * fails `checkDebugAarMetadata` rather than the compile — a confusing place to
+ * land for what is really a version-matrix problem.
+ */
+export const AGP_MAX_COMPILE_SDK: Record<string, number> = {
+  '8.7': 35,
+  '8.8': 35,
+  '8.9': 35,
+  '8.10': 36,
+  '8.11': 36,
+  '8.12': 36,
+  '8.13': 36,
+  '8.14': 36,
+}
+
 /** AGP major.minor -> minimum Gradle. Source: AGP release notes. */
 export const AGP_MIN_GRADLE: Record<string, string> = {
   '8.7': '8.9',
@@ -75,6 +93,17 @@ export function usesKotlinOptionsDsl(source: string): boolean {
     .split('\n')
     .filter((l) => !l.trim().startsWith('//'))
     .some((l) => /\bkotlinOptions\s*\{/.test(l))
+}
+
+/** `compileSdk = NN` out of an app-module build file. */
+export function extractCompileSdk(source: string): number | null {
+  const m = /^\s*compileSdk\s*=\s*(\d+)/m.exec(source)
+  return m?.[1] ? Number(m[1]) : null
+}
+
+export function maxCompileSdkFor(agp: string): number | null {
+  const [maj, min] = agp.split('.')
+  return AGP_MAX_COMPILE_SDK[`${maj}.${min}`] ?? null
 }
 
 export function extractPinnedGradle(workflow: string): string | null {
@@ -134,6 +163,23 @@ function main(): number {
       src = readFileSync(f, 'utf8')
     } catch {
       continue
+    }
+    const rootSrc = (() => {
+      try {
+        return readFileSync(join(examplesDir, app, 'build.gradle.kts'), 'utf8')
+      } catch {
+        return ''
+      }
+    })()
+    const agp = extractAgp(rootSrc)
+    const compileSdk = extractCompileSdk(src)
+    if (agp && compileSdk !== null) {
+      const maxSdk = maxCompileSdkFor(agp)
+      if (maxSdk !== null && compileSdk > maxSdk) {
+        problems.push(
+          `  ${app}/app: compileSdk ${compileSdk} exceeds the maximum AGP ${agp} supports (${maxSdk}).`,
+        )
+      }
     }
     if (usesKotlinOptionsDsl(src)) {
       problems.push(

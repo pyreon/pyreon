@@ -68,7 +68,13 @@ dependencies {
     // Compose BOM — same version as native-todomvc-android and
     // native-counter-android for consistency across the Android
     // example fleet.
-    implementation(platform("androidx.compose:compose-bom:2026.08.00"))
+    // COMPILE-SDK CEILING. AGP 8.13.2 supports compileSdk 36 at most, and an
+    // androidx artifact declares its own `minCompileSdk` in AAR metadata — a
+    // dependency above the ceiling fails `checkDebugAarMetadata`, not the
+    // compile. Verified from the artifacts: compose-bom 2026.08.00 ships
+    // compose 1.12 (needs 37) and androidx.core 1.19.0 needs 37, so both are
+    // held one release back. Raising either requires AGP 9 + compileSdk 37.
+    implementation(platform("androidx.compose:compose-bom:2026.06.01"))
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
@@ -96,7 +102,7 @@ dependencies {
     // whose artifact is missing fails only at the real gradle build,
     // the stub-masked-symbol class).
     implementation("io.coil-kt:coil-compose:2.7.0")
-    implementation("androidx.core:core-ktx:1.19.0")
+    implementation("androidx.core:core-ktx:1.18.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("androidx.compose.material:material")
 
@@ -106,7 +112,7 @@ dependencies {
     // so without this line ui-test-junit4 resolves VERSIONLESS
     // ("Could not find androidx.compose.ui:ui-test-junit4:" — the
     // first device-CI run to reach dependency resolution caught it).
-    androidTestImplementation(platform("androidx.compose:compose-bom:2026.08.00"))
+    androidTestImplementation(platform("androidx.compose:compose-bom:2026.06.01"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")

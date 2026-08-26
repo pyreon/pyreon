@@ -4,6 +4,8 @@ import {
   cmpVersions,
   extractAgp,
   extractPinnedGradle,
+  extractCompileSdk,
+  maxCompileSdkFor,
   minGradleFor,
   usesKotlinOptionsDsl,
 } from '../../../../../scripts/check-agp-gradle-lockstep'
@@ -95,5 +97,34 @@ kotlin {
 
   it('does not match a bare mention with no brace', () => {
     expect(usesKotlinOptionsDsl('val x = "kotlinOptions"')).toBe(false)
+  })
+})
+
+/**
+ * The compileSdk ceiling. AGP refuses a compileSdk above its maximum, and an
+ * androidx artifact above that ceiling fails `checkDebugAarMetadata` rather
+ * than the compile — which reads as a dependency problem when it is really a
+ * version-matrix one. Compose BOM 2026.08 (compose 1.12) and androidx.core
+ * 1.19.0 both declare minCompileSdk=37, which is what surfaced this.
+ */
+describe('compileSdk ceiling', () => {
+  it('extracts compileSdk from an app module', () => {
+    expect(extractCompileSdk('android {\n    compileSdk = 36\n}')).toBe(36)
+    expect(extractCompileSdk('    compileSdk = 35\n')).toBe(35)
+  })
+
+  it('does not confuse targetSdk or minSdk for compileSdk', () => {
+    const s = 'android {\n    minSdk = 26\n    targetSdk = 36\n    compileSdk = 35\n}'
+    expect(extractCompileSdk(s)).toBe(35)
+  })
+
+  it('returns null when absent', () => {
+    expect(extractCompileSdk('android { }')).toBeNull()
+  })
+
+  it('maps AGP to its ceiling by major.minor', () => {
+    expect(maxCompileSdkFor('8.13.2')).toBe(36)
+    expect(maxCompileSdkFor('8.7.0')).toBe(35)
+    expect(maxCompileSdkFor('9.3.2')).toBeNull()
   })
 })
