@@ -180,6 +180,14 @@ const GATES: Gate[] = [
     name: 'check-shared-source-deps',
     cmd: 'bun scripts/check-shared-source-deps.ts',
   },
+  // AGP's minimum Gradle vs the version native-device.yml pins. They live in
+  // different files with nothing linking them, and disagreeing costs ~6
+  // minutes into a native-labelled-only job for a one-line mismatch:
+  // "Minimum supported Gradle version is 8.13. Current version is 8.10.2."
+  {
+    name: 'check-agp-gradle-lockstep',
+    cmd: 'bun scripts/check-agp-gradle-lockstep.ts',
+  },
   // Dogfood: the workspace's own dependency fabric, gated by @pyreon/loom.
   // Errors only (phantom deps, runtime cycles, cross-major drift, internal-
   // range lies); warnings stay advisory. ~1s over the whole repo.
