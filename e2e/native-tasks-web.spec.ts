@@ -23,18 +23,34 @@ test.describe('native-tasks-web — the shared source renders on the third targe
     await expect(page.getByTestId('login-page')).toBeVisible()
   })
 
-  // KNOWN GAP, narrowed twice and still open — kept visible rather than deleted.
+  // KNOWN GAP — now ROOT-CAUSED, and the causes are two separate bugs this
+  // e2e is what found. Kept as `fixme` rather than deleted because it flips to
+  // green the moment both fixes land, and until then it is the record of what
+  // is actually wrong.
   //
-  // Login now works (that was the empty-string validator bug, fixed in
-  // @pyreon/form). What remains is the /toolkit ROUTE: clicking through to it
-  // changes the URL to /toolkit, raises NO page error, and renders NEITHER
-  // toolkit-page NOR tasks-page. So the route matches and its component
-  // produces nothing — which is a rendering question about that screen on web,
-  // not a routing or auth one.
+  // The screen rendered nothing and I first reported "no page error" — wrong.
+  // The framework DID catch it and render a dev error block; I had only
+  // listened for `pageerror` and looked for the two testids. Reading the
+  // rendered body named the throw immediately.
   //
-  // The screen wraps its tree in `<PyreonUI>` (@pyreon/ui-core) and drives
-  // eleven packages; isolating which of those renders empty on web is its own
-  // investigation. Both native targets device-prove the same screen.
+  // Two packages required a WEB PROVIDER that the native lowering does not
+  // need, so the same source ran on iOS and Android and threw in a browser:
+  //
+  //   1. `usePermissions(['tasks.write'])` — the seeded form is exactly what
+  //      PMTC lowers to, and on the web it threw `must be used within
+  //      <PermissionsProvider>`. Fixed in #3056: a seeded call is
+  //      self-contained and now needs no provider.
+  //   2. `useQuery(...)` — needs `<QueryClientProvider>` on the web, while the
+  //      native lowering is self-contained. Carrying the provider in shared
+  //      source then produced UNCOMPILABLE native code with zero warnings (an
+  //      invented `QueryClientProvider(client:)` view plus a bare
+  //      `createQueryClient` identifier). Fixed in #3058: the provider is
+  //      transparent on native and the client binding emits nothing.
+  //
+  // A third break was a plain web bug, already fixed in #3055: `<FadeIn>` with
+  // no `show` prop — the shape the preset docs show — crashed with
+  // `show is not a function`.
+  //
   test.fixme('the auth gate opens and the toolkit screen renders every package', async ({ page }) => {
     const errors: string[] = []
     page.on('pageerror', (e) => errors.push(e.message))

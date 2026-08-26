@@ -478,6 +478,9 @@ function ToolkitScreen() {
   })
   // Filter lives in the URL on web; on native the router's query backs it.
   const filter = useUrlState('filter', 'all')
+  // Seeded form: self-contained on every target. `usePermissions([...])` is
+  // what PMTC lowers to a PyreonPermissions, and it now needs no provider on
+  // the web either — before that, this exact line threw in a browser.
   const perms = usePermissions(['tasks.write'])
   // table: `createTableState` is the dependency-free half that lowers to the
   // native PyreonTableState engine. `useTable` (the TanStack row model) stays
@@ -537,7 +540,7 @@ function ToolkitScreen() {
       <Text data-testid="toolkit-evens">{String(doubled().length)}</Text>
       <Text data-testid="toolkit-query">{q.data}</Text>
       <Text data-testid="toolkit-cache">{String(seen.size)}</Text>
-      <Text data-testid="toolkit-perm">{String(perms.can('tasks.write'))}</Text>
+      <Text data-testid="toolkit-perm">{String(perms('tasks.write'))}</Text>
       <Text data-testid="toolkit-synced">{String(synced())}</Text>
       <Text data-testid="toolkit-tablepages">{String(table.pageCount())}</Text>
       <Text data-testid="toolkit-http">{taskReq.data}</Text>
