@@ -47,6 +47,10 @@
 process.env.NODE_ENV = 'production'
 
 import axiosDefault from 'axios'
+// ky 2. `prefixUrl` was renamed to `prefix`; v2's docs recommend `baseUrl` for
+// most new code, but `prefix` is the exact semantic equivalent of v1's
+// `prefixUrl`, so this arm measures the VERSION change rather than a config
+// change alongside it.
 import ky from 'ky'
 import { ofetch } from 'ofetch'
 import redaxios from 'redaxios'
@@ -114,7 +118,7 @@ function makeClients() {
       timeout: false,
     }),
     ky: ky.create({
-      prefixUrl: BASE,
+      prefix: BASE,
       headers: { 'x-app': 'bench' },
       timeout: false,
       retry: 0,
@@ -308,7 +312,7 @@ const OPS: Record<string, OpSpec> = {
     na: ['redaxios'],
     make: () => {
       const pyreonT = createHttp({ baseUrl: BASE, timeout: 5_000 })
-      const kyT = ky.create({ prefixUrl: BASE, timeout: 5_000, retry: 0 })
+      const kyT = ky.create({ prefix: BASE, timeout: 5_000, retry: 0 })
       const ofetchT = ofetch.create({ baseURL: BASE, timeout: 5_000 })
       const bareImpl = async () => {
         const controller = new AbortController()
@@ -360,7 +364,7 @@ const OPS: Record<string, OpSpec> = {
         sink += typeof c.get === 'function' ? 1 : 0
       },
       ky: async () => {
-        const c = ky.create({ prefixUrl: BASE, headers: { 'x-app': 'bench' } })
+        const c = ky.create({ prefix: BASE, headers: { 'x-app': 'bench' } })
         sink += typeof c.get === 'function' ? 1 : 0
       },
       ofetch: async () => {
@@ -401,15 +405,17 @@ const OPS: Record<string, OpSpec> = {
         ],
       })
       const kyM = ky.create({
-        prefixUrl: BASE,
+        prefix: BASE,
         timeout: false,
         retry: 0,
         hooks: {
           beforeRequest: [() => undefined],
+          // ky 2 unified every hook around a single state object; the old
+          // (request, options, response) positional form is gone.
           afterResponse: [
-            (_req, _opts, res) => {
-              sink += res.status
-              return res
+            ({ response }) => {
+              sink += response.status
+              return response
             },
           ],
         },
