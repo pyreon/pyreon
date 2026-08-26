@@ -42,6 +42,10 @@ function serializeValue(val: unknown): unknown {
  * Serialize a model instance to a plain JS object (no signals, no functions).
  * Nested model instances are recursively serialized.
  *
+ * The result is CACHED (MST-aligned): repeated calls on an unchanged instance
+ * return the SAME object, and the cache is invalidated on every write. Treat the
+ * returned snapshot as immutable — do not mutate it, as callers may share it.
+ *
  * @example
  * getSnapshot(counter)  // { count: 6 }
  * getSnapshot(app)      // { profile: { name: "Alice" }, title: "My App" }
@@ -49,6 +53,13 @@ function serializeValue(val: unknown): unknown {
 export function getSnapshot<TState extends StateShape>(instance: object): Snapshot<TState> {
   const meta = instanceMeta.get(instance)
   if (!meta) throw new Error('[@pyreon/state-tree] getSnapshot: not a model instance')
+
+  // Repeated getSnapshot on an UNCHANGED instance returns the cached object
+  // (MST-aligned — MST backs its snapshot with a computed). The cache is
+  // invalidated on every write (afterSet / emitPatch / reference id-write), so
+  // a hit means nothing this instance serializes has changed since the build.
+  const cached = meta.snapshotCache
+  if (cached !== undefined) return cached as Snapshot<TState>
 
   const out: Record<string, unknown> = {}
   for (const key of meta.stateKeys) {
@@ -63,6 +74,7 @@ export function getSnapshot<TState extends StateShape>(instance: object): Snapsh
     if (!sig) continue
     out[key] = serializeValue(sig.peek())
   }
+  meta.snapshotCache = out
   return out as Snapshot<TState>
 }
 
