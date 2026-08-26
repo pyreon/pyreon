@@ -58,17 +58,29 @@ test.describe('native-tasks-web — the shared source renders on the third targe
     await expect(page.getByTestId('toolkit-title')).toHaveText('Toolkit')
     // url-state: the default reaches the DOM.
     await expect(page.getByTestId('toolkit-filter')).toHaveText('all')
-    // state-tree, sized-map, table, permissions, dnd — each renders a value
-    // derived from its own runtime, so an inert package shows as empty text.
-    for (const id of [
-      'toolkit-pagesize',
-      'toolkit-cache',
-      'toolkit-tablepages',
-      'toolkit-perm',
-      'toolkit-sortable',
-      'toolkit-evens',
-    ]) {
-      await expect(page.getByTestId(id)).not.toBeEmpty()
+    // Each of these renders a value derived from its own runtime, and each is
+    // asserted to the EXACT value that runtime should produce. `not.toBeEmpty()`
+    // was the first version and is too weak to be worth much: a permissions
+    // instance that wrongly DENIES renders `false`, which is not empty, and a
+    // table with a broken page count renders some other number just as happily.
+    const expected: Record<string, string> = {
+      // state-tree: the model's declared default, read through its store.
+      'toolkit-pagesize': '20',
+      // sized-map: nothing has been cached yet, so the bounded map is empty.
+      'toolkit-cache': '0',
+      // table: one row at pageSize 10 is exactly one page.
+      'toolkit-tablepages': '1',
+      // permissions: seeded with 'tasks.write', so the check GRANTS.
+      'toolkit-perm': 'true',
+      // dnd: no drag in progress, so there is no active key.
+      'toolkit-sortable': 'idle',
+      // rx: [1,2,3,4] -> evens [2,4] -> doubled, so a length of 2.
+      'toolkit-evens': '2',
+      // sync: the CRDT counter at its seeded initial value.
+      'toolkit-synced': '0',
+    }
+    for (const [id, value] of Object.entries(expected)) {
+      await expect(page.getByTestId(id), `${id} should render ${value}`).toHaveText(value)
     }
     // kinetic: the preset-animated container mounts its children.
     await expect(page.getByTestId('toolkit-fade')).toBeVisible()
