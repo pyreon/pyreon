@@ -210,6 +210,17 @@ export function createI18n(options: I18nOptions): I18nInstance {
 
   const locale = signal(options.locale)
 
+  // Hoisted once, not rebuilt per `t()`. `interpolate`'s `format` callback is
+  // invoked ONLY synchronously inside a `t()` resolution, where the active
+  // locale is `locale.peek()` (== the `locale()` read at `resolveTranslation`
+  // entry). Allocating `{ format }` + its closure per call was pure garbage on
+  // the dominant path — `interpolate` early-returns for a plain string without
+  // `{{…}}` and never calls `format` at all.
+  const interpolateOptions = {
+    format: (value: unknown, spec: string): string =>
+      formatters.format(value, spec, locale.peek()),
+  }
+
   // Internal store: locale → namespace → dictionary
   // We use a version counter to trigger reactive updates when messages change,
   // since the store is mutated in place (Object.is would skip same-reference sets).
@@ -287,7 +298,6 @@ export function createI18n(options: I18nOptions): I18nInstance {
   function finalize(
     template: string,
     values: InterpolationValues | undefined,
-    currentLocale: string,
     depth: number,
   ): string {
     let resolved = template
@@ -308,9 +318,7 @@ export function createI18n(options: I18nOptions): I18nInstance {
         return resolveTranslation(innerKey, innerValues, depth + 1)
       })
     }
-    return interpolate(resolved, values, {
-      format: (value, spec) => formatters.format(value, spec, currentLocale),
-    })
+    return interpolate(resolved, values, interpolateOptions)
   }
 
   function resolveTranslation(
@@ -349,7 +357,7 @@ export function createI18n(options: I18nOptions): I18nInstance {
     const candidates = buildKeyCandidates(keyPath, currentLocale, context, hasCount, count, pluralRules)
     for (const candidate of candidates) {
       const result = lookupKey(currentLocale, namespace, candidate)
-      if (result !== undefined) return finalize(result, values, currentLocale, depth)
+      if (result !== undefined) return finalize(result, values, depth)
     }
     if (fallbackLocale && fallbackLocale !== currentLocale) {
       for (const candidate of candidates) {
@@ -358,14 +366,14 @@ export function createI18n(options: I18nOptions): I18nInstance {
         // translations.
         if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('i18n.lookupKey.fallback')
         const result = lookupKey(fallbackLocale, namespace, candidate)
-        if (result !== undefined) return finalize(result, values, currentLocale, depth)
+        if (result !== undefined) return finalize(result, values, depth)
       }
     }
 
     // Explicit default value (interpolated) before the key-as-fallback.
     const defaultValue = values?.defaultValue
     if (typeof defaultValue === 'string') {
-      return finalize(defaultValue, values, currentLocale, depth)
+      return finalize(defaultValue, values, depth)
     }
 
     // Missing key handler
