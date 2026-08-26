@@ -1290,7 +1290,11 @@ export function createRouter<TNames extends string = string>(
   ): Promise<NavigationResult> {
     const c = classifyRedirectTarget(target)
     if (c.kind === 'external') {
-      if (typeof window !== 'undefined') window.location.assign(c.url)
+      // `isClient` rather than a hand-rolled `typeof window` check: it is the
+      // canonical env primitive (already imported above) and discriminates on
+      // `document`, which does not misreport a DOM-less environment that
+      // polyfills `window`.
+      if (isClient) window.location.assign(c.url)
       return 'committed'
     }
     return navigate(c.url, replace, depth)
