@@ -73,6 +73,12 @@ export interface BuildFlowHostHtmlOptions {
 }
 
 const scriptSafe = (s: string): string => s.replace(/<\//g, '<\\/')
+
+// Colors are developer config that must be valid CSS color tokens. Strip any char
+// that can't appear in one (quotes, <, >, backslash) so a color can't break out of
+// the JS string literals / innerHTML attribute it is interpolated into. Covers every
+// interpolation site at once (the JS-string setAttribute args AND the marker innerHTML).
+const safeColor = (c: string): string => c.replace(/[^#a-zA-Z0-9(),.%\s-]/g, '')
 const num = (n: number): string => String(Number.isFinite(n) ? n : 0)
 
 /**
@@ -106,7 +112,7 @@ export function buildFlowHostHtml(options: BuildFlowHostHtmlOptions = {}): strin
   svg.setAttribute('width', '100%'); svg.setAttribute('height', '100%');
   svg.style.touchAction = 'none';
   var defs = document.createElementNS(NS, 'defs');
-  defs.innerHTML = '<marker id="pf-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${edgeColor}"/></marker>';
+  defs.innerHTML = '<marker id="pf-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${safeColor(edgeColor)}"/></marker>';
   svg.appendChild(defs);
   var g = document.createElementNS(NS, 'g');
   svg.appendChild(g); root.appendChild(svg);
@@ -156,7 +162,7 @@ export function buildFlowHostHtml(options: BuildFlowHostHtmlOptions = {}): strin
       var sw = s.width || NODE_W, sh = s.height || NODE_H, tw = t.width || NODE_W, th = t.height || NODE_H;
       var p = document.createElementNS(NS, 'path');
       p.setAttribute('d', bezier(s.position.x + sw / 2, s.position.y + sh, t.position.x + tw / 2, t.position.y));
-      p.setAttribute('fill', 'none'); p.setAttribute('stroke', '${edgeColor}'); p.setAttribute('stroke-width', '1.5');
+      p.setAttribute('fill', 'none'); p.setAttribute('stroke', '${safeColor(edgeColor)}'); p.setAttribute('stroke-width', '1.5');
       p.setAttribute('marker-end', 'url(#pf-arrow)'); g.appendChild(p);
     });
     nodes.forEach(function (n) {
@@ -166,12 +172,12 @@ export function buildFlowHostHtml(options: BuildFlowHostHtmlOptions = {}): strin
       grp.style.cursor = 'pointer'; grp.setAttribute('data-node-id', n.id);
       var r = document.createElementNS(NS, 'rect');
       r.setAttribute('width', w); r.setAttribute('height', h); r.setAttribute('rx', '8');
-      r.setAttribute('fill', '${nodeFill}'); r.setAttribute('stroke', '${nodeStroke}'); r.setAttribute('stroke-width', '1');
+      r.setAttribute('fill', '${safeColor(nodeFill)}'); r.setAttribute('stroke', '${safeColor(nodeStroke)}'); r.setAttribute('stroke-width', '1');
       grp.appendChild(r);
       var tx = document.createElementNS(NS, 'text');
       tx.setAttribute('x', w / 2); tx.setAttribute('y', h / 2);
       tx.setAttribute('text-anchor', 'middle'); tx.setAttribute('dominant-baseline', 'central');
-      tx.setAttribute('font-family', 'system-ui, sans-serif'); tx.setAttribute('font-size', '13'); tx.setAttribute('fill', '${labelColor}');
+      tx.setAttribute('font-family', 'system-ui, sans-serif'); tx.setAttribute('font-size', '13'); tx.setAttribute('fill', '${safeColor(labelColor)}');
       tx.textContent = String(labelOf(n)); grp.appendChild(tx);
       grp.addEventListener('click', function () {
         if (typeof window.pyreonPostMessage === 'function') {

@@ -53,7 +53,9 @@ describe('buildChartHostHtml', () => {
 
   it('passes theme + renderer through to echarts.init', () => {
     const html = buildChartHostHtml({ theme: 'dark', renderer: 'svg' })
-    expect(html).toContain("echarts.init(el, 'dark', { renderer: 'svg' })")
+    expect(html).toContain('echarts.init(el, "dark",')
+    // renderer is the validated enum, still single-quoted in the object literal
+    expect(html).toContain("renderer: 'svg'")
   })
 })
 
@@ -143,5 +145,21 @@ describe('<ChartWebView>', () => {
   it('forwards an inlined echartsScript through the component', () => {
     const vnode = ChartWebView({ option: {}, echartsScript: '/*INLINE_ECHARTS*/' })
     expect((vnode.props as { html: string }).html).toContain('/*INLINE_ECHARTS*/')
+  })
+})
+
+describe('buildChartHostHtml — script-context hardening', () => {
+  it('a theme name with a quote cannot break out of echarts.init(...)', () => {
+    const html = buildChartHostHtml({ theme: "x' + alert(1) + '" })
+    // NEW: the theme is a JSON-stringified (double-quoted) JS string literal, so
+    // the single quotes are inert inside it. OLD (bare `'${theme}'`) produced
+    // `init(el, 'x' + alert(1) + '', …)` — a live alert(1).
+    expect(html).toContain('init(el, "x\' + alert(1) + \'",')
+    expect(html).not.toContain("init(el, 'x' + alert(1)")
+  })
+  it('an invalid renderer falls back to canvas (no arbitrary token in the object literal)', () => {
+    const html = buildChartHostHtml({ renderer: "svg'); alert(1); ('" as never })
+    expect(html).toContain("renderer: 'canvas'")
+    expect(html).not.toContain('alert(1)')
   })
 })
