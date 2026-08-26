@@ -100,15 +100,12 @@ test.describe('native-tasks-web — the shared source renders on the third targe
     // Settle first, or this asserts before the screen's request has had a
     // chance to fail and passes for the wrong reason.
     await page.waitForTimeout(1500)
-    // The screen drives `useFetch(getTask({ params }))` — the shape the
-    // multiplatform docs prescribe — which on the web hands `useFetch` a
-    // promise where it wants a URL and leaves the endpoint's rejection
-    // unhandled. #3063 fixes that at the hook; until it lands, exempt exactly
-    // that shape and let every OTHER page error fail. Tighten to
-    // `toEqual([])` once #3063 is on main — verified locally that it passes
-    // with the fix applied.
-    const unexpected = errors.filter((e) => !/failed before a response was received/.test(e))
-    expect(unexpected, `page errors: ${unexpected.join(' | ')}`).toEqual([])
+    // NO page errors at all. This needed an exemption until #3063: the screen
+    // drives `useFetch(getTask({ params }))` — the shape the multiplatform docs
+    // prescribe — which handed `useFetch` a promise where it wanted a URL and
+    // left the endpoint's rejection unhandled. The hook adopts a promise source
+    // now, so a failing request lands in `error()` and nothing escapes.
+    expect(errors, `page errors: ${errors.join(' | ')}`).toEqual([])
   })
 
   test('url-state writes through to the URL', async ({ page }) => {
