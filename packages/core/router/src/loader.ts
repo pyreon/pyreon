@@ -141,10 +141,23 @@ export function serializeLoaderData(router: RouterInstance): Record<string, unkn
  *      `[Pyreon] Loader returned circular reference at key "<path>"` error
  *      naming the offending key instead of `Converting circular structure
  *      to JSON` (which doesn't tell the user which loader is broken).
- *   3. **Escapes `</`** so embedding the JSON inside `<script>` can't break
- *      out of the script tag — already done at every call site but now
- *      centralised so all four callers (handler string-mode, handler stream-
- *      mode, SSG entry, dev SSR) get the escape uniformly.
+ *   3. **Neutralises the inline-`<script>` context** so embedding the JSON in
+ *      a `<script>` body can't corrupt the script boundary — centralised so
+ *      every caller (loader-data at `html.ts` + `render-page.ts`, and the
+ *      store-state twin `__PYREON_STORE_STATE__` at `render-page.ts`, which
+ *      all route through THIS helper) is protected uniformly. Escaping only
+ *      `</` was insufficient: the HTML tokenizer enters script-data-double-
+ *      escaped state on `<!--` followed by `<script` — NEITHER token contains
+ *      a slash — so a loader value like `<!--<script>` survived verbatim and
+ *      broke the script boundary (hydration DoS; XSS-adjacent). Escaping the
+ *      whole `<` class makes `</script`, `<!--`, and `<script` all
+ *      unformable, and U+2028/U+2029 (raw JS line terminators that JSON does
+ *      NOT escape) are folded in — they are legal in JSON but a `SyntaxError`
+ *      inside a `<script>`. `>` and `&` need no handling here: character
+ *      references are not decoded in script-data, and `-->` cannot close a
+ *      comment that can no longer be opened. Every escaped form parses back
+ *      to the original character under `JSON.parse`, so hydrated data is
+ *      byte-identical — only the SERIALIZED representation is neutralised.
  *
  * Returns the safely-escaped JSON string ready to drop into a `<script>`
  * tag's body. Throws (with the Pyreon-prefixed error) on circular refs so
@@ -208,7 +221,15 @@ export function stringifyLoaderData(loaderData: Record<string, unknown>): string
     if (typeof value === 'function' || typeof value === 'symbol') return undefined
     return value
   }
-  return JSON.stringify(loaderData, replacer).replace(/<\//g, '<\\/')
+  // Escape the `<` class + JS line terminators for the inline-`<script>`
+  // context. `\\u003C` (== `<`) makes `</script`, `<!--`, and `<script`
+  // all unformable; the two line-separator regexes match U+2028 / U+2029 via
+  // visible `\\u` escapes (never raw bytes, which are themselves line
+  // terminators). `\\u003C` supersets the old `</`-only escape.
+  return JSON.stringify(loaderData, replacer)
+    .replace(/</g, '\\u003C')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029')
 }
 
 /**

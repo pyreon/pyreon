@@ -174,8 +174,12 @@ describe('stringifyLoaderData (M2.2)', () => {
     const json = stringifyLoaderData({
       '/home': { html: '</script><script>alert(1)' },
     })
+    // The `<` class is neutralised to `\\u003C` (supersedes the old `</`-only
+    // escape — see the dedicated security describe block below). Invariant
+    // preserved: no raw `</script>` (or `<script`) can survive into the tag.
     expect(json).not.toContain('</script>')
-    expect(json).toContain('<\\/script>')
+    expect(json).not.toContain('<script>')
+    expect(json).toContain('\\u003C')
   })
 
   test('passes plain data through unchanged', () => {
@@ -255,6 +259,87 @@ describe('stringifyLoaderData (M2.2)', () => {
 
   test('empty record produces empty object JSON', () => {
     expect(stringifyLoaderData({})).toBe('{}')
+  })
+})
+
+// ─── stringifyLoaderData — inline-<script> context escaping (security) ────────
+// Exploit assertion for the script-data-double-escaped bypass: escaping ONLY
+// `</` is insufficient because the HTML tokenizer enters that state on `<!--`
+// followed by `<script` — NEITHER token contains a slash — so `<!--<script>`
+// in a loader value survived verbatim and corrupted the inline-script boundary
+// (hydration DoS; XSS-adjacent). The store-state twin (`__PYREON_STORE_STATE__`
+// at render-page.ts:232) routes through this SAME helper, so it is covered by
+// construction — asserted below.
+//
+// Bisect-verified: revert loader.ts to `JSON.stringify(d, replacer).replace(/<\//g, '<\\/')`
+// → "neutralises <!--<script>" fails (raw `<!--<script>` present in the embedded
+// tag) and "escapes the < class" fails; the U+2028 spec fails against the same
+// revert. Restore → all pass.
+describe('stringifyLoaderData — inline-<script> context escaping (security)', () => {
+  const SCRIPT_OPEN = '<' + 'script'
+  const SCRIPT_CLOSE = '</' + 'script>'
+  const COMMENT_OPEN = '<' + '!--'
+
+  // Embed exactly as the framework does (html.ts:94 / render-page.ts:218).
+  const wrap = (json: string) => `<script>window.__PYREON_LOADER_DATA__=${json}</script>`
+
+  test('neutralises <!--<script> (the </-only bypass) — no raw < survives', () => {
+    const payload = { '/home': { html: '<!--<script>alert(1)//' } }
+    const json = stringifyLoaderData(payload)
+    const tag = wrap(json)
+    // The three dangerous raw sequences must NOT appear in the SERIALIZED data.
+    // (They can only occur in our own `<script>…</script>` wrapper, never from data.)
+    const body = json // the data blob alone — no framework wrapper tokens here
+    expect(body).not.toContain(COMMENT_OPEN)
+    expect(body).not.toContain(SCRIPT_OPEN)
+    expect(body).not.toContain(SCRIPT_CLOSE)
+    // Belt-and-braces: the assembled tag has exactly the two boundary tokens we
+    // wrote (opening `<script>` + closing `</script>`), and no others injected
+    // by the data.
+    expect(tag.match(/<script/g)?.length).toBe(1)
+    expect(tag.match(/<\/script>/g)?.length).toBe(1)
+    expect(tag).not.toContain(COMMENT_OPEN)
+  })
+
+  test('escapes the < class (</script>, lone </, <script) to \\u003C', () => {
+    const payload = { '/x': { a: SCRIPT_CLOSE, b: '</', c: SCRIPT_OPEN } }
+    const json = stringifyLoaderData(payload)
+    expect(json).not.toContain('<')
+    expect(json).toContain('\\u003C')
+    // Superset check: the old `</` escape target is gone too.
+    expect(json).not.toContain('</')
+  })
+
+  test('data round-trips byte-identical through JSON.parse', () => {
+    // The escaped form parses back to the ORIGINAL characters — only the
+    // serialized representation is neutralised, never the hydrated data.
+    const payload = {
+      '/home': { html: '<!--<script>alert(1)</script>', frag: '</ol> & <b>x</b>' },
+    }
+    const json = stringifyLoaderData(payload)
+    expect(JSON.parse(json)).toEqual(payload)
+  })
+
+  test('escapes raw U+2028 / U+2029 line terminators (JS SyntaxError otherwise)', () => {
+    const LS = String.fromCharCode(0x2028)
+    const PS = String.fromCharCode(0x2029)
+    const json = stringifyLoaderData({ '/home': { msg: `a${LS}b${PS}c` } })
+    // Raw separators must be gone from the serialized string...
+    expect(json).not.toContain(LS)
+    expect(json).not.toContain(PS)
+    expect(json).toContain('\\u2028')
+    expect(json).toContain('\\u2029')
+    // ...but round-trip to the original characters.
+    expect(JSON.parse(json)).toEqual({ '/home': { msg: `a${LS}b${PS}c` } })
+  })
+
+  test('store-state twin is the SAME helper — covered by construction', () => {
+    // render-page.ts serializes `__PYREON_STORE_STATE__` via stringifyLoaderData
+    // too, so a hostile store value gets the identical neutralisation.
+    const storeState = { counter: { value: '<!--<script>alert(1)//' } }
+    const tag = `<script>window.__PYREON_STORE_STATE__=${stringifyLoaderData(storeState)}</script>`
+    expect(tag.match(/<script/g)?.length).toBe(1)
+    expect(tag).not.toContain('<' + '!--')
   })
 })
 
