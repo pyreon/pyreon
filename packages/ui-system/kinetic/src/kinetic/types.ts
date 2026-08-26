@@ -65,7 +65,7 @@ export type GroupConfigOpts = {
 // ─── Mode-specific component props ───────────────────────
 
 export type KineticTransitionProps<_Tag extends string> = Record<string, unknown> & {
-  show: () => boolean
+  show?: boolean | (() => boolean) | undefined
   appear?: boolean | undefined
   unmount?: boolean | undefined
   timeout?: number | undefined
@@ -73,7 +73,7 @@ export type KineticTransitionProps<_Tag extends string> = Record<string, unknown
 } & Partial<TransitionCallbacks>
 
 export type KineticCollapseProps<_Tag extends string> = Record<string, unknown> & {
-  show: () => boolean
+  show?: boolean | (() => boolean) | undefined
   appear?: boolean | undefined
   timeout?: number | undefined
   transition?: string | undefined
@@ -81,7 +81,7 @@ export type KineticCollapseProps<_Tag extends string> = Record<string, unknown> 
 } & Partial<TransitionCallbacks>
 
 export type KineticStaggerProps<_Tag extends string> = Record<string, unknown> & {
-  show: () => boolean
+  show?: boolean | (() => boolean) | undefined
   appear?: boolean | undefined
   timeout?: number | undefined
   interval?: number | undefined
