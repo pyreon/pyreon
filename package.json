@@ -56,6 +56,7 @@
     "test:e2e:atlas": "bunx playwright test --config=e2e-configs/atlas-workshop.config.ts",
     "test:e2e:ui-regression": "bunx playwright test --config=e2e-configs/ui-regression.config.ts",
     "test:e2e:cssvars": "bunx playwright test --config=e2e-configs/cssvars.config.ts",
+    "test:e2e:lathe": "bunx playwright test --config=e2e-configs/lathe.config.ts",
     "test:e2e:compat": "bunx playwright test --config=e2e-configs/compat-layers.config.ts",
     "test:e2e:app-showcase": "bunx playwright test --config=e2e-configs/app-showcase.config.ts",
     "test:e2e:islands": "bunx playwright test --config=e2e-configs/islands-showcase.config.ts",
@@ -206,7 +207,7 @@
         "pkg": "@pyreon/cli",
         "dep": "@pyreon/ansi",
         "code": "prod-import-of-dev-dep",
-        "reason": "@pyreon/ansi is a PRIVATE workspace package and the build inlines it — the published lib/ carries no import of it, only a comment. Loom reads declared truth and cannot see the bundler, so the warning is correct about the declaration and wrong about the consumer."
+        "reason": "@pyreon/ansi is a PRIVATE workspace package and the build inlines it \u2014 the published lib/ carries no import of it, only a comment. Loom reads declared truth and cannot see the bundler, so the warning is correct about the declaration and wrong about the consumer."
       },
       {
         "pkg": "@pyreon/example-react-compat",
@@ -219,6 +220,24 @@
         "dep": "@pyreon/ansi",
         "code": "prod-import-of-dev-dep",
         "reason": "Same as @pyreon/cli: private workspace package, inlined at build, absent from the published output as an import."
+      },
+      {
+        "pkg": "@pyreon/lathe",
+        "dep": "@pyreon/http",
+        "code": "phantom-dep",
+        "reason": "@pyreon/lathe is a CODE GENERATOR: these specifiers are string ARGUMENTS naming what it emits into the consumer's files (`f.import('@pyreon/http', 'createHttp')`), not imports lathe itself performs. Its lib/ carries no reference to them. Loom's lexical scan strips comments and template literals but cannot tell a bare specifier string from an import, which is the correct trade for a scanner that reads declared truth."
+      },
+      {
+        "pkg": "@pyreon/lathe",
+        "dep": "@pyreon/query",
+        "code": "phantom-dep",
+        "reason": "@pyreon/lathe is a CODE GENERATOR: these specifiers are string ARGUMENTS naming what it emits into the consumer's files (`f.import('@pyreon/http', 'createHttp')`), not imports lathe itself performs. Its lib/ carries no reference to them. Loom's lexical scan strips comments and template literals but cannot tell a bare specifier string from an import, which is the correct trade for a scanner that reads declared truth."
+      },
+      {
+        "pkg": "@pyreon/lathe",
+        "dep": "@pyreon/validate",
+        "code": "phantom-dep",
+        "reason": "@pyreon/lathe is a CODE GENERATOR: these specifiers are string ARGUMENTS naming what it emits into the consumer's files (`f.import('@pyreon/http', 'createHttp')`), not imports lathe itself performs. Its lib/ carries no reference to them. Loom's lexical scan strips comments and template literals but cannot tell a bare specifier string from an import, which is the correct trade for a scanner that reads declared truth."
       }
     ]
   }

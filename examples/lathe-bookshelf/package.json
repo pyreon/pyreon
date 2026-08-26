@@ -1,0 +1,30 @@
+{
+  "name": "@pyreon/example-lathe-bookshelf",
+  "version": "0.51.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "gen": "lathe generate",
+    "gen:check": "lathe check",
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@pyreon/core": "workspace:*",
+    "@pyreon/http": "workspace:*",
+    "@pyreon/query": "workspace:*",
+    "@pyreon/reactivity": "workspace:*",
+    "@pyreon/runtime-dom": "workspace:*",
+    "@pyreon/validate": "workspace:*"
+  },
+  "devDependencies": {
+    "@pyreon/lathe": "workspace:*",
+    "@pyreon/tsconfig": "workspace:*",
+    "@pyreon/vite-plugin": "workspace:*",
+    "vite": "^8.2.2"
+  }
+}

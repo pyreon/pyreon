@@ -43,6 +43,7 @@
       "@pyreon/i18n",
       "@pyreon/kinetic",
       "@pyreon/kinetic-presets",
+      "@pyreon/lathe",
       "@pyreon/lint",
       "@pyreon/loom",
       "@pyreon/machine",

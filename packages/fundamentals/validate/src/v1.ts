@@ -186,7 +186,26 @@ export function pipe<S extends Schema<unknown>>(schema: S, ...actions: ReadonlyA
 // ─── Type helpers ──────────────────────────────────────────────────────
 
 export { type Infer, type Input, type Output } from './core/infer'
-export { type Result, Schema, type SuperRefineCtx } from './core/schema'
+// The wrapper classes `.optional()` / `.nullable()` / `.default()` / … return.
+// They were reachable only through `./core/schema`, so a consumer EXPORTING a
+// schema that used any of them hit `TS2883: the inferred type cannot be named
+// without a reference to '.../core/schema'` — a public method whose return
+// type had no public name. Exporting the classes closes that, and costs
+// nothing at runtime: they are already in the bundle.
+export {
+  DefaultSchema,
+  NonOptionalSchema,
+  NullableSchema,
+  NullishSchema,
+  OptionalSchema,
+  PipeSchema,
+  PreprocessSchema,
+  type Result,
+  Schema,
+  SuperRefineSchema,
+  type SuperRefineCtx,
+  TransformSchema,
+} from './core/schema'
 export { type PyreonIssue, type StandardSchemaIssue, ValidationError } from './core/issue'
 export { type PendingCheck } from './core/ops'
 
