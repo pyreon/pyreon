@@ -31,15 +31,6 @@ function collectTextNodes(node: JSONContent, acc: string[]): void {
   if (kids) for (const child of kids) collectTextNodes(child, acc)
 }
 
-/** Total VISIBLE character count — sum of every text node's length. */
-function countChars(node: JSONContent): number {
-  const acc: string[] = []
-  collectTextNodes(node, acc)
-  let total = 0
-  for (const s of acc) total += s.length
-  return total
-}
-
 /**
  * Concatenate each textblock's inline text (marks joined without a separator,
  * so a mark-split word stays one word), one string per block.
@@ -58,16 +49,31 @@ function collectBlockTexts(node: JSONContent, out: string[]): void {
   }
 }
 
-/** Whitespace-delimited word count (block boundaries never merge words). */
-function countWords(node: JSONContent): number {
+/**
+ * Per-keystroke document statistics in a SINGLE DFS. `characterCount`,
+ * `wordCount` and `isEmpty` previously each walked the whole ProseMirror JSON
+ * independently (2–3 full walks + allocations per keystroke — `isEmpty` re-ran
+ * the character walk a third time just to test `=== 0`); they now derive from
+ * this one pass.
+ *
+ * Reuses `collectBlockTexts`, so the word semantics are byte-identical to the
+ * old `countWords` (marks joined without a separator; block boundaries never
+ * merge words). `chars` is the sum of the block-string lengths — exactly the
+ * old `countChars`, because every text node's parent is a textblock, so summing
+ * per block equals summing every text node. `isEmpty` is `chars === 0`, as
+ * before.
+ */
+function computeStats(node: JSONContent): { chars: number; words: number; isEmpty: boolean } {
   const blocks: string[] = []
   collectBlockTexts(node, blocks)
-  let total = 0
+  let chars = 0
+  let words = 0
   for (const b of blocks) {
+    chars += b.length
     const t = b.trim()
-    if (t !== '') total += t.split(/\s+/).length
+    if (t !== '') words += t.split(/\s+/).length
   }
-  return total
+  return { chars, words, isEmpty: chars === 0 }
 }
 
 /** Best-effort plain text — blocks joined with `\n\n` (matches `getText`). */
@@ -190,9 +196,13 @@ export function createRichTextEditor(config: RichTextConfig = {}): RichTextEdito
   // `text` prefers the live engine's exact `getText()` when mounted (custom
   // node serializers), falling back to the walker before mount.
   const text = computed(() => readEditor()?.getText() ?? extractText(baseJson()))
-  const characterCount = computed(() => countChars(baseJson()))
-  const wordCount = computed(() => countWords(baseJson()))
-  const isEmpty = computed(() => countChars(baseJson()) === 0)
+  // ONE document walk per change; the three counters read fields off it. Each
+  // still has its own value gate, so a change that moves only `words` (not
+  // `chars`) re-fires only `wordCount`'s consumers.
+  const stats = computed(() => computeStats(baseJson()))
+  const characterCount = computed(() => stats().chars)
+  const wordCount = computed(() => stats().words)
+  const isEmpty = computed(() => stats().isEmpty)
 
   /**
    * Whether a mark/node is active at the current selection — reactive (reads
