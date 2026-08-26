@@ -141,6 +141,13 @@ test.describe('native-tasks-web — the shared source renders on the third targe
     await page.getByTestId('toolkit-schema-submit').click()
     await expect(page.getByTestId('toolkit-schema-valid')).toHaveText('true')
 
+    // WebView bridge — the mechanism charts / code / flow / rich-text ride on.
+    // The hosted page echoes the host-pushed `__pyreonData` back over the
+    // reverse channel, so BOTH directions are proven by one assertion made
+    // OUTSIDE the frame. Asserting inside it is the part the device suites
+    // cannot do, which is why the page is written to echo.
+    await expect(page.getByTestId('toolkit-bridge')).toHaveText('ping')
+
     // machine: a transition must actually MOVE the state — the initial value
     // alone would pass against a machine that ignores every event.
     await page.getByTestId('toolkit-machine-toggle').click()

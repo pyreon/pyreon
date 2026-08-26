@@ -76,7 +76,7 @@ import { useForm } from '@pyreon/form'
 import { useFetch } from '@pyreon/hooks'
 import { defineStore } from '@pyreon/store'
 import { For, Show, Suspense, ErrorBoundary } from '@pyreon/core'
-import { Stack, Inline, Field, Button, Text, Image, Icon, Scroll, Modal } from '@pyreon/primitives'
+import { Stack, Inline, Field, Button, Text, Image, Icon, Scroll, Modal, WebView } from '@pyreon/primitives'
 import {
   createRouter,
   useNavigate,
@@ -473,6 +473,20 @@ const AttrsBox = attrs({ name: 'AttrsBox', component: Stack }).attrs({ gap: 2 })
 // in a real app is the whole of what crosses.
 const ToolkitSchema = zodSchema(z.object({ name: z.string().min(3), age: z.number() }))
 
+// The WEBVIEW BRIDGE, which is the mechanism four packages (charts / code /
+// flow / rich-text) ride on and the one with no proof outside its own unit
+// tests. A chart bundle cannot appear in lowered source — `buildChartHostHtml`
+// is build-time — but the BRIDGE can, as a literal host page.
+//
+// The page echoes host-pushed `__pyreonData` straight back over the reverse
+// channel. That is deliberate: it makes BOTH directions assertable from OUTSIDE
+// the WebView, where XCUITest and the Compose semantics tree can actually see —
+// asserting inside a WKWebView is the part neither can do reliably.
+const BRIDGE_HTML = `<!doctype html><body><script>
+function send() { window.pyreonPostMessage && window.pyreonPostMessage(String(window.__pyreonData)) }
+window.addEventListener('pyreondata', send); setTimeout(send, 0);
+</script></body>`
+
 const api = createHttp({ baseUrl: 'https://example.com' })
 const getTask = api.endpoint('GET /tasks/:id')
 
@@ -542,6 +556,9 @@ function ToolkitScreen() {
       toast('valid')
     },
   })
+  // Forward: `data` is pushed into the live page without reloading it.
+  // Reverse: the page's echo arrives here and lands in native UI.
+  const bridgeEcho = signal('none')
   const hotkeyHits = signal(0)
   useHotkey('mod+s', () => {
     hotkeyHits.set(hotkeyHits() + 1)
@@ -620,6 +637,13 @@ function ToolkitScreen() {
         </Row>
       </Container>
       <Text data-testid="toolkit-hotkey">{String(hotkeyHits())}</Text>
+      <WebView
+        html={BRIDGE_HTML}
+        data={'ping'}
+        onMessage={(m) => bridgeEcho.set(m)}
+        data-testid="toolkit-webview"
+      />
+      <Text data-testid="toolkit-bridge">{bridgeEcho()}</Text>
       <Field
         value={schemaForm.values().name}
         onChangeText={(v) => schemaForm.setFieldValue('name', v)}

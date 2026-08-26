@@ -425,6 +425,24 @@ final class PyreonTasksUITests: XCTestCase {
             "the zodSchema declaration did not reject a too-short value"
         )
 
+        // WebView bridge — the mechanism charts / code / flow / rich-text ride
+        // on, and the one with no device proof at all until now. The hosted
+        // page echoes the host-pushed `__pyreonData` back over the reverse
+        // channel, so BOTH directions land in a native Text this test can read.
+        // That indirection is the point: asserting INSIDE a WKWebView is what
+        // XCUITest cannot do reliably.
+        let bridge = app.staticTexts["toolkit-bridge"].firstMatch
+        XCTAssertTrue(bridge.waitForExistence(timeout: 15), "Bridge readout missing")
+        // The page loads asynchronously, so poll rather than assert once.
+        let echoed = NSPredicate(format: "label == %@", "ping")
+        expectation(for: echoed, evaluatedWith: bridge, handler: nil)
+        waitForExpectations(timeout: 20) { error in
+            XCTAssertNil(
+                error,
+                "WebView bridge did not round-trip: host data never reached the page, or pyreonPostMessage never reached the host (label was \(bridge.label))"
+            )
+        }
+
         // machine: the declared initial state, then a transition that must
         // actually MOVE it — the initial value alone would pass against a
         // machine that ignores every event.

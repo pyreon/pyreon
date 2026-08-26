@@ -371,6 +371,18 @@ class TasksAppInstrumentedTest {
         composeRule.onNodeWithTag("toolkit-schema-submit").performClick()
         composeRule.onNodeWithTag("toolkit-schema-valid").assertTextEquals("false")
 
+        // WebView bridge — mirror of the iOS assertion. The hosted page echoes
+        // the host-pushed `__pyreonData` back, so both directions land in a
+        // native Text the semantics tree can read; asserting inside the WebView
+        // is what Compose testing cannot do.
+        composeRule.waitUntil(timeoutMillis = 20_000) {
+            composeRule
+                .onAllNodesWithTag("toolkit-bridge")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+        composeRule.onNodeWithTag("toolkit-bridge").assertTextEquals("ping")
+
         // machine: the declared initial state, then a transition that must
         // actually MOVE it — the initial value alone would pass against a
         // machine that ignores every event.
