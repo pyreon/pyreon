@@ -712,12 +712,24 @@ Pyreon blocks `javascript:` and `data:` URIs in URL-bearing attributes (`href`, 
 
 #### innerHTML (Sanitized)
 
-The `innerHTML` prop is automatically sanitized:
+The `innerHTML` prop is automatically sanitized **in the browser**:
 
 ```tsx
-// Automatically sanitized -- safe
+// Automatically sanitized -- safe (client-side)
 <div innerHTML={userContent} />
 ```
+
+**Server-side (SSR / SSG / streaming): `innerHTML` FAILS LOUD.** Its sanitizer is
+DOM-based (`DOMParser`) and cannot run in Node, so the server renderers throw a
+clear `[Pyreon]` error rather than emit the value raw — emitting attacker-controlled
+markup would execute at initial HTML parse, *before* hydration could sanitize it (a
+stored/reflected XSS). If you need `innerHTML` on a server-rendered page:
+
+- **Untrusted content** — render the element in a **client-only island / SPA route**
+  so sanitization happens in the browser.
+- **Trusted content, or your own server-safe sanitizer** — use
+  `dangerouslySetInnerHTML` (below), optionally pre-sanitized with DOMPurify+jsdom
+  or `sanitize-html` on the server.
 
 #### dangerouslySetInnerHTML (Raw)
 
@@ -737,7 +749,11 @@ The `sanitizeHtml` function sanitizes HTML strings using a three-tier strategy:
 1. **Custom sanitizer** (if set via `setSanitizer`) -- highest priority.
 2. **Browser Sanitizer API** (Chrome 105+) -- native, fast.
 3. **Built-in fallback** -- DOM-based allowlist sanitizer.
-4. **SSR/no-DOM fallback** -- strips all tags as last resort.
+
+`sanitizeHtml` is DOM-based, so it runs in the browser only. In a no-DOM
+environment (Node/SSR) with no custom sanitizer registered it **throws** with an
+actionable message rather than returning unsanitized HTML — the server-rendered
+`innerHTML` prop relies on this and fails loud (see above).
 
 ```ts
 import { sanitizeHtml } from '@pyreon/runtime-dom'

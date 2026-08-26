@@ -85,6 +85,30 @@ class RawHtml {
   constructor(readonly value: string) {}
 }
 
+// The sanitized `innerHTML` prop is DOM-based on the client (`applyStaticProp`
+// runs the allowlist sanitizer via `DOMParser`). That sanitizer CANNOT run in
+// Node/workerd, so there is no honest server-side sanitize. Emitting the value
+// RAW would ship attacker-controlled markup that executes at INITIAL HTML PARSE
+// — before hydration can re-sanitize it (`<img src=x onerror=…>` fires during
+// parse) — i.e. a stored/reflected XSS. So the SSR/SSG/stream renderers FAIL
+// LOUD instead: a clear, actionable throw beats a silent XSS. This does NOT
+// touch `dangerouslySetInnerHTML`, which is raw by design (React semantics) and
+// whose emit stays verbatim. Follow-up: a real-parser server sanitizer
+// (parse5/htmlparser2 or a DOM in Node) could make this emit sanitized instead
+// of throwing — a hand-rolled string tokenizer over the SVG-inclusive allowlist
+// is mXSS-prone and deliberately NOT attempted here.
+function throwSsrInnerHtmlUnsupported(tag: string): never {
+  throw new Error(
+    `[Pyreon] The sanitized \`innerHTML\` prop cannot be sanitized during SSR (<${tag}>). ` +
+      `Its sanitizer is DOM-based (DOMParser) and cannot run in Node, so emitting the value ` +
+      `raw would be a server-side XSS that fires at initial HTML parse, before hydration. Fix: ` +
+      `(1) use \`dangerouslySetInnerHTML\` with your own server-safe sanitizer (e.g. DOMPurify + ` +
+      `jsdom, or sanitize-html); or (2) render this element in a client-only island / SPA route ` +
+      `so \`innerHTML\` is sanitized in the browser. \`dangerouslySetInnerHTML\` is raw by design ` +
+      `and needs neither.`,
+  )
+}
+
 /**
  * A templated subtree that must NOT be serialized where it was written.
  *
@@ -574,7 +598,9 @@ async function streamElementNode(vnode: VNode, enqueue: (s: string) => void): Pr
   if (dangerousHtml) {
     enqueue(dangerousHtml)
   } else if (plainInnerHtml != null && plainInnerHtml !== '') {
-    enqueue(String(plainInnerHtml))
+    // Sanitized `innerHTML` cannot be sanitized server-side — fail loud (see
+    // `throwSsrInnerHtmlUnsupported`). `dangerouslySetInnerHTML` above is raw.
+    throwSsrInnerHtmlUnsupported(tag)
   } else {
     // `<select value>` frame — ALS scope, same as renderElement (PZ-09).
     // Load-bearing for streams: chunks of CONCURRENT streams interleave at
@@ -1084,7 +1110,9 @@ function renderElement(vnode: VNode): MaybeAsync {
   if (dangerousHtml) {
     html += dangerousHtml
   } else if (plainInnerHtml != null && plainInnerHtml !== '') {
-    html += String(plainInnerHtml)
+    // Sanitized `innerHTML` cannot be sanitized server-side — fail loud (see
+    // `throwSsrInnerHtmlUnsupported`). `dangerouslySetInnerHTML` above is raw.
+    throwSsrInnerHtmlUnsupported(tag)
   } else {
     // `<select value>`: render children inside the frame's ALS scope so the
     // option renderer sees the nearest enclosing select's value (PZ-09).

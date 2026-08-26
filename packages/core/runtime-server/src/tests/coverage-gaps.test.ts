@@ -76,9 +76,10 @@ describe('SSR — dangerouslySetInnerHTML + innerHTML variants', () => {
     expect(html).toContain('<i>fn</i>')
   })
 
-  it('plain innerHTML (non-empty) is emitted', async () => {
-    const html = await renderToString(h('div', { innerHTML: 'plain inner' }))
-    expect(html).toContain('plain inner')
+  it('non-empty innerHTML THROWS during SSR (cannot sanitize server-side)', async () => {
+    await expect(renderToString(h('div', { innerHTML: 'plain inner' }))).rejects.toThrow(
+      /cannot be sanitized during SSR/,
+    )
   })
 })
 
@@ -129,9 +130,10 @@ describe('SSR stream-path — streamElementNode inner-html variants', () => {
     expect(out).toContain('<i>sfn</i>')
   })
 
-  it('plain innerHTML (stream)', async () => {
-    const out = await collectStream(renderToStream(h('div', { innerHTML: 'stream inner' })))
-    expect(out).toContain('stream inner')
+  it('non-empty innerHTML THROWS in the stream path too', async () => {
+    await expect(collectStream(renderToStream(h('div', { innerHTML: 'stream inner' })))).rejects.toThrow(
+      /cannot be sanitized during SSR/,
+    )
   })
 
   it('void element (stream) — self-closes with no children', async () => {
@@ -301,9 +303,11 @@ describe('SSR stream-path — Suspense boundary error catch (fallback stays)', (
 })
 
 describe('SSR stream-path — innerHTML function form', () => {
-  it('a function innerHTML in the stream is invoked', async () => {
-    const out = await collectStream(renderToStream(h('div', { innerHTML: () => 'fn-stream-inner' })))
-    expect(out).toContain('fn-stream-inner')
+  it('a function innerHTML in the stream is invoked but still THROWS', async () => {
+    let called = false
+    const p = collectStream(renderToStream(h('div', { innerHTML: () => { called = true; return 'fn-stream-inner' } })))
+    await expect(p).rejects.toThrow(/cannot be sanitized during SSR/)
+    expect(called).toBe(true)
   })
 })
 
