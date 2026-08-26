@@ -1673,7 +1673,10 @@ function renderPropValue(key: string, value: unknown): string | null {
   // `applyStaticProp` so hydration sees identical markup; HTML boolean attrs and
   // data-* keep presence semantics below.
   if (typeof value === 'boolean' && key.charCodeAt(0) === 97 /* 'a' */ && key.startsWith('aria-')) {
-    return `${toAttrName(key)}="${value ? 'true' : 'false'}"`
+    {
+      const name = toAttrName(key)
+      return name === null ? null : `${name}="${value ? 'true' : 'false'}"`
+    }
   }
   if (value === null || value === undefined || value === false) return null
   if (value === true) return toAttrName(key) // pre-escaped by the memo
@@ -1694,7 +1697,10 @@ function renderPropValue(key: string, value: unknown): string | null {
     return style ? `style="${escapeHtml(style)}"` : null
   }
 
-  return `${toAttrName(key)}="${escapeHtml(String(value))}"`
+  {
+    const name = toAttrName(key)
+    return name === null ? null : `${name}="${escapeHtml(String(value))}"`
+  }
 }
 
 function renderProp(tag: string, key: string, value: unknown): string | null {
@@ -1978,8 +1984,37 @@ const SVG_ATTRIBUTE_MAP: Record<string, string> = {
 // across millions of calls), so the map + kebab-regex work is paid once per key
 // per process. The cached value is ALSO pre-escaped, so callers skip their
 // per-call escapeHtml on the name. Bounded at 1,000 entries (leak-class C).
-const _attrNameCache = new Map<string, string>()
-function toAttrName(key: string): string {
+// A resolved attribute NAME must not contain any character that can terminate the
+// name token and break out into a new attribute (a live event handler): whitespace,
+// '/', '>', '=', quotes, '<', or control chars. `escapeHtml` neutralizes < > & " '
+// in attribute VALUES, but leaves space and '=' intact — and a name is never quoted —
+// so an UNVALIDATED name from a spread of a user-keyed object (`<el {...userKeys}>`)
+// is an SSR XSS sink: `{['x onmouseover=alert(1)']: '1'}` → `<el x onmouseover=alert(1)="1">`.
+// The client `setAttribute()` throws on such names; the SSR string path has no parser
+// to reject them until the browser parses the served HTML, so validate here. React and
+// Preact drop invalid attribute names for exactly this reason.
+// A control char in an attribute name is a parser-significant breakout vector, so
+// matching control chars IS the point here.
+// oxlint-disable-next-line no-control-regex
+const UNSAFE_ATTR_NAME_RE = /[\s/>="'<\u0000-\u001F\u007F]/
+
+const warnIfUnsafeAttrName: (key: string) => void =
+  process.env.NODE_ENV === 'production'
+    ? () => {}
+    : (key: string): void => {
+        // oxlint-disable-next-line no-console
+        console.warn(
+          `[Pyreon SSR] Attribute name "${key}" contains characters that could break HTML ` +
+            `structure and was DROPPED. Names must not contain whitespace, '=', '/', '>', '<', or ` +
+            `quotes. If user-supplied data drives an attribute name (e.g. a spread of a user-keyed ` +
+            `object), validate the keys against an allowlist before passing to h().`,
+        )
+      }
+
+// Returns the pre-escaped attribute name, or `null` when the resolved name is
+// invalid (breakout chars / empty) — callers DROP a null-named attribute.
+const _attrNameCache = new Map<string, string | null>()
+function toAttrName(key: string): string | null {
   const cached = _attrNameCache.get(key)
   if (cached !== undefined) return cached
   const resolved =
@@ -1989,9 +2024,15 @@ function toAttrName(key: string): string {
     // for unknown / user-defined camelCase props (e.g. `dataTestId` →
     // `data-test-id`). Tests in `ssr.test.ts:650` lock the fallback.
     key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)
-  const escaped = escapeHtml(resolved)
-  if (_attrNameCache.size < 1000) _attrNameCache.set(key, escaped)
-  return escaped
+  let result: string | null
+  if (resolved.length === 0 || UNSAFE_ATTR_NAME_RE.test(resolved)) {
+    warnIfUnsafeAttrName(key)
+    result = null
+  } else {
+    result = escapeHtml(resolved)
+  }
+  if (_attrNameCache.size < 1000) _attrNameCache.set(key, result)
+  return result
 }
 
 function isStyleObject(value: unknown): value is Record<string, unknown> {
