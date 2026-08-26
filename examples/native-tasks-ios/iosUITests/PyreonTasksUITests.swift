@@ -389,6 +389,42 @@ final class PyreonTasksUITests: XCTestCase {
             "Element did not render its second child"
         )
 
+        // attrs + coolgrid: both are structural wrappers, so what a device can
+        // see is that each renders its leaf. A wrapper that lowers to nothing,
+        // or to an invented view, fails here; the web e2e asserts attrs' baked
+        // `gap` default, which only a computed style can show.
+        XCTAssertTrue(
+            app.staticTexts["toolkit-attrs-text"].firstMatch.exists,
+            "attrs() wrapper did not render its child"
+        )
+        XCTAssertTrue(
+            app.staticTexts["toolkit-grid-cell"].firstMatch.exists,
+            "coolgrid Container > Row > Col did not render its leaf"
+        )
+        // hotkeys: the counter renders at its initial value. The PRESS is not
+        // asserted here — `.keyboardShortcut` needs a hardware keyboard the
+        // simulator has no reliable way to drive from XCUITest, so the web e2e
+        // owns that half and presses the real combo.
+        XCTAssertEqual(
+            app.staticTexts["toolkit-hotkey"].firstMatch.label,
+            "0",
+            "useHotkey's bound counter did not render"
+        )
+
+        // validation: the schema-driven form. `isValid` is derived from errors
+        // and an untouched field has none, so its initial value proves nothing —
+        // submit is what runs the schema.
+        let schemaName = app.textFields["toolkit-schema-name"].firstMatch
+        XCTAssertTrue(schemaName.exists, "Schema form field missing on toolkit page")
+        schemaName.tap()
+        schemaName.typeText("ab")
+        app.buttons["toolkit-schema-submit"].firstMatch.tap()
+        XCTAssertEqual(
+            app.staticTexts["toolkit-schema-valid"].firstMatch.label,
+            "false",
+            "the zodSchema declaration did not reject a too-short value"
+        )
+
         // machine: the declared initial state, then a transition that must
         // actually MOVE it — the initial value alone would pass against a
         // machine that ignores every event.

@@ -355,6 +355,22 @@ class TasksAppInstrumentedTest {
         composeRule.onNodeWithTag("toolkit-el-a").assertIsDisplayed()
         composeRule.onNodeWithTag("toolkit-el-b").assertIsDisplayed()
 
+        // attrs + coolgrid: structural wrappers, so what the semantics tree can
+        // see is that each renders its leaf. The web e2e asserts attrs' baked
+        // `gap` default, which needs a computed style.
+        composeRule.onNodeWithTag("toolkit-attrs-text").assertIsDisplayed()
+        composeRule.onNodeWithTag("toolkit-grid-cell").assertIsDisplayed()
+        // hotkeys: the counter renders at its initial value. The PRESS is not
+        // asserted here — the focused key handler needs a hardware keyboard the
+        // emulator has no reliable way to drive, so the web e2e owns that half.
+        composeRule.onNodeWithTag("toolkit-hotkey").assertTextEquals("0")
+
+        // validation: the schema-driven form. `isValid` derives from errors and
+        // an untouched field has none, so submit is what runs the schema.
+        composeRule.onNodeWithTag("toolkit-schema-name").performTextInput("ab")
+        composeRule.onNodeWithTag("toolkit-schema-submit").performClick()
+        composeRule.onNodeWithTag("toolkit-schema-valid").assertTextEquals("false")
+
         // machine: the declared initial state, then a transition that must
         // actually MOVE it — the initial value alone would pass against a
         // machine that ignores every event.

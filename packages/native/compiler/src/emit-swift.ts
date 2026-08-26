@@ -4488,6 +4488,20 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
       }
       // PyreonTableState PROPERTY reads: web `t.page()` / `t.sortColumn()` /
+      // `form.isValid()` / `form.isSubmitting()` — the WEB API is an accessor,
+      // the native `PyreonForm` exposes them as stored Bool properties. Without
+      // this the web-correct spelling emitted `form.isValid()`, which swiftc
+      // rejects with "cannot call value of non-function type 'Bool'". Same
+      // inversion `useOnline()` and `useAppState()` already carry.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _formNamesSwift.has(e.callee.object.name) &&
+        e.args.length === 0 &&
+        ['isValid', 'isSubmitting'].includes(e.callee.property)
+      ) {
+        return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
+      }
       // `t.sortDirection()` / `t.filterValue()` are accessor calls, but on Swift
       // these are stored properties — drop the parens. Its METHODS (rows /
       // pageCount / toggleSort / setFilter / …) keep parens (flow through).

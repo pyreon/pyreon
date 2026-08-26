@@ -3864,6 +3864,20 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       ) {
         return `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
       }
+      // `form.isValid()` / `form.isSubmitting()` — the WEB API is an accessor,
+      // the native PyreonForm exposes them as Boolean properties. Mirror of the
+      // Swift branch; without it the web-correct spelling emitted
+      // `form.isValid()`, which kotlinc rejects with "expression 'isValid' of
+      // type 'Boolean' cannot be invoked as a function".
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _formNames.has(e.callee.object.name) &&
+        e.args.length === 0 &&
+        ['isValid', 'isSubmitting'].includes(e.callee.property)
+      ) {
+        return `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
+      }
       // PyreonTableState property reads drop parens (methods flow through).
       if (
         e.callee.kind === 'member' &&

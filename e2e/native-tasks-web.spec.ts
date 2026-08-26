@@ -107,9 +107,39 @@ test.describe('native-tasks-web — the shared source renders on the third targe
       'styled() background did not reach the DOM',
     ).toBe('rgb(107, 114, 128)')
     expect(await card.evaluate((el) => getComputedStyle(el).padding)).toBe('8px')
+    // attrs: the prop-defaulting HOC renders its child, with the baked default.
+    await expect(page.getByTestId('toolkit-attrs-text')).toBeVisible()
+    expect(
+      await page.getByTestId('toolkit-attrs').evaluate((el) => getComputedStyle(el).gap),
+      'attrs() .attrs({ gap: 2 }) default did not reach the DOM',
+    ).toBe('8px')
+    // coolgrid: Container > Row > Col nests and renders the leaf.
+    await expect(page.getByTestId('toolkit-grid-cell')).toBeVisible()
+
     // elements: the flex primitive renders BOTH children and applies its gap.
     await expect(page.getByTestId('toolkit-el-a')).toBeVisible()
     await expect(page.getByTestId('toolkit-el-b')).toBeVisible()
+
+    // hotkeys: press the real combo and require the counter to MOVE. A rendered
+    // initial value proves nothing — the handler is the thing being tested.
+    await expect(page.getByTestId('toolkit-hotkey')).toHaveText('0')
+    await page.keyboard.press('ControlOrMeta+s')
+    await expect(page.getByTestId('toolkit-hotkey')).toHaveText('1')
+
+    // validation: the schema-driven form must actually REJECT and then ACCEPT.
+    // A rendered `isValid` alone proves nothing, and its INITIAL value proves
+    // nothing either — `isValid` is derived from errors, and an untouched field
+    // has none, so it starts `true` by design. The schema has to MOVE it.
+    // Schema validation runs on BLUR (that is `runSchemaForField`'s path), so
+    // the field has to lose focus for the schema to have an opinion.
+    // Submit is what runs the schema (`isValid` is derived from errors, and an
+    // untouched field has none — so its initial `true` proves nothing).
+    await page.getByTestId('toolkit-schema-name').fill('ab')
+    await page.getByTestId('toolkit-schema-submit').click()
+    await expect(page.getByTestId('toolkit-schema-valid')).toHaveText('false')
+    await page.getByTestId('toolkit-schema-name').fill('ada')
+    await page.getByTestId('toolkit-schema-submit').click()
+    await expect(page.getByTestId('toolkit-schema-valid')).toHaveText('true')
 
     // machine: a transition must actually MOVE the state — the initial value
     // alone would pass against a machine that ignores every event.

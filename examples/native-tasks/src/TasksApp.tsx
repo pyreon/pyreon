@@ -59,9 +59,14 @@ import { PyreonUI } from '@pyreon/ui-core'
 import { createTableState } from '@pyreon/table'
 import { kinetic } from '@pyreon/kinetic'
 import { createI18n } from '@pyreon/i18n'
+import { attrs } from '@pyreon/attrs'
+import { Container, Row, Col } from '@pyreon/coolgrid'
 import { Element } from '@pyreon/elements'
 import { createMachine } from '@pyreon/machine'
+import { useHotkey } from '@pyreon/hotkeys'
 import { styled } from '@pyreon/styler'
+import { zodSchema } from '@pyreon/validation'
+import { z } from 'zod'
 import { useStorage } from '@pyreon/storage'
 import { Toaster, toast } from '@pyreon/toast'
 import { announce } from '@pyreon/a11y'
@@ -454,6 +459,20 @@ const Card = styled(Stack)`
   background: #6b7280;
 `
 
+// attrs: the prop-defaulting HOC. `.attrs({ gap: 2 })` bakes a default onto the
+// wrapped component on every target.
+const AttrsBox = attrs({ name: 'AttrsBox', component: Stack }).attrs({ gap: 2 })
+
+// validation: the DECLARATION form is what lowers — a top-level
+// `zodSchema(z.object({…}))` emits native field validators. Nothing READS from
+// it here on purpose: the runtime surface around the declaration (inline
+// `.parse()`, async validate, the adapter's own members) stays web, so a value
+// rendered from it would be outside the crossing subset. `ToolkitSchema.fields`
+// was the first attempt and fails on BOTH toolchains — the synthesized
+// `PyreonZodSchema_*` has no such member, correctly. Carrying the declaration
+// in a real app is the whole of what crosses.
+const ToolkitSchema = zodSchema(z.object({ name: z.string().min(3), age: z.number() }))
+
 const api = createHttp({ baseUrl: 'https://example.com' })
 const getTask = api.endpoint('GET /tasks/:id')
 
@@ -509,6 +528,24 @@ function ToolkitScreen() {
   // storage: a persisted scalar. On native this is @AppStorage /
   // rememberPyreonStorage; on the web it is the storage backend.
   const theme = useStorage('toolkit-theme', 'light')
+  // hotkeys: a LITERAL shortcut + an inline zero-arg handler is the shape that
+  // lowers (SwiftUI `.keyboardShortcut` on a hidden button; a Compose focused
+  // key handler). `mod` resolves per platform.
+  // validation, used for real rather than merely declared: the schema drives a
+  // form. `zodSchema(...)` at module scope is the DECLARATION form that lowers
+  // to native field validators; wiring it into `useForm({ schema })` is what
+  // makes it do something a test can observe.
+  const schemaForm = useForm({
+    initialValues: { name: '', age: 0 },
+    schema: ToolkitSchema,
+    onSubmit: (_values) => {
+      toast('valid')
+    },
+  })
+  const hotkeyHits = signal(0)
+  useHotkey('mod+s', () => {
+    hotkeyHits.set(hotkeyHits() + 1)
+  })
   const perms = usePermissions(['tasks.write'])
   // table: `createTableState` is the dependency-free half that lowers to the
   // native PyreonTableState engine. `useTable` (the TanStack row model) stays
@@ -572,6 +609,27 @@ function ToolkitScreen() {
       <Card data-testid="toolkit-card">
         <Text data-testid="toolkit-card-text">styled</Text>
       </Card>
+      <AttrsBox data-testid="toolkit-attrs">
+        <Text data-testid="toolkit-attrs-text">attrs</Text>
+      </AttrsBox>
+      <Container data-testid="toolkit-grid">
+        <Row>
+          <Col>
+            <Text data-testid="toolkit-grid-cell">grid</Text>
+          </Col>
+        </Row>
+      </Container>
+      <Text data-testid="toolkit-hotkey">{String(hotkeyHits())}</Text>
+      <Field
+        value={schemaForm.values().name}
+        onChangeText={(v) => schemaForm.setFieldValue('name', v)}
+        placeholder="Name"
+        data-testid="toolkit-schema-name"
+      />
+      <Button onPress={() => schemaForm.handleSubmit()} data-testid="toolkit-schema-submit">
+        Check
+      </Button>
+      <Text data-testid="toolkit-schema-valid">{String(schemaForm.isValid())}</Text>
       <Element gap={2} data-testid="toolkit-element">
         <Text data-testid="toolkit-el-a">a</Text>
         <Text data-testid="toolkit-el-b">b</Text>
