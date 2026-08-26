@@ -301,6 +301,68 @@ class TasksAppInstrumentedTest {
             .onNodeWithTag("tasks-page")
             .assertIsDisplayed()
 
+        // Phase 5b: the TOOLKIT screen — where eleven previously snippet-only
+        // packages actually run. The web e2e asserts the same values in a
+        // browser; this is the Android half. Until it existed the screen was
+        // COMPILE-proven on device and nothing more.
+        //
+        // Values, not existence: a permissions container that wrongly denies
+        // renders "false", which is displayed just as happily as "true".
+        composeRule
+            .onNodeWithTag("tasks-toolkit")
+            .performClick()
+
+        composeRule.waitUntil(timeoutMillis = 15_000) {
+            composeRule
+                .onAllNodesWithTag("toolkit-page")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+        composeRule
+            .onNodeWithTag("toolkit-page")
+            .assertIsDisplayed()
+
+        // i18n: the TRANSLATED title. A missing catalogue renders the key.
+        composeRule
+            .onNodeWithTag("toolkit-title")
+            .assertTextEquals("Toolkit")
+        // url-state: the default reaches the view through the router's query.
+        composeRule
+            .onNodeWithTag("toolkit-filter")
+            .assertTextEquals("all")
+        // permissions: seeded with tasks.write, so the check GRANTS.
+        composeRule
+            .onNodeWithTag("toolkit-perm")
+            .assertTextEquals("true")
+        // table: one row at pageSize 10 is exactly one page.
+        composeRule
+            .onNodeWithTag("toolkit-tablepages")
+            .assertTextEquals("1")
+        // rx: [1,2,3,4] -> evens -> doubled, so a length of 2.
+        composeRule
+            .onNodeWithTag("toolkit-evens")
+            .assertTextEquals("2")
+        // state-tree: the model's declared default.
+        composeRule
+            .onNodeWithTag("toolkit-pagesize")
+            .assertTextEquals("20")
+
+        // url-state WRITE: flipping it must move the value, which a
+        // default-only assertion cannot see.
+        composeRule
+            .onNodeWithTag("toolkit-filter-done")
+            .performClick()
+        composeRule
+            .onNodeWithTag("toolkit-filter")
+            .assertTextEquals("done")
+
+        composeRule
+            .onNodeWithTag("toolkit-back")
+            .performClick()
+        composeRule
+            .onNodeWithTag("tasks-page")
+            .assertIsDisplayed()
+
         // Phase 6: logout — flips the store flag back; lands on /login.
         composeRule
             .onNodeWithTag("tasks-logout")

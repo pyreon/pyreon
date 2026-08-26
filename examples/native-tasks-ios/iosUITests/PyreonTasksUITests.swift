@@ -318,6 +318,78 @@ final class PyreonTasksUITests: XCTestCase {
             "Did not return to tasks after stats Back"
         )
 
+        // Phase 5b: the TOOLKIT screen — the one place eleven packages that had
+        // only ever been snippet-proven actually run. The web e2e asserts the
+        // same values in a browser; this is the native half, and until it
+        // existed the screen was COMPILE-proven on device and nothing more.
+        //
+        // Values, not existence: a permissions container that wrongly denies
+        // renders "false", which exists just as happily as "true".
+        let toolkitBtn = app.buttons["tasks-toolkit"].firstMatch
+        XCTAssertTrue(toolkitBtn.exists, "Toolkit button missing on tasks page")
+        toolkitBtn.tap()
+
+        let toolkitPage = app.otherElements["toolkit-page"].firstMatch
+        XCTAssertTrue(
+            toolkitPage.waitForExistence(timeout: 15),
+            "Toolkit page did not render"
+        )
+
+        // i18n: the TRANSLATED title. A missing catalogue renders the key.
+        let toolkitTitle = app.staticTexts["toolkit-title"].firstMatch
+        XCTAssertTrue(toolkitTitle.waitForExistence(timeout: 10), "Toolkit title missing")
+        XCTAssertEqual(toolkitTitle.label, "Toolkit", "i18n lookup did not resolve")
+
+        // url-state: the default reaches the view through the router's query.
+        XCTAssertEqual(
+            app.staticTexts["toolkit-filter"].firstMatch.label,
+            "all",
+            "useUrlState default did not reach the view"
+        )
+        // permissions: seeded with tasks.write, so the check GRANTS.
+        XCTAssertEqual(
+            app.staticTexts["toolkit-perm"].firstMatch.label,
+            "true",
+            "PyreonPermissions denied a seeded grant"
+        )
+        // table: one row at pageSize 10 is exactly one page.
+        XCTAssertEqual(
+            app.staticTexts["toolkit-tablepages"].firstMatch.label,
+            "1",
+            "PyreonTableState page count wrong"
+        )
+        // rx: [1,2,3,4] -> evens -> doubled, so a length of 2.
+        XCTAssertEqual(
+            app.staticTexts["toolkit-evens"].firstMatch.label,
+            "2",
+            "the rx chain did not lower to chained computeds"
+        )
+        // state-tree: the model's declared default.
+        XCTAssertEqual(
+            app.staticTexts["toolkit-pagesize"].firstMatch.label,
+            "20",
+            "state-tree model default did not reach the view"
+        )
+
+        // url-state WRITE: flipping it must move the value, which is the half a
+        // default-only assertion cannot see.
+        let filterDone = app.buttons["toolkit-filter-done"].firstMatch
+        XCTAssertTrue(filterDone.exists, "Filter button missing on toolkit page")
+        filterDone.tap()
+        XCTAssertEqual(
+            app.staticTexts["toolkit-filter"].firstMatch.label,
+            "done",
+            "useUrlState write did not reach the router query"
+        )
+
+        let toolkitBack = app.buttons["toolkit-back"].firstMatch
+        XCTAssertTrue(toolkitBack.exists, "Back button missing on toolkit page")
+        toolkitBack.tap()
+        XCTAssertTrue(
+            tasksPage.waitForExistence(timeout: 15),
+            "Did not return to tasks after toolkit Back"
+        )
+
         // Phase 6: logout — flips the store flag back; lands on /login.
         let logout = app.buttons["tasks-logout"].firstMatch
         XCTAssertTrue(logout.exists, "Logout button missing on tasks page")
