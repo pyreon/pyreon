@@ -10212,6 +10212,53 @@ report.issues.filter((i) => i.severity === 'error')`,
     mistakes: '- Re-deriving your own truth from the model instead of reading `report.graph` / `report.issues` — the analysis is the contract; nothing downstream should recompute cycles or reach differently',
   },
   // <gen-docs:api-reference:end @pyreon/loom>
+
+  // <gen-docs:api-reference:start @pyreon/lathe>
+
+  'lathe/generate': {
+    signature: 'generate(specText: string, config: ResolvedConfig): GenerateResult',
+    example: `import { generate, resolveConfig } from '@pyreon/lathe'
+
+const config = resolveConfig({ input: './openapi.yaml', target: 'multiplatform' })
+const { doc, files, reach } = generate(specText, config)
+
+for (const [id, r] of reach) {
+  if (r.reach === 'web-only') console.warn(id, r.reason)
+}`,
+    notes: 'The whole pipeline, pure: spec text in, file CONTENTS out. Touches no filesystem, which is what makes the generator testable without a temp directory and lets `lathe check` diff before writing. Returns the IR document, the generated files, and a per-operation `reach` map explaining in spec terms which operations can run natively and why the others cannot.',
+    mistakes: `- Passing a relative \`baseUrl\` (or omitting \`servers\` from the spec) and expecting native output — PMTC bakes the request URL at compile time, so a relative base makes EVERY operation web-only. The reach report names this, but only if you read it.
+- Assuming the \`.native.tsx\` modules replace the web output. They are ADDITIVE: the web files are byte-identical whether the target is \`web\` or \`multiplatform\`.
+- Editing generated files. Every file carries a DO-NOT-EDIT banner and is overwritten on the next run; change the spec or the emitter.
+- Expecting \`s.enum\` in native output. Enums do not lower, so the native path narrows them to \`s.string()\` — the constraint is genuinely lost there, which is why the two layouts are emitted separately rather than shared.`,
+  },
+
+  'lathe/verifyNative': {
+    signature: 'verifyNative(files: GeneratedFile[], transform: TransformFn | undefined): VerifyReport',
+    example: `import { generate, resolveConfig, resolveTransform, verifyNative, worstVerdict } from '@pyreon/lathe'
+
+const { files } = generate(specText, resolveConfig({ input: 'spec', target: 'multiplatform' }))
+const report = verifyNative(files, await resolveTransform())
+
+if (!report.ran) console.warn('not verified:', report.reason)
+if (worstVerdict(report) !== 'lowers') process.exitCode = 1`,
+    notes: 'Runs the real native compiler over the generated `.native.tsx` modules on both targets and returns a per-file verdict. The check is POSITIVE — it asserts the emitted Swift/Kotlin contains `PyreonQuery<` / `PyreonZodSchema_` and contains no leaked web-only symbol — because zero warnings is not evidence: a standalone hook wrapping `useQuery` produces no warnings and emits Swift that cannot find the symbol. Passing `undefined` for `transform` yields `ran: false` with a reason, never a pass.',
+    mistakes: `- Reading \`warnings.length === 0\` as success. That is exactly the shape this function exists to catch — PMTC reproduces an unrecognised call verbatim and says nothing, so the native build fails later with "cannot find useQuery in scope".
+- Treating \`ran: false\` as a pass. A verification that could not run is not one that ran and succeeded; \`--strict-native\` fails on it deliberately.
+- Bundling a copy of \`@pyreon/native-compiler\` instead of resolving the project's. A verdict from a different compiler version than the one that will build the app is worse than no verdict.`,
+  },
+
+  'lathe/loadOpenApi': {
+    signature: 'loadOpenApi(source: string): { doc: IrDocument }',
+    example: `import { loadOpenApi } from '@pyreon/lathe'
+
+const { doc } = loadOpenApi(await readFile('./openapi.yaml', 'utf8'))
+console.log(doc.models.length, 'models', doc.operations.length, 'operations')
+for (const note of doc.notes) console.warn(note.code, note.at, note.message)`,
+    notes: 'Parses an OpenAPI 3.x document (JSON or YAML text) into the spec-agnostic IR. Every reduction the IR cannot represent is recorded in `doc.notes` with a stable code and a location, so a loss is reported once at the boundary instead of being rediscovered differently by each emitter. Deterministic: models and operations are sorted, so the same spec always produces the same IR.',
+    mistakes: `- Ignoring \`doc.notes\`. A spec with a remote \`$ref\` or a non-JSON media type still produces output — with those pieces typed \`unknown\`. The note is the only signal.
+- Expecting anchors or merge keys to work. The YAML reader refuses them by design with a line number, because silently ignoring an anchor produces a document that is wrong everywhere it was used.`,
+  },
+  // <gen-docs:api-reference:end @pyreon/lathe>
   // <gen-docs:api-reference:start @pyreon/atlas>
 
   'atlas/atlas scan': {

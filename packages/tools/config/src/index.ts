@@ -84,6 +84,33 @@ export interface AtlasSection {
   >
 }
 
+
+/**
+ * Lathe's configuration — see `@pyreon/lathe`'s `LatheSection` for field docs.
+ *
+ * Kept structurally identical to the package's own type rather than imported:
+ * `@pyreon/config` must stay dependency-free so every tool can read it without
+ * pulling the others in.
+ */
+export interface LatheSection {
+  /** Path to the OpenAPI document (`.json`, `.yaml`, `.yml`). */
+  input?: string
+  /** Output directory, relative to the config file. */
+  output?: string
+  /**
+   * `web` emits the idiomatic multi-file layout; `multiplatform` ALSO emits
+   * one self-contained module per tag, shaped for the native compiler, and
+   * verifies that those modules actually lower.
+   */
+  target?: 'web' | 'multiplatform'
+  /** Emitters to run: types, schemas, client, queries, mocks, atlas. */
+  plugins?: readonly string[]
+  /** Overrides the spec's `servers[0].url` — must be literal to reach native. */
+  baseUrl?: string
+  /** Exit non-zero when a generated native module does not lower. */
+  strictNative?: boolean
+}
+
 /**
  * The whole-ecosystem config.
  *
@@ -97,6 +124,8 @@ export interface PyreonConfig {
   atlas?: AtlasSection
   /** `@pyreon/loom` — the dependency observatory. */
   loom?: LoomSection
+  /** `@pyreon/lathe` — the spec-to-client generator. */
+  lathe?: LatheSection
   /** Config for a tool this version does not know about. Carried, never read. */
   [tool: string]: unknown
 }
