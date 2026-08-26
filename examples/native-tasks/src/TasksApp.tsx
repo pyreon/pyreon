@@ -136,7 +136,13 @@ function LoginPage() {
       <Show when={() => form.errors().username !== ''}>
         <Text data-testid="login-error">{form.errors().username}</Text>
       </Show>
-      <Button onPress={() => form.submit()} data-testid="login-submit">
+      {/* `handleSubmit`, not `submit`: that is the name @pyreon/form's WEB
+          useForm returns, and both native runtimes ship a `handleSubmit`
+          alias, so it is the one spelling that works on all three targets.
+          `form.submit()` lowered fine and threw `form.submit is not a
+          function` in the browser — PMTC passes an unknown method through
+          verbatim, so nothing caught it until a web e2e ran. */}
+      <Button onPress={() => form.handleSubmit()} data-testid="login-submit">
         Continue
       </Button>
     </Stack>
