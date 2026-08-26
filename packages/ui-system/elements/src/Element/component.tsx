@@ -216,45 +216,54 @@ const Component: PyreonElement = (props) => {
     // selection below is re-evaluated with fresh slot reads.
     const isSimpleElement = !own.beforeContent && !own.afterContent
 
-    const wrapperLayout = computeWrapperLayout(isSimpleElement)
-
     // --------------------------------------------------------
-    // common wrapper props
+    // common wrapper props (LAZY)
     // --------------------------------------------------------
+    // Built ON DEMAND — only the empty / needsFix-simple / compound return
+    // paths below consume it. The DOMINANT simple fast path (`isSimpleElement
+    // && !needsFix`) returns without ever calling this, so a plain <Element>
+    // pays neither the `computeWrapperLayout` here (it recomputes its own
+    // layout in `buildSimpleBundle`) NOR the WRAPPER_PROPS allocation (static:
+    // a 9-property literal; reactive: a `definePropsFromAccessors` with six
+    // `Object.defineProperty` getters) — both of which it never read.
+    //
     // `layoutReactive` → the layout keys are ENUMERABLE GETTERS re-deriving
     // from the live prop getters per read; `mergeProps` / `splitProps` /
     // Wrapper's descriptor-preserving pipeline keep them live down to the
     // styler's class computed. Static case: the exact old plain object.
-    const WRAPPER_PROPS = layoutReactive
-      ? definePropsFromAccessors(
-          {
-            extendCss: () => own.css,
-            block: () => own.block,
-            direction: () => computeWrapperLayout(isSimpleElement).direction,
-            alignX: () => computeWrapperLayout(isSimpleElement).alignX,
-            alignY: () => computeWrapperLayout(isSimpleElement).alignY,
-            // Simple path only — the compound path spaces its slots via
-            // Content's margin machinery; feeding the wrapper CSS gap too
-            // would double the spacing.
-            gap: () => (isSimpleElement ? own.gap : undefined),
-          },
-          {
+    const buildWrapperProps = (): Record<string, unknown> => {
+      const wrapperLayout = computeWrapperLayout(isSimpleElement)
+      return layoutReactive
+        ? definePropsFromAccessors(
+            {
+              extendCss: () => own.css,
+              block: () => own.block,
+              direction: () => computeWrapperLayout(isSimpleElement).direction,
+              alignX: () => computeWrapperLayout(isSimpleElement).alignX,
+              alignY: () => computeWrapperLayout(isSimpleElement).alignY,
+              // Simple path only — the compound path spaces its slots via
+              // Content's margin machinery; feeding the wrapper CSS gap too
+              // would double the spacing.
+              gap: () => (isSimpleElement ? own.gap : undefined),
+            },
+            {
+              ref: mergedRef,
+              tag: own.tag,
+              as: undefined, // reset styled-components `as` prop
+            },
+          )
+        : {
             ref: mergedRef,
+            extendCss: own.css,
             tag: own.tag,
+            block: own.block,
+            direction: wrapperLayout.direction,
+            alignX: wrapperLayout.alignX,
+            alignY: wrapperLayout.alignY,
+            gap: isSimpleElement ? own.gap : undefined,
             as: undefined, // reset styled-components `as` prop
-          },
-        )
-      : {
-          ref: mergedRef,
-          extendCss: own.css,
-          tag: own.tag,
-          block: own.block,
-          direction: wrapperLayout.direction,
-          alignX: wrapperLayout.alignX,
-          alignY: wrapperLayout.alignY,
-          gap: isSimpleElement ? own.gap : undefined,
-          as: undefined, // reset styled-components `as` prop
-        }
+          }
+    }
 
     // --------------------------------------------------------
     // return simple/empty element like input or image etc.
@@ -273,7 +282,7 @@ const Component: PyreonElement = (props) => {
     // object-spread into an override literal — a `{ ...WRAPPER_PROPS }`
     // spread would fire its getters and re-freeze the reactive layout path.)
     if (shouldBeEmpty) {
-      return h(Wrapper, mergeProps(rest as Record<string, unknown>, WRAPPER_PROPS))
+      return h(Wrapper, mergeProps(rest as Record<string, unknown>, buildWrapperProps()))
     }
 
     // Simple-Element fast path: no beforeContent / afterContent slots, and no
@@ -326,7 +335,7 @@ const Component: PyreonElement = (props) => {
     if (isSimpleElement) {
       return h(
         Wrapper,
-        mergeProps(rest as Record<string, unknown>, WRAPPER_PROPS, {
+        mergeProps(rest as Record<string, unknown>, buildWrapperProps(), {
           isInline,
           children: () => resolveSlot(getChildren()),
         }),
@@ -405,7 +414,7 @@ const Component: PyreonElement = (props) => {
 
     return h(
       Wrapper,
-      mergeProps(rest as Record<string, unknown>, WRAPPER_PROPS, {
+      mergeProps(rest as Record<string, unknown>, buildWrapperProps(), {
         isInline,
         children: compoundChildren,
       }),
