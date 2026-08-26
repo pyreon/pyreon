@@ -127,7 +127,16 @@ export const normalizeCSS = (css: string): string => {
   if (cached !== undefined) return cached
 
   const len = css.length
+  // Output is built by COPYING VERBATIM RUNS (`css.slice(runStart, i)`) rather
+  // than appending one char at a time — the same `charCodeAt`-read /
+  // slice-append discipline the sibling scanners in this file already use
+  // (per-char `out += css[i]` allocates a fresh 1-char string every iteration
+  // AND leaves the result a rope that `hash()` / the insertCache must flatten).
+  // When nothing is skipped or inserted the input is returned by IDENTITY (no
+  // allocation, no rope) — the common case for machine-generated CSS.
   let out = ''
+  let runStart = 0 // start of the current verbatim run pending copy
+  let modified = false // did we skip/insert/collapse anything vs the input?
   let space = false // pending space to emit before next non-whitespace char
   let last = 0 // charCode of last char written to output (0 = nothing yet)
 
@@ -136,22 +145,31 @@ export const normalizeCSS = (css: string): string => {
 
     // /* block comment */
     if (c === 47 /* / */ && css.charCodeAt(i + 1) === 42 /* * */) {
+      if (i > runStart) out += css.slice(runStart, i)
+      modified = true
       const end = css.indexOf('*/', i + 2)
       i = end === -1 ? len : end + 1
+      runStart = i + 1
       space = true
       continue
     }
 
     // // line comment (but not :// in URLs)
     if (c === 47 /* / */ && css.charCodeAt(i + 1) === 47 /* / */ && last !== 58 /* : */) {
+      if (i > runStart) out += css.slice(runStart, i)
+      modified = true
       const nl = css.indexOf('\n', i + 2)
       i = nl === -1 ? len : nl
+      runStart = i + 1
       space = true
       continue
     }
 
-    // Whitespace → collapse
+    // Whitespace → collapse (flush the run before it, resume after it)
     if (c === 32 || c === 9 || c === 10 || c === 13 || c === 12) {
+      if (i > runStart) out += css.slice(runStart, i)
+      modified = true
+      runStart = i + 1
       space = true
       continue
     }
@@ -159,20 +177,32 @@ export const normalizeCSS = (css: string): string => {
     // Semicolon → skip if redundant (after start, {, }, or another ;)
     if (c === 59 /* ; */) {
       if (last === 0 || last === 123 /* { */ || last === 125 /* } */ || last === 59 /* ; */) {
+        if (i > runStart) out += css.slice(runStart, i)
+        modified = true
+        runStart = i + 1
         continue
       }
+      // Kept `;`: drops any pending space (matches the original), stays in the run.
       space = false
-      out += ';'
       last = 59
       continue
     }
 
-    // Regular char — emit pending space (but not at start of output)
-    if (space && last !== 0) out += ' '
+    // Regular char — emit pending space (but not at start of output). The char
+    // itself continues the current run (runStart already points at/ before it).
+    if (space && last !== 0) {
+      if (i > runStart) out += css.slice(runStart, i)
+      out += ' '
+      modified = true
+      runStart = i
+    }
     space = false
-
-    out += css[i]
     last = c
+  }
+  if (!modified) {
+    out = css // identity — nothing was skipped/inserted; return the input as-is
+  } else if (len > runStart) {
+    out += css.slice(runStart, len)
   }
 
   // Evict oldest ~10% to prevent memory leaks without cliff-edge drop
