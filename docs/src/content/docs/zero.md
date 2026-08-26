@@ -407,15 +407,18 @@ defineConfig({
     revalidate: 60, // seconds before a cached entry is considered stale
     maxEntries: 1000, // LRU cap on the in-memory cache (default 1000)
     // cacheKey defaults to `url.pathname + url.search` — query strings vary the cache.
-    // Cookies are NOT included by default (auth-gated content requires explicit cacheKey).
+    // Cookies are NOT included by default; a credentialed request is fail-safe
+    // (not cached) unless the response is marked `Cache-Control: public`.
   },
 })
 ```
 
-:::warning{title="ISR cache key — two trade-offs"}
-The default cache key is `url.pathname + url.search` — query strings affect the key, cookies and Authorization headers do NOT. Two adjustments depending on your route:
+:::warning{title="ISR cache key — the fail-safe default"}
+The default cache key is `url.pathname + url.search` — query strings affect the key, cookies and Authorization headers do NOT.
 
-**Auth-gated content** (loader reads `cookie` / `Authorization`): the default is unsafe — the first user's cached HTML serves every other user. The build catches this: an ISR-mode route whose loader/middleware/guard source reads `headers.get('cookie')` / `headers.get('authorization')` without a custom `cacheKey` **function** gets a build/dev warning naming the file (the runtime additionally refuses to cache such responses per-request). Supply a `cacheKey` that varies on the session identifier:
+**Auth-gated content is fail-safe by default.** When no `cacheKey` is configured, a request that arrives with a `Cookie` or `Authorization` header is **not cached** — unless the response explicitly opts in with `Cache-Control: public`. So a loader that reads `cookie` / `Authorization` and renders per-user HTML re-renders each request instead of leaking one user's page to the next visitor. This closes the case where a plain `200 text/html` personalized render (no `Set-Cookie`, no `Vary`) was previously stored under the URL alone. The build additionally warns at compile time for an ISR-mode route whose loader/middleware/guard source reads those headers without a custom `cacheKey` **function**, and the runtime fires a one-per-handler warning — in dev **and production** — the first time it refuses a credentialed request, so the misconfiguration is visible where a CMS/webhook runs.
+
+To **cache** a personalized page, supply a `cacheKey` that varies on the session identifier (you take ownership of per-user keying, and the request-credential refusal is skipped):
 
 ```ts
 cacheKey: (req) => {
@@ -424,13 +427,15 @@ cacheKey: (req) => {
 }
 ```
 
-**High-cardinality query params** (analytics tokens like `utm_*`, `fbclid`, `gclid`): the default causes cache explosion (one entry per click variant). For routes that ignore query strings entirely, strip them:
+To cache a page that is genuinely the same for every visitor even when the request carries credentials, mark the response `Cache-Control: public`.
+
+**High-cardinality query params** (analytics tokens like `utm_*`, `fbclid`, `gclid`): the default causes cache explosion (one entry per click variant). For routes that ignore query strings entirely, strip them (this shorthand is `cacheKey: 'path-only'`, or spell it out):
 
 ```ts
 cacheKey: (req) => new URL(req.url).pathname
 ```
 
-A one-time dev-mode warning fires at handler init when no `cacheKey` is configured — it names both fixes inline. Production builds tree-shake the warning to zero bytes via the standard `process.env.NODE_ENV !== 'production'` gate.
+A one-time dev-mode warning also fires at handler init when no `cacheKey` is configured — it names the fixes inline. Both dev-only warnings tree-shake to zero bytes in production via the standard `process.env.NODE_ENV !== 'production'` gate; the credential-refusal warning above is deliberately **not** gated (it reports a live misconfiguration).
 :::
 
 Build-time ISR (per-route `export const revalidate` + adapter-driven rebuild-on-stale) is a **separate** mechanism documented in [SSG → Build-time ISR](/docs/ssg#build-time-isr-per-route-revalidate).
@@ -1355,11 +1360,13 @@ const handler = createISRHandler(
 )
 ```
 
-In-memory LRU cache with stale-while-revalidate. Cached responses carry `x-isr-cache: HIT|STALE|MISS` and `x-isr-age` headers.
+In-memory LRU cache with stale-while-revalidate. Cached responses carry `x-isr-cache: HIT|STALE|MISS|BYPASS` and `x-isr-age` headers (`BYPASS` = the render was judged non-cacheable and passed through with its original status/headers).
 
-Two hardening knobs worth knowing:
+**Fail-safe default (no `cacheKey`).** A request that arrives with a `Cookie` or `Authorization` header is not cached unless the response is marked `Cache-Control: public` — so a loader that reads those headers and renders per-user HTML never has its output stored under the URL alone and replayed to another visitor. This also closes the background-revalidation amplifier: a stale public entry re-validated by a credentialed request is not overwritten with that user's personalized render. Supply a `cacheKey` function to cache personalized pages per user (you take ownership — the credential refusal is skipped), or mark truly-shared pages `Cache-Control: public`. A public request (no credentials) caches normally. A one-per-handler warning fires — in dev **and production** — the first time a credentialed request is refused.
 
-- **`cacheKey: 'path-only'`** — shorthand that keys by pathname alone, stripping every query param: the one-liner fix for analytics-param cache explosion (`utm_*`, `fbclid` would otherwise create one cache entry per click variant). It deliberately does **not** count as a custom key for the auth-safety checks — responses with `Vary: Cookie`/`Authorization` are still refused unless a cacheKey *function* varies by user identity.
+Two more hardening knobs worth knowing:
+
+- **`cacheKey: 'path-only'`** — shorthand that keys by pathname alone, stripping every query param: the one-liner fix for analytics-param cache explosion (`utm_*`, `fbclid` would otherwise create one cache entry per click variant). It deliberately does **not** count as a custom key for the auth-safety checks — responses with `Vary: Cookie`/`Authorization`, and requests carrying credentials, are still refused unless a cacheKey *function* varies by user identity.
 - **`expireOnTimeout: true`** — when a background revalidation times out, drop the stale entry so the next request renders fresh (a cache miss) instead of serving the stale copy forever. Default `false` (keep serving stale) is safest under load; enable when eventual freshness beats guaranteed availability for hung renders.
 
 Note on the `revalidate` name: `isr.revalidate` is the RUNTIME stale-while-revalidate TTL; a route file's `export const revalidate` feeds the BUILD-TIME platform manifest (`_pyreon-revalidate.json`) consumed by `Adapter.revalidate()`. Different enforcement points, deliberately the same name — both mean "how stale may this page get".

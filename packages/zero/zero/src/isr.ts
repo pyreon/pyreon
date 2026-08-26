@@ -18,6 +18,19 @@ const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number)
 // just create two handlers.
 const _warnedDefaultCacheKeyHandlers = new WeakSet<(req: Request, url: URL) => string>()
 
+// Module-level dedup for the REQUEST-CREDENTIAL refusal warning. Unlike the
+// default-cacheKey TEACHING warning above (dev-only — it fires at handler init
+// to explain the trade-offs), this one signals a LIVE misconfiguration: a real
+// request arrived carrying `Cookie`/`Authorization` and its response was NOT
+// marked `Cache-Control: public`, so the fail-safe default refused to cache it.
+// A CMS/webhook operator running in production needs to SEE that — so it fires
+// regardless of NODE_ENV (anti-patterns rule: "production-only code paths must
+// warn regardless of NODE_ENV"), deduped per-handler so a busy server logs at
+// most once per `createISRHandler`. Keyed on the per-handler `deriveKey`
+// closure (one per handler); WeakSet so a finalized handler's state GC's with
+// it.
+const _warnedCredentialRefusalHandlers = new WeakSet<(req: Request, url: URL) => string>()
+
 // ─── ISR Cache ───────────────────────────────────────────────────────────────
 
 /** Serialized SSR response cached by the ISR layer (one per cache key). */
@@ -349,21 +362,41 @@ export function createISRHandler(
   // them to other users via a default `cacheKey: url.pathname` leaks
   // private data across user sessions.
   //
+  // PR-S6 (fail-safe default): the PR-S4 disqualifiers all keyed on
+  // RESPONSE signals — but a loader that READS the request's Cookie /
+  // Authorization and renders per-user HTML can return a plain
+  // `200 text/html` with no Set-Cookie and no Vary. PR-S4 judged that
+  // cacheable and stored it under the URL alone → one user's personalized
+  // page served to the next visitor. The confidentiality hazard is the
+  // REQUEST arriving with credentials, not any response header. So under
+  // the default key we now ALSO refuse when the request carried
+  // credentials, UNLESS the response explicitly opts in with
+  // `Cache-Control: public`. A truly-public page either carries no
+  // request credentials, sets `Cache-Control: public`, or supplies a
+  // `cacheKey` — all three keep caching. This mirrors the shared-HTTP-
+  // cache rule that a credentialed request is private absent an explicit
+  // public marker (RFC 7234 §3.5).
+  //
   // Disqualifiers (any one trips → not cacheable):
   //   1. Non-2xx status (transient errors / redirects)
   //   2. Set-Cookie present (per-user session state)
   //   3. Cache-Control: private | no-store | no-cache (RFC 7234)
-  //   4. Vary: Cookie | Authorization, AND no explicit cacheKey (the
-  //      response varies per cookie/auth → can't share across users)
-  //   5. Authorization response header (auth-gated content)
+  //   4. Authorization response header (auth-gated content)
+  // Under the DEFAULT/`'path-only'` key (no custom cacheKey), additionally:
+  //   5. Vary: Cookie | Authorization | * (response varies per-user)
+  //   6. Request arrived WITH Cookie/Authorization AND response is not
+  //      `Cache-Control: public` (per-user render under a shared key)
   //
-  // `hasCacheKey` is set at handler-init time (config.cacheKey !== undefined).
-  // When the user supplied a cacheKey, they're opting into per-user caching
-  // (the auth-incompatibility caveat in ISRConfig.cacheKey JSDoc applies),
-  // so Vary: Cookie is fine — they're keying by cookie themselves.
+  // `hasCacheKey` is set at handler-init time (config.cacheKey is a
+  // FUNCTION). When the user supplied a cacheKey function they've taken
+  // ownership of per-user keying (the documented escape hatch), so the
+  // request-credential + Vary refusals are skipped — they're keying by
+  // cookie/auth themselves. The `'path-only'` shorthand is NOT a custom
+  // key (it varies by nothing user-specific), so it stays subject to
+  // both refusals exactly like the default.
   const hasCacheKey = typeof config.cacheKey === 'function'
 
-  function isCacheable(res: Response): boolean {
+  function isCacheable(res: Response, req: Request): boolean {
     if (res.status < 200 || res.status >= 300) return false
     if (res.headers.has('set-cookie')) return false
 
@@ -378,10 +411,20 @@ export function createISRHandler(
     // OR auth-bearing token is being communicated. Either way, per-user.
     if (res.headers.has('authorization')) return false
 
-    // Vary: Cookie / Vary: Authorization → response varies per-user.
-    // Safe when user opted into per-user caching via `cacheKey`; otherwise
-    // sharing across users via `pathname`-only key is a leak.
     if (!hasCacheKey) {
+      // Explicit public opt-in — a whole-token `public` directive in
+      // Cache-Control. This is the developer's affirmation that the render
+      // is safe to share across users; it lifts the request-credential
+      // refusal below (and only that — Set-Cookie / private / no-store
+      // above already returned).
+      const isExplicitlyPublic = cc
+        .split(',')
+        .map((t) => t.trim())
+        .includes('public')
+
+      // Vary: Cookie / Vary: Authorization → response varies per-user.
+      // Safe when user opted into per-user caching via `cacheKey`; otherwise
+      // sharing across users via `pathname`-only key is a leak.
       const vary = res.headers.get('vary')?.toLowerCase() ?? ''
       // Match whole tokens to avoid false-positives on field names like
       // `Vary: Accept-Cookie-Format` (hypothetical but defensive).
@@ -393,6 +436,33 @@ export function createISRHandler(
               'but no `cacheKey` is configured — refusing to cache to prevent ' +
               'cross-user data leak. Supply `cacheKey: (req) => ...` keyed on the ' +
               'cookie identity to enable per-user caching for this page.',
+          )
+        }
+        return false
+      }
+
+      // PR-S6 fail-safe: the request itself carried credentials and the
+      // developer did not mark the response public. This is exactly the
+      // shape that leaks Alice's rendered-under-her-cookie HTML to an
+      // anonymous visitor via the URL-only key, and it's invisible to the
+      // response-header checks above (a plain 200 text/html). Refuse.
+      const reqHasCredentials = req.headers.has('cookie') || req.headers.has('authorization')
+      if (reqHasCredentials && !isExplicitlyPublic) {
+        // Fires in PRODUCTION too (deduped per-handler) — a live
+        // misconfiguration the operator must see. See the module-level
+        // _warnedCredentialRefusalHandlers doc for the rationale.
+        if (!_warnedCredentialRefusalHandlers.has(deriveKey)) {
+          _warnedCredentialRefusalHandlers.add(deriveKey)
+          // oxlint-disable-next-line no-console
+          console.warn(
+            '[Pyreon ISR] A request arrived with a Cookie/Authorization header, '
+            + 'no `cacheKey` is configured, and the response is not marked '
+            + '`Cache-Control: public` — refusing to cache it. The URL-only default '
+            + 'key would otherwise serve this per-user render to other visitors '
+            + '(a cross-user data leak). To fix: supply `cacheKey: (req) => ...` '
+            + 'keyed on the user identity for personalized pages, or set '
+            + '`Cache-Control: public` if this page is genuinely the same for '
+            + 'everyone. See https://docs.pyreon.com/zero#isr-handler-runtime.',
           )
         }
         return false
@@ -572,7 +642,7 @@ export function createISRHandler(
       // would re-populate the cache AFTER the delete, defeating the
       // invalidation's intent.
       const finalRes = config.responseFilter ? (config.responseFilter(res) ?? null) : res
-      if (finalRes !== null && isCacheable(finalRes) && _currentEpoch(key) === startEpoch) {
+      if (finalRes !== null && isCacheable(finalRes, originalReq) && _currentEpoch(key) === startEpoch) {
         const html = await finalRes.text()
         const headers: Record<string, string> = {}
         finalRes.headers.forEach((v, k) => {
@@ -675,7 +745,7 @@ export function createISRHandler(
       headers[k] = v
     })
 
-    if (!isCacheable(res)) {
+    if (!isCacheable(res, req)) {
       return new Response(html, {
         status: res.status,
         statusText: res.statusText,
