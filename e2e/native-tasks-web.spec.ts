@@ -97,11 +97,16 @@ test.describe('native-tasks-web — the shared source renders on the third targe
     await expect(page.locator('.pyreon-toast__message', { hasText: 'Saved' })).toBeVisible()
     await expect(page.locator('[aria-live]').filter({ hasText: 'Saved' })).toHaveCount(1)
 
-    // The screen drives `useFetch` against a real absolute URL (the same
-    // endpoint the native targets hit), so in a sandbox it fails on CORS or DNS
-    // and @pyreon/http rejects. That rejection is the app's, not a framework
-    // fault, and whether it lands before or after this line is a race — so
-    // filter exactly that shape and let every OTHER page error fail the test.
+    // Settle first, or this asserts before the screen's request has had a
+    // chance to fail and passes for the wrong reason.
+    await page.waitForTimeout(1500)
+    // The screen drives `useFetch(getTask({ params }))` — the shape the
+    // multiplatform docs prescribe — which on the web hands `useFetch` a
+    // promise where it wants a URL and leaves the endpoint's rejection
+    // unhandled. #3063 fixes that at the hook; until it lands, exempt exactly
+    // that shape and let every OTHER page error fail. Tighten to
+    // `toEqual([])` once #3063 is on main — verified locally that it passes
+    // with the fix applied.
     const unexpected = errors.filter((e) => !/failed before a response was received/.test(e))
     expect(unexpected, `page errors: ${unexpected.join(' | ')}`).toEqual([])
   })
