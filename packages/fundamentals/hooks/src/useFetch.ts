@@ -63,11 +63,61 @@ export interface UseFetchResult<T> {
  * </For>
  * ```
  */
-export function useFetch<T>(url: string, init?: UseFetchInit): UseFetchResult<T> {
+export function useFetch<T>(
+  source: string | PromiseLike<T>,
+  init?: UseFetchInit,
+): UseFetchResult<T> {
   const data = signal<T | undefined>(undefined)
   const error = signal<unknown>(undefined)
   const isPending = signal(false)
   let controller: AbortController | null = null
+
+  // An `@pyreon/http` endpoint CALL is the shape `@pyreon/native-compiler`
+  // documents as the crossing surface — `useFetch<T>(getUser({ params }))`
+  // lowers to a native fetch of the templated URL. On the web that call has
+  // already fired the request and returns a promise, so the string path here
+  // did `fetch(String(promise))` — a request for the literal `[object
+  // Promise]` — while the endpoint's own rejection went unhandled and surfaced
+  // as an uncaught page error. Adopting the promise is what makes the
+  // documented shape mean the same thing on all three targets.
+  if (typeof source !== 'string') {
+    isPending.set(true)
+    let disposed = false
+    onCleanup(() => {
+      disposed = true
+    })
+    Promise.resolve(source).then(
+      (json) => {
+        if (disposed) return
+        batch(() => {
+          data.set(json)
+          error.set(undefined)
+          isPending.set(false)
+        })
+      },
+      (err: unknown) => {
+        if (disposed) return
+        batch(() => {
+          error.set(err)
+          isPending.set(false)
+        })
+      },
+    )
+    // A settled promise cannot be re-issued, and this hook never held the URL
+    // that produced it. Say so instead of silently doing nothing: the caller
+    // wanted a new request and did not get one.
+    const refetchPromise = (): void => {
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn(
+          '[Pyreon] useFetch(): refetch() does nothing when the source is a promise — ' +
+            'the request was already issued by whatever produced it. Pass a URL string, ' +
+            'or drive the endpoint through useQuery, which owns its own refetch.',
+        )
+      }
+    }
+    return { data, error, isPending, refetch: refetchPromise }
+  }
+  const url = source
 
   const refetch = (): void => {
     if (!isClient) return
