@@ -1,6 +1,7 @@
 import type { VNode } from '@pyreon/core'
 import { createRef, Show } from '@pyreon/core'
 import { runUntracked, signal, watch } from '@pyreon/reactivity'
+import { toShowAccessor } from './show-accessor'
 import type { CollapseProps, TransitionStage } from './types'
 import useAnimationEnd from './useAnimationEnd'
 import { useReducedMotion } from './useReducedMotion'
@@ -21,7 +22,8 @@ const Collapse = (props: CollapseProps): VNode | null => {
     onAfterLeave: props.onAfterLeave,
   }
 
-  const initialShow = props.show()
+  const showAcc = toShowAccessor(props.show)
+  const initialShow = showAcc()
   // When appear=true and show starts true, mount but defer animation until ref is wired
   const needsAppear = appear && initialShow
   const stage = signal<TransitionStage>(initialShow ? 'entered' : 'hidden')
@@ -50,7 +52,7 @@ const Collapse = (props: CollapseProps): VNode | null => {
 
   // State machine transitions
   watch(
-    props.show,
+    showAcc,
     (showVal) => {
       if (isInitialMount) {
         isInitialMount = false

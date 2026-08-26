@@ -53,8 +53,8 @@ export type TransitionCallbacks = {
 export type TransitionProps = ClassTransitionProps &
   StyleTransitionProps &
   TransitionCallbacks & {
-    /** Reactive accessor controlling visibility. true = enter, false = leave + unmount. */
-    show: () => boolean
+    /** Visibility. Accessor or plain boolean; absent = always shown. true = enter, false = leave + unmount. */
+    show?: boolean | (() => boolean) | undefined
     /** If true, runs enter animation on initial mount. Default: false. */
     appear?: boolean | undefined
     /** If true (default), unmounts when hidden. If false, keeps with display:none. */
@@ -119,8 +119,8 @@ export type TransitionGroupProps = ClassTransitionProps &
 export type StaggerProps = ClassTransitionProps &
   StyleTransitionProps &
   TransitionCallbacks & {
-    /** Reactive accessor controlling visibility of all children. */
-    show: () => boolean
+    /** Visibility of all children. Accessor or plain boolean; absent = always shown. */
+    show?: boolean | (() => boolean) | undefined
     /** Delay between each child's animation start in ms. Default: 50. */
     interval?: number | undefined
     /** If true, reverses stagger order on leave. Default: false. */
@@ -134,8 +134,8 @@ export type StaggerProps = ClassTransitionProps &
   }
 
 export type CollapseProps = TransitionCallbacks & {
-  /** Reactive accessor controlling expanded/collapsed state. */
-  show: () => boolean
+  /** Expanded/collapsed state. Accessor or plain boolean; absent = expanded. */
+  show?: boolean | (() => boolean) | undefined
   /** CSS transition for height. Default: "height 300ms ease". */
   transition?: string | undefined
   /** If true, animates on initial mount. Default: false. */

@@ -5,6 +5,7 @@ import CollapseRenderer from './CollapseRenderer'
 import GroupRenderer from './GroupRenderer'
 import StaggerRenderer from './StaggerRenderer'
 import TransitionRenderer from './TransitionRenderer'
+import { toShowAccessor } from '../show-accessor'
 import type { ClassConfig, KineticComponent, KineticConfig, KineticMode } from './types'
 
 /** Keys that are kinetic-specific and should not be forwarded as HTML attrs. */
@@ -64,7 +65,7 @@ const createKineticComponent = <Tag extends string, Mode extends KineticMode = '
       onLeave,
       onAfterLeave,
     } = kineticProps as {
-      show?: () => boolean
+      show?: boolean | (() => boolean)
       appear?: boolean
       unmount?: boolean
       timeout?: number
@@ -72,6 +73,9 @@ const createKineticComponent = <Tag extends string, Mode extends KineticMode = '
       interval?: number
       reverseLeave?: boolean
     } & Partial<TransitionCallbacks>
+
+    // Absent or value-shaped `show` (see toShowAccessor) — both crash on `show()`.
+    const showAccessor = toShowAccessor(show)
 
     const callbacks: Partial<TransitionCallbacks> = {
       onEnter: onEnter ?? config.onEnter,
@@ -92,7 +96,7 @@ const createKineticComponent = <Tag extends string, Mode extends KineticMode = '
         <CollapseRenderer
           config={config}
           htmlProps={restHtml}
-          show={show as () => boolean}
+          show={showAccessor}
           appear={appear}
           timeout={timeout}
           transition={transition}
@@ -108,7 +112,7 @@ const createKineticComponent = <Tag extends string, Mode extends KineticMode = '
         <StaggerRenderer
           config={config}
           htmlProps={restHtml}
-          show={show as () => boolean}
+          show={showAccessor}
           appear={appear}
           timeout={timeout}
           interval={interval}
@@ -139,7 +143,7 @@ const createKineticComponent = <Tag extends string, Mode extends KineticMode = '
       <TransitionRenderer
         config={config}
         htmlProps={restHtml}
-        show={show as () => boolean}
+        show={showAccessor}
         appear={appear}
         unmount={unmount}
         timeout={timeout}

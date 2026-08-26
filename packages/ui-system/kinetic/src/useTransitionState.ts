@@ -1,13 +1,15 @@
 import { createRef } from '@pyreon/core'
 import { runUntracked, signal, watch } from '@pyreon/reactivity'
+import { toShowAccessor } from './show-accessor'
 import type { TransitionStage, TransitionStateResult } from './types'
 
 export type UseTransitionState = (options: {
-  show: () => boolean
+  show?: boolean | (() => boolean) | undefined
   appear?: boolean | undefined
 }) => TransitionStateResult
 
-const useTransitionState: UseTransitionState = ({ show, appear = false }) => {
+const useTransitionState: UseTransitionState = ({ show: showProp, appear = false }) => {
+  const show = toShowAccessor(showProp)
   const initialShow = show()
   // When appear=true and show starts true, mount the element (stage='entered')
   // but defer the enter animation until the ref is connected.
