@@ -32,7 +32,12 @@ interface RedirectInfo {
  * }
  * ```
  *
- * @param url - Target URL (typically a path like `/login` or absolute URL for cross-origin).
+ * @param url - Target URL. A same-origin path (`/login`) is an SPA navigation;
+ *   an explicit `http(s)://…` URL is a real CROSS-ORIGIN navigation on BOTH the
+ *   server (a `Location:` header) and the client (a `window.location` nav) — so
+ *   VALIDATE an untrusted / user-supplied value (e.g. a `?next=` param) against an
+ *   allowlist first, or it is an open redirect. Protocol-relative (`//host`) and
+ *   non-`http(s)` schemes (`javascript:` …) are refused and routed to `/`.
  * @param status - HTTP redirect status. Default `307` (Temporary Redirect, method-preserving).
  *   Use `301`/`308` for permanent moves, `302`/`303` to force GET on the target.
  */
@@ -40,6 +45,44 @@ export function redirect(url: string, status: RedirectStatus = 307): never {
   const err = new Error(`Redirect to ${url}`)
   ;(err as unknown as Record<symbol, RedirectInfo>)[REDIRECT] = { url, status }
   throw err
+}
+
+/** Classification of a redirect target — see {@link classifyRedirectTarget}. */
+export type RedirectClass =
+  | { kind: 'internal'; url: string }
+  | { kind: 'external'; url: string }
+  | { kind: 'block'; url: string }
+
+/**
+ * Classify a redirect / navigation target, SHARED by the client router and the
+ * SSR handler so both agree on what a target means (the two used to disagree —
+ * the client rewrote every absolute URL to `/`, silently breaking the documented
+ * cross-origin `redirect('https://…')`, while the server emitted it verbatim).
+ *
+ *  - `external`  — an explicit `http(s)://…` URL: an intentional CROSS-ORIGIN
+ *    navigation. On the client this is a real `window.location` navigation; on
+ *    the server it becomes a `Location:` header. **The target is trusted to the
+ *    caller** — validate an untrusted `?next=` / user-supplied value against an
+ *    allowlist before passing it, exactly as with any framework's redirect.
+ *  - `block`     — a protocol-relative URL (`//host`, an open-redirect
+ *    obfuscation vector) or any non-`http(s)` scheme (`javascript:`, `data:`,
+ *    `vbscript:`, `mailto:`, …). Never a valid navigation target; routed to `/`.
+ *  - `internal`  — a same-origin path; handled by the router as an SPA nav.
+ */
+export function classifyRedirectTarget(target: string): RedirectClass {
+  const t = target.trim()
+  if (/^https?:\/\//i.test(t)) return { kind: 'external', url: t }
+  if (t.startsWith('//')) return { kind: 'block', url: '/' }
+  // Any other explicit scheme (javascript:, data:, mailto:, tel:, …) is not a
+  // navigation target — block it. A bare path has no leading `scheme:`.
+  if (/^[a-z][a-z0-9+.-]*:/i.test(t)) return { kind: 'block', url: '/' }
+  return { kind: 'internal', url: target }
+}
+
+/** Server-safe redirect target: `external`/`internal` pass through, everything else → `/`. */
+export function safeRedirectLocation(target: string): string {
+  const c = classifyRedirectTarget(target)
+  return c.kind === 'block' ? '/' : c.url
 }
 
 /** Check if an error is a RedirectError thrown by `redirect()`. */

@@ -2,7 +2,7 @@ import { createContext, onUnmount, useContext } from '@pyreon/core'
 import { computed, isClient, signal } from '@pyreon/reactivity'
 import { SizedMap } from '@pyreon/sized-map'
 import { buildNameIndex, buildPath, resolveRoute, stringifyQuery } from './match'
-import { getRedirectInfo } from './redirect'
+import { classifyRedirectTarget, getRedirectInfo } from './redirect'
 import { ScrollManager } from './scroll'
 import { classifyHref } from './typed-routes'
 import {
@@ -1277,6 +1277,25 @@ export function createRouter<TNames extends string = string>(
   // consumed by `handleBrowserNav` to decide whether a browser-initiated
   // traversal needs its URL restored ('cancelled' → restore; 'superseded'
   // → the newer navigation owns the URL — restoring would fight it).
+  // Apply a redirect target from a loader / guard / middleware. An explicit
+  // cross-origin `http(s)://` URL becomes a REAL browser navigation — the router
+  // can't own a cross-origin path, and before this it was silently rewritten to
+  // `/`, breaking the documented `redirect('https://…')`. Everything else stays
+  // an in-router navigation (a blocked scheme / protocol-relative target
+  // classifies to `/`). Same classification as the SSR `Location:` path.
+  async function applyRedirect(
+    target: string,
+    replace: boolean,
+    depth: number,
+  ): Promise<NavigationResult> {
+    const c = classifyRedirectTarget(target)
+    if (c.kind === 'external') {
+      if (typeof window !== 'undefined') window.location.assign(c.url)
+      return 'committed'
+    }
+    return navigate(c.url, replace, depth)
+  }
+
   async function navigate(
     rawPath: string,
     replace: boolean,
@@ -1320,7 +1339,7 @@ export function createRouter<TNames extends string = string>(
     if (mwResult.action !== 'continue') {
       loadingSignal.update((n) => n - 1)
       if (mwResult.action === 'redirect') {
-        return navigate(sanitizePath(mwResult.target), replace, redirectDepth + 1)
+        return applyRedirect(mwResult.target, replace, redirectDepth + 1)
       }
       return gen === _navGen ? 'cancelled' : 'superseded'
     }
@@ -1329,7 +1348,7 @@ export function createRouter<TNames extends string = string>(
     if (guardOutcome.action !== 'continue') {
       loadingSignal.update((n) => n - 1)
       if (guardOutcome.action === 'redirect') {
-        return navigate(sanitizePath(guardOutcome.target), replace, redirectDepth + 1)
+        return applyRedirect(guardOutcome.target, replace, redirectDepth + 1)
       }
       return gen === _navGen ? 'cancelled' : 'superseded'
     }
@@ -1342,7 +1361,7 @@ export function createRouter<TNames extends string = string>(
     if (loaderOutcome.action !== 'continue') {
       loadingSignal.update((n) => n - 1)
       if (loaderOutcome.action === 'redirect') {
-        return navigate(sanitizePath(loaderOutcome.target), replace, redirectDepth + 1)
+        return applyRedirect(loaderOutcome.target, replace, redirectDepth + 1)
       }
       return gen === _navGen ? 'cancelled' : 'superseded'
     }
@@ -1582,7 +1601,7 @@ export function createRouter<TNames extends string = string>(
       // loader batch wins, nothing tears.
       const outcome = await runLoaders(to, _navGen, ac)
       if (outcome.action === 'redirect') {
-        await navigate(sanitizePath(outcome.target), true, 0)
+        await applyRedirect(outcome.target, true, 0)
         return
       }
       if (outcome.action !== 'continue') return
@@ -1826,17 +1845,17 @@ function resolveRelativePath(to: string, from: string): string {
   return `/${fromSegments.join('/')}`
 }
 
-/** Block unsafe navigation targets: javascript/data/vbscript URIs and absolute URLs. */
+/**
+ * Internal-nav-only sanitizer: returns a same-origin path, or `/` for anything
+ * else (a cross-origin URL, protocol-relative host, or a non-http(s) scheme).
+ * Used by the same-origin call sites (route-config redirects, `push`/`replace`
+ * of a string path) that navigate WITHIN the router. Redirect-TARGET application
+ * (which may legitimately be cross-origin) goes through `applyRedirect` instead.
+ * Shares its classification with the SSR handler via `classifyRedirectTarget`.
+ */
 function sanitizePath(path: string): string {
-  const trimmed = path.trim()
-  if (/^(?:javascript|data|vbscript):/i.test(trimmed)) {
-    return '/'
-  }
-  // Block absolute URLs and protocol-relative URLs — router only handles same-origin paths
-  if (/^\/\/|^https?:/i.test(trimmed)) {
-    return '/'
-  }
-  return path
+  const c = classifyRedirectTarget(path)
+  return c.kind === 'internal' ? c.url : '/'
 }
 
 export { isLazy }
