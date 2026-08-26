@@ -1,5 +1,5 @@
 import { signal } from '@pyreon/reactivity'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 // Import from the package index so `index.ts` + the registerSingleton sentinel
 // are exercised (and the public surface is the unit under test).
 import {
@@ -194,6 +194,33 @@ describe('bindRichTextToSignal (json format)', () => {
     ).not.toThrow()
     expect(errors.length).toBeGreaterThan(0)
     expect(errors[0]?.message).toBe('boom')
+  })
+
+  it('does NOT re-serialize the document on the per-keystroke echo (reference echo-guard)', () => {
+    const ext = signal<JSONContent>(EMPTY)
+    const editor = createRichTextEditor()
+    const binding = bindRichTextToSignal({ editor, signal: ext })
+
+    const spy = vi.spyOn(JSON, 'stringify')
+
+    // A "keystroke": the editor's document changes. This flows
+    // editor.json.set -> editorToSignal -> ext.set -> signalToEditor (the echo).
+    // The reference echo-guard recognizes the value it just emitted and skips
+    // the O(document) structural compare (two full JSON.stringify) entirely.
+    spy.mockClear()
+    editor.json.set(doc('typed'))
+    expect(ext()).toEqual(doc('typed')) // still propagated editor -> external
+    // Bisect: the broken (pre-guard) code runs two JSON.stringify here.
+    expect(spy.mock.calls.length).toBe(0)
+
+    // A genuine EXTERNAL write is a different reference -> still compared+applied.
+    spy.mockClear()
+    ext.set(doc('external'))
+    expect(editor.json()).toEqual(doc('external'))
+    expect(spy.mock.calls.length).toBeGreaterThan(0)
+
+    spy.mockRestore()
+    binding.dispose()
   })
 })
 
