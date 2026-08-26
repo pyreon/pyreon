@@ -23,35 +23,23 @@ test.describe('native-tasks-web — the shared source renders on the third targe
     await expect(page.getByTestId('login-page')).toBeVisible()
   })
 
-  // KNOWN GAP — now ROOT-CAUSED, and the causes are two separate bugs this
-  // e2e is what found. Kept as `fixme` rather than deleted because it flips to
-  // green the moment both fixes land, and until then it is the record of what
-  // is actually wrong.
+  // This spec is the reason three bugs got fixed. It ran the shared source in a
+  // browser for the first time, the screen rendered nothing, and each fix
+  // uncovered the next one:
   //
-  // The screen rendered nothing and I first reported "no page error" — wrong.
-  // The framework DID catch it and render a dev error block; I had only
-  // listened for `pageerror` and looked for the two testids. Reading the
-  // rendered body named the throw immediately.
+  //   1. `usePermissions(['tasks.write'])` — the seeded form PMTC lowers to
+  //      threw `must be used within <PermissionsProvider>` on the web, so a
+  //      gated screen ran on two targets and died on the third (#3056).
+  //   2. `useQuery` needs `<QueryClientProvider>` on the web, and carrying that
+  //      provider in shared source emitted a SwiftUI view existing on neither
+  //      platform, with zero warnings (#3058).
+  //   3. `<FadeIn>` with no `show` prop — the shape the preset docs show —
+  //      crashed with `show is not a function` (#3055).
   //
-  // Two packages required a WEB PROVIDER that the native lowering does not
-  // need, so the same source ran on iOS and Android and threw in a browser:
+  // None was reachable by any other check: PMTC passes unknown shapes through
+  // verbatim, and the packages' own suites all passed. Only a browser saw them.
   //
-  //   1. `usePermissions(['tasks.write'])` — the seeded form is exactly what
-  //      PMTC lowers to, and on the web it threw `must be used within
-  //      <PermissionsProvider>`. Fixed in #3056: a seeded call is
-  //      self-contained and now needs no provider.
-  //   2. `useQuery(...)` — needs `<QueryClientProvider>` on the web, while the
-  //      native lowering is self-contained. Carrying the provider in shared
-  //      source then produced UNCOMPILABLE native code with zero warnings (an
-  //      invented `QueryClientProvider(client:)` view plus a bare
-  //      `createQueryClient` identifier). Fixed in #3058: the provider is
-  //      transparent on native and the client binding emits nothing.
-  //
-  // A third break was a plain web bug, already fixed in #3055: `<FadeIn>` with
-  // no `show` prop — the shape the preset docs show — crashed with
-  // `show is not a function`.
-  //
-  test.fixme('the auth gate opens and the toolkit screen renders every package', async ({ page }) => {
+  test('the auth gate opens and the toolkit screen renders every package', async ({ page }) => {
     const errors: string[] = []
     page.on('pageerror', (e) => errors.push(e.message))
 
@@ -85,10 +73,16 @@ test.describe('native-tasks-web — the shared source renders on the third targe
     // kinetic: the preset-animated container mounts its children.
     await expect(page.getByTestId('toolkit-fade')).toBeVisible()
 
-    expect(errors, `page errors: ${errors.join(' | ')}`).toEqual([])
+    // The screen drives `useFetch` against a real absolute URL (the same
+    // endpoint the native targets hit), so in a sandbox it fails on CORS or DNS
+    // and @pyreon/http rejects. That rejection is the app's, not a framework
+    // fault, and whether it lands before or after this line is a race — so
+    // filter exactly that shape and let every OTHER page error fail the test.
+    const unexpected = errors.filter((e) => !/failed before a response was received/.test(e))
+    expect(unexpected, `page errors: ${unexpected.join(' | ')}`).toEqual([])
   })
 
-  test.fixme('url-state writes through to the URL', async ({ page }) => {
+  test('url-state writes through to the URL', async ({ page }) => {
     // The one behaviour that is genuinely web-specific: on native the router
     // holds the query, on web it must reach `location.search`. A lowering that
     // works on both devices says nothing about this.

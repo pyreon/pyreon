@@ -47,7 +47,7 @@
 // - **Store computeds/methods in the setup body** — store v1 lowers
 //   signals; derived state lives in component-level `computed` for now.
 
-import { useQuery } from '@pyreon/query'
+import { QueryClient, QueryClientProvider, useQuery } from '@pyreon/query'
 import { model } from '@pyreon/state-tree'
 import { filter as filter_rx, map } from '@pyreon/rx'
 import { SizedMap } from '@pyreon/sized-map'
@@ -567,6 +567,11 @@ export function TasksApp() {
   //
   // `mode: 'history'` is web-only; PMTC reads only `routes` and the
   // native navigation stacks ignore it (same note as router-demo).
+  // Bound, not inlined: the docs' shape, and the one PMTC recognizes as the
+  // client declaration (it emits nothing). Inlined into the prop it is just a
+  // class construction to the parser, which warns by name — correctly in
+  // general, misleadingly here, since a transparent provider drops the attr.
+  const queryClient = new QueryClient()
   const router = createRouter({
     mode: 'history',
     routes: [
@@ -611,8 +616,17 @@ export function TasksApp() {
   })
 
   return (
-    <RouterProvider router={router}>
-      <RouterView />
-    </RouterProvider>
+    // `<QueryClientProvider>` is MANDATORY on the web — `useQuery` reads its
+    // client from it and throws `No QueryClient found` without one. It is
+    // transparent on native: `useQuery` lowers to a self-contained PyreonQuery,
+    // so the provider emits only its children and the client binding emits
+    // nothing at all. Carrying it here is what makes ONE source legal on all
+    // three targets; before PMTC lowered it, this exact line emitted a SwiftUI
+    // view that exists on neither platform, silently.
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router}>
+        <RouterView />
+      </RouterProvider>
+    </QueryClientProvider>
   )
 }
