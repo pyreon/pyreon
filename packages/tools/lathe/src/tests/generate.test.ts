@@ -184,6 +184,15 @@ describe('generate', () => {
     expect(a).toBe(b)
   })
 
+  it('gives array fixture elements DISTINCT identities', () => {
+    // Identical elements share an id, which collapses a keyed `<For>` to one
+    // row and trips the duplicate-key warning — so a fixture that ships them
+    // demonstrates the opposite of what it appears to.
+    const src = file(generate(SPEC, web), 'mocks.ts')
+    expect(src).toContain('00000000-0000-4000-8000-000000000001')
+    expect(src).toContain('00000000-0000-4000-8000-000000000002')
+  })
+
   it('emits deterministic mock fixtures with no randomness', () => {
     const src = file(generate(SPEC, web), 'mocks.ts')
     expect(src).toContain('export const mockRoutes = mock(routes)')

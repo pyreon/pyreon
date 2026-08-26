@@ -52,7 +52,13 @@ export function emitMocks(doc: IrDocument): SourceFile {
 }
 
 /** A deterministic sample value for a type. */
-function fixture(type: IrType, doc: IrDocument, depth: number, field?: IrField): unknown {
+function fixture(
+  type: IrType,
+  doc: IrDocument,
+  depth: number,
+  field?: IrField,
+  index = 0,
+): unknown {
   if (field?.example !== undefined) return field.example
   if (depth > 6) return null
   switch (type.kind) {
@@ -64,17 +70,17 @@ function fixture(type: IrType, doc: IrDocument, depth: number, field?: IrField):
         case 'uri':
           return 'https://example.com'
         case 'uuid':
-          return '00000000-0000-4000-8000-000000000000'
+          return `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`
         case 'date':
           return '2026-01-01'
         case 'date-time':
           return '2026-01-01T00:00:00Z'
         default:
-          return field ? `sample ${field.name}` : 'sample'
+          return field ? `sample ${field.name}${index > 0 ? ` ${index}` : ''}` : 'sample'
       }
     }
     case 'number':
-      return type.integer ? 1 : 1.5
+      return type.integer ? Math.max(1, index) : 1.5
     case 'boolean':
       return true
     case 'null':
@@ -82,12 +88,18 @@ function fixture(type: IrType, doc: IrDocument, depth: number, field?: IrField):
     case 'unknown':
       return null
     case 'array':
-      // Two elements: one is indistinguishable from a scalar in a UI, and
-      // three is noise. Two proves the list renders and keys correctly.
-      return [fixture(type.items, doc, depth + 1), fixture(type.items, doc, depth + 1)]
+      // Two elements: one is indistinguishable from a scalar in a UI, three is
+      // noise. Two proves the list renders. The INDEX is threaded so the
+      // elements differ — identical elements share an id, which collapses a
+      // keyed `<For>` to one row and trips the duplicate-key warning, so a
+      // fixture that ships them tests the opposite of what it looks like.
+      return [
+        fixture(type.items, doc, depth + 1, undefined, 1),
+        fixture(type.items, doc, depth + 1, undefined, 2),
+      ]
     case 'ref': {
       const model = doc.models.find((m) => m.name === type.name)
-      return model ? fixture(model.type, doc, depth + 1) : null
+      return model ? fixture(model.type, doc, depth + 1, undefined, index) : null
     }
     case 'union':
       return type.options.length > 0 ? fixture(type.options[0] as IrType, doc, depth + 1) : null
@@ -100,7 +112,7 @@ function fixture(type: IrType, doc: IrDocument, depth: number, field?: IrField):
         // never has to handle. Other optionals stay out to keep fixtures small.
         const isEnum = f.type.kind === 'string' && f.type.enum !== undefined
         if (!f.required && f.example === undefined && !isEnum) continue
-        out[f.name] = f.nullable && !f.required ? null : fixture(f.type, doc, depth + 1, f)
+        out[f.name] = f.nullable && !f.required ? null : fixture(f.type, doc, depth + 1, f, index)
       }
       return out
     }

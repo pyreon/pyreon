@@ -20,12 +20,12 @@ export const routes: MockRoute[] = [
     path: '/authors',
     json: [
       {
-        "id": "00000000-0000-4000-8000-000000000000",
-        "name": "sample name"
+        "id": "00000000-0000-4000-8000-000000000001",
+        "name": "sample name 1"
       },
       {
-        "id": "00000000-0000-4000-8000-000000000000",
-        "name": "sample name"
+        "id": "00000000-0000-4000-8000-000000000002",
+        "name": "sample name 2"
       }
     ],
   },
@@ -52,12 +52,12 @@ export const routes: MockRoute[] = [
     path: '/books',
     json: [
       {
-        "id": "00000000-0000-4000-8000-000000000000",
+        "id": "00000000-0000-4000-8000-000000000001",
         "title": "The Left Hand of Darkness",
         "status": "available"
       },
       {
-        "id": "00000000-0000-4000-8000-000000000000",
+        "id": "00000000-0000-4000-8000-000000000002",
         "title": "The Left Hand of Darkness",
         "status": "available"
       }
