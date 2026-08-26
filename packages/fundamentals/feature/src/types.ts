@@ -5,7 +5,7 @@ import type { StoreApi } from '@pyreon/store'
 import type { SortingState, Table } from '@pyreon/table'
 import type { VNodeChild } from '@pyreon/core'
 import type { FieldProps } from './field'
-import type { FieldInfo } from './schema'
+import type { FieldInfo, FieldType } from './schema'
 import type { TableProps } from './table-render'
 import type { FeatureTableFeatures } from './table-features'
 
@@ -24,12 +24,29 @@ export type InferSchemaValues<TSchema> = TSchema extends {
 /**
  * Configuration for defining a feature.
  */
+/**
+ * A literal field-type map — the schema form that crosses to native.
+ *
+ * `@pyreon/native-compiler` introspects these values to emit a Codable struct;
+ * a runtime schema is not introspected there and warns by name.
+ */
+export type FieldTypeMap = Record<string, FieldType>
+
 export interface FeatureConfig<TValues extends Record<string, unknown>> {
   /** Unique feature name — used for store ID and query key namespace. */
   name: string
-  /** Validation schema (Zod, Valibot, or ArkType). Duck-typed — must have `safeParseAsync` for auto-validation.
-   * Zod schemas carry `_output` for automatic TValues inference. */
-  schema: { _output?: TValues } & Record<never, never>
+  /**
+   * Validation schema, in either of two forms.
+   *
+   * - A runtime schema (Zod, Valibot, ArkType). Duck-typed — must have
+   *   `safeParseAsync` for auto-validation; Zod schemas carry `_output` so
+   *   `TValues` infers automatically.
+   * - A LITERAL field-type map, `{ id: 'string', done: 'boolean' }`. This is the
+   *   only form `@pyreon/native-compiler` can introspect, so it is what a
+   *   feature written for all three targets declares. It carries no validator,
+   *   on either target.
+   */
+  schema: ({ _output?: TValues } & Record<never, never>) | FieldTypeMap
   /** Custom schema-level validation function. If provided, overrides auto-detection from schema. */
   validate?: SchemaValidateFn<TValues>
   /** API base path (e.g., '/api/users'). */

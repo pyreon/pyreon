@@ -26,7 +26,7 @@ describe('extractFields — literal field-type map', () => {
   })
 
   it('reaches the feature, which is where it was empty', () => {
-    const feature = defineFeature({ name: 'todo', schema: { id: 'string', done: 'boolean' } as never })
+    const feature = defineFeature({ name: 'todo', api: '/api/todo', schema: { id: 'string', done: 'boolean' } })
     expect(feature.fields.map((f) => f.name)).toEqual(['id', 'done'])
   })
 

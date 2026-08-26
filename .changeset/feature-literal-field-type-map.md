@@ -14,4 +14,5 @@ columns, no create defaults. The one shape that crosses was inert on the target
 it was written for.
 
 `extractFields` now recognizes it, gated on EVERY value being a known field-type
-name so a real schema can never be mistaken for one.
+name so a real schema can never be mistaken for one — and `FeatureConfig.schema`
+accepts it, so the documented shape typechecks instead of needing a cast.
