@@ -16,14 +16,14 @@ import { describe, expect, it, vi } from 'vitest'
 
 const combineCleanups: Array<ReturnType<typeof vi.fn>> = []
 
-vi.mock('@atlaskit/pragmatic-drag-and-drop/combine', () => ({
+vi.mock('@atlaskit/pragmatic-drag-and-drop/utils/combine', () => ({
   combine: (..._fns: Array<() => void>) => {
     const cleanup = vi.fn()
     combineCleanups.push(cleanup)
     return cleanup
   },
 }))
-vi.mock('@atlaskit/pragmatic-drag-and-drop/element/adapter', () => ({
+vi.mock('@atlaskit/pragmatic-drag-and-drop/adapter/element-adapter', () => ({
   draggable: () => () => {},
   dropTargetForElements: () => () => {},
 }))

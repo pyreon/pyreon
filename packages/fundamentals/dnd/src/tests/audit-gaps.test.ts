@@ -22,7 +22,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 let lastDraggableOpts: any = null
 const allDropTargetOpts: Array<{ element: HTMLElement; config: any }> = []
 
-vi.mock('@atlaskit/pragmatic-drag-and-drop/element/adapter', () => ({
+vi.mock('@atlaskit/pragmatic-drag-and-drop/adapter/element-adapter', () => ({
   draggable: (opts: any) => {
     lastDraggableOpts = opts
     return () => {}
@@ -33,7 +33,7 @@ vi.mock('@atlaskit/pragmatic-drag-and-drop/element/adapter', () => ({
   },
   monitorForElements: () => () => {},
 }))
-vi.mock('@atlaskit/pragmatic-drag-and-drop/combine', () => ({
+vi.mock('@atlaskit/pragmatic-drag-and-drop/utils/combine', () => ({
   combine:
     (...fns: any[]) =>
     () =>
@@ -57,24 +57,24 @@ vi.mock('@atlaskit/pragmatic-drag-and-drop-hitbox/closest-edge', () => ({
 // Preview entry points: capture the setCustomNativeDragPreview call; the
 // offset presets return distinguishable marker functions.
 let lastSetPreviewArgs: any = null
-vi.mock('@atlaskit/pragmatic-drag-and-drop/element/set-custom-native-drag-preview', () => ({
+vi.mock('@atlaskit/pragmatic-drag-and-drop/utils/set-custom-native-drag-preview', () => ({
   setCustomNativeDragPreview: (args: any) => {
     lastSetPreviewArgs = args
   },
 }))
-vi.mock('@atlaskit/pragmatic-drag-and-drop/element/pointer-outside-of-preview', () => ({
+vi.mock('@atlaskit/pragmatic-drag-and-drop/utils/pointer-outside-of-preview', () => ({
   pointerOutsideOfPreview: (point: any) => {
     const fn = () => point
     ;(fn as any).__preset = 'pointer-outside'
     return fn
   },
 }))
-vi.mock('@atlaskit/pragmatic-drag-and-drop/element/center-under-pointer', () => {
+vi.mock('@atlaskit/pragmatic-drag-and-drop/utils/center-under-pointer', () => {
   const fn = () => ({ x: 0, y: 0 })
   ;(fn as any).__preset = 'center'
   return { centerUnderPointer: fn }
 })
-vi.mock('@atlaskit/pragmatic-drag-and-drop/element/preserve-offset-on-source', () => ({
+vi.mock('@atlaskit/pragmatic-drag-and-drop/utils/preserve-offset-on-source', () => ({
   preserveOffsetOnSource: (args: any) => {
     const fn = () => args
     ;(fn as any).__preset = 'preserve-offset'

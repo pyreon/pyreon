@@ -12,7 +12,7 @@
  *
  * @example
  *   // Before:
- *   vi.mock('@atlaskit/pragmatic-drag-and-drop/element/adapter', () => ({
+ *   vi.mock('@atlaskit/pragmatic-drag-and-drop/adapter/element-adapter', () => ({
  *     draggable: (opts: any) => {
  *       lastDraggableOpts = opts
  *       return () => {}
@@ -27,7 +27,7 @@
  *   }
  *   type Cleanup = () => void
  *
- *   vi.mock('@atlaskit/pragmatic-drag-and-drop/element/adapter', () => ({
+ *   vi.mock('@atlaskit/pragmatic-drag-and-drop/adapter/element-adapter', () => ({
  *     draggable: mockAdapter<DraggableArgs, Cleanup>((opts) => {
  *       lastDraggableOpts = opts
  *       return () => {}

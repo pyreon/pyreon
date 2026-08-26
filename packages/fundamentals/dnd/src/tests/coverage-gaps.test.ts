@@ -106,7 +106,7 @@ describe('useSortable container onDrop — skips re-insert when source already h
   beforeEach(() => {
     vi.resetModules()
     dropTargetCalls = []
-    vi.doMock('@atlaskit/pragmatic-drag-and-drop/element/adapter', () => ({
+    vi.doMock('@atlaskit/pragmatic-drag-and-drop/adapter/element-adapter', () => ({
       draggable: () => () => {},
       dropTargetForElements: (config: any) => {
         dropTargetCalls.push({ element: config.element, config })
@@ -114,7 +114,7 @@ describe('useSortable container onDrop — skips re-insert when source already h
       },
       monitorForElements: () => () => {},
     }))
-    vi.doMock('@atlaskit/pragmatic-drag-and-drop/combine', () => ({
+    vi.doMock('@atlaskit/pragmatic-drag-and-drop/utils/combine', () => ({
       combine:
         (...fns: any[]) =>
         () =>
@@ -131,8 +131,8 @@ describe('useSortable container onDrop — skips re-insert when source already h
 
   afterEach(() => {
     vi.resetModules()
-    vi.doUnmock('@atlaskit/pragmatic-drag-and-drop/element/adapter')
-    vi.doUnmock('@atlaskit/pragmatic-drag-and-drop/combine')
+    vi.doUnmock('@atlaskit/pragmatic-drag-and-drop/adapter/element-adapter')
+    vi.doUnmock('@atlaskit/pragmatic-drag-and-drop/utils/combine')
     vi.doUnmock('@atlaskit/pragmatic-drag-and-drop-auto-scroll/element')
     vi.doUnmock('@atlaskit/pragmatic-drag-and-drop-hitbox/closest-edge')
   })

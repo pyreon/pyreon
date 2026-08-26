@@ -13,7 +13,7 @@ import { describe, expect, it, vi } from 'vitest'
 let dropTargetCalls = 0
 let lastDropTargetCleanup: (() => void) | null = null
 let cleanupCalled = 0
-vi.mock('@atlaskit/pragmatic-drag-and-drop/element/adapter', () => ({
+vi.mock('@atlaskit/pragmatic-drag-and-drop/adapter/element-adapter', () => ({
   draggable: () => () => {},
   dropTargetForElements: () => {
     dropTargetCalls++

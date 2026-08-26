@@ -25,7 +25,7 @@ import { effect } from '@pyreon/reactivity'
 import { describe, expect, it, vi } from 'vitest'
 
 let draggableCalls = 0
-vi.mock('@atlaskit/pragmatic-drag-and-drop/element/adapter', () => ({
+vi.mock('@atlaskit/pragmatic-drag-and-drop/adapter/element-adapter', () => ({
   draggable: () => {
     draggableCalls++
     return () => {}

@@ -12,7 +12,7 @@ import { effect } from '@pyreon/reactivity'
 import { describe, expect, it, vi } from 'vitest'
 
 let dropTargetCalls: Array<{ element: HTMLElement; config: any }> = []
-vi.mock('@atlaskit/pragmatic-drag-and-drop/element/adapter', () => ({
+vi.mock('@atlaskit/pragmatic-drag-and-drop/adapter/element-adapter', () => ({
   draggable: (config: any) => {
     // Even when we don't use the config, capture for inspection
     void config
@@ -24,7 +24,7 @@ vi.mock('@atlaskit/pragmatic-drag-and-drop/element/adapter', () => ({
   },
   monitorForElements: () => () => {},
 }))
-vi.mock('@atlaskit/pragmatic-drag-and-drop/combine', () => ({
+vi.mock('@atlaskit/pragmatic-drag-and-drop/utils/combine', () => ({
   combine: (...fns: any[]) => () => fns.forEach((fn) => fn?.()),
 }))
 vi.mock('@atlaskit/pragmatic-drag-and-drop-hitbox/closest-edge', () => ({
