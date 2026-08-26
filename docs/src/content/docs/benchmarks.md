@@ -300,18 +300,36 @@ real working builds, `NODE_ENV=production`):
 
 - **Effect propagation**: Pyreon leads (~1.25× over Preact, ~3× over Solid).
 - **Batched writes (batch-50)**: Pyreon leads (~1.06×).
-- **Wide fan-out** (one signal, many effects): Pyreon leads (~1.03× —
-  flipped from ~2.4–2.75× *behind* by the 2026-07 batch-queue rewrite).
-- **Computed diamond**: near-tie with Preact (~1.07–1.10×, Preact ahead —
-  down from 2.9×).
-- **Deep computed chain**: Preact ahead ~1.25× (down from 2.1×).
+- **Wide fan-out** (one signal, many effects): Pyreon is **~1.11× behind**
+  Preact (2721ns vs 2464ns median) — a near-tie leaning behind. An earlier
+  version of this page claimed a ~1.03× Pyreon *win* "flipped" from
+  ~2.4–2.75× behind; that was cross-machine drift, not a real flip, and is
+  retracted here (corrected 2026-08 via a 10-run distribution + a
+  single-variable A/B, both against Preact 1.14.4's real build).
+- **Computed diamond**: Preact ahead **1.54×** (8720ns vs 5656ns median).
+  An earlier version of this page claimed a near-tie (~1.07–1.10×); the real
+  number moved because of an intentional trade
+  ([#2983](https://github.com/pyreon/pyreon/pull/2983), 2026-08): `computed`
+  now gates on value with an `Object.is` compare at the runner boundary, so
+  a downstream cascade stops when a derived value is unchanged — a real win
+  for real apps, where a derived value is unchanged between writes far more
+  often than not. This synthetic bench changes every value on every tick,
+  so the gate never short-circuits and only adds a compare per recompute —
+  confirmed causal by reverting the gate for reactivity alone, which
+  measures the diamond back to ~1.13× behind.
+- **Deep computed chain**: Preact ahead **1.51×** (185k vs 122k ns over 100
+  updates on a depth-50 chain) — the same #2983 cost, on the same
+  worst-case every-value-changes shape (reverting the gate measures this back to
+  a ~1.04× tie).
 - **Signal create**: Preact ahead ~1.4×.
 
-The remaining diamond/chain/create gaps are a **documented trade-off**, not
-an oversight: closing them requires Preact's lazy-pull version model, which
-costs retained heap per primitive. Pyreon's per-primitive memory (signal
-~152B, computed ~913B, effect ~930B) is part of its memory story, and that
-trade was declined deliberately.
+The diamond/chain numbers above are the deliberate cost side of #2983's
+trade, not a regression to chase — do not "fix" them by reverting the gate.
+The **signal-create** gap is a separate, structural trade: closing it
+requires Preact's lazy-pull version model, which costs retained heap per
+primitive. Pyreon's per-primitive memory (signal ~152B, computed ~913B,
+effect ~930B) is part of its memory story, and that trade was declined
+deliberately.
 
 Reproduce: `bun run bench:reactivity`
 
@@ -436,15 +454,21 @@ isolation, correctness gates):
 
 ## What we don't win (the standing list)
 
-Honesty section, kept current: retained memory ties Preact (3rd of 8, corrected 2026-08-18 — an earlier pass had this as "2nd among frameworks," which a second harness bug made wrong; see the flagship section above) — it is no longer a standing loss, though Pyreon still defers ~0.67MB by one event-loop turn;
-SSR at 1000 rows is a **tie** with Vue (CI95 overlapping) rather than a win —
-Pyreon leads outright only at 10 and 100 rows; Preact
-leads computed chain (~1.25×) and signal create (~1.4×) — both structurally
-priced (chain by the eager-push model whose lazy-pull alternative costs
-retained heap; create by the callable-signal API itself, a closure per
-signal vs Preact's class instance) — with diamond now a near-tie; find-my-way
-keeps router splat (~1.35×, the richer ResolvedRoute envelope; catch-all
-flipped to a Pyreon win); store `setup` favors Zustand's single-object
-contract; table/virtual/charts pay a mount premium for their fine-grained
-update wins. Each of these is either actively being closed or is a priced,
-documented trade-off — never hidden.
+Honesty section, kept current: retained memory ties Preact (3rd of 8, corrected
+2026-08-18 — an earlier pass had this as "2nd among frameworks," which a second
+harness bug made wrong; see the flagship section above) — it is no longer a
+standing loss, though Pyreon still defers ~0.67MB by one event-loop turn; SSR
+at 1000 rows is a **tie** with Vue (CI95 overlapping) rather than a win —
+Pyreon leads outright only at 10 and 100 rows; Preact leads computed diamond
+(**1.54×**) and deep computed chain (**1.51×**) — corrected 2026-08: both were
+previously reported as a near-tie (~1.07–1.10×) / ~1.25×, before accounting for
+[#2983](https://github.com/pyreon/pyreon/pull/2983)'s intentional `Object.is`
+value-gate, whose per-recompute compare this synthetic bench pays in full
+because every value changes every tick (reverting the gate for reactivity alone
+puts both back near parity — ~1.13× and a ~1.04× tie); Preact also leads signal
+create (~1.4×) — structurally priced (the callable-signal API itself, a closure
+per signal vs Preact's class instance); find-my-way keeps router splat (~1.35×,
+the richer ResolvedRoute envelope; catch-all flipped to a Pyreon win); store
+`setup` favors Zustand's single-object contract; table/virtual/charts pay a
+mount premium for their fine-grained update wins. Each of these is either
+actively being closed or is a priced, documented trade-off — never hidden.
