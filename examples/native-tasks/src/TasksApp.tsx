@@ -233,6 +233,9 @@ function TasksPage() {
         <Button onPress={() => navigate('/stats')} data-testid="tasks-stats">
           Stats
         </Button>
+        <Button onPress={() => navigate('/toolkit')} data-testid="tasks-toolkit">
+          Toolkit
+        </Button>
         <Button onPress={logout} data-testid="tasks-logout">
           Logout
         </Button>

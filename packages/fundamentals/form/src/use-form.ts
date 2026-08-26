@@ -199,6 +199,18 @@ export interface UseFormFieldsOptions<TDefs extends readonly FieldDefinition<str
  * ```
  */
 // oxlint-disable-next-line no-explicit-any
+/**
+ * Does this validation result represent a REAL error?
+ *
+ * `undefined` and `''` both mean "valid". The empty string matters because it
+ * is what a validator's valid branch naturally returns when its invalid branch
+ * returns a message (`v.length < 3 ? 'too short' : ''`), and treating it as an
+ * error produced a form that could never submit and never said why.
+ */
+function isRealError(err: ValidationError): boolean {
+  return err !== undefined && err !== ''
+}
+
 export function useForm<TDefs extends FieldDefinition<string, any>[]>(
   // The exported UseFormFieldsOptions IS the overload's type — an inline
   // literal here silently drifted (it omitted `focusOnError`, so
@@ -559,7 +571,13 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
       if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('form.fieldSignalCreate', 1)
       let prevHasError = false
       s.subscribe(() => {
-        const hasError = s.peek() !== undefined
+      // An empty-string error is NO error. A validator whose "valid" branch
+      // returns `''` — the natural shape when the invalid branch returns a
+      // message — otherwise makes the field permanently invalid while
+      // DISPLAYING nothing: `errors()` reads `''`, so the UI shows no message,
+      // `validate()` returns false, and `handleSubmit` silently never calls
+      // `onSubmit`. A dead form with no visible cause.
+        const hasError = isRealError(s.peek())
         if (hasError !== prevHasError) {
           _invalidCount.update((n) => (hasError ? n + 1 : n - 1))
           prevHasError = hasError
@@ -861,7 +879,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     const errors = {} as Partial<Record<keyof TValues, ValidationError>>
     for (const [name] of fieldEntries) {
       const err = fields[name].error.peek()
-      if (err !== undefined) errors[name] = err
+      if (isRealError(err)) errors[name] = err
     }
     return errors
   }
@@ -940,7 +958,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
           let hadOrphanSchemaError = false
           batch(() => {
             for (const [name] of fieldEntries) {
-              if (fields[name].error.peek() !== undefined) continue
+              if (isRealError(fields[name].error.peek())) continue
               // Route to the most-specific registered field: exact (a leaf
               // `address.city` or top-level), else the nested error whose
               // nearest registered ancestor is `name` (object field `address`
@@ -987,7 +1005,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
 
       // Re-check: any field with an error means invalid
       for (const [name] of fieldEntries) {
-        if (fields[name].error.peek() !== undefined) return false
+        if (isRealError(fields[name].error.peek())) return false
       }
       return true
     } finally {

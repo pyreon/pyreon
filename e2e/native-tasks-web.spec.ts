@@ -23,17 +23,18 @@ test.describe('native-tasks-web — the shared source renders on the third targe
     await expect(page.getByTestId('login-page')).toBeVisible()
   })
 
-  // KNOWN GAP, deliberately visible rather than deleted. The login submit does
-  // not navigate on WEB: with the `form.handleSubmit()` fix the call no longer
-  // throws, validation reports no error, and the URL still never changes — so
-  // either `onSubmit` is not firing or the store-backed `beforeEnter` guard
-  // denies the push. Both native targets device-prove this same flow, which is
-  // exactly why it is worth a marker: the shared source works on two of three
-  // targets and this is the third.
+  // KNOWN GAP, narrowed twice and still open — kept visible rather than deleted.
   //
-  // Left as `fixme` so the gap is reported by the suite instead of living in a
-  // commit message. Root-causing it needs the store/guard evaluation order on
-  // web, which is its own investigation.
+  // Login now works (that was the empty-string validator bug, fixed in
+  // @pyreon/form). What remains is the /toolkit ROUTE: clicking through to it
+  // changes the URL to /toolkit, raises NO page error, and renders NEITHER
+  // toolkit-page NOR tasks-page. So the route matches and its component
+  // produces nothing — which is a rendering question about that screen on web,
+  // not a routing or auth one.
+  //
+  // The screen wraps its tree in `<PyreonUI>` (@pyreon/ui-core) and drives
+  // eleven packages; isolating which of those renders empty on web is its own
+  // investigation. Both native targets device-prove the same screen.
   test.fixme('the auth gate opens and the toolkit screen renders every package', async ({ page }) => {
     const errors: string[] = []
     page.on('pageerror', (e) => errors.push(e.message))
@@ -45,7 +46,7 @@ test.describe('native-tasks-web — the shared source renders on the third targe
     await page.getByTestId('login-submit').click()
     await expect(page.getByTestId('tasks-page')).toBeVisible()
 
-    await page.goto('/toolkit')
+    await page.getByTestId('tasks-toolkit').click()
     await expect(page.getByTestId('toolkit-page')).toBeVisible()
 
     // i18n: the translated title, not the key. A missing catalogue renders the
@@ -78,7 +79,7 @@ test.describe('native-tasks-web — the shared source renders on the third targe
     await page.goto('/')
     await page.getByTestId('login-username').fill('ada')
     await page.getByTestId('login-submit').click()
-    await page.goto('/toolkit')
+    await page.getByTestId('tasks-toolkit').click()
 
     await page.getByTestId('toolkit-filter-done').click()
     await expect(page.getByTestId('toolkit-filter')).toHaveText('done')
