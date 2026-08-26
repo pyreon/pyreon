@@ -348,6 +348,11 @@ export type DeclIR =
    * auto-called on the stable host (the never-wired-class fix).
    */
   | { kind: 'crash-reporter'; name: string }
+  // `const client = createQueryClient()`. The client exists on the web because
+  // `useQuery` reads it from `<QueryClientProvider>`; the native `useQuery`
+  // lowering is self-contained and has no client to hold. So the binding
+  // lowers to NOTHING, and the provider that consumes it is transparent.
+  | { kind: 'query-client'; name: string }
   /**
    * A component-body `onMount(() => { … })` call — the documented lifecycle
    * escape hatch ("call .start()/.connect() from an onMount"). Lowers to a

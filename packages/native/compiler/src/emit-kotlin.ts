@@ -2156,6 +2156,12 @@ function syncedInitialKotlin(
 function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // on-mount emits at the harness level (LaunchedEffect) — defensive narrow.
   if (d.kind === 'on-mount' || d.kind === 'tick' || d.kind === 'hotkey') return ''
+  // The query client has no native counterpart: `useQuery` lowers to a
+  // self-contained runtime, so there is nothing for a client to hold. Emitting
+  // nothing is the whole lowering. Left unrecognized it emitted a bare
+  // `createQueryClient` — an identifier reference to a symbol that exists on
+  // neither target — with no warning.
+  if (d.kind === 'query-client') return ''
   if (d.kind === 'debounced-value') {
     return `var ${kotlinIdent(d.name)} by remember { mutableStateOf(${emitKotlinExpr(d.source, 2)}) }`
   }
@@ -5231,6 +5237,12 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   // different route (a missing mapping rather than a missing decline).
   if (tag === 'Link' || tag === 'RouterLink') return emitKotlinLink(e, indent)
   if (tag === 'PermissionsProvider') return emitKotlinPermissionsProvider(e, indent)
+  // Mirror of the Swift branch: `<QueryClientProvider>` is TRANSPARENT on
+  // native. The web needs it to inject the client `useQuery` reads; the native
+  // `useQuery` lowering is self-contained. Undispatched it emitted a
+  // `QueryClientProvider(client = …) { … }` composable that does not exist,
+  // silently.
+  if (tag === 'QueryClientProvider') return emitKotlinTransparentProvider(e, indent)
   if (tag === 'RouterProvider') return emitKotlinRouterProvider(e, indent)
   if (tag === 'RouterView') return emitKotlinRouterView(e, indent)
   // 8 other canonical primitives fall through to generic emit until
@@ -7513,6 +7525,21 @@ function emitKotlinPermissionsProvider(
   const set = `PyreonPermissions(setOf(${seed.granted.map((g) => JSON.stringify(g)).join(', ')}))`
   const content = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
   return `CompositionLocalProvider(LocalPyreonPermissions provides ${set}) {\n${content}\n${' '.repeat(indent)}}`
+}
+
+/**
+ * A provider whose only job on the web is to inject something the native
+ * runtime already has. Emit the children and nothing else — Compose needs no
+ * wrapper, since a composable body is a statement list.
+ */
+function emitKotlinTransparentProvider(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  if (e.children.length === 0) return ''
+  const pad = ' '.repeat(indent + 2)
+  const content = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
+  return `Column {\n${content}\n${' '.repeat(indent)}}`
 }
 
 function emitKotlinRouterProvider(

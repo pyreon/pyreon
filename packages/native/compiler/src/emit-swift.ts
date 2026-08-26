@@ -2824,6 +2824,12 @@ function emitSwiftDecl(
   // and it carries a `body` like a computed does, so without this narrow it
   // reaches the `if (d.body !== undefined)` branch below and is treated as one.
   if (d.kind === 'on-mount' || d.kind === 'tick' || d.kind === 'hotkey') return ''
+  // The query client has no native counterpart: `useQuery` lowers to a
+  // self-contained runtime, so there is nothing for a client to hold. Emitting
+  // nothing is the whole lowering. Left unrecognized it emitted a bare
+  // `createQueryClient` — an identifier reference to a symbol that exists on
+  // neither target — with no warning.
+  if (d.kind === 'query-client') return ''
   // Seeded with the SOURCE, so the value is available immediately — the web
   // hook has no first-delay gap and a field that rendered empty for the
   // delay on every mount would be a visible divergence. The debounce itself
@@ -6243,6 +6249,15 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   // never compiled the emit. Same class as the kinetic factory, reached by a
   // different route (a missing mapping rather than a missing decline).
   if (tag === 'Link' || tag === 'RouterLink') return emitSwiftLink(e, indent)
+  // `<QueryClientProvider client={…}>` is TRANSPARENT on native. It exists on
+  // the web to inject the client `useQuery` reads; the native `useQuery`
+  // lowering is self-contained, so the provider has nothing to inject and its
+  // children are the whole emit. Left undispatched it fell to the generic path
+  // and emitted `QueryClientProvider(client:) { … }` — a SwiftUI view that does
+  // not exist, referencing a client binding that also did not — with zero
+  // warnings. The web REQUIRES the provider, so this is the shape a shared
+  // source has to be able to carry.
+  if (tag === 'QueryClientProvider') return emitSwiftTransparentProvider(e, indent)
   if (tag === 'PermissionsProvider') return emitSwiftPermissionsProvider(e, indent)
   if (tag === 'RouterProvider') return emitSwiftRouterProvider(e, indent)
   if (tag === 'RouterView') return emitSwiftRouterView(e, indent)
@@ -8814,6 +8829,24 @@ function emitSwiftLink(
  * the recognizer warns when it does — a `false` under a wildcard grant is a
  * denial the native set cannot express.
  */
+/**
+ * A provider whose only job on the web is to inject something the native
+ * runtime already has. Emit the children and nothing else.
+ *
+ * `Group` rather than a bare child list because a provider legitimately wraps
+ * several siblings, and SwiftUI needs one view where the emit needs one
+ * expression.
+ */
+function emitSwiftTransparentProvider(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  if (e.children.length === 0) return 'EmptyView()'
+  const pad = ' '.repeat(indent + 2)
+  const content = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
+  return `Group {\n${content}\n${' '.repeat(indent)}}`
+}
+
 function emitSwiftPermissionsProvider(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   indent: number,
