@@ -6841,6 +6841,15 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (calleeName === 'useCrashReporter') {
     return { kind: 'crash-reporter', name }
   }
+  // `const client = createQueryClient()` from @pyreon/query. On the web the
+  // client is required — `useQuery` reads it from `<QueryClientProvider>`. The
+  // native `useQuery` lowering is self-contained, so there is nothing for the
+  // client to be, and the binding emits nothing. Recognizing it is what stops
+  // the generic path from emitting a bare `createQueryClient` identifier
+  // reference to a symbol that exists on neither target.
+  if (calleeName === 'createQueryClient') {
+    return { kind: 'query-client', name }
+  }
   // Phase 4 — `usePermissions(['posts.edit', 'posts.*'])` from
   // @pyreon/permissions. The array of literal grant keys seeds the native
   // PyreonPermissions container. Always succeeds (no bail): a bare
