@@ -116,6 +116,21 @@ export const KNOWN_UNCOMPILABLE: ReadonlyMap<string, string> = new Map([
   // genuinely does not build, with the reason — never to silence a new failure.
 ])
 
+/**
+ * The Kotlin half of the same ratchet, and it starts EMPTY.
+ *
+ * The compile pass was Swift-only from the day it was added, so a Kotlin emit
+ * that transformed with zero warnings and did not build read as "crosses" —
+ * precisely the hole the Swift half exists to close, left open on the other
+ * target. All 33 snippets compile on real kotlinc today, so there is no debt to
+ * record; the map exists so a future genuine platform limit has somewhere to go
+ * that is visible rather than silent.
+ *
+ * Same rules: an entry may only be REMOVED, never added to silence a new
+ * failure, and a listed package that starts compiling fails the gate.
+ */
+export const KNOWN_UNCOMPILABLE_KOTLIN: ReadonlyMap<string, string> = new Map([])
+
 export type Mechanism =
   | 'pmtc-lowers'
   | 'native-container'
@@ -1322,12 +1337,26 @@ async function main(): Promise<number> {
   // typecheck against the real SDK. Using stubs here would have manufactured
   // false "does not compile" verdicts for correct emits — the subset-stub trap,
   // which is exactly the failure mode a coverage gate must not have.
-  const { isSwiftcAvailable, validateSwiftWithStubs } = compileEnabled
-    ? await import('../packages/native/compiler/src/validate')
-    : { isSwiftcAvailable: () => false, validateSwiftWithStubs: () => ({ ok: true }) }
+  const { isSwiftcAvailable, validateSwiftWithStubs, isKotlincAvailable, validateKotlin } =
+    compileEnabled
+      ? await import('../packages/native/compiler/src/validate')
+      : {
+          isSwiftcAvailable: () => false,
+          validateSwiftWithStubs: () => ({ ok: true }),
+          isKotlincAvailable: () => false,
+          validateKotlin: () => ({ ok: true }),
+        }
   const canCompile = compileEnabled && isSwiftcAvailable()
   if (compileEnabled && !canCompile) {
     console.log('[check-native-coverage] PYREON_COVERAGE_COMPILE=1 but the SwiftUI SDK is unavailable (macOS only) — compile pass SKIPPED.')
+  }
+  // Kotlin compiles on any runner with a JDK, so unlike the Swift half it is
+  // not macOS-gated. Announce a skip rather than passing silently — a compile
+  // pass that quietly does not run is worse than none, because the green reads
+  // as "the emit builds".
+  const canCompileKotlin = compileEnabled && isKotlincAvailable()
+  if (compileEnabled && !canCompileKotlin) {
+    console.log('[check-native-coverage] PYREON_COVERAGE_COMPILE=1 but kotlinc is unavailable — Kotlin compile pass SKIPPED.')
   }
   const packages = scanPackages(REPO)
 
@@ -1430,6 +1459,27 @@ async function main(): Promise<number> {
     // factory call into Swift unnoticed. Only run it for entries that HAVE a
     // snippet and are otherwise judged crossing; a package already failing on
     // warnings does not need a second verdict.
+    // Compile the emitted Kotlin. Mirror of the Swift pass below, and it exists
+    // for the same reason: warnings alone cannot tell a valid composable from an
+    // invented one. Runs FIRST so a package broken on both targets reports the
+    // Swift detail, which is the one with the real SDK behind it.
+    if (canCompileKotlin && entry.snippet && res.status === 'crosses') {
+      const kotlin = transform(entry.snippet, { target: 'kotlin' })
+      const kv = validateKotlin(kotlin.code) as { ok: boolean; error?: string }
+      const knownK = KNOWN_UNCOMPILABLE_KOTLIN.get(entry.name)
+      if (!kv.ok && knownK === undefined) {
+        res.status = 'regression'
+        const firstK = String(kv.error ?? '')
+          .split('\n')
+          .find((l) => l.includes('error:'))
+        res.detail = `emit does NOT compile on kotlinc: ${firstK?.replace(/^.*error: /, '').trim() ?? 'unknown error'}`
+      } else if (kv.ok && knownK !== undefined) {
+        res.status = 'regression'
+        res.detail = `now COMPILES on kotlinc — remove it from KNOWN_UNCOMPILABLE_KOTLIN (recorded reason: ${knownK})`
+      } else if (!kv.ok) {
+        notices.push(`${entry.name}: known-uncompilable on kotlinc — ${knownK}`)
+      }
+    }
     if (canCompile && entry.snippet && res.status === 'crosses') {
       const swift = transform(entry.snippet, { target: 'swift' })
       const v = validateSwiftWithStubs(swift.code) as { ok: boolean; error?: string }
