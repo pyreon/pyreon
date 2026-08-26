@@ -371,6 +371,24 @@ final class PyreonTasksUITests: XCTestCase {
             "state-tree model default did not reach the view"
         )
 
+        // ui-system: styler + elements lower to native view modifiers. The
+        // styling itself is not queryable from XCUITest, so assert what IS —
+        // that each styled wrapper renders its CHILDREN. A wrapper that lowers
+        // to nothing, or to an invented view, fails here. The web e2e asserts
+        // the computed CSS, which is the half only a browser can see.
+        XCTAssertTrue(
+            app.staticTexts["toolkit-card-text"].firstMatch.waitForExistence(timeout: 10),
+            "styled() wrapper did not render its child"
+        )
+        XCTAssertTrue(
+            app.staticTexts["toolkit-el-a"].firstMatch.exists,
+            "Element did not render its first child"
+        )
+        XCTAssertTrue(
+            app.staticTexts["toolkit-el-b"].firstMatch.exists,
+            "Element did not render its second child"
+        )
+
         // machine: the declared initial state, then a transition that must
         // actually MOVE it — the initial value alone would pass against a
         // machine that ignores every event.

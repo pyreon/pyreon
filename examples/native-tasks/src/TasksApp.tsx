@@ -59,7 +59,9 @@ import { PyreonUI } from '@pyreon/ui-core'
 import { createTableState } from '@pyreon/table'
 import { kinetic } from '@pyreon/kinetic'
 import { createI18n } from '@pyreon/i18n'
+import { Element } from '@pyreon/elements'
 import { createMachine } from '@pyreon/machine'
+import { styled } from '@pyreon/styler'
 import { useStorage } from '@pyreon/storage'
 import { Toaster, toast } from '@pyreon/toast'
 import { announce } from '@pyreon/a11y'
@@ -438,6 +440,20 @@ const prefs = model({ state: { compact: false, pageSize: 20 } }).create()
 // useFetch inside a component.
 interface TaskDto { id: string; title: string }
 interface TableRow { id: string; label: string }
+// The UI-SYSTEM tier. `styled` emits real CSS on the web and lowers to native
+// view modifiers, so the SAME declaration styles on all three targets.
+//
+// NOT rocketstyle here, deliberately: its `.theme()` values only become CSS
+// through a `.styles()` bridge that calls unistyle's `makeItResponsive` (see
+// `el` in the private @pyreon/ui/components). PMTC reads `.theme()` statically
+// and emits modifiers, so a bare `.theme()` chain styles on NATIVE and renders
+// unstyled on the web — architecture, not a bug, but it means rocketstyle's
+// crossing claim covers the emit rather than one source styling everywhere.
+const Card = styled(Stack)`
+  padding: 8px;
+  background: #6b7280;
+`
+
 const api = createHttp({ baseUrl: 'https://example.com' })
 const getTask = api.endpoint('GET /tasks/:id')
 
@@ -553,6 +569,13 @@ function ToolkitScreen() {
       <Text data-testid="toolkit-query">{q.data}</Text>
       <Text data-testid="toolkit-cache">{String(seen.size)}</Text>
       <Text data-testid="toolkit-perm">{String(perms('tasks.write'))}</Text>
+      <Card data-testid="toolkit-card">
+        <Text data-testid="toolkit-card-text">styled</Text>
+      </Card>
+      <Element gap={2} data-testid="toolkit-element">
+        <Text data-testid="toolkit-el-a">a</Text>
+        <Text data-testid="toolkit-el-b">b</Text>
+      </Element>
       <Text data-testid="toolkit-machine">{mode()}</Text>
       <Text data-testid="toolkit-storage">{theme()}</Text>
       <Button onPress={() => mode.send('TOGGLE')} data-testid="toolkit-machine-toggle">

@@ -93,6 +93,24 @@ test.describe('native-tasks-web — the shared source renders on the third targe
     // CALLED by this screen and asserted by nothing, which is how the app
     // shipped with no <Toaster> mounted — `toast()` wrote to its store and
     // nothing rendered, on web only. Clicking the button is what proves it.
+    // ui-system: styler + elements. Both lower to native view modifiers, and
+    // until now the whole tier rested on a compiler snippet — the emit compiled
+    // and nothing had rendered one. On the web the styling is OBSERVABLE, so
+    // assert the computed value rather than mere presence: a wrapper that
+    // renders its children while applying no CSS passes a visibility check and
+    // fails this one. That is not hypothetical — it is what rocketstyle's
+    // `.theme()` does here, which is why this uses `styled`.
+    await expect(page.getByTestId('toolkit-card-text')).toBeVisible()
+    const card = page.getByTestId('toolkit-card')
+    expect(
+      await card.evaluate((el) => getComputedStyle(el).backgroundColor),
+      'styled() background did not reach the DOM',
+    ).toBe('rgb(107, 114, 128)')
+    expect(await card.evaluate((el) => getComputedStyle(el).padding)).toBe('8px')
+    // elements: the flex primitive renders BOTH children and applies its gap.
+    await expect(page.getByTestId('toolkit-el-a')).toBeVisible()
+    await expect(page.getByTestId('toolkit-el-b')).toBeVisible()
+
     // machine: a transition must actually MOVE the state — the initial value
     // alone would pass against a machine that ignores every event.
     await page.getByTestId('toolkit-machine-toggle').click()

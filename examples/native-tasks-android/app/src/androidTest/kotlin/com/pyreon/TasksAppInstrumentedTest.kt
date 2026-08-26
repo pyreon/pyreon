@@ -347,6 +347,14 @@ class TasksAppInstrumentedTest {
             .onNodeWithTag("toolkit-pagesize")
             .assertTextEquals("20")
 
+        // ui-system: styler + elements lower to native view modifiers. The
+        // styling is not assertable through the semantics tree, so assert what
+        // is — that each styled wrapper renders its CHILDREN. The web e2e
+        // asserts the computed CSS, which only a browser can see.
+        composeRule.onNodeWithTag("toolkit-card-text").assertIsDisplayed()
+        composeRule.onNodeWithTag("toolkit-el-a").assertIsDisplayed()
+        composeRule.onNodeWithTag("toolkit-el-b").assertIsDisplayed()
+
         // machine: the declared initial state, then a transition that must
         // actually MOVE it — the initial value alone would pass against a
         // machine that ignores every event.
