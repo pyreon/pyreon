@@ -44,6 +44,18 @@ const ERROR_PATTERNS: ErrorPattern[] = [
     }),
   },
   {
+    // SSR drops an attribute whose resolved NAME carries a breakout character
+    // (whitespace, '=', '/', '>', '<', quotes). The common trigger is spreading
+    // a user-keyed object onto an element; the remedy (validate the keys) is not
+    // obvious from the dev warning alone.
+    pattern: /Attribute name ["'`]?.+?["'`]? contains characters that could break HTML/,
+    diagnose: () => ({
+      cause:
+        "The SSR renderer refused to emit an attribute whose NAME contains a character that could terminate the name token and inject a live event handler — whitespace, '=', '/', '>', '<', or a quote. Attribute VALUES are escaped, but a NAME is never quoted, so an attacker-controlled key (typically a spread of a user-keyed object, `<el {...userKeys}>`) such as `x onmouseover=alert(1)` would break out into a handler. The attribute is dropped instead — React and Preact do the same, and the client `setAttribute` throws on such names.",
+      fix: 'If the attribute name comes from user data (a spread of a user-keyed object), validate the keys against an allowlist of expected attribute names before passing them to the element. If the name is your own, use a valid HTML attribute name — no whitespace, `=`, `/`, `>`, `<`, or quotes; use `data-*` for custom keys.',
+    }),
+  },
+  {
     // The residual footgun created by defaulting `templatizeComponentChildren`
     // ON. The emit INJECTS `import { _mountChild } from "@pyreon/runtime-dom"`
     // into app source whenever an element absorbs a component child — which is
