@@ -1,8 +1,8 @@
-import { draggable } from '@atlaskit/pragmatic-drag-and-drop/element/adapter'
-import { centerUnderPointer } from '@atlaskit/pragmatic-drag-and-drop/element/center-under-pointer'
-import { pointerOutsideOfPreview } from '@atlaskit/pragmatic-drag-and-drop/element/pointer-outside-of-preview'
-import { preserveOffsetOnSource } from '@atlaskit/pragmatic-drag-and-drop/element/preserve-offset-on-source'
-import { setCustomNativeDragPreview } from '@atlaskit/pragmatic-drag-and-drop/element/set-custom-native-drag-preview'
+import { draggable } from '@atlaskit/pragmatic-drag-and-drop/adapter/element-adapter'
+import { centerUnderPointer } from '@atlaskit/pragmatic-drag-and-drop/utils/center-under-pointer'
+import { pointerOutsideOfPreview } from '@atlaskit/pragmatic-drag-and-drop/utils/pointer-outside-of-preview'
+import { preserveOffsetOnSource } from '@atlaskit/pragmatic-drag-and-drop/utils/preserve-offset-on-source'
+import { setCustomNativeDragPreview } from '@atlaskit/pragmatic-drag-and-drop/utils/set-custom-native-drag-preview'
 import { isServer, onCleanup, signal } from '@pyreon/reactivity'
 import type { DragData, DragPreviewOptions, UseDraggableOptions, UseDraggableResult } from './types'
 

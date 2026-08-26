@@ -11,7 +11,7 @@ let lastExternalMonitorOpts: any = null
 const allDraggableOpts: any[] = []
 const allDropTargetOpts: any[] = []
 
-vi.mock('@atlaskit/pragmatic-drag-and-drop/element/adapter', () => ({
+vi.mock('@atlaskit/pragmatic-drag-and-drop/adapter/element-adapter', () => ({
   draggable: (opts: any) => {
     lastDraggableOpts = opts
     allDraggableOpts.push(opts)
@@ -28,23 +28,29 @@ vi.mock('@atlaskit/pragmatic-drag-and-drop/element/adapter', () => ({
   },
 }))
 
-vi.mock('@atlaskit/pragmatic-drag-and-drop/external/adapter', () => ({
+vi.mock('@atlaskit/pragmatic-drag-and-drop/adapter/drop-target-for-external', () => ({
   dropTargetForExternal: (opts: any) => {
     lastExternalDropOpts = opts
     return () => {} // cleanup
   },
+}))
+
+vi.mock('@atlaskit/pragmatic-drag-and-drop/adapter/monitor-for-external', () => ({
   monitorForExternal: (opts: any) => {
     lastExternalMonitorOpts = opts
     return () => {} // cleanup
   },
 }))
 
-vi.mock('@atlaskit/pragmatic-drag-and-drop/external/file', () => ({
+vi.mock('@atlaskit/pragmatic-drag-and-drop/utils/contains-files', () => ({
   containsFiles: () => true,
+}))
+
+vi.mock('@atlaskit/pragmatic-drag-and-drop/utils/get-files', () => ({
   getFiles: ({ source }: any) => source?._files ?? [],
 }))
 
-vi.mock('@atlaskit/pragmatic-drag-and-drop/combine', () => ({
+vi.mock('@atlaskit/pragmatic-drag-and-drop/utils/combine', () => ({
   combine: (...fns: (() => void)[]) => () => fns.forEach((fn) => fn()),
 }))
 

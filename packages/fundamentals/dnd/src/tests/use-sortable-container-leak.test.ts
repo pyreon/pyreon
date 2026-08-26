@@ -21,10 +21,10 @@ import { describe, expect, it, vi } from 'vitest'
 const autoScrollCleanups: Array<ReturnType<typeof vi.fn>> = []
 const dropTargetCleanups: Array<ReturnType<typeof vi.fn>> = []
 
-vi.mock('@atlaskit/pragmatic-drag-and-drop/combine', () => ({
+vi.mock('@atlaskit/pragmatic-drag-and-drop/utils/combine', () => ({
   combine: (..._fns: Array<() => void>) => () => {},
 }))
-vi.mock('@atlaskit/pragmatic-drag-and-drop/element/adapter', () => ({
+vi.mock('@atlaskit/pragmatic-drag-and-drop/adapter/element-adapter', () => ({
   draggable: () => () => {},
   dropTargetForElements: () => {
     const cleanup = vi.fn()

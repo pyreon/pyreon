@@ -1,8 +1,7 @@
-import {
-  dropTargetForExternal,
-  monitorForExternal,
-} from '@atlaskit/pragmatic-drag-and-drop/external/adapter'
-import { containsFiles, getFiles } from '@atlaskit/pragmatic-drag-and-drop/external/file'
+import { dropTargetForExternal } from '@atlaskit/pragmatic-drag-and-drop/adapter/drop-target-for-external'
+import { monitorForExternal } from '@atlaskit/pragmatic-drag-and-drop/adapter/monitor-for-external'
+import { containsFiles } from '@atlaskit/pragmatic-drag-and-drop/utils/contains-files'
+import { getFiles } from '@atlaskit/pragmatic-drag-and-drop/utils/get-files'
 import { batch, isServer, onCleanup, signal } from '@pyreon/reactivity'
 
 export interface UseFileDropOptions {

@@ -56,9 +56,9 @@ GlobalRegistrator.register()
 
 const { batch, createSelector, effect, onCleanup, signal } = await import('@pyreon/reactivity')
 const { draggable, dropTargetForElements, monitorForElements } = await import(
-  '@atlaskit/pragmatic-drag-and-drop/element/adapter'
+  '@atlaskit/pragmatic-drag-and-drop/adapter/element-adapter'
 )
-const { combine } = await import('@atlaskit/pragmatic-drag-and-drop/combine')
+const { combine } = await import('@atlaskit/pragmatic-drag-and-drop/utils/combine')
 const {
   attachClosestEdge,
   extractClosestEdge,
