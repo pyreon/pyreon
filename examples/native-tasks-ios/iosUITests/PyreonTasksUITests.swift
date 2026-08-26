@@ -371,6 +371,29 @@ final class PyreonTasksUITests: XCTestCase {
             "state-tree model default did not reach the view"
         )
 
+        // machine: the declared initial state, then a transition that must
+        // actually MOVE it — the initial value alone would pass against a
+        // machine that ignores every event.
+        XCTAssertEqual(
+            app.staticTexts["toolkit-machine"].firstMatch.label,
+            "off",
+            "PyreonMachine did not start in its declared initial state"
+        )
+        let machineToggle = app.buttons["toolkit-machine-toggle"].firstMatch
+        XCTAssertTrue(machineToggle.exists, "Machine toggle missing on toolkit page")
+        machineToggle.tap()
+        XCTAssertEqual(
+            app.staticTexts["toolkit-machine"].firstMatch.label,
+            "on",
+            "PyreonMachine did not transition on send()"
+        )
+        // storage: the default, since nothing has persisted a value yet.
+        XCTAssertEqual(
+            app.staticTexts["toolkit-storage"].firstMatch.label,
+            "light",
+            "useStorage default did not reach the view"
+        )
+
         // url-state WRITE: flipping it must move the value, which is the half a
         // default-only assertion cannot see.
         let filterDone = app.buttons["toolkit-filter-done"].firstMatch

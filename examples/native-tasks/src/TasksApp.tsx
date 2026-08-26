@@ -59,6 +59,8 @@ import { PyreonUI } from '@pyreon/ui-core'
 import { createTableState } from '@pyreon/table'
 import { kinetic } from '@pyreon/kinetic'
 import { createI18n } from '@pyreon/i18n'
+import { createMachine } from '@pyreon/machine'
+import { useStorage } from '@pyreon/storage'
 import { Toaster, toast } from '@pyreon/toast'
 import { announce } from '@pyreon/a11y'
 import { useUrlState } from '@pyreon/url-state'
@@ -481,6 +483,16 @@ function ToolkitScreen() {
   // Seeded form: self-contained on every target. `usePermissions([...])` is
   // what PMTC lowers to a PyreonPermissions, and it now needs no provider on
   // the web either — before that, this exact line threw in a browser.
+  // machine: a two-state toggle. `createMachine` lowers only INSIDE a component
+  // body — it becomes a `remember {}` / an @State, which has no meaning at file
+  // scope, the same rule createI18n follows.
+  const mode = createMachine({
+    initial: 'off',
+    states: { off: { on: { TOGGLE: 'on' } }, on: { on: { TOGGLE: 'off' } } },
+  })
+  // storage: a persisted scalar. On native this is @AppStorage /
+  // rememberPyreonStorage; on the web it is the storage backend.
+  const theme = useStorage('toolkit-theme', 'light')
   const perms = usePermissions(['tasks.write'])
   // table: `createTableState` is the dependency-free half that lowers to the
   // native PyreonTableState engine. `useTable` (the TanStack row model) stays
@@ -541,6 +553,11 @@ function ToolkitScreen() {
       <Text data-testid="toolkit-query">{q.data}</Text>
       <Text data-testid="toolkit-cache">{String(seen.size)}</Text>
       <Text data-testid="toolkit-perm">{String(perms('tasks.write'))}</Text>
+      <Text data-testid="toolkit-machine">{mode()}</Text>
+      <Text data-testid="toolkit-storage">{theme()}</Text>
+      <Button onPress={() => mode.send('TOGGLE')} data-testid="toolkit-machine-toggle">
+        Toggle mode
+      </Button>
       <Text data-testid="toolkit-synced">{String(synced())}</Text>
       <Text data-testid="toolkit-tablepages">{String(table.pageCount())}</Text>
       <Text data-testid="toolkit-http">{taskReq.data}</Text>

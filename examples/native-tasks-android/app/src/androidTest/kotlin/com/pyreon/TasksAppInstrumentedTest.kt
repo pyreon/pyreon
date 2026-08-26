@@ -347,6 +347,23 @@ class TasksAppInstrumentedTest {
             .onNodeWithTag("toolkit-pagesize")
             .assertTextEquals("20")
 
+        // machine: the declared initial state, then a transition that must
+        // actually MOVE it — the initial value alone would pass against a
+        // machine that ignores every event.
+        composeRule
+            .onNodeWithTag("toolkit-machine")
+            .assertTextEquals("off")
+        composeRule
+            .onNodeWithTag("toolkit-machine-toggle")
+            .performClick()
+        composeRule
+            .onNodeWithTag("toolkit-machine")
+            .assertTextEquals("on")
+        // storage: the default, since nothing has persisted a value yet.
+        composeRule
+            .onNodeWithTag("toolkit-storage")
+            .assertTextEquals("light")
+
         // url-state WRITE: flipping it must move the value, which a
         // default-only assertion cannot see.
         composeRule

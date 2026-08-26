@@ -78,6 +78,10 @@ test.describe('native-tasks-web — the shared source renders on the third targe
       'toolkit-evens': '2',
       // sync: the CRDT counter at its seeded initial value.
       'toolkit-synced': '0',
+      // machine: the declared initial state.
+      'toolkit-machine': 'off',
+      // storage: the default, since nothing has persisted a value yet.
+      'toolkit-storage': 'light',
     }
     for (const [id, value] of Object.entries(expected)) {
       await expect(page.getByTestId(id), `${id} should render ${value}`).toHaveText(value)
@@ -89,6 +93,11 @@ test.describe('native-tasks-web — the shared source renders on the third targe
     // CALLED by this screen and asserted by nothing, which is how the app
     // shipped with no <Toaster> mounted — `toast()` wrote to its store and
     // nothing rendered, on web only. Clicking the button is what proves it.
+    // machine: a transition must actually MOVE the state — the initial value
+    // alone would pass against a machine that ignores every event.
+    await page.getByTestId('toolkit-machine-toggle').click()
+    await expect(page.getByTestId('toolkit-machine')).toHaveText('on')
+
     await page.getByTestId('toolkit-save').click()
     // Scope each assertion to the DOM its OWN package owns. A plain
     // `getByText('Saved')` passes with no <Toaster> at all, because announce()'s
