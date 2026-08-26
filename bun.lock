@@ -2152,6 +2152,7 @@
       },
       "devDependencies": {
         "@pyreon/http": "workspace:^",
+        "@pyreon/query": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "vitest": "^4.1.11",
