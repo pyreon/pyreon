@@ -5980,6 +5980,9 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   const crdtDocDecl = tryDeclFromCrdtDoc(node, ctx)
   if (crdtDocDecl) return crdtDocDecl
 
+  const queryClientDecl = tryDeclFromQueryClient(node)
+  if (queryClientDecl) return queryClientDecl
+
   const syncedSignalDecl = tryDeclFromSyncedSignal(node, ctx)
   if (syncedSignalDecl) return syncedSignalDecl
 
@@ -6840,15 +6843,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // imperative `recordError`/`breadcrumb`/`clear`; `start()` auto-called.
   if (calleeName === 'useCrashReporter') {
     return { kind: 'crash-reporter', name }
-  }
-  // `const client = createQueryClient()` from @pyreon/query. On the web the
-  // client is required — `useQuery` reads it from `<QueryClientProvider>`. The
-  // native `useQuery` lowering is self-contained, so there is nothing for the
-  // client to be, and the binding emits nothing. Recognizing it is what stops
-  // the generic path from emitting a bare `createQueryClient` identifier
-  // reference to a symbol that exists on neither target.
-  if (calleeName === 'createQueryClient') {
-    return { kind: 'query-client', name }
   }
   // Phase 4 — `usePermissions(['posts.edit', 'posts.*'])` from
   // @pyreon/permissions. The array of literal grant keys seeds the native
@@ -7866,6 +7860,27 @@ function tryDeclFromCreateMachine(
   }
 
   return { kind: 'machine', name, initial, transitions }
+}
+
+/**
+ * `const client = new QueryClient()` from `@pyreon/query` → a `query-client`
+ * decl, which emits NOTHING.
+ *
+ * On the web the client is mandatory: `useQuery` reads it from
+ * `<QueryClientProvider>` and throws `No QueryClient found` without one. The
+ * native lowering is self-contained — `useQuery` becomes a `PyreonQuery` that
+ * holds its own state — so there is no client for the binding to be, and
+ * emitting nothing is the whole lowering.
+ *
+ * Recognizing it is what stops the generic path from emitting `let client = ""`
+ * (an unused junk binding) beside the transparent provider.
+ */
+function tryDeclFromQueryClient(node: AnyNode): DeclIR | null {
+  const init = node.init as AnyNode | undefined
+  if (init?.type !== 'NewExpression') return null
+  if ((init.callee?.name as string | undefined) !== 'QueryClient') return null
+  if (node.id?.type !== 'Identifier') return null
+  return { kind: 'query-client', name: node.id.name as string }
 }
 
 /**
