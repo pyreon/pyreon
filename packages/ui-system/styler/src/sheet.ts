@@ -253,6 +253,19 @@ export interface StyleSheetOptions {
   nonce?: string
 }
 
+/**
+ * Per-request SSR accumulation state. Held behind `StyleSheet#_ssr` so it can be
+ * scoped to one streaming render (see `_ssr`), preventing two CONCURRENT streams
+ * from sharing one rule buffer + flush watermark.
+ */
+interface StylerSSRState {
+  buffer: string[]
+  /** Index of the first rule not yet emitted by `flushSSRPending()` (streaming). */
+  flushedIdx: number
+  /** Whether the streaming `@layer` ordering statement was emitted this request. */
+  layerDeclEmitted: boolean
+}
+
 export class StyleSheet {
   private cache = new Map<string, string>()
   private insertCache = new Map<string, string>()
@@ -267,18 +280,45 @@ export class StyleSheet {
   // and remove the exact DOM rules without fragile index bookkeeping.
   private domRules = new Map<string, CSSRule[]>()
   private sheet: CSSStyleSheet | null = null
-  private ssrBuffer: string[] = []
-  // Watermark for streaming SSR — index into `ssrBuffer` of the first
-  // rule NOT yet flushed by `flushSSRPending()`. Lets the streaming
-  // pipeline emit `<style>` tags inline next to each Suspense boundary
-  // that resolves, so boundary content arrives at the browser with its
-  // styles already present (instead of FOUCing until the final
-  // consolidated `<style>` flushes at end-of-stream).
-  private ssrFlushedIdx = 0
-  // Whether the streaming `@layer` ordering statement has been emitted this
-  // stream. Persists across flushes (a later flush may carry the first layered
-  // rule); reset with the SSR buffer at each request boundary.
-  private ssrLayerDeclEmitted = false
+  // Per-request SSR accumulation state, reached ONLY through `_ssr`. The buffer
+  // holds rules for `getStyleTag()` (SSG / string SSR) and the streaming flush
+  // watermark (`flushedIdx`) lets the pipeline emit `<style>` inline per Suspense
+  // boundary. Under a per-request styler scope (runtime-server, concurrent
+  // streaming) these live on the request bag; otherwise on this instance object.
+  private readonly _instanceSSR: StylerSSRState = {
+    buffer: [],
+    flushedIdx: 0,
+    layerDeclEmitted: false,
+  }
+
+  /**
+   * The active SSR state — request-scoped when a streaming render is in flight,
+   * else this instance's own. runtime-server (which owns the request lifecycle
+   * and can use AsyncLocalStorage — the styler is browser-safe and cannot import
+   * `node:async_hooks`) exposes an OPAQUE per-request bag via
+   * `globalThis.__PYREON_STYLER_REQUEST_STATE__`; the styler owns the shape and
+   * stashes it under one key. With no scope active (SSG, direct callers, the
+   * client — where SSR pushes never run) it returns the instance state, exactly
+   * as before. This is what stops two concurrent streams from sharing a buffer +
+   * watermark (request A's flush advancing past request B's rules).
+   */
+  private get _ssr(): StylerSSRState {
+    const bag = (
+      globalThis as {
+        __PYREON_STYLER_REQUEST_STATE__?: () => Record<string, unknown> | undefined
+      }
+    ).__PYREON_STYLER_REQUEST_STATE__?.()
+    if (bag) {
+      let s = bag.__pyreonStylerSSR as StylerSSRState | undefined
+      if (!s) {
+        s = { buffer: [], flushedIdx: 0, layerDeclEmitted: false }
+        bag.__pyreonStylerSSR = s
+      }
+      return s
+    }
+    return this._instanceSSR
+  }
+
   private isSSR: boolean
   private maxCacheSize: number
   private layer: string | undefined
@@ -712,7 +752,7 @@ export class StyleSheet {
 
     if (this.isSSR) {
       for (const rule of finalRules) {
-        this.ssrBuffer.push(rule)
+        this._ssr.buffer.push(rule)
       }
     } else if (this.sheet) {
       for (const rule of finalRules) {
@@ -743,7 +783,7 @@ export class StyleSheet {
     const rule = `@keyframes ${name}{${body}}`
 
     if (this.isSSR) {
-      this.ssrBuffer.push(rule)
+      this._ssr.buffer.push(rule)
     } else if (this.sheet) {
       try {
         const at = this.sheet.insertRule(rule, this.sheet.cssRules.length)
@@ -768,7 +808,7 @@ export class StyleSheet {
     this.cache.set(key, key)
 
     if (this.isSSR) {
-      this.ssrBuffer.push(cssText)
+      this._ssr.buffer.push(cssText)
     } else if (this.sheet) {
       // When @layer isn't supported (e.g. happy-dom in tests, pre-2022
       // engines), the init probe leaves `supportsLayer` false. The scoped
@@ -819,7 +859,7 @@ export class StyleSheet {
   getStyleTag(nonce?: string): string {
     const n = nonce ?? this.nonce
     const nonceAttr = n ? ` nonce="${n.replace(/["'<>]/g, '')}"` : ''
-    if (this.ssrBuffer.length === 0) return `<style ${ATTR}=""${nonceAttr}></style>`
+    if (this._ssr.buffer.length === 0) return `<style ${ATTR}=""${nonceAttr}></style>`
     // Emit the layer ordering declaration for SSR output so the cascade
     // is correct when the browser parses the SSR HTML. On the client side
     // this ordering is injected via insertRule in mount().
@@ -828,7 +868,7 @@ export class StyleSheet {
       : this.layer
         ? `@layer ${this.layer};`
         : ''
-    const css = (layerDecl + this.ssrBuffer.join('')).replace(/<\/style/gi, '<\\/style')
+    const css = (layerDecl + this._ssr.buffer.join('')).replace(/<\/style/gi, '<\\/style')
     return `<style ${ATTR}=""${nonceAttr}>${css}</style>`
   }
 
@@ -843,7 +883,7 @@ export class StyleSheet {
    * internal buffer.
    */
   getStyleRules(): readonly string[] {
-    return this.ssrBuffer.slice()
+    return this._ssr.buffer.slice()
   }
 
   // Idempotency guard for injectRules — keyed by the FNV hash the
@@ -865,7 +905,7 @@ export class StyleSheet {
     if (this.injectedBundles.has(key)) return
     this.injectedBundles.add(key)
     if (this.isSSR) {
-      for (const rule of rules) this.ssrBuffer.push(rule)
+      for (const rule of rules) this._ssr.buffer.push(rule)
       return
     }
     if (!this.sheet) return
@@ -924,9 +964,9 @@ export class StyleSheet {
    * dropped wholesale).
    */
   resetSSRBuffer(): void {
-    this.ssrBuffer = []
-    this.ssrFlushedIdx = 0
-    this.ssrLayerDeclEmitted = false
+    this._ssr.buffer = []
+    this._ssr.flushedIdx = 0
+    this._ssr.layerDeclEmitted = false
   }
 
   /**
@@ -960,7 +1000,7 @@ export class StyleSheet {
    * `flushSSRPending()`.
    */
   flushSSRPending(): string {
-    if (this.ssrBuffer.length === this.ssrFlushedIdx) return ''
+    if (this._ssr.buffer.length === this._ssr.flushedIdx) return ''
     // Emit the `@layer` ordering declaration ONCE per stream, as soon as it can
     // be decided — then never again (a second declaration is redundant).
     //
@@ -975,44 +1015,44 @@ export class StyleSheet {
     // the statement precedes it. A CONFIGURED custom `this.layer` still decides
     // upfront on the first flush (its behaviour is unchanged).
     let prefix = ''
-    if (!this.ssrLayerDeclEmitted) {
-      const sliceHasLayered = this.ssrBuffer
-        .slice(this.ssrFlushedIdx)
+    if (!this._ssr.layerDeclEmitted) {
+      const sliceHasLayered = this._ssr.buffer
+        .slice(this._ssr.flushedIdx)
         .some((r) => r.startsWith('@layer '))
       if (this.layer) {
         prefix = sliceHasLayered ? '@layer elements, rocketstyle;' : `@layer ${this.layer};`
-        this.ssrLayerDeclEmitted = true
+        this._ssr.layerDeclEmitted = true
       } else if (sliceHasLayered) {
         prefix = '@layer elements, rocketstyle;'
-        this.ssrLayerDeclEmitted = true
+        this._ssr.layerDeclEmitted = true
       }
     }
-    const slice = this.ssrBuffer.slice(this.ssrFlushedIdx).join('')
-    this.ssrFlushedIdx = this.ssrBuffer.length
+    const slice = this._ssr.buffer.slice(this._ssr.flushedIdx).join('')
+    this._ssr.flushedIdx = this._ssr.buffer.length
     return prefix + slice
   }
 
   /** Returns collected CSS rules as a raw string (useful for streaming SSR). */
   getStyles(): string {
-    if (this.ssrBuffer.length === 0) return ''
+    if (this._ssr.buffer.length === 0) return ''
     const layerDecl = this.hasLayeredRules()
       ? '@layer elements, rocketstyle;'
       : this.layer
         ? `@layer ${this.layer};`
         : ''
-    return layerDecl + this.ssrBuffer.join('')
+    return layerDecl + this._ssr.buffer.join('')
   }
 
   /** Check if any buffered SSR rules use @layer wrapping. */
   private hasLayeredRules(): boolean {
-    return this.ssrBuffer.some((r) => r.startsWith('@layer '))
+    return this._ssr.buffer.some((r) => r.startsWith('@layer '))
   }
 
   /** Reset SSR buffer and cache (call between server requests). */
   reset(): void {
-    this.ssrBuffer = []
-    this.ssrFlushedIdx = 0
-    this.ssrLayerDeclEmitted = false
+    this._ssr.buffer = []
+    this._ssr.flushedIdx = 0
+    this._ssr.layerDeclEmitted = false
     this.cache.clear()
     this.insertCache.clear()
     this.icKeysByClass.clear()
@@ -1044,9 +1084,9 @@ export class StyleSheet {
     this.icKeysByClass.clear()
     this.domRules.clear()
     clearNormCache()
-    this.ssrBuffer = []
-    this.ssrFlushedIdx = 0
-    this.ssrLayerDeclEmitted = false
+    this._ssr.buffer = []
+    this._ssr.flushedIdx = 0
+    this._ssr.layerDeclEmitted = false
     if (this.sheet) {
       while (this.sheet.cssRules.length > 0) {
         this.sheet.deleteRule(0)
