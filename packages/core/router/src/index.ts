@@ -66,8 +66,14 @@ export type {
 export { classifyHref, toRouterPath } from './typed-routes'
 export type { NotFoundBoundaryProps } from './not-found'
 export { isNotFoundError, NotFoundBoundary, notFound } from './not-found'
-export type { RedirectStatus } from './redirect'
-export { getRedirectInfo, isRedirectError, redirect } from './redirect'
+export type { RedirectClass, RedirectStatus } from './redirect'
+export {
+  classifyRedirectTarget,
+  getRedirectInfo,
+  isRedirectError,
+  redirect,
+  safeRedirectLocation,
+} from './redirect'
 export {
   hydrateLoaderData,
   prefetchLoaderData,

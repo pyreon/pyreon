@@ -39,6 +39,7 @@ import { h } from '@pyreon/core'
 import { renderWithHead } from '@pyreon/head/ssr'
 import {
   getRedirectInfo,
+  safeRedirectLocation,
   RouterProvider,
   serializeLoaderData,
   stringifyLoaderData,
@@ -156,7 +157,7 @@ export async function renderPage(
     } catch (err) {
       const info = getRedirectInfo(err)
       if (info) {
-        return { kind: 'redirect' as const, from: path, to: info.url, status: info.status }
+        return { kind: 'redirect' as const, from: path, to: safeRedirectLocation(info.url), status: info.status }
       }
       throw err
     }
