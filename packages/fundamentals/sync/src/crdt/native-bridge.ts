@@ -1,3 +1,4 @@
+import { observeMapKey } from './map-dispatch'
 import { PyreonCrdtDoc } from './pyreon-adapter'
 import {
   type WebSocketCtor,
@@ -67,9 +68,9 @@ export function createNativeSyncHost(opts: NativeSyncHostOptions): NativeSyncHos
     observe(mapName, key, cb) {
       const map = doc.getMap(mapName)
       cb(map.get(key)) // seed the native signal with the current value
-      return map.observe((changedKeys) => {
-        if (changedKeys.has(key)) cb(map.get(key))
-      })
+      // Same per-key routing as syncedSignal: one dispatcher observer per map
+      // (see map-dispatch.ts) instead of one raw filtering observer per key.
+      return observeMapKey(map, key, () => cb(map.get(key)))
     },
     set(mapName, key, value) {
       doc.transact(() => doc.getMap(mapName).set(key, value))

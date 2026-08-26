@@ -1,5 +1,6 @@
 import { type Signal, onCleanup, signal, wrapSignal } from '@pyreon/reactivity'
 import { docHasUnsyncedTransport, whenDocSynced } from './crdt/doc-sync'
+import { observeMapKey } from './crdt/map-dispatch'
 import { type CrdtDoc, LOCAL_ORIGIN } from './crdt/types'
 
 /** Default map name when none is given — one logical store per map. */
@@ -120,16 +121,24 @@ export function syncedSignal<T>(options: SyncedSignalOptions<T>): SyncedSignal<T
 
   // The ONE update path. Applies every change to `base` regardless of origin;
   // the signal's Object.is guard makes the local echo a no-op for scalars.
-  const off = map.observe((changedKeys) => {
-    if (!changedKeys.has(key)) return
+  //
+  // Routed through the per-(doc, map) dispatcher (`observeMapKey`) instead of a
+  // raw per-field `map.observe`: N fields over one map share ONE engine
+  // observer, and this handler runs only when a committed transaction actually
+  // changed `key` — the dispatcher evaluates the exact `changedKeys.has(key)`
+  // predicate the raw observer applied, by key-indexed lookup. Timing (sync at
+  // commit) and origin behavior (fires for local AND remote — loop prevention
+  // stays in the transport + the signal's Object.is echo no-op) are unchanged;
+  // see the map-dispatch module doc.
+  const off = observeMapKey(map, key, () => {
     base.set(resolve())
   })
 
   // Defaults are watched too, so a peer's default reaches a peer that has none.
   // `resolve()` keeps the precedence: a real value already present WINS, so a
   // late-arriving default can never overwrite it.
-  const offDefaults = defaults.observe((changedKeys) => {
-    if (!changedKeys.has(key) || map.has(key)) return
+  const offDefaults = observeMapKey(defaults, key, () => {
+    if (map.has(key)) return
     base.set(resolve())
   })
 
