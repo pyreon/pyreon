@@ -265,6 +265,14 @@ export interface InstanceMeta {
   snapshotListeners: Set<SnapshotListener>
   /** Schedules a coalesced snapshot notify (set in `createInstance`). */
   scheduleSnapshotNotify?: () => void
+  /**
+   * Cached `getSnapshot` result (MST-aligned). Populated on first getSnapshot,
+   * returned verbatim while valid, and invalidated to `undefined` on every
+   * write: leaf writes via the always-on `afterSet` hook, nested-child writes
+   * via `emitPatch` (reached unconditionally through the parent's `onPatch`
+   * registration), and reference-id writes via the reference field's write hook.
+   */
+  snapshotCache?: Record<string, unknown> | undefined
   middlewares: MiddlewareFn[]
   emitPatch(patch: Patch): void
   /**
