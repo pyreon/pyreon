@@ -55,10 +55,23 @@ export function bindRichTextToSignal<T = JSONContent>(
   let applyingFromSignal = false
   let applyingFromEditor = false
 
+  // Reference echo-guard. `editorToSignal` records the exact object/string it
+  // last pushed to the signal; when `signalToEditor` re-runs on that same value
+  // — the per-keystroke echo — it is reference-equal and we skip the
+  // O(document) structural compare (two full `JSON.stringify` in json mode)
+  // entirely. `editor.json()` / `editor.html()` return a fresh value each
+  // change, so this is an exact O(1) echo test: a genuine EXTERNAL write is a
+  // different reference and still falls through to the compare below.
+  let hasEmitted = false
+  let lastEmitted: T
+
   // External → editor.
   const signalToEditor = effect(() => {
     const value = signal()
     if (applyingFromEditor) return
+    // The value we just pushed out is coming back — skip the O(document)
+    // compare rather than re-serializing to discover it is a no-op.
+    if (hasEmitted && value === lastEmitted) return
     applyingFromSignal = true
     try {
       if (format === 'html') {
@@ -91,6 +104,10 @@ export function bindRichTextToSignal<T = JSONContent>(
     if (applyingFromSignal) return
     applyingFromEditor = true
     try {
+      // Record the exact reference we emit so the echo re-run of
+      // `signalToEditor` recognizes it and skips the structural compare.
+      lastEmitted = out as unknown as T
+      hasEmitted = true
       signal.set(out as unknown as T)
     } catch (err) {
       onError?.(err as Error)

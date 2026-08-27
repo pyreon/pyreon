@@ -47,7 +47,18 @@ function parseCookies(cookieString: string): Map<string, string> {
     if (eqIndex === -1) continue
     const name = pair.slice(0, eqIndex).trim()
     const value = pair.slice(eqIndex + 1).trim()
-    if (name) cookies.set(name, decodeURIComponent(value))
+    if (!name) continue
+    // `decodeURIComponent` throws `URIError` on a malformed percent-escape (a
+    // bare `%`, or `%` not followed by two hex digits). `document.cookie` mixes
+    // in cookies set by ANY code on the origin (third-party scripts, a server
+    // reflecting user input un-encoded, subdomains), so one bad entry would
+    // otherwise throw out of `parseCookies` and break EVERY cookie read
+    // app-wide. Fall back to the raw value so every other cookie still reads.
+    try {
+      cookies.set(name, decodeURIComponent(value))
+    } catch {
+      cookies.set(name, value)
+    }
   }
 
   return cookies

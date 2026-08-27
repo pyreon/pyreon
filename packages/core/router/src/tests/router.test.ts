@@ -5588,6 +5588,76 @@ describe('redirect() from loader', () => {
     router.destroy()
   })
 
+  test('an explicit cross-origin http(s) redirect triggers a REAL browser navigation', async () => {
+    const Home = () => h('div', null, 'home')
+    const Protected = () => h('div', null, 'protected')
+    const routes: RouteRecord[] = [
+      { path: '/', component: Home },
+      {
+        path: '/app',
+        component: Protected,
+        loader: async () => {
+          redirect('https://provider.com/oauth')
+        },
+      },
+    ]
+    const assigned: string[] = []
+    const origAssign = window.location.assign
+    Object.defineProperty(window.location, 'assign', {
+      value: (url: string) => assigned.push(url),
+      configurable: true,
+      writable: true,
+    })
+    try {
+      const router = createRouter({ routes, url: '/' })
+      await router.push('/app')
+      // Was silently rewritten to '/' before the fix; now it is a real nav.
+      expect(assigned).toEqual(['https://provider.com/oauth'])
+      router.destroy()
+    } finally {
+      Object.defineProperty(window.location, 'assign', {
+        value: origAssign,
+        configurable: true,
+        writable: true,
+      })
+    }
+  })
+
+  test('a dangerous-scheme redirect is BLOCKED to / (no external navigation)', async () => {
+    const Home = () => h('div', null, 'home')
+    const Protected = () => h('div', null, 'protected')
+    const routes: RouteRecord[] = [
+      { path: '/', component: Home },
+      {
+        path: '/app',
+        component: Protected,
+        loader: async () => {
+          redirect('javascript:alert(1)')
+        },
+      },
+    ]
+    const assigned: string[] = []
+    const origAssign = window.location.assign
+    Object.defineProperty(window.location, 'assign', {
+      value: (url: string) => assigned.push(url),
+      configurable: true,
+      writable: true,
+    })
+    try {
+      const router = createRouter({ routes, url: '/' })
+      await router.push('/app')
+      expect(assigned).toEqual([]) // never navigated externally
+      expect(router.currentRoute().path).toBe('/') // blocked → home
+      router.destroy()
+    } finally {
+      Object.defineProperty(window.location, 'assign', {
+        value: origAssign,
+        configurable: true,
+        writable: true,
+      })
+    }
+  })
+
   test("doesn't fire when loader resolves normally", async () => {
     const Home = () => h('div', null, 'home')
     const Protected = () => h('div', null, 'protected')

@@ -241,6 +241,27 @@ describe('createHandler', () => {
     expect(await res.text()).toBe('')
   })
 
+  test('redirect() sanitizes the Location: dangerous schemes + protocol-relative → /', async () => {
+    const Home: ComponentFn = () => h('h1', null, 'home')
+    const { redirect } = await import('@pyreon/router')
+    const make = (target: string) =>
+      createHandler({
+        App: Home,
+        routes: [
+          { path: '/', component: Home },
+          { path: '/g', component: Home, loader: async () => { redirect(target) } },
+        ],
+      })
+    // dangerous / non-http(s) schemes + protocol-relative are refused → /
+    for (const bad of ['javascript:alert(1)', 'data:text/html,x', '//evil.com', 'mailto:a@b.c']) {
+      const res = await make(bad)(new Request('http://localhost/g'))
+      expect(res.headers.get('Location')).toBe('/')
+    }
+    // an explicit cross-origin http(s) URL is intentional and passes through
+    const ext = await make('https://provider.com/oauth')(new Request('http://localhost/g'))
+    expect(ext.headers.get('Location')).toBe('https://provider.com/oauth')
+  })
+
   test('redirect() preserves a custom status', async () => {
     const Home: ComponentFn = () => h('h1', null, 'home')
     const { redirect } = await import('@pyreon/router')

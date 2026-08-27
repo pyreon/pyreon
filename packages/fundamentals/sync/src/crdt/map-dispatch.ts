@@ -80,6 +80,20 @@ export function observeMapKey(map: CrdtMap, key: string, handler: KeyHandler): (
       for (const k of changedKeys) {
         const set = handlers.get(k)
         if (!set) continue
+        // Single-handler fast path — the dominant shape (one `syncedSignal`
+        // bound to a given map key), and this fires once per committed CRDT
+        // transaction (every synced-field write, local and remote), so it is
+        // the hottest per-update path in sync. With one handler there is no
+        // sibling to protect, so the `[...set]` snapshot array is pure garbage
+        // on every keystroke-driven transaction. Capture the sole handler and
+        // fire it: exactly the snapshot's "handlers present at dispatch start"
+        // semantics (fires once even if it disposes or re-registers itself),
+        // without the array allocation.
+        if (set.size === 1) {
+          const only = set.values().next().value as KeyHandler
+          only()
+          continue
+        }
         // Snapshot before invoking — parity with the raw-observer engines
         // (both the fake adapter's `[...observers]` and Yjs' live-array
         // forEach let a handler removed mid-dispatch still fire once), and a

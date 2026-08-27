@@ -141,10 +141,26 @@ const makeItResponsive: MakeItResponsive =
     // if no theme is defined, return empty object
     if (isEmpty(internalTheme)) return ''
 
-    const { rootSize, breakpoints, __PYREON__, ...restTheme } = theme as Theme
+    // Read the three fields we always need directly. The `...restTheme`
+    // rest-spread shallow-copies the ENTIRE provider theme (dozens of keys:
+    // colors, space, fonts, radii, …) and is consumed ONLY inside
+    // `renderStyles`. Building it here charged that full copy even on the
+    // rendered-cache-HIT path below (which returns before any `renderStyles`
+    // call) — the exact path the cache exists to keep cheap. Defer it behind a
+    // lazy getter so a cache hit never pays for it.
+    const outerTheme = theme as Theme
+    const { rootSize, breakpoints, __PYREON__ } = outerTheme
+    let _restTheme: Record<string, unknown> | undefined
+    const getRestTheme = (): Record<string, unknown> => {
+      if (_restTheme === undefined) {
+        const { rootSize: _r, breakpoints: _b, __PYREON__: _p, ...rest } = outerTheme
+        _restTheme = rest
+      }
+      return _restTheme
+    }
 
     const renderStyles = (styleTheme: Record<string, unknown>): ReturnType<typeof styles> =>
-      styles({ theme: styleTheme, css, rootSize, globalTheme: restTheme })
+      styles({ theme: styleTheme, css, rootSize, globalTheme: getRestTheme() })
 
     // if there are no breakpoints, return just standard css
     if (isEmpty(breakpoints) || isEmpty(__PYREON__)) {

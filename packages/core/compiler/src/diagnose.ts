@@ -29,6 +29,22 @@ interface ErrorPattern {
 
 const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // A reactive boundary's child stops updating. Two distinct causes, and the
+    // catalog carries both because the symptom is identical and neither throws:
+    // the pre-fix teardown/remount destroying a memoized child, and the
+    // post-fix identity skip declining to re-mount a value mutated in place.
+    // Symptom-matched rather than message-matched (see the _mountSlot entry
+    // above for the same precedent) because there IS no error to paste.
+    pattern:
+      /(Show|Switch|Match|conditional|reactive (child|boundary|branch))[^\n]{0,80}(stale|stopped? updating|not (re-?)?updating|frozen|pinned)|(stale|stopped? updating|frozen)[^\n]{0,80}(inside|within|under) (a )?<?(Show|Switch|Match)/i,
+    diagnose: () => ({
+      cause:
+        "A reactive boundary (`<Show>` / `<Switch>` / any `{() => …}` that mounts a subtree) re-runs whenever ITS OWN accessor's dependencies change, even when the resulting value is unchanged — `when={() => selected() !== undefined}` re-runs on every `selected` change while staying `true`. Two things can make the child go stale there. (1) On @pyreon/runtime-dom BEFORE the identity-skip release, the boundary tore down and re-mounted on every such re-run; a component's sole child is `_lc`-memoized, so the accessor returned the SAME compiled `_tpl` item whose DOM and bindings were built once — the teardown disposed the bindings and the remount re-inserted the same element without rebuilding them, leaving one live node permanently stale with no warning. (2) On current versions the boundary SKIPS re-mounting when the accessor returns the value it already mounted, so an accessor that returns the same object after mutating it IN PLACE (`items.push(x); return items`) is correctly seen as unchanged and nothing re-renders.",
+      fix: "For (1), upgrade @pyreon/runtime-dom. For (2), return a NEW value rather than mutating: `return [...items, x]`, or drive the list from a signal (`items.set([...items(), x])`) — mutation-in-place is invisible to every identity-based check in the framework, not just this one. If the child genuinely must rebuild on each re-run, give the accessor a value that differs per run rather than relying on the boundary to rebuild an unchanged one.",
+      fixCode: "// mutating in place is invisible to the boundary\n// items.push(next); return items\n\n// return a new value instead\nreturn [...items, next]",
+    }),
+  },
+  {
     // The sanitized `innerHTML` prop fails LOUD during SSR/SSG/stream: its
     // allowlist sanitizer is DOM-based (DOMParser) and cannot run in Node, so
     // the server refuses to emit the value raw (that would be an XSS that fires

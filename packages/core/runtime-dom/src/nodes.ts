@@ -69,8 +69,39 @@ export function mountReactive(
   let hasCleanup = false
   let generation = 0
 
+  // The value mounted by the previous run, for the identity check below.
+  // A dedicated sentinel rather than `undefined`, which is a legitimate
+  // accessor result that must not read as "same as last time" on the first run.
+  const NEVER_RAN: unique symbol = Symbol('pyreon.never-ran') as never
+  let lastValue: unknown = NEVER_RAN
+
   const e = effect(() => {
     const myGen = ++generation
+    // Read the accessor FIRST: the identity check needs the value, and the
+    // read is what establishes this effect's dependencies either way.
+    const value = accessor()
+
+    // An accessor can re-run and produce the SAME value — `<Show when={() =>
+    // sel() !== undefined}>` re-runs on every `sel` change while the verdict
+    // stays `true`. Tearing down and re-mounting there is not merely wasteful,
+    // it is DESTRUCTIVE for the shape the compiler now emits: a component's
+    // sole child is `_lc`-memoized, so the accessor hands back the SAME `_tpl`
+    // NativeItem whose DOM and bindings were built once. The teardown disposes
+    // those bindings and the remount re-inserts the same element without
+    // rebuilding them — one live node, permanently stale, no warning.
+    //
+    // Identity is the right test precisely because it is conservative: every
+    // shape that builds a fresh value per run (a bare `h()` in an accessor, a
+    // changed primitive, a new array) compares unequal and behaves exactly as
+    // before. Only a value that is literally the one already mounted is
+    // skipped, and for that one the DOM is already correct.
+    if (value === lastValue) {
+      if (process.env.NODE_ENV !== 'production') {
+        _countSink.__pyreon_count__?.('runtime.mountReactive.identitySkip')
+      }
+      return
+    }
+
     // Run cleanup outside tracking context — cleanup may write to signals
     // (e.g. onUnmount hooks), and those writes must not accidentally register
     // as dependencies of this effect, which would cause infinite recursion.
@@ -80,7 +111,9 @@ export function mountReactive(
       /* noop */
     }
     hasCleanup = false
-    const value = accessor()
+    // Recorded only once the teardown has actually happened, so a throw from
+    // `accessor()` above leaves the previous mount and its record intact.
+    lastValue = value
     // NOTE: `typeof value === 'function'` is a VALID accessor return — a nested
     // `() => VNodeChild` (the `{() => show() ? <A /> : null}` pattern), which
     // mountChild handles reactively. Do NOT warn on function returns.
@@ -108,6 +141,10 @@ export function mountReactive(
       } else {
         _emitCleanup()
         cleanup()
+        // A newer run superseded this one and owns `lastValue`. Leaving our
+        // stale value recorded would let a later run matching IT skip a mount
+        // that never happened.
+        lastValue = NEVER_RAN
       }
     }
   })

@@ -32,6 +32,22 @@ describe('useCookie', () => {
     expect(locale()).toBe('de')
   })
 
+  it('a malformed percent-escape in one cookie does not break the others', () => {
+    // `%E0%A4%A` is an incomplete percent-escape — decodeURIComponent throws on
+    // it. document.cookie mixes in cookies set by any code on the origin, so
+    // one bad entry must not take down every cookie read.
+    document.cookie = `good=${encodeURIComponent(JSON.stringify('hello'))}; path=/`
+    document.cookie = `bad=%E0%A4%A; path=/`
+    document.cookie = `other=${encodeURIComponent(JSON.stringify('world'))}; path=/`
+    // Bisect: before the decode guard, parseCookies threw on `bad`, so EVERY
+    // read returned the default (or threw) — `good`/`other` would read the
+    // default, not their real value.
+    expect(useCookie('good', 'DEFAULT_GOOD')()).toBe('hello')
+    expect(useCookie('other', 'DEFAULT_OTHER')()).toBe('world')
+    // The malformed one degrades gracefully; it never throws.
+    expect(() => useCookie('bad', 'DEFAULT_BAD')()).not.toThrow()
+  })
+
   it('.set() updates signal and writes cookie', () => {
     const locale = useCookie('locale', 'en')
     locale.set('fr')
@@ -144,4 +160,5 @@ describe('setCookieSource (SSR)', () => {
     setCookieSource('locale=de; theme=dark')
     expect(() => setCookieSource('foo=bar')).not.toThrow()
   })
+
 })

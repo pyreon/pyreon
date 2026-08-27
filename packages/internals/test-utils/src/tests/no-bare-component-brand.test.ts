@@ -1,6 +1,6 @@
 /**
  * Whole-class guard: NO bare top-level component-brand assignments
- * (`Component.displayName = …`, `.pkgName`, `.PYREON__COMPONENT`, `.isText`)
+ * (`Component.displayName = …`, `.pkgName`, `.PYREON__COMPONENT`, `.isText`, `._documentType`)
  * in published framework source.
  *
  * WHY. `sideEffects: false` lets a bundler drop a module when NOTHING is
@@ -35,7 +35,7 @@ it('published framework src has zero bare top-level brand assignments', () => {
   try {
     out = execSync(
       // Top-level = column 0 (optionally the `;(X as T).y =` escape shape).
-      String.raw`grep -rnE '^;?\(?[A-Za-z_$][A-Za-z0-9_$]*( as [^)]+\))?\.(displayName|pkgName|PYREON__COMPONENT|isText) = ' packages --include='*.ts' --include='*.tsx' | grep -v node_modules | grep -v '/lib/' | grep -v __tests__ | grep -v '\.test\.' | grep -v 'internals/test-utils' || true`,
+      String.raw`grep -rnE '^;?\(?[A-Za-z_$][A-Za-z0-9_$]*( as [^)]+\))?\.(displayName|pkgName|PYREON__COMPONENT|isText|_documentType) = ' packages --include='*.ts' --include='*.tsx' | grep -v node_modules | grep -v '/lib/' | grep -v __tests__ | grep -v '\.test\.' | grep -v 'internals/test-utils' | grep -v '/manifest.ts' | grep -v 'mcp/src/api-reference.ts' || true`,
       { cwd: REPO, encoding: 'utf8' },
     )
   } catch {

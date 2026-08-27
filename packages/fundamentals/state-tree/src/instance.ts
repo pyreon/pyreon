@@ -129,9 +129,18 @@ export function createInstance(
     snapPending = true
     queueMicrotask(() => {
       snapPending = false
-      if (meta.snapshotListeners.size === 0) return
+      const set = meta.snapshotListeners
+      if (set.size === 0) return
       const snap = getSnapshot(instance)
-      for (const listener of [...meta.snapshotListeners]) listener(snap)
+      // Single-listener fast path (the common `onSnapshot(model, fn)` shape).
+      // Capture the sole listener and fire it — matching the `[...]` snapshot's
+      // "listeners present at notify start" semantics — with no allocation.
+      if (set.size === 1) {
+        set.values().next().value!(snap)
+        return
+      }
+      // Snapshot: a listener could unsubscribe a sibling mid-notify.
+      for (const listener of [...set]) listener(snap)
     })
   }
 
