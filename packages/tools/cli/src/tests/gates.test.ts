@@ -156,7 +156,13 @@ describe('runDocClaimsGate', () => {
     // The old comment here said 25 while the assertion said 23; a hand-kept
     // breakdown drifts exactly like the claims it describes, so this one names
     // the reason for the number rather than re-deriving it arithmetically.
-    expect(result.meta.scanned).toBe(30)
+    //
+    // 33 as of the duplicate-`<For>`-rule fix: +2 lint-rule-count sites
+    // (`packages/tools/lint/package.json` — the published npm description,
+    // which had rotted to "56 rules" against a real 98 because it was the one
+    // count surface this gate did not cover — and `.claude/rules/code-style.md`,
+    // stale at 97) and +1 lint-category-count site (the same code-style.md).
+    expect(result.meta.scanned).toBe(33)
     // The real repo must be drift-free — this gate runs in CI; if a
     // count claim drifts, EVERY PR's doctor run fails until it's fixed.
     const errs = result.findings.filter((f) => f.severity === 'error')
