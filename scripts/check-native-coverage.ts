@@ -569,12 +569,22 @@ export function C() {
     name: '@pyreon/validation',
     mechanism: 'partial',
     rationale:
-      'the zod/valibot/arktype ADAPTERS stay web, but the declarative form DOES lower: a top-level zodSchema(z.object({…})) emits native field validators. Verified zero-warning on both targets; the runtime surface around it (inline .parse(), async validate) stays web.',
+      'the zod/valibot/arktype ADAPTERS stay web, but the declarative form DOES lower: a top-level zodSchema(z.object({…})) emits native field validators, and `useForm({ schema })` wires one per string field. Verified zero-warning on both targets; the runtime surface around it (inline .parse(), async validate) stays web.',
+    // The snippet DRIVES A FORM, it does not merely declare the schema.
+    // Declaring it alone was the old shape, and it hid the whole gap: the
+    // declaration lowered to a struct with a constraint-checking `parse()`
+    // while `useForm({ schema })` dropped the option SILENTLY, so `isValid`
+    // was true on native for input the web rejects. The iOS device gate found
+    // that; a snippet that never built a form could not.
     snippet: `import { z } from 'zod'
 import { zodSchema } from '@pyreon/validation'
-import { Stack, Text } from '@pyreon/primitives'
-const Signup = zodSchema(z.object({ name: z.string(), age: z.number() }))
-export function C() { return (<Stack><Text>ok</Text></Stack>) }`,
+import { useForm } from '@pyreon/form'
+import { Stack, Text, Field, Button } from '@pyreon/primitives'
+const Signup = zodSchema(z.object({ name: z.string().min(3), age: z.number() }))
+export function C() {
+  const f = useForm({ initialValues: { name: '' }, schema: Signup, onSubmit: () => {} })
+  return (<Stack><Field value={f.values().name} onChangeText={(v) => f.setFieldValue('name', v)} /><Button onPress={() => f.handleSubmit()}>go</Button><Text>{String(f.isValid())}</Text></Stack>)
+}`,
   },
   {
     name: '@pyreon/url-state',
