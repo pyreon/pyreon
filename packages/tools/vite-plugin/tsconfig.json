@@ -4,5 +4,8 @@
     "lib": [
       "ESNext"
     ]
-  }
+  },
+  "exclude": [
+    "src/tests/__fixtures__"
+  ]
 }
