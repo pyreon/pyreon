@@ -316,10 +316,6 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   // effect-free (no warnings) — full validation stays in
   // tryStoreDefnFromTopLevel during the main pass.
   collectStoreHookNames(ast.program.body as AnyNode[], ctx.storeHookNames)
-  // Pre-pass: warn on an UN-ANNOTATED object literal carrying an empty array
-  // field. See `warnUnannotatedEmptyArrayField` — this is the one shape where
-  // both targets emit something structurally wrong rather than a warning.
-  warnUnannotatedEmptyArrayField(ast.program.body as AnyNode[], ctx)
   // Pre-pass: collect object-shape type aliases so a NAMED props annotation
   // (`props: CardProps`) resolves regardless of declaration order. Warnings
   // from this parse are DISCARDED (a scratch ctx) — the main pass's
@@ -2469,115 +2465,6 @@ function collectAliasImports(body: AnyNode[]): Map<string, string> {
     }
   }
   return map
-}
-
-/**
- * Warn on an UN-ANNOTATED object literal that carries an EMPTY array field —
- * `const g = signal({ nodes: [{ id: 'a' }], edges: [] })`.
- *
- * This is the one shape in the struct-synthesis path where both targets emit
- * something structurally wrong instead of degrading to a warning, and the two
- * fail differently, which is what kept it hidden:
- *
- *   Kotlin  `(nodes = listOf(__Obj0(...)), edges = listOf())`  — named
- *           arguments with no constructor. Not valid Kotlin; the Gradle build
- *           dies on it.
- *   Swift   `(nodes: [__Obj0(...)], edges: [])` typed `Any` — a labelled tuple,
- *           which COMPILES. A tuple is not `Codable`, so anything that encodes
- *           the value (`PyreonJSON.encode`, a `<WebView data=>` push, a Saver)
- *           silently produces the wrong bytes at runtime. Compiling and being
- *           wrong is worse than not compiling.
- *
- * The cause is narrow and worth stating exactly: struct synthesis needs a type
- * for every field, and an empty array literal carries no element type. There is
- * no correct answer to infer — so the honest move is to say so rather than to
- * guess an element type that a later non-empty assignment would contradict.
- *
- * The remedy in the message is verified, not suggested: annotating the
- * declaration (`signal<Graph>({...})`, or `const g: Graph = {...}`) already
- * lowers correctly today — the annotation supplies the element type, and both
- * targets emit a real `Graph(nodes = ..., edges = listOf())`. Seeding the array
- * with one element works too.
- *
- * Deliberately narrow, because a false warning here would fire on ordinary
- * props objects: ONLY a variable declarator, ONLY when it has no type
- * annotation, ONLY when the literal has an empty array field AND at least one
- * other field (a lone `{ items: [] }` synthesizes nothing either way and is
- * usually a props bag, not a data shape). Looks through a single wrapping call
- * (`signal(...)`, `remember(...)`) since that is where the shape actually
- * appears.
- */
-function warnUnannotatedEmptyArrayField(body: AnyNode[], ctx: ParseCtx): void {
-  const seen = new Set<string>()
-  const visit = (node: AnyNode | null | undefined): void => {
-    if (!node || typeof node !== 'object') return
-    if (node.type === 'VariableDeclarator') {
-      const name = (node.id as { name?: string } | undefined)?.name
-      // oxc sets `typeAnnotation` to NULL (not undefined) on an un-annotated
-      // binding, so this must test truthiness — `!== undefined` reads every
-      // declarator as annotated and the warning never fires. Verified against a
-      // real parse rather than assumed; the first cut had it backwards and was
-      // silently inert.
-      const annotated = Boolean(
-        (node.id as { typeAnnotation?: unknown } | undefined)?.typeAnnotation,
-      )
-      if (name !== undefined && !annotated) {
-        // Look through ONE wrapping call — `signal({...})` is where this lives.
-        let init = node.init as AnyNode | undefined
-        let hasTypeArgs = false
-        if (init?.type === 'CallExpression') {
-          // `signal<Graph>({...})` IS annotated, by the type argument.
-          hasTypeArgs = Boolean(
-            (init as { typeArguments?: unknown }).typeArguments ??
-              (init as { typeParameters?: unknown }).typeParameters,
-          )
-          const args = (init.arguments as AnyNode[] | undefined) ?? []
-          init = args.length === 1 ? args[0] : undefined
-        }
-        if (!hasTypeArgs && init?.type === 'ObjectExpression') {
-          const props = (init.properties as AnyNode[] | undefined) ?? []
-          const empties: string[] = []
-          let others = 0
-          for (const prop of props) {
-            if (prop.type !== 'Property') continue
-            const key = (prop.key as { name?: string; value?: string } | undefined)?.name
-            const val = prop.value as AnyNode | undefined
-            if (
-              val?.type === 'ArrayExpression' &&
-              ((val.elements as unknown[] | undefined)?.length ?? 0) === 0
-            ) {
-              if (key !== undefined) empties.push(key)
-            } else {
-              others++
-            }
-          }
-          if (empties.length > 0 && others > 0 && !seen.has(name)) {
-            seen.add(name)
-            ctx.warnings.push(
-              `\`${name}\`: the object literal has an empty array field ` +
-                `(${empties.map((e) => `\`${e}: []\``).join(', ')}) and no type annotation, so no ` +
-                `struct can be synthesized for it — an empty array carries no element type, and ` +
-                `guessing one would be contradicted by the first non-empty assignment. The emit ` +
-                `falls back to a tuple, which is INVALID Kotlin and, on Swift, a non-Codable value ` +
-                `that encodes wrongly at runtime. Annotate the declaration ` +
-                `(\`signal<Graph>({ … })\`, or \`const ${name}: Graph = { … }\`) — that lowers ` +
-                `correctly on both targets — or seed the array with one element.`,
-            )
-          }
-        }
-      }
-    }
-    for (const key of Object.keys(node)) {
-      if (key === 'parent') continue
-      const child = (node as unknown as Record<string, unknown>)[key]
-      if (Array.isArray(child)) {
-        for (const c of child) visit(c as AnyNode)
-      } else if (child && typeof child === 'object') {
-        visit(child as AnyNode)
-      }
-    }
-  }
-  for (const n of body) visit(n)
 }
 
 function collectStoreHookNames(body: AnyNode[], out: Set<string>): void {

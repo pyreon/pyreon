@@ -17,6 +17,7 @@ import {
   chainHasOptional,
   isCompoundExpr,
   substituteIdentifier,
+  explainUntypeableField,
   synthLiteralStructName,
   classifyDynamicStylingAttr,
   classifySortableRef,
@@ -5033,12 +5034,62 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           return `${kotlinIdent(byNames.name)}(${args})`
         }
       }
+      warnUntypeableObjectLiteral(e.fields, 'Kotlin')
       const fields = e.fields.map((f) => `${f.name} = ${emitKotlinExpr(f.value, indent)}`).join(', ')
       return `(${fields})`
     }
     case 'paren':
       return `(${emitKotlinExpr(e.inner, indent)})`
   }
+}
+
+
+/**
+ * About to emit the tuple fallback for an object literal that could not be
+ * given a struct — say so, and say WHY, per field.
+ *
+ * This is the LAST stop before both targets emit something structurally wrong,
+ * and they go wrong differently, which is what kept the whole class hidden:
+ *
+ *   Kotlin  `(id = "a", parent = null)` — named arguments with no constructor.
+ *           Not valid Kotlin; the Gradle build dies on it.
+ *   Swift   `(id: "a", parent: nil)` typed `Any` — a labelled tuple, which
+ *           COMPILES. Tuples are not `Codable`, so `PyreonJSON.encode`, a
+ *           `<WebView data=>` push, or a Saver silently produce the wrong bytes.
+ *           Compiling and being wrong is worse than not compiling.
+ *
+ * Warning HERE rather than in the parser is the point. The first version of
+ * this diagnostic pattern-matched the one shape that had been observed — an
+ * un-annotated empty array field. A sweep then found five more that fail
+ * identically and just as silently (`null`/`undefined` fields, a nested empty
+ * array, a mixed scalar array, an array of arrays), each an ordinary data model
+ * and each needing its own parser rule. The bail site already knows; asking it
+ * is one rule for the whole class, including the shapes nobody has hit yet.
+ *
+ * The remedy is verified rather than suggested: annotating the declaration
+ * lowers correctly today (the annotation supplies the missing types and both
+ * targets emit a real struct), and a spec asserts it still does.
+ */
+function warnUntypeableObjectLiteral(
+  fields: { name: string; value: ExprIR }[],
+  target: 'Kotlin' | 'Swift',
+): void {
+  const causes: string[] = []
+  for (const f of fields) {
+    const why = explainUntypeableField(f.value)
+    if (why !== null) causes.push(`\`${f.name}\`: ${why}`)
+  }
+  if (causes.length === 0) return
+  const consequence =
+    target === 'Kotlin'
+      ? 'the emit falls back to a tuple — named arguments with no constructor, which is INVALID Kotlin and fails the Gradle build'
+      : 'the emit falls back to a labelled tuple, which COMPILES but is not `Codable` — so `PyreonJSON.encode` and a `<WebView data=>` push silently produce the wrong bytes at runtime'
+  _emitWarnings.push(
+    `object literal { ${fields.map((f) => f.name).join(', ')} }: no struct could be synthesized ` +
+      `because ${causes.join('; ')}. So ${consequence}. Annotate the declaration ` +
+      `(\`signal<Shape>({ … })\`, or \`const x: Shape = { … }\`) — an annotated literal lowers ` +
+      `to a real struct on both targets.`,
+  )
 }
 
 function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {

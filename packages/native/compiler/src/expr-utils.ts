@@ -158,6 +158,49 @@ export function scalarLiteralType(e: ExprIR): TypeIR | null {
  * stays dependency-free of `infer-type` — the caller, which already imports
  * `inferType`, passes `(e) => inferType(e, ctx)`.
  */
+/**
+ * Why a field value cannot be given a struct-field type — the ONE place that
+ * knows, so both emitters produce the same message for the same shape.
+ *
+ * Returns null when the value IS typeable (the caller should not warn).
+ *
+ * This exists because the failure is a CLASS, not a shape. The first cut of
+ * this diagnostic enumerated the one shape that had been observed (an empty
+ * array field) in the parser; a sweep across the synthesis frontier then found
+ * five more that fail identically and just as silently — `null` and `undefined`
+ * fields, a NESTED empty array, a mixed scalar array, an array of arrays. Every
+ * one of them is an ordinary data model (`{ id, parent: null }` is a tree
+ * node), and each would have needed its own parser rule. Asking the bail site
+ * itself is one rule that covers all of them, and the next one too.
+ */
+export function explainUntypeableField(value: ExprIR): string | null {
+  if (value.kind === 'array') {
+    if (value.elements.length === 0) {
+      return 'an empty array literal carries no element type, and guessing one would be contradicted by the first non-empty assignment'
+    }
+    const first = value.elements[0]!
+    if (first.kind === 'array') {
+      return 'an array of arrays has no synthesized element struct — nested list types are outside the synthesis frontier'
+    }
+    // Compare the literal VALUE types, not the IR kind — `1` and `'two'` are
+    // both `kind: 'literal'`, so a kind comparison reports a mixed array as
+    // homogeneous and falls through to the generic message.
+    const kindOf = (el: ExprIR): string =>
+      el.kind === 'literal' ? `literal:${typeof el.value}` : el.kind
+    if (value.elements.some((el) => kindOf(el) !== kindOf(first))) {
+      return 'the array mixes element types, so it has no single element type'
+    }
+    return 'the array element type could not be resolved'
+  }
+  if (value.kind === 'literal' && (value.value === null || value.value === undefined)) {
+    return 'a `null`/`undefined` literal carries no type — native structs need a concrete (optional) field type, so annotate the declaration to say what it is optional OF'
+  }
+  if (value.kind === 'object') {
+    return 'a nested object literal whose own fields are not all typeable (check the nested fields for the same causes)'
+  }
+  return null
+}
+
 export function synthLiteralStructName(
   fields: { name: string; value: ExprIR }[],
   structs: StructIR[],

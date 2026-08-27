@@ -21,6 +21,7 @@ import {
   isCompoundExpr,
   isReReadableExpr,
   substituteIdentifier,
+  explainUntypeableField,
   synthLiteralStructName,
   classifyDynamicStylingAttr,
   classifySortableRef,
@@ -6034,12 +6035,48 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           return `${swiftIdent(synthName)}(${args})`
         }
       }
+      warnUntypeableObjectLiteral(e.fields)
       const fields = e.fields.map((f) => `${f.name}: ${emitSwiftExpr(f.value, indent)}`).join(', ')
       return `(${fields})`
     }
     case 'paren':
       return `(${emitSwiftExpr(e.inner, indent)})`
   }
+}
+
+
+/**
+ * About to emit the tuple fallback for an object literal that could not be
+ * given a struct — say so, and say WHY, per field. Mirror of emit-kotlin's.
+ *
+ * Swift is the DANGEROUS half of this class. Kotlin's tuple emit
+ * (`(id = "a", parent = null)`) is named arguments with no constructor: not
+ * valid Kotlin, so the Gradle build dies on it and you find out. Swift's
+ * equivalent is a labelled tuple typed `Any`, which COMPILES — and a tuple is
+ * not `Codable`, so `PyreonJSON.encode`, a `<WebView data=>` push, or a Saver
+ * silently produce the wrong bytes at runtime. One target refuses to build and
+ * the other ships wrong data, from the same source line.
+ *
+ * Warning at the BAIL SITE rather than by pattern-matching shapes in the parser
+ * is deliberate: the failure is a class (empty array, `null`/`undefined` field,
+ * nested empty array, mixed scalar array, array of arrays — all ordinary data
+ * models), and the bail site already knows which field defeated it.
+ */
+function warnUntypeableObjectLiteral(fields: { name: string; value: ExprIR }[]): void {
+  const causes: string[] = []
+  for (const f of fields) {
+    const why = explainUntypeableField(f.value)
+    if (why !== null) causes.push(`\`${f.name}\`: ${why}`)
+  }
+  if (causes.length === 0) return
+  _emitWarnings.push(
+    `object literal { ${fields.map((f) => f.name).join(', ')} }: no struct could be synthesized ` +
+      `because ${causes.join('; ')}. So the emit falls back to a labelled tuple, which COMPILES ` +
+      `but is not \`Codable\` — \`PyreonJSON.encode\` and a \`<WebView data=>\` push then ` +
+      `silently produce the wrong bytes at runtime. Annotate the declaration ` +
+      `(\`signal<Shape>({ … })\`, or \`const x: Shape = { … }\`) — an annotated literal lowers ` +
+      `to a real struct on both targets.`,
+  )
 }
 
 function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {

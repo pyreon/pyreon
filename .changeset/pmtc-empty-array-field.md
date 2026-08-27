@@ -2,26 +2,27 @@
 '@pyreon/native-compiler': minor
 ---
 
-Warn on an un-annotated object literal with an empty array field, instead of
-emitting something structurally wrong on both targets.
+Warn when an object literal cannot be given a synthesized struct, instead of
+silently emitting a tuple that is broken on both targets.
 
-`const g = signal({ nodes: [{ id: 'a' }], edges: [] })` cannot be given a
-synthesized struct: an empty array literal carries no element type, and guessing
-one would be contradicted by the first non-empty assignment. The emit fell back
-to a tuple, and the two targets then failed differently — which is what kept
-this hidden:
+An object literal whose fields cannot all be typed falls back to a TUPLE, and
+the two targets then fail differently — which is what kept the whole class
+hidden:
 
-- **Kotlin** emitted `(nodes = listOf(...), edges = listOf())` — named arguments
-  with no constructor. Not valid Kotlin; the Gradle build dies on it.
-- **Swift** emitted `(nodes: [...], edges: [])` typed `Any` — a labelled tuple,
-  which **compiles**. Tuples are not `Codable`, so `PyreonJSON.encode` and a
-  `<WebView data=>` push silently produce the wrong bytes at runtime. Compiling
-  and being wrong is worse than not compiling.
+- **Kotlin** emits `(id = "a", parent = null)` — named arguments with no
+  constructor. Not valid Kotlin; the Gradle build dies on it.
+- **Swift** emits `(id: "a", parent: nil)` typed `Any` — a labelled tuple, which
+  **compiles**. Tuples are not `Codable`, so `PyreonJSON.encode` and a
+  `<WebView data=>` push silently produce the wrong bytes at runtime. (A
+  single-field labelled tuple does not compile at all.)
 
-The warning names the offending field and gives a remedy that is verified rather
-than suggested: annotating the declaration (`signal<Graph>({ … })` or
-`const g: Graph = { … }`) already lowers correctly today — the annotation
-supplies the element type and both targets emit a real
-`Graph(nodes = …, edges = listOf())`. Seeding the array with one element works
-too. A test asserts the remedy still lowers to a struct, so the message cannot
-start recommending something that no longer works.
+Six ordinary data-model shapes hit this with no diagnostic: an empty array
+field, a `null` or `undefined` field, a nested empty array, a mixed-type array,
+and an array of arrays. `{ id, parent: null }` is a tree node; `{ nodes, edges:
+[] }` is a graph with no edges yet.
+
+The warning lives at the bail site rather than pattern-matching shapes, so it
+covers the class — including shapes nobody has hit yet — and names the field and
+the reason. The remedy it gives is verified rather than suggested: annotating
+the declaration (`signal<Shape>({ … })`, `const x: Shape = { … }`) already
+lowers to a real struct on both targets, and a spec asserts it still does.
