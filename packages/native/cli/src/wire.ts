@@ -126,7 +126,17 @@ export function computeWiring(res: NativeSourceResolution): NativeWiring {
 
 /** Resolve + compute wiring for an app directory in one call. */
 export function wireApp(appDir: string): NativeWiring {
-  return computeWiring(resolveNativeSources(appDir))
+  // `transitiveScope: 'first-party'` is what makes a RE-EXPORT CHAIN aggregate,
+  // and nothing ever passed it — the option was declared, documented for
+  // exactly this, and dead. The consequence is a consumer-facing build failure:
+  // `useSecureStorage` is exported by @pyreon/hooks while its Kotlin runtime
+  // (`PyreonSecureStorage`) lives in @pyreon/storage, so an app that declares
+  // hooks and not storage wired only hooks and failed a real gradle build with
+  // `Unresolved reference 'PyreonSecureStorage'`.
+  //
+  // Walking a resolved @pyreon package's own @pyreon deps fixes that class in
+  // general rather than special-casing this one pair.
+  return computeWiring(resolveNativeSources(appDir, { transitiveScope: 'first-party' }))
 }
 
 /**

@@ -177,5 +177,8 @@
         "PyreonWebView.kt"
       ]
     }
+  },
+  "dependencies": {
+    "@pyreon/storage": "workspace:*"
   }
 }

@@ -2,7 +2,7 @@
   "name": "@pyreon/example-native-tasks-web",
   "version": "0.50.1",
   "private": true,
-  "description": "PRIVATE / EXPERIMENTAL — Tasks showcase rendered on WEB via @pyreon/primitives runtime. Sibling host for the canonical TasksApp.tsx source from native-tasks/. Closes Gap 5 (web host shell for the tasks showcase).",
+  "description": "PRIVATE / EXPERIMENTAL \u2014 Tasks showcase rendered on WEB via @pyreon/primitives runtime. Sibling host for the canonical TasksApp.tsx source from native-tasks/. Closes Gap 5 (web host shell for the tasks showcase).",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -14,14 +14,29 @@
     "assets": "bun ../../packages/native/cli/src/cli.ts assets --target=web --source=../native-tasks/assets --out=public"
   },
   "dependencies": {
+    "@pyreon/a11y": "workspace:*",
     "@pyreon/core": "workspace:*",
+    "@pyreon/dnd": "workspace:*",
     "@pyreon/form": "workspace:*",
     "@pyreon/hooks": "workspace:*",
+    "@pyreon/http": "workspace:*",
+    "@pyreon/i18n": "workspace:*",
+    "@pyreon/kinetic": "workspace:*",
+    "@pyreon/permissions": "workspace:*",
     "@pyreon/primitives": "workspace:*",
+    "@pyreon/query": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
     "@pyreon/router": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
-    "@pyreon/store": "workspace:*"
+    "@pyreon/rx": "workspace:*",
+    "@pyreon/sized-map": "workspace:*",
+    "@pyreon/state-tree": "workspace:*",
+    "@pyreon/store": "workspace:*",
+    "@pyreon/sync": "workspace:*",
+    "@pyreon/table": "workspace:*",
+    "@pyreon/toast": "workspace:*",
+    "@pyreon/ui-core": "workspace:*",
+    "@pyreon/url-state": "workspace:*"
   },
   "devDependencies": {
     "@pyreon/tsconfig": "workspace:*",

@@ -120,6 +120,8 @@ interface ParseCtx {
    * same mount, so they can share the flag.
    */
   kineticMountPending: boolean
+  /** local name -> exported name, for presets imported from kinetic-presets. */
+  kineticPresetImports: Map<string, string>
   /** Local name(s) bound to `SizedMap` imported from `@pyreon/sized-map`. */
   sizedMapNames: Set<string>
   /**
@@ -290,6 +292,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     kineticFactoryNames: new Map(),
     kineticImportNames: new Set(),
     kineticMountPending: false,
+    kineticPresetImports: new Map(),
     validateSchemaNames: new Set(),
     rxImportedNames: new Map(),
     validateSchemaLowered: false,
@@ -1051,7 +1054,6 @@ const WEB_ONLY_PACKAGES: ReadonlyMap<string, string> = new Map([
   ['@pyreon/document-primitives', "document-authoring primitives feeding the pdfmake/docx renderers"],
   ['@pyreon/flow', "SVG rendering (the layout engine itself is pure and platform-free); consume on native via the `<WebView>` bridge subpath"],
   ['@pyreon/head', "document `<head>` management — no equivalent surface exists on iOS/Android"],
-  ['@pyreon/kinetic-presets', "preset pack for the kinetic CSS engine"],
   ['@pyreon/lint', "lint tooling — runs at dev time, not app runtime"],
   ['@pyreon/loom', "the dependency observatory — dev tooling, not app runtime"],
   ['@pyreon/mcp', "the MCP server — dev/AI tooling, not app runtime"],
@@ -1093,7 +1095,21 @@ function warnWebOnlyImports(body: AnyNode[], ctx: ParseCtx): void {
     // (`zodSchema(...)` from @pyreon/validation), the blanket line is simply
     // WRONG. The finer mechanism wins; deferring to it here is what lets the
     // set above be derived from the tier without hand-tuning the overlap.
-    if (WEB_ONLY_PACKAGES.has(pkg) && !UNLOWERED_PYREON_MODULES.has(pkg) && !seen.has(pkg)) {
+    // The `/webview` SUBPATH is the documented native bridge for a web-engine
+    // package (ECharts, ProseMirror, CodeMirror, an elk/SVG layout): the same
+    // web bundle runs inside a WKWebView / Android WebView. Since `pkg` is
+    // normalised to the package ROOT, importing it hit the blanket warning --
+    // which then told the user to "consume on native via the `<WebView>` bridge
+    // subpath", i.e. to do the thing they had just done. A warning that fires
+    // on its own recommended fix trains people to ignore it.
+    const isWebviewBridgeImport =
+      src.startsWith('@pyreon/') && src.slice('@pyreon/'.length).split('/')[1] === 'webview'
+    if (
+      WEB_ONLY_PACKAGES.has(pkg) &&
+      !UNLOWERED_PYREON_MODULES.has(pkg) &&
+      !seen.has(pkg) &&
+      !isWebviewBridgeImport
+    ) {
       seen.add(pkg)
       // The package's OWN manifest rationale, when it has one. A single
       // blanket line cannot serve packages this different: a linter that
@@ -1871,6 +1887,21 @@ function isKineticFactoryNode(node: AnyNode, ctx: ParseCtx): boolean {
 function collectKineticFactoryNames(body: AnyNode[], ctx: ParseCtx): void {
   for (const node of body) {
     if (node.type !== 'ImportDeclaration') continue
+    // Named presets from @pyreon/kinetic-presets are the DOCUMENTED way to use
+    // the factory (`kinetic('div').preset(fadeUp)`), so an identifier argument
+    // has to resolve or the package's own example does not animate.
+    if (node.source?.value === '@pyreon/kinetic-presets') {
+      for (const spec of (node.specifiers as AnyNode[] | undefined) ?? []) {
+        if (spec.type === 'ImportSpecifier') {
+          const local = spec.local?.name
+          const imported = spec.imported?.name
+          if (typeof local === 'string' && typeof imported === 'string') {
+            ctx.kineticPresetImports.set(local, imported)
+          }
+        }
+      }
+      continue
+    }
     if (node.source?.value !== '@pyreon/kinetic') continue
     for (const spec of (node.specifiers as AnyNode[] | undefined) ?? []) {
       if (spec.type === 'ImportSpecifier' && spec.imported?.name === 'kinetic') {
@@ -1886,9 +1917,22 @@ function collectKineticFactoryNames(body: AnyNode[], ctx: ParseCtx): void {
       const init = d.init as AnyNode | undefined
       if (typeof name !== 'string' || !init) continue
       if (!basesOnKineticCall(init, ctx)) continue
-      const preset = presetOfKineticChain(init)
+      const preset = presetOfKineticChain(init, ctx)
       ctx.kineticFactoryNames.set(name, preset)
       if (preset !== undefined) continue // a preset LOWERS — see the tag rewrite
+      // An UNMAPPED named preset is a different failure from "no preset at all",
+      // and blaming the factory for it sends the author to the wrong place: the
+      // chain is right, that particular animation just has no native analogue.
+      const packName = unmappedPresetPackName(init, ctx)
+      if (packName !== undefined) {
+        ctx.warnings.push(
+          `\`${name}\`: the \`${packName}\` preset has no native analogue — iOS and Android know ` +
+            `fade / scale / scale-in / slide-up|down|left|right, and mapping anything else to the ` +
+            `nearest one would silently animate the WRONG thing. \`<${name}>\` renders as a plain ` +
+            `container on iOS/Android. Pick a preset in that vocabulary to animate on all three.`,
+        )
+        continue
+      }
       ctx.warnings.push(
         `\`${name}\` is built by the \`kinetic()\` factory, which does not lower to native: it ` +
           `drives animation through CSS classes and rAF over a real CSSOM, and neither target has ` +
@@ -1919,7 +1963,68 @@ function collectKineticFactoryNames(body: AnyNode[], ctx: ParseCtx): void {
 /** Shared by the rewrite and the synthesis; internal, so `__`-prefixed. */
 const KINETIC_MOUNT_FLAG = '__kineticIn'
 
-function presetOfKineticChain(expr: AnyNode): string | undefined {
+/**
+ * Map a `@pyreon/kinetic-presets` export name onto the native preset
+ * vocabulary, or undefined when it has no analogue.
+ *
+ * Only UNAMBIGUOUS names map. The pack ships 123 presets and native knows
+ * seven, so most of them (backInDown, blurScale, bounceIn, flip*, rotate*, …)
+ * have nothing to lower to. Mapping those to the nearest fade would silently
+ * animate the wrong thing, which is worse than declining by name — and the
+ * decline is what the author can act on.
+ *
+ * Diagonal and magnitude variants (fadeDownLeft, slideUpBig) are deliberately
+ * NOT mapped: native has neither a diagonal nor a distance parameter, so a
+ * mapping would drop half the intent without saying so.
+ */
+/** The kinetic-presets export a chain names, when it maps to nothing native. */
+function unmappedPresetPackName(expr: AnyNode, ctx: ParseCtx): string | undefined {
+  let cur: AnyNode | undefined = expr
+  while (cur) {
+    if (cur.type === 'CallExpression') {
+      const callee = cur.callee as AnyNode | undefined
+      if (
+        callee?.type === 'MemberExpression' &&
+        (callee.property?.name as string | undefined) === 'preset'
+      ) {
+        const arg = (cur.arguments as AnyNode[] | undefined)?.[0]
+        if (arg?.type === 'Identifier') {
+          const exported = ctx.kineticPresetImports.get(arg.name as string)
+          if (exported !== undefined && nativePresetForPackName(exported) === undefined) {
+            return exported
+          }
+        }
+      }
+      cur = callee
+      continue
+    }
+    if (cur.type === 'MemberExpression') {
+      cur = cur.object as AnyNode | undefined
+      continue
+    }
+    return undefined
+  }
+  return undefined
+}
+
+function nativePresetForPackName(name: string): string | undefined {
+  const exact: Readonly<Record<string, string>> = {
+    fade: 'fade',
+    fadeUp: 'slide-up',
+    fadeDown: 'slide-down',
+    fadeLeft: 'slide-left',
+    fadeRight: 'slide-right',
+    slideUp: 'slide-up',
+    slideDown: 'slide-down',
+    slideLeft: 'slide-left',
+    slideRight: 'slide-right',
+    scaleIn: 'scale-in',
+    scale: 'scale',
+  }
+  return exact[name]
+}
+
+function presetOfKineticChain(expr: AnyNode, ctx?: ParseCtx): string | undefined {
   let cur: AnyNode | undefined = expr
   while (cur) {
     if (cur.type === 'CallExpression') {
@@ -1930,6 +2035,10 @@ function presetOfKineticChain(expr: AnyNode): string | undefined {
       ) {
         const arg = (cur.arguments as AnyNode[] | undefined)?.[0]
         if (arg?.type === 'Literal' && typeof arg.value === 'string') return arg.value as string
+        if (arg?.type === 'Identifier' && ctx !== undefined) {
+          const exported = ctx.kineticPresetImports.get(arg.name as string)
+          if (exported !== undefined) return nativePresetForPackName(exported)
+        }
       }
       cur = callee
       continue
@@ -4957,6 +5066,7 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     kineticFactoryNames: new Map(),
     kineticImportNames: new Set(),
     kineticMountPending: false,
+    kineticPresetImports: new Map(),
     validateSchemaNames: new Set(),
     rxImportedNames: new Map(),
     validateSchemaLowered: false,
