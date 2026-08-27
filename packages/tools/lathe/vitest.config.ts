@@ -15,10 +15,11 @@ export default defineNodeConfig({
   // tests — the same discipline as `lint-baseline.json`. It must never be
   // lowered to absorb a regression.
   //
-  // Already moved once, in this PR: `emit/mock.ts` 77 -> 98 and
-  // `emit/schema.ts` 71 -> 87, which took the package 84.46 -> 86.52. Recording
-  // a floor and then leaving it is how debt entries become permanent.
-  coverageThresholds: { statements: 86, branches: 75, functions: 93, lines: 90 },
+  // Already moved three times in this PR: `emit/mock.ts` 77 -> 98,
+  // `emit/schema.ts` 71 -> 87 and `core/naming.ts` 79 -> 97, taking the package
+  // 84.46 -> 86.97. Recording a floor and then leaving it is how debt entries
+  // become permanent.
+  coverageThresholds: { statements: 86, branches: 76, functions: 93, lines: 90 },
   coverageExclude: [
     // gen-docs data, no logic (scaffold-recipe convention).
     'src/manifest.ts',
