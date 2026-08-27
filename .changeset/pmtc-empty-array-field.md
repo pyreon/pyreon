@@ -26,3 +26,15 @@ covers the class — including shapes nobody has hit yet — and names the field
 the reason. The remedy it gives is verified rather than suggested: annotating
 the declaration (`signal<Shape>({ … })`, `const x: Shape = { … }`) already
 lowers to a real struct on both targets, and a spec asserts it still does.
+
+`<WebView data={…}>` with an object or array literal now lowers to JSON
+directly. The value goes straight to `PyreonJSON.encode`, so a literal in that
+position *is* JSON — routing it through struct synthesis was a detour that
+failed on exactly the payloads JSON exists to carry. Static parts become JSON
+text at compile time and runtime parts are interpolated, so live data still
+flows; a non-literal value keeps the plain `encode(expr)` form.
+
+This is what `examples/native-viz`, the `@pyreon/charts` webview example, needed:
+an ECharts option object has heterogeneous nesting and empty objects, so no
+struct existed for it and the Android build died on `cannot infer type for type
+parameter 'T'`. It now compiles.

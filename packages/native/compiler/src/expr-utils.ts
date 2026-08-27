@@ -159,6 +159,81 @@ export function scalarLiteralType(e: ExprIR): TypeIR | null {
  * `inferType`, passes `(e) => inferType(e, ctx)`.
  */
 /**
+ * One piece of a JSON literal lowering: either static JSON text, or a runtime
+ * expression whose encoded form goes in that slot.
+ */
+export type JsonLiteralPart = { static: string } | { dyn: ExprIR }
+
+/**
+ * Lower an object/array literal that sits in a JSON POSITION straight to JSON,
+ * instead of routing it through struct synthesis.
+ *
+ * `<WebView data={…}>` immediately hands its value to `PyreonJSON.encode` /
+ * `PyreonJson.encode`, so the value IS JSON — building a native struct for it is
+ * a detour, and the detour fails on exactly the payloads JSON exists to carry.
+ * An ECharts option object (`{ xAxis: { type: 'category', data: days }, yAxis:
+ * {}, series: [{ type: 'bar', data: revenue() }] }`) has heterogeneous nested
+ * shapes and empty objects; no struct can be synthesized for it, so the emit
+ * fell back to a tuple — which is invalid Kotlin, and on Swift a non-`Codable`
+ * value that `encode` cannot serialize. That is why `examples/native-viz`, the
+ * charts webview example, did not build on Android.
+ *
+ * Static parts become JSON text at COMPILE time; anything else (a signal read,
+ * a call, an identifier) becomes a hole the emitter fills with an `encode(…)`
+ * interpolation, so live data still flows. Returns null if any part cannot be
+ * represented — the caller then keeps its existing path unchanged.
+ *
+ * `undefined` maps to JSON `null`: JSON has no undefined, and omitting the key
+ * instead would silently change the object's SHAPE, which a hosted page reading
+ * `Object.keys` would see.
+ */
+export function buildJsonLiteralParts(expr: ExprIR): JsonLiteralPart[] | null {
+  const parts: JsonLiteralPart[] = []
+  const pushStatic = (text: string): void => {
+    const last = parts[parts.length - 1]
+    if (last !== undefined && 'static' in last) last.static += text
+    else parts.push({ static: text })
+  }
+  const walk = (e: ExprIR): boolean => {
+    if (e.kind === 'literal') {
+      const v = e.value
+      if (v === null || v === undefined) pushStatic('null')
+      else if (typeof v === 'string') pushStatic(JSON.stringify(v))
+      else pushStatic(String(v))
+      return true
+    }
+    if (e.kind === 'array') {
+      pushStatic('[')
+      for (let i = 0; i < e.elements.length; i++) {
+        if (i > 0) pushStatic(',')
+        if (!walk(e.elements[i]!)) return false
+      }
+      pushStatic(']')
+      return true
+    }
+    if (e.kind === 'object') {
+      // A spread cannot be resolved to JSON text at compile time.
+      if ((e.spreads?.length ?? 0) > 0) return false
+      pushStatic('{')
+      for (let i = 0; i < e.fields.length; i++) {
+        if (i > 0) pushStatic(',')
+        pushStatic(`${JSON.stringify(e.fields[i]!.name)}:`)
+        if (!walk(e.fields[i]!.value)) return false
+      }
+      pushStatic('}')
+      return true
+    }
+    if (e.kind === 'paren') return walk(e.inner)
+    // Anything else is a runtime value — leave a hole for the emitter to fill
+    // with its own `encode(…)` interpolation.
+    parts.push({ dyn: e })
+    return true
+  }
+  if (expr.kind !== 'object' && expr.kind !== 'array') return null
+  return walk(expr) ? parts : null
+}
+
+/**
  * Why a field value cannot be given a struct-field type — the ONE place that
  * knows, so both emitters produce the same message for the same shape.
  *

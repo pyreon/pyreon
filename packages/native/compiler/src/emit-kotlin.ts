@@ -17,6 +17,7 @@ import {
   chainHasOptional,
   isCompoundExpr,
   substituteIdentifier,
+  buildJsonLiteralParts,
   explainUntypeableField,
   synthLiteralStructName,
   classifyDynamicStylingAttr,
@@ -6698,7 +6699,7 @@ function emitKotlinWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
   // every change WITHOUT reloading, so the chart updates in place.
   const dataExpr = dynamicWebViewAttrKotlin(e, 'data')
   const dataArg =
-    dataExpr !== undefined ? `data = PyreonJson.encode(${emitKotlinExpr(dataExpr, 0)})` : undefined
+    dataExpr !== undefined ? `data = ${kotlinWebViewDataArg(dataExpr)}` : undefined
   // Reverse bridge — `onMessage={(m) => …}` receives the string the page
   // sends via `window.pyreonPostMessage(...)`.
   const onMsg = e.attrs.find((a) => a.kind === 'event' && a.name === 'message')
@@ -6731,6 +6732,38 @@ function emitKotlinMessageHandler(handler: ExprIR): string {
     return `{ ${param} -> ${emitKotlinExpr(handler.body, 0)} }`
   }
   return `{ pyreonMsg -> ${emitKotlinExpr(handler, 0)}(pyreonMsg) }`
+}
+
+
+/**
+ * The `data` value for `<WebView>` (Kotlin). Mirror of `swiftWebViewDataArg`.
+ *
+ * An object/array LITERAL here is JSON, not a model: the value goes straight to
+ * `PyreonJson.encode`. Routing it through struct synthesis is a detour, and the
+ * detour fails on exactly the payloads JSON exists to carry — an ECharts option
+ * object has heterogeneous nesting and empty objects, so no struct exists for
+ * it and the emit fell back to a tuple. In Kotlin a tuple is named arguments
+ * with no constructor, and `encode` is `inline fun <reified T>`, so the build
+ * died on `cannot infer type for type parameter 'T'`. That is why
+ * `examples/native-viz`, the charts webview example, did not build on Android.
+ *
+ * So build the JSON at COMPILE time and interpolate the runtime parts. Anything
+ * else (an identifier, a signal read, a call) keeps the plain `encode(expr)`
+ * form it always had.
+ */
+function kotlinWebViewDataArg(dataExpr: ExprIR): string {
+  const parts = buildJsonLiteralParts(dataExpr)
+  if (parts === null) return `PyreonJson.encode(${emitKotlinExpr(dataExpr, 0)})`
+  const body = parts
+    .map((p) =>
+      'static' in p
+        ? // Kotlin string escaping: backslash, quote, and `$` (which would
+          // otherwise open an interpolation of its own).
+          p.static.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\$/g, '\\$')
+        : `\${PyreonJson.encode(${emitKotlinExpr(p.dyn, 0)})}`,
+    )
+    .join('')
+  return `"${body}"`
 }
 
 /** The `html` / `src` constructor arg for `<WebView>` (Kotlin). Mirror of

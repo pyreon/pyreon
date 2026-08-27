@@ -21,6 +21,7 @@ import {
   isCompoundExpr,
   isReReadableExpr,
   substituteIdentifier,
+  buildJsonLiteralParts,
   explainUntypeableField,
   synthLiteralStructName,
   classifyDynamicStylingAttr,
@@ -8048,7 +8049,7 @@ function emitSwiftWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
   // place. Always a reactive expression; accessor arrows unwrap.
   const dataExpr = dynamicWebViewAttr(e, 'data')
   const dataArg =
-    dataExpr !== undefined ? `data: PyreonJSON.encode(${emitSwiftExpr(dataExpr, 0)})` : undefined
+    dataExpr !== undefined ? `data: ${swiftWebViewDataArg(dataExpr)}` : undefined
   // Reverse bridge — `onMessage={(m) => …}` receives the string the page
   // sends via `window.pyreonPostMessage(...)`.
   const onMsg = e.attrs.find((a) => a.kind === 'event' && a.name === 'message')
@@ -8087,6 +8088,38 @@ function emitSwiftMessageHandler(handler: ExprIR): string {
  * module-const → quoted; dynamic signal-derived → the emitted expression,
  * which reloads reactively). `html` wins over `src`. Undefined when
  * neither is present. */
+
+/**
+ * The `data` value for `<WebView>` (Swift). Mirror of `kotlinWebViewDataArg`.
+ *
+ * An object/array LITERAL here is JSON, not a model: the value goes straight to
+ * `PyreonJSON.encode`. Routing it through struct synthesis is a detour, and the
+ * detour fails on exactly the payloads JSON exists to carry — an ECharts option
+ * object has heterogeneous nesting and empty objects, so no struct exists for
+ * it and the emit fell back to a labelled tuple. A tuple is not `Encodable`, so
+ * `encode` cannot serialize it; on Swift that is the SILENT half (the code
+ * compiles and the hosted page receives the wrong bytes), while Kotlin at least
+ * fails the build.
+ *
+ * So build the JSON at COMPILE time and interpolate the runtime parts. Anything
+ * else (an identifier, a signal read, a call) keeps the plain `encode(expr)`
+ * form it always had.
+ */
+function swiftWebViewDataArg(dataExpr: ExprIR): string {
+  const parts = buildJsonLiteralParts(dataExpr)
+  if (parts === null) return `PyreonJSON.encode(${emitSwiftExpr(dataExpr, 0)})`
+  const body = parts
+    .map((p) =>
+      'static' in p
+        ? // Swift string escaping: backslash first (so the quote escape it
+          // introduces is not itself re-escaped), then quote.
+          p.static.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+        : `\\(PyreonJSON.encode(${emitSwiftExpr(p.dyn, 0)}))`,
+    )
+    .join('')
+  return `"${body}"`
+}
+
 function swiftWebViewContentArg(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
 ): string | undefined {

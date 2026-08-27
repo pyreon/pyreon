@@ -279,6 +279,16 @@ interface ParseCtx {
  */
 const HTTP_NONLITERAL_BASEURL = '\0__pyreon_nonliteral_baseurl__'
 
+/**
+ * Nesting depth while parsing an object literal's field VALUES. Used only to
+ * keep the empty-`{}` diagnostic on the shape it describes — a `{}` that
+ * becomes a value — and off nested ones, which are ordinary data (see the
+ * comment at the warning site). Balanced with try/finally so a parse throw
+ * cannot strand it above zero and silence the diagnostic for the rest of the
+ * process.
+ */
+let _objectLiteralDepth = 0
+
 export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult {
   const ctx: ParseCtx = {
     warnings: [],
@@ -9866,9 +9876,16 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
             ? (p.key.value as string)
             : undefined
         if (p.type === 'Property' && (p.key?.name || literalKey !== undefined)) {
+          _objectLiteralDepth++
+          let parsedValue: ExprIR
+          try {
+            parsedValue = parseExpr(p.value, ctx)
+          } finally {
+            _objectLiteralDepth--
+          }
           fields.push({
             name: (p.key.name as string | undefined) ?? literalKey!,
-            value: parseExpr(p.value, ctx),
+            value: parsedValue,
           })
         } else if (p.type === 'SpreadElement') {
           spreads.push(parseExpr(p.argument, ctx))
@@ -9891,7 +9908,18 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       // literal would drop `name` and the later `u().name` would fail anyway.
       // Synthesizing from the annotation is a real feature; a warning that
       // names the shape and the fix is the honest thing to ship today.
-      if (fields.length === 0 && spreads.length === 0) {
+      //
+      // NESTED `{}` is excluded, and that exclusion is load-bearing rather than
+      // tidy. The problem described above is about a `{}` that becomes a VALUE:
+      // a Void state variable, or a `T` Kotlin cannot infer. A `{}` sitting
+      // inside a larger literal is not that — `{ xAxis: {…}, yAxis: {}, series:
+      // […] }` is an ordinary ECharts option object, valid JSON, and it lowers
+      // correctly through the JSON path that `<WebView data=>` now takes. The
+      // separate problem such a literal used to have — no synthesizable struct
+      // — is diagnosed properly at the emitters' bail site, which can name the
+      // field and the reason. Warning here as well would report an unrelated
+      // cause for a shape that now works.
+      if (fields.length === 0 && spreads.length === 0 && _objectLiteralDepth === 0) {
         ctx.warnings.push(
           'An EMPTY object literal `{}` has no native lowering — it emits `()` (Void on Swift), so the value is not an object on either target. Give the literal its fields (`{ name: "" }`), or model the state as separate signals.',
         )
