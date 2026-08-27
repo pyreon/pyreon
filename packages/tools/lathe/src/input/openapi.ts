@@ -129,7 +129,13 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
         const target = po.in === 'path' ? pathParams : po.in === 'query' ? queryParams : null
         if (!target) continue
         target.push({
-          name,
+          // A PATH parameter's name must match the `:placeholder` the path was
+          // rewritten to, so it takes the same `ident()` normalization -- they
+          // disagreed for any name that was not already an identifier, and the
+          // raw form reached a TYPE position where a `}` breaks out of the
+          // generated signature. A QUERY parameter's name is a WIRE name
+          // (`?page=2`), so it stays verbatim and is quoted at emit instead.
+          name: po.in === 'path' ? ident(name) : name,
           type: toType(obj(po.schema) ?? { type: 'string' }, `${at}/parameters/${name}`, ctx),
           // A path parameter is always required, whatever the spec claims.
           required: po.in === 'path' ? true : po.required === true,
