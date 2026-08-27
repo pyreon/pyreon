@@ -228,11 +228,17 @@ export function transformPlain(
   let funcDepth = 0
   let condDepth = 0
   let awaitSeen = 0 // count of awaits crossed within the innermost frame
+  // Conditional EXITS crossed at the frame's top level. After
+  // `if (gate) return a`, a later top-level `return b` only runs on the
+  // gate-false path — counting it unconditional would skip hoisting `b`,
+  // and a first run that takes the branch would never subscribe to it.
+  let exitSeen = 0
 
   const recordRead = (name: string): void => {
     const frame = trackStack[trackStack.length - 1]
     if (!frame) return
-    const unconditional = funcDepth === frame.funcDepth && condDepth === 0 && awaitSeen === 0
+    const unconditional =
+      funcDepth === frame.funcDepth && condDepth === 0 && awaitSeen === 0 && exitSeen === 0
     if (unconditional) frame.unconditional.add(name)
     else frame.conditional.add(name)
   }
@@ -454,6 +460,7 @@ export function transformPlain(
     scopes.push(new Map())
     const savedCond = condDepth
     const savedAwait = awaitSeen
+    const savedExit = exitSeen
     condDepth = 0
 
     // Hoisted names shadow before anything in the body runs.
@@ -533,6 +540,7 @@ export function transformPlain(
     funcDepth--
     condDepth = savedCond
     awaitSeen = savedAwait
+    exitSeen = savedExit
   }
 
   /** Default values in ordinary params are expressions — walk them. */
@@ -680,6 +688,9 @@ export function transformPlain(
         walkStmt(stmt.consequent)
         if (stmt.alternate) walkStmt(stmt.alternate)
         condDepth--
+        if (condDepth === 0 && trackStack.length > 0 && statementContainsReturn(stmt)) {
+          exitSeen++
+        }
         return
       }
       case 'BlockStatement': {
@@ -900,9 +911,12 @@ export function transformPlain(
     }
     trackStack.push(frame)
     const savedAwait = awaitSeen
+    const savedExit = exitSeen
     awaitSeen = 0
+    exitSeen = 0
     walkFunction(fn, null)
     awaitSeen = savedAwait
+    exitSeen = savedExit
     trackStack.pop()
     emitPrologue(frame)
   }

@@ -448,3 +448,249 @@ export function Card({ title, kind = 'info' }) {
     expect(classicFindings.some((d) => d.code === 'props-destructured')).toBe(true)
   })
 })
+
+describe('walker breadth — every statement/expression arm rewrites through', () => {
+  it('loops, switch, try, throw, labeled: reads rewrite, heads shadow, state-write heads warn', () => {
+    const src = `${HEADER}let n = state(0)
+let obj = state({ done: false })
+export function run() {
+  { const inner = n; use(inner) }
+  for (let i = 0; i < n; i++) use(n)
+  for (const item of list(n)) use(item, n)
+  for (const k in obj) use(k)
+  while (n < 5) { n += 1 }
+  do { n -= 1 } while (n > 0)
+  switch (n) {
+    case 1: use(n); break
+    default: use(n)
+  }
+  try { risky(n) } catch (e) { use(e, n) } finally { use(n) }
+  outer: for (const x of xs) { if (x === n) break outer }
+  if (n > 99) throw new Error(\`too big: \${n}\`)
+}
+export function badHead() {
+  for (n of feed()) use(n)
+}\n`
+    const r = P(src)!
+    expect(r.code).toContain(`i < n()`)
+    expect(r.code).toContain(`list(n())`)
+    expect(r.code).toContain(`for (const k in obj())`)
+    expect(r.code).toContain(`while (n() < 5) { n.set(n() + (1)) }`)
+    expect(r.code).toContain(`do { n.set(n() - (1)) } while (n() > 0)`)
+    expect(r.code).toContain(`switch (n())`)
+    expect(r.code).toContain(`risky(n())`)
+    expect(r.code).toContain(`use(e, n())`)
+    expect(r.code).toContain(`if (x === n()) break outer`)
+    expect(r.code).toContain('`too big: ${n()}`')
+    expect(r.warnings.some((w) => w.message.includes('writes plain state per iteration'))).toBe(true)
+  })
+
+  it('classes: methods, computed keys, property values, class expressions, super', () => {
+    const src = `${HEADER}let base = state('b')
+let key = state('k')
+export class Widget extends mix(base) {
+  [key] = base
+  static label = base
+  render() { return base }
+}
+export const Anon = class { go() { return base } }\n`
+    const r = P(src)!
+    expect(r.code).toContain(`extends mix(base())`)
+    expect(r.code).toContain(`[key()] = base()`)
+    expect(r.code).toContain(`static label = base()`)
+    expect(r.code).toContain(`render() { return base() }`)
+    expect(r.code).toContain(`go() { return base() }`)
+  })
+
+  it('expression forms: tagged templates, new, chain, sequence, yield, spread, JSX fragments and spread children', () => {
+    const src = `${HEADER}let v = state(1)
+const tagged = css\`w: \${v}px\`
+const inst = new Thing(v)
+const opt = maybe?.take(v)
+const seq = (log(v), v)
+function* gen() { yield v }
+const arr = [...items(v)]
+export const Frag = () => <>{v}<div {...propsOf(v)} /></>\n`
+    const r = P(src)!
+    expect(r.code).toContain('css`w: ${v()}px`')
+    expect(r.code).toContain(`new Thing(v())`)
+    expect(r.code).toContain(`maybe?.take(v())`)
+    expect(r.code).toContain(`(log(v()), v())`)
+    expect(r.code).toContain(`yield v()`)
+    expect(r.code).toContain(`[...items(v())]`)
+    expect(r.code).toContain(`<>{v()}<div {...propsOf(v())} /></>`)
+  })
+
+  it('remaining write forms: &&= statement, bitwise compounds, imported-state update, member-root update', () => {
+    const src = `'use plain'
+import { state } from '@pyreon/core/plain'
+import { remote } from './store'
+let f = state(true)
+let bits = state(0)
+let box = state({ n: 1 })
+f &&= compute()
+bits &= 3
+bits <<= 1
+remote++
+box.n++
+`
+    const r = transformPlain(src, 'writes.tsx', { knownSignals: ['remote'] })!
+    expect(r.code).toContain(`f() && f.set(compute())`)
+    expect(r.code).toContain(`bits.set(bits() & (3))`)
+    expect(r.code).toContain(`bits.set(bits() << (1))`)
+    expect(r.warnings.some((w) => w.message.includes('not writable state'))).toBe(true)
+    expect(r.warnings.some((w) => w.message.includes('does not notify'))).toBe(true)
+    expect(r.code).toContain(`box().n++`)
+  })
+
+  it('params: array patterns, rest params, defaults reading state, catch-param shadowing', () => {
+    const src = `${HEADER}let d = state(5)
+function pick([a, b], ...rest) { return a + b + rest.length }
+function withDefault(x = d, { y = d } = {}) { return x + y }
+function catcher() { try { go() } catch (d) { return d } }
+export const all = [pick, withDefault, catcher]\n`
+    const r = P(src)!
+    expect(r.code).toContain(`function pick([a, b], ...rest) { return a + b + rest.length }`)
+    expect(r.code).toContain(`x = d()`)
+    expect(r.code).toContain(`y = d()`)
+    expect(r.code).toContain(`catch (d) { return d }`)
+  })
+
+  it('derived thunk with block body gets total tracking; nested effect frames stay separate', () => {
+    const src = `${HEADER}let gate = state(false)
+let a = state(1)
+let b = state(2)
+const picked = derived(() => {
+  if (gate) return a
+  return b
+})
+effect(() => {
+  effect(() => { if (gate) use(a) })
+  use(b)
+})\n`
+    const r = P(src)!
+    // The thunk-form derived hoists its branch-only reads too.
+    expect(r.code).toMatch(/computed\(\(\) => \{ void \((a\(\), b\(\)|b\(\), a\(\))\);/)
+    // Inner effect hoists `a`; outer hoists nothing (b is unconditional).
+    expect(r.code).toContain(`effect(() => { void (a()); if (gate()) use(a()) })`)
+  })
+
+  it('export default arrow component + object methods + getters walk', () => {
+    const src = `${HEADER}let t = state('x')
+const api = {
+  read() { return t },
+  get label() { return t },
+  arrow: () => t,
+}
+export default () => <p title={t}>{api.read()}</p>\n`
+    const r = P(src)!
+    expect(r.code).toContain(`read() { return t() }`)
+    expect(r.code).toContain(`get label() { return t() }`)
+    expect(r.code).toContain(`arrow: () => t()`)
+    expect(r.code).toContain(`title={t()}`)
+  })
+})
+
+describe('coverage margin — file kinds, aliases, guards, fallthroughs', () => {
+  it('a plain .ts store module (no JSX lang) transforms', () => {
+    const src = `'use plain'\nimport { state } from '@pyreon/core/plain'\nexport let n = state(0)\nexport const inc = () => { n++ }\n`
+    const r = transformPlain(src, 'store.ts')!
+    expect(r.code).toContain('signal(0)')
+    expect(r.code).toContain('n.set(n() + 1)')
+  })
+
+  it('a parse error in a plain-marked file returns null (downstream reports it)', () => {
+    expect(transformPlain(`'use plain'\nconst = broken(\n`, 'bad.ts')).toBeNull()
+  })
+
+  it('a default specifier beside the marker import is tolerated', () => {
+    const src = `'use plain'\nimport plainDefault, { state } from '@pyreon/core/plain'\nlet a = state(1)\nexport const r = () => a\n`
+    const r = transformPlain(src, 't.tsx')!
+    expect(r.code).toContain('signal(1)')
+  })
+
+  it('collision aliasing covers computed and effect too', () => {
+    const src = `'use plain'
+import { state, derived, effect as fx } from '@pyreon/core/plain'
+const computed = 'mine'
+const effect = 'also mine'
+let a = state(1)
+const d = derived(a + 1)
+fx(() => use(a))
+export const all = [computed, effect, d]\n`
+    const r = transformPlain(src, 't.tsx')!
+    expect(r.code).toContain(`__plainComputed(() => (a() + 1))`)
+    expect(r.code).toContain(`__plainEffect(() => use(a()))`)
+    expect(r.code).toContain(`computed as __plainComputed`)
+    expect(r.code).toContain(`effect as __plainEffect`)
+  })
+
+  it('a marker name shadowed by a local binding is not treated as a marker', () => {
+    const src = `'use plain'
+import { state } from '@pyreon/core/plain'
+function local() {
+  const state = (v) => v * 2
+  return state(21)
+}
+export const x = local()\n`
+    const r = transformPlain(src, 't.tsx')!
+    expect(r.code).toContain(`return state(21)`) // untouched — the local wins
+    expect(r.warnings).toHaveLength(0)
+  })
+
+  it('computed keys and nested patterns in props bail as complex', () => {
+    const src = `'use plain'
+import { state } from '@pyreon/core/plain'
+export function A({ [key]: a }) { return <i>{a}</i> }
+export function B({ pos: { x } }) { return <i>{x}</i> }
+export function C({ a }, extra) { return <i>{a}{extra}</i> }
+export function D(props) { const { a: { b } } = props; return <i>{b}</i> }\n`
+    const r = transformPlain(src, 't.tsx')!
+    const complex = r.warnings.filter((w) => w.message.includes('complex props destructuring'))
+    expect(complex.length).toBeGreaterThanOrEqual(3)
+    // C is SIMPLE with a second param — the rewrite fires and `extra` shadows.
+    expect(r.code).toContain(`C(props, extra)`)
+    expect(r.code).toContain(`{props.a}{extra}`)
+  })
+
+  it('if/else alternates, expression-init for loops, and a return-less reactive if do not wrap', () => {
+    const src = `'use plain'
+import { state } from '@pyreon/core/plain'
+let m = state(0)
+export function T() {
+  if (m > 1) log(m)
+  else warnMore(m)
+  let i
+  for (i = 0; i < 3; i++) tick(m)
+  return <p>{m}</p>
+}\n`
+    const r = transformPlain(src, 't.tsx')!
+    expect(r.code).not.toContain('return () => {') // no return inside the if
+    expect(r.code).toContain(`else warnMore(m())`)
+    expect(r.code).toContain(`for (i = 0; i < 3; i++) tick(m())`)
+  })
+
+  it('export default function declarations walk; computed members and import() rewrite', () => {
+    const src = `'use plain'
+import { state } from '@pyreon/core/plain'
+let k = state('mod')
+const v = table[k]
+const dyn = import(pathFor(k))
+export default function Main() { return <div>{k}</div> }\n`
+    const r = transformPlain(src, 't.tsx')!
+    expect(r.code).toContain(`table[k()]`)
+    expect(r.code).toContain(`import(pathFor(k()))`)
+    expect(r.code).toContain(`{k()}`)
+  })
+
+  it('a destructured prop used as object shorthand expands to the props read', () => {
+    const src = `'use plain'
+import { state } from '@pyreon/core/plain'
+export function Card({ label, size = 2 }) {
+  const payload = { label, size }
+  return <i title={JSON.stringify(payload)}>{label}</i>
+}\n`
+    const r = transformPlain(src, 't.tsx')!
+    expect(r.code).toContain(`{ label: props.label, size: (props.size ?? (2)) }`)
+  })
+})
