@@ -33,10 +33,7 @@ emits `books.native.tsx` / `authors.native.tsx` and then runs the **real**
 `@pyreon/native-compiler` over them:
 
 ```
-native reach  2/4 operations
-  web-only 1 op(s): getBook
-    path parameters (bookId) are supplied at runtime, and PMTC needs literal
-    params to bake the URL at compile time.
+native reach  3/4 operations
   web-only 1 op(s): createBook
     POST lowers through mutations, which PMTC does not yet recognise.
 

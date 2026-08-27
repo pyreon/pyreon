@@ -49,9 +49,10 @@ function Books() {
   // fallback and `.length` reads the function's arity.
   const books = useListBooks()
 
-  // A query with a PATH PARAMETER — the shape Lathe reports as web-only,
-  // because PMTC bakes request URLs at compile time and a runtime id cannot be
-  // baked. It works perfectly on the web; it just does not cross.
+  // A query with a PATH PARAMETER. This is the WEB hook; its native twin is
+  // the generated `GetBookData` component in `books.native.tsx`, which takes
+  // `bookId` as a prop. A standalone hook is read as a View by PMTC and never
+  // lowers whatever its body does, which is why the two shapes both exist.
   const selected = signal<string | undefined>(undefined)
   const detail = useGetBook(
     () => ({ params: { bookId: selected() ?? '' } }),
