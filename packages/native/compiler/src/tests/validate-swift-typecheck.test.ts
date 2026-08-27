@@ -179,6 +179,7 @@ describe('Swift emit — swiftc -typecheck against stubs (Linux-viable type gate
       'showcase-analytics.tsx',
       'showcase-finance.tsx',
       'showcase-tasks.tsx',
+      'showcase-viz.tsx',
       'synth-prop-types.tsx',
       'tier2-feature.tsx',
       'tier2-form.tsx',
