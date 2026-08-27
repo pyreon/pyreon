@@ -496,11 +496,11 @@ the machine-checked contract.
 | `@pyreon/core` | the JSX authoring surface PMTC compiles — For/Show/Suspense/ErrorBoundary lower; Switch/Match/Dynamic/Portal/Index warn with concrete alternatives |
 | `@pyreon/primitives` | the 15 canonical primitives: real web DOM runtime AND SwiftUI/Compose emit — the compiler's native target vocabulary |
 | `@pyreon/reactivity` | L0 of the shared-code model: signal/computed/effect lower as-is; PyreonReactivity runtime ports on both native targets |
-| `@pyreon/sized-map` | pure-logic bounded FIFO/LRU map with no platform edge; `new SizedMap<K, V>({ maxEntries })` lowers to the co-located PyreonSizedMap runtime on both native targets (a computed cap stays web — the literal is baked into the emit) |
+| `@pyreon/sized-map` | pure-logic bounded FIFO/LRU map with no platform edge; `new SizedMap<K, V>(&#123; maxEntries &#125;)` lowers to the co-located PyreonSizedMap runtime on both native targets (a computed cap stays web — the literal is baked into the emit) |
 | `@pyreon/rx` | the namespace form (rx.filter/map/…) lowers per-method to native collection ops; standalone transforms warn |
 | `@pyreon/coolgrid` | Container/Row/Col lower (equal-fill + literal fractional Col spans) |
 | `@pyreon/ui-core` | `<PyreonUI>` lowers transparently on native (theme is compile-time; dark mode is the system read) |
-| `@pyreon/attrs` | attrs({ name, component }) default-prop HOC lowers via attrs-native (use-site wins) |
+| `@pyreon/attrs` | attrs(&#123; name, component &#125;) default-prop HOC lowers via attrs-native (use-site wins) |
 | `@pyreon/elements` | Element→Stack and Text lower via elements-native; the rich web-only surfaces (Overlay/Portal/List slots) warn per-construct |
 | `@pyreon/styler` | styled(Prim) + defineTheme tokens lower via the styler-native frontend; the CSS-in-JS runtime is web, the authored patterns compile |
 | `@pyreon/rocketstyle` | rocketstyle-over-primitive chains lower (static cascade + one dynamic dimension) via rocketstyle-native |
@@ -509,7 +509,7 @@ the machine-checked contract.
 
 | Package | Why |
 | --- | --- |
-| `@pyreon/router` | web history/hash router + @pyreon/native-router-{swift,kotlin} ports; nav/params/guards/loaders device-proven |
+| `@pyreon/router` | web history/hash router + @pyreon/native-router-&#123;swift,kotlin&#125; ports; nav/params/guards/loaders device-proven |
 | `@pyreon/form` | useForm v2 + useFieldArray lower to PyreonForm/PyreonFieldArray; device-proven both platforms |
 | `@pyreon/permissions` | usePermissions read surface lowers to PyreonPermissions (callable can/all/any) |
 | `@pyreon/storage` | useStorage family over @PyreonAppStorage (Swift) / rememberPyreonStorage (Kotlin); persistence device-proven |
