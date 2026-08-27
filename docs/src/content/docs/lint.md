@@ -356,6 +356,19 @@ Overlapping fixes from different rules are **deferred**, not applied blind: the 
 
 Reading fixes programmatically? `Diagnostic.fix` is `Fix | readonly Fix[]` — normalize with `fixEdits(d.fix)`.
 
+### Getting started
+
+```bash
+pyreon-lint --init   # writes .pyreonlintrc.json
+pyreon-lint .
+```
+
+`--init` picks the preset from your project rather than always writing `recommended` — a package with an entry point gets `lib` (which enables the library-author rules), anything else gets `app`. It points `$schema` at the installed schema so your editor completes rule ids and rejects typos, and it **refuses to overwrite** an existing config.
+
+The file it writes is deliberately minimal — a schema reference and a preset, nothing else. Scaffolding every rule at its current severity would freeze today's defaults into your file, so a later improvement to `recommended` would never reach you.
+
+The linter also works with **no config at all**, defaulting to `recommended`.
+
 ### Accessibility is on by default
 
 Six a11y rules ship **on** in every standard preset — `require-img-alt`, `anchor-is-valid`, `no-autofocus`, `no-redundant-role`, `no-positive-tabindex` and `primitive-media-needs-label`. Each is an unambiguous WCAG failure with a counterpart in oxlint's `correctness` tier, so a fresh Pyreon app gets the same a11y floor an ESLint user expects. `primitive-media-needs-label` is dependency-gated, so it stays silent unless you use `@pyreon/primitives`.

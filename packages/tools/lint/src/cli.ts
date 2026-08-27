@@ -2,6 +2,7 @@
 import { resolve } from 'node:path'
 import { loadConfig, loadConfigFromPath } from './config/loader'
 import { getPreset } from './config/presets'
+import { initConfig } from './init'
 import { listRules } from './lint'
 import { lintAsync } from './parallel'
 import { startLspServer } from './lsp/index'
@@ -23,6 +24,7 @@ function printUsage() {
     --fix              Auto-fix fixable issues
     --format <fmt>     Output: text (default), json, compact
     --quiet            Only show errors
+    --init             Write a starting .pyreonlintrc.json for this project
     --list             List all available rules
     --why-off <id>     Explain why a rule will (or will not) run here
     --rule <id>=<sev>          Override rule severity (e.g. --rule pyreon/no-window-in-ssr=off)
@@ -70,6 +72,7 @@ interface CliArgs {
   fix: boolean
   format: 'text' | 'json' | 'compact'
   quiet: boolean
+  runInit: boolean
   showList: boolean
   showHelp: boolean
   showVersion: boolean
@@ -86,6 +89,7 @@ interface CliArgs {
 }
 
 const BOOLEAN_FLAGS: Record<string, keyof CliArgs> = {
+  '--init': 'runInit',
   '--help': 'showHelp',
   '-h': 'showHelp',
   '--version': 'showVersion',
@@ -114,6 +118,7 @@ function parseArgs(argv: string[]): CliArgs {
     ruleOptionsOverrides: {},
     paths: [],
     whyOff: undefined,
+    runInit: false,
   }
 
   for (let i = 0; i < argv.length; i++) {
@@ -224,6 +229,12 @@ export async function runCli(argv: string[]): Promise<number | null> {
   if (args.showVersion) {
     console.log(`pyreon-lint v${VERSION}`)
     return 0
+  }
+
+  if (args.runInit) {
+    const r = initConfig(resolve('.'))
+    console.log(`\n  ${r.message}\n`)
+    return r.status === 'written' ? 0 : 1
   }
 
   if (args.showList) {

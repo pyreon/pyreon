@@ -100,6 +100,7 @@ const result = lintFile("app.tsx", source, allRules, config, cache, configSink)`
       example: `pyreon-lint --preset strict --quiet    # CI mode
 pyreon-lint --fix                       # auto-fix
 pyreon-lint --watch src/                # watch mode
+pyreon-lint --init                      # scaffold .pyreonlintrc.json for this project
 pyreon-lint --list                      # list all 98 rules
 pyreon-lint --why-off no-window-in-ssr  # why a rule will (or will not) run here
 pyreon-lint --format json               # machine-readable
