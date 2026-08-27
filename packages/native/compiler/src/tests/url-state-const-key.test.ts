@@ -76,3 +76,48 @@ describe('useUrlState key resolution', () => {
     expect(r.warnings[0]).not.toContain('TAGS')
   })
 })
+
+/**
+ * The same rule, applied to the other hooks that BAKE a string. `useUrlState`
+ * was the one that dropped its declaration silently; these three warned by
+ * name, which is the right tier — but "must be a string LITERAL" was never the
+ * actual requirement. Statically KNOWABLE is, and a module-scope const is.
+ */
+describe('other baked-string hooks accept a module-scope const', () => {
+  const mk = (imp: string, pre: string, body: string): string =>
+    `${imp}\nimport { Stack, Text } from '@pyreon/primitives'\n${pre}\nexport function C() {\n  ${body}\n  return <Stack><Text>x</Text></Stack>\n}`
+
+  it('useStorage resolves a const key and bakes the VALUE', () => {
+    const r = transform(
+      mk(`import { useStorage } from '@pyreon/storage'`, `const THEME_KEY = 'theme'`, `const t = useStorage(THEME_KEY, 'light')`),
+      { target: 'kotlin' },
+    )
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('"theme"')
+  })
+
+  it('useStorage still refuses a key it cannot know', () => {
+    const r = transform(
+      mk(`import { useStorage } from '@pyreon/storage'`, `let k = 'theme'`, `const t = useStorage(k, 'light')`),
+      { target: 'kotlin' },
+    )
+    expect(r.warnings.some((w) => w.includes('statically-known key'))).toBe(true)
+  })
+
+  it('createI18n resolves a const locale — and the knock-on warning goes with it', () => {
+    // While createI18n declined, its config object fell through to the generic
+    // expression path and drew a SECOND warning about an unsynthesizable
+    // literal. That one was never about the locale; it disappears once the
+    // declaration lowers, which is worth pinning so nobody chases it later.
+    const r = transform(
+      mk(
+        `import { createI18n } from '@pyreon/i18n'`,
+        `const DEFAULT_LOCALE = 'en'`,
+        `const i = createI18n({ locale: DEFAULT_LOCALE, messages: { en: { hi: 'Hi' } } })`,
+      ),
+      { target: 'kotlin' },
+    )
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('"en"')
+  })
+})

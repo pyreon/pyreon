@@ -5600,25 +5600,28 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
         // hardware-shortcut surface" rationale was never true.
         const shortcutNode = unwrapTypeLayers(call.arguments?.[0] as AnyNode | undefined)
         const cb = call.arguments?.[1] as AnyNode | undefined
-        if (shortcutNode?.type !== 'Literal' || typeof shortcutNode.value !== 'string') {
+        // A module-scope `const` resolves: the shortcut still ends up baked, and
+        // naming a shortcut once and reusing it is ordinary.
+        const shortcutValue = staticStringArg(shortcutNode, ctx)
+        if (shortcutValue === null) {
           // A computed shortcut cannot be baked into a native binding: SwiftUI
           // takes a KeyEquivalent at view-construction and Compose compares
           // against a Key constant. Same literal rule as animation duration.
           ctx.warnings.push(
-            `Component ${name}: useHotkey() needs a LITERAL shortcut string — a computed one cannot be baked into a native key binding. The hotkey is DROPPED on iOS/Android.`,
+            `Component ${name}: useHotkey() needs a statically-known shortcut — an inline string, or a module-scope \`const\` holding one. A computed one cannot be baked into a native key binding, so the hotkey is DROPPED on iOS/Android.`,
           )
         } else if (
           cb?.type !== 'ArrowFunctionExpression' &&
           cb?.type !== 'FunctionExpression'
         ) {
           ctx.warnings.push(
-            `Component ${name}: useHotkey('${shortcutNode.value}', …) needs an inline handler function; a reference cannot be lowered. The hotkey is DROPPED on iOS/Android.`,
+            `Component ${name}: useHotkey('${shortcutValue}', …) needs an inline handler function; a reference cannot be lowered. The hotkey is DROPPED on iOS/Android.`,
           )
         } else {
-          const parsed = parseHotkeyCombo(shortcutNode.value as string)
+          const parsed = parseHotkeyCombo(shortcutValue)
           if (!parsed.ok) {
             ctx.warnings.push(
-              `Component ${name}: useHotkey('${shortcutNode.value}') — ${parsed.reason}. The hotkey is DROPPED on iOS/Android.`,
+              `Component ${name}: useHotkey('${shortcutValue}') — ${parsed.reason}. The hotkey is DROPPED on iOS/Android.`,
             )
           } else {
             // The web handler takes a KeyboardEvent; native has no such object,
@@ -5626,7 +5629,7 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
             // Refuse it by name rather than emit a binding that ignores it.
             if ((cb.params as AnyNode[] | undefined)?.length) {
               ctx.warnings.push(
-                `Component ${name}: useHotkey('${shortcutNode.value}') handler takes a KeyboardEvent parameter, which has no native equivalent — drop the parameter, or keep the event-dependent logic behind a <Web> escape hatch. The hotkey is DROPPED on iOS/Android.`,
+                `Component ${name}: useHotkey('${shortcutValue}') handler takes a KeyboardEvent parameter, which has no native equivalent — drop the parameter, or keep the event-dependent logic behind a <Web> escape hatch. The hotkey is DROPPED on iOS/Android.`,
               )
             } else {
               const handlerBody =
@@ -6662,17 +6665,16 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     // string, identifier, member access) can't be baked into the
     // `@AppStorage(...)` string at compile time. Conservative — fall
     // through to undeclared if the key isn't a static literal.
-    if (
-      !keyArg ||
-      (keyArg.type !== 'Literal' && keyArg.type !== 'StringLiteral') ||
-      typeof keyArg.value !== 'string'
-    ) {
+    // A module-scope `const` counts as a literal here: the value is known at
+    // build time, which is the only thing the bake needs. Sharing the key with
+    // whatever else reads that slot is the ordinary way to write this.
+    const storageKey = staticStringArg(keyArg, ctx)
+    if (storageKey === null) {
       ctx.warnings.push(
-        `Declaration ${name}: useStorage key argument must be a string literal; got ${keyArg?.type ?? 'nothing'}.`,
+        `Declaration ${name}: useStorage needs a statically-known key — an inline string, or a module-scope \`const\` holding one. The key is BAKED into the native emit, so a computed or imported one cannot be resolved at build time. Got ${keyArg?.type ?? 'nothing'}.`,
       )
       return null
     }
-    const storageKey = keyArg.value
     const initial: ExprIR = initialArg
       ? parseExpr(initialArg, ctx)
       : { kind: 'literal', value: 0 }
@@ -8614,13 +8616,11 @@ function tryDeclFromCreateI18n(
     if (!keyName) continue
     const valueNode = unwrapTypeLayers(prop.value as AnyNode | undefined)
     if (keyName === 'locale') {
-      if (valueNode?.type === 'Literal' && typeof valueNode.value === 'string') {
-        locale = valueNode.value
-      }
+      // A module-scope `const` resolves — a default locale named once and shared
+      // is ordinary, and the value is just as known at build time.
+      locale = staticStringArg(valueNode, ctx) ?? undefined
     } else if (keyName === 'fallbackLocale') {
-      if (valueNode?.type === 'Literal' && typeof valueNode.value === 'string') {
-        fallbackLocale = valueNode.value
-      }
+      fallbackLocale = staticStringArg(valueNode, ctx) ?? undefined
     } else if (keyName === 'messages') {
       messagesNode = valueNode
     }
