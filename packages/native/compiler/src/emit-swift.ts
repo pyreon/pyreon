@@ -22,6 +22,7 @@ import {
   isReReadableExpr,
   substituteIdentifier,
   buildJsonLiteralParts,
+  subsetStructName,
   explainUntypeableField,
   synthLiteralStructName,
   classifyDynamicStylingAttr,
@@ -168,6 +169,9 @@ let _componentPropsMap: Map<string, { name: string; type: TypeIR }[]> = new Map(
  * we keep the first-seen struct (alphabetical via Map insertion).
  */
 let _structFieldsToName: Map<string, string> = new Map()
+/** The DECLARED structs for this emit, kept for `subsetStructName` — the exact
+ *  field-set index above cannot see a literal that omits an optional field. */
+let _declaredStructs: readonly StructIR[] = []
 /**
  * Synthesized structs for ANONYMOUS all-scalar-literal object EXPRESSIONS
  * (`{ id: 1, name: 'a' }`) that match no declared struct. Without this they
@@ -866,6 +870,7 @@ export function emitSwift(
   }
   _enumNames = new Set(enums.map((e) => e.name))
   _structFieldsToName = new Map()
+  _declaredStructs = structs
   _synthExprStructs = []
   _synthExprStructKeys = new Map()
   for (const s of structs) {
@@ -6015,6 +6020,22 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             .map((f) => `${swiftIdent(f.name)}: ${emitSwiftExpr(f.value, indent)}`)
             .join(', ')
           return `${swiftIdent(structName)}(${args})`
+        }
+        // The exact index missed. Before synthesizing, try a DECLARED struct
+        // whose omitted fields are all optional: `type T = { a: string; b?: string }`
+        // with `{ a: 'x' }` is ordinary TS, and synthesizing here emits
+        // `var v: T = __Obj0(a: "x")` — a type the annotation says it is not,
+        // which Swift rejects outright.
+        const subset = subsetStructName(
+          e.fields.map((f) => f.name),
+          _declaredStructs,
+          typeIsOptional,
+        )
+        if (subset !== null) {
+          const args = e.fields
+            .map((f) => `${swiftIdent(f.name)}: ${emitSwiftExpr(f.value, indent)}`)
+            .join(', ')
+          return `${swiftIdent(subset)}(${args})`
         }
         // No declared struct matches — SYNTHESIZE one instead of the broken
         // labelled-tuple emit (single-field tuple is illegal Swift; tuple

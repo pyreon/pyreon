@@ -159,6 +159,57 @@ export function scalarLiteralType(e: ExprIR): TypeIR | null {
  * `inferType`, passes `(e) => inferType(e, ctx)`.
  */
 /**
+ * A DECLARED struct whose fields are a superset of the literal's, where every
+ * field the literal omits is OPTIONAL. Returns its name, or null.
+ *
+ * The exact field-set index that both emitters consult first cannot see this
+ * case, and the gap is common rather than exotic: a type with an optional field
+ * is ordinary TS, and a literal that simply does not set it is the normal way
+ * to write one. `type T = { a: string; b?: string }` with `signal<T>({ a: 'x' })`
+ * missed the index, fell through to synthesis, and emitted
+ * `var v: T = __Obj0(a: "x")` — a type the annotation says it is not. Swift
+ * rejects that outright, so the shape simply did not build; a recursive type
+ * (a ProseMirror document, where the leaf node has `text` and the branch has
+ * `content`) hits it at every level.
+ *
+ * Ambiguity BAILS rather than guessing: if two declared structs both accept the
+ * literal, there is no type context here to choose between them, and picking
+ * one would be a silent mis-construction. Same rule the exact index already
+ * uses for a field-set collision.
+ */
+export function subsetStructName(
+  literalFields: readonly string[],
+  structs: readonly StructIR[],
+  isOptional: (t: TypeIR) => boolean,
+): string | null {
+  const given = new Set(literalFields)
+  let found: string | null = null
+  for (const s of structs) {
+    const names = new Set(s.fields.map((f) => f.name))
+    // Every field the literal sets must exist on the struct...
+    let ok = true
+    for (const g of given) {
+      if (!names.has(g)) {
+        ok = false
+        break
+      }
+    }
+    if (!ok) continue
+    // ...and every field it does NOT set must be optional.
+    for (const f of s.fields) {
+      if (!given.has(f.name) && !isOptional(f.type)) {
+        ok = false
+        break
+      }
+    }
+    if (!ok) continue
+    if (found !== null) return null // ambiguous — two structs accept it
+    found = s.name
+  }
+  return found
+}
+
+/**
  * One piece of a JSON literal lowering: either static JSON text, or a runtime
  * expression whose encoded form goes in that slot.
  */

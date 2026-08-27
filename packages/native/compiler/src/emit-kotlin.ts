@@ -18,6 +18,7 @@ import {
   isCompoundExpr,
   substituteIdentifier,
   buildJsonLiteralParts,
+  subsetStructName,
   explainUntypeableField,
   synthLiteralStructName,
   classifyDynamicStylingAttr,
@@ -96,6 +97,10 @@ let _enumNames: Set<string> = new Set()
  * `_structFieldsToName`. See that file for the structural rationale.
  */
 let _structFieldsToName: Map<string, string> = new Map()
+/** The DECLARED data classes for this emit, kept for `subsetStructName` — the
+ *  exact field-set index above cannot see a literal that omits an optional
+ *  field. */
+let _declaredStructs: readonly StructIR[] = []
 /**
  * Synthesized data classes for ANONYMOUS all-scalar-literal object
  * EXPRESSIONS (`{ id: 1, name: 'a' }`). Mirror of emit-swift's
@@ -410,6 +415,7 @@ export function emitKotlin(
   _enumNames = new Set(enums.map((e) => e.name))
   // Build the struct-fields key map — mirror of emit-swift's logic.
   _structFieldsToName = new Map()
+  _declaredStructs = structs
   _synthExprStructs = []
   _synthExprStructKeys = new Map()
   for (const s of structs) {
@@ -4994,6 +5000,25 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             .map((f) => `${f.name} = ${emitKotlinExpr(f.value, indent)}`)
             .join(', ')
           return `${kotlinIdent(structName)}(${args})`
+        }
+        // The exact index missed. Before synthesizing, try a DECLARED data
+        // class whose omitted fields are all optional. Kotlin is the SILENT
+        // half of this one: the binding is `var v by remember { mutableStateOf(…) }`
+        // with no written type, so Kotlin happily infers the synthesized
+        // `__Obj0` and it compiles — while the value's real type is not the one
+        // the annotation says, so `encode` serializes the wrong shape and any
+        // site expecting `T` fails elsewhere. Swift, which writes the type out,
+        // rejects it at the declaration.
+        const subset = subsetStructName(
+          e.fields.map((f) => f.name),
+          _declaredStructs,
+          typeIsOptional,
+        )
+        if (subset !== null) {
+          const args = e.fields
+            .map((f) => `${f.name} = ${emitKotlinExpr(f.value, indent)}`)
+            .join(', ')
+          return `${kotlinIdent(subset)}(${args})`
         }
         // No declared data class matches — SYNTHESIZE one for an all-scalar-
         // literal object (`{ id: 1, name: 'a' }`) instead of the broken
