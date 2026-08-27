@@ -165,11 +165,11 @@ interface FloorExemption {
 }
 const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
   '@pyreon/lathe': {
-    currentStatements: 86,
-    currentBranches: 76,
+    currentStatements: 88,
+    currentBranches: 78,
     reason:
-      'Spec-to-client codegen, arrived at 84.46% statements / 72.22% branches and ratcheted to 86.97 / 76.52 in the same PR. It reached main unmeasured: its PR also touched a root file, which escalated the PR-time coverage step to `--filter=*` and made the step SKIP — so a brand-new package slipped past the mechanism whose stated job is preventing exactly that. The hole is fixed in `affected.ts` (a root file no longer escalates under `--changed-only`, since coverage is a per-package property). ' +
-      'The shortfall is real, not an accounting artifact. `src/emit/mock.ts` (77 -> 98), `src/emit/schema.ts` (71 -> 87) and `src/core/naming.ts` (79 -> 97) are done — the fixture generator\'s per-kind shapes and the portable-regex guard, both of which encode cross-target decisions rather than lines. `src/input/openapi.ts` (80%) is what remains. Recorded at the MEASURED actual and ratcheted with it, never lowered to absorb a regression.',
+      'Spec-to-client codegen, arrived at 84.46% statements / 72.22% branches and ratcheted to 88.18 / 78.32 in the same PR. It reached main unmeasured: its PR also touched a root file, which escalated the PR-time coverage step to `--filter=*` and made the step SKIP — so a brand-new package slipped past the mechanism whose stated job is preventing exactly that. The hole is fixed in `affected.ts` (a root file no longer escalates under `--changed-only`, since coverage is a per-package property). ' +
+      'The shortfall is real, not an accounting artifact. `src/emit/mock.ts` (77 -> 98), `src/emit/schema.ts` (71 -> 87) `src/core/naming.ts` (79 -> 97) and `src/input/openapi.ts` (79 -> 87) are done — the fixture generator\'s per-kind shapes and the portable-regex guard, both of which encode cross-target decisions rather than lines. Recorded at the MEASURED actual and ratcheted with it, never lowered to absorb a regression.',
   },
   // ── Statements + branches < floor ───────────────────────────────────
   '@pyreon/flow': {
