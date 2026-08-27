@@ -13,3 +13,10 @@ maps, and the fix is `bun scripts/bootstrap.ts`.
 
 Still an error either way; only the message and the finding code change
 (`distribution/unbuilt-checkout` for the new case).
+
+`check-native-srcdirs-drift` gets the same treatment. It resolves through the
+example's `node_modules`, so an under-installed checkout makes the resolver
+return a subset and the report inverts — "the app no longer declares these; drop
+the srcDir" is the opposite of the truth, and following it would delete working
+wiring. It now recognises the case and says to install. Its pure logic also gets
+its first tests.
