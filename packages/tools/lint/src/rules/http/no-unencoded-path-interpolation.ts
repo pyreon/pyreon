@@ -52,6 +52,7 @@ export const noUnencodedPathInterpolation: Rule = {
     description:
       'Interpolating a value into an HTTP path skips URL encoding — a value containing "/" escapes its segment. Use the `params` option.',
     severity: 'warn',
+    requiresDependency: '@pyreon/http',
     fixable: false,
     optIn: true,
     schema: { exemptPaths: 'string[]' },

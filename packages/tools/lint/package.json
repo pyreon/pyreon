@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/lint",
   "version": "0.51.0",
-  "description": "Pyreon-specific linter — 56 rules for signals, JSX, SSR, performance, router, and architecture",
+  "description": "Pyreon-specific linter \u2014 98 rules across 19 categories for signals, JSX, lifecycle, SSR, performance, architecture, routing, SSG, and opt-in best practices",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/tools/lint#readme",
   "bugs": {
@@ -29,6 +29,10 @@
     "./cli": {
       "bun": "./src/cli.ts",
       "import": "./lib/cli.js"
+    },
+    "./lint-worker": {
+      "bun": "./src/lint-worker.ts",
+      "import": "./lib/lint-worker.js"
     },
     "./package.json": "./package.json"
   },

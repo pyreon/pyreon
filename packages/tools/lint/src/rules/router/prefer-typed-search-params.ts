@@ -32,6 +32,7 @@ export const preferTypedSearchParams: Rule = {
     description:
       'In @pyreon/router projects, parse query strings via useTypedSearchParams instead of constructing URLSearchParams manually.',
     severity: 'info',
+    requiresDependency: '@pyreon/router',
     fixable: false,
     optIn: true,
     schema: { exemptPaths: 'string[]' },

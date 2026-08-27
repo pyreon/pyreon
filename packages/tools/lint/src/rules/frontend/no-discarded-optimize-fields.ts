@@ -31,6 +31,7 @@ export const noDiscardedOptimizeFields: Rule = {
     description:
       'Flag a raw `<img src={x.src}>` that discards the rest of a `?optimize` descriptor (CLS + missing responsive images).',
     severity: 'warn',
+    requiresDependency: '@pyreon/zero',
     fixable: false,
     optIn: true,
     schema: { exemptPaths: 'string[]' },

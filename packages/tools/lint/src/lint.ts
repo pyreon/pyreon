@@ -4,6 +4,7 @@ import { AstCache } from './cache'
 import { createIgnoreFilter } from './config/ignore'
 import { loadConfig, loadConfigFromPath } from './config/loader'
 import { getPreset } from './config/presets'
+import { groupOf } from './rules/groups'
 import { allRules } from './rules/index'
 import { applyFixes, lintFile } from './runner'
 import type {
@@ -52,6 +53,9 @@ function walkDirectory(
   try {
     entries = readdirSync(dir)
   } catch {
+    // An unreadable directory (permissions) is skipped, not fatal. Not
+    // portably triggerable in a unit test (needs a chmod-000 dir).
+    /* v8 ignore next */
     return
   }
   for (const entry of entries) {
@@ -104,6 +108,16 @@ function buildConfig(options: LintOptions): {
 
   const presetName = options.preset ?? fileConfig?.preset ?? 'recommended'
   const config = getPreset(presetName)
+
+  // Group-level severity, applied BEFORE per-rule entries so an explicit rule
+  // always wins over its group. `{ "groups": { "a11y": "off" } }` silences 15
+  // rules without listing them.
+  if (fileConfig?.groups) {
+    for (const rule of allRules) {
+      const groupSeverity = fileConfig.groups[groupOf(rule.meta)]
+      if (groupSeverity !== undefined) config.rules[rule.meta.id] = groupSeverity
+    }
+  }
 
   // Merge config file rule overrides. Entries can be a bare severity or a
   // `[severity, options]` tuple — passed through verbatim; the runner
@@ -199,6 +213,21 @@ function countDiagnostics(fileResult: LintFileResult, results: LintResult): void
  * console.log(result.totalErrors) // 0
  * ```
  */
+/**
+ * Resolve everything a run needs BEFORE any file is read: the merged config
+ * and the file list.
+ *
+ * Extracted so the parallel driver resolves config exactly once on the main
+ * thread and ships it to workers as data — a worker that re-read the config
+ * could silently disagree with its siblings about what is enabled.
+ *
+ * Internal: not part of the supported surface.
+ */
+export function _resolveRun(options: LintOptions): { config: LintConfig; files: string[] } {
+  const { config, include, exclude, isIgnored } = buildConfig(options)
+  return { config, files: gatherFiles(options.paths, isIgnored, include, exclude) }
+}
+
 export function lint(options: LintOptions): LintResult {
   const { config, include, exclude, isIgnored } = buildConfig(options)
   const cache = new AstCache()
@@ -218,6 +247,9 @@ export function lint(options: LintOptions): LintResult {
     try {
       source = readFileSync(filePath, 'utf-8')
     } catch {
+      // A file that vanished/became unreadable between the walk and the read
+      // is skipped. Not portably triggerable in a unit test.
+      /* v8 ignore next */
       continue
     }
     const fileResult = lintFile(filePath, source, allRules, config, cache, configDiagnostics)

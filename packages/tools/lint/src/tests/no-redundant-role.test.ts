@@ -42,14 +42,17 @@ function diagIds(result: ReturnType<typeof lintFile>): string[] {
 // Sanity: under `recommended` this opt-in rule stays OFF even when
 // passed as rules[].
 describe('pyreon/no-redundant-role — opt-in mechanic', () => {
-  it('does NOT fire under the `recommended` preset (opt-in OFF)', () => {
+  it('DOES fire under the `recommended` preset — a11y basics are on by default', () => {
+    // Promoted OUT of opt-in: this is an unambiguous WCAG failure with an
+    // ecosystem counterpart in oxlint's `correctness` tier, and shipping it
+    // opt-in meant a fresh Pyreon app had NO a11y checking at all.
     const result = lintFile(
       'src/App.tsx',
       `function App() { return <button role="button">x</button> }`,
       RULES,
       getPreset('recommended'),
     )
-    expect(result.diagnostics).toHaveLength(0)
+    expect(result.diagnostics.length).toBeGreaterThan(0)
   })
 })
 
@@ -143,5 +146,39 @@ describe('pyreon/no-redundant-role — harness sanity', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+})
+
+describe('pyreon/no-redundant-role — dynamic href is not proof of an implicit role', () => {
+  // Found by promoting this rule out of opt-in. It shipped a false positive
+  // that contradicted its own docstring ("`<a>` has an implicit link role only
+  // when a STATIC href is present"): the helper matched the attribute by NAME
+  // and ignored its value, so `href={x}` read as a static href.
+  //
+  // It matters because Pyreon's `applyProp` REMOVES a nullish attribute — a
+  // dynamic href that resolves to `undefined` renders no href, so the element
+  // has no implicit `link` role and an explicit `role="link"` is meaningful.
+  //
+  // The existing bail-out spec could never have caught this: the rule was OFF
+  // in `recommended`, so it passed without ever running the branch.
+  const run = (src: string) =>
+    lintFile('src/App.tsx', src, RULES, getPreset('recommended')).diagnostics.filter(
+      (d) => d.ruleId === 'pyreon/no-redundant-role',
+    )
+
+  it('does NOT flag <a> with a dynamic href', () => {
+    expect(run(`const X = ({ href }) => <a href={href} role="link">x</a>`)).toHaveLength(0)
+  })
+
+  it('does NOT flag <a> with no href at all', () => {
+    expect(run(`const X = () => <a role="link">x</a>`)).toHaveLength(0)
+  })
+
+  it('DOES flag <a> with a static href — there the role is provably redundant', () => {
+    expect(run(`const X = () => <a href="/x" role="link">x</a>`)).toHaveLength(1)
+  })
+
+  it('still flags a non-conditional tag regardless of other attributes', () => {
+    expect(run(`const X = ({ id }) => <ul id={id} role="list" />`)).toHaveLength(1)
   })
 })

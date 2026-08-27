@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://pyreon.dev/schemas/pyreonlintrc.json",
   "title": "@pyreon/lint configuration",
-  "description": "Schema for .pyreonlintrc.json — configures the @pyreon/lint linter. Reference this in your config via `\"$schema\": \"./node_modules/@pyreon/lint/schema/pyreonlintrc.schema.json\"` for IDE autocomplete + validation.",
+  "description": "Schema for .pyreonlintrc.json \u2014 configures the @pyreon/lint linter. Reference this in your config via `\"$schema\": \"./node_modules/@pyreon/lint/schema/pyreonlintrc.schema.json\"` for IDE autocomplete + validation.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
@@ -18,6 +18,29 @@
         "lib",
         "best-practices"
       ]
+    },
+    "groups": {
+      "type": "object",
+      "description": "Severity for a whole rule GROUP, in one line. Applied after the preset and BEFORE per-rule entries, so an explicit rule always wins over its group. `pyreon` = framework semantics; `a11y` = accessibility; `pkg` = per-library, dependency-gated; `internal` = rules that encode the Pyreon repository itself (never on in a shipped preset).",
+      "additionalProperties": false,
+      "properties": {
+        "pyreon": {
+          "$ref": "#/definitions/severity",
+          "description": "Framework semantics \u2014 reactivity, JSX, lifecycle, SSR/SSG."
+        },
+        "a11y": {
+          "$ref": "#/definitions/severity",
+          "description": "Accessibility \u2014 standard markup plus Pyreon primitives, toast, dialog, overlay."
+        },
+        "pkg": {
+          "$ref": "#/definitions/severity",
+          "description": "Per-library rules; each self-activates on a declared dependency."
+        },
+        "internal": {
+          "$ref": "#/definitions/severity",
+          "description": "Rules encoding the Pyreon repository itself. Off in every shipped preset."
+        }
+      }
     },
     "rules": {
       "description": "Per-rule configuration. Each entry is either a bare severity (`\"error\"` / `\"warn\"` / `\"info\"` / `\"off\"`) or an `[severity, options]` tuple. Rules that support path-based exemption read `options.exemptPaths: string[]`.",

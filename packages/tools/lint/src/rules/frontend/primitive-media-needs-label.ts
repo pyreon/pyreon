@@ -57,8 +57,11 @@ export const primitiveMediaNeedsLabel: Rule = {
     description:
       'In @pyreon/primitives projects, every <Image>/<Icon> needs an accessibilityLabel (or alt/aria-label), or accessibilityHidden if decorative.',
     severity: 'error',
+    // On by DEFAULT: an unambiguous WCAG failure with an ecosystem
+    // counterpart in oxlint's `correctness` tier (jsx-a11y/alt-text (primitives analogue)).
+    // Shipping it opt-in meant a fresh Pyreon app had no a11y checking at all.
+    requiresDependency: '@pyreon/primitives',
     fixable: false,
-    optIn: true,
     schema: { exemptPaths: 'string[]' },
   },
   create(context) {

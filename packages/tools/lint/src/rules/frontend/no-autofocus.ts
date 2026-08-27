@@ -30,8 +30,10 @@ export const noAutofocus: Rule = {
     description:
       'Disallow the autoFocus attribute — it disorients screen-reader and keyboard users by moving focus on load.',
     severity: 'warn',
+    // On by DEFAULT: an unambiguous WCAG failure with an ecosystem
+    // counterpart in oxlint's `correctness` tier (jsx-a11y/no-autofocus).
+    // Shipping it opt-in meant a fresh Pyreon app had no a11y checking at all.
     fixable: true,
-    optIn: true,
     schema: { exemptPaths: 'string[]' },
   },
   create(context) {

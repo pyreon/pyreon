@@ -202,6 +202,11 @@ export const noHeavyImportOnlyInHandler: Rule = {
               key === 'end' ||
               key === 'range' ||
               key === 'loc' ||
+              // A parent back-reference would make this walk climb back up the
+              // tree and recurse forever. This walk threads deferred-scope
+              // depth, so it keeps its own recursion rather than using
+              // `walkSubtree` — but it must honour the same exclusion.
+              key === 'parent' ||
               TYPE_KEYS.has(key)
             ) {
               continue

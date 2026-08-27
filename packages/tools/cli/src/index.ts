@@ -243,7 +243,7 @@ async function main(): Promise<void> {
     // --preset, --format, --watch, --lsp, paths, …). `runCli` returns null for
     // the long-running --watch/--lsp modes (keep the process alive).
     const { runCli } = await import('@pyreon/lint')
-    const code = runCli(args.slice(1))
+    const code = await runCli(args.slice(1))
     if (code !== null) process.exit(code)
     return
   }

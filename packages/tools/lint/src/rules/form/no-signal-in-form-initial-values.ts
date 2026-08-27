@@ -30,6 +30,7 @@ export const noSignalInFormInitialValues: Rule = {
     description:
       'In @pyreon/form projects, do not read a signal inside useForm({ initialValues }) — it snapshots at setup and never tracks.',
     severity: 'warn',
+    requiresDependency: '@pyreon/form',
     fixable: false,
     optIn: true,
     schema: { exemptPaths: 'string[]' },
