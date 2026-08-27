@@ -213,7 +213,12 @@ export const noGuardOnlySignalReadsInEffect: Rule = {
         return
       }
       for (const key of Object.keys(node)) {
-        if (key === 'type' || key === 'start' || key === 'end') continue
+        // `parent` is excluded because an ESLint-shaped AST carries a parent
+        // back-reference; following it climbs back up the tree and recurses
+        // until the stack blows. This walk threads guardedness state, so it
+        // keeps its own recursion rather than using `walkSubtree` — but it
+        // must honour the same exclusion.
+        if (key === 'type' || key === 'start' || key === 'end' || key === 'parent') continue
         scanReads(node[key], out)
       }
     }
@@ -236,7 +241,8 @@ export const noGuardOnlySignalReadsInEffect: Rule = {
     /** Walk children generically at guardedness `g`. */
     function walkChildren(node: any, g: boolean): void {
       for (const key of Object.keys(node)) {
-        if (key === 'type' || key === 'start' || key === 'end') continue
+        // See the `parent` note in `scanReads` above.
+        if (key === 'type' || key === 'start' || key === 'end' || key === 'parent') continue
         const value = node[key]
         if (Array.isArray(value)) {
           for (const child of value) walk(child, g)

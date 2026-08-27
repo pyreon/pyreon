@@ -1,5 +1,5 @@
 import type { Rule, VisitorCallbacks } from '../../types'
-import { getSpan, isCallTo } from '../../utils/ast'
+import { getSpan, isCallTo, walkSubtree } from '../../utils/ast'
 
 const NEEDS_CLEANUP = new Set(['setInterval', 'addEventListener'])
 
@@ -32,8 +32,7 @@ export const noMissingCleanup: Rule = {
         let hasCleanupTarget = false
         let hasReturn = false
 
-        function walk(n: any) {
-          if (!n) return
+        walkSubtree(body, (n) => {
           if (n.type === 'CallExpression') {
             const callee = n.callee
             if (callee?.type === 'Identifier' && NEEDS_CLEANUP.has(callee.name)) {
@@ -50,21 +49,7 @@ export const noMissingCleanup: Rule = {
           if (n.type === 'ReturnStatement' && n.argument) {
             hasReturn = true
           }
-          for (const key of Object.keys(n)) {
-            const child = n[key]
-            if (child && typeof child === 'object') {
-              if (Array.isArray(child)) {
-                for (const item of child) {
-                  if (item && typeof item.type === 'string') walk(item)
-                }
-              } else if (typeof child.type === 'string') {
-                walk(child)
-              }
-            }
-          }
-        }
-
-        walk(body)
+        })
 
         if (hasCleanupTarget && !hasReturn) {
           context.report({

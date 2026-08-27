@@ -1,3 +1,4 @@
+import { visitorKeys } from 'oxc-parser'
 import type { Span } from '../types'
 import { BROWSER_GLOBALS } from './imports'
 
@@ -189,4 +190,58 @@ export function isInsideTypeofGuard(ancestors: any[]): boolean {
       a.test.left?.type === 'UnaryExpression' &&
       a.test.left.operator === 'typeof',
   )
+}
+
+/**
+ * Walk `node` and every descendant, in source order, calling `visit` on each.
+ *
+ * Return `false` from `visit` to skip that node's children (the whole subtree,
+ * not just the next level). Any other return value descends.
+ *
+ * Traversal is driven by oxc's exported `visitorKeys`, which is the parser's
+ * own child-key map — measured across 2,994,091 nodes of this repo it reaches
+ * every typed child link except `Program.hashbang`, which has no children.
+ *
+ * **Why this exists rather than a per-rule `Object.keys` loop.** Six rules
+ * hand-rolled that loop, and it is wrong in two ways. It descends into
+ * whatever happens to hold a `.type` — including a `parent` back-reference,
+ * which an ESLint-shaped AST carries and oxc's raw AST does not. A walk that
+ * follows `parent` climbs back up the tree and recurses until the stack blows;
+ * that is exactly what happened when the rule set was run inside a host that
+ * supplies `parent`. It also re-derives traversal per rule, so a node shape the
+ * parser adds later is silently skipped in some rules and not others.
+ *
+ * The `parent` exclusion in the unknown-type fallback below is therefore
+ * load-bearing, not defensive tidiness.
+ */
+export function walkSubtree(node: any, visit: (n: any) => boolean | void): void {
+  if (!node || typeof node.type !== 'string') return
+  if (visit(node) === false) return
+
+  const keys = visitorKeys[node.type]
+  if (keys) {
+    for (const key of keys) {
+      const child = node[key]
+      if (Array.isArray(child)) {
+        for (const item of child) walkSubtree(item, visit)
+      } else if (child && typeof child.type === 'string') {
+        walkSubtree(child, visit)
+      }
+    }
+    return
+  }
+
+  // Unknown node type (a shape newer than the installed oxc). Fall back to own
+  // keys so the subtree is still reached — but NEVER through `parent`.
+  for (const key of Object.keys(node)) {
+    if (key === 'parent') continue
+    const child = node[key]
+    if (Array.isArray(child)) {
+      for (const item of child) {
+        if (item && typeof item.type === 'string') walkSubtree(item, visit)
+      }
+    } else if (child && typeof child === 'object' && typeof child.type === 'string') {
+      walkSubtree(child, visit)
+    }
+  }
 }

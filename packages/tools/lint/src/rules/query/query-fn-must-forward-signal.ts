@@ -1,5 +1,5 @@
 import type { Rule, VisitorCallbacks } from '../../types'
-import { getSpan } from '../../utils/ast'
+import { getSpan, walkSubtree } from '../../utils/ast'
 import { isPathExempt } from '../../utils/exempt-paths'
 import { isProjectDependency } from '../../utils/project-deps'
 
@@ -100,14 +100,7 @@ function scanBody(node: any): { mentionsSignal: boolean; requestCall: any | null
   let mentionsSignal = false
   let requestCall: any | null = null
 
-  const visit = (current: any): void => {
-    if (!current || typeof current !== 'object') return
-    if (Array.isArray(current)) {
-      for (const item of current) visit(item)
-      return
-    }
-    if (typeof current.type !== 'string') return
-
+  walkSubtree(node, (current) => {
     // Any mention of `signal` — as an identifier, a property key, or a
     // shorthand — is treated as intent to forward.
     if (
@@ -129,14 +122,7 @@ function scanBody(node: any): { mentionsSignal: boolean; requestCall: any | null
         requestCall = current
       }
     }
-
-    for (const key of Object.keys(current)) {
-      if (key === 'type' || key === 'span' || key === 'start' || key === 'end') continue
-      visit(current[key])
-    }
-  }
-
-  visit(node)
+  })
   return { mentionsSignal, requestCall }
 }
 
