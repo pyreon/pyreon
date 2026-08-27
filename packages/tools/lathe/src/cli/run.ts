@@ -195,6 +195,8 @@ function report(runs: RunOutcome[], argv: Argv, multi: boolean): RunResult {
       output: config.output,
       wrote,
       name: config.name,
+      plugins: config.plugins,
+      requestedPlugins: config.requestedPlugins,
     })
     if (argv.command === 'check' && stale.length > 0) {
       stdout += `\n  STALE: ${stale.length} generated file(s) differ from the spec:\n${stale

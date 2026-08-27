@@ -30,7 +30,14 @@ const C = {
 export function renderReport(
   result: GenerateResult,
   verify: VerifyReport,
-  opts: { target: string; output: string; wrote: number; name?: string | undefined },
+  opts: {
+    target: string
+    output: string
+    wrote: number
+    name?: string | undefined
+    plugins: readonly string[]
+    requestedPlugins: readonly string[]
+  },
 ): string {
   const lines: string[] = []
   const { doc } = result
@@ -42,6 +49,14 @@ export function renderReport(
   lines.push(
     `  ${doc.models.length} models  ${doc.operations.length} operations  ${C.dim(`target=${opts.target}`)}`,
   )
+  // Name what dependency expansion pulled in. A file set larger than the one
+  // you selected is confusing exactly once, and only if nobody says why.
+  const added = opts.plugins.filter((p) => !opts.requestedPlugins.includes(p))
+  if (added.length > 0) {
+    lines.push(
+      `  ${C.dim(`plugins: ${opts.requestedPlugins.join(', ')} (+${added.join(', +')} - required by them)`)}`,
+    )
+  }
   lines.push('')
 
   for (const f of result.files) lines.push(`  ${C.green('+')} ${opts.output}/${f.path}`)

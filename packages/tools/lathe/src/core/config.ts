@@ -28,6 +28,51 @@ export const ALL_PLUGINS: readonly PluginName[] = [
 export const DEFAULT_PLUGINS: readonly PluginName[] = ['schemas', 'client', 'queries']
 
 /**
+ * What each emitter's OUTPUT imports.
+ *
+ * These are not preferences, they are import edges in the emitted code:
+ * `queries/*.ts` imports from `endpoints/*.ts`, which imports the client;
+ * `components.tsx` imports the hooks; `mocks.ts` imports the client's
+ * transport seam. Selecting a plugin without what it imports produced files
+ * referencing modules that were never written -- output that looks complete
+ * and does not resolve.
+ *
+ * Resolved rather than REFUSED: someone asking for `components` wants
+ * browsable previews, and the hooks they are built from are an implementation
+ * detail of that answer. The report says what came along.
+ */
+export const PLUGIN_REQUIRES: Readonly<Record<PluginName, readonly PluginName[]>> = {
+  types: [],
+  schemas: [],
+  // An endpoint's `{ response }` clause names a schema.
+  client: ['schemas'],
+  queries: ['client'],
+  mocks: ['client'],
+  components: ['queries'],
+  // Scenarios key the preview components; the wrapper installs the mocks.
+  atlas: ['components', 'mocks'],
+}
+
+/**
+ * Expand a selection to include everything its output imports.
+ *
+ * Order-preserving and idempotent, so the emitted file set is stable: an
+ * unstable plugin order would reorder the report and, worse, the barrel.
+ */
+export function expandPlugins(selected: readonly PluginName[]): PluginName[] {
+  const out: PluginName[] = []
+  const seen = new Set<PluginName>()
+  const visit = (name: PluginName): void => {
+    if (seen.has(name)) return
+    seen.add(name)
+    for (const dep of PLUGIN_REQUIRES[name]) visit(dep)
+    out.push(name)
+  }
+  for (const name of selected) visit(name)
+  return out
+}
+
+/**
  * One generated client. Every field a single-project config takes, plus a name.
  *
  * Named after `@pyreon/atlas`'s `projects` for the same reason it has one: a
@@ -82,6 +127,14 @@ export interface LatheSection {
 export interface ResolvedConfig {
   /** Project name, or `''` for a single-project config. */
   name: string
+  /**
+   * Plugins the caller asked for, before dependency expansion.
+   *
+   * Kept so the report can show what came along rather than expanding
+   * silently -- a file set larger than the one you selected is confusing
+   * exactly once, and only if nobody says why.
+   */
+  requestedPlugins: readonly PluginName[]
   input: string
   output: string
   target: 'web' | 'multiplatform'
@@ -141,10 +194,11 @@ export function resolveConfig(section: LatheSection | undefined): ResolvedConfig
   }
   return {
     name: '',
+    requestedPlugins: plugins,
     input,
     output: section?.output ?? './src/gen',
     target: section?.target ?? 'web',
-    plugins,
+    plugins: expandPlugins(plugins),
     baseUrl: section?.baseUrl,
     strictNative: section?.strictNative ?? false,
   }

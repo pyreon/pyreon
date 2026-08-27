@@ -48,7 +48,7 @@ export function emitBarrel(doc: IrDocument, opts: { plugins: readonly string[] }
     for (const [tag] of byTag(doc)) lines.push(`export * from './queries/${tagFile(tag)}'`)
     lines.push(`export { keys } from './keys'`)
   }
-  if (has('components') || has('atlas')) lines.push(`export * from './components'`)
+  if (has('components')) lines.push(`export * from './components'`)
   if (has('mocks')) lines.push(`export { mockRoutes, routes as mockRouteTable } from './mocks'`)
   for (const l of lines) f.line(l)
   return f

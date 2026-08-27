@@ -211,14 +211,29 @@ lathe generate --plugins schemas          # just s.* schemas + types
 lathe generate --plugins schemas,mocks    # ...and deterministic fixtures
 ```
 
-| plugin | emits |
-| --- | --- |
-| `types` | plain TypeScript types, no runtime |
-| `schemas` | `@pyreon/validate` schemas + inferred types |
-| `client` | the `createHttp` client + one endpoint per operation |
-| `queries` | `useQuery` / `useMutation` hooks |
-| `mocks` | route table for `@pyreon/http`'s mock middleware |
-| `atlas` | workbench scenarios, one per enum value |
+| plugin | emits | needs |
+| --- | --- | --- |
+| `types` | plain TypeScript types, no runtime | — |
+| `schemas` | `@pyreon/validate` schemas + inferred types | — |
+| `client` | the `createHttp` client + one endpoint per operation | `schemas` |
+| `queries` | `useQuery` / `useMutation` hooks + `keys.ts` | `client` |
+| `mocks` | route table for `@pyreon/http`'s mock middleware | `client` |
+| `components` | one browsable preview per read operation | `queries` |
+| `atlas` | workbench scenarios + wrapper | `components`, `mocks` |
+
+The **needs** column is import edges in the emitted code, not preferences —
+`queries/*.ts` imports `endpoints/*.ts`, `components.tsx` imports the hooks. A
+selection is expanded to cover them rather than refused, and the report says
+what came along:
+
+```
+plugins: components (+schemas, +client, +queries - required by them)
+```
+
+**`components` does not depend on Atlas.** The previews are ordinary Pyreon
+components over the generated hooks — nothing in them is workbench-shaped, so
+a project that wants browsable data components without a workbench selects
+`components` and gets exactly that. The dependency runs one way only.
 
 `target: 'multiplatform'` is additive on top of whichever of these you picked —
 it adds the native LAYOUT for `client`/`queries`, so asking for `schemas` alone
