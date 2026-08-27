@@ -55,7 +55,14 @@ export function partition<T>(items: T[], n: number): T[][] {
   return out.filter((c) => c.length > 0)
 }
 
-function workerEntry(): string {
+/**
+ * Path to the worker entry, carrying this module's own extension.
+ *
+ * Exported for tests: whether the parallel path can actually RUN depends on
+ * which artifact is loaded, and a test that cannot tell the difference will
+ * happily pass while measuring the sequential path.
+ */
+export function _workerEntry(): string {
   // Resolve next to THIS module, carrying its own extension.
   //
   // The package is consumed two ways: workspace/dev resolves the `bun`
@@ -81,7 +88,7 @@ export async function lintAsync(options: LintOptions): Promise<LintResult> {
   if (workers === 0) return lint(options)
 
   const chunks = partition(run.files, workers)
-  const entry = workerEntry()
+  const entry = _workerEntry()
 
   /* v8 ignore start -- the worker spawn + post-worker merge run ONLY with the
      built .js worker entry: the src/.ts vitest env cannot load a .ts worker, so
@@ -113,9 +120,18 @@ export async function lintAsync(options: LintOptions): Promise<LintResult> {
       ),
     )
   } catch {
-    // A worker failed to start (no worker_threads, a bundling problem, a
-    // sandbox that forbids threads). Correctness beats speed: fall back rather
-    // than reporting a partial result as if it were complete.
+    // A worker failed to start. The dominant case is not exotic: loaded from
+    // SOURCE (the `bun` condition -> `src/*.ts`), the worker entry's
+    // extensionless imports are unresolvable to Node's ESM loader inside a
+    // worker, so every spawn fails and this path always runs. From the BUILT
+    // `lib/*.js` the imports are bundled and workers spawn normally.
+    //
+    // That asymmetry is why `_workerEntry` is exported: a test that cannot
+    // tell which artifact it loaded will pass while silently measuring the
+    // sequential path.
+    //
+    // Correctness beats speed either way: fall back rather than report a
+    // partial result as if it were complete.
     return lint(options)
   }
 

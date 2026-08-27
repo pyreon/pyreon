@@ -1,9 +1,9 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { lint } from '../lint'
-import { PARALLEL_FILE_THRESHOLD, lintAsync, partition, workerCountFor } from '../parallel'
+import { PARALLEL_FILE_THRESHOLD, _workerEntry, lintAsync, partition, workerCountFor } from '../parallel'
 import { lintSlice } from '../lint-worker'
 import { getPreset } from '../config/presets'
 
@@ -83,6 +83,18 @@ describe('lintAsync — same answer as lint()', () => {
     expect(workerCountFor(FILE_COUNT)).toBeGreaterThan(0)
   })
 
+  it('the SOURCE-loaded worker entry cannot spawn — so the specs below measure the fallback', () => {
+    // Stated rather than assumed. Loaded from `src/*.ts` the worker entry's
+    // extensionless imports are unresolvable to Node's ESM loader inside a
+    // worker, so `lintAsync` falls back and the equality spec below is
+    // comparing the sequential path with itself.
+    //
+    // That is worth PINNING rather than hiding: it is exactly the shape of a
+    // test that passes for the wrong reason. The real parallel path is
+    // covered by the built-artifact spec further down.
+    expect(_workerEntry()).toMatch(/lint-worker\.(ts|js)$/)
+  })
+
   it('produces identical results to the sequential path', async () => {
     const opts = { paths: [join(dir, 'src')] }
     const seq = lint(opts)
@@ -149,5 +161,44 @@ describe('lintSlice — the worker body, without spawning', () => {
       quiet: false,
     })
     expect(out.files).toHaveLength(0)
+  })
+})
+
+describe('the BUILT worker actually spawns', () => {
+  // The source path always falls back (see above), so without this the
+  // parallel driver would ship with zero real coverage of the path it exists
+  // for. Mirrors `bin-invokes-cli.test.ts`: exercise the artifact a consumer
+  // gets, and fail loudly if it is missing rather than skipping quietly.
+  const LIB_WORKER = join(import.meta.dirname, '..', '..', 'lib', 'lint-worker.js')
+
+  it.skipIf(!existsSync(LIB_WORKER))(
+    'loads lib/lint-worker.js in a real worker and returns results',
+    async () => {
+      const { Worker } = await import('node:worker_threads')
+      const file = join(dir, 'src', 'F0000.tsx')
+      const out = await new Promise<{ files: unknown[] }>((resolve, reject) => {
+        const w = new Worker(LIB_WORKER, {
+          workerData: {
+            files: [file],
+            config: getPreset('recommended'),
+            fix: false,
+            quiet: false,
+          },
+        })
+        w.once('message', (m) => {
+          resolve(m as { files: unknown[] })
+          void w.terminate()
+        })
+        w.once('error', reject)
+      })
+      expect(out.files).toHaveLength(1)
+    },
+  )
+
+  it('lib/lint-worker.js is built in this environment (the spec above is NOT skipped)', () => {
+    // A skipped suite must never masquerade as coverage. Bootstrap builds lib/.
+    expect(existsSync(LIB_WORKER), `missing ${LIB_WORKER} — run bun scripts/bootstrap.ts`).toBe(
+      true,
+    )
   })
 })
