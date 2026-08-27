@@ -110,10 +110,33 @@ function renderCell<TFeatures extends TableFeatures, TData extends RowData>(
   rowId: string,
   columnId: string,
 ): RenderedChild {
-  const cells = lookupVisibleCells(table, rowId)
-  const cell = cells.find((c) => c.column.id === columnId)
+  const cell = lookupCellByColumnId(table, rowId, columnId)
   if (cell == null) return null
   return flexRender(cell.column.columnDef.cell, cell.getContext())
+}
+
+/** The row's cell for `columnId`, looked up FRESH (the captured row goes stale
+ *  the moment the model rebuilds). Uses table-core's memoized by-id map — O(1),
+ *  and filtered to the SAME visible columns as `getVisibleCells` — when the
+ *  columnVisibility feature is registered; else an O(C) scan. This replaces a
+ *  per-cell `getVisibleCells().find(...)`, which was O(C²) per row (O(N·C²) on a
+ *  full render). Returns `undefined` when the row or column is absent. */
+function lookupCellByColumnId<TFeatures extends TableFeatures, TData extends RowData>(
+  table: Table<TFeatures, TData>,
+  rowId: string,
+  columnId: string,
+): Cell<TFeatures, TData, unknown> | undefined {
+  const row = table.getRowModel().rowsById[rowId]
+  if (row == null) return undefined
+  const byId = (
+    row as { getVisibleCellsByColumnId?: () => Record<string, Cell<TFeatures, TData, unknown>> }
+  ).getVisibleCellsByColumnId
+  if (typeof byId === 'function') return byId.call(row)[columnId]
+  // Fallback for a table built from a minimal feature set (no columnVisibility).
+  const withVisible = row as { getVisibleCells?: () => VisibleCells<TFeatures, TData> }
+  const cells =
+    typeof withVisible.getVisibleCells === 'function' ? withVisible.getVisibleCells() : row.getAllCells()
+  return cells.find((c) => c.column.id === columnId)
 }
 
 /** The current visible cells of a row, looked up FRESH from the row model (the
