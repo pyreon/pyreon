@@ -66,8 +66,8 @@ function lintWithRuleEnabled(ruleId: string, source: string, filePath?: string) 
 // ── Rule Metadata ───────────────────────────────────────────────────────────
 
 describe('Rule metadata', () => {
-  it('should have 99 rules', () => {
-    expect(allRules.length).toBe(99)
+  it('should have 98 rules', () => {
+    expect(allRules.length).toBe(98)
   })
 
   it('should have unique rule IDs', () => {
@@ -117,7 +117,9 @@ describe('Rule metadata', () => {
     expect(counts.reactivity).toBe(15)
     expect(counts.jsx).toBe(11)
     expect(counts.lifecycle).toBe(6)
-    expect(counts.performance).toBe(6)
+    // 5 after `no-large-for-without-by` was removed as a byte-identical
+    // duplicate of `jsx/no-missing-for-by` (both fired on one `<For>`).
+    expect(counts.performance).toBe(5)
     expect(counts.ssr).toBe(5)
     expect(counts.architecture).toBe(11)
     expect(counts.store).toBe(3)
@@ -137,7 +139,7 @@ describe('Rule metadata', () => {
     // HTTP-transport best practices.
     expect(counts.http).toBe(2)
     const total = Object.values(counts).reduce((a, b) => a + b, 0)
-    expect(total).toBe(99)
+    expect(total).toBe(98)
   })
 })
 
@@ -994,22 +996,6 @@ describe('Performance rules', () => {
     const result = lintWith(
       'pyreon/no-effect-in-for',
       `effect(() => {})\nconst App = () => <For each={items}>{r => <li />}</For>`,
-    )
-    expect(result.diagnostics.length).toBe(0)
-  })
-
-  it('pyreon/no-large-for-without-by: flags <For> without by prop', () => {
-    const result = lintWith(
-      'pyreon/no-large-for-without-by',
-      `const App = () => <For each={items}>{r => <li />}</For>`,
-    )
-    expect(result.diagnostics.length).toBe(1)
-  })
-
-  it('pyreon/no-large-for-without-by: clean with by prop', () => {
-    const result = lintWith(
-      'pyreon/no-large-for-without-by',
-      `const App = () => <For each={items} by={r => r.id}>{r => <li />}</For>`,
     )
     expect(result.diagnostics.length).toBe(0)
   })
@@ -2065,7 +2051,7 @@ describe('Ignore filter', () => {
 describe('Presets', () => {
   it('recommended should include all rules (opt-in ones forced off)', () => {
     const config = getPreset('recommended')
-    expect(Object.keys(config.rules).length).toBe(99)
+    expect(Object.keys(config.rules).length).toBe(98)
     // Opt-in best-practice rules are present as keys but disabled.
     for (const rule of allRules) {
       if (rule.meta.optIn === true) {

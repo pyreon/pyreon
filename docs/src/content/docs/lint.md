@@ -1,6 +1,6 @@
 ---
 title: '@pyreon/lint'
-description: Pyreon-specific linter — 99 rules across 19 categories for signals, JSX, lifecycle, SSR, performance, architecture, routing, SSG, and opt-in best practices (frontend a11y/CLS, query/rx/form/i18n/router/storage library usage). CLI, programmatic API, watch mode, AST cache, and an LSP server.
+description: Pyreon-specific linter — 98 rules across 19 categories for signals, JSX, lifecycle, SSR, performance, architecture, routing, SSG, and opt-in best practices (frontend a11y/CLS, query/rx/form/i18n/router/storage library usage). CLI, programmatic API, watch mode, AST cache, and an LSP server.
 ---
 
 `@pyreon/lint` is a framework-specific linter that catches Pyreon anti-patterns at the AST level — bare signal reads in JSX, props destructuring that breaks reactivity, browser globals in SSR code, bundler-coupled dev gates, and dozens more. It is powered by [`oxc-parser`](https://oxc.rs) for fast ESTree/TS-ESTree parsing, ships a CLI (`pyreon-lint`), a programmatic API (`lint` / `lintFile`), watch mode, an AST cache, and an LSP server for editor integration.
@@ -332,7 +332,7 @@ Library-scoped opt-in rules — `query`, `rx`, `i18n`, `storage`, form's `no-sig
 
 ## Rules
 
-There are **99 rules across 19 categories**. The `frontend`, `query`, `rx`, `i18n`, and `storage` categories (plus the two opt-in rules in `form` and `router`) are opt-in best-practice rules — off in the standard presets. Run `pyreon-lint --list` for the authoritative list with live severities.
+There are **98 rules across 19 categories**. The `frontend`, `query`, `rx`, `i18n`, and `storage` categories (plus the two opt-in rules in `form` and `router`) are opt-in best-practice rules — off in the standard presets. Run `pyreon-lint --list` for the authoritative list with live severities.
 
 ### Categories at a glance
 
@@ -392,7 +392,7 @@ Opt-in (`ᵒ`) rules below are off in `recommended`/`strict`/`app`/`lib` — ena
 | `pyreon/no-ternary-conditional` | warn     |         | Use `<Show>` instead of ternary               |
 | `pyreon/no-and-conditional`     | warn     |         | Use `<Show>` instead of `&&`                  |
 | `pyreon/no-index-as-by`         | warn     |         | Index keys cause reconciliation bugs          |
-| `pyreon/no-missing-for-by`      | warn     |         | `<For>` without `by` uses index-based diffing |
+| `pyreon/no-missing-for-by`      | error    |         | `<For>` without `by` defeats keyed reconciliation |
 | `pyreon/no-children-access`     | info     |         | Raw `props.children` in renderer files        |
 
 ### Lifecycle (6)
@@ -410,7 +410,6 @@ Opt-in (`ᵒ`) rules below are off in `recommended`/`strict`/`app`/`lib` — ena
 
 | Rule                                    | Severity | Description                                                            |
 | --------------------------------------- | -------- | ---------------------------------------------------------------------- |
-| `pyreon/no-large-for-without-by`        | error    | `<For>` without `by` — O(n) reconciliation                             |
 | `pyreon/no-effect-in-for`               | warn     | `effect()` inside `<For>` creates N effects                            |
 | `pyreon/no-heavy-import-only-in-handler`| warn     | Heavy module imported statically but used only in a deferred scope — use a dynamic `import()` |
 | `pyreon/promise-race-needs-cleartimeout`| warn     | `Promise.race([work, setTimeout-reject])` without `clearTimeout` in `finally` leaks the timer |
