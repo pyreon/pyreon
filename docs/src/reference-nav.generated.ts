@@ -61,6 +61,10 @@ export const REFERENCE_GROUPS: SidebarGroup[] = [
         "slug": "reference/kinetic-presets"
       },
       {
+        "text": "lathe",
+        "slug": "reference/lathe"
+      },
+      {
         "text": "loom",
         "slug": "reference/loom"
       },

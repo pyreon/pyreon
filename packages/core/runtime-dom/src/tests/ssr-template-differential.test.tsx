@@ -523,6 +523,102 @@ const cases: DiffCase[] = [
     },
     oracle: (deps) => h('div', null, h(deps.Prov as never, null), h(deps.After as never, null)),
   },
+  // ── Conditional DOM-element lowering (`cond && <el>` / `cond ? <el> : …`) ──
+  // The TAKEN branch builds a string via `_ssr` instead of allocating a VNode +
+  // walking `renderNode`. Byte-identity must hold for BOTH branch values, so
+  // every shape is tested `true` AND `false`. A SOLE conditional child elides
+  // markers (`_escSole`), so its oracle uses the eager value form; a NON-sole
+  // one is wrapped by the h() path → `<!--$-->…<!--/$-->`, so its oracle uses
+  // the accessor form (same convention as the async-<For> case above). A
+  // component-branch or non-element operand stays on h() (bail catalogue).
+  {
+    name: 'cond && <el> sole — taken',
+    src: `const Node = <div>{on && <span class="badge">{x}</span>}</div>`,
+    deps: { on: true, x: 5 },
+    oracle: (d) => h('div', null, (d.on as boolean) && h('span', { class: 'badge' }, d.x as number)),
+  },
+  {
+    name: 'cond && <el> sole — not taken',
+    src: `const Node = <div>{on && <span class="badge">{x}</span>}</div>`,
+    deps: { on: false, x: 5 },
+    oracle: (d) => h('div', null, (d.on as boolean) && h('span', { class: 'badge' }, d.x as number)),
+  },
+  {
+    name: 'cond ? <el> : null — taken',
+    src: `const Node = <div>{on ? <span>{x}</span> : null}</div>`,
+    deps: { on: true, x: 'hi & <ok>' },
+    oracle: (d) => h('div', null, (d.on as boolean) ? h('span', null, d.x as string) : null),
+  },
+  {
+    name: 'cond ? <el> : null — not taken',
+    src: `const Node = <div>{on ? <span>{x}</span> : null}</div>`,
+    deps: { on: false, x: 'hi & <ok>' },
+    oracle: (d) => h('div', null, (d.on as boolean) ? h('span', null, d.x as string) : null),
+  },
+  {
+    name: 'cond ? <a> : <b> — consequent',
+    src: `const Node = <div>{on ? <b>{x}</b> : <i>{y}</i>}</div>`,
+    deps: { on: true, x: 1, y: 2 },
+    oracle: (d) => h('div', null, (d.on as boolean) ? h('b', null, d.x as number) : h('i', null, d.y as number)),
+  },
+  {
+    name: 'cond ? <a> : <b> — alternate',
+    src: `const Node = <div>{on ? <b>{x}</b> : <i>{y}</i>}</div>`,
+    deps: { on: false, x: 1, y: 2 },
+    oracle: (d) => h('div', null, (d.on as boolean) ? h('b', null, d.x as number) : h('i', null, d.y as number)),
+  },
+  {
+    // NON-sole but PLAIN vars: `shouldWrap` is false (no signal read), so the h()
+    // path emits an EAGER value child — no `<!--$-->` markers. The fast path
+    // matches (`_esc(on && _ssr(...))`, markers NOT baked). Oracle is eager.
+    name: 'cond && <el> non-sole, plain vars (no markers) — taken',
+    src: `const Node = <div><h1>t</h1>{on && <span>{x}</span>}</div>`,
+    deps: { on: true, x: 'z' },
+    oracle: (d) => h('div', null, h('h1', null, 't'), (d.on as boolean) && h('span', null, d.x as string)),
+  },
+  {
+    name: 'cond && <el> non-sole, plain vars (no markers) — not taken',
+    src: `const Node = <div><h1>t</h1>{on && <span>{x}</span>}</div>`,
+    deps: { on: false, x: 'z' },
+    oracle: (d) => h('div', null, h('h1', null, 't'), (d.on as boolean) && h('span', null, d.x as string)),
+  },
+  {
+    // NON-sole with a SIGNAL read: `shouldWrap` is true, so the h() path wraps
+    // the child in an accessor → `<!--$-->…<!--/$-->`. The fast path bakes the
+    // SAME markers into the statics AND lowers the element — this is the case
+    // that exercises the marker interaction with the lowering. Oracle uses the
+    // accessor form so `renderNode` emits the markers (async-<For> convention).
+    name: 'cond && <el> non-sole, signal (markers) — taken',
+    src: `const Node = <div><h1>t</h1>{count() > 0 && <span>{count()}</span>}</div>`,
+    deps: { count: signal(3) },
+    oracle: (d) => {
+      const count = d.count as () => number
+      return h('div', null, h('h1', null, 't'), () => count() > 0 && h('span', null, count()))
+    },
+  },
+  {
+    name: 'cond && <el> non-sole, signal (markers) — not taken',
+    src: `const Node = <div><h1>t</h1>{count() > 0 && <span>{count()}</span>}</div>`,
+    deps: { count: signal(0) },
+    oracle: (d) => {
+      const count = d.count as () => number
+      return h('div', null, h('h1', null, 't'), () => count() > 0 && h('span', null, count()))
+    },
+  },
+  {
+    name: 'nested conditional element lowering — inner taken',
+    src: `const Node = <div>{on && <span class="w">{q ? <b>{x}</b> : null}</span>}</div>`,
+    deps: { on: true, q: true, x: 'deep' },
+    oracle: (d) =>
+      h('div', null, (d.on as boolean) && h('span', { class: 'w' }, (d.q as boolean) ? h('b', null, d.x as string) : null)),
+  },
+  {
+    name: 'nested conditional element lowering — inner not taken',
+    src: `const Node = <div>{on && <span class="w">{q ? <b>{x}</b> : null}</span>}</div>`,
+    deps: { on: true, q: false, x: 'deep' },
+    oracle: (d) =>
+      h('div', null, (d.on as boolean) && h('span', { class: 'w' }, (d.q as boolean) ? h('b', null, d.x as string) : null)),
+  },
 ]
 
 /**
@@ -599,6 +695,30 @@ describe('SSR fast path — a prefilled <textarea> renders its value as CONTENT'
       expect(html).not.toContain('value=')
     })
   }
+})
+
+describe('SSR fast path — conditional DOM-element operand is lowered (optimization fired)', () => {
+  const lowered: Array<[string, string]> = [
+    ['cond && <el> sole', `const N = <div>{on && <span class="badge">{x}</span>}</div>`],
+    ['cond ? <el> : null', `const N = <div>{on ? <span>{x}</span> : null}</div>`],
+    ['cond ? <a> : <b>', `const N = <div>{on ? <b>{x}</b> : <i>{y}</i>}</div>`],
+    ['cond && <el> non-sole', `const N = <div><h1>t</h1>{on && <span>{x}</span>}</div>`],
+  ]
+  for (const [name, src] of lowered) {
+    it(`lowers the branch element to a nested _ssr: ${name}`, () => {
+      const { code } = transformJSX_JS(src, 'case.tsx', { ssr: true, ssrTemplate: true })
+      // The branch element became `_ssr([...])` INSIDE the `_escSole`/`_esc`
+      // hole — i.e. an `_ssr(` that is NOT the root call. Two `_ssr(` occurrences
+      // (root + lowered branch) is the tell; the pre-change emit had exactly one.
+      const n = (code.match(/_ssr\(/g) ?? []).length
+      expect(n).toBeGreaterThanOrEqual(2)
+    })
+  }
+  it('does NOT lower a component-child branch (stays a VNode)', () => {
+    const { code } = transformJSX_JS(`const N = <div>{on && <Comp>{x}</Comp>}</div>`, 'c.tsx', { ssr: true, ssrTemplate: true })
+    expect(code).toContain('<Comp>')
+    expect((code.match(/_ssr\(/g) ?? []).length).toBe(1)
+  })
 })
 
 describe('SSR fast path — byte-identical to h() (compiled → eval → render)', () => {

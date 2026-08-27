@@ -113,6 +113,21 @@ const SUITES: Suite[] = [
     ],
   },
   {
+    name: 'lathe',
+    script: 'test:e2e:lathe',
+    triggers: [
+      ...RENDER_CORE,
+      'packages/tools/lathe/',
+      // The generator emits against these surfaces, so a change to any of
+      // them can break generated code without touching lathe itself.
+      'packages/fundamentals/http/',
+      'packages/fundamentals/query/',
+      'packages/fundamentals/validate/',
+      'examples/lathe-bookshelf/',
+      'e2e/lathe-bookshelf.spec.ts',
+    ],
+  },
+  {
     name: 'compat',
     script: 'test:e2e:compat',
     triggers: [

@@ -1064,6 +1064,7 @@ const WEB_ONLY_PACKAGES: ReadonlyMap<string, string> = new Map([
   ['@pyreon/document-primitives', "document-authoring primitives feeding the pdfmake/docx renderers"],
   ['@pyreon/flow', "SVG rendering (the layout engine itself is pure and platform-free); consume on native via the `<WebView>` bridge subpath"],
   ['@pyreon/head', "document `<head>` management — no equivalent surface exists on iOS/Android"],
+  ['@pyreon/lathe', "the code generator — build-time tooling that emits app code, not app runtime itself"],
   ['@pyreon/lint', "lint tooling — runs at dev time, not app runtime"],
   ['@pyreon/loom', "the dependency observatory — dev tooling, not app runtime"],
   ['@pyreon/mcp', "the MCP server — dev/AI tooling, not app runtime"],
