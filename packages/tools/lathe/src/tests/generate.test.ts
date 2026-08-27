@@ -257,8 +257,18 @@ describe('generate', () => {
   it('honours the plugin selection', () => {
     // `index.ts` is the barrel and rides along with any selection -- one
     // import site is useful whether you asked for schemas or the whole client.
+    //
+    // `api-surface.json` also rides along, and unconditionally: it is not an
+    // emitter's output but the record of what the run promised, and a
+    // schemas-only run still changed the contract if a model moved. The
+    // invariant this spec protects — no CLIENT CODE you did not ask for — is
+    // asserted below on the code files.
     const only = generate(SPEC, resolveConfig({ input: 'x', plugins: ['schemas'] }))
-    expect(only.files.map((f) => f.path)).toEqual(['schemas.ts', 'index.ts'])
+    expect(only.files.map((f) => f.path)).toContain('api-surface.json')
+    expect(only.files.filter((f) => f.path.endsWith('.ts')).map((f) => f.path)).toEqual([
+      'schemas.ts',
+      'index.ts',
+    ])
   })
 
   it('the native LAYOUT follows the plugin selection too', () => {
@@ -266,7 +276,13 @@ describe('generate', () => {
     // separate output. Emitting them unconditionally meant asking for schemas
     // only still produced a client and a data component.
     const schemasOnly = generate(SPEC, resolveConfig({ input: 'x', target: 'multiplatform', plugins: ['schemas'] }))
-    expect(schemasOnly.files.map((f) => f.path)).toEqual(['schemas.ts', 'index.ts'])
+    // The invariant is "no native module", which is what this asserts directly
+    // rather than through an exact file list that a non-emitter output moves.
+    expect(schemasOnly.files.filter((f) => f.path.endsWith('.native.tsx'))).toEqual([])
+    expect(schemasOnly.files.filter((f) => f.path.endsWith('.ts')).map((f) => f.path)).toEqual([
+      'schemas.ts',
+      'index.ts',
+    ])
 
     const withClient = generate(SPEC, resolveConfig({ input: 'x', target: 'multiplatform', plugins: ['client'] }))
     expect(withClient.files.some((f) => f.path.endsWith('.native.tsx'))).toBe(true)

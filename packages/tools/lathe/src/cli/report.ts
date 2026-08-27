@@ -8,6 +8,7 @@
  */
 
 import type { GenerateResult } from '../core/generate'
+import type { SurfaceChange } from '../core/surface'
 import type { IrNote } from '../core/ir'
 import type { VerifyReport } from '../verify/lower'
 
@@ -27,6 +28,9 @@ const C = {
   cyan: paint('36'),
 }
 
+/** How many contract changes to print before summarising the rest. */
+const MAX_CHANGES = 20
+
 export function renderReport(
   result: GenerateResult,
   verify: VerifyReport,
@@ -38,6 +42,8 @@ export function renderReport(
     changed?: ReadonlySet<string> | undefined
     /** The subset of `changed` that is NEW rather than updated. */
     created?: ReadonlySet<string> | undefined
+    /** Contract changes vs the committed surface. */
+    changes?: readonly SurfaceChange[] | undefined
     name?: string | undefined
     plugins: readonly string[]
     requestedPlugins: readonly string[]
@@ -88,6 +94,31 @@ export function renderReport(
       : `  ${opts.wrote} of ${result.files.length} file(s) written` +
         (changed.size === 0 ? C.dim('  (everything already current)') : ''),
   )
+
+  // The contract section. Placed BEFORE the native report because a breaking
+  // change is the most consequential thing a run can tell you, and a reader
+  // who stops early should have seen it.
+  const changes = opts.changes ?? []
+  if (changes.length > 0) {
+    const breaking = changes.filter((c) => c.severity === 'breaking')
+    lines.push('')
+    lines.push(
+      `  ${C.bold('contract')}  ${
+        breaking.length > 0
+          ? C.red(`${breaking.length} breaking`)
+          : C.green('no breaking changes')
+      }${C.dim(`  ${changes.length - breaking.length} additive`)}`,
+    )
+    for (const c of changes.slice(0, MAX_CHANGES)) {
+      const mark = c.severity === 'breaking' ? C.red('!') : C.dim('+')
+      lines.push(`    ${mark} ${C.dim(`[${c.code}]`)} ${c.subject} ${C.dim(c.detail)}`)
+    }
+    if (changes.length > MAX_CHANGES) {
+      // Never truncate SILENTLY: a capped list that does not say it was capped
+      // reads as a complete one.
+      lines.push(`    ${C.dim(`… and ${changes.length - MAX_CHANGES} more (use --json for all)`)}`)
+    }
+  }
 
   if (opts.target === 'multiplatform') {
     const reaches = [...result.reach.values()]
