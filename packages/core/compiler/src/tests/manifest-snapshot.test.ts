@@ -45,6 +45,7 @@ describe('gen-docs — compiler snapshot', () => {
       'compiler/transformDeferInline',
       'compiler/transformJSX',
       'compiler/transformJSX_JS',
+      'compiler/transformPlain',
     ])
   })
 

@@ -224,6 +224,17 @@ const { code, warnings } = transformJSX(
   { knownSignals: ["count"] },
 )
 
+import { transformPlain } from "@pyreon/compiler"
+
+const result = transformPlain(
+  `'use plain'
+import { state } from '@pyreon/core/plain'
+let count = state(0)
+export const inc = () => { count = count + 1 }`,
+  "store.ts",
+)
+// result.code: const count = signal(0) … count.set(count() + 1)
+
 import { transformJSX_JS } from "@pyreon/compiler"
 
 // Backend-deterministic — never dispatches to the native binary.

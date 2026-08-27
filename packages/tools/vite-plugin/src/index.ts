@@ -35,7 +35,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join as pathJoin } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import {
+import { detectPlain,
   type CollapsibleSite,
   generateContext,
   scanCollapsibleSites,
@@ -1079,7 +1079,15 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       }
 
       const ext = getExt(id)
-      if (ext !== '.tsx' && ext !== '.jsx' && ext !== '.pyreon') return
+      // Plain Mode: a `.ts` module carrying the `'use plain'` directive or a
+      // `@pyreon/core/plain` import (the store-module shape — no JSX, so it
+      // would never match the JSX extensions) must still run through
+      // `transformJSX`, whose plain pre-pass rewrites the markers. Without
+      // this, `state()` reaches the runtime and throws its did-not-compile
+      // error. Gated on a cheap string check so ordinary `.ts` files pay one
+      // `includes` call and nothing else.
+      const isPlainTs = (ext === '.ts' || ext === '.mts') && detectPlain(code)
+      if (ext !== '.tsx' && ext !== '.jsx' && ext !== '.pyreon' && !isPlainTs) return
 
       // In compat mode, skip Pyreon's reactive JSX transform but apply
       // attribute renames (className → class, htmlFor → for) so source code
@@ -2905,12 +2913,30 @@ function scanSignalExports(
     signals.add(match[1]!)
   }
 
+  // Plain Mode: `export let x = state(...)` / `export const d = derived(...)`
+  // compile to exported signals, so importers need them in the registry for
+  // cross-module auto-call. GATED on the module actually being plain — a
+  // classic module with its own `state()` helper must not be misregistered
+  // (a false registry entry would auto-call a non-signal in every importer).
+  if (detectPlain(code)) {
+    const PLAIN_EXPORT_RE = /export\s+(?:let|const|var)\s+(\w+)\s*=\s*(?:state|derived)\s*[<(]/g
+    while ((match = PLAIN_EXPORT_RE.exec(code)) !== null) {
+      signals.add(match[1]!)
+    }
+  }
+
   // Pattern 2: const x = signal(...) followed by export { x }
   // First, find all local `const x = signal(` or `const x = computed(` declarations
   const localSignals = new Set<string>()
   const LOCAL_SIGNAL_RE = /(?:^|[\s;])const\s+(\w+)\s*=\s*(?:signal|computed)\s*[<(]/gm
   while ((match = LOCAL_SIGNAL_RE.exec(code)) !== null) {
     localSignals.add(match[1]!)
+  }
+  if (detectPlain(code)) {
+    const PLAIN_LOCAL_RE = /(?:^|[\s;])(?:let|const|var)\s+(\w+)\s*=\s*(?:state|derived)\s*[<(]/gm
+    while ((match = PLAIN_LOCAL_RE.exec(code)) !== null) {
+      localSignals.add(match[1]!)
+    }
   }
 
   // Then check named exports: export { x, y as z }
