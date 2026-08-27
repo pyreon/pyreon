@@ -33,7 +33,7 @@
   "@pyreon/machine": 1150,
   "@pyreon/mcp": 348160,
   "@pyreon/meta": 1536,
-  "@pyreon/native-cli": 9984,
+  "@pyreon/native-cli": 10240,
   "@pyreon/native-compiler": 159744,
   "@pyreon/permissions": 1536,
   "@pyreon/preact-compat": 1280,
