@@ -1671,10 +1671,10 @@ function collectHttpClients(body: AnyNode[], ctx: ParseCtx): void {
       let baseUrl = ''
       const v = readObjectProp(cfg, 'baseUrl')
       if (v !== undefined) {
-        baseUrl =
-          (v.type === 'Literal' || v.type === 'StringLiteral') && typeof v.value === 'string'
-            ? v.value
-            : HTTP_NONLITERAL_BASEURL
+        // A module-scope `const API_BASE = '…'` shared across the app is how an
+        // http client is normally written, and its value is just as known at
+        // build time as an inline string.
+        baseUrl = staticStringArg(v, ctx) ?? HTTP_NONLITERAL_BASEURL
       }
       ctx.httpClientBaseUrls.set(name, baseUrl)
     }
@@ -1834,7 +1834,7 @@ function resolveEndpointParts(
   const baseUrl = ctx.httpClientBaseUrls.get(def.clientName)
   if (baseUrl === undefined || baseUrl === HTTP_NONLITERAL_BASEURL) {
     ctx.warnings.push(
-      `endpoint ${endpointName}: native lowering needs a LITERAL baseUrl on client ${def.clientName} (\`createHttp({ baseUrl: '/api' })\`) — a computed baseUrl can't be baked into the URL at compile time, so this call stays web.`,
+      `endpoint ${endpointName}: native lowering needs a LITERAL baseUrl on client ${def.clientName} (\`createHttp({ baseUrl: '/api' })\`) — a computed baseUrl can't be baked into the URL at compile time, so this call stays web. A module-scope \`const\` holding the string works too.`,
     )
     return null
   }
@@ -2849,16 +2849,15 @@ function tryStoreDefnFromTopLevel(
   const args = (init.arguments as AnyNode[]) ?? []
   if (args.length < 2) return null
   const idArg = args[0]
-  if (
-    idArg?.type !== 'Literal' ||
-    typeof idArg.value !== 'string'
-  ) {
+  // A module-scope `const` resolves — a store id named once and shared with
+  // whatever else keys off it is ordinary, and just as known at build time.
+  const storeId = staticStringArg(idArg, ctx)
+  if (storeId === null) {
     ctx.warnings.push(
-      `defineStore declaration \`${hookName}\`: first argument must be a string literal id. Falling back to silent-drop.`,
+      `defineStore declaration \`${hookName}\`: the id must be statically known — an inline string, or a module-scope \`const\` holding one. Falling back to silent-drop.`,
     )
     return null
   }
-  const storeId = idArg.value
 
   // Arg 2: arrow function with a block body returning an object literal.
   const setup = args[1]
@@ -6826,18 +6825,16 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       resolvedUrl = resolved.url
       resolvedEndpoint = resolved
     }
-    if (
-      resolvedUrl === undefined &&
-      (!urlArg ||
-        (urlArg.type !== 'Literal' && urlArg.type !== 'StringLiteral') ||
-        typeof urlArg.value !== 'string')
-    ) {
+    // A module-scope `const` counts: naming an endpoint once and reusing it is
+    // ordinary, and the value is as known at build time as an inline string.
+    const constUrl = resolvedUrl === undefined ? staticStringArg(urlArg, ctx) : null
+    if (resolvedUrl === undefined && constUrl === null) {
       ctx.warnings.push(
-        `Declaration ${name}: useFetch url argument must be a string literal; got ${urlArg?.type ?? 'nothing'}.`,
+        `Declaration ${name}: useFetch needs a statically-known url — an inline string, or a module-scope \`const\` holding one. The url is BAKED into the native request, so a computed one cannot be resolved at build time. Got ${urlArg?.type ?? 'nothing'}.`,
       )
       return null
     }
-    const url = resolvedUrl ?? (urlArg.value as string)
+    const url = resolvedUrl ?? (constUrl as string)
     // No generic -> TypeIR `unknown` -> Swift emits `decode(Any.self, ...)`,
     // which does NOT compile: `Any` cannot conform to Decodable. Kotlin is
     // unaffected, so this is a Swift-only silent break, and the device-proven

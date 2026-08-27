@@ -23,3 +23,9 @@ one too. All three already warned by name rather than dropping — the right tie
 but "must be a string LITERAL" was never the actual requirement. Statically
 KNOWABLE is, and a module-scope const is. What still cannot be known keeps
 warning, now saying so in those terms.
+
+`useFetch`'s url, `createHttp`'s `baseUrl` and `defineStore`'s id take one too.
+That last group is how an app is normally written — an API base named once and
+shared, an endpoint constant reused, a store id keyed off elsewhere — and
+`createHttp({ baseUrl: API_BASE })` previously made every endpoint on that
+client decline, which is `@pyreon/http`'s whole native crossing surface.

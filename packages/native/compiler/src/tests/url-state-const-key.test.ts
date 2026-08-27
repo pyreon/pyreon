@@ -121,3 +121,57 @@ describe('other baked-string hooks accept a module-scope const', () => {
     expect(r.code).toContain('"en"')
   })
 })
+
+/**
+ * The last three baked-string sites. `useFetch`'s url and `defineStore`'s id
+ * warned by name; `createHttp`'s baseUrl warned via the endpoint that could not
+ * resolve. All three are shapes an app writes with a shared constant — an API
+ * base named once, an endpoint reused, a store id keyed off elsewhere.
+ */
+describe('url / id sites accept a module-scope const', () => {
+  const P2 = '@pyreon/primitives'
+
+  it('useFetch resolves a const url and bakes the VALUE', () => {
+    const r = transform(
+      `import { useFetch } from '@pyreon/hooks'
+import { Stack, Text } from '${P2}'
+const QUOTES = 'https://example.com/q.json'
+export function C() {
+  const q = useFetch<string>(QUOTES)
+  return <Stack><Text>x</Text></Stack>
+}`,
+      { target: 'kotlin' },
+    )
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('"https://example.com/q.json"')
+  })
+
+  it('useFetch still refuses a url it cannot know', () => {
+    const r = transform(
+      `import { useFetch } from '@pyreon/hooks'
+import { Stack, Text } from '${P2}'
+export function C() {
+  const q = useFetch<string>(buildUrl())
+  return <Stack><Text>x</Text></Stack>
+}`,
+      { target: 'kotlin' },
+    )
+    expect(r.warnings.some((w) => w.includes('statically-known url'))).toBe(true)
+  })
+
+  it('defineStore resolves a const id', () => {
+    const r = transform(
+      `import { defineStore } from '@pyreon/store'
+import { signal } from '@pyreon/reactivity'
+import { Stack, Text } from '${P2}'
+const STORE_ID = 'app'
+const useApp = defineStore(STORE_ID, () => { const n = signal(1); return { n } })
+export function C() {
+  const s = useApp()
+  return <Stack><Text>{String(s.store.n())}</Text></Stack>
+}`,
+      { target: 'kotlin' },
+    )
+    expect(r.warnings).toEqual([])
+  })
+})

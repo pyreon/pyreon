@@ -198,21 +198,46 @@ export function S() {
     expect(w.some((m) => m.includes('url argument must be a string literal'))).toBe(false)
   })
 
-  it('warns on a non-literal baseUrl — no compile-time URL to resolve', () => {
+  it('warns on an UNRESOLVABLE baseUrl — no compile-time URL to bake', () => {
+    // The fixture used to be `const base = '/api'`, which now RESOLVES — a
+    // module-scope const holding a string is as known at build time as an
+    // inline one, and sharing an API base that way is how this is normally
+    // written. The invariant is unchanged: a baseUrl that genuinely cannot be
+    // known must warn rather than silently mis-lower, so the fixture moved to a
+    // value that genuinely cannot be.
     const DYNAMIC = `
 import { createHttp } from '@pyreon/http'
 import { useFetch } from '@pyreon/query'
 import { Stack, Text } from '${P}'
 interface User { id: string }
-const base = '/api'
-const api = createHttp({ baseUrl: base })
+const api = createHttp({ baseUrl: resolveBase() })
 const getUser = api.endpoint('GET /users/:id')
 export function S() {
   const user = useFetch<User>(getUser({ params: { id: '1' } }))
   return <Stack><Text>{user.data()?.id ?? ''}</Text></Stack>
 }
 `
-    expect(swift(DYNAMIC).warnings.some((m) => m.includes('needs a LITERAL baseUrl'))).toBe(true)
+    expect(swift(DYNAMIC).warnings.some((m) => m.includes('LITERAL baseUrl'))).toBe(true)
+  })
+
+  it('a module-scope const baseUrl resolves and bakes the full URL', () => {
+    const CONST_BASE = `
+import { createHttp } from '@pyreon/http'
+import { useFetch } from '@pyreon/query'
+import { Stack, Text } from '${P}'
+interface User { id: string }
+const API_BASE = 'https://api.example.com'
+const api = createHttp({ baseUrl: API_BASE })
+const getUser = api.endpoint('GET /users/:id')
+export function S() {
+  const user = useFetch<User>(getUser({ params: { id: '1' } }))
+  return <Stack><Text>{user.data()?.id ?? ''}</Text></Stack>
+}
+`
+    const r = swift(CONST_BASE)
+    expect(r.warnings).toEqual([])
+    // The RESOLVED base, joined with the endpoint path — not the identifier.
+    expect(r.code).toContain('https://api.example.com/users/1')
   })
 
   it('lowers the `.query()` fetcher form to PyreonQuery (resolved url + method:url queryKey)', () => {
