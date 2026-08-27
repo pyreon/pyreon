@@ -23,24 +23,77 @@ import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWit
 const EXAMPLES = join(import.meta.dirname, '../../../../../examples')
 
 function nativeExampleApps(): Array<[string, string]> {
-  const out: Array<[string, string]> = []
+  // Discovery reads each example's own BUILD SCRIPT, which is the ground truth
+  // for what PMTC compiles there. Matching a filename convention instead is a
+  // guess, and the first cut of this file proved it: `*App.tsx` silently missed
+  // `native-counter-ios/src/Counter.tsx` — the same list-disagrees-with-reality
+  // hole this file exists to close, reintroduced by the file itself.
+  //
+  // A script may name its source either way, so both are tried and the one that
+  // EXISTS wins: relative to its own example (`src/TasksApp.tsx`) or to the
+  // repo root, which is how the platform wrappers reach the shared source
+  // (`examples/native-finance/src/FinanceApp.tsx` from `native-finance-ios`).
+  // Keying the result by resolved path dedupes the two wrappers that name the
+  // same shared file.
+  //
+  // The web siblings are correctly absent: nothing compiles their
+  // `entry-client.tsx` with PMTC, and no build script names it.
+  const byPath = new Map<string, string>()
   for (const dir of readdirSync(EXAMPLES)) {
     if (!dir.startsWith('native-')) continue
-    const src = join(EXAMPLES, dir, 'src')
-    if (!existsSync(src)) continue
-    for (const f of readdirSync(src)) {
-      if (f.endsWith('App.tsx')) out.push([dir, join(src, f)])
+    const scripts = join(EXAMPLES, dir, 'scripts')
+    if (!existsSync(scripts)) continue
+    for (const f of readdirSync(scripts)) {
+      if (!f.endsWith('.sh')) continue
+      const text = readFileSync(join(scripts, f), 'utf8')
+      for (const m of text.matchAll(/[\w./-]*src\/[A-Za-z][A-Za-z0-9]*\.tsx/g)) {
+        const ref = m[0]
+        for (const candidate of [join(EXAMPLES, dir, ref), join(EXAMPLES, '..', ref)]) {
+          if (!existsSync(candidate)) continue
+          const rel = candidate.slice(candidate.indexOf('examples/') + 'examples/'.length)
+          byPath.set(candidate, rel)
+          break
+        }
+      }
     }
   }
-  return out
+  return [...byPath].map(([path, label]) => [label, path])
 }
 
-const APPS = nativeExampleApps()
+const ALL = nativeExampleApps()
+
+/**
+ * A shared source using `useNativeModule` names a class the APP provides
+ * (`ios/DeviceInfo.swift`, `app/src/main/kotlin/.../DeviceInfo.kt`) — the FFI
+ * escape hatch. The compiler does not know that type by design, so the stub
+ * environment cannot resolve it and never could. Excluded, with the reason
+ * CHECKED rather than asserted: the split is computed from the source, so it
+ * cannot quietly widen to cover an example that fails for some other reason.
+ */
+const usesNativeModule = (path: string): boolean =>
+  readFileSync(path, 'utf8').includes('useNativeModule')
+
+const APPS = ALL.filter(([, p]) => !usesNativeModule(p))
+const ESCAPE_HATCH = ALL.filter(([, p]) => usesNativeModule(p))
 
 describe('every native example compiles on both targets', () => {
   it('found example apps to check', () => {
     // An empty scan is a SKIP masquerading as a pass.
     expect(APPS.length, 'no native example apps found — the gate measured nothing').toBeGreaterThan(0)
+  })
+
+  it.each(ESCAPE_HATCH)('%s is excluded for a REASON that still holds', (_name, path) => {
+    // Not a hardcoded exclusion list. If an escape-hatch example ever stops
+    // using `useNativeModule`, this stops matching and the file moves into the
+    // compiled set on its own — an exclusion that cannot rot into cover for an
+    // unrelated failure.
+    expect(usesNativeModule(path)).toBe(true)
+    // And it is not uncovered, just covered somewhere else: the app-provided
+    // class only exists in a real build, which is what the device gate runs.
+    const dir = path.slice(0, path.lastIndexOf('/src/'))
+    const hasDeviceTest =
+      existsSync(join(dir, 'iosUITests')) || existsSync(join(dir, 'app/src/androidTest'))
+    expect(hasDeviceTest, `${dir} has no device test to cover what the stub gate cannot`).toBe(true)
   })
 
   describe.runIf(isSwiftcAvailable())('swiftc -typecheck against stubs', () => {
