@@ -244,6 +244,12 @@
         "dep": "@pyreon/validate",
         "code": "prod-import-of-dev-dep",
         "reason": "@pyreon/lathe is a CODE GENERATOR: this specifier is a string ARGUMENT naming what it emits into the consumer's files (`f.import('@pyreon/validate', 's')`), not an import lathe performs. The devDependency is real and separate -- the graph spec EVALUATES generated schemas, so it needs the runtime at test time. Loom's lexical scan strips comments and template literals but cannot tell a bare specifier string from an import."
+      },
+      {
+        "pkg": "@pyreon/lathe",
+        "dep": "@pyreon/core",
+        "code": "phantom-dep",
+        "reason": "@pyreon/lathe is a CODE GENERATOR: this specifier is a string ARGUMENT naming what it emits into the consumer's files (`f.import('@pyreon/core', 'For', 'Show')` for the generated preview components), not an import lathe performs. Its lib/ carries no reference to it. Loom's lexical scan strips comments and template literals but cannot tell a bare specifier string from an import."
       }
     ]
   }
