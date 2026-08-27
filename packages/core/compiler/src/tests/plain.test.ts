@@ -422,3 +422,29 @@ export function Counter() {
     expect(r.code).toContain(`n()`)
   })
 })
+
+describe('detectPyreonPatterns is dialect-aware', () => {
+  it('does not flag destructured props or reactive early returns in a PLAIN file', async () => {
+    const { detectPyreonPatterns } = await import('../pyreon-intercept')
+    const plainSrc = `'use plain'
+import { state } from '@pyreon/core/plain'
+export function Card({ title, kind = 'info' }) {
+  let open = state(false)
+  if (!open) return null
+  return <div class={kind}>{title}</div>
+}
+`
+    // The SAME shapes WITHOUT the directive are the classic footguns and
+    // must still fire — the directive is the only difference, proving the
+    // gate (not a detector regression) is what silences them.
+    const classicSrc = plainSrc.replace(`'use plain'\n`, '').replace(
+      `import { state } from '@pyreon/core/plain'`,
+      `import { signal as state } from '@pyreon/reactivity'`,
+    )
+    const plainFindings = detectPyreonPatterns(plainSrc, 'card.tsx')
+    const classicFindings = detectPyreonPatterns(classicSrc, 'card.tsx')
+    expect(plainFindings.filter((d) => d.code === 'props-destructured')).toHaveLength(0)
+    expect(plainFindings.filter((d) => d.code === 'static-return-null-conditional')).toHaveLength(0)
+    expect(classicFindings.some((d) => d.code === 'props-destructured')).toBe(true)
+  })
+})
