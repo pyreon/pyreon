@@ -5,13 +5,12 @@
  * is the only place that touches `node:fs`, `process` or the config loader.
  */
 
+import { CONFIG_FILENAMES, sectionFrom } from '@pyreon/config'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { LatheSection } from '../core/config'
 import { parseArgv, run, type Fs } from './run'
-
-const CONFIG_FILENAMES = ['pyreon.config.ts', 'pyreon.config.tsx', 'pyreon.config.mjs', 'pyreon.config.js']
 
 const realFs: Fs = {
   read: (p) => readFileSync(p, 'utf8'),
@@ -28,8 +27,10 @@ async function loadSection(cwd: string): Promise<LatheSection | undefined> {
     if (!existsSync(full)) continue
     try {
       const mod = (await import(pathToFileURL(full).href)) as Record<string, unknown>
-      const fromDefault = (mod.default ?? {}) as Record<string, unknown>
-      return (mod.lathe ?? fromDefault.lathe) as LatheSection | undefined
+      // `sectionFrom` accepts the default export or a named one, matching every
+      // other Pyreon config loader. Re-deriving that here is how two tools end
+      // up disagreeing about which export shape is valid.
+      return sectionFrom(mod, 'lathe') as LatheSection | undefined
     } catch (err) {
       // A config that exists but cannot be loaded is an ERROR, never a silent
       // fall-through to defaults: the user wrote it expecting it to be read.
