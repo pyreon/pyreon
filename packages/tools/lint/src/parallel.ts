@@ -71,26 +71,47 @@ export function partition<T>(items: T[], n: number): T[][] {
  * lookup keys on. Relative candidates remain only as a fallback for hosts
  * without `import.meta.resolve`.
  */
-export function _workerEntry(): string {
-  try {
-    const resolved = import.meta.resolve?.('@pyreon/lint/lint-worker')
-    if (resolved) return fileURLToPath(resolved)
-  } catch {
-    // Self-reference unavailable (older host, or an unusual layout) — fall
-    // through to the relative candidates below.
-  }
+/**
+ * Pure half of `_workerEntry`: given what the host offered, decide the path.
+ *
+ * Split out because the interesting cases — a host with no
+ * `import.meta.resolve`, a resolver that throws, and the bundled layout where
+ * the worker sits one directory UP — cannot be produced in-process by the
+ * wiring that reads the real globals. That is the same reason
+ * `matchesProcessEntry` exists in `@pyreon/mcp`: a fallback nobody can
+ * exercise is a fallback nobody has verified, and this particular fallback is
+ * the one that silently disabled the whole worker pool.
+ */
+export function resolveWorkerEntry(
+  resolved: string | null,
+  moduleUrl: string,
+  exists: (p: string) => boolean,
+): string {
+  if (resolved) return fileURLToPath(resolved)
 
-  const here = dirname(fileURLToPath(import.meta.url))
-  const ext = import.meta.url.endsWith('.ts') ? '.ts' : '.js'
-  for (const candidate of [
+  const here = dirname(fileURLToPath(moduleUrl))
+  const ext = moduleUrl.endsWith('.ts') ? '.ts' : '.js'
+  const candidates = [
     join(here, `lint-worker${ext}`), // running from src/, or an unbundled lib/
     join(here, '..', `lint-worker${ext}`), // bundled into lib/_chunks/
-  ]) {
-    if (existsSync(candidate)) return candidate
+  ]
+  for (const candidate of candidates) {
+    if (exists(candidate)) return candidate
   }
-  // Nothing found: return the primary candidate so the spawn fails with a
-  // path in the message rather than silently doing nothing.
-  return join(here, `lint-worker${ext}`)
+  // Nothing found: return the primary candidate so a spawn fails with a path
+  // in the message rather than silently doing nothing.
+  return candidates[0]!
+}
+
+export function _workerEntry(): string {
+  let resolved: string | null = null
+  try {
+    resolved = import.meta.resolve?.('@pyreon/lint/lint-worker') ?? null
+  } catch {
+    // Self-reference unavailable (older host, or an unusual layout) — the
+    // relative candidates below cover it.
+  }
+  return resolveWorkerEntry(resolved, import.meta.url, existsSync)
 }
 
 
