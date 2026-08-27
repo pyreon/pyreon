@@ -13,7 +13,7 @@
  * the one artifact people need to inspect the one they cannot open.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import type { LatheSection } from '../core/config'
 import { resolveProjects } from '../core/config'
@@ -59,6 +59,21 @@ export interface LathePassResult {
  * Run the generator once. Pure enough to test: takes its root explicitly and
  * returns what it did rather than logging.
  */
+/**
+ * Read a file, or `undefined` when it is not there.
+ *
+ * Deliberately not `existsSync` + read: that is a check-then-use pair, and when
+ * the "use" is a later write it is a genuine TOCTOU race rather than just a
+ * wasted syscall. One read answers both questions.
+ */
+function readFileOrUndefined(path: string): string | undefined {
+  try {
+    return readFileSync(path, 'utf8')
+  } catch {
+    return undefined
+  }
+}
+
 export function runPass(
   options: LathePluginOptions,
   root: string,
@@ -72,11 +87,18 @@ export function runPass(
   for (const project of resolveProjects(options)) {
     const input = abs(project.input)
     specs.push(input)
-    if (!existsSync(input)) continue
-    const result = generate(readFileSync(input, 'utf8'), project)
+    // Read directly and treat a miss as absent, rather than `existsSync` then
+    // read. The exists-check is redundant — a missing file is just a read that
+    // throws ENOENT, which this has to handle anyway — and pairing a filesystem
+    // CHECK with a later WRITE is the TOCTOU shape CodeQL flags as
+    // `js/file-system-race` (high). Same fix zero's route-types generator took;
+    // see .claude/rules/anti-patterns.md, the write-if-changed guard entry.
+    const source = readFileOrUndefined(input)
+    if (source === undefined) continue
+    const result = generate(source, project)
     for (const file of result.files) {
       const full = join(abs(project.output), file.path)
-      const current = existsSync(full) ? readFileSync(full, 'utf8') : undefined
+      const current = readFileOrUndefined(full)
       if (current === file.contents) continue
       if (mode === 'check') {
         stale.push(full)
