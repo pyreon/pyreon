@@ -6,7 +6,14 @@
  */
 
 /** Which emitters run. Omitted means "the sensible default set". */
-export type PluginName = 'types' | 'schemas' | 'client' | 'queries' | 'mocks' | 'atlas'
+export type PluginName =
+  | 'types'
+  | 'schemas'
+  | 'client'
+  | 'queries'
+  | 'mocks'
+  | 'components'
+  | 'atlas'
 
 export const ALL_PLUGINS: readonly PluginName[] = [
   'types',
@@ -14,6 +21,7 @@ export const ALL_PLUGINS: readonly PluginName[] = [
   'client',
   'queries',
   'mocks',
+  'components',
   'atlas',
 ]
 

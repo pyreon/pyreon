@@ -6,6 +6,7 @@
 // to change the output, change the spec or the emitter.
 
 import type { MockRoute } from '@pyreon/http/mock'
+import { setDevTransport } from './client'
 import { mock } from '@pyreon/http/mock'
 
 /**
@@ -65,5 +66,16 @@ export const routes: MockRoute[] = [
   },
 ]
 
-/** Ready-made middleware: `createHttp({ ..., middleware: [mockRoutes] })`. */
+/** Ready-made middleware over the routes above. */
 export const mockRoutes = mock(routes)
+
+/**
+ * Serve every request from the fixtures above, with no server.
+ * Endpoints bind to the client at declaration time, so middleware cannot be
+ * added to `createHttp` after the fact -- this goes through the transport
+ * seam the client reserves. Call it from a test setup or a workbench
+ * wrapper; pass nothing to `setDevTransport` to go back to the network.
+ */
+export function installMocks(): void {
+  setDevTransport(mockRoutes)
+}

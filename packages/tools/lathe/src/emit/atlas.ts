@@ -1,33 +1,35 @@
 /**
  * Atlas scenario emission.
  *
- * `@pyreon/atlas` derives a component catalog from source, and scenarios are
- * the axis it cannot infer: it can see that a component takes props, not what
- * a REALISTIC value for those props looks like. A spec knows — it carries
- * examples, enums and required/optional shape.
+ * Atlas derives controls and variant axes from a component's PROPS; the axis it
+ * cannot infer is which values are worth browsing. For a generated preview
+ * that answer is fixed and knowable: the states a live request will not show
+ * you on demand.
  *
- * So the generated data components arrive in the workbench already populated
- * with plausible data, and every enum field expands into one scenario per
- * value rather than one arbitrary sample. That is the bit worth automating:
- * hand-written scenarios drift from the schema the moment the API changes,
- * and these regenerate with it.
+ * Keyed by the PREVIEW component names, which `emitComponents` emits and Atlas
+ * actually discovers. An earlier version keyed scenarios by a native data
+ * component and varied RESPONSE fields -- names Atlas had no reason to scan,
+ * and args that were not props. Both halves have to line up or the file is a
+ * plausible-looking no-op.
  */
 
-import type { IrDocument, IrField, IrOperation, IrType } from '../core/ir'
-import { typeIdent } from '../core/naming'
-import { byTag, isMutation } from './client'
-import { jsonLiteral, q, SourceFile } from './writer'
+import type { IrDocument } from '../core/ir'
+import { FORCED_STATES, previewName, previewOperations } from './components'
+import { jsonLiteral, q, relativeSpecifier, SourceFile } from './writer'
 
 export const ATLAS_FILE = 'atlas.scenarios.ts'
+export const ATLAS_WRAPPER_FILE = 'atlas.wrapper.tsx'
 
 /**
  * Emit `atlas.scenarios.ts`.
  *
- * Shaped to drop straight into `atlas.config.ts`'s `scenarios` field, keyed by
- * component name — so wiring it up is a spread, not a migration.
+ * Shaped to drop straight into `atlas.config.ts`'s `scenarios` field, so
+ * wiring it up is a spread rather than a migration.
  */
 export function emitAtlasScenarios(doc: IrDocument): SourceFile {
   const f = new SourceFile(ATLAS_FILE)
+  const ops = previewOperations(doc)
+
   f.line()
   f.doc(
     `Atlas scenarios for ${doc.title}, derived from the spec.`,
@@ -39,70 +41,74 @@ export function emitAtlasScenarios(doc: IrDocument): SourceFile {
     'export default { scenarios }',
     '```',
     '',
-    'Enum-valued fields expand to one scenario per value, so a variant axis the',
-    'spec declares is one the workbench actually exercises.',
+    'Every preview gets the three states a live request will not produce on',
+    'demand -- loading, error, empty -- which are the three a UI most often',
+    'gets wrong. They regenerate with the spec instead of drifting from it.',
   )
-  f.line('export const scenarios = {')
 
-  let emitted = 0
-  for (const [, ops] of byTag(doc)) {
-    for (const op of ops) {
-      if (isMutation(op) || op.pathParams.length > 0) continue
-      const component = `${typeIdent(op.id)}Data`
-      const cases = scenariosFor(op, doc)
-      if (cases.length === 0) continue
-      emitted++
-      f.line(`  ${q(component)}: [`)
-      for (const c of cases) {
-        f.line(`    { name: ${q(c.name)}, args: ${jsonLiteral(c.args)} },`)
-      }
-      f.line('  ],')
+  if (ops.length === 0) {
+    f.line('export const scenarios = {}')
+    f.line()
+    f.doc('No previewable operations in this spec (all are mutations or take path params).')
+    return f
+  }
+
+  f.line('export const scenarios = {')
+  for (const op of ops) {
+    f.line(`  ${q(previewName(op))}: [`)
+    // The live request first: the default view is the real thing.
+    f.line(`    { name: 'Default', args: {} },`)
+    for (const state of FORCED_STATES) {
+      f.line(`    { name: ${q(label(state))}, args: ${jsonLiteral({ force: state })} },`)
     }
+    f.line('  ],')
   }
   f.line('}')
-  if (emitted === 0) {
-    f.line()
-    f.doc('No scenario-bearing operations in this spec (all are mutations or take path params).')
-  }
   return f
 }
 
-interface Scenario {
-  name: string
-  args: Record<string, unknown>
+function label(state: string): string {
+  return state.charAt(0).toUpperCase() + state.slice(1)
 }
 
 /**
- * Scenarios for one operation: a baseline, plus one per enum value found on a
- * top-level response field.
+ * Emit `atlas.wrapper.tsx`.
  *
- * Deliberately shallow — expanding every enum at every depth is a combinatorial
- * explosion that fills the workbench with noise nobody looks at.
+ * The previews need a `QueryClientProvider`, and Atlas says so precisely when
+ * one is missing -- so the last hand-wiring step is one the generator can just
+ * do. Installing the generated mocks alongside it is what makes the workbench
+ * work with NO server, which is the difference between a catalog people browse
+ * and one that shows an error on every card.
  */
-function scenariosFor(op: IrOperation, doc: IrDocument): Scenario[] {
-  const out: Scenario[] = [{ name: 'Default', args: {} }]
-  const shape = resolve(op.response, doc)
-  const fields: readonly IrField[] =
-    shape?.kind === 'object' ? shape.fields : shape?.kind === 'array' ? objFields(shape.items, doc) : []
-  for (const field of fields) {
-    if (field.type.kind !== 'string' || !field.type.enum) continue
-    for (const value of field.type.enum) {
-      out.push({ name: `${field.name}: ${value}`, args: { [field.name]: value } })
-    }
-    // One enum axis is enough to make the point; more becomes a cross-product.
-    break
-  }
-  return out
-}
+export function emitAtlasWrapper(doc: IrDocument): SourceFile {
+  const f = new SourceFile(ATLAS_WRAPPER_FILE)
+  if (previewOperations(doc).length === 0) return f
 
-function objFields(type: IrType | undefined, doc: IrDocument): readonly IrField[] {
-  const r = resolve(type, doc)
-  return r?.kind === 'object' ? r.fields : []
-}
+  f.import('@pyreon/query', 'QueryClient', 'QueryClientProvider')
+  f.importType('@pyreon/core', 'VNodeChild')
+  f.import(relativeSpecifier(ATLAS_WRAPPER_FILE, 'mocks.ts'), 'installMocks')
 
-function resolve(type: IrType | undefined, doc: IrDocument): IrType | undefined {
-  if (!type) return undefined
-  if (type.kind !== 'ref') return type
-  const model = doc.models.find((m) => m.name === type.name)
-  return model ? resolve(model.type, doc) : undefined
+  f.line()
+  f.doc(
+    'Wrapper for the generated previews. Wire into `atlas.config.ts`:',
+    '',
+    '```ts',
+    "export { wrapper } from './src/gen/atlas.wrapper'",
+    '```',
+    '',
+    'Retries are OFF and gcTime is Infinity: a workbench wants the ERROR state',
+    'to appear immediately rather than after a retry budget, and a card that',
+    'refetches while you look at it is a card you cannot read.',
+  )
+  f.line('const client = new QueryClient({')
+  f.line('  defaultOptions: { queries: { retry: false, gcTime: Infinity, staleTime: Infinity } },')
+  f.line('})')
+  f.line()
+  f.line('// Serve the generated fixtures, so every preview renders with no server.')
+  f.line('installMocks()')
+  f.line()
+  f.line('export function wrapper(props: { children?: VNodeChild }) {')
+  f.line('  return <QueryClientProvider client={client}>{props.children}</QueryClientProvider>')
+  f.line('}')
+  return f
 }

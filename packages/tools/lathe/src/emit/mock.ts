@@ -13,14 +13,15 @@
  */
 
 import type { IrDocument, IrField, IrOperation, IrType } from '../core/ir'
-import { byTag, endpointSpec, tagFile } from './client'
-import { jsonLiteral, q, SourceFile } from './writer'
+import { byTag, CLIENT_FILE, endpointSpec, tagFile } from './client'
+import { jsonLiteral, q, relativeSpecifier, SourceFile } from './writer'
 
 /** Emit `mocks.ts` — a route table for `@pyreon/http`'s mock middleware. */
 export function emitMocks(doc: IrDocument): SourceFile {
   const f = new SourceFile('mocks.ts')
   f.import('@pyreon/http/mock', 'mock')
   f.importType('@pyreon/http/mock', 'MockRoute')
+  f.import(relativeSpecifier('mocks.ts', CLIENT_FILE), 'setDevTransport')
 
   f.line()
   f.doc(
@@ -46,8 +47,21 @@ export function emitMocks(doc: IrDocument): SourceFile {
   f.line(']')
 
   f.line()
-  f.doc('Ready-made middleware: `createHttp({ ..., middleware: [mockRoutes] })`.')
+  f.doc('Ready-made middleware over the routes above.')
   f.line('export const mockRoutes = mock(routes)')
+
+  f.line()
+  f.doc(
+    'Serve every request from the fixtures above, with no server.',
+    '',
+    'Endpoints bind to the client at declaration time, so middleware cannot be',
+    'added to `createHttp` after the fact -- this goes through the transport',
+    'seam the client reserves. Call it from a test setup or a workbench',
+    'wrapper; pass nothing to `setDevTransport` to go back to the network.',
+  )
+  f.line('export function installMocks(): void {')
+  f.line('  setDevTransport(mockRoutes)')
+  f.line('}')
   return f
 }
 

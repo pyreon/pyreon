@@ -129,6 +129,43 @@ A hand-written `['GET', '/books']` drifts from the endpoint the moment a path
 changes and nothing catches it. `.all` matches every call of an endpoint;
 `.of(args)` matches one.
 
+## The workbench, generated
+
+`plugins: ['atlas']` emits three files that line up with each other:
+
+| file | what it is |
+| --- | --- |
+| `components.tsx` | one browsable preview per read operation |
+| `atlas.scenarios.ts` | `Default` / `Loading` / `Error` / `Empty` per preview |
+| `atlas.wrapper.tsx` | the `QueryClientProvider`, with mocks installed |
+
+```ts
+// atlas.config.ts — names no component, no scenario, no provider
+import { scenarios } from './src/gen/atlas.scenarios'
+import { wrapper } from './src/gen/atlas.wrapper'
+
+export default { title: 'Bookshelf', scenarios, wrapper, ignore: ['.native.tsx'] }
+```
+
+```
+atlas: discovered 2 component(s), 8 scenario(s) — 8 verified, 0 failing.
+```
+
+The variant axis is the **data state**, not a response field. `loading` and
+`error` are the two a live request will not produce on demand and `empty` is
+the one a seeded mock hides — the three a UI most often gets wrong. `force` is
+a real prop, so Atlas infers a control for it without being told.
+
+Previews cover read operations with no path parameter and no required query
+parameter. Anything else would need a value the generator invents, and a
+preview built on a guess renders an error rather than the shape it exists to
+show.
+
+Cards render with **no server**: the wrapper installs the generated mock
+routes through a transport seam the client reserves. (Endpoints bind to the
+client at declaration time, so middleware cannot be added to `createHttp`
+afterwards — which a mock installed by a wrapper or a test never can be.)
+
 ## Honest limits
 
 Real, current, and reported per-operation rather than papered over:

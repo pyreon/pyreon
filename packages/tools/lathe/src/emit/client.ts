@@ -35,6 +35,7 @@ export const CLIENT_FILE = 'client.ts'
 export function emitClient(doc: IrDocument, opts: ClientOptions): SourceFile {
   const f = new SourceFile(CLIENT_FILE)
   f.import('@pyreon/http', 'createHttp')
+  f.importType('@pyreon/http', 'HttpMiddleware')
   f.import('@pyreon/http/schema', 'standardSchema')
   f.line()
   f.doc(
@@ -50,9 +51,25 @@ export function emitClient(doc: IrDocument, opts: ClientOptions): SourceFile {
     'FAILS AT RUNTIME — the request succeeds, the validation step rejects, and',
     'the query settles as an error with a 200 on the wire.',
   )
+  f.line('let devTransport: HttpMiddleware | null = null')
+  f.line()
+  f.doc(
+    'Install middleware AFTER the client was built.',
+    '',
+    'Endpoints bind to the client at declaration time, so middleware passed to',
+    '`createHttp` has to be known before any endpoint exists -- which a mock',
+    'installed by a workbench wrapper or a test never is. One passthrough entry',
+    'reserves the slot; it costs a function call per request and nothing else',
+    'when unused. The generated `installMocks()` uses it.',
+  )
+  f.line('export function setDevTransport(middleware: HttpMiddleware | null): void {')
+  f.line('  devTransport = middleware')
+  f.line('}')
+  f.line()
   f.line(`export const api = createHttp({`)
   f.line(`  baseUrl: ${q(baseUrlOf(doc, opts))},`)
   f.line(`  schema: standardSchema,`)
+  f.line(`  use: [(req, next) => (devTransport ? devTransport(req, next) : next(req))],`)
   f.line(`})`)
   return f
 }

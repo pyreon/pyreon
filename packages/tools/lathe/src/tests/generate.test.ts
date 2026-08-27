@@ -200,11 +200,19 @@ describe('generate', () => {
     expect(file(generate(SPEC, web), 'mocks.ts')).toBe(src)
   })
 
-  it('emits an Atlas scenario per enum value', () => {
+  it('emits an Atlas scenario per PREVIEW STATE', () => {
+    // This test used to assert one scenario per ENUM VALUE, keyed by a native
+    // data component -- names Atlas never scans, and args that were response
+    // fields rather than props. The invariant it protected (the emitter
+    // produces scenarios exercising a real variant axis) is kept; the axis is
+    // corrected to the one that is actually a prop, and actually worth
+    // browsing: the states a live request will not show you on demand.
     const src = file(generate(SPEC, web), 'atlas.scenarios.ts')
-    expect(src).toContain("'ListBooksData'")
-    expect(src).toContain("name: 'status: available'")
-    expect(src).toContain("name: 'status: lost'")
+    expect(src).toContain("'ListBooksPreview'")
+    for (const state of ['Loading', 'Error', 'Empty']) {
+      expect(src).toContain(`name: '${state}'`)
+    }
+    expect(src).not.toContain('ListBooksData')
   })
 
   it('honours the plugin selection', () => {
