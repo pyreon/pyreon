@@ -38,6 +38,7 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Rule
@@ -368,8 +369,8 @@ class TasksAppInstrumentedTest {
 
         // validation: the schema-driven form. `isValid` derives from errors and
         // an untouched field has none, so submit is what runs the schema.
-        composeRule.onNodeWithTag("toolkit-schema-name").performTextInput("ab")
-        composeRule.onNodeWithTag("toolkit-schema-submit").performClick()
+        composeRule.onNodeWithTag("toolkit-schema-name").performScrollTo().performTextInput("ab")
+        composeRule.onNodeWithTag("toolkit-schema-submit").performScrollTo().performClick()
         composeRule.onNodeWithTag("toolkit-schema-valid").assertTextEquals("false")
 
         // WebView bridge — mirror of the iOS assertion. The hosted page echoes
@@ -392,6 +393,7 @@ class TasksAppInstrumentedTest {
             .assertTextEquals("off")
         composeRule
             .onNodeWithTag("toolkit-machine-toggle")
+            .performScrollTo()
             .performClick()
         composeRule
             .onNodeWithTag("toolkit-machine")
@@ -405,6 +407,7 @@ class TasksAppInstrumentedTest {
         // default-only assertion cannot see.
         composeRule
             .onNodeWithTag("toolkit-filter-done")
+            .performScrollTo()
             .performClick()
         composeRule
             .onNodeWithTag("toolkit-filter")
