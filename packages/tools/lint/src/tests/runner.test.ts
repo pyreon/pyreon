@@ -3,7 +3,7 @@ import { createIgnoreFilter } from '../config/ignore'
 import { loadConfig } from '../config/loader'
 import { getPreset } from '../config/presets'
 import { allRules } from '../rules/index'
-import { applyFixes, lintFile } from '../runner'
+import { applyFixes, fixEdits, lintFile } from '../runner'
 import type { ConfigDiagnostic, LintConfig, Rule } from '../types'
 import { LineIndex } from '../utils/source'
 
@@ -51,8 +51,10 @@ function lintWith(ruleId: string, source: string, filePath?: string) {
 }
 
 // Lint a single rule with it EXPLICITLY enabled at its default severity —
-// used for `meta.optIn` rules, which are OFF in `recommended` (so `lintWith`
-// would report nothing). The detection logic is unchanged; the rule is just
+// used for rules that are OFF in `recommended` (so `lintWith` would report
+// nothing): `meta.optIn` best-practice rules, and `meta.scope: 'monorepo'`
+// rules that encode this repository rather than the framework. The rule's
+// detection logic is unchanged; the rule is just
 // opt-in now (per the upstream 0.44.0 findings), so a test asserting its
 // DETECTION must enable it explicitly.
 function lintWithRuleEnabled(ruleId: string, source: string, filePath?: string) {
@@ -66,8 +68,8 @@ function lintWithRuleEnabled(ruleId: string, source: string, filePath?: string) 
 // ── Rule Metadata ───────────────────────────────────────────────────────────
 
 describe('Rule metadata', () => {
-  it('should have 99 rules', () => {
-    expect(allRules.length).toBe(99)
+  it('should have 98 rules', () => {
+    expect(allRules.length).toBe(98)
   })
 
   it('should have unique rule IDs', () => {
@@ -117,7 +119,9 @@ describe('Rule metadata', () => {
     expect(counts.reactivity).toBe(15)
     expect(counts.jsx).toBe(11)
     expect(counts.lifecycle).toBe(6)
-    expect(counts.performance).toBe(6)
+    // 5 after `no-large-for-without-by` was removed as a byte-identical
+    // duplicate of `jsx/no-missing-for-by` (both fired on one `<For>`).
+    expect(counts.performance).toBe(5)
     expect(counts.ssr).toBe(5)
     expect(counts.architecture).toBe(11)
     expect(counts.store).toBe(3)
@@ -137,7 +141,7 @@ describe('Rule metadata', () => {
     // HTTP-transport best practices.
     expect(counts.http).toBe(2)
     const total = Object.values(counts).reduce((a, b) => a + b, 0)
-    expect(total).toBe(99)
+    expect(total).toBe(98)
   })
 })
 
@@ -998,22 +1002,6 @@ describe('Performance rules', () => {
     expect(result.diagnostics.length).toBe(0)
   })
 
-  it('pyreon/no-large-for-without-by: flags <For> without by prop', () => {
-    const result = lintWith(
-      'pyreon/no-large-for-without-by',
-      `const App = () => <For each={items}>{r => <li />}</For>`,
-    )
-    expect(result.diagnostics.length).toBe(1)
-  })
-
-  it('pyreon/no-large-for-without-by: clean with by prop', () => {
-    const result = lintWith(
-      'pyreon/no-large-for-without-by',
-      `const App = () => <For each={items} by={r => r.id}>{r => <li />}</For>`,
-    )
-    expect(result.diagnostics.length).toBe(0)
-  })
-
   it('pyreon/prefer-show-over-display: flags conditional display style', () => {
     const result = lintWithRuleEnabled(
       'pyreon/prefer-show-over-display',
@@ -1283,7 +1271,7 @@ describe('Architecture rules', () => {
     const diags = findByRule(result, 'pyreon/no-process-dev-gate')
     expect(diags.length).toBe(1)
     expect(diags[0]?.fix).toBeDefined()
-    expect(diags[0]?.fix?.replacement).toBe(`process.env.NODE_ENV !== 'production'`)
+    expect(fixEdits(diags[0]?.fix ?? [])[0]?.replacement).toBe(`process.env.NODE_ENV !== 'production'`)
   })
 
   it('pyreon/no-process-dev-gate: flags the reversed pattern (NODE_ENV first)', () => {
@@ -1346,7 +1334,7 @@ describe('Architecture rules', () => {
     )
     const diags = findByRule(result, 'pyreon/no-process-dev-gate')
     expect(diags.length).toBe(1)
-    expect(diags[0]?.fix?.replacement).toBe(`process.env.NODE_ENV !== 'production'`)
+    expect(fixEdits(diags[0]?.fix ?? [])[0]?.replacement).toBe(`process.env.NODE_ENV !== 'production'`)
   })
 
   it('pyreon/no-process-dev-gate: flags bare `import.meta.env.DEV` truthy check', () => {
@@ -1384,7 +1372,7 @@ const __DEV__ = (import.meta as ViteMeta).env?.DEV === true`
     )
     const diags = findByRule(result, 'pyreon/no-process-dev-gate')
     expect(diags.length).toBe(1)
-    expect(diags[0]?.fix?.replacement).toBe(`process.env.NODE_ENV !== 'production'`)
+    expect(fixEdits(diags[0]?.fix ?? [])[0]?.replacement).toBe(`process.env.NODE_ENV !== 'production'`)
   })
 
   it('pyreon/no-process-dev-gate: does NOT flag `process.env.NODE_ENV` (the recommended pattern)', () => {
@@ -1415,7 +1403,7 @@ const __DEV__ = (import.meta as ViteMeta).env?.DEV === true`
     )
     const diags = findByRule(result, 'pyreon/no-process-dev-gate')
     expect(diags.length).toBe(1)
-    expect(diags[0]?.fix?.replacement).toBe(`process.env.NODE_ENV !== 'production'`)
+    expect(fixEdits(diags[0]?.fix ?? [])[0]?.replacement).toBe(`process.env.NODE_ENV !== 'production'`)
   })
 
   it('pyreon/no-process-dev-gate: flags partial optional-chaining (process.env?.NODE_ENV)', () => {
@@ -1632,7 +1620,8 @@ const __DEV__ = (import.meta as ViteMeta).env?.DEV === true`
 
   it('pyreon/no-error-without-prefix: flags throw without [Pyreon]', () => {
     const source = `throw new Error("something went wrong")`
-    const result = lintSource(source)
+    // `scope: 'monorepo'` — off in `recommended`, so enable it explicitly.
+    const result = lintWithRuleEnabled('pyreon/no-error-without-prefix', source)
     const diags = findByRule(result, 'pyreon/no-error-without-prefix')
     expect(diags.length).toBe(1)
     expect(diags[0]?.fix).toBeDefined()
@@ -2065,7 +2054,7 @@ describe('Ignore filter', () => {
 describe('Presets', () => {
   it('recommended should include all rules (opt-in ones forced off)', () => {
     const config = getPreset('recommended')
-    expect(Object.keys(config.rules).length).toBe(99)
+    expect(Object.keys(config.rules).length).toBe(98)
     // Opt-in best-practice rules are present as keys but disabled.
     for (const rule of allRules) {
       if (rule.meta.optIn === true) {
@@ -2102,8 +2091,11 @@ describe('Presets', () => {
 
   it('lib should have architecture rules as error', () => {
     const lib = getPreset('lib')
-    expect(lib.rules['pyreon/no-circular-import']).toBe('error')
-    expect(lib.rules['pyreon/no-cross-layer-import']).toBe('error')
+    // `no-circular-import` / `no-cross-layer-import` are `scope: 'monorepo'`
+    // — they hardcode this repo's layer order, so no consumer preset enables
+    // them, `lib` included. This repo opts back in via `.pyreonlintrc.json`.
+    expect(lib.rules['pyreon/no-circular-import']).toBe('off')
+    expect(lib.rules['pyreon/no-cross-layer-import']).toBe('off')
     expect(lib.rules['pyreon/dev-guard-warnings']).toBe('error')
     expect(lib.rules['pyreon/no-process-dev-gate']).toBe('error')
   })
@@ -3557,7 +3549,7 @@ describe('pyreon/require-browser-smoke-test', () => {
       withBrowserTest: false,
     })
     try {
-      const result = lintWith(
+      const result = lintWithRuleEnabled(
         'pyreon/require-browser-smoke-test',
         `export const x = 1`,
         fake.indexPath,
@@ -3577,7 +3569,7 @@ describe('pyreon/require-browser-smoke-test', () => {
       withBrowserTest: true,
     })
     try {
-      const result = lintWith(
+      const result = lintWithRuleEnabled(
         'pyreon/require-browser-smoke-test',
         `export const x = 1`,
         fake.indexPath,
@@ -3594,7 +3586,7 @@ describe('pyreon/require-browser-smoke-test', () => {
       withBrowserTest: false,
     })
     try {
-      const result = lintWith(
+      const result = lintWithRuleEnabled(
         'pyreon/require-browser-smoke-test',
         `export const x = 1`,
         fake.indexPath,
@@ -3615,7 +3607,7 @@ describe('pyreon/require-browser-smoke-test', () => {
       const { join } = await import('node:path')
       const internalPath = join(fake.pkgDir, 'src', 'internal.ts')
       writeFileSync(internalPath, `export const y = 2\n`)
-      const result = lintWith(
+      const result = lintWithRuleEnabled(
         'pyreon/require-browser-smoke-test',
         `export const y = 2`,
         internalPath,
@@ -3693,7 +3685,7 @@ describe('pyreon/require-browser-smoke-test', () => {
         join(fake.pkgDir, 'src', 'mount.browser.test.tsx'),
         `export {}`,
       )
-      const result = lintWith(
+      const result = lintWithRuleEnabled(
         'pyreon/require-browser-smoke-test',
         `export const x = 1`,
         fake.indexPath,
@@ -3715,7 +3707,7 @@ describe('pyreon/require-browser-smoke-test', () => {
       const deep = join(fake.pkgDir, 'src', 'a', 'b', 'c', 'd')
       mkdirSync(deep, { recursive: true })
       writeFileSync(join(deep, 'nested.browser.test.ts'), `export {}`)
-      const result = lintWith(
+      const result = lintWithRuleEnabled(
         'pyreon/require-browser-smoke-test',
         `export const x = 1`,
         fake.indexPath,
@@ -3743,7 +3735,7 @@ describe('pyreon/require-browser-smoke-test', () => {
       const lib = join(fake.pkgDir, 'lib')
       mkdirSync(lib, { recursive: true })
       writeFileSync(join(lib, 'built.browser.test.ts'), `export {}`)
-      const result = lintWith(
+      const result = lintWithRuleEnabled(
         'pyreon/require-browser-smoke-test',
         `export const x = 1`,
         fake.indexPath,
@@ -3775,7 +3767,7 @@ describe('pyreon/require-browser-smoke-test', () => {
       )
       const indexPath = join(pkgDir, 'src', 'index.ts')
       writeFileSync(indexPath, `export const x = 1`)
-      const result = lintWith(
+      const result = lintWithRuleEnabled(
         'pyreon/require-browser-smoke-test',
         `export const x = 1`,
         indexPath,
@@ -3810,7 +3802,7 @@ describe('pyreon/require-browser-smoke-test', () => {
       )
       const indexPath = join(pkgDir, 'src', 'index.ts')
       writeFileSync(indexPath, `export const x = 1`)
-      const result = lintWith(
+      const result = lintWithRuleEnabled(
         'pyreon/require-browser-smoke-test',
         `export const x = 1`,
         indexPath,
@@ -3821,5 +3813,56 @@ describe('pyreon/require-browser-smoke-test', () => {
       rule._resetBrowserPackagesCache()
       rmSync(rootDir, { recursive: true, force: true })
     }
+  })
+})
+
+describe('config diagnostics — the paths that are not the happy one', () => {
+  /** A config whose rule options are the wrong SHAPE, so validation rejects. */
+  function badOptionsConfig(): LintConfig {
+    const base = getPreset('recommended')
+    return {
+      ...base,
+      rules: {
+        ...base.rules,
+        'pyreon/no-window-in-ssr': ['error', { exemptPaths: 'not-an-array' }],
+      },
+    } as LintConfig
+  }
+
+  it('DEDUPES within a caller-supplied sink across files', () => {
+    // A repo-wide run lints thousands of files against ONE config. Without the
+    // dedupe the reader gets the same "your config is wrong" line once per
+    // file, which buries every real finding under it.
+    const sink: ConfigDiagnostic[] = []
+    const cfg = badOptionsConfig()
+    lintFile('src/A.tsx', 'const w = window.innerWidth', allRules, cfg, undefined, sink)
+    const afterFirst = sink.length
+    lintFile('src/B.tsx', 'const w = window.innerWidth', allRules, cfg, undefined, sink)
+    expect(afterFirst).toBeGreaterThanOrEqual(1)
+    expect(sink.length).toBe(afterFirst)
+  })
+
+  it('falls back to stderr when there is NO sink — standalone lintFile still reports', () => {
+    // `lintFile` is public API. Called without a sink it must not swallow a
+    // broken config: silence there reads as "the rule found nothing", which is
+    // the opposite of what happened.
+    const errs: string[] = []
+    const spy = vi.spyOn(console, 'error').mockImplementation((m) => void errs.push(String(m)))
+    try {
+      lintFile('src/A.tsx', 'const w = window.innerWidth', allRules, badOptionsConfig())
+    } finally {
+      spy.mockRestore()
+    }
+    expect(errs.some((m) => m.includes('[pyreon-lint]') && m.includes('must be string[]'))).toBe(
+      true,
+    )
+  })
+
+  it('returns no diagnostics — rather than throwing — on unparseable source', () => {
+    // One syntactically broken file must not take down a whole-repo run.
+    // The parse error is the type-checker's to report, not the linter's.
+    const out = lintFile('src/Broken.tsx', 'const = = = <<<', allRules, defaultConfig())
+    expect(out.diagnostics).toEqual([])
+    expect(out.filePath).toBe('src/Broken.tsx')
   })
 })

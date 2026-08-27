@@ -96,12 +96,26 @@ export const _detectMapsInPackOutput = (
   if (tarballFiles.length === 0) return null
   const maps = tarballFiles.filter((f) => f.endsWith('.map'))
   if (maps.length > 0) return null
+  // No maps — but WHY. The two causes need opposite fixes, and blaming the
+  // wrong one costs real time: a fresh worktree has no `lib/` at all, so the
+  // probe reports README + package.json + LICENSE and no maps, and the message
+  // below sent people reading a `files` array that was never wrong. Ask the
+  // disk which case this is.
+  //
+  // The tarball's own file list answers it without a second stat: if it
+  // contains no BUILT output whatsoever, nothing was there to carry maps.
+  const hasBuiltOutput = tarballFiles.some(
+    (f) => f.endsWith('.js') || f.endsWith('.mjs') || f.endsWith('.cjs') || f.endsWith('.d.ts'),
+  )
+  const message = hasBuiltOutput
+    ? `${probePackage}: npm pack --dry-run reported built output but 0 .map files in the would-be-published tarball. Source maps must ship so framework stack traces are readable — check the package's \`files\` array does not exclude \`lib/**/*.map\`.`
+    : `${probePackage}: npm pack --dry-run reported NO built output at all (no .js/.d.ts), so it could not have carried source maps. This checkout has not been built — run \`bun scripts/bootstrap.ts\`. (In CI this means the Bootstrap step did not run for this job; the package's \`files\` array is not the problem.)`
   return {
     category: 'architecture',
     severity: 'error',
-    code: 'distribution/tarball-missing-maps',
+    code: hasBuiltOutput ? 'distribution/tarball-missing-maps' : 'distribution/unbuilt-checkout',
     gate: 'distribution',
-    message: `${probePackage}: npm pack --dry-run reported 0 .map files in the would-be-published tarball. Source maps must ship so framework stack traces are readable — check the package's \`files\` array does not exclude \`lib/**/*.map\`.`,
+    message,
     location: {
       path: join(probe.dir, 'package.json'),
       relPath: relative(cwd, join(probe.dir, 'package.json')),

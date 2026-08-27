@@ -21,21 +21,23 @@ function sev(entry: unknown): Severity {
 }
 
 describe('opt-in best-practice rule wiring', () => {
-  it('the expected 27 best-practice rules are tagged optIn', () => {
+  it('the expected 21 best-practice rules are tagged optIn', () => {
+    // Six a11y rules were promoted OUT of opt-in: require-img-alt,
+    // anchor-is-valid, no-autofocus, no-redundant-role, no-positive-tabindex
+    // and primitive-media-needs-label. Each is an unambiguous WCAG failure
+    // with an ecosystem counterpart in oxlint's `correctness` tier, and
+    // shipping them opt-in meant a fresh Pyreon app had NO a11y checking.
+    // What stays opt-in here is CLS (img dimensions, content-visibility),
+    // heuristic detection (heading-order, color-contrast) and zero-specific
+    // preferences.
     expect(new Set(OPT_IN_IDS)).toEqual(
       new Set([
-        'pyreon/require-img-alt',
         'pyreon/img-requires-dimensions',
         'pyreon/content-visibility-needs-intrinsic-size',
-        'pyreon/no-positive-tabindex',
         'pyreon/prefer-zero-image',
         'pyreon/no-discarded-optimize-fields',
         'pyreon/heading-order',
         'pyreon/color-contrast',
-        'pyreon/no-autofocus',
-        'pyreon/no-redundant-role',
-        'pyreon/anchor-is-valid',
-        'pyreon/primitive-media-needs-label',
         'pyreon/query-options-as-function',
         'pyreon/rx-prefer-pipe',
         'pyreon/no-signal-in-form-initial-values',

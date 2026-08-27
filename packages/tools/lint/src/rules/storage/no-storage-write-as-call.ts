@@ -50,6 +50,7 @@ export const noStorageWriteAsCall: Rule = {
     description:
       'In @pyreon/storage projects, write to a storage signal via .set(...)/.update(...), not by calling it.',
     severity: 'error',
+    requiresDependency: '@pyreon/storage',
     fixable: true,
     optIn: true,
     schema: { exemptPaths: 'string[]' },

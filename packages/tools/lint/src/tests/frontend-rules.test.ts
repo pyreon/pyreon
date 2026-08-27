@@ -26,7 +26,7 @@ import { imgRequiresDimensions } from '../rules/frontend/img-requires-dimensions
 import { noPositiveTabindex } from '../rules/frontend/no-positive-tabindex'
 import { preferZeroImage } from '../rules/frontend/prefer-zero-image'
 import { requireImgAlt } from '../rules/frontend/require-img-alt'
-import { applyFixes, lintFile } from '../runner'
+import { applyFixes, fixEdits, lintFile } from '../runner'
 import type { LintConfig } from '../types'
 import { _resetProjectDepsCache } from '../utils/project-deps'
 
@@ -67,14 +67,20 @@ function diagIds(result: ReturnType<typeof lintFile>): string[] {
 // Sanity: the `best-practices` preset is the opt-in switch — under
 // `recommended` these rules stay OFF even when passed as rules[].
 describe('frontend rules — opt-in mechanic', () => {
-  it('does NOT fire under the `recommended` preset (opt-in OFF)', () => {
+  it('the a11y BASICS fire under `recommended`; CLS and heuristics stay opt-in', () => {
+    // A missing `alt` is an unambiguous WCAG failure with an ecosystem
+    // counterpart in oxlint's `correctness` tier, so it is on by default.
+    // `img-requires-dimensions` targets layout shift rather than access, and
+    // stays opt-in — the same element must produce one and not the other.
     const result = lintFile(
       'src/App.tsx',
       `function App() { return <img src="/a.png" /> }`,
       FRONTEND_RULES,
       getPreset('recommended'),
     )
-    expect(result.diagnostics).toHaveLength(0)
+    const ids = result.diagnostics.map((d) => d.ruleId)
+    expect(ids).toContain('pyreon/require-img-alt')
+    expect(ids).not.toContain('pyreon/img-requires-dimensions')
   })
 })
 
@@ -176,7 +182,7 @@ describe('pyreon/no-positive-tabindex (frontend, fixable)', () => {
       (d) => d.ruleId === 'pyreon/no-positive-tabindex',
     )
     expect(diag?.fix).toBeDefined()
-    expect(diag?.fix?.replacement).toBe('0')
+    expect(fixEdits(diag?.fix ?? [])[0]?.replacement).toBe('0')
     const fixed = applyFixes(source, result.diagnostics)
     expect(fixed).toBe(`function App() { return <div tabIndex={0} /> }`)
   })
@@ -187,7 +193,7 @@ describe('pyreon/no-positive-tabindex (frontend, fixable)', () => {
     const diag = result.diagnostics.find(
       (d) => d.ruleId === 'pyreon/no-positive-tabindex',
     )
-    expect(diag?.fix?.replacement).toBe('"0"')
+    expect(fixEdits(diag?.fix ?? [])[0]?.replacement).toBe('"0"')
     const fixed = applyFixes(source, result.diagnostics)
     expect(fixed).toBe(`function App() { return <div tabindex="0" /> }`)
   })

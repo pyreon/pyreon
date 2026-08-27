@@ -1,6 +1,6 @@
 ---
 title: '@pyreon/lint'
-description: Pyreon-specific linter — 99 rules across 19 categories for signals, JSX, lifecycle, SSR, performance, architecture, routing, SSG, and opt-in best practices (frontend a11y/CLS, query/rx/form/i18n/router/storage library usage). CLI, programmatic API, watch mode, AST cache, and an LSP server.
+description: Pyreon-specific linter — 98 rules across 19 categories for signals, JSX, lifecycle, SSR, performance, architecture, routing, SSG, and opt-in best practices (frontend a11y/CLS, query/rx/form/i18n/router/storage library usage). CLI, programmatic API, watch mode, AST cache, and an LSP server.
 ---
 
 `@pyreon/lint` is a framework-specific linter that catches Pyreon anti-patterns at the AST level — bare signal reads in JSX, props destructuring that breaks reactivity, browser globals in SSR code, bundler-coupled dev gates, and dozens more. It is powered by [`oxc-parser`](https://oxc.rs) for fast ESTree/TS-ESTree parsing, ships a CLI (`pyreon-lint`), a programmatic API (`lint` / `lintFile`), watch mode, an AST cache, and an LSP server for editor integration.
@@ -204,7 +204,7 @@ For a single run, rule severity/options are resolved in this order (later wins):
 
 Several rules read an `exemptPaths: string[]` option — each entry is a substring matched against the file path, letting you opt specific files/directories out of a rule **without hardcoding paths in the rule source** (which would ship to every consuming project). Rules that honor `exemptPaths` today:
 
-`no-window-in-ssr`, `prefer-isserver`, `no-bare-signal-in-jsx`, `no-unbatched-updates`, `no-props-destructure`, `no-imperative-effect-on-create`, `no-heavy-import-only-in-handler`, `dev-guard-warnings`, `no-error-without-prefix`, `no-process-dev-gate`, `no-module-signal-in-server-package`, `no-querySelector-cast-in-test`, `require-browser-smoke-test`, `vitest-config-uses-shared`, `no-raw-addeventlistener`, `no-raw-setinterval`, and every opt-in best-practice rule (`frontend/*`, `query-options-as-function`, `rx-prefer-pipe`, `i18n-prefer-trans-for-rich-jsx`, `prefer-typed-search-params`, `no-storage-write-as-call`, `no-signal-in-form-initial-values`).
+`no-window-in-ssr`, `prefer-isserver`, `no-bare-signal-in-jsx`, `no-unbatched-updates`, `no-props-destructure`, `no-imperative-effect-on-create`, `no-heavy-import-only-in-handler`, `dev-guard-warnings`, `no-error-without-prefix`, `no-process-dev-gate`, `no-module-signal-in-server-package`, `no-query-selector-cast-in-test`, `require-browser-smoke-test`, `vitest-config-uses-shared`, `no-raw-addeventlistener`, `no-raw-setinterval`, and every opt-in best-practice rule (`frontend/*`, `query-options-as-function`, `rx-prefer-pipe`, `i18n-prefer-trans-for-rich-jsx`, `prefer-typed-search-params`, `no-storage-write-as-call`, `no-signal-in-form-initial-values`).
 
 `require-browser-smoke-test` additionally accepts `additionalPackages: string[]` to opt new browser packages into its coverage check.
 
@@ -332,7 +332,104 @@ Library-scoped opt-in rules — `query`, `rx`, `i18n`, `storage`, form's `no-sig
 
 ## Rules
 
-There are **99 rules across 19 categories**. The `frontend`, `query`, `rx`, `i18n`, and `storage` categories (plus the two opt-in rules in `form` and `router`) are opt-in best-practice rules — off in the standard presets. Run `pyreon-lint --list` for the authoritative list with live severities.
+### Performance
+
+Linting is embarrassingly parallel — a file's diagnostics depend only on that file and the resolved config — so runs above a few hundred files are split across a worker pool instead of walking one core. The config is resolved **once** on the main thread and handed to workers as data, so no worker re-reads `.pyreonlintrc.json` or can disagree with its siblings about what is enabled.
+
+Three properties are deliberate:
+
+- **Results are re-sorted by path.** Workers finish in whatever order they finish; output that shifted between runs would make CI diffs useless.
+- **Small runs stay sequential.** Below the threshold, spawning workers costs more than the work — a tool that is slower on `lint one-file.ts` to be faster on the whole repo is a bad trade.
+- **Whether the pool is used is DECIDED, never discovered by failing.** `planRun()` reports the reason a run is sequential — `below-threshold`, `source-entry` (a `.ts` entry can't be loaded by a worker, which is the workspace/dev layout), or `entry-missing`. Attempting a spawn that is known to fail and catching the result would make a genuine worker crash indistinguishable from routine unavailability.
+- **A worker that genuinely fails is NOT silent.** On a read-only run it prints why and completes sequentially. Under `--fix` it stops with guidance instead: workers that already succeeded have written their files, and re-running over a half-modified tree is only safe if every fixer is idempotent — an assumption the code cannot enforce.
+
+The programmatic `lint()` stays synchronous for the LSP and watch mode; `lintAsync()` is the parallel driver, and a test locks that the two produce identical diagnostics over the same corpus.
+
+### Autofix
+
+`--fix` applies fixes that are unambiguous. A fix may carry **several edits** — `prefer-isserver` rewrites `typeof window !== 'undefined'` to `isClient` *and* adds the import, as one fix — and a multi-edit fix is applied whole or not at all, because half of that pair is broken code.
+
+Overlapping fixes from different rules are **deferred**, not applied blind: the first in source order wins, the other stays reported for a later pass. Fixes are deliberately conservative about intent:
+
+- `no-signal-call-write` fixes `count(5)` → `count.set(5)`, but leaves `count(prev => prev + 1)` alone — that reads as *update* intent, and `.set(fn)` would store the function as the value.
+- `prefer-isserver` refuses to fix through a namespace or type-only import, where adding a specifier would produce code that doesn't compile.
+- `no-peek-in-tracked` has no fixer at all: `.peek()` inside a tracked scope is frequently intentional loop-prevention, so rewriting it would turn "skip writes during a write" into an infinite loop.
+
+Reading fixes programmatically? `Diagnostic.fix` is `Fix | readonly Fix[]` — normalize with `fixEdits(d.fix)`.
+
+### Getting started
+
+```bash
+pyreon-lint --init   # writes .pyreonlintrc.json
+pyreon-lint .
+```
+
+`--init` picks the preset from your project rather than always writing `recommended` — a package with an entry point gets `lib` (which enables the library-author rules), anything else gets `app`. It points `$schema` at the installed schema so your editor completes rule ids and rejects typos, and it **refuses to overwrite** an existing config.
+
+The file it writes is deliberately minimal — a schema reference and a preset, nothing else. Scaffolding every rule at its current severity would freeze today's defaults into your file, so a later improvement to `recommended` would never reach you.
+
+The linter also works with **no config at all**, defaulting to `recommended`.
+
+### Accessibility is on by default
+
+Six a11y rules ship **on** in every standard preset — `require-img-alt`, `anchor-is-valid`, `no-autofocus`, `no-redundant-role`, `no-positive-tabindex` and `primitive-media-needs-label`. Each is an unambiguous WCAG failure with a counterpart in oxlint's `correctness` tier, so a fresh Pyreon app gets the same a11y floor an ESLint user expects. `primitive-media-needs-label` is dependency-gated, so it stays silent unless you use `@pyreon/primitives`.
+
+What remains opt-in is deliberately a different class: **layout shift** (`img-requires-dimensions`, `content-visibility-needs-intrinsic-size`), **heuristic detection** that can't see across components (`heading-order`, `color-contrast`), and **`@pyreon/zero` preferences** (`prefer-zero-image`, `no-discarded-optimize-fields`). Enable those with the `best-practices` preset or per rule.
+
+### Rule groups
+
+Every rule belongs to one of four **groups** — the axis the 19 categories don't capture: *what knowledge does this rule require, and does it ship?*
+
+| group | rules | what it is |
+| --- | --- | --- |
+| `pyreon` | 50 | Framework semantics — reactivity, JSX, lifecycle, SSR/SSG. Nothing outside Pyreon can know these. |
+| `pkg` | 27 | Per-library. Each self-activates on a declared dependency, so you only see rules for libraries you use. |
+| `a11y` | 15 | Accessibility — standard markup plus Pyreon's own surfaces (toast, dialog, overlay, primitives). |
+| `internal` | 6 | Encodes the Pyreon repository itself. **Never on in a shipped preset.** |
+
+Categories live underneath, so a query rule is `group: 'pkg'`, `category: 'query'`. Set a whole group in one line — applied after the preset and **before** per-rule entries, so an explicit rule always wins:
+
+```json
+{
+  "preset": "best-practices",
+  "groups": { "a11y": "off" },
+  "rules": { "pyreon/require-img-alt": "error" }
+}
+```
+
+`pyreon-lint --list` groups its output the same way. There is deliberately no `js` or `ts` group: those are for general JS/TS correctness rules, which this package does not have yet, and an empty group would advertise coverage that doesn't exist.
+
+### Why isn't a rule firing?
+
+A rule can be silently inert for four independent reasons, and three of them are invisible in your config: its severity is `off`; it is an **opt-in** best-practice rule; it is **monorepo-scoped**; or it is **dependency-gated** and your project doesn't declare the library it covers. They compose, so a rule is often off for more than one reason and fixing one changes nothing.
+
+`--why-off` reports every reason that applies, each with the edit that lifts it:
+
+```bash
+pyreon-lint --why-off pyreon/rx-prefer-pipe
+```
+
+```
+  pyreon/rx-prefer-pipe
+
+  ✗ WILL NOT RUN — severity: off
+
+  [severity-off]
+    The resolved config sets this rule to `off`.
+    fix: Set `"pyreon/rx-prefer-pipe": "info"` in .pyreonlintrc.json.
+
+  [opt-in]
+    This is an opt-in best-practice rule, so every standard preset forces it off.
+    fix: Select the `best-practices` preset, or enable this rule by id.
+
+  [dependency-missing]
+    This rule only applies to projects using `@pyreon/rx`, which is not a declared dependency here.
+    fix: Nothing to fix — the rule is correctly silent. Add `@pyreon/rx` if you meant to use it.
+```
+
+The dependency gate is checked relative to a file, so pass a path (`pyreon-lint --why-off <id> src/`) when you want that reason evaluated. An unknown id exits non-zero and suggests the near miss. Programmatic equivalent: `explainRuleState(id, { config, filePath })`.
+
+There are **98 rules across 19 categories**. Six of them are **monorepo-scoped** (`meta.scope: 'monorepo'`) — `no-circular-import`, `no-cross-layer-import`, `no-error-without-prefix`, `no-query-selector-cast-in-test`, `require-browser-smoke-test`, `vitest-config-uses-shared`. They encode the Pyreon repository's own conventions (its layer order, its private internal packages, its `[Pyreon]` error prefix) rather than anything about Pyreon-the-framework, so **every preset a consumer selects forces them off**, `best-practices` included. The Pyreon repo re-enables them by id in its own `.pyreonlintrc.json`, which keeps that dependency visible in config instead of hidden inside a shared preset. The `frontend`, `query`, `rx`, `i18n`, and `storage` categories (plus the two opt-in rules in `form` and `router`) are opt-in best-practice rules — off in the standard presets. Run `pyreon-lint --list` for the authoritative list with live severities.
 
 ### Categories at a glance
 
@@ -392,7 +489,7 @@ Opt-in (`ᵒ`) rules below are off in `recommended`/`strict`/`app`/`lib` — ena
 | `pyreon/no-ternary-conditional` | warn     |         | Use `<Show>` instead of ternary               |
 | `pyreon/no-and-conditional`     | warn     |         | Use `<Show>` instead of `&&`                  |
 | `pyreon/no-index-as-by`         | warn     |         | Index keys cause reconciliation bugs          |
-| `pyreon/no-missing-for-by`      | warn     |         | `<For>` without `by` uses index-based diffing |
+| `pyreon/no-missing-for-by`      | error    |         | `<For>` without `by` defeats keyed reconciliation |
 | `pyreon/no-children-access`     | info     |         | Raw `props.children` in renderer files        |
 
 ### Lifecycle (6)
@@ -410,7 +507,6 @@ Opt-in (`ᵒ`) rules below are off in `recommended`/`strict`/`app`/`lib` — ena
 
 | Rule                                    | Severity | Description                                                            |
 | --------------------------------------- | -------- | ---------------------------------------------------------------------- |
-| `pyreon/no-large-for-without-by`        | error    | `<For>` without `by` — O(n) reconciliation                             |
 | `pyreon/no-effect-in-for`               | warn     | `effect()` inside `<For>` creates N effects                            |
 | `pyreon/no-heavy-import-only-in-handler`| warn     | Heavy module imported statically but used only in a deferred scope — use a dynamic `import()` |
 | `pyreon/promise-race-needs-cleartimeout`| warn     | `Promise.race([work, setTimeout-reject])` without `clearTimeout` in `finally` leaks the timer |
@@ -436,7 +532,7 @@ Opt-in (`ᵒ`) rules below are off in `recommended`/`strict`/`app`/`lib` — ena
 | `pyreon/no-process-dev-gate`               | error    | yes     | Bundler-coupled dev gate — use bundler-agnostic `process.env.NODE_ENV`     |
 | `pyreon/require-browser-smoke-test`        | error    |         | Browser-categorized package with no `*.browser.test.{ts,tsx}` under `src/` |
 | `pyreon/no-module-signal-in-server-package`| error    |         | Module-scoped signals in server packages race between requests — use per-request state |
-| `pyreon/no-querySelector-cast-in-test`     | error    |         | In tests, `el.querySelector(x) as T` should use `query()` from `@pyreon/test-utils` |
+| `pyreon/no-query-selector-cast-in-test`     | error    |         | In tests, `el.querySelector(x) as T` should use `query()` from `@pyreon/test-utils` |
 | `pyreon/vitest-config-uses-shared`         | error    |         | Per-package vitest config must use `defineNodeConfig`/`defineBrowserConfig` |
 | `pyreon/no-deep-import`                     | warn     |         | Deep import into `@pyreon/*/src/` internals                                |
 | `pyreon/no-error-without-prefix`           | warn     | yes     | Error message without a `[Pyreon]` prefix                                  |

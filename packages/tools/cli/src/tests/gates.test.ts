@@ -156,7 +156,13 @@ describe('runDocClaimsGate', () => {
     // The old comment here said 25 while the assertion said 23; a hand-kept
     // breakdown drifts exactly like the claims it describes, so this one names
     // the reason for the number rather than re-deriving it arithmetically.
-    expect(result.meta.scanned).toBe(30)
+    //
+    // 33 as of the duplicate-`<For>`-rule fix: +2 lint-rule-count sites
+    // (`packages/tools/lint/package.json` — the published npm description,
+    // which had rotted to "56 rules" against a real 98 because it was the one
+    // count surface this gate did not cover — and `.claude/rules/code-style.md`,
+    // stale at 97) and +1 lint-category-count site (the same code-style.md).
+    expect(result.meta.scanned).toBe(33)
     // The real repo must be drift-free — this gate runs in CI; if a
     // count claim drifts, EVERY PR's doctor run fails until it's fixed.
     const errs = result.findings.filter((f) => f.severity === 'error')
@@ -738,6 +744,40 @@ describe('_detectMapsInPackOutput', () => {
     expect(result!.location?.relPath).toBe(
       'packages/core/reactivity/package.json',
     )
+  })
+
+  it('names the UNBUILT checkout when the tarball has no built output at all', () => {
+    // The two causes need opposite fixes, and this one used to be reported as
+    // the other. A fresh worktree has no `lib/`, so the probe sees only the
+    // always-shipped metadata — and the old message sent people to read a
+    // `files` array that was never wrong. Hit three times in one session
+    // before the message was fixed.
+    const raw = JSON.stringify([
+      {
+        files: [
+          { path: 'package.json' },
+          { path: 'README.md' },
+          { path: 'LICENSE' },
+        ],
+      },
+    ])
+    const result = _detectMapsInPackOutput(raw, cwd, probe, '@pyreon/reactivity')
+    expect(result).not.toBeNull()
+    expect(result!.code).toBe('distribution/unbuilt-checkout')
+    expect(result!.message).toContain('bootstrap')
+    // and must NOT accuse the files array, which is the whole point
+    expect(result!.message).not.toContain('does not exclude')
+  })
+
+  it('still blames the files array when built output IS present but maps are not', () => {
+    // The discriminator is built output, not the map count: a package that
+    // shipped `lib/index.js` and no `.map` really does have a `files` problem.
+    const raw = JSON.stringify([
+      { files: [{ path: 'package.json' }, { path: 'lib/index.js' }] },
+    ])
+    const result = _detectMapsInPackOutput(raw, cwd, probe, '@pyreon/reactivity')
+    expect(result!.code).toBe('distribution/tarball-missing-maps')
+    expect(result!.message).toContain('files')
   })
 
   it('returns null when .map files are present in the tarball', () => {

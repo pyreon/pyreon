@@ -22,8 +22,10 @@ export const noPositiveTabindex: Rule = {
     category: 'frontend',
     description: 'Disallow a positive `tabIndex` — it breaks natural keyboard focus order. Use 0 or -1.',
     severity: 'warn',
+    // On by DEFAULT: an unambiguous WCAG failure with an ecosystem
+    // counterpart in oxlint's `correctness` tier (jsx-a11y/tabindex-no-positive).
+    // Shipping it opt-in meant a fresh Pyreon app had no a11y checking at all.
     fixable: true,
-    optIn: true,
     schema: { exemptPaths: 'string[]' },
   },
   create(context) {

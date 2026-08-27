@@ -8,7 +8,7 @@
  */
 import type { LintConfig } from '../types'
 import { noPositiveTabindex } from '../rules/frontend/no-positive-tabindex'
-import { lintFile } from '../runner'
+import { fixEdits, lintFile } from '../runner'
 
 const ON: LintConfig = { rules: { 'pyreon/no-positive-tabindex': 'warn' } }
 
@@ -58,13 +58,13 @@ describe('pyreon/no-positive-tabindex (dedicated)', () => {
     const result = lint(`export default () => <div tabIndex={3} />`)
     const d = result.diagnostics.find((x) => x.ruleId === 'pyreon/no-positive-tabindex')
     expect(d?.fix).toBeDefined()
-    expect(d?.fix?.replacement).toBe('0')
+    expect(fixEdits(d?.fix ?? [])[0]?.replacement).toBe('0')
   })
 
   it('emits a fix replacing the string value with "0"', () => {
     const result = lint(`export default () => <div tabindex="9" />`)
     const d = result.diagnostics.find((x) => x.ruleId === 'pyreon/no-positive-tabindex')
-    expect(d?.fix?.replacement).toBe('"0"')
+    expect(fixEdits(d?.fix ?? [])[0]?.replacement).toBe('"0"')
   })
 
   // ── OPT-IN BEHAVIOUR ─────────────────────────────────────────────────────

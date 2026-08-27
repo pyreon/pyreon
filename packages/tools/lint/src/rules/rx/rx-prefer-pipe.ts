@@ -45,6 +45,7 @@ export const rxPreferPipe: Rule = {
     description:
       'In @pyreon/rx projects, compose nested transforms via pipe() instead of wrapping calls (one computed instead of N).',
     severity: 'info',
+    requiresDependency: '@pyreon/rx',
     fixable: false,
     optIn: true,
     schema: { exemptPaths: 'string[]' },

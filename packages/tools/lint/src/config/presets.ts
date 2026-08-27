@@ -10,9 +10,21 @@ import type { LintConfig, PresetName, Severity } from '../types'
 function buildRecommended(): LintConfig {
   const rules: Record<string, Severity> = {}
   for (const rule of allRules) {
-    rules[rule.meta.id] = rule.meta.optIn ? 'off' : rule.meta.severity
+    rules[rule.meta.id] = isShippedOff(rule) ? 'off' : rule.meta.severity
   }
   return { rules }
+}
+
+/**
+ * Is this rule forced OFF in every preset a CONSUMER selects?
+ *
+ * Two independent reasons, deliberately kept separate:
+ *  - `optIn` — a best-practice rule the user must ask for.
+ *  - `scope: 'monorepo'` — a rule about THIS repository, not about Pyreon.
+ *    Shipping it would fire `@pyreon/*`-specific errors in a user's app.
+ */
+function isShippedOff(rule: (typeof allRules)[number]): boolean {
+  return rule.meta.optIn === true || rule.meta.scope === 'monorepo'
 }
 
 /**
@@ -25,7 +37,10 @@ function buildRecommended(): LintConfig {
 function buildBestPractices(): LintConfig {
   const rules: Record<string, Severity> = {}
   for (const rule of allRules) {
-    rules[rule.meta.id] = rule.meta.severity
+    // `best-practices` is "recommended + every opt-in rule". It is still a
+    // CONSUMER preset, so monorepo-scoped rules stay off — enabling them
+    // would fire `@pyreon/*` layer-order errors in a user's app.
+    rules[rule.meta.id] = rule.meta.scope === 'monorepo' ? 'off' : rule.meta.severity
   }
   return { rules }
 }
@@ -74,12 +89,15 @@ function buildLib(): LintConfig {
   return {
     rules: {
       ...base.rules,
-      'pyreon/no-circular-import': 'error',
-      'pyreon/no-cross-layer-import': 'error',
+      // Library-author rules that are NOT specific to this repository.
+      // `no-circular-import` / `no-cross-layer-import` /
+      // `no-error-without-prefix` / `require-browser-smoke-test` used to be
+      // promoted here too, but each hardcodes `@pyreon/*` specifiers or this
+      // repo's layer order, so they only ever produced noise for a consumer
+      // publishing their own library. They are `scope: 'monorepo'` now and
+      // stay off in every shipped preset.
       'pyreon/dev-guard-warnings': 'error',
-      'pyreon/no-error-without-prefix': 'error',
       'pyreon/no-process-dev-gate': 'error',
-      'pyreon/require-browser-smoke-test': 'error',
     },
   }
 }

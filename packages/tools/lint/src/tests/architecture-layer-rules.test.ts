@@ -4,7 +4,21 @@ import { lintFile } from '../runner'
 import { allRules } from '../rules'
 import type { LintConfig } from '../types'
 
-const defaultConfig = (): LintConfig => getPreset('recommended')
+// `no-circular-import` / `no-cross-layer-import` are `scope: 'monorepo'` —
+// they hardcode this repo's `@pyreon/*` layer order, so every consumer preset
+// forces them off and this repo re-enables them by id in `.pyreonlintrc.json`.
+// These specs test the RULES, so they enable them explicitly.
+const defaultConfig = (): LintConfig => {
+  const base = getPreset('recommended')
+  return {
+    ...base,
+    rules: {
+      ...base.rules,
+      'pyreon/no-circular-import': 'error',
+      'pyreon/no-cross-layer-import': 'error',
+    },
+  }
+}
 
 const findByRule = (
   result: ReturnType<typeof lintFile>,

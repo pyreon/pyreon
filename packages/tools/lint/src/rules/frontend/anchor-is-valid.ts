@@ -26,8 +26,10 @@ export const anchorIsValid: Rule = {
     description:
       'Disallow <a> elements that are not valid links (missing href, or href is "", "#", or javascript:).',
     severity: 'warn',
+    // On by DEFAULT: an unambiguous WCAG failure with an ecosystem
+    // counterpart in oxlint's `correctness` tier (jsx-a11y/anchor-is-valid).
+    // Shipping it opt-in meant a fresh Pyreon app had no a11y checking at all.
     fixable: false,
-    optIn: true,
     schema: { exemptPaths: 'string[]' },
   },
   create(context) {
