@@ -211,6 +211,17 @@ describe('generate', () => {
     const only = generate(SPEC, resolveConfig({ input: 'x', plugins: ['schemas'] }))
     expect(only.files.map((f) => f.path)).toEqual(['schemas.ts'])
   })
+
+  it('the native LAYOUT follows the plugin selection too', () => {
+    // The native modules are the client/queries emitters' native layout, not a
+    // separate output. Emitting them unconditionally meant asking for schemas
+    // only still produced a client and a data component.
+    const schemasOnly = generate(SPEC, resolveConfig({ input: 'x', target: 'multiplatform', plugins: ['schemas'] }))
+    expect(schemasOnly.files.map((f) => f.path)).toEqual(['schemas.ts'])
+
+    const withClient = generate(SPEC, resolveConfig({ input: 'x', target: 'multiplatform', plugins: ['client'] }))
+    expect(withClient.files.some((f) => f.path.endsWith('.native.tsx'))).toBe(true)
+  })
 })
 
 describe('verify', () => {

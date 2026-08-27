@@ -20,6 +20,8 @@ export {
   ALL_PLUGINS,
   DEFAULT_PLUGINS,
   resolveConfig,
+  resolveProjects,
+  type LatheProject,
   type LatheSection,
   type PluginName,
   type ResolvedConfig,

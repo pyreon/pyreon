@@ -93,6 +93,13 @@ export interface AtlasSection {
  * pulling the others in.
  */
 export interface LatheSection {
+  /**
+   * Several specs in one run, each with its own output and target.
+   *
+   * When present, the top-level `input`/`output` are ignored; fields a project
+   * omits fall back to the top-level value, so shared settings are written once.
+   */
+  projects?: readonly (Omit<LatheSection, 'projects'> & { name: string; input: string })[]
   /** Path to the OpenAPI document (`.json`, `.yaml`, `.yml`). */
   input?: string
   /** Output directory, relative to the config file. */

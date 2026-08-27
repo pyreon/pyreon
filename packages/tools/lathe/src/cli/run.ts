@@ -6,7 +6,7 @@
  * bin (`cli/main.ts`) is the only thing that binds it to the real `node:fs`.
  */
 
-import { resolveConfig, type LatheSection, type PluginName } from '../core/config'
+import { resolveProjects, type LatheSection, type PluginName, type ResolvedConfig } from '../core/config'
 import { generate } from '../core/generate'
 import { resolveTransform, verifyNative, worstVerdict } from '../verify/lower'
 import { renderReport } from './report'
@@ -104,67 +104,102 @@ export async function run(
     ...(argv.baseUrl ? { baseUrl: argv.baseUrl } : {}),
     ...(argv.strictNative ? { strictNative: true } : {}),
   }
-  const config = resolveConfig(merged)
-
-  if (!fs.exists(config.input)) {
+  // A CLI-supplied `--out` / spec path cannot address one project among many,
+  // so passing either alongside `projects` is refused rather than applied to
+  // all of them (which would write every client to one directory).
+  if (merged.projects && merged.projects.length > 0 && (argv.input || argv.output)) {
     return {
       code: 1,
-      stdout: `[Pyreon] lathe: spec not found at ${config.input}\n`,
+      stdout:
+        '[Pyreon] lathe: this config declares `lathe.projects`, so a CLI spec path or `--out` is ambiguous. Set them per project in the config.\n',
     }
   }
-  const result = generate(fs.read(config.input), config)
 
-  const verify = verifyNative(result.files, await resolveTransform())
-
-  let wrote = 0
-  const stale: string[] = []
-  for (const file of result.files) {
-    const full = fs.join(config.output, file.path)
-    const current = fs.exists(full) ? fs.read(full) : undefined
-    if (current === file.contents) continue
-    if (argv.command === 'check') {
-      stale.push(file.path)
-      continue
+  const projects = resolveProjects(merged)
+  const runs: RunOutcome[] = []
+  for (const config of projects) {
+    if (!fs.exists(config.input)) {
+      return {
+        code: 1,
+        stdout: `[Pyreon] lathe: spec not found at ${config.input}${config.name ? ` (project \`${config.name}\`)` : ''}\n`,
+      }
     }
-    fs.mkdirp(dirOf(full))
-    fs.write(full, file.contents)
-    wrote++
+    const result = generate(fs.read(config.input), config)
+    const verify = verifyNative(result.files, await resolveTransform())
+
+    let wrote = 0
+    const stale: string[] = []
+    for (const file of result.files) {
+      const full = fs.join(config.output, file.path)
+      const current = fs.exists(full) ? fs.read(full) : undefined
+      if (current === file.contents) continue
+      if (argv.command === 'check') {
+        stale.push(file.path)
+        continue
+      }
+      fs.mkdirp(dirOf(full))
+      fs.write(full, file.contents)
+      wrote++
+    }
+    runs.push({ config, result, verify, wrote, stale })
   }
 
+  return report(runs, argv, projects.length > 1)
+}
+
+interface RunOutcome {
+  config: ResolvedConfig
+  result: ReturnType<typeof generate>
+  verify: ReturnType<typeof verifyNative>
+  wrote: number
+  stale: string[]
+}
+
+function report(runs: RunOutcome[], argv: Argv, multi: boolean): RunResult {
+  const worst = (a: number, b: number): number => Math.max(a, b)
   if (argv.json) {
+    const payload = runs.map(({ config, result, verify, wrote, stale }) => ({
+      name: config.name,
+      title: result.doc.title,
+      version: result.doc.version,
+      models: result.doc.models.length,
+      operations: result.doc.operations.length,
+      target: config.target,
+      output: config.output,
+      files: result.files.map((f) => f.path),
+      wrote,
+      stale,
+      reach: Object.fromEntries(result.reach),
+      notes: result.doc.notes,
+      verify,
+    }))
     return {
-      code: exitCode(config.strictNative, verify, stale, argv.command),
-      stdout: `${JSON.stringify(
-        {
-          title: result.doc.title,
-          version: result.doc.version,
-          models: result.doc.models.length,
-          operations: result.doc.operations.length,
-          target: config.target,
-          files: result.files.map((f) => f.path),
-          wrote,
-          stale,
-          reach: Object.fromEntries(result.reach),
-          notes: result.doc.notes,
-          verify,
-        },
-        null,
-        2,
-      )}\n`,
+      code: runs
+        .map(({ config, verify, stale }) => exitCode(config.strictNative, verify, stale, argv.command))
+        .reduce(worst, 0),
+      // A single project keeps the flat object it always had; only a
+      // multi-project run wraps, so an existing `--json` consumer is unaffected.
+      stdout: `${JSON.stringify(multi ? { projects: payload } : payload[0], null, 2)}\n`,
     }
   }
 
-  let stdout = renderReport(result, verify, {
-    target: config.target,
-    output: config.output,
-    wrote,
-  })
-  if (argv.command === 'check' && stale.length > 0) {
-    stdout += `\n  STALE: ${stale.length} generated file(s) differ from the spec:\n${stale
-      .map((s) => `    ${s}`)
-      .join('\n')}\n\n  Fix: run \`lathe generate\` and commit the result.\n`
+  let stdout = ''
+  let code = 0
+  for (const { config, result, verify, wrote, stale } of runs) {
+    stdout += renderReport(result, verify, {
+      target: config.target,
+      output: config.output,
+      wrote,
+      name: config.name,
+    })
+    if (argv.command === 'check' && stale.length > 0) {
+      stdout += `\n  STALE: ${stale.length} generated file(s) differ from the spec:\n${stale
+        .map((s) => `    ${s}`)
+        .join('\n')}\n\n  Fix: run \`lathe generate\` and commit the result.\n`
+    }
+    code = worst(code, exitCode(config.strictNative, verify, stale, argv.command))
   }
-  return { code: exitCode(config.strictNative, verify, stale, argv.command), stdout }
+  return { code, stdout }
 }
 
 function exitCode(

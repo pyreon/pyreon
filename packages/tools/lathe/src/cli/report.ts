@@ -30,12 +30,15 @@ const C = {
 export function renderReport(
   result: GenerateResult,
   verify: VerifyReport,
-  opts: { target: string; output: string; wrote: number },
+  opts: { target: string; output: string; wrote: number; name?: string | undefined },
 ): string {
   const lines: string[] = []
   const { doc } = result
   lines.push('')
-  lines.push(`${C.bold('lathe')} ${C.dim('/')} ${doc.title} ${C.dim(doc.version)}`)
+  // The project name leads when there is one, so a multi-project run is
+  // readable as a list rather than as several unlabelled reports in a row.
+  const label = opts.name ? `${C.bold(opts.name)} ${C.dim('/')} ` : ''
+  lines.push(`${C.bold('lathe')} ${C.dim('/')} ${label}${doc.title} ${C.dim(doc.version)}`)
   lines.push(
     `  ${doc.models.length} models  ${doc.operations.length} operations  ${C.dim(`target=${opts.target}`)}`,
   )
