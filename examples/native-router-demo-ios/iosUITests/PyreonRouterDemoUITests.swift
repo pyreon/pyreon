@@ -939,8 +939,25 @@ final class PyreonRouterDemoUITests: XCTestCase {
     /// closer to a real user's path than any private hook would be.
     private func openURL(_ url: String) {
         let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
-        safari.launch()
-        XCTAssertTrue(safari.wait(for: .runningForeground, timeout: 20), "Safari did not open")
+        // Launch with a bounded RETRY. A single `launch()` is the flakiest line
+        // in this suite: on a loaded runner it intermittently returns without
+        // producing a process, and the next interaction dies with
+        // `Application 'com.apple.mobilesafari' does not have a process ID` —
+        // seen on this PR and on main's own scheduled run, blocking work that
+        // has nothing to do with deep links.
+        //
+        // `terminate()` first on a retry, because the failure mode leaves a
+        // half-started Safari that a second `launch()` will not replace.
+        var launched = false
+        for attempt in 1...3 {
+            if attempt > 1 { safari.terminate() }
+            safari.launch()
+            if safari.wait(for: .runningForeground, timeout: 20) {
+                launched = true
+                break
+            }
+        }
+        XCTAssertTrue(launched, "Safari did not reach the foreground in 3 launch attempts")
 
         // The address field is a text field on the URL bar; its identifier has
         // moved across iOS versions, so match either of the shipped ones.
