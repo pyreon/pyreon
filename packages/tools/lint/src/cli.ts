@@ -2,7 +2,7 @@
 import { resolve } from 'node:path'
 import { loadConfig, loadConfigFromPath } from './config/loader'
 import { getPreset } from './config/presets'
-import { lint, listRules } from './lint'
+import { listRules } from './lint'
 import { lintAsync } from './parallel'
 import { startLspServer } from './lsp/index'
 import { formatCompact, formatJSON, formatText } from './reporter'
