@@ -85,6 +85,34 @@ describe('<WebView> bridges', () => {
     expect(onMessage).toHaveBeenCalledWith('42')
   })
 
+  it('installs the reverse bridge BEFORE the first data push', async () => {
+    // A hosted page commonly reacts to its first `pyreondata` by sending
+    // something back — an echo, a ready signal, a rendered-size report. If the
+    // push lands before the bridge is installed, that first response is dropped
+    // silently.
+    //
+    // This is not hypothetical: pushing first happened to work with `srcdoc`,
+    // where the page's own script runs before the host's load handler at all,
+    // and broke the moment a real app loaded its page from a bundled file via
+    // `src`. Both native runtimes install their message handler at WebView
+    // CONSTRUCTION, so the web pushing first also made it the odd one out.
+    const onMessage = vi.fn()
+    const html = `<!doctype html><body><script>
+      function send() { if (window.pyreonPostMessage) window.pyreonPostMessage(String(window.__pyreonData)) }
+      window.addEventListener('pyreondata', send);
+    </script></body>`
+
+    const props: Record<string, unknown> = { onMessage }
+    Object.defineProperty(props, 'html', { get: () => html, enumerable: true })
+    Object.defineProperty(props, 'data', { get: () => 'first-push', enumerable: true })
+
+    mountInBrowser(() => h(WebView as never, props as never))
+    // The page ONLY replies to the pyreondata event — no timer fallback — so
+    // this can pass only if the bridge existed when that first event fired.
+    await waitFor(() => onMessage.mock.calls.length > 0)
+    expect(onMessage).toHaveBeenCalledWith('first-push')
+  })
+
   it('renders `src` as an iframe src and `html` as srcdoc — html wins when both are given', () => {
     const bySrc = mountInBrowser(() => h(WebView as never, { src: 'page.html' } as never))
     const srcFrame = bySrc.container.querySelector('iframe') as HTMLIFrameElement

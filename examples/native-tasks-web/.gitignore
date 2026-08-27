@@ -4,3 +4,8 @@ dist/
 # from the shared ../native-tasks/assets on every dev/build.
 public/assets/
 public/fonts/
+# Web-host pages materialized from assets/webhost/ by the same step.
+# Sources live in ../native-tasks/assets/webhost/ — this is generated output.
+public/*.html
+public/*.js
+public/*.css

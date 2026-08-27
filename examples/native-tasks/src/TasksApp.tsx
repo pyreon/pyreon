@@ -475,18 +475,15 @@ const AttrsBox = attrs({ name: 'AttrsBox', component: Stack }).attrs({ gap: 2 })
 const ToolkitSchema = zodSchema(z.object({ name: z.string().min(3), age: z.number() }))
 
 // The WEBVIEW BRIDGE, which is the mechanism four packages (charts / code /
-// flow / rich-text) ride on and the one with no proof outside its own unit
-// tests. A chart bundle cannot appear in lowered source — `buildChartHostHtml`
-// is build-time — but the BRIDGE can, as a literal host page.
+// flow / rich-text) ride on. Their real host pages are produced at BUILD time,
+// so they can never appear in lowered source — a BUNDLED file is their only
+// route to a device, and that is what this exercises.
 //
-// The page echoes host-pushed `__pyreonData` straight back over the reverse
-// channel. That is deliberate: it makes BOTH directions assertable from OUTSIDE
-// the WebView, where XCUITest and the Compose semantics tree can actually see —
-// asserting inside a WKWebView is the part neither can do reliably.
-const BRIDGE_HTML = `<!doctype html><body><script>
-function send() { window.pyreonPostMessage && window.pyreonPostMessage(String(window.__pyreonData)) }
-window.addEventListener('pyreondata', send); setTimeout(send, 0);
-</script></body>`
+// `src`, not `html`: the page ships in assets/webhost/ and is materialized by
+// `pyreon-native assets` into the place each target's resolver reads
+// (Bundle.main on iOS, assets/ on Android, the served root on web). Until that
+// pipeline existed the runtimes resolved `src` and nothing could put a file
+// there, so every WebView had to inline its whole page as a string.
 
 // rocketstyle with `.theme()` and NO `.styles()` — the chain that used to be
 // fully styled on iOS/Android and completely unstyled in a browser. It now
@@ -655,7 +652,7 @@ function ToolkitScreen() {
       </Container>
       <Text data-testid="toolkit-hotkey">{String(hotkeyHits())}</Text>
       <WebView
-        html={BRIDGE_HTML}
+        src="bridge.html"
         data={'ping'}
         onMessage={(m) => bridgeEcho.set(m)}
         data-testid="toolkit-webview"
