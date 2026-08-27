@@ -34,6 +34,10 @@ export function renderReport(
     target: string
     output: string
     wrote: number
+    /** Paths whose contents differ from disk. Everything else is unchanged. */
+    changed?: ReadonlySet<string> | undefined
+    /** The subset of `changed` that is NEW rather than updated. */
+    created?: ReadonlySet<string> | undefined
     name?: string | undefined
     plugins: readonly string[]
     requestedPlugins: readonly string[]
@@ -59,9 +63,31 @@ export function renderReport(
   }
   lines.push('')
 
-  for (const f of result.files) lines.push(`  ${C.green('+')} ${opts.output}/${f.path}`)
+  // Mark each file by what actually HAPPENED to it. Every line used to carry a
+  // green `+`, which reads as "created", directly above a count saying one file
+  // was written — so the display contradicted itself on every run after the
+  // first. `+` is new, `~` is updated, and an unchanged file is dimmed, which
+  // makes "what did my spec edit move?" answerable at a glance.
+  const changed = opts.changed
+  for (const f of result.files) {
+    const path = `${opts.output}/${f.path}`
+    if (changed === undefined) {
+      lines.push(`  ${C.green('+')} ${path}`)
+    } else if (opts.created?.has(f.path)) {
+      lines.push(`  ${C.green('+')} ${path}`)
+    } else if (changed.has(f.path)) {
+      lines.push(`  ${C.yellow('~')} ${path}`)
+    } else {
+      lines.push(`  ${C.dim(`· ${path}`)}`)
+    }
+  }
   lines.push('')
-  lines.push(`  ${opts.wrote} file(s) written`)
+  lines.push(
+    changed === undefined
+      ? `  ${opts.wrote} file(s) written`
+      : `  ${opts.wrote} of ${result.files.length} file(s) written` +
+        (changed.size === 0 ? C.dim('  (everything already current)') : ''),
+  )
 
   if (opts.target === 'multiplatform') {
     const reaches = [...result.reach.values()]

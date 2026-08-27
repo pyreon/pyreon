@@ -173,6 +173,30 @@ describe('generate', () => {
     expect(src).not.toContain('response:')
   })
 
+  it('derives `enabled` from args, so a not-ready query cannot fire', () => {
+    // The most common way to get a detail query wrong is to fire it before its
+    // id exists. Passing a placeholder id and a matching `enabled` writes the
+    // same condition twice, and getting the second one wrong requests
+    // `/books/` with an empty segment — a 404 on first paint that reads as a
+    // backend fault. Returning `undefined` says "not yet" ONCE.
+    const src = file(generate(SPEC, web), 'queries/books.ts')
+    expect(src).toContain('args: () => { params: { id: string } } | undefined')
+    expect(src).toContain('if (a === undefined) {')
+    // Keyed on the endpoint's own prefix, so an invalidation still matches it.
+    expect(src).toContain('queryKey: getBook.key.prefix')
+    // `enabled` AFTER the caller's options in the disabled branch: a caller's
+    // `enabled: true` must not be able to fire a request with a missing path
+    // parameter. In the ready branch it respects an explicit `false`.
+    expect(src).toContain('...extra, enabled: false }')
+    expect(src).toContain('...extra, enabled: extra.enabled !== false }')
+  })
+
+  it('leaves a parameterless hook alone — nothing to be not-ready about', () => {
+    const src = file(generate(SPEC, web), 'queries/books.ts')
+    expect(src).toContain('export function useListBooks(options?: () => Record<string, unknown>) {')
+    expect(src).toContain('return useQuery<Book[]>(() => ({ ...listBooks.query(), ...options?.() }))')
+  })
+
   it('reports per-operation reach with a reason', () => {
     const r = generate(SPEC, native)
     expect(r.reach.get('listBooks')?.reach).toBe('web+native')

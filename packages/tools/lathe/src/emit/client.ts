@@ -232,10 +232,14 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
         // an object: `@pyreon/query` re-reads it, so a signal in `args` makes
         // the query key move and the request refetch.
         args ? 'Takes an ACCESSOR so signal reads in the arguments stay reactive.' : undefined,
-        // `options` is not optional polish. Without it there is no way to pass
-        // `enabled`, so a query whose arguments are not ready yet fires anyway
-        // with an empty parameter and 404s — which is exactly what a detail
-        // view does before the user has selected anything.
+        // The single most common way to get a detail query wrong is to fire it
+        // before its id exists. Returning `undefined` is how you say "not yet";
+        // deriving `enabled` from that means the condition is written ONCE
+        // instead of duplicated between a placeholder argument and an
+        // `enabled` option that has to agree with it.
+        args
+          ? 'Return `undefined` from `args` while the arguments are not ready — the query is DISABLED rather than fired with a placeholder.'
+          : undefined,
         'Second accessor merges extra query options (`enabled`, `staleTime`, `select`).',
         '',
         // Worth stating on every generated hook: the result fields are signals,
@@ -246,8 +250,28 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
       )
       const extra = 'options?: () => Record<string, unknown>'
       if (args) {
-        f.line(`export function ${hook}(args: () => ${args}, ${extra}) {`)
-        f.line(`  return useQuery<${ret}>(() => ({ ...${op.id}.query(args()), ...options?.() }))`)
+        // `| undefined` WIDENS the accepted type, so every existing call site
+        // still compiles; what changes is that returning it now means
+        // "disabled" rather than a crash on a missing path parameter.
+        f.line(`export function ${hook}(args: () => ${args} | undefined, ${extra}) {`)
+        f.line(`  return useQuery<${ret}>(() => {`)
+        f.line('    const a = args()')
+        f.line('    const extra = options?.() ?? {}')
+        // The disabled branch keys on the endpoint's own PREFIX — the same key
+        // `keys` exposes, and exactly what `.query()` would produce for absent
+        // arguments — so an invalidation of the endpoint still matches it.
+        //
+        // `enabled` sits AFTER the spread deliberately: a caller's
+        // `enabled: true` must not be able to fire a request whose path
+        // parameter is missing. `enabled: false` still disables, via the
+        // branch below.
+        f.line('    if (a === undefined) {')
+        f.line(
+          `      return { queryKey: ${op.id}.key.prefix, queryFn: ${DISABLED_FN}, ...extra, enabled: false }`,
+        )
+        f.line('    }')
+        f.line(`    return { ...${op.id}.query(a), ...extra, enabled: extra.enabled !== false }`)
+        f.line('  })')
       } else {
         f.line(`export function ${hook}(${extra}) {`)
         f.line(`  return useQuery<${ret}>(() => ({ ...${op.id}.query(), ...options?.() }))`)
@@ -397,6 +421,17 @@ export function emitNativeModules(doc: IrDocument, opts: ClientOptions): SourceF
   }
   return files
 }
+
+/**
+ * The `queryFn` of a DISABLED query.
+ *
+ * Never invoked — `enabled: false` is set after the caller's options precisely
+ * so it cannot be overridden — but the option type requires one, and a thunk
+ * that rejects with a real sentence beats `undefined!` if some future code
+ * path ever reaches it.
+ */
+const DISABLED_FN =
+  "() => Promise.reject(new Error('[Pyreon] lathe: query is disabled — its arguments are not ready'))"
 
 function collectRefs(type: IrType | undefined, into: Set<string>): void {
   if (!type) return

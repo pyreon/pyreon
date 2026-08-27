@@ -133,10 +133,19 @@ export async function run(
 
     let wrote = 0
     const stale: string[] = []
+    // WHICH paths changed, not just how many. The report used to mark every
+    // file with a green `+` and then say "1 file(s) written" underneath —
+    // fourteen lines that read as "created" for one file that actually moved.
+    // On a spec edit the useful signal is exactly which outputs it moved.
+    const changed = new Set<string>()
+    const created = new Set<string>()
     for (const file of result.files) {
       const full = fs.join(config.output, file.path)
-      const current = fs.exists(full) ? fs.read(full) : undefined
+      const existed = fs.exists(full)
+      const current = existed ? fs.read(full) : undefined
       if (current === file.contents) continue
+      if (!existed) created.add(file.path)
+      changed.add(file.path)
       if (argv.command === 'check') {
         stale.push(file.path)
         continue
@@ -145,7 +154,7 @@ export async function run(
       fs.write(full, file.contents)
       wrote++
     }
-    runs.push({ config, result, verify, wrote, stale })
+    runs.push({ config, result, verify, wrote, stale, changed, created })
   }
 
   return report(runs, argv, projects.length > 1)
@@ -157,6 +166,10 @@ interface RunOutcome {
   verify: ReturnType<typeof verifyNative>
   wrote: number
   stale: string[]
+  /** Paths whose contents differ from what is on disk. */
+  changed: Set<string>
+  /** The subset of `changed` that did not exist before — new, not updated. */
+  created: Set<string>
 }
 
 function report(runs: RunOutcome[], argv: Argv, multi: boolean): RunResult {
@@ -189,11 +202,13 @@ function report(runs: RunOutcome[], argv: Argv, multi: boolean): RunResult {
 
   let stdout = ''
   let code = 0
-  for (const { config, result, verify, wrote, stale } of runs) {
+  for (const { config, result, verify, wrote, stale, changed, created } of runs) {
     stdout += renderReport(result, verify, {
       target: config.target,
       output: config.output,
       wrote,
+      changed,
+      created,
       name: config.name,
       plugins: config.plugins,
       requestedPlugins: config.requestedPlugins,

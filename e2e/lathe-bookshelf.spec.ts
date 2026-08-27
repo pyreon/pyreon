@@ -45,6 +45,30 @@ test.describe('lathe / bookshelf', () => {
     await expect(page.getByTestId('author-list')).toContainText('Ursula K. Le Guin')
   })
 
+  test('a path-parameter query does NOT fire before its argument exists', async ({ page }) => {
+    // The generated hook derives `enabled` from `args()` returning `undefined`,
+    // so a detail view issues NO request until something is selected. Without
+    // that, the natural call site passes a placeholder id and requests
+    // `/books/` with an empty segment — a 404 on first paint that looks like a
+    // backend fault.
+    //
+    // The listener is attached BEFORE `goto` deliberately: the request this
+    // guards against happens during the initial load, which a listener
+    // registered afterwards cannot see.
+    const detailRequests: string[] = []
+    page.on('request', (r) => {
+      if (/\/v1\/books\/?$|\/v1\/books\/[^/?]*$/.test(new URL(r.url()).pathname)) {
+        detailRequests.push(new URL(r.url()).pathname)
+      }
+    })
+    await page.goto('/')
+    await expect(page.getByTestId('book-list')).toBeVisible()
+    await expect(page.getByTestId('detail-empty')).toBeVisible()
+
+    // The collection request (`/v1/books`) is expected; a DETAIL one is not.
+    expect(detailRequests.filter((p) => p !== '/v1/books')).toEqual([])
+  })
+
   test('a path-parameter query refetches when its accessor changes', async ({ page }) => {
     // The reactive half of the contract. The generated hook takes an ACCESSOR,
     // so writing the signal must move the query key and issue a NEW request —
