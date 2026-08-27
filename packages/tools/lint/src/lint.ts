@@ -53,6 +53,9 @@ function walkDirectory(
   try {
     entries = readdirSync(dir)
   } catch {
+    // An unreadable directory (permissions) is skipped, not fatal. Not
+    // portably triggerable in a unit test (needs a chmod-000 dir).
+    /* v8 ignore next */
     return
   }
   for (const entry of entries) {
@@ -244,6 +247,9 @@ export function lint(options: LintOptions): LintResult {
     try {
       source = readFileSync(filePath, 'utf-8')
     } catch {
+      // A file that vanished/became unreadable between the walk and the read
+      // is skipped. Not portably triggerable in a unit test.
+      /* v8 ignore next */
       continue
     }
     const fileResult = lintFile(filePath, source, allRules, config, cache, configDiagnostics)

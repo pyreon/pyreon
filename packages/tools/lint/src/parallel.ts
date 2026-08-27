@@ -83,6 +83,11 @@ export async function lintAsync(options: LintOptions): Promise<LintResult> {
   const chunks = partition(run.files, workers)
   const entry = workerEntry()
 
+  /* v8 ignore start -- the worker spawn + post-worker merge run ONLY with the
+     built .js worker entry: the src/.ts vitest env cannot load a .ts worker, so
+     lintAsync falls back to the sequential path here, and a worker's body is not
+     coverage-instrumented anyway. The pure helpers (workerCountFor / partition)
+     and the sequential path ARE unit-tested in parallel.test.ts. */
   let outputs: LintWorkerOutput[]
   try {
     outputs = await Promise.all(
@@ -141,4 +146,5 @@ export async function lintAsync(options: LintOptions): Promise<LintResult> {
     }
   }
   return result
+  /* v8 ignore stop */
 }

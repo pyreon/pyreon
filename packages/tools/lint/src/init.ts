@@ -132,6 +132,10 @@ export function initConfig(cwd: string): InitResult {
           '.pyreonlintrc.json already exists — leaving it alone. Delete it first if you want a fresh one.',
       }
     }
+    // Defensive: propagate any write error that is NOT "already exists"
+    // (EACCES, ENOSPC, …). Not reachably testable without mocking the
+    // directly-imported `writeFileSync`, so excluded from coverage.
+    /* v8 ignore next */
     throw err
   }
 

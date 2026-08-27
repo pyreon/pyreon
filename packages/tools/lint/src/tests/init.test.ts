@@ -73,6 +73,17 @@ describe('buildInitConfig', () => {
   })
 })
 
+describe('detectPyreonDeps', () => {
+  it('returns [] when there is no package.json (null branch)', () => {
+    expect(detectPyreonDeps(null)).toEqual([])
+  })
+  it('lists @pyreon/* deps from both dependencies and devDependencies', () => {
+    expect(detectPyreonDeps({ dependencies: { '@pyreon/query': '*' }, devDependencies: { '@pyreon/lint': '*', lodash: '*' } })).toEqual(
+      expect.arrayContaining(['@pyreon/query', '@pyreon/lint']),
+    )
+  })
+})
+
 describe('initConfig', () => {
   it('writes a config the loader can actually read back', () => {
     // The round trip is the point: a scaffold the tool cannot load is worse

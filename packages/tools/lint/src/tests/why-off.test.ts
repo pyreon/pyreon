@@ -54,6 +54,13 @@ describe('explainRuleState', () => {
     expect(state.reasons).toEqual([])
   })
 
+  it('formats an un-suppressed rule — "Nothing is suppressing it" (formatRuleState else branch)', () => {
+    const state = explainRuleState('no-missing-for-by', { config: recommended() })
+    const out = formatRuleState(state)
+    expect(out).toContain('Nothing is suppressing it')
+  })
+
+
   it('names an unknown rule and suggests the near miss', () => {
     const state = explainRuleState('no-missing-by', { config: recommended() })
     expect(state.found).toBe(false)
