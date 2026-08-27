@@ -1,0 +1,116 @@
+openapi: 3.0.3
+info:
+  title: Bookshelf
+  version: 1.2.0
+  description: A small library catalogue, written by hand to exercise the generator.
+servers:
+  - url: https://bookshelf.pyreon.dev/v1
+tags:
+  - name: books
+  - name: authors
+paths:
+  /books:
+    get:
+      operationId: listBooks
+      tags: [books]
+      summary: Every book in the catalogue.
+      responses:
+        '200':
+          description: The catalogue.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Book' }
+    post:
+      operationId: createBook
+      tags: [books]
+      summary: Add a book.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NewBook' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Book' }
+  /books/{bookId}:
+    get:
+      operationId: getBook
+      tags: [books]
+      summary: One book by id.
+      parameters:
+        - name: bookId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The book.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Book' }
+  /authors:
+    get:
+      operationId: listAuthors
+      tags: [authors]
+      summary: Every author.
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100 }
+      responses:
+        '200':
+          description: Authors.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Author' }
+components:
+  schemas:
+    Entity:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Stable identifier.
+    Author:
+      allOf:
+        - $ref: '#/components/schemas/Entity'
+        - type: object
+          required: [name]
+          properties:
+            name: { type: string, minLength: 1, maxLength: 120 }
+            email: { type: string, format: email }
+    Book:
+      allOf:
+        - $ref: '#/components/schemas/Entity'
+        - type: object
+          required: [title, status]
+          properties:
+            title:
+              type: string
+              minLength: 1
+              description: The book's title.
+              example: The Left Hand of Darkness
+            status:
+              type: string
+              enum: [available, borrowed, lost]
+              description: Circulation state.
+            pages: { type: integer, minimum: 1 }
+            subtitle: { type: string, nullable: true }
+            tags:
+              type: array
+              items: { type: string }
+    NewBook:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string, minLength: 1 }
+        pages: { type: integer, minimum: 1 }

@@ -2148,6 +2148,63 @@ export function transformJSX_JS(
   }
 
   /** Serialize one expression child. Returns false to bail the element. */
+  /**
+   * SSR: lower an eligible DOM `JSXElement` to its `_ssr(...)` string form (the
+   * SAME text a top-level element produces, see `trySsrTemplateEmit`), or null
+   * when it cannot be a self-contained string. Only elements whose holes are
+   * ALL generated (no preserved component child) qualify: a component child
+   * needs the `_ssrDeferred` range-bracketing that edits fixed source ranges in
+   * place, which an element sitting inside a hole has no range for — those keep
+   * the VNode path. Byte-identity is the `trySsrTemplateEmit` invariant
+   * `_ssr(el) ≡ renderNode(<el>)`.
+   */
+  function ssrLowerElementText(el: N): string | null {
+    const eb = buildSsrBuf(el, 'recursed')
+    if (eb === null) return null
+    if (eb.holeSrc.some((h) => h !== null)) return null
+    needsSsrImport = true
+    return ssrCallText(eb, 'recursed')
+  }
+
+  /**
+   * SSR: lower the eligible DOM-element operand(s) of a conditional expression
+   * child — `cond && <el>`, `cond ? <el> : <el|null>`, or a bare `{<el>}` — to
+   * `_ssr(...)` so the TAKEN branch builds a string directly instead of
+   * allocating a VNode and walking `renderNode`. Returns the reconstructed
+   * expression source, or null when nothing lowered (caller keeps `sliceExpr`).
+   *
+   * Byte-identity across EVERY value: the `&&` / `?:` short-circuit is
+   * untouched (only an element OPERAND's value changes from VNode → RawHtml),
+   * each lowered element satisfies `_ssr(el) ≡ renderNode(<el>)`, and the
+   * runtime `_esc` / `_escSole` route a RawHtml through `renderNode` exactly as
+   * they route a VNode (a falsy left operand — `false`/null/0/''/NaN — is
+   * returned verbatim by both). The caller's `sole` / `shouldWrap` marker
+   * decision reads the ORIGINAL `expr`, so it is unchanged. Conditions are
+   * EXACT (mirroring `ssrTryMap`): any non-element operand keeps its slice, and
+   * an all-unlowerable expression returns null so the emit is byte-for-byte the
+   * pre-existing VNode path.
+   */
+  function ssrLowerNestedElements(expr: N): string | null {
+    if (expr.type === 'JSXElement') return ssrLowerElementText(expr)
+    if (expr.type === 'LogicalExpression' && expr.operator === '&&') {
+      const right = unwrapTypeLayers(expr.right)
+      if (right.type !== 'JSXElement') return null
+      const lowered = ssrLowerElementText(right)
+      return lowered === null ? null : `${sliceExpr(expr.left)} && ${lowered}`
+    }
+    if (expr.type === 'ConditionalExpression') {
+      const cons = unwrapTypeLayers(expr.consequent)
+      const alt = unwrapTypeLayers(expr.alternate)
+      const loweredCons = cons.type === 'JSXElement' ? ssrLowerElementText(cons) : null
+      const loweredAlt = alt.type === 'JSXElement' ? ssrLowerElementText(alt) : null
+      if (loweredCons === null && loweredAlt === null) return null
+      const consText = loweredCons ?? sliceExpr(expr.consequent)
+      const altText = loweredAlt ?? sliceExpr(expr.alternate)
+      return `${sliceExpr(expr.test)} ? ${consText} : ${altText}`
+    }
+    return null
+  }
+
   function ssrSerializeExprChild(buf: SsrBuf, child: N, mode: SsrMode, sole: boolean): boolean {
     const raw = child.expression
     if (!raw || raw.type === 'JSXEmptyExpression') return true // {} / {/* */} → nothing
@@ -2164,12 +2221,17 @@ export function transformJSX_JS(
     }
     // recursed mode: matches handleJsxExpression's wrap decision.
     if (ssrTryMap(buf, expr, sole)) return true
+    // Lower an eligible DOM element nested in a conditional (`cond && <el>`,
+    // `cond ? <el> : …`) so the taken branch builds a string, not a VNode. The
+    // reconstructed text is byte-identical through `_esc`/`_escSole` (see
+    // `ssrLowerNestedElements`); null keeps the pre-existing `sliceExpr` path.
+    const exprText = ssrLowerNestedElements(expr) ?? sliceExpr(expr)
     // SOLE child of this element → no markers on EITHER side, whatever the
     // expression's static shape; `_escSole` decides from the runtime value
     // kind, which is the only thing that determines whether `_esc` would have
     // added them. See `soleAccessorChild` in @pyreon/runtime-server.
     if (sole) {
-      emitEscSoleHole(buf, sliceExpr(expr))
+      emitEscSoleHole(buf, exprText)
       return true
     }
     if (shouldWrap(expr)) {
@@ -2178,10 +2240,10 @@ export function transformJSX_JS(
       // `_esc(expr)`: byte-identical, since renderNode(() => v) === `<!--$-->` +
       // renderNode(v) + `<!--/$-->` and `_esc(v)` === renderNode(v).
       ssrEmitStatic(buf, '<!--$-->')
-      emitEscHole(buf, sliceExpr(expr))
+      emitEscHole(buf, exprText)
       ssrEmitStatic(buf, '<!--/$-->')
     } else {
-      emitEscHole(buf, sliceExpr(expr))
+      emitEscHole(buf, exprText)
     }
     return true
   }

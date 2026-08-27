@@ -1,0 +1,4 @@
+{
+  "extends": "@pyreon/tsconfig/example.json",
+  "include": ["src", "vite.config.ts", "pyreon.config.ts"]
+}
