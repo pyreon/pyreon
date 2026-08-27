@@ -112,6 +112,30 @@ export function combine<A, B, C, D, E, F, R>(
 export function combine(...args: any[]): any {
   const fn = args[args.length - 1] as (...vals: any[]) => any
   const sources = args.slice(0, -1) as ReadableSignal<any>[]
+  // Arity-specialize the common cases. `combine` recomputes on every input
+  // change (e.g. per keystroke for a derived field), and the variadic form
+  // allocates a fresh `sources.map(...)` array plus a spread arguments object
+  // on every emit. Reading the fixed 2–4 sources directly avoids both; the
+  // signals are captured once here, not per emit.
+  const n = sources.length
+  if (n === 2) {
+    const a = sources[0]!
+    const b = sources[1]!
+    return computed(() => fn(a(), b()))
+  }
+  if (n === 3) {
+    const a = sources[0]!
+    const b = sources[1]!
+    const c = sources[2]!
+    return computed(() => fn(a(), b(), c()))
+  }
+  if (n === 4) {
+    const a = sources[0]!
+    const b = sources[1]!
+    const c = sources[2]!
+    const d = sources[3]!
+    return computed(() => fn(a(), b(), c(), d()))
+  }
   return computed(() => fn(...sources.map((s) => s())))
 }
 
