@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { cpus } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -56,24 +57,42 @@ export function partition<T>(items: T[], n: number): T[][] {
 }
 
 /**
- * Path to the worker entry, carrying this module's own extension.
+ * Absolute path to the worker entry.
  *
- * Exported for tests: whether the parallel path can actually RUN depends on
- * which artifact is loaded, and a test that cannot tell the difference will
- * happily pass while measuring the sequential path.
+ * Resolved through the package's OWN export map (`@pyreon/lint/lint-worker`)
+ * rather than relative to this module, because this module does not stay put:
+ * the bundler folds `parallel.ts` into `lib/_chunks/`, so `import.meta.url`
+ * points one directory below the worker and a relative guess resolves to
+ * `lib/_chunks/lint-worker.js` — which does not exist. Combined with the
+ * spawn-failure fallback that made the parallel path silently never run, in
+ * dev AND in the published build, while every test still passed.
+ *
+ * The export map is the one thing that survives bundling, so it is what the
+ * lookup keys on. Relative candidates remain only as a fallback for hosts
+ * without `import.meta.resolve`.
  */
 export function _workerEntry(): string {
-  // Resolve next to THIS module, carrying its own extension.
-  //
-  // The package is consumed two ways: workspace/dev resolves the `bun`
-  // condition to `src/*.ts`, published installs resolve to `lib/*.js`.
-  // Hardcoding `.js` works in one and silently fails in the other — the
-  // same src-vs-lib split that makes stale `lib/` bugs so confusing.
-  const url = import.meta.url
-  const here = dirname(fileURLToPath(url))
-  const ext = url.endsWith('.ts') ? '.ts' : '.js'
+  try {
+    const resolved = import.meta.resolve?.('@pyreon/lint/lint-worker')
+    if (resolved) return fileURLToPath(resolved)
+  } catch {
+    // Self-reference unavailable (older host, or an unusual layout) — fall
+    // through to the relative candidates below.
+  }
+
+  const here = dirname(fileURLToPath(import.meta.url))
+  const ext = import.meta.url.endsWith('.ts') ? '.ts' : '.js'
+  for (const candidate of [
+    join(here, `lint-worker${ext}`), // running from src/, or an unbundled lib/
+    join(here, '..', `lint-worker${ext}`), // bundled into lib/_chunks/
+  ]) {
+    if (existsSync(candidate)) return candidate
+  }
+  // Nothing found: return the primary candidate so the spawn fails with a
+  // path in the message rather than silently doing nothing.
   return join(here, `lint-worker${ext}`)
 }
+
 
 /**
  * Lint with a worker pool, falling back to the sequential path when the input

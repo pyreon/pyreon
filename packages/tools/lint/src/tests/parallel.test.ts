@@ -83,6 +83,19 @@ describe('lintAsync — same answer as lint()', () => {
     expect(workerCountFor(FILE_COUNT)).toBeGreaterThan(0)
   })
 
+  it('_workerEntry() points at a file that EXISTS', () => {
+    // The bug this locks: the bundler folds `parallel.ts` into `lib/_chunks/`,
+    // so a path derived from `import.meta.url` resolved to
+    // `lib/_chunks/lint-worker.js` — which does not exist. Every spawn failed
+    // and the fallback swallowed it, so the parallel path never ran in dev OR
+    // in the published build while every test still passed.
+    //
+    // Asserting the path RESOLVES is what catches that; asserting behaviour
+    // does not, because the fallback makes broken and working produce the
+    // same answer.
+    expect(existsSync(_workerEntry()), `_workerEntry() -> ${_workerEntry()}`).toBe(true)
+  })
+
   it('the SOURCE-loaded worker entry cannot spawn — so the specs below measure the fallback', () => {
     // Stated rather than assumed. Loaded from `src/*.ts` the worker entry's
     // extensionless imports are unresolvable to Node's ESM loader inside a
@@ -170,6 +183,22 @@ describe('the BUILT worker actually spawns', () => {
   // for. Mirrors `bin-invokes-cli.test.ts`: exercise the artifact a consumer
   // gets, and fail loudly if it is missing rather than skipping quietly.
   const LIB_WORKER = join(import.meta.dirname, '..', '..', 'lib', 'lint-worker.js')
+  const LIB_INDEX = join(import.meta.dirname, '..', '..', 'lib', 'index.js')
+
+  it.skipIf(!existsSync(LIB_INDEX))(
+    'the BUILT _workerEntry() resolves to a file that exists',
+    async () => {
+      // THE spec that catches the real bug. Under `src` the relative guess
+      // happens to resolve, so a source-side assertion is blind: the failure
+      // only exists in the BUNDLED layout, where `parallel.ts` lives in
+      // `lib/_chunks/` and a relative path lands one directory too deep.
+      // Import the built artifact so the test sees what a consumer sees.
+      const built = (await import(LIB_INDEX)) as { _workerEntry?: () => string }
+      expect(typeof built._workerEntry).toBe('function')
+      const entry = built._workerEntry!()
+      expect(existsSync(entry), `built _workerEntry() -> ${entry}`).toBe(true)
+    },
+  )
 
   it.skipIf(!existsSync(LIB_WORKER))(
     'loads lib/lint-worker.js in a real worker and returns results',
