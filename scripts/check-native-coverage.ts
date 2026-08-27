@@ -622,15 +622,45 @@ export function C() {
   //
   // Evidence rung, stated per entry rather than implied — the host BRIDGE is
   // proven in real Chromium against the REAL engine (`src/webview.browser.test.tsx`),
-  // and the native `<WebView>` host is emit + stub-typecheck proven (PMTC lowers
-  // it on both targets; `examples/native-viz` emits 24 `PyreonWebView` calls,
-  // 0 warnings). NO device test hosts a WebView on either platform — see the
-  // `not device-proven` note each rationale carries.
+  // and the native `<WebView>` host is emit + COMPILE proven: each of these four
+  // carries a snippet hosting its own real payload shape, which the compile pass
+  // puts through swiftc and kotlinc like any other. NO device test hosts a
+  // WebView on either platform — see the `not device-proven` note each rationale
+  // carries.
+  //
+  // Those snippets replaced a claim that read "`examples/native-viz` emits 24
+  // `PyreonWebView` calls, 0 warnings". That was true and it was not evidence:
+  // a warning count was standing in for a compile nobody ran, and when the
+  // compile was finally run, native-viz did not build on Android at all. An
+  // ECharts option object has heterogeneous nesting and empty objects, so no
+  // struct could be synthesized for it and the emit fell back to a tuple —
+  // invalid Kotlin, and on Swift a non-`Codable` value that `encode` cannot
+  // serialize. `<WebView data>` lowers literals as JSON now, and the snippets
+  // below are what keeps that honest: each carries the payload shape its package
+  // actually crosses by, so the mechanism is checked rather than described.
   {
     name: '@pyreon/charts',
     mechanism: 'webview-host',
     rationale:
       'ECharts is a canvas engine with no native equivalent, so it crosses by HOSTING the same web chart in a native <WebView> (@pyreon/charts/webview). Bridge proven in real Chromium against real ECharts; native host is emit + stub-typecheck proven, NOT device-proven.',
+    snippet: `import { signal } from '@pyreon/reactivity'
+import { Stack, Text, WebView } from '@pyreon/primitives'
+export function C() {
+  const nums = signal([1, 2, 3])
+  const text = signal('const a = 1')
+  const picked = signal('none')
+  return (
+    <Stack>
+      <Text>{picked()}</Text>
+      <WebView
+        html="<!doctype html><html><body></body></html>"
+        data={{ xAxis: { type: 'category', data: ['Mon', 'Tue'] }, yAxis: {}, series: [{ type: 'bar', data: nums() }] }}
+        onMessage={(m) => picked.set(m)}
+      />
+    </Stack>
+  )
+}
+`,
     webviewHost: { hostHtmlExport: 'buildChartHostHtml', componentExport: 'ChartWebView' },
   },
   {
@@ -638,6 +668,24 @@ export function C() {
     mechanism: 'webview-host',
     rationale:
       'CodeMirror 6 is a DOM editor with no native equivalent, so it crosses by HOSTING the same editor in a native <WebView> (@pyreon/code/webview). Bridge proven in real Chromium against real CodeMirror; native host is emit + stub-typecheck proven, NOT device-proven.',
+    snippet: `import { signal } from '@pyreon/reactivity'
+import { Stack, Text, WebView } from '@pyreon/primitives'
+export function C() {
+  const nums = signal([1, 2, 3])
+  const text = signal('const a = 1')
+  const picked = signal('none')
+  return (
+    <Stack>
+      <Text>{picked()}</Text>
+      <WebView
+        html="<!doctype html><html><body></body></html>"
+        data={{ doc: text(), language: 'typescript', readOnly: false }}
+        onMessage={(m) => picked.set(m)}
+      />
+    </Stack>
+  )
+}
+`,
     webviewHost: { hostHtmlExport: 'buildCodeHostHtml', componentExport: 'CodeWebView' },
   },
   {
@@ -645,6 +693,24 @@ export function C() {
     mechanism: 'webview-host',
     rationale:
       'the node-graph is an elk/SVG layout with no native equivalent, so it crosses by HOSTING the same diagram in a native <WebView> (@pyreon/flow/webview — self-contained, no CDN). Bridge + real SVG render proven in real Chromium; native host is emit + stub-typecheck proven, NOT device-proven.',
+    snippet: `import { signal } from '@pyreon/reactivity'
+import { Stack, Text, WebView } from '@pyreon/primitives'
+export function C() {
+  const nums = signal([1, 2, 3])
+  const text = signal('const a = 1')
+  const picked = signal('none')
+  return (
+    <Stack>
+      <Text>{picked()}</Text>
+      <WebView
+        html="<!doctype html><html><body></body></html>"
+        data={{ nodes: [{ id: 'a', label: 'A', x: 20, y: 20 }], edges: [] }}
+        onMessage={(m) => picked.set(m)}
+      />
+    </Stack>
+  )
+}
+`,
     webviewHost: { hostHtmlExport: 'buildFlowHostHtml', componentExport: 'FlowWebView' },
   },
   {
@@ -652,6 +718,24 @@ export function C() {
     mechanism: 'webview-host',
     rationale:
       'TipTap/ProseMirror is a DOM editor with no native equivalent, so it crosses by HOSTING the same WYSIWYG in a native <WebView> (@pyreon/rich-text/webview). Bridge proven in real Chromium against real TipTap; native host is emit + stub-typecheck proven, NOT device-proven.',
+    snippet: `import { signal } from '@pyreon/reactivity'
+import { Stack, Text, WebView } from '@pyreon/primitives'
+export function C() {
+  const nums = signal([1, 2, 3])
+  const text = signal('const a = 1')
+  const picked = signal('none')
+  return (
+    <Stack>
+      <Text>{picked()}</Text>
+      <WebView
+        html="<!doctype html><html><body></body></html>"
+        data={{ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'hi' }] }] }}
+        onMessage={(m) => picked.set(m)}
+      />
+    </Stack>
+  )
+}
+`,
     webviewHost: { hostHtmlExport: 'buildRichTextHostHtml', componentExport: 'RichTextWebView' },
   },
 
