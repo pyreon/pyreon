@@ -99,7 +99,25 @@ class PyreonCrdtMap implements CrdtMap {
 
   /** @internal — fired by the doc at transaction commit. */
   _notify(changedKeys: ReadonlySet<string>, origin: CrdtOrigin): void {
-    for (const cb of [...this.observers]) cb(changedKeys, origin)
+    // Single-observer fast path — the dominant shape (the keyed dispatcher
+    // installs exactly ONE observer per map). Fired per transaction commit, so
+    // the `[...observers]` snapshot was a throwaway array every commit. Capture
+    // the sole observer and fire it (matching the snapshot's "observers present
+    // at notify start" semantics) without the ARRAY allocation.
+    //
+    // Not zero-allocation, and the distinction is worth stating: reading the
+    // sole entry via `values().next()` still allocates a Set iterator plus its
+    // result object, and V8 does not escape-analyze those away (measured in
+    // #2973). The saving here is one allocation out of three, not three out of
+    // three. Going actually-zero needs an inline first-subscriber slot next to
+    // the Set — worth it in `map-dispatch.ts`, which fires per keystroke; not
+    // worth the extra state on this per-commit path.
+    const set = this.observers
+    if (set.size === 1) {
+      set.values().next().value!(changedKeys, origin)
+      return
+    }
+    for (const cb of [...set]) cb(changedKeys, origin)
   }
 }
 
@@ -250,7 +268,13 @@ export class PyreonCrdtDoc implements CrdtDoc {
     this.committedOps = []
     for (const [map, keys] of perMap) map._notify(keys, origin)
     if (ops.length > 0) {
-      for (const cb of [...this.opListeners]) cb(ops, origin)
+      // Single-listener fast path (same rationale as `_notify`).
+      const set = this.opListeners
+      if (set.size === 1) {
+        set.values().next().value!(ops, origin)
+      } else {
+        for (const cb of [...set]) cb(ops, origin)
+      }
     }
   }
 
