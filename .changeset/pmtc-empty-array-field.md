@@ -47,3 +47,9 @@ exact sorted field-name set, so `type T = { a: string; b?: string }` with
 `__Obj0` and compiled with the wrong type, so `encode` serialized the wrong
 shape. Ambiguity (two declared structs both accepting the literal) bails rather
 than guessing.
+
+The Swift validation stubs gain `accessibilityAddTraits` / `AccessibilityTraits`
+and `Font.system(size:weight:design:)`, all of which real SwiftUI has and the
+stub did not — so `examples/native-router-demo-ios` failed the type gate while
+building fine on a device. Every shipped `native-*` example now compiles on both
+targets, and a discovered (not listed) test keeps it that way.
