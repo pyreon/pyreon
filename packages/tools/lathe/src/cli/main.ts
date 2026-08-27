@@ -50,15 +50,17 @@ export async function main(argvRaw: readonly string[], cwd: string): Promise<num
     // `pull` and `generate` cannot disagree about which file is the spec.
     const url = argv.input
     if (!url || !/^https?:\/\//.test(url)) {
-      console.error('[Pyreon] lathe: `lathe pull` needs an http(s) URL — `lathe pull https://api.example.com/openapi.json`')
+      process.stderr.write(
+        '[Pyreon] lathe: `lathe pull` needs an http(s) URL — `lathe pull https://api.example.com/openapi.json`\n',
+      )
       return 1
     }
     const { resolveProjects } = await import('../core/config')
     const dest = resolveProjects(section)[0]?.input
     if (!dest) {
-      console.error(
+      process.stderr.write(
         '[Pyreon] lathe: no `input` configured, so there is nowhere to put the spec.\n' +
-          '  Set `lathe.input` in pyreon.config.ts, or pass `--out-spec <path>`.',
+          '  Set `lathe.input` in pyreon.config.ts, or pass `--out-spec <path>`.\n',
       )
       return 1
     }

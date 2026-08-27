@@ -107,19 +107,19 @@ export async function pullSpec(url: string, dest: string): Promise<number> {
   try {
     res = await fetch(url)
   } catch (err) {
-    console.error(
-      `[Pyreon] lathe: could not reach ${url}\n  ${err instanceof Error ? err.message : String(err)}`,
+    process.stderr.write(
+      `[Pyreon] lathe: could not reach ${url}\n  ${err instanceof Error ? err.message : String(err)}\n`,
     )
     return 1
   }
   if (!res.ok) {
-    console.error(`[Pyreon] lathe: ${url} responded ${res.status} ${res.statusText}`)
+    process.stderr.write(`[Pyreon] lathe: ${url} responded ${res.status} ${res.statusText}\n`)
     return 1
   }
   const body = await readCapped(res)
   if (body === undefined) {
-    console.error(
-      `[Pyreon] lathe: ${url} returned more than ${MAX_BYTES / 1024 / 1024} MB, so nothing was written.`,
+    process.stderr.write(
+      `[Pyreon] lathe: ${url} returned more than ${MAX_BYTES / 1024 / 1024} MB, so nothing was written.\n`,
     )
     return 1
   }
@@ -127,16 +127,16 @@ export async function pullSpec(url: string, dest: string): Promise<number> {
   try {
     parsed = parseSpecText(body)
   } catch (err) {
-    console.error(
+    process.stderr.write(
       `[Pyreon] lathe: ${url} did not return a parseable spec, so nothing was written.\n` +
-        `  ${err instanceof Error ? err.message : String(err)}`,
+        `  ${err instanceof Error ? err.message : String(err)}\n`,
     )
     return 1
   }
   if (!looksLikeSpec(parsed)) {
-    console.error(
+    process.stderr.write(
       `[Pyreon] lathe: ${url} parsed, but carries no \`openapi\` or \`swagger\` version key,\n` +
-        '  so it is not an OpenAPI document. Nothing was written.',
+        '  so it is not an OpenAPI document. Nothing was written.\n',
     )
     return 1
   }
