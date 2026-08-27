@@ -3038,12 +3038,11 @@ export function transformJSX_JS(
     if (node.type === 'MemberExpression' && node.object?.type === 'Identifier') {
       if (propsNames.has(node.object.name)) return true
     }
-    let found = false
-    forEachChildFast(node, (child) => {
-      if (found) return
-      if (readsFromProps(child)) found = true
-    })
-    return found
+    const kids = childrenMap.get(node)
+    if (kids) for (let i = 0; i < kids.length; i++) {
+      if (readsFromProps(kids[i]!)) return true
+    }
+    return false
   }
 
   /**
@@ -3067,12 +3066,11 @@ export function transformJSX_JS(
    */
   function containsJsx(node: N): boolean {
     if (node.type === 'JSXElement' || node.type === 'JSXFragment') return true
-    let found = false
-    forEachChildFast(node, (child) => {
-      if (found) return
-      if (containsJsx(child)) found = true
-    })
-    return found
+    const kids = childrenMap.get(node)
+    if (kids) for (let i = 0; i < kids.length; i++) {
+      if (containsJsx(kids[i]!)) return true
+    }
+    return false
   }
 
   /** Check if an expression references any prop-derived variable. */
@@ -3082,12 +3080,11 @@ export function transformJSX_JS(
       if (p && p.type === 'MemberExpression' && p.property === node && !p.computed) return false
       return true
     }
-    let found = false
-    forEachChildFast(node, (child) => {
-      if (found) return
-      if (referencesPropDerived(child)) found = true
-    })
-    return found
+    const kids = childrenMap.get(node)
+    if (kids) for (let i = 0; i < kids.length; i++) {
+      if (referencesPropDerived(kids[i]!)) return true
+    }
+    return false
   }
 
   /** Collect prop-derived variable info from a VariableDeclaration node.
@@ -3485,13 +3482,13 @@ export function transformJSX_JS(
         return false
       return true
     }
-    let found = false
-    forEachChildFast(node, (child) => {
-      if (found) return
-      if (child.type === 'ArrowFunctionExpression' || child.type === 'FunctionExpression') return
-      if (accessesProps(child)) found = true
-    })
-    return found
+    const kids = childrenMap.get(node)
+    if (kids) for (let i = 0; i < kids.length; i++) {
+      const child = kids[i]!
+      if (child.type === 'ArrowFunctionExpression' || child.type === 'FunctionExpression') continue
+      if (accessesProps(child)) return true
+    }
+    return false
   }
 
   function shouldWrap(node: N): boolean {
@@ -4264,12 +4261,11 @@ export function transformJSX_JS(
         const callee = node.callee
         if (callee?.type === 'Identifier' && isActiveSignal(callee.name)) return true
       }
-      let found = false
-      forEachChildFast(node, (child) => {
-        if (found) return
-        if (containsSignalCall(child)) found = true
-      })
-      return found
+      const kids = childrenMap.get(node)
+      if (kids) for (let i = 0; i < kids.length; i++) {
+        if (containsSignalCall(kids[i]!)) return true
+      }
+      return false
     }
 
     function tryDirectSelectorTernary(exprNode: N): {
@@ -5345,13 +5341,13 @@ export function transformJSX_JS(
       if (parent && parent.type === 'CallExpression' && parent.callee === node) return false // already called
       return true
     }
-    let found = false
-    forEachChildFast(node, (child) => {
-      if (found) return
-      if (child.type === 'ArrowFunctionExpression' || child.type === 'FunctionExpression') return
-      if (referencesSignalVar(child)) found = true
-    })
-    return found
+    const kids = childrenMap.get(node)
+    if (kids) for (let i = 0; i < kids.length; i++) {
+      const child = kids[i]!
+      if (child.type === 'ArrowFunctionExpression' || child.type === 'FunctionExpression') continue
+      if (referencesSignalVar(child)) return true
+    }
+    return false
   }
 
   /** Auto-insert () after signal variable references in the expression source.
