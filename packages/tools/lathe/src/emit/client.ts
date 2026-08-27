@@ -177,6 +177,12 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
     for (const op of ops) {
       if (isMutation(op)) collectRefs(op.body, typeImports)
       else collectRefs(op.response, typeImports)
+      // A PARAMETER's schema can be a `$ref` too - GitHub's spec does this
+      // heavily (`AlertNumber`, `CodeScanningRef`). Collecting only the
+      // response and body left those names used in the args type and never
+      // imported, so the generated module did not compile.
+      for (const p of op.pathParams) collectRefs(p.type, typeImports)
+      for (const p of op.queryParams) collectRefs(p.type, typeImports)
     }
     if (typeImports.size > 0) f.importType(schemaSpecifier(path), ...typeImports)
 

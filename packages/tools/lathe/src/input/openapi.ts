@@ -77,6 +77,11 @@ function convert(spec: Json): IrDocument {
 
   const operations = collectOperations(spec, ctx)
 
+  // Post-pass: two union shapes a real spec produces that the emitted schema
+  // DSL cannot express. Runs here, after models exist, because deciding either
+  // one needs to resolve `$ref`s.
+  normalizeUnions(models, operations, ctx)
+
   return {
     title: str(info.title) ?? 'API',
     version: str(info.version) ?? '0.0.0',
@@ -84,6 +89,72 @@ function convert(spec: Json): IrDocument {
     models,
     operations,
     notes,
+  }
+}
+
+/**
+ * Fix up union shapes the schema DSL cannot express.
+ *
+ * Both were found by running the GitHub spec through the generator, and both
+ * emitted code that did not typecheck:
+ *
+ *  - a `oneOf`/`anyOf` with ONE member. `s.union` requires at least two, and a
+ *    one-member union is just that member anyway.
+ *  - a `discriminator` whose members are not all OBJECTS. GitHub's
+ *    `GET /repos/{}/contents/{}` discriminates over a set that includes an
+ *    ARRAY branch; `s.discriminatedUnion` takes object schemas only, so it
+ *    degrades to a plain union rather than emitting something invalid.
+ */
+function normalizeUnions(models: IrModel[], operations: IrOperation[], ctx: Ctx): void {
+  const byName = new Map(models.map((m) => [m.name, m]))
+  const isObjectish = (t: IrType, depth = 0): boolean => {
+    if (depth > 8) return false
+    if (t.kind === 'object') return true
+    if (t.kind === 'ref') {
+      const target = byName.get(t.name)
+      return target ? isObjectish(target.type, depth + 1) : false
+    }
+    return false
+  }
+
+  const walk = (type: IrType | undefined, at: string, depth = 0): IrType | undefined => {
+    if (!type || depth > 12) return type
+    switch (type.kind) {
+      case 'array':
+        return { ...type, items: walk(type.items, at, depth + 1) as IrType }
+      case 'object':
+        return {
+          ...type,
+          fields: type.fields.map((f) => ({ ...f, type: walk(f.type, at, depth + 1) as IrType })),
+          additional: walk(type.additional, at, depth + 1),
+        }
+      case 'union': {
+        const options = type.options.map((o) => walk(o, at, depth + 1) as IrType)
+        if (options.length === 1) return options[0] as IrType
+        if (options.length === 0) {
+          ctx.notes.push({ code: 'unsupported-schema', at, message: 'empty oneOf/anyOf - typed as unknown.' })
+          return { kind: 'unknown', reason: 'empty union' }
+        }
+        if (type.discriminator && !options.every((o) => isObjectish(o))) {
+          ctx.notes.push({
+            code: 'unsupported-schema',
+            at,
+            message: `discriminator \`${type.discriminator}\` has a non-object member, which a discriminated union cannot take - emitted as a plain union instead.`,
+          })
+          return { kind: 'union', options, discriminator: undefined }
+        }
+        return { ...type, options }
+      }
+      default:
+        return type
+    }
+  }
+
+  for (const m of models) m.type = walk(m.type, `#/components/schemas/${m.name}`) as IrType
+  for (const op of operations) {
+    const at = `#/paths/${op.path}/${op.method.toLowerCase()}`
+    if (op.response) op.response = walk(op.response, at)
+    if (op.body) op.body = walk(op.body, at)
   }
 }
 
@@ -260,7 +331,15 @@ function toType(schema: Json, at: string, ctx: Ctx): IrType {
   const allOf = arr(schema.allOf)
   if (allOf.length > 0) return mergeAllOf(allOf, schema, at, ctx)
 
+  // An EMPTY `oneOf`/`anyOf` falls through to the type switch and lands on
+  // `unknown` anyway, which is safe -- but silently. A spec that declares a
+  // union of nothing is worth saying out loud.
+  const declaredUnion = Array.isArray(schema.oneOf) || Array.isArray(schema.anyOf)
   const anyOf = arr(schema.oneOf).length > 0 ? arr(schema.oneOf) : arr(schema.anyOf)
+  if (declaredUnion && anyOf.length === 0) {
+    ctx.notes.push({ code: 'unsupported-schema', at, message: 'empty oneOf/anyOf - typed as unknown.' })
+    return { kind: 'unknown', reason: 'empty union' }
+  }
   if (anyOf.length > 0) {
     const discriminator = str(obj(schema.discriminator)?.propertyName)
     return {
