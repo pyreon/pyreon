@@ -16,7 +16,7 @@
 import type { IrDocument, IrField, IrOperation, IrType } from '../core/ir'
 import { typeIdent } from '../core/naming'
 import { byTag, isMutation } from './client'
-import { q, SourceFile } from './writer'
+import { jsonLiteral, q, SourceFile } from './writer'
 
 export const ATLAS_FILE = 'atlas.scenarios.ts'
 
@@ -54,7 +54,7 @@ export function emitAtlasScenarios(doc: IrDocument): SourceFile {
       emitted++
       f.line(`  ${q(component)}: [`)
       for (const c of cases) {
-        f.line(`    { name: ${q(c.name)}, args: ${JSON.stringify(c.args)} },`)
+        f.line(`    { name: ${q(c.name)}, args: ${jsonLiteral(c.args)} },`)
       }
       f.line('  ],')
     }

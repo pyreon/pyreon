@@ -90,7 +90,11 @@ export function typeIdent(input: string): string {
  * the same one a human writing the file would apply.
  */
 export function propKey(name: string): string {
-  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) ? name : JSON.stringify(name)
+  if (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)) return name
+  // `JSON.stringify` leaves U+2028 / U+2029 RAW, and both are line terminators
+  // in JavaScript source even though they are legal inside a JSON string -- so
+  // a property name carrying one would end the emitted literal.
+  return JSON.stringify(name).replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029')
 }
 
 /**

@@ -14,7 +14,7 @@
 
 import type { IrDocument, IrField, IrOperation, IrType } from '../core/ir'
 import { byTag, endpointSpec, tagFile } from './client'
-import { q, SourceFile } from './writer'
+import { jsonLiteral, q, SourceFile } from './writer'
 
 /** Emit `mocks.ts` — a route table for `@pyreon/http`'s mock middleware. */
 export function emitMocks(doc: IrDocument): SourceFile {
@@ -121,7 +121,7 @@ function fixture(
 
 /** JSON literal, with every line after the first indented to `pad`. */
 function indentAfterFirst(value: unknown, pad: number): string {
-  const json = JSON.stringify(value, null, 2)
+  const json = jsonLiteral(value, 2)
   return json
     .split('\n')
     .map((l, i) => (i === 0 ? l : ' '.repeat(pad) + l))
