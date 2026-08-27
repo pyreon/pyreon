@@ -19,6 +19,7 @@
  *   - check-client-bundle-node-imports (node: import leaked into client entry)
  *   - check-ios-signing-policy (unsigned test step -> CI-only Keychain denial)
  *   - check-shared-source-deps (tri-target shared source unbuildable for web)
+ *   - check-native-srcdirs-drift (an example's Gradle srcDirs disagree with `wire`)
  *   - check-mcp-docs        (MCP tool added without docs/src/content/docs/mcp.md section)
  *   - loom-scan             (dependency-fabric errors: phantom deps, runtime cycles, drift)
  *   - check-advisory-comment-steps (advisory PR-comment step that can turn a check red)
@@ -130,6 +131,7 @@ const GATES: Gate[] = [
   // stub harness. Skips gracefully when kotlinc/swiftc are absent (CI Fast
   // Gates), so it protects on every local push where the toolchains exist.
   { name: 'check-native-cosource', cmd: 'bun scripts/check-native-cosource.ts' },
+  { name: 'check-native-srcdirs-drift', cmd: 'bun scripts/check-native-srcdirs-drift.ts' },
   { name: 'check-gates-wired', cmd: 'bun scripts/check-gates-wired.ts' },
   { name: 'check-component-docs', cmd: 'bun scripts/check-component-docs.ts' },
   // NOT here: `check-atlas-guide`. It MOUNTS 108 components through Vite, and
@@ -179,6 +181,14 @@ const GATES: Gate[] = [
   {
     name: 'check-shared-source-deps',
     cmd: 'bun scripts/check-shared-source-deps.ts',
+  },
+  // AGP's minimum Gradle vs the version native-device.yml pins. They live in
+  // different files with nothing linking them, and disagreeing costs ~6
+  // minutes into a native-labelled-only job for a one-line mismatch:
+  // "Minimum supported Gradle version is 8.13. Current version is 8.10.2."
+  {
+    name: 'check-agp-gradle-lockstep',
+    cmd: 'bun scripts/check-agp-gradle-lockstep.ts',
   },
   // Dogfood: the workspace's own dependency fabric, gated by @pyreon/loom.
   // Errors only (phantom deps, runtime cycles, cross-major drift, internal-

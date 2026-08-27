@@ -10,17 +10,17 @@ plugins {
     id("com.android.application")
     kotlin("android")
     kotlin("plugin.serialization")
-    id("org.jetbrains.kotlin.plugin.compose") version "2.0.21"
+    id("org.jetbrains.kotlin.plugin.compose") version "2.4.10"
 }
 
 android {
     namespace = "com.pyreon"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.pyreon.PyreonFinance"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 1
         versionName = "0.0.1"
         // AndroidJUnit4 runner for the Espresso instrumented test
@@ -37,10 +37,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
     // Compile the @pyreon/native runtime + router Kotlin sources into
     // the app module — the PMTC emit header unconditionally imports
     // `com.pyreon.runtime.*` and `com.pyreon.router.*` (see
@@ -50,15 +46,12 @@ android {
             kotlin {
                 srcDir("../../../packages/native/runtime-kotlin/src/main/kotlin")
                 srcDir("../../../packages/native/router-kotlin/src/main/kotlin")
-                srcDir("../../../packages/fundamentals/storage/native/kotlin")
                 srcDir("../../../packages/fundamentals/hooks/native/kotlin")
                 srcDir("../../../packages/fundamentals/form/native/kotlin")
                 srcDir("../../../packages/fundamentals/store/native/kotlin")
-                srcDir("../../../packages/fundamentals/state-tree/native/kotlin")
-                srcDir("../../../packages/fundamentals/machine/native/kotlin")
-                srcDir("../../../packages/fundamentals/i18n/native/kotlin")
-                srcDir("../../../packages/fundamentals/permissions/native/kotlin")
+                srcDir("../../../packages/fundamentals/storage/native/kotlin")
                 srcDir("../../../packages/fundamentals/query/native/kotlin")
+                srcDir("../../../packages/core/sized-map/native/kotlin")
             }
         }
     }
@@ -66,8 +59,14 @@ android {
 
 dependencies {
     // Compose BOM — same version as native-todomvc-android.
-    implementation(platform("androidx.compose:compose-bom:2024.10.01"))
-    implementation("androidx.activity:activity-compose:1.9.3")
+    // COMPILE-SDK CEILING. AGP 8.13.2 supports compileSdk 36 at most, and an
+    // androidx artifact declares its own `minCompileSdk` in AAR metadata — a
+    // dependency above the ceiling fails `checkDebugAarMetadata`, not the
+    // compile. Verified from the artifacts: compose-bom 2026.08.00 ships
+    // compose 1.12 (needs 37) and androidx.core 1.19.0 needs 37, so both are
+    // held one release back. Raising either requires AGP 9 + compileSdk 37.
+    implementation(platform("androidx.compose:compose-bom:2026.06.01"))
+    implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
@@ -76,7 +75,7 @@ dependencies {
     // uses kotlinx.serialization; PyreonPermissions uses ContextCompat;
     // PyreonFetch/NetworkStatus use coroutines) + M2 material for the
     // emit header's `import androidx.compose.material.*`.
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     // PyreonWebSocketOkHttp.kt (in the runtime-kotlin srcDir above) imports
     // okhttp3 — the default websocket transport backing the TS-side
     // ws.connect(). Every app compiling the runtime srcDir needs the dep,
@@ -86,10 +85,10 @@ dependencies {
     // above) imports androidx.media3.* for the <Video> primitive. Same deal
     // as okhttp: every app compiling the srcDir needs the artifacts, video
     // used or not; R8 strips the unused classes from release builds.
-    implementation("androidx.media3:media3-exoplayer:1.4.1")
-    implementation("androidx.media3:media3-ui:1.4.1")
-    implementation("androidx.core:core-ktx:1.13.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation("androidx.media3:media3-exoplayer:1.11.0")
+    implementation("androidx.media3:media3-ui:1.11.0")
+    implementation("androidx.core:core-ktx:1.18.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("androidx.compose.material:material")
 
     // Instrumented-test deps. Same shape as native-todomvc-android.
@@ -98,10 +97,10 @@ dependencies {
     // so without this line ui-test-junit4 resolves VERSIONLESS
     // ("Could not find androidx.compose.ui:ui-test-junit4:" — the
     // first device-CI run to reach dependency resolution caught it).
-    androidTestImplementation(platform("androidx.compose:compose-bom:2024.10.01"))
+    androidTestImplementation(platform("androidx.compose:compose-bom:2026.06.01"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
-    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
 }
 
 // Pyreon compile step — re-runs the .tsx → .kt compile on every build.
@@ -112,4 +111,17 @@ tasks.register<Exec>("pyreonCompile") {
 
 tasks.named("preBuild") {
     dependsOn("pyreonCompile")
+}
+
+// Kotlin 2.4 turned the `kotlinOptions` DSL into a hard ERROR, not a
+// deprecation: "Using 'jvmTarget: String' is an error. Please migrate to the
+// compilerOptions DSL." (https://kotl.in/u1r8ln)
+//
+// This replaces it. It sits OUTSIDE `android { }` deliberately — it configures
+// the Kotlin extension, not AGP. The enum is fully qualified so the file needs
+// no top-of-script `import`, which in a .kts must precede even `plugins { }`.
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
 }

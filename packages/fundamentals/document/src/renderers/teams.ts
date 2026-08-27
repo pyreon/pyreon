@@ -118,7 +118,7 @@ function nodeToElements(node: DocNode): AdaptiveElement[] {
       const rows = (p.rows ?? []) as (string | number)[][]
 
       // Adaptive Cards have native Table support (schema 1.5+)
-      const tableColumns = columns.map((col) => ({
+      const tableColumns = columns.map((col, colIdx) => ({
         type: 'Column',
         width: 'stretch',
         items: [
@@ -130,7 +130,7 @@ function nodeToElements(node: DocNode): AdaptiveElement[] {
           },
           ...rows.map((row, i) => ({
             type: 'TextBlock',
-            text: mdEscape(String(row[columns.indexOf(col)] ?? '')),
+            text: mdEscape(String(row[colIdx] ?? '')),
             wrap: true,
             separator: i === 0,
           })),

@@ -14,13 +14,16 @@ import { describe, expect, it, vi } from 'vitest'
 let dropTargetCalls = 0
 let monitorCalls = 0
 let cleanupCalled = 0
-vi.mock('@atlaskit/pragmatic-drag-and-drop/external/adapter', () => ({
+vi.mock('@atlaskit/pragmatic-drag-and-drop/adapter/drop-target-for-external', () => ({
   dropTargetForExternal: () => {
     dropTargetCalls++
     return () => {
       cleanupCalled++
     }
   },
+}))
+
+vi.mock('@atlaskit/pragmatic-drag-and-drop/adapter/monitor-for-external', () => ({
   monitorForExternal: () => {
     monitorCalls++
     return () => {
@@ -28,8 +31,11 @@ vi.mock('@atlaskit/pragmatic-drag-and-drop/external/adapter', () => ({
     }
   },
 }))
-vi.mock('@atlaskit/pragmatic-drag-and-drop/external/file', () => ({
+vi.mock('@atlaskit/pragmatic-drag-and-drop/utils/contains-files', () => ({
   containsFiles: () => true,
+}))
+
+vi.mock('@atlaskit/pragmatic-drag-and-drop/utils/get-files', () => ({
   getFiles: () => [],
 }))
 

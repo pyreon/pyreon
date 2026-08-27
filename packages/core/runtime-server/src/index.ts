@@ -208,6 +208,47 @@ function withStoreContext<T>(fn: () => T): T {
   return _storeAls.run(new Map(), fn)
 }
 
+// ─── Per-request styler SSR scope ───────────────────────────────────────────
+// @pyreon/styler's `sheet` is a module-level singleton whose SSR accumulation
+// state (rule buffer + streaming flush watermark) used to be instance fields —
+// so two CONCURRENT streaming renders shared one buffer and one watermark, and
+// request A's per-boundary flush advanced the watermark past request B's rules
+// (FOUC / cross-request CSS). runtime-server owns the request lifecycle and can
+// use AsyncLocalStorage (the styler is browser-safe and cannot import
+// `node:async_hooks`), so it provides an OPAQUE per-request bag here; the styler
+// stashes its own state inside it and falls back to its instance state when no
+// scope is active (unchanged behaviour for direct callers). Additive: existing
+// paths keep working; concurrent streams now get isolated buffers.
+const _stylerSSRAls = new AsyncLocalStorage<Record<string, unknown>>()
+;(
+  globalThis as { __PYREON_STYLER_REQUEST_STATE__?: () => Record<string, unknown> | undefined }
+).__PYREON_STYLER_REQUEST_STATE__ = () => _stylerSSRAls.getStore()
+
+/**
+ * Establish a fresh styler SSR scope, inheriting an active one (nested renders).
+ *
+ * STREAMING ONLY, and that is the whole point. The bug being fixed is the flush
+ * WATERMARK interleaving between two concurrent streams — request A's
+ * per-boundary flush advancing past request B's rules, which OMITS CSS and
+ * shows as FOUC. `flushSSRPending` exists only on the streaming path.
+ *
+ * String-mode SSR must NOT be scoped: it reads the buffer AFTER the render
+ * returns (`renderToString(...)` then `getStyleTag()` / `getStyleRules()`), which
+ * is the documented pattern the SSG pipeline, the server handler and the
+ * rocketstyle-collapse resolver all use. Scoping it puts every rule in a bag
+ * that is gone by the time anyone reads, so the page renders with NO styles —
+ * caught by 4 collapse-resolver specs and the ssg-i18n-prefix + ui-regression
+ * e2e suites, all reporting an empty rule set.
+ *
+ * Two concurrent string renders still share the instance buffer. That is
+ * pre-existing and strictly milder: the reader takes the whole buffer, so the
+ * failure mode is over-inclusion, never the omission the watermark causes.
+ */
+function withStylerSSRScope<T>(fn: () => T): T {
+  if (_stylerSSRAls.getStore() !== undefined) return fn()
+  return _stylerSSRAls.run({}, fn)
+}
+
 // ─── <select value> SSR support (PZ-09) ─────────────────────────────────────
 // <select> has NO `value` CONTENT attribute — serializing it emits a DEAD
 // attribute the parser ignores, so SSR'd pages shipped with the FIRST option
@@ -312,6 +353,9 @@ export async function renderToString(root: VNode | null): Promise<string> {
   // inherited request frames survive the render untouched. Bare calls (no
   // surrounding request context) keep the fresh isolated stack.
   if (_contextAls.getStore() !== undefined) return renderNode(root)
+  // NOT `withStylerSSRScope` — see its doc comment. String-mode SSR reads the
+  // buffer AFTER this returns, which is the documented pattern; scoping here
+  // hides every rule from that read.
   return withStoreContext(() => _contextAls.run([], () => renderNode(root)))
 }
 
@@ -479,7 +523,7 @@ export function renderToStream(
           })
       return _contextAls.getStore() !== undefined
         ? streamBody()
-        : withStoreContext(() => _contextAls.run([], streamBody))
+        : withStylerSSRScope(() => withStoreContext(() => _contextAls.run([], streamBody)))
     },
     cancel(reason) {
       // Consumer (browser fetch reader) closed the stream — propagate to
@@ -1673,7 +1717,10 @@ function renderPropValue(key: string, value: unknown): string | null {
   // `applyStaticProp` so hydration sees identical markup; HTML boolean attrs and
   // data-* keep presence semantics below.
   if (typeof value === 'boolean' && key.charCodeAt(0) === 97 /* 'a' */ && key.startsWith('aria-')) {
-    return `${toAttrName(key)}="${value ? 'true' : 'false'}"`
+    {
+      const name = toAttrName(key)
+      return name === null ? null : `${name}="${value ? 'true' : 'false'}"`
+    }
   }
   if (value === null || value === undefined || value === false) return null
   if (value === true) return toAttrName(key) // pre-escaped by the memo
@@ -1694,7 +1741,10 @@ function renderPropValue(key: string, value: unknown): string | null {
     return style ? `style="${escapeHtml(style)}"` : null
   }
 
-  return `${toAttrName(key)}="${escapeHtml(String(value))}"`
+  {
+    const name = toAttrName(key)
+    return name === null ? null : `${name}="${escapeHtml(String(value))}"`
+  }
 }
 
 function renderProp(tag: string, key: string, value: unknown): string | null {
@@ -1978,8 +2028,37 @@ const SVG_ATTRIBUTE_MAP: Record<string, string> = {
 // across millions of calls), so the map + kebab-regex work is paid once per key
 // per process. The cached value is ALSO pre-escaped, so callers skip their
 // per-call escapeHtml on the name. Bounded at 1,000 entries (leak-class C).
-const _attrNameCache = new Map<string, string>()
-function toAttrName(key: string): string {
+// A resolved attribute NAME must not contain any character that can terminate the
+// name token and break out into a new attribute (a live event handler): whitespace,
+// '/', '>', '=', quotes, '<', or control chars. `escapeHtml` neutralizes < > & " '
+// in attribute VALUES, but leaves space and '=' intact — and a name is never quoted —
+// so an UNVALIDATED name from a spread of a user-keyed object (`<el {...userKeys}>`)
+// is an SSR XSS sink: `{['x onmouseover=alert(1)']: '1'}` → `<el x onmouseover=alert(1)="1">`.
+// The client `setAttribute()` throws on such names; the SSR string path has no parser
+// to reject them until the browser parses the served HTML, so validate here. React and
+// Preact drop invalid attribute names for exactly this reason.
+// A control char in an attribute name is a parser-significant breakout vector, so
+// matching control chars IS the point here.
+// oxlint-disable-next-line no-control-regex
+const UNSAFE_ATTR_NAME_RE = /[\s/>="'<\u0000-\u001F\u007F]/
+
+const warnIfUnsafeAttrName: (key: string) => void =
+  process.env.NODE_ENV === 'production'
+    ? () => {}
+    : (key: string): void => {
+        // oxlint-disable-next-line no-console
+        console.warn(
+          `[Pyreon SSR] Attribute name "${key}" contains characters that could break HTML ` +
+            `structure and was DROPPED. Names must not contain whitespace, '=', '/', '>', '<', or ` +
+            `quotes. If user-supplied data drives an attribute name (e.g. a spread of a user-keyed ` +
+            `object), validate the keys against an allowlist before passing to h().`,
+        )
+      }
+
+// Returns the pre-escaped attribute name, or `null` when the resolved name is
+// invalid (breakout chars / empty) — callers DROP a null-named attribute.
+const _attrNameCache = new Map<string, string | null>()
+function toAttrName(key: string): string | null {
   const cached = _attrNameCache.get(key)
   if (cached !== undefined) return cached
   const resolved =
@@ -1989,9 +2068,15 @@ function toAttrName(key: string): string {
     // for unknown / user-defined camelCase props (e.g. `dataTestId` →
     // `data-test-id`). Tests in `ssr.test.ts:650` lock the fallback.
     key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)
-  const escaped = escapeHtml(resolved)
-  if (_attrNameCache.size < 1000) _attrNameCache.set(key, escaped)
-  return escaped
+  let result: string | null
+  if (resolved.length === 0 || UNSAFE_ATTR_NAME_RE.test(resolved)) {
+    warnIfUnsafeAttrName(key)
+    result = null
+  } else {
+    result = escapeHtml(resolved)
+  }
+  if (_attrNameCache.size < 1000) _attrNameCache.set(key, result)
+  return result
 }
 
 function isStyleObject(value: unknown): value is Record<string, unknown> {

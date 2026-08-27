@@ -1,4 +1,4 @@
-import { monitorForElements } from '@atlaskit/pragmatic-drag-and-drop/element/adapter'
+import { monitorForElements } from '@atlaskit/pragmatic-drag-and-drop/adapter/element-adapter'
 import { batch, isServer, onCleanup, signal } from '@pyreon/reactivity'
 import type { DragData } from './types'
 

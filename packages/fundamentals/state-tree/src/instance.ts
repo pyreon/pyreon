@@ -96,6 +96,9 @@ export function createInstance(
     snapshotListeners: new Set(),
     middlewares: [],
     emitPatch(patch) {
+      // A patch means this instance (or a nested child, whose patch propagates
+      // up through this method) changed — drop the cached snapshot.
+      this.snapshotCache = undefined
       // Fired by `trackedSignal` ONLY when there is at least one patch or
       // snapshot listener (the `hasListeners` predicate below gates it), so the
       // empty-Set iteration here is already avoided on the hot path.
@@ -126,9 +129,18 @@ export function createInstance(
     snapPending = true
     queueMicrotask(() => {
       snapPending = false
-      if (meta.snapshotListeners.size === 0) return
+      const set = meta.snapshotListeners
+      if (set.size === 0) return
       const snap = getSnapshot(instance)
-      for (const listener of [...meta.snapshotListeners]) listener(snap)
+      // Single-listener fast path (the common `onSnapshot(model, fn)` shape).
+      // Capture the sole listener and fire it — matching the `[...]` snapshot's
+      // "listeners present at notify start" semantics — with no allocation.
+      if (set.size === 1) {
+        set.values().next().value!(snap)
+        return
+      }
+      // Snapshot: a listener could unsubscribe a sibling mid-notify.
+      for (const listener of [...set]) listener(snap)
     })
   }
 
@@ -286,6 +298,9 @@ export function createInstance(
         instance,
         defaultValue.type,
         hasCallerOverride ? callerOverride : null,
+        () => {
+          meta.snapshotCache = undefined
+        },
       )
       instance[key] = accessor
       ;(meta.referenceKeys ??= new Map()).set(key, idSig)
@@ -335,6 +350,9 @@ export function createInstance(
       // getParent / getRoot / getPath work for array children, not just
       // field-nested ones.
       (v) => {
+        // Always-on (fires on every real change, listener or not) — the reliable
+        // self-invalidation for a leaf write when this instance has no listeners.
+        meta.snapshotCache = undefined
         scanForChildren(v, instance, key)
         wireContainerChildPropagation(v, key, path)
       },

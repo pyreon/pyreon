@@ -49,7 +49,7 @@ Pragmatic DnD is a callback-and-cleanup API: `draggable({ element, onDragStart, 
 
 ```tsx
 // ❌ Raw Pragmatic DnD — manual element capture, manual state, manual cleanup
-import { draggable } from '@atlaskit/pragmatic-drag-and-drop/element/adapter'
+import { draggable } from '@atlaskit/pragmatic-drag-and-drop/adapter/element-adapter'
 
 let dragging = false // not reactive — your UI won't update
 const cleanup = draggable({

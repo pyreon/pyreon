@@ -554,8 +554,12 @@ jobs:
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
 
       - name: Install Gradle (pinned distribution + sha256)
-        # The android example pins AGP 8.7.0 (needs Gradle 8.9+) but ships no
-        # `gradlew` wrapper, so install Gradle directly. Pinned, IMMUTABLE
+        # The android examples pin AGP 8.13.2 (needs Gradle 8.13+) but ship no
+        # `gradlew` wrapper, so install Gradle directly. KEEP THIS IN LOCKSTEP
+        # WITH AGP: raising AGP without raising GRADLE_VERSION fails at
+        # `com.android.internal.version-check` with "Minimum supported Gradle
+        # version is X" — which is what the first run of the 2026-08 stack bump
+        # did (AGP 8.13.2 against Gradle 8.10.2). Pinned, IMMUTABLE
         # distribution + sha256 verification — satisfies Scorecard
         # PinnedDependencies (no live `curl get.sdkman.io | bash`
         # downloadThenRun). The distribution URL is versioned + immutable, so
@@ -563,8 +567,8 @@ jobs:
         # Bump GRADLE_SHA256 when bumping GRADLE_VERSION — the official `.sha256`
         # is at services.gradle.org/distributions/gradle-<V>-bin.zip.sha256.
         env:
-          GRADLE_VERSION: '8.10.2'
-          GRADLE_SHA256: '31c55713e40233a8303827ceb42ca48a47267a0ad4bab9177123121e71524c26'
+          GRADLE_VERSION: '8.14.5'
+          GRADLE_SHA256: '6f74b601422d6d6fc4e1f9a1ab6522f642c2fdcbc15ae33ebd30ba3d7198e854'
         run: |
           set -euo pipefail
           ZIP="gradle-${GRADLE_VERSION}-bin.zip"

@@ -1,7 +1,7 @@
 import type { ComponentFn, VNodeChild } from '@pyreon/core'
 import { createUniqueId, mergeProps, splitProps } from '@pyreon/core'
 import { useControllableState } from '@pyreon/hooks'
-import { signal } from '@pyreon/reactivity'
+import { computed, signal } from '@pyreon/reactivity'
 import { createTypeahead, typeaheadMatch } from './keyboard'
 
 export interface TreeNode {
@@ -147,7 +147,14 @@ export const TreeBase: ComponentFn<TreeBaseProps> = (props) => {
     }
   }
 
-  function getVisibleNodes(): { node: TreeNode; depth: number }[] {
+  // Visible (expanded-aware) node list, memoized. Tracks `data()` + `expanded()`
+  // (via `isExpanded`), so pure keyboard navigation (ArrowUp/Down/Home/End) —
+  // which changes neither — reuses the cached array instead of re-walking the
+  // whole tree and re-allocating N `{node, depth}` wrappers on every keystroke.
+  // Was a plain function called from `onKeyDown` (per key) AND per rendered row
+  // (the `tabIndex` accessor) → O(n²) at mount; the computed collapses that to
+  // one shared O(n) walk, identity-stable for the `<For by={id}>` diff.
+  const visibleNodes = computed<{ node: TreeNode; depth: number }[]>(() => {
     const result: { node: TreeNode; depth: number }[] = []
     function walk(nodes: TreeNode[], depth: number) {
       for (const node of nodes) {
@@ -159,7 +166,30 @@ export const TreeBase: ComponentFn<TreeBaseProps> = (props) => {
     }
     walk(data(), 0)
     return result
-  }
+  })
+
+  // Shared id → node / parent / siblings index over the FULL tree, memoized on
+  // `data()`. Replaces three independent per-call recursive tree walks
+  // (`findNode` per rendered row, `getParentOf` on ArrowLeft, `getSiblingsOf`
+  // on `*`) — each was O(n) per call, O(n²) across a render/keystroke burst —
+  // with one O(n) build + O(1) lookups. Parent/siblings resolve against the
+  // DATA (not the visible list), preserving the existing expansion-independent
+  // semantics.
+  const nodeIndex = computed(() => {
+    const byId = new Map<string, TreeNode>()
+    const parentById = new Map<string, TreeNode | null>()
+    const siblingsById = new Map<string, TreeNode[]>()
+    function walk(nodes: TreeNode[], parent: TreeNode | null) {
+      for (const n of nodes) {
+        byId.set(n.id, n)
+        parentById.set(n.id, parent)
+        siblingsById.set(n.id, nodes)
+        if (n.children?.length) walk(n.children, n)
+      }
+    }
+    walk(data(), null)
+    return { byId, parentById, siblingsById }
+  })
 
   /**
    * Move BOTH halves of the roving tabindex: the STATE (which item carries
@@ -205,7 +235,7 @@ export const TreeBase: ComponentFn<TreeBaseProps> = (props) => {
       return
     }
 
-    const visible = getVisibleNodes()
+    const visible = visibleNodes()
     const focusedId = focused()
     const idx = focusedId ? visible.findIndex((v) => v.node.id === focusedId) : -1
 
@@ -252,7 +282,7 @@ export const TreeBase: ComponentFn<TreeBaseProps> = (props) => {
       if (visible[0]) moveFocusTo(e, visible[0].node.id)
     } else if (e.key === 'End') {
       // WAI-ARIA tree: focus the LAST visible node (respects collapsed
-      // subtrees — getVisibleNodes already excludes them).
+      // subtrees — visibleNodes already excludes them).
       e.preventDefault()
       const last = visible[visible.length - 1]
       if (last) moveFocusTo(e, last.node.id)
@@ -297,46 +327,11 @@ export const TreeBase: ComponentFn<TreeBaseProps> = (props) => {
    * the data keeps this independent of expansion state.
    */
   function getParentOf(id: string): TreeNode | null {
-    let result: TreeNode | null = null
-    function walk(nodes: TreeNode[], parent: TreeNode | null): boolean {
-      for (const n of nodes) {
-        if (n.id === id) {
-          result = parent
-          return true
-        }
-        if (n.children?.length && walk(n.children, n)) return true
-      }
-      return false
-    }
-    walk(data(), null)
-    return result
+    return nodeIndex().parentById.get(id) ?? null
   }
 
   function getSiblingsOf(id: string): TreeNode[] {
-    let result: TreeNode[] = []
-    function walk(nodes: TreeNode[]): boolean {
-      if (nodes.some((n) => n.id === id)) {
-        result = nodes
-        return true
-      }
-      for (const n of nodes) {
-        if (n.children?.length && walk(n.children)) return true
-      }
-      return false
-    }
-    walk(data())
-    return result
-  }
-
-  function findNode(id: string, nodes: TreeNode[]): TreeNode | undefined {
-    for (const node of nodes) {
-      if (node.id === id) return node
-      if (node.children) {
-        const found = findNode(id, node.children)
-        if (found) return found
-      }
-    }
-    return undefined
+    return nodeIndex().siblingsById.get(id) ?? []
   }
 
   const state: TreeState = {
@@ -351,7 +346,7 @@ export const TreeBase: ComponentFn<TreeBaseProps> = (props) => {
     isExpanded,
     isSelected: isSelectedFn,
     onKeyDown,
-    visibleNodes: getVisibleNodes,
+    visibleNodes,
     // Forward the component-level props (rocketstyle className/style, data-*,
     // id…) onto the TREE CONTAINER — the element a Tree wrapper's .theme()
     // actually describes. This primitive renders no element of its own, so
@@ -385,7 +380,7 @@ export const TreeBase: ComponentFn<TreeBaseProps> = (props) => {
      * never re-created. Render items STATICALLY.
      */
     getItemProps: (id: string, depth: number, hasChildren: boolean) => {
-      const node = findNode(id, data())
+      const node = nodeIndex().byId.get(id)
       return {
         role: 'treeitem',
         id: `${baseId}-item-${id}`,
@@ -400,7 +395,7 @@ export const TreeBase: ComponentFn<TreeBaseProps> = (props) => {
         tabIndex: () =>
           focused() === id
             ? 0
-            : focused() === null && getVisibleNodes()[0]?.node.id === id
+            : focused() === null && visibleNodes()[0]?.node.id === id
               ? 0
               : -1,
       }

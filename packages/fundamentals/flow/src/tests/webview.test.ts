@@ -104,3 +104,15 @@ describe('webview — coverage of the defensive and forwarding paths', () => {
     expect((vnode.props as { html: string }).html).toBe('<!doctype html><p>mine</p>')
   })
 })
+
+describe('buildFlowHostHtml — color hardening', () => {
+  it("strips breakout chars from color options (can't close the JS string / HTML attr)", () => {
+    const html = buildFlowHostHtml({ edgeColor: "red'; x</style><script>evil" })
+    // the raw payload — the quote/semicolon/</> that enable a breakout — is gone
+    expect(html).not.toContain("red';")
+    expect(html).not.toContain('</style><script>evil')
+    // present only in sanitized form (CSS-token chars only); the head's own
+    // <style>/<script> are unrelated and untouched
+    expect(html).toContain('red xstylescriptevil')
+  })
+})

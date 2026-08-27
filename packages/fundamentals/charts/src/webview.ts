@@ -107,7 +107,12 @@ export function buildChartHostHtml(options: BuildChartHostHtmlOptions = {}): str
     ? `<script>${scriptSafe(echartsScript)}</script>`
     : `<script src="${echartsSrc.replace(/"/g, '&quot;')}"></script>`
 
-  const themeArg = theme ? `'${scriptSafe(theme)}'` : 'null'
+  // A theme is an ECharts theme NAME (a registered identifier); JSON.stringify
+  // emits a properly-escaped JS string literal so a name containing a quote can't
+  // break out of the `echarts.init(...)` call. `renderer` is a two-value enum —
+  // validate rather than interpolate an arbitrary string into the object literal.
+  const themeArg = theme ? JSON.stringify(theme) : 'null'
+  const safeRenderer = renderer === 'svg' ? 'svg' : 'canvas'
 
   // The bridge script — kept dependency-free vanilla JS so it runs in the
   // hosted page with only ECharts present.
@@ -116,7 +121,7 @@ export function buildChartHostHtml(options: BuildChartHostHtmlOptions = {}): str
   try {
   if (typeof echarts === 'undefined') { window.__pyreonChartError = 'echarts undefined'; return; }
   var el = document.getElementById('pyreon-chart');
-  var chart = echarts.init(el, ${themeArg}, { renderer: '${renderer}' });
+  var chart = echarts.init(el, ${themeArg}, { renderer: '${safeRenderer}' });
 
   var lastSig = null, rafId = 0;
   function seriesSig(opt) {

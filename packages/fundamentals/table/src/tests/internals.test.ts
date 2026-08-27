@@ -101,6 +101,24 @@ describe('flexRenderCell — degradation', () => {
     expect(flexRenderCell(stubTable({ r1: row }), 'r1', 'c1')).toBe('VISIBLE')
   })
 
+  it('uses the O(1) getVisibleCellsByColumnId map, not an O(C) cell scan', () => {
+    // table-core v9 memoizes a by-id map with the same visible-column filter as
+    // getVisibleCells. When it is present, `renderCell` must do an O(1) lookup
+    // and NEVER scan the cell array. If it fell back to a `.find` over
+    // getVisibleCells, this row's throwing scans would fire.
+    const row = {
+      getVisibleCellsByColumnId: () => ({ c1: cell('c1', 'BY_ID') }),
+      getVisibleCells: () => {
+        throw new Error('should not scan getVisibleCells when the by-id map exists')
+      },
+      getAllCells: () => {
+        throw new Error('should not scan getAllCells when the by-id map exists')
+      },
+    }
+    // Bisect: the pre-fix `renderCell` calls getVisibleCells().find(...) → throws.
+    expect(flexRenderCell(stubTable({ r1: row }), 'r1', 'c1')).toBe('BY_ID')
+  })
+
   it('returns null for an unknown row id', () => {
     expect(flexRenderCell(stubTable({}), 'missing', 'c1')).toBeNull()
   })

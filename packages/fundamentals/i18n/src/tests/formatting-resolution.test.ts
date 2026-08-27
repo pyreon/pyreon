@@ -117,6 +117,19 @@ describe('inline {{val, format}} specifiers', () => {
     expect(i18n.t('pts', { n: 1234.5 })).toBe('1,234.5 pts')
   })
 
+  it('reflects the ACTIVE locale after a switch (format callback reads locale.peek())', () => {
+    const i18n = createI18n({
+      locale: 'en',
+      messages: { en: { amt: '{{v, number}}' }, de: { amt: '{{v, number}}' } },
+    })
+    expect(i18n.t('amt', { v: 1234.5 })).toBe('1,234.5') // en-US grouping
+    i18n.locale.set('de')
+    // The inline format callback is hoisted once at instance setup; it must
+    // read the ACTIVE locale (locale.peek()), not the locale captured at
+    // creation. A stale capture would still format as en (1,234.5).
+    expect(i18n.t('amt', { v: 1234.5 })).toBe('1.234,5') // de-DE grouping
+  })
+
   it('formats dates inline via a named date format', () => {
     const i18n = createI18n({
       locale: 'en',

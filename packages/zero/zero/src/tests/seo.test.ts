@@ -447,6 +447,23 @@ describe('jsonLd', () => {
     expect(data.headline).toBe('Test Article')
     expect(data.author.name).toBe('Author')
   })
+
+  it('escapes </script> and script-data breakouts in user-controlled fields (XSS)', () => {
+    // The normal JSON-LD case: a field built from user/CMS/DB content.
+    const payload = '</script><img src=x onerror=alert(1)><!--<script>'
+    const result = jsonLd({ '@type': 'Product', name: payload })
+
+    // The body must carry EXACTLY ONE closing tag — the real wrapper's. A raw
+    // `</script>` in the value would close the element early (XSS). Bisect: the
+    // unescaped code produces two `</script>` occurrences.
+    expect(result.split('</script>').length - 1).toBe(1)
+    const body = result.replace(/^<script[^>]*>/, '').replace(/<\/script>$/, '')
+    expect(body).not.toContain('</script')
+    expect(body).not.toContain('<!--')
+    expect(body).not.toContain('<script')
+    // The escaped payload still round-trips to the exact original value.
+    expect(JSON.parse(body).name).toBe(payload)
+  })
 })
 
 // ─── PR F — useSsgPaths integration ─────────────────────────────────────────

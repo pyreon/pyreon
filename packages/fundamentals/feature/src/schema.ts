@@ -277,6 +277,31 @@ function detectFieldType(zodField: unknown): {
  * // ]
  * ```
  */
+const FIELD_TYPE_NAMES = new Set<string>([
+  'string',
+  'number',
+  'boolean',
+  'date',
+  'enum',
+  'array',
+  'object',
+  'reference',
+  'unknown',
+])
+
+/**
+ * Is this a literal field-type map rather than a validator?
+ *
+ * Requires at least one entry and EVERY value to be a known field-type name.
+ * A Zod/Valibot/ArkType schema never satisfies that — its values are schema
+ * objects — so the two forms cannot be confused.
+ */
+function isLiteralFieldTypeMap(value: Record<string, unknown>): boolean {
+  const entries = Object.entries(value)
+  if (entries.length === 0) return false
+  return entries.every(([, v]) => typeof v === 'string' && FIELD_TYPE_NAMES.has(v))
+}
+
 export function extractFields(schema: unknown): FieldInfo[] {
   if (!schema || typeof schema !== 'object') return []
 
@@ -310,6 +335,26 @@ export function extractFields(schema: unknown): FieldInfo[] {
     if (zodDef?.shape && typeof zodDef.shape === 'object') {
       shape = zodDef.shape as Record<string, unknown>
     }
+  }
+
+  // The LITERAL field-type map — `schema: { id: 'string', done: 'boolean' }`.
+  //
+  // This is the ONE schema form `@pyreon/native-compiler` can introspect, so it
+  // is the form the multiplatform docs prescribe for a feature that has to run
+  // on all three targets (a runtime Zod/Valibot/ArkType schema is not
+  // introspected there and warns by name). On the web it produced NO fields at
+  // all — no auto form fields, no table columns, no create defaults — so the
+  // one shape that crosses was inert on the target it was written for.
+  //
+  // Recognized only when EVERY value is a known field-type string, so a real
+  // schema whose shape happens to hold strings can never be mistaken for one.
+  if (!shape && isLiteralFieldTypeMap(s)) {
+    return Object.entries(s).map(([name, type]) => ({
+      name,
+      type: type as FieldType,
+      optional: false,
+      label: nameToLabel(name),
+    }))
   }
 
   if (!shape) return []

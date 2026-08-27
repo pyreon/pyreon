@@ -29,6 +29,7 @@ import { h } from '@pyreon/core'
 import {
   createRouter,
   getRedirectInfo,
+  safeRedirectLocation,
   type RouteRecord,
   RouterProvider,
   serializeLoaderData,
@@ -222,7 +223,7 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
           if (info) {
             return new Response(null, {
               status: info.status,
-              headers: { Location: info.url },
+              headers: { Location: safeRedirectLocation(info.url) },
             })
           }
           if (process.env.NODE_ENV !== 'production') {
@@ -251,7 +252,7 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
       if (result.kind === 'redirect') {
         return new Response(null, {
           status: result.status,
-          headers: { Location: result.to },
+          headers: { Location: safeRedirectLocation(result.to) },
         })
       }
       // `bailOnUnmatched` not set → 'unmatched' is unreachable; the type

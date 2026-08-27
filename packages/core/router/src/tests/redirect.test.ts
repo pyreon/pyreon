@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { getRedirectInfo, isRedirectError, redirect } from '../redirect'
+import {
+  classifyRedirectTarget,
+  getRedirectInfo,
+  isRedirectError,
+  redirect,
+  safeRedirectLocation,
+} from '../redirect'
 
 describe('redirect()', () => {
   it('throws an error branded with the REDIRECT symbol', () => {
@@ -92,5 +98,56 @@ describe('getRedirectInfo()', () => {
       caught = err
     }
     expect(getRedirectInfo(caught)).toEqual({ url: '/destination', status: 303 })
+  })
+})
+
+describe('classifyRedirectTarget()', () => {
+  it('classifies same-origin paths as internal (preserved verbatim)', () => {
+    for (const p of ['/login', '/a/b?x=1', 'relative', '', '/']) {
+      expect(classifyRedirectTarget(p)).toEqual({ kind: 'internal', url: p })
+    }
+  })
+
+  it('classifies an explicit http(s) URL as external (intentional cross-origin)', () => {
+    expect(classifyRedirectTarget('https://provider.com/oauth')).toEqual({
+      kind: 'external',
+      url: 'https://provider.com/oauth',
+    })
+    expect(classifyRedirectTarget('http://x.test/y').kind).toBe('external')
+    expect(classifyRedirectTarget('  https://x.test/y  ').kind).toBe('external') // trimmed
+  })
+
+  it('BLOCKS protocol-relative URLs (open-redirect obfuscation) → /', () => {
+    expect(classifyRedirectTarget('//evil.com')).toEqual({ kind: 'block', url: '/' })
+    expect(classifyRedirectTarget('  //evil.com/path')).toEqual({ kind: 'block', url: '/' })
+  })
+
+  it('BLOCKS dangerous + non-http(s) schemes → /', () => {
+    for (const p of [
+      'javascript:alert(1)',
+      'JavaScript:alert(1)',
+      'data:text/html,<script>1</script>',
+      'vbscript:msgbox',
+      'mailto:a@b.c',
+      'tel:123',
+      'file:///etc/passwd',
+    ]) {
+      expect(classifyRedirectTarget(p)).toEqual({ kind: 'block', url: '/' })
+    }
+  })
+})
+
+describe('safeRedirectLocation() — the server Location value', () => {
+  it('passes internal + external through, routes everything else to /', () => {
+    expect(safeRedirectLocation('/dashboard')).toBe('/dashboard')
+    expect(safeRedirectLocation('https://provider.com/oauth')).toBe('https://provider.com/oauth')
+    expect(safeRedirectLocation('javascript:alert(1)')).toBe('/')
+    expect(safeRedirectLocation('//evil.com')).toBe('/')
+  })
+
+  it('is idempotent (a sanitized value re-sanitizes to itself)', () => {
+    for (const p of ['/x', 'https://a.test/y', '/']) {
+      expect(safeRedirectLocation(safeRedirectLocation(p))).toBe(safeRedirectLocation(p))
+    }
   })
 })

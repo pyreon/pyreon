@@ -1,5 +1,5 @@
 import { signal } from '@pyreon/reactivity'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 // Import from the package index so `index.ts` + the registerSingleton sentinel
 // are exercised (and the public surface is the unit under test).
 import {
@@ -133,6 +133,95 @@ describe('createRichTextEditor (pre-mount, no TipTap)', () => {
     expect(editor.characterCount()).toBe('four words go here'.length)
   })
 
+  // The three counters now derive from ONE document walk (`computeStats`).
+  // This differential fuzz locks that single pass byte-identical to the
+  // three original independent formulas across random documents (nested
+  // containers, mark-split blocks, empty / whitespace-only text, headings).
+  it('single-DFS stats match the original per-counter formulas (differential fuzz)', () => {
+    // Reference oracle = the ORIGINAL implementations, verbatim.
+    type Node = { type: string; text?: string; content?: Node[] }
+    const collectText = (n: Node, acc: string[]): void => {
+      if (n.type === 'text') {
+        if (n.text) acc.push(n.text)
+        return
+      }
+      if (n.content) for (const c of n.content) collectText(c, acc)
+    }
+    const collectBlocks = (n: Node, out: string[]): void => {
+      const kids = n.content
+      if (!kids || kids.length === 0) return
+      if (kids.some((c) => c.type === 'text')) {
+        const acc: string[] = []
+        collectText(n, acc)
+        out.push(acc.join(''))
+      } else {
+        for (const c of kids) collectBlocks(c, out)
+      }
+    }
+    const oracleChars = (n: Node): number => {
+      const a: string[] = []
+      collectText(n, a)
+      let t = 0
+      for (const s of a) t += s.length
+      return t
+    }
+    const oracleWords = (n: Node): number => {
+      const b: string[] = []
+      collectBlocks(n, b)
+      let t = 0
+      for (const x of b) {
+        const tr = x.trim()
+        if (tr !== '') t += tr.split(/\s+/).length
+      }
+      return t
+    }
+
+    // Deterministic PRNG (mulberry32) — a failing seed is reproducible; no
+    // Math.random in a differential oracle.
+    const makeRng = (seed: number) => {
+      let s = seed >>> 0
+      return () => {
+        s = (s + 0x6d2b79f5) | 0
+        let t = Math.imul(s ^ (s >>> 15), 1 | s)
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+      }
+    }
+    const TEXTS = ['foo', 'bar baz', '', '  ', ' qux ', 'a', 'one two three', '\tx\n']
+    const inline = (rng: () => number): Node[] => {
+      const n = 1 + Math.floor(rng() * 3) // 1–3 text nodes → mark-split blocks
+      const out: Node[] = []
+      for (let i = 0; i < n; i++) out.push({ type: 'text', text: TEXTS[Math.floor(rng() * TEXTS.length)]! })
+      return out
+    }
+    const block = (rng: () => number, depth: number): Node => {
+      if (depth > 0 && rng() < 0.35) {
+        const n = 1 + Math.floor(rng() * 3)
+        const kids: Node[] = []
+        for (let i = 0; i < n; i++) kids.push(block(rng, depth - 1))
+        return { type: 'blockquote', content: kids }
+      }
+      return { type: rng() < 0.5 ? 'paragraph' : 'heading', content: inline(rng) }
+    }
+    const randomDoc = (rng: () => number): Node => {
+      const n = Math.floor(rng() * 4)
+      const content: Node[] = []
+      for (let i = 0; i < n; i++) content.push(block(rng, 2))
+      return { type: 'doc', content }
+    }
+
+    for (let seed = 1; seed <= 500; seed++) {
+      const rng = makeRng(seed)
+      const d = randomDoc(rng) as unknown as JSONContent
+      const editor = createRichTextEditor({ content: d })
+      const oc = oracleChars(d as unknown as Node)
+      const ow = oracleWords(d as unknown as Node)
+      expect(editor.characterCount(), `chars seed=${seed}`).toBe(oc)
+      expect(editor.wordCount(), `words seed=${seed}`).toBe(ow)
+      expect(editor.isEmpty(), `isEmpty seed=${seed}`).toBe(oc === 0)
+    }
+  })
+
   it('editable defaults from config and is a writable signal before mount', () => {
     const editor = createRichTextEditor()
     expect(editor.editable()).toBe(true)
@@ -194,6 +283,33 @@ describe('bindRichTextToSignal (json format)', () => {
     ).not.toThrow()
     expect(errors.length).toBeGreaterThan(0)
     expect(errors[0]?.message).toBe('boom')
+  })
+
+  it('does NOT re-serialize the document on the per-keystroke echo (reference echo-guard)', () => {
+    const ext = signal<JSONContent>(EMPTY)
+    const editor = createRichTextEditor()
+    const binding = bindRichTextToSignal({ editor, signal: ext })
+
+    const spy = vi.spyOn(JSON, 'stringify')
+
+    // A "keystroke": the editor's document changes. This flows
+    // editor.json.set -> editorToSignal -> ext.set -> signalToEditor (the echo).
+    // The reference echo-guard recognizes the value it just emitted and skips
+    // the O(document) structural compare (two full JSON.stringify) entirely.
+    spy.mockClear()
+    editor.json.set(doc('typed'))
+    expect(ext()).toEqual(doc('typed')) // still propagated editor -> external
+    // Bisect: the broken (pre-guard) code runs two JSON.stringify here.
+    expect(spy.mock.calls.length).toBe(0)
+
+    // A genuine EXTERNAL write is a different reference -> still compared+applied.
+    spy.mockClear()
+    ext.set(doc('external'))
+    expect(editor.json()).toEqual(doc('external'))
+    expect(spy.mock.calls.length).toBeGreaterThan(0)
+
+    spy.mockRestore()
+    binding.dispose()
   })
 })
 

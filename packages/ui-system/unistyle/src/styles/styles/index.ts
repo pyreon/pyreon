@@ -110,12 +110,29 @@ const keyToIndices = /* @__PURE__ */ buildKeyToIndices()
 // previous result before its consumer ever resolved it.
 const _seen = new Set<number>()
 
+// The curried unit factories depend ONLY on `rootSize` (effectively constant —
+// 16 unless a consumer re-themes it), yet were rebuilt on every styles() call
+// (once per breakpoint per cache-missed render). Single-slot memo keyed on
+// `rootSize`: a hit reuses the three closures; a rootSize flip rebuilds them
+// (degrades to the old per-call cost, never wrong). Safe as module state — each
+// closure captures the rootSize it was built for, which is exactly the cache key.
+let _cachedRootSize: number | undefined = -1
+let _cachedCalc: (...params: any[]) => any
+let _cachedShorthand: ReturnType<typeof edge>
+let _cachedBorderRadius: ReturnType<typeof borderRadius>
+
 const styles: Styles = ({ theme: t, css, rootSize, extractVars, breakpoint }) => {
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('unistyle.styles')
 
-  const calc = (...params: any[]) => values(params, rootSize)
-  const shorthand = edge(rootSize)
-  const borderRadiusFn = borderRadius(rootSize)
+  if (rootSize !== _cachedRootSize) {
+    _cachedRootSize = rootSize
+    _cachedCalc = (...params: any[]) => values(params, rootSize)
+    _cachedShorthand = edge(rootSize)
+    _cachedBorderRadius = borderRadius(rootSize)
+  }
+  const calc = _cachedCalc
+  const shorthand = _cachedShorthand
+  const borderRadiusFn = _cachedBorderRadius
 
   // Per-call fragments array — owned by the returned CSSResult.
   const fragments: unknown[] = []

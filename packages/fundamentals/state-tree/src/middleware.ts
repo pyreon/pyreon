@@ -55,6 +55,14 @@ export function runAction(
     return undefined
   }
 
+  // Zero-middleware fast path (the overwhelmingly common case — middleware is
+  // opt-in). Without it, every action call allocated the `call` object literal,
+  // the `` `/${name}` `` path string (read only by middleware), and the
+  // `dispatch` closure, only to fall straight through to `fn(...args)`. Mirrors
+  // `@pyreon/store`'s `wrapAction`, which already skips its ActionContext
+  // allocation when there are no listeners.
+  if (meta.middlewares.length === 0) return fn(...args)
+
   const call: ActionCall = { name, args, path: `/${name}` }
 
   const dispatch = (idx: number, c: ActionCall): unknown => {
