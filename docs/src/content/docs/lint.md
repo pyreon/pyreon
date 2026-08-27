@@ -332,7 +332,7 @@ Library-scoped opt-in rules — `query`, `rx`, `i18n`, `storage`, form's `no-sig
 
 ## Rules
 
-There are **98 rules across 19 categories**. The `frontend`, `query`, `rx`, `i18n`, and `storage` categories (plus the two opt-in rules in `form` and `router`) are opt-in best-practice rules — off in the standard presets. Run `pyreon-lint --list` for the authoritative list with live severities.
+There are **98 rules across 19 categories**. Six of them are **monorepo-scoped** (`meta.scope: 'monorepo'`) — `no-circular-import`, `no-cross-layer-import`, `no-error-without-prefix`, `no-querySelector-cast-in-test`, `require-browser-smoke-test`, `vitest-config-uses-shared`. They encode the Pyreon repository's own conventions (its layer order, its private internal packages, its `[Pyreon]` error prefix) rather than anything about Pyreon-the-framework, so **every preset a consumer selects forces them off**, `best-practices` included. The Pyreon repo re-enables them by id in its own `.pyreonlintrc.json`, which keeps that dependency visible in config instead of hidden inside a shared preset. The `frontend`, `query`, `rx`, `i18n`, and `storage` categories (plus the two opt-in rules in `form` and `router`) are opt-in best-practice rules — off in the standard presets. Run `pyreon-lint --list` for the authoritative list with live severities.
 
 ### Categories at a glance
 

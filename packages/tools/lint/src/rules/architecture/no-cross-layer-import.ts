@@ -49,6 +49,7 @@ export const noCrossLayerImport: Rule = {
     category: 'architecture',
     description: 'Prevent core packages from importing ui-system packages.',
     severity: 'error',
+    scope: 'monorepo',
     fixable: false,
   },
   create(context) {

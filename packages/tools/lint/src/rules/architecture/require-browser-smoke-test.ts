@@ -175,6 +175,7 @@ export const requireBrowserSmokeTest: Rule = {
     description:
       'Every browser-categorized package must ship at least one `*.browser.test.{ts,tsx}` file under `src/`. Locks in the T1.1 browser smoke harness.',
     severity: 'error',
+    scope: 'monorepo',
     fixable: false,
     schema: {
       additionalPackages: 'string[]',

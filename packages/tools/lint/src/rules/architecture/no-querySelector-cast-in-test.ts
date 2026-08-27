@@ -54,6 +54,7 @@ export const noQuerySelectorCastInTest: Rule = {
     description:
       'In test files, `el.querySelector(X) as HTMLY` should use the typed `query()` / `queryOptional()` helper from `@pyreon/test-utils` (locks in PRs #956 + #963).',
     severity: 'error',
+    scope: 'monorepo',
     fixable: false,
     schema: {
       exemptPaths: 'string[]',

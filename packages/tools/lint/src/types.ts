@@ -91,6 +91,26 @@ export interface RuleMeta {
    * the library.
    */
   optIn?: boolean
+  /**
+   * Who the rule is FOR.
+   *
+   * `'framework'` (the default) — a rule about Pyreon itself, valid in any
+   * consumer project.
+   *
+   * `'monorepo'` — a rule that encodes THIS repository's conventions: its
+   * layer order, its private internal packages (`@pyreon/vitest-config`,
+   * `@pyreon/test-utils`), its `[Pyreon]` error prefix. These are valuable
+   * here and meaningless in a user's app, so every SHIPPED preset forces them
+   * off and this repo re-enables them by id in its own `.pyreonlintrc.json` —
+   * which makes the dependency visible in config instead of hidden inside a
+   * preset that a consumer also selects.
+   *
+   * The split is drawn by measurement, not taste: these are exactly the rules
+   * whose source hardcodes an `@pyreon/*` specifier or a `packages/<layer>/`
+   * path. `dev-guard-warnings` hardcodes neither and is therefore a genuine
+   * library-author rule, so it stays in the shipped presets.
+   */
+  scope?: 'framework' | 'monorepo'
 }
 
 // ── Rule Options ────────────────────────────────────────────────────────────

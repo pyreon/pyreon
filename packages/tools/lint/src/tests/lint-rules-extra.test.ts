@@ -32,7 +32,16 @@ describe('pyreon/no-error-without-prefix (architecture)', () => {
   beforeEach(() => {
     _resetProjectDepsCache()
   })
-  const fwLint = (code: string, absPath: string, config = defaultConfig()) => {
+  // `no-error-without-prefix` is `scope: 'monorepo'` — it hardcodes the
+  // `[Pyreon]` / `@pyreon/<pkg>` prefix, so every consumer preset forces it
+  // off and this repo re-enables it by id. These specs test the RULE, so they
+  // enable it explicitly rather than relying on a preset that no longer
+  // carries it.
+  const withRule = (): LintConfig => {
+    const base = defaultConfig()
+    return { ...base, rules: { ...base.rules, 'pyreon/no-error-without-prefix': 'warn' } }
+  }
+  const fwLint = (code: string, absPath: string, config = withRule()) => {
     const rel = absPath.replace(/^\/abs\//, '')
     const abs = path.join(FWROOT, rel)
     fs.mkdirSync(path.dirname(abs), { recursive: true })
@@ -47,7 +56,7 @@ describe('pyreon/no-error-without-prefix (architecture)', () => {
     fs.mkdirSync(path.dirname(abs), { recursive: true })
     const code = `function f() { throw new Error("Save failed (500)") }`
     fs.writeFileSync(abs, code)
-    const result = lintFile(abs, code, allRules, defaultConfig())
+    const result = lintFile(abs, code, allRules, withRule())
     expect(find(result, 'pyreon/no-error-without-prefix').length).toBe(0)
     fs.rmSync(consumer, { recursive: true, force: true })
   })

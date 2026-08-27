@@ -51,8 +51,10 @@ function lintWith(ruleId: string, source: string, filePath?: string) {
 }
 
 // Lint a single rule with it EXPLICITLY enabled at its default severity —
-// used for `meta.optIn` rules, which are OFF in `recommended` (so `lintWith`
-// would report nothing). The detection logic is unchanged; the rule is just
+// used for rules that are OFF in `recommended` (so `lintWith` would report
+// nothing): `meta.optIn` best-practice rules, and `meta.scope: 'monorepo'`
+// rules that encode this repository rather than the framework. The rule's
+// detection logic is unchanged; the rule is just
 // opt-in now (per the upstream 0.44.0 findings), so a test asserting its
 // DETECTION must enable it explicitly.
 function lintWithRuleEnabled(ruleId: string, source: string, filePath?: string) {
@@ -1618,7 +1620,8 @@ const __DEV__ = (import.meta as ViteMeta).env?.DEV === true`
 
   it('pyreon/no-error-without-prefix: flags throw without [Pyreon]', () => {
     const source = `throw new Error("something went wrong")`
-    const result = lintSource(source)
+    // `scope: 'monorepo'` — off in `recommended`, so enable it explicitly.
+    const result = lintWithRuleEnabled('pyreon/no-error-without-prefix', source)
     const diags = findByRule(result, 'pyreon/no-error-without-prefix')
     expect(diags.length).toBe(1)
     expect(diags[0]?.fix).toBeDefined()
@@ -2088,8 +2091,11 @@ describe('Presets', () => {
 
   it('lib should have architecture rules as error', () => {
     const lib = getPreset('lib')
-    expect(lib.rules['pyreon/no-circular-import']).toBe('error')
-    expect(lib.rules['pyreon/no-cross-layer-import']).toBe('error')
+    // `no-circular-import` / `no-cross-layer-import` are `scope: 'monorepo'`
+    // — they hardcode this repo's layer order, so no consumer preset enables
+    // them, `lib` included. This repo opts back in via `.pyreonlintrc.json`.
+    expect(lib.rules['pyreon/no-circular-import']).toBe('off')
+    expect(lib.rules['pyreon/no-cross-layer-import']).toBe('off')
     expect(lib.rules['pyreon/dev-guard-warnings']).toBe('error')
     expect(lib.rules['pyreon/no-process-dev-gate']).toBe('error')
   })
@@ -3543,7 +3549,7 @@ describe('pyreon/require-browser-smoke-test', () => {
       withBrowserTest: false,
     })
     try {
-      const result = lintWith(
+      const result = lintWithRuleEnabled(
         'pyreon/require-browser-smoke-test',
         `export const x = 1`,
         fake.indexPath,
@@ -3563,7 +3569,7 @@ describe('pyreon/require-browser-smoke-test', () => {
       withBrowserTest: true,
     })
     try {
-      const result = lintWith(
+      const result = lintWithRuleEnabled(
         'pyreon/require-browser-smoke-test',
         `export const x = 1`,
         fake.indexPath,
@@ -3580,7 +3586,7 @@ describe('pyreon/require-browser-smoke-test', () => {
       withBrowserTest: false,
     })
     try {
-      const result = lintWith(
+      const result = lintWithRuleEnabled(
         'pyreon/require-browser-smoke-test',
         `export const x = 1`,
         fake.indexPath,
@@ -3601,7 +3607,7 @@ describe('pyreon/require-browser-smoke-test', () => {
       const { join } = await import('node:path')
       const internalPath = join(fake.pkgDir, 'src', 'internal.ts')
       writeFileSync(internalPath, `export const y = 2\n`)
-      const result = lintWith(
+      const result = lintWithRuleEnabled(
         'pyreon/require-browser-smoke-test',
         `export const y = 2`,
         internalPath,
@@ -3679,7 +3685,7 @@ describe('pyreon/require-browser-smoke-test', () => {
         join(fake.pkgDir, 'src', 'mount.browser.test.tsx'),
         `export {}`,
       )
-      const result = lintWith(
+      const result = lintWithRuleEnabled(
         'pyreon/require-browser-smoke-test',
         `export const x = 1`,
         fake.indexPath,
@@ -3701,7 +3707,7 @@ describe('pyreon/require-browser-smoke-test', () => {
       const deep = join(fake.pkgDir, 'src', 'a', 'b', 'c', 'd')
       mkdirSync(deep, { recursive: true })
       writeFileSync(join(deep, 'nested.browser.test.ts'), `export {}`)
-      const result = lintWith(
+      const result = lintWithRuleEnabled(
         'pyreon/require-browser-smoke-test',
         `export const x = 1`,
         fake.indexPath,
@@ -3729,7 +3735,7 @@ describe('pyreon/require-browser-smoke-test', () => {
       const lib = join(fake.pkgDir, 'lib')
       mkdirSync(lib, { recursive: true })
       writeFileSync(join(lib, 'built.browser.test.ts'), `export {}`)
-      const result = lintWith(
+      const result = lintWithRuleEnabled(
         'pyreon/require-browser-smoke-test',
         `export const x = 1`,
         fake.indexPath,
@@ -3761,7 +3767,7 @@ describe('pyreon/require-browser-smoke-test', () => {
       )
       const indexPath = join(pkgDir, 'src', 'index.ts')
       writeFileSync(indexPath, `export const x = 1`)
-      const result = lintWith(
+      const result = lintWithRuleEnabled(
         'pyreon/require-browser-smoke-test',
         `export const x = 1`,
         indexPath,
@@ -3796,7 +3802,7 @@ describe('pyreon/require-browser-smoke-test', () => {
       )
       const indexPath = join(pkgDir, 'src', 'index.ts')
       writeFileSync(indexPath, `export const x = 1`)
-      const result = lintWith(
+      const result = lintWithRuleEnabled(
         'pyreon/require-browser-smoke-test',
         `export const x = 1`,
         indexPath,

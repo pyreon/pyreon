@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { getPreset } from '../config/presets'
 import { allRules } from '../rules/index'
 import { lintFile } from '../runner'
-import type { LintConfig, Severity } from '../types'
+import type { LintConfig, PresetName, Severity } from '../types'
 
 /**
  * Registry-level invariants over the whole rule set.
@@ -144,6 +145,58 @@ describe('rule registry invariants', () => {
       d.message.includes('`<For>` without `by` prop'),
     )
     expect(forBy.map((d) => d.ruleId)).toEqual(['pyreon/no-missing-for-by'])
+  })
+
+  it('monorepo-scoped rules are OFF in every preset a consumer selects', () => {
+    // These encode THIS repository — its layer order, its private internal
+    // packages, its `[Pyreon]` error prefix. Shipping them on would fire
+    // `@pyreon/*`-specific errors in a user's app. This repo re-enables them
+    // by id in its own `.pyreonlintrc.json`, which keeps the dependency
+    // visible in config rather than hidden inside a shared preset.
+    const monorepo = allRules.filter((r) => r.meta.scope === 'monorepo')
+    expect(monorepo.length).toBeGreaterThan(0)
+
+    const shipped: PresetName[] = ['recommended', 'strict', 'app', 'lib', 'best-practices']
+    const leaked: string[] = []
+    for (const preset of shipped) {
+      const config = getPreset(preset)
+      for (const rule of monorepo) {
+        const entry = config.rules[rule.meta.id]
+        const severity = Array.isArray(entry) ? entry[0] : entry
+        if (severity !== 'off') leaked.push(`${preset}: ${rule.meta.id} = ${severity}`)
+      }
+    }
+    expect(leaked, `monorepo rules enabled in a shipped preset:\n  ${leaked.join('\n  ')}`).toEqual(
+      [],
+    )
+  })
+
+  it('the monorepo-scoped set is exactly the rules that hardcode this repo', () => {
+    // Pinned rather than derived so widening the set is a deliberate edit.
+    // The membership test is empirical: each of these hardcodes an
+    // `@pyreon/*` specifier or a `packages/<layer>/` path in its source.
+    // `dev-guard-warnings` hardcodes neither — it is a genuine
+    // library-author rule and deliberately stays in the shipped presets.
+    const ids = allRules
+      .filter((r) => r.meta.scope === 'monorepo')
+      .map((r) => r.meta.id)
+      .sort()
+    expect(ids).toEqual([
+      'pyreon/no-circular-import',
+      'pyreon/no-cross-layer-import',
+      'pyreon/no-error-without-prefix',
+      'pyreon/no-querySelector-cast-in-test',
+      'pyreon/require-browser-smoke-test',
+      'pyreon/vitest-config-uses-shared',
+    ])
+  })
+
+  it('every monorepo-scoped rule lives in the architecture category', () => {
+    // If a monorepo rule ever appears elsewhere, the category is probably the
+    // thing that is wrong — these are all "this repo is laid out like so".
+    for (const rule of allRules.filter((r) => r.meta.scope === 'monorepo')) {
+      expect(rule.meta.category, rule.meta.id).toBe('architecture')
+    }
   })
 
   it('missing `by` on <For> is an error, not a warning', () => {

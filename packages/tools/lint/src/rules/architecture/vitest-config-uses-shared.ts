@@ -43,6 +43,7 @@ export const vitestConfigUsesShared: Rule = {
     description:
       'Per-package vitest configs must use defineNodeConfig / defineBrowserConfig from @pyreon/vitest-config (locks in PRs #914-#922 migration).',
     severity: 'error',
+    scope: 'monorepo',
     fixable: false,
     schema: {
       exemptPaths: 'string[]',
