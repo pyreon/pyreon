@@ -263,17 +263,25 @@ export function C() { return (<Box><Text>hi</Text></Box>) }`,
   {
     name: '@pyreon/rocketstyle',
     mechanism: 'pmtc-lowers',
-    rationale: 'rocketstyle(Element).theme()/.attrs() dimensions lower to native styled components.',
+    rationale:
+      'rocketstyle(Element).theme()/.attrs() dimensions lower to native styled components — the NATIVE emit carries the theme as real view modifiers. On the WEB `.theme()` supplies values that only become CSS through a `.styles()` bridge (unistyle `makeItResponsive`, as `el` in @pyreon/ui/components does), so a bare `.theme()` chain styles on native and renders unstyled in a browser. Use `styled()` from @pyreon/styler for shared source that must style on all three.',
     // The registry used `rocketstyle(Element)` — a call form that does not exist in
     // the RUNTIME either (init.ts is curried: `rocketstyle()({name, component})`),
     // so `readCurriedPrimitive` bailed BEFORE its own warning and the module-decl
     // catch-all emitted the chain verbatim. Verified: this shape lowers with zero
     // warnings to VStack / Column(Modifier.background(...).padding(...)).
+    // The base is `Element`, which is what the rationale has always SAID and the
+    // snippet did not do — it used a bare `Stack` primitive. The difference is
+    // real and web-side: over a primitive, rocketstyle emits no class at all;
+    // over Element it at least gets Element's own layout CSS. Both lower
+    // identically on native, which is exactly why the mismatch survived — a
+    // native-only check cannot see it.
     snippet: `import { rocketstyle } from '@pyreon/rocketstyle'
+import { Element } from '@pyreon/elements'
 import { Stack, Text } from '@pyreon/primitives'
-const Btn = rocketstyle()({ name: 'Btn', component: Stack })
+const Btn = rocketstyle()({ name: 'Btn', component: Element })
   .theme(() => ({ backgroundColor: '#6b7280', padding: 8 }))
-export function C() { return (<Btn><Text>hi</Text></Btn>) }`,
+export function C() { return (<Stack><Btn><Text>hi</Text></Btn></Stack>) }`,
   },
   {
     name: '@pyreon/elements',
@@ -286,7 +294,12 @@ export function C() { return (<Element gap={2}><Text>a</Text><Text>b</Text></Ele
   {
     name: '@pyreon/attrs',
     mechanism: 'pmtc-lowers',
-    rationale: 'attrs(Component)(defaults) HOC lowers via the wrapped native component.',
+    // The rationale used to read `attrs(Component)(defaults)` — a call form the
+    // runtime does not have, and the one the comment below already records as
+    // the reason the walk bailed. Saying it in the rationale too kept pointing
+    // readers at a shape that cannot work.
+    rationale:
+      'attrs({ name, component }).attrs(defaults) HOC lowers via the wrapped native component.',
     // Same class as rocketstyle above: `attrs(Element)({…})` skips the options object
     // the runtime takes (`attrs({ name, component })`), so the walk bailed at a
     // CallExpression callee and never reached its own bare-form warning. Verified:
