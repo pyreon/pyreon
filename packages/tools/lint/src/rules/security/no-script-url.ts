@@ -20,13 +20,18 @@ import { getSpan } from '../../utils/ast'
  * script URL, and a naive `startsWith('javascript:')` misses it.
  */
 
-/** Attributes a browser resolves as a URL. */
+/**
+ * Attributes a browser resolves as a URL, by LOCAL name.
+ *
+ * `xlink:href` is deliberately absent: it is matched by its local name
+ * `href` (see `attrLocalName`). Listing the qualified form here was dead —
+ * the lookup never sees one — which is exactly how the SVG vector hides.
+ */
 const URL_ATTRS = new Set([
   'href',
   'src',
   'action',
   'formaction',
-  'xlink:href',
   'poster',
   'data',
   'ping',
@@ -51,23 +56,34 @@ function normalizeUrl(raw: string): string {
 
 function literalString(value: any): string | null {
   if (!value) return null
+  // `href="…"` — a bare string attribute.
   if (value.type === 'Literal' && typeof value.value === 'string') return value.value
-  if (
-    value.type === 'JSXExpressionContainer' &&
-    value.expression?.type === 'Literal' &&
-    typeof value.expression.value === 'string'
-  ) {
-    return value.expression.value
-  }
+  // Anything else static arrives inside `{…}`.
+  if (value.type !== 'JSXExpressionContainer') return null
+  const expr = value.expression
+  if (expr?.type === 'Literal' && typeof expr.value === 'string') return expr.value
   // A template literal with no substitutions is still fully static.
-  const expr =
-    value.type === 'JSXExpressionContainer' ? value.expression : value
-  if (
-    expr?.type === 'TemplateLiteral' &&
-    (expr.expressions?.length ?? 0) === 0 &&
-    expr.quasis?.length === 1
-  ) {
-    return expr.quasis[0]?.value?.cooked ?? null
+  if (expr?.type === 'TemplateLiteral' && expr.expressions?.length === 0) {
+    return expr.quasis?.[0]?.value?.cooked ?? null
+  }
+  return null
+}
+
+/**
+ * The attribute's LOCAL name, lowercased — `href` for BOTH `href` and
+ * `xlink:href`.
+ *
+ * SVG's `xlink:href` executes a script URL exactly like `href` does, and a
+ * check keyed on the qualified name misses it. This repo's own catalog
+ * records that same bug in the runtime sanitizer: *"the attribute URL-guard
+ * keyed on `URL_ATTRS.has(attr.name)` MISSES SVG's `xlink:href` … guard on
+ * `attr.localName === 'href'` too, or an `<a xlink:href="javascript:…">`
+ * slips through."* Keying on the qualified name here would have repeated it.
+ */
+function attrLocalName(name: any): string | null {
+  if (name?.type === 'JSXIdentifier') return String(name.name).toLowerCase()
+  if (name?.type === 'JSXNamespacedName' && name.name?.type === 'JSXIdentifier') {
+    return String(name.name.name).toLowerCase()
   }
   return null
 }
@@ -84,9 +100,8 @@ export const noScriptUrl: Rule = {
   create(context) {
     const callbacks: VisitorCallbacks = {
       JSXAttribute(node: any) {
-        if (node.name?.type !== 'JSXIdentifier') return
-        const attrName = String(node.name.name).toLowerCase()
-        if (!URL_ATTRS.has(attrName)) return
+        const attrName = attrLocalName(node.name)
+        if (attrName === null || !URL_ATTRS.has(attrName)) return
 
         const raw = literalString(node.value)
         if (raw === null) return

@@ -146,6 +146,29 @@ describe('pyreon/no-script-url', () => {
     ).toHaveLength(0)
   })
 
+  it('catches the SVG `xlink:href` vector, not just `href`', () => {
+    // A namespaced attribute arrives as JSXNamespacedName, so a check keyed on
+    // the QUALIFIED name never matches and the vector walks straight through.
+    // This repo's catalog records the identical bug in the runtime sanitizer;
+    // matching on the LOCAL name is what closes it in both places.
+    expect(
+      idsAt(`const A = () => <a xlink:href="javascript:alert(1)">x</a>`, RULE),
+    ).toHaveLength(1)
+    expect(
+      idsAt(`const A = () => <image xlink:href="javascript:alert(1)" />`, RULE),
+    ).toHaveLength(1)
+  })
+
+  it('ignores a namespaced attribute whose local name is not a URL attribute', () => {
+    expect(idsAt(`const A = () => <a xlink:title="javascript:x">y</a>`, RULE)).toHaveLength(0)
+  })
+
+  it('does not crash or fire on a VALUELESS url attribute', () => {
+    // `<a href>` is legal JSX and `node.value` is null. Nothing to read, so
+    // nothing to prove — but it must not throw on the way to that conclusion.
+    expect(idsAt(`const A = () => <a href>x</a>`, RULE)).toHaveLength(0)
+  })
+
   it('does not flag ordinary URLs, including ones containing the word', () => {
     for (const href of ['/about', 'https://x.com', 'mailto:a@b.c', '#top', '/docs/javascript']) {
       expect(idsAt(`const A = () => <a href="${href}">x</a>`, RULE), href).toHaveLength(0)
