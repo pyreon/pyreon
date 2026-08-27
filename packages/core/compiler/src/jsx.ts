@@ -170,6 +170,10 @@ export interface TransformResult {
 const SKIP_PROPS = new Set(['key', 'ref'])
 // Event handler pattern: onClick, onInput, onMouseEnter, …
 const EVENT_RE = /^on[A-Z]/
+// Hoisted so the literal isn't re-allocated per call on the SSR attr / template
+// child classification paths (a regex literal is a fresh RegExp per evaluation).
+const UPPER_RE = /[A-Z]/
+const IDENT_RE = /^[A-Za-z_$][\w$]*$/
 /**
  * Marks a template element as a MOUNT HOLE — emitted empty, filled at mount by
  * trailing `_mountChild` calls for its absorbed COMPONENT children
@@ -668,7 +672,7 @@ export function detectStaticElementChild(node: N): StaticChildNode | null {
     const nm = attr.name?.type === 'JSXIdentifier' ? attr.name.name : null
     if (!nm) return null
     // No handlers on a baked child — a static clone can't carry them.
-    if (/^on[A-Z]/.test(nm)) return null
+    if (EVENT_RE.test(nm)) return null
     const v = attr.value
     if (!v) return null // boolean attr → bail
     const isStr =
@@ -836,7 +840,7 @@ export function detectPartialCollapsibleShape(
     // `onClick` without a container, etc.) is a hard bail — same
     // conservatism as the full detector.
     if (
-      /^on[A-Z]/.test(nm) &&
+      EVENT_RE.test(nm) &&
       v.type === 'JSXExpressionContainer' &&
       v.expression &&
       typeof v.expression.start === 'number' &&
@@ -956,7 +960,7 @@ export function detectDynamicCollapsibleShape(
       typeof v.expression.start === 'number' &&
       typeof v.expression.end === 'number'
     ) {
-      if (/^on[A-Z]/.test(nm)) {
+      if (EVENT_RE.test(nm)) {
         handlers.push({ name: nm, exprStart: v.expression.start, exprEnd: v.expression.end })
         continue
       }
@@ -1782,7 +1786,7 @@ export function transformJSX_JS(
    * name, not class/style, not aria-*, not URL-bearing. Everything else needs
    * `renderProp`'s full logic (`_ssrAttr`). */
   function ssrAttrIsGeneric(name: string): boolean {
-    if (/[A-Z]/.test(name)) return false
+    if (UPPER_RE.test(name)) return false
     if (name === 'class' || name === 'style') return false
     if (name.charCodeAt(0) === 97 && name.startsWith('aria-')) return false
     if (SSR_URL_ATTRS.has(name)) return false
@@ -1962,7 +1966,7 @@ export function transformJSX_JS(
     // `toAttrName` maps camelCase/SVG/renamed names via a runtime table we don't
     // replicate at BAKE time — so an uppercase-named attr can only go through
     // `_ssrAttr` (renderProp does the mapping), never a compile-time bake.
-    const hasUpper = /[A-Z]/.test(name)
+    const hasUpper = UPPER_RE.test(name)
 
     // No value: `<x disabled>` → props.x = true.
     if (!attr.value) {
@@ -3315,6 +3319,7 @@ export function transformJSX_JS(
           }
         }
       }
+      if (out.length === 0) return out
       return out.filter((n) => propDerivedVars.has(n))
     }
 
@@ -5068,7 +5073,7 @@ export function transformJSX_JS(
       // as the children-slot path; _mountSlot handles every child type.
       const isElementValuedIdent =
         (childExpr.type === 'Identifier' && elementVars.has(childExpr.name)) ||
-        (!isReactive && /^[A-Za-z_$][\w$]*$/.test(expr) && elementVars.has(expr))
+        (!isReactive && IDENT_RE.test(expr) && elementVars.has(expr))
       if (isChildrenExpression(childExpr, expr) || isElementValuedIdent) {
         needsMountSlotImport = true
         const placeholder = hoistPlaceholderRef(parentRef, childNodeIdx)
@@ -5418,6 +5423,7 @@ export function transformJSX_JS(
         }
       }
     }
+    if (out.length === 0) return out
     return out.filter((n) => signalVars.has(n))
   }
 
