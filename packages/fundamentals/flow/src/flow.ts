@@ -643,13 +643,18 @@ export function createFlow<TData = Record<string, unknown>>(
     const duration = options.animationDuration ?? 300
 
     if (!animate) {
+      // Index positions by id (O(n)) so applying the layout is O(n), not the
+      // O(n²) that `positions.find(...)` per node produced — this is the same
+      // `new Map(positions.map(...))` the animated branch below already uses;
+      // the non-animated branch just never got it.
+      const posById = new Map(positions.map((p) => [p.id, p.position]))
       batch(() => {
         nodes.update((nds) =>
           nds.map((node) => {
-            const pos = positions.find((p) => p.id === node.id)
-            /* v8 ignore next — elk lays out every node passed, so `positions` always has
+            const pos = posById.get(node.id)
+            /* v8 ignore next — elk lays out every node passed, so `posById` always has
                an entry for each node; the `: node` (no-position) arm is defensive. */
-            return pos ? { ...node, position: pos.position } : node
+            return pos ? { ...node, position: pos } : node
           }),
         )
       })
