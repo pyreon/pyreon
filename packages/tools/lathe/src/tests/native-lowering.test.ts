@@ -102,10 +102,18 @@ describe('generated native modules lower', () => {
     // fails SILENTLY — PMTC reads a standalone hook as a View and reproduces
     // `useQuery` verbatim with zero warnings. Without this lock, a future
     // refactor to "cleaner" generated hooks would look entirely fine.
-    const broken = nativeModule!.contents.replace(
-      /export function ListBooksData[\s\S]*$/,
-      `export function useListBooks() {\n  return useQuery<Book[]>(() => listBooks.query())\n}\n`,
-    )
+    //
+    // Cut at the FIRST data component rather than a named one. The emit now
+    // produces several (one per non-mutating operation), and a rule anchored
+    // to one name silently stopped testing its own premise the moment a
+    // second component was emitted BEFORE it: the file still contained an
+    // in-body query, so `PyreonQuery<` was still present and the lock could
+    // no longer fail for the reason it exists.
+    const firstComponent = nativeModule!.contents.search(/export function \w+Data\(/)
+    expect(firstComponent, 'no data component to move out of the body').toBeGreaterThan(-1)
+    const broken =
+      nativeModule!.contents.slice(0, firstComponent) +
+      `export function useListBooks() {\n  return useQuery<Book[]>(() => listBooks.query())\n}\n`
     const out = transform(broken, { target: 'swift' })
     expect(out.code).not.toContain('PyreonQuery<')
     expect(out.code).toContain('useQuery(')
@@ -124,5 +132,56 @@ describe('generated native modules lower', () => {
     )
     const out = transform(split, { target: 'swift' })
     expect(out.code).not.toContain('PyreonQuery<')
+  })
+})
+
+/**
+ * A path parameter is the ordinary case, not an edge case: `GET /books/{id}`
+ * is what an API screen actually calls. Lathe used to SKIP emitting a native
+ * data component for those operations entirely, because PMTC resolved the URL
+ * to a compile-time constant and a prop read has no compile-time value — so
+ * the generated native surface covered collection endpoints only.
+ *
+ * PMTC now lowers a runtime `:param` through `useQuery` (its harness is keyed
+ * on the resulting URL, so it re-fetches when the prop changes). These specs
+ * assert the emit takes that shape AND that the real compiler lowers it —
+ * asserting only the emitted text would pass against a shape that compiles to
+ * a web fetch on both targets.
+ */
+describe('a path-param operation emits a prop-driven native component', () => {
+  const cfg = resolveConfig({
+    input: 'spec.yaml',
+    output: 'gen',
+    target: 'multiplatform',
+    plugins: ['types', 'schemas', 'client', 'queries'],
+  } as never)
+  const files = generate(SPEC, cfg)
+  const native = files.files.find((f) => f.path.endsWith('.native.tsx'))
+
+  it('emits the component at all — it used to be skipped', () => {
+    expect(native?.contents).toContain('export function GetBookData(')
+  })
+
+  it('takes the path param as a PROP, typed from the spec', () => {
+    expect(native?.contents).toContain('props: { id: string; children:')
+  })
+
+  it('reads `props.id` rather than destructuring it', () => {
+    // A destructure reads the getter once and freezes the value, so the query
+    // would never re-fetch for a new id — the emit would look correct and the
+    // screen would show the first record forever.
+    expect(native?.contents).toContain('getBook.query({ params: { id: props.id } })')
+    expect(native?.contents).not.toMatch(/const\s*\{\s*id\s*\}\s*=\s*props/)
+  })
+
+  it('lowers to native on BOTH targets, with no warning', () => {
+    const report = verifyNative(files.files, transform)
+    const forNative = report.files.filter((f) => f.path.endsWith('.native.tsx'))
+    expect(forNative.length).toBeGreaterThan(0)
+    for (const f of forNative) {
+      expect(f.verdict, `${f.path} [${f.target}] warned: ${f.warnings.join(' | ')}`).toBe('lowers')
+      expect(f.leaked).toEqual([])
+    }
+    expect(worstVerdict(report)).toBe('lowers')
   })
 })

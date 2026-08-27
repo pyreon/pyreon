@@ -109,8 +109,17 @@ describe('generate', () => {
   it('generates a data component only for operations that can reach native', () => {
     const src = file(generate(SPEC, native), 'books.native.tsx')
     expect(src).toContain('export function ListBooksData(')
-    // `getBook` takes a path parameter, so its URL cannot be baked.
-    expect(src).not.toContain('GetBookData')
+    // A path param used to disqualify an operation, because PMTC resolved the
+    // URL to a compile-time constant. It now lowers through `useQuery` (whose
+    // native harness is keyed on the resulting URL, so it re-fetches when the
+    // prop changes), so the component IS emitted — with the param as a prop.
+    // That it genuinely lowers is asserted in `native-lowering.test.ts`; this
+    // spec only fixes the emit's shape.
+    expect(src).toContain('export function GetBookData(')
+    expect(src).toContain('props: { id: string; children:')
+    // The invariant the title names is unchanged and still has live cases:
+    // a MUTATION has no data to render, so it gets no data component.
+    expect(src).not.toContain('CreateBookData')
   })
 
   it('enables schema support on the generated client', () => {
@@ -167,9 +176,15 @@ describe('generate', () => {
   it('reports per-operation reach with a reason', () => {
     const r = generate(SPEC, native)
     expect(r.reach.get('listBooks')?.reach).toBe('web+native')
-    expect(r.reach.get('getBook')?.reach).toBe('web-only')
-    expect(r.reach.get('getBook')?.reason).toContain('literal params')
+    // `getBook` takes a path param. That used to make it web-only; PMTC now
+    // lowers a runtime `:param` through `useQuery`, so it reaches native and
+    // the generated component takes the param as a prop.
+    expect(r.reach.get('getBook')?.reach).toBe('web+native')
+    expect(r.reach.get('getBook')?.reason).toBeUndefined()
+    // The invariant this spec protects — a web-only op is REPORTED, with a
+    // reason a reader can act on — is unchanged, and a mutation still is one.
     expect(r.reach.get('createBook')?.reach).toBe('web-only')
+    expect(r.reach.get('createBook')?.reason).toContain('mutations')
   })
 
   it('marks every operation web-only when the baseUrl is not absolute', () => {

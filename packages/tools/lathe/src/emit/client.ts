@@ -346,19 +346,49 @@ export function emitNativeModules(doc: IrDocument, opts: ClientOptions): SourceF
     // produces Swift that does not compile, with no warning at all.
     for (const op of ops) {
       if (isMutation(op)) continue
-      if (op.pathParams.length > 0) continue // reported as web-only by verify
       const ret = op.response ? tsType(op.response) : 'unknown'
       const name = `${typeIdent(op.id)}Data`
+      // A path param becomes a PROP, and the `params` object is built from
+      // those props. PMTC lowers this to native string interpolation and keys
+      // the query harness on the resulting URL, so passing a different id
+      // re-fetches — the same thing the web does.
+      //
+      // Every path param is REQUIRED by construction (a URL cannot omit a
+      // segment), so they are non-optional props regardless of what the spec
+      // marked them.
+      const params = op.pathParams
+      // A path param's name is `ident()`-normalized at CONVERSION (see
+      // `input/openapi.ts`), so it is a valid identifier here by construction
+      // — which is what lets it be a bare `props.x` member access rather than
+      // the quoted-key form the other emitters need. If that normalization
+      // ever moves, this breaks loudly at typecheck rather than silently.
+      const propsType = [
+        ...params.map((p) => `${p.name}: ${tsType(p.type)}`),
+        `children: (data: ${ret} | undefined) => unknown`,
+      ].join('; ')
+      // `props.x`, never a destructure: destructuring reads the getter once
+      // and freezes the value, which is the single most common way to lose
+      // reactivity in Pyreon — and here it would also stop the query
+      // re-fetching when the parent passes a new id.
+      const args = params.length
+        ? `({ params: { ${params.map((p) => `${p.name}: props.${p.name}`).join(', ')} } })`
+        : '()'
       f.line()
       f.doc(
         `Fetches \`${endpointSpec(op)}\` and renders it through \`children\`.`,
+        ...(params.length
+          ? [
+              '',
+              `Takes ${params.map((p) => `\`${p.name}\``).join(', ')} as ${params.length === 1 ? 'a prop' : 'props'} and re-fetches when ${params.length === 1 ? 'it changes' : 'they change'}.`,
+            ]
+          : []),
         '',
         'The `useQuery` call sits directly in the component body, in the same',
         'file as its client and endpoint — the one arrangement PMTC lowers to',
         'PyreonQuery. Moving it into a hook silently breaks the native build.',
       )
-      f.line(`export function ${name}(props: { children: (data: ${ret} | undefined) => unknown }) {`)
-      f.line(`  const q = useQuery<${ret}>(() => ${op.id}.query())`)
+      f.line(`export function ${name}(props: { ${propsType} }) {`)
+      f.line(`  const q = useQuery<${ret}>(() => ${op.id}.query${args})`)
       // `q.data` is a SIGNAL; passing it uncalled hands the child a function.
       f.line('  return props.children(q.data())')
       f.line('}')
