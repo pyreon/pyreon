@@ -39,6 +39,11 @@
       "import": "./lib/cli.js",
       "types": "./lib/types/cli.d.ts"
     },
+    "./vite": {
+      "bun": "./src/vite.ts",
+      "import": "./lib/vite.js",
+      "types": "./lib/types/vite.d.ts"
+    },
     "./package.json": "./package.json"
   },
   "files": [

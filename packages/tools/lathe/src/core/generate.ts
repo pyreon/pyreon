@@ -7,6 +7,7 @@
  */
 
 import { emitAtlasScenarios } from '../emit/atlas'
+import { emitBarrel, emitKeys } from '../emit/index-barrel'
 import {
   emitClient,
   emitNativeModules,
@@ -51,6 +52,7 @@ export function generate(specText: string, config: ResolvedConfig): GenerateResu
   if (has('queries')) {
     for (const f of emitWebQueries(doc)) push(f)
   }
+  if (has('queries')) push(emitKeys(doc))
   if (has('mocks')) push(emitMocks(doc))
   if (has('atlas')) push(emitAtlasScenarios(doc))
   // The native modules are the `client` + `queries` emitters' native LAYOUT,
@@ -60,6 +62,8 @@ export function generate(specText: string, config: ResolvedConfig): GenerateResu
   if (native && (has('client') || has('queries'))) {
     for (const f of emitNativeModules(doc, { native, baseUrl: config.baseUrl })) push(f)
   }
+  // Last, so it can re-export whatever the selection actually produced.
+  push(emitBarrel(doc, { plugins: config.plugins }))
 
   return { doc, files, reach: reachOf(doc, config) }
 }

@@ -21,14 +21,17 @@ export interface Argv {
   baseUrl?: string | undefined
   strictNative: boolean
   json: boolean
+  /** Regenerate whenever a spec changes, instead of exiting after one pass. */
+  watch: boolean
 }
 
 export function parseArgv(args: readonly string[]): Argv {
-  const out: Argv = { command: 'help', strictNative: false, json: false }
+  const out: Argv = { command: 'help', strictNative: false, json: false, watch: false }
   const rest: string[] = []
   for (let i = 0; i < args.length; i++) {
     const a = args[i] as string
     if (a === '--json') out.json = true
+    else if (a === '--watch' || a === '-w') out.watch = true
     else if (a === '--strict-native') out.strictNative = true
     else if (a === '--target') out.target = args[++i] as Argv['target']
     else if (a.startsWith('--target=')) out.target = a.slice(9) as Argv['target']
@@ -78,6 +81,7 @@ Options
   --plugins a,b                types,schemas,client,queries,mocks,atlas
   --strict-native              exit non-zero when a native module fails to lower
   --json                       machine-readable output
+  --watch, -w                  regenerate whenever a spec changes
 `
 
 /**
