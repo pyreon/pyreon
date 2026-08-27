@@ -51,6 +51,16 @@ export function subscribeKey(key: string, cb: ReRead): () => void {
 function notifyKey(key: string, except: ReRead | undefined): void {
   const set = _subscribers.get(key)
   if (set === undefined || set.size === 0) return
+  // Single-subscriber fast path (the dominant shape — one `useUrlState` bound to
+  // a given key). `notifyKey` fires per URL change, so the `[...set]` snapshot
+  // was a throwaway array on every navigation/write. With one subscriber there
+  // is no sibling to protect, so capture it and fire (matching the snapshot's
+  // "subscribers present at notify start" semantics) with no allocation.
+  if (set.size === 1) {
+    const only = set.values().next().value as ReRead
+    if (only !== except) only()
+    return
+  }
   // Snapshot: a re-read could (in theory) create/dispose a sibling signal.
   for (const cb of [...set]) {
     if (cb !== except) cb()
