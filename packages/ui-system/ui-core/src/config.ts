@@ -103,6 +103,18 @@ class Configuration {
 const config = new Configuration()
 const { init } = config
 
+// Identity-keyed memo for `resolveCssVariables()`. It is a per-flip hot path
+// (rocketstyle's `_resolveRsEntry` reads `.enabled` twice per flip per
+// component) and was allocating a fresh 3-key object every call. The result is a
+// pure function of `config.cssVariables`, which changes only when `init()`
+// REASSIGNS it (the documented invariant: it does not flip mid-session, let
+// alone mutate in place) — so caching on the raw value's identity is safe; a
+// real toggle reassigns to a value that misses the cache. Pre-seeded with the
+// default (`false`) resolution so the dominant path allocates nothing. The
+// returned object is SHARED — callers must treat it as read-only (all do).
+let cssVarsKey: boolean | CssVariablesConfig = false
+let cssVarsValue: ResolvedCssVariablesConfig = { enabled: false, prefix: 'px', attribute: 'data-theme' }
+
 /**
  * Resolved view of `config.cssVariables` with defaults applied — the one
  * accessor every var-mode consumer (`PyreonUI`, rocketstyle's mode-pair
@@ -110,13 +122,16 @@ const { init } = config
  */
 export function resolveCssVariables(): ResolvedCssVariablesConfig {
   const raw = config.cssVariables
-  if (raw === false) return { enabled: false, prefix: 'px', attribute: 'data-theme' }
-  const opts = raw === true ? {} : raw
-  return {
-    enabled: true,
-    prefix: opts.prefix ?? 'px',
-    attribute: opts.attribute ?? 'data-theme',
+  if (raw !== cssVarsKey) {
+    cssVarsKey = raw
+    const opts = raw === true || raw === false ? {} : raw
+    cssVarsValue = {
+      enabled: raw !== false,
+      prefix: opts.prefix ?? 'px',
+      attribute: opts.attribute ?? 'data-theme',
+    }
   }
+  return cssVarsValue
 }
 
 /** Resolved view of `config.styleExtraction` — read by `PyreonUI` to wire
