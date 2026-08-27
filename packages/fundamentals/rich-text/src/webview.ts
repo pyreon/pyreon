@@ -74,10 +74,31 @@ export function buildRichTextHostHtml(options: BuildRichTextHostHtmlOptions = {}
 
   const bridge = `
 (function () {
+  function pyreonReportHostError(msg) {
+    /* Tell the HOST, not just this page. Setting a window flag and returning
+       left every target showing a blank frame forever, with the diagnosis
+       stranded inside the very frame nobody can read from. The reverse bridge
+       is already here for ordinary events; a failure is the one message that
+       most needs it.
+
+       RETRIES, because the host installs pyreonPostMessage on load and this
+       can run first: the page's own script executes at parse time. Reporting
+       once and giving up put the message back where it started, nowhere. */
+    var left = 120;
+    (function attempt() {
+      try {
+        if (typeof window.pyreonPostMessage === 'function') {
+          window.pyreonPostMessage(JSON.stringify({ error: msg }));
+          return;
+        }
+      } catch (e) { return; }
+      if (--left > 0) setTimeout(attempt, 16);
+    })();
+  }
   var tries = 0;
   function waitTT() {
     if (window.TT && typeof window.TT.createEditor === 'function') { boot(); return; }
-    if (++tries > 800) { window.__pyreonRichTextError = 'window.TT not provided (timed out)'; return; }
+    if (++tries > 800) { window.__pyreonRichTextError = 'window.TT not provided (timed out)'; pyreonReportHostError(window.__pyreonRichTextError); return; }
     setTimeout(waitTT, 10);
   }
   function boot() {
