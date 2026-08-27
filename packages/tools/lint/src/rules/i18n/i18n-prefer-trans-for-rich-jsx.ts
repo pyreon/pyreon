@@ -45,6 +45,7 @@ export const i18nPreferTransForRichJsx: Rule = {
     description:
       'In @pyreon/i18n projects, use <Trans> for translated text that interleaves with JSX elements instead of fragmenting it across multiple t() calls.',
     severity: 'info',
+    requiresDependency: '@pyreon/i18n',
     fixable: false,
     optIn: true,
     schema: { exemptPaths: 'string[]' },

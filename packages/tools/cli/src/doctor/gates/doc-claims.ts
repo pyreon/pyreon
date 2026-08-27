@@ -348,6 +348,17 @@ const checks: ClaimCheck[] = [
         file: 'README.md',
         pattern: /(\d+) Pyreon-specific lint rules/,
       },
+      {
+        // The PUBLISHED npm description — the first count a consumer sees.
+        // It drifted to "56 rules" against an actual 98 because it was the
+        // one claim surface this gate did not cover.
+        file: 'packages/tools/lint/package.json',
+        pattern: /Pyreon-specific linter — (\d+) rules/,
+      },
+      {
+        file: '.claude/rules/code-style.md',
+        pattern: /Pyreon-specific rules \((\d+) rules, \d+ categories/,
+      },
     ],
   },
   {
@@ -371,6 +382,10 @@ const checks: ClaimCheck[] = [
       {
         file: 'README.md',
         pattern: /lint rules across (\d+) categories/,
+      },
+      {
+        file: '.claude/rules/code-style.md',
+        pattern: /Pyreon-specific rules \(\d+ rules, (\d+) categories/,
       },
     ],
   },

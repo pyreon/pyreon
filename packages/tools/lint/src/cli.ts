@@ -1,9 +1,16 @@
 #!/usr/bin/env node
-import { lint, listRules } from './lint'
+import { resolve } from 'node:path'
+import { loadConfig, loadConfigFromPath } from './config/loader'
+import { getPreset } from './config/presets'
+import { initConfig } from './init'
+import { listRules } from './lint'
+import { lintAsync } from './parallel'
 import { startLspServer } from './lsp/index'
 import { formatCompact, formatJSON, formatText } from './reporter'
-import type { PresetName, Severity } from './types'
+import { groupOf } from './rules/groups'
+import type { PresetName, RuleGroup, Severity } from './types'
 import { watchAndLint } from './watcher'
+import { explainRuleState, formatRuleState } from './why-off'
 
 // Read version from package.json at build time; fallback for dev
 const VERSION = '0.11.4'
@@ -17,7 +24,9 @@ function printUsage() {
     --fix              Auto-fix fixable issues
     --format <fmt>     Output: text (default), json, compact
     --quiet            Only show errors
+    --init             Write a starting .pyreonlintrc.json for this project
     --list             List all available rules
+    --why-off <id>     Explain why a rule will (or will not) run here
     --rule <id>=<sev>          Override rule severity (e.g. --rule pyreon/no-window-in-ssr=off)
     --rule-options <id>=<json> Override rule options (e.g. --rule-options pyreon/no-window-in-ssr='{"exemptPaths":["src/foundation/"]}')
     --config <path>    Config file path
@@ -29,17 +38,30 @@ function printUsage() {
 `)
 }
 
+const GROUP_BLURB: Record<RuleGroup, string> = {
+  pyreon: 'framework semantics — nothing outside Pyreon can know these',
+  a11y: 'accessibility — standard markup plus Pyreon\u2019s own surfaces',
+  pkg: 'per-library — each self-activates on a declared dependency',
+  internal: 'encodes the Pyreon repo itself — never on in a shipped preset',
+}
+const GROUP_ORDER: RuleGroup[] = ['pyreon', 'a11y', 'pkg', 'internal']
+
 function printList() {
   const rules = listRules()
   const maxId = Math.max(...rules.map((r) => r.id.length))
   const maxCat = Math.max(...rules.map((r) => r.category.length))
 
-  for (const rule of rules) {
-    const fixLabel = rule.fixable ? ' [fixable]' : ''
-    const id = rule.id.padEnd(maxId)
-    const cat = rule.category.padEnd(maxCat)
-    const sev = rule.severity.padEnd(5)
-    console.log(`  ${id}  ${cat}  ${sev}  ${rule.description}${fixLabel}`)
+  for (const group of GROUP_ORDER) {
+    const inGroup = rules.filter((r) => groupOf(r) === group)
+    if (inGroup.length === 0) continue
+    console.log(`\n  ${group.toUpperCase()}  (${inGroup.length})  \u2014 ${GROUP_BLURB[group]}`)
+    for (const rule of inGroup) {
+      const fixLabel = rule.fixable ? ' [fixable]' : ''
+      const id = rule.id.padEnd(maxId)
+      const cat = rule.category.padEnd(maxCat)
+      const sev = rule.severity.padEnd(5)
+      console.log(`    ${id}  ${cat}  ${sev}  ${rule.description}${fixLabel}`)
+    }
   }
 
   console.log(`\n  ${rules.length} rules total`)
@@ -50,6 +72,7 @@ interface CliArgs {
   fix: boolean
   format: 'text' | 'json' | 'compact'
   quiet: boolean
+  runInit: boolean
   showList: boolean
   showHelp: boolean
   showVersion: boolean
@@ -60,10 +83,13 @@ interface CliArgs {
   ruleOverrides: Record<string, Severity>
   /** Per-rule options parsed from `--rule-options id='{json}'`. */
   ruleOptionsOverrides: Record<string, Record<string, unknown>>
+  /** `--why-off <rule-id>` — explain the rule's effective state, then exit. */
+  whyOff: string | undefined
   paths: string[]
 }
 
 const BOOLEAN_FLAGS: Record<string, keyof CliArgs> = {
+  '--init': 'runInit',
   '--help': 'showHelp',
   '-h': 'showHelp',
   '--version': 'showVersion',
@@ -91,6 +117,8 @@ function parseArgs(argv: string[]): CliArgs {
     ruleOverrides: {},
     ruleOptionsOverrides: {},
     paths: [],
+    whyOff: undefined,
+    runInit: false,
   }
 
   for (let i = 0; i < argv.length; i++) {
@@ -125,6 +153,10 @@ function parseValueFlag(arg: string, nextArg: string | undefined, result: CliArg
   }
   if (arg === '--ignore') {
     result.ignorePath = nextArg
+    return 1
+  }
+  if (arg === '--why-off') {
+    result.whyOff = nextArg
     return 1
   }
   if (arg === '--rule') {
@@ -186,7 +218,7 @@ export function parseRuleOptionsOverride(
  * (`--watch` / `--lsp`) that must keep the process alive — the caller leaves
  * the process running rather than exiting.
  */
-export function runCli(argv: string[]): number | null {
+export async function runCli(argv: string[]): Promise<number | null> {
   const args = parseArgs(argv)
 
   if (args.showHelp) {
@@ -199,9 +231,32 @@ export function runCli(argv: string[]): number | null {
     return 0
   }
 
+  if (args.runInit) {
+    const r = initConfig(resolve('.'))
+    console.log(`\n  ${r.message}\n`)
+    return r.status === 'written' ? 0 : 1
+  }
+
   if (args.showList) {
     printList()
     return 0
+  }
+
+  if (args.whyOff) {
+    const fileConfig = args.configPath
+      ? loadConfigFromPath(args.configPath)
+      : loadConfig(resolve('.'))
+    const config = getPreset(args.preset ?? fileConfig?.preset ?? 'recommended')
+    for (const [id, entry] of Object.entries(fileConfig?.rules ?? {})) config.rules[id] = entry
+    for (const [id, sev] of Object.entries(args.ruleOverrides)) config.rules[id] = sev
+    const state = explainRuleState(args.whyOff, {
+      config,
+      // A dependency gate is only meaningful relative to a file, so use the
+      // first path the user gave (defaulting to cwd) as the probe point.
+      filePath: resolve(args.paths[0] ?? '.'),
+    })
+    console.log(formatRuleState(state))
+    return state.found ? 0 : 1
   }
 
   if (args.lspMode) {
@@ -228,16 +283,26 @@ export function runCli(argv: string[]): number | null {
     return null // long-running — keep the process alive
   }
 
-  const result = lint({
-    paths: args.paths,
-    preset: args.preset,
-    fix: args.fix,
-    quiet: args.quiet,
-    ruleOverrides: args.ruleOverrides,
-    ruleOptionsOverrides: args.ruleOptionsOverrides,
-    config: args.configPath,
-    ignore: args.ignorePath,
-  })
+  let result: Awaited<ReturnType<typeof lintAsync>>
+  try {
+    result = await lintAsync({
+      paths: args.paths,
+      preset: args.preset,
+      fix: args.fix,
+      quiet: args.quiet,
+      ruleOverrides: args.ruleOverrides,
+      ruleOptionsOverrides: args.ruleOptionsOverrides,
+      config: args.configPath,
+      ignore: args.ignorePath,
+    })
+  } catch (err) {
+    // A run that cannot complete safely — today only a worker failing partway
+    // through `--fix`, where other workers may already have written files.
+    // Print the guidance the error carries; a stack trace here would bury the
+    // one line that tells the user what to do next.
+    console.error(`\n  ${err instanceof Error ? err.message : String(err)}\n`)
+    return 1
+  }
 
   if (args.format === 'json') {
     console.log(formatJSON(result))
@@ -251,8 +316,8 @@ export function runCli(argv: string[]): number | null {
   return result.totalErrors > 0 ? 1 : 0
 }
 
-function main() {
-  const code = runCli(process.argv.slice(2))
+async function main() {
+  const code = await runCli(process.argv.slice(2))
   if (code !== null) process.exit(code)
 }
 

@@ -1,4 +1,4 @@
-import type { Rule, VisitorCallbacks } from '../../types'
+import type { Fix, Rule, VisitorCallbacks } from '../../types'
 import { getSpan } from '../../utils/ast'
 import { isPathExempt } from '../../utils/exempt-paths'
 import { isTestFile } from '../../utils/file-roles'
@@ -44,7 +44,7 @@ export const preferIsServer: Rule = {
     description:
       "Prefer `isServer` / `isClient` from `@pyreon/reactivity` over hand-rolled `typeof window` / `typeof document` checks — they single-source SSR detection (PR #1503) and use the reliable `typeof document` discriminator. Recommended-level warn, gated on the project depending on @pyreon/reactivity.",
     severity: 'warn',
-    fixable: false,
+    fixable: true,
   },
   create(context) {
     const filePath = context.getFilePath()
@@ -103,14 +103,70 @@ export const preferIsServer: Rule = {
       return isDefinedCheck ? 'isClient' : 'isServer'
     }
 
+    // Import bookkeeping for the autofix. Imports precede expressions in
+    // source order, so by the time a BinaryExpression is visited these are
+    // populated.
+    let reactivityImport: any = null
+    let reactivityIsTypeOnly = false
+    let reactivityHasNamespace = false
+    const importedNames = new Set<string>()
+    let lastImportEnd: number | null = null
+
+    /**
+     * Build the edits that make `kind` resolvable, or `null` when the import
+     * cannot be edited unambiguously (a namespace import, or a type-only
+     * import we must not turn into a value import). Returning `null` reports
+     * the diagnostic WITHOUT a fix rather than emitting code that does not
+     * compile.
+     */
+    function importEdits(kind: 'isServer' | 'isClient'): Fix[] | null {
+      if (importedNames.has(kind)) return []
+      if (reactivityHasNamespace || reactivityIsTypeOnly) return null
+
+      if (reactivityImport) {
+        const specs = reactivityImport.specifiers ?? []
+        const last = specs[specs.length - 1]
+        if (!last) return null // `import '@pyreon/reactivity'` — no brace to extend
+        return [{ span: { start: last.end, end: last.end }, replacement: `, ${kind}` }]
+      }
+
+      const stmt = `import { ${kind} } from '@pyreon/reactivity'\n`
+      return lastImportEnd === null
+        ? [{ span: { start: 0, end: 0 }, replacement: stmt }]
+        : [{ span: { start: lastImportEnd, end: lastImportEnd }, replacement: `\n${stmt.trimEnd()}` }]
+    }
+
     const callbacks: VisitorCallbacks = {
+      ImportDeclaration(node: any) {
+        lastImportEnd = Math.max(lastImportEnd ?? 0, node.end)
+        if (node.source?.value !== '@pyreon/reactivity') return
+        reactivityImport = node
+        if (node.importKind === 'type') reactivityIsTypeOnly = true
+        for (const spec of node.specifiers ?? []) {
+          if (spec.type === 'ImportNamespaceSpecifier' || spec.type === 'ImportDefaultSpecifier') {
+            reactivityHasNamespace = true
+          } else if (spec.imported?.name) {
+            importedNames.add(spec.imported.name)
+          }
+        }
+      },
       BinaryExpression(node: any) {
         const kind = envCheckKind(node)
         if (!kind) return
         const span = getSpan(node)
+
+        // The import edit rides on EVERY occurrence rather than only the
+        // first. `applyFixes` defers overlapping fixes, so exactly one lands
+        // per pass and the file is never left with a rewritten check and no
+        // import — converging over passes is the safe trade.
+        const imports = importEdits(kind)
+
         context.report({
           message: `Prefer \`${kind}\` from \`@pyreon/reactivity\` over a hand-rolled \`typeof window/document\` check. The canonical env primitives (\`isServer = typeof document === 'undefined'\`, \`isClient\` its inverse) single-source SSR detection and use the reliable \`typeof document\` discriminator (\`typeof window\` misreports DOM-less environments where \`window\` is polyfilled). Import \`{ ${kind} }\` from \`@pyreon/reactivity\` and use it directly.`,
           span,
+          ...(imports === null
+            ? {}
+            : { fix: [{ span, replacement: kind }, ...imports] }),
         })
       },
     }

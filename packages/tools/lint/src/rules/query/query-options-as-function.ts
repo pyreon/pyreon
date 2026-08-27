@@ -44,6 +44,7 @@ export const queryOptionsAsFunction: Rule = {
     description:
       'In @pyreon/query projects, pass useQuery/useInfiniteQuery/useQueries/useSuspenseQuery options as a function, not an object literal.',
     severity: 'error',
+    requiresDependency: '@pyreon/query',
     fixable: true,
     optIn: true,
     schema: { exemptPaths: 'string[]' },

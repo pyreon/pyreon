@@ -12,7 +12,7 @@ import { noDeepImport } from './architecture/no-deep-import'
 import { noErrorWithoutPrefix } from './architecture/no-error-without-prefix'
 import { noModuleSignalInServerPackage } from './architecture/no-module-signal-in-server-package'
 import { noProcessDevGate } from './architecture/no-process-dev-gate'
-import { noQuerySelectorCastInTest } from './architecture/no-querySelector-cast-in-test'
+import { noQuerySelectorCastInTest } from './architecture/no-query-selector-cast-in-test'
 import { requireBrowserSmokeTest } from './architecture/require-browser-smoke-test'
 import { vitestConfigUsesShared } from './architecture/vitest-config-uses-shared'
 import { noSignalInFormInitialValues } from './form/no-signal-in-form-initial-values'
@@ -73,7 +73,6 @@ import { noEagerImport } from './performance/no-eager-import'
 import { noEffectInFor } from './performance/no-effect-in-for'
 import { noHeavyImportOnlyInHandler } from './performance/no-heavy-import-only-in-handler'
 // Performance
-import { noLargeForWithoutBy } from './performance/no-large-for-without-by'
 import { preferShowOverDisplay } from './performance/prefer-show-over-display'
 import { promiseRaceNeedsCleartimeout } from './performance/promise-race-needs-cleartimeout'
 // Reactivity
@@ -154,8 +153,7 @@ export const allRules: Rule[] = [
   noDomInSetup,
   noImperativeEffectOnCreate,
   initFnNeedsIdempotency,
-  // Performance (6)
-  noLargeForWithoutBy,
+  // Performance (5)
   noEffectInFor,
   noEagerImport,
   noHeavyImportOnlyInHandler,
@@ -276,7 +274,6 @@ export {
   // Styling
   noInlineStyleObject,
   // Performance
-  noLargeForWithoutBy,
   // JSX
   noMapInJsx,
   noMismatchRisk,

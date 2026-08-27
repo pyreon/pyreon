@@ -51,6 +51,23 @@ export function packagesInWiring(dirs: readonly string[]): Set<string> {
   return out
 }
 
+/**
+ * How many `@pyreon/*` dependencies the shared example DECLARES. Used only to
+ * tell an under-installed checkout apart from real drift: `wireApp` resolves
+ * through node_modules, so a missing install makes it return a subset and the
+ * drift report inverts — it blames the Gradle file for wiring that is correct.
+ */
+export function declaredPyreonDeps(pkgJsonPath: string): number {
+  try {
+    const pj = JSON.parse(readFileSync(pkgJsonPath, 'utf8')) as {
+      dependencies?: Record<string, string>
+    }
+    return Object.keys(pj.dependencies ?? {}).filter((d) => d.startsWith('@pyreon/')).length
+  } catch {
+    return 0
+  }
+}
+
 export interface DriftFinding {
   example: string
   missingFromGradle: string[]
@@ -84,6 +101,23 @@ async function main(): Promise<number> {
     checked += 1
     const gradle = packagesInGradle(readFileSync(gradlePath, 'utf8'))
     const wired = packagesInWiring(wireApp(sharedDir).androidSrcDirs)
+    // `wireApp` resolves through the example's node_modules, so an
+    // UNDER-INSTALLED checkout makes it return a subset — and the drift report
+    // below then reads as "the app no longer declares these; drop the srcDir",
+    // which is the opposite of the truth and would have someone delete working
+    // wiring. Ask whether the shared example declares more `@pyreon/*` deps
+    // than the resolver could reach; if so, the answer is an install, not a
+    // drift.
+    const declared = declaredPyreonDeps(join(sharedDir, 'package.json'))
+    if (declared > 0 && wired.size === 0) {
+      console.error(
+        `[check-native-srcdirs-drift] ✗ ${pair.shared} declares ${declared} @pyreon/* ` +
+          `dependencies but \`wire\` resolved NONE of them — this checkout is not ` +
+          `installed. Run \`bun install\`. (In CI this means the install step did not ` +
+          `run for this job; the Gradle srcDirs are not the problem.)`,
+      )
+      return 1
+    }
     const finding = compareSets(pair.android, gradle, wired)
     if (finding) findings.push(finding)
   }

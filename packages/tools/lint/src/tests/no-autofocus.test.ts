@@ -15,7 +15,7 @@
  */
 import { getPreset } from '../config/presets'
 import { noAutofocus } from '../rules/frontend/no-autofocus'
-import { applyFixes, lintFile } from '../runner'
+import { applyFixes, fixEdits, lintFile } from '../runner'
 import type { LintConfig } from '../types'
 
 const RULES = [noAutofocus]
@@ -41,14 +41,17 @@ function diagIds(result: ReturnType<typeof lintFile>): string[] {
 // Sanity: the `best-practices` preset is the opt-in switch — under
 // `recommended` this rule stays OFF even when passed as rules[].
 describe('pyreon/no-autofocus — opt-in mechanic', () => {
-  it('does NOT fire under the `recommended` preset (opt-in OFF)', () => {
+  it('DOES fire under the `recommended` preset — a11y basics are on by default', () => {
+    // Promoted OUT of opt-in: this is an unambiguous WCAG failure with an
+    // ecosystem counterpart in oxlint's `correctness` tier, and shipping it
+    // opt-in meant a fresh Pyreon app had NO a11y checking at all.
     const result = lintFile(
       'src/App.tsx',
       `function App() { return <input autoFocus /> }`,
       RULES,
       getPreset('recommended'),
     )
-    expect(result.diagnostics).toHaveLength(0)
+    expect(result.diagnostics.length).toBeGreaterThan(0)
   })
 })
 
@@ -100,7 +103,7 @@ describe('pyreon/no-autofocus (frontend, fixable)', () => {
       (d) => d.ruleId === 'pyreon/no-autofocus',
     )
     expect(diag?.fix).toBeDefined()
-    expect(diag?.fix?.replacement).toBe('')
+    expect(fixEdits(diag?.fix ?? [])[0]?.replacement).toBe('')
     const fixed = applyFixes(source, result.diagnostics)
     expect(fixed).toBe(`function App() { return <input className="x" /> }`)
     expect(fixed).not.toContain('autoFocus')

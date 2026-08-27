@@ -1,5 +1,5 @@
 /**
- * Tests for `pyreon/no-querySelector-cast-in-test`.
+ * Tests for `pyreon/no-query-selector-cast-in-test`.
  *
  * Locks in PRs #956 + #963 (test-any reduction effort's biggest win).
  * Without this rule, the next PR that adds a
@@ -9,13 +9,13 @@
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
-import { noQuerySelectorCastInTest } from '../rules/architecture/no-querySelector-cast-in-test'
+import { noQuerySelectorCastInTest } from '../rules/architecture/no-query-selector-cast-in-test'
 import { lintFile } from '../runner'
 import type { LintConfig } from '../types'
 import { _resetProjectDepsCache } from '../utils/project-deps'
 
 const ON: LintConfig = {
-  rules: { 'pyreon/no-querySelector-cast-in-test': 'error' },
+  rules: { 'pyreon/no-query-selector-cast-in-test': 'error' },
 }
 
 // This rule now gates on `isProjectDependency(filePath, '@pyreon/test-utils')`
@@ -56,7 +56,7 @@ function diagIds(result: ReturnType<typeof lintFile>): string[] {
   return result.diagnostics.map((d) => d.ruleId)
 }
 
-describe('pyreon/no-querySelector-cast-in-test', () => {
+describe('pyreon/no-query-selector-cast-in-test', () => {
   // ── FIRES ────────────────────────────────────────────────────────────────
 
   it('FIRES on the canonical querySelector cast in a *.test.ts file', () => {
@@ -64,7 +64,7 @@ describe('pyreon/no-querySelector-cast-in-test', () => {
       `const anchor = el.querySelector('a') as HTMLAnchorElement`,
       'packages/some/src/tests/foo.test.ts',
     )
-    expect(diagIds(result)).toContain('pyreon/no-querySelector-cast-in-test')
+    expect(diagIds(result)).toContain('pyreon/no-query-selector-cast-in-test')
   })
 
   it('FIRES on attribute selectors with explicit generic-target shape', () => {
@@ -72,7 +72,7 @@ describe('pyreon/no-querySelector-cast-in-test', () => {
       `const card = container.querySelector('[data-card]') as HTMLDivElement`,
       'packages/some/src/tests/foo.test.ts',
     )
-    expect(diagIds(result)).toContain('pyreon/no-querySelector-cast-in-test')
+    expect(diagIds(result)).toContain('pyreon/no-query-selector-cast-in-test')
   })
 
   it('FIRES on `as HTMLY | null` union form (suggests queryOptional)', () => {
@@ -81,7 +81,7 @@ describe('pyreon/no-querySelector-cast-in-test', () => {
       'packages/some/src/tests/foo.test.tsx',
     )
     const findings = result.diagnostics.filter(
-      (d) => d.ruleId === 'pyreon/no-querySelector-cast-in-test',
+      (d) => d.ruleId === 'pyreon/no-query-selector-cast-in-test',
     )
     expect(findings).toHaveLength(1)
     expect(findings[0]?.message).toContain('queryOptional')
@@ -93,7 +93,7 @@ describe('pyreon/no-querySelector-cast-in-test', () => {
       'packages/some/src/tests/foo.test.ts',
     )
     const findings = result.diagnostics.filter(
-      (d) => d.ruleId === 'pyreon/no-querySelector-cast-in-test',
+      (d) => d.ruleId === 'pyreon/no-query-selector-cast-in-test',
     )
     expect(findings).toHaveLength(1)
     // Suggests query (not queryOptional) at the call-site
@@ -110,7 +110,7 @@ describe('pyreon/no-querySelector-cast-in-test', () => {
     )
     expect(
       result.diagnostics.filter(
-        (d) => d.ruleId === 'pyreon/no-querySelector-cast-in-test',
+        (d) => d.ruleId === 'pyreon/no-query-selector-cast-in-test',
       ),
     ).toHaveLength(3)
   })
@@ -120,7 +120,7 @@ describe('pyreon/no-querySelector-cast-in-test', () => {
       `const x = el.querySelector('div') as HTMLDivElement`,
       'packages/some/src/tests/foo.test.tsx',
     )
-    expect(diagIds(result)).toContain('pyreon/no-querySelector-cast-in-test')
+    expect(diagIds(result)).toContain('pyreon/no-query-selector-cast-in-test')
   })
 
   // ── DOES NOT FIRE ────────────────────────────────────────────────────────
@@ -130,7 +130,7 @@ describe('pyreon/no-querySelector-cast-in-test', () => {
       `const anchor = el.querySelector('a') as HTMLAnchorElement`,
       'packages/some/src/index.ts',
     )
-    expect(diagIds(result)).not.toContain('pyreon/no-querySelector-cast-in-test')
+    expect(diagIds(result)).not.toContain('pyreon/no-query-selector-cast-in-test')
   })
 
   it('does NOT fire on non-HTML target types', () => {
@@ -138,7 +138,7 @@ describe('pyreon/no-querySelector-cast-in-test', () => {
       `const node = container.querySelector('div') as Node`,
       'packages/some/src/tests/foo.test.ts',
     )
-    expect(diagIds(result)).not.toContain('pyreon/no-querySelector-cast-in-test')
+    expect(diagIds(result)).not.toContain('pyreon/no-query-selector-cast-in-test')
   })
 
   it('does NOT fire on non-querySelector casts (event-handler pattern)', () => {
@@ -149,7 +149,7 @@ describe('pyreon/no-querySelector-cast-in-test', () => {
        }`,
       'packages/some/src/tests/foo.test.ts',
     )
-    expect(diagIds(result)).not.toContain('pyreon/no-querySelector-cast-in-test')
+    expect(diagIds(result)).not.toContain('pyreon/no-query-selector-cast-in-test')
   })
 
   it('does NOT fire on ref-init pattern (different shape, not querySelector)', () => {
@@ -157,7 +157,7 @@ describe('pyreon/no-querySelector-cast-in-test', () => {
       `const ref = { current: null as HTMLDivElement | null }`,
       'packages/some/src/tests/foo.test.ts',
     )
-    expect(diagIds(result)).not.toContain('pyreon/no-querySelector-cast-in-test')
+    expect(diagIds(result)).not.toContain('pyreon/no-query-selector-cast-in-test')
   })
 
   it('does NOT fire on the helper itself (`query<HTMLY>(...)`)', () => {
@@ -166,7 +166,7 @@ describe('pyreon/no-querySelector-cast-in-test', () => {
        const modal = queryOptional<HTMLElement>(el, '.modal')`,
       'packages/some/src/tests/foo.test.ts',
     )
-    expect(diagIds(result)).not.toContain('pyreon/no-querySelector-cast-in-test')
+    expect(diagIds(result)).not.toContain('pyreon/no-query-selector-cast-in-test')
   })
 
   // ── exemptPaths ──────────────────────────────────────────────────────────
@@ -174,7 +174,7 @@ describe('pyreon/no-querySelector-cast-in-test', () => {
   it('does NOT fire when the path is exempt', () => {
     const config: LintConfig = {
       rules: {
-        'pyreon/no-querySelector-cast-in-test': [
+        'pyreon/no-query-selector-cast-in-test': [
           'error',
           { exemptPaths: ['packages/legacy/'] },
         ],
@@ -185,7 +185,7 @@ describe('pyreon/no-querySelector-cast-in-test', () => {
       'packages/legacy/src/tests/foo.test.ts',
       config,
     )
-    expect(diagIds(result)).not.toContain('pyreon/no-querySelector-cast-in-test')
+    expect(diagIds(result)).not.toContain('pyreon/no-query-selector-cast-in-test')
   })
   // ── Consumer-project gate (the fix for the upstream 0.43.1 finding) ────────
   it('does NOT fire in a project that does not declare @pyreon/test-utils', () => {
@@ -201,7 +201,7 @@ describe('pyreon/no-querySelector-cast-in-test', () => {
       ON,
       consumer,
     )
-    expect(diagIds(result)).not.toContain('pyreon/no-querySelector-cast-in-test')
+    expect(diagIds(result)).not.toContain('pyreon/no-query-selector-cast-in-test')
   })
 
 })

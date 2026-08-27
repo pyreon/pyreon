@@ -59,6 +59,7 @@ export const noSignalReadInAttrsCallback: Rule = {
     description:
       'Disallow signal/computed reads inside rocketstyle .attrs() callbacks — the callback runs once at setup, so the read captures a dead value that never updates.',
     severity: 'warn',
+    requiresDependency: '@pyreon/rocketstyle',
     fixable: false,
     schema: { exemptPaths: 'string[]' },
   },

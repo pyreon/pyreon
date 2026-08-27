@@ -35,6 +35,7 @@ export const noUntimedRawFetch: Rule = {
     description:
       'A raw fetch() with no signal has no deadline — a server that never responds hangs the promise forever.',
     severity: 'info',
+    requiresDependency: '@pyreon/http',
     fixable: false,
     optIn: true,
     schema: { exemptPaths: 'string[]' },
