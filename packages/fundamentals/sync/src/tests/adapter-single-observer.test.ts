@@ -12,7 +12,7 @@ import { LOCAL_ORIGIN } from '../crdt/types'
  */
 describe('CRDT adapter — single-observer/opListener fast path', () => {
   it('fires the sole map observer once with the changed keys', () => {
-    const doc = new PyreonCrdtDoc()
+    const doc = new PyreonCrdtDoc('peer-a')
     const map = doc.getMap('m')
     let fired = 0
     let keys: ReadonlySet<string> | null = null
@@ -27,7 +27,7 @@ describe('CRDT adapter — single-observer/opListener fast path', () => {
   })
 
   it('fires the sole op listener with the committed ops', () => {
-    const doc = new PyreonCrdtDoc()
+    const doc = new PyreonCrdtDoc('peer-a')
     let opsSeen: unknown = null
     const off = doc._onOps((ops) => {
       opsSeen = ops
@@ -39,7 +39,7 @@ describe('CRDT adapter — single-observer/opListener fast path', () => {
   })
 
   it('multi-observer snapshot path still fires every observer', () => {
-    const doc = new PyreonCrdtDoc()
+    const doc = new PyreonCrdtDoc('peer-a')
     const map = doc.getMap('m')
     let a = 0
     let b = 0
