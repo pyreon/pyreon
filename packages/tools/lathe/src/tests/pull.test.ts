@@ -32,6 +32,29 @@ beforeAll(async () => {
     if (req.url === '/spec.yaml') {
       res.writeHead(200, { 'content-type': 'text/yaml' })
       res.end(SPEC)
+    } else if (req.url === '/yaml-but-not-a-spec') {
+      // Parses perfectly. Is not a spec. This is the case an "is it valid
+      // YAML?" check waves straight through and onto a working spec.
+      res.writeHead(200, { 'content-type': 'text/yaml' })
+      res.end('name: my-ci-pipeline\njobs: { build: { runs-on: ubuntu } }\n')
+    } else if (req.url === '/huge-chunked') {
+      // NO content-length, so the response is chunked and the client cannot
+      // know the size in advance — the case the streaming cap exists for.
+      //
+      // The payload is a VALID spec followed by megabytes of YAML comment,
+      // which matters: a payload of junk would also be rejected by the parser,
+      // so the test would pass whether or not the cap fired. This one is a real
+      // OpenAPI document, so the ONLY thing that can refuse it is the cap.
+      res.writeHead(200, { 'content-type': 'text/yaml' })
+      res.write(SPEC)
+      const chunk = `# ${'x'.repeat(1024 * 1024 - 3)}\n`
+      for (let i = 0; i < 80; i++) res.write(chunk)
+      res.end()
+    } else if (req.url === '/huge-declared') {
+      // An HONEST oversized content-length. Rejected from the header alone,
+      // without reading a byte — which is why the body here is tiny.
+      res.writeHead(200, { 'content-type': 'text/yaml', 'content-length': String(128 * 1024 * 1024) })
+      res.end(SPEC)
     } else if (req.url === '/html') {
       // The dangerous case: a 200 whose BODY is not a spec. A proxy error page,
       // a login redirect, a truncated response.
@@ -93,6 +116,41 @@ describe('lathe pull', () => {
     const code = await silently(() => main(['pull', `http://127.0.0.1:${port}/html`], dir))
     expect(code).toBe(1)
     expect(readFileSync(join(dir, 'openapi.yaml'), 'utf8')).toBe(SPEC)
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('YAML that is not an OpenAPI document is refused', async () => {
+    // "It parsed" is a much weaker statement than it sounds — an HTML error
+    // page fails, but a JSON error envelope or somebody's CI config does not.
+    const dir = project()
+    writeFileSync(join(dir, 'openapi.yaml'), SPEC)
+    const code = await silently(() =>
+      main(['pull', `http://127.0.0.1:${port}/yaml-but-not-a-spec`], dir),
+    )
+    expect(code).toBe(1)
+    expect(readFileSync(join(dir, 'openapi.yaml'), 'utf8')).toBe(SPEC)
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('a CHUNKED response that streams past the cap is refused', async () => {
+    // A lying `content-length` cannot be used to test this: a compliant HTTP
+    // client truncates the body AT the declared length, so an oversized stream
+    // behind a small header never reaches us at all. Measured while writing
+    // this — the first version of the fixture declared 10 bytes and delivered
+    // exactly 10, so the test passed because the truncated body was not a
+    // spec, not because the cap fired.
+    const dir = project()
+    const code = await silently(() => main(['pull', `http://127.0.0.1:${port}/huge-chunked`], dir))
+    expect(code).toBe(1)
+    expect(existsSync(join(dir, 'openapi.yaml'))).toBe(false)
+    rmSync(dir, { recursive: true, force: true })
+  }, 60_000)
+
+  it('an honestly-declared oversized response is refused from the header alone', async () => {
+    const dir = project()
+    const code = await silently(() => main(['pull', `http://127.0.0.1:${port}/huge-declared`], dir))
+    expect(code).toBe(1)
+    expect(existsSync(join(dir, 'openapi.yaml'))).toBe(false)
     rmSync(dir, { recursive: true, force: true })
   })
 
