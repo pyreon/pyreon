@@ -105,8 +105,7 @@ function nodeToMarkdown(
 
       // Use Discord embed fields for small tables
       if (columns.length <= 3 && rows.length <= 10) {
-        for (const col of columns) {
-          const colIdx = columns.indexOf(col)
+        for (const [colIdx, col] of columns.entries()) {
           const values = rows.map((row) => String(row[colIdx] ?? '')).join('\n')
           fields.push({
             name: col.header,
