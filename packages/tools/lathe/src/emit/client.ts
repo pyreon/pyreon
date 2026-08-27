@@ -19,7 +19,7 @@
 
 import { reachableModels, topoSortModels } from '../core/graph'
 import type { IrDocument, IrOperation, IrType } from '../core/ir'
-import { typeIdent } from '../core/naming'
+import { propKey, typeIdent } from '../core/naming'
 import { schemaExpr, schemaSpecifier, tsType } from './schema'
 import { q, relativeSpecifier, SourceFile } from './writer'
 
@@ -85,13 +85,16 @@ export function byTag(doc: IrDocument): Map<string, IrOperation[]> {
 /** The argument type for one operation's call site. */
 function argsType(op: IrOperation): string | undefined {
   const parts: string[] = []
+  // `propKey` quotes anything that is not a plain identifier. Without it a
+  // spec parameter name carrying a `}` closes the type and injects an
+  // arbitrary parameter into the generated function signature.
   if (op.pathParams.length > 0) {
-    const inner = op.pathParams.map((p) => `${p.name}: ${tsType(p.type)}`).join('; ')
+    const inner = op.pathParams.map((p) => `${propKey(p.name)}: ${tsType(p.type)}`).join('; ')
     parts.push(`params: { ${inner} }`)
   }
   if (op.queryParams.length > 0) {
     const inner = op.queryParams
-      .map((p) => `${p.name}${p.required ? '' : '?'}: ${tsType(p.type)}`)
+      .map((p) => `${propKey(p.name)}${p.required ? '' : '?'}: ${tsType(p.type)}`)
       .join('; ')
     parts.push(`query${op.queryParams.some((p) => p.required) ? '' : '?'}: { ${inner} }`)
   }

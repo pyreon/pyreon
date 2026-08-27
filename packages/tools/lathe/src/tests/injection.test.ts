@@ -118,6 +118,68 @@ describe('spec-controlled strings cannot inject code', () => {
     }
   })
 
+  it('a PARAMETER NAME cannot break out of the type position', () => {
+    // The one CodeQL actually pointed at. `argsType` interpolated the RAW spec
+    // name into `{ params: { <name>: string } }`, so a name carrying a `}`
+    // closed the type and injected an arbitrary parameter into the generated
+    // function signature. It also exposed a mismatch: the PATH placeholder was
+    // already `ident()`-normalized while the param name was not, so the two
+    // disagreed for any name that was not already an identifier.
+    const spec = JSON.stringify({
+      openapi: '3.0.3',
+      info: { title: 'T', version: '1' },
+      servers: [{ url: 'https://e.test' }],
+      paths: {
+        '/x/{evil}': {
+          get: {
+            operationId: 'getX',
+            tags: ['x'],
+            parameters: [
+              { name: 'a: string }, INJECTED: () => void, z: { b', in: 'path', required: true, schema: { type: 'string' } },
+              { name: 'odd wire-name', in: 'query', schema: { type: 'string' } },
+            ],
+            responses: { '200': { content: { 'application/json': { schema: { type: 'string' } } } } },
+          },
+        },
+      },
+    })
+    const out = generate(spec, resolveConfig({ input: 'x', plugins: ['client', 'queries'] }))
+    for (const f of out.files) {
+      expect(f.contents, `${f.path} took an injected parameter`).not.toContain('INJECTED')
+    }
+    const queries = out.files.find((f) => f.path === 'queries/x.ts')?.contents ?? ''
+    // A QUERY name is a WIRE name (`?odd wire-name=1`), so it survives verbatim
+    // -- QUOTED, not normalized, or the request would go to the wrong key.
+    // `propKey` quotes with JSON.stringify, which is the correct escaper for a
+    // key and yields double quotes; the value literals stay single-quoted.
+    expect(queries).toContain('"odd wire-name"')
+  })
+
+  it('a path parameter agrees with the placeholder in its own path', () => {
+    // If they disagree, the generated call sets a key the endpoint never reads
+    // and the URL keeps its placeholder.
+    const spec = JSON.stringify({
+      openapi: '3.0.3',
+      info: { title: 'T', version: '1' },
+      servers: [{ url: 'https://e.test' }],
+      paths: {
+        '/x/{user-id}': {
+          get: {
+            operationId: 'getX',
+            tags: ['x'],
+            parameters: [{ name: 'user-id', in: 'path', required: true, schema: { type: 'string' } }],
+            responses: { '200': { content: { 'application/json': { schema: { type: 'string' } } } } },
+          },
+        },
+      },
+    })
+    const out = generate(spec, resolveConfig({ input: 'x', plugins: ['client', 'queries'] }))
+    const op = out.doc.operations[0]
+    expect(op?.path).toBe('/x/:userId')
+    expect(op?.pathParams[0]?.name).toBe('userId')
+    expect(out.files.find((f) => f.path === 'queries/x.ts')?.contents).toContain('userId: string')
+  })
+
   describe('the sanitizers themselves', () => {
     it('safeBlockComment removes every comment terminator', () => {
       expect(safeBlockComment('a */ b')).not.toContain('*/')
