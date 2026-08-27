@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { getPreset } from '../config/presets'
+import { CATEGORY_GROUP, groupOf } from '../rules/groups'
 import { allRules } from '../rules/index'
 import { lintFile } from '../runner'
-import type { LintConfig, PresetName, Severity } from '../types'
+import type { LintConfig, PresetName, RuleGroup, Severity } from '../types'
 
 /**
  * Registry-level invariants over the whole rule set.
@@ -213,6 +214,56 @@ describe('rule registry invariants', () => {
     // thing that is wrong — these are all "this repo is laid out like so".
     for (const rule of allRules.filter((r) => r.meta.scope === 'monorepo')) {
       expect(rule.meta.category, rule.meta.id).toBe('architecture')
+    }
+  })
+
+  it('every rule resolves to exactly one group, and the groups partition the set', () => {
+    // `CATEGORY_GROUP` is a TOTAL Record<RuleCategory, RuleGroup>, so a new
+    // category fails to compile until classified. This asserts the runtime
+    // half: nothing falls through, and the group counts add back up to the
+    // whole rule set — a rule silently belonging to no group would vanish
+    // from `--list` while the total still read 98.
+    const counts = new Map<RuleGroup, number>()
+    for (const rule of allRules) {
+      const g = groupOf(rule.meta)
+      expect(g, `${rule.meta.id} has no group`).toBeTruthy()
+      counts.set(g, (counts.get(g) ?? 0) + 1)
+    }
+    const summed = [...counts.values()].reduce((a, b) => a + b, 0)
+    expect(summed).toBe(allRules.length)
+  })
+
+  it('scope: monorepo overrides the category map', () => {
+    // `architecture` is genuinely mixed — `dev-guard-warnings` is a framework
+    // rule any library author wants, the rest hardcode this repo. The
+    // category alone cannot express that, so the scope marker decides.
+    for (const rule of allRules) {
+      if (rule.meta.scope === 'monorepo') {
+        expect(groupOf(rule.meta), rule.meta.id).toBe('internal')
+      }
+    }
+    const devGuard = allRules.find((r) => r.meta.id === 'pyreon/dev-guard-warnings')
+    expect(devGuard?.meta.category).toBe('architecture')
+    expect(groupOf(devGuard!.meta)).toBe('pyreon')
+  })
+
+  it('the internal group is exactly the monorepo-scoped rules', () => {
+    const internal = allRules.filter((r) => groupOf(r.meta) === 'internal').map((r) => r.meta.id)
+    const monorepo = allRules.filter((r) => r.meta.scope === 'monorepo').map((r) => r.meta.id)
+    expect(internal.sort()).toEqual(monorepo.sort())
+  })
+
+  it('does not declare a group with no rules in it', () => {
+    // There is no `js` / `ts` group yet: this package has no general JS/TS
+    // correctness rules, and an empty group would advertise coverage that
+    // does not exist. If one is ever declared it must arrive with rules.
+    const declared = new Set(Object.values(CATEGORY_GROUP))
+    declared.add('internal')
+    for (const g of declared) {
+      expect(
+        allRules.some((r) => groupOf(r.meta) === g),
+        `group '${g}' is declared but empty`,
+      ).toBe(true)
     }
   })
 

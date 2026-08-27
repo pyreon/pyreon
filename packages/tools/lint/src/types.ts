@@ -53,6 +53,22 @@ export type RuleCategory =
   | 'http'
 
 /**
+ * The top-level bucket a rule belongs to — the axis `RuleCategory` does not
+ * capture: **what knowledge does this rule require, and does it ship?**
+ *
+ *  - `pyreon`   framework semantics; nothing outside Pyreon can know these.
+ *  - `a11y`     accessibility, standard markup plus Pyreon's own surfaces.
+ *  - `pkg`      per-library, self-activating on a declared dependency.
+ *  - `internal` encodes THIS repository; never enabled by a shipped preset.
+ *
+ * Categories live underneath, so a query rule is `group: 'pkg'`,
+ * `category: 'query'`. There is deliberately no `js` / `ts` group: those are
+ * for general JS/TS correctness rules, of which this package has none yet, and
+ * an empty group would advertise coverage that does not exist.
+ */
+export type RuleGroup = 'pyreon' | 'a11y' | 'pkg' | 'internal'
+
+/**
  * Declared type of an option slot. Minimal on purpose — sufficient for
  * the exemption patterns we actually use. Extend when a rule needs more.
  */
@@ -189,6 +205,16 @@ export interface LintConfig {
 
 export interface LintConfigFile {
   preset?: PresetName | undefined
+  /**
+   * Severity for a whole GROUP, in one line — `{ "a11y": "off" }` silences
+   * every accessibility rule without listing 15 ids.
+   *
+   * Applied AFTER the preset and BEFORE per-rule entries, so an explicit rule
+   * always wins over its group. `internal` can be turned on this way too,
+   * which is how the Pyreon repo could opt into its own rules wholesale
+   * instead of by id.
+   */
+  groups?: Partial<Record<RuleGroup, Severity>> | undefined
   rules?: Record<string, RuleEntry> | undefined
   include?: string[] | undefined
   exclude?: string[] | undefined

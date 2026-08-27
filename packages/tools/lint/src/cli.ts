@@ -5,7 +5,8 @@ import { getPreset } from './config/presets'
 import { lint, listRules } from './lint'
 import { startLspServer } from './lsp/index'
 import { formatCompact, formatJSON, formatText } from './reporter'
-import type { PresetName, Severity } from './types'
+import { groupOf } from './rules/groups'
+import type { PresetName, RuleGroup, Severity } from './types'
 import { watchAndLint } from './watcher'
 import { explainRuleState, formatRuleState } from './why-off'
 
@@ -34,17 +35,30 @@ function printUsage() {
 `)
 }
 
+const GROUP_BLURB: Record<RuleGroup, string> = {
+  pyreon: 'framework semantics — nothing outside Pyreon can know these',
+  a11y: 'accessibility — standard markup plus Pyreon\u2019s own surfaces',
+  pkg: 'per-library — each self-activates on a declared dependency',
+  internal: 'encodes the Pyreon repo itself — never on in a shipped preset',
+}
+const GROUP_ORDER: RuleGroup[] = ['pyreon', 'a11y', 'pkg', 'internal']
+
 function printList() {
   const rules = listRules()
   const maxId = Math.max(...rules.map((r) => r.id.length))
   const maxCat = Math.max(...rules.map((r) => r.category.length))
 
-  for (const rule of rules) {
-    const fixLabel = rule.fixable ? ' [fixable]' : ''
-    const id = rule.id.padEnd(maxId)
-    const cat = rule.category.padEnd(maxCat)
-    const sev = rule.severity.padEnd(5)
-    console.log(`  ${id}  ${cat}  ${sev}  ${rule.description}${fixLabel}`)
+  for (const group of GROUP_ORDER) {
+    const inGroup = rules.filter((r) => groupOf(r) === group)
+    if (inGroup.length === 0) continue
+    console.log(`\n  ${group.toUpperCase()}  (${inGroup.length})  \u2014 ${GROUP_BLURB[group]}`)
+    for (const rule of inGroup) {
+      const fixLabel = rule.fixable ? ' [fixable]' : ''
+      const id = rule.id.padEnd(maxId)
+      const cat = rule.category.padEnd(maxCat)
+      const sev = rule.severity.padEnd(5)
+      console.log(`    ${id}  ${cat}  ${sev}  ${rule.description}${fixLabel}`)
+    }
   }
 
   console.log(`\n  ${rules.length} rules total`)

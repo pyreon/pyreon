@@ -221,3 +221,25 @@ describe('requiresDependency declarations', () => {
     expect(undeclared, `dependency-gated but undeclared:\n${undeclared.join('\n')}`).toEqual([])
   })
 })
+
+describe('group-level config', () => {
+  it('a group severity applies to every rule in that group', () => {
+    const base = getPreset('best-practices')
+    const a11y = allRules.filter((r) => r.meta.category === 'frontend')
+    expect(a11y.length).toBeGreaterThan(5)
+    // Simulates what `buildConfig` does for `{ "groups": { "a11y": "off" } }`.
+    for (const r of a11y) base.rules[r.meta.id] = 'off'
+    for (const r of a11y) {
+      expect(explainRuleState(r.meta.id, { config: base }).willRun).toBe(false)
+    }
+  })
+
+  it('an explicit rule entry beats its group', () => {
+    const base = getPreset('best-practices')
+    for (const r of allRules.filter((x) => x.meta.category === 'frontend')) {
+      base.rules[r.meta.id] = 'off'
+    }
+    base.rules['pyreon/require-img-alt'] = 'error'
+    expect(explainRuleState('require-img-alt', { config: base }).willRun).toBe(true)
+  })
+})

@@ -4,6 +4,7 @@ import { AstCache } from './cache'
 import { createIgnoreFilter } from './config/ignore'
 import { loadConfig, loadConfigFromPath } from './config/loader'
 import { getPreset } from './config/presets'
+import { groupOf } from './rules/groups'
 import { allRules } from './rules/index'
 import { applyFixes, lintFile } from './runner'
 import type {
@@ -104,6 +105,16 @@ function buildConfig(options: LintOptions): {
 
   const presetName = options.preset ?? fileConfig?.preset ?? 'recommended'
   const config = getPreset(presetName)
+
+  // Group-level severity, applied BEFORE per-rule entries so an explicit rule
+  // always wins over its group. `{ "groups": { "a11y": "off" } }` silences 15
+  // rules without listing them.
+  if (fileConfig?.groups) {
+    for (const rule of allRules) {
+      const groupSeverity = fileConfig.groups[groupOf(rule.meta)]
+      if (groupSeverity !== undefined) config.rules[rule.meta.id] = groupSeverity
+    }
+  }
 
   // Merge config file rule overrides. Entries can be a bare severity or a
   // `[severity, options]` tuple — passed through verbatim; the runner

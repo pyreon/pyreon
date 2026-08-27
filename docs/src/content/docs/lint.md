@@ -332,6 +332,29 @@ Library-scoped opt-in rules — `query`, `rx`, `i18n`, `storage`, form's `no-sig
 
 ## Rules
 
+### Rule groups
+
+Every rule belongs to one of four **groups** — the axis the 19 categories don't capture: *what knowledge does this rule require, and does it ship?*
+
+| group | rules | what it is |
+| --- | --- | --- |
+| `pyreon` | 50 | Framework semantics — reactivity, JSX, lifecycle, SSR/SSG. Nothing outside Pyreon can know these. |
+| `pkg` | 27 | Per-library. Each self-activates on a declared dependency, so you only see rules for libraries you use. |
+| `a11y` | 15 | Accessibility — standard markup plus Pyreon's own surfaces (toast, dialog, overlay, primitives). |
+| `internal` | 6 | Encodes the Pyreon repository itself. **Never on in a shipped preset.** |
+
+Categories live underneath, so a query rule is `group: 'pkg'`, `category: 'query'`. Set a whole group in one line — applied after the preset and **before** per-rule entries, so an explicit rule always wins:
+
+```json
+{
+  "preset": "best-practices",
+  "groups": { "a11y": "off" },
+  "rules": { "pyreon/require-img-alt": "error" }
+}
+```
+
+`pyreon-lint --list` groups its output the same way. There is deliberately no `js` or `ts` group: those are for general JS/TS correctness rules, which this package does not have yet, and an empty group would advertise coverage that doesn't exist.
+
 ### Why isn't a rule firing?
 
 A rule can be silently inert for four independent reasons, and three of them are invisible in your config: its severity is `off`; it is an **opt-in** best-practice rule; it is **monorepo-scoped**; or it is **dependency-gated** and your project doesn't declare the library it covers. They compose, so a rule is often off for more than one reason and fixing one changes nothing.
