@@ -19,7 +19,7 @@ const client = new QueryClient({
 })
 
 function AddBook() {
-  const client = useQueryClient()
+  const queries = useQueryClient()
   const create = useCreateBook()
   return (
     <button
@@ -32,7 +32,7 @@ function AddBook() {
             // The key comes from the ENDPOINT, not a hand-written literal.
             // `['GET', '/books']` written by hand drifts the moment the path
             // changes and nothing catches it; this moves with the spec.
-            onSuccess: () => void client.invalidateQueries({ queryKey: keys.books.listBooks.all }),
+            onSuccess: () => void queries.invalidateQueries({ queryKey: keys.books.listBooks.all }),
           },
         )
       }}
