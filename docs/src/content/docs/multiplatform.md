@@ -1394,7 +1394,7 @@ and is asserted to emit **zero** warnings on both targets:
 
 | Package | what actually crosses |
 | --- | --- |
-| `@pyreon/http` | same-file endpoint calls — `createHttp({ baseUrl })` + `api.endpoint('GET /users/:id')` resolve through `useFetch`/`useQuery` to native PyreonFetch/PyreonQuery (literal params only; reactive params and a computed baseUrl stay web) |
+| `@pyreon/http` | same-file endpoint calls — `createHttp({ baseUrl })` + `api.endpoint('GET /users/:id')` resolve through `useFetch`/`useQuery` to native PyreonFetch/PyreonQuery. A RUNTIME `:param` (a signal read, a prop) lowers through `useQuery` — the native harness is keyed on the value, so it re-fetches when the value changes, and `PyreonURL.encodePathParam` encodes it to match the web byte for byte. `useFetch` lowers to a one-shot task, so a runtime param there still stays web (its warning names `useQuery`); a computed baseUrl stays web on both |
 | `@pyreon/validation` | the declaration form — a top-level `zodSchema(z.object({…}))` emits native field validators (the adapters, inline `.parse()` and the async path stay web) |
 | `@pyreon/url-state` | `useUrlState(key, 'default')` with a **string** default, bound to the native router's query |
 

@@ -906,8 +906,20 @@ fun useParams(): Map<String, String> = emptyMap()
 // useUrlState lowers to a PyreonUrlState over the active router, so the
 // emit needs a router accessor here too. Same defensive-default shape as
 // the two above.
-@Composable
-fun useRouter(): PyreonRouter = PyreonRouter()
+class PyreonCompositionLocal<T>(private val value: T) {
+  // NULLABLE, like the real CompositionLocal: router-kotlin's own hooks read
+  // LocalPyreonRouter.current and then safe-call it. The first version of this
+  // stub typed it non-null, which let an emit assuming a non-null router
+  // compile here and fail a real gradle build with an actual-type-is-nullable
+  // mismatch. A stub is only worth having if it is at least as strict as the
+  // runtime.
+  val current: T? get() = value
+}
+
+// NO useRouter() here, deliberately: router-kotlin does not ship one, and a
+// stub that declared it hid a real emit bug until a device build failed. The
+// router is reached through the CompositionLocal, exactly as the runtime does.
+val LocalPyreonRouter = PyreonCompositionLocal(PyreonRouter())
 
 @Composable
 inline fun <reified T : Any> useLoaderData(): T? = null
@@ -1005,6 +1017,17 @@ sealed class PyreonHttpError(message: String) : Exception(message) {
 }
 object PyreonHttp {
   fun send(request: PyreonHttpRequest): PyreonHttpResponse = PyreonHttpResponse(200)
+}
+// PyreonURL — the runtime path-param encoder a templated endpoint URL calls.
+// Mirrors the REAL PyreonURL surface: four overloads (String / Int / Long /
+// Double), one per type a \`PathParams\` value can take once the compiler has
+// inferred it. Listing FEWER would reject a correct emit; listing more would
+// let a wrong one through.
+object PyreonURL {
+  @JvmStatic fun encodePathParam(value: String): String = value
+  @JvmStatic fun encodePathParam(value: Int): String = ""
+  @JvmStatic fun encodePathParam(value: Long): String = ""
+  @JvmStatic fun encodePathParam(value: Double): String = ""
 }
 
 // kotlinx.coroutines surface the emitted fetch harness drives —

@@ -552,7 +552,7 @@ the machine-checked contract.
 | `@pyreon/testing` | the web testing kit (Testing-Library parity over the DOM renderer); native testing is XCUITest/Compose-test territory |
 | `@pyreon/atlas` | the component workbench — dev tooling that runs in a browser, not app runtime |
 | `@pyreon/loom` | the dependency observatory — dev tooling, not app runtime |
-| `@pyreon/kinetic-presets` | preset pack for the kinetic CSS engine |
+| `@pyreon/kinetic-presets` | preset pack for the kinetic CSS engine; the presets whose motion exists in the native vocabulary cross — see nativeFrontend |
 | `@pyreon/connector-document` | bridges ui-components to @pyreon/document extraction — both ends are web/document engines |
 | `@pyreon/document-primitives` | document-authoring primitives feeding the pdfmake/docx renderers |
 | `@pyreon/kinetic` | CSS-transition animation engine (classes + rAF over real CSSOM). The CLASS/style machinery is web; the PRESET vocabulary crosses — see nativeFrontend |

@@ -47,6 +47,21 @@
 // - **Store computeds/methods in the setup body** — store v1 lowers
 //   signals; derived state lives in component-level `computed` for now.
 
+import { useQuery } from '@pyreon/query'
+import { model } from '@pyreon/state-tree'
+import { filter as filter_rx, map } from '@pyreon/rx'
+import { SizedMap } from '@pyreon/sized-map'
+import { usePermissions } from '@pyreon/permissions'
+import { createHttp } from '@pyreon/http'
+import { syncedSignal, PyreonCrdtDoc } from '@pyreon/sync'
+import { useSortable } from '@pyreon/dnd'
+import { PyreonUI } from '@pyreon/ui-core'
+import { createTableState } from '@pyreon/table'
+import { kinetic } from '@pyreon/kinetic'
+import { createI18n } from '@pyreon/i18n'
+import { toast } from '@pyreon/toast'
+import { announce } from '@pyreon/a11y'
+import { useUrlState } from '@pyreon/url-state'
 import { signal, computed } from '@pyreon/reactivity'
 import { useForm } from '@pyreon/form'
 import { useFetch } from '@pyreon/hooks'
@@ -402,6 +417,133 @@ function StatsPage() {
   )
 }
 
+// state-tree lowers at MODULE scope only — the mirror of createI18n, which
+// lowers only inside a component. Both were snippet-proven; neither had ever
+// run in an app.
+const prefs = model({ state: { compact: false, pageSize: 20 } }).create()
+
+// @pyreon/http is metadata: createHttp + endpoint declarations live at module
+// scope and are consumed by the endpoint-resolution pre-pass, then driven by
+// useFetch inside a component.
+interface TaskDto { id: string; title: string }
+interface TableRow { id: string; label: string }
+const api = createHttp({ baseUrl: 'https://example.com' })
+const getTask = api.endpoint('GET /tasks/:id')
+
+// kinetic: a preset chain lowers to a real mount animation — the preset names
+// an animation both targets know, and the enter is driven by a synthesized
+// mount flag (a constant `show` compiles and never animates).
+const FadeIn = kinetic('div').preset('fade')
+
+// Module scope, which is where SizedMap lowers.
+//
+// @pyreon/validate and @pyreon/feature were here and are deliberately NOT:
+// both emit a type named after the schema/feature (`PyreonZodSchema_*`,
+// `PyreonFeature_*`) rather than after the const, so neither binding is
+// addressable from a component. A DECLARATION-ONLY package in an app proves
+// nothing the registry snippet does not already prove, and lint was right to
+// call the bindings dead.
+const seen = new SizedMap<string, number>({ maxEntries: 8 })
+
+// ── Toolkit screen ──
+//
+// EXISTS TO BE DEVICE-PROVEN, not to be pretty.
+//
+// A package whose registry snippet transforms and compiles is proven at SNIPPET
+// level. That is genuinely weaker than running: the two worst native bugs found
+// so far — a `.task` re-firing forever on an unstable host, and a Compose Row
+// clipping its last child off-screen — both compiled perfectly and were only
+// caught on a device. Of the packages that cross, 14 were exercised by a gated
+// app and 22 were not; this screen starts closing that.
+//
+// Every call below uses the shape the coverage registry verifies, so a change
+// that breaks one breaks both this app and the gate.
+
+function ToolkitScreen() {
+  const navigate = useNavigate()
+  // createI18n lowers only INSIDE a component body — it becomes a `remember {}`
+  // / an @State, which has no meaning at file scope.
+  const i18n = createI18n({
+    locale: 'en',
+    messages: { en: { title: 'Toolkit', saved: 'Saved' }, de: { title: 'Werkzeuge', saved: 'Gespeichert' } },
+  })
+  // Filter lives in the URL on web; on native the router's query backs it.
+  const filter = useUrlState('filter', 'all')
+  const perms = usePermissions(['tasks.write'])
+  // table: `createTableState` is the dependency-free half that lowers to the
+  // native PyreonTableState engine. `useTable` (the TanStack row model) stays
+  // web — this is the documented crossing surface, not a workaround.
+  const tableRows = signal<TableRow[]>([{ id: '1', label: 'Ada' }])
+  const table = createTableState({
+    data: () => tableRows(),
+    columns: [{ id: 'label', accessor: (r: TableRow) => r.label }],
+    pageSize: 10,
+  })
+  // sync: a CRDT-backed counter. `doc` must be a binding — syncedSignal reads
+  // it, and omitting it is invalid on the web too.
+  const doc = new PyreonCrdtDoc('peer-1')
+  const synced = syncedSignal({ doc, key: 'toolkitCount', initial: 0 })
+  // http: the endpoint declared above, driven through useFetch.
+  // TYPED: an untyped useFetch lowers to `decode(Any.self, …)` on Swift, which
+  // does not round-trip — the compiler says so by name.
+  const taskReq = useFetch<TaskDto>(getTask({ params: { id: '1' } }))
+  // dnd: reorder over the same signal the rx chain reads. `activeKey` is the
+  // drag state the native runtime exposes (the TS-side items array is input,
+  // not a readable member of PyreonSortableState).
+  const sortable = useSortable({
+    items: () => nums(),
+    by: (n: number) => String(n),
+    onReorder: (next: number[]) => nums.set(next),
+  })
+  // rx: a derived chain over a signal, which lowers to chained computeds.
+  const nums = signal<number[]>([1, 2, 3, 4])
+  const evens = filter_rx(nums, (x: number) => x % 2 === 0)
+  const doubled = map(evens, (x: number) => x * 2)
+  // query: the same shape the registry verifies, so the gate and this app move
+  // together.
+  const q = useQuery<string>(() => ({
+    queryKey: ['toolkit', 'greeting'],
+    queryFn: () => fetch('https://example.com/greeting').then((r) => r.text()),
+  }))
+  return (
+    <PyreonUI>
+    <Stack gap={3} padding={4} data-testid="toolkit-page">
+      <Text data-testid="toolkit-title">{i18n.t('title')}</Text>
+      <Text data-testid="toolkit-filter">{filter()}</Text>
+      <Button
+        onPress={() => {
+          // toast + announce are the two feedback channels a real app uses on
+          // every mutation, and both lower to their native runtimes.
+          toast(i18n.t('saved'))
+          announce(i18n.t('saved'))
+        }}
+        data-testid="toolkit-save"
+      >
+        Save
+      </Button>
+      <Button onPress={() => filter.set('done')} data-testid="toolkit-filter-done">
+        Only done
+      </Button>
+      <Text data-testid="toolkit-pagesize">{String(prefs.pageSize())}</Text>
+      <Text data-testid="toolkit-evens">{String(doubled().length)}</Text>
+      <Text data-testid="toolkit-query">{q.data}</Text>
+      <Text data-testid="toolkit-cache">{String(seen.size)}</Text>
+      <Text data-testid="toolkit-perm">{String(perms.can('tasks.write'))}</Text>
+      <Text data-testid="toolkit-synced">{String(synced())}</Text>
+      <Text data-testid="toolkit-tablepages">{String(table.pageCount())}</Text>
+      <Text data-testid="toolkit-http">{taskReq.data}</Text>
+      <Text data-testid="toolkit-sortable">{sortable.activeKey ?? 'idle'}</Text>
+      <FadeIn>
+        <Text data-testid="toolkit-fade">animated</Text>
+      </FadeIn>
+      <Button onPress={() => navigate('/tasks')} data-testid="toolkit-back">
+        Back to tasks
+      </Button>
+    </Stack>
+    </PyreonUI>
+  )
+}
+
 // ── App root ──
 
 export function TasksApp() {
@@ -436,6 +578,11 @@ export function TasksApp() {
       {
         path: '/vocab',
         component: VocabScreen,
+        beforeEnter: () => useApp().store.isAuthed(),
+      },
+      {
+        path: '/toolkit',
+        component: ToolkitScreen,
         beforeEnter: () => useApp().store.isAuthed(),
       },
       {

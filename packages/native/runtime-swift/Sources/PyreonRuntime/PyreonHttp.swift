@@ -166,3 +166,66 @@ public enum PyreonHttp {
         return PyreonHttpResponse(status: status, headers: headers, body: data)
     }
 }
+
+/// URL construction shared with the generated fetch/query call sites.
+///
+/// A path parameter supplied at RUNTIME cannot be percent-encoded at compile
+/// time, so the encoding has to live here — and it has to agree with the web
+/// exactly, or the same call reaches a different URL on each platform.
+///
+/// The web spells it `encodeURIComponent(String(value))`
+/// (`@pyreon/http`'s `applyPathParams`), so BOTH halves are mirrored: the
+/// JavaScript `String()` conversion for the value, then the encode.
+public enum PyreonURL {
+    /// The characters `encodeURIComponent` leaves alone: ASCII alphanumerics
+    /// plus `-_.!~*'()`.
+    ///
+    /// Written out rather than taken from `CharacterSet.alphanumerics`, which
+    /// also contains non-ASCII letters (`é`, `日`) — and rather than
+    /// `.urlPathAllowed`, which permits `/`, `&`, `+` and `=`, so a parameter
+    /// containing a slash would silently add a path segment and one containing
+    /// `&` would open a query.
+    private static let unreserved: CharacterSet = {
+        var set = CharacterSet()
+        set.insert(charactersIn: "abcdefghijklmnopqrstuvwxyz")
+        set.insert(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+        set.insert(charactersIn: "0123456789")
+        set.insert(charactersIn: "-_.!~*'()")
+        return set
+    }()
+
+    /// Percent-encode one path SEGMENT, matching JavaScript's
+    /// `encodeURIComponent`.
+    ///
+    /// Note this is the PATH encoder. A query value is
+    /// application/x-www-form-urlencoded, where a space is `+` and `'` is
+    /// `%27`; the same character differs by position, so one encoder for both
+    /// positions is wrong in both.
+    public static func encodePathParam(_ value: String) -> String {
+        value.addingPercentEncoding(withAllowedCharacters: unreserved) ?? value
+    }
+
+    /// Integer overload. `String(Int)` already matches JavaScript's
+    /// `String(number)` for every integral value, so this only encodes.
+    public static func encodePathParam(_ value: Int) -> String {
+        encodePathParam(String(value))
+    }
+
+    /// Floating-point overload, and the one place the two languages disagree
+    /// by default: JavaScript has a single number type, so `String(1.0)` is
+    /// `"1"`, while Swift's is `"1.0"`. A whole-valued Double is therefore
+    /// rendered as an integer, which is what the web would have sent.
+    ///
+    /// Outside that range the default description is used. Very large
+    /// magnitudes (≥ 1e21, where JavaScript switches to exponent notation)
+    /// and the non-finite values are a KNOWN divergence — a path parameter is
+    /// an identifier, so neither shape occurs in practice, and inventing a
+    /// JavaScript number formatter to cover them would be more code than the
+    /// case is worth.
+    public static func encodePathParam(_ value: Double) -> String {
+        if value.isFinite, value == value.rounded(), abs(value) < 1e21 {
+            return encodePathParam(String(Int64(value)))
+        }
+        return encodePathParam(String(value))
+    }
+}
