@@ -226,6 +226,15 @@ export function createI18n(options: I18nOptions): I18nInstance {
   // since the store is mutated in place (Object.is would skip same-reference sets).
   const store = new Map<string, Map<string, TranslationDictionary>>()
   const storeVersion = signal(0)
+  // Resolution cache: (locale ∥ namespace ∥ keyPath) → resolved string (or
+  // `null` for "resolved to not-found"; absent = not yet resolved). `t()` calls
+  // `lookupKey` per key AND per plural/context candidate (most of which don't
+  // exist), and each miss splits the keyPath + walks the dict — so a page that
+  // re-renders the same translated strings paid the full split+walk every time.
+  // The result is a pure function of (locale, namespace, keyPath) until the
+  // messages for a namespace change, so it is cleared at the two mutation points
+  // (`loadNamespace`, `addMessages`). Bounded (leak-class C).
+  const resolutionCache = new Map<string, string | null>()
 
   // Loading state
   const pendingLoads = signal(0)
@@ -283,12 +292,20 @@ export function createI18n(options: I18nOptions): I18nInstance {
     // ~1:1 with `i18n.t` (plus an extra hit when the plural-suffix branch
     // probes both `key_one` and the resolved key). A future cache will
     // diverge: `i18n.lookupKey` will plateau while `i18n.t` keeps growing.
+    const cacheKey = `${loc}\0${namespace}\0${keyPath}`
+    const cached = resolutionCache.get(cacheKey)
+    // `undefined` = not cached; a cached miss is stored as `null`. Single Map
+    // lookup — `null !== undefined` distinguishes a cached not-found.
+    if (cached !== undefined) return cached ?? undefined
+    // Miss — resolve for real. The counter now fires per RESOLUTION (it
+    // plateaus as the cache warms while `i18n.t` keeps growing), which is the
+    // divergence the old comment above anticipated.
     if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('i18n.lookupKey')
     const nsMap = store.get(loc)
-    if (!nsMap) return undefined
-    const dict = nsMap.get(namespace)
-    if (!dict) return undefined
-    return resolveKey(dict, keyPath)
+    const dict = nsMap?.get(namespace)
+    const result = dict ? resolveKey(dict, keyPath) : undefined
+    if (resolutionCache.size < 2000) resolutionCache.set(cacheKey, result ?? null)
+    return result
   }
 
   /**
@@ -438,6 +455,7 @@ export function createI18n(options: I18nOptions): I18nInstance {
       .then((dict) => {
         if (dict) {
           nsMap.set(namespace, dict)
+          resolutionCache.clear() // messages changed → resolutions may differ
           storeVersion.update((c) => c + 1)
           loadedNsVersion.update((c) => c + 1)
         }
@@ -483,6 +501,7 @@ export function createI18n(options: I18nOptions): I18nInstance {
       nsMap.set(ns, cloned)
     }
 
+    resolutionCache.clear() // messages changed → resolutions may differ
     storeVersion.update((c) => c + 1)
     loadedNsVersion.update((c) => c + 1)
   }
