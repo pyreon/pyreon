@@ -210,7 +210,11 @@ export function transformPlain(
     }
     return null
   }
-  const declare = (name: string, b: BindingKind): void => {
+  // Named `declareBinding`, NOT `declare` — `declare` is a TS contextual
+  // keyword, and Bun 1.3.14's TypeScript parser treats statement-position
+  // `declare (…)` as an ambient-declaration modifier and desyncs (the file
+  // failed to PARSE under the repo's pinned CI bun while 1.4.0 accepted it).
+  const declareBinding = (name: string, b: BindingKind): void => {
     scopes[scopes.length - 1]!.set(name, b)
   }
   const isMarker = (name: string): 'state' | 'derived' | 'effect' | null => {
@@ -358,7 +362,7 @@ export function transformPlain(
   function declarePatternAsShadow(pat: N): void {
     const names = new Set<string>()
     collectPatternNames(pat, names)
-    for (const n of names) declare(n, { kind: 'shadow' })
+    for (const n of names) declareBinding(n, { kind: 'shadow' })
   }
 
   function unwrapTs(node: N): N {
@@ -455,7 +459,7 @@ export function transformPlain(
     // Hoisted names shadow before anything in the body runs.
     const hoisted = new Set<string>()
     if (body?.type === 'BlockStatement') hoistScan(body, hoisted)
-    for (const n of hoisted) declare(n, { kind: 'shadow' })
+    for (const n of hoisted) declareBinding(n, { kind: 'shadow' })
 
     // Params: possibly the props-destructure rewrite; everything else shadows.
     const params: N[] = fn.params ?? []
@@ -485,7 +489,7 @@ export function transformPlain(
           const annStart: number | undefined = p0.typeAnnotation?.start
           ms.overwrite(p0.start, annStart ?? p0.end, propsVar)
           for (const entry of simple) {
-            declare(entry.local, {
+            declareBinding(entry.local, {
               kind: 'prop',
               propsVar,
               key: entry.key,
@@ -495,7 +499,7 @@ export function transformPlain(
         }
       } else if (p0?.type === 'Identifier') {
         propsVar = p0.name
-        declare(p0.name, { kind: 'shadow' })
+        declareBinding(p0.name, { kind: 'shadow' })
       }
       for (const other of params.slice(1)) {
         walkParamDefaults(other)
@@ -658,12 +662,12 @@ export function transformPlain(
         walkVariableDeclaration(stmt)
         return
       case 'FunctionDeclaration': {
-        if (stmt.id?.name) declare(stmt.id.name, { kind: 'shadow' })
+        if (stmt.id?.name) declareBinding(stmt.id.name, { kind: 'shadow' })
         walkFunction(stmt, stmt.id?.name ?? null)
         return
       }
       case 'ClassDeclaration': {
-        if (stmt.id?.name) declare(stmt.id.name, { kind: 'shadow' })
+        if (stmt.id?.name) declareBinding(stmt.id.name, { kind: 'shadow' })
         walkClass(stmt)
         return
       }
@@ -801,7 +805,7 @@ export function transformPlain(
         used.state = true
         ms.overwrite(init.callee.start, init.callee.end, emitNames.state)
         for (const arg of init.arguments ?? []) walkExpr(arg, true)
-        declare(d.id.name, { kind: 'state' })
+        declareBinding(d.id.name, { kind: 'state' })
         continue
       }
       if (markerRole === 'derived' && d.id?.type === 'Identifier') {
@@ -821,7 +825,7 @@ export function transformPlain(
             ms.appendLeft(arg.end, ')')
           }
         }
-        declare(d.id.name, { kind: 'derived' })
+        declareBinding(d.id.name, { kind: 'derived' })
         continue
       }
 
@@ -842,7 +846,7 @@ export function transformPlain(
         if (simple !== 'complex') {
           ms.remove(stmt.start, stmt.end)
           for (const entry of simple) {
-            declare(entry.local, {
+            declareBinding(entry.local, {
               kind: 'prop',
               propsVar: fnInfo.propsVar,
               key: entry.key,
