@@ -6,16 +6,41 @@
  * client to drift from the API is for the spec to be wrong.
  */
 import { For, Show } from '@pyreon/core'
-import { QueryClient, QueryClientProvider } from '@pyreon/query'
+import { QueryClient, QueryClientProvider, useQueryClient } from '@pyreon/query'
 import { signal } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
-import type { Author, Book } from './gen/schemas'
-import { useListAuthors } from './gen/queries/authors'
-import { useGetBook, useListBooks } from './gen/queries/books'
+// One import site. The per-tag split is the generator's business, not the
+// app's -- nothing here knows `listBooks` was filed under `books`.
+import type { Author, Book } from './gen'
+import { keys, useCreateBook, useGetBook, useListAuthors, useListBooks } from './gen'
 
 const client = new QueryClient({
   defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
 })
+
+function AddBook() {
+  const client = useQueryClient()
+  const create = useCreateBook()
+  return (
+    <button
+      type="button"
+      data-testid="add-book"
+      onClick={() => {
+        create.mutate(
+          { json: { title: 'Added by the generated mutation' } },
+          {
+            // The key comes from the ENDPOINT, not a hand-written literal.
+            // `['GET', '/books']` written by hand drifts the moment the path
+            // changes and nothing catches it; this moves with the spec.
+            onSuccess: () => void client.invalidateQueries({ queryKey: keys.books.listBooks.all }),
+          },
+        )
+      }}
+    >
+      Add a book
+    </button>
+  )
+}
 
 function Books() {
   // Every field on a query result is a SIGNAL, so it is CALLED: `books.data()`,
@@ -95,6 +120,7 @@ function App() {
       <main>
         <h1>Bookshelf</h1>
         <Books />
+        <AddBook />
         <Authors />
       </main>
     </QueryClientProvider>

@@ -6,8 +6,8 @@
  */
 
 import { CONFIG_FILENAMES, sectionFrom } from '@pyreon/config'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { isAbsolute, join, resolve } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, watch, writeFileSync } from 'node:fs'
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { LatheSection } from '../core/config'
 import { parseArgv, run, type Fs } from './run'
@@ -51,7 +51,64 @@ export async function main(argvRaw: readonly string[], cwd: string): Promise<num
     exists: (p) => realFs.exists(abs(p)),
     mkdirp: (p) => realFs.mkdirp(abs(p)),
   }
-  const { code, stdout } = await run(argv, section, scoped)
-  process.stdout.write(stdout)
+  const once = async (): Promise<number> => {
+    const { code, stdout } = await run(argv, section, scoped)
+    process.stdout.write(stdout)
+    return code
+  }
+  const code = await once()
+  if (!argv.watch || argv.command !== 'generate') return code
+
+  // Watch the SPECS, not the output: regenerating on our own writes would
+  // loop. Editors write via rename as often as they write in place, so the
+  // watcher is on the containing directory with a filename filter rather than
+  // on the file itself -- a watch on the inode dies the first time an editor
+  // replaces it.
+  const specs = await specPaths(section, argv, cwd)
+  if (specs.length === 0) return code
+  process.stdout.write(`\nwatching ${specs.length} spec(s) - ctrl-c to stop\n`)
+
+  let queued: ReturnType<typeof setTimeout> | undefined
+  const rerun = (): void => {
+    // Coalesce: a single save commonly produces several events (write, rename,
+    // attribute change), and regenerating once per event is visible churn.
+    if (queued) clearTimeout(queued)
+    queued = setTimeout(() => {
+      queued = undefined
+      void once().catch((err: unknown) => {
+        // A watch loop must SURVIVE a bad edit. A spec mid-save is routinely
+        // unparseable, and exiting there would make the mode useless exactly
+        // when it is most wanted.
+        process.stdout.write(`${(err as Error).message}\n`)
+      })
+    }, 60)
+  }
+
+  for (const spec of specs) {
+    const dir = dirname(spec)
+    const base = basename(spec)
+    watch(dir, (_event, changed) => {
+      if (changed === null || changed === base) rerun()
+    })
+  }
+  // Never resolves: the process lives until the user stops it.
+  await new Promise<never>(() => {})
   return code
+}
+
+/** Absolute paths of every spec this config reads. */
+async function specPaths(
+  section: LatheSection | undefined,
+  argv: ReturnType<typeof parseArgv>,
+  cwd: string,
+): Promise<string[]> {
+  const { resolveProjects } = await import('../core/config')
+  const merged: LatheSection = { ...section, ...(argv.input ? { input: argv.input } : {}) }
+  try {
+    return resolveProjects(merged)
+      .map((p) => (isAbsolute(p.input) ? p.input : resolve(cwd, p.input)))
+      .filter((p) => existsSync(p))
+  } catch {
+    return []
+  }
 }

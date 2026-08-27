@@ -1,3 +1,4 @@
+import lathe from '@pyreon/lathe/vite'
 import pyreon from '@pyreon/vite-plugin'
 import { defineConfig, type Plugin } from 'vite'
 
@@ -42,6 +43,25 @@ function bookshelfApi(): Plugin {
           res.setHeader('content-type', 'application/json')
           res.end(JSON.stringify(body))
         }
+        if (url === '/v1/books' && req.method === 'POST') {
+          let body = ''
+          req.on('data', (c: Buffer) => { body += c })
+          req.on('end', () => {
+            const parsed = JSON.parse(body || '{}') as { title?: string }
+            const created = {
+              id: `6f1c2b7e-0000-4000-8000-00000000000${books.length + 1}`,
+              title: parsed.title ?? 'Untitled',
+              status: 'available',
+              pages: 100,
+              subtitle: null,
+              tags: [],
+            }
+            books.push(created)
+            res.statusCode = 201
+            send(created)
+          })
+          return undefined
+        }
         if (url === '/v1/books') return send(books)
         if (url.startsWith('/v1/books/')) {
           const id = url.slice('/v1/books/'.length)
@@ -60,7 +80,22 @@ function bookshelfApi(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [pyreon(), bookshelfApi()],
+  plugins: [
+    // Regenerates `src/gen` on dev-server start and whenever the spec changes,
+    // so the window in which the client can disagree with the spec is the time
+    // between a save and the next request -- not however long it takes someone
+    // to remember to run the CLI.
+    lathe({
+      input: './openapi.yaml',
+      output: './src/gen',
+      target: 'multiplatform',
+      plugins: ['schemas', 'client', 'queries', 'mocks', 'atlas'],
+      baseUrl: 'http://localhost:5199/v1',
+      checkOnBuild: true,
+    }),
+    pyreon(),
+    bookshelfApi(),
+  ],
   server: { port: 5199, strictPort: true },
   preview: { port: 5199, strictPort: true },
   resolve: { conditions: ['bun'] },

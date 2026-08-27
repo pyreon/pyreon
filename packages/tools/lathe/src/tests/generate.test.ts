@@ -208,8 +208,10 @@ describe('generate', () => {
   })
 
   it('honours the plugin selection', () => {
+    // `index.ts` is the barrel and rides along with any selection -- one
+    // import site is useful whether you asked for schemas or the whole client.
     const only = generate(SPEC, resolveConfig({ input: 'x', plugins: ['schemas'] }))
-    expect(only.files.map((f) => f.path)).toEqual(['schemas.ts'])
+    expect(only.files.map((f) => f.path)).toEqual(['schemas.ts', 'index.ts'])
   })
 
   it('the native LAYOUT follows the plugin selection too', () => {
@@ -217,7 +219,7 @@ describe('generate', () => {
     // separate output. Emitting them unconditionally meant asking for schemas
     // only still produced a client and a data component.
     const schemasOnly = generate(SPEC, resolveConfig({ input: 'x', target: 'multiplatform', plugins: ['schemas'] }))
-    expect(schemasOnly.files.map((f) => f.path)).toEqual(['schemas.ts'])
+    expect(schemasOnly.files.map((f) => f.path)).toEqual(['schemas.ts', 'index.ts'])
 
     const withClient = generate(SPEC, resolveConfig({ input: 'x', target: 'multiplatform', plugins: ['client'] }))
     expect(withClient.files.some((f) => f.path.endsWith('.native.tsx'))).toBe(true)

@@ -11,7 +11,8 @@
     "gen": "lathe generate",
     "gen:check": "lathe check",
     "lint": "oxlint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "gen:watch": "lathe generate --watch"
   },
   "dependencies": {
     "@pyreon/core": "workspace:*",

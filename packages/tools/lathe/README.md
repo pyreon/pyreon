@@ -65,6 +65,70 @@ absence of leaked web-only symbols, treats a `does NOT compile` warning as
 broken rather than advisory, and reports a missing compiler as **skipped**
 rather than passing.
 
+## Automation
+
+### The Vite plugin
+
+```ts
+// vite.config.ts
+import lathe from '@pyreon/lathe/vite'
+
+export default defineConfig({
+  plugins: [
+    lathe({ input: './openapi.yaml', output: './src/gen', checkOnBuild: true }),
+    pyreon(),
+  ],
+})
+```
+
+Regenerates on dev-server start and whenever a spec changes. `checkOnBuild`
+turns a stale client into a **build error** rather than a warning — generated
+output that disagrees with its spec compiles and then fails against the real
+server, which is the worst place to find out.
+
+It writes files to disk rather than serving a virtual module, deliberately: the
+one artifact people need to read when something looks wrong should be the one
+they can open.
+
+### Watch mode
+
+```bash
+lathe generate --watch
+```
+
+Watches the containing directory with a filename filter rather than the file
+itself — editors write via rename as often as in place, and a watch on the
+inode dies the first time one replaces it. Events are coalesced, and a spec
+that is unparseable mid-save prints the error and keeps watching rather than
+exiting.
+
+### `lathe check` in CI
+
+Regenerates in memory and fails if committed output has drifted — the same
+contract as `gen-docs --check`, covering every project.
+
+## One import site
+
+```ts
+import { keys, useCreateBook, useListBooks, type Book } from './gen'
+```
+
+The per-tag split is the generator's business. Nothing in your app needs to
+know which tag an operation was filed under, or that tags exist.
+
+### Query keys come from the endpoints
+
+```ts
+const client = useQueryClient()
+create.mutate({ json }, {
+  onSuccess: () => client.invalidateQueries({ queryKey: keys.books.listBooks.all }),
+})
+```
+
+A hand-written `['GET', '/books']` drifts from the endpoint the moment a path
+changes and nothing catches it. `.all` matches every call of an endpoint;
+`.of(args)` matches one.
+
 ## Honest limits
 
 Real, current, and reported per-operation rather than papered over:

@@ -68,6 +68,20 @@ test.describe('lathe / bookshelf', () => {
     expect(new Set(requests).size).toBe(2)
   })
 
+  test('a mutation invalidates through a key derived from the endpoint', async ({ page }) => {
+    // The whole loop: a generated mutation posts, and a generated query key
+    // invalidates the list so it refetches. Nothing in the app writes a URL, a
+    // method or a cache key -- a hand-written `['GET', '/books']` would drift
+    // from the endpoint the moment the path changed, with nothing to catch it.
+    await page.goto('/')
+    await expect(page.getByTestId('book-item')).toHaveCount(2)
+
+    await page.getByTestId('add-book').click()
+
+    await expect(page.getByTestId('book-item')).toHaveCount(3)
+    await expect(page.getByTestId('book-list')).toContainText('Added by the generated mutation')
+  })
+
   test('the committed generated output is not stale', async ({ page }) => {
     // A generated client that has drifted from its spec is worse than no
     // client, because it still looks authoritative. `lathe check` is the CI
