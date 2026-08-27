@@ -171,7 +171,7 @@ export function S() {
 })
 
 describe('endpoint DSL — shapes that cannot lower WARN (stay web)', () => {
-  it('warns on a reactive param — no literal to bake, and pushes ONLY that one warning', () => {
+  it('warns on a reactive param under useFetch, and pushes ONLY that one warning', () => {
     const REACTIVE = `
 import { createHttp } from '@pyreon/http'
 import { useFetch } from '@pyreon/query'
@@ -187,7 +187,12 @@ export function S() {
 }
 `
     const w = swift(REACTIVE).warnings
-    expect(w.some((m) => m.includes('needs literal params') && m.includes('`id`'))).toBe(true)
+    // A runtime `:param` DOES lower now — but only through `useQuery`, whose
+    // native harness is keyed on the value and therefore re-fetches when it
+    // changes. `useFetch` lowers to a one-shot task, so it still bails; the
+    // message names the hook to switch to rather than describing the limit.
+    expect(w.some((m) => m.includes('`id`') && m.includes('ONE-SHOT'))).toBe(true)
+    expect(w.some((m) => m.includes('useQuery(() => getUser.query('))).toBe(true)
     // The reactive bail must NOT also emit the generic "url must be a string
     // literal" line — the endpoint diagnostic is the specific, actionable one.
     expect(w.some((m) => m.includes('url argument must be a string literal'))).toBe(false)
