@@ -12,17 +12,21 @@
  * import { scenarios } from './src/gen/atlas.scenarios'
  * export default { scenarios }
  * ```
- * Enum-valued fields expand to one scenario per value, so a variant axis the
- * spec declares is one the workbench actually exercises.
+ * Every preview gets the three states a live request will not produce on
+ * demand -- loading, error, empty -- which are the three a UI most often
+ * gets wrong. They regenerate with the spec instead of drifting from it.
  */
 export const scenarios = {
-  'ListAuthorsData': [
+  'ListAuthorsPreview': [
     { name: 'Default', args: {} },
+    { name: 'Loading', args: {"force":"loading"} },
+    { name: 'Error', args: {"force":"error"} },
+    { name: 'Empty', args: {"force":"empty"} },
   ],
-  'ListBooksData': [
+  'ListBooksPreview': [
     { name: 'Default', args: {} },
-    { name: 'status: available', args: {"status":"available"} },
-    { name: 'status: borrowed', args: {"status":"borrowed"} },
-    { name: 'status: lost', args: {"status":"lost"} },
+    { name: 'Loading', args: {"force":"loading"} },
+    { name: 'Error', args: {"force":"error"} },
+    { name: 'Empty', args: {"force":"empty"} },
   ],
 }

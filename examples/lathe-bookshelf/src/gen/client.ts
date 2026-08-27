@@ -5,6 +5,7 @@
 // Re-run `lathe generate` to update. Edits here are lost on the next run;
 // to change the output, change the spec or the emitter.
 
+import type { HttpMiddleware } from '@pyreon/http'
 import { createHttp } from '@pyreon/http'
 import { standardSchema } from '@pyreon/http/schema'
 
@@ -19,7 +20,22 @@ import { standardSchema } from '@pyreon/http/schema'
  * FAILS AT RUNTIME — the request succeeds, the validation step rejects, and
  * the query settles as an error with a 200 on the wire.
  */
+let devTransport: HttpMiddleware | null = null
+
+/**
+ * Install middleware AFTER the client was built.
+ * Endpoints bind to the client at declaration time, so middleware passed to
+ * `createHttp` has to be known before any endpoint exists -- which a mock
+ * installed by a workbench wrapper or a test never is. One passthrough entry
+ * reserves the slot; it costs a function call per request and nothing else
+ * when unused. The generated `installMocks()` uses it.
+ */
+export function setDevTransport(middleware: HttpMiddleware | null): void {
+  devTransport = middleware
+}
+
 export const api = createHttp({
   baseUrl: 'http://localhost:5199/v1',
   schema: standardSchema,
+  use: [(req, next) => (devTransport ? devTransport(req, next) : next(req))],
 })

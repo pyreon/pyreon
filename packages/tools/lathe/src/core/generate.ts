@@ -6,7 +6,8 @@
  * temp directory and what lets the CLI diff before writing.
  */
 
-import { emitAtlasScenarios } from '../emit/atlas'
+import { emitAtlasScenarios, emitAtlasWrapper } from '../emit/atlas'
+import { emitComponents } from '../emit/components'
 import { emitBarrel, emitKeys } from '../emit/index-barrel'
 import {
   emitClient,
@@ -54,7 +55,15 @@ export function generate(specText: string, config: ResolvedConfig): GenerateResu
   }
   if (has('queries')) push(emitKeys(doc))
   if (has('mocks')) push(emitMocks(doc))
-  if (has('atlas')) push(emitAtlasScenarios(doc))
+  // Previews come BEFORE scenarios: the scenario keys are these component
+  // names, so emitting scenarios without them is a plausible-looking no-op.
+  if (has('components') || has('atlas')) push(emitComponents(doc))
+  if (has('atlas')) {
+    push(emitAtlasScenarios(doc))
+    // The wrapper needs the mock routes, so `atlas` implies `mocks`.
+    if (!has('mocks')) push(emitMocks(doc))
+    push(emitAtlasWrapper(doc))
+  }
   // The native modules are the `client` + `queries` emitters' native LAYOUT,
   // not a separate output — so they follow the same plugin selection. Emitting
   // them unconditionally meant `--plugins schemas` still produced a client and

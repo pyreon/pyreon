@@ -46,7 +46,7 @@ export interface DiscoverOptions {
  */
 export const DEFAULT_EXTENSIONS = ['.tsx', '.jsx', '.ts'] as const
 
-const DEFAULT_IGNORE = ['node_modules', '.test.', '.spec.', '.stories.', '.d.ts']
+export const DEFAULT_IGNORE = ['node_modules', '.test.', '.spec.', '.stories.', '.d.ts']
 
 function walk(dir: string, exts: readonly string[], ignore: readonly string[], acc: string[]): void {
   let entries: Dirent[]
