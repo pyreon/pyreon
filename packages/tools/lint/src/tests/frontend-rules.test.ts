@@ -26,7 +26,7 @@ import { imgRequiresDimensions } from '../rules/frontend/img-requires-dimensions
 import { noPositiveTabindex } from '../rules/frontend/no-positive-tabindex'
 import { preferZeroImage } from '../rules/frontend/prefer-zero-image'
 import { requireImgAlt } from '../rules/frontend/require-img-alt'
-import { applyFixes, lintFile } from '../runner'
+import { applyFixes, fixEdits, lintFile } from '../runner'
 import type { LintConfig } from '../types'
 import { _resetProjectDepsCache } from '../utils/project-deps'
 
@@ -176,7 +176,7 @@ describe('pyreon/no-positive-tabindex (frontend, fixable)', () => {
       (d) => d.ruleId === 'pyreon/no-positive-tabindex',
     )
     expect(diag?.fix).toBeDefined()
-    expect(diag?.fix?.replacement).toBe('0')
+    expect(fixEdits(diag?.fix ?? [])[0]?.replacement).toBe('0')
     const fixed = applyFixes(source, result.diagnostics)
     expect(fixed).toBe(`function App() { return <div tabIndex={0} /> }`)
   })
@@ -187,7 +187,7 @@ describe('pyreon/no-positive-tabindex (frontend, fixable)', () => {
     const diag = result.diagnostics.find(
       (d) => d.ruleId === 'pyreon/no-positive-tabindex',
     )
-    expect(diag?.fix?.replacement).toBe('"0"')
+    expect(fixEdits(diag?.fix ?? [])[0]?.replacement).toBe('"0"')
     const fixed = applyFixes(source, result.diagnostics)
     expect(fixed).toBe(`function App() { return <div tabindex="0" /> }`)
   })

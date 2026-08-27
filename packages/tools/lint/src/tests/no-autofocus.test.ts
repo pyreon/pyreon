@@ -15,7 +15,7 @@
  */
 import { getPreset } from '../config/presets'
 import { noAutofocus } from '../rules/frontend/no-autofocus'
-import { applyFixes, lintFile } from '../runner'
+import { applyFixes, fixEdits, lintFile } from '../runner'
 import type { LintConfig } from '../types'
 
 const RULES = [noAutofocus]
@@ -100,7 +100,7 @@ describe('pyreon/no-autofocus (frontend, fixable)', () => {
       (d) => d.ruleId === 'pyreon/no-autofocus',
     )
     expect(diag?.fix).toBeDefined()
-    expect(diag?.fix?.replacement).toBe('')
+    expect(fixEdits(diag?.fix ?? [])[0]?.replacement).toBe('')
     const fixed = applyFixes(source, result.diagnostics)
     expect(fixed).toBe(`function App() { return <input className="x" /> }`)
     expect(fixed).not.toContain('autoFocus')

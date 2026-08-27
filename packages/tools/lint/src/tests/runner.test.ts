@@ -3,7 +3,7 @@ import { createIgnoreFilter } from '../config/ignore'
 import { loadConfig } from '../config/loader'
 import { getPreset } from '../config/presets'
 import { allRules } from '../rules/index'
-import { applyFixes, lintFile } from '../runner'
+import { applyFixes, fixEdits, lintFile } from '../runner'
 import type { ConfigDiagnostic, LintConfig, Rule } from '../types'
 import { LineIndex } from '../utils/source'
 
@@ -1271,7 +1271,7 @@ describe('Architecture rules', () => {
     const diags = findByRule(result, 'pyreon/no-process-dev-gate')
     expect(diags.length).toBe(1)
     expect(diags[0]?.fix).toBeDefined()
-    expect(diags[0]?.fix?.replacement).toBe(`process.env.NODE_ENV !== 'production'`)
+    expect(fixEdits(diags[0]?.fix ?? [])[0]?.replacement).toBe(`process.env.NODE_ENV !== 'production'`)
   })
 
   it('pyreon/no-process-dev-gate: flags the reversed pattern (NODE_ENV first)', () => {
@@ -1334,7 +1334,7 @@ describe('Architecture rules', () => {
     )
     const diags = findByRule(result, 'pyreon/no-process-dev-gate')
     expect(diags.length).toBe(1)
-    expect(diags[0]?.fix?.replacement).toBe(`process.env.NODE_ENV !== 'production'`)
+    expect(fixEdits(diags[0]?.fix ?? [])[0]?.replacement).toBe(`process.env.NODE_ENV !== 'production'`)
   })
 
   it('pyreon/no-process-dev-gate: flags bare `import.meta.env.DEV` truthy check', () => {
@@ -1372,7 +1372,7 @@ const __DEV__ = (import.meta as ViteMeta).env?.DEV === true`
     )
     const diags = findByRule(result, 'pyreon/no-process-dev-gate')
     expect(diags.length).toBe(1)
-    expect(diags[0]?.fix?.replacement).toBe(`process.env.NODE_ENV !== 'production'`)
+    expect(fixEdits(diags[0]?.fix ?? [])[0]?.replacement).toBe(`process.env.NODE_ENV !== 'production'`)
   })
 
   it('pyreon/no-process-dev-gate: does NOT flag `process.env.NODE_ENV` (the recommended pattern)', () => {
@@ -1403,7 +1403,7 @@ const __DEV__ = (import.meta as ViteMeta).env?.DEV === true`
     )
     const diags = findByRule(result, 'pyreon/no-process-dev-gate')
     expect(diags.length).toBe(1)
-    expect(diags[0]?.fix?.replacement).toBe(`process.env.NODE_ENV !== 'production'`)
+    expect(fixEdits(diags[0]?.fix ?? [])[0]?.replacement).toBe(`process.env.NODE_ENV !== 'production'`)
   })
 
   it('pyreon/no-process-dev-gate: flags partial optional-chaining (process.env?.NODE_ENV)', () => {

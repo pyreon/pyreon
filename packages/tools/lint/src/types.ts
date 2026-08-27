@@ -17,13 +17,27 @@ export interface Fix {
   replacement: string
 }
 
+/**
+ * What a rule attaches to a diagnostic to make it auto-fixable.
+ *
+ * A single edit for the common case, or an ARRAY when one fix needs edits in
+ * more than one place — the dominant example being "replace this expression
+ * AND add the import it now needs". With only a single span expressible, rules
+ * like `prefer-isserver` could not offer a fix at all, which is a large part of
+ * why the fixable ratio is low.
+ *
+ * Edits within one `RuleFix` must not overlap each other; overlapping edits
+ * ACROSS diagnostics are detected and deferred by `applyFixes`.
+ */
+export type RuleFix = Fix | readonly Fix[]
+
 export interface Diagnostic {
   ruleId: string
   severity: Severity
   message: string
   span: Span
   loc: SourceLocation
-  fix?: Fix | undefined
+  fix?: RuleFix | undefined
 }
 
 // ── Rule Metadata ───────────────────────────────────────────────────────────

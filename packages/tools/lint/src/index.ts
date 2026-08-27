@@ -13,7 +13,7 @@ export { startLspServer } from './lsp/index'
 export { allRules } from './rules/index'
 // Groups — the axis `RuleCategory` does not capture.
 export { CATEGORY_GROUP, groupOf } from './rules/groups'
-export { applyFixes, lintFile } from './runner'
+export { applyFixes, fixEdits, lintFile } from './runner'
 // Types
 export type {
   ConfigDiagnostic,
@@ -31,6 +31,7 @@ export type {
   RuleCategory,
   RuleContext,
   RuleEntry,
+  RuleFix,
   RuleGroup,
   RuleMeta,
   RuleOptions,

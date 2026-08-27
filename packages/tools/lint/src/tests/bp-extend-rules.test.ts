@@ -25,7 +25,7 @@ import { join } from 'node:path'
 import { i18nPreferTransForRichJsx } from '../rules/i18n/i18n-prefer-trans-for-rich-jsx'
 import { queryOptionsAsFunction } from '../rules/query/query-options-as-function'
 import { preferTypedSearchParams } from '../rules/router/prefer-typed-search-params'
-import { applyFixes, lintFile } from '../runner'
+import { applyFixes, fixEdits, lintFile } from '../runner'
 import type { LintConfig } from '../types'
 import { _resetProjectDepsCache } from '../utils/project-deps'
 
@@ -140,7 +140,7 @@ describe('pyreon/query-options-as-function — autofix (query, dep-gated)', () =
       (d) => d.ruleId === 'pyreon/query-options-as-function',
     )
     expect(diag?.fix).toBeDefined()
-    expect(diag?.fix?.replacement).toBe(`() => ({ queryKey: ['k'] })`)
+    expect(fixEdits(diag?.fix ?? [])[0]?.replacement).toBe(`() => ({ queryKey: ['k'] })`)
   })
 
   it('autofix turns useQuery({ ... }) into useQuery(() => ({ ... }))', () => {

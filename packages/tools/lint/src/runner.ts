@@ -3,10 +3,12 @@ import type { AstCache } from './cache'
 import type {
   ConfigDiagnostic,
   Diagnostic,
+  Fix,
   LintConfig,
   LintFileResult,
   Rule,
   RuleContext,
+  RuleFix,
   RuleOptions,
   Severity,
   VisitorCallbacks,
@@ -249,24 +251,66 @@ export function lintFile(
  * Apply all auto-fixes to a source text.
  * Fixes are applied in reverse order to maintain correct offsets.
  */
+/**
+ * Normalize a single-or-multi-edit fix into a plain edit list.
+ *
+ * Exported because `Diagnostic.fix` is now `Fix | readonly Fix[]`: anything
+ * reading `.span` / `.replacement` off a diagnostic must go through this
+ * rather than assuming one edit.
+ */
+export function fixEdits(fix: RuleFix): Fix[] {
+  return Array.isArray(fix) ? [...(fix as readonly Fix[])] : [fix as Fix]
+}
+
+/**
+ * Apply auto-fixes to a source text.
+ *
+ * Two properties that were previously missing:
+ *
+ *  - **A fix may carry several edits.** "Replace this expression AND add the
+ *    import it now needs" is one fix, and either edit alone leaves the file
+ *    broken — so a fix is applied whole or not at all.
+ *  - **Overlapping fixes are DEFERRED, not applied blind.** Two diagnostics
+ *    touching the same range used to both be written, and the later one landed
+ *    inside the earlier one's replacement — producing output matching neither
+ *    intent. Now the first fix in source order wins and any fix overlapping an
+ *    already-applied range is skipped, exactly as ESLint does; the diagnostic
+ *    stays reported, so a second `--fix` pass picks it up once the conflict is
+ *    gone.
+ */
 export function applyFixes(sourceText: string, diagnostics: Diagnostic[]): string {
-  const fixable = diagnostics.filter((d) => d.fix !== undefined)
-  if (fixable.length === 0) return sourceText
+  type Candidate = { edits: Fix[]; start: number; end: number }
 
-  // Sort by start position descending (apply from end to start)
-  const sorted = [...fixable].sort((a, b) => {
-    const aFix = a.fix
-    const bFix = b.fix
-    if (!aFix || !bFix) return 0
-    return bFix.span.start - aFix.span.start
-  })
+  const candidates: Candidate[] = []
+  for (const d of diagnostics) {
+    if (!d.fix) continue
+    const edits = fixEdits(d.fix)
+    if (edits.length === 0) continue
+    candidates.push({
+      edits,
+      start: Math.min(...edits.map((e) => e.span.start)),
+      end: Math.max(...edits.map((e) => e.span.end)),
+    })
+  }
+  if (candidates.length === 0) return sourceText
 
-  let result = sourceText
-  for (const diag of sorted) {
-    const fix = diag.fix
-    if (!fix) continue
-    result = result.slice(0, fix.span.start) + fix.replacement + result.slice(fix.span.end)
+  // Source order, so "first one wins" is deterministic rather than
+  // dependent on rule registration order.
+  candidates.sort((a, b) => a.start - b.start || a.end - b.end)
+
+  const applied: Fix[] = []
+  let claimedUpTo = -1
+  for (const c of candidates) {
+    if (c.start < claimedUpTo) continue // overlaps something already applied
+    applied.push(...c.edits)
+    claimedUpTo = Math.max(claimedUpTo, c.end)
   }
 
+  // Apply end-to-start so earlier offsets stay valid.
+  applied.sort((a, b) => b.span.start - a.span.start)
+  let result = sourceText
+  for (const edit of applied) {
+    result = result.slice(0, edit.span.start) + edit.replacement + result.slice(edit.span.end)
+  }
   return result
 }

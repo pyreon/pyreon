@@ -332,6 +332,18 @@ Library-scoped opt-in rules — `query`, `rx`, `i18n`, `storage`, form's `no-sig
 
 ## Rules
 
+### Autofix
+
+`--fix` applies fixes that are unambiguous. A fix may carry **several edits** — `prefer-isserver` rewrites `typeof window !== 'undefined'` to `isClient` *and* adds the import, as one fix — and a multi-edit fix is applied whole or not at all, because half of that pair is broken code.
+
+Overlapping fixes from different rules are **deferred**, not applied blind: the first in source order wins, the other stays reported for a later pass. Fixes are deliberately conservative about intent:
+
+- `no-signal-call-write` fixes `count(5)` → `count.set(5)`, but leaves `count(prev => prev + 1)` alone — that reads as *update* intent, and `.set(fn)` would store the function as the value.
+- `prefer-isserver` refuses to fix through a namespace or type-only import, where adding a specifier would produce code that doesn't compile.
+- `no-peek-in-tracked` has no fixer at all: `.peek()` inside a tracked scope is frequently intentional loop-prevention, so rewriting it would turn "skip writes during a write" into an infinite loop.
+
+Reading fixes programmatically? `Diagnostic.fix` is `Fix | readonly Fix[]` — normalize with `fixEdits(d.fix)`.
+
 ### Rule groups
 
 Every rule belongs to one of four **groups** — the axis the 19 categories don't capture: *what knowledge does this rule require, and does it ship?*
