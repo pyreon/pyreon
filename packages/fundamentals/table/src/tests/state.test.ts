@@ -2,7 +2,7 @@
 // These prove the sort/filter/paginate/select behaviour a native peer runs
 // verbatim (via PMTC) — pure signal logic, no DOM, no TanStack.
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { effect, signal } from '@pyreon/reactivity'
 import { createTableState } from '../state'
 
@@ -228,6 +228,23 @@ describe('createTableState — selection', () => {
     expect(t.isSelected('1')).toBe(false)
     t.clearSelection()
     expect(t.selectedIds()).toEqual([])
+  })
+
+  it('isSelected is O(1) per read — Set-backed, not a per-row Array.includes scan', () => {
+    const N = 200
+    const rows: Row[] = Array.from({ length: N }, (_, i) => ({ id: i, name: `n${i}`, age: i }))
+    const t = makeTable(rows)
+    for (let i = 0; i < N; i++) t.toggleSelected(String(i)) // select every row
+    expect(t.selectedIds().length).toBe(N)
+
+    const spy = vi.spyOn(Array.prototype, 'includes')
+    spy.mockClear()
+    // The per-render selection-checkbox shape: read the predicate once per row.
+    for (let i = 0; i < N; i++) t.isSelected(String(i))
+    // Set-backed reads go through Set.has → ZERO Array.includes calls.
+    // Bisect: `selected().includes(id)` calls Array.includes once per read (N).
+    expect(spy.mock.calls.length).toBe(0)
+    spy.mockRestore()
   })
 
   it('rowId computes the id isSelected keys on', () => {
