@@ -63,10 +63,19 @@ export interface PlainOptions {
 const PLAIN_SOURCE = '@pyreon/core/plain'
 const REACTIVITY_SOURCE = '@pyreon/reactivity'
 
-/** Cheap pre-parse gate — callers use it to skip the parse entirely. */
+/**
+ * Cheap pre-parse gate — callers use it to skip the parse entirely.
+ *
+ * Pure substring checks, deliberately NOT a regex: the gate runs on every
+ * module the vite-plugin sees, and an anchored directive regex here was
+ * flagged by CodeQL as polynomial-backtracking (`js/polynomial-redos` — the
+ * `[\n\r;{]`/`\s*` ambiguity). Over-matching is fine by design — a file
+ * that merely CONTAINS the quoted token gets parsed, and the parser's real
+ * directive check decides; `transformPlain` returns null for false alarms.
+ */
 export function detectPlain(code: string): boolean {
   if (code.includes(PLAIN_SOURCE)) return true
-  return /(^|[\n\r;{])\s*(['"])use plain\2\s*(;|[\n\r]|$)/.test(code)
+  return code.includes("'use plain'") || code.includes('"use plain"')
 }
 
 function getLang(filename: string): 'ts' | 'tsx' | 'js' | 'jsx' {
