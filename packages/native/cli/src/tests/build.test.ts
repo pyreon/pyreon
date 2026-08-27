@@ -297,6 +297,33 @@ describe('@pyreon/native-cli build', () => {
     expect(plain).not.toContain('text.input.VisualTransformation')
   })
 
+  it('Kotlin conditional imports: rememberSaveable pulls its saveable sub-package', () => {
+    // `useStorage` lowers to `rememberSaveable { … }`, which lives in
+    // androidx.compose.runtime.SAVEABLE — a sub-package the unconditional
+    // `androidx.compose.runtime.*` star import cannot reach.
+    //
+    // So useStorage had never built in a real Android app: the kotlinc stub
+    // declares rememberSaveable, so the validate loop resolved it every time,
+    // and no gated example used the hook. The device gate caught it with
+    // `Unresolved reference 'rememberSaveable'`.
+    const trailing = conditionalKotlinImports('var t by rememberSaveable { mutableStateOf("light") }')
+    expect(trailing).toContain('import androidx.compose.runtime.saveable.rememberSaveable')
+
+    // The TRAILING-LAMBDA form above is the one the emit actually produces, so
+    // a predicate keyed on `rememberSaveable(` would match nothing real — the
+    // documented `.clickable` trap. The paren form is covered too, since the
+    // Saver glue will emit `rememberSaveable(saver = …)`.
+    expect(conditionalKotlinImports('rememberSaveable(saver = s) { mutableStateOf(x) }')).toContain(
+      'import androidx.compose.runtime.saveable.rememberSaveable',
+    )
+
+    // A plain `remember` must NOT pull it — a dead import is its own defect,
+    // and `remember` is already covered by the runtime star import.
+    expect(conditionalKotlinImports('var t by remember { mutableStateOf("x") }')).not.toContain(
+      'saveable',
+    )
+  })
+
   it('Kotlin conditional imports: TextOverflow pulls its text.style import', () => {
     // `<Text truncate>` emits `overflow = TextOverflow.Ellipsis`. TextOverflow
     // lives in androidx.compose.ui.text.style, which the unconditional

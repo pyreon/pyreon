@@ -161,6 +161,23 @@ export function conditionalKotlinImports(emitted: string): string {
   if (/\.focusable\s*[({]/.test(emitted)) {
     imports.push('import androidx.compose.foundation.focusable')
   }
+  // useStorage lowers to `rememberSaveable { … }`, which lives in
+  // androidx.compose.runtime.SAVEABLE — a sub-package the unconditional
+  // `androidx.compose.runtime.*` star import does not reach (Kotlin star
+  // imports are single-package).
+  //
+  // So `useStorage` had never built in a real Android app. The kotlinc stub
+  // declares rememberSaveable, so every validate-loop check resolved it, and no
+  // gated example used the hook until now — the device gate is the only thing
+  // that could have caught it, and it did, with
+  // `Unresolved reference 'rememberSaveable'`.
+  //
+  // `[({]` because the emit is the TRAILING-LAMBDA form. Keyed on
+  // `rememberSaveable(` alone this would match nothing real — the same
+  // `.clickable` trap the comment above already records.
+  if (/\brememberSaveable\s*[({]/.test(emitted)) {
+    imports.push('import androidx.compose.runtime.saveable.rememberSaveable')
+  }
   if (emitted.includes('withContext(')) imports.push('import kotlinx.coroutines.withContext')
   if (emitted.includes('Dispatchers.')) imports.push('import kotlinx.coroutines.Dispatchers')
   // M4.5: an `async () => { await … }` event handler emits
