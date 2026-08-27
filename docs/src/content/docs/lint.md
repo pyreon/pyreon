@@ -332,6 +332,36 @@ Library-scoped opt-in rules — `query`, `rx`, `i18n`, `storage`, form's `no-sig
 
 ## Rules
 
+### Why isn't a rule firing?
+
+A rule can be silently inert for four independent reasons, and three of them are invisible in your config: its severity is `off`; it is an **opt-in** best-practice rule; it is **monorepo-scoped**; or it is **dependency-gated** and your project doesn't declare the library it covers. They compose, so a rule is often off for more than one reason and fixing one changes nothing.
+
+`--why-off` reports every reason that applies, each with the edit that lifts it:
+
+```bash
+pyreon-lint --why-off pyreon/rx-prefer-pipe
+```
+
+```
+  pyreon/rx-prefer-pipe
+
+  ✗ WILL NOT RUN — severity: off
+
+  [severity-off]
+    The resolved config sets this rule to `off`.
+    fix: Set `"pyreon/rx-prefer-pipe": "info"` in .pyreonlintrc.json.
+
+  [opt-in]
+    This is an opt-in best-practice rule, so every standard preset forces it off.
+    fix: Select the `best-practices` preset, or enable this rule by id.
+
+  [dependency-missing]
+    This rule only applies to projects using `@pyreon/rx`, which is not a declared dependency here.
+    fix: Nothing to fix — the rule is correctly silent. Add `@pyreon/rx` if you meant to use it.
+```
+
+The dependency gate is checked relative to a file, so pass a path (`pyreon-lint --why-off <id> src/`) when you want that reason evaluated. An unknown id exits non-zero and suggests the near miss. Programmatic equivalent: `explainRuleState(id, { config, filePath })`.
+
 There are **98 rules across 19 categories**. Six of them are **monorepo-scoped** (`meta.scope: 'monorepo'`) — `no-circular-import`, `no-cross-layer-import`, `no-error-without-prefix`, `no-querySelector-cast-in-test`, `require-browser-smoke-test`, `vitest-config-uses-shared`. They encode the Pyreon repository's own conventions (its layer order, its private internal packages, its `[Pyreon]` error prefix) rather than anything about Pyreon-the-framework, so **every preset a consumer selects forces them off**, `best-practices` included. The Pyreon repo re-enables them by id in its own `.pyreonlintrc.json`, which keeps that dependency visible in config instead of hidden inside a shared preset. The `frontend`, `query`, `rx`, `i18n`, and `storage` categories (plus the two opt-in rules in `form` and `router`) are opt-in best-practice rules — off in the standard presets. Run `pyreon-lint --list` for the authoritative list with live severities.
 
 ### Categories at a glance

@@ -50,3 +50,7 @@ export {
 // Utilities
 export { LineIndex } from './utils/source'
 export { watchAndLint } from './watcher'
+// "Why isn't this rule firing?" — a rule can be inert for four independent
+// reasons, three of which are invisible in config.
+export { explainRuleState, formatRuleState } from './why-off'
+export type { OffReason, RuleState } from './why-off'

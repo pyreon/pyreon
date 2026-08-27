@@ -1,9 +1,13 @@
 #!/usr/bin/env node
+import { resolve } from 'node:path'
+import { loadConfig, loadConfigFromPath } from './config/loader'
+import { getPreset } from './config/presets'
 import { lint, listRules } from './lint'
 import { startLspServer } from './lsp/index'
 import { formatCompact, formatJSON, formatText } from './reporter'
 import type { PresetName, Severity } from './types'
 import { watchAndLint } from './watcher'
+import { explainRuleState, formatRuleState } from './why-off'
 
 // Read version from package.json at build time; fallback for dev
 const VERSION = '0.11.4'
@@ -18,6 +22,7 @@ function printUsage() {
     --format <fmt>     Output: text (default), json, compact
     --quiet            Only show errors
     --list             List all available rules
+    --why-off <id>     Explain why a rule will (or will not) run here
     --rule <id>=<sev>          Override rule severity (e.g. --rule pyreon/no-window-in-ssr=off)
     --rule-options <id>=<json> Override rule options (e.g. --rule-options pyreon/no-window-in-ssr='{"exemptPaths":["src/foundation/"]}')
     --config <path>    Config file path
@@ -60,6 +65,8 @@ interface CliArgs {
   ruleOverrides: Record<string, Severity>
   /** Per-rule options parsed from `--rule-options id='{json}'`. */
   ruleOptionsOverrides: Record<string, Record<string, unknown>>
+  /** `--why-off <rule-id>` — explain the rule's effective state, then exit. */
+  whyOff: string | undefined
   paths: string[]
 }
 
@@ -91,6 +98,7 @@ function parseArgs(argv: string[]): CliArgs {
     ruleOverrides: {},
     ruleOptionsOverrides: {},
     paths: [],
+    whyOff: undefined,
   }
 
   for (let i = 0; i < argv.length; i++) {
@@ -125,6 +133,10 @@ function parseValueFlag(arg: string, nextArg: string | undefined, result: CliArg
   }
   if (arg === '--ignore') {
     result.ignorePath = nextArg
+    return 1
+  }
+  if (arg === '--why-off') {
+    result.whyOff = nextArg
     return 1
   }
   if (arg === '--rule') {
@@ -202,6 +214,23 @@ export function runCli(argv: string[]): number | null {
   if (args.showList) {
     printList()
     return 0
+  }
+
+  if (args.whyOff) {
+    const fileConfig = args.configPath
+      ? loadConfigFromPath(args.configPath)
+      : loadConfig(resolve('.'))
+    const config = getPreset(args.preset ?? fileConfig?.preset ?? 'recommended')
+    for (const [id, entry] of Object.entries(fileConfig?.rules ?? {})) config.rules[id] = entry
+    for (const [id, sev] of Object.entries(args.ruleOverrides)) config.rules[id] = sev
+    const state = explainRuleState(args.whyOff, {
+      config,
+      // A dependency gate is only meaningful relative to a file, so use the
+      // first path the user gave (defaulting to cwd) as the probe point.
+      filePath: resolve(args.paths[0] ?? '.'),
+    })
+    console.log(formatRuleState(state))
+    return state.found ? 0 : 1
   }
 
   if (args.lspMode) {

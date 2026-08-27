@@ -111,6 +111,20 @@ export interface RuleMeta {
    * library-author rule, so it stays in the shipped presets.
    */
   scope?: 'framework' | 'monorepo'
+  /**
+   * The package this rule is ABOUT. When set, the rule self-suppresses in a
+   * project that does not declare that dependency — a project with no
+   * `@pyreon/query` never sees query rules, even with the rule enabled.
+   *
+   * The gate itself lives in the rule body (`isProjectDependency(...)`); this
+   * field DECLARES it so tooling can explain it. Without the declaration the
+   * gate is invisible: `--why-off` could only say "the rule ran and reported
+   * nothing", which is indistinguishable from "your code is clean".
+   *
+   * `rule-registry.test.ts` asserts the declaration matches the gate the rule
+   * source actually performs, so the two cannot drift.
+   */
+  requiresDependency?: string
 }
 
 // ── Rule Options ────────────────────────────────────────────────────────────

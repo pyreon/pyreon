@@ -57,6 +57,7 @@ export const primitiveMediaNeedsLabel: Rule = {
     description:
       'In @pyreon/primitives projects, every <Image>/<Icon> needs an accessibilityLabel (or alt/aria-label), or accessibilityHidden if decorative.',
     severity: 'error',
+    requiresDependency: '@pyreon/primitives',
     fixable: false,
     optIn: true,
     schema: { exemptPaths: 'string[]' },

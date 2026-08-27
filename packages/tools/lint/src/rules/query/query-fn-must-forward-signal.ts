@@ -146,6 +146,7 @@ export const queryFnMustForwardSignal: Rule = {
     description:
       'A queryFn that performs a request must forward the AbortSignal it is given, or TanStack cancellation silently does nothing.',
     severity: 'warn',
+    requiresDependency: '@pyreon/query',
     fixable: false,
     optIn: true,
     schema: { exemptPaths: 'string[]' },

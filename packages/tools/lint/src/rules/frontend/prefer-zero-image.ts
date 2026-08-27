@@ -19,6 +19,7 @@ export const preferZeroImage: Rule = {
     category: 'frontend',
     description: 'In @pyreon/zero projects, prefer the optimized `<Image>` over a raw `<img>`.',
     severity: 'info',
+    requiresDependency: '@pyreon/zero',
     fixable: false,
     optIn: true,
     schema: { exemptPaths: 'string[]' },
