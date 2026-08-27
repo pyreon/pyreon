@@ -56,6 +56,11 @@ function isAttachedUnder(node: object, root: object): boolean {
     if (pmeta === undefined || !pmeta.children.has(cur)) return false // detached
     cur = parent
   }
+  /* v8 ignore next 4 -- the loop cap is a runaway guard, not a code path. Every
+     iteration walks strictly up a parent chain that `instanceMeta` maintains as
+     acyclic, so reaching 100,000 hops means the tree is already corrupt in a way
+     no test can construct through the public API. Covered by construction, not
+     by a spec. */
   return false
 }
 
@@ -87,6 +92,22 @@ export function indexRegister(def: object, id: unknown, node: object): void {
  * this one) is left in place — it is still the right answer for a query from
  * its own root.
  */
+/**
+ * @internal Test-only probe: how many entries the index holds for `def`.
+ *
+ * Exists because the dead-ref prune in `indexLookup` has no other observer. Its
+ * RETURN value is unchanged by pruning — a dead `WeakRef` falls through to the
+ * `meta === undefined` exit and yields `undefined` either way — so a spec that
+ * only checks the return value passes with the prune deleted. The prune is
+ * purely leak prevention (class C: a module-level map whose eviction trigger is
+ * a collection that has already happened), and leak prevention that nothing
+ * observes is leak prevention that silently rots. Not re-exported from the
+ * package barrel.
+ */
+export function _indexEntryCount(def: object): number {
+  return index.get(def)?.size ?? 0
+}
+
 export function indexLookup(
   def: object,
   id: unknown,

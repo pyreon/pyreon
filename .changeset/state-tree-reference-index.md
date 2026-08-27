@@ -26,3 +26,9 @@ detach, destroy, re-parent and GC are all handled by validation + fallback.
 Bisect-verified: disabling the fast path makes a repeated resolve redo the full
 walk; stubbing the attachment check to a `getRoot`-style test resolves a detached
 node the DFS would not — both fail their specs.
+
+The dead-`WeakRef` prune in the index now has a test, and a `_indexEntryCount`
+probe to make it observable. It needed one: the prune does not change what
+`indexLookup` returns — a dead ref falls through to the `meta === undefined`
+exit and yields `undefined` either way — so its only job is keeping the map from
+growing one dead entry per collected node, and nothing was watching that.
