@@ -39,14 +39,17 @@ function diagIds(result: ReturnType<typeof lintFile>): string[] {
 // Sanity: the `best-practices` preset is the opt-in switch — under
 // `recommended` this rule stays OFF even when passed as rules[].
 describe('pyreon/anchor-is-valid — opt-in mechanic', () => {
-  it('does NOT fire under the `recommended` preset (opt-in OFF)', () => {
+  it('DOES fire under the `recommended` preset — a11y basics are on by default', () => {
+    // Promoted OUT of opt-in: this is an unambiguous WCAG failure with an
+    // ecosystem counterpart in oxlint's `correctness` tier, and shipping it
+    // opt-in meant a fresh Pyreon app had NO a11y checking at all.
     const result = lintFile(
       'src/App.tsx',
       `function App() { return <a>x</a> }`,
       ANCHOR_RULES,
       getPreset('recommended'),
     )
-    expect(result.diagnostics).toHaveLength(0)
+    expect(result.diagnostics.length).toBeGreaterThan(0)
   })
 })
 

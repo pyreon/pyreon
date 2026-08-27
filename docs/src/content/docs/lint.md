@@ -344,6 +344,12 @@ Overlapping fixes from different rules are **deferred**, not applied blind: the 
 
 Reading fixes programmatically? `Diagnostic.fix` is `Fix | readonly Fix[]` — normalize with `fixEdits(d.fix)`.
 
+### Accessibility is on by default
+
+Six a11y rules ship **on** in every standard preset — `require-img-alt`, `anchor-is-valid`, `no-autofocus`, `no-redundant-role`, `no-positive-tabindex` and `primitive-media-needs-label`. Each is an unambiguous WCAG failure with a counterpart in oxlint's `correctness` tier, so a fresh Pyreon app gets the same a11y floor an ESLint user expects. `primitive-media-needs-label` is dependency-gated, so it stays silent unless you use `@pyreon/primitives`.
+
+What remains opt-in is deliberately a different class: **layout shift** (`img-requires-dimensions`, `content-visibility-needs-intrinsic-size`), **heuristic detection** that can't see across components (`heading-order`, `color-contrast`), and **`@pyreon/zero` preferences** (`prefer-zero-image`, `no-discarded-optimize-fields`). Enable those with the `best-practices` preset or per rule.
+
 ### Rule groups
 
 Every rule belongs to one of four **groups** — the axis the 19 categories don't capture: *what knowledge does this rule require, and does it ship?*

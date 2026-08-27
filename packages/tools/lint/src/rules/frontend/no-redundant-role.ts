@@ -51,7 +51,11 @@ const IMPLICIT_ROLE: Readonly<Record<string, string>> = {
   dialog: 'dialog',
 }
 
-function getStaticAttr(openingElement: any, attrName: string): any | null {
+/**
+ * Find an attribute by NAME. Says nothing about its value being static —
+ * `getStaticStringAttr` is the one that proves that.
+ */
+function getAttr(openingElement: any, attrName: string): any | null {
   const attrs = openingElement?.attributes ?? []
   for (const attr of attrs) {
     if (
@@ -65,14 +69,34 @@ function getStaticAttr(openingElement: any, attrName: string): any | null {
   return null
 }
 
+/**
+ * Find an attribute whose value is a literal STRING — i.e. one whose presence
+ * at runtime is provable from the source.
+ *
+ * This distinction is load-bearing for `<a>`. A dynamic `href={x}` may resolve
+ * to `undefined`, and Pyreon's `applyProp` REMOVES a nullish attribute — so
+ * the element renders with no `href`, has no implicit `link` role, and an
+ * explicit `role="link"` on it is meaningful rather than redundant. Treating
+ * the mere presence of an `href` attribute as proof produced exactly that
+ * false positive.
+ */
+function getStaticStringAttr(openingElement: any, attrName: string): any | null {
+  const attr = getAttr(openingElement, attrName)
+  const value = attr?.value
+  if (!value || value.type !== 'Literal' || typeof value.value !== 'string') return null
+  return attr
+}
+
 export const noRedundantRole: Rule = {
   meta: {
     id: 'pyreon/no-redundant-role',
     category: 'frontend',
     description: 'Disallow an ARIA role that duplicates the element’s implicit role.',
     severity: 'warn',
+    // On by DEFAULT: an unambiguous WCAG failure with an ecosystem
+    // counterpart in oxlint's `correctness` tier (jsx-a11y/no-redundant-roles).
+    // Shipping it opt-in meant a fresh Pyreon app had no a11y checking at all.
     fixable: true,
-    optIn: true,
     schema: { exemptPaths: 'string[]' },
   },
   create(context) {
@@ -95,7 +119,7 @@ export const noRedundantRole: Rule = {
         // `<a>` only has an implicit `link` role when a static `href`
         // attribute is present.
         if (tag === 'a') {
-          if (getStaticAttr(opening, 'href')) {
+          if (getStaticStringAttr(opening, 'href')) {
             implicitRole = 'link'
           } else {
             return
@@ -104,7 +128,7 @@ export const noRedundantRole: Rule = {
 
         if (!implicitRole) return
 
-        const roleAttr = getStaticAttr(opening, 'role')
+        const roleAttr = getAttr(opening, 'role')
         if (!roleAttr) return
 
         const value = roleAttr.value
