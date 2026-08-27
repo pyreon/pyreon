@@ -381,6 +381,10 @@ final class PyreonTasksUITests: XCTestCase {
             "styled() wrapper did not render its child"
         )
         XCTAssertTrue(
+            app.staticTexts["toolkit-rocket-text"].firstMatch.exists,
+            "rocketstyle .theme() wrapper did not render its child"
+        )
+        XCTAssertTrue(
             app.staticTexts["toolkit-el-a"].firstMatch.exists,
             "Element did not render its first child"
         )

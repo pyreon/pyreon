@@ -43,6 +43,20 @@ export interface ThemeEngine {
   // fn — `<PyreonUI>` passes it straight through, so reuse styler's type and
   // ui-core never needs unistyle's `cpse` types.
   cpseRewrite: Parameters<typeof setStyleExtraction>[1]
+  /**
+   * Turn a resolved theme object into responsive CSS — unistyle's
+   * `makeItResponsive`, with unistyle supplying its own `styles` internally so
+   * this seam stays narrow.
+   *
+   * Exists because `.theme()` on a rocketstyle chain supplies VALUES, and
+   * nothing turned them into CSS unless the author also chained `.styles()`.
+   * `@pyreon/native-compiler` reads `.theme()` statically and emits real view
+   * modifiers, so one declaration was fully styled on iOS/Android and
+   * completely unstyled in a browser. rocketstyle cannot import unistyle
+   * (it does not depend on it, and must keep working without it), so the
+   * bridge arrives the same way `enrichTheme` does.
+   */
+  responsiveStyles: (theme: unknown, css: unknown) => unknown
 }
 
 let _engine: ThemeEngine | null = null
@@ -57,6 +71,10 @@ const FALLBACK_ENGINE: ThemeEngine = {
   enrichTheme: (theme) => theme,
   themeToCssVars: () => ({ vars: {}, css: '' }),
   cpseRewrite: ((fragment: string) => fragment) as ThemeEngine['cpseRewrite'],
+  // No unistyle in the graph means no responsive engine to render through, so
+  // emit nothing — the same "degrade, never throw" contract the rest of this
+  // fallback keeps. A bare-rocketstyle app is exactly as styled as before.
+  responsiveStyles: () => undefined,
 }
 
 /**

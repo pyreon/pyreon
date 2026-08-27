@@ -1,6 +1,15 @@
 import { mergeProps } from '@pyreon/core'
 import { SizedMap } from '@pyreon/sized-map'
-import { compose, config, hoistNonReactStatics, omit, pick, render, resolveCssVariables } from '@pyreon/ui-core'
+import {
+  compose,
+  config,
+  getThemeEngine,
+  hoistNonReactStatics,
+  omit,
+  pick,
+  render,
+  resolveCssVariables,
+} from '@pyreon/ui-core'
 import { LocalThemeManager } from './cache'
 import { CONFIG_KEYS, PSEUDO_AND_META_KEYS, PSEUDO_KEYS, STYLING_KEYS } from './constants'
 import createLocalProvider from './context/createLocalProvider'
@@ -82,6 +91,29 @@ const cloneAndEnhance: CloneAndEnhance = (defaultOpts, opts) => {
 }
 
 // --------------------------------------------------------
+/**
+ * Default `.styles()` for a chain that declared none — renders `$rocketstyle`
+ * (the resolved theme for this instance's dimensions) through unistyle's
+ * responsive engine.
+ *
+ * The pseudo-state groups are stripped: they are nested theme objects, not CSS
+ * declarations, and emitting them at the top level would produce garbage
+ * properties. Handling them properly is what an explicit `.styles()` chain is
+ * for — this default covers the base declarations, which is what a `.theme()`
+ * with no styles is asking for.
+ */
+const defaultThemeBridge = (css: any) => css`
+  ${(props: Record<string, any>) => {
+    const rocketstyle = props.$rocketstyle
+    if (!rocketstyle) return ''
+    // Discarded on purpose — see the doc comment: these are nested theme
+    // OBJECTS, not declarations, so they must not reach the base emit.
+    const { hover: _h, focus: _f, active: _a, disabled: _d, ...base } = rocketstyle
+    const rendered = getThemeEngine().responsiveStyles(base, css)
+    return typeof rendered === 'function' ? rendered(props) : (rendered ?? '')
+  }}
+`
+
 // rocketComponent
 // --------------------------------------------------------
 // @ts-expect-error
@@ -101,11 +133,26 @@ const rocketComponent: RocketComponent = (options) => {
   // AFTER `@layer elements` in the cascade ordering (see sheet.ts).
   // This ensures rocketstyle theme styles always override element base
   // styles regardless of source order.
+  // `.theme()` supplies VALUES; something has to turn them into CSS. A chain
+  // that declares `.theme()` and no `.styles()` used to render COMPLETELY
+  // UNSTYLED on the web, while `@pyreon/native-compiler` reads the same
+  // `.theme()` statically and emits real view modifiers — so one declaration
+  // was fully styled on iOS/Android and bare in a browser.
+  //
+  // Only when the author chained NO `.styles()`: an explicit chain already owns
+  // the bridge (that is exactly what `el` in @pyreon/ui/components does), and
+  // adding a second one would emit the theme twice.
+  //
+  // Reaches unistyle through ui-core's engine seam rather than a dependency,
+  // because rocketstyle does not depend on unistyle and must keep working
+  // without it — with no unistyle in the graph the fallback emits nothing, so a
+  // bare-rocketstyle app is exactly as styled as before.
+  const effectiveStyles = styles && styles.length > 0 ? styles : [defaultThemeBridge]
   const STYLED_COMPONENT =
     (component.IS_ROCKETSTYLE ?? options.styled !== true)
       ? component
       : styled(component, { layer: 'rocketstyle' })`
-          ${calculateStyles(styles)};
+          ${calculateStyles(effectiveStyles)};
         `
 
   // --------------------------------------------------------

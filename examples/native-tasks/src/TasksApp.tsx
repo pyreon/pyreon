@@ -64,6 +64,7 @@ import { Container, Row, Col } from '@pyreon/coolgrid'
 import { Element } from '@pyreon/elements'
 import { createMachine } from '@pyreon/machine'
 import { useHotkey } from '@pyreon/hotkeys'
+import { rocketstyle } from '@pyreon/rocketstyle'
 import { styled } from '@pyreon/styler'
 import { zodSchema } from '@pyreon/validation'
 import { z } from 'zod'
@@ -487,6 +488,15 @@ function send() { window.pyreonPostMessage && window.pyreonPostMessage(String(wi
 window.addEventListener('pyreondata', send); setTimeout(send, 0);
 </script></body>`
 
+// rocketstyle with `.theme()` and NO `.styles()` — the chain that used to be
+// fully styled on iOS/Android and completely unstyled in a browser. It now
+// renders its theme through unistyle on the web too, so the same declaration
+// styles on all three targets.
+const RocketCard = rocketstyle()({ name: 'RocketCard', component: Element }).theme(() => ({
+  backgroundColor: '#334155',
+  padding: 8,
+}))
+
 const api = createHttp({ baseUrl: 'https://example.com' })
 const getTask = api.endpoint('GET /tasks/:id')
 
@@ -661,6 +671,9 @@ function ToolkitScreen() {
         Check
       </Button>
       <Text data-testid="toolkit-schema-valid">{String(schemaForm.isValid())}</Text>
+      <RocketCard data-testid="toolkit-rocket">
+        <Text data-testid="toolkit-rocket-text">rocket</Text>
+      </RocketCard>
       <Element gap={2} data-testid="toolkit-element">
         <Text data-testid="toolkit-el-a">a</Text>
         <Text data-testid="toolkit-el-b">b</Text>

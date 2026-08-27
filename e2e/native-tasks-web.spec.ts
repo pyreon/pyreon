@@ -116,6 +116,16 @@ test.describe('native-tasks-web — the shared source renders on the third targe
     // coolgrid: Container > Row > Col nests and renders the leaf.
     await expect(page.getByTestId('toolkit-grid-cell')).toBeVisible()
 
+    // rocketstyle: a `.theme()` chain with NO `.styles()`. This is the shape
+    // that used to render completely unstyled here while being fully styled on
+    // both native targets — so assert the COMPUTED value, which is the only
+    // thing that can tell "rendered" from "rendered AND themed".
+    await expect(page.getByTestId('toolkit-rocket-text')).toBeVisible()
+    expect(
+      await page.getByTestId('toolkit-rocket').evaluate((el) => getComputedStyle(el).backgroundColor),
+      'rocketstyle .theme() did not reach the DOM',
+    ).toBe('rgb(51, 65, 85)')
+
     // elements: the flex primitive renders BOTH children and applies its gap.
     await expect(page.getByTestId('toolkit-el-a')).toBeVisible()
     await expect(page.getByTestId('toolkit-el-b')).toBeVisible()

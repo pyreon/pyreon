@@ -264,7 +264,7 @@ export function C() { return (<Box><Text>hi</Text></Box>) }`,
     name: '@pyreon/rocketstyle',
     mechanism: 'pmtc-lowers',
     rationale:
-      'rocketstyle(Element).theme()/.attrs() dimensions lower to native styled components — the NATIVE emit carries the theme as real view modifiers. On the WEB `.theme()` supplies values that only become CSS through a `.styles()` bridge (unistyle `makeItResponsive`, as `el` in @pyreon/ui/components does), so a bare `.theme()` chain styles on native and renders unstyled in a browser. Use `styled()` from @pyreon/styler for shared source that must style on all three.',
+      'rocketstyle(Element).theme()/.attrs() dimensions lower to native styled components, and the SAME chain now styles on the web: a chain with `.theme()` and no `.styles()` renders its theme through unistyle\'s responsive engine, reached via ui-core\'s engine seam (rocketstyle carries no unistyle dependency and degrades to no CSS without it). Before that a theme-only chain was fully styled on iOS/Android and completely unstyled in a browser.',
     // The registry used `rocketstyle(Element)` — a call form that does not exist in
     // the RUNTIME either (init.ts is curried: `rocketstyle()({name, component})`),
     // so `readCurriedPrimitive` bailed BEFORE its own warning and the module-decl
@@ -273,9 +273,9 @@ export function C() { return (<Box><Text>hi</Text></Box>) }`,
     // The base is `Element`, which is what the rationale has always SAID and the
     // snippet did not do — it used a bare `Stack` primitive. The difference is
     // real and web-side: over a primitive, rocketstyle emits no class at all;
-    // over Element it at least gets Element's own layout CSS. Both lower
-    // identically on native, which is exactly why the mismatch survived — a
-    // native-only check cannot see it.
+    // over Element the theme renders through unistyle. Both lower identically on
+    // native, which is exactly why the mismatch survived — a native-only check
+    // cannot see it.
     snippet: `import { rocketstyle } from '@pyreon/rocketstyle'
 import { Element } from '@pyreon/elements'
 import { Stack, Text } from '@pyreon/primitives'

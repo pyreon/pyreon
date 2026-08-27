@@ -352,6 +352,7 @@ class TasksAppInstrumentedTest {
         // is — that each styled wrapper renders its CHILDREN. The web e2e
         // asserts the computed CSS, which only a browser can see.
         composeRule.onNodeWithTag("toolkit-card-text").assertIsDisplayed()
+        composeRule.onNodeWithTag("toolkit-rocket-text").assertIsDisplayed()
         composeRule.onNodeWithTag("toolkit-el-a").assertIsDisplayed()
         composeRule.onNodeWithTag("toolkit-el-b").assertIsDisplayed()
 
