@@ -141,3 +141,113 @@ describe('run', () => {
     ).rejects.toThrow('unknown plugin')
   })
 })
+
+describe('multi-project config', () => {
+  const SECOND = `
+openapi: 3.0.3
+info: { title: Billing, version: '2' }
+servers: [{ url: 'https://billing.test' }]
+paths:
+  /invoices:
+    get:
+      operationId: listInvoices
+      tags: [billing]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Invoice' } }
+components:
+  schemas:
+    Invoice:
+      type: object
+      required: [id]
+      properties: { id: { type: string } }
+`
+
+  const twoProjects = {
+    // Shared settings written ONCE; each project overrides what differs.
+    plugins: ['schemas'] as const,
+    projects: [
+      { name: 'catalog', input: 'openapi.yaml', output: 'packages/catalog/src/gen' },
+      { name: 'billing', input: 'billing.yaml', output: 'packages/billing/src/gen' },
+    ],
+  }
+
+  it('generates each project to its OWN output path', async () => {
+    const fs = memFs({ 'billing.yaml': SECOND })
+    const r = await run(parseArgv(['generate']), twoProjects, fs)
+    expect(r.code).toBe(0)
+    expect(fs.files['packages/catalog/src/gen/schemas.ts']).toContain('export const Book')
+    expect(fs.files['packages/billing/src/gen/schemas.ts']).toContain('export const Invoice')
+    // Each output carries ONLY its own spec's models.
+    expect(fs.files['packages/catalog/src/gen/schemas.ts']).not.toContain('Invoice')
+    expect(fs.files['packages/billing/src/gen/schemas.ts']).not.toContain('export const Book')
+  })
+
+  it('inherits top-level settings and lets a project override them', async () => {
+    const fs = memFs({ 'billing.yaml': SECOND })
+    await run(
+      parseArgv(['generate']),
+      {
+        ...twoProjects,
+        projects: [
+          twoProjects.projects[0]!,
+          { ...twoProjects.projects[1]!, plugins: ['schemas', 'mocks'] },
+        ],
+      },
+      fs,
+    )
+    // `plugins: ['schemas']` inherited by catalog, overridden by billing.
+    expect(fs.files['packages/catalog/src/gen/mocks.ts']).toBeUndefined()
+    expect(fs.files['packages/billing/src/gen/mocks.ts']).toBeDefined()
+  })
+
+  it('labels each project in the report', async () => {
+    const fs = memFs({ 'billing.yaml': SECOND })
+    const r = await run(parseArgv(['generate']), twoProjects, fs)
+    expect(r.stdout).toContain('catalog')
+    expect(r.stdout).toContain('billing')
+  })
+
+  it('wraps --json output only when there is more than one project', async () => {
+    // A single-project run keeps the flat object it always had, so an existing
+    // `--json` consumer is unaffected by this feature existing.
+    const fs = memFs({ 'billing.yaml': SECOND })
+    const many = JSON.parse(
+      (await run(parseArgv(['generate', '--json']), twoProjects, fs)).stdout,
+    ) as { projects: { name: string }[] }
+    expect(many.projects.map((p) => p.name)).toEqual(['catalog', 'billing'])
+
+    const one = JSON.parse(
+      (await run(parseArgv(['generate', 'openapi.yaml', '--out', 'g', '--json']), undefined, memFs()))
+        .stdout,
+    ) as { projects?: unknown; operations: number }
+    expect(one.projects).toBeUndefined()
+    expect(one.operations).toBe(1)
+  })
+
+  it('REFUSES a CLI --out alongside projects instead of writing them all to one place', async () => {
+    const fs = memFs({ 'billing.yaml': SECOND })
+    const r = await run(parseArgv(['generate', '--out', 'somewhere']), twoProjects, fs)
+    expect(r.code).toBe(1)
+    expect(r.stdout).toContain('ambiguous')
+    expect(fs.files['somewhere/schemas.ts']).toBeUndefined()
+  })
+
+  it('check fails when ANY project is stale', async () => {
+    const fs = memFs({ 'billing.yaml': SECOND })
+    await run(parseArgv(['generate']), twoProjects, fs)
+    fs.files['packages/billing/src/gen/schemas.ts'] = '// hand-edited'
+    const r = await run(parseArgv(['check']), twoProjects, fs)
+    expect(r.code).toBe(1)
+    expect(r.stdout).toContain('STALE')
+  })
+
+  it('names a duplicate or missing project name rather than guessing', async () => {
+    const dup = { projects: [{ name: 'x', input: 'openapi.yaml' }, { name: 'x', input: 'openapi.yaml' }] }
+    await expect(run(parseArgv(['generate']), dup, memFs())).rejects.toThrow('both named')
+    const noName = { projects: [{ input: 'openapi.yaml' } as never] }
+    await expect(run(parseArgv(['generate']), noName, memFs())).rejects.toThrow('no `name`')
+  })
+})

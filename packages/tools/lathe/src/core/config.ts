@@ -19,7 +19,31 @@ export const ALL_PLUGINS: readonly PluginName[] = [
 
 export const DEFAULT_PLUGINS: readonly PluginName[] = ['schemas', 'client', 'queries']
 
+/**
+ * One generated client. Every field a single-project config takes, plus a name.
+ *
+ * Named after `@pyreon/atlas`'s `projects` for the same reason it has one: a
+ * monorepo routinely has several APIs, and pointing one tool run at each of
+ * them beats running the tool N times with N config files that drift apart.
+ */
+export interface LatheProject extends Omit<LatheSection, 'projects'> {
+  /** Identifies the project in the report and in error messages. */
+  name: string
+  /** Required per project - there is no single top-level spec to fall back on. */
+  input: string
+}
+
 export interface LatheSection {
+  /**
+   * Several specs in one run, each with its own output and target.
+   *
+   * When present, the top-level `input`/`output` are IGNORED - a config that
+   * silently generated BOTH would produce output nobody asked for. Fields not
+   * set on a project fall back to the top-level value, so shared settings
+   * (`target`, `plugins`) are written once.
+   */
+  projects?: readonly LatheProject[]
+
   /** Path to the OpenAPI document (`.json`, `.yaml`, `.yml`). */
   input?: string
   /** Output directory, relative to the config file. */
@@ -48,12 +72,47 @@ export interface LatheSection {
 }
 
 export interface ResolvedConfig {
+  /** Project name, or `''` for a single-project config. */
+  name: string
   input: string
   output: string
   target: 'web' | 'multiplatform'
   plugins: readonly PluginName[]
   baseUrl?: string | undefined
   strictNative: boolean
+}
+
+/**
+ * Resolve every project this config describes.
+ *
+ * Always a LIST, so the caller has one code path. A single-project config
+ * resolves to a one-element list rather than a special case.
+ */
+export function resolveProjects(section: LatheSection | undefined): ResolvedConfig[] {
+  const projects = section?.projects
+  if (!projects || projects.length === 0) return [resolveConfig(section)]
+
+  const seen = new Set<string>()
+  return projects.map((p, i) => {
+    if (!p.name) {
+      throw new Error(
+        `[Pyreon] lathe: lathe.projects[${i}] has no \`name\`. It identifies the project in the report and in errors.`,
+      )
+    }
+    if (seen.has(p.name)) {
+      throw new Error(
+        `[Pyreon] lathe: two projects are both named \`${p.name}\`. Names must be unique - they key the report.`,
+      )
+    }
+    seen.add(p.name)
+    // Project fields win; anything absent falls back to the top level, so
+    // `target` and `plugins` are written once and shared.
+    // `projects` is dropped rather than set to undefined:
+    // `exactOptionalPropertyTypes` treats `{ projects: undefined }` and an
+    // absent key as different types, and only the absent key is legal here.
+    const { projects: _drop, ...base } = { ...section, ...p }
+    return { ...resolveConfig(base), name: p.name }
+  })
 }
 
 /** Fill defaults. Throws with actionable text when a required field is absent. */
@@ -73,6 +132,7 @@ export function resolveConfig(section: LatheSection | undefined): ResolvedConfig
     }
   }
   return {
+    name: '',
     input,
     output: section?.output ?? './src/gen',
     target: section?.target ?? 'web',

@@ -96,6 +96,65 @@ export default {
 }
 ```
 
+### Pick only what you want
+
+`plugins` is the whole emitter set; omit one and it does not run. Schemas alone
+is a normal thing to want:
+
+```ts
+lathe: { input: './openapi.yaml', output: './src/schemas', plugins: ['schemas'] }
+```
+
+```bash
+lathe generate --plugins schemas          # just s.* schemas + types
+lathe generate --plugins schemas,mocks    # ...and deterministic fixtures
+```
+
+| plugin | emits |
+| --- | --- |
+| `types` | plain TypeScript types, no runtime |
+| `schemas` | `@pyreon/validate` schemas + inferred types |
+| `client` | the `createHttp` client + one endpoint per operation |
+| `queries` | `useQuery` / `useMutation` hooks |
+| `mocks` | route table for `@pyreon/http`'s mock middleware |
+| `atlas` | workbench scenarios, one per enum value |
+
+`target: 'multiplatform'` is additive on top of whichever of these you picked —
+it adds the native LAYOUT for `client`/`queries`, so asking for `schemas` alone
+gets you schemas alone on both targets.
+
+### Several specs, several outputs
+
+A monorepo usually has more than one API. `projects` runs them in one pass, each
+to its own path, with shared settings written once:
+
+```ts
+// pyreon.config.ts
+export default {
+  lathe: {
+    // Inherited by every project unless it says otherwise.
+    target: 'multiplatform',
+    plugins: ['schemas', 'client', 'queries'],
+    projects: [
+      { name: 'catalog', input: './specs/catalog.yaml', output: './packages/catalog/src/gen' },
+      { name: 'billing', input: './specs/billing.yaml', output: './packages/billing/src/gen' },
+      // Overrides what it needs to; inherits the rest.
+      { name: 'legacy', input: './specs/legacy.json', output: './packages/legacy/src/gen', target: 'web' },
+    ],
+  },
+}
+```
+
+`output` is an ordinary path, so pointing a project at **another package in the
+workspace** is the intended use — the generated client lives in the package that
+owns it, and the imports between generated files stay internal to that output
+directory.
+
+`lathe check` covers every project and fails if ANY is stale. A CLI `--out` or
+spec path alongside `projects` is **refused**, not applied to all of them: one
+path cannot address one project among many, and writing every client into a
+single directory is never what was meant.
+
 `lathe check` regenerates in memory and fails when committed output has drifted
 from the spec — the CI half, same contract as `gen-docs --check`.
 

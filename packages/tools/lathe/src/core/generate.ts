@@ -53,7 +53,11 @@ export function generate(specText: string, config: ResolvedConfig): GenerateResu
   }
   if (has('mocks')) push(emitMocks(doc))
   if (has('atlas')) push(emitAtlasScenarios(doc))
-  if (native) {
+  // The native modules are the `client` + `queries` emitters' native LAYOUT,
+  // not a separate output — so they follow the same plugin selection. Emitting
+  // them unconditionally meant `--plugins schemas` still produced a client and
+  // a data component, which is the opposite of what was asked for.
+  if (native && (has('client') || has('queries'))) {
     for (const f of emitNativeModules(doc, { native, baseUrl: config.baseUrl })) push(f)
   }
 
