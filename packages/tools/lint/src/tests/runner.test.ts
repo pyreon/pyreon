@@ -3815,3 +3815,54 @@ describe('pyreon/require-browser-smoke-test', () => {
     }
   })
 })
+
+describe('config diagnostics — the paths that are not the happy one', () => {
+  /** A config whose rule options are the wrong SHAPE, so validation rejects. */
+  function badOptionsConfig(): LintConfig {
+    const base = getPreset('recommended')
+    return {
+      ...base,
+      rules: {
+        ...base.rules,
+        'pyreon/no-window-in-ssr': ['error', { exemptPaths: 'not-an-array' }],
+      },
+    } as LintConfig
+  }
+
+  it('DEDUPES within a caller-supplied sink across files', () => {
+    // A repo-wide run lints thousands of files against ONE config. Without the
+    // dedupe the reader gets the same "your config is wrong" line once per
+    // file, which buries every real finding under it.
+    const sink: ConfigDiagnostic[] = []
+    const cfg = badOptionsConfig()
+    lintFile('src/A.tsx', 'const w = window.innerWidth', allRules, cfg, undefined, sink)
+    const afterFirst = sink.length
+    lintFile('src/B.tsx', 'const w = window.innerWidth', allRules, cfg, undefined, sink)
+    expect(afterFirst).toBeGreaterThanOrEqual(1)
+    expect(sink.length).toBe(afterFirst)
+  })
+
+  it('falls back to stderr when there is NO sink — standalone lintFile still reports', () => {
+    // `lintFile` is public API. Called without a sink it must not swallow a
+    // broken config: silence there reads as "the rule found nothing", which is
+    // the opposite of what happened.
+    const errs: string[] = []
+    const spy = vi.spyOn(console, 'error').mockImplementation((m) => void errs.push(String(m)))
+    try {
+      lintFile('src/A.tsx', 'const w = window.innerWidth', allRules, badOptionsConfig())
+    } finally {
+      spy.mockRestore()
+    }
+    expect(errs.some((m) => m.includes('[pyreon-lint]') && m.includes('must be string[]'))).toBe(
+      true,
+    )
+  })
+
+  it('returns no diagnostics — rather than throwing — on unparseable source', () => {
+    // One syntactically broken file must not take down a whole-repo run.
+    // The parse error is the type-checker's to report, not the linter's.
+    const out = lintFile('src/Broken.tsx', 'const = = = <<<', allRules, defaultConfig())
+    expect(out.diagnostics).toEqual([])
+    expect(out.filePath).toBe('src/Broken.tsx')
+  })
+})

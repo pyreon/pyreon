@@ -7,6 +7,7 @@ import {
   PARALLEL_FILE_THRESHOLD,
   _workerEntry,
   lintAsync,
+  resolveWorkerEntry,
   partition,
   planRun,
   workerCountFor,
@@ -76,6 +77,14 @@ describe('partition', () => {
     expect(chunks).toHaveLength(5)
     const sizes = chunks.map((c) => c.length)
     expect(Math.max(...sizes) - Math.min(...sizes)).toBeLessThanOrEqual(1)
+  })
+
+  it('returns a single chunk for n <= 1 — one worker means no split', () => {
+    // `workerCountFor` can legitimately return 1, and partitioning into one
+    // chunk must be the identity rather than a copy that reorders anything.
+    const items = [1, 2, 3]
+    expect(partition(items, 1)).toEqual([items])
+    expect(partition(items, 0)).toEqual([items])
   })
 
   it('handles n larger than the item count without emitting empty chunks', () => {
@@ -277,5 +286,46 @@ describe('planRun — the decision is explicit, not an exception', () => {
       expect(plan.workers).toBeGreaterThan(0)
       expect(plan.entry).toBe(real)
     }
+  })
+})
+
+describe('resolveWorkerEntry — the fallback, made verifiable', () => {
+  // The wiring reads `import.meta.resolve` and `existsSync`, neither of which
+  // can be un-defined in-process — so before this split the fallback was
+  // literally untestable, which is how it shipped disabling the worker pool.
+  const never = () => false
+  const always = () => true
+
+  it('prefers the export-map resolution when the host offers one', () => {
+    const out = resolveWorkerEntry('file:///pkg/lib/lint-worker.js', 'file:///pkg/lib/_chunks/p.js', never)
+    expect(out).toBe('/pkg/lib/lint-worker.js')
+    // ...and does NOT consult the filesystem to get there.
+  })
+
+  it('falls back to the SIBLING candidate when there is no resolver', () => {
+    const out = resolveWorkerEntry(null, 'file:///pkg/src/parallel.ts', (p) =>
+      p === '/pkg/src/lint-worker.ts')
+    expect(out).toBe('/pkg/src/lint-worker.ts')
+  })
+
+  it('falls back to the PARENT candidate for the bundled layout', () => {
+    // The shape that broke: `parallel.ts` folded into `lib/_chunks/`, so the
+    // worker is one directory UP. The sibling guess misses it.
+    const out = resolveWorkerEntry(null, 'file:///pkg/lib/_chunks/parallel.js', (p) =>
+      p === '/pkg/lib/lint-worker.js')
+    expect(out).toBe('/pkg/lib/lint-worker.js')
+  })
+
+  it('picks the extension from the module it is running as', () => {
+    expect(resolveWorkerEntry(null, 'file:///pkg/src/parallel.ts', always)).toMatch(/lint-worker\.ts$/)
+    expect(resolveWorkerEntry(null, 'file:///pkg/lib/parallel.js', always)).toMatch(/lint-worker\.js$/)
+  })
+
+  it('returns the primary candidate when NOTHING exists, so the failure names a path', () => {
+    // Returning something unusable beats returning nothing: `planRun` then
+    // reports `entry-missing` instead of the pool vanishing without a word.
+    const out = resolveWorkerEntry(null, 'file:///pkg/lib/_chunks/parallel.js', never)
+    expect(out).toBe('/pkg/lib/_chunks/lint-worker.js')
+    expect(planRun(FILE_COUNT, out)).toEqual({ kind: 'sequential', reason: 'entry-missing' })
   })
 })
