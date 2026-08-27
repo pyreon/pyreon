@@ -13,7 +13,7 @@ import { resolveTransform, verifyNative, worstVerdict } from '../verify/lower'
 import { renderReport } from './report'
 
 export interface Argv {
-  command: 'generate' | 'check' | 'help'
+  command: 'generate' | 'check' | 'pull' | 'help'
   /** Positional spec path, overriding config. */
   input?: string | undefined
   output?: string | undefined
@@ -55,7 +55,7 @@ export function parseArgv(args: readonly string[]): Argv {
     else if (!a.startsWith('-')) rest.push(a)
   }
   const verb = rest[0]
-  if (verb === 'generate' || verb === 'check') {
+  if (verb === 'generate' || verb === 'check' || verb === 'pull') {
     out.command = verb
     if (rest[1]) out.input = rest[1]
   } else if (verb !== undefined && out.command === 'help') {
@@ -83,6 +83,7 @@ export const HELP = `lathe - generate Pyreon clients from an API spec
 
   lathe generate [spec]     read the spec, write the client
   lathe check    [spec]     generate in memory; fail if anything is stale
+  lathe pull     <url>      fetch a remote spec to the configured input path
 
 Options
   --target web|multiplatform   emit native modules and verify them (default: web)

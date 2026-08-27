@@ -57,7 +57,8 @@
     "build": "vl_rolldown_build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "lint": "oxlint ."
+    "lint": "oxlint .",
+    "bench": "bun bench/scaling.ts"
   },
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
