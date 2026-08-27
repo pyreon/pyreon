@@ -141,3 +141,72 @@ paths:
     expect(out.files.map((f) => f.path)).not.toContain('atlas.wrapper.tsx')
   })
 })
+
+describe('previews are independent of Atlas', () => {
+  it('`components` works with no Atlas involvement at all', () => {
+    // The previews are ordinary Pyreon components over the generated hooks.
+    // Nothing about them is Atlas-shaped, so a project that wants browsable
+    // data components without a workbench gets exactly that.
+    const out = generate(SPEC, resolveConfig({ input: 'x', plugins: ['components'] }))
+    const paths = out.files.map((f) => f.path)
+    expect(paths).toContain('components.tsx')
+    expect(paths).not.toContain('atlas.scenarios.ts')
+    expect(paths).not.toContain('atlas.wrapper.tsx')
+    const src = out.files.find((f) => f.path === 'components.tsx')?.contents ?? ''
+    expect(src.toLowerCase()).not.toContain('atlas')
+    // Imports only what it renders with.
+    const imports = [...src.matchAll(/from '([^']+)'/g)].map((m) => m[1])
+    expect(imports.every((i) => i === '@pyreon/core' || i?.startsWith('./queries/'))).toBe(true)
+  })
+
+  it('the dependency runs ONE way: atlas needs components, not the reverse', () => {
+    const withAtlas = generate(SPEC, resolveConfig({ input: 'x', plugins: ['atlas'] }))
+    expect(withAtlas.files.map((f) => f.path)).toContain('components.tsx')
+  })
+
+  it('expands a selection to everything its OUTPUT imports', () => {
+    // Selecting `components` alone used to emit previews importing
+    // `./queries/...` that were never generated -- output that looks complete
+    // and does not resolve. These are import edges, not preferences.
+    const only = generate(SPEC, resolveConfig({ input: 'x', plugins: ['components'] }))
+    const paths = only.files.map((f) => f.path)
+    for (const needed of ['schemas.ts', 'client.ts', 'queries/books.ts']) {
+      expect(paths, `components needs ${needed}`).toContain(needed)
+    }
+  })
+
+  it('every emitted relative import resolves to a file in the same run', () => {
+    // The general form of the bug above, checked across every combination
+    // rather than the one that happened to break.
+    for (const plugins of [
+      ['schemas'],
+      ['components'],
+      ['atlas'],
+      ['mocks'],
+      ['types', 'schemas', 'client', 'queries', 'mocks', 'components', 'atlas'],
+    ] as const) {
+      const out = generate(SPEC, resolveConfig({ input: 'x', plugins: plugins as never }))
+      const emitted = new Set(out.files.map((f) => f.path.replace(/\.tsx?$/, '')))
+      for (const f of out.files) {
+        const dir = f.path.includes('/') ? `${f.path.slice(0, f.path.lastIndexOf('/'))}/` : ''
+        // Strip comments first: a doc block legitimately SHOWS an import as
+        // example text, and matching that reports a missing file for a line
+        // that is not an import at all.
+        const code = f.contents.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+        for (const m of code.matchAll(/from '(\.[^']+)'/g)) {
+          const spec = m[1] as string
+          const resolved = new URL(spec, `file:///${dir}`).pathname.replace(/^\//, '')
+          expect(emitted, `${plugins.join(',')}: ${f.path} imports missing ${spec}`).toContain(
+            resolved,
+          )
+        }
+      }
+    }
+  })
+
+  it('reports what dependency expansion pulled in', () => {
+    const cfgOnly = resolveConfig({ input: 'x', plugins: ['components'] })
+    expect(cfgOnly.requestedPlugins).toEqual(['components'])
+    expect(cfgOnly.plugins).toEqual(['schemas', 'client', 'queries', 'components'])
+  })
+})
