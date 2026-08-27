@@ -3,7 +3,7 @@ import { isPathExempt } from '../../utils/exempt-paths'
 import { isProjectDependency } from '../../utils/project-deps'
 
 /**
- * `pyreon/no-querySelector-cast-in-test` — flags
+ * `pyreon/no-query-selector-cast-in-test` — flags
  * `X.querySelector(S) as HTMLY...Element` shapes in test files.
  *
  * Locks in PR #963 (the test-any reduction effort's biggest single
@@ -49,7 +49,7 @@ import { isProjectDependency } from '../../utils/project-deps'
  */
 export const noQuerySelectorCastInTest: Rule = {
   meta: {
-    id: 'pyreon/no-querySelector-cast-in-test',
+    id: 'pyreon/no-query-selector-cast-in-test',
     category: 'architecture',
     description:
       'In test files, `el.querySelector(X) as HTMLY` should use the typed `query()` / `queryOptional()` helper from `@pyreon/test-utils` (locks in PRs #956 + #963).',

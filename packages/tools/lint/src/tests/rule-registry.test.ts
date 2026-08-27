@@ -94,14 +94,31 @@ describe('rule registry invariants', () => {
     expect(dupes, `rule objects listed twice in allRules: ${dupes.join(', ')}`).toEqual([])
   })
 
-  it('every rule id follows the pyreon/<kebab-case> shape', () => {
+  it('every rule id is strictly kebab-case — no exceptions', () => {
+    // `no-querySelector-cast-in-test` used to carry camelCase inside a kebab
+    // id. That is not a naming-convention preference, it is malformed, so it
+    // was renamed rather than pinned. This assertion has no allowlist: a new
+    // id that is not kebab-case fails outright.
     const bad = allRules
       .map((r) => r.meta.id)
       .filter((id) => !/^pyreon\/[a-z0-9]+(-[a-z0-9]+)*$/.test(id))
-    // `no-querySelector-cast-in-test` carries camelCase inside a kebab id.
-    // Locked as a known deviation rather than silently tolerated, so the
-    // list can only shrink.
-    expect(bad).toEqual(['pyreon/no-querySelector-cast-in-test'])
+    expect(bad, `malformed rule ids: ${bad.join(', ')}`).toEqual([])
+  })
+
+  it('ids that match an established ESLint rule name keep that name', () => {
+    // `@pyreon/lint` is meant to be reachable for someone porting an ESLint
+    // config, so where a rule covers the same defect as a well-known ESLint /
+    // jsx-a11y rule it uses that rule's id verbatim. This is deliberately at
+    // odds with a blanket `no-*` / `prefer-*` / `require-*` convention: name
+    // compatibility beats internal tidiness, because it is what makes a
+    // config port over unchanged.
+    const ecosystemNames = ['pyreon/anchor-is-valid', 'pyreon/no-autofocus']
+    for (const id of ecosystemNames) {
+      expect(
+        allRules.some((r) => r.meta.id === id),
+        `${id} matches an upstream ESLint rule name and must not be renamed`,
+      ).toBe(true)
+    }
   })
 
   it('no two rules report the same message at the same span', () => {
@@ -185,7 +202,7 @@ describe('rule registry invariants', () => {
       'pyreon/no-circular-import',
       'pyreon/no-cross-layer-import',
       'pyreon/no-error-without-prefix',
-      'pyreon/no-querySelector-cast-in-test',
+      'pyreon/no-query-selector-cast-in-test',
       'pyreon/require-browser-smoke-test',
       'pyreon/vitest-config-uses-shared',
     ])
