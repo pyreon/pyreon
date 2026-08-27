@@ -795,10 +795,34 @@ function cacheSet(router: RouterInstance, record: RouteRecord, comp: ComponentFn
  */
 function isSegmentPrefix(current: string, target: string): boolean {
   if (target === '/') return false
-  const cs = current.split('/').filter(Boolean)
-  const ts = target.split('/').filter(Boolean)
-  if (ts.length > cs.length) return false
-  return ts.every((seg, i) => seg === cs[i])
+  // Zero-allocation segment-prefix check: walk the non-empty '/'-delimited
+  // segments of `target` and `current` in lockstep, requiring each target
+  // segment to byte-equal the aligned current segment. The old
+  // `split('/').filter(Boolean)` + `.every` allocated two arrays plus a filter
+  // and an every closure per call — and this runs inside the reactive
+  // `activeClass()` accessor for EVERY mounted RouterLink on EVERY navigation.
+  // Consecutive '/' are skipped, matching `filter(Boolean)`'s empty-segment drop.
+  let ci = 0
+  let ti = 0
+  const cl = current.length
+  const tl = target.length
+  for (;;) {
+    while (ci < cl && current.charCodeAt(ci) === 47) ci++ // 47 === '/'
+    while (ti < tl && target.charCodeAt(ti) === 47) ti++
+    if (ti >= tl) return true // target segments exhausted → prefix matched
+    if (ci >= cl) return false // target has more segments than current
+    let ce = ci
+    while (ce < cl && current.charCodeAt(ce) !== 47) ce++
+    let te = ti
+    while (te < tl && target.charCodeAt(te) !== 47) te++
+    const clen = ce - ci
+    if (clen !== te - ti) return false
+    for (let k = 0; k < clen; k++) {
+      if (current.charCodeAt(ci + k) !== target.charCodeAt(ti + k)) return false
+    }
+    ci = ce
+    ti = te
+  }
 }
 
 /**

@@ -287,14 +287,42 @@ export function useIsActive(path: string, exact = false): () => boolean {
 
 /** Match current path segments against a pattern that may contain `:param` segments. */
 function matchSegments(current: string, pattern: string, exact: boolean): boolean {
-  const cs = current.split('/').filter(Boolean)
-  const ps = pattern.split('/').filter(Boolean)
-  if (exact) {
-    if (cs.length !== ps.length) return false
-    return ps.every((seg, i) => seg.startsWith(':') || seg === cs[i])
+  // Zero-allocation segment match (a `:param` pattern segment matches any single
+  // non-empty current segment). Walks the non-empty '/'-delimited segments of
+  // both paths in lockstep: `exact` requires the counts to match, otherwise
+  // `pattern` must be a prefix. Replaces `split('/').filter(Boolean)` + `.every`
+  // (two arrays + closures per call) on the `useIsActive` accessor path.
+  // Consecutive '/' are skipped, matching `filter(Boolean)`'s empty-segment drop.
+  let ci = 0
+  let pi = 0
+  const cl = current.length
+  const pl = pattern.length
+  for (;;) {
+    while (ci < cl && current.charCodeAt(ci) === 47) ci++ // 47 === '/'
+    while (pi < pl && pattern.charCodeAt(pi) === 47) pi++
+    const cHas = ci < cl
+    const pHas = pi < pl
+    if (!pHas) return exact ? !cHas : true // pattern exhausted
+    if (!cHas) return false // pattern has more segments than current
+    if (pattern.charCodeAt(pi) === 58) {
+      // ':param' — matches any single non-empty current segment; advance both
+      while (ci < cl && current.charCodeAt(ci) !== 47) ci++
+      while (pi < pl && pattern.charCodeAt(pi) !== 47) pi++
+    } else {
+      // literal — require byte equality of the two segments
+      let ce = ci
+      while (ce < cl && current.charCodeAt(ce) !== 47) ce++
+      let pe = pi
+      while (pe < pl && pattern.charCodeAt(pe) !== 47) pe++
+      const clen = ce - ci
+      if (clen !== pe - pi) return false
+      for (let k = 0; k < clen; k++) {
+        if (current.charCodeAt(ci + k) !== pattern.charCodeAt(pi + k)) return false
+      }
+      ci = ce
+      pi = pe
+    }
   }
-  if (ps.length > cs.length) return false
-  return ps.every((seg, i) => seg.startsWith(':') || seg === cs[i])
 }
 
 /** Schema entry for typed search params. */
