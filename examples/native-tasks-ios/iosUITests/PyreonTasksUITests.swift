@@ -443,6 +443,15 @@ final class PyreonTasksUITests: XCTestCase {
             )
         }
 
+        // The screen scrolls (see <Scroll> in the shared source), so a control
+        // below the fold has to be brought into view before it can be tapped —
+        // XCUITest's implicit scroll-to-visible is what failed here when the
+        // container did not scroll at all.
+        let machineToggleBtn = app.buttons["toolkit-machine-toggle"].firstMatch
+        if !machineToggleBtn.isHittable {
+            app.swipeUp()
+        }
+
         // machine: the declared initial state, then a transition that must
         // actually MOVE it — the initial value alone would pass against a
         // machine that ignores every event.

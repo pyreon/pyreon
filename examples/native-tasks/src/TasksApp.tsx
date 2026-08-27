@@ -601,6 +601,13 @@ function ToolkitScreen() {
   }))
   return (
     <PyreonUI>
+    // Scrollable, because this screen now carries ~20 packages' readouts and
+    // overflows a phone viewport. Without it XCUITest fails the first tap below
+    // the fold with `kAXScrollToVisibleAction` — it cannot scroll a container
+    // that does not scroll. Found by the iOS device gate, and it is a real app
+    // bug rather than a test artifact: a user could not reach those controls
+    // either.
+    <Scroll direction="vertical" data-testid="toolkit-scroll">
     <Stack gap={3} padding={4} data-testid="toolkit-page">
       <Text data-testid="toolkit-title">{i18n.t('title')}</Text>
       <Text data-testid="toolkit-filter">{filter()}</Text>
@@ -674,6 +681,7 @@ function ToolkitScreen() {
         Back to tasks
       </Button>
     </Stack>
+    </Scroll>
     </PyreonUI>
   )
 }
