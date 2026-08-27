@@ -141,3 +141,83 @@ public object PyreonHttp {
         return exec.send(request)
     }
 }
+
+/**
+ * URL construction shared with the generated fetch/query call sites.
+ *
+ * A path parameter supplied at RUNTIME cannot be percent-encoded at compile
+ * time, so the encoding has to live here -- and it has to agree with the web
+ * exactly, or the same call reaches a different URL on each platform.
+ *
+ * The web spells it `encodeURIComponent(String(value))` (`@pyreon/http`'s
+ * `applyPathParams`), so BOTH halves are mirrored: the JavaScript `String()`
+ * conversion for the value, then the encode.
+ */
+object PyreonURL {
+    private const val UNRESERVED = "-_.!~*'()"
+    private const val HEX = "0123456789ABCDEF"
+
+    /**
+     * Percent-encode one path SEGMENT, matching JavaScript's
+     * `encodeURIComponent`.
+     *
+     * Hand-rolled rather than `URLEncoder.encode`, which is
+     * application/x-www-form-urlencoded: it turns a space into `+` and escapes
+     * `!`, `~`, `*`, `'`, `(` and `)` that `encodeURIComponent` leaves alone.
+     * Using it here would produce a different URL than the web for any of
+     * those characters.
+     *
+     * Note this is the PATH encoder. A query value IS form-encoded, so the
+     * same character differs by position and one encoder for both positions is
+     * wrong in both.
+     */
+    @JvmStatic
+    fun encodePathParam(value: String): String {
+        val out = StringBuilder(value.length)
+        for (byte in value.toByteArray(Charsets.UTF_8)) {
+            val b = byte.toInt() and 0xFF
+            val c = b.toChar()
+            // ASCII alphanumerics only -- a multi-byte character's bytes are
+            // all >= 0x80, so they can never take this branch.
+            val isAsciiAlnum = c in 'a'..'z' || c in 'A'..'Z' || c in '0'..'9'
+            if (isAsciiAlnum || UNRESERVED.indexOf(c) >= 0) {
+                out.append(c)
+            } else {
+                out.append('%').append(HEX[(b shr 4) and 0xF]).append(HEX[b and 0xF])
+            }
+        }
+        return out.toString()
+    }
+
+    /**
+     * Integer overload. Kotlin's `Int.toString()` already matches JavaScript's
+     * `String(number)` for every integral value, so this only encodes.
+     */
+    @JvmStatic
+    fun encodePathParam(value: Int): String = encodePathParam(value.toString())
+
+    /** Long overload -- same reasoning as [encodePathParam] for `Int`. */
+    @JvmStatic
+    fun encodePathParam(value: Long): String = encodePathParam(value.toString())
+
+    /**
+     * Floating-point overload, and the one place the two languages disagree by
+     * default: JavaScript has a single number type, so `String(1.0)` is `"1"`,
+     * while Kotlin's is `"1.0"`. A whole-valued Double is therefore rendered
+     * as an integer, which is what the web would have sent.
+     *
+     * Outside that range the default `toString` is used. Very large magnitudes
+     * (>= 1e21, where JavaScript switches to exponent notation) and the
+     * non-finite values are a KNOWN divergence -- a path parameter is an
+     * identifier, so neither shape occurs in practice, and inventing a
+     * JavaScript number formatter to cover them would be more code than the
+     * case is worth.
+     */
+    @JvmStatic
+    fun encodePathParam(value: Double): String {
+        if (value.isFinite() && value == Math.rint(value) && Math.abs(value) < 1e21) {
+            return encodePathParam(value.toLong().toString())
+        }
+        return encodePathParam(value.toString())
+    }
+}

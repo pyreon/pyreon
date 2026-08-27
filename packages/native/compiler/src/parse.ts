@@ -1361,6 +1361,27 @@ function readLiteralEntries(obj: AnyNode | undefined): Record<string, string> {
   return out
 }
 
+/**
+ * The raw value NODE of each non-computed property of an object literal.
+ *
+ * The node-level twin of {@link readLiteralEntries}, which collapses each
+ * value to a string and therefore cannot distinguish "absent" from "present
+ * but not a literal" — the exact distinction runtime path params turn on: a
+ * MISSING param can only bail, while a present-but-reactive one lowers to
+ * native string interpolation.
+ */
+function readEntryNodes(obj: AnyNode | undefined): Record<string, AnyNode> {
+  const out: Record<string, AnyNode> = {}
+  if (obj?.type !== 'ObjectExpression') return out
+  for (const prop of (obj.properties as AnyNode[] | undefined) ?? []) {
+    const key = propName(prop)
+    if (typeof key !== 'string') continue
+    const v = prop.value as AnyNode | undefined
+    if (v) out[key] = v
+  }
+  return out
+}
+
 /** The literal value of a string/number/boolean literal node, else undefined. */
 function literalScalar(v: AnyNode | undefined): string | number | boolean | undefined {
   const val = v?.value
@@ -1403,6 +1424,21 @@ function propName(prop: AnyNode): string | undefined {
  * into a path segment.
  */
 const encodePathParam = (value: string): string => encodeURIComponent(value)
+
+/**
+ * The `:param` pattern, and it must stay the web's EXACTLY.
+ *
+ * `@pyreon/http`'s `applyPathParams` uses this literal to decide what counts
+ * as a parameter; if the native side recognised a different set, the same path
+ * template would carry different parameters on each platform — the one class
+ * this whole resolver exists to prevent. Two native sites read it (collecting
+ * a declaration's `paramNames`, and substituting at a call site), so it lives
+ * once rather than being re-typed at each.
+ *
+ * A fresh RegExp per use: `g`-flagged instances carry `lastIndex`, so a shared
+ * one would resume mid-string on its second caller and silently skip params.
+ */
+const pathParamPattern = (): RegExp => /:([A-Za-z_][A-Za-z0-9_]*)/g
 
 /**
  * Serialize literal query entries EXACTLY as the web's `buildQuery` does — by
@@ -1649,7 +1685,7 @@ function collectEndpointDefs(body: AnyNode[], ctx: ParseCtx): void {
       const method = raw.slice(0, sp).toUpperCase()
       const pathTemplate = raw.slice(sp + 1).trim()
       const paramNames: string[] = []
-      const re = /:([A-Za-z_][A-Za-z0-9_]*)/g
+      const re = pathParamPattern()
       let m: RegExpExecArray | null
       while ((m = re.exec(pathTemplate)) !== null) {
         if (m[1]) paramNames.push(m[1])
@@ -1716,7 +1752,23 @@ function resolveEndpointUrl(callNode: AnyNode, ctx: ParseCtx): ResolvedEndpoint 
  * and `query` emits carry them with no emit / IR / stub change.
  */
 interface ResolvedEndpoint {
+  /**
+   * The resolved URL as a compile-time CONSTANT.
+   *
+   * When `urlExpr` is set this still holds a best-effort literal — every
+   * runtime `:param` rendered as its own `:name` placeholder — so a caller
+   * that only needs a string for a diagnostic has one. The EMITTED url is
+   * `urlExpr` whenever it is present.
+   */
   url: string
+  /**
+   * Set when at least one `:param` came from a RUNTIME expression (a signal
+   * read, a prop, a local). A `template` ExprIR the emit renders as native
+   * string interpolation, with each runtime part wrapped in
+   * `PyreonURL.encodePathParam(…)` so the native URL matches the web's
+   * `encodeURIComponent(String(value))` byte for byte.
+   */
+  urlExpr?: ExprIR
   method: string
   headers?: Record<string, string>
   body?: string
@@ -1737,6 +1789,17 @@ function resolveEndpointParts(
   endpointName: string,
   arg: AnyNode | undefined,
   ctx: ParseCtx,
+  /**
+   * Whether the CALLER can honour a runtime `:param`.
+   *
+   * Only true for the `useQuery` fetcher form, whose native harness is KEYED
+   * on the runtime query key and therefore re-fetches when the param changes —
+   * the same semantic the web has. `useFetch` lowers to a ONE-SHOT task with
+   * no re-run trigger, so a runtime URL there would fetch the first value and
+   * freeze on it: silently wrong, rather than merely unsupported. That path
+   * keeps bailing, and now says which hook to reach for instead.
+   */
+  allowRuntimeParams = false,
 ): ResolvedEndpoint | null {
   const def = ctx.endpointDefs.get(endpointName)
   if (!def) return null
@@ -1752,25 +1815,87 @@ function resolveEndpointParts(
   }
 
   // --- path params -------------------------------------------------------
-  const params = readLiteralEntries(readObjectProp(arg, 'params'))
-  let path = def.pathTemplate
-  for (const p of def.paramNames) {
-    const value = params[p]
-    if (value === undefined) {
-      warn(
-        `native lowering needs literal params; \`${p}\` is missing or not a string/number literal (a reactive value like \`id()\` can't be baked into the URL at compile time) — this call stays web.`,
-      )
-      return null
+  //
+  // ONE ordered scan of the path template rather than a loop over param names,
+  // because a runtime param has to keep its POSITION in the emitted template.
+  // A per-name `String.replace` pass cannot express that: it rewrites text,
+  // and an interpolation slot is not text. Scanning the template also handles
+  // a param used twice (`/a/:id/b/:id`) and preserves left-to-right order for
+  // free, which the name loop only did by accident.
+  //
+  // It also retires a documented foot-gun by construction: the old loop used
+  // `String.replace`, which interprets `$&` / `` $` `` / `$'` / `$$` in a
+  // STRING replacement — a value containing them spliced the match back into
+  // the URL. Building the string by SLICING never interprets anything, so
+  // there is no replacement syntax to get wrong. Do not reintroduce a
+  // `.replace` here.
+  const paramNodes = readEntryNodes(readObjectProp(arg, 'params'))
+  const literalParams = readLiteralEntries(readObjectProp(arg, 'params'))
+  // Quasis/exprs of the templated form, built in parallel with the literal
+  // one. `quasis` always has exactly `exprs.length + 1` entries.
+  const quasis: string[] = ['']
+  const exprs: ExprIR[] = []
+  let literalPath = ''
+  let sawRuntimeParam = false
+  let bailed = false
+  const PARAM_RE = pathParamPattern()
+  let cursor = 0
+  for (let m = PARAM_RE.exec(def.pathTemplate); m; m = PARAM_RE.exec(def.pathTemplate)) {
+    const name = m[1] as string
+    const before = def.pathTemplate.slice(cursor, m.index)
+    cursor = m.index + m[0].length
+    literalPath += before
+    quasis[quasis.length - 1] += before
+    const literal = literalParams[name]
+    if (literal !== undefined) {
+      const encoded = encodePathParam(literal)
+      literalPath += encoded
+      quasis[quasis.length - 1] += encoded
+      continue
     }
-    const encoded = encodePathParam(value)
-    // A FUNCTION replacement, never a string one: `String.replace` interprets
-    // `$&` / `$'` / `` $` `` / `$$` inside a STRING replacement, so a value
-    // containing them would splice the match (or the text around it) back into
-    // the URL — `id: "$&"` produced `/users/:id` verbatim. The web's
-    // `applyPathParams` uses a function replacement for the same reason.
-    path = path.replace(new RegExp(`:${p}(?![A-Za-z0-9_])`, 'g'), () => encoded)
+    const node = paramNodes[name]
+    if (node === undefined || isNullishLiteral(node)) {
+      // MISSING is unfixable at compile time and unfixable at runtime too —
+      // the web THROWS here — so it stays a bail on every path.
+      warn(
+        `native lowering needs the \`${name}\` path parameter; it is missing from \`params\` (the web throws for this shape too) — this call stays web.`,
+      )
+      bailed = true
+      break
+    }
+    if (!allowRuntimeParams) {
+      warn(
+        `path parameter \`${name}\` is a runtime value, and \`useFetch\` lowers to a ONE-SHOT native task with nothing to re-run it — the request would fetch once and freeze at that first value. Use \`useQuery(() => ${endpointName}.query({ params: { ${name} } }))\` instead: its native harness is keyed on the runtime value, so it re-fetches when the value changes, exactly as the web does. This call stays web.`,
+      )
+      bailed = true
+      break
+    }
+    sawRuntimeParam = true
+    // The literal twin keeps the `:name` placeholder so `url` stays a readable
+    // description of the shape (it is not what gets emitted — `urlExpr` is).
+    literalPath += m[0]
+    // `PyreonURL.encodePathParam(<value>)` on BOTH targets — same spelling,
+    // and it takes the value UNSTRINGIFIED so the helper can apply JS
+    // `String()` semantics (a whole Double is `1`, not `1.0`). Pre-interpolating
+    // here would hand it an already-wrong string.
+    exprs.push({
+      kind: 'call',
+      callee: {
+        kind: 'member',
+        object: { kind: 'identifier', name: 'PyreonURL' },
+        property: 'encodePathParam',
+      },
+      args: [parseExpr(node, ctx)],
+    })
+    quasis.push('')
   }
+  if (bailed) return null
+  const tail = def.pathTemplate.slice(cursor)
+  literalPath += tail
+  quasis[quasis.length - 1] += tail
+  const path = literalPath
   let url = baseUrl + path
+  quasis[0] = baseUrl + (quasis[0] ?? '')
 
   // --- query -------------------------------------------------------------
   const queryEntries = readQueryEntries(readObjectProp(arg, 'query'), (key) => {
@@ -1781,7 +1906,16 @@ function resolveEndpointParts(
   const qs = buildQueryString(queryEntries)
   // Mirrors the web's `buildUrl`: a path template that already carries a `?`
   // takes `&`, and the leading `?` is stripped from the serialized query.
-  if (qs) url += url.includes('?') ? `&${qs.slice(1)}` : qs
+  //
+  // The `?`-detection reads the LITERAL url, never the template: a runtime
+  // param's VALUE is percent-encoded before it lands in the URL, so it can
+  // never contribute a structural `?` — which is exactly what
+  // `encodePathParam` is there to guarantee.
+  if (qs) {
+    const joined = url.includes('?') ? `&${qs.slice(1)}` : qs
+    url += joined
+    quasis[quasis.length - 1] += joined
+  }
 
   // --- headers -----------------------------------------------------------
   // A per-call `headers` REPLACES the declaration's, mirroring the web's
@@ -1843,7 +1977,8 @@ function resolveEndpointParts(
     )
   }
 
-  const extras: { headers?: Record<string, string>; body?: string } = {}
+  const extras: { urlExpr?: ExprIR; headers?: Record<string, string>; body?: string } = {}
+  if (sawRuntimeParam) extras.urlExpr = { kind: 'template', quasis, exprs }
   if (Object.keys(headers).length > 0) extras.headers = headers
   if (body !== undefined) extras.body = body
   return { url, method: def.method, ...extras }
@@ -6756,17 +6891,44 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
         endpointQuery.name,
         endpointQuery.call.arguments?.[0] as AnyNode | undefined,
         ctx,
+        // The query harness re-fetches on key change, so a RUNTIME `:param`
+        // is honourable here (and only here — see the flag's own doc).
+        true,
       )
       if (!resolved) return null
-      const eqReq: { method?: string; headers?: Record<string, string>; body?: string } = {}
+      const eqReq: {
+        urlExpr?: ExprIR
+        queryKeyExpr?: ExprIR
+        method?: string
+        headers?: Record<string, string>
+        body?: string
+      } = {}
       if (resolved.method && resolved.method !== 'GET') eqReq.method = resolved.method
       if (resolved.headers) eqReq.headers = resolved.headers
       if (resolved.body !== undefined) eqReq.body = resolved.body
+      if (resolved.urlExpr !== undefined) {
+        eqReq.urlExpr = resolved.urlExpr
+        // The cache key MUST carry the runtime parts too. A key built from the
+        // literal `url` alone would collapse every id onto ONE cache entry —
+        // the first user fetched would be served for every other id, and
+        // nothing would re-fetch on change, because the harness re-runs on
+        // KEY change. Same template, same exprs, `METHOD:` on the front.
+        const kq = [...(resolved.urlExpr as { quasis: string[] }).quasis]
+        kq[0] = `${resolved.method}:${kq[0] ?? ''}`
+        eqReq.queryKeyExpr = {
+          kind: 'template',
+          quasis: kq,
+          exprs: (resolved.urlExpr as { exprs: ExprIR[] }).exprs,
+        }
+      }
       return {
         kind: 'query',
         name,
         type,
-        url: resolved.url,
+        // `url` is omitted when a template took its place — the DeclIR
+        // documents them as mutually exclusive, and the emit picks urlExpr
+        // first, so leaving both set would be a silent contradiction.
+        ...(resolved.urlExpr === undefined ? { url: resolved.url } : {}),
         queryKey: `${resolved.method}:${resolved.url}`,
         staleMillis: 0,
         ...eqReq,
