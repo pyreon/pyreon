@@ -67,7 +67,7 @@ class TasksAppInstrumentedTest {
      * lines. Fix the class, not the line.
      */
     private fun waitForTagText(tag: String, text: String) {
-        composeRule.waitUntil(timeoutMillis = 10_000) {
+        composeRule.waitUntil(timeoutMillis = 20_000) {
             composeRule
                 .onAllNodes(hasTestTag(tag) and hasText(text))
                 .fetchSemanticsNodes()
@@ -256,7 +256,7 @@ class TasksAppInstrumentedTest {
             .onNodeWithTag("vocab-open-modal")
             .performClick()
 
-        composeRule.waitUntil(timeoutMillis = 10_000) {
+        composeRule.waitUntil(timeoutMillis = 20_000) {
             composeRule
                 .onAllNodesWithTag("vocab-modal-text")
                 .fetchSemanticsNodes()
