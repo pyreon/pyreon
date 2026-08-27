@@ -340,7 +340,8 @@ Three properties are deliberate:
 
 - **Results are re-sorted by path.** Workers finish in whatever order they finish; output that shifted between runs would make CI diffs useless.
 - **Small runs stay sequential.** Below the threshold, spawning workers costs more than the work — a tool that is slower on `lint one-file.ts` to be faster on the whole repo is a bad trade.
-- **A worker that cannot start falls back to the sequential path.** Reporting a partial result as though it were complete is worse than being slow.
+- **Whether the pool is used is DECIDED, never discovered by failing.** `planRun()` reports the reason a run is sequential — `below-threshold`, `source-entry` (a `.ts` entry can't be loaded by a worker, which is the workspace/dev layout), or `entry-missing`. Attempting a spawn that is known to fail and catching the result would make a genuine worker crash indistinguishable from routine unavailability.
+- **A worker that genuinely fails is NOT silent.** On a read-only run it prints why and completes sequentially. Under `--fix` it stops with guidance instead: workers that already succeeded have written their files, and re-running over a half-modified tree is only safe if every fixer is idempotent — an assumption the code cannot enforce.
 
 The programmatic `lint()` stays synchronous for the LSP and watch mode; `lintAsync()` is the parallel driver, and a test locks that the two produce identical diagnostics over the same corpus.
 

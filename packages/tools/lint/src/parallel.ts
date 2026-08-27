@@ -101,19 +101,56 @@ export function _workerEntry(): string {
  * Produces byte-identical results to {@link lint} — locked by a test that
  * diffs both over this repository.
  */
+/**
+ * Why a run is NOT parallel. Reported rather than inferred, because a
+ * fallback that yields the correct answer is otherwise indistinguishable from
+ * a working fast path — which is exactly how this driver shipped dead.
+ */
+export type SequentialReason =
+  | 'below-threshold'
+  | 'source-entry'
+  | 'entry-missing'
+
+export type RunPlan =
+  | { kind: 'sequential'; reason: SequentialReason }
+  | { kind: 'parallel'; workers: number; entry: string }
+
+/**
+ * Decide how a run will execute, BEFORE attempting anything.
+ *
+ * Deliberately not exception-driven. "We are loaded from source, so a worker
+ * cannot resolve this entry" is a predictable property of the environment, not
+ * an error: attempting a spawn that is known to fail and catching the result
+ * turns a decision into an accident, and makes a genuine worker crash look
+ * identical to it.
+ */
+export function planRun(fileCount: number, entry = _workerEntry()): RunPlan {
+  if (workerCountFor(fileCount) === 0) return { kind: 'sequential', reason: 'below-threshold' }
+  // A `.ts` entry is the workspace/dev layout. Node's ESM loader inside a
+  // worker cannot resolve the entry's extensionless imports, so this would
+  // fail every time — decide it here instead of discovering it by throwing.
+  if (entry.endsWith('.ts')) return { kind: 'sequential', reason: 'source-entry' }
+  if (!existsSync(entry)) return { kind: 'sequential', reason: 'entry-missing' }
+  return { kind: 'parallel', workers: workerCountFor(fileCount), entry }
+}
+
+/**
+ * Lint with a worker pool, or sequentially when {@link planRun} says the pool
+ * is unavailable or not worth it.
+ *
+ * Produces byte-identical results either way — locked by a test that diffs
+ * both over the same corpus.
+ */
 export async function lintAsync(options: LintOptions): Promise<LintResult> {
   const run = _resolveRun(options)
-  const workers = workerCountFor(run.files.length)
-  if (workers === 0) return lint(options)
+  const plan = planRun(run.files.length)
+  if (plan.kind === 'sequential') return lint(options)
 
-  const chunks = partition(run.files, workers)
-  const entry = _workerEntry()
+  const chunks = partition(run.files, plan.workers)
 
-  /* v8 ignore start -- the worker spawn + post-worker merge run ONLY with the
-     built .js worker entry: the src/.ts vitest env cannot load a .ts worker, so
-     lintAsync falls back to the sequential path here, and a worker's body is not
-     coverage-instrumented anyway. The pure helpers (workerCountFor / partition)
-     and the sequential path ARE unit-tested in parallel.test.ts. */
+  /* v8 ignore start -- a worker's body is not instrumented in-process, so this
+     block cannot be covered from within vitest. It is exercised end-to-end by
+     the built-artifact specs in parallel.test.ts and by the real CLI. */
   let outputs: LintWorkerOutput[]
   try {
     outputs = await Promise.all(
@@ -126,7 +163,7 @@ export async function lintAsync(options: LintOptions): Promise<LintResult> {
               fix: options.fix ?? false,
               quiet: options.quiet ?? false,
             }
-            const w = new Worker(entry, { workerData: input })
+            const w = new Worker(plan.entry, { workerData: input })
             w.once('message', (m: LintWorkerOutput) => {
               resolve(m)
               void w.terminate()
@@ -138,19 +175,27 @@ export async function lintAsync(options: LintOptions): Promise<LintResult> {
           }),
       ),
     )
-  } catch {
-    // A worker failed to start. The dominant case is not exotic: loaded from
-    // SOURCE (the `bun` condition -> `src/*.ts`), the worker entry's
-    // extensionless imports are unresolvable to Node's ESM loader inside a
-    // worker, so every spawn fails and this path always runs. From the BUILT
-    // `lib/*.js` the imports are bundled and workers spawn normally.
-    //
-    // That asymmetry is why `_workerEntry` is exported: a test that cannot
-    // tell which artifact it loaded will pass while silently measuring the
-    // sequential path.
-    //
-    // Correctness beats speed either way: fall back rather than report a
-    // partial result as if it were complete.
+  } catch (err) {
+    // Reaching here means a worker that WAS expected to run did not. That is a
+    // real failure — a rule throwing, an OOM, a corrupt build — not the
+    // routine "no pool available" case, which `planRun` already handled.
+    const message = err instanceof Error ? err.message : String(err)
+
+    if (options.fix) {
+      // Under `--fix` the workers that DID succeed have already written their
+      // files. Re-running sequentially over a half-modified tree only produces
+      // the right answer if every fixer is idempotent, which is an assumption
+      // this code has no way to enforce. Surface it instead of guessing.
+      throw new Error(
+        `[Pyreon] A lint worker failed during --fix, after other workers may already have written files: ${message}\n` +
+          `Re-run without --fix to see the diagnostics, then fix again once the failure is understood. ` +
+          `Falling back silently here could double-apply a non-idempotent fix.`,
+      )
+    }
+
+    // Read-only run: the sequential path yields the same answer, so recover —
+    // but say so. A silent recovery is what let this driver ship dead.
+    console.error(`[Pyreon] lint worker failed (${message}); falling back to a sequential run.`)
     return lint(options)
   }
 

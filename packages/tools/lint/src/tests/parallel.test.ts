@@ -3,7 +3,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { lint } from '../lint'
-import { PARALLEL_FILE_THRESHOLD, _workerEntry, lintAsync, partition, workerCountFor } from '../parallel'
+import {
+  PARALLEL_FILE_THRESHOLD,
+  _workerEntry,
+  lintAsync,
+  partition,
+  planRun,
+  workerCountFor,
+} from '../parallel'
 import { lintSlice } from '../lint-worker'
 import { getPreset } from '../config/presets'
 
@@ -96,16 +103,17 @@ describe('lintAsync — same answer as lint()', () => {
     expect(existsSync(_workerEntry()), `_workerEntry() -> ${_workerEntry()}`).toBe(true)
   })
 
-  it('the SOURCE-loaded worker entry cannot spawn — so the specs below measure the fallback', () => {
-    // Stated rather than assumed. Loaded from `src/*.ts` the worker entry's
-    // extensionless imports are unresolvable to Node's ESM loader inside a
-    // worker, so `lintAsync` falls back and the equality spec below is
-    // comparing the sequential path with itself.
-    //
-    // That is worth PINNING rather than hiding: it is exactly the shape of a
-    // test that passes for the wrong reason. The real parallel path is
-    // covered by the built-artifact spec further down.
-    expect(_workerEntry()).toMatch(/lint-worker\.(ts|js)$/)
+  it('DECLARES why this environment runs sequentially, rather than discovering it by throwing', () => {
+    // Under `src/*.ts` a worker cannot resolve the entry's extensionless
+    // imports, so the pool is unavailable. `planRun` states that up front —
+    // which is also what makes the equality spec below honest about its own
+    // scope: here it compares the sequential path with itself.
+    const plan = planRun(FILE_COUNT)
+    if (_workerEntry().endsWith('.ts')) {
+      expect(plan).toEqual({ kind: 'sequential', reason: 'source-entry' })
+    } else {
+      expect(plan.kind).toBe('parallel')
+    }
   })
 
   it('produces identical results to the sequential path', async () => {
@@ -229,5 +237,45 @@ describe('the BUILT worker actually spawns', () => {
     expect(existsSync(LIB_WORKER), `missing ${LIB_WORKER} — run bun scripts/bootstrap.ts`).toBe(
       true,
     )
+  })
+})
+
+describe('planRun — the decision is explicit, not an exception', () => {
+  it('reports below-threshold for a small run', () => {
+    expect(planRun(10, '/x/lint-worker.js')).toEqual({
+      kind: 'sequential',
+      reason: 'below-threshold',
+    })
+  })
+
+  it('reports source-entry for a .ts entry WITHOUT attempting a spawn', () => {
+    // The dev layout. Attempting a spawn that is known to fail and catching
+    // the result turns a decision into an accident — and makes a genuine
+    // worker crash indistinguishable from it.
+    expect(planRun(FILE_COUNT, '/x/lint-worker.ts')).toEqual({
+      kind: 'sequential',
+      reason: 'source-entry',
+    })
+  })
+
+  it('reports entry-missing rather than spawning at a path that does not exist', () => {
+    // The shipped bug: the bundler moved this module, the derived path pointed
+    // at `lib/_chunks/lint-worker.js`, and every spawn failed into a silent
+    // fallback. Now it is a named, reported condition.
+    expect(planRun(FILE_COUNT, '/definitely/not/here/lint-worker.js')).toEqual({
+      kind: 'sequential',
+      reason: 'entry-missing',
+    })
+  })
+
+  it('plans a parallel run when the entry really exists', () => {
+    const real = join(import.meta.dirname, '..', '..', 'lib', 'lint-worker.js')
+    if (!existsSync(real)) return // covered by the built-artifact specs
+    const plan = planRun(FILE_COUNT, real)
+    expect(plan.kind).toBe('parallel')
+    if (plan.kind === 'parallel') {
+      expect(plan.workers).toBeGreaterThan(0)
+      expect(plan.entry).toBe(real)
+    }
   })
 })

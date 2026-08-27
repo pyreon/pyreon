@@ -283,16 +283,26 @@ export async function runCli(argv: string[]): Promise<number | null> {
     return null // long-running — keep the process alive
   }
 
-  const result = await lintAsync({
-    paths: args.paths,
-    preset: args.preset,
-    fix: args.fix,
-    quiet: args.quiet,
-    ruleOverrides: args.ruleOverrides,
-    ruleOptionsOverrides: args.ruleOptionsOverrides,
-    config: args.configPath,
-    ignore: args.ignorePath,
-  })
+  let result: Awaited<ReturnType<typeof lintAsync>>
+  try {
+    result = await lintAsync({
+      paths: args.paths,
+      preset: args.preset,
+      fix: args.fix,
+      quiet: args.quiet,
+      ruleOverrides: args.ruleOverrides,
+      ruleOptionsOverrides: args.ruleOptionsOverrides,
+      config: args.configPath,
+      ignore: args.ignorePath,
+    })
+  } catch (err) {
+    // A run that cannot complete safely — today only a worker failing partway
+    // through `--fix`, where other workers may already have written files.
+    // Print the guidance the error carries; a stack trace here would bury the
+    // one line that tells the user what to do next.
+    console.error(`\n  ${err instanceof Error ? err.message : String(err)}\n`)
+    return 1
+  }
 
   if (args.format === 'json') {
     console.log(formatJSON(result))
