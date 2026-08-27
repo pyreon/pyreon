@@ -332,6 +332,18 @@ Library-scoped opt-in rules — `query`, `rx`, `i18n`, `storage`, form's `no-sig
 
 ## Rules
 
+### Performance
+
+Linting is embarrassingly parallel — a file's diagnostics depend only on that file and the resolved config — so runs above a few hundred files are split across a worker pool instead of walking one core. The config is resolved **once** on the main thread and handed to workers as data, so no worker re-reads `.pyreonlintrc.json` or can disagree with its siblings about what is enabled.
+
+Three properties are deliberate:
+
+- **Results are re-sorted by path.** Workers finish in whatever order they finish; output that shifted between runs would make CI diffs useless.
+- **Small runs stay sequential.** Below the threshold, spawning workers costs more than the work — a tool that is slower on `lint one-file.ts` to be faster on the whole repo is a bad trade.
+- **A worker that cannot start falls back to the sequential path.** Reporting a partial result as though it were complete is worse than being slow.
+
+The programmatic `lint()` stays synchronous for the LSP and watch mode; `lintAsync()` is the parallel driver, and a test locks that the two produce identical diagnostics over the same corpus.
+
 ### Autofix
 
 `--fix` applies fixes that are unambiguous. A fix may carry **several edits** — `prefer-isserver` rewrites `typeof window !== 'undefined'` to `isClient` *and* adds the import, as one fix — and a multi-edit fix is applied whole or not at all, because half of that pair is broken code.

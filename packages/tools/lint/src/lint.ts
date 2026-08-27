@@ -210,6 +210,21 @@ function countDiagnostics(fileResult: LintFileResult, results: LintResult): void
  * console.log(result.totalErrors) // 0
  * ```
  */
+/**
+ * Resolve everything a run needs BEFORE any file is read: the merged config
+ * and the file list.
+ *
+ * Extracted so the parallel driver resolves config exactly once on the main
+ * thread and ships it to workers as data — a worker that re-read the config
+ * could silently disagree with its siblings about what is enabled.
+ *
+ * Internal: not part of the supported surface.
+ */
+export function _resolveRun(options: LintOptions): { config: LintConfig; files: string[] } {
+  const { config, include, exclude, isIgnored } = buildConfig(options)
+  return { config, files: gatherFiles(options.paths, isIgnored, include, exclude) }
+}
+
 export function lint(options: LintOptions): LintResult {
   const { config, include, exclude, isIgnored } = buildConfig(options)
   const cache = new AstCache()

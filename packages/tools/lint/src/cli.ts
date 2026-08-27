@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { loadConfig, loadConfigFromPath } from './config/loader'
 import { getPreset } from './config/presets'
 import { lint, listRules } from './lint'
+import { lintAsync } from './parallel'
 import { startLspServer } from './lsp/index'
 import { formatCompact, formatJSON, formatText } from './reporter'
 import { groupOf } from './rules/groups'
@@ -212,7 +213,7 @@ export function parseRuleOptionsOverride(
  * (`--watch` / `--lsp`) that must keep the process alive — the caller leaves
  * the process running rather than exiting.
  */
-export function runCli(argv: string[]): number | null {
+export async function runCli(argv: string[]): Promise<number | null> {
   const args = parseArgs(argv)
 
   if (args.showHelp) {
@@ -271,7 +272,7 @@ export function runCli(argv: string[]): number | null {
     return null // long-running — keep the process alive
   }
 
-  const result = lint({
+  const result = await lintAsync({
     paths: args.paths,
     preset: args.preset,
     fix: args.fix,
@@ -294,8 +295,8 @@ export function runCli(argv: string[]): number | null {
   return result.totalErrors > 0 ? 1 : 0
 }
 
-function main() {
-  const code = runCli(process.argv.slice(2))
+async function main() {
+  const code = await runCli(process.argv.slice(2))
   if (code !== null) process.exit(code)
 }
 
