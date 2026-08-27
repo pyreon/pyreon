@@ -740,6 +740,40 @@ describe('_detectMapsInPackOutput', () => {
     )
   })
 
+  it('names the UNBUILT checkout when the tarball has no built output at all', () => {
+    // The two causes need opposite fixes, and this one used to be reported as
+    // the other. A fresh worktree has no `lib/`, so the probe sees only the
+    // always-shipped metadata — and the old message sent people to read a
+    // `files` array that was never wrong. Hit three times in one session
+    // before the message was fixed.
+    const raw = JSON.stringify([
+      {
+        files: [
+          { path: 'package.json' },
+          { path: 'README.md' },
+          { path: 'LICENSE' },
+        ],
+      },
+    ])
+    const result = _detectMapsInPackOutput(raw, cwd, probe, '@pyreon/reactivity')
+    expect(result).not.toBeNull()
+    expect(result!.code).toBe('distribution/unbuilt-checkout')
+    expect(result!.message).toContain('bootstrap')
+    // and must NOT accuse the files array, which is the whole point
+    expect(result!.message).not.toContain('does not exclude')
+  })
+
+  it('still blames the files array when built output IS present but maps are not', () => {
+    // The discriminator is built output, not the map count: a package that
+    // shipped `lib/index.js` and no `.map` really does have a `files` problem.
+    const raw = JSON.stringify([
+      { files: [{ path: 'package.json' }, { path: 'lib/index.js' }] },
+    ])
+    const result = _detectMapsInPackOutput(raw, cwd, probe, '@pyreon/reactivity')
+    expect(result!.code).toBe('distribution/tarball-missing-maps')
+    expect(result!.message).toContain('files')
+  })
+
   it('returns null when .map files are present in the tarball', () => {
     const raw = JSON.stringify([
       {
