@@ -767,6 +767,24 @@
         "vite": "^8.2.2",
       },
     },
+    "examples/lathe-bookshelf": {
+      "name": "@pyreon/example-lathe-bookshelf",
+      "version": "0.51.0",
+      "dependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/http": "workspace:*",
+        "@pyreon/query": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/validate": "workspace:*",
+      },
+      "devDependencies": {
+        "@pyreon/lathe": "workspace:*",
+        "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/vite-plugin": "workspace:*",
+        "vite": "^8.2.2",
+      },
+    },
     "examples/native-analytics": {
       "name": "@pyreon/example-native-analytics",
       "version": "0.50.0",
@@ -2325,6 +2343,30 @@
         "playwright": "^1.62.1",
       },
     },
+    "packages/tools/lathe": {
+      "name": "@pyreon/lathe",
+      "version": "0.51.0",
+      "bin": {
+        "lathe": "./bin/lathe.js",
+      },
+      "dependencies": {
+        "@pyreon/config": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+      },
+      "devDependencies": {
+        "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
+        "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/validate": "workspace:*",
+        "@pyreon/vitest-config": "workspace:*",
+      },
+      "peerDependencies": {
+        "@pyreon/native-compiler": "workspace:*",
+      },
+      "optionalPeers": [
+        "@pyreon/native-compiler",
+      ],
+    },
     "packages/tools/lint": {
       "name": "@pyreon/lint",
       "version": "0.51.0",
@@ -3830,6 +3872,8 @@
 
     "@pyreon/example-kanban": ["@pyreon/example-kanban@workspace:examples/kanban"],
 
+    "@pyreon/example-lathe-bookshelf": ["@pyreon/example-lathe-bookshelf@workspace:examples/lathe-bookshelf"],
+
     "@pyreon/example-native-analytics": ["@pyreon/example-native-analytics@workspace:examples/native-analytics"],
 
     "@pyreon/example-native-counter-android": ["@pyreon/example-native-counter-android@workspace:examples/native-counter-android"],
@@ -3905,6 +3949,8 @@
     "@pyreon/kinetic": ["@pyreon/kinetic@workspace:packages/ui-system/kinetic"],
 
     "@pyreon/kinetic-presets": ["@pyreon/kinetic-presets@workspace:packages/ui-system/kinetic-presets"],
+
+    "@pyreon/lathe": ["@pyreon/lathe@workspace:packages/tools/lathe"],
 
     "@pyreon/lint": ["@pyreon/lint@workspace:packages/tools/lint"],
 

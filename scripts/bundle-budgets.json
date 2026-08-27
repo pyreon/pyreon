@@ -28,6 +28,7 @@
   "@pyreon/i18n": 3584,
   "@pyreon/kinetic": 4864,
   "@pyreon/kinetic-presets": 4864,
+  "@pyreon/lathe": 512,
   "@pyreon/lint": 512,
   "@pyreon/loom": 6144,
   "@pyreon/machine": 1150,

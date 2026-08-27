@@ -61,6 +61,7 @@ type Node =
   | { k: 'bare'; ref: string }
   | { k: 'sig'; ref: string }
   | { k: 'map'; ref: string; item: ElNode }
+  | { k: 'cond'; sigCond: boolean; cref: string; shape: 'and' | 'ternEl' | 'ternNull'; a: ElNode; b: ElNode | null }
   | ElNode
 interface ElNode {
   k: 'el'
@@ -99,6 +100,26 @@ function genChild(r: () => number, depth: number, mode: 'recursed' | 'mapitem'):
   if (roll < 0.62 && mode === 'recursed') return { k: 'sig', ref: pick(r, ['s0', 's1']) }
   if (roll < 0.75 && mode === 'recursed')
     return { k: 'map', ref: pick(r, ['a0', 'a1']), item: genEl(r, depth + 1, 'mapitem') }
+  // Conditional DOM-element child (`cond && <el>` / `cond ? <el> : <el|null>`) —
+  // exercises the SSR conditional-element lowering. The condition is a SIGNAL
+  // read (→ shouldWrap, markers when non-sole) or a plain dep (→ eager value,
+  // no markers); truthy AND falsy refs so both branches render. The branch
+  // element(s) are ordinary recursed elements (rendered standalone via
+  // `renderNode`/`_esc`). Recursed positions only.
+  if (roll < 0.86 && mode === 'recursed' && depth < 3) {
+    const sigCond = r() < 0.5
+    const cref = sigCond ? pick(r, ['s0', 's2']) : pick(r, ['f0', 'f3'])
+    const shapeRoll = r()
+    const shape = shapeRoll < 0.4 ? 'and' : shapeRoll < 0.7 ? 'ternEl' : 'ternNull'
+    return {
+      k: 'cond',
+      sigCond,
+      cref,
+      shape,
+      a: genEl(r, depth + 1, 'recursed'),
+      b: shape === 'ternEl' ? genEl(r, depth + 1, 'recursed') : null,
+    }
+  }
   return genEl(r, depth + 1, mode)
 }
 
@@ -124,6 +145,12 @@ function childSrc(n: Node): string {
       return `{${n.ref}()}`
     case 'map':
       return `{${n.ref}.map((it) => ${elSrc(n.item)})}`
+    case 'cond': {
+      const cond = n.sigCond ? `${n.cref}()` : `data.${n.cref}`
+      if (n.shape === 'and') return `{${cond} && ${elSrc(n.a)}}`
+      const els = n.shape === 'ternNull' ? 'null' : elSrc(n.b!)
+      return `{${cond} ? ${elSrc(n.a)} : ${els}}`
+    }
     case 'el':
       return elSrc(n)
   }
@@ -139,6 +166,27 @@ function elOracle(el: ElNode, ctx: FuzzCtx, mode: 'recursed' | 'mapitem', it?: R
   const kids = el.children.map((n) => childOracle(n, ctx, mode, it))
   return h(el.tag, Object.keys(props).length ? props : null, ...kids)
 }
+// Mirror the compiler's `isDynamic` for the fuzz spec: a child is dynamic iff
+// it contains a non-pure CALL (a signal read `sN()` or a `.map`). A `data.fN`
+// member on a non-props identifier is NOT dynamic (same as `isDynamic`'s
+// props-only member rule), and the generated dynamic ATTRS are all `data.fN`
+// members — so only child calls contribute. `shouldWrap` = `isDynamic`, so this
+// decides whether the h() path wraps a child in an accessor (→ markers).
+function nodeIsDynamic(n: Node): boolean {
+  switch (n.k) {
+    case 'text':
+    case 'bare':
+      return false
+    case 'sig':
+    case 'map':
+      return true
+    case 'cond':
+      return n.sigCond || nodeIsDynamic(n.a) || (n.b !== null && nodeIsDynamic(n.b))
+    case 'el':
+      return n.children.some(nodeIsDynamic)
+  }
+}
+
 function childOracle(
   n: Node,
   ctx: FuzzCtx,
@@ -163,6 +211,33 @@ function childOracle(
       // recursed .map is wrapped (markers); items are plain value children.
       return () => arr.map((item) => elOracle(n.item, ctx, 'mapitem', item))
     }
+    case 'cond': {
+      // The branch VALUE the h() path produces: the taken element (an eager
+      // VNode) or the other operand (`null` / the second element / the falsy
+      // condition value returned by `&&`). A SIGNAL condition is dynamic, so
+      // the h() path WRAPS the child in an accessor (`() => …`) → renderNode
+      // adds `<!--$-->…<!--/$-->` when non-sole / elides when sole; a plain-dep
+      // condition is eager (no wrap). This mirrors the `sig` vs `bare` split
+      // above, applied to the conditional expression as a whole.
+      // Every generated condition is DYNAMIC — a member read (`data.fN`) or a
+      // signal call (`sN()`) — so `isDynamic(conditional)` is always true and
+      // the h() path ALWAYS wraps the child in an accessor (`shouldWrap` =
+      // `isDynamic`). renderNode then adds `<!--$-->…<!--/$-->` when non-sole
+      // and elides them when sole — which the fast path mirrors exactly
+      // (markers baked on the `should_wrap` branch, `_escSole` on the sole
+      // one). So wrap unconditionally; `sigCond` only chose the src condition.
+      const cval: string = n.sigCond ? ctx.sigs[n.cref]!() : ctx.data[n.cref]!
+      const branch = (): VNode | string | null => {
+        const a = elOracle(n.a, ctx, 'recursed', it)
+        if (n.shape === 'and') return cval && a
+        const b = n.shape === 'ternNull' ? null : elOracle(n.b!, ctx, 'recursed', it)
+        return cval ? a : b
+      }
+      // Wrap in an accessor iff the h() path would (`shouldWrap` = `isDynamic`).
+      // renderNode then adds `<!--$-->…<!--/$-->` when non-sole / elides when
+      // sole, mirroring the fast path's `should_wrap` bake vs `_escSole`.
+      return nodeIsDynamic(n) ? () => branch() : branch()
+    }
     case 'el':
       return elOracle(n, ctx, mode, it)
   }
@@ -171,8 +246,8 @@ function childOracle(
 // Build a fresh ctx so fast + oracle read identical values.
 function makeCtx(): FuzzCtx {
   return {
-    data: { f0: 'D<0>', f1: 'd & 1', f2: `d"'2` },
-    sigs: { s0: signal('S<0>'), s1: signal('s & 1') },
+    data: { f0: 'D<0>', f1: 'd & 1', f2: `d"'2`, f3: '' },
+    sigs: { s0: signal('S<0>'), s1: signal('s & 1'), s2: signal('') },
     arrs: {
       a0: [{ id: 'x' }, { id: 'y' }],
       a1: [{ id: '1' }, { id: '2' }, { id: '3' }],
@@ -200,11 +275,12 @@ function evalFast(src: string, ctx: FuzzCtx): VNode {
     'data',
     's0',
     's1',
+    's2',
     'a0',
     'a1',
     `${body}\nreturn Node`,
   )
-  return fn(_ssr, _ssrChildren, _ssrItem, _esc, _escSole, _ssrAttr, _ssrAttrGen, _ssrAttrUrl, ctx.data, ctx.sigs.s0, ctx.sigs.s1, ctx.arrs.a0, ctx.arrs.a1)
+  return fn(_ssr, _ssrChildren, _ssrItem, _esc, _escSole, _ssrAttr, _ssrAttrGen, _ssrAttrUrl, ctx.data, ctx.sigs.s0, ctx.sigs.s1, ctx.sigs.s2, ctx.arrs.a0, ctx.arrs.a1)
 }
 
 // Override with PYREON_FUZZ_SEEDS=5000 when the SSR emit shape changes.

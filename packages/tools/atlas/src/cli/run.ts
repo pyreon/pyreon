@@ -32,6 +32,7 @@ import {
   componentLoaderPlugin,
   createModuleLoader,
   type DiscoverOptions,
+  DEFAULT_IGNORE,
   fileDiscoveryPlugin,
   buildPackageMap,
   findUnmatched,
@@ -371,6 +372,12 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
             ...options,
             ...root,
             cwd,
+            // Config `ignore` ADDS to the defaults rather than replacing them:
+            // a project that wants to skip its generated output should not
+            // have to restate `node_modules` to keep it skipped.
+            ...(loaded.config.ignore
+              ? { ignore: [...DEFAULT_IGNORE, ...loaded.config.ignore] }
+              : {}),
             // Rocketstyle components are a call chain, not a typed function, so
             // the static scan cannot see them at all. Detecting them needs the
             // module loaded — the same loader the mount checks use.
@@ -434,7 +441,13 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
         .map((s) => resolve(cwd, s)),
     )
     const scanned = scanRoots(options, effectiveProjects).flatMap((root) =>
-      listComponentFiles({ cwd, ...(root.dir !== undefined ? { dir: root.dir } : {}) }).map((f) =>
+      listComponentFiles({
+        cwd,
+        ...(root.dir !== undefined ? { dir: root.dir } : {}),
+        // Same set the discovery pass used, or the unmatched-file report names
+        // files that were deliberately skipped.
+        ...(loaded.config.ignore ? { ignore: [...DEFAULT_IGNORE, ...loaded.config.ignore] } : {}),
+      }).map((f) =>
         resolve(cwd, f),
       ),
     )

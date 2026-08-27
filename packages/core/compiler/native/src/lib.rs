@@ -5514,6 +5514,74 @@ fn ssr_try_map(buf: &mut SsrBuf, expr: &Expression, sole: bool, ctx: &mut Ctx) -
 
 /// Serialize one expression child. Returns false to bail. Mirrors JS
 /// `ssrSerializeExprChild`.
+/// SSR: lower an eligible DOM `JSXElement` to its `_ssr(...)` string form (the
+/// same text a top-level element produces), or `None` when it cannot be a
+/// self-contained string. A component/preserved child needs `_ssrDeferred`
+/// range-bracketing (fixed source ranges edited in place), which an element
+/// sitting inside a hole has no range for — those keep the VNode path.
+/// Byte-identity is the `try_ssr_template_emit` invariant `_ssr(el) ==
+/// renderNode(<el>)`. Mirrors JS `ssrLowerElementText`.
+fn ssr_lower_element_text(el: &JSXElement, ctx: &mut Ctx) -> Option<String> {
+    let eb = build_ssr_buf(el, SsrMode::Recursed, ctx)?;
+    if eb.hole_src.iter().any(|h| h.is_some()) {
+        return None;
+    }
+    ctx.needs_ssr_import = true;
+    Some(ssr_call_text(&eb, SsrMode::Recursed, ctx))
+}
+
+/// SSR: lower the eligible DOM-element operand(s) of a conditional expression
+/// child — `cond && <el>`, `cond ? <el> : <el|null>`, or a bare `{<el>}` — to
+/// `_ssr(...)` so the TAKEN branch builds a string instead of allocating a
+/// VNode and walking `renderNode`. Returns the reconstructed expression source,
+/// or `None` when nothing lowered (caller keeps the `slice_expr` path).
+///
+/// Byte-identity across EVERY value: the `&&` / `?:` short-circuit is untouched
+/// (only an element OPERAND's value changes VNode -> RawHtml), each lowered
+/// element satisfies `_ssr(el) == renderNode(<el>)`, and the runtime `_esc` /
+/// `_escSole` route a RawHtml through `renderNode` exactly as a VNode (a falsy
+/// left operand is returned verbatim by both). The caller's `sole` /
+/// `should_wrap` marker decision reads the ORIGINAL `expr`, so it is unchanged.
+/// Conditions are EXACT (mirroring `ssr_try_map`): a non-element operand keeps
+/// its slice, and an all-unlowerable expression returns `None` so the emit is
+/// byte-for-byte the pre-existing VNode path. Mirrors JS `ssrLowerNestedElements`.
+fn ssr_lower_nested_elements(expr: &Expression, ctx: &mut Ctx) -> Option<String> {
+    match expr {
+        Expression::JSXElement(el) => ssr_lower_element_text(el, ctx),
+        Expression::LogicalExpression(l) if l.operator == LogicalOperator::And => {
+            match unwrap_type_layers(&l.right) {
+                Expression::JSXElement(el) => {
+                    let lowered = ssr_lower_element_text(el, ctx)?;
+                    Some(format!("{} && {}", slice_expr(&l.left, ctx), lowered))
+                }
+                _ => None,
+            }
+        }
+        Expression::ConditionalExpression(c) => {
+            let lowered_cons = match unwrap_type_layers(&c.consequent) {
+                Expression::JSXElement(el) => ssr_lower_element_text(el, ctx),
+                _ => None,
+            };
+            let lowered_alt = match unwrap_type_layers(&c.alternate) {
+                Expression::JSXElement(el) => ssr_lower_element_text(el, ctx),
+                _ => None,
+            };
+            if lowered_cons.is_none() && lowered_alt.is_none() {
+                return None;
+            }
+            let cons_text = lowered_cons.unwrap_or_else(|| slice_expr(&c.consequent, ctx));
+            let alt_text = lowered_alt.unwrap_or_else(|| slice_expr(&c.alternate, ctx));
+            Some(format!(
+                "{} ? {} : {}",
+                slice_expr(&c.test, ctx),
+                cons_text,
+                alt_text
+            ))
+        }
+        _ => None,
+    }
+}
+
 fn ssr_serialize_expr_child(
     buf: &mut SsrBuf,
     container: &JSXExpressionContainer,
@@ -5546,23 +5614,26 @@ fn ssr_serialize_expr_child(
     if ssr_try_map(buf, expr, sole, ctx) {
         return true;
     }
+    // Lower an eligible DOM element nested in a conditional (`cond && <el>`,
+    // `cond ? <el> : …`) so the taken branch builds a string, not a VNode. The
+    // reconstructed text is byte-identical through `_esc`/`_escSole` (see
+    // `ssr_lower_nested_elements`); `None` keeps the pre-existing slice path.
+    let expr_text =
+        ssr_lower_nested_elements(expr, ctx).unwrap_or_else(|| slice_expr(expr, ctx));
     // SOLE child of this element → no markers on EITHER side, whatever the
     // expression's static shape; `_escSole` decides from the runtime value kind.
     if sole {
-        let t = slice_expr(expr, ctx);
-        emit_esc_sole_hole(buf, t, ctx);
+        emit_esc_sole_hole(buf, expr_text, ctx);
         return true;
     }
     if should_wrap(expr, ctx) {
         // The h() path wraps a dynamic child in `() => expr` → `<!--$-->…<!--/$-->`
         // markers. Bake the markers + `_esc(expr)`: byte-identical.
         buf.emit_static("<!--$-->");
-        let t = slice_expr(expr, ctx);
-        emit_esc_hole(buf, t, ctx);
+        emit_esc_hole(buf, expr_text, ctx);
         buf.emit_static("<!--/$-->");
     } else {
-        let t = slice_expr(expr, ctx);
-        emit_esc_hole(buf, t, ctx);
+        emit_esc_hole(buf, expr_text, ctx);
     }
     true
 }
