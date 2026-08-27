@@ -138,6 +138,27 @@ describe('explainRuleState', () => {
     expect(state.exemptPaths).toEqual(['src/legacy/'])
   })
 
+  it('RENDERS the exemptPaths, not just carries them', () => {
+    // The spec above asserts the state; this asserts the OUTPUT. They are
+    // different code paths, and the render half was the uncovered one — a
+    // reader asking "why is this rule silent on my file" only ever sees the
+    // rendered text, so a path that carries the answer and never prints it
+    // answers nobody.
+    const config = recommended()
+    config.rules['pyreon/no-window-in-ssr'] = ['error', { exemptPaths: ['src/legacy/', 'vendor/'] }]
+    const out = formatRuleState(explainRuleState('no-window-in-ssr', { config }))
+    expect(out).toContain('Configured exemptPaths')
+    expect(out).toContain('src/legacy/')
+    expect(out).toContain('vendor/')
+  })
+
+  it('omits the exemptPaths section entirely when there are none', () => {
+    // The other side of the same branch: an empty list must not print a header
+    // with nothing under it, which reads as "exempt everywhere".
+    const out = formatRuleState(explainRuleState('no-window-in-ssr', { config: recommended() }))
+    expect(out).not.toContain('Configured exemptPaths')
+  })
+
   it('every reason carries an actionable fix', () => {
     projectDir = makeProject({ '@pyreon/core': '*' })
     const states = [

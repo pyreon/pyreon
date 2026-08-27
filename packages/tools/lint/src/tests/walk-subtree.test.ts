@@ -140,4 +140,40 @@ describe('walkSubtree', () => {
     truth(program)
     expect([...new Set(missed)]).toEqual([])
   })
+
+  it('reaches a SINGLE object child of an unknown node type', () => {
+    // The fallback path exists for a node shape newer than the installed oxc,
+    // where there are no visitor keys to follow. Its array branch was covered
+    // and its single-child branch was not — which is the one that matters more,
+    // because most AST fields hold one node, not a list. A shape oxc grows
+    // tomorrow would have its subtree silently unvisited, and a rule would stop
+    // firing with nothing to say why.
+    const seen: string[] = []
+    walkSubtree(
+      {
+        type: 'SomeFutureOxcNode',
+        body: { type: 'Identifier', name: 'reached' },
+        meta: { notANode: true },
+        nothing: null,
+      },
+      (n: any) => {
+        seen.push(n.type)
+      },
+    )
+    expect(seen).toContain('Identifier')
+  })
+
+  it('never descends through `parent`, even on the unknown-type path', () => {
+    // A cycle here is an infinite walk, not a wrong answer.
+    const child: any = { type: 'Identifier', name: 'x' }
+    const root: any = { type: 'SomeFutureOxcNode', body: child }
+    child.parent = root
+    const seen: string[] = []
+    expect(() =>
+      walkSubtree(root, (n: any) => {
+        seen.push(n.type)
+      }),
+    ).not.toThrow()
+    expect(seen.filter((t) => t === 'SomeFutureOxcNode')).toHaveLength(1)
+  })
 })
