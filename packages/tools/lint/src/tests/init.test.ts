@@ -118,6 +118,19 @@ describe('initConfig', () => {
     expect(initConfig(cwd).message).toContain('stay silent')
   })
 
+  it('refuses via an ATOMIC create, not a check-then-write race', async () => {
+    // Static guard. `existsSync(path)` followed by a later `writeFileSync` is
+    // `js/file-system-race` — CodeQL flagged exactly this here, and it is a
+    // class this repo has hit before. The invariant belongs in the syscall
+    // (`flag: 'wx'`), so the file cannot appear between check and write.
+    const { readFileSync: rf } = await import('node:fs')
+    const { join: j } = await import('node:path')
+    const src = rf(j(import.meta.dirname, '..', 'init.ts'), 'utf-8')
+    const code = src.replace(/\/\*\*[\s\S]*?\*\//g, '') // strip doc comments
+    expect(code).not.toContain('existsSync')
+    expect(code).toContain("flag: 'wx'")
+  })
+
   it('points at --why-off, the answer to the next question a user has', () => {
     const cwd = project({ name: 'app', private: true })
     expect(initConfig(cwd).message).toContain('--why-off')

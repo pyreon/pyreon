@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { PresetName } from './types'
 
@@ -93,17 +93,18 @@ export function buildInitConfig(preset: PresetName): string {
   )}\n`
 }
 
-/** Write a starting config into `cwd`, refusing to clobber an existing one. */
+/**
+ * Write a starting config into `cwd`, refusing to clobber an existing one.
+ *
+ * The refusal is an ATOMIC exclusive create (`flag: 'wx'`), not an
+ * `existsSync` check followed by a write. Check-then-use is a real race — the
+ * file can appear between the two — and CodeQL flags it as
+ * `js/file-system-race`, a class this repo has hit before. Letting the
+ * filesystem enforce the invariant removes the window rather than narrowing
+ * it, and is simpler besides.
+ */
 export function initConfig(cwd: string): InitResult {
   const path = join(cwd, '.pyreonlintrc.json')
-  if (existsSync(path)) {
-    return {
-      status: 'exists',
-      path,
-      message:
-        '.pyreonlintrc.json already exists — leaving it alone. Delete it first if you want a fresh one.',
-    }
-  }
 
   const pkg = readPkg(cwd)
   if (!pkg) {
@@ -117,7 +118,22 @@ export function initConfig(cwd: string): InitResult {
 
   const preset = detectPreset(pkg)
   const contents = buildInitConfig(preset)
-  writeFileSync(path, contents, 'utf-8')
+  try {
+    // `wx` fails with EEXIST rather than truncating. A config is hand-tuned
+    // over time; clobbering it is the one unrecoverable thing this command
+    // could do, so the guarantee belongs in the syscall, not in a prior check.
+    writeFileSync(path, contents, { encoding: 'utf-8', flag: 'wx' })
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
+      return {
+        status: 'exists',
+        path,
+        message:
+          '.pyreonlintrc.json already exists — leaving it alone. Delete it first if you want a fresh one.',
+      }
+    }
+    throw err
+  }
 
   const deps = detectPyreonDeps(pkg)
   const libNote =
