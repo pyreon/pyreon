@@ -142,6 +142,14 @@ export function createTableState<T>(options: TableStateOptions<T>): TableState<T
   const filterValue = signal('')
   const page = signal(0)
   const selected = signal<readonly string[]>([])
+  // Membership-test backing for `isSelected` — a lazy Set derived from
+  // `selected()`. `isSelected` is the per-row selection predicate (called once
+  // per rendered row inside a reactive scope); a raw `selected().includes(id)`
+  // is O(k) per row → O(N·k) per selection change (O(N²) under select-all).
+  // The Set rebuilds O(k) once per selection change (a rare gesture) and each
+  // `isSelected` read becomes O(1). Same booleans, same reactivity (reads a
+  // computed derived from `selected()`).
+  const selectedSet = computed(() => new Set(selected()))
 
   // filtered → sorted (paginated is derived separately so pageCount can read it)
   const filtered = computed(() => {
@@ -210,7 +218,7 @@ export function createTableState<T>(options: TableStateOptions<T>): TableState<T
       page.set(clampPage(page() - 1))
     },
 
-    isSelected: (id) => selected().includes(id),
+    isSelected: (id) => selectedSet().has(id),
     toggleSelected(id) {
       const current = selected()
       selected.set(current.includes(id) ? current.filter((x) => x !== id) : [...current, id])
