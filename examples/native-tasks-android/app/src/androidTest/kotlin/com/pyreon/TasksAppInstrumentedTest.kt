@@ -32,7 +32,10 @@ package com.pyreon
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodes
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -49,6 +52,30 @@ import org.junit.runner.RunWith
 class TasksAppInstrumentedTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<MainActivity>()
+
+    /**
+     * Post-click text assertions on the toolkit screen race state that
+     * crosses an async boundary Compose's idle-sync does not track — the
+     * Pyreon runtime's dispatch, the router-driven url-state write (which
+     * briefly remounts the page, so the node can be ABSENT, not just
+     * stale), and the live WebView on this same screen keeping the frame
+     * clock busy. Poll tag+text the same way the fetch/bridge waits above
+     * do, then assert once so a real failure still reads well.
+     *
+     * Round-5 lesson: the first CI run raced the machine toggle
+     * ("on"), the rerun got further and raced the url-state write
+     * ("done", toolkit-filter not found mid-remount) — one class, two
+     * lines. Fix the class, not the line.
+     */
+    private fun waitForTagText(tag: String, text: String) {
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule
+                .onAllNodes(hasTestTag(tag) and hasText(text))
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+        composeRule.onNodeWithTag(tag).assertTextEquals(text)
+    }
 
     @Test
     fun appLaunchesOnLoginPage() {
@@ -371,7 +398,7 @@ class TasksAppInstrumentedTest {
         // an untouched field has none, so submit is what runs the schema.
         composeRule.onNodeWithTag("toolkit-schema-name").performScrollTo().performTextInput("ab")
         composeRule.onNodeWithTag("toolkit-schema-submit").performScrollTo().performClick()
-        composeRule.onNodeWithTag("toolkit-schema-valid").assertTextEquals("false")
+        waitForTagText("toolkit-schema-valid", "false")
 
         // WebView bridge — mirror of the iOS assertion. The hosted page echoes
         // the host-pushed `__pyreonData` back, so both directions land in a
@@ -395,9 +422,7 @@ class TasksAppInstrumentedTest {
             .onNodeWithTag("toolkit-machine-toggle")
             .performScrollTo()
             .performClick()
-        composeRule
-            .onNodeWithTag("toolkit-machine")
-            .assertTextEquals("on")
+        waitForTagText("toolkit-machine", "on")
         // storage: the default, since nothing has persisted a value yet.
         composeRule
             .onNodeWithTag("toolkit-storage")
@@ -409,9 +434,7 @@ class TasksAppInstrumentedTest {
             .onNodeWithTag("toolkit-filter-done")
             .performScrollTo()
             .performClick()
-        composeRule
-            .onNodeWithTag("toolkit-filter")
-            .assertTextEquals("done")
+        waitForTagText("toolkit-filter", "done")
 
         composeRule
             .onNodeWithTag("toolkit-back")
