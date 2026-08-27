@@ -2335,6 +2335,7 @@
         "@pyreon/manifest": "workspace:*",
         "@pyreon/native-compiler": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/validate": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
       },
       "peerDependencies": {
