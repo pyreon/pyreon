@@ -12,6 +12,11 @@ export default defineNodeConfig({
     'src/watcher.ts',
     'src/config/ignore.ts',
     'src/lsp.ts',
+    // Worker-thread entry: the `if (parentPort)` body + fix-write path run
+    // ONLY inside a spawned worker, where in-process V8 coverage is not
+    // collected — the parallel path is exercised end-to-end by parallel.test.ts
+    // and the real multi-file lint. Same integration-tier class as cli/watcher/lsp.
+    'src/lint-worker.ts',
     'src/lsp/index.ts', // LSP server message-handler routing — tested via lsp-*.test.ts
     // High-complexity rules: dedicated test files exercise the canonical
     // shapes, but defensive AST helpers (TS-cast unwrap branches, deeply

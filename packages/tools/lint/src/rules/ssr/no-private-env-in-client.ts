@@ -78,6 +78,7 @@ export const noPrivateEnvInClient: Rule = {
     description:
       "Flag raw `process.env.X` / `import.meta.env.X` reads in client-reachable @pyreon/zero code — `process.env` is undefined in the browser and `import.meta.env` is bundler-specific. Use `publicEnv()` from `@pyreon/zero/env` with a `ZERO_PUBLIC_`-prefixed var (inlined into the client bundle at build, secrets kept out). Opt-in best-practice, gated on the project depending on @pyreon/zero; `NODE_ENV` + Vite built-ins + server-only files are never flagged.",
     severity: 'warn',
+    requiresDependency: '@pyreon/zero',
     optIn: true,
     fixable: false,
     schema: { exemptPaths: 'string[]' },

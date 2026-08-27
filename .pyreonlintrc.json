@@ -254,6 +254,11 @@
           "packages/fundamentals/feature/src/define-feature.ts"
         ]
       }
-    ]
+    ],
+    "pyreon/no-circular-import": "error",
+    "pyreon/no-cross-layer-import": "error",
+    "pyreon/no-query-selector-cast-in-test": "error",
+    "pyreon/require-browser-smoke-test": "error",
+    "pyreon/vitest-config-uses-shared": "error"
   }
 }

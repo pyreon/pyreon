@@ -32,6 +32,7 @@ export const noCircularImport: Rule = {
     category: 'architecture',
     description: 'Enforce package layer order to prevent circular imports between core packages.',
     severity: 'error',
+    scope: 'monorepo',
     fixable: false,
   },
   create(context) {

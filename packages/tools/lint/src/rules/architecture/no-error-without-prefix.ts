@@ -26,6 +26,7 @@ export const noErrorWithoutPrefix: Rule = {
     category: 'architecture',
     description: 'Require error messages to be prefixed with [Pyreon] or [@pyreon/<pkg>].',
     severity: 'warn',
+    scope: 'monorepo',
     fixable: true,
     schema: { exemptPaths: 'string[]' },
   },

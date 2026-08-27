@@ -17,13 +17,27 @@ export interface Fix {
   replacement: string
 }
 
+/**
+ * What a rule attaches to a diagnostic to make it auto-fixable.
+ *
+ * A single edit for the common case, or an ARRAY when one fix needs edits in
+ * more than one place — the dominant example being "replace this expression
+ * AND add the import it now needs". With only a single span expressible, rules
+ * like `prefer-isserver` could not offer a fix at all, which is a large part of
+ * why the fixable ratio is low.
+ *
+ * Edits within one `RuleFix` must not overlap each other; overlapping edits
+ * ACROSS diagnostics are detected and deferred by `applyFixes`.
+ */
+export type RuleFix = Fix | readonly Fix[]
+
 export interface Diagnostic {
   ruleId: string
   severity: Severity
   message: string
   span: Span
   loc: SourceLocation
-  fix?: Fix | undefined
+  fix?: RuleFix | undefined
 }
 
 // ── Rule Metadata ───────────────────────────────────────────────────────────
@@ -51,6 +65,22 @@ export type RuleCategory =
   | 'i18n'
   | 'storage'
   | 'http'
+
+/**
+ * The top-level bucket a rule belongs to — the axis `RuleCategory` does not
+ * capture: **what knowledge does this rule require, and does it ship?**
+ *
+ *  - `pyreon`   framework semantics; nothing outside Pyreon can know these.
+ *  - `a11y`     accessibility, standard markup plus Pyreon's own surfaces.
+ *  - `pkg`      per-library, self-activating on a declared dependency.
+ *  - `internal` encodes THIS repository; never enabled by a shipped preset.
+ *
+ * Categories live underneath, so a query rule is `group: 'pkg'`,
+ * `category: 'query'`. There is deliberately no `js` / `ts` group: those are
+ * for general JS/TS correctness rules, of which this package has none yet, and
+ * an empty group would advertise coverage that does not exist.
+ */
+export type RuleGroup = 'pyreon' | 'a11y' | 'pkg' | 'internal'
 
 /**
  * Declared type of an option slot. Minimal on purpose — sufficient for
@@ -91,6 +121,40 @@ export interface RuleMeta {
    * the library.
    */
   optIn?: boolean
+  /**
+   * Who the rule is FOR.
+   *
+   * `'framework'` (the default) — a rule about Pyreon itself, valid in any
+   * consumer project.
+   *
+   * `'monorepo'` — a rule that encodes THIS repository's conventions: its
+   * layer order, its private internal packages (`@pyreon/vitest-config`,
+   * `@pyreon/test-utils`), its `[Pyreon]` error prefix. These are valuable
+   * here and meaningless in a user's app, so every SHIPPED preset forces them
+   * off and this repo re-enables them by id in its own `.pyreonlintrc.json` —
+   * which makes the dependency visible in config instead of hidden inside a
+   * preset that a consumer also selects.
+   *
+   * The split is drawn by measurement, not taste: these are exactly the rules
+   * whose source hardcodes an `@pyreon/*` specifier or a `packages/<layer>/`
+   * path. `dev-guard-warnings` hardcodes neither and is therefore a genuine
+   * library-author rule, so it stays in the shipped presets.
+   */
+  scope?: 'framework' | 'monorepo'
+  /**
+   * The package this rule is ABOUT. When set, the rule self-suppresses in a
+   * project that does not declare that dependency — a project with no
+   * `@pyreon/query` never sees query rules, even with the rule enabled.
+   *
+   * The gate itself lives in the rule body (`isProjectDependency(...)`); this
+   * field DECLARES it so tooling can explain it. Without the declaration the
+   * gate is invisible: `--why-off` could only say "the rule ran and reported
+   * nothing", which is indistinguishable from "your code is clean".
+   *
+   * `rule-registry.test.ts` asserts the declaration matches the gate the rule
+   * source actually performs, so the two cannot drift.
+   */
+  requiresDependency?: string
 }
 
 // ── Rule Options ────────────────────────────────────────────────────────────
@@ -155,6 +219,16 @@ export interface LintConfig {
 
 export interface LintConfigFile {
   preset?: PresetName | undefined
+  /**
+   * Severity for a whole GROUP, in one line — `{ "a11y": "off" }` silences
+   * every accessibility rule without listing 15 ids.
+   *
+   * Applied AFTER the preset and BEFORE per-rule entries, so an explicit rule
+   * always wins over its group. `internal` can be turned on this way too,
+   * which is how the Pyreon repo could opt into its own rules wholesale
+   * instead of by id.
+   */
+  groups?: Partial<Record<RuleGroup, Severity>> | undefined
   rules?: Record<string, RuleEntry> | undefined
   include?: string[] | undefined
   exclude?: string[] | undefined

@@ -5,13 +5,17 @@ export { loadConfig, loadConfigFromPath } from './config/loader'
 export { getPreset } from './config/presets'
 // CLI entry — reusable by the `pyreon-lint` bin AND `@pyreon/cli`'s `pyreon lint`.
 export { runCli } from './cli'
+export { buildInitConfig, detectPreset, detectPyreonDeps, initConfig } from './init'
+export type { InitResult } from './init'
 export { lint, listRules } from './lint'
 export { formatCompact, formatJSON, formatText } from './reporter'
 // LSP
 export { startLspServer } from './lsp/index'
 // Rules
 export { allRules } from './rules/index'
-export { applyFixes, lintFile } from './runner'
+// Groups — the axis `RuleCategory` does not capture.
+export { CATEGORY_GROUP, groupOf } from './rules/groups'
+export { applyFixes, fixEdits, lintFile } from './runner'
 // Types
 export type {
   ConfigDiagnostic,
@@ -29,6 +33,8 @@ export type {
   RuleCategory,
   RuleContext,
   RuleEntry,
+  RuleFix,
+  RuleGroup,
   RuleMeta,
   RuleOptions,
   RuleOptionsSchema,
@@ -50,3 +56,10 @@ export {
 // Utilities
 export { LineIndex } from './utils/source'
 export { watchAndLint } from './watcher'
+// Parallel driver — same results as `lint`, across a worker pool.
+export { _workerEntry, lintAsync, PARALLEL_FILE_THRESHOLD, partition, planRun, workerCountFor } from './parallel'
+export type { RunPlan, SequentialReason } from './parallel'
+// "Why isn't this rule firing?" — a rule can be inert for four independent
+// reasons, three of which are invisible in config.
+export { explainRuleState, formatRuleState } from './why-off'
+export type { OffReason, RuleState } from './why-off'

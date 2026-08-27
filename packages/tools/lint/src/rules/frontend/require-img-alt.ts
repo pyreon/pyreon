@@ -17,8 +17,10 @@ export const requireImgAlt: Rule = {
     category: 'frontend',
     description: 'Require an `alt` attribute on every `<img>` element (alt="" is valid for decorative images).',
     severity: 'error',
+    // On by DEFAULT: an unambiguous WCAG failure with an ecosystem
+    // counterpart in oxlint's `correctness` tier (jsx-a11y/alt-text).
+    // Shipping it opt-in meant a fresh Pyreon app had no a11y checking at all.
     fixable: false,
-    optIn: true,
     schema: { exemptPaths: 'string[]' },
   },
   create(context) {

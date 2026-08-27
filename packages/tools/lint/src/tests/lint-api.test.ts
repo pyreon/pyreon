@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -35,6 +35,18 @@ describe('lint() — high-level API', () => {
     rmSync(dir, { recursive: true, force: true })
   })
 
+  it('skips a dangling symlink whose stat fails during the walk (L76-77 catch)', () => {
+    const dir = makeTmp()
+    write(dir, 'src/real.ts', `export const x = 1\n`)
+    // A symlink to a nonexistent target: statSync throws mid-walk, and the walk
+    // must SKIP it rather than crash.
+    symlinkSync(join(dir, 'does-not-exist.ts'), join(dir, 'src/dangling.ts'))
+    const result = lint({ paths: [dir] })
+    expect(result.files.some((f) => f.filePath.includes('real.ts'))).toBe(true)
+    expect(result.files.some((f) => f.filePath.includes('dangling'))).toBe(false)
+    rmSync(dir, { recursive: true, force: true })
+  })
+
   it('skips nonexistent paths gracefully (L162-163 catch)', () => {
     const result = lint({ paths: ['/this/path/does/not/exist'] })
     expect(result.files).toEqual([])
@@ -51,6 +63,29 @@ describe('lint() — high-level API', () => {
     )
     const result = lint({ paths: [dir], config: join(dir, '.pyreonlintrc.json') })
     expect(result.files.some((f) => f.filePath.includes('skip-me'))).toBe(false)
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('respects an INCLUDE allowlist from config — only matching files are linted (L36-40)', () => {
+    const dir = makeTmp()
+    write(dir, 'src/keep.ts', `export const x = 1\n`)
+    write(dir, 'other/drop.ts', `export const y = 2\n`)
+    write(dir, '.pyreonlintrc.json', JSON.stringify({ include: ['keep'], rules: {} }))
+    const result = lint({ paths: [dir], config: join(dir, '.pyreonlintrc.json') })
+    expect(result.files.some((f) => f.filePath.includes('keep'))).toBe(true)
+    expect(result.files.some((f) => f.filePath.includes('drop'))).toBe(false)
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('applies group-level severity from config — `groups` silences a whole group (L112-116)', () => {
+    const dir = makeTmp()
+    // `no-for-missing-by` (category reactivity → group `pyreon`) errors by
+    // default; turning the WHOLE `pyreon` group off must silence it.
+    write(dir, 'src/a.tsx', `import { For } from '@pyreon/core'\nexport const X = ({ items }) => <For each={items}>{(x) => <li>{x}</li>}</For>\n`)
+    write(dir, '.pyreonlintrc.json', JSON.stringify({ groups: { pyreon: 'off' }, rules: {} }))
+    const result = lint({ paths: [dir], config: join(dir, '.pyreonlintrc.json') })
+    const diags = result.files.flatMap((f) => f.diagnostics).filter((d) => d.ruleId === 'pyreon/no-for-missing-by')
+    expect(diags.length).toBe(0)
     rmSync(dir, { recursive: true, force: true })
   })
 
