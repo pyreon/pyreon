@@ -53,6 +53,20 @@ export interface AtlasConfig {
    */
   scenarios?: Record<string, readonly AuthoredScenario[]>
   /**
+   * Path fragments to skip during discovery, ADDED to the defaults.
+   *
+   * A file can export a PascalCase component and still not belong in a
+   * catalog: generated code shaped for another compiler, an internal helper, a
+   * fixture. Without this the only options are to browse it or to rename it,
+   * and a card that throws on every scenario trains people to ignore the
+   * report -- which is the one thing a catalog cannot afford.
+   *
+   * Matched as a SUBSTRING of the full path, like the built-in defaults
+   * (`node_modules`, `.test.`, `.stories.`), so `.native.tsx` or `/gen/`
+   * both work without a glob dialect to learn.
+   */
+  ignore?: readonly string[]
+  /**
    * The site's name — browser tab, workbench chrome, and the `<title>` of a
    * built static site. `--title` on the CLI wins over this.
    */
@@ -309,6 +323,11 @@ function validateAlias(value: unknown): string | undefined {
   const problems = [
     take('presets', validatePresets),
     take('scenarios', validateAuthoredScenarios),
+    take('ignore', (v) =>
+      Array.isArray(v) && v.every((e) => typeof e === 'string')
+        ? undefined
+        : 'must be an array of path fragments',
+    ),
     take('title', (v) => (typeof v === 'string' ? undefined : '`title` must be a string')),
     take('pages', validatePages),
     take('projects', validateProjects),

@@ -16,7 +16,13 @@ export {
 export type { UnmatchedFile } from './unmatched'
 export { findUnmatched, formatUnmatched, pascalExports } from './unmatched'
 export type { DiscoverOptions } from './discover'
-export { discoverComponents, fileDiscoveryPlugin, listComponentFiles } from './discover'
+export {
+  DEFAULT_EXTENSIONS,
+  DEFAULT_IGNORE,
+  discoverComponents,
+  fileDiscoveryPlugin,
+  listComponentFiles,
+} from './discover'
 export { workspacePackageDirs } from './workspace'
 export type { RocketstyleDiscoveryOptions } from './rocketstyle'
 export { discoverRocketstyle, readDimensions } from './rocketstyle'

@@ -10,6 +10,7 @@
  *   pyreon mcp      — launch the Pyreon MCP server (delegates to @pyreon/mcp)
  *   pyreon atlas    — the Atlas component workbench (delegates to @pyreon/atlas)
  *   pyreon loom     — the Loom dependency observatory (delegates to @pyreon/loom)
+ *   pyreon lathe    — the Lathe spec-to-client generator (delegates to @pyreon/lathe)
  *   pyreon doctor   — project-wide health audit (score + per-category bars + findings)
  *   pyreon context  — generate .pyreon/context.json for AI tools
  *   pyreon info      — environment + installed @pyreon versions + version-skew check
@@ -51,6 +52,8 @@ function printUsage(): void {
                                      workbench, build emits a static site, verify-browser runs Chromium checks
     loom [args]                      Dependency observatory (delegates to @pyreon/loom): scan analyzes the
                                      workspace fabric with a red-exit CI contract, dev serves the graph UI
+    lathe [args]                     Spec-to-client generator (delegates to @pyreon/lathe): generate emits
+                                     schemas/endpoints/queries from OpenAPI, check fails on stale output
     doctor [options]                 Project-wide health audit with 0-100 score.
                                      Runs ${FAST_GATES.length} fast gates by default; --full enables ${SLOW_GATES.length} slow gates.
     context [--out <path>]           Generate .pyreon/context.json for AI tools
@@ -218,6 +221,16 @@ async function main(): Promise<void> {
     const { runLoom } = await import('./loom')
     const passthrough = args.slice(1).filter((a) => a !== '--dry-run')
     const exitCode = runLoom({
+      args: passthrough,
+      dryRun: args.includes('--dry-run'),
+    })
+    process.exit(exitCode)
+  }
+
+  if (command === 'lathe') {
+    const { runLathe } = await import('./lathe')
+    const passthrough = args.slice(1).filter((a) => a !== '--dry-run')
+    const exitCode = runLathe({
       args: passthrough,
       dryRun: args.includes('--dry-run'),
     })

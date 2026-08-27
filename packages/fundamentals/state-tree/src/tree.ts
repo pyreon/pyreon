@@ -1,5 +1,11 @@
 import { instanceMeta, isModelInstance } from './registry'
 
+// Bound for the ancestor-walk cycle guards in `getRoot` / `getPath`. A
+// well-formed tree never approaches this; it exists only so a corrupt
+// parent chain (shouldn't happen — parent is set to an ancestor on write)
+// can never loop forever. Chosen far above any realistic model nesting.
+const MAX_TREE_DEPTH = 100_000
+
 // ─── Internal parent-tracking ──────────────────────────────────────────────────
 
 /** Detect a plain object (literal `{}` / `Object.create(null)`) — scan target. */
@@ -112,11 +118,15 @@ export function isRoot(node: object): boolean {
 export function getRoot<T extends object = object>(node: object): T {
   let current = node
   // Guard against a pathological cycle (shouldn't happen — parent is set to an
-  // ancestor on write — but never loop forever).
-  const seen = new Set<object>([current])
+  // ancestor on write — but never loop forever). A bounded depth counter
+  // replaces a per-call `Set` allocation: `getRoot` is on the hot reference-
+  // resolve path (once per `reference()` read) and the parent chain is a tree,
+  // so the Set was pure garbage — a parentless root allocated one for a loop
+  // that never ran. MAX_TREE_DEPTH is far beyond any real nesting.
   let parent = metaOrThrow(current, 'getRoot').parent
-  while (parent !== undefined && !seen.has(parent)) {
-    seen.add(parent)
+  let depth = 0
+  while (parent !== undefined && depth < MAX_TREE_DEPTH) {
+    depth++
     current = parent
     parent = instanceMeta.get(current)?.parent
   }
@@ -134,9 +144,12 @@ export function getRoot<T extends object = object>(node: object): T {
 export function getPath(node: object): string {
   const segments: string[] = []
   let current: object | undefined = node
-  const seen = new Set<object>()
-  while (current !== undefined && !seen.has(current)) {
-    seen.add(current)
+  // Bounded depth counter instead of a per-call `Set` cycle-guard — same
+  // rationale as `getRoot`: the ancestor chain is a tree, so the Set only ever
+  // guarded a cycle that cannot occur in a well-formed tree.
+  let depth = 0
+  while (current !== undefined && depth < MAX_TREE_DEPTH) {
+    depth++
     const meta = instanceMeta.get(current)
     if (!meta) {
       if (current === node) throw new Error('[Pyreon] state-tree getPath: not a model instance')

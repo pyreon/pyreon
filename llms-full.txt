@@ -2914,6 +2914,35 @@ export default defineConfig({
 })
 ```
 
+## @pyreon/lathe — Spec-to-Client Generator
+
+Lathe reads an OpenAPI 3.x document and emits a client for the Pyreon stack: `@pyreon/validate` schemas, `@pyreon/http` endpoint declarations, `@pyreon/query` hooks, deterministic mock fixtures, and `@pyreon/atlas` scenarios derived from the spec's own enums and examples. The spec parser is first-party — a YAML reader scoped to the OpenAPI subset that REFUSES anchors, tags and tab indentation rather than mis-reading them — so there is no third-party spec dependency to trust. What separates it from a conventional generator is `target: 'multiplatform'`: the native compiler (PMTC) lowers only a SUBSET of TypeScript and has no module graph, so it recognises a client, a schema and a call only when they share ONE file's top level. Hand-written code drifts out of that constantly; generated code need not, so Lathe emits a self-contained module per tag — a layout no human would maintain and exactly the one the compiler wants — then runs the real compiler over its own output and checks for the POSITIVE marker (`PyreonQuery<`, `PyreonZodSchema_`), because zero warnings is not evidence of lowering.
+
+```typescript
+$ pyreon lathe generate ./openapi.yaml --target multiplatform
+
+lathe / Bookshelf 1.2.0
+  4 models  4 operations  target=multiplatform
+
+  + src/gen/schemas.ts
+  + src/gen/client.ts
+  + src/gen/endpoints/books.ts
+  + src/gen/queries/books.ts
+  + src/gen/books.native.tsx
+
+  5 file(s) written
+
+  native reach  2/4 operations
+    web-only 1 op(s): getBook
+      path parameters (bookId) are supplied at runtime, and PMTC needs literal
+      params to bake the URL at compile time.
+    web-only 1 op(s): createBook
+      POST lowers through mutations, which PMTC does not yet recognise.
+
+  lowers books.native.tsx swift   [PyreonQuery< PyreonZodSchema_]
+  lowers books.native.tsx kotlin  [PyreonQuery< PyreonZodSchema_]
+```
+
 ## @pyreon/loom — Dependency Observatory
 
 Loom reads a workspace the way an install tool does — root workspace globs (npm/bun/yarn array + object forms, `packages/*/*`-style nesting, negations, pnpm-workspace.yaml) and every member manifest — and turns the dependency fabric into DATA: the internal graph (longest-path depths, RUNTIME cycles with dev edges deliberately excluded, transitive blast radius), the external version-usage map (every dep → every declared range → who declares it), and a detector-driven issue list with honest severities. `loom scan` writes `loom-report.json` and exits non-zero on error findings, so wiring it into CI gates the fabric; `loom dev` serves the five-view observatory UI over the same report. Loom reads DECLARED truth only — no lockfile parsing, no registry calls (outdated/duplicate-install analysis are documented future layers).

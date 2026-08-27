@@ -642,6 +642,7 @@ class CounterInstrumentedTest {
             lm.isProviderEnabled(LocationManager.GPS_PROVIDER)
         }
 
+        var lastPushError: String? = null
         composeRule.onNodeWithText("Locate").performSemanticsAction(SemanticsActions.OnClick)
 
         try {
@@ -656,7 +657,15 @@ class CounterInstrumentedTest {
                     }
                 try {
                     lm.setTestProviderLocation(LocationManager.GPS_PROVIDER, fix)
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    // RECORD it. Swallowing this made a failed PUSH and an app
+                    // that never rendered look identical in the message below —
+                    // and the message is the only artifact a CI-only failure
+                    // leaves. Observed 2026-08-27: both provider preconditions
+                    // read true and the readout stayed empty, which narrows to
+                    // exactly these two causes and could not be told apart.
+                    lastPushError = e.toString()
+                }
                 composeRule
                     .onAllNodesWithText("Geo: 37.422", substring = true)
                     .fetchSemanticsNodes()
@@ -682,7 +691,8 @@ class CounterInstrumentedTest {
             throw AssertionError(
                 "geo fix never rendered — observed: [$geoTexts], " +
                     "gpsProviderEnabled=${lm.isProviderEnabled(LocationManager.GPS_PROVIDER)}, " +
-                    "locationEnabled=${lm.isLocationEnabled}",
+                    "locationEnabled=${lm.isLocationEnabled}, " +
+                    "lastPushError=${lastPushError ?: "<none — every setTestProviderLocation succeeded>"}",
                 e,
             )
         } finally {

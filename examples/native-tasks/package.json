@@ -2,7 +2,7 @@
   "name": "@pyreon/example-native-tasks",
   "version": "0.50.1",
   "private": true,
-  "description": "PRIVATE / EXPERIMENTAL — Gap 5 multi-feature showcase. Tasks app exercising a cross-screen defineStore (auth flag + task list), store-backed beforeEnter auth-gate, multi-screen routing, typed route params, and canonical primitives via PMTC. SINGLE source compiles to web + iOS + Android.",
+  "description": "PRIVATE / EXPERIMENTAL \u2014 Gap 5 multi-feature showcase. Tasks app exercising a cross-screen defineStore (auth flag + task list), store-backed beforeEnter auth-gate, multi-screen routing, typed route params, and canonical primitives via PMTC. SINGLE source compiles to web + iOS + Android.",
   "license": "MIT",
   "scripts": {
     "build:swift": "./scripts/build-swift.sh",
@@ -15,7 +15,6 @@
   "devDependencies": {
     "@pyreon/core": "workspace:*",
     "@pyreon/form": "workspace:*",
-    "@pyreon/i18n": "workspace:*",
     "@pyreon/machine": "workspace:*",
     "@pyreon/native-cli": "workspace:*",
     "@pyreon/primitives": "workspace:*",
@@ -24,6 +23,21 @@
     "@pyreon/store": "workspace:*"
   },
   "dependencies": {
-    "@pyreon/hooks": "workspace:*"
+    "@pyreon/a11y": "workspace:*",
+    "@pyreon/dnd": "workspace:*",
+    "@pyreon/hooks": "workspace:*",
+    "@pyreon/http": "workspace:*",
+    "@pyreon/i18n": "workspace:*",
+    "@pyreon/kinetic": "workspace:*",
+    "@pyreon/permissions": "workspace:*",
+    "@pyreon/query": "workspace:*",
+    "@pyreon/rx": "workspace:*",
+    "@pyreon/sized-map": "workspace:*",
+    "@pyreon/state-tree": "workspace:*",
+    "@pyreon/sync": "workspace:*",
+    "@pyreon/table": "workspace:*",
+    "@pyreon/toast": "workspace:*",
+    "@pyreon/ui-core": "workspace:*",
+    "@pyreon/url-state": "workspace:*"
   }
 }

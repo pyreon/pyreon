@@ -25,6 +25,12 @@ import {
   materializeWebFonts,
   scanFontDir,
 } from './fonts'
+import {
+  materializeAndroidWebHosts,
+  materializeIosWebHosts,
+  materializeWebWebHosts,
+  scanWebHostDir,
+} from './web-assets'
 
 export interface AssetVariant {
   /** 1 | 2 | 3 — from the @2x/@3x filename suffix (1 when bare). */
@@ -250,17 +256,21 @@ export function materializeAssets(
   outDir: string,
 ): MaterializeResult {
   const groups = scanAssetDir(sourceDir)
+  const hosts = scanWebHostDir(sourceDir)
   if (target === 'ios') {
     const r = materializeIosAssets(groups, outDir)
     const f = materializeIosFonts(scanFontDir(sourceDir), outDir)
-    return { assets: r.assets, files: r.files + f.fonts }
+    const w = materializeIosWebHosts(hosts, outDir)
+    return { assets: r.assets, files: r.files + f.fonts + w.hosts }
   }
   if (target === 'android') {
     const r = materializeAndroidAssets(groups, outDir)
     const f = materializeAndroidFonts(scanFontDir(sourceDir), outDir)
-    return { assets: r.assets, files: r.files + f.fonts }
+    const w = materializeAndroidWebHosts(hosts, outDir)
+    return { assets: r.assets, files: r.files + f.fonts + w.hosts }
   }
   const r = materializeWebAssets(groups, outDir)
   const f = materializeWebFonts(scanFontDir(sourceDir), outDir)
-  return { assets: r.assets, files: r.files + f.fonts }
+  const w = materializeWebWebHosts(hosts, outDir)
+  return { assets: r.assets, files: r.files + f.fonts + w.hosts }
 }

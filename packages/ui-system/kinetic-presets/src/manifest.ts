@@ -11,7 +11,9 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      'preset pack for the kinetic CSS engine',
+      'preset pack for the kinetic CSS engine; the presets whose motion exists in the native vocabulary cross — see nativeFrontend',
+    nativeFrontend:
+      "the presets that name motion both targets know — fade / fadeUp / fadeDown / fadeLeft / fadeRight / slideUp / slideDown / slideLeft / slideRight / scaleIn / scale — resolve through `kinetic(tag).preset(name)` to the same <Transition> path the primitive uses. The other 112 (backIn* / blur* / bounce* / flip* / rotate* / zoom*, and the diagonal and *Big magnitude variants) have no native analogue and decline BY NAME rather than animating something else",
   },
   longExample: `import { kinetic } from '@pyreon/kinetic'
 import {

@@ -164,7 +164,13 @@ function wrap(raw: object, shallow: boolean): object {
       // signal so a later reassign re-runs effects that read the key during its
       // absent window.
       if (!Object.hasOwn(target, key)) {
-        if (propSignals.has(key)) return propSignals.get(key)?.()
+        // Single lookup (was has()+get()): `undefined` is never a stored value
+        // — every entry is a real Signal — so a `get` miss is unambiguous, same
+        // as `getOrCreateSignal`. A prototype-method read (`.map`/`.push`) pays
+        // one `get` miss (== the old `has` miss); the tracked-but-deleted-key
+        // read now pays one hash instead of two.
+        const existing = propSignals.get(key)
+        if (existing !== undefined) return existing()
         return (target as Record<PropertyKey, unknown>)[key]
       }
 
@@ -218,12 +224,13 @@ function wrap(raw: object, shallow: boolean): object {
         return true
       }
 
-      // Update or create signal for this property
-      if (propSignals.has(key)) {
-        propSignals.get(key)?.set(value)
-      } else {
-        propSignals.set(key, signal(value))
-      }
+      // Update or create signal for this property. Single lookup (was
+      // has()+get()) — same invariant as `getOrCreateSignal`: a `get` miss is
+      // unambiguous because every stored entry is a real Signal. Removes one
+      // hash-of-key per store write on the steady-state (key-already-exists) path.
+      const existing = propSignals.get(key)
+      if (existing !== undefined) existing.set(value)
+      else propSignals.set(key, signal(value))
 
       // If array length changed (e.g. via push/splice index assignment), update it
       if (isArray && (target as unknown[]).length !== prevLength) {
@@ -242,7 +249,8 @@ function wrap(raw: object, shallow: boolean): object {
       // preserves signal identity across delete-then-reassign cycles. Trade-off:
       // long-lived stores with high churn on transient keys retain those entries
       // — reassign to undefined instead of deleting if that's a real leak.
-      if (typeof key !== 'symbol' && propSignals.has(key)) {
+      if (typeof key !== 'symbol') {
+        // Single lookup (was has()+get()) — same invariant as the get/set traps.
         propSignals.get(key)?.set(undefined)
       }
       if (isArray) lengthSig?.set((target as unknown[]).length)

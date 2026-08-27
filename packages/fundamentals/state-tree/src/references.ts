@@ -1,4 +1,5 @@
 import { type Signal, signal } from '@pyreon/reactivity'
+import { indexLookup, indexRegister } from './identifier-index'
 import { instanceMeta, isModelInstance } from './registry'
 import { getRoot } from './tree'
 
@@ -66,7 +67,9 @@ type InstanceOf<D> = D extends { create(initial?: never): infer I } ? I : object
  * ```
  *
  * Resolution walks the tree from `getRoot(node)` to find a node of the target
- * type whose identifier equals the stored id (O(n) per read in v1). Returns a
+ * type whose identifier equals the stored id. A validated identifier index
+ * accelerates the repeated case: the first resolve for an id walks the tree
+ * (O(N)), subsequent resolves are O(depth) validated cache hits. Returns a
  * value typed as the resolved instance so `post.author()` types correctly.
  */
 export function reference<D>(type: D): ReferenceField<InstanceOf<D>> {
@@ -171,6 +174,12 @@ export function resolveIdentifier<T extends object = object>(
     )
   }
   if (id == null) return undefined
+  // Fast path: a validated index hit skips the tree walk (O(depth) vs O(N)).
+  // Pure acceleration — the lookup re-validates the candidate against the live
+  // tree and returns undefined on any mismatch, so this only ever short-cuts a
+  // walk it would have completed identically, never changes the answer.
+  const hit = indexLookup(type as object, id, idKey, root)
+  if (hit !== undefined) return hit as T
   let found: object | undefined
   walkInstances(root, (node) => {
     const meta = instanceMeta.get(node)
@@ -179,6 +188,10 @@ export function resolveIdentifier<T extends object = object>(
       return true
     }
   })
+  // Warm the cache so the next resolve for this id is O(depth). Only a real
+  // DFS hit is recorded — a miss (unresolved reference) stays uncached, so a
+  // later attach of the target still resolves via a fresh walk.
+  if (found !== undefined) indexRegister(type as object, id, found)
   return found as T | undefined
 }
 

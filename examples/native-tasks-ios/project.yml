@@ -47,6 +47,15 @@ targets:
       - path: ../../packages/fundamentals/query/native/swift
       - path: ../../packages/fundamentals/storage/native/swift
       - path: ../../packages/fundamentals/hooks/native/swift
+      # Added with the ToolkitScreen — the Swift mirror of the Gradle srcDir
+      # additions. Both are needed: the stub gate models these types, the real
+      # build needs their co-source compiled in.
+      - path: ../../packages/core/sized-map/native/swift
+      - path: ../../packages/fundamentals/sync/native/swift
+      - path: ../../packages/fundamentals/toast/native/swift
+      - path: ../../packages/fundamentals/a11y/native/swift
+      - path: ../../packages/fundamentals/dnd/native/swift
+      - path: ../../packages/fundamentals/table/native/swift
         type: group
         optional: true
 

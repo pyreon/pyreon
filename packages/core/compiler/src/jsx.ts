@@ -170,6 +170,10 @@ export interface TransformResult {
 const SKIP_PROPS = new Set(['key', 'ref'])
 // Event handler pattern: onClick, onInput, onMouseEnter, …
 const EVENT_RE = /^on[A-Z]/
+// Hoisted so the literal isn't re-allocated per call on the SSR attr / template
+// child classification paths (a regex literal is a fresh RegExp per evaluation).
+const UPPER_RE = /[A-Z]/
+const IDENT_RE = /^[A-Za-z_$][\w$]*$/
 /**
  * Marks a template element as a MOUNT HOLE — emitted empty, filled at mount by
  * trailing `_mountChild` calls for its absorbed COMPONENT children
@@ -668,7 +672,7 @@ export function detectStaticElementChild(node: N): StaticChildNode | null {
     const nm = attr.name?.type === 'JSXIdentifier' ? attr.name.name : null
     if (!nm) return null
     // No handlers on a baked child — a static clone can't carry them.
-    if (/^on[A-Z]/.test(nm)) return null
+    if (EVENT_RE.test(nm)) return null
     const v = attr.value
     if (!v) return null // boolean attr → bail
     const isStr =
@@ -836,7 +840,7 @@ export function detectPartialCollapsibleShape(
     // `onClick` without a container, etc.) is a hard bail — same
     // conservatism as the full detector.
     if (
-      /^on[A-Z]/.test(nm) &&
+      EVENT_RE.test(nm) &&
       v.type === 'JSXExpressionContainer' &&
       v.expression &&
       typeof v.expression.start === 'number' &&
@@ -956,7 +960,7 @@ export function detectDynamicCollapsibleShape(
       typeof v.expression.start === 'number' &&
       typeof v.expression.end === 'number'
     ) {
-      if (/^on[A-Z]/.test(nm)) {
+      if (EVENT_RE.test(nm)) {
         handlers.push({ name: nm, exprStart: v.expression.start, exprEnd: v.expression.end })
         continue
       }
@@ -1782,7 +1786,7 @@ export function transformJSX_JS(
    * name, not class/style, not aria-*, not URL-bearing. Everything else needs
    * `renderProp`'s full logic (`_ssrAttr`). */
   function ssrAttrIsGeneric(name: string): boolean {
-    if (/[A-Z]/.test(name)) return false
+    if (UPPER_RE.test(name)) return false
     if (name === 'class' || name === 'style') return false
     if (name.charCodeAt(0) === 97 && name.startsWith('aria-')) return false
     if (SSR_URL_ATTRS.has(name)) return false
@@ -1962,7 +1966,7 @@ export function transformJSX_JS(
     // `toAttrName` maps camelCase/SVG/renamed names via a runtime table we don't
     // replicate at BAKE time — so an uppercase-named attr can only go through
     // `_ssrAttr` (renderProp does the mapping), never a compile-time bake.
-    const hasUpper = /[A-Z]/.test(name)
+    const hasUpper = UPPER_RE.test(name)
 
     // No value: `<x disabled>` → props.x = true.
     if (!attr.value) {
@@ -2144,6 +2148,63 @@ export function transformJSX_JS(
   }
 
   /** Serialize one expression child. Returns false to bail the element. */
+  /**
+   * SSR: lower an eligible DOM `JSXElement` to its `_ssr(...)` string form (the
+   * SAME text a top-level element produces, see `trySsrTemplateEmit`), or null
+   * when it cannot be a self-contained string. Only elements whose holes are
+   * ALL generated (no preserved component child) qualify: a component child
+   * needs the `_ssrDeferred` range-bracketing that edits fixed source ranges in
+   * place, which an element sitting inside a hole has no range for — those keep
+   * the VNode path. Byte-identity is the `trySsrTemplateEmit` invariant
+   * `_ssr(el) ≡ renderNode(<el>)`.
+   */
+  function ssrLowerElementText(el: N): string | null {
+    const eb = buildSsrBuf(el, 'recursed')
+    if (eb === null) return null
+    if (eb.holeSrc.some((h) => h !== null)) return null
+    needsSsrImport = true
+    return ssrCallText(eb, 'recursed')
+  }
+
+  /**
+   * SSR: lower the eligible DOM-element operand(s) of a conditional expression
+   * child — `cond && <el>`, `cond ? <el> : <el|null>`, or a bare `{<el>}` — to
+   * `_ssr(...)` so the TAKEN branch builds a string directly instead of
+   * allocating a VNode and walking `renderNode`. Returns the reconstructed
+   * expression source, or null when nothing lowered (caller keeps `sliceExpr`).
+   *
+   * Byte-identity across EVERY value: the `&&` / `?:` short-circuit is
+   * untouched (only an element OPERAND's value changes from VNode → RawHtml),
+   * each lowered element satisfies `_ssr(el) ≡ renderNode(<el>)`, and the
+   * runtime `_esc` / `_escSole` route a RawHtml through `renderNode` exactly as
+   * they route a VNode (a falsy left operand — `false`/null/0/''/NaN — is
+   * returned verbatim by both). The caller's `sole` / `shouldWrap` marker
+   * decision reads the ORIGINAL `expr`, so it is unchanged. Conditions are
+   * EXACT (mirroring `ssrTryMap`): any non-element operand keeps its slice, and
+   * an all-unlowerable expression returns null so the emit is byte-for-byte the
+   * pre-existing VNode path.
+   */
+  function ssrLowerNestedElements(expr: N): string | null {
+    if (expr.type === 'JSXElement') return ssrLowerElementText(expr)
+    if (expr.type === 'LogicalExpression' && expr.operator === '&&') {
+      const right = unwrapTypeLayers(expr.right)
+      if (right.type !== 'JSXElement') return null
+      const lowered = ssrLowerElementText(right)
+      return lowered === null ? null : `${sliceExpr(expr.left)} && ${lowered}`
+    }
+    if (expr.type === 'ConditionalExpression') {
+      const cons = unwrapTypeLayers(expr.consequent)
+      const alt = unwrapTypeLayers(expr.alternate)
+      const loweredCons = cons.type === 'JSXElement' ? ssrLowerElementText(cons) : null
+      const loweredAlt = alt.type === 'JSXElement' ? ssrLowerElementText(alt) : null
+      if (loweredCons === null && loweredAlt === null) return null
+      const consText = loweredCons ?? sliceExpr(expr.consequent)
+      const altText = loweredAlt ?? sliceExpr(expr.alternate)
+      return `${sliceExpr(expr.test)} ? ${consText} : ${altText}`
+    }
+    return null
+  }
+
   function ssrSerializeExprChild(buf: SsrBuf, child: N, mode: SsrMode, sole: boolean): boolean {
     const raw = child.expression
     if (!raw || raw.type === 'JSXEmptyExpression') return true // {} / {/* */} → nothing
@@ -2160,12 +2221,17 @@ export function transformJSX_JS(
     }
     // recursed mode: matches handleJsxExpression's wrap decision.
     if (ssrTryMap(buf, expr, sole)) return true
+    // Lower an eligible DOM element nested in a conditional (`cond && <el>`,
+    // `cond ? <el> : …`) so the taken branch builds a string, not a VNode. The
+    // reconstructed text is byte-identical through `_esc`/`_escSole` (see
+    // `ssrLowerNestedElements`); null keeps the pre-existing `sliceExpr` path.
+    const exprText = ssrLowerNestedElements(expr) ?? sliceExpr(expr)
     // SOLE child of this element → no markers on EITHER side, whatever the
     // expression's static shape; `_escSole` decides from the runtime value
     // kind, which is the only thing that determines whether `_esc` would have
     // added them. See `soleAccessorChild` in @pyreon/runtime-server.
     if (sole) {
-      emitEscSoleHole(buf, sliceExpr(expr))
+      emitEscSoleHole(buf, exprText)
       return true
     }
     if (shouldWrap(expr)) {
@@ -2174,10 +2240,10 @@ export function transformJSX_JS(
       // `_esc(expr)`: byte-identical, since renderNode(() => v) === `<!--$-->` +
       // renderNode(v) + `<!--/$-->` and `_esc(v)` === renderNode(v).
       ssrEmitStatic(buf, '<!--$-->')
-      emitEscHole(buf, sliceExpr(expr))
+      emitEscHole(buf, exprText)
       ssrEmitStatic(buf, '<!--/$-->')
     } else {
-      emitEscHole(buf, sliceExpr(expr))
+      emitEscHole(buf, exprText)
     }
     return true
   }
@@ -3034,12 +3100,11 @@ export function transformJSX_JS(
     if (node.type === 'MemberExpression' && node.object?.type === 'Identifier') {
       if (propsNames.has(node.object.name)) return true
     }
-    let found = false
-    forEachChildFast(node, (child) => {
-      if (found) return
-      if (readsFromProps(child)) found = true
-    })
-    return found
+    const kids = childrenMap.get(node)
+    if (kids) for (let i = 0; i < kids.length; i++) {
+      if (readsFromProps(kids[i]!)) return true
+    }
+    return false
   }
 
   /**
@@ -3063,12 +3128,11 @@ export function transformJSX_JS(
    */
   function containsJsx(node: N): boolean {
     if (node.type === 'JSXElement' || node.type === 'JSXFragment') return true
-    let found = false
-    forEachChildFast(node, (child) => {
-      if (found) return
-      if (containsJsx(child)) found = true
-    })
-    return found
+    const kids = childrenMap.get(node)
+    if (kids) for (let i = 0; i < kids.length; i++) {
+      if (containsJsx(kids[i]!)) return true
+    }
+    return false
   }
 
   /** Check if an expression references any prop-derived variable. */
@@ -3078,12 +3142,11 @@ export function transformJSX_JS(
       if (p && p.type === 'MemberExpression' && p.property === node && !p.computed) return false
       return true
     }
-    let found = false
-    forEachChildFast(node, (child) => {
-      if (found) return
-      if (referencesPropDerived(child)) found = true
-    })
-    return found
+    const kids = childrenMap.get(node)
+    if (kids) for (let i = 0; i < kids.length; i++) {
+      if (referencesPropDerived(kids[i]!)) return true
+    }
+    return false
   }
 
   /** Collect prop-derived variable info from a VariableDeclaration node.
@@ -3315,6 +3378,7 @@ export function transformJSX_JS(
           }
         }
       }
+      if (out.length === 0) return out
       return out.filter((n) => propDerivedVars.has(n))
     }
 
@@ -3480,13 +3544,13 @@ export function transformJSX_JS(
         return false
       return true
     }
-    let found = false
-    forEachChildFast(node, (child) => {
-      if (found) return
-      if (child.type === 'ArrowFunctionExpression' || child.type === 'FunctionExpression') return
-      if (accessesProps(child)) found = true
-    })
-    return found
+    const kids = childrenMap.get(node)
+    if (kids) for (let i = 0; i < kids.length; i++) {
+      const child = kids[i]!
+      if (child.type === 'ArrowFunctionExpression' || child.type === 'FunctionExpression') continue
+      if (accessesProps(child)) return true
+    }
+    return false
   }
 
   function shouldWrap(node: N): boolean {
@@ -4259,12 +4323,11 @@ export function transformJSX_JS(
         const callee = node.callee
         if (callee?.type === 'Identifier' && isActiveSignal(callee.name)) return true
       }
-      let found = false
-      forEachChildFast(node, (child) => {
-        if (found) return
-        if (containsSignalCall(child)) found = true
-      })
-      return found
+      const kids = childrenMap.get(node)
+      if (kids) for (let i = 0; i < kids.length; i++) {
+        if (containsSignalCall(kids[i]!)) return true
+      }
+      return false
     }
 
     function tryDirectSelectorTernary(exprNode: N): {
@@ -5068,7 +5131,7 @@ export function transformJSX_JS(
       // as the children-slot path; _mountSlot handles every child type.
       const isElementValuedIdent =
         (childExpr.type === 'Identifier' && elementVars.has(childExpr.name)) ||
-        (!isReactive && /^[A-Za-z_$][\w$]*$/.test(expr) && elementVars.has(expr))
+        (!isReactive && IDENT_RE.test(expr) && elementVars.has(expr))
       if (isChildrenExpression(childExpr, expr) || isElementValuedIdent) {
         needsMountSlotImport = true
         const placeholder = hoistPlaceholderRef(parentRef, childNodeIdx)
@@ -5340,13 +5403,13 @@ export function transformJSX_JS(
       if (parent && parent.type === 'CallExpression' && parent.callee === node) return false // already called
       return true
     }
-    let found = false
-    forEachChildFast(node, (child) => {
-      if (found) return
-      if (child.type === 'ArrowFunctionExpression' || child.type === 'FunctionExpression') return
-      if (referencesSignalVar(child)) found = true
-    })
-    return found
+    const kids = childrenMap.get(node)
+    if (kids) for (let i = 0; i < kids.length; i++) {
+      const child = kids[i]!
+      if (child.type === 'ArrowFunctionExpression' || child.type === 'FunctionExpression') continue
+      if (referencesSignalVar(child)) return true
+    }
+    return false
   }
 
   /** Auto-insert () after signal variable references in the expression source.
@@ -5418,6 +5481,7 @@ export function transformJSX_JS(
         }
       }
     }
+    if (out.length === 0) return out
     return out.filter((n) => signalVars.has(n))
   }
 
