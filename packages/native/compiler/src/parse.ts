@@ -54,6 +54,18 @@ interface ParseCtx {
   warnings: string[]
   source: string
   /**
+   * Module-scope `const X = 'literal'` bindings, name → value. Collected in a
+   * pre-pass so a hook that BAKES a string into the emit can accept a shared
+   * constant, not only an inline literal.
+   *
+   * Sharing the key between the reader and whatever writes it is the ordinary
+   * way to write this, and `useUrlState(FILTER_KEY, '')` used to drop its whole
+   * declaration with no warning — leaving later references to a binding that no
+   * longer existed, so both targets failed to compile with nothing pointing at
+   * the cause.
+   */
+  stringConsts: Map<string, string>
+  /**
    * Names of `defineStore` hook bindings (`const useApp = defineStore(...)`
    * → `useApp`), collected in a pre-pass so component bodies parsed
    * earlier in the file still see stores declared later. Used to LOWER the
@@ -320,6 +332,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     inlineSchemas: [],
     inlineSchemaByShape: new Map(),
     inlineSchemaCounter: 0,
+    stringConsts: new Map(),
   }
   const ast = parseSync(filename, source, { sourceType: 'module', lang: 'tsx' })
   // Pre-pass: collect every `const <name> = defineStore(...)` hook name
@@ -329,6 +342,10 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   // effect-free (no warnings) — full validation stays in
   // tryStoreDefnFromTopLevel during the main pass.
   collectStoreHookNames(ast.program.body as AnyNode[], ctx.storeHookNames)
+  // Pre-pass: module-scope string constants, so a hook that bakes a string can
+  // accept `const KEY = 'filter'` and not only an inline literal. Runs before
+  // component bodies so declaration ORDER does not matter.
+  collectStringConsts(ast.program.body as AnyNode[], ctx.stringConsts)
   // Pre-pass: collect object-shape type aliases so a NAMED props annotation
   // (`props: CardProps`) resolves regardless of declaration order. Warnings
   // from this parse are DISCARDED (a scratch ctx) — the main pass's
@@ -2720,6 +2737,58 @@ function collectAliasImports(body: AnyNode[]): Map<string, string> {
     }
   }
   return map
+}
+
+/**
+ * Module-scope `const X = 'literal'` bindings. Deliberately narrow: top level
+ * only, `const` only, a bare string literal only. A `let`, a template with an
+ * interpolation, or a value computed at runtime is NOT statically known, and
+ * treating it as though it were would bake a stale value into the emit.
+ */
+function collectStringConsts(body: AnyNode[], out: Map<string, string>): void {
+  for (const node of body) {
+    const decl =
+      node.type === 'VariableDeclaration'
+        ? node
+        : node.type === 'ExportNamedDeclaration' && node.declaration?.type === 'VariableDeclaration'
+          ? node.declaration
+          : undefined
+    if (!decl || decl.kind !== 'const') continue
+    for (const d of (decl.declarations as AnyNode[] | undefined) ?? []) {
+      const name = (d.id as { name?: string } | undefined)?.name
+      // oxc uses NULL for an absent initializer, not undefined — an
+      // `=== undefined` check passes it straight through and the next property
+      // read throws. Same shape that made an earlier detector in this file
+      // silently inert; here it took out 40-odd suites instead, which is the
+      // better failure of the two.
+      const init = d.init as AnyNode | null | undefined
+      if (typeof name !== 'string' || !init) continue
+      if (init.type === 'Literal' && typeof init.value === 'string') {
+        out.set(name, init.value)
+      } else if (
+        // A template with NO interpolation is just a string spelled differently.
+        init.type === 'TemplateLiteral' &&
+        ((init.expressions as unknown[] | undefined)?.length ?? 0) === 0
+      ) {
+        const cooked = (init.quasis as AnyNode[] | undefined)?.[0]?.value?.cooked
+        if (typeof cooked === 'string') out.set(name, cooked)
+      }
+    }
+  }
+}
+
+/**
+ * The statically-known string an argument denotes — an inline literal, or a
+ * module-scope `const` collected above. Null when it cannot be known, which is
+ * the caller's cue to WARN rather than to drop the declaration.
+ */
+function staticStringArg(node: AnyNode | null | undefined, ctx: ParseCtx): string | null {
+  if (!node) return null
+  if (node.type === 'Literal' && typeof node.value === 'string') return node.value
+  if (node.type === 'Identifier' && typeof node.name === 'string') {
+    return ctx.stringConsts.get(node.name) ?? null
+  }
+  return null
 }
 
 function collectStoreHookNames(body: AnyNode[], out: Set<string>): void {
@@ -5203,6 +5272,9 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     warnings: [],
     source: ctx.source,
     storeHookNames: new Set(),
+    // Shared, not copied: this scratch ctx exists only to keep the alias pass's
+    // warnings from double-firing, and the consts are read-only lookup either way.
+    stringConsts: ctx.stringConsts,
     objectTypeAliases: new Map(),
     storeAliases: new Map(),
     toastNames: new Set(),
@@ -6684,18 +6756,27 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     const args = (init.arguments as AnyNode[] | undefined) ?? []
     const keyNode = args[0]
     const defNode = args[1]
-    if (keyNode?.type !== 'Literal' || typeof keyNode.value !== 'string') return null
+    const key = staticStringArg(keyNode, ctx)
+    if (key === null) {
+      // Dropping the declaration silently is what this used to do, and it left
+      // every later reference pointing at a binding that no longer existed —
+      // so both targets failed to compile with nothing naming the cause.
+      ctx.warnings.push(
+        `const ${name} = useUrlState(…) needs a statically-known key: an inline string, or a module-scope \`const\` holding one. The key is BAKED into the native emit (there is no runtime key lookup in the lowered value), so a computed or imported key cannot be resolved at build time. Move the key into a module-scope const in this file, or keep the call behind a \`<Web>\` escape hatch.`,
+      )
+      return null
+    }
     const resolved = resolveUrlStateDefault(defNode)
     if (resolved === null) {
       ctx.warnings.push(
-        `const ${name} = useUrlState(${JSON.stringify(keyNode.value)}, …) lowers with a STRING, NUMBER or BOOLEAN default — an array or object default infers a comma-join / JSON codec on the web, and there is no native type to decode into at this call site. Use a scalar and parse it, or keep the call behind a \`<Web>\` escape hatch.`,
+        `const ${name} = useUrlState(${JSON.stringify(key)}, …) lowers with a STRING, NUMBER or BOOLEAN default — an array or object default infers a comma-join / JSON codec on the web, and there is no native type to decode into at this call site. Use a scalar and parse it, or keep the call behind a \`<Web>\` escape hatch.`,
       )
       return null
     }
     return {
       kind: 'url-state',
       name,
-      key: keyNode.value,
+      key,
       defaultValue: resolved.defaultValue,
       valueType: resolved.valueType,
     }
