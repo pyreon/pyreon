@@ -11,10 +11,14 @@ export default defineNodeConfig({
   // `affected.ts` (a root file no longer escalates under `--changed-only`,
   // because coverage is a per-package property).
   //
-  // Set at the measured actual, to be ratcheted UP as the emit/input gaps get
-  // real tests — the same discipline as `lint-baseline.json`. It must never be
+  // Set at the measured actual, ratcheted UP as the emit/input gaps get real
+  // tests — the same discipline as `lint-baseline.json`. It must never be
   // lowered to absorb a regression.
-  coverageThresholds: { statements: 84, branches: 72, functions: 91, lines: 88 },
+  //
+  // Already moved once, in this PR: `emit/mock.ts` 77 -> 98 and
+  // `emit/schema.ts` 71 -> 87, which took the package 84.46 -> 86.52. Recording
+  // a floor and then leaving it is how debt entries become permanent.
+  coverageThresholds: { statements: 86, branches: 75, functions: 93, lines: 90 },
   coverageExclude: [
     // gen-docs data, no logic (scaffold-recipe convention).
     'src/manifest.ts',
