@@ -43,6 +43,8 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.pyreon.runtime.PyreonToast
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -51,6 +53,34 @@ import org.junit.runner.RunWith
 class TasksAppInstrumentedTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<MainActivity>()
+
+    /**
+     * Turn OFF the toast auto-dismiss for the duration of the test.
+     *
+     * `PyreonToast.add` schedules its dismissal as `scope.launch { delay(ttl) }`
+     * on `Dispatchers.Main` — a pending main-thread coroutine, which is exactly
+     * what Compose's `waitForIdle` waits on. Every action after a toast
+     * (`performClick`, `performScrollTo`, `assertTextEquals` — they all sync on
+     * idle) therefore blocks until that delay resolves. This screen toasts on
+     * schema-submit and on save, in the middle of a long interaction sequence.
+     *
+     * `0` means "keep until dismissed", which the runtime already supports and
+     * which is a TEST-ENVIRONMENT control rather than a product change: a 4s
+     * auto-dismiss is correct for a user and is only a hazard against a harness
+     * that synchronises on main-thread quiescence.
+     *
+     * Stated honestly: this removes a known hazard of exactly the shape that
+     * produced `ComposeTimeoutException after 10000 ms` (Compose's default
+     * `waitForIdle` budget — every explicit wait in this file is 15s or 20s, so
+     * the timeout was an internal idle-sync, not one of ours). It is NOT
+     * confirmed to be that failure's cause; the diagnostic below exists so the
+     * next occurrence says which node and what the tree looked like, instead of
+     * costing another round of guessing.
+     */
+    @Before
+    fun disableToastAutoDismiss() {
+        PyreonToast.defaultDurationMillis = 0
+    }
 
     /**
      * Post-click text assertions on the toolkit screen race state that
@@ -67,13 +97,51 @@ class TasksAppInstrumentedTest {
      * lines. Fix the class, not the line.
      */
     private fun waitForTagText(tag: String, text: String) {
-        composeRule.waitUntil(timeoutMillis = 20_000) {
-            composeRule
-                .onAllNodes(hasTestTag(tag) and hasText(text))
-                .fetchSemanticsNodes()
-                .isNotEmpty()
+        try {
+            composeRule.waitUntil(timeoutMillis = 20_000) {
+                composeRule
+                    .onAllNodes(hasTestTag(tag) and hasText(text))
+                    .fetchSemanticsNodes()
+                    .isNotEmpty()
+            }
+        } catch (e: Throwable) {
+            // A CI-only failure's MESSAGE is the whole artifact. Compose gives
+            // `ComposeTimeoutException: Condition still not satisfied after N ms`
+            // and nothing else — not which tag, not what the node held instead,
+            // not whether it existed at all. That is one round of guessing per
+            // occurrence, and this screen has already spent several.
+            throw AssertionError(describeTimeout(tag, text), e)
         }
         composeRule.onNodeWithTag(tag).assertTextEquals(text)
+    }
+
+    /**
+     * What the tree actually looked like when a wait gave up. Built ONLY on the
+     * failure path — the polling path runs every few milliseconds and a snapshot
+     * there would cost something for nothing.
+     *
+     * Every read is individually guarded: a describe that throws while building
+     * a failure message replaces a diagnosable timeout with an opaque one, which
+     * is the exact failure being fixed.
+     */
+    private fun describeTimeout(tag: String, expected: String): String {
+        val found =
+            try {
+                val nodes = composeRule.onAllNodes(hasTestTag(tag)).fetchSemanticsNodes()
+                when {
+                    nodes.isEmpty() -> "NO node with that tag exists (mid-remount, or never rendered)"
+                    else -> "node exists, holding: " + nodes.joinToString(" | ") { n ->
+                        try {
+                            n.config.toString().take(160)
+                        } catch (_: Throwable) {
+                            "<unreadable>"
+                        }
+                    }
+                }
+            } catch (_: Throwable) {
+                "<could not read the semantics tree>"
+            }
+        return "waitForTagText timed out: tag='$tag' expected='$expected' — $found"
     }
 
     @Test
