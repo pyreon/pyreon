@@ -11,7 +11,13 @@
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { transform } from '@pyreon/native-compiler'
+import {
+  isKotlincAvailable,
+  isSwiftcAvailable,
+  transform,
+  validateKotlin,
+  validateSwiftWithStubs,
+} from '@pyreon/native-compiler'
 import { describe, expect, it } from 'vitest'
 import { parseArgs, writeScaffold } from '../index'
 import { buildScaffold, toIdentifierLeaf, toPascalCase } from '../scaffold'
@@ -288,18 +294,45 @@ describe('buildScaffold — native runtime delivery wiring (local-proof-found fi
 describe('buildScaffold — the shared App.tsx is real PMTC-compilable source', () => {
   const src = buildScaffold({ name: 'my-app' }).find((f) => f.path === 'src/App.tsx')!.content
 
-  it('compiles to valid SwiftUI', () => {
+  it('lowers to the expected SwiftUI shape', () => {
     const out = transform(src, { target: 'swift' }).code
     expect(out).toContain('struct App: View')
     expect(out).toContain('VStack')
     expect(out).toContain('Button')
   })
 
-  it('compiles to valid Jetpack Compose', () => {
+  it('lowers to the expected Compose shape', () => {
     const out = transform(src, { target: 'kotlin' }).code
     expect(out).toContain('fun App()')
     expect(out).toContain('Column')
     expect(out).toContain('Button')
+  })
+
+  it('emits no warnings on either target', () => {
+    // A scaffolded app that warns on its very first build teaches the reader
+    // that warnings are normal.
+    expect(transform(src, { target: 'swift' }).warnings).toEqual([])
+    expect(transform(src, { target: 'kotlin' }).warnings).toEqual([])
+  })
+
+  // The two specs above were named "compiles to valid SwiftUI"/"…Compose" and
+  // asserted only that the emit CONTAINED some strings. That is a shape check
+  // wearing a compile's name, and it is the same substitution that let a shipped
+  // example ride on "0 warnings" while not building on Android at all. This is
+  // the highest-stakes source in the repo — a new user's first app — so it gets
+  // a real compiler.
+  describe.runIf(isSwiftcAvailable())('really compiles', () => {
+    it('swiftc type-checks the Swift emit', () => {
+      const r = validateSwiftWithStubs(transform(src, { target: 'swift' }).code)
+      expect(r.ok, r.ok ? '' : String(r.error).split('\n').slice(0, 6).join('\n')).toBe(true)
+    })
+  })
+
+  describe.runIf(isKotlincAvailable())('really compiles (Kotlin)', () => {
+    it('kotlinc compiles the Kotlin emit', () => {
+      const r = validateKotlin(transform(src, { target: 'kotlin' }).code)
+      expect(r.ok, r.ok ? '' : String(r.error).split('\n').slice(0, 6).join('\n')).toBe(true)
+    })
   })
 })
 

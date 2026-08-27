@@ -12,6 +12,12 @@ export type { TargetLanguage, EmitOptions, TransformResult } from './types'
 export {
   validateSwift,
   validateSwiftTypecheck,
+  // The Linux-viable TYPE gate: strips the emit's framework imports, prepends
+  // stubs that mirror the real SwiftUI/PyreonRuntime surface, and type-checks.
+  // Exported because a consumer that generates Pyreon source — the scaffolder
+  // most of all — needs to prove its output COMPILES, and `validateSwift` is
+  // parse-only while `validateSwiftTypecheck` needs a real Apple SDK.
+  validateSwiftWithStubs,
   validateKotlin,
   isSwiftcAvailable,
   isSwiftUIAvailable,
