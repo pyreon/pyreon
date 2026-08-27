@@ -85,7 +85,16 @@ async function pullSpec(url: string, dest: string): Promise<number> {
     return 1
   }
   mkdirSync(dirname(dest), { recursive: true })
-  const previous = existsSync(dest) ? readFileSync(dest, 'utf8') : undefined
+  // Read the current spec directly rather than `existsSync` + `readFileSync`:
+  // a check-then-read is a TOCTOU (the file can change in the window), which
+  // CodeQL flags as `js/file-system-race`. A missing file is just the read's
+  // own ENOENT, which is the "no previous spec" case.
+  let previous: string | undefined
+  try {
+    previous = readFileSync(dest, 'utf8')
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
+  }
   if (previous === body) {
     process.stdout.write(`  spec unchanged  ${dest}\n`)
     return 0
