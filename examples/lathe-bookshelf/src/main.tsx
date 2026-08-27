@@ -58,17 +58,18 @@ function Books() {
         </ul>
       </Show>
 
-      {/*
-        Deliberately NOT wrapped in `<Show>`. An accessor mounted as a `<Show>`
-        child updates once and then stops re-tracking, even while the Show's own
-        condition is unchanged — so the title would pin to the first book
-        selected. Reproduced against a hand-written query too, so it is a
-        framework behaviour rather than anything about generated code; the
-        placeholder is what moves instead.
-      */}
-      <p data-testid="detail-title">{() => detail.data()?.title ?? ''}</p>
-      <Show when={() => selected() === undefined}>
-        <p data-testid="detail-empty">Pick a book.</p>
+      <Show
+        when={() => selected() !== undefined}
+        fallback={<p data-testid="detail-empty">Pick a book.</p>}
+      >
+        {/*
+          The natural shape, and a live check on the boundary fix that ships
+          alongside this: `when` re-runs on every `selected` change while its
+          verdict stays `true`. A boundary that rebuilt on an unchanged value
+          would dispose this accessor's binding and re-insert the same memoized
+          element without it, pinning the title to the first book picked.
+        */}
+        <p data-testid="detail-title">{() => detail.data()?.title ?? ''}</p>
       </Show>
     </section>
   )
