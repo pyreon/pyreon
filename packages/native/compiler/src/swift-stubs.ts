@@ -1208,6 +1208,16 @@ public enum PyreonHttp {
     PyreonHttpResponse()
   }
 }
+// PyreonURL — the runtime path-param encoder a templated endpoint URL calls.
+// Mirrors the REAL PyreonURL surface: three overloads (String / Int / Double),
+// one per type a \`PathParams\` value can take once the compiler has inferred
+// it. Listing FEWER would reject a correct emit; listing more would let a
+// wrong one through.
+public enum PyreonURL {
+  public static func encodePathParam(_ value: String) -> String { value }
+  public static func encodePathParam(_ value: Int) -> String { "" }
+  public static func encodePathParam(_ value: Double) -> String { "" }
+}
 public final class PyreonDatabase {
   public init() {}
   public func insert(_ collection: String, _ record: PyreonRecord) {}
