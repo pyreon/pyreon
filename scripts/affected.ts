@@ -389,8 +389,22 @@ export function computeAffectedFlags(opts: {
   // change escalates EVERY cell to its full slice — the only way to keep
   // the cell skip path safe (a workflow change that affects nothing per-
   // package would otherwise silently skip every shard cell).
-  for (const path of changed) {
-    if (isRootFile(path)) return '--filter=*'
+  //
+  // NOT under `directOnly`, and for the same reason that flag exists (see the
+  // comment below it): coverage is a property of a package's OWN sources and
+  // OWN tests, and a root file belongs to no workspace, so it cannot move any
+  // package's number. Escalating anyway hands the caller `--filter=*`, whose
+  // >15 cap then skips the whole PR-time coverage step — so a PR that touches a
+  // root file measures NOTHING, however much package code it also adds.
+  //
+  // That is not hypothetical: `@pyreon/lathe` arrived in a PR that also touched
+  // `scripts/e2e-affected.ts`, so its coverage was never measured before merge
+  // and it landed at 84% against a 95% floor — past the very mechanism whose
+  // stated job is that "new packages can't silently slip in below 95".
+  if (!opts.directOnly) {
+    for (const path of changed) {
+      if (isRootFile(path)) return '--filter=*'
+    }
   }
 
   // Seed set from owning workspaces (these EXPAND to their dependents).

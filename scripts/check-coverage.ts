@@ -164,6 +164,13 @@ interface FloorExemption {
   reason: string
 }
 const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
+  '@pyreon/lathe': {
+    currentStatements: 84,
+    currentBranches: 72,
+    reason:
+      'Spec-to-client codegen, arrived at 84.46% statements / 72.22% branches. It reached main unmeasured: its PR also touched a root file, which escalated the PR-time coverage step to `--filter=*` and made the step SKIP — so a brand-new package slipped past the mechanism whose stated job is preventing exactly that. The hole is fixed in `affected.ts` (a root file no longer escalates under `--changed-only`, since coverage is a per-package property). ' +
+      'The shortfall is real, not an accounting artifact: `src/emit/schema.ts` (71%), `src/emit/mock.ts` (77%) and `src/input/openapi.ts` (80%) carry genuine untested branches. Recorded at the MEASURED actual to be ratcheted up, never lowered to absorb a regression.',
+  },
   // ── Statements + branches < floor ───────────────────────────────────
   '@pyreon/flow': {
     currentStatements: 98,
