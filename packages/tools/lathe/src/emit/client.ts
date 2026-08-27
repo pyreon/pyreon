@@ -17,9 +17,10 @@
  * endpoints and the calls all in a single top level.
  */
 
+import { reachableModels, topoSortModels } from '../core/graph'
 import type { IrDocument, IrOperation, IrType } from '../core/ir'
 import { typeIdent } from '../core/naming'
-import { emitSchemas, schemaExpr, schemaSpecifier, tsType } from './schema'
+import { schemaExpr, schemaSpecifier, tsType } from './schema'
 import { q, relativeSpecifier, SourceFile } from './writer'
 
 export interface ClientOptions {
@@ -119,15 +120,18 @@ export function emitWebEndpoints(doc: IrDocument): SourceFile[] {
     const schemaImports = new Set<string>()
     for (const op of ops) collectRefs(op.response, schemaImports)
     if (schemaImports.size > 0) f.import(schemaSpecifier(path), ...schemaImports)
-    // A composite response clause (`s.array(Book)`, a union) needs `s` itself.
-    if (ops.some((op) => responseCfg(op, false).includes('s.'))) {
-      f.import('@pyreon/validate', 's')
-    }
 
-    for (const op of ops) {
+    // Built once per operation. The previous form called `responseCfg` a second
+    // time just to test the string for `s.`, which rebuilt every response
+    // schema expression in the tag for a substring check.
+    const clauses = ops.map((op) => responseCfg(op, false))
+    // A composite clause (`s.array(Book)`, a union) needs `s` itself.
+    if (clauses.some((c) => c.includes('s.'))) f.import('@pyreon/validate', 's')
+
+    for (const [i, op] of ops.entries()) {
       f.line()
       f.doc(op.summary, `\`${endpointSpec(op)}\``)
-      f.line(`export const ${op.id} = api.endpoint(${q(endpointSpec(op))}${responseCfg(op, false)})`)
+      f.line(`export const ${op.id} = api.endpoint(${q(endpointSpec(op))}${clauses[i] ?? ''})`)
     }
     files.push(f)
   }
@@ -240,7 +244,26 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
  */
 export function emitNativeModules(doc: IrDocument, opts: ClientOptions): SourceFile[] {
   const files: SourceFile[] = []
-  const schemaSrc = emitSchemas(doc, { native: true })
+  // One expression per model, computed once. This used to render the WHOLE
+  // schema file and string-search it for each model in each tag — quadratic in
+  // (tags x models), and brittle besides: an emit-format change would have
+  // silently broken the extraction. `schemaExpr` is the same single
+  // implementation `emitSchemas` walks, so nothing is duplicated by calling it.
+  const { order: modelOrder, backEdges } = topoSortModels(doc)
+  const nativeSchema = new Map<string, string>()
+  for (const model of doc.models) {
+    // The SAME deferral the web schemas get. A native module is ordinary app
+    // source too, so a cyclic `$ref` emitted as a direct forward reference is a
+    // TDZ ReferenceError there exactly as it is on the web. `s.lazy` does not
+    // lower, so this costs the model its native path -- which the verifier
+    // reports. Correct-and-web-only beats lowering-and-broken.
+    const defer = new Set(
+      [...backEdges]
+        .filter((e) => e.startsWith(`${model.name}|`))
+        .map((e) => e.slice(model.name.length + 1)),
+    )
+    nativeSchema.set(model.name, schemaExpr(model.type, { native: true, defer }))
+  }
 
   for (const [tag, ops] of byTag(doc)) {
     const path = `${tagFile(tag)}.native.tsx`
@@ -261,17 +284,24 @@ export function emitNativeModules(doc: IrDocument, opts: ClientOptions): SourceF
     )
     f.line(`const api = createHttp({ baseUrl: ${q(baseUrlOf(doc, opts))}, schema: standardSchema })`)
 
-    // Schemas, inlined. Only those this tag actually references.
-    const needed = new Set<string>()
+    // Schemas, inlined. The TRANSITIVE closure, not just the models an
+    // operation names: a native module imports nothing, so inlining `Order`
+    // while leaving out the `Customer` it references emits a module that does
+    // not even typecheck. In DEPENDENCY ORDER for the same reason the web
+    // schemas are — `const` is not hoisted.
+    const direct = new Set<string>()
     for (const op of ops) {
-      collectRefs(op.response, needed)
-      collectRefs(op.body, needed)
+      collectRefs(op.response, direct)
+      collectRefs(op.body, direct)
     }
-    for (const model of doc.models) {
-      if (!needed.has(model.name)) continue
+    const needed = reachableModels(doc, direct)
+    const byName = new Map(doc.models.map((m) => [m.name, m]))
+    for (const name of modelOrder) {
+      const model = byName.get(name)
+      if (!model || !needed.has(name)) continue
       f.line()
       f.doc(model.doc)
-      f.line(`export const ${model.name} = ${schemaOf(schemaSrc, model.name)}`)
+      f.line(`export const ${model.name} = ${nativeSchema.get(model.name) ?? 's.object({})'}`)
       // A STRUCTURAL type, not `Infer<typeof X>`. `Infer` would be an
       // `import type` — erased by TypeScript, but PMTC's warn pass reads the
       // import statement itself and reports the module as un-lowerable. The
@@ -310,21 +340,6 @@ export function emitNativeModules(doc: IrDocument, opts: ClientOptions): SourceF
     files.push(f)
   }
   return files
-}
-
-/**
- * Pull one model's schema expression back out of the rendered schema file.
- *
- * Re-deriving it here would duplicate the walk in `schema.ts` and let the two
- * drift; reading the rendered line keeps exactly one implementation.
- */
-function schemaOf(schemaFile: SourceFile, name: string): string {
-  const text = schemaFile.build('').contents
-  const start = text.indexOf(`export const ${name} = `)
-  if (start < 0) return 's.object({})'
-  const from = start + `export const ${name} = `.length
-  const end = text.indexOf(`\nexport type ${name} =`, from)
-  return text.slice(from, end < 0 ? undefined : end).trimEnd()
 }
 
 function collectRefs(type: IrType | undefined, into: Set<string>): void {

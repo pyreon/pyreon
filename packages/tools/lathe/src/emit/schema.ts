@@ -7,11 +7,22 @@
  * declared type that the runtime schema does not actually enforce.
  */
 
+import { topoSortModels } from '../core/graph'
 import type { IrDocument, IrField, IrType } from '../core/ir'
 import { propKey, typeIdent } from '../core/naming'
 import { q, relativeSpecifier, SourceFile } from './writer'
 
 export const SCHEMA_FILE = 'schemas.ts'
+
+export interface SchemaExprOptions {
+  /** Narrow the output to the subset the native compiler lowers. */
+  native: boolean
+  /**
+   * Ref targets that must be rendered as `s.lazy(() => X)` because naming them
+   * directly would read a `const` in its temporal dead zone.
+   */
+  defer?: ReadonlySet<string> | undefined
+}
 
 /** Render an IR type as a TypeScript type expression. */
 export function tsType(type: IrType, depth = 0, native = false): string {
@@ -70,7 +81,7 @@ function fieldTs(field: IrField, depth: number, native = false): string {
  * is LOST there, so callers must report that rather than let a reader assume
  * the two targets validate identically.
  */
-export function schemaExpr(type: IrType, opts: { native: boolean }, depth = 0): string {
+export function schemaExpr(type: IrType, opts: SchemaExprOptions, depth = 0): string {
   switch (type.kind) {
     case 'string': {
       if (type.enum && !opts.native) return `s.enum([${type.enum.map((v) => q(v)).join(', ')}])`
@@ -98,7 +109,10 @@ export function schemaExpr(type: IrType, opts: { native: boolean }, depth = 0): 
     case 'unknown':
       return opts.native ? 's.string()' : 's.unknown()'
     case 'ref':
-      return type.name
+      // A back edge closes a `$ref` cycle. `const` is not hoisted, so naming
+      // the target directly here is a TDZ ReferenceError at import; `s.lazy`
+      // defers the read to first use, which is exactly what a cycle needs.
+      return opts.defer?.has(type.name) === true ? `s.lazy(() => ${type.name})` : type.name
     case 'array':
       return `s.array(${schemaExpr(type.items, opts, depth + 1)})`
     case 'union': {
@@ -122,7 +136,7 @@ export function schemaExpr(type: IrType, opts: { native: boolean }, depth = 0): 
   }
 }
 
-function fieldSchema(field: IrField, opts: { native: boolean }, depth: number): string {
+function fieldSchema(field: IrField, opts: SchemaExprOptions, depth: number): string {
   let expr = schemaExpr(field.type, opts, depth)
   // Constraints only attach to the kinds that carry them.
   if (field.type.kind === 'string') {
@@ -164,14 +178,28 @@ export function emitSchemas(doc: IrDocument, opts: { native: boolean }): SourceF
   f.import('@pyreon/validate', 's')
   f.importType('@pyreon/validate', 'Infer')
 
-  for (const model of doc.models) {
+  // DEPENDENCY ORDER, not alphabetical. These are `const` declarations and
+  // `const` is not hoisted, so a model emitted before one it references throws
+  // `Cannot access 'X' before initialization` when the module is imported.
+  // Alphabetical order satisfies that only by coincidence.
+  const { order, backEdges } = topoSortModels(doc)
+  const byName = new Map(doc.models.map((m) => [m.name, m]))
+
+  for (const name of order) {
+    const model = byName.get(name)
+    if (!model) continue
+    // Only the edges that actually close a cycle are deferred; every other ref
+    // is emitted by name, which keeps the common output unchanged.
+    const defer = new Set(
+      [...backEdges].filter((e) => e.startsWith(`${name}|`)).map((e) => e.slice(name.length + 1)),
+    )
     f.line()
     f.doc(model.doc)
     // The schema is a top-level `const` bound to a plain `s.object({ … })`
     // literal, which is exactly the shape PMTC's recognizer requires. Wrapping
     // it in anything — a helper call, a `satisfies`, a spread — silently drops
     // it off the native path.
-    f.line(`export const ${model.name} = ${schemaExpr(model.type, opts)}`)
+    f.line(`export const ${model.name} = ${schemaExpr(model.type, { ...opts, defer })}`)
     f.line(`export type ${model.name} = Infer<typeof ${model.name}>`)
   }
   return f
@@ -180,7 +208,11 @@ export function emitSchemas(doc: IrDocument, opts: { native: boolean }): SourceF
 /** Emit `types.ts` — plain TS types, for consumers that want no runtime. */
 export function emitTypes(doc: IrDocument): SourceFile {
   const f = new SourceFile('types.ts')
-  for (const model of doc.models) {
+  // Types are hoisted, so order is cosmetic here — matched to `schemas.ts` so
+  // the two files read as the same document.
+  const { order } = topoSortModels(doc)
+  const byName = new Map(doc.models.map((m) => [m.name, m]))
+  for (const model of order.map((n) => byName.get(n)).filter((m) => m !== undefined)) {
     f.line()
     f.doc(model.doc)
     const rendered = tsType(model.type)
