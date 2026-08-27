@@ -174,3 +174,46 @@ describe('the surface is stable against changes that are not contract changes', 
     expect(out.at(-1)?.severity).toBe('additive')
   })
 })
+
+describe('renderType is stable for every IR kind', () => {
+  // The diff compares RENDERED types, so the renderer is the thing that decides
+  // whether a change is reported at all. A kind it renders identically for two
+  // different types would hide a real contract change; one it renders
+  // unstably would report a change that did not happen.
+  it('distinguishes the scalar kinds', () => {
+    expect(renderType({ kind: 'string' })).toBe('string')
+    expect(renderType({ kind: 'number', integer: true })).toBe('integer')
+    expect(renderType({ kind: 'number', integer: false })).toBe('number')
+    expect(renderType({ kind: 'boolean' })).toBe('boolean')
+    expect(renderType({ kind: 'null' })).toBe('null')
+    expect(renderType({ kind: 'unknown', reason: 'anything' })).toBe('unknown')
+    // Absent means "no response body", which must not read as some type.
+    expect(renderType(undefined)).toBe('void')
+  })
+
+  it('keeps a string FORMAT, because widening one is a contract change', () => {
+    expect(renderType({ kind: 'string', format: 'uuid' })).toBe('uuid')
+    expect(renderType({ kind: 'string', format: 'date-time' })).toBe('date-time')
+  })
+
+  it('sorts an enum, so reordering it is not reported as a change', () => {
+    const a = renderType({ kind: 'string', enum: ['b', 'a', 'c'] })
+    const b = renderType({ kind: 'string', enum: ['c', 'b', 'a'] })
+    expect(a).toBe(b)
+    // ...but a REMOVED member still is one.
+    expect(renderType({ kind: 'string', enum: ['a', 'b'] })).not.toBe(a)
+  })
+
+  it('renders arrays and refs by name', () => {
+    expect(renderType({ kind: 'array', items: { kind: 'ref', name: 'Book' } })).toBe('Book[]')
+  })
+
+  it('stops at a depth bound rather than recursing forever', () => {
+    // `ref` closes cycles in the IR, but a deeply NESTED inline object does
+    // not — and a renderer that recurses without a bound turns a pathological
+    // spec into a hang rather than a diff.
+    let deep: Parameters<typeof renderType>[0] = { kind: 'string' }
+    for (let i = 0; i < 12; i++) deep = { kind: 'array', items: deep }
+    expect(renderType(deep)).toContain('…')
+  })
+})
