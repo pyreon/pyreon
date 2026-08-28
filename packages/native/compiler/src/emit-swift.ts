@@ -31,6 +31,7 @@ import {
   classifyDynamicStylingAttr,
   classifySortableRef,
   exprHasOptionalLink,
+  exprReferencesIdent,
 } from './expr-utils'
 import {
   buildArraySpreadConcat,
@@ -1108,6 +1109,22 @@ let _pureStateInitialSwift: Map<string, number | boolean> = new Map()
  * every mount) would be a visible divergence.
  */
 let _debouncedSeedSwift: Map<string, string> = new Map()
+
+// Signal decls whose initializer READS SIBLING SIGNALS (`signal(count() * 2)`)
+// cannot emit that read: a stored-property initializer runs before `self`
+// exists ("cannot use instance member within property initializer" — and the
+// zero-arg-call emit drops the parens, so it surfaced as a bare `count`
+// reference, warning-free). Per component, this maps such a decl's name to an
+// EFFECTIVE initializer with each sibling read replaced by that sibling's own
+// construction-time seed expression — semantically faithful, because Pyreon
+// reads the sibling exactly once at construction. Built in emitSwiftComponent
+// (source order IS a valid topological order — JS forward refs are source
+// errors); consumed by the signal branch of emitSwiftDecl. Shapes that cannot
+// be substituted faithfully (storage-keyed source — its runtime value is NOT
+// its default; enum-typed source/target — the string→case rewrite window is
+// per-decl; non-pure seeds; walker-uncovered nodes) warn LOUDLY and keep the
+// old emit, which the residual check guarantees is never silently wrong-er.
+let _siblingSignalSeeds: Map<string, ExprIR> = new Map()
 /** `useClipboard()` bindings — its reactive reads drop their parens. */
 let _clipboardSwift: Set<string> = new Set()
 /** Set while emitting a model view/action body — the factory's `self`
@@ -2100,6 +2117,46 @@ function emitSwiftComponent(c: ComponentIR): string {
       _debouncedSeedSwift.set(d.name, emitSwiftExpr(sig.initial, 2))
     }
   }
+  // Resolve sibling-signal reads OUT of signal initializers — a stored
+  // property cannot read `self`. See _siblingSignalSeeds. Source order is a
+  // valid topological order, so one forward pass with cumulative seeds
+  // handles chains (`b = signal(a() * 2); c = signal(b() + 1)`).
+  _siblingSignalSeeds = new Map()
+  {
+    const signalsSoFar = new Set<string>()
+    const seedable = new Map<string, ExprIR>()
+    for (const d of c.decls) {
+      if (d.kind !== 'signal') continue
+      let eff = inlineValueConsts(d.initial)
+      const refs = [...signalsSoFar].filter((n) => exprReferencesIdent(eff, n))
+      for (const n of refs) {
+        const seed = seedable.get(n)
+        if (seed === undefined) continue
+        const next = substituteSiblingRead(eff, n, seed)
+        if (next !== null) eff = next
+      }
+      const residual = [...signalsSoFar].filter((n) => exprReferencesIdent(eff, n))
+      if (residual.length > 0) {
+        _emitWarnings.push(
+          `signal '${d.name}': its initializer reads sibling signal(s) ` +
+            `${residual.map((n) => `'${n}'`).join(', ')} that cannot be substituted ` +
+            `(a storage-backed source's runtime value is not its default, an enum-typed ` +
+            `decl's case rewrite is per-declaration, or the seed is not a pure ` +
+            `construction-time expression). The Swift emit references a sibling @State ` +
+            `inside a stored-property initializer, which does not compile ` +
+            `("cannot use instance member within property initializer"). Seed '${d.name}' ` +
+            `from a literal/pure expression, or derive it with computed() instead.`,
+        )
+      } else if (refs.length > 0) {
+        _siblingSignalSeeds.set(d.name, eff)
+      }
+      const isEnum = d.type.kind === 'typeRef' && _enumNames.has(d.type.name)
+      if (d.storageKey === undefined && !isEnum && residual.length === 0 && isPureSeedExpr(eff)) {
+        seedable.set(d.name, { kind: 'paren', inner: eff })
+      }
+      signalsSoFar.add(d.name)
+    }
+  }
   for (const s of synth.structs) {
     lines.push(emitSwiftStruct(s))
     lines.push('')
@@ -2649,6 +2706,113 @@ function collectMutatedComponentVars(decls: DeclIR[]): Set<string> {
   return mutated
 }
 
+/** Pure construction-time seed: safe to duplicate into another initializer. */
+function isPureSeedExpr(e: ExprIR): boolean {
+  switch (e.kind) {
+    case 'literal':
+      return true
+    case 'paren':
+      return isPureSeedExpr(e.inner)
+    case 'unary':
+      return isPureSeedExpr(e.argument)
+    case 'binary':
+      return isPureSeedExpr(e.left) && isPureSeedExpr(e.right)
+    case 'ternary':
+      return isPureSeedExpr(e.cond) && isPureSeedExpr(e.then) && isPureSeedExpr(e.otherwise)
+    default:
+      return false
+  }
+}
+
+/**
+ * Replace every zero-arg CALL of `name` (`count()`) in `expr` with
+ * `replacement`. Deliberately PARTIAL — it covers the expression kinds a
+ * signal initializer realistically carries; anything it misses leaves the
+ * read in place, and the caller's TOTAL residual check
+ * (`exprReferencesIdent`) then downgrades the decl to a loud warning instead
+ * of a silent mis-emit. A nested arrow re-binding `name` shadows it — bail
+ * (null) like `substituteIdentifier` does.
+ */
+function substituteSiblingRead(expr: ExprIR, name: string, replacement: ExprIR): ExprIR | null {
+  if (
+    expr.kind === 'call' &&
+    expr.callee.kind === 'identifier' &&
+    expr.callee.name === name &&
+    expr.args.length === 0
+  ) {
+    return replacement
+  }
+  switch (expr.kind) {
+    case 'call': {
+      const args: ExprIR[] = []
+      for (const arg of expr.args) {
+        const n = substituteSiblingRead(arg, name, replacement)
+        if (n === null) return null
+        args.push(n)
+      }
+      const callee = substituteSiblingRead(expr.callee, name, replacement)
+      if (callee === null) return null
+      return { ...expr, callee, args }
+    }
+    case 'paren': {
+      const inner = substituteSiblingRead(expr.inner, name, replacement)
+      return inner === null ? null : { ...expr, inner }
+    }
+    case 'unary': {
+      const argument = substituteSiblingRead(expr.argument, name, replacement)
+      return argument === null ? null : { ...expr, argument }
+    }
+    case 'binary': {
+      const left = substituteSiblingRead(expr.left, name, replacement)
+      const right = substituteSiblingRead(expr.right, name, replacement)
+      return left === null || right === null ? null : { ...expr, left, right }
+    }
+    case 'ternary': {
+      const cond = substituteSiblingRead(expr.cond, name, replacement)
+      const then = substituteSiblingRead(expr.then, name, replacement)
+      const otherwise = substituteSiblingRead(expr.otherwise, name, replacement)
+      return cond === null || then === null || otherwise === null
+        ? null
+        : { ...expr, cond, then, otherwise }
+    }
+    case 'member': {
+      const object = substituteSiblingRead(expr.object, name, replacement)
+      return object === null ? null : { ...expr, object }
+    }
+    case 'index': {
+      const object = substituteSiblingRead(expr.object, name, replacement)
+      const index = substituteSiblingRead(expr.index, name, replacement)
+      return object === null || index === null ? null : { ...expr, object, index }
+    }
+    case 'array': {
+      const elements: ExprIR[] = []
+      for (const el of expr.elements) {
+        const n = substituteSiblingRead(el, name, replacement)
+        if (n === null) return null
+        elements.push(n)
+      }
+      return { ...expr, elements }
+    }
+    case 'object': {
+      const fields: { name: string; value: ExprIR }[] = []
+      for (const f of expr.fields) {
+        const v = substituteSiblingRead(f.value, name, replacement)
+        if (v === null) return null
+        fields.push({ ...f, value: v })
+      }
+      return { ...expr, fields }
+    }
+    case 'arrow': {
+      if (expr.params.includes(name)) return null
+      const body = substituteSiblingRead(expr.body, name, replacement)
+      return body === null ? null : { ...expr, body }
+    }
+    default:
+      // Uncovered kind: leave untouched — the residual check warns.
+      return expr
+  }
+}
+
 function inlineValueConsts(expr: ExprIR): ExprIR {
   if (_componentValueConstExprs.size === 0) return expr
   let cur = expr
@@ -2894,7 +3058,8 @@ function emitSwiftDecl(
     // find 'start' in scope` — warning-free, real-SDK-typecheck-only).
     // Inline them, exactly as struct-level computeds and handler bodies
     // already do; mutated (`let x = 1; x++`) vars are excluded upstream.
-    const initial = emitSwiftExpr(inlineValueConsts(d.initial), 0)
+    const effInitial = _siblingSignalSeeds.get(d.name) ?? inlineValueConsts(d.initial)
+    const initial = emitSwiftExpr(effInitial, 0)
     _activeEnumType = undefined
     // Parse-time inference returned unknown for an object-literal (or
     // array-of-object-literal) initializer, but the VALUE emit above just
@@ -2908,7 +3073,7 @@ function emitSwiftDecl(
       // (`signal(start)`, `signal(a * 2)`) types through `valueConsts` /
       // signal types in the component ctx. Object literals fall through to
       // the shared struct-name resolution.
-      const t = inferType(d.initial, _exprInferCtx)
+      const t = inferType(effInitial, _exprInferCtx)
       anno =
         t.kind !== 'unknown'
           ? swiftType(t, synth, d.name)
