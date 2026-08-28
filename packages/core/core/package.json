@@ -32,6 +32,11 @@
       "bun": "./src/jsx-dev-runtime.ts",
       "import": "./lib/jsx-dev-runtime.js",
       "types": "./lib/types/jsx-dev-runtime.d.ts"
+    },
+    "./plain": {
+      "bun": "./src/plain.ts",
+      "import": "./lib/plain.js",
+      "types": "./lib/types/plain.d.ts"
     }
   },
   "files": [

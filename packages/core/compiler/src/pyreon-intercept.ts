@@ -100,6 +100,7 @@
  *  3. MCP server `validate` tool
  */
 
+import { detectPlain } from './plain'
 import ts from 'typescript'
 import { assertClassicTs } from './ts'
 
@@ -152,6 +153,14 @@ interface DetectContext {
   sf: ts.SourceFile
   code: string
   diagnostics: PyreonDiagnostic[]
+  /**
+   * The module is Plain Mode (`'use plain'` / `@pyreon/core/plain` import).
+   * The dialect-aware detectors early-return: destructured props and
+   * reactive early returns are CORRECT there — the compiler's plain
+   * pre-pass rewrites them — so flagging them would tell a plain-mode
+   * user their correct code is broken.
+   */
+  plainMode: boolean
   /**
    * Identifiers bound to `signal(...)` or `computed(...)` calls anywhere in
    * the file. Populated by `collectSignalBindings()` before the main
@@ -325,6 +334,7 @@ function detectPropsDestructured(
   ctx: DetectContext,
   node: ts.ArrowFunction | ts.FunctionDeclaration | ts.FunctionExpression,
 ): void {
+  if (ctx.plainMode) return // Plain Mode rewrites this shape — correct by design
   if (!node.parameters.length) return
   const first = node.parameters[0]
   if (!first || !ts.isObjectBindingPattern(first.name)) return
@@ -405,6 +415,7 @@ function detectPropsDestructuredBody(
   ctx: DetectContext,
   node: ts.ArrowFunction | ts.FunctionDeclaration | ts.FunctionExpression,
 ): void {
+  if (ctx.plainMode) return // Plain Mode rewrites this shape — correct by design
   // Component-by-NAME (PascalCase) or component-by-POSITION (the anonymous
   // arrow a HOC returns, `props`-param-gated) — see isReturnedPropsComponent.
   if (!isComponentShapedFunction(node) && !isReturnedPropsComponent(node)) return
@@ -947,6 +958,7 @@ function detectStaticReturnNullConditional(
   ctx: DetectContext,
   node: ts.ArrowFunction | ts.FunctionDeclaration | ts.FunctionExpression,
 ): void {
+  if (ctx.plainMode) return // Plain Mode rewrites this shape — correct by design
   // Gated on a tracked binding in the condition, exactly like the sibling
   // `detectStaticEarlyReturnConditional`. Without this the detector fired on
   // EVERY top-level `if (cond) return null`, including shapes where the claim
@@ -1077,6 +1089,7 @@ function detectStaticEarlyReturnConditional(
   ctx: DetectContext,
   node: ts.ArrowFunction | ts.FunctionDeclaration | ts.FunctionExpression,
 ): void {
+  if (ctx.plainMode) return // Plain Mode rewrites this shape — correct by design
   // Fast exit: without a tracked signal/hook binding in the file, no
   // condition can qualify. (The `hasPyreonPatterns` pre-filter admits the
   // signal tier via its `signal(`/`computed(` line and the hook tier via
@@ -1499,6 +1512,7 @@ export function detectPyreonPatterns(code: string, filename = 'input.tsx'): Pyre
     sf,
     code,
     diagnostics: [],
+    plainMode: detectPlain(code),
     signalBindings: bindings.signals,
     hookBindings: bindings.hooks,
     zeroArgCalled: bindings.zeroArgCalled,
