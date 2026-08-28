@@ -9185,7 +9185,7 @@ function emitSwiftNavigationDestination(
       if (route.path.includes(':') || target.path.includes(':')) continue
       const keyword = firstBranch ? 'if' : 'else if'
       branches.push(
-        `${pad}${keyword} PyreonRouter.splitPathAndQuery(path).path == ${JSON.stringify(route.path)} {`,
+        `${pad}${keyword} PyreonRouter.matchPath(path, ${JSON.stringify(route.path)}) != nil {`,
         `${innerPad}${emitSwiftExpr(target.component, indent + 2)}()`,
         `${pad}}`,
       )
@@ -9225,7 +9225,7 @@ function emitSwiftNavigationDestination(
       // Literal route — direct path comparison.
       const keyword = firstBranch ? 'if' : 'else if'
       branches.push(
-        `${pad}${keyword} PyreonRouter.splitPathAndQuery(path).path == ${JSON.stringify(route.path)} {`,
+        `${pad}${keyword} PyreonRouter.matchPath(path, ${JSON.stringify(route.path)}) != nil {`,
         ...wrapGuard(route, wrapLoader(route, `${componentExpr}()`)),
         `${pad}}`,
       )
@@ -9340,7 +9340,7 @@ function emitSwiftNestedNavigationDestination(
         emitSwiftLayoutAwareInvocation(entry.component, indent + 2),
       )
       branches.push(
-        `${pad}${keyword} PyreonRouter.splitPathAndQuery(path).path == ${JSON.stringify(entry.path)} {`,
+        `${pad}${keyword} PyreonRouter.matchPath(path, ${JSON.stringify(entry.path)}) != nil {`,
         ...wrapGuardLines(entry.guard, render, denyFallback, indent),
         `${pad}}`,
       )

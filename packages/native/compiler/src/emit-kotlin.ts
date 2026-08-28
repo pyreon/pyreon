@@ -7760,7 +7760,7 @@ function emitKotlinRouteDispatch(
       // v1 supports literal source AND literal target only.
       if (route.path.includes(':') || target.path.includes(':')) continue
       lines.push(
-        `${innerPad}PyreonRouter.splitPathAndQuery(currentPath).first == ${JSON.stringify(route.path)} -> ${emitKotlinExpr(target.component, indent + 4)}()`,
+        `${innerPad}PyreonRouter.matchPath(currentPath, ${JSON.stringify(route.path)}) != null -> ${emitKotlinExpr(target.component, indent + 4)}()`,
       )
       continue
     }
@@ -7794,7 +7794,7 @@ function emitKotlinRouteDispatch(
     } else {
       // Literal route — direct == comparison.
       lines.push(
-        `${innerPad}PyreonRouter.splitPathAndQuery(currentPath).first == ${JSON.stringify(route.path)} -> ${guardWrap(route, loaderWrap(route, `${componentExpr}()`))}`,
+        `${innerPad}PyreonRouter.matchPath(currentPath, ${JSON.stringify(route.path)}) != null -> ${guardWrap(route, loaderWrap(route, `${componentExpr}()`))}`,
       )
     }
   }
@@ -7925,7 +7925,7 @@ function emitKotlinNestedRouteDispatch(
         emitKotlinLayoutAwareInvocation(entry.component, indent + 4),
       )
       lines.push(
-        `${innerPad}PyreonRouter.splitPathAndQuery(currentPath).first == ${JSON.stringify(entry.path)} -> ${guardWrap(entry.guard, render)}`,
+        `${innerPad}PyreonRouter.matchPath(currentPath, ${JSON.stringify(entry.path)}) != null -> ${guardWrap(entry.guard, render)}`,
       )
     }
   }

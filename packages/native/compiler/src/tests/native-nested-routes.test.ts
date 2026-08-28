@@ -42,14 +42,14 @@ describe('Phase 3 — nested-routes emit (Swift)', () => {
   })
 
   it('child paths render the leaf wrapped in the layout', () => {
-    expect(out).toContain('PyreonRouter.splitPathAndQuery(path).path == "/app/dashboard" {')
+    expect(out).toContain('PyreonRouter.matchPath(path, "/app/dashboard") != nil {')
     expect(out).toContain('AppLayout { Dashboard() }')
-    expect(out).toContain('PyreonRouter.splitPathAndQuery(path).path == "/app/settings" {')
+    expect(out).toContain('PyreonRouter.matchPath(path, "/app/settings") != nil {')
     expect(out).toContain('AppLayout { Settings() }')
   })
 
   it("layout's own index path renders the layout with an empty slot", () => {
-    expect(out).toContain('PyreonRouter.splitPathAndQuery(path).path == "/app" {')
+    expect(out).toContain('PyreonRouter.matchPath(path, "/app") != nil {')
     expect(out).toContain('AppLayout { EmptyView() }')
   })
 })
@@ -63,12 +63,12 @@ describe('Phase 3 — nested-routes emit (Kotlin)', () => {
   })
 
   it('child paths render the leaf wrapped in the layout lambda', () => {
-    expect(out).toContain('PyreonRouter.splitPathAndQuery(currentPath).first == "/app/dashboard" -> AppLayout { Dashboard() }')
-    expect(out).toContain('PyreonRouter.splitPathAndQuery(currentPath).first == "/app/settings" -> AppLayout { Settings() }')
+    expect(out).toContain('PyreonRouter.matchPath(currentPath, "/app/dashboard") != null -> AppLayout { Dashboard() }')
+    expect(out).toContain('PyreonRouter.matchPath(currentPath, "/app/settings") != null -> AppLayout { Settings() }')
   })
 
   it("layout's own index path renders the layout with an empty lambda", () => {
-    expect(out).toContain('PyreonRouter.splitPathAndQuery(currentPath).first == "/app" -> AppLayout {}')
+    expect(out).toContain('PyreonRouter.matchPath(currentPath, "/app") != null -> AppLayout {}')
   })
 })
 
@@ -91,7 +91,7 @@ describe('Phase 3 — 3-level nesting accumulates the wrap chain', () => {
 
   it('Swift: nests outermost-first', () => {
     const out = transform(SRC, { target: 'swift' }).code
-    expect(out).toContain('PyreonRouter.splitPathAndQuery(path).path == "/app/team/members" {')
+    expect(out).toContain('PyreonRouter.matchPath(path, "/app/team/members") != nil {')
     expect(out).toContain('AppLayout { TeamLayout { Members() } }')
     // /app/team index → AppLayout wraps TeamLayout-with-empty-slot.
     expect(out).toContain('AppLayout { TeamLayout { EmptyView() } }')
@@ -99,8 +99,8 @@ describe('Phase 3 — 3-level nesting accumulates the wrap chain', () => {
 
   it('Kotlin: nests outermost-first', () => {
     const out = transform(SRC, { target: 'kotlin' }).code
-    expect(out).toContain('PyreonRouter.splitPathAndQuery(currentPath).first == "/app/team/members" -> AppLayout { TeamLayout { Members() } }')
-    expect(out).toContain('PyreonRouter.splitPathAndQuery(currentPath).first == "/app/team" -> AppLayout { TeamLayout {} }')
+    expect(out).toContain('PyreonRouter.matchPath(currentPath, "/app/team/members") != null -> AppLayout { TeamLayout { Members() } }')
+    expect(out).toContain('PyreonRouter.matchPath(currentPath, "/app/team") != null -> AppLayout { TeamLayout {} }')
   })
 })
 
@@ -121,7 +121,7 @@ describe('Phase 3 — flat (non-nested) routes keep the original dispatch (zero 
     const out = transform(FLAT, { target: 'swift' }).code
     expect(out).not.toContain('<Content: View>')
     expect(out).not.toContain('@ViewBuilder var content')
-    expect(out).toContain('PyreonRouter.splitPathAndQuery(path).path == "/about" {')
+    expect(out).toContain('PyreonRouter.matchPath(path, "/about") != nil {')
     expect(out).toContain('About()')
     expect(out).not.toContain('About { ')
   })
@@ -129,6 +129,6 @@ describe('Phase 3 — flat (non-nested) routes keep the original dispatch (zero 
   it('Kotlin: no content param — plain Home()/About()', () => {
     const out = transform(FLAT, { target: 'kotlin' }).code
     expect(out).not.toContain('content: @Composable () -> Unit')
-    expect(out).toContain('PyreonRouter.splitPathAndQuery(currentPath).first == "/about" -> About()')
+    expect(out).toContain('PyreonRouter.matchPath(currentPath, "/about") != null -> About()')
   })
 })
