@@ -107,7 +107,7 @@ exiting.
 Regenerates in memory and fails if committed output has drifted — the same
 contract as `gen-docs --check`, covering every project.
 
-## One import site
+## Entry points mirror the dependency graph
 
 ```ts
 import { keys, useCreateBook, useListBooks, type Book } from './gen'
@@ -115,6 +115,51 @@ import { keys, useCreateBook, useListBooks, type Book } from './gen'
 
 The per-tag split is the generator's business. Nothing in your app needs to
 know which tag an operation was filed under, or that tags exist.
+
+But a barrel is a REACHABILITY edge, and treating it as pure convenience has a
+cost you pay in the bundle. So the output is layered:
+
+```
+gen/index.ts            production — schemas, client, endpoints, queries, keys
+gen/dev.ts              fixtures, faker factories, preview components
+gen/endpoints/index.ts  every call, no hooks   (loaders, scripts, server code)
+gen/queries/index.ts    every hook, no previews
+gen/queries/books.ts    one tag — Vite emits one chunk per tag file
+gen/package.json        `sideEffects`, so all of the above tree-shakes
+```
+
+`dev.ts` is the same shape as `@pyreon/server/client` in this repo: nothing in
+it is unsafe to import, it is unsafe to import *by accident*. A fixture table is
+DATA, so unlike an unused function it survives minification wherever it is
+reachable — a barrel that named it put every fixture in the page bundle.
+
+### Why the emitted `package.json` matters
+
+A bundler keeps a module-level CALL unless it can prove the call is pure, and
+`api.endpoint('GET /books', …)` and `s.object({ … })` are both module-level
+calls. Measured with Vite 8 on a 30-tag / 120-operation spec, importing **one**
+hook:
+
+| | raw | gzip | endpoints kept | fixtures kept |
+| --- | ---: | ---: | ---: | ---: |
+| flat barrel, no marker | 30,710 B | 2,420 B | 120 | 120 |
+| layered entries, no marker | 10,400 B | 1,681 B | 116 | 0 |
+| layered entries + marker | **5,748 B** | **642 B** | **4** | **0** |
+
+Two honest notes on that table. The **marker is what closes the size gap** — the
+layering alone removes the fixtures, not the endpoints. And the marker's effect
+depends on nothing else being in the way: an app whose own `package.json`
+already declares `sideEffects: false` was never affected, because its
+declaration covered the generated files too. Emitting the marker means the
+result no longer depends on a field in a file the generator did not write.
+
+`/* @__PURE__ */` on each declaration is the reflex and is nearly useless here —
+measured 2,041 B → 2,000 B, 2% — because the ARGUMENTS are calls
+(`s.string().uuid()`) the bundler must still evaluate.
+
+The marker is an ARRAY, not `false`, whenever `atlas` is selected:
+`atlas.wrapper.tsx` calls `installMocks()` at module scope, so a blanket `false`
+would be a lie a bundler would act on.
 
 ### Query keys come from the endpoints
 
@@ -165,6 +210,77 @@ Cards render with **no server**: the wrapper installs the generated mock
 routes through a transport seam the client reserves. (Endpoints bind to the
 client at declaration time, so middleware cannot be added to `createHttp`
 afterwards — which a mock installed by a wrapper or a test never can be.)
+
+## Fake data, and data that stays valid
+
+```ts
+import { seedFaker, createBook } from './gen/dev'
+
+seedFaker(42)                          // reproducible across runs
+const book = createBook()
+const lost = createBook({ status: 'lost' })
+const many = Array.from({ length: 20 }, () => createBook())
+```
+
+`plugins: ['faker']` emits one factory per model. The rule that governs it is
+that a factory must produce data its **own schema accepts** — a `maxLength: 8`
+field filled with a lorem sentence is a fake that is wrong in exactly the way
+real data never is, and it surfaces as a confusing parse error inside somebody
+else's test. So `min`/`max`/`pattern`/`enum` choose the generator first, and the
+prettier field-name guess (`email` → `faker.internet.email()`) only applies
+where the spec states nothing.
+
+The specs for this call the factories and validate the result against the
+emitted schema, several hundred draws at a time, which is the only assertion
+that can fail for the right reason. It found two real bugs while being written:
+`faker.string.alpha({ min, max })` silently returns a ONE-character string (the
+option is `{ length: { min, max } }`), and `faker.helpers.fromRegExp` treats `^`
+and `$` as literal characters — so an OpenAPI `pattern`, which almost always
+carries anchors, generated a value that failed the very pattern it came from.
+
+Recursive models terminate: depth is threaded through the builders explicitly
+rather than kept in module state, so concurrent calls cannot interfere.
+
+## Reference pages, from the IR
+
+```
+gen/docs/index.md     tags, reach summary, and everything the spec expressed
+                      that the client does not
+gen/docs/books.md     per operation: contract, params, and the generated hook
+gen/docs/models.md    the emitted types
+```
+
+`plugins: ['docs']` renders Markdown with frontmatter, so the pages drop into a
+`@pyreon/zero-content` collection unchanged and still read correctly on GitHub
+with nothing installed.
+
+Kubb reaches for Redoc here, which renders the SPEC. That is a different
+document: it tells you the HTTP contract and leaves you to work out which hook
+corresponds to `GET /books/{bookId}` and whether it works on iOS. Those are
+properties of the GENERATED code, so these pages document that, with the
+contract beside it:
+
+````md
+## `getBook`
+
+`GET /books/:bookId`
+
+- **Reach** — web · iOS · Android
+- **Response** — `Book`
+
+| Parameter | In | Required | Type |
+| --- | --- | --- | --- |
+| `bookId` | path | yes | `string` |
+
+```ts
+import { useGetBook } from './gen/queries/books'
+
+const query = useGetBook(() => ({ params: { bookId: '…' } }))
+```
+````
+
+The reach column comes from the same analysis the CLI prints, so a page and a
+terminal cannot disagree about whether an operation runs on a phone.
 
 ## Honest limits
 
@@ -344,6 +460,7 @@ lathe: { input: './openapi.yaml', output: './src/schemas', plugins: ['schemas'] 
 ```bash
 lathe generate --plugins schemas          # just s.* schemas + types
 lathe generate --plugins schemas,mocks    # ...and deterministic fixtures
+lathe generate --plugins docs             # just the Markdown reference
 ```
 
 | plugin | emits | needs |
@@ -353,8 +470,10 @@ lathe generate --plugins schemas,mocks    # ...and deterministic fixtures
 | `client` | the `createHttp` client + one endpoint per operation | `schemas` |
 | `queries` | `useQuery` / `useMutation` hooks + `keys.ts` | `client` |
 | `mocks` | route table for `@pyreon/http`'s mock middleware | `client` |
+| `faker` | one `createX(overrides?)` factory per model | `schemas` |
 | `components` | one browsable preview per read operation | `queries` |
 | `atlas` | workbench scenarios + wrapper | `components`, `mocks` |
+| `docs` | Markdown reference pages | — |
 
 The **needs** column is import edges in the emitted code, not preferences —
 `queries/*.ts` imports `endpoints/*.ts`, `components.tsx` imports the hooks. A
@@ -364,6 +483,12 @@ what came along:
 ```
 plugins: components (+schemas, +client, +queries - required by them)
 ```
+
+`faker` needs `schemas` for a reason worth stating: the factories exist to
+produce data the SCHEMA accepts, and without schemas there is nothing for them
+to be correct against and no round-trip test that could prove they are. `docs`
+needs nothing at all — it renders from the IR and is imported by no one, which
+makes it the one plugin with no edges in either direction.
 
 **`components` does not depend on Atlas.** The previews are ordinary Pyreon
 components over the generated hooks — nothing in them is workbench-shaped, so

@@ -15,6 +15,7 @@
     "gen:watch": "lathe generate --watch"
   },
   "dependencies": {
+    "@faker-js/faker": "^10.1.0",
     "@pyreon/core": "workspace:*",
     "@pyreon/http": "workspace:*",
     "@pyreon/query": "workspace:*",

@@ -94,7 +94,11 @@ function diagnose(client: ClientName, validator: ValidatorName): string[] {
     input: 'x',
     client,
     validator,
-    plugins: ['schemas', 'client', 'queries', 'mocks'],
+    // `faker` is in the matrix because its factories are the one emitter
+    // whose output is typed against ANOTHER emitter's output -- the model types
+    // from `schemas.ts` -- so a mismatch between the two shows up here and
+    // nowhere else.
+    plugins: ['schemas', 'client', 'queries', 'mocks', 'faker'],
   })
   const files = generate(SPEC, cfg).files.filter((f) => f.path.endsWith('.ts'))
   const root = join(TC_ROOT, `${client}-${validator}`)

@@ -61,6 +61,7 @@
     "bench": "bun bench/scaling.ts"
   },
   "devDependencies": {
+    "@faker-js/faker": "^10.1.0",
     "@pyreon/http": "workspace:*",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/native-compiler": "workspace:*",
