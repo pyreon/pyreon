@@ -147,6 +147,42 @@ describe.runIf(isSwiftUIAvailable())('emit compiles against the real SDK + real 
 describe.runIf(isSwiftUIAvailable())('every package snippet compiles against the real runtime', () => {
   const sources = runtimeSwiftSources()
 
+  /**
+   * Top-level declarations in an emitted snippet. Used ONLY to find names two
+   * snippets both declare, so the batch below can rename them apart.
+   *
+   * The keyword list must stay COMPLETE: the first cut matched only
+   * `struct|enum|class|func` and missed a top-level `let`, so two schema
+   * snippets both declared `Signup` and the whole batch died on `invalid
+   * redeclaration` — a failure that looks like a product bug and isn't.
+   */
+  const declaredNames = (code: string): string[] =>
+    [
+      ...code.matchAll(
+        /^(?:public\s+|private\s+|internal\s+)?(?:struct|enum|class|func|protocol|typealias|actor|let|var)\s+(\w+)/gm,
+      ),
+    ].map((m) => m[1]!)
+
+  const compile = (files: string[]): string | null => {
+    try {
+      execFileSync(
+        'xcrun',
+        [
+          '--sdk', 'iphonesimulator', 'swiftc', '-typecheck',
+          '-target', 'arm64-apple-ios17.0-simulator',
+          '-sdk', sdkPath(), ...files, ...sources,
+        ],
+        { encoding: 'utf8', stdio: 'pipe' },
+      )
+      return null
+    } catch (err) {
+      const e = err as { stderr?: string | Buffer; stdout?: string | Buffer }
+      return [e.stderr, e.stdout]
+        .map((x) => (typeof x === 'string' ? x : x?.toString('utf8')) ?? '')
+        .join('\n')
+    }
+  }
+
   it('all of them', async () => {
     const { REGISTRY } = (await import(
       resolve(REPO, 'scripts/check-native-coverage.ts')
@@ -155,35 +191,66 @@ describe.runIf(isSwiftUIAvailable())('every package snippet compiles against the
     // A registry that stopped carrying snippets would make this vacuous.
     expect(withSnippet.length).toBeGreaterThan(20)
 
+    const emits = withSnippet.map((e) => ({
+      name: e.name,
+      code: transform(e.snippet!, { target: 'swift' }).code,
+    }))
+
+    // Names declared by MORE THAN ONE snippet. Every snippet's root component
+    // is `C`, so this is never empty.
+    const seen = new Map<string, number>()
+    for (const e of emits) {
+      for (const n of new Set(declaredNames(e.code))) seen.set(n, (seen.get(n) ?? 0) + 1)
+    }
+    const shared = new Set([...seen].filter(([, v]) => v > 1).map(([k]) => k))
+
     const dir = mkdtempSync(join(tmpdir(), 'pyreon-pkg-runtime-'))
-    const failures: string[] = []
     try {
-      for (const entry of withSnippet) {
-        const { code } = transform(entry.snippet!, { target: 'swift' })
-        const appPath = join(dir, 'Snippet.swift')
-        writeFileSync(appPath, `import SwiftUI\nimport Foundation\n${code}`, 'utf8')
-        try {
-          execFileSync(
-            'xcrun',
-            [
-              '--sdk', 'iphonesimulator', 'swiftc', '-typecheck',
-              '-target', 'arm64-apple-ios17.0-simulator',
-              '-sdk', sdkPath(), appPath, ...sources,
-            ],
-            { encoding: 'utf8', stdio: 'pipe' },
-          )
-        } catch (err) {
-          const e = err as { stderr?: string | Buffer; stdout?: string | Buffer }
-          const out = [e.stderr, e.stdout]
-            .map((x) => (typeof x === 'string' ? x : x?.toString('utf8')) ?? '')
-            .join('\n')
-          const first = out.split('\n').filter((l) => l.includes('error:'))[0] ?? '?'
-          failures.push(`${entry.name}: ${first.replace(/^.*error: /, '')}`)
-        }
+      // ONE compile for all of them. The per-snippet marginal cost is ~0.1s;
+      // the ~9s of SDK + 63 runtime files is FIXED, and compiling each snippet
+      // separately paid that fixed cost 37 times. Measured 350s serial vs 14s
+      // batched — the serial form is what pushed the macOS real-SDK job past
+      // its 60-minute cap and got it CANCELLED (which reads as a failure).
+      //
+      // Snippets share a module here, matching how a real app consumes these
+      // sources (xcodegen adds them as `sources:` paths, i.e. same module, so
+      // internal visibility applies). That is why this is a batch and not a
+      // prebuilt .swiftmodule: a module boundary would hide every non-public
+      // type and report false failures.
+      const files = emits.map((e, i) => {
+        let code = e.code
+        for (const n of shared) code = code.replace(new RegExp(`\\b${n}\\b`, 'g'), `${n}_s${i}`)
+        const p = join(dir, `Snippet${i}.swift`)
+        writeFileSync(p, `import SwiftUI\nimport Foundation\n${code}`, 'utf8')
+        return p
+      })
+
+      const batch = compile(files)
+      if (batch === null) return
+
+      // Something is genuinely broken. Re-compile snippet-by-snippet so the
+      // failure names the PACKAGE — a batch error cites `Snippet12.swift`,
+      // which tells nobody which package to fix. Slow, but only ever reached
+      // on a red run.
+      const failures: string[] = []
+      for (const [i, e] of emits.entries()) {
+        const one = join(dir, `Only${i}.swift`)
+        writeFileSync(one, `import SwiftUI\nimport Foundation\n${e.code}`, 'utf8')
+        const out = compile([one])
+        if (out === null) continue
+        const first = out.split('\n').filter((l) => l.includes('error:'))[0] ?? '?'
+        failures.push(`${e.name}: ${first.replace(/^.*error: /, '')}`)
       }
+      // A batch that fails while every snippet passes alone means the batch
+      // itself is at fault (a rename that missed a collision), not a package.
+      // Say so rather than reporting a green list.
+      if (failures.length === 0) {
+        const first = batch.split('\n').filter((l) => l.includes('error:'))[0] ?? '?'
+        failures.push(`batch-only failure (every snippet passes alone): ${first}`)
+      }
+      expect(failures).toEqual([])
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
-    expect(failures).toEqual([])
   }, 900_000)
 })
