@@ -7069,9 +7069,20 @@ function emitKotlinImage(
     `model = ${model}`,
     `contentDescription = ${JSON.stringify(typeof alt === 'string' ? alt : '')}`,
   ]
-  if (typeof fit === 'string' && KOTLIN_CONTENT_SCALE[fit] !== undefined) {
-    args.push(`contentScale = ${KOTLIN_CONTENT_SCALE[fit]}`)
-  }
+  // An ABSENT `fit` is `cover`, not Compose's default.
+  //
+  // `ImageProps` documents "Default `cover`", the web arm reads
+  // `props.fit ?? 'cover'`, and the bundled Kotlin branch already defaults to
+  // Crop. Only this branch left it off — so `AsyncImage` fell back to
+  // `ContentScale.Fit` and an image that FILLS its box on web and iOS
+  // LETTERBOXED on Android. Visible, silent, and from one source.
+  //
+  // The Swift twin had the mirror-image version of this bug, fixed earlier in
+  // the same pass; leaving the sibling would be the same one-call-site fix that
+  // let it survive here.
+  const scale =
+    typeof fit === 'string' ? KOTLIN_CONTENT_SCALE[fit] : KOTLIN_CONTENT_SCALE['cover']
+  if (scale !== undefined) args.push(`contentScale = ${scale}`)
   if (modifier !== '') args.push(`modifier = ${modifier}`)
   return `AsyncImage(${args.join(', ')})`
 }

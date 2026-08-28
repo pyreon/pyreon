@@ -82,6 +82,20 @@ describe('the two src kinds agree, which is the actual invariant', () => {
   )
 })
 
+describe('an ABSENT fit is `cover` on every target', () => {
+  // `ImageProps` documents "Default `cover`" and the web arm reads
+  // `props.fit ?? 'cover'`. Kotlin's remote branch left `contentScale` off
+  // entirely, so Compose fell back to `ContentScale.Fit` — an image that FILLS
+  // its box on web and iOS LETTERBOXED on Android, from one source, silently.
+  it.each(['swift', 'kotlin'] as const)('%s: omitting fit == writing fit="cover"', (target) => {
+    expect(emit('', target)).toBe(emit(' fit="cover"', target))
+  })
+
+  it('and that default is CROP, not Compose\'s Fit', () => {
+    expect(emit('', 'kotlin')).toContain('ContentScale.Crop')
+  })
+})
+
 describe('the three targets agree on what each fit MEANS', () => {
   it('cover crops on both', () => {
     expect(emit(' fit="cover"', 'swift')).toContain('.scaledToFill()')
