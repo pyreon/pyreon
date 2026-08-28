@@ -472,6 +472,11 @@ const FIXTURES: Record<string, Fixture> = {
     bad: `export const A = () => <a href="/x" target="_blank">go</a>`,
     good: `export const A = () => <a href="/x" target="_blank" rel="noopener noreferrer">go</a>`,
   },
+  'pyreon/no-unguarded-async-signal-write': {
+    file: 'src/a.ts',
+    bad: `${SIG}const data = signal(null)\nexport async function load(id: string) { const r = await fetch('/x' + id); data.set(await r.json()) }`,
+    good: `${SIG}const data = signal(null)\nlet version = 0\nexport async function load(id: string) { const v = ++version; const r = await fetch('/x' + id); if (v !== version) return; data.set(await r.json()) }`,
+  },
   'pyreon/no-unsanitized-inner-html': {
     file: 'src/a.tsx',
     bad: `export const A = () => <div dangerouslySetInnerHTML={{ __html: userBio }} />`,

@@ -21,6 +21,7 @@
  * reads in Overlay/component.tsx → BOTH specs fail (`expected 2 to be 1` on
  * the mount count; the identity spec sees the content node replaced).
  */
+import { query } from '@pyreon/test-utils'
 import { h, onMount } from '@pyreon/core'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { describe, expect, it } from 'vitest'
@@ -73,14 +74,14 @@ describe('Overlay — content is stable + reactive across a viewport flip', () =
       }),
     )
     await flush()
-    const trg = container.querySelector('[data-testid="trg"]') as HTMLButtonElement
+    const trg = query<HTMLButtonElement>(container, '[data-testid="trg"]')
     trg.click()
     await flush()
     await raf()
     await raf()
     await raf()
 
-    const menu = document.querySelector('[data-testid="menu"]') as HTMLElement
+    const menu = query<HTMLElement>(document, '[data-testid="menu"]')
     expect(menu).not.toBeNull()
     // (1) No remount — the content lifecycle ran exactly once.
     expect(mountCount, 'content should mount once, not remount on flip').toBe(1)

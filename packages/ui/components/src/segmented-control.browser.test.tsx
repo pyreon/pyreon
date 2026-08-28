@@ -1,3 +1,4 @@
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { PyreonUI } from '@pyreon/ui-core'
@@ -61,10 +62,10 @@ describe('SegmentedControl delegates to RadioGroupBase/RadioBase', () => {
   it('applies its rocketstyle class to the radiogroup + each radio ("delegates" != "works")', () => {
     const { container, unmount } = render()
     cleanup = unmount
-    const group = container.querySelector('[role="radiogroup"]') as HTMLElement
+    const group = query<HTMLElement>(container, '[role="radiogroup"]')
     expect(group.getAttribute('data-rocketstyle')).toBe('SegmentedControl')
     expect(group.className).toBeTruthy()
-    const radio = container.querySelector('[role="radio"]') as HTMLElement
+    const radio = query<HTMLElement>(container, '[role="radio"]')
     expect(radio.getAttribute('data-rocketstyle')).toBe('SegmentedControlItem')
     expect(radio.className).toBeTruthy()
   })

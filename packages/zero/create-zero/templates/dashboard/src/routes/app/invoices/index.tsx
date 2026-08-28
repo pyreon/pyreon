@@ -3,7 +3,7 @@ import { onMount } from "@pyreon/core"
 import { useHead } from "@pyreon/head"
 import { Link } from "@pyreon/zero/link"
 import { type Invoice, invoiceTotal, listInvoices } from "../../../lib/db"
-import { formatDate, formatMoney } from '../../lib/format'
+import { formatDate, formatMoney } from '../../../lib/format'
 
 export const meta = { title: "Invoices" }
 

@@ -1,3 +1,4 @@
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { PyreonUI } from '@pyreon/ui-core'
 import { theme } from '@pyreon/ui-theme'
@@ -34,7 +35,7 @@ describe('Button family — type="button" default (no accidental form submit)', 
         h(PyreonUI, { theme }, h(Comp as never, { id: `bt-${name}` }, 'x')),
       )
       cleanup = unmount
-      const btn = container.querySelector('button') as HTMLButtonElement
+      const btn = query<HTMLButtonElement>(container, 'button')
       expect(btn).toBeTruthy()
       expect(btn.getAttribute('type')).toBe('button')
       expect(btn.type).toBe('button')
@@ -46,7 +47,7 @@ describe('Button family — type="button" default (no accidental form submit)', 
       h(PyreonUI, { theme }, h(Button as never, { id: 'submit-btn', type: 'submit' }, 'Save')),
     )
     cleanup = unmount
-    const btn = container.querySelector('button') as HTMLButtonElement
+    const btn = query<HTMLButtonElement>(container, 'button')
     expect(btn.type).toBe('submit')
   })
 
@@ -60,7 +61,7 @@ describe('Button family — type="button" default (no accidental form submit)', 
       ),
     )
     cleanup = unmount
-    const btn = container.querySelector('#form-close') as HTMLButtonElement
+    const btn = query<HTMLButtonElement>(container, '#form-close')
     btn.click()
     expect(onSubmit).not.toHaveBeenCalled()
   })

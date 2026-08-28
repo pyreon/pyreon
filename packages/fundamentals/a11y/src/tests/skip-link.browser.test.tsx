@@ -10,6 +10,7 @@
  * fails (activeElement stays off the target, no tabindex added); drop the
  * focused-signal style toggle → the reveal/blur specs fail.
  */
+import { query } from '@pyreon/test-utils'
 import { describe, expect, it } from 'vitest'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { SkipLink } from '../skip-link'
@@ -21,7 +22,7 @@ describe('SkipLink (real Chromium)', () => {
   it('renders an anchor that is clipped (hidden) but kept in the DOM + tab order', async () => {
     const { container, unmount } = mountInBrowser(<SkipLink href="#main">Skip to content</SkipLink>)
     await flush()
-    const a = container.querySelector('a') as HTMLAnchorElement
+    const a = query<HTMLAnchorElement>(container, 'a')
     expect(a).not.toBeNull()
     expect(a.getAttribute('href')).toBe('#main')
     expect(a.textContent).toBe('Skip to content')
@@ -36,7 +37,7 @@ describe('SkipLink (real Chromium)', () => {
   it('reveals on focus and clips again on blur', async () => {
     const { container, unmount } = mountInBrowser(<SkipLink href="#main">Skip</SkipLink>)
     await flush()
-    const a = container.querySelector('a') as HTMLAnchorElement
+    const a = query<HTMLAnchorElement>(container, 'a')
     a.focus()
     await nextFrame()
     const revealed = getComputedStyle(a)
@@ -56,8 +57,8 @@ describe('SkipLink (real Chromium)', () => {
       </div>,
     )
     await flush()
-    const a = container.querySelector('a') as HTMLAnchorElement
-    const main = container.querySelector('#main') as HTMLElement
+    const a = query<HTMLAnchorElement>(container, 'a')
+    const main = query<HTMLElement>(container, '#main')
     expect(main.hasAttribute('tabindex')).toBe(false)
     a.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
     await nextFrame()
@@ -69,7 +70,7 @@ describe('SkipLink (real Chromium)', () => {
   it('honours a custom href and children', async () => {
     const { container, unmount } = mountInBrowser(<SkipLink href="#content">Jump to content</SkipLink>)
     await flush()
-    const a = container.querySelector('a') as HTMLAnchorElement
+    const a = query<HTMLAnchorElement>(container, 'a')
     expect(a.getAttribute('href')).toBe('#content')
     expect(a.textContent).toBe('Jump to content')
     unmount()

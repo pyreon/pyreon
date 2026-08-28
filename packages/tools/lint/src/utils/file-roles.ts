@@ -63,7 +63,10 @@ export type FileRole = 'server' | 'client' | 'shared' | 'build' | 'test'
 const NODE_BUILTIN = /from\s+['"]node:|require\(\s*['"]node:/
 const SERVER_ENTRY = /from\s+['"]@pyreon\/(?:zero\/server|server)['"]/
 const CLIENT_ENTRY = /\bisland\s*\(|from\s+['"]@pyreon\/server\/client['"]/
-const BUILD_FILE = /(^|\/)(vite|vitest|playwright|rollup|esbuild|tsup)\.[a-z.]*config\.[cm]?[jt]s$|(^|\/)(scripts|bench|benchmarks|e2e)\//
+/** Directories whose contents are tooling, not shipped app code. */
+const BUILD_DIRS = new Set(['scripts', 'bench', 'benchmarks', 'e2e'])
+/** Config-file stems, matched on the basename rather than by regex. */
+const BUILD_CONFIG_STEMS = ['vite', 'vitest', 'playwright', 'rollup', 'esbuild', 'tsup']
 
 /**
  * True when the file is an fs-router API route — `routes/api/**.ts`.
@@ -76,12 +79,22 @@ const BUILD_FILE = /(^|\/)(vite|vitest|playwright|rollup|esbuild|tsup)\.[a-z.]*c
  * a page route and still renders, so it is NOT server-only.
  */
 export function isApiRouteFile(filePath: string): boolean {
+  // String operations, not a regex. The obvious `/(?:^|\/)routes\/(.+)$/`
+  // backtracks polynomially on a path with many `/routes/a` repetitions —
+  // CodeQL flagged it `js/polynomial-redos`, high severity, and it is a real
+  // input class because a linter is handed whatever paths the caller has.
+  // Slicing at the last `/routes/` is linear and says the same thing.
   const p = filePath.replace(/\\/g, '/')
-  const m = /(?:^|\/)routes\/(.+)$/.exec(p)
-  if (!m?.[1]) return false
-  const rel = m[1]
-  return rel.startsWith('api/') && /\.[cm]?[jt]s$/.test(rel) && !/\.[jt]sx$/.test(rel)
+  const marker = '/routes/'
+  const idx = p.lastIndexOf(marker)
+  const rel =
+    idx >= 0 ? p.slice(idx + marker.length) : p.startsWith('routes/') ? p.slice(7) : null
+  if (rel === null || !rel.startsWith('api/')) return false
+  return TS_JS_EXT.some((e) => rel.endsWith(e))
 }
+
+/** Server-executable route extensions — `.tsx`/`.jsx` are page routes. */
+const TS_JS_EXT = ['.ts', '.js', '.mts', '.mjs', '.cts', '.cjs']
 
 /** True when the file is a client-only entry or declares an island. */
 export function isClientFile(filePath: string, source = ''): boolean {
@@ -108,7 +121,7 @@ export function resolveFileRole(filePath: string, source = ''): FileRole {
   if (isClientFile(filePath, source)) return 'client'
   // Convention.
   if (isServerFile(filePath)) return 'server'
-  if (BUILD_FILE.test(filePath.replace(/\\/g, '/'))) return 'build'
+  if (isBuildFile(filePath)) return 'build'
   return 'shared'
 }
 
@@ -130,4 +143,16 @@ export function resolveFileRole(filePath: string, source = ''): FileRole {
  */
 export function roleMatches(appliesTo: readonly FileRole[], role: FileRole): boolean {
   return appliesTo.includes(role)
+}
+
+/** True when the file is build tooling rather than shipped app code. */
+export function isBuildFile(filePath: string): boolean {
+  const p = filePath.replace(/\\/g, '/')
+  const segments = p.split('/')
+  for (const seg of segments) if (BUILD_DIRS.has(seg)) return true
+  const base = segments[segments.length - 1] ?? ''
+  // `vite.config.ts`, `vitest.browser.config.ts` — split on '.' rather than
+  // matching `[a-z.]*config`, which is the same backtracking shape.
+  const parts = base.split('.')
+  return parts.length >= 3 && BUILD_CONFIG_STEMS.includes(parts[0] ?? '') && parts.includes('config')
 }

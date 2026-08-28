@@ -4,6 +4,7 @@
  * #3): batteries-included markup with the FULL a11y + hotkeys + i18n surface
  * wired out of the box.
  */
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { PyreonUI } from '@pyreon/ui-core'
@@ -41,7 +42,7 @@ describe('RangeSlider — Element-first batteries-included (real Chromium)', () 
       ),
     )
     await flush()
-    const start = container.querySelector('[data-range-thumb="start"]') as HTMLElement
+    const start = query<HTMLElement>(container, '[data-range-thumb="start"]')
     const before = start.style.left
     key(start, 'ArrowRight')
     await flush()

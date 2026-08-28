@@ -2,7 +2,7 @@ import { computed, signal } from "@pyreon/reactivity"
 import { onMount } from "@pyreon/core"
 import { useHead } from "@pyreon/head"
 import { type Invoice, invoiceTotal, listInvoices, listUsers, type User } from "../../lib/db"
-import { formatDate, formatMoney } from '../lib/format'
+import { formatDate, formatMoney } from '../../lib/format'
 
 export const meta = { title: "Overview" }
 

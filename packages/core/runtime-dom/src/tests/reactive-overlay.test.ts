@@ -10,6 +10,7 @@
  * keeps its signals/effects alive in a `keepAlive` bag for the duration of the
  * assertion — otherwise a GC pass could prune them out of the snapshot.
  */
+import { query } from '@pyreon/test-utils'
 import {
   __resetReactiveDevtoolsForTesting,
   computed,
@@ -127,7 +128,7 @@ describe('reactive health overlay', () => {
     // A newly-created signal only appears after an explicit refresh.
     const s2 = signal(1)
     keepAlive.push(s2)
-    const refresh = document.querySelector(`#${PANEL_ID} button`) as HTMLButtonElement
+    const refresh = query<HTMLButtonElement>(document, `#${PANEL_ID} button`)
     refresh.click()
 
     expect(document.getElementById(BODY_ID)?.textContent).not.toBe(before)

@@ -17,6 +17,7 @@
  * blanket 'menu' — telling AT to expect menuitem semantics that never exist);
  * custom → omitted.
  */
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { describe, expect, it } from 'vitest'
@@ -57,18 +58,18 @@ describe('Overlay — hover overlays are keyboard-operable (real Chromium)', () 
   it('opens on trigger FOCUS, stays open while focus is inside the content, closes after focus leaves', async () => {
     const { container, unmount } = mountHoverTip({ trg: 'kb-trg', tip: 'kb-tip' })
     await flush()
-    const trg = container.querySelector('[data-testid="kb-trg"]') as HTMLElement
+    const trg = query<HTMLElement>(container, '[data-testid="kb-trg"]')
 
     // Keyboard-open: real focus (no mouse events at all).
     trg.focus()
     await flush()
     await raf()
-    const tip = document.querySelector('[data-testid="kb-tip"]') as HTMLElement
+    const tip = query<HTMLElement>(document, '[data-testid="kb-tip"]')
     expect(tip, 'tooltip should open when the trigger receives focus').not.toBeNull()
 
     // Tab into the content: focus leaving the trigger arms the hide timer;
     // focus entering the content must cancel it (same as the pointer flow).
-    const link = document.querySelector('[data-testid="kb-tip-link"]') as HTMLElement
+    const link = query<HTMLElement>(document, '[data-testid="kb-tip-link"]')
     link.focus()
     await sleep(90) // > hoverDelay — the cancelled timer must NOT have fired
     expect(
@@ -79,7 +80,7 @@ describe('Overlay — hover overlays are keyboard-operable (real Chromium)', () 
     // Focus moves PAST the widget (an unrelated outside control) → the
     // delayed hide runs; the focus-restore guard must NOT yank focus back to
     // the trigger (focus is outside the closing overlay), so it stays closed.
-    const outside = container.querySelector('[data-testid="kb-trg-outside"]') as HTMLElement
+    const outside = query<HTMLElement>(container, '[data-testid="kb-trg-outside"]')
     outside.focus()
     await sleep(90)
     await flush()

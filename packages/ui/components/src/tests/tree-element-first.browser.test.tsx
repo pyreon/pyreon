@@ -10,6 +10,7 @@
  * `<For by>` so per-row state changes (focus/selection/caret) never remount
  * the row — DOM focus must SURVIVE arrow keys.
  */
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { PyreonUI } from '@pyreon/ui-core'
@@ -115,11 +116,11 @@ describe('Tree — Element-first batteries-included (real Chromium)', () => {
       h(PyreonUI, { theme }, h(Tree as never, { data, defaultExpanded: ['src'] })),
     )
     await flush()
-    const tree = container.querySelector('[role="tree"]') as HTMLElement
+    const tree = query<HTMLElement>(container, '[role="tree"]')
     const cs = getComputedStyle(tree)
     expect(cs.display).toContain('flex')
     expect(cs.flexDirection, 'tree stacks rows as a column').toBe('column')
-    const item = container.querySelector('[role="treeitem"]') as HTMLElement
+    const item = query<HTMLElement>(container, '[role="treeitem"]')
     const ics = getComputedStyle(item)
     expect(ics.flexDirection, 'glyph + label sit inline').toBe('row')
     expect(ics.alignItems).toBe('center')

@@ -20,6 +20,7 @@
  * listeners never attached) → the keep-open spec fails (`expected null not to
  * be null` — the tooltip closed).
  */
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { describe, expect, it } from 'vitest'
@@ -49,12 +50,12 @@ describe('Overlay — hover overlay content is reachable', () => {
   it('keeps the tooltip open while the pointer is over its content', async () => {
     const { container, unmount } = mountHoverTooltip()
     await flush()
-    const trg = container.querySelector('[data-testid="trg"]') as HTMLElement
+    const trg = query<HTMLElement>(container, '[data-testid="trg"]')
 
     enter(trg)
     await flush()
     await raf()
-    const tip = document.querySelector('[data-testid="tip"]') as HTMLElement
+    const tip = query<HTMLElement>(document, '[data-testid="tip"]')
     expect(tip, 'tooltip should open on trigger hover').not.toBeNull()
 
     // trigger→content: leave trigger (arms hide timer) then enter content
@@ -74,12 +75,12 @@ describe('Overlay — hover overlay content is reachable', () => {
   it('closes the tooltip once the pointer leaves the content', async () => {
     const { container, unmount } = mountHoverTooltip()
     await flush()
-    const trg = container.querySelector('[data-testid="trg"]') as HTMLElement
+    const trg = query<HTMLElement>(container, '[data-testid="trg"]')
 
     enter(trg)
     await flush()
     await raf()
-    const tip = document.querySelector('[data-testid="tip"]') as HTMLElement
+    const tip = query<HTMLElement>(document, '[data-testid="tip"]')
     expect(tip).not.toBeNull()
 
     // Move into content, then leave it → hide timer fires → closes.

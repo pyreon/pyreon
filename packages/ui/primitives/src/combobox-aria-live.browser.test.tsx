@@ -1,3 +1,4 @@
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { afterEach, describe, expect, it } from 'vitest'
 import { mountInBrowser } from '@pyreon/test-utils/browser'
@@ -53,24 +54,24 @@ describe('ComboboxBase inputProps — runtime ARIA stays live across open/close'
 
   it('aria-expanded flips to "true" when opened (was FROZEN at "false")', () => {
     const container = render()
-    const input = container.querySelector('[role="combobox"]') as HTMLElement
+    const input = query<HTMLElement>(container, '[role="combobox"]')
     expect(input.getAttribute('aria-expanded')).toBe('false')
-    ;(container.querySelector('#open') as HTMLElement).click()
+    ;(query<HTMLElement>(container, '#open')).click()
     expect(input.getAttribute('aria-expanded')).toBe('true')
   })
 
   it('aria-expanded returns to "false" when closed', () => {
     const container = render()
-    const input = container.querySelector('[role="combobox"]') as HTMLElement
-    ;(container.querySelector('#open') as HTMLElement).click()
+    const input = query<HTMLElement>(container, '[role="combobox"]')
+    ;(query<HTMLElement>(container, '#open')).click()
     expect(input.getAttribute('aria-expanded')).toBe('true')
-    ;(container.querySelector('#close') as HTMLElement).click()
+    ;(query<HTMLElement>(container, '#close')).click()
     expect(input.getAttribute('aria-expanded')).toBe('false')
   })
 
   it('keeps the static ARIA that never changes', () => {
     const container = render()
-    const input = container.querySelector('[role="combobox"]') as HTMLElement
+    const input = query<HTMLElement>(container, '[role="combobox"]')
     expect(input.getAttribute('role')).toBe('combobox')
     expect(input.getAttribute('aria-autocomplete')).toBe('list')
     // aria-controls must reference the listbox id the primitive owns

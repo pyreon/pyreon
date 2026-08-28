@@ -2,7 +2,7 @@ import { signal } from "@pyreon/reactivity"
 import { onMount } from "@pyreon/core"
 import { useHead } from "@pyreon/head"
 import { listUsers, type User } from "../../lib/db"
-import { formatDate, formatMoney } from '../lib/format'
+import { formatDate, formatMoney } from '../../lib/format'
 
 export const meta = { title: "Users" }
 

@@ -11,6 +11,7 @@
  * - ComboboxBase: ArrowUp on a CLOSED listbox did nothing — APG requires it
  *   to open with the LAST option active (the upward mirror of ArrowDown).
  */
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { describe, expect, it } from 'vitest'
@@ -45,7 +46,7 @@ describe('TreeBase — editable-target keydown bail (real Chromium)', () => {
       }),
     )
     await flush()
-    const input = container.querySelector('[data-testid="rename"]') as HTMLInputElement
+    const input = query<HTMLInputElement>(container, '[data-testid="rename"]')
     input.focus()
 
     // Arrows + a printable char from INSIDE the input must NOT move tree focus
@@ -58,7 +59,7 @@ describe('TreeBase — editable-target keydown bail (real Chromium)', () => {
     expect(document.activeElement, 'the input must keep focus').toBe(input)
 
     // Sanity: the same keys ON A TREE ITEM still navigate.
-    const first = container.querySelector('[role="treeitem"]') as HTMLElement
+    const first = query<HTMLElement>(container, '[role="treeitem"]')
     key(first, 'ArrowDown')
     await flush()
     expect(api!.focused(), 'tree keys on items still navigate').not.toBeNull()
@@ -86,7 +87,7 @@ describe('ComboboxBase — ArrowUp opens a closed listbox (real Chromium)', () =
       }),
     )
     await flush()
-    const input = container.querySelector('[data-testid="cb-input"]') as HTMLElement
+    const input = query<HTMLElement>(container, '[data-testid="cb-input"]')
     expect(api!.isOpen()).toBe(false)
 
     key(input, 'ArrowUp')

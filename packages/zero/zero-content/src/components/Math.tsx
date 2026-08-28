@@ -44,6 +44,9 @@ export function Math(props: MathProps): VNodeChild {
   onMount(() => {
     if (source.length === 0) return undefined
     if (isServer) return undefined
+    // See <Mermaid>: the render is async and can still be in flight at unmount,
+    // where writing keeps the whole closure alive for a signal nothing reads.
+    let cancelled = false
     // Dynamic import — KaTeX ships in the user's bundle ONLY when this
     // component mounts on the client. SSR (or no-KaTeX builds)
     // gracefully fall back to a `<code>` element.
@@ -62,12 +65,15 @@ export function Math(props: MathProps): VNodeChild {
           displayMode: !props.inline,
           throwOnError: false,
         })
+        if (cancelled) return
         html.set(rendered)
       } catch {
         // KaTeX not installed — leave the fallback intact.
       }
     })()
-    return undefined
+    return () => {
+      cancelled = true
+    }
   })
 
   return (

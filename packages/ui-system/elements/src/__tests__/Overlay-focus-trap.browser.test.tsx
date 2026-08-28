@@ -18,6 +18,7 @@
  * initial-focus spec fails. The non-modal control spec proves the trap is
  * gated on type === 'modal'.
  */
+import { query } from '@pyreon/test-utils'
 import { onMount } from '@pyreon/core'
 import { describe, expect, it } from 'vitest'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
@@ -53,7 +54,7 @@ function mountHarness(type: OverlayType): {
     )
   }
   const { container, unmount } = mountInBrowser(<Harness />)
-  const q = (id: string) => container.querySelector(`[data-testid=${id}]`) as HTMLButtonElement
+  const q = (id: string) => query<HTMLButtonElement>(container, `[data-testid=${id}]`)
   return { api, q, unmount }
 }
 

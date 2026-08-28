@@ -17,6 +17,7 @@
  * Bisect: remove an onKeyDown from a slider's props → that slider's specs fail
  * (the value doesn't move).
  */
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { describe, expect, it } from 'vitest'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
@@ -46,7 +47,7 @@ function mountPicker(): {
   )
   return {
     st: () => captured,
-    el: (s: string) => container.querySelector(`[data-s=${s}]`) as HTMLElement,
+    el: (s: string) => query<HTMLElement>(container, `[data-s=${s}]`),
     unmount,
   }
 }

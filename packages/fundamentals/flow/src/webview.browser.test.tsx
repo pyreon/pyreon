@@ -8,6 +8,7 @@
  * `pyreonPostMessage`). The flow host is fully self-contained (no external
  * bundle), so this exercises the whole thing end-to-end.
  */
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
@@ -48,7 +49,7 @@ describe('FlowWebView bridge (real SVG diagram in a real iframe)', () => {
     container.style.width = '500px'
     container.style.height = '400px'
     await flush()
-    const iframe = container.querySelector('iframe') as HTMLIFrameElement
+    const iframe = query<HTMLIFrameElement>(container, 'iframe')
     const doc = await waitForFlow(iframe)
 
     // 3 nodes rendered as real SVG groups with labels.
@@ -83,12 +84,12 @@ describe('FlowWebView bridge (real SVG diagram in a real iframe)', () => {
     container.style.width = '500px'
     container.style.height = '400px'
     await flush()
-    const iframe = container.querySelector('iframe') as HTMLIFrameElement
+    const iframe = query<HTMLIFrameElement>(container, 'iframe')
     const doc = await waitForFlow(iframe)
 
     // A real click on the node's SVG group fires the host's handler → the
     // reverse bridge → onSelect (full page → parent → native path).
-    const nodeB = doc.querySelector('[data-node-id="B"]') as SVGGElement
+    const nodeB = query<SVGGElement>(doc, '[data-node-id="B"]')
     nodeB.dispatchEvent(new (iframe.contentWindow as unknown as { MouseEvent: typeof MouseEvent }).MouseEvent('click', { bubbles: true }))
     await flush()
 
@@ -122,7 +123,7 @@ describe('FlowWebView performance + robustness', () => {
     container.style.width = '600px'
     container.style.height = '400px'
     await flush()
-    const iframe = container.querySelector('iframe') as HTMLIFrameElement
+    const iframe = query<HTMLIFrameElement>(container, 'iframe')
     const doc = await waitForFlow(iframe)
 
     // All 100 nodes + 99 bezier edges rendered.
@@ -134,7 +135,7 @@ describe('FlowWebView performance + robustness', () => {
     const win = iframe.contentWindow as any
     let rebuilds = 0
     // Count node-group creations via a MutationObserver on the <g> layer.
-    const layer = doc.querySelector('g') as SVGGElement
+    const layer = query<SVGGElement>(doc, 'g')
     const mo = new (win.MutationObserver || MutationObserver)((muts: MutationRecord[]) => {
       if (muts.some((m) => m.removedNodes.length > 0)) rebuilds++
     })
@@ -156,7 +157,7 @@ describe('FlowWebView performance + robustness', () => {
     container.style.width = '400px'
     container.style.height = '300px'
     await flush()
-    const iframe = container.querySelector('iframe') as HTMLIFrameElement
+    const iframe = query<HTMLIFrameElement>(container, 'iframe')
     await waitForFlow(iframe)
     const win = iframe.contentWindow as any
     for (const bad of [null, undefined, {}, { nodes: null }, 'x', 42]) {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { allRules } from '../rules/index'
 import { lintFile } from '../runner'
-import { isServerFile } from '../utils/file-roles'
+import { isApiRouteFile, isBuildFile, isServerFile } from '../utils/file-roles'
 
 /**
  * Server-file classification is shared, and matches on word boundaries.
@@ -65,5 +65,34 @@ describe('the rules that consume it agree', () => {
     // Asserting on the SOURCE keeps a fourth from being added quietly.
     const offenders = allRules.filter((r) => /filePath\.includes\('server'\)/.test(String(r.create)))
     expect(offenders.map((r) => r.meta.id)).toEqual([])
+  })
+})
+
+describe('path classifiers are linear, not backtracking', () => {
+  it('resolves against the LAST routes/ segment, not the first', () => {
+    // The regex this replaced anchored on the first `/routes/`, so a nested
+    // path captured `a/routes/api/x.ts` — which does not start with `api/`,
+    // and the file was misclassified. The ReDoS fix corrected a real
+    // correctness bug as well as the backtracking.
+    expect(isApiRouteFile('/app/routes/a/routes/api/x.ts')).toBe(true)
+    expect(isApiRouteFile('/app/routes/api/a/routes/page.tsx')).toBe(false)
+  })
+
+  it('isApiRouteFile handles a pathological repeated-segment path fast', () => {
+    // CodeQL flagged the obvious regex `js/polynomial-redos`, high severity:
+    // `/(?:^|\/)routes\/(.+)$/` backtracks on many `/routes/a` repetitions,
+    // and a linter is handed whatever paths its caller has. This is the
+    // adversarial input, and it must stay linear.
+    const evil = '/routes/a'.repeat(4000) + '/routes/api/x.ts'
+    const t0 = performance.now()
+    expect(isApiRouteFile(evil)).toBe(true)
+    expect(performance.now() - t0).toBeLessThan(150)
+  })
+
+  it('isBuildFile handles a pathological dotted basename fast', () => {
+    const evil = `/a/vite.${'a.'.repeat(4000)}ts`
+    const t0 = performance.now()
+    isBuildFile(evil)
+    expect(performance.now() - t0).toBeLessThan(150)
   })
 })

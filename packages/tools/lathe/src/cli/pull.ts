@@ -101,14 +101,23 @@ function looksLikeSpec(parsed: unknown): boolean {
   return typeof doc.openapi === 'string' || typeof doc.swagger === 'string'
 }
 
+/** How long to wait for a spec URL before giving up. */
+const PULL_TIMEOUT_MS = 30_000
+
 /** Fetch `url` and write it to `dest`. Returns a process exit code. */
 export async function pullSpec(url: string, dest: string): Promise<number> {
   let res: Response
   try {
-    res = await fetch(url)
+    // A deadline, not just a catch. Without a signal a server that accepts the
+    // connection and then never answers hangs this CLI forever, with no output
+    // and nothing to interrupt — the failure mode `no-untimed-raw-fetch` names.
+    res = await fetch(url, { signal: AbortSignal.timeout(PULL_TIMEOUT_MS) })
   } catch (err) {
+    const timedOut = err instanceof Error && err.name === 'TimeoutError'
     process.stderr.write(
-      `[Pyreon] lathe: could not reach ${url}\n  ${err instanceof Error ? err.message : String(err)}\n`,
+      timedOut
+        ? `[Pyreon] lathe: ${url} did not respond within ${PULL_TIMEOUT_MS / 1000}s\n`
+        : `[Pyreon] lathe: could not reach ${url}\n  ${err instanceof Error ? err.message : String(err)}\n`,
     )
     return 1
   }

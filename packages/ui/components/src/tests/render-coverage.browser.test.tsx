@@ -9,6 +9,7 @@
  * Baseline per component: mounts without throwing + renders its expected
  * tag/content; semantic components get one structural assertion.
  */
+import { queryOptional } from '@pyreon/test-utils'
 import type { VNodeChild } from '@pyreon/core'
 import { h } from '@pyreon/core'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
@@ -111,7 +112,7 @@ describe('render coverage — previously-untested components', () => {
     it(`${c.name} mounts and renders`, async () => {
       const { container, unmount } = mountInBrowser(h(PyreonUI, { theme }, c.mount()))
       await flush()
-      const el = container.querySelector(`[data-testid="${tid(c.name)}"]`) as HTMLElement | null
+      const el = queryOptional<HTMLElement>(container, `[data-testid="${tid(c.name)}"]`)
       expect(el, `${c.name} must render its root element`).not.toBeNull()
       c.assert?.(el!)
       unmount()

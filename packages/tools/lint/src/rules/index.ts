@@ -15,6 +15,7 @@ import { noProcessDevGate } from './architecture/no-process-dev-gate'
 import { noQuerySelectorCastInTest } from './architecture/no-query-selector-cast-in-test'
 import { requireBrowserSmokeTest } from './architecture/require-browser-smoke-test'
 import { vitestConfigUsesShared } from './architecture/vitest-config-uses-shared'
+import { noUnguardedAsyncSignalWrite } from './reactivity/no-unguarded-async-signal-write'
 import { noUnsanitizedInnerHtml } from './security/no-unsanitized-inner-html'
 import { noScriptUrl } from './security/no-script-url'
 import { noTargetBlankWithoutRel } from './security/no-target-blank-without-rel'
@@ -236,6 +237,7 @@ export const allRules: Rule[] = [
   noTargetBlankWithoutRel,
   noScriptUrl,
   noUnsanitizedInnerHtml,
+  noUnguardedAsyncSignalWrite,
   // SSG (3) — M3.5
   invalidLoaderExport,
   missingGetStaticPaths,

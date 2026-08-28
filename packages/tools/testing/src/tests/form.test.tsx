@@ -9,6 +9,7 @@
  * Real-Chromium twin: library-helpers.browser.test.tsx (delegation-path
  * fill/submit).
  */
+import { query } from '@pyreon/test-utils'
 import type { FormState } from '@pyreon/form'
 import { Form, useForm } from '@pyreon/form'
 import { describe, expect, it } from 'vitest'
@@ -153,7 +154,7 @@ describe('fillForm / submitForm (rendered form)', () => {
       </form>,
     )
     fillForm(container, { 'Option A': true })
-    expect((container.querySelector('input') as HTMLInputElement).checked).toBe(true)
+    expect((query<HTMLInputElement>(container, 'input')).checked).toBe(true)
   })
 
   it('checkbox with a non-boolean value throws an actionable error', () => {
@@ -207,7 +208,7 @@ describe('fillForm / submitForm (rendered form)', () => {
       </form>,
     )
     fillForm(container, { Quantity: 42 })
-    expect((container.querySelector('input') as HTMLInputElement).value).toBe('42')
+    expect((query<HTMLInputElement>(container, 'input')).value).toBe('42')
   })
 
   it('submitForm accepts the <form> element itself and ancestors-of scope', async () => {
@@ -219,10 +220,10 @@ describe('fillForm / submitForm (rendered form)', () => {
         </div>
       </form>,
     )
-    const formEl = container.querySelector('form') as HTMLFormElement
+    const formEl = query<HTMLFormElement>(container, 'form')
     await submitForm(formEl) // scope IS the form
     await submitForm(container) // descendant lookup
-    await submitForm(formEl.querySelector('#inner') as HTMLElement) // ancestor lookup (closest)
+    await submitForm(query<HTMLElement>(formEl, '#inner')) // ancestor lookup (closest)
     expect(submits).toBe(3)
   })
 

@@ -1,3 +1,4 @@
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -40,7 +41,7 @@ describe('flow edge rendering + controls (real browser)', () => {
     const { container, unmount } = mountInBrowser(sized(h(Flow, { instance: flow })))
     await flush()
 
-    const svg = container.querySelector('svg.pyreon-flow-edges') as SVGSVGElement
+    const svg = query<SVGSVGElement>(container, 'svg.pyreon-flow-edges')
     expect(svg).toBeTruthy()
     const r = svg.getBoundingClientRect()
     // Before the fix this was 0×0 (svg not painted). The paths themselves exist
@@ -50,10 +51,10 @@ describe('flow edge rendering + controls (real browser)', () => {
     expect(r.height).toBeGreaterThan(0)
 
     // Viewport opts out of pointer events so it can't swallow panel/pan clicks…
-    const vp = container.querySelector('.pyreon-flow-viewport') as HTMLElement
+    const vp = query<HTMLElement>(container, '.pyreon-flow-viewport')
     expect(getComputedStyle(vp).pointerEvents).toBe('none')
     // …and the node re-enables them so drag/select still works.
-    const node = container.querySelector('.pyreon-flow-node') as HTMLElement
+    const node = query<HTMLElement>(container, '.pyreon-flow-node')
     expect(getComputedStyle(node).pointerEvents).toBe('auto')
 
     unmount()
@@ -79,7 +80,7 @@ describe('flow edge rendering + controls (real browser)', () => {
 
     // The edge path starts at the source node's real right edge (measured
     // width), not at x = 0 + 150. Read the path `d`'s first moveto x.
-    const path = container.querySelector('svg.pyreon-flow-edges path') as SVGPathElement
+    const path = query<SVGPathElement>(container, 'svg.pyreon-flow-edges path')
     const startX = Number.parseFloat((path.getAttribute('d') ?? '').match(/^M([\d.]+)/)?.[1] ?? '0')
     expect(startX).toBeCloseTo(measured!.width, 0)
     expect(startX).toBeLessThan(150)
@@ -98,9 +99,9 @@ describe('flow edge rendering + controls (real browser)', () => {
     await flush()
 
     const before = flow.viewport().zoom
-    const btn = container.querySelector(
+    const btn = query<HTMLButtonElement>(container, 
       '.pyreon-flow-controls button[title="Zoom in"]',
-    ) as HTMLButtonElement
+    )
     expect(btn).toBeTruthy()
 
     // A pointerdown over the button must NOT start a container pan. Simulate the
@@ -108,7 +109,7 @@ describe('flow edge rendering + controls (real browser)', () => {
     // container. With the bug, the pointerdown captured the pointer + set the pan
     // origin, so the pointermove would move the viewport (and the real click was
     // eaten). With the fix, the pan bails → the viewport stays put.
-    const flowEl = container.querySelector('.pyreon-flow') as HTMLElement
+    const flowEl = query<HTMLElement>(container, '.pyreon-flow')
     try {
       btn.dispatchEvent(
         new PointerEvent('pointerdown', { bubbles: true, pointerId: 1, clientX: 30, clientY: 370 }),

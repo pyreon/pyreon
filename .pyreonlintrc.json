@@ -199,7 +199,7 @@
         ]
       }
     ],
-    "pyreon/no-query-selector-cast-in-test": "warn",
+    "pyreon/no-query-selector-cast-in-test": "error",
     "pyreon/no-raw-addeventlistener": [
       "error",
       {
@@ -281,6 +281,14 @@
       }
     ],
     "pyreon/no-unencoded-path-interpolation": "warn",
+    "pyreon/no-unguarded-async-signal-write": [
+      "warn",
+      {
+        "exemptPaths": [
+          "create-zero/templates/"
+        ]
+      }
+    ],
     "pyreon/no-unregistered-field": "error",
     "pyreon/no-unsanitized-inner-html": "warn",
     "pyreon/no-untimed-raw-fetch": "info",

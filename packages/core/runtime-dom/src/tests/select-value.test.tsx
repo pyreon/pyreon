@@ -31,6 +31,7 @@
  * no-match → value "" / selectedIndex -1) — verified standalone, so these
  * happy-dom specs are load-bearing.
  */
+import { query } from '@pyreon/test-utils'
 import { transformJSX } from '@pyreon/compiler'
 import { Fragment, h, _rp, cx } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
@@ -88,7 +89,7 @@ function compileAndMount(source: string, globals: Record<string, unknown> = {}) 
 }
 
 function sel(container: HTMLElement): HTMLSelectElement {
-  return container.querySelector('select') as HTMLSelectElement
+  return query<HTMLSelectElement>(container, 'select')
 }
 
 afterEach(() => {

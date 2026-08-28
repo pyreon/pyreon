@@ -41,6 +41,12 @@ export function Mermaid(props: MermaidProps): VNodeChild {
   onMount(() => {
     if (source.length === 0) return undefined
     if (isServer) return undefined
+    // The render is async, so it can still be in flight when the component
+    // unmounts — writing then keeps this whole closure (and the rendered
+    // markup) alive until the promise settles, for a signal nothing reads.
+    // `cancelled` is the staleness guard `no-unguarded-async-signal-write`
+    // asks for.
+    let cancelled = false
     void (async () => {
       try {
         // mermaid is an OPTIONAL peer dep — runtime-constructed
@@ -53,12 +59,15 @@ export function Mermaid(props: MermaidProps): VNodeChild {
         mermaid.initialize?.({ startOnLoad: false })
         const id = props.id ?? `pyreon-mermaid-${createUniqueId()}`
         const result = await mermaid.render(id, source)
+        if (cancelled) return
         svg.set(result.svg)
       } catch {
         // mermaid not installed — leave the fallback intact.
       }
     })()
-    return undefined
+    return () => {
+      cancelled = true
+    }
   })
 
   return (

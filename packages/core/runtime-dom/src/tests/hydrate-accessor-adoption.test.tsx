@@ -28,6 +28,7 @@
  *                  what zero's `startClient` preload does.
  * Plus the nested-accessor cleanup the parity fuzzer's O3 oracle caught.
  */
+import { query } from '@pyreon/test-utils'
 import type { VNodeChild } from '@pyreon/core'
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
@@ -102,7 +103,7 @@ describe('hydration — reactive accessor adoption', () => {
 
     const html = await renderToString(tree() as never)
     const c = mountHost(html)
-    const input = c.querySelector('#field') as HTMLInputElement
+    const input = query<HTMLInputElement>(c, '#field')
     input.value = 'typed by the user'
     input.focus()
 
@@ -110,7 +111,7 @@ describe('hydration — reactive accessor adoption', () => {
     // Identity is the whole product of hydration: a rebuilt input would lose
     // both of these, which is what a user actually notices.
     expect(c.querySelector('#field')).toBe(input)
-    expect((c.querySelector('#field') as HTMLInputElement).value).toBe('typed by the user')
+    expect((query<HTMLInputElement>(c, '#field')).value).toBe('typed by the user')
     cleanup()
     c.remove()
   })

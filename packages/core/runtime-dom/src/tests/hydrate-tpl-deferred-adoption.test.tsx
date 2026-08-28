@@ -32,6 +32,7 @@
  *  - neutering `ensureBuilt` in the lazy getter fails the verify-bail swap +
  *    bare-`.el` specs.
  */
+import { query } from '@pyreon/test-utils'
 import { transformJSX } from '@pyreon/compiler'
 import { For, Fragment, _lc, h } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
@@ -160,10 +161,10 @@ const midTplSsrTree = () =>
 describe('deferred _tpl adoption during hydration', () => {
   it('an INLINE _tpl child of an h()-rooted component ADOPTS at its own cursor (docs-layout shape)', async () => {
     const host = await ssrInto(midTplSsrTree())
-    const header = host.querySelector('header') as HTMLElement
-    const main = host.querySelector('main') as HTMLElement
-    const span = host.querySelector('span') as HTMLElement
-    const footer = host.querySelector('footer') as HTMLElement
+    const header = query<HTMLElement>(host, 'header')
+    const main = query<HTMLElement>(host, 'main')
+    const span = query<HTMLElement>(host, 'span')
+    const footer = query<HTMLElement>(host, 'footer')
 
     const App = compileApp(MID_TPL, { dyn: () => 'shell' })
     const dispose = hydrateLoud(host, h(App as never, null))
@@ -193,7 +194,7 @@ describe('deferred _tpl adoption during hydration', () => {
         h('section', { class: 'frm' }, h('input', { name: 'q', type: 'text' })),
       ),
     )
-    const input = host.querySelector('input') as HTMLInputElement
+    const input = query<HTMLInputElement>(host, 'input')
     input.value = 'typed before hydration'
     input.focus()
     expect(document.activeElement).toBe(input)
@@ -205,7 +206,7 @@ const App = () => <div class={dyn()}><Header /><section class="frm"><input name=
     )
     const dispose = hydrateLoud(host, h(App as never, null))
 
-    const after = host.querySelector('input') as HTMLInputElement
+    const after = query<HTMLInputElement>(host, 'input')
     expect(after).toBe(input) // adopted, not swapped
     expect(after.value).toBe('typed before hydration')
     expect(document.activeElement).toBe(after)
@@ -223,7 +224,7 @@ const App = () => <div class={dyn()}><Header /><section class="frm"><input name=
         h('p', { class: 'r' }, () => label()),
       ),
     )
-    const p = host.querySelector('p') as HTMLElement
+    const p = query<HTMLElement>(host, 'p')
 
     const App = compileApp(
       `const Header = () => <header class="hh">H</header>
@@ -240,7 +241,7 @@ const App = () => <div class={dyn()}><Header /><p class="r">{() => label()}</p><
 
   it('deferred + verify BAIL → clone swap, page stays correct with no duplication', async () => {
     const host = await ssrInto(midTplSsrTree())
-    const main = host.querySelector('main') as HTMLElement
+    const main = query<HTMLElement>(host, 'main')
     // Server/client divergence: an extra ELEMENT child fails the skeleton gate
     // (extra ATTRS are tolerated by design — dynamic attrs are absent from the
     // template, so attribute divergence cannot be the discriminator).
@@ -250,7 +251,7 @@ const App = () => <div class={dyn()}><Header /><p class="r">{() => label()}</p><
     const dispose = hydrateLoud(host, h(App as never, null))
 
     // Swapped, not adopted: the client's form wins, the server node is gone.
-    const liveMain = host.querySelector('main') as HTMLElement
+    const liveMain = query<HTMLElement>(host, 'main')
     expect(liveMain).not.toBe(main)
     expect(liveMain.querySelector('em')).toBeNull()
     expect(liveMain.outerHTML).toBe('<main class="mn"><span class="in">inner</span></main>')
@@ -276,9 +277,9 @@ const App = () => <div class={dyn()}><Header /><p class="r">{() => label()}</p><
         h('main', { class: 'hole-mn' }, h(Inner, null)),
       ),
     )
-    const main = host.querySelector('main') as HTMLElement
-    const article = host.querySelector('article') as HTMLElement
-    const b = host.querySelector('b') as HTMLElement
+    const main = query<HTMLElement>(host, 'main')
+    const article = query<HTMLElement>(host, 'article')
+    const b = query<HTMLElement>(host, 'b')
 
     const App = () =>
       h(

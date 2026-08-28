@@ -10,6 +10,7 @@
  * Written with `h()` / the emitted runtime shape directly — runtime-dom's
  * tsconfig uses `jsx: preserve` (the convention for browser tests here).
  */
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
@@ -42,7 +43,7 @@ describe('<select value> — real Chromium', () => {
     const { container, unmount } = mountInBrowser(node as unknown as VNodeChild)
     await flush()
 
-    const select = container.querySelector('select') as HTMLSelectElement
+    const select = query<HTMLSelectElement>(container, 'select')
     expect(select.options.length).toBe(3)
     expect(select.value).toBe('b') // the pre-fix order dropped this initial
     sig.set('c')
@@ -68,8 +69,8 @@ describe('<select value> — real Chromium', () => {
     const { container, unmount } = mountInBrowser(vnode)
     await flush()
 
-    expect((container.querySelector('#s1') as HTMLSelectElement).value).toBe('b')
-    const s2 = container.querySelector('#s2') as HTMLSelectElement
+    expect((query<HTMLSelectElement>(container, '#s1')).value).toBe('b')
+    const s2 = query<HTMLSelectElement>(container, '#s2')
     expect(s2.value).toBe('b')
     sig.set('c')
     await flush()
