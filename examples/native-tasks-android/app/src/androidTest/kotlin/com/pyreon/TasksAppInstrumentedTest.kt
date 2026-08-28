@@ -32,6 +32,8 @@ package com.pyreon
 
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasTestTag
@@ -126,6 +128,28 @@ class TasksAppInstrumentedTest {
      * a failure message replaces a diagnosable timeout with an opaque one, which
      * is the exact failure being fixed.
      */
+    /** Every test tag currently in the semantics tree, one flavour of it. */
+    private fun tagsIn(useUnmergedTree: Boolean): List<String> =
+        try {
+            composeRule
+                .onAllNodes(
+                    SemanticsMatcher.keyIsDefined(SemanticsProperties.TestTag),
+                    useUnmergedTree = useUnmergedTree,
+                )
+                .fetchSemanticsNodes()
+                .mapNotNull { n ->
+                    try {
+                        n.config[SemanticsProperties.TestTag]
+                    } catch (_: Throwable) {
+                        null
+                    }
+                }
+                .distinct()
+                .sorted()
+        } catch (_: Throwable) {
+            emptyList()
+        }
+
     private fun describeTimeout(tag: String, expected: String): String {
         val found =
             try {
@@ -156,21 +180,28 @@ class TasksAppInstrumentedTest {
         // report what it saw, not conclude from what it did not.
         val where =
             try {
-                val tags =
-                    composeRule
-                        .onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.TestTag))
-                        .fetchSemanticsNodes()
-                        .mapNotNull { n ->
-                            try {
-                                n.config[SemanticsProperties.TestTag]
-                            } catch (_: Throwable) {
-                                null
-                            }
+                // BOTH trees. The merged tree is what every other query in this
+                // file uses, but Compose merges a tagged descendant into its
+                // parent in some shapes, so an empty MERGED list does not by
+                // itself mean the screen is blank — and reporting it as if it
+                // did is the same overclaim as the single-landmark probe this
+                // replaced. If merged is empty and unmerged is not, the query
+                // is wrong; if both are empty, the screen really is gone.
+                val merged = tagsIn(useUnmergedTree = false)
+                val unmerged = tagsIn(useUnmergedTree = true)
+                if (merged.isEmpty() && unmerged.isEmpty()) {
+                    // Nothing to name, so dump what the tree actually holds.
+                    val dump =
+                        try {
+                            composeRule.onRoot(useUnmergedTree = true).printToString(maxDepth = 4)
+                        } catch (t: Throwable) {
+                            "<no root: " + t.javaClass.simpleName + ">"
                         }
-                        .distinct()
-                        .sorted()
-                if (tags.isEmpty()) "NOTHING is on screen — no tagged node at all"
-                else "on screen: " + tags.joinToString(", ")
+                    "NO tagged node in EITHER tree. Root dump: " + dump.take(900)
+                } else {
+                    "merged: [" + merged.joinToString(", ") + "] unmerged: [" +
+                        unmerged.joinToString(", ") + "]"
+                }
             } catch (t: Throwable) {
                 "<could not read the tag set: " + t.javaClass.simpleName + ">"
             }
