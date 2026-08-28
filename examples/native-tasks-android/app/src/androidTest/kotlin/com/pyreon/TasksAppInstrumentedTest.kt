@@ -141,7 +141,19 @@ class TasksAppInstrumentedTest {
             } catch (_: Throwable) {
                 "<could not read the semantics tree>"
             }
-        return "waitForTagText timed out: tag='$tag' expected='$expected' — $found"
+        // WHERE we are, not just what is missing. "NO node with that tag" has two
+        // very different causes — the page is mid-remount, or we are not on that
+        // page at all — and they need opposite fixes. A landmark tag from the
+        // same screen separates them in one line, which is one CI round instead
+        // of a guess.
+        val onPage =
+            try {
+                val n = composeRule.onAllNodesWithTag("toolkit-page").fetchSemanticsNodes().size
+                if (n > 0) "still on the toolkit page" else "NOT on the toolkit page — navigated away"
+            } catch (_: Throwable) {
+                "<could not probe the page landmark>"
+            }
+        return "waitForTagText timed out: tag='$tag' expected='$expected' — $found ($onPage)"
     }
 
     @Test
