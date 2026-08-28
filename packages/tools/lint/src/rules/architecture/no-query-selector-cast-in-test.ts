@@ -56,6 +56,7 @@ export const noQuerySelectorCastInTest: Rule = {
     severity: 'error',
     requiresDependency: '@pyreon/test-utils',
     scope: 'monorepo',
+    scanTarget: 'test',
     fixable: false,
     schema: {
       exemptPaths: 'string[]',

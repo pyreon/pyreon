@@ -18,6 +18,7 @@ import type {
   Severity,
 } from './types'
 import { hasJsExtension } from './utils/index'
+import { diagnoseUnknownConfigKeys } from './utils/unknown-config'
 
 function isHiddenOrVendor(entry: string): boolean {
   return entry.startsWith('.') || entry === 'node_modules' || entry === 'lib' || entry === 'dist'
@@ -233,7 +234,13 @@ export function lint(options: LintOptions): LintResult {
   const cache = new AstCache()
   const files = gatherFiles(options.paths, isIgnored, include, exclude)
 
-  const configDiagnostics: ConfigDiagnostic[] = []
+  // Keys that name nothing (a typo'd or removed rule id, a bad group name) are
+  // reported BEFORE any file is read: such an entry is silently ignored
+  // otherwise, which is indistinguishable from it working.
+  const configDiagnostics: ConfigDiagnostic[] = diagnoseUnknownConfigKeys(
+    options.config ? loadConfigFromPath(options.config) : loadConfig(resolve('.')),
+    allRules.map((r) => r.meta.id),
+  )
   const results: LintResult = {
     files: [],
     totalErrors: 0,

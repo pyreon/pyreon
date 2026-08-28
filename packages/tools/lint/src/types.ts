@@ -144,6 +144,30 @@ export interface RuleMeta {
    */
   scope?: 'framework' | 'monorepo'
   /**
+   * Which FILES this rule is about.
+   *
+   * Health gates scan a package's shipped source: `src/**` minus tests,
+   * fixtures and `.d.ts`. That surface is right for almost every rule, and the
+   * exclusions exist for a reason — detector fixtures deliberately contain
+   * anti-patterns, so scoring them would produce a false grade.
+   *
+   * But a rule whose SUBJECT is a test file, or a package-root config, can
+   * then never fire in the gate that runs it. Two shipped rules were in
+   * exactly that state: `no-query-selector-cast-in-test` (2,159 test files in
+   * the repo, none in scope) and `vitest-config-uses-shared` (115 configs,
+   * none in scope). Both were configured at `error` and both were structurally
+   * incapable of reporting anything.
+   *
+   * Declaring the target lets a gate collect the files a rule actually needs,
+   * instead of the rule silently depending on a scan policy it cannot see.
+   *
+   * - `source` (default) — shipped `src/**`, tests and fixtures excluded.
+   * - `test`  — `*.test.*` / `*.spec.*` and files under `tests/`. Fixtures
+   *   stay excluded: they hold anti-patterns on purpose.
+   * - `packageConfig` — per-package root config (`vitest.config.ts`, …).
+   */
+  scanTarget?: 'source' | 'test' | 'packageConfig'
+  /**
    * The package this rule is ABOUT. When set, the rule self-suppresses in a
    * project that does not declare that dependency — a project with no
    * `@pyreon/query` never sees query rules, even with the rule enabled.

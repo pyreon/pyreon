@@ -35,6 +35,41 @@ Rules:
 - **Assert paths against the producer's exported constants**, never a literal re-typed in the test. `@pyreon/zero`'s `adapters/contract.ts` (`*_ADAPTER_OUTPUT`) exists for exactly this: the adapters AND `create-zero`'s scaffolded configs key off it, so drift fails a test instead of a deploy.
 - If a suite has a "skip when the artifact is missing" guard, add a loud assertion that the artifact IS present in this environment — a skipped suite must never masquerade as coverage.
 
+## A registry needs a per-item FIRES proof — a count test detects ARRIVAL, not FUNCTION
+
+A rule, detector, or codemod that reports nothing passes every structural test
+you can write about it. `@pyreon/lint`'s registry suite checked unique ids,
+one group per rule, no duplicate reports at the same span, and the total
+count — all of which an inert rule satisfies trivially. The anti-pattern
+catalog records the class happening for real: three rules were silently broken
+at once by reading `parent` in an oxc visitor callback, where it is always
+`undefined`, so the guard folded to a constant and none of them ever fired.
+Nothing failed.
+
+The count assertion (`should have 101 rules`) is the trap worth naming. It
+fires when a rule is ADDED, so it feels like coverage — but the fix a reader
+applies is to bump the number to 102, and an inert rule ships green.
+
+The invariant that closes it asserts two things per item, and the second is
+load-bearing:
+
+1. a fixture that MUST produce that item's diagnostic, and
+2. a corrected counterpart that must produce NOTHING from it.
+
+Without (2) a fixture passes by reporting unconditionally, which is the other
+half of inert. Enable **only** the item under test, so a neighbour cannot
+stand in for it. Assert the fixture map is TOTAL over the registry, so a new
+item fails until it proves it fires — a list checked in one direction is the
+silent-hole shape this repo already names.
+
+Reference: `packages/tools/lint/src/tests/rule-fires.test.ts` (101 rules ×
+fires + quiet). Bisect-verified in both directions: neutering one rule's
+visitor fails exactly `<id> — fires on its defect` with `expected 0 to be
+greater than 0`, and registering a rule with no fixture fails the totality
+spec naming it. Building it found 13 fixtures wrong on the first run and **zero
+broken rules** — which is itself the point: the invariant is cheap to satisfy
+when the registry is healthy, and it is the only thing that says so.
+
 ## Timeouts: the wall-clock backstop must exceed the composed internal budgets
 
 A per-test timeout sized against ONE internal deadline is wrong the moment a test awaits two. `sync/ws-relay.test.ts` flaked on loaded runners while passing locally in <1s: vitest's 20s default was sized for one 15s `waitFor`, but `RECONNECTS with backoff` awaits **three sequentially** (45s of budget). Worse, its tick-counted deadline is deliberately *starvation-tolerant* (it counts SCHEDULED ticks, so it self-extends when the event loop is starved — exactly the CI condition it exists for), pushing its wall-clock past 20s while its own budget is still unspent. vitest's wall clock always won and killed the test with an **opaque** "test timed out", hiding the descriptive `waitFor: timed out`.

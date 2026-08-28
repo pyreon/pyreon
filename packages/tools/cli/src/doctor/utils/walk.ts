@@ -131,3 +131,50 @@ export const collectAuditableSourceFiles = (ws: WorkspaceRoots): string[] => {
   }
   return all
 }
+
+/**
+ * True when `filePath` is a TEST file — the surface `scanTarget: 'test'` rules
+ * are about.
+ *
+ * Fixtures stay excluded even though they are under a test tree: they hold
+ * anti-patterns deliberately, which is the reason the default source scan
+ * skips them. A rule about test HYGIENE still wants real tests, not fixtures.
+ */
+export const isTestSourceFile = (filePath: string): boolean => {
+  const p = filePath.replace(/\\/g, '/')
+  if (!SOURCE_EXTENSIONS.has(path.extname(p))) return false
+  if (p.endsWith('.d.ts')) return false
+  if (/(^|\/)(__fixtures__|fixtures)\//.test(p)) return false
+  return (
+    /\.(test|spec)\.[tj]sx?$/.test(p) || /(^|\/)(tests?|__tests__)\//.test(p)
+  )
+}
+
+/** True when `filePath` is a per-package root config a rule targets. */
+export const isPackageConfigFile = (filePath: string): boolean =>
+  /(^|\/)vitest(\.[a-z]+)*\.config\.[tj]s$/.test(filePath.replace(/\\/g, '/'))
+
+/**
+ * Collect files matching `predicate` across every workspace package root.
+ *
+ * Unlike {@link collectAuditableSourceFiles} this walks the package DIRECTORY
+ * rather than preferring `src/`, because a package-root config lives outside
+ * `src/` by definition.
+ */
+export const collectFilesMatching = (
+  ws: WorkspaceRoots,
+  predicate: (relPath: string) => boolean,
+): string[] => {
+  const all: string[] = []
+  const seen = new Set<string>()
+  for (const pkgDir of ws.packageDirs) {
+    const files: string[] = []
+    walk(pkgDir, files)
+    for (const f of files) {
+      if (seen.has(f)) continue
+      seen.add(f)
+      if (predicate(path.relative(pkgDir, f))) all.push(f)
+    }
+  }
+  return all
+}

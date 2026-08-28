@@ -108,6 +108,24 @@ function mergeCallbacks(allCallbacks: VisitorCallbacks[]): Record<string, (node:
  * for (const d of result.diagnostics) console.log(d.message)
  * ```
  */
+/**
+ * Whole-file exemption from `exemptPaths`, applied centrally in the rule loop.
+ *
+ * Mirrors `utils/exempt-paths.ts:isPathExempt` exactly — substring match against
+ * the file path — but reads the already-normalized options the loop holds,
+ * rather than a `RuleContext` that does not exist yet at this point.
+ */
+function isPathExemptFor(options: RuleOptions, filePath: string): boolean {
+  const raw = (options as { exemptPaths?: unknown }).exemptPaths
+  if (!Array.isArray(raw) || raw.length === 0) return false
+  for (const entry of raw) {
+    if (typeof entry === 'string' && entry.length > 0 && filePath.includes(entry)) {
+      return true
+    }
+  }
+  return false
+}
+
 export function lintFile(
   filePath: string,
   sourceText: string,
@@ -202,6 +220,22 @@ export function lintFile(
     }
     // Hard error in options → skip this rule entirely for the run.
     if (!validation.ok) continue
+
+    // `exemptPaths` is honoured CENTRALLY, for every rule.
+    //
+    // It used to be opt-in per rule: a rule had to call `isPathExempt`
+    // itself, and 55 of 101 did not. Configuring an exemption for one of
+    // those did nothing — no error, no warning, no effect. That is the
+    // silent-hole shape this repo's own catalog warns about, and it is
+    // indistinguishable from a working exemption until someone checks the
+    // rule's source. Applying it here makes the option mean the same thing
+    // for every rule by construction.
+    //
+    // Semantics are unchanged for rules that already call `isPathExempt`:
+    // every existing use is a whole-file skip, which is exactly what
+    // skipping `rule.create()` produces. Their in-rule call simply never
+    // runs now — kept because it documents the intent at the rule.
+    if (isPathExemptFor(options, filePath)) continue
 
     const ctx = createRuleContext(
       rule,

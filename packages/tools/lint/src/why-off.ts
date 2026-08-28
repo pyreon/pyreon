@@ -1,6 +1,7 @@
 import { allRules } from './rules/index'
 import type { LintConfig, RuleOptions, Severity } from './types'
 import { isProjectDependency } from './utils/project-deps'
+import { isNear } from './utils/unknown-config'
 
 /**
  * Answering "why isn't this rule firing?".
@@ -56,17 +57,6 @@ function optionsOf(entry: LintConfig['rules'][string] | undefined): RuleOptions 
 }
 
 /** Levenshtein-ish closeness, enough for a did-you-mean over ~100 ids. */
-function isNear(a: string, b: string): boolean {
-  if (Math.abs(a.length - b.length) > 4) return false
-  const short = a.length < b.length ? a : b
-  const long = a.length < b.length ? b : a
-  if (long.includes(short)) return true
-  let shared = 0
-  for (const part of short.split('-')) {
-    if (part.length > 2 && long.includes(part)) shared++
-  }
-  return shared >= 2
-}
 
 /**
  * Explain whether `ruleId` will run, and if not, every reason why.

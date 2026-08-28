@@ -45,6 +45,7 @@ export const vitestConfigUsesShared: Rule = {
     severity: 'error',
     requiresDependency: '@pyreon/vitest-config',
     scope: 'monorepo',
+    scanTarget: 'packageConfig',
     fixable: false,
     schema: {
       exemptPaths: 'string[]',

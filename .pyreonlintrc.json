@@ -1,10 +1,49 @@
 {
   "$schema": "./packages/tools/lint/schema/pyreonlintrc.schema.json",
-  "preset": "recommended",
+  "preset": "strict",
   "rules": {
-    "pyreon/no-and-conditional": "off",
+    "pyreon/no-async-effect": "error",
+    "pyreon/no-bare-signal-in-jsx": [
+      "info",
+      {
+        "exemptPaths": [
+          "__tests__/",
+          ".test."
+        ]
+      }
+    ],
+    "pyreon/no-context-destructure": "error",
+    "pyreon/no-signal-in-loop": "error",
+    "pyreon/no-signal-in-props": "error",
+    "pyreon/no-nested-effect": "error",
+    "pyreon/no-peek-in-tracked": "error",
+    "pyreon/no-unbatched-updates": [
+      "error",
+      {
+        "exemptPaths": [
+          "__tests__/",
+          ".test.",
+          "packages/native/compiler/"
+        ]
+      }
+    ],
+    "pyreon/prefer-computed": "error",
+    "pyreon/no-effect-assignment": "error",
+    "pyreon/no-signal-leak": "error",
+    "pyreon/no-signal-call-write": "error",
+    "pyreon/storage-signal-v-forwarding": "error",
+    "pyreon/no-iterate-children-without-resolve": "error",
+    "pyreon/no-guard-only-signal-reads-in-effect": "error",
     "pyreon/no-map-in-jsx": "off",
-    "pyreon/no-children-access": "off",
+    "pyreon/use-by-not-key": "error",
+    "pyreon/no-classname": "error",
+    "pyreon/no-htmlfor": "error",
+    "pyreon/no-onchange": "error",
+    "pyreon/no-ternary-conditional": "off",
+    "pyreon/no-and-conditional": "off",
+    "pyreon/no-line-comment-in-jsx": "error",
+    "pyreon/no-index-as-by": "error",
+    "pyreon/no-missing-for-by": "error",
     "pyreon/no-props-destructure": [
       "error",
       {
@@ -21,6 +60,47 @@
         ]
       }
     ],
+    "pyreon/no-children-access": "off",
+    "pyreon/no-missing-cleanup": "error",
+    "pyreon/no-mount-in-effect": "error",
+    "pyreon/no-effect-in-mount": [
+      "error",
+      {
+        "exemptPaths": [
+          "packages/core/runtime-dom/src/keep-alive.ts"
+        ]
+      }
+    ],
+    "pyreon/no-dom-in-setup": [
+      "error",
+      {
+        "exemptPaths": [
+          "packages/tools/devtools/",
+          "packages/tools/vue-compat/",
+          "packages/ui-system/styler/",
+          "packages/zero/zero-content/"
+        ]
+      }
+    ],
+    "pyreon/no-imperative-effect-on-create": [
+      "error",
+      {
+        "exemptPaths": [
+          "packages/fundamentals/hooks/",
+          "packages/fundamentals/hotkeys/",
+          "packages/fundamentals/rx/",
+          "__tests__/",
+          ".test.",
+          "packages/zero/zero/src/theme.tsx"
+        ]
+      }
+    ],
+    "pyreon/init-fn-needs-idempotency": "error",
+    "pyreon/no-effect-in-for": "error",
+    "pyreon/no-eager-import": "error",
+    "pyreon/no-heavy-import-only-in-handler": "error",
+    "pyreon/prefer-show-over-display": "info",
+    "pyreon/promise-race-needs-cleartimeout": "error",
     "pyreon/no-window-in-ssr": [
       "error",
       {
@@ -37,18 +117,64 @@
         ]
       }
     ],
-    "pyreon/no-unbatched-updates": [
+    "pyreon/no-mismatch-risk": "error",
+    "pyreon/prefer-request-context": "error",
+    "pyreon/prefer-isserver": [
+      "error",
+      {
+        "exemptPaths": [
+          "packages/core/head/src/dom.ts",
+          "packages/fundamentals/toast/src/toaster.tsx",
+          "packages/fundamentals/virtual/src/use-window-virtualizer.ts",
+          "packages/ui-system/elements/src/Overlay/positioning.ts",
+          "packages/ui-system/elements/src/Portal/component.tsx",
+          "packages/ui-system/styler/src/sheet.ts",
+          "packages/internals/test-utils/src/happy-dom-hashchange-guard.ts"
+        ]
+      }
+    ],
+    "pyreon/no-private-env-in-client": [
       "warn",
       {
         "exemptPaths": [
-          "__tests__/",
-          ".test.",
-          "packages/native/compiler/"
+          "packages/zero/cli/",
+          "packages/zero/zero/src/adapters/",
+          "packages/zero/zero/src/ssg-plugin.ts",
+          "packages/zero/zero/src/ssr-build-shared.ts",
+          "packages/zero/zero/src/perf-advisor-plugin.ts",
+          "packages/zero/zero/src/vercel-revalidate-handler.ts",
+          "packages/zero/zero-content/src/plugin.ts",
+          "packages/zero/zero-content/src/runtime.ts"
+        ]
+      }
+    ],
+    "pyreon/no-circular-import": "error",
+    "pyreon/no-deep-import": "error",
+    "pyreon/island-import-from-client": "error",
+    "pyreon/no-cross-layer-import": "error",
+    "pyreon/dev-guard-warnings": [
+      "error",
+      {
+        "exemptPaths": [
+          "packages/zero/",
+          "packages/core/server/",
+          "packages/core/runtime-server/",
+          "packages/tools/vite-plugin/",
+          "packages/tools/cli/",
+          "packages/tools/lint/",
+          "packages/tools/mcp/",
+          "packages/tools/storybook/",
+          "packages/tools/typescript/",
+          "packages/native/cli/",
+          "packages/core/runtime-dom/src/hydration-debug.ts",
+          "-compat/",
+          "scripts/",
+          "examples/"
         ]
       }
     ],
     "pyreon/no-error-without-prefix": [
-      "warn",
+      "error",
       {
         "exemptPaths": [
           "packages/zero/create-zero/",
@@ -57,8 +183,78 @@
         ]
       }
     ],
+    "pyreon/no-module-signal-in-server-package": [
+      "error",
+      {
+        "exemptPaths": [
+          "packages/zero/zero/src/i18n-routing.ts",
+          "packages/zero/zero/src/theme.tsx"
+        ]
+      }
+    ],
+    "pyreon/no-process-dev-gate": [
+      "error",
+      {
+        "exemptPaths": [
+          "packages/zero/",
+          "packages/core/server/",
+          "packages/core/runtime-server/",
+          "packages/tools/vite-plugin/",
+          "packages/tools/cli/",
+          "packages/tools/lint/",
+          "packages/tools/mcp/",
+          "packages/tools/storybook/",
+          "packages/tools/typescript/",
+          "scripts/"
+        ]
+      }
+    ],
+    "pyreon/no-query-selector-cast-in-test": "warn",
+    "pyreon/require-browser-smoke-test": "error",
+    "pyreon/vitest-config-uses-shared": [
+      "error",
+      {
+        "exemptPaths": [
+          "packages/internals/vitest-config/"
+        ]
+      }
+    ],
+    "pyreon/no-store-outside-provider": "error",
+    "pyreon/no-mutate-store-state": "error",
+    "pyreon/no-duplicate-store-id": "error",
+    "pyreon/no-unregistered-field": "error",
+    "pyreon/no-submit-without-validation": "error",
+    "pyreon/prefer-field-array": [
+      "error",
+      {
+        "exemptPaths": [
+          "packages/fundamentals/feature/src/define-feature.ts"
+        ]
+      }
+    ],
+    "pyreon/no-signal-in-form-initial-values": "warn",
+    "pyreon/no-inline-style-object": [
+      "error",
+      {
+        "exemptPaths": [
+          "packages/ui-system/kinetic/"
+        ]
+      }
+    ],
+    "pyreon/no-dynamic-styled": "error",
+    "pyreon/prefer-cx": "error",
+    "pyreon/no-theme-outside-provider": [
+      "warn",
+      {
+        "exemptPaths": [
+          "packages/ui-system/rocketstyle/",
+          "packages/ui-system/styler/"
+        ]
+      }
+    ],
+    "pyreon/no-signal-read-in-attrs-callback": "error",
     "pyreon/no-raw-addeventlistener": [
-      "info",
+      "error",
       {
         "exemptPaths": [
           "packages/core/runtime-dom/",
@@ -86,7 +282,7 @@
       }
     ],
     "pyreon/no-raw-setinterval": [
-      "info",
+      "error",
       {
         "exemptPaths": [
           "packages/core/runtime-dom/",
@@ -104,134 +300,29 @@
         ]
       }
     ],
-    "pyreon/no-imperative-effect-on-create": [
-      "warn",
-      {
-        "exemptPaths": [
-          "packages/fundamentals/hooks/",
-          "packages/fundamentals/hotkeys/",
-          "packages/fundamentals/rx/",
-          "__tests__/",
-          ".test.",
-          "packages/zero/zero/src/theme.tsx"
-        ]
-      }
-    ],
-    "pyreon/no-process-dev-gate": [
-      "error",
-      {
-        "exemptPaths": [
-          "packages/zero/",
-          "packages/core/server/",
-          "packages/core/runtime-server/",
-          "packages/tools/vite-plugin/",
-          "packages/tools/cli/",
-          "packages/tools/lint/",
-          "packages/tools/mcp/",
-          "packages/tools/storybook/",
-          "packages/tools/typescript/",
-          "scripts/"
-        ]
-      }
-    ],
-    "pyreon/dev-guard-warnings": [
-      "error",
-      {
-        "exemptPaths": [
-          "packages/zero/",
-          "packages/core/server/",
-          "packages/core/runtime-server/",
-          "packages/tools/vite-plugin/",
-          "packages/tools/cli/",
-          "packages/tools/lint/",
-          "packages/tools/mcp/",
-          "packages/tools/storybook/",
-          "packages/tools/typescript/",
-          "packages/native/cli/",
-          "packages/core/runtime-dom/src/hydration-debug.ts",
-          "-compat/",
-          "scripts/",
-          "examples/"
-        ]
-      }
-    ],
-    "pyreon/no-bare-signal-in-jsx": [
-      "info",
-      {
-        "exemptPaths": [
-          "__tests__/",
-          ".test."
-        ]
-      }
-    ],
-    "pyreon/no-module-signal-in-server-package": [
-      "error",
-      {
-        "exemptPaths": [
-          "packages/zero/zero/src/i18n-routing.ts",
-          "packages/zero/zero/src/theme.tsx"
-        ]
-      }
-    ],
-    "pyreon/prefer-isserver": [
-      "warn",
-      {
-        "exemptPaths": [
-          "packages/core/head/src/dom.ts",
-          "packages/fundamentals/toast/src/toaster.tsx",
-          "packages/fundamentals/virtual/src/use-window-virtualizer.ts",
-          "packages/ui-system/elements/src/Overlay/positioning.ts",
-          "packages/ui-system/elements/src/Portal/component.tsx",
-          "packages/ui-system/styler/src/sheet.ts",
-          "packages/internals/test-utils/src/happy-dom-hashchange-guard.ts"
-        ]
-      }
-    ],
-    "pyreon/no-dom-in-setup": [
-      "warn",
-      {
-        "exemptPaths": [
-          "packages/tools/devtools/",
-          "packages/tools/vue-compat/",
-          "packages/ui-system/styler/",
-          "packages/zero/zero-content/"
-        ]
-      }
-    ],
+    "pyreon/no-raw-localstorage": "error",
     "pyreon/toast-a11y": [
-      "warn",
+      "error",
       {
         "exemptPaths": [
           "packages/fundamentals/toast/"
         ]
       }
     ],
-    "pyreon/dangerously-set-inner-html": [
-      "warn",
-      {
-        "exemptPaths": [
-          "packages/zero/zero-content/src/components/CodeBlock.tsx"
-        ]
-      }
-    ],
+    "pyreon/dialog-a11y": "error",
+    "pyreon/overlay-a11y": "error",
     "pyreon/no-href-navigation": [
-      "warn",
+      "error",
       {
         "exemptPaths": [
           "packages/zero/zero/src/link.tsx"
         ]
       }
     ],
-    "pyreon/no-inline-style-object": [
-      "warn",
-      {
-        "exemptPaths": [
-          "packages/ui-system/kinetic/"
-        ]
-      }
-    ],
+    "pyreon/no-imperative-navigate-in-render": "error",
+    "pyreon/no-missing-fallback": "error",
     "pyreon/prefer-use-is-active": [
-      "info",
+      "error",
       {
         "exemptPaths": [
           "packages/native/compiler/",
@@ -239,26 +330,46 @@
         ]
       }
     ],
-    "pyreon/no-effect-in-mount": [
-      "info",
+    "pyreon/no-target-blank-without-rel": "error",
+    "pyreon/no-script-url": "error",
+    "pyreon/invalid-loader-export": "error",
+    "pyreon/missing-get-static-paths": "error",
+    "pyreon/revalidate-not-pure-literal": "error",
+    "pyreon/require-img-alt": "error",
+    "pyreon/img-requires-dimensions": [
+      "warn",
       {
         "exemptPaths": [
-          "packages/core/runtime-dom/src/keep-alive.ts"
+          "packages/zero/zero/src/image.tsx",
+          "packages/zero/zero/src/icon.tsx"
         ]
       }
     ],
-    "pyreon/prefer-field-array": [
+    "pyreon/content-visibility-needs-intrinsic-size": "warn",
+    "pyreon/no-positive-tabindex": "error",
+    "pyreon/prefer-zero-image": [
       "info",
       {
         "exemptPaths": [
-          "packages/fundamentals/feature/src/define-feature.ts"
+          "packages/zero/zero/src/image.tsx",
+          "packages/zero/zero/src/icon.tsx"
         ]
       }
     ],
-    "pyreon/no-circular-import": "error",
-    "pyreon/no-cross-layer-import": "error",
-    "pyreon/no-query-selector-cast-in-test": "error",
-    "pyreon/require-browser-smoke-test": "error",
-    "pyreon/vitest-config-uses-shared": "error"
+    "pyreon/no-discarded-optimize-fields": "warn",
+    "pyreon/no-autofocus": "error",
+    "pyreon/no-redundant-role": "error",
+    "pyreon/anchor-is-valid": "error",
+    "pyreon/heading-order": "warn",
+    "pyreon/color-contrast": "warn",
+    "pyreon/primitive-media-needs-label": "error",
+    "pyreon/query-options-as-function": "error",
+    "pyreon/query-fn-must-forward-signal": "warn",
+    "pyreon/no-unencoded-path-interpolation": "warn",
+    "pyreon/no-untimed-raw-fetch": "info",
+    "pyreon/rx-prefer-pipe": "info",
+    "pyreon/i18n-prefer-trans-for-rich-jsx": "info",
+    "pyreon/prefer-typed-search-params": "info",
+    "pyreon/no-storage-write-as-call": "error"
   }
 }
