@@ -174,6 +174,47 @@ class TasksAppInstrumentedTest {
             emptyList()
         }
 
+    /**
+     * `assertIsDisplayed()` fails with "The component with TestTag = 'x' is not
+     * displayed!" and nothing else — not where in the flow, not what was on
+     * screen instead. Gradle's console output truncates the stack to the Compose
+     * frame, so a CI-only failure cannot even be traced back to a call site:
+     * this file has SEVEN `tasks-page` assertions and the report names none of
+     * them. Two rounds were spent not knowing which one fired.
+     *
+     * So carry the evidence in the message. The decisive part is whatever the
+     * ROUTER rendered: "access denied to /tasks" (the guard read isAuthed as
+     * false) and "no route for /tasks" (no dispatch branch matched) need
+     * opposite fixes, and a bare not-displayed is identical for both — and for
+     * a third case where the screen simply never recomposed.
+     */
+    private fun assertTagDisplayed(tag: String, where: String) {
+        try {
+            composeRule.onNodeWithTag(tag).assertIsDisplayed()
+        } catch (e: Throwable) {
+            val routerText =
+                try {
+                    composeRule
+                        .onAllNodes(hasText("Pyreon Router:", substring = true))
+                        .fetchSemanticsNodes()
+                        .mapNotNull { n -> n.config.getOrNull(SemanticsProperties.Text) }
+                        .joinToString(" | ") { it.joinToString(" ") }
+                        .ifEmpty { "nothing — the router rendered no fallback" }
+                } catch (_: Throwable) {
+                    "<could not read the semantics tree>"
+                }
+            val tags = tagsIn(useUnmergedTree = false)
+            throw AssertionError(
+                "AT: " + where +
+                    " | tag='" + tag + "' not displayed" +
+                    " | ROUTER SAID: " + routerText +
+                    " | tags now: " +
+                    (if (tags.isEmpty()) "nothing tagged" else tags.joinToString(", ")),
+                e,
+            )
+        }
+    }
+
     private fun describeTimeout(tag: String, expected: String): String {
         val found =
             try {
@@ -290,9 +331,7 @@ class TasksAppInstrumentedTest {
             .onNodeWithTag("login-submit")
             .performClick()
 
-        composeRule
-            .onNodeWithTag("tasks-page")
-            .assertIsDisplayed()
+        assertTagDisplayed("tasks-page", "after login-submit (first entry to /tasks)")
 
         // Icon-mapping arc (PR-1.3): the header's canonical
         // <Icon name="star"> references Icons.Filled.Star at compile
@@ -335,9 +374,7 @@ class TasksAppInstrumentedTest {
             .onNodeWithTag("detail-back")
             .performClick()
 
-        composeRule
-            .onNodeWithTag("tasks-page")
-            .assertIsDisplayed()
+        assertTagDisplayed("tasks-page", "after detail-back (/tasks/1 -> /tasks)")
 
         // Phase 5: networked fetch (the fetch-arc device proof) — the
         // quotes screen runs useFetch<Quote[]> through the emitted
@@ -387,9 +424,7 @@ class TasksAppInstrumentedTest {
             .onNodeWithTag("quotes-back")
             .performClick()
 
-        composeRule
-            .onNodeWithTag("tasks-page")
-            .assertIsDisplayed()
+        assertTagDisplayed("tasks-page", "after quotes-back (/quotes -> /tasks)")
 
         // Vocabulary-completion proof: Scroll (verticalScroll) + remote
         // Image (Coil AsyncImage over the fixture server) + Modal
@@ -428,9 +463,7 @@ class TasksAppInstrumentedTest {
         composeRule
             .onNodeWithTag("vocab-back")
             .performClick()
-        composeRule
-            .onNodeWithTag("tasks-page")
-            .assertIsDisplayed()
+        assertTagDisplayed("tasks-page", "after vocab-back (/vocab -> /tasks)")
 
         // Phase 5.5: lifecycle (Phase 2 real-semantics proof). The
         // ErrorBoundary wraps a fetch to a MISSING path → rejects →
@@ -451,9 +484,7 @@ class TasksAppInstrumentedTest {
         composeRule
             .onNodeWithTag("lifecycle-back")
             .performClick()
-        composeRule
-            .onNodeWithTag("tasks-page")
-            .assertIsDisplayed()
+        assertTagDisplayed("tasks-page", "after lifecycle-back (/lifecycle -> /tasks)")
 
         // Phase 5.6: stats — the 2026-07 P1-sprint vocabulary in one page
         // (Object.keys/values over a declared struct, seeded reduce, Double
@@ -481,9 +512,7 @@ class TasksAppInstrumentedTest {
         composeRule
             .onNodeWithTag("stats-back")
             .performClick()
-        composeRule
-            .onNodeWithTag("tasks-page")
-            .assertIsDisplayed()
+        assertTagDisplayed("tasks-page", "after stats-back (/stats -> /tasks)")
 
         // Phase 5b: the TOOLKIT screen — where eleven previously snippet-only
         // packages actually run. The web e2e asserts the same values in a
@@ -593,12 +622,22 @@ class TasksAppInstrumentedTest {
             .performClick()
         waitForTagText("toolkit-filter", "done")
 
+        // performScrollTo() FIRST, like every other interaction on this screen
+        // (toolkit-hotkey / toolkit-schema-* / toolkit-machine-toggle /
+        // toolkit-filter-done all do). `toolkit-back` sits at the bottom of a
+        // ~36-node screen and Compose's performClick does NOT scroll — it
+        // resolves the node from the semantics tree, which reads fine past the
+        // fold, and clicks coordinates that are off-screen. The app then never
+        // navigates and `tasks-page` never appears.
+        //
+        // This was unreachable until the static-route dispatch fix landed: the
+        // test died at the `toolkit-filter` wait three lines up, so the bare
+        // click below had never once run.
         composeRule
             .onNodeWithTag("toolkit-back")
+            .performScrollTo()
             .performClick()
-        composeRule
-            .onNodeWithTag("tasks-page")
-            .assertIsDisplayed()
+        assertTagDisplayed("tasks-page", "after toolkit-back (/toolkit?filter=done -> /tasks)")
 
         // Phase 6: logout — flips the store flag back; lands on /login.
         composeRule
