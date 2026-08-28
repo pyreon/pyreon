@@ -382,41 +382,6 @@ jobs:
             -destination "platform=iOS Simulator,name=${PYREON_SIM_NAME},OS=latest" \
             -configuration Debug
 
-      # The DIFFERENTIATING leg for useColorScheme, and the reason the assertion
-      # means anything. The step above runs under the pinned LIGHT appearance;
-      # a `colorScheme` that was a baked "light" constant satisfies it exactly
-      # as a live @Environment read does. Only flipping the Simulator and
-      # re-asserting can tell them apart — verified locally by replacing the
-      # hook with `const colorScheme = 'light'`: the light leg still passed and
-      # this one failed.
-      #
-      # `TEST_RUNNER_` is xcodebuild's documented channel for handing an env var
-      # to the test process (it strips the prefix).
-      - name: colorScheme under DARK appearance — native-counter-ios
-        working-directory: examples/native-counter-ios
-        env:
-          TEST_RUNNER_PYREON_EXPECT_APPEARANCE: dark
-        run: |
-          set -o pipefail
-          UDID=$(xcrun simctl list devices available | grep -F "${PYREON_SIM_NAME} (" | head -1 | grep -oE '[0-9A-Fa-f-]{36}')
-          if [ -z "$UDID" ]; then
-            echo "::error::could not resolve a UDID for simulator '${PYREON_SIM_NAME}'"
-            exit 1
-          fi
-          xcrun simctl ui "$UDID" appearance dark
-          echo "appearance: dark"
-          xcodebuild test \
-            -retry-tests-on-failure \
-            -test-iterations 3 \
-            -project PyreonCounter.xcodeproj \
-            -scheme PyreonCounter \
-            -sdk iphonesimulator \
-            -destination "platform=iOS Simulator,name=${PYREON_SIM_NAME},OS=latest" \
-            -configuration Debug \
-            -only-testing:PyreonCounterUITests/PyreonCounterUITests/test_colorSchemeTracksSimulatorAppearance
-          # Leave the Simulator as the rest of the job expects to find it.
-          xcrun simctl ui "$UDID" appearance light
-
       # THE REAL-APP GATE. Every step above builds a DEMO — one screen, one
       # list, navigation only. This one builds a realistic app and asserts a
       # composed flow on the Simulator: useForm validation -> the useAuth

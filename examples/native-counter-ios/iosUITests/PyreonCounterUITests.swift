@@ -600,34 +600,49 @@ final class PyreonCounterUITests: XCTestCase {
     // produced a false failure (accusing useColorScheme of not reading
     // @Environment) on any simulator left in dark mode.
     func test_colorSchemeTracksSimulatorAppearance() throws {
-        // Which appearance the RUNNER pinned, passed in as
-        // `TEST_RUNNER_PYREON_EXPECT_APPEARANCE` (xcodebuild strips the prefix
-        // and hands the rest to the test process). Defaults to "light" so a
-        // bare `xcodebuild test` behaves as before.
-        let expected =
-            ProcessInfo.processInfo.environment["PYREON_EXPECT_APPEARANCE"] ?? "light"
-        let other = expected == "dark" ? "light" : "dark"
-
+        // The appearance is driven from INSIDE the test via
+        // `XCUIDevice.shared.appearance` — same process, same device the test
+        // actually runs on. The previous form had the WORKFLOW pin the
+        // appearance with `simctl ui <udid> appearance` and hand the
+        // expectation in via env: it passed on a local simulator but failed
+        // deterministically on the CI runner (3/3 retries rendering
+        // "Theme: light" under a dark-pinned sim) — an out-of-process flip
+        // that did not propagate to the XCTest-launched app, and a UDID
+        // derivation that has to agree with xcodebuild's own destination
+        // resolution. In-process there is nothing to disagree.
+        //
+        // Asserting BOTH appearances in ONE run is also strictly stronger
+        // than the launch-time read: the mid-run flip proves the emitted
+        // `@Environment(\.colorScheme)` is LIVE (a baked constant fails the
+        // second half; a launch-time-only read that never updates fails it
+        // too).
         let app = XCUIApplication()
         app.launch()
+        addTeardownBlock { XCUIDevice.shared.appearance = .light }
 
+        XCUIDevice.shared.appearance = .light
         XCTAssertTrue(
-            app.staticTexts["Theme: \(expected)"].waitForExistence(timeout: 30),
-            "Expected \"Theme: \(expected)\" under the \(expected) Simulator "
-                + "appearance — useColorScheme did not read "
-                + "@Environment(\\.colorScheme) (or emitted a non-environment "
-                + "constant). If this failed locally, check `xcrun simctl ui "
-                + "<sim> appearance` — the assertion follows what the runner "
-                + "pinned, not the machine's ambient setting."
+            app.staticTexts["Theme: light"].waitForExistence(timeout: 30),
+            "Expected \"Theme: light\" under the light appearance — "
+                + "useColorScheme did not read @Environment(\\.colorScheme)"
         )
-        // The opposite string must NOT be present. This is the half that makes
-        // the test load-bearing: a baked constant satisfies ONE appearance and
-        // fails the other, so both legs have to run to tell a live
-        // `@Environment` read from a string that happens to match.
         XCTAssertFalse(
-            app.staticTexts["Theme: \(other)"].exists,
-            "\"Theme: \(other)\" rendered under the \(expected) Simulator "
-                + "appearance — the color-scheme read is inverted or constant"
+            app.staticTexts["Theme: dark"].exists,
+            "\"Theme: dark\" rendered under the light appearance — the "
+                + "color-scheme read is inverted or constant"
+        )
+
+        XCUIDevice.shared.appearance = .dark
+        XCTAssertTrue(
+            app.staticTexts["Theme: dark"].waitForExistence(timeout: 30),
+            "Expected \"Theme: dark\" after flipping the appearance mid-run — "
+                + "useColorScheme emitted a constant or a launch-time-only "
+                + "read instead of a live @Environment(\\.colorScheme)"
+        )
+        XCTAssertFalse(
+            app.staticTexts["Theme: light"].exists,
+            "\"Theme: light\" still rendered under the dark appearance — the "
+                + "color-scheme read is not live"
         )
     }
 
