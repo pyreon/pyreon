@@ -46,10 +46,19 @@ const runtimeSwiftSources = (): string[] => {
     }
     for (const e of entries) {
       // `Package.swift` is an SPM MANIFEST, not runtime source — two of them
-      // collide on filename and swiftc refuses the whole compile. Test
-      // directories are excluded for the same reason they are not shipped.
+      // collide on filename and swiftc refuses the whole compile.
+      //
+      // Test sources are excluded because they are not shipped, and because a
+      // fixture type is free to take an ordinary name: `PyreonTableStateTests`
+      // declares `Row`, which collides with the `Row` an app's own table code
+      // declares and fails the whole compile with `invalid redeclaration`. The
+      // first cut excluded only a directory literally named `Tests`, and the
+      // real one is lowercase `tests` — so the corpus quietly contained test
+      // fixtures and this gate was one name collision away from false-failing.
+      // Matched case-insensitively, plus the `*Tests.swift` file convention.
       if (e === 'node_modules' || e === 'lib' || e === '.build') continue
-      if (e === 'Package.swift' || e === 'Tests') continue
+      if (e === 'Package.swift') continue
+      if (e.toLowerCase() === 'tests' || /Tests?\.swift$/.test(e)) continue
       const p = join(dir, e)
       if (statSync(p).isDirectory()) walk(p)
       else if (p.endsWith('.swift')) out.push(p)
@@ -119,4 +128,62 @@ describe.runIf(isSwiftUIAvailable())('emit compiles against the real SDK + real 
       rmSync(dir, { recursive: true, force: true })
     }
   }, 180_000)
+})
+
+/**
+ * The same question at PACKAGE level.
+ *
+ * `check-native-coverage`'s REGISTRY carries a correct-usage snippet per
+ * crossing package — `defineStore`, `useQuery<T>`, `useForm`, `PyreonTableState`
+ * and the rest. Those snippets are transformed and checked for warnings, and
+ * (elsewhere) typechecked against STUBS. Neither answers whether the runtime
+ * types they name actually exist with the signatures the emit uses, which is
+ * exactly how `<Audio>` shipped referencing three types that lived only in
+ * stubs.
+ *
+ * One compile, all 37 snippets, against the real SDK with the real runtime
+ * linked in.
+ */
+describe.runIf(isSwiftUIAvailable())('every package snippet compiles against the real runtime', () => {
+  const sources = runtimeSwiftSources()
+
+  it('all of them', async () => {
+    const { REGISTRY } = (await import(
+      resolve(REPO, 'scripts/check-native-coverage.ts')
+    )) as { REGISTRY: { name: string; snippet?: string }[] }
+    const withSnippet = REGISTRY.filter((e) => typeof e.snippet === 'string')
+    // A registry that stopped carrying snippets would make this vacuous.
+    expect(withSnippet.length).toBeGreaterThan(20)
+
+    const dir = mkdtempSync(join(tmpdir(), 'pyreon-pkg-runtime-'))
+    const failures: string[] = []
+    try {
+      for (const entry of withSnippet) {
+        const { code } = transform(entry.snippet!, { target: 'swift' })
+        const appPath = join(dir, 'Snippet.swift')
+        writeFileSync(appPath, `import SwiftUI\nimport Foundation\n${code}`, 'utf8')
+        try {
+          execFileSync(
+            'xcrun',
+            [
+              '--sdk', 'iphonesimulator', 'swiftc', '-typecheck',
+              '-target', 'arm64-apple-ios17.0-simulator',
+              '-sdk', sdkPath(), appPath, ...sources,
+            ],
+            { encoding: 'utf8', stdio: 'pipe' },
+          )
+        } catch (err) {
+          const e = err as { stderr?: string | Buffer; stdout?: string | Buffer }
+          const out = [e.stderr, e.stdout]
+            .map((x) => (typeof x === 'string' ? x : x?.toString('utf8')) ?? '')
+            .join('\n')
+          const first = out.split('\n').filter((l) => l.includes('error:'))[0] ?? '?'
+          failures.push(`${entry.name}: ${first.replace(/^.*error: /, '')}`)
+        }
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+    expect(failures).toEqual([])
+  }, 900_000)
 })
