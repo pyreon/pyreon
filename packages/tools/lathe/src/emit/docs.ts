@@ -33,6 +33,15 @@ export interface DocsOptions {
   reach?: ReadonlyMap<string, { reach: Reach; reason?: string | undefined }> | undefined
   /** Whether the run emitted hooks, which decides if the usage snippet shows one. */
   hasQueries: boolean
+  /**
+   * The base URL the generated client actually calls.
+   *
+   * NOT `doc.baseUrl`. A config `baseUrl` OVERRIDES the spec's `servers[0]`,
+   * and the reach analysis already reads the override — so a page rendered
+   * from the spec value would print a host the client never contacts, while
+   * the reach column beside it was decided from a different one.
+   */
+  baseUrl: string
 }
 
 /** Emit `docs/index.md` plus one page per tag. */
@@ -76,7 +85,7 @@ function indexPage(
   const lines = frontmatter(doc.title, `Generated client reference for ${doc.title} ${doc.version}.`)
   lines.push(`# ${doc.title}`, '')
   lines.push(
-    `\`${doc.version}\`${doc.baseUrl ? ` · \`${doc.baseUrl}\`` : ''} · ${doc.operations.length} operations · ${doc.models.length} models`,
+    `\`${doc.version}\`${opts.baseUrl ? ` · \`${opts.baseUrl}\`` : ''} · ${doc.operations.length} operations · ${doc.models.length} models`,
     '',
   )
 

@@ -7,7 +7,7 @@ description: "Generated client reference for Bookshelf 1.2.0."
 
 # Bookshelf
 
-`1.2.0` · `https://bookshelf.pyreon.dev/v1` · 4 operations · 4 models
+`1.2.0` · `http://localhost:5199/v1` · 4 operations · 4 models
 
 ## Reach
 

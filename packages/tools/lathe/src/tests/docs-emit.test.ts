@@ -120,6 +120,16 @@ describe('the generated reference pages', () => {
     expect(books).toContain('PMTC does not yet recognise')
   })
 
+  it('names the base the CLIENT calls, not the spec default', () => {
+    // A config `baseUrl` OVERRIDES `servers[0]`, and the reach analysis already
+    // reads the override — so rendering the spec value would print a host the
+    // client never contacts, beside a reach column decided from a different one.
+    const overridden = docsFor(SPEC, { baseUrl: 'https://override.test/v2' })
+    const index = overridden.get('docs/index.md') ?? ''
+    expect(index).toContain('https://override.test/v2')
+    expect(index).not.toContain('https://api.test/v1')
+  })
+
   it('carries a path parameter into the usage snippet', () => {
     expect(pages.get('docs/books.md')).toContain("params: { bookId: '…' }")
   })

@@ -105,7 +105,16 @@ export function generate(specText: string, config: ResolvedConfig): GenerateResu
   // `docs` reads the same reach analysis the CLI reports, so a page and the
   // terminal can never disagree about whether an operation reaches native.
   if (has('docs')) {
-    for (const f of emitDocs(doc, { reach, hasQueries: has('queries') })) files.push(f)
+    for (const f of emitDocs(doc, {
+      reach,
+      hasQueries: has('queries'),
+      // The EFFECTIVE base, matching what the client emitter bakes and what the
+      // reach analysis read — not the spec's `servers[0]`, which a config
+      // `baseUrl` overrides.
+      baseUrl: config.baseUrl ?? doc.baseUrl,
+    })) {
+      files.push(f)
+    }
   }
   // Entry points last, so they re-export whatever the selection produced.
   //
