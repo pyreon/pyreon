@@ -9,11 +9,10 @@
  * `src/tests/plain.test.ts`; this file proves the shapes actually behave.
  */
 import { afterEach, describe, expect, it } from 'vitest'
-import { transformJSX } from '@pyreon/compiler'
 import { h } from '@pyreon/core'
 import { renderToString } from '@pyreon/runtime-server'
 import { hydrateRoot } from '../index'
-import { compilePlainModule, lowerResidualJsx, mountComponent, stripImports, RUNTIME_DEPS } from './plain-harness'
+import { compilePlainModule, mountComponent } from './plain-harness'
 
 /** Fire a delegated click on an element carrying the compiled `__ev_click`. */
 function click(el: Element | null): void {

@@ -486,7 +486,10 @@ const a = signal(1)
 export const f = () => untrack(() => a.peek() + a())
 `)
     expect(r.code).toContain(`untrack(() => untrack(() => a) + a)`)
+    // exactly three mentions: the import specifier, the user's own wrapper,
+    // and the rewritten .peek() — no duplicated import
     const untracks = (r.code!.match(/untrack/g) ?? []).length
+    expect(untracks).toBe(3)
     expect(r.code).toContain(`import { untrack } from '@pyreon/reactivity'`)
   })
 
