@@ -55,6 +55,8 @@ export function useWakeLock(): WakeLockControls {
   // releasing, or the visibility handler could not tell them apart.
   let wanted = false
   let sentinel: Sentinel | null = null
+  /** The in-flight acquisition, so concurrent callers share one lock. */
+  let acquiring: Promise<boolean> | null = null
 
   const supported = () => {
     const ok = isClient && typeof navigator !== 'undefined' && 'wakeLock' in navigator
@@ -71,7 +73,12 @@ export function useWakeLock(): WakeLockControls {
       return false
     }
     if (sentinel !== null) return active()
-    try {
+    // `sentinel` is only assigned AFTER the await, so two calls that arrive
+    // before the first resolves both pass the check above and both acquire a
+    // lock — the second overwrites `sentinel` and the first is orphaned, held
+    // by the browser with nothing left that can release it.
+    if (acquiring !== null) return acquiring
+    const inFlight = (async (): Promise<boolean> => {
       const nav = navigator as Navigator & {
         wakeLock: { request: (t: string) => Promise<Sentinel> }
       }
@@ -89,11 +96,17 @@ export function useWakeLock(): WakeLockControls {
       })
       active.set(true)
       return true
+    })()
+    acquiring = inFlight
+    try {
+      return await inFlight
     } catch {
       // A rejected request is an ordinary outcome, not an error worth
       // throwing: low battery and background tabs both refuse.
       active.set(false)
       return false
+    } finally {
+      if (acquiring === inFlight) acquiring = null
     }
   }
 

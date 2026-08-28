@@ -103,6 +103,11 @@ export function useDeviceMotion(): DeviceMotionControls {
           // Thrown when not called from a user gesture. Ordinary, not fatal.
           return false
         }
+        // `active` only flips below, so a second call arriving during the
+        // permission prompt passes the check above too — and `addEventListener`
+        // with a DIFFERENT closure each time would attach the handler twice,
+        // doubling every reading. Re-check now that the await has settled.
+        if (active()) return true
       }
       window.addEventListener('devicemotion', onMotion)
       active.set(true)

@@ -56,7 +56,15 @@ export function Mermaid(props: MermaidProps): VNodeChild {
           default?: MermaidModule
         } & MermaidModule
         const mermaid = mod.default ?? mod
-        mermaid.initialize?.({ startOnLoad: false })
+        // `securityLevel: 'strict'` is mermaid's OWN sanitizer: it escapes
+        // label text and refuses the `foreignObject` HTML injection path.
+        // Pyreon's sanitized `innerHTML` prop is not an option here — it
+        // deliberately excludes `foreignObject` and `<style>` as XSS-capable,
+        // and mermaid emits both for labels and theming, so routing this
+        // through it would strip working diagrams. Set explicitly rather than
+        // relying on the library default, which is a version-dependent
+        // promise.
+        mermaid.initialize?.({ startOnLoad: false, securityLevel: 'strict' })
         const id = props.id ?? `pyreon-mermaid-${createUniqueId()}`
         const result = await mermaid.render(id, source)
         if (cancelled) return

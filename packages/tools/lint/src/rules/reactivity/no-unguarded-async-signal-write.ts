@@ -30,7 +30,14 @@ import { getSpan } from '../../utils/ast'
  * rule cannot tell one from a refetch.
  */
 
-const GUARD_HINT = /abort|cancel|version|generation|token|seq|epoch|stale|latest|current|signal/i
+/**
+ * Vocabulary that indicates a staleness guard. The in-flight names
+ * (`acquiring`, `starting`, `inFlight`) matter as much as the generation ones:
+ * sharing one promise between concurrent callers is the other correct fix, and
+ * flagging it would send someone to add a counter they do not need.
+ */
+const GUARD_HINT =
+  /abort|cancel|version|generation|token|seq|epoch|stale|latest|current|signal|acquiring|starting|inflight|in_?flight/i
 
 function collect(node: any, out: any[], type: string, depth = 0): void {
   if (!node || typeof node !== 'object' || depth > 14) return
@@ -70,6 +77,9 @@ export const noUnguardedAsyncSignalWrite: Rule = {
     fixable: false,
   },
   create(context) {
+    /** Enclosing functions, outermost first — a guard may live one scope out. */
+    const stack: any[] = []
+
     const check = (fn: any): void => {
       if (!fn?.async) return
       const awaits: any[] = []
@@ -78,8 +88,13 @@ export const noUnguardedAsyncSignalWrite: Rule = {
 
       const source = context.getSourceText?.() ?? ''
       const span = getSpan(fn)
-      const body = source.slice(span.start, span.end)
-      // A guard anywhere in the body is enough — the shapes vary far too much
+      // Search the OUTERMOST enclosing function, not just this one. The
+      // `const inFlight = (async () => { … })(); starting = inFlight` shape
+      // puts the guard one scope out, so checking only the inner IIFE reported
+      // code that is already correct.
+      const scope = stack.length > 0 ? getSpan(stack[0]) : span
+      const body = source.slice(Math.min(scope.start, span.start), Math.max(scope.end, span.end))
+      // A guard anywhere in that scope is enough — the shapes vary far too much
       // to demand a particular one, and a false positive here is worse than a
       // miss.
       if (GUARD_HINT.test(body)) return
@@ -106,6 +121,13 @@ export const noUnguardedAsyncSignalWrite: Rule = {
         if (locals.has(name)) continue
         if (getSpan(call).start < firstAwaitEnd) continue
 
+        // Re-reading the very signal you are about to write, AFTER the await,
+        // IS the staleness check — `if (active()) return true` before
+        // `active.set(true)` is exactly the guard this rule asks for, written
+        // without any of the words above.
+        const between = source.slice(firstAwaitEnd, getSpan(call).start)
+        if (new RegExp(`\\b${name}\\s*\\(`).test(between)) continue
+
         context.report({
           message: `\`${name}.${method}()\` runs after an \`await\` on captured state, with nothing to tell a stale resolution from a fresh one. If this can be called again before it settles, a SLOW earlier call resolves last and overwrites the newer value — the UI shows the wrong answer, intermittently. Capture a version before the await and discard when it has moved, or forward an \`AbortSignal\`.`,
           span: getSpan(call),
@@ -114,10 +136,21 @@ export const noUnguardedAsyncSignalWrite: Rule = {
       }
     }
 
+    const enter = (node: any): void => {
+      check(node)
+      stack.push(node)
+    }
+    const exit = (): void => {
+      stack.pop()
+    }
+
     const callbacks: VisitorCallbacks = {
-      FunctionDeclaration: check,
-      FunctionExpression: check,
-      ArrowFunctionExpression: check,
+      FunctionDeclaration: enter,
+      'FunctionDeclaration:exit': exit,
+      FunctionExpression: enter,
+      'FunctionExpression:exit': exit,
+      ArrowFunctionExpression: enter,
+      'ArrowFunctionExpression:exit': exit,
     }
     return callbacks
   },

@@ -55,6 +55,8 @@ export function useAudioRecorder(): AudioRecorderControls {
 
   let recorder: MediaRecorder | null = null
   let stream: MediaStream | null = null
+  /** The in-flight start, so concurrent callers share one stream. */
+  let starting: Promise<boolean> | null = null
   let chunks: Blob[] = []
 
   const supported = () => {
@@ -99,7 +101,12 @@ export function useAudioRecorder(): AudioRecorderControls {
         return false
       }
       if (recording()) return true
-      try {
+      // `recording` only flips AFTER the await, so two calls arriving before
+      // getUserMedia resolves both pass the check and both open a microphone
+      // stream — the second overwrites `stream` and the first is orphaned,
+      // leaving the mic indicator on with nothing able to stop it.
+      if (starting !== null) return starting
+      const inFlight = (async (): Promise<boolean> => {
         stream = await navigator.mediaDevices.getUserMedia({ audio: true })
         chunks = []
         const r = new MediaRecorder(stream)
@@ -111,6 +118,10 @@ export function useAudioRecorder(): AudioRecorderControls {
         error.set('')
         recording.set(true)
         return true
+      })()
+      starting = inFlight
+      try {
+        return await inFlight
       } catch {
         // Denied permission, no device, or an insecure context. All ordinary
         // — the caller branches on the boolean.
@@ -118,6 +129,8 @@ export function useAudioRecorder(): AudioRecorderControls {
         teardown()
         recording.set(false)
         return false
+      } finally {
+        if (starting === inFlight) starting = null
       }
     },
 

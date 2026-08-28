@@ -33,7 +33,7 @@ export interface MathProps {
 interface KatexModule {
   renderToString: (
     source: string,
-    options?: { displayMode?: boolean; throwOnError?: boolean },
+    options?: { displayMode?: boolean; throwOnError?: boolean; trust?: boolean },
   ) => string
 }
 
@@ -64,6 +64,12 @@ export function Math(props: MathProps): VNodeChild {
         const rendered = katex.renderToString(source, {
           displayMode: !props.inline,
           throwOnError: false,
+          // KaTeX's own gate on the commands that can emit arbitrary markup or
+          // URLs (`\htmlData`, `\href`). Pyreon's sanitized `innerHTML` prop
+          // cannot stand in: KaTeX emits MathML, which the allowlist does not
+          // cover at all, so routing this through it would strip the formula.
+          // Explicit rather than relying on the library default.
+          trust: false,
         })
         if (cancelled) return
         html.set(rendered)

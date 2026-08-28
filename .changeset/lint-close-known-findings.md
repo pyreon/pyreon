@@ -56,3 +56,29 @@ now says when it is inside that band.
 
 Also fixes an untimed `fetch()` in `lathe pull` that could hang the CLI
 forever against a server that accepts and never answers.
+
+**The ratchet is now empty.** Every advisory finding is resolved rather than
+carried:
+
+- The five leak-class-F sites got real guards, and three were genuine
+  concurrency bugs rather than style issues: `useWakeLock` and
+  `useAudioRecorder` both checked their "already running" flag BEFORE the
+  await, so two calls arriving during it each acquired a resource and orphaned
+  the first — a wake lock held with nothing able to release it, a microphone
+  stream left open. `useDeviceMotion` would attach its listener twice.
+  `useClipboard` and atlas's source viewer could land a stale value.
+- `<CodeBlock>`'s line-number gutter no longer builds an HTML string at all. It
+  was a workaround for a compiler bug that has since been fixed, so it was a
+  raw sink in a component that never needed one; it renders real nodes now.
+- The three remaining sinks cannot be routed through the sanitized `innerHTML`
+  prop, and that is verified rather than assumed: the allowlist deliberately
+  excludes `foreignObject` and `<style>` (which mermaid emits for labels and
+  theming) and does not cover MathML at all (which is all KaTeX emits), so
+  sanitizing would strip working output. They are hardened at the library
+  layer instead — `securityLevel: 'strict'` for mermaid, `trust: false` for
+  KaTeX — and exempted with that reasoning recorded at each call site.
+
+The rule that found them also learned two things from being wrong: an in-flight
+promise shared between callers is a staleness guard just as much as a version
+counter, and a guard may live one scope out from the `async` function that
+writes.

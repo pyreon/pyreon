@@ -290,7 +290,16 @@
       }
     ],
     "pyreon/no-unregistered-field": "error",
-    "pyreon/no-unsanitized-inner-html": "warn",
+    "pyreon/no-unsanitized-inner-html": [
+      "warn",
+      {
+        "exemptPaths": [
+          "packages/zero/zero/src/icon.tsx",
+          "packages/zero/zero-content/src/components/Mermaid.tsx",
+          "packages/zero/zero-content/src/components/Math.tsx"
+        ]
+      }
+    ],
     "pyreon/no-untimed-raw-fetch": "info",
     "pyreon/no-window-in-ssr": [
       "error",

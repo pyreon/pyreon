@@ -105,13 +105,18 @@ export function CodeBlock(props: CodeBlockProps): VNodeChild {
   // An innerHTML string keeps the gutter a static template element (single
   // cloneNode preserved) and renders the numbers as real spans. The content is
   // a fixed template over integers we generate, so there is no XSS surface.
-  const gutterHtml =
+  // Real child nodes, not an HTML string. This was a markup string because a
+  // bare array-typed `const` child used to bake to `textContent` and stringify
+  // its VNodes; universal VNode[] mounting fixed that, and the catalog records
+  // the workaround as no longer required. Rendering nodes removes a raw
+  // `dangerouslySetInnerHTML` sink from a component that never needed one —
+  // these are generated line numbers, with nothing to inline.
+  const gutterLines =
     showLineNumbers && lineCount > 0
-      ? Array.from(
-          { length: lineCount },
-          (_, i) => `<span class="code-block__line-number">${i + 1}</span>`,
-        ).join('')
-      : ''
+      ? Array.from({ length: lineCount }, (_, i) => (
+          <span class="code-block__line-number">{String(i + 1)}</span>
+        ))
+      : []
 
   // Highlight lines are emitted as a data-* so CSS can target them
   // without the component knowing about the rendered DOM structure.
@@ -162,11 +167,9 @@ export function CodeBlock(props: CodeBlockProps): VNodeChild {
         )}
       </div>
       <div class="code-block__body">
-        <div
-          class={gutterClass}
-          aria-hidden="true"
-          dangerouslySetInnerHTML={{ __html: gutterHtml }}
-        />
+        <div class={gutterClass} aria-hidden="true">
+          {gutterLines}
+        </div>
         <div
           class="code-block__pre"
           dangerouslySetInnerHTML={props.dangerouslySetInnerHTML}
