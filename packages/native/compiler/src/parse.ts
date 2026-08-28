@@ -5811,9 +5811,25 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
   // the bare param NAME even for a value param (`function dbl(x: number)` →
   // `propsParamName: 'x'`), so gating on it would wrongly exclude every real
   // helper. `props.length === 0` is the sound "not a props component" signal.
-  const hasValueParams =
-    ((fn.params as AnyNode[] | undefined)?.length ?? 0) > 0 && props.length === 0
-  if (hasValueParams && !returnContainsJsx(returnExpr)) {
+  //
+  // CORRECTION to the `props.length === 0` signal above: `parseProps` populates
+  // `props` for ANY object-typed first parameter, and a helper taking a struct
+  // has one. So `layoutBars(values, plot)` was a helper while
+  // `hitBar(rect, x, y)` was misclassified as a COMPONENT — the same function
+  // kind, decided by parameter ORDER, silently and with no warning. Swift
+  // emitted `struct hitBar: View`, Kotlin a `@Composable` whose parameters were
+  // taken from the struct's FIELDS rather than its own signature. A geometry
+  // library is functions over structs, so this made one unwritable.
+  //
+  // What actually separates the two is the RETURN, not the parameters: a
+  // component renders (JSX, or `null` for "render nothing"), a helper produces
+  // a value. `props.length === 0` is therefore dropped in favour of the return
+  // check it was standing in for. Nullish returns stay COMPONENTS so a
+  // `return null` render path keeps emitting `EmptyView()`.
+  const returnsNothing =
+    returnExpr.kind === 'literal' && (returnExpr.value === null || returnExpr.value === undefined)
+  const hasValueParams = ((fn.params as AnyNode[] | undefined)?.length ?? 0) > 0
+  if (hasValueParams && !returnContainsJsx(returnExpr) && !returnsNothing) {
     // A GENERIC helper (`function first<T>(xs: T[]): T`) can NOT be emitted:
     // the IR has no generic-parameter representation, so a referenced `T`
     // degrades to `unknown` and the emitted signature is uncompilable. Keep
