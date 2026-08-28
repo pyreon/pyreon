@@ -71,7 +71,11 @@ import {
   resolveRouteTarget,
 } from './route-ir-helpers'
 import { unknownTransitionPresetWarning } from './transition-presets'
-import { stretchAlignWarning, unloweredPropWarning } from './unlowered-props'
+import {
+  stretchAlignWarning,
+  structuralPropDynamicWarning,
+  unloweredPropWarning,
+} from './unlowered-props'
 import type {
   AttrIR,
   ChildIR,
@@ -6627,14 +6631,25 @@ function emitSwiftText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if (textColor !== undefined) {
     result += `.foregroundColor(${textColor})`
   }
-  const sizeKey = readStaticAttr(e, 'size')
-  const weightKey = readStaticAttr(e, 'weight')
-  const sizePt = typeof sizeKey === 'string' ? TEXT_SIZE_PT[sizeKey] : undefined
-  const weightVal = typeof weightKey === 'string' ? TEXT_WEIGHT_SWIFT[weightKey] : undefined
+  // Read through the styling machinery, not `readStaticAttr`.
+  //
+  // That reader is static-ONLY, so `size={dense() ? "sm" : "lg"}` — the
+  // two-literal ternary the machinery exists to support — was silently
+  // dropped. `align` and `gap` were migrated off it after exactly that bug;
+  // these two were added later and reached for the old reader, which is how a
+  // fixed class comes back. The helper emits a native conditional
+  // (`(c ? 12 : 20)`), which is valid in the argument position either value
+  // would occupy.
+  const sizePt = swiftStylingValue(e, 'size', (v) =>
+    String(TEXT_SIZE_PT[String(v)] ?? TEXT_SIZE_PT.md),
+  )
+  const weightVal = swiftStylingValue(e, 'weight', (v) =>
+    TEXT_WEIGHT_SWIFT[String(v)] ?? '.regular',
+  )
   if (typeof font !== 'string' && (sizePt !== undefined || weightVal !== undefined)) {
     // `md` is the default size, so a weight-only Text still needs a size to
     // hang the weight on.
-    const pt = sizePt ?? TEXT_SIZE_PT.md
+    const pt = sizePt ?? String(TEXT_SIZE_PT.md)
     const w = weightVal === undefined ? '' : `, weight: ${weightVal}`
     result += `.font(.system(size: ${pt}${w}))`
   }
@@ -8411,6 +8426,15 @@ function swiftFieldViewExpr(
     )
   }
   const kind = readStaticAttr(e, 'kind')
+  {
+    const w = structuralPropDynamicWarning(
+      'Field',
+      'kind',
+      typeof kind === 'string',
+      e.attrs.some((a) => a.kind === 'attr' && a.name === 'kind'),
+    )
+    if (w !== undefined) _emitWarnings.push(w)
+  }
   return viewFor(typeof kind === 'string' ? kind : '')
 }
 
@@ -8422,6 +8446,15 @@ function emitSwiftImage(
   const srcAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'src')
   const alt = readStaticAttr(e, 'alt')
   const fit = readStaticAttr(e, 'fit')
+  {
+    const w = structuralPropDynamicWarning(
+      'Image',
+      'fit',
+      typeof fit === 'string',
+      e.attrs.some((a) => a.kind === 'attr' && a.name === 'fit'),
+    )
+    if (w !== undefined) _emitWarnings.push(w)
+  }
   let result: string
   if (typeof src === 'string') {
     const kind = imageSrcKind(src)

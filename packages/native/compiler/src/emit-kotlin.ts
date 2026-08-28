@@ -67,7 +67,11 @@ import {
   resolveRouteTarget,
 } from './route-ir-helpers'
 import { unknownTransitionPresetWarning } from './transition-presets'
-import { stretchAlignWarning, unloweredPropWarning } from './unlowered-props'
+import {
+  stretchAlignWarning,
+  structuralPropDynamicWarning,
+  unloweredPropWarning,
+} from './unlowered-props'
 import type {
   AttrIR,
   ChildIR,
@@ -5478,11 +5482,16 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   const textColor = kotlinStylingValue(e, 'color', (v) => resolveColor(String(v), 'kotlin'))
   const colorArg =
     textColor !== undefined && !typoArgs.includes('color =') ? `, color = ${textColor}` : ''
-  const sizeKey = readStaticAttrKotlin(e, 'size')
-  const sizePt = typeof sizeKey === 'string' ? TEXT_SIZE_PT[sizeKey] : undefined
+  // Through the styling machinery, not the static-only reader — see the Swift
+  // twin. A two-literal ternary emits `(if (c) 14 else 20)`, which is valid
+  // where either value would sit; the static form is byte-identical.
+  const sizePt = kotlinStylingValue(e, 'size', (v) =>
+    String(TEXT_SIZE_PT[String(v)] ?? TEXT_SIZE_PT.md),
+  )
   const sizeArg = sizePt !== undefined && !typoArgs.includes('fontSize') ? `, fontSize = ${sizePt}.sp` : ''
-  const weightKey = readStaticAttrKotlin(e, 'weight')
-  const weightVal = typeof weightKey === 'string' ? TEXT_WEIGHT_KOTLIN[weightKey] : undefined
+  const weightVal = kotlinStylingValue(e, 'weight', (v) =>
+    TEXT_WEIGHT_KOTLIN[String(v)] ?? 'FontWeight.Normal',
+  )
   const weightArg =
     weightVal !== undefined && !typoArgs.includes('fontWeight') ? `, fontWeight = ${weightVal}` : ''
   if (e.children.length === 0) return `Text(text = ""${typoArgs}${colorArg}${sizeArg}${weightArg}${fontArg}${truncArgs}${modArg})`
@@ -7026,6 +7035,15 @@ function emitKotlinImage(
   }
   const alt = readStaticAttrKotlin(e, 'alt')
   const fit = readStaticAttrKotlin(e, 'fit')
+  {
+    const w = structuralPropDynamicWarning(
+      'Image',
+      'fit',
+      typeof fit === 'string',
+      e.attrs.some((a) => a.kind === 'attr' && a.name === 'fit'),
+    )
+    if (w !== undefined) _emitWarnings.push(w)
+  }
   // Layout modifier FIRST in the chain so data-testid threads (the
   // Text/Heading lesson — its absence is device-invisible until a tag
   // query fails), then explicit sizes.
@@ -7446,6 +7464,15 @@ function kotlinFieldVisualTransformation(
     )
   }
   const kind = readStaticAttrKotlin(e, 'kind')
+  {
+    const w = structuralPropDynamicWarning(
+      'Field',
+      'kind',
+      typeof kind === 'string',
+      e.attrs.some((a) => a.kind === 'attr' && a.name === 'kind'),
+    )
+    if (w !== undefined) _emitWarnings.push(w)
+  }
   return kind === 'password' ? 'visualTransformation = PasswordVisualTransformation()' : undefined
 }
 

@@ -39,6 +39,7 @@ export function C() {
   const ft = signal('contain')
   const sz = signal('lg')
   const hit = signal(0)
+  const c = signal(true)
   return <Stack>${jsx}</Stack>
 }`
 
@@ -130,6 +131,69 @@ describe('a signal-valued prop stays live, rather than freezing to its value', (
           w.toLowerCase().includes('justify'),
         ),
       ).toBe(true)
+    }
+  })
+})
+
+// ── 3. the two-literal ternary ──────────────────────────────────────────────
+
+/**
+ * The two-literal ternary (`align={rtl() ? "end" : "start"}`) is the documented
+ * dynamic form the styling machinery supports. A prop still on the static-only
+ * reader silently DROPS it — the exact bug already fixed once for `align` and
+ * `gap`.
+ *
+ * Four props had not been migrated: `Text.size`, `Text.weight`, `Image.fit`,
+ * `Field.kind`. Two of them were added earlier in this same PR, reaching for
+ * the old reader because it was what the neighbouring line used. That is how a
+ * fixed class comes back — not by anyone undoing the fix, but by the next
+ * addition not knowing it happened.
+ *
+ * `size` and `weight` are value-only and now lower. `fit` and `kind` drive a
+ * STRUCTURAL choice (`fit="none"` selects a different AsyncImage initializer;
+ * `kind="password"` selects SecureField), so a ternary cannot be one
+ * expression — they warn instead, symmetrically, which is the honest tier.
+ */
+const TERNARY: [string, string, string, string][] = [
+  ['Stack.align', `<Stack align={CV}><Text>x</Text></Stack>`, `"end"`, `"start"`],
+  ['Stack.gap', `<Stack gap={CV}><Text>x</Text></Stack>`, '4', '2'],
+  ['Stack.margin', `<Stack margin={CV}><Text>x</Text></Stack>`, '4', '2'],
+  ['Stack.background', `<Stack background={CV}><Text>x</Text></Stack>`, `"primary"`, `"surface"`],
+  ['Text.color', `<Text color={CV}>x</Text>`, `"primary"`, `"danger"`],
+  ['Text.size', `<Text size={CV}>x</Text>`, `"lg"`, `"sm"`],
+  ['Text.weight', `<Text weight={CV}>x</Text>`, `"bold"`, `"regular"`],
+  ['Button.disabled', `<Button onPress={() => {}} disabled={CV}>x</Button>`, 'true', 'false'],
+]
+
+describe('a two-literal ternary lowers, rather than being dropped', () => {
+  it.each(TERNARY.flatMap(([label, tpl, a, b]) =>
+    (['swift', 'kotlin'] as const).map((t) => [`${label} (${t})`, tpl, a, b, t] as const),
+  ))('%s', (_label, tpl, a, b, target) => {
+    const withTernary = emit(tpl.replace('{CV}', `{c() ? ${a} : ${b}}`), target)
+    const without = emit(tpl.replace(/ \w+=\{CV\}/, ''), target)
+    expect(elementOnly(withTernary)).not.toBe(elementOnly(without))
+  })
+
+  it.each([
+    ['Image.fit', `<Image src="https://x.t/a.png" alt="a" fit={CV} />`, `"cover"`, `"contain"`, 'fit'],
+    ['Field.kind', `<Field value={v()} onChangeText={(n) => v.set(n)} kind={CV} />`, `"email"`, `"text"`, 'kind'],
+  ] as const)('%s warns rather than dropping, on BOTH targets', (_l, tpl, a, b, prop) => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(app(tpl.replace('{CV}', `{c() ? ${a} : ${b}}`)), { target })
+      expect(r.warnings.some((w) => w.includes(prop) && w.includes('structural'))).toBe(true)
+    }
+  })
+
+  it('a STATIC value is byte-identical to before — nothing pays for the migration', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      expect(emit(`<Text size="lg">x</Text>`, target)).toContain(
+        target === 'swift' ? 'size: 20' : 'fontSize = 20.sp',
+      )
+      // and no warning for the static form of a structural prop
+      expect(
+        transform(app(`<Image src="https://x.t/a.png" alt="a" fit="cover" />`), { target })
+          .warnings.some((w) => w.includes('structural')),
+      ).toBe(false)
     }
   })
 })

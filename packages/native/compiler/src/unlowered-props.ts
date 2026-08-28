@@ -86,3 +86,40 @@ export function stretchAlignWarning(tag: string, alignValue: unknown): string | 
     `web side), or branch with \`<NativeIOS>\` / \`<NativeAndroid>\`.`
   )
 }
+
+/**
+ * `fit` and `kind` given a NON-static value.
+ *
+ * Both drive a STRUCTURAL choice, not just a value: `fit="none"` selects the
+ * plain `AsyncImage` init rather than the content-closure form, and
+ * `kind="password"` selects `SecureField` over `TextField`. A two-literal
+ * ternary — which the styling machinery supports for every value-only prop —
+ * therefore cannot be lowered as one expression when either branch is the
+ * structural one.
+ *
+ * They were silently DROPPED, which is the wrong answer regardless: the author
+ * wrote a dynamic value and got the default with no signal. Warned instead,
+ * symmetrically on both targets, until the value-only subset is lowered
+ * (tracked follow-up — it needs the structural branches split out first, and
+ * doing the easy half on one target only would put the two platforms out of
+ * agreement, which is the failure `<Transition name>` already taught).
+ */
+export function structuralPropDynamicWarning(
+  tag: string,
+  prop: 'fit' | 'kind',
+  isStatic: boolean,
+  present: boolean,
+): string | undefined {
+  if (!present || isStatic) return undefined
+  const structural =
+    prop === 'fit'
+      ? '`fit="none"` selects a different AsyncImage initializer'
+      : '`kind="password"` selects SecureField instead of TextField'
+  return (
+    `<${tag} ${prop}> was given a non-static value, which does NOT lower on iOS or Android — the ` +
+    `prop is dropped and the default applies. Unlike the value-only styling props, ${prop} drives a ` +
+    `structural choice (${structural}), so a ternary cannot be lowered as a single expression. Use a ` +
+    `static value, or branch the element itself (\`{dense() ? <Image … fit="contain" /> : <Image … />}\`), ` +
+    `which lowers on both targets.`
+  )
+}
