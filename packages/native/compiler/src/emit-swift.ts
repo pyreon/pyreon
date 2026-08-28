@@ -7639,8 +7639,9 @@ const SWIFT_CONTAINER_TAGS = new Set([
  * Empty result when no relevant props are present — the View renders
  * without any trailing modifier.
  *
- * Scope: padding/paddingX/paddingY/margin (alias to padding outside
- * a parent layout)/background/radius.
+ * Scope: padding/paddingX/paddingY/margin/marginX/marginY/background/radius
+ * plus the inline `style={{…}}` connector. Margin is real now — this line
+ * claimed it for a long time while nothing implemented it.
  */
 function emitSwiftLayoutModifiers(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
@@ -7689,6 +7690,38 @@ function emitSwiftLayoutModifiers(
     // needs the @Environment(\.horizontalSizeClass) injection — the same
     // one useSizeClass() uses.
     if (needsSizeClass === true) _usesSizeClass = true
+  }
+  // `margin` — the OUTERMOST inset, so it is appended LAST.
+  //
+  // This function's own docblock has claimed margin was in scope since it was
+  // written ("margin (alias to padding outside a parent layout)") and it was
+  // never implemented: a typed, documented prop of the shared
+  // `BaseLayoutProps` — so present on Stack, Inline, Layer and Scroll alike —
+  // that produced no output at all, on either target, with no warning. A
+  // layout written with margin rendered flush on device while the web showed
+  // it spaced.
+  //
+  // SwiftUI has no margin, but it does not need one: modifiers wrap OUTWARD,
+  // so a `.padding()` applied after `.background()` insets the whole visual
+  // box rather than its content. That is margin, exactly. It must therefore
+  // come after background, radius AND the `style={{…}}` block, since a style
+  // can set a background of its own.
+  //
+  // Note the Kotlin mirror does the OPPOSITE: Compose's chain applies
+  // outside-IN, so there margin is PREPENDED. Same semantics, reversed
+  // position — the kind of asymmetry that reads as a bug in whichever file you
+  // are not looking at.
+  const margin = swiftStylingValue(e, 'margin', resolveSpace)
+  if (margin !== undefined) {
+    parts.push(`.padding(${margin})`)
+  }
+  const marginX = swiftStylingValue(e, 'marginX', resolveSpace)
+  if (marginX !== undefined) {
+    parts.push(`.padding(.horizontal, ${marginX})`)
+  }
+  const marginY = swiftStylingValue(e, 'marginY', resolveSpace)
+  if (marginY !== undefined) {
+    parts.push(`.padding(.vertical, ${marginY})`)
   }
   // E3.1 — `data-testid` becomes SwiftUI's `.accessibilityIdentifier()`
   // so the same string the web e2e selects on (`getByTestId`) is also

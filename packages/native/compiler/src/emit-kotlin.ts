@@ -6385,6 +6385,29 @@ function emitKotlinLayoutModifier(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
 ): string {
   const parts: string[] = []
+  // `margin` — the OUTERMOST inset, so it goes FIRST.
+  //
+  // Compose's `Modifier` chain applies outside-IN: the leading entries wrap
+  // the later ones. So an initial `.padding()` insets the whole element,
+  // before any background is drawn — which is margin. The Swift mirror
+  // APPENDS its margin for the same reason in reverse (SwiftUI wraps
+  // outward), an asymmetry worth stating in both files.
+  //
+  // Never implemented until now, though the Swift twin's docblock claimed it
+  // was in scope. `margin` is on the shared `BaseLayoutProps`, so this was
+  // silently dropped on Stack, Inline, Layer and Scroll, on both targets.
+  const margin = kotlinStylingValue(e, 'margin', resolveSpace)
+  if (margin !== undefined) {
+    parts.push(`.padding(${margin}.dp)`)
+  }
+  const marginX = kotlinStylingValue(e, 'marginX', resolveSpace)
+  if (marginX !== undefined) {
+    parts.push(`.padding(horizontal = ${marginX}.dp)`)
+  }
+  const marginY = kotlinStylingValue(e, 'marginY', resolveSpace)
+  if (marginY !== undefined) {
+    parts.push(`.padding(vertical = ${marginY}.dp)`)
+  }
   const padding = kotlinStylingValue(e, 'padding', resolveSpace)
   if (padding !== undefined) {
     parts.push(`.padding(${padding}.dp)`)
