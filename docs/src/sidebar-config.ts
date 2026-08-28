@@ -160,6 +160,7 @@ export const SIDEBAR: SidebarGroup[] = [
       { text: 'MCP Server', slug: 'mcp' },
       { text: 'Atlas (component workbench)', slug: 'atlas' },
       { text: 'Loom (dependency observatory)', slug: 'loom' },
+      { text: 'Lathe (OpenAPI → client)', slug: 'lathe' },
     ],
   },
   {

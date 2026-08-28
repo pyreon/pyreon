@@ -121,7 +121,7 @@ cost you pay in the bundle. So the output is layered:
 
 ```
 gen/index.ts            production — schemas, client, endpoints, queries, keys
-gen/dev.ts              fixtures, faker factories, preview components
+gen/dev.ts              fixtures and faker factories (node-safe, no JSX)
 gen/endpoints/index.ts  every call, no hooks   (loaders, scripts, server code)
 gen/queries/index.ts    every hook, no previews
 gen/queries/books.ts    one tag — Vite emits one chunk per tag file
@@ -129,7 +129,15 @@ gen/package.json        `sideEffects`, so all of the above tree-shakes
 ```
 
 `dev.ts` is the same shape as `@pyreon/server/client` in this repo: nothing in
-it is unsafe to import, it is unsafe to import *by accident*. A fixture table is
+it is unsafe to import, it is unsafe to import *by accident*.
+
+It is also **node-safe**, which is why the preview components are not in it.
+They are JSX, so re-exporting them made the whole dev entry require a JSX
+transform — a plain node test that wanted one fake object had to configure one,
+for components it never touches. Previews have exactly one kind of consumer (an
+Atlas config, a story) and that consumer imports `./components` directly. Found
+by consuming the output from a test in the example, which is the only place that
+question comes up. A fixture table is
 DATA, so unlike an unused function it survives minification wherever it is
 reachable — a barrel that named it put every fixture in the page bundle.
 
