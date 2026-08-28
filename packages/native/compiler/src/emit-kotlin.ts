@@ -1996,7 +1996,7 @@ function emitKotlinComponent(c: ComponentIR): string {
       if (d.kind !== 'hotkey') return false
       if (kotlinKeyConstant(d.combo.key) !== null) return true
       _emitWarnings.push(
-        `useHotkey: '${d.combo.key}' has no Compose Key constant — the hotkey is DROPPED on Android.`,
+        `useHotkey: '${d.combo.key}' has no Compose Key constant — the hotkey is DROPPED on Android. Use a single printable character or one of the named keys that map on both targets (escape / enter / delete / tab / space / arrow{up,down,left,right} / home / end / pageup / pagedown), or handle this shortcut inside a <NativeIOS> / <NativeAndroid> branch.`,
       )
       return false
     })

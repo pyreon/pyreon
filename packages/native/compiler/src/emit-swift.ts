@@ -2375,7 +2375,7 @@ function emitSwiftComponent(c: ComponentIR): string {
     const keyEq = swiftKeyEquivalent(d.combo.key)
     if (keyEq === null) {
       _emitWarnings.push(
-        `useHotkey: '${d.combo.key}' has no SwiftUI KeyEquivalent — the hotkey is DROPPED on iOS.`,
+        `useHotkey: '${d.combo.key}' has no SwiftUI KeyEquivalent — the hotkey is DROPPED on iOS. Use a single printable character or one of the named keys that map on both targets (escape / enter / delete / tab / space / arrow{up,down,left,right} / home / end / pageup / pagedown), or handle this shortcut inside a <NativeIOS> / <NativeAndroid> branch.`,
       )
       continue
     }

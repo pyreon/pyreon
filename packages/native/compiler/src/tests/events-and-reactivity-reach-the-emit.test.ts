@@ -197,3 +197,60 @@ describe('a two-literal ternary lowers, rather than being dropped', () => {
     }
   })
 })
+
+// ── 4. the escape hatches, and warnings that name a remedy ──────────────────
+
+/**
+ * `<NativeIOS>` / `<NativeAndroid>` / `<Web>` are the documented way out of the
+ * lowerable subset, and every "or branch with an escape hatch" remedy in a
+ * warning depends on them gating correctly. Verified rather than assumed.
+ */
+describe('the escape hatches gate by target', () => {
+  const src = `import { Stack, Text, NativeIOS, NativeAndroid, Web } from '${P}'
+export function C() {
+  return (
+    <Stack>
+      <NativeIOS><Text>IOSONLY</Text></NativeIOS>
+      <NativeAndroid><Text>ANDROIDONLY</Text></NativeAndroid>
+      <Web><Text>WEBONLY</Text></Web>
+      <Text>SHARED</Text>
+    </Stack>
+  )
+}`
+
+  it.each([
+    ['swift', 'IOSONLY', ['ANDROIDONLY', 'WEBONLY']],
+    ['kotlin', 'ANDROIDONLY', ['IOSONLY', 'WEBONLY']],
+  ] as const)('%s keeps only its own branch', (target, kept, dropped) => {
+    const out = transform(src, { target }).code
+    expect(out).toContain(kept)
+    expect(out).toContain('SHARED')
+    for (const d of dropped) expect(out).not.toContain(d)
+  })
+})
+
+/**
+ * A warning that names a problem without naming a remedy leaves the author
+ * exactly where they were. `useHotkey` with an unmappable key said the shortcut
+ * was DROPPED and stopped there.
+ */
+describe('a dropped hotkey says what to do instead', () => {
+  const src = `import { useHotkey } from '@pyreon/hotkeys'
+import { Stack, Text } from '${P}'
+export function C() {
+  useHotkey('mod+f13', () => {})
+  return <Stack><Text>x</Text></Stack>
+}`
+
+  it.each(['swift', 'kotlin'] as const)('%s names the mappable keys and the escape hatch', (target) => {
+    const w = transform(src, { target }).warnings.find((x) => x.includes('hotkey'))
+    expect(w).toContain('DROPPED')
+    expect(w).toContain('escape / enter')
+    expect(w).toMatch(/NativeIOS/)
+  })
+
+  it.each(['swift', 'kotlin'] as const)('%s stays silent for a key that DOES map', (target) => {
+    const ok = src.replace("'mod+f13'", "'mod+s'")
+    expect(transform(ok, { target }).warnings.filter((x) => x.includes('hotkey'))).toEqual([])
+  })
+})
