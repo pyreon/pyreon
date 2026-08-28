@@ -8,6 +8,7 @@
  * and the render-prop escape hatch (+ Autocomplete's `.config()` chain)
  * intact.
  */
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { PyreonUI } from '@pyreon/ui-core'
@@ -48,7 +49,7 @@ describe('Combobox — Element-first batteries-included (real Chromium)', () => 
       ),
     )
     await flush()
-    const input = container.querySelector('input[role="combobox"]') as HTMLInputElement
+    const input = query<HTMLInputElement>(container, 'input[role="combobox"]')
     expect(input, 'built-in input renders').not.toBeNull()
     expect(input.getAttribute('aria-label'), 'localizable label passthrough').toBe(
       'Vyber framework',
@@ -86,10 +87,10 @@ describe('Combobox — Element-first batteries-included (real Chromium)', () => 
       ),
     )
     await flush()
-    const input = container.querySelector('input[role="combobox"]') as HTMLInputElement
+    const input = query<HTMLInputElement>(container, 'input[role="combobox"]')
     key(input, 'ArrowDown') // open (first active)
     await flush()
-    const firstOption = container.querySelector('[role="option"]') as HTMLElement
+    const firstOption = query<HTMLElement>(container, '[role="option"]')
     expect(firstOption.getAttribute('data-highlighted')).toBe('true')
 
     key(input, 'ArrowDown') // move to Pyreon
@@ -131,7 +132,7 @@ describe('Combobox — Element-first batteries-included (real Chromium)', () => 
       ),
     )
     await flush()
-    const input = container.querySelector('input[role="combobox"]') as HTMLInputElement
+    const input = query<HTMLInputElement>(container, 'input[role="combobox"]')
     type(input, 'v')
     await flush()
     const opts = container.querySelectorAll<HTMLElement>('[role="option"]')
@@ -148,7 +149,7 @@ describe('Combobox — Element-first batteries-included (real Chromium)', () => 
       h(PyreonUI, { theme }, h(Combobox as never, { options })),
     )
     await flush()
-    const input = container.querySelector('input[role="combobox"]') as HTMLElement
+    const input = query<HTMLElement>(container, 'input[role="combobox"]')
     expect(input.getAttribute('data-rocketstyle'), 'built-in input carries the theme').toBe(
       'Combobox',
     )
@@ -158,7 +159,7 @@ describe('Combobox — Element-first batteries-included (real Chromium)', () => 
     ).toBeGreaterThan(0)
     key(input, 'ArrowDown')
     await flush()
-    const listbox = container.querySelector('[role="listbox"]') as HTMLElement
+    const listbox = query<HTMLElement>(container, '[role="listbox"]')
     const lcs = getComputedStyle(listbox)
     expect(lcs.position, 'dropdown is anchored').toBe('absolute')
     expect(lcs.flexDirection, 'options stack as a column (content-axis props)').toBe('column')
@@ -181,7 +182,7 @@ describe('Combobox — Element-first batteries-included (real Chromium)', () => 
       ),
     )
     await flush()
-    const custom = container.querySelector('[data-testid="custom-cb"]') as HTMLInputElement
+    const custom = query<HTMLInputElement>(container, '[data-testid="custom-cb"]')
     expect(custom, 'consumer markup renders').not.toBeNull()
     expect(custom.getAttribute('data-rocketstyle'), 'escape hatch keeps the theme class').toBe(
       'Combobox',

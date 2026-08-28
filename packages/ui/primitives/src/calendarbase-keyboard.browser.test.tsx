@@ -20,6 +20,7 @@
  * Bisect: remove the onKeyDown from getDayProps → every move spec fails
  * (activeElement stays on the start cell).
  */
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { describe, expect, it } from 'vitest'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
@@ -59,7 +60,7 @@ function mountCalendar(): { container: HTMLElement; unmount: () => void } {
 }
 
 function cell(container: HTMLElement, y: number, m: number, d: number): HTMLButtonElement {
-  return container.querySelector(`[data-day="${y}-${m}-${d}"]`) as HTMLButtonElement
+  return query<HTMLButtonElement>(container, `[data-day="${y}-${m}-${d}"]`)
 }
 
 function press(el: HTMLElement, key: string, shift = false): void {

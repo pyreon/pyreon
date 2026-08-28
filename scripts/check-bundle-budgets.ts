@@ -482,9 +482,20 @@ async function main(): Promise<void> {
       // eslint-disable-next-line no-console
       console.error(`✗ ${violations.length} package(s) over budget:\n`)
       for (const v of violations) {
+        // A budget whose headroom is thinner than the measurement's own
+        // variance fails on CI while passing locally, which reads as a
+        // mystery rather than as a budget that was set too tight. gzip output
+        // differs slightly between macOS and the ubuntu runner — measured at
+        // ~177 B on a 16.5 KB package, about 1.1% — so say so when the overage
+        // is inside that band, instead of leaving the next person to rediscover
+        // it. (`--update` gives 25% headroom; these are hand-set values.)
+        const withinNoise = v.overBy <= Math.max(64, v.current * 0.015)
+        const note = withinNoise
+          ? `\n      ↳ that is within the ~1.5% macOS/ubuntu gzip variance — this budget has too little headroom to be measured reliably. Raise it clear of the noise rather than shaving the package.`
+          : ''
         // eslint-disable-next-line no-console
         console.error(
-          `  ${v.name}: ${(v.current / 1024).toFixed(2)} KB > budget ${(v.budget / 1024).toFixed(2)} KB (over by ${(v.overBy / 1024).toFixed(2)} KB, +${v.overByPct.toFixed(1)}%)`,
+          `  ${v.name}: ${(v.current / 1024).toFixed(2)} KB > budget ${(v.budget / 1024).toFixed(2)} KB (over by ${(v.overBy / 1024).toFixed(2)} KB, +${v.overByPct.toFixed(1)}%)${note}`,
         )
       }
       // eslint-disable-next-line no-console

@@ -1,3 +1,4 @@
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { mountInBrowser } from '@pyreon/test-utils/browser'
 import { describe, expect, it } from 'vitest'
@@ -40,11 +41,11 @@ function mountSpoiler(opts: { height: number; maxHeight?: number } & Record<stri
   return {
     container,
     state: () => st!,
-    root: () => container.querySelector('[data-spoiler]') as HTMLElement,
-    clip: () => container.querySelector('[data-spoiler] > div') as HTMLElement,
-    content: () => container.querySelector(`#${CSS.escape(st!.contentProps().id as string)}`) as HTMLElement,
-    toggle: () => container.querySelector('button') as HTMLButtonElement,
-    filler: () => container.querySelector('[data-filler]') as HTMLElement,
+    root: () => query<HTMLElement>(container, '[data-spoiler]'),
+    clip: () => query<HTMLElement>(container, '[data-spoiler] > div'),
+    content: () => query<HTMLElement>(container, `#${CSS.escape(st!.contentProps().id as string)}`),
+    toggle: () => query<HTMLButtonElement>(container, 'button'),
+    filler: () => query<HTMLElement>(container, '[data-filler]'),
   }
 }
 

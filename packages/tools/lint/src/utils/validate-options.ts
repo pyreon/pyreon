@@ -21,6 +21,18 @@ export interface ValidationResult {
   warnings: string[]
 }
 
+/**
+ * Options the RUNNER honours for every rule, whatever its own schema says.
+ *
+ * `exemptPaths` is applied centrally in the rule loop, so it is valid on any
+ * rule — validating it against a per-rule schema would warn "unknown option"
+ * about an exemption that demonstrably works. Runtime and validation have to
+ * agree, or the diagnostic teaches the wrong thing.
+ */
+const UNIVERSAL_OPTIONS: Readonly<Record<string, OptionType>> = {
+  exemptPaths: 'string[]',
+}
+
 export function validateRuleOptions(rule: Rule, options: RuleOptions): ValidationResult {
   const schema = rule.meta.schema
   const errors: string[] = []
@@ -28,10 +40,10 @@ export function validateRuleOptions(rule: Rule, options: RuleOptions): Validatio
   if (!schema) return { errors, warnings }
 
   for (const [key, value] of Object.entries(options)) {
-    const expected = schema[key]
+    const expected = schema[key] ?? UNIVERSAL_OPTIONS[key]
     if (expected === undefined) {
       warnings.push(
-        `[${rule.meta.id}] unknown option "${key}" — allowed options: ${Object.keys(schema).join(', ') || '(none)'}`,
+        `[${rule.meta.id}] unknown option "${key}" — allowed options: ${[...new Set([...Object.keys(schema), ...Object.keys(UNIVERSAL_OPTIONS)])].join(', ')}`,
       )
       continue
     }

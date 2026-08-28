@@ -10,6 +10,7 @@
  * rAF after open. Needs a REAL browser: happy-dom has no layout, so
  * getBoundingClientRect is all zeros and anchoring can't be asserted.
  */
+import { query } from '@pyreon/test-utils'
 import { describe, expect, it } from 'vitest'
 import { Portal } from '@pyreon/core'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
@@ -51,7 +52,7 @@ describe('Overlay — position on open (real layout)', () => {
     const { container, unmount } = mountInBrowser(<Dropdown />)
     await flush()
 
-    const trigger = container.querySelector('[data-testid=trigger]') as HTMLButtonElement
+    const trigger = query<HTMLButtonElement>(container, '[data-testid=trigger]')
     trigger.click()
     await flush()
     // Positioning defers one animation frame after the content mounts so
@@ -59,7 +60,7 @@ describe('Overlay — position on open (real layout)', () => {
     await raf()
     await raf()
 
-    const menu = document.querySelector('[data-testid=menu]') as HTMLElement
+    const menu = query<HTMLElement>(document, '[data-testid=menu]')
     expect(menu).not.toBeNull()
 
     const t = trigger.getBoundingClientRect()

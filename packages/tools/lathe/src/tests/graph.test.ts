@@ -1,3 +1,4 @@
+import ts from 'typescript'
 /**
  * Declaration ORDER is a correctness property of generated schemas.
  *
@@ -68,13 +69,21 @@ const CHAIN = spec(`    Order:
 const web = resolveConfig({ input: 'x' })
 const native = resolveConfig({ input: 'x', target: 'multiplatform' })
 
-/** Evaluate an emitted schema module and hand back its exports. */
+/**
+ * Evaluate an emitted schema module and hand back its exports.
+ *
+ * The emitted source is TYPESCRIPT, so it is transpiled by the real compiler
+ * rather than pattern-stripped. A hand-rolled stripper worked only while the
+ * output happened to carry no type annotations; the moment a cyclic schema
+ * gained one (`export const Node: Schema<Node> = …`) it produced
+ * `SyntaxError: Unexpected token ':'` — a test failing on its own harness,
+ * which reads exactly like a product bug.
+ */
 function evaluate(source: string): Record<string, unknown> {
-  const body = source
-    .replace(/^import\s+.*$/gm, '')
-    .replace(/^export type .*$/gm, '')
-    .replace(/^export const /gm, 'const ')
-    .replace(/:\s*[A-Za-z<>[\]{}|\s,'"]+\s*=/g, ' =')
+  const js = ts.transpileModule(source, {
+    compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
+  }).outputText
+  const body = js.replace(/^import\s+.*$/gm, '').replace(/^export const /gm, 'const ')
   const names = [...source.matchAll(/^export const (\w+)/gm)].map((m) => m[1] as string)
   // eslint-disable-next-line no-new-func
   const fn = new Function('s', `${body}\nreturn { ${names.join(', ')} }`)

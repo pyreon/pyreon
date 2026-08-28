@@ -10,6 +10,7 @@
 import { topoSortModels } from '../core/graph'
 import type { IrDocument, IrField, IrType } from '../core/ir'
 import { propKey, typeIdent } from '../core/naming'
+import { dialectOf, type ValidatorName } from './validator'
 import { q, relativeSpecifier, SourceFile } from './writer'
 
 export const SCHEMA_FILE = 'schemas.ts'
@@ -18,14 +19,44 @@ export interface SchemaExprOptions {
   /** Narrow the output to the subset the native compiler lowers. */
   native: boolean
   /**
-   * Ref targets that must be rendered as `s.lazy(() => X)` because naming them
+   * Ref targets that must be rendered as `lazy(() => X)` because naming them
    * directly would read a `const` in its temporal dead zone.
    */
   defer?: ReadonlySet<string> | undefined
+  /** Which library the expression is written in. Defaults to `pyreon`. */
+  validator?: ValidatorName | undefined
+  /**
+   * Model types by name, for INLINING a `$ref` on the native path.
+   *
+   * Only consulted when the dialect says inlining helps — see
+   * `ValidatorDialect.inlineRefsOnNative`. PMTC drops a field that NAMES
+   * another schema, and every OpenAPI document of any size is full of them; an
+   * inlined ref is a nested object, which the zod recogniser does lower.
+   */
+  models?: ReadonlyMap<string, IrType> | undefined
+  /**
+   * Refs currently being inlined, so a `$ref` CYCLE terminates.
+   *
+   * A cycle cannot be inlined at all — there is no finite nesting for it — so
+   * re-entering one falls back to NAMING the target. PMTC then drops that field
+   * with a warning, which is the honest outcome: the field genuinely cannot be
+   * represented, and saying so beats emitting a bounded lie.
+   */
+  expanding?: ReadonlySet<string> | undefined
 }
 
-/** Render an IR type as a TypeScript type expression. */
-export function tsType(type: IrType, depth = 0, native = false): string {
+/**
+ * Render an IR type as a TypeScript type expression.
+ *
+ * `widenEnums` renders an enum as `string` rather than as its literal union.
+ * Two callers need it, for the same underlying reason — the declared type must
+ * match what the runtime schema actually produces: the native path narrows
+ * enums to a plain string, and `@pyreon/validate`'s `s.enum` infers `string`
+ * too. Declaring `'a' | 'b'` against either is a type the schema does not
+ * enforce.
+ */
+export function tsType(type: IrType, depth = 0, widenEnums = false): string {
+  const native = widenEnums
   switch (type.kind) {
     case 'string':
       // On the native path enums narrow to `s.string()`, so the TYPE must
@@ -82,56 +113,79 @@ function fieldTs(field: IrField, depth: number, native = false): string {
  * the two targets validate identically.
  */
 export function schemaExpr(type: IrType, opts: SchemaExprOptions, depth = 0): string {
+  const dialect = dialectOf(opts.validator ?? 'pyreon')
+  const b = dialect.binding
   switch (type.kind) {
     case 'string': {
-      if (type.enum && !opts.native) return `s.enum([${type.enum.map((v) => q(v)).join(', ')}])`
-      if (type.enum && opts.native) return 's.string()'
+      if (type.enum && !opts.native) return `${b}.enum([${type.enum.map((v) => q(v)).join(', ')}])`
+      if (type.enum && opts.native) return `${b}.string()`
       switch (type.format) {
+        // The `.email()` / `.url()` / `.uuid()` chain is DEPRECATED in zod 4 in
+        // favour of top-level `z.email()`, and emitted anyway: the chained form
+        // works in both zod 3 and zod 4 while the top-level form exists only in
+        // 4. Picking the newer spelling would silently narrow the zod versions
+        // this output compiles against, and the failure would land in the
+        // consumer's repo rather than here.
         case 'email':
-          return 's.string().email()'
+          return `${b}.string().email()`
         case 'uri':
-          return 's.string().url()'
+          return `${b}.string().url()`
         case 'uuid':
-          return 's.string().uuid()'
-        // `date` / `date-time` stay strings deliberately: `s.date()` does not
-        // lower, and a schema that parses to a Date on web and a String on
-        // native is a divergence no consumer can see coming.
+          return `${b}.string().uuid()`
+        // `date` / `date-time` stay strings deliberately: a date schema does
+        // not lower, and parsing to a Date on web and a String on native is a
+        // divergence no consumer can see coming.
         default:
-          return 's.string()'
+          return `${b}.string()`
       }
     }
     case 'number':
-      return type.integer ? 's.number().int()' : 's.number()'
+      return type.integer ? `${b}.number().int()` : `${b}.number()`
     case 'boolean':
-      return 's.boolean()'
+      return `${b}.boolean()`
     case 'null':
-      return opts.native ? 's.string()' : 's.null()'
+      return opts.native ? `${b}.string()` : `${b}.null()`
     case 'unknown':
-      return opts.native ? 's.string()' : 's.unknown()'
-    case 'ref':
+      return opts.native ? `${b}.string()` : `${b}.unknown()`
+    case 'ref': {
+      // On the native path, INLINE the target where the dialect says nested
+      // objects lower: PMTC drops a field that NAMES another schema, and an
+      // inlined ref is a nested object, which its zod recogniser does lower.
+      // A cycle has no finite nesting, so re-entry falls through to the name
+      // and the compiler drops that one field with a warning — honest, and
+      // strictly better than the whole model being dropped.
+      if (opts.native && dialect.inlineRefsOnNative && opts.expanding?.has(type.name) !== true) {
+        const target = opts.models?.get(type.name)
+        if (target) {
+          const expanding = new Set(opts.expanding ?? [])
+          expanding.add(type.name)
+          return schemaExpr(target, { ...opts, expanding }, depth)
+        }
+      }
       // A back edge closes a `$ref` cycle. `const` is not hoisted, so naming
-      // the target directly here is a TDZ ReferenceError at import; `s.lazy`
+      // the target directly here is a TDZ ReferenceError at import; `lazy`
       // defers the read to first use, which is exactly what a cycle needs.
-      return opts.defer?.has(type.name) === true ? `s.lazy(() => ${type.name})` : type.name
+      return opts.defer?.has(type.name) === true ? `${b}.lazy(() => ${type.name})` : type.name
+    }
     case 'array':
-      return `s.array(${schemaExpr(type.items, opts, depth + 1)})`
+      return `${b}.array(${schemaExpr(type.items, opts, depth + 1)})`
     case 'union': {
-      if (opts.native) return 's.string()'
+      if (opts.native) return `${b}.string()`
       const inner = type.options.map((o) => schemaExpr(o, opts, depth + 1)).join(', ')
       return type.discriminator
-        ? `s.discriminatedUnion(${q(type.discriminator)}, [${inner}])`
-        : `s.union([${inner}])`
+        ? `${b}.discriminatedUnion(${q(type.discriminator)}, [${inner}])`
+        : `${b}.union([${inner}])`
     }
     case 'object': {
       if (type.fields.length === 0) {
         return type.additional && !opts.native
-          ? `s.record(s.string(), ${schemaExpr(type.additional, opts, depth + 1)})`
-          : 's.object({})'
+          ? `${b}.record(${b}.string(), ${schemaExpr(type.additional, opts, depth + 1)})`
+          : `${b}.object({})`
       }
       const pad = '  '.repeat(depth + 1)
       const close = '  '.repeat(depth)
       const body = type.fields.map((f) => `${pad}${propKey(f.name)}: ${fieldSchema(f, opts, depth + 1)},`).join('\n')
-      return `s.object({\n${body}\n${close}})`
+      return `${b}.object({\n${body}\n${close}})`
     }
   }
 }
@@ -172,11 +226,15 @@ function portableRegex(pattern: string): boolean {
 }
 
 /** Emit `schemas.ts` — one schema + one type per model. */
-export function emitSchemas(doc: IrDocument, opts: { native: boolean }): SourceFile {
+export function emitSchemas(
+  doc: IrDocument,
+  opts: { native: boolean; validator?: ValidatorName | undefined },
+): SourceFile {
   const f = new SourceFile(SCHEMA_FILE)
   if (doc.models.length === 0) return f
-  f.import('@pyreon/validate', 's')
-  f.importType('@pyreon/validate', 'Infer')
+  const dialect = dialectOf(opts.validator ?? 'pyreon')
+  f.import(dialect.module, dialect.binding)
+  if (dialect.typeHelper) f.importType(dialect.typeHelper.module, dialect.typeHelper.name)
 
   // DEPENDENCY ORDER, not alphabetical. These are `const` declarations and
   // `const` is not hoisted, so a model emitted before one it references throws
@@ -184,6 +242,12 @@ export function emitSchemas(doc: IrDocument, opts: { native: boolean }): SourceF
   // Alphabetical order satisfies that only by coincidence.
   const { order, backEdges } = topoSortModels(doc)
   const byName = new Map(doc.models.map((m) => [m.name, m]))
+  // Imported only when a cycle actually needs the annotation — an unused
+  // import is a lint error in the consumer's repo, and a confusing one since
+  // nobody wrote the file.
+  if (backEdges.size > 0 && dialect.schemaTypeImport) {
+    f.importType(dialect.schemaTypeImport.module, dialect.schemaTypeImport.name)
+  }
 
   for (const name of order) {
     const model = byName.get(name)
@@ -195,12 +259,34 @@ export function emitSchemas(doc: IrDocument, opts: { native: boolean }): SourceF
     )
     f.line()
     f.doc(model.doc)
+    const expr = schemaExpr(model.type, { ...opts, defer })
+    if (defer.size > 0) {
+      // A CYCLE. `lazy(() => X)` inside `const X = …` makes inferring X's type
+      // from its own initializer circular, and TypeScript answers TS7022 —
+      // the generated module does not compile. So the structural type is
+      // named FIRST (type aliases are hoisted, so a forward reference to the
+      // cycle partner is fine) and the const is annotated with it, which is
+      // the pattern both libraries document for recursive schemas.
+      //
+      // Only the models that actually close a cycle take this shape; every
+      // other one keeps the inferred form, which reads better and stays tied
+      // to the schema rather than to a second rendering of the same IR.
+      f.line(`export type ${model.name} = ${tsType(model.type, 0, dialect.enumWidensToString)}`)
+      f.line(`export const ${model.name}: ${dialect.schemaTypeRef(model.name)} = ${expr}`)
+      continue
+    }
     // The schema is a top-level `const` bound to a plain `s.object({ … })`
     // literal, which is exactly the shape PMTC's recognizer requires. Wrapping
     // it in anything — a helper call, a `satisfies`, a spread — silently drops
     // it off the native path.
-    f.line(`export const ${model.name} = ${schemaExpr(model.type, { ...opts, defer })}`)
-    f.line(`export type ${model.name} = Infer<typeof ${model.name}>`)
+    f.line(`export const ${model.name} = ${expr}`)
+    // zod infers with `z.infer<typeof X>`, which needs no separate import;
+    // `@pyreon/validate` exposes the same thing as a named `Infer` helper.
+    f.line(
+      dialect.typeHelper
+        ? `export type ${model.name} = ${dialect.typeHelper.name}<typeof ${model.name}>`
+        : `export type ${model.name} = ${dialect.binding}.infer<typeof ${model.name}>`,
+    )
   }
   return f
 }

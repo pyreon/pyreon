@@ -17,6 +17,7 @@ import {
 } from "@pyreon/document-primitives"
 import { render } from "@pyreon/document"
 import { type Invoice, invoiceById, invoiceTotal } from "../../../lib/db"
+import { formatDate, formatMoney } from '../../../lib/format'
 
 export const meta = { title: "Invoice" }
 
@@ -53,7 +54,7 @@ function InvoiceTemplate(inv: Invoice) {
       <DocPage>
         <DocSection>
           <DocHeading level="h1">Invoice {inv.number}</DocHeading>
-          <DocText>Issued {inv.issuedAt.toLocaleDateString()}</DocText>
+          <DocText>Issued {formatDate(inv.issuedAt)}</DocText>
         </DocSection>
 
         <DocSpacer />
@@ -73,8 +74,8 @@ function InvoiceTemplate(inv: Invoice) {
             ...inv.items.map((it) => [
               it.description,
               String(it.qty),
-              `$${it.unitPrice.toLocaleString()}`,
-              `$${(it.qty * it.unitPrice).toLocaleString()}`,
+              `$${formatMoney(it.unitPrice)}`,
+              `$${formatMoney(it.qty * it.unitPrice)}`,
             ]),
           ]}
         />
@@ -82,7 +83,7 @@ function InvoiceTemplate(inv: Invoice) {
         <DocSpacer />
 
         <DocSection>
-          <DocHeading level="h3">Total: ${invoiceTotal(inv).toLocaleString()}</DocHeading>
+          <DocHeading level="h3">Total: ${formatMoney(invoiceTotal(inv))}</DocHeading>
         </DocSection>
       </DocPage>
     </DocDocument>
@@ -163,7 +164,7 @@ export default function InvoiceDetail() {
         <div class="invoice-detail">
           <div class="invoice-preview">
             <h2>Invoice {found.number}</h2>
-            <p>Issued {found.issuedAt.toLocaleDateString()}</p>
+            <p>Issued {formatDate(found.issuedAt)}</p>
             <p style="margin-top: 1.5rem;">
               <strong>Bill to</strong>
             </p>
@@ -184,13 +185,13 @@ export default function InvoiceDetail() {
                   <tr>
                     <td>{it.description}</td>
                     <td>{it.qty}</td>
-                    <td>${it.unitPrice.toLocaleString()}</td>
-                    <td>${(it.qty * it.unitPrice).toLocaleString()}</td>
+                    <td>${formatMoney(it.unitPrice)}</td>
+                    <td>${formatMoney(it.qty * it.unitPrice)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            <div class="total">Total: ${invoiceTotal(found).toLocaleString()}</div>
+            <div class="total">Total: ${formatMoney(invoiceTotal(found))}</div>
           </div>
 
           <aside class="invoice-actions">

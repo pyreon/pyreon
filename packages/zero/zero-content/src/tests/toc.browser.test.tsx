@@ -11,6 +11,7 @@
  *     IntersectionObserver is unavailable (proven via the no-activeSlug
  *     code path running without any in-DOM heading elements to track)
  */
+import { queryOptional } from '@pyreon/test-utils'
 import { signal } from '@pyreon/reactivity'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { describe, expect, it } from 'vitest'
@@ -54,7 +55,7 @@ describe('<Toc> browser', () => {
     )
 
     const linkBySlug = (slug: string) =>
-      container.querySelector(`a[href="#${slug}"]`) as HTMLAnchorElement | null
+      queryOptional<HTMLAnchorElement>(container, `a[href="#${slug}"]`)
 
     expect(linkBySlug('setup')?.getAttribute('aria-current')).toBe('location')
     expect(linkBySlug('setup')?.className).toContain('pyreon-toc__link--active')
@@ -77,7 +78,7 @@ describe('<Toc> browser', () => {
       <Toc headings={HEADINGS} activeSlug={() => active()} />,
     )
     const setup = () =>
-      container.querySelector('a[href="#setup"]') as HTMLAnchorElement | null
+      queryOptional<HTMLAnchorElement>(container, 'a[href="#setup"]')
     expect(setup()?.getAttribute('aria-current')).toBe('location')
 
     active.set(null)
@@ -102,7 +103,7 @@ describe('<Toc> browser', () => {
     const { container, unmount } = mountInBrowser(
       <Toc headings={HEADINGS} class="custom-toc" />,
     )
-    const root = container.querySelector('aside.pyreon-toc') as HTMLElement | null
+    const root = queryOptional<HTMLElement>(container, 'aside.pyreon-toc')
     expect(root).not.toBeNull()
     expect(root?.getAttribute('class') ?? '').toContain('custom-toc')
     unmount()

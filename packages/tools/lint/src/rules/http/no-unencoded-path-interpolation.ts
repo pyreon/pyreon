@@ -1,6 +1,5 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan } from '../../utils/ast'
-import { isPathExempt } from '../../utils/exempt-paths'
 import { isProjectDependency } from '../../utils/project-deps'
 
 /**
@@ -58,7 +57,6 @@ export const noUnencodedPathInterpolation: Rule = {
     schema: { exemptPaths: 'string[]' },
   },
   create(context) {
-    if (isPathExempt(context)) return {}
     if (!isProjectDependency(context.getFilePath(), '@pyreon/http')) return {}
 
     const callbacks: VisitorCallbacks = {

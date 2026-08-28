@@ -1,3 +1,4 @@
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
@@ -745,7 +746,7 @@ describe('search flag + openSearchPanel', () => {
   // both variants so the spec is platform-independent. In the search-enabled
   // control, one of them opens the panel; with search:false, neither may.
   function pressModF(container: Element): void {
-    const content = container.querySelector('.cm-content') as HTMLElement
+    const content = query<HTMLElement>(container, '.cm-content')
     content.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true }))
     content.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', metaKey: true, bubbles: true }))
   }
@@ -865,7 +866,7 @@ describe('third-party theme interop', () => {
     )
     await until(() => container.querySelector('.cm-editor') !== null)
 
-    const cm = container.querySelector('.cm-editor') as HTMLElement
+    const cm = query<HTMLElement>(container, '.cm-editor')
     // Dracula's background is #282a36 — proves the third-party theme's CSS
     // actually applied (not just "didn't crash").
     expect(getComputedStyle(cm).backgroundColor).toBe('rgb(40, 42, 54)')

@@ -16,6 +16,8 @@ import type {
 import { JS_EXTENSIONS } from './utils/index'
 import { LineIndex } from './utils/source'
 import { validateRuleOptions } from './utils/validate-options'
+import { matchesExemptPath } from './utils/exempt-paths'
+import { type FileRole, resolveFileRole, roleMatches } from './utils/file-roles'
 
 // Per-process cache so we only validate a given (rule, options) pair once
 // and only print-once even across a multi-file lint run.
@@ -148,6 +150,9 @@ export function lintFile(
   }
 
   const diagnostics: Diagnostic[] = []
+  // Resolved at most once per file, and only when a rule actually asks.
+  let cachedRole: FileRole | undefined
+  const fileRole = (): FileRole => (cachedRole ??= resolveFileRole(filePath, sourceText))
 
   // Filter to enabled rules and create visitor callbacks
   const allCallbacks: VisitorCallbacks[] = []
@@ -202,6 +207,28 @@ export function lintFile(
     }
     // Hard error in options → skip this rule entirely for the run.
     if (!validation.ok) continue
+
+    // `exemptPaths` is honoured CENTRALLY, for every rule.
+    //
+    // It used to be opt-in per rule: a rule had to call `isPathExempt`
+    // itself, and 55 of 101 did not. Configuring an exemption for one of
+    // those did nothing — no error, no warning, no effect. That is the
+    // silent-hole shape this repo's own catalog warns about, and it is
+    // indistinguishable from a working exemption until someone checks the
+    // rule's source. Applying it here makes the option mean the same thing
+    // for every rule by construction.
+    //
+    // Semantics are unchanged for rules that already call `isPathExempt`:
+    // every existing use is a whole-file skip, which is exactly what
+    // skipping `rule.create()` produces. Their in-rule call simply never
+    // runs now — kept because it documents the intent at the rule.
+    if (matchesExemptPath(options.exemptPaths, filePath)) continue
+
+    // Role gate, also central. A rule declares WHICH file roles it is about
+    // (`appliesTo`) and the runner decides — the same correction `exemptPaths`
+    // needed. Implemented per rule it would be forgotten per rule, and a
+    // forgotten role gate is silent: the rule simply runs where it should not.
+    if (rule.meta.appliesTo && !roleMatches(rule.meta.appliesTo, fileRole())) continue
 
     const ctx = createRuleContext(
       rule,

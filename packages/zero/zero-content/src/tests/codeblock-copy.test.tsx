@@ -5,7 +5,7 @@
  * a clipboard stub). happy-dom provides no `navigator.clipboard`, so the
  * spec installs a controllable stub and drives the resolve/reject paths.
  */
-import { mountReactive } from '@pyreon/test-utils'
+import { mountReactive, query } from '@pyreon/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CodeBlock } from '../components/CodeBlock'
 
@@ -44,7 +44,7 @@ describe('<CodeBlock> copy button', () => {
         dangerouslySetInnerHTML={{ __html: '<pre>const x = 1</pre>' }}
       />
     ))
-    const btn = container.querySelector('button.code-block__copy') as HTMLButtonElement
+    const btn = query<HTMLButtonElement>(container, 'button.code-block__copy')
     expect(btn).not.toBeNull()
     expect(btn.textContent).toContain('Copy')
 
@@ -69,7 +69,7 @@ describe('<CodeBlock> copy button', () => {
         dangerouslySetInnerHTML={{ __html: '<pre>abc</pre>' }}
       />
     ))
-    const btn = container.querySelector('button.code-block__copy') as HTMLButtonElement
+    const btn = query<HTMLButtonElement>(container, 'button.code-block__copy')
     btn.click()
     await flush()
     expect(btn.getAttribute('data-copied')).toBe('true')
@@ -94,7 +94,7 @@ describe('<CodeBlock> copy button', () => {
         dangerouslySetInnerHTML={{ __html: '<pre>abc</pre>' }}
       />
     ))
-    const btn = container.querySelector('button.code-block__copy') as HTMLButtonElement
+    const btn = query<HTMLButtonElement>(container, 'button.code-block__copy')
     btn.click()
     await flush()
     expect(btn.getAttribute('data-copied')).toBeNull()
@@ -110,7 +110,7 @@ describe('<CodeBlock> copy button', () => {
         dangerouslySetInnerHTML={{ __html: '<pre>abc</pre>' }}
       />
     ))
-    const btn = container.querySelector('button.code-block__copy') as HTMLButtonElement
+    const btn = query<HTMLButtonElement>(container, 'button.code-block__copy')
     btn.click()
     await flush()
     expect(btn.getAttribute('data-copied')).toBeNull()

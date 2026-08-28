@@ -1,3 +1,4 @@
+import { query } from '@pyreon/test-utils'
 import { elementRef, h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { describe, expect, it } from 'vitest'
@@ -17,7 +18,7 @@ describe('elementRef through a REAL mount and a REAL hook', () => {
     }
 
     const dispose = mount(h(Panel, null), host)
-    const panel = host.querySelector('[data-testid="panel"]') as HTMLDivElement
+    const panel = query<HTMLDivElement>(host, '[data-testid="panel"]')
     expect(panel, 'the ref wired the element').toBeTruthy()
 
     // A mousedown INSIDE must not fire; the hook is reading through the same ref.

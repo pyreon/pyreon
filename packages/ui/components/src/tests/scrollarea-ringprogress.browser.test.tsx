@@ -3,6 +3,7 @@
  * Real-Chromium locks for ScrollArea + RingProgress (2026-07-21 audit,
  * roadmap B15 + B16).
  */
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
@@ -32,7 +33,7 @@ describe('ScrollArea (real Chromium)', () => {
       ),
     )
     await flush()
-    const sa = container.querySelector('[data-testid="sa"]') as HTMLElement
+    const sa = query<HTMLElement>(container, '[data-testid="sa"]')
     expect(sa.scrollHeight, 'content overflows').toBeGreaterThan(sa.clientHeight)
     expect(getComputedStyle(sa).overflowY).toMatch(/auto|scroll/)
     expect(sa.tabIndex, 'keyboard-focusable scrollable region').toBe(0)

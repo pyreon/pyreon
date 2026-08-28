@@ -179,4 +179,34 @@ describe('useWakeLock', () => {
     // resurrect a lock the caller deliberately gave up.
     expect(request).toHaveBeenCalledTimes(1)
   })
+
+  it('a SECOND caller that joins an in-flight request gets the same answer', async () => {
+    // Both callers of one `acquire()` must see the same contract. The
+    // rejection handling used to sit in a `catch` around the await, so only
+    // the caller that STARTED the attempt was inside it — a caller that
+    // joined at the in-flight guard received the raw rejection instead of
+    // `false`, and would have thrown out of a call the type says resolves.
+    installWakeLock({ reject: true })
+    const w = mountHook()
+
+    const first = w.request()
+    const joiner = w.request()
+
+    await expect(joiner).resolves.toBe(false)
+    await expect(first).resolves.toBe(false)
+  })
+
+  it('concurrent requests acquire ONE lock, not one each', async () => {
+    // The window is the permission round-trip, so it is widest for the user
+    // who hesitates: without the shared promise both calls pass the
+    // `sentinel !== null` check and the first sentinel is orphaned — held by
+    // the browser with nothing left holding a reference to release it.
+    const { request } = installWakeLock()
+    const w = mountHook()
+
+    const results = await Promise.all([w.request(), w.request(), w.request()])
+
+    expect(results).toEqual([true, true, true])
+    expect(request).toHaveBeenCalledTimes(1)
+  })
 })

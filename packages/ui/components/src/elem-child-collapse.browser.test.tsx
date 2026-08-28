@@ -1,3 +1,4 @@
+import { query } from '@pyreon/test-utils'
 import { h, type VNodeChild } from '@pyreon/core'
 import { _rsCollapse, mount } from '@pyreon/runtime-dom'
 import { PyreonUI } from '@pyreon/ui-core'
@@ -82,7 +83,7 @@ describe('@pyreon/ui-components — element-child collapse vs real Button (CI-ga
   it('byte-for-byte DOM parity: collapsed element-child === real Button-with-element-child', async () => {
     const { root: realRoot, dispose: realDispose } = mountRealElemButton('Save')
     await flush()
-    const realBtn = realRoot.querySelector('button') as HTMLElement
+    const realBtn = query<HTMLElement>(realRoot, 'button')
     const realColor = getComputedStyle(realBtn).color
 
     const colRoot = document.createElement('div')
@@ -94,7 +95,7 @@ describe('@pyreon/ui-components — element-child collapse vs real Button (CI-ga
       colRoot,
     )
     await flush()
-    const colBtn = colRoot.querySelector('button') as HTMLElement
+    const colBtn = query<HTMLElement>(colRoot, 'button')
     expect(colBtn).not.toBeNull()
 
     // The baked child element is present AS AN ELEMENT (not flattened text).
@@ -197,7 +198,7 @@ describe('@pyreon/ui-components — element-child collapse vs real Button (CI-ga
       provRoot,
     )
     await flush()
-    const host = provRoot.querySelector('#host') as HTMLElement
+    const host = query<HTMLElement>(provRoot, '#host')
     const baseRuns: number[] = []
     for (let r = 0; r < RUNS; r++) {
       const t0 = performance.now()

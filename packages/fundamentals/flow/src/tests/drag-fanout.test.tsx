@@ -22,7 +22,7 @@
  */
 import { h } from '@pyreon/core'
 import { batch } from '@pyreon/reactivity'
-import { accessInternal, mountReactive } from '@pyreon/test-utils'
+import { accessInternal, mountReactive, query } from '@pyreon/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Flow } from '../components/flow-component'
 import type { EdgeComponentProps } from '../components/flow-component'
@@ -136,7 +136,7 @@ describe('single-node drag fan-out (per-id computeds)', () => {
     const beforeX = container.querySelector('[data-counted-edge="e-move"]')!.getAttribute('x')
     for (let i = 0; i < FRAMES; i++) dragFrame(flow, 'n0')
 
-    const wrapper = container.querySelector('[data-nodeid="n0"]') as HTMLElement
+    const wrapper = query<HTMLElement>(container, '[data-nodeid="n0"]')
     expect(wrapper.getAttribute('style')).toContain(`translate(${FRAMES}px, 0px)`)
     const afterX = container.querySelector('[data-counted-edge="e-move"]')!.getAttribute('x')
     expect(afterX).not.toBe(beforeX)
@@ -169,7 +169,7 @@ describe('single-node drag fan-out (per-id computeds)', () => {
     // Re-adding the SAME id must get a FRESH per-id computed (a swept-but-
     // stale one would serve the old cached value / never notify).
     flow.addNode({ id: 'n1', type: 'counted', position: { x: 999, y: 0 }, data: { label: 'BACK' } })
-    const wrapper = container.querySelector('[data-nodeid="n1"]') as HTMLElement
+    const wrapper = query<HTMLElement>(container, '[data-nodeid="n1"]')
     expect(wrapper).not.toBeNull()
     expect(wrapper.getAttribute('style')).toContain('translate(999px, 0px)')
     expect(container.querySelector('[data-counted="n1"]')!.textContent).toBe('BACK')
@@ -218,7 +218,7 @@ describe('single-node drag fan-out (per-id computeds)', () => {
     const base = second.nodeRuns.n0!
     for (let i = 0; i < 5; i++) dragFrame(flow, 'n0')
 
-    const wrapper = second.container.querySelector('[data-nodeid="n0"]') as HTMLElement
+    const wrapper = query<HTMLElement>(second.container, '[data-nodeid="n0"]')
     expect(wrapper.getAttribute('style')).toContain('translate(5px, 0px)')
     expect(second.nodeRuns.n0! - base).toBe(5)
   })

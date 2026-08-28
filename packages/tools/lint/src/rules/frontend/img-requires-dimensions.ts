@@ -1,6 +1,5 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan, hasJSXAttribute } from '../../utils/ast'
-import { isPathExempt } from '../../utils/exempt-paths'
 
 /**
  * Opt-in frontend best-practice rule.
@@ -21,7 +20,6 @@ export const imgRequiresDimensions: Rule = {
     schema: { exemptPaths: 'string[]' },
   },
   create(context) {
-    if (isPathExempt(context)) return {}
 
     const callbacks: VisitorCallbacks = {
       JSXOpeningElement(node: any) {

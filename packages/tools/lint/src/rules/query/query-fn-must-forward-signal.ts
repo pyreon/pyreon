@@ -1,6 +1,5 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan, walkSubtree } from '../../utils/ast'
-import { isPathExempt } from '../../utils/exempt-paths'
 import { isProjectDependency } from '../../utils/project-deps'
 
 /**
@@ -152,7 +151,6 @@ export const queryFnMustForwardSignal: Rule = {
     schema: { exemptPaths: 'string[]' },
   },
   create(context) {
-    if (isPathExempt(context)) return {}
     if (!isProjectDependency(context.getFilePath(), '@pyreon/query')) return {}
 
     const inspect = (optionsObject: any): void => {

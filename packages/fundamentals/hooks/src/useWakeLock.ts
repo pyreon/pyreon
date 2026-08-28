@@ -55,6 +55,8 @@ export function useWakeLock(): WakeLockControls {
   // releasing, or the visibility handler could not tell them apart.
   let wanted = false
   let sentinel: Sentinel | null = null
+  /** The in-flight acquisition, so concurrent callers share one lock. */
+  let acquiring: Promise<boolean> | null = null
 
   const supported = () => {
     const ok = isClient && typeof navigator !== 'undefined' && 'wakeLock' in navigator
@@ -71,7 +73,12 @@ export function useWakeLock(): WakeLockControls {
       return false
     }
     if (sentinel !== null) return active()
-    try {
+    // `sentinel` is only assigned AFTER the await, so two calls that arrive
+    // before the first resolves both pass the check above and both acquire a
+    // lock — the second overwrites `sentinel` and the first is orphaned, held
+    // by the browser with nothing left that can release it.
+    if (acquiring !== null) return acquiring
+    const inFlight = (async (): Promise<boolean> => {
       const nav = navigator as Navigator & {
         wakeLock: { request: (t: string) => Promise<Sentinel> }
       }
@@ -89,11 +96,23 @@ export function useWakeLock(): WakeLockControls {
       })
       active.set(true)
       return true
-    } catch {
+    })().catch(() => {
       // A rejected request is an ordinary outcome, not an error worth
       // throwing: low battery and background tabs both refuse.
+      //
+      // This handler sits ON the shared promise rather than in a `catch`
+      // around the await, so a caller that joined an in-flight attempt at
+      // the guard above gets the same `false` the first caller does. With
+      // the catch on the await, only the first caller was inside it and a
+      // joiner saw the raw rejection — one call, two contracts.
       active.set(false)
       return false
+    })
+    acquiring = inFlight
+    try {
+      return await inFlight
+    } finally {
+      if (acquiring === inFlight) acquiring = null
     }
   }
 

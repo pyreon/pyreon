@@ -16,6 +16,7 @@
  * REAL pdnd paths are exercised by the `*.browser.test.tsx` suites in
  * real Chromium.
  */
+import { query } from '@pyreon/test-utils'
 import { effect, signal } from '@pyreon/reactivity'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -390,7 +391,7 @@ describe('useSortable — aria-describedby keyboard instructions', () => {
     document.body.appendChild(ul)
     s.containerRef(ul)
 
-    const instructions = ul.querySelector('[data-pyreon-sortable-instructions]') as HTMLElement
+    const instructions = query<HTMLElement>(ul, '[data-pyreon-sortable-instructions]')
     expect(instructions).not.toBeNull()
     expect(instructions.textContent).toBe('Press Alt plus arrow keys to reorder')
     expect(instructions.id).toMatch(/^sortable-\d+-instructions$/)

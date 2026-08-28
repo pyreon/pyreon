@@ -21,7 +21,7 @@ export const lightTheme: Extension = EditorView.theme({
   },
   '.cm-gutters': {
     backgroundColor: '#f8fafc',
-    color: '#94a3b8',
+    color: '#64748b',
     borderRight: '1px solid #e2e8f0',
   },
   '.cm-activeLineGutter': {
@@ -32,7 +32,7 @@ export const lightTheme: Extension = EditorView.theme({
     backgroundColor: '#f8fafc',
   },
   '.cm-foldGutter': {
-    color: '#94a3b8',
+    color: '#64748b',
   },
 })
 
@@ -56,7 +56,7 @@ export const darkTheme: Extension = EditorView.theme(
     },
     '.cm-gutters': {
       backgroundColor: '#181825',
-      color: '#585b70',
+      color: '#7f849c',
       borderRight: '1px solid #313244',
     },
     '.cm-activeLineGutter': {
@@ -67,7 +67,7 @@ export const darkTheme: Extension = EditorView.theme(
       backgroundColor: '#1e1e2e80',
     },
     '.cm-foldGutter': {
-      color: '#585b70',
+      color: '#7f849c',
     },
     '.cm-matchingBracket': {
       backgroundColor: '#45475a',

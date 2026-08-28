@@ -1,3 +1,4 @@
+import { query } from '@pyreon/test-utils'
 import { For, h } from '@pyreon/core'
 import { mountInBrowser } from '@pyreon/test-utils/browser'
 import { describe, expect, it } from 'vitest'
@@ -120,7 +121,7 @@ describe('CalendarBase — grid a11y survives a keyed list', () => {
         },
       }),
     )
-    const grid = () => container.querySelector('[role="grid"]') as HTMLElement
+    const grid = () => query<HTMLElement>(container, '[role="grid"]')
     expect(grid().getAttribute('aria-label')).toBe('August 2026')
     st!.nextMonth()
     await new Promise((r) => requestAnimationFrame(() => r(null)))

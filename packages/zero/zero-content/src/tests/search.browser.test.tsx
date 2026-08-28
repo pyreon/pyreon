@@ -15,6 +15,7 @@
  * `loadSearchIndex` data-flow here and lean on the existing unit
  * tests for the state machine.
  */
+import { queryOptional } from '@pyreon/test-utils'
 import { mountInBrowser } from '@pyreon/test-utils/browser'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -144,9 +145,9 @@ describe('<Search> browser — empty state', () => {
       }),
     )
     const input = await vi.waitFor(() => {
-      const el = container.querySelector(
+      const el = queryOptional<HTMLInputElement>(container, 
         '.pyreon-search__input',
-      ) as HTMLInputElement | null
+      )
       if (!el) throw new Error('search input not shown')
       return el
     })

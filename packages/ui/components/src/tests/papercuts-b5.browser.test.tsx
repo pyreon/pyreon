@@ -9,6 +9,7 @@
  * - Box/Center (empty `.theme()` removed) still render + carry their Element
  *   layout attrs.
  */
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { PyreonUI } from '@pyreon/ui-core'
@@ -49,7 +50,7 @@ describe('B5 paper-cuts (real Chromium)', () => {
       ),
     )
     await flush()
-    const el = container.querySelector('[data-testid="nl-d"]') as HTMLElement
+    const el = query<HTMLElement>(container, '[data-testid="nl-d"]')
     expect(el.getAttribute('aria-disabled')).toBe('true')
     expect(el.tabIndex, 'disabled anchor must not be keyboard-focusable').toBe(-1)
     unmount()
@@ -68,8 +69,8 @@ describe('B5 paper-cuts (real Chromium)', () => {
       ),
     )
     await flush()
-    const mi = container.querySelector('[data-testid="mi-s"]') as HTMLElement
-    const nl = container.querySelector('[data-testid="nl-t"]') as HTMLElement
+    const mi = query<HTMLElement>(container, '[data-testid="mi-s"]')
+    const nl = query<HTMLElement>(container, '[data-testid="nl-t"]')
     expect(
       mi.getBoundingClientRect().height,
       'small MenuItem must reach the touch floor',
@@ -91,8 +92,8 @@ describe('B5 paper-cuts (real Chromium)', () => {
       ),
     )
     await flush()
-    const bx = container.querySelector('[data-testid="bx"]') as HTMLElement
-    const ct = container.querySelector('[data-testid="ct"]') as HTMLElement
+    const bx = query<HTMLElement>(container, '[data-testid="bx"]')
+    const ct = query<HTMLElement>(container, '[data-testid="ct"]')
     expect(bx.textContent).toBe('in a box')
     // Center's layout comes from Element attrs (alignX/alignY/block), not the
     // removed empty theme — flex centering must still be live.

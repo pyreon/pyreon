@@ -20,6 +20,7 @@
  * the typeahead specs fail. Bisect (`*`): remove the `*` branch → the sibling-
  * expand specs fail (expanded set unchanged).
  */
+import { query, queryOptional } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { describe, expect, it } from 'vitest'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
@@ -74,7 +75,7 @@ function mountTree(defaultExpanded: string[] = []): {
       },
     }),
   )
-  const tree = container.querySelector('#tree') as HTMLElement
+  const tree = query<HTMLElement>(container, '#tree')
   return { container, unmount, state: captured!, tree }
 }
 
@@ -131,7 +132,7 @@ describe('TreeBase — ArrowLeft move-to-parent (WAI-ARIA tree)', () => {
     state.focus('gala')
     press(tree, 'ArrowLeft')
     await flush()
-    const parentEl = container.querySelector('[data-tree-id="apple"]') as HTMLElement | null
+    const parentEl = queryOptional<HTMLElement>(container, '[data-tree-id="apple"]')
     // The roving contract is both halves; if the primitive exposes the id on
     // the item props, assert the element too — otherwise the state assertion
     // above already pins the half this fix owns.

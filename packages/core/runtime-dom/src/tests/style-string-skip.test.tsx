@@ -15,6 +15,7 @@
  * Bisect-verified: reverting the guard (unconditional `el.style.cssText =
  * value`) fails the "exactly one write" specs with 2 writes counted.
  */
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { applyStyleProp } from '../props'
@@ -156,7 +157,7 @@ describe('applyStyleProp — string skip-if-equal (reactive h() mount)', () => {
       }),
       container,
     )
-    const el = container.querySelector('div') as HTMLDivElement
+    const el = query<HTMLDivElement>(container, 'div')
     const spy = spyCssTextWrites(el)
     // spy attached AFTER mount — the initial write already happened; every
     // re-emit below is byte-identical, so ZERO further writes are expected.
@@ -171,7 +172,7 @@ describe('applyStyleProp — string skip-if-equal (reactive h() mount)', () => {
   it('a reactive style thunk emitting a DIFFERENT string still writes', () => {
     const color = signal('red')
     mount(h('div', { style: () => `color: ${color()}` }), container)
-    const el = container.querySelector('div') as HTMLDivElement
+    const el = query<HTMLDivElement>(container, 'div')
     const spy = spyCssTextWrites(el)
     color.set('blue')
     expect(spy.count()).toBe(1)

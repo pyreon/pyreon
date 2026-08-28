@@ -14,6 +14,7 @@
  * Bisect: revert the showContent capture / hideContent restore → this fails
  * (activeElement stays the in-content button instead of returning to trigger).
  */
+import { query } from '@pyreon/test-utils'
 import { describe, expect, it } from 'vitest'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { useOverlay } from '../Overlay'
@@ -40,8 +41,8 @@ describe('Overlay (useOverlay) — focus restore on close', () => {
     const { container, unmount } = mountInBrowser(<Harness />)
     await flush()
 
-    const trigger = container.querySelector('[data-testid=trigger]') as HTMLButtonElement
-    const inside = container.querySelector('[data-testid=inside]') as HTMLButtonElement
+    const trigger = query<HTMLButtonElement>(container, '[data-testid=trigger]')
+    const inside = query<HTMLButtonElement>(container, '[data-testid=inside]')
 
     trigger.focus()
     expect(document.activeElement).toBe(trigger)
@@ -79,8 +80,8 @@ describe('Overlay (useOverlay) — focus restore on close', () => {
     const { container, unmount } = mountInBrowser(<Harness />)
     await flush()
 
-    const trigger = container.querySelector('[data-testid=trigger]') as HTMLButtonElement
-    const elsewhere = container.querySelector('[data-testid=elsewhere]') as HTMLButtonElement
+    const trigger = query<HTMLButtonElement>(container, '[data-testid=trigger]')
+    const elsewhere = query<HTMLButtonElement>(container, '[data-testid=elsewhere]')
 
     trigger.focus()
     api.show()

@@ -5,6 +5,7 @@
 // CSS values. Catches regressions in token resolution + DOM shape
 // that happy-dom can't reliably detect.
 
+import { query } from '@pyreon/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
@@ -520,7 +521,7 @@ describe('<Icon> — web', () => {
         h(Icon, { name: 'check', size: 'lg', 'aria-label': 'done' }),
       ),
     )
-    const svg = container.querySelector('svg') as SVGElement
+    const svg = query<SVGElement>(container, 'svg')
     const use = svg.firstElementChild as SVGUseElement
     expect(use.tagName.toLowerCase()).toBe('use')
     expect(use.getAttribute('href')).toBe('#check')
@@ -609,8 +610,8 @@ describe('<Spacer> — web', () => {
       ),
     )
     const row = container.firstElementChild as HTMLDivElement
-    const left = row.querySelector('[data-testid="left"]') as HTMLElement
-    const right = row.querySelector('[data-testid="right"]') as HTMLElement
+    const left = query<HTMLElement>(row, '[data-testid="left"]')
+    const right = query<HTMLElement>(row, '[data-testid="right"]')
     const rowRect = row.getBoundingClientRect()
     const leftRect = left.getBoundingClientRect()
     const rightRect = right.getBoundingClientRect()
@@ -633,7 +634,7 @@ describe('<Modal> — web', () => {
         h('button', { 'data-testid': 'inside' }, 'OK'),
       ),
     )
-    const dlg = container.querySelector('dialog') as HTMLDialogElement
+    const dlg = query<HTMLDialogElement>(container, 'dialog')
     expect(dlg.open).toBe(false)
 
     // Open: showModal() puts it in the top layer + the ::backdrop appears.
@@ -666,7 +667,7 @@ describe('<Modal> — web', () => {
         h('p', null, 'body'),
       ),
     )
-    const dlg = container.querySelector('dialog') as HTMLDialogElement
+    const dlg = query<HTMLDialogElement>(container, 'dialog')
     await flush()
     expect(dlg.open).toBe(true)
 
@@ -688,7 +689,7 @@ describe('<Modal> — web', () => {
         h('button', { 'data-testid': 'first' }, 'First'),
       ),
     )
-    const dlg = container.querySelector('dialog') as HTMLDialogElement
+    const dlg = query<HTMLDialogElement>(container, 'dialog')
     open.set(true)
     await flush()
     // showModal() moves focus to the first focusable descendant (or the
@@ -709,7 +710,7 @@ describe('<Link> — web', () => {
     const { container, unmount } = mountInBrowser(
       h(Link, { to: '/about', 'data-testid': 'go' }, 'About'),
     )
-    const a = container.querySelector('a') as HTMLAnchorElement
+    const a = query<HTMLAnchorElement>(container, 'a')
     expect(a.tagName).toBe('A')
     expect(a.getAttribute('href')).toBe('/about')
 
@@ -731,7 +732,7 @@ describe('<Link> — web', () => {
     // the browser we assert the rendered href is a real navigable URL
     // (right-click / open-in-new-tab / SEO / no-JS all work).
     const { container, unmount } = mountInBrowser(h(Link, { to: '/about' }, 'About'))
-    const a = container.querySelector('a') as HTMLAnchorElement
+    const a = query<HTMLAnchorElement>(container, 'a')
     expect(a.getAttribute('href')).toBe('/about')
     expect(a.getAttribute('target')).toBe(null)
     unmount()
@@ -745,7 +746,7 @@ describe('<Link> — web', () => {
     const { container, unmount } = mountInBrowser(
       h(Link, { to: 'https://example.com', external: true }, 'Site'),
     )
-    const a = container.querySelector('a') as HTMLAnchorElement
+    const a = query<HTMLAnchorElement>(container, 'a')
     expect(a.href).toContain('https://example.com')
     expect(a.target).toBe('_blank')
     expect(a.rel).toBe('noopener noreferrer')

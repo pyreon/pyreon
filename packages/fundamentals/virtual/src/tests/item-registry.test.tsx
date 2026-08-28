@@ -1,4 +1,5 @@
 /** @jsxImportSource @pyreon/core */
+import { queryOptional } from '@pyreon/test-utils'
 import { For } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import type { VirtualItem } from '@tanstack/virtual-core'
@@ -84,7 +85,7 @@ function mountItemList(
 }
 
 const styleOf = (container: HTMLElement, index: number): string =>
-  (container.querySelector(`[data-i="${index}"]`) as HTMLElement | null)?.getAttribute('style') ?? ''
+  (queryOptional<HTMLElement>(container, `[data-i="${index}"]`))?.getAttribute('style') ?? ''
 
 // ─── item() — the fine-grained per-index measurement contract ────────────────
 

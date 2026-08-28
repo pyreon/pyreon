@@ -3,6 +3,7 @@
  * Real-Chromium locks for RangeSliderBase (2026-07-21 audit, roadmap B11) —
  * WAI-ARIA multi-thumb slider.
  */
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { describe, expect, it } from 'vitest'
@@ -94,7 +95,7 @@ describe('RangeSliderBase — WAI-ARIA multi-thumb slider (real Chromium)', () =
       'rs-4',
     )
     await flush()
-    const track = container.querySelector('[data-range-track]') as HTMLElement
+    const track = query<HTMLElement>(container, '[data-range-track]')
     const rect = track.getBoundingClientRect()
     // Click at ~90% — nearest is the END thumb.
     track.dispatchEvent(

@@ -1,6 +1,5 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan, isCallTo } from '../../utils/ast'
-import { isPathExempt } from '../../utils/exempt-paths'
 
 /**
  * Flags the provably-dead narrow shape of the "conditional reads hide
@@ -141,7 +140,6 @@ export const noGuardOnlySignalReadsInEffect: Rule = {
     schema: { exemptPaths: 'string[]' },
   },
   create(context) {
-    if (isPathExempt(context)) return {}
 
     const bindings = new Set<string>()
     /** Names shadowed by loop variables during the current walk. */

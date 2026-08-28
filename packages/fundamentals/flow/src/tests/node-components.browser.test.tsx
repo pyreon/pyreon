@@ -11,6 +11,7 @@
  *   4. Drag-to-connect creates an edge — pointerup hit-tests the cursor
  *      position (e.target is the capturing container under pointer capture).
  */
+import { query, queryOptional } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { signal } from '@pyreon/reactivity'
@@ -142,7 +143,7 @@ describe('flow node components (round-2 bug fixes)', () => {
       h(NodeResizer, { nodeId: 'a', instance: flow, handleSize: 16 }),
     )
     await flush()
-    const nw = container.querySelector('.pyreon-flow-resizer-nw') as HTMLElement | null
+    const nw = queryOptional<HTMLElement>(container, '.pyreon-flow-resizer-nw')
     expect(nw).toBeTruthy()
     // Half of handleSize=16 → -8px so the 16px handle is centered on the corner.
     expect(nw!.style.top).toBe('-8px')
@@ -157,7 +158,7 @@ describe('flow node components (round-2 bug fixes)', () => {
     })
     const { container, unmount } = mountInBrowser(h(NodeResizer, { nodeId: 'a', instance: flow }))
     await flush()
-    const se = container.querySelector('.pyreon-flow-resizer-se') as HTMLElement | null
+    const se = queryOptional<HTMLElement>(container, '.pyreon-flow-resizer-se')
     expect(se!.style.bottom).toBe('-4px')
     expect(se!.style.right).toBe('-4px')
     unmount()
@@ -198,16 +199,16 @@ describe('flow node components (round-2 bug fixes)', () => {
     flow.containerSize.set({ width: 800, height: 600 })
     await flush()
 
-    const sourceHandle = container.querySelector(
+    const sourceHandle = query<HTMLElement>(container, 
       '[data-nodeid="a"] .pyreon-flow-handle-source',
-    ) as HTMLElement
-    const targetHandle = container.querySelector(
+    )
+    const targetHandle = query<HTMLElement>(container, 
       '[data-nodeid="b"] .pyreon-flow-handle-target',
-    ) as HTMLElement
+    )
     expect(sourceHandle).toBeTruthy()
     expect(targetHandle).toBeTruthy()
 
-    const root = container.querySelector('.pyreon-flow') as HTMLElement
+    const root = query<HTMLElement>(container, '.pyreon-flow')
     const tRect = targetHandle.getBoundingClientRect()
     const tx = tRect.left + tRect.width / 2
     const ty = tRect.top + tRect.height / 2
@@ -271,8 +272,8 @@ describe('flow node components (round-2 bug fixes)', () => {
     flow.selectNode('k1')
     await flush()
 
-    const input = container.querySelector('[data-testid="node-input"]') as HTMLInputElement
-    const root = container.querySelector('.pyreon-flow') as HTMLElement
+    const input = query<HTMLInputElement>(container, '[data-testid="node-input"]')
+    const root = query<HTMLElement>(container, '.pyreon-flow')
     expect(input).toBeTruthy()
 
     const key = (target: Element, k: string) =>

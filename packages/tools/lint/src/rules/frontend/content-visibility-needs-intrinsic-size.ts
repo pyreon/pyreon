@@ -1,6 +1,5 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan } from '../../utils/ast'
-import { isPathExempt } from '../../utils/exempt-paths'
 
 /**
  * Opt-in frontend best-practice rule.
@@ -93,7 +92,6 @@ export const contentVisibilityNeedsIntrinsicSize: Rule = {
     schema: { exemptPaths: 'string[]' },
   },
   create(context) {
-    if (isPathExempt(context)) return {}
 
     const callbacks: VisitorCallbacks = {
       // Shape 1 — object literals (JSX style object + styler/rocketstyle theme objects).

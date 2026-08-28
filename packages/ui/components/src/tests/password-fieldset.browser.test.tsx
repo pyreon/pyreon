@@ -3,6 +3,7 @@
  * Real-Chromium locks for PasswordInput + Fieldset (2026-07-21 audit, roadmap
  * B13 + B17 — two missing market staples).
  */
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { PyreonUI } from '@pyreon/ui-core'
@@ -17,8 +18,8 @@ describe('PasswordInput (real Chromium)', () => {
       h(PyreonUI, { theme }, h(PasswordInput as never, { placeholder: 'Secret' })),
     )
     await flush()
-    const input = container.querySelector('[data-password-input]') as HTMLInputElement
-    const toggle = container.querySelector('[data-password-toggle]') as HTMLButtonElement
+    const input = query<HTMLInputElement>(container, '[data-password-input]')
+    const toggle = query<HTMLButtonElement>(container, '[data-password-toggle]')
     expect(input.type).toBe('password')
     expect(toggle.getAttribute('aria-pressed')).toBe('false')
     expect(toggle.getAttribute('aria-label')).toBe('Show password')
@@ -46,7 +47,7 @@ describe('PasswordInput (real Chromium)', () => {
       ),
     )
     await flush()
-    const toggle = container.querySelector('[data-password-toggle]') as HTMLElement
+    const toggle = query<HTMLElement>(container, '[data-password-toggle]')
     expect(toggle.getAttribute('aria-label')).toBe('Zobrazit heslo')
     toggle.click()
     await flush()
@@ -70,7 +71,7 @@ describe('Fieldset (real Chromium)', () => {
       ),
     )
     await flush()
-    const fs = container.querySelector('[data-testid="fs"]') as HTMLElement
+    const fs = query<HTMLElement>(container, '[data-testid="fs"]')
     expect(fs.tagName).toBe('FIELDSET')
     const legend = fs.querySelector('legend')
     expect(legend, 'legend must be a real <legend> inside the fieldset').not.toBeNull()

@@ -14,6 +14,7 @@
  * stored by a static Element sharing an interned bundle identity would leak
  * broken var()-only styles into the reactive path).
  */
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
@@ -61,7 +62,7 @@ describe('DynamicStyled — reactive $element accessor', () => {
       }),
     )
     await flush()
-    const el = root.querySelector('[data-testid="rx-el"]') as HTMLElement
+    const el = query<HTMLElement>(root, '[data-testid="rx-el"]')
     expect(el).not.toBeNull()
     const before = el.className
     expect(before).toMatch(/pyr-/)
@@ -81,7 +82,7 @@ describe('DynamicStyled — reactive $element accessor', () => {
       }),
     )
     await flush()
-    const el = root.querySelector('[data-testid="static-el"]') as HTMLElement
+    const el = query<HTMLElement>(root, '[data-testid="static-el"]')
     expect(el.className).toMatch(/pyr-/)
   })
 
@@ -102,7 +103,7 @@ describe('DynamicStyled — reactive $element accessor', () => {
       }),
     )
     await flush()
-    const el = root.querySelector('[data-testid="cpse-el"]') as HTMLElement
+    const el = query<HTMLElement>(root, '[data-testid="cpse-el"]')
     // Classic resolution: no CPSE style vars on the element.
     expect(el.getAttribute('style') ?? '').not.toContain('--u-test')
     const before = el.className
@@ -122,7 +123,7 @@ describe('DynamicStyled — reactive $text accessor', () => {
       }),
     )
     await flush()
-    const el = root.querySelector('[data-testid="rx-text"]') as HTMLElement
+    const el = query<HTMLElement>(root, '[data-testid="rx-text"]')
     const before = el.className
     expect(before).toMatch(/pyr-/)
 

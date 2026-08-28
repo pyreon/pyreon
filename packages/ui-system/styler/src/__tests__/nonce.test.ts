@@ -5,6 +5,7 @@
  * critical CSS on first paint. Client-side CSSOM `insertRule` is CSP-exempt
  * regardless; this only covers the two inline-`<style>` surfaces.
  */
+import { query } from '@pyreon/test-utils'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createSheet, StyleSheet } from '../sheet'
 
@@ -93,14 +94,14 @@ describe('CSP nonce', () => {
 
     it('sets nonce on the mounted <style> element when configured', () => {
       createSheet({ nonce: 'client-nonce' })
-      const el = document.querySelector('style[data-pyreon-styler]') as HTMLStyleElement
+      const el = query<HTMLStyleElement>(document, 'style[data-pyreon-styler]')
       expect(el).toBeTruthy()
       expect(el.getAttribute('nonce')).toBe('client-nonce')
     })
 
     it('no nonce → the client <style> has no nonce attribute', () => {
       createSheet()
-      const el = document.querySelector('style[data-pyreon-styler]') as HTMLStyleElement
+      const el = query<HTMLStyleElement>(document, 'style[data-pyreon-styler]')
       expect(el.hasAttribute('nonce')).toBe(false)
     })
   })

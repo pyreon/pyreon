@@ -25,7 +25,7 @@
 //          diagnostic when the named layout isn't in the registry.
 
 import { describe, expect, it, vi } from 'vitest'
-import { mountReactive } from '@pyreon/test-utils'
+import { mountReactive, query } from '@pyreon/test-utils'
 import { signal } from '@pyreon/reactivity'
 import {
   Breadcrumbs,
@@ -123,7 +123,7 @@ describe('PR-I — H13 — Toc smooth-scroll on click', () => {
           ]}
         />,
       )
-      const link = container.querySelector('.pyreon-toc__link') as HTMLAnchorElement
+      const link = query<HTMLAnchorElement>(container, '.pyreon-toc__link')
       expect(link).not.toBeNull()
       link.click()
       expect(scrollSpy).toHaveBeenCalledOnce()
@@ -151,7 +151,7 @@ describe('PR-I — H13 — Toc smooth-scroll on click', () => {
           headings={[{ level: 2, text: 'X', slug: 'x' }]}
         />,
       )
-      const link = container.querySelector('.pyreon-toc__link') as HTMLAnchorElement
+      const link = query<HTMLAnchorElement>(container, '.pyreon-toc__link')
       link.click()
       expect(scrollSpy).not.toHaveBeenCalled()
       cleanup()
@@ -176,7 +176,7 @@ describe('PR-I — H13 — Toc smooth-scroll on click', () => {
           headings={[{ level: 2, text: 'Y', slug: 'y' }]}
         />,
       )
-      const link = container.querySelector('.pyreon-toc__link') as HTMLAnchorElement
+      const link = query<HTMLAnchorElement>(container, '.pyreon-toc__link')
       link.click()
       expect(scrollSpy).toHaveBeenCalledOnce()
       const target = (scrollSpy.mock.calls[0]![0] as { top: number }).top
@@ -225,8 +225,8 @@ describe('PR-I — M9 — PrevNext', () => {
     const { container, cleanup } = mountReactive(
       <PrevNext entries={entries} currentPath={() => '/b'} />,
     )
-    const prev = container.querySelector('.pyreon-prevnext__link--prev') as HTMLAnchorElement
-    const next = container.querySelector('.pyreon-prevnext__link--next') as HTMLAnchorElement
+    const prev = query<HTMLAnchorElement>(container, '.pyreon-prevnext__link--prev')
+    const next = query<HTMLAnchorElement>(container, '.pyreon-prevnext__link--next')
     expect(prev).not.toBeNull()
     expect(next).not.toBeNull()
     expect(prev.getAttribute('href')).toBe('/a')

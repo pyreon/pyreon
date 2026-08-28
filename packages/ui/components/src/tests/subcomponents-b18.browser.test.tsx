@@ -4,6 +4,7 @@
  * PaginationItem/Prev/Next/Ellipsis (aria-current="page"), Stepper ol/li +
  * aria-current="step", Card sections (full-bleed + dividers), TimelineItem.
  */
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { PyreonUI } from '@pyreon/ui-core'
@@ -66,9 +67,9 @@ describe('B18 sub-components (real Chromium)', () => {
       ),
     )
     await flush()
-    const root = container.querySelector('[data-testid="st"]') as HTMLElement
+    const root = query<HTMLElement>(container, '[data-testid="st"]')
     expect(root.tagName, 'steps are an ordered list').toBe('OL')
-    const active = container.querySelector('[data-testid="st-2"]') as HTMLElement
+    const active = query<HTMLElement>(container, '[data-testid="st-2"]')
     expect(active.tagName).toBe('LI')
     expect(active.getAttribute('aria-current')).toBe('step')
     expect(
@@ -97,7 +98,7 @@ describe('B18 sub-components (real Chromium)', () => {
     const content = container.querySelector('[data-testid="cd-c"]')!.getBoundingClientRect()
     expect(section.left, 'section bleeds to the card edge').toBeLessThan(content.left)
     expect(Math.round(section.left), 'flush with the card box').toBe(Math.round(card.left))
-    const header = container.querySelector('[data-testid="cd-h"]') as Element
+    const header = query(container, '[data-testid="cd-h"]')
     expect(
       Number.parseFloat(getComputedStyle(header).borderBottomWidth),
       'header divider',
@@ -119,8 +120,8 @@ describe('B18 sub-components (real Chromium)', () => {
       ),
     )
     await flush()
-    const plain = container.querySelector('[data-testid="tl-1"]') as Element
-    const done = container.querySelector('[data-testid="tl-2"]') as Element
+    const plain = query(container, '[data-testid="tl-1"]')
+    const done = query(container, '[data-testid="tl-2"]')
     expect(getComputedStyle(plain, '::before').content, 'marker dot exists').toBe('""')
     expect(
       getComputedStyle(done, '::before').content,

@@ -1,6 +1,5 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan } from '../../utils/ast'
-import { isPathExempt } from '../../utils/exempt-paths'
 import { isTestFile } from '../../utils/file-roles'
 
 export const devGuardWarnings: Rule = {
@@ -22,7 +21,6 @@ export const devGuardWarnings: Rule = {
     // rule's premise doesn't apply (server-only code where dev/prod is
     // `process.env.NODE_ENV`, or example / demo directories that ship
     // as documentation rather than production).
-    if (isPathExempt(context)) return {}
 
     // Project-level additions to the built-in dev-flag name list. Merged
     // with the defaults so a custom flag like `__DEBUG__` still picks up

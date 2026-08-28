@@ -9,6 +9,7 @@
 // `transition` shorthand's reset of the longhands it omits and would
 // therefore pass against the exact bug that reset causes.
 
+import { query } from '@pyreon/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
@@ -150,7 +151,7 @@ describe('<Transition> — enter / leave', () => {
       h(Transition, { show: () => on(), duration: 5000 }, h('span', { id: 'body' }, 'x')),
     )
     on.set(false)
-    const child = root.querySelector('#body') as HTMLElement
+    const child = query<HTMLElement>(root, '#body')
     child.dispatchEvent(new Event('transitionend', { bubbles: true }))
     expect(root.style.display).toBe('')
     unmount()

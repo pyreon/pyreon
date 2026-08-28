@@ -11,6 +11,7 @@
 // native hosting path. The guest page is built with `webHostDocument`; its
 // script speaks the same contract `connectWebHost` implements.
 
+import { query } from '@pyreon/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
@@ -71,7 +72,7 @@ describe('WebView-host round-trip (real Chromium)', () => {
       h(WebView, webViewProps(html, () => ({ label: label() }))),
     )
     cleanups.push(unmount)
-    const iframe = container.querySelector('iframe') as HTMLIFrameElement
+    const iframe = query<HTMLIFrameElement>(container, 'iframe')
     const doc = await waitForIframeBody(iframe)
     expect(doc.getElementById('label')!.textContent).toBe('First')
 
@@ -93,7 +94,7 @@ describe('WebView-host round-trip (real Chromium)', () => {
       h(WebView, webViewProps(html, () => ({ label: 'Tap' }), onMessage)),
     )
     cleanups.push(unmount)
-    const iframe = container.querySelector('iframe') as HTMLIFrameElement
+    const iframe = query<HTMLIFrameElement>(container, 'iframe')
     const doc = await waitForIframeBody(iframe)
     ;(doc.getElementById('label') as HTMLButtonElement).click()
     for (let i = 0; i < 50 && onMessage.mock.calls.length === 0; i++) {

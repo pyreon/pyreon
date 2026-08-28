@@ -211,6 +211,7 @@ export async function lintAsync(options: LintOptions): Promise<LintResult> {
         `[Pyreon] A lint worker failed during --fix, after other workers may already have written files: ${message}\n` +
           `Re-run without --fix to see the diagnostics, then fix again once the failure is understood. ` +
           `Falling back silently here could double-apply a non-idempotent fix.`,
+        { cause: err },
       )
     }
 
