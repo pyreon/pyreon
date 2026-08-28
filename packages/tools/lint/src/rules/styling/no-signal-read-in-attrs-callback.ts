@@ -1,6 +1,5 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan, isCallTo } from '../../utils/ast'
-import { isPathExempt } from '../../utils/exempt-paths'
 import { isProjectDependency } from '../../utils/project-deps'
 
 /**
@@ -64,7 +63,6 @@ export const noSignalReadInAttrsCallback: Rule = {
     schema: { exemptPaths: 'string[]' },
   },
   create(context) {
-    if (isPathExempt(context)) return {}
     if (!isProjectDependency(context.getFilePath(), '@pyreon/rocketstyle')) {
       return {}
     }

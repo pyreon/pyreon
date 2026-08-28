@@ -1,3 +1,4 @@
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { mountInBrowser } from '@pyreon/test-utils/browser'
 import type { SpoilerState } from '@pyreon/ui-primitives'
@@ -34,9 +35,9 @@ function mountSpoiler(props: Record<string, unknown> = {}) {
   return {
     container,
     state: () => st!,
-    root: () => container.querySelector('[data-spoiler]') as HTMLElement,
-    clip: () => container.querySelector('[data-spoiler] > div') as HTMLElement,
-    toggle: () => container.querySelector('button') as HTMLButtonElement,
+    root: () => query<HTMLElement>(container, '[data-spoiler]'),
+    clip: () => query<HTMLElement>(container, '[data-spoiler] > div'),
+    toggle: () => query<HTMLButtonElement>(container, 'button'),
   }
 }
 

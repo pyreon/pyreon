@@ -1,6 +1,5 @@
 import type { Rule, Span, VisitorCallbacks } from '../../types'
 import { getSpan } from '../../utils/ast'
-import { isPathExempt } from '../../utils/exempt-paths'
 
 /**
  * Opt-in frontend best-practice rule (fixable).
@@ -29,7 +28,6 @@ export const noPositiveTabindex: Rule = {
     schema: { exemptPaths: 'string[]' },
   },
   create(context) {
-    if (isPathExempt(context)) return {}
 
     const callbacks: VisitorCallbacks = {
       JSXAttribute(node: any) {

@@ -1,3 +1,4 @@
+import { query } from '@pyreon/test-utils'
 import { For } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { mountInBrowser } from '@pyreon/test-utils/browser'
@@ -110,8 +111,8 @@ describe('useSortable — cross-list drag between two real <For>-rendered boards
     expect(domOrder(container, 'board-b')).toEqual(['b1'])
 
     // Drag a1 (board A) onto b1's TOP edge (board B) → insert before b1.
-    const a1 = container.querySelector('[data-key="a1"]') as HTMLElement
-    const b1 = container.querySelector('[data-key="b1"]') as HTMLElement
+    const a1 = query<HTMLElement>(container, '[data-key="a1"]')
+    const b1 = query<HTMLElement>(container, '[data-key="b1"]')
     const dataTransfer = new DataTransfer()
 
     fire(a1, 'dragstart', dataTransfer)
@@ -177,8 +178,8 @@ describe('useSortable — cross-list drag between two real <For>-rendered boards
     )
     await microtasks()
 
-    const a1 = container.querySelector('[data-key="a1"]') as HTMLElement
-    const boardB = container.querySelector('[data-testid="board-b"]') as HTMLElement
+    const a1 = query<HTMLElement>(container, '[data-key="a1"]')
+    const boardB = query<HTMLElement>(container, '[data-testid="board-b"]')
     const dataTransfer = new DataTransfer()
 
     fire(a1, 'dragstart', dataTransfer)

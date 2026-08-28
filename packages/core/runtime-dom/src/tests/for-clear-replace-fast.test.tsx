@@ -25,6 +25,7 @@
  * a different node afterwards, and its direct listener is gone) AND the
  * counter specs (counters never fire); restored → all pass.
  */
+import { query } from '@pyreon/test-utils'
 import { For, h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -71,7 +72,7 @@ const setupOwned = (initialIds: number[]) => {
       ),
     container,
   )
-  const ul = container.querySelector('ul') as HTMLUListElement
+  const ul = query<HTMLUListElement>(container, 'ul')
   return { items, container, cleanup, ul }
 }
 
@@ -93,7 +94,7 @@ const setupShared = (initialIds: number[]) => {
       ),
     container,
   )
-  const ul = container.querySelector('ul') as HTMLUListElement
+  const ul = query<HTMLUListElement>(container, 'ul')
   return { items, container, cleanup, ul }
 }
 
@@ -123,7 +124,7 @@ describe('mountFor — owns-parent bulk clear (handleFastClear)', () => {
     ;(ul as HTMLUListElement & { __expando?: string }).__expando = 'kept'
     counts = {}
     items.set([])
-    const after = container.querySelector('ul') as HTMLUListElement
+    const after = query<HTMLUListElement>(container, 'ul')
     expect(after).toBe(ul) // the swap-based branch replaced the node — this is the fix
     expect((after as HTMLUListElement & { __expando?: string }).__expando).toBe('kept')
     after.dispatchEvent(new Event('click', { bubbles: true }))
@@ -167,7 +168,7 @@ describe('mountFor — owns-parent full replace (handleReplaceAll)', () => {
     ul.addEventListener('click', () => clicks++)
     counts = {}
     items.set([10, 11].map((id) => ({ id })))
-    const after = container.querySelector('ul') as HTMLUListElement
+    const after = query<HTMLUListElement>(container, 'ul')
     expect(after).toBe(ul)
     after.dispatchEvent(new Event('click', { bubbles: true }))
     expect(clicks).toBe(1)
@@ -216,7 +217,7 @@ describe('mountKeyedList — owns-parent bulk clear (keyed-array sibling)', () =
       h('div', null, () => items().map((it) => h('b', { key: it.id }, String(it.id)))),
       container,
     )
-    const host = container.querySelector('div') as HTMLDivElement
+    const host = query<HTMLDivElement>(container, 'div')
     return { items, container, cleanup, host }
   }
 

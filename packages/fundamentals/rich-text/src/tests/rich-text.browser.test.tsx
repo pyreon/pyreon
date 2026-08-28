@@ -1,3 +1,4 @@
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { effect, signal } from '@pyreon/reactivity'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
@@ -60,7 +61,7 @@ describe('rich-text editor in real browser', () => {
     await waitForView(editor)
     await flush()
 
-    const ce = container.querySelector('[contenteditable="true"]') as HTMLElement
+    const ce = query<HTMLElement>(container, '[contenteditable="true"]')
     expect(ce.getAttribute('role')).toBe('textbox')
     expect(ce.getAttribute('aria-multiline')).toBe('true')
     expect(ce.getAttribute('aria-label')).toBe('Rich text editor')
@@ -142,7 +143,7 @@ describe('rich-text editor in real browser', () => {
     await waitForView(editor)
     await flush()
 
-    const ce = container.querySelector('[contenteditable]') as HTMLElement
+    const ce = query<HTMLElement>(container, '[contenteditable]')
     expect(ce.getAttribute('contenteditable')).toBe('true')
     expect(editor.editable()).toBe(true)
 

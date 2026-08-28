@@ -54,6 +54,23 @@ export interface IconProps extends SvgAttributes {
   /**
    * A full `<svg>…</svg>` markup string, e.g.
    * `import x from './icon.svg?raw'`. Inlined inside a single `<span>` host.
+   *
+   * **This markup is rendered RAW — it is never sanitized.** Pyreon's
+   * `dangerouslySetInnerHTML` assigns verbatim by design, so an `<svg>` string
+   * containing `<script>` or an `onload=` attribute executes in your page's
+   * origin. The sanitized `innerHTML` prop is not an option here: it needs a
+   * `DOMParser` and therefore cannot run during SSR, and an icon has to render
+   * on the server.
+   *
+   * So the contract is: **`svg` takes markup YOU control.** A build-time
+   * `?raw` import of a file in your repo is exactly right. A string that came
+   * from an API response, a CMS, a database or a URL is an XSS hole — pass
+   * that through a sanitizer first, or render it client-side where the
+   * sanitized `innerHTML` prop applies.
+   *
+   * `pyreon/no-unsanitized-inner-html` flags the misuse in consumer code.
+   * Prefer {@link IconProps.as} where you can: an imported SVG *component* is
+   * compiled markup and carries none of this.
    */
   svg?: string | undefined
 }

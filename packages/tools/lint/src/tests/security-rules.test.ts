@@ -20,14 +20,24 @@ const idsAt = (source: string, ruleId: string) =>
   lint(source).diagnostics.filter((d) => d.ruleId === ruleId)
 
 describe('security group wiring', () => {
-  it('both rules are in the security group and ON by default', () => {
+  it('the security group holds exactly the exploitable-shape rules', () => {
     const sec = allRules.filter((r) => groupOf(r.meta) === 'security')
     expect(sec.map((r) => r.meta.id).sort()).toEqual([
       'pyreon/no-script-url',
       'pyreon/no-target-blank-without-rel',
+      'pyreon/no-unsanitized-inner-html',
     ])
+  })
+
+  it('the two provable rules are ON by default; the judgement call is opt-in', () => {
+    // `no-unsanitized-inner-html` is a judgement about a prop that is
+    // legitimately used with your own sanitizer, and there is no corpus in
+    // this repo to validate it against — so it must not gate anyone's CI
+    // until they ask for it.
     const rec = getPreset('recommended')
-    for (const r of sec) expect(rec.rules[r.meta.id], r.meta.id).not.toBe('off')
+    expect(rec.rules['pyreon/no-script-url']).not.toBe('off')
+    expect(rec.rules['pyreon/no-target-blank-without-rel']).not.toBe('off')
+    expect(rec.rules['pyreon/no-unsanitized-inner-html']).toBe('off')
   })
 })
 

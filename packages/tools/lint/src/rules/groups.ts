@@ -54,6 +54,14 @@ export const CATEGORY_GROUP: Record<RuleCategory, RuleGroup> = {
   i18n: 'pkg',
   storage: 'pkg',
   http: 'pkg',
+  // Role-aware tiers — each is its OWN group, because "does this file run on
+  // the server?" is a different question from "is this idiomatic Pyreon?",
+  // and a team gates on them separately.
+  backend: 'backend',
+  isomorphic: 'isomorphic',
+  'web-perf': 'web-perf',
+  portable: 'portable',
+  js: 'js',
 }
 
 /**

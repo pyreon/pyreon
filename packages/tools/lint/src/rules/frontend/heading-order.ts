@@ -1,6 +1,5 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan } from '../../utils/ast'
-import { isPathExempt } from '../../utils/exempt-paths'
 
 /**
  * Opt-in frontend accessibility rule — flags a skipped heading level.
@@ -40,7 +39,6 @@ export const headingOrder: Rule = {
     schema: { exemptPaths: 'string[]' },
   },
   create(context) {
-    if (isPathExempt(context)) return {}
 
     // One "last heading level" frame per function scope. Base frame
     // (index 0) covers module-scope JSX. 0 = no heading seen yet.

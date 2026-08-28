@@ -15,6 +15,7 @@
  * The full ECharts UMD is inlined via Vite's `?raw` so the hosted page is
  * self-contained (the App-Store-safe shape a native build ships).
  */
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
@@ -82,7 +83,7 @@ describe('ChartWebView bridge (real ECharts in a real iframe)', () => {
     container.style.width = '400px'
     container.style.height = '300px'
     await flush()
-    const iframe = container.querySelector('iframe') as HTMLIFrameElement
+    const iframe = query<HTMLIFrameElement>(container, 'iframe')
     expect(iframe, 'WebView renders an iframe').not.toBeNull()
 
     const win = (await waitForChart(iframe)) as Window & {
@@ -119,7 +120,7 @@ describe('ChartWebView bridge (real ECharts in a real iframe)', () => {
       }),
     )
     await flush()
-    const iframe = container.querySelector('iframe') as HTMLIFrameElement
+    const iframe = query<HTMLIFrameElement>(container, 'iframe')
     iframe.style.width = '300px'
     iframe.style.height = '200px'
     const win = (await waitForChart(iframe)) as Window & {
@@ -149,7 +150,7 @@ describe('ChartWebView performance + robustness (real ECharts)', () => {
     container.style.width = '400px'
     container.style.height = '300px'
     await flush()
-    const iframe = container.querySelector('iframe') as HTMLIFrameElement
+    const iframe = query<HTMLIFrameElement>(container, 'iframe')
     const win = (await waitForChart(iframe)) as Window & {
       echarts: { getInstanceByDom(el: Element): any }
     }

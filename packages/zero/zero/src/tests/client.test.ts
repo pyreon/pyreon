@@ -14,6 +14,7 @@
  * "kicks off loaders on SPA cold start" fails.
  */
 
+import { query } from '@pyreon/test-utils'
 import type { ComponentFn } from '@pyreon/core'
 import { h } from '@pyreon/core'
 import type { RouteRecord } from '@pyreon/router'
@@ -116,7 +117,7 @@ describe('startClient — loader integration', () => {
 describe('startClient — hydration barrier', () => {
   it('marks the container hydrated AFTER mount/hydrate returns', async () => {
     const { startClient } = await import('../client')
-    const container = document.querySelector('#app') as HTMLElement
+    const container = query<HTMLElement>(document, '#app')
 
     // Absent before: its presence is the signal, so it must not be pre-set.
     expect(container.hasAttribute('data-pyreon-hydrated')).toBe(false)
@@ -128,7 +129,7 @@ describe('startClient — hydration barrier', () => {
 
   it('marks it on the SSR/hydrate path too, not only the mount path', async () => {
     const { startClient } = await import('../client')
-    const container = document.querySelector('#app') as HTMLElement
+    const container = query<HTMLElement>(document, '#app')
     // Real SSR content — takes the hydrateRoot branch rather than mount().
     container.innerHTML = '<span>server</span>'
 

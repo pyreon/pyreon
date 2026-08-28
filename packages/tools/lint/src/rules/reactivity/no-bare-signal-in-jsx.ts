@@ -1,6 +1,5 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan } from '../../utils/ast'
-import { isPathExempt } from '../../utils/exempt-paths'
 
 // `use…`/`get…`/`is…`/`has…` are conventional hook/getter prefixes — not
 // signal reads. `[A-Z]…` covers component invocations. The skip-names set
@@ -38,7 +37,6 @@ export const noBareSignalInJsx: Rule = {
   },
   create(context) {
     // Optional path-based exemption (kept for consumer override flexibility).
-    if (isPathExempt(context)) return {}
 
     // Only TEXT-position containers are reported (as a STYLE hint). A
     // `JSXExpressionContainer` appears in two places: as a TEXT CHILD of an

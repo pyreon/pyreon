@@ -196,6 +196,7 @@ export async function loadSharedLoomConfig(cwd: string): Promise<Partial<LoomSet
         '  TypeScript config needs a runtime that strips types: Bun, or Node >= 23.6. On an older\n' +
         '  Node, write the config as `pyreon.config.mjs`, or keep loom settings under the `loom`\n' +
         '  key of package.json — both are read identically.',
+      { cause: err },
     )
   }
   return validateLoomSection(sectionFrom(mod, 'loom'), found)

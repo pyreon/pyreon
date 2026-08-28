@@ -1,6 +1,5 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getJSXAttribute, getSpan } from '../../utils/ast'
-import { isPathExempt } from '../../utils/exempt-paths'
 import { isProjectDependency } from '../../utils/project-deps'
 
 /**
@@ -37,7 +36,6 @@ export const noDiscardedOptimizeFields: Rule = {
     schema: { exemptPaths: 'string[]' },
   },
   create(context) {
-    if (isPathExempt(context)) return {}
 
     // Dependency gate: only active in projects that declare `@pyreon/zero`
     // (the package that introduces the `?optimize` import query).

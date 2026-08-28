@@ -8,6 +8,7 @@
  * loop guard — against a genuine CodeMirror instance, the exact protocol that
  * runs on device.
  */
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
@@ -42,7 +43,7 @@ async function mountCode(state: unknown, onMessage?: (m: string) => void) {
   container.style.width = '400px'
   container.style.height = '240px'
   await flush()
-  const iframe = container.querySelector('iframe') as HTMLIFrameElement
+  const iframe = query<HTMLIFrameElement>(container, 'iframe')
   // Inject CM as soon as the iframe window exists (the bridge polls for it).
   const start = performance.now()
   while (!iframe.contentWindow) {
@@ -67,7 +68,7 @@ async function waitForEditor(iframe: HTMLIFrameElement): Promise<EditorView> {
     const win = iframe.contentWindow as (Window & { __pyreonCodeView?: EditorView; __pyreonCodeError?: string }) | null
     const doc = iframe.contentDocument
     if (win?.__pyreonCodeError) throw new Error('host error: ' + win.__pyreonCodeError)
-    const view = doc?.querySelector('.cm-editor') ? (EditorView.findFromDOM(doc.querySelector('.cm-editor') as HTMLElement) as EditorView | null) : null
+    const view = doc?.querySelector('.cm-editor') ? (EditorView.findFromDOM(query<HTMLElement>(doc, '.cm-editor')) as EditorView | null) : null
     if (view && view.state.doc.length > 0) return view
     if (performance.now() - start > 8000) throw new Error('editor did not boot / data not applied: err=' + win?.__pyreonCodeError)
     await new Promise((r) => requestAnimationFrame(() => r(null)))
@@ -137,7 +138,7 @@ describe('CodeWebView bridge (real CodeMirror in a real iframe)', () => {
     container.style.width = '400px'
     container.style.height = '240px'
     await flush()
-    const iframe = container.querySelector('iframe') as HTMLIFrameElement
+    const iframe = query<HTMLIFrameElement>(container, 'iframe')
     const start = performance.now()
     while (!iframe.contentWindow) {
       if (performance.now() - start > 3000) throw new Error('iframe never got a window')

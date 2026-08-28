@@ -19,6 +19,8 @@ import * as path from 'node:path'
 
 import { lint, allRules } from '@pyreon/lint'
 
+import type { Severity as LintSeverity } from '@pyreon/lint'
+
 import type {
   Finding,
   FindingCategory,
@@ -26,7 +28,12 @@ import type {
   Severity,
 } from '../types'
 import { emptyScanResult } from '../utils/empty-scan'
-import { collectAuditableSourceFiles } from '../utils/walk'
+import {
+  collectAuditableSourceFiles,
+  collectFilesMatching,
+  isPackageConfigFile,
+  isTestSourceFile,
+} from '../utils/walk'
 import {
   resolveWorkspaceRoots,
   type WorkspaceRoots,
@@ -117,7 +124,57 @@ export const runLintGate = async (
     fix: opts.fix ?? false,
   })
 
-  for (const fileResult of result.files) {
+  // A rule whose SUBJECT is a test file or a package-root config can never
+  // fire against the source scan above — those paths are excluded from it by
+  // design. Two shipped rules were in that state, both configured at `error`
+  // and both structurally unable to report: `no-query-selector-cast-in-test`
+  // (2,159 test files, none in scope) and `vitest-config-uses-shared` (115
+  // configs, none in scope). A gate that cannot fail is worse than no gate —
+  // it advertises protection it does not provide.
+  //
+  // So each extra target gets its OWN pass over its OWN files, with every
+  // other rule turned off. Running the full rule set over tests instead would
+  // reintroduce precisely the noise the source-scan exclusions exist to avoid.
+  const extraScans: Array<{
+    target: 'test' | 'packageConfig'
+    predicate: (relPath: string) => boolean
+  }> = [
+    { target: 'test', predicate: isTestSourceFile },
+    { target: 'packageConfig', predicate: isPackageConfigFile },
+  ]
+
+  const fileResults = [...result.files]
+  const configDiagnostics = [...result.configDiagnostics]
+  // Reported as `scanned`, so it must count every file actually linted —
+  // under-reporting here would hide the extra surface this loop exists to add.
+  let scanned = result.files.length
+
+  for (const scan of extraScans) {
+    const targetRuleIds = allRules
+      .filter((r) => r.meta.scanTarget === scan.target)
+      .map((r) => r.meta.id)
+    if (targetRuleIds.length === 0) continue
+
+    const targetFiles = collectFilesMatching(ws, scan.predicate)
+    if (targetFiles.length === 0) continue
+
+    // Everything EXCEPT the target rules is forced off. The target rules are
+    // omitted from the overrides so they keep whatever severity the project's
+    // config gave them — including `off`, which must stay off.
+    const off: Record<string, LintSeverity> = {}
+    const targeted = new Set(targetRuleIds)
+    for (const r of allRules) if (!targeted.has(r.meta.id)) off[r.meta.id] = 'off'
+
+    const extra = await lint({
+      paths: targetFiles,
+      fix: opts.fix ?? false,
+      ruleOverrides: off,
+    })
+    scanned += extra.files.length
+    for (const fr of extra.files) if (fr.diagnostics.length > 0) fileResults.push(fr)
+  }
+
+  for (const fileResult of fileResults) {
     for (const diag of fileResult.diagnostics) {
       const severity = _mapLintSeverity(diag.severity)
       if (severity === null) continue
@@ -141,7 +198,7 @@ export const runLintGate = async (
 
   // Surface config-level diagnostics as architecture errors — they
   // mean the user's `.pyreonlintrc.json` has malformed rule options.
-  for (const cd of result.configDiagnostics) {
+  for (const cd of configDiagnostics) {
     const severity = _mapLintSeverity(cd.severity)
     if (severity === null) continue
     findings.push({
@@ -158,7 +215,7 @@ export const runLintGate = async (
     category: 'correctness',
     findings,
     meta: {
-      scanned: result.files.length,
+      scanned,
       elapsedMs: Date.now() - start,
     },
   }

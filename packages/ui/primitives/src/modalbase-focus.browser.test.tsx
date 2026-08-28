@@ -19,6 +19,7 @@
  * Bisect: remove useFocusTrap → the wrap specs fail; remove the effect
  * focus-in / restore → those specs fail.
  */
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { describe, expect, it } from 'vitest'
 import { signal } from '@pyreon/reactivity'
@@ -58,7 +59,7 @@ function mountModal() {
       h(ModalBase as never, modalProps),
     ),
   )
-  const opener = container.querySelector('[data-testid=opener]') as HTMLButtonElement
+  const opener = query<HTMLButtonElement>(container, '[data-testid=opener]')
   return { open, opener, unmount }
 }
 

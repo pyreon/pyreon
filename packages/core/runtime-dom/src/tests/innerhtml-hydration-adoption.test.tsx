@@ -43,6 +43,7 @@
  *    template-path adoption specs (`runtime.tpl.adopt` stays 0, whole
  *    code-block clones).
  */
+import { query } from '@pyreon/test-utils'
 import { transformJSX } from '@pyreon/compiler'
 import { Fragment, _lc, h } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
@@ -170,9 +171,9 @@ const cbSsrTree = (payload: string) =>
 describe('dangerouslySetInnerHTML hydration adoption — compiled template path', () => {
   it('adopts the server DOM: node identity preserved, template adopted, nothing re-parsed', async () => {
     const host = await ssrInto(cbSsrTree(SHIKI))
-    const pre = host.querySelector('.pre') as HTMLElement
-    const codeSpan = host.querySelector('.pre span') as HTMLElement
-    const cap = host.querySelector('.cap') as HTMLElement
+    const pre = query<HTMLElement>(host, '.pre')
+    const codeSpan = query<HTMLElement>(host, '.pre span')
+    const cap = query<HTMLElement>(host, '.cap')
     expect(codeSpan).not.toBeNull()
 
     const App = compileApp(CB_SRC)
@@ -206,8 +207,8 @@ const App = (props) => (
         h('div', { class: 'pre', dangerouslySetInnerHTML: { __html: SHIKI } }),
       ),
     )
-    const ln = host.querySelector('.gut .ln') as HTMLElement
-    const codeEl = host.querySelector('.pre code') as HTMLElement
+    const ln = query<HTMLElement>(host, '.gut .ln')
+    const codeEl = query<HTMLElement>(host, '.pre code')
 
     const App = compileApp(src)
     const dispose = hydrateLoud(
@@ -236,7 +237,7 @@ const App = (props) => (
         h('span', { class: 'cap' }, 'c'),
       ),
     )
-    const gut = host.querySelector('.gut') as HTMLElement
+    const gut = query<HTMLElement>(host, '.gut')
     const App = compileApp(src)
     const dispose = hydrateLoud(host, h(App as never, { gutter: { __html: '' } } as never))
     expect(tplAdopted()).toBe(1)
@@ -260,7 +261,7 @@ const App = () => (
         h('div', { class: 'pre', dangerouslySetInnerHTML: { __html: '<b class="one">one</b>' } }),
       ),
     )
-    const b = host.querySelector('.pre b') as HTMLElement
+    const b = query<HTMLElement>(host, '.pre b')
 
     // Compile with the signal INSIDE the module so the emit is the reactive
     // form; recover it via a side channel to drive the post-hydration flip.
@@ -337,7 +338,7 @@ describe('dangerouslySetInnerHTML hydration adoption — h() path', () => {
     const tree = () =>
       h('section', null, h('div', { class: 'pre', dangerouslySetInnerHTML: { __html: SHIKI } }))
     const host = await ssrInto(tree())
-    const codeSpan = host.querySelector('.pre span') as HTMLElement
+    const codeSpan = query<HTMLElement>(host, '.pre span')
 
     const dispose = hydrateLoud(host, tree())
     expect(host.querySelector('.pre span')).toBe(codeSpan)
@@ -350,7 +351,7 @@ describe('dangerouslySetInnerHTML hydration adoption — h() path', () => {
     const host = await ssrInto(
       h('section', null, h('div', { class: 'pre', dangerouslySetInnerHTML: sig() })),
     )
-    const b = host.querySelector('.pre b') as HTMLElement
+    const b = query<HTMLElement>(host, '.pre b')
 
     const dispose = hydrateLoud(
       host,

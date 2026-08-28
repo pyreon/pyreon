@@ -1,6 +1,7 @@
 /**
  * @vitest-environment happy-dom
  */
+import { queryOptional } from '@pyreon/test-utils'
 import { describe, expect, it } from 'vitest'
 
 // Script module's strategy state machine + dedup logic. Mirror link.test.ts's
@@ -371,9 +372,9 @@ describe('useScript — real mount (covers onMount strategy machine)', () => {
         }),
         container,
       )
-      const script = document.head.querySelector(
+      const script = queryOptional<HTMLScriptElement>(document.head, 
         'script[src="/with-onload.js"]',
-      ) as HTMLScriptElement | null
+      )
       expect(script).not.toBeNull()
       // Simulate the browser firing onload (happy-dom doesn't actually load scripts).
       script?.onload?.(new Event('load'))
@@ -398,9 +399,9 @@ describe('useScript — real mount (covers onMount strategy machine)', () => {
         }),
         container,
       )
-      const script = document.head.querySelector(
+      const script = queryOptional<HTMLScriptElement>(document.head, 
         'script[src="/with-onerror.js"]',
-      ) as HTMLScriptElement | null
+      )
       expect(script).not.toBeNull()
       // Simulate the browser firing onerror. happy-dom may also auto-fire
       // its own onerror for the missing src — we assert the callback
@@ -422,9 +423,9 @@ describe('useScript — real mount (covers onMount strategy machine)', () => {
         h(Script, { src: '/async-default.js', strategy: 'afterHydration' }),
         container,
       )
-      const asyncDefault = document.head.querySelector(
+      const asyncDefault = queryOptional<HTMLScriptElement>(document.head, 
         'script[src="/async-default.js"]',
-      ) as HTMLScriptElement | null
+      )
       expect(asyncDefault?.async).toBe(true)
       unmount1()
 
@@ -434,9 +435,9 @@ describe('useScript — real mount (covers onMount strategy machine)', () => {
         h(Script, { src: '/async-off.js', strategy: 'afterHydration', async: false }),
         c2,
       )
-      const asyncOff = document.head.querySelector(
+      const asyncOff = queryOptional<HTMLScriptElement>(document.head, 
         'script[src="/async-off.js"]',
-      ) as HTMLScriptElement | null
+      )
       expect(asyncOff?.async).toBe(false)
       unmount2()
       c2.remove()

@@ -5,6 +5,7 @@
  * row + input, live chip list, layout from Element content-axis props (zero
  * hand-written display CSS), render-prop escape hatch.
  */
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { PyreonUI } from '@pyreon/ui-core'
@@ -30,7 +31,7 @@ describe('TagsInput — Element-first batteries-included (real Chromium)', () =>
     )
     await flush()
     expect(container.querySelectorAll('[data-tag]').length, 'initial chips render').toBe(2)
-    const input = container.querySelector('input[aria-label="Add tag"]') as HTMLInputElement
+    const input = query<HTMLInputElement>(container, 'input[aria-label="Add tag"]')
     expect(input, 'built-in input renders with the base aria-label').not.toBeNull()
 
     type(input, 'blue')
@@ -47,7 +48,7 @@ describe('TagsInput — Element-first batteries-included (real Chromium)', () =>
       h(PyreonUI, { theme }, h(TagsInput as never, { defaultValue: ['a', 'b', 'c'] })),
     )
     await flush()
-    const rm = container.querySelector('[data-tag="b"] button') as HTMLButtonElement
+    const rm = query<HTMLButtonElement>(container, '[data-tag="b"] button')
     expect(rm.getAttribute('aria-label')).toBe('Remove b')
     rm.click()
     await flush()
@@ -63,7 +64,7 @@ describe('TagsInput — Element-first batteries-included (real Chromium)', () =>
       h(PyreonUI, { theme }, h(TagsInput as never, { defaultValue: ['x'] })),
     )
     await flush()
-    const root = container.querySelector('[data-rocketstyle="TagsInput"]') as HTMLElement
+    const root = query<HTMLElement>(container, '[data-rocketstyle="TagsInput"]')
     expect(getComputedStyle(root).display).toContain('flex')
     expect(getComputedStyle(root).alignItems).toBe('center')
     expect(getComputedStyle(root).flexWrap).toBe('wrap')

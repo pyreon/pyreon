@@ -1,5 +1,4 @@
 import type { Rule, VisitorCallbacks } from '../../types'
-import { isPathExempt } from '../../utils/exempt-paths'
 import { isProjectDependency } from '../../utils/project-deps'
 
 /**
@@ -45,6 +44,7 @@ export const vitestConfigUsesShared: Rule = {
     severity: 'error',
     requiresDependency: '@pyreon/vitest-config',
     scope: 'monorepo',
+    scanTarget: 'packageConfig',
     fixable: false,
     schema: {
       exemptPaths: 'string[]',
@@ -66,7 +66,6 @@ export const vitestConfigUsesShared: Rule = {
     // monorepo (which self-depends). Silent everywhere else.
     if (!isProjectDependency(filePath, '@pyreon/vitest-config')) return {}
 
-    if (isPathExempt(context)) return {}
 
     let importsFromVitestConfig = false
 

@@ -32,6 +32,7 @@
  * `does NOT steal` spec (the local template adopts the root's SSR node and
  * comes back carrying the wrong class).
  */
+import { query } from '@pyreon/test-utils'
 import { transformJSX } from '@pyreon/compiler'
 import { For, Fragment, h } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
@@ -161,7 +162,7 @@ describe('component-root compiled-template hydration adoption', () => {
 
   it('PRESERVES user state living on the server nodes (typed value + focus)', async () => {
     const host = await ssrInto(h('form', { class: 'f' }, h('input', { name: 'q', type: 'text' })))
-    const input = host.querySelector('input') as HTMLInputElement
+    const input = query<HTMLInputElement>(host, 'input')
     // The user starts typing before the bundle has booted.
     input.value = 'typed before hydration'
     input.focus()
@@ -170,7 +171,7 @@ describe('component-root compiled-template hydration adoption', () => {
     const App = compileApp(`const App = () => <form class="f"><input name="q" type="text" /></form>`)
     const dispose = hydrateRoot(host, h(App as never, null))
 
-    const after = host.querySelector('input') as HTMLInputElement
+    const after = query<HTMLInputElement>(host, 'input')
     expect(after).toBe(input) // adopted, not swapped
     expect(after.value).toBe('typed before hydration')
     expect(document.activeElement).toBe(after)
@@ -180,7 +181,7 @@ describe('component-root compiled-template hydration adoption', () => {
   it('an adopted template stays REACTIVE — signal flip patches the SSR text in place', async () => {
     const label = signal('before')
     const host = await ssrInto(h('div', { class: 'r' }, h('span', null, () => label())))
-    const spanBefore = host.querySelector('span') as HTMLElement
+    const spanBefore = query<HTMLElement>(host, 'span')
 
     const App = compileApp(`const App = () => <div class="r"><span>{() => label()}</span></div>`, {
       label,

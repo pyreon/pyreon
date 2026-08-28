@@ -8,6 +8,7 @@
  * bridge — forward content/editable push, reverse edit, the loop guard —
  * against a genuine TipTap editor.
  */
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
@@ -66,7 +67,7 @@ async function mountRT(state: unknown, onMessage?: (m: string) => void) {
   container.style.width = '400px'
   container.style.height = '240px'
   await flush()
-  const iframe = container.querySelector('iframe') as HTMLIFrameElement
+  const iframe = query<HTMLIFrameElement>(container, 'iframe')
   const start = performance.now()
   while (!iframe.contentWindow) {
     if (performance.now() - start > 3000) throw new Error('iframe never got a window')
@@ -162,7 +163,7 @@ describe('RichTextWebView bridge (real TipTap in a real iframe)', () => {
     container.style.width = '400px'
     container.style.height = '240px'
     await flush()
-    const iframe = container.querySelector('iframe') as HTMLIFrameElement
+    const iframe = query<HTMLIFrameElement>(container, 'iframe')
     const start = performance.now()
     while (!iframe.contentWindow) {
       if (performance.now() - start > 3000) throw new Error('iframe never got a window')

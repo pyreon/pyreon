@@ -4,6 +4,7 @@
  * computed styles (VisuallyHidden's clipping), real getComputedStyle, and
  * the live-region announce path that happy-dom can only approximate.
  */
+import { query } from '@pyreon/test-utils'
 import { describe, expect, it } from 'vitest'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { VisuallyHidden } from '../visually-hidden'
@@ -33,7 +34,7 @@ describe('VisuallyHidden (real Chromium)', () => {
       </VisuallyHidden>,
     )
     await flush()
-    const el = container.querySelector('#sr-heading') as HTMLElement
+    const el = query<HTMLElement>(container, '#sr-heading')
     expect(el.tagName).toBe('DIV')
     expect(el.textContent).toBe('Section')
     expect(getComputedStyle(el).position).toBe('absolute')
@@ -67,7 +68,7 @@ describe('createA11yId (real Chromium)', () => {
     }
     const { container, unmount } = mountInBrowser(<Demo />)
     await flush()
-    const input = container.querySelector('[data-testid=inp]') as HTMLElement
+    const input = query<HTMLElement>(container, '[data-testid=inp]')
     const describedBy = input.getAttribute('aria-describedby')!
     expect(describedBy).toBeTruthy()
     expect(container.querySelector(`#${CSS.escape(describedBy)}`)?.textContent).toBe('Help text')

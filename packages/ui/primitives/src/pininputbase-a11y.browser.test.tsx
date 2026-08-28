@@ -17,6 +17,7 @@
  * `length` itself changes (see `getCellProps`' docblock for the cells()-in-the-
  * accessor trap that would remount on every keystroke and destroy focus).
  */
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { describe, expect, it } from 'vitest'
@@ -47,7 +48,7 @@ function mountPin(props: Partial<PinInputBaseProps> = {}) {
     container,
     unmount,
     state: () => api,
-    root: () => container.querySelector('#root') as HTMLElement,
+    root: () => query<HTMLElement>(container, '#root'),
     cellAt: (i: number) => container.querySelectorAll('input')[i] as HTMLInputElement,
     cellValues: () =>
       Array.from(container.querySelectorAll('input')).map((el) => (el as HTMLInputElement).value),

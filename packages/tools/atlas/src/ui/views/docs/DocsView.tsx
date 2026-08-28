@@ -48,15 +48,23 @@ export function DocsView(props: { model: WorkbenchModel }) {
   const source = signal<string>('')
   const sourceState = signal<'idle' | 'loading' | 'shown' | 'unavailable'>('idle')
   let sourceFor = ''
+  let sourceGeneration = 0
   const loadSource = async () => {
     const c = m.sel()
     if (!c) return
     if (sourceFor === c.id && sourceState() === 'shown') return
     sourceState.set('loading')
+    // Which request is newest. `callRpc` is async and the guard above ran
+    // BEFORE it, so clicking through components faster than the RPC returns
+    // lets a slower earlier response land last — showing one component's
+    // source under another's heading, which is the exact confusion the
+    // identity key below exists to prevent.
+    const generation = ++sourceGeneration
     // By identity KEY (name outside a monorepo) — see `componentKey`. Asking by
     // name where two packages export a `Button` would show one component's
     // source under the other's heading.
     const res = await callRpc('source', { component: c.key ?? c.name })
+    if (generation !== sourceGeneration) return
     if (res.ok) {
       source.set(String((res.result as { source?: unknown }).source ?? ''))
       sourceFor = c.id

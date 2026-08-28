@@ -1,6 +1,5 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan } from '../../utils/ast'
-import { isPathExempt } from '../../utils/exempt-paths'
 import { isTestFile } from '../../utils/file-roles'
 import { isProjectDependency } from '../../utils/project-deps'
 
@@ -87,7 +86,6 @@ export const noPrivateEnvInClient: Rule = {
     const filePath = context.getFilePath()
 
     if (isTestFile(filePath)) return {}
-    if (isPathExempt(context)) return {}
     if (isServerOnlyFile(filePath)) return {}
     // Only fires in projects that actually use zero — where `publicEnv()` exists.
     if (!isProjectDependency(filePath, '@pyreon/zero')) return {}

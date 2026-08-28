@@ -41,6 +41,7 @@
  * verified, not assumed — which is the gap these specs exist to close.
  * Restored -> 15/15 across both files.
  */
+import { query } from '@pyreon/test-utils'
 import { transformJSX } from '@pyreon/compiler'
 import { Fragment, For, h, _rp, cx } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
@@ -131,7 +132,7 @@ export const App = (props) => (
     cleanup()
     container.remove()
   })
-  const ul = container.querySelector('ul') as HTMLUListElement
+  const ul = query<HTMLUListElement>(container, 'ul')
   return { rows, container, ul, cleanup, mk }
 }
 

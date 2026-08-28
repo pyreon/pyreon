@@ -2,6 +2,7 @@
 /**
  * Real-Chromium locks for TagsInputBase (2026-07-21 audit, roadmap B14).
  */
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { describe, expect, it } from 'vitest'
@@ -37,7 +38,7 @@ describe('TagsInputBase (real Chromium)', () => {
   it('Enter commits a trimmed tag and clears the draft; comma commits too', async () => {
     const { container, api, unmount } = mountTags({}, 'tg-1')
     await flush()
-    const input = container.querySelector('[data-testid="tg-1-in"]') as HTMLInputElement
+    const input = query<HTMLInputElement>(container, '[data-testid="tg-1-in"]')
     expect(input.getAttribute('aria-label')).toBe('Add tag')
 
     type(input, '  alpha  ')
@@ -56,7 +57,7 @@ describe('TagsInputBase (real Chromium)', () => {
   it('Backspace on an EMPTY draft removes the last tag', async () => {
     const { container, api, unmount } = mountTags({ defaultValue: ['a', 'b'] }, 'tg-2')
     await flush()
-    const input = container.querySelector('[data-testid="tg-2-in"]') as HTMLInputElement
+    const input = query<HTMLInputElement>(container, '[data-testid="tg-2-in"]')
     key(input, 'Backspace')
     await flush()
     expect(api().tags()).toEqual(['a'])
@@ -74,7 +75,7 @@ describe('TagsInputBase (real Chromium)', () => {
       'tg-3',
     )
     await flush()
-    const input = container.querySelector('[data-testid="tg-3-in"]') as HTMLInputElement
+    const input = query<HTMLInputElement>(container, '[data-testid="tg-3-in"]')
 
     type(input, 'alpha') // dup (case-insensitive)
     key(input, 'Enter')
@@ -124,7 +125,7 @@ describe('TagsInputBase (real Chromium)', () => {
       }),
     )
     await flush()
-    const rm = container.querySelector('[data-testid="rm-green"]') as HTMLButtonElement
+    const rm = query<HTMLButtonElement>(container, '[data-testid="rm-green"]')
     expect(rm.getAttribute('aria-label')).toBe('Odebrat green')
     expect(rm.getAttribute('type'), 'never submits forms').toBe('button')
     rm.click()

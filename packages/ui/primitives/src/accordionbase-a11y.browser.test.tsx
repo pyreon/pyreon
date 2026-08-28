@@ -23,6 +23,7 @@
  * branch of `toggle` for the multiple one → the "opening B collapses A" spec
  * fails.
  */
+import { query, queryOptional } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { describe, expect, it } from 'vitest'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
@@ -56,10 +57,10 @@ function mountAccordion(props: Partial<AccordionBaseProps> = {}) {
   )
 
   const trigger = (v: string) =>
-    container.querySelector(`[data-accordion-trigger][data-value="${v}"]`) as HTMLButtonElement
+    query<HTMLButtonElement>(container, `[data-accordion-trigger][data-value="${v}"]`)
   // Content is identified by its forwarded class — its id is generated, and
   // looking it up by role would not prove WHICH item it belongs to.
-  const content = (v: string) => container.querySelector(`.cont-${v}`) as HTMLElement | null
+  const content = (v: string) => queryOptional<HTMLElement>(container, `.cont-${v}`)
 
   return { container, unmount, trigger, content }
 }

@@ -1,6 +1,5 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan, hasJSXAttribute } from '../../utils/ast'
-import { isPathExempt } from '../../utils/exempt-paths'
 
 export const toastA11y: Rule = {
   meta: {
@@ -17,16 +16,33 @@ export const toastA11y: Rule = {
     schema: { exemptPaths: 'string[]' },
   },
   create(context) {
-    if (isPathExempt(context)) return {}
+    /** Local names that are really `Toaster` from `@pyreon/toast`. */
+    const toasterAliases = new Set<string>(['Toaster'])
 
     const callbacks: VisitorCallbacks = {
+      ImportDeclaration(node: any) {
+        if (node?.source?.value !== '@pyreon/toast') return
+        for (const spec of node.specifiers ?? []) {
+          if (
+            spec.type === 'ImportSpecifier' &&
+            spec.imported?.type === 'Identifier' &&
+            String(spec.imported.name) === 'Toaster' &&
+            spec.local?.type === 'Identifier'
+          ) {
+            toasterAliases.add(String(spec.local.name))
+          }
+        }
+      },
       JSXOpeningElement(node: any) {
         const name = node.name
         if (!name || name.type !== 'JSXIdentifier') return
 
         const tagName: string = name.name
-        // Skip non-PascalCase and the Toaster container itself
-        if (tagName === 'Toaster') return
+        // The shipped `<Toaster>` derives its own live region, so it is exempt
+        // — under ANY local name. Matching the literal spelling meant
+        // `import { Toaster as AppToast }` was reported for missing a11y it
+        // already has, which is a false positive on the library's own component.
+        if (toasterAliases.has(tagName)) return
         const firstChar = tagName[0]
         if (!firstChar || firstChar !== firstChar.toUpperCase()) return
         if (!tagName.toLowerCase().includes('toast')) return
