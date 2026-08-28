@@ -262,3 +262,42 @@ describe('popstate routes through the navigation pipeline', () => {
   })
 
 })
+
+describe('rapid double-Back — the same-path echo-guard residual', () => {
+  it('a second rapid Back landing on the ORIGINAL path is not dropped', async () => {
+    // url-state-style external writer: raw pushState entries the router never
+    // sees (no __pyreonIdx stamps). Back #1 targets ?x=2 and is still IN
+    // FLIGHT (loader delay) when Back #2 lands on the original path — which
+    // equals the not-yet-updated `currentPath`, so the echo guard compared
+    // against WHERE THE APP WAS and dropped the traversal. #2885 stopped the
+    // URL clobber; this locks the other half: the router's own state must
+    // still follow the browser to the final entry.
+    const routes: RouteRecord[] = [
+      {
+        path: '/a',
+        component: Noop,
+        loader: async () => {
+          await flush(15)
+          return {}
+        },
+        gcTime: 0,
+      },
+    ]
+    window.history.replaceState(null, '', '/a')
+    const router = createRouter({ routes, mode: 'history' })
+    await flush(30) // settle initial work
+
+    window.history.pushState(null, '', '/a?x=2')
+    window.history.pushState(null, '', '/a?x=3')
+
+    simulateBack('/a?x=2') // Back #1 — navigate in flight (loader ~15ms)
+    await flush(0)
+    simulateBack('/a') // Back #2 — rapid; equals the stale currentPath
+    await flush(80)
+
+    // The router must agree with the browser URL (no ?x anywhere).
+    expect(window.location.search).toBe('')
+    expect(router.currentRoute().query).toEqual({})
+    router.destroy()
+  })
+})

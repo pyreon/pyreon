@@ -590,6 +590,16 @@ export function createRouter<TNames extends string = string>(
   // when the popped entry carries a `__pyreonIdx` stamp, else `replaceState`s the
   // URL back; a SUPERSEDED traversal is left alone (the newer navigation owns the
   // URL); a same-path event early-returns without running the pipeline.
+  // The target of a browser-initiated navigation that is still IN FLIGHT.
+  // The echo guard below must compare an incoming traversal against where the
+  // app WILL be -- not `currentPath`, which the in-flight navigate has not
+  // updated yet. Without it, a rapid second Back landing on the ORIGINAL path
+  // read as an echo and was DROPPED: the browser moved, the router kept the
+  // first traversal's state, and every query/search reader went stale.
+  // (#2885 fixed the URL-clobber half of this same race; this is the other
+  // half -- the router's own state must follow the browser to the final entry.)
+  let _pendingBrowserTarget: string | null = null
+
   const handleBrowserNav = (): void => {
     // Client-only: wired solely to the popstate/hashchange listeners, which
     // are null on the server. The explicit `isClient` early-return documents
@@ -604,14 +614,21 @@ export function createRouter<TNames extends string = string>(
       return
     }
     const target = normalizeTrailingSlash(getCurrentLocation(), trailingSlash)
-    if (target === currentPath.peek()) {
-      // Fragment-only change (history mode) or an echo — native behavior wins.
+    if (target === (_pendingBrowserTarget ?? currentPath.peek())) {
+      // Fragment-only change (history mode), an echo, or a duplicate event
+      // for the traversal already in flight — native behavior wins.
       if (poppedIdx !== null) _histIdx = poppedIdx
       return
     }
     const prevIdx = _histIdx
     if (poppedIdx !== null) _histIdx = poppedIdx
-    void navigate(target, true, 0, true).then((status) => {
+    _pendingBrowserTarget = target
+    void navigate(target, true, 0, true)
+      .finally(() => {
+        // Identity-guarded: a NEWER browser traversal may own the field now.
+        if (_pendingBrowserTarget === target) _pendingBrowserTarget = null
+      })
+      .then((status) => {
       if (status !== 'cancelled') return
       // Guard / blocker / middleware refused the traversal — the app state
       // never changed, so put the BROWSER back where the app is. Only the
