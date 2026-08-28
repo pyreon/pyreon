@@ -5828,8 +5828,22 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
   // `return null` render path keeps emitting `EmptyView()`.
   const returnsNothing =
     returnExpr.kind === 'literal' && (returnExpr.value === null || returnExpr.value === undefined)
+  // camelCase is the third condition, and it is what keeps a RENDER-PROP
+  // component out of the helper path. Such a component takes `children` and
+  // returns `props.children(data)` — a value, not JSX, and not nullish — so the
+  // return alone reads as a helper. `@pyreon/lathe` generates exactly that
+  // shape (`ListBooksData`), and widening on the return alone reclassified it,
+  // whereupon return-type inference could not type it and dropped it with a
+  // warning.
+  //
+  // Naming is a sound signal here rather than a style guess: JSX itself
+  // resolves a lowercase tag to a DOM element and an uppercase one to a
+  // component, so PascalCase-means-component is already enforced by the
+  // language this compiles.
+  const first = name.charAt(0)
+  const isCamelCase = first === first.toLowerCase() && first !== first.toUpperCase()
   const hasValueParams = ((fn.params as AnyNode[] | undefined)?.length ?? 0) > 0
-  if (hasValueParams && !returnContainsJsx(returnExpr) && !returnsNothing) {
+  if (hasValueParams && isCamelCase && !returnContainsJsx(returnExpr) && !returnsNothing) {
     // A GENERIC helper (`function first<T>(xs: T[]): T`) can NOT be emitted:
     // the IR has no generic-parameter representation, so a referenced `T`
     // degrades to `unknown` and the emitted signature is uncompilable. Keep

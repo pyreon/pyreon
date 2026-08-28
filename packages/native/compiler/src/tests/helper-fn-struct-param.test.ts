@@ -109,4 +109,38 @@ describe('a helper is classified by its return, not its parameter order', () => 
     expect(out).toContain('struct Card: View')
     expect(out).not.toContain('func Card(')
   })
+
+  /**
+   * A RENDER-PROP component returns `props.children(data)` — a value, not JSX
+   * and not nullish — so the return alone reads as a helper. `@pyreon/lathe`
+   * generates exactly this shape, and a return-only rule reclassified it,
+   * whereupon return-type inference could not type it and dropped it with a
+   * warning. Caught by lathe's suite, not the compiler's: this compiler change
+   * is only observable in a package that CONSUMES the compiler.
+   */
+  it('keeps a PascalCase render-prop component a component', () => {
+    const src = `
+      type Props = { id: string; children: (data: string | undefined) => unknown }
+      export function BookData(props: Props) {
+        return props.children(props.id)
+      }
+      export function P() { return <Stack><Text>x</Text></Stack> }
+    `
+    const out = transform(src, { target: 'swift' })
+    expect(out.code).not.toContain('func BookData(')
+    expect(
+      out.warnings.some((w) => String((w as { message?: string }).message ?? w).includes('BookData')),
+    ).toBe(false)
+  })
+
+  /** The camelCase twin of that shape IS a helper — naming is the signal. */
+  it('treats the camelCase twin as a helper', () => {
+    const src = `
+      type Double = number
+      type Box = { x: Double; y: Double }
+      function boxWidth(b: Box, k: Double): Double { return b.x * k }
+      export function P() { return <Stack><Text>{String(boxWidth({ x: 1.0, y: 2.0 }, 2.0))}</Text></Stack> }
+    `
+    expect(transform(src, { target: 'swift' }).code).toContain('func boxWidth(')
+  })
 })
