@@ -176,4 +176,23 @@ describe('useDeviceMotion', () => {
     const motionAdds = add.mock.calls.filter(([type]) => type === 'devicemotion')
     expect(motionAdds).toHaveLength(1)
   })
+
+  // `start()` on an unsupported environment must diagnose rather than fail
+  // mute: the API is absent on http origins as well as on desktop, and a bare
+  // `false` gives the caller nothing to act on.
+  it('start() warns and returns false where the API is absent', async () => {
+    const saved = (globalThis as unknown as Record<string, unknown>).DeviceMotionEvent
+    // biome-ignore lint: deliberately removing a global to test the bail path
+    delete (globalThis as unknown as Record<string, unknown>).DeviceMotionEvent
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      await expect(mountHook().start()).resolves.toBe(false)
+    } finally {
+      Object.defineProperty(globalThis, 'DeviceMotionEvent', {
+        value: saved,
+        configurable: true,
+      })
+      warn.mockRestore()
+    }
+  })
 })
