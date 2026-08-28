@@ -2889,7 +2889,12 @@ function emitSwiftDecl(
     // (`"all"`) as an enum case (`.all`).
     const isEnumTyped = d.type.kind === 'typeRef' && _enumNames.has(d.type.name)
     if (isEnumTyped) _activeEnumType = (d.type as { name: string }).name
-    const initial = emitSwiftExpr(d.initial, 0)
+    // A @State initializer is a STORED-PROPERTY initializer: it cannot
+    // reference the body-local `let`s that value-consts emit as (`cannot
+    // find 'start' in scope` — warning-free, real-SDK-typecheck-only).
+    // Inline them, exactly as struct-level computeds and handler bodies
+    // already do; mutated (`let x = 1; x++`) vars are excluded upstream.
+    const initial = emitSwiftExpr(inlineValueConsts(d.initial), 0)
     _activeEnumType = undefined
     // Parse-time inference returned unknown for an object-literal (or
     // array-of-object-literal) initializer, but the VALUE emit above just
@@ -2897,8 +2902,18 @@ function emitSwiftDecl(
     // `@State var items: Any = [__Obj0(...)]` is a silent broken build:
     // `items[0].name` → "value of type 'Any' has no subscripts" under the
     // real-SDK typecheck, with zero warnings (parse-only validation passes).
-    const anno =
-      (type === 'Any' || type === '[Any]') ? (synthSwiftSignalAnnotation(d.initial) ?? type) : type
+    let anno = type
+    if (type === 'Any' || type === '[Any]') {
+      // Ctx inference first (the debounced-value precedent): a scalar seed
+      // (`signal(start)`, `signal(a * 2)`) types through `valueConsts` /
+      // signal types in the component ctx. Object literals fall through to
+      // the shared struct-name resolution.
+      const t = inferType(d.initial, _exprInferCtx)
+      anno =
+        t.kind !== 'unknown'
+          ? swiftType(t, synth, d.name)
+          : (synthSwiftSignalAnnotation(d.initial) ?? type)
+    }
     // G5 — persistent signal via `useStorage<T>('key', default)`. SwiftUI's
     // `@AppStorage("key")` property wrapper writes through to UserDefaults
     // and triggers re-renders on change (same reactive contract as @State).
