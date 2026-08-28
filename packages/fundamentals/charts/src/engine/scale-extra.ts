@@ -15,9 +15,12 @@ export function scaleLog(d: Domain, r0: Double, r1: Double, v: Double): Double {
   const min = d.min <= 0.0 ? 0.000001 : d.min
   const max = d.max <= min ? min * 10.0 : d.max
   const val = v <= 0.0 ? min : v
+  // No `hi === lo` guard: `max` above is widened to at least `min * 10`
+  // whenever it is not already greater than `min`, so the span is always a
+  // decade or more and the division can never be by zero. Coverage found the
+  // guard unreachable, which is how it was noticed.
   const lo = Math.log10(min)
   const hi = Math.log10(max)
-  if (hi === lo) return (r0 + r1) / 2.0
   return r0 + ((Math.log10(val) - lo) / (hi - lo)) * (r1 - r0)
 }
 
