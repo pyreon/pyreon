@@ -21,7 +21,7 @@ function sev(entry: unknown): Severity {
 }
 
 describe('opt-in best-practice rule wiring', () => {
-  it('the expected 21 best-practice rules are tagged optIn', () => {
+  it('the expected 22 best-practice rules are tagged optIn', () => {
     // Six a11y rules were promoted OUT of opt-in: require-img-alt,
     // anchor-is-valid, no-autofocus, no-redundant-role, no-positive-tabindex
     // and primitive-media-needs-label. Each is an unambiguous WCAG failure
@@ -32,6 +32,7 @@ describe('opt-in best-practice rule wiring', () => {
     // preferences.
     expect(new Set(OPT_IN_IDS)).toEqual(
       new Set([
+        'pyreon/no-unsanitized-inner-html',
         'pyreon/img-requires-dimensions',
         'pyreon/content-visibility-needs-intrinsic-size',
         'pyreon/prefer-zero-image',

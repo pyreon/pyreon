@@ -2,156 +2,9 @@
   "$schema": "./packages/tools/lint/schema/pyreonlintrc.schema.json",
   "preset": "strict",
   "rules": {
-    "pyreon/no-async-effect": "error",
-    "pyreon/no-bare-signal-in-jsx": [
-      "info",
-      {
-        "exemptPaths": [
-          "__tests__/",
-          ".test."
-        ]
-      }
-    ],
-    "pyreon/no-context-destructure": "error",
-    "pyreon/no-signal-in-loop": "error",
-    "pyreon/no-signal-in-props": "error",
-    "pyreon/no-nested-effect": "error",
-    "pyreon/no-peek-in-tracked": "error",
-    "pyreon/no-unbatched-updates": [
-      "error",
-      {
-        "exemptPaths": [
-          "__tests__/",
-          ".test.",
-          "packages/native/compiler/"
-        ]
-      }
-    ],
-    "pyreon/prefer-computed": "error",
-    "pyreon/no-effect-assignment": "error",
-    "pyreon/no-signal-leak": "error",
-    "pyreon/no-signal-call-write": "error",
-    "pyreon/storage-signal-v-forwarding": "error",
-    "pyreon/no-iterate-children-without-resolve": "error",
-    "pyreon/no-guard-only-signal-reads-in-effect": "error",
-    "pyreon/no-map-in-jsx": "off",
-    "pyreon/use-by-not-key": "error",
-    "pyreon/no-classname": "error",
-    "pyreon/no-htmlfor": "error",
-    "pyreon/no-onchange": "error",
-    "pyreon/no-ternary-conditional": "off",
-    "pyreon/no-and-conditional": "off",
-    "pyreon/no-line-comment-in-jsx": "error",
-    "pyreon/no-index-as-by": "error",
-    "pyreon/no-missing-for-by": "error",
-    "pyreon/no-props-destructure": [
-      "error",
-      {
-        "exemptPaths": [
-          "packages/fundamentals/flow/src/components/",
-          "packages/fundamentals/code/src/components/",
-          "packages/fundamentals/rich-text/src/components/",
-          "packages/fundamentals/flow/src/components/flow-component.tsx",
-          "packages/fundamentals/code/src/components/diff-editor.tsx",
-          "packages/ui-system/kinetic/src/TransitionGroup.tsx",
-          "packages/ui-system/kinetic/src/kinetic/StaggerRenderer.tsx",
-          "packages/ui-system/kinetic/src/kinetic/CollapseRenderer.tsx",
-          "packages/ui-system/kinetic/src/kinetic/GroupRenderer.tsx"
-        ]
-      }
-    ],
-    "pyreon/no-children-access": "off",
-    "pyreon/no-missing-cleanup": "error",
-    "pyreon/no-mount-in-effect": "error",
-    "pyreon/no-effect-in-mount": [
-      "error",
-      {
-        "exemptPaths": [
-          "packages/core/runtime-dom/src/keep-alive.ts"
-        ]
-      }
-    ],
-    "pyreon/no-dom-in-setup": [
-      "error",
-      {
-        "exemptPaths": [
-          "packages/tools/devtools/",
-          "packages/tools/vue-compat/",
-          "packages/ui-system/styler/",
-          "packages/zero/zero-content/"
-        ]
-      }
-    ],
-    "pyreon/no-imperative-effect-on-create": [
-      "error",
-      {
-        "exemptPaths": [
-          "packages/fundamentals/hooks/",
-          "packages/fundamentals/hotkeys/",
-          "packages/fundamentals/rx/",
-          "__tests__/",
-          ".test.",
-          "packages/zero/zero/src/theme.tsx"
-        ]
-      }
-    ],
-    "pyreon/init-fn-needs-idempotency": "error",
-    "pyreon/no-effect-in-for": "error",
-    "pyreon/no-eager-import": "error",
-    "pyreon/no-heavy-import-only-in-handler": "error",
-    "pyreon/prefer-show-over-display": "info",
-    "pyreon/promise-race-needs-cleartimeout": "error",
-    "pyreon/no-window-in-ssr": [
-      "error",
-      {
-        "exemptPaths": [
-          "packages/core/runtime-dom/",
-          "packages/core/compiler/",
-          "-compat/",
-          "packages/tools/devtools/",
-          "packages/tools/testing/",
-          "packages/internals/perf-harness/",
-          "packages/internals/test-utils/",
-          "__tests__/",
-          ".test."
-        ]
-      }
-    ],
-    "pyreon/no-mismatch-risk": "error",
-    "pyreon/prefer-request-context": "error",
-    "pyreon/prefer-isserver": [
-      "error",
-      {
-        "exemptPaths": [
-          "packages/core/head/src/dom.ts",
-          "packages/fundamentals/toast/src/toaster.tsx",
-          "packages/fundamentals/virtual/src/use-window-virtualizer.ts",
-          "packages/ui-system/elements/src/Overlay/positioning.ts",
-          "packages/ui-system/elements/src/Portal/component.tsx",
-          "packages/ui-system/styler/src/sheet.ts",
-          "packages/internals/test-utils/src/happy-dom-hashchange-guard.ts"
-        ]
-      }
-    ],
-    "pyreon/no-private-env-in-client": [
-      "warn",
-      {
-        "exemptPaths": [
-          "packages/zero/cli/",
-          "packages/zero/zero/src/adapters/",
-          "packages/zero/zero/src/ssg-plugin.ts",
-          "packages/zero/zero/src/ssr-build-shared.ts",
-          "packages/zero/zero/src/perf-advisor-plugin.ts",
-          "packages/zero/zero/src/vercel-revalidate-handler.ts",
-          "packages/zero/zero-content/src/plugin.ts",
-          "packages/zero/zero-content/src/runtime.ts"
-        ]
-      }
-    ],
-    "pyreon/no-circular-import": "error",
-    "pyreon/no-deep-import": "error",
-    "pyreon/island-import-from-client": "error",
-    "pyreon/no-cross-layer-import": "error",
+    "pyreon/anchor-is-valid": "error",
+    "pyreon/color-contrast": "warn",
+    "pyreon/content-visibility-needs-intrinsic-size": "warn",
     "pyreon/dev-guard-warnings": [
       "error",
       {
@@ -173,6 +26,65 @@
         ]
       }
     ],
+    "pyreon/dialog-a11y": "error",
+    "pyreon/heading-order": "warn",
+    "pyreon/i18n-prefer-trans-for-rich-jsx": "info",
+    "pyreon/img-requires-dimensions": [
+      "warn",
+      {
+        "exemptPaths": [
+          "packages/zero/zero/src/image.tsx",
+          "packages/zero/zero/src/icon.tsx"
+        ]
+      }
+    ],
+    "pyreon/init-fn-needs-idempotency": "error",
+    "pyreon/invalid-loader-export": "error",
+    "pyreon/island-import-from-client": "error",
+    "pyreon/missing-get-static-paths": "error",
+    "pyreon/no-and-conditional": "off",
+    "pyreon/no-async-effect": "error",
+    "pyreon/no-autofocus": "error",
+    "pyreon/no-bare-signal-in-jsx": [
+      "info",
+      {
+        "exemptPaths": [
+          "__tests__/",
+          ".test."
+        ]
+      }
+    ],
+    "pyreon/no-children-access": "off",
+    "pyreon/no-circular-import": "error",
+    "pyreon/no-classname": "error",
+    "pyreon/no-context-destructure": "error",
+    "pyreon/no-cross-layer-import": "error",
+    "pyreon/no-deep-import": "error",
+    "pyreon/no-discarded-optimize-fields": "warn",
+    "pyreon/no-dom-in-setup": [
+      "error",
+      {
+        "exemptPaths": [
+          "packages/tools/devtools/",
+          "packages/tools/vue-compat/",
+          "packages/ui-system/styler/",
+          "packages/zero/zero-content/"
+        ]
+      }
+    ],
+    "pyreon/no-duplicate-store-id": "error",
+    "pyreon/no-dynamic-styled": "error",
+    "pyreon/no-eager-import": "error",
+    "pyreon/no-effect-assignment": "error",
+    "pyreon/no-effect-in-for": "error",
+    "pyreon/no-effect-in-mount": [
+      "error",
+      {
+        "exemptPaths": [
+          "packages/core/runtime-dom/src/keep-alive.ts"
+        ]
+      }
+    ],
     "pyreon/no-error-without-prefix": [
       "error",
       {
@@ -183,12 +95,74 @@
         ]
       }
     ],
+    "pyreon/no-guard-only-signal-reads-in-effect": "error",
+    "pyreon/no-heavy-import-only-in-handler": "error",
+    "pyreon/no-href-navigation": [
+      "error",
+      {
+        "exemptPaths": [
+          "packages/zero/zero/src/link.tsx"
+        ]
+      }
+    ],
+    "pyreon/no-htmlfor": "error",
+    "pyreon/no-imperative-effect-on-create": [
+      "error",
+      {
+        "exemptPaths": [
+          "packages/fundamentals/hooks/",
+          "packages/fundamentals/hotkeys/",
+          "packages/fundamentals/rx/",
+          "__tests__/",
+          ".test.",
+          "packages/zero/zero/src/theme.tsx"
+        ]
+      }
+    ],
+    "pyreon/no-imperative-navigate-in-render": "error",
+    "pyreon/no-index-as-by": "error",
+    "pyreon/no-inline-style-object": [
+      "error",
+      {
+        "exemptPaths": [
+          "packages/ui-system/kinetic/"
+        ]
+      }
+    ],
+    "pyreon/no-iterate-children-without-resolve": "error",
+    "pyreon/no-line-comment-in-jsx": "error",
+    "pyreon/no-map-in-jsx": "off",
+    "pyreon/no-mismatch-risk": "error",
+    "pyreon/no-missing-cleanup": "error",
+    "pyreon/no-missing-fallback": "error",
+    "pyreon/no-missing-for-by": "error",
     "pyreon/no-module-signal-in-server-package": [
       "error",
       {
         "exemptPaths": [
           "packages/zero/zero/src/i18n-routing.ts",
           "packages/zero/zero/src/theme.tsx"
+        ]
+      }
+    ],
+    "pyreon/no-mount-in-effect": "error",
+    "pyreon/no-mutate-store-state": "error",
+    "pyreon/no-nested-effect": "error",
+    "pyreon/no-onchange": "error",
+    "pyreon/no-peek-in-tracked": "error",
+    "pyreon/no-positive-tabindex": "error",
+    "pyreon/no-private-env-in-client": [
+      "warn",
+      {
+        "exemptPaths": [
+          "packages/zero/cli/",
+          "packages/zero/zero/src/adapters/",
+          "packages/zero/zero/src/ssg-plugin.ts",
+          "packages/zero/zero/src/ssr-build-shared.ts",
+          "packages/zero/zero/src/perf-advisor-plugin.ts",
+          "packages/zero/zero/src/vercel-revalidate-handler.ts",
+          "packages/zero/zero-content/src/plugin.ts",
+          "packages/zero/zero-content/src/runtime.ts"
         ]
       }
     ],
@@ -209,50 +183,23 @@
         ]
       }
     ],
+    "pyreon/no-props-destructure": [
+      "error",
+      {
+        "exemptPaths": [
+          "packages/fundamentals/flow/src/components/",
+          "packages/fundamentals/code/src/components/",
+          "packages/fundamentals/rich-text/src/components/",
+          "packages/fundamentals/flow/src/components/flow-component.tsx",
+          "packages/fundamentals/code/src/components/diff-editor.tsx",
+          "packages/ui-system/kinetic/src/TransitionGroup.tsx",
+          "packages/ui-system/kinetic/src/kinetic/StaggerRenderer.tsx",
+          "packages/ui-system/kinetic/src/kinetic/CollapseRenderer.tsx",
+          "packages/ui-system/kinetic/src/kinetic/GroupRenderer.tsx"
+        ]
+      }
+    ],
     "pyreon/no-query-selector-cast-in-test": "warn",
-    "pyreon/require-browser-smoke-test": "error",
-    "pyreon/vitest-config-uses-shared": [
-      "error",
-      {
-        "exemptPaths": [
-          "packages/internals/vitest-config/"
-        ]
-      }
-    ],
-    "pyreon/no-store-outside-provider": "error",
-    "pyreon/no-mutate-store-state": "error",
-    "pyreon/no-duplicate-store-id": "error",
-    "pyreon/no-unregistered-field": "error",
-    "pyreon/no-submit-without-validation": "error",
-    "pyreon/prefer-field-array": [
-      "error",
-      {
-        "exemptPaths": [
-          "packages/fundamentals/feature/src/define-feature.ts"
-        ]
-      }
-    ],
-    "pyreon/no-signal-in-form-initial-values": "warn",
-    "pyreon/no-inline-style-object": [
-      "error",
-      {
-        "exemptPaths": [
-          "packages/ui-system/kinetic/"
-        ]
-      }
-    ],
-    "pyreon/no-dynamic-styled": "error",
-    "pyreon/prefer-cx": "error",
-    "pyreon/no-theme-outside-provider": [
-      "warn",
-      {
-        "exemptPaths": [
-          "packages/ui-system/rocketstyle/",
-          "packages/ui-system/styler/"
-        ]
-      }
-    ],
-    "pyreon/no-signal-read-in-attrs-callback": "error",
     "pyreon/no-raw-addeventlistener": [
       "error",
       {
@@ -281,6 +228,7 @@
         ]
       }
     ],
+    "pyreon/no-raw-localstorage": "error",
     "pyreon/no-raw-setinterval": [
       "error",
       {
@@ -300,27 +248,86 @@
         ]
       }
     ],
-    "pyreon/no-raw-localstorage": "error",
-    "pyreon/toast-a11y": [
-      "error",
+    "pyreon/no-redundant-role": "error",
+    "pyreon/no-script-url": "error",
+    "pyreon/no-signal-call-write": "error",
+    "pyreon/no-signal-in-form-initial-values": "warn",
+    "pyreon/no-signal-in-loop": "error",
+    "pyreon/no-signal-in-props": "error",
+    "pyreon/no-signal-leak": "error",
+    "pyreon/no-signal-read-in-attrs-callback": "error",
+    "pyreon/no-storage-write-as-call": "error",
+    "pyreon/no-store-outside-provider": "error",
+    "pyreon/no-submit-without-validation": "error",
+    "pyreon/no-target-blank-without-rel": "error",
+    "pyreon/no-ternary-conditional": "off",
+    "pyreon/no-theme-outside-provider": [
+      "warn",
       {
         "exemptPaths": [
-          "packages/fundamentals/toast/"
+          "packages/ui-system/rocketstyle/",
+          "packages/ui-system/styler/"
         ]
       }
     ],
-    "pyreon/dialog-a11y": "error",
+    "pyreon/no-unbatched-updates": [
+      "error",
+      {
+        "exemptPaths": [
+          "__tests__/",
+          ".test.",
+          "packages/native/compiler/"
+        ]
+      }
+    ],
+    "pyreon/no-unencoded-path-interpolation": "warn",
+    "pyreon/no-unregistered-field": "error",
+    "pyreon/no-unsanitized-inner-html": "warn",
+    "pyreon/no-untimed-raw-fetch": "info",
+    "pyreon/no-window-in-ssr": [
+      "error",
+      {
+        "exemptPaths": [
+          "packages/core/runtime-dom/",
+          "packages/core/compiler/",
+          "-compat/",
+          "packages/tools/devtools/",
+          "packages/tools/testing/",
+          "packages/internals/perf-harness/",
+          "packages/internals/test-utils/",
+          "__tests__/",
+          ".test."
+        ]
+      }
+    ],
     "pyreon/overlay-a11y": "error",
-    "pyreon/no-href-navigation": [
+    "pyreon/prefer-computed": "error",
+    "pyreon/prefer-cx": "error",
+    "pyreon/prefer-field-array": [
       "error",
       {
         "exemptPaths": [
-          "packages/zero/zero/src/link.tsx"
+          "packages/fundamentals/feature/src/define-feature.ts"
         ]
       }
     ],
-    "pyreon/no-imperative-navigate-in-render": "error",
-    "pyreon/no-missing-fallback": "error",
+    "pyreon/prefer-isserver": [
+      "error",
+      {
+        "exemptPaths": [
+          "packages/core/head/src/dom.ts",
+          "packages/fundamentals/toast/src/toaster.tsx",
+          "packages/fundamentals/virtual/src/use-window-virtualizer.ts",
+          "packages/ui-system/elements/src/Overlay/positioning.ts",
+          "packages/ui-system/elements/src/Portal/component.tsx",
+          "packages/ui-system/styler/src/sheet.ts",
+          "packages/internals/test-utils/src/happy-dom-hashchange-guard.ts"
+        ]
+      }
+    ],
+    "pyreon/prefer-request-context": "error",
+    "pyreon/prefer-show-over-display": "info",
+    "pyreon/prefer-typed-search-params": "info",
     "pyreon/prefer-use-is-active": [
       "error",
       {
@@ -330,23 +337,6 @@
         ]
       }
     ],
-    "pyreon/no-target-blank-without-rel": "error",
-    "pyreon/no-script-url": "error",
-    "pyreon/invalid-loader-export": "error",
-    "pyreon/missing-get-static-paths": "error",
-    "pyreon/revalidate-not-pure-literal": "error",
-    "pyreon/require-img-alt": "error",
-    "pyreon/img-requires-dimensions": [
-      "warn",
-      {
-        "exemptPaths": [
-          "packages/zero/zero/src/image.tsx",
-          "packages/zero/zero/src/icon.tsx"
-        ]
-      }
-    ],
-    "pyreon/content-visibility-needs-intrinsic-size": "warn",
-    "pyreon/no-positive-tabindex": "error",
     "pyreon/prefer-zero-image": [
       "info",
       {
@@ -356,20 +346,31 @@
         ]
       }
     ],
-    "pyreon/no-discarded-optimize-fields": "warn",
-    "pyreon/no-autofocus": "error",
-    "pyreon/no-redundant-role": "error",
-    "pyreon/anchor-is-valid": "error",
-    "pyreon/heading-order": "warn",
-    "pyreon/color-contrast": "warn",
     "pyreon/primitive-media-needs-label": "error",
-    "pyreon/query-options-as-function": "error",
+    "pyreon/promise-race-needs-cleartimeout": "error",
     "pyreon/query-fn-must-forward-signal": "warn",
-    "pyreon/no-unencoded-path-interpolation": "warn",
-    "pyreon/no-untimed-raw-fetch": "info",
+    "pyreon/query-options-as-function": "error",
+    "pyreon/require-browser-smoke-test": "error",
+    "pyreon/require-img-alt": "error",
+    "pyreon/revalidate-not-pure-literal": "error",
     "pyreon/rx-prefer-pipe": "info",
-    "pyreon/i18n-prefer-trans-for-rich-jsx": "info",
-    "pyreon/prefer-typed-search-params": "info",
-    "pyreon/no-storage-write-as-call": "error"
+    "pyreon/storage-signal-v-forwarding": "error",
+    "pyreon/toast-a11y": [
+      "error",
+      {
+        "exemptPaths": [
+          "packages/fundamentals/toast/"
+        ]
+      }
+    ],
+    "pyreon/use-by-not-key": "error",
+    "pyreon/vitest-config-uses-shared": [
+      "error",
+      {
+        "exemptPaths": [
+          "packages/internals/vitest-config/"
+        ]
+      }
+    ]
   }
 }

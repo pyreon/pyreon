@@ -465,6 +465,11 @@ const FIXTURES: Record<string, Fixture> = {
     bad: `export const A = () => <a href="/x" target="_blank">go</a>`,
     good: `export const A = () => <a href="/x" target="_blank" rel="noopener noreferrer">go</a>`,
   },
+  'pyreon/no-unsanitized-inner-html': {
+    file: 'src/a.tsx',
+    bad: `export const A = () => <div dangerouslySetInnerHTML={{ __html: userBio }} />`,
+    good: `export const A = () => <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(userBio) }} />`,
+  },
   'pyreon/no-script-url': {
     file: 'src/a.tsx',
     bad: `export const A = () => <a href="javascript:alert(1)">x</a>`,
