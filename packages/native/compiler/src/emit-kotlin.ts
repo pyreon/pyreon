@@ -6950,6 +6950,10 @@ function emitKotlinVideo(
   if (readStaticAttrKotlin(e, 'autoPlay') === true) args.push('autoPlay = true')
   if (readStaticAttrKotlin(e, 'loop') === true) args.push('loop = true')
   if (readStaticAttrKotlin(e, 'muted') === true) args.push('muted = true')
+  // Emitted when explicitly FALSE — see the Swift twin. `controls` defaults to
+  // true, unlike every other boolean here, and had no runtime parameter to
+  // land on until now (`useController` was hardcoded).
+  if (readStaticAttrKotlin(e, 'controls') === false) args.push('controls = false')
   const statusAttr = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'event' }> =>
       a.kind === 'event' && a.name === 'statuschange',

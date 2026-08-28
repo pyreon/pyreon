@@ -8501,6 +8501,14 @@ function emitSwiftVideo(
   if (readStaticAttr(e, 'autoPlay') === true) args.push('autoPlay: true')
   if (readStaticAttr(e, 'loop') === true) args.push('loop: true')
   if (readStaticAttr(e, 'muted') === true) args.push('muted: true')
+  // `controls` is the one boolean on this element that DEFAULTS TO TRUE, so it
+  // is emitted when explicitly FALSE — the mirror of its siblings. Compared
+  // with `=== false` rather than a falsy test, so an absent prop stays absent.
+  //
+  // It had nowhere to land at all until now: neither runtime took the
+  // parameter, and the Kotlin one hardcoded `useController = true`. Typed and
+  // documented on all three targets, honoured on none.
+  if (readStaticAttr(e, 'controls') === false) args.push('controls: false')
   const statusAttr = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'event' }> =>
       a.kind === 'event' && a.name === 'statuschange',

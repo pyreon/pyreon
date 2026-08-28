@@ -732,7 +732,7 @@ public final class PyreonPushNotifications {
   public func stop() {}
 }
 public struct PyreonVideoPlayer: View {
-  public init(url: URL?, autoPlay: Bool = false, loop: Bool = false, muted: Bool = false, onStatusChange: ((String) -> Void)? = nil) {}
+  public init(url: URL?, autoPlay: Bool = false, loop: Bool = false, muted: Bool = false, controls: Bool = true, onStatusChange: ((String) -> Void)? = nil) {}
   public var body: some View { EmptyView() }
 }
 public final class PyreonWebSocket {

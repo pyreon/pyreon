@@ -1915,6 +1915,7 @@ fun PyreonVideoPlayer(
   autoPlay: Boolean = false,
   loop: Boolean = false,
   muted: Boolean = false,
+  controls: Boolean = true,
   onStatusChange: ((String) -> Unit)? = null,
   modifier: Modifier = Modifier,
 ) {}
