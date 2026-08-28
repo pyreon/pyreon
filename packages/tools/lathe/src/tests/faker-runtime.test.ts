@@ -130,8 +130,12 @@ beforeAll(async () => {
   // second; in CI this file runs inside a matrix cell that builds ~40 packages
   // in parallel, where the same work took longer than the whole default budget.
   //
-  // The sibling `validator-runtime.test.ts` does the same thing with two
-  // imports and no faker, which is why it has never needed one.
+  // The sibling `validator-runtime.test.ts` carries the same budget for the
+  // same reason. An earlier version of this comment argued it did not need one
+  // because it makes only two imports and pulls no faker -- then it blew the
+  // 10s default on the very next contended run. That was a claim about what
+  // had been observed so far, written as though it were a property of the
+  // code; the shape is shared, so the budget is too.
 }, 60_000)
 
 afterAll(() => {
