@@ -131,6 +131,7 @@ import { preferPassiveListener } from './web-perf/prefer-passive-listener'
 import { noUnboundedRafLoop } from './web-perf/no-unbounded-raf-loop'
 import { noOutOfSubsetConstruct } from './portable/no-out-of-subset-construct'
 import { noPlatformBranchWithoutFallback } from './portable/no-platform-branch-without-fallback'
+import { noRequireInEsm } from './js/no-require-in-esm'
 import { requireErrorCause } from './js/require-error-cause'
 
 export const allRules: Rule[] = [
@@ -144,6 +145,7 @@ export const allRules: Rule[] = [
   noUnboundedRafLoop,
   noOutOfSubsetConstruct,
   noPlatformBranchWithoutFallback,
+  noRequireInEsm,
   requireErrorCause,
   // Reactivity (15)
   noAsyncEffect,

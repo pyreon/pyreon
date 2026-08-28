@@ -619,6 +619,14 @@ const FIXTURES: Record<string, Fixture> = {
     bad: `export const A = () => <Web><div /></Web>`,
     good: `export const A = () => (<><Web><div /></Web><NativeIOS><div /></NativeIOS><NativeAndroid><div /></NativeAndroid></>)`,
   },
+  'pyreon/no-require-in-esm': {
+    // `.mts` is ESM by EXTENSION, so the fixture proves the rule without
+    // needing a `package.json` on disk — the manifest path is covered by the
+    // dedicated suite instead.
+    file: 'src/a.mts',
+    bad: `export function expiry() { const { X509Certificate } = require('node:crypto'); return X509Certificate }`,
+    good: `import { X509Certificate } from 'node:crypto'\nexport function expiry() { return X509Certificate }`,
+  },
   'pyreon/require-error-cause': {
     file: 'src/a.ts',
     bad: `export function load() { try { parse() } catch (e) { throw new Error('bad config') } }`,

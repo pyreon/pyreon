@@ -2928,6 +2928,7 @@
         "create-multiplatform": "./bin/create-multiplatform.js",
       },
       "devDependencies": {
+        "@pyreon/lint": "workspace:*",
         "@pyreon/native-compiler": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",

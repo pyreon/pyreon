@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/create-multiplatform",
   "version": "0.51.0",
-  "description": "Scaffold a multiplatform Pyreon app — one src/App.tsx → web + iOS (SwiftUI) + Android (Compose). Invoke as `create-multiplatform`.",
+  "description": "Scaffold a multiplatform Pyreon app \u2014 one src/App.tsx \u2192 web + iOS (SwiftUI) + Android (Compose). Invoke as `create-multiplatform`.",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/zero/create-multiplatform#readme",
   "bugs": {
@@ -31,6 +31,7 @@
     "test": "vitest run"
   },
   "devDependencies": {
+    "@pyreon/lint": "workspace:*",
     "@pyreon/native-compiler": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*"

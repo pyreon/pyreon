@@ -34,6 +34,8 @@ import type {
   firesToCreationSiteFindings as FiresToHintsFn,
   ReactivityFinding,
 } from '@pyreon/compiler'
+import { existsSync } from 'node:fs'
+import nodePath from 'node:path'
 import { AstCache } from '../cache'
 import { getPreset } from '../config/presets'
 import { allRules } from '../rules/index'
@@ -225,19 +227,19 @@ export function _findProjectRoot(filePath: string, maxDepth = 32): string | null
   if (_projectRootCache.has(filePath)) {
     return _projectRootCache.get(filePath) ?? null
   }
-  // Lazy-load fs synchronously — these are tiny native bindings,
-  // no perceptible cost.
-  // biome-ignore lint/correctness/noNodejsModules: LSP is Node-only
-  const fs = require('node:fs') as typeof import('node:fs')
-  // biome-ignore lint/correctness/noNodejsModules: LSP is Node-only
-  const path = require('node:path') as typeof import('node:path')
-  let dir = path.dirname(filePath)
+  // Statically imported, not `require`d. This package is `"type": "module"`
+  // and builds to ESM, so a `require` here throws `require is not defined`
+  // under Node — and because the callers wrap it in try/catch, it does not
+  // crash, it silently returns the fallback. Bun defines `require` in ESM,
+  // which is why every test passed. `node:fs`/`node:path` are native
+  // bindings; there is nothing to lazy-load.
+  let dir = nodePath.dirname(filePath)
   for (let i = 0; i < maxDepth; i++) {
-    if (fs.existsSync(path.join(dir, 'package.json'))) {
+    if (existsSync(nodePath.join(dir, 'package.json'))) {
       _projectRootCache.set(filePath, dir)
       return dir
     }
-    const parent = path.dirname(dir)
+    const parent = nodePath.dirname(dir)
     if (parent === dir) break // reached filesystem root
     dir = parent
   }
@@ -258,9 +260,7 @@ export function _resolveLpihCachePath(filePath: string): string | undefined {
   if (envPath) return envPath
   const root = _findProjectRoot(filePath)
   if (!root) return undefined
-  // biome-ignore lint/correctness/noNodejsModules: LSP is Node-only
-  const path = require('node:path') as typeof import('node:path')
-  return path.join(root, _LPIH_DEFAULT_FILENAME)
+  return nodePath.join(root, _LPIH_DEFAULT_FILENAME)
 }
 
 /**
@@ -455,9 +455,10 @@ export function _uriToFilePath(uri: string): string {
   if (!uri.startsWith('file://')) return uri
   try {
     // node:url's fileURLToPath handles Windows + percent-encoding correctly.
-    // Available in Bun + every Node version Pyreon supports. The require()
-    // bridge is needed because LSP runs in CJS context in some hosts (and
-    // top-level await isn't allowed in helper functions).
+    // Available in Bun + every Node version Pyreon supports. (This used to
+    // claim a `require()` bridge was needed for CJS hosts; the code below
+    // uses neither, and the package ships ESM, so a CJS host has to
+    // `import()` it regardless.)
     const decoded = decodeURIComponent(new URL(uri).pathname)
     return decoded.replace(/^\/([A-Za-z]:)/, '$1')
   } catch {

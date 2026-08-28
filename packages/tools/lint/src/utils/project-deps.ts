@@ -121,3 +121,39 @@ export function _resetProjectDepsCache(): void {
   manifestPathCache.clear()
   depsCache.clear()
 }
+
+/**
+ * True when the package owning `filePath` is ESM (`"type": "module"`).
+ *
+ * Returns `false` when there is no manifest or no `type` field, which is the
+ * conservative answer: Node treats a missing `type` as CommonJS, so a rule
+ * gated on this stays silent rather than flagging a file where `require` is
+ * legal. `.cjs` is CommonJS by EXTENSION regardless of the field, and `.mjs`
+ * is ESM regardless — both beat the manifest, which is why they are decided
+ * here rather than by each caller.
+ */
+export function isEsmFile(filePath: string): boolean {
+  const p = resolve(filePath)
+  if (p.endsWith('.cjs') || p.endsWith('.cts')) return false
+  if (p.endsWith('.mjs') || p.endsWith('.mts')) return true
+  const manifest = findNearestManifest(dirname(p))
+  if (!manifest) return false
+  return readModuleType(manifest) === 'module'
+}
+
+/** package.json path → its `type` field (or null when absent/unparseable). */
+const moduleTypeCache = new Map<string, string | null>()
+
+function readModuleType(manifestPath: string): string | null {
+  const cached = moduleTypeCache.get(manifestPath)
+  if (cached !== undefined) return cached
+  let type: string | null = null
+  try {
+    const pkg = JSON.parse(readFileSync(manifestPath, 'utf8')) as { type?: unknown }
+    if (typeof pkg.type === 'string') type = pkg.type
+  } catch {
+    // Unparseable manifest → "not provably ESM", same conservative default.
+  }
+  moduleTypeCache.set(manifestPath, type)
+  return type
+}
