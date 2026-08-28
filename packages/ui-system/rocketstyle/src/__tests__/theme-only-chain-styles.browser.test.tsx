@@ -1,5 +1,6 @@
 /** @jsxImportSource @pyreon/core */
 import { h } from '@pyreon/core'
+import { query } from '@pyreon/test-utils'
 import { mountInBrowser } from '@pyreon/test-utils/browser'
 // Side-effect import: registers the unistyle theme engine, which is how the
 // `.theme()` -> CSS bridge reaches `makeItResponsive` without rocketstyle
@@ -28,7 +29,7 @@ import { rocketstyle } from '../index'
 describe('a theme-only rocketstyle chain', () => {
   const mountCard = (Card: unknown): HTMLElement => {
     const { container } = mountInBrowser(() => h(Card as never, {}, h('span', {}, 'hi')))
-    return container.querySelector('[data-rocketstyle]') as HTMLElement
+    return query(container, '[data-rocketstyle]')
   }
 
   it('renders its theme values as CSS', () => {
