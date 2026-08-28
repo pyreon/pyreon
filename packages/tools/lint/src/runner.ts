@@ -100,15 +100,6 @@ function mergeCallbacks(allCallbacks: VisitorCallbacks[]): Record<string, (node:
 }
 
 /**
- * Lint a single file and return diagnostics.
- *
- * @example
- * ```ts
- * const result = lintFile("app.tsx", source, allRules, getPreset("recommended"))
- * for (const d of result.diagnostics) console.log(d.message)
- * ```
- */
-/**
  * Whole-file exemption from `exemptPaths`, applied centrally in the rule loop.
  *
  * Mirrors `utils/exempt-paths.ts:isPathExempt` exactly — substring match against
@@ -126,6 +117,15 @@ function isPathExemptFor(options: RuleOptions, filePath: string): boolean {
   return false
 }
 
+/**
+ * Lint a single file and return diagnostics.
+ *
+ * @example
+ * ```ts
+ * const result = lintFile("app.tsx", source, allRules, getPreset("recommended"))
+ * for (const d of result.diagnostics) console.log(d.message)
+ * ```
+ */
 export function lintFile(
   filePath: string,
   sourceText: string,

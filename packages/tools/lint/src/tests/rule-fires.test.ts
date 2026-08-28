@@ -29,6 +29,11 @@ import type { LintConfig } from '../types'
  * Without (2) a fixture could pass by reporting unconditionally — which is
  * indistinguishable from working, and is the other half of "inert".
  *
+ * The two cases share a file PATH and a project manifest, so path gating and
+ * dependency gating resolve identically for both. The only variable is the
+ * source, which is what makes a passing pair evidence that the rule
+ * discriminates on the defect rather than on its surroundings.
+ *
  * `FIXTURES` is asserted TOTAL over the registry, so a new rule fails here
  * until it proves it fires. That is deliberate: the repo's own catalog calls a
  * hand-maintained list checked in only one direction "a silent-hole generator".

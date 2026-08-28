@@ -145,6 +145,9 @@ export const runLintGate = async (
 
   const fileResults = [...result.files]
   const configDiagnostics = [...result.configDiagnostics]
+  // Reported as `scanned`, so it must count every file actually linted —
+  // under-reporting here would hide the extra surface this loop exists to add.
+  let scanned = result.files.length
 
   for (const scan of extraScans) {
     const targetRuleIds = allRules
@@ -167,6 +170,7 @@ export const runLintGate = async (
       fix: opts.fix ?? false,
       ruleOverrides: off,
     })
+    scanned += extra.files.length
     for (const fr of extra.files) if (fr.diagnostics.length > 0) fileResults.push(fr)
   }
 
@@ -211,7 +215,7 @@ export const runLintGate = async (
     category: 'correctness',
     findings,
     meta: {
-      scanned: result.files.length,
+      scanned,
       elapsedMs: Date.now() - start,
     },
   }
