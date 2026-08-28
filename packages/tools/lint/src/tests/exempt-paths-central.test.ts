@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { allRules } from '../rules/index'
 import { lintFile } from '../runner'
-import type { LintConfig } from '../types'
+import type { ConfigDiagnostic, LintConfig } from '../types'
 
 /**
  * `exemptPaths` applies to EVERY rule, not just the ones that remembered to
@@ -59,6 +59,36 @@ describe('exemptPaths is honoured for every rule', () => {
 
   it('an empty exemption list does not silence it', () => {
     expect(run({ rules: { [RULE]: ['error', { exemptPaths: [] }] } })).toHaveLength(1)
+  })
+
+  it('does not warn "unknown option" on a rule whose schema omits exemptPaths', () => {
+    // Runtime honours it for every rule, so validation must agree — warning
+    // about an exemption that demonstrably works teaches the wrong thing.
+    const id = 'pyreon/no-heavy-import-only-in-handler'
+    const sink: ConfigDiagnostic[] = []
+    lintFile(
+      FILE,
+      `export const A = 1`,
+      allRules,
+      { rules: { [id]: ['warn', { exemptPaths: ['packages/ui-system/'] }] } },
+      undefined,
+      sink,
+    )
+    expect(sink.filter((d) => d.message.includes('unknown option'))).toEqual([])
+  })
+
+  it('still warns on an option that really is unknown', () => {
+    const id = 'pyreon/no-heavy-import-only-in-handler'
+    const sink: ConfigDiagnostic[] = []
+    lintFile(
+      FILE,
+      `export const A = 1`,
+      allRules,
+      { rules: { [id]: ['warn', { notAnOption: ['x'] }] } },
+      undefined,
+      sink,
+    )
+    expect(sink.some((d) => d.message.includes('unknown option "notAnOption"'))).toBe(true)
   })
 
   it('holds for a rule that DOES implement it — no double-handling regression', () => {
