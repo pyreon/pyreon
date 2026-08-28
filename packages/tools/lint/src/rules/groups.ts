@@ -34,6 +34,10 @@ export const CATEGORY_GROUP: Record<RuleCategory, RuleGroup> = {
   // the rest hardcode this repo. The `scope: 'monorepo'` marker resolves that
   // per rule in `groupOf` — the category alone cannot.
   architecture: 'pyreon',
+  // Exploitable shapes — reverse tabnabbing, script URLs. Separated from
+  // `a11y` and `pyreon` because "is this a vulnerability?" is a different
+  // question from "is this idiomatic?", and teams gate on it differently.
+  security: 'security',
   // Accessibility — standard markup plus the Pyreon-specific surfaces
   // (toast, dialog, overlay, primitives) no generic linter can see.
   accessibility: 'a11y',

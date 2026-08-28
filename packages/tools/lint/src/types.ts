@@ -56,6 +56,7 @@ export type RuleCategory =
   | 'accessibility'
   | 'router'
   | 'ssg'
+  | 'security'
   // Best-practice categories. Rules in these default to `severity: 'off'`
   // (opt-in) and library-scoped ones auto-activate only when the project
   // depends on the library (see `utils/project-deps`).
@@ -72,6 +73,7 @@ export type RuleCategory =
  *
  *  - `pyreon`   framework semantics; nothing outside Pyreon can know these.
  *  - `a11y`     accessibility, standard markup plus Pyreon's own surfaces.
+ *  - `security` shapes that are exploitable, not merely untidy.
  *  - `pkg`      per-library, self-activating on a declared dependency.
  *  - `internal` encodes THIS repository; never enabled by a shipped preset.
  *
@@ -80,7 +82,7 @@ export type RuleCategory =
  * for general JS/TS correctness rules, of which this package has none yet, and
  * an empty group would advertise coverage that does not exist.
  */
-export type RuleGroup = 'pyreon' | 'a11y' | 'pkg' | 'internal'
+export type RuleGroup = 'pyreon' | 'a11y' | 'security' | 'pkg' | 'internal'
 
 /**
  * Declared type of an option slot. Minimal on purpose — sufficient for

@@ -40,11 +40,12 @@ function printUsage() {
 
 const GROUP_BLURB: Record<RuleGroup, string> = {
   pyreon: 'framework semantics — nothing outside Pyreon can know these',
+  security: 'exploitable shapes — script URLs, referrer leakage',
   a11y: 'accessibility — standard markup plus Pyreon\u2019s own surfaces',
   pkg: 'per-library — each self-activates on a declared dependency',
   internal: 'encodes the Pyreon repo itself — never on in a shipped preset',
 }
-const GROUP_ORDER: RuleGroup[] = ['pyreon', 'a11y', 'pkg', 'internal']
+const GROUP_ORDER: RuleGroup[] = ['pyreon', 'security', 'a11y', 'pkg', 'internal']
 
 function printList() {
   const rules = listRules()
