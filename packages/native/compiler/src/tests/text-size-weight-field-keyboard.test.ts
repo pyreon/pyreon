@@ -122,3 +122,77 @@ describe('the emitted code really compiles', () => {
     expect(r.ok, r.ok ? '' : String(r.error).split('\n').slice(0, 5).join('\n')).toBe(true)
   })
 })
+
+/**
+ * Two more props on the canonical primitives that produced no emit, found the
+ * same way — asking whether each documented prop reaches the emit, rather than
+ * whether it warns.
+ *
+ * Both had a working SIBLING in the same file, which is what makes them the
+ * "a fix applied to one call site is folklore" shape rather than an oversight:
+ * `<Heading color>` colours and `<Text color>` did not; `<Button disabled>`
+ * disables and `<Press disabled>` did not.
+ *
+ * The Press one is not cosmetic. A disabled Press stayed tappable and FIRED ITS
+ * HANDLER on both targets.
+ */
+describe('<Text color> — its sibling Heading had this all along', () => {
+  it.each(['swift', 'kotlin'] as const)('%s colours the text', (target) => {
+    const out = emit(`<Text color="primary">t</Text>`, target)
+    expect(out).toMatch(target === 'swift' ? /\.foregroundColor\(/ : /color = Color\(/)
+  })
+
+  it('agrees with Heading on the same token', () => {
+    // Same helper, same resolver — two primitives disagreeing about what
+    // `primary` looks like would be its own bug.
+    const t = emit(`<Text color="primary">t</Text>`, 'kotlin')
+    const h = emit(`<Heading color="primary">t</Heading>`, 'kotlin')
+    const tok = /color = (Color\([^)]*\))/
+    expect(t.match(tok)?.[1]).toBe(h.match(tok)?.[1])
+  })
+
+  it('a ternary of two literal tokens still lowers, as on Heading', () => {
+    const src = `import { signal } from '@pyreon/reactivity'
+import { Stack, Text } from '${P}'
+export function C() {
+  const err = signal(false)
+  return <Stack><Text color={err() ? 'danger' : 'text'}>t</Text></Stack>
+}`
+    expect(transform(src, { target: 'kotlin' }).code).toMatch(/if \(err\)/)
+  })
+})
+
+describe('<Press disabled> — a functional drop, not a cosmetic one', () => {
+  it('Swift disables the button', () => {
+    expect(emit(`<Press onPress={() => {}} disabled><Text>x</Text></Press>`, 'swift')).toContain(
+      '.disabled(true)',
+    )
+  })
+
+  it('Kotlin disables the clickable', () => {
+    expect(emit(`<Press onPress={() => {}} disabled><Text>x</Text></Press>`, 'kotlin')).toContain(
+      'clickable(enabled = false',
+    )
+  })
+
+  it('an ENABLED Press is byte-identical to before — nothing pays for the fix', () => {
+    const out = emit(`<Press onPress={() => {}}><Text>x</Text></Press>`, 'kotlin')
+    expect(out).toContain('clickable(onClick =')
+    expect(out).not.toContain('enabled =')
+  })
+
+  it('disabled={false} is a no-op, not `enabled = true`', () => {
+    const out = emit(`<Press onPress={() => {}} disabled={false}><Text>x</Text></Press>`, 'kotlin')
+    expect(out).not.toContain('enabled =')
+  })
+
+  it('the long-press form carries `enabled` too', () => {
+    // `combinedClickable` takes it as well; wiring only the plain path would
+    // leave a disabled long-pressable Press still firing.
+    const out = emit(
+      `<Press onPress={() => {}} onLongPress={() => {}} disabled><Text>x</Text></Press>`,
+      'kotlin',
+    )
+    expect(out).toContain('combinedClickable(enabled = false')
+  })
+})

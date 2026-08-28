@@ -6618,6 +6618,15 @@ function emitSwiftText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   //
   // Skipped entirely when a custom `font` is present — that path emits its own
   // `.font(.custom(...))`, and adding a system font would overwrite it.
+  // `color` — documented on Text, implemented on its SIBLING Heading in this
+  // same file and not here. A coloured label rendered in the default colour on
+  // native while the web showed it coloured, with no warning. Reuses Heading's
+  // exact call so the two agree on the static token, the two-literal ternary
+  // (a state-driven colour), and the named warning for anything else.
+  const textColor = swiftStylingValue(e, 'color', (v) => resolveColor(String(v), 'swift'))
+  if (textColor !== undefined) {
+    result += `.foregroundColor(${textColor})`
+  }
   const sizeKey = readStaticAttr(e, 'size')
   const weightKey = readStaticAttr(e, 'weight')
   const sizePt = typeof sizeKey === 'string' ? TEXT_SIZE_PT[sizeKey] : undefined
@@ -8614,7 +8623,13 @@ function emitSwiftPress(
   // explicit `action:` argument form is the unambiguous canonical
   // SwiftUI Button initializer and type-checks clean. (`action` already
   // carries its `{ … }` braces from `emitSwiftAction`.)
-  return `Button(action: ${action}) {\n${contentLines}\n${' '.repeat(indent)}}.buttonStyle(.plain)${modifiers}${longGesture}${swipeGesture}`
+  // `disabled` — the SAME prop `<Button>` has honoured all along, and `<Press>`
+  // never did. Not a cosmetic drop: a disabled Press stayed tappable and fired
+  // its handler on both targets, while the sibling primitive in this same file
+  // got it right. Uses the existing helper, which already handles the literal,
+  // the `disabled={false}` no-op, and a signal-bound expression.
+  const disabledMod = swiftDisabledModifier(e)
+  return `Button(action: ${action}) {\n${contentLines}\n${' '.repeat(indent)}}.buttonStyle(.plain)${disabledMod}${modifiers}${longGesture}${swipeGesture}`
 }
 
 /**

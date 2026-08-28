@@ -5470,6 +5470,14 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   // a scale that drifts from the web's is a divergence that looks like a design
   // choice. A `style` object still wins: it is the more specific instruction,
   // and this only fills in when the prop is the only thing said.
+  // `color` — documented on Text, implemented on its SIBLING Heading in this
+  // same file and not here. A coloured label rendered in the default colour on
+  // native while the web showed it coloured, with no warning. Reuses Heading's
+  // exact call so the two agree on the static token, the two-literal ternary,
+  // and the named warning for anything else.
+  const textColor = kotlinStylingValue(e, 'color', (v) => resolveColor(String(v), 'kotlin'))
+  const colorArg =
+    textColor !== undefined && !typoArgs.includes('color =') ? `, color = ${textColor}` : ''
   const sizeKey = readStaticAttrKotlin(e, 'size')
   const sizePt = typeof sizeKey === 'string' ? TEXT_SIZE_PT[sizeKey] : undefined
   const sizeArg = sizePt !== undefined && !typoArgs.includes('fontSize') ? `, fontSize = ${sizePt}.sp` : ''
@@ -5477,9 +5485,9 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   const weightVal = typeof weightKey === 'string' ? TEXT_WEIGHT_KOTLIN[weightKey] : undefined
   const weightArg =
     weightVal !== undefined && !typoArgs.includes('fontWeight') ? `, fontWeight = ${weightVal}` : ''
-  if (e.children.length === 0) return `Text(text = ""${typoArgs}${sizeArg}${weightArg}${fontArg}${truncArgs}${modArg})`
+  if (e.children.length === 0) return `Text(text = ""${typoArgs}${colorArg}${sizeArg}${weightArg}${fontArg}${truncArgs}${modArg})`
   if (e.children.length === 1 && e.children[0]!.kind === 'text') {
-    return `Text(text = ${JSON.stringify(e.children[0]!.value)}${typoArgs}${sizeArg}${weightArg}${fontArg}${truncArgs}${modArg})`
+    return `Text(text = ${JSON.stringify(e.children[0]!.value)}${typoArgs}${colorArg}${sizeArg}${weightArg}${fontArg}${truncArgs}${modArg})`
   }
   const parts: string[] = []
   for (const c of e.children) {
@@ -5504,7 +5512,7 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
       parts.push(kotlinInterpSegment(childExpr, indent))
     }
   }
-  return `Text(text = "${parts.join('')}"${typoArgs}${sizeArg}${weightArg}${fontArg}${truncArgs}${modArg})`
+  return `Text(text = "${parts.join('')}"${typoArgs}${colorArg}${sizeArg}${weightArg}${fontArg}${truncArgs}${modArg})`
 }
 
 /**
@@ -7233,9 +7241,20 @@ function emitKotlinPress(
   // conditional import for it is added in build.ts's
   // `conditionalKotlinImports` keyed on `combinedClickable(`.
   const layoutModifier = emitKotlinLayoutModifier(e)
+  // `disabled` — the SAME prop `<Button>` has honoured all along, and `<Press>`
+  // never did. Not a cosmetic drop: a disabled Press stayed CLICKABLE and fired
+  // its handler on both targets, while the sibling primitive in this same file
+  // got it right. One handled and one not, from one prop.
+  //
+  // `clickable`/`combinedClickable` both take `enabled`, so the fix is the
+  // existing helper rather than a new path — it already handles the literal,
+  // the `disabled={false}` no-op, and a signal-bound expression (negated into
+  // Compose's `enabled` sense).
+  const enabledArg = kotlinEnabledArg(e)
+  const enabledPrefix = enabledArg === '' ? '' : `${enabledArg}, `
   const clickable = onLongPress
-    ? `.combinedClickable(onClick = ${action}, onLongClick = ${emitKotlinAction(onLongPress.handler, indent)})`
-    : `.clickable(onClick = ${action})`
+    ? `.combinedClickable(${enabledPrefix}onClick = ${action}, onLongClick = ${emitKotlinAction(onLongPress.handler, indent)})`
+    : `.clickable(${enabledPrefix}onClick = ${action})`
 
   // `onSwipeLeft` / `onSwipeRight` → `pointerInput { detectHorizontalDragGestures }`.
   // The detector is direction-locked (only claims horizontally-dominant

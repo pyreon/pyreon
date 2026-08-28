@@ -25,3 +25,9 @@ each other.
 
 `kind="password"` continues to select masking rather than a keyboard — a masked
 field keeps the platform default.
+
+`<Text color>` and `<Press disabled>` now lower too. Each had a working SIBLING
+in the same file — `<Heading color>` coloured and `<Text color>` did not;
+`<Button disabled>` disabled and `<Press disabled>` did not. The Press one is
+not cosmetic: a disabled Press stayed tappable and FIRED ITS HANDLER on both
+targets.
