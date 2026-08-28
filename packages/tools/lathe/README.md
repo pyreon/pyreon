@@ -226,17 +226,38 @@ const many = Array.from({ length: 20 }, () => createBook())
 that a factory must produce data its **own schema accepts** — a `maxLength: 8`
 field filled with a lorem sentence is a fake that is wrong in exactly the way
 real data never is, and it surfaces as a confusing parse error inside somebody
-else's test. So `min`/`max`/`pattern`/`enum` choose the generator first, and the
-prettier field-name guess (`email` → `faker.internet.email()`) only applies
-where the spec states nothing.
+else's test.
+
+But "constraints win" applied bluntly makes every constrained field gibberish,
+which defeats the point of reaching for faker at all. So the line is drawn at
+what a realistic generator can actually promise:
+
+| the spec states | the factory emits |
+| --- | --- |
+| nothing | the field-name guess — `email` → `faker.internet.email()`, `city` → `faker.location.city()` |
+| `maxLength` only | the same, `.slice(0, max)` — satisfiable, still readable |
+| a real `minLength` | `faker.string.alpha({ length: … })` — no realistic generator can promise a lower bound |
+| `pattern` | `faker.helpers.fromRegExp(…)`, anchors stripped |
+| `enum` | `faker.helpers.arrayElement([…] as const)` |
+| a `format` | the format's generator, unclamped — slicing a uuid breaks it |
+
+`maxLength` with no `minLength` is the common shape in a real document, so the
+middle row is most of what you get.
 
 The specs for this call the factories and validate the result against the
 emitted schema, several hundred draws at a time, which is the only assertion
-that can fail for the right reason. It found two real bugs while being written:
+that can fail for the right reason. The emitted factories also carry **no
+`as Model` cast** — one was there first, and removing it is what lets the
+typecheck matrix catch a structurally wrong object at all (verified: with the
+cast a missing required field passes silently; without it, `TS2322`).
+
+Three real bugs surfaced while writing those specs:
 `faker.string.alpha({ min, max })` silently returns a ONE-character string (the
 option is `{ length: { min, max } }`), and `faker.helpers.fromRegExp` treats `^`
 and `$` as literal characters — so an OpenAPI `pattern`, which almost always
 carries anchors, generated a value that failed the very pattern it came from.
+  - A `maxLength`-only field overran its bound once the realistic generator was
+    kept for that case, because nothing was clamping it.
 
 Recursive models terminate: depth is threaded through the builders explicitly
 rather than kept in module state, so concurrent calls cannot interfere.

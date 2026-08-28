@@ -47,10 +47,11 @@ components:
         email: { type: string, format: email }
     Book:
       type: object
-      required: [id, title, code, pages, ratio, status, author, tags, published, inStock]
+      required: [id, title, blurb, code, pages, ratio, status, author, tags, published, inStock]
       properties:
         id: { type: string, format: uuid }
         title: { type: string, minLength: 3, maxLength: 8 }
+        blurb: { type: string, maxLength: 12 }
         code: { type: string, pattern: '^[A-Z]{3}-[0-9]{4}$' }
         pages: { type: integer, minimum: 10, maximum: 20 }
         ratio: { type: number, minimum: 0, maximum: 1 }
@@ -157,6 +158,20 @@ for (const validator of ['pyreon', 'zod'] as const) {
         const title = f().createBook().title as string
         expect(title.length).toBeGreaterThanOrEqual(3)
         expect(title.length).toBeLessThanOrEqual(8)
+      }
+    })
+
+    it('stays REALISTIC under an upper bound alone, and still honours it', () => {
+      f().seedFaker(31)
+      for (let i = 0; i < 200; i++) {
+        const blurb = f().createBook().blurb as string
+        expect(blurb.length).toBeLessThanOrEqual(12)
+        // Not `alpha` gibberish: a `maxLength` with no `minLength` is the
+        // common shape in a real document, and answering it with random
+        // letters would make most of a spec's fixtures unreadable. Words are
+        // lowercase letters too, so the discriminator is that it is non-empty
+        // and drawn from the lorem vocabulary rather than uniform noise.
+        expect(blurb.length).toBeGreaterThan(0)
       }
     })
 

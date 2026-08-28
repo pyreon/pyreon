@@ -63,7 +63,7 @@ components:
   schemas:
     Node:
       type: object
-      required: [id, kind]
+      required: [id, kind, children]
       properties:
         id: { type: string, format: uuid }
         kind: { type: string, enum: [leaf, branch] }
@@ -71,6 +71,7 @@ components:
         weight: { type: number }
         tags: { type: array, items: { type: string } }
         parent: { $ref: '#/components/schemas/Node' }
+        children: { type: array, items: { $ref: '#/components/schemas/Node' } }
         meta: { $ref: '#/components/schemas/Meta' }
     Meta:
       type: object

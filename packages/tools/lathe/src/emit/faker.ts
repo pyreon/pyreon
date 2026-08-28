@@ -116,7 +116,7 @@ export function emitFaker(doc: IrDocument, typesFrom: 'schemas' | 'types'): Sour
     f.line(
       `function build${pascal(model.name)}(d: number, o: Partial<${model.name}> = {}): ${model.name} {`,
     )
-    f.line(`  return ${render(model.type, doc, 1, undefined, model.name)} as ${model.name}`)
+    f.line(`  return ${render(model.type, doc, 1, undefined, model.name)}`)
     f.line('}')
   }
   return f
@@ -277,17 +277,30 @@ function stringExpr(type: Extract<IrType, { kind: 'string' }>, field?: IrField):
   }
   const min = field?.min
   const max = field?.max
-  if (min !== undefined || max !== undefined) {
-    // Length is stated, so length wins. `alpha` is the only family that
-    // guarantees an exact bound.
-    //
-    // The option is `{ length: { min, max } }`, NOT `{ min, max }`. faker
-    // accepts the latter without complaint and returns a ONE-character string,
-    // so the wrong shape reads as working and fails only against a `minLength`
-    // the fixture was supposed to satisfy.
-    return `faker.string.alpha({ length: ${rangeOpts(min ?? 1, max ?? Math.max(min ?? 1, 12))} })`
+  // A LOWER bound is the only constraint a realistic generator cannot be made
+  // to satisfy: `faker.person.fullName()` has no minimum length anyone can
+  // promise. So a real `minLength` falls back to `alpha`, which guarantees an
+  // exact bound and is the one case where the fixture is gibberish.
+  //
+  // The option is `{ length: { min, max } }`, NOT `{ min, max }`. faker accepts
+  // the latter without complaint and returns a ONE-character string, so the
+  // wrong shape reads as working and fails only against the `minLength` the
+  // fixture was supposed to satisfy.
+  if (min !== undefined && min > 1) {
+    return `faker.string.alpha({ length: ${rangeOpts(min, max ?? Math.max(min, 12))} })`
   }
+  // An UPPER bound alone is satisfiable by any generator plus a slice, so the
+  // realistic one is kept. This matters more than it looks: `maxLength` with no
+  // `minLength` is the common shape in a real document, and treating it as a
+  // reason to emit gibberish makes most of a spec's fixtures unreadable --
+  // which is the whole thing this plugin exists to avoid.
+  const clamp = max !== undefined ? `.slice(0, ${max})` : ''
   switch (type.format) {
+    // A FORMAT is itself a constraint, and slicing a uuid or an email produces
+    // a value that no longer satisfies it. So the clamp applies only where the
+    // format does not already fix the shape -- and a spec that states both a
+    // format and a shorter `maxLength` is contradicting itself, which is the
+    // spec's bug and not something to paper over with a truncated uuid.
     case 'email':
       return 'faker.internet.email()'
     case 'uri':
@@ -301,7 +314,7 @@ function stringExpr(type: Extract<IrType, { kind: 'string' }>, field?: IrField):
     case 'binary':
       return 'faker.string.alphanumeric(16)'
     default:
-      return field ? byName(field.name) : 'faker.lorem.word()'
+      return `${field ? byName(field.name) : 'faker.lorem.word()'}${clamp}`
   }
 }
 
