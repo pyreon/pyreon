@@ -1489,6 +1489,21 @@ try {
       ? [composeUiAudioPath, composeUnitAudioPath, composeLayoutAudioPath]
       : []
 
+  // PyreonAudioEngineMedia3: the SAME androidx.media3 mirrors the video engine
+  // uses, plus a bare Context. Shared with that group rather than duplicated
+  // because both files consume the identical surface — the per-service
+  // discipline is about not letting one service's needs WIDEN another's, and
+  // these two have the same needs.
+  if (SERVICE === 'PyreonAudioEngineMedia3') {
+    writeFileSync(media3CommonPath, ANDROIDX_MEDIA3_COMMON_STUBS, 'utf8')
+    writeFileSync(media3ExoPath, ANDROIDX_MEDIA3_EXOPLAYER_STUBS, 'utf8')
+    writeFileSync(videoContextPath, ANDROID_VIDEO_CONTEXT_STUBS, 'utf8')
+  }
+  const audioEngineExtras =
+    SERVICE === 'PyreonAudioEngineMedia3'
+      ? [media3CommonPath, media3ExoPath, videoContextPath]
+      : []
+
   const videoAndroidExtras =
     SERVICE === 'PyreonVideoPlayerAndroid'
       ? [
@@ -1592,6 +1607,7 @@ try {
         ...pushAndroidExtras,
         ...videoAndroidExtras,
         ...audioAndroidExtras,
+        ...audioEngineExtras,
         ...appStateAndroidExtras,
         ...crashReporterAndroidExtras,
         ...SOURCE_FILES,
@@ -1621,6 +1637,7 @@ try {
         ...pushAndroidExtras,
         ...videoAndroidExtras,
         ...audioAndroidExtras,
+        ...audioEngineExtras,
         ...appStateAndroidExtras,
         ...crashReporterAndroidExtras,
         ...SOURCE_FILES,
