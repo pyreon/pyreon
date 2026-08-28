@@ -31,9 +31,24 @@ describe('security group wiring', () => {
 
   it('the two provable rules are ON by default; the judgement call is opt-in', () => {
     // `no-unsanitized-inner-html` is a judgement about a prop that is
-    // legitimately used with your own sanitizer, and there is no corpus in
-    // this repo to validate it against — so it must not gate anyone's CI
-    // until they ask for it.
+    // legitimately used with your own sanitizer, so it must not gate anyone's
+    // CI until they ask for it.
+    //
+    // There IS a corpus now, and it argues for keeping it opt-in rather than
+    // against: run across this monorepo the rule produced FOUR findings, and
+    // only one was a bug (`<CodeBlock>` built its line-number gutter as an
+    // HTML string — a workaround for a compiler bug since fixed, so a raw
+    // sink in a component that never needed one). The other three are
+    // legitimate raw sinks that cannot use the sanitized prop at all, and
+    // that is verified rather than assumed: the allowlist deliberately
+    // excludes `foreignObject` and `<style>`, which mermaid emits, and does
+    // not cover MathML, which is everything KaTeX emits — so sanitizing them
+    // would strip working output. `@pyreon/zero`'s icon renders raw by
+    // documented contract and cannot sanitize under SSR at all.
+    //
+    // Three exemptions per one bug is a high rate for a rule that would
+    // otherwise fail a consumer's build on correct code, which is precisely
+    // how a security rule gets switched off and then protects nothing.
     const rec = getPreset('recommended')
     expect(rec.rules['pyreon/no-script-url']).not.toBe('off')
     expect(rec.rules['pyreon/no-target-blank-without-rel']).not.toBe('off')
