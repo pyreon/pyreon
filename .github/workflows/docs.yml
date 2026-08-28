@@ -116,6 +116,23 @@ jobs:
           cd docs
           bunx vite build
 
+      - name: No SSG render errors
+        # The SSG plugin is deliberately non-fatal on a per-path render
+        # failure: it records the path in dist/_pyreon-ssg-errors.json and
+        # keeps building, so one broken page cannot take down an urgent
+        # docs fix. The artifact exists precisely so CI can gate on it —
+        # and nothing did, which is how main deployed a docs site whose
+        # /docs/multiplatform-libraries was silently MISSING (a table cell's
+        # un-backticked `{ name, component }` compiled as a live JSX
+        # expression and threw at prerender; build exit code stayed 0).
+        # An artifact present = at least one page is absent from the deploy.
+        run: |
+          if [ -f docs/dist/_pyreon-ssg-errors.json ]; then
+            echo "::error::SSG render errors — these pages are MISSING from the build:"
+            cat docs/dist/_pyreon-ssg-errors.json
+            exit 1
+          fi
+
       - name: Build the Atlas workbench site
         # Publishes the workbench at pyreon.dev/atlas, against the REAL
         # `@pyreon/ui-components` catalog — 108 components derived from source,

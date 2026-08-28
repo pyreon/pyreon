@@ -68,8 +68,8 @@ function lintWithRuleEnabled(ruleId: string, source: string, filePath?: string) 
 // ── Rule Metadata ───────────────────────────────────────────────────────────
 
 describe('Rule metadata', () => {
-  it('should have 98 rules', () => {
-    expect(allRules.length).toBe(98)
+  it('should have 101 rules', () => {
+    expect(allRules.length).toBe(101)
   })
 
   it('should have unique rule IDs', () => {
@@ -99,6 +99,7 @@ describe('Rule metadata', () => {
       'accessibility',
       'router',
       'ssg',
+      'security',
       'frontend',
       'query',
       'rx',
@@ -117,7 +118,9 @@ describe('Rule metadata', () => {
       counts[rule.meta.category] = (counts[rule.meta.category] ?? 0) + 1
     }
     expect(counts.reactivity).toBe(15)
-    expect(counts.jsx).toBe(11)
+    // +1: no-line-comment-in-jsx — a `//` line in child position is JSXText
+    // and RENDERS, on web and (through PMTC) on iOS and Android.
+    expect(counts.jsx).toBe(12)
     expect(counts.lifecycle).toBe(6)
     // 5 after `no-large-for-without-by` was removed as a byte-identical
     // duplicate of `jsx/no-missing-for-by` (both fired on one `<For>`).
@@ -140,8 +143,10 @@ describe('Rule metadata', () => {
     expect(counts.storage).toBe(1)
     // HTTP-transport best practices.
     expect(counts.http).toBe(2)
+    // +2: the `security` category (no-target-blank-without-rel, no-script-url).
+    expect(counts.security).toBe(2)
     const total = Object.values(counts).reduce((a, b) => a + b, 0)
-    expect(total).toBe(98)
+    expect(total).toBe(101)
   })
 })
 
@@ -2054,7 +2059,7 @@ describe('Ignore filter', () => {
 describe('Presets', () => {
   it('recommended should include all rules (opt-in ones forced off)', () => {
     const config = getPreset('recommended')
-    expect(Object.keys(config.rules).length).toBe(98)
+    expect(Object.keys(config.rules).length).toBe(101)
     // Opt-in best-practice rules are present as keys but disabled.
     for (const rule of allRules) {
       if (rule.meta.optIn === true) {

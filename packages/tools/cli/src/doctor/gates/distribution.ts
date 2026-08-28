@@ -104,12 +104,33 @@ export const _detectMapsInPackOutput = (
   //
   // The tarball's own file list answers it without a second stat: if it
   // contains no BUILT output whatsoever, nothing was there to carry maps.
+  //
+  // "Built output" is JS, plus declarations that are NOT under `src/`.
+  //
+  // A bare `.d.ts` test was the first cut and it was wrong: a `.d.ts` is
+  // indistinguishable BY EXTENSION from hand-written source, and 19 of this
+  // repo's published packages ship exactly that — `src/env.d.ts`,
+  // `src/sharp.d.ts`, `src/vite-raw.d.ts`. Those packages list `src` in
+  // `files` (publish.ts strips it at publish time, so the dry-run still sees
+  // it), so ONE ambient declaration made an unbuilt checkout answer "yes, this
+  // was built" and print the `files`-array message this discriminator exists
+  // to stop printing. The predicate reproduced the bug it was written to fix.
+  //
+  // Excluding `src/` is sound rather than a convention guess: a build output
+  // directory named `src` would collide with its own input, so a declaration
+  // under `src/` is authored, never emitted. Anything emitted elsewhere —
+  // `lib/index.d.ts` for a types-only package — still counts.
+  const isSourcePath = (f: string): boolean => f.startsWith('src/')
   const hasBuiltOutput = tarballFiles.some(
-    (f) => f.endsWith('.js') || f.endsWith('.mjs') || f.endsWith('.cjs') || f.endsWith('.d.ts'),
+    (f) =>
+      f.endsWith('.js') ||
+      f.endsWith('.mjs') ||
+      f.endsWith('.cjs') ||
+      (f.endsWith('.d.ts') && !isSourcePath(f)),
   )
   const message = hasBuiltOutput
     ? `${probePackage}: npm pack --dry-run reported built output but 0 .map files in the would-be-published tarball. Source maps must ship so framework stack traces are readable — check the package's \`files\` array does not exclude \`lib/**/*.map\`.`
-    : `${probePackage}: npm pack --dry-run reported NO built output at all (no .js/.d.ts), so it could not have carried source maps. This checkout has not been built — run \`bun scripts/bootstrap.ts\`. (In CI this means the Bootstrap step did not run for this job; the package's \`files\` array is not the problem.)`
+    : `${probePackage}: npm pack --dry-run reported NO built output at all (no .js, and no .d.ts outside src/), so it could not have carried source maps. This checkout has not been built — run \`bun scripts/bootstrap.ts\`. (In CI this means the Bootstrap step did not run for this job; the package's \`files\` array is not the problem.)`
   return {
     category: 'architecture',
     severity: 'error',

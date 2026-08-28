@@ -13,9 +13,17 @@ import { useQuery } from '@pyreon/query'
  * Every author.
  * `GET /authors`
  * Takes an ACCESSOR so signal reads in the arguments stay reactive.
+ * Return `undefined` from `args` while the arguments are not ready — the query is DISABLED rather than fired with a placeholder.
  * Second accessor merges extra query options (`enabled`, `staleTime`, `select`).
  * Result fields are SIGNALS: `q.data()`, `q.isPending()` — call them.
  */
-export function useListAuthors(args: () => { query?: { limit?: number } }, options?: () => Record<string, unknown>) {
-  return useQuery<Author[]>(() => ({ ...listAuthors.query(args()), ...options?.() }))
+export function useListAuthors(args: () => { query?: { limit?: number } } | undefined, options?: () => Record<string, unknown>) {
+  return useQuery<Author[]>(() => {
+    const a = args()
+    const extra = options?.() ?? {}
+    if (a === undefined) {
+      return { queryKey: listAuthors.key.prefix, queryFn: () => Promise.reject(new Error('[Pyreon] lathe: query is disabled — its arguments are not ready')), ...extra, enabled: false }
+    }
+    return { ...listAuthors.query(a), ...extra, enabled: extra.enabled !== false }
+  })
 }

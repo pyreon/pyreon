@@ -20,6 +20,7 @@
  *   - check-ios-signing-policy (unsigned test step -> CI-only Keychain denial)
  *   - check-shared-source-deps (tri-target shared source unbuildable for web)
  *   - check-native-srcdirs-drift (an example's Gradle srcDirs disagree with `wire`)
+ *   - check-lathe-fresh     (committed generated client drifted from its OpenAPI spec)
  *   - check-mcp-docs        (MCP tool added without docs/src/content/docs/mcp.md section)
  *   - loom-scan             (dependency-fabric errors: phantom deps, runtime cycles, drift)
  *   - check-advisory-comment-steps (advisory PR-comment step that can turn a check red)
@@ -130,6 +131,7 @@ const GATES: Gate[] = [
   // monolith's own test chains — this compiles + smoke-runs them against the
   // stub harness. Skips gracefully when kotlinc/swiftc are absent (CI Fast
   // Gates), so it protects on every local push where the toolchains exist.
+  { name: 'check-native-primitive-coverage', cmd: 'bun scripts/check-native-primitive-coverage.ts' },
   { name: 'check-native-cosource', cmd: 'bun scripts/check-native-cosource.ts' },
   { name: 'check-native-srcdirs-drift', cmd: 'bun scripts/check-native-srcdirs-drift.ts' },
   { name: 'check-gates-wired', cmd: 'bun scripts/check-gates-wired.ts' },
@@ -178,6 +180,15 @@ const GATES: Gate[] = [
   // so they stay green while the web build cannot resolve a new import —
   // which is how @pyreon/elements + @pyreon/coolgrid shipped as a red e2e
   // ~50 minutes into CI, reported as a blank page rather than a missing dep.
+  // Generated client code is COMMITTED, so a spec edit without a regeneration
+  // leaves the repo describing an API that no longer exists — and the stale
+  // client typechecks perfectly against itself, so nothing else notices.
+  // Imports the generator from source (never spawns the bin, which reads
+  // `lib/` and would report a false GREEN against an unbuilt tree).
+  {
+    name: 'check-lathe-fresh',
+    cmd: 'bun scripts/check-lathe-fresh.ts',
+  },
   {
     name: 'check-shared-source-deps',
     cmd: 'bun scripts/check-shared-source-deps.ts',

@@ -29,6 +29,7 @@
  */
 
 import MagicString from 'magic-string'
+import { transformPlain } from './plain'
 import { parseSync } from 'oxc-parser'
 import { REACT_EVENT_REMAP } from './event-names'
 import { loadNativeBinding } from './load-native'
@@ -104,6 +105,7 @@ export interface CompilerWarning {
     | 'signal-in-static-prop'
     | 'circular-prop-derived'
     | 'duplicate-jsx-attr'
+    | 'plain-mode'
 }
 
 /**
@@ -1020,6 +1022,26 @@ export function transformJSX(
   filename = 'input.tsx',
   options: TransformOptions = {},
 ): TransformResult {
+  // ── Plain Mode pre-pass ───────────────────────────────────────────────────
+  // A module carrying the `'use plain'` directive (or importing from
+  // `@pyreon/core/plain`) is rewritten to classic Pyreon code FIRST, so both
+  // backends — the Rust native binary included — see ordinary input and need
+  // zero plain-mode awareness. The pre-pass strips its own markers, so it is
+  // idempotent: `transformJSX_JS` runs it again defensively and no-ops.
+  let plainWarnings: CompilerWarning[] | null = null
+  {
+    const plained = transformPlain(code, filename, { knownSignals: options.knownSignals })
+    if (plained) {
+      code = plained.code
+      plainWarnings = plained.warnings
+    }
+  }
+  const mergePlain = (result: TransformResult): TransformResult => {
+    if (plainWarnings && plainWarnings.length > 0) {
+      result.warnings = [...plainWarnings, ...result.warnings]
+    }
+    return result
+  }
   // Try Rust native binary first (3.7-8.2x faster). The native backend now
   // implements ALL FOUR rocketstyle-collapse variants byte-identically (locked
   // by the cross-backend equivalence suite), so `collapseRocketstyle` is lowered
@@ -1034,7 +1056,7 @@ export function transformJSX(
   // unexpected AST shape), fall back gracefully instead of crashing the dev server.
   if (nativeTransformJsx) {
     try {
-      return nativeTransformJsx(
+      return mergePlain(nativeTransformJsx(
         code,
         filename,
         options.ssr === true,
@@ -1043,12 +1065,12 @@ export function transformJSX(
         options.collapseRocketstyle ? toNativeCollapse(options.collapseRocketstyle) : undefined,
         options.ssrTemplate === true,
         options.templatizeComponentChildren === true,
-      )
+      ))
     } catch {
       // Native transform failed — fall through to JS implementation
     }
   }
-  return transformJSX_JS(code, filename, options)
+  return mergePlain(transformJSX_JS(code, filename, options))
 }
 
 /** Lower the JS `collapseRocketstyle` config (`Set`/`Map`) to the napi
@@ -1074,6 +1096,16 @@ export function transformJSX_JS(
   filename = 'input.tsx',
   options: TransformOptions = {},
 ): TransformResult {
+  // Plain Mode pre-pass for DIRECT callers (the public `transformJSX` already
+  // ran it and stripped the markers, so this is a no-op on that path).
+  let jsPlainWarnings: CompilerWarning[] | null = null
+  {
+    const plained = transformPlain(code, filename, { knownSignals: options.knownSignals })
+    if (plained) {
+      code = plained.code
+      jsPlainWarnings = plained.warnings
+    }
+  }
   const ssr = options.ssr === true
   const ssrTemplate = ssr && options.ssrTemplate === true
   // Client emit only — the SSR paths render components through `renderNode`
@@ -1118,7 +1150,7 @@ export function transformJSX_JS(
     !argPositionNodes.has(node) &&
     !!parent &&
     (parent.type === 'JSXElement' || parent.type === 'JSXFragment')
-  const warnings: CompilerWarning[] = []
+  const warnings: CompilerWarning[] = jsPlainWarnings ?? []
 
   function warn(node: N, message: string, warnCode: CompilerWarning['code']): void {
     const { line, column } = locate(node.start as number)

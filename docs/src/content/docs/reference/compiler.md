@@ -26,6 +26,7 @@ Pyreon's JSX-to-reactive transform. `transformJSX` dispatches to a Rust native b
 | Symbol | Kind | Summary |
 | --- | --- | --- |
 | [`transformJSX`](#transformjsx) | function | The production entry point. |
+| [`transformPlain`](#transformplain) | function | The Plain Mode pre-pass — a source-to-source rewrite that runs automatically inside `transformJSX` BEFORE either backend |
 | [`transformJSX_JS`](#transformjsx-js) | function | The pure-JS reactive pass (parses via `oxc-parser`). |
 | [`analyzeReactivity`](#analyzereactivity) | function | Reactivity-Lens entry point (experimental). |
 | [`formatReactivityLens`](#formatreactivitylens) | function | Renders an `analyzeReactivity` result as an annotated-source CLI / debug view — each spanned expression gets an inline ` |
@@ -81,6 +82,40 @@ const { code, warnings } = transformJSX(
 - Treating the output as standalone/portable — the emitted code calls internal runtime helpers (`_tpl`/`_setChild` from `@pyreon/runtime-dom`, `_bind` from `@pyreon/reactivity`, `_rp` from `@pyreon/core`, …) that only the Pyreon packages provide. Unlike Babel's JSX→`React.createElement` (where the runtime is just React), transformed code cannot run without the Pyreon runtime.
 
 **See also:** `transformJSX_JS` · `analyzeReactivity`
+
+---
+
+### transformPlain `function`
+
+```ts
+transformPlain(code: string, filename?: string, options?: PlainOptions): PlainTransformResult | null
+```
+
+The Plain Mode pre-pass — a source-to-source rewrite that runs automatically inside `transformJSX` BEFORE either backend, so the rest of the pipeline needs zero plain-mode awareness. A module activates by carrying the `'use plain'` directive or importing from `@pyreon/core/plain`; everything else returns `null` byte-untouched. It rewrites `let x = state(0)` → `const x = signal(0)`, every read of a state/derived binding to a tracked call, every write to `.set(...)` (compound, update, and logical-assign forms included), `derived(expr)` → `computed(() => expr)`, `effect(fn)` with TOTAL tracking (conditionally-read state is subscribed via a hoisted prologue so a branch flip or post-`await` read never loses its subscription), simple destructured component props to live `props.*` reads, and a component-body `if (<reactive>) return <jsx>` into a returned accessor. Deliberately out of scope, each with a loud warning instead of a silent wrong answer: deep mutation of state objects, destructuring assignment onto state, rest/nested props patterns. `options.knownSignals` marks imported signal bindings so cross-module reads rewrite too.
+
+**Example**
+
+```tsx
+import { transformPlain } from "@pyreon/compiler"
+
+const result = transformPlain(
+  `'use plain'
+import { state } from '@pyreon/core/plain'
+let count = state(0)
+export const inc = () => { count = count + 1 }`,
+  "store.ts",
+)
+// result.code: const count = signal(0) … count.set(count() + 1)
+```
+
+**Common mistakes**
+
+- Calling it directly in a build pipeline — `transformJSX` already runs it (and strips the markers, making a second run a no-op); direct calls are for tests and tooling
+- Mutating a property of plain state (`obj.k = v`) and expecting a re-render — plain state notifies on REPLACEMENT (`obj = { ...obj, k: v }`); the pass warns on this shape rather than silently missing it
+- Expecting a plain `.ts` store module to work without the vite plugin — the markers are compile-time only; unprocessed code throws `[Pyreon] state() … reached the runtime` by design
+- Assigning to an IMPORTED plain-state binding — ESM imports are read-only; export a setter function from the owning module (the live-binding law: exports carry the signal)
+
+**See also:** `transformJSX` · `detectPlain`
 
 ---
 

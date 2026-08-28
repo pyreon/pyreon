@@ -1532,6 +1532,21 @@ const geometry = () => props.shape
         'Same class as the client-side twin: the compiled template `attrSetter` emitting a raw `setAttribute` instead of the runtime `applyAttrProp`, which rendered `aria-disabled="undefined"` on the nullish branch. The general rule for both: a fast path selected by ONE dimension of a value must still carry every branch of the path it claims byte-identity with that the dimension cannot exclude — and a lean variant that is not even given the input a branch needs must not be selected for that input.',
     }),
   },
+  {
+    // Plain Mode marker reached the runtime — the file was never processed by
+    // the Pyreon compiler (missing pyreon() plugin, a bare tsc/esbuild build,
+    // or a bundler whose transform filter excluded the file). The runtime
+    // throws LOUDLY by design: silently degrading would produce a
+    // non-reactive app that looks right on first paint.
+    pattern: /from ['"`]@pyreon\/core\/plain['"`] reached the runtime/,
+    diagnose: () => ({
+      cause:
+        "A Plain Mode marker (`state()` / `derived()` / `effect()` from `@pyreon/core/plain`) executed at runtime. Plain Mode is a compile-time dialect: the Pyreon compiler's plain pre-pass rewrites the markers to `signal`/`computed`/`effect` and removes the import. Reaching the marker body means this module was never transformed — the `pyreon()` vite plugin is missing, the build bypassed it (bare `tsc`, a non-Vite bundler without the plugin), or the module fell outside the transform filter. Note the filter covers `.tsx`/`.jsx`/`.pyreon` plus any `.ts`/`.mts` module that carries the `'use plain'` directive or the `@pyreon/core/plain` import — a plain store in a `.ts` file works, but only through the plugin.",
+      fix: "Add `pyreon()` from `@pyreon/vite-plugin` to `vite.config.ts` `plugins`, and make sure the failing module is actually served through Vite (not consumed from a prebuilt output that skipped the plugin). For test runners, compile through the real `transformJSX` or run under the Vite plugin (vitest with the plugin in its config).",
+      fixCode:
+        "// vite.config.ts\nimport { pyreon } from '@pyreon/vite-plugin'\nexport default defineConfig({ plugins: [pyreon()] })",
+    }),
+  },
 ]
 
 /** Diagnose an error message and return structured fix information */

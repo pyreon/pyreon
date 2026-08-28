@@ -598,6 +598,49 @@ public interface Modifier {
 }
 `
 
+/**
+ * The layout surface for PyreonAudioPlayerAndroid — exactly the members that
+ * file touches (a modifier-only `Box`, `Modifier.size`, and the `Dp` unit).
+ *
+ * Its own copy, per the per-service discipline: a shared superset would mask a
+ * break. Signatures mirror the real API — `Box`'s content parameter is
+ * defaulted, as it is in Compose, so calling it without one resolves the same
+ * way the real overload does.
+ */
+const ANDROIDX_COMPOSE_UI_AUDIO_STUBS = `package androidx.compose.ui
+
+public interface Modifier {
+  public companion object : Modifier
+}
+`
+
+const ANDROIDX_COMPOSE_UNIT_AUDIO_STUBS = `package androidx.compose.ui.unit
+
+public data class Dp(public val value: Float)
+
+public val Int.dp: Dp get() = Dp(this.toFloat())
+public val Double.dp: Dp get() = Dp(this.toFloat())
+`
+
+const ANDROIDX_COMPOSE_FOUNDATION_LAYOUT_AUDIO_STUBS = `package androidx.compose.foundation.layout
+
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
+
+public class BoxScope
+
+@Composable
+@Suppress("UNUSED_PARAMETER")
+public fun Box(
+  modifier: Modifier = Modifier,
+  content: @Composable BoxScope.() -> Unit = {},
+) {}
+
+@Suppress("UNUSED_PARAMETER")
+public fun Modifier.size(size: Dp): Modifier = this
+`
+
 const ANDROIDX_COMPOSE_VIEWINTEROP_STUBS = `package androidx.compose.ui.viewinterop
 
 import android.content.Context
@@ -1428,6 +1471,39 @@ try {
     writeFileSync(videoContextPath, ANDROID_VIDEO_CONTEXT_STUBS, 'utf8')
     writeFileSync(composePlatformPath, ANDROIDX_COMPOSE_PLATFORM_STUBS, 'utf8')
   }
+  // PyreonAudioPlayerAndroid: the compose-ui Modifier + the unit Dp + the
+  // foundation layout host. Far smaller than the video group's because the
+  // audio host draws nothing — it exists so a caller's modifier (test tag,
+  // a11y props) has a real node to attach to, the same reason the Swift twin
+  // uses a zero-size Color.clear rather than EmptyView.
+  const composeUiAudioPath = join(tempDir, 'ComposeUiAudio.kt')
+  const composeUnitAudioPath = join(tempDir, 'ComposeUnitAudio.kt')
+  const composeLayoutAudioPath = join(tempDir, 'ComposeLayoutAudio.kt')
+  if (SERVICE === 'PyreonAudioPlayerAndroid') {
+    writeFileSync(composeUiAudioPath, ANDROIDX_COMPOSE_UI_AUDIO_STUBS, 'utf8')
+    writeFileSync(composeUnitAudioPath, ANDROIDX_COMPOSE_UNIT_AUDIO_STUBS, 'utf8')
+    writeFileSync(composeLayoutAudioPath, ANDROIDX_COMPOSE_FOUNDATION_LAYOUT_AUDIO_STUBS, 'utf8')
+  }
+  const audioAndroidExtras =
+    SERVICE === 'PyreonAudioPlayerAndroid'
+      ? [composeUiAudioPath, composeUnitAudioPath, composeLayoutAudioPath]
+      : []
+
+  // PyreonAudioEngineMedia3: the SAME androidx.media3 mirrors the video engine
+  // uses, plus a bare Context. Shared with that group rather than duplicated
+  // because both files consume the identical surface — the per-service
+  // discipline is about not letting one service's needs WIDEN another's, and
+  // these two have the same needs.
+  if (SERVICE === 'PyreonAudioEngineMedia3') {
+    writeFileSync(media3CommonPath, ANDROIDX_MEDIA3_COMMON_STUBS, 'utf8')
+    writeFileSync(media3ExoPath, ANDROIDX_MEDIA3_EXOPLAYER_STUBS, 'utf8')
+    writeFileSync(videoContextPath, ANDROID_VIDEO_CONTEXT_STUBS, 'utf8')
+  }
+  const audioEngineExtras =
+    SERVICE === 'PyreonAudioEngineMedia3'
+      ? [media3CommonPath, media3ExoPath, videoContextPath]
+      : []
+
   const videoAndroidExtras =
     SERVICE === 'PyreonVideoPlayerAndroid'
       ? [
@@ -1530,6 +1606,8 @@ try {
         ...networkAndroidExtras,
         ...pushAndroidExtras,
         ...videoAndroidExtras,
+        ...audioAndroidExtras,
+        ...audioEngineExtras,
         ...appStateAndroidExtras,
         ...crashReporterAndroidExtras,
         ...SOURCE_FILES,
@@ -1558,6 +1636,8 @@ try {
         ...networkAndroidExtras,
         ...pushAndroidExtras,
         ...videoAndroidExtras,
+        ...audioAndroidExtras,
+        ...audioEngineExtras,
         ...appStateAndroidExtras,
         ...crashReporterAndroidExtras,
         ...SOURCE_FILES,

@@ -45,6 +45,41 @@ const CLIP_MP4 = Uint8Array.from(
   (c) => c.charCodeAt(0),
 )
 
+/**
+ * A Range-honouring response over a fixed byte buffer.
+ *
+ * AVFoundation refuses progressive HTTP playback from a server that ignores
+ * Range headers — AVURLAsset probes with byte-range requests and stalls forever
+ * on plain 200s. Shared by the video and audio fixtures so the second one
+ * cannot be written without it, which is exactly the trap the first one fell
+ * into ("Video: waiting" against a perfectly healthy 200).
+ */
+function rangeResponse(req: Request, bytes: Uint8Array, contentType: string): Response {
+  const range = req.headers.get('range')
+  const total = bytes.byteLength
+  if (range !== null) {
+    const m = /bytes=(\d+)-(\d*)/.exec(range)
+    const start = m ? Number(m[1]) : 0
+    const end = m && m[2] !== '' ? Math.min(Number(m[2]), total - 1) : total - 1
+    return new Response(bytes.slice(start, end + 1), {
+      status: 206,
+      headers: {
+        'content-type': contentType,
+        'accept-ranges': 'bytes',
+        'content-range': `bytes ${start}-${end}/${total}`,
+        'content-length': String(end - start + 1),
+      },
+    })
+  }
+  return new Response(bytes, {
+    headers: {
+      'content-type': contentType,
+      'accept-ranges': 'bytes',
+      'content-length': String(total),
+    },
+  })
+}
+
 Bun.serve({
   port,
   fetch(req, server) {
@@ -59,6 +94,16 @@ Bun.serve({
     // Reflecting rather than asserting is deliberate: the test compares what
     // the SERVER saw, so a request that silently degraded to GET (the exact
     // bug this arc fixes) reads as `method: "GET"` instead of quietly passing.
+    // The <Audio> device fixture. Serves the SAME bytes as /clip.mp4 under an
+    // audio content-type: the point of the route is the LOWERING (a primitive
+    // that had no Compose implementation at all and named a Swift engine that
+    // existed only in a stub), not the codec, and an MP4 container is a legal
+    // source for both AVPlayer and ExoPlayer. Range-honoured for the same
+    // reason the video route is — AVURLAsset probes with byte ranges and
+    // stalls forever on a plain 200.
+    if (new URL(req.url).pathname === '/clip.m4a') {
+      return rangeResponse(req, CLIP_MP4, 'audio/mp4')
+    }
     if (new URL(req.url).pathname === '/clip.mp4') {
       // AVFoundation refuses progressive HTTP playback from a server that
       // ignores Range headers — AVURLAsset probes with byte-range requests

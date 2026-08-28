@@ -49,6 +49,7 @@ export const SIDEBAR: SidebarGroup[] = [
       { text: 'Examples Gallery', slug: 'examples' },
       { text: 'Recipes', slug: 'recipes' },
       { text: 'Reactivity Rules', slug: 'reactivity-rules' },
+      { text: 'Plain Mode (experimental)', slug: 'plain-mode' },
       { text: 'Architecture & prior art', slug: 'architecture-and-prior-art' },
       { text: 'Benchmarks', slug: 'benchmarks' },
     ],

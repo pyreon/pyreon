@@ -1312,6 +1312,25 @@ const { code, warnings } = transformJSX(
 - Treating the output as standalone/portable — the emitted code calls internal runtime helpers (\`_tpl\`/\`_setChild\` from \`@pyreon/runtime-dom\`, \`_bind\` from \`@pyreon/reactivity\`, \`_rp\` from \`@pyreon/core\`, …) that only the Pyreon packages provide. Unlike Babel's JSX→\`React.createElement\` (where the runtime is just React), transformed code cannot run without the Pyreon runtime.`,
   },
 
+  'compiler/transformPlain': {
+    signature: 'transformPlain(code: string, filename?: string, options?: PlainOptions): PlainTransformResult | null',
+    example: `import { transformPlain } from "@pyreon/compiler"
+
+const result = transformPlain(
+  \`'use plain'
+import { state } from '@pyreon/core/plain'
+let count = state(0)
+export const inc = () => { count = count + 1 }\`,
+  "store.ts",
+)
+// result.code: const count = signal(0) … count.set(count() + 1)`,
+    notes: `The Plain Mode pre-pass — a source-to-source rewrite that runs automatically inside \`transformJSX\` BEFORE either backend, so the rest of the pipeline needs zero plain-mode awareness. A module activates by carrying the \`'use plain'\` directive or importing from \`@pyreon/core/plain\`; everything else returns \`null\` byte-untouched. It rewrites \`let x = state(0)\` → \`const x = signal(0)\`, every read of a state/derived binding to a tracked call, every write to \`.set(...)\` (compound, update, and logical-assign forms included), \`derived(expr)\` → \`computed(() => expr)\`, \`effect(fn)\` with TOTAL tracking (conditionally-read state is subscribed via a hoisted prologue so a branch flip or post-\`await\` read never loses its subscription), simple destructured component props to live \`props.*\` reads, and a component-body \`if (<reactive>) return <jsx>\` into a returned accessor. Deliberately out of scope, each with a loud warning instead of a silent wrong answer: deep mutation of state objects, destructuring assignment onto state, rest/nested props patterns. \`options.knownSignals\` marks imported signal bindings so cross-module reads rewrite too. See also: transformJSX, detectPlain.`,
+    mistakes: `- Calling it directly in a build pipeline — \`transformJSX\` already runs it (and strips the markers, making a second run a no-op); direct calls are for tests and tooling
+- Mutating a property of plain state (\`obj.k = v\`) and expecting a re-render — plain state notifies on REPLACEMENT (\`obj = { ...obj, k: v }\`); the pass warns on this shape rather than silently missing it
+- Expecting a plain \`.ts\` store module to work without the vite plugin — the markers are compile-time only; unprocessed code throws \`[Pyreon] state() … reached the runtime\` by design
+- Assigning to an IMPORTED plain-state binding — ESM imports are read-only; export a setter function from the owning module (the live-binding law: exports carry the signal)`,
+  },
+
   'compiler/transformJSX_JS': {
     signature: 'transformJSX_JS(code: string, filename?: string, options?: TransformOptions): TransformResult',
     example: `import { transformJSX_JS } from "@pyreon/compiler"
@@ -5982,7 +6001,7 @@ lint({
     "pyreon/no-window-in-ssr": { exemptPaths: ["src/foundation/"] },
   },
 })`,
-    notes: '98 rules across 19 categories. Auto-loads `.pyreonlintrc.json`. Presets: `recommended`, `strict`, `app`, `lib`. Per-rule options via tuple form in config (`["error", { exemptPaths: [...] }]`) or `ruleOptionsOverrides`. Wrong-typed options surface on `result.configDiagnostics`. Uses `oxc-parser` with AST caching. See also: lintFile, getPreset, AstCache.',
+    notes: '101 rules across 20 categories. Auto-loads `.pyreonlintrc.json`. Presets: `recommended`, `strict`, `app`, `lib`. Per-rule options via tuple form in config (`["error", { exemptPaths: [...] }]`) or `ruleOptionsOverrides`. Wrong-typed options surface on `result.configDiagnostics`. Uses `oxc-parser` with AST caching. See also: lintFile, getPreset, AstCache.',
   },
 
   'lint/lintFile': {
@@ -6002,7 +6021,7 @@ const result = lintFile("app.tsx", source, allRules, config, cache, configSink)`
 pyreon-lint --fix                       # auto-fix
 pyreon-lint --watch src/                # watch mode
 pyreon-lint --init                      # scaffold .pyreonlintrc.json for this project
-pyreon-lint --list                      # list all 98 rules
+pyreon-lint --list                      # list all 101 rules
 pyreon-lint --why-off no-window-in-ssr  # why a rule will (or will not) run here
 pyreon-lint --format json               # machine-readable
 pyreon-lint --rule-options 'pyreon/no-window-in-ssr={"exemptPaths":["src/foundation/"]}' src/`,

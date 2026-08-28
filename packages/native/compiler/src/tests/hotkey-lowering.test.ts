@@ -86,9 +86,34 @@ describe('useHotkey lowers to a real shortcut on both targets', () => {
   it('refuses a computed shortcut BY NAME', () => {
     // SwiftUI takes a KeyEquivalent at view construction and Compose compares
     // against a constant, so a runtime string cannot be baked in either.
+    //
+    // The wording moved when module-scope consts started resolving — the
+    // invariant did not: a shortcut that CANNOT be known at build time must
+    // still refuse by name rather than drop.
     const dyn = src(`useHotkey(combo, () => {})`)
     const w = transform(dyn, { target: 'swift' }).warnings
-    expect(w.some((x) => x.includes('LITERAL shortcut'))).toBe(true)
+    expect(w.some((x) => x.includes('statically-known shortcut'))).toBe(true)
+  })
+
+  it('accepts a module-scope const shortcut — knowable is the actual requirement', () => {
+    // Naming a shortcut once and reusing it is ordinary, and the value is just
+    // as baked either way. What the emit needs is a shortcut it can resolve at
+    // build time, not one spelled inline.
+    const withConst = `import { signal } from '@pyreon/reactivity'
+import { useHotkey } from '@pyreon/hotkeys'
+import { Stack, Text } from '@pyreon/primitives'
+const SAVE = 'mod+s'
+export function C() {
+  const n = signal(0)
+  useHotkey(SAVE, () => { n.set(1) })
+  return <Stack><Text>{String(n())}</Text></Stack>
+}`
+    const swift = transform(withConst, { target: 'swift' })
+    expect(swift.warnings).toEqual([])
+    expect(swift.code).toContain('.keyboardShortcut(')
+    const kotlin = transform(withConst, { target: 'kotlin' })
+    expect(kotlin.warnings).toEqual([])
+    expect(kotlin.code).toContain('Key.S')
   })
 
   it('refuses a handler that takes the KeyboardEvent BY NAME', () => {

@@ -164,6 +164,13 @@ interface FloorExemption {
   reason: string
 }
 const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
+  '@pyreon/lathe': {
+    currentStatements: 90,
+    currentBranches: 80,
+    reason:
+      'Spec-to-client codegen, arrived at 84.46% statements / 72.22% branches and ratcheted to 90.69 / 80.51 in the same PR. It reached main unmeasured: its PR changed a set large enough to trip the PR-time coverage step\'s >15-package cap, so the step SKIPPED and a brand-new package slipped past the mechanism whose stated job is preventing exactly that. (I first attributed this to the ROOT-FILE escalation, a real second hole with the same outcome — `--filter=*` makes that step exit — but `isRootFile` is false for the `scripts/*.ts` paths that PR touched, so it was the cap. The escalation hole is fixed in `affected.ts` regardless.) ' +
+      'The shortfall is real, not an accounting artifact. `src/cli/report.ts` (40 -> 98), `src/emit/mock.ts` (77 -> 98), `src/emit/schema.ts` (71 -> 87) `src/core/naming.ts` (79 -> 97) and `src/input/openapi.ts` (79 -> 87) are done — the fixture generator\'s per-kind shapes and the portable-regex guard, both of which encode cross-target decisions rather than lines. Recorded at the MEASURED actual and ratcheted with it, never lowered to absorb a regression.',
+  },
   // ── Statements + branches < floor ───────────────────────────────────
   '@pyreon/flow': {
     currentStatements: 98,
@@ -798,7 +805,7 @@ async function runWithConcurrency(
  * some tests" when in fact the tests exist and pass, and the real problem is
  * that not one file was handed to the instrumenter.
  */
-function describeProblem(p: CoverageProblem): string {
+export function describeProblem(p: CoverageProblem): string {
   if (p.kind === 'empty') {
     return (
       `${p.package}: coverage ran and measured ZERO files ( 0/0 ).\n` +
@@ -809,6 +816,25 @@ function describeProblem(p: CoverageProblem): string {
     )
   }
   if (p.kind === 'tests-failed') {
+    // `STACK_TRACE_ERROR` with no assertion text is a DEAD WORKER, not a failed
+    // assertion — vitest attributes it to whichever spec was in flight, which
+    // is reliably the longest-running one in the package. Telling the reader to
+    // "deflake the NAMED test" then sends them at an innocent spec: this gate
+    // has done exactly that once already, naming `strip-equivalence` when the
+    // real cause was a 3.9 GB build under a 4-way-parallel job, and named the
+    // same spec again on 2026-08-28.
+    const deadWorker = /STACK_TRACE_ERROR/.test(p.error ?? '')
+    if (deadWorker) {
+      return (
+        `${p.package}: ${p.error ?? 'tests failed under the coverage run'}\n` +
+        `    \u26a0 STACK_TRACE_ERROR with no assertion text means the WORKER DIED \u2014 almost\n` +
+        `    always out-of-memory under this job's 4-way parallelism, NOT a defect in the\n` +
+        `    named spec. vitest blames whichever test was in flight, which is reliably the\n` +
+        `    package's longest-running one.\n` +
+        `    Attribute by measuring peak RSS per test FILE (/usr/bin/time -l bunx vitest\n` +
+        `    run <file>), never by reading the name above. Do NOT re-run past it.`
+      )
+    }
     return (
       `${p.package}: ${p.error ?? 'tests failed under the coverage run'}\n` +
       `    This job runs on main pushes, so the failure is main-branch evidence. If the\n` +

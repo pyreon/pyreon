@@ -250,6 +250,16 @@ jobs:
           PYREON_VALIDATE_NO_CACHE: ${{ github.event_name == 'schedule' && '1' || '0' }}
         run: bun run --filter='@pyreon/native-compiler' test
 
+      - name: Native coverage — COMPILE every registry snippet (KOTLIN)
+        # The Kotlin half of the compile gate, and the reason it needs its own
+        # step: the flag used to mean "compile whatever toolchain is installed",
+        # and the only job that set it runs on macOS, which has no kotlinc. So
+        # the Kotlin pass logged a skip into a green log and compiled nothing.
+        # This runner has kotlinc; the macOS job does the Swift half against the
+        # real SDK. Both targets are now named explicitly and a missing toolchain
+        # FAILS rather than logs.
+        run: PYREON_COVERAGE_COMPILE=kotlin bun scripts/check-native-coverage.ts
+
       - name: Verify co-located native runtime sources
         # Each cross-platform package ships its native runtime beside its src/
         # (`@pyreon/<pkg>/native/{swift,kotlin}/`, the co-location architecture).
@@ -284,9 +294,22 @@ jobs:
         # workspace-resolution path, source-map emission, and the
         # output-file naming convention are all exercised here.
         #
-        # We don't run the Xcode part (no Apple-hardware runners) —
-        # `swiftc -parse` on the emit is the meaningful CI signal.
-        # The `xcodegen generate` part is verified locally per PR.
+        # This step runs on the UBUNTU cell, which has no Xcode — so
+        # `swiftc -parse` on the emit is its meaningful signal.
+        #
+        # NOT because Apple hardware is unavailable: that was true when this
+        # was written and is not now. `validate-swift-typecheck` below runs on
+        # macos-15, and `native-device.yml` runs a full `xcodebuild` against
+        # the Simulator SDK. Leaving the old reason in place is how a
+        # constraint outlives the thing that caused it — the next person reads
+        # it and does not ask.
+        #
+        # The SCAFFOLD's Xcode build in particular is still local-only:
+        # `create-multiplatform` -> `pyreon-native build` -> `xcodegen` ->
+        # `xcodebuild` against the real SDK is verified by hand (done this PR:
+        # BUILD SUCCEEDED, 0 errors) and is a viable gate. It is not added here
+        # because the macOS cell already sits at 92% of its 60-minute budget,
+        # so it wants its own job rather than another step on that one.
         run: |
           set -eo pipefail
           cd examples/native-counter-ios
@@ -464,4 +487,9 @@ jobs:
         # It runs HERE and not in validate-fast because swiftc costs ~250ms per
         # snippet — nothing on a CI job that already owns the toolchain, and too
         # much for a gate people run before every push.
-        run: PYREON_COVERAGE_COMPILE=1 bun scripts/check-native-coverage.ts
+        # SWIFT only: this runner has the real SwiftUI SDK and no kotlinc. Saying
+        # so explicitly is the point — the flag used to mean "compile whatever is
+        # installed", so the Kotlin half printed a skip line into a green log and
+        # compiled nothing, for as long as this was the only job that set it. The
+        # ubuntu `validate` job has BOTH toolchains and now runs the Kotlin half.
+        run: PYREON_COVERAGE_COMPILE=swift bun scripts/check-native-coverage.ts

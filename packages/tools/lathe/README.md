@@ -280,3 +280,44 @@ There is no third-party OpenAPI or YAML dependency. The YAML reader is scoped
 to the subset OpenAPI documents actually use and **refuses** anchors, merge
 keys, explicit tags and tab indentation with a line number, rather than
 producing a document that is subtly wrong everywhere the construct was used.
+
+## Contract changes
+
+`lathe` writes an `api-surface.json` beside the generated code: a compact record
+of what the run promised — which operations exist, what they take, what they
+return. The next run diffs against it.
+
+This exists because a spec edit is the one change here that can break an app
+without breaking a build. Delete a response field, regenerate, and everything
+still typechecks — against the new types, which agree with the new spec and with
+nothing the app was written for. The failure arrives at runtime, as a value that
+is suddenly `undefined`.
+
+```
+contract  2 breaking  1 additive
+  ! [field-removed]     Book.pages   was integer
+  ! [field-now-optional] Book.status  required → optional
+  + [field-added]       Book.isbn    string (optional)
+```
+
+Severity is always from the CLIENT's side, which is not symmetric with the
+server's:
+
+| change | severity | why |
+| --- | --- | --- |
+| response field removed | breaking | the app reads it |
+| response field required → optional | breaking | the app was entitled to assume presence |
+| response field added | additive | nobody was reading it |
+| request param added as required | breaking | existing calls omit it |
+| request param removed | additive | the request still goes out; the server ignores it |
+| operation removed or moved | breaking | the call site no longer resolves |
+
+`--fail-on-breaking` exits non-zero when any breaking change is present. Pair it
+with `generate` rather than `check`: the baseline moves when output is written,
+so it fires on the run that CAUSES the change rather than on every run
+afterwards. It is opt-in on purpose — on a feature branch the spec is supposed
+to move, and a gate that fires there gets disabled rather than heeded.
+
+A missing or wrong-version baseline reports no changes rather than reporting
+every operation as added: a wall of "additive" on day one teaches people to skim
+the section.

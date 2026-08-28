@@ -207,6 +207,53 @@ export interface RegistryEntry {
  * `@pyreon/rx` transforms (NOT `pipe`, which has no native lowering), etc. A
  * malformed snippet manufactures a false gap.
  */
+/**
+ * What `PYREON_COVERAGE_COMPILE` asks for, and whether that request can be met.
+ *
+ * Pure, and separated out because the interesting part is a POLICY that used to
+ * be implicit: the flag meant "compile whatever toolchain happens to be
+ * installed", and the only CI job that set it runs on macOS, which has no
+ * kotlinc — so the Kotlin pass printed a skip into a green log and compiled
+ * nothing, for as long as that was the only caller. The whole point of the gate
+ * is stopping a warning-free uncompilable emit from reading as "crosses", and
+ * half of it was doing the opposite.
+ *
+ * So targets are named, and a REQUESTED target whose toolchain is absent is a
+ * failure rather than a log line. The caller said compile; a gate that cannot do
+ * what it was asked must not report success.
+ */
+export type CompileRequest =
+  | { kind: 'none' }
+  | { kind: 'invalid'; value: string }
+  | { kind: 'run'; swift: boolean; kotlin: boolean }
+
+export function parseCompileRequest(raw: string | undefined): CompileRequest {
+  const v = (raw ?? '').trim().toLowerCase()
+  if (v === '') return { kind: 'none' }
+  if (v === '1' || v === 'all') return { kind: 'run', swift: true, kotlin: true }
+  if (v === 'swift') return { kind: 'run', swift: true, kotlin: false }
+  if (v === 'kotlin') return { kind: 'run', swift: false, kotlin: true }
+  return { kind: 'invalid', value: v }
+}
+
+/** The reason a request cannot be met, or null when it can. */
+export function unmetCompileRequest(
+  req: CompileRequest,
+  have: { swift: boolean; kotlin: boolean },
+): string | null {
+  if (req.kind === 'invalid') {
+    return `PYREON_COVERAGE_COMPILE='${req.value}' is not one of 1 | all | swift | kotlin — refusing to run rather than silently compiling nothing.`
+  }
+  if (req.kind !== 'run') return null
+  if (req.swift && !have.swift) {
+    return 'Swift compilation was REQUESTED but swiftc is unavailable. Install a Swift toolchain, or ask for the other target explicitly (PYREON_COVERAGE_COMPILE=kotlin).'
+  }
+  if (req.kotlin && !have.kotlin) {
+    return 'Kotlin compilation was REQUESTED but kotlinc is unavailable. Install kotlinc, or ask for the other target explicitly (PYREON_COVERAGE_COMPILE=swift).'
+  }
+  return null
+}
+
 export const REGISTRY: RegistryEntry[] = [
   // ── pmtc-lowers: authoring API lowers clean, no runtime container needed ──
   {
@@ -663,15 +710,45 @@ export function C() {
   //
   // Evidence rung, stated per entry rather than implied — the host BRIDGE is
   // proven in real Chromium against the REAL engine (`src/webview.browser.test.tsx`),
-  // and the native `<WebView>` host is emit + stub-typecheck proven (PMTC lowers
-  // it on both targets; `examples/native-viz` emits 24 `PyreonWebView` calls,
-  // 0 warnings). NO device test hosts a WebView on either platform — see the
-  // `not device-proven` note each rationale carries.
+  // and the native `<WebView>` host is emit + COMPILE proven: each of these four
+  // carries a snippet hosting its own real payload shape, which the compile pass
+  // puts through swiftc and kotlinc like any other. NO device test hosts a
+  // WebView on either platform — see the `not device-proven` note each rationale
+  // carries.
+  //
+  // Those snippets replaced a claim that read "`examples/native-viz` emits 24
+  // `PyreonWebView` calls, 0 warnings". That was true and it was not evidence:
+  // a warning count was standing in for a compile nobody ran, and when the
+  // compile was finally run, native-viz did not build on Android at all. An
+  // ECharts option object has heterogeneous nesting and empty objects, so no
+  // struct could be synthesized for it and the emit fell back to a tuple —
+  // invalid Kotlin, and on Swift a non-`Codable` value that `encode` cannot
+  // serialize. `<WebView data>` lowers literals as JSON now, and the snippets
+  // below are what keeps that honest: each carries the payload shape its package
+  // actually crosses by, so the mechanism is checked rather than described.
   {
     name: '@pyreon/charts',
     mechanism: 'webview-host',
     rationale:
       'ECharts is a canvas engine with no native equivalent, so it crosses by HOSTING the same web chart in a native <WebView> (@pyreon/charts/webview). Bridge proven in real Chromium against real ECharts; native host is emit + stub-typecheck proven, NOT device-proven.',
+    snippet: `import { signal } from '@pyreon/reactivity'
+import { Stack, Text, WebView } from '@pyreon/primitives'
+export function C() {
+  const nums = signal([1, 2, 3])
+  const text = signal('const a = 1')
+  const picked = signal('none')
+  return (
+    <Stack>
+      <Text>{picked()}</Text>
+      <WebView
+        html="<!doctype html><html><body></body></html>"
+        data={{ xAxis: { type: 'category', data: ['Mon', 'Tue'] }, yAxis: {}, series: [{ type: 'bar', data: nums() }] }}
+        onMessage={(m) => picked.set(m)}
+      />
+    </Stack>
+  )
+}
+`,
     webviewHost: { hostHtmlExport: 'buildChartHostHtml', componentExport: 'ChartWebView' },
   },
   {
@@ -679,6 +756,24 @@ export function C() {
     mechanism: 'webview-host',
     rationale:
       'CodeMirror 6 is a DOM editor with no native equivalent, so it crosses by HOSTING the same editor in a native <WebView> (@pyreon/code/webview). Bridge proven in real Chromium against real CodeMirror; native host is emit + stub-typecheck proven, NOT device-proven.',
+    snippet: `import { signal } from '@pyreon/reactivity'
+import { Stack, Text, WebView } from '@pyreon/primitives'
+export function C() {
+  const nums = signal([1, 2, 3])
+  const text = signal('const a = 1')
+  const picked = signal('none')
+  return (
+    <Stack>
+      <Text>{picked()}</Text>
+      <WebView
+        html="<!doctype html><html><body></body></html>"
+        data={{ doc: text(), language: 'typescript', readOnly: false }}
+        onMessage={(m) => picked.set(m)}
+      />
+    </Stack>
+  )
+}
+`,
     webviewHost: { hostHtmlExport: 'buildCodeHostHtml', componentExport: 'CodeWebView' },
   },
   {
@@ -686,6 +781,24 @@ export function C() {
     mechanism: 'webview-host',
     rationale:
       'the node-graph is an elk/SVG layout with no native equivalent, so it crosses by HOSTING the same diagram in a native <WebView> (@pyreon/flow/webview — self-contained, no CDN). Bridge + real SVG render proven in real Chromium; native host is emit + stub-typecheck proven, NOT device-proven.',
+    snippet: `import { signal } from '@pyreon/reactivity'
+import { Stack, Text, WebView } from '@pyreon/primitives'
+export function C() {
+  const nums = signal([1, 2, 3])
+  const text = signal('const a = 1')
+  const picked = signal('none')
+  return (
+    <Stack>
+      <Text>{picked()}</Text>
+      <WebView
+        html="<!doctype html><html><body></body></html>"
+        data={{ nodes: [{ id: 'a', label: 'A', x: 20, y: 20 }], edges: [] }}
+        onMessage={(m) => picked.set(m)}
+      />
+    </Stack>
+  )
+}
+`,
     webviewHost: { hostHtmlExport: 'buildFlowHostHtml', componentExport: 'FlowWebView' },
   },
   {
@@ -693,6 +806,24 @@ export function C() {
     mechanism: 'webview-host',
     rationale:
       'TipTap/ProseMirror is a DOM editor with no native equivalent, so it crosses by HOSTING the same WYSIWYG in a native <WebView> (@pyreon/rich-text/webview). Bridge proven in real Chromium against real TipTap; native host is emit + stub-typecheck proven, NOT device-proven.',
+    snippet: `import { signal } from '@pyreon/reactivity'
+import { Stack, Text, WebView } from '@pyreon/primitives'
+export function C() {
+  const nums = signal([1, 2, 3])
+  const text = signal('const a = 1')
+  const picked = signal('none')
+  return (
+    <Stack>
+      <Text>{picked()}</Text>
+      <WebView
+        html="<!doctype html><html><body></body></html>"
+        data={{ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'hi' }] }] }}
+        onMessage={(m) => picked.set(m)}
+      />
+    </Stack>
+  )
+}
+`,
     webviewHost: { hostHtmlExport: 'buildRichTextHostHtml', componentExport: 'RichTextWebView' },
   },
 
@@ -1386,7 +1517,14 @@ async function main(): Promise<number> {
   // Compiling is OPT-IN: swiftc is ~250ms and kotlinc ~2.5s per snippet, which
   // is fine in the native CI job and far too slow for validate-fast. The CI
   // job that already owns the toolchains sets PYREON_COVERAGE_COMPILE=1.
-  const compileEnabled = process.env.PYREON_COVERAGE_COMPILE === '1'
+  const compileReq = parseCompileRequest(process.env.PYREON_COVERAGE_COMPILE)
+  const wantSwift = compileReq.kind === 'run' && compileReq.swift
+  const wantKotlin = compileReq.kind === 'run' && compileReq.kotlin
+  const compileEnabled = wantSwift || wantKotlin
+  if (compileReq.kind === 'invalid') {
+    console.error(`[check-native-coverage] ✗ ${unmetCompileRequest(compileReq, { swift: false, kotlin: false })}`)
+    return 1
+  }
   // REAL SwiftUI, not the minimal stubs. The stub validator is the right tool
   // inside the compiler's own suite, but it is a SUBSET of SwiftUI — it has no
   // `.background` View modifier, so every emit that sets a colour fails against
@@ -1404,18 +1542,19 @@ async function main(): Promise<number> {
           isKotlincAvailable: () => false,
           validateKotlin: () => ({ ok: true }),
         }
-  const canCompile = compileEnabled && isSwiftcAvailable()
-  if (compileEnabled && !canCompile) {
-    console.log('[check-native-coverage] PYREON_COVERAGE_COMPILE=1 but the SwiftUI SDK is unavailable (macOS only) — compile pass SKIPPED.')
+  const canCompile = wantSwift && isSwiftcAvailable()
+  const canCompileKotlin = wantKotlin && isKotlincAvailable()
+  const unmet = unmetCompileRequest(compileReq, {
+    swift: isSwiftcAvailable(),
+    kotlin: isKotlincAvailable(),
+  })
+  if (unmet !== null) {
+    console.error(`[check-native-coverage] ✗ ${unmet}`)
+    return 1
   }
-  // Kotlin compiles on any runner with a JDK, so unlike the Swift half it is
-  // not macOS-gated. Announce a skip rather than passing silently — a compile
-  // pass that quietly does not run is worse than none, because the green reads
-  // as "the emit builds".
-  const canCompileKotlin = compileEnabled && isKotlincAvailable()
-  if (compileEnabled && !canCompileKotlin) {
-    console.log('[check-native-coverage] PYREON_COVERAGE_COMPILE=1 but kotlinc is unavailable — Kotlin compile pass SKIPPED.')
-  }
+  // Kotlin compiles on any runner with a JDK, so unlike Swift it is not
+  // macOS-gated — the ubuntu validate job has both.
+
   const packages = scanPackages(REPO)
 
   // Completeness ratchet: every `shared`/`service-backend` package DEFINITIVELY

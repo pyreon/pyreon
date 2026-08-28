@@ -1,0 +1,7 @@
+---
+'@pyreon/compiler': minor
+'@pyreon/core': minor
+'@pyreon/vite-plugin': minor
+---
+
+Plain Mode (experimental): write reactive code as plain JavaScript. A module carrying the `'use plain'` directive (or importing from the new `@pyreon/core/plain` entry) is rewritten by a compiler pre-pass before the JSX transform: `let count = state(0)` declares a signal, bare reads and plain assignments (`count = count + 1`, `count++`, `count += n`) compile to tracked calls and `.set(...)`, `derived(expr)` compiles to a computed, and `effect(fn)` gets total tracking — state mentioned only in a branch, after an `await`, or inside a nested function is subscribed via a hoisted prologue, so a conditional read can never silently lose its subscription. Destructured component props (`function C({ name })`) compile to live `props.*` reads instead of the captured-once footgun, and a component-body `if (<reactive>) return <jsx>` early return re-evaluates when the state flips. Cross-module: `export let x = state(0)` exports the live signal; the vite plugin's signal registry feeds importers on both dialects, and marker-bearing `.ts` store modules are transformed too. Out-of-scope shapes (deep mutation of state objects, destructuring assignment onto state, rest/nested props patterns) warn loudly instead of failing silently, and plain code that never went through the compiler throws with the fix at runtime.

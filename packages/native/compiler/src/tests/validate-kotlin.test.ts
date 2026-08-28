@@ -79,6 +79,14 @@ describe.skipIf(skipCondition)('Kotlin emit — kotlinc validates each fixture',
     // didn't compile under kotlinc (tuple literals, `.update()`,
     // prop-less dispatch of prop-requiring components).
     'showcase-tasks.tsx',
+    // The webview-host archetype. Mirror of `examples/native-viz/src/VizApp.tsx`
+    // — an ECharts option object and a ProseMirror document, the two payload
+    // shapes that had no synthesizable struct and emitted a tuple. The example
+    // did not build on Android at all until `<WebView data>` lowered literals
+    // as JSON and a literal omitting an optional field stopped falling through
+    // to synthesis. The coverage gate previously certified this whole mechanism
+    // on a WARNING COUNT; this compiles it.
+    'showcase-viz.tsx',
     // The multiplatform analytical-app proof — mirror of
     // `examples/native-analytics/src/AnalyticsApp.tsx`. Heavy data table
     // + inline reduce/fold totals + String()→toString() numeric coercion

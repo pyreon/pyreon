@@ -54,6 +54,18 @@ interface ParseCtx {
   warnings: string[]
   source: string
   /**
+   * Module-scope `const X = 'literal'` bindings, name → value. Collected in a
+   * pre-pass so a hook that BAKES a string into the emit can accept a shared
+   * constant, not only an inline literal.
+   *
+   * Sharing the key between the reader and whatever writes it is the ordinary
+   * way to write this, and `useUrlState(FILTER_KEY, '')` used to drop its whole
+   * declaration with no warning — leaving later references to a binding that no
+   * longer existed, so both targets failed to compile with nothing pointing at
+   * the cause.
+   */
+  stringConsts: Map<string, string>
+  /**
    * Names of `defineStore` hook bindings (`const useApp = defineStore(...)`
    * → `useApp`), collected in a pre-pass so component bodies parsed
    * earlier in the file still see stores declared later. Used to LOWER the
@@ -281,6 +293,16 @@ interface ParseCtx {
  */
 const HTTP_NONLITERAL_BASEURL = '\0__pyreon_nonliteral_baseurl__'
 
+/**
+ * Nesting depth while parsing an object literal's field VALUES. Used only to
+ * keep the empty-`{}` diagnostic on the shape it describes — a `{}` that
+ * becomes a value — and off nested ones, which are ordinary data (see the
+ * comment at the warning site). Balanced with try/finally so a parse throw
+ * cannot strand it above zero and silence the diagnostic for the rest of the
+ * process.
+ */
+let _objectLiteralDepth = 0
+
 export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult {
   const ctx: ParseCtx = {
     warnings: [],
@@ -310,6 +332,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     inlineSchemas: [],
     inlineSchemaByShape: new Map(),
     inlineSchemaCounter: 0,
+    stringConsts: new Map(),
   }
   const ast = parseSync(filename, source, { sourceType: 'module', lang: 'tsx' })
   // Pre-pass: collect every `const <name> = defineStore(...)` hook name
@@ -319,6 +342,10 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   // effect-free (no warnings) — full validation stays in
   // tryStoreDefnFromTopLevel during the main pass.
   collectStoreHookNames(ast.program.body as AnyNode[], ctx.storeHookNames)
+  // Pre-pass: module-scope string constants, so a hook that bakes a string can
+  // accept `const KEY = 'filter'` and not only an inline literal. Runs before
+  // component bodies so declaration ORDER does not matter.
+  collectStringConsts(ast.program.body as AnyNode[], ctx.stringConsts)
   // Pre-pass: collect object-shape type aliases so a NAMED props annotation
   // (`props: CardProps`) resolves regardless of declaration order. Warnings
   // from this parse are DISCARDED (a scratch ctx) — the main pass's
@@ -1644,10 +1671,10 @@ function collectHttpClients(body: AnyNode[], ctx: ParseCtx): void {
       let baseUrl = ''
       const v = readObjectProp(cfg, 'baseUrl')
       if (v !== undefined) {
-        baseUrl =
-          (v.type === 'Literal' || v.type === 'StringLiteral') && typeof v.value === 'string'
-            ? v.value
-            : HTTP_NONLITERAL_BASEURL
+        // A module-scope `const API_BASE = '…'` shared across the app is how an
+        // http client is normally written, and its value is just as known at
+        // build time as an inline string.
+        baseUrl = staticStringArg(v, ctx) ?? HTTP_NONLITERAL_BASEURL
       }
       ctx.httpClientBaseUrls.set(name, baseUrl)
     }
@@ -1807,7 +1834,7 @@ function resolveEndpointParts(
   const baseUrl = ctx.httpClientBaseUrls.get(def.clientName)
   if (baseUrl === undefined || baseUrl === HTTP_NONLITERAL_BASEURL) {
     ctx.warnings.push(
-      `endpoint ${endpointName}: native lowering needs a LITERAL baseUrl on client ${def.clientName} (\`createHttp({ baseUrl: '/api' })\`) — a computed baseUrl can't be baked into the URL at compile time, so this call stays web.`,
+      `endpoint ${endpointName}: native lowering needs a LITERAL baseUrl on client ${def.clientName} (\`createHttp({ baseUrl: '/api' })\`) — a computed baseUrl can't be baked into the URL at compile time, so this call stays web. A module-scope \`const\` holding the string works too.`,
     )
     return null
   }
@@ -2712,6 +2739,58 @@ function collectAliasImports(body: AnyNode[]): Map<string, string> {
   return map
 }
 
+/**
+ * Module-scope `const X = 'literal'` bindings. Deliberately narrow: top level
+ * only, `const` only, a bare string literal only. A `let`, a template with an
+ * interpolation, or a value computed at runtime is NOT statically known, and
+ * treating it as though it were would bake a stale value into the emit.
+ */
+function collectStringConsts(body: AnyNode[], out: Map<string, string>): void {
+  for (const node of body) {
+    const decl =
+      node.type === 'VariableDeclaration'
+        ? node
+        : node.type === 'ExportNamedDeclaration' && node.declaration?.type === 'VariableDeclaration'
+          ? node.declaration
+          : undefined
+    if (!decl || decl.kind !== 'const') continue
+    for (const d of (decl.declarations as AnyNode[] | undefined) ?? []) {
+      const name = (d.id as { name?: string } | undefined)?.name
+      // oxc uses NULL for an absent initializer, not undefined — an
+      // `=== undefined` check passes it straight through and the next property
+      // read throws. Same shape that made an earlier detector in this file
+      // silently inert; here it took out 40-odd suites instead, which is the
+      // better failure of the two.
+      const init = d.init as AnyNode | null | undefined
+      if (typeof name !== 'string' || !init) continue
+      if (init.type === 'Literal' && typeof init.value === 'string') {
+        out.set(name, init.value)
+      } else if (
+        // A template with NO interpolation is just a string spelled differently.
+        init.type === 'TemplateLiteral' &&
+        ((init.expressions as unknown[] | undefined)?.length ?? 0) === 0
+      ) {
+        const cooked = (init.quasis as AnyNode[] | undefined)?.[0]?.value?.cooked
+        if (typeof cooked === 'string') out.set(name, cooked)
+      }
+    }
+  }
+}
+
+/**
+ * The statically-known string an argument denotes — an inline literal, or a
+ * module-scope `const` collected above. Null when it cannot be known, which is
+ * the caller's cue to WARN rather than to drop the declaration.
+ */
+function staticStringArg(node: AnyNode | null | undefined, ctx: ParseCtx): string | null {
+  if (!node) return null
+  if (node.type === 'Literal' && typeof node.value === 'string') return node.value
+  if (node.type === 'Identifier' && typeof node.name === 'string') {
+    return ctx.stringConsts.get(node.name) ?? null
+  }
+  return null
+}
+
 function collectStoreHookNames(body: AnyNode[], out: Set<string>): void {
   for (const node of body) {
     const varDecl =
@@ -2770,16 +2849,15 @@ function tryStoreDefnFromTopLevel(
   const args = (init.arguments as AnyNode[]) ?? []
   if (args.length < 2) return null
   const idArg = args[0]
-  if (
-    idArg?.type !== 'Literal' ||
-    typeof idArg.value !== 'string'
-  ) {
+  // A module-scope `const` resolves — a store id named once and shared with
+  // whatever else keys off it is ordinary, and just as known at build time.
+  const storeId = staticStringArg(idArg, ctx)
+  if (storeId === null) {
     ctx.warnings.push(
-      `defineStore declaration \`${hookName}\`: first argument must be a string literal id. Falling back to silent-drop.`,
+      `defineStore declaration \`${hookName}\`: the id must be statically known — an inline string, or a module-scope \`const\` holding one. Falling back to silent-drop.`,
     )
     return null
   }
-  const storeId = idArg.value
 
   // Arg 2: arrow function with a block body returning an object literal.
   const setup = args[1]
@@ -5193,6 +5271,9 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     warnings: [],
     source: ctx.source,
     storeHookNames: new Set(),
+    // Shared, not copied: this scratch ctx exists only to keep the alias pass's
+    // warnings from double-firing, and the consts are read-only lookup either way.
+    stringConsts: ctx.stringConsts,
     objectTypeAliases: new Map(),
     storeAliases: new Map(),
     toastNames: new Set(),
@@ -5518,25 +5599,28 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
         // hardware-shortcut surface" rationale was never true.
         const shortcutNode = unwrapTypeLayers(call.arguments?.[0] as AnyNode | undefined)
         const cb = call.arguments?.[1] as AnyNode | undefined
-        if (shortcutNode?.type !== 'Literal' || typeof shortcutNode.value !== 'string') {
+        // A module-scope `const` resolves: the shortcut still ends up baked, and
+        // naming a shortcut once and reusing it is ordinary.
+        const shortcutValue = staticStringArg(shortcutNode, ctx)
+        if (shortcutValue === null) {
           // A computed shortcut cannot be baked into a native binding: SwiftUI
           // takes a KeyEquivalent at view-construction and Compose compares
           // against a Key constant. Same literal rule as animation duration.
           ctx.warnings.push(
-            `Component ${name}: useHotkey() needs a LITERAL shortcut string — a computed one cannot be baked into a native key binding. The hotkey is DROPPED on iOS/Android.`,
+            `Component ${name}: useHotkey() needs a statically-known shortcut — an inline string, or a module-scope \`const\` holding one. A computed one cannot be baked into a native key binding, so the hotkey is DROPPED on iOS/Android.`,
           )
         } else if (
           cb?.type !== 'ArrowFunctionExpression' &&
           cb?.type !== 'FunctionExpression'
         ) {
           ctx.warnings.push(
-            `Component ${name}: useHotkey('${shortcutNode.value}', …) needs an inline handler function; a reference cannot be lowered. The hotkey is DROPPED on iOS/Android.`,
+            `Component ${name}: useHotkey('${shortcutValue}', …) needs an inline handler function; a reference cannot be lowered. The hotkey is DROPPED on iOS/Android.`,
           )
         } else {
-          const parsed = parseHotkeyCombo(shortcutNode.value as string)
+          const parsed = parseHotkeyCombo(shortcutValue)
           if (!parsed.ok) {
             ctx.warnings.push(
-              `Component ${name}: useHotkey('${shortcutNode.value}') — ${parsed.reason}. The hotkey is DROPPED on iOS/Android.`,
+              `Component ${name}: useHotkey('${shortcutValue}') — ${parsed.reason}. The hotkey is DROPPED on iOS/Android.`,
             )
           } else {
             // The web handler takes a KeyboardEvent; native has no such object,
@@ -5544,7 +5628,7 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
             // Refuse it by name rather than emit a binding that ignores it.
             if ((cb.params as AnyNode[] | undefined)?.length) {
               ctx.warnings.push(
-                `Component ${name}: useHotkey('${shortcutNode.value}') handler takes a KeyboardEvent parameter, which has no native equivalent — drop the parameter, or keep the event-dependent logic behind a <Web> escape hatch. The hotkey is DROPPED on iOS/Android.`,
+                `Component ${name}: useHotkey('${shortcutValue}') handler takes a KeyboardEvent parameter, which has no native equivalent — drop the parameter, or keep the event-dependent logic behind a <Web> escape hatch. The hotkey is DROPPED on iOS/Android.`,
               )
             } else {
               const handlerBody =
@@ -6580,17 +6664,16 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     // string, identifier, member access) can't be baked into the
     // `@AppStorage(...)` string at compile time. Conservative — fall
     // through to undeclared if the key isn't a static literal.
-    if (
-      !keyArg ||
-      (keyArg.type !== 'Literal' && keyArg.type !== 'StringLiteral') ||
-      typeof keyArg.value !== 'string'
-    ) {
+    // A module-scope `const` counts as a literal here: the value is known at
+    // build time, which is the only thing the bake needs. Sharing the key with
+    // whatever else reads that slot is the ordinary way to write this.
+    const storageKey = staticStringArg(keyArg, ctx)
+    if (storageKey === null) {
       ctx.warnings.push(
-        `Declaration ${name}: useStorage key argument must be a string literal; got ${keyArg?.type ?? 'nothing'}.`,
+        `Declaration ${name}: useStorage needs a statically-known key — an inline string, or a module-scope \`const\` holding one. The key is BAKED into the native emit, so a computed or imported one cannot be resolved at build time. Got ${keyArg?.type ?? 'nothing'}.`,
       )
       return null
     }
-    const storageKey = keyArg.value
     const initial: ExprIR = initialArg
       ? parseExpr(initialArg, ctx)
       : { kind: 'literal', value: 0 }
@@ -6674,18 +6757,27 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     const args = (init.arguments as AnyNode[] | undefined) ?? []
     const keyNode = args[0]
     const defNode = args[1]
-    if (keyNode?.type !== 'Literal' || typeof keyNode.value !== 'string') return null
+    const key = staticStringArg(keyNode, ctx)
+    if (key === null) {
+      // Dropping the declaration silently is what this used to do, and it left
+      // every later reference pointing at a binding that no longer existed —
+      // so both targets failed to compile with nothing naming the cause.
+      ctx.warnings.push(
+        `const ${name} = useUrlState(…) needs a statically-known key: an inline string, or a module-scope \`const\` holding one. The key is BAKED into the native emit (there is no runtime key lookup in the lowered value), so a computed or imported key cannot be resolved at build time. Move the key into a module-scope const in this file, or keep the call behind a \`<Web>\` escape hatch.`,
+      )
+      return null
+    }
     const resolved = resolveUrlStateDefault(defNode)
     if (resolved === null) {
       ctx.warnings.push(
-        `const ${name} = useUrlState(${JSON.stringify(keyNode.value)}, …) lowers with a STRING, NUMBER or BOOLEAN default — an array or object default infers a comma-join / JSON codec on the web, and there is no native type to decode into at this call site. Use a scalar and parse it, or keep the call behind a \`<Web>\` escape hatch.`,
+        `const ${name} = useUrlState(${JSON.stringify(key)}, …) lowers with a STRING, NUMBER or BOOLEAN default — an array or object default infers a comma-join / JSON codec on the web, and there is no native type to decode into at this call site. Use a scalar and parse it, or keep the call behind a \`<Web>\` escape hatch.`,
       )
       return null
     }
     return {
       kind: 'url-state',
       name,
-      key: keyNode.value,
+      key,
       defaultValue: resolved.defaultValue,
       valueType: resolved.valueType,
     }
@@ -6733,18 +6825,16 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       resolvedUrl = resolved.url
       resolvedEndpoint = resolved
     }
-    if (
-      resolvedUrl === undefined &&
-      (!urlArg ||
-        (urlArg.type !== 'Literal' && urlArg.type !== 'StringLiteral') ||
-        typeof urlArg.value !== 'string')
-    ) {
+    // A module-scope `const` counts: naming an endpoint once and reusing it is
+    // ordinary, and the value is as known at build time as an inline string.
+    const constUrl = resolvedUrl === undefined ? staticStringArg(urlArg, ctx) : null
+    if (resolvedUrl === undefined && constUrl === null) {
       ctx.warnings.push(
-        `Declaration ${name}: useFetch url argument must be a string literal; got ${urlArg?.type ?? 'nothing'}.`,
+        `Declaration ${name}: useFetch needs a statically-known url — an inline string, or a module-scope \`const\` holding one. The url is BAKED into the native request, so a computed one cannot be resolved at build time. Got ${urlArg?.type ?? 'nothing'}.`,
       )
       return null
     }
-    const url = resolvedUrl ?? (urlArg.value as string)
+    const url = resolvedUrl ?? (constUrl as string)
     // No generic -> TypeIR `unknown` -> Swift emits `decode(Any.self, ...)`,
     // which does NOT compile: `Any` cannot conform to Decodable. Kotlin is
     // unaffected, so this is a Swift-only silent break, and the device-proven
@@ -8529,13 +8619,11 @@ function tryDeclFromCreateI18n(
     if (!keyName) continue
     const valueNode = unwrapTypeLayers(prop.value as AnyNode | undefined)
     if (keyName === 'locale') {
-      if (valueNode?.type === 'Literal' && typeof valueNode.value === 'string') {
-        locale = valueNode.value
-      }
+      // A module-scope `const` resolves — a default locale named once and shared
+      // is ordinary, and the value is just as known at build time.
+      locale = staticStringArg(valueNode, ctx) ?? undefined
     } else if (keyName === 'fallbackLocale') {
-      if (valueNode?.type === 'Literal' && typeof valueNode.value === 'string') {
-        fallbackLocale = valueNode.value
-      }
+      fallbackLocale = staticStringArg(valueNode, ctx) ?? undefined
     } else if (keyName === 'messages') {
       messagesNode = valueNode
     }
@@ -10145,9 +10233,16 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
             ? (p.key.value as string)
             : undefined
         if (p.type === 'Property' && (p.key?.name || literalKey !== undefined)) {
+          _objectLiteralDepth++
+          let parsedValue: ExprIR
+          try {
+            parsedValue = parseExpr(p.value, ctx)
+          } finally {
+            _objectLiteralDepth--
+          }
           fields.push({
             name: (p.key.name as string | undefined) ?? literalKey!,
-            value: parseExpr(p.value, ctx),
+            value: parsedValue,
           })
         } else if (p.type === 'SpreadElement') {
           spreads.push(parseExpr(p.argument, ctx))
@@ -10170,7 +10265,18 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       // literal would drop `name` and the later `u().name` would fail anyway.
       // Synthesizing from the annotation is a real feature; a warning that
       // names the shape and the fix is the honest thing to ship today.
-      if (fields.length === 0 && spreads.length === 0) {
+      //
+      // NESTED `{}` is excluded, and that exclusion is load-bearing rather than
+      // tidy. The problem described above is about a `{}` that becomes a VALUE:
+      // a Void state variable, or a `T` Kotlin cannot infer. A `{}` sitting
+      // inside a larger literal is not that — `{ xAxis: {…}, yAxis: {}, series:
+      // […] }` is an ordinary ECharts option object, valid JSON, and it lowers
+      // correctly through the JSON path that `<WebView data=>` now takes. The
+      // separate problem such a literal used to have — no synthesizable struct
+      // — is diagnosed properly at the emitters' bail site, which can name the
+      // field and the reason. Warning here as well would report an unrelated
+      // cause for a shape that now works.
+      if (fields.length === 0 && spreads.length === 0 && _objectLiteralDepth === 0) {
         ctx.warnings.push(
           'An EMPTY object literal `{}` has no native lowering — it emits `()` (Void on Swift), so the value is not an object on either target. Give the literal its fields (`{ name: "" }`), or model the state as separate signals.',
         )

@@ -17,16 +17,26 @@ import {
 } from '../emit/client'
 import { emitMocks } from '../emit/mock'
 import { emitSchemas, emitTypes } from '../emit/schema'
-import { banner, type GeneratedFile } from '../emit/writer'
+import { banner, jsonLiteral, type GeneratedFile } from '../emit/writer'
 import type { ResolvedConfig } from './config'
 import type { IrDocument, IrOperation, Reach } from './ir'
 import { loadOpenApi } from '../input/openapi'
+import { extractSurface, type ApiSurface } from './surface'
 
 export interface GenerateResult {
   doc: IrDocument
   files: GeneratedFile[]
   /** Per-operation native reach, decided statically from the IR. */
   reach: Map<string, { reach: Reach; reason?: string }>
+  /**
+   * The comparable API surface of THIS run.
+   *
+   * Committed as `api-surface.json` and diffed on the next run, which is what
+   * makes a contract change visible. A spec edit that removes a response field
+   * still typechecks after regeneration — against the new types, which agree
+   * with the new spec and with nothing the app was written for.
+   */
+  surface: ApiSurface
 }
 
 /** Run the pipeline over a spec document's text. */
@@ -72,7 +82,19 @@ export function generate(specText: string, config: ResolvedConfig): GenerateResu
   // Last, so it can re-export whatever the selection actually produced.
   push(emitBarrel(doc, { plugins: config.plugins }))
 
-  return { doc, files, reach: reachOf(doc, config) }
+  const surface = extractSurface(doc)
+  // Emitted LAST and unconditionally: it is not a plugin's output but the
+  // record of what this run promised, and a run that emitted only schemas
+  // still changed the contract if a model moved.
+  files.push({
+    path: 'api-surface.json',
+    // `jsonLiteral`, not bare `JSON.stringify`: the latter leaves U+2028 and
+    // U+2029 RAW, and both are JavaScript line terminators. A spec
+    // `description` carrying one would produce a file that parses as JSON and
+    // breaks the moment anything imports it as a module.
+    contents: `${jsonLiteral(surface, 2)}\n`,
+  })
+  return { doc, files, reach: reachOf(doc, config), surface }
 }
 
 /**
@@ -102,13 +124,14 @@ function decide(op: IrOperation, baseUrl: string): { reach: Reach; reason?: stri
   if (!/^https?:\/\//.test(baseUrl)) {
     return { reach: 'web-only', reason: `baseUrl \`${baseUrl}\` is not absolute.` }
   }
-  if (op.pathParams.length > 0) {
-    const names = op.pathParams.map((p) => p.name).join(', ')
-    return {
-      reach: 'web-only',
-      reason: `path parameters (${names}) are supplied at runtime, and PMTC needs literal params to bake the URL at compile time. Parameterless operations on this client DO reach native.`,
-    }
-  }
+  // A path parameter used to disqualify an operation, because PMTC resolved
+  // the endpoint URL to a compile-time constant. It no longer does: a runtime
+  // `:param` lowers through `useQuery`, whose native harness is keyed on the
+  // resulting URL and therefore re-fetches when the value changes. The
+  // generated component takes the param as a PROP.
+  //
+  // Left as a comment rather than deleted because the reason it USED to be
+  // here is the reason the generated native layout looks the way it does.
   if (op.method !== 'GET') {
     return {
       reach: 'web-only',

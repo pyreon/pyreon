@@ -15,6 +15,8 @@ import { noProcessDevGate } from './architecture/no-process-dev-gate'
 import { noQuerySelectorCastInTest } from './architecture/no-query-selector-cast-in-test'
 import { requireBrowserSmokeTest } from './architecture/require-browser-smoke-test'
 import { vitestConfigUsesShared } from './architecture/vitest-config-uses-shared'
+import { noScriptUrl } from './security/no-script-url'
+import { noTargetBlankWithoutRel } from './security/no-target-blank-without-rel'
 import { noSignalInFormInitialValues } from './form/no-signal-in-form-initial-values'
 import { noSubmitWithoutValidation } from './form/no-submit-without-validation'
 // Form
@@ -51,6 +53,7 @@ import { noRawAddEventListener } from './hooks/no-raw-addeventlistener'
 import { noRawLocalStorage } from './hooks/no-raw-localstorage'
 import { noRawSetInterval } from './hooks/no-raw-setinterval'
 import { noAndConditional } from './jsx/no-and-conditional'
+import { noLineCommentInJsx } from './jsx/no-line-comment-in-jsx'
 import { noChildrenAccess } from './jsx/no-children-access'
 import { noClassName } from './jsx/no-classname'
 import { noHtmlFor } from './jsx/no-htmlfor'
@@ -142,6 +145,7 @@ export const allRules: Rule[] = [
   noOnChange,
   noTernaryConditional,
   noAndConditional,
+  noLineCommentInJsx,
   noIndexAsBy,
   noMissingForBy,
   noPropsDestructure,
@@ -205,6 +209,9 @@ export const allRules: Rule[] = [
   noImperativeNavigateInRender,
   noMissingFallback,
   preferUseIsActive,
+  // Security (2)
+  noTargetBlankWithoutRel,
+  noScriptUrl,
   // SSG (3) — M3.5
   invalidLoaderExport,
   missingGetStaticPaths,
@@ -244,6 +251,7 @@ export {
   dialogA11y,
   initFnNeedsIdempotency,
   noAndConditional,
+  noLineCommentInJsx,
   // Reactivity
   noAsyncEffect,
   noBareSignalInJsx,

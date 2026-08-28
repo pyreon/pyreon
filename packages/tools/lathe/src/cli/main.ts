@@ -10,6 +10,7 @@ import { existsSync, mkdirSync, readFileSync, watch, writeFileSync } from 'node:
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { LatheSection } from '../core/config'
+import { pullSpec } from './pull'
 import { parseArgv, run, type Fs } from './run'
 
 const realFs: Fs = {
@@ -44,6 +45,27 @@ export async function main(argvRaw: readonly string[], cwd: string): Promise<num
   const argv = parseArgv(argvRaw)
   const section = await loadSection(cwd)
   const abs = (p: string): string => (isAbsolute(p) ? p : resolve(cwd, p))
+  if (argv.command === 'pull') {
+    // The URL is the positional; the DESTINATION is the configured input, so
+    // `pull` and `generate` cannot disagree about which file is the spec.
+    const url = argv.input
+    if (!url || !/^https?:\/\//.test(url)) {
+      process.stderr.write(
+        '[Pyreon] lathe: `lathe pull` needs an http(s) URL — `lathe pull https://api.example.com/openapi.json`\n',
+      )
+      return 1
+    }
+    const { resolveProjects } = await import('../core/config')
+    const dest = resolveProjects(section)[0]?.input
+    if (!dest) {
+      process.stderr.write(
+        '[Pyreon] lathe: no `input` configured, so there is nowhere to put the spec.\n' +
+          '  Set `lathe.input` in pyreon.config.ts, or pass `--out-spec <path>`.\n',
+      )
+      return 1
+    }
+    return pullSpec(url, abs(dest))
+  }
   const scoped: Fs = {
     ...realFs,
     read: (p) => realFs.read(abs(p)),

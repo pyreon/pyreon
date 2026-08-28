@@ -69,11 +69,15 @@ describe('pyreon/anchor-is-valid (frontend)', () => {
     expect(diagIds(result)).toContain('pyreon/anchor-is-valid')
   })
 
-  it('FIRES on `<a href="javascript:void(0)">` (javascript: URL)', () => {
+  it('DEFERS a script URL to `pyreon/no-script-url` — one defect, one diagnostic', () => {
+    // This rule used to flag `javascript:` too, so the shape reported twice.
+    // `no-script-url` owns it: it covers `src` / `action` as well, normalizes
+    // the control-character bypasses (`java\tscript:`) that a `startsWith`
+    // check misses, and frames it as the security issue it is.
     const result = lint(
       `function App() { return <a href="javascript:void(0)">x</a> }`,
     )
-    expect(diagIds(result)).toContain('pyreon/anchor-is-valid')
+    expect(diagIds(result)).not.toContain('pyreon/anchor-is-valid')
   })
 
   it('does NOT fire on `<a href="/about">` (real destination)', () => {

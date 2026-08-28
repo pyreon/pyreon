@@ -7,6 +7,9 @@
 import {
   ICON_MAP,
   isCanonicalPrimitive,
+  FIELD_KEYBOARD_KOTLIN,
+  TEXT_SIZE_PT,
+  TEXT_WEIGHT_KOTLIN,
   resolveAlign,
   resolveColor,
   resolveRadius,
@@ -17,6 +20,9 @@ import {
   chainHasOptional,
   isCompoundExpr,
   substituteIdentifier,
+  buildJsonLiteralParts,
+  subsetStructName,
+  explainUntypeableField,
   synthLiteralStructName,
   classifyDynamicStylingAttr,
   classifySortableRef,
@@ -61,7 +67,11 @@ import {
   resolveRouteTarget,
 } from './route-ir-helpers'
 import { unknownTransitionPresetWarning } from './transition-presets'
-import { unloweredPropWarning } from './unlowered-props'
+import {
+  stretchAlignWarning,
+  structuralPropDynamicWarning,
+  unloweredPropWarning,
+} from './unlowered-props'
 import type {
   AttrIR,
   ChildIR,
@@ -94,6 +104,10 @@ let _enumNames: Set<string> = new Set()
  * `_structFieldsToName`. See that file for the structural rationale.
  */
 let _structFieldsToName: Map<string, string> = new Map()
+/** The DECLARED data classes for this emit, kept for `subsetStructName` — the
+ *  exact field-set index above cannot see a literal that omits an optional
+ *  field. */
+let _declaredStructs: readonly StructIR[] = []
 /**
  * Synthesized data classes for ANONYMOUS all-scalar-literal object
  * EXPRESSIONS (`{ id: 1, name: 'a' }`). Mirror of emit-swift's
@@ -410,6 +424,7 @@ export function emitKotlin(
   _enumNames = new Set(enums.map((e) => e.name))
   // Build the struct-fields key map — mirror of emit-swift's logic.
   _structFieldsToName = new Map()
+  _declaredStructs = structs
   _synthExprStructs = []
   _synthExprStructKeys = new Map()
   for (const s of structs) {
@@ -2021,7 +2036,7 @@ function emitKotlinComponent(c: ComponentIR): string {
       if (d.kind !== 'hotkey') return false
       if (kotlinKeyConstant(d.combo.key) !== null) return true
       _emitWarnings.push(
-        `useHotkey: '${d.combo.key}' has no Compose Key constant — the hotkey is DROPPED on Android.`,
+        `useHotkey: '${d.combo.key}' has no Compose Key constant — the hotkey is DROPPED on Android. Use a single printable character or one of the named keys that map on both targets (escape / enter / delete / tab / space / arrow{up,down,left,right} / home / end / pageup / pagedown), or handle this shortcut inside a <NativeIOS> / <NativeAndroid> branch.`,
       )
       return false
     })
@@ -5081,6 +5096,25 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             .join(', ')
           return `${kotlinIdent(structName)}(${args})`
         }
+        // The exact index missed. Before synthesizing, try a DECLARED data
+        // class whose omitted fields are all optional. Kotlin is the SILENT
+        // half of this one: the binding is `var v by remember { mutableStateOf(…) }`
+        // with no written type, so Kotlin happily infers the synthesized
+        // `__Obj0` and it compiles — while the value's real type is not the one
+        // the annotation says, so `encode` serializes the wrong shape and any
+        // site expecting `T` fails elsewhere. Swift, which writes the type out,
+        // rejects it at the declaration.
+        const subset = subsetStructName(
+          e.fields.map((f) => f.name),
+          _declaredStructs,
+          typeIsOptional,
+        )
+        if (subset !== null) {
+          const args = e.fields
+            .map((f) => `${f.name} = ${emitKotlinExpr(f.value, indent)}`)
+            .join(', ')
+          return `${kotlinIdent(subset)}(${args})`
+        }
         // No declared data class matches — SYNTHESIZE one for an all-scalar-
         // literal object (`{ id: 1, name: 'a' }`) instead of the broken
         // `(field = value)` tuple emit (tuple key-paths break `items.map { it.id }`
@@ -5121,12 +5155,62 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           return `${kotlinIdent(byNames.name)}(${args})`
         }
       }
+      warnUntypeableObjectLiteral(e.fields, 'Kotlin')
       const fields = e.fields.map((f) => `${f.name} = ${emitKotlinExpr(f.value, indent)}`).join(', ')
       return `(${fields})`
     }
     case 'paren':
       return `(${emitKotlinExpr(e.inner, indent)})`
   }
+}
+
+
+/**
+ * About to emit the tuple fallback for an object literal that could not be
+ * given a struct — say so, and say WHY, per field.
+ *
+ * This is the LAST stop before both targets emit something structurally wrong,
+ * and they go wrong differently, which is what kept the whole class hidden:
+ *
+ *   Kotlin  `(id = "a", parent = null)` — named arguments with no constructor.
+ *           Not valid Kotlin; the Gradle build dies on it.
+ *   Swift   `(id: "a", parent: nil)` typed `Any` — a labelled tuple, which
+ *           COMPILES. Tuples are not `Codable`, so `PyreonJSON.encode`, a
+ *           `<WebView data=>` push, or a Saver silently produce the wrong bytes.
+ *           Compiling and being wrong is worse than not compiling.
+ *
+ * Warning HERE rather than in the parser is the point. The first version of
+ * this diagnostic pattern-matched the one shape that had been observed — an
+ * un-annotated empty array field. A sweep then found five more that fail
+ * identically and just as silently (`null`/`undefined` fields, a nested empty
+ * array, a mixed scalar array, an array of arrays), each an ordinary data model
+ * and each needing its own parser rule. The bail site already knows; asking it
+ * is one rule for the whole class, including the shapes nobody has hit yet.
+ *
+ * The remedy is verified rather than suggested: annotating the declaration
+ * lowers correctly today (the annotation supplies the missing types and both
+ * targets emit a real struct), and a spec asserts it still does.
+ */
+function warnUntypeableObjectLiteral(
+  fields: { name: string; value: ExprIR }[],
+  target: 'Kotlin' | 'Swift',
+): void {
+  const causes: string[] = []
+  for (const f of fields) {
+    const why = explainUntypeableField(f.value)
+    if (why !== null) causes.push(`\`${f.name}\`: ${why}`)
+  }
+  if (causes.length === 0) return
+  const consequence =
+    target === 'Kotlin'
+      ? 'the emit falls back to a tuple — named arguments with no constructor, which is INVALID Kotlin and fails the Gradle build'
+      : 'the emit falls back to a labelled tuple, which COMPILES but is not `Codable` — so `PyreonJSON.encode` and a `<WebView data=>` push silently produce the wrong bytes at runtime'
+  _emitWarnings.push(
+    `object literal { ${fields.map((f) => f.name).join(', ')} }: no struct could be synthesized ` +
+      `because ${causes.join('; ')}. So ${consequence}. Annotate the declaration ` +
+      `(\`signal<Shape>({ … })\`, or \`const x: Shape = { … }\`) — an annotated literal lowers ` +
+      `to a real struct on both targets.`,
+  )
 }
 
 function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
@@ -5461,9 +5545,39 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
     typeof font === 'string'
       ? `, fontFamily = pyreonFont(${JSON.stringify(sanitizeKotlinFontName(font))})`
       : ''
-  if (e.children.length === 0) return `Text(text = ""${typoArgs}${fontArg}${truncArgs}${modArg})`
+  // `size` / `weight` — documented props on the canonical Text that produced NO
+  // emit on either target, with no warning, exactly like `truncate` above did.
+  // A heading written `<Text size="lg" weight="bold">` rendered at body size and
+  // regular weight on native while the web showed it large and bold: the same
+  // source, a visibly different screen, and nothing said so.
+  //
+  // The point sizes mirror the WEB impl's own scale rather than inventing one —
+  // a scale that drifts from the web's is a divergence that looks like a design
+  // choice. A `style` object still wins: it is the more specific instruction,
+  // and this only fills in when the prop is the only thing said.
+  // `color` — documented on Text, implemented on its SIBLING Heading in this
+  // same file and not here. A coloured label rendered in the default colour on
+  // native while the web showed it coloured, with no warning. Reuses Heading's
+  // exact call so the two agree on the static token, the two-literal ternary,
+  // and the named warning for anything else.
+  const textColor = kotlinStylingValue(e, 'color', (v) => resolveColor(String(v), 'kotlin'))
+  const colorArg =
+    textColor !== undefined && !typoArgs.includes('color =') ? `, color = ${textColor}` : ''
+  // Through the styling machinery, not the static-only reader — see the Swift
+  // twin. A two-literal ternary emits `(if (c) 14 else 20)`, which is valid
+  // where either value would sit; the static form is byte-identical.
+  const sizePt = kotlinStylingValue(e, 'size', (v) =>
+    String(TEXT_SIZE_PT[String(v)] ?? TEXT_SIZE_PT.md),
+  )
+  const sizeArg = sizePt !== undefined && !typoArgs.includes('fontSize') ? `, fontSize = ${sizePt}.sp` : ''
+  const weightVal = kotlinStylingValue(e, 'weight', (v) =>
+    TEXT_WEIGHT_KOTLIN[String(v)] ?? 'FontWeight.Normal',
+  )
+  const weightArg =
+    weightVal !== undefined && !typoArgs.includes('fontWeight') ? `, fontWeight = ${weightVal}` : ''
+  if (e.children.length === 0) return `Text(text = ""${typoArgs}${colorArg}${sizeArg}${weightArg}${fontArg}${truncArgs}${modArg})`
   if (e.children.length === 1 && e.children[0]!.kind === 'text') {
-    return `Text(text = ${JSON.stringify(e.children[0]!.value)}${typoArgs}${fontArg}${truncArgs}${modArg})`
+    return `Text(text = ${JSON.stringify(e.children[0]!.value)}${typoArgs}${colorArg}${sizeArg}${weightArg}${fontArg}${truncArgs}${modArg})`
   }
   const parts: string[] = []
   for (const c of e.children) {
@@ -5488,7 +5602,7 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
       parts.push(kotlinInterpSegment(childExpr, indent))
     }
   }
-  return `Text(text = "${parts.join('')}"${typoArgs}${fontArg}${truncArgs}${modArg})`
+  return `Text(text = "${parts.join('')}"${typoArgs}${colorArg}${sizeArg}${weightArg}${fontArg}${truncArgs}${modArg})`
 }
 
 /**
@@ -6167,6 +6281,12 @@ function emitKotlinTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, inden
     leaveDur !== undefined ||
     enterEase !== undefined ||
     leaveEase !== undefined
+  // The generic modifier tail. `AnimatedVisibility` takes a `modifier`, so
+  // there is somewhere for it to go; this emitter simply never passed one, and
+  // dropped `data-testid` plus both a11y props. Emitted only when non-empty,
+  // so the byte-identical default shape below is preserved.
+  const tMod = emitKotlinLayoutModifier(e)
+  const tModArg = tMod === '' ? '' : `, modifier = ${tMod}`
   const pad = ' '.repeat(indent + 2)
   const body = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
   const nameRaw = readStaticAttrKotlin(e, 'name')
@@ -6180,12 +6300,12 @@ function emitKotlinTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, inden
     // No animation config AND no name → the byte-identical default shape that
     // has shipped since M2.7. A name opts into an explicit enter/exit pair.
     if (transitionName === undefined) {
-      return `AnimatedVisibility(visible = ${cond}) {\n${body}\n${' '.repeat(indent)}}`
+      return `AnimatedVisibility(visible = ${cond}${tModArg}) {\n${body}\n${' '.repeat(indent)}}`
     }
     const dflt = `tween(durationMillis = 300, easing = ${kotlinEasingFor(undefined)})`
     const t = kotlinTransitionForName(transitionName, dflt)
     return (
-      `AnimatedVisibility(visible = ${cond}, enter = ${t.enter}, exit = ${t.exit}) {\n` +
+      `AnimatedVisibility(visible = ${cond}, enter = ${t.enter}, exit = ${t.exit}${tModArg}) {\n` +
       `${body}\n${' '.repeat(indent)}}`
     )
   }
@@ -6349,6 +6469,32 @@ function readStaticAttrKotlin(
 }
 
 /**
+ * The cross-platform a11y vocabulary as Compose modifiers, extracted so a
+ * SPECIAL-CASE emitter can apply it too.
+ *
+ * `<Link>` and `<Modal>` both return before the generic modifier tail, so an
+ * `accessibilityLabel` on either was dropped on Android — and on Modal, so was
+ * `accessibilityHidden` and the test tag, leaving the dialog unselectable by
+ * `onNodeWithTag` as well. Split in two because the two halves sit at opposite
+ * ends of the chain: the label first, `clearAndSetSemantics` LAST, so a
+ * contradictory label+hidden pair resolves to hidden, matching web and iOS.
+ */
+function kotlinAccessibilityLabelModifier(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+): string[] {
+  const label = readStringAttrExprKotlin(e, 'accessibilityLabel', 0)
+  return label === undefined ? [] : [`.semantics { contentDescription = ${label} }`]
+}
+
+function kotlinAccessibilityHiddenModifier(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+): string[] {
+  return readStaticAttrKotlin(e, 'accessibilityHidden') === true
+    ? ['.clearAndSetSemantics { }']
+    : []
+}
+
+/**
  * Build the Compose `Modifier` chain for the canonical layout-prop
  * subset. Returns a string ready to pass as the `modifier =` constructor
  * arg, OR empty string when no relevant props are present.
@@ -6361,6 +6507,29 @@ function emitKotlinLayoutModifier(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
 ): string {
   const parts: string[] = []
+  // `margin` — the OUTERMOST inset, so it goes FIRST.
+  //
+  // Compose's `Modifier` chain applies outside-IN: the leading entries wrap
+  // the later ones. So an initial `.padding()` insets the whole element,
+  // before any background is drawn — which is margin. The Swift mirror
+  // APPENDS its margin for the same reason in reverse (SwiftUI wraps
+  // outward), an asymmetry worth stating in both files.
+  //
+  // Never implemented until now, though the Swift twin's docblock claimed it
+  // was in scope. `margin` is on the shared `BaseLayoutProps`, so this was
+  // silently dropped on Stack, Inline, Layer and Scroll, on both targets.
+  const margin = kotlinStylingValue(e, 'margin', resolveSpace)
+  if (margin !== undefined) {
+    parts.push(`.padding(${margin}.dp)`)
+  }
+  const marginX = kotlinStylingValue(e, 'marginX', resolveSpace)
+  if (marginX !== undefined) {
+    parts.push(`.padding(horizontal = ${marginX}.dp)`)
+  }
+  const marginY = kotlinStylingValue(e, 'marginY', resolveSpace)
+  if (marginY !== undefined) {
+    parts.push(`.padding(vertical = ${marginY}.dp)`)
+  }
   const padding = kotlinStylingValue(e, 'padding', resolveSpace)
   if (padding !== undefined) {
     parts.push(`.padding(${padding}.dp)`)
@@ -6423,10 +6592,7 @@ function emitKotlinLayoutModifier(
   //
   // `accessibilityLabel` → `.semantics { contentDescription = … }` (TalkBack
   // content description — icon-only buttons, images).
-  const a11yLabel = readStringAttrExprKotlin(e, 'accessibilityLabel', 0)
-  if (a11yLabel !== undefined) {
-    parts.push(`.semantics { contentDescription = ${a11yLabel} }`)
-  }
+  parts.push(...kotlinAccessibilityLabelModifier(e))
   // `accessibilityRole` → Compose semantics. button/image map to the `Role`
   // enum; header to `heading()` (Compose has no `Role.Header`). Constrained to
   // the roles that map 1:1 across targets. Emitted BEFORE clearAndSetSemantics
@@ -6451,9 +6617,7 @@ function emitKotlinLayoutModifier(
   // (`@ExperimentalComposeUiApi` in 1.7, would need a file `@OptIn`) and
   // `hideFromAccessibility()` (only lands in 1.8). Emitted LAST so a
   // contradictory label+hidden combo resolves to hidden (parity with web/iOS).
-  if (readStaticAttrKotlin(e, 'accessibilityHidden') === true) {
-    parts.push('.clearAndSetSemantics { }')
-  }
+  parts.push(...kotlinAccessibilityHiddenModifier(e))
   // `@pyreon/dnd` — `ref={s.containerRef}` / `ref={s.itemRef(key)}` become the
   // sortable Modifier extensions. Emitted LAST for the same reason as Swift:
   // the long-press drag wraps the element's own padding/background.
@@ -6538,6 +6702,11 @@ function emitKotlinStack(
   if (align !== undefined) {
     const alignSlot = isRow ? 'verticalAlignment' : 'horizontalAlignment'
     initArgs.push(`${alignSlot} = ${align}`)
+  }
+  {
+    // Silently wrong, not merely inert — see stretchAlignWarning.
+    const w = stretchAlignWarning(isRow ? 'Inline' : 'Stack', readStaticAttrKotlin(e, 'align'))
+    if (w !== undefined) _emitWarnings.push(w)
   }
   // Modifier chain
   const modifier = emitKotlinLayoutModifier(e)
@@ -6735,7 +6904,7 @@ function emitKotlinWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
   // every change WITHOUT reloading, so the chart updates in place.
   const dataExpr = dynamicWebViewAttrKotlin(e, 'data')
   const dataArg =
-    dataExpr !== undefined ? `data = PyreonJson.encode(${emitKotlinExpr(dataExpr, 0)})` : undefined
+    dataExpr !== undefined ? `data = ${kotlinWebViewDataArg(dataExpr)}` : undefined
   // Reverse bridge — `onMessage={(m) => …}` receives the string the page
   // sends via `window.pyreonPostMessage(...)`.
   const onMsg = e.attrs.find((a) => a.kind === 'event' && a.name === 'message')
@@ -6768,6 +6937,38 @@ function emitKotlinMessageHandler(handler: ExprIR): string {
     return `{ ${param} -> ${emitKotlinExpr(handler.body, 0)} }`
   }
   return `{ pyreonMsg -> ${emitKotlinExpr(handler, 0)}(pyreonMsg) }`
+}
+
+
+/**
+ * The `data` value for `<WebView>` (Kotlin). Mirror of `swiftWebViewDataArg`.
+ *
+ * An object/array LITERAL here is JSON, not a model: the value goes straight to
+ * `PyreonJson.encode`. Routing it through struct synthesis is a detour, and the
+ * detour fails on exactly the payloads JSON exists to carry — an ECharts option
+ * object has heterogeneous nesting and empty objects, so no struct exists for
+ * it and the emit fell back to a tuple. In Kotlin a tuple is named arguments
+ * with no constructor, and `encode` is `inline fun <reified T>`, so the build
+ * died on `cannot infer type for type parameter 'T'`. That is why
+ * `examples/native-viz`, the charts webview example, did not build on Android.
+ *
+ * So build the JSON at COMPILE time and interpolate the runtime parts. Anything
+ * else (an identifier, a signal read, a call) keeps the plain `encode(expr)`
+ * form it always had.
+ */
+function kotlinWebViewDataArg(dataExpr: ExprIR): string {
+  const parts = buildJsonLiteralParts(dataExpr)
+  if (parts === null) return `PyreonJson.encode(${emitKotlinExpr(dataExpr, 0)})`
+  const body = parts
+    .map((p) =>
+      'static' in p
+        ? // Kotlin string escaping: backslash, quote, and `$` (which would
+          // otherwise open an interpolation of its own).
+          p.static.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\$/g, '\\$')
+        : `\${PyreonJson.encode(${emitKotlinExpr(p.dyn, 0)})}`,
+    )
+    .join('')
+  return `"${body}"`
 }
 
 /** The `html` / `src` constructor arg for `<WebView>` (Kotlin). Mirror of
@@ -6858,6 +7059,10 @@ function emitKotlinAudio(
   if (statusAttr !== undefined) {
     args.push(`onStatusChange = ${emitKotlinMessageHandler(statusAttr.handler)}`)
   }
+  // Carries the modifier, exactly as its sibling <Video> does — see the Swift
+  // twin for why this was missing.
+  const audioMod = emitKotlinLayoutModifier(e)
+  if (audioMod !== '') args.push(`modifier = ${audioMod}`)
   return `PyreonAudioPlayer(${args.join(', ')})`
 }
 
@@ -6871,6 +7076,10 @@ function emitKotlinVideo(
   if (readStaticAttrKotlin(e, 'autoPlay') === true) args.push('autoPlay = true')
   if (readStaticAttrKotlin(e, 'loop') === true) args.push('loop = true')
   if (readStaticAttrKotlin(e, 'muted') === true) args.push('muted = true')
+  // Emitted when explicitly FALSE — see the Swift twin. `controls` defaults to
+  // true, unlike every other boolean here, and had no runtime parameter to
+  // land on until now (`useController` was hardcoded).
+  if (readStaticAttrKotlin(e, 'controls') === false) args.push('controls = false')
   const statusAttr = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'event' }> =>
       a.kind === 'event' && a.name === 'statuschange',
@@ -6907,6 +7116,15 @@ function emitKotlinImage(
   }
   const alt = readStaticAttrKotlin(e, 'alt')
   const fit = readStaticAttrKotlin(e, 'fit')
+  {
+    const w = structuralPropDynamicWarning(
+      'Image',
+      'fit',
+      typeof fit === 'string',
+      e.attrs.some((a) => a.kind === 'attr' && a.name === 'fit'),
+    )
+    if (w !== undefined) _emitWarnings.push(w)
+  }
   // Layout modifier FIRST in the chain so data-testid threads (the
   // Text/Heading lesson — its absence is device-invisible until a tag
   // query fails), then explicit sizes.
@@ -6955,9 +7173,20 @@ function emitKotlinImage(
     `model = ${model}`,
     `contentDescription = ${JSON.stringify(typeof alt === 'string' ? alt : '')}`,
   ]
-  if (typeof fit === 'string' && KOTLIN_CONTENT_SCALE[fit] !== undefined) {
-    args.push(`contentScale = ${KOTLIN_CONTENT_SCALE[fit]}`)
-  }
+  // An ABSENT `fit` is `cover`, not Compose's default.
+  //
+  // `ImageProps` documents "Default `cover`", the web arm reads
+  // `props.fit ?? 'cover'`, and the bundled Kotlin branch already defaults to
+  // Crop. Only this branch left it off — so `AsyncImage` fell back to
+  // `ContentScale.Fit` and an image that FILLS its box on web and iOS
+  // LETTERBOXED on Android. Visible, silent, and from one source.
+  //
+  // The Swift twin had the mirror-image version of this bug, fixed earlier in
+  // the same pass; leaving the sibling would be the same one-call-site fix that
+  // let it survive here.
+  const scale =
+    typeof fit === 'string' ? KOTLIN_CONTENT_SCALE[fit] : KOTLIN_CONTENT_SCALE['cover']
+  if (scale !== undefined) args.push(`contentScale = ${scale}`)
   if (modifier !== '') args.push(`modifier = ${modifier}`)
   return `AsyncImage(${args.join(', ')})`
 }
@@ -7140,15 +7369,34 @@ function emitKotlinModal(
   )
   const onDismiss = onClose ? emitKotlinAction(onClose.handler, indent + 2) : '{}'
   const dialogPad = ' '.repeat(indent + 2)
+  // Compose's `Dialog` takes NO modifier, so the test tag and the a11y props
+  // have nowhere to go on the call itself — which is why this emitter dropped
+  // all three, leaving a `<Modal>` unselectable by `onNodeWithTag` and its
+  // `accessibilityLabel` unread by TalkBack. Both are honoured on iOS, where
+  // the sheet host reaches the generic tail.
+  //
+  // The fix is the same shape Swift uses for the same reason: carry them on a
+  // wrapper INSIDE the dialog's content. Emitted only when at least one is
+  // present, so a plain `<Modal>` is byte-identical to before.
+  const testid = readStringAttrExprKotlin(e, 'data-testid', 0)
+  const modParts =
+    kotlinAccessibilityLabelModifier(e).join('') +
+    (testid === undefined ? '' : `.testTag(${testid})`) +
+    kotlinAccessibilityHiddenModifier(e).join('')
+  const open = modParts === '' ? '' : `Box(modifier = Modifier${modParts}) {`
   if (e.children.length === 0) {
-    return `if (${cond}) {\n${dialogPad}Dialog(onDismissRequest = ${onDismiss}) {}\n${' '.repeat(indent)}}`
+    const body = modParts === '' ? '{}' : `{\n${' '.repeat(indent + 4)}${open} }\n${dialogPad}}`
+    return `if (${cond}) {\n${dialogPad}Dialog(onDismissRequest = ${onDismiss}) ${body}\n${' '.repeat(indent)}}`
   }
-  const contentPad = ' '.repeat(indent + 4)
-  const contentLines = e.children.map((c) => contentPad + emitKotlinChild(c, indent + 4)).join('\n')
+  const extra = modParts === '' ? 0 : 2
+  const contentPad = ' '.repeat(indent + 4 + extra)
+  const contentLines = e.children.map((c) => contentPad + emitKotlinChild(c, indent + 4 + extra)).join('\n')
   return (
     `if (${cond}) {\n` +
     `${dialogPad}Dialog(onDismissRequest = ${onDismiss}) {\n` +
+    (modParts === '' ? '' : `${' '.repeat(indent + 4)}${open}\n`) +
     `${contentLines}\n` +
+    (modParts === '' ? '' : `${' '.repeat(indent + 4)}}\n`) +
     `${dialogPad}}\n` +
     `${' '.repeat(indent)}}`
   )
@@ -7185,9 +7433,20 @@ function emitKotlinPress(
   // conditional import for it is added in build.ts's
   // `conditionalKotlinImports` keyed on `combinedClickable(`.
   const layoutModifier = emitKotlinLayoutModifier(e)
+  // `disabled` — the SAME prop `<Button>` has honoured all along, and `<Press>`
+  // never did. Not a cosmetic drop: a disabled Press stayed CLICKABLE and fired
+  // its handler on both targets, while the sibling primitive in this same file
+  // got it right. One handled and one not, from one prop.
+  //
+  // `clickable`/`combinedClickable` both take `enabled`, so the fix is the
+  // existing helper rather than a new path — it already handles the literal,
+  // the `disabled={false}` no-op, and a signal-bound expression (negated into
+  // Compose's `enabled` sense).
+  const enabledArg = kotlinEnabledArg(e)
+  const enabledPrefix = enabledArg === '' ? '' : `${enabledArg}, `
   const clickable = onLongPress
-    ? `.combinedClickable(onClick = ${action}, onLongClick = ${emitKotlinAction(onLongPress.handler, indent)})`
-    : `.clickable(onClick = ${action})`
+    ? `.combinedClickable(${enabledPrefix}onClick = ${action}, onLongClick = ${emitKotlinAction(onLongPress.handler, indent)})`
+    : `.clickable(${enabledPrefix}onClick = ${action})`
 
   // `onSwipeLeft` / `onSwipeRight` → `pointerInput { detectHorizontalDragGestures }`.
   // The detector is direction-locked (only claims horizontally-dominant
@@ -7286,6 +7545,15 @@ function kotlinFieldVisualTransformation(
     )
   }
   const kind = readStaticAttrKotlin(e, 'kind')
+  {
+    const w = structuralPropDynamicWarning(
+      'Field',
+      'kind',
+      typeof kind === 'string',
+      e.attrs.some((a) => a.kind === 'attr' && a.name === 'kind'),
+    )
+    if (w !== undefined) _emitWarnings.push(w)
+  }
   return kind === 'password' ? 'visualTransformation = PasswordVisualTransformation()' : undefined
 }
 
@@ -7405,8 +7673,23 @@ let formBinding: { value: string; onChange: string } | undefined
     (a): a is Extract<AttrIR, { kind: 'event' }> =>
       a.kind === 'event' && a.name === 'submit',
   )
+  // `kind` → the software KEYBOARD, which the web gets free from `<input type>`
+  // and native did not: a phone showed full QWERTY where the same source showed
+  // a numeric pad in a browser. Previously deferred on both targets.
+  //
+  // MERGED with the imeAction rather than pushed separately — `KeyboardOptions`
+  // is one argument, so a second `keyboardOptions =` would be a duplicate named
+  // arg, and building it in two places is how one silently replaces the other.
+  const kindForKeyboard = readStaticAttrKotlin(e, 'kind')
+  const kbType =
+    typeof kindForKeyboard === 'string' ? FIELD_KEYBOARD_KOTLIN[kindForKeyboard] : undefined
+  const kbParts: string[] = []
+  if (kbType !== undefined) kbParts.push(`keyboardType = ${kbType}`)
+  if (onSubmit) kbParts.push('imeAction = ImeAction.Done')
+  if (kbParts.length > 0) {
+    args.push(`keyboardOptions = KeyboardOptions(${kbParts.join(', ')})`)
+  }
   if (onSubmit) {
-    args.push('keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done)')
     args.push(
       `keyboardActions = KeyboardActions(onDone = ${emitKotlinAction(onSubmit.handler, indent + 2)})`,
     )
@@ -7548,10 +7831,15 @@ function emitKotlinLink(
   // link could not be selected by `onNodeWithTag` — the Compose half of the
   // same "Link not individually asserted" gap.
   const testid = readStringAttrExprKotlin(e, 'data-testid', 0)
+  // The a11y props come from the SHARED helpers. Adding the test tag alone —
+  // which is what this did — left `accessibilityLabel` on a link dropped for
+  // the life of this emitter, on the one element where an icon or the word
+  // "here" is a normal thing to write.
   const mod =
-    testid === undefined
-      ? 'Modifier.clickable { navigate() }'
-      : `Modifier.clickable { navigate() }.testTag(${testid})`
+    'Modifier.clickable { navigate() }' +
+    kotlinAccessibilityLabelModifier(e).join('') +
+    (testid === undefined ? '' : `.testTag(${testid})`) +
+    kotlinAccessibilityHiddenModifier(e).join('')
   if (e.children.length === 0) {
     return `PyreonLink(${toExpr}) { navigate ->\n${pad}Box(modifier = ${mod}) { }\n${' '.repeat(indent)}}`
   }
@@ -7953,10 +8241,6 @@ function emitKotlinRouterView(
   return `RouterView()`
 }
 
-// `isCanonicalPrimitive` is imported but referenced only via the
-// dispatcher's `if (tag === 'Stack')` chain in `emitKotlinJsx` — see
-// the matching comment in emit-swift.ts.
-void isCanonicalPrimitive
 
 /** Expand a `<Comp {...src} />` spread into per-prop named args (Kotlin).
  * Mirror of emit-swift's `expandSwiftSpread`. */
@@ -7995,7 +8279,48 @@ function expandKotlinSpread(
   return out
 }
 
+/**
+ * A canonical primitive reached the GENERIC component emit — which cannot be
+ * right, so say so.
+ *
+ * Generic emit renders `<Tag a={b}>` as a constructor call. That is correct for
+ * a user component (it becomes a real struct / composable) and can never be
+ * correct for a canonical primitive: `Field` and `Toggle` are not SwiftUI
+ * types, and `Field` is not a Compose composable either. The build then fails
+ * with `cannot find 'Field' in scope` / `unresolved reference 'Field'` — a raw
+ * toolchain error naming a symbol the user never wrote.
+ *
+ * Each specialized emitter falls through to generic when the element matches no
+ * shape it lowers, and there are more than a dozen such fall-throughs per
+ * target. Four were covered, by a hand-maintained list of required props that
+ * warns for `<Icon>` without `name` and `<Image>` without `src`. The list was
+ * missing `<Field>` without `onChangeText` and `<Toggle>` without `onChange` —
+ * the same mistake, uncompilable in the same way, with nothing said. A list
+ * kept in sync by hand with a growing set of primitives is a hole generator.
+ *
+ * So the check is on the OUTCOME, not the cause: arriving here IS the failure,
+ * whatever produced it. No list to maintain, and a primitive added tomorrow is
+ * covered the day it is added.
+ *
+ * Shadowing is respected — a user component named `Toggle` is a real type, and
+ * generic emit is exactly right for it.
+ */
+function warnCanonicalPrimitiveFellThrough(tag: string): void {
+  const note =
+    `<${tag}> matched no shape the Kotlin emitter lowers, so it fell through to the ` +
+    `generic component emit and is written as a \`${tag}(…)\` constructor call — not a ` +
+    `Kotlin type, so the build fails with a raw toolchain error naming a symbol you never ` +
+    `wrote. The usual cause is a REQUIRED prop that is missing, or written in a form the ` +
+    `emitter does not recognise — for \`<Field>\` that is \`onChangeText\`, for \`<Toggle>\` ` +
+    `\`onChange\`. Supply it, or drop to \`<NativeIOS>\` / \`<NativeAndroid>\` and hand-write ` +
+    `this element.`
+  if (!_emitWarnings.includes(note)) _emitWarnings.push(note)
+}
+
 function emitKotlinGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  if (isCanonicalPrimitive(e.tag) && !_componentNames.has(e.tag)) {
+    warnCanonicalPrimitiveFellThrough(e.tag)
+  }
   const pad = ' '.repeat(indent + 2)
   const isUserComponent = _componentNames.has(e.tag)
   // Phase 2 follow-up: include event handlers as constructor args for

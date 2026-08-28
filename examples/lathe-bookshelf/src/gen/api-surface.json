@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "title": "Bookshelf",
+  "operations": {
+    "createBook": {
+      "id": "createBook",
+      "method": "POST",
+      "path": "/books",
+      "params": {},
+      "requiredParams": [],
+      "body": "NewBook",
+      "response": "Book"
+    },
+    "getBook": {
+      "id": "getBook",
+      "method": "GET",
+      "path": "/books/:bookId",
+      "params": {
+        "bookId": "uuid"
+      },
+      "requiredParams": [
+        "bookId"
+      ],
+      "response": "Book"
+    },
+    "listAuthors": {
+      "id": "listAuthors",
+      "method": "GET",
+      "path": "/authors",
+      "params": {
+        "limit": "integer"
+      },
+      "requiredParams": [],
+      "response": "Author[]"
+    },
+    "listBooks": {
+      "id": "listBooks",
+      "method": "GET",
+      "path": "/books",
+      "params": {},
+      "requiredParams": [],
+      "response": "Book[]"
+    }
+  },
+  "models": {
+    "Author": {
+      "email": "email (optional)",
+      "id": "uuid",
+      "name": "string"
+    },
+    "Book": {
+      "id": "uuid",
+      "pages": "integer (optional)",
+      "status": "enum(available|borrowed|lost)",
+      "subtitle": "string (optional)",
+      "tags": "string[] (optional)",
+      "title": "string"
+    },
+    "Entity": {
+      "id": "uuid"
+    },
+    "NewBook": {
+      "pages": "integer (optional)",
+      "title": "string"
+    }
+  }
+}

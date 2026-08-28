@@ -82,7 +82,12 @@ describe('run', () => {
     const argv = parseArgv(['generate', 'openapi.yaml', '--out', 'gen'])
     await run(argv, undefined, fs)
     const second = await run(argv, undefined, fs)
-    expect(second.stdout).toContain('0 file(s) written')
+    // The invariant is unchanged — a second run writes NOTHING. The count now
+    // names the denominator too, so "nothing moved" is distinguishable from
+    // "nothing was generated".
+    expect(second.stdout).toContain('0 of')
+    expect(second.stdout).toContain('file(s) written')
+    expect(second.stdout).toContain('everything already current')
   })
 
   it('check FAILS on stale output and names the files', async () => {

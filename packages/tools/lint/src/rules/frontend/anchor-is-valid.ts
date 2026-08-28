@@ -69,12 +69,13 @@ export const anchorIsValid: Rule = {
           // (image data URIs belong in `<img src>`), and consumers
           // with a real reason can suppress the rule per-line.
           const lower = trimmed.toLowerCase()
-          const isInvalid =
-            trimmed === '' ||
-            trimmed === '#' ||
-            lower.startsWith('javascript:') ||
-            lower.startsWith('vbscript:') ||
-            lower.startsWith('data:')
+          // `javascript:` / `vbscript:` are deliberately NOT handled here.
+          // `pyreon/no-script-url` owns them: it covers `src` / `action` too,
+          // normalizes the control-character bypasses a `startsWith` check
+          // misses, and frames the finding as the security issue it is.
+          // Reporting both would emit two diagnostics for one defect — the
+          // shape that made `no-large-for-without-by` a duplicate.
+          const isInvalid = trimmed === '' || trimmed === '#' || lower.startsWith('data:')
           if (isInvalid) {
             context.report({
               message: `Invalid anchor href "${value.value}" — use a <button> for actions, or a real destination URL.`,

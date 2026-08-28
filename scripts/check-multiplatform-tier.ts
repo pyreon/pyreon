@@ -200,9 +200,20 @@ const TABLE_END = '{/* gen:multiplatform-tiers:end */}'
 /** Render the per-tier markdown table between the gen markers. */
 export function renderTierTable(rows: TierRow[]): string {
   const byTier = (tier: string) => rows.filter((r) => r.tier === tier)
+  // A rationale is free prose that lands in an MDX-processed page: a bare
+  // `{expr}` compiles as a LIVE JSX expression and a bare `|` splits the
+  // table row. Escape both as HTML entities — inert in every markdown
+  // pipeline, invisible in the rendered page. This is the class fix for the
+  // silently-missing /docs/multiplatform-libraries page: two rationales
+  // (`attrs({ name, component })`, `native-router-{swift,kotlin}`) compiled
+  // as JSX expressions, threw ReferenceError at prerender, and the SSG
+  // build's non-fatal-by-design error handling deployed a site without the
+  // page — green.
+  const mdxSafe = (s: string): string =>
+    s.replace(/\{/g, '&#123;').replace(/\}/g, '&#125;').replace(/\|/g, '&#124;')
   const section = (title: string, tier: string): string => {
     const members = byTier(tier)
-    const lines = members.map((r) => `| \`${r.name}\` | ${r.rationale || '—'} |`)
+    const lines = members.map((r) => `| \`${r.name}\` | ${mdxSafe(r.rationale || '—')} |`)
     return `### ${title} (${members.length})\n\n| Package | Why |\n| --- | --- |\n${lines.join('\n')}\n`
   }
   return [
