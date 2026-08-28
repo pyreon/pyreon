@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import type { Rule, VisitorCallbacks } from '../../types'
 
@@ -85,8 +85,7 @@ function loadBrowserPackages(fromFile: string): Set<string> {
     const candidate = path.join(dir, '.claude', 'rules', 'browser-packages.json')
     if (existsSync(candidate)) {
       try {
-        const fs = require('node:fs') as typeof import('node:fs')
-        const parsed = JSON.parse(fs.readFileSync(candidate, 'utf8')) as {
+        const parsed = JSON.parse(readFileSync(candidate, 'utf8')) as {
           packages?: unknown
         }
         if (Array.isArray(parsed.packages)) {
@@ -159,7 +158,7 @@ function readPackageName(srcIndexPath: string): string | null {
   if (!existsSync(pkgPath)) return null
   try {
     // Read synchronously; cheap for one file per package per lint run.
-    const text = require('node:fs').readFileSync(pkgPath, 'utf8') as string
+    const text = readFileSync(pkgPath, 'utf8')
     const parsed = JSON.parse(text) as { name?: unknown }
     return typeof parsed.name === 'string' ? parsed.name : null
   } catch {
