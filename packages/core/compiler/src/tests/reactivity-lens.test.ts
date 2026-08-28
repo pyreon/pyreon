@@ -178,3 +178,30 @@ describe('reactivity-lens — formatter', () => {
     expect(out).toContain('1 |')
   })
 })
+
+describe('Plain-Mode files', () => {
+  it('surfaces plain pre-pass warnings as footgun findings with code plain-mode', () => {
+    const src = `'use plain'
+import { state } from '@pyreon/core/plain'
+let cfg = state.raw({ a: 1 })
+export const f = () => { cfg.a = 5 }
+`
+    const { findings } = analyzeReactivity(src, 'plain-lens.tsx')
+    const plain = findings.filter((f) => f.code === 'plain-mode')
+    expect(plain.length).toBeGreaterThan(0)
+    expect(plain[0]!.kind).toBe('footgun')
+    expect(plain[0]!.detail).toContain('does not notify')
+    expect(plain[0]!.line).toBe(4)
+  })
+
+  it('a clean plain file produces structural spans and NO plain findings', () => {
+    const src = `'use plain'
+import { state } from '@pyreon/core/plain'
+let count = state(0)
+export const App = () => <button onClick={() => { count = count + 1 }}>{count}</button>
+`
+    const { findings } = analyzeReactivity(src, 'plain-clean.tsx')
+    expect(findings.filter((f) => f.code === 'plain-mode')).toHaveLength(0)
+    expect(findings.some((f) => f.kind !== 'footgun')).toBe(true)
+  })
+})

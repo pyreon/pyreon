@@ -8,104 +8,12 @@
  * equivalence. The transform-SHAPE specs live in `@pyreon/compiler`
  * `src/tests/plain.test.ts`; this file proves the shapes actually behave.
  */
-import { transformSync } from 'esbuild'
 import { afterEach, describe, expect, it } from 'vitest'
 import { transformJSX } from '@pyreon/compiler'
-import * as JsxRuntime from '@pyreon/core/jsx-runtime'
-import { Fragment, h, _rp, cx } from '@pyreon/core'
-import { _bind, computed, effect, signal } from '@pyreon/reactivity'
+import { h } from '@pyreon/core'
 import { renderToString } from '@pyreon/runtime-server'
-import { _tpl, _bindText, _bindDirect, _setChild, _setChildAt } from '../template'
-import {
-  _applyProps,
-  _setAttr,
-  _setClass,
-  _setStyle,
-  _setValue,
-  bindPolymorphicText,
-  hydrateRoot,
-  mountChild,
-} from '../index'
-
-const RUNTIME_DEPS = {
-  _tpl,
-  _bind,
-  _bindText,
-  _bindDirect,
-  _setChild,
-  _setChildAt,
-  bindPolymorphicText,
-  _applyProps,
-  _setStyle,
-  _setClass,
-  _setAttr,
-  _setValue,
-  _rp,
-  _cx: cx,
-  h,
-  Fragment,
-  signal,
-  computed,
-  effect,
-  document,
-} as const
-
-function stripImports(code: string): string {
-  return code.replace(/^import\s+.*$/gm, '').trim()
-}
-
-/**
- * Lower the transform's RESIDUAL JSX the way a real build does — esbuild's
- * automatic runtime with `jsxImportSource: "@pyreon/core"` (the production
- * setting). Alias names are read back off the emitted import statement.
- */
-function lowerResidualJsx(code: string): { js: string; extra: Record<string, unknown> } {
-  const out = transformSync(code, {
-    loader: 'tsx',
-    jsx: 'automatic',
-    jsxImportSource: '@pyreon/core',
-  }).code
-  const jsxRuntime = JsxRuntime as unknown as Record<string, unknown>
-  const extra: Record<string, unknown> = {}
-  const importRe = /import\s*\{([^}]*)\}\s*from\s*"[^"]*jsx-runtime"/g
-  for (const m of out.matchAll(importRe)) {
-    for (const part of (m[1] as string).split(',')) {
-      const [orig, alias] = part.split(' as ').map((s) => s.trim())
-      if (!orig) continue
-      extra[alias ?? orig] = jsxRuntime[orig]
-    }
-  }
-  return { js: stripImports(out), extra }
-}
-
-/**
- * Compile a Plain-Mode MODULE (plain pre-pass + JSX transform + residual-JSX
- * lowering), execute it with runtime deps injected, and return its named
- * exports. `globals` are extra bindings the source mentions.
- */
-function compilePlainModule<T extends Record<string, unknown>>(
-  source: string,
-  exportNames: string[],
-  globals: Record<string, unknown> = {},
-  transformOptions: { ssr?: boolean } = {},
-): { exports: T; code: string } {
-  const result = transformJSX(source, 'plain-test.tsx', transformOptions)
-  const { js, extra } = lowerResidualJsx(stripImports(result.code))
-  const body = js.replace(/^export\s+(?=(const|function|let|var))/gm, '')
-  const deps = { ...RUNTIME_DEPS, ...extra, ...globals }
-  const fn = new Function(...Object.keys(deps), `${body}\nreturn { ${exportNames.join(', ')} }`)
-  return { exports: fn(...Object.values(deps)) as T, code: result.code }
-}
-
-function mountComponent(
-  Component: unknown,
-  props: Record<string, unknown> = {},
-): { container: HTMLDivElement; cleanup: () => void } {
-  const container = document.createElement('div')
-  document.body.appendChild(container)
-  const cleanup = mountChild(h(Component as never, props), container) as () => void
-  return { container, cleanup }
-}
+import { hydrateRoot } from '../index'
+import { compilePlainModule, lowerResidualJsx, mountComponent, stripImports, RUNTIME_DEPS } from './plain-harness'
 
 /** Fire a delegated click on an element carrying the compiled `__ev_click`. */
 function click(el: Element | null): void {
@@ -431,6 +339,136 @@ export function App() {
 })
 
 // ─── SSR + hydration ────────────────────────────────────────────────────────
+
+describe('deep state (behavioral)', () => {
+  it('todos.push(t) updates the DOM — array mutation notifies through the store proxy', () => {
+    const src = `'use plain'
+import { state } from '@pyreon/core/plain'
+let todos = state([{ text: 'ship' }])
+export const add = (t) => { todos.push({ text: t }) }
+export function List() {
+  return <div><span>{todos.length}</span><b>{todos.map((t) => t.text).join(',')}</b></div>
+}`
+    const { exports } = compilePlainModule<{ List: unknown; add: (t: string) => void }>(src, [
+      'List',
+      'add',
+    ])
+    const { container, cleanup } = mountComponent(exports.List)
+    expect(container.querySelector('span')!.textContent).toBe('1')
+    exports.add('test')
+    expect(container.querySelector('span')!.textContent).toBe('2')
+    expect(container.querySelector('b')!.textContent).toBe('ship,test')
+    cleanup()
+  })
+
+  it('member writes update text AND attr bindings; component props stay live', () => {
+    const src = `'use plain'
+import { state } from '@pyreon/core/plain'
+let user = state({ name: 'Ada' })
+export const rename = (n) => { user.name = n }
+function Badge(props) {
+  return <em>{props.v}</em>
+}
+export function Card() {
+  return <div title={user.name}><span>{user.name}</span><Badge v={user.name} /></div>
+}`
+    const { exports } = compilePlainModule<{ Card: unknown; rename: (n: string) => void }>(src, [
+      'Card',
+      'rename',
+    ])
+    const { container, cleanup } = mountComponent(exports.Card)
+    const root = container.querySelector('div')!
+    expect(root.getAttribute('title')).toBe('Ada')
+    expect(container.querySelector('span')!.textContent).toBe('Ada')
+    expect(container.querySelector('em')!.textContent).toBe('Ada')
+    exports.rename('Grace')
+    expect(root.getAttribute('title')).toBe('Grace')
+    expect(container.querySelector('span')!.textContent).toBe('Grace')
+    expect(container.querySelector('em')!.textContent).toBe('Grace')
+    cleanup()
+  })
+
+  it('per-key granularity: an effect on one key does NOT re-run when a sibling key changes', () => {
+    const src = `'use plain'
+import { state, effect } from '@pyreon/core/plain'
+let user = state({ name: 'Ada', age: 36 })
+export const log = []
+effect(() => { log.push(user.name) })
+export const setAge = (a) => { user.age = a }
+export const setName = (n) => { user.name = n }`
+    const { exports } = compilePlainModule<{
+      log: string[]
+      setAge: (a: number) => void
+      setName: (n: string) => void
+    }>(src, ['log', 'setAge', 'setName'])
+    expect(exports.log).toEqual(['Ada'])
+    exports.setAge(37)
+    expect(exports.log).toEqual(['Ada']) // sibling key — no re-run
+    exports.setName('Grace')
+    expect(exports.log).toEqual(['Ada', 'Grace'])
+  })
+
+  it('whole reassignment replaces the store and re-renders; later mutations on the NEW value track', () => {
+    const src = `'use plain'
+import { state } from '@pyreon/core/plain'
+let user = state({ name: 'Ada' })
+export const replace = () => { user = { name: 'Bo' } }
+export const rename = (n) => { user.name = n }
+export function View() { return <span>{user.name}</span> }`
+    const { exports } = compilePlainModule<{
+      View: unknown
+      replace: () => void
+      rename: (n: string) => void
+    }>(src, ['View', 'replace', 'rename'])
+    const { container, cleanup } = mountComponent(exports.View)
+    expect(container.textContent).toBe('Ada')
+    exports.replace()
+    expect(container.textContent).toBe('Bo')
+    exports.rename('Grace') // the REPLACED value must still be a live store
+    expect(container.textContent).toBe('Grace')
+    cleanup()
+  })
+
+  it('state.raw opts out: member mutation is silent, replacement notifies', () => {
+    const src = `'use plain'
+import { state } from '@pyreon/core/plain'
+let cfg = state.raw({ label: 'a' })
+export const mutate = () => { cfg.label = 'MUTATED' }
+export const replace = () => { cfg = { label: 'replaced' } }
+export function View() { return <span>{cfg.label}</span> }`
+    const { exports } = compilePlainModule<{
+      View: unknown
+      mutate: () => void
+      replace: () => void
+    }>(src, ['View', 'mutate', 'replace'])
+    const { container, cleanup } = mountComponent(exports.View)
+    expect(container.textContent).toBe('a')
+    exports.mutate()
+    expect(container.textContent).toBe('a') // shallow — silent by contract (compiler warned)
+    exports.replace()
+    expect(container.textContent).toBe('replaced')
+    cleanup()
+  })
+
+  it('total tracking: a branch-gated key read is subscribed from the first run', () => {
+    const src = `'use plain'
+import { state, effect } from '@pyreon/core/plain'
+let user = state({ name: 'Ada' })
+let gate = state(false)
+export let runs = 0
+effect(() => { runs++; if (gate) console.debug(user.name) })
+export const rename = (n) => { user.name = n }
+export const readRuns = () => runs`
+    const { exports } = compilePlainModule<{
+      readRuns: () => number
+      rename: (n: string) => void
+    }>(src, ['readRuns', 'rename'])
+    expect(exports.readRuns()).toBe(1)
+    // gate is FALSE — the branch never ran, but the prologue subscribed the key
+    exports.rename('Grace')
+    expect(exports.readRuns()).toBe(2)
+  })
+})
 
 describe('SSR + hydration', () => {
   it('a plain component server-renders and hydrates with live interactivity', async () => {

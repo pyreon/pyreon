@@ -40,6 +40,8 @@ function printUsage(): void {
   pyreon <command> [options]
 
   Commands:
+    plain [paths] [--write] [--json] Plain-Mode readiness report (per-file convertibility + declined-shape
+                                     histogram); --write applies the classic → plain codemod in place
     check [paths] [--fix] [--json]   Fast Pyreon/React anti-pattern scan (compiler detectors) with
                                      inline fixes. No paths → git-changed files. Exits non-zero on findings.
     add <pkg...> [--dry-run] [--json] Install @pyreon/* packages (PM auto-detected) + print how to wire each in
@@ -163,6 +165,18 @@ async function main(): Promise<void> {
       cwd: process.cwd(),
       json: args.includes('--json'),
       fix: args.includes('--fix'),
+    })
+    process.exit(exitCode)
+  }
+
+  if (command === 'plain') {
+    const { plain } = await import('./plain')
+    const paths = args.slice(1).filter((a) => !a.startsWith('-'))
+    const exitCode = await plain({
+      paths,
+      cwd: process.cwd(),
+      json: args.includes('--json'),
+      write: args.includes('--write'),
     })
     process.exit(exitCode)
   }

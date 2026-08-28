@@ -1547,6 +1547,23 @@ const geometry = () => props.shape
         "// vite.config.ts\nimport { pyreon } from '@pyreon/vite-plugin'\nexport default defineConfig({ plugins: [pyreon()] })",
     }),
   },
+  {
+    // Deep plain state reassigned with a NON-OBJECT value. `let user =
+    // state({ … })` (a literal object/array initializer) is DEEP state — a
+    // whole reassignment compiles to `user.set(createStore(v))`, and
+    // `createStore` proxies its argument, so a primitive (`user = 5`,
+    // `user = null`) dies in the Proxy constructor. The dialect keeps the
+    // deep/shallow split static, so the fix is at the declaration or the
+    // assignment, never a runtime branch.
+    pattern: /Cannot create proxy with a non-object/,
+    diagnose: () => ({
+      cause:
+        'A DEEP plain-state binding (declared with a literal object/array initializer — `let user = state({ … })`) was reassigned with a non-object value. Deep state compiles whole reassignment to `signal.set(createStore(v))`, and `createStore` wraps its argument in a Proxy — primitives (numbers, strings, `null`, `undefined`) cannot be proxied. This also fires when classic code passes a primitive to `createStore` directly.',
+      fix: 'Assign an OBJECT (`user = { …user, name }`), or — if the binding legitimately holds primitives sometimes — declare it shallow with `state.raw(initial)`, which keeps replace-the-value signal semantics for any type. TypeScript catches this shape when the state is typed: `state<T>` returns `T`, so assigning a primitive to object-typed state is a type error before it is a runtime one.',
+      fixCode:
+        "// deep state stays an object:\nlet user = state({ name: 'Ada' })\nuser = { name: 'Bo' }        // ✓ replace with an object\n\n// a sometimes-primitive value is SHALLOW state:\nlet selection = state.raw<{ id: number } | null>(null)\nselection = { id: 1 }        // ✓ replace semantics, any type",
+    }),
+  },
 ]
 
 /** Diagnose an error message and return structured fix information */

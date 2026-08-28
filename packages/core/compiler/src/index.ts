@@ -28,6 +28,12 @@ export type {
 } from './reactivity-lens'
 export type { PlainOptions, PlainTransformResult } from './plain'
 export { detectPlain, transformPlain } from './plain'
+export type {
+  MigrateToPlainResult,
+  PlainDeclineCode,
+  PlainMigrateDeclined,
+} from './plain-migrate'
+export { migrateToPlain } from './plain-migrate'
 export { analyzeReactivity, formatReactivityLens } from './reactivity-lens'
 export { analyzeValidate, emitSchemaSource, emitValidator, isEmittable } from './validate-emit'
 export type {

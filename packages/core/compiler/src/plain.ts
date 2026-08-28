@@ -11,6 +11,16 @@
  * What it rewrites (see each section below):
  *
  *   1. `let count = state(0)`   → `const count = signal(0)`   (+ injected import)
+ *      DEEP state: `let user = state({ … })` / `state([ … ])` (a LITERAL
+ *      object/array initializer) → `const user = signal(createStore({ … }))`.
+ *      The outer signal makes every read a tracked call the downstream
+ *      compiler already understands (JSX children/attrs/component props are
+ *      all live with zero downstream awareness), while the store proxy gives
+ *      per-key granularity: `user.name = x` and `todos.push(t)` notify only
+ *      their key's subscribers, and whole reassignment (`user = v`) replaces
+ *      the store through the outer signal. `state.raw(v)` opts out to a
+ *      shallow signal (replace-the-value semantics); a NON-literal argument
+ *      stays a shallow signal too — the store/signal split must be static.
  *   2. every READ of a state/derived binding → a tracked call: `count` → `count()`
  *   3. every WRITE → `.set(...)`: `count = v` → `count.set(v)`,
  *      `count += v` → `count.set(count() + (v))`, `count++` → `count.set(count() + 1)`
@@ -33,8 +43,9 @@
  *     signal — importers go through the vite-plugin's signal-export registry).
  *
  * Deliberately OUT of scope (each returns an explicit warning, never a silent
- * wrong answer): deep mutation of state objects (`obj.k = v` does not notify —
- * replace the object), destructuring assignment onto state, rest/nested props
+ * wrong answer): deep mutation of SHALLOW state (`state.raw` / non-literal
+ * initializers — `obj.k = v` does not notify; replace the object, or use a
+ * literal initializer to get deep state), destructuring assignment onto state, rest/nested props
  * patterns, `for (x of …)` heads writing state.
  */
 import MagicString from 'magic-string'
@@ -88,6 +99,7 @@ function getLang(filename: string): 'ts' | 'tsx' | 'js' | 'jsx' {
 
 type BindingKind =
   | { kind: 'state' }
+  | { kind: 'store' }
   | { kind: 'derived' }
   | { kind: 'imported-state' }
   | { kind: 'shadow' }
@@ -98,6 +110,11 @@ interface TrackFrame {
   unconditional: Set<string>
   /** Bindings read only under a condition / nested fn / after an await. */
   conditional: Set<string>
+  /** Deep-state member paths (already rewritten: `user().name`) read
+   *  unconditionally / only conditionally — hoisted like binding reads so a
+   *  branch-gated key read can never silently lose its subscription. */
+  unconditionalPaths: Set<string>
+  conditionalPaths: Set<string>
   /** Function nesting depth at which the frame was opened. */
   funcDepth: number
   /** Offset where the prologue is inserted (after the callback body's `{`),
@@ -184,19 +201,22 @@ export function transformPlain(
   for (const stmt of program.body as N[]) {
     collectDeclaredNames(stmt, moduleScopeNames)
   }
-  const emitNames = { state: 'signal', derived: 'computed', effect: 'effect' }
+  const emitNames = { state: 'signal', derived: 'computed', effect: 'effect', store: 'createStore' }
   if (moduleScopeNames.has('signal') && !reactivityImported.has('signal')) {
     emitNames.state = '__plainSignal'
   }
   if (moduleScopeNames.has('computed') && !reactivityImported.has('computed')) {
     emitNames.derived = '__plainComputed'
   }
+  if (moduleScopeNames.has('createStore') && !reactivityImported.has('createStore')) {
+    emitNames.store = '__plainStore'
+  }
   // `effect` imported from the plain source is stripped, freeing the name —
   // only a NON-marker `effect` binding collides.
   if (moduleScopeNames.has('effect') && !markers.has('effect') && !reactivityImported.has('effect')) {
     emitNames.effect = '__plainEffect'
   }
-  const used = { state: false, derived: false, effect: false }
+  const used = { state: false, derived: false, effect: false, store: false }
 
   // ── Scope stack ────────────────────────────────────────────────────────────
   const scopes: Array<Map<string, BindingKind>> = [new Map()]
@@ -243,11 +263,50 @@ export function transformPlain(
     else frame.conditional.add(name)
   }
 
+  /** Record a deep-state member path (rewritten text, e.g. `user().name`). */
+  const recordPath = (expr: string): void => {
+    const frame = trackStack[trackStack.length - 1]
+    if (!frame) return
+    const unconditional =
+      funcDepth === frame.funcDepth && condDepth === 0 && awaitSeen === 0 && exitSeen === 0
+    if (unconditional) frame.unconditionalPaths.add(expr)
+    else frame.conditionalPaths.add(expr)
+  }
+
+  /**
+   * Deep-state total tracking: a STATIC member path rooted at a store
+   * binding (`user.name`, `todos[0].done`) records the full path so a
+   * conditionally-reached read can be hoisted into the prologue as
+   * `void (user().name);` — subscribing the effect to the KEY, not just the
+   * root signal. Non-static paths (computed keys, optional chains, calls)
+   * are skipped: the root read's own hoist still covers reassignment, and a
+   * tracked branch condition re-collects per-key deps on flip.
+   */
+  function recordStorePathIfStatic(node: N): void {
+    if (trackStack.length === 0) return
+    let cur: N = node
+    while (cur?.type === 'MemberExpression') {
+      if (cur.optional) return
+      if (cur.computed) {
+        const p = cur.property
+        const lit = p?.type === 'Literal' && (typeof p.value === 'number' || typeof p.value === 'string')
+        if (!lit) return
+      } else if (cur.property?.type !== 'Identifier') {
+        return
+      }
+      cur = cur.object
+    }
+    if (cur?.type !== 'Identifier') return
+    const b = lookup(cur.name)
+    if (!b || b.kind !== 'store') return
+    recordPath(`${cur.name}()${code.slice(cur.end, node.end)}`)
+  }
+
   /** Rewrite a READ of a tracked binding at an Identifier node. */
   const rewriteRead = (node: N): void => {
     const b = lookup(node.name)
     if (!b) return
-    if (b.kind === 'state' || b.kind === 'derived' || b.kind === 'imported-state') {
+    if (b.kind === 'state' || b.kind === 'store' || b.kind === 'derived' || b.kind === 'imported-state') {
       ms.appendLeft(node.end, '()')
       recordRead(node.name)
     } else if (b.kind === 'prop') {
@@ -720,7 +779,7 @@ export function transformPlain(
           for (const d of stmt.left.declarations ?? []) declarePatternAsShadow(d.id)
         } else if (stmt.left?.type === 'Identifier') {
           const b = lookup(stmt.left.name)
-          if (b && (b.kind === 'state' || b.kind === 'derived')) {
+          if (b && (b.kind === 'state' || b.kind === 'store' || b.kind === 'derived')) {
             warn(
               stmt.left.start,
               `\`for (${stmt.left.name} of …)\` writes plain state per iteration — not rewritten. Use a local loop variable and assign once.`,
@@ -811,12 +870,37 @@ export function transformPlain(
         init?.type === 'CallExpression' && init.callee?.type === 'Identifier'
           ? isMarker(init.callee.name)
           : null
+      // `state.raw(v)` — explicit opt-out to a SHALLOW signal (replace-the-
+      // value semantics) even for a literal object/array initializer.
+      const isStateRaw =
+        init?.type === 'CallExpression' &&
+        init.callee?.type === 'MemberExpression' &&
+        !init.callee.computed &&
+        init.callee.object?.type === 'Identifier' &&
+        isMarker(init.callee.object.name) === 'state' &&
+        init.callee.property?.name === 'raw'
 
-      if (markerRole === 'state' && d.id?.type === 'Identifier') {
+      if ((markerRole === 'state' || isStateRaw) && d.id?.type === 'Identifier') {
+        const firstArg = init.arguments?.[0] ? unwrapTs(init.arguments[0]) : null
+        const deep =
+          !isStateRaw &&
+          (firstArg?.type === 'ObjectExpression' || firstArg?.type === 'ArrayExpression')
         used.state = true
-        ms.overwrite(init.callee.start, init.callee.end, emitNames.state)
-        for (const arg of init.arguments ?? []) walkExpr(arg, true)
-        declareBinding(d.id.name, { kind: 'state' })
+        if (deep) {
+          // DEEP state: `signal(createStore(<literal>))`. The outer signal
+          // makes the root read a tracked CALL (so the existing downstream
+          // JSX machinery keeps every position live); the store proxy gives
+          // per-key granularity for member reads and mutations.
+          used.store = true
+          ms.overwrite(init.callee.start, init.callee.end, `${emitNames.state}(${emitNames.store}`)
+          ms.appendLeft(init.end, ')')
+          for (const arg of init.arguments ?? []) walkExpr(arg, true)
+          declareBinding(d.id.name, { kind: 'store' })
+        } else {
+          ms.overwrite(init.callee.start, init.callee.end, emitNames.state)
+          for (const arg of init.arguments ?? []) walkExpr(arg, true)
+          declareBinding(d.id.name, { kind: 'state' })
+        }
         continue
       }
       if (markerRole === 'derived' && d.id?.type === 'Identifier') {
@@ -905,6 +989,8 @@ export function transformPlain(
     const frame: TrackFrame = {
       unconditional: new Set(),
       conditional: new Set(),
+      unconditionalPaths: new Set(),
+      conditionalPaths: new Set(),
       funcDepth: funcDepth + 1,
       prologueAt: body?.type === 'BlockStatement' ? body.start + 1 : null,
       exprBody: body && body.type !== 'BlockStatement' ? { start: body.start, end: body.end } : null,
@@ -926,6 +1012,8 @@ export function transformPlain(
     trackStack.push({
       unconditional: new Set(),
       conditional: new Set(),
+      unconditionalPaths: new Set(),
+      conditionalPaths: new Set(),
       funcDepth,
       prologueAt: null,
       exprBody: { start: arg.start, end: arg.end },
@@ -938,8 +1026,9 @@ export function transformPlain(
 
   function emitPrologue(frame: TrackFrame): void {
     const names = [...frame.conditional].filter((n) => !frame.unconditional.has(n))
-    if (names.length === 0) return
-    const reads = names.map((n) => `${n}()`).join(', ')
+    const paths = [...frame.conditionalPaths].filter((p) => !frame.unconditionalPaths.has(p))
+    if (names.length === 0 && paths.length === 0) return
+    const reads = [...names.map((n) => `${n}()`), ...paths].join(', ')
     if (frame.prologueAt !== null) {
       ms.appendRight(frame.prologueAt, ` void (${reads});`)
     } else if (frame.exprBody) {
@@ -991,7 +1080,7 @@ export function transformPlain(
           if (p.shorthand && p.value?.type === 'Identifier') {
             // `{ count }` — appending `()` in place would be invalid: expand.
             const b = lookup(p.value.name)
-            if (b && (b.kind === 'state' || b.kind === 'derived' || b.kind === 'imported-state')) {
+            if (b && (b.kind === 'state' || b.kind === 'store' || b.kind === 'derived' || b.kind === 'imported-state')) {
               ms.appendLeft(p.value.end, `: ${p.value.name}()`)
               recordRead(p.value.name)
             } else if (b?.kind === 'prop') {
@@ -1057,6 +1146,7 @@ export function transformPlain(
         for (const a of node.arguments ?? []) walkExpr(a, true)
         return
       case 'MemberExpression':
+        recordStorePathIfStatic(node)
         walkExpr(node.object, true)
         if (node.computed && node.property) walkExpr(node.property, true)
         return
@@ -1185,6 +1275,30 @@ export function transformPlain(
         walkExpr(node.right, true)
         return
       }
+      if (target.kind === 'store') {
+        const name = left.name
+        if (node.operator === '=') {
+          // Whole reassignment of DEEP state: wrap the new value in a fresh
+          // store (so member reads/writes on it stay tracked) and replace
+          // through the outer signal — every subscriber re-reads. Coarse,
+          // but correct; per-key updates come from mutating properties.
+          used.store = true
+          ms.overwrite(
+            left.start,
+            node.right.start,
+            valueUsed ? `(${name}.set(${emitNames.store}(` : `${name}.set(${emitNames.store}(`,
+          )
+          walkExpr(node.right, true)
+          ms.appendLeft(node.end, valueUsed ? `)), ${name}())` : '))')
+          return
+        }
+        warn(
+          left.start,
+          `compound assignment on deep state \`${name}\` is not supported — assign a full value (\`${name} = …\`) or mutate a property (\`${name}.key = …\`).`,
+        )
+        walkExpr(node.right, true)
+        return
+      }
       if (target.kind === 'state') {
         const name = left.name
         const op = node.operator
@@ -1225,7 +1339,7 @@ export function transformPlain(
       collectPatternNames(left, names)
       for (const n of names) {
         const b = lookup(n)
-        if (b && (b.kind === 'state' || b.kind === 'derived')) {
+        if (b && (b.kind === 'state' || b.kind === 'store' || b.kind === 'derived')) {
           warn(
             left.start,
             `destructuring assignment onto plain state \`${n}\` is not rewritten — assign each binding directly.`,
@@ -1236,15 +1350,37 @@ export function transformPlain(
     }
 
     // Member writes whose ROOT is plain state: silent-mutation trap → warn.
+    // DEEP-state roots are the exception — the store proxy's set trap
+    // notifies the key's subscribers, so `user.name = v` just works.
     if (left?.type === 'MemberExpression') {
       let root: N = left
       while (root?.type === 'MemberExpression') root = root.object
       if (root?.type === 'Identifier') {
         const rb = lookup(root.name)
-        if (rb && (rb.kind === 'state' || rb.kind === 'derived' || rb.kind === 'imported-state')) {
+        if (rb?.kind === 'store') {
+          // Walk the CHILDREN (rewrites the root read → `user().name = v`)
+          // rather than the whole member expression, so the WRITE target's
+          // own path is not recorded as a read — a conditional writer would
+          // otherwise hoist its target into the prologue and re-trigger
+          // itself on every write.
+          walkExpr(left.object, true)
+          if (left.computed && left.property) walkExpr(left.property, true)
+          walkExpr(node.right, true)
+          return
+        }
+        if (rb && (rb.kind === 'state' || rb.kind === 'derived')) {
           warn(
             left.start,
-            `mutating a property of plain state \`${root.name}\` does not notify subscribers — replace the value instead: \`${root.name} = { …${root.name}, key: v }\`.`,
+            `mutating a property of plain state \`${root.name}\` does not notify subscribers — replace the value instead: \`${root.name} = { …${root.name}, key: v }\`, or declare it with a literal object/array initializer to get DEEP state.`,
+          )
+        } else if (rb?.kind === 'imported-state') {
+          // The cross-module registry carries only NAMES — whether the
+          // owning module declared deep (store) or shallow state is not
+          // visible here, so the guidance is conditional, never a false
+          // certainty in either direction.
+          warn(
+            left.start,
+            `mutating a property of imported state \`${root.name}\` notifies only if the owning module declared it DEEP (a literal object/array initializer). For shallow state, export a setter from the owning module.`,
           )
         }
       }
@@ -1277,8 +1413,13 @@ export function transformPlain(
       }
       return
     }
-    if (arg?.type === 'Identifier' && target && (target.kind === 'derived' || target.kind === 'prop' || target.kind === 'imported-state')) {
-      warn(arg.start, `cannot update \`${arg.name}\` — it is not writable state.`)
+    if (arg?.type === 'Identifier' && target && (target.kind === 'derived' || target.kind === 'prop' || target.kind === 'imported-state' || target.kind === 'store')) {
+      warn(
+        arg.start,
+        target.kind === 'store'
+          ? `cannot apply \`${node.operator}\` to deep state \`${arg.name}\` — mutate a property or assign a full value.`
+          : `cannot update \`${arg.name}\` — it is not writable state.`,
+      )
       return
     }
     if (arg?.type === 'MemberExpression') {
@@ -1286,10 +1427,22 @@ export function transformPlain(
       while (root?.type === 'MemberExpression') root = root.object
       if (root?.type === 'Identifier') {
         const rb = lookup(root.name)
-        if (rb && (rb.kind === 'state' || rb.kind === 'imported-state')) {
+        if (rb?.kind === 'store') {
+          // Deep state: the proxy's set trap notifies — no warning; walk
+          // children so the WRITE target path is not recorded as a read.
+          walkExpr(arg.object, true)
+          if (arg.computed && arg.property) walkExpr(arg.property, true)
+          return
+        }
+        if (rb?.kind === 'state') {
           warn(
             arg.start,
             `mutating a property of plain state \`${root.name}\` does not notify subscribers — replace the value instead.`,
+          )
+        } else if (rb?.kind === 'imported-state') {
+          warn(
+            arg.start,
+            `mutating a property of imported state \`${root.name}\` notifies only if the owning module declared it DEEP (a literal object/array initializer).`,
           )
         }
       }
@@ -1319,6 +1472,9 @@ export function transformPlain(
   }
   if (used.effect && !(emitNames.effect === 'effect' && reactivityImported.has('effect'))) {
     needed.push(emitNames.effect === 'effect' ? 'effect' : `effect as ${emitNames.effect}`)
+  }
+  if (used.store && !(emitNames.store === 'createStore' && reactivityImported.has('createStore'))) {
+    needed.push(emitNames.store === 'createStore' ? 'createStore' : `createStore as ${emitNames.store}`)
   }
   if (needed.length > 0) {
     const importText = `import { ${needed.join(', ')} } from '${REACTIVITY_SOURCE}'`

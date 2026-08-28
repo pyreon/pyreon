@@ -42,6 +42,7 @@ describe('gen-docs — compiler snapshot', () => {
       'compiler/isApiRoute',
       'compiler/migratePyreonCode',
       'compiler/migrateReactCode',
+      'compiler/migrateToPlain',
       'compiler/transformDeferInline',
       'compiler/transformJSX',
       'compiler/transformJSX_JS',

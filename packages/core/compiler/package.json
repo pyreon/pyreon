@@ -23,6 +23,11 @@
       "import": "./lib/index.js",
       "types": "./lib/types/index.d.ts"
     },
+    "./plain": {
+      "bun": "./src/plain.ts",
+      "import": "./lib/plain.js",
+      "types": "./lib/types/plain.d.ts"
+    },
     "./diagnose": {
       "bun": "./src/diagnose.ts",
       "import": "./lib/diagnose.js",

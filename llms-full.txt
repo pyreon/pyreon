@@ -235,6 +235,17 @@ export const inc = () => { count = count + 1 }`,
 )
 // result.code: const count = signal(0) … count.set(count() + 1)
 
+import { migrateToPlain } from "@pyreon/compiler"
+
+const r = migrateToPlain(
+  `import { signal } from '@pyreon/reactivity'
+const count = signal(0)
+export const inc = () => { count.set(count() + 1) }`,
+  "store.ts",
+)
+// r.code: let count = state(0) … count = count + 1
+// r.converted: ['count']; r.declined: []
+
 import { transformJSX_JS } from "@pyreon/compiler"
 
 // Backend-deterministic — never dispatches to the native binary.

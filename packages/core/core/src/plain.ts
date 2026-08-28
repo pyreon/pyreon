@@ -41,6 +41,14 @@ function notCompiled(name: string): Error {
  * Declare reactive state. Compiles to `signal(initial)`; every read of the
  * binding compiles to a tracked call and every assignment to `.set(...)`.
  *
+ * DEEP state: a LITERAL object/array initializer compiles to
+ * `signal(createStore(initial))` — a deep reactive store, so member writes
+ * (`user.name = x`) and array mutations (`todos.push(t)`) notify their
+ * key's subscribers with per-key granularity, and whole reassignment
+ * (`user = v`) replaces the store. Use {@link state.raw} to opt a literal
+ * out (shallow signal, replace-the-value semantics). A non-literal
+ * initializer is always a shallow signal — the split is decided statically.
+ *
  * The return type is deliberately `T` (the VALUE), not `Signal<T>` — Plain
  * Mode code reads and writes the binding like an ordinary variable.
  *
@@ -50,14 +58,35 @@ function notCompiled(name: string): Error {
  * import { state } from '@pyreon/core/plain'
  *
  * let count = state(0)
+ * let todos = state([{ text: 'ship', done: false }]) // DEEP — .push works
  * const inc = () => { count = count + 1 }
  * export const Counter = () => <button onClick={inc}>{count}</button>
  * ```
  */
-export function state<T>(initial: T): T {
+function stateMarker<T>(initial: T): T {
   void initial
   throw notCompiled('state')
 }
+
+/**
+ * Declare SHALLOW reactive state even for a literal object/array initializer
+ * — the binding holds a plain signal whose value is replaced wholesale
+ * (`cfg = { …cfg, key: v }`); member mutation does NOT notify (the compiler
+ * warns on it). Use for large immutable snapshots, class instances, or any
+ * value where replace-semantics are wanted over per-key proxying.
+ *
+ * @example
+ * ```tsx
+ * let snapshot = state.raw({ rows: bigArray })
+ * snapshot = { rows: nextRows } // replace — notifies
+ * ```
+ */
+function stateRaw<T>(initial: T): T {
+  void initial
+  throw notCompiled('state.raw')
+}
+
+export const state = Object.assign(stateMarker, { raw: stateRaw })
 
 /**
  * Declare a derived (computed) value from an expression. Compiles to

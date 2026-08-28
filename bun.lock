@@ -2198,6 +2198,7 @@
       "name": "@pyreon/native-compiler",
       "version": "0.51.0",
       "dependencies": {
+        "@pyreon/compiler": "workspace:*",
         "oxc-parser": "^0.147.0",
       },
       "devDependencies": {

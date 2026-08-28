@@ -27,6 +27,7 @@ Pyreon's JSX-to-reactive transform. `transformJSX` dispatches to a Rust native b
 | --- | --- | --- |
 | [`transformJSX`](#transformjsx) | function | The production entry point. |
 | [`transformPlain`](#transformplain) | function | The Plain Mode pre-pass — a source-to-source rewrite that runs automatically inside `transformJSX` BEFORE either backend |
+| [`migrateToPlain`](#migratetoplain) | function | The classic → Plain Mode codemod, and the analysis behind the `pyreon plain` readiness report. |
 | [`transformJSX_JS`](#transformjsx-js) | function | The pure-JS reactive pass (parses via `oxc-parser`). |
 | [`analyzeReactivity`](#analyzereactivity) | function | Reactivity-Lens entry point (experimental). |
 | [`formatReactivityLens`](#formatreactivitylens) | function | Renders an `analyzeReactivity` result as an annotated-source CLI / debug view — each spanned expression gets an inline ` |
@@ -91,7 +92,7 @@ const { code, warnings } = transformJSX(
 transformPlain(code: string, filename?: string, options?: PlainOptions): PlainTransformResult | null
 ```
 
-The Plain Mode pre-pass — a source-to-source rewrite that runs automatically inside `transformJSX` BEFORE either backend, so the rest of the pipeline needs zero plain-mode awareness. A module activates by carrying the `'use plain'` directive or importing from `@pyreon/core/plain`; everything else returns `null` byte-untouched. It rewrites `let x = state(0)` → `const x = signal(0)`, every read of a state/derived binding to a tracked call, every write to `.set(...)` (compound, update, and logical-assign forms included), `derived(expr)` → `computed(() => expr)`, `effect(fn)` with TOTAL tracking (conditionally-read state is subscribed via a hoisted prologue so a branch flip or post-`await` read never loses its subscription), simple destructured component props to live `props.*` reads, and a component-body `if (<reactive>) return <jsx>` into a returned accessor. Deliberately out of scope, each with a loud warning instead of a silent wrong answer: deep mutation of state objects, destructuring assignment onto state, rest/nested props patterns. `options.knownSignals` marks imported signal bindings so cross-module reads rewrite too.
+The Plain Mode pre-pass — a source-to-source rewrite that runs automatically inside `transformJSX` BEFORE either backend, so the rest of the pipeline needs zero plain-mode awareness. A module activates by carrying the `'use plain'` directive or importing from `@pyreon/core/plain`; everything else returns `null` byte-untouched. It rewrites `let x = state(0)` → `const x = signal(0)`, every read of a state/derived binding to a tracked call, every write to `.set(...)` (compound, update, and logical-assign forms included), `derived(expr)` → `computed(() => expr)`, `effect(fn)` with TOTAL tracking (conditionally-read state is subscribed via a hoisted prologue so a branch flip or post-`await` read never loses its subscription), simple destructured component props to live `props.*` reads, and a component-body `if (<reactive>) return <jsx>` into a returned accessor. DEEP state: a LITERAL object/array initializer lowers to `signal(createStore(...))` — member reads track per-key, member writes and array mutations (`todos.push`) notify, whole reassignment replaces the store; `state.raw(v)` opts out to a shallow signal, and a non-literal argument is always shallow (the split is static). Deliberately out of scope, each with a loud warning instead of a silent wrong answer: deep mutation of SHALLOW state, destructuring assignment onto state, rest/nested props patterns, compound-assign on a deep-state binding. `options.knownSignals` marks imported signal bindings so cross-module reads rewrite too.
 
 **Example**
 
@@ -111,11 +112,44 @@ export const inc = () => { count = count + 1 }`,
 **Common mistakes**
 
 - Calling it directly in a build pipeline — `transformJSX` already runs it (and strips the markers, making a second run a no-op); direct calls are for tests and tooling
-- Mutating a property of plain state (`obj.k = v`) and expecting a re-render — plain state notifies on REPLACEMENT (`obj = { ...obj, k: v }`); the pass warns on this shape rather than silently missing it
+- Mutating a property of SHALLOW plain state (`state.raw` / non-literal initializers) and expecting a re-render — shallow state notifies on REPLACEMENT; use a literal initializer for deep state, where `obj.k = v` and `.push` just work
 - Expecting a plain `.ts` store module to work without the vite plugin — the markers are compile-time only; unprocessed code throws `[Pyreon] state() … reached the runtime` by design
 - Assigning to an IMPORTED plain-state binding — ESM imports are read-only; export a setter function from the owning module (the live-binding law: exports carry the signal)
 
-**See also:** `transformJSX` · `detectPlain`
+**See also:** `transformJSX` · `detectPlain` · `migrateToPlain`
+
+---
+
+### migrateToPlain `function`
+
+```ts
+migrateToPlain(code: string, filename?: string): MigrateToPlainResult
+```
+
+The classic → Plain Mode codemod, and the analysis behind the `pyreon plain` readiness report. Per-BINDING convertibility: a `signal`/`computed` binding converts only when EVERY reference has a plain form — `x()` reads drop the call, `x.set(v)` becomes `x = v`, a simple single-param arrow `.update` is param-substituted, `.peek()` becomes `untrack(() => x)`, `effect` calls move to the plain marker import. Any other reference (a signal passed as a VALUE, `.subscribe`/`.direct`, a `.set` whose result is used, a reassigned binding) DECLINES that binding with a named `PlainDeclineCode` and leaves it byte-untouched — the declined histogram is field data for which rewrite to build next. Object/array-literal signals convert to `state.raw(...)`, never bare `state(...)`: classic signals are replace-the-value, and the codemod never changes semantics (deep state is a human opt-in). Files already in the dialect return `alreadyPlain: true` untouched, making `--write` idempotent.
+
+**Example**
+
+```tsx
+import { migrateToPlain } from "@pyreon/compiler"
+
+const r = migrateToPlain(
+  `import { signal } from '@pyreon/reactivity'
+const count = signal(0)
+export const inc = () => { count.set(count() + 1) }`,
+  "store.ts",
+)
+// r.code: let count = state(0) … count = count + 1
+// r.converted: ['count']; r.declined: []
+```
+
+**Common mistakes**
+
+- Expecting object-literal signals to become DEEP state — the codemod emits `state.raw(...)` to preserve classic replace semantics; switching to deep state (proxy mutation) is a deliberate human edit
+- Treating a declined binding as a failure — per-binding decline is the safety model; the file still converts its other bindings and the declined ones keep working classic-style in the same module
+- Running it on generated or vendored code wholesale — the readiness report (`pyreon plain` without `--write`) exists to review the cost first
+
+**See also:** `transformPlain` · `detectPlain`
 
 ---
 
