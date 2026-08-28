@@ -1286,6 +1286,10 @@ class PyreonRouter {
   val query: MutableState<Map<String, String>> = mutableStateOf(emptyMap())
   fun setQueryParam(key: String, value: String?) {}
   companion object {
+    // splitPathAndQuery — what a STATIC route branch compares through, so the
+    // dispatch ignores a query the way the matchPath branches already do.
+    fun splitPathAndQuery(full: String): Pair<String, String> = Pair(full, "")
+
     fun matchPath(path: String, pattern: String): Map<String, String>? {
       if (path == pattern) return emptyMap()
       return null

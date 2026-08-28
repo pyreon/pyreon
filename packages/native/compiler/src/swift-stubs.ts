@@ -1068,6 +1068,12 @@ public final class PyreonRouter {
   // keeping the OPTIONAL return is load-bearing: an emit that forgets to unwrap
   // it must fail here, not silently on-device.
   public static func matchPath(_ path: String, _ pattern: String) -> [String: String]? { nil }
+  // splitPathAndQuery — what a STATIC route branch compares through, so the
+  // dispatch ignores a query the way the matchPath branches already do.
+  // Mirrors the real labelled-tuple return.
+  public static func splitPathAndQuery(_ full: String) -> (path: String, query: String) {
+    (path: full, query: "")
+  }
   // Search parameters, mirroring the real PyreonRouter. useUrlState lowers to
   // a value type over these two, so a stub missing them would reject a correct
   // emit — the subset-stub failure, which manufactures bugs exactly as a
