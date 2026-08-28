@@ -211,15 +211,141 @@ describe('writes', () => {
     expect(r2.warnings.some((w) => w.message.includes('read-only'))).toBe(true)
   })
 
-  it('member mutation on state warns (silent-mutation trap) but the root read still rewrites', () => {
-    const r = P(`${HEADER}let o = state({ a: 1 })\no.a = 5\n`)!
+  it('member mutation on SHALLOW state (state.raw) warns (silent-mutation trap) but the root read still rewrites', () => {
+    const r = P(`${HEADER}let o = state.raw({ a: 1 })\no.a = 5\n`)!
     expect(r.warnings.some((w) => w.message.includes('does not notify'))).toBe(true)
     expect(r.code).toContain(`o().a = 5`)
+  })
+
+  it('member mutation on NON-LITERAL state (shallow signal) still warns', () => {
+    const r = P(`${HEADER}let o = state(makeConfig())\no.a = 5\n`)!
+    expect(r.warnings.some((w) => w.message.includes('does not notify'))).toBe(true)
+    expect(r.code).toContain(`signal(makeConfig())`)
   })
 
   it('destructuring assignment onto state warns', () => {
     const r = P(`${HEADER}let a = state(0)\n;({ a } = foo())\n`)!
     expect(r.warnings.some((w) => w.message.includes('destructuring assignment'))).toBe(true)
+  })
+})
+
+describe('deep state — literal object/array initializers lower to signal(createStore(…))', () => {
+  it('object literal → signal(createStore({…})), array literal too', () => {
+    const r = P(`${HEADER}let user = state({ name: 'Ada' })\nlet todos = state([1, 2])\n`)!
+    expect(r.code).toContain(`const user = signal(createStore({ name: 'Ada' }))`)
+    expect(r.code).toContain(`const todos = signal(createStore([1, 2]))`)
+    expect(r.code).toContain(`import { signal, createStore } from '@pyreon/reactivity'`)
+  })
+
+  it('member reads rewrite the ROOT only: user.name → user().name (per-key tracking through the proxy)', () => {
+    const r = P(`${HEADER}let user = state({ name: 'Ada' })\nconst n = user.name\n`)!
+    expect(r.code).toContain(`const n = user().name`)
+  })
+
+  it('member writes pass through with the root rewritten — NO silent-mutation warning', () => {
+    const r = P(
+      `${HEADER}let todos = state([{ done: false }])\nconst f = () => { todos[0].done = true }\nconst g = () => { todos.push({ done: false }) }\n`,
+    )!
+    expect(r.code).toContain(`todos()[0].done = true`)
+    expect(r.code).toContain(`todos().push({ done: false })`)
+    expect(r.warnings).toHaveLength(0)
+  })
+
+  it('whole reassignment wraps the new value in a fresh store through the outer signal', () => {
+    const r = P(`${HEADER}let user = state({ n: 1 })\nconst f = () => { user = { n: 2 } }\n`)!
+    expect(r.code).toContain(`user.set(createStore({ n: 2 }))`)
+  })
+
+  it('reassignment in expression position returns the settled value', () => {
+    const r = P(`${HEADER}let user = state({ n: 1 })\nconst f = () => take(user = { n: 2 })\n`)!
+    expect(r.code).toContain(`take((user.set(createStore({ n: 2 })), user()))`)
+  })
+
+  it('compound assignment and ++ on a deep-state BINDING warn (mutate properties instead)', () => {
+    const r = P(`${HEADER}let user = state({ n: 1 })\nconst f = () => { user += 1 }\nconst g = () => { user++ }\n`)!
+    expect(r.warnings.some((w) => w.message.includes('compound assignment on deep state'))).toBe(true)
+    expect(r.warnings.some((w) => w.message.includes('cannot apply `++` to deep state'))).toBe(true)
+  })
+
+  it('state.raw(objectLiteral) opts OUT to a shallow signal', () => {
+    const r = P(`${HEADER}let cfg = state.raw({ big: true })\nconst v = cfg.big\n`)!
+    expect(r.code).toContain(`const cfg = signal({ big: true })`)
+    expect(r.code).not.toContain('createStore')
+    expect(r.code).toContain(`cfg().big`)
+  })
+
+  it('a NON-literal argument stays a shallow signal (the store/signal split is static)', () => {
+    const r = P(`${HEADER}let cfg = state(makeConfig())\n`)!
+    expect(r.code).toContain(`const cfg = signal(makeConfig())`)
+    expect(r.code).not.toContain('createStore')
+  })
+
+  it('total tracking hoists conditional STATIC member paths per-key', () => {
+    const r = P(
+      `${HEADER}let user = state({ name: 'a', age: 1 })\nlet flag = state(false)\neffect(() => { if (flag) log(user.name) })\n`,
+    )!
+    expect(r.code).toContain(`void (user(), user().name);`)
+  })
+
+  it('an unconditional path is NOT hoisted; a conditional writer does not hoist its own target', () => {
+    const r = P(
+      `${HEADER}let user = state({ name: 'a', n: 0 })\nlet flag = state(false)\neffect(() => { log(user.name) })\neffect(() => { if (flag) user.n = 1 })\n`,
+    )!
+    // reader effect: unconditional read → no prologue at all
+    expect(r.code).toContain(`effect(() => { log(user().name) })`)
+    // writer effect: the WRITE target path must not appear in the prologue
+    expect(r.code).toContain(`void (user());`)
+    expect(r.code).not.toContain(`user().n)`)
+  })
+
+  it('non-static paths (computed keys, optional chains) are skipped — root hoist only', () => {
+    const r = P(
+      `${HEADER}let m = state({ a: 1 })\nlet k = state('a')\nlet flag = state(false)\neffect(() => { if (flag) log(m[k], m?.a) })\n`,
+    )!
+    expect(r.code).toContain(`m()[k()]`)
+    expect(r.code).not.toContain(`void (flag(), m(), k(), m()[`)
+  })
+
+  it('deep state is live in every JSX position (root reads become tracked calls)', () => {
+    const r = P(
+      `${HEADER}let user = state({ name: 'Ada' })\nexport const App = () => <div title={user.name}><span>{user.name}</span><Child v={user.name} /></div>\n`,
+    )!
+    expect(r.code).toContain(`title={user().name}`)
+    expect(r.code).toContain(`<span>{user().name}</span>`)
+    expect(r.code).toContain(`<Child v={user().name} />`)
+  })
+
+  it('derived over store paths tracks through the proxy', () => {
+    const r = P(`${HEADER}let todos = state([{ done: false }])\nconst open = derived(todos.filter(t => !t.done).length)\n`)!
+    expect(r.code).toContain(`const open = computed(() => (todos().filter(t => !t.done).length))`)
+  })
+
+  it('a module-scope `createStore` binding forces the __plainStore alias', () => {
+    const r = P(`${HEADER}const createStore = () => null\nlet u = state({ a: 1 })\n`)!
+    expect(r.code).toContain(`signal(__plainStore({ a: 1 }))`)
+    expect(r.code).toContain(`createStore as __plainStore`)
+  })
+
+  it('for-of head writing a deep-state binding warns', () => {
+    const r = P(`${HEADER}let u = state({ a: 1 })\nfor (u of list) { log(u) }\n`)!
+    expect(r.warnings.some((w) => w.message.includes('writes plain state per iteration'))).toBe(true)
+  })
+
+  it('imported-state member writes get CONDITIONAL guidance (registry carries names only)', () => {
+    const r = P(`${HEADER}const f = () => { remote.k = 1 }\nconst g = () => { remote.n++ }\n`, ['remote'])!
+    const conditional = r.warnings.filter((w) => w.message.includes('only if the owning module declared it DEEP'))
+    expect(conditional).toHaveLength(2)
+  })
+
+  it('deep-state member UPDATE (todos.count++) passes through un-warned with the root rewritten', () => {
+    const r = P(`${HEADER}let s = state({ n: 1 })\nconst f = () => { s.n++ }\n`)!
+    expect(r.code).toContain(`s().n++`)
+    expect(r.warnings).toHaveLength(0)
+  })
+
+  it('object shorthand `{ user }` expands to the root read (the proxy is the value)', () => {
+    const r = P(`${HEADER}let user = state({ a: 1 })\nconst o = { user }\n`)!
+    expect(r.code).toContain(`{ user: user() }`)
   })
 })
 
@@ -527,7 +653,7 @@ import { state } from '@pyreon/core/plain'
 import { remote } from './store'
 let f = state(true)
 let bits = state(0)
-let box = state({ n: 1 })
+let box = state.raw({ n: 1 })
 f &&= compute()
 bits &= 3
 bits <<= 1

@@ -57,9 +57,11 @@ export interface ReactivityFinding {
   /**
    * For `'footgun'` findings: the static-detector code (e.g.
    * `props-destructured`) so the editor surface can deep-link the
-   * anti-pattern catalogue. Absent for structural findings.
+   * anti-pattern catalogue — or `'plain-mode'` for a Plain-Mode pre-pass
+   * warning (a declined rewrite in a dialect file). Absent for structural
+   * findings.
    */
-  code?: PyreonDiagnosticCode
+  code?: PyreonDiagnosticCode | 'plain-mode'
   /** For `'footgun'` findings: whether a mechanical auto-fix is safe. */
   fixable?: boolean
 }
@@ -105,12 +107,21 @@ export function analyzeReactivity(
   options: { knownSignals?: string[] } = {},
 ): AnalyzeReactivityResult {
   let spans: ReactivitySpan[] = []
+  let plainWarnings: Array<{ message: string; line: number; column: number }> = []
   try {
     const r = transformJSX_JS(code, filename, {
       reactivityLens: true,
       ...(options.knownSignals ? { knownSignals: options.knownSignals } : {}),
     })
     spans = r.reactivityLens ?? []
+    // Plain-Mode files: the pre-pass runs inside transformJSX_JS, and its
+    // structured warnings (declined rewrites — member mutation on shallow
+    // state, complex props patterns, assign-to-derived, …) ARE the
+    // footgun-grade findings for a dialect file. Surface them; without
+    // this the Lens silently drops exactly the verdicts a plain author
+    // most needs. Line numbers are faithful by construction — the
+    // pre-pass strips are line-preserving.
+    plainWarnings = (r.warnings ?? []).filter((w) => w.code === 'plain-mode')
   } catch {
     // Parse failure → no structural facts. Footguns may still be derivable
     // (detectPyreonPatterns uses the TS compiler API independently).
@@ -118,6 +129,17 @@ export function analyzeReactivity(
   }
 
   const findings: ReactivityFinding[] = spans.map(spanToFinding)
+  for (const w of plainWarnings) {
+    findings.push({
+      kind: 'footgun',
+      line: w.line,
+      column: w.column,
+      endLine: w.line,
+      endColumn: w.column + 1,
+      detail: w.message,
+      code: 'plain-mode',
+    })
+  }
 
   let footguns: ReturnType<typeof detectPyreonPatterns> = []
   try {

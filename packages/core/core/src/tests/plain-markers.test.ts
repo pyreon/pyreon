@@ -12,9 +12,11 @@ describe('@pyreon/core/plain markers throw with guidance when uncompiled', () =>
     ['state', () => state(0)],
     ['derived', () => derived(1)],
     ['effect', () => effect(() => {})],
+    ['state.raw', () => state.raw({ a: 1 })],
   ])('%s() names itself, the missing plugin, and the fix', (name, call) => {
+    const escaped = name.replace('.', '\\.')
     expect(call).toThrowError(
-      new RegExp(`\\[Pyreon\\] ${name}\\(\\) from '@pyreon/core/plain' reached the runtime`),
+      new RegExp(`\\[Pyreon\\] ${escaped}\\(\\) from '@pyreon/core/plain' reached the runtime`),
     )
     expect(call).toThrowError(/pyreon\(\) plugin from '@pyreon\/vite-plugin'/)
   })

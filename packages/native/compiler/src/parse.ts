@@ -5,6 +5,7 @@
 // either passed through as unknown or surfaces a warning.
 
 import { parseSync } from 'oxc-parser'
+import { detectPlain, transformPlain } from '@pyreon/compiler/plain'
 import { buildInferenceCtx, inferReturnType, inferType, type InferenceCtx } from './infer-type'
 import { parseHotkeyCombo } from './hotkey-combo'
 import type {
@@ -304,6 +305,27 @@ const HTTP_NONLITERAL_BASEURL = '\0__pyreon_nonliteral_baseurl__'
 let _objectLiteralDepth = 0
 
 export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult {
+  // Plain-Mode shared source: run the SAME source-to-source pre-pass the web
+  // compiler runs (`@pyreon/compiler/plain` — a light subpath: magic-string +
+  // oxc-parser only), so PMTC parses the classic shapes it already
+  // understands. One dialect, three targets, zero per-target awareness —
+  // the pre-pass strips are line-preserving, so PMTC warning line numbers
+  // stay faithful to what the author wrote.
+  if (detectPlain(source)) {
+    const plained = transformPlain(source, filename)
+    if (plained) {
+      const plainWarnings = plained.warnings.map(
+        (w) => `${w.message} (${filename}:${w.line}:${w.column})`,
+      )
+      const result = parsePyreonClassic(plained.code, filename)
+      if (plainWarnings.length > 0) result.warnings.unshift(...plainWarnings)
+      return result
+    }
+  }
+  return parsePyreonClassic(source, filename)
+}
+
+function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult {
   const ctx: ParseCtx = {
     warnings: [],
     source,

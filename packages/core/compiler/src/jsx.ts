@@ -29,7 +29,7 @@
  */
 
 import MagicString from 'magic-string'
-import { transformPlain } from './plain'
+import { transformPlain, type PlainTransformResult } from './plain'
 import { parseSync } from 'oxc-parser'
 import { REACT_EVENT_REMAP } from './event-names'
 import { loadNativeBinding } from './load-native'
@@ -86,10 +86,22 @@ type NativeTransformFn = (
   ssrTemplate?: boolean,
   templatizeComponentChildren?: boolean,
 ) => TransformResult
+type NativeTransformPlainFn = (
+  code: string,
+  filename: string,
+  knownSignals: string[] | null,
+) => PlainTransformResult | null
 const nativeBinding = loadNativeBinding(import.meta.url)
 const nativeTransformJsx: NativeTransformFn | null = nativeBinding
   ? (nativeBinding.transformJsx as NativeTransformFn)
   : null
+// The native plain pre-pass shipped AFTER transformJsx — an older binary
+// (per-platform npm package lagging a release) simply lacks the export, so
+// the typeof gate keeps the JS pre-pass as the fallback AND the oracle.
+const nativeTransformPlain: NativeTransformPlainFn | null =
+  nativeBinding && typeof nativeBinding.transformPlain === 'function'
+    ? (nativeBinding.transformPlain as NativeTransformPlainFn)
+    : null
 
 export interface CompilerWarning {
   /** Warning message */
@@ -1030,7 +1042,23 @@ export function transformJSX(
   // idempotent: `transformJSX_JS` runs it again defensively and no-ops.
   let plainWarnings: CompilerWarning[] | null = null
   {
-    const plained = transformPlain(code, filename, { knownSignals: options.knownSignals })
+    // Native pre-pass when the binary ships it (byte-identical by contract —
+    // locked by plain-native-equivalence.test.ts); `null` from the native fn
+    // is a VERDICT (not a plain file), never a failure — only a THROW falls
+    // back to the JS implementation.
+    let plained: PlainTransformResult | null = null
+    let decided = false
+    if (nativeTransformPlain) {
+      try {
+        plained = nativeTransformPlain(code, filename, options.knownSignals ?? null)
+        decided = true
+      } catch {
+        decided = false
+      }
+    }
+    if (!decided) {
+      plained = transformPlain(code, filename, { knownSignals: options.knownSignals })
+    }
     if (plained) {
       code = plained.code
       plainWarnings = plained.warnings

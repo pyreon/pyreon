@@ -2919,7 +2919,7 @@ function scanSignalExports(
   // classic module with its own `state()` helper must not be misregistered
   // (a false registry entry would auto-call a non-signal in every importer).
   if (detectPlain(code)) {
-    const PLAIN_EXPORT_RE = /export\s+(?:let|const|var)\s+(\w+)\s*=\s*(?:state|derived)\s*[<(]/g
+    const PLAIN_EXPORT_RE = /export\s+(?:let|const|var)\s+(\w+)\s*=\s*(?:state(?:\s*\.\s*raw)?|derived)\s*[<(]/g
     while ((match = PLAIN_EXPORT_RE.exec(code)) !== null) {
       signals.add(match[1]!)
     }
@@ -2933,7 +2933,7 @@ function scanSignalExports(
     localSignals.add(match[1]!)
   }
   if (detectPlain(code)) {
-    const PLAIN_LOCAL_RE = /(?:^|[\s;])(?:let|const|var)\s+(\w+)\s*=\s*(?:state|derived)\s*[<(]/gm
+    const PLAIN_LOCAL_RE = /(?:^|[\s;])(?:let|const|var)\s+(\w+)\s*=\s*(?:state(?:\s*\.\s*raw)?|derived)\s*[<(]/gm
     while ((match = PLAIN_LOCAL_RE.exec(code)) !== null) {
       localSignals.add(match[1]!)
     }

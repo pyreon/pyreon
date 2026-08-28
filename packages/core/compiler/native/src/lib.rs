@@ -3,6 +3,8 @@
 #![allow(dead_code, unused_imports)]
 
 use napi_derive::napi;
+
+mod plain;
 use oxc_allocator::Allocator;
 use oxc_ast::ast::*;
 use oxc_ast_visit::Visit;

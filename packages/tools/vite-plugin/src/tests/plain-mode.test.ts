@@ -134,6 +134,32 @@ export function App() { return <div>{count}</div> }`
     expect(result!.code).toMatch(/count\(\)/)
   })
 
+  it('registers `export let cfg = state.raw({…})` and DEEP `export let u = state({…})` exports', async () => {
+    writeFile(
+      'src/store.ts',
+      `'use plain'
+import { state } from '@pyreon/core/plain'
+export let cfg = state.raw({ mode: 'dark' })
+export let user = state({ name: 'Ada' })
+`,
+    )
+    const appSource = `import { h } from "@pyreon/core"
+import { cfg, user } from "./store"
+export function App() { return <div>{cfg.mode}{user.name}</div> }`
+    writeFile('src/App.tsx', appSource)
+
+    const plugin = bootstrap()
+    await runBuildStart(plugin)
+    const result = await runTransform(plugin, appSource, join(root, 'src/App.tsx'), {
+      './store': join(root, 'src/store.ts'),
+    })
+    expect(result).toBeDefined()
+    // both roots must be auto-called — cfg() (shallow signal) and user()
+    // (outer signal of the deep store)
+    expect(result!.code).toMatch(/cfg\(\)\.mode/)
+    expect(result!.code).toMatch(/user\(\)\.name/)
+  })
+
   it('does NOT register state()-looking exports from a NON-plain module', async () => {
     // A classic module with its own `state` helper must not poison the
     // registry — the importer's bare `{total}` must stay uncalled.
