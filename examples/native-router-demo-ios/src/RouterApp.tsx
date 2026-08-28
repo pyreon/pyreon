@@ -18,7 +18,7 @@
 import { For, onMount } from '@pyreon/core'
 import { useAppState, useDatabase, useFetch, useOnline, usePush, useSecureStorage, useSizeClass, useWebSocket } from '@pyreon/hooks'
 import { useFieldArray } from '@pyreon/form'
-import { Button, Heading, Image, Inline, Layer, Link, Press, Spacer, Stack, Text, Video } from '@pyreon/primitives'
+import { Audio, Button, Heading, Image, Inline, Layer, Link, Press, Spacer, Stack, Text, Video } from '@pyreon/primitives'
 import { attrs } from '@pyreon/attrs'
 import { Element } from '@pyreon/elements'
 import { Col, Container, Row } from '@pyreon/coolgrid'
@@ -320,6 +320,7 @@ function PushPage() {
 function MediaPage() {
   const navigate = useNavigate()
   const videoStatus = signal<string>('waiting')
+  const audioStatus = signal<string>('waiting')
   // Media-row proof — a REMOTE image through the real network stack.
   // <Image src="http…"> lowers to SwiftUI AsyncImage(url:) / Coil
   // AsyncImage(model=) / web <img>. The fixture server (the ws-echo
@@ -363,6 +364,21 @@ function MediaPage() {
         data-testid="video-player"
       />
       <Text data-testid="video-status">Video: {videoStatus()}</Text>
+      {/* Audio-row proof. <Audio> was the ONE canonical primitive no native
+          example used, and it turned out to be the one that had never compiled
+          on either platform: Android had no composable at all, and both engines
+          the emit names existed only in the validation stubs. Nothing was wrong
+          with the gates — they simply had no occasion to build it. So it is
+          built here, in a gated example, which is the only thing that would
+          have caught it. */}
+      <Audio
+        src="http://localhost:8790/clip.m4a"
+        autoPlay
+        loop
+        onStatusChange={(s) => audioStatus.set(s)}
+        data-testid="audio-player"
+      />
+      <Text data-testid="audio-status">Audio: {audioStatus()}</Text>
       <Button onPress={() => navigate('/')}>Back to Home</Button>
     </Stack>
   )
