@@ -324,7 +324,17 @@ class CounterInstrumentedTest {
     }
 
     // Dark mode (useColorScheme) asserted in the REAL Compose semantics tree —
-    // the Android half of the iOS `test_colorSchemeReadsLightAppearance`. The
+    // the Android half of the iOS `test_colorSchemeTracksSimulatorAppearance`.
+    //
+    // KNOWN GAP, deliberately not fixed here: this asserts only the LIGHT
+    // theme, and takes whatever theme the emulator happens to be in. A
+    // `colorScheme` that was a baked "light" constant passes it exactly as a
+    // live `isSystemInDarkTheme()` read does, so it cannot fail for the
+    // regression it exists to catch. The iOS side now runs both appearances as
+    // two CI legs; the Android equivalent needs `adb shell cmd uimode night
+    // yes|no` plus an instrumentation argument for the expectation, which is
+    // not verifiable on a machine without an Android SDK — so it is stated
+    // rather than guessed at inside a required gate. The
     // shared Counter.tsx has `const colorScheme = useColorScheme()` and renders
     // `<Text>Theme: {colorScheme}</Text>`; PMTC emits
     // `val colorScheme = if (isSystemInDarkTheme()) "dark" else "light"` +

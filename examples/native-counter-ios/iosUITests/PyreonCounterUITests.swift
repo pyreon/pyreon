@@ -591,30 +591,43 @@ final class PyreonCounterUITests: XCTestCase {
     // `Text("Theme: \(colorScheme)")`.
     //
     // BEHAVIORAL R4: the rendered value reflects the REAL Simulator appearance.
-    // The nightly gate runs the default (light) appearance, so the committed
-    // assertion is "Theme: light". The DIFFERENTIATING counterpart is proven
-    // LOCALLY by flipping `xcrun simctl ui <sim> appearance dark` and re-running
-    // (the render becomes "Theme: dark") — so the emit reads the live
-    // `@Environment(\.colorScheme)` channel, not a baked constant (a constant
-    // would render the same string under both appearances). Same pattern as
-    // useSizeClass (iPhone `Size: compact` committed, iPad `Size: regular`
-    // proven locally).
-    func test_colorSchemeReadsLightAppearance() throws {
+    // BOTH appearances are asserted IN CI, one leg each, with the runner
+    // pinning `xcrun simctl ui <sim> appearance` before invoking the test and
+    // passing the expectation in. That matters: the differentiating half used
+    // to be a manual local step, so the committed assertion could not fail for
+    // a baked "light" constant — it asserted exactly what a constant would
+    // render. It also depended on the machine's ambient appearance, which
+    // produced a false failure (accusing useColorScheme of not reading
+    // @Environment) on any simulator left in dark mode.
+    func test_colorSchemeTracksSimulatorAppearance() throws {
+        // Which appearance the RUNNER pinned, passed in as
+        // `TEST_RUNNER_PYREON_EXPECT_APPEARANCE` (xcodebuild strips the prefix
+        // and hands the rest to the test process). Defaults to "light" so a
+        // bare `xcodebuild test` behaves as before.
+        let expected =
+            ProcessInfo.processInfo.environment["PYREON_EXPECT_APPEARANCE"] ?? "light"
+        let other = expected == "dark" ? "light" : "dark"
+
         let app = XCUIApplication()
         app.launch()
 
         XCTAssertTrue(
-            app.staticTexts["Theme: light"].waitForExistence(timeout: 30),
-            "Expected \"Theme: light\" under the default (light) Simulator "
+            app.staticTexts["Theme: \(expected)"].waitForExistence(timeout: 30),
+            "Expected \"Theme: \(expected)\" under the \(expected) Simulator "
                 + "appearance — useColorScheme did not read "
                 + "@Environment(\\.colorScheme) (or emitted a non-environment "
-                + "constant)"
+                + "constant). If this failed locally, check `xcrun simctl ui "
+                + "<sim> appearance` — the assertion follows what the runner "
+                + "pinned, not the machine's ambient setting."
         )
-        // The dark-appearance string must NOT appear under light.
+        // The opposite string must NOT be present. This is the half that makes
+        // the test load-bearing: a baked constant satisfies ONE appearance and
+        // fails the other, so both legs have to run to tell a live
+        // `@Environment` read from a string that happens to match.
         XCTAssertFalse(
-            app.staticTexts["Theme: dark"].exists,
-            "\"Theme: dark\" rendered under the light Simulator appearance — "
-                + "the color-scheme read is inverted or constant"
+            app.staticTexts["Theme: \(other)"].exists,
+            "\"Theme: \(other)\" rendered under the \(expected) Simulator "
+                + "appearance — the color-scheme read is inverted or constant"
         )
     }
 
