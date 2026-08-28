@@ -1,6 +1,7 @@
 /** @jsxImportSource @pyreon/core */
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
+import { query } from '@pyreon/test-utils'
 import { mountInBrowser } from '@pyreon/test-utils/browser'
 import { describe, expect, it, vi } from 'vitest'
 import { WebView } from '../web/WebView'
@@ -48,7 +49,7 @@ describe('<WebView> bridges', () => {
     Object.defineProperty(props, 'data', { get: () => data(), enumerable: true })
 
     const { container } = mountInBrowser(() => h(WebView as never, props as never))
-    const frame = container.querySelector('iframe') as HTMLIFrameElement
+    const frame = query(container, 'iframe')
     expect(frame).toBeTruthy()
 
     const win = (): Window & { __seen?: string[]; __loads?: number } =>
@@ -115,7 +116,7 @@ describe('<WebView> bridges', () => {
 
   it('renders `src` as an iframe src and `html` as srcdoc — html wins when both are given', () => {
     const bySrc = mountInBrowser(() => h(WebView as never, { src: 'page.html' } as never))
-    const srcFrame = bySrc.container.querySelector('iframe') as HTMLIFrameElement
+    const srcFrame = query(bySrc.container, 'iframe')
     expect(srcFrame.getAttribute('src')).toBe('page.html')
     expect(srcFrame.hasAttribute('srcdoc')).toBe(false)
 
@@ -125,7 +126,7 @@ describe('<WebView> bridges', () => {
     const both = mountInBrowser(() =>
       h(WebView as never, { html: '<p>inline</p>', src: 'page.html' } as never),
     )
-    const bothFrame = both.container.querySelector('iframe') as HTMLIFrameElement
+    const bothFrame = query(both.container, 'iframe')
     expect(bothFrame.getAttribute('srcdoc')).toBe('<p>inline</p>')
     expect(bothFrame.hasAttribute('src')).toBe(false)
   })
