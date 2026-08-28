@@ -511,6 +511,33 @@ export interface DocClaimsGateOptions {
   cwd: string
 }
 
+/**
+ * A claim file's text, with a JSON file's ESCAPES decoded first.
+ *
+ * The patterns here are written against what a reader SEES, and for a `.json`
+ * claim that is the parsed value, not the bytes. JSON has more than one legal
+ * text representation of the same string: `packages/tools/lint/package.json`
+ * stored its em dash as the literal escape `\u2014`, so a pattern containing a
+ * real em dash matched nothing and the claim degraded to a `pattern-miss` --
+ * which is ADVISORY, so a genuinely stale count (100 against an actual 101) sat
+ * unreported on main.
+ *
+ * It only became fatal on the release PR, because `changeset version` PARSES
+ * and re-serialises every `package.json` and writes the character back out. A
+ * gate whose verdict depends on which tool last wrote a JSON file is not
+ * checking the claim, it is checking the serialiser.
+ *
+ * Escapes are decoded in place rather than by re-serialising, which would join
+ * lines and break patterns that rely on the file's line structure.
+ */
+function readClaimText(filePath: string): string {
+  const raw = readFileSync(filePath, 'utf8')
+  if (!filePath.endsWith('.json')) return raw
+  return raw.replace(/\\u([0-9a-fA-F]{4})/g, (_m, hex: string) =>
+    String.fromCharCode(Number.parseInt(hex, 16)),
+  )
+}
+
 export const runDocClaimsGate = async (
   opts: DocClaimsGateOptions,
 ): Promise<GateResult> => {
@@ -570,7 +597,7 @@ export const runDocClaimsGate = async (
         })
         continue
       }
-      const content = readFileSync(filePath, 'utf8')
+      const content = readClaimText(filePath)
 
       if (claim.rejectHedged) {
         const hedged = content.match(claim.rejectHedged)
