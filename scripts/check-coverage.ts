@@ -168,7 +168,7 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
     currentStatements: 90,
     currentBranches: 80,
     reason:
-      'Spec-to-client codegen, arrived at 84.46% statements / 72.22% branches and ratcheted to 90.69 / 80.51 in the same PR. It reached main unmeasured: its PR also touched a root file, which escalated the PR-time coverage step to `--filter=*` and made the step SKIP — so a brand-new package slipped past the mechanism whose stated job is preventing exactly that. The hole is fixed in `affected.ts` (a root file no longer escalates under `--changed-only`, since coverage is a per-package property). ' +
+      'Spec-to-client codegen, arrived at 84.46% statements / 72.22% branches and ratcheted to 90.69 / 80.51 in the same PR. It reached main unmeasured: its PR changed a set large enough to trip the PR-time coverage step\'s >15-package cap, so the step SKIPPED and a brand-new package slipped past the mechanism whose stated job is preventing exactly that. (I first attributed this to the ROOT-FILE escalation, a real second hole with the same outcome — `--filter=*` makes that step exit — but `isRootFile` is false for the `scripts/*.ts` paths that PR touched, so it was the cap. The escalation hole is fixed in `affected.ts` regardless.) ' +
       'The shortfall is real, not an accounting artifact. `src/cli/report.ts` (40 -> 98), `src/emit/mock.ts` (77 -> 98), `src/emit/schema.ts` (71 -> 87) `src/core/naming.ts` (79 -> 97) and `src/input/openapi.ts` (79 -> 87) are done — the fixture generator\'s per-kind shapes and the portable-regex guard, both of which encode cross-target decisions rather than lines. Recorded at the MEASURED actual and ratcheted with it, never lowered to absorb a regression.',
   },
   // ── Statements + branches < floor ───────────────────────────────────
@@ -187,12 +187,6 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
     currentBranches: 85,
     reason:
       'JSX transform compiler. PR #1079 excluded load-native.ts (napi-rs binary loader) + event-names.ts (DOM-event remap data). Ratcheted 89/83 → 91/85 (measured 91.79/85.56) after validate-emit.ts — the pure TS-compiler-API compile-time @pyreon/validate specializer — gained full behavioral coverage (56.3%→98.9% stmts) of its check vocabulary + emitSchemaSource mini rewrite. Residual gap is the jsx.ts codegen edge-case tail (dual-backend, covered by native-equivalence + fuzz-equivalence in the `test (native)` cell) plus the syntactic audit modules (native-audit/content-audit/island-audit/ssg-audit) and diagnose.ts (exercised by e2e/dev-error-printer.spec.ts). Lifting to 95/95 is multi-PR work tracked as a long-tail effort.',
-  },
-  '@pyreon/lathe': {
-    currentStatements: 86,
-    currentBranches: 74,
-    reason:
-      'OpenAPI-to-client generator. FIRST time this package has ever been enforced: the PR that introduced it (#3077) changed a set large enough to trip this step\'s >15-package cap, so the step SKIPPED and its declared 95 was never measured — the same cap-is-a-hole shape this gate\'s own comment warns about, and the same "decorative threshold" the @pyreon/atlas entry above records. Honest first baseline (measured 87.74/75.21, functions 93.24, lines 91.72). The uncovered surface is concentrated and named: `emit/schema.ts` (71%) is the type/schema RENDERER, whose tail is exercised end-to-end by the generate + real-spec suites rather than per-branch; `input/openapi.ts` (80%) is the spec converter, whose residual is malformed-document arms a real spec never produces; `vite/plugin.ts` (76%) boots a Vite pass and is proven by e2e/lathe-bookshelf.spec.ts, not node vitest; `verify/lower.ts` (85%) shells out to the real @pyreon/native-compiler; `cli/run.ts` (88%) is multi-project + --json orchestration. This is the low end of a deliberate ratchet — raise these thresholds + this entry in lockstep as tests land, never lower.',
   },
   '@pyreon/atlas': {
     currentStatements: 79,
