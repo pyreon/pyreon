@@ -115,6 +115,7 @@ android/keystore.properties
           dev: 'vite',
           build: 'vite build',
           preview: 'vite preview',
+          lint: 'pyreon-lint .',
           'build:ios': 'bash scripts/build-ios.sh',
           'build:android': 'bash scripts/build-android.sh',
           // Release lane: self-signed keystore (credential-free — Play App
@@ -140,8 +141,42 @@ android/keystore.properties
           '@pyreon/native-router-swift': 'latest',
           '@pyreon/native-runtime-kotlin': 'latest',
           '@pyreon/native-router-kotlin': 'latest',
+          '@pyreon/lint': 'latest',
           typescript: '^6.0.0',
           vite: '^8.0.0',
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  )
+  // A multiplatform app's shared source has to survive THREE targets, and the
+  // `portable` rule group is the only thing that says so before a build does.
+  // It is opt-in — correctly, since it is noise in a web-only project — which
+  // means a scaffolder that ships no config at all hands you a native app with
+  // the native rules switched off. The `groups` key is also the shape worth
+  // showing: one line moves a whole tier, so an app states its platform story
+  // in config rather than rule by rule.
+  //
+  // `portablePaths` is not optional decoration. `no-out-of-subset-construct`
+  // fires on NOTHING until it is told which files must travel — deliberately,
+  // because run unscoped it produces thousands of findings in code entitled to
+  // the whole language, and "which files reach iOS and Android" cannot be
+  // inferred from a file's contents. A scaffolder is the one caller that knows
+  // the answer, having just created `src/`. Without this the group key looks
+  // like it enabled something and enables nothing.
+  //
+  // `warn`, not `error`, to match how PMTC itself reports an out-of-subset
+  // construct: it names the shape and keeps going.
+  add(
+    '.pyreonlintrc.json',
+    `${JSON.stringify(
+      {
+        $schema: 'node_modules/@pyreon/lint/schema/pyreonlintrc.schema.json',
+        preset: 'recommended',
+        groups: { portable: 'warn' },
+        rules: {
+          'pyreon/no-out-of-subset-construct': ['warn', { portablePaths: ['src/'] }],
         },
       },
       null,
