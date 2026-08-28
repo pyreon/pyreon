@@ -32,6 +32,16 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
 export interface NativeBinding {
+  /**
+   * The native Plain Mode pre-pass (`transform_plain` in `native/src/plain.rs`).
+   * OPTIONAL: binaries older than the port lack the export — callers gate on
+   * `typeof === 'function'` and fall back to the JS `transformPlain`.
+   */
+  transformPlain?: (
+    code: string,
+    filename: string,
+    knownSignals: string[] | null,
+  ) => unknown
   transformJsx: (
     code: string,
     filename: string,
