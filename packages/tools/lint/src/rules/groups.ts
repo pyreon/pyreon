@@ -17,9 +17,16 @@ import type { RuleCategory, RuleGroup, RuleMeta } from '../types'
  * classified, instead of silently defaulting into whichever group happened to
  * be the fallback — the "gate input list is a silent-hole generator" class.
  *
- * There is no `js` or `ts` group yet. Those are for general JS/TS correctness
- * rules, of which this package currently has none; declaring an empty group
- * would advertise coverage that does not exist.
+ * The `js` group holds general language-level rules — the two that exist are
+ * `require-error-cause` and `no-require-in-esm`. It is deliberately NOT a
+ * general JS/TS lint tier: oxlint owns that, and duplicating it would mean two
+ * tools disagreeing about the same line. A rule earns a place here only when it
+ * needs context oxlint structurally cannot reach — `no-require-in-esm` reads
+ * the owning package's `type` field, which is a project fact rather than an AST
+ * one.
+ *
+ * There is still no `ts` group, for the reason this comment used to give for
+ * `js`: declaring an empty group advertises coverage that does not exist.
  */
 export const CATEGORY_GROUP: Record<RuleCategory, RuleGroup> = {
   // Framework semantics — nothing outside Pyreon can know these.
