@@ -1,3 +1,4 @@
+import type { FileRole } from './utils/file-roles'
 // ── Severity & Diagnostics ──────────────────────────────────────────────────
 
 export type Severity = 'error' | 'warn' | 'info' | 'off'
@@ -66,6 +67,13 @@ export type RuleCategory =
   | 'i18n'
   | 'storage'
   | 'http'
+  // Role-aware tiers. These are about WHERE a file runs and WHICH platforms it
+  // must survive — orthogonal to the framework-semantic categories above.
+  | 'backend'
+  | 'isomorphic'
+  | 'web-perf'
+  | 'portable'
+  | 'js'
 
 /**
  * The top-level bucket a rule belongs to — the axis `RuleCategory` does not
@@ -82,7 +90,17 @@ export type RuleCategory =
  * for general JS/TS correctness rules, of which this package has none yet, and
  * an empty group would advertise coverage that does not exist.
  */
-export type RuleGroup = 'pyreon' | 'a11y' | 'security' | 'pkg' | 'internal'
+export type RuleGroup =
+  | 'pyreon'
+  | 'a11y'
+  | 'security'
+  | 'pkg'
+  | 'internal'
+  | 'js'
+  | 'backend'
+  | 'isomorphic'
+  | 'web-perf'
+  | 'portable'
 
 /**
  * Declared type of an option slot. Minimal on purpose — sufficient for
@@ -167,6 +185,18 @@ export interface RuleMeta {
    * - `packageConfig` — per-package root config (`vitest.config.ts`, …).
    */
   scanTarget?: 'source' | 'test' | 'packageConfig'
+  /**
+   * Which FILE ROLES this rule applies to — server, client, both.
+   *
+   * Gated by the RUNNER, not by each rule. `exemptPaths` was opt-in per rule
+   * and 55 of 102 silently ignored it; a role gate implemented rule-by-rule
+   * would repeat that exactly. Absent means "every role", which is what every
+   * pre-existing rule wants.
+   *
+   * A `shared` file matches a rule targeting `server` OR `client`: it runs in
+   * both, so it must satisfy both.
+   */
+  appliesTo?: readonly FileRole[]
   /**
    * The package this rule is ABOUT. When set, the rule self-suppresses in a
    * project that does not declare that dependency — a project with no

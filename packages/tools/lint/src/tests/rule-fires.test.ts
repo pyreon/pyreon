@@ -49,6 +49,8 @@ interface Fixture {
    * discriminates rather than the rule reporting unconditionally.
    */
   readonly good: string
+  /** Rule options, for rules that stay silent until configured. */
+  readonly options?: Record<string, unknown>
 }
 
 const SIG = `import { signal, computed, effect, batch, untrack } from '@pyreon/reactivity'\n`
@@ -560,6 +562,64 @@ const FIXTURES: Record<string, Fixture> = {
     good: `import { Image } from '@pyreon/primitives'\nexport const A = () => <Image src="/a.png" accessibilityLabel="A cat" />`,
   },
 
+  // ── isomorphic / backend / web-perf / portable / js ──────────────────────
+  'pyreon/no-locale-dependent-format': {
+    file: 'src/a.ts',
+    bad: `export const price = (n: number) => n.toLocaleString()`,
+    good: `export const price = (n: number) => n.toLocaleString('en-US')`,
+  },
+  'pyreon/no-timezone-dependent-date': {
+    file: 'src/a.ts',
+    bad: `export const hour = () => new Date().getHours()`,
+    good: `export const hour = () => new Date().getUTCHours()`,
+  },
+  'pyreon/no-unstable-render-id': {
+    file: 'src/a.tsx',
+    bad: `export const A = () => <label htmlFor={'f' + Math.random()}>x</label>`,
+    good: `import { createUniqueId } from '@pyreon/core'\nconst id = createUniqueId()\nexport const A = () => <label htmlFor={id}>x</label>`,
+  },
+  'pyreon/no-node-builtin-in-component': {
+    file: 'src/a.tsx',
+    bad: `import { readFile } from 'node:fs/promises'\nexport const A = () => <div>{readFile}</div>`,
+    good: `export const A = () => <div>ok</div>`,
+  },
+  'pyreon/no-sync-fs-in-request-path': {
+    file: 'src/server/handler.ts',
+    bad: `import { readFileSync } from 'node:fs'\nexport function handler() { return readFileSync('/etc/x') }`,
+    good: `import { readFile } from 'node:fs/promises'\nexport async function handler() { return await readFile('/etc/x') }`,
+  },
+  'pyreon/no-floating-promise-in-handler': {
+    file: 'src/server/handler.ts',
+    bad: `export function handler() { sendReceipt(user) }`,
+    good: `export async function handler() { await sendReceipt(user) }`,
+  },
+  'pyreon/prefer-passive-listener': {
+    file: 'src/a.ts',
+    bad: `export function bind(el: any) { el.addEventListener('scroll', onScroll) }`,
+    good: `export function bind(el: any) { el.addEventListener('scroll', onScroll, { passive: true }) }`,
+  },
+  'pyreon/no-unbounded-raf-loop': {
+    file: 'src/a.ts',
+    bad: `export function start() { requestAnimationFrame(function step() { tick(); requestAnimationFrame(step) }) }`,
+    good: `export function start() { let id = 0\n  const step = () => { tick(); id = requestAnimationFrame(step) }\n  id = requestAnimationFrame(step)\n  return () => cancelAnimationFrame(id) }`,
+  },
+  'pyreon/no-out-of-subset-construct': {
+    file: 'src/a.ts',
+    options: { portablePaths: ['src/'] },
+    bad: `export enum Mode { On, Off }`,
+    good: `export type Mode = 'on' | 'off'`,
+  },
+  'pyreon/no-platform-branch-without-fallback': {
+    file: 'src/a.tsx',
+    bad: `export const A = () => <Web><div /></Web>`,
+    good: `export const A = () => (<><Web><div /></Web><NativeIOS><div /></NativeIOS><NativeAndroid><div /></NativeAndroid></>)`,
+  },
+  'pyreon/require-error-cause': {
+    file: 'src/a.ts',
+    bad: `export function load() { try { parse() } catch (e) { throw new Error('bad config') } }`,
+    good: `export function load() { try { parse() } catch (e) { throw new Error('bad config', { cause: e }) } }`,
+  },
+
   // ── query / http / rx / i18n / storage ───────────────────────────────────
   'pyreon/query-options-as-function': {
     file: 'src/a.ts',
@@ -631,7 +691,9 @@ function lintOnly(ruleId: string, fx: Fixture, which: 'bad' | 'good') {
   mkdirSync(dirname(abs), { recursive: true })
   const source = fx[which]
   writeFileSync(abs, source)
-  const config: LintConfig = { rules: { [ruleId]: 'error' } }
+  const config: LintConfig = {
+    rules: { [ruleId]: fx.options ? ['error', fx.options] : 'error' },
+  }
   return lintFile(abs, source, allRules, config).diagnostics.filter(
     (d) => d.ruleId === ruleId,
   )

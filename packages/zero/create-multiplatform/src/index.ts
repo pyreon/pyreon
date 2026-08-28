@@ -117,6 +117,7 @@ export function validateTargetDir(targetDir: string): void {
     }
     throw new Error(
       `Cannot read target directory "${resolved}" (${err instanceof Error ? err.message : String(err)}). Check permissions.`,
+      { cause: err },
     )
   }
 }

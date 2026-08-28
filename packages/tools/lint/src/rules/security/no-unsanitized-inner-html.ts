@@ -104,16 +104,25 @@ export const noUnsanitizedInnerHtml: Rule = {
                 : null
           if (keyName !== '__html') continue
 
+          // Follow same-file `const` bindings until something is provably
+          // safe, or the chain ends. The idiomatic
+          // `const clean = sanitizeHtml(dirty)` is two lines, and a rename in
+          // between (`const body = clean`) is three — flagging either is the
+          // false positive that gets a security rule switched off.
+          //
+          // Bounded, and cycle-guarded: `const a = b; const b = a` is not
+          // valid TS but a linter must not hang on invalid input.
           let expr = prop.value
-          if (isProvablySafe(expr)) return
-          // Resolve one hop through a same-file const — the two-line
-          // `const clean = sanitizeHtml(dirty)` shape is idiomatic, and
-          // flagging it would be the false positive that gets a security
-          // rule turned off.
-          if (expr?.type === 'Identifier') {
-            const init = constInit.get(String(expr.name))
-            if (init && isProvablySafe(init)) return
-            expr = init ?? expr
+          const seen = new Set<string>()
+          for (let hop = 0; hop < 4; hop++) {
+            if (isProvablySafe(expr)) return
+            if (expr?.type !== 'Identifier') break
+            const name = String(expr.name)
+            if (seen.has(name)) break
+            seen.add(name)
+            const init = constInit.get(name)
+            if (!init) break
+            expr = init
           }
 
           context.report({

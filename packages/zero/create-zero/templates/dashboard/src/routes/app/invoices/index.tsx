@@ -3,6 +3,7 @@ import { onMount } from "@pyreon/core"
 import { useHead } from "@pyreon/head"
 import { Link } from "@pyreon/zero/link"
 import { type Invoice, invoiceTotal, listInvoices } from "../../../lib/db"
+import { formatDate, formatMoney } from '../../lib/format'
 
 export const meta = { title: "Invoices" }
 
@@ -41,11 +42,11 @@ export default function Invoices() {
                   <Link href={`/app/invoices/${inv.id}`}>{inv.number}</Link>
                 </td>
                 <td>{inv.customer.name}</td>
-                <td>${invoiceTotal(inv).toLocaleString()}</td>
+                <td>${formatMoney(invoiceTotal(inv))}</td>
                 <td>
                   <span class={`pill ${inv.status}`}>{inv.status}</span>
                 </td>
-                <td>{inv.issuedAt.toLocaleDateString()}</td>
+                <td>{formatDate(inv.issuedAt)}</td>
                 <td>
                   <Link href={`/app/invoices/${inv.id}`} class="btn btn-secondary">
                     Open →

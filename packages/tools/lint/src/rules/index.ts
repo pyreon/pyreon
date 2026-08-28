@@ -120,8 +120,30 @@ import { noInlineStyleObject } from './styling/no-inline-style-object'
 import { noSignalReadInAttrsCallback } from './styling/no-signal-read-in-attrs-callback'
 import { noThemeOutsideProvider } from './styling/no-theme-outside-provider'
 import { preferCx } from './styling/prefer-cx'
+import { noLocaleDependentFormat } from './isomorphic/no-locale-dependent-format'
+import { noTimezoneDependentDate } from './isomorphic/no-timezone-dependent-date'
+import { noUnstableRenderId } from './isomorphic/no-unstable-render-id'
+import { noNodeBuiltinInComponent } from './isomorphic/no-node-builtin-in-component'
+import { noSyncFsInRequestPath } from './backend/no-sync-fs-in-request-path'
+import { noFloatingPromiseInHandler } from './backend/no-floating-promise-in-handler'
+import { preferPassiveListener } from './web-perf/prefer-passive-listener'
+import { noUnboundedRafLoop } from './web-perf/no-unbounded-raf-loop'
+import { noOutOfSubsetConstruct } from './portable/no-out-of-subset-construct'
+import { noPlatformBranchWithoutFallback } from './portable/no-platform-branch-without-fallback'
+import { requireErrorCause } from './js/require-error-cause'
 
 export const allRules: Rule[] = [
+  noLocaleDependentFormat,
+  noTimezoneDependentDate,
+  noUnstableRenderId,
+  noNodeBuiltinInComponent,
+  noSyncFsInRequestPath,
+  noFloatingPromiseInHandler,
+  preferPassiveListener,
+  noUnboundedRafLoop,
+  noOutOfSubsetConstruct,
+  noPlatformBranchWithoutFallback,
+  requireErrorCause,
   // Reactivity (15)
   noAsyncEffect,
   noBareSignalInJsx,

@@ -17,6 +17,7 @@ import { JS_EXTENSIONS } from './utils/index'
 import { LineIndex } from './utils/source'
 import { validateRuleOptions } from './utils/validate-options'
 import { matchesExemptPath } from './utils/exempt-paths'
+import { type FileRole, resolveFileRole, roleMatches } from './utils/file-roles'
 
 // Per-process cache so we only validate a given (rule, options) pair once
 // and only print-once even across a multi-file lint run.
@@ -149,6 +150,9 @@ export function lintFile(
   }
 
   const diagnostics: Diagnostic[] = []
+  // Resolved at most once per file, and only when a rule actually asks.
+  let cachedRole: FileRole | undefined
+  const fileRole = (): FileRole => (cachedRole ??= resolveFileRole(filePath, sourceText))
 
   // Filter to enabled rules and create visitor callbacks
   const allCallbacks: VisitorCallbacks[] = []
@@ -219,6 +223,12 @@ export function lintFile(
     // skipping `rule.create()` produces. Their in-rule call simply never
     // runs now — kept because it documents the intent at the rule.
     if (matchesExemptPath(options.exemptPaths, filePath)) continue
+
+    // Role gate, also central. A rule declares WHICH file roles it is about
+    // (`appliesTo`) and the runner decides — the same correction `exemptPaths`
+    // needed. Implemented per rule it would be forgotten per rule, and a
+    // forgotten role gate is silent: the rule simply runs where it should not.
+    if (rule.meta.appliesTo && !roleMatches(rule.meta.appliesTo, fileRole())) continue
 
     const ctx = createRuleContext(
       rule,

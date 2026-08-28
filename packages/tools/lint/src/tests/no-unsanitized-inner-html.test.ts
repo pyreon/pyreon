@@ -69,6 +69,24 @@ export const A = () => <div dangerouslySetInnerHTML={{ __html: clean }} />`),
     ).toEqual([])
   })
 
+  it('follows a RENAMED sanitized value — two hops, not one', () => {
+    // The half-written single hop left this as a false positive: `body`
+    // resolved to `clean`, an Identifier, which is not provably safe.
+    expect(
+      at(`const clean = DOMPurify.sanitize(dirty)
+const body = clean
+export const A = () => <div dangerouslySetInnerHTML={{ __html: body }} />`),
+    ).toEqual([])
+  })
+
+  it('does not hang on a circular const chain', () => {
+    expect(() =>
+      at(`const a = b
+const b = a
+export const A = () => <div dangerouslySetInnerHTML={{ __html: a }} />`),
+    ).not.toThrow()
+  })
+
   it('still fires when the const hop leads somewhere unsanitized', () => {
     expect(
       at(`const body = post.body

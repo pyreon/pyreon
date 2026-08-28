@@ -2,6 +2,7 @@ import { signal } from "@pyreon/reactivity"
 import { onMount } from "@pyreon/core"
 import { useHead } from "@pyreon/head"
 import { listUsers, type User } from "../../lib/db"
+import { formatDate, formatMoney } from '../lib/format'
 
 export const meta = { title: "Users" }
 
@@ -39,7 +40,7 @@ export default function Users() {
                 <td>
                   <span class="pill">{u.role}</span>
                 </td>
-                <td>{u.createdAt.toLocaleDateString()}</td>
+                <td>{formatDate(u.createdAt)}</td>
               </tr>
             ))
           }

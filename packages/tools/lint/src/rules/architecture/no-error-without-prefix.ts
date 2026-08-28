@@ -1,6 +1,7 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan } from '../../utils/ast'
 import { getNearestPackageName } from '../../utils/project-deps'
+import { isTestFile } from '../../utils/file-roles'
 
 /**
  * A framework error is "identified" if it starts with `[Pyreon]` OR the
@@ -41,14 +42,9 @@ export const noErrorWithoutPrefix: Rule = {
     // rewrite an application error to `[Pyreon] …`.
     const pkgName = getNearestPackageName(filePath)
     if (!pkgName || !pkgName.startsWith('@pyreon/')) return {}
-    if (
-      filePath.includes('/tests/') ||
-      filePath.includes('/test/') ||
-      filePath.includes('.test.') ||
-      filePath.includes('.spec.')
-    ) {
-      return {}
-    }
+    // Shared classifier, not a fourth inline copy: this one silently omitted
+    // `/__tests__/`, which the shared helper covers.
+    if (isTestFile(filePath)) return {}
 
     const callbacks: VisitorCallbacks = {
       ThrowStatement(node: any) {
