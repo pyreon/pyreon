@@ -30,6 +30,10 @@
 
 package com.pyreon
 
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.onAllNodes
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasTestTag
@@ -141,19 +145,32 @@ class TasksAppInstrumentedTest {
             } catch (_: Throwable) {
                 "<could not read the semantics tree>"
             }
-        // WHERE we are, not just what is missing. "NO node with that tag" has two
-        // very different causes — the page is mid-remount, or we are not on that
-        // page at all — and they need opposite fixes. A landmark tag from the
-        // same screen separates them in one line, which is one CI round instead
-        // of a guess.
-        val onPage =
+        // WHERE we are, not just what is missing.
+        //
+        // The first version of this probed ONE landmark and, on its absence,
+        // reported "navigated away". That claim is not supported by the
+        // observation: a landmark is equally absent when the screen crashed
+        // during recomposition, and those need opposite fixes. It sent the
+        // investigation at the router for a round.
+        //
+        // So list the tags that ARE on screen instead of inferring from the one
+        // that is not. The set names the page directly — a diagnostic should
+        // report what it saw, not conclude from what it did not.
+        val where =
             try {
-                val n = composeRule.onAllNodesWithTag("toolkit-page").fetchSemanticsNodes().size
-                if (n > 0) "still on the toolkit page" else "NOT on the toolkit page — navigated away"
-            } catch (_: Throwable) {
-                "<could not probe the page landmark>"
+                val tags =
+                    composeRule
+                        .onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.TestTag))
+                        .fetchSemanticsNodes()
+                        .mapNotNull { it.config.getOrNull(SemanticsProperties.TestTag) }
+                        .distinct()
+                        .sorted()
+                if (tags.isEmpty()) "NOTHING is on screen — no tagged node at all"
+                else "on screen: " + tags.joinToString(", ")
+            } catch (t: Throwable) {
+                "<could not read the tag set: " + t.javaClass.simpleName + ">"
             }
-        return "waitForTagText timed out: tag='$tag' expected='$expected' — $found ($onPage)"
+        return "waitForTagText timed out: tag='$tag' expected='$expected' — $found ($where)"
     }
 
     @Test
