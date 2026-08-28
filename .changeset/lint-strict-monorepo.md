@@ -33,6 +33,12 @@ parsed, validated, and did nothing. It is now applied centrally in the runner,
 before `rule.create()`, so it means the same thing for every rule by
 construction.
 
+Because it is now a runner-level option rather than a per-rule one, option
+validation recognises it on every rule — configuring it on a rule whose schema
+omits it used to warn `unknown option "exemptPaths"` about an exemption that
+demonstrably works. The 46 per-rule `isPathExempt` bails are deleted: the
+central skip runs before `rule.create()`, so they were unreachable.
+
 **A config key naming nothing was silently ignored.** This repo shipped
 `pyreon/dangerously-set-inner-html` — with an `exemptPaths` list — for a rule
 that has never existed. Unknown `rules` / `groups` keys are now config
