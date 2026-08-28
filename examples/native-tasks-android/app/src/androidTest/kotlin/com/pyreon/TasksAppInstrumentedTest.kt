@@ -82,8 +82,17 @@ class TasksAppInstrumentedTest {
      * costing another round of guessing.
      */
     @Before
-    fun disableToastAutoDismiss() {
-        PyreonToast.defaultDurationMillis = 0
+    fun shortenToastAutoDismiss() {
+        // NOT 0. `PyreonToast.add` reads `if (ttl > 0)` and 0 documents as
+        // "keeps it until dismissed" — so setting 0 to REMOVE the pending
+        // dismissal instead makes every toast permanent, and a permanent toast
+        // is its own Compose window. I set 0 here on an explicitly unconfirmed
+        // theory and it was the opposite of the intent; read the API before
+        // configuring it.
+        //
+        // 1ms keeps the goal (no multi-second `delay` for `waitForIdle` to sit
+        // behind) without leaving anything on screen.
+        PyreonToast.defaultDurationMillis = 1
     }
 
     /**
@@ -128,6 +137,21 @@ class TasksAppInstrumentedTest {
      * a failure message replaces a diagnosable timeout with an opaque one, which
      * is the exact failure being fixed.
      */
+    /**
+     * The tag set as of the last [snapshotTags] call.
+     *
+     * A timeout tells you what is on screen NOW. It cannot tell you whether the
+     * screen was ever right, and those need opposite investigations: an action
+     * that destroyed the page, versus a page that never rendered. Two rounds of
+     * this failure were spent inferring between them from the after-state
+     * alone.
+     */
+    private var tagsBefore: List<String> = emptyList()
+
+    private fun snapshotTags() {
+        tagsBefore = tagsIn(useUnmergedTree = false)
+    }
+
     /** Every test tag currently in the semantics tree, one flavour of it. */
     private fun tagsIn(useUnmergedTree: Boolean): List<String> =
         try {
@@ -205,7 +229,11 @@ class TasksAppInstrumentedTest {
             } catch (t: Throwable) {
                 "<could not read the tag set: " + t.javaClass.simpleName + ">"
             }
-        return "waitForTagText timed out: tag='$tag' expected='$expected' — $found ($where)"
+        val before =
+            if (tagsBefore.isEmpty()) "no snapshot was taken before the action"
+            else "before the action: [" + tagsBefore.joinToString(", ") + "]"
+        return "waitForTagText timed out: tag='$tag' expected='$expected' — $found ($where) [" +
+            before + "]"
     }
 
     @Test
@@ -561,6 +589,7 @@ class TasksAppInstrumentedTest {
 
         // url-state WRITE: flipping it must move the value, which a
         // default-only assertion cannot see.
+        snapshotTags()
         composeRule
             .onNodeWithTag("toolkit-filter-done")
             .performScrollTo()
