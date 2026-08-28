@@ -39,6 +39,30 @@
         "internal": {
           "$ref": "#/definitions/severity",
           "description": "Rules encoding the Pyreon repository itself. Off in every shipped preset."
+        },
+        "security": {
+          "$ref": "#/definitions/severity",
+          "description": "Exploitable shapes \u2014 script URLs, opener leakage, unsanitized HTML sinks."
+        },
+        "isomorphic": {
+          "$ref": "#/definitions/severity",
+          "description": "The hydration contract, for files that render on BOTH the server and the client."
+        },
+        "backend": {
+          "$ref": "#/definitions/severity",
+          "description": "Server-role files \u2014 request handlers, api routes, anything importing `node:`."
+        },
+        "web-perf": {
+          "$ref": "#/definitions/severity",
+          "description": "Client-role files \u2014 the browser work that shows up as jank or layout shift."
+        },
+        "portable": {
+          "$ref": "#/definitions/severity",
+          "description": "Shared source that must survive iOS and Android as well as the web."
+        },
+        "js": {
+          "$ref": "#/definitions/severity",
+          "description": "Language and module-system shapes oxlint cannot express."
         }
       }
     },
