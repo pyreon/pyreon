@@ -149,4 +149,31 @@ describe('useDeviceMotion', () => {
     // is looking at.
     expect(remove).toHaveBeenCalledWith('devicemotion', expect.any(Function))
   })
+
+  // The guard this locks: `active` only flips AFTER the await, so two starts
+  // issued while the permission prompt is open both pass the entry check. Each
+  // would then `addEventListener` with a DIFFERENT closure, so the handler
+  // attaches twice and every reading is applied twice -- leak class D. The fix
+  // re-checks once the await has settled; it shipped without a test, which is
+  // how the branch went uncovered.
+  it('two starts during one permission prompt attach the listener once', async () => {
+    let grant!: (v: 'granted') => void
+    const prompt = new Promise<'granted'>((r) => {
+      grant = r
+    })
+    installDME(() => prompt)
+    const add = vi.spyOn(window, 'addEventListener')
+
+    const m = mountHook()
+    const a = m.start()
+    const b = m.start()
+
+    // Both calls are now parked on the SAME prompt, past the entry check.
+    grant('granted')
+    await expect(a).resolves.toBe(true)
+    await expect(b).resolves.toBe(true)
+
+    const motionAdds = add.mock.calls.filter(([type]) => type === 'devicemotion')
+    expect(motionAdds).toHaveLength(1)
+  })
 })
