@@ -36,6 +36,57 @@ final class PyreonTasksUITests: XCTestCase {
         continueAfterFailure = false
     }
 
+    /// Tap an element on a long screen, scrolling the containing ScrollView
+    /// ourselves rather than relying on XCUITest's scroll-to-visible.
+    ///
+    /// `XCUIElement.tap()` first performs `kAXScrollToVisibleAction`, and on a
+    /// SwiftUI ScrollView that action fails outright:
+    ///
+    ///     Failed to scroll to visible (by AX action) Button, label: 'Open',
+    ///     error: kAXErrorCannotComplete performing kAXScrollToVisibleAction
+    ///
+    /// This screen has hit it twice now, on two different elements — the sign
+    /// that it is a property of the screen rather than of any one button.
+    /// Wrapping the page in `<Scroll>` made the content REACHABLE; it did not
+    /// make the AX action work, and those are separate things.
+    ///
+    /// Swiping is what a person does, and it is what XCUITest can actually
+    /// perform on a SwiftUI ScrollView. Bounded rather than open-ended: a
+    /// missing element must fail as "never became hittable" after a known
+    /// number of swipes, not spin.
+    private func tapAfterScrolling(
+        _ element: XCUIElement,
+        in app: XCUIApplication,
+        maxSwipes: Int = 8,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        if element.exists && element.isHittable {
+            element.tap()
+            return
+        }
+        let scroller = app.scrollViews.firstMatch
+        var swipes = 0
+        while swipes < maxSwipes && !(element.exists && element.isHittable) {
+            if scroller.exists {
+                scroller.swipeUp()
+            } else {
+                app.swipeUp()
+            }
+            swipes += 1
+        }
+        XCTAssertTrue(
+            element.exists && element.isHittable,
+            // The count is in the message on purpose: "not hittable" and "not
+            // hittable after eight swipes" send you to different places.
+            "element never became hittable after \(swipes) swipe(s) — it may be "
+                + "absent, zero-size, or covered by something",
+            file: file,
+            line: line
+        )
+        element.tap()
+    }
+
     func test_appLaunchesOnLoginPage() throws {
         let app = XCUIApplication()
         app.launch()
@@ -146,7 +197,7 @@ final class PyreonTasksUITests: XCTestCase {
         // TaskDetailPageParam(id: "1") in the dispatcher (auth-gated).
         let openFirst = app.buttons["tasks-open-first"].firstMatch
         XCTAssertTrue(openFirst.exists, "Open-task-1 button missing on tasks page")
-        openFirst.tap()
+        tapAfterScrolling(openFirst, in: app)
 
         let detailPage = app.otherElements["task-detail-page"].firstMatch
         XCTAssertTrue(
@@ -236,7 +287,7 @@ final class PyreonTasksUITests: XCTestCase {
         )
         let vocabBack = app.buttons["vocab-back"].firstMatch
         XCTAssertTrue(vocabBack.exists, "Back button missing on vocab page")
-        vocabBack.tap()
+        tapAfterScrolling(vocabBack, in: app)
         XCTAssertTrue(
             tasksPage.waitForExistence(timeout: 15),
             "Did not return to tasks after vocab Back"
@@ -420,9 +471,9 @@ final class PyreonTasksUITests: XCTestCase {
         // submit is what runs the schema.
         let schemaName = app.textFields["toolkit-schema-name"].firstMatch
         XCTAssertTrue(schemaName.exists, "Schema form field missing on toolkit page")
-        schemaName.tap()
+        tapAfterScrolling(schemaName, in: app)
         schemaName.typeText("ab")
-        app.buttons["toolkit-schema-submit"].firstMatch.tap()
+        tapAfterScrolling(app.buttons["toolkit-schema-submit"].firstMatch, in: app)
         XCTAssertEqual(
             app.staticTexts["toolkit-schema-valid"].firstMatch.label,
             "false",
@@ -466,7 +517,7 @@ final class PyreonTasksUITests: XCTestCase {
         )
         let machineToggle = app.buttons["toolkit-machine-toggle"].firstMatch
         XCTAssertTrue(machineToggle.exists, "Machine toggle missing on toolkit page")
-        machineToggle.tap()
+        tapAfterScrolling(machineToggle, in: app)
         XCTAssertEqual(
             app.staticTexts["toolkit-machine"].firstMatch.label,
             "on",
@@ -483,7 +534,7 @@ final class PyreonTasksUITests: XCTestCase {
         // default-only assertion cannot see.
         let filterDone = app.buttons["toolkit-filter-done"].firstMatch
         XCTAssertTrue(filterDone.exists, "Filter button missing on toolkit page")
-        filterDone.tap()
+        tapAfterScrolling(filterDone, in: app)
         XCTAssertEqual(
             app.staticTexts["toolkit-filter"].firstMatch.label,
             "done",
@@ -492,7 +543,7 @@ final class PyreonTasksUITests: XCTestCase {
 
         let toolkitBack = app.buttons["toolkit-back"].firstMatch
         XCTAssertTrue(toolkitBack.exists, "Back button missing on toolkit page")
-        toolkitBack.tap()
+        tapAfterScrolling(toolkitBack, in: app)
         XCTAssertTrue(
             tasksPage.waitForExistence(timeout: 15),
             "Did not return to tasks after toolkit Back"
