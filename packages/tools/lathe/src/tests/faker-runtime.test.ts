@@ -121,7 +121,18 @@ beforeAll(async () => {
   await emitTo(rdir, RECURSIVE_SPEC, 'pyreon')
   recursive = (await import(join(rdir, 'faker.ts'))) as typeof recursive
   recursiveSchema = ((await import(join(rdir, 'schemas.ts'))) as { Node: Validator }).Node
-})
+  // 60s, against vitest's 10s hook default, which this hook blew in CI.
+  //
+  // Derived rather than guessed: the hook performs SIX cold dynamic imports of
+  // TypeScript written moments earlier, so each pays a vitest transform, and
+  // one of them pulls `@faker-js/faker` -- a large module whose first load
+  // dominates the rest. Locally that is warm and finishes in well under a
+  // second; in CI this file runs inside a matrix cell that builds ~40 packages
+  // in parallel, where the same work took longer than the whole default budget.
+  //
+  // The sibling `validator-runtime.test.ts` does the same thing with two
+  // imports and no faker, which is why it has never needed one.
+}, 60_000)
 
 afterAll(() => {
   rmSync(ROOT, { recursive: true, force: true })
@@ -226,6 +237,37 @@ for (const validator of ['pyreon', 'zod'] as const) {
     })
   })
 }
+
+describe('the generated dev entry', () => {
+  it('is IMPORTABLE in node, with no JSX transform', async () => {
+    // The example carries a consumer-side version of this, but the CI test
+    // matrix has no `examples` cell (`batch-a` = core/fundamentals/internals,
+    // `batch-b` = tools/ui/ui-system/zero), so that one never runs here. This
+    // does, and it is the assertion that matters: `dev.ts` re-exported the JSX
+    // previews until a plain node test tried to import it and failed on the
+    // first line.
+    const dir = join(ROOT, 'dev-entry')
+    const cfg = resolveConfig({ input: 'x', plugins: ['schemas', 'client', 'queries', 'mocks', 'faker'] })
+    mkdirSync(join(dir, 'endpoints'), { recursive: true })
+    mkdirSync(join(dir, 'queries'), { recursive: true })
+    for (const f of generate(SPEC, cfg).files) {
+      if (f.path.endsWith('.ts')) writeFileSync(join(dir, f.path), f.contents)
+    }
+    const dev = (await import(join(dir, 'dev.ts'))) as {
+      seedFaker: (n?: number) => void
+      createBook: () => Record<string, unknown>
+      installMocks: () => void
+      mockRouteTable: unknown[]
+    }
+    // Both dev surfaces reachable through the one entry...
+    expect(typeof dev.seedFaker).toBe('function')
+    expect(typeof dev.installMocks).toBe('function')
+    expect(Array.isArray(dev.mockRouteTable)).toBe(true)
+    // ...and it actually works, not merely resolves.
+    dev.seedFaker(7)
+    expect(typeof dev.createBook().id).toBe('string')
+  })
+})
 
 describe('a recursive model', () => {
   it('terminates, rather than recursing until the stack ends', () => {
