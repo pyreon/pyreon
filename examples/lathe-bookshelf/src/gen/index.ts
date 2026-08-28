@@ -14,8 +14,9 @@
  * 120-operation spec that measured 30.7 kB against 6.1 kB for the same hook
  * imported from its own tag. If that matters, import the tag:
  * `import { useListBooks } from './gen/queries/books'`.
- * Fixtures, fake-data factories and preview components are NOT re-exported
- * here -- they live in `./dev`, so a page bundle cannot reach them.
+ * Fixtures and fake-data factories are NOT re-exported here -- they live in
+ * `./dev`, so a page bundle cannot reach them. Preview components are absent
+ * for the same reason and live in `./components`.
  */
 export * from './schemas'
 export { api } from './client'

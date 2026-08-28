@@ -6,13 +6,18 @@
 // to change the output, change the spec or the emitter.
 
 /**
- * Development surface for Bookshelf -- fixtures, factories, previews.
+ * Development surface for Bookshelf -- fixtures and fake-data factories.
  * Kept out of `./index` on purpose. A fixture table is DATA, so it survives
  * tree-shaking anywhere it is reachable; a barrel that named it shipped
  * every fixture to production. Import from here in tests, workbenches and
  * stories, and a page bundle can never reach it by accident.
+ * NODE-SAFE by construction, and that is why the preview components are NOT
+ * here. They are JSX, so re-exporting them made this entry require a JSX
+ * transform -- a plain node test that wanted one fake object had to configure
+ * one, for components it never touches. Previews are a workbench surface with
+ * exactly one kind of consumer (an Atlas config, a story), and that consumer
+ * imports `./components` directly.
  */
 export { installMocks, routes as mockRouteTable } from './mocks'
 export { mockRoutes } from './mocks'
 export * from './faker'
-export * from './components'

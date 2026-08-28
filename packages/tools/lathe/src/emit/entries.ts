@@ -78,8 +78,9 @@ export function emitBarrel(doc: IrDocument, opts: EntryOptions): SourceFile {
     "imported from its own tag. If that matters, import the tag: ",
     "`import { useListBooks } from './gen/queries/books'`.",
     '',
-    'Fixtures, fake-data factories and preview components are NOT re-exported',
-    "here -- they live in `./dev`, so a page bundle cannot reach them.",
+    'Fixtures and fake-data factories are NOT re-exported here -- they live in',
+    '`./dev`, so a page bundle cannot reach them. Preview components are absent',
+    'for the same reason and live in `./components`.',
   )
 
   if (has('schemas')) lines.push(`export * from './schemas'`)
@@ -112,16 +113,23 @@ export function emitBarrel(doc: IrDocument, opts: EntryOptions): SourceFile {
 export function emitDevEntry(doc: IrDocument, opts: EntryOptions): SourceFile | null {
   const f = new SourceFile(DEV_FILE)
   const has = (p: string): boolean => opts.plugins.includes(p)
-  if (!has('mocks') && !has('faker') && !has('components')) return null
+  if (!has('mocks') && !has('faker')) return null
 
   f.line()
   f.doc(
-    `Development surface for ${doc.title} -- fixtures, factories, previews.`,
+    `Development surface for ${doc.title} -- fixtures and fake-data factories.`,
     '',
     'Kept out of `./index` on purpose. A fixture table is DATA, so it survives',
     'tree-shaking anywhere it is reachable; a barrel that named it shipped',
     'every fixture to production. Import from here in tests, workbenches and',
     'stories, and a page bundle can never reach it by accident.',
+    '',
+    'NODE-SAFE by construction, and that is why the preview components are NOT',
+    'here. They are JSX, so re-exporting them made this entry require a JSX',
+    'transform -- a plain node test that wanted one fake object had to configure',
+    'one, for components it never touches. Previews are a workbench surface with',
+    'exactly one kind of consumer (an Atlas config, a story), and that consumer',
+    'imports `./components` directly.',
   )
   if (has('mocks')) {
     f.line(`export { installMocks, routes as mockRouteTable } from './mocks'`)
@@ -132,7 +140,6 @@ export function emitDevEntry(doc: IrDocument, opts: EntryOptions): SourceFile | 
     }
   }
   if (has('faker')) f.line(`export * from './faker'`)
-  if (has('components')) f.line(`export * from './components'`)
   return f
 }
 

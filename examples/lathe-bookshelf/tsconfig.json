@@ -1,4 +1,15 @@
 {
   "extends": "@pyreon/tsconfig/example.json",
-  "include": ["src", "vite.config.ts", "pyreon.config.ts"]
+  "compilerOptions": {
+    "types": [
+      "node",
+      "vitest/globals"
+    ]
+  },
+  "include": [
+    "src",
+    "vite.config.ts",
+    "pyreon.config.ts",
+    "vitest.config.ts"
+  ]
 }

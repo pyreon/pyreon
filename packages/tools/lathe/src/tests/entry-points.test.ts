@@ -55,6 +55,18 @@ components:
     Author: { type: object, required: [id], properties: { id: { type: string, format: uuid } } }
 `
 
+/**
+ * The module specifiers a generated entry actually re-exports.
+ *
+ * Reading the raw file text is not equivalent: these entries carry docblocks
+ * that NAME the sibling modules while explaining why they are absent, so a
+ * `not.toContain('./components')` on the whole file fails on the prose that
+ * documents the very property under test.
+ */
+function reExports(source: string): string[] {
+  return [...source.matchAll(/^export .*? from '([^']+)'/gm)].map((m) => m[1] as string)
+}
+
 const ALL: PluginName[] = ['schemas', 'client', 'queries', 'mocks', 'faker']
 
 function emit(plugins: PluginName[] = ALL): Map<string, string> {
@@ -167,16 +179,30 @@ describe('the emitted entry points', () => {
   })
 
   it('keeps every dev surface OUT of the production barrel', () => {
-    const barrel = files.get('index.ts') ?? ''
+    const barrel = reExports(files.get('index.ts') ?? '')
     for (const dev of ['./mocks', './faker', './components']) {
       expect(barrel, dev).not.toContain(dev)
     }
   })
 
   it('names the dev surfaces in dev.ts instead', () => {
-    const dev = files.get('dev.ts') ?? ''
+    const dev = reExports(files.get('dev.ts') ?? '')
     expect(dev).toContain('./mocks')
     expect(dev).toContain('./faker')
+  })
+
+  it('keeps the JSX previews OUT of dev.ts, so it stays node-safe', () => {
+    // Found by consuming the output as a real project would: a plain node test
+    // that wanted one fake object had to configure a JSX transform, for preview
+    // components it never touches. Previews have exactly one kind of consumer
+    // (an Atlas config, a story) and that consumer imports them directly.
+    const withComponents = new Map(
+      generate(SPEC, resolveConfig({ input: 'x', plugins: ['components', 'mocks', 'faker'] })).files.map(
+        (f) => [f.path, f.contents],
+      ),
+    )
+    expect(withComponents.has('components.tsx')).toBe(true)
+    expect(reExports(withComponents.get('dev.ts') ?? '')).not.toContain('./components')
   })
 
   it('emits no dev entry when no dev plugin ran', () => {

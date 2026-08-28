@@ -783,7 +783,9 @@
         "@pyreon/lathe": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vite-plugin": "workspace:*",
+        "@pyreon/vitest-config": "workspace:*",
         "vite": "^8.2.2",
+        "vitest": "^4.1.11",
       },
     },
     "examples/native-analytics": {
