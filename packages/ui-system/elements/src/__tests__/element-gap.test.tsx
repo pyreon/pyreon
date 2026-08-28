@@ -14,6 +14,7 @@
  * threading) fails the simple + button specs with no `gap:` declaration in
  * the element's resolved rules.
  */
+import { query } from '@pyreon/test-utils'
 import type { VNode } from '@pyreon/core'
 import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
@@ -64,7 +65,7 @@ describe('Element gap — simple path', () => {
         h('span', {}, 'b'),
       ]) as VNode,
     )
-    const el = root.querySelector('div[data-pyr-element]') as HTMLElement
+    const el = query<HTMLElement>(root, 'div[data-pyr-element]')
     expect(el).not.toBeNull()
     // unistyle's value() renders numbers in rem against rootSize 16.
     expect(rulesFor(el)).toContain('gap: 0.5rem')
@@ -77,7 +78,7 @@ describe('Element gap — simple path', () => {
         h('span', {}, 'label'),
       ]) as VNode,
     )
-    const btn = root.querySelector('button') as HTMLElement
+    const btn = query<HTMLElement>(root, 'button')
     expect(btn).not.toBeNull()
     // The two-layer flex fix: the INNER span is the flex container that owns
     // the children — gap must land there, not (only) on the root.
@@ -94,7 +95,7 @@ describe('Element gap — simple path', () => {
         h('span', {}, 'content'),
       ) as VNode,
     )
-    const el = root.querySelector('div[data-pyr-element]') as HTMLElement
+    const el = query<HTMLElement>(root, 'div[data-pyr-element]')
     expect(el).not.toBeNull()
     // The WRAPPER's own rules carry no CSS gap — spacing between slots is the
     // Content margin machinery, asserted by the existing Content tests.
@@ -106,7 +107,7 @@ describe('Element gap — simple path', () => {
     const root = mountInDom(
       h(Element, { tag: 'div', contentDirection: 'inline' }, [h('span', {}, 'a')]) as VNode,
     )
-    const el = root.querySelector('div[data-pyr-element]') as HTMLElement
+    const el = query<HTMLElement>(root, 'div[data-pyr-element]')
     expect(rulesFor(el)).not.toContain('gap:')
   })
 })

@@ -33,7 +33,7 @@ export interface MathProps {
 interface KatexModule {
   renderToString: (
     source: string,
-    options?: { displayMode?: boolean; throwOnError?: boolean },
+    options?: { displayMode?: boolean; throwOnError?: boolean; trust?: boolean },
   ) => string
 }
 
@@ -44,6 +44,9 @@ export function Math(props: MathProps): VNodeChild {
   onMount(() => {
     if (source.length === 0) return undefined
     if (isServer) return undefined
+    // See <Mermaid>: the render is async and can still be in flight at unmount,
+    // where writing keeps the whole closure alive for a signal nothing reads.
+    let cancelled = false
     // Dynamic import — KaTeX ships in the user's bundle ONLY when this
     // component mounts on the client. SSR (or no-KaTeX builds)
     // gracefully fall back to a `<code>` element.
@@ -61,13 +64,22 @@ export function Math(props: MathProps): VNodeChild {
         const rendered = katex.renderToString(source, {
           displayMode: !props.inline,
           throwOnError: false,
+          // KaTeX's own gate on the commands that can emit arbitrary markup or
+          // URLs (`\htmlData`, `\href`). Pyreon's sanitized `innerHTML` prop
+          // cannot stand in: KaTeX emits MathML, which the allowlist does not
+          // cover at all, so routing this through it would strip the formula.
+          // Explicit rather than relying on the library default.
+          trust: false,
         })
+        if (cancelled) return
         html.set(rendered)
       } catch {
         // KaTeX not installed — leave the fallback intact.
       }
     })()
-    return undefined
+    return () => {
+      cancelled = true
+    }
   })
 
   return (

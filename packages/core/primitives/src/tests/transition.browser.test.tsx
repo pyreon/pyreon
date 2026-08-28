@@ -15,6 +15,7 @@
 //     `<Stack gap>` must not leave a hole;
 //   - `ResizeObserver` reports real content geometry.
 
+import { query } from '@pyreon/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
@@ -56,8 +57,8 @@ describe('<Transition> — real CSS transitions', () => {
         h('span', { id: 'b' }, 'b'),
       ),
     )
-    const a = root.querySelector('#a') as HTMLElement
-    const b = root.querySelector('#b') as HTMLElement
+    const a = query<HTMLElement>(root, '#a')
+    const b = query<HTMLElement>(root, '#b')
     const closed = b.getBoundingClientRect().top - a.getBoundingClientRect().bottom
     on.set(true)
     await flush()

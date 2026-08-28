@@ -6,7 +6,14 @@
  * bin (`cli/main.ts`) is the only thing that binds it to the real `node:fs`.
  */
 
-import { resolveProjects, type LatheSection, type PluginName, type ResolvedConfig } from '../core/config'
+import {
+  resolveProjects,
+  type ClientName,
+  type LatheSection,
+  type PluginName,
+  type ResolvedConfig,
+  type ValidatorName,
+} from '../core/config'
 import { generate } from '../core/generate'
 import { diffSurface, type ApiSurface, type SurfaceChange } from '../core/surface'
 import { resolveTransform, verifyNative, worstVerdict } from '../verify/lower'
@@ -19,6 +26,8 @@ export interface Argv {
   output?: string | undefined
   target?: 'web' | 'multiplatform' | undefined
   plugins?: readonly PluginName[] | undefined
+  client?: ClientName | undefined
+  validator?: ValidatorName | undefined
   baseUrl?: string | undefined
   strictNative: boolean
   /** Exit non-zero when the spec change breaks the existing client contract. */
@@ -49,6 +58,10 @@ export function parseArgv(args: readonly string[]): Argv {
     else if (a.startsWith('--out=')) out.output = a.slice(6)
     else if (a === '--base-url') out.baseUrl = args[++i]
     else if (a.startsWith('--base-url=')) out.baseUrl = a.slice(11)
+    else if (a === '--client') out.client = args[++i] as ClientName
+    else if (a.startsWith('--client=')) out.client = a.slice(9) as ClientName
+    else if (a === '--validator') out.validator = args[++i] as ValidatorName
+    else if (a.startsWith('--validator=')) out.validator = a.slice(12) as ValidatorName
     else if (a === '--plugins') out.plugins = (args[++i] ?? '').split(',').filter(Boolean) as PluginName[]
     else if (a.startsWith('--plugins=')) out.plugins = a.slice(10).split(',').filter(Boolean) as PluginName[]
     else if (a === '-h' || a === '--help') out.command = 'help'
@@ -90,6 +103,8 @@ Options
   --out <dir>                  output directory (default: ./src/gen)
   --base-url <url>             override servers[0].url; must be absolute to reach native
   --plugins a,b                types,schemas,client,queries,mocks,atlas
+  --client pyreon|fetch|axios|ky  HTTP runtime (default: pyreon; only pyreon reaches native)
+  --validator pyreon|zod       schema library (default: pyreon; both reach native)
   --strict-native              exit non-zero when a native module fails to lower
   --fail-on-breaking           exit non-zero when the spec breaks the client
                                contract; pair with generate, whose run is the one
@@ -119,6 +134,8 @@ export async function run(
     ...(argv.output ? { output: argv.output } : {}),
     ...(argv.target ? { target: argv.target } : {}),
     ...(argv.plugins ? { plugins: argv.plugins } : {}),
+    ...(argv.client ? { client: argv.client } : {}),
+    ...(argv.validator ? { validator: argv.validator } : {}),
     ...(argv.baseUrl ? { baseUrl: argv.baseUrl } : {}),
     ...(argv.strictNative ? { strictNative: true } : {}),
   }

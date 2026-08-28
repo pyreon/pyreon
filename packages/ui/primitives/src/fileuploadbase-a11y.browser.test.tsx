@@ -16,6 +16,7 @@
  * Bisect: remove `onKeyDown` from dropZoneProps → the Enter/Space specs fail
  * (no picker click); remove `role`/`aria-label` → the semantics specs fail.
  */
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { describe, expect, it } from 'vitest'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
@@ -35,7 +36,7 @@ function mountUpload(props: Partial<FileUploadBaseProps> = {}) {
         ),
     }),
   )
-  const input = container.querySelector('#fileinput') as HTMLInputElement
+  const input = query<HTMLInputElement>(container, '#fileinput')
   // Spy on the programmatic picker-open so no real file dialog opens headless.
   input.click = () => {
     clicks.push('click')
@@ -44,7 +45,7 @@ function mountUpload(props: Partial<FileUploadBaseProps> = {}) {
     container,
     unmount,
     clicks,
-    zone: () => container.querySelector('#zone') as HTMLElement,
+    zone: () => query<HTMLElement>(container, '#zone'),
   }
 }
 

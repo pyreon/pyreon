@@ -1,3 +1,4 @@
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { PyreonUI } from '@pyreon/ui-core'
@@ -27,7 +28,7 @@ describe('NumberInput delegates to NumberInputBase', () => {
       h(PyreonUI, { theme }, h(NumberInput as never, { min: 0, max: 10, step: 1, defaultValue: 5, ...props })),
     )
     cleanup = unmount
-    return container.querySelector('[role="spinbutton"]') as HTMLInputElement
+    return query<HTMLInputElement>(container, '[role="spinbutton"]')
   }
 
   it('renders a real spinbutton with value ARIA (was an inert text input)', () => {

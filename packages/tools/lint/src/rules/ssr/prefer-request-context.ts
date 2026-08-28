@@ -1,5 +1,6 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan, isCallTo } from '../../utils/ast'
+import { isServerFile } from '../../utils/file-roles'
 
 export const preferRequestContext: Rule = {
   meta: {
@@ -11,14 +12,7 @@ export const preferRequestContext: Rule = {
     fixable: false,
   },
   create(context) {
-    const filePath = context.getFilePath()
-    const isServerFile =
-      filePath.includes('server') ||
-      filePath.includes('.server.') ||
-      filePath.endsWith('server.ts') ||
-      filePath.endsWith('server.tsx')
-
-    if (!isServerFile) return {}
+    if (!isServerFile(context.getFilePath())) return {}
 
     let functionDepth = 0
     const callbacks: VisitorCallbacks = {

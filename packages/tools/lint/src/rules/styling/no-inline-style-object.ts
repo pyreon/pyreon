@@ -1,6 +1,5 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan } from '../../utils/ast'
-import { isPathExempt } from '../../utils/exempt-paths'
 
 export const noInlineStyleObject: Rule = {
   meta: {
@@ -14,7 +13,6 @@ export const noInlineStyleObject: Rule = {
     schema: { exemptPaths: 'string[]' },
   },
   create(context) {
-    if (isPathExempt(context)) return {}
 
     const callbacks: VisitorCallbacks = {
       JSXAttribute(node: any) {

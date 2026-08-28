@@ -1,3 +1,4 @@
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { PyreonUI } from '@pyreon/ui-core'
 import { theme } from '@pyreon/ui-theme'
@@ -47,7 +48,7 @@ describe('render-fn primitives forward the rocketstyle class to the themed eleme
       ),
     )
     cleanup = unmount
-    const input = container.querySelector('input') as HTMLInputElement
+    const input = query<HTMLInputElement>(container, 'input')
     expect(input).toBeTruthy()
     expect(input.getAttribute('data-rocketstyle')).toBe('Combobox')
     expect(input.className).toBeTruthy()
@@ -67,7 +68,7 @@ describe('render-fn primitives forward the rocketstyle class to the themed eleme
       ),
     )
     cleanup = unmount
-    const input = container.querySelector('input') as HTMLInputElement
+    const input = query<HTMLInputElement>(container, 'input')
     expect(input.getAttribute('data-rocketstyle')).toBe('MultiSelect')
     expect(input.className).toBeTruthy()
   })
@@ -84,7 +85,7 @@ describe('render-fn primitives forward the rocketstyle class to the themed eleme
       ),
     )
     cleanup = unmount
-    const group = container.querySelector('[role="group"]') as HTMLElement
+    const group = query<HTMLElement>(container, '[role="group"]')
     expect(group).toBeTruthy()
     expect(group.getAttribute('data-rocketstyle')).toBe('ColorPicker')
     expect(group.className).toBeTruthy()
@@ -106,7 +107,7 @@ describe('render-fn primitives forward the rocketstyle class to the themed eleme
       ),
     )
     cleanup = unmount
-    const zone = container.querySelector('[data-rocketstyle="FileUpload"]') as HTMLElement
+    const zone = query<HTMLElement>(container, '[data-rocketstyle="FileUpload"]')
     expect(zone).toBeTruthy()
     expect(zone.className).toBeTruthy()
   })
@@ -128,7 +129,7 @@ describe('render-fn primitives forward the rocketstyle class to the themed eleme
       ),
     )
     cleanup = unmount
-    const root = container.querySelector('[data-rocketstyle="Calendar"]') as HTMLElement
+    const root = query<HTMLElement>(container, '[data-rocketstyle="Calendar"]')
     expect(root).toBeTruthy()
     expect(root.className).toBeTruthy()
     // the card styling belongs on the container, NOT on the role=grid element

@@ -35,7 +35,9 @@ async function loadSection(cwd: string): Promise<LatheSection | undefined> {
     } catch (err) {
       // A config that exists but cannot be loaded is an ERROR, never a silent
       // fall-through to defaults: the user wrote it expecting it to be read.
-      throw new Error(`[Pyreon] lathe: failed to load ${name}: ${(err as Error).message}`)
+      throw new Error(`[Pyreon] lathe: failed to load ${name}: ${(err as Error).message}`, {
+        cause: err,
+      })
     }
   }
   return undefined

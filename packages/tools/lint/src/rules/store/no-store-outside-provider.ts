@@ -1,6 +1,7 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan } from '../../utils/ast'
 import { extractImportInfo } from '../../utils/imports'
+import { isServerFile } from '../../utils/file-roles'
 
 export const noStoreOutsideProvider: Rule = {
   meta: {
@@ -11,14 +12,7 @@ export const noStoreOutsideProvider: Rule = {
     fixable: false,
   },
   create(context) {
-    const filePath = context.getFilePath()
-    const isServerFile =
-      filePath.includes('server') ||
-      filePath.includes('.server.') ||
-      filePath.endsWith('server.ts') ||
-      filePath.endsWith('server.tsx')
-
-    if (!isServerFile) return {}
+    if (!isServerFile(context.getFilePath())) return {}
 
     let hasProviderImport = false
     const storeHookCalls: Array<{ name: string; span: { start: number; end: number } }> = []

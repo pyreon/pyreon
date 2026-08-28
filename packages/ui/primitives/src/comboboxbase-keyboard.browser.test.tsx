@@ -19,6 +19,7 @@
  * specs fail (highlightedIndex stays put). Bisect (typeahead): remove the
  * printable-char typeahead branch → the typeahead specs fail (index unmoved).
  */
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { describe, expect, it } from 'vitest'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
@@ -56,7 +57,7 @@ function mountCombobox(): {
       },
     }),
   )
-  const input = container.querySelector('#cbx') as HTMLInputElement
+  const input = query<HTMLInputElement>(container, '#cbx')
   return { container, unmount, state: captured!, input }
 }
 

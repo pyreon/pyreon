@@ -1,7 +1,6 @@
 import { existsSync, readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
 import type { Rule, VisitorCallbacks } from '../../types'
-import { isPathExempt } from '../../utils/exempt-paths'
 
 /**
  * `pyreon/require-browser-smoke-test` — every browser-categorized package
@@ -195,7 +194,6 @@ export const requireBrowserSmokeTest: Rule = {
       return {}
     }
 
-    if (isPathExempt(context)) return {}
 
     const pkgName = readPackageName(filePath)
     if (pkgName == null) return {}

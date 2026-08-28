@@ -11,6 +11,7 @@
  * Computed-style assertions are real-Chromium-only — gated on
  * __vitest_browser__ (happy-dom re-runs this file with no layout engine).
  */
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { PyreonUI } from '@pyreon/ui-core'
@@ -37,8 +38,8 @@ describe('content-axis sweep — multi-child rows render as ROWS (real Chromium)
       ),
     )
     await flush()
-    const icon = container.querySelector('[data-testid="nl-icon"]') as HTMLElement
-    const label = container.querySelector('[data-testid="nl-label"]') as HTMLElement
+    const icon = query<HTMLElement>(container, '[data-testid="nl-icon"]')
+    const label = query<HTMLElement>(container, '[data-testid="nl-label"]')
     // The layout box wrapping the children must be a flex ROW (pre-sweep:
     // content axis defaulted to `rows` → column → label rendered BELOW icon).
     const box = icon.parentElement as HTMLElement
@@ -66,8 +67,8 @@ describe('content-axis sweep — multi-child rows render as ROWS (real Chromium)
       ),
     )
     await flush()
-    const icon = container.querySelector('[data-testid="bt-icon"]') as HTMLElement
-    const label = container.querySelector('[data-testid="bt-label"]') as HTMLElement
+    const icon = query<HTMLElement>(container, '[data-testid="bt-icon"]')
+    const label = query<HTMLElement>(container, '[data-testid="bt-label"]')
     const cs = getComputedStyle(icon.parentElement as HTMLElement)
     expect(cs.flexDirection).toBe('row')
     expect(cs.justifyContent, 'contentAlignX center').toBe('center')

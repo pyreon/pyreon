@@ -7,6 +7,7 @@
  * static CSS on the base's accessor'd `data-filled` attribute, and the
  * consumer render-prop remains as the escape hatch.
  */
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { PyreonUI } from '@pyreon/ui-core'
@@ -29,7 +30,7 @@ describe('Rating — Element-first batteries-included composition (real Chromium
       h(PyreonUI, { theme }, h(Rating as never, { defaultValue: 3, 'data-testid': 'r1' })),
     )
     await flush()
-    const group = container.querySelector('[role="radiogroup"]') as HTMLElement
+    const group = query<HTMLElement>(container, '[role="radiogroup"]')
     expect(group, 'zero-config Rating renders its own markup').not.toBeNull()
     expect(group.getAttribute('aria-label')).toBe('Rating')
     expect(container.querySelectorAll('[role="radio"]').length).toBe(5)
@@ -55,7 +56,7 @@ describe('Rating — Element-first batteries-included composition (real Chromium
       h(PyreonUI, { theme }, h(Rating as never, { defaultValue: 1 })),
     )
     await flush()
-    const group = container.querySelector('[role="radiogroup"]') as HTMLElement
+    const group = query<HTMLElement>(container, '[role="radiogroup"]')
     // Element's direction='inline' + alignY='center' produce the flex row —
     // the Rating theme itself declares NO display property (grep-locked by
     // the source; this asserts the rendered result).

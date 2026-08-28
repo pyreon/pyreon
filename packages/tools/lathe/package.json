@@ -61,11 +61,17 @@
     "bench": "bun bench/scaling.ts"
   },
   "devDependencies": {
+    "@pyreon/http": "workspace:*",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/native-compiler": "workspace:*",
+    "@pyreon/query": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/validate": "workspace:*",
-    "@pyreon/vitest-config": "workspace:*"
+    "@pyreon/validation": "workspace:*",
+    "@pyreon/vitest-config": "workspace:*",
+    "axios": "^1.19.0",
+    "ky": "^2.0.2",
+    "zod": "^4.4.3"
   },
   "dependencies": {
     "@pyreon/config": "workspace:*",

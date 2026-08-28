@@ -41,7 +41,7 @@ export const routes: MockRoute[] = [
   },
   {
     method: 'GET',
-    path: '/books/:bookId',
+    path: /\/books\/[^/?#]+(?:\?|$)/,
     json: {
       "id": "00000000-0000-4000-8000-000000000000",
       "title": "The Left Hand of Darkness",

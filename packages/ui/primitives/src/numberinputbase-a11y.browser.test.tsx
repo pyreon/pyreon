@@ -31,6 +31,7 @@
  *   - drop the clamp in `value()`         → the clamp/canIncrement specs fail
  *   - drop `{...rest}` from the render    → the rest-forwarding spec fails (unstyled)
  */
+import { query } from '@pyreon/test-utils'
 import { _rp, h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { describe, expect, it } from 'vitest'
@@ -61,7 +62,7 @@ function mountNumber(props: Partial<NumberInputBaseProps> = {}) {
     container,
     unmount,
     state: () => captured,
-    input: () => container.querySelector('#ni') as HTMLInputElement,
+    input: () => query<HTMLInputElement>(container, '#ni'),
   }
 }
 
@@ -658,7 +659,7 @@ describe('NumberInputBase — rest forwarding', () => {
       }),
     )
     await flush()
-    const el = container.querySelector('input') as HTMLInputElement
+    const el = query<HTMLInputElement>(container, 'input')
     expect(el.className).toBe('x')
     expect(el.id).toBe('direct')
     expect(el.getAttribute('data-testid')).toBe('qty')
@@ -673,7 +674,7 @@ describe('NumberInputBase — rest forwarding', () => {
       h(NumberInputBase as never, { class: 'x', defaultValue: 5, min: 0, max: 10 }),
     )
     await flush()
-    const el = container.querySelector('input') as HTMLInputElement
+    const el = query<HTMLInputElement>(container, 'input')
     press(el, 'ArrowUp')
     await flush()
     expect(el.getAttribute('aria-valuenow')).toBe('6')
@@ -686,7 +687,7 @@ describe('NumberInputBase — rest forwarding', () => {
       h(NumberInputBase as never, { type: 'number', defaultValue: 1 }),
     )
     await flush()
-    expect((container.querySelector('input') as HTMLInputElement).getAttribute('type')).toBe('text')
+    expect((query<HTMLInputElement>(container, 'input')).getAttribute('type')).toBe('text')
     unmount()
   })
 })

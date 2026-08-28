@@ -1,6 +1,5 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan, isCallTo, isSetCall } from '../../utils/ast'
-import { isPathExempt } from '../../utils/exempt-paths'
 
 interface ScopeInfo {
   hasBatch: boolean
@@ -303,7 +302,6 @@ export const noUnbatchedUpdates: Rule = {
     schema: { exemptPaths: 'string[]' },
   },
   create(context) {
-    if (isPathExempt(context)) return {}
     const scopeStack: ScopeInfo[] = []
     let batchDepth = 0
     // Reset the per-file non-signal-receiver set (Bug B). Lint is synchronous

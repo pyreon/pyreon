@@ -1,5 +1,4 @@
 import type { Rule, VisitorCallbacks } from '../../types'
-import { isPathExempt } from '../../utils/exempt-paths'
 import { isProjectDependency } from '../../utils/project-deps'
 
 /**
@@ -56,6 +55,7 @@ export const noQuerySelectorCastInTest: Rule = {
     severity: 'error',
     requiresDependency: '@pyreon/test-utils',
     scope: 'monorepo',
+    scanTarget: 'test',
     fixable: false,
     schema: {
       exemptPaths: 'string[]',
@@ -76,7 +76,6 @@ export const noQuerySelectorCastInTest: Rule = {
     // declared dependency — i.e. this monorepo. Silent in consumer projects.
     if (!isProjectDependency(filePath, '@pyreon/test-utils')) return {}
 
-    if (isPathExempt(context)) return {}
 
     return {
       TSAsExpression(node: {

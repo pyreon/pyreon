@@ -1,6 +1,5 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan, isCallTo } from '../../utils/ast'
-import { isPathExempt } from '../../utils/exempt-paths'
 
 export const noEffectInMount: Rule = {
   meta: {
@@ -14,7 +13,6 @@ export const noEffectInMount: Rule = {
     schema: { exemptPaths: 'string[]' },
   },
   create(context) {
-    if (isPathExempt(context)) return {}
 
     let mountDepth = 0
     const callbacks: VisitorCallbacks = {

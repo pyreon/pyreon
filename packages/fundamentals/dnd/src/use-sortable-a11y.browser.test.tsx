@@ -1,3 +1,4 @@
+import { queryOptional } from '@pyreon/test-utils'
 import { clearAnnouncements } from '@pyreon/a11y'
 import { signal } from '@pyreon/reactivity'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -12,7 +13,7 @@ import { useSortable } from './use-sortable'
 // including the rAF-deferred write inside `announce()`.
 
 const liveRegion = () =>
-  document.querySelector('[data-pyreon-announcer="polite"]') as HTMLElement | null
+  queryOptional<HTMLElement>(document, '[data-pyreon-announcer="polite"]')
 
 /** Wait until the polite live region carries `expected` (announce writes on rAF). */
 async function waitForAnnouncement(expected: string) {
@@ -111,9 +112,9 @@ describe('useSortable — screen-reader announcements (real live region)', () =>
     document.body.appendChild(ul)
     containerRef(ul)
 
-    const instructions = ul.querySelector(
+    const instructions = queryOptional<HTMLElement>(ul, 
       '[data-pyreon-sortable-instructions]',
-    ) as HTMLElement | null
+    )
     expect(instructions).not.toBeNull()
     // VALUE assertions — text + linkage, not mere existence.
     expect(instructions!.textContent).toBe('Press Alt plus arrow keys to reorder')

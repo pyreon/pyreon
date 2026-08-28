@@ -424,7 +424,7 @@ export function schema<T>(parse: (raw: string) => T): EnvValidator<T> {
         return parse(raw)
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
-        throw new Error(`[Pyreon] ${key}: ${msg}`)
+        throw new Error(`[Pyreon] ${key}: ${msg}`, { cause: e })
       }
     },
   }

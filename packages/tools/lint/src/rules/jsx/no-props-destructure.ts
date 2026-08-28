@@ -1,6 +1,5 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan, isDestructuring } from '../../utils/ast'
-import { isPathExempt } from '../../utils/exempt-paths'
 
 function containsJSXReturn(node: any): boolean {
   if (!node) return false
@@ -77,7 +76,6 @@ export const noPropsDestructure: Rule = {
     schema: { exemptPaths: 'string[]' },
   },
   create(context) {
-    if (isPathExempt(context)) return {}
 
     let functionDepth = 0
     // oxc visitor doesn't pass `parent` to callbacks — previous

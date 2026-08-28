@@ -4,6 +4,7 @@
  * edge paths + devtools overlay no-op arms.
  * NO v8-ignore annotations.
  */
+import { queryOptional } from '@pyreon/test-utils'
 import type { ComponentFn } from '@pyreon/core'
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
@@ -234,7 +235,7 @@ describe('KeepAlive — basic lifecycle', () => {
 
     active.set(false)
     // After deactivate, child element is preserved but hidden
-    const child = root.querySelector('.ka-cache') as HTMLElement | null
+    const child = queryOptional<HTMLElement>(root, '.ka-cache')
     expect(child).not.toBeNull()
 
     active.set(true)

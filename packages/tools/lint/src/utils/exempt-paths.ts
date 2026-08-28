@@ -25,15 +25,25 @@
 
 import type { RuleContext } from '../types'
 
-export function isPathExempt(ctx: RuleContext): boolean {
-  const options = ctx.getOptions()
-  const raw = options.exemptPaths
+/**
+ * The matcher itself, over already-resolved options.
+ *
+ * Separate from {@link isPathExempt} because the runner applies exemption for
+ * EVERY rule, centrally, at a point where no `RuleContext` exists yet — and a
+ * second copy of this loop there would be a drift risk between "what the
+ * runner skips" and "what a rule thinks is exempt". One implementation, two
+ * entry points.
+ */
+export function matchesExemptPath(raw: unknown, filePath: string): boolean {
   if (!Array.isArray(raw) || raw.length === 0) return false
-  const filePath = ctx.getFilePath()
   for (const entry of raw) {
     if (typeof entry === 'string' && entry.length > 0 && filePath.includes(entry)) {
       return true
     }
   }
   return false
+}
+
+export function isPathExempt(ctx: RuleContext): boolean {
+  return matchesExemptPath(ctx.getOptions().exemptPaths, ctx.getFilePath())
 }

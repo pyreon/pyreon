@@ -2,6 +2,7 @@ import { computed, signal } from "@pyreon/reactivity"
 import { onMount } from "@pyreon/core"
 import { useHead } from "@pyreon/head"
 import { type Invoice, invoiceTotal, listInvoices, listUsers, type User } from "../../lib/db"
+import { formatMoney } from '../../lib/format'
 
 export const meta = { title: "Overview" }
 
@@ -48,12 +49,12 @@ export default function Dashboard() {
         </div>
         <div class="stat-card">
           <div class="label">Revenue</div>
-          <div class="value">{() => `$${revenue().toLocaleString()}`}</div>
+          <div class="value">{() => `$${formatMoney(revenue())}`}</div>
           <div class="delta">YTD</div>
         </div>
         <div class="stat-card">
           <div class="label">Outstanding</div>
-          <div class="value">{() => `$${outstanding().toLocaleString()}`}</div>
+          <div class="value">{() => `$${formatMoney(outstanding())}`}</div>
           <div class="delta" style="color: var(--c-warning);">
             {() => invoices().filter((i) => i.status === "pending").length} pending
           </div>
@@ -78,7 +79,7 @@ export default function Dashboard() {
                 <tr>
                   <td>{inv.number}</td>
                   <td>{inv.customer.name}</td>
-                  <td>${invoiceTotal(inv).toLocaleString()}</td>
+                  <td>${formatMoney(invoiceTotal(inv))}</td>
                   <td>
                     <span class={`pill ${inv.status}`}>{inv.status}</span>
                   </td>

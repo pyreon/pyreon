@@ -67,7 +67,11 @@ import {
   resolveRouteTarget,
 } from './route-ir-helpers'
 import { unknownTransitionPresetWarning } from './transition-presets'
-import { unloweredPropWarning } from './unlowered-props'
+import {
+  stretchAlignWarning,
+  structuralPropDynamicWarning,
+  unloweredPropWarning,
+} from './unlowered-props'
 import type {
   AttrIR,
   ChildIR,
@@ -1992,7 +1996,7 @@ function emitKotlinComponent(c: ComponentIR): string {
       if (d.kind !== 'hotkey') return false
       if (kotlinKeyConstant(d.combo.key) !== null) return true
       _emitWarnings.push(
-        `useHotkey: '${d.combo.key}' has no Compose Key constant — the hotkey is DROPPED on Android.`,
+        `useHotkey: '${d.combo.key}' has no Compose Key constant — the hotkey is DROPPED on Android. Use a single printable character or one of the named keys that map on both targets (escape / enter / delete / tab / space / arrow{up,down,left,right} / home / end / pageup / pagedown), or handle this shortcut inside a <NativeIOS> / <NativeAndroid> branch.`,
       )
       return false
     })
@@ -5478,11 +5482,16 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   const textColor = kotlinStylingValue(e, 'color', (v) => resolveColor(String(v), 'kotlin'))
   const colorArg =
     textColor !== undefined && !typoArgs.includes('color =') ? `, color = ${textColor}` : ''
-  const sizeKey = readStaticAttrKotlin(e, 'size')
-  const sizePt = typeof sizeKey === 'string' ? TEXT_SIZE_PT[sizeKey] : undefined
+  // Through the styling machinery, not the static-only reader — see the Swift
+  // twin. A two-literal ternary emits `(if (c) 14 else 20)`, which is valid
+  // where either value would sit; the static form is byte-identical.
+  const sizePt = kotlinStylingValue(e, 'size', (v) =>
+    String(TEXT_SIZE_PT[String(v)] ?? TEXT_SIZE_PT.md),
+  )
   const sizeArg = sizePt !== undefined && !typoArgs.includes('fontSize') ? `, fontSize = ${sizePt}.sp` : ''
-  const weightKey = readStaticAttrKotlin(e, 'weight')
-  const weightVal = typeof weightKey === 'string' ? TEXT_WEIGHT_KOTLIN[weightKey] : undefined
+  const weightVal = kotlinStylingValue(e, 'weight', (v) =>
+    TEXT_WEIGHT_KOTLIN[String(v)] ?? 'FontWeight.Normal',
+  )
   const weightArg =
     weightVal !== undefined && !typoArgs.includes('fontWeight') ? `, fontWeight = ${weightVal}` : ''
   if (e.children.length === 0) return `Text(text = ""${typoArgs}${colorArg}${sizeArg}${weightArg}${fontArg}${truncArgs}${modArg})`
@@ -6191,6 +6200,12 @@ function emitKotlinTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, inden
     leaveDur !== undefined ||
     enterEase !== undefined ||
     leaveEase !== undefined
+  // The generic modifier tail. `AnimatedVisibility` takes a `modifier`, so
+  // there is somewhere for it to go; this emitter simply never passed one, and
+  // dropped `data-testid` plus both a11y props. Emitted only when non-empty,
+  // so the byte-identical default shape below is preserved.
+  const tMod = emitKotlinLayoutModifier(e)
+  const tModArg = tMod === '' ? '' : `, modifier = ${tMod}`
   const pad = ' '.repeat(indent + 2)
   const body = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
   const nameRaw = readStaticAttrKotlin(e, 'name')
@@ -6204,12 +6219,12 @@ function emitKotlinTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, inden
     // No animation config AND no name → the byte-identical default shape that
     // has shipped since M2.7. A name opts into an explicit enter/exit pair.
     if (transitionName === undefined) {
-      return `AnimatedVisibility(visible = ${cond}) {\n${body}\n${' '.repeat(indent)}}`
+      return `AnimatedVisibility(visible = ${cond}${tModArg}) {\n${body}\n${' '.repeat(indent)}}`
     }
     const dflt = `tween(durationMillis = 300, easing = ${kotlinEasingFor(undefined)})`
     const t = kotlinTransitionForName(transitionName, dflt)
     return (
-      `AnimatedVisibility(visible = ${cond}, enter = ${t.enter}, exit = ${t.exit}) {\n` +
+      `AnimatedVisibility(visible = ${cond}, enter = ${t.enter}, exit = ${t.exit}${tModArg}) {\n` +
       `${body}\n${' '.repeat(indent)}}`
     )
   }
@@ -6373,6 +6388,32 @@ function readStaticAttrKotlin(
 }
 
 /**
+ * The cross-platform a11y vocabulary as Compose modifiers, extracted so a
+ * SPECIAL-CASE emitter can apply it too.
+ *
+ * `<Link>` and `<Modal>` both return before the generic modifier tail, so an
+ * `accessibilityLabel` on either was dropped on Android — and on Modal, so was
+ * `accessibilityHidden` and the test tag, leaving the dialog unselectable by
+ * `onNodeWithTag` as well. Split in two because the two halves sit at opposite
+ * ends of the chain: the label first, `clearAndSetSemantics` LAST, so a
+ * contradictory label+hidden pair resolves to hidden, matching web and iOS.
+ */
+function kotlinAccessibilityLabelModifier(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+): string[] {
+  const label = readStringAttrExprKotlin(e, 'accessibilityLabel', 0)
+  return label === undefined ? [] : [`.semantics { contentDescription = ${label} }`]
+}
+
+function kotlinAccessibilityHiddenModifier(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+): string[] {
+  return readStaticAttrKotlin(e, 'accessibilityHidden') === true
+    ? ['.clearAndSetSemantics { }']
+    : []
+}
+
+/**
  * Build the Compose `Modifier` chain for the canonical layout-prop
  * subset. Returns a string ready to pass as the `modifier =` constructor
  * arg, OR empty string when no relevant props are present.
@@ -6385,6 +6426,29 @@ function emitKotlinLayoutModifier(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
 ): string {
   const parts: string[] = []
+  // `margin` — the OUTERMOST inset, so it goes FIRST.
+  //
+  // Compose's `Modifier` chain applies outside-IN: the leading entries wrap
+  // the later ones. So an initial `.padding()` insets the whole element,
+  // before any background is drawn — which is margin. The Swift mirror
+  // APPENDS its margin for the same reason in reverse (SwiftUI wraps
+  // outward), an asymmetry worth stating in both files.
+  //
+  // Never implemented until now, though the Swift twin's docblock claimed it
+  // was in scope. `margin` is on the shared `BaseLayoutProps`, so this was
+  // silently dropped on Stack, Inline, Layer and Scroll, on both targets.
+  const margin = kotlinStylingValue(e, 'margin', resolveSpace)
+  if (margin !== undefined) {
+    parts.push(`.padding(${margin}.dp)`)
+  }
+  const marginX = kotlinStylingValue(e, 'marginX', resolveSpace)
+  if (marginX !== undefined) {
+    parts.push(`.padding(horizontal = ${marginX}.dp)`)
+  }
+  const marginY = kotlinStylingValue(e, 'marginY', resolveSpace)
+  if (marginY !== undefined) {
+    parts.push(`.padding(vertical = ${marginY}.dp)`)
+  }
   const padding = kotlinStylingValue(e, 'padding', resolveSpace)
   if (padding !== undefined) {
     parts.push(`.padding(${padding}.dp)`)
@@ -6447,10 +6511,7 @@ function emitKotlinLayoutModifier(
   //
   // `accessibilityLabel` → `.semantics { contentDescription = … }` (TalkBack
   // content description — icon-only buttons, images).
-  const a11yLabel = readStringAttrExprKotlin(e, 'accessibilityLabel', 0)
-  if (a11yLabel !== undefined) {
-    parts.push(`.semantics { contentDescription = ${a11yLabel} }`)
-  }
+  parts.push(...kotlinAccessibilityLabelModifier(e))
   // `accessibilityRole` → Compose semantics. button/image map to the `Role`
   // enum; header to `heading()` (Compose has no `Role.Header`). Constrained to
   // the roles that map 1:1 across targets. Emitted BEFORE clearAndSetSemantics
@@ -6475,9 +6536,7 @@ function emitKotlinLayoutModifier(
   // (`@ExperimentalComposeUiApi` in 1.7, would need a file `@OptIn`) and
   // `hideFromAccessibility()` (only lands in 1.8). Emitted LAST so a
   // contradictory label+hidden combo resolves to hidden (parity with web/iOS).
-  if (readStaticAttrKotlin(e, 'accessibilityHidden') === true) {
-    parts.push('.clearAndSetSemantics { }')
-  }
+  parts.push(...kotlinAccessibilityHiddenModifier(e))
   // `@pyreon/dnd` — `ref={s.containerRef}` / `ref={s.itemRef(key)}` become the
   // sortable Modifier extensions. Emitted LAST for the same reason as Swift:
   // the long-press drag wraps the element's own padding/background.
@@ -6562,6 +6621,11 @@ function emitKotlinStack(
   if (align !== undefined) {
     const alignSlot = isRow ? 'verticalAlignment' : 'horizontalAlignment'
     initArgs.push(`${alignSlot} = ${align}`)
+  }
+  {
+    // Silently wrong, not merely inert — see stretchAlignWarning.
+    const w = stretchAlignWarning(isRow ? 'Inline' : 'Stack', readStaticAttrKotlin(e, 'align'))
+    if (w !== undefined) _emitWarnings.push(w)
   }
   // Modifier chain
   const modifier = emitKotlinLayoutModifier(e)
@@ -6914,6 +6978,10 @@ function emitKotlinAudio(
   if (statusAttr !== undefined) {
     args.push(`onStatusChange = ${emitKotlinMessageHandler(statusAttr.handler)}`)
   }
+  // Carries the modifier, exactly as its sibling <Video> does — see the Swift
+  // twin for why this was missing.
+  const audioMod = emitKotlinLayoutModifier(e)
+  if (audioMod !== '') args.push(`modifier = ${audioMod}`)
   return `PyreonAudioPlayer(${args.join(', ')})`
 }
 
@@ -6927,6 +6995,10 @@ function emitKotlinVideo(
   if (readStaticAttrKotlin(e, 'autoPlay') === true) args.push('autoPlay = true')
   if (readStaticAttrKotlin(e, 'loop') === true) args.push('loop = true')
   if (readStaticAttrKotlin(e, 'muted') === true) args.push('muted = true')
+  // Emitted when explicitly FALSE — see the Swift twin. `controls` defaults to
+  // true, unlike every other boolean here, and had no runtime parameter to
+  // land on until now (`useController` was hardcoded).
+  if (readStaticAttrKotlin(e, 'controls') === false) args.push('controls = false')
   const statusAttr = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'event' }> =>
       a.kind === 'event' && a.name === 'statuschange',
@@ -6963,6 +7035,15 @@ function emitKotlinImage(
   }
   const alt = readStaticAttrKotlin(e, 'alt')
   const fit = readStaticAttrKotlin(e, 'fit')
+  {
+    const w = structuralPropDynamicWarning(
+      'Image',
+      'fit',
+      typeof fit === 'string',
+      e.attrs.some((a) => a.kind === 'attr' && a.name === 'fit'),
+    )
+    if (w !== undefined) _emitWarnings.push(w)
+  }
   // Layout modifier FIRST in the chain so data-testid threads (the
   // Text/Heading lesson — its absence is device-invisible until a tag
   // query fails), then explicit sizes.
@@ -7011,9 +7092,20 @@ function emitKotlinImage(
     `model = ${model}`,
     `contentDescription = ${JSON.stringify(typeof alt === 'string' ? alt : '')}`,
   ]
-  if (typeof fit === 'string' && KOTLIN_CONTENT_SCALE[fit] !== undefined) {
-    args.push(`contentScale = ${KOTLIN_CONTENT_SCALE[fit]}`)
-  }
+  // An ABSENT `fit` is `cover`, not Compose's default.
+  //
+  // `ImageProps` documents "Default `cover`", the web arm reads
+  // `props.fit ?? 'cover'`, and the bundled Kotlin branch already defaults to
+  // Crop. Only this branch left it off — so `AsyncImage` fell back to
+  // `ContentScale.Fit` and an image that FILLS its box on web and iOS
+  // LETTERBOXED on Android. Visible, silent, and from one source.
+  //
+  // The Swift twin had the mirror-image version of this bug, fixed earlier in
+  // the same pass; leaving the sibling would be the same one-call-site fix that
+  // let it survive here.
+  const scale =
+    typeof fit === 'string' ? KOTLIN_CONTENT_SCALE[fit] : KOTLIN_CONTENT_SCALE['cover']
+  if (scale !== undefined) args.push(`contentScale = ${scale}`)
   if (modifier !== '') args.push(`modifier = ${modifier}`)
   return `AsyncImage(${args.join(', ')})`
 }
@@ -7196,15 +7288,34 @@ function emitKotlinModal(
   )
   const onDismiss = onClose ? emitKotlinAction(onClose.handler, indent + 2) : '{}'
   const dialogPad = ' '.repeat(indent + 2)
+  // Compose's `Dialog` takes NO modifier, so the test tag and the a11y props
+  // have nowhere to go on the call itself — which is why this emitter dropped
+  // all three, leaving a `<Modal>` unselectable by `onNodeWithTag` and its
+  // `accessibilityLabel` unread by TalkBack. Both are honoured on iOS, where
+  // the sheet host reaches the generic tail.
+  //
+  // The fix is the same shape Swift uses for the same reason: carry them on a
+  // wrapper INSIDE the dialog's content. Emitted only when at least one is
+  // present, so a plain `<Modal>` is byte-identical to before.
+  const testid = readStringAttrExprKotlin(e, 'data-testid', 0)
+  const modParts =
+    kotlinAccessibilityLabelModifier(e).join('') +
+    (testid === undefined ? '' : `.testTag(${testid})`) +
+    kotlinAccessibilityHiddenModifier(e).join('')
+  const open = modParts === '' ? '' : `Box(modifier = Modifier${modParts}) {`
   if (e.children.length === 0) {
-    return `if (${cond}) {\n${dialogPad}Dialog(onDismissRequest = ${onDismiss}) {}\n${' '.repeat(indent)}}`
+    const body = modParts === '' ? '{}' : `{\n${' '.repeat(indent + 4)}${open} }\n${dialogPad}}`
+    return `if (${cond}) {\n${dialogPad}Dialog(onDismissRequest = ${onDismiss}) ${body}\n${' '.repeat(indent)}}`
   }
-  const contentPad = ' '.repeat(indent + 4)
-  const contentLines = e.children.map((c) => contentPad + emitKotlinChild(c, indent + 4)).join('\n')
+  const extra = modParts === '' ? 0 : 2
+  const contentPad = ' '.repeat(indent + 4 + extra)
+  const contentLines = e.children.map((c) => contentPad + emitKotlinChild(c, indent + 4 + extra)).join('\n')
   return (
     `if (${cond}) {\n` +
     `${dialogPad}Dialog(onDismissRequest = ${onDismiss}) {\n` +
+    (modParts === '' ? '' : `${' '.repeat(indent + 4)}${open}\n`) +
     `${contentLines}\n` +
+    (modParts === '' ? '' : `${' '.repeat(indent + 4)}}\n`) +
     `${dialogPad}}\n` +
     `${' '.repeat(indent)}}`
   )
@@ -7353,6 +7464,15 @@ function kotlinFieldVisualTransformation(
     )
   }
   const kind = readStaticAttrKotlin(e, 'kind')
+  {
+    const w = structuralPropDynamicWarning(
+      'Field',
+      'kind',
+      typeof kind === 'string',
+      e.attrs.some((a) => a.kind === 'attr' && a.name === 'kind'),
+    )
+    if (w !== undefined) _emitWarnings.push(w)
+  }
   return kind === 'password' ? 'visualTransformation = PasswordVisualTransformation()' : undefined
 }
 
@@ -7630,10 +7750,15 @@ function emitKotlinLink(
   // link could not be selected by `onNodeWithTag` — the Compose half of the
   // same "Link not individually asserted" gap.
   const testid = readStringAttrExprKotlin(e, 'data-testid', 0)
+  // The a11y props come from the SHARED helpers. Adding the test tag alone —
+  // which is what this did — left `accessibilityLabel` on a link dropped for
+  // the life of this emitter, on the one element where an icon or the word
+  // "here" is a normal thing to write.
   const mod =
-    testid === undefined
-      ? 'Modifier.clickable { navigate() }'
-      : `Modifier.clickable { navigate() }.testTag(${testid})`
+    'Modifier.clickable { navigate() }' +
+    kotlinAccessibilityLabelModifier(e).join('') +
+    (testid === undefined ? '' : `.testTag(${testid})`) +
+    kotlinAccessibilityHiddenModifier(e).join('')
   if (e.children.length === 0) {
     return `PyreonLink(${toExpr}) { navigate ->\n${pad}Box(modifier = ${mod}) { }\n${' '.repeat(indent)}}`
   }

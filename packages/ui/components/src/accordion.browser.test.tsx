@@ -1,3 +1,4 @@
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { PyreonUI } from '@pyreon/ui-core'
 import { theme } from '@pyreon/ui-theme'
@@ -40,9 +41,9 @@ describe('Accordion delegates to AccordionBase', () => {
   it('renders a real disclosure: aria-expanded + linked region', () => {
     const { container, unmount } = render()
     cleanup = unmount
-    const trigger = container.querySelector('button') as HTMLElement
+    const trigger = query<HTMLElement>(container, 'button')
     expect(trigger.getAttribute('aria-expanded')).toBe('true')
-    const region = container.querySelector('[role="region"]') as HTMLElement
+    const region = query<HTMLElement>(container, '[role="region"]')
     expect(region).toBeTruthy()
     // aria-controls <-> id and aria-labelledby <-> trigger id must link up
     expect(trigger.getAttribute('aria-controls')).toBe(region.getAttribute('id'))
@@ -52,13 +53,13 @@ describe('Accordion delegates to AccordionBase', () => {
   it('the trigger is type=button (cannot submit a surrounding form)', () => {
     const { container, unmount } = render()
     cleanup = unmount
-    expect((container.querySelector('button') as HTMLButtonElement).type).toBe('button')
+    expect((query<HTMLButtonElement>(container, 'button')).type).toBe('button')
   })
 
   it('collapses on click — the primitive owns the state', () => {
     const { container, unmount } = render()
     cleanup = unmount
-    const trigger = container.querySelector('button') as HTMLElement
+    const trigger = query<HTMLElement>(container, 'button')
     trigger.click()
     expect(trigger.getAttribute('aria-expanded')).toBe('false')
     expect(container.querySelector('[role="region"]')).toBeNull()
@@ -67,7 +68,7 @@ describe('Accordion delegates to AccordionBase', () => {
   it('applies its rocketstyle class to each part ("delegates" != "works")', () => {
     const { container, unmount } = render()
     cleanup = unmount
-    const trigger = container.querySelector('[data-rocketstyle="AccordionTrigger"]') as HTMLElement
+    const trigger = query<HTMLElement>(container, '[data-rocketstyle="AccordionTrigger"]')
     expect(trigger).toBeTruthy()
     expect(trigger.className).toBeTruthy()
     expect(container.querySelector('[data-rocketstyle="Accordion"]')).toBeTruthy()

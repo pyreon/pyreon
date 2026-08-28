@@ -25,11 +25,11 @@
  *     caveat in sheet.ts:insertGlobal.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { accessInternal } from '@pyreon/test-utils'
+import { accessInternal, queryOptional } from '@pyreon/test-utils'
 import { splitTopLevelRules, StyleSheet, unwrapLayers } from '../sheet'
 
 function domRules(): string[] {
-  const el = document.querySelector('style[data-pyreon-styler]') as HTMLStyleElement | null
+  const el = queryOptional<HTMLStyleElement>(document, 'style[data-pyreon-styler]')
   return Array.from(el?.sheet?.cssRules ?? []).map((r) => (r as CSSRule).cssText)
 }
 

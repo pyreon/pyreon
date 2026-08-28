@@ -196,3 +196,54 @@ describe('<Press disabled> — a functional drop, not a cosmetic one', () => {
     expect(out).toContain('combinedClickable(enabled = false')
   })
 })
+
+/**
+ * `align="stretch"` EMITS, and emits the wrong thing.
+ *
+ * Distinct from `justify` / `wrap`, which emit nothing and already warn: the
+ * align maps send `stretch` to `.leading` / `Alignment.Start`, a documented
+ * approximation that lived only in a comment on the map. On the web arm
+ * `align-items: stretch` genuinely stretches children to fill the cross axis,
+ * so the same source fills in a browser and hugs its content on device.
+ *
+ * Found by sweeping every member of every union-typed prop against a BOGUS
+ * value: `stretch` was indistinguishable from an unrecognised token, which is
+ * exactly what an approximation looks like from outside. Most of that sweep's
+ * hits were DEFAULTS correctly emitting nothing — this was the one that wasn't.
+ */
+describe('<Stack align="stretch"> is approximated, and says so', () => {
+  const app = (attrs: string): string =>
+    `import { Stack, Inline, Text } from '${P}'
+export function C() { return <Stack><Stack ${attrs}><Text>x</Text></Stack></Stack> }`
+
+  it.each(['swift', 'kotlin'] as const)('%s warns by name', (target) => {
+    const w = transform(app('align="stretch"'), { target }).warnings.find((x) =>
+      x.includes('stretch'),
+    )
+    expect(w).toContain('align="stretch"')
+    expect(w).toContain('APPROXIMATED')
+  })
+
+  it.each(['swift', 'kotlin'] as const)('%s stays silent for the values that DO lower', (target) => {
+    for (const v of ['start', 'center', 'end']) {
+      const ws = transform(app(`align="${v}"`), { target }).warnings.filter((x) =>
+        x.includes('stretch'),
+      )
+      expect(ws, `align="${v}" on ${target}`).toEqual([])
+    }
+  })
+
+  it('warns on <Inline> too, naming the right tag', () => {
+    const src = `import { Stack, Inline, Text } from '${P}'
+export function C() { return <Stack><Inline align="stretch"><Text>x</Text></Inline></Stack> }`
+    expect(transform(src, { target: 'swift' }).warnings.join('\n')).toContain('<Inline align=')
+  })
+
+  it('does not change the EMIT — this is diagnostic only', () => {
+    // The approximation is still the best available mapping; the fix is that
+    // the author is told, not that the output moves.
+    const before = transform(app('align="start"'), { target: 'kotlin' }).code
+    const after = transform(app('align="stretch"'), { target: 'kotlin' }).code
+    expect(after).toBe(before)
+  })
+})

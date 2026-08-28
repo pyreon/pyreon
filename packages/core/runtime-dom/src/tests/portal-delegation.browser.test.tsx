@@ -15,6 +15,7 @@
  * (Written with `h()` rather than JSX literals — runtime-dom's browser test
  * config runs no JSX transform; see element-conditional-tpl.browser.test.tsx.)
  */
+import { query } from '@pyreon/test-utils'
 import { describe, expect, it } from 'vitest'
 import { h, Portal } from '@pyreon/core'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
@@ -35,7 +36,7 @@ describe('<Portal> — event delegation', () => {
     )
     await flush()
 
-    const btn = document.querySelector('[data-testid=portal-btn]') as HTMLButtonElement
+    const btn = query<HTMLButtonElement>(document, '[data-testid=portal-btn]')
     expect(btn).not.toBeNull()
     btn.click()
     expect(clicks).toBe(1)
@@ -59,7 +60,7 @@ describe('<Portal> — event delegation', () => {
 
     // body is now a delegation root ABOVE the app's mount container — the
     // invoked-set must dedupe so the app handler fires exactly once.
-    const btn = container.querySelector('[data-testid=app-btn]') as HTMLButtonElement
+    const btn = query<HTMLButtonElement>(container, '[data-testid=app-btn]')
     btn.click()
     expect(appClicks).toBe(1)
 

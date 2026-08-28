@@ -1,3 +1,4 @@
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { PyreonUI } from '@pyreon/ui-core'
 import { theme } from '@pyreon/ui-theme'
@@ -75,7 +76,7 @@ describe('Tree delegates to TreeBase (was an inert styled div)', () => {
   it('renders real tree semantics (role=tree + treeitem)', () => {
     const { container, unmount } = renderTree()
     cleanup = unmount
-    const tree = container.querySelector('[role="tree"]') as HTMLElement
+    const tree = query<HTMLElement>(container, '[role="tree"]')
     expect(tree).toBeTruthy()
     const items = container.querySelectorAll('[role="treeitem"]')
     // docs (expanded) + its child intro + src
@@ -96,7 +97,7 @@ describe('Tree delegates to TreeBase (was an inert styled div)', () => {
   it('applies its rocketstyle class to the tree container ("delegates" != "works")', () => {
     const { container, unmount } = renderTree()
     cleanup = unmount
-    const tree = container.querySelector('[role="tree"]') as HTMLElement
+    const tree = query<HTMLElement>(container, '[role="tree"]')
     expect(tree.getAttribute('data-rocketstyle')).toBe('Tree')
     expect(tree.className).toBeTruthy()
   })
@@ -104,7 +105,7 @@ describe('Tree delegates to TreeBase (was an inert styled div)', () => {
   it('selects a node on Enter (keyboard comes from the primitive)', () => {
     const { container, unmount } = renderTree()
     cleanup = unmount
-    const tree = container.querySelector('[role="tree"]') as HTMLElement
+    const tree = query<HTMLElement>(container, '[role="tree"]')
     // focus the first node, then select it
     tree.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
     tree.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))

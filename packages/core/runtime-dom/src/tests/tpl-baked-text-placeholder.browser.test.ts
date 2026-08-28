@@ -11,6 +11,7 @@
  * The shapes below are EXACTLY what the compiler emits post-PR-A (see
  * compiler jsx.test.ts "sole dynamic text child — BAKED placeholder").
  */
+import { query } from '@pyreon/test-utils'
 import { signal } from '@pyreon/reactivity'
 import { afterEach, describe, expect, it } from 'vitest'
 import { _bindText, _tpl } from '../template'
@@ -72,7 +73,7 @@ describe('baked text placeholder (compiler PR-A emit shape)', () => {
     // tr must live in a table to behave; use a real tbody host.
     const host = container()
     host.innerHTML = '<table><tbody></tbody></table>'
-    const tbody = host.querySelector('tbody') as HTMLElement
+    const tbody = query<HTMLElement>(host, 'tbody')
     tbody.appendChild(item.el as Node)
     expect(tbody.textContent).toBe('id-1initial')
     label.set('updated')

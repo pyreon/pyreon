@@ -12,6 +12,7 @@
  * `h()` directly. Authoring literal JSX in this directory fails at import
  * analysis, not at assertion time.
  */
+import { query } from '@pyreon/test-utils'
 import { Async, h, use, type AsyncLike, type Directive } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { describe, expect, test, vi } from 'vitest'
@@ -137,7 +138,7 @@ describe('use() — mounted', () => {
       host,
     )
 
-    const el = host.querySelector('.panel') as HTMLElement
+    const el = query<HTMLElement>(host, '.panel')
     expect(attached).toEqual([el]) // the REAL element, not a placeholder
 
     el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))

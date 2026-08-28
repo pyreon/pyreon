@@ -1,6 +1,5 @@
 import type { Fix, Rule, VisitorCallbacks } from '../../types'
 import { getSpan } from '../../utils/ast'
-import { isPathExempt } from '../../utils/exempt-paths'
 import { isTestFile } from '../../utils/file-roles'
 import { isProjectDependency } from '../../utils/project-deps'
 
@@ -50,7 +49,6 @@ export const preferIsServer: Rule = {
     const filePath = context.getFilePath()
 
     if (isTestFile(filePath)) return {}
-    if (isPathExempt(context)) return {}
 
     // Self-gate: only nudge toward the Pyreon primitive in projects that
     // actually depend on it (zero noise in non-Pyreon code).

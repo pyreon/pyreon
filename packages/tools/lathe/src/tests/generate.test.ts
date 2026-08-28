@@ -334,3 +334,25 @@ function file(r: ReturnType<typeof generate>, path: string): string {
   if (!f) throw new Error(`no generated file ${path}; got ${r.files.map((x) => x.path).join(', ')}`)
   return f.contents
 }
+
+describe('SourceFile default imports', () => {
+  it('merges a default and named bindings into ONE statement', async () => {
+    const { SourceFile } = await import('../emit/writer')
+    const f = new SourceFile('x.ts')
+    f.importDefault('axios', 'axios')
+    f.import('axios', 'isAxiosError')
+    f.line('export const x = 1')
+    // Two statements for one specifier is legal and reads as an oversight.
+    expect(f.build('').contents).toContain("import axios, { isAxiosError } from 'axios'")
+  })
+
+  it('REFUSES two different local names for one default binding', async () => {
+    const { SourceFile } = await import('../emit/writer')
+    const f = new SourceFile('x.ts')
+    f.importDefault('axios', 'axios')
+    // Silently keeping the first would emit a file referencing a name that was
+    // never bound — a generator bug that surfaces as the consumer's compile
+    // error, far from here.
+    expect(() => f.importDefault('axios', 'http')).toThrow(/already has a default import/)
+  })
+})

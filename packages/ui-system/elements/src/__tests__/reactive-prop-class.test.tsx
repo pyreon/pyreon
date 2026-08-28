@@ -15,6 +15,7 @@
  * Per-instance bisect notes live in the PR description; each describe block
  * names the source site it locks.
  */
+import { query } from '@pyreon/test-utils'
 import type { VNode, VNodeChild } from '@pyreon/core'
 import { _rp, h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
@@ -97,7 +98,7 @@ describe('List — reactive props survive the pick/omit forwarding (was JSX spre
       }) as VNode,
     )
     await flush()
-    const el = root.querySelector('[data-testid="list-root"]') as HTMLElement
+    const el = query<HTMLElement>(root, '[data-testid="list-root"]')
     expect(el).not.toBeNull()
     expect(el.getAttribute('title')).toBe('one')
 
@@ -237,14 +238,14 @@ describe('Overlay — trigger receives LIVE active/aria-expanded without remount
       }) as VNode,
     )
     await flush()
-    const btn = root.querySelector('[data-testid="ov-trigger"]') as HTMLButtonElement
+    const btn = query<HTMLButtonElement>(root, '[data-testid="ov-trigger"]')
     expect(btn).not.toBeNull()
     expect(btn.getAttribute('aria-expanded')).toBe('false')
     expect(btn.textContent).toBe('closed')
 
     show()
     await flush()
-    const btnAfter = root.querySelector('[data-testid="ov-trigger"]') as HTMLButtonElement
+    const btnAfter = query<HTMLButtonElement>(root, '[data-testid="ov-trigger"]')
     // Identity preserved — the trigger was NOT remounted (load-bearing for
     // the focus-restore contract in useOverlay.hideContent).
     expect(btnAfter).toBe(btn)
@@ -342,7 +343,7 @@ describe('Text — reactive css re-resolves the injected class (no remount)', ()
       }) as VNode,
     )
     await flush()
-    const el = root.querySelector('[data-testid="txt-css"]') as HTMLElement
+    const el = query<HTMLElement>(root, '[data-testid="txt-css"]')
     expect(el).not.toBeNull()
     const before = el.className
     expect(before).not.toBe('')
@@ -367,7 +368,7 @@ describe('Wrapper / Portal — getter-shaped children stay live', () => {
       }) as VNode,
     )
     await flush()
-    const el = root.querySelector('[data-testid="wrap-kids"]') as HTMLElement
+    const el = query<HTMLElement>(root, '[data-testid="wrap-kids"]')
     expect(el.textContent).toBe('one')
 
     txt.set('two')
@@ -387,7 +388,7 @@ describe('Wrapper / Portal — getter-shaped children stay live', () => {
       }) as VNode,
     )
     await flush()
-    const el = root.querySelector('[data-testid="wrap-accessor"]') as HTMLElement
+    const el = query<HTMLElement>(root, '[data-testid="wrap-accessor"]')
     expect(el.textContent).toBe('a')
     txt.set('b')
     await flush()
@@ -402,7 +403,7 @@ describe('Wrapper / Portal — getter-shaped children stay live', () => {
       }) as VNode,
     )
     await flush()
-    const el = document.querySelector('[data-testid="portal-kid"]') as HTMLElement
+    const el = query<HTMLElement>(document, '[data-testid="portal-kid"]')
     expect(el).not.toBeNull()
     expect(el.textContent).toBe('p-one')
 
@@ -425,7 +426,7 @@ describe('Element — reactive layout props (class swap, same element)', () => {
       }) as VNode,
     )
     await flush()
-    const el = root.querySelector('[data-testid="el-align"]') as HTMLElement
+    const el = query<HTMLElement>(root, '[data-testid="el-align"]')
     expect(el).not.toBeNull()
     const before = el.className
     expect(before).not.toBe('')
@@ -446,7 +447,7 @@ describe('Element — reactive layout props (class swap, same element)', () => {
       }) as VNode,
     )
     await flush()
-    const el = root.querySelector('[data-testid="el-void"]') as HTMLElement
+    const el = query<HTMLElement>(root, '[data-testid="el-void"]')
     const before = el.className
 
     block.set(true)
@@ -466,7 +467,7 @@ describe('Element — reactive layout props (class swap, same element)', () => {
       }) as VNode,
     )
     await flush()
-    const el = root.querySelector('[data-testid="el-fix"]') as HTMLElement
+    const el = query<HTMLElement>(root, '[data-testid="el-fix"]')
     const before = el.className
 
     block.set(true)
@@ -486,7 +487,7 @@ describe('Element — reactive layout props (class swap, same element)', () => {
       }) as VNode,
     )
     await flush()
-    const content = root.querySelector('[data-pyr-element="content"]') as HTMLElement
+    const content = query<HTMLElement>(root, '[data-pyr-element="content"]')
     expect(content).not.toBeNull()
     const before = content.className
 
@@ -511,7 +512,7 @@ describe('Element — reactive layout props (class swap, same element)', () => {
 
     show.set(true)
     await flush()
-    const before = root.querySelector('[data-pyr-element="before"]') as HTMLElement
+    const before = query<HTMLElement>(root, '[data-pyr-element="before"]')
     expect(before, 'beforeContent slot must appear when the signal flips true').not.toBeNull()
     expect(before.textContent).toBe('B')
     expect(root.textContent).toContain('body')
@@ -531,7 +532,7 @@ describe('Element — reactive layout props (class swap, same element)', () => {
       }) as VNode,
     )
     await flush()
-    const el = root.querySelector('[data-testid="el-static"]') as HTMLElement
+    const el = query<HTMLElement>(root, '[data-testid="el-static"]')
     expect(el).not.toBeNull()
     expect(el.className).not.toBe('')
   })

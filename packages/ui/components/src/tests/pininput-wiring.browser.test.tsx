@@ -1,3 +1,4 @@
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { PyreonUI } from '@pyreon/ui-core'
 import { theme } from '@pyreon/ui-theme'
@@ -42,7 +43,7 @@ const mountPin = (props: Record<string, unknown> = {}) =>
 describe('PinInput — wired to PinInputBase', () => {
   it('lands its rocketstyle class on the delegated group element', () => {
     const { container } = mountPin()
-    const group = container.querySelector('[role="group"]') as HTMLElement
+    const group = query<HTMLElement>(container, '[role="group"]')
     expect(group).toBeTruthy()
     // The exact #2372 failure: the chain computes a class that reaches no
     // element. `rootProps()` mergeProps-forwards `rest`, so it must land here.

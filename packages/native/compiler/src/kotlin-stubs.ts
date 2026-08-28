@@ -729,7 +729,17 @@ fun Icon(
 // coil.compose.AsyncImage(model, contentDescription, modifier, …).
 @Composable
 @Suppress("UNUSED_PARAMETER")
-fun AsyncImage(model: Any?, contentDescription: String?, modifier: Modifier = Modifier) {}
+// contentScale is what <Image fit> lowers to. It was absent, so every fit value
+// failed this gate while the real device build was fine (the CLI adds the
+// androidx.compose.ui.layout.ContentScale import conditionally) — a stub
+// narrower than the runtime, leaving a shipped prop with no compile coverage
+// rather than falsely reddening a correct one.
+fun AsyncImage(
+  model: Any?,
+  contentDescription: String?,
+  modifier: Modifier = Modifier,
+  contentScale: ContentScaleStub = ContentScale.Fit,
+) {}
 
 // Dialog — <Modal> emit's overlay composable (conditionally composed
 // behind an if (open) guard). Real Compose: androidx.compose.ui.window.Dialog.
@@ -1111,6 +1121,10 @@ operator fun ExitTransition.plus(other: ExitTransition): ExitTransition = this
 @Composable
 fun AnimatedVisibility(
   visible: Boolean,
+  // \`modifier\` mirrors the real composable and was absent, so
+  // <Transition> could not carry a test tag or an a11y prop past this gate
+  // even though Compose has always accepted one.
+  modifier: Modifier = Modifier,
   enter: EnterTransition? = null,
   exit: ExitTransition? = null,
   content: @Composable () -> Unit,
@@ -1575,6 +1589,7 @@ fun PyreonAudioPlayer(
   volume: Double = 1.0,
   engine: AudioEngine,
   onStatusChange: ((String) -> Unit)? = null,
+  modifier: Modifier = Modifier,
 ) {}
 
 // PyreonAudioRecorder + the app-supplied engine the emit names.
@@ -1905,6 +1920,7 @@ fun PyreonVideoPlayer(
   autoPlay: Boolean = false,
   loop: Boolean = false,
   muted: Boolean = false,
+  controls: Boolean = true,
   onStatusChange: ((String) -> Unit)? = null,
   modifier: Modifier = Modifier,
 ) {}

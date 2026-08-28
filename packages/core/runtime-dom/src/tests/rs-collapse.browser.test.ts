@@ -1,6 +1,6 @@
+import { query } from '@pyreon/test-utils'
 import { signal } from '@pyreon/reactivity'
 import { flush } from '@pyreon/test-utils/browser'
-import { query } from '@pyreon/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
 import { _rsCollapse, hydrateRoot, mount } from '../index'
 
@@ -220,7 +220,7 @@ describe('_rsCollapse (real browser)', () => {
     const app = document.createElement('div')
     app.innerHTML = ssrHtml
     document.body.appendChild(app)
-    const ssrNodeBefore = app.querySelector('button') as HTMLElement
+    const ssrNodeBefore = query<HTMLElement>(app, 'button')
     expect(ssrNodeBefore.querySelector('span.ico')?.textContent).toBe('Save')
 
     const isDark = signal(false)
@@ -241,7 +241,7 @@ describe('_rsCollapse (real browser)', () => {
     }
     // No hydration-mismatch reported — the __isNative swap is intentional.
     expect(errors.filter((e) => /hydrat|mismatch/i.test(e))).toEqual([])
-    const btn = app.querySelector('button') as HTMLElement
+    const btn = query<HTMLElement>(app, 'button')
     // The swap happened: in-DOM node is the freshly-built collapsed clone.
     expect(btn).not.toBe(ssrNodeBefore)
     // The baked child subtree is present on the swapped-in node + class parity.

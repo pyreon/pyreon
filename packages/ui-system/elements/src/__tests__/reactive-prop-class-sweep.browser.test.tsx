@@ -13,6 +13,7 @@
  * Every spec uses the `_rp()` GETTER form — what the compiler emits for
  * `prop={signal()}` — NOT the accessor form, which was never broken.
  */
+import { query } from '@pyreon/test-utils'
 import { _rp, h } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
@@ -37,7 +38,7 @@ describe('Element — reactive layout props re-style the SAME element', () => {
       }),
     )
     await flush()
-    const el = container.querySelector('[data-testid="el-align"]') as HTMLElement
+    const el = query<HTMLElement>(container, '[data-testid="el-align"]')
     expect(el).not.toBeNull()
     expect(getComputedStyle(el).alignItems).toBe('flex-start')
 
@@ -80,7 +81,7 @@ describe('Portal — getter-shaped children render live into the wrapper', () =>
       }),
     )
     await flush()
-    const child = document.querySelector('[data-testid="portal-child"]') as HTMLElement
+    const child = query<HTMLElement>(document, '[data-testid="portal-child"]')
     expect(child, 'portal child should render into the wrapper').not.toBeNull()
     expect(child.textContent).toBe('p-1')
 
@@ -103,7 +104,7 @@ describe('Text — reactive css changes computed style on the SAME element', () 
       }),
     )
     await flush()
-    const el = container.querySelector('[data-testid="txt-css"]') as HTMLElement
+    const el = query<HTMLElement>(container, '[data-testid="txt-css"]')
     expect(getComputedStyle(el).color).toBe('rgb(10, 20, 30)')
 
     c.set('color: rgb(30, 20, 10);')
@@ -163,7 +164,7 @@ describe('Overlay — live trigger aria-expanded + intact focus restore', () => 
       }),
     )
     await flush()
-    const btn = container.querySelector('[data-testid="ov-trigger"]') as HTMLButtonElement
+    const btn = query<HTMLButtonElement>(container, '[data-testid="ov-trigger"]')
     expect(btn).not.toBeNull()
     expect(btn.getAttribute('aria-expanded')).toBe('false')
 
@@ -204,7 +205,7 @@ describe('Overlay — live trigger aria-expanded + intact focus restore', () => 
       }),
     )
     await flush()
-    const btn = container.querySelector('[data-testid="dis-trigger"]') as HTMLButtonElement
+    const btn = query<HTMLButtonElement>(container, '[data-testid="dis-trigger"]')
 
     btn.click()
     await flush()

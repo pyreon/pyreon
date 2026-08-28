@@ -44,8 +44,24 @@ const GROUP_BLURB: Record<RuleGroup, string> = {
   a11y: 'accessibility — standard markup plus Pyreon\u2019s own surfaces',
   pkg: 'per-library — each self-activates on a declared dependency',
   internal: 'encodes the Pyreon repo itself — never on in a shipped preset',
+  js: 'language-level shapes oxlint cannot express on its own',
+  backend: 'server-role files — handlers, loaders, adapters',
+  isomorphic: 'runs on BOTH sides — the hydration contract',
+  'web-perf': 'client-role files — main thread, teardown, network',
+  portable: 'must survive iOS + Android through PMTC',
 }
-const GROUP_ORDER: RuleGroup[] = ['pyreon', 'security', 'a11y', 'pkg', 'internal']
+const GROUP_ORDER: RuleGroup[] = [
+  'pyreon',
+  'isomorphic',
+  'backend',
+  'web-perf',
+  'portable',
+  'security',
+  'a11y',
+  'pkg',
+  'js',
+  'internal',
+]
 
 function printList() {
   const rules = listRules()

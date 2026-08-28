@@ -40,6 +40,10 @@ public fun PyreonVideoPlayer(
     autoPlay: Boolean = false,
     loop: Boolean = false,
     muted: Boolean = false,
+    // `<Video controls>` had no parameter to land on, so the prop was typed and
+    // documented on all three targets and honoured on none — the transport
+    // chrome was hardcoded on below. Defaults to true, which is what it was.
+    controls: Boolean = true,
     onStatusChange: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
@@ -85,7 +89,7 @@ public fun PyreonVideoPlayer(
         factory = { ctx ->
             PlayerView(ctx).apply {
                 this.player = player
-                useController = true
+                useController = controls
             }
         },
         modifier = modifier,

@@ -1,6 +1,5 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan } from '../../utils/ast'
-import { isPathExempt } from '../../utils/exempt-paths'
 import { extractImportInfo } from '../../utils/imports'
 import { isProjectDependency } from '../../utils/project-deps'
 
@@ -38,7 +37,6 @@ export const preferTypedSearchParams: Rule = {
     schema: { exemptPaths: 'string[]' },
   },
   create(context) {
-    if (isPathExempt(context)) return {}
 
     if (!isProjectDependency(context.getFilePath(), '@pyreon/router')) {
       return {}

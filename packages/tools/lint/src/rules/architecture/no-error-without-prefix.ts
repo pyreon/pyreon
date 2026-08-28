@@ -1,7 +1,7 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan } from '../../utils/ast'
-import { isPathExempt } from '../../utils/exempt-paths'
 import { getNearestPackageName } from '../../utils/project-deps'
+import { isTestFile } from '../../utils/file-roles'
 
 /**
  * A framework error is "identified" if it starts with `[Pyreon]` OR the
@@ -42,19 +42,9 @@ export const noErrorWithoutPrefix: Rule = {
     // rewrite an application error to `[Pyreon] …`.
     const pkgName = getNearestPackageName(filePath)
     if (!pkgName || !pkgName.startsWith('@pyreon/')) return {}
-
-    // Path-based exemptions (e.g. CLI-scaffolder packages whose throws are
-    // user-facing CLI usage/argument errors, not framework runtime errors).
-    if (isPathExempt(context)) return {}
-    // Skip test files
-    if (
-      filePath.includes('/tests/') ||
-      filePath.includes('/test/') ||
-      filePath.includes('.test.') ||
-      filePath.includes('.spec.')
-    ) {
-      return {}
-    }
+    // Shared classifier, not a fourth inline copy: this one silently omitted
+    // `/__tests__/`, which the shared helper covers.
+    if (isTestFile(filePath)) return {}
 
     const callbacks: VisitorCallbacks = {
       ThrowStatement(node: any) {

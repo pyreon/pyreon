@@ -14,7 +14,7 @@
 // without per-file `import` statements.
 
 import { describe, expect, it } from 'vitest'
-import { mountReactive } from '@pyreon/test-utils'
+import { mountReactive, query } from '@pyreon/test-utils'
 import { BUILT_IN_COMPONENTS } from '../_shared/built-ins'
 import {
   APICard,
@@ -201,9 +201,9 @@ describe('PR-K — <APICard>', () => {
     const { container, cleanup } = mountReactive(
       <APICard name="getCollection" />,
     )
-    const heading = container.querySelector('.pyreon-apicard__name')
-    expect(heading!.tagName).toBe('H3')
-    const anchor = heading!.querySelector('.pyreon-apicard__anchor') as HTMLAnchorElement
+    const heading = query(container, '.pyreon-apicard__name')
+    expect(heading.tagName).toBe('H3')
+    const anchor = query<HTMLAnchorElement>(heading, '.pyreon-apicard__anchor')
     expect(anchor.getAttribute('href')).toBe('#getcollection')
     cleanup()
   })

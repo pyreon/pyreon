@@ -12,6 +12,7 @@
  * candlestick, boxplot, parallel, themeRiver, pictorialBar, scatter, … all
  * render on device via one host.
  */
+import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { WebView } from '@pyreon/primitives'
@@ -63,7 +64,7 @@ async function renderOption(
   c.style.height = '260px'
   container.appendChild(c)
   await flush()
-  const iframe = c.querySelector('iframe') as HTMLIFrameElement
+  const iframe = query<HTMLIFrameElement>(c, 'iframe')
   const start = performance.now()
   for (;;) {
     const win = iframe.contentWindow as never as {
