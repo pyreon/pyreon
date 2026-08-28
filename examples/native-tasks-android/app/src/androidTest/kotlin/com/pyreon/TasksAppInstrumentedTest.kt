@@ -202,38 +202,35 @@ class TasksAppInstrumentedTest {
         // So list the tags that ARE on screen instead of inferring from the one
         // that is not. The set names the page directly — a diagnostic should
         // report what it saw, not conclude from what it did not.
-        val where =
-            try {
-                // BOTH trees. The merged tree is what every other query in this
-                // file uses, but Compose merges a tagged descendant into its
-                // parent in some shapes, so an empty MERGED list does not by
-                // itself mean the screen is blank — and reporting it as if it
-                // did is the same overclaim as the single-landmark probe this
-                // replaced. If merged is empty and unmerged is not, the query
-                // is wrong; if both are empty, the screen really is gone.
-                val merged = tagsIn(useUnmergedTree = false)
-                val unmerged = tagsIn(useUnmergedTree = true)
-                if (merged.isEmpty() && unmerged.isEmpty()) {
-                    // Nothing to name, so dump what the tree actually holds.
-                    val dump =
-                        try {
-                            composeRule.onRoot(useUnmergedTree = true).printToString(maxDepth = 4)
-                        } catch (t: Throwable) {
-                            "<no root: " + t.javaClass.simpleName + ">"
-                        }
-                    "NO tagged node in EITHER tree. Root dump: " + dump.take(900)
-                } else {
-                    "merged: [" + merged.joinToString(", ") + "] unmerged: [" +
-                        unmerged.joinToString(", ") + "]"
-                }
-            } catch (t: Throwable) {
-                "<could not read the tag set: " + t.javaClass.simpleName + ">"
-            }
+        val merged = tagsIn(useUnmergedTree = false)
+        val unmerged = tagsIn(useUnmergedTree = true)
+        val now =
+            if (merged.isEmpty() && unmerged.isEmpty()) "NOW: nothing tagged in EITHER tree"
+            else "NOW: merged[" + merged.joinToString(", ") + "] unmerged[" +
+                unmerged.joinToString(", ") + "]"
         val before =
-            if (tagsBefore.isEmpty()) "no snapshot was taken before the action"
-            else "before the action: [" + tagsBefore.joinToString(", ") + "]"
-        return "waitForTagText timed out: tag='$tag' expected='$expected' — $found ($where) [" +
-            before + "]"
+            if (tagsBefore.isEmpty()) "BEFORE: (no snapshot taken)"
+            else "BEFORE: [" + tagsBefore.joinToString(", ") + "]"
+        // The dump goes LAST because it is the longest field and the least
+        // decisive, and the runner truncates.
+        //
+        // The previous version put the before-snapshot after it, and the
+        // message was cut at the dump — so a whole device round produced a
+        // diagnostic that stopped one line short of its own answer. Order a
+        // failure message by decisiveness, not by narrative.
+        val dump =
+            if (merged.isNotEmpty() || unmerged.isNotEmpty()) ""
+            else
+                " | dump: " +
+                    (try {
+                        composeRule.onRoot(useUnmergedTree = true).printToString(maxDepth = 4)
+                    } catch (t: Throwable) {
+                        "<no root: " + t.javaClass.simpleName + ">"
+                    })
+                        .replace("\n", " ")
+                        .take(600)
+        return "waitForTagText timed out: tag='$tag' expected='$expected' | " +
+            before + " | " + now + " | node: " + found + dump
     }
 
     @Test
