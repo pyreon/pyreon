@@ -9326,12 +9326,6 @@ function emitSwiftRouterView(
   return `RouterView()`
 }
 
-// `isCanonicalPrimitive` is imported but referenced only via the
-// dispatcher's `if (tag === 'Stack')` chain in `emitSwiftJsx` — the
-// set-based predicate would gate the dispatcher entries more cleanly
-// once all 16 primitives have emit functions; today the explicit-tag
-// chain mirrors the existing `For`/`Show`/`Text`/`Button` style.
-void isCanonicalPrimitive
 
 /**
  * Expand a `<Comp {...src} />` spread into per-prop constructor args (Swift).
@@ -9380,7 +9374,48 @@ function expandSwiftSpread(
   return out
 }
 
+/**
+ * A canonical primitive reached the GENERIC component emit — which cannot be
+ * right, so say so.
+ *
+ * Generic emit renders `<Tag a={b}>` as a constructor call. That is correct for
+ * a user component (it becomes a real struct / composable) and can never be
+ * correct for a canonical primitive: `Field` and `Toggle` are not SwiftUI
+ * types, and `Field` is not a Compose composable either. The build then fails
+ * with `cannot find 'Field' in scope` / `unresolved reference 'Field'` — a raw
+ * toolchain error naming a symbol the user never wrote.
+ *
+ * Each specialized emitter falls through to generic when the element matches no
+ * shape it lowers, and there are more than a dozen such fall-throughs per
+ * target. Four were covered, by a hand-maintained list of required props that
+ * warns for `<Icon>` without `name` and `<Image>` without `src`. The list was
+ * missing `<Field>` without `onChangeText` and `<Toggle>` without `onChange` —
+ * the same mistake, uncompilable in the same way, with nothing said. A list
+ * kept in sync by hand with a growing set of primitives is a hole generator.
+ *
+ * So the check is on the OUTCOME, not the cause: arriving here IS the failure,
+ * whatever produced it. No list to maintain, and a primitive added tomorrow is
+ * covered the day it is added.
+ *
+ * Shadowing is respected — a user component named `Toggle` is a real type, and
+ * generic emit is exactly right for it.
+ */
+function warnCanonicalPrimitiveFellThrough(tag: string): void {
+  const note =
+    `<${tag}> matched no shape the Swift emitter lowers, so it fell through to the ` +
+    `generic component emit and is written as a \`${tag}(…)\` constructor call — not a ` +
+    `Swift type, so the build fails with a raw toolchain error naming a symbol you never ` +
+    `wrote. The usual cause is a REQUIRED prop that is missing, or written in a form the ` +
+    `emitter does not recognise — for \`<Field>\` that is \`onChangeText\`, for \`<Toggle>\` ` +
+    `\`onChange\`. Supply it, or drop to \`<NativeIOS>\` / \`<NativeAndroid>\` and hand-write ` +
+    `this element.`
+  if (!_emitWarnings.includes(note)) _emitWarnings.push(note)
+}
+
 function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  if (isCanonicalPrimitive(e.tag) && !_componentNames.has(e.tag)) {
+    warnCanonicalPrimitiveFellThrough(e.tag)
+  }
   const pad = ' '.repeat(indent + 2)
   const isUserComponent = _componentNames.has(e.tag)
   // For user-defined components, include event handlers as constructor
