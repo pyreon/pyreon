@@ -2891,6 +2891,14 @@ function emitSwiftDecl(
     if (isEnumTyped) _activeEnumType = (d.type as { name: string }).name
     const initial = emitSwiftExpr(d.initial, 0)
     _activeEnumType = undefined
+    // Parse-time inference returned unknown for an object-literal (or
+    // array-of-object-literal) initializer, but the VALUE emit above just
+    // synthesized/resolved a struct for it — annotate with THAT name.
+    // `@State var items: Any = [__Obj0(...)]` is a silent broken build:
+    // `items[0].name` → "value of type 'Any' has no subscripts" under the
+    // real-SDK typecheck, with zero warnings (parse-only validation passes).
+    const anno =
+      (type === 'Any' || type === '[Any]') ? (synthSwiftSignalAnnotation(d.initial) ?? type) : type
     // G5 — persistent signal via `useStorage<T>('key', default)`. SwiftUI's
     // `@AppStorage("key")` property wrapper writes through to UserDefaults
     // and triggers re-renders on change (same reactive contract as @State).
@@ -2907,7 +2915,7 @@ function emitSwiftDecl(
     // to use the direct shape — no bridge overhead when not needed.
     if (d.storageKey !== undefined) {
       if (isAppStorageNativeType(d.type)) {
-        return `@AppStorage(${JSON.stringify(d.storageKey)}) private var ${swiftIdent(d.name)}: ${type} = ${initial}`
+        return `@AppStorage(${JSON.stringify(d.storageKey)}) private var ${swiftIdent(d.name)}: ${anno} = ${initial}`
       }
       // Phase 2.5: non-native types use @PyreonAppStorage from
       // @pyreon/native-runtime-swift — collapses the previous
@@ -2923,9 +2931,9 @@ function emitSwiftDecl(
       // `@AppStorage` Data slot + computed property doing JSON
       // round-trip via JSONEncoder/Decoder. Identical behaviour at
       // runtime; just dramatically more emit code.
-      return `@PyreonAppStorage(${JSON.stringify(d.storageKey)}) private var ${swiftIdent(d.name)}: ${type} = ${initial}`
+      return `@PyreonAppStorage(${JSON.stringify(d.storageKey)}) private var ${swiftIdent(d.name)}: ${anno} = ${initial}`
     }
-    return `@State private var ${swiftIdent(d.name)}: ${type} = ${initial}`
+    return `@State private var ${swiftIdent(d.name)}: ${anno} = ${initial}`
   }
   if (d.kind === 'function') {
     return emitSwiftFunction(d, 'private', inferCtx)
@@ -3723,6 +3731,64 @@ function isAppStorageNativeType(t: TypeIR): boolean {
  * PARSE error, and key paths (`ForEach(items, id: \.id)`) cannot
  * reference tuple elements at all.
  */
+/**
+ * The object-literal STRUCT-NAME resolution — the three rungs the value
+ * emit dispatches through (exact declared/synth field-set index, declared
+ * struct with optional omitted fields, synthesized `__ObjN`). Shared by the
+ * value emit (`case 'object'`) AND the signal-decl ANNOTATION refinement so
+ * the two can never disagree: an annotation naming a different struct than
+ * the value initializer is exactly the `Any`-decl class this exists to kill.
+ * Returns null when no rung matches (caller falls to the tuple emit /
+ * keeps its prior annotation).
+ */
+function resolveSwiftObjectStructName(fields: { name: string; value: ExprIR }[]): string | null {
+  const fieldSet = fields.map((f) => f.name).sort().join(',')
+  const exact = _structFieldsToName.get(fieldSet)
+  if (exact !== undefined) return exact
+  const subset = subsetStructName(
+    fields.map((f) => f.name),
+    _declaredStructs,
+    typeIsOptional,
+  )
+  if (subset !== null) return subset
+  return synthLiteralStructName(fields, _synthExprStructs, _synthExprStructKeys, (ex) =>
+    inferType(ex, _exprInferCtx),
+  )
+}
+
+/**
+ * Annotation twin of the value path for a SIGNAL DECL whose parse-time type
+ * is unknown (`Any`): resolve the struct name the initializer's VALUE emit
+ * used, so the decl reads `: __Obj0` / `: [__Obj0]` instead of `: Any` —
+ * on `Any`, every member access and subscript fails the real-SDK typecheck
+ * (`value of type 'Any' has no subscripts`) with ZERO compiler warnings,
+ * while the parse-only gate passes it (the documented asymmetry). Called
+ * AFTER the initializer value has been emitted, so the synth rung is a pure
+ * dedup lookup — `__ObjN` numbering (and cross-target name alignment, which
+ * both targets derive from value-emit encounter order) cannot move.
+ * A spread-bearing object, a mixed-shape array, or an empty array returns
+ * null (annotation stays as it was — those shapes have no single name).
+ */
+function synthSwiftSignalAnnotation(initial: ExprIR): string | null {
+  if (initial.kind === 'object') {
+    if (initial.spreads !== undefined && initial.spreads.length > 0) return null
+    return resolveSwiftObjectStructName(initial.fields)
+  }
+  if (initial.kind === 'array' && initial.elements.length > 0) {
+    let name: string | null = null
+    for (const el of initial.elements) {
+      if (el.kind !== 'object') return null
+      if (el.spreads !== undefined && el.spreads.length > 0) return null
+      const n = resolveSwiftObjectStructName(el.fields)
+      if (n === null) return null
+      if (name === null) name = n
+      else if (name !== n) return null
+    }
+    return `[${name}]`
+  }
+  return null
+}
+
 interface SwiftSynthCtx {
   componentName: string
   structs: StructIR[]
@@ -6020,48 +6086,17 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       //   - multiple structs have the same field-set (collision —
       //     can't disambiguate without type-context)
       if (!e.spreads || e.spreads.length === 0) {
-        const fieldSet = e.fields.map((f) => f.name).sort().join(',')
-        const structName = _structFieldsToName.get(fieldSet)
-        if (structName !== undefined) {
+        // Rungs 1-3 (exact declared/synth index → declared-struct optional
+        // subset → synthesize `__ObjN`) live in the SHARED
+        // `resolveSwiftObjectStructName` — the signal-decl annotation
+        // refinement resolves through the same function, so the decl's
+        // `: __Obj0` and its `__Obj0(...)` value can never disagree.
+        const structName = resolveSwiftObjectStructName(e.fields)
+        if (structName !== null) {
           const args = e.fields
             .map((f) => `${swiftIdent(f.name)}: ${emitSwiftExpr(f.value, indent)}`)
             .join(', ')
           return `${swiftIdent(structName)}(${args})`
-        }
-        // The exact index missed. Before synthesizing, try a DECLARED struct
-        // whose omitted fields are all optional: `type T = { a: string; b?: string }`
-        // with `{ a: 'x' }` is ordinary TS, and synthesizing here emits
-        // `var v: T = __Obj0(a: "x")` — a type the annotation says it is not,
-        // which Swift rejects outright.
-        const subset = subsetStructName(
-          e.fields.map((f) => f.name),
-          _declaredStructs,
-          typeIsOptional,
-        )
-        if (subset !== null) {
-          const args = e.fields
-            .map((f) => `${swiftIdent(f.name)}: ${emitSwiftExpr(f.value, indent)}`)
-            .join(', ')
-          return `${swiftIdent(subset)}(${args})`
-        }
-        // No declared struct matches — SYNTHESIZE one instead of the broken
-        // labelled-tuple emit (single-field tuple is illegal Swift; tuple
-        // key-paths break `ForEach(id:)`; `obj.field` access fails on the
-        // `Any`-typed tuple). Fields may be scalar LITERALS (`{ id: 1 }`) OR
-        // non-literal expressions whose type INFERS to a scalar (`{ id:
-        // count() }` → Int) via `_exprInferCtx`. Non-scalar / un-inferable
-        // fields still fall through to the tuple emit below (unchanged).
-        const synthName = synthLiteralStructName(
-          e.fields,
-          _synthExprStructs,
-          _synthExprStructKeys,
-          (ex) => inferType(ex, _exprInferCtx),
-        )
-        if (synthName !== null) {
-          const args = e.fields
-            .map((f) => `${swiftIdent(f.name)}: ${emitSwiftExpr(f.value, indent)}`)
-            .join(', ')
-          return `${swiftIdent(synthName)}(${args})`
         }
       }
       warnUntypeableObjectLiteral(e.fields)
