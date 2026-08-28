@@ -2,31 +2,29 @@ import { defineNodeConfig } from '@pyreon/vitest-config'
 
 export default defineNodeConfig({
   category: 'tools',
-  // FIRST honest baseline. Until now `@pyreon/lathe` had never been measured:
-  // the PR that introduced it changed a set large enough to trip the coverage
-  // step's >15-package cap, so the step SKIPPED and the 95 the gate assumes
-  // for a package with no explicit thresholds was never once enforced.
-  // Measured 87.74 / 75.21 / 93.24 / 91.72.
+  // Coverage floor for `@pyreon/lathe`, declared EXPLICITLY rather than left to
+  // the `tools` category default — `check-coverage.ts` cannot see a category
+  // default and assumes 95, which is how `@pyreon/testing` failed that gate
+  // silently while its own vitest run passed. Stating them keeps the two halves
+  // in agreement.
   //
-  // Declared EXPLICITLY rather than left to the `tools` category default,
-  // because `check-coverage.ts` cannot see a category default and assumes 95 —
-  // which is how `@pyreon/testing` failed that gate silently while its own
-  // vitest run passed. Stating them keeps the two halves in agreement.
+  // Until recently this package had never been measured at all: the PR that
+  // introduced it changed a set large enough to trip the PR-time coverage
+  // step's >15-package cap, so the step SKIPPED and the 95 was never once
+  // enforced. (A ROOT file in the diff produces the same outcome by a different
+  // branch — `--filter=*`, which that step treats as "blast radius unknowable"
+  // and exits on. That second hole is fixed in `affected.ts`; it was not this
+  // package's.)
   //
-  // These are a RATCHET, like `@pyreon/atlas`' — raise them in lockstep as
-  // tests land, never lower. The uncovered surface is concentrated and known:
-  // `emit/schema.ts` (the type/schema renderer, exercised end-to-end by the
-  // generate + real-spec suites rather than per-branch), `input/openapi.ts`
-  // (malformed-document arms a real spec never produces), `vite/plugin.ts`
-  // (boots a Vite pass; proven by `e2e/lathe-bookshelf.spec.ts`),
-  // `verify/lower.ts` (shells out to the real @pyreon/native-compiler), and
-  // `cli/run.ts` (multi-project + `--json` orchestration).
-  coverageThresholds: {
-    statements: 86,
-    branches: 74,
-    functions: 92,
-    lines: 90,
-  },
+  // A RATCHET, like `@pyreon/atlas`' — raise in lockstep as tests land, never
+  // lower. Moved five times already: `cli/report.ts` 40 -> 98, `emit/mock.ts`
+  // 77 -> 98, `emit/schema.ts` 71 -> 87, `core/naming.ts` 79 -> 97 and
+  // `input/openapi.ts` 79 -> 87, taking the package 84.46 -> 90.69. What
+  // remains is concentrated and known: `vite/plugin.ts` (boots a Vite pass;
+  // proven by `e2e/lathe-bookshelf.spec.ts`), `verify/lower.ts` (shells out to
+  // the real @pyreon/native-compiler) and `cli/run.ts` (multi-project + --json
+  // orchestration).
+  coverageThresholds: { statements: 90, branches: 80, functions: 95, lines: 94 },
   coverageExclude: [
     // gen-docs data, no logic (scaffold-recipe convention).
     'src/manifest.ts',

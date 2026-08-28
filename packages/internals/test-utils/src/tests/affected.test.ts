@@ -436,7 +436,17 @@ describe('computeAffectedFlags', () => {
       ).toBe('--filter=@pyreon/hooks')
     })
 
-    it('keeps the root-file escalation — an unknowable diff stays unknowable', () => {
+    it('a root file alone measures NOTHING — because no package changed', () => {
+      // This used to escalate to `--filter=*`, on the reasoning that an
+      // unknowable diff should stay unknowable. The reasoning does not survive
+      // contact with the caller: `--filter=*` is the branch that makes the step
+      // print "blast radius unknowable" and EXIT. So the escalation did not buy
+      // "measure everything", it bought "measure nothing" — the opposite of its
+      // intent, and only at this call site.
+      //
+      // Empty is the honest answer here. A root file belongs to no workspace,
+      // so no package's own sources or tests moved, so no package's coverage
+      // can have moved. The push:main full run remains the backstop.
       expect(
         computeAffectedFlags({
           changed: ['bun.lock'],
@@ -444,6 +454,31 @@ describe('computeAffectedFlags', () => {
           root: ROOT,
           directOnly: true,
         }),
+      ).toBe('')
+    })
+
+    it('a root file ALONGSIDE package code still measures that package', () => {
+      // The shape that let `@pyreon/lathe` land 10 points under the floor: its
+      // PR also touched `scripts/e2e-affected.ts`, the whole set escalated to
+      // `--filter=*`, and the coverage step skipped — so a brand-new package
+      // was never measured before merge, past the very mechanism whose stated
+      // job is that "new packages can't silently slip in below 95".
+      expect(
+        computeAffectedFlags({
+          changed: ['bun.lock', 'packages/fundamentals/toast/src/index.ts'],
+          workspaces: WS,
+          root: ROOT,
+          directOnly: true,
+        }),
+      ).toBe('--filter=@pyreon/toast')
+    })
+
+    it('WITHOUT the flag a root file still escalates — the correctness cells need that', () => {
+      // Unchanged, and deliberately so: a workflow or lockfile change really can
+      // affect any typecheck or test cell, and there the escalation does what it
+      // says. Only coverage is a per-package property.
+      expect(
+        computeAffectedFlags({ changed: ['bun.lock'], workspaces: WS, root: ROOT }),
       ).toBe('--filter=*')
     })
 
