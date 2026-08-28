@@ -21,6 +21,8 @@ export interface GeneratedFile {
 export class SourceFile {
   /** module specifier -> named bindings. */
   private readonly named = new Map<string, Set<string>>()
+  /** module specifier -> its DEFAULT binding's local name. */
+  private readonly defaults = new Map<string, string>()
   /** module specifier -> type-only named bindings. */
   private readonly typeNamed = new Map<string, Set<string>>()
   private readonly body: string[] = []
@@ -30,6 +32,26 @@ export class SourceFile {
   /** Record a value import. Repeated calls collapse. */
   import(from: string, ...names: string[]): this {
     add(this.named, from, names)
+    return this
+  }
+
+  /**
+   * Record a DEFAULT import — `import axios from 'axios'`.
+   *
+   * `import { default as axios }` is valid ESM and behaves identically, which
+   * is what this used to emit. It reads as a mistake, though, and generated
+   * code is read by people exactly when something already looks wrong; a line
+   * that makes the reader wonder about the generator costs more than the ten
+   * lines it takes to emit the ordinary form.
+   */
+  importDefault(from: string, local: string): this {
+    const existing = this.defaults.get(from)
+    if (existing !== undefined && existing !== local) {
+      throw new Error(
+        `[Pyreon] lathe: '${from}' already has a default import bound to '${existing}'; cannot also bind '${local}'.`,
+      )
+    }
+    this.defaults.set(from, local)
     return this
   }
 
@@ -84,9 +106,16 @@ export class SourceFile {
       const only = names.filter((n) => !valueSide?.has(n))
       if (only.length > 0) out.push(`import type { ${only.join(', ')} } from '${spec}'`)
     }
-    for (const spec of [...this.named.keys()].sort()) {
-      const names = [...(this.named.get(spec) as Set<string>)].sort()
-      if (names.length > 0) out.push(`import { ${names.join(', ')} } from '${spec}'`)
+    // One statement per specifier, default and named together, so a module
+    // imported both ways emits `import axios, { isAxiosError } from 'axios'`
+    // rather than two lines that a reader has to reconcile.
+    for (const spec of [...new Set([...this.named.keys(), ...this.defaults.keys()])].sort()) {
+      const names = [...(this.named.get(spec) ?? [])].sort()
+      const def = this.defaults.get(spec)
+      const clause = [def, names.length > 0 ? `{ ${names.join(', ')} }` : undefined]
+        .filter(Boolean)
+        .join(', ')
+      if (clause) out.push(`import ${clause} from '${spec}'`)
     }
     if (out.length > 2) out.push('')
     out.push(...this.body)

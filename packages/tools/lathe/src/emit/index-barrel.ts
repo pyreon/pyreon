@@ -18,12 +18,16 @@
 import type { IrDocument } from '../core/ir'
 import { typeIdent } from '../core/naming'
 import { byTag, isMutation, tagFile } from './client'
+import type { ClientName } from './client-runtime'
 import { relativeSpecifier, SourceFile } from './writer'
 
 export const BARREL_FILE = 'index.ts'
 
 /** Emit `index.ts` — one import site for everything generated. */
-export function emitBarrel(doc: IrDocument, opts: { plugins: readonly string[] }): SourceFile {
+export function emitBarrel(
+  doc: IrDocument,
+  opts: { plugins: readonly string[]; client?: ClientName | undefined },
+): SourceFile {
   const f = new SourceFile(BARREL_FILE)
   const has = (p: string): boolean => opts.plugins.includes(p)
   const lines: string[] = []
@@ -49,7 +53,19 @@ export function emitBarrel(doc: IrDocument, opts: { plugins: readonly string[] }
     lines.push(`export { keys } from './keys'`)
   }
   if (has('components')) lines.push(`export * from './components'`)
-  if (has('mocks')) lines.push(`export { mockRoutes, routes as mockRouteTable } from './mocks'`)
+  if (has('mocks')) {
+    // `installMocks` is the primary API and was missing from the barrel
+    // entirely — a consumer following "one import site" could not reach the
+    // one function the mocks plugin exists to give them.
+    lines.push(`export { installMocks, routes as mockRouteTable } from './mocks'`)
+    // `mockRoutes` is a `@pyreon/http` MIDDLEWARE and has no equivalent on the
+    // generated adapters, which answer through their own transport seam. Named
+    // in the barrel unconditionally, it referenced an export that does not
+    // exist and the generated `index.ts` did not compile.
+    if ((opts.client ?? 'pyreon') === 'pyreon') {
+      lines.push(`export { mockRoutes } from './mocks'`)
+    }
+  }
   for (const l of lines) f.line(l)
   return f
 }

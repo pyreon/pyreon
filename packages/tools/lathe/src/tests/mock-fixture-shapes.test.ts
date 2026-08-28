@@ -12,8 +12,25 @@ import { emitMocks, mockedOperations } from '../emit/mock'
  * `<For>` to a single row and trips the duplicate-key warning, so a fixture that
  * ships them tests the opposite of what it appears to.
  */
-const op = (response: IrType): IrOperation =>
-  ({ id: 'get', method: 'GET', path: '/x', params: [], response }) as unknown as IrOperation
+/**
+ * A minimal operation.
+ *
+ * The fields are the REAL ones. An earlier version of this helper declared
+ * `params: []` — a field `IrOperation` does not have — and the
+ * `as unknown as IrOperation` cast made that compile, so every test here was
+ * built on an operation missing `pathParams`. It went unnoticed until an
+ * emitter read that field and got `undefined`. The cast now only fills in what
+ * is genuinely irrelevant here (`tag`, `summary`), never a misspelling.
+ */
+const op = (response: IrType): IrOperation => ({
+  id: 'get',
+  method: 'GET',
+  path: '/x',
+  tag: 'x',
+  pathParams: [],
+  queryParams: [],
+  response,
+})
 
 const docOf = (response: IrType, models: IrDocument['models'] = []): IrDocument => ({
   title: 'T',

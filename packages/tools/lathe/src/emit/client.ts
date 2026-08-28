@@ -20,19 +20,41 @@
 import { reachableModels, topoSortModels } from '../core/graph'
 import type { IrDocument, IrOperation, IrType } from '../core/ir'
 import { propKey, typeIdent } from '../core/naming'
+import {
+  CLIENT_PACKAGE,
+  runtimeEndpoint,
+  runtimeError,
+  runtimePreamble,
+  runtimeTransport,
+  runtimeValidate,
+  type ClientName,
+} from './client-runtime'
 import { schemaExpr, schemaSpecifier, tsType } from './schema'
+import { dialectOf, type ValidatorName } from './validator'
 import { q, relativeSpecifier, SourceFile } from './writer'
 
 export interface ClientOptions {
   native: boolean
   /** Overrides the spec's `servers[0].url`. */
   baseUrl?: string | undefined
+  /** Which HTTP runtime the client is built on. Defaults to `pyreon`. */
+  client?: ClientName | undefined
+  /** Which library the schemas are written in. Defaults to `pyreon`. */
+  validator?: ValidatorName | undefined
 }
 
 export const CLIENT_FILE = 'client.ts'
 
-/** `client.ts` — the shared `createHttp` instance. Web layout only. */
+/**
+ * `client.ts` — the shared client instance. Web layout only.
+ *
+ * Dispatches on the configured runtime. Every branch produces the SAME
+ * `api.endpoint(spec, config)` seam, which is why no other emitter in this
+ * package knows the setting exists.
+ */
 export function emitClient(doc: IrDocument, opts: ClientOptions): SourceFile {
+  const client = opts.client ?? 'pyreon'
+  if (client !== 'pyreon') return emitAdapterClient(doc, opts, client)
   const f = new SourceFile(CLIENT_FILE)
   f.import('@pyreon/http', 'createHttp')
   f.importType('@pyreon/http', 'HttpMiddleware')
@@ -76,6 +98,61 @@ export function emitClient(doc: IrDocument, opts: ClientOptions): SourceFile {
 
 function baseUrlOf(doc: IrDocument, opts: ClientOptions): string {
   return opts.baseUrl ?? doc.baseUrl
+}
+
+/**
+ * `client.ts` for a non-`@pyreon/http` runtime.
+ *
+ * The generated file is self-contained apart from the transport library
+ * itself: a project that chose axios did so to not depend on `@pyreon/http`,
+ * and importing its URL builder would put the dependency straight back.
+ *
+ * What keeps that duplication honest is `adapter-url-parity.test.ts`, which
+ * runs this emitted `buildUrl` against `@pyreon/http`'s own as the oracle.
+ */
+function emitAdapterClient(
+  doc: IrDocument,
+  opts: ClientOptions,
+  client: ClientName,
+): SourceFile {
+  const f = new SourceFile(CLIENT_FILE)
+  const pkg = CLIENT_PACKAGE[client]
+  if (client === 'axios') {
+    f.importDefault('axios', 'axios')
+    f.importType('axios', 'AxiosInstance')
+  } else if (client === 'ky') {
+    f.importDefault('ky', 'ky')
+    f.importType('ky', 'KyInstance')
+  }
+  f.line()
+  f.doc(
+    `HTTP client for ${doc.title} ${doc.version}, built on ${pkg ?? 'the platform fetch'}.`,
+    '',
+    'The URL is resolved HERE and handed to the transport fully-formed, so the',
+    'instance below carries no `baseURL` / `prefixUrl`. That is deliberate:',
+    'axios and ky each resolve a base differently from the other and from',
+    '`@pyreon/http`, and letting them do it would make the same spec issue a',
+    'different request depending on which client was configured.',
+    '',
+    'The instance is exported so interceptors, hooks, auth headers and retries',
+    'are added the way that library documents — nothing here wraps them.',
+  )
+  if (client === 'axios') {
+    f.line('export const instance: AxiosInstance = axios.create()')
+  } else if (client === 'ky') {
+    f.line('export const instance: KyInstance = ky.create({})')
+  }
+  if (client !== 'fetch') f.line()
+  f.lines(...runtimeError())
+  f.line()
+  f.lines(...runtimePreamble())
+  f.line()
+  f.lines(...runtimeValidate())
+  f.line()
+  f.lines(...runtimeTransport())
+  f.line()
+  f.lines(...runtimeEndpoint(client, baseUrlOf(doc, opts)))
+  return f
 }
 
 /** The `'GET /users/:id'` literal an endpoint is declared with. */
@@ -129,7 +206,11 @@ export function isMutation(op: IrOperation): boolean {
  *
  * Idiomatic and tree-shakeable. Deliberately NOT what the native layout does.
  */
-export function emitWebEndpoints(doc: IrDocument): SourceFile[] {
+export function emitWebEndpoints(
+  doc: IrDocument,
+  validator: ValidatorName = 'pyreon',
+): SourceFile[] {
+  const dialect = dialectOf(validator)
   const files: SourceFile[] = []
   for (const [tag, ops] of byTag(doc)) {
     const path = `endpoints/${tagFile(tag)}.ts`
@@ -144,9 +225,11 @@ export function emitWebEndpoints(doc: IrDocument): SourceFile[] {
     // Built once per operation. The previous form called `responseCfg` a second
     // time just to test the string for `s.`, which rebuilt every response
     // schema expression in the tag for a substring check.
-    const clauses = ops.map((op) => responseCfg(op, false))
-    // A composite clause (`s.array(Book)`, a union) needs `s` itself.
-    if (clauses.some((c) => c.includes('s.'))) f.import('@pyreon/validate', 's')
+    const clauses = ops.map((op) => responseCfg(op, false, validator))
+    // A composite clause (`array(Book)`, a union) needs the binding itself.
+    if (clauses.some((c) => c.includes(`${dialect.binding}.`))) {
+      f.import(dialect.module, dialect.binding)
+    }
 
     for (const [i, op] of ops.entries()) {
       f.line()
@@ -167,10 +250,15 @@ export function emitWebEndpoints(doc: IrDocument): SourceFile[] {
  * `QueryOptionsLike<unknown>` and every generated hook fails to typecheck in
  * the consumer's repo. It also buys real runtime validation for free.
  */
-function responseCfg(op: IrOperation, native: boolean): string {
+function responseCfg(
+  op: IrOperation,
+  native: boolean,
+  validator: ValidatorName = 'pyreon',
+  models?: ReadonlyMap<string, IrType>,
+): string {
   if (!op.response) return ''
   if (op.response.kind === 'unknown') return ''
-  return `, { response: ${schemaExpr(op.response, { native })} }`
+  return `, { response: ${schemaExpr(op.response, { native, validator, models })} }`
 }
 
 /** WEB layout: `queries.ts` — reactive hooks, one per operation. */
@@ -299,6 +387,13 @@ export function emitNativeModules(doc: IrDocument, opts: ClientOptions): SourceF
   // (tags x models), and brittle besides: an emit-format change would have
   // silently broken the extraction. `schemaExpr` is the same single
   // implementation `emitSchemas` walks, so nothing is duplicated by calling it.
+  const dialect = dialectOf(opts.validator ?? 'pyreon')
+  // Model types by name, so a `$ref` FIELD can be inlined on the native path.
+  // PMTC drops a field that NAMES another schema; an inlined ref is a nested
+  // object, which its zod recogniser lowers. The `s.*` recogniser drops nested
+  // objects too, so the dialect says whether inlining is worth anything and
+  // `schemaExpr` only consults this map when it is.
+  const modelTypes = new Map(doc.models.map((m) => [m.name, m.type]))
   const { order: modelOrder, backEdges } = topoSortModels(doc)
   const nativeSchema = new Map<string, string>()
   for (const model of doc.models) {
@@ -312,7 +407,16 @@ export function emitNativeModules(doc: IrDocument, opts: ClientOptions): SourceF
         .filter((e) => e.startsWith(`${model.name}|`))
         .map((e) => e.slice(model.name.length + 1)),
     )
-    nativeSchema.set(model.name, schemaExpr(model.type, { native: true, defer }))
+    const expr = schemaExpr(model.type, {
+      native: true,
+      defer,
+      validator: dialect.name,
+      models: modelTypes,
+    })
+    // zod is recognised ONLY inside `@pyreon/validation`'s `zodSchema(...)` —
+    // the recognizer keys on that distinctive wrapper call rather than on the
+    // bare `z` name, so an unwrapped `z.object({ … })` lowers to nothing.
+    nativeSchema.set(model.name, dialect.nativeWrap ? `${dialect.nativeWrap.fn}(${expr})` : expr)
   }
 
   for (const [tag, ops] of byTag(doc)) {
@@ -320,7 +424,8 @@ export function emitNativeModules(doc: IrDocument, opts: ClientOptions): SourceF
     const f = new SourceFile(path)
     f.import('@pyreon/http', 'createHttp')
     f.import('@pyreon/http/schema', 'standardSchema')
-    f.import('@pyreon/validate', 's')
+    f.import(dialect.module, dialect.binding)
+    if (dialect.nativeWrap) f.import(dialect.nativeWrap.module, dialect.nativeWrap.fn)
     if (ops.some((o) => !isMutation(o))) f.import('@pyreon/query', 'useQuery')
 
     f.line()
@@ -351,7 +456,9 @@ export function emitNativeModules(doc: IrDocument, opts: ClientOptions): SourceF
       if (!model || !needed.has(name)) continue
       f.line()
       f.doc(model.doc)
-      f.line(`export const ${model.name} = ${nativeSchema.get(model.name) ?? 's.object({})'}`)
+      f.line(
+        `export const ${model.name} = ${nativeSchema.get(model.name) ?? `${dialect.binding}.object({})`}`,
+      )
       // A STRUCTURAL type, not `Infer<typeof X>`. `Infer` would be an
       // `import type` — erased by TypeScript, but PMTC's warn pass reads the
       // import statement itself and reports the module as un-lowerable. The
@@ -362,7 +469,9 @@ export function emitNativeModules(doc: IrDocument, opts: ClientOptions): SourceF
     for (const op of ops) {
       f.line()
       f.doc(op.summary, `\`${endpointSpec(op)}\``)
-      f.line(`export const ${op.id} = api.endpoint(${q(endpointSpec(op))}${responseCfg(op, true)})`)
+      f.line(
+        `export const ${op.id} = api.endpoint(${q(endpointSpec(op))}${responseCfg(op, true, dialect.name, modelTypes)})`,
+      )
     }
 
     // Data components. A component body is the ONLY place `useQuery` lowers —

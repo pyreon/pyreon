@@ -1,0 +1,4 @@
+
+# Adapter test fixtures: generated clients written where node can resolve
+# `axios` / `ky`, then imported and executed. Removed by the tests themselves.
+src/tests/.generated/
