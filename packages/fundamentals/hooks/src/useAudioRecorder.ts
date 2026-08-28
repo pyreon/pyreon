@@ -118,17 +118,21 @@ export function useAudioRecorder(): AudioRecorderControls {
         error.set('')
         recording.set(true)
         return true
-      })()
-      starting = inFlight
-      try {
-        return await inFlight
-      } catch {
+      })().catch(() => {
         // Denied permission, no device, or an insecure context. All ordinary
         // — the caller branches on the boolean.
+        //
+        // On the shared promise, not around the await: a caller that joined
+        // an in-flight start at the guard above must get the same `false`,
+        // not the raw rejection the first caller's catch absorbed.
         error.set('Microphone permission was denied or no device is available')
         teardown()
         recording.set(false)
         return false
+      })
+      starting = inFlight
+      try {
+        return await inFlight
       } finally {
         if (starting === inFlight) starting = null
       }

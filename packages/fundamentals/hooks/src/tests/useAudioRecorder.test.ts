@@ -167,4 +167,46 @@ describe('useAudioRecorder', () => {
     // stream outliving its view leaves the mic hot with nothing listening.
     expect(stops.length).toBeGreaterThan(0)
   })
+
+  it('a SECOND caller that joins an in-flight start gets the same answer', async () => {
+    // One `start()`, one contract. The denial handling used to sit in a
+    // `catch` around the await, so a caller that joined at the in-flight
+    // guard received the raw rejection while the caller that started the
+    // attempt got `false` — the same call resolving for one and throwing
+    // for the other.
+    stub(globalThis, 'MediaRecorder', class {})
+    stub(globalThis.navigator, 'mediaDevices', {
+      getUserMedia: () => Promise.reject(new Error('NotAllowedError')),
+    })
+    const r = mountHook()
+
+    const first = r.start()
+    const joiner = r.start()
+
+    await expect(joiner).resolves.toBe(false)
+    await expect(first).resolves.toBe(false)
+  })
+
+  it('concurrent starts open ONE microphone stream, not one each', async () => {
+    // Without the shared promise both calls pass the `recording()` check
+    // during the permission prompt and each opens a stream — the first is
+    // overwritten and left live, so the recording indicator stays on with
+    // nothing able to stop it.
+    let opened = 0
+    stub(globalThis, 'MediaRecorder', class {
+      start() {}
+      stop() {}
+    })
+    stub(globalThis.navigator, 'mediaDevices', {
+      getUserMedia: async () => {
+        opened += 1
+        return { getTracks: () => [{ stop: () => {} }] }
+      },
+    })
+    const r = mountHook()
+
+    await Promise.all([r.start(), r.start(), r.start()])
+
+    expect(opened).toBe(1)
+  })
 })

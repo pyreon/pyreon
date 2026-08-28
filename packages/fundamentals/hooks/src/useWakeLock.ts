@@ -96,15 +96,21 @@ export function useWakeLock(): WakeLockControls {
       })
       active.set(true)
       return true
-    })()
+    })().catch(() => {
+      // A rejected request is an ordinary outcome, not an error worth
+      // throwing: low battery and background tabs both refuse.
+      //
+      // This handler sits ON the shared promise rather than in a `catch`
+      // around the await, so a caller that joined an in-flight attempt at
+      // the guard above gets the same `false` the first caller does. With
+      // the catch on the await, only the first caller was inside it and a
+      // joiner saw the raw rejection — one call, two contracts.
+      active.set(false)
+      return false
+    })
     acquiring = inFlight
     try {
       return await inFlight
-    } catch {
-      // A rejected request is an ordinary outcome, not an error worth
-      // throwing: low battery and background tabs both refuse.
-      active.set(false)
-      return false
     } finally {
       if (acquiring === inFlight) acquiring = null
     }
