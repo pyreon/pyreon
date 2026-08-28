@@ -39,7 +39,14 @@ const result = (over: Partial<GenerateResult> = {}): GenerateResult => ({
   ...over,
 })
 
-const OPTS = {
+const OPTS: {
+  target: string
+  output: string
+  wrote: number
+  name?: string | undefined
+  plugins: readonly string[]
+  requestedPlugins: readonly string[]
+} = {
   target: 'web',
   output: 'out',
   wrote: 1,

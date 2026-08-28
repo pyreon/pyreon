@@ -64,7 +64,7 @@ describe('fixture shapes per IR kind', () => {
     // noise. Differing, because identical ids collapse a keyed list.
     const out = fixtureText({
       kind: 'array',
-      items: { kind: 'object', fields: [{ name: 'n', type: { kind: 'number', integer: true }, required: true }] },
+      items: { kind: 'object', fields: [{ name: 'n', type: { kind: 'number', integer: true }, required: true, nullable: false }] },
     } as IrType)
     expect(out).toContain('1')
     expect(out).toContain('2')
@@ -80,7 +80,7 @@ describe('fixture shapes per IR kind', () => {
 
   it('a ref resolves through the model table', () => {
     const out = fixtureText({ kind: 'ref', name: 'M' }, [
-      { name: 'M', type: { kind: 'object', fields: [{ name: 'ok', type: { kind: 'boolean' }, required: true }] } },
+      { name: 'M', type: { kind: 'object', fields: [{ name: 'ok', type: { kind: 'boolean' }, required: true, nullable: false }] } },
     ])
     expect(out).toContain('"ok"')
   })
@@ -117,7 +117,7 @@ describe('object field selection', () => {
 
   it('KEEPS an optional that carries an example', () => {
     const out = fixtureText(
-      obj([{ name: 'hint', type: { kind: 'string' }, required: false, example: 'given' }]),
+      obj([{ name: 'hint', type: { kind: 'string' }, required: false, nullable: false, example: 'given' }]),
     )
     expect(out).toContain('"given"')
   })

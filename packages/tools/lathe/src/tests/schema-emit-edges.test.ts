@@ -30,6 +30,7 @@ const doc = (fields: Array<{ name: string; type: IrType; pattern?: string }>): I
           name: f.name,
           type: f.type,
           required: true,
+          nullable: false,
           ...(f.pattern === undefined ? {} : { pattern: f.pattern }),
         })),
       },
