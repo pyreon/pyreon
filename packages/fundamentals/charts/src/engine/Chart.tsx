@@ -14,6 +14,7 @@ import type { ChartSpec, ChartTheme } from './render'
 import { resolveCategories, resolveMarks } from './marks'
 import type { Mark } from './marks'
 import { hitBar } from './layout'
+import { chartTable, describeChart } from './a11y'
 import type { Double } from './types'
 
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
@@ -34,6 +35,19 @@ export interface PlotChartProps<T> {
   /** Fired with the datum index when a bar is tapped, or -1 for a miss. */
   onSelect?: (index: number) => void
   class?: string
+  /**
+   * Names the chart for assistive technology and titles the data table.
+   * Without it the description falls back to a bare "Chart".
+   */
+  title?: string
+  /** Labels for the legend, the tooltip and the accessible table. */
+  seriesLabels?: string[]
+  /**
+   * Drop the offscreen data table. It is on by default because a canvas is a
+   * single opaque node to a screen reader — without the table a chart is a
+   * blank rectangle to anyone not looking at it.
+   */
+  accessibleTable?: boolean
 }
 
 /**
@@ -110,14 +124,68 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     cb(-1)
   }
 
-  return h('canvas', {
+  const a11yInput = (): { title?: string | undefined; categories: string[]; series: { label: string; values: Double[]; kind: string }[] } => {
+    const rows = readData()
+    const resolved = resolveMarks(rows, props.marks)
+    return {
+      title: props.title,
+      categories: resolveCategories(rows, props.x),
+      series: resolved.map((s, i) => ({
+        label: props.seriesLabels?.[i] ?? `Series ${i + 1}`,
+        values: s.values,
+        kind: s.kind,
+      })),
+    }
+  }
+
+  const canvasNode = h('canvas', {
     class: props.class,
+    // `img` + a label is what makes the canvas announce as a single described
+    // thing rather than being skipped over entirely.
+    role: 'img',
+    'aria-label': () => describeChart(a11yInput()),
     ref: (el: HTMLCanvasElement | null) => {
       canvas = el
       if (el !== null) draw()
     },
     onClick: handleClick,
   })
+
+  if (props.accessibleTable === false) return canvasNode
+
+  // A real table rather than a longer label: a label is read as one
+  // unstructured string, while a table can be navigated by row and column.
+  // Positioned offscreen instead of `display: none`, which would remove it
+  // from the accessibility tree along with the visual layout.
+  const table = (): VNode => {
+    const t = chartTable(a11yInput())
+    // The clip styles go on a WRAPPER, not the table. A `<table>` uses auto
+    // layout and expands to its content regardless of `width: 1px`, so styling
+    // the table directly leaves ~126px of visible layout — which the browser
+    // test caught by measuring the rendered box rather than trusting the CSS.
+    return h(
+      'div',
+      {
+        style:
+          'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0;margin:-1px;padding:0',
+      },
+      h(
+      'table',
+      null,
+      h('caption', null, props.title ?? 'Chart data'),
+      h('thead', null, h('tr', null, ...t.headers.map((x) => h('th', { scope: 'col' }, x)))),
+      h(
+        'tbody',
+        null,
+        ...t.rows.map((r) =>
+          h('tr', null, h('th', { scope: 'row' }, r[0] ?? ''), ...r.slice(1).map((c) => h('td', null, c))),
+        ),
+      ),
+      ),
+    )
+  }
+
+  return h('div', { style: 'position:relative' }, canvasNode, () => table())
 }
 
 export { layoutChart, renderChart }

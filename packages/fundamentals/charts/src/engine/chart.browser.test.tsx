@@ -171,4 +171,91 @@ describe('PlotChart renders real pixels in a real browser', () => {
     await flush()
     expect(inkedPixels(container.querySelector('canvas')!)).toBe(0)
   })
+
+  /**
+   * A11y has to be WIRED, not merely available. An engine that can describe a
+   * chart while the component never calls it is the never-wired failure: every
+   * unit test of `describeChart` passes and the shipped chart is still a blank
+   * rectangle to a screen reader.
+   */
+  describe('accessibility is wired into the rendered chart', () => {
+    it('labels the canvas with a real description', async () => {
+      const { container } = mountInBrowser(() =>
+        PlotChart<Row>({
+          data: DATA,
+          x: (d) => d.month,
+          marks: [bars((d) => d.revenue)],
+          title: 'Monthly revenue',
+          seriesLabels: ['Revenue'],
+          width: 400,
+          height: 200,
+        }),
+      )
+      await flush()
+      const canvas = container.querySelector('canvas')!
+      expect(canvas.getAttribute('role')).toBe('img')
+      const label = canvas.getAttribute('aria-label') ?? ''
+      expect(label).toContain('Monthly revenue')
+      expect(label).toContain('rising')
+      expect(label).toContain('Jan')
+    })
+
+    it('emits an offscreen table a screen reader can navigate', async () => {
+      const { container } = mountInBrowser(() =>
+        PlotChart<Row>({
+          data: DATA,
+          x: (d) => d.month,
+          marks: [bars((d) => d.revenue)],
+          title: 'Monthly revenue',
+          seriesLabels: ['Revenue'],
+          width: 400,
+          height: 200,
+        }),
+      )
+      await flush()
+      const table = container.querySelector('table')
+      expect(table).not.toBeNull()
+      expect(table!.querySelectorAll('tbody tr')).toHaveLength(4)
+      expect(table!.querySelector('caption')?.textContent).toBe('Monthly revenue')
+      expect(table!.textContent).toContain('180')
+    })
+
+    /**
+     * Offscreen, NOT `display: none` — the latter removes the table from the
+     * accessibility tree along with the visual layout, which defeats it.
+     */
+    it('hides the table visually while leaving it readable', async () => {
+      const { container } = mountInBrowser(() =>
+        PlotChart<Row>({ data: DATA, marks: [bars((d) => d.revenue)], width: 400, height: 200 }),
+      )
+      await flush()
+      const table = container.querySelector('table')!
+      const style = globalThis.getComputedStyle(table)
+      // Still IN the accessibility tree: neither of these would be.
+      expect(style.display).not.toBe('none')
+      expect(style.visibility).not.toBe('hidden')
+      // Visibility is decided by the CLIPPED WRAPPER, not the table — a table
+      // uses auto layout and keeps its content width regardless. Measuring the
+      // table itself reports ~126px on a chart that shows nothing, which is
+      // what the first version of this test asserted against.
+      const clip = table.parentElement!
+      expect(clip.getBoundingClientRect().width).toBeLessThan(5)
+      expect(globalThis.getComputedStyle(clip).overflow).toBe('hidden')
+    })
+
+    it('can be turned off', async () => {
+      const { container } = mountInBrowser(() =>
+        PlotChart<Row>({
+          data: DATA,
+          marks: [bars((d) => d.revenue)],
+          width: 400,
+          height: 200,
+          accessibleTable: false,
+        }),
+      )
+      await flush()
+      expect(container.querySelector('table')).toBeNull()
+      expect(container.querySelector('canvas')).not.toBeNull()
+    })
+  })
 })
