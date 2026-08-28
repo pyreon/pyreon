@@ -2932,10 +2932,7 @@ lathe / Bookshelf 1.2.0
 
   5 file(s) written
 
-  native reach  2/4 operations
-    web-only 1 op(s): getBook
-      path parameters (bookId) are supplied at runtime, and PMTC needs literal
-      params to bake the URL at compile time.
+  native reach  3/4 operations
     web-only 1 op(s): createBook
       POST lowers through mutations, which PMTC does not yet recognise.
 

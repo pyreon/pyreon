@@ -109,8 +109,17 @@ describe('generate', () => {
   it('generates a data component only for operations that can reach native', () => {
     const src = file(generate(SPEC, native), 'books.native.tsx')
     expect(src).toContain('export function ListBooksData(')
-    // `getBook` takes a path parameter, so its URL cannot be baked.
-    expect(src).not.toContain('GetBookData')
+    // A path param used to disqualify an operation, because PMTC resolved the
+    // URL to a compile-time constant. It now lowers through `useQuery` (whose
+    // native harness is keyed on the resulting URL, so it re-fetches when the
+    // prop changes), so the component IS emitted — with the param as a prop.
+    // That it genuinely lowers is asserted in `native-lowering.test.ts`; this
+    // spec only fixes the emit's shape.
+    expect(src).toContain('export function GetBookData(')
+    expect(src).toContain('props: { id: string; children:')
+    // The invariant the title names is unchanged and still has live cases:
+    // a MUTATION has no data to render, so it gets no data component.
+    expect(src).not.toContain('CreateBookData')
   })
 
   it('enables schema support on the generated client', () => {
@@ -164,12 +173,42 @@ describe('generate', () => {
     expect(src).not.toContain('response:')
   })
 
+  it('derives `enabled` from args, so a not-ready query cannot fire', () => {
+    // The most common way to get a detail query wrong is to fire it before its
+    // id exists. Passing a placeholder id and a matching `enabled` writes the
+    // same condition twice, and getting the second one wrong requests
+    // `/books/` with an empty segment — a 404 on first paint that reads as a
+    // backend fault. Returning `undefined` says "not yet" ONCE.
+    const src = file(generate(SPEC, web), 'queries/books.ts')
+    expect(src).toContain('args: () => { params: { id: string } } | undefined')
+    expect(src).toContain('if (a === undefined) {')
+    // Keyed on the endpoint's own prefix, so an invalidation still matches it.
+    expect(src).toContain('queryKey: getBook.key.prefix')
+    // `enabled` AFTER the caller's options in the disabled branch: a caller's
+    // `enabled: true` must not be able to fire a request with a missing path
+    // parameter. In the ready branch it respects an explicit `false`.
+    expect(src).toContain('...extra, enabled: false }')
+    expect(src).toContain('...extra, enabled: extra.enabled !== false }')
+  })
+
+  it('leaves a parameterless hook alone — nothing to be not-ready about', () => {
+    const src = file(generate(SPEC, web), 'queries/books.ts')
+    expect(src).toContain('export function useListBooks(options?: () => Record<string, unknown>) {')
+    expect(src).toContain('return useQuery<Book[]>(() => ({ ...listBooks.query(), ...options?.() }))')
+  })
+
   it('reports per-operation reach with a reason', () => {
     const r = generate(SPEC, native)
     expect(r.reach.get('listBooks')?.reach).toBe('web+native')
-    expect(r.reach.get('getBook')?.reach).toBe('web-only')
-    expect(r.reach.get('getBook')?.reason).toContain('literal params')
+    // `getBook` takes a path param. That used to make it web-only; PMTC now
+    // lowers a runtime `:param` through `useQuery`, so it reaches native and
+    // the generated component takes the param as a prop.
+    expect(r.reach.get('getBook')?.reach).toBe('web+native')
+    expect(r.reach.get('getBook')?.reason).toBeUndefined()
+    // The invariant this spec protects — a web-only op is REPORTED, with a
+    // reason a reader can act on — is unchanged, and a mutation still is one.
     expect(r.reach.get('createBook')?.reach).toBe('web-only')
+    expect(r.reach.get('createBook')?.reason).toContain('mutations')
   })
 
   it('marks every operation web-only when the baseUrl is not absolute', () => {
@@ -218,8 +257,18 @@ describe('generate', () => {
   it('honours the plugin selection', () => {
     // `index.ts` is the barrel and rides along with any selection -- one
     // import site is useful whether you asked for schemas or the whole client.
+    //
+    // `api-surface.json` also rides along, and unconditionally: it is not an
+    // emitter's output but the record of what the run promised, and a
+    // schemas-only run still changed the contract if a model moved. The
+    // invariant this spec protects — no CLIENT CODE you did not ask for — is
+    // asserted below on the code files.
     const only = generate(SPEC, resolveConfig({ input: 'x', plugins: ['schemas'] }))
-    expect(only.files.map((f) => f.path)).toEqual(['schemas.ts', 'index.ts'])
+    expect(only.files.map((f) => f.path)).toContain('api-surface.json')
+    expect(only.files.filter((f) => f.path.endsWith('.ts')).map((f) => f.path)).toEqual([
+      'schemas.ts',
+      'index.ts',
+    ])
   })
 
   it('the native LAYOUT follows the plugin selection too', () => {
@@ -227,7 +276,13 @@ describe('generate', () => {
     // separate output. Emitting them unconditionally meant asking for schemas
     // only still produced a client and a data component.
     const schemasOnly = generate(SPEC, resolveConfig({ input: 'x', target: 'multiplatform', plugins: ['schemas'] }))
-    expect(schemasOnly.files.map((f) => f.path)).toEqual(['schemas.ts', 'index.ts'])
+    // The invariant is "no native module", which is what this asserts directly
+    // rather than through an exact file list that a non-emitter output moves.
+    expect(schemasOnly.files.filter((f) => f.path.endsWith('.native.tsx'))).toEqual([])
+    expect(schemasOnly.files.filter((f) => f.path.endsWith('.ts')).map((f) => f.path)).toEqual([
+      'schemas.ts',
+      'index.ts',
+    ])
 
     const withClient = generate(SPEC, resolveConfig({ input: 'x', target: 'multiplatform', plugins: ['client'] }))
     expect(withClient.files.some((f) => f.path.endsWith('.native.tsx'))).toBe(true)

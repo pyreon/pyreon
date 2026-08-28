@@ -22,11 +22,19 @@ export function useCreateBook() {
  * One book by id.
  * `GET /books/:bookId`
  * Takes an ACCESSOR so signal reads in the arguments stay reactive.
+ * Return `undefined` from `args` while the arguments are not ready — the query is DISABLED rather than fired with a placeholder.
  * Second accessor merges extra query options (`enabled`, `staleTime`, `select`).
  * Result fields are SIGNALS: `q.data()`, `q.isPending()` — call them.
  */
-export function useGetBook(args: () => { params: { bookId: string } }, options?: () => Record<string, unknown>) {
-  return useQuery<Book>(() => ({ ...getBook.query(args()), ...options?.() }))
+export function useGetBook(args: () => { params: { bookId: string } } | undefined, options?: () => Record<string, unknown>) {
+  return useQuery<Book>(() => {
+    const a = args()
+    const extra = options?.() ?? {}
+    if (a === undefined) {
+      return { queryKey: getBook.key.prefix, queryFn: () => Promise.reject(new Error('[Pyreon] lathe: query is disabled — its arguments are not ready')), ...extra, enabled: false }
+    }
+    return { ...getBook.query(a), ...extra, enabled: extra.enabled !== false }
+  })
 }
 
 /**

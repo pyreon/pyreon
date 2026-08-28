@@ -232,10 +232,14 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
         // an object: `@pyreon/query` re-reads it, so a signal in `args` makes
         // the query key move and the request refetch.
         args ? 'Takes an ACCESSOR so signal reads in the arguments stay reactive.' : undefined,
-        // `options` is not optional polish. Without it there is no way to pass
-        // `enabled`, so a query whose arguments are not ready yet fires anyway
-        // with an empty parameter and 404s — which is exactly what a detail
-        // view does before the user has selected anything.
+        // The single most common way to get a detail query wrong is to fire it
+        // before its id exists. Returning `undefined` is how you say "not yet";
+        // deriving `enabled` from that means the condition is written ONCE
+        // instead of duplicated between a placeholder argument and an
+        // `enabled` option that has to agree with it.
+        args
+          ? 'Return `undefined` from `args` while the arguments are not ready — the query is DISABLED rather than fired with a placeholder.'
+          : undefined,
         'Second accessor merges extra query options (`enabled`, `staleTime`, `select`).',
         '',
         // Worth stating on every generated hook: the result fields are signals,
@@ -246,8 +250,28 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
       )
       const extra = 'options?: () => Record<string, unknown>'
       if (args) {
-        f.line(`export function ${hook}(args: () => ${args}, ${extra}) {`)
-        f.line(`  return useQuery<${ret}>(() => ({ ...${op.id}.query(args()), ...options?.() }))`)
+        // `| undefined` WIDENS the accepted type, so every existing call site
+        // still compiles; what changes is that returning it now means
+        // "disabled" rather than a crash on a missing path parameter.
+        f.line(`export function ${hook}(args: () => ${args} | undefined, ${extra}) {`)
+        f.line(`  return useQuery<${ret}>(() => {`)
+        f.line('    const a = args()')
+        f.line('    const extra = options?.() ?? {}')
+        // The disabled branch keys on the endpoint's own PREFIX — the same key
+        // `keys` exposes, and exactly what `.query()` would produce for absent
+        // arguments — so an invalidation of the endpoint still matches it.
+        //
+        // `enabled` sits AFTER the spread deliberately: a caller's
+        // `enabled: true` must not be able to fire a request whose path
+        // parameter is missing. `enabled: false` still disables, via the
+        // branch below.
+        f.line('    if (a === undefined) {')
+        f.line(
+          `      return { queryKey: ${op.id}.key.prefix, queryFn: ${DISABLED_FN}, ...extra, enabled: false }`,
+        )
+        f.line('    }')
+        f.line(`    return { ...${op.id}.query(a), ...extra, enabled: extra.enabled !== false }`)
+        f.line('  })')
       } else {
         f.line(`export function ${hook}(${extra}) {`)
         f.line(`  return useQuery<${ret}>(() => ({ ...${op.id}.query(), ...options?.() }))`)
@@ -346,19 +370,49 @@ export function emitNativeModules(doc: IrDocument, opts: ClientOptions): SourceF
     // produces Swift that does not compile, with no warning at all.
     for (const op of ops) {
       if (isMutation(op)) continue
-      if (op.pathParams.length > 0) continue // reported as web-only by verify
       const ret = op.response ? tsType(op.response) : 'unknown'
       const name = `${typeIdent(op.id)}Data`
+      // A path param becomes a PROP, and the `params` object is built from
+      // those props. PMTC lowers this to native string interpolation and keys
+      // the query harness on the resulting URL, so passing a different id
+      // re-fetches — the same thing the web does.
+      //
+      // Every path param is REQUIRED by construction (a URL cannot omit a
+      // segment), so they are non-optional props regardless of what the spec
+      // marked them.
+      const params = op.pathParams
+      // A path param's name is `ident()`-normalized at CONVERSION (see
+      // `input/openapi.ts`), so it is a valid identifier here by construction
+      // — which is what lets it be a bare `props.x` member access rather than
+      // the quoted-key form the other emitters need. If that normalization
+      // ever moves, this breaks loudly at typecheck rather than silently.
+      const propsType = [
+        ...params.map((p) => `${p.name}: ${tsType(p.type)}`),
+        `children: (data: ${ret} | undefined) => unknown`,
+      ].join('; ')
+      // `props.x`, never a destructure: destructuring reads the getter once
+      // and freezes the value, which is the single most common way to lose
+      // reactivity in Pyreon — and here it would also stop the query
+      // re-fetching when the parent passes a new id.
+      const args = params.length
+        ? `({ params: { ${params.map((p) => `${p.name}: props.${p.name}`).join(', ')} } })`
+        : '()'
       f.line()
       f.doc(
         `Fetches \`${endpointSpec(op)}\` and renders it through \`children\`.`,
+        ...(params.length
+          ? [
+              '',
+              `Takes ${params.map((p) => `\`${p.name}\``).join(', ')} as ${params.length === 1 ? 'a prop' : 'props'} and re-fetches when ${params.length === 1 ? 'it changes' : 'they change'}.`,
+            ]
+          : []),
         '',
         'The `useQuery` call sits directly in the component body, in the same',
         'file as its client and endpoint — the one arrangement PMTC lowers to',
         'PyreonQuery. Moving it into a hook silently breaks the native build.',
       )
-      f.line(`export function ${name}(props: { children: (data: ${ret} | undefined) => unknown }) {`)
-      f.line(`  const q = useQuery<${ret}>(() => ${op.id}.query())`)
+      f.line(`export function ${name}(props: { ${propsType} }) {`)
+      f.line(`  const q = useQuery<${ret}>(() => ${op.id}.query${args})`)
       // `q.data` is a SIGNAL; passing it uncalled hands the child a function.
       f.line('  return props.children(q.data())')
       f.line('}')
@@ -367,6 +421,17 @@ export function emitNativeModules(doc: IrDocument, opts: ClientOptions): SourceF
   }
   return files
 }
+
+/**
+ * The `queryFn` of a DISABLED query.
+ *
+ * Never invoked — `enabled: false` is set after the caller's options precisely
+ * so it cannot be overridden — but the option type requires one, and a thunk
+ * that rejects with a real sentence beats `undefined!` if some future code
+ * path ever reaches it.
+ */
+const DISABLED_FN =
+  "() => Promise.reject(new Error('[Pyreon] lathe: query is disabled — its arguments are not ready'))"
 
 function collectRefs(type: IrType | undefined, into: Set<string>): void {
   if (!type) return
