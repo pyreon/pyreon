@@ -488,6 +488,38 @@ public struct PrimitiveButtonStyleStub {
   public static let automatic = PrimitiveButtonStyleStub()
 }
 public enum AccessibilityChildBehavior { case contain, combine, ignore }
+// UIKit's keyboard types, as SwiftUI's .keyboardType takes them. Listed to
+// mirror the real enum rather than widened — the members the emit can produce
+// plus the ones a reader would expect beside them.
+public enum UIKeyboardType {
+  case \`default\`, asciiCapable, numbersAndPunctuation, URL, numberPad, phonePad
+  case namePhonePad, emailAddress, decimalPad, twitter, webSearch, asciiCapableNumberPad
+}
+// Mirrors real SwiftUI's AccessibilityTraits as an OptionSet, not an enum:
+// .isHeader is a static member on the type, and the real signature takes the
+// set. Listed rather than widened — a stub that is a SUPERSET of the real
+// surface masks, and one that is NARROWER manufactures a phantom bug (this one
+// was simply absent, so the Heading emit failed the type gate while building
+// fine on a device).
+// NOTE no backticks anywhere in this file's comments: it is one big TS template
+// literal, so a backtick ends the string and the error points at the next word.
+public struct AccessibilityTraits: OptionSet {
+  public let rawValue: Int
+  public init(rawValue: Int) { self.rawValue = rawValue }
+  public static let isHeader = AccessibilityTraits(rawValue: 1 << 0)
+  public static let isButton = AccessibilityTraits(rawValue: 1 << 1)
+  public static let isImage = AccessibilityTraits(rawValue: 1 << 2)
+  public static let isSelected = AccessibilityTraits(rawValue: 1 << 3)
+  public static let isLink = AccessibilityTraits(rawValue: 1 << 4)
+  public static let isSearchField = AccessibilityTraits(rawValue: 1 << 5)
+  public static let isModal = AccessibilityTraits(rawValue: 1 << 6)
+  public static let isSummaryElement = AccessibilityTraits(rawValue: 1 << 7)
+  public static let updatesFrequently = AccessibilityTraits(rawValue: 1 << 8)
+  public static let startsMediaSession = AccessibilityTraits(rawValue: 1 << 9)
+  public static let allowsDirectInteraction = AccessibilityTraits(rawValue: 1 << 10)
+  public static let causesPageTurn = AccessibilityTraits(rawValue: 1 << 11)
+  public static let isToggle = AccessibilityTraits(rawValue: 1 << 12)
+}
 
 // ---- View modifiers ----
 public enum TextTruncationMode { case head, tail, middle }
@@ -501,6 +533,9 @@ extension View {
   public func accessibilityIdentifier(_ id: String) -> some View { self }
   public func accessibilityLabel(_ label: String) -> some View { self }
   public func accessibilityElement(children: AccessibilityChildBehavior) -> some View { self }
+  public func accessibilityAddTraits(_ traits: AccessibilityTraits) -> some View { self }
+  public func keyboardType(_ type: UIKeyboardType) -> some View { self }
+  public func accessibilityHidden(_ hidden: Bool) -> some View { self }
   public func simultaneousGesture<G: Gesture>(_ gesture: G) -> some View { self }
   public func highPriorityGesture<G: Gesture>(_ gesture: G) -> some View { self }
   public func onSubmit(_ action: @escaping () -> Void) -> some View { self }
@@ -1271,6 +1306,17 @@ public struct Font {
   // signature says CGFloat, which is the same type on 64-bit and is not
   // reliably resolvable on the Linux toolchain this gate runs on.
   public static func custom(_ name: String, size: Double) -> Font { Font() }
+  // .system(size:weight:design:) — the emit uses it for a numeric font size.
+  // Real SwiftUI defaults weight and design, so both are optional here too; a
+  // stub that REQUIRED them would reject the emit's one-argument call, which is
+  // the narrower-than-the-runtime failure that manufactures a phantom bug.
+  public static func system(
+    size: Double,
+    weight: Font.Weight = .regular,
+    design: Font.Design = .default
+  ) -> Font { Font() }
+  public enum Weight { case ultraLight, thin, light, regular, medium, semibold, bold, heavy, black }
+  public enum Design { case \`default\`, serif, rounded, monospaced }
 }
 // Color — theme-token colors lower to the component initialiser, so the
 // Double-channel init is the load-bearing one (a token emitted with the wrong

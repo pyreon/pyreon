@@ -158,6 +158,175 @@ export function scalarLiteralType(e: ExprIR): TypeIR | null {
  * stays dependency-free of `infer-type` — the caller, which already imports
  * `inferType`, passes `(e) => inferType(e, ctx)`.
  */
+/**
+ * A DECLARED struct whose fields are a superset of the literal's, where every
+ * field the literal omits is OPTIONAL. Returns its name, or null.
+ *
+ * The exact field-set index that both emitters consult first cannot see this
+ * case, and the gap is common rather than exotic: a type with an optional field
+ * is ordinary TS, and a literal that simply does not set it is the normal way
+ * to write one. `type T = { a: string; b?: string }` with `signal<T>({ a: 'x' })`
+ * missed the index, fell through to synthesis, and emitted
+ * `var v: T = __Obj0(a: "x")` — a type the annotation says it is not. Swift
+ * rejects that outright, so the shape simply did not build; a recursive type
+ * (a ProseMirror document, where the leaf node has `text` and the branch has
+ * `content`) hits it at every level.
+ *
+ * Ambiguity BAILS rather than guessing: if two declared structs both accept the
+ * literal, there is no type context here to choose between them, and picking
+ * one would be a silent mis-construction. Same rule the exact index already
+ * uses for a field-set collision.
+ */
+export function subsetStructName(
+  literalFields: readonly string[],
+  structs: readonly StructIR[],
+  isOptional: (t: TypeIR) => boolean,
+): string | null {
+  const given = new Set(literalFields)
+  let found: string | null = null
+  for (const s of structs) {
+    const names = new Set(s.fields.map((f) => f.name))
+    // Every field the literal sets must exist on the struct...
+    let ok = true
+    for (const g of given) {
+      if (!names.has(g)) {
+        ok = false
+        break
+      }
+    }
+    if (!ok) continue
+    // ...and every field it does NOT set must be optional.
+    for (const f of s.fields) {
+      if (!given.has(f.name) && !isOptional(f.type)) {
+        ok = false
+        break
+      }
+    }
+    if (!ok) continue
+    if (found !== null) return null // ambiguous — two structs accept it
+    found = s.name
+  }
+  return found
+}
+
+/**
+ * One piece of a JSON literal lowering: either static JSON text, or a runtime
+ * expression whose encoded form goes in that slot.
+ */
+export type JsonLiteralPart = { static: string } | { dyn: ExprIR }
+
+/**
+ * Lower an object/array literal that sits in a JSON POSITION straight to JSON,
+ * instead of routing it through struct synthesis.
+ *
+ * `<WebView data={…}>` immediately hands its value to `PyreonJSON.encode` /
+ * `PyreonJson.encode`, so the value IS JSON — building a native struct for it is
+ * a detour, and the detour fails on exactly the payloads JSON exists to carry.
+ * An ECharts option object (`{ xAxis: { type: 'category', data: days }, yAxis:
+ * {}, series: [{ type: 'bar', data: revenue() }] }`) has heterogeneous nested
+ * shapes and empty objects; no struct can be synthesized for it, so the emit
+ * fell back to a tuple — which is invalid Kotlin, and on Swift a non-`Codable`
+ * value that `encode` cannot serialize. That is why `examples/native-viz`, the
+ * charts webview example, did not build on Android.
+ *
+ * Static parts become JSON text at COMPILE time; anything else (a signal read,
+ * a call, an identifier) becomes a hole the emitter fills with an `encode(…)`
+ * interpolation, so live data still flows. Returns null if any part cannot be
+ * represented — the caller then keeps its existing path unchanged.
+ *
+ * `undefined` maps to JSON `null`: JSON has no undefined, and omitting the key
+ * instead would silently change the object's SHAPE, which a hosted page reading
+ * `Object.keys` would see.
+ */
+export function buildJsonLiteralParts(expr: ExprIR): JsonLiteralPart[] | null {
+  const parts: JsonLiteralPart[] = []
+  const pushStatic = (text: string): void => {
+    const last = parts[parts.length - 1]
+    if (last !== undefined && 'static' in last) last.static += text
+    else parts.push({ static: text })
+  }
+  const walk = (e: ExprIR): boolean => {
+    if (e.kind === 'literal') {
+      const v = e.value
+      if (v === null || v === undefined) pushStatic('null')
+      else if (typeof v === 'string') pushStatic(JSON.stringify(v))
+      else pushStatic(String(v))
+      return true
+    }
+    if (e.kind === 'array') {
+      pushStatic('[')
+      for (let i = 0; i < e.elements.length; i++) {
+        if (i > 0) pushStatic(',')
+        if (!walk(e.elements[i]!)) return false
+      }
+      pushStatic(']')
+      return true
+    }
+    if (e.kind === 'object') {
+      // A spread cannot be resolved to JSON text at compile time.
+      if ((e.spreads?.length ?? 0) > 0) return false
+      pushStatic('{')
+      for (let i = 0; i < e.fields.length; i++) {
+        if (i > 0) pushStatic(',')
+        pushStatic(`${JSON.stringify(e.fields[i]!.name)}:`)
+        if (!walk(e.fields[i]!.value)) return false
+      }
+      pushStatic('}')
+      return true
+    }
+    if (e.kind === 'paren') return walk(e.inner)
+    // Anything else is a runtime value — leave a hole for the emitter to fill
+    // with its own `encode(…)` interpolation.
+    parts.push({ dyn: e })
+    return true
+  }
+  if (expr.kind !== 'object' && expr.kind !== 'array') return null
+  return walk(expr) ? parts : null
+}
+
+/**
+ * Why a field value cannot be given a struct-field type — the ONE place that
+ * knows, so both emitters produce the same message for the same shape.
+ *
+ * Returns null when the value IS typeable (the caller should not warn).
+ *
+ * This exists because the failure is a CLASS, not a shape. The first cut of
+ * this diagnostic enumerated the one shape that had been observed (an empty
+ * array field) in the parser; a sweep across the synthesis frontier then found
+ * five more that fail identically and just as silently — `null` and `undefined`
+ * fields, a NESTED empty array, a mixed scalar array, an array of arrays. Every
+ * one of them is an ordinary data model (`{ id, parent: null }` is a tree
+ * node), and each would have needed its own parser rule. Asking the bail site
+ * itself is one rule that covers all of them, and the next one too.
+ */
+export function explainUntypeableField(value: ExprIR): string | null {
+  if (value.kind === 'array') {
+    if (value.elements.length === 0) {
+      return 'an empty array literal carries no element type, and guessing one would be contradicted by the first non-empty assignment'
+    }
+    const first = value.elements[0]!
+    if (first.kind === 'array') {
+      return 'an array of arrays has no synthesized element struct — nested list types are outside the synthesis frontier'
+    }
+    // Compare the literal VALUE types, not the IR kind — `1` and `'two'` are
+    // both `kind: 'literal'`, so a kind comparison reports a mixed array as
+    // homogeneous and falls through to the generic message.
+    const kindOf = (el: ExprIR): string =>
+      el.kind === 'literal' ? `literal:${typeof el.value}` : el.kind
+    if (value.elements.some((el) => kindOf(el) !== kindOf(first))) {
+      return 'the array mixes element types, so it has no single element type'
+    }
+    return 'the array element type could not be resolved'
+  }
+  if (value.kind === 'literal' && (value.value === null || value.value === undefined)) {
+    return 'a `null`/`undefined` literal carries no type — native structs need a concrete (optional) field type, so annotate the declaration to say what it is optional OF'
+  }
+  if (value.kind === 'object') {
+    return 'a nested object literal whose own fields are not all typeable (check the nested fields for the same causes)'
+  }
+  return null
+}
+
 export function synthLiteralStructName(
   fields: { name: string; value: ExprIR }[],
   structs: StructIR[],

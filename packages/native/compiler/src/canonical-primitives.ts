@@ -326,3 +326,53 @@ export const ICON_MAP: Record<string, { sf: string; material: string }> = {
   'thumb-up': { sf: 'hand.thumbsup.fill', material: 'ThumbUp' },
   warning: { sf: 'exclamationmark.triangle.fill', material: 'Warning' },
 }
+
+/**
+ * `<Text size>` in points, mirroring the WEB impl's `SIZE_PX` exactly
+ * (`packages/core/primitives/src/web/Text.tsx`). Same source, same rendered
+ * size — a scale that drifts from the web's is a divergence that looks like a
+ * design choice.
+ */
+export const TEXT_SIZE_PT: Record<string, number> = {
+  xs: 12,
+  sm: 14,
+  md: 16,
+  lg: 20,
+  xl: 24,
+}
+
+/** `<Text weight>` per target. The web uses 400/500/700. */
+export const TEXT_WEIGHT_SWIFT: Record<string, string> = {
+  regular: '.regular',
+  medium: '.medium',
+  bold: '.bold',
+}
+export const TEXT_WEIGHT_KOTLIN: Record<string, string> = {
+  regular: 'FontWeight.Normal',
+  medium: 'FontWeight.Medium',
+  bold: 'FontWeight.Bold',
+}
+
+/**
+ * `<Field kind>` → the software keyboard each target should raise.
+ *
+ * The web gets this free from `<input type>`; native does not, and the
+ * difference is a phone showing a full QWERTY where the same source shows a
+ * numeric pad in a browser. `password` is absent on purpose: it selects the
+ * MASKING path (SecureField / PasswordVisualTransformation), and a masked field
+ * keeps the default keyboard on both platforms.
+ */
+export const FIELD_KEYBOARD_SWIFT: Record<string, string> = {
+  number: '.numberPad',
+  email: '.emailAddress',
+  tel: '.phonePad',
+  url: '.URL',
+  search: '.webSearch',
+}
+export const FIELD_KEYBOARD_KOTLIN: Record<string, string> = {
+  number: 'KeyboardType.Number',
+  email: 'KeyboardType.Email',
+  tel: 'KeyboardType.Phone',
+  url: 'KeyboardType.Uri',
+  search: 'KeyboardType.Text',
+}

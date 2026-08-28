@@ -248,7 +248,26 @@ fun <T : Any> rememberSaveable(
 // slot, keyboardOptions, keyboardActions). All non-required args have
 // defaults so missing-arg call sites are still well-typed.
 
-class KeyboardOptions(val imeAction: ImeAction = ImeAction.Default)
+// Both params default, mirroring the real signature — a stub that REQUIRED
+// either would reject the emit's one-argument calls, which is the
+// narrower-than-the-runtime failure that manufactures a phantom bug.
+class KeyboardOptions(
+  val keyboardType: KeyboardType = KeyboardType.Text,
+  val imeAction: ImeAction = ImeAction.Default,
+)
+// The real KeyboardType members, not a convenient superset: a stub wider than
+// the runtime is itself a masking source.
+object KeyboardType {
+  val Text = KeyboardType
+  val Ascii = KeyboardType
+  val Number = KeyboardType
+  val Phone = KeyboardType
+  val Uri = KeyboardType
+  val Email = KeyboardType
+  val Password = KeyboardType
+  val NumberPassword = KeyboardType
+  val Decimal = KeyboardType
+}
 
 class KeyboardActions(val onDone: (() -> Unit)? = null)
 

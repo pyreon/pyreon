@@ -45,6 +45,9 @@ const CODE_HOST = "<!doctype html><html><head><meta charset=\"utf-8\"><meta name
 
 const RICHTEXT_HOST = "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1,maximum-scale=1\"><style>html,body{margin:0;padding:0;height:100%;width:100%;background:transparent}#pyreon-richtext,.ProseMirror{height:100%;width:100%;outline:none;box-sizing:border-box;padding:8px}</style></head><body><div id=\"pyreon-richtext\"></div><script src=\"./assets/tt.js\"></script><script>\n(function () {\n  var tries = 0;\n  function waitTT() {\n    if (window.TT && typeof window.TT.createEditor === 'function') { boot(); return; }\n    if (++tries > 800) { window.__pyreonRichTextError = 'window.TT not provided (timed out)'; return; }\n    setTimeout(waitTT, 10);\n  }\n  function boot() {\n  try {\n  var el = document.getElementById('pyreon-richtext');\n  var cur = { content: null, editable: true };\n  var lastPushed = null; // JSON string of content WE last pushed (loop guard)\n  var editor = window.TT.createEditor(el, {\n    content: null,\n    editable: true,\n    onUpdate: function (json) {\n      var s;\n      try { s = JSON.stringify(json); } catch (e) { return; }\n      // Loop guard: skip the echo of content WE pushed.\n      if (s === lastPushed) return;\n      cur.content = json;\n      if (typeof window.pyreonPostMessage === 'function') {\n        try { window.pyreonPostMessage(JSON.stringify({ content: json })); } catch (e) {}\n      }\n    }\n  });\n  function apply() {\n    var d = window.__pyreonData;\n    if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { return; } }\n    if (!d || typeof d !== 'object') return;\n    if (d.content !== undefined) {\n      var s;\n      try { s = JSON.stringify(d.content); } catch (e) { s = null; }\n      if (s !== null && s !== JSON.stringify(cur.content)) {\n        cur.content = d.content;\n        lastPushed = s;\n        editor.setContent(d.content);\n      }\n    }\n    if (d.editable !== undefined && !!d.editable !== cur.editable) {\n      cur.editable = !!d.editable;\n      editor.setEditable(cur.editable);\n    }\n  }\n  window.addEventListener('pyreondata', apply);\n  apply();\n  } catch (e) { window.__pyreonRichTextError = String(e && e.stack || e); }\n  }\n  waitTT();\n})();</script></body></html>"
 
+/** A ProseMirror node: a branch has `content`, a leaf has `text`. */
+type PMNode = { type: string; content?: PMNode[]; text?: string }
+
 export function VizApp() {
   const selected = signal('Tap any chart element or flow node, or edit an editor')
   // The code/rich-text editors are driven by these signals over the FORWARD
@@ -55,7 +58,14 @@ export function VizApp() {
   // edit, use `<CodeWebView onChange>` / `<RichTextWebView onChange>` (they
   // parse the payload on web — see each package's /webview browser tests).
   const source = signal('function greet(name) {\n  return "Hello, " + name\n}')
-  const doc = signal({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Edit me — this is a real TipTap editor in a WebView.' }] }] })
+  // Annotated, and the annotation is load-bearing rather than documentation. A
+  // ProseMirror document is a heterogeneous tree — the branch node carries
+  // `content`, the leaf carries `text` — so there is no single struct to
+  // synthesize from the literal alone, and without a type to unify them the
+  // Swift emit built one struct per level and could not put a leaf inside a
+  // branch's array. `PMNode` supplies exactly the missing information: one node
+  // type whose two shapes are optional fields.
+  const doc = signal<PMNode>({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Edit me — this is a real TipTap editor in a WebView.' }] }] })
   // One signal drives every data-driven chart — bump it and they all follow
   // (the forward bridge). 21 chart types + a flow diagram, all in
   // native WebViews from THIS one source.

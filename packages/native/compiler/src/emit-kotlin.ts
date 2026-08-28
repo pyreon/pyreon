@@ -7,6 +7,9 @@
 import {
   ICON_MAP,
   isCanonicalPrimitive,
+  FIELD_KEYBOARD_KOTLIN,
+  TEXT_SIZE_PT,
+  TEXT_WEIGHT_KOTLIN,
   resolveAlign,
   resolveColor,
   resolveRadius,
@@ -17,6 +20,9 @@ import {
   chainHasOptional,
   isCompoundExpr,
   substituteIdentifier,
+  buildJsonLiteralParts,
+  subsetStructName,
+  explainUntypeableField,
   synthLiteralStructName,
   classifyDynamicStylingAttr,
   classifySortableRef,
@@ -94,6 +100,10 @@ let _enumNames: Set<string> = new Set()
  * `_structFieldsToName`. See that file for the structural rationale.
  */
 let _structFieldsToName: Map<string, string> = new Map()
+/** The DECLARED data classes for this emit, kept for `subsetStructName` — the
+ *  exact field-set index above cannot see a literal that omits an optional
+ *  field. */
+let _declaredStructs: readonly StructIR[] = []
 /**
  * Synthesized data classes for ANONYMOUS all-scalar-literal object
  * EXPRESSIONS (`{ id: 1, name: 'a' }`). Mirror of emit-swift's
@@ -408,6 +418,7 @@ export function emitKotlin(
   _enumNames = new Set(enums.map((e) => e.name))
   // Build the struct-fields key map — mirror of emit-swift's logic.
   _structFieldsToName = new Map()
+  _declaredStructs = structs
   _synthExprStructs = []
   _synthExprStructKeys = new Map()
   for (const s of structs) {
@@ -5000,6 +5011,25 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             .join(', ')
           return `${kotlinIdent(structName)}(${args})`
         }
+        // The exact index missed. Before synthesizing, try a DECLARED data
+        // class whose omitted fields are all optional. Kotlin is the SILENT
+        // half of this one: the binding is `var v by remember { mutableStateOf(…) }`
+        // with no written type, so Kotlin happily infers the synthesized
+        // `__Obj0` and it compiles — while the value's real type is not the one
+        // the annotation says, so `encode` serializes the wrong shape and any
+        // site expecting `T` fails elsewhere. Swift, which writes the type out,
+        // rejects it at the declaration.
+        const subset = subsetStructName(
+          e.fields.map((f) => f.name),
+          _declaredStructs,
+          typeIsOptional,
+        )
+        if (subset !== null) {
+          const args = e.fields
+            .map((f) => `${f.name} = ${emitKotlinExpr(f.value, indent)}`)
+            .join(', ')
+          return `${kotlinIdent(subset)}(${args})`
+        }
         // No declared data class matches — SYNTHESIZE one for an all-scalar-
         // literal object (`{ id: 1, name: 'a' }`) instead of the broken
         // `(field = value)` tuple emit (tuple key-paths break `items.map { it.id }`
@@ -5040,12 +5070,62 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           return `${kotlinIdent(byNames.name)}(${args})`
         }
       }
+      warnUntypeableObjectLiteral(e.fields, 'Kotlin')
       const fields = e.fields.map((f) => `${f.name} = ${emitKotlinExpr(f.value, indent)}`).join(', ')
       return `(${fields})`
     }
     case 'paren':
       return `(${emitKotlinExpr(e.inner, indent)})`
   }
+}
+
+
+/**
+ * About to emit the tuple fallback for an object literal that could not be
+ * given a struct — say so, and say WHY, per field.
+ *
+ * This is the LAST stop before both targets emit something structurally wrong,
+ * and they go wrong differently, which is what kept the whole class hidden:
+ *
+ *   Kotlin  `(id = "a", parent = null)` — named arguments with no constructor.
+ *           Not valid Kotlin; the Gradle build dies on it.
+ *   Swift   `(id: "a", parent: nil)` typed `Any` — a labelled tuple, which
+ *           COMPILES. Tuples are not `Codable`, so `PyreonJSON.encode`, a
+ *           `<WebView data=>` push, or a Saver silently produce the wrong bytes.
+ *           Compiling and being wrong is worse than not compiling.
+ *
+ * Warning HERE rather than in the parser is the point. The first version of
+ * this diagnostic pattern-matched the one shape that had been observed — an
+ * un-annotated empty array field. A sweep then found five more that fail
+ * identically and just as silently (`null`/`undefined` fields, a nested empty
+ * array, a mixed scalar array, an array of arrays), each an ordinary data model
+ * and each needing its own parser rule. The bail site already knows; asking it
+ * is one rule for the whole class, including the shapes nobody has hit yet.
+ *
+ * The remedy is verified rather than suggested: annotating the declaration
+ * lowers correctly today (the annotation supplies the missing types and both
+ * targets emit a real struct), and a spec asserts it still does.
+ */
+function warnUntypeableObjectLiteral(
+  fields: { name: string; value: ExprIR }[],
+  target: 'Kotlin' | 'Swift',
+): void {
+  const causes: string[] = []
+  for (const f of fields) {
+    const why = explainUntypeableField(f.value)
+    if (why !== null) causes.push(`\`${f.name}\`: ${why}`)
+  }
+  if (causes.length === 0) return
+  const consequence =
+    target === 'Kotlin'
+      ? 'the emit falls back to a tuple — named arguments with no constructor, which is INVALID Kotlin and fails the Gradle build'
+      : 'the emit falls back to a labelled tuple, which COMPILES but is not `Codable` — so `PyreonJSON.encode` and a `<WebView data=>` push silently produce the wrong bytes at runtime'
+  _emitWarnings.push(
+    `object literal { ${fields.map((f) => f.name).join(', ')} }: no struct could be synthesized ` +
+      `because ${causes.join('; ')}. So ${consequence}. Annotate the declaration ` +
+      `(\`signal<Shape>({ … })\`, or \`const x: Shape = { … }\`) — an annotated literal lowers ` +
+      `to a real struct on both targets.`,
+  )
 }
 
 function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
@@ -5380,9 +5460,34 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
     typeof font === 'string'
       ? `, fontFamily = pyreonFont(${JSON.stringify(sanitizeKotlinFontName(font))})`
       : ''
-  if (e.children.length === 0) return `Text(text = ""${typoArgs}${fontArg}${truncArgs}${modArg})`
+  // `size` / `weight` — documented props on the canonical Text that produced NO
+  // emit on either target, with no warning, exactly like `truncate` above did.
+  // A heading written `<Text size="lg" weight="bold">` rendered at body size and
+  // regular weight on native while the web showed it large and bold: the same
+  // source, a visibly different screen, and nothing said so.
+  //
+  // The point sizes mirror the WEB impl's own scale rather than inventing one —
+  // a scale that drifts from the web's is a divergence that looks like a design
+  // choice. A `style` object still wins: it is the more specific instruction,
+  // and this only fills in when the prop is the only thing said.
+  // `color` — documented on Text, implemented on its SIBLING Heading in this
+  // same file and not here. A coloured label rendered in the default colour on
+  // native while the web showed it coloured, with no warning. Reuses Heading's
+  // exact call so the two agree on the static token, the two-literal ternary,
+  // and the named warning for anything else.
+  const textColor = kotlinStylingValue(e, 'color', (v) => resolveColor(String(v), 'kotlin'))
+  const colorArg =
+    textColor !== undefined && !typoArgs.includes('color =') ? `, color = ${textColor}` : ''
+  const sizeKey = readStaticAttrKotlin(e, 'size')
+  const sizePt = typeof sizeKey === 'string' ? TEXT_SIZE_PT[sizeKey] : undefined
+  const sizeArg = sizePt !== undefined && !typoArgs.includes('fontSize') ? `, fontSize = ${sizePt}.sp` : ''
+  const weightKey = readStaticAttrKotlin(e, 'weight')
+  const weightVal = typeof weightKey === 'string' ? TEXT_WEIGHT_KOTLIN[weightKey] : undefined
+  const weightArg =
+    weightVal !== undefined && !typoArgs.includes('fontWeight') ? `, fontWeight = ${weightVal}` : ''
+  if (e.children.length === 0) return `Text(text = ""${typoArgs}${colorArg}${sizeArg}${weightArg}${fontArg}${truncArgs}${modArg})`
   if (e.children.length === 1 && e.children[0]!.kind === 'text') {
-    return `Text(text = ${JSON.stringify(e.children[0]!.value)}${typoArgs}${fontArg}${truncArgs}${modArg})`
+    return `Text(text = ${JSON.stringify(e.children[0]!.value)}${typoArgs}${colorArg}${sizeArg}${weightArg}${fontArg}${truncArgs}${modArg})`
   }
   const parts: string[] = []
   for (const c of e.children) {
@@ -5407,7 +5512,7 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
       parts.push(kotlinInterpSegment(childExpr, indent))
     }
   }
-  return `Text(text = "${parts.join('')}"${typoArgs}${fontArg}${truncArgs}${modArg})`
+  return `Text(text = "${parts.join('')}"${typoArgs}${colorArg}${sizeArg}${weightArg}${fontArg}${truncArgs}${modArg})`
 }
 
 /**
@@ -6654,7 +6759,7 @@ function emitKotlinWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
   // every change WITHOUT reloading, so the chart updates in place.
   const dataExpr = dynamicWebViewAttrKotlin(e, 'data')
   const dataArg =
-    dataExpr !== undefined ? `data = PyreonJson.encode(${emitKotlinExpr(dataExpr, 0)})` : undefined
+    dataExpr !== undefined ? `data = ${kotlinWebViewDataArg(dataExpr)}` : undefined
   // Reverse bridge — `onMessage={(m) => …}` receives the string the page
   // sends via `window.pyreonPostMessage(...)`.
   const onMsg = e.attrs.find((a) => a.kind === 'event' && a.name === 'message')
@@ -6687,6 +6792,38 @@ function emitKotlinMessageHandler(handler: ExprIR): string {
     return `{ ${param} -> ${emitKotlinExpr(handler.body, 0)} }`
   }
   return `{ pyreonMsg -> ${emitKotlinExpr(handler, 0)}(pyreonMsg) }`
+}
+
+
+/**
+ * The `data` value for `<WebView>` (Kotlin). Mirror of `swiftWebViewDataArg`.
+ *
+ * An object/array LITERAL here is JSON, not a model: the value goes straight to
+ * `PyreonJson.encode`. Routing it through struct synthesis is a detour, and the
+ * detour fails on exactly the payloads JSON exists to carry — an ECharts option
+ * object has heterogeneous nesting and empty objects, so no struct exists for
+ * it and the emit fell back to a tuple. In Kotlin a tuple is named arguments
+ * with no constructor, and `encode` is `inline fun <reified T>`, so the build
+ * died on `cannot infer type for type parameter 'T'`. That is why
+ * `examples/native-viz`, the charts webview example, did not build on Android.
+ *
+ * So build the JSON at COMPILE time and interpolate the runtime parts. Anything
+ * else (an identifier, a signal read, a call) keeps the plain `encode(expr)`
+ * form it always had.
+ */
+function kotlinWebViewDataArg(dataExpr: ExprIR): string {
+  const parts = buildJsonLiteralParts(dataExpr)
+  if (parts === null) return `PyreonJson.encode(${emitKotlinExpr(dataExpr, 0)})`
+  const body = parts
+    .map((p) =>
+      'static' in p
+        ? // Kotlin string escaping: backslash, quote, and `$` (which would
+          // otherwise open an interpolation of its own).
+          p.static.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\$/g, '\\$')
+        : `\${PyreonJson.encode(${emitKotlinExpr(p.dyn, 0)})}`,
+    )
+    .join('')
+  return `"${body}"`
 }
 
 /** The `html` / `src` constructor arg for `<WebView>` (Kotlin). Mirror of
@@ -7104,9 +7241,20 @@ function emitKotlinPress(
   // conditional import for it is added in build.ts's
   // `conditionalKotlinImports` keyed on `combinedClickable(`.
   const layoutModifier = emitKotlinLayoutModifier(e)
+  // `disabled` — the SAME prop `<Button>` has honoured all along, and `<Press>`
+  // never did. Not a cosmetic drop: a disabled Press stayed CLICKABLE and fired
+  // its handler on both targets, while the sibling primitive in this same file
+  // got it right. One handled and one not, from one prop.
+  //
+  // `clickable`/`combinedClickable` both take `enabled`, so the fix is the
+  // existing helper rather than a new path — it already handles the literal,
+  // the `disabled={false}` no-op, and a signal-bound expression (negated into
+  // Compose's `enabled` sense).
+  const enabledArg = kotlinEnabledArg(e)
+  const enabledPrefix = enabledArg === '' ? '' : `${enabledArg}, `
   const clickable = onLongPress
-    ? `.combinedClickable(onClick = ${action}, onLongClick = ${emitKotlinAction(onLongPress.handler, indent)})`
-    : `.clickable(onClick = ${action})`
+    ? `.combinedClickable(${enabledPrefix}onClick = ${action}, onLongClick = ${emitKotlinAction(onLongPress.handler, indent)})`
+    : `.clickable(${enabledPrefix}onClick = ${action})`
 
   // `onSwipeLeft` / `onSwipeRight` → `pointerInput { detectHorizontalDragGestures }`.
   // The detector is direction-locked (only claims horizontally-dominant
@@ -7324,8 +7472,23 @@ let formBinding: { value: string; onChange: string } | undefined
     (a): a is Extract<AttrIR, { kind: 'event' }> =>
       a.kind === 'event' && a.name === 'submit',
   )
+  // `kind` → the software KEYBOARD, which the web gets free from `<input type>`
+  // and native did not: a phone showed full QWERTY where the same source showed
+  // a numeric pad in a browser. Previously deferred on both targets.
+  //
+  // MERGED with the imeAction rather than pushed separately — `KeyboardOptions`
+  // is one argument, so a second `keyboardOptions =` would be a duplicate named
+  // arg, and building it in two places is how one silently replaces the other.
+  const kindForKeyboard = readStaticAttrKotlin(e, 'kind')
+  const kbType =
+    typeof kindForKeyboard === 'string' ? FIELD_KEYBOARD_KOTLIN[kindForKeyboard] : undefined
+  const kbParts: string[] = []
+  if (kbType !== undefined) kbParts.push(`keyboardType = ${kbType}`)
+  if (onSubmit) kbParts.push('imeAction = ImeAction.Done')
+  if (kbParts.length > 0) {
+    args.push(`keyboardOptions = KeyboardOptions(${kbParts.join(', ')})`)
+  }
   if (onSubmit) {
-    args.push('keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done)')
     args.push(
       `keyboardActions = KeyboardActions(onDone = ${emitKotlinAction(onSubmit.handler, indent + 2)})`,
     )
