@@ -55,10 +55,10 @@ export function generate(specText: string, config: ResolvedConfig): GenerateResu
   const has = (p: string): boolean => config.plugins.includes(p as never)
 
   if (has('types')) push(emitTypes(doc))
-  if (has('schemas')) push(emitSchemas(doc, { native: false }))
+  if (has('schemas')) push(emitSchemas(doc, { native: false, validator: config.validator }))
   if (has('client')) {
     push(emitClient(doc, { native, baseUrl: config.baseUrl, client: config.client }))
-    for (const f of emitWebEndpoints(doc)) push(f)
+    for (const f of emitWebEndpoints(doc, config.validator)) push(f)
   }
   if (has('queries')) {
     for (const f of emitWebQueries(doc)) push(f)
@@ -77,10 +77,14 @@ export function generate(specText: string, config: ResolvedConfig): GenerateResu
   // them unconditionally meant `--plugins schemas` still produced a client and
   // a data component, which is the opposite of what was asked for.
   if (native && (has('client') || has('queries'))) {
-    for (const f of emitNativeModules(doc, { native, baseUrl: config.baseUrl })) push(f)
+    for (const f of emitNativeModules(doc, {
+      native,
+      baseUrl: config.baseUrl,
+      validator: config.validator,
+    })) push(f)
   }
   // Last, so it can re-export whatever the selection actually produced.
-  push(emitBarrel(doc, { plugins: config.plugins }))
+  push(emitBarrel(doc, { plugins: config.plugins, client: config.client }))
 
   const surface = extractSurface(doc)
   // Emitted LAST and unconditionally: it is not a plugin's output but the

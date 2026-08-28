@@ -39,14 +39,16 @@ describe('the client setting is invisible to every emitter but client.ts', () =>
   const pyreon = filesFor('pyreon')
 
   for (const client of ['fetch', 'axios', 'ky'] as const) {
-    it(`${client} changes client.ts and mocks.ts, and nothing else`, () => {
+    it(`${client} changes client.ts, mocks.ts and the barrel, and nothing else`, () => {
       const other = filesFor(client)
       expect([...other.keys()].sort()).toEqual([...pyreon.keys()].sort())
       const differing = [...pyreon.keys()].filter((p) => pyreon.get(p) !== other.get(p))
       // `mocks.ts` differs because `@pyreon/http` ships a `mock()` middleware
-      // and the adapters answer through their own seam. Everything the app
-      // actually imports — endpoints, queries, keys, the barrel — is identical.
-      expect(differing.sort()).toEqual(['client.ts', 'mocks.ts'])
+      // and the adapters answer through their own transport seam; `index.ts`
+      // differs by exactly one line, because `mockRoutes` IS that middleware
+      // and has no adapter equivalent. Everything an app actually calls —
+      // endpoints, hooks, keys — is identical.
+      expect(differing.sort()).toEqual(['client.ts', 'index.ts', 'mocks.ts'])
     })
   }
 
@@ -126,5 +128,106 @@ describe('emitted imports read like code a person would write', () => {
     for (const client of ['axios', 'ky'] as const) {
       expect(filesFor(client).get('client.ts'), client).not.toContain('default as')
     }
+  })
+})
+
+describe('the validator setting', () => {
+  const filesForValidator = (validator: 'pyreon' | 'zod'): Map<string, string> => {
+    const cfg = resolveConfig({
+      input: 'x',
+      validator,
+      plugins: ['schemas', 'client', 'queries'],
+    })
+    return new Map(generate(SPEC, cfg).files.map((f) => [f.path, f.contents]))
+  }
+
+  it('emits zod schemas from the zod dialect', () => {
+    const schemas = filesForValidator('zod').get('schemas.ts') ?? ''
+    expect(schemas).toContain("import { z } from 'zod'")
+    expect(schemas).toContain('z.object({')
+    expect(schemas).not.toContain('@pyreon/validate')
+    // zod infers with `z.infer<typeof X>`; there is no separate helper to
+    // import, and importing a non-existent `Infer` from zod would not compile.
+    expect(schemas).toContain('z.infer<typeof')
+  })
+
+  it('keeps the default on @pyreon/validate', () => {
+    const schemas = filesForValidator('pyreon').get('schemas.ts') ?? ''
+    expect(schemas).toContain("import { s } from '@pyreon/validate'")
+    expect(schemas).toContain('Infer<typeof')
+    expect(resolveConfig({ input: 'x' }).validator).toBe('pyreon')
+  })
+
+  it('rejects an unknown validator by name', () => {
+    expect(() => resolveConfig({ input: 'x', validator: 'joi' as never })).toThrow(
+      /unknown validator `joi`.*Known: pyreon, zod/s,
+    )
+  })
+
+  it('ALLOWS multiplatform with zod — unlike a third-party HTTP client', () => {
+    // The difference is that the bridge is ours: PMTC reads zod through
+    // `@pyreon/validation`'s `zodSchema(...)`. There is no equivalent door for
+    // axios, so that combination is refused instead.
+    expect(() =>
+      resolveConfig({ input: 'x', target: 'multiplatform', validator: 'zod' }),
+    ).not.toThrow()
+  })
+
+  it('wraps native zod schemas so the compiler can see them', () => {
+    const cfg = resolveConfig({
+      input: 'x',
+      target: 'multiplatform',
+      validator: 'zod',
+      plugins: ['schemas', 'client', 'queries'],
+    })
+    const native = generate(SPEC, cfg).files.find((f) => f.path.endsWith('.native.tsx'))
+    // An unwrapped `z.object({ … })` lowers to NOTHING — the recogniser keys
+    // on the wrapper call, not on the `z` binding.
+    expect(native?.contents).toContain('zodSchema(z.object({')
+    expect(native?.contents).toContain("import { zodSchema } from '@pyreon/validation'")
+  })
+
+  it('the two validators change ONLY the schema-bearing files', () => {
+    const a = filesForValidator('pyreon')
+    const b = filesForValidator('zod')
+    expect([...b.keys()].sort()).toEqual([...a.keys()].sort())
+    const differing = [...a.keys()].filter((p) => a.get(p) !== b.get(p)).sort()
+    // Only `schemas.ts` here: this spec's responses are bare `$ref`s, which
+    // render as the model's own name and carry no binding prefix. The hooks,
+    // keys and barrel never name the validator at all.
+    expect(differing).toEqual(['schemas.ts'])
+  })
+
+  it('a COMPOSITE response clause names the binding, so endpoints follow', () => {
+    // `s.array(Book)` vs `z.array(Book)` — the one place outside `schemas.ts`
+    // where the choice is visible, and only when the response is not a bare
+    // `$ref`. Worth pinning separately so the assertion above cannot be read
+    // as "the endpoint file never changes".
+    const arraySpec = SPEC.replace(
+      `{ '200': { content: { application/json: { schema: { $ref: '#/components/schemas/Book' } } } } }`,
+      `{ '200': { content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Book' } } } } } }`,
+    )
+    const emit = (validator: 'pyreon' | 'zod'): string => {
+      const cfg = resolveConfig({ input: 'x', validator, plugins: ['schemas', 'client'] })
+      return generate(arraySpec, cfg).files.find((f) => f.path === 'endpoints/b.ts')?.contents ?? ''
+    }
+    expect(emit('pyreon')).toContain('s.array(Book)')
+    expect(emit('zod')).toContain('z.array(Book)')
+    expect(emit('zod')).toContain("import { z } from 'zod'")
+  })
+
+  it('client and validator compose independently', () => {
+    const cfg = resolveConfig({
+      input: 'x',
+      client: 'axios',
+      validator: 'zod',
+      plugins: ['schemas', 'client'],
+    })
+    const files = new Map(generate(SPEC, cfg).files.map((f) => [f.path, f.contents]))
+    expect(files.get('client.ts')).toContain("import axios from 'axios'")
+    expect(files.get('schemas.ts')).toContain("import { z } from 'zod'")
+    // The adapter validates through Standard Schema, which zod satisfies — so
+    // the two settings genuinely do not need to know about each other.
+    expect(files.get('client.ts')).toContain('~standard')
   })
 })

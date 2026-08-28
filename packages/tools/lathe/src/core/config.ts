@@ -6,8 +6,9 @@
  */
 
 import { ALL_CLIENTS, reachesNative, type ClientName } from '../emit/client-runtime'
+import { ALL_VALIDATORS, type ValidatorName } from '../emit/validator'
 
-export type { ClientName }
+export type { ClientName, ValidatorName }
 
 /** Which emitters run. Omitted means "the sensible default set". */
 export type PluginName =
@@ -126,6 +127,20 @@ export interface LatheSection {
    * other generated file is byte-identical whichever is chosen.
    */
   client?: ClientName
+  /**
+   * Which library the generated schemas are written in.
+   *
+   * `pyreon` (the default) emits `@pyreon/validate` `s.*`; `zod` emits `z.*`.
+   * Both satisfy Standard Schema, so the endpoint layer accepts either without
+   * knowing which was chosen.
+   *
+   * Both also reach native, through different doors and with DIFFERENT
+   * coverage: PMTC reads `s.object({ … })` directly and reads zod only inside
+   * `@pyreon/validation`'s `zodSchema(...)`. Measured against the real
+   * compiler, the zod recogniser lowers strictly more — nested objects and
+   * arrays of objects lower there and are dropped under `s.*`.
+   */
+  validator?: ValidatorName
   /** Overrides the spec's `servers[0].url` — must be a literal to reach native. */
   baseUrl?: string
   /**
@@ -154,6 +169,7 @@ export interface ResolvedConfig {
   target: 'web' | 'multiplatform'
   plugins: readonly PluginName[]
   client: ClientName
+  validator: ValidatorName
   baseUrl?: string | undefined
   strictNative: boolean
 }
@@ -213,6 +229,12 @@ export function resolveConfig(section: LatheSection | undefined): ResolvedConfig
       `[Pyreon] lathe: unknown client \`${client}\`. Known: ${ALL_CLIENTS.join(', ')}.`,
     )
   }
+  const validator = section?.validator ?? 'pyreon'
+  if (!ALL_VALIDATORS.includes(validator)) {
+    throw new Error(
+      `[Pyreon] lathe: unknown validator \`${validator}\`. Known: ${ALL_VALIDATORS.join(', ')}.`,
+    )
+  }
   const target = section?.target ?? 'web'
   // REFUSED rather than silently downgraded. `multiplatform` exists to prove
   // the generated modules lower, and PMTC recognises `createHttp` by NAME — an
@@ -234,6 +256,7 @@ export function resolveConfig(section: LatheSection | undefined): ResolvedConfig
     target,
     plugins: expandPlugins(plugins),
     client,
+    validator,
     baseUrl: section?.baseUrl,
     strictNative: section?.strictNative ?? false,
   }

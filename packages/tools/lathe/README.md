@@ -176,7 +176,9 @@ Real, current, and reported per-operation rather than papered over:
 | `GET` with no path parameters | lowers |
 | `GET` with a path parameter | **web-only** — PMTC bakes the URL at compile time; a runtime param cannot be baked |
 | `POST`/`PUT`/`PATCH`/`DELETE` | **web-only** — mutations are not recognised yet |
-| `enum` | narrowed to `s.string()` on the native path; the constraint is genuinely lost there |
+| `enum` | narrowed to a plain string on the native path; the constraint is genuinely lost there |
+| a model field naming another model | **lowers under `validator: 'zod'`** (inlined); dropped under the default `s.*`, with a compiler warning |
+| a `$ref` **cycle** | web-only for that field — there is no finite nesting to inline, on either validator |
 | `date` / `date-time` | kept as strings on both paths, deliberately — `s.date()` does not lower, and parsing to a `Date` on web only would be a silent divergence |
 
 A relative `baseUrl` (or a spec with no `servers`) makes **every** operation
@@ -195,6 +197,8 @@ export default {
     target: 'multiplatform',
     // 'pyreon' (default) | 'fetch' | 'axios' | 'ky' — only pyreon reaches native.
     client: 'pyreon',
+    // 'pyreon' (default) | 'zod' — both reach native; zod lowers strictly more.
+    validator: 'pyreon',
     plugins: ['schemas', 'client', 'queries', 'mocks', 'atlas'],
     strictNative: true,
   },
@@ -267,6 +271,66 @@ asserted in the test suite and stated here.
 downgraded — PMTC lowers `createHttp` and `api.endpoint(...)` by name, so native
 modules over axios would lower to nothing, which is precisely the regression
 that target exists to catch.
+
+### The schema library is selectable too
+
+```ts
+lathe: { input: './openapi.yaml', validator: 'zod' }
+```
+
+`pyreon` (the default) emits `@pyreon/validate` `s.*`; `zod` emits `z.*`. Both
+satisfy Standard Schema, so the endpoint layer — and every generated adapter
+client — accepts either without knowing which was chosen. The two settings
+compose: `client: 'axios'` with `validator: 'zod'` is an ordinary combination.
+
+The vocabulary is shared almost exactly, so this is one walk with a different
+binding rather than two renderers that can drift. Every spelling was verified
+against the installed zod (4.4.3) rather than inferred from its changelog —
+`z.string().email()` is deprecated there in favour of `z.email()`, and the
+deprecated form is emitted **deliberately**: it works in zod 3 *and* 4, while
+the newer one exists only in 4.
+
+#### zod lowers MORE of a real spec than the first-party validator
+
+Both reach native, through different doors. PMTC reads `s.object({ … })`
+directly; it reads zod only inside `@pyreon/validation`'s `zodSchema(...)`.
+Measured against the real compiler:
+
+| shape | `s.*` | zod |
+| --- | --- | --- |
+| scalars, optional, nullable, arrays of scalars | lowers | lowers |
+| a **nested object** | dropped | **lowers** |
+| an **array of objects** | dropped | **lowers** |
+| a field **naming another model** | dropped | dropped |
+
+That is the opposite of what you would assume from `@pyreon/validate` being
+first-party, and it is why `validator: 'zod'` is not merely an interoperability
+option.
+
+The shared gap — a field naming another model — is what every OpenAPI document
+of any size is full of. Under zod it closes: refs are **inlined** on the native
+path, and an inlined ref is a nested object, which lowers. So a spec whose
+`Book` has an `author: $ref` produces
+
+```swift
+struct PyreonZodSchema_Book: Codable {
+  var id: String = ""
+  var author: PyreonZodSchema_Book_Author = PyreonZodSchema_Book_Author()
+}
+```
+
+where the default validator emits that struct **without `author`**, and says so
+in a warning. Inlining is not done under `s.*` because nested objects are
+dropped there too — it would trade one dropped field for another and triple the
+emitted schema.
+
+A `$ref` **cycle** has no finite nesting, so it falls back to naming the target;
+the compiler drops that one field with a warning. Honest, bounded, and the
+generator does not hang.
+
+The matrix above is pinned by a test that runs the real compiler, so if PMTC's
+`s.*` recogniser grows nested-object support this README gets corrected in the
+same change instead of quietly becoming a lie.
 
 ### Pick only what you want
 
