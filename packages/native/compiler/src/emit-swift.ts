@@ -11,6 +11,9 @@
 import {
   ICON_MAP,
   isCanonicalPrimitive,
+  FIELD_KEYBOARD_SWIFT,
+  TEXT_SIZE_PT,
+  TEXT_WEIGHT_SWIFT,
   resolveAlign,
   resolveColor,
   resolveRadius,
@@ -6601,6 +6604,31 @@ function emitSwiftText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if (readStaticAttr(e, 'truncate') === true) {
     result += `.lineLimit(1).truncationMode(.tail)`
   }
+  // `size` / `weight` — documented props on the canonical Text that produced NO
+  // emit on either target, with no warning, exactly like `truncate` above did.
+  // A heading written `<Text size="lg" weight="bold">` rendered at body size and
+  // regular weight on native while the web showed it large and bold: the same
+  // source, a visibly different screen, and nothing said so.
+  //
+  // Point sizes mirror the WEB impl's own scale rather than inventing one — a
+  // scale that drifts from the web's is a divergence that looks like a design
+  // choice. Emitted as ONE `.font(.system(size:weight:))` because two separate
+  // `.font` modifiers do not compose in SwiftUI: the later one replaces the
+  // earlier, so a size set after a weight would silently drop the weight.
+  //
+  // Skipped entirely when a custom `font` is present — that path emits its own
+  // `.font(.custom(...))`, and adding a system font would overwrite it.
+  const sizeKey = readStaticAttr(e, 'size')
+  const weightKey = readStaticAttr(e, 'weight')
+  const sizePt = typeof sizeKey === 'string' ? TEXT_SIZE_PT[sizeKey] : undefined
+  const weightVal = typeof weightKey === 'string' ? TEXT_WEIGHT_SWIFT[weightKey] : undefined
+  if (typeof font !== 'string' && (sizePt !== undefined || weightVal !== undefined)) {
+    // `md` is the default size, so a weight-only Text still needs a size to
+    // hang the weight on.
+    const pt = sizePt ?? TEXT_SIZE_PT.md
+    const w = weightVal === undefined ? '' : `, weight: ${weightVal}`
+    result += `.font(.system(size: ${pt}${w}))`
+  }
   if (typeof font === 'string') {
     // Custom font → .font(.custom("<PostScriptName>", size: 17)). The
     // PostScript name (not the canonical/filename) is what Font.custom
@@ -8708,6 +8736,20 @@ let bindingExpr: string | undefined
   )
   if (onSubmit) {
     result += `\n${' '.repeat(indent + 2)}.onSubmit ${emitSwiftAction(onSubmit.handler, indent + 2)}`
+  }
+  // `kind` → the software KEYBOARD. The web gets this free from `<input type>`;
+  // SwiftUI needs the modifier, and its absence meant a phone raised full
+  // QWERTY where the same source showed a numeric pad in a browser. Previously
+  // deferred ("that's a `.keyboardType(.emailAddress)` modifier; deferred to a
+  // future arc") — the view TYPE already switches for `password`, so only the
+  // keyboard half was missing.
+  //
+  // `password` is deliberately absent from the map: it selects SecureField, and
+  // a masked field keeps the default keyboard.
+  const kindForKeyboard = readStaticAttr(e, 'kind')
+  const kb = typeof kindForKeyboard === 'string' ? FIELD_KEYBOARD_SWIFT[kindForKeyboard] : undefined
+  if (kb !== undefined) {
+    result += `\n${' '.repeat(indent + 2)}.keyboardType(${kb})`
   }
   // Use the shared helper (like Button) so a DYNAMIC `disabled={busy()}` lowers
   // to `.disabled(<expr>)` instead of being silently dropped by readStaticAttr.

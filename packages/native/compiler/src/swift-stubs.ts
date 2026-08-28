@@ -488,6 +488,13 @@ public struct PrimitiveButtonStyleStub {
   public static let automatic = PrimitiveButtonStyleStub()
 }
 public enum AccessibilityChildBehavior { case contain, combine, ignore }
+// UIKit's keyboard types, as SwiftUI's .keyboardType takes them. Listed to
+// mirror the real enum rather than widened — the members the emit can produce
+// plus the ones a reader would expect beside them.
+public enum UIKeyboardType {
+  case \`default\`, asciiCapable, numbersAndPunctuation, URL, numberPad, phonePad
+  case namePhonePad, emailAddress, decimalPad, twitter, webSearch, asciiCapableNumberPad
+}
 // Mirrors real SwiftUI's AccessibilityTraits as an OptionSet, not an enum:
 // .isHeader is a static member on the type, and the real signature takes the
 // set. Listed rather than widened — a stub that is a SUPERSET of the real
@@ -527,6 +534,7 @@ extension View {
   public func accessibilityLabel(_ label: String) -> some View { self }
   public func accessibilityElement(children: AccessibilityChildBehavior) -> some View { self }
   public func accessibilityAddTraits(_ traits: AccessibilityTraits) -> some View { self }
+  public func keyboardType(_ type: UIKeyboardType) -> some View { self }
   public func accessibilityHidden(_ hidden: Bool) -> some View { self }
   public func simultaneousGesture<G: Gesture>(_ gesture: G) -> some View { self }
   public func highPriorityGesture<G: Gesture>(_ gesture: G) -> some View { self }

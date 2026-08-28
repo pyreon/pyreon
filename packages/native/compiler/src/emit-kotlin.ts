@@ -7,6 +7,9 @@
 import {
   ICON_MAP,
   isCanonicalPrimitive,
+  FIELD_KEYBOARD_KOTLIN,
+  TEXT_SIZE_PT,
+  TEXT_WEIGHT_KOTLIN,
   resolveAlign,
   resolveColor,
   resolveRadius,
@@ -5457,9 +5460,26 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
     typeof font === 'string'
       ? `, fontFamily = pyreonFont(${JSON.stringify(sanitizeKotlinFontName(font))})`
       : ''
-  if (e.children.length === 0) return `Text(text = ""${typoArgs}${fontArg}${truncArgs}${modArg})`
+  // `size` / `weight` — documented props on the canonical Text that produced NO
+  // emit on either target, with no warning, exactly like `truncate` above did.
+  // A heading written `<Text size="lg" weight="bold">` rendered at body size and
+  // regular weight on native while the web showed it large and bold: the same
+  // source, a visibly different screen, and nothing said so.
+  //
+  // The point sizes mirror the WEB impl's own scale rather than inventing one —
+  // a scale that drifts from the web's is a divergence that looks like a design
+  // choice. A `style` object still wins: it is the more specific instruction,
+  // and this only fills in when the prop is the only thing said.
+  const sizeKey = readStaticAttrKotlin(e, 'size')
+  const sizePt = typeof sizeKey === 'string' ? TEXT_SIZE_PT[sizeKey] : undefined
+  const sizeArg = sizePt !== undefined && !typoArgs.includes('fontSize') ? `, fontSize = ${sizePt}.sp` : ''
+  const weightKey = readStaticAttrKotlin(e, 'weight')
+  const weightVal = typeof weightKey === 'string' ? TEXT_WEIGHT_KOTLIN[weightKey] : undefined
+  const weightArg =
+    weightVal !== undefined && !typoArgs.includes('fontWeight') ? `, fontWeight = ${weightVal}` : ''
+  if (e.children.length === 0) return `Text(text = ""${typoArgs}${sizeArg}${weightArg}${fontArg}${truncArgs}${modArg})`
   if (e.children.length === 1 && e.children[0]!.kind === 'text') {
-    return `Text(text = ${JSON.stringify(e.children[0]!.value)}${typoArgs}${fontArg}${truncArgs}${modArg})`
+    return `Text(text = ${JSON.stringify(e.children[0]!.value)}${typoArgs}${sizeArg}${weightArg}${fontArg}${truncArgs}${modArg})`
   }
   const parts: string[] = []
   for (const c of e.children) {
@@ -5484,7 +5504,7 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
       parts.push(kotlinInterpSegment(childExpr, indent))
     }
   }
-  return `Text(text = "${parts.join('')}"${typoArgs}${fontArg}${truncArgs}${modArg})`
+  return `Text(text = "${parts.join('')}"${typoArgs}${sizeArg}${weightArg}${fontArg}${truncArgs}${modArg})`
 }
 
 /**
@@ -7433,8 +7453,23 @@ let formBinding: { value: string; onChange: string } | undefined
     (a): a is Extract<AttrIR, { kind: 'event' }> =>
       a.kind === 'event' && a.name === 'submit',
   )
+  // `kind` → the software KEYBOARD, which the web gets free from `<input type>`
+  // and native did not: a phone showed full QWERTY where the same source showed
+  // a numeric pad in a browser. Previously deferred on both targets.
+  //
+  // MERGED with the imeAction rather than pushed separately — `KeyboardOptions`
+  // is one argument, so a second `keyboardOptions =` would be a duplicate named
+  // arg, and building it in two places is how one silently replaces the other.
+  const kindForKeyboard = readStaticAttrKotlin(e, 'kind')
+  const kbType =
+    typeof kindForKeyboard === 'string' ? FIELD_KEYBOARD_KOTLIN[kindForKeyboard] : undefined
+  const kbParts: string[] = []
+  if (kbType !== undefined) kbParts.push(`keyboardType = ${kbType}`)
+  if (onSubmit) kbParts.push('imeAction = ImeAction.Done')
+  if (kbParts.length > 0) {
+    args.push(`keyboardOptions = KeyboardOptions(${kbParts.join(', ')})`)
+  }
   if (onSubmit) {
-    args.push('keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done)')
     args.push(
       `keyboardActions = KeyboardActions(onDone = ${emitKotlinAction(onSubmit.handler, indent + 2)})`,
     )
