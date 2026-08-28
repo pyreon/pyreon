@@ -67,7 +67,7 @@ import {
   resolveRouteTarget,
 } from './route-ir-helpers'
 import { unknownTransitionPresetWarning } from './transition-presets'
-import { unloweredPropWarning } from './unlowered-props'
+import { stretchAlignWarning, unloweredPropWarning } from './unlowered-props'
 import type {
   AttrIR,
   ChildIR,
@@ -6612,6 +6612,11 @@ function emitKotlinStack(
   if (align !== undefined) {
     const alignSlot = isRow ? 'verticalAlignment' : 'horizontalAlignment'
     initArgs.push(`${alignSlot} = ${align}`)
+  }
+  {
+    // Silently wrong, not merely inert — see stretchAlignWarning.
+    const w = stretchAlignWarning(isRow ? 'Inline' : 'Stack', readStaticAttrKotlin(e, 'align'))
+    if (w !== undefined) _emitWarnings.push(w)
   }
   // Modifier chain
   const modifier = emitKotlinLayoutModifier(e)

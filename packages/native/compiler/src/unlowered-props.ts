@@ -59,3 +59,30 @@ export function unloweredPropWarning(
     `differs from the web build of the same source with no other symptom. ${ADVICE[prop]}.`
   )
 }
+
+/**
+ * `align="stretch"` is APPROXIMATED as `start` on both native targets.
+ *
+ * Distinct from the props above, which emit nothing at all: this one emits, and
+ * emits the WRONG thing. The align maps send `stretch` to `.leading` / `.top`
+ * and `Alignment.Start` / `Alignment.Top` — a documented approximation ("Compose
+ * has no direct stretch for column children") that lived only in a comment on
+ * the map. On the web arm `align-items: stretch` genuinely stretches children
+ * to fill the cross axis, so the same source produces children that fill in a
+ * browser and hug their content on device.
+ *
+ * Silently wrong is worse than inert, so it warns too. Found by sweeping every
+ * member of every union-typed prop and comparing its emit against a BOGUS
+ * value: `stretch` was indistinguishable from an unrecognised token, which is
+ * what an approximation looks like from the outside.
+ */
+export function stretchAlignWarning(tag: string, alignValue: unknown): string | undefined {
+  if (alignValue !== 'stretch') return undefined
+  return (
+    `<${tag} align="stretch"> is APPROXIMATED as "start" on iOS and Android — neither SwiftUI's ` +
+    `stack alignment nor Compose's has a cross-axis stretch for children, so they hug their content ` +
+    `instead of filling, while the web build of the same source stretches them. To fill on all three, ` +
+    `size the child explicitly (a \`width\`/\`height\` prop, or \`<Stack block>\`-style layout on the ` +
+    `web side), or branch with \`<NativeIOS>\` / \`<NativeAndroid>\`.`
+  )
+}

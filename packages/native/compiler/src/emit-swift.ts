@@ -71,7 +71,7 @@ import {
   resolveRouteTarget,
 } from './route-ir-helpers'
 import { unknownTransitionPresetWarning } from './transition-presets'
-import { unloweredPropWarning } from './unlowered-props'
+import { stretchAlignWarning, unloweredPropWarning } from './unlowered-props'
 import type {
   AttrIR,
   ChildIR,
@@ -7869,6 +7869,11 @@ function emitSwiftStack(
   )
   if (align !== undefined) {
     initArgs.push(`alignment: ${align}`)
+  }
+  {
+    // Silently wrong, not merely inert — see stretchAlignWarning.
+    const w = stretchAlignWarning(isRow ? 'Inline' : 'Stack', readStaticAttr(e, 'align'))
+    if (w !== undefined) _emitWarnings.push(w)
   }
   // `justify` / `wrap` reach here and lower to NOTHING on either target.
   // Warn rather than drop silently — see unlowered-layout-props.ts for why
