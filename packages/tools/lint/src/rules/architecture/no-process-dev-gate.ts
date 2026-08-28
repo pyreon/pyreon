@@ -1,6 +1,5 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan } from '../../utils/ast'
-import { isPathExempt } from '../../utils/exempt-paths'
 import { isTestFile } from '../../utils/file-roles'
 
 /**
@@ -72,7 +71,6 @@ export const noProcessDevGate: Rule = {
     if (isTestFile(context.getFilePath())) return {}
 
     // Configurable `exemptPaths` option for server-only directories.
-    if (isPathExempt(context)) return {}
 
     const REPLACEMENT = `process.env.NODE_ENV !== 'production'`
 

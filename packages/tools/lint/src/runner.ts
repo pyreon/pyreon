@@ -16,6 +16,7 @@ import type {
 import { JS_EXTENSIONS } from './utils/index'
 import { LineIndex } from './utils/source'
 import { validateRuleOptions } from './utils/validate-options'
+import { matchesExemptPath } from './utils/exempt-paths'
 
 // Per-process cache so we only validate a given (rule, options) pair once
 // and only print-once even across a multi-file lint run.
@@ -97,24 +98,6 @@ function mergeCallbacks(allCallbacks: VisitorCallbacks[]): Record<string, (node:
     }
   }
   return merged
-}
-
-/**
- * Whole-file exemption from `exemptPaths`, applied centrally in the rule loop.
- *
- * Mirrors `utils/exempt-paths.ts:isPathExempt` exactly — substring match against
- * the file path — but reads the already-normalized options the loop holds,
- * rather than a `RuleContext` that does not exist yet at this point.
- */
-function isPathExemptFor(options: RuleOptions, filePath: string): boolean {
-  const raw = (options as { exemptPaths?: unknown }).exemptPaths
-  if (!Array.isArray(raw) || raw.length === 0) return false
-  for (const entry of raw) {
-    if (typeof entry === 'string' && entry.length > 0 && filePath.includes(entry)) {
-      return true
-    }
-  }
-  return false
 }
 
 /**
@@ -235,7 +218,7 @@ export function lintFile(
     // every existing use is a whole-file skip, which is exactly what
     // skipping `rule.create()` produces. Their in-rule call simply never
     // runs now — kept because it documents the intent at the rule.
-    if (isPathExemptFor(options, filePath)) continue
+    if (matchesExemptPath(options.exemptPaths, filePath)) continue
 
     const ctx = createRuleContext(
       rule,

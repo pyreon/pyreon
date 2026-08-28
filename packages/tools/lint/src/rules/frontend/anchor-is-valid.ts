@@ -1,6 +1,5 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getJSXAttribute, getSpan } from '../../utils/ast'
-import { isPathExempt } from '../../utils/exempt-paths'
 
 /**
  * Opt-in frontend best-practice rule (not fixable).
@@ -33,7 +32,6 @@ export const anchorIsValid: Rule = {
     schema: { exemptPaths: 'string[]' },
   },
   create(context) {
-    if (isPathExempt(context)) return {}
 
     const callbacks: VisitorCallbacks = {
       JSXOpeningElement(node: any) {

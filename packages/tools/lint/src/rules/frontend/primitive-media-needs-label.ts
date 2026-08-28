@@ -1,6 +1,5 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan, hasJSXAttribute } from '../../utils/ast'
-import { isPathExempt } from '../../utils/exempt-paths'
 import { isProjectDependency } from '../../utils/project-deps'
 
 /**
@@ -65,7 +64,6 @@ export const primitiveMediaNeedsLabel: Rule = {
     schema: { exemptPaths: 'string[]' },
   },
   create(context) {
-    if (isPathExempt(context)) return {}
 
     if (!isProjectDependency(context.getFilePath(), '@pyreon/primitives')) {
       return {}

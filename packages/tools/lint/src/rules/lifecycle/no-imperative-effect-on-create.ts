@@ -1,6 +1,5 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan, isCallTo } from '../../utils/ast'
-import { isPathExempt } from '../../utils/exempt-paths'
 
 /**
  * Imperative APIs whose presence inside an `effect(() => { ... })`
@@ -229,7 +228,6 @@ export const noImperativeEffectOnCreate: Rule = {
     schema: { exemptPaths: 'string[]' },
   },
   create(context) {
-    if (isPathExempt(context)) return {}
 
     let safeWrapperDepth = 0
 

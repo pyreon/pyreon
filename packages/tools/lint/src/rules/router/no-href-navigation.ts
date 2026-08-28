@@ -1,7 +1,6 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getJSXAttribute, getSpan } from '../../utils/ast'
 import { extractImportInfo } from '../../utils/imports'
-import { isPathExempt } from '../../utils/exempt-paths'
 
 const EXTERNAL_PREFIXES = ['http://', 'https://', 'mailto:', 'tel:']
 
@@ -18,7 +17,6 @@ export const noHrefNavigation: Rule = {
     schema: { exemptPaths: 'string[]' },
   },
   create(context) {
-    if (isPathExempt(context)) return {}
 
     let importsRouter = false
 

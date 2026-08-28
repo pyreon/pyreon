@@ -1,6 +1,5 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan, hasJSXAttribute } from '../../utils/ast'
-import { isPathExempt } from '../../utils/exempt-paths'
 
 export const toastA11y: Rule = {
   meta: {
@@ -17,7 +16,6 @@ export const toastA11y: Rule = {
     schema: { exemptPaths: 'string[]' },
   },
   create(context) {
-    if (isPathExempt(context)) return {}
 
     const callbacks: VisitorCallbacks = {
       JSXOpeningElement(node: any) {

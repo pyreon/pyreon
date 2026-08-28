@@ -1,6 +1,5 @@
 import type { Rule } from '../../types'
 import { getSpan } from '../../utils/ast'
-import { isPathExempt } from '../../utils/exempt-paths'
 import { isTestFile } from '../../utils/file-roles'
 
 /**
@@ -110,7 +109,6 @@ export const noModuleSignalInServerPackage: Rule = {
     if (isTestFile(filePath)) return {}
 
     // Explicit per-file opt-out.
-    if (isPathExempt(context)) return {}
 
     // Only fire inside the server-package roots.
     const serverPaths = getServerPackagePaths(context)

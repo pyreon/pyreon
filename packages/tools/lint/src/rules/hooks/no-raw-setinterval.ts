@@ -1,5 +1,4 @@
 import type { Rule, VisitorCallbacks } from '../../types'
-import { isPathExempt } from '../../utils/exempt-paths'
 import { createComponentContextTracker } from '../../utils/component-context'
 import { getSpan, isCallTo } from '../../utils/ast'
 
@@ -17,7 +16,6 @@ export const noRawSetInterval: Rule = {
   create(context) {
     // Configurable `exemptPaths` — for packages that IMPLEMENT
     // `useInterval` / `useTimeout` (they can't use themselves).
-    if (isPathExempt(context)) return {}
 
     // Only flag when *inside* a component / hook setup body. Module-level
     // timers, utility functions, and test callbacks have their own

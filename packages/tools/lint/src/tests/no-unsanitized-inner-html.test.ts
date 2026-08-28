@@ -90,6 +90,67 @@ export const A = () => <div dangerouslySetInnerHTML={{ __html: body }} />`),
     ).toHaveLength(1)
   })
 
+  it('fires when the callee is neither an identifier nor a member expression', () => {
+    // `(pick())(dirty)` — nothing nameable to test against the sanitizer
+    // pattern, so it cannot be proven safe and must be reported.
+    expect(
+      at(`export const A = () => <div dangerouslySetInnerHTML={{ __html: (pick())(dirty) }} />`),
+    ).toHaveLength(1)
+  })
+
+  it('sees through a TS cast to the sanitizer underneath', () => {
+    expect(
+      at(`export const A = () => <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(d) as string }} />`),
+    ).toEqual([])
+  })
+
+  it('a TS cast does not launder an unsanitized value', () => {
+    // `as string` changes the type, not the provenance.
+    expect(
+      at(`export const A = () => <div dangerouslySetInnerHTML={{ __html: dirty as string }} />`),
+    ).toHaveLength(1)
+  })
+
+  it('sees through a non-null assertion too', () => {
+    expect(
+      at(`export const A = () => <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(d)! }} />`),
+    ).toEqual([])
+  })
+
+  it('reads a string-literal key — `{ "__html": x }` is the same prop', () => {
+    expect(
+      at(`export const A = () => <div dangerouslySetInnerHTML={{ "__html": dirty }} />`),
+    ).toHaveLength(1)
+  })
+
+  it('does not crash or fire on a spread-only object', () => {
+    // `{{ ...opts }}` has no Property to read. Nothing provable either way,
+    // and a security rule that cannot prove must stay quiet.
+    expect(at(`export const A = () => <div dangerouslySetInnerHTML={{ ...opts }} />`)).toEqual([])
+  })
+
+  it('does not crash or fire on a computed key', () => {
+    expect(
+      at(`export const A = () => <div dangerouslySetInnerHTML={{ [k]: dirty }} />`),
+    ).toEqual([])
+  })
+
+  it('ignores a non-object expression value', () => {
+    // `={opts}` — the shape the rule reads is not there; guessing would be a
+    // false positive on a variable that may well be sanitized.
+    expect(at(`export const A = () => <div dangerouslySetInnerHTML={opts} />`)).toEqual([])
+  })
+
+  it('ignores a plain string attribute value', () => {
+    expect(at(`export const A = () => <div dangerouslySetInnerHTML="nope" />`)).toEqual([])
+  })
+
+  it('ignores a namespaced attribute that merely ends in the same word', () => {
+    expect(
+      at(`export const A = () => <div x:dangerouslySetInnerHTML={{ __html: dirty }} />`),
+    ).toEqual([])
+  })
+
   it('is OFF in the shipped presets — it is opt-in', () => {
     const rule = allRules.find((r) => r.meta.id === RULE)
     expect(rule?.meta.optIn).toBe(true)

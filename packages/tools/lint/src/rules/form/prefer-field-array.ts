@@ -1,7 +1,6 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan, isCallTo } from '../../utils/ast'
 import { extractImportInfo } from '../../utils/imports'
-import { isPathExempt } from '../../utils/exempt-paths'
 
 export const preferFieldArray: Rule = {
   meta: {
@@ -15,7 +14,6 @@ export const preferFieldArray: Rule = {
     schema: { exemptPaths: 'string[]' },
   },
   create(context) {
-    if (isPathExempt(context)) return {}
 
     let importsForm = false
 
