@@ -188,6 +188,12 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
     reason:
       'JSX transform compiler. PR #1079 excluded load-native.ts (napi-rs binary loader) + event-names.ts (DOM-event remap data). Ratcheted 89/83 → 91/85 (measured 91.79/85.56) after validate-emit.ts — the pure TS-compiler-API compile-time @pyreon/validate specializer — gained full behavioral coverage (56.3%→98.9% stmts) of its check vocabulary + emitSchemaSource mini rewrite. Residual gap is the jsx.ts codegen edge-case tail (dual-backend, covered by native-equivalence + fuzz-equivalence in the `test (native)` cell) plus the syntactic audit modules (native-audit/content-audit/island-audit/ssg-audit) and diagnose.ts (exercised by e2e/dev-error-printer.spec.ts). Lifting to 95/95 is multi-PR work tracked as a long-tail effort.',
   },
+  '@pyreon/lathe': {
+    currentStatements: 86,
+    currentBranches: 74,
+    reason:
+      'OpenAPI-to-client generator. FIRST time this package has ever been enforced: the PR that introduced it (#3077) changed a set large enough to trip this step\'s >15-package cap, so the step SKIPPED and its declared 95 was never measured — the same cap-is-a-hole shape this gate\'s own comment warns about, and the same "decorative threshold" the @pyreon/atlas entry above records. Honest first baseline (measured 87.74/75.21, functions 93.24, lines 91.72). The uncovered surface is concentrated and named: `emit/schema.ts` (71%) is the type/schema RENDERER, whose tail is exercised end-to-end by the generate + real-spec suites rather than per-branch; `input/openapi.ts` (80%) is the spec converter, whose residual is malformed-document arms a real spec never produces; `vite/plugin.ts` (76%) boots a Vite pass and is proven by e2e/lathe-bookshelf.spec.ts, not node vitest; `verify/lower.ts` (85%) shells out to the real @pyreon/native-compiler; `cli/run.ts` (88%) is multi-project + --json orchestration. This is the low end of a deliberate ratchet — raise these thresholds + this entry in lockstep as tests land, never lower.',
+  },
   '@pyreon/atlas': {
     currentStatements: 79,
     currentBranches: 75,

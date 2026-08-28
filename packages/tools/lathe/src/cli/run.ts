@@ -8,11 +8,12 @@
 
 import { resolveProjects, type LatheSection, type PluginName, type ResolvedConfig } from '../core/config'
 import { generate } from '../core/generate'
+import { diffSurface, type ApiSurface, type SurfaceChange } from '../core/surface'
 import { resolveTransform, verifyNative, worstVerdict } from '../verify/lower'
 import { renderReport } from './report'
 
 export interface Argv {
-  command: 'generate' | 'check' | 'help'
+  command: 'generate' | 'check' | 'pull' | 'help'
   /** Positional spec path, overriding config. */
   input?: string | undefined
   output?: string | undefined
@@ -20,19 +21,28 @@ export interface Argv {
   plugins?: readonly PluginName[] | undefined
   baseUrl?: string | undefined
   strictNative: boolean
+  /** Exit non-zero when the spec change breaks the existing client contract. */
+  failOnBreaking: boolean
   json: boolean
   /** Regenerate whenever a spec changes, instead of exiting after one pass. */
   watch: boolean
 }
 
 export function parseArgv(args: readonly string[]): Argv {
-  const out: Argv = { command: 'help', strictNative: false, json: false, watch: false }
+  const out: Argv = {
+    command: 'help',
+    strictNative: false,
+    failOnBreaking: false,
+    json: false,
+    watch: false,
+  }
   const rest: string[] = []
   for (let i = 0; i < args.length; i++) {
     const a = args[i] as string
     if (a === '--json') out.json = true
     else if (a === '--watch' || a === '-w') out.watch = true
     else if (a === '--strict-native') out.strictNative = true
+    else if (a === '--fail-on-breaking') out.failOnBreaking = true
     else if (a === '--target') out.target = args[++i] as Argv['target']
     else if (a.startsWith('--target=')) out.target = a.slice(9) as Argv['target']
     else if (a === '--out' || a === '--output') out.output = args[++i]
@@ -45,7 +55,7 @@ export function parseArgv(args: readonly string[]): Argv {
     else if (!a.startsWith('-')) rest.push(a)
   }
   const verb = rest[0]
-  if (verb === 'generate' || verb === 'check') {
+  if (verb === 'generate' || verb === 'check' || verb === 'pull') {
     out.command = verb
     if (rest[1]) out.input = rest[1]
   } else if (verb !== undefined && out.command === 'help') {
@@ -73,6 +83,7 @@ export const HELP = `lathe - generate Pyreon clients from an API spec
 
   lathe generate [spec]     read the spec, write the client
   lathe check    [spec]     generate in memory; fail if anything is stale
+  lathe pull     <url>      fetch a remote spec to the configured input path
 
 Options
   --target web|multiplatform   emit native modules and verify them (default: web)
@@ -80,6 +91,9 @@ Options
   --base-url <url>             override servers[0].url; must be absolute to reach native
   --plugins a,b                types,schemas,client,queries,mocks,atlas
   --strict-native              exit non-zero when a native module fails to lower
+  --fail-on-breaking           exit non-zero when the spec breaks the client
+                               contract; pair with generate, whose run is the one
+                               that causes the change
   --json                       machine-readable output
   --watch, -w                  regenerate whenever a spec changes
 `
@@ -131,12 +145,26 @@ export async function run(
     const result = generate(fs.read(config.input), config)
     const verify = verifyNative(result.files, await resolveTransform())
 
+    // Read the PREVIOUS surface before the write loop overwrites it. This is
+    // the only moment both versions exist, and it is what turns "your spec
+    // changed" into "your spec removed a field the app reads".
+    const changes = compareSurface(fs, config.output, result.surface)
+
     let wrote = 0
     const stale: string[] = []
+    // WHICH paths changed, not just how many. The report used to mark every
+    // file with a green `+` and then say "1 file(s) written" underneath —
+    // fourteen lines that read as "created" for one file that actually moved.
+    // On a spec edit the useful signal is exactly which outputs it moved.
+    const changed = new Set<string>()
+    const created = new Set<string>()
     for (const file of result.files) {
       const full = fs.join(config.output, file.path)
-      const current = fs.exists(full) ? fs.read(full) : undefined
+      const existed = fs.exists(full)
+      const current = existed ? fs.read(full) : undefined
       if (current === file.contents) continue
+      if (!existed) created.add(file.path)
+      changed.add(file.path)
       if (argv.command === 'check') {
         stale.push(file.path)
         continue
@@ -145,7 +173,7 @@ export async function run(
       fs.write(full, file.contents)
       wrote++
     }
-    runs.push({ config, result, verify, wrote, stale })
+    runs.push({ config, result, verify, wrote, stale, changed, created, changes })
   }
 
   return report(runs, argv, projects.length > 1)
@@ -157,12 +185,18 @@ interface RunOutcome {
   verify: ReturnType<typeof verifyNative>
   wrote: number
   stale: string[]
+  /** Paths whose contents differ from what is on disk. */
+  changed: Set<string>
+  /** The subset of `changed` that did not exist before — new, not updated. */
+  created: Set<string>
+  /** Contract changes vs the committed surface. Empty on a first run. */
+  changes: SurfaceChange[]
 }
 
 function report(runs: RunOutcome[], argv: Argv, multi: boolean): RunResult {
   const worst = (a: number, b: number): number => Math.max(a, b)
   if (argv.json) {
-    const payload = runs.map(({ config, result, verify, wrote, stale }) => ({
+    const payload = runs.map(({ config, result, verify, wrote, stale, changes }) => ({
       name: config.name,
       title: result.doc.title,
       version: result.doc.version,
@@ -176,10 +210,13 @@ function report(runs: RunOutcome[], argv: Argv, multi: boolean): RunResult {
       reach: Object.fromEntries(result.reach),
       notes: result.doc.notes,
       verify,
+      changes,
     }))
     return {
       code: runs
-        .map(({ config, verify, stale }) => exitCode(config.strictNative, verify, stale, argv.command))
+        .map(({ config, verify, stale, changes }) =>
+          exitCode(config.strictNative, verify, stale, argv.command, argv.failOnBreaking, changes),
+        )
         .reduce(worst, 0),
       // A single project keeps the flat object it always had; only a
       // multi-project run wraps, so an existing `--json` consumer is unaffected.
@@ -189,11 +226,14 @@ function report(runs: RunOutcome[], argv: Argv, multi: boolean): RunResult {
 
   let stdout = ''
   let code = 0
-  for (const { config, result, verify, wrote, stale } of runs) {
+  for (const { config, result, verify, wrote, stale, changed, created, changes } of runs) {
     stdout += renderReport(result, verify, {
       target: config.target,
       output: config.output,
       wrote,
+      changed,
+      created,
+      changes,
       name: config.name,
       plugins: config.plugins,
       requestedPlugins: config.requestedPlugins,
@@ -203,7 +243,10 @@ function report(runs: RunOutcome[], argv: Argv, multi: boolean): RunResult {
         .map((s) => `    ${s}`)
         .join('\n')}\n\n  Fix: run \`lathe generate\` and commit the result.\n`
     }
-    code = worst(code, exitCode(config.strictNative, verify, stale, argv.command))
+    code = worst(
+      code,
+      exitCode(config.strictNative, verify, stale, argv.command, argv.failOnBreaking, changes),
+    )
   }
   return { code, stdout }
 }
@@ -213,8 +256,14 @@ function exitCode(
   verify: ReturnType<typeof verifyNative>,
   stale: string[],
   command: Argv['command'],
+  failOnBreaking: boolean,
+  changes: readonly SurfaceChange[],
 ): number {
   if (command === 'check' && stale.length > 0) return 1
+  // Opt-in, and deliberately so: on a feature branch the spec is SUPPOSED to
+  // move, and a gate that fires there gets disabled rather than heeded. In CI
+  // on a release branch it is exactly the signal you want.
+  if (failOnBreaking && changes.some((c) => c.severity === 'breaking')) return 1
   if (!strictNative) return 0
   // `--strict-native` means the app intends to ship native. A SKIPPED
   // verification must fail there too: "we could not check" is not "it is fine",
@@ -226,4 +275,26 @@ function exitCode(
 function dirOf(path: string): string {
   const i = path.lastIndexOf('/')
   return i <= 0 ? '.' : path.slice(0, i)
+}
+
+/**
+ * The committed surface from the last run, diffed against this one.
+ *
+ * A MISSING baseline returns no changes rather than reporting every operation
+ * as added: the first run has nothing to compare against, and a wall of
+ * "additive" on day one teaches people to skim the section. An UNREADABLE or
+ * wrong-version baseline is treated the same way and says so — a diff computed
+ * against a shape this code does not understand is worse than no diff.
+ */
+function compareSurface(fs: Fs, output: string, now: ApiSurface): SurfaceChange[] {
+  const path = fs.join(output, 'api-surface.json')
+  if (!fs.exists(path)) return []
+  let previous: ApiSurface
+  try {
+    previous = JSON.parse(fs.read(path)) as ApiSurface
+  } catch {
+    return []
+  }
+  if (previous?.version !== now.version) return []
+  return diffSurface(previous, now)
 }

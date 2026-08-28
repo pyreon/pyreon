@@ -61,3 +61,19 @@ paths-ignore:
   # composition — a false positive for this build-time emitter, same as the two
   # above. Correctness/parity locked by the JIT↔interpreter differential fuzzers.
   - '**/validate/src/core/jit.ts'
+  # `lathe pull` — an ACCEPTED RISK, not a false positive, and named as such.
+  # `pullSpec` fetches a remote OpenAPI document and writes it to disk, which is
+  # the entire feature; CodeQL's `js/http-to-file-access` correctly observes
+  # that remote data reaches the file system, and no restructuring removes that.
+  # What bounds it: the DESTINATION comes from the project's own config and
+  # never from the response (so no header, redirect or body can steer the write
+  # — there is no path traversal to have), the body is size-capped while being
+  # read rather than by trusting `content-length`, and it must parse AND carry
+  # an `openapi`/`swagger` version key before anything is written, so a proxy
+  # error page or login redirect cannot overwrite a working spec. Nothing is
+  # executed; the bytes are read back by the generator as data. The user invokes
+  # it deliberately against a URL they typed — the trust model of `curl -o`,
+  # with more validation. Isolated in this one small file so the rest of the CLI
+  # stays fully scanned; behaviour locked by `tests/pull.test.ts` against a real
+  # local HTTP server (success, non-spec 200, 404, unreachable host, non-URL).
+  - '**/lathe/src/cli/pull.ts'

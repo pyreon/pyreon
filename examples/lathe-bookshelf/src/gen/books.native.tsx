@@ -64,6 +64,18 @@ export const getBook = api.endpoint('GET /books/:bookId', { response: Book })
 export const listBooks = api.endpoint('GET /books', { response: s.array(Book) })
 
 /**
+ * Fetches `GET /books/:bookId` and renders it through `children`.
+ * Takes `bookId` as a prop and re-fetches when it changes.
+ * The `useQuery` call sits directly in the component body, in the same
+ * file as its client and endpoint — the one arrangement PMTC lowers to
+ * PyreonQuery. Moving it into a hook silently breaks the native build.
+ */
+export function GetBookData(props: { bookId: string; children: (data: Book | undefined) => unknown }) {
+  const q = useQuery<Book>(() => getBook.query({ params: { bookId: props.bookId } }))
+  return props.children(q.data())
+}
+
+/**
  * Fetches `GET /books` and renders it through `children`.
  * The `useQuery` call sits directly in the component body, in the same
  * file as its client and endpoint — the one arrangement PMTC lowers to
