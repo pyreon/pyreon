@@ -6373,6 +6373,32 @@ function readStaticAttrKotlin(
 }
 
 /**
+ * The cross-platform a11y vocabulary as Compose modifiers, extracted so a
+ * SPECIAL-CASE emitter can apply it too.
+ *
+ * `<Link>` and `<Modal>` both return before the generic modifier tail, so an
+ * `accessibilityLabel` on either was dropped on Android — and on Modal, so was
+ * `accessibilityHidden` and the test tag, leaving the dialog unselectable by
+ * `onNodeWithTag` as well. Split in two because the two halves sit at opposite
+ * ends of the chain: the label first, `clearAndSetSemantics` LAST, so a
+ * contradictory label+hidden pair resolves to hidden, matching web and iOS.
+ */
+function kotlinAccessibilityLabelModifier(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+): string[] {
+  const label = readStringAttrExprKotlin(e, 'accessibilityLabel', 0)
+  return label === undefined ? [] : [`.semantics { contentDescription = ${label} }`]
+}
+
+function kotlinAccessibilityHiddenModifier(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+): string[] {
+  return readStaticAttrKotlin(e, 'accessibilityHidden') === true
+    ? ['.clearAndSetSemantics { }']
+    : []
+}
+
+/**
  * Build the Compose `Modifier` chain for the canonical layout-prop
  * subset. Returns a string ready to pass as the `modifier =` constructor
  * arg, OR empty string when no relevant props are present.
@@ -6470,10 +6496,7 @@ function emitKotlinLayoutModifier(
   //
   // `accessibilityLabel` → `.semantics { contentDescription = … }` (TalkBack
   // content description — icon-only buttons, images).
-  const a11yLabel = readStringAttrExprKotlin(e, 'accessibilityLabel', 0)
-  if (a11yLabel !== undefined) {
-    parts.push(`.semantics { contentDescription = ${a11yLabel} }`)
-  }
+  parts.push(...kotlinAccessibilityLabelModifier(e))
   // `accessibilityRole` → Compose semantics. button/image map to the `Role`
   // enum; header to `heading()` (Compose has no `Role.Header`). Constrained to
   // the roles that map 1:1 across targets. Emitted BEFORE clearAndSetSemantics
@@ -6498,9 +6521,7 @@ function emitKotlinLayoutModifier(
   // (`@ExperimentalComposeUiApi` in 1.7, would need a file `@OptIn`) and
   // `hideFromAccessibility()` (only lands in 1.8). Emitted LAST so a
   // contradictory label+hidden combo resolves to hidden (parity with web/iOS).
-  if (readStaticAttrKotlin(e, 'accessibilityHidden') === true) {
-    parts.push('.clearAndSetSemantics { }')
-  }
+  parts.push(...kotlinAccessibilityHiddenModifier(e))
   // `@pyreon/dnd` — `ref={s.containerRef}` / `ref={s.itemRef(key)}` become the
   // sortable Modifier extensions. Emitted LAST for the same reason as Swift:
   // the long-press drag wraps the element's own padding/background.
@@ -7223,15 +7244,34 @@ function emitKotlinModal(
   )
   const onDismiss = onClose ? emitKotlinAction(onClose.handler, indent + 2) : '{}'
   const dialogPad = ' '.repeat(indent + 2)
+  // Compose's `Dialog` takes NO modifier, so the test tag and the a11y props
+  // have nowhere to go on the call itself — which is why this emitter dropped
+  // all three, leaving a `<Modal>` unselectable by `onNodeWithTag` and its
+  // `accessibilityLabel` unread by TalkBack. Both are honoured on iOS, where
+  // the sheet host reaches the generic tail.
+  //
+  // The fix is the same shape Swift uses for the same reason: carry them on a
+  // wrapper INSIDE the dialog's content. Emitted only when at least one is
+  // present, so a plain `<Modal>` is byte-identical to before.
+  const testid = readStringAttrExprKotlin(e, 'data-testid', 0)
+  const modParts =
+    kotlinAccessibilityLabelModifier(e).join('') +
+    (testid === undefined ? '' : `.testTag(${testid})`) +
+    kotlinAccessibilityHiddenModifier(e).join('')
+  const open = modParts === '' ? '' : `Box(modifier = Modifier${modParts}) {`
   if (e.children.length === 0) {
-    return `if (${cond}) {\n${dialogPad}Dialog(onDismissRequest = ${onDismiss}) {}\n${' '.repeat(indent)}}`
+    const body = modParts === '' ? '{}' : `{\n${' '.repeat(indent + 4)}${open} }\n${dialogPad}}`
+    return `if (${cond}) {\n${dialogPad}Dialog(onDismissRequest = ${onDismiss}) ${body}\n${' '.repeat(indent)}}`
   }
-  const contentPad = ' '.repeat(indent + 4)
-  const contentLines = e.children.map((c) => contentPad + emitKotlinChild(c, indent + 4)).join('\n')
+  const extra = modParts === '' ? 0 : 2
+  const contentPad = ' '.repeat(indent + 4 + extra)
+  const contentLines = e.children.map((c) => contentPad + emitKotlinChild(c, indent + 4 + extra)).join('\n')
   return (
     `if (${cond}) {\n` +
     `${dialogPad}Dialog(onDismissRequest = ${onDismiss}) {\n` +
+    (modParts === '' ? '' : `${' '.repeat(indent + 4)}${open}\n`) +
     `${contentLines}\n` +
+    (modParts === '' ? '' : `${' '.repeat(indent + 4)}}\n`) +
     `${dialogPad}}\n` +
     `${' '.repeat(indent)}}`
   )
@@ -7657,10 +7697,15 @@ function emitKotlinLink(
   // link could not be selected by `onNodeWithTag` — the Compose half of the
   // same "Link not individually asserted" gap.
   const testid = readStringAttrExprKotlin(e, 'data-testid', 0)
+  // The a11y props come from the SHARED helpers. Adding the test tag alone —
+  // which is what this did — left `accessibilityLabel` on a link dropped for
+  // the life of this emitter, on the one element where an icon or the word
+  // "here" is a normal thing to write.
   const mod =
-    testid === undefined
-      ? 'Modifier.clickable { navigate() }'
-      : `Modifier.clickable { navigate() }.testTag(${testid})`
+    'Modifier.clickable { navigate() }' +
+    kotlinAccessibilityLabelModifier(e).join('') +
+    (testid === undefined ? '' : `.testTag(${testid})`) +
+    kotlinAccessibilityHiddenModifier(e).join('')
   if (e.children.length === 0) {
     return `PyreonLink(${toExpr}) { navigate ->\n${pad}Box(modifier = ${mod}) { }\n${' '.repeat(indent)}}`
   }

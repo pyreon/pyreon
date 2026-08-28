@@ -7632,6 +7632,33 @@ const SWIFT_CONTAINER_TAGS = new Set([
 ])
 
 /**
+ * The cross-platform a11y vocabulary (`AccessibilityProps`) as SwiftUI
+ * modifiers, extracted so a SPECIAL-CASE emitter can apply it too.
+ *
+ * The generic modifier tail is where every element picks these up, and an
+ * emitter that returns before reaching it drops them silently. `<Link>` did:
+ * its own comment already said "`<Link>` is a SPECIAL-CASE emitter, so it never
+ * reaches the generic modifier tail", and then hand-added only the test
+ * identifier — so an `accessibilityLabel` on a link vanished on both targets.
+ * That is the label VoiceOver reads, on the one element where "here" or an icon
+ * is a normal thing to write.
+ *
+ * Shared rather than copied for the obvious reason: the copy is what made the
+ * omission possible in the first place.
+ */
+function swiftAccessibilityModifiers(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+): string[] {
+  const out: string[] = []
+  const label = readStringAttrExpr(e, 'accessibilityLabel', 0)
+  if (label !== undefined) out.push(`.accessibilityLabel(${label})`)
+  if (readStaticAttr(e, 'accessibilityHidden') === true) {
+    out.push('.accessibilityHidden(true)')
+  }
+  return out
+}
+
+/**
  * Build the SwiftUI modifier-chain tail for the canonical layout-prop
  * subset. Returns a string that begins with `.` (modifier-call) and is
  * appended after the View constructor.
@@ -7754,13 +7781,7 @@ function emitSwiftLayoutModifiers(
   // web lowers to aria-* (`collectPassthroughAttrs`). `accessibilityLabel`
   // sets the VoiceOver name (icon-only buttons, images); `accessibilityHidden`
   // removes the element + its subtree from the accessibility tree.
-  const a11yLabel = readStringAttrExpr(e, 'accessibilityLabel', 0)
-  if (a11yLabel !== undefined) {
-    parts.push(`.accessibilityLabel(${a11yLabel})`)
-  }
-  if (readStaticAttr(e, 'accessibilityHidden') === true) {
-    parts.push('.accessibilityHidden(true)')
-  }
+  parts.push(...swiftAccessibilityModifiers(e))
   // `accessibilityRole` → SwiftUI accessibility traits. Constrained to the
   // roles that map 1:1 across targets (button/image/header → web `role`,
   // Android Compose `Role`/`heading()`). `.isHeader` marks a heading for the
@@ -9016,10 +9037,14 @@ function emitSwiftLink(
   // link renders (the same trap already documented for VStack/ScrollView).
   // `.contain` keeps the child Text individually queryable.
   const testid = readStringAttrExpr(e, 'data-testid', 0)
+  // The a11y props come from the SHARED helper. Hand-adding the identifier and
+  // stopping there is what dropped `accessibilityLabel` here for the life of
+  // this emitter, on both targets — the very audit this comment block calls for.
+  const a11y = swiftAccessibilityModifiers(e).join('')
   const tail =
-    testid === undefined
+    (testid === undefined
       ? ''
-      : `.accessibilityElement(children: .contain).accessibilityIdentifier(${testid})`
+      : `.accessibilityElement(children: .contain).accessibilityIdentifier(${testid})`) + a11y
   if (e.children.length === 0) {
     return `PyreonLink(${toExpr}) { }${tail}`
   }
