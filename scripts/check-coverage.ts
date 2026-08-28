@@ -804,7 +804,7 @@ async function runWithConcurrency(
  * some tests" when in fact the tests exist and pass, and the real problem is
  * that not one file was handed to the instrumenter.
  */
-function describeProblem(p: CoverageProblem): string {
+export function describeProblem(p: CoverageProblem): string {
   if (p.kind === 'empty') {
     return (
       `${p.package}: coverage ran and measured ZERO files ( 0/0 ).\n` +
@@ -815,6 +815,25 @@ function describeProblem(p: CoverageProblem): string {
     )
   }
   if (p.kind === 'tests-failed') {
+    // `STACK_TRACE_ERROR` with no assertion text is a DEAD WORKER, not a failed
+    // assertion — vitest attributes it to whichever spec was in flight, which
+    // is reliably the longest-running one in the package. Telling the reader to
+    // "deflake the NAMED test" then sends them at an innocent spec: this gate
+    // has done exactly that once already, naming `strip-equivalence` when the
+    // real cause was a 3.9 GB build under a 4-way-parallel job, and named the
+    // same spec again on 2026-08-28.
+    const deadWorker = /STACK_TRACE_ERROR/.test(p.error ?? '')
+    if (deadWorker) {
+      return (
+        `${p.package}: ${p.error ?? 'tests failed under the coverage run'}\n` +
+        `    \u26a0 STACK_TRACE_ERROR with no assertion text means the WORKER DIED \u2014 almost\n` +
+        `    always out-of-memory under this job's 4-way parallelism, NOT a defect in the\n` +
+        `    named spec. vitest blames whichever test was in flight, which is reliably the\n` +
+        `    package's longest-running one.\n` +
+        `    Attribute by measuring peak RSS per test FILE (/usr/bin/time -l bunx vitest\n` +
+        `    run <file>), never by reading the name above. Do NOT re-run past it.`
+      )
+    }
     return (
       `${p.package}: ${p.error ?? 'tests failed under the coverage run'}\n` +
       `    This job runs on main pushes, so the failure is main-branch evidence. If the\n` +
