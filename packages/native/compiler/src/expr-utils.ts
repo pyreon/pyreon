@@ -432,7 +432,7 @@ function synthArrayElementType(
  * the same field name never collide on the lossy key (the collision the
  * scalar-only key had). Recursive over arrays.
  */
-function typeShapeKey(t: TypeIR): string {
+export function typeShapeKey(t: TypeIR): string {
   switch (t.kind) {
     case 'number':
       return t.float === true ? 'number.f' : 'number'
@@ -444,6 +444,18 @@ function typeShapeKey(t: TypeIR): string {
       return `ref:${t.name}`
     case 'array':
       return `arr:${typeShapeKey(t.element)}`
+    // Extended for `structShapeKey`, which keys DECLARED structs. A struct
+    // whose fields differ only inside a map/set/object/union must still key
+    // apart, or the two collapse exactly as Int-vs-Double did.
+    case 'set':
+      return `set:${typeShapeKey(t.element)}`
+    case 'map':
+      return `map:${typeShapeKey(t.key)}:${typeShapeKey(t.value)}`
+    case 'object':
+      return `obj{${structShapeKey(t.fields)}}`
+    case 'union':
+      // Sorted so branch ORDER never changes the key.
+      return `union<${t.branches.map(typeShapeKey).sort().join('|')}>`
     default:
       return t.kind
   }
@@ -995,4 +1007,70 @@ export function classifyDynamicStylingAttr(
     }
   }
   return { kind: 'none' }
+}
+
+/**
+ * Structural key identifying an object shape, used by BOTH emitters to resolve
+ * an object type / object literal to a DECLARED struct of the same shape (so a
+ * prop typed `{ id, text, done }` and a literal constructing it agree on one
+ * nominal type — the user's own `Todo` rather than a synthesized twin).
+ *
+ * The key includes each field's TYPE, not just its name. Keying on names alone
+ * collapses two declared types that share field names and differ in field
+ * types, and the FIRST one registered wins for both:
+ *
+ *     type Px  = { x: Double; y: Double }
+ *     type Idx = { x: number; y: number }
+ *     const i: Idx = { x: 1, y: 2 }        // emitted `Px(x: 1, y: 2)`
+ *
+ * The declared annotation was ignored and the wrong struct constructed —
+ * silently where the field types happen to coerce, and as a hard
+ * `cannot convert value of type 'Double' to expected argument type 'Int'`
+ * where they do not. A geometry library cannot avoid this: a point, an anchor,
+ * an offset and a tick position are all `{ x, y }`.
+ *
+ * The serialization is BACKEND-NEUTRAL (built from the IR, not from
+ * `swiftType`/`kotlinType`) so the two emitters can never disagree about which
+ * declared struct a shape resolves to.
+ */
+export function structShapeKey(fields: readonly { name: string; type: TypeIR }[]): string {
+  return fields
+    .map((f) => `${f.name}:${typeShapeKey(f.type)}`)
+    .sort()
+    .join(',')
+}
+
+
+/**
+ * Typed shape key for an object LITERAL, derived from its own values.
+ *
+ * The literal site knows field names and value EXPRESSIONS, not declared
+ * types — so it cannot use `structShapeKey` directly, and keying on names
+ * alone silently picks the first declared struct of that shape (see
+ * `structShapeKey`). Reading the literal's own scalar values recovers enough
+ * to disambiguate the case that matters: `{ x: 1.5, y: 2.5 }` keys as two
+ * doubles and resolves to `Px`, `{ x: 1, y: 2 }` keys as two ints and
+ * resolves to `Idx`.
+ *
+ * Returns `null` when ANY field's type is not locally decidable (a call, an
+ * identifier, a member read). Callers fall back to the name-only lookup, so
+ * this can only ever ADD a correct match — never remove one that works today.
+ */
+export function literalShapeKey(
+  fields: readonly { name: string; value: ExprIR }[],
+): string | null {
+  const parts: string[] = []
+  for (const f of fields) {
+    const v = f.value
+    if (v.kind !== 'literal') return null
+    if (typeof v.value === 'number') {
+      // `float` on the IR node wins when present — a `0.0` written by the
+      // author is a Double even though its VALUE is integral.
+      const isFloat = v.float === true || !Number.isInteger(v.value)
+      parts.push(`${f.name}:${isFloat ? 'number.f' : 'number'}`)
+    } else if (typeof v.value === 'string') parts.push(`${f.name}:string`)
+    else if (typeof v.value === 'boolean') parts.push(`${f.name}:boolean`)
+    else return null
+  }
+  return parts.sort().join(',')
 }

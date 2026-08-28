@@ -27,6 +27,8 @@ import {
   classifyDynamicStylingAttr,
   classifySortableRef,
   exprHasOptionalLink,
+  structShapeKey,
+  literalShapeKey,
 } from './expr-utils'
 import {
   buildArraySpreadConcat,
@@ -104,6 +106,8 @@ let _enumNames: Set<string> = new Set()
  * `_structFieldsToName`. See that file for the structural rationale.
  */
 let _structFieldsToName: Map<string, string> = new Map()
+/** Typed shape key -> struct name. Mirror of emit-swift's map. */
+let _structTypedKeyToName: Map<string, string> = new Map()
 /** The DECLARED data classes for this emit, kept for `subsetStructName` — the
  *  exact field-set index above cannot see a literal that omits an optional
  *  field. */
@@ -424,12 +428,15 @@ export function emitKotlin(
   _enumNames = new Set(enums.map((e) => e.name))
   // Build the struct-fields key map — mirror of emit-swift's logic.
   _structFieldsToName = new Map()
+  _structTypedKeyToName = new Map()
   _declaredStructs = structs
   _synthExprStructs = []
   _synthExprStructKeys = new Map()
   for (const s of structs) {
-    const key = s.fields.map((f) => f.name).sort().join(',')
-    if (!_structFieldsToName.has(key)) _structFieldsToName.set(key, s.name)
+    const key = structShapeKey(s.fields)
+    if (!_structTypedKeyToName.has(key)) _structTypedKeyToName.set(key, s.name)
+    const nameOnly = s.fields.map((f) => f.name).sort().join(',')
+    if (!_structFieldsToName.has(nameOnly)) _structFieldsToName.set(nameOnly, s.name)
   }
   // Build the user-component name set — mirror of emit-swift's logic.
   _componentNames = new Set(components.map((c) => c.name))
@@ -5088,8 +5095,14 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // init which requires order match). See emit-swift.ts for the
       // structural rationale.
       if (!e.spreads || e.spreads.length === 0) {
+        // Mirror of the Swift literal site: typed key from the literal's own
+        // values first, name-only fallback. Both emitters must resolve a shape
+        // to the SAME declared struct, so this stays byte-for-byte parallel.
+        const typedKey = literalShapeKey(e.fields)
         const fieldSet = e.fields.map((f) => f.name).sort().join(',')
-        const structName = _structFieldsToName.get(fieldSet)
+        const structName =
+          (typedKey !== null ? _structTypedKeyToName.get(typedKey) : undefined) ??
+          _structFieldsToName.get(fieldSet)
         if (structName !== undefined) {
           const args = e.fields
             .map((f) => `${f.name} = ${emitKotlinExpr(f.value, indent)}`)
