@@ -39,16 +39,24 @@ describe('the client setting is invisible to every emitter but client.ts', () =>
   const pyreon = filesFor('pyreon')
 
   for (const client of ['fetch', 'axios', 'ky'] as const) {
-    it(`${client} changes client.ts, mocks.ts and the barrel, and nothing else`, () => {
+    it(`${client} changes client.ts, mocks.ts and dev.ts, and nothing else`, () => {
       const other = filesFor(client)
       expect([...other.keys()].sort()).toEqual([...pyreon.keys()].sort())
       const differing = [...pyreon.keys()].filter((p) => pyreon.get(p) !== other.get(p))
       // `mocks.ts` differs because `@pyreon/http` ships a `mock()` middleware
-      // and the adapters answer through their own transport seam; `index.ts`
+      // and the adapters answer through their own transport seam; `dev.ts`
       // differs by exactly one line, because `mockRoutes` IS that middleware
-      // and has no adapter equivalent. Everything an app actually calls —
-      // endpoints, hooks, keys — is identical.
-      expect(differing.sort()).toEqual(['client.ts', 'index.ts', 'mocks.ts'])
+      // and has no adapter equivalent.
+      //
+      // This assertion used to name `index.ts` instead of `dev.ts`, and the
+      // change is a STRENGTHENING rather than a relocation: the production
+      // barrel no longer names any dev surface, so it is now byte-identical
+      // across all four clients -- asserted directly below.
+      expect(differing.sort()).toEqual(['client.ts', 'dev.ts', 'mocks.ts'])
+    })
+
+    it(`${client} leaves the production barrel byte-identical`, () => {
+      expect(filesFor(client).get('index.ts')).toBe(pyreon.get('index.ts'))
     })
   }
 
