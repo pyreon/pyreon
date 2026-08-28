@@ -40,4 +40,10 @@ Charts are accessible by default: the canvas carries a generated description
 naming the trend and range, and an offscreen data table lets a screen reader
 navigate the numbers by row and column. Opt out with `accessibleTable={false}`.
 
+Three components ship: `<PlotChart>` for the cartesian family, `<PieChart>`
+for pie and donut, and `<GaugeChart>`. They are separate rather than one
+component with a `type` prop, because a pie has no cartesian plot — no axes, no
+gutters, no shared domain — and folding them together would make every bar chart
+carry the radial trigonometry it never uses.
+
 The existing ECharts-backed `Chart` export is unchanged.

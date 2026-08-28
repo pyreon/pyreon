@@ -10,6 +10,8 @@
 
 export { PlotChart } from './engine/Chart'
 export type { PlotChartProps } from './engine/Chart'
+export { GaugeChart, PieChart } from './engine/PieChart'
+export type { GaugeChartProps, PieChartProps } from './engine/PieChart'
 
 // Marks
 export { area, bars, line, points, resolveCategories, resolveMarks } from './engine/marks'
