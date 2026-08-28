@@ -769,6 +769,75 @@ describe('_detectMapsInPackOutput', () => {
     expect(result!.message).not.toContain('does not exclude')
   })
 
+  it('names the UNBUILT checkout even though `files` ships an ambient src/*.d.ts', () => {
+    // The REAL unbuilt shape, which the spec above did not have. 19 published
+    // packages list `src` in `files` (publish.ts strips it at publish time, so
+    // a dry-run still sees it) and ship a hand-written ambient declaration —
+    // `src/env.d.ts`, `src/sharp.d.ts`, `src/vite-raw.d.ts`.
+    //
+    // The first discriminator asked "is there any .js/.d.ts", so that ONE
+    // authored file answered "yes, this was built" and printed the
+    // files-array message the discriminator exists to stop printing. It
+    // reproduced the bug it was written to fix, and the spec above passed the
+    // whole time because its fixture was a shape that does not occur.
+    const raw = JSON.stringify([
+      {
+        files: [
+          { path: 'package.json' },
+          { path: 'README.md' },
+          { path: 'LICENSE' },
+          { path: 'src/index.ts' },
+          { path: 'src/signal.ts' },
+          { path: 'src/env.d.ts' },
+        ],
+      },
+    ])
+    const result = _detectMapsInPackOutput(raw, cwd, probe, '@pyreon/reactivity')
+    expect(result!.code).toBe('distribution/unbuilt-checkout')
+    expect(result!.message).toContain('bootstrap')
+    expect(result!.message).not.toContain('does not exclude')
+  })
+
+  it('a src/*.ts tree alone is source, not a build', () => {
+    // No declaration at all — the same verdict has to hold, or the fix is
+    // keyed on the extension rather than on where the file lives.
+    const raw = JSON.stringify([
+      { files: [{ path: 'package.json' }, { path: 'src/index.ts' }] },
+    ])
+    expect(_detectMapsInPackOutput(raw, cwd, probe, '@pyreon/x')!.code).toBe(
+      'distribution/unbuilt-checkout',
+    )
+  })
+
+  it('a declaration OUTSIDE src/ still counts as built output', () => {
+    // The other direction: excluding `src/` must not blind the gate to a
+    // types-only build. `lib/` is emitted, so `lib/index.d.ts` with no `.map`
+    // is a real `files`-array defect and has to keep reporting as one.
+    const raw = JSON.stringify([
+      { files: [{ path: 'package.json' }, { path: 'lib/index.d.ts' }] },
+    ])
+    expect(_detectMapsInPackOutput(raw, cwd, probe, '@pyreon/x')!.code).toBe(
+      'distribution/tarball-missing-maps',
+    )
+  })
+
+  it('a built tree is still built when src/ rides along beside it', () => {
+    // The dominant real shape for a BOOTSTRAPPED checkout — both trees
+    // present. Excluding `src/` must not make this read as unbuilt.
+    const raw = JSON.stringify([
+      {
+        files: [
+          { path: 'src/index.ts' },
+          { path: 'src/env.d.ts' },
+          { path: 'lib/index.js' },
+        ],
+      },
+    ])
+    expect(_detectMapsInPackOutput(raw, cwd, probe, '@pyreon/x')!.code).toBe(
+      'distribution/tarball-missing-maps',
+    )
+  })
+
   it('still blames the files array when built output IS present but maps are not', () => {
     // The discriminator is built output, not the map count: a package that
     // shipped `lib/index.js` and no `.map` really does have a `files` problem.
