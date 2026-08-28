@@ -192,14 +192,28 @@ class TasksAppInstrumentedTest {
         try {
             composeRule.onNodeWithTag(tag).assertIsDisplayed()
         } catch (e: Throwable) {
+            // `n.config.toString()` rather than a typed read: SemanticsConfiguration
+            // has no `getOrNull`, and indexing a missing key throws. describeTimeout
+            // above already reads it this way, so this stays on a construct this
+            // file has compiled before — the whole point being that a diagnostic
+            // must not be the thing that breaks the build.
             val routerText =
                 try {
-                    composeRule
-                        .onAllNodes(hasText("Pyreon Router:", substring = true))
-                        .fetchSemanticsNodes()
-                        .mapNotNull { n -> n.config.getOrNull(SemanticsProperties.Text) }
-                        .joinToString(" | ") { it.joinToString(" ") }
-                        .ifEmpty { "nothing — the router rendered no fallback" }
+                    val nodes =
+                        composeRule
+                            .onAllNodes(hasText("Pyreon Router:", substring = true))
+                            .fetchSemanticsNodes()
+                    if (nodes.isEmpty()) {
+                        "nothing — the router rendered no fallback"
+                    } else {
+                        nodes.joinToString(" | ") { n ->
+                            try {
+                                n.config.toString().take(200)
+                            } catch (_: Throwable) {
+                                "<unreadable>"
+                            }
+                        }
+                    }
                 } catch (_: Throwable) {
                     "<could not read the semantics tree>"
                 }
