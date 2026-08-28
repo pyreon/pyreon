@@ -1472,6 +1472,16 @@ public struct Image: View {
 }
 public struct AsyncImage: View {
   public init(url: URL?) {}
+  // The content-closure form, which is the only place \`.resizable()\` can
+  // reach the loaded Image — so it is what \`fit\` on a REMOTE src lowers to.
+  // Absent until now, which is part of why that lowering was deferred: there
+  // was nothing to compile it against.
+  public init<C: View, P: View>(
+    url: URL?,
+    scale: Double = 1,
+    @ViewBuilder content: (Image) -> C,
+    @ViewBuilder placeholder: () -> P
+  ) {}
   public typealias Body = Never
 }
 `

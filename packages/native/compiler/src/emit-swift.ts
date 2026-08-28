@@ -8081,11 +8081,14 @@ function emitSwiftIcon(
  * - `width`/`height` → `.frame(width:height:)` (numbers are points;
  *   string values like "50%" are web-only and skipped on native).
  *
- * `fit` (object-fit on web) is NOT mapped in v1: faithfully applying it
- * needs AsyncImage's content-closure form (`.resizable().aspectRatio(
- * contentMode:)`), which is a larger emit shape — deferred to a future
- * arc. The type-level prop is still accepted (silent no-op on Swift),
- * mirroring how `justify` is handled on `<Stack>`.
+ * `fit` (object-fit on web) maps on BOTH src kinds. It used to apply only to
+ * bundled assets, because the remote branch needs AsyncImage's content-closure
+ * form to reach the inner Image with `.resizable()`. That deferral was
+ * described as "mirroring how `justify` is handled on `<Stack>`", which was
+ * wrong in the two ways that mattered: `justify` WARNS by name, and it is
+ * dropped on BOTH targets. `fit` warned about nothing and Kotlin implemented
+ * it — so one source rendered differently per platform, silently, and only for
+ * remote URLs.
  *
  * `src` must resolve to a static string — a string literal OR a
  * module-level `const` string binding (`const LOGO = "logo.png"`),
@@ -8117,11 +8120,60 @@ function bundledAssetName(src: string): string {
   return src.replace(/\.[A-Za-z0-9]+$/, '')
 }
 
+/**
+ * CSS `object-fit` → the SwiftUI modifier chain applied after `.resizable()`.
+ *
+ * `fill` is NOT `.scaledToFill()`. CSS `fill` stretches to the content box and
+ * DISTORTS; `.scaledToFill()` preserves the aspect ratio and crops, which is
+ * `cover`. They were the same entry here, so `fit="fill"` and `fit="cover"`
+ * rendered identically on iOS while web (`object-fit: fill`) and Android
+ * (`ContentScale.FillBounds`) both distorted — one source, two answers.
+ *
+ * A bare `.resizable()` with no aspect modifier is the faithful `fill`: the
+ * image takes its frame exactly, aspect ratio be damned.
+ */
 const SWIFT_CONTENT_MODE: Record<string, string> = {
   cover: '.scaledToFill()',
   contain: '.scaledToFit()',
-  fill: '.scaledToFill()',
+  fill: '',
 }
+
+/**
+ * Wrap a remote `AsyncImage` in its content-closure form so `fit` applies.
+ *
+ * `AsyncImage(url:)` hands back a view whose inner `Image` is NOT resizable, so
+ * no modifier on the outside can scale it — `.scaledToFill()` on the AsyncImage
+ * itself does nothing. The content closure is the only place `.resizable()` can
+ * reach the image, which is why this was deferred when the prop was added.
+ *
+ * The mapping is deliberately the SAME table the BUNDLED branch already used.
+ * That branch has implemented `fit` all along, so on Swift the prop worked for
+ * `src="logo.png"` and silently did nothing for `src="https://…"` — one prop,
+ * one platform, two answers depending on the shape of an unrelated attribute.
+ * Kotlin implemented both. Keeping one table is what stops those three from
+ * drifting apart again.
+ *
+ * `fit="none"` keeps the plain init: intrinsic size, no scaling, matching both
+ * the bundled branch and CSS `object-fit: none`.
+ */
+function swiftAsyncImageWithFit(urlExpr: string, fit: unknown, indent: number): string {
+  const mode = SWIFT_CONTENT_MODE[typeof fit === 'string' ? fit : 'cover']
+  if (fit === 'none' || mode === undefined) {
+    return `AsyncImage(url: URL(string: ${urlExpr}))`
+  }
+  const pad = ' '.repeat(indent + 2)
+  const inner = ' '.repeat(indent + 4)
+  return (
+    `AsyncImage(url: URL(string: ${urlExpr})) { image in\n` +
+    `${inner}image.resizable()${mode}\n` +
+    `${pad}} placeholder: {\n` +
+    // Color.clear rather than ProgressView: an image slot that reserves its
+    // space without announcing itself, which is what a plain <img> does.
+    `${inner}Color.clear\n` +
+    `${pad}}`
+  )
+}
+
 
 /**
  * `<WebView html="…" />` / `<WebView src="…" />` → `PyreonWebView(html:)` /
@@ -8355,7 +8407,7 @@ function emitSwiftImage(
         result += `.resizable()${SWIFT_CONTENT_MODE[typeof fit === 'string' ? fit : 'cover'] ?? '.scaledToFill()'}`
       }
     } else {
-      result = `AsyncImage(url: URL(string: ${JSON.stringify(src)}))`
+      result = swiftAsyncImageWithFit(JSON.stringify(src), fit, indent)
     }
   } else if (srcAttr !== undefined && srcAttr.kind === 'attr' && srcAttr.value.kind !== 'identifier') {
     // Dynamic src — a genuine runtime READ (signal call `url()`, member
@@ -8369,7 +8421,7 @@ function emitSwiftImage(
     // src is the const-ref/unknown case that `readStaticAttr` already routes
     // to the generic fall-through (resolvable module-consts are returned as a
     // static literal above and never reach here) — see const-ref-attr.test.ts.
-    result = `AsyncImage(url: URL(string: ${emitSwiftSignalRead(srcAttr.value)}))`
+    result = swiftAsyncImageWithFit(emitSwiftSignalRead(srcAttr.value), fit, indent)
   } else {
     return emitSwiftGeneric(e, indent)
   }

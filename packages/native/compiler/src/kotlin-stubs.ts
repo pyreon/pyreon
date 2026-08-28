@@ -729,7 +729,17 @@ fun Icon(
 // coil.compose.AsyncImage(model, contentDescription, modifier, …).
 @Composable
 @Suppress("UNUSED_PARAMETER")
-fun AsyncImage(model: Any?, contentDescription: String?, modifier: Modifier = Modifier) {}
+// contentScale is what <Image fit> lowers to. It was absent, so every fit value
+// failed this gate while the real device build was fine (the CLI adds the
+// androidx.compose.ui.layout.ContentScale import conditionally) — a stub
+// narrower than the runtime, leaving a shipped prop with no compile coverage
+// rather than falsely reddening a correct one.
+fun AsyncImage(
+  model: Any?,
+  contentDescription: String?,
+  modifier: Modifier = Modifier,
+  contentScale: ContentScaleStub = ContentScale.Fit,
+) {}
 
 // Dialog — <Modal> emit's overlay composable (conditionally composed
 // behind an if (open) guard). Real Compose: androidx.compose.ui.window.Dialog.
