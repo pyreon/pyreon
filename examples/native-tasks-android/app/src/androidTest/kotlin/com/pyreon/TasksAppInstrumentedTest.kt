@@ -31,9 +31,7 @@
 package com.pyreon
 
 import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
-import androidx.compose.ui.test.onAllNodes
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasTestTag
@@ -162,7 +160,13 @@ class TasksAppInstrumentedTest {
                     composeRule
                         .onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.TestTag))
                         .fetchSemanticsNodes()
-                        .mapNotNull { it.config.getOrNull(SemanticsProperties.TestTag) }
+                        .mapNotNull { n ->
+                            try {
+                                n.config[SemanticsProperties.TestTag]
+                            } catch (_: Throwable) {
+                                null
+                            }
+                        }
                         .distinct()
                         .sorted()
                 if (tags.isEmpty()) "NOTHING is on screen — no tagged node at all"

@@ -79,12 +79,46 @@ final class PyreonTasksUITests: XCTestCase {
             element.exists && element.isHittable,
             // The count is in the message on purpose: "not hittable" and "not
             // hittable after eight swipes" send you to different places.
-            "element never became hittable after \(swipes) swipe(s) — it may be "
-                + "absent, zero-size, or covered by something",
+            //
+            // And say WHICH of the three it is rather than listing them. The
+            // first version offered "absent, zero-size, or covered by
+            // something", which is the guess the reader would have made
+            // unaided — a device round costs 35 minutes, so the message has to
+            // carry the answer.
+            "element never became hittable after \(swipes) swipe(s) — "
+                + "exists=\(element.exists) hittable=\(element.isHittable) "
+                + "frame=\(element.exists ? "\(element.frame)" : "n/a") "
+                + "keyboardShown=\(app.keyboards.count > 0)",
             file: file,
             line: line
         )
         element.tap()
+    }
+
+    /// Put the software keyboard away.
+    ///
+    /// A `typeText` raises it, and it covers the bottom of the screen — so the
+    /// control directly under the field you just typed into is not hittable,
+    /// and no amount of scrolling makes it so: the keyboard is above the scroll
+    /// view, not inside it. That is what took out `toolkit-schema-submit`,
+    /// which sits immediately below `toolkit-schema-name`.
+    ///
+    /// Dismissed via the keyboard's own return key rather than by typing a
+    /// newline into the field, which would fire the field's `onSubmit` and
+    /// change app state as a side effect of a test helper.
+    ///
+    /// A no-op when no software keyboard is up — a CI runner with a hardware
+    /// keyboard attached may never raise one, in which case nothing was
+    /// covered.
+    private func dismissKeyboard(_ app: XCUIApplication) {
+        guard app.keyboards.count > 0 else { return }
+        for label in ["Return", "return", "Done", "done", "Go", "go", "Search"] {
+            let key = app.keyboards.buttons[label]
+            if key.exists && key.isHittable {
+                key.tap()
+                return
+            }
+        }
     }
 
     func test_appLaunchesOnLoginPage() throws {
@@ -135,6 +169,7 @@ final class PyreonTasksUITests: XCTestCase {
         )
         username.tap()
         username.typeText("ab")
+        dismissKeyboard(app)
 
         let submit = app.buttons["login-submit"].firstMatch
         XCTAssertTrue(submit.exists, "Continue button missing")
@@ -159,6 +194,7 @@ final class PyreonTasksUITests: XCTestCase {
         // re-validates after an error, so the message clears live.
         username.tap()
         username.typeText("cde")
+        dismissKeyboard(app)
         submit.tap()
 
         let tasksPage = app.otherElements["tasks-page"].firstMatch
@@ -182,6 +218,7 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertTrue(titleField.exists, "New-task field missing on tasks page")
         titleField.tap()
         titleField.typeText("Verify on the simulator")
+        dismissKeyboard(app)
 
         let add = app.buttons["new-task-add"].firstMatch
         XCTAssertTrue(add.exists, "Add button missing on tasks page")
@@ -473,6 +510,7 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertTrue(schemaName.exists, "Schema form field missing on toolkit page")
         tapAfterScrolling(schemaName, in: app)
         schemaName.typeText("ab")
+        dismissKeyboard(app)
         tapAfterScrolling(app.buttons["toolkit-schema-submit"].firstMatch, in: app)
         XCTAssertEqual(
             app.staticTexts["toolkit-schema-valid"].firstMatch.label,
