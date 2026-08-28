@@ -55,7 +55,7 @@ export function emitDocs(doc: IrDocument, opts: DocsOptions): GeneratedFile[] {
 }
 
 function frontmatter(title: string, description: string): string[] {
-  // Quoted with doubled inner quotes: a spec title carrying a `:` or a `"`
+  // Quoted, with YAML's own escapes: a spec title carrying a `:` or a `"`
   // otherwise produces YAML that parses as something else, or not at all.
   //
   // The marker is an HTML comment rather than the `//`-prefixed banner the
@@ -73,8 +73,26 @@ function frontmatter(title: string, description: string): string[] {
   ]
 }
 
+/**
+ * Escape a value for a DOUBLE-QUOTED YAML scalar.
+ *
+ * Doubling the quote (`""`) is the CSV and SINGLE-quoted-YAML convention, and
+ * it is wrong here: inside double quotes YAML escapes with a BACKSLASH, so a
+ * doubled quote closes the scalar and starts another one. `title: """x"""`
+ * does not parse as `"x"` — gray-matter, which is what actually reads these
+ * pages, rejects the document outright. A title containing a quote took the
+ * whole page down.
+ *
+ * Backslash first, for the same reason `mdCell` below does it: escaping only
+ * the quote turns `\\"` into `\\\"` — an escaped backslash followed by a LIVE
+ * quote — and the scalar ends anyway.
+ */
 function yaml(value: string): string {
-  return value.replace(/[\r\n]+/g, ' ').replace(/"/g, '""').trim()
+  return value
+    .replace(/[\r\n]+/g, ' ')
+    .trim()
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
 }
 
 function indexPage(

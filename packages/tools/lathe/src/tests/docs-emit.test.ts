@@ -10,6 +10,7 @@
  * break the Markdown it lands in — the same escaping class as the block- and
  * line-comment escapes the code emitters carry, in a third syntax.
  */
+import matter from 'gray-matter'
 import { resolveConfig } from '../core/config'
 import { generate } from '../core/generate'
 
@@ -231,6 +232,23 @@ paths:
     expect(mdCells(row)).toHaveLength(3)
   })
 
+  /**
+   * Front-matter is asserted by PARSING it, not by matching the string.
+   *
+   * The assertion here used to be a `toContain` on the doubled-quote spelling,
+   * and it passed against an emitter producing a document gray-matter REJECTS.
+   * Doubling is the CSV and single-quoted-YAML convention; inside double
+   * quotes YAML escapes with a backslash, so the doubled form closes the
+   * scalar and opens another. The test held the emitter to a spelling rather
+   * than to a contract, which is how it locked the bug in.
+   *
+   * `gray-matter` is the parser `@pyreon/zero-content` actually reads these
+   * pages with, so the oracle here is the real consumer instead of a re-typed
+   * literal — the only reason the corrected escape can be trusted.
+   */
+  const frontmatterOf = (page: string): Record<string, unknown> =>
+    matter(page).data as Record<string, unknown>
+
   it('emits frontmatter that survives a quote in the title', () => {
     const quoted = docsFor(`
 openapi: 3.0.3
@@ -240,8 +258,38 @@ paths:
   /y:
     get: { operationId: getY, tags: [y], responses: { '200': { content: { application/json: { schema: { type: string } } } } } }
 `)
-    // Doubled, which is how YAML escapes a quote inside a double-quoted
-    // scalar. A raw quote would end the string and make the block unparseable.
-    expect(quoted.get('docs/index.md')).toContain('title: "He said ""hi"""')
+    const page = quoted.get('docs/index.md') ?? ''
+    expect(page).not.toBe('')
+    // Parses at all, and round-trips the quote rather than merely surviving.
+    expect(frontmatterOf(page).title).toBe('He said "hi"')
+  })
+
+  it('emits frontmatter that survives a BACKSLASH in the title', () => {
+    // The sibling a quote-only escape reopens: a backslash is itself live
+    // inside a double-quoted scalar, so an unescaped trailing one swallows
+    // the closing quote and the document ends mid-value.
+    const backslashed = docsFor(`
+openapi: 3.0.3
+info: { title: 'a back\\slash', version: '1' }
+servers: [{ url: 'https://api.test/v1' }]
+paths:
+  /y:
+    get: { operationId: getY, tags: [y], responses: { '200': { content: { application/json: { schema: { type: string } } } } } }
+`)
+    const page = backslashed.get('docs/index.md') ?? ''
+    expect(frontmatterOf(page).title).toBe('a back\\slash')
+  })
+
+  it('emits frontmatter that survives a COLON, the shape quoting exists for', () => {
+    const colon = docsFor(`
+openapi: 3.0.3
+info: { title: 'Books: the API', version: '1' }
+servers: [{ url: 'https://api.test/v1' }]
+paths:
+  /y:
+    get: { operationId: getY, tags: [y], responses: { '200': { content: { application/json: { schema: { type: string } } } } } }
+`)
+    const page = colon.get('docs/index.md') ?? ''
+    expect(frontmatterOf(page).title).toBe('Books: the API')
   })
 })
