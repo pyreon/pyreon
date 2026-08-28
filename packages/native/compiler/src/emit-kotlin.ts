@@ -6191,6 +6191,12 @@ function emitKotlinTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, inden
     leaveDur !== undefined ||
     enterEase !== undefined ||
     leaveEase !== undefined
+  // The generic modifier tail. `AnimatedVisibility` takes a `modifier`, so
+  // there is somewhere for it to go; this emitter simply never passed one, and
+  // dropped `data-testid` plus both a11y props. Emitted only when non-empty,
+  // so the byte-identical default shape below is preserved.
+  const tMod = emitKotlinLayoutModifier(e)
+  const tModArg = tMod === '' ? '' : `, modifier = ${tMod}`
   const pad = ' '.repeat(indent + 2)
   const body = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
   const nameRaw = readStaticAttrKotlin(e, 'name')
@@ -6204,12 +6210,12 @@ function emitKotlinTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, inden
     // No animation config AND no name → the byte-identical default shape that
     // has shipped since M2.7. A name opts into an explicit enter/exit pair.
     if (transitionName === undefined) {
-      return `AnimatedVisibility(visible = ${cond}) {\n${body}\n${' '.repeat(indent)}}`
+      return `AnimatedVisibility(visible = ${cond}${tModArg}) {\n${body}\n${' '.repeat(indent)}}`
     }
     const dflt = `tween(durationMillis = 300, easing = ${kotlinEasingFor(undefined)})`
     const t = kotlinTransitionForName(transitionName, dflt)
     return (
-      `AnimatedVisibility(visible = ${cond}, enter = ${t.enter}, exit = ${t.exit}) {\n` +
+      `AnimatedVisibility(visible = ${cond}, enter = ${t.enter}, exit = ${t.exit}${tModArg}) {\n` +
       `${body}\n${' '.repeat(indent)}}`
     )
   }
@@ -6958,6 +6964,10 @@ function emitKotlinAudio(
   if (statusAttr !== undefined) {
     args.push(`onStatusChange = ${emitKotlinMessageHandler(statusAttr.handler)}`)
   }
+  // Carries the modifier, exactly as its sibling <Video> does — see the Swift
+  // twin for why this was missing.
+  const audioMod = emitKotlinLayoutModifier(e)
+  if (audioMod !== '') args.push(`modifier = ${audioMod}`)
   return `PyreonAudioPlayer(${args.join(', ')})`
 }
 

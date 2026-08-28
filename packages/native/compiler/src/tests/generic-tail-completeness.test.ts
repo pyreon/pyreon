@@ -22,6 +22,8 @@
  * accessibility bug nobody is looking for.
  */
 
+import { readFileSync, readdirSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
 
@@ -42,10 +44,18 @@ const REQUIRED: Record<string, string> = {
   Field: ' value={v()} onChangeText={(n) => v.set(n)}',
   Toggle: ' value={b()} onChange={(n) => b.set(n)}',
   Modal: ' open onClose={() => {}}',
+  // Three that the first version of this file left out — the hardcoded list of
+  // 15 was itself the "gate input list is a silent-hole generator" shape, in
+  // the very gate written to close that class. The drift check below is what
+  // makes the list honest.
+  Transition: ' show={b()}',
+  Audio: ' src="https://x.test/a.mp3"',
+  Video: ' src="https://x.test/a.mp4"',
 }
 
 const TAKES_CHILDREN = new Set([
   'Stack', 'Inline', 'Layer', 'Scroll', 'Button', 'Press', 'Link', 'Modal', 'Text', 'Heading',
+  'Transition',
 ])
 
 const CROSS_CUTTING = {
@@ -72,7 +82,7 @@ const emit = (tag: string, attr: string, target: 'swift' | 'kotlin'): string => 
     ? `<${tag}${base} ${attr}>x</${tag}>`
     : `<${tag}${base} ${attr} />`
   const src = `import { signal } from '@pyreon/reactivity'
-import { Stack, Inline, Layer, Scroll, Spacer, Text, Heading, Image, Icon, Button, Press, Link, Field, Toggle, Modal } from '@pyreon/primitives'
+import { Stack, Inline, Layer, Scroll, Spacer, Text, Heading, Image, Icon, Button, Press, Link, Field, Toggle, Modal, Transition, Audio, Video } from '@pyreon/primitives'
 export function C() {
   const v = signal('')
   const b = signal(false)
@@ -88,10 +98,32 @@ describe('every canonical primitive carries the cross-cutting props', () => {
     ),
   )
 
-  it('covers all 15 primitives on both targets', () => {
-    // The matrix is the point: a primitive missing from REQUIRED would silently
-    // shrink the coverage this file advertises.
-    expect(cells).toHaveLength(15 * 3 * 2)
+  it('covers every primitive that DECLARES the props, derived from the types', () => {
+    // The matrix is the point, and a hardcoded list is exactly what lets a
+    // primitive fall out of it. The first version of this file listed 15 and
+    // the type files declare 18 — `<Transition>`, `<Audio>` and `<Video>` were
+    // missing, and two of the three turned out to be dropping the whole tail.
+    //
+    // So the list is checked against its source of truth: every interface
+    // extending `HtmlPassthroughProps` (which extends `AccessibilityProps`) is
+    // a primitive that must appear here. A new one fails this assertion by
+    // name rather than being silently uncovered.
+    const typesDir = resolve(
+      import.meta.dirname,
+      '../../../../core/primitives/src/types',
+    )
+    const declared = new Set<string>()
+    for (const file of readdirSync(typesDir)) {
+      if (!file.endsWith('.ts')) continue
+      const src = readFileSync(join(typesDir, file), 'utf8')
+      for (const m of src.matchAll(/interface (\w+)Props\b[^{]*HtmlPassthroughProps/g)) {
+        declared.add(m[1]!)
+      }
+    }
+    expect(declared.size).toBeGreaterThan(0)
+    const covered = new Set(Object.keys(REQUIRED))
+    expect([...declared].filter((d) => !covered.has(d)).sort()).toEqual([])
+    expect(cells).toHaveLength(covered.size * 3 * 2)
   })
 
   it.each(cells)('$tag carries $prop on $target', ({ tag, prop, spec, target }) => {
@@ -106,7 +138,7 @@ describe('and pays nothing when they are absent', () => {
     const base = REQUIRED[tag] ?? ''
     const el = TAKES_CHILDREN.has(tag) ? `<${tag}${base}>x</${tag}>` : `<${tag}${base} />`
     const src = `import { signal } from '@pyreon/reactivity'
-import { Stack, Inline, Layer, Scroll, Spacer, Text, Heading, Image, Icon, Button, Press, Link, Field, Toggle, Modal } from '@pyreon/primitives'
+import { Stack, Inline, Layer, Scroll, Spacer, Text, Heading, Image, Icon, Button, Press, Link, Field, Toggle, Modal, Transition, Audio, Video } from '@pyreon/primitives'
 export function C() { const v = signal(''); const b = signal(false); return <Stack>${el}</Stack> }`
     for (const target of ['swift', 'kotlin'] as const) {
       const out = transform(src, { target }).code

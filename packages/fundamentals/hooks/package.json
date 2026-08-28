@@ -141,6 +141,10 @@
         "PyreonAudioPlayer": [
           "PyreonAudioPlayer.kt"
         ],
+        "PyreonAudioPlayerAndroid": [
+          "PyreonAudioPlayer.kt",
+          "PyreonAudioPlayerAndroid.kt"
+        ],
         "PyreonAudioRecorder": [
           "PyreonAudioRecorder.kt"
         ],

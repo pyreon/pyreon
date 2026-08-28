@@ -7430,6 +7430,12 @@ function emitSwiftTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
   const inner = ' '.repeat(indent + 6)
   const body = e.children.map((c) => inner + emitSwiftChild(c, indent + 6)).join('\n')
   const p = ' '.repeat(indent)
+  // The generic modifier tail. Every specialized emitter has to apply it
+  // itself, and this one did not — so `data-testid` and both a11y props were
+  // dropped, on both targets. Applied to the outer ZStack, which is the stable
+  // host: putting it on the inner Group would make the identifier come and go
+  // with `show`, and a device test would see it flicker rather than exist.
+  const tTail = emitSwiftLayoutModifiers(e)
   if (asymmetric) {
     const insertion = swiftAnimationFor(enterDur ?? duration, enterEase ?? easing)
     const removal = swiftAnimationFor(leaveDur ?? duration, leaveEase ?? easing)
@@ -7448,7 +7454,7 @@ function emitSwiftTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
       // would also apply to unrelated property changes on this container.
       // (I first added one on the theory that a transition needs an ambient
       // trigger scope; bisecting it out proved that wrong, so it is not here.)
-      `${p}}`
+      `${p}}` + tTail
     )
   }
   return (
@@ -7458,7 +7464,7 @@ function emitSwiftTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
     `${p}      .transition(${swiftTransition})\n` +
     `${p}  }\n` +
     `${p}}\n` +
-    `${p}.animation(${anim}, value: ${cond})`
+    `${p}.animation(${anim}, value: ${cond})` + tTail
   )
 }
 
@@ -8509,7 +8515,13 @@ function emitSwiftAudio(
         : '_'
     args.push(`onStatusChange: { ${param} in ${body} }`)
   }
-  return `PyreonAudioPlayer(${args.join(', ')})`
+  // Ends with the generic modifier tail, exactly as its sibling <Video> does.
+  // It did not, so `data-testid` and both a11y props were dropped and an audio
+  // element was unselectable by XCUITest — the same "you cannot assert on an
+  // element you cannot select" that kept <Link> off the capability matrix.
+  // <Video>'s docblock cites that lesson by name; the near-identical emitter
+  // beside it never had it applied.
+  return `PyreonAudioPlayer(${args.join(', ')})` + emitSwiftLayoutModifiers(e)
 }
 
 function emitSwiftVideo(

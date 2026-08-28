@@ -1121,6 +1121,10 @@ operator fun ExitTransition.plus(other: ExitTransition): ExitTransition = this
 @Composable
 fun AnimatedVisibility(
   visible: Boolean,
+  // \`modifier\` mirrors the real composable and was absent, so
+  // <Transition> could not carry a test tag or an a11y prop past this gate
+  // even though Compose has always accepted one.
+  modifier: Modifier = Modifier,
   enter: EnterTransition? = null,
   exit: ExitTransition? = null,
   content: @Composable () -> Unit,
@@ -1585,6 +1589,7 @@ fun PyreonAudioPlayer(
   volume: Double = 1.0,
   engine: AudioEngine,
   onStatusChange: ((String) -> Unit)? = null,
+  modifier: Modifier = Modifier,
 ) {}
 
 // PyreonAudioRecorder + the app-supplied engine the emit names.
