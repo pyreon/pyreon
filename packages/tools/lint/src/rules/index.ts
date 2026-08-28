@@ -53,6 +53,7 @@ import { noRawAddEventListener } from './hooks/no-raw-addeventlistener'
 import { noRawLocalStorage } from './hooks/no-raw-localstorage'
 import { noRawSetInterval } from './hooks/no-raw-setinterval'
 import { noAndConditional } from './jsx/no-and-conditional'
+import { noLineCommentInJsx } from './jsx/no-line-comment-in-jsx'
 import { noChildrenAccess } from './jsx/no-children-access'
 import { noClassName } from './jsx/no-classname'
 import { noHtmlFor } from './jsx/no-htmlfor'
@@ -144,6 +145,7 @@ export const allRules: Rule[] = [
   noOnChange,
   noTernaryConditional,
   noAndConditional,
+  noLineCommentInJsx,
   noIndexAsBy,
   noMissingForBy,
   noPropsDestructure,
@@ -249,6 +251,7 @@ export {
   dialogA11y,
   initFnNeedsIdempotency,
   noAndConditional,
+  noLineCommentInJsx,
   // Reactivity
   noAsyncEffect,
   noBareSignalInJsx,
