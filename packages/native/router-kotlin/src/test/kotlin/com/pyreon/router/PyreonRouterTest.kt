@@ -992,6 +992,42 @@ fun main() {
         expectEq(router.currentPath, "/search?page=2", "url rewritten after removal")
     }
 
+    runTest("setQueryParam keeps the route RESOLVED — the page must not vanish") {
+        // The test above asserts the URL string and the query map. Neither says
+        // the page still RENDERS, and that is what a user notices.
+        //
+        // A device run showed the whole composition disappear on a url-state
+        // write: 36 tagged nodes before the click, none in either semantics
+        // tree after it. That is exactly what RouterView produces when
+        // resolveCurrentChain() returns null and no notFoundComponent is set —
+        // so this asserts the chain SURVIVES the rewrite.
+        //
+        // matchPath strips `?query` before matching, so it should. If this
+        // passes, the disappearance is downstream of resolution and the next
+        // suspect is RouterView's recomposition, not the route table.
+        val router = PyreonRouter(routes = listOf(RouteRecord("/toolkit") {}))
+        router.push("/toolkit")
+        expectEq(router.resolveCurrentChain() != null, true, "resolves before the write")
+        router.setQueryParam("filter", "done")
+        expectEq(router.currentPath, "/toolkit?filter=done", "url rewritten")
+        expectEq(
+            router.resolveCurrentChain() != null,
+            true,
+            "STILL resolves after the query rewrite",
+        )
+        expectEq(router.query.value["filter"], "done", "and the value is readable")
+    }
+
+    runTest("setQueryParam keeps a PARAMETERISED route resolved too") {
+        // The dynamic-segment case, since matchPath walks segments and a query
+        // glued to the last one is where a strip would most plausibly be missed.
+        val router = PyreonRouter(routes = listOf(RouteRecord("/tasks/:id") {}))
+        router.push("/tasks/7")
+        router.setQueryParam("tab", "notes")
+        expectEq(router.resolveCurrentChain() != null, true, "still resolves")
+        expectEq(router.params.value["id"], "7", "and the path param survives")
+    }
+
     runTest("query survives an unmatched path") {
         val router = PyreonRouter(routes = listOf(RouteRecord("/known") {}))
         router.push("/unknown?ref=email")
@@ -999,5 +1035,5 @@ fun main() {
         expectEq(router.params.value.isEmpty(), true, "no params on a miss")
     }
 
-    println("[verify-kotlin] ✓ PyreonRouter smoke ${75} test(s) passed")
+    println("[verify-kotlin] ✓ PyreonRouter smoke ${77} test(s) passed")
 }

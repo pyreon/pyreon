@@ -294,9 +294,22 @@ jobs:
         # workspace-resolution path, source-map emission, and the
         # output-file naming convention are all exercised here.
         #
-        # We don't run the Xcode part (no Apple-hardware runners) —
-        # `swiftc -parse` on the emit is the meaningful CI signal.
-        # The `xcodegen generate` part is verified locally per PR.
+        # This step runs on the UBUNTU cell, which has no Xcode — so
+        # `swiftc -parse` on the emit is its meaningful signal.
+        #
+        # NOT because Apple hardware is unavailable: that was true when this
+        # was written and is not now. `validate-swift-typecheck` below runs on
+        # macos-15, and `native-device.yml` runs a full `xcodebuild` against
+        # the Simulator SDK. Leaving the old reason in place is how a
+        # constraint outlives the thing that caused it — the next person reads
+        # it and does not ask.
+        #
+        # The SCAFFOLD's Xcode build in particular is still local-only:
+        # `create-multiplatform` -> `pyreon-native build` -> `xcodegen` ->
+        # `xcodebuild` against the real SDK is verified by hand (done this PR:
+        # BUILD SUCCEEDED, 0 errors) and is a viable gate. It is not added here
+        # because the macOS cell already sits at 92% of its 60-minute budget,
+        # so it wants its own job rather than another step on that one.
         run: |
           set -eo pipefail
           cd examples/native-counter-ios

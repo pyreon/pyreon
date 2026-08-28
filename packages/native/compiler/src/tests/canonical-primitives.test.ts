@@ -356,7 +356,16 @@ describe('Phase P2.1 — <Image> emit (AsyncImage)', () => {
 
   it('Kotlin: <Image src="/a.png" alt="a" /> → AsyncImage(model=, contentDescription=)', () => {
     const out = tx(`<Image src="/a.png" alt="a photo" />`, 'kotlin')
-    expect(out).toContain('AsyncImage(model = "/a.png", contentDescription = "a photo")')
+    // Asserted per-argument rather than as one literal. The invariant here is
+    // "src and alt reach AsyncImage as model and contentDescription", and that
+    // is unchanged; the literal moved because an ABSENT `fit` now emits its
+    // documented default (`cover`) explicitly instead of letting Compose fall
+    // back to `ContentScale.Fit`, which letterboxed on Android where web and
+    // iOS cropped. A whole-call string assertion breaks on any added default,
+    // which says nothing about the contract it exists to protect.
+    expect(out).toContain('AsyncImage(model = "/a.png"')
+    expect(out).toContain('contentDescription = "a photo"')
+    expect(out).toContain('contentScale = ContentScale.Crop')
   })
 
   it('Kotlin: numeric width/height → Modifier.width/height(dp)', () => {

@@ -17,6 +17,7 @@
 
 import { describe, expect, it } from 'vitest'
 import {
+  describeProblem,
   extractVitestFailures,
   parseCoverageOutput,
   usefulFailureMessage,
@@ -211,5 +212,48 @@ describe('usefulFailureMessage', () => {
     )
     expect(m).toContain('one')
     expect(m).toContain('two')
+  })
+})
+
+/**
+ * `STACK_TRACE_ERROR` with no assertion text is a DEAD WORKER — almost always
+ * out-of-memory under this job's 4-way parallelism — and vitest attributes it
+ * to whichever spec was in flight, reliably the package's longest-running one.
+ *
+ * The gate's guidance used to say "deflake the NAMED test" for every failure,
+ * which for this shape sends the reader at an innocent spec. It has already
+ * done that once, naming `@pyreon/loom`'s `strip-equivalence` when the real
+ * cause was a 3.9 GB build; it named the same spec again on 2026-08-28, which
+ * is what prompted discriminating the two.
+ */
+describe('describeProblem discriminates a dead worker from a failed assertion', () => {
+  const problem = (error: string) =>
+    describeProblem({ kind: 'tests-failed', package: '@pyreon/loom', error } as never)
+
+  it('a STACK_TRACE_ERROR is reported as a dead worker, not a bad spec', () => {
+    const out = problem(
+      '1 test(s) FAILED under the coverage run (exit=1): "strip-equivalence agrees on every ' +
+        'source file in this repo" — Error: STACK_TRACE_ERROR\n at task (…)',
+    )
+    expect(out).toContain('WORKER DIED')
+    expect(out).toContain('out-of-memory')
+    expect(out).toContain('peak RSS per test FILE')
+    // and must NOT send the reader at the named spec
+    expect(out).not.toContain('deflake the NAMED test')
+  })
+
+  it('an ordinary assertion failure still says to deflake the named test', () => {
+    const out = problem(
+      '1 test(s) FAILED under the coverage run (exit=1): "widget renders" — ' +
+        'AssertionError: expected 1 to be 2',
+    )
+    expect(out).toContain('deflake the NAMED test')
+    expect(out).not.toContain('WORKER DIED')
+  })
+
+  it('names the package either way', () => {
+    for (const e of ['Error: STACK_TRACE_ERROR', 'AssertionError: nope']) {
+      expect(problem(e)).toContain('@pyreon/loom')
+    }
   })
 })

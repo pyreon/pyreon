@@ -463,6 +463,24 @@ public struct AnyTransition {
 }
 public enum Edge {
   case top, bottom, leading, trailing
+  // Edge.Set — the first argument of SwiftUI's edge-scoped padding overload,
+  // which is what \`paddingX\`/\`paddingY\`/\`marginX\`/\`marginY\` lower to. It was
+  // absent, and so was that overload, so the stub accepted strictly LESS than
+  // the runtime: every \`.padding(.horizontal, n)\` the emitter has ever produced
+  // would have failed this gate, had any fixture exercised one. A stub narrower
+  // than the runtime manufactures a bug in correct codegen, which is the mirror
+  // of the superset stub that masks a real one.
+  public struct Set: OptionSet {
+    public let rawValue: Int8
+    public init(rawValue: Int8) { self.rawValue = rawValue }
+    public static let top = Edge.Set(rawValue: 1)
+    public static let leading = Edge.Set(rawValue: 2)
+    public static let bottom = Edge.Set(rawValue: 4)
+    public static let trailing = Edge.Set(rawValue: 8)
+    public static let horizontal = Edge.Set(rawValue: 10)
+    public static let vertical = Edge.Set(rawValue: 5)
+    public static let all = Edge.Set(rawValue: 15)
+  }
 }
 public protocol Gesture {}
 public struct LongPressGesture: Gesture {
@@ -562,6 +580,15 @@ extension View {
   public func keyboardShortcut(_ key: KeyEquivalent, modifiers: EventModifiers = .command) -> some View { self }
   public func padding() -> some View { self }
   public func padding(_ length: Double) -> some View { self }
+  // The edge-scoped overload, mirroring SwiftUI including its DEFAULTED edges.
+  // \`padding(8)\` still resolves to the Double overload above — a number is not
+  // convertible to Edge.Set — so adding the default costs no ambiguity and
+  // keeps the stub from being narrower than the real API.
+  public func padding(_ edges: Edge.Set = .all, _ length: Double? = nil) -> some View { self }
+  // cornerRadius — what \`radius\` lowers to. Also absent, so \`radius\` was another
+  // prop whose emit no fixture had ever put through this gate. Mirrors the real
+  // signature including \`antialiased\`, which the emit does not pass.
+  public func cornerRadius(_ radius: Double, antialiased: Bool = true) -> some View { self }
   public func sheet<C: View>(isPresented: Binding<Bool>, @ViewBuilder content: () -> C) -> some View { self }
   public func disabled(_ disabled: Bool) -> some View { self }
   // navigationDestination(for:destination:) — the multi-screen router emit's
@@ -705,7 +732,7 @@ public final class PyreonPushNotifications {
   public func stop() {}
 }
 public struct PyreonVideoPlayer: View {
-  public init(url: URL?, autoPlay: Bool = false, loop: Bool = false, muted: Bool = false, onStatusChange: ((String) -> Void)? = nil) {}
+  public init(url: URL?, autoPlay: Bool = false, loop: Bool = false, muted: Bool = false, controls: Bool = true, onStatusChange: ((String) -> Void)? = nil) {}
   public var body: some View { EmptyView() }
 }
 public final class PyreonWebSocket {
@@ -1421,7 +1448,21 @@ public struct LazyVStack<Content: View>: View {
 }
 public struct Spacer: View { public init(minLength: Double? = nil) {}; public typealias Body = Never }
 public struct ScrollView<Content: View>: View {
-  public init(@ViewBuilder content: () -> Content) {}
+  // Mirrors the real init including both defaults, so the emit's
+  // \`ScrollView { }\` and \`ScrollView(.horizontal) { }\` both resolve. Only the
+  // content-only form was declared, so \`<Scroll axis="horizontal">\` — a
+  // shipped, documented lowering — had never been through this gate.
+  //
+  // Reuses the \`Axis\` declared above rather than restating it. That one is a
+  // deliberate simplification of SwiftUI's OptionSet, which is safe here
+  // because \`axis\` is single-valued (\`'vertical' | 'horizontal'\`) and no emit
+  // can ever combine the two — a stub narrower than the runtime only
+  // manufactures a bug where the emit can reach the missing part.
+  public init(
+    _ axes: Axis.Set = .vertical,
+    showsIndicators: Bool = true,
+    @ViewBuilder content: () -> Content
+  ) {}
   public typealias Body = Never
 }
 public struct Image: View {
@@ -1431,6 +1472,16 @@ public struct Image: View {
 }
 public struct AsyncImage: View {
   public init(url: URL?) {}
+  // The content-closure form, which is the only place \`.resizable()\` can
+  // reach the loaded Image — so it is what \`fit\` on a REMOTE src lowers to.
+  // Absent until now, which is part of why that lowering was deferred: there
+  // was nothing to compile it against.
+  public init<C: View, P: View>(
+    url: URL?,
+    scale: Double = 1,
+    @ViewBuilder content: (Image) -> C,
+    @ViewBuilder placeholder: () -> P
+  ) {}
   public typealias Body = Never
 }
 `

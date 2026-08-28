@@ -71,7 +71,11 @@ import {
   resolveRouteTarget,
 } from './route-ir-helpers'
 import { unknownTransitionPresetWarning } from './transition-presets'
-import { unloweredPropWarning } from './unlowered-props'
+import {
+  stretchAlignWarning,
+  structuralPropDynamicWarning,
+  unloweredPropWarning,
+} from './unlowered-props'
 import type {
   AttrIR,
   ChildIR,
@@ -2371,7 +2375,7 @@ function emitSwiftComponent(c: ComponentIR): string {
     const keyEq = swiftKeyEquivalent(d.combo.key)
     if (keyEq === null) {
       _emitWarnings.push(
-        `useHotkey: '${d.combo.key}' has no SwiftUI KeyEquivalent — the hotkey is DROPPED on iOS.`,
+        `useHotkey: '${d.combo.key}' has no SwiftUI KeyEquivalent — the hotkey is DROPPED on iOS. Use a single printable character or one of the named keys that map on both targets (escape / enter / delete / tab / space / arrow{up,down,left,right} / home / end / pageup / pagedown), or handle this shortcut inside a <NativeIOS> / <NativeAndroid> branch.`,
       )
       continue
     }
@@ -6627,14 +6631,25 @@ function emitSwiftText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if (textColor !== undefined) {
     result += `.foregroundColor(${textColor})`
   }
-  const sizeKey = readStaticAttr(e, 'size')
-  const weightKey = readStaticAttr(e, 'weight')
-  const sizePt = typeof sizeKey === 'string' ? TEXT_SIZE_PT[sizeKey] : undefined
-  const weightVal = typeof weightKey === 'string' ? TEXT_WEIGHT_SWIFT[weightKey] : undefined
+  // Read through the styling machinery, not `readStaticAttr`.
+  //
+  // That reader is static-ONLY, so `size={dense() ? "sm" : "lg"}` — the
+  // two-literal ternary the machinery exists to support — was silently
+  // dropped. `align` and `gap` were migrated off it after exactly that bug;
+  // these two were added later and reached for the old reader, which is how a
+  // fixed class comes back. The helper emits a native conditional
+  // (`(c ? 12 : 20)`), which is valid in the argument position either value
+  // would occupy.
+  const sizePt = swiftStylingValue(e, 'size', (v) =>
+    String(TEXT_SIZE_PT[String(v)] ?? TEXT_SIZE_PT.md),
+  )
+  const weightVal = swiftStylingValue(e, 'weight', (v) =>
+    TEXT_WEIGHT_SWIFT[String(v)] ?? '.regular',
+  )
   if (typeof font !== 'string' && (sizePt !== undefined || weightVal !== undefined)) {
     // `md` is the default size, so a weight-only Text still needs a size to
     // hang the weight on.
-    const pt = sizePt ?? TEXT_SIZE_PT.md
+    const pt = sizePt ?? String(TEXT_SIZE_PT.md)
     const w = weightVal === undefined ? '' : `, weight: ${weightVal}`
     result += `.font(.system(size: ${pt}${w}))`
   }
@@ -7430,6 +7445,12 @@ function emitSwiftTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
   const inner = ' '.repeat(indent + 6)
   const body = e.children.map((c) => inner + emitSwiftChild(c, indent + 6)).join('\n')
   const p = ' '.repeat(indent)
+  // The generic modifier tail. Every specialized emitter has to apply it
+  // itself, and this one did not — so `data-testid` and both a11y props were
+  // dropped, on both targets. Applied to the outer ZStack, which is the stable
+  // host: putting it on the inner Group would make the identifier come and go
+  // with `show`, and a device test would see it flicker rather than exist.
+  const tTail = emitSwiftLayoutModifiers(e)
   if (asymmetric) {
     const insertion = swiftAnimationFor(enterDur ?? duration, enterEase ?? easing)
     const removal = swiftAnimationFor(leaveDur ?? duration, leaveEase ?? easing)
@@ -7448,7 +7469,7 @@ function emitSwiftTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
       // would also apply to unrelated property changes on this container.
       // (I first added one on the theory that a transition needs an ambient
       // trigger scope; bisecting it out proved that wrong, so it is not here.)
-      `${p}}`
+      `${p}}` + tTail
     )
   }
   return (
@@ -7458,7 +7479,7 @@ function emitSwiftTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
     `${p}      .transition(${swiftTransition})\n` +
     `${p}  }\n` +
     `${p}}\n` +
-    `${p}.animation(${anim}, value: ${cond})`
+    `${p}.animation(${anim}, value: ${cond})` + tTail
   )
 }
 
@@ -7632,6 +7653,33 @@ const SWIFT_CONTAINER_TAGS = new Set([
 ])
 
 /**
+ * The cross-platform a11y vocabulary (`AccessibilityProps`) as SwiftUI
+ * modifiers, extracted so a SPECIAL-CASE emitter can apply it too.
+ *
+ * The generic modifier tail is where every element picks these up, and an
+ * emitter that returns before reaching it drops them silently. `<Link>` did:
+ * its own comment already said "`<Link>` is a SPECIAL-CASE emitter, so it never
+ * reaches the generic modifier tail", and then hand-added only the test
+ * identifier — so an `accessibilityLabel` on a link vanished on both targets.
+ * That is the label VoiceOver reads, on the one element where "here" or an icon
+ * is a normal thing to write.
+ *
+ * Shared rather than copied for the obvious reason: the copy is what made the
+ * omission possible in the first place.
+ */
+function swiftAccessibilityModifiers(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+): string[] {
+  const out: string[] = []
+  const label = readStringAttrExpr(e, 'accessibilityLabel', 0)
+  if (label !== undefined) out.push(`.accessibilityLabel(${label})`)
+  if (readStaticAttr(e, 'accessibilityHidden') === true) {
+    out.push('.accessibilityHidden(true)')
+  }
+  return out
+}
+
+/**
  * Build the SwiftUI modifier-chain tail for the canonical layout-prop
  * subset. Returns a string that begins with `.` (modifier-call) and is
  * appended after the View constructor.
@@ -7639,8 +7687,9 @@ const SWIFT_CONTAINER_TAGS = new Set([
  * Empty result when no relevant props are present — the View renders
  * without any trailing modifier.
  *
- * Scope: padding/paddingX/paddingY/margin (alias to padding outside
- * a parent layout)/background/radius.
+ * Scope: padding/paddingX/paddingY/margin/marginX/marginY/background/radius
+ * plus the inline `style={{…}}` connector. Margin is real now — this line
+ * claimed it for a long time while nothing implemented it.
  */
 function emitSwiftLayoutModifiers(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
@@ -7690,6 +7739,38 @@ function emitSwiftLayoutModifiers(
     // one useSizeClass() uses.
     if (needsSizeClass === true) _usesSizeClass = true
   }
+  // `margin` — the OUTERMOST inset, so it is appended LAST.
+  //
+  // This function's own docblock has claimed margin was in scope since it was
+  // written ("margin (alias to padding outside a parent layout)") and it was
+  // never implemented: a typed, documented prop of the shared
+  // `BaseLayoutProps` — so present on Stack, Inline, Layer and Scroll alike —
+  // that produced no output at all, on either target, with no warning. A
+  // layout written with margin rendered flush on device while the web showed
+  // it spaced.
+  //
+  // SwiftUI has no margin, but it does not need one: modifiers wrap OUTWARD,
+  // so a `.padding()` applied after `.background()` insets the whole visual
+  // box rather than its content. That is margin, exactly. It must therefore
+  // come after background, radius AND the `style={{…}}` block, since a style
+  // can set a background of its own.
+  //
+  // Note the Kotlin mirror does the OPPOSITE: Compose's chain applies
+  // outside-IN, so there margin is PREPENDED. Same semantics, reversed
+  // position — the kind of asymmetry that reads as a bug in whichever file you
+  // are not looking at.
+  const margin = swiftStylingValue(e, 'margin', resolveSpace)
+  if (margin !== undefined) {
+    parts.push(`.padding(${margin})`)
+  }
+  const marginX = swiftStylingValue(e, 'marginX', resolveSpace)
+  if (marginX !== undefined) {
+    parts.push(`.padding(.horizontal, ${marginX})`)
+  }
+  const marginY = swiftStylingValue(e, 'marginY', resolveSpace)
+  if (marginY !== undefined) {
+    parts.push(`.padding(.vertical, ${marginY})`)
+  }
   // E3.1 — `data-testid` becomes SwiftUI's `.accessibilityIdentifier()`
   // so the same string the web e2e selects on (`getByTestId`) is also
   // reachable to XCUITest. Other `data-*` attrs are silently dropped
@@ -7721,13 +7802,7 @@ function emitSwiftLayoutModifiers(
   // web lowers to aria-* (`collectPassthroughAttrs`). `accessibilityLabel`
   // sets the VoiceOver name (icon-only buttons, images); `accessibilityHidden`
   // removes the element + its subtree from the accessibility tree.
-  const a11yLabel = readStringAttrExpr(e, 'accessibilityLabel', 0)
-  if (a11yLabel !== undefined) {
-    parts.push(`.accessibilityLabel(${a11yLabel})`)
-  }
-  if (readStaticAttr(e, 'accessibilityHidden') === true) {
-    parts.push('.accessibilityHidden(true)')
-  }
+  parts.push(...swiftAccessibilityModifiers(e))
   // `accessibilityRole` → SwiftUI accessibility traits. Constrained to the
   // roles that map 1:1 across targets (button/image/header → web `role`,
   // Android Compose `Role`/`heading()`). `.isHeader` marks a heading for the
@@ -7809,6 +7884,11 @@ function emitSwiftStack(
   )
   if (align !== undefined) {
     initArgs.push(`alignment: ${align}`)
+  }
+  {
+    // Silently wrong, not merely inert — see stretchAlignWarning.
+    const w = stretchAlignWarning(isRow ? 'Inline' : 'Stack', readStaticAttr(e, 'align'))
+    if (w !== undefined) _emitWarnings.push(w)
   }
   // `justify` / `wrap` reach here and lower to NOTHING on either target.
   // Warn rather than drop silently — see unlowered-layout-props.ts for why
@@ -8048,11 +8128,14 @@ function emitSwiftIcon(
  * - `width`/`height` → `.frame(width:height:)` (numbers are points;
  *   string values like "50%" are web-only and skipped on native).
  *
- * `fit` (object-fit on web) is NOT mapped in v1: faithfully applying it
- * needs AsyncImage's content-closure form (`.resizable().aspectRatio(
- * contentMode:)`), which is a larger emit shape — deferred to a future
- * arc. The type-level prop is still accepted (silent no-op on Swift),
- * mirroring how `justify` is handled on `<Stack>`.
+ * `fit` (object-fit on web) maps on BOTH src kinds. It used to apply only to
+ * bundled assets, because the remote branch needs AsyncImage's content-closure
+ * form to reach the inner Image with `.resizable()`. That deferral was
+ * described as "mirroring how `justify` is handled on `<Stack>`", which was
+ * wrong in the two ways that mattered: `justify` WARNS by name, and it is
+ * dropped on BOTH targets. `fit` warned about nothing and Kotlin implemented
+ * it — so one source rendered differently per platform, silently, and only for
+ * remote URLs.
  *
  * `src` must resolve to a static string — a string literal OR a
  * module-level `const` string binding (`const LOGO = "logo.png"`),
@@ -8084,11 +8167,60 @@ function bundledAssetName(src: string): string {
   return src.replace(/\.[A-Za-z0-9]+$/, '')
 }
 
+/**
+ * CSS `object-fit` → the SwiftUI modifier chain applied after `.resizable()`.
+ *
+ * `fill` is NOT `.scaledToFill()`. CSS `fill` stretches to the content box and
+ * DISTORTS; `.scaledToFill()` preserves the aspect ratio and crops, which is
+ * `cover`. They were the same entry here, so `fit="fill"` and `fit="cover"`
+ * rendered identically on iOS while web (`object-fit: fill`) and Android
+ * (`ContentScale.FillBounds`) both distorted — one source, two answers.
+ *
+ * A bare `.resizable()` with no aspect modifier is the faithful `fill`: the
+ * image takes its frame exactly, aspect ratio be damned.
+ */
 const SWIFT_CONTENT_MODE: Record<string, string> = {
   cover: '.scaledToFill()',
   contain: '.scaledToFit()',
-  fill: '.scaledToFill()',
+  fill: '',
 }
+
+/**
+ * Wrap a remote `AsyncImage` in its content-closure form so `fit` applies.
+ *
+ * `AsyncImage(url:)` hands back a view whose inner `Image` is NOT resizable, so
+ * no modifier on the outside can scale it — `.scaledToFill()` on the AsyncImage
+ * itself does nothing. The content closure is the only place `.resizable()` can
+ * reach the image, which is why this was deferred when the prop was added.
+ *
+ * The mapping is deliberately the SAME table the BUNDLED branch already used.
+ * That branch has implemented `fit` all along, so on Swift the prop worked for
+ * `src="logo.png"` and silently did nothing for `src="https://…"` — one prop,
+ * one platform, two answers depending on the shape of an unrelated attribute.
+ * Kotlin implemented both. Keeping one table is what stops those three from
+ * drifting apart again.
+ *
+ * `fit="none"` keeps the plain init: intrinsic size, no scaling, matching both
+ * the bundled branch and CSS `object-fit: none`.
+ */
+function swiftAsyncImageWithFit(urlExpr: string, fit: unknown, indent: number): string {
+  const mode = SWIFT_CONTENT_MODE[typeof fit === 'string' ? fit : 'cover']
+  if (fit === 'none' || mode === undefined) {
+    return `AsyncImage(url: URL(string: ${urlExpr}))`
+  }
+  const pad = ' '.repeat(indent + 2)
+  const inner = ' '.repeat(indent + 4)
+  return (
+    `AsyncImage(url: URL(string: ${urlExpr})) { image in\n` +
+    `${inner}image.resizable()${mode}\n` +
+    `${pad}} placeholder: {\n` +
+    // Color.clear rather than ProgressView: an image slot that reserves its
+    // space without announcing itself, which is what a plain <img> does.
+    `${inner}Color.clear\n` +
+    `${pad}}`
+  )
+}
+
 
 /**
  * `<WebView html="…" />` / `<WebView src="…" />` → `PyreonWebView(html:)` /
@@ -8294,6 +8426,15 @@ function swiftFieldViewExpr(
     )
   }
   const kind = readStaticAttr(e, 'kind')
+  {
+    const w = structuralPropDynamicWarning(
+      'Field',
+      'kind',
+      typeof kind === 'string',
+      e.attrs.some((a) => a.kind === 'attr' && a.name === 'kind'),
+    )
+    if (w !== undefined) _emitWarnings.push(w)
+  }
   return viewFor(typeof kind === 'string' ? kind : '')
 }
 
@@ -8305,6 +8446,15 @@ function emitSwiftImage(
   const srcAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'src')
   const alt = readStaticAttr(e, 'alt')
   const fit = readStaticAttr(e, 'fit')
+  {
+    const w = structuralPropDynamicWarning(
+      'Image',
+      'fit',
+      typeof fit === 'string',
+      e.attrs.some((a) => a.kind === 'attr' && a.name === 'fit'),
+    )
+    if (w !== undefined) _emitWarnings.push(w)
+  }
   let result: string
   if (typeof src === 'string') {
     const kind = imageSrcKind(src)
@@ -8322,7 +8472,7 @@ function emitSwiftImage(
         result += `.resizable()${SWIFT_CONTENT_MODE[typeof fit === 'string' ? fit : 'cover'] ?? '.scaledToFill()'}`
       }
     } else {
-      result = `AsyncImage(url: URL(string: ${JSON.stringify(src)}))`
+      result = swiftAsyncImageWithFit(JSON.stringify(src), fit, indent)
     }
   } else if (srcAttr !== undefined && srcAttr.kind === 'attr' && srcAttr.value.kind !== 'identifier') {
     // Dynamic src — a genuine runtime READ (signal call `url()`, member
@@ -8336,7 +8486,7 @@ function emitSwiftImage(
     // src is the const-ref/unknown case that `readStaticAttr` already routes
     // to the generic fall-through (resolvable module-consts are returned as a
     // static literal above and never reach here) — see const-ref-attr.test.ts.
-    result = `AsyncImage(url: URL(string: ${emitSwiftSignalRead(srcAttr.value)}))`
+    result = swiftAsyncImageWithFit(emitSwiftSignalRead(srcAttr.value), fit, indent)
   } else {
     return emitSwiftGeneric(e, indent)
   }
@@ -8403,7 +8553,13 @@ function emitSwiftAudio(
         : '_'
     args.push(`onStatusChange: { ${param} in ${body} }`)
   }
-  return `PyreonAudioPlayer(${args.join(', ')})`
+  // Ends with the generic modifier tail, exactly as its sibling <Video> does.
+  // It did not, so `data-testid` and both a11y props were dropped and an audio
+  // element was unselectable by XCUITest — the same "you cannot assert on an
+  // element you cannot select" that kept <Link> off the capability matrix.
+  // <Video>'s docblock cites that lesson by name; the near-identical emitter
+  // beside it never had it applied.
+  return `PyreonAudioPlayer(${args.join(', ')})` + emitSwiftLayoutModifiers(e)
 }
 
 function emitSwiftVideo(
@@ -8416,6 +8572,14 @@ function emitSwiftVideo(
   if (readStaticAttr(e, 'autoPlay') === true) args.push('autoPlay: true')
   if (readStaticAttr(e, 'loop') === true) args.push('loop: true')
   if (readStaticAttr(e, 'muted') === true) args.push('muted: true')
+  // `controls` is the one boolean on this element that DEFAULTS TO TRUE, so it
+  // is emitted when explicitly FALSE — the mirror of its siblings. Compared
+  // with `=== false` rather than a falsy test, so an absent prop stays absent.
+  //
+  // It had nowhere to land at all until now: neither runtime took the
+  // parameter, and the Kotlin one hardcoded `useController = true`. Typed and
+  // documented on all three targets, honoured on none.
+  if (readStaticAttr(e, 'controls') === false) args.push('controls: false')
   const statusAttr = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'event' }> =>
       a.kind === 'event' && a.name === 'statuschange',
@@ -8923,10 +9087,14 @@ function emitSwiftLink(
   // link renders (the same trap already documented for VStack/ScrollView).
   // `.contain` keeps the child Text individually queryable.
   const testid = readStringAttrExpr(e, 'data-testid', 0)
+  // The a11y props come from the SHARED helper. Hand-adding the identifier and
+  // stopping there is what dropped `accessibilityLabel` here for the life of
+  // this emitter, on both targets — the very audit this comment block calls for.
+  const a11y = swiftAccessibilityModifiers(e).join('')
   const tail =
-    testid === undefined
+    (testid === undefined
       ? ''
-      : `.accessibilityElement(children: .contain).accessibilityIdentifier(${testid})`
+      : `.accessibilityElement(children: .contain).accessibilityIdentifier(${testid})`) + a11y
   if (e.children.length === 0) {
     return `PyreonLink(${toExpr}) { }${tail}`
   }

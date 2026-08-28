@@ -131,6 +131,7 @@ const GATES: Gate[] = [
   // monolith's own test chains — this compiles + smoke-runs them against the
   // stub harness. Skips gracefully when kotlinc/swiftc are absent (CI Fast
   // Gates), so it protects on every local push where the toolchains exist.
+  { name: 'check-native-primitive-coverage', cmd: 'bun scripts/check-native-primitive-coverage.ts' },
   { name: 'check-native-cosource', cmd: 'bun scripts/check-native-cosource.ts' },
   { name: 'check-native-srcdirs-drift', cmd: 'bun scripts/check-native-srcdirs-drift.ts' },
   { name: 'check-gates-wired', cmd: 'bun scripts/check-gates-wired.ts' },
