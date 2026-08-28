@@ -68,8 +68,13 @@ function emit(plugins: PluginName[] = ALL): Map<string, string> {
  * Externals are the real dependencies, so the measurement is of the GENERATED
  * graph and not of `@pyreon/query`'s own weight.
  */
-async function bundleFrom(from: string, symbol: string): Promise<string> {
-  const dir = join(ROOT, from.replace(/[^a-z0-9]/gi, '_'))
+async function bundleFrom(
+  from: string,
+  symbol: string,
+  opts: { marker?: boolean } = {},
+): Promise<string> {
+  const withMarker = opts.marker !== false
+  const dir = join(ROOT, `${from.replace(/[^a-z0-9]/gi, '_')}${withMarker ? '' : '-nomarker'}`)
   mkdirSync(join(dir, 'gen', 'endpoints'), { recursive: true })
   mkdirSync(join(dir, 'gen', 'queries'), { recursive: true })
   // A consumer `package.json` that declares NOTHING, which is the ordinary app
@@ -83,12 +88,22 @@ async function bundleFrom(from: string, symbol: string): Promise<string> {
     // `package.json` is written along with the sources — it IS the marker, and
     // filtering it out is what made these specs pass for the wrong reason the
     // first time round.
+    if (path === 'package.json' && !withMarker) continue
     if (path.endsWith('.ts') || path === 'package.json') {
       writeFileSync(join(dir, 'gen', path), contents)
     }
   }
   const entry = join(dir, 'entry.ts')
-  writeFileSync(entry, `import { ${symbol} } from './gen/${from}'\nexport const used = ${symbol}\n`)
+  // `*` re-exports the whole module, so nothing in it is shakeable. Used by the
+  // control, which has to reach EVERY dev surface at once -- importing one
+  // symbol correctly shakes the others away, which is the behaviour under test
+  // everywhere else and useless as a control.
+  writeFileSync(
+    entry,
+    symbol === '*'
+      ? `export * from './gen/${from}'\n`
+      : `import { ${symbol} } from './gen/${from}'\nexport const used = ${symbol}\n`,
+  )
   // esbuild rather than a Bun API: vitest runs this under node, and esbuild
   // is what the repo's other tree-shaking specs use.
   const out = await build({
@@ -166,6 +181,59 @@ describe('the emitted entry points', () => {
 
   it('emits no dev entry when no dev plugin ran', () => {
     expect(emit(['schemas', 'client', 'queries']).has('dev.ts')).toBe(false)
+  })
+})
+
+/**
+ * The dev surfaces, and a marker that must never appear in a page bundle.
+ *
+ * Every marker here is either an EXTERNAL import specifier or string DATA,
+ * because both survive minification unchanged. A generated identifier does not:
+ * an earlier version of this list used `seedFaker`, which minifies to a single
+ * letter, so the assertion would have passed even with the whole faker module
+ * bundled. The control at the bottom is what caught that.
+ */
+const DEV_MARKERS = [
+  ['faker factories', '@faker-js/faker'],
+  ['mock fixtures', '00000000-0000-4000'],
+  ['the mock middleware', '@pyreon/http/mock'],
+] as const
+
+/** Every entry a page is expected to import from. */
+const PRODUCTION_ENTRIES = [
+  ['the barrel', 'index'],
+  ['the queries layer', 'queries/index'],
+  ['the endpoints layer', 'endpoints/index'],
+  ['one tag', 'queries/books'],
+] as const
+
+describe('a production import can never reach a dev surface', () => {
+  for (const [entryLabel, entry] of PRODUCTION_ENTRIES) {
+    const symbol = entry.startsWith('endpoints') ? 'listBooks' : 'useListBooks'
+
+    for (const [devLabel, marker] of DEV_MARKERS) {
+      it(`${entryLabel} does not pull in ${devLabel}`, async () => {
+        expect(await bundleFrom(entry, symbol)).not.toContain(marker)
+      })
+
+      it(`${entryLabel} does not pull in ${devLabel} even with NO sideEffects marker`, async () => {
+        // The stronger claim, and the one the layering is actually for. The
+        // `sideEffects` declaration is a HINT: it makes the output shake, but a
+        // bundler is free to ignore it and some configurations do. Isolation of
+        // the dev surfaces must not depend on that -- `index.ts` simply does not
+        // NAME `./faker`, `./mocks` or `./components`, so there is no edge for
+        // any bundler to follow, hint or no hint.
+        expect(await bundleFrom(entry, symbol, { marker: false })).not.toContain(marker)
+      })
+    }
+  }
+
+  it('the dev entry DOES reach them — otherwise the split proves nothing', async () => {
+    // The control. Without it every spec above would still pass if the faker
+    // and mock emitters simply stopped producing anything -- and it is what
+    // exposed the minified-identifier flaw in the marker list above.
+    const dev = await bundleFrom('dev', '*')
+    for (const [, marker] of DEV_MARKERS) expect(dev, marker).toContain(marker)
   })
 })
 

@@ -133,6 +133,21 @@ it is unsafe to import, it is unsafe to import *by accident*. A fixture table is
 DATA, so unlike an unused function it survives minification wherever it is
 reachable — a barrel that named it put every fixture in the page bundle.
 
+**A page can never reach a dev surface, whatever the bundler does.** The
+`sideEffects` marker below is a *hint*: it makes the output shake, and a bundler
+is free to ignore it. So the isolation does not rest on it — `index.ts` simply
+does not NAME `./faker`, `./mocks` or `./components`, so there is no edge for
+any bundler to follow. Importing a hook cannot pull in faker even if the marker
+is deleted, and a 24-case matrix (every production entry × every dev surface,
+with and without the marker) asserts it by bundling for real and grepping the
+output.
+
+The markers it greps for are external import specifiers and string data, never
+generated identifiers — an identifier minifies to a single letter, so an
+assertion against one would pass with the whole module bundled. A control that
+bundles `dev.ts` itself and requires every marker to be PRESENT is what caught
+that.
+
 ### Why the emitted `package.json` matters
 
 A bundler keeps a module-level CALL unless it can prove the call is pure, and
