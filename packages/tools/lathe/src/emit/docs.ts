@@ -273,7 +273,23 @@ function modelsPage(doc: IrDocument): GeneratedFile {
 /** A type rendered for a table cell — one line, pipes escaped. */
 function typeCell(type: IrType | undefined): string {
   if (!type) return '_no content_'
-  return `\`${tsType(type, 0, false).replace(/\s*\n\s*/g, ' ').replace(/\|/g, '\\|')}\``
+  return `\`${mdCell(tsType(type, 0, false).replace(/\s*\n\s*/g, ' '))}\``
+}
+
+/**
+ * Escape a value for a Markdown table CELL.
+ *
+ * The BACKSLASH has to go first, and getting that order wrong is not a style
+ * point -- it reopens the exact hole the escape exists to close. Escaping only
+ * the pipe turns an input of `\|` into `\\|`, which Markdown reads as an
+ * escaped BACKSLASH followed by a LIVE pipe, so the cell splits anyway. Escape
+ * the escape character first and both survive.
+ *
+ * Same rule the `q()` string-literal escaper in `writer.ts` follows for the
+ * same reason, in a different syntax.
+ */
+function mdCell(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/\|/g, '\\|')
 }
 
 /**
@@ -285,8 +301,5 @@ function typeCell(type: IrType | undefined): string {
  * line-comment escapes the code emitters use, in a third syntax.
  */
 function md(value: string): string {
-  return safeBlockComment(value)
-    .replace(/[\r\n]+/g, ' ')
-    .replace(/\|/g, '\\|')
-    .trim()
+  return mdCell(safeBlockComment(value).replace(/[\r\n]+/g, ' ')).trim()
 }

@@ -68,6 +68,37 @@ function docsFor(spec: string, extra: Record<string, unknown> = {}): Map<string,
   )
 }
 
+/**
+ * Split a Markdown table row into cells the way a RENDERER does.
+ *
+ * A regex lookbehind for a preceding backslash is NOT equivalent and shares the
+ * exact bug these specs exist to catch: in `\\|` the pipe IS preceded by a
+ * backslash, but that backslash is itself escaped, so the pipe is LIVE. Walking
+ * the string and consuming `\X` as a pair is the only reading that agrees with
+ * the renderer.
+ */
+function mdCells(row: string): string[] {
+  const cells: string[] = []
+  let current = ''
+  for (let i = 0; i < row.length; i++) {
+    const ch = row[i] as string
+    if (ch === '\\' && i + 1 < row.length) {
+      current += ch + (row[i + 1] as string)
+      i++
+      continue
+    }
+    if (ch === '|') {
+      cells.push(current)
+      current = ''
+      continue
+    }
+    current += ch
+  }
+  cells.push(current)
+  // A leading and trailing pipe produce an empty cell at each end.
+  return cells.slice(1, -1)
+}
+
 describe('the generated reference pages', () => {
   const pages = docsFor(SPEC)
 
@@ -177,8 +208,27 @@ paths:
     // The tag-table rows are the only lines carrying a relative page link.
     const row = index.split('\n').find((l) => l.startsWith('| ') && l.includes('](./')) ?? ''
     expect(row).toContain('a \\| b')
-    // Three columns, not four -- which is what an unescaped pipe would make it.
-    expect(row.split(/(?<!\\)\|/).length - 2).toBe(3)
+    // Three cells, not four -- which is what a live pipe would make it.
+    expect(mdCells(row)).toHaveLength(3)
+  })
+
+  it('escapes the BACKSLASH before the pipe, so a `\\|` cannot split a cell', () => {
+    // Escaping only the pipe turns `\|` into `\\|`, which Markdown reads as an
+    // escaped BACKSLASH followed by a LIVE pipe -- reopening the exact hole the
+    // escape exists to close. Found by CodeQL (`js/incomplete-sanitization`).
+    const nasty = docsFor(`
+openapi: 3.0.3
+info: { title: N, version: '1' }
+servers: [{ url: 'https://api.test/v1' }]
+paths:
+  /w:
+    get: { operationId: getW, tags: ['back\\| slash'], responses: { '200': { content: { application/json: { schema: { type: string } } } } } }
+`)
+    const index = nasty.get('docs/index.md') ?? ''
+    const row = index.split('\n').find((l) => l.startsWith('| ') && l.includes('](./')) ?? ''
+    expect(row).not.toBe('')
+    // Exactly three cells: a LIVE pipe would make four.
+    expect(mdCells(row)).toHaveLength(3)
   })
 
   it('emits frontmatter that survives a quote in the title', () => {
