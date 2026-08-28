@@ -2332,11 +2332,14 @@
         "@pyreon/reactivity": "workspace:*",
       },
       "devDependencies": {
+        "@pyreon/http": "workspace:*",
         "@pyreon/manifest": "workspace:*",
         "@pyreon/native-compiler": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/validate": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
+        "axios": "^1.19.0",
+        "ky": "^2.0.2",
       },
       "peerDependencies": {
         "@pyreon/native-compiler": "workspace:*",

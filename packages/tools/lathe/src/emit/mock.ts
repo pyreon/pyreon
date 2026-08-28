@@ -14,14 +14,41 @@
 
 import type { IrDocument, IrField, IrOperation, IrType } from '../core/ir'
 import { byTag, CLIENT_FILE, endpointSpec, tagFile } from './client'
+import type { ClientName } from './client-runtime'
 import { jsonLiteral, q, relativeSpecifier, SourceFile } from './writer'
 
-/** Emit `mocks.ts` — a route table for `@pyreon/http`'s mock middleware. */
-export function emitMocks(doc: IrDocument): SourceFile {
+/**
+ * Emit `mocks.ts` — a deterministic route table plus the installer.
+ *
+ * The TABLE is identical for every client; only the installer differs, because
+ * `@pyreon/http` already ships a `mock()` middleware and the generated
+ * adapters answer through their own `DevTransport` seam instead.
+ *
+ * Route matching for an adapter is EXACT string equality on the declared path
+ * (`/books/:id`), not a pattern match against a resolved URL — the seam hands
+ * the transport the declared path alongside the resolved one precisely so this
+ * needs no regex and can never mis-match a route whose parameter value happens
+ * to contain a slash.
+ */
+export function emitMocks(doc: IrDocument, client: ClientName = 'pyreon'): SourceFile {
   const f = new SourceFile('mocks.ts')
-  f.import('@pyreon/http/mock', 'mock')
-  f.importType('@pyreon/http/mock', 'MockRoute')
+  const pyreon = client === 'pyreon'
+  if (pyreon) {
+    f.import('@pyreon/http/mock', 'mock')
+    f.importType('@pyreon/http/mock', 'MockRoute')
+  }
   f.import(relativeSpecifier('mocks.ts', CLIENT_FILE), 'setDevTransport')
+  if (!pyreon) {
+    f.line()
+    f.doc('One fixture route. Matched on method plus the DECLARED path.')
+    f.line('export interface MockRoute {')
+    f.line('  method: string')
+    f.line('  /** The DECLARED path, placeholders intact. Matched exactly. */')
+    f.line('  path: string')
+    f.line('  /** Absent for a no-content operation, matching a real 204. */')
+    f.line('  json?: unknown')
+    f.line('}')
+  }
 
   f.line()
   f.doc(
@@ -34,21 +61,30 @@ export function emitMocks(doc: IrDocument): SourceFile {
   f.line('export const routes: MockRoute[] = [')
   for (const [, ops] of byTag(doc)) {
     for (const op of ops) {
-      const body = op.response ? fixture(op.response, doc, 0) : 'null'
       f.line(`  {`)
       f.line(`    method: ${q(op.method)},`)
-      f.line(`    path: ${q(op.path)},`)
-      // The field is `json` — `MockRoute` serializes it with a JSON
-      // content type; there is no `response` key.
-      f.line(`    json: ${indentAfterFirst(body, 4)},`)
+      f.line(`    path: ${mockPath(op, pyreon)},`)
+      // `json` is OMITTED for an operation with no response body.
+      //
+      // Emitting `json: null` made the mock answer 200 with the body `null`
+      // while the real server answers 204 with nothing, so an app tested
+      // against the fixtures saw `null` where production gives `undefined`.
+      // `MockRoute` documents the absent-body case as a real 204, and the
+      // adapter installer answers `{ json: undefined }` — both now agree with
+      // the server.
+      if (op.response) {
+        f.line(`    json: ${indentAfterFirst(fixture(op.response, doc, 0), 4)},`)
+      }
       f.line(`  },`)
     }
   }
   f.line(']')
 
-  f.line()
-  f.doc('Ready-made middleware over the routes above.')
-  f.line('export const mockRoutes = mock(routes)')
+  if (pyreon) {
+    f.line()
+    f.doc('Ready-made middleware over the routes above.')
+    f.line('export const mockRoutes = mock(routes)')
+  }
 
   f.line()
   f.doc(
@@ -60,9 +96,49 @@ export function emitMocks(doc: IrDocument): SourceFile {
     'wrapper; pass nothing to `setDevTransport` to go back to the network.',
   )
   f.line('export function installMocks(): void {')
-  f.line('  setDevTransport(mockRoutes)')
+  if (pyreon) {
+    f.line('  setDevTransport(mockRoutes)')
+  } else {
+    f.line('  setDevTransport((req) => {')
+    f.line('    for (const route of routes) {')
+    f.line('      if (route.method === req.method && route.path === req.path) return { json: route.json }')
+    f.line('    }')
+    // `null` means NOT HANDLED. A matched route answers with an envelope, so
+    // a fixture that is itself `null` (a no-content response) stays
+    // distinguishable from no route at all — without the envelope the two
+    // collapse and a 204 fixture silently issues a real request.
+    f.line('    return null')
+    f.line('  })')
+  }
   f.line('}')
   return f
+}
+
+/**
+ * The `path` a mock route matches on.
+ *
+ * The two clients match differently, and one of them needed fixing.
+ *
+ * `@pyreon/http`'s `MockRoute` takes a string that must be a SUFFIX of the
+ * request's path+query, or a RegExp tested against the whole URL. A declared
+ * path carrying `:id` is neither — `/books/:id` is not a suffix of
+ * `/v1/books/b1` — so every generated mock for a parameterised operation
+ * silently matched nothing and fell through to the real network. A RegExp
+ * closes it: the parameter becomes one non-empty segment, and the route still
+ * ends at a query string or the end of the URL, so `/books/:id` cannot swallow
+ * `/books/b1/reviews`.
+ *
+ * The generated adapters do not have this problem. Their seam is handed the
+ * DECLARED path alongside the resolved one, so matching is exact string
+ * equality and no pattern is involved.
+ */
+function mockPath(op: IrOperation, pyreon: boolean): string {
+  if (!pyreon || op.pathParams.length === 0) return q(op.path)
+  const source = op.path
+    .split('/')
+    .map((seg) => (seg.startsWith(':') ? '[^/?#]+' : seg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+    .join('\\/')
+  return `/${source}(?:\\?|$)/`
 }
 
 /** A deterministic sample value for a type. */

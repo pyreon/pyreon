@@ -5,6 +5,10 @@
  * configures every Pyreon tool in one `pyreon.config.ts`.
  */
 
+import { ALL_CLIENTS, reachesNative, type ClientName } from '../emit/client-runtime'
+
+export type { ClientName }
+
 /** Which emitters run. Omitted means "the sensible default set". */
 export type PluginName =
   | 'types'
@@ -112,6 +116,16 @@ export interface LatheSection {
   target?: 'web' | 'multiplatform'
   /** Emitters to run. */
   plugins?: readonly PluginName[]
+  /**
+   * Which HTTP runtime the generated client is built on.
+   *
+   * `pyreon` (the default) is the only one that reaches native: PMTC
+   * recognises `createHttp` + `api.endpoint(...)` by name and lowers the pair
+   * to a real `URLSession` / `OkHttp` call. The others emit a self-contained
+   * endpoint factory over that library, satisfying the SAME seam — so every
+   * other generated file is byte-identical whichever is chosen.
+   */
+  client?: ClientName
   /** Overrides the spec's `servers[0].url` — must be a literal to reach native. */
   baseUrl?: string
   /**
@@ -139,6 +153,7 @@ export interface ResolvedConfig {
   output: string
   target: 'web' | 'multiplatform'
   plugins: readonly PluginName[]
+  client: ClientName
   baseUrl?: string | undefined
   strictNative: boolean
 }
@@ -192,13 +207,33 @@ export function resolveConfig(section: LatheSection | undefined): ResolvedConfig
       )
     }
   }
+  const client = section?.client ?? 'pyreon'
+  if (!ALL_CLIENTS.includes(client)) {
+    throw new Error(
+      `[Pyreon] lathe: unknown client \`${client}\`. Known: ${ALL_CLIENTS.join(', ')}.`,
+    )
+  }
+  const target = section?.target ?? 'web'
+  // REFUSED rather than silently downgraded. `multiplatform` exists to prove
+  // the generated modules lower, and PMTC recognises `createHttp` by NAME — an
+  // axios instance is an ordinary import it has never heard of. Emitting
+  // native modules over one would produce exactly the silent regression to
+  // web-only that this target was built to catch.
+  if (target === 'multiplatform' && !reachesNative(client)) {
+    throw new Error(
+      `[Pyreon] lathe: \`target: 'multiplatform'\` needs \`client: 'pyreon'\`, but this config asks for \`${client}\`. ` +
+        `PMTC lowers \`createHttp\` + \`api.endpoint(...)\` by name; it cannot see through ${client}. ` +
+        `Use \`target: 'web'\` with ${client}, or \`client: 'pyreon'\` to reach iOS and Android.`,
+    )
+  }
   return {
     name: '',
     requestedPlugins: plugins,
     input,
     output: section?.output ?? './src/gen',
-    target: section?.target ?? 'web',
+    target,
     plugins: expandPlugins(plugins),
+    client,
     baseUrl: section?.baseUrl,
     strictNative: section?.strictNative ?? false,
   }

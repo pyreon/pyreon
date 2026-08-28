@@ -20,6 +20,15 @@
 import { reachableModels, topoSortModels } from '../core/graph'
 import type { IrDocument, IrOperation, IrType } from '../core/ir'
 import { propKey, typeIdent } from '../core/naming'
+import {
+  CLIENT_PACKAGE,
+  runtimeEndpoint,
+  runtimeError,
+  runtimePreamble,
+  runtimeTransport,
+  runtimeValidate,
+  type ClientName,
+} from './client-runtime'
 import { schemaExpr, schemaSpecifier, tsType } from './schema'
 import { q, relativeSpecifier, SourceFile } from './writer'
 
@@ -27,12 +36,22 @@ export interface ClientOptions {
   native: boolean
   /** Overrides the spec's `servers[0].url`. */
   baseUrl?: string | undefined
+  /** Which HTTP runtime the client is built on. Defaults to `pyreon`. */
+  client?: ClientName | undefined
 }
 
 export const CLIENT_FILE = 'client.ts'
 
-/** `client.ts` — the shared `createHttp` instance. Web layout only. */
+/**
+ * `client.ts` — the shared client instance. Web layout only.
+ *
+ * Dispatches on the configured runtime. Every branch produces the SAME
+ * `api.endpoint(spec, config)` seam, which is why no other emitter in this
+ * package knows the setting exists.
+ */
 export function emitClient(doc: IrDocument, opts: ClientOptions): SourceFile {
+  const client = opts.client ?? 'pyreon'
+  if (client !== 'pyreon') return emitAdapterClient(doc, opts, client)
   const f = new SourceFile(CLIENT_FILE)
   f.import('@pyreon/http', 'createHttp')
   f.importType('@pyreon/http', 'HttpMiddleware')
@@ -76,6 +95,61 @@ export function emitClient(doc: IrDocument, opts: ClientOptions): SourceFile {
 
 function baseUrlOf(doc: IrDocument, opts: ClientOptions): string {
   return opts.baseUrl ?? doc.baseUrl
+}
+
+/**
+ * `client.ts` for a non-`@pyreon/http` runtime.
+ *
+ * The generated file is self-contained apart from the transport library
+ * itself: a project that chose axios did so to not depend on `@pyreon/http`,
+ * and importing its URL builder would put the dependency straight back.
+ *
+ * What keeps that duplication honest is `adapter-url-parity.test.ts`, which
+ * runs this emitted `buildUrl` against `@pyreon/http`'s own as the oracle.
+ */
+function emitAdapterClient(
+  doc: IrDocument,
+  opts: ClientOptions,
+  client: ClientName,
+): SourceFile {
+  const f = new SourceFile(CLIENT_FILE)
+  const pkg = CLIENT_PACKAGE[client]
+  if (client === 'axios') {
+    f.importDefault('axios', 'axios')
+    f.importType('axios', 'AxiosInstance')
+  } else if (client === 'ky') {
+    f.importDefault('ky', 'ky')
+    f.importType('ky', 'KyInstance')
+  }
+  f.line()
+  f.doc(
+    `HTTP client for ${doc.title} ${doc.version}, built on ${pkg ?? 'the platform fetch'}.`,
+    '',
+    'The URL is resolved HERE and handed to the transport fully-formed, so the',
+    'instance below carries no `baseURL` / `prefixUrl`. That is deliberate:',
+    'axios and ky each resolve a base differently from the other and from',
+    '`@pyreon/http`, and letting them do it would make the same spec issue a',
+    'different request depending on which client was configured.',
+    '',
+    'The instance is exported so interceptors, hooks, auth headers and retries',
+    'are added the way that library documents — nothing here wraps them.',
+  )
+  if (client === 'axios') {
+    f.line('export const instance: AxiosInstance = axios.create()')
+  } else if (client === 'ky') {
+    f.line('export const instance: KyInstance = ky.create({})')
+  }
+  if (client !== 'fetch') f.line()
+  f.lines(...runtimeError())
+  f.line()
+  f.lines(...runtimePreamble())
+  f.line()
+  f.lines(...runtimeValidate())
+  f.line()
+  f.lines(...runtimeTransport())
+  f.line()
+  f.lines(...runtimeEndpoint(client, baseUrlOf(doc, opts)))
+  return f
 }
 
 /** The `'GET /users/:id'` literal an endpoint is declared with. */

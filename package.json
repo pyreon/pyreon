@@ -223,12 +223,6 @@
       },
       {
         "pkg": "@pyreon/lathe",
-        "dep": "@pyreon/http",
-        "code": "phantom-dep",
-        "reason": "@pyreon/lathe is a CODE GENERATOR: these specifiers are string ARGUMENTS naming what it emits into the consumer's files (`f.import('@pyreon/http', 'createHttp')`), not imports lathe itself performs. Its lib/ carries no reference to them. Loom's lexical scan strips comments and template literals but cannot tell a bare specifier string from an import, which is the correct trade for a scanner that reads declared truth."
-      },
-      {
-        "pkg": "@pyreon/lathe",
         "dep": "@pyreon/query",
         "code": "phantom-dep",
         "reason": "@pyreon/lathe is a CODE GENERATOR: these specifiers are string ARGUMENTS naming what it emits into the consumer's files (`f.import('@pyreon/http', 'createHttp')`), not imports lathe itself performs. Its lib/ carries no reference to them. Loom's lexical scan strips comments and template literals but cannot tell a bare specifier string from an import, which is the correct trade for a scanner that reads declared truth."
@@ -250,6 +244,12 @@
         "dep": "@pyreon/core",
         "code": "phantom-dep",
         "reason": "@pyreon/lathe is a CODE GENERATOR: this specifier is a string ARGUMENT naming what it emits into the consumer's files (`f.import('@pyreon/core', 'For', 'Show')` for the generated preview components), not an import lathe performs. Its lib/ carries no reference to it. Loom's lexical scan strips comments and template literals but cannot tell a bare specifier string from an import."
+      },
+      {
+        "pkg": "@pyreon/lathe",
+        "dep": "@pyreon/http",
+        "code": "prod-import-of-dev-dep",
+        "reason": "Two separate things read as one import here. @pyreon/lathe is a CODE GENERATOR, so `f.import('@pyreon/http', 'createHttp')` is a string ARGUMENT naming what it emits into the consumer's files; loom's lexical scan cannot tell a bare specifier string from an import, which is the correct trade for a scanner that reads declared truth. The dep is declared because the TESTS import it for real \u2014 `@pyreon/http`'s own `buildUrl` is the ORACLE the generated adapter clients (fetch/axios/ky) are held to, so their duplicated URL logic cannot drift. Test files are dev surface by path; the emitter's strings are what the scan actually sees. lib/ carries no import of it."
       }
     ]
   }

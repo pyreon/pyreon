@@ -57,14 +57,14 @@ export function generate(specText: string, config: ResolvedConfig): GenerateResu
   if (has('types')) push(emitTypes(doc))
   if (has('schemas')) push(emitSchemas(doc, { native: false }))
   if (has('client')) {
-    push(emitClient(doc, { native, baseUrl: config.baseUrl }))
+    push(emitClient(doc, { native, baseUrl: config.baseUrl, client: config.client }))
     for (const f of emitWebEndpoints(doc)) push(f)
   }
   if (has('queries')) {
     for (const f of emitWebQueries(doc)) push(f)
   }
   if (has('queries')) push(emitKeys(doc))
-  if (has('mocks')) push(emitMocks(doc))
+  if (has('mocks')) push(emitMocks(doc, config.client))
   // Previews come BEFORE scenarios: the scenario keys are these component
   // names, so emitting scenarios without them is a plausible-looking no-op.
   if (has('components')) push(emitComponents(doc))

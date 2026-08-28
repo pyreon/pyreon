@@ -180,7 +180,9 @@ Real, current, and reported per-operation rather than papered over:
 | `date` / `date-time` | kept as strings on both paths, deliberately — `s.date()` does not lower, and parsing to a `Date` on web only would be a silent divergence |
 
 A relative `baseUrl` (or a spec with no `servers`) makes **every** operation
-web-only, because there is no absolute URL to bake.
+web-only, because there is no absolute URL to bake. So does any `client` other
+than `pyreon` — and that combination is refused at config time rather than
+generating modules that lower to nothing.
 
 ## Config
 
@@ -191,11 +193,80 @@ export default {
     input: './openapi.yaml',
     output: './src/gen',
     target: 'multiplatform',
+    // 'pyreon' (default) | 'fetch' | 'axios' | 'ky' — only pyreon reaches native.
+    client: 'pyreon',
     plugins: ['schemas', 'client', 'queries', 'mocks', 'atlas'],
     strictNative: true,
   },
 }
 ```
+
+### The HTTP client is selectable
+
+```ts
+lathe: { input: './openapi.yaml', client: 'axios' }
+```
+
+```bash
+lathe generate --client ky
+```
+
+| `client` | emits | reaches native |
+| --- | --- | --- |
+| `pyreon` (default) | `createHttp` + `api.endpoint(...)` from `@pyreon/http` | **yes** |
+| `fetch` | a self-contained endpoint factory, no dependency at all | no |
+| `axios` | the same factory over an exported `AxiosInstance` | no |
+| `ky` | the same factory over an exported `KyInstance` | no |
+
+**Only `client.ts` changes.** Endpoints, hooks, `keys.ts`, the previews and the
+barrel are byte-identical across all four, because they only ever touch an
+endpoint's callable / `.key` / `.query()` shape — the seam. Swapping the client
+is a one-word edit that leaves every call site alone.
+
+An adapter does **not** wrap `@pyreon/http`. Choosing axios means genuinely not
+depending on it, so the endpoint factory is emitted into `client.ts` and reads
+in full — about a hundred lines with nothing hidden behind an import.
+
+The instance is exported unconfigured, so interceptors, auth headers and
+retries are added the way that library documents:
+
+```ts
+import { instance } from './gen/client'
+
+instance.interceptors.request.use((config) => {
+  config.headers.Authorization = `Bearer ${token()}`
+  return config
+})
+```
+
+#### What is matched, and what deliberately is not
+
+The URL is resolved by the generated code and handed to the transport
+fully-formed, so the instance carries no `baseURL` / `prefixUrl`. That is not
+tidiness — axios and ky each resolve a base differently from the other and from
+`@pyreon/http` (both treat a leading-slash path as WHATWG resolution, which
+discards the base's own path segment), and letting them do it would make the
+same spec issue a different request depending on one config word.
+
+So every adapter matches `@pyreon/http` exactly on **URL construction**, **query
+encoding**, **cache-key shape** and **error shape**, and a differential test
+holds it there using `@pyreon/http`'s own `buildUrl` as the oracle rather than a
+table of expectations.
+
+One thing is deliberately **not** matched:
+
+| | `pyreon` | `fetch` | `axios` | `ky` |
+| --- | --- | --- | --- | --- |
+| retries a 5xx GET | no | no | no | **twice** |
+
+That is ky's own documented default, and someone who picked ky picked it.
+Normalising it away would be as surprising as leaving it undocumented, so it is
+asserted in the test suite and stated here.
+
+`target: 'multiplatform'` with a non-Pyreon client is **refused**, not silently
+downgraded — PMTC lowers `createHttp` and `api.endpoint(...)` by name, so native
+modules over axios would lower to nothing, which is precisely the regression
+that target exists to catch.
 
 ### Pick only what you want
 
