@@ -36,6 +36,11 @@ const result = (over: Partial<GenerateResult> = {}): GenerateResult => ({
   doc: doc(),
   files: [{ path: 'client.ts', contents: '' }],
   reach: new Map(),
+  // `surface` is required on GenerateResult. Building it inline rather than
+  // widening the factory's type keeps the compiler enforcing that this fixture
+  // is a REAL result — a `Partial` here would have let the field go missing
+  // silently, which is how the shape drifted in the first place.
+  surface: { version: 1, title: 'API', operations: {}, models: {} },
   ...over,
 })
 
