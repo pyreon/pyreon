@@ -58,6 +58,28 @@ interface PackageInfo {
   externals: string[]
 }
 
+/**
+ * Published packages that declare a JS entry but have no `lib/index.js`.
+ *
+ * Populated by {@link findPackages} and reported as build FAILURES — see the
+ * comment at the `continue` there for why a skip is the wrong answer.
+ */
+const missingBuilds: string[] = []
+
+/** Whether a manifest promises a JavaScript entry point at all. */
+function declaresJsEntry(pj: Record<string, unknown>): boolean {
+  // `mainField`, not `main`: the script's own entry point is a function called
+  // `main`, and shadowing it here is a lint error rather than a style note.
+  const mainField = pj.main
+  if (typeof mainField === 'string' && mainField.endsWith('.js')) return true
+  const walk = (v: unknown): boolean => {
+    if (typeof v === 'string') return v.endsWith('.js')
+    if (v && typeof v === 'object') return Object.values(v).some(walk)
+    return false
+  }
+  return walk(pj.exports)
+}
+
 function findPackages(): PackageInfo[] {
   const result: PackageInfo[] = []
   const packagesRoot = getPackagesRoot()
@@ -80,7 +102,23 @@ function findPackages(): PackageInfo[] {
         // has already resolved imports + applied any compile-time
         // transforms.
         const entry = join(pkgDir, 'lib', 'index.js')
-        if (!fileExists(entry)) continue
+        if (!fileExists(entry)) {
+          // A published package with no built entry used to be SKIPPED, and a
+          // skip is indistinguishable from a pass: the count silently dropped
+          // (71 -> 70) while the gate still printed "All 70 package(s) within
+          // budget". A package that failed to build is exactly the one whose
+          // size nobody is checking, so it must be LOUD.
+          //
+          // Not every published package HAS a JS entry, so the distinction is
+          // derived from the manifest rather than a hand-maintained list that
+          // would rot: the four `native-*` runtime/router packages ship Swift
+          // and Kotlin SOURCE, and `@pyreon/typescript` ships tsconfig JSON.
+          // None of them declares a `.js` main or export, so none is expected
+          // to have `lib/index.js` — and a package that grows one, or loses
+          // one, changes its own answer here without anyone editing a list.
+          if (declaresJsEntry(pj)) missingBuilds.push(pj.name as string)
+          continue
+        }
         // Collect every bare-module specifier referenced anywhere in
         // lib/ (the ENTIRE built tree, not just the entry). Some
         // packages vendor third-party renderers into split chunks that
@@ -337,10 +375,17 @@ async function main(): Promise<void> {
   const measured = results
     .filter((r) => !r.failed)
     .sort((a, b) => a.name.localeCompare(b.name))
-  const failures = results
-    .filter((r) => r.failed)
-    .map((r) => ({ name: r.name, error: r.error ?? 'unknown' }))
-    .sort((a, b) => a.name.localeCompare(b.name))
+  const failures = [
+    ...results
+      .filter((r) => r.failed)
+      .map((r) => ({ name: r.name, error: r.error ?? 'unknown' })),
+    // A package that never built is a failure to MEASURE, not an absence of
+    // one — reported alongside bundle errors rather than dropped.
+    ...missingBuilds.map((name) => ({
+      name,
+      error: 'no lib/index.js — the package declares a JS entry but was not built. Run `bun scripts/bootstrap.ts`.',
+    })),
+  ].sort((a, b) => a.name.localeCompare(b.name))
 
   // ── Update mode: write fresh budgets and exit ─────────────────────
   if (updateMode) {

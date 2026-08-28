@@ -42,6 +42,10 @@ interface JsonOutput {
 function setupFixturePackagesDir(opts: {
   badPackage?: boolean
   goodPackage?: boolean
+  /** Declares a JS entry, but was never built — a build that did not happen. */
+  unbuiltPackage?: boolean
+  /** Publishes no JS at all (the `native-*` / `typescript` shape). */
+  noJsEntryPackage?: boolean
 }): string {
   // realpathSync canonicalises macOS `/var/folders` → `/private/var/...`
   // so any internal path comparison the script does sees the same form.
@@ -86,6 +90,46 @@ function setupFixturePackagesDir(opts: {
       ),
     )
     writeFileSync(join(dir, 'lib', 'index.js'), `export const hello = 'world'\n`)
+  }
+  if (opts.unbuiltPackage) {
+    // Declares a JS entry and has NO `lib/` — the shape a package takes when
+    // its build failed or never ran. It used to be skipped, which dropped it
+    // from the count while the gate still printed "All N within budget".
+    const dir = join(root, 'unbuilt-cat', 'unbuilt-fixture')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(
+      join(dir, 'package.json'),
+      JSON.stringify(
+        {
+          name: '@pyreon-test/unbuilt-fixture',
+          version: '0.0.0-test',
+          exports: { '.': { import: './lib/index.js' } },
+        },
+        null,
+        2,
+      ),
+    )
+  }
+  if (opts.noJsEntryPackage) {
+    // Published, no `lib/`, and promises no JavaScript — the real shape of the
+    // four `native-*` runtime/router packages (Swift/Kotlin SOURCE) and of
+    // `@pyreon/typescript` (tsconfig JSON). Skipping these is CORRECT, and the
+    // distinction is derived from the manifest rather than a list that rots.
+    const dir = join(root, 'nojs-cat', 'nojs-fixture')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(
+      join(dir, 'package.json'),
+      JSON.stringify(
+        {
+          name: '@pyreon-test/nojs-fixture',
+          version: '0.0.0-test',
+          files: ['Sources', 'README.md'],
+          exports: { '.': './base.json' },
+        },
+        null,
+        2,
+      ),
+    )
   }
   return root
 }
@@ -181,5 +225,39 @@ describe('scripts/check-bundle-budgets.ts failure surfacing', () => {
     expect(good).toBeDefined()
     expect(good!.gzip).toBeGreaterThan(0)
     expect(good!.raw).toBeGreaterThan(0)
+  })
+
+  it('reports a package that declares a JS entry but was never BUILT', () => {
+    // The hole this closes: `if (!fileExists(entry)) continue` dropped such a
+    // package from the run entirely, so the count fell (measured 71 -> 70 on
+    // the real repo) while the gate still printed "All 70 package(s) within
+    // budget". A package whose build failed is precisely the one whose size
+    // nobody is checking.
+    testDir = setupFixturePackagesDir({ unbuiltPackage: true })
+    const result = runCheck(testDir)
+    const json = result.json as JsonOutput
+
+    expect(json.failures.map((f) => f.name)).toContain('@pyreon-test/unbuilt-fixture')
+    expect(json.measured.map((m) => m.name)).not.toContain('@pyreon-test/unbuilt-fixture')
+    expect(result.status).toBe(1)
+  })
+
+  it('names the remedy in the failure, so the message is actionable', () => {
+    testDir = setupFixturePackagesDir({ unbuiltPackage: true })
+    const json = runCheck(testDir).json as JsonOutput
+    const entry = json.failures.find((f) => f.name === '@pyreon-test/unbuilt-fixture')
+    expect(entry?.error).toContain('lib/index.js')
+    expect(entry?.error).toContain('bootstrap')
+  })
+
+  it('does NOT report a published package that promises no JavaScript', () => {
+    // The four `native-*` runtime/router packages ship Swift and Kotlin SOURCE
+    // and `@pyreon/typescript` ships tsconfig JSON. None has `lib/index.js`,
+    // and none should. Reporting them would make the gate cry wolf on five
+    // packages permanently, which is how a gate stops being read.
+    testDir = setupFixturePackagesDir({ noJsEntryPackage: true, goodPackage: true })
+    const json = runCheck(testDir).json as JsonOutput
+    expect(json.failures.map((f) => f.name)).not.toContain('@pyreon-test/nojs-fixture')
+    expect(json.measured.map((m) => m.name)).not.toContain('@pyreon-test/nojs-fixture')
   })
 })

@@ -169,6 +169,29 @@ describe('runDocClaimsGate', () => {
     expect(errs).toHaveLength(0)
   })
 
+  it('has no claim that silently STOPPED matching', async () => {
+    // A `pattern-miss` is ADVISORY, and that is the hole it opened: a claim
+    // whose text drifted out of its pattern is not checked at all, so a stale
+    // number sits behind a passing gate.
+    //
+    // `packages/tools/lint/package.json` did exactly that. It stored its em
+    // dash as the literal escape `\u2014`, so a pattern containing the real
+    // character matched nothing and the count rotted to 100 against an actual
+    // 101 — invisible on main, and fatal only on the release PR, where
+    // `changeset version` parses and re-serialises every manifest and writes
+    // the character back out. A gate whose verdict depends on which tool last
+    // wrote a JSON file is checking the serialiser, not the claim.
+    //
+    // Pinned at zero rather than at a count: a pattern-miss is always either a
+    // deliberate rephrasing (drop the claim from `checks[]`) or this bug.
+    const result = await runDocClaimsGate({ cwd: REPO_ROOT })
+    const misses = result.findings.filter((f) => f.code.endsWith('-pattern-miss'))
+    expect(
+      misses.map((f) => `${f.code} ${f.location?.relPath ?? ''}`),
+      'a claim stopped matching its pattern — restore the text, or drop the entry from the doc-claims gate checks[]',
+    ).toEqual([])
+  })
+
   // Mark a tmp fixture as the Pyreon monorepo so the doc-claims gate
   // doesn't skip. The gate's monorepo guard keys on the presence of its
   // companion standalone script `scripts/check-doc-claims.ts` (the same
