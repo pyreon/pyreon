@@ -93,8 +93,29 @@ export interface PlotChartProps<T> {
  * knowing anything about what changed. There is no option diffing and no chart
  * instance to manage.
  */
+/**
+ * The width to draw at.
+ *
+ * Measures the canvas's PARENT, never the canvas. A canvas sized by this very
+ * function reports back whatever it was last set to, so measuring it means
+ * measuring your own previous output: the first draw finds 0, falls back to the
+ * default, sets the canvas to that, and every later draw reads the default back
+ * and stays there — a chart pinned at 300px inside a 430px column, forever, with
+ * nothing in the DOM looking wrong.
+ *
+ * The fallback is for a parent with no layout width of its own (a detached
+ * node, or a shrink-to-fit ancestor), where there is nothing to fill.
+ */
+function drawWidth(el: HTMLCanvasElement, explicit: Double | undefined): Double {
+  if (explicit !== undefined) return explicit
+  const box = el.parentElement
+  const w = box === null ? 0 : box.clientWidth
+  return w > 0 ? w : 300
+}
+
 export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   let canvas: HTMLCanvasElement | null = null
+  let sizeObserver: ResizeObserver | null = null
   let tip: HTMLDivElement | null = null
 
   const readData = (): T[] => {
@@ -116,9 +137,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   const draw = (): void => {
     const el = canvas
     if (el === null) return
-    // `clientWidth` when no explicit width: a chart in a flexible column
-    // should fill it, and a hard default would either overflow or leave a gap.
-    const w = props.width ?? (el.clientWidth > 0 ? el.clientWidth : 300)
+    const w = drawWidth(el, props.width)
     const hgt = props.height ?? 200
     const ctx = prepareCanvas(el, w, hgt)
     if (ctx === null) return
@@ -197,7 +216,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     const el = canvas
     const box = tip
     if (el === null || box === null) return
-    const w = props.width ?? (el.clientWidth > 0 ? el.clientWidth : 300)
+    const w = drawWidth(el, props.width)
     const hgt = props.height ?? 200
     const rect = el.getBoundingClientRect()
     const px = ev.clientX - rect.left
@@ -232,7 +251,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     if (el === null || cb === undefined) return
     const ctx = el.getContext('2d')
     if (ctx === null) return
-    const w = props.width ?? el.clientWidth ?? 300
+    const w = drawWidth(el, props.width)
     const hgt = props.height ?? 200
     const spec = buildSpec(readData(), w, hgt)
     const measure = canvasMeasure(ctx, FONT)
@@ -274,7 +293,30 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     'aria-label': () => describeChart(a11yInput()),
     ref: (el: HTMLCanvasElement | null) => {
       canvas = el
-      if (el !== null) draw()
+      sizeObserver?.disconnect()
+      sizeObserver = null
+      if (el === null) return
+      draw()
+      // Observe the CONTAINER, because the first draw runs before it has laid
+      // out: the ref fires while the wrapper still measures 0, the fallback
+      // width is used, and a one-shot measurement would leave the chart pinned
+      // at that fallback forever — 300px inside a 430px column, with nothing in
+      // the DOM looking wrong. Observing also makes the chart genuinely
+      // responsive to a window resize or a column that changes, which a
+      // mount-time read never can.
+      const box = el.parentElement
+      if (box === null || typeof ResizeObserver === 'undefined') return
+      sizeObserver = new ResizeObserver(() => {
+        // The observer fires for the resize this draw itself causes, so redraw
+        // ONLY when the width the next draw would use actually differs from the
+        // one already on the canvas — otherwise every paint schedules another.
+        if (canvas === null) return
+        const next = drawWidth(canvas, props.width)
+        const dpr = typeof globalThis.devicePixelRatio === 'number' ? globalThis.devicePixelRatio : 1
+        if (Math.round(next * dpr) === canvas.width) return
+        draw()
+      })
+      sizeObserver.observe(box)
     },
     onClick: handleClick,
     ...(props.tooltip === true

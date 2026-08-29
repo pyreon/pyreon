@@ -93,25 +93,51 @@ test.describe('app-showcase /dashboard — the plot engine, real compiler', () =
 
     // The backing store is sized for the device pixel ratio, so a soft chart
     // (a canvas at CSS size on a 2x display) shows up here as a smaller width.
-    const { w, h, painted } = await canvas.evaluate((el) => {
-      const c = el as HTMLCanvasElement
-      const ctx = c.getContext('2d')
-      if (ctx === null) return { w: c.width, h: c.height, painted: 0 }
-      const { data } = ctx.getImageData(0, 0, c.width, c.height)
-      let n = 0
-      for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) n++
-      return { w: c.width, h: c.height, painted: n }
-    })
+    // POLL rather than sample once. The canvas element exists before the first
+    // paint — the ref fires, then the draw runs — so a single read races the
+    // engine and fails intermittently, while a poll still fails correctly for a
+    // canvas that never draws at all, which is the regression this asserts.
+    const measure = async (): Promise<{ w: number; h: number; painted: number }> =>
+      canvas.evaluate((el) => {
+        const c = el as HTMLCanvasElement
+        const ctx = c.getContext('2d')
+        if (ctx === null) return { w: c.width, h: c.height, painted: 0 }
+        const { data } = ctx.getImageData(0, 0, c.width, c.height)
+        let n = 0
+        for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) n++
+        return { w: c.width, h: c.height, painted: n }
+      })
+
+    // A blank canvas is the failure this test exists for: the axes, bars and
+    // line together cover far more than a handful of pixels.
+    await expect
+      .poll(async () => (await measure()).painted, {
+        timeout: 15_000,
+        message:
+          'the plot canvas is blank — the engine mounted but never drew (or the real compiler emitted something the vitest transform does not)',
+      })
+      .toBeGreaterThan(500)
+
+    const { w, h } = await measure()
 
     expect(w, 'canvas has no backing width — the container had no box').toBeGreaterThan(0)
     expect(h).toBeGreaterThan(0)
-    // A blank canvas is the failure this test exists for: the axes, bars and
-    // line together cover far more than a handful of pixels.
-    expect(
-      painted,
-      'the plot canvas is blank — the engine mounted but never drew (or the real compiler emitted something the vitest transform does not)',
-    ).toBeGreaterThan(500)
 
+    // The chart FILLS its column. This is a regression lock, not a nicety: the
+    // width was read off the canvas itself, which is the element the read then
+    // sizes — so the first draw measured 0, fell back to the default, wrote it
+    // onto the canvas, and every later draw read that default straight back. A
+    // chart pinned at 300px inside a 430px column, with nothing in the DOM
+    // looking wrong. Only a real layout catches it; jsdom and happy-dom report
+    // 0 for everything.
+    const fill = await host.evaluate((el) => {
+      const c = el.querySelector('canvas') as HTMLCanvasElement
+      return { column: (el as HTMLElement).clientWidth, drawn: Number.parseFloat(c.style.width) }
+    })
+    expect(
+      fill.drawn,
+      `the chart drew ${fill.drawn}px inside a ${fill.column}px column — it is measuring itself instead of its container`,
+    ).toBeGreaterThan(fill.column * 0.9)
     expect(errors, `page errors:\n${errors.join('\n')}`).toHaveLength(0)
   })
 })

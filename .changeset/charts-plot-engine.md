@@ -55,4 +55,7 @@ serverless function or an email pipeline — no DOM, no canvas, no measurement
 context — and its output is deterministic, which makes an SVG snapshot a real
 assertion rather than a flake.
 
+`<PlotChart>` fills its container and follows it: the width comes from the
+container via a `ResizeObserver`, not from the canvas the chart itself sizes.
+
 The existing ECharts-backed `Chart` export is unchanged.
