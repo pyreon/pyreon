@@ -17,6 +17,7 @@ import type { ChartSpec, ChartTheme } from './render'
 import { resolveCategories, resolveMarks } from './marks'
 import type { Mark } from './marks'
 import { chartTable, describeChart } from './a11y'
+import type { Formatter } from './format'
 import type { DrawCmd, Double } from './types'
 
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
@@ -78,6 +79,21 @@ export interface PlotChartProps<T> {
   /** Labels for the legend, the tooltip and the accessible table. */
   seriesLabels?: string[]
   /**
+   * Formats the y-axis tick labels, the tooltip values and the accessible
+   * description.
+   *
+   * The default trims float noise and prints the number, which is right for
+   * counts and wrong for money, percentages, and anything above about ten
+   * thousand — a revenue axis reading `3200000` is the first thing anyone
+   * notices. `currency`, `percent`, `compact` and `fixed` ship in the same
+   * subpath; any `(v: number) => string` works.
+   *
+   * One formatter rather than one per surface, because an axis that says
+   * `$3.2K` and a tooltip that says `3204.55` for the same point reads as a
+   * bug. Format once, apply everywhere the number is shown.
+   */
+  format?: Formatter
+  /**
    * Drop the offscreen data table. It is on by default because a canvas is a
    * single opaque node to a screen reader — without the table a chart is a
    * blank rectangle to anyone not looking at it.
@@ -132,6 +148,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     showXAxis: props.showXAxis ?? true,
     showYAxis: props.showYAxis ?? true,
     showGrid: props.showGrid ?? true,
+    ...(props.format !== undefined ? { yFormat: props.format } : {}),
   })
 
   const draw = (): void => {
@@ -230,6 +247,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     const series = resolveMarks(rows, props.marks)
     const lines = tooltipLines(
       tooltipAt(idx, resolveCategories(rows, props.x), series),
+      props.format,
     )
     box.textContent = lines.join('\n')
     box.style.display = 'block'
@@ -271,11 +289,20 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     cb(-1)
   }
 
-  const a11yInput = (): { title?: string | undefined; categories: string[]; series: { label: string; values: Double[]; kind: string }[] } => {
+  const a11yInput = (): {
+    title?: string | undefined
+    categories: string[]
+    series: { label: string; values: Double[]; kind: string }[]
+    format?: Formatter | undefined
+  } => {
     const rows = readData()
     const resolved = resolveMarks(rows, props.marks)
     return {
       title: props.title,
+      // The spoken description says the same numbers the axis shows. A chart
+      // whose axis reads "$3.2K" and whose description reads "3204.55" is one
+      // chart to a sighted reader and another to a screen-reader user.
+      format: props.format,
       categories: resolveCategories(rows, props.x),
       series: resolved.map((s, i) => ({
         label: props.seriesLabels?.[i] ?? `Series ${i + 1}`,

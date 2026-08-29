@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { chartToSvg } from './svg-chart'
 import { bars, line } from './marks'
+import { compact } from './format'
 
 interface Row {
   month: string
@@ -99,5 +100,28 @@ describe('chartToSvg', () => {
     expect(chartToSvg({ data: DATA, marks: MARKS, x: (d) => d.month })).toBe(
       chartToSvg({ data: DATA, marks: MARKS, x: (d) => d.month }),
     )
+  })
+})
+
+describe('chartToSvg — formatting', () => {
+  const BIG: Row[] = [
+    { month: 'Jan', revenue: 3200000, target: 3000000 },
+    { month: 'Feb', revenue: 1800000, target: 3000000 },
+  ]
+
+  it('formats the axis labels', () => {
+    const plainSvg = chartToSvg({ data: BIG, marks: MARKS })
+    const compactSvg = chartToSvg({ data: BIG, marks: MARKS, format: compact })
+    expect(plainSvg).toContain('3000000')
+    expect(compactSvg).not.toContain('3000000')
+    expect(compactSvg).toMatch(/>\d+(\.\d+)?M</)
+  })
+
+  it('uses the same formatter in the derived description', () => {
+    // An axis reading "$3.2M" beside a description reading "3200000" is one
+    // chart to a sighted reader and another to a screen-reader user.
+    const svg = chartToSvg({ data: BIG, marks: MARKS, format: compact, title: 'Revenue' })
+    expect(svg).toMatch(/<desc[^>]*>[^<]*M/)
+    expect(svg).not.toMatch(/<desc[^>]*>[^<]*3200000/)
   })
 })

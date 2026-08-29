@@ -41,6 +41,25 @@ dropped by any bundler, however the library was built.
 Marks: `bars`, `line`, `area`, `points`, `stackedBars`, `groupedBars`.
 Components: `PlotChart`, `PieChart` (donut via `innerRadius`), `GaugeChart`.
 
+### Formatting
+
+```tsx
+import { PlotChart, bars, compact, currency } from '@pyreon/charts/plot'
+
+<PlotChart data={rows} marks={[bars((d) => d.revenue)]} format={currency} />
+```
+
+One `format` covers the y-axis ticks, the tooltip values and the spoken
+description. One rather than one per surface, because an axis reading `$3.2K`
+beside a tooltip reading `3204.55` for the same point reads as a bug. Ships
+`plain` (the default), `compact`, `currency`, `percent` and `fixed`; any
+`(v: number) => string` works.
+
+The formatters are hand-rolled rather than `Intl.NumberFormat`, because this
+layer has to compile through PMTC — which lowers your source, not the browser's
+built-ins. Pass your own `Intl`-backed formatter on the web when you want full
+locale support.
+
 ### Server-rendered SVG
 
 The same command list renders to a string, with no DOM and no canvas:

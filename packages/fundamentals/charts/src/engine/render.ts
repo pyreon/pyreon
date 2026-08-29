@@ -2,6 +2,7 @@
 
 import { computeLayout, layoutBars, layoutSeriesPoints } from './layout'
 import { layoutGroupedBars, layoutStackedBars, stackedExtent } from './stack'
+import type { Formatter } from './format'
 import type { LayoutConfig, PlotLayout } from './layout'
 import { extent, niceDomain } from './scale'
 import type { DrawCmd, Domain, MeasureText, Pt, Rect, Double } from './types'
@@ -37,6 +38,9 @@ export interface ChartSpec {
   showGrid: boolean
   /** Pins the y domain; when absent it is derived from the data. */
   yDomain?: Domain
+  /** Tick label formatting, per axis. See `LayoutConfig` for why it matters. */
+  yFormat?: Formatter
+  xFormat?: Formatter
 }
 
 export const defaultTheme: ChartTheme = {
@@ -101,6 +105,8 @@ export function layoutChart(spec: ChartSpec, measure: MeasureText): PlotLayout {
     yTickCount: 5.0,
     showXAxis: spec.showXAxis,
     showYAxis: spec.showYAxis,
+    ...(spec.yFormat !== undefined ? { yFormat: spec.yFormat } : {}),
+    ...(spec.xFormat !== undefined ? { xFormat: spec.xFormat } : {}),
   }
   return computeLayout(cfg, measure)
 }

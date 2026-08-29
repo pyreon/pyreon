@@ -11,6 +11,7 @@ import { resolveCategories, resolveMarks } from './marks'
 import { defaultTheme, renderChart } from './render'
 import type { ChartTheme } from './render'
 import { measureApprox, renderSvg } from './svg'
+import type { Formatter } from './format'
 import type { SvgOptions } from './svg'
 import type { Domain, Double, MeasureText } from './types'
 
@@ -28,6 +29,12 @@ export interface ChartToSvgOptions<T> {
   showGrid?: boolean
   /** Pins the y domain; derived from the data when absent. */
   yDomain?: Domain
+  /**
+   * Formats the y-axis tick labels and the derived description. The default
+   * prints the number, which is wrong for money and percentages; `currency`,
+   * `percent`, `compact` and `fixed` ship alongside.
+   */
+  format?: Formatter
   /**
    * Text measurement. Defaults to the approximation, which is what makes this
    * callable on a server — pass `canvasMeasure(ctx, font)` in a browser when
@@ -70,6 +77,7 @@ export function chartToSvg<T>(options: ChartToSvgOptions<T>): string {
     showYAxis: options.showYAxis ?? true,
     showGrid: options.showGrid ?? true,
     ...(options.yDomain !== undefined ? { yDomain: options.yDomain } : {}),
+    ...(options.format !== undefined ? { yFormat: options.format } : {}),
   }
   const measure = options.measure ?? measureApprox()
   const cmds = renderChart(spec, measure)
@@ -77,7 +85,12 @@ export function chartToSvg<T>(options: ChartToSvgOptions<T>): string {
   const description =
     options.description ??
     (options.title !== undefined
-      ? describeChart({ series, categories: spec.categories, title: options.title })
+      ? describeChart({
+          series,
+          categories: spec.categories,
+          title: options.title,
+          ...(options.format !== undefined ? { format: options.format } : {}),
+        })
       : undefined)
 
   return renderSvg(cmds, width, height, {

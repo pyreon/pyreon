@@ -58,4 +58,8 @@ assertion rather than a flake.
 `<PlotChart>` fills its container and follows it: the width comes from the
 container via a `ResizeObserver`, not from the canvas the chart itself sizes.
 
+A single `format` prop covers the y-axis ticks, the tooltip and the spoken
+description — `plain`, `compact`, `currency`, `percent` and `fixed` ship with
+it.
+
 The existing ECharts-backed `Chart` export is unchanged.

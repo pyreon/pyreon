@@ -1,5 +1,6 @@
 // Scales and ticks — the arithmetic every mark sits on.
 
+import type { Formatter } from './format'
 import type { Domain, Tick, Double } from './types'
 
 /**
@@ -57,12 +58,19 @@ export function niceDomain(d: Domain, targetCount: Double): Domain {
  * passing a domain spanning 1e300 would otherwise generate ticks until it ran
  * out of memory.
  */
-export function makeTicks(d: Domain, r0: Double, r1: Double, count: Double): Tick[] {
+export function makeTicks(
+  d: Domain,
+  r0: Double,
+  r1: Double,
+  count: Double,
+  format?: Formatter,
+): Tick[] {
+  const fmt = format ?? formatTick
   const out: Tick[] = []
   if (count <= 0.0) return out
   const span = d.max - d.min
   if (span <= 0.0) {
-    out.push({ value: d.min, pos: scaleLinear(d, r0, r1, d.min), label: formatTick(d.min) })
+    out.push({ value: d.min, pos: scaleLinear(d, r0, r1, d.min), label: fmt(d.min) })
     return out
   }
   const step = niceStep(span / count)
@@ -72,7 +80,7 @@ export function makeTicks(d: Domain, r0: Double, r1: Double, count: Double): Tic
   while (i < maxTicks) {
     const v = first + step * i
     if (v > d.max + step * 0.000001) break
-    out.push({ value: v, pos: scaleLinear(d, r0, r1, v), label: formatTick(v) })
+    out.push({ value: v, pos: scaleLinear(d, r0, r1, v), label: fmt(v) })
     i = i + 1
   }
   return out

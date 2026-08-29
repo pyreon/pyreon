@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { computeLayout, hitBar, hitNearestX, layoutBars, layoutSeriesPoints } from './layout'
 import { extent, formatTick, makeTicks, niceDomain, niceStep, scaleLinear } from './scale'
-import { defaultTheme, renderChart, resolveYDomain, seriesMaxLength } from './render'
+import { defaultTheme, layoutChart, renderChart, resolveYDomain, seriesMaxLength } from './render'
+import { bars as barsMark, resolveCategories, resolveMarks } from './marks'
+import { compact, currency } from './format'
 import type { ChartSpec, Series } from './render'
 import type { MeasureText, Double } from './types'
 

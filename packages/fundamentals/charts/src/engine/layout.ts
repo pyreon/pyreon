@@ -1,6 +1,7 @@
 // Plot-area layout and per-mark geometry.
 
 import { makeTicks, scaleLinear } from './scale'
+import type { Formatter } from './format'
 import type { Domain, MeasureText, Pt, Rect, Tick, Double } from './types'
 
 /** How much room the axes need around the plot. */
@@ -31,6 +32,17 @@ export interface LayoutConfig {
   yTickCount: Double
   showXAxis: boolean
   showYAxis: boolean
+  /**
+   * Tick label formatting, per axis.
+   *
+   * The axis is the one place a chart's numbers are read literally, so the
+   * default (trim the float noise and print the number) is right for counts
+   * and wrong for money, percentages and anything above about ten thousand.
+   * `currency`, `percent`, `compact` and `fixed` live in `./format`; any
+   * `(v: number) => string` works.
+   */
+  yFormat?: Formatter
+  xFormat?: Formatter
 }
 
 /**
@@ -56,7 +68,7 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   // Their POSITIONS are recomputed below against the final plot rect — only the
   // label TEXT is needed here, and that does not depend on the rect.
   const provisional = cfg.showYAxis
-    ? makeTicks(cfg.yDomain, cfg.height, 0.0, cfg.yTickCount)
+    ? makeTicks(cfg.yDomain, cfg.height, 0.0, cfg.yTickCount, cfg.yFormat)
     : []
   let widest = 0.0
   for (const t of provisional) {
@@ -77,13 +89,13 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   // y grows DOWNWARD in screen space, so the domain min maps to the plot's
   // bottom edge and the max to its top — the range is deliberately inverted.
   const yTicks = cfg.showYAxis
-    ? makeTicks(cfg.yDomain, plot.y + plot.h, plot.y, cfg.yTickCount)
+    ? makeTicks(cfg.yDomain, plot.y + plot.h, plot.y, cfg.yTickCount, cfg.yFormat)
     : []
 
   const xTicks = cfg.showXAxis
     ? cfg.categories.length > 0
       ? bandTicks(cfg.categories, plot)
-      : makeTicks(cfg.xDomain, plot.x, plot.x + plot.w, cfg.xTickCount)
+      : makeTicks(cfg.xDomain, plot.x, plot.x + plot.w, cfg.xTickCount, cfg.xFormat)
     : []
 
   return { plot, xTicks, yTicks }

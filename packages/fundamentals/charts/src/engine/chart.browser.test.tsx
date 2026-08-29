@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { signal } from '@pyreon/reactivity'
 import { mountInBrowser, flush } from '@pyreon/test-utils/browser'
 import { query } from '@pyreon/test-utils'
+import { compact } from './format'
 import { PlotChart } from './Chart'
 import { bars, groupedBars, line, stackedBars } from './marks'
 
@@ -396,5 +397,32 @@ describe('legend, stacking and tooltip in a real browser', () => {
       const tip = query<HTMLElement>(container, '[data-pyreon-chart-tooltip]')
       expect(globalThis.getComputedStyle(tip).pointerEvents).toBe('none')
     })
+  })
+})
+
+describe('PlotChart — axis formatting', () => {
+  it('formats the axis labels and the accessible description together', async () => {
+    // One formatter for every surface, asserted together: an axis that says
+    // "3.2M" beside a description that says "3200000" is the failure mode.
+    const rows = [
+      { month: 'Jan', revenue: 3200000, target: 0 },
+      { month: 'Feb', revenue: 1800000, target: 0 },
+    ] as Row[]
+    const { container } = mountInBrowser(() =>
+      PlotChart<Row>({
+        data: rows,
+        x: (d) => d.month,
+        marks: [bars((d) => d.revenue)],
+        width: 400,
+        height: 200,
+        format: compact,
+        title: 'Revenue',
+      }),
+    )
+    await flush()
+    const canvas = query<HTMLCanvasElement>(container, 'canvas')
+    const label = canvas.getAttribute('aria-label') ?? ''
+    expect(label).toContain('M')
+    expect(label).not.toContain('3200000')
   })
 })

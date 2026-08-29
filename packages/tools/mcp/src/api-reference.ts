@@ -5480,7 +5480,8 @@ const sales = signal<Row[]>([{ month: 'Jan', revenue: 120, target: 100 }])
     mistakes: `- Importing from \`@pyreon/charts\` instead of \`@pyreon/charts/plot\` — the default entry is the ECharts bridge; the two engines are separate subpaths and mixing them pulls ECharts back into the bundle
 - Passing \`marks\` as a string type name — a mark is an imported FUNCTION, which is exactly what makes the unused ones droppable; there is no string-keyed registry to tree-shake around
 - Expecting two series to be told apart without a legend — colours come from a per-series palette, but \`showLegend\` is opt-in and a chart with neither legend nor tooltip is unlabelled
-- Reaching for \`tooltip\` on a static chart in a report — it installs pointer handlers and a DOM overlay, which is why it is off by default`,
+- Reaching for \`tooltip\` on a static chart in a report — it installs pointer handlers and a DOM overlay, which is why it is off by default
+- Leaving \`format\` unset on a money or percentage chart — the default prints the raw number, so a revenue axis reads \`3200000\`; \`currency\`, \`percent\`, \`compact\` and \`fixed\` ship in the same subpath and one \`format\` covers the axis, the tooltip and the spoken description at once`,
   },
 
   'charts/chartToSvg': {
