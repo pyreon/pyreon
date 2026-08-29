@@ -32,15 +32,28 @@ test.describe('app-showcase /dashboard — charts canvas mount', () => {
 
     await page.goto('/dashboard', { waitUntil: 'domcontentloaded' })
 
-    // Wait for the first canvas — ECharts lazy-loads modules on first
-    // chart mount. Generous timeout because the dashboard mounts under
-    // a `QueryClient` provider and the chart-data query has to settle
-    // before <RevenueChart> emits its <Chart> via reactive children.
-    await page.locator('canvas').first().waitFor({ timeout: 10_000 })
+    // POLL the COUNT, rather than waiting for the first canvas and then
+    // counting. Waiting for the first one only ever meant "ECharts has
+    // finished loading" by accident — because the first canvas on the page
+    // happened to be an ECharts one. The plot-engine chart added below draws
+    // synchronously and now wins that race, so the old wait returned while
+    // ECharts was still importing its modules and the count was short.
+    //
+    // The lesson generalises past this file: a wait whose meaning depends on
+    // WHICH element arrives first is not a wait for the thing you care about.
+    // Poll the actual condition.
+    //
+    // Two ECharts charts (RevenueChart + CategoryChart) plus the plot-engine
+    // one, so >= 3; asserted as >= 2 for the ECharts pair specifically, since
+    // this test is about the tslib alias and not about how many charts the
+    // dashboard happens to show.
+    await expect
+      .poll(async () => page.locator('canvas').count(), {
+        timeout: 15_000,
+        message: 'fewer than two chart canvases mounted — ECharts lazy import likely failed',
+      })
+      .toBeGreaterThanOrEqual(2)
 
-    // Two charts on the dashboard: RevenueChart + CategoryChart. Both
-    // render their own <canvas>. Asserting `>= 2` rather than `=== 2`
-    // leaves headroom for a future third chart on the same page.
     const canvasCount = await page.locator('canvas').count()
     expect(canvasCount).toBeGreaterThanOrEqual(2)
 
