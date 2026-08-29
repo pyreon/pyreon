@@ -50,8 +50,8 @@ export interface LayoutConfig {
    * `currency`, `percent`, `compact` and `fixed` live in `./format`; any
    * `(v: number) => string` works.
    */
-  yFormat?: Formatter
-  xFormat?: Formatter
+  yFormat?: Formatter | undefined
+  xFormat?: Formatter | undefined
   /**
    * Treat the x domain as epoch milliseconds.
    *
@@ -60,7 +60,7 @@ export interface LayoutConfig {
    * span instead, so a day of data ticks hourly and a year of it ticks monthly.
    * `xFormat` still wins when given — this only picks the DEFAULT labelling.
    */
-  xTime?: boolean
+  xTime?: boolean | undefined
 }
 
 /**

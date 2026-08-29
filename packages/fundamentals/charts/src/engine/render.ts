@@ -37,10 +37,10 @@ export interface ChartSpec {
   showYAxis: boolean
   showGrid: boolean
   /** Pins the y domain; when absent it is derived from the data. */
-  yDomain?: Domain
+  yDomain?: Domain | undefined
   /** Tick label formatting, per axis. See `LayoutConfig` for why it matters. */
-  yFormat?: Formatter
-  xFormat?: Formatter
+  yFormat?: Formatter | undefined
+  xFormat?: Formatter | undefined
   /**
    * Per-datum x positions, index-aligned with every series' values.
    *
@@ -49,9 +49,9 @@ export interface ChartSpec {
    * a categorical axis and misstates the data for an irregular one. `xDomain`
    * is derived from these when they are given.
    */
-  xValues?: Double[]
+  xValues?: Double[] | undefined
   /** Label the x axis with calendar steps — see `LayoutConfig.xTime`. */
-  xTime?: boolean
+  xTime?: boolean | undefined
 }
 
 export const defaultTheme: ChartTheme = {
@@ -119,9 +119,14 @@ export function layoutChart(spec: ChartSpec, measure: MeasureText): PlotLayout {
     yTickCount: 5.0,
     showXAxis: spec.showXAxis,
     showYAxis: spec.showYAxis,
-    ...(spec.yFormat !== undefined ? { yFormat: spec.yFormat } : {}),
-    ...(spec.xFormat !== undefined ? { xFormat: spec.xFormat } : {}),
-    ...(spec.xTime === true ? { xTime: true } : {}),
+    // Assigned rather than conditionally SPREAD. `...(cond ? { k } : {})` is
+    // the idiomatic TS for an exactOptionalPropertyTypes field, and it emits an
+    // EMPTY object literal — which PMTC has no lowering for, so the idiom costs
+    // this module its native-readiness for nothing. The engine exists to
+    // compile, so it is written in the subset that does.
+    yFormat: spec.yFormat,
+    xFormat: spec.xFormat,
+    xTime: spec.xTime === true,
   }
   return computeLayout(cfg, measure)
 }

@@ -76,8 +76,11 @@ export function chartToSvg<T>(options: ChartToSvgOptions<T>): string {
     showXAxis: options.showXAxis ?? true,
     showYAxis: options.showYAxis ?? true,
     showGrid: options.showGrid ?? true,
-    ...(options.yDomain !== undefined ? { yDomain: options.yDomain } : {}),
-    ...(options.format !== undefined ? { yFormat: options.format } : {}),
+    // Assigned, not conditionally spread — see the note in `render.ts`: the
+    // `...(cond ? { k } : {})` idiom emits an empty object literal, which PMTC
+    // cannot lower.
+    yDomain: options.yDomain,
+    yFormat: options.format,
   }
   const measure = options.measure ?? measureApprox()
   const cmds = renderChart(spec, measure)
@@ -89,7 +92,7 @@ export function chartToSvg<T>(options: ChartToSvgOptions<T>): string {
           series,
           categories: spec.categories,
           title: options.title,
-          ...(options.format !== undefined ? { format: options.format } : {}),
+          format: options.format,
         })
       : undefined)
 
