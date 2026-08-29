@@ -17,6 +17,8 @@ import type { Double } from './types'
 export type Accessor<T> = (d: T, index: number) => Double
 
 export interface MarkOptions {
+  /** Name for the legend, the tooltip and the accessible table. */
+  label?: string
   /** Series colour. Defaults are the caller's business — a theme sets them. */
   color?: string
   /** Stroke width for line and area outlines. */
@@ -32,7 +34,12 @@ export interface Mark<T> {
   options: MarkOptions
 }
 
-const DEFAULT_COLOR = '#0f766e'
+/**
+ * Default series colours. A single default would render a two-series chart in
+ * one colour, which reads as one series — so the palette is indexed by series
+ * position and an explicit `color` always wins.
+ */
+const PALETTE = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
 
 function mark<T>(kind: Series['kind'], y: Accessor<T>, options: MarkOptions): Mark<T> {
   return { kind, y, options }
@@ -41,6 +48,23 @@ function mark<T>(kind: Series['kind'], y: Accessor<T>, options: MarkOptions): Ma
 /** Vertical bars, one per datum, measured from the zero line. */
 export function bars<T>(y: Accessor<T>, options: MarkOptions = {}): Mark<T> {
   return mark('bars', y, options)
+}
+
+/**
+ * Bars stacked on one another rather than side by side.
+ *
+ * A separate factory rather than an option, so the stacking geometry is only
+ * reachable when you import it — the same reason each mark is its own binding.
+ * Every `stackedBars` mark in one chart forms a single stack, in the order
+ * given.
+ */
+export function stackedBars<T>(y: Accessor<T>, options: MarkOptions = {}): Mark<T> {
+  return mark('stacked', y, options)
+}
+
+/** Bars sharing a band, one per series. */
+export function groupedBars<T>(y: Accessor<T>, options: MarkOptions = {}): Mark<T> {
+  return mark('grouped', y, options)
 }
 
 /** A polyline through every datum. */
@@ -67,7 +91,7 @@ export function points<T>(y: Accessor<T>, options: MarkOptions = {}): Mark<T> {
  * the better failure.
  */
 export function resolveMarks<T>(data: T[], marks: Mark<T>[]): Series[] {
-  return marks.map((m) => {
+  return marks.map((m, seriesIndex) => {
     const values: Double[] = []
     for (let i = 0; i < data.length; i++) {
       const v = m.y(data[i]!, i)
@@ -76,9 +100,10 @@ export function resolveMarks<T>(data: T[], marks: Mark<T>[]): Series[] {
     return {
       kind: m.kind,
       values,
-      color: m.options.color ?? DEFAULT_COLOR,
+      color: m.options.color ?? PALETTE[seriesIndex % PALETTE.length]!,
       width: m.options.width ?? 2,
       radius: m.options.radius ?? 3,
+      label: m.options.label ?? `Series ${seriesIndex + 1}`,
     }
   })
 }

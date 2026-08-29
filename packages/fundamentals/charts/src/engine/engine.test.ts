@@ -9,7 +9,7 @@ import type { MeasureText, Double } from './types'
 const measure: MeasureText = (text, size) => text.length * size * 0.6
 
 const bars = (values: Double[]): Series => ({
-  kind: 'bars', values, color: '#0f766e', width: 1.0, radius: 2.0,
+  kind: 'bars', values, color: '#0f766e', width: 1.0, radius: 2.0, label: 'S',
 })
 const spec = (over: Partial<ChartSpec> = {}): ChartSpec => ({
   width: 400.0, height: 200.0, series: [bars([10, 20, 30])], categories: [],
@@ -232,7 +232,7 @@ describe('resolveYDomain', () => {
   /** Forcing zero onto a line of temperatures flattens everything that matters. */
   it('does NOT force zero for a line series', () => {
     const s = spec({
-      series: [{ kind: 'line', values: [300, 310, 305], color: '#000', width: 2, radius: 2 }],
+      series: [{ kind: 'line', values: [300, 310, 305], color: '#000', width: 2, radius: 2, label: 'S' }],
     })
     expect(resolveYDomain(s).min).toBeGreaterThan(0)
   })
@@ -262,7 +262,7 @@ describe('renderChart', () => {
 
   it('renders each mark kind as its own primitive', () => {
     const mk = (kind: Series['kind']): Series => ({
-      kind, values: [1, 2, 3], color: '#000', width: 2, radius: 3,
+      kind, values: [1, 2, 3], color: '#000', width: 2, radius: 3, label: 'S',
     })
     expect(renderChart(spec({ series: [mk('line')] }), measure).some((c) => c.kind === 'polyline')).toBe(true)
     expect(renderChart(spec({ series: [mk('area')] }), measure).some((c) => c.kind === 'polygon')).toBe(true)
@@ -271,7 +271,7 @@ describe('renderChart', () => {
 
   it('closes an area down to the baseline, not between endpoints', () => {
     const s = spec({
-      series: [{ kind: 'area', values: [5, 8, 6], color: '#000', width: 2, radius: 2 }],
+      series: [{ kind: 'area', values: [5, 8, 6], color: '#000', width: 2, radius: 2, label: 'S' }],
     })
     const poly = renderChart(s, measure).find((c) => c.kind === 'polygon')
     expect(poly).toBeDefined()

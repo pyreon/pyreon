@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { signal } from '@pyreon/reactivity'
 import { mountInBrowser, flush } from '@pyreon/test-utils/browser'
 import { PlotChart } from './Chart'
-import { bars, line } from './marks'
+import { bars, groupedBars, line, stackedBars } from './marks'
 
 interface Row {
   month: string
@@ -256,6 +256,145 @@ describe('PlotChart renders real pixels in a real browser', () => {
       await flush()
       expect(container.querySelector('table')).toBeNull()
       expect(container.querySelector('canvas')).not.toBeNull()
+    })
+  })
+})
+
+describe('legend, stacking and tooltip in a real browser', () => {
+  it('draws a legend and shrinks the plot to make room', async () => {
+    const bare = mountInBrowser(() =>
+      PlotChart<Row>({
+        data: DATA, marks: [bars((d) => d.revenue, { label: 'Revenue' })],
+        width: 400, height: 200,
+      }),
+    )
+    await flush()
+    const withLegend = mountInBrowser(() =>
+      PlotChart<Row>({
+        data: DATA, marks: [bars((d) => d.revenue, { label: 'Revenue' })],
+        width: 400, height: 200, showLegend: true,
+      }),
+    )
+    await flush()
+    // The legend adds ink of its own, and the plot moves down rather than
+    // being drawn over — so the two images must differ.
+    expect(withLegend.container.querySelector('canvas')!.toDataURL()).not.toBe(
+      bare.container.querySelector('canvas')!.toDataURL(),
+    )
+  })
+
+  it('stacks bars instead of overlaying them', async () => {
+    const stacked = mountInBrowser(() =>
+      PlotChart<Row>({
+        data: DATA,
+        marks: [
+          stackedBars((d) => d.revenue, { label: 'Revenue' }),
+          stackedBars((d) => d.target, { label: 'Target' }),
+        ],
+        width: 400, height: 200,
+      }),
+    )
+    await flush()
+    expect(inkedPixels(stacked.container.querySelector('canvas')!)).toBeGreaterThan(500)
+  })
+
+  it('groups bars side by side', async () => {
+    const grouped = mountInBrowser(() =>
+      PlotChart<Row>({
+        data: DATA,
+        marks: [
+          groupedBars((d) => d.revenue, { label: 'Revenue' }),
+          groupedBars((d) => d.target, { label: 'Target' }),
+        ],
+        width: 400, height: 200,
+      }),
+    )
+    await flush()
+    expect(inkedPixels(grouped.container.querySelector('canvas')!)).toBeGreaterThan(500)
+  })
+
+  it('gives a second series a different colour by default', async () => {
+    const one = mountInBrowser(() =>
+      PlotChart<Row>({ data: DATA, marks: [bars((d) => d.revenue)], width: 400, height: 200 }),
+    )
+    await flush()
+    const two = mountInBrowser(() =>
+      PlotChart<Row>({
+        data: DATA,
+        marks: [bars((d) => d.revenue), line((d) => d.target)],
+        width: 400, height: 200,
+      }),
+    )
+    await flush()
+    // A single default colour would render both series identically, which
+    // reads as one series.
+    expect(two.container.querySelector('canvas')!.toDataURL()).not.toBe(
+      one.container.querySelector('canvas')!.toDataURL(),
+    )
+  })
+
+  describe('tooltip', () => {
+    const mountTip = () =>
+      mountInBrowser(() =>
+        PlotChart<Row>({
+          data: DATA, x: (d) => d.month,
+          marks: [bars((d) => d.revenue, { label: 'Revenue' })],
+          width: 400, height: 200, tooltip: true,
+        }),
+      )
+
+    it('is absent until the pointer is over a datum', async () => {
+      const { container } = mountTip()
+      await flush()
+      const tip = container.querySelector('[data-pyreon-chart-tooltip]') as HTMLElement
+      expect(tip).not.toBeNull()
+      expect(tip.style.display).toBe('none')
+    })
+
+    it('shows the category and value under the pointer', async () => {
+      const { container } = mountTip()
+      await flush()
+      const canvas = container.querySelector('canvas')!
+      const box = canvas.getBoundingClientRect()
+      canvas.dispatchEvent(
+        new MouseEvent('mousemove', {
+          bubbles: true, clientX: box.left + 264, clientY: box.top + 150,
+        }),
+      )
+      await flush()
+      const tip = container.querySelector('[data-pyreon-chart-tooltip]') as HTMLElement
+      expect(tip.style.display).toBe('block')
+      expect(tip.textContent).toContain('Mar')
+      expect(tip.textContent).toContain('Revenue')
+    })
+
+    it('hides again when the pointer leaves', async () => {
+      const { container } = mountTip()
+      await flush()
+      const canvas = container.querySelector('canvas')!
+      const box = canvas.getBoundingClientRect()
+      canvas.dispatchEvent(
+        new MouseEvent('mousemove', {
+          bubbles: true, clientX: box.left + 264, clientY: box.top + 150,
+        }),
+      )
+      await flush()
+      canvas.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }))
+      await flush()
+      const tip = container.querySelector('[data-pyreon-chart-tooltip]') as HTMLElement
+      expect(tip.style.display).toBe('none')
+    })
+
+    /**
+     * Without `pointer-events: none` the tooltip sits under the cursor and
+     * swallows the next mousemove, so the chart flickers as it hides and
+     * reappears.
+     */
+    it('does not intercept the pointer', async () => {
+      const { container } = mountTip()
+      await flush()
+      const tip = container.querySelector('[data-pyreon-chart-tooltip]') as HTMLElement
+      expect(globalThis.getComputedStyle(tip).pointerEvents).toBe('none')
     })
   })
 })

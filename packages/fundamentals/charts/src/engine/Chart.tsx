@@ -9,15 +9,42 @@ import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
 import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
-import { barsFor, defaultTheme, layoutChart, renderChart } from './render'
+import { renderLegend } from './legend'
+import { placeTooltip, tooltipAt, tooltipLines } from './tooltip'
+import { barsFor, defaultTheme, layoutChart, renderChart, resolveYDomain } from './render'
+import { hitBar, hitNearestX, layoutSeriesPoints } from './layout'
 import type { ChartSpec, ChartTheme } from './render'
 import { resolveCategories, resolveMarks } from './marks'
 import type { Mark } from './marks'
-import { hitBar } from './layout'
 import { chartTable, describeChart } from './a11y'
-import type { Double } from './types'
+import type { DrawCmd, Double } from './types'
 
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
+
+
+/**
+ * Move a draw command down the canvas.
+ *
+ * Used to sit the plot below the legend. Translating the emitted commands
+ * rather than threading an origin through the engine keeps the engine's
+ * coordinate space at (0,0) — every layout function stays expressible without
+ * knowing what else the host drew.
+ */
+function shiftCmd(c: DrawCmd, dy: Double): DrawCmd {
+  switch (c.kind) {
+    case 'rect':
+      return { ...c, rect: { ...c.rect, y: c.rect.y + dy } }
+    case 'line':
+      return { ...c, from: { ...c.from, y: c.from.y + dy }, to: { ...c.to, y: c.to.y + dy } }
+    case 'polyline':
+    case 'polygon':
+      return { ...c, points: c.points.map((p) => ({ ...p, y: p.y + dy })) }
+    case 'circle':
+      return { ...c, center: { ...c.center, y: c.center.y + dy } }
+    default:
+      return { ...c, at: { ...c.at, y: c.at.y + dy } }
+  }
+}
 
 export interface PlotChartProps<T> {
   /** The rows. An accessor makes it reactive; a plain array is static. */
@@ -34,6 +61,14 @@ export interface PlotChartProps<T> {
   showGrid?: boolean
   /** Fired with the datum index when a bar is tapped, or -1 for a miss. */
   onSelect?: (index: number) => void
+  /** Draw a legend above the plot, using each mark's `label`. */
+  showLegend?: boolean
+  /**
+   * Show a tooltip following the pointer. Off by default: it installs pointer
+   * handlers and a DOM overlay, which a static chart in a report has no use
+   * for.
+   */
+  tooltip?: boolean
   class?: string
   /**
    * Names the chart for assistive technology and titles the data table.
@@ -60,6 +95,7 @@ export interface PlotChartProps<T> {
  */
 export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   let canvas: HTMLCanvasElement | null = null
+  let tip: HTMLDivElement | null = null
 
   const readData = (): T[] => {
     const d = props.data
@@ -80,12 +116,45 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   const draw = (): void => {
     const el = canvas
     if (el === null) return
-    const w = props.width ?? el.clientWidth ?? 300
+    // `clientWidth` when no explicit width: a chart in a flexible column
+    // should fill it, and a hard default would either overflow or leave a gap.
+    const w = props.width ?? (el.clientWidth > 0 ? el.clientWidth : 300)
     const hgt = props.height ?? 200
     const ctx = prepareCanvas(el, w, hgt)
     if (ctx === null) return
-    const spec = buildSpec(readData(), w, hgt)
-    paint(ctx, renderChart(spec, canvasMeasure(ctx, FONT)), w, hgt, FONT)
+    const measure = canvasMeasure(ctx, FONT)
+    const rows = readData()
+
+    // The legend is laid out FIRST and the height it reports is taken off the
+    // plot, because a horizontal legend WRAPS — reserving a fixed strip would
+    // clip it on a narrow chart and waste space on a wide one.
+    let legendH = 0
+    const legendCmds: ReturnType<typeof renderChart> = []
+    if (props.showLegend === true) {
+      const series = resolveMarks(rows, props.marks)
+      const l = renderLegend(
+        series.map((x) => ({ label: x.label, color: x.color })),
+        { x: 0, y: 0, w, h: hgt },
+        {
+          fontSize: 11,
+          labelColor: (props.theme?.label ?? defaultTheme.label),
+          swatch: 10,
+          gap: 12,
+          orientation: 'horizontal',
+        },
+        measure,
+      )
+      legendH = l.height
+      for (const c of l.cmds) legendCmds.push(c)
+    }
+
+    const spec = buildSpec(rows, w, hgt - legendH)
+    const cmds = renderChart(spec, measure)
+    // Shift the plot down past the legend. Translating the emitted commands
+    // rather than threading an origin through the engine keeps the engine's
+    // coordinate space at (0,0) and this concern in the host.
+    const shifted = legendH === 0 ? cmds : cmds.map((c) => shiftCmd(c, legendH))
+    paint(ctx, [...legendCmds, ...shifted], w, hgt, FONT)
   }
 
   // Repaint whenever anything the spec reads changes. Registered here rather
@@ -97,6 +166,65 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     void props.marks
     draw()
   })
+
+  /**
+   * Which datum the pointer is over.
+   *
+   * A bar chart hit-tests the RECTS, so only a pointer actually inside a bar
+   * counts. Anything else falls back to nearest-by-x, which is what a
+   * line/area chart wants: sweeping horizontally should pick the point in the
+   * cursor's column however far the line sits vertically from the pointer.
+   */
+  const datumAt = (px: Double, py: Double, w: Double, hgt: Double): number => {
+    const el = canvas
+    if (el === null) return -1
+    const ctx = el.getContext('2d')
+    if (ctx === null) return -1
+    const measure = canvasMeasure(ctx, FONT)
+    const spec = buildSpec(readData(), w, hgt)
+    for (let i = 0; i < spec.series.length; i++) {
+      if (spec.series[i]!.kind !== 'bars') continue
+      const idx = hitBar(barsFor(spec, i, measure), px, py)
+      if (idx >= 0) return idx
+    }
+    const first = spec.series[0]
+    if (first === undefined || first.kind === 'bars') return -1
+    const l = layoutChart(spec, measure)
+    return hitNearestX(layoutSeriesPoints(first.values, l.plot, resolveYDomain(spec)), px)
+  }
+
+  const handleMove = (ev: MouseEvent): void => {
+    const el = canvas
+    const box = tip
+    if (el === null || box === null) return
+    const w = props.width ?? (el.clientWidth > 0 ? el.clientWidth : 300)
+    const hgt = props.height ?? 200
+    const rect = el.getBoundingClientRect()
+    const px = ev.clientX - rect.left
+    const py = ev.clientY - rect.top
+    const idx = datumAt(px, py, w, hgt)
+    if (idx < 0) {
+      box.style.display = 'none'
+      return
+    }
+    const rows = readData()
+    const series = resolveMarks(rows, props.marks)
+    const lines = tooltipLines(
+      tooltipAt(idx, resolveCategories(rows, props.x), series),
+    )
+    box.textContent = lines.join('\n')
+    box.style.display = 'block'
+    // Measure AFTER filling it: placement depends on the rendered size, and a
+    // stale size flips the tooltip on the wrong side at the edge.
+    const size = { w: box.offsetWidth, h: box.offsetHeight }
+    const at = placeTooltip({ x: px, y: py }, size, { x: 0, y: 0, w, h: hgt }, 12)
+    box.style.left = `${at.x}px`
+    box.style.top = `${at.y}px`
+  }
+
+  const handleLeave = (): void => {
+    if (tip !== null) tip.style.display = 'none'
+  }
 
   const handleClick = (ev: MouseEvent): void => {
     const el = canvas
@@ -149,9 +277,31 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       if (el !== null) draw()
     },
     onClick: handleClick,
+    ...(props.tooltip === true
+      ? { onMouseMove: handleMove, onMouseLeave: handleLeave }
+      : {}),
   })
 
-  if (props.accessibleTable === false) return canvasNode
+  const tooltipNode = (): VNode =>
+    h('div', {
+      // A stable hook so a consumer can style it and a test can find it —
+      // matching on the style string is fragile, and the accessible-table
+      // wrapper is absolutely positioned too.
+      'data-pyreon-chart-tooltip': 'true',
+      // `pointer-events: none` is load-bearing: without it the tooltip sits
+      // under the cursor, swallows the next mousemove, and the chart flickers
+      // as the tooltip hides and reappears.
+      style:
+        'position:absolute;display:none;pointer-events:none;white-space:pre;' +
+        'background:rgba(16,22,29,0.92);color:#f7f9fa;font:11px ' +
+        FONT +
+        ';padding:6px 8px;border-radius:4px;z-index:1',
+      ref: (el: HTMLDivElement | null) => {
+        tip = el
+      },
+    })
+
+  if (props.accessibleTable === false && props.tooltip !== true) return canvasNode
 
   // A real table rather than a longer label: a label is read as one
   // unstructured string, while a table can be navigated by row and column.
@@ -185,7 +335,13 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     )
   }
 
-  return h('div', { style: 'position:relative' }, canvasNode, () => table())
+  return h(
+    'div',
+    { style: 'position:relative' },
+    canvasNode,
+    ...(props.tooltip === true ? [tooltipNode()] : []),
+    ...(props.accessibleTable === false ? [] : [() => table()]),
+  )
 }
 
 export { layoutChart, renderChart }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { area, bars, line, points, resolveCategories, resolveMarks } from './marks'
+import { area, bars, groupedBars, line, points, resolveCategories, resolveMarks, stackedBars } from './marks'
 
 interface Row {
   month: string
@@ -70,5 +70,39 @@ describe('marks', () => {
   it('resolves categories, and none without an accessor', () => {
     expect(resolveCategories(DATA, (d) => d.month)).toEqual(['Jan', 'Feb'])
     expect(resolveCategories(DATA)).toEqual([])
+  })
+})
+
+describe('stacked and grouped marks', () => {
+  it('carry their own kinds', () => {
+    expect(stackedBars<Row>((d) => d.revenue).kind).toBe('stacked')
+    expect(groupedBars<Row>((d) => d.revenue).kind).toBe('grouped')
+  })
+
+  /**
+   * A single default colour would render a two-series chart in one colour,
+   * which reads as ONE series. The palette is indexed by position.
+   */
+  it('gives each series a distinct default colour', () => {
+    const out = resolveMarks(DATA, [
+      bars<Row>((d) => d.revenue),
+      line<Row>((d) => d.revenue),
+      area<Row>((d) => d.revenue),
+    ])
+    expect(new Set(out.map((s) => s.color)).size).toBe(3)
+  })
+
+  it('lets an explicit colour win over the palette', () => {
+    const [s] = resolveMarks(DATA, [bars<Row>((d) => d.revenue, { color: '#123456' })])
+    expect(s!.color).toBe('#123456')
+  })
+
+  it('labels a series, defaulting to its position', () => {
+    const out = resolveMarks(DATA, [
+      bars<Row>((d) => d.revenue, { label: 'Revenue' }),
+      line<Row>((d) => d.revenue),
+    ])
+    expect(out[0]!.label).toBe('Revenue')
+    expect(out[1]!.label).toBe('Series 2')
   })
 })

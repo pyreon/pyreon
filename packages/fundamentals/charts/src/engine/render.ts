@@ -1,19 +1,22 @@
 // Marks → draw commands. The whole chart, as plain data.
 
 import { computeLayout, layoutBars, layoutSeriesPoints } from './layout'
+import { layoutGroupedBars, layoutStackedBars, stackedExtent } from './stack'
 import type { LayoutConfig, PlotLayout } from './layout'
 import { extent, niceDomain } from './scale'
 import type { DrawCmd, Domain, MeasureText, Pt, Rect, Double } from './types'
 
 /** One drawable series. */
 export interface Series {
-  kind: 'bars' | 'line' | 'area' | 'points'
+  kind: 'bars' | 'line' | 'area' | 'points' | 'stacked' | 'grouped'
   values: Double[]
   color: string
   /** Stroke width for line/area outlines; ignored by bars and points. */
   width: Double
   /** Point radius; ignored by everything else. */
   radius: Double
+  /** Name for the legend, the tooltip and the accessible table. */
+  label: string
 }
 
 export interface ChartTheme {
@@ -54,10 +57,20 @@ export const defaultTheme: ChartTheme = {
  */
 export function resolveYDomain(spec: ChartSpec): Domain {
   if (spec.yDomain !== undefined) return spec.yDomain
+  // A STACK's domain is its tallest TOTAL, not its tallest value — taking the
+  // max of the individual series would clip the stack at the top.
+  const stacked = spec.series.filter((s) => s.kind === 'stacked')
+  if (stacked.length > 0) {
+    const e = stackedExtent(stacked.map((s) => s.values))
+    const others: Double[] = []
+    for (const s of spec.series) if (s.kind !== 'stacked') for (const v of s.values) others.push(v)
+    const max = others.length > 0 ? Math.max(e.max, extent(others).max) : e.max
+    return niceDomain({ min: 0.0, max }, 5.0)
+  }
   const all: Double[] = []
   let hasBars = false
   for (const s of spec.series) {
-    if (s.kind === 'bars' || s.kind === 'area') hasBars = true
+    if (s.kind === 'bars' || s.kind === 'area' || s.kind === 'grouped') hasBars = true
     for (const v of s.values) all.push(v)
   }
   const e = extent(all)
@@ -137,7 +150,24 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
     })
   }
 
+  // Stacked and grouped series are laid out TOGETHER — each needs to know the
+  // others to place its bars — so they are drawn as a set before the
+  // independent marks rather than one at a time in the loop below.
+  const stackedSeries = spec.series.filter((s) => s.kind === 'stacked')
+  if (stackedSeries.length > 0) {
+    for (const seg of layoutStackedBars(stackedSeries.map((s) => s.values), plot, yDomain, 0.25)) {
+      out.push({ kind: 'rect', rect: seg.rect, fill: stackedSeries[seg.seriesIndex]!.color })
+    }
+  }
+  const groupedSeries = spec.series.filter((s) => s.kind === 'grouped')
+  if (groupedSeries.length > 0) {
+    for (const seg of layoutGroupedBars(groupedSeries.map((s) => s.values), plot, yDomain, 0.25)) {
+      out.push({ kind: 'rect', rect: seg.rect, fill: groupedSeries[seg.seriesIndex]!.color })
+    }
+  }
+
   for (const s of spec.series) {
+    if (s.kind === 'stacked' || s.kind === 'grouped') continue
     if (s.kind === 'bars') {
       for (const r of layoutBars(s.values, plot, yDomain, 0.25)) {
         out.push({ kind: 'rect', rect: r, fill: s.color })

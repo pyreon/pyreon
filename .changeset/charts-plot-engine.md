@@ -46,4 +46,7 @@ component with a `type` prop, because a pie has no cartesian plot — no axes, n
 gutters, no shared domain — and folding them together would make every bar chart
 carry the radial trigonometry it never uses.
 
+`<PlotChart>` also does legends, hover tooltips, stacked and grouped bars, a
+per-series default palette, and fills its container when no width is given.
+
 The existing ECharts-backed `Chart` export is unchanged.

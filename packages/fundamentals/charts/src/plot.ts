@@ -14,7 +14,7 @@ export { GaugeChart, PieChart } from './engine/PieChart'
 export type { GaugeChartProps, PieChartProps } from './engine/PieChart'
 
 // Marks
-export { area, bars, line, points, resolveCategories, resolveMarks } from './engine/marks'
+export { area, bars, groupedBars, line, points, resolveCategories, resolveMarks, stackedBars } from './engine/marks'
 export type { Accessor, Mark, MarkOptions } from './engine/marks'
 
 // Core render + layout

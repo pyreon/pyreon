@@ -215,7 +215,7 @@ describe('tooltip and layout edges', () => {
   it('renders a chart with a pinned domain and no grid', () => {
     const spec: ChartSpec = {
       width: 200, height: 100,
-      series: [{ kind: 'points', values: [1, 2], color: '#000', width: 1, radius: 2 }],
+      series: [{ kind: 'points', values: [1, 2], color: '#000', width: 1, radius: 2, label: 'S' }],
       categories: [], theme: defaultTheme,
       showXAxis: true, showYAxis: true, showGrid: false,
       yDomain: { min: 0, max: 10 },
@@ -229,7 +229,7 @@ describe('remaining behaviour under unusual inputs', () => {
   it('barsFor returns nothing for a missing or non-bar series', () => {
     const spec: ChartSpec = {
       width: 200, height: 100,
-      series: [{ kind: 'line', values: [1, 2], color: '#000', width: 1, radius: 2 }],
+      series: [{ kind: 'line', values: [1, 2], color: '#000', width: 1, radius: 2, label: 'S' }],
       categories: [], theme: defaultTheme,
       showXAxis: false, showYAxis: false, showGrid: false,
     }
@@ -240,7 +240,7 @@ describe('remaining behaviour under unusual inputs', () => {
   it('barsFor returns the rects for a bar series', () => {
     const spec: ChartSpec = {
       width: 200, height: 100,
-      series: [{ kind: 'bars', values: [1, 2], color: '#000', width: 1, radius: 2 }],
+      series: [{ kind: 'bars', values: [1, 2], color: '#000', width: 1, radius: 2, label: 'S' }],
       categories: [], theme: defaultTheme,
       showXAxis: false, showYAxis: false, showGrid: false,
     }
@@ -405,7 +405,7 @@ describe('degenerate series and domains', () => {
 
   it('extends an all-negative bar domain up to zero, not down from it', () => {
     const d = resolveYDomain(spec({
-      series: [{ kind: 'bars', values: [-5, -10], color: '#000', width: 1, radius: 2 }],
+      series: [{ kind: 'bars', values: [-5, -10], color: '#000', width: 1, radius: 2, label: 'S' }],
     }))
     expect(d.max).toBeGreaterThanOrEqual(0)
     expect(d.min).toBeLessThan(0)
@@ -413,7 +413,7 @@ describe('degenerate series and domains', () => {
 
   it('extends an all-positive bar domain down to zero', () => {
     const d = resolveYDomain(spec({
-      series: [{ kind: 'bars', values: [5, 10], color: '#000', width: 1, radius: 2 }],
+      series: [{ kind: 'bars', values: [5, 10], color: '#000', width: 1, radius: 2, label: 'S' }],
     }))
     expect(d.min).toBe(0)
   })
@@ -423,7 +423,7 @@ describe('degenerate series and domains', () => {
   it('draws no polyline or polygon for a single-point line or area', () => {
     for (const kind of ['line', 'area'] as const) {
       const cmds = renderChart(spec({
-        series: [{ kind, values: [5], color: '#000', width: 2, radius: 2 }],
+        series: [{ kind, values: [5], color: '#000', width: 2, radius: 2, label: 'S' }],
       }), measure)
       expect(cmds.filter((c) => c.kind === 'polyline' || c.kind === 'polygon')).toHaveLength(0)
     }
@@ -432,7 +432,7 @@ describe('degenerate series and domains', () => {
   it('draws them once there are two points', () => {
     for (const kind of ['line', 'area'] as const) {
       const cmds = renderChart(spec({
-        series: [{ kind, values: [5, 8], color: '#000', width: 2, radius: 2 }],
+        series: [{ kind, values: [5, 8], color: '#000', width: 2, radius: 2, label: 'S' }],
       }), measure)
       expect(cmds.filter((c) => c.kind === 'polyline' || c.kind === 'polygon')).toHaveLength(1)
     }
@@ -457,5 +457,64 @@ describe('degenerate series and domains', () => {
 
   it('floors a non-positive log input to the domain minimum', () => {
     expect(Number.isFinite(scaleLog({ min: 1, max: 100 }, 0, 100, 0))).toBe(true)
+  })
+})
+
+describe('stacked and grouped rendering', () => {
+  const spec = (over: Partial<ChartSpec>): ChartSpec => ({
+    width: 300, height: 150, series: [], categories: [], theme: defaultTheme,
+    showXAxis: false, showYAxis: false, showGrid: false, ...over,
+  })
+  const s = (kind: 'stacked' | 'grouped', values: number[], color: string) => ({
+    kind, values, color, width: 1, radius: 2, label: color,
+  })
+
+  /** A stack's domain is its tallest TOTAL — the max of the individual
+   *  series would clip the stack at the top. */
+  it('takes the domain from the stack total', () => {
+    const d = resolveYDomain(spec({ series: [s('stacked', [10, 20], '#a'), s('stacked', [5, 5], '#b')] }))
+    expect(d.max).toBeGreaterThanOrEqual(25)
+  })
+
+  it('draws a rect per stacked segment, coloured by its series', () => {
+    const cmds = renderChart(
+      spec({ series: [s('stacked', [10, 20], '#aa0000'), s('stacked', [5, 5], '#00bb00')] }),
+      measure,
+    )
+    const rects = cmds.filter((c) => c.kind === 'rect')
+    expect(rects).toHaveLength(4)
+    expect(new Set(rects.map((c) => (c.kind === 'rect' ? c.fill : ''))).size).toBe(2)
+  })
+
+  it('draws grouped bars side by side', () => {
+    const cmds = renderChart(
+      spec({ series: [s('grouped', [10, 20], '#aa0000'), s('grouped', [5, 5], '#00bb00')] }),
+      measure,
+    )
+    expect(cmds.filter((c) => c.kind === 'rect')).toHaveLength(4)
+  })
+
+  it('mixes a stack with an independent line', () => {
+    const cmds = renderChart(
+      spec({
+        series: [
+          s('stacked', [10, 20], '#aa0000'),
+          { kind: 'line', values: [30, 30], color: '#0000cc', width: 2, radius: 2, label: 'L' },
+        ],
+      }),
+      measure,
+    )
+    expect(cmds.filter((c) => c.kind === 'rect')).toHaveLength(2)
+    expect(cmds.filter((c) => c.kind === 'polyline')).toHaveLength(1)
+  })
+
+  it('widens the domain to cover a line drawn above the stack', () => {
+    const d = resolveYDomain(spec({
+      series: [
+        s('stacked', [10], '#a'),
+        { kind: 'line', values: [500], color: '#b', width: 2, radius: 2, label: 'L' },
+      ],
+    }))
+    expect(d.max).toBeGreaterThanOrEqual(500)
   })
 })
