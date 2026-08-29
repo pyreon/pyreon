@@ -54,7 +54,14 @@ export type { A11yInput, A11ySeries, A11yTable } from './engine/a11y'
 // Large-series decimation
 export { lttb, minMaxBuckets } from './engine/decimate'
 
-// Web backend
+// Web backend — canvas
 export { canvasMeasure, paint, prepareCanvas } from './engine/canvas-web'
+
+// SVG backend — a pure DrawCmd[] → string, so it runs on a server as readily
+// as in a browser. `chartToSvg` is the one-call form.
+export { chartToSvg } from './engine/svg-chart'
+export type { ChartToSvgOptions } from './engine/svg-chart'
+export { measureApprox, renderSvg, svgCommand } from './engine/svg'
+export type { SvgOptions } from './engine/svg'
 
 export type { Domain, DrawCmd, Double, MeasureText, Pt, Rect, Tick } from './engine/types'

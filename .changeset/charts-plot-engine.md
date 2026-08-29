@@ -49,4 +49,10 @@ carry the radial trigonometry it never uses.
 `<PlotChart>` also does legends, hover tooltips, stacked and grouped bars, a
 per-series default palette, and fills its container when no width is given.
 
+A second backend renders the same command list to an `<svg>` string. It is a
+pure function, so `chartToSvg(...)` produces a chart in an SSG build, a
+serverless function or an email pipeline — no DOM, no canvas, no measurement
+context — and its output is deterministic, which makes an SVG snapshot a real
+assertion rather than a flake.
+
 The existing ECharts-backed `Chart` export is unchanged.
