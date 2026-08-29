@@ -3792,6 +3792,28 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
         // exists, so it is emitted when the initializer cannot supply one.
         // A NON-empty literal is left alone: its elements already type it, and
         // annotating would only risk disagreeing with them.
+        // A `Double`-annotated local initialized with an INTEGER literal:
+        // `const scale: Double = 1`. The literal's own value is integral, so
+        // nothing about it says Double, and it emitted `1` — an Int, which
+        // then poisons every expression it takes part in ("binary operator '*'
+        // cannot be applied to operands of type 'Int' and 'Double'"). The
+        // annotation is the only evidence, so emit the literal AS a Double.
+        // Writing `1.0` in the source does not help: its VALUE is integral too.
+        if (
+          s.declaredType !== undefined &&
+          // Either a resolved float number, or the `Double`/`Float` alias the
+          // source spells directly — the annotation arrives as a typeRef here
+          // because the alias is not resolved at this point.
+          ((s.declaredType.kind === 'number' && s.declaredType.float === true) ||
+            (s.declaredType.kind === 'typeRef' &&
+              (s.declaredType.name === 'Double' || s.declaredType.name === 'Float'))) &&
+          s.expr.kind === 'literal' &&
+          typeof s.expr.value === 'number' &&
+          Number.isInteger(s.expr.value)
+        ) {
+          const kw = s.mutable ? 'var' : 'let'
+          return `${kw} ${swiftIdent(s.name)} = ${s.expr.value}.0`
+        }
         const emptyLiteral =
           (s.expr.kind === 'array' && s.expr.elements.length === 0) ||
           (s.expr.kind === 'object' && s.expr.fields.length === 0)

@@ -9859,6 +9859,18 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
         )
         return { kind: 'literal', value: '' }
       }
+      // A numeric literal WRITTEN with a decimal point is a Double even when
+      // its value is integral: `10.0` and `0.0` are `Number.isInteger`, so the
+      // value alone cannot tell them from `10` and `0`, and they emitted as
+      // Int — poisoning every expression they took part in. The source text is
+      // the only evidence, so read it off `raw`. (`2.5` needs no help; its
+      // value is already fractional.)
+      if (typeof node.value === 'number') {
+        const raw = (node as { raw?: string }).raw
+        if (typeof raw === 'string' && /[.eE]/.test(raw)) {
+          return { kind: 'literal', value: node.value, float: true }
+        }
+      }
       return { kind: 'literal', value: node.value }
     }
     case 'Identifier':
