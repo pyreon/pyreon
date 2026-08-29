@@ -18,6 +18,16 @@ describe('theme-engine registration seam', () => {
     const theme = { rootSize: 20 }
     expect(engine.enrichTheme(theme)).toBe(theme)
     expect(engine.themeToCssVars(theme)).toEqual({ vars: {}, css: '' })
+    // The whole fallback is the "degrade, never throw" contract, so assert
+    // every member of it rather than the two that happen to be easiest. The
+    // two below were the uncovered half, and `responsiveStyles` is the one a
+    // theme-only rocketstyle chain calls -- with no unistyle in the graph
+    // there is no responsive engine to render through, so emitting NOTHING is
+    // the correct answer and a bare-rocketstyle app stays exactly as styled.
+    // `cpseRewrite` is optional on the interface (it reuses styler's rewrite
+    // slot), and takes the css text plus the vars-out record it may write into.
+    expect(engine.cpseRewrite?.('a{b:c}', {})).toBe('a{b:c}')
+    expect(engine.responsiveStyles({ color: 'red' }, (x: unknown) => x)).toBeUndefined()
   })
 
   it('setThemeEngine registers an engine that getThemeEngine returns', async () => {
