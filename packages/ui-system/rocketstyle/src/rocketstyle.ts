@@ -102,6 +102,15 @@ const cloneAndEnhance: CloneAndEnhance = (defaultOpts, opts) => {
  * for — this default covers the base declarations, which is what a `.theme()`
  * with no styles is asking for.
  */
+// COVERAGE: the interpolated callback below runs only when the styler RESOLVES
+// the rule, i.e. during a real render. Every rendering test in this package is
+// a `*.browser.test.tsx` -- the node tests here are structural (chaining,
+// attrs, compose) -- so the node coverage run cannot reach it by construction.
+// It IS covered, in real Chromium, by `theme-only-chain-styles.browser.test.tsx`,
+// which asserts that a `.theme()`-only chain renders its values as CSS and that
+// an explicit `.styles()` chain does not double-apply. Deleting that test
+// removes this code's only cover.
+/* v8 ignore start */
 const defaultThemeBridge = (css: any) => css`
   ${(props: Record<string, any>) => {
     const rocketstyle = props.$rocketstyle
@@ -113,6 +122,7 @@ const defaultThemeBridge = (css: any) => css`
     return typeof rendered === 'function' ? rendered(props) : (rendered ?? '')
   }}
 `
+/* v8 ignore stop */
 
 // rocketComponent
 // --------------------------------------------------------
