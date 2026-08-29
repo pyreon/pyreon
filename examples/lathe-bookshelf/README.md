@@ -24,7 +24,31 @@ whether the generated URL, method and decode are correct.
 | `src/gen/queries/*.ts` | one `useQuery` / `useMutation` hook per operation |
 | `src/gen/mocks.ts` | deterministic fixtures for `@pyreon/http`'s mock middleware |
 | `src/gen/atlas.scenarios.ts` | one scenario per enum value, for the workbench |
+| `src/gen/faker.ts` | one `createX(overrides?)` factory per model |
+| `src/gen/docs/*.md` | reference pages — contract, hook name, and native reach |
+| `src/gen/dev.ts` | the dev entry: fixtures + factories, node-safe |
+| `src/gen/package.json` | `sideEffects`, so the whole graph tree-shakes |
 | `src/gen/*.native.tsx` | self-contained per-tag modules for the native compiler |
+
+## Two halves, and only one of them ships
+
+`src/main.tsx` imports hooks from `./gen`. `src/tests/` imports factories and
+fixtures from `./gen/dev`. That split is enforced by the generator rather than
+by discipline: `index.ts` never NAMES `./faker` or `./mocks`, so there is no
+import edge a bundler could follow even if it ignored the `sideEffects` marker.
+
+```bash
+bun run build
+grep -c '@faker-js' dist/assets/*.js   # 0
+```
+
+```bash
+bun run test    # the dev surface, consumed the way a project consumes it
+```
+
+The tests validate every generated factory against the schema emitted by the
+same run — which is the assertion that can actually fail if a constraint is
+mis-read.
 
 ## The multiplatform half
 

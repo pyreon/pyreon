@@ -6,7 +6,7 @@ export default {
     input: './openapi.yaml',
     output: './src/gen',
     target: 'multiplatform' as const,
-    plugins: ['schemas', 'client', 'queries', 'mocks', 'atlas'] as const,
+    plugins: ['schemas', 'client', 'queries', 'mocks', 'faker', 'atlas', 'docs'] as const,
     // Overrides the spec's `servers[0].url` so the demo talks to the local dev
     // server. It stays ABSOLUTE deliberately: PMTC bakes the request URL at
     // compile time, so a relative base would make every operation web-only and

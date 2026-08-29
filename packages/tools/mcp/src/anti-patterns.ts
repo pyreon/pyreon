@@ -29,6 +29,7 @@ export type AntiPatternCategory =
   | 'islands'
   | 'ssr'
   | 'ssg'
+  | 'bundling'
   | 'testing'
   | 'lifecycle'
   | 'build'
@@ -80,6 +81,7 @@ const CATEGORY_MAP: Record<string, AntiPatternCategory> = {
   'Islands Mistakes': 'islands',
   'SSR-rendering Mistakes': 'ssr',
   'SSG / e2e Test-Server Mistakes': 'ssg',
+  'Bundling Mistakes': 'bundling',
   'SSG / ISR Correctness': 'ssg',
   'Testing Mistakes': 'testing',
   'Lifecycle & Cleanup Mistakes': 'lifecycle',
@@ -101,6 +103,7 @@ export const ANTI_PATTERN_CATEGORIES: readonly AntiPatternCategory[] = [
   'islands',
   'ssr',
   'ssg',
+  'bundling',
   'testing',
   'lifecycle',
   'build',

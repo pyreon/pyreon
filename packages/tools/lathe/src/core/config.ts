@@ -17,8 +17,10 @@ export type PluginName =
   | 'client'
   | 'queries'
   | 'mocks'
+  | 'faker'
   | 'components'
   | 'atlas'
+  | 'docs'
 
 export const ALL_PLUGINS: readonly PluginName[] = [
   'types',
@@ -26,8 +28,10 @@ export const ALL_PLUGINS: readonly PluginName[] = [
   'client',
   'queries',
   'mocks',
+  'faker',
   'components',
   'atlas',
+  'docs',
 ]
 
 export const DEFAULT_PLUGINS: readonly PluginName[] = ['schemas', 'client', 'queries']
@@ -53,9 +57,16 @@ export const PLUGIN_REQUIRES: Readonly<Record<PluginName, readonly PluginName[]>
   client: ['schemas'],
   queries: ['client'],
   mocks: ['client'],
+  // The factories exist to produce data the SCHEMA accepts -- constraints
+  // choose their generators. Without schemas there is nothing for them to be
+  // correct against, and no round-trip test that could prove they are.
+  faker: ['schemas'],
   components: ['queries'],
   // Scenarios key the preview components; the wrapper installs the mocks.
   atlas: ['components', 'mocks'],
+  // Markdown rendered from the IR. It imports nothing and is imported by
+  // nothing, so it is the one plugin with no edges at all.
+  docs: [],
 }
 
 /**

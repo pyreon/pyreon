@@ -1,11 +1,11 @@
 ---
 title: "Spec-to-Client Generator — API Reference"
-description: "OpenAPI in, typed Pyreon client out — schemas, endpoints, queries, mocks and Atlas scenarios, with a multiplatform mode that proves its own output lowers to Swi"
+description: "OpenAPI in, typed Pyreon client out — schemas, endpoints, queries, mocks, faker factories, Markdown reference and Atlas scenarios, with a multiplatform mode tha"
 ---
 
 # @pyreon/lathe — API Reference
 
-> **Generated** from `lathe`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest.
+> **Generated** from `lathe`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [lathe](/docs/lathe).
 
 Lathe reads an OpenAPI 3.x document and emits a client for the Pyreon stack: `@pyreon/validate` schemas, `@pyreon/http` endpoint declarations, `@pyreon/query` hooks, deterministic mock fixtures, and `@pyreon/atlas` scenarios derived from the spec's own enums and examples. The spec parser is first-party — a YAML reader scoped to the OpenAPI subset that REFUSES anchors, tags and tab indentation rather than mis-reading them — so there is no third-party spec dependency to trust. What separates it from a conventional generator is `target: 'multiplatform'`: the native compiler (PMTC) lowers only a SUBSET of TypeScript and has no module graph, so it recognises a client, a schema and a call only when they share ONE file's top level. Hand-written code drifts out of that constantly; generated code need not, so Lathe emits a self-contained module per tag — a layout no human would maintain and exactly the one the compiler wants — then runs the real compiler over its own output and checks for the POSITIVE marker (`PyreonQuery<`, `PyreonZodSchema_`), because zero warnings is not evidence of lowering.
 
@@ -18,7 +18,9 @@ Lathe reads an OpenAPI 3.x document and emits a client for the Pyreon stack: `@p
 - The multiplatform claim is MEASURED: `verifyNative` runs the real `@pyreon/native-compiler` on both targets and asserts the positive marker plus the absence of leaked web-only symbols. A `does NOT compile` warning is treated as broken, not advisory, and an absent compiler SKIPS loudly rather than passing
 - Per-operation native reach with a reason in spec terms: a path parameter is supplied at runtime and PMTC bakes URLs at compile time, so that operation is reported `web-only` by name instead of silently degrading
 - Plugin selection is expanded along the IMPORT EDGES of the emitted code, not refused: `components` pulls in `queries` -&gt; `client` -&gt; `schemas` because `components.tsx` imports the hooks, and the report names what came along. Selecting a plugin without what its output imports previously produced files referencing modules that were never written - output that looks complete and does not resolve. `components` itself is independent of Atlas: the previews are ordinary Pyreon components over the generated hooks, so a project that wants them without a workbench gets exactly that
-- Every emitter is opt-in via `plugins` (`types`/`schemas`/`client`/`queries`/`mocks`/`atlas`) — schemas alone is a first-class use, and `target` is ADDITIVE on top of the selection rather than a separate output, so asking for schemas gets schemas on both targets
+- Every emitter is opt-in via `plugins` (`types`/`schemas`/`client`/`queries`/`mocks`/`faker`/`components`/`atlas`/`docs`) — schemas alone is a first-class use, and `target` is ADDITIVE on top of the selection rather than a separate output, so asking for schemas gets schemas on both targets
+- The output is a LAYERED graph, not one barrel: `index.ts` carries the production surface, `dev.ts` the fixtures/factories/previews, and `endpoints/index.ts` + `queries/index.ts` one layer each, so a consumer can take exactly the layer it needs. An emitted `package.json` declares the output side-effect-free (an ARRAY naming `atlas.wrapper.tsx`, which really does call `installMocks()` at module scope, rather than a blanket `false` that would be a lie) — measured with Vite on a 120-operation spec, importing one hook went from 30.7 kB to 5.7 kB, and the barrel now costs exactly what the per-tag import costs
+- `faker` emits one factory per model (`createBook(overrides?)`), and its rule is that a factory must produce data its OWN schema accepts: `min`/`max`/`pattern`/`enum` choose the generator and the field-name guess only applies where the spec states nothing. Depth is threaded explicitly so a recursive model terminates. `docs` renders Markdown with frontmatter — the generated HOOK name and its import site next to the HTTP contract, plus the one column a rendering of the spec cannot produce: whether the operation reaches iOS and Android, and when it does not, why
 - Several specs in ONE pass via `projects: [{ name, input, output }]` — each to its own path (typically another package in the workspace, which is the intended use), with `target`/`plugins` written once at the top level and overridable per project. `lathe check` covers them all and fails if any is stale; a CLI `--out` alongside `projects` is REFUSED rather than applied to every one
 - A generated `index.ts` barrel and a `keys.ts` query-key registry: one import site regardless of how operations were tagged, and invalidation keys derived from the endpoints rather than hand-written literals that drift the moment a path changes (`keys.books.listBooks.all` matches every call; `.of(args)` matches one)
 - The Atlas story is FULLY generated: `components.tsx` emits one browsable preview per read operation whose variant axis is the DATA STATE (a real prop, so Atlas infers a control), `atlas.scenarios.ts` keys those exact component names, and `atlas.wrapper.tsx` supplies the QueryClientProvider with the generated mocks installed so every card renders with NO server. Measured on the example: `atlas scan` reports 2 components, 8 scenarios, 8 verified, 0 failing, from an `atlas.config.ts` that names no component, scenario or provider
@@ -66,6 +68,7 @@ lathe / Bookshelf 1.2.0
 | Symbol | Kind | Summary |
 | --- | --- | --- |
 | [`generate`](#generate) | function | The whole pipeline, pure: spec text in, file CONTENTS out. |
+| [`resolveConfig`](#resolveconfig) | function | Fills defaults and validates one project's settings, and is where the whole option surface lives: `plugins` (which emitt |
 | [`verifyNative`](#verifynative) | function | Runs the real native compiler over the generated `.native.tsx` modules on both targets and returns a per-file verdict. |
 | [`loadOpenApi`](#loadopenapi) | function | Parses an OpenAPI 3.x document (JSON or YAML text) into the spec-agnostic IR. |
 
@@ -98,6 +101,41 @@ for (const [id, r] of reach) {
 - Assuming the `.native.tsx` modules replace the web output. They are ADDITIVE: the web files are byte-identical whether the target is `web` or `multiplatform`.
 - Editing generated files. Every file carries a DO-NOT-EDIT banner and is overwritten on the next run; change the spec or the emitter.
 - Expecting `s.enum` in native output. Enums do not lower, so the native path narrows them to `s.string()` — the constraint is genuinely lost there, which is why the two layouts are emitted separately rather than shared.
+
+---
+
+### resolveConfig `function`
+
+```ts
+resolveConfig(section: LatheSection | undefined): ResolvedConfig
+```
+
+Fills defaults and validates one project's settings, and is where the whole option surface lives: `plugins` (which emitters run), `client` (`pyreon` | `fetch` | `axios` | `ky`), `validator` (`pyreon` | `zod`), `target` (`web` | `multiplatform`), `baseUrl` and `strictNative`. A plugin selection is EXPANDED to cover what its output imports rather than refused -- asking for `components` gets `queries`, `client` and `schemas` too, and the CLI report says what came along. Use `resolveProjects` instead when the config may declare `projects: [...]`; it always returns a LIST, so a single-project config is a one-element list rather than a special case.
+
+**Example**
+
+```tsx
+import { generate, resolveConfig } from '@pyreon/lathe'
+
+const config = resolveConfig({
+  input: './openapi.yaml',
+  output: './src/gen',
+  // Nine emitters. Omit one and it does not run; schemas alone is a first-class use.
+  plugins: ['schemas', 'client', 'queries', 'mocks', 'faker', 'docs'],
+  client: 'pyreon',
+  validator: 'zod',
+})
+
+const { files } = generate(specText, config)
+```
+
+**Common mistakes**
+
+- Expecting `plugins: ['faker']` to emit ONLY factories. It expands to include `schemas`, because the factories exist to produce data the schema accepts and are typed against the model types it exports.
+- Combining `target: 'multiplatform'` with a non-Pyreon `client`. It is REFUSED, not downgraded: PMTC lowers `createHttp` and `api.endpoint(...)` by name and cannot see through axios or ky, so native modules over one would lower to nothing -- the exact silent regression that target exists to catch.
+- Importing `installMocks`, `mockRoutes` or the faker factories from the generated `index.ts`. They are NOT there by design -- they live in `./dev`, so a page bundle has no import edge that could reach a fixture table or `@faker-js/faker`.
+- Assuming `validator: 'pyreon'` lowers more natively than `zod` because it is first-party. Measured against the real compiler it is the OPPOSITE: nested objects and arrays of objects lower under zod and are DROPPED under `s.*`, so `zod` is the better native choice for any spec with nested models.
+- Setting `plugins` and expecting the generated `package.json` to change. The `sideEffects` marker is emitted unconditionally -- it is a statement ABOUT the output rather than a plugin's output -- and it names `./atlas.wrapper.tsx` only when `atlas` is selected, because that file alone has a module-scope side effect.
 
 ---
 

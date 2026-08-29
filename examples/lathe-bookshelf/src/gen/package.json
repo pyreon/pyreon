@@ -1,0 +1,6 @@
+{
+  "type": "module",
+  "sideEffects": [
+    "./atlas.wrapper.tsx"
+  ]
+}

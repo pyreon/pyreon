@@ -67,7 +67,19 @@ beforeAll(async () => {
     writeFileSync(join(dir, 'schemas.ts'), file.contents)
     modules.set(validator, (await import(join(dir, 'schemas.ts'))) as Schemas)
   }
-})
+  // 60s, against vitest's 10s hook default, which this hook blew under load.
+  //
+  // Same class as `faker-runtime.test.ts`: the hook writes TypeScript and then
+  // COLD-imports it, so each import pays a vitest transform of a file that
+  // cannot be cached because it did not exist a moment ago, and one pulls
+  // `zod`. Fewer imports than that sibling, but the cost here is dominated by
+  // cold transform under contention rather than by the import COUNT, so a
+  // proportionally smaller budget would just move the cliff instead of
+  // removing it.
+  //
+  // A generous hook budget is close to free: it does not slow the happy path,
+  // it only bounds how long a genuinely hung hook takes to report.
+}, 60_000)
 
 afterAll(() => {
   rmSync(ROOT, { recursive: true, force: true })

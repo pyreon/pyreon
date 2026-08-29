@@ -5,16 +5,18 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview",
+    "dev": "vite",
     "gen": "lathe generate",
     "gen:check": "lathe check",
+    "gen:watch": "lathe generate --watch",
     "lint": "oxlint .",
-    "typecheck": "tsc --noEmit",
-    "gen:watch": "lathe generate --watch"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@faker-js/faker": "^10.1.0",
     "@pyreon/core": "workspace:*",
     "@pyreon/http": "workspace:*",
     "@pyreon/query": "workspace:*",
@@ -26,6 +28,8 @@
     "@pyreon/lathe": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vite-plugin": "workspace:*",
-    "vite": "^8.2.2"
+    "@pyreon/vitest-config": "workspace:*",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
   }
 }

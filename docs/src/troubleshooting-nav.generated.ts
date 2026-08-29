@@ -41,6 +41,10 @@ export const TROUBLESHOOTING_GROUPS: SidebarGroup[] = [
         "slug": "troubleshooting/ssg"
       },
       {
+        "text": "Bundling Mistakes",
+        "slug": "troubleshooting/bundling"
+      },
+      {
         "text": "Testing Mistakes",
         "slug": "troubleshooting/testing"
       },
