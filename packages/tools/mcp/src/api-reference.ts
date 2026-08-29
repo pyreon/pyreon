@@ -5458,6 +5458,67 @@ for (const { id, position } of positioned) flow.updateNode(id, { position })`,
 - Passing \`theme\` as a plain VALUE and expecting runtime swaps — a value is applied once at init; pass an ACCESSOR (\`theme: () => (dark() ? 'dark' : null)\`) and a flip disposes + re-inits with the option, group, and events preserved
 - Relying on the default merge when data shrinks — a signal change that removes a series/point leaves the old one; pass \`notMerge\` or \`replaceMerge="series"\``,
   },
+
+  'charts/PlotChart': {
+    signature: '<T>(props: PlotChartProps<T>) => VNodeChild',
+    example: `import { PlotChart, bars, line } from '@pyreon/charts/plot'
+import { signal } from '@pyreon/reactivity'
+
+interface Row { month: string; revenue: number; target: number }
+const sales = signal<Row[]>([{ month: 'Jan', revenue: 120, target: 100 }])
+
+<PlotChart
+  data={() => sales()}
+  x={(d: Row) => d.month}
+  marks={[bars((d: Row) => d.revenue), line((d: Row) => d.target)]}
+  showLegend
+  tooltip
+  title="Monthly revenue"
+  height={240}
+/>`,
+    notes: `Pyreon's OWN charting engine, from the \`@pyreon/charts/plot\` subpath — no ECharts, no third-party engine. Marks are IMPORTED BINDINGS (\`bars\`, \`line\`, \`area\`, \`points\`, \`stackedBars\`, \`groupedBars\`), so tree-shaking is structural rather than a build flag: a bar chart never pulls the radial trigonometry, the decimation or the time scales. Geometry is pure TypeScript over plain data and the platform half is a short backend that walks a flat \`DrawCmd[]\`, which is why the same source is the path to native rendering. Renders to canvas with a device-pixel-ratio-correct surface; \`showLegend\`, \`tooltip\` and a title are opt-in props, and width falls back to the container's own so a chart in a flexible column fills it. See also: chartToSvg, PieChart.`,
+    mistakes: `- Importing from \`@pyreon/charts\` instead of \`@pyreon/charts/plot\` — the default entry is the ECharts bridge; the two engines are separate subpaths and mixing them pulls ECharts back into the bundle
+- Passing \`marks\` as a string type name — a mark is an imported FUNCTION, which is exactly what makes the unused ones droppable; there is no string-keyed registry to tree-shake around
+- Expecting two series to be told apart without a legend — colours come from a per-series palette, but \`showLegend\` is opt-in and a chart with neither legend nor tooltip is unlabelled
+- Reaching for \`tooltip\` on a static chart in a report — it installs pointer handlers and a DOM overlay, which is why it is off by default`,
+  },
+
+  'charts/chartToSvg': {
+    signature: '<T>(options: ChartToSvgOptions<T>) => string',
+    example: `import { chartToSvg, bars } from '@pyreon/charts/plot'
+
+interface Row { month: string; revenue: number }
+const rows: Row[] = [{ month: 'Jan', revenue: 120 }]
+
+const svg = chartToSvg({
+  data: rows,
+  marks: [bars((d: Row) => d.revenue)],
+  x: (d: Row) => d.month,
+  title: 'Monthly revenue',
+})
+// -> '<svg xmlns="..." role="img" aria-labelledby=...>...</svg>'`,
+    notes: 'Render a chart to a standalone `<svg>` STRING. Pure — no DOM, no canvas, no measurement context — so it runs in an SSG build, a serverless function or an email pipeline, where a canvas surface does not exist. Output is deterministic (coordinates rounded to two decimals, negative zero normalised), which makes an SVG snapshot a real assertion about geometry rather than a pixel flake. Labels are XML-escaped. The `<svg>` is `role="img"` named by its `<title>`; given a title and no description, the long form is DERIVED from the data via `describeChart`. Text width comes from `measureApprox` by default — an honest estimate, since a server has no font metrics; pass `canvasMeasure(ctx, font)` in a browser when label widths must be exact. See also: PlotChart.',
+    mistakes: `- Expecting exact label widths on a server — \`measureApprox\` estimates from glyph counts; axis gutters have slack so a few percent moves nothing visible, but do not use it for tight text layout
+- Passing a title and assuming that is enough for a screen reader — a graphic whose only accessible text is its name says a chart exists and nothing about what it shows; leave \`description\` unset to get the derived one, or write your own
+- Rendering several charts into one page without changing \`svg.idPrefix\` — the \`<title>\`/\`<desc>\` ids collide and \`aria-labelledby\` resolves to the first one
+- Reaching for it to get a PNG — it emits vector markup; rasterize with the canvas backend (\`paint\`) or a downstream converter`,
+  },
+
+  'charts/PieChart': {
+    signature: '(props: PieChartProps) => VNodeChild',
+    example: `import { PieChart, GaugeChart } from '@pyreon/charts/plot'
+import { signal } from '@pyreon/reactivity'
+
+interface Slice { name: string; amount: number }
+const slices = signal<Slice[]>([{ name: 'Direct', amount: 40 }])
+const cpu = signal(42)
+
+<PieChart data={() => slices()} label={(d: Slice) => d.name} value={(d: Slice) => d.amount} innerRadius={0.6} />
+<GaugeChart value={() => cpu()} min={0} max={100} title="CPU" />`,
+    notes: 'Pie and donut from the same engine (`@pyreon/charts/plot`); `innerRadius` is what makes it a donut. `GaugeChart` is its sibling for a single value against a range. Both carry the same accessibility contract as `PlotChart` — a `role="img"` graphic with a derived description — rather than being a decorative canvas with no accessible text. See also: PlotChart.',
+    mistakes: `- Using a pie for more than a handful of slices — angular area is hard to compare; the engine will draw it, which is not the same as it reading well
+- Omitting \`label\` and expecting a legend — the slice labels are what name the data`,
+  },
   // <gen-docs:api-reference:end @pyreon/charts>
   // ═══════════════════════════════════════════════════════════════════════════
 

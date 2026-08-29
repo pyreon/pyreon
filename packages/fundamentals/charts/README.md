@@ -1,8 +1,76 @@
 # @pyreon/charts
 
-Reactive ECharts bridge — lazy module loading, signal-driven `setOption`, Canvas by default.
+Two charting engines, one package, one subpath each.
+
+| Import | Engine | Use it when |
+| --- | --- | --- |
+| `@pyreon/charts` | Apache ECharts, bridged | You want ECharts' breadth — 20+ chart types, maps, sankey, candlestick — and you are on the web |
+| `@pyreon/charts/plot` | Pyreon's own | You want a small, tree-shakeable chart, server-rendered SVG, or a path to native |
+
+They are INDEPENDENT. Pulling a name from the default entry loads ECharts;
+`/plot` never does.
 
 `@pyreon/charts` wraps Apache ECharts in a Pyreon-native shape: `<Chart options={() => ({...})}>` reads signals inside the options function, and the chart's `setOption` is called whenever the tracked dependencies change. Zero ECharts bytes ship until a chart actually renders — the bridge inspects your config, detects which chart types + components are needed (BarChart, GridComponent, TooltipComponent, …), and dynamically imports only those. ECharts is ~300KB+ if you import it whole; a typical bar-with-tooltip chart loads ~35KB gzipped. Ships three entries: main (auto-detection), `/manual` (explicit `use(...)` for absolute tree-shake control), and `/vite` (a `chartsViteAlias()` helper for the recurring tslib bundler bug).
+
+## `@pyreon/charts/plot` — Pyreon's own engine
+
+No third-party engine. The geometry is pure TypeScript over plain data, and the
+platform half is a short backend that walks a flat `DrawCmd[]` — which is what
+makes it tree-shakeable, server-renderable, and the path to native rendering.
+
+```tsx
+import { PlotChart, bars, line } from '@pyreon/charts/plot'
+
+<PlotChart
+  data={() => sales()}
+  x={(d) => d.month}
+  marks={[bars((d) => d.revenue), line((d) => d.target)]}
+  showLegend
+  tooltip
+  title="Monthly revenue"
+  height={240}
+/>
+```
+
+**A mark is an imported binding, not a string.** That is the whole
+tree-shaking story: `bars` and `line` are functions your bundler can see you
+using, so a bar chart never pulls the radial trigonometry, the LTTB
+decimation, or the time scales. A string-keyed `type: 'bars'` could not be
+dropped by any bundler, however the library was built.
+
+Marks: `bars`, `line`, `area`, `points`, `stackedBars`, `groupedBars`.
+Components: `PlotChart`, `PieChart` (donut via `innerRadius`), `GaugeChart`.
+
+### Server-rendered SVG
+
+The same command list renders to a string, with no DOM and no canvas:
+
+```ts
+import { chartToSvg, bars } from '@pyreon/charts/plot'
+
+const svg = chartToSvg({
+  data: rows,
+  marks: [bars((d) => d.revenue)],
+  x: (d) => d.month,
+  title: 'Monthly revenue',
+})
+```
+
+Works in an SSG build, a serverless function, or an email pipeline. The output
+is deterministic — coordinates are rounded and negative zero normalised — so an
+SVG snapshot is an assertion about geometry rather than a pixel flake. Text
+width comes from an estimate (`measureApprox`), because a server has no font
+metrics; pass `canvasMeasure(ctx, font)` in a browser when label widths must be
+exact.
+
+### Accessibility
+
+Both the canvas components and the SVG output present as ONE `role="img"`
+graphic rather than a tree of several hundred shapes — naming the individual
+rects would make a screen reader read out the whole drawing. Give it a `title`;
+the long description is derived from your data via `describeChart` unless you
+write your own. `chartTable` returns the same data as rows, for a visually
+hidden table beside the chart.
 
 ## Install
 
