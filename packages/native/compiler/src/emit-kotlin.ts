@@ -27,6 +27,8 @@ import {
   classifyDynamicStylingAttr,
   classifySortableRef,
   exprHasOptionalLink,
+  structShapeKey,
+  literalShapeKey,
 } from './expr-utils'
 import {
   buildArraySpreadConcat,
@@ -104,6 +106,8 @@ let _enumNames: Set<string> = new Set()
  * `_structFieldsToName`. See that file for the structural rationale.
  */
 let _structFieldsToName: Map<string, string> = new Map()
+/** Typed shape key -> struct name. Mirror of emit-swift's map. */
+let _structTypedKeyToName: Map<string, string> = new Map()
 /** The DECLARED data classes for this emit, kept for `subsetStructName` — the
  *  exact field-set index above cannot see a literal that omits an optional
  *  field. */
@@ -424,12 +428,15 @@ export function emitKotlin(
   _enumNames = new Set(enums.map((e) => e.name))
   // Build the struct-fields key map — mirror of emit-swift's logic.
   _structFieldsToName = new Map()
+  _structTypedKeyToName = new Map()
   _declaredStructs = structs
   _synthExprStructs = []
   _synthExprStructKeys = new Map()
   for (const s of structs) {
-    const key = s.fields.map((f) => f.name).sort().join(',')
-    if (!_structFieldsToName.has(key)) _structFieldsToName.set(key, s.name)
+    const key = structShapeKey(s.fields)
+    if (!_structTypedKeyToName.has(key)) _structTypedKeyToName.set(key, s.name)
+    const nameOnly = s.fields.map((f) => f.name).sort().join(',')
+    if (!_structFieldsToName.has(nameOnly)) _structFieldsToName.set(nameOnly, s.name)
   }
   // Build the user-component name set — mirror of emit-swift's logic.
   _componentNames = new Set(components.map((c) => c.name))
@@ -3014,7 +3021,55 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
     case 'let':
       // `var` when a later `assign` reassigns this local (markReassigned-
       // LocalsMutable), else immutable `val`.
-      return `${s.mutable ? 'var' : 'val'} ${kotlinIdent(s.name)} = ${emitKotlinExpr(s.expr, indent)}`
+      {
+        // Kotlin infers `List<Nothing>` for a bare `listOf()`, which then
+        // rejects every add and every use as the declared element type. The
+        // declaration's annotation is the only place that type exists.
+        // A non-empty literal types itself and is left alone.
+        // A `Double`-annotated local initialized with an INTEGER literal:
+        // `const scale: Double = 1`. The literal's own value is integral, so
+        // nothing about it says Double, and it emitted `1` — an Int, which
+        // then poisons every expression it takes part in ("binary operator '*'
+        // cannot be applied to operands of type 'Int' and 'Double'"). The
+        // annotation is the only evidence, so emit the literal AS a Double.
+        // Writing `1.0` in the source does not help: its VALUE is integral too.
+        if (
+          s.declaredType !== undefined &&
+          // Either a resolved float number, or the `Double`/`Float` alias the
+          // source spells directly — the annotation arrives as a typeRef here
+          // because the alias is not resolved at this point.
+          ((s.declaredType.kind === 'number' && s.declaredType.float === true) ||
+            (s.declaredType.kind === 'typeRef' &&
+              (s.declaredType.name === 'Double' || s.declaredType.name === 'Float'))) &&
+          s.expr.kind === 'literal' &&
+          typeof s.expr.value === 'number' &&
+          Number.isInteger(s.expr.value)
+        ) {
+          const kw = s.mutable ? 'var' : 'val'
+          return `${kw} ${kotlinIdent(s.name)} = ${s.expr.value}.0`
+        }
+        const emptyLiteral =
+          (s.expr.kind === 'array' && s.expr.elements.length === 0) ||
+          (s.expr.kind === 'object' && s.expr.fields.length === 0)
+        // A MUTATED empty array needs the mutable pair: `List` has no `add`,
+        // and `listOf()` is immutable. `val` stays correct — it is the LIST
+        // that mutates, not the binding, which is the idiomatic Kotlin form.
+        if (
+          emptyLiteral &&
+          s.mutable === true &&
+          s.declaredType !== undefined &&
+          s.declaredType.kind === 'array' &&
+          s.expr.kind === 'array'
+        ) {
+          const el = kotlinType(s.declaredType.element)
+          return `val ${kotlinIdent(s.name)}: MutableList<${el}> = mutableListOf()`
+        }
+        const ann =
+          emptyLiteral && s.declaredType !== undefined
+            ? `: ${kotlinType(s.declaredType)}`
+            : ''
+        return `${s.mutable ? 'var' : 'val'} ${kotlinIdent(s.name)}${ann} = ${emitKotlinExpr(s.expr, indent)}`
+      }
     case 'assign':
       return `${emitKotlinExpr(s.target, indent)} ${s.op} ${emitKotlinExpr(s.value, indent)}`
     case 'return': {
@@ -4323,6 +4378,17 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               return `${obj}.contains(${argExprs[0]!})`
             }
             break
+          // `arr.push(x)` is Kotlin's `add` on a MutableList. Mirrors the
+          // Swift `append` mapping; see that comment for why this shape
+          // matters.
+          case 'push':
+            if (e.args.length === 1) {
+              return `${obj}.add(${argExprs[0]!})`
+            }
+            if (e.args.length > 1) {
+              return `${obj}.addAll(listOf(${argExprs.join(', ')}))`
+            }
+            break
           case 'charAt':
             // JS `str.charAt(i)` returns a 1-char STRING. Kotlin `str[i]` is
             // a Char, so `.toString()` to match JS's String result (Swift:
@@ -5088,8 +5154,14 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // init which requires order match). See emit-swift.ts for the
       // structural rationale.
       if (!e.spreads || e.spreads.length === 0) {
+        // Mirror of the Swift literal site: typed key from the literal's own
+        // values first, name-only fallback. Both emitters must resolve a shape
+        // to the SAME declared struct, so this stays byte-for-byte parallel.
+        const typedKey = literalShapeKey(e.fields)
         const fieldSet = e.fields.map((f) => f.name).sort().join(',')
-        const structName = _structFieldsToName.get(fieldSet)
+        const structName =
+          (typedKey !== null ? _structTypedKeyToName.get(typedKey) : undefined) ??
+          _structFieldsToName.get(fieldSet)
         if (structName !== undefined) {
           const args = e.fields
             .map((f) => `${f.name} = ${emitKotlinExpr(f.value, indent)}`)

@@ -5811,9 +5811,39 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
   // the bare param NAME even for a value param (`function dbl(x: number)` →
   // `propsParamName: 'x'`), so gating on it would wrongly exclude every real
   // helper. `props.length === 0` is the sound "not a props component" signal.
-  const hasValueParams =
-    ((fn.params as AnyNode[] | undefined)?.length ?? 0) > 0 && props.length === 0
-  if (hasValueParams && !returnContainsJsx(returnExpr)) {
+  //
+  // CORRECTION to the `props.length === 0` signal above: `parseProps` populates
+  // `props` for ANY object-typed first parameter, and a helper taking a struct
+  // has one. So `layoutBars(values, plot)` was a helper while
+  // `hitBar(rect, x, y)` was misclassified as a COMPONENT — the same function
+  // kind, decided by parameter ORDER, silently and with no warning. Swift
+  // emitted `struct hitBar: View`, Kotlin a `@Composable` whose parameters were
+  // taken from the struct's FIELDS rather than its own signature. A geometry
+  // library is functions over structs, so this made one unwritable.
+  //
+  // What actually separates the two is the RETURN, not the parameters: a
+  // component renders (JSX, or `null` for "render nothing"), a helper produces
+  // a value. `props.length === 0` is therefore dropped in favour of the return
+  // check it was standing in for. Nullish returns stay COMPONENTS so a
+  // `return null` render path keeps emitting `EmptyView()`.
+  const returnsNothing =
+    returnExpr.kind === 'literal' && (returnExpr.value === null || returnExpr.value === undefined)
+  // camelCase is the third condition, and it is what keeps a RENDER-PROP
+  // component out of the helper path. Such a component takes `children` and
+  // returns `props.children(data)` — a value, not JSX, and not nullish — so the
+  // return alone reads as a helper. `@pyreon/lathe` generates exactly that
+  // shape (`ListBooksData`), and widening on the return alone reclassified it,
+  // whereupon return-type inference could not type it and dropped it with a
+  // warning.
+  //
+  // Naming is a sound signal here rather than a style guess: JSX itself
+  // resolves a lowercase tag to a DOM element and an uppercase one to a
+  // component, so PascalCase-means-component is already enforced by the
+  // language this compiles.
+  const first = name.charAt(0)
+  const isCamelCase = first === first.toLowerCase() && first !== first.toUpperCase()
+  const hasValueParams = ((fn.params as AnyNode[] | undefined)?.length ?? 0) > 0
+  if (hasValueParams && isCamelCase && !returnContainsJsx(returnExpr) && !returnsNothing) {
     // A GENERIC helper (`function first<T>(xs: T[]): T`) can NOT be emitted:
     // the IR has no generic-parameter representation, so a referenced `T`
     // degrades to `unknown` and the emitted signature is uncompilable. Keep
@@ -9251,6 +9281,18 @@ function markReassignedLocalsMutable(stmts: StatementIR[]): void {
         s.expr.argument.kind === 'identifier'
       ) {
         reassigned.add(s.expr.argument.name)
+      } else if (
+        // `out.push(x)` MUTATES `out`. A Swift Array is a value type, so an
+        // immutable `let` binding rejects `append` outright; the reassignment
+        // tracker only ever saw `=` and `++`, so an accumulator built by
+        // pushing stayed `let` and could not be appended to.
+        s.kind === 'expr' &&
+        s.expr.kind === 'call' &&
+        s.expr.callee.kind === 'member' &&
+        s.expr.callee.property === 'push' &&
+        s.expr.callee.object.kind === 'identifier'
+      ) {
+        reassigned.add(s.expr.callee.object.name)
       } else if (s.kind === 'if') {
         collect(s.then)
         if (s.elseBody) collect(s.elseBody)
@@ -9419,7 +9461,13 @@ function parseStatement(node: AnyNode, ctx: ParseCtx): StatementIR | null {
       const d = declarators[0]!
       const declName = d.id?.name as string | undefined
       if (!declName || !d.init) return null
-      return { kind: 'let', name: declName, expr: parseExpr(d.init, ctx) }
+      const ann = (d.id as AnyNode | undefined)?.typeAnnotation?.typeAnnotation as
+        | AnyNode
+        | undefined
+      const declaredType = ann ? parseTypeAnnotation(ann, ctx) : undefined
+      return declaredType === undefined
+        ? { kind: 'let', name: declName, expr: parseExpr(d.init, ctx) }
+        : { kind: 'let', name: declName, expr: parseExpr(d.init, ctx), declaredType }
     }
     case 'IfStatement': {
       const cond = parseExpr(node.test, ctx)
@@ -9810,6 +9858,18 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
           `[${locOf(node, ctx)}] Regex literals aren't supported in native (PMTC) — \`${regexNode.raw ?? '/…/'}\` has no Swift/Kotlin equivalent (it was emitted verbatim and uncompilable before). Rewrite string work without a RegExp, or keep regex logic in a web-only helper.`,
         )
         return { kind: 'literal', value: '' }
+      }
+      // A numeric literal WRITTEN with a decimal point is a Double even when
+      // its value is integral: `10.0` and `0.0` are `Number.isInteger`, so the
+      // value alone cannot tell them from `10` and `0`, and they emitted as
+      // Int — poisoning every expression they took part in. The source text is
+      // the only evidence, so read it off `raw`. (`2.5` needs no help; its
+      // value is already fractional.)
+      if (typeof node.value === 'number') {
+        const raw = (node as { raw?: string }).raw
+        if (typeof raw === 'string' && /[.eE]/.test(raw)) {
+          return { kind: 'literal', value: node.value, float: true }
+        }
       }
       return { kind: 'literal', value: node.value }
     }

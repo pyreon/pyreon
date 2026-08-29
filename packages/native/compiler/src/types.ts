@@ -990,7 +990,20 @@ export type StatementIR =
    * `var` (Swift + Kotlin) instead of `let`/`val` so the reassignment
    * typechecks.
    */
-  | { kind: 'let'; name: string; expr: ExprIR; mutable?: boolean }
+  | {
+      kind: 'let'
+      name: string
+      expr: ExprIR
+      mutable?: boolean
+      /**
+       * The TS annotation when the source carries one. Needed because an EMPTY
+       * collection literal carries no element type of its own: `const out:
+       * Tick[] = []` emits `let out = []`, which Swift rejects ("empty
+       * collection literal requires an explicit type") and Kotlin degrades to
+       * `listOf()`. The annotation is the only place that element type exists.
+       */
+      declaredType?: TypeIR
+    }
   /**
    * Reassignment of a plain local / member / index target:
    * `t = t + x`, `acc += 1`. Signals reassign via `.set()` (a call, the

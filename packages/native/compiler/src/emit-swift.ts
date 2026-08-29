@@ -32,6 +32,8 @@ import {
   classifySortableRef,
   exprHasOptionalLink,
   exprReferencesIdent,
+  structShapeKey,
+  literalShapeKey,
 } from './expr-utils'
 import {
   buildArraySpreadConcat,
@@ -177,6 +179,10 @@ let _componentPropsMap: Map<string, { name: string; type: TypeIR }[]> = new Map(
  * we keep the first-seen struct (alphabetical via Map insertion).
  */
 let _structFieldsToName: Map<string, string> = new Map()
+/** Typed shape key -> struct name. Disambiguates two declared structs that
+ *  share field NAMES but differ in field TYPES; the name-only map above keeps
+ *  its first-wins entry so every match that works today still works. */
+let _structTypedKeyToName: Map<string, string> = new Map()
 /** The DECLARED structs for this emit, kept for `subsetStructName` — the exact
  *  field-set index above cannot see a literal that omits an optional field. */
 let _declaredStructs: readonly StructIR[] = []
@@ -882,12 +888,15 @@ export function emitSwift(
   }
   _enumNames = new Set(enums.map((e) => e.name))
   _structFieldsToName = new Map()
+  _structTypedKeyToName = new Map()
   _declaredStructs = structs
   _synthExprStructs = []
   _synthExprStructKeys = new Map()
   for (const s of structs) {
-    const key = s.fields.map((f) => f.name).sort().join(',')
-    if (!_structFieldsToName.has(key)) _structFieldsToName.set(key, s.name)
+    const key = structShapeKey(s.fields)
+    if (!_structTypedKeyToName.has(key)) _structTypedKeyToName.set(key, s.name)
+    const nameOnly = s.fields.map((f) => f.name).sort().join(',')
+    if (!_structFieldsToName.has(nameOnly)) _structFieldsToName.set(nameOnly, s.name)
   }
   _componentNames = new Set(components.map((c) => c.name))
   _componentPropsMap = new Map(components.map((c) => [c.name, c.props]))
@@ -916,9 +925,14 @@ export function emitSwift(
         _componentParamsInfo.set(c.name, 'opaque')
         continue
       }
-      const key = fields.map((f) => f.name).sort().join(',')
+      // Typed key first, name-only fallback — the same two-step every other
+      // struct lookup uses, so a route-params shape resolves to the user's own
+      // declared struct exactly as before.
+      const key = structShapeKey(fields)
       const typeName =
-        _structFieldsToName.get(key) ?? synthesizeSwiftTypeName(c.name, 'params')
+        _structTypedKeyToName.get(key) ??
+        _structFieldsToName.get(fields.map((f) => f.name).sort().join(',')) ??
+        synthesizeSwiftTypeName(c.name, 'params')
       _componentParamsInfo.set(c.name, { typeName, fields })
     } else {
       _componentParamsInfo.set(c.name, 'opaque')
@@ -3771,7 +3785,45 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       // and `insert` are mutating, and the reassignment tracker only sees
       // `=` assignments, not method mutation. (A never-mutated var is a
       // swiftc warning, not an error.)
-      return `${s.mutable || s.expr.kind === 'new-collection' ? 'var' : 'let'} ${swiftIdent(s.name)} = ${emitSwiftExpr(s.expr, indent)}`
+      {
+        // An EMPTY array/map literal carries no element type, and swiftc
+        // rejects it outright ("empty collection literal requires an explicit
+        // type"). The declaration's annotation is the only place that type
+        // exists, so it is emitted when the initializer cannot supply one.
+        // A NON-empty literal is left alone: its elements already type it, and
+        // annotating would only risk disagreeing with them.
+        // A `Double`-annotated local initialized with an INTEGER literal:
+        // `const scale: Double = 1`. The literal's own value is integral, so
+        // nothing about it says Double, and it emitted `1` — an Int, which
+        // then poisons every expression it takes part in ("binary operator '*'
+        // cannot be applied to operands of type 'Int' and 'Double'"). The
+        // annotation is the only evidence, so emit the literal AS a Double.
+        // Writing `1.0` in the source does not help: its VALUE is integral too.
+        if (
+          s.declaredType !== undefined &&
+          // Either a resolved float number, or the `Double`/`Float` alias the
+          // source spells directly — the annotation arrives as a typeRef here
+          // because the alias is not resolved at this point.
+          ((s.declaredType.kind === 'number' && s.declaredType.float === true) ||
+            (s.declaredType.kind === 'typeRef' &&
+              (s.declaredType.name === 'Double' || s.declaredType.name === 'Float'))) &&
+          s.expr.kind === 'literal' &&
+          typeof s.expr.value === 'number' &&
+          Number.isInteger(s.expr.value)
+        ) {
+          const kw = s.mutable ? 'var' : 'let'
+          return `${kw} ${swiftIdent(s.name)} = ${s.expr.value}.0`
+        }
+        const emptyLiteral =
+          (s.expr.kind === 'array' && s.expr.elements.length === 0) ||
+          (s.expr.kind === 'object' && s.expr.fields.length === 0)
+        const ann =
+          emptyLiteral && s.declaredType !== undefined
+            ? `: ${swiftType(s.declaredType)}`
+            : ''
+        const kw = s.mutable || s.expr.kind === 'new-collection' ? 'var' : 'let'
+        return `${kw} ${swiftIdent(s.name)}${ann} = ${emitSwiftExpr(s.expr, indent)}`
+      }
     case 'assign':
       return `${emitSwiftExpr(s.target, indent)} ${s.op} ${emitSwiftExpr(s.value, indent)}`
     case 'return':
@@ -3994,6 +4046,16 @@ function isAppStorageNativeType(t: TypeIR): boolean {
  * keeps its prior annotation).
  */
 function resolveSwiftObjectStructName(fields: { name: string; value: ExprIR }[]): string | null {
+  // Rung 0 — the literal's OWN values. That is what tells `{x: 1.5, y: 2.5}`
+  // (Px) apart from `{x: 1, y: 2}` (Idx) when both shapes are declared with
+  // the same field NAMES; the name-only index below cannot, and silently
+  // returns whichever was registered first. Only fires when every value is a
+  // literal, so nothing that resolves today stops resolving.
+  const typedKey = literalShapeKey(fields)
+  if (typedKey !== null) {
+    const typed = _structTypedKeyToName.get(typedKey)
+    if (typed !== undefined) return typed
+  }
   const fieldSet = fields.map((f) => f.name).sort().join(',')
   const exact = _structFieldsToName.get(fieldSet)
   if (exact !== undefined) return exact
@@ -4076,7 +4138,13 @@ function registerSwiftSynthStruct(
   name: string,
   key: string,
 ): void {
-  if (!_structFieldsToName.has(key)) _structFieldsToName.set(key, name)
+  // BOTH maps: `key` is the TYPED shape key, and the literal site still falls
+  // back to the name-only map when a literal's values are not locally
+  // decidable. Registering only one leaves synthesized structs invisible to
+  // the other lookup — which is exactly the regression the split introduced.
+  if (!_structTypedKeyToName.has(key)) _structTypedKeyToName.set(key, name)
+  const nameOnlyKey = t.fields.map((f) => f.name).sort().join(',')
+  if (!_structFieldsToName.has(nameOnlyKey)) _structFieldsToName.set(nameOnlyKey, name)
   if (!synth.structs.some((s) => s.name === name)) {
     synth.structs.push({ name, fields: t.fields })
   }
@@ -4104,7 +4172,7 @@ function registerNestedSwiftStruct(
     base = parentName + singular
   }
   if (inner === undefined || base === undefined) return
-  const key = inner.fields.map((f) => f.name).sort().join(',')
+  const key = structShapeKey(inner.fields)
   if (_structFieldsToName.has(key)) return // shape already synthesized — reuse
   registerSwiftSynthStruct(inner, synth, uniqueSwiftStructName(synth, base), key)
 }
@@ -4139,8 +4207,10 @@ export function swiftType(t: TypeIR, synth?: SwiftSynthCtx, declName?: string): 
       // `{ id: number; text: string; done: boolean }` resolves to the
       // user's own `Todo` struct when one exists — prop type and
       // literal construction then agree on one nominal type.
-      const key = t.fields.map((f) => f.name).sort().join(',')
-      const declared = _structFieldsToName.get(key)
+      const key = structShapeKey(t.fields)
+      const declared =
+        _structTypedKeyToName.get(key) ??
+        _structFieldsToName.get(t.fields.map((f) => f.name).sort().join(','))
       if (declared !== undefined) return declared
       if (synth !== undefined) {
         const name = synthesizeSwiftTypeName(synth.componentName, declName)
@@ -5386,6 +5456,19 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               return `${obj}.contains(${argExprs[0]!})`
             }
             break
+          // `arr.push(x)` is Swift's `append`. Unmapped, it emitted a verbatim
+          // `.push`, which does not exist on Array — the accumulate-into-a-local
+          // shape (`const out: T[] = []` then push in a loop) is how most
+          // non-trivial pure logic is written, so this blocked it outright.
+          case 'push':
+            if (e.args.length === 1) {
+              return `${obj}.append(${argExprs[0]!})`
+            }
+            // Multi-arg push appends them all, in order.
+            if (e.args.length > 1) {
+              return `${obj}.append(contentsOf: [${argExprs.join(', ')}])`
+            }
+            break
           case 'lastIndexOf':
             // JS `.lastIndexOf(x)` → Swift `lastIndex(of:) ?? -1` (ARRAY form —
             // the mirror of indexOf's array branch). The raw emit was a
@@ -6352,11 +6435,12 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       //   - multiple structs have the same field-set (collision —
       //     can't disambiguate without type-context)
       if (!e.spreads || e.spreads.length === 0) {
-        // Rungs 1-3 (exact declared/synth index → declared-struct optional
-        // subset → synthesize `__ObjN`) live in the SHARED
-        // `resolveSwiftObjectStructName` — the signal-decl annotation
-        // refinement resolves through the same function, so the decl's
-        // `: __Obj0` and its `__Obj0(...)` value can never disagree.
+        // Rungs 0-3 live in the SHARED `resolveSwiftObjectStructName` — the
+        // signal-decl annotation refinement resolves through the same
+        // function, so the decl's `: __Obj0` and its `__Obj0(...)` value can
+        // never disagree. Rung 0 is the typed key added here; putting it at
+        // the call site instead would let the two paths pick DIFFERENT
+        // structs for the same literal.
         const structName = resolveSwiftObjectStructName(e.fields)
         if (structName !== null) {
           const args = e.fields

@@ -49,9 +49,16 @@ const kotlin = (decl: string, call: string) =>
 const MAP = 'const map = useMap()'
 
 describe('Swift service argument labels', () => {
+  // The LABELS are this file's invariant; the literal FORM is incidental to it.
+  // These previously read `longitude: -122` because an integral-valued float
+  // literal lost its decimal point on the way through — `-122.0` in the source
+  // emitted as an Int and leaned on Swift's literal coercion to still compile.
+  // The source text is now preserved, so the expectation matches what this
+  // file's own header comment always documented:
+  //   map.moveTo(37.3, -122.0)  ->  map.moveTo(37.3, -122.0)
   it('moveTo labels both required arguments', () => {
     expect(swift(MAP, 'map.moveTo(37.3, -122.0)')).toContain(
-      'map.moveTo(latitude: 37.3, longitude: -122)',
+      'map.moveTo(latitude: 37.3, longitude: -122.0)',
     )
   })
 
@@ -59,7 +66,7 @@ describe('Swift service argument labels', () => {
     // zoom has a default, so 2-arg and 3-arg are both legal — the arity check
     // must accept both rather than only an exact match.
     expect(swift(MAP, 'map.moveTo(37.3, -122.0, 12)')).toContain(
-      'map.moveTo(latitude: 37.3, longitude: -122, zoom: 12)',
+      'map.moveTo(latitude: 37.3, longitude: -122.0, zoom: 12)',
     )
   })
 
