@@ -3785,7 +3785,23 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       // and `insert` are mutating, and the reassignment tracker only sees
       // `=` assignments, not method mutation. (A never-mutated var is a
       // swiftc warning, not an error.)
-      return `${s.mutable || s.expr.kind === 'new-collection' ? 'var' : 'let'} ${swiftIdent(s.name)} = ${emitSwiftExpr(s.expr, indent)}`
+      {
+        // An EMPTY array/map literal carries no element type, and swiftc
+        // rejects it outright ("empty collection literal requires an explicit
+        // type"). The declaration's annotation is the only place that type
+        // exists, so it is emitted when the initializer cannot supply one.
+        // A NON-empty literal is left alone: its elements already type it, and
+        // annotating would only risk disagreeing with them.
+        const emptyLiteral =
+          (s.expr.kind === 'array' && s.expr.elements.length === 0) ||
+          (s.expr.kind === 'object' && s.expr.fields.length === 0)
+        const ann =
+          emptyLiteral && s.declaredType !== undefined
+            ? `: ${swiftType(s.declaredType)}`
+            : ''
+        const kw = s.mutable || s.expr.kind === 'new-collection' ? 'var' : 'let'
+        return `${kw} ${swiftIdent(s.name)}${ann} = ${emitSwiftExpr(s.expr, indent)}`
+      }
     case 'assign':
       return `${emitSwiftExpr(s.target, indent)} ${s.op} ${emitSwiftExpr(s.value, indent)}`
     case 'return':
@@ -5416,6 +5432,19 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           case 'includes':
             if (e.args.length === 1) {
               return `${obj}.contains(${argExprs[0]!})`
+            }
+            break
+          // `arr.push(x)` is Swift's `append`. Unmapped, it emitted a verbatim
+          // `.push`, which does not exist on Array — the accumulate-into-a-local
+          // shape (`const out: T[] = []` then push in a loop) is how most
+          // non-trivial pure logic is written, so this blocked it outright.
+          case 'push':
+            if (e.args.length === 1) {
+              return `${obj}.append(${argExprs[0]!})`
+            }
+            // Multi-arg push appends them all, in order.
+            if (e.args.length > 1) {
+              return `${obj}.append(contentsOf: [${argExprs.join(', ')}])`
             }
             break
           case 'lastIndexOf':

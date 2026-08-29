@@ -9281,6 +9281,18 @@ function markReassignedLocalsMutable(stmts: StatementIR[]): void {
         s.expr.argument.kind === 'identifier'
       ) {
         reassigned.add(s.expr.argument.name)
+      } else if (
+        // `out.push(x)` MUTATES `out`. A Swift Array is a value type, so an
+        // immutable `let` binding rejects `append` outright; the reassignment
+        // tracker only ever saw `=` and `++`, so an accumulator built by
+        // pushing stayed `let` and could not be appended to.
+        s.kind === 'expr' &&
+        s.expr.kind === 'call' &&
+        s.expr.callee.kind === 'member' &&
+        s.expr.callee.property === 'push' &&
+        s.expr.callee.object.kind === 'identifier'
+      ) {
+        reassigned.add(s.expr.callee.object.name)
       } else if (s.kind === 'if') {
         collect(s.then)
         if (s.elseBody) collect(s.elseBody)
@@ -9449,7 +9461,13 @@ function parseStatement(node: AnyNode, ctx: ParseCtx): StatementIR | null {
       const d = declarators[0]!
       const declName = d.id?.name as string | undefined
       if (!declName || !d.init) return null
-      return { kind: 'let', name: declName, expr: parseExpr(d.init, ctx) }
+      const ann = (d.id as AnyNode | undefined)?.typeAnnotation?.typeAnnotation as
+        | AnyNode
+        | undefined
+      const declaredType = ann ? parseTypeAnnotation(ann, ctx) : undefined
+      return declaredType === undefined
+        ? { kind: 'let', name: declName, expr: parseExpr(d.init, ctx) }
+        : { kind: 'let', name: declName, expr: parseExpr(d.init, ctx), declaredType }
     }
     case 'IfStatement': {
       const cond = parseExpr(node.test, ctx)

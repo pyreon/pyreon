@@ -3021,7 +3021,33 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
     case 'let':
       // `var` when a later `assign` reassigns this local (markReassigned-
       // LocalsMutable), else immutable `val`.
-      return `${s.mutable ? 'var' : 'val'} ${kotlinIdent(s.name)} = ${emitKotlinExpr(s.expr, indent)}`
+      {
+        // Kotlin infers `List<Nothing>` for a bare `listOf()`, which then
+        // rejects every add and every use as the declared element type. The
+        // declaration's annotation is the only place that type exists.
+        // A non-empty literal types itself and is left alone.
+        const emptyLiteral =
+          (s.expr.kind === 'array' && s.expr.elements.length === 0) ||
+          (s.expr.kind === 'object' && s.expr.fields.length === 0)
+        // A MUTATED empty array needs the mutable pair: `List` has no `add`,
+        // and `listOf()` is immutable. `val` stays correct — it is the LIST
+        // that mutates, not the binding, which is the idiomatic Kotlin form.
+        if (
+          emptyLiteral &&
+          s.mutable === true &&
+          s.declaredType !== undefined &&
+          s.declaredType.kind === 'array' &&
+          s.expr.kind === 'array'
+        ) {
+          const el = kotlinType(s.declaredType.element)
+          return `val ${kotlinIdent(s.name)}: MutableList<${el}> = mutableListOf()`
+        }
+        const ann =
+          emptyLiteral && s.declaredType !== undefined
+            ? `: ${kotlinType(s.declaredType)}`
+            : ''
+        return `${s.mutable ? 'var' : 'val'} ${kotlinIdent(s.name)}${ann} = ${emitKotlinExpr(s.expr, indent)}`
+      }
     case 'assign':
       return `${emitKotlinExpr(s.target, indent)} ${s.op} ${emitKotlinExpr(s.value, indent)}`
     case 'return': {
@@ -4328,6 +4354,17 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           case 'includes':
             if (e.args.length === 1) {
               return `${obj}.contains(${argExprs[0]!})`
+            }
+            break
+          // `arr.push(x)` is Kotlin's `add` on a MutableList. Mirrors the
+          // Swift `append` mapping; see that comment for why this shape
+          // matters.
+          case 'push':
+            if (e.args.length === 1) {
+              return `${obj}.add(${argExprs[0]!})`
+            }
+            if (e.args.length > 1) {
+              return `${obj}.addAll(listOf(${argExprs.join(', ')}))`
             }
             break
           case 'charAt':
