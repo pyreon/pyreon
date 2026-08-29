@@ -20,7 +20,15 @@ export type { Accessor, Mark, MarkOptions } from './engine/marks'
 // Core render + layout
 export { defaultTheme, layoutChart, renderChart, resolveYDomain, seriesMaxLength } from './engine/render'
 export type { ChartSpec, ChartTheme, Series } from './engine/render'
-export { bandTicks, computeLayout, hitBar, hitNearestX, layoutBars, layoutSeriesPoints } from './engine/layout'
+export {
+  bandTicks,
+  computeLayout,
+  hitBar,
+  hitNearestX,
+  layoutBars,
+  layoutSeriesPoints,
+  layoutSeriesPointsAt,
+} from './engine/layout'
 export type { Gutters, LayoutConfig, PlotLayout } from './engine/layout'
 
 // Scales

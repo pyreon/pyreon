@@ -94,6 +94,25 @@ export interface PlotChartProps<T> {
    */
   format?: Formatter
   /**
+   * Per-datum x position for a CONTINUOUS axis — a timestamp, or any number.
+   *
+   * Without it the points are spaced evenly by index, which is right for a
+   * categorical axis and misstates an irregular one: readings on Jan 1, Jan 2
+   * and Mar 1 drawn at even spacing claim the first gap equals the second. That
+   * makes this a correctness feature rather than a styling one.
+   *
+   * Bars stay categorical either way — bars on a continuous axis need a width
+   * in domain units, which is a different chart.
+   */
+  xValue?: (d: T, index: number) => Double
+  /**
+   * Label the x axis with calendar steps rather than the numeric ladder. Only
+   * meaningful with `xValue` returning epoch milliseconds.
+   */
+  xTime?: boolean
+  /** Formats the x-axis ticks. Overrides the calendar default when `xTime`. */
+  xFormat?: Formatter
+  /**
    * Drop the offscreen data table. It is on by default because a canvas is a
    * single opaque node to a screen reader — without the table a chart is a
    * blank rectangle to anyone not looking at it.
@@ -149,6 +168,11 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     showYAxis: props.showYAxis ?? true,
     showGrid: props.showGrid ?? true,
     ...(props.format !== undefined ? { yFormat: props.format } : {}),
+    ...(props.xFormat !== undefined ? { xFormat: props.xFormat } : {}),
+    ...(props.xTime === true ? { xTime: true } : {}),
+    ...(props.xValue !== undefined
+      ? { xValues: rows.map((d, i) => props.xValue!(d, i)) }
+      : {}),
   })
 
   const draw = (): void => {

@@ -1,6 +1,7 @@
 // Log and time scales.
 
 import { plain } from './format'
+import type { Formatter } from './format'
 import type { Domain, Double, Tick } from './types'
 
 /**
@@ -56,7 +57,13 @@ const DAY = HOUR * 24.0
  * picked from the span so a day-long series ticks hourly and a year-long one
  * ticks monthly.
  */
-export function timeTicks(d: Domain, r0: Double, r1: Double, target: number): Tick[] {
+export function timeTicks(
+  d: Domain,
+  r0: Double,
+  r1: Double,
+  target: number,
+  format?: Formatter,
+): Tick[] {
   const span = d.max - d.min
   const out: Tick[] = []
   if (span <= 0.0 || target <= 0) return out
@@ -85,7 +92,7 @@ export function timeTicks(d: Domain, r0: Double, r1: Double, target: number): Ti
     out.push({
       value: v,
       pos: r0 + ((v - d.min) / span) * (r1 - r0),
-      label: formatTime(v, step),
+      label: format === undefined ? formatTime(v, step) : format(v),
     })
     i = i + 1
   }

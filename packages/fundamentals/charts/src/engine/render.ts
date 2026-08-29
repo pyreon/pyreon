@@ -1,6 +1,6 @@
 // Marks → draw commands. The whole chart, as plain data.
 
-import { computeLayout, layoutBars, layoutSeriesPoints } from './layout'
+import { computeLayout, layoutBars, layoutSeriesPoints, layoutSeriesPointsAt } from './layout'
 import { layoutGroupedBars, layoutStackedBars, stackedExtent } from './stack'
 import type { Formatter } from './format'
 import type { LayoutConfig, PlotLayout } from './layout'
@@ -41,6 +41,17 @@ export interface ChartSpec {
   /** Tick label formatting, per axis. See `LayoutConfig` for why it matters. */
   yFormat?: Formatter
   xFormat?: Formatter
+  /**
+   * Per-datum x positions, index-aligned with every series' values.
+   *
+   * Present for a CONTINUOUS x axis (a time series, a scatter over a numeric
+   * x). Absent means the points are spaced evenly by index, which is right for
+   * a categorical axis and misstates the data for an irregular one. `xDomain`
+   * is derived from these when they are given.
+   */
+  xValues?: Double[]
+  /** Label the x axis with calendar steps — see `LayoutConfig.xTime`. */
+  xTime?: boolean
 }
 
 export const defaultTheme: ChartTheme = {
@@ -97,7 +108,10 @@ export function layoutChart(spec: ChartSpec, measure: MeasureText): PlotLayout {
   const cfg: LayoutConfig = {
     width: spec.width,
     height: spec.height,
-    xDomain: { min: 0.0, max: n > 1 ? n - 1 : 1.0 },
+    xDomain:
+      spec.xValues !== undefined && spec.xValues.length > 0
+        ? extent(spec.xValues)
+        : { min: 0.0, max: n > 1 ? n - 1 : 1.0 },
     yDomain: resolveYDomain(spec),
     categories: spec.categories,
     fontSize: spec.theme.fontSize,
@@ -107,6 +121,7 @@ export function layoutChart(spec: ChartSpec, measure: MeasureText): PlotLayout {
     showYAxis: spec.showYAxis,
     ...(spec.yFormat !== undefined ? { yFormat: spec.yFormat } : {}),
     ...(spec.xFormat !== undefined ? { xFormat: spec.xFormat } : {}),
+    ...(spec.xTime === true ? { xTime: true } : {}),
   }
   return computeLayout(cfg, measure)
 }
@@ -174,17 +189,25 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
 
   for (const s of spec.series) {
     if (s.kind === 'stacked' || s.kind === 'grouped') continue
+    // One helper rather than three call-site conditionals: line, area and
+    // points must agree about placement, or an area fill drifts away from the
+    // line it is meant to sit under.
+    const place = (values: Double[]): Pt[] =>
+      spec.xValues !== undefined && spec.xValues.length > 0
+        ? layoutSeriesPointsAt(values, spec.xValues, plot, yDomain, l.xDomainUsed)
+        : layoutSeriesPoints(values, plot, yDomain)
+
     if (s.kind === 'bars') {
       for (const r of layoutBars(s.values, plot, yDomain, 0.25)) {
         out.push({ kind: 'rect', rect: r, fill: s.color })
       }
     } else if (s.kind === 'line') {
-      const pts = layoutSeriesPoints(s.values, plot, yDomain)
+      const pts = place(s.values)
       if (pts.length > 1) {
         out.push({ kind: 'polyline', points: pts, stroke: s.color, width: s.width })
       }
     } else if (s.kind === 'area') {
-      const pts = layoutSeriesPoints(s.values, plot, yDomain)
+      const pts = place(s.values)
       if (pts.length > 1) {
         const poly: Pt[] = []
         for (const p of pts) poly.push(p)
@@ -195,7 +218,7 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
         out.push({ kind: 'polygon', points: poly, fill: s.color })
       }
     } else {
-      for (const p of layoutSeriesPoints(s.values, plot, yDomain)) {
+      for (const p of place(s.values)) {
         out.push({ kind: 'circle', center: p, radius: s.radius, fill: s.color })
       }
     }

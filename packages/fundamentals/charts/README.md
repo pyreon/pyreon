@@ -60,6 +60,30 @@ layer has to compile through PMTC — which lowers your source, not the browser'
 built-ins. Pass your own `Intl`-backed formatter on the web when you want full
 locale support.
 
+### Time and continuous axes
+
+```tsx
+<PlotChart
+  data={readings}
+  marks={[line((d) => d.value)]}
+  xValue={(d) => d.at}      // epoch ms, or any number
+  xTime                      // label with calendar steps
+/>
+```
+
+Without `xValue` the points are spaced evenly by index. That is right for a
+categorical axis and **wrong for an irregular series**: readings on Jan 1, Jan 2
+and Mar 1 drawn at even thirds claim the first gap equals the second, which is
+the chart stating something false about the data. `xValue` places each point by
+its own value and derives the domain from them.
+
+`xTime` picks the tick labels from calendar units — a day of data ticks hourly,
+a year of it monthly — because the nice-number ladder that labels a numeric axis
+produces steps like 20,000ms that nobody reads. `xFormat` overrides either.
+
+Bars stay categorical: bars on a continuous axis need a width in domain units,
+which is a different chart.
+
 ### Server-rendered SVG
 
 The same command list renders to a string, with no DOM and no canvas:

@@ -1,6 +1,7 @@
 // Plot-area layout and per-mark geometry.
 
 import { makeTicks, scaleLinear } from './scale'
+import { timeTicks } from './scale-extra'
 import type { Formatter } from './format'
 import type { Domain, MeasureText, Pt, Rect, Tick, Double } from './types'
 
@@ -17,6 +18,14 @@ export interface PlotLayout {
   plot: Rect
   xTicks: Tick[]
   yTicks: Tick[]
+  /**
+   * The x domain the ticks were computed against.
+   *
+   * Returned rather than left for the caller to recompute, because a mark
+   * placed against a domain that differs from the one the axis was labelled
+   * with lands beside its own tick — the two must come from one source.
+   */
+  xDomainUsed: Domain
 }
 
 export interface LayoutConfig {
@@ -43,6 +52,15 @@ export interface LayoutConfig {
    */
   yFormat?: Formatter
   xFormat?: Formatter
+  /**
+   * Treat the x domain as epoch milliseconds.
+   *
+   * The nice-number ladder that labels a numeric axis produces steps like
+   * 20,000ms, whose labels nobody reads. Calendar steps are chosen from the
+   * span instead, so a day of data ticks hourly and a year of it ticks monthly.
+   * `xFormat` still wins when given — this only picks the DEFAULT labelling.
+   */
+  xTime?: boolean
 }
 
 /**
@@ -95,10 +113,12 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   const xTicks = cfg.showXAxis
     ? cfg.categories.length > 0
       ? bandTicks(cfg.categories, plot)
-      : makeTicks(cfg.xDomain, plot.x, plot.x + plot.w, cfg.xTickCount, cfg.xFormat)
+      : cfg.xTime === true
+        ? timeTicks(cfg.xDomain, plot.x, plot.x + plot.w, cfg.xTickCount, cfg.xFormat)
+        : makeTicks(cfg.xDomain, plot.x, plot.x + plot.w, cfg.xTickCount, cfg.xFormat)
     : []
 
-  return { plot, xTicks, yTicks }
+  return { plot, xTicks, yTicks, xDomainUsed: cfg.xDomain }
 }
 
 /** One tick per category, centred on its band. */
@@ -166,6 +186,38 @@ export function layoutSeriesPoints(values: Double[], plot: Rect, yDomain: Domain
   for (let i = 0; i < n; i++) {
     out.push({
       x: plot.x + (i / (n - 1)) * plot.w,
+      y: scaleLinear(yDomain, plot.y + plot.h, plot.y, values[i]!),
+    })
+  }
+  return out
+}
+
+/**
+ * Series points placed by their own x VALUES rather than by index.
+ *
+ * `layoutSeriesPoints` spaces points evenly, which is right for a categorical
+ * axis and WRONG for a time series: readings on Jan 1, Jan 2 and Mar 1 drawn at
+ * even spacing say the gap between the first two equals the gap to the third.
+ * That is not a styling difference, it is the chart stating something false
+ * about the data — the reason a time axis is a correctness feature and not a
+ * cosmetic one.
+ *
+ * `xs` and `values` are index-aligned; a mismatch takes the shorter of the two
+ * rather than reading past the end, because a caller whose accessors disagree
+ * should get a short chart, not a crash or a NaN coordinate.
+ */
+export function layoutSeriesPointsAt(
+  values: Double[],
+  xs: Double[],
+  plot: Rect,
+  yDomain: Domain,
+  xDomain: Domain,
+): Pt[] {
+  const n = Math.min(values.length, xs.length)
+  const out: Pt[] = []
+  for (let i = 0; i < n; i++) {
+    out.push({
+      x: scaleLinear(xDomain, plot.x, plot.x + plot.w, xs[i]!),
       y: scaleLinear(yDomain, plot.y + plot.h, plot.y, values[i]!),
     })
   }

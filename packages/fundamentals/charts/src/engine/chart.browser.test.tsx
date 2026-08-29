@@ -426,3 +426,67 @@ describe('PlotChart — axis formatting', () => {
     expect(label).not.toContain('3200000')
   })
 })
+
+describe('PlotChart — a continuous x axis', () => {
+  interface Reading {
+    t: number
+    v: number
+  }
+  const DAY = 86_400_000
+  const JAN1 = Date.UTC(2026, 0, 1)
+  // Two consecutive days, then a two-month jump.
+  const READINGS: Reading[] = [
+    { t: JAN1, v: 2 },
+    { t: JAN1 + DAY, v: 6 },
+    { t: JAN1 + 60 * DAY, v: 4 },
+  ]
+
+  it('spaces the points by time, and says so in the description', async () => {
+    const { container } = mountInBrowser(() =>
+      PlotChart<Reading>({
+        data: READINGS,
+        marks: [line((d) => d.v)],
+        xValue: (d) => d.t,
+        xTime: true,
+        width: 400,
+        height: 200,
+        title: 'Readings',
+        // Chrome OFF so the only ink is the line itself. With the grid on, the
+        // topmost painted pixel is the top gridline — which spans the full
+        // width and starts at the left edge whatever the spacing, so the
+        // assertion below would pass for the wrong reason. (It did, until a
+        // bisect showed it passing against index spacing too.)
+        showGrid: false,
+        showXAxis: false,
+        showYAxis: false,
+      }),
+    )
+    await flush()
+    const canvas = query<HTMLCanvasElement>(container, 'canvas')
+    expect(canvas.width).toBeGreaterThan(0)
+
+    // The proof that it drew by TIME is WHERE the peak is. The middle reading
+    // is the largest value, so the line's highest point sits above it: at the
+    // horizontal middle under even spacing, and hard against the left edge
+    // under time spacing, because one day into sixty is.
+    const ctx = canvas.getContext('2d')
+    if (ctx === null) throw new Error('no 2d context')
+    const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height)
+    let peakX = -1
+    let peakY = canvas.height
+    for (let y = 0; y < canvas.height; y++) {
+      for (let x = 0; x < canvas.width; x++) {
+        const alpha = data[(y * canvas.width + x) * 4 + 3]!
+        if (alpha !== 0 && y < peakY) {
+          peakY = y
+          peakX = x
+        }
+      }
+    }
+    expect(peakX, 'nothing was painted').toBeGreaterThanOrEqual(0)
+    expect(
+      peakX,
+      `the line peaks at x=${peakX} of ${canvas.width} — that is the middle, i.e. the points were spaced by INDEX and the chart misstates the gaps`,
+    ).toBeLessThan(canvas.width * 0.35)
+  })
+})
