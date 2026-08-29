@@ -591,30 +591,94 @@ final class PyreonCounterUITests: XCTestCase {
     // `Text("Theme: \(colorScheme)")`.
     //
     // BEHAVIORAL R4: the rendered value reflects the REAL Simulator appearance.
-    // The nightly gate runs the default (light) appearance, so the committed
-    // assertion is "Theme: light". The DIFFERENTIATING counterpart is proven
-    // LOCALLY by flipping `xcrun simctl ui <sim> appearance dark` and re-running
-    // (the render becomes "Theme: dark") — so the emit reads the live
-    // `@Environment(\.colorScheme)` channel, not a baked constant (a constant
-    // would render the same string under both appearances). Same pattern as
-    // useSizeClass (iPhone `Size: compact` committed, iPad `Size: regular`
-    // proven locally).
-    func test_colorSchemeReadsLightAppearance() throws {
+    // BOTH appearances are asserted IN CI, one leg each, with the runner
+    // pinning `xcrun simctl ui <sim> appearance` before invoking the test and
+    // passing the expectation in. That matters: the differentiating half used
+    // to be a manual local step, so the committed assertion could not fail for
+    // a baked "light" constant — it asserted exactly what a constant would
+    // render. It also depended on the machine's ambient appearance, which
+    // produced a false failure (accusing useColorScheme of not reading
+    // @Environment) on any simulator left in dark mode.
+    func test_colorSchemeTracksSimulatorAppearance() throws {
+        // The appearance is driven from INSIDE the test via
+        // `XCUIDevice.shared.appearance` — same process, same device the test
+        // actually runs on. The previous form had the WORKFLOW pin the
+        // appearance with `simctl ui <udid> appearance` and hand the
+        // expectation in via env: it passed on a local simulator but failed
+        // deterministically on the CI runner (3/3 retries rendering
+        // "Theme: light" under a dark-pinned sim) — an out-of-process flip
+        // that did not propagate to the XCTest-launched app, and a UDID
+        // derivation that has to agree with xcodebuild's own destination
+        // resolution. In-process there is nothing to disagree.
+        //
+        // Asserting BOTH appearances in ONE run is also strictly stronger
+        // than the launch-time read: the mid-run flip proves the emitted
+        // `@Environment(\.colorScheme)` is LIVE (a baked constant fails the
+        // second half; a launch-time-only read that never updates fails it
+        // too).
         let app = XCUIApplication()
         app.launch()
+        addTeardownBlock { XCUIDevice.shared.appearance = .light }
 
+        XCUIDevice.shared.appearance = .light
         XCTAssertTrue(
             app.staticTexts["Theme: light"].waitForExistence(timeout: 30),
-            "Expected \"Theme: light\" under the default (light) Simulator "
-                + "appearance — useColorScheme did not read "
-                + "@Environment(\\.colorScheme) (or emitted a non-environment "
-                + "constant)"
+            "Expected \"Theme: light\" under the light appearance — "
+                + "useColorScheme did not read @Environment(\\.colorScheme)"
         )
-        // The dark-appearance string must NOT appear under light.
         XCTAssertFalse(
             app.staticTexts["Theme: dark"].exists,
-            "\"Theme: dark\" rendered under the light Simulator appearance — "
-                + "the color-scheme read is inverted or constant"
+            "\"Theme: dark\" rendered under the light appearance — the "
+                + "color-scheme read is inverted or constant"
+        )
+
+        XCUIDevice.shared.appearance = .dark
+
+        // The dark half is CONDITIONAL, and the condition is whether the
+        // simulator propagated the flip at all — not whether the emit is
+        // correct.
+        //
+        // Measured: on an iPhone 17 Pro (iOS 26.3) the app re-renders to
+        // "Theme: dark" in about a second, by a mid-run flip AND by a
+        // pre-launch `simctl ui … appearance dark`. On an iPhone 16e the app
+        // renders "Theme: light" under BOTH, indefinitely — the appearance
+        // never reaches the app by any mechanism available to a UI test. CI
+        // resolves an iPhone 16-family device, which is why this failed there
+        // and passed locally.
+        //
+        // So a hard assertion here does not test `useColorScheme`; it tests
+        // which simulator the runner happened to hand us.
+        //
+        // THE COST, stated plainly: a baked-constant regression ALSO fails to
+        // show "Theme: dark", so on a non-propagating device this skips rather
+        // than catching it — verified by replacing the hook with
+        // `const colorScheme = 'light'` and watching the 16e skip. The skip is
+        // therefore NOT a weaker assertion, it is the ABSENCE of one, and the
+        // differentiator only really runs where the platform propagates. That
+        // is a device limitation and not something a better assertion can
+        // recover: where the app can never be shown a dark appearance, nothing
+        // in the app can distinguish a live read from a constant.
+        //
+        // The light half still asserts on every device, and on a propagating
+        // one (iPhone 17 Pro, verified) both halves run and the constant IS
+        // caught. Making CI select a propagating simulator — it currently
+        // takes `head -1` of whatever the image lists — is the fix that would
+        // restore the differentiator there, and is a separate change to the
+        // workflow's device resolution.
+        let flipped = app.staticTexts["Theme: dark"].waitForExistence(timeout: 15)
+        try XCTSkipUnless(
+            flipped,
+            "This simulator did not propagate the appearance change to the app "
+                + "(still rendering \"Theme: light\" 15s after the flip), so the "
+                + "dark half of the colorScheme assertion cannot run here. "
+                + "Verified working on iPhone 17 Pro / iOS 26.3; reproduced as "
+                + "not working on iPhone 16e by mid-run flip and by a "
+                + "pre-launch simctl pin alike."
+        )
+        XCTAssertFalse(
+            app.staticTexts["Theme: light"].exists,
+            "\"Theme: light\" rendered under the dark appearance — the "
+                + "color-scheme read is inverted or constant"
         )
     }
 

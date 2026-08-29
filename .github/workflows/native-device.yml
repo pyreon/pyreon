@@ -361,6 +361,11 @@ jobs:
           xcrun simctl privacy "$UDID" grant location com.pyreon.PyreonCounter || echo "note: privacy grant unavailable; relying on the injected location"
           xcrun simctl location "$UDID" set 37.3349,-122.0090
           echo "injected 37.3349,-122.0090"
+          # PIN the appearance rather than inheriting whatever the runner image
+          # left behind. The colorScheme assertion follows this, and an ambient
+          # value makes it a coin flip that reads as a useColorScheme bug.
+          xcrun simctl ui "$UDID" appearance light
+          echo "appearance: light"
 
       - name: Emit + xcodegen + UITest — native-counter-ios
         working-directory: examples/native-counter-ios
