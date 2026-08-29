@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { signal } from '@pyreon/reactivity'
 import { mountInBrowser, flush } from '@pyreon/test-utils/browser'
+import { query } from '@pyreon/test-utils'
 import { PlotChart } from './Chart'
 import { bars, groupedBars, line, stackedBars } from './marks'
 
@@ -346,8 +347,7 @@ describe('legend, stacking and tooltip in a real browser', () => {
     it('is absent until the pointer is over a datum', async () => {
       const { container } = mountTip()
       await flush()
-      const tip = container.querySelector('[data-pyreon-chart-tooltip]') as HTMLElement
-      expect(tip).not.toBeNull()
+      const tip = query<HTMLElement>(container, '[data-pyreon-chart-tooltip]')
       expect(tip.style.display).toBe('none')
     })
 
@@ -362,7 +362,7 @@ describe('legend, stacking and tooltip in a real browser', () => {
         }),
       )
       await flush()
-      const tip = container.querySelector('[data-pyreon-chart-tooltip]') as HTMLElement
+      const tip = query<HTMLElement>(container, '[data-pyreon-chart-tooltip]')
       expect(tip.style.display).toBe('block')
       expect(tip.textContent).toContain('Mar')
       expect(tip.textContent).toContain('Revenue')
@@ -381,7 +381,7 @@ describe('legend, stacking and tooltip in a real browser', () => {
       await flush()
       canvas.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }))
       await flush()
-      const tip = container.querySelector('[data-pyreon-chart-tooltip]') as HTMLElement
+      const tip = query<HTMLElement>(container, '[data-pyreon-chart-tooltip]')
       expect(tip.style.display).toBe('none')
     })
 
@@ -393,7 +393,7 @@ describe('legend, stacking and tooltip in a real browser', () => {
     it('does not intercept the pointer', async () => {
       const { container } = mountTip()
       await flush()
-      const tip = container.querySelector('[data-pyreon-chart-tooltip]') as HTMLElement
+      const tip = query<HTMLElement>(container, '[data-pyreon-chart-tooltip]')
       expect(globalThis.getComputedStyle(tip).pointerEvents).toBe('none')
     })
   })
