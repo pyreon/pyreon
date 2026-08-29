@@ -65,3 +65,53 @@ test.describe('app-showcase /dashboard — charts canvas mount', () => {
     )
   })
 })
+
+/**
+ * Pyreon's OWN engine (`@pyreon/charts/plot`) in a real app.
+ *
+ * The engine's own suite runs under vitest's JSX transform, which is NOT the
+ * transform that ships. This repo's recurring lesson is that a package's
+ * browser tests can be green while `@pyreon/vite-plugin`'s real compiler
+ * produces different — and broken — output for the same source. Only a real
+ * app boot exercises the shipping path.
+ *
+ * The assertion is PAINTED PIXELS, not structure. A canvas that mounted but
+ * was never drawn to passes every structural check there is, which is exactly
+ * the failure a chart engine can have.
+ */
+test.describe('app-showcase /dashboard — the plot engine, real compiler', () => {
+  test('paints a chart drawn by @pyreon/charts/plot', async ({ page }) => {
+    const errors: string[] = []
+    page.on('pageerror', (err) => errors.push(err.message))
+
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' })
+
+    const host = page.locator('[data-testid="plot-engine-chart"]')
+    await host.waitFor({ timeout: 15_000 })
+    const canvas = host.locator('canvas')
+    await canvas.waitFor({ timeout: 15_000 })
+
+    // The backing store is sized for the device pixel ratio, so a soft chart
+    // (a canvas at CSS size on a 2x display) shows up here as a smaller width.
+    const { w, h, painted } = await canvas.evaluate((el) => {
+      const c = el as HTMLCanvasElement
+      const ctx = c.getContext('2d')
+      if (ctx === null) return { w: c.width, h: c.height, painted: 0 }
+      const { data } = ctx.getImageData(0, 0, c.width, c.height)
+      let n = 0
+      for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) n++
+      return { w: c.width, h: c.height, painted: n }
+    })
+
+    expect(w, 'canvas has no backing width — the container had no box').toBeGreaterThan(0)
+    expect(h).toBeGreaterThan(0)
+    // A blank canvas is the failure this test exists for: the axes, bars and
+    // line together cover far more than a handful of pixels.
+    expect(
+      painted,
+      'the plot canvas is blank — the engine mounted but never drew (or the real compiler emitted something the vitest transform does not)',
+    ).toBeGreaterThan(500)
+
+    expect(errors, `page errors:\n${errors.join('\n')}`).toHaveLength(0)
+  })
+})
