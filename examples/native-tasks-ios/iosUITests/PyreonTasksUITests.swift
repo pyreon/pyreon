@@ -36,6 +36,91 @@ final class PyreonTasksUITests: XCTestCase {
         continueAfterFailure = false
     }
 
+    /// Tap an element on a long screen, scrolling the containing ScrollView
+    /// ourselves rather than relying on XCUITest's scroll-to-visible.
+    ///
+    /// `XCUIElement.tap()` first performs `kAXScrollToVisibleAction`, and on a
+    /// SwiftUI ScrollView that action fails outright:
+    ///
+    ///     Failed to scroll to visible (by AX action) Button, label: 'Open',
+    ///     error: kAXErrorCannotComplete performing kAXScrollToVisibleAction
+    ///
+    /// This screen has hit it twice now, on two different elements — the sign
+    /// that it is a property of the screen rather than of any one button.
+    /// Wrapping the page in `<Scroll>` made the content REACHABLE; it did not
+    /// make the AX action work, and those are separate things.
+    ///
+    /// Swiping is what a person does, and it is what XCUITest can actually
+    /// perform on a SwiftUI ScrollView. Bounded rather than open-ended: a
+    /// missing element must fail as "never became hittable" after a known
+    /// number of swipes, not spin.
+    private func tapAfterScrolling(
+        _ element: XCUIElement,
+        in app: XCUIApplication,
+        maxSwipes: Int = 8,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        if element.exists && element.isHittable {
+            element.tap()
+            return
+        }
+        let scroller = app.scrollViews.firstMatch
+        var swipes = 0
+        while swipes < maxSwipes && !(element.exists && element.isHittable) {
+            if scroller.exists {
+                scroller.swipeUp()
+            } else {
+                app.swipeUp()
+            }
+            swipes += 1
+        }
+        XCTAssertTrue(
+            element.exists && element.isHittable,
+            // The count is in the message on purpose: "not hittable" and "not
+            // hittable after eight swipes" send you to different places.
+            //
+            // And say WHICH of the three it is rather than listing them. The
+            // first version offered "absent, zero-size, or covered by
+            // something", which is the guess the reader would have made
+            // unaided — a device round costs 35 minutes, so the message has to
+            // carry the answer.
+            "element never became hittable after \(swipes) swipe(s) — "
+                + "exists=\(element.exists) hittable=\(element.isHittable) "
+                + "frame=\(element.exists ? "\(element.frame)" : "n/a") "
+                + "keyboardShown=\(app.keyboards.count > 0)",
+            file: file,
+            line: line
+        )
+        element.tap()
+    }
+
+    /// Put the software keyboard away.
+    ///
+    /// A `typeText` raises it, and it covers the bottom of the screen — so the
+    /// control directly under the field you just typed into is not hittable,
+    /// and no amount of scrolling makes it so: the keyboard is above the scroll
+    /// view, not inside it. That is what took out `toolkit-schema-submit`,
+    /// which sits immediately below `toolkit-schema-name`.
+    ///
+    /// Dismissed via the keyboard's own return key rather than by typing a
+    /// newline into the field, which would fire the field's `onSubmit` and
+    /// change app state as a side effect of a test helper.
+    ///
+    /// A no-op when no software keyboard is up — a CI runner with a hardware
+    /// keyboard attached may never raise one, in which case nothing was
+    /// covered.
+    private func dismissKeyboard(_ app: XCUIApplication) {
+        guard app.keyboards.count > 0 else { return }
+        for label in ["Return", "return", "Done", "done", "Go", "go", "Search"] {
+            let key = app.keyboards.buttons[label]
+            if key.exists && key.isHittable {
+                key.tap()
+                return
+            }
+        }
+    }
+
     func test_appLaunchesOnLoginPage() throws {
         let app = XCUIApplication()
         app.launch()
@@ -84,6 +169,7 @@ final class PyreonTasksUITests: XCTestCase {
         )
         username.tap()
         username.typeText("ab")
+        dismissKeyboard(app)
 
         let submit = app.buttons["login-submit"].firstMatch
         XCTAssertTrue(submit.exists, "Continue button missing")
@@ -108,6 +194,7 @@ final class PyreonTasksUITests: XCTestCase {
         // re-validates after an error, so the message clears live.
         username.tap()
         username.typeText("cde")
+        dismissKeyboard(app)
         submit.tap()
 
         let tasksPage = app.otherElements["tasks-page"].firstMatch
@@ -131,6 +218,7 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertTrue(titleField.exists, "New-task field missing on tasks page")
         titleField.tap()
         titleField.typeText("Verify on the simulator")
+        dismissKeyboard(app)
 
         let add = app.buttons["new-task-add"].firstMatch
         XCTAssertTrue(add.exists, "Add button missing on tasks page")
@@ -146,7 +234,7 @@ final class PyreonTasksUITests: XCTestCase {
         // TaskDetailPageParam(id: "1") in the dispatcher (auth-gated).
         let openFirst = app.buttons["tasks-open-first"].firstMatch
         XCTAssertTrue(openFirst.exists, "Open-task-1 button missing on tasks page")
-        openFirst.tap()
+        tapAfterScrolling(openFirst, in: app)
 
         let detailPage = app.otherElements["task-detail-page"].firstMatch
         XCTAssertTrue(
@@ -236,7 +324,7 @@ final class PyreonTasksUITests: XCTestCase {
         )
         let vocabBack = app.buttons["vocab-back"].firstMatch
         XCTAssertTrue(vocabBack.exists, "Back button missing on vocab page")
-        vocabBack.tap()
+        tapAfterScrolling(vocabBack, in: app)
         XCTAssertTrue(
             tasksPage.waitForExistence(timeout: 15),
             "Did not return to tasks after vocab Back"
@@ -316,6 +404,187 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertTrue(
             tasksPage.waitForExistence(timeout: 15),
             "Did not return to tasks after stats Back"
+        )
+
+        // Phase 5b: the TOOLKIT screen — the one place eleven packages that had
+        // only ever been snippet-proven actually run. The web e2e asserts the
+        // same values in a browser; this is the native half, and until it
+        // existed the screen was COMPILE-proven on device and nothing more.
+        //
+        // Values, not existence: a permissions container that wrongly denies
+        // renders "false", which exists just as happily as "true".
+        let toolkitBtn = app.buttons["tasks-toolkit"].firstMatch
+        XCTAssertTrue(toolkitBtn.exists, "Toolkit button missing on tasks page")
+        toolkitBtn.tap()
+
+        let toolkitPage = app.otherElements["toolkit-page"].firstMatch
+        XCTAssertTrue(
+            toolkitPage.waitForExistence(timeout: 15),
+            "Toolkit page did not render"
+        )
+
+        // i18n: the TRANSLATED title. A missing catalogue renders the key.
+        let toolkitTitle = app.staticTexts["toolkit-title"].firstMatch
+        XCTAssertTrue(toolkitTitle.waitForExistence(timeout: 10), "Toolkit title missing")
+        XCTAssertEqual(toolkitTitle.label, "Toolkit", "i18n lookup did not resolve")
+
+        // url-state: the default reaches the view through the router's query.
+        XCTAssertEqual(
+            app.staticTexts["toolkit-filter"].firstMatch.label,
+            "all",
+            "useUrlState default did not reach the view"
+        )
+        // permissions: seeded with tasks.write, so the check GRANTS.
+        XCTAssertEqual(
+            app.staticTexts["toolkit-perm"].firstMatch.label,
+            "true",
+            "PyreonPermissions denied a seeded grant"
+        )
+        // table: one row at pageSize 10 is exactly one page.
+        XCTAssertEqual(
+            app.staticTexts["toolkit-tablepages"].firstMatch.label,
+            "1",
+            "PyreonTableState page count wrong"
+        )
+        // rx: [1,2,3,4] -> evens -> doubled, so a length of 2.
+        XCTAssertEqual(
+            app.staticTexts["toolkit-evens"].firstMatch.label,
+            "2",
+            "the rx chain did not lower to chained computeds"
+        )
+        // state-tree: the model's declared default.
+        XCTAssertEqual(
+            app.staticTexts["toolkit-pagesize"].firstMatch.label,
+            "20",
+            "state-tree model default did not reach the view"
+        )
+
+        // ui-system: styler + elements lower to native view modifiers. The
+        // styling itself is not queryable from XCUITest, so assert what IS —
+        // that each styled wrapper renders its CHILDREN. A wrapper that lowers
+        // to nothing, or to an invented view, fails here. The web e2e asserts
+        // the computed CSS, which is the half only a browser can see.
+        XCTAssertTrue(
+            app.staticTexts["toolkit-card-text"].firstMatch.waitForExistence(timeout: 10),
+            "styled() wrapper did not render its child"
+        )
+        XCTAssertTrue(
+            app.staticTexts["toolkit-rocket-text"].firstMatch.exists,
+            "rocketstyle .theme() wrapper did not render its child"
+        )
+        XCTAssertTrue(
+            app.staticTexts["toolkit-el-a"].firstMatch.exists,
+            "Element did not render its first child"
+        )
+        XCTAssertTrue(
+            app.staticTexts["toolkit-el-b"].firstMatch.exists,
+            "Element did not render its second child"
+        )
+
+        // attrs + coolgrid: both are structural wrappers, so what a device can
+        // see is that each renders its leaf. A wrapper that lowers to nothing,
+        // or to an invented view, fails here; the web e2e asserts attrs' baked
+        // `gap` default, which only a computed style can show.
+        XCTAssertTrue(
+            app.staticTexts["toolkit-attrs-text"].firstMatch.exists,
+            "attrs() wrapper did not render its child"
+        )
+        XCTAssertTrue(
+            app.staticTexts["toolkit-grid-cell"].firstMatch.exists,
+            "coolgrid Container > Row > Col did not render its leaf"
+        )
+        // hotkeys: the counter renders at its initial value. The PRESS is not
+        // asserted here — `.keyboardShortcut` needs a hardware keyboard the
+        // simulator has no reliable way to drive from XCUITest, so the web e2e
+        // owns that half and presses the real combo.
+        XCTAssertEqual(
+            app.staticTexts["toolkit-hotkey"].firstMatch.label,
+            "0",
+            "useHotkey's bound counter did not render"
+        )
+
+        // validation: the schema-driven form. `isValid` is derived from errors
+        // and an untouched field has none, so its initial value proves nothing —
+        // submit is what runs the schema.
+        let schemaName = app.textFields["toolkit-schema-name"].firstMatch
+        XCTAssertTrue(schemaName.exists, "Schema form field missing on toolkit page")
+        tapAfterScrolling(schemaName, in: app)
+        schemaName.typeText("ab")
+        dismissKeyboard(app)
+        tapAfterScrolling(app.buttons["toolkit-schema-submit"].firstMatch, in: app)
+        XCTAssertEqual(
+            app.staticTexts["toolkit-schema-valid"].firstMatch.label,
+            "false",
+            "the zodSchema declaration did not reject a too-short value"
+        )
+
+        // WebView bridge — the mechanism charts / code / flow / rich-text ride
+        // on, and the one with no device proof at all until now. The hosted
+        // page echoes the host-pushed `__pyreonData` back over the reverse
+        // channel, so BOTH directions land in a native Text this test can read.
+        // That indirection is the point: asserting INSIDE a WKWebView is what
+        // XCUITest cannot do reliably.
+        let bridge = app.staticTexts["toolkit-bridge"].firstMatch
+        XCTAssertTrue(bridge.waitForExistence(timeout: 15), "Bridge readout missing")
+        // The page loads asynchronously, so poll rather than assert once.
+        let echoed = NSPredicate(format: "label == %@", "ping")
+        expectation(for: echoed, evaluatedWith: bridge, handler: nil)
+        waitForExpectations(timeout: 20) { error in
+            XCTAssertNil(
+                error,
+                "WebView bridge did not round-trip: host data never reached the page, or pyreonPostMessage never reached the host (label was \(bridge.label))"
+            )
+        }
+
+        // The screen scrolls (see <Scroll> in the shared source), so a control
+        // below the fold has to be brought into view before it can be tapped —
+        // XCUITest's implicit scroll-to-visible is what failed here when the
+        // container did not scroll at all.
+        let machineToggleBtn = app.buttons["toolkit-machine-toggle"].firstMatch
+        if !machineToggleBtn.isHittable {
+            app.swipeUp()
+        }
+
+        // machine: the declared initial state, then a transition that must
+        // actually MOVE it — the initial value alone would pass against a
+        // machine that ignores every event.
+        XCTAssertEqual(
+            app.staticTexts["toolkit-machine"].firstMatch.label,
+            "off",
+            "PyreonMachine did not start in its declared initial state"
+        )
+        let machineToggle = app.buttons["toolkit-machine-toggle"].firstMatch
+        XCTAssertTrue(machineToggle.exists, "Machine toggle missing on toolkit page")
+        tapAfterScrolling(machineToggle, in: app)
+        XCTAssertEqual(
+            app.staticTexts["toolkit-machine"].firstMatch.label,
+            "on",
+            "PyreonMachine did not transition on send()"
+        )
+        // storage: the default, since nothing has persisted a value yet.
+        XCTAssertEqual(
+            app.staticTexts["toolkit-storage"].firstMatch.label,
+            "light",
+            "useStorage default did not reach the view"
+        )
+
+        // url-state WRITE: flipping it must move the value, which is the half a
+        // default-only assertion cannot see.
+        let filterDone = app.buttons["toolkit-filter-done"].firstMatch
+        XCTAssertTrue(filterDone.exists, "Filter button missing on toolkit page")
+        tapAfterScrolling(filterDone, in: app)
+        XCTAssertEqual(
+            app.staticTexts["toolkit-filter"].firstMatch.label,
+            "done",
+            "useUrlState write did not reach the router query"
+        )
+
+        let toolkitBack = app.buttons["toolkit-back"].firstMatch
+        XCTAssertTrue(toolkitBack.exists, "Back button missing on toolkit page")
+        tapAfterScrolling(toolkitBack, in: app)
+        XCTAssertTrue(
+            tasksPage.waitForExistence(timeout: 15),
+            "Did not return to tasks after toolkit Back"
         )
 
         // Phase 6: logout — flips the store flag back; lands on /login.

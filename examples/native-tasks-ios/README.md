@@ -50,6 +50,17 @@ xcodebuild test  -project PyreonTasks.xcodeproj -scheme PyreonTasks -sdk iphones
   -destination 'platform=iOS Simulator,name=iPhone 15,OS=latest'
 ```
 
+**The UI test needs a fixture server on port 8787.** The suite fetches
+`quotes.json` over loopback, so without it `test_authGateStoreMutationAndTypedParamsDetail`
+fails on the quote assertion long before reaching the screens it is actually
+exercising — the failure message names the cause, but the command above does not
+start the server. CI starts it as a workflow step; locally:
+
+```bash
+python3 -m http.server 8787 --bind 127.0.0.1 \
+  --directory ../native-tasks/fixtures &
+```
+
 ## Dependency on #1449
 
 `scripts/build.sh` points at `../native-tasks/src/TasksApp.tsx` — that directory lands in [#1449](https://github.com/pyreon/pyreon/pull/1449). **This PR sequences AFTER #1449 merges.** Before #1449 lands, `scripts/build.sh` fails with `[build.sh] cd: ../native-tasks/src: No such file or directory`.

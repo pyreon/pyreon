@@ -74,10 +74,31 @@ export function buildCodeHostHtml(options: BuildCodeHostHtmlOptions = {}): strin
 (function () {
   // Wait for window.CM — the app's bundled CodeMirror may load async (an
   // external <script src>, or injected by the native host after page load).
+  function pyreonReportHostError(msg) {
+    /* Tell the HOST, not just this page. Setting a window flag and returning
+       left every target showing a blank frame forever, with the diagnosis
+       stranded inside the very frame nobody can read from. The reverse bridge
+       is already here for ordinary events; a failure is the one message that
+       most needs it.
+
+       RETRIES, because the host installs pyreonPostMessage on load and this
+       can run first: the page's own script executes at parse time. Reporting
+       once and giving up put the message back where it started, nowhere. */
+    var left = 120;
+    (function attempt() {
+      try {
+        if (typeof window.pyreonPostMessage === 'function') {
+          window.pyreonPostMessage(JSON.stringify({ error: msg }));
+          return;
+        }
+      } catch (e) { return; }
+      if (--left > 0) setTimeout(attempt, 16);
+    })();
+  }
   var tries = 0;
   function waitCM() {
     if (window.CM) { boot(); return; }
-    if (++tries > 800) { window.__pyreonCodeError = 'window.CM not provided (timed out)'; return; }
+    if (++tries > 800) { window.__pyreonCodeError = 'window.CM not provided (timed out)'; pyreonReportHostError(window.__pyreonCodeError); return; }
     setTimeout(waitCM, 10);
   }
   function boot() {

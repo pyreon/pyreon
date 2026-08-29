@@ -12,6 +12,9 @@
 // Same source-sharing pattern as `native-todomvc-web/src/entry-client.tsx`
 // (which imports from `../../native-todomvc-ios/src/TodoApp`).
 
+// Side-effect import: registers unistyle's theme engine, which is how a
+// rocketstyle `.theme()` chain reaches the responsive renderer on the web.
+import '@pyreon/unistyle'
 import { mount } from '@pyreon/runtime-dom'
 import { TasksApp } from '../../native-tasks/src/TasksApp'
 

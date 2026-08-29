@@ -359,6 +359,10 @@ let _fieldArrayItemParamsSwift: string[] = []
  *  rewrite (`form.values.email` → `form.values["email"] ?? ""`) and the
  *  Field binding emit. */
 let _formNamesSwift: Set<string> = new Set()
+// zodSchema binding name -> its STRING field names. Lets a `useForm({ schema })`
+// wire per-field validators without threading the schema list through every
+// decl emitter. String-only because a form Field is a text input.
+let _zodStringFieldsSwift: Map<string, string[]> = new Map()
 /**
  * The onSubmit param name currently in scope, if any — a STACK so a nested
  * form emit can't clobber the outer one.
@@ -991,6 +995,11 @@ export function emitSwift(
   // Gap 4 follow-up — Zod / Valibot / ArkType schema structs.
   // Emit the shared PyreonSchemaError enum BEFORE the schemas if
   // any are present (the per-schema .parse() / .safeParse() refer to it).
+  _zodStringFieldsSwift = new Map()
+  for (const zs of zodSchemas) {
+    const names = zs.fields.filter((f) => f.type === 'string').map((f) => f.name)
+    if (names.length > 0) _zodStringFieldsSwift.set(zs.bindingName, names)
+  }
   if (zodSchemas.length > 0) parts.push(SWIFT_SCHEMA_ERROR)
   // Standalone-validation: the web-faithful result shape, once, when any
   // schema was validated inline (`s.object({ … }).safeParse(x)`).
@@ -1719,6 +1728,38 @@ function emitSwiftZodSchema(zs: ZodSchemaDefnIR): string {
   lines.push(`        catch let e as PyreonSchemaError { return .failure(e) }`)
   lines.push(`        catch { return .failure(.unknown) }`)
   lines.push(`    }`)
+  // Per-FIELD validation, so `useForm({ schema })` can wire the schema into the
+  // form. `PyreonForm` takes `[String: (String) -> String]` ("" = valid), and
+  // without this the option was dropped SILENTLY: `isValid` stayed true on
+  // native for input the web rejected. Found by the iOS device gate.
+  //
+  // Reuses `emitSwiftScalarConstraints` — the same generator `parse()` uses —
+  // so the two can never disagree about what a constraint means. Only STRING
+  // fields are emitted: a form Field is a text input, and a non-string field is
+  // not bound to one.
+  const _stringFields = zs.fields.filter((f) => f.type === 'string')
+  if (_stringFields.length > 0) {
+    lines.push(``)
+    lines.push(`    /// "" when valid, else the violated rule — the PyreonForm validator shape.`)
+    lines.push(`    static func validateField(_ field: String, _ value: String) -> String {`)
+    lines.push(`        do {`)
+    lines.push(`            switch field {`)
+    for (const f of _stringFields) {
+      lines.push(`            case ${JSON.stringify(f.name)}:`)
+      const guards: string[] = []
+      emitSwiftScalarConstraints(guards, 'value', 'string', f.constraints, f.name, 16)
+      if (guards.length === 0) guards.push(`                break`)
+      lines.push(...guards)
+    }
+    lines.push(`            default: break`)
+    lines.push(`            }`)
+    lines.push(`        } catch let e as PyreonSchemaError {`)
+    lines.push(`            if case .constraintViolation(_, let rule) = e { return rule }`)
+    lines.push(`            return "invalid"`)
+    lines.push(`        } catch { return "invalid" }`)
+    lines.push(`        return ""`)
+    lines.push(`    }`)
+  }
   // Standalone-validation: the web-faithful result shape. `s.object({ … })
   // .safeParse(x)` returns `{ success, data }` on the web, but Swift's `Result`
   // carries no `.success` Bool — so an inline-validated schema also gets a
@@ -3052,6 +3093,37 @@ function emitSwiftDecl(
         )
         .join(', ')
       parts.push(`validators: [${entries}]`)
+    }
+    // `schema: SomeSchema` — synthesize a validator per STRING field, each
+    // delegating to the schema's own `validateField`. One source of truth for
+    // what a constraint means, and it makes the option do on native what it
+    // does on the web instead of being dropped in silence.
+    //
+    // Explicit `validators` win: they are per-field and more specific, so a
+    // field carrying both keeps the hand-written one.
+    if (d.schemaName !== undefined) {
+      const fields = _zodStringFieldsSwift.get(d.schemaName)
+      if (fields === undefined) {
+        _emitWarnings.push(
+          `useForm({ schema: ${d.schemaName} }): no top-level zodSchema/valibotSchema/arkTypeSchema declaration by that name is visible in this file, so NO native validators are synthesized and the form will accept input the web rejects. Declare the schema at module scope in the same file.`,
+        )
+      } else {
+        const explicit = new Set((d.validators ?? []).map((v) => v.key))
+        const entries = fields
+          .filter((f) => !explicit.has(f))
+          .map(
+            (f) =>
+              `${JSON.stringify(f)}: { v in PyreonZodSchema_${d.schemaName}.validateField(${JSON.stringify(f)}, v) }`,
+          )
+        if (entries.length > 0) {
+          const existing = parts.findIndex((p) => p.startsWith('validators: ['))
+          if (existing >= 0) {
+            parts[existing] = `${parts[existing]!.slice(0, -1)}, ${entries.join(', ')}]`
+          } else {
+            parts.push(`validators: [${entries.join(', ')}]`)
+          }
+        }
+      }
     }
     // onSubmit is NOT an init argument on Swift: @State property
     // initializers run before `self` exists, and the callback's body
@@ -4583,6 +4655,20 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
       }
       // PyreonTableState PROPERTY reads: web `t.page()` / `t.sortColumn()` /
+      // `form.isValid()` / `form.isSubmitting()` — the WEB API is an accessor,
+      // the native `PyreonForm` exposes them as stored Bool properties. Without
+      // this the web-correct spelling emitted `form.isValid()`, which swiftc
+      // rejects with "cannot call value of non-function type 'Bool'". Same
+      // inversion `useOnline()` and `useAppState()` already carry.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _formNamesSwift.has(e.callee.object.name) &&
+        e.args.length === 0 &&
+        ['isValid', 'isSubmitting'].includes(e.callee.property)
+      ) {
+        return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
+      }
       // `t.sortDirection()` / `t.filterValue()` are accessor calls, but on Swift
       // these are stored properties — drop the parens. Its METHODS (rows /
       // pageCount / toggleSort / setFilter / …) keep parens (flow through).
@@ -9465,7 +9551,7 @@ function emitSwiftNavigationDestination(
       if (route.path.includes(':') || target.path.includes(':')) continue
       const keyword = firstBranch ? 'if' : 'else if'
       branches.push(
-        `${pad}${keyword} path == ${JSON.stringify(route.path)} {`,
+        `${pad}${keyword} PyreonRouter.matchPath(path, ${JSON.stringify(route.path)}) != nil {`,
         `${innerPad}${emitSwiftExpr(target.component, indent + 2)}()`,
         `${pad}}`,
       )
@@ -9505,7 +9591,7 @@ function emitSwiftNavigationDestination(
       // Literal route — direct path comparison.
       const keyword = firstBranch ? 'if' : 'else if'
       branches.push(
-        `${pad}${keyword} path == ${JSON.stringify(route.path)} {`,
+        `${pad}${keyword} PyreonRouter.matchPath(path, ${JSON.stringify(route.path)}) != nil {`,
         ...wrapGuard(route, wrapLoader(route, `${componentExpr}()`)),
         `${pad}}`,
       )
@@ -9620,7 +9706,7 @@ function emitSwiftNestedNavigationDestination(
         emitSwiftLayoutAwareInvocation(entry.component, indent + 2),
       )
       branches.push(
-        `${pad}${keyword} path == ${JSON.stringify(entry.path)} {`,
+        `${pad}${keyword} PyreonRouter.matchPath(path, ${JSON.stringify(entry.path)}) != nil {`,
         ...wrapGuardLines(entry.guard, render, denyFallback, indent),
         `${pad}}`,
       )

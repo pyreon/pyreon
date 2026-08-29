@@ -1119,7 +1119,7 @@ describe('Phase C5.1 — route extraction from createRouter({routes:[…]})', ()
 // RouterProvider content closure.
 
 describe('Phase C5.2 — Swift emit: .navigationDestination(for:)', () => {
-  it('single literal-path route emits an `if path == "/"` branch', () => {
+  it('single literal-path route emits a query-stripped `if` branch', () => {
     const out = txRouter(
       `
       const router = createRouter({
@@ -1130,7 +1130,7 @@ describe('Phase C5.2 — Swift emit: .navigationDestination(for:)', () => {
       'swift',
     )
     expect(out).toContain('.navigationDestination(for: String.self) { path in')
-    expect(out).toContain('if path == "/" {')
+    expect(out).toContain('if PyreonRouter.matchPath(path, "/") != nil {')
     expect(out).toContain('HomePage()')
   })
 
@@ -1147,7 +1147,7 @@ describe('Phase C5.2 — Swift emit: .navigationDestination(for:)', () => {
       `,
       'swift',
     )
-    expect(out).toContain('if path == "/" {')
+    expect(out).toContain('if PyreonRouter.matchPath(path, "/") != nil {')
     expect(out).toContain('HomePage()')
     expect(out).toContain('else if let params = PyreonRouter.matchPath(path, "/users/:id") {')
     expect(out).toContain('UserPage(params: params)')
@@ -1168,9 +1168,9 @@ describe('Phase C5.2 — Swift emit: .navigationDestination(for:)', () => {
       'swift',
     )
     // First branch uses `if`; subsequent ones use `else if`.
-    expect(out).toContain('if path == "/" {')
-    expect(out).toContain('else if path == "/about" {')
-    expect(out).toContain('else if path == "/settings" {')
+    expect(out).toContain('if PyreonRouter.matchPath(path, "/") != nil {')
+    expect(out).toContain('else if PyreonRouter.matchPath(path, "/about") != nil {')
+    expect(out).toContain('else if PyreonRouter.matchPath(path, "/settings") != nil {')
   })
 
   it('falls back to scaffold-only when router-decl has no routes (C4 back-compat)', () => {
@@ -1223,7 +1223,7 @@ describe('Phase C5.2 — Swift emit: .navigationDestination(for:)', () => {
       'swift',
     )
     // Else branch after the literal-path if.
-    expect(out).toContain('if path == "/" {')
+    expect(out).toContain('if PyreonRouter.matchPath(path, "/") != nil {')
     expect(out).toContain('else {')
     expect(out).toContain('Text(verbatim: "Pyreon Router: no route for \\(path)")')
   })
@@ -1241,7 +1241,7 @@ describe('Phase C5.2 — Swift emit: .navigationDestination(for:)', () => {
       `,
       'swift',
     )
-    expect(out).toContain('if path == "/" {')
+    expect(out).toContain('if PyreonRouter.matchPath(path, "/") != nil {')
     expect(out).toContain('else if let params = PyreonRouter.matchPath(path, "/users/:id")')
     expect(out).toContain('else {')
     expect(out).toContain('Text(verbatim: "Pyreon Router: no route for \\(path)")')
@@ -1286,8 +1286,8 @@ describe('Phase C5.2 — Swift emit: .navigationDestination(for:)', () => {
     // chain (for pushed paths AND back-to-`/` via push).
     expect(out).toMatch(/RouterProvider\(router: router\) \{\s*\n\s*HomePage\(\)/)
     // navigationDestination still has the home + about branches.
-    expect(out).toContain('if path == "/" {')
-    expect(out).toContain('else if path == "/about" {')
+    expect(out).toContain('if PyreonRouter.matchPath(path, "/") != nil {')
+    expect(out).toContain('else if PyreonRouter.matchPath(path, "/about") != nil {')
   })
 
   it('R1.1 — picks first non-:param route when no literal `/` is present', () => {
@@ -1360,7 +1360,7 @@ describe('Phase R1.2 — Kotlin emit: when-dispatch on router.currentPath', () =
     )
     expect(out).toContain('val currentPath = router.currentPath')
     expect(out).toContain('when {')
-    expect(out).toContain('currentPath == "/" -> HomePage()')
+    expect(out).toContain('PyreonRouter.matchPath(currentPath, "/") != null -> HomePage()')
     // No NavHost / composable() — clean break from the C5.3 shape.
     expect(out).not.toContain('NavHost')
     expect(out).not.toContain('composable(')
@@ -1381,7 +1381,7 @@ describe('Phase R1.2 — Kotlin emit: when-dispatch on router.currentPath', () =
       'kotlin',
     )
     // Literal preserved.
-    expect(out).toContain('currentPath == "/" -> HomePage()')
+    expect(out).toContain('PyreonRouter.matchPath(currentPath, "/") != null -> HomePage()')
     // Pattern routes through the runtime helper (same shape as Swift).
     expect(out).toContain('PyreonRouter.matchPath(currentPath, "/users/:id") != null ->')
     expect(out).toContain('val params = PyreonRouter.matchPath(currentPath, "/users/:id") ?: emptyMap()')
@@ -1430,9 +1430,9 @@ describe('Phase R1.2 — Kotlin emit: when-dispatch on router.currentPath', () =
       `,
       'kotlin',
     )
-    expect(out).toContain('currentPath == "/" -> HomePage()')
-    expect(out).toContain('currentPath == "/about" -> AboutPage()')
-    expect(out).toContain('currentPath == "/settings" -> SettingsPage()')
+    expect(out).toContain('PyreonRouter.matchPath(currentPath, "/") != null -> HomePage()')
+    expect(out).toContain('PyreonRouter.matchPath(currentPath, "/about") != null -> AboutPage()')
+    expect(out).toContain('PyreonRouter.matchPath(currentPath, "/settings") != null -> SettingsPage()')
   })
 })
 
@@ -1459,8 +1459,8 @@ describe('Phase 3 — per-route redirects (compile-time alias)', () => {
     )
     // The /old branch aliases to AboutPage (the /about target), as a
     // literal bare call — no redirect runtime, no params.
-    expect(out).toContain('else if path == "/old" {')
-    expect(out).toContain('else if path == "/about" {')
+    expect(out).toContain('else if PyreonRouter.matchPath(path, "/old") != nil {')
+    expect(out).toContain('else if PyreonRouter.matchPath(path, "/about") != nil {')
     // Both /old and /about render AboutPage().
     expect(out.match(/AboutPage\(\)/g)?.length ?? 0).toBeGreaterThanOrEqual(2)
   })
@@ -1479,8 +1479,8 @@ describe('Phase 3 — per-route redirects (compile-time alias)', () => {
       `,
       'kotlin',
     )
-    expect(out).toContain('currentPath == "/old" -> AboutPage()')
-    expect(out).toContain('currentPath == "/about" -> AboutPage()')
+    expect(out).toContain('PyreonRouter.matchPath(currentPath, "/old") != null -> AboutPage()')
+    expect(out).toContain('PyreonRouter.matchPath(currentPath, "/about") != null -> AboutPage()')
   })
 
   it('Swift: a `/` redirect resolves the launch home route to the target', () => {
@@ -1499,8 +1499,8 @@ describe('Phase 3 — per-route redirects (compile-time alias)', () => {
     // Launch body renders the resolved target (not EmptyView, not blank).
     expect(out).toContain('HomePage()')
     // navigationDestination aliases / → HomePage and keeps /home.
-    expect(out).toContain('if path == "/" {')
-    expect(out).toContain('else if path == "/home" {')
+    expect(out).toContain('if PyreonRouter.matchPath(path, "/") != nil {')
+    expect(out).toContain('else if PyreonRouter.matchPath(path, "/home") != nil {')
   })
 
   it('Swift: redirect chains (/a → /b → /c) resolve transitively', () => {
@@ -1518,9 +1518,9 @@ describe('Phase 3 — per-route redirects (compile-time alias)', () => {
       'swift',
     )
     // /a and /b both alias to SettingsPage (the chain terminus).
-    expect(out).toContain('if path == "/a" {')
-    expect(out).toContain('else if path == "/b" {')
-    expect(out).toContain('else if path == "/c" {')
+    expect(out).toContain('if PyreonRouter.matchPath(path, "/a") != nil {')
+    expect(out).toContain('else if PyreonRouter.matchPath(path, "/b") != nil {')
+    expect(out).toContain('else if PyreonRouter.matchPath(path, "/c") != nil {')
     expect(out.match(/SettingsPage\(\)/g)?.length ?? 0).toBeGreaterThanOrEqual(3)
   })
 
@@ -1538,9 +1538,9 @@ describe('Phase 3 — per-route redirects (compile-time alias)', () => {
       `,
       'kotlin',
     )
-    expect(out).toContain('currentPath == "/a" -> SettingsPage()')
-    expect(out).toContain('currentPath == "/b" -> SettingsPage()')
-    expect(out).toContain('currentPath == "/c" -> SettingsPage()')
+    expect(out).toContain('PyreonRouter.matchPath(currentPath, "/a") != null -> SettingsPage()')
+    expect(out).toContain('PyreonRouter.matchPath(currentPath, "/b") != null -> SettingsPage()')
+    expect(out).toContain('PyreonRouter.matchPath(currentPath, "/c") != null -> SettingsPage()')
   })
 
   it('Swift: a skipped leading redirect leaves the next branch as `if` (not `else if`)', () => {
@@ -1559,8 +1559,8 @@ describe('Phase 3 — per-route redirects (compile-time alias)', () => {
       `,
       'swift',
     )
-    expect(out).toContain('if path == "/" {')
-    expect(out).not.toContain('else if path == "/" {')
+    expect(out).toContain('if PyreonRouter.matchPath(path, "/") != nil {')
+    expect(out).not.toContain('else if PyreonRouter.matchPath(path, "/") != nil {')
     // The dangling redirect produced no branch.
     expect(out).not.toContain('path == "/dangling"')
   })
@@ -1602,7 +1602,7 @@ describe('Phase 3 — per-route redirects (compile-time alias)', () => {
       'kotlin',
     )
     // Valid literal route survives; unresolvable redirects do not.
-    expect(out).toContain('currentPath == "/" -> HomePage()')
+    expect(out).toContain('PyreonRouter.matchPath(currentPath, "/") != null -> HomePage()')
     expect(out).not.toContain('currentPath == "/dangling"')
     expect(out).not.toContain('currentPath == "/a"')
     expect(out).not.toContain('currentPath == "/b"')
@@ -1628,7 +1628,7 @@ describe('Phase 3 — bare `*` / `(.*)` whole-route wildcard (404 catch-all)', (
       `,
       'swift',
     )
-    expect(out).toContain('if path == "/" {')
+    expect(out).toContain('if PyreonRouter.matchPath(path, "/") != nil {')
     // Wildcard component is the else-branch, NOT a path-equality branch.
     expect(out).toContain('else {')
     expect(out).toContain('AboutPage()')
@@ -1650,7 +1650,7 @@ describe('Phase 3 — bare `*` / `(.*)` whole-route wildcard (404 catch-all)', (
       `,
       'kotlin',
     )
-    expect(out).toContain('currentPath == "/" -> HomePage()')
+    expect(out).toContain('PyreonRouter.matchPath(currentPath, "/") != null -> HomePage()')
     expect(out).toContain('else -> AboutPage()')
     expect(out).not.toContain('currentPath == "*"')
     expect(out).not.toContain('Pyreon Router: no route for')
@@ -1784,7 +1784,7 @@ describe('Phase 3 — per-route boolean guards (beforeEnter)', () => {
       `,
       'swift',
     )
-    expect(out).toContain('else if path == "/admin" {')
+    expect(out).toContain('else if PyreonRouter.matchPath(path, "/admin") != nil {')
     expect(out).toContain('if isAuthed {')
     expect(out).toContain('AboutPage()')
     expect(out).toContain('} else {')
@@ -1805,10 +1805,10 @@ describe('Phase 3 — per-route boolean guards (beforeEnter)', () => {
       `,
       'kotlin',
     )
-    expect(out).toContain('currentPath == "/admin" -> if (isAuthed) AboutPage() else')
+    expect(out).toContain('PyreonRouter.matchPath(currentPath, "/admin") != null -> if (isAuthed) AboutPage() else')
     expect(out).toContain('Pyreon Router: access denied')
     // Unguarded sibling stays a plain branch (no `if (` wrap).
-    expect(out).toContain('currentPath == "/" -> HomePage()')
+    expect(out).toContain('PyreonRouter.matchPath(currentPath, "/") != null -> HomePage()')
   })
 
   it('Swift: guard-fail falls back to the wildcard component when present', () => {
@@ -1841,7 +1841,7 @@ describe('Phase 3 — per-route boolean guards (beforeEnter)', () => {
       `,
       'swift',
     )
-    expect(out).toContain('if path == "/" {')
+    expect(out).toContain('if PyreonRouter.matchPath(path, "/") != nil {')
     expect(out).not.toContain('access denied')
     // Body is a bare HomePage() — no inner guard conditional.
     expect(out).not.toContain('if isAuthed')

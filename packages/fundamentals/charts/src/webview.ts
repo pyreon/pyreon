@@ -118,8 +118,29 @@ export function buildChartHostHtml(options: BuildChartHostHtmlOptions = {}): str
   // hosted page with only ECharts present.
   const bridge = `
 (function () {
+  function pyreonReportHostError(msg) {
+    /* Tell the HOST, not just this page. Setting a window flag and returning
+       left every target showing a blank frame forever, with the diagnosis
+       stranded inside the very frame nobody can read from. The reverse bridge
+       is already here for ordinary events; a failure is the one message that
+       most needs it.
+
+       RETRIES, because the host installs pyreonPostMessage on load and this
+       can run first: the page's own script executes at parse time. Reporting
+       once and giving up put the message back where it started, nowhere. */
+    var left = 120;
+    (function attempt() {
+      try {
+        if (typeof window.pyreonPostMessage === 'function') {
+          window.pyreonPostMessage(JSON.stringify({ error: msg }));
+          return;
+        }
+      } catch (e) { return; }
+      if (--left > 0) setTimeout(attempt, 16);
+    })();
+  }
   try {
-  if (typeof echarts === 'undefined') { window.__pyreonChartError = 'echarts undefined'; return; }
+  if (typeof echarts === 'undefined') { window.__pyreonChartError = 'echarts undefined'; pyreonReportHostError(window.__pyreonChartError); return; }
   var el = document.getElementById('pyreon-chart');
   var chart = echarts.init(el, ${themeArg}, { renderer: '${safeRenderer}' });
 

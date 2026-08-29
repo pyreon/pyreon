@@ -312,6 +312,17 @@ export type DeclIR =
       validators?: { key: string; param: string; body: ExprIR }[]
       /** v2 — `onSubmit: (values) => …` callback (expression or block body). */
       onSubmit?: { param: string; body: StatementIR[] }
+      /**
+       * `schema: SomeSchema` naming a top-level `zodSchema(...)` declaration.
+       *
+       * The declaration already emits a struct / data class whose `parse()`
+       * enforces every captured constraint — but nothing connected it to the
+       * form, so `useForm({ schema })` dropped the option SILENTLY and
+       * `isValid` was true on native for input the web rejected. Found by the
+       * iOS device gate, which is the only thing that ran a schema-validated
+       * form. The emitters turn this into per-field validator entries.
+       */
+      schemaName?: string
     }
   /**
    * Phase 4 — connectivity flag via `useOnline()` from `@pyreon/hooks` (the

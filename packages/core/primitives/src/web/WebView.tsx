@@ -80,8 +80,19 @@ export function WebView(props: WebViewProps): VNode {
     // bridges once the iframe's document exists.
     attrs.onLoad = (): void => {
       loaded = true
-      if (hasData) push()
+      // REVERSE bridge FIRST, then the data push. A hosted page commonly reacts
+      // to the very first `pyreondata` by sending something back — an echo, a
+      // ready signal, a rendered-size report — and pushing before the bridge
+      // exists drops that first response silently.
+      //
+      // The old order happened to work with `srcdoc`, where the page's own
+      // script runs before this handler at all; it does NOT with `src`, where
+      // the page loads asynchronously and its first `send()` lands between the
+      // push and the injection. Both native runtimes install their message
+      // handler at WebView CONSTRUCTION, i.e. before any data can arrive, so
+      // this also stops the web from being the odd one out.
       if (hasOnMessage) injectReverseBridge()
+      if (hasData) push()
     }
     // Re-push whenever `data` changes (the read tracks it). On the first
     // run the iframe usually isn't loaded yet → push no-ops, and `onLoad`

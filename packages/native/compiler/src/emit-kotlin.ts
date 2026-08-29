@@ -183,6 +183,8 @@ let _fetchNames: Set<string> = new Set()
  * all of them as @Observable properties, so it needs no rewrite.
  */
 let _formNames: Set<string> = new Set()
+// zodSchema binding name -> its STRING field names (mirror of the Swift map).
+let _zodStringFieldsKotlin: Map<string, string[]> = new Map()
 /**
  * The onSubmit param name currently in scope — mirror of
  * `_formSubmitParamsSwift`. `PyreonForm`'s onSubmit receives a
@@ -544,6 +546,11 @@ export function emitKotlin(
   // + module-scope object.
   for (const f of features) parts.push(emitKotlinFeature(f))
   // Gap 4 follow-up — Zod / Valibot / ArkType schema data classes.
+  _zodStringFieldsKotlin = new Map()
+  for (const zs of zodSchemas) {
+    const names = zs.fields.filter((f) => f.type === 'string').map((f) => f.name)
+    if (names.length > 0) _zodStringFieldsKotlin.set(zs.bindingName, names)
+  }
   // Emit the shared PyreonSchemaError sealed class once if any
   // schemas are present.
   if (zodSchemas.length > 0) parts.push(KOTLIN_SCHEMA_ERROR)
@@ -1245,6 +1252,39 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
   lines.push(`                Result.failure(e)`)
   lines.push(`            }`)
   lines.push(`        }`)
+  // Per-FIELD validation — the Kotlin mirror of the Swift `validateField`, so
+  // `useForm({ schema })` can wire the schema into the form. PyreonForm takes
+  // `Map<String, (String) -> String>` ("" = valid); without this the option was
+  // dropped SILENTLY and `isValid` stayed true for input the web rejects.
+  //
+  // Reuses `emitKotlinScalarConstraints`, the same generator `parse()` uses, so
+  // the two cannot disagree about what a constraint means. STRING fields only:
+  // a form Field is a text input.
+  const _kStringFields = zs.fields.filter((f) => f.type === 'string')
+  if (_kStringFields.length > 0) {
+    lines.push(``)
+    lines.push(`        /** "" when valid, else the violated rule — the PyreonForm validator shape. */`)
+    lines.push(`        fun validateField(field: String, value: String): String {`)
+    lines.push(`            try {`)
+    lines.push(`                when (field) {`)
+    for (const f of _kStringFields) {
+      lines.push(`                    ${JSON.stringify(f.name)} -> {`)
+      const guards: string[] = []
+      emitKotlinScalarConstraints(guards, 'value', 'string', f.constraints, f.name, 24, false)
+      if (guards.length === 0) guards.push(`                        Unit`)
+      lines.push(...guards)
+      lines.push(`                    }`)
+    }
+    lines.push(`                    else -> Unit`)
+    lines.push(`                }`)
+    lines.push(`            } catch (e: PyreonSchemaError.ConstraintViolation) {`)
+    lines.push(`                return e.rule`)
+    lines.push(`            } catch (e: PyreonSchemaError) {`)
+    lines.push(`                return "invalid"`)
+    lines.push(`            }`)
+    lines.push(`            return ""`)
+    lines.push(`        }`)
+  }
   // Standalone-validation: the web-faithful `{ success, data }` result.
   // Kotlin's `Result` carries no `.success` Bool, so an inline-validated
   // schema also gets `safeParseResult` → `PyreonParseResult<T>`.
@@ -2340,6 +2380,33 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
         )
         .join(', ')
       parts.push(`validators = mapOf(${entries})`)
+    }
+    // `schema: SomeSchema` — mirror of the Swift wiring: one validator per
+    // STRING field, delegating to the schema's own `validateField`. Explicit
+    // `validators` win, being per-field and more specific.
+    if (d.schemaName !== undefined) {
+      const fields = _zodStringFieldsKotlin.get(d.schemaName)
+      if (fields === undefined) {
+        _emitWarnings.push(
+          `useForm({ schema: ${d.schemaName} }): no top-level zodSchema/valibotSchema/arkTypeSchema declaration by that name is visible in this file, so NO native validators are synthesized and the form will accept input the web rejects. Declare the schema at module scope in the same file.`,
+        )
+      } else {
+        const explicit = new Set((d.validators ?? []).map((v) => v.key))
+        const entries = fields
+          .filter((f) => !explicit.has(f))
+          .map(
+            (f) =>
+              `${JSON.stringify(f)} to { v: String -> PyreonZodSchema_${d.schemaName}.validateField(${JSON.stringify(f)}, v) }`,
+          )
+        if (entries.length > 0) {
+          const existing = parts.findIndex((p) => p.startsWith('validators = mapOf('))
+          if (existing >= 0) {
+            parts[existing] = `${parts[existing]!.slice(0, -1)}, ${entries.join(', ')})`
+          } else {
+            parts.push(`validators = mapOf(${entries.join(', ')})`)
+          }
+        }
+      }
     }
     // onSubmit is deliberately NOT a constructor arg here — it is assigned
     // post-decl in the composable body (see the emit loop after declTexts).
@@ -3876,6 +3943,20 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         _clipboardKotlin.has(e.callee.object.name) &&
         e.args.length === 0 &&
         ['copied', 'text'].includes(e.callee.property)
+      ) {
+        return `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
+      }
+      // `form.isValid()` / `form.isSubmitting()` — the WEB API is an accessor,
+      // the native PyreonForm exposes them as Boolean properties. Mirror of the
+      // Swift branch; without it the web-correct spelling emitted
+      // `form.isValid()`, which kotlinc rejects with "expression 'isValid' of
+      // type 'Boolean' cannot be invoked as a function".
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _formNames.has(e.callee.object.name) &&
+        e.args.length === 0 &&
+        ['isValid', 'isSubmitting'].includes(e.callee.property)
       ) {
         return `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
       }
@@ -7967,7 +8048,7 @@ function emitKotlinRouteDispatch(
       // v1 supports literal source AND literal target only.
       if (route.path.includes(':') || target.path.includes(':')) continue
       lines.push(
-        `${innerPad}currentPath == ${JSON.stringify(route.path)} -> ${emitKotlinExpr(target.component, indent + 4)}()`,
+        `${innerPad}PyreonRouter.matchPath(currentPath, ${JSON.stringify(route.path)}) != null -> ${emitKotlinExpr(target.component, indent + 4)}()`,
       )
       continue
     }
@@ -8001,7 +8082,7 @@ function emitKotlinRouteDispatch(
     } else {
       // Literal route — direct == comparison.
       lines.push(
-        `${innerPad}currentPath == ${JSON.stringify(route.path)} -> ${guardWrap(route, loaderWrap(route, `${componentExpr}()`))}`,
+        `${innerPad}PyreonRouter.matchPath(currentPath, ${JSON.stringify(route.path)}) != null -> ${guardWrap(route, loaderWrap(route, `${componentExpr}()`))}`,
       )
     }
   }
@@ -8132,7 +8213,7 @@ function emitKotlinNestedRouteDispatch(
         emitKotlinLayoutAwareInvocation(entry.component, indent + 4),
       )
       lines.push(
-        `${innerPad}currentPath == ${JSON.stringify(entry.path)} -> ${guardWrap(entry.guard, render)}`,
+        `${innerPad}PyreonRouter.matchPath(currentPath, ${JSON.stringify(entry.path)}) != null -> ${guardWrap(entry.guard, render)}`,
       )
     }
   }

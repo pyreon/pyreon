@@ -47,7 +47,7 @@
 // - **Store computeds/methods in the setup body** — store v1 lowers
 //   signals; derived state lives in component-level `computed` for now.
 
-import { useQuery } from '@pyreon/query'
+import { QueryClient, QueryClientProvider, useQuery } from '@pyreon/query'
 import { model } from '@pyreon/state-tree'
 import { filter as filter_rx, map } from '@pyreon/rx'
 import { SizedMap } from '@pyreon/sized-map'
@@ -59,7 +59,17 @@ import { PyreonUI } from '@pyreon/ui-core'
 import { createTableState } from '@pyreon/table'
 import { kinetic } from '@pyreon/kinetic'
 import { createI18n } from '@pyreon/i18n'
-import { toast } from '@pyreon/toast'
+import { attrs } from '@pyreon/attrs'
+import { Container, Row, Col } from '@pyreon/coolgrid'
+import { Element } from '@pyreon/elements'
+import { createMachine } from '@pyreon/machine'
+import { useHotkey } from '@pyreon/hotkeys'
+import { rocketstyle } from '@pyreon/rocketstyle'
+import { styled } from '@pyreon/styler'
+import { zodSchema } from '@pyreon/validation'
+import { z } from 'zod'
+import { useStorage } from '@pyreon/storage'
+import { Toaster, toast } from '@pyreon/toast'
 import { announce } from '@pyreon/a11y'
 import { useUrlState } from '@pyreon/url-state'
 import { signal, computed } from '@pyreon/reactivity'
@@ -67,7 +77,7 @@ import { useForm } from '@pyreon/form'
 import { useFetch } from '@pyreon/hooks'
 import { defineStore } from '@pyreon/store'
 import { For, Show, Suspense, ErrorBoundary } from '@pyreon/core'
-import { Stack, Inline, Field, Button, Text, Image, Icon, Scroll, Modal } from '@pyreon/primitives'
+import { Stack, Inline, Field, Button, Text, Image, Icon, Scroll, Modal, WebView } from '@pyreon/primitives'
 import {
   createRouter,
   useNavigate,
@@ -136,7 +146,13 @@ function LoginPage() {
       <Show when={() => form.errors().username !== ''}>
         <Text data-testid="login-error">{form.errors().username}</Text>
       </Show>
-      <Button onPress={() => form.submit()} data-testid="login-submit">
+      {/* `handleSubmit`, not `submit`: that is the name @pyreon/form's WEB
+          useForm returns, and both native runtimes ship a `handleSubmit`
+          alias, so it is the one spelling that works on all three targets.
+          `form.submit()` lowered fine and threw `form.submit is not a
+          function` in the browser — PMTC passes an unknown method through
+          verbatim, so nothing caught it until a web e2e ran. */}
+      <Button onPress={() => form.handleSubmit()} data-testid="login-submit">
         Continue
       </Button>
     </Stack>
@@ -226,6 +242,9 @@ function TasksPage() {
         </Button>
         <Button onPress={() => navigate('/stats')} data-testid="tasks-stats">
           Stats
+        </Button>
+        <Button onPress={() => navigate('/toolkit')} data-testid="tasks-toolkit">
+          Toolkit
         </Button>
         <Button onPress={logout} data-testid="tasks-logout">
           Logout
@@ -427,6 +446,54 @@ const prefs = model({ state: { compact: false, pageSize: 20 } }).create()
 // useFetch inside a component.
 interface TaskDto { id: string; title: string }
 interface TableRow { id: string; label: string }
+// The UI-SYSTEM tier. `styled` emits real CSS on the web and lowers to native
+// view modifiers, so the SAME declaration styles on all three targets.
+//
+// NOT rocketstyle here, deliberately: its `.theme()` values only become CSS
+// through a `.styles()` bridge that calls unistyle's `makeItResponsive` (see
+// `el` in the private @pyreon/ui/components). PMTC reads `.theme()` statically
+// and emits modifiers, so a bare `.theme()` chain styles on NATIVE and renders
+// unstyled on the web — architecture, not a bug, but it means rocketstyle's
+// crossing claim covers the emit rather than one source styling everywhere.
+const Card = styled(Stack)`
+  padding: 8px;
+  background: #6b7280;
+`
+
+// attrs: the prop-defaulting HOC. `.attrs({ gap: 2 })` bakes a default onto the
+// wrapped component on every target.
+const AttrsBox = attrs({ name: 'AttrsBox', component: Stack }).attrs({ gap: 2 })
+
+// validation: the DECLARATION form is what lowers — a top-level
+// `zodSchema(z.object({…}))` emits native field validators. Nothing READS from
+// it here on purpose: the runtime surface around the declaration (inline
+// `.parse()`, async validate, the adapter's own members) stays web, so a value
+// rendered from it would be outside the crossing subset. `ToolkitSchema.fields`
+// was the first attempt and fails on BOTH toolchains — the synthesized
+// `PyreonZodSchema_*` has no such member, correctly. Carrying the declaration
+// in a real app is the whole of what crosses.
+const ToolkitSchema = zodSchema(z.object({ name: z.string().min(3), age: z.number() }))
+
+// The WEBVIEW BRIDGE, which is the mechanism four packages (charts / code /
+// flow / rich-text) ride on. Their real host pages are produced at BUILD time,
+// so they can never appear in lowered source — a BUNDLED file is their only
+// route to a device, and that is what this exercises.
+//
+// `src`, not `html`: the page ships in assets/webhost/ and is materialized by
+// `pyreon-native assets` into the place each target's resolver reads
+// (Bundle.main on iOS, assets/ on Android, the served root on web). Until that
+// pipeline existed the runtimes resolved `src` and nothing could put a file
+// there, so every WebView had to inline its whole page as a string.
+
+// rocketstyle with `.theme()` and NO `.styles()` — the chain that used to be
+// fully styled on iOS/Android and completely unstyled in a browser. It now
+// renders its theme through unistyle on the web too, so the same declaration
+// styles on all three targets.
+const RocketCard = rocketstyle()({ name: 'RocketCard', component: Element }).theme(() => ({
+  backgroundColor: '#334155',
+  padding: 8,
+}))
+
 const api = createHttp({ baseUrl: 'https://example.com' })
 const getTask = api.endpoint('GET /tasks/:id')
 
@@ -469,6 +536,40 @@ function ToolkitScreen() {
   })
   // Filter lives in the URL on web; on native the router's query backs it.
   const filter = useUrlState('filter', 'all')
+  // Seeded form: self-contained on every target. `usePermissions([...])` is
+  // what PMTC lowers to a PyreonPermissions, and it now needs no provider on
+  // the web either — before that, this exact line threw in a browser.
+  // machine: a two-state toggle. `createMachine` lowers only INSIDE a component
+  // body — it becomes a `remember {}` / an @State, which has no meaning at file
+  // scope, the same rule createI18n follows.
+  const mode = createMachine({
+    initial: 'off',
+    states: { off: { on: { TOGGLE: 'on' } }, on: { on: { TOGGLE: 'off' } } },
+  })
+  // storage: a persisted scalar. On native this is @AppStorage /
+  // rememberPyreonStorage; on the web it is the storage backend.
+  const theme = useStorage('toolkit-theme', 'light')
+  // hotkeys: a LITERAL shortcut + an inline zero-arg handler is the shape that
+  // lowers (SwiftUI `.keyboardShortcut` on a hidden button; a Compose focused
+  // key handler). `mod` resolves per platform.
+  // validation, used for real rather than merely declared: the schema drives a
+  // form. `zodSchema(...)` at module scope is the DECLARATION form that lowers
+  // to native field validators; wiring it into `useForm({ schema })` is what
+  // makes it do something a test can observe.
+  const schemaForm = useForm({
+    initialValues: { name: '', age: 0 },
+    schema: ToolkitSchema,
+    onSubmit: (_values) => {
+      toast('valid')
+    },
+  })
+  // Forward: `data` is pushed into the live page without reloading it.
+  // Reverse: the page's echo arrives here and lands in native UI.
+  const bridgeEcho = signal('none')
+  const hotkeyHits = signal(0)
+  useHotkey('mod+s', () => {
+    hotkeyHits.set(hotkeyHits() + 1)
+  })
   const perms = usePermissions(['tasks.write'])
   // table: `createTableState` is the dependency-free half that lowers to the
   // native PyreonTableState engine. `useTable` (the TanStack row model) stays
@@ -507,6 +608,13 @@ function ToolkitScreen() {
   }))
   return (
     <PyreonUI>
+    {/* Scrollable, because this screen now carries ~20 packages' readouts and
+        overflows a phone viewport. Without it XCUITest fails the first tap
+        below the fold with `kAXScrollToVisibleAction` — it cannot scroll a
+        container that does not scroll. Found by the iOS device gate, and it
+        is a real app bug rather than a test artifact: a user could not reach
+        those controls either. */}
+    <Scroll direction="vertical" data-testid="toolkit-scroll">
     <Stack gap={3} padding={4} data-testid="toolkit-page">
       <Text data-testid="toolkit-title">{i18n.t('title')}</Text>
       <Text data-testid="toolkit-filter">{filter()}</Text>
@@ -528,7 +636,50 @@ function ToolkitScreen() {
       <Text data-testid="toolkit-evens">{String(doubled().length)}</Text>
       <Text data-testid="toolkit-query">{q.data}</Text>
       <Text data-testid="toolkit-cache">{String(seen.size)}</Text>
-      <Text data-testid="toolkit-perm">{String(perms.can('tasks.write'))}</Text>
+      <Text data-testid="toolkit-perm">{String(perms('tasks.write'))}</Text>
+      <Card data-testid="toolkit-card">
+        <Text data-testid="toolkit-card-text">styled</Text>
+      </Card>
+      <AttrsBox data-testid="toolkit-attrs">
+        <Text data-testid="toolkit-attrs-text">attrs</Text>
+      </AttrsBox>
+      <Container data-testid="toolkit-grid">
+        <Row>
+          <Col>
+            <Text data-testid="toolkit-grid-cell">grid</Text>
+          </Col>
+        </Row>
+      </Container>
+      <Text data-testid="toolkit-hotkey">{String(hotkeyHits())}</Text>
+      <WebView
+        src="bridge.html"
+        data={'ping'}
+        onMessage={(m) => bridgeEcho.set(m)}
+        data-testid="toolkit-webview"
+      />
+      <Text data-testid="toolkit-bridge">{bridgeEcho()}</Text>
+      <Field
+        value={schemaForm.values().name}
+        onChangeText={(v) => schemaForm.setFieldValue('name', v)}
+        placeholder="Name"
+        data-testid="toolkit-schema-name"
+      />
+      <Button onPress={() => schemaForm.handleSubmit()} data-testid="toolkit-schema-submit">
+        Check
+      </Button>
+      <Text data-testid="toolkit-schema-valid">{String(schemaForm.isValid())}</Text>
+      <RocketCard data-testid="toolkit-rocket">
+        <Text data-testid="toolkit-rocket-text">rocket</Text>
+      </RocketCard>
+      <Element gap={2} data-testid="toolkit-element">
+        <Text data-testid="toolkit-el-a">a</Text>
+        <Text data-testid="toolkit-el-b">b</Text>
+      </Element>
+      <Text data-testid="toolkit-machine">{mode()}</Text>
+      <Text data-testid="toolkit-storage">{theme()}</Text>
+      <Button onPress={() => mode.send('TOGGLE')} data-testid="toolkit-machine-toggle">
+        Toggle mode
+      </Button>
       <Text data-testid="toolkit-synced">{String(synced())}</Text>
       <Text data-testid="toolkit-tablepages">{String(table.pageCount())}</Text>
       <Text data-testid="toolkit-http">{taskReq.data}</Text>
@@ -540,6 +691,7 @@ function ToolkitScreen() {
         Back to tasks
       </Button>
     </Stack>
+    </Scroll>
     </PyreonUI>
   )
 }
@@ -555,6 +707,11 @@ export function TasksApp() {
   //
   // `mode: 'history'` is web-only; PMTC reads only `routes` and the
   // native navigation stacks ignore it (same note as router-demo).
+  // Bound, not inlined: the docs' shape, and the one PMTC recognizes as the
+  // client declaration (it emits nothing). Inlined into the prop it is just a
+  // class construction to the parser, which warns by name — correctly in
+  // general, misleadingly here, since a transparent provider drops the attr.
+  const queryClient = new QueryClient()
   const router = createRouter({
     mode: 'history',
     routes: [
@@ -599,8 +756,22 @@ export function TasksApp() {
   })
 
   return (
-    <RouterProvider router={router}>
-      <RouterView />
-    </RouterProvider>
+    // `<QueryClientProvider>` is MANDATORY on the web — `useQuery` reads its
+    // client from it and throws `No QueryClient found` without one. It is
+    // transparent on native: `useQuery` lowers to a self-contained PyreonQuery,
+    // so the provider emits only its children and the client binding emits
+    // nothing at all. Carrying it here is what makes ONE source legal on all
+    // three targets; before PMTC lowered it, this exact line emitted a SwiftUI
+    // view that exists on neither platform, silently.
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router}>
+        <RouterView />
+        {/* `toast()` writes to a store; SOMETHING has to render it. Without a
+            <Toaster> the call silently does nothing on the web, while the
+            native targets show it — so a package that looked exercised was
+            only half-proven. PMTC lowers this tag on both targets. */}
+        <Toaster />
+      </RouterProvider>
+    </QueryClientProvider>
   )
 }

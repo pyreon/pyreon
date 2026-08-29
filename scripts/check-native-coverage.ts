@@ -325,17 +325,25 @@ export function C() { return (<Box><Text>hi</Text></Box>) }`,
   {
     name: '@pyreon/rocketstyle',
     mechanism: 'pmtc-lowers',
-    rationale: 'rocketstyle(Element).theme()/.attrs() dimensions lower to native styled components.',
+    rationale:
+      'rocketstyle(Element).theme()/.attrs() dimensions lower to native styled components, and the SAME chain now styles on the web: a chain with `.theme()` and no `.styles()` renders its theme through unistyle\'s responsive engine, reached via ui-core\'s engine seam (rocketstyle carries no unistyle dependency and degrades to no CSS without it). Before that a theme-only chain was fully styled on iOS/Android and completely unstyled in a browser.',
     // The registry used `rocketstyle(Element)` — a call form that does not exist in
     // the RUNTIME either (init.ts is curried: `rocketstyle()({name, component})`),
     // so `readCurriedPrimitive` bailed BEFORE its own warning and the module-decl
     // catch-all emitted the chain verbatim. Verified: this shape lowers with zero
     // warnings to VStack / Column(Modifier.background(...).padding(...)).
+    // The base is `Element`, which is what the rationale has always SAID and the
+    // snippet did not do — it used a bare `Stack` primitive. The difference is
+    // real and web-side: over a primitive, rocketstyle emits no class at all;
+    // over Element the theme renders through unistyle. Both lower identically on
+    // native, which is exactly why the mismatch survived — a native-only check
+    // cannot see it.
     snippet: `import { rocketstyle } from '@pyreon/rocketstyle'
+import { Element } from '@pyreon/elements'
 import { Stack, Text } from '@pyreon/primitives'
-const Btn = rocketstyle()({ name: 'Btn', component: Stack })
+const Btn = rocketstyle()({ name: 'Btn', component: Element })
   .theme(() => ({ backgroundColor: '#6b7280', padding: 8 }))
-export function C() { return (<Btn><Text>hi</Text></Btn>) }`,
+export function C() { return (<Stack><Btn><Text>hi</Text></Btn></Stack>) }`,
   },
   {
     name: '@pyreon/elements',
@@ -348,7 +356,12 @@ export function C() { return (<Element gap={2}><Text>a</Text><Text>b</Text></Ele
   {
     name: '@pyreon/attrs',
     mechanism: 'pmtc-lowers',
-    rationale: 'attrs(Component)(defaults) HOC lowers via the wrapped native component.',
+    // The rationale used to read `attrs(Component)(defaults)` — a call form the
+    // runtime does not have, and the one the comment below already records as
+    // the reason the walk bailed. Saying it in the rationale too kept pointing
+    // readers at a shape that cannot work.
+    rationale:
+      'attrs({ name, component }).attrs(defaults) HOC lowers via the wrapped native component.',
     // Same class as rocketstyle above: `attrs(Element)({…})` skips the options object
     // the runtime takes (`attrs({ name, component })`), so the walk bailed at a
     // CallExpression callee and never reached its own bare-form warning. Verified:
@@ -631,12 +644,22 @@ export function C() {
     name: '@pyreon/validation',
     mechanism: 'partial',
     rationale:
-      'the zod/valibot/arktype ADAPTERS stay web, but the declarative form DOES lower: a top-level zodSchema(z.object({…})) emits native field validators. Verified zero-warning on both targets; the runtime surface around it (inline .parse(), async validate) stays web.',
+      'the zod/valibot/arktype ADAPTERS stay web, but the declarative form DOES lower: a top-level zodSchema(z.object({…})) emits native field validators, and `useForm({ schema })` wires one per string field. Verified zero-warning on both targets; the runtime surface around it (inline .parse(), async validate) stays web.',
+    // The snippet DRIVES A FORM, it does not merely declare the schema.
+    // Declaring it alone was the old shape, and it hid the whole gap: the
+    // declaration lowered to a struct with a constraint-checking `parse()`
+    // while `useForm({ schema })` dropped the option SILENTLY, so `isValid`
+    // was true on native for input the web rejects. The iOS device gate found
+    // that; a snippet that never built a form could not.
     snippet: `import { z } from 'zod'
 import { zodSchema } from '@pyreon/validation'
-import { Stack, Text } from '@pyreon/primitives'
-const Signup = zodSchema(z.object({ name: z.string(), age: z.number() }))
-export function C() { return (<Stack><Text>ok</Text></Stack>) }`,
+import { useForm } from '@pyreon/form'
+import { Stack, Text, Field, Button } from '@pyreon/primitives'
+const Signup = zodSchema(z.object({ name: z.string().min(3), age: z.number() }))
+export function C() {
+  const f = useForm({ initialValues: { name: '' }, schema: Signup, onSubmit: () => {} })
+  return (<Stack><Field value={f.values().name} onChangeText={(v) => f.setFieldValue('name', v)} /><Button onPress={() => f.handleSubmit()}>go</Button><Text>{String(f.isValid())}</Text></Stack>)
+}`,
   },
   {
     name: '@pyreon/url-state',

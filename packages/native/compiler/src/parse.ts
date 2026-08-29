@@ -7172,6 +7172,12 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       for (const prop of (cfg.properties as AnyNode[] | undefined) ?? []) {
         if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
         const key = (prop.key?.name ?? prop.key?.value) as string | undefined
+        // `schema: SomeSchema` — an identifier naming a top-level zodSchema
+        // declaration. Captured here; the emitters resolve it against the
+        // module's `zodSchemas` and synthesize validators from its constraints.
+        if (key === 'schema' && prop.value?.type === 'Identifier') {
+          decl.schemaName = prop.value.name as string
+        }
         if (key === 'validators' && prop.value?.type === 'ObjectExpression') {
           const validators: { key: string; param: string; body: ExprIR }[] = []
           for (const v of (prop.value.properties as AnyNode[] | undefined) ?? []) {

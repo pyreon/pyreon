@@ -8,3 +8,9 @@ generated/*
 *.xcodeproj/
 *.xcworkspace/
 DerivedData/
+
+# Web-host bridge — `scripts/build.sh` rematerializes `webhost/` on every
+# build (the CLI writes it to `<outDir>/webhost`), same as the asset outputs
+# above. It was the one materialized output missing from this list, so every
+# local build left the tree dirty.
+ios/webhost/

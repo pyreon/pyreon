@@ -404,19 +404,69 @@ async function main(): Promise<void> {
       )
       process.exit(1)
     }
+    // Previous budgets, so `--update` can be a RATCHET rather than a reset.
+    //
+    // It used to rewrite EVERY entry to `current × 1.25` unconditionally, which
+    // meant a PR that legitimately grew ONE package silently RAISED the budget
+    // of every other package that happened to sit below its own — handing out
+    // headroom nobody asked for, buried in a ~50-line diff no reviewer can read
+    // as anything but noise. That is the same failure the lint baseline is
+    // designed against: a ceiling that can be lifted wholesale is not a ratchet.
+    let previous: Record<string, number> = {}
+    try {
+      const raw = JSON.parse(readFileSync(BUDGETS_PATH, 'utf8')) as Record<string, unknown>
+      for (const [k, v] of Object.entries(raw)) {
+        if (!k.startsWith('_') && typeof v === 'number') previous[k] = v
+      }
+    } catch {
+      previous = {}
+    }
+    // Optional scope: `--update=@pyreon/foo` touches only that package. Useful
+    // when you know exactly which budget your change moved.
+    const onlyArg = args.find((a) => a.startsWith('--update='))
+    const only = onlyArg?.slice('--update='.length)
+
     const budgets: Record<string, unknown> = {
-      _doc: 'Per-package main-entry budgets in BYTES (minified + gzipped). Externalizes @pyreon/*, node:*, and every bare-module import auto-collected from each package\'s lib/ tree — this is the unique code each package adds to a consumer bundle. Set at 25% headroom over current size at PR-time. When a package legitimately needs to grow past its budget, bump the value in the same PR for explicit review. Keep at least ~1.5% headroom: gzip output differs between macOS and the ubuntu CI runner (measured ~177 B on a 16.5 KB package), so a tighter budget fails on CI while passing locally.',
+      _doc: 'Per-package main-entry budgets in BYTES (minified + gzipped). Externalizes @pyreon/*, node:*, and every bare-module import auto-collected from each package\'s lib/ tree — this is the unique code each package adds to a consumer bundle. Seeded at 25% headroom. `--update` is a RATCHET: it RAISES a budget only for a package that is actually OVER (intentional growth, reviewed in the same PR), LOWERS one that has shrunk, and leaves everything else byte-identical. Use `--update=@pyreon/pkg` to scope it.',
       _units: 'bytes (gzipped)',
     }
+    const raised: string[] = []
+    const lowered: string[] = []
+    const seeded: string[] = []
     for (const r of measured) {
-      // 25% headroom, rounded up to nearest 256B for clean numbers
-      budgets[r.name] = Math.ceil((r.gzip * 1.25) / 256) * 256
+      const ideal = Math.ceil((r.gzip * 1.25) / 256) * 256
+      const prev = previous[r.name]
+      if (only !== undefined && r.name !== only && prev !== undefined) {
+        budgets[r.name] = prev
+        continue
+      }
+      if (prev === undefined) {
+        budgets[r.name] = ideal
+        seeded.push(`${r.name} → ${ideal}`)
+      } else if (r.gzip > prev) {
+        // OVER budget: this is the intentional-growth case the doc describes.
+        budgets[r.name] = ideal
+        raised.push(`${r.name} ${prev} → ${ideal} (measured ${r.gzip})`)
+      } else if (ideal < prev) {
+        // Shrank: tighten. A ratchet that never lowers stops protecting anything.
+        budgets[r.name] = ideal
+        lowered.push(`${r.name} ${prev} → ${ideal}`)
+      } else {
+        // Within budget and not meaningfully smaller — leave it EXACTLY alone,
+        // so the diff names only what actually moved.
+        budgets[r.name] = prev
+      }
     }
     writeFileSync(BUDGETS_PATH, JSON.stringify(budgets, null, 2) + '\n')
-    // eslint-disable-next-line no-console
+    /* eslint-disable no-console */
+    const unchanged = measured.length - raised.length - lowered.length - seeded.length
     console.log(
-      `✓ Wrote ${measured.length} budgets to scripts/bundle-budgets.json (current+25% headroom)`,
+      `✓ bundle budgets — ${raised.length} raised, ${lowered.length} lowered, ${seeded.length} seeded, ${unchanged} unchanged`,
     )
+    for (const l of raised) console.log(`  ▲ ${l}`)
+    for (const l of lowered) console.log(`  ▼ ${l}`)
+    for (const l of seeded) console.log(`  + ${l}`)
+    /* eslint-enable no-console */
     return
   }
 

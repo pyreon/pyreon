@@ -1,0 +1,24 @@
+<!doctype html>
+<!--
+  WebView bridge host — bundled, not inlined.
+
+  This page exists to prove the mechanism four packages cross by (charts / code
+  / flow / rich-text), whose real host pages are produced at BUILD time and so
+  can never appear in lowered source. A bundled file is their only route, and
+  this is the smallest thing that exercises it end to end.
+
+  It echoes the host-pushed `__pyreonData` straight back over the reverse
+  channel. That echo is the design: it makes BOTH directions observable from
+  OUTSIDE the frame, in a native Text, because asserting INSIDE a WKWebView or
+  an Android WebView is precisely what XCUITest and the Compose semantics tree
+  cannot do reliably.
+-->
+<body>
+  <script>
+    function send() {
+      if (window.pyreonPostMessage) window.pyreonPostMessage(String(window.__pyreonData))
+    }
+    window.addEventListener('pyreondata', send)
+    setTimeout(send, 0)
+  </script>
+</body>

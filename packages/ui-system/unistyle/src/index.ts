@@ -22,7 +22,20 @@ import { setThemeEngine } from '@pyreon/ui-core'
 // unistyle — breaking the ui-core ↔ unistyle cycle (unistyle → ui-core only).
 // Runs at unistyle module load; by the time any `<PyreonUI>` mounts, unistyle
 // is in the module graph and the engine is registered.
-setThemeEngine({ enrichTheme, themeToCssVars, cpseRewrite })
+setThemeEngine({
+  enrichTheme,
+  themeToCssVars,
+  cpseRewrite,
+  // The `.theme()` -> CSS bridge. `@pyreon/rocketstyle` cannot import unistyle
+  // (it does not depend on it and must keep working without it), so it reaches
+  // `makeItResponsive` the same way `<PyreonUI>` reaches `enrichTheme`.
+  responsiveStyles: (theme, css) =>
+    makeItResponsive({
+      theme: theme as NonNullable<Parameters<typeof makeItResponsive>[0]['theme']>,
+      styles,
+      css: css as Parameters<typeof makeItResponsive>[0]['css'],
+    }),
+})
 import type {
   Breakpoints,
   CreateMediaQueries,
