@@ -24,8 +24,10 @@ describe('theme-engine registration seam', () => {
     // theme-only rocketstyle chain calls -- with no unistyle in the graph
     // there is no responsive engine to render through, so emitting NOTHING is
     // the correct answer and a bare-rocketstyle app stays exactly as styled.
-    expect(engine.cpseRewrite('a{b:c}', theme)).toBe('a{b:c}')
-    expect(engine.responsiveStyles({ color: 'red' }, ((x: unknown) => x) as never)).toBeUndefined()
+    // `cpseRewrite` is optional on the interface (it reuses styler's rewrite
+    // slot), and takes the css text plus the vars-out record it may write into.
+    expect(engine.cpseRewrite?.('a{b:c}', {})).toBe('a{b:c}')
+    expect(engine.responsiveStyles({ color: 'red' }, (x: unknown) => x)).toBeUndefined()
   })
 
   it('setThemeEngine registers an engine that getThemeEngine returns', async () => {
