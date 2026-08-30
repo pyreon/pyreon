@@ -5282,7 +5282,7 @@ function tryStructFromInterface(node: AnyNode, ctx: ParseCtx): StructIR | null {
 /**
  * Pre-pass companion to `tryStructFromTypeAlias`: fill
  * `ctx.objectTypeAliases` with every locally-declared object-shape type
- * alias (bare or export-wrapped, generic-free), name → parsed object
+ * alias AND interface (bare or export-wrapped, generic-free), name → parsed object
  * TypeIR. Runs BEFORE the main pass so `parseProps` can resolve a NAMED
  * props annotation (`props: CardProps`) even when the alias is declared
  * below the component. Uses a scratch ctx so parse warnings from the
@@ -5325,6 +5325,45 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     inlineSchemaCounter: 0,
   }
   for (const node of body) {
+    // An `interface` is registered alongside the aliases. The struct
+    // synthesizer already turns a non-generic, non-`extends` interface into a
+    // struct / data class, so the shape IS known by the time a component asks
+    // for it — and a props extractor that ignores interfaces makes the two
+    // halves of the compiler disagree about the same declaration. The cost of
+    // that disagreement is not a warning: the component emits as
+    // `struct Card: View` with NO stored properties while its body still
+    // references them, which is uncompilable Swift and Kotlin.
+    //
+    // The gate is the same one `tryStructFromInterface` applies, so a shape it
+    // declines (generic, `extends`, method members) is one this never claims to
+    // resolve — the two cannot drift into disagreeing about which interfaces
+    // exist.
+    let iface: AnyNode | null = null
+    if (
+      node.type === 'ExportNamedDeclaration' &&
+      node.declaration?.type === 'TSInterfaceDeclaration'
+    ) {
+      iface = node.declaration
+    } else if (node.type === 'TSInterfaceDeclaration') {
+      iface = node
+    }
+    if (iface) {
+      const ifaceName = iface.id?.name as string | undefined
+      const outOfSubset =
+        (iface.typeParameters?.params?.length ?? 0) > 0 || (iface.extends?.length ?? 0) > 0
+      const members = iface.body?.body as AnyNode[] | undefined
+      if (ifaceName !== undefined && !outOfSubset && members !== undefined) {
+        const parsedIface = parseTypeAnnotation(
+          { type: 'TSTypeLiteral', members } as AnyNode,
+          scratch,
+        )
+        if (parsedIface.kind === 'object' && parsedIface.fields.length > 0) {
+          ctx.objectTypeAliases.set(ifaceName, parsedIface)
+        }
+      }
+      continue
+    }
+
     let alias: AnyNode | null = null
     if (
       node.type === 'ExportNamedDeclaration' &&
@@ -6067,7 +6106,7 @@ function resolvePropsObjectType(t: TypeIR, ctx: ParseCtx): TypeIR {
     const resolved = ctx.objectTypeAliases.get(t.name)
     if (resolved !== undefined) return resolved
     ctx.warnings.push(
-      `Component props type \`${t.name}\` can't be resolved — PMTC only resolves an object-shape \`type ${t.name} = { … }\` declared in the SAME file (imports and interfaces aren't followed). The emitted component would reference undeclared properties and fail the native build. Declare the alias locally or inline the annotation (\`props: { … }\`).`,
+      `Component props type \`${t.name}\` can't be resolved — PMTC only resolves an object-shape \`type ${t.name} = { … }\` or \`interface ${t.name} { … }\` declared in the SAME file (imports aren't followed, and neither are generic / \`extends\` interfaces). The emitted component would reference undeclared properties and fail the native build. Declare it locally or inline the annotation (\`props: { … }\`).`,
     )
   }
   return t
