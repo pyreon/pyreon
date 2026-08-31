@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { mountInBrowser, flush } from '@pyreon/test-utils/browser'
 import { GaugeChart, PieChart } from './PieChart'
@@ -163,5 +164,85 @@ describe('GaugeChart in a real browser', () => {
     v.set(90)
     await flush()
     expect(canvas.toDataURL()).not.toBe(before)
+  })
+})
+
+// ── responsive sizing ────────────────────────────────────────────────────────
+//
+// With no explicit `width`, the radial charts used to read `el.clientWidth` —
+// but `prepareCanvas` writes an inline `canvas.style.width`, so that reports
+// back whatever the FIRST draw chose and the chart is pinned there forever.
+// `<PlotChart>` measures the PARENT and observes it; its own comment documents
+// this exact failure ("pinned at that fallback forever — 300px inside a 430px
+// column, with nothing in the DOM looking wrong"). The radial family never got
+// either half, and the documented example passes no `width`.
+//
+// Real Chromium only: happy-dom reports 0 for every `clientWidth` and has no
+// layout, so it cannot tell a parent-measuring implementation from a
+// self-measuring one — the two are indistinguishable without a layout engine.
+//
+// Bisect-verified: restoring `props.width ?? el.clientWidth ?? 300` makes the
+// first spec render at the 300 fallback and the second never follow the resize.
+describe('radial charts size to their container, not to themselves', () => {
+  const dpr = (): number =>
+    typeof globalThis.devicePixelRatio === 'number' ? globalThis.devicePixelRatio : 1
+
+  // Wrap in a sized div so the canvas has a PARENT of known width — the thing
+  // the fix measures. `mountInBrowser` makes its own container, which is body
+  // width, so it cannot discriminate on its own.
+  const inBox = (w: number, node: () => unknown) =>
+    mountInBrowser(h('div', { style: `width:${w}px` }, node() as never))
+
+  const pieNoWidth = () =>
+    PieChart<Row>({ data: DATA, value: (d: Row) => d.share, label: (d: Row) => d.name })
+
+  it('a PieChart with no explicit width fills its container', async () => {
+    const { container, unmount } = inBox(520, pieNoWidth)
+    await flush()
+    const canvas = container.querySelector('canvas')!
+    // 520, not the 300 fallback — the whole point.
+    expect(canvas.width).toBe(Math.round(520 * dpr()))
+    unmount()
+  })
+
+  it('a PieChart follows its container when it resizes', async () => {
+    const { container, unmount } = inBox(400, pieNoWidth)
+    await flush()
+    const canvas = container.querySelector('canvas')!
+    expect(canvas.width).toBe(Math.round(400 * dpr()))
+
+    const box = container.firstElementChild as HTMLElement
+    box.style.width = '260px'
+    // ResizeObserver delivers on a frame, so poll rather than assuming a tick.
+    const start = Date.now()
+    while (canvas.width !== Math.round(260 * dpr()) && Date.now() - start < 3000) {
+      await new Promise<void>((r) => setTimeout(r, 25))
+    }
+    expect(canvas.width).toBe(Math.round(260 * dpr()))
+    unmount()
+  })
+
+  it('an explicit width still wins over the container', async () => {
+    // The guard must not turn `width` into a suggestion.
+    const { container, unmount } = inBox(520, () =>
+      PieChart<Row>({
+        data: DATA,
+        value: (d: Row) => d.share,
+        label: (d: Row) => d.name,
+        width: 180,
+      }),
+    )
+    await flush()
+    const canvas = container.querySelector('canvas')!
+    expect(canvas.width).toBe(Math.round(180 * dpr()))
+    unmount()
+  })
+
+  it('a GaugeChart with no explicit width fills its container', async () => {
+    const { container, unmount } = inBox(480, () => GaugeChart({ value: 42 }))
+    await flush()
+    const canvas = container.querySelector('canvas')!
+    expect(canvas.width).toBe(Math.round(480 * dpr()))
+    unmount()
   })
 })
