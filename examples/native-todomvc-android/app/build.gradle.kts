@@ -157,12 +157,12 @@ dependencies {
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.runtime:runtime-saveable")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
     // PyreonWebSocketOkHttp.kt (in the runtime-kotlin srcDir above) imports
     // okhttp3 — the default websocket transport backing the TS-side
     // ws.connect(). Every app compiling the runtime srcDir needs the dep,
     // websockets used or not (the srcDir compiles all runtime sources).
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp:5.5.0")
     // media3 — PyreonVideoPlayerAndroid.kt (in the runtime-kotlin srcDir
     // above) imports androidx.media3.* for the <Video> primitive. Same deal
     // as okhttp: every app compiling the srcDir needs the artifacts, video
@@ -176,7 +176,7 @@ dependencies {
     // import kotlinx.coroutines.* directly — pin it explicitly so the
     // compile classpath doesn't depend on transitive luck.
     implementation("androidx.core:core-ktx:1.18.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     // material (M2) — the PMTC emit's Compose dispatcher uses
     // androidx.compose.material.* widgets (Text/Button/TextField/
     // Checkbox from `import androidx.compose.material.*` in the
