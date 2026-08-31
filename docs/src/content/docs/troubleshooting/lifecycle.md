@@ -85,9 +85,9 @@ when a reactive primitive is a *view* over a resource that is keyed/cached and s
 
 ---
 
-### Nulling WebSocket handlers before `close()`
+### [CORRECTED, 2026-08 — this entry previously said the OPPOSITE] Calling `close()` before nulling a socket's handlers
 
-`ws.onmessage = null; ws.close()` — a queued message arriving between null-assignment and close fires a null handler and crashes. Always `close()` FIRST, then null the handlers.
+(lint: `pyreon/no-close-before-handler-teardown`): `ws.close(); ws.onmessage = null` leaves a real window open. `close()` only STARTS the closing handshake — the socket enters `CLOSING`, and a frame already buffered can still be delivered to a handler that is still attached, which then writes into the scope the teardown just disposed. Null the handlers FIRST, then `close()`: assigning `null` to an event-handler IDL attribute simply detaches it, so a later event has nothing to call. **The prior version of this entry claimed the reverse — that nulling first makes a queued message "fire a null handler and crash" — which is not a real JavaScript behaviour** (verified empirically: null the handler, dispatch the event, nothing runs and nothing throws). The false mechanism had been copied verbatim into `@pyreon/query`'s `use-subscription.ts` as the justification for the wrong order, in both its connect-supersede and disconnect paths, while `@pyreon/hooks`' `useWebSocket` and `@pyreon/query`'s `use-sse` independently did it correctly with a correct rationale — so the framework disagreed with itself and the catalog backed the wrong side. Applies to `EventSource` identically. **The general lesson is the one this catalog states elsewhere and this entry failed to follow: verify the MECHANISM, not just the symptom — a plausible-sounding cause in a rule file propagates into code as a comment, and then into a lint rule, and each copy makes it harder to question.**
 
 ---
 

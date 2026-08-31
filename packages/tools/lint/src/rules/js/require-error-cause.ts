@@ -72,9 +72,21 @@ export const requireErrorCause: Rule = {
         // `new ResponseValidationError(cause, raw, request)`. The original is
         // preserved there just as well as in `{ cause }`, and flagging it was
         // a false positive on every such class in this repo.
-        const passedPositionally = args.some(
-          (a: any) => a?.type === 'Identifier' && String(a.name) === bound,
-        )
+        // The caught error may be handed over directly, OR inside an array —
+        // `AggregateError` is in the builtin set above and its only idiomatic
+        // form is `new AggregateError([err], msg)`, so an identifier-only
+        // check flags the correct use of a constructor this rule claims to
+        // support.
+        const carries = (a: any): boolean => {
+          if (a?.type === 'Identifier') return String(a.name) === bound
+          if (a?.type === 'ArrayExpression') {
+            return (a.elements ?? []).some(
+              (el: any) => el?.type === 'Identifier' && String(el.name) === bound,
+            )
+          }
+          return false
+        }
+        const passedPositionally = args.some(carries)
         if (passedPositionally) return
         const opts = args[1]
         if (opts?.type === 'ObjectExpression') {

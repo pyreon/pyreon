@@ -253,6 +253,12 @@ Never chain `.theme({})` as a no-op. If a component needs no base theme, skip `.
 
 ---
 
+### An escape is only correct for the CONTEXT it is written into — `&quot;` is inert in raw text, and `</` alone does not keep a `<script>` closed (the WebView host-page instance, 2026-08).
+
+The `@pyreon/{code,rich-text,flow}` host builders interpolated a `background` into a `<style>` body escaping only `"` as `&quot;`, and an engine bundle into a `<script>` body replacing only `</` with `<\/`. Both are the wrong tool: **`<style>` and `<script>` are RAW-TEXT elements, so character references are never decoded inside them** — `&quot;` did nothing, and `</style>` in the value closed the element and put the rest into the document. And `</` → `<\/` stops the element being CLOSED but not the tokenizer entering **script-data-DOUBLE-escaped** state, which it does on `<!--` followed by `<script`; in that state the page's OWN literal `</script>` no longer ends the element, so the remainder of the document becomes script content. **Fixes, per context: a CSS value drops the `<>"'` class outright (no valid colour or gradient contains them, so it is lossless); a script body breaks `<!--` as well as `</`, using IDENTITY escapes (`\/` is `/`, `\-` is `-`) so the JS is unchanged; an attribute value escapes `&` FIRST, then `"` and `<`.** **The lesson that generalises past escaping: a PR earlier in the same cycle hardened these exact functions for the JS-string context and left both of these — a file being recently audited is not evidence that its known gap was closed.** Honest limit: an inline script is defence-in-depth for a DEVELOPER-supplied bundle, never a sanitiser; no escape makes inlining an untrusted script safe. Reference: `packages/fundamentals/{code,rich-text,flow}/src/webview.ts` (`cssValueSafe` / `scriptSafe` / `attrSafe`) + each package's `tests/webview-escape.test.ts` (bisect-verified: restoring either old escape fails 3 specs).
+
+---
+
 ### User-controlled data in HTML comment content
 
 HTML comments terminate on `-->`, `--!>`, or, in some parsers, any `--` sequence. If you interpolate user-supplied data into a comment (`<!--key:${key}-->`), a malicious key can break out and inject arbitrary markup. Defense: URL-encode and replace every `-` with `%2D` before interpolation, so `-->` is structurally impossible. Reference: `runtime-server/src/index.ts:safeKeyForMarker`. Applies to any SSR-emitted marker the framework carries between server render and client hydration.

@@ -323,6 +323,8 @@ interface CoverageResult {
   lines: number
   pass: boolean
   threshold: number
+  /** Declared-but-previously-unenforced metrics that came in under. */
+  shortfalls: MetricShortfall[]
 }
 
 /**
@@ -509,6 +511,104 @@ function getPackageBranchThreshold(pkgDir: string): number {
 }
 
 /**
+ * Every threshold a package DECLARES, not just the one the gate used to read.
+ *
+ * The blind spot this closes: pass/fail was `outcome.statements >= threshold`,
+ * so `branches`, `functions` and `lines` were declared in each package's
+ * `vitest.config.ts` and never compared by CI. Measured on a green main run,
+ * 17 packages sat below a threshold they themselves declare -- 20 floors in
+ * total. `vitest run --coverage` fails locally on them while CI reported the
+ * package green, which is a declared-but-unenforced threshold: the same family
+ * as the gate holes closed in #3126.
+ */
+export interface DeclaredThresholds {
+  statements: number
+  branches: number
+  functions: number
+  lines: number
+}
+
+export type Metric = keyof DeclaredThresholds
+
+const METRICS: readonly Metric[] = ['statements', 'branches', 'functions', 'lines']
+
+export function parseDeclaredThresholds(
+  configSource: string | null,
+  fallback: number,
+): DeclaredThresholds {
+  const read = (metric: Metric): number => {
+    const m = configSource?.match(new RegExp(`${metric}:\\s*(\\d+(?:\\.\\d+)?)`))
+    return m?.[1] === undefined ? fallback : Number(m[1])
+  }
+  return {
+    statements: read('statements'),
+    branches: read('branches'),
+    functions: read('functions'),
+    lines: read('lines'),
+  }
+}
+
+/** Ratchet floors for metrics a package declares but measured below. */
+const BASELINE_FLOORS: Record<string, Partial<Record<Metric, number>>> = (() => {
+  const path = join(import.meta.dirname, 'coverage-threshold-baseline.json')
+  if (!existsSync(path)) return {}
+  const parsed = JSON.parse(readFileSync(path, 'utf-8')) as {
+    packages?: Record<string, Partial<Record<Metric, number>>>
+  }
+  return parsed.packages ?? {}
+})()
+
+/** Every threshold declared in a package's vitest config. */
+function declaredThresholdsFor(pkgDir: string): DeclaredThresholds {
+  const configPath = join(pkgDir, 'vitest.config.ts')
+  const src = existsSync(configPath) ? readFileSync(configPath, 'utf-8') : null
+  return parseDeclaredThresholds(src, DEFAULT_THRESHOLD)
+}
+
+export interface MetricShortfall {
+  metric: Metric
+  measured: number
+  declared: number
+  /** The ratchet floor: the value recorded when this gap was seeded. */
+  floor: number
+  /** Below the floor is a REGRESSION (fails); at-or-above is a known gap (warns). */
+  regressed: boolean
+}
+
+/**
+ * Compare every declared metric, honouring the ratchet.
+ *
+ * No baseline entry means the package must MEET its declaration. An entry means
+ * it may sit at the recorded value but never drop below it -- identical
+ * semantics to `lint-baseline.json`, so a known gap cannot quietly widen while
+ * the aspiration in the package's own config stays visible as the target.
+ */
+export function findShortfalls(
+  measured: DeclaredThresholds,
+  declared: DeclaredThresholds,
+  floors: Partial<Record<Metric, number>> | undefined,
+): MetricShortfall[] {
+  const out: MetricShortfall[] = []
+  for (const metric of METRICS) {
+    const value = measured[metric]
+    const want = declared[metric]
+    if (value >= want) continue
+    const floor = floors?.[metric]
+    // Statements keep their own long-standing hard comparison elsewhere; a
+    // package with no recorded floor for a metric must simply meet it.
+    const effective = floor ?? want
+    out.push({
+      metric,
+      measured: value,
+      declared: want,
+      floor: effective,
+      regressed: value < effective,
+    })
+  }
+  return out
+}
+
+/**
  * A package whose coverage could NOT be established. Never silently dropped:
  * these fail the gate, because a gate that cannot tell "not measured" from
  * "measured and fine" protects nothing.
@@ -654,6 +754,8 @@ function runCoverage(
           lines: outcome.lines,
           pass: outcome.statements >= threshold,
           threshold,
+          // Filled by the caller, which owns the declared-threshold policy.
+          shortfalls: [],
         })
       } else {
         // How the child ENDED is the first diagnostic for an unparseable run —
@@ -749,8 +851,29 @@ async function runWithConcurrency(
       // as a real finding about entirely the wrong package.
       const outcome = await runCoverage(pkg.dir, pkg.name, pkg.threshold)
       if ('statements' in outcome) {
+        // Compare the three metrics the gate used to ignore. Done HERE rather
+        // than inside runCoverage so the measurement stays a pure function of
+        // the child process and the POLICY lives in one place.
+        outcome.shortfalls = findShortfalls(
+          {
+            statements: outcome.statements,
+            branches: outcome.branches,
+            functions: outcome.functions,
+            lines: outcome.lines,
+          },
+          declaredThresholdsFor(pkg.dir),
+          BASELINE_FLOORS[pkg.name],
+        )
         results.push(outcome)
-        console.log(`  ${pkg.name}: ${outcome.statements}% ${outcome.pass ? '\u2705' : '\u274c'}`)
+        const regressed = outcome.shortfalls.filter((s) => s.regressed)
+        const mark = outcome.pass && regressed.length === 0 ? '\u2705' : '\u274c'
+        console.log(`  ${pkg.name}: ${outcome.statements}% ${mark}`)
+        for (const s of regressed) {
+          console.log(
+            `    \u274c ${s.metric} ${s.measured}% is BELOW its ratchet floor ${s.floor}% ` +
+              `(package declares ${s.declared}%)`,
+          )
+        }
         if (NO_INSTRUMENTABLE_SOURCE[pkg.name]) {
           // The declaration has gone stale: the package now HAS measurable
           // source, so the exemption is hiding a real threshold. Without this
@@ -1047,7 +1170,9 @@ const { results, problems, staleDeclarations } = await runWithConcurrency(packag
 const sorted = results.sort((a, b) => a.package.localeCompare(b.package))
 const sortedProblems = problems.sort((a, b) => a.package.localeCompare(b.package))
 const hasFailures =
-  sorted.some((r) => !r.pass) || sortedProblems.length > 0 || staleDeclarations.length > 0
+  sorted.some((r) => !r.pass || r.shortfalls.some((s) => s.regressed)) ||
+  sortedProblems.length > 0 ||
+  staleDeclarations.length > 0
 
 // Build report
 const reportLines: string[] = [
@@ -1059,7 +1184,10 @@ const reportLines: string[] = [
 ]
 
 for (const r of sorted) {
-  const status = r.pass ? '\u2705' : '\u274c'
+  // A row must not read \u2705 while the run fails. Before the declared-metric
+  // comparison existed this was `r.pass` alone, so a package failing on a
+  // ratcheted metric printed a green row beside a red gate.
+  const status = r.pass && !r.shortfalls.some((sf) => sf.regressed) ? '\u2705' : '\u274c'
   reportLines.push(
     `| ${r.package} | ${r.statements}% | ${r.branches}% | ${r.functions}% | ${r.lines}% | ${r.threshold}% | ${status} |`,
   )

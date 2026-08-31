@@ -24,6 +24,11 @@ export default defineNodeConfig({
     'src/use-chart.ts',
     'src/engine/Chart.tsx',
     'src/engine/PieChart.tsx',
+    // Covered by heatmap.browser.test.tsx / candlestick.browser.test.tsx
+    // (real Chromium) — a canvas host has nothing meaningful to assert
+    // without a real 2d context.
+    'src/engine/HeatmapChart.tsx',
+    'src/engine/CandlestickChart.tsx',
     'src/engine/canvas-web.ts',
   ],
   // loader.ts + vite.ts (the node-instrumented surface) are at 100% on all

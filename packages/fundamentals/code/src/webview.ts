@@ -52,7 +52,41 @@ export interface BuildCodeHostHtmlOptions {
   background?: string
 }
 
-const scriptSafe = (s: string): string => s.replace(/<\//g, '<\\/')
+/**
+ * Neutralise the two token sequences that can end an inline `<script>` early.
+ *
+ * `</` → `<\/` keeps the element from being CLOSED. That alone was the whole
+ * escape, and it is not enough: the HTML tokenizer also enters the
+ * script-data-DOUBLE-escaped state on `<!--` followed by `<script`, and in that
+ * state our own literal `</script>` no longer ends the element — it hands the
+ * rest of the document to the script. So `<!--` is broken too.
+ *
+ * Both are IDENTITY escapes in the contexts a bundle actually contains these
+ * bytes — `\/` in a string or regex is `/`, `\-` is `-` — so the JS is
+ * unchanged. The one shape this alters is an Annex-B `<!--` HTML-like comment
+ * in code position, which no bundler emits and which is deprecated.
+ *
+ * Honest limit: this is defence-in-depth for a DEVELOPER-supplied bundle, not a
+ * sanitiser. Never inline a script you do not trust — no escape makes that safe.
+ */
+const scriptSafe = (s: string): string =>
+  s.replace(/<\//g, '<\\/').replace(/<!--/g, '<!\\--')
+
+/**
+ * A CSS value that cannot escape the `<style>` element it is written into.
+ *
+ * `<style>` is a RAW-TEXT element: character references are not decoded inside
+ * it, so the `&quot;` escaping this used to do was inert, and `</style>` in the
+ * value closed the element and put everything after it into the document. A
+ * real CSS colour or gradient never contains `<`, so dropping that class is
+ * lossless — and `"`/`'` go with it, since an unbalanced quote swallows the
+ * rest of the sheet.
+ */
+const cssValueSafe = (s: string): string => s.replace(/[<>"']/g, '')
+
+/** Escape a value written into a double-quoted HTML attribute. */
+const attrSafe = (s: string): string =>
+  s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
 
 /**
  * Build the self-contained HTML page hosting a CodeMirror editor driven by the
@@ -67,7 +101,7 @@ export function buildCodeHostHtml(options: BuildCodeHostHtmlOptions = {}): strin
   const engineTag = codemirrorScript
     ? `<script>${scriptSafe(codemirrorScript)}</script>`
     : codemirrorSrc
-      ? `<script src="${codemirrorSrc.replace(/"/g, '&quot;')}"></script>`
+      ? `<script src="${attrSafe(codemirrorSrc)}"></script>`
       : ''
 
   const bridge = `
@@ -158,7 +192,7 @@ export function buildCodeHostHtml(options: BuildCodeHostHtmlOptions = {}): strin
     '<!doctype html><html><head><meta charset="utf-8">' +
     '<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">' +
     '<style>html,body{margin:0;padding:0;height:100%;width:100%;background:' +
-    background.replace(/"/g, '&quot;') +
+    cssValueSafe(background) +
     '}#pyreon-code,.cm-editor{height:100%;width:100%}</style></head>' +
     '<body><div id="pyreon-code"></div>' +
     engineTag +

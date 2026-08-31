@@ -104,15 +104,18 @@ export function useSubscription(options: UseSubscriptionOptions): UseSubscriptio
     // A connect supersedes any pending reconnect — drop the orphan timer.
     clearReconnect()
     if (ws) {
-      // Close BEFORE nulling handlers — a queued message arriving between
-      // null-assignment and close() would fire a null handler and crash.
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-        ws.close()
-      }
+      // Drop the handlers BEFORE closing. `close()` only starts the closing
+      // handshake — the socket sits in CLOSING and a frame already buffered
+      // can still be delivered, firing a handler that writes into a scope
+      // this teardown has just disposed. Nulling first removes the handler,
+      // and a later event then has nothing to call.
       ws.onopen = null
       ws.onmessage = null
       ws.onclose = null
       ws.onerror = null
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+        ws.close()
+      }
     }
 
     if (!isEnabled()) {
@@ -191,13 +194,14 @@ export function useSubscription(options: UseSubscriptionOptions): UseSubscriptio
     intentionalClose = true
     clearReconnect()
     if (ws) {
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-        ws.close()
-      }
+      // Handlers first, then close — see the note in `connect()`.
       ws.onopen = null
       ws.onmessage = null
       ws.onclose = null
       ws.onerror = null
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+        ws.close()
+      }
       ws = null
     }
     status.set('disconnected')
