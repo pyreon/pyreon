@@ -4,7 +4,9 @@ import { computeLayout, layoutBars, layoutSeriesPoints, layoutSeriesPointsAt } f
 import { layoutGroupedBars, layoutStackedBars, stackedExtent } from './stack'
 import type { Formatter } from './format'
 import type { LayoutConfig, PlotLayout } from './layout'
-import { extent, niceDomain } from './scale'
+import { extent, niceDomain, scaleLinear } from './scale'
+import { plain } from './format'
+import { withAlpha } from './radar'
 import type { DrawCmd, Domain, MeasureText, Pt, Rect, Double } from './types'
 
 /** One drawable series. */
@@ -18,6 +20,32 @@ export interface Series {
   radius: Double
   /** Name for the legend, the tooltip and the accessible table. */
   label: string
+  /** Densifier applied to line/area points — `smooth`/`step` from ./curve. */
+  curve?: ((points: Pt[]) => Pt[]) | undefined
+  /** Draw each value above its bar. */
+  showValues?: boolean | undefined
+  /** Per-datum radii (the bubble channel), already mapped to pixels. */
+  radii?: Double[] | undefined
+}
+
+/**
+ * A reference rule or band — the "target line" every dashboard needs.
+ *
+ * Exactly one of `y`, `x`, or the `yFrom`/`yTo` pair should be set; an
+ * annotation with none is skipped rather than guessed at. Values are in DOMAIN
+ * units — for a categorical x axis that is the datum INDEX, matching how the
+ * points are placed.
+ */
+export interface Annotation {
+  /** Horizontal rule at this y value. */
+  y?: Double | undefined
+  /** Vertical rule at this x value. */
+  x?: Double | undefined
+  /** Horizontal band between these two y values. */
+  yFrom?: Double | undefined
+  yTo?: Double | undefined
+  label?: string | undefined
+  color?: string | undefined
 }
 
 export interface ChartTheme {
@@ -52,6 +80,8 @@ export interface ChartSpec {
   xValues?: Double[] | undefined
   /** Label the x axis with calendar steps — see `LayoutConfig.xTime`. */
   xTime?: boolean | undefined
+  /** Reference rules and bands, drawn between the grid and the series. */
+  annotations?: Annotation[] | undefined
 }
 
 export const defaultTheme: ChartTheme = {
@@ -176,6 +206,70 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
     })
   }
 
+  // Reference bands and rules sit BETWEEN the grid and the series: a band is
+  // context the data draws over, and a rule must not be buried under a filled
+  // area — dashing is what keeps it legible crossing the data. Bands first,
+  // rules second, so a rule bounding its own band stays visible.
+  const notes = spec.annotations ?? []
+  for (const a of notes) {
+    if (a.yFrom !== undefined && a.yTo !== undefined) {
+      const y1 = scaleLinear(yDomain, plot.y + plot.h, plot.y, a.yFrom)
+      const y2 = scaleLinear(yDomain, plot.y + plot.h, plot.y, a.yTo)
+      const top = y1 < y2 ? y1 : y2
+      out.push({
+        kind: 'rect',
+        rect: { x: plot.x, y: top, w: plot.w, h: Math.abs(y2 - y1) },
+        fill: withAlpha(a.color ?? t.axis, 0.12),
+      })
+    }
+  }
+  for (const a of notes) {
+    if (a.y !== undefined) {
+      const yPos = scaleLinear(yDomain, plot.y + plot.h, plot.y, a.y)
+      out.push({
+        kind: 'line',
+        from: { x: plot.x, y: yPos },
+        to: { x: plot.x + plot.w, y: yPos },
+        stroke: a.color ?? t.axis,
+        width: 1.0,
+        dash: [4.0, 4.0],
+      })
+      if (a.label !== undefined) {
+        out.push({
+          kind: 'text',
+          text: a.label,
+          at: { x: plot.x + plot.w, y: yPos - 4.0 },
+          fill: a.color ?? t.label,
+          size: t.fontSize,
+          align: 'end',
+          baseline: 'bottom',
+        })
+      }
+    }
+    if (a.x !== undefined) {
+      const xPos = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, a.x)
+      out.push({
+        kind: 'line',
+        from: { x: xPos, y: plot.y },
+        to: { x: xPos, y: plot.y + plot.h },
+        stroke: a.color ?? t.axis,
+        width: 1.0,
+        dash: [4.0, 4.0],
+      })
+      if (a.label !== undefined) {
+        out.push({
+          kind: 'text',
+          text: a.label,
+          at: { x: xPos + 4.0, y: plot.y },
+          fill: a.color ?? t.label,
+          size: t.fontSize,
+          align: 'start',
+          baseline: 'top',
+        })
+      }
+    }
+  }
+
   // Stacked and grouped series are laid out TOGETHER — each needs to know the
   // others to place its bars — so they are drawn as a set before the
   // independent marks rather than one at a time in the loop below.
@@ -202,17 +296,41 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
         ? layoutSeriesPointsAt(values, spec.xValues, plot, yDomain, l.xDomainUsed)
         : layoutSeriesPoints(values, plot, yDomain)
 
+    // The curve shapes line AND area from the same densified points — an
+    // area whose fill followed straight segments under a smoothed outline
+    // would show slivers of background between the two.
+    const shape = (pts: Pt[]): Pt[] => (s.curve !== undefined ? s.curve(pts) : pts)
+
     if (s.kind === 'bars') {
-      for (const r of layoutBars(s.values, plot, yDomain, 0.25)) {
+      const rects = layoutBars(s.values, plot, yDomain, 0.25)
+      for (const r of rects) {
         out.push({ kind: 'rect', rect: r, fill: s.color })
       }
+      if (s.showValues === true) {
+        const fmt = spec.yFormat ?? plain
+        for (let i = 0; i < rects.length; i++) {
+          const r = rects[i]!
+          const v = s.values[i]!
+          // A negative bar hangs below the zero line, so its label goes under
+          // its bottom edge — above the top would sit ON the zero line.
+          out.push({
+            kind: 'text',
+            text: fmt(v),
+            at: { x: r.x + r.w / 2.0, y: v < 0.0 ? r.y + r.h + 4.0 : r.y - 4.0 },
+            fill: t.label,
+            size: t.fontSize,
+            align: 'middle',
+            baseline: v < 0.0 ? 'top' : 'bottom',
+          })
+        }
+      }
     } else if (s.kind === 'line') {
-      const pts = place(s.values)
+      const pts = shape(place(s.values))
       if (pts.length > 1) {
         out.push({ kind: 'polyline', points: pts, stroke: s.color, width: s.width })
       }
     } else if (s.kind === 'area') {
-      const pts = place(s.values)
+      const pts = shape(place(s.values))
       if (pts.length > 1) {
         const poly: Pt[] = []
         for (const p of pts) poly.push(p)
@@ -223,8 +341,14 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
         out.push({ kind: 'polygon', points: poly, fill: s.color })
       }
     } else {
-      for (const p of place(s.values)) {
-        out.push({ kind: 'circle', center: p, radius: s.radius, fill: s.color })
+      const pts = place(s.values)
+      for (let i = 0; i < pts.length; i++) {
+        out.push({
+          kind: 'circle',
+          center: pts[i]!,
+          radius: s.radii !== undefined ? s.radii[i] ?? s.radius : s.radius,
+          fill: s.color,
+        })
       }
     }
   }

@@ -54,20 +54,26 @@ export function paint(
     } else if (c.kind === 'line') {
       ctx.strokeStyle = c.stroke
       ctx.lineWidth = c.width
+      // Set AND reset per command: a dash left on the context would turn every
+      // later solid stroke in the same frame into a dashed one.
+      ctx.setLineDash(c.dash ?? [])
       ctx.beginPath()
       ctx.moveTo(c.from.x, c.from.y)
       ctx.lineTo(c.to.x, c.to.y)
       ctx.stroke()
+      ctx.setLineDash([])
     } else if (c.kind === 'polyline') {
       if (c.points.length > 1) {
         ctx.strokeStyle = c.stroke
         ctx.lineWidth = c.width
+        ctx.setLineDash(c.dash ?? [])
         // Round joins/caps: a polyline through steep data otherwise grows
         // visible spikes at the vertices from mitred corners.
         ctx.lineJoin = 'round'
         ctx.lineCap = 'round'
         tracePolyline(ctx, c.points)
         ctx.stroke()
+        ctx.setLineDash([])
       }
     } else if (c.kind === 'polygon') {
       if (c.points.length > 2) {

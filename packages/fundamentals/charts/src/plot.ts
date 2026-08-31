@@ -14,12 +14,25 @@ export { GaugeChart, PieChart } from './engine/PieChart'
 export type { GaugeChartProps, PieChartProps } from './engine/PieChart'
 
 // Marks
-export { area, bars, groupedBars, line, points, resolveCategories, resolveMarks, stackedBars } from './engine/marks'
-export type { Accessor, Mark, MarkOptions } from './engine/marks'
+export {
+  area,
+  bars,
+  bubble,
+  groupedBars,
+  line,
+  points,
+  resolveCategories,
+  resolveMarks,
+  stackedBars,
+} from './engine/marks'
+export type { Accessor, BubbleOptions, Mark, MarkOptions } from './engine/marks'
+
+// Curves — imported bindings, like the marks, so an unused curve tree-shakes.
+export { smooth, step } from './engine/curve'
 
 // Core render + layout
 export { defaultTheme, layoutChart, renderChart, resolveYDomain, seriesMaxLength } from './engine/render'
-export type { ChartSpec, ChartTheme, Series } from './engine/render'
+export type { Annotation, ChartSpec, ChartTheme, Series } from './engine/render'
 export {
   bandTicks,
   computeLayout,
