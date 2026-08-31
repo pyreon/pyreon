@@ -93,7 +93,7 @@ function hexChannel(hex: string, at: number): Double {
 export function colorRamp(stops: string[]): (t: Double) => string {
   const parsed = stops.map((sHex) => {
     const h = sHex.startsWith('#') ? sHex.slice(1) : sHex
-    return { r: hexChannel(h, 0), g: hexChannel(h, 2), b: hexChannel(h, 4) }
+    return { r: hexChannel(h, 0.0), g: hexChannel(h, 2.0), b: hexChannel(h, 4.0) }
   })
   return (t: Double): string => {
     if (parsed.length === 0) return 'rgb(0, 0, 0)'

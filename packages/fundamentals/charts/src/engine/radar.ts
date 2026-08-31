@@ -149,10 +149,10 @@ export function withAlpha(color: string, alpha: Double): string {
   const pair = (at: Double): Double => code(hex.charCodeAt(at)) * 16.0 + code(hex.charCodeAt(at + 1))
   const single = (at: Double): Double => code(hex.charCodeAt(at)) * 17.0
   if (hex.length === 3) {
-    return `rgba(${single(0)}, ${single(1)}, ${single(2)}, ${a})`
+    return `rgba(${single(0.0)}, ${single(1.0)}, ${single(2.0)}, ${a})`
   }
   if (hex.length === 6) {
-    return `rgba(${pair(0)}, ${pair(2)}, ${pair(4)}, ${a})`
+    return `rgba(${pair(0.0)}, ${pair(2.0)}, ${pair(4.0)}, ${a})`
   }
   return color
 }
