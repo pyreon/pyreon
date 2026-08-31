@@ -236,6 +236,31 @@ describe('the portable tier completion', () => {
     ).toEqual([])
   })
 
+  it('...and leaves a DOM tag inside a `<Web>` branch alone — that IS the fix', () => {
+    // The rule's own message says to put a genuine DOM node behind a `<Web>`
+    // branch. Firing on the shape it recommends makes the advice unfollowable,
+    // and the multiplatform scaffolder's own fixture is exactly this shape.
+    expect(
+      only(
+        `export const V = () => <Web><div>hi</div></Web>`,
+        'pyreon/prefer-canonical-primitive',
+        PT,
+      ),
+    ).toEqual([])
+  })
+
+  it('...but a sibling OUTSIDE the branch still fires — the skip is scoped', () => {
+    // Depth, not a latch: leaving the `<Web>` subtree must re-arm the rule, or
+    // one escape hatch anywhere in a file silences the whole file.
+    expect(
+      only(
+        `export const V = () => <Stack><Web><div /></Web><span>x</span></Stack>`,
+        'pyreon/prefer-canonical-primitive',
+        PT,
+      ),
+    ).toHaveLength(1)
+  })
+
   it('require-native-compat-marker fires on an unmarked provider', () => {
     expect(
       only(

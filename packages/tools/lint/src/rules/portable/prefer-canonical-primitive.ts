@@ -48,6 +48,12 @@ const SUGGESTIONS: Record<string, string> = {
   small: 'Text',
 }
 
+/** The tag name of a JSXElement's opening element, or null. */
+function openingTagName(node: any): string | null {
+  const name = node?.openingElement?.name
+  return name?.type === 'JSXIdentifier' ? String(name.name) : null
+}
+
 export const preferCanonicalPrimitive: Rule = {
   meta: {
     id: 'pyreon/prefer-canonical-primitive',
@@ -63,8 +69,21 @@ export const preferCanonicalPrimitive: Rule = {
     const paths = portablePathsFrom(context)
     if (!isPortablePath(context.getFilePath(), paths)) return {}
 
+    // A `<Web>` subtree is the escape hatch this rule's own message
+    // recommends, so DOM tags inside one are the fix, not the defect. Depth,
+    // not a boolean: `<Web>` can nest inside a component that also renders
+    // portable siblings, and oxc passes no parent to work it out from.
+    let webDepth = 0
+
     const callbacks: VisitorCallbacks = {
+      JSXElement(node: any) {
+        if (openingTagName(node) === 'Web') webDepth++
+      },
+      'JSXElement:exit'(node: any) {
+        if (openingTagName(node) === 'Web') webDepth--
+      },
       JSXOpeningElement(node: any) {
+        if (webDepth > 0) return
         const name = node?.name
         if (name?.type !== 'JSXIdentifier') return
         const tag = String(name.name)

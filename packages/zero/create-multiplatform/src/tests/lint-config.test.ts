@@ -54,8 +54,31 @@ const run = (dir: string) =>
 const OUT_OF_SUBSET = `export enum Mode {\n  On,\n  Off,\n}\n`
 /** A platform branch with no native arm — the sibling portable rule. */
 const PLATFORM_BRANCH = `export const A = () => <Web><div /></Web>\n`
+/**
+ * One shape per remaining portable rule: a web-only import, CSS-in-JS, a bare
+ * DOM tag OUTSIDE a `<Web>` branch, and a setup call with no `nativeCompat`.
+ *
+ * The fixture has to cover the whole group because the assertion below is
+ * totality over the registry — a new portable rule fails here until it is
+ * given a shape, rather than being quietly absent from the scaffolded config.
+ */
+const REST = [
+  `import { styled } from '@pyreon/styler'`,
+  `import { renderChart } from '@pyreon/charts'`,
+  `import { onMount } from '@pyreon/core'`,
+  `export const Card = styled('div')\`color:red\``,
+  `export function Panel() {`,
+  `  onMount(() => {})`,
+  `  return <div>{renderChart}</div>`,
+  `}`,
+  ``,
+].join('\n')
 
-const SOURCES = { 'src/app.ts': OUT_OF_SUBSET, 'src/view.tsx': PLATFORM_BRANCH }
+const SOURCES = {
+  'src/app.ts': OUT_OF_SUBSET,
+  'src/view.tsx': PLATFORM_BRANCH,
+  'src/panel.tsx': REST,
+}
 
 const portableIds = new Set(
   allRules.filter((r) => groupOf(r.meta) === 'portable').map((r) => r.meta.id),
@@ -90,7 +113,7 @@ describe('the scaffolded lint config', () => {
     }
   })
 
-  it('turns BOTH portable rules on, where `recommended` alone leaves them off', () => {
+  it('turns EVERY portable rule on, where `recommended` alone leaves them off', () => {
     const scaffolded = project(findConfig(), SOURCES)
     const bare = project(JSON.stringify({ preset: 'recommended' }), SOURCES)
     try {
@@ -99,8 +122,10 @@ describe('the scaffolded lint config', () => {
 
       // The whole point: identical source, one config apart.
       expect(off).toHaveLength(0)
-      // Both, not one — the two halves of the config enable different rules,
-      // so covering a single rule would let the other half be dropped.
+      // The WHOLE group, not a sample. The config's two halves enable
+      // different rules — `groups` moves the tier, `settings.portablePaths`
+      // is what five of the six need before they fire on anything — so
+      // covering one rule would let the other half be dropped silently.
       expect(new Set(on.map((d) => d.ruleId))).toEqual(portableIds)
       expect(on.every((d) => d.severity === 'warn')).toBe(true)
     } finally {

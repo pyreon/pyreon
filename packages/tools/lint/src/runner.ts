@@ -19,6 +19,31 @@ import { validateRuleOptions } from './utils/validate-options'
 import { matchesExemptPath } from './utils/exempt-paths'
 import { type FileRole, resolveFileRole, roleMatches } from './utils/file-roles'
 
+/**
+ * Merge project-wide `settings` under a rule's own options.
+ *
+ * Only keys the rule DECLARES in `meta.schema` are seeded. Without that filter
+ * a shared key would land on every rule and be reported as an unknown option
+ * by the ones that never asked for it — turning a convenience into noise.
+ */
+function seedFromSettings(
+  rule: Rule,
+  own: RuleOptions,
+  settings: RuleOptions | undefined,
+): RuleOptions {
+  if (!settings) return own
+  const schema = rule.meta.schema
+  if (!schema) return own
+  let seeded: RuleOptions | undefined
+  for (const key of Object.keys(schema)) {
+    if (!(key in settings)) continue
+    if (key in own) continue
+    seeded ??= { ...own }
+    ;(seeded as Record<string, unknown>)[key] = (settings as Record<string, unknown>)[key]
+  }
+  return seeded ?? own
+}
+
 // Per-process cache so we only validate a given (rule, options) pair once
 // and only print-once even across a multi-file lint run.
 const VALIDATION_CACHE = new Map<string, { ok: boolean; diagnostics: ConfigDiagnostic[] }>()
@@ -160,10 +185,15 @@ export function lintFile(
     const entry = config.rules[rule.meta.id]
     if (entry === undefined) continue
     // Normalize bare severity vs `[severity, options]` tuple.
-    const [severity, options]: [Severity, RuleOptions] = Array.isArray(entry)
+    const [severity, ownOptions]: [Severity, RuleOptions] = Array.isArray(entry)
       ? [entry[0] as Severity, (entry[1] ?? {}) as RuleOptions]
       : [entry as Severity, {}]
     if (severity === 'off') continue
+
+    // Seed project-wide `settings` into this rule's options, but ONLY for keys
+    // the rule's own schema declares — a shared key must never reach a rule
+    // that would reject it as unknown. The rule's own options win.
+    const options = seedFromSettings(rule, ownOptions, config.settings)
 
     // Validate options against the rule's declared schema. Cached per
     // (rule, options) pair — config doesn't change within a run.

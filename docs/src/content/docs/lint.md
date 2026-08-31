@@ -410,6 +410,33 @@ Categories live underneath, so a query rule is `group: 'pkg'`, `category: 'query
 }
 ```
 
+### Options shared by more than one rule
+
+Some options are a property of the project, not of one rule. `portablePaths` names the directories whose source has to survive three targets — and **five** rules in the `portable` group need that same answer. Repeating it per rule turns your config into a hand-maintained copy of the rule registry: add a sixth portable rule and it is silently inert in every project that listed the other five.
+
+`settings` says it once:
+
+```json
+{
+  "preset": "recommended",
+  "groups": { "portable": "warn" },
+  "settings": { "portablePaths": ["src/"] }
+}
+```
+
+A key is seeded into a rule's options **only when that rule declares it** in its own schema, so a shared key can never reach a rule that would reject it as unknown. Per-rule options still win, so you can widen the shared answer and narrow it for one rule:
+
+```json
+{
+  "settings": { "portablePaths": ["src/"] },
+  "rules": {
+    "pyreon/no-out-of-subset-construct": ["warn", { "portablePaths": ["src/shared/"] }]
+  }
+}
+```
+
+A `settings` key that no rule declares is reported as a config error — a typo here would otherwise be as silent as a typo'd rule id.
+
 `pyreon-lint --list` groups its output the same way. There is deliberately no `js` or `ts` group: those are for general JS/TS correctness rules, which this package does not have yet, and an empty group would advertise coverage that doesn't exist.
 
 ### Why isn't a rule firing?
