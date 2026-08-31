@@ -953,20 +953,6 @@ jobs:
         with:
           retries: 3
           script: |
-            # Suppress the emulator's ANR / crash dialogs BEFORE anything runs.
-            #
-            # Not a convenience: a `Pixel Launcher isn't responding` ANR dialog
-            # owns the screen under CI load and is NOT back-dismissable, so the
-            # release smoke's BACK + `am start` recovery cannot clear it and
-            # every one of its 20 polls reads a foreign window. The smoke then
-            # correctly reports a HARNESS failure — but the job is red either
-            # way, on a condition that says nothing about the app.
-            #
-            # `hide_error_dialogs` is Android's own switch for automated runs.
-            # It does not weaken the gate: a real app crash is detected from
-            # logcat FATAL and from the app's window never appearing, neither of
-            # which depends on a dialog being drawn.
-            adb shell settings put global hide_error_dialogs 1 || true
             const title = '[native-device] Nightly device build is RED'
             const failed =
               '${{ needs.ios-build.result }}' === 'failure' ||
