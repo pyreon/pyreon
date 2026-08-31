@@ -185,7 +185,7 @@ describe('the route axis installs the router it advertises', () => {
     routerPlugin({ urls: ['/users/7'], load: () => fake.mod }).decorate?.({
       name: 'Profile',
       scenarios: [{ id: 'default', args: {} }],
-    } as never)
+    } as never, { cwd: '.' })
 
     const routed = await installRouteFor('/users/7')
     expect(fake.created).toHaveLength(1)
@@ -217,7 +217,7 @@ describe('the route axis installs the router it advertises', () => {
     routerPlugin({ urls: ['/a'] }).decorate?.({
       name: 'X',
       scenarios: [{ id: 'default', args: {} }],
-    } as never)
+    } as never, { cwd: '.' })
     const routed = await installRouteFor('/a')
     expect(routed.disposer).toBeUndefined()
     expect(routed.reason).toContain('not applied')
@@ -228,7 +228,7 @@ describe('the route axis installs the router it advertises', () => {
     routerPlugin({ urls: ['/b'], load: () => undefined }).decorate?.({
       name: 'X',
       scenarios: [{ id: 'default', args: {} }],
-    } as never)
+    } as never, { cwd: '.' })
     const routed = await installRouteFor('/b')
     expect(routed.disposer).toBeUndefined()
     expect(routed.reason).toContain('did not load')

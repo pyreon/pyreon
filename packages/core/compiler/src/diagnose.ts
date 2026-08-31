@@ -1200,6 +1200,29 @@ onBeforeRouteEnter(() => { viewedAt.set(Date.now()) })`,
     }),
   },
   {
+    // The residual this PR's fix leaves behind. `isSafeImageDataUri` used to
+    // swallow a `decodeURIComponent` failure and scan the still-encoded bytes,
+    // which the scripted-SVG regex cannot match — so a payload with a malformed
+    // escape was ALLOWED. It now fails closed, like the base64 branch always
+    // did. The visible consequence is the opposite direction: a data URI that
+    // rendered before can now be refused, and the cause is in the URI, not the
+    // guard.
+    pattern:
+      /data:image\/svg\+xml[^\s"']*%(?![0-9a-fA-F]{2})|svg[- ]?data[- ]?uri\b[^.]{0,40}\b(blocked|refused|rejected|not render|stopped)|data uri[^.]{0,40}(malformed|percent|escape)/i,
+    diagnose: () => ({
+      cause:
+        'An SVG `data:` URI whose percent-encoding does not decode is treated as UNSAFE. The guard cannot read a payload it cannot decode, so it cannot vouch that the payload carries no `<script>` or `on*=` handler — and a guard that scans undecodable bytes is not scanning anything: `%3Cscript%3E` matches no pattern that `<script` would.',
+      fix: 'Fix the encoding rather than the guard. A lone `%`, a `%zz`, or a truncated multi-byte escape like `%E0%A4` will all do it — the usual cause is a raw `%` in the SVG source that was never encoded as `%25`. Encode the payload with `encodeURIComponent`, or use the base64 form (`data:image/svg+xml;base64,…`), which has always been held to the same standard.',
+      fixCode: `// refused — the trailing % is not a valid escape
+<img src="data:image/svg+xml,%3Csvg%3E…%3C/svg%3E%" />
+
+// encode the payload, do not hand-assemble it
+const src = \`data:image/svg+xml,\${encodeURIComponent(svgSource)}\``,
+      related:
+        'This branch used to differ from the base64 one, which returned "unsafe" on an undecodable payload from the start — the two disagreeing was the defect, and one trailing `%` was enough to flip a scripted SVG from blocked to allowed. Scoped to `src`/`srcset`/`poster` on `<img>`/`<source>`/`<video>`, where a scripted SVG does not execute, so this is defence-in-depth rather than a live hole.',
+    }),
+  },
+  {
     // runtime-dom URL-injection guard. The warning fires when a
     // javascript:/data: URL is dropped from a URL-bearing attribute
     // (href/src/action/formaction/poster/cite/data). data:image/* is allowed
