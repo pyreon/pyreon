@@ -82,6 +82,18 @@ export interface ChartSpec {
   xTime?: boolean | undefined
   /** Reference rules and bands, drawn between the grid and the series. */
   annotations?: Annotation[] | undefined
+  /**
+   * Entrance progress, 0..1; absent means 1 (fully drawn).
+   *
+   * Animation lives in the ENGINE as a parameter, not in the hosts as a
+   * effect: `renderChart` at progress 0.4 is a pure function returning the
+   * 40%-grown frame — bars part-risen from the zero line, lines revealed
+   * left-to-right, points part-sized. That makes every frame testable, keeps
+   * the draw list flat, and means the SwiftUI/Compose executors animate the
+   * day they exist, with no animation code of their own. The host's whole job
+   * is to tween this number.
+   */
+  progress?: Double | undefined
 }
 
 export const defaultTheme: ChartTheme = {
@@ -174,6 +186,38 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
   const plot = l.plot
   const t = spec.theme
   const out: DrawCmd[] = []
+  const raw = spec.progress
+  const progress = raw === undefined ? 1.0 : raw < 0.0 ? 0.0 : raw > 1.0 ? 1.0 : raw
+
+  // Grows a bar rect toward its value from the zero line — the edge a bar is
+  // measured from, so a negative bar grows DOWNWARD during the entrance
+  // instead of sliding in from above.
+  const growRect = (r: Rect): Rect => {
+    if (progress >= 1.0) return r
+    const zeroY = scaleLinear(yDomain, plot.y + plot.h, plot.y, yDomain.min < 0.0 && yDomain.max > 0.0 ? 0.0 : yDomain.min)
+    const h = r.h * progress
+    const top = r.y + r.h <= zeroY + 0.5 ? zeroY - h : zeroY
+    return { x: r.x, y: top, w: r.w, h }
+  }
+
+  // Reveals a polyline left to right: whole points up to the cut, plus an
+  // interpolated point partway along the segment the cut lands in, so the tip
+  // advances smoothly instead of popping a segment at a time.
+  const reveal = (pts: Pt[]): Pt[] => {
+    if (progress >= 1.0 || pts.length < 2) return pts
+    const span = pts.length - 1
+    const cut = span * progress
+    const whole = Math.floor(cut)
+    const outPts: Pt[] = []
+    for (let i = 0; i <= whole; i++) outPts.push(pts[i]!)
+    const frac = cut - whole
+    if (frac > 0.0 && whole + 1 < pts.length) {
+      const a = pts[whole]!
+      const b = pts[whole + 1]!
+      outPts.push({ x: a.x + (b.x - a.x) * frac, y: a.y + (b.y - a.y) * frac })
+    }
+    return outPts
+  }
 
   if (spec.showGrid) {
     for (const tick of l.yTicks) {
@@ -276,13 +320,13 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
   const stackedSeries = spec.series.filter((s) => s.kind === 'stacked')
   if (stackedSeries.length > 0) {
     for (const seg of layoutStackedBars(stackedSeries.map((s) => s.values), plot, yDomain, 0.25)) {
-      out.push({ kind: 'rect', rect: seg.rect, fill: stackedSeries[seg.seriesIndex]!.color })
+      out.push({ kind: 'rect', rect: growRect(seg.rect), fill: stackedSeries[seg.seriesIndex]!.color })
     }
   }
   const groupedSeries = spec.series.filter((s) => s.kind === 'grouped')
   if (groupedSeries.length > 0) {
     for (const seg of layoutGroupedBars(groupedSeries.map((s) => s.values), plot, yDomain, 0.25)) {
-      out.push({ kind: 'rect', rect: seg.rect, fill: groupedSeries[seg.seriesIndex]!.color })
+      out.push({ kind: 'rect', rect: growRect(seg.rect), fill: groupedSeries[seg.seriesIndex]!.color })
     }
   }
 
@@ -304,9 +348,9 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
     if (s.kind === 'bars') {
       const rects = layoutBars(s.values, plot, yDomain, 0.25)
       for (const r of rects) {
-        out.push({ kind: 'rect', rect: r, fill: s.color })
+        out.push({ kind: 'rect', rect: growRect(r), fill: s.color })
       }
-      if (s.showValues === true) {
+      if (s.showValues === true && progress >= 1.0) {
         const fmt = spec.yFormat ?? plain
         for (let i = 0; i < rects.length; i++) {
           const r = rects[i]!
@@ -325,12 +369,12 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
         }
       }
     } else if (s.kind === 'line') {
-      const pts = shape(place(s.values))
+      const pts = reveal(shape(place(s.values)))
       if (pts.length > 1) {
         out.push({ kind: 'polyline', points: pts, stroke: s.color, width: s.width })
       }
     } else if (s.kind === 'area') {
-      const pts = shape(place(s.values))
+      const pts = reveal(shape(place(s.values)))
       if (pts.length > 1) {
         const poly: Pt[] = []
         for (const p of pts) poly.push(p)
@@ -343,10 +387,11 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
     } else {
       const pts = place(s.values)
       for (let i = 0; i < pts.length; i++) {
+        const fullR = s.radii !== undefined ? s.radii[i] ?? s.radius : s.radius
         out.push({
           kind: 'circle',
           center: pts[i]!,
-          radius: s.radii !== undefined ? s.radii[i] ?? s.radius : s.radius,
+          radius: fullR * progress,
           fill: s.color,
         })
       }

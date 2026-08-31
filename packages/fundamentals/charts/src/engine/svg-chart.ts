@@ -9,7 +9,7 @@ import { describeChart } from './a11y'
 import type { Mark } from './marks'
 import { resolveCategories, resolveMarks } from './marks'
 import { defaultTheme, renderChart } from './render'
-import type { ChartTheme } from './render'
+import type { Annotation, ChartTheme } from './render'
 import { measureApprox, renderSvg } from './svg'
 import type { Formatter } from './format'
 import type { SvgOptions } from './svg'
@@ -35,6 +35,8 @@ export interface ChartToSvgOptions<T> {
    * `percent`, `compact` and `fixed` ship alongside.
    */
   format?: Formatter
+  /** Reference rules and bands — see `Annotation`. */
+  annotations?: Annotation[]
   /**
    * Text measurement. Defaults to the approximation, which is what makes this
    * callable on a server — pass `canvasMeasure(ctx, font)` in a browser when
@@ -81,6 +83,7 @@ export function chartToSvg<T>(options: ChartToSvgOptions<T>): string {
     // cannot lower.
     yDomain: options.yDomain,
     yFormat: options.format,
+    annotations: options.annotations,
   }
   const measure = options.measure ?? measureApprox()
   const cmds = renderChart(spec, measure)

@@ -288,3 +288,80 @@ describe('dash serialization', () => {
     expect(s).toContain('stroke-dasharray="2 3"')
   })
 })
+
+describe('entrance progress', () => {
+  const DATA = [{ v: 10 }, { v: 60 }, { v: 40 }]
+
+  it('at 0.5 a bar has half its height, still rooted at the zero line', () => {
+    const series = resolveMarks(DATA, [bars((d: (typeof DATA)[number]) => d.v)])
+    const full = renderChart(spec({ series }), () => 20)
+    const half = renderChart(spec({ series, progress: 0.5 }), () => 20)
+    const fullRects = full.filter((c) => c.kind === 'rect')
+    const halfRects = half.filter((c) => c.kind === 'rect')
+    for (let i = 0; i < fullRects.length; i++) {
+      const f = fullRects[i]!
+      const h = halfRects[i]!
+      if (f.kind !== 'rect' || h.kind !== 'rect') throw new Error('rects')
+      expect(h.rect.h).toBeCloseTo(f.rect.h * 0.5, 5)
+      // Rooted: the BOTTOM edge stays put while the top rises.
+      expect(h.rect.y + h.rect.h).toBeCloseTo(f.rect.y + f.rect.h, 5)
+    }
+  })
+
+  it('a negative bar grows DOWNWARD from the zero line', () => {
+    const negData = [{ v: -30 }, { v: 50 }]
+    const series = resolveMarks(negData, [bars((d: (typeof negData)[number]) => d.v)])
+    const full = renderChart(spec({ series }), () => 20)
+    const half = renderChart(spec({ series, progress: 0.5 }), () => 20)
+    const fullNeg = full.filter((c) => c.kind === 'rect')[0]!
+    const halfNeg = half.filter((c) => c.kind === 'rect')[0]!
+    if (fullNeg.kind !== 'rect' || halfNeg.kind !== 'rect') throw new Error('rects')
+    // The TOP edge (the zero line) stays put; the bar extends downward.
+    expect(halfNeg.rect.y).toBeCloseTo(fullNeg.rect.y, 5)
+    expect(halfNeg.rect.h).toBeCloseTo(fullNeg.rect.h * 0.5, 5)
+  })
+
+  it('reveals a line left to right with a smoothly advancing tip', () => {
+    const series = resolveMarks(DATA, [line((d: (typeof DATA)[number]) => d.v)])
+    const full = renderChart(spec({ series }), () => 20)
+    const part = renderChart(spec({ series, progress: 0.75 }), () => 20)
+    const fp = full.find((c) => c.kind === 'polyline')
+    const pp = part.find((c) => c.kind === 'polyline')
+    if (fp?.kind !== 'polyline' || pp?.kind !== 'polyline') throw new Error('polylines')
+    const tip = pp.points[pp.points.length - 1]!
+    const start = fp.points[0]!.x
+    const end = fp.points[fp.points.length - 1]!.x
+    // 0.75 of two segments: the tip is midway through the SECOND segment —
+    // an interpolated point, not a datum.
+    expect(tip.x).toBeCloseTo(start + (end - start) * 0.75, 5)
+  })
+
+  it('scales point radii', () => {
+    const series = resolveMarks(DATA, [points((d: (typeof DATA)[number]) => d.v, { radius: 8 })])
+    const part = renderChart(spec({ series, progress: 0.25 }), () => 20)
+    for (const c of part.filter((c) => c.kind === 'circle')) {
+      expect(c.kind === 'circle' && c.radius).toBeCloseTo(2, 5)
+    }
+  })
+
+  it('holds value labels until the entrance settles — text mid-flight jitters', () => {
+    const series = resolveMarks(DATA, [
+      bars((d: (typeof DATA)[number]) => d.v, { showValues: true }),
+    ])
+    const mid = renderChart(spec({ series, progress: 0.9 }), () => 20)
+    const done = renderChart(spec({ series, progress: 1 }), () => 20)
+    expect(mid.some((c) => c.kind === 'text' && c.text === '60')).toBe(false)
+    expect(done.some((c) => c.kind === 'text' && c.text === '60')).toBe(true)
+  })
+
+  it('absent progress and progress 1 emit identical frames, and values clamp', () => {
+    const series = resolveMarks(DATA, [bars((d: (typeof DATA)[number]) => d.v)])
+    const absent = renderChart(spec({ series }), () => 20)
+    expect(renderChart(spec({ series, progress: 1 }), () => 20)).toEqual(absent)
+    expect(renderChart(spec({ series, progress: 7 }), () => 20)).toEqual(absent)
+    const zero = renderChart(spec({ series, progress: -3 }), () => 20)
+    for (const c of zero.filter((c) => c.kind === 'rect')) {
+      expect(c.kind === 'rect' && c.rect.h).toBe(0)
+    }
+  })
+})

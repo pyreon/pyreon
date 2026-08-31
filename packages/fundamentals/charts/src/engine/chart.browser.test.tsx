@@ -50,7 +50,14 @@ describe('PlotChart renders real pixels in a real browser', () => {
 
   it('sizes the backing store for the device pixel ratio', async () => {
     const { container } = mountInBrowser(() =>
-      PlotChart<Row>({ data: DATA, marks: [bars((d) => d.revenue)], width: 400, height: 200 }),
+      PlotChart<Row>({
+        data: DATA,
+        marks: [bars((d) => d.revenue)],
+        width: 400,
+        height: 200,
+        // Geometry test: sample the finished frame, not the entrance tween.
+        animate: false,
+      }),
     )
     await flush()
     const canvas = container.querySelector('canvas')!
@@ -90,7 +97,14 @@ describe('PlotChart renders real pixels in a real browser', () => {
 
   it('paints more ink for a line drawn over bars than for bars alone', async () => {
     const one = mountInBrowser(() =>
-      PlotChart<Row>({ data: DATA, marks: [bars((d) => d.revenue)], width: 400, height: 200 }),
+      PlotChart<Row>({
+        data: DATA,
+        marks: [bars((d) => d.revenue)],
+        width: 400,
+        height: 200,
+        // Geometry comparison: both frames must be FINISHED, not mid-entrance.
+        animate: false,
+      }),
     )
     await flush()
     const barsOnly = inkedPixels(one.container.querySelector('canvas')!)
@@ -101,6 +115,7 @@ describe('PlotChart renders real pixels in a real browser', () => {
         marks: [bars((d) => d.revenue), line((d) => d.target, { color: '#b45309' })],
         width: 400,
         height: 200,
+        animate: false,
       }),
     )
     await flush()
@@ -451,6 +466,7 @@ describe('PlotChart — a continuous x axis', () => {
         width: 400,
         height: 200,
         title: 'Readings',
+        animate: false,
         // Chrome OFF so the only ink is the line itself. With the grid on, the
         // topmost painted pixel is the top gridline — which spans the full
         // width and starts at the left edge whatever the spacing, so the
@@ -488,5 +504,87 @@ describe('PlotChart — a continuous x axis', () => {
       peakX,
       `the line peaks at x=${peakX} of ${canvas.width} — that is the middle, i.e. the points were spaced by INDEX and the chart misstates the gaps`,
     ).toBeLessThan(canvas.width * 0.35)
+  })
+})
+
+describe('PlotChart — entrance animation and annotations', () => {
+  interface V {
+    v: number
+  }
+  const DATA: V[] = [{ v: 10 }, { v: 60 }, { v: 40 }]
+
+  it('with animate off, the FIRST frame is the finished chart', async () => {
+    const { container } = mountInBrowser(() =>
+      PlotChart<V>({
+        data: DATA,
+        marks: [bars((d) => d.v)],
+        width: 300,
+        height: 150,
+        animate: false,
+      }),
+    )
+    // No flush: sample synchronously after mount, before any rAF could run.
+    const canvas = query<HTMLCanvasElement>(container, 'canvas')
+    const ctx = canvas.getContext('2d')
+    if (ctx === null) throw new Error('no ctx')
+    const count = (): number => {
+      const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height)
+      let n = 0
+      for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) n++
+      return n
+    }
+    const first = count()
+    expect(first).toBeGreaterThan(500)
+    await flush()
+    await new Promise((r) => setTimeout(r, 500))
+    // …and it does not change afterwards: nothing was left mid-tween.
+    expect(count()).toBe(first)
+  })
+
+  it('by default the chart GROWS: an early frame has less ink than the settled one', async () => {
+    const { container } = mountInBrowser(() =>
+      PlotChart<V>({ data: DATA, marks: [bars((d) => d.v)], width: 300, height: 150 }),
+    )
+    const canvas = query<HTMLCanvasElement>(container, 'canvas')
+    const ctx = canvas.getContext('2d')
+    if (ctx === null) throw new Error('no ctx')
+    const count = (): number => {
+      const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height)
+      let n = 0
+      for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) n++
+      return n
+    }
+    // One frame in: the tween has started but nowhere near settled.
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+    const early = count()
+    await new Promise((r) => setTimeout(r, 700))
+    const settled = count()
+    expect(settled).toBeGreaterThan(500)
+    expect(early, 'the entrance never animated — first frame already final').toBeLessThan(settled)
+  })
+
+  it('annotations reach the canvas end to end', async () => {
+    const paint = async (annotations?: { y: number; label?: string }[]): Promise<string> => {
+      const { container, unmount } = mountInBrowser(() =>
+        PlotChart<V>({
+          data: DATA,
+          marks: [bars((d) => d.v)],
+          width: 300,
+          height: 150,
+          animate: false,
+          ...(annotations !== undefined ? { annotations } : {}),
+        }),
+      )
+      await flush()
+      const canvas = query<HTMLCanvasElement>(container, 'canvas')
+      const url = canvas.toDataURL()
+      unmount()
+      return url
+    }
+    const plainUrl = await paint()
+    const annotated = await paint([{ y: 50, label: 'Target' }])
+    // The unit tests pin the geometry; this pins the PASS-THROUGH — a prop
+    // that never reaches buildSpec produces a byte-identical canvas.
+    expect(annotated).not.toBe(plainUrl)
   })
 })

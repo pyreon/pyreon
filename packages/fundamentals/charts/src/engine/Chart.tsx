@@ -13,7 +13,7 @@ import { renderLegend } from './legend'
 import { placeTooltip, tooltipAt, tooltipLines } from './tooltip'
 import { barsFor, defaultTheme, layoutChart, renderChart, resolveYDomain } from './render'
 import { hitBar, hitNearestX, layoutSeriesPoints } from './layout'
-import type { ChartSpec, ChartTheme } from './render'
+import type { Annotation, ChartSpec, ChartTheme } from './render'
 import { resolveCategories, resolveMarks } from './marks'
 import type { Mark } from './marks'
 import { chartTable, describeChart } from './a11y'
@@ -112,6 +112,15 @@ export interface PlotChartProps<T> {
   xTime?: boolean
   /** Formats the x-axis ticks. Overrides the calendar default when `xTime`. */
   xFormat?: Formatter
+  /** Reference rules and bands — the target line, the healthy range. */
+  annotations?: Annotation[]
+  /**
+   * Animate the first paint — bars rise, lines draw, points grow. On by
+   * default because an entrance orients the eye; OFF automatically under
+   * `prefers-reduced-motion`, which is a request, not a hint. Data UPDATES
+   * are not animated: an update should read as the new truth, not a morph.
+   */
+  animate?: boolean
   /**
    * Drop the offscreen data table. It is on by default because a canvas is a
    * single opaque node to a screen reader — without the table a chart is a
@@ -151,6 +160,37 @@ function drawWidth(el: HTMLCanvasElement, explicit: Double | undefined): Double 
 export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   let canvas: HTMLCanvasElement | null = null
   let sizeObserver: ResizeObserver | null = null
+
+  // Entrance progress. Starts at 1 (fully drawn) and only ever dips for the
+  // ONE tween on first data: SSR output, `chartToSvg`, and every later
+  // repaint all render the finished frame by default.
+  let entrance = 1.0
+  let entranceStarted = false
+  let entranceFrame = 0.0
+
+  const prefersReducedMotion = (): boolean =>
+    typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+
+  const startEntrance = (): void => {
+    if (entranceStarted) return
+    entranceStarted = true
+    if (props.animate === false || prefersReducedMotion()) return
+    if (typeof requestAnimationFrame !== 'function') return
+    const duration = 400.0
+    let start = -1.0
+    const tick = (now: number): void => {
+      if (start < 0.0) start = now
+      const t = Math.min(1.0, (now - start) / duration)
+      // Ease-out cubic: fast rise, gentle settle — the entrance reads as the
+      // chart arriving, not as data still changing.
+      const eased = 1.0 - Math.pow(1.0 - t, 3.0)
+      entrance = eased
+      draw()
+      if (t < 1.0) entranceFrame = requestAnimationFrame(tick)
+    }
+    entrance = 0.0
+    entranceFrame = requestAnimationFrame(tick)
+  }
   let tip: HTMLDivElement | null = null
 
   const readData = (): T[] => {
@@ -173,6 +213,8 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     ...(props.xValue !== undefined
       ? { xValues: rows.map((d, i) => props.xValue!(d, i)) }
       : {}),
+    annotations: props.annotations,
+    progress: entrance,
   })
 
   const draw = (): void => {
@@ -346,7 +388,13 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       canvas = el
       sizeObserver?.disconnect()
       sizeObserver = null
-      if (el === null) return
+      if (el === null) {
+        if (entranceFrame !== 0.0 && typeof cancelAnimationFrame === 'function') {
+          cancelAnimationFrame(entranceFrame)
+        }
+        return
+      }
+      startEntrance()
       draw()
       // Observe the CONTAINER, because the first draw runs before it has laid
       // out: the ref fires while the wrapper still measures 0, the fallback
