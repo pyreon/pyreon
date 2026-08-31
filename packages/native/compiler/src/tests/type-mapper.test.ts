@@ -372,13 +372,14 @@ describe('parseTypeAnnotation → TypeIR round-trip', () => {
     expect(parseSignalType("'red'")).toEqual({ kind: 'string' })
   })
   it('parses string-literal union → string', () => {
-    // `'red' | 'green' | 'blue'` collapses to `string | string | string`
-    // = effectively the base type — the parser flattens, and the
-    // mapper degrades since Swift/Kotlin can't model the string-literal
-    // set without an explicit enum (Phase 1+).
-    const result = parseSignalType("'red' | 'green' | 'blue'")
-    expect(result.kind).toBe('union')
-    if (result.kind !== 'union') throw new Error()
-    expect(result.branches.every((b) => b.kind === 'string')).toBe(true)
+    // `'red' | 'green' | 'blue'` degrades each literal to its base type and
+    // the parser now DEDUPES structurally-equal branches, so the union
+    // collapses to plain `string`. The old assertion pinned the
+    // intermediate `string | string | string` shape — which its own comment
+    // already called "effectively the base type"; the collapse completes
+    // that intent, and is what keeps a fat-struct field like
+    // `align: 'start' | 'middle' | 'end'` a String? instead of an
+    // uncodable Any?.
+    expect(parseSignalType("'red' | 'green' | 'blue'")).toEqual({ kind: 'string' })
   })
 })
