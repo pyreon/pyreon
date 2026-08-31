@@ -72,7 +72,7 @@ describe('P1 — helper-body destructure vs stale component-scope alias', () => 
   it.skipIf(!isSwiftUIAvailable())('the emitted Swift type-checks', () => {
     const out = transform(SRC, { target: 'swift' }).code
     const res = validateSwiftWithStubs(out)
-    expect(res.ok, res.output).toBe(true)
+    expect(res.ok, res.error ?? '').toBe(true)
   })
 })
 
@@ -116,6 +116,6 @@ describe('P1 — charCodeAt lowers (was a silent verbatim emit)', () => {
   it.skipIf(!isSwiftUIAvailable())('the emitted Swift type-checks', () => {
     const out = transform(SRC_CC, { target: 'swift' }).code
     const res = validateSwiftWithStubs(out)
-    expect(res.ok, res.output).toBe(true)
+    expect(res.ok, res.error ?? '').toBe(true)
   })
 })
