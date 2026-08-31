@@ -11,6 +11,16 @@
 export { PlotChart } from './engine/Chart'
 export type { PlotChartProps } from './engine/Chart'
 export { GaugeChart, PieChart } from './engine/PieChart'
+export { CandlestickChart } from './engine/CandlestickChart'
+export type { CandlestickChartProps } from './engine/CandlestickChart'
+export { ohlcExtent, renderCandles } from './engine/candlestick'
+export type { CandleOptions, Ohlc } from './engine/candlestick'
+export { HeatmapChart } from './engine/HeatmapChart'
+export type { HeatmapChartProps } from './engine/HeatmapChart'
+
+// Heat geometry — usable standalone, like the rest of the engine.
+export { buildHeatGrid, colorRamp, HEAT_RAMP, renderHeat } from './engine/heat'
+export type { HeatCell, HeatGrid, HeatmapOptions } from './engine/heat'
 export type { GaugeChartProps, PieChartProps } from './engine/PieChart'
 
 // Marks
