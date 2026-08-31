@@ -36,6 +36,7 @@ import {
   literalShapeKey,
 } from './expr-utils'
 import {
+  nilCoalesceTernary,
   buildArraySpreadConcat,
   buildInferenceCtx,
   classifyNegativeSlice,
@@ -6273,6 +6274,16 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // …` compiles), so this is a Swift-only refinement. `optionalMemberTernary`
       // (infer-type.ts — the ONE bisect point) detects the simplest `opt` cond +
       // `opt.prop` then shape (the find-then-field idiom).
+      // TS narrows `x === undefined ? fb : x` (and the `!==` mirror); Swift
+      // does not, so the straight emit fails "must be unwrapped". The idiom
+      // IS Swift's nil-coalescing — rewrite to `(x ?? fb)` when the branch
+      // that survives the check is STRUCTURALLY the checked expression and
+      // the checked expression is provably optional (a `??` on a non-optional
+      // is its own swiftc complaint, so an unprovable case emits as before).
+      const nc = nilCoalesceTernary(e, _exprInferCtx)
+      if (nc) {
+        return `(${emitSwiftExpr(nc.opt, indent)} ?? ${emitSwiftExpr(nc.fallback, indent)})`
+      }
       const omt = optionalMemberTernary(e, _exprInferCtx)
       if (omt) {
         return `(${emitSwiftExpr(omt.opt, indent)}?.${swiftIdent(omt.property)} ?? ${emitSwiftExpr(e.otherwise, indent)})`

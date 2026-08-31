@@ -31,6 +31,7 @@ import {
   literalShapeKey,
 } from './expr-utils'
 import {
+  nilCoalesceTernary,
   buildArraySpreadConcat,
   buildInferenceCtx,
   arrayFromMapRewrite,
@@ -5007,6 +5008,15 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // dominant master-detail shape. Optional-chaining sidesteps it uniformly
       // (and matches the Swift lowering). `optionalMemberTernary` (infer-type.ts
       // — the ONE bisect point) matches any structurally-equal optional cond.
+      // The Swift twin rewrites `x === undefined ? fb : x` to `(x ?? fb)`;
+      // Kotlin's elvis is the same idiom, and although smart-casting makes
+      // the plain if-expression compile for a bare val, the delegated-read
+      // shapes (`selected()`) cannot smart-cast — and the two backends must
+      // not disagree about which ternaries the pattern claims.
+      const nc = nilCoalesceTernary(e, _kotlinExprInferCtx)
+      if (nc) {
+        return `(${emitKotlinExpr(nc.opt, indent)} ?: ${emitKotlinExpr(nc.fallback, indent)})`
+      }
       const omt = optionalMemberTernary(e, _kotlinExprInferCtx)
       if (omt) {
         return `(${emitKotlinExpr(omt.opt, indent)}?.${kotlinIdent(omt.property)} ?: ${emitKotlinExpr(e.otherwise, indent)})`
