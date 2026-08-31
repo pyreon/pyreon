@@ -38,7 +38,6 @@ export function layoutStackedBars(
   const ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
   const band = plot.w / n
   const bw = band * (1.0 - ratio)
-  const baseY = scaleLinear(yDomain, plot.y + plot.h, plot.y, 0.0)
 
   for (let i = 0; i < n; i++) {
     let acc = 0.0
@@ -60,7 +59,6 @@ export function layoutStackedBars(
       })
       acc = acc + v
     }
-    void baseY
   }
   return out
 }

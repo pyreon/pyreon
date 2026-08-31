@@ -30,12 +30,10 @@ export function smooth(points: Pt[]): Pt[] {
 
   // Secant slopes between consecutive points.
   const dx: Double[] = []
-  const dy: Double[] = []
   const slope: Double[] = []
   for (let i = 0; i < n - 1; i++) {
     const dxi = points[i + 1]!.x - points[i]!.x
     dx.push(dxi)
-    dy.push(points[i + 1]!.y - points[i]!.y)
     // Coincident x (duplicate timestamps) would divide by zero; a zero slope
     // through the pair keeps the curve finite and flat there.
     slope.push(dxi === 0.0 ? 0.0 : (points[i + 1]!.y - points[i]!.y) / dxi)
