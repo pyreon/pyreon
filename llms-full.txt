@@ -3066,7 +3066,7 @@ const fileResult = lintFile('app.tsx', source, allRules, config, cache)
 //   pyreon-lint --preset strict --quiet                    # CI mode
 //   pyreon-lint --fix                                      # auto-fix
 //   pyreon-lint --watch src/                               # watch mode
-//   pyreon-lint --list                                     # list all 115 rules
+//   pyreon-lint --list                                     # list all 116 rules
 //   pyreon-lint --why-off pyreon/rx-prefer-pipe            # explain a silent rule
 //   pyreon-lint --rule-options 'pyreon/no-window-in-ssr={"exemptPaths":["src/foundation/"]}' src/
 ```
