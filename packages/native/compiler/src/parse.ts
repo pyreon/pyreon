@@ -6,7 +6,8 @@
 
 import { parseSync } from 'oxc-parser'
 import { detectPlain, transformPlain } from '@pyreon/compiler/plain'
-import { buildInferenceCtx, inferReturnType, inferType, type InferenceCtx } from './infer-type'
+import {
+  typeIsOptional, buildInferenceCtx, inferReturnType, inferType, type InferenceCtx } from './infer-type'
 import { parseHotkeyCombo } from './hotkey-combo'
 import type {
   AttrIR,
@@ -42,7 +43,8 @@ import {
   resolveThemeToken,
   type ThemeTable,
 } from './theme-native'
-import { lowerRouteParams } from './expr-utils'
+import {
+  typeShapeKey, lowerRouteParams } from './expr-utils'
 
 // oxc-parser's typed AST is rich; for Phase 0 we walk it loosely via
 // `any` to keep the parser readable. As the IR coverage grows we can
@@ -456,6 +458,11 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     // tryEnumFromTypeAlias above) OR a non-object alias (`type Foo = string`).
     const st = tryStructFromTypeAlias(node, ctx)
     if (st) structs.push(st)
+    // A discriminated union of object shapes synthesizes a FAT struct —
+    // the representation that lets a heterogeneous command list share one
+    // array on Swift/Kotlin. See tryStructFromObjectUnion.
+    const stUnion = tryStructFromObjectUnion(node, ctx)
+    if (stUnion) structs.push(stUnion)
     // Same struct synthesis for a top-level `interface X { … }` (bails + warns
     // itself on generics/extends/empty — see tryStructFromInterface).
     const stIface = tryStructFromInterface(node, ctx)
@@ -5230,6 +5237,122 @@ function tryStructFromTypeAlias(node: AnyNode, ctx: ParseCtx): StructIR | null {
 }
 
 /**
+ * Synthesize a FAT STRUCT from a discriminated union of object shapes.
+ * Source:
+ *
+ *   type DrawCmd =
+ *     | { kind: 'rect'; rect: Rect; fill: string }
+ *     | { kind: 'line'; from: Pt; to: Pt; stroke: string; width: number }
+ *
+ * emits ONE struct whose fields are the union of every branch's fields —
+ * required where a field appears in ALL branches with the SAME type,
+ * optional (union-with-undefined) everywhere else. That is the one Swift /
+ * Kotlin representation that lets a heterogeneous `DrawCmd[]` share an
+ * array: per-variant structs cannot (no common supertype without a class
+ * hierarchy), and tuples cannot (different arities). A proper Swift enum
+ * with associated values would be the idiomatic reader-side shape, but the
+ * generated code only CONSTRUCTS commands — the reader is a hand-written
+ * executor that handles optionals explicitly — so the fat struct is the
+ * shape that makes construction compile TODAY.
+ *
+ * The emitters need NO changes: optional struct fields already default
+ * (nil / null) precisely so a subset literal compiles, and the
+ * struct-selection subset rung already resolves a literal that sets only
+ * some fields to a struct whose remaining fields are optional. Registering
+ * the fat struct as a declared struct is the whole feature.
+ *
+ * String-literal discriminants ('rect' vs 'line') merge cleanly because
+ * TSLiteralType already degrades to its base type at parse — both sides
+ * read string.
+ *
+ * Bails (returns null, existing warnings stand) for:
+ *   - generic aliases, unions with ANY non-object branch (string-literal
+ *     unions are enums and never reach here — tryEnumFromTypeAlias runs
+ *     first; a mixed object-or-string union has no struct shape)
+ *   - a field name appearing in two branches with DIFFERENT types — a
+ *     fat field would have to be Any, which poisons every consumer;
+ *     warned by name so the author can rename one side
+ *   - an empty merge (every branch empty)
+ */
+function tryStructFromObjectUnion(node: AnyNode, ctx: ParseCtx): StructIR | null {
+  let alias: AnyNode | null = null
+  if (
+    node.type === 'ExportNamedDeclaration' &&
+    node.declaration?.type === 'TSTypeAliasDeclaration'
+  ) {
+    alias = node.declaration
+  } else if (node.type === 'TSTypeAliasDeclaration') {
+    alias = node
+  }
+  if (!alias) return null
+  if (alias.typeParameters?.params?.length > 0) return null
+  const name = alias.id?.name as string | undefined
+  if (!name) return null
+  const body = alias.typeAnnotation as AnyNode | undefined
+  if (!body || body.type !== 'TSUnionType') return null
+  const branchNodes = body.types as AnyNode[] | undefined
+  if (!branchNodes || branchNodes.length < 2) return null
+  for (const b of branchNodes) {
+    if (b.type !== 'TSTypeLiteral') return null
+  }
+
+  // Parse each branch with the shared annotation parser, then merge.
+  const branches: { name: string; type: TypeIR }[][] = []
+  for (const b of branchNodes) {
+    const parsed = parseTypeAnnotation(b, ctx)
+    if (parsed.kind !== 'object') return null
+    branches.push(parsed.fields)
+  }
+
+  // Compare CORE types with optionality unwrapped: a field optional in one
+  // branch and required in another is the SAME field, merged optional — only
+  // a genuine base-type conflict (string vs Double) bails.
+  const coreOf = (t: TypeIR): TypeIR => {
+    if (t.kind !== 'union') return t
+    const nonNull = t.branches.filter((b) => b.kind !== 'null' && b.kind !== 'undefined')
+    return nonNull.length === 1 ? nonNull[0]! : t
+  }
+  const order: string[] = []
+  const seen = new Map<string, { core: TypeIR; count: number; sawOptional: boolean }>()
+  for (const fields of branches) {
+    for (const f of fields) {
+      const core = coreOf(f.type)
+      const wasOptional = typeIsOptional(f.type)
+      const prior = seen.get(f.name)
+      if (prior === undefined) {
+        order.push(f.name)
+        seen.set(f.name, { core, count: 1, sawOptional: wasOptional })
+      } else {
+        if (typeShapeKey(prior.core) !== typeShapeKey(core)) {
+          ctx.warnings.push(
+            `Union type ${name}: field "${f.name}" has DIFFERENT types across branches — a merged struct field would have to be Any, which poisons every consumer. Rename one side, or align the types.`,
+          )
+          return null
+        }
+        prior.count += 1
+        if (wasOptional) prior.sawOptional = true
+      }
+    }
+  }
+  if (order.length === 0) return null
+
+  const total = branches.length
+  const fields = order.map((fname) => {
+    const info = seen.get(fname)!
+    // Required only when the field appears in EVERY branch and no branch
+    // marked it optional. Everything else goes optional — the SAME
+    // union-with-undefined shape an optional interface member parses to,
+    // so the emitters' existing nil / null defaulting applies.
+    const required = info.count === total && !info.sawOptional
+    const type: TypeIR = required
+      ? info.core
+      : ({ kind: 'union', branches: [info.core, { kind: 'undefined' }] } as TypeIR)
+    return { name: fname, type }
+  })
+  return { name, fields }
+}
+
+/**
  * Sibling of `tryStructFromTypeAlias` for a top-level `interface X { … }`
  * declaration (bare or `export`-wrapped). An interface's members
  * (`decl.body.body`, a list of `TSPropertySignature`) are the SAME node shape
@@ -6101,10 +6224,18 @@ function parseProps(
  * named props type, the dominant real-world component shape). Any other
  * TypeIR passes through unchanged.
  */
+/** Type names that are REAL primitive types on both native targets. */
+const NATIVE_PRIMITIVE_TYPE_NAMES = new Set(['Double', 'Float', 'Int', 'Bool', 'String'])
+
 function resolvePropsObjectType(t: TypeIR, ctx: ParseCtx): TypeIR {
   if (t.kind === 'typeRef' && t.args.length === 0) {
     const resolved = ctx.objectTypeAliases.get(t.name)
     if (resolved !== undefined) return resolved
+    if (NATIVE_PRIMITIVE_TYPE_NAMES.has(t.name)) return t
+    // A typeRef named after a native primitive emits VERBATIM as that native
+    // type — `type Double = number` is the documented cross-target alias
+    // (tsc resolves the alias, PMTC reads the NAME). Warning here tells the
+    // author to fix working code, five times per file on the chart engine.
     ctx.warnings.push(
       `Component props type \`${t.name}\` can't be resolved — PMTC only resolves an object-shape \`type ${t.name} = { … }\` or \`interface ${t.name} { … }\` declared in the SAME file (imports aren't followed, and neither are generic / \`extends\` interfaces). The emitted component would reference undeclared properties and fail the native build. Declare it locally or inline the annotation (\`props: { … }\`).`,
     )
@@ -9772,7 +9903,23 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
         if (parsed.kind === 'union') branches.push(...parsed.branches)
         else branches.push(parsed)
       }
-      return { kind: 'union', branches }
+      // Dedupe structurally-equal branches. Literal types already degrade to
+      // their base type above, so 'start' | 'middle' | 'end' arrives here as
+      // string | string | string — three branches that are ONE type. Left
+      // undeduped, the emitters see a mixed union and degrade the field to
+      // Any, which breaks Codable synthesis on the very structs the
+      // fat-struct lowering exists to make compile. A single survivor
+      // collapses out of the union entirely.
+      const seen = new Set<string>()
+      const unique: TypeIR[] = []
+      for (const b of branches) {
+        const k = typeShapeKey(b)
+        if (seen.has(k)) continue
+        seen.add(k)
+        unique.push(b)
+      }
+      if (unique.length === 1) return unique[0]!
+      return { kind: 'union', branches: unique }
     }
     case 'TSTypeReference': {
       // `Foo`, `MyInterface`, `Array<T>`, `Promise<string>`, etc. The
