@@ -1704,6 +1704,10 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       return { kind: 'unknown' }
     }
     case 'member': {
+      // `Math.PI` is a Double constant on both targets.
+      if (expr.object.kind === 'identifier' && expr.object.name === 'Math' && expr.property === 'PI') {
+        return { kind: 'number', float: true }
+      }
       // Standalone-validation: `s.object({ … }).safeParse(x).success` is a Bool
       // (`.data` is the optional validated value → left unknown). Reading this
       // off the `schema-validate` node keeps the wrapping `computed`'s type

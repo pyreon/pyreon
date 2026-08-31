@@ -4738,8 +4738,14 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       return `${emitKotlinExpr(e.object, indent)}[${emitKotlinExpr(e.index, indent)}]`
     }
     case 'member': {
+      // `Math.PI` member READ — java.lang.Math.PI is valid on the JVM, but
+      // emit the fully-qualified stdlib constant so no import is needed and
+      // the kotlinc stub gate sees a real symbol.
+      if (e.object.kind === 'identifier' && e.object.name === 'Math' && e.property === 'PI') {
+        return 'kotlin.math.PI'
+      }
       // v2 (form-binding arc) — per-field dict access on a form
-      // container: `form.values.email` → `form.values.value["email"]
+      // container: `form.values.email` → `form.values.value["email"
       // ?: ""` (the MutableState map needs `.value` + the subscript;
       // `touched` defaults false). Mirror of the Swift rewrite.
       // The WEB API is a CALL: `@pyreon/form` types `values: () => TValues`,

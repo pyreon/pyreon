@@ -9383,6 +9383,14 @@ function parseStatementBlock(block: AnyNode, ctx: ParseCtx): StatementIR[] {
         for (const p of props) {
           const key = (p as AnyNode).key.name as string
           const local = (p as AnyNode).value.name as string
+          // A block-scoped local SHADOWS any component-scope alias of the
+          // same name. The component classifier may have parsed this same
+          // declarator earlier (before the helper path won) and registered
+          // `local -> __pyDestrM.key` in the component-lifetime alias map —
+          // without this delete, parseExpr's Identifier case rewrites later
+          // reads to the STALE container (referenced but never declared:
+          // "cannot find '__pyDestrM' in scope").
+          ctx.hookFieldAliases.delete(local)
           out.push({
             kind: 'let',
             name: local,
@@ -9417,6 +9425,9 @@ function parseStatementBlock(block: AnyNode, ctx: ParseCtx): StatementIR[] {
         const synthName = `__pyDestr${ctx.hookDestructureCounter++}`
         out.push({ kind: 'let', name: synthName, expr: parseExpr(d.init as AnyNode, ctx) })
         els.forEach((el, i) => {
+          // Same shadowing rule as the object arm above: the block-scoped
+          // local must beat any stale component-scope alias for this name.
+          ctx.hookFieldAliases.delete((el as AnyNode).name as string)
           out.push({
             kind: 'let',
             name: (el as AnyNode).name as string,

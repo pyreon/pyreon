@@ -5981,6 +5981,13 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       return `${emitSwiftExpr(e.object, indent)}[${emitSwiftExpr(e.index, indent)}]`
     }
     case 'member': {
+      // `Math.PI` is a member READ (the Math CALL mapping never sees it) —
+      // emitted verbatim it is "cannot find 'Math' in scope". Swift's
+      // constant is `Double.pi`.
+      if (e.object.kind === 'identifier' && e.object.name === 'Math' && e.property === 'PI') {
+        return 'Double.pi'
+      }
+
       // `m.size` (Map/Set property) → Swift `.count`, typed off the receiver.
       if (e.property === 'size') {
         const szT = inferType(e.object, _activeInferCtx)
