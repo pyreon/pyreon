@@ -181,7 +181,7 @@ describe('native-primitive alias names do not warn', () => {
       `,
       { target: 'swift' },
     )
-    expect(r.warnings.filter((w) => String(w).includes("type \`Double\` can't be resolved"))).toEqual([])
+    expect(r.warnings.filter((w) => String(w).includes("type `Double` can't be resolved"))).toEqual([])
     expect(r.code).toContain('func scale2(_ v: Double) -> Double')
   })
 
@@ -194,5 +194,48 @@ describe('native-primitive alias names do not warn', () => {
       { target: 'swift' },
     )
     expect(r.warnings.some((w) => String(w).includes('Mystery'))).toBe(true)
+  })
+})
+
+describe('memberwise-init argument order', () => {
+  it('emits arguments in the STRUCT declaration order, not the literal order', () => {
+    // Swift's memberwise initializer accepts omitted defaults but NOT
+    // reordered arguments — a variant literal writing `{ kind, text, fill }`
+    // against a merged struct declaring fill before text produced
+    // "argument 'fill' must precede argument 'text'" on the real engine.
+    const src = `
+      type Cmd =
+        | { kind: 'rect'; fill: string; w: Double }
+        | { kind: 'text'; text: string; fill: string }
+      function mk(label: string): Cmd[] {
+        const out: Cmd[] = []
+        out.push({ kind: 'text', text: label, fill: 'red' })
+        return out
+      }
+      export function P() { return <Text>{String(mk('hi').length)}</Text> }
+    `
+    const sw = transform(src, { target: 'swift' }).code
+    // Struct order is merged declaration order: kind, fill, w, text.
+    expect(sw).toContain('Cmd(kind: "text", fill: "red", text: label)')
+    const kt = transform(src, { target: 'kotlin' }).code
+    // Kotlin named args are order-free; the twin reorders anyway — the two
+    // backends must not disagree about emitted bytes for one source.
+    expect(kt).toContain('Cmd(kind = "text", fill = "red", text = label)')
+  })
+
+  it.runIf(isSwiftUIAvailable())('the reordered construction type-checks', () => {
+    const src = `
+      type Cmd =
+        | { kind: 'rect'; fill: string; w: Double }
+        | { kind: 'text'; text: string; fill: string }
+      function mk(label: string): Cmd[] {
+        const out: Cmd[] = []
+        out.push({ kind: 'text', text: label, fill: 'red' })
+        return out
+      }
+      export function P() { return <Text>{String(mk('hi').length)}</Text> }
+    `
+    const r = validateSwiftWithStubs(transform(src, { target: 'swift' }).code)
+    expect(r.ok ? [] : [r.error]).toEqual([])
   })
 })

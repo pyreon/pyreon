@@ -4045,6 +4045,32 @@ function isAppStorageNativeType(t: TypeIR): boolean {
  * Returns null when no rung matches (caller falls to the tuple emit /
  * keeps its prior annotation).
  */
+/**
+ * Sort a literal's fields into the resolved struct's declaration order —
+ * Swift's memberwise init accepts omitted defaults but not reordered
+ * arguments. Stable for unknown names (kept total, though the resolution
+ * rungs make them unreachable).
+ */
+function orderFieldsByStruct(
+  fields: { name: string; value: ExprIR }[],
+  structName: string,
+): { name: string; value: ExprIR }[] {
+  const struct =
+    _declaredStructs.find((st) => st.name === structName) ??
+    _synthExprStructs.find((st) => st.name === structName)
+  if (struct === undefined) return fields
+  const pos = new Map<string, number>()
+  struct.fields.forEach((f, i) => pos.set(f.name, i))
+  return [...fields].sort((a, b) => {
+    const pa = pos.get(a.name)
+    const pb = pos.get(b.name)
+    if (pa === undefined && pb === undefined) return 0
+    if (pa === undefined) return 1
+    if (pb === undefined) return -1
+    return pa - pb
+  })
+}
+
 function resolveSwiftObjectStructName(fields: { name: string; value: ExprIR }[]): string | null {
   // Rung 0 — the literal's OWN values. That is what tells `{x: 1.5, y: 2.5}`
   // (Px) apart from `{x: 1, y: 2}` (Idx) when both shapes are declared with
@@ -6443,7 +6469,19 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         // structs for the same literal.
         const structName = resolveSwiftObjectStructName(e.fields)
         if (structName !== null) {
-          const args = e.fields
+          // Swift's memberwise initializer demands arguments in DECLARATION
+          // order — defaults let a subset OMIT fields, never REORDER them. A
+          // fat-struct variant literal writes fields in its own order
+          // (`{ kind, text, at, fill }`) while the merged struct declares
+          // them union-wide, so emitting literal order produced
+          // "argument 'fill' must precede argument 'text'". Sort by the
+          // struct's field order; a name the struct lacks (unreachable via
+          // the resolution rungs, kept total anyway) sorts last in literal
+          // order. Kotlin named arguments are order-free, but the twin
+          // reorders identically — the two backends must not disagree about
+          // emitted bytes for the same source.
+          const ordered = orderFieldsByStruct(e.fields, structName)
+          const args = ordered
             .map((f) => `${swiftIdent(f.name)}: ${emitSwiftExpr(f.value, indent)}`)
             .join(', ')
           return `${swiftIdent(structName)}(${args})`

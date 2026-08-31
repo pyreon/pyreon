@@ -1493,6 +1493,31 @@ function emitKotlinEnum(e: EnumIR): string {
  * convention as the Compose imports). Phase 2 may add an automatic
  * import-emission step if real-app shape surfaces drift.
  */
+/**
+ * Twin of emit-swift's orderFieldsByStruct. Kotlin named arguments accept any
+ * order, so nothing here is load-bearing for kotlinc — the two backends must
+ * simply not disagree about emitted bytes for the same source.
+ */
+function orderFieldsByStructK(
+  fields: { name: string; value: ExprIR }[],
+  structName: string,
+): { name: string; value: ExprIR }[] {
+  const struct =
+    _declaredStructs.find((st) => st.name === structName) ??
+    _synthExprStructs.find((st) => st.name === structName)
+  if (struct === undefined) return fields
+  const pos = new Map<string, number>()
+  struct.fields.forEach((f, i) => pos.set(f.name, i))
+  return [...fields].sort((a, b) => {
+    const pa = pos.get(a.name)
+    const pb = pos.get(b.name)
+    if (pa === undefined && pb === undefined) return 0
+    if (pa === undefined) return 1
+    if (pb === undefined) return -1
+    return pa - pb
+  })
+}
+
 function emitKotlinStruct(s: StructIR): string {
   // Optional field (`label?: string` → union-with-undefined) gets an
   // explicit `= null` default so a literal that skips the field compiles
@@ -5163,7 +5188,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           (typedKey !== null ? _structTypedKeyToName.get(typedKey) : undefined) ??
           _structFieldsToName.get(fieldSet)
         if (structName !== undefined) {
-          const args = e.fields
+          const args = orderFieldsByStructK(e.fields, structName)
             .map((f) => `${f.name} = ${emitKotlinExpr(f.value, indent)}`)
             .join(', ')
           return `${kotlinIdent(structName)}(${args})`
@@ -5182,7 +5207,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           typeIsOptional,
         )
         if (subset !== null) {
-          const args = e.fields
+          const args = orderFieldsByStructK(e.fields, subset)
             .map((f) => `${f.name} = ${emitKotlinExpr(f.value, indent)}`)
             .join(', ')
           return `${kotlinIdent(subset)}(${args})`
