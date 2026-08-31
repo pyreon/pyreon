@@ -6208,7 +6208,15 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // valid on numbers, so `Double(...)` is always sound here. Other ops
       // (`+ - * %`) match JS for integers and are emitted verbatim.
       if (e.op === '/') {
-        return `Double(${bl}) / Double(${br})`
+        // Skip the wrap for a PROVABLY-float operand: `Double(x)` over an
+        // already-Double is a no-op that stacks overload-resolution work —
+        // a chained interpolation (`r0 + (a - lo) / (hi - lo) * (r1 - r0)`
+        // over Double bindings) blew swiftc's expression budget purely on
+        // redundant wraps ("unable to type-check in reasonable time").
+        // Int and UNKNOWN operands keep the wrap (JS float division).
+        const lw = numericFloatness(e.left) === 'double' ? bl : `Double(${bl})`
+        const rw = numericFloatness(e.right) === 'double' ? br : `Double(${br})`
+        return `${lw} / ${rw}`
       }
       // Exponent (`a ** b`) — Swift has no `**` operator; `pow(_:_:)` is
       // Double-domain (Foundation, re-exported by SwiftUI). Coerce both

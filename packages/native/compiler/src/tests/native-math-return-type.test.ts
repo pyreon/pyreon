@@ -185,6 +185,30 @@ export function App(){
     expect(rs.warnings).toHaveLength(0)
   })
 
+  // The redundant-wrap class: an all-Double chained interpolation must not
+  // stack no-op Double() wraps — the scaleLog shape blew swiftc's
+  // expression budget ("unable to type-check in reasonable time") purely
+  // on them. Provably-float operands emit bare; Int/unknown keep the wrap.
+  it('Swift: division over provably-Double operands emits no redundant wraps', () => {
+    const SRC = `
+  function logPos(val: Double, lo: Double, hi: Double, r0: Double, r1: Double): Double {
+    return r0 + ((Math.log10(val) - lo) / (hi - lo)) * (r1 - r0)
+  }
+  export function P() { return <Text>{String(logPos(10.0, 0.0, 2.0, 0.0, 100.0))}</Text> }
+`
+    const rs = transform(SRC, { target: 'swift' })
+    expect(rs.code).not.toContain('Double(hi - lo)')
+    expect(rs.code).not.toContain('/ Double((hi - lo))')
+    // Int operands still wrap (JS float division)
+    const rInt = transform(`
+  function half(n: Int): Double {
+    return n / 2
+  }
+  export function P() { return <Text>{String(half(3))}</Text> }
+`.replace('Int', 'number'), { target: 'swift' })
+    expect(rInt.code).toContain('Double(')
+  })
+
   // Kotlin unaffected (derivedStateOf infers) — still references the Math call.
   it('Kotlin: a Math.ceil computed still emits (unchanged)', () => {
     expect(kt(C(`  const pc=computed(()=>Math.ceil(rows().length/2))`))).toContain('ceil')
