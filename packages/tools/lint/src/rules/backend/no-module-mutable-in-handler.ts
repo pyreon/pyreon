@@ -69,11 +69,14 @@ export const noModuleMutableInHandler: Rule = {
       },
       'FunctionDeclaration:exit': exitFn,
       FunctionExpression(node: any) {
-        enterFn(node, false)
+        enterFn(node, (node as { __handlerRoot?: boolean }).__handlerRoot === true)
       },
       'FunctionExpression:exit': exitFn,
       ArrowFunctionExpression(node: any) {
-        enterFn(node, false)
+        // `export const POST = async (req) => {…}` is at least as common as
+        // the declaration form, and an earlier cut of this rule marked it and
+        // then never read the mark — so the arrow form was silently exempt.
+        enterFn(node, (node as { __handlerRoot?: boolean }).__handlerRoot === true)
       },
       'ArrowFunctionExpression:exit': exitFn,
 

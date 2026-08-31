@@ -44,40 +44,52 @@ export const requireNativeCompatMarker: Rule = {
     // their export, not at their declaration.
     const fileHasMarker = /\bnativeCompat\s*\(/.test(source)
 
+    /** Shared by both declaration forms. */
+    const checkComponent = (id: any, body: any): void => {
+      if (fileHasMarker) return
+      if (id?.type !== 'Identifier') return
+      const name = String(id.name)
+      // Components are PascalCase by convention; a helper is not a component.
+      if (!/^[A-Z]/.test(name)) return
+
+      let found: string | null = null
+      const walk = (n: any, d = 0): void => {
+        if (!n || typeof n !== 'object' || d > 8 || found !== null) return
+        if (
+          n.type === 'CallExpression' &&
+          n.callee?.type === 'Identifier' &&
+          SETUP_CALLS.has(String(n.callee.name))
+        ) {
+          found = String(n.callee.name)
+          return
+        }
+        for (const k of Object.keys(n)) {
+          if (k === 'type' || k === 'start' || k === 'end' || k === 'loc' || k === 'parent') continue
+          const v = (n as Record<string, unknown>)[k]
+          if (Array.isArray(v)) for (const c of v) walk(c, d + 1)
+          else if (v && typeof v === 'object') walk(v, d + 1)
+        }
+      }
+      walk(body)
+      if (found === null) return
+
+      context.report({
+        message: `\`${name}\` calls \`${found}()\` at setup but nothing in this file marks a component with \`nativeCompat()\`. Under the \`*-compat\` JSX runtimes every component is wrapped, so this setup runs in the wrapper's accessor instead of Pyreon's setup frame — the provide lands in a torn-down context stack and effects lose live signal access. A synchronous mount still passes, which is why unit tests do not catch it. Wrap the export: \`export default nativeCompat(${name})\`.`,
+        span: getSpan(id),
+      })
+    }
+
     const callbacks: VisitorCallbacks = {
       FunctionDeclaration(node: any) {
-        if (fileHasMarker) return
-        const id = node?.id
-        if (id?.type !== 'Identifier') return
-        const name = String(id.name)
-        // Components are PascalCase by convention; a helper is not a component.
-        if (!/^[A-Z]/.test(name)) return
+        checkComponent(node?.id, node?.body)
+      },
 
-        let found: string | null = null
-        const walk = (n: any, d = 0): void => {
-          if (!n || typeof n !== 'object' || d > 8 || found !== null) return
-          if (
-            n.type === 'CallExpression' &&
-            n.callee?.type === 'Identifier' &&
-            SETUP_CALLS.has(String(n.callee.name))
-          ) {
-            found = String(n.callee.name)
-            return
-          }
-          for (const k of Object.keys(n)) {
-            if (k === 'type' || k === 'start' || k === 'end' || k === 'loc' || k === 'parent') continue
-            const v = (n as Record<string, unknown>)[k]
-            if (Array.isArray(v)) for (const c of v) walk(c, d + 1)
-            else if (v && typeof v === 'object') walk(v, d + 1)
-          }
-        }
-        walk(node.body)
-        if (found === null) return
-
-        context.report({
-          message: `\`${name}\` calls \`${found}()\` at setup but nothing in this file marks a component with \`nativeCompat()\`. Under the \`*-compat\` JSX runtimes every component is wrapped, so this setup runs in the wrapper's accessor instead of Pyreon's setup frame — the provide lands in a torn-down context stack and effects lose live signal access. A synchronous mount still passes, which is why unit tests do not catch it. Wrap the export: \`export default nativeCompat(${name})\`.`,
-          span: getSpan(id),
-        })
+      // `export const Shell = (props) => {…}` — for components this is the
+      // MORE common form, and checking only declarations left it exempt.
+      VariableDeclarator(node: any) {
+        const init = node?.init
+        if (init?.type !== 'ArrowFunctionExpression' && init?.type !== 'FunctionExpression') return
+        checkComponent(node?.id, init.body)
       },
     }
     return callbacks

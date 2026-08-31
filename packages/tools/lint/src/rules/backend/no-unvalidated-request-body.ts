@@ -21,16 +21,56 @@ import { getSpan } from '../../utils/ast'
  */
 const BODY_READERS = new Set(['json', 'formData', 'text'])
 const VALIDATORS = /^(parse|safeParse|parseAsync|validate|assert|check|decode)$/i
+const REQUESTISH = /^(req|request|ctx|context|event)$/i
 
-/** `await req.json()` / `await request.formData()` */
+/**
+ * Strip the type-only layers a body read is almost always wrapped in.
+ *
+ * `(await ctx.request.json()) as Order` is the single most common spelling of
+ * this defect, because the cast is exactly what makes it FEEL validated. An
+ * earlier version of this rule matched only the bare `await req.json()` and
+ * was therefore inert against every real handler in this repo — the fixture
+ * passed and the real file reported nothing.
+ */
+function unwrapTypeLayers(node: any): any {
+  let n = node
+  while (
+    n &&
+    (n.type === 'TSAsExpression' ||
+      n.type === 'TSSatisfiesExpression' ||
+      n.type === 'TSNonNullExpression' ||
+      n.type === 'TSTypeAssertion' ||
+      n.type === 'ParenthesizedExpression')
+  ) {
+    n = n.expression
+  }
+  return n
+}
+
+/** The receiver's readable name, if it is request-ish — `req`, `ctx.request`. */
+function requestReceiver(obj: any): string | null {
+  if (obj?.type === 'Identifier') {
+    return REQUESTISH.test(String(obj.name)) ? String(obj.name) : null
+  }
+  // `ctx.request` / `event.request` — the shape zero's own ApiContext uses.
+  if (obj?.type === 'MemberExpression' && obj.computed !== true) {
+    const prop = obj.property?.type === 'Identifier' ? String(obj.property.name) : null
+    const base = obj.object?.type === 'Identifier' ? String(obj.object.name) : null
+    if (prop !== null && base !== null && REQUESTISH.test(prop)) return `${base}.${prop}`
+    if (prop !== null && base !== null && REQUESTISH.test(base)) return `${base}.${prop}`
+  }
+  return null
+}
+
+/** `await req.json()` / `await ctx.request.formData()` */
 function isBodyRead(node: any): string | null {
-  const callee = node?.callee
+  const callee = unwrapTypeLayers(node)?.callee
   if (callee?.type !== 'MemberExpression' || callee.computed === true) return null
   const prop = callee.property?.type === 'Identifier' ? String(callee.property.name) : null
   if (prop === null || !BODY_READERS.has(prop)) return null
-  const obj = callee.object?.type === 'Identifier' ? String(callee.object.name) : null
-  if (obj === null || !/^(req|request|ctx|context|event)$/i.test(obj)) return null
-  return `${obj}.${prop}()`
+  const recv = requestReceiver(callee.object)
+  if (recv === null) return null
+  return `${recv}.${prop}()`
 }
 
 /** Any validating call inside this function body. */
@@ -77,9 +117,10 @@ export const noUnvalidatedRequestBody: Rule = {
       'ArrowFunctionExpression:exit': exit,
 
       VariableDeclarator(node: any) {
-        const init = node?.init
-        // `const body = await req.json()`
-        const call = init?.type === 'AwaitExpression' ? init.argument : init
+        // `const body = (await ctx.request.json()) as Order` — the cast may
+        // sit on either side of the await, so unwrap before AND after.
+        const init = unwrapTypeLayers(node?.init)
+        const call = init?.type === 'AwaitExpression' ? unwrapTypeLayers(init.argument) : init
         const what = isBodyRead(call)
         if (what === null) return
         const fn = fnStack[fnStack.length - 1]
