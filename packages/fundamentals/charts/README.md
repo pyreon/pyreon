@@ -79,6 +79,19 @@ the new truth, not a morph. The mechanism is `ChartSpec.progress`, a pure
 engine parameter (0..1) the host tweens, so any backend animates by tweening
 one number.
 
+### Horizontal bars
+
+```tsx
+<PlotChart data={teams} x={(d) => d.name} marks={[bars((d) => d.headcount)]} horizontal />
+```
+
+Categories move to the Y axis and bars grow rightward — and the left gutter
+sizes itself from the widest CATEGORY label, because long category names are
+the reason horizontal bars exist. The value axis keeps your `format`. Bar
+marks only: a horizontal line or scatter is a transposed coordinate system,
+not a flipped bar chart, so non-bar marks are skipped rather than drawn
+misleadingly.
+
 ### Formatting
 
 ```tsx

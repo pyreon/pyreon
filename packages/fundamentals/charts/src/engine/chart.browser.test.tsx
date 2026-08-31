@@ -588,3 +588,46 @@ describe('PlotChart — entrance animation and annotations', () => {
     expect(annotated).not.toBe(plainUrl)
   })
 })
+
+describe('PlotChart — horizontal frame', () => {
+  it('paints bars that run RIGHTWARD, longer for larger values', async () => {
+    const rows = [
+      { name: 'Small', v: 10 },
+      { name: 'Large', v: 60 },
+    ]
+    const { container } = mountInBrowser(() =>
+      PlotChart<(typeof rows)[number]>({
+        data: rows,
+        x: (d) => d.name,
+        marks: [bars((d) => d.v)],
+        width: 400,
+        height: 200,
+        horizontal: true,
+        animate: false,
+        showGrid: false,
+        showXAxis: false,
+        showYAxis: false,
+      }),
+    )
+    await flush()
+    const canvas = query<HTMLCanvasElement>(container, 'canvas')
+    const ctx = canvas.getContext('2d')
+    if (ctx === null) throw new Error('no ctx')
+    // With chrome off, the only ink is the two bars: band 0 (top half) is the
+    // small one, band 1 (bottom half) the large. Sample one pixel row through
+    // each band's centre and measure how far right the ink reaches.
+    const reach = (y: number): number => {
+      const { data } = ctx.getImageData(0, y, canvas.width, 1)
+      let last = -1
+      for (let x = 0; x < canvas.width; x++) if (data[x * 4 + 3] !== 0) last = x
+      return last
+    }
+    const topReach = reach(Math.floor(canvas.height * 0.25))
+    const bottomReach = reach(Math.floor(canvas.height * 0.75))
+    expect(topReach, 'the small bar never painted').toBeGreaterThan(0)
+    // The 60-bar reaches far past the 10-bar — the discriminator between a
+    // horizontal frame and anything else (vertical bars would give both rows
+    // similar reach through the bar bodies).
+    expect(bottomReach).toBeGreaterThan(topReach * 2)
+  })
+})

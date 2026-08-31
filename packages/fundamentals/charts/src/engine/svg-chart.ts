@@ -37,6 +37,8 @@ export interface ChartToSvgOptions<T> {
   format?: Formatter
   /** Reference rules and bands — see `Annotation`. */
   annotations?: Annotation[]
+  /** Flip the frame — categories on Y, bars growing rightward. Bar marks only. */
+  horizontal?: boolean
   /**
    * Text measurement. Defaults to the approximation, which is what makes this
    * callable on a server — pass `canvasMeasure(ctx, font)` in a browser when
@@ -84,6 +86,7 @@ export function chartToSvg<T>(options: ChartToSvgOptions<T>): string {
     yDomain: options.yDomain,
     yFormat: options.format,
     annotations: options.annotations,
+    horizontal: options.horizontal === true,
   }
   const measure = options.measure ?? measureApprox()
   const cmds = renderChart(spec, measure)
