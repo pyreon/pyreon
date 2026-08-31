@@ -33,9 +33,36 @@ export function _setDefaultChromeLayout(component: RouteComponent): void {
  * Parse a query string into key-value pairs. Duplicate keys are overwritten
  * (last value wins). Use `parseQueryMulti` to preserve duplicates as arrays.
  */
+/**
+ * URI-decode, returning the RAW text when the input is not valid
+ * percent-encoding.
+ *
+ * `decodeURIComponent` throws `URIError` on a malformed escape — a lone `%`,
+ * `%zz`, a truncated `%E0%A4`. Every decode in this module is applied to
+ * ATTACKER-CONTROLLED text (a path segment, a query value), and this module is
+ * reached PRE-AUTH from `router.preload` inside the SSR handler, so an
+ * unguarded decode turned `GET /?q=%` — one character, no auth, a STATIC route,
+ * no dynamic params needed — into a 500 on every server-rendered Pyreon app.
+ *
+ * Raw-on-failure rather than throw-or-drop: the router is a pure matcher with
+ * no HTTP context, so it cannot answer 400; treating an undecodable segment as
+ * its literal text keeps matching total and leaks nothing. A host that wants to
+ * reject malformed URLs should validate before routing.
+ *
+ * The adapters (`zero`'s `bun.ts`) and `url-guard.ts` already guarded this, so
+ * the unguarded sites were an oversight, not a policy.
+ */
+function safeDecodeURIComponent(raw: string): string {
+  try {
+    return decodeURIComponent(raw)
+  } catch {
+    return raw
+  }
+}
+
 /** Decode a query component: `+` → space (per application/x-www-form-urlencoded), then URI-decode. */
 function decodeQueryComponent(raw: string): string {
-  return decodeURIComponent(raw.replace(/\+/g, ' '))
+  return safeDecodeURIComponent(raw.replace(/\+/g, ' '))
 }
 
 /**
@@ -749,7 +776,7 @@ function splitPath(path: string): string[] {
 
 /** Decode only if the segment contains a `%` character */
 function decodeSafe(s: string): string {
-  return s.indexOf('%') >= 0 ? decodeURIComponent(s) : s
+  return s.indexOf('%') >= 0 ? safeDecodeURIComponent(s) : s
 }
 
 // ─── Offset-walking fast matcher ─────────────────────────────────────────────
@@ -907,16 +934,16 @@ function matchPatternSegment(
   i: number,
 ): 'splat' | 'continue' | 'fail' {
   if (pp.endsWith('*') && pp.startsWith(':')) {
-    params[pp.slice(1, -1)] = pathParts.slice(i).map(decodeURIComponent).join('/')
+    params[pp.slice(1, -1)] = pathParts.slice(i).map(safeDecodeURIComponent).join('/')
     return 'splat'
   }
   if (pp.endsWith('?') && pp.startsWith(':')) {
-    if (pt !== undefined) params[pp.slice(1, -1)] = decodeURIComponent(pt)
+    if (pt !== undefined) params[pp.slice(1, -1)] = safeDecodeURIComponent(pt)
     return 'continue'
   }
   if (pt === undefined) return 'fail'
   if (pp.startsWith(':')) {
-    params[pp.slice(1)] = decodeURIComponent(pt)
+    params[pp.slice(1)] = safeDecodeURIComponent(pt)
     return 'continue'
   }
   return pp === pt ? 'continue' : 'fail'
@@ -965,7 +992,7 @@ function captureSplat(pathParts: string[], from: number, pathLen: number): strin
   for (let j = from; j < pathLen; j++) {
     const p = pathParts[j]
     if (p === undefined) continue
-    const decoded = p.indexOf('%') >= 0 ? decodeURIComponent(p) : p
+    const decoded = p.indexOf('%') >= 0 ? safeDecodeURIComponent(p) : p
     result = result === '' ? decoded : `${result}/${decoded}`
   }
   return result

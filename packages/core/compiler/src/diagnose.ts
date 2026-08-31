@@ -261,6 +261,26 @@ function Panel() {
     }),
   },
   {
+    // A one-character unauthenticated 500: `GET /?q=%`. Every decode in the
+    // matcher runs on attacker-supplied text, and the matcher is reached
+    // pre-auth from `router.preload` inside the SSR handler — so this needed
+    // no dynamic route and no session, because the QUERY parser decodes too.
+    pattern: /URIError|URI malformed|malformed URI sequence/i,
+    diagnose: () => ({
+      cause:
+        '`decodeURIComponent` throws on a malformed percent-escape — a lone `%`, `%zz`, or a truncated multi-byte sequence like `%E0%A4`. If this surfaced from a request path or query string, an unguarded decode turned a malformed URL into a server error rather than a route miss.',
+      fix: 'Upgrade `@pyreon/router` (and `@pyreon/zero` if you serve island fragments) — the matcher now resolves an undecodable segment to its literal text instead of throwing, and the fragment endpoint answers 400. In your OWN code, never call `decodeURIComponent` on request text without a try/catch: decide deliberately between the raw value and a 400, because the default is a 500.',
+      fixCode: `// throws on \`?q=%\` — and this runs before any auth check
+const q = decodeURIComponent(raw)
+
+// decide what a malformed escape means, rather than crashing
+let q: string
+try { q = decodeURIComponent(raw) } catch { return new Response('Bad Request', { status: 400 }) }`,
+      related:
+        'Residual worth knowing: because the matcher now yields the RAW text for an undecodable segment, a param can contain a literal `%`. Code that decodes params a second time will still throw on it — decode once, at the edge.',
+    }),
+  },
+  {
     // The residual footgun this PR's fix leaves behind. Removing the redundant
     // per-traversal write lowers the router's own history traffic, but an APP
     // that writes history on every keystroke still trips the browser's rate
