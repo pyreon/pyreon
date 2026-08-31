@@ -32,15 +32,28 @@ test.describe('app-showcase /dashboard — charts canvas mount', () => {
 
     await page.goto('/dashboard', { waitUntil: 'domcontentloaded' })
 
-    // Wait for the first canvas — ECharts lazy-loads modules on first
-    // chart mount. Generous timeout because the dashboard mounts under
-    // a `QueryClient` provider and the chart-data query has to settle
-    // before <RevenueChart> emits its <Chart> via reactive children.
-    await page.locator('canvas').first().waitFor({ timeout: 10_000 })
+    // POLL the COUNT, rather than waiting for the first canvas and then
+    // counting. Waiting for the first one only ever meant "ECharts has
+    // finished loading" by accident — because the first canvas on the page
+    // happened to be an ECharts one. The plot-engine chart added below draws
+    // synchronously and now wins that race, so the old wait returned while
+    // ECharts was still importing its modules and the count was short.
+    //
+    // The lesson generalises past this file: a wait whose meaning depends on
+    // WHICH element arrives first is not a wait for the thing you care about.
+    // Poll the actual condition.
+    //
+    // Two ECharts charts (RevenueChart + CategoryChart) plus the plot-engine
+    // one, so >= 3; asserted as >= 2 for the ECharts pair specifically, since
+    // this test is about the tslib alias and not about how many charts the
+    // dashboard happens to show.
+    await expect
+      .poll(async () => page.locator('canvas').count(), {
+        timeout: 15_000,
+        message: 'fewer than two chart canvases mounted — ECharts lazy import likely failed',
+      })
+      .toBeGreaterThanOrEqual(2)
 
-    // Two charts on the dashboard: RevenueChart + CategoryChart. Both
-    // render their own <canvas>. Asserting `>= 2` rather than `=== 2`
-    // leaves headroom for a future third chart on the same page.
     const canvasCount = await page.locator('canvas').count()
     expect(canvasCount).toBeGreaterThanOrEqual(2)
 
@@ -63,5 +76,81 @@ test.describe('app-showcase /dashboard — charts canvas mount', () => {
     expect(tslibErrors, `Unexpected tslib-related errors:\n${tslibErrors.join('\n')}`).toHaveLength(
       0,
     )
+  })
+})
+
+/**
+ * Pyreon's OWN engine (`@pyreon/charts/plot`) in a real app.
+ *
+ * The engine's own suite runs under vitest's JSX transform, which is NOT the
+ * transform that ships. This repo's recurring lesson is that a package's
+ * browser tests can be green while `@pyreon/vite-plugin`'s real compiler
+ * produces different — and broken — output for the same source. Only a real
+ * app boot exercises the shipping path.
+ *
+ * The assertion is PAINTED PIXELS, not structure. A canvas that mounted but
+ * was never drawn to passes every structural check there is, which is exactly
+ * the failure a chart engine can have.
+ */
+test.describe('app-showcase /dashboard — the plot engine, real compiler', () => {
+  test('paints a chart drawn by @pyreon/charts/plot', async ({ page }) => {
+    const errors: string[] = []
+    page.on('pageerror', (err) => errors.push(err.message))
+
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' })
+
+    const host = page.locator('[data-testid="plot-engine-chart"]')
+    await host.waitFor({ timeout: 15_000 })
+    const canvas = host.locator('canvas')
+    await canvas.waitFor({ timeout: 15_000 })
+
+    // The backing store is sized for the device pixel ratio, so a soft chart
+    // (a canvas at CSS size on a 2x display) shows up here as a smaller width.
+    // POLL rather than sample once. The canvas element exists before the first
+    // paint — the ref fires, then the draw runs — so a single read races the
+    // engine and fails intermittently, while a poll still fails correctly for a
+    // canvas that never draws at all, which is the regression this asserts.
+    const measure = async (): Promise<{ w: number; h: number; painted: number }> =>
+      canvas.evaluate((el) => {
+        const c = el as HTMLCanvasElement
+        const ctx = c.getContext('2d')
+        if (ctx === null) return { w: c.width, h: c.height, painted: 0 }
+        const { data } = ctx.getImageData(0, 0, c.width, c.height)
+        let n = 0
+        for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) n++
+        return { w: c.width, h: c.height, painted: n }
+      })
+
+    // A blank canvas is the failure this test exists for: the axes, bars and
+    // line together cover far more than a handful of pixels.
+    await expect
+      .poll(async () => (await measure()).painted, {
+        timeout: 15_000,
+        message:
+          'the plot canvas is blank — the engine mounted but never drew (or the real compiler emitted something the vitest transform does not)',
+      })
+      .toBeGreaterThan(500)
+
+    const { w, h } = await measure()
+
+    expect(w, 'canvas has no backing width — the container had no box').toBeGreaterThan(0)
+    expect(h).toBeGreaterThan(0)
+
+    // The chart FILLS its column. This is a regression lock, not a nicety: the
+    // width was read off the canvas itself, which is the element the read then
+    // sizes — so the first draw measured 0, fell back to the default, wrote it
+    // onto the canvas, and every later draw read that default straight back. A
+    // chart pinned at 300px inside a 430px column, with nothing in the DOM
+    // looking wrong. Only a real layout catches it; jsdom and happy-dom report
+    // 0 for everything.
+    const fill = await host.evaluate((el) => {
+      const c = el.querySelector('canvas') as HTMLCanvasElement
+      return { column: (el as HTMLElement).clientWidth, drawn: Number.parseFloat(c.style.width) }
+    })
+    expect(
+      fill.drawn,
+      `the chart drew ${fill.drawn}px inside a ${fill.column}px column — it is measuring itself instead of its container`,
+    ).toBeGreaterThan(fill.column * 0.9)
+    expect(errors, `page errors:\n${errors.join('\n')}`).toHaveLength(0)
   })
 })

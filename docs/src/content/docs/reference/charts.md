@@ -1,13 +1,13 @@
 ---
-title: "Reactive ECharts — API Reference"
-description: "Reactive ECharts bridge with lazy loading, auto-detection, typed options"
+title: "Two charting engines — API Reference"
+description: "Reactive ECharts bridge, plus Pyreon's own tree-shakeable engine with canvas and SVG backends"
 ---
 
 # @pyreon/charts — API Reference
 
 > **Generated** from `charts`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [charts](/docs/charts).
 
-Reactive ECharts bridge for Pyreon. Zero ECharts bytes in your bundle until a chart actually renders — chart types and components are auto-detected from your options and dynamically imported on demand. Signal-driven options reactively update the chart when tracked signals change. `useChart` is the low-level hook with full control; `<Chart />` is the declarative component with event binding. Both auto-resize via ResizeObserver and clean up on unmount.
+Two independent charting engines behind two subpaths. `@pyreon/charts/plot` is Pyreon's OWN: pure-TypeScript geometry over a flat draw list, marks as imported bindings so tree-shaking is structural, a canvas backend, and a PURE SVG backend that renders on a server. `@pyreon/charts` is the ECharts bridge: zero ECharts bytes in your bundle until a chart actually renders — chart types and components are auto-detected from your options and dynamically imported on demand. Signal-driven options reactively update the chart when tracked signals change. `useChart` is the low-level hook with full control; `<Chart />` is the declarative component with event binding. Both auto-resize via ResizeObserver and clean up on unmount.
 
 ## Features
 
@@ -80,6 +80,9 @@ const typedChart = useChart<MyOption>(() => ({
 | --- | --- | --- |
 | [`useChart`](#usechart) | hook | Create a reactive ECharts instance. |
 | [`Chart`](#chart) | component | Declarative chart component that wraps `useChart` internally. |
+| [`PlotChart`](#plotchart) | component | Pyreon's OWN charting engine, from the `@pyreon/charts/plot` subpath — no ECharts, no third-party engine. |
+| [`chartToSvg`](#charttosvg) | function | Render a chart to a standalone `<svg>` STRING. |
+| [`PieChart`](#piechart) | component | Pie and donut from the same engine (`@pyreon/charts/plot`); `innerRadius` is what makes it a donut. |
 
 ## API
 
@@ -153,7 +156,117 @@ Declarative chart component that wraps `useChart` internally. Accepts `options` 
 
 ---
 
+### PlotChart `component`
+
+```ts
+<T>(props: PlotChartProps<T>) => VNodeChild
+```
+
+Pyreon's OWN charting engine, from the `@pyreon/charts/plot` subpath — no ECharts, no third-party engine. Marks are IMPORTED BINDINGS (`bars`, `line`, `area`, `points`, `stackedBars`, `groupedBars`), so tree-shaking is structural rather than a build flag: a bar chart never pulls the radial trigonometry, the decimation or the time scales. Geometry is pure TypeScript over plain data and the platform half is a short backend that walks a flat `DrawCmd[]`, which is why the same source is the path to native rendering. Renders to canvas with a device-pixel-ratio-correct surface; `showLegend`, `tooltip` and a title are opt-in props, and width falls back to the container's own so a chart in a flexible column fills it.
+
+**Example**
+
+```tsx
+import { PlotChart, bars, line } from '@pyreon/charts/plot'
+import { signal } from '@pyreon/reactivity'
+
+interface Row { month: string; revenue: number; target: number }
+const sales = signal<Row[]>([{ month: 'Jan', revenue: 120, target: 100 }])
+
+<PlotChart
+  data={() => sales()}
+  x={(d: Row) => d.month}
+  marks={[bars((d: Row) => d.revenue), line((d: Row) => d.target)]}
+  showLegend
+  tooltip
+  title="Monthly revenue"
+  height={240}
+/>
+```
+
+**Common mistakes**
+
+- Importing from `@pyreon/charts` instead of `@pyreon/charts/plot` — the default entry is the ECharts bridge; the two engines are separate subpaths and mixing them pulls ECharts back into the bundle
+- Passing `marks` as a string type name — a mark is an imported FUNCTION, which is exactly what makes the unused ones droppable; there is no string-keyed registry to tree-shake around
+- Expecting two series to be told apart without a legend — colours come from a per-series palette, but `showLegend` is opt-in and a chart with neither legend nor tooltip is unlabelled
+- Reaching for `tooltip` on a static chart in a report — it installs pointer handlers and a DOM overlay, which is why it is off by default
+- Spacing an irregular time series by index — without `xValue` the points sit at even thirds whatever their timestamps, so the chart claims gaps that are not there; pass `xValue={(d) => d.at}` and `xTime` for calendar tick labels
+- Leaving `format` unset on a money or percentage chart — the default prints the raw number, so a revenue axis reads `3200000`; `currency`, `percent`, `compact` and `fixed` ship in the same subpath and one `format` covers the axis, the tooltip and the spoken description at once
+
+**See also:** `chartToSvg` · `PieChart`
+
+---
+
+### chartToSvg `function`
+
+```ts
+<T>(options: ChartToSvgOptions<T>) => string
+```
+
+Render a chart to a standalone `<svg>` STRING. Pure — no DOM, no canvas, no measurement context — so it runs in an SSG build, a serverless function or an email pipeline, where a canvas surface does not exist. Output is deterministic (coordinates rounded to two decimals, negative zero normalised), which makes an SVG snapshot a real assertion about geometry rather than a pixel flake. Labels are XML-escaped. The `<svg>` is `role="img"` named by its `<title>`; given a title and no description, the long form is DERIVED from the data via `describeChart`. Text width comes from `measureApprox` by default — an honest estimate, since a server has no font metrics; pass `canvasMeasure(ctx, font)` in a browser when label widths must be exact.
+
+**Example**
+
+```tsx
+import { chartToSvg, bars } from '@pyreon/charts/plot'
+
+interface Row { month: string; revenue: number }
+const rows: Row[] = [{ month: 'Jan', revenue: 120 }]
+
+const svg = chartToSvg({
+  data: rows,
+  marks: [bars((d: Row) => d.revenue)],
+  x: (d: Row) => d.month,
+  title: 'Monthly revenue',
+})
+// -> '<svg xmlns="..." role="img" aria-labelledby=...>...</svg>'
+```
+
+**Common mistakes**
+
+- Expecting exact label widths on a server — `measureApprox` estimates from glyph counts; axis gutters have slack so a few percent moves nothing visible, but do not use it for tight text layout
+- Passing a title and assuming that is enough for a screen reader — a graphic whose only accessible text is its name says a chart exists and nothing about what it shows; leave `description` unset to get the derived one, or write your own
+- Rendering several charts into one page without changing `svg.idPrefix` — the `<title>`/`<desc>` ids collide and `aria-labelledby` resolves to the first one
+- Reaching for it to get a PNG — it emits vector markup; rasterize with the canvas backend (`paint`) or a downstream converter
+
+**See also:** `PlotChart`
+
+---
+
+### PieChart `component`
+
+```ts
+(props: PieChartProps) => VNodeChild
+```
+
+Pie and donut from the same engine (`@pyreon/charts/plot`); `innerRadius` is what makes it a donut. `GaugeChart` is its sibling for a single value against a range. Both carry the same accessibility contract as `PlotChart` — a `role="img"` graphic with a derived description — rather than being a decorative canvas with no accessible text.
+
+**Example**
+
+```tsx
+import { PieChart, GaugeChart } from '@pyreon/charts/plot'
+import { signal } from '@pyreon/reactivity'
+
+interface Slice { name: string; amount: number }
+const slices = signal<Slice[]>([{ name: 'Direct', amount: 40 }])
+const cpu = signal(42)
+
+<PieChart data={() => slices()} label={(d: Slice) => d.name} value={(d: Slice) => d.amount} innerRadius={0.6} />
+<GaugeChart value={() => cpu()} min={0} max={100} title="CPU" />
+```
+
+**Common mistakes**
+
+- Using a pie for more than a handful of slices — angular area is hard to compare; the engine will draw it, which is not the same as it reading well
+- Omitting `label` and expecting a legend — the slice labels are what name the data
+
+**See also:** `PlotChart`
+
+---
+
 ## Package-level notes
+
+> **Two engines, two subpaths:** The package ships TWO independent engines. `@pyreon/charts` bridges ECharts — mature, enormous chart-type coverage, browser-only. `@pyreon/charts/plot` is Pyreon's own: pure-TypeScript geometry over a flat draw list, tree-shakeable by construction, with a canvas backend and a pure SVG backend that runs on a server. Import from ONE of them; pulling a name from the default entry drags ECharts back into a bundle that had dropped it.
 
 > **tslib Vite alias:** ECharts imports `tslib` whose ESM `./modules/index.js` entry destructures named helpers from a `__toESM(require_tslib())` default — the helpers live as top-level vars on the CJS factory, so the destructure reads `undefined` and the page throws `TypeError: Cannot destructure property "__extends"` the moment ECharts loads. Use `chartsViteAlias()` from `@pyreon/charts/vite` in your `vite.config.ts` (`resolve: { alias: { ...chartsViteAlias() } }`); it resolves `tslib` to the flat-ESM `tslib.es6.js` across install layouts. Browser tests use `tslibBrowserAlias()` from the shared test config. Tracking upstream: microsoft/tslib#189.
 

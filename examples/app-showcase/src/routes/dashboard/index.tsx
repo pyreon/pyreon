@@ -7,6 +7,7 @@ import { CategoryChart } from '../../sections/dashboard/CategoryChart'
 import { CustomersVirtualList } from '../../sections/dashboard/CustomersVirtualList'
 import { KpiStrip } from '../../sections/dashboard/KpiStrip'
 import { OrdersTable } from '../../sections/dashboard/OrdersTable'
+import { OrdersPlotChart } from '../../sections/dashboard/OrdersPlotChart'
 import { RevenueChart } from '../../sections/dashboard/RevenueChart'
 import { RoleToggleHeader } from '../../sections/dashboard/RoleToggleHeader'
 import { dashboardPermissions } from '../../sections/dashboard/permissions'
@@ -83,6 +84,7 @@ export default function DashboardPageRoute() {
               </Col>
               <Col size={6}>
                 <CategoryChart />
+                <OrdersPlotChart />
               </Col>
             </Row>
           </Container>

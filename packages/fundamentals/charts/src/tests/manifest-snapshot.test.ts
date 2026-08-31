@@ -7,14 +7,14 @@ import manifest from '../manifest'
 
 describe('gen-docs — charts snapshot', () => {
   it('renders to llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/charts — Reactive ECharts bridge with lazy loading, auto-detection, typed options. ECharts imports \`tslib\` whose ESM \`./modules/index.js\` entry destructures named helpers from a \`__toESM(require_tslib())\` default — the helpers live as top-level vars on the CJS factory, so the destructure reads \`undefined\` and the page throws \`TypeError: Cannot destructure property "__extends"\` the moment ECharts loads. Use \`chartsViteAlias()\` from \`@pyreon/charts/vite\` in your \`vite.config.ts\` (\`resolve: { alias: { ...chartsViteAlias() } }\`); it resolves \`tslib\` to the flat-ESM \`tslib.es6.js\` across install layouts. Browser tests use \`tslibBrowserAlias()\` from the shared test config. Tracking upstream: microsoft/tslib#189."`)
+    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/charts — Reactive ECharts bridge, plus Pyreon's own tree-shakeable engine with canvas and SVG backends. The package ships TWO independent engines. \`@pyreon/charts\` bridges ECharts — mature, enormous chart-type coverage, browser-only. \`@pyreon/charts/plot\` is Pyreon's own: pure-TypeScript geometry over a flat draw list, tree-shakeable by construction, with a canvas backend and a pure SVG backend that runs on a server. Import from ONE of them; pulling a name from the default entry drags ECharts back into a bundle that had dropped it."`)
   })
 
   it('renders to llms-full.txt section', () => {
     expect(renderLlmsFullSection(manifest)).toMatchInlineSnapshot(`
-      "## @pyreon/charts — Reactive ECharts
+      "## @pyreon/charts — Two charting engines
 
-      Reactive ECharts bridge for Pyreon. Zero ECharts bytes in your bundle until a chart actually renders — chart types and components are auto-detected from your options and dynamically imported on demand. Signal-driven options reactively update the chart when tracked signals change. \`useChart\` is the low-level hook with full control; \`<Chart />\` is the declarative component with event binding. Both auto-resize via ResizeObserver and clean up on unmount.
+      Two independent charting engines behind two subpaths. \`@pyreon/charts/plot\` is Pyreon's OWN: pure-TypeScript geometry over a flat draw list, marks as imported bindings so tree-shaking is structural, a canvas backend, and a PURE SVG backend that renders on a server. \`@pyreon/charts\` is the ECharts bridge: zero ECharts bytes in your bundle until a chart actually renders — chart types and components are auto-detected from your options and dynamically imported on demand. Signal-driven options reactively update the chart when tracked signals change. \`useChart\` is the low-level hook with full control; \`<Chart />\` is the declarative component with event binding. Both auto-resize via ResizeObserver and clean up on unmount.
 
       \`\`\`typescript
       import { Chart, useChart, type EChartsOption, type ComposeOption, type BarSeriesOption, type LineSeriesOption } from '@pyreon/charts'
@@ -66,6 +66,8 @@ describe('gen-docs — charts snapshot', () => {
       // — you register ECharts components yourself
       \`\`\`
 
+      > **Two engines, two subpaths**: The package ships TWO independent engines. \`@pyreon/charts\` bridges ECharts — mature, enormous chart-type coverage, browser-only. \`@pyreon/charts/plot\` is Pyreon's own: pure-TypeScript geometry over a flat draw list, tree-shakeable by construction, with a canvas backend and a pure SVG backend that runs on a server. Import from ONE of them; pulling a name from the default entry drags ECharts back into a bundle that had dropped it.
+      >
       > **tslib Vite alias**: ECharts imports \`tslib\` whose ESM \`./modules/index.js\` entry destructures named helpers from a \`__toESM(require_tslib())\` default — the helpers live as top-level vars on the CJS factory, so the destructure reads \`undefined\` and the page throws \`TypeError: Cannot destructure property "__extends"\` the moment ECharts loads. Use \`chartsViteAlias()\` from \`@pyreon/charts/vite\` in your \`vite.config.ts\` (\`resolve: { alias: { ...chartsViteAlias() } }\`); it resolves \`tslib\` to the flat-ESM \`tslib.es6.js\` across install layouts. Browser tests use \`tslibBrowserAlias()\` from the shared test config. Tracking upstream: microsoft/tslib#189.
       >
       > **Note**: Options must be a FUNCTION \`() => EChartsOption\`, not a plain object. Signal reads inside the function are tracked — changing any tracked signal reactively updates the chart.
@@ -83,6 +85,6 @@ describe('gen-docs — charts snapshot', () => {
 
   it('renders to MCP api-reference entries', () => {
     const record = renderApiReferenceEntries(manifest)
-    expect(Object.keys(record).length).toBe(2)
+    expect(Object.keys(record).length).toBe(5)
   })
 })
