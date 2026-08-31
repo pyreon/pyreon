@@ -253,15 +253,24 @@ applyPatch(counter, history) // replays to count: 2
 ## Devtools
 
 ```ts
-import { getActiveModels, getModelSnapshot, onModelChange } from '@pyreon/state-tree/devtools'
+import {
+  getActiveModels,
+  getModelSnapshot,
+  onModelChange,
+  registerInstance,
+} from '@pyreon/state-tree/devtools'
 
-// Live model instances self-register (dev-only, tree-shakeable). Inspect them:
+// Registration is EXPLICIT — nothing self-registers, because only you can name
+// an instance. Without this call `getActiveModels()` stays empty forever.
+registerInstance('app-counter', counter)
+
 const stop = onModelChange(() => {
   for (const name of getActiveModels()) console.log(name, getModelSnapshot(name))
 })
 ```
 
-Tree-shakeable live-instance introspection — used by the Pyreon devtools panel.
+Tree-shakeable live-instance introspection. The registry holds `WeakRef`s and
+sweeps collected entries, so registering an instance never keeps it alive.
 
 ## Documentation
 
