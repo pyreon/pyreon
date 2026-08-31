@@ -5525,6 +5525,19 @@ const cpu = signal(42)
 - Omitting \`label\` and expecting a legend — the slice labels are what name the data`,
   },
 
+  'charts/CandlestickChart': {
+    signature: '<T>(props: CandlestickChartProps<T>) => VNodeChild',
+    example: `import { CandlestickChart } from '@pyreon/charts/plot'
+
+interface Bar { day: string; o: number; h: number; l: number; c: number }
+const bars: Bar[] = [{ day: 'Mon', o: 10, h: 20, l: 5, c: 15 }]
+
+<CandlestickChart data={bars} open={(d: Bar) => d.o} high={(d: Bar) => d.h} low={(d: Bar) => d.l} close={(d: Bar) => d.c} x={(d: Bar) => d.day} />`,
+    notes: 'Candlestick chart from the plot engine (`@pyreon/charts/plot`) — open/high/low/close accessors per datum, direction encoded by color (close vs open; up green, down red by default, both overridable). A doji (open == close) keeps a 1px body — flat trading is a fact, and a missing candle reads as missing data. The wick draws first so the body sits over it; the price domain is niced so the axis lands on readable ticks. Geometry (`renderCandles`, `ohlcExtent`) exported standalone. See also: PlotChart, HeatmapChart.',
+    mistakes: `- Feeding pre-sorted-descending periods and reading the chart right-to-left — periods render in DATA order, oldest first by convention; sort ascending
+- Expecting volume bars — volume is a second chart sharing the x axis, not a candle option; compose a \`PlotChart\` with \`bars\` below it`,
+  },
+
   'charts/HeatmapChart': {
     signature: '<T>(props: HeatmapChartProps<T>) => VNodeChild',
     example: `import { HeatmapChart } from '@pyreon/charts/plot'
