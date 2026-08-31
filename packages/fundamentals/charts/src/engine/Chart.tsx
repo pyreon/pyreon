@@ -11,7 +11,7 @@ import { effect } from '@pyreon/reactivity'
 import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
 import { renderLegend } from './legend'
 import { placeTooltip, tooltipAt, tooltipLines } from './tooltip'
-import { barsFor, defaultTheme, layoutChart, renderChart, resolveYDomain } from './render'
+import { barsFor, defaultTheme, layoutChart, renderChart, resolveYDomain, stackedHitAt } from './render'
 import { hitBar, hitNearestX, layoutSeriesPoints } from './layout'
 import type { Annotation, ChartSpec, ChartTheme } from './render'
 import { resolveCategories, resolveMarks } from './marks'
@@ -300,8 +300,13 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       const idx = hitBar(barsFor(spec, i, measure), px, py)
       if (idx >= 0) return idx
     }
+    // Same gap as the click handler: the tooltip never appeared over a stacked
+    // or grouped chart either, because both bailed on the same condition.
+    const stackedIdx = stackedHitAt(spec, measure, px, py)
+    if (stackedIdx >= 0) return stackedIdx
     const first = spec.series[0]
     if (first === undefined || first.kind === 'bars') return -1
+    if (first.kind === 'stacked' || first.kind === 'grouped') return -1
     const l = layoutChart(spec, measure)
     return hitNearestX(layoutSeriesPoints(first.values, l.plot, resolveYDomain(spec)), px)
   }
@@ -353,8 +358,16 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     const rect = el.getBoundingClientRect()
     const px = ev.clientX - rect.left
     const py = ev.clientY - rect.top
-    // Only bar marks are hit-testable today; a line/area chart reports -1
-    // rather than guessing at a nearest point the caller did not ask for.
+    // Every BAR mark is hit-testable — plain, stacked and grouped. A line or
+    // area chart still reports -1 rather than guessing at a nearest point the
+    // caller did not ask for.
+    //
+    // Stacked and grouped were skipped by a `kind !== 'bars'` bail whose
+    // comment excused "a line/area chart" — but they draw real rects, so every
+    // click on one reported a miss while `onSelect`'s own contract says it
+    // fires "with the datum index when a bar is tapped". They cannot be asked
+    // one series at a time (each needs the others to place its bars), hence the
+    // separate helper rather than a widened loop condition.
     for (let i = 0; i < spec.series.length; i++) {
       if (spec.series[i]!.kind !== 'bars') continue
       const idx = hitBar(barsFor(spec, i, measure), px, py)
@@ -363,7 +376,8 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
         return
       }
     }
-    cb(-1)
+    const stackedIdx = stackedHitAt(spec, measure, px, py)
+    cb(stackedIdx)
   }
 
   const a11yInput = (): {

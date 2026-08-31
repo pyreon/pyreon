@@ -137,7 +137,12 @@ export function renderSvg(
   options: SvgOptions = {},
 ): string {
   const fontFamily = options.fontFamily ?? 'system-ui, sans-serif'
-  const prefix = options.idPrefix ?? 'pyreon-chart'
+  // Escaped like every other interpolated option. It was the ONE that was not,
+  // eleven lines above `background`, which does go through `esc()` — so a
+  // prefix of `a" onload="alert(1)` put a live handler on the root <svg>. The
+  // manifest tells callers to vary it per chart, which is exactly where a
+  // data-derived id comes from.
+  const prefix = esc(options.idPrefix ?? 'pyreon-chart')
   const titleId = `${prefix}-title`
   const descId = `${prefix}-desc`
 

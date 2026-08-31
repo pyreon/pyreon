@@ -18,6 +18,55 @@ import { plain } from './format'
 import type { Double } from './types'
 
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
+
+/**
+ * The width the next draw should use.
+ *
+ * Measures the PARENT, not the canvas. `prepareCanvas` writes an inline
+ * `canvas.style.width`, so reading `el.clientWidth` reports back whatever the
+ * FIRST draw chose and the chart is pinned at that size forever — 300px inside
+ * a 430px column, with nothing in the DOM looking wrong. (The old expression
+ * was `props.width ?? el.clientWidth ?? 300`, whose `?? 300` was also dead:
+ * `clientWidth` is always a number, so the fallback could never be reached.)
+ *
+ * Identical in shape to `<PlotChart>`'s `drawWidth`, whose comment documents
+ * this exact failure — the radial family simply never got it.
+ */
+function radialWidth(
+  el: HTMLCanvasElement,
+  explicit: Double | undefined,
+  fallback: Double,
+): Double {
+  if (explicit !== undefined) return explicit
+  const box = el.parentElement
+  const w = box === null ? 0 : box.clientWidth
+  return w > 0 ? w : fallback
+}
+
+/**
+ * Redraw when the container resizes. Returns the observer so the caller can
+ * disconnect it.
+ *
+ * Guarded against the feedback loop the draw itself causes: a draw resizes the
+ * canvas, which fires the observer, which would draw again forever. Redraw only
+ * when the width the NEXT draw would use differs from the backing store already
+ * on the canvas — the same guard `<PlotChart>` uses.
+ */
+function observeWidth(
+  el: HTMLCanvasElement,
+  widthFor: () => Double,
+  redraw: () => void,
+): ResizeObserver | null {
+  const box = el.parentElement
+  if (box === null || typeof ResizeObserver === 'undefined') return null
+  const ro = new ResizeObserver(() => {
+    const dpr = typeof globalThis.devicePixelRatio === 'number' ? globalThis.devicePixelRatio : 1
+    if (Math.round(widthFor() * dpr) === el.width) return
+    redraw()
+  })
+  ro.observe(box)
+  return ro
+}
 const PALETTE = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
 
 export interface PieChartProps<T> {
@@ -42,6 +91,7 @@ export interface PieChartProps<T> {
 
 export function PieChart<T>(props: PieChartProps<T>): VNode {
   let canvas: HTMLCanvasElement | null = null
+  let sizeObserver: ResizeObserver | null = null
 
   const readData = (): T[] => {
     const d = props.data
@@ -58,7 +108,7 @@ export function PieChart<T>(props: PieChartProps<T>): VNode {
   const draw = (): void => {
     const el = canvas
     if (el === null) return
-    const w = props.width ?? el.clientWidth ?? 300
+    const w = radialWidth(el, props.width, 300)
     const hgt = props.height ?? 240
     const ctx = prepareCanvas(el, w, hgt)
     if (ctx === null) return
@@ -101,7 +151,7 @@ export function PieChart<T>(props: PieChartProps<T>): VNode {
     const el = canvas
     const cb = props.onSelect
     if (el === null || cb === undefined) return
-    const w = props.width ?? el.clientWidth ?? 300
+    const w = radialWidth(el, props.width, 300)
     const hgt = props.height ?? 240
     const box = { x: 0, y: 0, w, h: hgt }
     const { center, radius } = fitCircle(box)
@@ -132,7 +182,13 @@ export function PieChart<T>(props: PieChartProps<T>): VNode {
     'aria-label': () => describeChart(a11y()),
     ref: (el: HTMLCanvasElement | null) => {
       canvas = el
-      if (el !== null) draw()
+      if (el === null) {
+        sizeObserver?.disconnect()
+        sizeObserver = null
+        return
+      }
+      draw()
+      sizeObserver = observeWidth(el, () => radialWidth(el, props.width, 300), draw)
     },
     onClick: handleClick,
   })
@@ -184,6 +240,7 @@ export interface GaugeChartProps {
 /** A single-value gauge. */
 export function GaugeChart(props: GaugeChartProps): VNode {
   let canvas: HTMLCanvasElement | null = null
+  let sizeObserver: ResizeObserver | null = null
   const readValue = (): Double => {
     const v = props.value
     return typeof v === 'function' ? (v as () => Double)() : v
@@ -192,7 +249,7 @@ export function GaugeChart(props: GaugeChartProps): VNode {
   const draw = (): void => {
     const el = canvas
     if (el === null) return
-    const w = props.width ?? el.clientWidth ?? 240
+    const w = radialWidth(el, props.width, 240)
     const hgt = props.height ?? 140
     const ctx = prepareCanvas(el, w, hgt)
     if (ctx === null) return
@@ -236,7 +293,13 @@ export function GaugeChart(props: GaugeChartProps): VNode {
       `${props.title ?? 'Gauge'}: ${plain(readValue())} of ${plain(props.max ?? 100)}`,
     ref: (el: HTMLCanvasElement | null) => {
       canvas = el
-      if (el !== null) draw()
+      if (el === null) {
+        sizeObserver?.disconnect()
+        sizeObserver = null
+        return
+      }
+      draw()
+      sizeObserver = observeWidth(el, () => radialWidth(el, props.width, 240), draw)
     },
   })
 }

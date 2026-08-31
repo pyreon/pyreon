@@ -496,3 +496,43 @@ export function barsFor(spec: ChartSpec, index: number, measure: MeasureText): R
   if (s === undefined || s.kind !== 'bars') return []
   return layoutBars(s.values, layoutChart(spec, measure).plot, resolveYDomain(spec), 0.25)
 }
+
+/**
+ * The datum index under a point for the STACKED and GROUPED bar sets, or -1.
+ *
+ * `barsFor` answers only for `kind === 'bars'`, because a plain bar series is
+ * laid out on its own. Stacked and grouped series are laid out TOGETHER — each
+ * needs the others to place its bars — so they cannot be asked one series at a
+ * time, which is why the host's hit test skipped them entirely and every click
+ * on a stacked or grouped chart reported a miss. They draw real rects, and
+ * `onSelect`'s contract is "the datum index when a bar is tapped".
+ *
+ * The segment carries both indices; the DATUM index is returned, matching what
+ * a plain bar series reports and what the tooltip renders. Which SERIES a
+ * segment belongs to is not expressible through a single-index callback, so it
+ * is deliberately not surfaced here rather than guessed at.
+ */
+export function stackedHitAt(
+  spec: ChartSpec,
+  measure: MeasureText,
+  px: Double,
+  py: Double,
+): number {
+  if (spec.horizontal === true) return -1
+  const plot = layoutChart(spec, measure).plot
+  const yDomain = resolveYDomain(spec)
+  for (const kind of ['stacked', 'grouped'] as const) {
+    const series = spec.series.filter((s) => s.kind === kind)
+    if (series.length === 0) continue
+    const values = series.map((s) => s.values)
+    const segs =
+      kind === 'stacked'
+        ? layoutStackedBars(values, plot, yDomain, 0.25)
+        : layoutGroupedBars(values, plot, yDomain, 0.25)
+    for (const seg of segs) {
+      const r = seg.rect
+      if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return seg.datumIndex
+    }
+  }
+  return -1
+}
