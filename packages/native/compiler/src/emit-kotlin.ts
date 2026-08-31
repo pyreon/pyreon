@@ -3045,6 +3045,12 @@ function kotlinCondition(e: ExprIR, emit: (x: ExprIR) => string): string {
   return emit(e)
 }
 
+// Kotlin twin of emit-swift's `_typedClosureLet`: only a let-bound arrow
+// (a standalone lambda, where kotlinc cannot infer param types) emits the
+// typed `{ p: Pt -> }` form; callback arguments stay bare (call-site
+// inference). Consumed by the first arrow emitted.
+let _typedLambdaLet = false
+
 function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): string {
   switch (s.kind) {
     case 'let':
@@ -3097,7 +3103,13 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
           emptyLiteral && s.declaredType !== undefined
             ? `: ${kotlinType(s.declaredType)}`
             : ''
-        return `${s.mutable ? 'var' : 'val'} ${kotlinIdent(s.name)}${ann} = ${emitKotlinExpr(s.expr, indent)}`
+        const prevTyped = _typedLambdaLet
+        if (s.expr.kind === 'arrow') _typedLambdaLet = true
+        try {
+          return `${s.mutable ? 'var' : 'val'} ${kotlinIdent(s.name)}${ann} = ${emitKotlinExpr(s.expr, indent)}`
+        } finally {
+          _typedLambdaLet = prevTyped
+        }
       }
     case 'assign':
       return `${emitKotlinExpr(s.target, indent)} ${s.op} ${emitKotlinExpr(s.value, indent)}`
@@ -5060,6 +5072,22 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       //      incremented. Every new Todo got id=2 forever.
       return `${emitKotlinExpr(e.argument, indent)}${e.op}`
     case 'arrow': {
+      // Typed per-param when annotations survive parse — Kotlin allows
+      // `{ r: Rect -> … }` per param, and a standalone lambda cannot infer.
+      const standaloneLambda = _typedLambdaLet
+      _typedLambdaLet = false
+      const ktLambdaParams = (): string => {
+        const types = e.paramTypes
+        if (
+          standaloneLambda &&
+          types !== undefined &&
+          types.length === e.params.length &&
+          types.every((t) => t !== undefined && t.kind !== 'unknown')
+        ) {
+          return e.params.map((n, i2) => `${kotlinIdent(n)}: ${kotlinType(types[i2]!, undefined, n)}`).join(', ')
+        }
+        return e.params.map((n) => kotlinIdent(n)).join(', ')
+      }
       // A BLOCK body carries `stmts` — mirror of the Swift plain-path fix
       // (the sentinel `""` silently dropped multi-statement 1-param
       // callbacks). Kotlin lambdas return the LAST expression; explicit
@@ -5078,14 +5106,14 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           _emitWarnings.push(
             `a multi-statement callback with early returns is not lowered on Kotlin at this call site yet (labeled-return wiring) — the body was DROPPED; restructure as an expression body or a single trailing value.`,
           )
-          return `{ ${e.params.map(kotlinIdent).join(', ')} -> Unit }`
+          return `{ ${ktLambdaParams()} -> Unit }`
         }
         const pad = ' '.repeat(indent + 2)
         const saved = seedHandlerLocals(e.stmts, _kotlinExprInferCtx)
         const stmtCtx: KotlinCtx = { synthesizedDataClasses: [], componentName: '' }
         const lines = e.stmts.map((st) => pad + emitKotlinStatement(st, indent + 2, stmtCtx)).join('\n')
         _kotlinExprInferCtx.locals = saved
-        const params = e.params.length > 0 ? `${e.params.map(kotlinIdent).join(', ')} ->` : ''
+        const params = e.params.length > 0 ? `${ktLambdaParams()} ->` : ''
         return `{ ${params}\n${lines}\n${' '.repeat(indent)}}`
       }
       if (e.params.length === 0) return `{ ${emitKotlinExpr(e.body, indent)} }`

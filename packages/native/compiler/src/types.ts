@@ -1318,7 +1318,15 @@ export type ExprIR =
    * emit `stmts` as a multi-statement closure body; without it the
    * earlier parse silently kept only the FIRST statement.
    */
-  | { kind: 'arrow'; params: string[]; body: ExprIR; stmts?: StatementIR[]; async?: boolean }
+  | {
+      kind: 'arrow'
+      params: string[]
+      /** Per-param TS annotations, index-aligned with `params`; undefined where unannotated. */
+      paramTypes?: (TypeIR | undefined)[] | undefined
+      body: ExprIR
+      stmts?: StatementIR[]
+      async?: boolean
+    }
   /**
    * RX-2 — `@pyreon/rx` namespace call. Produced by parse.ts'
    * `tryRxNamespaceLowering` when it encounters `rx.METHOD(signal, ...)`.

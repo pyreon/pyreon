@@ -63,3 +63,29 @@ describe('defaulted helper parameters', () => {
     expect(r.ok ? [] : [r.error]).toEqual([])
   })
 })
+
+describe('optional (`?`) helper parameters', () => {
+  const SRC2 = `
+    type Formatter = (v: Double) => string
+    function label(v: Double, format?: Formatter): string {
+      // Coalesce to a non-optional, THEN call — calling through the optional
+      // needs the optional-call lowering, a separate frontier this spec must
+      // not borrow.
+      const f = format ?? ((x: Double): string => String(x))
+      return f(v)
+    }
+    export function P() { return <Text>{label(1.5) + label(2.0, (v: Double) => 'x')}</Text> }
+  `
+  it('emits an optional type with a nil default — both halves of the TS contract', () => {
+    const sw = transform(SRC2, { target: 'swift' }).code
+    // Optional-typed AND omittable; a bare fn type before `?` must parenthesize.
+    expect(sw).toContain('_ format: ((Double) -> String)? = nil')
+    const kt = transform(SRC2, { target: 'kotlin' }).code
+    expect(kt).toContain('format: ((Double) -> String)? = null')
+  })
+
+  it.runIf(isSwiftUIAvailable())('the omitting AND passing call sites both type-check', () => {
+    const r = validateSwiftWithStubs(transform(SRC2, { target: 'swift' }).code)
+    expect(r.ok ? [] : [r.error]).toEqual([])
+  })
+})

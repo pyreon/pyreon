@@ -9239,8 +9239,21 @@ function tryFunctionDecl(
     if (p?.type === 'Identifier') {
       const paramName = p.name as string
       const annot = p.typeAnnotation?.typeAnnotation as AnyNode | undefined
-      const type: TypeIR = annot ? parseTypeAnnotation(annot, ctx) : { kind: 'unknown' }
-      params.push({ name: paramName, type })
+      const base: TypeIR = annot ? parseTypeAnnotation(annot, ctx) : { kind: 'unknown' }
+      if (p.optional === true && base.kind !== 'unknown' && !typeIsOptional(base)) {
+        // A `format?: Formatter` param is OPTIONAL-typed and omittable at the
+        // call site. Dropping the `?` emitted a required non-optional param —
+        // every optional-passing caller then failed "must be unwrapped", and
+        // every omitting caller failed on arity. Optional type + nil default
+        // reproduces both halves of the TS contract natively.
+        params.push({
+          name: paramName,
+          type: { kind: 'union', branches: [base, { kind: 'undefined' }] } as TypeIR,
+          defaultValue: { kind: 'literal', value: null } as ExprIR,
+        })
+      } else {
+        params.push({ name: paramName, type: base })
+      }
     } else if (p?.type === 'AssignmentPattern' && p.left?.type === 'Identifier') {
       // A defaulted parameter (`places: number = 0`). Swift and Kotlin both
       // have native default parameters, so the default CROSSES rather than
@@ -10440,9 +10453,15 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
           )
         }
       }
-      const params = (node.params as AnyNode[])
-        .filter((p) => p.type === 'Identifier')
-        .map((p) => p.name as string)
+      const identParams = (node.params as AnyNode[]).filter((p) => p.type === 'Identifier')
+      const params = identParams.map((p) => p.name as string)
+      // Annotations, index-aligned. A standalone Swift closure cannot infer
+      // its param types (`let f = { r in … }` is 'cannot infer type of
+      // closure parameter'), so what the author wrote must survive to emit.
+      const paramTypes = identParams.map((p) => {
+        const annot = p.typeAnnotation?.typeAnnotation as AnyNode | undefined
+        return annot ? parseTypeAnnotation(annot, ctx) : undefined
+      })
       const body = node.body
       const isExpressionBody = body.type !== 'BlockStatement'
       if (isExpressionBody) {
@@ -10463,9 +10482,9 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
           const stmts: StatementIR[] = ((seqBody.expressions as AnyNode[]) ?? []).map(
             (x) => ({ kind: 'expr', expr: parseExpr(x, ctx) }),
           )
-          return { kind: 'arrow', async: node.async === true, params, body: { kind: 'literal', value: '' }, stmts }
+          return { kind: 'arrow', async: node.async === true, params, paramTypes, body: { kind: 'literal', value: '' }, stmts }
         }
-        return { kind: 'arrow', async: node.async === true, params, body: parseExpr(body, ctx) }
+        return { kind: 'arrow', async: node.async === true, params, paramTypes, body: parseExpr(body, ctx) }
       }
       // Block body. The common compact case — a single expression/return
       // statement (`() => { count.set(c() + 1) }`) — keeps the lean
@@ -10473,7 +10492,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       // action emit already handles it; backward-compat).
       const stmts = body.body as AnyNode[]
       if (stmts.length === 0) {
-        return { kind: 'arrow', async: node.async === true, params, body: { kind: 'literal', value: '' } }
+        return { kind: 'arrow', async: node.async === true, params, paramTypes, body: { kind: 'literal', value: '' } }
       }
       if (
         stmts.length === 1 &&
@@ -10481,8 +10500,8 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       ) {
         const only = stmts[0]!
         const inner = only.type === 'ReturnStatement' ? only.argument : only.expression
-        if (!inner) return { kind: 'arrow', async: node.async === true, params, body: { kind: 'literal', value: '' } }
-        return { kind: 'arrow', async: node.async === true, params, body: parseExpr(inner, ctx) }
+        if (!inner) return { kind: 'arrow', async: node.async === true, params, paramTypes, body: { kind: 'literal', value: '' } }
+        return { kind: 'arrow', async: node.async === true, params, paramTypes, body: parseExpr(inner, ctx) }
       }
       // MULTIPLE statements (or a single non-expr/return statement like an
       // `if`) — carry the FULL statement list. The pre-fix `.find()` kept
@@ -10495,6 +10514,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
         kind: 'arrow',
         async: node.async === true,
         params,
+        paramTypes,
         body: { kind: 'literal', value: '' },
         stmts: blockStmts,
       }

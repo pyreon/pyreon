@@ -3780,6 +3780,15 @@ function swiftCondition(e: ExprIR, emit: (x: ExprIR) => string): string {
   return emit(e)
 }
 
+// A let-bound arrow is a STANDALONE closure — Swift cannot infer its param
+// types, so annotated params emit the typed parenthesized form there. A
+// callback ARGUMENT gets its types from the call site, and a typed form
+// there is churn (and can disagree with the receiver's element type — an
+// annotated `(x: number)` on `[Int].map` must stay bare). The flag is set by
+// the let-statement emit and CONSUMED by the first arrow emitted, so nested
+// callback arrows inside the bound closure's body see it false.
+let _typedClosureLet = false
+
 function emitSwiftStatement(s: StatementIR, indent: number): string {
   switch (s.kind) {
     case 'let':
@@ -3826,7 +3835,13 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
             ? `: ${swiftType(s.declaredType)}`
             : ''
         const kw = s.mutable || s.expr.kind === 'new-collection' ? 'var' : 'let'
-        return `${kw} ${swiftIdent(s.name)}${ann} = ${emitSwiftExpr(s.expr, indent)}`
+        const prevTyped = _typedClosureLet
+        if (s.expr.kind === 'arrow') _typedClosureLet = true
+        try {
+          return `${kw} ${swiftIdent(s.name)}${ann} = ${emitSwiftExpr(s.expr, indent)}`
+        } finally {
+          _typedClosureLet = prevTyped
+        }
       }
     case 'assign':
       return `${emitSwiftExpr(s.target, indent)} ${s.op} ${emitSwiftExpr(s.value, indent)}`
@@ -6344,17 +6359,35 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // the whole body on the PLAIN 1-param path (the indexed path fixed
       // this in #1954; the dedup idiom `filter(x => { …; seen.add(x); return
       // true })` exposed the plain-path sibling).
+      // Typed form when EVERY param carries an annotation — Swift's
+      // parenthesized closure params are all-or-nothing, and a standalone
+      // `let f = { r in … }` cannot infer its param types at all.
+      const standaloneClosure = _typedClosureLet
+      _typedClosureLet = false
+      const swiftClosureParams = (): string => {
+        const types = e.paramTypes
+        if (
+          standaloneClosure &&
+          e.params.length > 0 &&
+          types !== undefined &&
+          types.length === e.params.length &&
+          types.every((t) => t !== undefined && t.kind !== 'unknown')
+        ) {
+          return `(${e.params.map((n, i) => `${swiftIdent(n)}: ${swiftType(types[i]!)}`).join(', ')})`
+        }
+        return e.params.map(swiftIdent).join(', ')
+      }
       if (e.stmts !== undefined && e.stmts.length > 0) {
         const pad = ' '.repeat(indent + 2)
         const inlined = inlineValueConstsInStmts(e.stmts)
         const saved = seedHandlerLocals(inlined, _exprInferCtx)
         const lines = inlined.map((st) => pad + emitSwiftStatement(st, indent + 2)).join('\n')
         _exprInferCtx.locals = saved
-        const params = e.params.length > 0 ? `${e.params.map(swiftIdent).join(', ')} in` : ''
+        const params = e.params.length > 0 ? `${swiftClosureParams()} in` : ''
         return `{ ${params}\n${lines}\n${' '.repeat(indent)}}`
       }
       if (e.params.length === 0) return `{ ${emitSwiftExpr(e.body, indent)} }`
-      return `{ ${e.params.map(swiftIdent).join(', ')} in ${emitSwiftExpr(e.body, indent)} }`
+      return `{ ${swiftClosureParams()} in ${emitSwiftExpr(e.body, indent)} }`
     }
     case 'new-sized-map': {
       // `new SizedMap<K, V>({ maxEntries, lru })` → the co-located
