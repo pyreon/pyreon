@@ -157,8 +157,12 @@ describe('rules fire on the shape code is actually written in', () => {
       .filter((r) => tiers.has(String(r.meta.category)))
       .map((r) => r.meta.id)
       .filter((id) => !covered.has(id))
-    // The four that predate this work are covered by their own dedicated files.
+    // Rules predating this work are covered by their own dedicated files —
+    // `no-close-before-handler-teardown` most pointedly, since it was
+    // bisect-verified against the real pre-fix `use-subscription.ts` rather
+    // than a fixture, which is the same standard this file applies.
     expect(missing.sort()).toEqual([
+      'pyreon/no-close-before-handler-teardown',
       'pyreon/no-floating-promise-in-handler',
       'pyreon/no-locale-dependent-format',
       'pyreon/no-node-builtin-in-component',
