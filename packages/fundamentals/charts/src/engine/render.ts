@@ -122,7 +122,12 @@ export const defaultTheme: ChartTheme = {
  * flatten every variation that matters.
  */
 export function resolveYDomain(spec: ChartSpec): Domain {
-  if (spec.yDomain !== undefined) return spec.yDomain
+  // `?? derive` rather than an early return: Swift does not narrow
+  // `spec.yDomain` through the guard, and the coalesce is the same contract.
+  return spec.yDomain ?? deriveYDomain(spec)
+}
+
+function deriveYDomain(spec: ChartSpec): Domain {
   // A STACK's domain is its tallest TOTAL, not its tallest value — taking the
   // max of the individual series would clip the stack at the top.
   const stacked = spec.series.filter((s) => s.kind === 'stacked')
@@ -292,9 +297,13 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
   // rules second, so a rule bounding its own band stays visible.
   const notes = spec.annotations ?? []
   for (const a of notes) {
+    // Coalesced before use: Swift does not narrow `a.yFrom` through the
+    // guard, and the guard still decides whether the band draws at all.
+    const yFrom = a.yFrom ?? 0.0
+    const yTo = a.yTo ?? 0.0
     if (a.yFrom !== undefined && a.yTo !== undefined) {
-      const y1 = scaleLinear(yDomain, plot.y + plot.h, plot.y, a.yFrom)
-      const y2 = scaleLinear(yDomain, plot.y + plot.h, plot.y, a.yTo)
+      const y1 = scaleLinear(yDomain, plot.y + plot.h, plot.y, yFrom)
+      const y2 = scaleLinear(yDomain, plot.y + plot.h, plot.y, yTo)
       const top = y1 < y2 ? y1 : y2
       out.push({
         kind: 'rect',
@@ -304,8 +313,9 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
     }
   }
   for (const a of notes) {
+    const ay = a.y ?? 0.0
     if (a.y !== undefined) {
-      const yPos = scaleLinear(yDomain, plot.y + plot.h, plot.y, a.y)
+      const yPos = scaleLinear(yDomain, plot.y + plot.h, plot.y, ay)
       out.push({
         kind: 'line',
         from: { x: plot.x, y: yPos },
@@ -314,10 +324,11 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
         width: 1.0,
         dash: [4.0, 4.0],
       })
+      const yLabel = a.label ?? ''
       if (a.label !== undefined) {
         out.push({
           kind: 'text',
-          text: a.label,
+          text: yLabel,
           at: { x: plot.x + plot.w, y: yPos - 4.0 },
           fill: a.color ?? t.label,
           size: t.fontSize,
@@ -326,8 +337,9 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
         })
       }
     }
+    const ax = a.x ?? 0.0
     if (a.x !== undefined) {
-      const xPos = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, a.x)
+      const xPos = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, ax)
       out.push({
         kind: 'line',
         from: { x: xPos, y: plot.y },
@@ -336,10 +348,11 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
         width: 1.0,
         dash: [4.0, 4.0],
       })
+      const xLabel = a.label ?? ''
       if (a.label !== undefined) {
         out.push({
           kind: 'text',
-          text: a.label,
+          text: xLabel,
           at: { x: xPos + 4.0, y: plot.y },
           fill: a.color ?? t.label,
           size: t.fontSize,
@@ -382,7 +395,10 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
     // The curve shapes line AND area from the same densified points — an
     // area whose fill followed straight segments under a smoothed outline
     // would show slivers of background between the two.
-    const shape = (pts: Pt[]): Pt[] => (s.curve !== undefined ? s.curve(pts) : pts)
+    // Coalesced to identity: calling through the optional needs a lowering
+    // Swift lacks, and "no curve" IS the identity curve.
+    const curveFn = s.curve ?? ((q: Pt[]): Pt[] => q)
+    const shape = (pts: Pt[]): Pt[] => curveFn(pts)
 
     if (spec.horizontal === true) {
       if (s.kind !== 'bars') continue
